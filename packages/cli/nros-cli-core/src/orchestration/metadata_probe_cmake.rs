@@ -546,6 +546,23 @@ fn configure_project(probe_dir: &Path, build_dir: &Path, nano_ros: &Path) -> Res
         .arg(format!("-DCMAKE_PREFIX_PATH={}", nano_ros.display()))
         // `nano_rosConfig.cmake` sits at the checkout root.
         .arg(format!("-Dnano_ros_DIR={}", nano_ros.display()));
+    // phase-489 W4 — the C/C++ half of issue 0522. Every workspace's probe
+    // project compiled its OWN copy of the runtime staticlib (`nros-cpp` with
+    // `metadata-mode`, plus the nested sizes-probe builds): ~60-120 s and
+    // ~1.6 GB per C/C++ workspace, fifteen times over in one
+    // `just generate-bindings`. The configuration is the same in every one, so
+    // the Corrosion cargo dir is shared through issue 0805's KEYED mechanism —
+    // `nros_shared_cargo_dir` appends a hash of the full cargo input set, so
+    // two projects share only when their cargo inputs are equal. Measured on
+    // the 4-core box: `workspaces/cpp`'s cold probe build 76 s alone, 23 s
+    // after `workspaces/c` populated the shared dir (`realtime-c`: 10 s).
+    // A build dir from before this keeps its real `cargo/` dir and does not
+    // share (the module's documented degrade), so nothing is wiped.
+    if let Some(shared) =
+        super::metadata_build::shared_probe_dir(nano_ros, "corrosion-cargo/metadata-probe")
+    {
+        cmd.arg(format!("-DNROS_SHARED_CARGO_ROOT={}", shared.display()));
+    }
     pin_probe_env(&mut cmd, nano_ros);
     // The documented caller pre-set of the codegen tool (NanoRosBootstrapCodegen
     // rung 1): THIS process is the CLI whose stamp the key carries.

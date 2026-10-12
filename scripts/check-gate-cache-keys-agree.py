@@ -21,6 +21,14 @@ as before, with no error anywhere. A silent no-op is the failure mode this
 guards, and it is the same shape as an authored map that stops matching what it
 names.
 
+Phase-489 W4 adds a second agreement, across WORKFLOWS: every job that runs
+`just generate-bindings` (scheduled `gate` and `host-tests`, today) restores
+and saves the bindings cache under the key, prefix and path list printed by
+`scripts/ci/bindings-cache.sh key` — never a hand-written copy — restoring
+BEFORE the verb and saving AFTER it. Both lanes run on `main`'s schedule, so
+they share one cache scope; a job whose key or paths drifted would still go
+green and simply never share, which is the same silent no-op as above.
+
 Run:  python3 scripts/check-gate-cache-keys-agree.py [--self-test]
 """
 
@@ -30,6 +38,7 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GATE = os.path.join(ROOT, ".github", "workflows", "gate.yml")
+WORKFLOWS = os.path.join(ROOT, ".github", "workflows")
 
 # (consumer job-name PREFIX, warmer job, what the pair caches). A prefix, not a
 # name: phase-489 W1 split the one `check` consumer into `check-*` siblings,
@@ -139,6 +148,80 @@ def produced_keys(body):
     return out
 
 
+# phase-489 W4 — the bindings cache's ONE spelling, read from the key step.
+BINDINGS_VERB = re.compile(r"^\s*just generate-bindings\s*$", re.M)
+BINDINGS_KEY_RUN = "scripts/ci/bindings-cache.sh key >> \"$GITHUB_OUTPUT\""
+BINDINGS_WANT = {
+    "path": "${{ steps.bindings-key.outputs.paths }}",
+    "key": "${{ steps.bindings-key.outputs.key }}",
+    "restore-keys": "${{ steps.bindings-key.outputs.restore-prefix }}",
+}
+
+
+def _steps(body):
+    """[(start offset, step text)] for each `- name:`/`- uses:` step of a job."""
+    starts = [m.start() for m in re.finditer(r"^\s{6}- ", body, re.M)]
+    return [(a, body[a:b]) for a, b in zip(starts, starts[1:] + [len(body)])]
+
+
+def _with(step, field):
+    m = re.search(r"^\s*%s:\s*(.+)$" % re.escape(field), step, re.M)
+    return m.group(1).strip() if m else None
+
+
+def bindings_problems(where, body):
+    """Problems with one job's bindings cache, or [] if it runs no verb."""
+    verb = BINDINGS_VERB.search(body)
+    if not verb:
+        return []
+    steps = _steps(body)
+    key_at = [a for a, t in steps if BINDINGS_KEY_RUN in t and "id: bindings-key" in t]
+    restores = [(a, t) for a, t in steps if re.search(r"uses:\s*actions/cache/restore@", t)
+                and _with(t, "key") == BINDINGS_WANT["key"]]
+    saves = [(a, t) for a, t in steps if re.search(r"uses:\s*actions/cache/save@", t)
+             and _with(t, "key") == BINDINGS_WANT["key"]]
+    out = []
+    if not key_at:
+        out.append("%s runs `just generate-bindings` with no `id: bindings-key` step running "
+                   "`%s`" % (where, BINDINGS_KEY_RUN))
+    if not restores:
+        out.append("%s runs `just generate-bindings` but restores no cache keyed "
+                   "`%s` — the verb runs from cold (18-22 min)" % (where, BINDINGS_WANT["key"]))
+    if not saves:
+        out.append("%s restores the bindings cache but never saves `%s` — nothing "
+                   "it regenerates reaches the next run" % (where, BINDINGS_WANT["key"]))
+    for kind, found, fields in (("restore", restores, ("path", "restore-keys")),
+                                ("save", saves, ("path",))):
+        for a, t in found:
+            for f in fields:
+                got = _with(t, f)
+                if got != BINDINGS_WANT[f]:
+                    out.append("%s: the bindings %s step's `%s:` is %r, not %r — the list "
+                               "is the key script's, never a copy" % (where, kind, f, got,
+                                                                      BINDINGS_WANT[f]))
+            if kind == "restore" and a > verb.start():
+                out.append("%s restores the bindings cache AFTER the verb ran" % where)
+            if kind == "save" and a < verb.start():
+                out.append("%s saves the bindings cache BEFORE the verb ran" % where)
+    if key_at and restores and min(key_at) > min(a for a, _ in restores):
+        out.append("%s restores the bindings cache before its key step" % where)
+    return out
+
+
+def all_bindings_problems():
+    """(jobs checked, problems) over every workflow file."""
+    checked, out = 0, []
+    for name in sorted(os.listdir(WORKFLOWS)):
+        if not name.endswith((".yml", ".yaml")):
+            continue
+        with open(os.path.join(WORKFLOWS, name), encoding="utf8") as fh:
+            for job, body in jobs(fh.read()).items():
+                if BINDINGS_VERB.search(body):
+                    checked += 1
+                    out += bindings_problems("%s:%s" % (name, job), body)
+    return checked, out
+
+
 def self_test():
     t = (
         "jobs:\n"
@@ -199,6 +282,49 @@ def self_test():
         "packages/cli/nros-launch-resolve/target",
         "packages/cli/target",
     ), ce_restore
+
+    # phase-489 W4 — the bindings rule: the real shape passes, and each
+    # mutation it exists to catch is reported.
+    good = (
+        "jobs:\n"
+        "  j:\n"
+        "    steps:\n"
+        "      - name: key\n"
+        "        id: bindings-key\n"
+        "        run: |\n"
+        "          scripts/ci/bindings-cache.sh key >> \"$GITHUB_OUTPUT\"\n"
+        "      - name: restore\n"
+        "        id: bindings-cache\n"
+        "        uses: actions/cache/restore@v4\n"
+        "        with:\n"
+        "          path: ${{ steps.bindings-key.outputs.paths }}\n"
+        "          key: ${{ steps.bindings-key.outputs.key }}\n"
+        "          restore-keys: ${{ steps.bindings-key.outputs.restore-prefix }}\n"
+        "      - name: verb\n"
+        "        run: |\n"
+        "          just generate-bindings\n"
+        "      - name: save\n"
+        "        uses: actions/cache/save@v4\n"
+        "        with:\n"
+        "          path: ${{ steps.bindings-key.outputs.paths }}\n"
+        "          key: ${{ steps.bindings-key.outputs.key }}\n"
+    )
+    assert bindings_problems("t", jobs(good)["j"]) == [], bindings_problems("t", jobs(good)["j"])
+    mutations = {
+        "hand-written paths": good.replace(
+            "path: ${{ steps.bindings-key.outputs.paths }}\n          key: ${{ steps.bindings-key.outputs.key }}\n          restore",
+            "path: examples/**/generated\n          key: ${{ steps.bindings-key.outputs.key }}\n          restore"),
+        "no fallback prefix": good.replace(
+            "restore-keys: ${{ steps.bindings-key.outputs.restore-prefix }}", "restore-keys: x-"),
+        "no save": good[: good.index("      - name: save")],
+        "no key step": good.replace("id: bindings-key", "id: other"),
+        "restore after verb": good.replace("      - name: restore", "      - name: verb0\n"
+                                           "        run: |\n          just generate-bindings\n"
+                                           "      - name: restore", 1),
+        "no restore": good.replace("actions/cache/restore@v4", "actions/checkout@v4"),
+    }
+    for what, text in mutations.items():
+        assert bindings_problems("t", jobs(text)["j"]), "bindings rule missed: " + what
 
     sys.stdout.write("check-gate-cache-keys-agree self-test: OK\n")
 
@@ -267,6 +393,15 @@ def main():
                         % (c, warmer, key, list(cpaths), list(paths))
                     )
 
+    bjobs, bprob = all_bindings_problems()
+    if bjobs == 0:
+        problems.append(
+            "no workflow job runs `just generate-bindings` — the bindings rule names a "
+            "shape that no longer exists, so it was asserting nothing."
+        )
+    problems += bprob
+    checked += bjobs
+
     if problems:
         sys.stderr.write("check-gate-cache-keys-agree: %d problem(s)\n\n" % len(problems))
         for p in problems:
@@ -275,7 +410,9 @@ def main():
 
     sys.stdout.write(
         "check-gate-cache-keys-agree: OK — %d key pairing(s) checked; every warmed key is "
-        "read by a consumer with the same paths, and every restored key is written.\n" % checked
+        "read by a consumer with the same paths, every restored key is written, and every "
+        "`just generate-bindings` job restores and saves the bindings cache under the key "
+        "script's own key and paths.\n" % checked
     )
     return 0
 

@@ -25,10 +25,19 @@ nros_generate_rust_output_dir() {
 
 nros_generate_rust_global_signature() {
     local nros="$1"
-    local ros_distro="${ROS_DISTRO:-humble}"
 
     printf 'nros=%s\n' "$(realpath "$nros")"
     sha1sum "$nros" 2>/dev/null || true
+    nros_generate_rust_ament_signature
+}
+
+# The AMENT half of the signature: which ROS distro and which interface files
+# every prefix the generator searches holds. Its own function because
+# `scripts/ci/bindings-cache.sh` keys the CI bindings cache on the same set
+# (phase-489 W4) — one spelling of "the ament set codegen reads".
+nros_generate_rust_ament_signature() {
+    local ros_distro="${ROS_DISTRO:-humble}"
+
     printf 'ros_distro=%s\n' "$ros_distro"
     printf 'ament_prefix_path=%s\n' "${AMENT_PREFIX_PATH:-}"
     printf 'colcon_prefix_path=%s\n' "${COLCON_PREFIX_PATH:-}"

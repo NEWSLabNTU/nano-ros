@@ -239,17 +239,28 @@ fn probe_slug(component_id: &str) -> String {
 /// Cargo already separates by triple below the root (`--target <host>` gives
 /// `<dir>/<host>/<profile>/`), so the coordinate is not repeated here.
 fn probe_target_dir(o: &MetadataBuildOptions) -> PathBuf {
-    if let Some(root) = std::env::var_os("NROS_BUILD_ROOT").filter(|v| !v.is_empty()) {
-        return PathBuf::from(root).join("metadata-probe");
-    }
-    let shared = o.nano_ros_workspace.join("build").join("metadata-probe");
-    if std::fs::create_dir_all(&shared).is_ok() {
+    if let Some(shared) = shared_probe_dir(&o.nano_ros_workspace, "metadata-probe") {
         return shared;
     }
     match o.harness_dir.parent() {
         Some(parent) => parent.join(".shared-target"),
         None => o.harness_dir.join("target"),
     }
+}
+
+/// The checkout-wide directory `<kind>` for a probe build — rungs (1) and (2)
+/// of [`probe_target_dir`]'s resolution, shared with the C/C++ probe's
+/// Corrosion cargo root (`metadata_probe_cmake::configure_project`, phase-489
+/// W4) so the two producers cannot disagree about where "this checkout's build
+/// root" is. `None` when (2) cannot be created (a read-only installed SDK); each
+/// caller then falls back to its own per-workspace directory.
+pub(crate) fn shared_probe_dir(nano_ros: &Path, kind: &str) -> Option<PathBuf> {
+    if let Some(root) = std::env::var_os("NROS_BUILD_ROOT").filter(|v| !v.is_empty()) {
+        return Some(PathBuf::from(root).join(kind));
+    }
+    let shared = nano_ros.join("build").join(kind);
+    std::fs::create_dir_all(&shared).ok()?;
+    Some(shared)
 }
 
 pub fn render_harness_cargo_toml(o: &MetadataBuildOptions) -> Result<String> {
