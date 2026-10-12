@@ -432,18 +432,75 @@ fn pick_deploys(
             None => None,
         }
     };
-    let (path, system) = match &claimed {
-        Some(leaf) => {
-            let p = leaf.origin_path().to_path_buf();
-            let raw =
-                std::fs::read_to_string(&p).map_err(|e| eyre!("reading {}: {e}", p.display()))?;
-            let sys =
-                toml::from_str::<crate::orchestration::cargo_metadata_schema::SystemToml>(&raw)
-                    .map_err(|e| eyre!("parsing {}: {e}", p.display()))?;
-            (p, sys)
+    if let Some(leaf) = &claimed {
+        let p = leaf.origin_path().to_path_buf();
+        let raw = std::fs::read_to_string(&p).map_err(|e| eyre!("reading {}: {e}", p.display()))?;
+        let sys = toml::from_str::<crate::orchestration::cargo_metadata_schema::SystemToml>(&raw)
+            .map_err(|e| eyre!("parsing {}: {e}", p.display()))?;
+        return pick_from(&p, &sys, Some(leaf), nano_ros_root, deploy, board);
+    }
+    let mut found = load_system_tomls(ws)?;
+    if found.len() == 1 {
+        let (p, sys) = found.remove(0);
+        return pick_from(&p, &sys, None, nano_ros_root, deploy, board);
+    }
+    let listed = found
+        .iter()
+        .map(|(p, _)| p.display().to_string())
+        .collect::<Vec<_>>()
+        .join(", ");
+    if deploy.is_none() && board.is_none() {
+        return Err(eyre!(
+            "{}: {} bringups carry a system.toml; point --path at one: {listed}",
+            ws.display(),
+            found.len(),
+        ));
+    }
+    // Issue 1811's sibling: a workspace with several bringups (realtime-c has
+    // `demo_bringup` and `smp_bringup`) was refused even when the configure
+    // named the image, so no board fact reached cargo and `zpico-sys`
+    // panicked on `FREERTOS_PORT`. The named deploy or board picks the
+    // bringup; it is still refused when it picks none or more than one.
+    let mut hits = Vec::new();
+    let mut misses = Vec::new();
+    for (p, sys) in &found {
+        match pick_from(p, sys, None, nano_ros_root, deploy, board) {
+            Ok(picked) => hits.push(picked),
+            Err(e) => misses.push(e.to_string()),
         }
-        None => load_system_toml(ws)?,
-    };
+    }
+    let wanted = deploy
+        .map(|d| format!("deploy `{d}`"))
+        .or_else(|| board.map(|b| format!("board `{b}`")))
+        .unwrap_or_default();
+    match hits.len() {
+        1 => Ok(hits.remove(0)),
+        0 => Err(eyre!(
+            "{}: none of {} bringups has {wanted}: {}",
+            ws.display(),
+            found.len(),
+            misses.join("; ")
+        )),
+        n => Err(eyre!(
+            "{}: {n} bringups have {wanted}; point --path at one: {}",
+            ws.display(),
+            hits.iter()
+                .map(|(_, _, o)| o.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        )),
+    }
+}
+
+/// `pick_deploys` for one bringup's `system.toml`.
+fn pick_from(
+    path: &Path,
+    system: &crate::orchestration::cargo_metadata_schema::SystemToml,
+    claimed: Option<&nros_orchestration_ir::leaf_system::LeafSystem>,
+    nano_ros_root: &Path,
+    deploy: Option<&str>,
+    board: Option<&str>,
+) -> Result<Picked> {
     let origin = path.display().to_string();
     // RFC-0103 D3 rung 3 — a `[sources]` key names a `[source.*]` row, and a
     // misspelt one would be ignored by every reader (the ladder asks by NAME),
@@ -503,7 +560,7 @@ fn pick_deploys(
         }
     }
     // An entry's answer is its OWN image, not every image its bringup builds.
-    if let Some(id) = claimed.as_ref().and_then(|l| l.image.as_deref()) {
+    if let Some(id) = claimed.and_then(|l| l.image.as_deref()) {
         boards.retain(|k, _| k == id);
     }
 
@@ -551,12 +608,15 @@ fn pick_deploys(
     Ok((candidates, site, origin))
 }
 
-fn load_system_toml(
+/// Every `system.toml` in scope: `<ws>/system.toml`, else `<ws>/src/*/system.toml`.
+fn load_system_tomls(
     ws: &Path,
-) -> Result<(
-    PathBuf,
-    crate::orchestration::cargo_metadata_schema::SystemToml,
-)> {
+) -> Result<
+    Vec<(
+        PathBuf,
+        crate::orchestration::cargo_metadata_schema::SystemToml,
+    )>,
+> {
     let mut found: Vec<PathBuf> = Vec::new();
     let direct = ws.join("system.toml");
     if direct.is_file() {
@@ -570,31 +630,22 @@ fn load_system_toml(
         }
     }
     found.sort();
-    let path = match found.len() {
-        0 => {
-            return Err(eyre!(
-                "no system.toml at {} or {}/src/*/",
-                ws.display(),
-                ws.display()
-            ));
-        }
-        1 => found.remove(0),
-        _ => {
-            return Err(eyre!(
-                "{}: {} bringups carry a system.toml; point --path at one: {}",
-                ws.display(),
-                found.len(),
-                found
-                    .iter()
-                    .map(|p| p.display().to_string())
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            ));
-        }
-    };
-    let raw = std::fs::read_to_string(&path).map_err(|e| eyre!("read {}: {e}", path.display()))?;
-    let system = toml::from_str(&raw).map_err(|e| eyre!("{}: {e}", path.display()))?;
-    Ok((path, system))
+    if found.is_empty() {
+        return Err(eyre!(
+            "no system.toml at {} or {}/src/*/",
+            ws.display(),
+            ws.display()
+        ));
+    }
+    found
+        .into_iter()
+        .map(|path| {
+            let raw = std::fs::read_to_string(&path)
+                .map_err(|e| eyre!("read {}: {e}", path.display()))?;
+            let system = toml::from_str(&raw).map_err(|e| eyre!("{}: {e}", path.display()))?;
+            Ok((path, system))
+        })
+        .collect()
 }
 
 pub fn run(args: BoardFactsArgs) -> Result<()> {
@@ -1045,6 +1096,45 @@ sdk = { freertos = "{env:FREERTOS_DIR}", lwip = "{env:LWIP_DIR}" }
             !nuttx.contains_key("NROS_SDK_FREERTOS"),
             "the other board's site block must not leak in: {nuttx:?}"
         );
+    }
+
+    /// A workspace with several bringups (`examples/workspaces/realtime-c`
+    /// has two) is resolved by the deploy or board the configure names; with
+    /// neither, or with a name no bringup has, it is still refused.
+    #[test]
+    fn the_named_deploy_picks_the_bringup() {
+        let ws = tempfile::tempdir().unwrap();
+        for (dir, body) in [
+            (
+                "demo_bringup",
+                "[system]\nname = \"d\"\nrmw = \"zenoh\"\ndomain_id = 0\n[image.freertos]\nboard = \"mps2-an385-freertos\"\n",
+            ),
+            (
+                "smp_bringup",
+                "[system]\nname = \"s\"\nrmw = \"zenoh\"\ndomain_id = 0\n[image.zephyr_smp]\nboard = \"qemu-cortex-a53\"\n",
+            ),
+        ] {
+            let d = ws.path().join("src").join(dir);
+            std::fs::create_dir_all(&d).unwrap();
+            std::fs::write(d.join("system.toml"), body).unwrap();
+        }
+        let root = repo_root();
+        let facts = resolve(ws.path(), &root, Some("freertos"), None, &|_| None)
+            .expect("the named image picks demo_bringup");
+        assert_eq!(
+            facts.get("FREERTOS_PORT").map(String::as_str),
+            Some("GCC/ARM_CM3")
+        );
+        let by_board = resolve(ws.path(), &root, None, Some("qemu-cortex-a53"), &|_| None)
+            .expect("the named board picks smp_bringup");
+        assert_eq!(
+            by_board.get("NROS_BOARD").map(String::as_str),
+            Some("qemu-cortex-a53")
+        );
+        let none = resolve(ws.path(), &root, None, None, &|_| None).unwrap_err();
+        assert!(none.to_string().contains("2 bringups"), "{none}");
+        let miss = resolve(ws.path(), &root, Some("nope"), None, &|_| None).unwrap_err();
+        assert!(miss.to_string().contains("none of 2 bringups"), "{miss}");
     }
 
     /// The regression this file's own gate demanded and this resolver could

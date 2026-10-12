@@ -488,8 +488,13 @@ jobs:
           # workspace → the px4-sitl-tests path dep must exist; nuttx-libc backs
           # the workspace Entry build. Provision both (same as host-tests).
           nros setup --source px4-rs --source nuttx-libc
+          # `just test <platform>`, not `just <platform> test`: the scope verb
+          # narrows the run to the platform's own coordinates (issue 1758).
+          # Unscoped, `realtime_tiers` in the FreeRTOS job booted the NuttX
+          # riscv and threadx-linux rows too, whose fixtures this job never
+          # builds, and failed on them.
           bash scripts/ci/fixture-rows-keep-going.sh "$RUNNER_TEMP/failed-rows-test.tsv" -- \
-            just ${{ matrix.plat }} test
+            just test ${{ matrix.plat }}
 
       # Issue 1720 — the platform C-port smokes: the REAL kernel (ThreadX linux
       # port, FreeRTOS POSIX port) over the port's own `platform.c`. They ran in
