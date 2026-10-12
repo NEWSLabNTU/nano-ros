@@ -35,6 +35,11 @@ toml = "0.8"
 # resolver. Host-only and dependency-free, and already in every lock this crate
 # is in, so the edge adds one line per lock and no package.
 nros-build-paths = { path = "../../tooling/nros-build-paths" }
+# phase-486 W8a — the overlay migration guard asks "did an older writer put
+# capability switches in this model?" of the model's RAW YAML, because rlm
+# deletes the typed `execution.features` field. rlm reads models with this
+# crate, so it is already in every lock this crate is in: one line per lock.
+serde_yaml_ng = "0.10"
 thiserror = { workspace = true }
 # RFC-0052 — the shared SystemModel tier schema. Both consumers of this crate
 # (the CLI's codegen-system and the nros::main! proc-macro) resolve tiers from

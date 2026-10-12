@@ -6,7 +6,7 @@ type: tech-debt
 area: [cli, orchestration]
 severity: low
 found: 2026-10-11
-related: [0951]
+related: [0951, phase-486]
 ---
 
 ## Measured
@@ -32,10 +32,28 @@ Re-measured 2026-10-12 on main:
 3. **The version boundary has not been crossed.** The workspace is `0.5.0`.
    Bumping the minor version is a release decision, not a migration step.
 
+## Narrowed 2026-10-13 by phase-486 W8a
+
+Part of this landed early, because rlm stopped reading `[deploy.*]` (phase-486
+W8, rlm is a generic system-config reader). The fields that reached an image
+only through rlm's placement — `nodes`, `launch`, `domain_id`, `locator` and
+`rmw` — would otherwise have been dropped silently, so the parse now REFUSES
+them by name, naming `[host.*]` / `[image.*]`. With them went the deploy rungs
+of `resolved_rmw`, `resolved_domain_id` and `resolved_locator` and their
+tests, the `[deploy.<t>] launch` fallback in `codegen-system`, and doctor's
+deploy launch check. The type is nano-ros's own now (`DeployTarget` in
+`cargo_metadata_schema.rs`), no longer a re-export of rlm's `DeployBlock`.
+
+What still parses with the deprecation warning, until 0.6.0: the build fields
+(`kind`, `target`, `board`, `framework`, `profile`, `optimize`, `features`,
+the `[deploy.<n>.nros]` sub-table) and `[param_services]`.
+
 ## What 0.6.0 must do
 
 Delete the lint (`deprecated_deploy_build_field_warnings`), its call in
-`collect_images`, the deploy arm of `resolved_rmw` and its precedence test, and
-then the `deploy` table in the schema, so that an old `[deploy.*]` block is
-refused by name rather than silently ignored. Nothing in-tree needs migrating
+`collect_images`, the remaining `[deploy.*]` readers (`resolve_image`'s sole-
+deploy rung, `board_facts`' deploy candidates, `doctor`'s deploy listing), then
+the `deploy` table and `DeployTarget` in the schema, so that an old
+`[deploy.*]` block is refused by name rather than silently ignored. The same
+for `[param_services]`, naming `features = ["param_services"]`. Nothing in-tree needs migrating
 first, which `git grep -n '^\[deploy' -- '*.toml'` (empty) confirms.

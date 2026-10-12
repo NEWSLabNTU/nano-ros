@@ -5921,14 +5921,12 @@ mod tests {
         );
         let p = EntityInventory::from_model(
             "img",
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((plain).clone()),
+            &nros_orchestration_ir::overlay::LoadedModel::bare(plain.clone()),
         )
         .expect("wiring described");
         let c = EntityInventory::from_model(
             "img",
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(
-                (contracted).clone(),
-            ),
+            &nros_orchestration_ir::overlay::LoadedModel::bare(contracted.clone()),
         )
         .expect("wiring described");
         assert_eq!((p.contract_reporters(), c.contract_reporters()), (0, 1));
@@ -5969,7 +5967,7 @@ mod tests {
         }
         let inv = EntityInventory::from_model(
             "img",
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone()),
+            &nros_orchestration_ir::overlay::LoadedModel::bare(m.clone()),
         )
         .expect("wiring described");
         assert_eq!(inv.tiers(), 0, "the bringup authors no tiers");
@@ -5989,7 +5987,7 @@ mod tests {
         one_row.contracts.pub_endpoints.remove("/telem_node/telem");
         let inv = EntityInventory::from_model(
             "img",
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((one_row).clone()),
+            &nros_orchestration_ir::overlay::LoadedModel::bare(one_row.clone()),
         )
         .expect("wiring described");
         assert_eq!(inv.contract_reporters(), 1);
@@ -6019,7 +6017,7 @@ mod tests {
         }
         let inv = EntityInventory::from_model(
             "island",
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone()),
+            &nros_orchestration_ir::overlay::LoadedModel::bare(m.clone()),
         )
         .expect("wiring described");
         assert_eq!(inv.monitor_rows(), Some((14, 0)));
@@ -6806,17 +6804,12 @@ mod tests {
     #[test]
     fn liveliness_counts_the_runtime_servers_the_bringup_declares() {
         let knobs = |features: &str| {
-            EntityInventory::from_model(
-                "t",
-                &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(
-                    (infra_model(features)).clone(),
-                ),
-            )
-            .expect("model describes wiring")
-            .derive()
-            .knobs()
-            .expect("derived")
-            .clone()
+            EntityInventory::from_model("t", &(infra_model(features)).clone())
+                .expect("model describes wiring")
+                .derive()
+                .knobs()
+                .expect("derived")
+                .clone()
         };
         let none = knobs("");
         let both = knobs("param_services, lifecycle");
@@ -6840,17 +6833,12 @@ mod tests {
     #[test]
     fn a_lifecycle_image_holds_a_node_slot_for_the_executor() {
         let knobs = |features: &str| {
-            EntityInventory::from_model(
-                "t",
-                &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(
-                    (infra_model(features)).clone(),
-                ),
-            )
-            .expect("model describes wiring")
-            .derive()
-            .knobs()
-            .expect("derived")
-            .clone()
+            EntityInventory::from_model("t", &(infra_model(features)).clone())
+                .expect("model describes wiring")
+                .derive()
+                .knobs()
+                .expect("derived")
+                .clone()
         };
         let none = knobs("");
         let lifecycle = knobs("lifecycle");
@@ -6890,17 +6878,12 @@ mod tests {
     #[test]
     fn a_lifecycle_image_pays_one_publisher_and_no_queryable() {
         let knobs = |features: &str| {
-            EntityInventory::from_model(
-                "t",
-                &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(
-                    (infra_model(features)).clone(),
-                ),
-            )
-            .expect("model describes wiring")
-            .derive()
-            .knobs()
-            .expect("derived")
-            .clone()
+            EntityInventory::from_model("t", &(infra_model(features)).clone())
+                .expect("model describes wiring")
+                .derive()
+                .knobs()
+                .expect("derived")
+                .clone()
         };
         let none = knobs("");
         let lifecycle = knobs("lifecycle");
@@ -7289,7 +7272,7 @@ mod tests {
     /// `.conf` pins 36.
     /// Issue 1270 -- a two-node model with one application service server,
     /// with `features` as the bringup's `execution.features`.
-    fn infra_model(features: &str) -> ros_launch_manifest_model::SystemModel {
+    fn infra_model(features: &str) -> nros_orchestration_ir::overlay::LoadedModel {
         let yaml = format!(
             r#"
 meta:
@@ -7310,7 +7293,8 @@ execution:
   features: [{features}]
 "#
         );
-        serde_yaml_ng::from_str(&yaml).expect("model fixture parses")
+        nros_orchestration_ir::overlay::LoadedModel::from_legacy_yaml(&yaml)
+            .expect("model fixture parses")
     }
 
     /// Issue 1270 -- `param_services` in the bringup is six queryables PER
@@ -7320,17 +7304,12 @@ execution:
     #[test]
     fn declared_infrastructure_services_are_counted_into_the_queryable_pool() {
         let knobs = |features: &str| {
-            EntityInventory::from_model(
-                "t",
-                &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(
-                    (infra_model(features)).clone(),
-                ),
-            )
-            .expect("model describes wiring")
-            .derive()
-            .knobs()
-            .expect("derived")
-            .clone()
+            EntityInventory::from_model("t", &(infra_model(features)).clone())
+                .expect("model describes wiring")
+                .derive()
+                .knobs()
+                .expect("derived")
+                .clone()
         };
         let none = knobs("");
         // Issue 1572 -- `/b/chatter` states no durability, so its cache
@@ -7369,16 +7348,13 @@ execution:
     /// at boot registering lifecycle.
     #[test]
     fn the_typed_lifecycle_block_sizes_the_pools_like_the_feature() {
-        let derive = |m: &ros_launch_manifest_model::SystemModel| {
-            EntityInventory::from_model(
-                "t",
-                &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone()),
-            )
-            .expect("model describes wiring")
-            .derive()
-            .knobs()
-            .expect("derived")
-            .clone()
+        let derive = |m: &nros_orchestration_ir::overlay::LoadedModel| {
+            EntityInventory::from_model("t", m)
+                .expect("model describes wiring")
+                .derive()
+                .knobs()
+                .expect("derived")
+                .clone()
         };
         let feature = derive(&infra_model("lifecycle"));
         let none = derive(&infra_model(""));
@@ -7392,23 +7368,14 @@ execution:
         ] {
             let mut block = infra_model("");
             block
+                .model
                 .structure
                 .nodes
                 .values_mut()
                 .for_each(|n| n.lifecycle_autostart = Some(autostart));
-            assert!(model_declares_lifecycle_block(
-                &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(
-                    (block).clone()
-                )
-            ));
+            assert!(model_declares_lifecycle_block(&block.clone()));
             assert_eq!(
-                InfraServices::from_model(
-                    &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(
-                        block.clone()
-                    ),
-                    None
-                )
-                .token(),
+                InfraServices::from_model(&block.clone(), None).token(),
                 "lifecycle"
             );
             let k = derive(&block);
@@ -7422,19 +7389,9 @@ execution:
         }
 
         // Negative control: no block and no feature is still no family.
-        assert!(!model_declares_lifecycle_block(
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(
-                (infra_model("")).clone()
-            )
-        ));
+        assert!(!model_declares_lifecycle_block(&(infra_model("")).clone()));
         assert_eq!(
-            InfraServices::from_model(
-                &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(infra_model(
-                    ""
-                )),
-                None
-            )
-            .token(),
+            InfraServices::from_model(&infra_model(""), None).token(),
             "none"
         );
     }
@@ -7503,13 +7460,9 @@ execution:
     /// declaration must survive the merge and reach the CMake knob.
     #[test]
     fn the_merge_keeps_the_families_the_model_declares() {
-        let model_inv = EntityInventory::from_model(
-            "model",
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(
-                (infra_model("param_services")).clone(),
-            ),
-        )
-        .expect("model describes wiring");
+        let model_inv =
+            EntityInventory::from_model("model", &(infra_model("param_services")).clone())
+                .expect("model describes wiring");
         let mut meta = EntityInventory::new("meta");
         meta.insert(stated("p", "a", &["timer"]));
         let merged = meta.merged_per_kind_max(&model_inv);
@@ -7968,7 +7921,7 @@ structure:
         );
         let inv = EntityInventory::from_model(
             "test",
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone()),
+            &nros_orchestration_ir::overlay::LoadedModel::bare(m.clone()),
         )
         .expect("model describes wiring");
         let d = inv.derive();
@@ -8115,7 +8068,7 @@ structure:
         );
         let inv = EntityInventory::from_model(
             "test",
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone()),
+            &nros_orchestration_ir::overlay::LoadedModel::bare(m.clone()),
         )
         .expect("model describes wiring");
         let d = inv.derive();
@@ -8175,7 +8128,7 @@ contracts:
         );
         let inv = EntityInventory::from_model(
             "test",
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone()),
+            &nros_orchestration_ir::overlay::LoadedModel::bare(m.clone()),
         )
         .expect("model describes wiring");
         let d = inv.derive();
@@ -8214,7 +8167,7 @@ contracts:
         );
         let inv = EntityInventory::from_model(
             "test",
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone()),
+            &nros_orchestration_ir::overlay::LoadedModel::bare(m.clone()),
         )
         .expect("a timer-only contract still describes wiring");
         let d = inv.derive();
@@ -8259,7 +8212,7 @@ contracts:
         );
         let inv = EntityInventory::from_model(
             "test",
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone()),
+            &nros_orchestration_ir::overlay::LoadedModel::bare(m.clone()),
         )
         .expect("model describes wiring");
         let row = inv
@@ -8335,7 +8288,7 @@ contracts:
     fn a_publishers_declared_depth_reaches_the_inventory() {
         let inv = EntityInventory::from_model(
             "test",
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(
+            &nros_orchestration_ir::overlay::LoadedModel::bare(
                 (model_with_publisher_depths()).clone(),
             ),
         )
@@ -8368,7 +8321,7 @@ contracts:
     fn the_depth_table_carries_a_publisher_row_beside_the_subscription_row() {
         let inv = EntityInventory::from_model(
             "test",
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(
+            &nros_orchestration_ir::overlay::LoadedModel::bare(
                 (model_with_publisher_depths()).clone(),
             ),
         )
@@ -8412,7 +8365,7 @@ contracts:
     fn a_publisher_depth_stays_out_of_the_subscription_sizing_list() {
         let inv = EntityInventory::from_model(
             "test",
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(
+            &nros_orchestration_ir::overlay::LoadedModel::bare(
                 (model_with_publisher_depths()).clone(),
             ),
         )
@@ -8471,9 +8424,7 @@ contracts:
         fn arena_inputs(model: &ros_launch_manifest_model::SystemModel) -> Vec<String> {
             let cmake = EntityInventory::from_model(
                 "test",
-                &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(
-                    (model).clone(),
-                ),
+                &nros_orchestration_ir::overlay::LoadedModel::bare(model.clone()),
             )
             .expect("model describes wiring")
             .to_cmake();
@@ -8619,7 +8570,7 @@ contracts:
     fn a_silent_publisher_sizes_the_transient_local_pools_for_the_worst_case() {
         let inv = EntityInventory::from_model(
             "model",
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(
+            &nros_orchestration_ir::overlay::LoadedModel::bare(
                 (model_with_four_policies()).clone(),
             ),
         )
@@ -8699,7 +8650,7 @@ contracts:
         );
         let inv = EntityInventory::from_model(
             "model",
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((model).clone()),
+            &nros_orchestration_ir::overlay::LoadedModel::bare(model.clone()),
         )
         .expect("model describes wiring");
         let mut pkgs: Vec<&str> = inv.components().iter().map(|c| c.pkg.as_str()).collect();
@@ -8760,7 +8711,7 @@ contracts:
         );
         let inv = EntityInventory::from_model(
             "model",
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((model).clone()),
+            &nros_orchestration_ir::overlay::LoadedModel::bare(model.clone()),
         )
         .expect("model describes wiring");
         let pkgs: Vec<&str> = inv.components().iter().map(|c| c.pkg.as_str()).collect();
@@ -8796,7 +8747,7 @@ contracts:
     fn all_four_declared_policies_reach_the_inventory() {
         let inv = EntityInventory::from_model(
             "test",
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(
+            &nros_orchestration_ir::overlay::LoadedModel::bare(
                 (model_with_four_policies()).clone(),
             ),
         )
@@ -8874,7 +8825,7 @@ contracts:
     fn the_policy_view_counts_what_stayed_silent_per_policy_and_per_kind() {
         let inv = EntityInventory::from_model(
             "test",
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(
+            &nros_orchestration_ir::overlay::LoadedModel::bare(
                 (model_with_four_policies()).clone(),
             ),
         )
@@ -8940,7 +8891,7 @@ contracts:
         );
         let inv = EntityInventory::from_model(
             "test",
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone()),
+            &nros_orchestration_ir::overlay::LoadedModel::bare(m.clone()),
         )
         .expect("model describes wiring");
         let qos = inv.declared_qos();
@@ -9014,7 +8965,7 @@ contracts:
         );
         let inv = EntityInventory::from_model(
             "test",
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone()),
+            &nros_orchestration_ir::overlay::LoadedModel::bare(m.clone()),
         )
         .expect("model describes wiring");
         let DeclaredDepths::Refused { reason } = inv.declared_depths() else {
@@ -9076,7 +9027,7 @@ contracts:
         );
         let inv = EntityInventory::from_model(
             "test",
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone()),
+            &nros_orchestration_ir::overlay::LoadedModel::bare(m.clone()),
         )
         .expect("model describes wiring");
         assert!(
@@ -9112,7 +9063,7 @@ contracts:
         );
         let inv = EntityInventory::from_model(
             "test",
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone()),
+            &nros_orchestration_ir::overlay::LoadedModel::bare(m.clone()),
         )
         .expect("model describes wiring");
         let DeclaredDepths::Refused { reason } = inv.declared_depths() else {
@@ -9154,7 +9105,7 @@ contracts:
         );
         let inv = EntityInventory::from_model(
             "test",
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone()),
+            &nros_orchestration_ir::overlay::LoadedModel::bare(m.clone()),
         )
         .expect("model describes wiring");
         assert!(
@@ -9216,9 +9167,7 @@ contracts:
         fn arena_inputs(model: &ros_launch_manifest_model::SystemModel) -> Vec<String> {
             let cmake = EntityInventory::from_model(
                 "test",
-                &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(
-                    (model).clone(),
-                ),
+                &nros_orchestration_ir::overlay::LoadedModel::bare(model.clone()),
             )
             .expect("model describes wiring")
             .to_cmake();
@@ -9335,7 +9284,7 @@ contracts:
         let m = model_with_publisher_depths();
         let inv = EntityInventory::from_model(
             "test",
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone()),
+            &nros_orchestration_ir::overlay::LoadedModel::bare(m.clone()),
         )
         .expect("model describes wiring");
         let cmake = inv.to_cmake();
@@ -9422,7 +9371,7 @@ contracts:
         );
         let inv = EntityInventory::from_model(
             "test",
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone()),
+            &nros_orchestration_ir::overlay::LoadedModel::bare(m.clone()),
         )
         .expect("model describes wiring");
         let h = inv.to_declared_qos_header();
@@ -9464,9 +9413,7 @@ contracts:
     fn header_table(qos: &str) -> DeclaredQosHeaderTable {
         EntityInventory::from_model(
             "m",
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(
-                (one_sub_model(qos)).clone(),
-            ),
+            &nros_orchestration_ir::overlay::LoadedModel::bare((one_sub_model(qos)).clone()),
         )
         .expect("model describes wiring")
         .declared_qos_header_table()
@@ -9506,12 +9453,10 @@ contracts:
     fn a_publisher_s_declared_qos_reaches_its_own_header_lists() {
         let inv = EntityInventory::from_model(
             "m",
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(
-                pub_and_sub_model(
-                    "{ depth: 1, durability: transient_local }",
-                    "{ depth: 5, reliability: best_effort }",
-                ),
-            ),
+            &nros_orchestration_ir::overlay::LoadedModel::bare(pub_and_sub_model(
+                "{ depth: 1, durability: transient_local }",
+                "{ depth: 5, reliability: best_effort }",
+            )),
         )
         .expect("model describes wiring");
         let h = inv.to_declared_qos_header();
@@ -9538,7 +9483,7 @@ contracts:
     fn no_declared_publisher_qos_renders_no_publisher_list() {
         let h = EntityInventory::from_model(
             "m",
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(
+            &nros_orchestration_ir::overlay::LoadedModel::bare(
                 (one_sub_model("{ depth: 1 }")).clone(),
             ),
         )
@@ -9555,7 +9500,7 @@ contracts:
         let t = |pub_qos: &str| {
             EntityInventory::from_model(
                 "m",
-                &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(
+                &nros_orchestration_ir::overlay::LoadedModel::bare(
                     (pub_and_sub_model(pub_qos, "{ depth: 5 }")).clone(),
                 ),
             )
@@ -9598,7 +9543,7 @@ contracts:
     fn a_declared_reliability_and_durability_reach_the_header() {
         let inv = EntityInventory::from_model(
             "m",
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(
+            &nros_orchestration_ir::overlay::LoadedModel::bare(
                 (one_sub_model("{ reliability: best_effort, durability: transient_local }"))
                     .clone(),
             ),
@@ -9623,7 +9568,7 @@ contracts:
         // and a row with nothing else stated is no row at all.
         let h = EntityInventory::from_model(
             "m",
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(
+            &nros_orchestration_ir::overlay::LoadedModel::bare(
                 (one_sub_model("{ reliability: system_default }")).clone(),
             ),
         )
@@ -9864,7 +9809,7 @@ structure:
         assert!(
             EntityInventory::from_model(
                 "test",
-                &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone())
+                &nros_orchestration_ir::overlay::LoadedModel::bare(m.clone())
             )
             .is_none(),
             "no contract authored means unanswered, not zero"
@@ -10289,7 +10234,7 @@ contracts:
         );
         let inv = EntityInventory::from_model(
             "test",
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone()),
+            &nros_orchestration_ir::overlay::LoadedModel::bare(m.clone()),
         )
         .expect("model describes wiring");
         let sub = inv
@@ -10375,7 +10320,7 @@ contracts:
         );
         let inv = EntityInventory::from_model(
             "test",
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone()),
+            &nros_orchestration_ir::overlay::LoadedModel::bare(m.clone()),
         )
         .expect("model describes wiring");
         let sub = inv
@@ -10918,7 +10863,7 @@ contracts:
     fn compose(model: &SystemModel, sidecars: &[ProbeRow]) -> EntityInventory {
         let contract = EntityInventory::from_model(
             "contract",
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((model).clone()),
+            &nros_orchestration_ir::overlay::LoadedModel::bare(model.clone()),
         )
         .expect("a contract");
         EntityInventory::recorded_for_launch(model, sidecars).merged_per_kind_max(&contract)
@@ -10932,7 +10877,7 @@ contracts:
         // was sized from, and it sees one publisher and nothing else.
         let alone = EntityInventory::from_model(
             "contract",
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone()),
+            &nros_orchestration_ir::overlay::LoadedModel::bare(m.clone()),
         )
         .expect("a contract");
         let d = alone.derive();
@@ -11006,7 +10951,7 @@ contracts:
         let m = partial_model("");
         let contract = EntityInventory::from_model(
             "contract",
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone()),
+            &nros_orchestration_ir::overlay::LoadedModel::bare(m.clone()),
         )
         .expect("a contract");
         let mut metadata = EntityInventory::new("nros-metadata.json");

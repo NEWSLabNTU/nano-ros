@@ -106,7 +106,6 @@ name = "listener"
 kind = "freertos"
 target = "thumbv7m-none-eabi"
 board = "mps2-an385"
-launch = "freertos.launch.xml"
 
 [deploy.native]
 kind = "self"
@@ -315,11 +314,11 @@ fn codegen_system_unknown_pkg_errors() {
     );
 }
 
-/// 212.E spec test — passing `--target <name>` where the bringup has a
-/// matching `[deploy.<name>]` block with `launch = "..."` picks that
-/// R-code.1 — with a committed model, provenance records the MODEL (the
-/// per-target `[deploy.<t>].launch` override is launch-bake history; the
-/// model is target-complete and the same artifact bakes every target).
+/// 212.E spec test — passing `--target <name>` for a bringup with a matching
+/// `[deploy.<name>]` block. R-code.1 — with a committed model, provenance
+/// records the MODEL: the model is target-complete and the same artifact bakes
+/// every target. (A per-target `[deploy.<t>] launch` is refused at parse since
+/// phase-486 W8a; `[image.<t>] launch` is its home.)
 #[test]
 fn codegen_system_picks_deploy_target_overlay() {
     let dir = temp_root("deploy_target_overlay");

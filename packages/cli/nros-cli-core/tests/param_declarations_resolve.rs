@@ -102,7 +102,7 @@ fn a_parameter_only_contract_is_still_an_authored_contract() {
 
     let mut inv = EntityInventory::from_model(
         "param_declarations/declared",
-        &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone()),
+        &nros_orchestration_ir::overlay::LoadedModel::bare(m.clone()),
     )
     .expect("a contract declaring only `params:` is authored, so the inventory composes");
     assert!(

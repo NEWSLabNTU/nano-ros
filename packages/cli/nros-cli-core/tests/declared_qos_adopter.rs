@@ -115,9 +115,7 @@ fn the_cpp_workspace_listener_declares_a_depth_and_asserts_against_it() {
             let model = SystemModel::from_yaml_str(&text).expect("model parses");
             let wired = EntityInventory::from_model(
                 p.display().to_string(),
-                &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(
-                    (model).clone(),
-                ),
+                &nros_orchestration_ir::overlay::LoadedModel::bare(model.clone()),
             )
             .expect("both launch files carry a contract, so both describe wiring");
             (

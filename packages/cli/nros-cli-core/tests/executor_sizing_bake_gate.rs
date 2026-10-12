@@ -102,7 +102,6 @@ name = "listener"
 kind = "freertos"
 target = "thumbv7m-none-eabi"
 board = "freertos"
-launch = "freertos.launch.xml"
 "#,
     )
     .unwrap();

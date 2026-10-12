@@ -230,8 +230,12 @@ pub fn run(args: EntityFactsArgs) -> Result<()> {
 mod tests {
     use super::*;
 
-    fn model(yaml: &str) -> ros_launch_manifest_model::SystemModel {
-        ros_launch_manifest_model::SystemModel::from_yaml_str(yaml).expect("test model parses")
+    /// The fixtures write their switches the old way, into the model's
+    /// `execution: features:`; they reach the overlay as `nros sync` would put
+    /// them there.
+    fn model(yaml: &str) -> nros_orchestration_ir::overlay::LoadedModel {
+        nros_orchestration_ir::overlay::LoadedModel::from_legacy_yaml(yaml)
+            .expect("test model parses")
     }
 
     const EMPTY: &str = "meta:\n  version: 1\nstructure: {}\n";
@@ -243,15 +247,8 @@ mod tests {
         // node is literally called `add_server` and whose model says nothing
         // about services because that workspace authors no contract.
         let m = model(EMPTY);
-        assert_eq!(
-            declared_infra(
-                &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone())
-            ),
-            "none"
-        );
-        let f = facts_from_model(
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone()),
-        );
+        assert_eq!(declared_infra(&m.clone()), "none");
+        let f = facts_from_model(&m.clone());
         // Issue 1649 -- only the two facts with no descriptor field travel.
         assert!(
             f.keys()
@@ -269,9 +266,7 @@ mod tests {
             let m = model(&format!(
                 "meta:\n  version: 1\nstructure: {{}}\nexecution:\n  features:\n{feats}"
             ));
-            declared_infra(
-                &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone()),
-            )
+            declared_infra(&m.clone())
         };
         assert_eq!(f("  - param_services\n  - lifecycle\n"), "param+lifecycle");
         assert_eq!(f("  - param_services\n"), "param");
@@ -284,21 +279,11 @@ mod tests {
         // queryables. A verb that refused it would break every safety
         // workspace to answer a question it was not asked.
         let m = model("meta:\n  version: 1\nstructure: {}\nexecution:\n  features:\n  - safety\n");
-        assert_eq!(
-            declared_infra(
-                &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone())
-            ),
-            "none"
-        );
+        assert_eq!(declared_infra(&m.clone()), "none");
         let m = model(
             "meta:\n  version: 1\nstructure: {}\nexecution:\n  features:\n  - safety\n  - lifecycle\n",
         );
-        assert_eq!(
-            declared_infra(
-                &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone())
-            ),
-            "lifecycle"
-        );
+        assert_eq!(declared_infra(&m.clone()), "lifecycle");
     }
 
     #[test]
@@ -309,9 +294,7 @@ mod tests {
             "meta:\n  version: 1\nstructure:\n  services:\n    /add:\n      type: example/srv/Add\n\
              \n      server: [\"/a/add\"]\nexecution:\n  features:\n  - lifecycle\n",
         );
-        let f = facts_from_model(
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone()),
-        );
+        let f = facts_from_model(&m.clone());
         assert_eq!(f["NROS_DECLARED_INFRA_QUERYABLES"], "lifecycle");
         // phase-426 W3 — the node count, the second name. Issue 1649 retired
         // the application's service-server and transient-local counts onto the
@@ -331,9 +314,7 @@ mod tests {
              \n      pkg: demo\n      exec: talker\n    /listener:\n      scope: root\n\
              \n      pkg: demo\n      exec: listener\nexecution:\n  features:\n  - param_services\n",
         );
-        let f = facts_from_model(
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone()),
-        );
+        let f = facts_from_model(&m.clone());
         assert_eq!(f["NROS_DECLARED_NODES"], "2");
         assert_eq!(f["NROS_DECLARED_INFRA_QUERYABLES"], "param");
     }
@@ -435,9 +416,7 @@ mod tests {
             "meta:\n  version: 1\nstructure:\n  nodes:\n    /solo:\n      scope: root\n\
              \n      pkg: demo\n      exec: solo\n",
         );
-        let f = facts_from_model(
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone()),
-        );
+        let f = facts_from_model(&m.clone());
         assert_eq!(f["NROS_DECLARED_NODES"], "1");
         assert_eq!(f["NROS_DECLARED_INFRA_QUERYABLES"], "none");
     }

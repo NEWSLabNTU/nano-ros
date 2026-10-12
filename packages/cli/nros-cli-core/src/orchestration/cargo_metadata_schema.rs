@@ -571,10 +571,15 @@ pub struct SystemToml {
     /// `[deploy.<target>]` — keyed by target name (e.g. `native`,
     /// `qemu-mps2-an385`, `flash-stm32f4-disco`).
     ///
-    /// **PLACEMENT ONLY** since phase-383 W1 (RFC-0065 D6). This is upstream's
-    /// [`DeployTarget`] (`ros_launch_manifest_model`'s `DeployBlock`) and it
-    /// answers "which nodes run where". What to COMPILE lives in [`Self::image`].
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    /// DEPRECATED. Placement moved to [`Self::host`] and is refused here since
+    /// phase-486 W8a; the build fields left parse with a warning until 0.6.0
+    /// (issue 1809). See [`DeployTarget`]. What to COMPILE lives in
+    /// [`Self::image`].
+    #[serde(
+        default,
+        skip_serializing_if = "BTreeMap::is_empty",
+        deserialize_with = "refuse_rlm_placed"
+    )]
     pub deploy: BTreeMap<String, DeployTarget>,
     /// `[host.<name>]` — the machines, and the only thing that partitions
     /// nodes (issue 0951).
@@ -1269,10 +1274,10 @@ impl SystemToml {
     }
 
     /// Phase 256 Wave 8 / issue 0951 — the ROS domain id for `target`:
-    /// the bound `[host.<name>].domain_id`, then the DEPRECATED
-    /// `[deploy.<target>].domain_id`, then `[system].domain_id`. The RFC-0004
-    /// §3.1 ladder (a CLI flag is a future rung). Both codegen paths resolve
-    /// through this.
+    /// the bound `[host.<name>].domain_id`, then `[system].domain_id`. The
+    /// RFC-0004 §3.1 ladder (a CLI flag is a future rung). Both codegen paths
+    /// resolve through this. The `[deploy.<target>].domain_id` rung is gone:
+    /// the parse refuses that field since phase-486 W8a.
     ///
     /// The host rung is what makes the deprecation lint's own advice true: it
     /// tells users to move `domain_id` to `[host.*]`, and before this nothing
@@ -1282,25 +1287,16 @@ impl SystemToml {
     pub fn resolved_domain_id(&self, target: Option<&str>) -> u32 {
         target
             .and_then(|t| self.host_for_image(t).and_then(|h| h.domain_id))
-            .or_else(|| {
-                target
-                    .and_then(|t| self.deploy.get(t))
-                    .and_then(|dt| dt.domain_id)
-            })
             .unwrap_or(self.system.domain_id)
     }
 
     /// Phase 256 Wave 8 / issue 0951 — the locator for `target`: the bound
-    /// `[host.<name>].locator`, then the DEPRECATED `[deploy.<target>].locator`,
-    /// then `[system].locator` (`None` when none set it).
+    /// `[host.<name>].locator`, then `[system].locator` (`None` when none set
+    /// it). No deploy rung: the parse refuses `[deploy.*] locator` (phase-486
+    /// W8a).
     pub fn resolved_locator(&self, target: Option<&str>) -> Option<String> {
         target
             .and_then(|t| self.host_for_image(t).and_then(|h| h.locator.clone()))
-            .or_else(|| {
-                target
-                    .and_then(|t| self.deploy.get(t))
-                    .and_then(|dt| dt.locator.clone())
-            })
             .or_else(|| self.system.locator.clone())
     }
 
@@ -1331,8 +1327,8 @@ impl SystemToml {
     }
 
     /// The RMW backend name for `target`: the CLI `--rmw` flag, then
-    /// `[image.<target>].rmw` (over `[image_defaults]`), then the DEPRECATED
-    /// `[deploy.<target>].rmw`, then `[system].rmw`, then `"zenoh"`.
+    /// `[image.<target>].rmw` (over `[image_defaults]`), then `[system].rmw`,
+    /// then `"zenoh"`.
     ///
     /// Issue 0938 — the image rung is new and is what removes a real duality.
     /// `nros build` has resolved an image's RMW from `[image.*]` since RFC-0065
@@ -1343,12 +1339,12 @@ impl SystemToml {
     /// promised exactly what was missing: "so a given target gets exactly one
     /// RMW — no duality".
     ///
-    /// The deploy rung is kept BELOW the image one rather than deleted, because
-    /// deleting it would change behaviour for every workspace that still
-    /// carries the field, and the deprecation W1.f promised has not reached its
-    /// version boundary. Image-wins is the whole fix: where both exist the
-    /// answer now matches `nros build`, and where only deploy exists nothing
-    /// changes. It goes when `[deploy.*]` retires (phase-383 W10.b).
+    /// The deploy rung that sat below the image one is gone (phase-486 W8a).
+    /// `[deploy.*] rmw` reached an image through TWO readers — this ladder and
+    /// rlm's placement, which baked it into the model's session — and W8
+    /// removed the second, so keeping the first would have built one backend
+    /// and baked another again. The parse refuses the field instead, naming
+    /// `[image.<id>] rmw`.
     ///
     /// `target` names an image in the RFC-0065 world and a deploy in the
     /// RFC-0031 one; they share a namespace by construction, since an image is
@@ -1361,12 +1357,6 @@ impl SystemToml {
             && let Some(r) = self.image_rmw_for(t)
         {
             return r;
-        }
-        if let Some(t) = target
-            && let Some(dt) = self.deploy.get(t)
-            && let Some(r) = &dt.rmw
-        {
-            return r.clone();
         }
         if self.system.rmw.is_empty() {
             "zenoh".to_string()
@@ -1622,30 +1612,119 @@ pub struct SystemComponentEntry {
     pub dispatch: Option<String>,
 }
 
-/// `[deploy.<target>]` block.
+/// `[deploy.<target>]` — DEPRECATED, and nano-ros's own type since phase-486
+/// W8a.
 ///
-/// Per the F.4 §12 known-gap #2 resolution (path a — relax parser): both
-/// `kind` and `target` are OPTIONAL. The deploy block is configuration-
-/// by-target — the `<target>` map key (e.g. `native`, `qemu-mps2-an385`,
-/// `threadx-linux`, `platformio`) already names the runner, and the
-/// runner stage derives sensible defaults for `kind` / `target` from
-/// the target name when these fields are absent. Strict
-/// `deny_unknown_fields` is preserved — widening the schema, not
-/// loosening the policy.
+/// It was a re-export of rlm's `DeployBlock` (issue 0293: one definition, so
+/// the two readers could not drift). rlm is now a generic system-config
+/// reader that names no realizer, and W8 deletes `[deploy.*]` from it:
+/// placement there is `[host.*]` alone, and a `[deploy.*]` table is ignored
+/// like any other table rlm does not declare. So this file is the ONLY reader
+/// of `[deploy.*]`, and there is nothing left to drift from.
 ///
-/// `nros check` is the place to surface a heads-up when `kind`/`target`
-/// is absent AND the runner can't synthesise defaults from the target
-/// name; that's a lint, not a parser error.
-///
-/// **Re-exported, not redeclared** (nano-ros issue 0293). This was a second
-/// definition of `ros_launch_manifest_model::system_config::DeployBlock`, and
-/// the two drifted: rlm's copy lacked `launch`, so serde silently dropped the
-/// key and launch-scoped deploy blocks were counted against every launch file.
-/// One schema now; `deny_unknown_fields` lives on it, so the next divergence
-/// is a parse error rather than a dropped key.
-pub use ros_launch_manifest_model::system_config::DeployBlock as DeployTarget;
-/// `[host.<name>]` — a machine (issue 0951). Re-exported for the same reason
-/// `DeployTarget` is: the schema has one definition, upstream.
+/// What still parses, until 0.6.0 (issue 1809): the BUILD fields (`kind`,
+/// `target`, `board`, `framework`, `profile`, `optimize`, `features`, the
+/// `[deploy.<n>.nros]` sub-table), each with the deprecation warning
+/// `image::deprecated_deploy_build_field_warnings` prints. What is REFUSED,
+/// by name: every field that reached an image only through rlm's placement
+/// (`nodes`, `launch`, `domain_id`, `locator`, `rmw`). Once rlm stops reading
+/// the table those would be dropped silently — the baked session in
+/// `codegen entry` reads them from the model — so a parse error naming the
+/// new home replaces a silent change of behaviour ([`refuse_rlm_placed`]).
+/// The fields stay DECLARED so the refusal can name them; `deny_unknown_fields`
+/// still refuses a typo.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DeployTarget {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub board: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub framework: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rmw: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub domain_id: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub locator: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub optimize: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub features: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub nodes: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub launch: Option<String>,
+    /// `[deploy.<n>.nros]` — the board site config, now
+    /// `[board_config.<board>]` (RFC-0072 §5).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nros: Option<toml::Value>,
+}
+
+impl DeployTarget {
+    /// The fields this block sets that reached an image only through rlm's
+    /// placement, each with the table that replaces it. Empty ⇒ the block
+    /// still parses (with its build-field deprecation warning).
+    #[must_use]
+    pub fn rlm_placed_fields(&self) -> Vec<(&'static str, &'static str)> {
+        let mut out = Vec::new();
+        if !self.nodes.is_empty() {
+            out.push(("nodes", "[host.<name>] nodes"));
+        }
+        if self.launch.is_some() {
+            out.push(("launch", "[host.<name>] launch"));
+        }
+        if self.domain_id.is_some() {
+            out.push(("domain_id", "[host.<name>] domain_id"));
+        }
+        if self.locator.is_some() {
+            out.push(("locator", "[host.<name>] locator"));
+        }
+        if self.rmw.is_some() {
+            out.push(("rmw", "[image.<id>] rmw"));
+        }
+        out
+    }
+}
+
+/// phase-486 W8a — `deserialize_with` for [`SystemToml::deploy`]: parse the
+/// deprecated blocks, then refuse any that sets a field only rlm's placement
+/// carried (see [`DeployTarget`]). In the parse, so every reader of a
+/// `system.toml` refuses alike rather than whichever caller remembered to
+/// validate.
+fn refuse_rlm_placed<'de, D>(d: D) -> Result<BTreeMap<String, DeployTarget>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let blocks = BTreeMap::<String, DeployTarget>::deserialize(d)?;
+    for (name, block) in &blocks {
+        let placed = block.rlm_placed_fields();
+        if placed.is_empty() {
+            continue;
+        }
+        let list = placed
+            .iter()
+            .map(|(f, home)| format!("`{f}` (now `{home}`)"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        return Err(serde::de::Error::custom(format!(
+            "[deploy.{name}] sets {list}. `[deploy.*]` no longer places nodes or \
+             sets their session: the launch-model resolver reads placement from \
+             `[host.*]` only (phase-486 W8), so these would be dropped silently. \
+             Move them to the tables named; the block's build fields may stay \
+             until 0.6.0 (issue 1809)."
+        )));
+    }
+    Ok(blocks)
+}
+/// `[host.<name>]` — a machine (issue 0951). Re-exported from rlm: a shared
+/// table whose shape nano-ros does not extend, so the schema has one
+/// definition, upstream (phase-486 W8 revision item 3).
 pub use ros_launch_manifest_model::system_config::HostBlock as HostTarget;
 
 pub use super::image::ImageBlock;
@@ -2203,7 +2282,6 @@ name = "listener"
 [deploy.native]
 kind = "self"
 target = "x86_64-unknown-linux-gnu"
-launch = "launch/system.launch.xml"
 
 [deploy.qemu-mps2-an385]
 kind = "qemu"
@@ -2231,7 +2309,6 @@ to = "zenoh:default"
         assert_eq!(v1.deploy.len(), 2);
         let native = v1.deploy.get("native").expect("native deploy present");
         assert_eq!(native.kind.as_deref(), Some("self"));
-        assert_eq!(native.launch.as_deref(), Some("launch/system.launch.xml"));
         let qemu = v1
             .deploy
             .get("qemu-mps2-an385")
@@ -2318,7 +2395,9 @@ crc = false
     }
 
     /// Phase 255 — `resolved_rmw` applies the RFC-0031 precedence:
-    /// `--rmw` > `[deploy.<t>].rmw` > `[system].rmw` > `zenoh`.
+    /// `--rmw` > `[image.<t>].rmw` > `[system].rmw` > `zenoh`. The
+    /// `[deploy.<t>].rmw` rung that sat under the image one is refused at
+    /// parse since phase-486 W8a (`a_placing_deploy_block_is_refused_…`).
     #[test]
     fn resolved_rmw_precedence_ladder() {
         let sys: SystemToml = toml::from_str(
@@ -2328,7 +2407,8 @@ name = "d"
 rmw = "zenoh"
 domain_id = 0
 
-[deploy.native]
+[image.native]
+board = "native"
 rmw = "cyclonedds"
 
 [deploy.qemu]
@@ -2339,33 +2419,8 @@ kind = "qemu"
 
         // CLI flag wins over everything.
         assert_eq!(sys.resolved_rmw(Some("native"), Some("xrce")), "xrce");
-        // [deploy.<t>].rmw overrides [system].rmw.
+        // [image.<t>].rmw overrides [system].rmw.
         assert_eq!(sys.resolved_rmw(Some("native"), None), "cyclonedds");
-        // …but an [image.<t>].rmw outranks it — issue 0938. This is the case
-        // that had NO coverage and no diagnostic: the workspace built one
-        // backend (`nros build` reads the image) and baked another
-        // (`codegen-system` read the deploy).
-        let both: SystemToml = toml::from_str(
-            r#"
-[system]
-name = "d"
-rmw = "zenoh"
-domain_id = 0
-
-[image.gw]
-board = "native"
-rmw = "xrce"
-
-[deploy.gw]
-rmw = "cyclonedds"
-"#,
-        )
-        .unwrap();
-        assert_eq!(
-            both.resolved_rmw(Some("gw"), None),
-            "xrce",
-            "the image owns the RMW; a deploy field must not override it"
-        );
         // And `[image_defaults]` is the base, exactly as `facade::image_rmw`
         // merges it — one answer for `nros build` and `nros plan`.
         let defaults: SystemToml = toml::from_str(
@@ -2641,14 +2696,16 @@ board = "native"
         assert_eq!(sys.resolved_domain_id(Some("i")), 1, "falls to [system]");
     }
 
-    /// Phase 256 Wave 8 — `[deploy.<t>].domain_id`/`.locator` override the
-    /// `[system]` defaults for that target; absent → the system value.
+    /// Phase 256 Wave 8 — the image's bound `[host.<n>]` `domain_id`/`locator`
+    /// override the `[system]` defaults for that target; absent → the system
+    /// value. (`[deploy.<t>]` carried them until phase-486 W8a refused them.)
     #[test]
-    fn resolved_domain_and_locator_honour_deploy_override() {
+    fn resolved_domain_and_locator_honour_host_override() {
         let sys: SystemToml = toml::from_str(
             "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\nlocator=\"tcp/sys:7447\"\n\
-             [deploy.robot]\nkind=\"flash\"\ndomain_id=7\nlocator=\"tcp/robot:7450\"\n\
-             [deploy.native]\nkind=\"self\"\n",
+             [host.robot]\ndomain_id=7\nlocator=\"tcp/robot:7450\"\n\
+             [image.robot]\nboard=\"native\"\nargs={ host = \"robot\" }\n\
+             [image.native]\nboard=\"native\"\n",
         )
         .unwrap();
 
@@ -2973,7 +3030,6 @@ class = "talker_pkg::Talker"
 name = "talker"
 
 [deploy.threadx-linux]
-launch = "launch/system.launch.xml"
 "#;
         let v: SystemToml = toml::from_str(raw)
             .expect("deploy block without kind/target must parse (F.4 §12 gap #2)");
@@ -2983,7 +3039,6 @@ launch = "launch/system.launch.xml"
             .expect("threadx-linux deploy present");
         assert!(dt.kind.is_none(), "kind absent when omitted");
         assert!(dt.target.is_none(), "target absent when omitted");
-        assert_eq!(dt.launch.as_deref(), Some("launch/system.launch.xml"));
         assert!(dt.board.is_none());
     }
 
@@ -3007,7 +3062,6 @@ class = "talker_pkg::talker"
 name = "talker"
 
 [deploy.platformio]
-launch = "launch/system.launch.xml"
 framework = "espidf"
 board = "esp32dev"
 "#;
@@ -3019,7 +3073,6 @@ board = "esp32dev"
             .expect("platformio deploy present");
         assert_eq!(dt.framework.as_deref(), Some("espidf"));
         assert_eq!(dt.board.as_deref(), Some("esp32dev"));
-        assert_eq!(dt.launch.as_deref(), Some("launch/system.launch.xml"));
         // Round-trip: serialized form keeps the field.
         let reser = toml::to_string(&v).expect("ser");
         let v2: SystemToml = toml::from_str(&reser).expect("reparse");

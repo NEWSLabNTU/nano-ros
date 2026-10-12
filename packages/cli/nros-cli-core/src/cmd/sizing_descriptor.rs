@@ -1307,7 +1307,7 @@ mod tests {
         let decl = crate::cmd::entity_inventory::inventory_from_metadata_file(&metadata).unwrap();
         let model_inv = crate::entity_inventory::EntityInventory::from_model(
             "m",
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone()),
+            &nros_orchestration_ir::overlay::LoadedModel::bare(m.clone()),
         )
         .expect("wiring");
         let composed = decl.merged_per_kind_max(&model_inv);

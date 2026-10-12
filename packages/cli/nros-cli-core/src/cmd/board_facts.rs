@@ -856,7 +856,6 @@ domain_id = 0
 
 [deploy.freertos]
 board = "mps2-an385-freertos"
-rmw = "zenoh"
 
 [board_config."mps2-an385-freertos"]
 netstack = "lwip"
@@ -1007,8 +1006,7 @@ sdk = { freertos = "{env:FREERTOS_DIR}", lwip = "{env:LWIP_DIR}" }
     #[test]
     fn duplicate_deploys_that_agree_are_not_ambiguous() {
         let ws = ws_with(&format!(
-            "{FREERTOS_WS}\n[deploy.mps2-an385-freertos]\nboard = \"mps2-an385-freertos\"\n\
-             rmw = \"zenoh\"\n"
+            "{FREERTOS_WS}\n[deploy.mps2-an385-freertos]\nboard = \"mps2-an385-freertos\"\n"
         ));
         let env = |k: &str| match k {
             "FREERTOS_DIR" => Some("/opt/freertos".to_string()),
@@ -1043,7 +1041,7 @@ sdk = { freertos = "{env:FREERTOS_DIR}", lwip = "{env:LWIP_DIR}" }
     #[test]
     fn two_deploys_on_one_board_cannot_disagree() {
         let ws = ws_with(&format!(
-            "{FREERTOS_WS}\n[deploy.other]\nboard = \"mps2-an385-freertos\"\nrmw = \"zenoh\"\n"
+            "{FREERTOS_WS}\n[deploy.other]\nboard = \"mps2-an385-freertos\"\n"
         ));
         let env = |k: &str| match k {
             "FREERTOS_DIR" => Some("/opt/freertos".to_string()),
@@ -1076,7 +1074,7 @@ sdk = { freertos = "{env:FREERTOS_DIR}", lwip = "{env:LWIP_DIR}" }
     #[test]
     fn naming_the_deploy_picks_among_boards() {
         let ws = ws_with(&format!(
-            "{FREERTOS_WS}\n[deploy.nuttx]\nboard = \"qemu-armv7a-nuttx\"\nrmw = \"zenoh\"\n\n\
+            "{FREERTOS_WS}\n[deploy.nuttx]\nboard = \"qemu-armv7a-nuttx\"\n\n\
              [board_config.\"qemu-armv7a-nuttx\"]\n\
              sdk = {{ nuttx = \"{{env:NUTTX_DIR}}\" }}\n"
         ));

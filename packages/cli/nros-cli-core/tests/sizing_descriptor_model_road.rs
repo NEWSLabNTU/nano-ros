@@ -42,7 +42,7 @@ fn a_contract_reaches_the_model_road_and_the_leaf_facts_refuse_by_name() {
     let model = resolve("policies", &dir);
     let inv = EntityInventory::from_model(
         "fixture",
-        &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((model).clone()),
+        &nros_orchestration_ir::overlay::LoadedModel::bare(model.clone()),
     )
     .expect("the fixture describes wiring");
     let written = write_for_model(&ModelImage {
@@ -174,7 +174,7 @@ fn a_model_road_descriptor_carries_no_path_from_this_checkout() {
     let model = resolve("policies", &dir);
     let inv = EntityInventory::from_model(
         dir.join("system_model.yaml").display().to_string(),
-        &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((model).clone()),
+        &nros_orchestration_ir::overlay::LoadedModel::bare(model.clone()),
     )
     .expect("the fixture describes wiring");
     let written = write_for_model(&ModelImage {
@@ -210,7 +210,7 @@ fn keep_all_still_refuses_its_depth_on_the_model_road() {
     let model = resolve("keep_all", &dir);
     let inv = EntityInventory::from_model(
         "fixture",
-        &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((model).clone()),
+        &nros_orchestration_ir::overlay::LoadedModel::bare(model.clone()),
     )
     .expect("the fixture describes wiring");
     let written = write_for_model(&ModelImage {
@@ -259,7 +259,7 @@ fn bound_tables_turn_the_model_roads_payload_refusals_into_facts() {
     let model = resolve("policies", &dir);
     let inv = EntityInventory::from_model(
         "fixture",
-        &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((model).clone()),
+        &nros_orchestration_ir::overlay::LoadedModel::bare(model.clone()),
     )
     .expect("the fixture describes wiring");
     let tables = [std_msgs_bound_table()];
@@ -387,7 +387,7 @@ fn a_registered_bound_table_not_yet_built_refuses_by_name() {
     let model = resolve("policies", &dir);
     let inv = EntityInventory::from_model(
         "fixture",
-        &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((model).clone()),
+        &nros_orchestration_ir::overlay::LoadedModel::bare(model.clone()),
     )
     .expect("the fixture describes wiring");
     let pending = dir.join("not_built_yet/nros_message_bounds.json");

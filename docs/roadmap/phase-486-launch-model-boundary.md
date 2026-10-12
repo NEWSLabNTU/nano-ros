@@ -1,6 +1,6 @@
 # Phase 486 — the launch model carries what every realizer reads; nano-ros's own facts move to an overlay
 
-**Status (2026-10-12). W0–W3 LANDED; W4 in review; W5 landed in play_launch (`ca7eb1a`, its phase 86 W1–W4) and W6 in rlm (`v0.1.55`); W7–W9 open. Design revised 2026-10-12 (below) after re-reading rlm and play_launch `main`.** Implements RFC-0060's
+**Status (2026-10-13). W0–W4 and W7 LANDED (W4 #2034, W7 #2038); W5 landed in play_launch (`ca7eb1a`, its phase 86 W1–W4) and W6 in rlm (`v0.1.55`/`v0.1.56`). W7's tier 2 ran and gave no verdict: the build stage failed on issue 1844, now fixed (#2052), so a rerun is due. W8 redesigned 2026-10-13 against a generic rlm (below); W9 open. Design revised 2026-10-12 and 2026-10-13 (below).** Implements RFC-0060's
 [2026-10-10 amendment](../design/0060-launch-toolchain-three-layers.md#amendment-2026-10-10--what-the-systemmodel-may-carry-and-where-nano-ross-own-facts-go)
 and RFC-0100's
 [2026-10-10 ruling](../design/0100-rmw-agnostic-sizing-model.md#ruling-2026-10-10--a-stated-fact-earns-a-file-whatever-it-came-from).
@@ -81,6 +81,82 @@ found five things wrong or missing; the waves below are corrected in place.
    — and stays strict on the union by refusing what both ignored
    (`serde_ignored`; `#[serde(flatten)]` cannot combine with
    `deny_unknown_fields`). New W8 rows.
+
+## Revision 2026-10-13 — W8 against a generic rlm
+
+W8 was written while rlm still owned part of nano-ros's file. Since `v0.1.56`
+rlm is a generic system-config reader that names no realizer and ignores
+every table it does not declare. Re-reading its `main` and nano-ros's against
+that rule changes three things. The W8 table below is corrected in place.
+
+1. **rlm still carries nano-ros vocabulary, and W8 removes all of it.**
+   - Two realizer-owned keys:
+     - `SystemConfigToml.lifecycle`, `.param_services`;
+     - `SystemDefaults.features`, and the `lifecycle_autostart()` accessor.
+   - The whole `[deploy.*]` table:
+     - `DeployBlock`;
+     - the build fields it refuses unknown keys for;
+     - the placement path in `apply_to_launch`, whose `kind = "embedded"`
+       filter is nano-ros's board-build concept;
+     - the `[deploy.<n>.nros]` sub-table.
+   - The read-tolerant model fields: `Execution.features`, `Deploy.extra`,
+     `Deploy.target` and `Target`. They are deleted in the same release:
+     both known consumers already pin `v0.1.56`, and no tracked model
+     carries them.
+
+   Placement in rlm is then `[host.*]` alone. A `[deploy.*]` table is
+   ignored like any other table rlm does not own. play_launch reads none of
+   these (`git grep` on its `main`: no `Target::`, `.extra`,
+   `execution.features`, `DeployBlock` or `lifecycle_autostart()`), so its
+   part is a tag bump.
+2. **nano-ros owns `[deploy.*]` until 0.6.0** (issue 1809, which keeps the
+   removal at the minor-version boundary phase-383 promised).
+   - The type moves into nano-ros as its own deprecated struct. It stops being
+     a re-export of rlm's `DeployBlock`, which no longer exists.
+   - Build fields keep parsing with the deprecation warning, as today.
+   - **Placement: decided 2026-10-13, option (a).** rlm stops reading it. Today's warning
+     tells users "`[deploy.*]` keeps PLACEMENT (kind / nodes / launch) — that
+     half is upstream's". Two options:
+     - **(a) Refuse a placement-bearing block by name**, pointing at
+       `[host.*]`. A block is placement-bearing if it has `nodes`, `launch`,
+       or is one of several non-embedded blocks. No tracked file has one
+       (`git grep '^\[deploy' -- '*.toml'` is empty). The cost: the promise
+       in the warning breaks for an out-of-tree 0.5.0 user who partitions with
+       `[deploy.*]`, a case the 0.6.0 deferral was meant to protect.
+     - **(b) Translate it.** `nros sync` hands the resolver a derived
+       `system.toml` in which deprecated `[deploy.*]` placement is rewritten
+       as `[host.*]`. The promise holds, at the cost of translation code for a
+       path nothing in-tree exercises.
+
+     Chosen: (a). The promise is about build fields reaching 0.6.0;
+     placement has had a non-deprecated home (`[host.*]`) since issue 0951. A
+     refusal that names that home loses nothing silently.
+   - `[param_services]` follows the build-field rule. nano-ros's own
+     `SystemParamServices` keeps parsing with its warning until 0.6.0. rlm's
+     copy goes, since rlm only ever ignored it.
+3. **The issue-0293 row assumed rlm's struct is nano-ros's parser.** It was
+   written to make nano-ros parse the shared keys through
+   `SystemConfigToml`, refusing what both readers ignored (`serde_ignored`).
+   A generic, lax rlm reader is rlm's view of the file, not the schema of
+   nano-ros's `system.toml`, so the row is replaced:
+   - **One strict parse stays in nano-ros:** `SystemToml`,
+     `deny_unknown_fields`, over nano-ros's whole file.
+   - **Where a shared table's shape is identical, nano-ros uses rlm's type:**
+     `[host.*]` is `HostBlock`. This is already true.
+   - **Where nano-ros extends a shared table, it keeps its own type:**
+     `[system]` (`SystemHeader`), `[[component]]` (`SystemComponentEntry`),
+     `[[bridge]]`, and `[tiers.*]`. (The first draft of this item said
+     `[tiers.*]` already used rlm's shared `TierDef`. It does not: nano-ros
+     has its own `TierDef` in `nros-orchestration-ir`, with `*_us` integers
+     where rlm's carries durations.) An agreement test checks that each SHARED
+     key in every tracked `system.toml` means the same to both readers: equal
+     values through rlm's `parse_system_config` and through `SystemToml`. That
+     is the drift issue 0293 hit (a key one reader dropped), caught as a red
+     test instead of a silent difference.
+
+   Measured against the old row: nano-ros reads the shared fields at about
+   400 sites. Routing them through a second struct would have moved all of
+   them to protect against a drift the agreement test catches directly.
 
 ## Ordering — why the waves run in this order
 
@@ -440,26 +516,89 @@ cmake inputs moved.
 
 ## W8 — retirement
 
-Deleted, each with a named refusal where a user could still write it:
+Corrected 2026-10-13 (revision above). Three steps, in this order, because
+nano-ros must stop naming an rlm item before the tag that deletes it reaches
+it:
+
+- **W8a, nano-ros (pins rlm `v0.1.56`):**
+  - Own the deprecated `[deploy.*]` type.
+  - Refuse a placement-bearing `[deploy.*]` block by name, naming `[host.*]`.
+  - Stop calling rlm's `lifecycle_autostart()`.
+  - Move the overlay migration guard off `Execution.features` and onto the
+    raw YAML. The question it asks is "did an older writer put switches
+    here", which survives the field's deletion.
+  - Add the shared-key agreement test.
+- **W8b, rlm:** delete the rows below and tag.
+- **W8c, play_launch, then nano-ros:** bump to that tag. In nano-ros the rlm
+  tag and the `play_launch` pin move in ONE commit, and the gate's allowlist
+  goes to empty.
 
 | What | Where | Replaced by | Refusal |
 | --- | --- | --- | --- |
-| `[param_services]` typed block | nano-ros `SystemToml`, rlm `SystemConfigToml` | `features = ["param_services"]` | nano-ros: parse error naming the replacement (already deprecated via `deprecated_typed_capability_blocks`) |
-| `[deploy.<n>]`, the whole table (revised 2026-10-12: its placement half too) | rlm `DeployBlock`, nano-ros's re-export | build fields → `[image.<id>]`, `[board_config.<board>]`; placement → `[host.<n>]` | nano-ros: parse error naming `[image.*]` and `[host.*]` |
-| `Execution.features`, `Deploy.extra`, `Deploy.target` / `Target` in NEW models | rlm model | the nano-ros overlay; nothing for `target` (no reader) | none needed (writers gone; readers tolerant) |
-| `SystemConfigToml.lifecycle`, `.param_services`, `SystemDefaults.features`, `lifecycle_autostart()` | rlm | nano-ros `SystemToml` | none: rlm ignores tables it does not declare |
-| nano-ros's second parse of rlm's keys (issue 0293) | nano-ros `SystemToml` | shared keys through rlm's struct; strict on the union via `serde_ignored` | unknown key refused by name, as today |
-| realizer names in rlm doc comments | rlm | the CHANGELOG and the realizers' docs | — |
-| the PR #1830 store-only special case | nano-ros sizing descriptor | the general rule (W4) | — |
+| `SystemConfigToml.lifecycle`, `.param_services`, `SystemDefaults.features`, `lifecycle_autostart()` | rlm | nano-ros `SystemToml` (its own `[lifecycle]`, `[param_services]`, `[system] features`) | none in rlm: it ignores tables it does not declare |
+| `[deploy.*]`: `DeployBlock`, its placement path, `[deploy.<n>.nros]` | rlm | placement → `[host.*]` | none in rlm (ignored) |
+| `[deploy.*]` re-export | nano-ros | nano-ros's own deprecated type until 0.6.0 (issue 1809) | placement-bearing block: refused by name, naming `[host.*]` (revision item 2); build fields: warned until 0.6.0 |
+| `[param_services]` typed block | nano-ros | `features = ["param_services"]` | warned until 0.6.0 (issue 1809), refused after |
+| `Execution.features`, `Deploy.extra`, `Deploy.target` / `Target` | rlm model | the nano-ros overlay; nothing for `target` | none: old models still load (serde ignores the keys); nano-ros's guard reads the raw YAML |
+| the issue-0293 double parse | — | replaced by the shared-key agreement test (revision item 3) | unknown key refused by name, as today |
+| the PR #1830 store-only special case | nano-ros sizing descriptor | the general rule (W4, landed) | — |
 | the W3 gate's allowlist | nano-ros | empty | the gate itself |
 
-A read-tolerant model field is deleted outright one rlm minor release after
-W7, when no tracked model or fixture carries it. That is checked, not assumed:
-rlm's golden fixture is the only file allowed to keep it.
+**Acceptance:**
+- `check-launch-model-boundary` passes with an empty allowlist.
+- rlm's crate contains no realizer vocabulary.
+- Every moved key in a fixture `system.toml` either resolves through the
+  overlay or is refused or warned by name. Nothing is silently dropped.
+- W0 images are byte-identical across W8c, measured like W7.
 
-**Acceptance:** `check-launch-model-boundary` passes with an empty allowlist.
-Every moved key in a fixture `system.toml` either resolves through the overlay
-or is refused by name. Nothing is silently dropped.
+### W8a result (2026-10-13)
+
+- **`[deploy.*]` is nano-ros's own deprecated type** (`DeployTarget` in
+  `cargo_metadata_schema.rs`), no longer a re-export of rlm's `DeployBlock`.
+  - The parse refuses, by name, every field that reached an image only
+    through rlm's placement: `nodes`, `launch`, `domain_id`, `locator`,
+    `rmw`. Each refusal names its new home.
+  - **Why `domain_id`, `locator` and `rmw` are refused too:** placement is
+    what put them into the model's `execution.deploy`, which
+    `codegen entry` bakes into the session, so they would also have been
+    dropped silently.
+  - **Readers deleted with the fields:** the deploy rungs of
+    `resolved_{rmw,domain_id,locator}`, `codegen-system`'s `[deploy.<t>]
+    launch` fallback, and doctor's deploy launch check.
+  - **Doctor reports a file it cannot parse** instead of skipping it. A
+    refused `[deploy.*]` used to make doctor call the file healthy.
+  - Build fields still parse with the warning until 0.6.0. That lint no
+    longer tells users "`[deploy.*]` keeps PLACEMENT". Issue 1809 is
+    narrowed to match.
+- **The overlay's migration guard reads the raw YAML.**
+  `legacy_projected_features` replaces `model.execution.features`, using
+  `serde_yaml_ng`, which was already in all 11 locks: one line each.
+  - `LoadedModel::from_legacy_projection(SystemModel)` became
+    `from_legacy_yaml(&str)`. Its ~130 test call sites carried no switches
+    and became `bare`.
+  - The three helpers that write switches as model YAML now return a
+    `LoadedModel`.
+  - The trap: a test closure typed `&SystemModel` that wraps
+    `bare(m.clone())` drops the overlay through deref coercion and still
+    compiles. Four tests went red on exactly that, and each closure was
+    retyped to take the `LoadedModel`. A sweep for the pattern found no
+    others that receive switches.
+- **`check-launch-model-boundary`'s allowlist is EMPTY.**
+  - `overlay.rs` names no retired field in code.
+  - The test that wrote `Deploy.target`/`extra` into a model to prove EDF
+    slicing ignores them is deleted with the fields.
+- **The agreement test (revision item 3) is
+  `tests/system_toml_readers_agree.rs`**, which replaces W7's test.
+  - It compares every tracked `system.toml` through both readers, on
+    `[system]`, `[[component]]`, `[[bridge]]`, `[host.*]` and `[tiers.*]`.
+    They agree on all of them.
+  - Lower bounds keep it from comparing empty sets.
+  - Mutation-tested: swapping two tier fields in one view goes red.
+  - It also keeps W7's "the model carries no switch" check, asked of the
+    serialised execution layer so it holds on either rlm.
+- **No rlm call removed by W8b remains.** Measured, not argued: nano-ros's
+  CLI, orchestration IR and proc-macro were built and tested against rlm
+  W8b through a local `[patch]`.
 
 ## W9 — the carriers the old rule kept (follow-up, measured per road)
 
@@ -482,7 +621,8 @@ meaning:
 | `[system] features = [...]` | model `execution.features` | overlay, as the default for every image |
 | `[image.<id>] features = [...]` | (refused: unknown key) | overlay, for that image only (W2) |
 | `[lifecycle] autostart = "..."` | projected onto every lifecycle node in the model | overlay default; a node's own launch or contract value wins |
-| `[param_services]` | deprecated sugar | refused at W8, naming `features = ["param_services"]` |
+| `[param_services]` | deprecated sugar | still parsed and warned; refused at 0.6.0 (issue 1809), naming `features = ["param_services"]` |
+| `[deploy.<n>]` | build fields deprecated, placement live | build fields warned until 0.6.0; a placement-bearing block (`nodes`, `launch`, or several non-embedded blocks) is refused, naming `[host.*]` |
 | `<lifecycle_node autostart="true">` | not parsed | per-node `Active` in the model (W5) |
 
 What a user must do: **re-run `nros sync`** after upgrading. Models are build

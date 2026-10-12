@@ -644,7 +644,7 @@ mod tests {
         );
         let j = join(
             &p,
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone()),
+            &nros_orchestration_ir::overlay::LoadedModel::bare(m.clone()),
         );
         assert!(j.contract_seen);
         let row = &rows_of(&j.inventory)[0];
@@ -676,7 +676,7 @@ mod tests {
         );
         let j = join(
             &p,
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone()),
+            &nros_orchestration_ir::overlay::LoadedModel::bare(m.clone()),
         );
         let row = &rows_of(&j.inventory)[0];
         assert_eq!(row.depth, None, "no depth may be attributed");
@@ -707,7 +707,7 @@ mod tests {
         );
         let j = join(
             &p,
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone()),
+            &nros_orchestration_ir::overlay::LoadedModel::bare(m.clone()),
         );
         let row = &rows_of(&j.inventory)[0];
         assert_eq!(row.depth, None);
@@ -735,7 +735,7 @@ mod tests {
         );
         let j = join(
             &p,
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone()),
+            &nros_orchestration_ir::overlay::LoadedModel::bare(m.clone()),
         );
         let row = &rows_of(&j.inventory)[0];
         assert_eq!(row.depth, None);
@@ -764,7 +764,7 @@ mod tests {
         );
         let j = join(
             &p,
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone()),
+            &nros_orchestration_ir::overlay::LoadedModel::bare(m.clone()),
         );
         let row = &rows_of(&j.inventory)[0];
         assert_eq!(row.depth, None);
@@ -790,7 +790,7 @@ mod tests {
         );
         let j = join(
             &p,
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone()),
+            &nros_orchestration_ir::overlay::LoadedModel::bare(m.clone()),
         );
         let rows = rows_of(&j.inventory);
         assert_eq!(rows.len(), 2);
@@ -819,7 +819,7 @@ mod tests {
         );
         let j = join(
             &p,
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone()),
+            &nros_orchestration_ir::overlay::LoadedModel::bare(m.clone()),
         );
         assert!(!j.contract_seen);
         assert_eq!(j.inventory, p, "untouched, row for row");
@@ -835,7 +835,7 @@ mod tests {
         let p = probe("listener", vec![]);
         let j = join(
             &p,
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone()),
+            &nros_orchestration_ir::overlay::LoadedModel::bare(m.clone()),
         );
         assert!(
             j.notes
@@ -864,7 +864,7 @@ mod tests {
         ));
         let j = join(
             &probe("listener", rows),
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone()),
+            &nros_orchestration_ir::overlay::LoadedModel::bare(m.clone()),
         );
         let out = rows_of(&j.inventory);
         assert_eq!(out[0].kind, EntityKind::Timer);
@@ -900,7 +900,7 @@ mod tests {
         let m = model_yaml("listener", "/chatter", "std_msgs/msg/String", "");
         let target = EntityInventory::from_model(
             "model",
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone()),
+            &nros_orchestration_ir::overlay::LoadedModel::bare(m.clone()),
         )
         .unwrap();
         for row in [
@@ -917,7 +917,7 @@ mod tests {
             let o = observe_registrations(
                 &target,
                 &p,
-                &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone()),
+                &nros_orchestration_ir::overlay::LoadedModel::bare(m.clone()),
             );
             let sub = rows_of(&o.inventory)
                 .into_iter()
@@ -934,7 +934,7 @@ mod tests {
         let o = observe_registrations(
             &target,
             &p,
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone()),
+            &nros_orchestration_ir::overlay::LoadedModel::bare(m.clone()),
         );
         let sub = rows_of(&o.inventory)
             .into_iter()
@@ -951,7 +951,7 @@ mod tests {
         let m = model_yaml("listener", "/chatter", "std_msgs/msg/String", "");
         let target = EntityInventory::from_model(
             "model",
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone()),
+            &nros_orchestration_ir::overlay::LoadedModel::bare(m.clone()),
         )
         .unwrap();
         assert_eq!(
@@ -968,7 +968,7 @@ mod tests {
             let o = observe_registrations(
                 &target,
                 &p,
-                &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone()),
+                &nros_orchestration_ir::overlay::LoadedModel::bare(m.clone()),
             );
             assert_eq!(model_row_observation(&o.inventory), Some(obs));
             assert_eq!((o.observed, o.unobserved), (1, 0));
@@ -1018,13 +1018,13 @@ mod tests {
         for (m, row, why) in cases {
             let target = EntityInventory::from_model(
                 "model",
-                &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone()),
+                &nros_orchestration_ir::overlay::LoadedModel::bare(m.clone()),
             )
             .unwrap();
             let o = observe_registrations(
                 &target,
                 &probe("listener", vec![row]),
-                &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone()),
+                &nros_orchestration_ir::overlay::LoadedModel::bare(m.clone()),
             );
             assert_eq!(model_row_observation(&o.inventory), None, "{why}");
             assert_eq!((o.observed, o.unobserved), (0, 1), "{why}");
@@ -1039,7 +1039,7 @@ mod tests {
         let m = model_yaml("listener", "/chatter", "std_msgs/msg/String", "");
         let target = EntityInventory::from_model(
             "model",
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone()),
+            &nros_orchestration_ir::overlay::LoadedModel::bare(m.clone()),
         )
         .unwrap();
         let p = probe(
@@ -1052,7 +1052,7 @@ mod tests {
         let o = observe_registrations(
             &target,
             &p,
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone()),
+            &nros_orchestration_ir::overlay::LoadedModel::bare(m.clone()),
         );
         assert_eq!(model_row_observation(&o.inventory), None);
     }
@@ -1064,7 +1064,7 @@ mod tests {
         let m = model_yaml("listener", "/chatter", "std_msgs/msg/String", "");
         let target = EntityInventory::from_model(
             "model",
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone()),
+            &nros_orchestration_ir::overlay::LoadedModel::bare(m.clone()),
         )
         .unwrap();
         let p = probe(
@@ -1074,7 +1074,7 @@ mod tests {
         let o = observe_registrations(
             &target,
             &p,
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone()),
+            &nros_orchestration_ir::overlay::LoadedModel::bare(m.clone()),
         );
         assert_eq!(model_row_observation(&o.inventory), None);
     }
