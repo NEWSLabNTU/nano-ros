@@ -1,10 +1,15 @@
-//! phase-486 W1 — the nano-ros overlay (`nros.toml`) states exactly what rlm
-//! projects into the SystemModel today, for every tracked `system.toml`.
+//! phase-486 W1, revised at W7 -- the nano-ros overlay (`nros.toml`) carries
+//! the capability switches the SystemModel no longer does, for every tracked
+//! `system.toml`.
 //!
-//! This is W3's safety net: W3 moves every reader from the model's
-//! `execution.features` / lifecycle default to the overlay, and that move is
-//! byte-identical only while the two agree. The comparison is against rlm's
-//! OWN parser and projection (`parse_system_config` + `apply_to_launch` +
+//! Until W7 this was W3's safety net: the overlay had to state exactly the
+//! `execution.features` rlm projected, so moving the readers to it was
+//! byte-identical. rlm v0.1.55 (phase-486 W6) stopped writing
+//! `execution.features`, so at W7 the test asserts the hand-over instead: the
+//! model's projection is empty for every file, and the switches are still
+//! stated, by the overlay. The lifecycle default is still compared with rlm's
+//! `lifecycle_autostart()`, which stays until W8. The comparison is against
+//! rlm's OWN parser and projection (`parse_system_config` + `apply_to_launch` +
 //! `lifecycle_autostart`), never a second spelling of them.
 
 use std::path::{Path, PathBuf};
@@ -77,9 +82,7 @@ fn overlay_agrees_with_the_model_projection_for_every_tracked_system_toml() {
         if !overlay.is_empty() {
             stating += 1;
         }
-        if overlay.features != exec.features
-            || overlay.lifecycle_autostart.as_deref() != model_lifecycle
-        {
+        if !exec.features.is_empty() || overlay.lifecycle_autostart.as_deref() != model_lifecycle {
             disagreements.push(format!(
                 "{}: model features {:?} / lifecycle {:?}, overlay {:?} / {:?}",
                 f.strip_prefix(&root).unwrap_or(f).display(),
@@ -92,11 +95,12 @@ fn overlay_agrees_with_the_model_projection_for_every_tracked_system_toml() {
     }
     assert!(
         disagreements.is_empty(),
-        "overlay and model disagree:\n{}",
+        "the model still carries switches, or the lifecycle defaults disagree:\n{}",
         disagreements.join("\n")
     );
     // The bringups the W0 census names (features, managed, safety) state
-    // something; if none did, this test would compare only empty sets.
+    // something; if none did, the overlay would have lost the switches the
+    // model dropped, and this test would compare only empty sets.
     assert!(
         stating >= 3,
         "only {stating} of {compared} state an overlay"

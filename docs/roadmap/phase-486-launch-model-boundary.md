@@ -1,6 +1,6 @@
 # Phase 486 — the launch model carries what every realizer reads; nano-ros's own facts move to an overlay
 
-**Status (2026-10-12). W0–W3 LANDED; W5 landed in play_launch (`ca7eb1a`, its phase 86 W1–W4) and W6 in rlm (`v0.1.55`); W4 and W7–W9 open. Design revised 2026-10-12 (below) after re-reading rlm and play_launch `main`.** Implements RFC-0060's
+**Status (2026-10-12). W0–W3 LANDED; W5 landed in play_launch (`ca7eb1a`, its phase 86 W1–W4) and W6 in rlm (`v0.1.55`); W7 landed 2026-10-13 (PR #2031: play_launch v0.16.0, rlm v0.1.56); W4, W8 and W9 open. Design revised 2026-10-12 (below) after re-reading rlm and play_launch `main`.** Implements RFC-0060's
 [2026-10-10 amendment](../design/0060-launch-toolchain-three-layers.md#amendment-2026-10-10--what-the-systemmodel-may-carry-and-where-nano-ross-own-facts-go)
 and RFC-0100's
 [2026-10-10 ruling](../design/0100-rmw-agnostic-sizing-model.md#ruling-2026-10-10--a-stated-fact-earns-a-file-whatever-it-came-from).
@@ -368,6 +368,26 @@ fixture is byte-identical except for the removed fields; a nano-ros
 carry `features`, and nothing in nano-ros noticed. Tier 2 run
 (`just build-test-fixtures lane=tier2` + `just ci matrix`), since codegen and
 cmake inputs moved.
+
+### W7 result (2026-10-13)
+
+- PR #2031 moved the play_launch pin d23720c7 -> 828a271f (v0.16.0, which
+  carries W5) and the resolver's lock to rlm v0.1.56, but left nano-ros's
+  readers on v0.1.40. CI showed the failure revision item 4 predicted: every
+  resolved model was refused (`unsupported SystemModel schema version 2`),
+  so `nros sync` failed and `nros build` planned no entry. The follow-up
+  commit bumps every nano-ros manifest to `v0.1.56` (one tag across the tree)
+  and the eleven locks that name it, rlm lines only; no registry crate moves.
+- API absorbed: `Trigger::Timer` gained `jitter` (`entity_census.rs` reads
+  the period only). Nothing else in `v0.1.41`..`v0.1.56` broke a build.
+- `overlay_agrees_with_model_projection` now asserts the hand-over: rlm's
+  projection of `execution.features` is empty for every tracked
+  `system.toml`, and the overlay still states the switches (5 files). The
+  lifecycle default is still compared with rlm's accessor until W8.
+- Checked: `cargo test` on the `packages/cli` workspace, `nros-orchestration-ir`
+  and `nros-macros`; `just scaffold-journey`; `check-launch-model-boundary`,
+  `check-source-refs`, `submodule-pinned-locks`, `cargo-registry-pins`,
+  `leaf-lockfiles`. Tier 2 and the byte-identical image diff are not run here.
 
 ## W8 — retirement
 
