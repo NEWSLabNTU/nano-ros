@@ -31,6 +31,14 @@ phase-472 W4 — two ways this gate was OFF while printing ok:
 And one way it read the population WRONG: `runs-on: ${{ … }}` is decided at
 run time, so it cannot be proven hosted. It now counts as possibly
 self-hosted — fail closed — rather than as hosted.
+
+phase-489 W2 — ONE expression shape is now read rather than feared: an
+EVENT-ROUTED `runs-on` (`scripts/lib/runner_route.py`), self-hosted only on
+the events its condition admits. Such a job is checked against those events,
+not against the workflow's whole trigger list, so `gate.yml` (which triggers on
+`pull_request`) can route a sibling to the self-hosted pool on `merge_group`
+alone. Any other expression is still fail closed, and so is a route whose
+condition the parser does not fully understand.
 """
 import io
 import sys
@@ -39,6 +47,7 @@ import pathlib
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts" / "lib"))
 from population import require_population  # noqa: E402
+from runner_route import parse_runs_on  # noqa: E402
 
 try:
     import yaml
@@ -105,6 +114,23 @@ def check(workflow_dir: pathlib.Path, population=None):
             if not isinstance(job, dict) or not _is_self_hosted(job.get("runs-on")):
                 continue
             checked += 1
+            route = parse_runs_on(job.get("runs-on"))
+            if route is not None:
+                if _is_self_hosted(route.hosted):
+                    violations.append(
+                        f"{path.name}: job '{name}' routes BOTH arms of its runs-on "
+                        f"to a self-hosted runner ({route.hosted!r} is the fallback).")
+                    continue
+                if "self-hosted" not in route.labels:
+                    continue
+                reach = route.events & UNSAFE
+                if reach:
+                    violations.append(
+                        f"{path.name}: job '{name}' routes to a self-hosted runner on "
+                        f"{sorted(reach)} — a fork's PR would run contributor code on "
+                        f"our hardware. Narrow the route's event condition."
+                    )
+                continue
             if unsafe:
                 violations.append(
                     f"{path.name}: job '{name}' runs on a self-hosted runner and the "
@@ -150,6 +176,20 @@ def _selftest(verbose: bool = True) -> int:
             runs-on: ${{ inputs.runner }}
             steps: [{run: echo}]
     """)
+    route_safe = textwrap.dedent("""
+        on: [pull_request, merge_group]
+        jobs:
+          gate:
+            runs-on: ${{ vars.R == 'true' && contains(fromJSON('["merge_group","workflow_dispatch"]'), github.event_name) && fromJSON('["self-hosted","linux"]') || 'ubuntu-22.04' }}
+            steps: [{run: echo}]
+    """)
+    # The mutations a route must refuse: pull_request admitted, the condition
+    # widened by a disjunction, and the hosted fallback made self-hosted.
+    route_pr = route_safe.replace('"merge_group","workflow_dispatch"',
+                                  '"merge_group","pull_request"')
+    route_or = route_safe.replace(
+        "vars.R == 'true' && contains", "vars.R == 'true' || contains")
+    route_both = route_safe.replace("|| 'ubuntu-22.04'", "|| 'self-hosted'")
     ok = True
     with tempfile.TemporaryDirectory() as d:
         # phase-472 W4 — an empty workflow dir examines nothing and must fail.
@@ -169,6 +209,10 @@ def _selftest(verbose: bool = True) -> int:
             ("self-hosted on pull_request", unsafe, True, 1),
             ("hosted on pull_request", hosted_pr, False, 0),
             ("expression runs-on on pull_request (fail closed)", expr_pr, True, 1),
+            ("event route, merge_group only", route_safe, False, 1),
+            ("event route admitting pull_request", route_pr, True, 1),
+            ("event route widened by || (fail closed)", route_or, True, 1),
+            ("event route, self-hosted fallback", route_both, True, 1),
         ):
             p = pathlib.Path(d) / "w"
             p.mkdir(exist_ok=True)
