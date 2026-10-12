@@ -5307,26 +5307,27 @@ mod derived_sizing_tests {
 
     /// The policies issue 0303 ADDED lower rather than being dropped —
     /// `lifespan` here was previously an "unrecognised policy" in this very
-    /// test, which is what made the gap easy to miss.
+    /// test, which is what made the gap easy to miss. Spelled in nanoseconds
+    /// and baked in milliseconds since issue 1855.
     #[test]
     fn the_duration_policies_lower() {
         use nros_orchestration_ir::qos_override::{lower, policy};
         for (name, value, expect_policy, expect_value) in [
             (
                 "qos_overrides./t.publisher.deadline",
-                "100",
+                "100000000",
                 policy::DEADLINE,
                 100u32,
             ),
             (
                 "qos_overrides./t.publisher.lifespan",
-                "10",
+                "10000000",
                 policy::LIFESPAN,
                 10,
             ),
             (
                 "qos_overrides./t.publisher.liveliness_lease_duration",
-                "500",
+                "500000000",
                 policy::LIVELINESS_LEASE,
                 500,
             ),

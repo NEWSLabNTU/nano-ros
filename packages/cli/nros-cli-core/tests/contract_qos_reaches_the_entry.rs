@@ -152,3 +152,33 @@ fn a_contract_only_qos_line_changes_the_baked_table() {
         1
     );
 }
+
+/// issue 1855 -- the contract's DURATION policies reach the entry in the
+/// wire's unit. The resolver derives `lease_duration: 500ms` and
+/// `deadline: 4.3s` into nanosecond parameters (rclcpp's unit); the lowering
+/// must bake 500 and 4300 milliseconds. Before the fix the lease baked as
+/// 500,000,000 ms and the deadline's 4,300,000,000 overflowed the `u32` and
+/// the plan was refused.
+#[test]
+fn a_contract_lease_and_deadline_bake_in_milliseconds() {
+    use nros_orchestration_ir::qos_override::{policy, role};
+    let plan = plan_for("contract_durations");
+    let rows = &handler(&plan).qos_overrides;
+    let value_of = |p: u8| {
+        rows.iter()
+            .find(|r| r.topic == "/availability" && r.role == role::SUBSCRIPTION && r.policy == p)
+            .unwrap_or_else(|| panic!("policy {p} must be derived and lowered: {rows:#?}"))
+            .value
+    };
+    assert_eq!(value_of(policy::LIVELINESS_LEASE), 500, "{rows:#?}");
+    assert_eq!(value_of(policy::DEADLINE), 4300, "{rows:#?}");
+
+    let src = emit::emit_typed(Lang::Cpp, &plan).expect("typed C++ emit");
+    for (p, v) in [(policy::LIVELINESS_LEASE, 500), (policy::DEADLINE, 4300)] {
+        let row = format!(
+            "{{ \"/availability\", {}, {p}, {v} }},",
+            role::SUBSCRIPTION
+        );
+        assert!(src.contains(&row), "{row} must be baked:\n{src}");
+    }
+}

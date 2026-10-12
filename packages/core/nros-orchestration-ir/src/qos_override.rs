@@ -298,6 +298,14 @@ fn split_key(name: &str) -> Result<Option<(&str, u8, &str)>, QoSOverrideError> {
     Ok(Some((topic, role, policy_s)))
 }
 
+/// Nanoseconds in one millisecond: the wire's resolution (issue 1855).
+const NS_PER_MS: u64 = 1_000_000;
+
+/// What a duration policy's value must be (issue 1855), for the diagnostic.
+const DURATION_NS: &str = "a duration in NANOSECONDS, rclcpp's unit (500 ms is 500000000): \
+                           0 for none, at least 1000000 (1 ms, the wire's resolution), \
+                           below 4294967295 ms, or 9223372036854775807 for infinite";
+
 /// Lower one `qos_overrides.<topic>.<role>.<policy>` parameter.
 ///
 /// Returns `Ok(None)` when `name` is not a QoS override at all — the caller is
@@ -317,6 +325,27 @@ pub fn lower(name: &str, value: &str) -> Result<Option<LoweredOverride>, QoSOver
         expected,
     };
     let ms = |expected| v.parse::<u32>().map_err(|_| bad(expected));
+    // Issue 1855 -- the duration policies are spelled in NANOSECONDS, rclcpp's
+    // unit (`QosOverridingOptions` declares them as int64 nanoseconds), which
+    // is also what play_launch's resolver derives from a contract's
+    // `deadline:` / `lease_duration:`. The wire carries milliseconds, so the
+    // value is converted here, by the one boundary rule the runtime already
+    // uses (`nros_rmw::duration_to_qos_ms`: zero stays "unset", a remainder
+    // CEILS, a value at or past the infinite sentinel is refused). rclcpp's
+    // own spelling of an infinite duration, `i64::MAX` nanoseconds, maps to
+    // the sentinel. A NONZERO value under one millisecond is refused rather
+    // than rounded up: it is below the wire's resolution, and it is exactly
+    // what a millisecond spelling from before this issue looks like.
+    let ns = |expected| -> Result<u32, QoSOverrideError> {
+        let n = v.parse::<u64>().map_err(|_| bad(expected))?;
+        if n == i64::MAX as u64 {
+            return Ok(nros_rmw::DURATION_INFINITE_MS);
+        }
+        if n > 0 && n < NS_PER_MS {
+            return Err(bad(expected));
+        }
+        nros_rmw::duration_to_qos_ms(core::time::Duration::from_nanos(n)).map_err(|_| bad(expected))
+    };
 
     let (policy, value) = match policy_s {
         // phase-454 W3 -- the SPELLINGS come from `parse_*` above, which the
@@ -363,11 +392,11 @@ pub fn lower(name: &str, value: &str) -> Result<Option<LoweredOverride>, QoSOver
         "depth" => (qos_override_policy::DEPTH, ms("a non-negative integer")?),
         "deadline" => (
             qos_override_policy::DEADLINE,
-            ms("a duration in milliseconds")?,
+            ns(DURATION_NS)?,
         ),
         "lifespan" => (
             qos_override_policy::LIFESPAN,
-            ms("a duration in milliseconds")?,
+            ns(DURATION_NS)?,
         ),
         "liveliness" => (
             qos_override_policy::LIVELINESS,
@@ -394,7 +423,7 @@ pub fn lower(name: &str, value: &str) -> Result<Option<LoweredOverride>, QoSOver
         ),
         "liveliness_lease_duration" => (
             qos_override_policy::LIVELINESS_LEASE,
-            ms("a duration in milliseconds")?,
+            ns(DURATION_NS)?,
         ),
         _ => {
             return Err(QoSOverrideError::UnknownPolicy {
@@ -570,14 +599,14 @@ mod tests {
             ),
             (
                 "qos_overrides./chatter.publisher.deadline",
-                "100",
+                "100000000",
                 0,
                 qos_override_policy::DEADLINE,
                 100,
             ),
             (
                 "qos_overrides./chatter.publisher.lifespan",
-                "250",
+                "250000000",
                 0,
                 qos_override_policy::LIFESPAN,
                 250,
@@ -595,7 +624,7 @@ mod tests {
             ),
             (
                 "qos_overrides./chatter.publisher.liveliness_lease_duration",
-                "500",
+                "500000000",
                 0,
                 qos_override_policy::LIVELINESS_LEASE,
                 500,
@@ -615,6 +644,54 @@ mod tests {
                 },
                 "{name}"
             );
+        }
+    }
+
+    /// Issue 1855 -- the duration policies read NANOSECONDS, the unit rclcpp
+    /// and play_launch's resolver write, and bake MILLISECONDS.
+    ///
+    /// The two values the issue names: a 500 ms lease used to bake as
+    /// 500,000,000 ms (about 5.8 days), and a 4.3 s deadline overflowed the
+    /// `u32` and was refused with a value nobody wrote.
+    #[test]
+    fn duration_policies_read_nanoseconds_and_bake_milliseconds() {
+        let bake = |policy: &str, value: &str| {
+            lower(&format!("qos_overrides./t.subscription.{policy}"), value)
+                .unwrap_or_else(|e| panic!("{policy}={value}: {e}"))
+                .expect("an override")
+                .value
+        };
+        assert_eq!(bake("liveliness_lease_duration", "500000000"), 500);
+        assert_eq!(bake("deadline", "4300000000"), 4300);
+        assert_eq!(bake("lifespan", "1000000"), 1, "one millisecond exactly");
+        // A sub-millisecond remainder CEILS (`duration_to_qos_ms`): rounding
+        // down would loosen the bound the author wrote.
+        assert_eq!(bake("deadline", "1500000"), 2);
+        // Zero stays "no deadline"; rclcpp's infinite is the sentinel.
+        assert_eq!(bake("deadline", "0"), 0);
+        assert_eq!(
+            bake("deadline", "9223372036854775807"),
+            nros_rmw::DURATION_INFINITE_MS
+        );
+    }
+
+    /// Issue 1855 -- what the lowering cannot represent is REFUSED, never
+    /// wrapped or rounded into a different bound.
+    #[test]
+    fn an_unrepresentable_duration_is_refused() {
+        for (value, why) in [
+            // The pre-1855 millisecond spelling: nonzero and under 1 ms.
+            ("100", "a millisecond spelling"),
+            ("999999", "just under the wire's resolution"),
+            // At or past the u32 millisecond sentinel.
+            ("4294967295000000", "the infinite sentinel's own millisecond count"),
+            ("-1", "negative"),
+            ("1.5", "not an integer"),
+        ] {
+            let e = lower("qos_overrides./t.publisher.deadline", value)
+                .expect_err(&format!("{value} ({why}) must be refused"));
+            assert!(matches!(e, QoSOverrideError::BadValue { .. }), "{e:?}");
+            assert!(e.to_string().contains("NANOSECONDS"), "{e}");
         }
     }
 
@@ -762,13 +839,14 @@ mod tests {
     #[test]
     fn every_lowerable_policy_is_classified_for_sizing() {
         // A value that parses for whichever policy it is handed to. `1` is a
-        // legal depth and a legal duration; the three enum policies get their
-        // own spellings below.
+        // legal depth; the durations are nanoseconds since issue 1855, so they
+        // get one millisecond; the enum policies get their own spellings.
         let value_for = |policy: &str| match policy {
             "reliability" => "reliable",
             "durability" => "volatile",
             "history" => "keep_last",
             "liveliness" => "automatic",
+            "deadline" | "lifespan" | "liveliness_lease_duration" => "1000000",
             _ => "1",
         };
         for (policy, is_capacity) in MODELLED_POLICIES {

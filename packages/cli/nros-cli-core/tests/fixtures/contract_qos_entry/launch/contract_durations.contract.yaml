@@ -1,0 +1,32 @@
+# issue 1855 -- `contract_liveliness.contract.yaml` plus the two DURATION
+# policies: a 500 ms lease and a 4.3 s deadline. The resolver derives them into
+# `qos_overrides./availability.subscription.{liveliness_lease_duration,deadline}`
+# in NANOSECONDS (rclcpp's unit), and the entry must bake 500 and 4300
+# milliseconds. Before the issue the lease baked as 500,000,000 ms and the
+# deadline overflowed the u32 and was refused.
+
+version: 1
+
+nodes:
+  talker:
+    pub:
+      availability:
+        qos:
+          depth: 1
+          durability: volatile
+
+  handler:
+    sub:
+      availability:
+        qos:
+          depth: 1
+          durability: volatile
+          liveliness: automatic
+          lease_duration: 500ms
+          deadline: 4.3s
+
+topics:
+  /availability:
+    type: std_msgs/msg/Int32
+    pub: [talker/availability]
+    sub: [handler/availability]

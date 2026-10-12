@@ -1,0 +1,7 @@
+<launch>
+  <!-- issue 1855: the SAME launch file as code_qos.launch.xml, under a
+       contract that states a lease and a deadline. Whatever the entry bakes
+       comes from the contract alone, through the resolver's derivation. -->
+  <node pkg="demo_pkg" exec="talker" name="talker"/>
+  <node pkg="demo_pkg" exec="handler" name="handler"/>
+</launch>
