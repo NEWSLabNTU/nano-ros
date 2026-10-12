@@ -1452,6 +1452,10 @@ pub(crate) fn source_dir_is_stale(
 }
 
 fn path_newer_than(path: &Path, cutoff: std::time::SystemTime) -> bool {
+    // Issue 1849 — a simulated edit reads as written now.
+    if crate::fixtures::staleness::simulated_edit(path).is_some() {
+        return true;
+    }
     let Ok(meta) = path.metadata() else {
         return false;
     };
