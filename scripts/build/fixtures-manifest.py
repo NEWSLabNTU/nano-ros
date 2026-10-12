@@ -735,6 +735,35 @@ def west_id(entry):
     )
 
 
+KNOB_REGISTRY = SCRIPT_ROOT / "packages/tooling/nros-zephyr-build/knobs.toml"
+
+
+def west_overrides(entry):
+    """`[(ID, value)]` from a west row's `west_overrides` table — phase-484 W5b.
+
+    A Zephyr knob is prompt-less in a project with a `system.toml` (RFC-0103
+    D2a), so a fixture cannot re-size one with a conf line or `-DCONFIG_*`
+    any more; the transient channel is `-DNROS_OVERRIDE_<ID>=<v>`, which the
+    module hook renders into the image's Kconfig defaults. The key is the
+    knob REGISTRY id, refused here when no row with a Kconfig `type` has it,
+    so a typo fails the manifest rather than the configure."""
+    table = entry.get("west_overrides")
+    if not table:
+        return []
+    if not isinstance(table, dict):
+        _fail(entry, "west_overrides must be a table { <KNOB_ID> = \"<value>\" }")
+    with open(KNOB_REGISTRY, "rb") as f:
+        rows = tomllib.load(f).get("knob", [])
+    by_id = {r["id"]: r for r in rows}
+    out = []
+    for knob, value in table.items():
+        row = by_id.get(knob)
+        if row is None:
+            _fail(entry, f"west_overrides: `{knob}` is not a knob id in {KNOB_REGISTRY.name}")
+        out.append((knob, str(value)))
+    return out
+
+
 def row_builder(entry):
     """The row's effective builder: `cargo`, `cmake`, or `west` — phase-350 W1.
 
@@ -1733,6 +1762,11 @@ def main():
             # nested bash loops in `fixture-matrix.sh` that were a second
             # spelling of it (issue 0535).
             "west-leaves",
+            # phase-484 W5b — the transient knob values a west row passes as
+            # `-DNROS_OVERRIDE_<ID>=<v>` (its `west_overrides` table): one
+            # `<west_id>\x1f<ID>=<value>` line each. Its own command rather than
+            # a `west-leaves` column, so no record width moves under a reader.
+            "west-overrides",
             # Issue 0482 — shape-check `[[fixture]]` rows. `validate-workspaces`
             # has required `platform`/`lang`/`rmw` on workspace rows since
             # phase-295; plain rows had no validator at all, so a row missing
@@ -1807,6 +1841,14 @@ def main():
                 platforms.add(e["platform"])
         for name in sorted(platforms):
             sys.stdout.write(f"{name}\n")
+        return
+
+    if a.command == "west-overrides":
+        for e in load(a.manifest):
+            if e.get("builder") != "west":
+                continue
+            for knob, value in west_overrides(e):
+                sys.stdout.write(f"{west_id(e)}{SEP}{knob}={value}\n")
         return
 
     if a.command == "west-leaves":

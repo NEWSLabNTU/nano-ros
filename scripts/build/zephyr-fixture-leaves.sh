@@ -361,6 +361,15 @@ if [ -n "${NROS_FIXTURE_COORDS:-}" ]; then
     coords_args=(--coords-from "$NROS_FIXTURE_COORDS")
 fi
 
+# phase-484 W5b — each row's transient knob values (`west_overrides`), passed
+# as `-DNROS_OVERRIDE_<ID>=<v>`: a knob is prompt-less in a project with a
+# `system.toml`, so a conf line or `-DCONFIG_<knob>` is a configure error there.
+declare -A row_overrides=()
+while IFS=$'\x1f' read -r ov_id ov_kv; do
+    [ -n "$ov_id" ] || continue
+    row_overrides["$ov_id"]="${row_overrides[$ov_id]:-} -DNROS_OVERRIDE_${ov_kv}"
+done < <(python3 "$nros_root/scripts/build/fixtures-manifest.py" west-overrides)
+
 selected=0
 # `_row_coord` is read but unused HERE: this script's narrowing already happened
 # in `--coords-from` above, on the same `row_coord`. It is named so the trailing
@@ -471,6 +480,8 @@ while IFS=$'\x1f' read -r board lang lang_tag rmw role src build_name id \
     # rendering, and its `conf` fragment is already in `$conf_files` above (the
     # manifest appended it, in the order the old per-RMW CONF_FILE had).
     [ -z "$row_west_image" ] || extra_cmake_defs="$extra_cmake_defs -DNROS_IMAGE=$row_west_image"
+    row_override_defs="${row_overrides[$id]:-}"
+    extra_cmake_defs="$extra_cmake_defs$row_override_defs"
 
     sccache_launcher=0
     if [ "$sccache_disable" = "0" ] && command -v sccache >/dev/null 2>&1; then
@@ -511,6 +522,10 @@ while IFS=$'\x1f' read -r board lang lang_tag rmw role src build_name id \
     # one carry the line, so no other leaf's signature moves.
     if [ -n "$row_west_image" ]; then
         sig="$(printf '%s\n%s' "$sig" "west_image=$row_west_image")"
+    fi
+    # phase-484 W5b — same rule for the override line.
+    if [ -n "$row_override_defs" ]; then
+        sig="$(printf '%s\n%s' "$sig" "overrides=$row_override_defs")"
     fi
     emit_record fixture "$id" "$target" "$board" "$lang" "$lang_tag" "$role" "$rmw" \
         "$src_rel" "$src_dir" "$build_name" "$build_dir" "$log_dir/${build_name}.log" \

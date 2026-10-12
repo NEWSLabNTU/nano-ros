@@ -15,7 +15,15 @@
 //! | `CONFIG_NROS_{C,CPP,RUST}_API=y` | the package's language |
 //! | `CONFIG_NROS_ZENOH_LOCATOR` / `CONFIG_NROS_XRCE_AGENT_{ADDR,PORT}` | the image's `locator` |
 //! | `CONFIG_NROS_DOMAIN_ID` | the image's `domain_id` (else `[defaults]`, else `[system]`) |
-//! | one row per `[image.<id>] env` row whose Kconfig symbol EXISTS | the image's `env` (and what its `transport` implies) |
+//! | one row per `[image.<id>] env` row whose Kconfig symbol EXISTS and is not a registry knob | the image's `env` (and what its `transport` implies) |
+//!
+//! A row whose symbol IS a registry knob (`nros_zephyr_build::KCONFIG_KNOBS`)
+//! is not a fragment row (phase-484 W5b, RFC-0103 D2a/D2b): the module defines
+//! those symbols without a prompt, so a conf assignment of one is a Kconfig
+//! error. [`defaults_text`] renders them instead, as `default`s in
+//! `<build>/nros/Kconfig.from-system-toml`, with any `-DNROS_OVERRIDE_<ID>`
+//! the hook passes on top. Choices, endpoint and domain stay here: a
+//! prompt-less choice aborts configure on 3.7 and 4.4 (D2b's M1).
 //!
 //! The env↔Kconfig pairing is `nros_zephyr_build::kconfig_key_for` — the
 //! `KCONFIG_PAIRS` table the build scripts' own ladder reads — never a second
@@ -139,11 +147,13 @@ pub struct Line {
     pub from: String,
 }
 
-/// The rendering: the fragment's lines, plus the env rows no Kconfig symbol
-/// carries (issue 1712's `--config` file).
+/// The rendering: the fragment's lines, the KNOB values (phase-484 W5b: the
+/// prompt-less registry knobs, delivered as Kconfig defaults instead), plus the
+/// env rows no Kconfig symbol carries (issue 1712's `--config` file).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Rendered {
     pub lines: Vec<Line>,
+    pub knobs: Vec<Line>,
     pub cargo_rows: BTreeMap<String, String>,
 }
 
@@ -257,6 +267,7 @@ pub fn render(
     leaf: &LeafSystem,
     language: Option<Language>,
     syms: &KconfigSymbols,
+    overrides: &BTreeMap<String, String>,
 ) -> Result<Rendered, String> {
     let origin = leaf.origin_path().display().to_string();
     let image = leaf.image.clone().unwrap_or_default();
@@ -374,7 +385,116 @@ pub fn render(
             .to_string();
         push(&mut out, &bare, v, from)?;
     }
+
+    // phase-484 W5b — a registry KNOB is prompt-less in the module, so a conf
+    // assignment of it is a Kconfig error; its value leaves the fragment and
+    // becomes a `default` in `Kconfig.from-system-toml` (D2a/D2b). Choices,
+    // endpoint and domain stay: a prompt-less choice aborts configure (M1).
+    let (knobs, lines): (Vec<Line>, Vec<Line>) = std::mem::take(&mut out.lines)
+        .into_iter()
+        .partition(|l| nros_zephyr_build::kconfig_knob(&l.symbol).is_some());
+    out.lines = lines;
+    out.knobs = knobs;
+
+    // `-DNROS_OVERRIDE_<ID>` — a transient value for this build, over the image's.
+    for (id, value) in overrides {
+        let knob = override_knob(id).ok_or_else(|| {
+            format!(
+                "-DNROS_OVERRIDE_{id}: no Kconfig knob has the id {id} \
+                 (packages/tooling/nros-zephyr-build/knobs.toml, a row with a `type`)"
+            )
+        })?;
+        let symbol = format!("CONFIG_{}", knob.symbol);
+        let from = format!("-DNROS_OVERRIDE_{id}={value} on the command line (this build only)");
+        if let (Some(guard), Some(chosen)) = (knob.kconfig_if, rmw_sym)
+            && guard.starts_with("NROS_RMW_")
+            && guard != chosen
+        {
+            return Err(format!(
+                "{from}: {symbol} exists only under `if {guard}`, and {origin} \
+                 [image.{image}] selects {chosen}"
+            ));
+        }
+        let ty = syms.get(&symbol).map_or(SymType::Int, |s| s.ty);
+        let v = kconfig_value(ty, value).map_err(|why| format!("{from}: {symbol} is {why}"))?;
+        out.knobs.retain(|l| l.symbol != symbol);
+        out.knobs.push(Line {
+            symbol,
+            value: v,
+            from,
+        });
+    }
     Ok(out)
+}
+
+/// The Kconfig knob an override id names: the row that defines the symbol, or
+/// any registry row reading it (`ZENOH_MAX_PUBLISHERS` sets
+/// `CONFIG_NROS_MAX_PUBLISHERS`, as its env spelling does).
+fn override_knob(id: &str) -> Option<&'static nros_zephyr_build::KconfigKnob> {
+    nros_zephyr_build::kconfig_knob_by_id(id).or_else(|| {
+        let row = nros_zephyr_build::knob_row(&format!("NROS_{id}"))?;
+        nros_zephyr_build::kconfig_knob(row.kconfig)
+    })
+}
+
+/// `<build>/nros/Kconfig.from-system-toml` for a project with a `system.toml`
+/// (phase-484 W5b, RFC-0103 D2a): EVERY registry knob the module defines,
+/// prompt-less, under its module definition's own `if` and `depends on` (M2),
+/// with the image's value — or an override's — as a `default`. Sourced before
+/// the module's own definitions, so the default wins; with no prompt anywhere
+/// a `prj.conf` line or `-DCONFIG_<knob>` is a configure error.
+#[must_use]
+pub fn defaults_text(leaf: &LeafSystem, r: &Rendered) -> String {
+    let origin = leaf.origin_path().display().to_string();
+    let image = leaf.image.as_deref().unwrap_or("");
+    let mut s = format!(
+        "# GENERATED by nros (`ws leaf-system --kconfig-defaults-out`, phase-484 W5b /\n\
+         # RFC-0103 D2a) -- do not edit. Re-rendered on every configure.\n\
+         #\n\
+         # The nano-ros knobs of {origin} [image.{image}].\n\
+         # They have NO prompt, so a prj.conf line or a -DCONFIG_<knob> for one of\n\
+         # them is a configure error: state a knob as `env NROS_<ID> = \"<v>\"` in\n\
+         # [image.{image}], or pass -DNROS_OVERRIDE_<ID>=<v> for one build.\n"
+    );
+    let knobs = nros_zephyr_build::KCONFIG_KNOBS;
+    let mut conds: Vec<Option<&str>> = vec![None];
+    let mut named: Vec<&str> = knobs.iter().filter_map(|k| k.kconfig_if).collect();
+    named.sort_unstable();
+    named.dedup();
+    conds.extend(named.into_iter().map(Some));
+    for cond in conds {
+        let group: Vec<_> = knobs.iter().filter(|k| k.kconfig_if == cond).collect();
+        if group.is_empty() {
+            continue;
+        }
+        if let Some(c) = cond {
+            s.push_str(&format!("\nif {c}\n"));
+        }
+        for k in group {
+            let symbol = format!("CONFIG_{}", k.symbol);
+            let stated = r.knobs.iter().find(|l| l.symbol == symbol);
+            s.push('\n');
+            match stated {
+                Some(l) => s.push_str(&format!("# {} ({})\n", l.from, k.id)),
+                None => s.push_str(&format!(
+                    "# {} not stated: the module default (`env NROS_{}`, \
+                     `-DNROS_OVERRIDE_{}`)\n",
+                    k.id, k.id, k.id
+                )),
+            }
+            s.push_str(&format!("config {}\n    {}\n", k.symbol, k.ty));
+            for d in k.depends {
+                s.push_str(&format!("    depends on {d}\n"));
+            }
+            if let Some(l) = stated {
+                s.push_str(&format!("    default {}\n", l.value));
+            }
+        }
+        if let Some(c) = cond {
+            s.push_str(&format!("\nendif # {c}\n"));
+        }
+    }
+    s
 }
 
 /// The fragment's text, or `None` when there is nothing to state.
@@ -480,6 +600,13 @@ endif # NROS
             .collect()
     }
 
+    fn knob_rows(r: &Rendered) -> BTreeMap<String, String> {
+        r.knobs
+            .iter()
+            .map(|l| (l.symbol.clone(), l.value.clone()))
+            .collect()
+    }
+
     #[test]
     fn the_parser_reads_types_and_rmw_guards() {
         let s = KconfigSymbols::parse(KCONFIG);
@@ -550,17 +677,20 @@ endif # NROS
              NROS_ZENOH_TX_BATCH = \"1\", NROS_LINK_IP = \"0\" }\n",
             &[],
         );
-        let r = render(&l, Some(Language::C), &syms).unwrap();
+        let r = render(&l, Some(Language::C), &syms, &BTreeMap::new()).unwrap();
         let m = rows(&r);
         assert_eq!(m["CONFIG_NROS_RMW_ZENOH"], "y");
         assert_eq!(m["CONFIG_NROS_C_API"], "y");
         assert_eq!(m["CONFIG_NROS_ZENOH_LOCATOR"], "\"tcp/10.0.2.2:7447\"");
-        assert_eq!(m["CONFIG_NROS_EXECUTOR_MAX_CBS"], "13");
+        // phase-484 W5b — registry knobs leave the fragment for the defaults file.
+        let k = knob_rows(&r);
+        assert!(!m.contains_key("CONFIG_NROS_EXECUTOR_MAX_CBS"), "{m:?}");
+        assert_eq!(k["CONFIG_NROS_EXECUTOR_MAX_CBS"], "13");
         assert_eq!(
-            m["CONFIG_NROS_MAX_QUERYABLES"], "9",
+            k["CONFIG_NROS_MAX_QUERYABLES"], "9",
             "through KCONFIG_PAIRS"
         );
-        assert_eq!(m["CONFIG_NROS_ZENOH_TX_BATCH"], "y", "a bool takes y/n");
+        assert_eq!(k["CONFIG_NROS_ZENOH_TX_BATCH"], "y", "a bool takes y/n");
         assert!(!m.contains_key("CONFIG_NROS_LINK_IP"));
         assert_eq!(
             r.cargo_rows,
@@ -568,16 +698,90 @@ endif # NROS
             "no Kconfig symbol: the --config file carries it"
         );
         let text = fragment_text(&l, &r).unwrap();
-        assert!(
-            text.contains(
-                "# env NROS_EXECUTOR_MAX_CBS = \"13\"\nCONFIG_NROS_EXECUTOR_MAX_CBS=13\n"
-            ),
-            "{text}"
-        );
+        assert!(!text.contains("NROS_EXECUTOR_MAX_CBS"), "{text}");
         assert!(
             text.contains("# rmw = \"zenoh\"\nCONFIG_NROS_RMW_ZENOH=y\n"),
             "{text}"
         );
+        let d = defaults_text(&l, &r);
+        assert!(
+            d.contains(
+                "# env NROS_EXECUTOR_MAX_CBS = \"13\" (EXECUTOR_MAX_CBS)\n\
+                 config NROS_EXECUTOR_MAX_CBS\n    int\n    default 13\n"
+            ),
+            "{d}"
+        );
+        // M2: a guarded knob's default sits under the module's own `if`, and a
+        // `depends on` is repeated, so neither widens the symbol's dependency.
+        let zenoh = &d[d.find("if NROS_RMW_ZENOH\n").expect("an RMW_ZENOH block")..];
+        let zenoh = &zenoh[..zenoh.find("endif # NROS_RMW_ZENOH").unwrap()];
+        assert!(
+            zenoh.contains("config NROS_MAX_QUERYABLES\n    int\n    default 9\n"),
+            "{d}"
+        );
+        assert!(
+            zenoh.contains(
+                "config NROS_ZENOH_TX_BATCH_FLUSH_MS\n    int\n    depends on NROS_ZENOH_TX_BATCH\n"
+            ),
+            "{d}"
+        );
+        // Every module knob is defined, stated or not, and none has a prompt.
+        for k in nros_zephyr_build::KCONFIG_KNOBS {
+            assert!(
+                d.contains(&format!("config {}\n", k.symbol)),
+                "{}",
+                k.symbol
+            );
+        }
+        assert!(
+            !d.contains("    int \"") && !d.contains("    bool \""),
+            "{d}"
+        );
+    }
+
+    /// `-DNROS_OVERRIDE_<ID>` replaces the image's value, is refused for an id
+    /// with no Kconfig knob, and for a knob the image's RMW leaves undefined.
+    #[test]
+    fn an_override_wins_and_is_refused_where_it_cannot_land() {
+        let syms = KconfigSymbols::parse(KCONFIG);
+        let (_d, l) = leaf(
+            "[system]\nname = \"t\"\nrmw = \"zenoh\"\n\n[image.zephyr]\nboard = \"zephyr\"\n\
+             env = { NROS_EXECUTOR_MAX_CBS = \"13\" }\n",
+            &[],
+        );
+        let o = |kv: &[(&str, &str)]| -> BTreeMap<String, String> {
+            kv.iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect()
+        };
+        let r = render(
+            &l,
+            None,
+            &syms,
+            &o(&[("EXECUTOR_MAX_CBS", "21"), ("ZENOH_MAX_QUERYABLES", "3")]),
+        )
+        .unwrap();
+        let k = knob_rows(&r);
+        assert_eq!(k["CONFIG_NROS_EXECUTOR_MAX_CBS"], "21", "the override wins");
+        assert_eq!(
+            k["CONFIG_NROS_MAX_QUERYABLES"], "3",
+            "the id names its row, the symbol its kconfig column"
+        );
+        let d = defaults_text(&l, &r);
+        assert!(
+            d.contains("-DNROS_OVERRIDE_EXECUTOR_MAX_CBS=21 on the command line"),
+            "{d}"
+        );
+
+        let e = render(&l, None, &syms, &o(&[("NOPE", "1")])).unwrap_err();
+        assert!(e.contains("no Kconfig knob has the id NOPE"), "{e}");
+
+        let (_d, x) = leaf(
+            "[system]\nname = \"t\"\nrmw = \"xrce\"\n\n[image.zephyr]\nboard = \"zephyr\"\n",
+            &[],
+        );
+        let e = render(&x, None, &syms, &o(&[("ZENOH_MAX_QUERYABLES", "3")])).unwrap_err();
+        assert!(e.contains("if NROS_RMW_ZENOH"), "{e}");
     }
 
     #[test]
@@ -588,7 +792,7 @@ endif # NROS
              locator = \"udp/192.0.2.7:8888\"\n",
             &[],
         );
-        let m = rows(&render(&l, None, &syms).unwrap());
+        let m = rows(&render(&l, None, &syms, &BTreeMap::new()).unwrap());
         assert_eq!(m["CONFIG_NROS_RMW_XRCE"], "y");
         assert_eq!(m["CONFIG_NROS_XRCE_AGENT_ADDR"], "\"192.0.2.7\"");
         assert_eq!(m["CONFIG_NROS_XRCE_AGENT_PORT"], "8888");
@@ -603,7 +807,7 @@ endif # NROS
              locator = \"tcp/1.2.3.4:7447\"\n",
             &[],
         );
-        let e = render(&bad, None, &syms).unwrap_err();
+        let e = render(&bad, None, &syms, &BTreeMap::new()).unwrap_err();
         assert!(e.contains("udp/<host>:<port>"), "{e}");
     }
 
@@ -617,7 +821,7 @@ endif # NROS
              [image.zephyr]\nboard = \"zephyr\"\ndomain_id = 7\n",
             &[],
         );
-        let m = rows(&render(&l, None, &syms).unwrap());
+        let m = rows(&render(&l, None, &syms, &BTreeMap::new()).unwrap());
         assert_eq!(m["CONFIG_NROS_DOMAIN_ID"], "7", "the image's own wins");
 
         let (_d, l) = leaf(
@@ -625,7 +829,7 @@ endif # NROS
              [image.zephyr]\nboard = \"zephyr\"\n",
             &[],
         );
-        let m = rows(&render(&l, None, &syms).unwrap());
+        let m = rows(&render(&l, None, &syms, &BTreeMap::new()).unwrap());
         assert_eq!(m["CONFIG_NROS_DOMAIN_ID"], "3", "else the system's");
 
         let (_d, twice) = leaf(
@@ -633,7 +837,7 @@ endif # NROS
              [image.zephyr]\nboard = \"zephyr\"\nenv = { NROS_DOMAIN_ID = \"9\" }\n",
             &[],
         );
-        let e = render(&twice, None, &syms).unwrap_err();
+        let e = render(&twice, None, &syms, &BTreeMap::new()).unwrap_err();
         assert!(e.contains("say it once"), "{e}");
     }
 
@@ -647,7 +851,7 @@ endif # NROS
              env = { NROS_LOG_MAX_LEVEL = \"warn\" }\n",
             &[],
         );
-        let e = render(&l, None, &syms).unwrap_err();
+        let e = render(&l, None, &syms, &BTreeMap::new()).unwrap_err();
         assert!(
             e.contains("NROS_LOG_MAX_LEVEL = \"warn\"") && e.contains("an int"),
             "{e}"
@@ -658,7 +862,7 @@ endif # NROS
              env = { ZPICO_MAX_QUERYABLES = \"4\" }\n",
             &[],
         );
-        let e = render(&l, None, &syms).unwrap_err();
+        let e = render(&l, None, &syms, &BTreeMap::new()).unwrap_err();
         assert!(
             e.contains("if NROS_RMW_ZENOH") && e.contains("NROS_RMW_XRCE"),
             "{e}"
@@ -669,7 +873,7 @@ endif # NROS
              locator = \"udp/1.2.3.4:2018\"\nenv = { NROS_XRCE_AGENT_PORT = \"9\" }\n",
             &[],
         );
-        let e = render(&l, None, &syms).unwrap_err();
+        let e = render(&l, None, &syms, &BTreeMap::new()).unwrap_err();
         assert!(e.contains("both state CONFIG_NROS_XRCE_AGENT_PORT"), "{e}");
 
         let (_d, l) = leaf(
@@ -677,7 +881,7 @@ endif # NROS
             &[],
         );
         assert!(
-            render(&l, None, &syms)
+            render(&l, None, &syms, &BTreeMap::new())
                 .unwrap_err()
                 .contains("no Zephyr backend")
         );
@@ -692,7 +896,7 @@ endif # NROS
             "[system]\nname = \"t\"\n\n[image.zephyr]\nboard = \"zephyr\"\n",
             &[],
         );
-        let r = render(&l, None, &syms).unwrap();
+        let r = render(&l, None, &syms, &BTreeMap::new()).unwrap();
         assert_eq!(r, Rendered::default());
         assert_eq!(fragment_text(&l, &r), None);
         let out = d.path().join("b/nros/zephyr.conf");

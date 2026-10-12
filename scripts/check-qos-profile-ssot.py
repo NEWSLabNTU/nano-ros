@@ -1685,10 +1685,8 @@ def _mirror_self_test(verbose=False):
 # toward RED, never toward a quiet pass.
 _MIRROR_SOURCE_PROBE = {
     "Kconfig": (
-        'config NROS_PUBSUB_QOS_DEPTH\n    int "QoS history depth the arena budgets per '
-        'subscription"\n    default 10',
-        'config NROS_PUBSUB_QOS_DEPTH\n    int "QoS history depth the arena budgets per '
-        'subscription"\n    default 17',
+        'config NROS_PUBSUB_QOS_DEPTH\n    int\n    default 10',
+        'config NROS_PUBSUB_QOS_DEPTH\n    int\n    default 17',
         "NROS_PUBSUB_QOS_DEPTH",
         "depth",
         17,

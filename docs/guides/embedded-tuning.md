@@ -477,6 +477,16 @@ When building as a Zephyr module, use Kconfig options instead of environment
 variables. The CMake integration automatically maps Kconfig to the corresponding
 `ZPICO_*` / `NROS_*` env vars.
 
+**Which application this applies to (phase-484 W5b, RFC-0103 D2a).** The
+`prj.conf` lines below are for a GUEST — a plain Zephyr application with no
+`system.toml`, which keeps every knob's Kconfig prompt. In a project WITH a
+`system.toml` the knob symbols have no prompt, so a `prj.conf` line or a
+`-DCONFIG_<knob>` for one is a configure error naming the replacement: state the
+knob in the image, `[image.<id>] env = { NROS_ZENOH_MAX_QUERYABLES = "4" }` (the env
+spelling), and pass `-DNROS_OVERRIDE_<ID>=<value>` (`-DNROS_OVERRIDE_ZENOH_MAX_QUERYABLES=4`)
+for a single build. The module hook writes the result to
+`<build>/nros/Kconfig.from-system-toml`.
+
 ```kconfig
 # prj.conf
 CONFIG_NROS=y

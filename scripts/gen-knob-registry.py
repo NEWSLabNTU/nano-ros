@@ -8,6 +8,7 @@ Input:  packages/tooling/nros-zephyr-build/knobs.toml   (the ONLY hand-kept list
 Output: packages/tooling/nros-zephyr-build/src/knob_registry.rs
         cmake/NanoRosKnobRegistry.cmake   (the legacy spellings, for the cmake lanes)
         zephyr/Kconfig                    (the knob section, between its markers)
+        zephyr/Kconfig.knob-prompts       (a guest's prompts, phase-484 W5b)
 
 `nros-zephyr-build` is dependency-free on purpose (every build script that reads
 a knob reaches it), so it cannot parse TOML at build time; the table is
@@ -21,10 +22,14 @@ equal. Every spelling of a knob derives from its row:
 A row whose knob has a Zephyr Kconfig symbol also carries that symbol's
 DEFINITION — `type`, `prompt`, the `if` it sits under (`kconfig_if`), its
 attribute lines (`kconfig_attrs`, verbatim) and `help` — and the module's
-`zephyr/Kconfig` knob section is rendered from them (phase-484 W5a; the prompts
-stay until W5b makes the section prompt-less). `just check zephyr-kconfig-knobs`
-holds the committed section equal to the render, and refuses a registry
-symbol defined anywhere else in that file.
+`zephyr/Kconfig` knob section is rendered from them, PROMPT-LESS (phase-484
+W5b, RFC-0103 D2a/D2b): it `osource`s `<build>/nros/Kconfig.from-system-toml`
+first, which the module hook writes — the image's values as `default`s for a
+project with a `system.toml`, or `zephyr/Kconfig.knob-prompts` (rendered here
+too) for a guest, which adds each prompt back under the same `if`/`depends on`.
+`just check zephyr-kconfig-knobs` holds the committed section and the prompts
+file equal to the render, and refuses a registry symbol defined anywhere else
+in `zephyr/Kconfig`.
 
 `KCONFIG_PAIRS` is emitted for every SPELLING whose Kconfig symbol is not
 `CONFIG_<spelling>` — the shape `kconfig_key_for` and its harvesting gate
@@ -44,6 +49,10 @@ SRC = REPO / "packages/tooling/nros-zephyr-build/knobs.toml"
 OUT = REPO / "packages/tooling/nros-zephyr-build/src/knob_registry.rs"
 CMAKE_OUT = REPO / "cmake/NanoRosKnobRegistry.cmake"
 KCONFIG_OUT = REPO / "zephyr/Kconfig"
+PROMPTS_OUT = REPO / "zephyr/Kconfig.knob-prompts"
+# Where the module hook writes the generated file, as Kconfig spells it
+# (`KCONFIG_BINARY_DIR` is `<build>/Kconfig` on 3.7 and 4.4; D2b).
+KCONFIG_GENERATED = "$(KCONFIG_BINARY_DIR)/../nros/Kconfig.from-system-toml"
 KCONFIG_BEGIN = "# >>> knob registry >>>"
 KCONFIG_END = "# <<< knob registry <<<"
 KCONFIG_TYPES = {"bool", "int", "hex", "string"}
@@ -163,6 +172,22 @@ def render(rows):
         out.append(f"    ({q(s)}, {q(k)}),")
     out.append("];")
     out.append("")
+    out.append("/// The knobs the Zephyr module defines as Kconfig symbols (rows with a `type`),")
+    out.append("/// in registry order. Read through [`crate::kconfig_knob`].")
+    out.append("pub const KCONFIG_KNOBS: &[crate::KconfigKnob] = &[")
+    for r in rows:
+        if not r.get("type"):
+            continue
+        cond = r.get("kconfig_if")
+        out.append("    crate::KconfigKnob {")
+        out.append(f"        symbol: {q(kconfig_symbol(r))},")
+        out.append(f"        id: {q(r['id'])},")
+        out.append(f"        ty: {q(r['type'])},")
+        out.append(f"        kconfig_if: {'Some(' + q(cond) + ')' if cond else 'None'},")
+        out.append("        depends: &[" + ", ".join(q(d) for d in depends_on(r)) + "],")
+        out.append("    },")
+    out.append("];")
+    out.append("")
     out.append("/// What a build prints when a knob arrives under a legacy spelling.")
     out.append("/// Substitute `{legacy}` and `{env}`; the cmake twin prints the same text.")
     out.append(f"pub const DEPRECATION_TEMPLATE: &str = {q(DEPRECATION)};")
@@ -189,6 +214,13 @@ def render_cmake(rows):
         f'set(NROS_KNOB_CONFLICT_TEMPLATE "{CONFLICT}")',
         "",
     ]
+    typed = [r for r in rows if r.get("type")]
+    out.append("# The knobs the Zephyr module defines as Kconfig symbols (phase-484 W5b):")
+    out.append("# NROS_KNOB_KCONFIG_SYMBOL_<id> is the symbol `-DNROS_OVERRIDE_<id>` sets.")
+    out.append('set(NROS_KNOB_KCONFIG_IDS "' + ";".join(r["id"] for r in typed) + '")')
+    for r in typed:
+        out.append(f"set(NROS_KNOB_KCONFIG_SYMBOL_{r['id']} {kconfig_symbol(r)})")
+    out.append("")
     for r in rows:
         legacy = r.get("legacy", [])
         if not legacy:
@@ -205,11 +237,32 @@ def kconfig_symbol(r):
     return r.get("kconfig", "NROS_" + r["id"])
 
 
+def depends_on(r):
+    """The row's `depends on` expressions — a generated definition repeats them,
+    or the symbol's dependency widens and a value leaks (D2b's M2)."""
+    return [a.strip()[len("depends on"):].strip()
+            for a in r.get("kconfig_attrs", []) if a.strip().startswith("depends on ")]
+
+
+def _grouped(rows):
+    """(condition, rows) per `if`, none first then by name; registry order inside."""
+    defined = [r for r in rows if r.get("type")]
+    conds = [None] + sorted({r["kconfig_if"] for r in defined if r.get("kconfig_if")})
+    for cond in conds:
+        group = [r for r in defined if r.get("kconfig_if") == cond]
+        if group:
+            yield cond, group
+
+
 def render_kconfig_section(rows):
     """The knob section of `zephyr/Kconfig`, markers included, no trailing newline.
 
-    Rows are grouped by the `if` they sit under (none first, then each
-    condition in name order) and kept in registry (id) order inside a group."""
+    Every symbol is PROMPT-LESS: its prompt (a guest) and its value (a
+    system.toml project) come from the generated file the section `osource`s
+    first (phase-484 W5b); the prompt text is kept as a comment above each
+    definition. Rows are grouped by the `if` they sit under (none first, then
+    each condition in name order) and kept in registry (id) order inside a
+    group."""
     out = [
         KCONFIG_BEGIN,
         "# GENERATED by scripts/gen-knob-registry.py from",
@@ -218,20 +271,27 @@ def render_kconfig_section(rows):
         "# script. `just check zephyr-kconfig-knobs` holds this section equal to the",
         "# render and refuses a registry knob's symbol defined anywhere else in the",
         "# file (RFC-0103 D2b, phase-484 W5a).",
+        "#",
+        "# No symbol here has a prompt (phase-484 W5b). The module hook writes the",
+        "# file sourced below BEFORE Kconfig runs, and its definitions come first:",
+        "#   * a project with a system.toml -- each knob's value from the image",
+        "#     (`[image.<id>] env NROS_<ID>`, or `-DNROS_OVERRIDE_<ID>` for one",
+        "#     build) as a `default`. With no prompt anywhere, a prj.conf line or a",
+        "#     -DCONFIG_<knob> is a configure error: system.toml is the one source.",
+        "#   * a guest (no system.toml) -- a copy of zephyr/Kconfig.knob-prompts,",
+        "#     which gives each knob back its prompt, so prj.conf, menuconfig and",
+        "#     -DCONFIG_* work as before.",
+        f'osource "{KCONFIG_GENERATED}"',
         "",
     ]
-    defined = [r for r in rows if r.get("type")]
-    conds = [None] + sorted({r["kconfig_if"] for r in defined if r.get("kconfig_if")})
-    for cond in conds:
-        group = [r for r in defined if r.get("kconfig_if") == cond]
-        if not group:
-            continue
+    for cond, group in _grouped(rows):
         if cond:
             out += [f"if {cond}", ""]
         for r in group:
+            if r.get("prompt") is not None:
+                out.append(f'# prompt: {r["prompt"]}')
             out.append(f"config {kconfig_symbol(r)}")
-            prompt = r.get("prompt")
-            out.append(f'    {r["type"]} "{prompt}"' if prompt is not None else f'    {r["type"]}')
+            out.append(f'    {r["type"]}')
             out += ["    " + a for a in r.get("kconfig_attrs", [])]
             if r.get("help") is not None:
                 out.append("    help")
@@ -240,6 +300,35 @@ def render_kconfig_section(rows):
         if cond:
             out += [f"endif # {cond}", ""]
     out.append(KCONFIG_END)
+    return "\n".join(out)
+
+
+def render_prompts(rows):
+    """`zephyr/Kconfig.knob-prompts`: what a GUEST's generated file holds — each
+    knob's prompt, under the module definition's own `if` and `depends on`, and
+    nothing else (the module keeps the defaults, ranges and help)."""
+    out = [
+        "# @generated by scripts/gen-knob-registry.py from",
+        "# packages/tooling/nros-zephyr-build/knobs.toml -- do not edit.",
+        "#",
+        "# A GUEST's knob prompts (phase-484 W5b, RFC-0103 D2a). The module's knob",
+        "# section defines every knob symbol without a prompt; for an application",
+        "# with no system.toml the module hook copies this file to",
+        "# <build>/nros/Kconfig.from-system-toml, which that section sources, so",
+        "# prj.conf, menuconfig and -DCONFIG_* configure the knobs as they always did.",
+        "",
+    ]
+    for cond, group in _grouped(rows):
+        if cond:
+            out += [f"if {cond}", ""]
+        for r in group:
+            out.append(f"config {kconfig_symbol(r)}")
+            prompt = r.get("prompt") or r["id"].replace("_", " ").lower()
+            out.append(f'    {r["type"]} "{prompt}"')
+            out += [f"    depends on {d}" for d in depends_on(r)]
+            out.append("")
+        if cond:
+            out += [f"endif # {cond}", ""]
     return "\n".join(out)
 
 
@@ -305,12 +394,23 @@ def self_test():
     kc_rows = [
         {"id": "Z", "type": "int", "prompt": "z", "kconfig_attrs": ["default 4"], "help": "a\n\nb"},
         {"id": "ZENOH_X", "kconfig": "NROS_X", "type": "bool", "prompt": "x",
-         "kconfig_if": "NROS_RMW_ZENOH"},
+         "kconfig_if": "NROS_RMW_ZENOH", "kconfig_attrs": ["depends on NROS_Q", "default y"]},
         {"id": "Y"},
     ]
     sec = render_kconfig_section(kc_rows)
-    assert "config NROS_Z\n    int \"z\"\n    default 4\n    help\n      a\n\n      b\n" in sec, sec
-    assert "if NROS_RMW_ZENOH\n\nconfig NROS_X\n    bool \"x\"\n\nendif # NROS_RMW_ZENOH" in sec, sec
+    assert "# prompt: z\nconfig NROS_Z\n    int\n    default 4\n    help\n      a\n\n      b\n" in sec, sec
+    assert ("if NROS_RMW_ZENOH\n\n# prompt: x\nconfig NROS_X\n    bool\n    depends on NROS_Q\n"
+            "    default y\n\nendif # NROS_RMW_ZENOH") in sec, sec
+    assert f'osource "{KCONFIG_GENERATED}"' in sec, "selftest: the section sources no generated file"
+    assert sec.index("osource") < sec.index("\nconfig "), "selftest: the generated file must parse FIRST"
+    assert '    int "' not in sec and '    bool "' not in sec, "selftest: a knob kept its prompt"
+    pr = render_prompts(kc_rows)
+    assert 'config NROS_Z\n    int "z"\n' in pr, pr
+    assert 'if NROS_RMW_ZENOH\n\nconfig NROS_X\n    bool "x"\n    depends on NROS_Q\n\nendif' in pr, pr
+    assert "default" not in pr and "NROS_Y" not in pr, pr
+    rs = render(kc_rows)
+    assert 'symbol: "NROS_X",\n        id: "ZENOH_X",\n        ty: "bool",\n        kconfig_if: Some("NROS_RMW_ZENOH"),\n        depends: &["NROS_Q"],' in rs, rs
+    assert 'id: "Y",\n        ty' not in rs, "selftest: an untyped row reached KCONFIG_KNOBS"
     assert "NROS_Y" not in sec, "selftest: a row with no `type` was rendered"
     good = "menuconfig NROS\nif NROS\n" + sec + "\nendif\n"
     assert kconfig_problems(good, kc_rows) == [], kconfig_problems(good, kc_rows)
@@ -327,10 +427,12 @@ def self_test():
     assert kconfig_problems(unmarked, kc_rows) and splice_kconfig(unmarked, kc_rows) is None
     _, errs = load_from_text('[[knob]]\nid = "A"\nprompt = "p"\n')
     assert any("without `type`" in e for e in errs), errs
-    cm = render_cmake([{"id": "ZENOH_X", "legacy": ["ZPICO_X"]}, {"id": "Y"}])
+    cm = render_cmake([{"id": "ZENOH_X", "legacy": ["ZPICO_X"], "type": "int"}, {"id": "Y"}])
     assert 'set(NROS_KNOB_LEGACY_NROS_ZENOH_X "ZPICO_X")' in cm, cm
     assert "set(NROS_KNOB_CANONICAL_ZPICO_X NROS_ZENOH_X)" in cm, cm
-    assert "NROS_Y" not in cm, "selftest: a row with no legacy spelling reached the cmake table"
+    assert 'set(NROS_KNOB_KCONFIG_IDS "ZENOH_X")' in cm, cm
+    assert "set(NROS_KNOB_KCONFIG_SYMBOL_ZENOH_X NROS_ZENOH_X)" in cm, cm
+    assert "NROS_Y" not in cm, "selftest: an untyped row with no legacy spelling reached the cmake table"
 
 
 def main():
@@ -344,13 +446,18 @@ def main():
     outputs = [(OUT, render(rows)), (CMAKE_OUT, render_cmake(rows))]
     if "--check-kconfig" in sys.argv:
         problems = kconfig_problems(KCONFIG_OUT.read_text(), rows)
+        if (PROMPTS_OUT.read_text() if PROMPTS_OUT.exists() else "") != render_prompts(rows):
+            problems.append(
+                f"{PROMPTS_OUT.relative_to(REPO)} differs from what knobs.toml renders (a guest's\n"
+                "  knob prompts). Run `python3 scripts/gen-knob-registry.py`.")
         for msg in problems:
             sys.stderr.write(f"zephyr-kconfig-knobs: FAILED — {msg}\n")
         if problems:
             return 1
         n = sum(1 for r in rows if r.get("type"))
         print(f"zephyr-kconfig-knobs: OK — {n} knob symbol(s) rendered from knobs.toml, "
-              "none defined outside the section (selftest: 4 negative controls caught)")
+              "none defined outside the section, all prompt-less, guest prompts current "
+              "(selftest: 4 negative controls caught)")
         return 0
     if "--check" in sys.argv:
         stale = [p for p, text in outputs if (p.read_text() if p.exists() else "") != text]
@@ -373,6 +480,8 @@ def main():
                          f"`{KCONFIG_BEGIN}` ... `{KCONFIG_END}` section to render into\n")
         return 1
     KCONFIG_OUT.write_text(kconfig)
+    PROMPTS_OUT.write_text(render_prompts(rows))
+    print(f"wrote {PROMPTS_OUT.relative_to(REPO)}")
     print(f"wrote {KCONFIG_OUT.relative_to(REPO)} knob section "
           f"({sum(1 for r in rows if r.get('type'))} symbols)")
     return 0

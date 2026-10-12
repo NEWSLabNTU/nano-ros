@@ -113,10 +113,48 @@ pub struct KnobRow {
     pub toml: Option<&'static str>,
 }
 
+/// A knob the nano-ros Zephyr module DEFINES as a Kconfig symbol — a registry
+/// row with a `type` (phase-484 W5b, RFC-0103 D2b).
+///
+/// Every such symbol is prompt-less in `zephyr/Kconfig`; the module hook writes
+/// `<build>/nros/Kconfig.from-system-toml`, which either gives each one the
+/// image's value as a `default` (a project with a `system.toml`) or adds back
+/// its prompt (a guest). Both renderings place the definition under the same
+/// `if`/`depends on` as the module's own, which is what keeps a value from
+/// leaking into an image whose RMW leaves the symbol undefined (D2b's M2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct KconfigKnob {
+    /// The symbol WITHOUT `CONFIG_` (`NROS_MAX_PUBLISHERS`).
+    pub symbol: &'static str,
+    /// The registry id of the row that defines it; `-DNROS_OVERRIDE_<id>`.
+    pub id: &'static str,
+    /// `bool`, `int`, `hex` or `string`.
+    pub ty: &'static str,
+    /// The `if` the module's definition sits under, if any.
+    pub kconfig_if: Option<&'static str>,
+    /// The definition's `depends on` expressions, verbatim.
+    pub depends: &'static [&'static str],
+}
+
 // Generated, so rustfmt leaves it as the generator wrote it and `--check` stays exact.
 #[rustfmt::skip]
 mod knob_registry;
-pub use knob_registry::{CONFLICT_TEMPLATE, DEPRECATION_TEMPLATE, KCONFIG_PAIRS, KNOBS};
+pub use knob_registry::{
+    CONFLICT_TEMPLATE, DEPRECATION_TEMPLATE, KCONFIG_KNOBS, KCONFIG_PAIRS, KNOBS,
+};
+
+/// The Kconfig knob whose symbol is `symbol` (with or without `CONFIG_`).
+#[must_use]
+pub fn kconfig_knob(symbol: &str) -> Option<&'static KconfigKnob> {
+    let s = symbol.strip_prefix("CONFIG_").unwrap_or(symbol);
+    KCONFIG_KNOBS.iter().find(|k| k.symbol == s)
+}
+
+/// The Kconfig knob a registry id names (`-DNROS_OVERRIDE_<id>`).
+#[must_use]
+pub fn kconfig_knob_by_id(id: &str) -> Option<&'static KconfigKnob> {
+    KCONFIG_KNOBS.iter().find(|k| k.id == id)
+}
 
 /// The registry row a spelling names, canonical or legacy.
 #[must_use]

@@ -1246,9 +1246,21 @@ config NROS_CODEGEN_TOOL
 # script. `just check zephyr-kconfig-knobs` holds this section equal to the
 # render and refuses a registry knob's symbol defined anywhere else in the
 # file (RFC-0103 D2b, phase-484 W5a).
+#
+# No symbol here has a prompt (phase-484 W5b). The module hook writes the
+# file sourced below BEFORE Kconfig runs, and its definitions come first:
+#   * a project with a system.toml -- each knob's value from the image
+#     (`[image.<id>] env NROS_<ID>`, or `-DNROS_OVERRIDE_<ID>` for one
+#     build) as a `default`. With no prompt anywhere, a prj.conf line or a
+#     -DCONFIG_<knob> is a configure error: system.toml is the one source.
+#   * a guest (no system.toml) -- a copy of zephyr/Kconfig.knob-prompts,
+#     which gives each knob back its prompt, so prj.conf, menuconfig and
+#     -DCONFIG_* work as before.
+osource "$(KCONFIG_BINARY_DIR)/../nros/Kconfig.from-system-toml"
 
+# prompt: Callback slots to budget at ActionClient size (-1 = derive)
 config NROS_EXECUTOR_ACTION_CLIENTS
-    int "Callback slots to budget at ActionClient size (-1 = derive)"
+    int
     default -1
     help
       How many of NROS_EXECUTOR_MAX_CBS slots the arena derivation budgets at
@@ -1275,8 +1287,9 @@ config NROS_EXECUTOR_ACTION_CLIENTS
       read the advisory, then set this. Issue 0900.
 
 
+# prompt: Executor arena size in bytes (0 = derive)
 config NROS_EXECUTOR_ARENA_SIZE
-    int "Executor arena size in bytes (0 = derive)"
+    int
     default 0
     help
       Explicit executor arena size. 0 means let nros-node build.rs derive it,
@@ -1303,8 +1316,9 @@ config NROS_EXECUTOR_ARENA_SIZE
       registration that does not fit, not at link.
 
 
+# prompt: Executor backing reservation in 64-bit words (-1 = derive, 0 = none)
 config NROS_EXECUTOR_BACKING_U64S
-    int "Executor backing reservation in 64-bit words (-1 = derive, 0 = none)"
+    int
     default -1
     help
       How many 64-bit words nros-node reserves in .bss for the executor's
@@ -1356,8 +1370,9 @@ config NROS_EXECUTOR_BACKING_U64S
       linker price them.
 
 
+# prompt: Contract-monitor age rows per executor (-1 = derive)
 config NROS_EXECUTOR_MAX_AGE_MONITORS
-    int "Contract-monitor age rows per executor (-1 = derive)"
+    int
     default -1
     help
       Age contract rows one executor watches (nros-node build.rs
@@ -1368,8 +1383,9 @@ config NROS_EXECUTOR_MAX_AGE_MONITORS
       terms, and a longer table is refused naming this knob.
 
 
+# prompt: Maximum executor callback slots (-1 = derive)
 config NROS_EXECUTOR_MAX_CBS
-    int "Maximum executor callback slots (-1 = derive)"
+    int
     default -1
     help
       Maximum number of callback slots in the executor
@@ -1407,8 +1423,9 @@ config NROS_EXECUTOR_MAX_CBS
       the plumbing.
 
 
+# prompt: Contract-monitor rate/latency rows per executor (-1 = derive)
 config NROS_EXECUTOR_MAX_MONITORS
-    int "Contract-monitor rate/latency rows per executor (-1 = derive)"
+    int
     default -1
     help
       Rate/latency contract rows one executor watches (nros-node build.rs
@@ -1426,16 +1443,18 @@ config NROS_EXECUTOR_MAX_MONITORS
       NROS_CPP_RET_FULL; a Rust entry fails to compile), never truncated.
 
 
+# prompt: Maximum nodes per executor (-1 = derive)
 config NROS_EXECUTOR_MAX_NODES
-    int "Maximum nodes per executor (-1 = derive)"
+    int
     default -1
     help
       Nodes attachable to one executor (nros-node build.rs MAX_NODES,
       Phase 104.C.2).
 
 
+# prompt: Maximum scheduling-context slots per executor (-1 = derive)
 config NROS_EXECUTOR_MAX_SC
-    int "Maximum scheduling-context slots per executor (-1 = derive)"
+    int
     default -1
     help
       SchedContext slots per executor (nros-node build.rs MAX_SC,
@@ -1453,8 +1472,9 @@ config NROS_EXECUTOR_MAX_SC
       create_sched_context, which names this knob.
 
 
+# prompt: Shutdown-hook slots per phase
 config NROS_EXECUTOR_MAX_SHUTDOWN_CBS
-    int "Shutdown-hook slots per phase"
+    int
     default 2
     help
       How many shutdown hooks the executor can hold PER PHASE — one table
@@ -1470,8 +1490,9 @@ config NROS_EXECUTOR_MAX_SHUTDOWN_CBS
       (NROS_RET_FULL), not silently dropped.
 
 
+# prompt: Contract-violation ring depth per executor
 config NROS_EXECUTOR_MAX_VIOLATIONS
-    int "Contract-violation ring depth per executor"
+    int
     default 8
     range 1 256
     help
@@ -1488,8 +1509,9 @@ config NROS_EXECUTOR_MAX_VIOLATIONS
       the record. Raise it only when a burst must be kept whole.
 
 
+# prompt: nros-log per-call formatting buffer (bytes)
 config NROS_LOG_BUFFER_SIZE
-    int "nros-log per-call formatting buffer (bytes)"
+    int
     default 256
     range 128 4096
     help
@@ -1502,8 +1524,9 @@ config NROS_LOG_BUFFER_SIZE
       deprecated buffer-size-<N> cargo features.
 
 
+# prompt: Loggers nros-log may create at run time
 config NROS_LOG_DYNAMIC_LOGGERS
-    int "Loggers nros-log may create at run time"
+    int
     default 16
     range 0 1024
     help
@@ -1522,8 +1545,9 @@ config NROS_LOG_DYNAMIC_LOGGERS
       this Kconfig value outranks it, and the environment outranks both.
 
 
+# prompt: nros-log records held before init
 config NROS_LOG_EARLY_RECORDS
-    int "nros-log records held before init"
+    int
     default 4
     range 0 256
     help
@@ -1534,8 +1558,9 @@ config NROS_LOG_EARLY_RECORDS
       Replaces the deprecated early-records-<N> cargo features.
 
 
+# prompt: nros-log compile-time severity ceiling
 config NROS_LOG_MAX_LEVEL
-    int "nros-log compile-time severity ceiling"
+    int
     default 0
     range 0 6
     help
@@ -1550,8 +1575,9 @@ config NROS_LOG_MAX_LEVEL
       beneath it. Replaces the deprecated max-level-* cargo features.
 
 
+# prompt: nros-log /rosout queue depth
 config NROS_LOG_ROSOUT_RECORDS
-    int "nros-log /rosout queue depth"
+    int
     default 16
     range 1 1024
     help
@@ -1562,8 +1588,9 @@ config NROS_LOG_ROSOUT_RECORDS
       cargo features.
 
 
+# prompt: Array parameter capacity in elements (-1 = derive)
 config NROS_MAX_ARRAY_LEN
-    int "Array parameter capacity in elements (-1 = derive)"
+    int
     default -1
     help
       Elements a `bool_array`, `integer_array`, `double_array` or
@@ -1575,8 +1602,9 @@ config NROS_MAX_ARRAY_LEN
       declaration the crate default of 32 stands.
 
 
+# prompt: Byte-array parameter capacity in bytes (-1 = derive)
 config NROS_MAX_BYTE_ARRAY_LEN
-    int "Byte-array parameter capacity in bytes (-1 = derive)"
+    int
     default -1
     help
       Bytes a `byte_array` parameter can hold (nros-params build.rs).
@@ -1587,8 +1615,9 @@ config NROS_MAX_BYTE_ARRAY_LEN
       the crate default of 256 stands.
 
 
+# prompt: Maximum declared parameters per image (-1 = derive)
 config NROS_MAX_PARAMETERS
-    int "Maximum declared parameters per image (-1 = derive)"
+    int
     default -1
     help
       Static parameter-store pool size (nros-params build.rs). A node
@@ -1603,8 +1632,9 @@ config NROS_MAX_PARAMETERS
       crate default of 32. Stating a number here WINS.
 
 
+# prompt: Parameter additional_constraints capacity in bytes
 config NROS_MAX_PARAM_CONSTRAINTS_LEN
-    int "Parameter additional_constraints capacity in bytes"
+    int
     default 0
     range 0 256
     help
@@ -1624,8 +1654,9 @@ config NROS_MAX_PARAM_CONSTRAINTS_LEN
       naming this knob.
 
 
+# prompt: Parameter description capacity in bytes
 config NROS_MAX_PARAM_DESCRIPTION_LEN
-    int "Parameter description capacity in bytes"
+    int
     default 256
     range 0 256
     help
@@ -1640,8 +1671,9 @@ config NROS_MAX_PARAM_DESCRIPTION_LEN
       256 is the most an rcl_interfaces describe reply carries.
 
 
+# prompt: Longest parameter name in bytes (-1 = derive)
 config NROS_MAX_PARAM_NAME_LEN
-    int "Longest parameter name in bytes (-1 = derive)"
+    int
     default -1
     help
       Per-slot name capacity of the parameter store (nros-params build.rs).
@@ -1651,8 +1683,9 @@ config NROS_MAX_PARAM_NAME_LEN
       the crate default of 64 stands.
 
 
+# prompt: String parameter capacity in bytes (-1 = derive)
 config NROS_MAX_STRING_VALUE_LEN
-    int "String parameter capacity in bytes (-1 = derive)"
+    int
     default -1
     help
       Longest string a `string` or `string_array` parameter can hold, and
@@ -1669,8 +1702,9 @@ config NROS_MAX_STRING_VALUE_LEN
       declaration the crate default of 256 stands.
 
 
+# prompt: /parameter_events publisher history depth
 config NROS_PARAM_EVENTS_DEPTH
-    int "/parameter_events publisher history depth"
+    int
     default 1
     range 1 1000
     help
@@ -1682,8 +1716,9 @@ config NROS_PARAM_EVENTS_DEPTH
       matches.
 
 
+# prompt: Parameter service request/reply buffer size (bytes) (-1 = derive)
 config NROS_PARAM_SERVICE_BUFFER_SIZE
-    int "Parameter service request/reply buffer size (bytes) (-1 = derive)"
+    int
     default -1
     help
       Each half of the one request/reply buffer pair an executor's
@@ -1699,8 +1734,9 @@ config NROS_PARAM_SERVICE_BUFFER_SIZE
       once per service.
 
 
+# prompt: QoS history depth the arena budgets per subscription
 config NROS_PUBSUB_QOS_DEPTH
-    int "QoS history depth the arena budgets per subscription"
+    int
     default 10
     help
       How deep a history the executor arena reserves for each pub/sub
@@ -1727,8 +1763,9 @@ config NROS_PUBSUB_QOS_DEPTH
       spin -- so raise it, or state the depths, rather than trimming it to fit.
 
 
+# prompt: Static subscription-handle slots (no_std targets) (-1 = derive)
 config NROS_RMW_SUBSCRIBER_SLOTS
-    int "Static subscription-handle slots (no_std targets) (-1 = derive)"
+    int
     default -1
     help
       nros-rmw-cffi keeps subscription handles in a static slot pool on
@@ -1753,8 +1790,9 @@ config NROS_RMW_SUBSCRIBER_SLOTS
       carrying either must state this knob.
 
 
+# prompt: Per-subscription receive buffer size in bytes (-1 = derive)
 config NROS_SUBSCRIPTION_BUFFER_SIZE
-    int "Per-subscription receive buffer size in bytes (-1 = derive)"
+    int
     default -1
     help
       Serialized-sample capacity of every executor arena subscription
@@ -1786,8 +1824,9 @@ config NROS_SUBSCRIPTION_BUFFER_SIZE
       derive is the shape that cannot disagree.
 
 
+# prompt: Application heap arena size (bytes)
 config NROS_ZEPHYR_HEAP_SIZE
-    int "Application heap arena size (bytes)"
+    int
     default 1048576 if NROS_RMW_CYCLONEDDS
     default 196608 if NROS_CAPABILITY_PARAM_SERVICES || NROS_PARAM_STORE || NROS_CAPABILITY_LIFECYCLE
     default 131072 if RUST
@@ -1862,8 +1901,9 @@ config NROS_ZEPHYR_HEAP_SIZE
 
 if NROS_RMW_XRCE
 
+# prompt: XRCE custom-transport MTU
 config NROS_XRCE_CUSTOM_TRANSPORT_MTU
-    int "XRCE custom-transport MTU"
+    int
     default NROS_XRCE_TRANSPORT_MTU
     range 128 65535
     help
@@ -1879,8 +1919,9 @@ config NROS_XRCE_CUSTOM_TRANSPORT_MTU
       different frame budgets.
 
 
+# prompt: Reliable stream history depth
 config NROS_XRCE_STREAM_HISTORY
-    int "Reliable stream history depth"
+    int
     default 16
     range 2 16
     help
@@ -1904,8 +1945,9 @@ endif # NROS_RMW_XRCE
 
 if NROS_RMW_ZENOH
 
+# prompt: Action inbox slot size (bytes, -1 = derive)
 config NROS_ACTION_INBOX_BYTES
-    int "Action inbox slot size (bytes, -1 = derive)"
+    int
     default -1
     help
       Bytes one request slot holds in the inbox ring of each action server
@@ -1919,8 +1961,9 @@ config NROS_ACTION_INBOX_BYTES
       the service family's resolved size. Maps to NROS_ACTION_INBOX_BYTES.
 
 
+# prompt: Action inbox ring depth
 config NROS_ACTION_INBOX_DEPTH
-    int "Action inbox ring depth"
+    int
     default 4
     help
       Requests one action server queryable holds before the newest is
@@ -1929,8 +1972,9 @@ config NROS_ACTION_INBOX_DEPTH
       NROS_ACTION_INBOX_DEPTH.
 
 
+# prompt: Entities you expect on this ROS 2 domain (0 = state the bytes instead)
 config NROS_GRAPH_MAX_ENTITIES
-    int "Entities you expect on this ROS 2 domain (0 = state the bytes instead)"
+    int
     default 0
     help
       A DECLARED CAPABILITY, not a derivation. The graph cache holds one
@@ -1956,8 +2000,9 @@ config NROS_GRAPH_MAX_ENTITIES
       answer.
 
 
+# prompt: Parameter/lifecycle service inbox slot size (bytes, -1 = derive)
 config NROS_PARAM_SERVICE_INBOX_BYTES
-    int "Parameter/lifecycle service inbox slot size (bytes, -1 = derive)"
+    int
     default -1
     help
       phase-461 W2 -- bytes one request slot holds in the inbox ring of each
@@ -1981,8 +2026,9 @@ config NROS_PARAM_SERVICE_INBOX_BYTES
       Maps to NROS_PARAM_SERVICE_INBOX_BYTES.
 
 
+# prompt: Parameter/lifecycle service inbox ring depth
 config NROS_PARAM_SERVICE_INBOX_DEPTH
-    int "Parameter/lifecycle service inbox ring depth"
+    int
     default 1
     help
       phase-461 W2 -- requests one parameter or lifecycle service queryable
@@ -1997,8 +2043,9 @@ config NROS_PARAM_SERVICE_INBOX_DEPTH
       Must be >= 1. Maps to NROS_PARAM_SERVICE_INBOX_DEPTH.
 
 
+# prompt: Same-session query delivery (-1 = derive, 0 = off, 1 = on)
 config NROS_RMW_LOCAL_QUERYABLE
-    int "Same-session query delivery (-1 = derive, 0 = off, 1 = on)"
+    int
     default -1
     range -1 1
     help
@@ -2028,8 +2075,9 @@ config NROS_RMW_LOCAL_QUERYABLE
       names no backend (RFC-0071). Only the zenoh backend consumes it.
 
 
+# prompt: Service inbox slot size (bytes, -1 = derive)
 config NROS_SERVICE_INBOX_BYTES
-    int "Service inbox slot size (bytes, -1 = derive)"
+    int
     default -1
     help
       Bytes one request slot holds in the inbox ring of every USER service
@@ -2054,8 +2102,9 @@ config NROS_SERVICE_INBOX_BYTES
       plus a fixed header; the map (just mem-report) prices it exactly.
 
 
+# prompt: Service inbox ring depth
 config NROS_SERVICE_INBOX_DEPTH
-    int "Service inbox ring depth"
+    int
     default 4
     help
       Requests one USER service server holds before the newest is dropped.
@@ -2065,8 +2114,9 @@ config NROS_SERVICE_INBOX_DEPTH
       NROS_SERVICE_INBOX_DEPTH.
 
 
+# prompt: Per-subscriber static buffer size (-1 = derive)
 config NROS_SUBSCRIBER_BUFFER_SIZE
-    int "Per-subscriber static buffer size (-1 = derive)"
+    int
     default -1
     help
       Size of the static buffer for each subscriber slot (bytes) -- the SMALL
@@ -2092,40 +2142,45 @@ config NROS_SUBSCRIBER_BUFFER_SIZE
       sample can exceed, which is a SILENT drop on the C++ arena path.
 
 
+# prompt: Maximum unicast batch size
 config NROS_BATCH_UNICAST_SIZE
-    int "Maximum unicast batch size"
+    int
     default 1024
     help
       Maximum unicast batch size before fragmentation (bytes).
       Maps to ZPICO_BATCH_UNICAST_SIZE.
 
 
+# prompt: Maximum reassembled message size
 config NROS_FRAG_MAX_SIZE
-    int "Maximum reassembled message size"
+    int
     default 2048
     help
       Maximum reassembled message size after defragmentation (bytes).
       Maps to ZPICO_FRAG_MAX_SIZE.
 
 
+# prompt: Get poll interval (ms)
 config NROS_GET_POLL_INTERVAL_MS
-    int "Get poll interval (ms)"
+    int
     default 10
     help
       Polling interval for pending get operations (milliseconds).
       Maps to ZPICO_GET_POLL_INTERVAL_MS.
 
 
+# prompt: Get reply buffer size
 config NROS_GET_REPLY_BUF_SIZE
-    int "Get reply buffer size"
+    int
     default 4096
     help
       Size of the buffer for get (service call) reply payloads (bytes).
       Maps to ZPICO_GET_REPLY_BUF_SIZE.
 
 
+# prompt: Graph liveliness cache size
 config NROS_GRAPH_CACHE_SIZE
-    int "Graph liveliness cache size"
+    int
     default 65536
     help
       Bytes of NUL-separated liveliness keyexprs the graph cache holds.
@@ -2143,8 +2198,9 @@ config NROS_GRAPH_CACHE_SIZE
       count rather than as a wrong answer.
 
 
+# prompt: Keep a graph cache (liveliness subscriber on the whole domain)
 config NROS_ZENOH_GRAPH_DISCOVERY
-    bool "Keep a graph cache (liveliness subscriber on the whole domain)"
+    bool
     # DERIVED default: off when every zenoh link this image compiles is serial
     # or CAN. Mirrors `graph_discovery_derived` (nros-zpico-build) and the
     # `zenoh.graph_discovery` implication of `transport.kind=serial`
@@ -2182,8 +2238,9 @@ config NROS_ZENOH_GRAPH_DISCOVERY
       compiles an IP link keeps the old default.
 
 
+# prompt: zenoh-pico lease task priority (normalised band, 0-255)
 config NROS_ZENOH_LEASE_PRIORITY
-    int "zenoh-pico lease task priority (normalised band, 0-255)"
+    int
     default 200
     help
       As NROS_ZENOH_READ_PRIORITY, for the lease (keep-alive) task. The lease
@@ -2192,8 +2249,9 @@ config NROS_ZENOH_LEASE_PRIORITY
       unexplained disconnect rather than as a scheduling problem.
 
 
+# prompt: Subscribers served from the large payload class (-1 = derive)
 config NROS_MAX_LARGE_SUBSCRIBERS
-    int "Subscribers served from the large payload class (-1 = derive)"
+    int
     default -1
     help
       Subscribers whose rx_buffer_hint exceeds SUBSCRIBER_SIZE_THRESHOLD and
@@ -2219,8 +2277,9 @@ config NROS_MAX_LARGE_SUBSCRIBERS
       NROS_SUBSCRIBER_BUFFER_SIZE for the rest of that caveat.
 
 
+# prompt: Maximum concurrent liveliness tokens (-1 = derive)
 config NROS_MAX_LIVELINESS
-    int "Maximum concurrent liveliness tokens (-1 = derive)"
+    int
     default -1
     help
       Maximum number of concurrent liveliness tokens in the shim layer.
@@ -2242,16 +2301,18 @@ config NROS_MAX_LIVELINESS
       state it.
 
 
+# prompt: Maximum concurrent pending get operations
 config NROS_MAX_PENDING_GETS
-    int "Maximum concurrent pending get operations"
+    int
     default 4
     help
       Maximum number of concurrent pending get (service call) operations.
       Maps to ZPICO_MAX_PENDING_GETS.
 
 
+# prompt: Maximum concurrent publishers (-1 = derive)
 config NROS_MAX_PUBLISHERS
-    int "Maximum concurrent publishers (-1 = derive)"
+    int
     default -1
     help
       Maximum number of concurrent zenoh publishers in the shim layer.
@@ -2272,8 +2333,9 @@ config NROS_MAX_PUBLISHERS
       carrying either must state this knob.
 
 
+# prompt: Maximum concurrent queryables (-1 = derive)
 config NROS_MAX_QUERYABLES
-    int "Maximum concurrent queryables (-1 = derive)"
+    int
     default -1
     help
       Maximum number of concurrent zenoh queryables (service servers) in the shim.
@@ -2304,8 +2366,9 @@ config NROS_MAX_QUERYABLES
       Two nodes already need 12, which is over the historical default of 8.
 
 
+# prompt: Maximum concurrent subscribers (-1 = derive)
 config NROS_MAX_SUBSCRIBERS
-    int "Maximum concurrent subscribers (-1 = derive)"
+    int
     default -1
     help
       Maximum number of concurrent zenoh subscribers in the shim layer.
@@ -2326,8 +2389,9 @@ config NROS_MAX_SUBSCRIBERS
       carrying either must state this knob.
 
 
+# prompt: zenoh-pico read task priority (normalised band, 0-255)
 config NROS_ZENOH_READ_PRIORITY
-    int "zenoh-pico read task priority (normalised band, 0-255)"
+    int
     default 200
     help
       Scheduling priority of the zenoh-pico READ task, on the platform ABI's
@@ -2370,8 +2434,9 @@ config NROS_ZENOH_READ_PRIORITY
       modes with real cost — see issues 0506 and 0623 before changing it.
 
 
+# prompt: Per-service static buffer size (alias of NROS_SERVICE_INBOX_BYTES)
 config NROS_SERVICE_BUFFER_SIZE
-    int "Per-service static buffer size (alias of NROS_SERVICE_INBOX_BYTES)"
+    int
     default 1024
     help
       phase-461 W1 -- the one-release ALIAS of NROS_SERVICE_INBOX_BYTES,
@@ -2380,8 +2445,9 @@ config NROS_SERVICE_BUFFER_SIZE
       Maps to ZPICO_SERVICE_BUFFER_SIZE.
 
 
+# prompt: Large-class payload buffer size (-1 = derive)
 config NROS_SUBSCRIBER_LARGE_SIZE
-    int "Large-class payload buffer size (-1 = derive)"
+    int
     default -1
     help
       Per-sample capacity in the large payload class (bytes). The crate default
@@ -2396,8 +2462,9 @@ config NROS_SUBSCRIBER_LARGE_SIZE
       The crate default then applies and costs nothing.
 
 
+# prompt: Receive ring depth per subscriber
 config NROS_SUBSCRIBER_RING_DEPTH
-    int "Receive ring depth per subscriber"
+    int
     default 4
     help
       Samples held per subscriber before the ring drops the oldest. This is
@@ -2408,8 +2475,9 @@ config NROS_SUBSCRIBER_RING_DEPTH
       Maps to ZPICO_SUBSCRIBER_RING_DEPTH.
 
 
+# prompt: zenoh-pico tx batching (one send per executor spin)
 config NROS_ZENOH_TX_BATCH
-    bool "zenoh-pico tx batching (one send per executor spin)"
+    bool
     # DERIVED from nros-platform-zephyr [knobs.zenoh.tx].batch —
     # re-render with `scripts/check-zephyr-knob-agreement.py --write`.
     default y
@@ -2431,8 +2499,9 @@ config NROS_ZENOH_TX_BATCH
       kconfig_platform_default_drift test asserts the mirror.
 
 
+# prompt: zenoh-pico tx batch flush cadence (ms)
 config NROS_ZENOH_TX_BATCH_FLUSH_MS
-    int "zenoh-pico tx batch flush cadence (ms)"
+    int
     # DERIVED from nros-platform-zephyr [knobs.zenoh.tx].flush_ms —
     # re-render with `scripts/check-zephyr-knob-agreement.py --write`.
     default 50
@@ -2446,8 +2515,9 @@ config NROS_ZENOH_TX_BATCH_FLUSH_MS
       Forwards to zpico.c's ZPICO_TX_BATCH_FLUSH_MS.
 
 
+# prompt: zenoh-pico split tx locking (append while sending)
 config NROS_ZENOH_TX_SPLIT_LOCK
-    bool "zenoh-pico split tx locking (append while sending)"
+    bool
     # DERIVED from nros-platform-zephyr [knobs.zenoh.tx].split_lock —
     # re-render with `scripts/check-zephyr-knob-agreement.py --write`.
     default y
