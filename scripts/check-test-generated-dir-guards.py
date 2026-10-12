@@ -66,7 +66,7 @@ Three narrowings, each MEASURED against the 336 test targets rather than chosen:
    when the same binding is a `join()` / `read_dir()` / `create_dir_all()`
    receiver. Without this, six extensionless BINARY paths under a build root
    (`build/xrce-agent/MicroXRCEAgent`, `build/cyclonedds/bin/idlc`,
-   `packages/cli/target/release/nros`, ...) would be flagged for the correct
+   the in-tree `nros` CLI, ...) would be flagged for the correct
    spelling -- naming the file is the fix, not the defect.
 
 ## Reach

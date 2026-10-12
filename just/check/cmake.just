@@ -333,7 +333,10 @@ probe-shared-types:
         nros_check_skip probe-shared-types "missing host tool(s):$_missing"
         exit 0
     fi
-    if [ ! -x packages/cli/target/release/nros ]; then
+    # shellcheck source=scripts/build/cargo.sh
+    source scripts/build/cargo.sh
+    # issue 1850 — this checkout's CLI (or an explicit $NROS_CLI), never PATH.
+    if ! _cli="$(nros_cli_bin --checkout-only)"; then
         # shellcheck source=scripts/build/check-skip.sh
         source scripts/build/check-skip.sh
         nros_check_skip probe-shared-types "no in-tree CLI -- run \`just setup-cli\`"
@@ -343,8 +346,8 @@ probe-shared-types:
     # shellcheck source=scripts/build/check-store-corrosion.sh
     source scripts/build/check-store-corrosion.sh
     nros_gate_require_store_corrosion_self_test || exit 1  # issue 1739
-    nros_gate_require_store_corrosion probe-shared-types packages/cli/target/release/nros || exit 0
-    ./tests/cmake-probe-shared-types-tests.sh
+    nros_gate_require_store_corrosion probe-shared-types "$_cli" || exit 0
+    NROS_CLI="$_cli" ./tests/cmake-probe-shared-types-tests.sh
 
 # issue 1470 -- the probe and the real build must agree about whether a type is
 # BOUNDED.
@@ -390,7 +393,10 @@ probe-workspace-caps:
         nros_check_skip probe-workspace-caps "missing host tool(s):$_missing"
         exit 0
     fi
-    if [ ! -x packages/cli/target/release/nros ]; then
+    # shellcheck source=scripts/build/cargo.sh
+    source scripts/build/cargo.sh
+    # issue 1850 — this checkout's CLI (or an explicit $NROS_CLI), never PATH.
+    if ! _cli="$(nros_cli_bin --checkout-only)"; then
         # shellcheck source=scripts/build/check-skip.sh
         source scripts/build/check-skip.sh
         nros_check_skip probe-workspace-caps "no in-tree CLI -- run \`just setup-cli\`"
@@ -400,8 +406,8 @@ probe-workspace-caps:
     # shellcheck source=scripts/build/check-store-corrosion.sh
     source scripts/build/check-store-corrosion.sh
     nros_gate_require_store_corrosion_self_test || exit 1  # issue 1739
-    nros_gate_require_store_corrosion probe-workspace-caps packages/cli/target/release/nros || exit 0
-    ./tests/cmake-probe-workspace-caps-tests.sh
+    nros_gate_require_store_corrosion probe-workspace-caps "$_cli" || exit 0
+    NROS_CLI="$_cli" ./tests/cmake-probe-workspace-caps-tests.sh
 
 # issue 1261 -- a workspace whose bringup declares a capability must pass it as
 # SYSTEM. Without it `nano_ros_workspace()` resolves no capability axes, so the
@@ -420,7 +426,10 @@ workspace-system-required:
         nros_check_skip workspace-system-required "missing host tool(s): cmake / c++"
         exit 0
     fi
-    if [ ! -x packages/cli/target/release/nros ]; then
+    # shellcheck source=scripts/build/cargo.sh
+    source scripts/build/cargo.sh
+    # issue 1850 — this checkout's CLI (or an explicit $NROS_CLI), never PATH.
+    if ! _cli="$(nros_cli_bin --checkout-only)"; then
         # shellcheck source=scripts/build/check-skip.sh
         source scripts/build/check-skip.sh
         nros_check_skip workspace-system-required "no in-tree CLI -- run \`just setup-cli\`"
@@ -429,8 +438,8 @@ workspace-system-required:
     # shellcheck source=scripts/build/check-store-corrosion.sh
     source scripts/build/check-store-corrosion.sh
     nros_gate_require_store_corrosion_self_test || exit 1  # issue 1739
-    nros_gate_require_store_corrosion workspace-system-required packages/cli/target/release/nros || exit 0
-    ./tests/cmake-workspace-system-required-tests.sh
+    nros_gate_require_store_corrosion workspace-system-required "$_cli" || exit 0
+    NROS_CLI="$_cli" ./tests/cmake-workspace-system-required-tests.sh
 
 reconfigure-on-change:
     #!/usr/bin/env bash

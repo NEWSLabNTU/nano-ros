@@ -41,11 +41,19 @@
 # `nros_check_skip` does. A gate that skips a whole recipe and one that skips a
 # single step need different things from the same answer.
 nros_cli_usable() {
-    local bin="${1:-packages/cli/target/release/nros}"
+    local bin="${1:-}"
     nros_cli_unusable_reason=""
+    if [ -z "$bin" ]; then
+        # issue 1850 — the in-tree CLI through its one resolver.
+        if ! declare -F nros_cli_bin >/dev/null; then
+            # shellcheck source=scripts/build/cargo.sh
+            source "$(dirname "${BASH_SOURCE[0]}")/cargo.sh"
+        fi
+        bin="$(nros_cli_bin --checkout-only)" || bin=""
+    fi
 
-    if [ ! -x "$bin" ]; then
-        nros_cli_unusable_reason="no in-tree nros at $bin (just setup-cli)"
+    if [ -z "$bin" ] || [ ! -x "$bin" ]; then
+        nros_cli_unusable_reason="no in-tree nros${bin:+ at $bin} (just setup-cli)"
         return 1
     fi
 

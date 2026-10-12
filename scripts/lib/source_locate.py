@@ -20,8 +20,6 @@ otherwise — so a provisioning check can accept the store copy for it.
 
 from __future__ import annotations
 
-import os
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -29,14 +27,26 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def nros_cli_bin(checkout_only: bool = False) -> str | None:
+    """The `nros` CLI through its ONE resolver, `nros_cli_bin` in
+    `scripts/build/cargo.sh` (issue 1850) — `$NROS_CLI`, this checkout's
+    build, then (unless `checkout_only`) PATH and the store. Asked, never
+    restated: a Python copy of the ladder is how three spellings drifted."""
+    args = ["--checkout-only"] if checkout_only else []
+    try:
+        r = subprocess.run(
+            ["bash", "-c", 'source "$1"; shift; nros_cli_bin "$@"', "_",
+             str(ROOT / "scripts/build/cargo.sh"), *args],
+            capture_output=True, text=True, check=False,
+        )
+    except OSError:
+        return None
+    out = r.stdout.strip()
+    return out if r.returncode == 0 and out else None
+
+
 def _cli() -> str | None:
-    explicit = os.environ.get("NROS_CLI")
-    if explicit and os.access(explicit, os.X_OK):
-        return explicit
-    built = ROOT / "packages/cli/target/release/nros"
-    if built.is_file() and os.access(built, os.X_OK):
-        return str(built)
-    return shutil.which("nros")
+    return nros_cli_bin()
 
 
 def _index() -> dict:

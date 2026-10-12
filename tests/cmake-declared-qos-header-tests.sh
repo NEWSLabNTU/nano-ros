@@ -95,8 +95,11 @@ fi
 
 # The REAL CLI, not a stub: the CONTENT of the header is the thing under test,
 # and a stub that writes a file only proves cmake can copy one.
-NROS_BIN="${NROS_CLI:-$PROJECT_ROOT/packages/cli/target/release/nros}"
-if [ ! -x "$NROS_BIN" ]; then
+# shellcheck source=scripts/build/cargo.sh
+source "$PROJECT_ROOT/scripts/build/cargo.sh"
+# issue 1850 — this checkout's CLI, or the explicit $NROS_CLI the gate passes.
+NROS_BIN="$(nros_cli_bin --checkout-only)" || NROS_BIN=""
+if [ -z "$NROS_BIN" ]; then
     fail "no built \`nros\` at $NROS_BIN -- run \`just setup-cli\`"
     exit 1
 fi

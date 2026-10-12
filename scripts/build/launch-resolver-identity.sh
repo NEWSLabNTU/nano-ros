@@ -44,6 +44,47 @@
 #   3. never "assume unchanged". No resolver ⇒ exit 1 with no output, so each
 #      caller spells its own stable absent-marker.
 
+# nros_launch_resolve_bin <repo_root>
+#
+# The resolver `nros sync` would spawn for checkout <repo_root> — issue 1850.
+# The ladder has ONE owner, `model_location::launch_resolver_from` (Rust), and
+# the shell READS it through `nros locate tool nros-launch-resolve`, anchored
+# on <repo_root>'s index. Never `$PATH` (issue 0285).
+#
+# Chicken-and-egg fallback, and the only one: before any CLI that knows
+# `locate tool` exists (a fresh clone, `setup-cli` itself, bootstrap) there is
+# nothing to ask, so the answer is the explicit `$NROS_LAUNCH_RESOLVE`, else
+# what this checkout's `setup-launch-resolve` built
+# (`nros_launch_resolve_built_bin`) — the first two rungs of the same ladder.
+#
+# stdout: the path (no newline). exit 1, no output: no resolver.
+nros_launch_resolve_bin() {
+    local root="${1:?usage: nros_launch_resolve_bin <repo_root>}"
+    local cli="" out=""
+    if ! declare -F nros_cli_bin >/dev/null; then
+        # shellcheck source=scripts/build/cargo.sh
+        source "$root/scripts/build/cargo.sh"
+    fi
+    if cli="$(nros_cli_bin 2>/dev/null)" \
+        && out="$("$cli" locate --index "$root/nros-sdk-index.toml" \
+            tool nros-launch-resolve 2>/dev/null)" \
+        && [ -n "$out" ] && [ -x "$out" ]; then
+        printf '%s' "$out"
+        return 0
+    fi
+    if [ -n "${NROS_LAUNCH_RESOLVE:-}" ] && [ -x "$NROS_LAUNCH_RESOLVE" ]; then
+        printf '%s' "$NROS_LAUNCH_RESOLVE"
+        return 0
+    fi
+    if ! declare -F nros_launch_resolve_built_bin >/dev/null; then
+        # shellcheck source=scripts/build/launch-resolve-stale.sh
+        source "$root/scripts/build/launch-resolve-stale.sh"
+    fi
+    out="$(nros_launch_resolve_built_bin "$root")"
+    [ -x "$out" ] || return 1
+    printf '%s' "$out"
+}
+
 # nros_launch_resolver_identity <repo_root>
 #
 # stdout: the identity (no trailing newline). exit 0.
@@ -51,25 +92,7 @@
 nros_launch_resolver_identity() {
     local root="${1:?usage: nros_launch_resolver_identity <repo_root>}"
     local bin=""
-
-    # Resolution mirrors `launch_resolver_path()` in `nros-cli-core` — with the
-    # same deliberate omission of `$PATH` (issue 0285: an unrelated ROS 2
-    # `play_launch` won that race). Explicit override, then the per-checkout
-    # build, then the installed layout beside `nros`.
-    if [ -n "${NROS_LAUNCH_RESOLVE:-}" ] && [ -x "${NROS_LAUNCH_RESOLVE}" ]; then
-        bin="$NROS_LAUNCH_RESOLVE"
-    else
-        local crate="$root/packages/cli/nros-launch-resolve"
-        # profile-literal-ok: host tool: the launch resolver's own binary
-        local built="${CARGO_TARGET_DIR:-$crate/target}/release/nros-launch-resolve"
-        if [ -x "$built" ]; then
-            bin="$built"
-        # profile-literal-ok: host tool: the installed layout puts both side by side
-        elif [ -x "$root/packages/cli/target/release/nros-launch-resolve" ]; then
-            # profile-literal-ok: host tool: same path, taken
-            bin="$root/packages/cli/target/release/nros-launch-resolve"
-        fi
-    fi
+    bin="$(nros_launch_resolve_bin "$root")" || bin=""
     [ -n "$bin" ] || return 1
 
     local ver sha

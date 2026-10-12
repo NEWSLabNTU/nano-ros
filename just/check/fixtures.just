@@ -232,14 +232,17 @@ fixture-staleness-probes:
     # The probe asks the CLI for the platform's cargo profile, so the leaf
     # cannot be built without it — and a missing CLI would surface as every case
     # failing on `profile ... is not defined`, which reads as a probe defect.
-    _cli="${NROS_CLI:-packages/cli/target/release/nros}"
-    [ -x "$_cli" ] || _missing="$_missing nros(just setup-cli)"
+    # shellcheck source=scripts/build/cargo.sh
+    source scripts/build/cargo.sh
+    # issue 1850 — $NROS_CLI, else this checkout's CLI; never PATH.
+    _cli="$(nros_cli_bin --checkout-only)" || _missing="$_missing nros(just setup-cli)"
     if [ -n "$_missing" ]; then
         # shellcheck source=scripts/build/check-skip.sh
         source scripts/build/check-skip.sh
         nros_check_skip fixture-staleness-probes "missing:$_missing"
         exit 0
     fi
+    export NROS_CLI="$_cli"
     ./tests/fixture-staleness-probe-tests.sh
 
 # A fixture stamp may not claim what the build did not achieve. The stamp used

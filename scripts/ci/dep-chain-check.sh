@@ -29,15 +29,13 @@ set -uo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/../.." # repo root
 
-# Phase 218 lookup: prefer the per-checkout sub-workspace binary, fall
-# back to PATH, then to the transitional ~/.nros/bin location.
+# The one resolver (issue 1850): this checkout's build, PATH, the store. The
+# last spelling only names the path the precondition below reports missing.
+# shellcheck source=scripts/build/cargo.sh
+. scripts/build/cargo.sh
 if [ -n "${NROS:-}" ]; then
     : # already set; respect the override
-elif [ -x "packages/cli/target/release/nros" ]; then
-    NROS="$(pwd)/packages/cli/target/release/nros"
-elif command -v nros >/dev/null 2>&1; then
-    NROS="$(command -v nros)"
-else
+elif ! NROS="$(nros_cli_bin 2>/dev/null)"; then
     NROS="${NROS_HOME:-$HOME/.nros}/bin/nros"
 fi
 INDEX="${NROS_SDK_INDEX:-nros-sdk-index.toml}"

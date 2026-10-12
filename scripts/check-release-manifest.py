@@ -64,7 +64,7 @@ So the properties below are gated rather than remembered.
     `nros codegen entry` with a remedy naming a checkout the user does not have.
 
   Both NAMES are read out of the Rust that resolves them — `SHIPPED_SUBDIR` in
-  `nros_launcher::checkout`, `LAUNCH_RESOLVER` in `cmd::ws` — for R1's reason: a
+  `nros_launcher::checkout`, `LAUNCH_RESOLVER` in `model_location` — for R1's reason: a
   gate that spells a path itself goes green while the reader looks elsewhere.
 * **R6 — an installed SDK root reads its submodule pins from the index it
   ships, and every reader recognises an installed root the same way** (issue
@@ -100,7 +100,10 @@ CODEGEN_SRC = "packages/core/nros-core/src/codegen_version.rs"
 # R5 — the two Rust files that decide where a build looks for what the asset
 # must carry. Read, never spelled here (R1's reason).
 LAUNCHER = os.path.join(ROOT, "packages", "cli", "nros-launcher", "src", "checkout.rs")
-WS = os.path.join(ROOT, "packages", "cli", "nros-cli-core", "src", "cmd", "ws.rs")
+# The launch resolver's one ladder (issue 1850 moved its name here from cmd/ws.rs).
+WS = os.path.join(
+    ROOT, "packages", "core", "nros-orchestration-ir", "src", "model_location.rs"
+)
 # The script that owns the SDK root's path list and verifies what it staged.
 STAGE_SCRIPT = "scripts/stage-sdk-root.sh"
 STAGE_PATH = os.path.join(ROOT, "scripts", "stage-sdk-root.sh")

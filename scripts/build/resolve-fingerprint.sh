@@ -28,10 +28,13 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 repo_root="$PWD"
 
-bin="$repo_root/packages/cli/nros-launch-resolve/target/release/nros-launch-resolve"
+# The resolver `nros sync` would run — the one ladder (issue 1850).
+# shellcheck source=scripts/build/launch-resolver-identity.sh
+. "$repo_root/scripts/build/launch-resolver-identity.sh"
+bin="$(nros_launch_resolve_bin "$repo_root")" || bin=""
 probe="$repo_root/packages/cli/nros-launch-resolve/tests/fixtures/fingerprint-launch"
 
-if [ ! -x "$bin" ]; then
+if [ -z "$bin" ]; then
     printf 'resolver-absent'
     exit 0
 fi

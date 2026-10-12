@@ -75,6 +75,8 @@ export recorder_schema
 # writer and have SIGPIPE read as a miss.
 # shellcheck source=scripts/lib/grep-q.sh
 . "$repo_root/scripts/lib/grep-q.sh"
+# shellcheck source=scripts/build/cargo.sh
+. "$repo_root/scripts/build/cargo.sh"   # nros_cli_bin (issue 1850)
 
 fail() { echo "check-entity-census: FAIL -- $*" >&2; exit 1; }
 
@@ -97,7 +99,7 @@ resolve_nros() {
         "${NROS_CLI:-}" \
         "${CARGO_TARGET_DIR:-}/release/nros" \
         "${CARGO_TARGET_DIR:-}/debug/nros" \
-        "$repo_root/packages/cli/target/release/nros" \
+        "$(nros_cli_bin --checkout-only 2>/dev/null || true)" \
         "$repo_root/packages/cli/target/debug/nros" \
         "$(command -v nros 2>/dev/null || true)"
     do

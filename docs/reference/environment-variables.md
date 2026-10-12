@@ -20,10 +20,17 @@ after `just setup-cli`. `scripts/build/cargo.sh::nros_cli_bin` resolves
 the active binary in this order:
 
 1. `$NROS_CLI` (explicit override)
-2. `nros` already on `$PATH` (e.g. activated via `source ./activate.sh`)
-3. `packages/cli/target/release/nros` (per-checkout build, preferred)
-4. `${NROS_HOME:-~/.nros}/bin/nros` (**transitional**, will be removed)
+2. `packages/cli/target/release/nros` (this checkout's build — before PATH
+   since phase-484 W2d, because a linked worktree inherits its parent's PATH)
+3. `nros` already on `$PATH` (e.g. activated via `source ./activate.sh`)
+4. `${NROS_HOME:-~/.nros}/bin/nros` (an installed toolchain)
 5. error
+
+`nros_cli_bin --checkout-only` stops after rung 2 and answers nothing (exit 1)
+instead of falling to PATH or the store — the question a gate precondition
+asks (issue 1850). `nros-launch-resolve` has its own ladder
+(`$NROS_LAUNCH_RESOLVE` → this checkout's build → beside `nros` → the store,
+never PATH); `nros locate tool nros-launch-resolve` prints its answer.
 
 | Variable                  | Description                                                                                              | Default                |
 |---------------------------|----------------------------------------------------------------------------------------------------------|------------------------|

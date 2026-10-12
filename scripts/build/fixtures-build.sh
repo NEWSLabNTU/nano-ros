@@ -394,10 +394,11 @@ if [ "${#cargo_records[@]}" -gt 0 ]; then
     # `nros_codegen_fingerprint` (issue 1018) is reached only THROUGH
     # `nros_codegen_stamp_compute`, which is the 0400/0706 shape a make leaf
     # turns into an unbound command after a long build. `check-export-f-closure`
-    # walks the call graph for exactly this.
+    # walks the call graph for exactly this. `nros_cli_bin` (issue 1850) finds
+    # its checkout in a leaf through `_NROS_CLI_BIN_ROOT` (cargo.sh).
     export -f nros_codegen_stamp_compute nros_codegen_stamp_check_or_wipe \
               nros_codegen_stamp_write _codegen_stamp_repo_root _codegen_stamp_sources \
-              nros_codegen_fingerprint
+              nros_codegen_fingerprint nros_cli_bin
     # phase-351 W3 — the NuttX `libc` re-append (Phase 214.M.2,
     # `scripts/build/nuttx-libc-patch.sh`) is GONE. It existed because sync
     # WITHHELD every `${workspace}`-bearing key from the board projection, so

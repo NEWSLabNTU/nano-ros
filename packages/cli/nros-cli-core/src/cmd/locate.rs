@@ -32,7 +32,8 @@ pub struct Args {
     /// Resources to locate: a `[source.<name>]` of the index, or `store` /
     /// `nano-ros` for the two roots. `artifact <name>…` instead locates a
     /// cargo-built artifact (`c-archive`, `cpp-archive`, `c-include`,
-    /// `cpp-include`, `c-config-header`, `cpp-config-header`).
+    /// `cpp-include`, `c-config-header`, `cpp-config-header`); `tool <name>`
+    /// a first-party host binary (`nros-launch-resolve`).
     pub names: Vec<String>,
 
     /// Every `[source.*]` row. A row that resolves nowhere is skipped in
@@ -163,6 +164,9 @@ pub fn run(args: Args) -> Result<()> {
 
     if args.names.first().map(String::as_str) == Some("artifact") {
         return run_artifact(&args, checkout.as_deref());
+    }
+    if args.names.first().map(String::as_str) == Some("tool") {
+        return run_tool(&args, checkout.as_deref());
     }
 
     let mut names = args.names.clone();
@@ -321,6 +325,51 @@ fn run_artifact(args: &Args, checkout: Option<&std::path::Path>) -> Result<()> {
                 a.relative(args.target.as_deref(), &args.profile).display()
             );
         }
+    }
+    Ok(())
+}
+
+/// `nros locate tool <name>` — a first-party host binary (issue 1850). One
+/// tool today, `nros-launch-resolve`, through the ONE ladder
+/// (`model_location::launch_resolver_bin_for_exe`) — the answer `nros sync`
+/// itself spawns, so the shell's `nros_launch_resolve_bin` (and the identity
+/// fixtures record) can never name a different binary from the one that ran.
+/// "This checkout" is the one the index belongs to, else this binary's own.
+fn run_tool(args: &Args, checkout: Option<&std::path::Path>) -> Result<()> {
+    use crate::orchestration::model_location::{LAUNCH_RESOLVER, launch_resolver_bin_for_exe};
+    let [_, name] = args.names.as_slice() else {
+        bail!("name one tool: `nros locate tool {LAUNCH_RESOLVER}`");
+    };
+    if name != LAUNCH_RESOLVER {
+        bail!("no tool `{name}` — known: {LAUNCH_RESOLVER}");
+    }
+    let exe = std::env::current_exe()?;
+    let Some(path) = launch_resolver_bin_for_exe(&exe, checkout) else {
+        bail!(
+            "{LAUNCH_RESOLVER} not found ($NROS_LAUNCH_RESOLVE, this checkout's build, beside \
+             this nros, the store) — run `just setup-launch-resolve` (or \
+             ./scripts/bootstrap.sh)"
+        );
+    };
+    match args.format {
+        Format::Path => println!("{}", path.display()),
+        Format::Sh => println!(
+            "{}='{}'",
+            var_name(&format!("tool-{name}")),
+            path.display().to_string().replace('\'', "'\\''")
+        ),
+        Format::Cmake => println!(
+            "set({} \"{}\")",
+            var_name(&format!("tool-{name}")),
+            path.display()
+        ),
+    }
+    if args.why {
+        eprintln!(
+            "  {:<10} {} (model_location::launch_resolver_from)",
+            "tool",
+            path.display()
+        );
     }
     Ok(())
 }

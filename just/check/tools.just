@@ -225,7 +225,10 @@ nros-installer:
     done
     command -v sha256sum >/dev/null 2>&1 || command -v shasum >/dev/null 2>&1 \
         || _missing="$_missing sha256sum"
-    [ -x "${NROS_CLI:-packages/cli/target/release/nros}" ] \
+    # shellcheck source=scripts/build/cargo.sh
+    source scripts/build/cargo.sh
+    # issue 1850 — $NROS_CLI, else this checkout's CLI; never PATH.
+    _cli="$(nros_cli_bin --checkout-only)" \
         || _missing="$_missing nros(just setup-cli)"
     if [ -n "$_missing" ]; then
         # shellcheck source=scripts/build/check-skip.sh
@@ -233,6 +236,7 @@ nros-installer:
         nros_check_skip nros-installer "missing:$_missing"
         exit 0
     fi
+    export NROS_CLI="$_cli"
     ./tests/nros-installer-tests.sh
 
 # Issue 0466 — report EVERY unmet tier precondition at once (CLI stamp, leaf

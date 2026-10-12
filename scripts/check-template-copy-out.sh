@@ -195,14 +195,13 @@ built_artifacts() {
           done
 }
 
+# shellcheck source=scripts/build/cargo.sh
+. "$repo_root/scripts/build/cargo.sh"
+# The one resolver (issue 1850): $NROS_CLI, this checkout's build, PATH, store.
 nros_bin() {
-    if [ -n "${NROS_CLI:-}" ] && [ -x "${NROS_CLI}" ]; then
-        printf '%s' "$NROS_CLI"
-    elif [ -x "$repo_root/packages/cli/target/release/nros" ]; then
-        printf '%s' "$repo_root/packages/cli/target/release/nros"
-    else
-        command -v nros
-    fi
+    local b
+    b="$(nros_cli_bin 2>/dev/null)" || return 1
+    printf '%s' "$b"
 }
 
 
@@ -399,8 +398,8 @@ run_one() {
         # "the copy does not build" over a `sed: can't read .../build.log`,
         # which blames the template for a missing tool.
         echo "  $label: FAIL — no \`nros\` CLI to build with" >&2
-        echo "      Looked at \$NROS_CLI, packages/cli/target/release/nros," >&2
-        echo "      then PATH. Build it: just setup-cli" >&2
+        echo "      Looked where nros_cli_bin looks: \$NROS_CLI, this checkout's" >&2
+        echo "      build, PATH, the store. Build it: just setup-cli" >&2
         return 2
     fi
     if [ "$brc" -eq 5 ]; then

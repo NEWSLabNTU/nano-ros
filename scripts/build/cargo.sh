@@ -451,7 +451,18 @@ nros_locate_artifact() {
     "$bin" locate artifact "$name" "$@"
 }
 
+# The checkout this file is in, captured when it is SOURCED and exported: an
+# `export -f` copy of `nros_cli_bin` runs in a make leaf with an EMPTY
+# BASH_SOURCE, so it could not find "this checkout" from its own path (issue
+# 1850 measured it answering nothing: bash names its source `environment`). Re-set by every source, so a shell that
+# sources another checkout's cargo.sh re-anchors it.
+_NROS_CLI_BIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/../.." 2>/dev/null && pwd)" \
+    || _NROS_CLI_BIN_ROOT=""
+export _NROS_CLI_BIN_ROOT
+
 nros_cli_bin() {
+    # nros_cli_bin [--checkout-only]
+    #
     # Phase 218.D.3, reordered by phase-484 W2d (RFC-0103 D6) — resolution order:
     #   1. $NROS_CLI                                — explicit override
     #   2. <this checkout>/packages/cli/target/release/nros
@@ -465,24 +476,56 @@ nros_cli_bin() {
     # checkout's binary — an older one that lacked `nros locate`, which made
     # every `nros_locate_source` call in the worktree answer nothing (issue
     # 1280's class). `$NROS_REPO_DIR` is no longer consulted (D6).
+    #
+    # `--checkout-only` (issue 1850) stops after rung 2: "the CLI this checkout
+    # built (or the one `$NROS_CLI` names explicitly), or NOTHING" — exit 1,
+    # empty stdout, no message. It is the question a gate PRECONDITION asks: a
+    # gate that skips while this checkout's CLI is unbuilt must keep skipping,
+    # not run against another tree's binary found on PATH or in the store
+    # (issue 1280's class again). Every in-repo spelling of the in-tree path
+    # goes through here; `check host-tool-path-literals` holds the literal out
+    # of code.
+    #
+    # `--root <dir>` anchors rung 2 on checkout <dir> instead of the one this
+    # file is in — for a caller whose subject is a NAMED checkout
+    # (`nros_codegen_fingerprint <root>`, whose test builds a synthetic one).
+    local _checkout_only=0 _root=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --checkout-only) _checkout_only=1 ;;
+            --root) _root="${2:?nros_cli_bin: --root needs a directory}"; shift ;;
+            *) echo "nros_cli_bin: unknown argument: $1" >&2; return 2 ;;
+        esac
+        shift
+    done
     if [ -n "${NROS_CLI:-}" ]; then
         if [ -x "$NROS_CLI" ]; then
             printf '%s\n' "$NROS_CLI"
             return 0
         fi
+        [ "$_checkout_only" = 1 ] && return 1
         echo "NROS_CLI points to a non-executable path: $NROS_CLI" >&2
         return 2
     fi
     # This file lives at <repo>/scripts/build/cargo.sh.
-    local repo_root="" _self
-    _self="${BASH_SOURCE[0]:-$0}"
-    if [ -n "$_self" ]; then
+    local repo_root="$_root" _self
+    _self="${BASH_SOURCE[0]:-}"
+    # bash reports an imported function's source as the word `environment`.
+    if [ -n "$repo_root" ]; then
+        :
+    elif [ -n "$_self" ] && [ "$_self" != environment ]; then
         repo_root="$(cd "$(dirname "$_self")/../.." 2>/dev/null && pwd)" || repo_root=""
+    else
+        # An imported (`export -f`) copy — see `_NROS_CLI_BIN_ROOT` above.
+        repo_root="${_NROS_CLI_BIN_ROOT:-}"
     fi
+    # host-tool-path-ok: rung 2 IS the definition (`setup-cli` writes here).
     if [ -n "$repo_root" ] && [ -x "$repo_root/packages/cli/target/release/nros" ]; then
+        # host-tool-path-ok: the same rung, taken.
         printf '%s\n' "$repo_root/packages/cli/target/release/nros"
         return 0
     fi
+    [ "$_checkout_only" = 1 ] && return 1
     if command -v nros >/dev/null 2>&1; then
         local _path_nros
         _path_nros="$(command -v nros)"
@@ -495,7 +538,7 @@ nros_cli_bin() {
         return 0
     fi
     echo "nros CLI not found." >&2
-    echo "Run: just setup-cli   (builds packages/cli/target/release/nros), or" >&2
+    echo "Run: just setup-cli   (builds this checkout's CLI), or" >&2
     echo "Set NROS_CLI=/path/to/nros." >&2
     return 2
 }

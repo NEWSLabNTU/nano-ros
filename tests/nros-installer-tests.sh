@@ -37,7 +37,9 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=scripts/lib/grep-q.sh
 source "$root/scripts/lib/grep-q.sh"
 installer="$root/scripts/install.sh"
-cli="$root/packages/cli/target/release/nros"
+# shellcheck source=scripts/build/cargo.sh
+source "$root/scripts/build/cargo.sh"
+cli="$(nros_cli_bin --checkout-only)" || cli=""   # issue 1850
 
 FAILURES=0
 fail() { echo "FAIL: $*" >&2; FAILURES=$((FAILURES + 1)); }
@@ -48,7 +50,7 @@ ok() { echo "  [OK] $*"; }
 arm_start() { _arm_failures="$FAILURES"; }
 arm_ok() { [ "$FAILURES" -eq "$_arm_failures" ] && ok "$*"; }
 
-[ -x "$cli" ] || { echo "SKIP: no in-tree nros at $cli (just setup-cli)" >&2; exit 0; }
+[ -n "$cli" ] || { echo "SKIP: no in-tree nros (just setup-cli)" >&2; exit 0; }
 for tool in python3 curl tar zstd; do
     command -v "$tool" >/dev/null || { echo "SKIP: $tool not on PATH" >&2; exit 0; }
 done

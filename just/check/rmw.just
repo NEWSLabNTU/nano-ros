@@ -98,14 +98,17 @@ declared-qos-header:
         || _missing="$_missing cc"
     command -v c++ >/dev/null 2>&1 || command -v g++ >/dev/null 2>&1 \
         || _missing="$_missing c++"
-    _cli="${NROS_CLI:-packages/cli/target/release/nros}"
-    [ -x "$_cli" ] || _missing="$_missing nros(just setup-cli)"
+    # shellcheck source=scripts/build/cargo.sh
+    source scripts/build/cargo.sh
+    # issue 1850 — $NROS_CLI, else this checkout's CLI; never PATH.
+    _cli="$(nros_cli_bin --checkout-only)" || _missing="$_missing nros(just setup-cli)"
     if [ -n "$_missing" ]; then
         # shellcheck source=scripts/build/check-skip.sh
         source scripts/build/check-skip.sh
         nros_check_skip declared-qos-header "missing:$_missing"
         exit 0
     fi
+    export NROS_CLI="$_cli"
     ./tests/cmake-declared-qos-header-tests.sh
 
 # phase-454 W10 — the RUST half of the declared-QoS depth check, end to end.

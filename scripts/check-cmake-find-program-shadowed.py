@@ -11,7 +11,7 @@ the natural-looking "initialise, then search" spelling never searches:
 Demonstrated, not inferred:
 
     -- after find_program: []                                      # pre-set
-    -- no pre-set:         [/…/packages/cli/target/release/nros]   # same call
+    -- no pre-set:         [/…/packages/cli/target/release/<nros>] # same call
 
 ## Why this is worth a gate rather than three fixes
 

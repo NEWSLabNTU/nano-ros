@@ -613,11 +613,14 @@ bounds-fragment-configure:
         nros_check_skip bounds-fragment-configure "missing host tool: cmake"
         exit 0
     fi
-    if [ ! -x packages/cli/target/release/nros ]; then
+    # shellcheck source=scripts/build/cargo.sh
+    source scripts/build/cargo.sh
+    # issue 1850 — this checkout's CLI (or an explicit $NROS_CLI), never PATH.
+    if ! _cli="$(nros_cli_bin --checkout-only)"; then
         nros_check_skip bounds-fragment-configure "no in-tree CLI -- run \`just setup-cli\`"
         exit 0
     fi
-    ./tests/cmake-bounds-fragment-configure-tests.sh
+    NROS_CLI="$_cli" ./tests/cmake-bounds-fragment-configure-tests.sh
 
 # Issue 0978 — the generated config header a leaf compiles against must be the
 # CURRENT one, not merely a PRESENT one.
@@ -717,7 +720,10 @@ repr-memory-agreement:
         nros_check_skip repr-memory-agreement "missing:$_missing"
         exit 0
     fi
-    nros="packages/cli/target/release/nros"
+    # shellcheck source=scripts/build/cargo.sh
+    source scripts/build/cargo.sh
+    # issue 1850 — empty when unbuilt; `nros_cli_usable` then says so.
+    nros="$(nros_cli_bin --checkout-only)" || nros=""
     # shellcheck source=scripts/build/cli-usable.sh
     source scripts/build/cli-usable.sh
     if ! nros_cli_usable "$nros"; then
