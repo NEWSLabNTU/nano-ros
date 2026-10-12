@@ -608,9 +608,9 @@ pub struct SystemToml {
     /// collision with `[env]` / `[env:NAME]`, where `:` keeps the namespaces
     /// apart; `_defaults` is the same trick in TOML's grammar.
     ///
-    /// Note this is only for keys the system header does not already default
-    /// (`profile`, `variant`, `conf`, `panic`). `rmw` and `ros_edition` fall
-    /// back to [`SystemHeader`] as they always have.
+    /// `rmw` and `ros_edition` may be stated here too, and rank between the
+    /// image's own value and [`SystemHeader`]'s (RFC-0031's ladder;
+    /// [`Self::image_ros_edition`] for the edition, issue 1305).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub image_defaults: Option<ImageBlock>,
     /// `[board_config.<board>]` — the SITE half of a board (RFC-0072 §5,
@@ -1062,6 +1062,44 @@ pub fn validate_and_warn_capabilities(sys: &SystemToml) -> eyre::Result<()> {
 }
 
 impl SystemToml {
+    /// The ROS edition image `image_id` builds for (RFC-0056, issue 1305):
+    /// `[image.<id>] ros_edition` > `[image_defaults] ros_edition` >
+    /// `[system] ros_edition` > `humble` — the same ladder RFC-0031 gives the
+    /// RMW, so one leaf can build a humble image and a jazzy one.
+    ///
+    /// `None`, or an id no `[image.*]` declares, answers for the system alone:
+    /// a hand-written entry no image claims keeps `[system] ros_edition`, as
+    /// before. An unknown edition at any rung is a HARD error naming the table
+    /// it was written in — the typo guard [`SystemHeader::ros_edition`] keeps,
+    /// because a wrong edition bakes the wrong type hash and keyexpr silently.
+    ///
+    /// ONE resolver: the selection writer (`facade::derive`, through
+    /// `write_facade` and `write_leaf_selection`) and the leaf's message
+    /// codegen (`nros sync`) both ask here, so the baked type hash and the
+    /// runtime keyexpr feature cannot name different editions.
+    pub fn image_ros_edition(
+        &self,
+        image_id: Option<&str>,
+    ) -> eyre::Result<rosidl_codegen::RosEdition> {
+        let image = image_id.and_then(|id| self.image.get(id).map(|b| (id, b)));
+        let defaults = self.image_defaults.as_ref();
+        let (table, value) = match (image, defaults) {
+            (Some((id, b)), _) if b.ros_edition.is_some() => {
+                (format!("[image.{id}]"), b.ros_edition.clone())
+            }
+            (Some(_), Some(d)) if d.ros_edition.is_some() => {
+                ("[image_defaults]".to_string(), d.ros_edition.clone())
+            }
+            _ => return self.system.ros_edition(),
+        };
+        let s = value.unwrap_or_default();
+        rosidl_codegen::RosEdition::parse(&s).ok_or_else(|| {
+            eyre::eyre!(
+                "{table} ros_edition = '{s}' is not a known ROS edition (humble | iron | jazzy)"
+            )
+        })
+    }
+
     /// Phase 261 — is the declared capability axis (`capability_resolver::Capability
     /// .declared`, e.g. `"safety"` / `"param_services"`) enabled in this system?
     /// Maps the registry's language-neutral axis name onto the typed `[block]
@@ -1807,6 +1845,49 @@ mod tests {
         // Unknown → loud error, never a silent humble fallback.
         let err = hdr("foxy").ros_edition().unwrap_err().to_string();
         assert!(err.contains("not a known ROS edition"), "got: {err}");
+    }
+
+    /// Issue 1305 — an image's edition: `[image.<id>]` > `[image_defaults]` >
+    /// `[system]` > humble, RFC-0031's ladder; a typo at any rung is a HARD
+    /// error naming the table it is in.
+    #[test]
+    fn image_ros_edition_follows_the_rmw_ladder() {
+        use rosidl_codegen::RosEdition;
+        let sys = |text: &str| -> SystemToml { toml::from_str(text).unwrap() };
+        let head = "[system]\nname = \"t\"\nrmw = \"zenoh\"\ndomain_id = 0\n";
+        // Nothing stated anywhere: humble.
+        let bare = sys(&format!("{head}[image.a]\nboard = \"native\"\n"));
+        assert_eq!(
+            bare.image_ros_edition(Some("a")).unwrap(),
+            RosEdition::Humble
+        );
+        // System only.
+        let s = sys(&format!(
+            "{head}ros_edition = \"iron\"\n[image.a]\nboard = \"native\"\n"
+        ));
+        assert_eq!(s.image_ros_edition(Some("a")).unwrap(), RosEdition::Iron);
+        // Defaults over system; the image over both.
+        let s = sys(&format!(
+            "{head}ros_edition = \"iron\"\n[image_defaults]\nros_edition = \"jazzy\"\n\
+             [image.a]\nboard = \"native\"\n\
+             [image.b]\nboard = \"native\"\nros_edition = \"humble\"\n"
+        ));
+        assert_eq!(s.image_ros_edition(Some("a")).unwrap(), RosEdition::Jazzy);
+        assert_eq!(s.image_ros_edition(Some("b")).unwrap(), RosEdition::Humble);
+        // No image (a hand-written entry), or an undeclared id: the system's.
+        assert_eq!(s.image_ros_edition(None).unwrap(), RosEdition::Iron);
+        assert_eq!(s.image_ros_edition(Some("zz")).unwrap(), RosEdition::Iron);
+        // A typo is refused, naming where it was written.
+        let t = sys(&format!(
+            "{head}[image.a]\nboard = \"native\"\nros_edition = \"jazy\"\n"
+        ));
+        let e = t.image_ros_edition(Some("a")).unwrap_err().to_string();
+        assert!(e.contains("[image.a]") && e.contains("jazy"), "{e}");
+        let t = sys(&format!(
+            "{head}[image_defaults]\nros_edition = \"foxy\"\n[image.a]\nboard = \"native\"\n"
+        ));
+        let e = t.image_ros_edition(Some("a")).unwrap_err().to_string();
+        assert!(e.contains("[image_defaults]") && e.contains("foxy"), "{e}");
     }
 
     /// phase-267 W1c/C3a — a node declares its published topics+types in

@@ -64,20 +64,36 @@ fi
 # permanent false-STALE. One spelling, scripts/build/leaf-settings.sh.
 # shellcheck source=scripts/build/leaf-settings.sh
 source scripts/build/leaf-settings.sh 2>/dev/null || exit 0
-settings=""
+#
+# Issue 1305 — and for the row's IMAGE (`--nros-image=<id>`, already in the
+# group key above): the probe writes that image's selection + settings and
+# rebuilds against them inside the leaf's lock, exactly as the build does, or
+# a sibling row's image would be what it compiled.
+leaf_road=""
+image=""
 if [ -f "$dir/system.toml" ] && [ -f "$dir/Cargo.toml" ]; then
     NROS_CLI="${NROS_CLI:-$(nros_cli_bin 2>/dev/null)}"
     export NROS_CLI
-    if ! settings="$(nros_leaf_settings_path "$dir")"; then
-        printf 'FAILED\t%s\t%s\n' "$dir${cargo_args:+ ($cargo_args)}" \
-            "no generated settings file for this leaf (see the line above; run \`nros sync\`)"
-        exit 0
-    fi
-    if [ -n "$settings" ] && [ -z "$tdir_flag" ]; then
+    leaf_road=1
+    image="$(nros_leaf_row_image "$cargo_args")"
+    cargo_args="$(nros_leaf_strip_row_image "$cargo_args")"
+    if [ -z "$tdir_flag" ]; then
         tdir_flag="$(nros_leaf_settings_target_dir_flag "$dir" "$cargo_args")"
         cargo_args="$(nros_fixture_strip_authored_target_dir "$cargo_args")"
     fi
 fi
+
+# The leaf-road probe build: settings for the row's image, then cargo. Exit 97
+# means no settings file could be written (reported as FAILED below).
+_probe_leaf_build() {
+    local settings
+    settings="$(nros_leaf_settings_path "$dir" "$image")" || return 97
+    [ -n "$settings" ] || return 97
+    # shellcheck disable=SC2086
+    ( cd "$(nros_leaf_settings_cwd "$dir")"; [ -n "$envstr" ] && export $envstr; \
+        cargo build $prof_args $(nros_leaf_settings_args "$dir" "$settings") \
+            $cargo_args $tdir_flag --message-format=json --quiet 2>&1 )
+}
 
 # Decide from the ARTIFACT, not from cargo's `"fresh":false` — issue 0835.
 #
@@ -153,17 +169,20 @@ art_before="$(_row_artifacts)"
 # as the fixture build's does.
 nros_seed_leaf_lock "$dir" 2>/dev/null
 
-if [ -n "$settings" ]; then
-    # shellcheck disable=SC2086
-    build_out="$( cd "$(nros_leaf_settings_cwd "$dir")"; [ -n "$envstr" ] && export $envstr; \
-            cargo build $prof_args $(nros_leaf_settings_args "$dir" "$settings") \
-                $cargo_args $tdir_flag --message-format=json --quiet 2>&1 )"
+if [ -n "$leaf_road" ]; then
+    build_out="$(nros_leaf_lock "$dir" _probe_leaf_build 2>&1)"
+    build_rc=$?
+    if [ "$build_rc" = 97 ]; then
+        printf 'FAILED\t%s\t%s\n' "$dir${cargo_args:+ ($cargo_args)}${image:+ [image $image]}" \
+            "no generated settings file for this leaf (run \`nros sync\`): $(printf '%s' "$build_out" | head -3 | tr '\n' ' ')"
+        exit 0
+    fi
 else
     # shellcheck disable=SC2086
     build_out="$( cd "$dir"; [ -n "$envstr" ] && export $envstr; \
             cargo build $prof_args $cargo_args $tdir_flag --message-format=json --quiet 2>&1 )"
+    build_rc=$?
 fi
-build_rc=$?
 
 if [ -z "$art_before" ] && [ -z "$(_row_artifacts)" ]; then
     # Nothing to compare — an unbuilt row, or a leaf whose bins this cannot

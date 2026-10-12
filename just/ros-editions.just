@@ -74,39 +74,47 @@ build-fixture distro="jazzy":
     echo "build-fixture {{distro}}: $FIX_TARGET_DIR/debug/ros-edition-pose-pub"
 
 # Build the six native example nodes (talker/listener/service-{server,client}/
-# action-{server,client}) with the selected RMW backend into per-(edition, rmw)
-# build dirs (target-ros-edition-<distro>-<rmw>), for the phase-310/311 rich E2E
-# matrix. `rmw` ∈ {cyclone, zenoh, xrce} → the matching `rmw-*` example feature.
-# The examples build against their committed (host) generated msgs — the interop
-# types (Int32, AddTwoInts, Fibonacci) are edition-stable. Separate target dirs
-# keep the default/host builds (and the other RMW builds) untouched.
+# action-{server,client}) for one (ROS edition, RMW) into per-(edition, rmw)
+# build dirs, for the phase-310/311 rich E2E matrix. `rmw` ∈ {cyclone, zenoh,
+# xrce}.
+#
+# Issue 1305 — each example DECLARES one image per RMW × edition in its
+# `system.toml` (RFC-0031 / RFC-0056: the selection is declared, the cargo
+# feature is only its lowering), so this builds an IMAGE: `native`, then `_<rmw>`
+# unless zenoh, then `_<edition>` unless humble (`native_xrce_jazzy`). `nros
+# sync --image` regenerates the example's messages for that image's edition (the
+# baked TYPE_HASH is the edition's real RIHS01 — the placeholder on humble) and
+# writes its selection package and settings file; cargo then builds through that
+# file. Separate target dirs keep the default/host builds (and the other RMW
+# builds) untouched. The examples are built one at a time, so no two images of
+# one example share its `build/nros/selection` at once.
 [group("test")]
 build-e2e-fixtures distro="jazzy" rmw="cyclone":
     #!/usr/bin/env bash
     set -euo pipefail
     case "{{rmw}}" in
-        cyclone) FEATURE=rmw-cyclonedds ;;
-        zenoh)   FEATURE=rmw-zenoh ;;
-        xrce)    FEATURE=rmw-xrce ;;
+        cyclone) RMW_ID=cyclonedds ;;
+        zenoh)   RMW_ID=zenoh ;;
+        xrce)    RMW_ID=xrce ;;
         *) echo "unknown rmw '{{rmw}}' (want cyclone|zenoh|xrce)" >&2; exit 1 ;;
     esac
-    # The ROS edition is selected the SAME way as the RMW — a cargo feature on
-    # the example (`ros-<edition>`), lowered to the umbrella + backend. This is
-    # what puts the real RIHS01 type-hash tail in the zenoh keyexpr so a
-    # `ros-jazzy` node matches a stock jazzy `rmw_zenoh_cpp` peer (#0291). The
-    # distro name IS the edition name (jazzy/iron/humble).
+    # The distro name IS the edition name (jazzy/iron/humble). The edition puts
+    # the real RIHS01 type-hash tail in the zenoh keyexpr so a jazzy node
+    # matches a stock jazzy `rmw_zenoh_cpp` peer (#0291).
     ED="{{distro}}"
+    IMG="native"
+    if [ "$RMW_ID" != zenoh ]; then IMG="${IMG}_${RMW_ID}"; fi
+    if [ "$ED" != humble ]; then IMG="${IMG}_${ED}"; fi
     NROS="$(command -v nros || echo "{{justfile_directory()}}/packages/cli/target/release/nros")"
     [ -x "$NROS" ] || { echo "error: nros CLI not found — run \`just setup-cli\`" >&2; exit 1; }
     # issue 0488 residue 2 — ONE build root per (edition, rmw), under
     # `$NROS_BUILD_ROOT`, instead of six per-leaf `target-ros-edition-*/` dirs.
     #
-    # These builds deliberately do NOT join a fixture group: the loop regenerates
-    # each example's `generated/` messages for the edition first, so the same
-    # source dir means different code per edition. Sharing a cargo dir with the
-    # normal `linux` lane would thrash both. What they can stop doing is writing
-    # six example leaves — `<root>/<kind>/<coordinate>` is RFC-0070 R2's shape,
-    # and (edition, rmw) is the coordinate these actually vary on.
+    # These builds deliberately do NOT join a fixture group: `generated/` is
+    # regenerated per edition, so the same source dir means different code per
+    # edition. Sharing a cargo dir with the normal `linux` lane would thrash both.
+    # `<root>/<kind>/<coordinate>` is RFC-0070 R2's shape, and (edition, rmw) is
+    # the coordinate these actually vary on.
     # shellcheck source=scripts/build/build-root.sh
     source "{{justfile_directory()}}/scripts/build/build-root.sh"
     ED_TARGET_DIR="$(nros_build_dir "$NROS_KIND_ROS_EDITIONS" "{{distro}}-{{rmw}}")"
@@ -115,20 +123,18 @@ build-e2e-fixtures distro="jazzy" rmw="cyclone":
     source "{{justfile_directory()}}/scripts/build/cargo.sh"
     for ex in talker listener service-server service-client action-server action-client; do
         DIR="{{justfile_directory()}}/examples/native/rust/$ex"
-        # Regenerate this example's messages for the edition so the baked
-        # TYPE_HASH is the edition's real RIHS01 (iron/jazzy) — the placeholder
-        # on humble. The .msg defs are edition-stable for the interop types, so
-        # host defs + `--ros-edition` compute the correct hash. `generated/` is
-        # gitignored (regenerated on demand), so this rewrite is not tree churn.
-        echo "== $ex ({{rmw}}, ros-$ED) regen msgs =="
-        ( cd "$DIR" && "$NROS" generate-rust --ros-edition "$ED" --force >/dev/null )
-        echo "== $ex ({{rmw}}, ros-$ED) → $ED_TARGET_DIR =="
+        echo "== $ex (image $IMG) sync =="
+        "$NROS" sync --no-provider-index --image "$IMG" "$DIR" >/dev/null
+        echo "== $ex (image $IMG) → $ED_TARGET_DIR =="
         nros_seed_leaf_lock "$DIR"
-        ( cd "$DIR" && cargo build --no-default-features --features "$FEATURE ros-$ED" \
-            --target-dir "$ED_TARGET_DIR" )
+        # From the directory ABOVE the leaf, naming the manifest and the
+        # image's settings file — the invocation `nros build` uses
+        # (scripts/build/leaf-settings.sh records why).
+        ( cd "$(dirname "$DIR")" && cargo build --manifest-path "$DIR/Cargo.toml" \
+            --config "$DIR/build/$IMG/nros-cargo.toml" --target-dir "$ED_TARGET_DIR" )
     done
     # profile-literal-ok: unprofiled: same lane as above — plain `cargo build`, so debug/ IS the derived dir
-    echo "build-e2e-fixtures {{distro}} {{rmw}}: 6 binaries under $ED_TARGET_DIR/debug/ (ros-$ED)"
+    echo "build-e2e-fixtures {{distro}} {{rmw}}: 6 binaries under $ED_TARGET_DIR/debug/ (image $IMG)"
 
 # Composite: build the edition image + run the gated harness lanes (peer smoke,
 # codegen axis, domain_bridge interop). OPT-IN — NOT part of `just ci` (docker +

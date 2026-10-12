@@ -375,7 +375,8 @@ if [ "${#cargo_records[@]}" -gt 0 ]; then
     # shellcheck source=scripts/build/leaf-settings.sh
     source scripts/build/leaf-settings.sh
     export -f nros_leaf_settings_path nros_leaf_settings_cwd nros_leaf_settings_args \
-              nros_leaf_settings_target_dir_flag
+              nros_leaf_settings_target_dir_flag nros_leaf_row_image \
+              nros_leaf_strip_row_image nros_leaf_lock
     # Phase 214.I.2 — fail-loud prereq guard: `nros_fixture_build_one`
     # below invokes `nros sync`, absent from the shipped 0.3.7 release.
     # Probe once here in the parent before make fans out workers; pre-probe
@@ -432,7 +433,7 @@ if [ "${#cargo_records[@]}" -gt 0 ]; then
         # `if`, not `[ -n … ] && args=…`: the make leaves run under
         # `.SHELLFLAGS := -eu`, where an and-list whose left side is false is
         # itself a failing command and aborts the recipe.
-        local tdir_flag
+        local tdir_flag row_args="$args"
         tdir_flag="$(nros_fixture_target_dir_flag "$platform" "$args" "$envstr")"
         if [ -n "$tdir_flag" ]; then
             args="$(nros_fixture_strip_authored_target_dir "$args")"
@@ -452,20 +453,23 @@ if [ "${#cargo_records[@]}" -gt 0 ]; then
         # a lane's value outranks the file's (RFC-0049: board < app < lane).
         # The group `--target-dir` still wins over the file's per-image one, so
         # no artifact path moves. See scripts/build/leaf-settings.sh.
-        local settings=""
-        if ! settings="$(nros_leaf_settings_path "$dir")"; then
-            return 1
-        fi
-        if [ -n "$settings" ]; then
+        #
+        # Issue 1305 — the row's IMAGE (`--nros-image=<id>` in its args, already
+        # part of `$tdir_flag`'s group key above) is written into the leaf's ONE
+        # selection package and settings file, and cargo builds against them,
+        # all inside the leaf's lock (`nros_leaf_lock`): two rows of a leaf
+        # naming different images must not interleave, or one compiles against
+        # the other's backend.
+        if [ -f "$NROS_REPO_ROOT/$dir/system.toml" ] && [ -f "$NROS_REPO_ROOT/$dir/Cargo.toml" ]; then
+            local image
+            image="$(nros_leaf_row_image "$args")"
+            args="$(nros_leaf_strip_row_image "$args")"
             if [ -z "$tdir_flag" ]; then
                 tdir_flag="$(nros_leaf_settings_target_dir_flag "$dir" "$args")"
                 args="$(nros_fixture_strip_authored_target_dir "$args")"
             fi
-            # shellcheck disable=SC2086
-            ( cd "$(nros_leaf_settings_cwd "$dir")"
-              if [ -n "$envstr" ]; then export $envstr; fi
-              cargo build $cargo_profile_args $(nros_leaf_settings_args "$dir" "$settings") \
-                  $args $tdir_flag --quiet )
+            nros_leaf_lock "$dir" nros_fixture_build_leaf_row \
+                "$dir" "$image" "$envstr" "$args" "$tdir_flag" || return 1
         else
             local facts=""
             if [ -x "$NROS_CLI" ]; then
@@ -494,10 +498,23 @@ if [ "${#cargo_records[@]}" -gt 0 ]; then
         # against a ~67 KB budget.
         case "$platform" in
             esp32)
-                nros_fixture_check_stack_floor "$platform" "$args" "$envstr"
+                nros_fixture_check_stack_floor "$platform" "$row_args" "$envstr"
                 ;;
         esac
         echo "     row-time: $dir $((SECONDS - row_t0))s"
+    }
+    # Issue 1305 — one single-package leaf row, run under `nros_leaf_lock`:
+    # write the row's image's selection + settings, then build against them.
+    nros_fixture_build_leaf_row() {
+        local dir="$1" image="$2" envstr="$3" args="$4" tdir_flag="$5" settings=""
+        if ! settings="$(nros_leaf_settings_path "$dir" "$image")"; then
+            return 1
+        fi
+        # shellcheck disable=SC2086
+        ( cd "$(nros_leaf_settings_cwd "$dir")"
+          if [ -n "$envstr" ]; then export $envstr; fi
+          cargo build $cargo_profile_args $(nros_leaf_settings_args "$dir" "$settings") \
+              $args $tdir_flag --quiet )
     }
     # Locate every ELF the row just produced and put it through the floor
     # check. A row that resolves no artifact directory, or whose directory
@@ -529,6 +546,7 @@ if [ "${#cargo_records[@]}" -gt 0 ]; then
     # `check-export-f-closure`, which read only column-0 definitions and so
     # never walked this indented one.
     export -f nros_fixture_check_stack_floor
+    export -f nros_fixture_build_leaf_row
     export -f nros_fixture_build_one
 
     # issue 0649 — sync each row DIRECTORY once, in the parent, before the rows

@@ -3,7 +3,7 @@ rfc: 0031
 title: "RMW backend selection and lowering"
 status: Stable
 since: 2026-06
-last-reviewed: 2026-08
+last-reviewed: 2026-10
 implements-tracked-by: [phase-227]
 supersedes: []
 superseded-by: null
@@ -51,7 +51,7 @@ so **RMW is a property of the binary**. All nodes in it inherit it.
 | Scope | User declares RMW in | Lowered by toolchain to |
 |---|---|---|
 | Workspace | `system.toml` `[image.<id>] rmw` (over `[image_defaults] rmw`, then `[system] rmw`; a `[deploy.<t>] rmw` is DEPRECATED and outranked) | Rust entry/node pkg → the **board crate's** `rmw-<x>` feature; C/C++ node pkg → `-DNANO_ROS_RMW`; C++ entry → CMake cache |
-| Single-node, with `system.toml` | `[system] rmw` | same lowering |
+| Single-node, with `system.toml` | `[image.<id>] rmw` (over `[image_defaults] rmw`, then `[system] rmw`) — one image per RMW when a leaf builds several | same lowering, into the leaf's generated selection package (issue 1305) |
 | Single-node, no `system.toml` | CLI/build flag, else default | same lowering |
 
 The Rust **board-crate `rmw-<x>` feature** and the CMake `NANO_ROS_RMW` var are
@@ -84,6 +84,13 @@ feature.
    of `[deploy.*]`'s build fields (phase-383 W10.b).
 4. `system.toml` `[system] rmw`.
 5. Default — `zenoh`.
+
+The ROS EDITION follows the same ladder per image — `[image.<id>]
+ros_edition` > `[image_defaults] ros_edition` > `[system] ros_edition` >
+`humble` — and lowers through the same writer (`facade::derive`) onto the
+umbrella's `ros-<ed>` and the board crate's `ros-<ed>`. See
+[RFC-0056](0056-ros-edition-axis.md) § "Declared per image" (amended
+2026-10-12, issue 1305).
 
 > **Amended 2026-08-31 (issue 0938).** Rung 2 is new and rung 3 was previously
 > rung 2. The reason is not tidiness: `nros build` has resolved an image's RMW
@@ -123,6 +130,21 @@ build path (RFC-0005 / Phase 175), even for an otherwise-Rust binary. The
 *declaration* is identical (`rmw = "cyclonedds"`); only the lowering differs.
 
 ### Consumer wiring (examples) — board-owned force-link (C5b)
+
+> **Amended 2026-10-12 (issue 1305).** No example selects its RMW with a cargo
+> feature any more. A single-package example declares one `[image.<id>]` per
+> RMW (and per ROS edition) in its `system.toml` — `examples/native/rust/talker`
+> declares `native`, `native_xrce`, `native_cyclonedds` and the iron/jazzy
+> images — and depends on its GENERATED `<pkg>_nros_selection` package, which
+> `nros sync --image <id>` / `nros build <id>` write with the board crate's
+> `rmw-<x>` and `ros-<ed>` features. Fixture rows name the image (`image =
+> "native_xrce"`), never `features = ["rmw-xrce"]`. `link-tls` and
+> `unstable-zenoh-api` are NOT in the capability registry (§ Generalization
+> lists `link-tls` as a candidate axis; `capability_resolver::CAPABILITIES` has
+> no row for it), so they stay features of the example, forwarding to an
+> optional `nros-rmw-zenoh` dep, and mean something on a zenoh image only. The
+> text below describes the lowering those packages carry, not something a user
+> writes.
 
 > **Phase 248 C5b update.** The umbrella-feature force-link below is the
 > *pre-convergence* model. Under phase-248 the **board crate** owns the
@@ -286,10 +308,12 @@ the Rust `nros/safety-e2e` feature (targets 1-3) AND the C/C++ `#define NROS_SYS
 
 ## Open questions / gaps (tracked by phase-227)
 
-- Add `rmw` resolution for single-node from `system.toml` / flag (today single-node
-  Rust uses the cargo feature directly).
-- Converge examples so zenoh / xrce / cyclonedds all lower uniformly from the
-  declared value.
+- ~~Add `rmw` resolution for single-node from `system.toml` / flag~~ —
+  **CLOSED (2026-10-12, issue 1305).** A single-package leaf's image declares
+  its `rmw`; the selection package lowers it.
+- ~~Converge examples so zenoh / xrce / cyclonedds all lower uniformly from the
+  declared value~~ — **CLOSED (2026-10-12, issue 1305).** The native examples
+  were the last ones selecting by feature; they declare one image per RMW.
 - ~~Make `nros new --rmw <x>` actually template the scaffold~~ — **CLOSED
   (verified 2026-08-31).** `args.rmw` is threaded into the scaffold structs at
   `cmd/new.rs:302`, `:460`/`:472` and `:507`, each with a real default. No
@@ -324,3 +348,8 @@ the Rust `nros/safety-e2e` feature (targets 1-3) AND the C/C++ `#define NROS_SYS
   `resolve_capability` registry SSoT + descriptor gating. Targets 1–2 landed; the
   board target + registry refactor + C/C++ path tracked in issue 0072. See
   "Generalization (Phase 250 / issue 0072)" above.
+- 2026-10-12 (issue 1305) — single-package leaves select the RMW per IMAGE
+  (`[image.<id>] rmw`), lowered into their generated selection package; the
+  native examples' `rmw-*` / `ros-*` feature plumbing is deleted and their
+  fixture rows name images. The ROS edition gained the same per-image ladder
+  (RFC-0056).

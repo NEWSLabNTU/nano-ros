@@ -67,6 +67,16 @@ pub struct LeafSystemArgs {
     #[arg(long, value_name = "ID")]
     pub image: Option<String>,
 
+    /// Issue 1305 -- WRITE this image's generated selection package and its
+    /// `build/<id>/nros-cargo.toml` (what `nros build` writes at stage 4, by the
+    /// same writer, `leaf_settings::write`) before printing
+    /// `NROS_LEAF_SETTINGS`. A cargo leaf with several images shares ONE
+    /// selection directory between them, so a fixture build of one image
+    /// writes it here, under the leaf's lock, immediately before its cargo
+    /// command. Message codegen is NOT redone: that is `nros sync --image`.
+    #[arg(long)]
+    pub write_settings: bool,
+
     /// phase-481 W1 (RFC-0098 D11) -- write the image as a Zephyr Kconfig
     /// fragment to PATH: the RMW choice, the package's language API, the
     /// deploy endpoint from `locator`, and every `[image.<id>] env` row whose
@@ -308,8 +318,13 @@ pub fn run(args: LeafSystemArgs) -> Result<()> {
     let deploy = deploy_token(catalog.as_ref(), &board);
     let cmake_board = cmake_board_module(catalog.as_ref(), &board);
     let settings = match root.as_deref() {
+        Some(r) if leaf_system::is_package_dir(&dir) && args.write_settings => {
+            crate::cmd::leaf_settings::write(&dir, r, "nros ws leaf-system", args.image.as_deref())?
+                .map(|i| i.config_path)
+        }
         Some(r) if leaf_system::is_package_dir(&dir) => {
-            crate::cmd::leaf_settings::resolve(&dir, r)?.map(|i| i.config_path)
+            crate::cmd::leaf_settings::resolve_image(&dir, r, args.image.as_deref())?
+                .map(|i| i.config_path)
         }
         _ => None,
     };

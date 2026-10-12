@@ -1250,12 +1250,13 @@ pub fn build_example_rmw(name: &str, binary_name: &str, rmw: Rmw) -> TestResult<
     // `FixtureVariant::rmw` is the feature-selected shape (`--no-default-features
     // --features rmw-<x>`), which is exactly what this function's own doc
     // comment says the build runs.
+    //
+    // Issue 1305 — `select_rmw_row`, which also answers for a leaf that picks
+    // its RMW by IMAGE (`examples/native/rust/*`): there the zenoh build is the
+    // plain row and the others are `image = "native_<rmw>"` rows.
     let leaf = format!("examples/{name}");
     if crate::fixtures::groups::leaf_has_rows(&leaf) {
-        let row = crate::fixtures::groups::select_row(
-            &leaf,
-            &crate::fixtures::groups::FixtureVariant::rmw(rmw),
-        )?;
+        let row = crate::fixtures::groups::select_rmw_row(&leaf, rmw)?;
         let rel = PathBuf::from(format!("{}/{}", cargo_target_profile_dir(), binary_name));
         return require_prebuilt_row_binary_fresh(row, &rel);
     }

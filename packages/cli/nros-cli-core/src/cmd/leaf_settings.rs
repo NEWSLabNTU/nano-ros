@@ -122,8 +122,17 @@ pub fn settings_path(leaf: &Path, image_id: &str) -> PathBuf {
         .join(cargo_config::FILE_NAME)
 }
 
-/// The leaf manifest's `[package] name`; `None` for a directory whose
-/// `Cargo.toml` is absent or is not a package.
+/// The `[package] name` of `leaf` when it is a single-package leaf candidate —
+/// a `system.toml` beside a `[package]` manifest — else `None`. The cheap half
+/// of [`resolve`], for a caller that must know it is looking at a leaf before
+/// it can say which image it means.
+pub fn leaf_package(leaf: &Path) -> Option<String> {
+    if !leaf.join(leaf_system::SYSTEM_TOML).is_file() {
+        return None;
+    }
+    package_name(leaf)
+}
+
 fn package_name(leaf: &Path) -> Option<String> {
     let text = std::fs::read_to_string(leaf.join("Cargo.toml")).ok()?;
     let doc = text.parse::<toml::Table>().ok()?;
@@ -144,6 +153,20 @@ fn package_name(leaf: &Path) -> Option<String> {
 /// reaches this function.)
 pub fn resolve(leaf: &Path, nano_ros_root: &Path) -> Result<Option<LeafImage>> {
     resolve_for(leaf, nano_ros_root, Driver::Cargo, None)
+}
+
+/// [`resolve`] for ONE named image of the leaf (issue 1305). A cargo leaf may
+/// declare several images — one per RMW and ROS edition, `examples/native/
+/// rust/talker` has nine — and `nros sync --image <id>` / `nros build <id>`
+/// build the one named. `None` keeps the leaf's own rule (one image, or
+/// `[system] default_images`); naming an image the file does not declare is
+/// an error listing the ones it does.
+pub fn resolve_image(
+    leaf: &Path,
+    nano_ros_root: &Path,
+    image: Option<&str>,
+) -> Result<Option<LeafImage>> {
+    resolve_for(leaf, nano_ros_root, Driver::Cargo, image)
 }
 
 /// Issue 1662 -- the same resolution for a leaf whose board's road is WEST: a
@@ -413,8 +436,9 @@ pub fn depends_on_selection(leaf: &Path, package: &str) -> bool {
 pub fn write_selection(
     leaf: &Path,
     nano_ros_root: &Path,
+    image: Option<&str>,
 ) -> Result<Option<crate::orchestration::facade::Facade>> {
-    let Some(img) = resolve(leaf, nano_ros_root)? else {
+    let Some(img) = resolve_image(leaf, nano_ros_root, image)? else {
         return Ok(None);
     };
     if !depends_on_selection(&img.leaf, &img.package) {
@@ -431,19 +455,7 @@ pub fn write_selection(
         img.platform.as_str(),
     ];
     let facts = crate::builder::entry::BoardFacts::from_descriptor_for(d, &candidates);
-    let origin = img.decl.origin_path();
-    let mut table: toml::Table = std::fs::read_to_string(origin)
-        .wrap_err_with(|| format!("reading {}", origin.display()))?
-        .parse()
-        .wrap_err_with(|| format!("parsing {}", origin.display()))?;
-    // The bringup schema requires `[system] domain_id`; a leaf may leave it to
-    // the runtime (`leaf_system` does), and nothing selected here reads it.
-    if let Some(system) = table.get_mut("system").and_then(|s| s.as_table_mut()) {
-        system.entry("domain_id").or_insert(toml::Value::Integer(0));
-    }
-    let sys: crate::orchestration::cargo_metadata_schema::SystemToml = table
-        .try_into()
-        .wrap_err_with(|| format!("parsing {}", origin.display()))?;
+    let sys = system_toml(&img)?;
     let spec = crate::orchestration::facade::LeafSelectionSpec {
         package: &img.package,
         leaf: &img.leaf,
@@ -455,6 +467,32 @@ pub fn write_selection(
         nano_ros_root,
     };
     crate::orchestration::facade::write_leaf_selection(&spec, &sys).map(Some)
+}
+
+/// The leaf's `system.toml` through the typed bringup schema, so every typo
+/// guard `nros sync` applies to a bringup applies to a leaf too.
+fn system_toml(img: &LeafImage) -> Result<crate::orchestration::cargo_metadata_schema::SystemToml> {
+    let origin = img.decl.origin_path();
+    let mut table: toml::Table = std::fs::read_to_string(origin)
+        .wrap_err_with(|| format!("reading {}", origin.display()))?
+        .parse()
+        .wrap_err_with(|| format!("parsing {}", origin.display()))?;
+    // The bringup schema requires `[system] domain_id`; a leaf may leave it to
+    // the runtime (`leaf_system` does), and nothing selected here reads it.
+    if let Some(system) = table.get_mut("system").and_then(|s| s.as_table_mut()) {
+        system.entry("domain_id").or_insert(toml::Value::Integer(0));
+    }
+    table
+        .try_into()
+        .wrap_err_with(|| format!("parsing {}", origin.display()))
+}
+
+/// The ROS edition `img` builds for — `[image.<id>]` > `[image_defaults]` >
+/// `[system]` > humble ([`SystemToml::image_ros_edition`], issue 1305).
+///
+/// [`SystemToml::image_ros_edition`]: crate::orchestration::cargo_metadata_schema::SystemToml::image_ros_edition
+pub fn image_ros_edition(img: &LeafImage) -> Result<rosidl_codegen::RosEdition> {
+    system_toml(img)?.image_ros_edition(Some(img.image_id.as_str()))
 }
 
 /// Issue 1305 — a single-package Rust leaf's image-only dependencies must
@@ -585,8 +623,16 @@ fn check_board_crate_dependency(img: &LeafImage) -> Result<()> {
 /// is not a leaf this road builds ([`resolve`]).
 ///
 /// `who` prefixes diagnostics (`sync`, `nros build`).
-pub fn write(leaf: &Path, nano_ros_root: &Path, who: &str) -> Result<Option<LeafImage>> {
-    let Some(img) = resolve(leaf, nano_ros_root)? else {
+///
+/// `image` names one of the leaf's images (`None`: its own rule — one image,
+/// or `[system] default_images`).
+pub fn write(
+    leaf: &Path,
+    nano_ros_root: &Path,
+    who: &str,
+    image: Option<&str>,
+) -> Result<Option<LeafImage>> {
+    let Some(img) = resolve_image(leaf, nano_ros_root, image)? else {
         return Ok(None);
     };
     let leaf = img.leaf.as_path();
@@ -594,7 +640,7 @@ pub fn write(leaf: &Path, nano_ros_root: &Path, who: &str) -> Result<Option<Leaf
     // Issue 1305 — a migrated leaf's selection package, for THIS image's
     // board. Sync wrote it already (before its probe); `nros build` writes it
     // here, so a board switch followed by a build alone also lands.
-    write_selection(leaf, nano_ros_root)?;
+    write_selection(leaf, nano_ros_root, Some(img.image_id.as_str()))?;
 
     // Layer 2 — derived pools + facts.
     let mut env = crate::leaf_entity_env::leaf_env(leaf, who).env;
@@ -671,6 +717,13 @@ pub fn write(leaf: &Path, nano_ros_root: &Path, who: &str) -> Result<Option<Leaf
             env.insert(key.to_string(), v.clone());
         }
     }
+
+    // Issue 1305 — WHICH image this file builds, for `nros::main!`: a leaf
+    // with several images reads `system.toml` for this one (its board,
+    // locator, RMW overlay), not for the leaf's default. Each image has its
+    // own file and its own target dir, so the value never changes under a
+    // built artifact.
+    env.insert(leaf_system::IMAGE_ENV.to_string(), img.image_id.clone());
 
     // Layer 4 — the APP rung: what this IMAGE states (`[image.<id>] env`).
     // Last, so it outranks the board and the implications above and is
@@ -1115,21 +1168,16 @@ mod board_crate_tests {
     /// matches a leaf path relative to the checkout.
     const NOT_ON_THE_SELECTION: &[(&str, &str)] = &[
         (
-            "examples/native/rust/",
-            "the ROS EDITION is a cargo feature here: `just ros_editions \
-             build-e2e-fixtures` builds all six with `--features \"rmw-<x> \
-             ros-<edition>\"`, and the selection derives ONE edition from `[system] \
-             ros_edition`, so a leaf needing two editions waits for that lane to \
-             name its edition another way (the RMW axis alone could become one \
-             image per RMW)",
-        ),
-        (
             "packages/testing/nros-tests/bins/in-place-subscriptions",
-            "issue 1340's measurement witness: migrated, its eight subscriptions \
-             log `matched no recorded subscription row; its registration path stays \
-             refused` and the executor arena reports 34,816 bytes, where the \
-             hand-written manifest logs neither (measured 2026-10-12), so the move \
-             changes what it measures until that is explained",
+            "issue 1340's measurement witness, kept on its hand-written manifest ON \
+             PURPOSE: the selection gives the host board `census` + `profile` on every \
+             road (`entry::image_dependency_lines`, issues 1419 / phase-463 W7 — the \
+             generated host entry is a census and profile producer), which adds \
+             `nros::metadata_mode` STATE (75,992 B), grows EXECUTOR_BACKING 20,864 -> \
+             45,440 B (arena 34,816). Not a road-dependent writer bug; migrating \
+             would change the image 1340 measures (re-measured 2026-10-12; the eight \
+             `matched no recorded subscription row` warnings it also showed were a \
+             runtime defect, now warned only in a census run)",
         ),
         (
             "examples/templates/",
@@ -1211,6 +1259,11 @@ mod board_crate_tests {
                 continue;
             }
             if depends_on_selection(&img.leaf, &img.package) {
+                // ...and names no board crate beside it — the refusal sync
+                // applies, asked of every migrated leaf here too.
+                if let Err(e) = check_board_crate_dependency(&img) {
+                    stray.push(format!("{leaf_rel}: {e}"));
+                }
                 on_selection += 1;
             } else {
                 stray.push(leaf_rel);
@@ -1314,7 +1367,7 @@ mod board_crate_tests {
     fn a_migrated_leaf_gets_the_image_dependencies_generated() {
         let tmp = tempfile::tempdir().unwrap();
         let leaf = migrated_leaf(tmp.path(), "qemu-mps2-an385", "");
-        let sel = write_selection(&leaf, &repo())
+        let sel = write_selection(&leaf, &repo(), None)
             .unwrap()
             .expect("a migrated leaf gets a selection");
         assert_eq!(sel.crate_name, "my_talker_nros_selection");
@@ -1347,6 +1400,64 @@ mod board_crate_tests {
         check_board_crate_dependency(&img).expect("a migrated leaf is accepted");
     }
 
+    /// Issue 1305 / RFC-0056 — one leaf, two images on two editions: each
+    /// image's selection names its own edition on the umbrella AND on the
+    /// board crate (which forwards it to the backend's keyexpr), and the two
+    /// selections differ. The settings file names the image it builds, which
+    /// is how `nros::main!` reads that image and not the leaf's default.
+    #[test]
+    fn two_images_on_two_editions_get_two_selections() {
+        let tmp = tempfile::tempdir().unwrap();
+        let leaf = tmp.path().join("talker");
+        std::fs::create_dir_all(leaf.join("src")).unwrap();
+        std::fs::write(
+            leaf.join("Cargo.toml"),
+            "[package]\nname = \"my-talker\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n\
+             [dependencies]\nmy_talker_nros_selection = { path = \"build/nros/selection\" }\n",
+        )
+        .unwrap();
+        std::fs::write(
+            leaf.join("system.toml"),
+            "[system]\nname = \"t\"\nrmw = \"zenoh\"\ndefault_images = [\"native\"]\n\n\
+             [image_defaults]\nboard = \"native\"\n\n\
+             [image.native]\n\n\
+             [image.native_xrce_jazzy]\nrmw = \"xrce\"\nros_edition = \"jazzy\"\n",
+        )
+        .unwrap();
+        let humble = write_selection(&leaf, &repo(), None).unwrap().unwrap();
+        let humble_m = read(&humble.dir.join("Cargo.toml"));
+        let jazzy = write_selection(&leaf, &repo(), Some("native_xrce_jazzy"))
+            .unwrap()
+            .unwrap();
+        let jazzy_m = read(&jazzy.dir.join("Cargo.toml"));
+        assert_ne!(humble_m, jazzy_m, "two editions, one selection");
+        let board = |m: &str| {
+            m.lines()
+                .find(|l| l.starts_with("nros-board-linux "))
+                .unwrap_or_else(|| panic!("no board crate:\n{m}"))
+                .to_string()
+        };
+        let umbrella = |m: &str| {
+            m.lines()
+                .find(|l| l.starts_with("nros = "))
+                .unwrap_or_else(|| panic!("no nros:\n{m}"))
+                .to_string()
+        };
+        assert!(umbrella(&humble_m).contains("\"ros-humble\""), "{humble_m}");
+        assert!(board(&humble_m).contains("\"ros-humble\""), "{humble_m}");
+        assert!(board(&humble_m).contains("\"rmw-zenoh\""), "{humble_m}");
+        assert!(umbrella(&jazzy_m).contains("\"ros-jazzy\""), "{jazzy_m}");
+        assert!(board(&jazzy_m).contains("\"ros-jazzy\""), "{jazzy_m}");
+        assert!(board(&jazzy_m).contains("\"rmw-xrce\""), "{jazzy_m}");
+        assert!(!jazzy_m.contains("ros-humble"), "{jazzy_m}");
+        assert!(!jazzy_m.contains("rmw-zenoh"), "{jazzy_m}");
+        // An image the file does not declare is refused, naming the ones it does.
+        let e = write_selection(&leaf, &repo(), Some("native_iron"))
+            .expect_err("undeclared image")
+            .to_string();
+        assert!(e.contains("native_xrce_jazzy"), "{e}");
+    }
+
     /// The point of the package: a board switch in `system.toml` is the ONE
     /// edit. The same manifest gets the other board's crate, without the
     /// first board's entry feature (which the other crate does not declare).
@@ -1355,13 +1466,13 @@ mod board_crate_tests {
         let tmp = tempfile::tempdir().unwrap();
         let leaf = migrated_leaf(tmp.path(), "qemu-mps2-an385", "");
         let manifest = read(&leaf.join("Cargo.toml"));
-        write_selection(&leaf, &repo()).unwrap().unwrap();
-        let again = write_selection(&leaf, &repo()).unwrap().unwrap();
+        write_selection(&leaf, &repo(), None).unwrap().unwrap();
+        let again = write_selection(&leaf, &repo(), None).unwrap().unwrap();
         assert!(!again.changed, "an unchanged image rewrote its selection");
 
         let sys = read(&leaf.join("system.toml")).replace("qemu-mps2-an385", "freertos");
         std::fs::write(leaf.join("system.toml"), sys).unwrap();
-        let sel = write_selection(&leaf, &repo()).unwrap().unwrap();
+        let sel = write_selection(&leaf, &repo(), None).unwrap().unwrap();
         assert!(sel.changed);
         let m = read(&sel.dir.join("Cargo.toml"));
         assert!(
@@ -1392,7 +1503,7 @@ mod board_crate_tests {
     fn a_platform_panic_image_carries_no_crate_root_provider() {
         let tmp = tempfile::tempdir().unwrap();
         let leaf = migrated_leaf(tmp.path(), "freertos", "panic = \"platform\"\n");
-        let sel = write_selection(&leaf, &repo()).unwrap().unwrap();
+        let sel = write_selection(&leaf, &repo(), None).unwrap().unwrap();
         assert!(!read(&sel.dir.join("Cargo.toml")).contains("panic-semihosting"));
         assert!(!read(&sel.dir.join("src/lib.rs")).contains("panic_semihosting"));
     }
@@ -1415,7 +1526,7 @@ mod board_crate_tests {
             "[system]\nname = \"t\"\nrmw = \"zenoh\"\n\n[image.native]\nboard = \"native\"\n",
         )
         .unwrap();
-        assert!(write_selection(&leaf, &repo()).unwrap().is_none());
+        assert!(write_selection(&leaf, &repo(), None).unwrap().is_none());
         assert!(!leaf.join("build").exists());
     }
 

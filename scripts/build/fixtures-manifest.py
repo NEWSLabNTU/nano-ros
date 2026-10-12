@@ -518,7 +518,23 @@ def cargo_args(entry, *, include_target_dir=True):
         and not builds_through_leaf_settings(entry)
     ):
         args += ["--target", entry["target"]]
+    # Issue 1305 — an IMAGE row of a single-package leaf (`image = "<id>"` on a
+    # `[[fixture]]`): which of the leaf's images the row builds. Not a cargo
+    # flag; it rides the args string because that string is what the row's
+    # group key (`nros_fixture_group_slug`), its build and its staleness probe
+    # already share, so two images of one leaf land in two group dirs by the
+    # same computation that separates two feature sets. `leaf-settings.sh`
+    # (`nros_leaf_row_image` / `nros_leaf_strip_row_image`) is the one reader:
+    # it syncs that image and hands cargo the args without the token. Cargo
+    # rejects the token if anything forgets, which is the failure to want.
+    if entry.get("image") and builds_through_leaf_settings(entry):
+        args.append(f"{ROW_IMAGE_TOKEN}{entry['image']}")
     return " ".join(args)
+
+
+# The `cargo_args` token naming a leaf row's image — issue 1305. Spelled once
+# more in `scripts/build/leaf-settings.sh`, its one reader.
+ROW_IMAGE_TOKEN = "--nros-image="
 
 
 def builds_through_leaf_settings(entry):
@@ -634,15 +650,19 @@ def row_is_variant(entry):
     #
     # `rmw` is deliberately NOT here: it is a COORDINATE, not a configuration.
     # A default-rmw row is core.
+    # Issue 1305 — `image` too: a leaf row naming one of its images is the
+    # configuration a `features = ["rmw-<x>"]` row used to be.
     return any(
-        entry.get(k) for k in ("features", "no_default_features", "env", "cargo_args")
+        entry.get(k)
+        for k in ("features", "no_default_features", "env", "cargo_args", "image")
     )
 
 
 def row_selector(entry):
-    """The row's AUTHORED variant identity, as a 5-tuple of strings — issue 0517.
+    """The row's AUTHORED variant identity, as a 6-tuple of strings — issue 0517.
 
-    `(dir, rmw, features, no_default_features, env)`. Measured over the 248
+    `(dir, rmw, features, no_default_features, env, image)` (`image` since
+    issue 1305). Measured over the 248
     manifest rows this is INJECTIVE, which `(dir, target_dir)` also is today —
     the point is that this one survives the column's deletion, because it names
     the configuration instead of a directory somebody had to invent for it.
@@ -672,7 +692,11 @@ def row_selector(entry):
     features = ",".join(sorted(entry.get("features") or []))
     ndf = "1" if entry.get("no_default_features") else "0"
     env = ",".join(f"{k}={v}" for k, v in sorted((entry.get("env") or {}).items()))
-    return (str(entry.get("dir") or "").rstrip("/"), rmw, features, ndf, env)
+    # Issue 1305 — the image a single-package leaf row builds, LAST so the five
+    # fields before it keep their positions. Empty for every row that names
+    # none, which is every row whose leaf has one image.
+    image = str(entry.get("image") or "")
+    return (str(entry.get("dir") or "").rstrip("/"), rmw, features, ndf, env, image)
 
 
 WEST_ROLES = (
@@ -1718,6 +1742,33 @@ def validate_fixture(entry):
     # issue 0539 — same rule for a plain row's optional id.
     if entry.get("id"):
         _reject_work_item_id(entry, entry["id"])
+
+    # Issue 1305 — `image` on a `[[fixture]]` row names one image of a
+    # single-package leaf. It means nothing on any other row (a workspace row
+    # carries its own `image`, in `[[workspace_fixture]]`), it must be declared,
+    # and the row's RMW must be one that image links — the workspace rows' rule
+    # (`_require_image_rmw`, issue 0831), asked of the leaf's own file.
+    image = entry.get("image")
+    if image:
+        if not builds_through_leaf_settings(entry):
+            _fail(
+                entry,
+                f"names image {image!r}, but {entry['dir']} is not a single-package "
+                f"leaf (a `system.toml` beside a `Cargo.toml`), so nothing would build it",
+            )
+        system_toml = SCRIPT_ROOT / entry["dir"] / "system.toml"
+        _require_image(entry, system_toml, image)
+        _require_image_rmw(
+            {**entry, "rmw": entry.get("rmw") or DEFAULT_RMW}, system_toml, image
+        )
+        if entry.get("no_default_features") or any(
+            str(f).startswith(("rmw-", "ros-")) for f in entry.get("features") or []
+        ):
+            _fail(
+                entry,
+                f"names image {image!r} AND selects an RMW or edition by cargo feature; "
+                f"the image is the selection (RFC-0031, issue 1305) — drop the features",
+            )
 
 
 def validate_fixtures(entries):

@@ -105,6 +105,16 @@ pub fn selection_crate_name(pkg: &str) -> String {
 /// image (write-if-changed, so a rebuild of the same image touches nothing).
 pub const LEAF_SELECTION_DIR: &str = "build/nros/selection";
 
+/// The environment variable a single-package leaf's generated settings file
+/// (`build/<image>/nros-cargo.toml`) sets to the image it builds (issue 1305).
+///
+/// A cargo leaf may declare several images (one per RMW and ROS edition), and
+/// cargo is the only thing between `nros build <id>` and `nros::main!`, so the
+/// image rides the settings file's `[env]` the way the board facts do. The
+/// macro reads that image ([`read_image`]); unset, it applies [`read`]'s own
+/// rule. Lives here because the macro and the CLI must spell it the same.
+pub const IMAGE_ENV: &str = "NROS_IMAGE";
+
 /// The link kinds `[image.<id>] transport` may name — the same three
 /// `nros_platform_config::platform_config::TRANSPORT_KINDS` defines
 /// (RFC-0086 D2).

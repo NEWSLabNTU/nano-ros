@@ -387,6 +387,31 @@ impl Parse for TupleStrPair {
 /// Issue 1766 — one reader, so a unit test can expand the macro over a
 /// throwaway leaf through a per-thread override instead of mutating the
 /// process environment (which needs `unsafe` and races every other test).
+/// A single-package leaf's deployment, for the image being built.
+///
+/// Issue 1305 — a cargo leaf may declare several images (one per RMW and ROS
+/// edition); the image's generated settings file names the one it builds in
+/// [`IMAGE_ENV`](nros_orchestration_ir::leaf_system::IMAGE_ENV), so the locator,
+/// RMW overlay and board this expansion bakes are THAT image's. Unset (a plain
+/// `cargo build` with no settings file, the host metadata probe), the leaf's
+/// own rule applies: one image, or `[system] default_images`.
+fn read_leaf_image(
+    manifest_dir: &std::path::Path,
+) -> Result<Option<nros_orchestration_ir::leaf_system::LeafSystem>, String> {
+    match entry_env(nros_orchestration_ir::leaf_system::IMAGE_ENV)
+        .and_then(|v| v.into_string().ok())
+        .filter(|v| !v.trim().is_empty())
+    {
+        // `read_image` answers for a bringup too; a macro reading a leaf must
+        // only take the image a LEAF declares, so a directory with no package
+        // manifest keeps `read`'s `None`.
+        Some(id) if nros_orchestration_ir::leaf_system::is_package_dir(manifest_dir) => {
+            nros_orchestration_ir::leaf_system::read_image(manifest_dir, id.trim())
+        }
+        _ => nros_orchestration_ir::leaf_system::read(manifest_dir),
+    }
+}
+
 fn entry_env(key: &str) -> Option<std::ffi::OsString> {
     #[cfg(test)]
     if let Some(v) = ENTRY_ENV_OVERRIDE.with(|m| m.borrow().get(key).cloned()) {
@@ -559,7 +584,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 Some(b) => {
                     nros_orchestration_ir::leaf_system::for_entry(&manifest_dir, &entry_pkg, b)
                 }
-                None => nros_orchestration_ir::leaf_system::read(&manifest_dir),
+                None => read_leaf_image(&manifest_dir),
             }
             .map_err(|e| syn::Error::new(Span::call_site(), format!("nros::main!: {e}")))?;
             if let Some(l) = &leaf {
@@ -3087,7 +3112,7 @@ fn wire_leaf_axes(
     let leaf = match leaf_decl {
         Some(l) => l,
         None => {
-            read_leaf = nros_orchestration_ir::leaf_system::read(manifest_dir)
+            read_leaf = read_leaf_image(manifest_dir)
                 .map_err(|e| syn::Error::new(Span::call_site(), format!("nros::main!: {e}")))?;
             match &read_leaf {
                 Some(l) => l,

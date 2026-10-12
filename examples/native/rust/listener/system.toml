@@ -7,6 +7,8 @@
 name = "native_listener"
 rmw = "zenoh"
 domain_id = 0
+# The image a bare `nros sync` / `nros build` / `cargo build` builds.
+default_images = ["native"]
 
 [[component]]
 pkg = "native_listener"
@@ -15,5 +17,43 @@ name = "listener"
 
 # Host build. The locator and domain stay runtime env on native
 # (`NROS_LOCATOR` / `ROS_DOMAIN_ID`); the board applies only the node name.
-[image.native]
+#
+# ONE IMAGE PER RMW × ROS EDITION (issue 1305, RFC-0031 / RFC-0056). The RMW
+# and the edition are declared here and lowered into the generated selection
+# package (`build/nros/selection`), never named as cargo features in
+# `Cargo.toml`. `nros sync` / `nros build` take the default image; name another
+# with `nros sync --image <id> && nros build <id>`. The edition images exist
+# for `just ros_editions build-e2e-fixtures`; the id is `native`, then `_<rmw>`
+# unless zenoh, then `_<edition>` unless humble.
+[image_defaults]
 board = "native"
+
+[image.native]
+
+[image.native_xrce]
+rmw = "xrce"
+
+[image.native_cyclonedds]
+rmw = "cyclonedds"
+
+[image.native_iron]
+ros_edition = "iron"
+
+[image.native_xrce_iron]
+rmw = "xrce"
+ros_edition = "iron"
+
+[image.native_cyclonedds_iron]
+rmw = "cyclonedds"
+ros_edition = "iron"
+
+[image.native_jazzy]
+ros_edition = "jazzy"
+
+[image.native_xrce_jazzy]
+rmw = "xrce"
+ros_edition = "jazzy"
+
+[image.native_cyclonedds_jazzy]
+rmw = "cyclonedds"
+ros_edition = "jazzy"
