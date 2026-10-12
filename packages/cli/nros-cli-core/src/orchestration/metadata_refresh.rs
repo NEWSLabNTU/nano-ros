@@ -568,7 +568,7 @@ pub fn floor_by_recorded(
 /// `who` prefixes the notes this prints.
 pub fn contract_inventory(
     source: impl Into<String>,
-    model: &ros_launch_manifest_model::SystemModel,
+    model: &nros_orchestration_ir::overlay::LoadedModel,
     workspace: Option<&Path>,
     who: &str,
 ) -> Option<crate::entity_inventory::EntityInventory> {

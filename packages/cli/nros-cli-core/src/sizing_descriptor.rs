@@ -1877,7 +1877,7 @@ pub fn write_for_leaf(
     // found any endpoints. A leaf may declare parameters and create nothing
     // else; the endpoint table being empty says nothing about the store.
     let model = crate::leaf_entity_env::leaf_model(leaf);
-    let params = model.as_ref().map(ParamDeclarations::from_model);
+    let params = model.as_ref().map(|m| ParamDeclarations::from_model(m));
     // Issue 1706 -- what the leaf declares about the parameter store, for
     // `[params] store`: the model's launch seeds, and the `param_services` axis
     // only where it is BOTH declared (`[system] features`) and compiled in (the
@@ -1981,11 +1981,11 @@ pub fn write_for_leaf(
 /// model's, with the `param_services` axis kept only where the leaf's own
 /// `nros` dependency compiles the services in. See [`write_for_leaf`].
 fn leaf_store_infra(
-    model: Option<&ros_launch_manifest_model::SystemModel>,
+    model: Option<&nros_orchestration_ir::overlay::LoadedModel>,
     manifest_param_services: bool,
 ) -> Option<InfraServices> {
     model.map(|m| {
-        let mut i = InfraServices::from_model(m);
+        let mut i = InfraServices::from_model(m, None);
         i.param_services &= manifest_param_services;
         i
     })
@@ -3351,7 +3351,11 @@ mod tests {
              history: keep_last\n        depth: 1\n",
         )
         .unwrap();
-        let inv = EntityInventory::from_model("model", &model).unwrap();
+        let inv = EntityInventory::from_model(
+            "model",
+            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((model).clone()),
+        )
+        .unwrap();
         let path =
             |inv: &EntityInventory| build(&model_with_tables(inv)).endpoints[0].registration_path();
 
@@ -3381,13 +3385,20 @@ mod tests {
             });
             p
         };
-        let observed = crate::contract_join::observe_registrations(&inv, &probe_with(true), &model);
+        let observed = crate::contract_join::observe_registrations(
+            &inv,
+            &probe_with(true),
+            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((model).clone()),
+        );
         assert_eq!(
             path(&observed.inventory).stated(),
             Some(&RegistrationPath::InPlace)
         );
-        let buffered =
-            crate::contract_join::observe_registrations(&inv, &probe_with(false), &model);
+        let buffered = crate::contract_join::observe_registrations(
+            &inv,
+            &probe_with(false),
+            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((model).clone()),
+        );
         assert!(path(&buffered.inventory).refusal().is_some());
     }
 
@@ -4874,7 +4885,11 @@ execution:
     /// it: the inventory from the model, its families as `infra`, and the
     /// contract's declarations from the same model.
     fn store_of(model: &ros_launch_manifest_model::SystemModel) -> nros_sizing_descriptor::Params {
-        let mut inv = EntityInventory::from_model("model", model).expect("the model has wiring");
+        let mut inv = EntityInventory::from_model(
+            "model",
+            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((model).clone()),
+        )
+        .expect("the model has wiring");
         inv.set_param_declarations(ParamDeclarations::from_model(model));
         let d = build(&DescriptorInputs {
             params: Some(inv.param_declarations()),
@@ -4908,7 +4923,14 @@ execution:
         let store = |m: &ros_launch_manifest_model::SystemModel, feature: bool| {
             let d = build(&DescriptorInputs {
                 params: Some(&ParamDeclarations::from_model(m)),
-                infra: leaf_store_infra(Some(m), feature),
+                infra: leaf_store_infra(
+                    Some(
+                        &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(
+                            (m).clone(),
+                        ),
+                    ),
+                    feature,
+                ),
                 ..base(&inventory(vec![]))
             });
             d.params.store().stated().copied()
@@ -4935,7 +4957,10 @@ execution:
             build_dir: dir.path(),
             entry: "img",
             params: &ParamDeclarations::from_model(&model),
-            infra: InfraServices::from_model(&model),
+            infra: InfraServices::from_model(
+                &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(model.clone()),
+                None,
+            ),
             runtime_entries: None,
             roots: &[],
         })
@@ -4969,7 +4994,12 @@ execution:
                 build_dir: dir.path(),
                 entry: "img",
                 params: &ParamDeclarations::from_model(m),
-                infra: InfraServices::from_model(m),
+                infra: InfraServices::from_model(
+                    &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(
+                        (*m).clone(),
+                    ),
+                    None,
+                ),
                 runtime_entries: None,
                 roots: &[],
             })
@@ -4995,8 +5025,18 @@ execution:
             build_dir: dir.path(),
             entry: "runtime",
             params: &ParamDeclarations::Absent,
-            infra: InfraServices::from_model(&store_model("", ""))
-                .union(InfraServices::from_model(&seeded)),
+            infra: InfraServices::from_model(
+                &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(store_model(
+                    "", "",
+                )),
+                None,
+            )
+            .union(InfraServices::from_model(
+                &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(
+                    seeded.clone(),
+                ),
+                None,
+            )),
             runtime_entries: Some(&entries),
             roots: &[],
         })
@@ -5094,14 +5134,25 @@ execution:
             .map(|(src, m)| {
                 (
                     src.to_string(),
-                    EntityInventory::from_model(*src, m),
+                    EntityInventory::from_model(
+                        *src,
+                        &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(
+                            (*m).clone(),
+                        ),
+                    ),
                     ParamDeclarations::from_model(m),
                 )
             })
             .collect();
         let frames: Vec<_> = [&plain, &seeded]
             .iter()
-            .map(|m| Some(crate::entity_inventory::ImageFrame::from_model(m)))
+            .map(|m| {
+                Some(crate::entity_inventory::ImageFrame::from_model(
+                    &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(
+                        (**m).clone(),
+                    ),
+                ))
+            })
             .collect();
         let (runtime, _) =
             EntityInventory::new("metadata").shared_runtime_over_framed(&images, &frames);

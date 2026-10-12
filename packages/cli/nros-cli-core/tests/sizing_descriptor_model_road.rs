@@ -40,7 +40,11 @@ use ros_launch_manifest_model::SystemModel;
 fn a_contract_reaches_the_model_road_and_the_leaf_facts_refuse_by_name() {
     let dir = scratch("acceptance");
     let model = resolve("policies", &dir);
-    let inv = EntityInventory::from_model("fixture", &model).expect("the fixture describes wiring");
+    let inv = EntityInventory::from_model(
+        "fixture",
+        &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((model).clone()),
+    )
+    .expect("the fixture describes wiring");
     let written = write_for_model(&ModelImage {
         build_dir: &dir,
         entry: "policies",
@@ -167,9 +171,11 @@ fn a_contract_reaches_the_model_road_and_the_leaf_facts_refuse_by_name() {
 fn a_model_road_descriptor_carries_no_path_from_this_checkout() {
     let dir = scratch("portable");
     let model = resolve("policies", &dir);
-    let inv =
-        EntityInventory::from_model(dir.join("system_model.yaml").display().to_string(), &model)
-            .expect("the fixture describes wiring");
+    let inv = EntityInventory::from_model(
+        dir.join("system_model.yaml").display().to_string(),
+        &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((model).clone()),
+    )
+    .expect("the fixture describes wiring");
     let written = write_for_model(&ModelImage {
         build_dir: &dir,
         entry: "policies",
@@ -200,7 +206,11 @@ fn a_model_road_descriptor_carries_no_path_from_this_checkout() {
 fn keep_all_still_refuses_its_depth_on_the_model_road() {
     let dir = scratch("keep_all");
     let model = resolve("keep_all", &dir);
-    let inv = EntityInventory::from_model("fixture", &model).expect("the fixture describes wiring");
+    let inv = EntityInventory::from_model(
+        "fixture",
+        &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((model).clone()),
+    )
+    .expect("the fixture describes wiring");
     let written = write_for_model(&ModelImage {
         build_dir: &dir,
         entry: "keep_all",
@@ -244,7 +254,11 @@ fn keep_all_still_refuses_its_depth_on_the_model_road() {
 fn bound_tables_turn_the_model_roads_payload_refusals_into_facts() {
     let dir = scratch("bounds");
     let model = resolve("policies", &dir);
-    let inv = EntityInventory::from_model("fixture", &model).expect("the fixture describes wiring");
+    let inv = EntityInventory::from_model(
+        "fixture",
+        &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((model).clone()),
+    )
+    .expect("the fixture describes wiring");
     let tables = [std_msgs_bound_table()];
     let written = write_for_model(&ModelImage {
         build_dir: &dir,
@@ -367,7 +381,11 @@ fn bound_tables_turn_the_model_roads_payload_refusals_into_facts() {
 fn a_registered_bound_table_not_yet_built_refuses_by_name() {
     let dir = scratch("pending");
     let model = resolve("policies", &dir);
-    let inv = EntityInventory::from_model("fixture", &model).expect("the fixture describes wiring");
+    let inv = EntityInventory::from_model(
+        "fixture",
+        &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((model).clone()),
+    )
+    .expect("the fixture describes wiring");
     let pending = dir.join("not_built_yet/nros_message_bounds.json");
     let tables = [pending.clone()];
     let written = write_for_model(&ModelImage {

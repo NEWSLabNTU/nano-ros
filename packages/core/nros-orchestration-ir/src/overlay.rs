@@ -301,6 +301,167 @@ pub fn write_beside(model_path: &Path, system_toml: &Path) -> Result<Option<Path
     Ok(Some(path))
 }
 
+/// phase-486 W3 — a resolved model and the overlay beside it, read together.
+///
+/// Every nano-ros reader of a build switch or of the lifecycle default reads
+/// [`Self::overlay`], never `model.execution.features` (gated by
+/// `check-launch-model-boundary`). Derefs to the model, so topology,
+/// contracts and scheduling read exactly as before.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct LoadedModel {
+    pub model: ros_launch_manifest_model::SystemModel,
+    pub overlay: Overlay,
+}
+
+impl std::ops::Deref for LoadedModel {
+    type Target = ros_launch_manifest_model::SystemModel;
+    fn deref(&self) -> &Self::Target {
+        &self.model
+    }
+}
+
+impl LoadedModel {
+    /// A model with no overlay: a bringup that states no nano-ros facts.
+    pub fn bare(model: ros_launch_manifest_model::SystemModel) -> Self {
+        Self {
+            model,
+            overlay: Overlay::default(),
+        }
+    }
+
+    /// A model as an rlm before `v0.1.55` resolved it, paired with the overlay
+    /// `nros sync` would have written for it: the switches rlm projected into
+    /// `execution.features` move into the overlay and leave the model.
+    ///
+    /// For TESTS whose fixtures are model YAML written in the old shape. No
+    /// production path uses it: a real model always has its overlay beside it.
+    pub fn from_legacy_projection(mut model: ros_launch_manifest_model::SystemModel) -> Self {
+        let overlay = Overlay {
+            features: std::mem::take(&mut model.execution.features),
+            ..Overlay::default()
+        };
+        Self { model, overlay }
+    }
+
+    /// Read the model at `path` and the overlay beside it.
+    pub fn load(path: &Path) -> Result<Self, String> {
+        let yaml = std::fs::read_to_string(path)
+            .map_err(|e| format!("read SystemModel {}: {e}", path.display()))?;
+        let model = ros_launch_manifest_model::SystemModel::from_yaml_str(&yaml)
+            .map_err(|e| format!("load SystemModel {}: {e}", path.display()))?;
+        Self::with_overlay_beside(model, path)
+    }
+
+    /// Pair an already-parsed `model` with the overlay beside `model_path`.
+    pub fn with_overlay_beside(
+        model: ros_launch_manifest_model::SystemModel,
+        model_path: &Path,
+    ) -> Result<Self, String> {
+        let overlay = load_beside(model_path, &model)?;
+        Ok(Self { model, overlay })
+    }
+
+    /// The image's capability switches: the overlay's system list plus what
+    /// `image` adds (phase-486 W2). `None` = the system list alone.
+    pub fn features(&self, image: Option<&str>) -> Vec<String> {
+        match image {
+            Some(id) => self.overlay.features_for_image(id),
+            None => self.overlay.features.clone(),
+        }
+    }
+
+    /// The image's lifecycle boot transition — [`reduce_lifecycle_autostart`].
+    pub fn lifecycle_autostart(
+        &self,
+    ) -> Result<Option<ros_launch_manifest_model::Autostart>, String> {
+        reduce_lifecycle_autostart(&self.model, &self.overlay)
+    }
+}
+
+/// Read the overlay beside `model_path`.
+///
+/// Absent file ⇒ an empty overlay: the bringup states no nano-ros facts. The
+/// one exception is a model that still CARRIES build switches — written by an
+/// `nros` from before phase-486 W1, or by an rlm that still projects them —
+/// with no overlay beside it. Reading "no switches" there would silently
+/// build the image without them, so it is refused, naming the fix.
+pub fn load_beside(
+    model_path: &Path,
+    model: &ros_launch_manifest_model::SystemModel,
+) -> Result<Overlay, String> {
+    let path = overlay_path_for_model(model_path);
+    match std::fs::read_to_string(&path) {
+        Ok(text) => Overlay::parse(&text, &path),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            // check-launch-model-boundary: allowlisted — the migration guard is
+            // the one place that may look at the retired field.
+            if model.execution.features.is_empty() {
+                Ok(Overlay::default())
+            } else {
+                Err(format!(
+                    "{}: this model carries capability switches ({}) but no `{OVERLAY_FILE}` \
+                     sits beside it. nano-ros reads its switches from that overlay \
+                     (phase-486); re-run `nros sync` to write it.",
+                    model_path.display(),
+                    model.execution.features.join(", ")
+                ))
+            }
+        }
+        Err(e) => Err(format!("{}: cannot read: {e}", path.display())),
+    }
+}
+
+/// phase-486 W3 — does the image this model was resolved for run `fqn`?
+///
+/// `execution.deploy` is a placement map: a node in it is placed, and a node
+/// absent from a NON-EMPTY map was placed elsewhere (`[host.*]` with
+/// `nodes = [..]`). An empty map places nothing, so every node runs. The
+/// board-slice rule that also read `Deploy.target` is gone (no tracked
+/// producer, no other reader; rlm stopped writing it).
+pub fn placed_here(model: &ros_launch_manifest_model::SystemModel, fqn: &str) -> bool {
+    model.execution.deploy.is_empty() || model.execution.deploy.contains_key(fqn)
+}
+
+/// phase-486 W0 Correction 2 — ONE lifecycle boot transition per image.
+///
+/// The runtime has one executor-wide autostart, while the model states it per
+/// node. Three readers used to take the first node's value. The rule now:
+/// - every node that states a value agrees, and that value wins;
+/// - if none states one, the overlay's `[lifecycle] autostart` applies;
+/// - if two disagree, refuse, naming both.
+pub fn reduce_lifecycle_autostart(
+    model: &ros_launch_manifest_model::SystemModel,
+    overlay: &Overlay,
+) -> Result<Option<ros_launch_manifest_model::Autostart>, String> {
+    use ros_launch_manifest_model::Autostart;
+    let mut first: Option<(&str, Autostart)> = None;
+    for (fqn, n) in &model.structure.nodes {
+        let Some(a) = n.lifecycle_autostart else {
+            continue;
+        };
+        match first {
+            None => first = Some((fqn.as_str(), a)),
+            Some((f0, a0)) if a0 != a => {
+                return Err(format!(
+                    "lifecycle autostart disagrees within one image: `{f0}` states {a0:?}, \
+                     `{fqn}` states {a:?}. The runtime has one executor-wide boot transition; \
+                     make the launch file (or contract) state one value."
+                ));
+            }
+            Some(_) => {}
+        }
+    }
+    if let Some((_, a)) = first {
+        return Ok(Some(a));
+    }
+    Ok(match overlay.lifecycle_autostart.as_deref() {
+        Some("none") => Some(Autostart::None),
+        Some("configure") => Some(Autostart::Configure),
+        Some("active") => Some(Autostart::Active),
+        _ => None,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -423,5 +584,120 @@ mod tests {
         assert_eq!(write_beside(&model, &st).unwrap(), None);
         assert!(!written.exists());
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    // ---- phase-486 W3: the reader side ----
+
+    use ros_launch_manifest_model::{Autostart, Deploy, NodeInstance, SystemModel};
+
+    fn nodes(vals: &[(&str, Option<Autostart>)]) -> SystemModel {
+        let mut m = SystemModel::default();
+        for (fqn, a) in vals {
+            m.structure.nodes.insert(
+                (*fqn).to_string(),
+                NodeInstance {
+                    lifecycle_autostart: *a,
+                    ..NodeInstance::default()
+                },
+            );
+        }
+        m
+    }
+
+    #[test]
+    fn nodes_that_agree_win_over_the_overlay_default() {
+        let m = nodes(&[
+            ("/a", Some(Autostart::Active)),
+            ("/b", None),
+            ("/c", Some(Autostart::Active)),
+        ]);
+        let o = Overlay {
+            lifecycle_autostart: Some("configure".into()),
+            ..Overlay::default()
+        };
+        assert_eq!(
+            reduce_lifecycle_autostart(&m, &o).unwrap(),
+            Some(Autostart::Active)
+        );
+    }
+
+    #[test]
+    fn no_node_stating_one_takes_the_overlay_default() {
+        let m = nodes(&[("/a", None)]);
+        let o = Overlay {
+            lifecycle_autostart: Some("configure".into()),
+            ..Overlay::default()
+        };
+        assert_eq!(
+            reduce_lifecycle_autostart(&m, &o).unwrap(),
+            Some(Autostart::Configure)
+        );
+        assert_eq!(
+            reduce_lifecycle_autostart(&m, &Overlay::default()).unwrap(),
+            None
+        );
+    }
+
+    /// The first-node-wins readers this replaces would have answered `None`
+    /// here (BTreeMap order puts `/a` first) and silently booted `/b` wrong.
+    #[test]
+    fn two_nodes_that_disagree_are_refused_by_name() {
+        let m = nodes(&[
+            ("/a", Some(Autostart::None)),
+            ("/b", Some(Autostart::Active)),
+        ]);
+        let e = reduce_lifecycle_autostart(&m, &Overlay::default()).unwrap_err();
+        assert!(e.contains("/a") && e.contains("/b"), "{e}");
+    }
+
+    #[test]
+    fn placement_is_membership_of_a_non_empty_map() {
+        let mut m = nodes(&[("/a", None), ("/b", None)]);
+        assert!(
+            placed_here(&m, "/a") && placed_here(&m, "/b"),
+            "an empty map places everything"
+        );
+        m.execution.deploy.insert("/a".into(), Deploy::default());
+        assert!(placed_here(&m, "/a"));
+        assert!(
+            !placed_here(&m, "/b"),
+            "absent from a non-empty map = placed elsewhere"
+        );
+    }
+
+    #[test]
+    fn a_model_carrying_switches_with_no_overlay_is_refused() {
+        let dir = std::env::temp_dir().join(format!("nros-overlay-load-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("system_model.yaml");
+        let mut legacy = SystemModel::default();
+        legacy.execution.features = vec!["param_services".into()];
+        let e = load_beside(&path, &legacy).unwrap_err();
+        assert!(e.contains("nros sync"), "{e}");
+        // No switches in the model and no file: nothing stated, no error.
+        assert_eq!(
+            load_beside(&path, &SystemModel::default()).unwrap(),
+            Overlay::default()
+        );
+        // With the file, the file answers, whatever the model carries.
+        std::fs::write(
+            dir.join(OVERLAY_FILE),
+            "[meta]\nversion = 1\n[system]\nfeatures = [\"safety\"]\n",
+        )
+        .unwrap();
+        assert_eq!(
+            load_beside(&path, &legacy).unwrap().features,
+            vec!["safety"]
+        );
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn the_legacy_projection_moves_switches_out_of_the_model() {
+        let mut m = SystemModel::default();
+        m.execution.features = vec!["param_services".into()];
+        let l = LoadedModel::from_legacy_projection(m);
+        assert!(l.model.execution.features.is_empty());
+        assert_eq!(l.features(None), vec!["param_services"]);
     }
 }

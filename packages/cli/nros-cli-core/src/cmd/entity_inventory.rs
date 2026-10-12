@@ -237,7 +237,7 @@ pub fn inventory_from_metadata_file(path: &std::path::Path) -> Result<EntityInve
 
 /// One `--model`, verified, parsed and checked at the door -- the three
 /// refusals every model meets before it may say anything.
-fn load_model(model_path: &std::path::Path) -> Result<ros_launch_manifest_model::SystemModel> {
+fn load_model(model_path: &std::path::Path) -> Result<nros_orchestration_ir::overlay::LoadedModel> {
     // phase-460 W1 (issue 1420) -- verify at this door. cmake hands over a
     // path `model-path` already verified; a hand run meets the same gate.
     // The bringup is recovered from where `nros sync` put the model.
@@ -259,7 +259,9 @@ fn load_model(model_path: &std::path::Path) -> Result<ros_launch_manifest_model:
     // the verb and the only one with an error channel.
     reject_qos_override_divergence(&model)
         .wrap_err_with(|| format!("model `{}`", model_path.display()))?;
-    Ok(model)
+    // phase-486 W3 -- the nano-ros switches beside the model.
+    nros_orchestration_ir::overlay::LoadedModel::with_overlay_beside(model, model_path)
+        .map_err(|e| eyre::eyre!(e))
 }
 
 /// The metadata inventory with one model's wiring folded in, plus whether the
@@ -271,7 +273,7 @@ fn load_model(model_path: &std::path::Path) -> Result<ros_launch_manifest_model:
 fn with_model(
     metadata_inv: &EntityInventory,
     model_source: &str,
-    model: &ros_launch_manifest_model::SystemModel,
+    model: &nros_orchestration_ir::overlay::LoadedModel,
     workspace: Option<&std::path::Path>,
 ) -> (EntityInventory, bool) {
     let mut inv = metadata_inv.clone();
@@ -327,7 +329,7 @@ fn run_several_models(args: &EntityInventoryArgs, metadata_inv: &EntityInventory
             args.model.len()
         );
     }
-    let mut models: Vec<(String, ros_launch_manifest_model::SystemModel)> = Vec::new();
+    let mut models: Vec<(String, nros_orchestration_ir::overlay::LoadedModel)> = Vec::new();
     for p in &args.model {
         models.push((p.display().to_string(), load_model(p)?));
     }
@@ -386,7 +388,7 @@ fn run_several_models(args: &EntityInventoryArgs, metadata_inv: &EntityInventory
     }
     if let Some(out) = &args.output_params_header {
         let refs: Vec<(String, &ros_launch_manifest_model::SystemModel)> =
-            models.iter().map(|(s, m)| (s.clone(), m)).collect();
+            models.iter().map(|(s, m)| (s.clone(), &m.model)).collect();
         write_if_changed(out, &crate::declared_params_header::render_union(&refs))?;
     }
     Ok(())
@@ -426,7 +428,7 @@ pub fn run(args: EntityInventoryArgs) -> Result<()> {
                 args.model.len()
             );
         }
-        let mut models: Vec<(String, ros_launch_manifest_model::SystemModel)> = Vec::new();
+        let mut models: Vec<(String, nros_orchestration_ir::overlay::LoadedModel)> = Vec::new();
         for p in &args.model {
             models.push((p.display().to_string(), load_model(p)?));
         }
@@ -545,7 +547,7 @@ pub fn run(args: EntityInventoryArgs) -> Result<()> {
 /// the descriptor fold one model list by one rule (`cmd::sizing_descriptor`).
 pub(crate) fn fold_models_for_shared_runtime(
     metadata_inv: &EntityInventory,
-    models: &[(String, ros_launch_manifest_model::SystemModel)],
+    models: &[(String, nros_orchestration_ir::overlay::LoadedModel)],
     workspace: Option<&std::path::Path>,
 ) -> EntityInventory {
     let images: Vec<_> = models
@@ -588,7 +590,7 @@ pub(crate) fn fold_models_for_shared_runtime(
 fn fold_model(
     inv: EntityInventory,
     model_source: &str,
-    model: &ros_launch_manifest_model::SystemModel,
+    model: &nros_orchestration_ir::overlay::LoadedModel,
     workspace: Option<&std::path::Path>,
 ) -> EntityInventory {
     // One fold, two callers: the single-model `run` and the fixture test want
@@ -826,7 +828,12 @@ mod tests {
     fn compose(meta: &str, model_yaml: &str) -> EntityInventory {
         let model: ros_launch_manifest_model::SystemModel =
             serde_yaml_ng::from_str(model_yaml).expect("model fixture parses");
-        fold_model(parse(meta), "model", &model, None)
+        fold_model(
+            parse(meta),
+            "model",
+            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((model).clone()),
+            None,
+        )
     }
 
     /// Issue 1555 -- the metadata says WHICH components an image registers and
@@ -1309,7 +1316,12 @@ contracts:
         // generated from the repo-relative paths and regenerated the same way.
         let inv = inventory_from_metadata(&format!("{REL}/nros-metadata.json"), &doc)
             .expect("fixture inventory builds");
-        let inv = fold_model(inv, &format!("{REL}/declared_qos.yaml"), &model, None);
+        let inv = fold_model(
+            inv,
+            &format!("{REL}/declared_qos.yaml"),
+            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((model).clone()),
+            None,
+        );
         let narrowed = narrow_to_component(&inv, "demo::listener").expect("narrows");
         let want = std::fs::read_to_string(dir.join("nros/nros_declared_qos_generated.h"))
             .expect("the committed fixture header exists");

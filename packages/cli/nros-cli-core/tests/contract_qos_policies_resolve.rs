@@ -77,8 +77,13 @@ fn the_resolver_carries_every_stated_policy_into_the_model() {
 /// build includes.
 #[test]
 fn a_four_policy_contract_reaches_the_inventory_and_both_projections() {
-    let inv = EntityInventory::from_model("fixture", &resolve("policies"))
-        .expect("the model describes wiring");
+    let inv = EntityInventory::from_model(
+        "fixture",
+        &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(
+            (resolve("policies")).clone(),
+        ),
+    )
+    .expect("the model describes wiring");
 
     // 1. The typed view.
     let rows = inv.declared_qos();
@@ -171,8 +176,13 @@ fn a_four_policy_contract_reaches_the_inventory_and_both_projections() {
 /// passed. There is no number to fall back to, so there is no fallback.
 #[test]
 fn a_keep_all_endpoint_refuses_the_depth_table_and_names_itself() {
-    let inv = EntityInventory::from_model("fixture", &resolve("keep_all"))
-        .expect("the model describes wiring");
+    let inv = EntityInventory::from_model(
+        "fixture",
+        &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(
+            (resolve("keep_all")).clone(),
+        ),
+    )
+    .expect("the model describes wiring");
 
     let DeclaredDepths::Refused { reason } = inv.declared_depths() else {
         panic!("a keep_all endpoint has no static bound, so the depth table must refuse");
@@ -221,8 +231,13 @@ fn a_keep_all_endpoint_refuses_the_depth_table_and_names_itself() {
 /// reads history (an XRCE `STREAM_HISTORY`, a Cyclone resource limit) needs it.
 #[test]
 fn the_keep_all_refusal_degrades_no_fact_it_says_nothing_about() {
-    let inv = EntityInventory::from_model("fixture", &resolve("keep_all"))
-        .expect("the model describes wiring");
+    let inv = EntityInventory::from_model(
+        "fixture",
+        &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(
+            (resolve("keep_all")).clone(),
+        ),
+    )
+    .expect("the model describes wiring");
 
     assert!(
         inv.derive().knobs().is_some(),

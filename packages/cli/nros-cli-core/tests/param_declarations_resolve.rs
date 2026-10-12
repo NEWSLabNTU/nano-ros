@@ -100,8 +100,11 @@ fn a_parameter_only_contract_is_still_an_authored_contract() {
         m.structure.topics
     );
 
-    let mut inv = EntityInventory::from_model("param_declarations/declared", &m)
-        .expect("a contract declaring only `params:` is authored, so the inventory composes");
+    let mut inv = EntityInventory::from_model(
+        "param_declarations/declared",
+        &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone()),
+    )
+    .expect("a contract declaring only `params:` is authored, so the inventory composes");
     assert!(
         inv.is_empty(),
         "zero entity rows is the TRUE answer here, not a missing inventory"

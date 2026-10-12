@@ -436,7 +436,6 @@ fn non_qos_params(params: &[(String, String)]) -> Vec<(String, String)> {
 /// a board no node targets is a placement bug, not an empty entry.
 pub fn plan_from_model(model_path: &Path, board: Option<String>) -> Result<Plan> {
     use crate::orchestration::model_ingest;
-    use ros_launch_manifest_model::Target;
 
     let model = model_ingest::load_model(model_path)?;
     // phase-454 W7 (RFC-0100 D8) -- before anything is baked, the contract and
@@ -482,60 +481,14 @@ pub fn plan_from_model(model_path: &Path, board: Option<String>) -> Result<Plan>
     // there.
     let target_rtos = nros_entry_lower::tier_rtos_key_for(&board);
 
-    // phase-315 / issue 0288 — does the model place ANYTHING on this board?
-    //
-    // `execution.deploy` is a PARTITION (node -> one target). That is right for
-    // machines and wrong for board build-variants, where every board runs every
-    // node and the map cannot say so. A board the map never mentions is
-    // therefore not "a board with nothing on it" — it is a board the model has
-    // no opinion about, which is exactly what the `(None, _) => true` arm below
-    // already says per-NODE, lifted to the board level.
-    //
-    // This is the SECOND copy of this rule: `nros-macros`'s `main_macro.rs` has
-    // the same filter for the Rust path and was fixed first. Fixing one and not
-    // the other is why `examples/workspaces/c`'s freertos entry still failed
-    // with `places no nodes on board mps2-an385-freertos` after the Rust side
-    // was green. Two entry emitters, one rule — see issue 0358 for the class.
-    let board_mentioned = model.execution.deploy.values().any(|d| match &d.target {
-        Some(Target::Linux) => matches!(board.as_str(), "native" | "posix"),
-        Some(Target::Mcu { board: b }) => {
-            b == &board
-                || matches!(
-                    d.extra.get("kind"),
-                    Some(ros_launch_manifest_model::ExtraValue::Str(k)) if k == &board
-                )
-        }
-        None => false,
-    });
-
-    let keep = |fqn: &str| -> bool {
-        let Some(dep) = model.execution.deploy.get(fqn) else {
-            return model.execution.deploy.is_empty();
-        };
-        if !board_mentioned {
-            return true;
-        }
-        match (&dep.target, board.as_str()) {
-            // Board-agnostic (multi-board system, issue 0356): no board
-            // named — this entry's board decides.
-            (None, _) => true,
-            (Some(Target::Linux), "native" | "posix") => true,
-            // Exact board key, or the deploy's platform kind (the
-            // integrator's `[deploy.<t>] kind = "zephyr"`, carried in
-            // `extra.kind`) — the entry codegen key is the board FAMILY
-            // ("zephyr") while deploys name the concrete board
-            // ("fvp-aemv8r-smp"), so both spellings must slice.
-            (Some(Target::Mcu { board: b }), key) => {
-                b == key
-                    || matches!(
-                        dep.extra.get("kind"),
-                        Some(ros_launch_manifest_model::ExtraValue::Str(k)) if k == key
-                    )
-            }
-            _ => false,
-        }
-    };
-
+    // phase-486 W3 — PLACEMENT only, no board slice. A node absent from a
+    // non-empty `execution.deploy` was placed on another machine (`[host.*]`
+    // with `nodes = [..]`), so this image does not run it. The board half —
+    // `Deploy.target` / `Mcu` / `extra.kind`, read here and in `nros::main!`
+    // (issue 0358's duplicate) — is gone: only `[deploy.<n>] board` wrote it,
+    // no tracked bringup has one, no other realizer read it, and rlm stopped
+    // writing it (model-boundary W6). ONE rule, shared with the macro.
+    let keep = |fqn: &str| nros_orchestration_ir::overlay::placed_here(&model, fqn);
     let mut nodes: Vec<PlanNode> = Vec::new();
     // Issue 0794 — the RFC-0045 baked SESSION rung, collected per deployed node
     // and folded once below. `execution.deploy.<fqn>.{domain, locator, rmw}` is
@@ -616,8 +569,8 @@ pub fn plan_from_model(model_path: &Path, board: Option<String>) -> Result<Plan>
     }
     if nodes.is_empty() {
         bail!(
-            "SystemModel `{}` places no nodes on board `{board}` — check \
-             execution.deploy targets",
+            "SystemModel `{}` declares no nodes for board `{board}` — check the \
+             launch file the image resolves",
             model_path.display()
         );
     }
@@ -662,11 +615,12 @@ pub fn plan_from_model(model_path: &Path, board: Option<String>) -> Result<Plan>
         }
     }
 
+    // phase-486 W3 — the overlay supplies the switches and the lifecycle
+    // default; ONE reducer turns per-node values into the image's one boot
+    // transition (refusing a disagreement), replacing first-node-wins.
     let lifecycle = model
-        .structure
-        .nodes
-        .values()
-        .find_map(|n| n.lifecycle_autostart)
+        .lifecycle_autostart()
+        .map_err(|e| eyre::eyre!("model `{}`: {e}", model_path.display()))?
         .map(|a| {
             match a {
                 ros_launch_manifest_model::Autostart::None => "none",
@@ -675,7 +629,7 @@ pub fn plan_from_model(model_path: &Path, board: Option<String>) -> Result<Plan>
             }
             .to_string()
         });
-    let features = &model.execution.features;
+    let features = model.features(None);
     let param_services = features.iter().any(|f| f == "param_services");
     let safety = features.iter().any(|f| f == "safety").then_some(true);
 
@@ -1111,38 +1065,6 @@ contracts: {}
             nros_orchestration_ir::qos_override::policy::RELIABILITY
         );
         assert_eq!(node.qos_overrides[0].value, 0);
-    }
-
-    /// #236 / issue 0356 — a board-agnostic deploy (`target: None`, a
-    /// multi-board system's placement) keeps the node on every board's
-    /// slice. An explicit `target: linux` still rejects non-native boards.
-    #[test]
-    fn model_unplaced_target_is_board_agnostic() {
-        use ros_launch_manifest_model::{Deploy, Target};
-        let unplaced = Deploy::default();
-        assert_eq!(unplaced.target, None);
-        let placed_linux = Deploy {
-            target: Some(Target::Linux),
-            ..Default::default()
-        };
-
-        // Mirror the `keep` board match used by plan_from_model + the macro.
-        let board_ok = |dep: &Deploy, key: &str| -> bool {
-            match (&dep.target, key) {
-                (None, _) => true,
-                (Some(Target::Linux), "native" | "posix") => true,
-                (Some(Target::Mcu { board: b }), key) => b == key,
-                _ => false,
-            }
-        };
-        for board in ["native", "posix", "zephyr", "freertos"] {
-            assert!(board_ok(&unplaced, board), "unplaced must keep on {board}");
-        }
-        assert!(board_ok(&placed_linux, "native"));
-        assert!(
-            !board_ok(&placed_linux, "zephyr"),
-            "explicit linux placement must still reject a zephyr board"
-        );
     }
 
     /// Phase 211.H (issue #52) — `qos_overrides.<topic>.<role>.<policy>` params

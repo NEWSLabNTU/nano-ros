@@ -3081,11 +3081,8 @@ struct GeneratedEntry {
 /// they are CARRIED, never the count (issue 0460). Since RFC-0098 D7 they go in
 /// the image's settings file rather than the handoff's environment.
 fn entity_facts_at(model_path: &std::path::Path) -> std::collections::BTreeMap<String, String> {
-    match std::fs::read_to_string(model_path)
-        .map_err(|e| e.to_string())
-        .and_then(|y| {
-            ros_launch_manifest_model::SystemModel::from_yaml_str(&y).map_err(|e| e.to_string())
-        }) {
+    // phase-486 W3 -- the model AND the nano-ros overlay beside it.
+    match nros_orchestration_ir::overlay::LoadedModel::load(model_path) {
         Ok(m) => crate::cmd::entity_facts::facts_from_model(&m),
         Err(e) => {
             // Not fatal: the undeclared fallback is the historical behaviour.
@@ -3601,7 +3598,7 @@ struct ResolvedImage {
     /// The resolved model the inventory was composed from -- issue 1594's
     /// observation join needs its contract and its remaps. `Some` exactly when
     /// `inventory` is.
-    model: Option<ros_launch_manifest_model::SystemModel>,
+    model: Option<nros_orchestration_ir::overlay::LoadedModel>,
     /// Issue 1706 -- the bringup's parameter-store families, whenever the
     /// model RESOLVED, wiring or not: a model with no wiring writes no full
     /// descriptor, and still says whether the image builds a store.
@@ -3680,7 +3677,7 @@ fn resolve_image(
         .map(|(k, v)| (k.clone(), v.clone()))
         .collect();
     // The model rides beside the inventory for issue 1594's observation join.
-    type Composed = (EntityInventory, ros_launch_manifest_model::SystemModel);
+    type Composed = (EntityInventory, nros_orchestration_ir::overlay::LoadedModel);
     let mut store_infra = None;
     let inventory: Result<Composed, String> = (|| {
         let model_rel =
@@ -3692,7 +3689,14 @@ fn resolve_image(
             .map_err(|e| format!("reading {}: {e}", model_path.display()))?;
         let model: ros_launch_manifest_model::SystemModel = serde_yaml_ng::from_str(&raw)
             .map_err(|e| format!("parsing {}: {e}", model_path.display()))?;
-        store_infra = Some(crate::entity_inventory::InfraServices::from_model(&model));
+        // phase-486 W3 -- the switches THIS image builds with: the overlay's
+        // system list plus its own `[image.<id>] features` (W2).
+        let model =
+            nros_orchestration_ir::overlay::LoadedModel::with_overlay_beside(model, &model_path)?;
+        store_infra = Some(crate::entity_inventory::InfraServices::from_model(
+            &model,
+            Some(image_id),
+        ));
         // phase-454 W3 -- a QoS value this build cannot read refuses the SEED
         // too. `from_model` parses `reliability:` / `durability:` / `history:`
         // and an unreadable spelling parses to `None`, which is the spelling

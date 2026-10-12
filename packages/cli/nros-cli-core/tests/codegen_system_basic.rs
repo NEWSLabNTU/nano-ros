@@ -613,13 +613,13 @@ execution:
 /// bindings, and features produces a Plan sliced per board with all the
 /// legacy-path fields populated.
 #[test]
-fn plan_from_model_slices_and_populates() {
+fn plan_from_model_reads_the_overlay_and_places_by_membership() {
     use nros_cli_core::codegen::entry::plan_from_model;
     let tmp = temp_root("model-plan");
     let model_path = tmp.join("system_model.yaml");
-    fs::write(
-        &model_path,
-        r#"meta:
+    let model = |deploy: &str| {
+        format!(
+            r#"meta:
   version: 1
 structure:
   nodes:
@@ -635,27 +635,48 @@ structure:
       pkg: imu_pkg
       exec: imu
 execution:
-  deploy:
-    /demo/talker:
-      target: linux
-    /sensing/imu:
-      target: mcu:stm32f4
-  tiers:
+{deploy}  tiers:
     high:
       spin_period_us: 1000
       posix:
         priority: 80
   bindings:
     /demo/talker/ctrl: high
-  features:
-    - safety
-    - param_services
-"#,
+"#
+        )
+    };
+    // phase-486 W3 -- the switches travel in the overlay beside the model.
+    fs::write(
+        tmp.join("nros.toml"),
+        "[meta]\nversion = 1\n[system]\nfeatures = [\"safety\", \"param_services\"]\n",
     )
     .unwrap();
 
-    let plan = plan_from_model(&model_path, None).expect("native plan");
-    assert_eq!(plan.nodes.len(), 1, "linux slice only");
+    // No placement: every node runs, on any board (no board slice any more).
+    fs::write(&model_path, model("")).unwrap();
+    for board in [
+        None,
+        Some("stm32f4".to_string()),
+        Some("zephyr".to_string()),
+    ] {
+        let plan = plan_from_model(&model_path, board.clone()).expect("plan");
+        assert_eq!(plan.nodes.len(), 2, "board {board:?}: the whole system");
+        assert!(plan.param_services, "the overlay's switch");
+        assert_eq!(plan.safety, Some(true));
+    }
+
+    // Placement by membership: `[host.*]` placed only the talker here.
+    fs::write(
+        &model_path,
+        model("  deploy:\n    /demo/talker:\n      domain: 3\n"),
+    )
+    .unwrap();
+    let plan = plan_from_model(&model_path, None).expect("placed plan");
+    assert_eq!(
+        plan.nodes.len(),
+        1,
+        "a node absent from the map runs elsewhere"
+    );
     let n = &plan.nodes[0];
     assert_eq!(n.pkg, "talker_pkg");
     assert_eq!(n.exec, "talker");
@@ -666,25 +687,12 @@ execution:
             .contains(&("rate_hz".to_string(), "10".to_string()))
     );
     assert_eq!(n.group_tiers.get("ctrl").map(String::as_str), Some("high"));
-    assert!(plan.param_services);
-    assert_eq!(plan.safety, Some(true));
     assert_eq!(plan.tiers["high"].spin_period_us, Some(1000));
 
-    let mcu = plan_from_model(&model_path, Some("stm32f4".to_string())).expect("mcu plan");
-    assert_eq!(mcu.nodes.len(), 1);
-    assert_eq!(mcu.nodes[0].exec, "imu");
-
-    // phase-315 / issue 0288 board-mention lift: a board the deploy map never
-    // mentions is a board the model has no opinion about, so the slice is
-    // UNPARTITIONED (every node), not empty — the map is a partition over the
-    // boards it names, and cannot say "every board runs everything".
-    let unmentioned = plan_from_model(&model_path, Some("zephyr".to_string()))
-        .expect("unmentioned board = unpartitioned");
-    assert_eq!(
-        unmentioned.nodes.len(),
-        2,
-        "whole system on an unmentioned board"
-    );
+    // Negative control: the switches come from the overlay and nowhere else.
+    fs::remove_file(tmp.join("nros.toml")).unwrap();
+    let bare = plan_from_model(&model_path, None).expect("plan without overlay");
+    assert!(!bare.param_services && bare.safety.is_none());
 }
 
 /// issue 0794 — the model's `execution.deploy.<fqn>.{domain, locator, rmw}` is

@@ -113,8 +113,13 @@ fn the_cpp_workspace_listener_declares_a_depth_and_asserts_against_it() {
         .map(|p| {
             let text = fs::read_to_string(p).expect("read model");
             let model = SystemModel::from_yaml_str(&text).expect("model parses");
-            let wired = EntityInventory::from_model(p.display().to_string(), &model)
-                .expect("both launch files carry a contract, so both describe wiring");
+            let wired = EntityInventory::from_model(
+                p.display().to_string(),
+                &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(
+                    (model).clone(),
+                ),
+            )
+            .expect("both launch files carry a contract, so both describe wiring");
             (
                 p.display().to_string(),
                 meta.merged_per_kind_max(&wired).declared_qos_header_table(),
