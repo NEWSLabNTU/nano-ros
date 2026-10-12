@@ -144,6 +144,7 @@ generated-cmake-keywords
 generated-leaf-regenerable
 generated-output-collisions
 generated-schema-coverage
+generator-output-glob
 goal-cdr-stripped
 grep-q-error-conflation
 hook-repo-side-effects
