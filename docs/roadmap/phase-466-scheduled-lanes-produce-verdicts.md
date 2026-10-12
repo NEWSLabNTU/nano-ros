@@ -1,5 +1,21 @@
 # phase-466 -- every scheduled lane produces a verdict again
 
+**Status (2026-10-13). Provisioning passes; three build faults found, two
+already fixed.** The 2026-10-12 nightly (run 38213993313, `3df774a34c`) reached
+the build in both matrix lanes and stopped there. Tier 2's `freertos` and
+`threadx_linux` stops were phase-484 W3c readers of `FREERTOS_DIR`/`THREADX_DIR`
+that no longer had them exported. 6c98b7510f and 97d38d46e7 fixed both, after
+that run's checkout. Tier 1's stop was the `tier-priority-plan-image` gate
+calling `build-ws-rs-realtime-derived-entry-zenoh` STALE. The image is current:
+its `CONFIG_NROS_ZENOH_READ_PRIORITY=100` is stated by `derived_bringup`'s
+`system.toml`, which phase-484 W5b renders as a `default` in
+`<build>/nros/Kconfig.from-system-toml`, a source the staleness rule did not
+read. Reproduced locally (`just build tier1`), fixed in
+`scripts/lib/priority_plan.py`, with two self-test cases. The same run also
+showed that the gate's verdict never reached the lane log: west-fixtures prints
+after it, and the job keeps only the tail of `zephyr.log`. The recipe now
+repeats the verdict where it fails.
+
 **Status (2026-10-12). All four waves LANDED (#1209–#1212). Acceptance waits
 on issue 1364**: the zephyr CI image is Python 3.10 with no TOML parser, so the
 lanes that read a manifest in it still cannot report. Archive this phase once a

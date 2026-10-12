@@ -455,6 +455,20 @@ def selftest():
                stale_band_reasons(image("unk", READ16, {"prj.conf": ""}, cache=False), kc), [])
         expect("an absent symbol has nothing to compare",
                stale_band_reasons(image("abs", "CONFIG_FOO=y\n", {"prj.conf": ""}), kc), [])
+        def stated(cfg, value):
+            nros = cfg.parent.parent / "nros"
+            nros.mkdir()
+            (nros / "Kconfig.from-system-toml").write_text(
+                "# env NROS_ZENOH_READ_PRIORITY\n"
+                "config NROS_ZENOH_READ_PRIORITY\n"
+                f"    int\n    default {value}\n")
+            return cfg
+        expect("a band the image's system.toml states is current (phase-484 W5b)",
+               stale_band_reasons(stated(image("toml", READ16, {"prj.conf": ""}), 16),
+                                  kc), [])
+        expect("a .config older than the system.toml value it was rendered from is STALE",
+               len(stale_band_reasons(stated(image("toml-old", READ16,
+                                                   {"prj.conf": ""}), 100), kc)), 1)
         expect("no single default means no comparison",
                stale_band_reasons(image("cond", "CONFIG_NROS_ZENOH_LEASE_PRIORITY=16\n",
                                         {"prj.conf": ""}), kc), [])

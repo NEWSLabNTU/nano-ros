@@ -515,9 +515,16 @@ build-fixtures:
         awk -F '\t' 'NF >= 12 && $12 != "" { print $12 }' "$probe_records" >"$images_list"
     fi
     gate_rc=0
+    # phase-466 — the verdict is printed here AND repeated where the recipe
+    # fails, below. west-fixtures runs in between and prints hundreds of
+    # configure lines, so a failing lane's `tail -40` showed only "see its
+    # verdict above" and the verdict itself was in a log no job uploads
+    # (tier-1 nightly 38213993313: stopped in the build, no reason given).
+    gate_out="$log_dir/tier-priority-verdict-$$.txt"
     if [ -s "$images_list" ]; then
         python3 scripts/check-tier-priority-plan-image.py --images-from "$images_list" \
-            || gate_rc=$?
+            >"$gate_out" 2>&1 || gate_rc=$?
+        cat "$gate_out"
     else
         echo "    (no leaf built — tier-priority-plan-image has no image to judge this run)"
     fi
@@ -551,7 +558,8 @@ build-fixtures:
         west_rc=0
     fi
     if [ "$gate_rc" -ne 0 ]; then
-        echo "  ✗ tier-priority-plan-image FAILED (exit $gate_rc) — see its verdict above"
+        echo "  ✗ tier-priority-plan-image FAILED (exit $gate_rc). Its verdict, less the [ok] images:"
+        { grep -v '^  \[ok\]' "$gate_out" || true; } | sed 's/^/    /'
         exit "$gate_rc"
     fi
     if [ "$west_rc" -ne 0 ]; then

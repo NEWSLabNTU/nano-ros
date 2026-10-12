@@ -375,12 +375,27 @@ def stale_band_reasons(dotconfig, kconfig=None):
     cfg = _dotconfig_ints(dotconfig)
     confs = None
     reasons = []
+    # phase-484 W5b (RFC-0103 D2a) moved every registry knob, these among
+    # them, out of the conf fragment: an image's `[image.<id>] env` row (or a
+    # `-DNROS_OVERRIDE_<ID>`) is rendered as a `default` in this per-build
+    # file, sourced ahead of the module's own definition so it wins. Read
+    # against the module default alone, `derived_bringup`'s stated
+    # `NROS_ZENOH_READ_PRIORITY = "100"` read as a museum image and stopped the
+    # tier-1 nightly in the build (phase-466, run 38213993313).
+    per_build = Path(dotconfig).parent.parent / "nros" / "Kconfig.from-system-toml"
     for key in BAND_DEFAULTED:
         have = cfg.get(key)
         if have is None:
             continue
-        want = kconfig_default(key, kconfig)
+        stated = kconfig_default(key, per_build) if per_build.is_file() else None
+        want = stated if stated is not None else kconfig_default(key, kconfig)
         if want is None or have == want:
+            continue
+        if stated is not None:
+            reasons.append(
+                f"{key}={have}, but {per_build} now states {stated} for this "
+                f"image (its system.toml, rendered on every configure) — the "
+                f".config predates that configure")
             continue
         if confs is None:
             confs = _image_confs(dotconfig)
