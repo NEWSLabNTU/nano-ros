@@ -3085,6 +3085,20 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
         }
     } else {
         scan_workspace(&src_root, &mut scan)?;
+        // Issue 1305 — a workspace PACKAGE can be a single-package leaf too
+        // (a `[package]` manifest with its own `system.toml`, as the copy-out
+        // templates' Rust packages are), and a migrated one path-depends on its
+        // generated selection package. Write it here for the same reason the
+        // single-package arm does: before anything below runs cargo on the
+        // package's manifest. `write_selection` is `None` for every package
+        // that is not such a leaf or does not depend on its selection.
+        if let Some(nrp) = nano_ros_for_probes.as_deref() {
+            for p in scan.iter().filter(|p| p.is_rust_pkg && !p.is_msg_pkg) {
+                if let Some(sel) = crate::cmd::leaf_settings::write_selection(&p.dir, nrp, None)? {
+                    println!("sync: selection → {}", sel.dir.display());
+                }
+            }
+        }
     }
     if scan.is_empty() {
         println!("sync: no pkgs under {}", src_root.display());

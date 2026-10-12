@@ -1181,11 +1181,15 @@ mod board_crate_tests {
         );
     }
 
-    /// Issue 1305 phase C — the leaves NOT yet on the selection package, each
-    /// with the reason it is not. Every other in-tree cargo-road leaf depends on
-    /// its `<pkg>_nros_selection` package and names no board crate (enforced by
-    /// [`check_board_crate_dependency`]), so a board switch is one line. A prefix
-    /// matches a leaf path relative to the checkout.
+    /// Issue 1305 — the leaves NOT on the selection package, each with the
+    /// reason it is not. Since phase E (2026-10-13) every entry is out of scope
+    /// BY SHAPE (board code in the node, a harness-templated manifest, a lib a
+    /// CMake image links, a measurement witness); no migratable class is left.
+    /// Every other in-tree cargo-road leaf — the copy-out templates' Rust
+    /// packages, the mps2 C/C++ apps on a cargo link root and the dormant ESP32
+    /// leaves included — depends on its `<pkg>_nros_selection` package and
+    /// names no board crate (enforced by [`check_board_crate_dependency`]). A
+    /// prefix matches a leaf path relative to the checkout.
     const NOT_ON_THE_SELECTION: &[(&str, &str)] = &[
         (
             "packages/testing/nros-tests/bins/in-place-subscriptions",
@@ -1200,11 +1204,6 @@ mod board_crate_tests {
              runtime defect, now warned only in a census run)",
         ),
         (
-            "examples/templates/",
-            "copy-out templates: the template-copy-out lane is red (issue 1829), so a \
-             migrated template cannot be proven outside the checkout",
-        ),
-        (
             "packages/testing/nros-tests/bins/qemu-baremetal-main-e2e",
             "its node body calls `nros_board_mps2_an385::exit_success()`",
         ),
@@ -1217,21 +1216,9 @@ mod board_crate_tests {
             "harness-templated manifests (`@NROS_REPO_DIR@`) or a custom `main`",
         ),
         (
-            "examples/mps2-an385-baremetal/c/",
-            "a C app on a cargo link root: its own `main.rs` names `cortex_m_rt`",
-        ),
-        (
-            "examples/mps2-an385-baremetal/cpp/",
-            "a C++ app on a cargo link root: its own `main.rs` names `cortex_m_rt`",
-        ),
-        (
             "examples/rv-virt-threadx/rust/",
             "lib-only staticlibs a CMake image links (no `nros::main!`); RMW chosen \
              by leaf features",
-        ),
-        (
-            "examples/esp32-c3-baremetal/",
-            "ESP32 is dormant (issue 1525): no fixture row builds these leaves",
         ),
         (
             "packages/testing/nros-tests/bins/log-arena-probe",
@@ -1304,7 +1291,7 @@ mod board_crate_tests {
             .collect();
         assert!(stale.is_empty(), "exemptions matching no leaf: {stale:?}");
         assert!(
-            on_selection >= 30,
+            on_selection >= 56,
             "only {on_selection} leaves on the selection package"
         );
     }

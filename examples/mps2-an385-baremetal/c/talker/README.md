@@ -10,10 +10,18 @@ Read the next section before copying any of them: the *shape* differs from
 every other C example in the tree, and the reason is the board, not the C API.
 
 `build.rs` and `src/main.rs` are **leaf-agnostic** and byte-identical across the
-six C leaves: the script compiles every `src/*.c` and binds every interface
-package `nros generate c` resolves from `package.xml`, so a leaf differs from its
-siblings in `package.xml`, its own C file and (for a receiver of
-`std_msgs/String`) an `nros-codegen.toml` bound — nowhere else.
+six C leaves, but for the one `use` line in `src/main.rs` that reaches the board
+through the leaf's own generated selection package: the script compiles every
+`src/*.c` and binds every interface package `nros generate c` resolves from
+`package.xml`, so a leaf differs from its siblings in `package.xml`, its own C
+file, that package name and (for a receiver of `std_msgs/String`) an
+`nros-codegen.toml` bound — nowhere else.
+
+The manifest names no board crate. The board (and with it the RMW backend,
+`cortex-m-rt` and `cortex-m`) comes from `<pkg>_nros_selection`, which `nros
+sync` / `nros build` generate under `build/nros/selection/` from `system.toml`
+(RFC-0098 D6, issue 1305); the image states `panic = "platform"` so that
+package links no second panic handler beside `nros-c`'s.
 
 ## Why the link root is Rust here
 

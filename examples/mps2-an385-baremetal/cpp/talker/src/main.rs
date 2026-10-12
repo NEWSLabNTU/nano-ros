@@ -17,7 +17,7 @@
 #![no_std]
 #![no_main]
 
-use nros_board_mps2_an385::{Config, entry, run_bare};
+use baremetal_cpp_talker_nros_selection::nros_board_mps2_an385::{Config, entry, run_bare};
 
 unsafe extern "C" {
     /// The app's `extern "C"` entry, defined in the leaf's `src/*.cpp` beside
