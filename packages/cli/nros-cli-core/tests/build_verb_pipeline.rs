@@ -352,6 +352,19 @@ fn a_cross_image_carries_its_triple_in_the_settings_file_not_on_the_command_line
         settings.contains("-Tmps2_an385.ld"),
         "the board's link flags: {settings}"
     );
+    // Issue 1811 — the board facts reach a workspace image too. Without
+    // `NROS_BOARD_TOML` the board crate compiled the platform default network
+    // (192.0.3.10) into a QEMU image that now boots on SLIRP, and it never
+    // reached its router.
+    assert!(
+        settings.contains("NROS_BOARD_TOML = { value = ")
+            && settings.contains("nros-board-mps2-an385-freertos/nros-board.toml"),
+        "the board descriptor, as a path row: {settings}"
+    );
+    assert!(
+        settings.contains("NROS_BOARD = \"mps2-an385-freertos\""),
+        "{settings}"
+    );
 }
 
 #[test]
