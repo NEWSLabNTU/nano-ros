@@ -720,6 +720,18 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                 // guards on in order to say nothing.
                 let mut path_env: std::collections::BTreeMap<String, PathBuf> =
                     std::collections::BTreeMap::new();
+                // The board facts, the same layer the single-package road
+                // applies (`leaf_settings::board_fact_layer`), resolved from
+                // this image's bringup. Without it the board crates' build
+                // scripts saw no `NROS_BOARD_TOML` and compiled the platform
+                // default network into a QEMU image (issue 1811).
+                crate::cmd::leaf_settings::board_fact_layer(
+                    &bringup_dir,
+                    nros_root,
+                    &board,
+                    &mut env,
+                    &mut path_env,
+                )?;
                 let image_for = |wiring| crate::sizing_descriptor::ModelImage {
                     build_dir: &image_dir,
                     entry: &image_id,

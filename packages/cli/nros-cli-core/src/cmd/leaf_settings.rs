@@ -275,6 +275,39 @@ pub fn build_command(img: &LeafImage) -> (PathBuf, Vec<String>) {
     )
 }
 
+/// Layer 3 — the board facts for `board`, resolved from the `system.toml` in
+/// `dir` by the one resolver every road uses (`nros ws board-facts`), split
+/// into plain rows and path rows.
+///
+/// Both cargo roads call this: the single-package leaf road here, and the
+/// workspace road in `cmd::build` with the bringup's directory. Issue 1811's
+/// last FreeRTOS red was the workspace road skipping it: with no
+/// `NROS_BOARD_TOML`, `nros-board-freertos` fell back to the platform network
+/// default (`192.0.3.10`) while QEMU now runs SLIRP (`10.0.2.x`), so the
+/// image booted and never reached its router.
+pub(crate) fn board_fact_layer(
+    dir: &Path,
+    nano_ros_root: &Path,
+    board: &str,
+    env: &mut BTreeMap<String, String>,
+    path_env: &mut BTreeMap<String, PathBuf>,
+) -> Result<()> {
+    let facts = crate::cmd::board_facts::resolve(dir, nano_ros_root, None, Some(board), &|k| {
+        std::env::var(k).ok()
+    })
+    .map_err(|e| eyre!("{}: board facts for `{board}`: {e}", dir.display()))?;
+    for (k, v) in facts {
+        if is_path_value(&v) {
+            env.remove(&k);
+            path_env.insert(k, PathBuf::from(v));
+        } else {
+            path_env.remove(&k);
+            env.insert(k, v);
+        }
+    }
+    Ok(())
+}
+
 /// Is `value` a path this file should write relative (an absolute path that
 /// exists)? Anything else — a board name, a `:`-joined search path — is a
 /// plain string.
@@ -647,20 +680,7 @@ pub fn write(
     let mut path_env: BTreeMap<String, PathBuf> = BTreeMap::new();
 
     // Layer 3 — the board facts, by the one resolver the other lanes use.
-    let facts =
-        crate::cmd::board_facts::resolve(leaf, nano_ros_root, None, Some(&img.board), &|k| {
-            std::env::var(k).ok()
-        })
-        .map_err(|e| eyre!("{}: board facts for `{}`: {e}", leaf.display(), img.board))?;
-    for (k, v) in facts {
-        if is_path_value(&v) {
-            env.remove(&k);
-            path_env.insert(k, PathBuf::from(v));
-        } else {
-            path_env.remove(&k);
-            env.insert(k, v);
-        }
-    }
+    board_fact_layer(leaf, nano_ros_root, &img.board, &mut env, &mut path_env)?;
 
     // Layer 3.5 — what the image's declared transport implies.
     transport_implications(&img.decl, &mut env);

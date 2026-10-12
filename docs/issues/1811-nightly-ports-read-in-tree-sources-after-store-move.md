@@ -121,3 +121,32 @@ on `main` as well (issue 1838).
 
 Acceptance is unchanged: a nightly that builds all four ports, and a
 `live-peer` run whose board jobs get past `just setup`.
+
+## What the second runs showed (nightly 38230563668, live-peer 38230566873)
+
+The FreeRTOS build passed every row, `realtime-c` included, and the scoped
+test step ran only FreeRTOS rows (10 tests, 24 out of lane). One of them
+failed: the `realtime_tiers` freertos/rust row booted, printed its heap peak
+and never dispatched a tier.
+
+The cause was the workspace cargo road. `nros build` for a workspace image
+wrote `nros-cargo.toml` without the board facts, which the single-package road
+adds (`NROS_BOARD`, `NROS_BOARD_TOML`). With no `NROS_BOARD_TOML`,
+`nros-board-freertos`'s build script fell back to the platform network default
+(`192.0.3.10`, gateway `192.0.3.1`). Since phase-484 W4b-2 every FreeRTOS QEMU
+image boots on SLIRP (`10.0.2.x`), so the image could not reach its router at
+`10.0.2.2`. The C and C++ rows go through cmake, which already resolved the
+facts, so they passed. The same row passed on the 2026-10-07 nightly, before the
+board-network change.
+
+Fix: both cargo roads now call one helper, `leaf_settings::board_fact_layer`.
+The workspace road resolves the facts from the image's bringup. Reproduced
+locally on `main` and verified after the fix: the rebuilt image prints both
+tiers' dispatch markers. `a_cross_image_carries_its_triple_in_the_settings_file_not_on_the_command_line`
+now asserts the two rows and fails without the fix.
+
+The `live-peer` board job now builds with build-std (the `rust-src` fix
+works). The next failure behind it is in Zephyr 3.7 itself:
+`libc-hooks.c: conflicting types for '__lock___libc_recursive_mutex'` while
+compiling the `mps2_an385` C talker. That one is not yet diagnosed.
+
