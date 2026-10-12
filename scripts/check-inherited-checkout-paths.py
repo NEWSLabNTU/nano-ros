@@ -34,6 +34,12 @@ This gate checks three things:
      that only reads source would pass an implementation that never looks at
      the filesystem.
 
+  4. UNEXPORTED NAMES (issue 1840) -- the names activation deliberately does
+     not export (RFC-0103 D4/D6) are also names nothing re-roots, so an
+     inherited foreign value must be UNSET by activation (bash and the fish
+     printer), RE-ROOTED by `cmake-incremental.sh` for its own children, and a
+     cmake cache already bound to another checkout must be dropped.
+
 The nested shape is issue 1391, and it is the shape agent sessions actually
 work in: a worktree at `<main>/.claude/worktrees/<id>`. 1280's fix was a
 LEXICAL PREFIX REWRITE in `just/sdk-env.just`, which is not the rule stated in
@@ -558,6 +564,174 @@ def probe_just_nested(tmp: Path) -> list[str]:
 # --------------------------------------------------------------------------
 
 
+# Issue 1840 — the names activation does NOT export. phase-484 W2d (RFC-0103
+# D6, amended 2026-10-12) stopped exporting the checkout root, and W2c the
+# source trees; skipping the export also skipped 1280's re-root, so an
+# inherited value naming ANOTHER checkout survived activation untouched and
+# `cmake-incremental.sh` (which trusted any SET `nano_ros_ROOT`) configured a
+# worktree's fixtures against the main checkout's runtime. These probes drive
+# the two consumers of that name list, with a synthetic FOREIGN checkout.
+ACTIVATE = ROOT / "activate.sh"
+SDK_ENV_SH = ROOT / "scripts/sdk-env.sh"
+CMAKE_INCREMENTAL = ROOT / "scripts/build/cmake-incremental.sh"
+# One root-scoped name and one source-tree name; the probes assert both,
+# because the two halves of the list come from different files.
+JUST_ONLY_PROBE = "nano_ros_ROOT"
+SOURCE_PROBE = "FREERTOS_DIR"
+
+
+def _clean_env(extra: dict[str, str]) -> dict[str, str]:
+    env = {
+        "HOME": os.environ.get("HOME", "/tmp"),
+        "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+        "NROS_QUIET_ACTIVATE": "1",
+    }
+    env.update(extra)
+    return env
+
+
+def probe_activation_unexported(tmp: Path) -> list[str]:
+    """activate.sh (and the fish printer) must drop a FOREIGN skipped name."""
+    other = make_checkout(tmp / "other-act")
+    outside = tmp / "opt/act-sdk/freertos"
+    outside.mkdir(parents=True)
+    problems: list[str] = []
+    probe = (
+        f'. "{ACTIVATE}"; '
+        f'printf "R=%s|%s\\n" "${{{JUST_ONLY_PROBE}+set}}" "${{{JUST_ONLY_PROBE}-}}"; '
+        f'printf "D=%s|%s\\n" "${{NROS_REPO_DIR+set}}" "${{NROS_REPO_DIR-}}"; '
+        f'printf "S=%s|%s\\n" "${{{SOURCE_PROBE}+set}}" "${{{SOURCE_PROBE}-}}"'
+    )
+
+    def run(extra: dict[str, str]) -> dict[str, str]:
+        p = subprocess.run(
+            ["bash", "-c", probe], capture_output=True, text=True, cwd=ROOT,
+            env=_clean_env(extra),
+        )
+        out = {}
+        for line in p.stdout.splitlines():
+            if len(line) > 2 and line[1] == "=":
+                out[line[0]] = line[2:]
+        return out
+
+    foreign = {
+        JUST_ONLY_PROBE: str(other),
+        "NROS_REPO_DIR": str(other),
+        SOURCE_PROBE: f"{other}/third-party/probe-1840/tree",
+    }
+    got = run(foreign)
+    for key, name in (("R", JUST_ONLY_PROBE), ("D", "NROS_REPO_DIR"), ("S", SOURCE_PROBE)):
+        if got.get(key, "?").startswith("set"):
+            problems.append(
+                f"activate.sh: an inherited {name} naming another checkout ({other}) "
+                f"survived activation ({got.get(key)!r}) — it is a name activation does "
+                "not export, so nothing re-roots it; it must be UNSET (issue 1840)"
+            )
+    # The rule's KEEP row: an out-of-tree SDK is what env-first exists for.
+    got = run({SOURCE_PROBE: str(outside)})
+    if got.get("S") != f"set|{outside}":
+        problems.append(
+            f"activate.sh: an out-of-tree {SOURCE_PROBE} ({outside}) was not kept — "
+            f"got {got.get('S')!r}"
+        )
+    # fish cannot source sdk-env.sh; it evals the `--fish` printer's output.
+    p = subprocess.run(
+        ["bash", str(SDK_ENV_SH), "--fish"], capture_output=True, text=True, cwd=ROOT,
+        env=_clean_env(foreign),
+    )
+    lines = p.stdout.splitlines()
+    for name in (JUST_ONLY_PROBE, SOURCE_PROBE):
+        if f"set -e {name}" not in lines:
+            problems.append(
+                f"sdk-env.sh --fish: no `set -e {name}` for a value naming another "
+                "checkout — activate.fish keeps it (issue 1840)"
+            )
+    return problems
+
+
+def probe_cmake_incremental_root(tmp: Path) -> list[str]:
+    """cmake-incremental.sh must not trust a SET foreign root."""
+    other = make_checkout(tmp / "other-ci")
+    outside = tmp / "opt/ci-sdk/nano-ros"
+    outside.mkdir(parents=True)
+    here = str(ROOT.resolve())
+    src = ROOT / "examples/native/c/talker"
+    problems: list[str] = []
+
+    def resolve(extra: dict[str, str]) -> str:
+        script = (
+            f'. "{CMAKE_INCREMENTAL}" 2>/dev/null; '
+            f'nros_cmake_resolve_nano_ros_root "{src}"; '
+            f'printf "R=%s\\nS=%s\\n" "${{nano_ros_ROOT-}}" "${{{SOURCE_PROBE}-}}"'
+        )
+        p = subprocess.run(
+            ["bash", "-c", script], capture_output=True, text=True, cwd=ROOT,
+            env=_clean_env(extra),
+        )
+        out = {"rc": str(p.returncode)}
+        for line in p.stdout.splitlines():
+            if len(line) > 2 and line[1] == "=":
+                out[line[0]] = line[2:]
+        return out
+
+    got = resolve({JUST_ONLY_PROBE: str(other), SOURCE_PROBE: f"{other}/third-party/probe-1840/tree"})
+    if got.get("R") != here:
+        problems.append(
+            f"cmake-incremental.sh: an inherited {JUST_ONLY_PROBE}={other} was trusted for a "
+            f"source inside {here} — resolved {got.get('R')!r} (rc={got['rc']}); a set value "
+            "must go through the one rule (issue 1840)"
+        )
+    if got.get("S") != f"{here}/third-party/probe-1840/tree":
+        problems.append(
+            f"cmake-incremental.sh: an inherited {SOURCE_PROBE} naming another checkout reached "
+            f"cmake un-re-rooted — got {got.get('S')!r} (issue 1840)"
+        )
+    got = resolve({JUST_ONLY_PROBE: str(outside)})
+    if got.get("R") != str(outside):
+        problems.append(
+            f"cmake-incremental.sh: an out-of-tree {JUST_ONLY_PROBE} ({outside}) was not kept "
+            f"— got {got.get('R')!r}"
+        )
+    # The root must be part of the configure stamp, or a dir configured against
+    # another checkout never reconfigures (issue 1593's stickiness class).
+    if "printf 'nano_ros_ROOT=%q\\n'" not in CMAKE_INCREMENTAL.read_text():
+        problems.append(
+            "cmake-incremental.sh: the configure stamp does not record nano_ros_ROOT, so a "
+            "root move never reconfigures (issue 1840)"
+        )
+
+    # Rule 3 of cmake-cache-guard.sh: a cache bound to another checkout is
+    # dropped; one naming only this checkout and out-of-tree paths is kept.
+    def guard(lines: list[str]) -> bool:
+        bd = Path(tempfile.mkdtemp(dir=tmp, prefix="bd-"))
+        (bd / "CMakeCache.txt").write_text("\n".join(lines) + "\n")
+        subprocess.run(
+            ["bash", "-c",
+             f'. "{CMAKE_INCREMENTAL}" 2>/dev/null; '
+             f'nros_cmake_guard_foreign_checkout "{bd}" "{here}" 2>/dev/null'],
+            capture_output=True, text=True, cwd=ROOT, env=_clean_env({}),
+        )
+        return (bd / "CMakeCache.txt").exists()
+
+    ours = [
+        f"nano_ros_DIR:PATH={here}",
+        f"CMAKE_C_COMPILER:FILEPATH=/usr/bin/cc",
+        f"SDK:PATH={outside}",
+        "NROS_RMW:STRING=zenoh",
+    ]
+    if not guard(ours):
+        problems.append(
+            "cmake-cache-guard.sh: a cache naming only this checkout and out-of-tree "
+            "paths was dropped — rule 3 must keep it"
+        )
+    if guard(ours + [f"_NANO_ROS_PREFIX:INTERNAL={other}"]):
+        problems.append(
+            f"cmake-cache-guard.sh: a cache bound to another checkout ({other}) was KEPT — "
+            "a later correct configure cannot repair it (issue 1840)"
+        )
+    return problems
+
+
 def self_test() -> bool:
     """Prove each check can FAIL. Runs on the normal path, every invocation."""
     ok = True
@@ -689,6 +863,8 @@ def main() -> int:
         problems += probe_build_root(tmp)
         problems += probe_just(tmp)
         problems += probe_just_nested(tmp)
+        problems += probe_activation_unexported(tmp)
+        problems += probe_cmake_incremental_root(tmp)
 
     if problems:
         print("check-inherited-checkout-paths: FAILED (issue 1280)", file=sys.stderr)
@@ -701,7 +877,8 @@ def main() -> int:
         f"check-inherited-checkout-paths: ok — {covered} path exports re-rooted, "
         f"{len(NOT_A_PATH)} declared non-path, one checkout marker across "
         f"{len(MARKER_SITES)} spellings, behaviour proven for shell / build-root / just, "
-        "in both checkout shapes (side-by-side and nested)"
+        "in both checkout shapes (side-by-side and nested); unexported names dropped by "
+        "activation and re-rooted by cmake-incremental, foreign caches dropped (issue 1840)"
     )
     return 0
 

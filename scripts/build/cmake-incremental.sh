@@ -16,6 +16,74 @@
 # inherited by every descendant with nothing to re-export.
 nros_cmake_export_prefix_path
 
+# Issue 1840 — the variables activation deliberately does NOT export (the
+# index's `[source.*] env` names and the `# just-only:` checkout root,
+# RFC-0103 D4/D6) are exactly the ones a build run OUTSIDE `just` may still
+# inherit from a shell activated in ANOTHER checkout — W2d stopped exporting
+# them, which also stopped re-rooting them. `just` re-roots every one for its
+# own processes (`just/sdk-env.just`, issue 1280); this does the same for the
+# processes THIS script starts, through the ONE rule (`checkout-paths.sh`):
+# outside any checkout -> kept, this checkout -> kept, another -> re-rooted.
+# Re-rooting (not unsetting) is right HERE and wrong in activation: these are
+# this build's own children, which RFC-0103 D4 scopes out of "the user's
+# shell". At SOURCE time, so `make` workers inherit the result as plain env.
+_nros_cmake_incr_lib="$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)"
+# shellcheck source=scripts/lib/checkout-paths.sh
+. "$_nros_cmake_incr_lib/checkout-paths.sh"
+# shellcheck source=scripts/lib/unexported-env-names.sh
+. "$_nros_cmake_incr_lib/unexported-env-names.sh"
+# The checkout this script was read from — the root an inherited value is
+# re-rooted ONTO when the source dir itself belongs to no checkout. Exported
+# because `nros_cmake_configure_if_needed` runs in `make` workers.
+_NROS_CMAKE_INCR_HERE="$(nros_checkout_root "$(cd "$_nros_cmake_incr_lib/../.." && pwd -P)")"
+export _NROS_CMAKE_INCR_HERE
+nros_cmake_reroot_inherited() {
+    local here="$1" n v nv
+    [ -n "$here" ] || return 0
+    while IFS= read -r n; do
+        [ -n "$n" ] || continue
+        v="$(printenv "$n" 2>/dev/null)" || continue
+        [ -n "$v" ] || continue
+        nv="$(nros_reroot_checkout_path "$v" "$here")"
+        if [ "$nv" != "$v" ]; then
+            echo "  (inherited $n named another nano-ros checkout — re-rooted onto $here; issue 1840)" >&2
+            export "$n=$nv"
+        fi
+    done < <(nros_unexported_env_names "$here")
+}
+nros_cmake_reroot_inherited "$_NROS_CMAKE_INCR_HERE"
+unset _nros_cmake_incr_lib
+
+# nros_cmake_resolve_nano_ros_root <source-dir>
+#
+# Export the `nano_ros_ROOT` a configure of <source-dir> must use, and set
+# `_nros_cmake_here` to the checkout the build belongs to (empty when none). RFC-0048 (phase-287):
+# an ament-shape example resolves nano-ros through `find_package(nano_ros)`,
+# which locates the in-tree nano_rosConfig.cmake via CMake's `nano_ros_ROOT`
+# env var. The checkout that encloses the source dir comes FIRST (the one
+# marker, RFC-0103 D6); `$NROS_REPO_DIR` only when the source is outside every
+# checkout. A value that is SET is not therefore trusted (issue 1840): it goes
+# through the one rule against the source's checkout, so an inherited
+# `<main>/` in a worktree is re-rooted onto the worktree, while an out-of-tree
+# SDK root is kept. Copy-out builds outside the tree pass
+# `-Dnano_ros_ROOT=<checkout>` per the RFC-0026 contract.
+nros_cmake_resolve_nano_ros_root() {
+    local src_abs here value
+    src_abs="$(cd "$1" 2>/dev/null && pwd -P)" || src_abs=""
+    here="$(nros_checkout_root "$src_abs")"
+    if [ -n "$here" ]; then
+        value="${nano_ros_ROOT:-$here}"
+    else
+        here="${_NROS_CMAKE_INCR_HERE:-}"
+        value="${nano_ros_ROOT:-${NROS_REPO_DIR:-}}"
+    fi
+    if [ -n "$value" ]; then
+        nano_ros_ROOT="$(nros_reroot_checkout_path "$value" "$here")"
+        export nano_ros_ROOT
+    fi
+    _nros_cmake_here="$here"
+}
+
 # Configure a CMake build dir only when needed, then leave incrementality to
 # CMake + the generator (Phase 181.7b). `cmake --build` (run by the caller)
 # auto-reconfigures on CMakeLists / dependency-graph changes via
@@ -66,6 +134,13 @@ nros_cmake_configure_if_needed() {
     # the cache and WIPE so the new compiler actually takes effect (issue 0391).
     nros_cmake_guard_build_dir "$build_dir" "$@"
 
+    # Issue 1840 — resolve the root BEFORE the stamp, because it is part of the
+    # build's identity: a dir configured against another checkout's runtime
+    # must reconfigure when the root moves, and the argument stamp alone never
+    # saw it (the root reaches cmake through the environment).
+    local _nros_cmake_here=""
+    nros_cmake_resolve_nano_ros_root "$src_dir"
+
     mkdir -p "$build_dir"
 
     local stamp_file="$build_dir/.nros-cmake-configure.args"
@@ -73,6 +148,7 @@ nros_cmake_configure_if_needed() {
     {
         printf 'src=%q\n' "$src_dir"
         printf 'generator=%q\n' "$want_gen"
+        printf 'nano_ros_ROOT=%q\n' "${nano_ros_ROOT:-}"
         local arg
         for arg in "$@"; do
             printf 'arg=%q\n' "$arg"
@@ -90,28 +166,11 @@ nros_cmake_configure_if_needed() {
     fi
 
     if [ "$needs_configure" -eq 1 ]; then
-        # RFC-0048 (phase-287): an ament-shape example resolves nano-ros through
-        # `find_package(nano_ros)`, which locates the in-tree nano_rosConfig.cmake
-        # via CMake's `nano_ros_ROOT` env var. A fixture / CI build that did not
-        # `source ./activate.sh` won't have it — derive it here: the checkout
-        # that encloses the source dir FIRST (the one marker, RFC-0103 D6), and
-        # `$NROS_REPO_DIR` only when the source is outside every checkout — an
-        # inherited value names whichever checkout last activated (issue 1280).
-        # Copy-out builds outside the tree pass `-Dnano_ros_ROOT=<checkout>` per
-        # the RFC-0026 contract.
-        if [ -z "${nano_ros_ROOT:-}" ]; then
-            local _nrr="" _d
-            _d="$(cd "$src_dir" && pwd)"
-            while [ -n "$_d" ] && [ "$_d" != "/" ] && [ ! -f "$_d/packages/core/nros-core/Cargo.toml" ]; do
-                _d="$(dirname "$_d")"
-            done
-            if [ -f "$_d/packages/core/nros-core/Cargo.toml" ]; then
-                _nrr="$_d"
-            else
-                _nrr="${NROS_REPO_DIR:-}"
-            fi
-            [ -n "$_nrr" ] && export nano_ros_ROOT="$_nrr"
-        fi
+        # Issue 1840 — a cache bound to ANOTHER checkout cannot be reconfigured
+        # into this one (cmake-cache-guard.sh rule 3). Checked only on the
+        # configure path: the stamp now carries the root, so every root move —
+        # and every dir stamped before it did — arrives here.
+        nros_cmake_guard_foreign_checkout "$build_dir" "$_nros_cmake_here"
         cmake -S "$src_dir" -B "$build_dir" "${gen[@]}" "$@"
         mv "$stamp_tmp" "$stamp_file"
     else

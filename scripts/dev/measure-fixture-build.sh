@@ -30,7 +30,11 @@ LANE="${1:-native}"
 LOG="tmp/measure-fixture-build-${LANE}.log"
 mkdir -p tmp
 
-if [ -z "${NROS_REPO_DIR:-}" ]; then
+# `nros` on PATH is what activation provides. `NROS_REPO_DIR` was this
+# sentinel until RFC-0103 D6 (amended 2026-10-12) stopped activation exporting
+# it, after which the check refused every activated shell — and passed one
+# that merely inherited a root from ANOTHER checkout (issue 1840).
+if ! command -v nros >/dev/null 2>&1; then
     echo "error: source ./activate.sh first (the sweep contract — PATH wires nros," \
          "play_launch_parser, zenohd)." >&2
     exit 2
