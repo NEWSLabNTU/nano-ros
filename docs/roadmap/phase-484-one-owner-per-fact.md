@@ -591,6 +591,51 @@ build-script rows) 14,634 rows — **0 differences on all three**. Not measured:
 the same `CONFIG_NROS_ZENOH_READ_PRIORITY` by `kconfig_key_for`, unit-tested)
 and the 4.4 line. Next: `[board.knobs]` → `[knobs]`, then W5b.
 
+**W5b — M1–M4 measured (2026-10-12).** A scratch module with the same
+`module_ext_root` hook (copies a chosen file to
+`<build>/nros/Kconfig.from-system-toml`; the module `osource`s
+`$(KCONFIG_BINARY_DIR)/../nros/Kconfig.from-system-toml` first inside its
+`if`), an empty app, `native_sim/native/64`, configure only, values read from
+`zephyr/.config`. Each run is `cmake -GNinja -S app -B <b>
+-DBOARD=native_sim/native/64 -DZEPHYR_EXTRA_MODULES=<mod> -DCONF_FILE=<conf>
+-DMM_GEN=<generated file>` (plus `-DCONFIG_…` for M3), and a re-configure is
+`cmake <b>` with a new `-DMM_GEN`. Zephyr 3.7 (SDK 0.16.8) and 4.4 (this host has no SDK 1.0.1,
+so `ZEPHYR_TOOLCHAIN_VARIANT=host`, which is enough to configure native_sim and
+does not touch Kconfig). Identical on both lines unless noted:
+
+- **M1 — RED.** A prompt-less `choice` is refused before any assignment is
+  read: `<choice …> defined without a prompt` and `the choice symbol … has no
+  prompt` are warnings, and Zephyr aborts on Kconfig warnings — with or without
+  the generated file's `default`. So the RMW / API choices cannot go
+  prompt-less, and they stay in phase-481's fragment.
+- **M2 — green only with the guard copied.** A `default 13` in the generated
+  file OUTSIDE `if NROS_RMW_ZENOH`, for a symbol the module defines only inside
+  it: right value with zenoh selected (13), and a STRAY `CONFIG_…=13` with xrce
+  selected — the second definition widens the symbol's dependency to `y`. The
+  same default wrapped in the same `if` gives 13 with zenoh and no line with
+  xrce. The hook therefore renders each knob under its row's `kconfig_if` (and
+  its `depends on`). M1 being red, the endpoint and domain stay in the fragment
+  too (D2b: they move only if both are green).
+- **M3 — green.** `-DCONFIG_<prompt-less>=17` is a hard configure error on 4.4
+  as on 3.7 (`is assigned in a configuration file, but is not directly
+  user-configurable (has no prompt)`), and so is a conf line. Correction to
+  RFC-0103 D2a: Kconfig's message names ONE definition — the module's, not the
+  generated file — so the generated file's comments are not where a user is
+  sent. The hook refuses both itself first, naming `system.toml` and
+  `-DNROS_OVERRIDE_<ID>`; Kconfig's error stays as the backstop for conf files
+  the hook does not see (board fragments, snippets).
+- **M4 — green.** Prompts declared only in the generated file: a guest
+  configures with `prj.conf` 9 → 9 and `-DCONFIG` 17 → 17; re-configures
+  without a wipe (conf 9 → 11 → 11); switching the generated file to a
+  system.toml default and back follows it (13, then the guest value). What
+  menuconfig shows, read with kconfiglib under the exact environment `ninja
+  menuconfig` runs with (the symbol's prompt and visibility): visible with the
+  prompt for a guest, invisible (visibility 0, no prompt) for a system.toml
+  project. One line difference: switching BACK to the guest with an empty conf,
+  3.7 keeps the last value (13) where 4.4 returns to the module default (5) —
+  a project that deletes its `system.toml` on 3.7 keeps the old values until a
+  pristine build.
+
 **Acceptance:** W5a — the registry is the only list (gate); every knob's
 env/TOML/Kconfig spelling derives from its id; one build per road shows
 identical resolved values before and after (a diff). W5b — M1–M4 recorded
