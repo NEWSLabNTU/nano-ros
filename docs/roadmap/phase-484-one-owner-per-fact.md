@@ -963,4 +963,3 @@ this phase will fix it.
 - [issue 1811](../issues/archived/1811-nightly-ports-read-in-tree-sources-after-store-move.md) — After phase-484 moved source trees into the store, four nightly RTOS port jobs still look for them in-tree or through …
 - [issue 1816](../issues/1816-git-grep-error-read-as-no-match.md) — A `git grep` that could not search reads as "no match", so a forbidding gate passes outside a checkout
 - [issue 1850](../issues/1850-host-tool-binaries-located-by-literal-path.md) — The in-tree `nros` and `nros-launch-resolve` binaries are located by literal path at ~50 sites (issue 1767 items 8–9)
-- [issue 1852](../issues/1852-generated-header-dir-joined-outside-artifact-locator.md) — `<target>/nros-c-generated` is still joined by hand outside `nros locate artifact` (issue 1767 item 12 residue)

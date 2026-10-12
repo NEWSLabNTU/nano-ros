@@ -264,9 +264,10 @@ set(_nros_c_gen_config_header "${_nros_c_intree_include_dir}/nros/nros_config_ge
 # after the first. The script falls back to the leaf-independent
 # `nros-c-generated/` copy, which is the same bytes.
 include("${CMAKE_CURRENT_LIST_DIR}/../../../cmake/NanoRosConfigHeaderMirror.cmake")
+nros_generated_dir(_nros_c_gendir c)
 nros_config_header_mirror(nros_c_config_header cargo-build_nros_c
     "${CMAKE_CURRENT_BINARY_DIR}/nros_config_generated.h"
-    "nros-c-generated" "nros_config_generated.h"
+    "${_nros_c_gendir}" "nros_config_generated.h"
     "${_nros_c_gen_config_header}")
 # Issue 0090 — export the absolute mirror-header path so NanoRosNodeRegister can set
 # a FILE-level OBJECT_DEPENDS on it. The threadx carrier's link-time

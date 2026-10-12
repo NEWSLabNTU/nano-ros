@@ -46,8 +46,10 @@ ROOT = subprocess.run(
 
 # The two generated-header trees. Both have the same layout and the same hazard;
 # 0088 records the C side being latent for a whole phase because its symptom is
-# an undeclared macro rather than an `#error`.
-GEN_DIRS = ("nros-c-generated", "nros-cpp-generated")
+# an undeclared macro rather than an `#error`. Issue 1852 — the names are read
+# from `nros_build_paths::artifact` (this used to define them, twice).
+sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
+from artifact_layout import CPP_GENERATED_DIR, GEN_DIRS  # noqa: E402
 
 # The generated dirs live inside CARGO TARGET DIRS, nowhere else. So the
 # locations come from the git INDEX plus the known build roots, and only those
@@ -58,7 +60,6 @@ GEN_DIRS = ("nros-c-generated", "nros-cpp-generated")
 # directories in 2.0 s to find 650 candidates. Asking the index where the leaves
 # are is both faster and honest about what is being looked for — untracked build
 # artifacts, at locations tracked files imply.
-GEN_DIRS = ("nros-c-generated", "nros-cpp-generated")
 
 # Build roots that hold a target dir but no tracked manifest beside it.
 FIXED_ROOTS = ("target", "build")
@@ -156,7 +157,7 @@ def self_test():
         # scan never visits, and this control caught that when the walk was
         # replaced. A negative control that does not track the code it guards
         # is worth nothing.
-        gen = os.path.join(d, "target", "nros-cpp-generated", "nros")
+        gen = os.path.join(d, "target", CPP_GENERATED_DIR, "nros")
         os.makedirs(gen)
         header = os.path.join(gen, "nros_cpp_config_generated.h")
         stamp = header + ".stamp"

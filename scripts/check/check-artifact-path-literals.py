@@ -18,6 +18,17 @@ This refuses a NEW spelling in code (comments are prose, and the rule is about
 paths a program uses). A `target/` + artifact name in CODE outside the path
 function and its twins fails; an allowlisted file names its reason.
 
+Issue 1852 — the same names joined under a VARIABLE root (`$gen/nros-c-generated`,
+`${_gen_dir}/nros-cpp-generated/...`) escaped the `target/` pattern: 140 such
+joins in `just/check/lanes.just`, eight in cmake. In cmake, `just`, shell, make
+and Rust code the bare directory name is now refused too. Those roads ask
+`nros locate artifact` (a cargo target dir) or `nros_generated_dir()` /
+`nros_generated_header()` (`cmake/NanoRosArtifactLayout.cmake`, a mirror or
+include root), both of which READ the name from `nros_build_paths::artifact`.
+Python is left to the `target/` rule: its hits are docstrings and self-test
+fixtures, and the scripts that build these paths import
+`scripts/lib/artifact_layout.py`, which reads the same constants.
+
 Buildless, ~0.2 s; self-tests its matcher on every run.
 """
 from __future__ import annotations
@@ -36,8 +47,16 @@ PATTERN = re.compile(
     r"target/(?:[\w.${}()-]+/){0,2}?(?:nros-c(?:pp)?-generated\b|libnros_c(?:pp)?\.a\b)"
 )
 
+# Issue 1852 — the bare directory NAME, under any root.
+BARE = re.compile(r"nros-c(?:pp)?-generated\b")
+# Languages the BARE rule reads (see the module docstring for Python).
+BARE_LANGS = {"cmake", "just", "sh", "rust"}
+
 # path -> why it may spell the layout.
 ALLOWED = {
+    "packages/tooling/nros-build-paths/src/artifact.rs": (
+        "the ONE definition (`C_GENERATED_DIR` / `CPP_GENERATED_DIR`) and its own tests"
+    ),
     "scripts/check/check-artifact-path-literals.py": "this gate's own pattern and self-tests",
     "scripts/check-px4-archive-header-pairing.sh": (
         "synthetic consumer snippets the pairing scan is self-tested against; "
@@ -65,6 +84,14 @@ SELF_TESTS = [
     ('lib="$(nros_locate_artifact c-archive --profile dev)"', "sh", False),
     ('let p = target.join("release/libfoo.a");', "rust", False),
     ('cargo build --target-dir target-xrce', "sh", False),
+    # issue 1852 — the bare name under a variable root
+    ('        -I"$gen/nros-c-generated" \\', "just", True),
+    ('    "${_gen}/nros-cpp-generated/nros/nros_cpp_config_generated.h"', "cmake", True),
+    ('zephyr_include_directories(${ROOT}/nros-c-generated)', "cmake", True),
+    ('println!("cargo:config_include={out_dir}/nros-c-generated");', "rust", True),
+    ('    cgen="$(nros_locate_artifact c-include)"', "sh", False),
+    ('nros_generated_header(_h "${_gen_dir}" c nros_config_generated.h)', "cmake", False),
+    ('os.path.join(out, "nros-c-generated", "nros")', "python", False),
 ]
 
 
@@ -77,7 +104,11 @@ def lang_of(path: str) -> str | None:
 
 def hits(text: str, lang: str) -> list[int]:
     code = comments.strip_comments(text, lang)
-    return [n for n, line in enumerate(code.splitlines(), 1) if PATTERN.search(line)]
+    bare = lang in BARE_LANGS
+    return [
+        n for n, line in enumerate(code.splitlines(), 1)
+        if PATTERN.search(line) or (bare and BARE.search(line))
+    ]
 
 
 def self_test() -> int:
@@ -95,7 +126,7 @@ def main() -> int:
         print("check-artifact-path-literals --self-test: FAILED")
         return 1
     files = git_grep.run(
-        ["-lIE", r"target/.*(nros-c(pp)?-generated|libnros_c(pp)?\.a)", "--",
+        ["-lIE", r"nros-c(pp)?-generated|target/.*libnros_c(pp)?\.a", "--",
          ":!docs", ":!*.md", ":!book", ":!third-party"],
         ROOT,
     ).split()

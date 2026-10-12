@@ -8,6 +8,7 @@
 # phase-336 — the shared cargo-profile resolver (`nros profile`), included at
 # FILE scope so a function body never include()s inside its own frame.
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosCargoProfile.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosArtifactLayout.cmake")  # issue 1852
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosBoardFacts.cmake")
 # `nros_host_rust_triple` — native_sim's Rust target is the HOST's (issue 0582).
 # FILE scope for the same reason as the two above: an include() inside a
@@ -2178,11 +2179,15 @@ function(nros_cargo_build)
     # SHARED target dir the old spelling named a file this image would never
     # write — image B gets a cargo cache hit and its build script never runs.
     set(_nros_hdr_root "${NROS_GENERATED_HEADER_DIR}")
+    # Issue 1852 — the per-build header paths from the one layout definition.
+    nros_generated_header(_nros_c_cfg_h "${_nros_hdr_root}" c nros_config_generated.h)
+    nros_generated_header(_nros_c_api_h "${_nros_hdr_root}" c nros_generated.h)
+    nros_generated_header(_nros_cpp_cfg_h "${_nros_hdr_root}" cpp nros_cpp_config_generated.h)
     set(_cargo_byproducts ${LIB_PATH})
     if(ARG_PACKAGE STREQUAL "nros-c")
         list(APPEND _cargo_byproducts
-            ${_nros_hdr_root}/nros-c-generated/nros/nros_config_generated.h
-            ${_nros_hdr_root}/nros-c-generated/nros/nros_generated.h
+            ${_nros_c_cfg_h}
+            ${_nros_c_api_h}
         )
     elseif(ARG_PACKAGE STREQUAL "nros-cpp")
         # nros-cpp's Cargo dep on nros-c transitively runs nros-c's
@@ -2193,7 +2198,7 @@ function(nros_cargo_build)
         # target instead of failing with "No such file or directory"
         # when only CONFIG_NROS_CPP_API=y (no separate nros-c build).
         list(APPEND _cargo_byproducts
-            ${_nros_hdr_root}/nros-cpp-generated/nros/nros_cpp_config_generated.h
+            ${_nros_cpp_cfg_h}
         )
         # Phase 168.X gap 1 — when nros-c is built separately
         # (CPP_API path now builds it alongside nros-cpp for the log
@@ -2203,8 +2208,8 @@ function(nros_cargo_build)
         # Only claim it for nros-cpp when nros-c is NOT being built.
         if(NOT TARGET nros_c_cargo_build)
             list(APPEND _cargo_byproducts
-                ${_nros_hdr_root}/nros-c-generated/nros/nros_config_generated.h
-                ${_nros_hdr_root}/nros-c-generated/nros/nros_generated.h
+                ${_nros_c_cfg_h}
+                ${_nros_c_api_h}
             )
         endif()
     endif()

@@ -14,3 +14,8 @@ mod shared;
 #[cfg(feature = "cbindgen-drift-check")]
 pub use shared::render_cbindgen_header;
 pub use shared::write_committed_header;
+
+// Issue 1852 — the per-build header directory names, for the `nros-c` /
+// `nros-cpp` build scripts that publish them on their `links` channel. One
+// definition: `nros_build_paths::artifact`.
+pub use nros_build_paths::artifact::{C_GENERATED_DIR, CPP_GENERATED_DIR};

@@ -93,6 +93,11 @@ c: c-fmt
     # derived from this same variable, so no fixed path escapes this recipe.
     gen="$(nros_scoped_target_dir check-c)"
     export CARGO_TARGET_DIR="$gen"
+    # issue 1852 — the per-build header dirs under this lane's target dir,
+    # ASKED (`nros locate artifact`, which honours CARGO_TARGET_DIR), never
+    # joined by hand: the names live in `nros_build_paths::artifact`.
+    cgen="$(nros_locate_artifact c-include)"
+    cppgen="$(nros_locate_artifact cpp-include)"
     echo "Checking C code (build + syntax)..."
     echo "  - syntax (nros-c umbrella header)"
     # The per-variant `<nros/nros_config_generated.h>` (defining the
@@ -110,7 +115,7 @@ c: c-fmt
     # Variant dir FIRST so its `nros_config_generated.h` (with the
     # real OPAQUE_U64S macros) wins over the source-tree stub.
     cc -fsyntax-only \
-        -I"$gen/nros-c-generated" \
+        -I"$cgen" \
         -Ipackages/api/nros-c/include \
         -include packages/api/nros-c/include/nros/nros.h \
         -x c /dev/null
@@ -131,7 +136,7 @@ c: c-fmt
     # at the top of this recipe, so `target/debug/` IS its derived output dir.
     nros_c_lib="$gen/debug/libnros_c.a"
     cc -std=c11 -Wall -Wextra \
-        -I"$gen/nros-c-generated" \
+        -I"$cgen" \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
         packages/api/nros-c/tests/run/cdr_borrow_le_slice.c \
@@ -150,7 +155,7 @@ c: c-fmt
         echo "ERROR: baked_rmw_rung.c is MISSING -- this check passes on absence." >&2; exit 1; }
     for _bake in '-DNROS_ENTRY_RMW="cyclonedds"' ''; do \
         cc -fsyntax-only -std=c11 -Wall -Wextra -Wmissing-prototypes $_bake \
-            -I"$gen/nros-c-generated" \
+            -I"$cgen" \
             -Ipackages/api/nros-c/include \
             -Ipackages/platform/nros-platform-api/include \
             packages/api/nros-c/tests/compile/baked_rmw_rung.c \
@@ -162,7 +167,7 @@ c: c-fmt
     # one it must NOT, because an image with no bake resolves namelessly exactly
     # as it always has and a macro that fired anyway would pass a nonexistent
     # token.
-    _pp() { cc -E -std=c11 "$@" -I"$gen/nros-c-generated" \
+    _pp() { cc -E -std=c11 "$@" -I"$cgen" \
             -Ipackages/api/nros-c/include \
             -Ipackages/platform/nros-platform-api/include \
             packages/api/nros-c/tests/compile/baked_rmw_rung.c; }
@@ -234,7 +239,7 @@ c: c-fmt
             echo "ERROR: $_tu.c is MISSING -- this check passes on absence." >&2; exit 1; }; \
     done
     cc -std=c11 -Wall -Wextra -Wmissing-prototypes -D_GNU_SOURCE \
-        -I"$gen/nros-c-generated" \
+        -I"$cgen" \
         -Ipackages/api/nros-c/include \
         -Ipackages/core/nros-rmw-abi/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -262,7 +267,7 @@ c: c-fmt
         echo "ERROR: named_logger_levels.c is MISSING -- this check passes on absence." >&2; \
         exit 1; }
     cc -std=c11 -Wall -Wextra -Wmissing-prototypes -D_GNU_SOURCE \
-        -I"$gen/nros-c-generated" \
+        -I"$cgen" \
         -Ipackages/api/nros-c/include \
         -Ipackages/core/nros-rmw-abi/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -289,7 +294,7 @@ c: c-fmt
         echo "ERROR: node_guard_condition.c is MISSING -- this check passes on absence." >&2; \
         exit 1; }
     cc -std=c11 -Wall -Wextra -Wmissing-prototypes -D_GNU_SOURCE \
-        -I"$gen/nros-c-generated" \
+        -I"$cgen" \
         -Ipackages/api/nros-c/include \
         -Ipackages/core/nros-rmw-abi/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -315,7 +320,7 @@ c: c-fmt
     # and same archive as the probes above. `test -f` first — a missing TU must
     # not read as a pass (issue 0196).
     test -f packages/api/nros-c/tests/run/executor_backend_wake.c || {         echo "ERROR: executor_backend_wake.c is MISSING -- this check passes on absence." >&2;         exit 1; }
-    cc -std=c11 -Wall -Wextra -Wmissing-prototypes -D_GNU_SOURCE         -I"$gen/nros-c-generated"         -Ipackages/api/nros-c/include         -Ipackages/core/nros-rmw-abi/include         -Ipackages/platform/nros-platform-api/include         -Ipackages/api/nros-c/tests/run         packages/api/nros-c/tests/run/executor_backend_wake.c         packages/api/nros-c/tests/run/stub_rmw_backend.c         "$nros_c_lib" -lpthread -ldl -lm         -o tmp/executor_backend_wake
+    cc -std=c11 -Wall -Wextra -Wmissing-prototypes -D_GNU_SOURCE         -I"$cgen"         -Ipackages/api/nros-c/include         -Ipackages/core/nros-rmw-abi/include         -Ipackages/platform/nros-platform-api/include         -Ipackages/api/nros-c/tests/run         packages/api/nros-c/tests/run/executor_backend_wake.c         packages/api/nros-c/tests/run/stub_rmw_backend.c         "$nros_c_lib" -lpthread -ldl -lm         -o tmp/executor_backend_wake
     ./tmp/executor_backend_wake
     echo "  - issue 1384: an executor-bound node creates its EAGER entities from EITHER slot"
     # The FIFTH compile+link+run TU, same reason as the four above: the defect
@@ -338,7 +343,7 @@ c: c-fmt
         echo "ERROR: executor_bound_node.c is MISSING -- this check passes on absence." >&2; \
         exit 1; }
     cc -std=c11 -Wall -Wextra -Wmissing-prototypes -D_GNU_SOURCE \
-        -I"$gen/nros-c-generated" \
+        -I"$cgen" \
         -Ipackages/api/nros-c/include \
         -Ipackages/core/nros-rmw-abi/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -364,7 +369,7 @@ c: c-fmt
         echo "ERROR: action_remove_cycles.c is MISSING -- this check passes on absence." >&2; \
         exit 1; }
     cc -std=c11 -Wall -Wextra -Wmissing-prototypes -D_GNU_SOURCE \
-        -I"$gen/nros-c-generated" \
+        -I"$cgen" \
         -Ipackages/api/nros-c/include \
         -Ipackages/core/nros-rmw-abi/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -384,7 +389,7 @@ c: c-fmt
         echo "ERROR: entity_remove_cycles.c is MISSING -- this check passes on absence." >&2; \
         exit 1; }
     cc -std=c11 -Wall -Wextra -Wmissing-prototypes -D_GNU_SOURCE \
-        -I"$gen/nros-c-generated" \
+        -I"$cgen" \
         -Ipackages/api/nros-c/include \
         -Ipackages/core/nros-rmw-abi/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -476,7 +481,7 @@ c: c-fmt
     # takes function POINTERS, so an alias naming a symbol that does not exist
     # fails here rather than at some consumer's link step.
     cc -fsyntax-only -std=c11 \
-        -I"$gen/nros-c-generated" \
+        -I"$cgen" \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
         packages/api/nros-c/tests/compile/executor_verb_aliases.c
@@ -487,7 +492,7 @@ c: c-fmt
     # uncallable from C while the Rust side stayed green. The probe takes
     # function POINTERS, so a missing declaration is a build failure here.
     cc -fsyntax-only -std=c11 \
-        -I"$gen/nros-c-generated" \
+        -I"$cgen" \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
         packages/api/nros-c/tests/compile/graph_query_entry_points.c
@@ -497,7 +502,7 @@ c: c-fmt
     # TU proves the assertion is reachable and does not fire on a matching pair;
     # the probe below proves it fires on a mismatched one.
     cc -fsyntax-only -std=c11 \
-        -I"$gen/nros-c-generated" \
+        -I"$cgen" \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
         packages/api/nros-c/tests/compile/serialization_format.c
@@ -510,7 +515,7 @@ c: c-fmt
         exit 1; \
     }
     if cc -fsyntax-only -std=c11 \
-        -I"$gen/nros-c-generated" \
+        -I"$cgen" \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
         packages/api/nros-c/tests/compile/serialization_format_mismatch_probe.c 2>/dev/null; then \
@@ -527,7 +532,7 @@ c: c-fmt
     # failure for some other reason (a missing include) would also be a
     # non-zero exit, and would prove nothing.
     if _p_out="$(printf '#include <rclc_parameter/rclc_parameter.h>\n' | cc -fsyntax-only -std=c11 \
-        -I"$gen/nros-c-generated" -Ipackages/api/nros-c/include \
+        -I"$cgen" -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include -x c - 2>&1)"; then \
         echo "ERROR: <rclc_parameter/rclc_parameter.h> compiled in an image without param_services." >&2; \
         exit 1; \
@@ -557,7 +562,7 @@ c: c-fmt
         test -f "packages/api/nros-c/tests/compile/$probe.c" || { \
             echo "ERROR: $probe.c is MISSING -- this check passes on absence." >&2; exit 1; }; \
         cc -fsyntax-only -std=c11 \
-            -I"$gen/nros-c-generated" \
+            -I"$cgen" \
             -Ipackages/api/nros-c/include \
             -Ipackages/platform/nros-platform-api/include \
             "packages/api/nros-c/tests/compile/$probe.c" || exit 1; \
@@ -580,7 +585,7 @@ c: c-fmt
         test -f "packages/api/nros-c/tests/compile/$probe.c" || { \
             echo "ERROR: $probe.c is MISSING -- this check passes on absence." >&2; exit 1; }; \
         cc -fsyntax-only -std=c11 -Wall -Wextra \
-            -I"$gen/nros-c-generated" \
+            -I"$cgen" \
             -Ipackages/api/nros-c/include \
             -Ipackages/platform/nros-platform-api/include \
             "packages/api/nros-c/tests/compile/$probe.c" || exit 1; \
@@ -599,7 +604,7 @@ c: c-fmt
         test -f "packages/api/nros-c/tests/compile/$probe.c" || { \
             echo "ERROR: $probe.c is MISSING -- this check passes on absence." >&2; exit 1; }; \
         cc -fsyntax-only -std=c11 -Wall -Wextra -Werror \
-            -I"$gen/nros-c-generated" \
+            -I"$cgen" \
             -Ipackages/api/nros-c/include \
             -Ipackages/platform/nros-platform-api/include \
             -Ipackages/cli/rosidl-codegen/tests/fixtures/fingerprint-corpus/expected/rosidl \
@@ -616,7 +621,7 @@ c: c-fmt
     for _arm in inline configured rosidl; do \
         while IFS= read -r _tu; do \
             cc -fsyntax-only -std=c11 -Wall -Wextra -Werror \
-                -I"$gen/nros-c-generated" \
+                -I"$cgen" \
                 -Ipackages/api/nros-c/include \
                 -Ipackages/platform/nros-platform-api/include \
                 -I"$_goldens/$_arm" "$_tu" || exit 1; \
@@ -636,7 +641,7 @@ c: c-fmt
         echo "ERROR: rosidl_message_no_alloc.c is MISSING -- this check passes on absence." >&2; \
         exit 1; }
     cc -std=c11 -Wall -Wextra -Wmissing-prototypes -D_GNU_SOURCE \
-        -I"$gen/nros-c-generated" \
+        -I"$cgen" \
         -Ipackages/api/nros-c/include \
         -Ipackages/core/nros-rmw-abi/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -670,7 +675,7 @@ c: c-fmt
     }
     cc -fsyntax-only -std=c11 -Wall -Wextra \
         -Ipackages/api/nros-cpp/tests/compile/declared-qos-fixture \
-        -I"$gen/nros-c-generated" \
+        -I"$cgen" \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
         packages/api/nros-c/tests/compile/declared_qos_depth.c
@@ -682,7 +687,7 @@ c: c-fmt
     echo "  - declared QoS depth: a MISMATCH fails the build (c11, expected failure)"
     _dqc_out="$(cc -fsyntax-only -std=c11 -Wall -Wextra \
         -Ipackages/api/nros-cpp/tests/compile/declared-qos-fixture \
-        -I"$gen/nros-c-generated" \
+        -I"$cgen" \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
         packages/api/nros-c/tests/compile/declared_qos_depth_probe.c 2>&1)" && { \
@@ -714,7 +719,7 @@ c: c-fmt
         echo "ERROR: typed_service_handler.c is MISSING." >&2; exit 1; }
     cc -fsyntax-only -std=c11 -Wall -Wextra \
         -Ipackages/cli/rosidl-codegen/tests/fixtures/fingerprint-corpus/expected/configured \
-        -I"$gen/nros-c-generated" \
+        -I"$cgen" \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
         packages/api/nros-c/tests/compile/typed_service_handler.c
@@ -732,7 +737,7 @@ c: c-fmt
         echo "       expected-failure check passes on a missing file." >&2; exit 1; }
     if cc -fsyntax-only -std=c11 -Wall -Wextra -Werror \
         -Ipackages/cli/rosidl-codegen/tests/fixtures/fingerprint-corpus/expected/configured \
-        -I"$gen/nros-c-generated" \
+        -I"$cgen" \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
         packages/api/nros-c/tests/compile/typed_service_storage_mismatch_probe.c \
@@ -756,7 +761,7 @@ c: c-fmt
         test -f "$f" || { echo "ERROR: $f is MISSING -- an expected-failure check" >&2; \
                           echo "       passes on a missing file." >&2; exit 1; }; \
         if cc -fsyntax-only -std=c11 -Wall -Wextra \
-            -I"$gen/nros-c-generated" \
+            -I"$cgen" \
             -Ipackages/api/nros-c/include \
             -Ipackages/platform/nros-platform-api/include \
             "$f" 2>"tmp/rename-$probe.log"; then \
@@ -772,7 +777,7 @@ c: c-fmt
         echo "ERROR: rcl_compat_collision_probe.c is MISSING -- the expected-failure" >&2; \
         echo "       check below would PASS on a missing file." >&2; exit 1; }
     if cc -fsyntax-only -std=c11 \
-        -I"$gen/nros-c-generated" \
+        -I"$cgen" \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
         packages/api/nros-c/tests/compile/rcl_compat_collision_probe.c 2>/dev/null; then \
@@ -796,8 +801,8 @@ c: c-fmt
     # wrong hypotheses; the build's own error names the cause in one line.
     cargo build -p nros-cpp --no-default-features --features "{{C_API_SHIPPED_FEATURES}}" --quiet
     cc -fsyntax-only \
-        -I"$gen/nros-c-generated" \
-        -I"$gen/nros-cpp-generated" \
+        -I"$cgen" \
+        -I"$cppgen" \
         -Ipackages/api/nros-c/include \
         -Ipackages/api/nros-cpp/include \
         -include packages/api/nros-cpp/include/nros/nros_cpp_ffi.h \
@@ -867,7 +872,7 @@ c: c-fmt
         --features "{{C_API_SHIPPED_FEATURES}},param-services" --quiet
     mkdir -p tmp
     cc -std=c11 -Wall -Wextra -D_GNU_SOURCE \
-        -I"$param_dir/nros-c-generated" \
+        -I"$(CARGO_TARGET_DIR="$param_dir" nros_locate_artifact c-include)" \
         -Ipackages/api/nros-c/include \
         -Ipackages/core/nros-rmw-abi/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -1105,6 +1110,11 @@ cpp: cpp-fmt
     gen_clippy_zenoh="$(nros_scoped_target_dir check-cpp-clippy-zenoh)"
     gen="$(nros_scoped_target_dir check-cpp)"
     export CARGO_TARGET_DIR="$gen"
+    # issue 1852 — the per-build header dirs under this lane's target dir,
+    # ASKED (`nros locate artifact`, which honours CARGO_TARGET_DIR), never
+    # joined by hand: the names live in `nros_build_paths::artifact`.
+    cgen="$(nros_locate_artifact c-include)"
+    cppgen="$(nros_locate_artifact cpp-include)"
     echo "Checking C++ headers (build + syntax + clippy)..."
     echo "  - freestanding syntax (c++14)"
     # The C++ headers include nros-c's `<nros/types.h>`, so the syntax probe
@@ -1146,8 +1156,8 @@ cpp: cpp-fmt
     echo "  - a failed create aborts (runtime, c++14)"
     mkdir -p "$gen/nros-cpp-tests"
     c++ -std=c++14 -fno-exceptions -fno-rtti \
-        -I"$gen/nros-cpp-generated" \
-        -I"$gen/nros-c-generated" \
+        -I"$cppgen" \
+        -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -1176,8 +1186,8 @@ cpp: cpp-fmt
     }
     echo "  - publish refuses an uninitialised publisher (runtime, c++14)"
     c++ -std=c++14 -fno-exceptions -fno-rtti \
-        -I"$gen/nros-cpp-generated" \
-        -I"$gen/nros-c-generated" \
+        -I"$cppgen" \
+        -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -1198,8 +1208,8 @@ cpp: cpp-fmt
     }
     echo "  - init(argc, argv) honours --ros-args (runtime, c++14)"
     c++ -std=c++14 -fno-exceptions -fno-rtti \
-        -I"$gen/nros-cpp-generated" \
-        -I"$gen/nros-c-generated" \
+        -I"$cppgen" \
+        -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -1228,8 +1238,8 @@ cpp: cpp-fmt
     # at the top of this recipe, so `target/debug/` IS its derived output dir.
     nros_cpp_lib="$gen/debug/libnros_cpp.a"
     c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
-        -I"$gen/nros-cpp-generated" \
-        -I"$gen/nros-c-generated" \
+        -I"$cppgen" \
+        -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -1250,8 +1260,8 @@ cpp: cpp-fmt
     for _std_arm in "-DNROS_CPP_STD=1" ""; do
         # shellcheck disable=SC2086
         c++ -std=c++17 $_std_arm -fno-exceptions -fno-rtti \
-            -I"$gen/nros-cpp-generated" \
-            -I"$gen/nros-c-generated" \
+            -I"$cppgen" \
+            -I"$cgen" \
             -Ipackages/api/nros-cpp/include \
             -Ipackages/api/nros-c/include \
             -Ipackages/platform/nros-platform-api/include \
@@ -1280,7 +1290,7 @@ cpp: cpp-fmt
         exit 1; \
     }
     cc -std=c11 -Wall -Wextra -Wmissing-prototypes -D_GNU_SOURCE -c \
-        -I"$gen/nros-c-generated" \
+        -I"$cgen" \
         -Ipackages/api/nros-c/include \
         -Ipackages/core/nros-rmw-abi/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -1295,8 +1305,8 @@ cpp: cpp-fmt
     # to call `shutdown()` -> 6 failures.
     echo "  - cancel() stops a C++ spin and leaves the session open (runtime, phase-417 W4.c)"
     c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
-        -I"$gen/nros-cpp-generated" \
-        -I"$gen/nros-c-generated" \
+        -I"$cppgen" \
+        -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/core/nros-rmw-abi/include \
@@ -1316,8 +1326,8 @@ cpp: cpp-fmt
     # 2 failures.
     echo "  - two C++ nodes log under distinct names; set_level moves one (runtime, W4.d)"
     c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
-        -I"$gen/nros-cpp-generated" \
-        -I"$gen/nros-c-generated" \
+        -I"$cppgen" \
+        -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/core/nros-rmw-abi/include \
@@ -1339,8 +1349,8 @@ cpp: cpp-fmt
     # executor needs a session; no router, no wire.
     echo "  - an rclcpp-shape component takes the launch identity, and keeps its class's default without one (runtime, issue 1456)"
     c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
-        -I"$gen/nros-cpp-generated" \
-        -I"$gen/nros-c-generated" \
+        -I"$cppgen" \
+        -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/core/nros-rmw-abi/include \
@@ -1358,8 +1368,8 @@ cpp: cpp-fmt
     # 1456's reason: every shape of the defect compiles.
     echo "  - an rclcpp-shape component holds its handle's QoS override table before its constructor body runs (runtime, issue 1854)"
     c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
-        -I"$gen/nros-cpp-generated" \
-        -I"$gen/nros-c-generated" \
+        -I"$cppgen" \
+        -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/core/nros-rmw-abi/include \
@@ -1377,8 +1387,8 @@ cpp: cpp-fmt
     # passes. Same stub backend, same reason.
     echo "  - an unset namespace inherits the executor's through BOTH node-create entry points, and an explicit \"/\" still reaches the root (runtime, issue 1473)"
     c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
-        -I"$gen/nros-cpp-generated" \
-        -I"$gen/nros-c-generated" \
+        -I"$cppgen" \
+        -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/core/nros-rmw-abi/include \
@@ -1395,8 +1405,8 @@ cpp: cpp-fmt
     # memory. Observed as the stub backend's live-entity count falling.
     echo "  - destroying a C++ node releases its own arena entries and no other node's (runtime, phase-476 W0)"
     c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
-        -I"$gen/nros-cpp-generated" \
-        -I"$gen/nros-c-generated" \
+        -I"$cppgen" \
+        -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/core/nros-rmw-abi/include \
@@ -1414,8 +1424,8 @@ cpp: cpp-fmt
     # cannot reach the timer that took its slot.
     echo "  - a C++ timer's capture lives in the arena and is destroyed exactly once; stale handles are safe (runtime, phase-476 W2)"
     c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
-        -I"$gen/nros-cpp-generated" \
-        -I"$gen/nros-c-generated" \
+        -I"$cppgen" \
+        -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/core/nros-rmw-abi/include \
@@ -1479,8 +1489,8 @@ cpp: cpp-fmt
         # by `heap_sequence.hpp` (Phase 229.5); without it the probe fails
         # `fatal error: nros/platform.h: No such file or directory`.
         c++ -fsyntax-only -std=c++14 $free -fno-exceptions -fno-rtti \
-            -I"$gen/nros-cpp-generated" \
-            -I"$gen/nros-c-generated" \
+            -I"$cppgen" \
+            -I"$cgen" \
             -Ipackages/api/nros-cpp/include \
             -Ipackages/api/nros-c/include \
             -Ipackages/platform/nros-platform-api/include \
@@ -1491,8 +1501,8 @@ cpp: cpp-fmt
     # against a generated-shape service type, so the template body is checked.
     echo "  - typed bind_service instantiation (c++14)"
     c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
-        -I"$gen/nros-cpp-generated" \
-        -I"$gen/nros-c-generated" \
+        -I"$cppgen" \
+        -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -1503,8 +1513,8 @@ cpp: cpp-fmt
     # declaration and is uncallable while the Rust side stays green. Method
     # POINTERS make that a build failure here.
     c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
-        -I"$gen/nros-cpp-generated" \
-        -I"$gen/nros-c-generated" \
+        -I"$cppgen" \
+        -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -1526,8 +1536,8 @@ cpp: cpp-fmt
         exit 1; \
     }
     c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
-        -I"$gen/nros-cpp-generated" \
-        -I"$gen/nros-c-generated" \
+        -I"$cppgen" \
+        -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -1545,8 +1555,8 @@ cpp: cpp-fmt
         exit 1; \
     }
     c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
-        -I"$gen/nros-cpp-generated" \
-        -I"$gen/nros-c-generated" \
+        -I"$cppgen" \
+        -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -1562,8 +1572,8 @@ cpp: cpp-fmt
             exit 1; \
         }; \
         c++ -fsyntax-only -std=c++17 $_lc_std -Werror=deprecated-declarations -fno-exceptions -fno-rtti \
-            -I"$gen/nros-cpp-generated" \
-            -I"$gen/nros-c-generated" \
+            -I"$cppgen" \
+            -I"$cgen" \
             -Ipackages/api/nros-cpp/include \
             -Ipackages/api/nros-c/include \
             -Ipackages/platform/nros-platform-api/include \
@@ -1578,8 +1588,8 @@ cpp: cpp-fmt
     # examples use could not reach it. Surface probe, including the defaults
     # that make it a one-liner.
     c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
-        -I"$gen/nros-cpp-generated" \
-        -I"$gen/nros-c-generated" \
+        -I"$cppgen" \
+        -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -1589,8 +1599,8 @@ cpp: cpp-fmt
     # typed creators `static_assert` on it. The positive TU proves the assertion
     # is reachable; the probe proves it fires.
     c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
-        -I"$gen/nros-cpp-generated" \
-        -I"$gen/nros-c-generated" \
+        -I"$cppgen" \
+        -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -1605,8 +1615,8 @@ cpp: cpp-fmt
         exit 1; \
     }
     if c++ -fsyntax-only -std=c++17 \
-        -I"$gen/nros-cpp-generated" \
-        -I"$gen/nros-c-generated" \
+        -I"$cppgen" \
+        -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -1624,8 +1634,8 @@ cpp: cpp-fmt
         exit 1; \
     }
     if c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
-        -I"$gen/nros-cpp-generated" \
-        -I"$gen/nros-c-generated" \
+        -I"$cppgen" \
+        -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -1640,8 +1650,8 @@ cpp: cpp-fmt
     # arities exist is what catches a regression.
     echo "  - spin verb shape (c++14)"
     c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
-        -I"$gen/nros-cpp-generated" \
-        -I"$gen/nros-c-generated" \
+        -I"$cppgen" \
+        -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -1652,8 +1662,8 @@ cpp: cpp-fmt
     # a generated-shape message type.
     echo "  - PollingSubscription instantiation (c++14)"
     c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
-        -I"$gen/nros-cpp-generated" \
-        -I"$gen/nros-c-generated" \
+        -I"$cppgen" \
+        -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -1670,8 +1680,8 @@ cpp: cpp-fmt
     # is worth re-opening and this fails first.
     echo "  - Owned<Publisher<M>> ported shape + type-independent size (c++14)"
     c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
-        -I"$gen/nros-cpp-generated" \
-        -I"$gen/nros-c-generated" \
+        -I"$cppgen" \
+        -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -1691,8 +1701,8 @@ cpp: cpp-fmt
     # be a compile error for 81 of 120 stock Humble types.
     echo "  - rx_size_bound / rx_buffer_capacity / receive sites (c++14)"
     c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
-        -I"$gen/nros-cpp-generated" \
-        -I"$gen/nros-c-generated" \
+        -I"$cppgen" \
+        -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -1703,8 +1713,8 @@ cpp: cpp-fmt
     # deserialize) is type-checked against a generated-shape service type.
     echo "  - Client::call_polling instantiation (c++14)"
     c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
-        -I"$gen/nros-cpp-generated" \
-        -I"$gen/nros-c-generated" \
+        -I"$cppgen" \
+        -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -1717,8 +1727,8 @@ cpp: cpp-fmt
     # `CancelReturnCode` stay distinct types.
     echo "  - action callback tier instantiation (c++14)"
     c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
-        -I"$gen/nros-cpp-generated" \
-        -I"$gen/nros-c-generated" \
+        -I"$cppgen" \
+        -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -1777,8 +1787,8 @@ cpp: cpp-fmt
         printf '#include <nros/%s>\n' "$(basename "$hdr")" > "$_nostd_tu"
         c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti -ffreestanding \
             -nostdinc++ -isystem "$_threadx_shim" \
-            -I"$gen/nros-cpp-generated" \
-            -I"$gen/nros-c-generated" \
+            -I"$cppgen" \
+            -I"$cgen" \
             -Ipackages/api/nros-cpp/include \
             -Ipackages/api/nros-c/include \
             -Ipackages/platform/nros-platform-api/include \
@@ -1803,8 +1813,8 @@ cpp: cpp-fmt
     for _w4_arm in "" "-nostdinc++ -isystem $_threadx_shim"; do
         # shellcheck disable=SC2086
         c++ -fsyntax-only -std=c++14 -ffreestanding -fno-exceptions -fno-rtti $_w4_arm \
-            -I"$gen/nros-cpp-generated" \
-            -I"$gen/nros-c-generated" \
+            -I"$cppgen" \
+            -I"$cgen" \
             -Ipackages/api/nros-cpp/include \
             -Ipackages/api/nros-c/include \
             -Ipackages/platform/nros-platform-api/include \
@@ -1828,8 +1838,8 @@ cpp: cpp-fmt
             printf '#include <nros/%s>\n' "$(basename "$hdr")" > "$_nostd_tu"
             c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti -ffreestanding \
                 -nostdinc++ -isystem zephyr/cxx-compat -isystem "$_zephyr_min" \
-                -I"$gen/nros-cpp-generated" \
-                -I"$gen/nros-c-generated" \
+                -I"$cppgen" \
+                -I"$cgen" \
                 -Ipackages/api/nros-cpp/include \
                 -Ipackages/api/nros-c/include \
                 -Ipackages/platform/nros-platform-api/include \
@@ -1863,8 +1873,8 @@ cpp: cpp-fmt
     # takes no flag.
     echo "  - one node type: hosted shape + both create families (c++14, -DNROS_CPP_STD)"
     c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti -DNROS_CPP_STD=1 \
-        -I"$gen/nros-cpp-generated" \
-        -I"$gen/nros-c-generated" \
+        -I"$cppgen" \
+        -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -1872,8 +1882,8 @@ cpp: cpp-fmt
     echo "  - one node type: FREESTANDING construct + create_publisher (-nostdinc++)"
     c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti -ffreestanding \
         -nostdinc++ -isystem "$_threadx_shim" \
-        -I"$gen/nros-cpp-generated" \
-        -I"$gen/nros-c-generated" \
+        -I"$cppgen" \
+        -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -1899,8 +1909,8 @@ cpp: cpp-fmt
         c++ -c -std=c++14 -fno-exceptions -fno-rtti -ffreestanding \
             -nostdinc++ -isystem "$_threadx_shim" \
             -DREFUSAL="${_refusal%%:*}" \
-            -I"$gen/nros-cpp-generated" \
-            -I"$gen/nros-c-generated" \
+            -I"$cppgen" \
+            -I"$cgen" \
             -Ipackages/api/nros-cpp/include \
             -Ipackages/api/nros-c/include \
             -Ipackages/platform/nros-platform-api/include \
@@ -1926,8 +1936,8 @@ cpp: cpp-fmt
     # for THAT reason: a `deleted` diagnostic, not some other breakage.
     echo "  - phase-482 W2: Node::SharedPtr from a temporary shared_ptr is refused (expected failure)"
     _nh_out="$(c++ -fsyntax-only -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
-        -I"$gen/nros-cpp-generated" \
-        -I"$gen/nros-c-generated" \
+        -I"$cppgen" \
+        -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -1971,8 +1981,8 @@ cpp: cpp-fmt
     mkdir -p tmp
     if ! c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti -ffreestanding \
         -nostdinc++ -isystem "$_threadx_shim" \
-        -I"$gen/nros-cpp-generated" \
-        -I"$gen/nros-c-generated" \
+        -I"$cppgen" \
+        -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -2029,8 +2039,8 @@ cpp: cpp-fmt
     # measure.
     echo "  - one node type: the ours-only family answers to _in names (c++17, -DNROS_CPP_STD)"
     c++ -fsyntax-only -std=c++17 -fno-exceptions -fno-rtti -DNROS_CPP_STD \
-        -I"$gen/nros-cpp-generated" \
-        -I"$gen/nros-c-generated" \
+        -I"$cppgen" \
+        -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -2045,8 +2055,8 @@ cpp: cpp-fmt
     # parsed, and the member its 22 call sites moved to is never built.
     echo "  - timer binding paths instantiate through the MEMBER overload (c++17)"
     c++ -fsyntax-only -std=c++17 -fno-exceptions -fno-rtti \
-        -I"$gen/nros-cpp-generated" \
-        -I"$gen/nros-c-generated" \
+        -I"$cppgen" \
+        -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -2072,8 +2082,8 @@ cpp: cpp-fmt
     # chrono overload, which says nothing about the hierarchy it probes.
     echo "  - rclcpp::TimerBase is a NAME for the flat rclcpp::Timer, not a hierarchy (c++17, -DNROS_CPP_STD)"
     c++ -fsyntax-only -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
-        -I"$gen/nros-cpp-generated" \
-        -I"$gen/nros-c-generated" \
+        -I"$cppgen" \
+        -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -2081,8 +2091,8 @@ cpp: cpp-fmt
 
     echo "  - QoS policy accessors + ms boundary (c++14)"
     c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
-        -I"$gen/nros-cpp-generated" \
-        -I"$gen/nros-c-generated" \
+        -I"$cppgen" \
+        -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -2135,8 +2145,8 @@ cpp: cpp-fmt
     for probe in ros2_api_adoption node_graph_forwarders ros2_api_adoption_stage2 ros2_one_dispatch_path \
                  ros2_init_argv_refusal action_goal_uuid executor_cancel entity_name_accessors; do \
         c++ -fsyntax-only -std=c++14 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
-            -I"$gen/nros-cpp-generated" \
-            -I"$gen/nros-c-generated" \
+            -I"$cppgen" \
+            -I"$cgen" \
             -Ipackages/api/nros-cpp/include \
             -Ipackages/api/nros-c/include \
             -Ipackages/platform/nros-platform-api/include \
@@ -2148,8 +2158,8 @@ cpp: cpp-fmt
     # nothing to adopt across), so what this pins today is the parameter surface
     # at the standard the component lane actually builds with.
     c++ -fsyntax-only -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
-        -I"$gen/nros-cpp-generated" \
-        -I"$gen/nros-c-generated" \
+        -I"$cppgen" \
+        -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -2176,8 +2186,8 @@ cpp: cpp-fmt
     for _w4a_arm in "" "-nostdinc++ -isystem $_threadx_shim"; do
         # shellcheck disable=SC2086
         c++ -fsyntax-only -std=c++14 -ffreestanding -fno-exceptions -fno-rtti $_w4a_arm \
-            -I"$gen/nros-cpp-generated" \
-            -I"$gen/nros-c-generated" \
+            -I"$cppgen" \
+            -I"$cgen" \
             -Ipackages/api/nros-cpp/include \
             -Ipackages/api/nros-c/include \
             -Ipackages/platform/nros-platform-api/include \
@@ -2188,8 +2198,8 @@ cpp: cpp-fmt
     done
     echo "  - hosted parameter overloads: std::string + std::vector<T> on both node types (c++17)"
     c++ -fsyntax-only -std=c++17 -fno-exceptions -fno-rtti \
-        -I"$gen/nros-cpp-generated" \
-        -I"$gen/nros-c-generated" \
+        -I"$cppgen" \
+        -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -2210,8 +2220,8 @@ cpp: cpp-fmt
     for _w1678_arm in "" "-DNROS_CPP_STD=1" "-ffreestanding -nostdinc++ -isystem $_threadx_shim"; do
         # shellcheck disable=SC2086
         c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti $_w1678_arm \
-            -I"$gen/nros-cpp-generated" \
-            -I"$gen/nros-c-generated" \
+            -I"$cppgen" \
+            -I"$cgen" \
             -Ipackages/api/nros-cpp/include \
             -Ipackages/api/nros-c/include \
             -Ipackages/platform/nros-platform-api/include \
@@ -2225,8 +2235,8 @@ cpp: cpp-fmt
             # shellcheck disable=SC2086
             arm-none-eabi-g++ -mcpu=cortex-m3 -mthumb -fsyntax-only -std=c++14 -fno-exceptions \
                 -fno-rtti $_w1678_arm \
-                -I"$gen/nros-cpp-generated" \
-                -I"$gen/nros-c-generated" \
+                -I"$cppgen" \
+                -I"$cgen" \
                 -Ipackages/api/nros-cpp/include \
                 -Ipackages/api/nros-c/include \
                 -Ipackages/platform/nros-platform-api/include \
@@ -2274,8 +2284,8 @@ cpp: cpp-fmt
     for _gc_arm in "" "-nostdinc++ -isystem $_threadx_shim"; do
         # shellcheck disable=SC2086
         c++ -fsyntax-only -std=c++14 -ffreestanding -fno-exceptions -fno-rtti $_gc_arm \
-            -I"$gen/nros-cpp-generated" \
-            -I"$gen/nros-c-generated" \
+            -I"$cppgen" \
+            -I"$cgen" \
             -Ipackages/api/nros-cpp/include \
             -Ipackages/api/nros-c/include \
             -Ipackages/platform/nros-platform-api/include \
@@ -2296,7 +2306,7 @@ cpp: cpp-fmt
         f="packages/api/nros-cpp/tests/compile/ros2_refuse_${probe}_probe.cpp"; \
         test -f "$f" || { echo "ERROR: $f is MISSING -- this check passes on absence." >&2; exit 1; }; \
         if c++ -fsyntax-only -std=c++14 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
-               -I"$gen/nros-cpp-generated" -I"$gen/nros-c-generated" \
+               -I"$cppgen" -I"$cgen" \
                -Ipackages/api/nros-cpp/include -Ipackages/api/nros-c/include \
                -Ipackages/platform/nros-platform-api/include "$f" 2>"tmp/refuse-$probe.log"; then \
             echo "ERROR: $f COMPILED. The refusal for '$probe' is not firing." >&2; exit 1; \
@@ -2312,8 +2322,8 @@ cpp: cpp-fmt
     echo "  - declared QoS depth: the three cases COMPILE (c++17)"
     c++ -fsyntax-only -std=c++17 -fno-exceptions -fno-rtti \
         -Ipackages/api/nros-cpp/tests/compile/declared-qos-fixture \
-        -I"$gen/nros-cpp-generated" \
-        -I"$gen/nros-c-generated" \
+        -I"$cppgen" \
+        -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -2332,8 +2342,8 @@ cpp: cpp-fmt
     echo "  - declared QoS depth: a MISMATCH fails the build (c++17, expected failure)"
     _dq_out="$(c++ -fsyntax-only -std=c++17 -fno-exceptions -fno-rtti \
         -Ipackages/api/nros-cpp/tests/compile/declared-qos-fixture \
-        -I"$gen/nros-cpp-generated" \
-        -I"$gen/nros-c-generated" \
+        -I"$cppgen" \
+        -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -2368,8 +2378,8 @@ cpp: cpp-fmt
     echo "  - declared parameters: the boot check's lookups agree with the table (c++17)"
     c++ -fsyntax-only -std=c++17 -fno-exceptions -fno-rtti \
         -Ipackages/api/nros-cpp/tests/compile/declared-params-fixture \
-        -I"$gen/nros-cpp-generated" \
-        -I"$gen/nros-c-generated" \
+        -I"$cppgen" \
+        -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -2381,8 +2391,8 @@ cpp: cpp-fmt
     # loop above only PARSES the templates; this TU INSTANTIATES them.
     echo "  - receive verbs instantiate (c++14)"
     c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
-        -I"$gen/nros-cpp-generated" \
-        -I"$gen/nros-c-generated" \
+        -I"$cppgen" \
+        -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -2404,8 +2414,8 @@ cpp: cpp-fmt
     echo "  - phase-427 W8: a CHECKED result compiles clean (c++14, -Werror=unused-result)"
     c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
         -Werror=unused-result -Werror=deprecated-declarations \
-        -I"$gen/nros-cpp-generated" \
-        -I"$gen/nros-c-generated" \
+        -I"$cppgen" \
+        -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -2417,8 +2427,8 @@ cpp: cpp-fmt
     # lost from either one is exactly the silence this asserts against.
     echo "  - phase-427 W8: a DISCARDED result fails the build (expected failure, both halves)"
     _nd_out="$(c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti -Werror=unused-result \
-        -I"$gen/nros-cpp-generated" \
-        -I"$gen/nros-c-generated" \
+        -I"$cppgen" \
+        -I"$cgen" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
