@@ -1788,7 +1788,10 @@ pub(crate) struct ParamState<'s> {
     /// was only ever one implementation, and `ParamState` itself is carved
     /// from the executor backing (or, with `alloc`, one allocation), so the
     /// sets cost the backing exactly what the boxes cost the heap.
-    pub(crate) services: heapless::Vec<ParameterServiceServers, MAX_SERVICE_SETS>,
+    ///
+    /// Issue 1856 -- [`PARAM_SERVICE_SETS`] long: empty and zero-sized on an
+    /// image that does not serve its store.
+    pub(crate) services: heapless::Vec<ParameterServiceServers, PARAM_SERVICE_SETS>,
     /// phase-426 W3 — whether a caller asked for parameter services at all.
     ///
     /// Registration cannot happen where the request is made. `nros::main!`
@@ -1930,7 +1933,28 @@ impl<'s> ParamState<'s> {
 /// Bytes of each carved request/reply buffer: the build's resolved
 /// `param_service_buffer_bytes()` (a stated `NROS_PARAM_SERVICE_BUFFER_SIZE`,
 /// or the bound the contract's declared parameters derive).
-pub(crate) const HOME_BUFFER_BYTES: usize = param_service_buffer_bytes();
+///
+/// Issue 1856 -- ZERO when the image does not serve its store
+/// (`nros_params::PARAM_SERVICES_SERVED`): nothing reads the pair there, since
+/// [`Executor::register_parameter_services`](crate::Executor::register_parameter_services)
+/// and the `/parameter_events` publisher, its only users, are refused.
+pub(crate) const HOME_BUFFER_BYTES: usize = if nros_params::PARAM_SERVICES_SERVED {
+    param_service_buffer_bytes()
+} else {
+    0
+};
+
+/// Issue 1856 -- how many service sets a [`ParamState`] holds: one per node
+/// slot ([`MAX_SERVICE_SETS`]) when the image serves its store, none when the
+/// build states it does not. The sets were boxed per served node before issue
+/// 1812 and are inline since, so an image that only HOLDS a store (the
+/// contract declares parameters, the bringup declares no `param_services`)
+/// paid 4 x ~3.6 KiB of empty sets in its carved home.
+pub(crate) const PARAM_SERVICE_SETS: usize = if nros_params::PARAM_SERVICES_SERVED {
+    MAX_SERVICE_SETS
+} else {
+    0
+};
 
 /// Issue 1812 — everything the parameter SERVICES own, as one region of the
 /// executor backing.
@@ -1944,9 +1968,15 @@ pub(crate) const HOME_BUFFER_BYTES: usize = param_service_buffer_bytes();
 ///
 /// What the region costs is `size_of::<ParamHome>()`, which the backing's
 /// layout reads directly (`NATIVE_UNITS.param_home`), so no number here can
-/// drift from the carve. The buffer pair is in it even for an image that
-/// declares parameters and serves none: the build cannot tell the two apart,
-/// and 2 x [`HOME_BUFFER_BYTES`] is small beside the store it rides with.
+/// drift from the carve.
+///
+/// Issue 1856 -- the services' half (the sets and the buffer pair) is sized
+/// by `nros_params::PARAM_SERVICES_SERVED`. A build that STATES the image
+/// serves no parameter services (`NROS_CAPABILITY_PARAM_SERVICES=0`, which
+/// the Zephyr west road states for every image without the axis) carves a
+/// home of the state alone: 24,744 -> 1,472 B on the safety island (thumbv7em,
+/// 22 slots, four node slots). A build that states nothing keeps the full
+/// home, so an image with the services still asks the heap for nothing.
 #[repr(C)]
 pub(crate) struct ParamHome {
     state: MaybeUninit<ParamState<'static>>,

@@ -101,6 +101,7 @@ tools/*
 # refused (no store) row, one dir each (`scripts/check-param-services-heap-free.sh`).
 /target-param-heap-free/
 /target-param-heap-free-nostore/
+/target-param-heap-free-store-only/
 
 # Issue 1472 — `just check test-targets` runs the tests of workspace-excluded
 # crates in its own target dir. Issue 1491: this line was the one scoped dir

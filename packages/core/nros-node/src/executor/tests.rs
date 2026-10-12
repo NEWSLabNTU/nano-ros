@@ -12860,6 +12860,89 @@ fn a_store_carved_from_the_backing_never_asks_the_heap() {
     );
 }
 
+/// Issue 1856 -- the services' half of the carved home follows the build's
+/// statement about the services, and the store does not.
+///
+/// One test, two builds. `node-std-tests` runs it with nothing stated (every
+/// other test's build: the services are served, and the home is issue 1812's
+/// whole home) and again with `NROS_CAPABILITY_PARAM_SERVICES=0
+/// NROS_PARAM_STORE=1` (an image that HOLDS a store and serves none, the
+/// safety island's shape). Each branch asserts what its build must do, so
+/// neither run passes by skipping.
+#[cfg(all(feature = "std", feature = "param-services"))]
+#[test]
+fn the_carved_home_reserves_the_services_only_when_the_image_serves_them() {
+    use crate::param_sizing::{MAX_SERVICE_SETS, param_service_buffer_bytes};
+    use crate::parameter_services::{
+        HOME_BUFFER_BYTES, PARAM_SERVICE_SETS, ParamHome, ParamState, ParameterServiceServers,
+        Placed,
+    };
+    use core::mem::size_of;
+    use nros_params::ParameterValue;
+
+    let seeded = usize::from(cfg!(feature = "sim-time"));
+    let sizing = super::storage::ExecutorSizing {
+        params: 2 + seeded,
+        ..super::storage::ExecutorSizing::DEFAULT
+    };
+    let backing: &'static mut [core::mem::MaybeUninit<u64>] =
+        alloc::boxed::Box::leak(alloc::boxed::Box::new_uninit_slice(sizing.u64_len()));
+    let _refuse = super::spin::RefuseParameterStore::arm();
+    // SAFETY: `backing` is exactly `sizing.u64_len()` words, `'static`, and is
+    // handed to this executor alone.
+    let mut executor: Executor =
+        unsafe { Executor::from_session_in(MockSession::new(), backing, sizing) };
+    executor.clock_us_fn = Some(test_clock_us);
+    executor.set_node_identity("held", "/");
+    // Either way the store is the backing's, and it holds a declaration.
+    assert!(
+        executor.declare_parameter("rate", ParameterValue::Integer(10)),
+        "the carved store accepts a declaration whether or not it is served"
+    );
+    assert!(matches!(executor.params.as_ref(), Some(Placed::Carved(_))));
+
+    if nros_params::PARAM_SERVICES_SERVED {
+        // Issue 1812's guarantee, held: a home with the services in it, so an
+        // image that serves them asks the heap for nothing.
+        assert_eq!(PARAM_SERVICE_SETS, MAX_SERVICE_SETS);
+        assert_eq!(HOME_BUFFER_BYTES, param_service_buffer_bytes());
+        assert!(
+            size_of::<ParamState<'_>>()
+                >= MAX_SERVICE_SETS * size_of::<ParameterServiceServers>(),
+            "the sets are inline, one per node slot"
+        );
+        assert!(size_of::<ParamHome>() >= size_of::<ParamState<'_>>() + 2 * HOME_BUFFER_BYTES);
+        assert!(executor.register_parameter_services().is_ok());
+        executor
+            .reconcile_parameter_services()
+            .expect("one set of six over the mock session");
+        assert_eq!(executor.params.as_ref().map(|p| p.services.len()), Some(1));
+    } else {
+        // The services' half is gone: no sets, no buffer pair. The home is the
+        // state alone, and the state is smaller than ONE set used to be.
+        assert_eq!(PARAM_SERVICE_SETS, 0);
+        assert_eq!(HOME_BUFFER_BYTES, 0);
+        assert_eq!(size_of::<ParamHome>(), size_of::<ParamState<'_>>());
+        assert!(size_of::<ParamState<'_>>() < size_of::<ParameterServiceServers>());
+        // Asking for what the build left out is refused by name, not by a
+        // full table later.
+        assert!(matches!(
+            executor.register_parameter_services(),
+            Err(NodeError::Transport(TransportError::Unsupported))
+        ));
+        assert!(matches!(
+            executor.enable_parameter_events_on(super::node_record::NodeId::PRIMARY),
+            Err(NodeError::Transport(TransportError::Unsupported))
+        ));
+        assert!(!executor.parameter_services_pending());
+        // And the store still works without them.
+        assert_eq!(
+            executor.get_parameter("rate").and_then(|v| v.as_integer()),
+            Some(10)
+        );
+    }
+}
+
 /// phase-382 W3' — the negative control's other half: a sizing that carves
 /// NOTHING still gets a store, from the heap, exactly as before W3'. Zero
 /// slots is the default for every image the build does not know to build a

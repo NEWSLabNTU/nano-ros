@@ -160,6 +160,15 @@ fn main() {
         0
     };
 
+    // Issue 1856 -- does this image SERVE its store through the six parameter
+    // services, or only hold it? `nros-node` sizes the services' half of the
+    // carved home (their sets and the request/reply pair, issue 1812) from
+    // this. Only a STATED 0 says "no": the Zephyr west road states the axis
+    // for every image (`CONFIG_NROS_CAPABILITY_PARAM_SERVICES`, forwarded as
+    // 0 or 1), and a road that states nothing keeps the services, because an
+    // application there may register them from its own code.
+    let services_served = param_services_served();
+
     let contents = format!(
         "/// Maximum number of parameters the server can store \
          (set via NROS_MAX_PARAMETERS, default 32).\n\
@@ -215,7 +224,15 @@ fn main() {
          answer for every image that merely LINKS the declare path, which is \
          why it is conditional: issue 1702 measured an unconditional `.bss` \
          store at 280,832 B in a talker that never builds one.\n\
-         pub const IMPLIED_STORE_SLOTS: usize = {implied_store_slots};\n"
+         pub const IMPLIED_STORE_SLOTS: usize = {implied_store_slots};\n\
+         \n\
+         /// Whether the image may SERVE its store through the six parameter \
+         services: false only when the build STATES \
+         `NROS_CAPABILITY_PARAM_SERVICES=0` (the Zephyr west road states it \
+         for every image). `nros-node` reserves no service sets and no \
+         request/reply pair in the carved home of an image that does not. \
+         Issue 1856.\n\
+         pub const PARAM_SERVICES_SERVED: bool = {services_served};\n"
     );
 
     std::fs::write(Path::new(&out_dir).join("nros_params_config.rs"), contents).unwrap();
@@ -225,12 +242,16 @@ fn main() {
     // size is in it: the slot count and each capacity that sizes a slot. A
     // store the executor does not carve contributes nothing to the backing, so
     // its shape is just `0` -- a capacity change then re-runs no dependent.
+    // Issue 1856 -- whether the services are served sizes the home that rides
+    // with the store, so it is part of the shape (`s1` / `s0`).
     let store_shape = if implied_store_slots == 0 {
         "0".to_string()
     } else {
         format!(
             "{implied_store_slots}x{max_param_name_len}.{max_string_value_len}.{max_array_len}.\
-             {max_byte_array_len}.{max_param_description_len}.{max_param_constraints_len}"
+             {max_byte_array_len}.{max_param_description_len}.{max_param_constraints_len}.\
+             s{}",
+            u8::from(services_served)
         )
     };
     println!("cargo:store_shape={store_shape}");
@@ -271,6 +292,22 @@ fn store_implied(params: Option<&nros_sizing_descriptor::Params>) -> bool {
     let axis = nros_zephyr_build::knob("NROS_CAPABILITY_PARAM_SERVICES").stated();
     let seed = nros_zephyr_build::knob("NROS_PARAM_STORE").stated();
     described || axis.unwrap_or(0) != 0 || seed.unwrap_or(0) != 0
+}
+
+/// Issue 1856 -- may this image serve its store through the six services?
+///
+/// `NROS_CAPABILITY_PARAM_SERVICES` STATED as 0 is the one "no". Absent is
+/// "yes", deliberately: on the cargo and cmake roads nothing states the axis,
+/// and an application there may call `register_parameter_services` from its
+/// own code, which the build cannot see. A store implied by the contract's
+/// `params:` alone (the island's case) does not imply the services; the
+/// descriptor's `[params] store` names only the FIRST source, so it cannot
+/// answer this and is not read here.
+fn param_services_served() -> bool {
+    !matches!(
+        nros_zephyr_build::knob("NROS_CAPABILITY_PARAM_SERVICES").stated(),
+        Some(0)
+    )
 }
 
 /// The STATED rungs of one parameter knob: env, then Kconfig, then the descriptor

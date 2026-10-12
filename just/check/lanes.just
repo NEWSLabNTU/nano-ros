@@ -2793,6 +2793,14 @@ node-std-tests:
     ran_tests "the arena-to-record link test" \
         env NROS_BOOT_REPORT=1 cargo test -p nros-node --lib --features std --quiet -- \
         --exact executor::tests::arena_exhaustion_reaches_the_boot_record
+    # Issue 1856 -- the carved parameter home in a build that STATES the image
+    # serves no parameter services (the Zephyr west road states the axis for
+    # every image). The full run above has nothing stated, so it covers the
+    # other branch of the same test.
+    ran_tests "the store-only parameter home" \
+        env NROS_CAPABILITY_PARAM_SERVICES=0 NROS_PARAM_STORE=1 \
+        cargo test -p nros-node --lib --features std,sim-time,param-services --quiet -- \
+        --exact executor::tests::the_carved_home_reserves_the_services_only_when_the_image_serves_them
     # Issue 1036 -- the same failure, taken all the way to the tool an operator
     # runs: the record resolved by SYMBOL out of the ELF, its bytes decoded by
     # the boot-report reader under `scripts/`, and the verdict asserted to name
