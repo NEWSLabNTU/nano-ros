@@ -16,7 +16,10 @@ fn main() {
 /// than a path it has to guess.
 fn emit_config_include() {
     let out_dir = std::env::var("OUT_DIR").expect("OUT_DIR not set");
-    println!("cargo:config_include={out_dir}/nros-cpp-generated");
+    println!(
+        "cargo:config_include={out_dir}/{}",
+        nros_build_helpers::CPP_GENERATED_DIR
+    );
     // issue 1512 — this crate's own headers (`<nros/nros.hpp>` …), the twin of
     // `nros-c`'s `cargo:include`. A cargo-rooted C++ image (the bare-metal
     // leaves, whose `build.rs` compiles the application) reads it as

@@ -25,6 +25,7 @@ include_guard(GLOBAL)
 
 # issue 0326 — `_nros_is_zephyr()` lives here.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCodegenCore.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosArtifactLayout.cmake")  # issue 1852
 # `nros_read_package_xml_body()` — see phase-348 W1.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosPackageXml.cmake")
 
@@ -523,9 +524,10 @@ function(nano_ros_auto_add_library name)
             endif()
         endforeach()
         _nros_generated_header_dir(_nrv_gen_dir)
+        nros_generated_header(_nrv_cpp_cfg "${_nrv_gen_dir}" cpp nros_cpp_config_generated.h)
+        nros_generated_header(_nrv_c_cfg "${_nrv_gen_dir}" c nros_config_generated.h)
         set_property(SOURCE ${_srcs} APPEND PROPERTY OBJECT_DEPENDS
-            "${_nrv_gen_dir}/nros-cpp-generated/nros/nros_cpp_config_generated.h"
-            "${_nrv_gen_dir}/nros-c-generated/nros/nros_config_generated.h")
+            "${_nrv_cpp_cfg}" "${_nrv_c_cfg}")
     endif()
 endfunction()
 

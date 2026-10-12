@@ -45,6 +45,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
 # phase-484 W6 (RFC-0103 D8) — the one reader of cargo's JSON stream.
 from cargo_out_dir import out_dirs as _out_dirs, package_matches, self_test as _parser_self_test  # noqa: E402,F401
+from artifact_layout import C_GENERATED_DIR, CPP_GENERATED_DIR, GEN_DIRS  # noqa: E402  issue 1852
 
 
 def copy_headers(out_dir: str, dest: str) -> list:
@@ -66,7 +67,7 @@ def copy_headers(out_dir: str, dest: str) -> list:
     for root, _dirs, files in os.walk(out_dir):
         rel_root = os.path.relpath(root, out_dir)
         head = rel_root.split(os.sep)[0]
-        if not head.startswith("nros-") or not head.endswith("-generated"):
+        if head not in GEN_DIRS:
             continue
         for name in sorted(files):
             if name.endswith(".h"):
@@ -146,14 +147,14 @@ def self_test() -> int:
 
     with tempfile.TemporaryDirectory() as tmp:
         out = os.path.join(tmp, "out")
-        os.makedirs(os.path.join(out, "nros-c-generated", "nros"))
-        hdr = os.path.join(out, "nros-c-generated", "nros", "nros_config_generated.h")
+        os.makedirs(os.path.join(out, C_GENERATED_DIR, "nros"))
+        hdr = os.path.join(out, C_GENERATED_DIR, "nros", "nros_config_generated.h")
         with open(hdr, "w") as f:
             f.write("#define A 1\n")
         dest = os.path.join(tmp, "dest")
         copied = copy_headers(out, dest)
-        placed = os.path.join(dest, "nros-c-generated", "nros", "nros_config_generated.h")
-        want = [os.path.join("nros-c-generated", "nros", "nros_config_generated.h")]
+        placed = os.path.join(dest, C_GENERATED_DIR, "nros", "nros_config_generated.h")
+        want = [os.path.join(C_GENERATED_DIR, "nros", "nros_config_generated.h")]
         if copied != want or not os.path.isfile(placed):
             print(f"  FAIL copy_headers did not place the header: {copied}", file=sys.stderr)
             fails += 1
@@ -162,13 +163,13 @@ def self_test() -> int:
 
         # nros-cpp emits BOTH its own header and the c-format companion. They
         # must land in DIFFERENT directories; flattening is issue 0360.
-        os.makedirs(os.path.join(out, "nros-cpp-generated", "nros"), exist_ok=True)
-        with open(os.path.join(out, "nros-cpp-generated", "nros",
+        os.makedirs(os.path.join(out, CPP_GENERATED_DIR, "nros"), exist_ok=True)
+        with open(os.path.join(out, CPP_GENERATED_DIR, "nros",
                                "nros_cpp_config_generated.h"), "w") as f:
             f.write("#define CPP 1\n")
         copy_headers(out, dest)
-        c_h = os.path.join(dest, "nros-c-generated", "nros", "nros_config_generated.h")
-        cpp_h = os.path.join(dest, "nros-cpp-generated", "nros", "nros_cpp_config_generated.h")
+        c_h = os.path.join(dest, C_GENERATED_DIR, "nros", "nros_config_generated.h")
+        cpp_h = os.path.join(dest, CPP_GENERATED_DIR, "nros", "nros_cpp_config_generated.h")
         if not (os.path.isfile(c_h) and os.path.isfile(cpp_h)):
             print("  FAIL the two packages' headers did not stay separate", file=sys.stderr)
             fails += 1

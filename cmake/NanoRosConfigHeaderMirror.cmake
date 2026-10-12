@@ -48,6 +48,7 @@
 # mirror), which would move the header's mtime on every build and recompile
 # every consumer. For the same reason each command has exactly ONE output.
 include_guard(GLOBAL)
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosArtifactLayout.cmake")  # issue 1852
 
 # _nros_config_header_rerun_node(<out-var> <path>) — declare (once per
 # directory) the always-out-of-date SYMBOLIC node at <path>.

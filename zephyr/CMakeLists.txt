@@ -34,6 +34,7 @@
 include(${CMAKE_CURRENT_LIST_DIR}/../cmake/NanoRosReconfigure.cmake)
 # phase-484 W7b — adopt any deprecated `NANO_ROS_*` name the application set.
 include(${CMAKE_CURRENT_LIST_DIR}/../cmake/NanoRosDeprecatedNames.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/../cmake/NanoRosArtifactLayout.cmake)  # issue 1852
 nros_adopt_deprecated_names()
 set(_nros_kconfig_stamp "${APPLICATION_BINARY_DIR}/nros-module-kconfig.conf")
 nros_reconfigure_settle("${_nros_kconfig_stamp}")
@@ -482,7 +483,8 @@ if(CONFIG_NROS_C_API)
     # `#error`s if reached.
     # phase-400 W5.a — the directory is `nros_resolve_cargo_dirs()`'s answer, not
     # a literal repeated from nros_cargo_build.cmake. Same path today.
-    zephyr_include_directories(${NROS_GENERATED_HEADER_DIR}/nros-c-generated)
+    nros_generated_dir(_nros_c_gen_dir c)
+    zephyr_include_directories(${NROS_GENERATED_HEADER_DIR}/${_nros_c_gen_dir})
     # Add nros-c include directories for user code
     zephyr_include_directories(${NROS_REPO_DIR}/packages/api/nros-c/include)
 
@@ -631,8 +633,10 @@ if(CONFIG_NROS_CPP_API)
     # include path before source-tree dirs. C++ user code transitively
     # pulls `<nros/nros_config_generated.h>` (C-side) via parameter.hpp,
     # so both variants must resolve to the per-build versions.
-    zephyr_include_directories(${NROS_GENERATED_HEADER_DIR}/nros-cpp-generated)
-    zephyr_include_directories(${NROS_GENERATED_HEADER_DIR}/nros-c-generated)
+    nros_generated_dir(_nros_cpp_gen_dir cpp)
+    nros_generated_dir(_nros_c_gen_dir c)
+    zephyr_include_directories(${NROS_GENERATED_HEADER_DIR}/${_nros_cpp_gen_dir})
+    zephyr_include_directories(${NROS_GENERATED_HEADER_DIR}/${_nros_c_gen_dir})
     # `cxx-compat/` ships a stripped-down `<cstdlib>` / `<cstdio>` /
     # `<cstring>` / etc. for Zephyr targets whose C++ stdlib layer is
     # minimal. `zephyr/lib/cpp/minimal/include` only carries

@@ -65,6 +65,7 @@
 
 # issue 0326 — `_nros_is_zephyr()` lives here.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCodegenCore.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosArtifactLayout.cmake")  # issue 1852
 
 # issue 1467 — `nros_link_runtime_umbrella()`: the ONE decision about which
 # runtime umbrella a target links, and whether the consumer wants one.
@@ -709,8 +710,10 @@ function(nano_ros_node_register)
         # were. A file-level OBJECT_DEPENDS naming a path cargo no longer writes
         # is a ninja edge to a file that never appears.
         _nros_generated_header_dir(_nrc_gen_dir)
+        nros_generated_header(_nrc_c_cfg "${_nrc_gen_dir}" c nros_config_generated.h)
+        nros_generated_header(_nrc_c_api "${_nrc_gen_dir}" c nros_generated.h)
         set_source_files_properties(${_NRC_SOURCES} PROPERTIES OBJECT_DEPENDS
-            "${_nrc_gen_dir}/nros-c-generated/nros/nros_config_generated.h;${_nrc_gen_dir}/nros-c-generated/nros/nros_generated.h")
+            "${_nrc_c_cfg};${_nrc_c_api}")
     endif()
 
     set(_lib "${PROJECT_NAME}_${_NRC_NAME}_component")
@@ -948,8 +951,10 @@ function(nano_ros_node_register)
                 # the single-node carrier compiles into `app`, which already depends on the
                 # cargo build, so neither hits this.)
                 _nros_generated_header_dir(_nrc_gen_dir)
+                nros_generated_header(_nrc_cpp_cfg "${_nrc_gen_dir}" cpp nros_cpp_config_generated.h)
+                nros_generated_header(_nrc_c_cfg "${_nrc_gen_dir}" c nros_config_generated.h)
                 set_source_files_properties(${_NRC_SOURCES} PROPERTIES OBJECT_DEPENDS
-                    "${_nrc_gen_dir}/nros-cpp-generated/nros/nros_cpp_config_generated.h;${_nrc_gen_dir}/nros-c-generated/nros/nros_config_generated.h")
+                    "${_nrc_cpp_cfg};${_nrc_c_cfg}")
             endif()
         endif()
     endif()
@@ -1332,9 +1337,10 @@ function(nano_ros_node_register)
         # interface-codegen module stamps OBJECT_DEPENDS on sources too, and a
         # plain set CLOBBERS whichever side ran first.
         _nros_generated_header_dir(_nrc_gen_dir)
+        nros_generated_header(_nrc_cpp_cfg "${_nrc_gen_dir}" cpp nros_cpp_config_generated.h)
+        nros_generated_header(_nrc_c_cfg "${_nrc_gen_dir}" c nros_config_generated.h)
         set_property(SOURCE "${_zephyr_entry_src}" APPEND PROPERTY OBJECT_DEPENDS
-            "${_nrc_gen_dir}/nros-cpp-generated/nros/nros_cpp_config_generated.h"
-            "${_nrc_gen_dir}/nros-c-generated/nros/nros_config_generated.h")
+            "${_nrc_cpp_cfg}" "${_nrc_c_cfg}")
         target_link_libraries(app PRIVATE ${_lib})
     endif()
 

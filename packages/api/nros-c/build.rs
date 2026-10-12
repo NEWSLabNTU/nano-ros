@@ -24,7 +24,10 @@ fn emit_include_dirs() {
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
     let out_dir = std::env::var("OUT_DIR").expect("OUT_DIR not set");
     println!("cargo:include={manifest_dir}/include");
-    println!("cargo:config_include={out_dir}/nros-c-generated");
+    println!(
+        "cargo:config_include={out_dir}/{}",
+        nros_build_helpers::C_GENERATED_DIR
+    );
     // `<nros/platform.h>` and the rest of the platform ABI, which the generated
     // message `.c` files include. Published from HERE, not from a `links` key on
     // `nros-platform-api`, because that is what the cmake road does: the repo

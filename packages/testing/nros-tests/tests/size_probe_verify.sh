@@ -32,7 +32,10 @@ cd "$(git rev-parse --show-toplevel)"
 # asserting anything. It had been dead that way since the header moved; found
 # 2026-08-06 while removing the probe's fallbacks (issue 0464), and plausibly the
 # reason the fallback rot went unnoticed for so long.
-HEADER="${CARGO_TARGET_DIR:-target}/nros-c-generated/nros/nros_config_generated.h"
+# issue 1852 — asked, not joined: `nros locate artifact` honours CARGO_TARGET_DIR.
+# shellcheck source=../../../../scripts/build/cargo.sh
+. "$(git rev-parse --show-toplevel)/scripts/build/cargo.sh"
+HEADER="$(nros_locate_artifact c-config-header)"
 FEATURES="rmw-zenoh,platform-posix,ros-humble"
 JOBS="${JOBS:-8}"
 SOAK_ROUNDS="${SOAK_ROUNDS:-3}"

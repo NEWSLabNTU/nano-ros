@@ -134,12 +134,14 @@ if(TARGET cargo-build_nros_cpp)
     # leaf, which a shared cargo target dir makes untrue after the first.
     set(_NROS_CPP_MIRROR_SH "${CMAKE_CURRENT_LIST_DIR}/../../../scripts/build/mirror-generated-header.sh")
     include("${CMAKE_CURRENT_LIST_DIR}/../../../cmake/NanoRosConfigHeaderMirror.cmake")
+    nros_generated_dir(_nros_cpp_gendir_cpp cpp)
+    nros_generated_dir(_nros_cpp_gendir_c c)
     nros_config_header_mirror(nros_cpp_config_header cargo-build_nros_cpp
         "${CMAKE_CURRENT_BINARY_DIR}/nros_cpp_config_generated.h"
-        "nros-cpp-generated" "nros_cpp_config_generated.h"
+        "${_nros_cpp_gendir_cpp}" "nros_cpp_config_generated.h"
         "${_nros_cpp_gen_cpp_header}"
         "${CMAKE_CURRENT_BINARY_DIR}/nros_config_generated.h"
-        "nros-c-generated" "nros_config_generated.h"
+        "${_nros_cpp_gendir_c}" "nros_config_generated.h"
         "${_nros_cpp_gen_c_header}")
     # Issue 0268 — heal an ALREADY-drifted mirror at configure time. The Ninja edge
     # above only fires when the crate rebuilds, so a tree that went stale under the
@@ -176,8 +178,8 @@ if(TARGET cargo-build_nros_cpp)
     # only a repair for a tree that is already drifted — so the result is
     # ignored, exactly as the old `if(EXISTS ...)` guard made it best-effort.
     foreach(_nros_cpp_heal
-            "nros_cpp_config_generated.h;nros-cpp-generated"
-            "nros_config_generated.h;nros-c-generated")
+            "nros_cpp_config_generated.h;${_nros_cpp_gendir_cpp}"
+            "nros_config_generated.h;${_nros_cpp_gendir_c}")
         list(GET _nros_cpp_heal 0 _nros_cpp_hdr)
         list(GET _nros_cpp_heal 1 _nros_cpp_gendir)
         # Issue 1746 -- QUEUED, not run here: at this scope the shared cargo
