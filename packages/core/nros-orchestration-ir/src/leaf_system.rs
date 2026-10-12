@@ -314,7 +314,11 @@ pub fn read_image(dir: &Path, image: &str) -> Result<Option<LeafSystem>, String>
             if images.is_empty() {
                 "none".to_string()
             } else {
-                images.keys().cloned().collect::<Vec<_>>().join(", ")
+                images
+                    .keys()
+                    .map(|k| format!("`{k}`"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
             }
         ));
     }
