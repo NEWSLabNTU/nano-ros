@@ -28,6 +28,7 @@ static rclc_goal_response_t on_goal(rcl_action_server_t* server, const rclc_goal
     fib_server_t* self = (fib_server_t*)ctx;
     example_interfaces__action__Fibonacci_Goal req;
     if (example_interfaces__action__Fibonacci_Goal__deserialize(&req, data, len) != 0) {
+        printf("Rejected goal: %u-byte request did not decode\n", (unsigned)len);
         return RCLC_GOAL_REJECT;
     }
     self->order = req.order;

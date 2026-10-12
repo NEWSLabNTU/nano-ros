@@ -414,7 +414,7 @@ static inline rcl_ret_t fingerprint_corpus__srv__Probe__executor_add_service(
 // ============================================================================
 //
 // The mirror of the server half. rclc's is
-// `rclc_executor_attach_client(executor, client, &res, callback)` with
+// `rclc_executor_add_client(executor, client, &res, callback)` with
 // `void (*rclc_client_callback_t)(const void*)`; ours adds the context, for the
 // same reason.
 //

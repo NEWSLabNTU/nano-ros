@@ -852,7 +852,10 @@ mod component_scaffold {
         assert!(source.contains("RCLC_C_COMPONENT(c_talker_t, talker_configure)"));
         assert!(source.contains("rclc_publisher_init_default("));
         assert!(source.contains("rclc_timer_init_with_context("));
-        assert!(!source.contains("nros_cpp_"), "a C component never calls the C++ FFI:\n{source}");
+        assert!(
+            !source.contains("nros_cpp_"),
+            "a C component never calls the C++ FFI:\n{source}"
+        );
         assert!(
             !source.contains("NROS_NODE_REGISTER"),
             "typed C scaffold must not emit the legacy declarative seam:\n{source}"

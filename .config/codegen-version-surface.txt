@@ -53,7 +53,6 @@ de7d4325c8a061ad c|fn|cdr.h|rclc_cdr_write_string_n
 ee35aba4a8b9b3e2 c|fn|cdr.h|rclc_cdr_write_u32
 b1f3de1818c071c5 c|fn|cdr.h|rclc_cdr_write_u64
 e0c1ebca2fd36fd5 c|fn|cdr.h|rclc_cdr_write_u8
-97ef03f55dc6ed4d c|fn|component.h|nros_cpp_publish_raw
 a77a788bb88d5c00 c|fn|nros_generated.h|rclc_cdr_align
 eb144a6e99b70510 c|fn|nros_generated.h|rclc_cdr_begin_dheader
 f45b05b037284c8c c|fn|nros_generated.h|rclc_cdr_begin_dheader_read
