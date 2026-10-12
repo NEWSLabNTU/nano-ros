@@ -6,7 +6,7 @@ type: bug
 area: [ci, build, testing]
 severity: medium
 found: 2026-10-13
-related: [0967, 1419, 1811]
+related: [0967, 1419, 1811, 1847]
 ---
 
 ## Measured

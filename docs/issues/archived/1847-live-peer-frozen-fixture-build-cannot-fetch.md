@@ -1,11 +1,11 @@
 ---
 id: 1847
 title: "live-peer's fixture build runs `cargo build --frozen` for a generated entry whose crates were never fetched, so it dies on `failed to download cmake v0.1.58`"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [ci, build, cli]
-related: [1811, 1758]
+related: [1811, 1758, 1848]
 found: 2026-10-12
 ---
 
@@ -58,3 +58,17 @@ fetch), or a lane step that fetches them. Proven by this job getting past
 `Build the fixtures those rows resolve`. Keep the guarantee `--frozen`
 gives against a silently re-resolved lock; `--locked` plus a fetch keeps
 it.
+
+## Resolution: fixed under issue 1848
+
+Issue 1848 was filed in parallel for the same failure and carries the fix.
+The `--frozen` build is reached from `scripts/build/census-prepass.sh`:
+`nros ws entity-census take --offline` builds the host sibling of a
+contracted cross image (here `native_rust_qos` for `zephyr_rust_qos`).
+`workspace-fixtures-build.sh` already warmed the cache before its own offline
+builds (issue 0967), but the prepass did not. The prepass now asks
+`take --plan` which host image it would build and warms that image's cache
+with the shared `nros_warm_leaf_cache` (`scripts/build/leaf-cache.sh`). The
+build stays `--frozen`. Whether the phase-485 W2 lock seeding contributes
+was not checked. The failure reproduces locally against an empty
+`CARGO_HOME`, and the warm step clears it.
