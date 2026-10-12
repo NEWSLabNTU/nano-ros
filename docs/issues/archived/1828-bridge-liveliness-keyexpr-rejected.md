@@ -1,11 +1,12 @@
 ---
 id: 1828
 title: "The zenoh→cyclonedds bridge entry declares two liveliness tokens zenoh rejects as `KeyExpr`, so its bridge endpoints are invisible to `ros2 node list` / `ros2 topic info`"
-status: open
+status: resolved
 type: bug
 area: [rmw, zenoh, bridge]
 severity: low
 found: 2026-10-12
+resolved: 2026-10-12
 related: [phase-433, 1310]
 ---
 
@@ -48,3 +49,35 @@ the length. Check before believing it.
    segment, never an empty one.
 3. A unit test in the shim's keyexpr builder: no generated key has an empty
    chunk.
+
+## Resolution (2026-10-12)
+
+The lead held. With the rejected key logged (fix step 1), the bridge printed:
+
+```
+liveliness key @0:  @ros2_lv/0/0279059d1e2dfad6e3e951d2788b0
+liveliness key @40: c44/0/3/MS/%/%/s0/%chatter/std_msgs::msg
+liveliness key @80: ::dds_::Int32_//::,4:,:,:,,
+```
+
+The type-hash segment was empty (`Int32_//`). These are the config-driven
+bridge's source-side subscriptions (`MS`, node `s0`), whose `BridgeCfg.type_hash`
+is `#[serde(default)]`, so it is `""` when no hash is configured. Zenoh refuses an
+empty chunk.
+
+- **Step 1, the rejected key is now in the log:** after the error line, the key
+  follows in 40-byte records prefixed with their offset, because one `nros_log`
+  record holds ~64 bytes and the old line was cut before the key.
+- **Step 2, the key builder never emits an empty hash segment:** the four
+  liveliness builders (publisher, subscriber, service server, client) take the
+  hash through `hash_segment()`, which substitutes `TypeHashNotSupported`, the
+  placeholder the Humble data key already uses. The fix is in the builder, not
+  in the bridge, so no other untyped caller can reproduce it.
+- **Step 3, the test:** `a_key_with_no_type_hash_has_no_empty_chunk` covers all
+  four kinds. Mutation, with the substitution disabled: FAILED, printing the
+  same `…Int32_//2::…` key; restored, it passes (29/29 shim tests).
+
+End to end, `workspace-rust-native-bridge` against a local `rmw_zenohd`:
+**2 `KeyExpr` errors per run before, 0 after**. It still ends with
+"application complete", rc=0. Not checked: `ros2 node list` from a ROS host;
+the token is now accepted by zenoh, which is the precondition for that.

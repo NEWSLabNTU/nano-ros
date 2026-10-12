@@ -896,6 +896,12 @@ impl ZenohSession {
                         e,
                         bytes.len()
                     );
+                    // Issue 1828 — the KEY is what says which segment is
+                    // malformed, and an embedded image has no other output. A
+                    // log record holds ~64 bytes (`nros_log` BUFFER_SIZE), so a
+                    // key that fit in the line above was cut at its first
+                    // words; it follows here in chunks that each fit.
+                    log_keyexpr_chunks(keyexpr.as_str());
                     None
                 }
             }
@@ -1735,5 +1741,27 @@ impl Session for ZenohSession {
             | QoSPolicyMask::LIVELINESS_AUTOMATIC
             | QoSPolicyMask::LIVELINESS_MANUAL_BY_TOPIC
             | QoSPolicyMask::LIVELINESS_LEASE
+    }
+}
+
+/// Issue 1828 — log `key` in pieces short enough that no `nros_log` record
+/// truncates one, each piece prefixed with its byte offset so a reader can
+/// join them back. Splits on char boundaries (a keyexpr is ASCII in practice,
+/// but a slice must never panic on one that is not).
+fn log_keyexpr_chunks(key: &str) {
+    const CHUNK: usize = 40;
+    let mut start = 0;
+    while start < key.len() {
+        let mut end = (start + CHUNK).min(key.len());
+        while !key.is_char_boundary(end) {
+            end -= 1;
+        }
+        nros_log::log_error!(
+            nros_log::get_logger("nros_rmw_zenoh"),
+            "liveliness key @{}: {}",
+            start,
+            &key[start..end]
+        );
+        start = end;
     }
 }
