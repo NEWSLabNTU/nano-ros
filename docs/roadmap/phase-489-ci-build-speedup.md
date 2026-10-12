@@ -2,7 +2,8 @@
 
 **Status (2026-10-12). W1, W3 and W5 landed, acceptance pending; W2 landed
 switched off (see W2).** Their measured acceptance waits for post-merge runs
-(see each item). W4, W6 and W7 not started. The numbers below were measured from the GitHub Actions API over 2026-10-09 to 2026-10-10. They are
+(see each item). W4 landed (see W4), acceptance pending on the scheduled
+lanes; W6 and W7 not started. The numbers below were measured from the GitHub Actions API over 2026-10-09 to 2026-10-10. They are
 the baseline every work item is judged against. Implements no new RFC
 decision. It continues the cost work of
 [phase-353](archived/phase-353-build-and-fixture-cost.md),
@@ -241,6 +242,77 @@ time.
 **Acceptance:** under 3 min on a cache hit. On a deliberate codegen change,
 the cache misses and the fixtures rebuild (issue 1360's codegen-version gate
 must still fire).
+
+**Landed (2026-10-13).** Measured first, and the split was not the one the
+title assumed: almost none of it is codegen.
+
+| part of `just generate-bindings` (host-tests run 38200041441, 1153 s) | time |
+| --- | --- |
+| discovery + 222 standalone `nros generate-rust` | ~18 s |
+| `nros sync` of the 9 Rust / bridge / empty workspaces | 0–39 s each, ~70 s |
+| `nros sync` of the 15 C/C++ workspaces — the **metadata probe** | 58–122 s each, ~1070 s |
+
+The probe is `metadata_probe_cmake`: one CMake project per workspace that
+builds the component packages and links a recording executable against a real
+`libnros_cpp.a`. Each workspace compiled its OWN copy of that runtime — the
+C/C++ sibling of issue 0522, which had shared the Rust harness's target dir and
+left this one alone. And the verb already had a freshness edge: every sidecar
+carries `probe_inputs_key` (package sources + CLI source stamp + every crate
+the probe compiles), so a tree with fresh sidecars runs the whole verb in
+**14 s** locally — **9 s** with every probe build dir moved away, none of which
+it recreates. The CI cost was missing persistence on a hit and an unshared
+runtime on a miss. Both are fixed, in that order of importance:
+
+- **The cache** (`gate` check-build and `host-tests`). `scripts/ci/bindings-cache.sh
+  key` prints the key, the fallback prefix and the cached path list; the
+  workflows restore before the verb and save right after it, and the job still
+  runs `just generate-bindings`, whose own freshness regenerates anything
+  stale. Cached: every gitignored `generated/` tree (with its `.sig` stamp) and
+  every workspace member's `metadata/*.json` + `*.unprobeable` — 16 070 files,
+  0.7 MB zstd — at fixed depths, because by save time the probe build dirs exist
+  and a `**` both walks them and matches their own `metadata/` (60 files on a
+  built tree). `check` refuses a cached path git tracks. Key: prefix
+  `nros-bindings-v1-<os>-<arch>-<checkout path>-<ament>-<codegen>-`, where
+  `<ament>` is `nros_generate_rust_ament_signature` (split out of the verb's own
+  signature, so it is the same function) and `<codegen>` the three
+  `codegen_version.rs`; then the CLI binary key (W3, a superset of the stamp
+  every sidecar carries) plus the index entries of `examples/`, the test-bin
+  roots, every `probe-source-dirs.txt` crate, `cmake/`, `zephyr/cmake` and the
+  verb's scripts. A codegen bump moves the PREFIX, so nothing is restored and
+  every generated tree and fixture rebuilds from cold; any other input moves
+  only the suffix, so `restore-keys` restores the newest entry and the verb
+  re-validates it package by package.
+- **The miss path** — `configure_project` passes `-DNROS_SHARED_CARGO_ROOT` (issue
+  0805's keyed mechanism; `nros_shared_cargo_dir` hashes the full cargo input
+  set, so only identical configurations share) rooted where the Rust harness
+  already shares (`$NROS_BUILD_ROOT` or `<checkout>/build`). 15 workspaces
+  resolve to three keys (plain, `lifecycle,param_services`, `safety`). A
+  pre-existing probe build dir keeps its real `cargo/` and does not share — the
+  module's documented degrade, so nothing is wiped.
+
+Results (4-core box, same core count as the hosted runner):
+
+| case | before | after |
+| --- | --- | --- |
+| cache hit: restore into a tree with no outputs and no probe build dirs, run the verb | 1153 s (CI, no cache) | **10.2 s** |
+| one C/C++ probe build, cold (`workspaces/cpp`) | 76 s | 23 s after `workspaces/c` filled the shared dir (`realtime-c`: 10 s) |
+| whole verb after a CLI change (every sidecar stale) | 1441 s (warm unshared dirs) | **633 s** (fresh dirs, shared) |
+| probe build dir per C/C++ workspace | ~1.6 GB | ~230 MB + one shared 1.5 GB per key |
+
+The 177 sidecars the shared probes wrote are identical to the unshared ones
+field for field, apart from `provenance` (which moved with the CLI stamp, as it
+must). `check-gate-cache-keys-agree` gained a rule: every job running
+`just generate-bindings`, in any workflow, takes its key, fallback and paths
+from the key script's outputs, restores before the verb and saves after it
+(self-test: six mutations).
+
+**What a hit is worth, honestly.** The CLI source stamp is in every sidecar's
+key, and `packages/cli` or a crate it compiles changed on most days of the week
+this was written (0–64 commits a day), so night to night the scheduled lanes
+will mostly take the miss path — now ~10 min instead of ~19–22 — and the
+under-3-min hit is what the second lane of the same night (`gate` 02:1x then
+`host-tests` 03:2x, same `main` commit, one cache scope) and every re-run get.
+The CI numbers wait for those runs.
 
 ### W5 — shorten the slowest fast-line gates
 

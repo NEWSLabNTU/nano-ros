@@ -303,10 +303,42 @@ jobs:
           source ./activate.sh
           just setup-launch-resolve
 
+      # phase-489 W4 — restore what the verb wrote last time, then run the verb.
+      # The cache ONLY pre-populates: `just generate-bindings` below still runs
+      # and its own content-addressed freshness (the standalone `.sig` stamps,
+      # the probe sidecars' `probe_inputs_key`) regenerates anything stale. Key
+      # and cached paths come from ONE script; `check` refuses a cached path git
+      # tracks. Measured: a tree with fresh sidecars runs the verb in ~10 s,
+      # against 18.7-21.7 min from cold (the C/C++ metadata probes, not codegen).
+      - name: Key the message-bindings cache on the verb's real inputs
+        id: bindings-key
+        run: |
+          source ./activate.sh
+          scripts/ci/bindings-cache.sh key >> "$GITHUB_OUTPUT"
+
+      - name: Restore the message bindings + probe sidecars (pre-populate only)
+        id: bindings-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ steps.bindings-key.outputs.paths }}
+          key: ${{ steps.bindings-key.outputs.key }}
+          restore-keys: ${{ steps.bindings-key.outputs.restore-prefix }}
+
       - name: generate message bindings (native::check asserts them)
+        id: generate-bindings
         run: |
           source ./activate.sh
           just generate-bindings
+
+      # Saved right after the verb, not at job end, so the entry holds exactly
+      # what the verb produced. Skipped on an EXACT hit (the entry already says
+      # this); a prefix hit saves, because the verb refreshed part of it.
+      - name: Save the message bindings + probe sidecars
+        if: ${{ steps.generate-bindings.outcome == 'success' && steps.bindings-cache.outputs.cache-hit != 'true' && !cancelled() }}
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ steps.bindings-key.outputs.paths }}
+          key: ${{ steps.bindings-key.outputs.key }}
 
       - name: Disk report (before tier-1 gates) — issue 1353
         if: ${{ !cancelled() }}
