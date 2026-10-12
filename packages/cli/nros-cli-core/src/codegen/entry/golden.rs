@@ -514,6 +514,15 @@ pub(super) fn cases() -> Vec<(&'static str, Plan, Emitter)> {
     let mut rcl_named = cpp_rclcpp_node("rclcpp_pkg", "rcl_two");
     rcl_named.name = Some("alpha".into());
     rcl_named.namespace = Some("/island".into());
+    // Issue 1854 -- and both directions of the QoS override table on the same
+    // shape: `rcl_one` bakes none (the 3-argument handle), `rcl_two` bakes one
+    // (the table, then the 5-argument handle that hands it to the node).
+    rcl_named.qos_overrides = vec![super::QoSOverrideSpec {
+        topic: "/island/availability".into(),
+        role: 1,
+        policy: 6,
+        value: 3,
+    }];
     out.push((
         "cpp_native_shapes",
         plan(

@@ -186,6 +186,26 @@ pub(crate) fn admit_and_lower(
         if !manifest.components.contains(&kind) {
             return Err(refuse_component(pack, manifest, all, n, kind));
         }
+        // Issue 1854 -- every other kind installs the node's QoS override
+        // table (the `c` / `configure` arms with `set_qos_overrides`, the
+        // `rclcpp` arm on its handle). A `rust` component is installed
+        // through `__nros_component_<pkg>_install(node, executor, self)`,
+        // which carries no table, so rendering it would run the node with the
+        // code's QoS while the plan states another -- the silent drop issue
+        // 0303 made every QoS producer refuse.
+        if kind == ComponentKind::Rust && !n.qos_overrides.is_empty() {
+            return Err(format!(
+                "typed entry emit (`{pack}` pack): node pkg `{}` exec `{}` is a `rust` \
+                 component with {} `qos_overrides.*` parameter(s) (first: `{}`), and the \
+                 C-ABI install seam a `{pack}` entry calls carries no QoS override table; \
+                 build that component's image with `nros::main!` or drop the override \
+                 (issue 1854)",
+                n.pkg,
+                n.exec,
+                n.qos_overrides.len(),
+                n.qos_overrides[0].topic,
+            ));
+        }
     }
 
     if opts.probe.is_some() && !manifest.metadata_probe {

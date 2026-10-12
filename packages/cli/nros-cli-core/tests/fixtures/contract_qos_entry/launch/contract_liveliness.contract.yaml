@@ -1,0 +1,30 @@
+# issue 1854 -- `code_qos.contract.yaml` plus ONE contract-only QoS line: the
+# subscriber requests `manual_by_topic` liveliness, a policy the code does not
+# state. The resolver derives it into a
+# `qos_overrides./availability.subscription.liveliness` parameter on the
+# handler, and the entry must bake it. (A unitless policy on purpose: the
+# duration policies are issue 1855.)
+
+version: 1
+
+nodes:
+  talker:
+    pub:
+      availability:
+        qos:
+          depth: 1
+          durability: volatile
+
+  handler:
+    sub:
+      availability:
+        qos:
+          depth: 1
+          durability: volatile
+          liveliness: manual_by_topic
+
+topics:
+  /availability:
+    type: std_msgs/msg/Int32
+    pub: [talker/availability]
+    sub: [handler/availability]
