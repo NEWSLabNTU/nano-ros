@@ -629,12 +629,9 @@ fn render_resolved(workspace: &Path, system: &str) -> Result<String> {
                 .as_ref()
                 .map(|s| format!("enabled={} crc={}", s.enabled, s.crc)),
         ),
-        (
-            "param_services",
-            sys.param_services
-                .as_ref()
-                .map(|p| format!("enabled={}", p.enabled)),
-        ),
+        // `[param_services]` has no typed block any more (phase-486 W8): the
+        // axis is `features`-only, so the typed column is always empty.
+        ("param_services", None),
         (
             "lifecycle",
             sys.lifecycle.as_ref().map(|l| l.autostart.clone()),

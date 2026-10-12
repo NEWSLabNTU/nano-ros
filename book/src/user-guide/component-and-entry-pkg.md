@@ -129,10 +129,10 @@ $ nros build --all
 $ nros build native --dry-run     # print the handoff, run nothing
 ```
 
-`[image.<id>]` is a nano-ros table and is **not** `[deploy.<id>]`, which is
-upstream `ros-launch-manifest`'s and keeps meaning placement — which machine a
-node runs on. An image needs no deploy block and a deploy block needs no image
-(RFC-0065 D6).
+`[image.<id>]` says what is BUILT; `[host.<name>]` says where nodes RUN —
+which machine a node runs on. An image needs no host and a host needs no image
+(RFC-0065 D6). The old `[deploy.<id>]` table conflated the two and is refused by
+name, pointing at both (phase-486 W8).
 
 ## The generated entry
 

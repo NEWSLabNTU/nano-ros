@@ -154,10 +154,11 @@ def main():
                 problems.append(f"{rel}: not valid TOML: {e}")
                 continue
 
-        # Which boards does this file build for? Any board a deploy or an
-        # image names (`[image.*]` is the buildable unit, RFC-0065 D6).
+        # Which boards does this file build for? Any board an image names
+        # (`[image.*]` is the buildable unit, RFC-0065 D6; `[deploy.*]` is
+        # retired and refused by the CLI's schema, phase-486 W8).
         in_scope = {}
-        for table in ("deploy", "image"):
+        for table in ("image",):
             for name, blk in (doc.get(table) or {}).items():
                 board = aliases.get(blk.get("board"))
                 if board is not None:

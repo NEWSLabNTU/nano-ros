@@ -267,7 +267,7 @@ setup:
 # them and the build died in const eval, hundreds of lines away, naming neither
 # sync nor the facade:
 #
-#   error[E0080]: evaluation panicked: this system declares `[param_services]`
+#   error[E0080]: evaluation panicked: this system declares the `param_services` capability
 #   but this `nros` build does not carry the `param-services` feature
 #
 # 0992 put codegen in `just build`; this recipe is reachable WITHOUT it, which

@@ -100,8 +100,8 @@ pub struct ComponentOverrides {
 // triple/board, `ManifestSource`, `SystemComponent`, `SystemOverlay`,
 // `InstanceSelector`, `SchedulingSelector`, `SchedulingConfig`,
 // `EndpointMapping`, `BuildConfig`) is retired. Deployment config now lives in
-// the bringup `system.toml` (`[deploy.<name>]` carries kind/target/board;
-// RFC-0004 §4). What remains here is the component manifest
+// the bringup `system.toml` (`[image.<id>]` is the build, `[host.<name>]` the
+// placement; RFC-0004 §4, phase-486 W8). What remains here is the component manifest
 // (`ComponentConfig`) + the scheduling tier (`SchedContextConfig`, consumed by
 // the planner).
 

@@ -21,8 +21,9 @@
 //!   entry can const-assert that the feature is compiled in — a leaf, unlike a
 //!   generated entry, writes its own `nros` features, and without the feature
 //!   the runtime hook is a no-op;
-//! * the typed `[param_services]` / `[safety]` blocks a bringup may still carry
-//!   (deprecated by phase-261) are refused in a leaf: no leaf consumer reads
+//! * the typed `[safety]` block a bringup may still carry (deprecated by
+//!   phase-261) is refused in a leaf, and `[param_services]` everywhere
+//!   (phase-486 W8): no leaf consumer reads
 //!   them, so honouring one in the entry alone would make the entry and the
 //!   descriptor disagree, and ignoring it is the silent drop this module exists
 //!   to end.
@@ -92,7 +93,9 @@ pub struct LeafCapabilities {
 }
 
 /// The typed capability blocks a bringup may carry and a leaf may not.
-const TYPED_BLOCKS: &[&str] = &["param_services", "safety"];
+/// `[param_services]` is not here: it is retired everywhere (phase-486 W8,
+/// [`crate::retired_tables`]), not just on the leaf road.
+const TYPED_BLOCKS: &[&str] = &["safety"];
 
 /// Read the axes `features` declares, with `doc` the leaf's parsed
 /// `system.toml` (for `[lifecycle] autostart` and the refused typed blocks)
@@ -121,6 +124,7 @@ pub fn read(
             out.axes.push(a);
         }
     }
+    crate::retired_tables::refuse_retired_tables(doc, file)?;
     for blk in TYPED_BLOCKS {
         if doc.contains_key(*blk) {
             return Err(format!(
@@ -249,6 +253,8 @@ mod tests {
             Path::new(F),
         )
         .unwrap_err();
+        assert!(e.contains("`[param_services]` is retired"), "{e}");
+        let e = read(&[], &doc("[safety]\nenabled = true\n"), Path::new(F)).unwrap_err();
         assert!(e.contains("deprecated bringup spelling"), "{e}");
         let e = read(
             &feats(&["lifecycle"]),

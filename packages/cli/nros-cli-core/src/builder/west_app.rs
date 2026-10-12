@@ -1173,17 +1173,15 @@ mod tests {
         );
         assert!(at("set(NROS_FEATURES") < at("find_package(Zephyr"));
 
-        // The deprecated typed block is the same axis.
+        // The deprecated typed block is the same axis (`[safety]`; its
+        // `[param_services]` twin is refused since phase-486 W8).
         std::fs::write(
             bringup.join("system.toml"),
-            format!("{base}\n[param_services]\nenabled = true\n"),
+            format!("{base}\n[safety]\nenabled = true\n"),
         )
         .unwrap();
         let typed = code(&cmake_app(td.path(), &nodes, None));
-        assert!(
-            typed.contains("set(NROS_FEATURES \"param_services\")"),
-            "{typed}"
-        );
+        assert!(typed.contains("set(NROS_FEATURES \"safety\")"), "{typed}");
     }
 
     /// The two lines `mixed` needs, in the order that makes them work.

@@ -2,7 +2,7 @@
 //!
 //! The SystemModel carries what every realizer reads with the same meaning:
 //! topology, the platform-agnostic contract, scheduling. A nano-ros BUILD fact
-//! — the capability switches (`[system] features`, `[param_services]`) and the
+//! — the capability switches (`[system] features`) and the
 //! system-wide `[lifecycle] autostart` default — has no Linux meaning, so it
 //! travels beside the model instead, in `nros.toml`, written into the same
 //! directory as every model resolved for a bringup.
@@ -35,8 +35,8 @@ pub const OVERLAY_VERSION: u32 = 1;
 /// The resolved nano-ros facts for one bringup.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Overlay {
-    /// The capability switches, in declaration order, `[param_services]`
-    /// sugar folded in — the list rlm projects as `execution.features`.
+    /// The capability switches, in declaration order — the list rlm used to
+    /// project as `execution.features`.
     pub features: Vec<String>,
     /// `[lifecycle] autostart`: `none`, `configure` or `active`. An
     /// unrecognised value is dropped, as rlm's `lifecycle_autostart()` drops it.
@@ -95,10 +95,9 @@ impl Overlay {
                 features.push(s.to_string());
             }
         }
-        // `[param_services]` is sugar for `features = ["param_services"]`.
-        if doc.contains_key("param_services") && !features.iter().any(|f| f == "param_services") {
-            features.push("param_services".to_string());
-        }
+        // phase-486 W8 — `[param_services]` was sugar for
+        // `features = ["param_services"]` and is refused now, as is `[deploy.*]`.
+        crate::retired_tables::refuse_retired_tables(&doc, origin)?;
         let lifecycle_autostart = doc
             .get("lifecycle")
             .and_then(|l| l.as_table())
@@ -506,15 +505,18 @@ mod tests {
         assert!(o("[system]\nname = \"t\"\nrmw = \"zenoh\"\n").is_empty());
     }
 
+    /// phase-486 W8 — the retired tables are refused by name, never folded in
+    /// or ignored: `[param_services]` used to be sugar for the feature.
     #[test]
-    fn param_services_sugar_folds_in_once() {
-        assert_eq!(
-            o("[system]\nname = \"t\"\n[param_services]\n").features,
-            vec!["param_services"]
-        );
-        assert_eq!(
-            o("[system]\nfeatures = [\"param_services\"]\n[param_services]\n").features,
-            vec!["param_services"]
+    fn retired_tables_are_refused_naming_the_replacement() {
+        let p = Path::new("s.toml");
+        let e = Overlay::from_system_toml_str("[system]\nname = \"t\"\n[param_services]\n", p)
+            .unwrap_err();
+        assert!(e.contains("features = [\"param_services\"]"), "{e}");
+        let e = Overlay::from_system_toml_str("[deploy.native]\nkind = \"self\"\n", p).unwrap_err();
+        assert!(
+            e.contains("[image.<id>]") && e.contains("[host.<name>]"),
+            "{e}"
         );
     }
 

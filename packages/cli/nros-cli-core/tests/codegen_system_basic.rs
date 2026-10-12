@@ -102,14 +102,11 @@ pkg = "listener_pkg"
 class = "listener_pkg::ListenerNode"
 name = "listener"
 
-[deploy.qemu_freertos]
-kind = "freertos"
-target = "thumbv7m-none-eabi"
+[image.qemu_freertos]
 board = "mps2-an385"
 
-[deploy.native]
-kind = "self"
-target = "x86_64-unknown-linux-gnu"
+[image.native]
+board = "native"
 "#,
     )
     .unwrap();
@@ -178,8 +175,8 @@ fn codegen_system_emits_baked_headers_for_freertos_qemu() {
     // phase-459 W5 — `--target` names a BLOCK KEY. The triple this test used
     // to pass names no block, and the refusal that lands with this work is the
     // point: a key no block carries used to resolve every per-target fact to
-    // the host (issue 1312). The fixture's block is `[deploy.qemu_freertos]`,
-    // and it is what carries `target = "thumbv7m-none-eabi"`.
+    // the host (issue 1312). The fixture's block is `[image.qemu_freertos]`,
+    // whose board's descriptor states the `thumbv7m-none-eabi` triple.
     a.target = Some("qemu_freertos".into());
     codegen_system::run(a).expect("codegen runs for freertos target");
 
@@ -314,11 +311,11 @@ fn codegen_system_unknown_pkg_errors() {
     );
 }
 
-/// 212.E spec test — passing `--target <name>` for a bringup with a matching
-/// `[deploy.<name>]` block. R-code.1 — with a committed model, provenance
-/// records the MODEL: the model is target-complete and the same artifact bakes
-/// every target. (A per-target `[deploy.<t>] launch` is refused at parse since
-/// phase-486 W8a; `[image.<t>] launch` is its home.)
+/// 212.E spec test — passing `--target <name>` where the bringup has a
+/// matching `[image.<name>]` block with `launch = "..."` picks that
+/// R-code.1 — with a committed model, provenance records the MODEL (the
+/// per-target `launch` override is launch-bake history; the
+/// model is target-complete and the same artifact bakes every target).
 #[test]
 fn codegen_system_picks_deploy_target_overlay() {
     let dir = temp_root("deploy_target_overlay");

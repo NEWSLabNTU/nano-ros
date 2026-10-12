@@ -40,8 +40,8 @@ pub struct Args {
     pub workspace: Option<PathBuf>,
 
     /// Bringup `system.toml` (or a directory containing one) whose
-    /// `[image.<id>]` blocks to health-check — and any `[deploy.*]` still
-    /// declared. When omitted, the cwd's `system.toml` is used if present.
+    /// `[image.<id>]` and `[host.<name>]` blocks to health-check (a retired
+    /// table is reported as a problem). When omitted, the cwd's `system.toml` is used if present.
     #[arg(long)]
     pub config: Option<PathBuf>,
 }
@@ -263,12 +263,12 @@ pub fn run(args: Args) -> Result<()> {
 
     // RFC-0004 §4 — deploy-target health check. Resolve the bringup
     // `system.toml` (explicit `--config`, else the cwd's `system.toml`) and
-    // report each `[deploy.<target>]` block. `None` ⇒ no system.toml here
+    // report each `[image.*]` / `[host.*]` block. `None` ⇒ no system.toml here
     // (e.g. running in the nano-ros repo) → only the workspace health below
     // runs.
     let config = resolve_config(args.config.as_deref());
     let deploy_problems = match &config {
-        Some(path) => check_deploy_targets(path)?,
+        Some(path) => check_bringup_blocks(path)?,
         None => None,
     };
 
@@ -533,15 +533,15 @@ fn find_fvp_under(root: &Path, bin: &str) -> Option<PathBuf> {
     None
 }
 
-/// Report each `[deploy.<target>]` block in the bringup `system.toml`
-/// (RFC-0004 §4). Returns the problem count, or `None` when `config` is not a
-/// loadable `system.toml`.
+/// Report each `[image.<id>]` and `[host.<name>]` block in the bringup
+/// `system.toml` (RFC-0004 §4). Returns the problem count, or `None` when
+/// `config` is not a loadable `system.toml`.
 ///
-/// The live `DeployTarget` carries `kind` / `target` / `board` / `launch` —
-/// no vendor-pin/build/package machinery (that backed the retired Phase-172
-/// model). The one checkable health condition is a `launch` that points at a
-/// file which does not exist relative to the bringup dir.
-fn check_deploy_targets(config: &Path) -> Result<Option<usize>> {
+/// The checkable health conditions are a `launch` that points at a file which
+/// does not exist, and a retired table (`[deploy.*]`, `[param_services]`,
+/// phase-486 W8) — reported as a problem rather than skipped as "not a
+/// system.toml", which is what a parse failure alone would do.
+fn check_bringup_blocks(config: &Path) -> Result<Option<usize>> {
     if !config.is_file() {
         return Ok(None);
     }
@@ -557,9 +557,10 @@ fn check_deploy_targets(config: &Path) -> Result<Option<usize>> {
         return Ok(None);
     }
     // A system.toml that does not PARSE is a problem to report, never a file
-    // to skip: the parse is where retired keys are refused by name (phase-486
-    // W8a — a placement-bearing `[deploy.*]`), and a doctor that skipped them
-    // would answer "healthy" about the one file every build refuses.
+    // to skip: the parse is where retired tables are refused by name
+    // (`[deploy.*]`, `[param_services]`, issue 1809), and a doctor that
+    // skipped them would answer "healthy" about the one file every build
+    // refuses.
     let system = match toml::from_str::<SystemToml>(&raw) {
         Ok(s) => s,
         Err(e) => {
@@ -601,17 +602,30 @@ fn check_deploy_targets(config: &Path) -> Result<Option<usize>> {
         }
     }
 
-    if system.deploy.is_empty() {
+    // `[host.*]` — the placement half of the retired `[deploy.*]`. A host's
+    // `launch` is relative to the bringup dir, as a deploy block's was.
+    if system.host.is_empty() {
         return Ok(Some(problems));
     }
-    eprintln!("nros doctor: deploy targets ({})", config.display());
-    for (name, deploy) in &system.deploy {
-        let kind = deploy.kind.as_deref().unwrap_or("(derived)");
-        let target = deploy.target.as_deref().unwrap_or("(derived)");
-        let board = deploy.board.as_deref().unwrap_or("-");
-        // No launch check: a `[deploy.*] launch` is refused at parse since
-        // phase-486 W8a (it moved to `[host.*]`), so it never reaches here.
-        eprintln!("  [OK] {name}: kind={kind} target={target} board={board}");
+    eprintln!("nros doctor: hosts ({})", config.display());
+    for (name, host) in &system.host {
+        let nodes = if host.nodes.is_empty() {
+            "(every node)".to_string()
+        } else {
+            host.nodes.len().to_string()
+        };
+        if let Some(launch) = &host.launch {
+            let launch_path = bringup_dir.join(launch);
+            if !launch_path.exists() {
+                eprintln!(
+                    "  [!!] {name}: launch={launch} — file {} not found",
+                    launch_path.display()
+                );
+                problems += 1;
+                continue;
+            }
+        }
+        eprintln!("  [OK] {name}: nodes={nodes}");
     }
     Ok(Some(problems))
 }
@@ -845,47 +859,68 @@ mod install_report_tests {
 mod tests {
     use super::*;
 
-    /// RFC-0004 §4 — `check_deploy_targets` parses a bringup `system.toml`,
-    /// reports each `[image.<id>]`, and flags one whose `launch`
-    /// file is missing relative to the bringup dir.
+    /// RFC-0004 §4 — `check_bringup_blocks` parses a bringup `system.toml`,
+    /// reports each `[host.<name>]`, and flags one whose `launch` file is
+    /// missing relative to the bringup dir.
     #[test]
-    fn deploy_targets_flag_missing_launch_file() {
-        let dir = crate::test_support::scratch_dir("doctor_deploy");
+    fn hosts_flag_missing_launch_file() {
+        let dir = crate::test_support::scratch_dir("doctor_hosts");
         std::fs::create_dir_all(&dir).unwrap();
         let system_toml = dir.join("system.toml");
 
-        // Two healthy targets → 0 problems.
+        // Two healthy hosts → 0 problems.
         std::fs::write(
             &system_toml,
             "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n\
-             [deploy.native]\nkind=\"self\"\ntarget=\"x86_64-unknown-linux-gnu\"\n\
-             [deploy.qemu]\nkind=\"qemu\"\nboard=\"mps2_an385\"\n",
+             [host.robot1]\nnodes=[\"/talker\"]\n[host.robot2]\ndomain_id=3\n",
         )
         .unwrap();
-        assert_eq!(check_deploy_targets(&system_toml).unwrap(), Some(0));
+        assert_eq!(check_bringup_blocks(&system_toml).unwrap(), Some(0));
 
-        // phase-486 W8a — a deploy that still PLACES (`launch`, moved to
-        // `[host.*]`) is refused at parse, and doctor reports the refusal as
-        // a problem rather than skipping a file it cannot read.
+        // A host referencing a non-existent launch file → 1 problem.
         std::fs::write(
             &system_toml,
             "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n\
-             [deploy.native]\nkind=\"self\"\nlaunch=\"present.launch.xml\"\n",
+             [host.robot1]\nlaunch=\"missing.launch.xml\"\n",
         )
         .unwrap();
-        assert_eq!(check_deploy_targets(&system_toml).unwrap(), Some(1));
+        assert_eq!(check_bringup_blocks(&system_toml).unwrap(), Some(1));
+
+        // Present launch file → 0 problems.
+        std::fs::write(dir.join("present.launch.xml"), "<launch/>").unwrap();
+        std::fs::write(
+            &system_toml,
+            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n\
+             [host.robot1]\nlaunch=\"present.launch.xml\"\n",
+        )
+        .unwrap();
+        assert_eq!(check_bringup_blocks(&system_toml).unwrap(), Some(0));
 
         // A non-system.toml (no [system]) → None (skipped, not a problem).
         std::fs::write(&system_toml, "[component]\nname=\"c\"\n").unwrap();
-        assert_eq!(check_deploy_targets(&system_toml).unwrap(), None);
+        assert_eq!(check_bringup_blocks(&system_toml).unwrap(), None);
 
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// phase-486 W8 — a retired table makes the file unparseable, and an
+    /// unparseable file is otherwise SKIPPED as "not a system.toml". Doctor
+    /// reports it as a problem instead, so the refusal is not swallowed.
+    #[test]
+    fn a_retired_table_is_a_problem_not_a_skip() {
+        let dir = tempfile::tempdir().unwrap();
+        let cfg = dir.path().join("system.toml");
+        let head = "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n";
+        for retired in ["[deploy.native]\nkind=\"self\"\n", "[param_services]\n"] {
+            std::fs::write(&cfg, format!("{head}{retired}")).unwrap();
+            assert_eq!(check_bringup_blocks(&cfg).unwrap(), Some(1), "{retired}");
+        }
     }
 
     /// Issue 0951 — images get their own section, and their launch check is
     /// `validate_image_launch`, so doctor and the builder cannot disagree
     /// about whether a workspace is healthy. Note the path base differs from
-    /// the deploy side: an image's `launch` is relative to `launch/`.
+    /// the host side: an image's `launch` is relative to `launch/`.
     #[test]
     fn images_are_checked_against_their_launch_directory() {
         let dir = tempfile::tempdir().unwrap();
@@ -894,7 +929,7 @@ mod tests {
 
         // No launch key at all — nothing to verify, no problem.
         std::fs::write(&cfg, format!("{head}[image.a]\nboard=\"native\"\n")).unwrap();
-        assert_eq!(check_deploy_targets(&cfg).unwrap(), Some(0));
+        assert_eq!(check_bringup_blocks(&cfg).unwrap(), Some(0));
 
         // Names a file that does not exist.
         std::fs::write(
@@ -902,14 +937,14 @@ mod tests {
             format!("{head}[image.a]\nboard=\"native\"\nlaunch=\"gone.launch.xml\"\n"),
         )
         .unwrap();
-        assert_eq!(check_deploy_targets(&cfg).unwrap(), Some(1));
+        assert_eq!(check_bringup_blocks(&cfg).unwrap(), Some(1));
 
         // The same name, present — under `launch/`, which is the base an
-        // image's value is relative to. A copy of the deploy side's join
+        // image's value is relative to. A copy of the host side's join
         // (bringup_dir/<value>) would report this one missing.
         std::fs::create_dir_all(dir.path().join("launch")).unwrap();
         std::fs::write(dir.path().join("launch/gone.launch.xml"), "<launch/>").unwrap();
-        assert_eq!(check_deploy_targets(&cfg).unwrap(), Some(0));
+        assert_eq!(check_bringup_blocks(&cfg).unwrap(), Some(0));
     }
 
     #[test]

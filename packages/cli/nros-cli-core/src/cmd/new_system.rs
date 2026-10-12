@@ -384,14 +384,14 @@ fn render_system_toml(pkg_name: &str, components: &[String]) -> Result<String> {
             ros_edition: None,
             locator: None,
             default_launch: Some("system.launch.xml".to_string()),
-            // Deprecated alongside `[deploy.*]`; the scaffold stops emitting it
+            // Deprecated with the retired `[deploy.*]`; the scaffold stops emitting it
             // so a new workspace carries no vocabulary it will be asked to
             // migrate off.
             default_target: None,
             features: Vec::new(),
         },
         components: entries,
-        deploy: Default::default(),
+        retired_deploy: Default::default(),
         host: Default::default(),
         domains: Vec::new(),
         bridges: Vec::new(),
@@ -399,7 +399,7 @@ fn render_system_toml(pkg_name: &str, components: &[String]) -> Result<String> {
         tiers: std::collections::BTreeMap::new(),
         node_overrides: Vec::new(),
         safety: None,
-        param_services: None,
+        retired_param_services: Default::default(),
         lifecycle: None,
         // phase-463 W3 -- a scaffold waives nothing; a waiver is a person
         // taking responsibility for one row of a census check.
@@ -618,7 +618,6 @@ mod tests {
         // than be deleted: what it was really checking is that the scaffold
         // declares SOMETHING to build, and that claim still needs a test.
         assert_eq!(sys.system.default_target, None);
-        assert!(sys.deploy.is_empty());
         assert_eq!(sys.system.default_images, vec!["native".to_string()]);
         assert!(sys.image.contains_key("native"));
         assert_eq!(sys.components.len(), 2);

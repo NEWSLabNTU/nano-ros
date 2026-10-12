@@ -65,16 +65,16 @@ pub struct Args {
     pub manifests: Vec<PathBuf>,
 
     /// Phase 255 Wave 4 — RMW override, the TOP of the precedence ladder
-    /// (`--rmw` > `[image.<t>].rmw` > the deprecated `[deploy.<t>].rmw` >
-    /// `[system].rmw` > `zenoh`). Sets `plan.build.rmw` regardless of
+    /// (`--rmw` > `[image.<t>].rmw` > `[system].rmw` > `zenoh`). Sets
+    /// `plan.build.rmw` regardless of
     /// `system.toml` / the `[build].rmw` overlay.
     #[arg(long = "rmw")]
     pub rmw: Option<String>,
 
     /// Phase 256 / issue 0951 — select the `[image.<id>]` the planner resolves
     /// per-target values against (RMW override, build tuning, the rustc
-    /// triple). Omitted → the sole image `default_images` picks → the sole
-    /// deprecated `[deploy.<t>]` → target-agnostic.
+    /// triple). Omitted → the sole image `default_images` picks →
+    /// target-agnostic.
     ///
     /// `--target` is kept as an ALIAS, not a second flag: it named the deploy
     /// era's concept, and the value callers pass is now an image id. The FIELD

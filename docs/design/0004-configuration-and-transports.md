@@ -179,14 +179,16 @@ board = "native"
 
 [host.native]                # WHERE the nodes run; no `nodes` means all of them
 
-# Declared capability axes (RFC-0031 §Generalization; phase-250/252/254). Typed,
-# system-wide, optional. Lower to build features (and, for the C/C++ bake, a
-# `#define`) — declared ONCE here, read by BOTH codegen paths.
+# Declared capability axes (RFC-0031 §Generalization; phase-250/252/254/261).
+# System-wide, optional: `features = [...]` under `[system]` (e.g.
+# `features = ["param_services"]` for the external ROS 2 parameter server).
+# They lower to build features (and, for the C/C++ bake, a `#define`) —
+# declared ONCE here, read by BOTH codegen paths. The typed `[safety]` block
+# below is the deprecated spelling of `features = ["safety"]`; its
+# `[param_services]` twin is refused by name since phase-486 W8.
 [safety]                     # E2E message-integrity (CRC + seq gap/dup), zenoh
 enabled = true               # optional, default true
 crc     = true               # optional, default true
-[param_services]             # the external ROS 2 parameter server
-enabled = true               # optional, default true
 ```
 
 Launch files (`launch/*.launch.xml`) use the ROS 2 launch XML schema verbatim
@@ -516,7 +518,7 @@ three layers (decided 2026-06-20; implemented by phase-264 W4):
    rebuild, like any other declarative change.
 2. **Runtime reconfiguration is VOLATILE (RAM).** A node `declare_parameter`s its
    parameters; a runtime store is seeded from the baked initials; the node reads the
-   current value with `ctx.parameter::<T>(name)`. When `[param_services]` is enabled the
+   current value with `ctx.parameter::<T>(name)`. When the `param_services` capability is enabled the
    standard ROS 2 parameter services (`ros2 param get/set`) read + update that store.
    **Updates live only until the next boot** — there is no write-back to the launch file
    or any non-volatile medium.
@@ -548,6 +550,14 @@ on the next callback.
 
 ## Changelog
 
+- 2026-10-12 (phase-486 W8) — `[deploy.*]` and `[param_services]` are no
+  longer parsed: every nano-ros reader refuses them BY NAME
+  (`nros_orchestration_ir::retired_tables`), naming `[image.<id>]` /
+  `[host.<name>]` and `[system] features = ["param_services"]` respectively.
+  The §4 example drops `[param_services]` for the `features` spelling. The
+  0.6.0 boundary the entry below promised was not waited for; issue 1809
+  records why that was acceptable (0 tracked blocks, refusal by name rather
+  than silent drop).
 - 2026-08-31 (`[deploy.*]` retired; issue 0951) — This page described
   `[deploy.<t>]` as the per-target rung of the precedence ladder and showed it
   in the §4 example, while mentioning `[image.*]` and `[host.*]` nowhere. The
