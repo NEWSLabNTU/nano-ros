@@ -524,6 +524,20 @@ pub struct LivelinessEntity<'a> {
     pub qos: Option<&'a str>,
 }
 
+/// Issue 1828 — a liveliness key's type-hash SEGMENT is never empty. An
+/// endpoint that knows no hash (the config-driven bridge forwards bytes with no
+/// typed message, so its `type_hash` defaults to `""`) produced `<type>//<qos>`,
+/// and zenoh refuses an empty chunk as `KeyExpr`: the entity worked and was
+/// invisible to `ros2 node list`. The placeholder is the one the Humble data
+/// key already uses for "no hash" (`keyexpr.rs`).
+fn hash_segment(type_hash: &str) -> &str {
+    if type_hash.is_empty() {
+        "TypeHashNotSupported"
+    } else {
+        type_hash
+    }
+}
+
 impl Ros2Liveliness {
     /// Build a node liveliness key expression
     ///
@@ -596,7 +610,7 @@ impl Ros2Liveliness {
                 node_name,
                 topic_mangled.as_str(),
                 crate::keyexpr::DdsTypeName(topic.type_name),
-                topic.type_hash,
+                hash_segment(topic.type_hash),
                 qos_string.as_str()
             ),
         );
@@ -636,7 +650,7 @@ impl Ros2Liveliness {
                 node_name,
                 topic_mangled.as_str(),
                 crate::keyexpr::DdsTypeName(topic.type_name),
-                topic.type_hash,
+                hash_segment(topic.type_hash),
                 qos_string.as_str()
             ),
         );
@@ -676,7 +690,7 @@ impl Ros2Liveliness {
                 node_name,
                 service_mangled.as_str(),
                 crate::keyexpr::DdsTypeName(service.type_name),
-                service.type_hash,
+                hash_segment(service.type_hash),
                 qos_string.as_str()
             ),
         );
@@ -716,7 +730,7 @@ impl Ros2Liveliness {
                 node_name,
                 service_mangled.as_str(),
                 crate::keyexpr::DdsTypeName(service.type_name),
-                service.type_hash,
+                hash_segment(service.type_hash),
                 qos_string.as_str()
             ),
         );
@@ -1195,6 +1209,35 @@ mod tests {
     /// One standing query serves all four kinds. If the kind chunk were pinned,
     /// three of the four slots would silently report nothing — the same failure
     /// as issue 0890, one field over.
+    /// Issue 1828 — an endpoint with NO type hash (the config-driven bridge's
+    /// default) must still produce a key zenoh accepts: no empty chunk, which
+    /// is what `<type>//<qos>` was, and the placeholder where the hash goes.
+    #[test]
+    fn a_key_with_no_type_hash_has_no_empty_chunk() {
+        let zid = ZenohId::from_bytes([0u8; 16]);
+        let topic = TopicInfo::new("/chatter", "std_msgs::msg::dds_::Int32_", "");
+        let service = ServiceInfo::new("/add", "example_interfaces::srv::dds_::AddTwoInts_", "");
+        let qos = QoSProfile::QOS_PROFILE_SENSOR_DATA;
+        let keys = [
+            Ros2Liveliness::publisher_keyexpr::<256>(0, &zid, 1, "/", "s0", &topic, &qos),
+            Ros2Liveliness::subscriber_keyexpr::<256>(0, &zid, 2, "/", "s0", &topic, &qos),
+            Ros2Liveliness::service_server_keyexpr::<256>(0, &zid, 3, "/", "s0", &service, &qos),
+            Ros2Liveliness::service_client_keyexpr::<256>(0, &zid, 4, "/", "s0", &service, &qos),
+        ];
+        for k in &keys {
+            assert!(
+                k.as_str().split('/').all(|chunk| !chunk.is_empty()),
+                "empty chunk in {}",
+                k.as_str()
+            );
+            assert!(
+                k.as_str().contains("/TypeHashNotSupported/"),
+                "{}",
+                k.as_str()
+            );
+        }
+    }
+
     #[test]
     fn entity_wildcard_matches_all_four_kinds() {
         let zid = ZenohId::from_bytes([0u8; 16]);
