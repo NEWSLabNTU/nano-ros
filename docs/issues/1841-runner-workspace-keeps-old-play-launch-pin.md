@@ -87,3 +87,38 @@ resets the submodule (`git -C packages/cli/third-party/play_launch reset
 setup`, or `submodules: true` with a clean. It is proven by an L3 job on
 118 or 133 getting past `setup` after a pin bump. The 1081 guard should
 stay as it is for developer trees.
+
+## 2026-10-13 — fix: a CI workspace discards submodule residue; a developer tree still refuses
+
+`_setup-common`'s inline guard moved to `scripts/lib/sync-cli-submodule.sh`,
+which `just setup` runs for every scope, so every workflow that sets up
+(queue L3, run-matrix, nightly) takes the same path with no per-workflow step
+to forget. The three states:
+
+| submodule state | developer tree | CI job (`GITHUB_ACTIONS=true`) |
+| --- | --- | --- |
+| not initialised | init | init |
+| off pin, clean | update | update |
+| off pin, dirty | **refuse** (issue 1081, unchanged) | list the dirt, `reset --hard`, `clean -ffd` (no `-x`: ignored build output is a cache), `submodule update --force` |
+
+`GITHUB_ACTIONS` rather than a per-workflow opt-in: GitHub sets it on every
+job and no developer shell has it, while an opt-in would need every
+self-hosted job to remember it — which is the shape of this issue, one
+persistent-workspace path past 1081's fix. The discarded paths are printed, so
+the next log says what the residue was instead of leaving it inferred.
+
+Gate `check cli-submodule-sync` runs the script's selftest: throwaway
+repositories, the superproject pinned to commit two and the submodule left on
+commit one with a modified tracked file and an untracked one.
+
+- Fixed: 3/3 cases ok.
+- Mutation, CI arm disabled (`elif false`, i.e. the old behaviour): the CI
+  case fails (rc=1, still on the old commit, still dirty), selftest rc=1.
+- Mutation, CI arm always taken (`elif true`): the developer case fails (rc=0,
+  the modified file overwritten), selftest rc=1.
+- Restored: rc=0.
+
+**Not yet proven live.** The acceptance above is an L3 job on a persistent
+runner getting past `setup` after a pin bump. The runners still sit on
+`d23720c7` against pin `15258108`, so the first L3 run carrying this change is
+that test; this issue closes on its log.

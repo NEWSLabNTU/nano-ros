@@ -60,6 +60,7 @@ claim-protocol
 cli-fmt
 cli-fresh
 cli-source-dirs
+cli-submodule-sync
 cli-tests
 cmake-find-program-shadowed
 cmake-image-policy
