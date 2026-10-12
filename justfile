@@ -801,7 +801,15 @@ setup-worktree:
         # into the store, not the checkout, once a CLI can do it; with no CLI
         # yet (a fresh clone) the submodule is still the way to get it.
         row="$(python3 scripts/lib/source_locate.py --store-row-for "$p" 2>/dev/null || true)"
-        if [ -n "$row" ] && [ -x packages/cli/target/release/nros ]; then
+        # A STALE CLI is "no CLI yet" for this purpose, not a CLI to call: it
+        # refuses every verb. And a fresh worktree makes it stale by itself:
+        # this loop checks out `play_launch`, whose pin is a CLI build input
+        # (issue 0561). So `setup-cli && setup-worktree` left a CLI that the
+        # NEXT `setup-worktree` called and died on, and the order that works
+        # (`setup-cli` before AND after) had to be learned by failing.
+        # `source-stamp` is the freshness question `check cli-fresh` asks.
+        if [ -n "$row" ] && [ -x packages/cli/target/release/nros ] \
+            && packages/cli/target/release/nros source-stamp >/dev/null 2>&1; then
             echo "  [STORE]   $p -> nros setup --source $row"
             packages/cli/target/release/nros setup --source "$row"
             continue
