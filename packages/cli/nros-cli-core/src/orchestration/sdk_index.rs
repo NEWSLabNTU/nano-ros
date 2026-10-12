@@ -488,8 +488,32 @@ pub struct PrereqDep {
     ///
     /// An explicit `apt = [...]` still WINS, so a distro rename or a package
     /// split stays expressible without a migration.
-    #[serde(default)]
-    pub ros_package: Option<String>,
+    ///
+    /// A string or a LIST (issue 1853). A list names packages that must move
+    /// TOGETHER. bloom's Depends are unversioned, so `apt-get install
+    /// ros-<distro>-rmw-zenoh-cpp` upgraded the router to 0.1.11 and left
+    /// `zenoh-cpp-vendor` (the `libzenohc.so` it links) at 0.1.9. That router
+    /// then exits 1 before it can log why. Naming both in one row puts both
+    /// in every install command derived from it, so apt moves them as a pair.
+    #[serde(default, deserialize_with = "one_or_many")]
+    pub ros_package: Vec<String>,
+}
+
+/// `"x"` or `["x", "y"]`, read as a list.
+fn one_or_many<'de, D>(d: D) -> std::result::Result<Vec<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum OneOrMany {
+        One(String),
+        Many(Vec<String>),
+    }
+    Ok(match OneOrMany::deserialize(d)? {
+        OneOrMany::One(s) => vec![s],
+        OneOrMany::Many(v) => v,
+    })
 }
 
 impl PrereqDep {
@@ -555,10 +579,10 @@ impl PrereqDep {
             // a distro rename or a split (phase-435 W3).
             return declared.to_vec();
         }
-        match &self.ros_package {
-            Some(rp) => ctx.ros_os_package(manager, rp).into_iter().collect(),
-            None => Vec::new(),
-        }
+        self.ros_package
+            .iter()
+            .filter_map(|rp| ctx.ros_os_package(manager, rp))
+            .collect()
     }
 }
 
@@ -647,7 +671,7 @@ impl From<&SystemDep> for PrereqDep {
             check: d.check.clone(),
             // A lowered `[system.*]` entry names no ROS package: the alias
             // predates the field and nothing in that table is one.
-            ros_package: None,
+            ros_package: Vec::new(),
         }
     }
 }
@@ -2581,7 +2605,7 @@ check = { cmd = "west" }
     #[test]
     fn a_ros_package_derives_its_os_name() {
         let dep = PrereqDep {
-            ros_package: Some("rmw_zenoh_cpp".to_string()),
+            ros_package: vec!["rmw_zenoh_cpp".to_string()],
             ..PrereqDep::default()
         };
         let jazzy = PrereqContext {
@@ -2604,7 +2628,7 @@ check = { cmd = "west" }
 
         // An explicit list WINS — the escape hatch for a rename or a split.
         let pinned = PrereqDep {
-            ros_package: Some("rmw_zenoh_cpp".to_string()),
+            ros_package: vec!["rmw_zenoh_cpp".to_string()],
             apt: vec!["ros-humble-rmw-zenoh-cpp-legacy".to_string()].into(),
             ..PrereqDep::default()
         };
@@ -2649,9 +2673,10 @@ check = { cmd = "west" }
             .cloned()
             .expect("[prereq.ros-rmw-zenoh-cpp]");
         assert_eq!(
-            dep.ros_package.as_deref(),
-            Some("rmw_zenoh_cpp"),
-            "the shipped row stopped naming its ROS package — phase-435 W3"
+            dep.ros_package,
+            ["rmw_zenoh_cpp", "zenoh_cpp_vendor"],
+            "the shipped row must name the router AND the libzenohc it links, so \
+             apt upgrades them as a pair (issue 1853; phase-435 W3)"
         );
         assert!(
             dep.packages_declared("apt").is_empty(),
@@ -2661,7 +2686,10 @@ check = { cmd = "west" }
             ros_distro: "iron".to_string(),
             os_release: None,
         };
-        assert_eq!(dep.packages_for("apt", &iron), ["ros-iron-rmw-zenoh-cpp"]);
+        assert_eq!(
+            dep.packages_for("apt", &iron),
+            ["ros-iron-rmw-zenoh-cpp", "ros-iron-zenoh-cpp-vendor"]
+        );
     }
 
     /// phase-447 D2 — the flat spelling is unchanged, and a per-release table

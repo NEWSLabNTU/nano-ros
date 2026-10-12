@@ -255,6 +255,27 @@ fn describe_router(cmd: &std::process::Command) -> String {
     )
 }
 
+/// What a router exit usually MEANS when its stderr alone cannot say (issue
+/// 1853).
+///
+/// `rmw_zenohd` reports a config failure through rcutils before it has
+/// initialised rcutils logging. So the reason it exited is lost, and the only
+/// line left is rcutils complaining that logging is not set up. Measured
+/// cause: a router from one `rmw_zenoh_cpp` release loading a `libzenohc.so`
+/// from another (`zenoh_cpp_vendor` left behind by a partial apt upgrade, since
+/// bloom's Depends are unversioned). The 0.1.11 router against the 0.1.9
+/// library exits exactly so; against its own library, it runs.
+fn router_exit_hint(stderr: &str) -> Option<&'static str> {
+    stderr
+        .contains("logging system isn't initialized")
+        .then_some(
+            "The router failed before it could log why. Most often its \
+             `rmw_zenoh_cpp` and `zenoh_cpp_vendor` packages are different releases \
+             (compare `dpkg -l 'ros-*-rmw-zenoh-cpp' 'ros-*-zenoh-cpp-vendor'`); \
+             `nros setup --system` installs them as a pair (issue 1853).",
+        )
+}
+
 fn wait_for_router_ready(handle: &mut Child, locator: &str, port: u16) -> TestResult<()> {
     let start = Instant::now();
     let timeout = Duration::from_secs(10);
@@ -276,8 +297,11 @@ fn wait_for_router_ready(handle: &mut Child, locator: &str, port: u16) -> TestRe
             } else {
                 format!(": {stderr}")
             };
+            let hint = router_exit_hint(stderr)
+                .map(|h| format!("\n  {h}"))
+                .unwrap_or_default();
             return Err(TestError::ProcessFailed(format!(
-                "zenohd exited before listening on {locator} with {status}{detail}"
+                "zenohd exited before listening on {locator} with {status}{detail}{hint}"
             )));
         }
 
@@ -682,6 +706,20 @@ pub fn or_unmet(res: TestResult<ZenohRouter>) -> ZenohRouter {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Issue 1853 — the one-line rcutils exit gets a diagnosis; other exits
+    /// keep their own stderr and no guess.
+    #[test]
+    fn an_uninitialised_logging_exit_names_the_release_pairing() {
+        let hint = router_exit_hint(
+            "logging system isn't initialized: call to \
+             rcutils_logging_console_output_handler failed.",
+        )
+        .expect("the issue-1853 stderr gets a diagnosis");
+        assert!(hint.contains("zenoh_cpp_vendor"), "{hint}");
+        assert!(router_exit_hint("Address already in use").is_none());
+        assert!(router_exit_hint("").is_none());
+    }
 
     /// `paired_zenoh_library_dir` must derive the vendored zenoh dir from the
     /// router path alone, and must yield `None` when there is nothing to pair

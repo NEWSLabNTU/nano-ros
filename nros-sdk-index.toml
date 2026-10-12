@@ -2010,7 +2010,12 @@ check = { cmd = "libgcrypt-config", pkg_config = "libgcrypt" }
 [prereq.ros-rmw-zenoh-cpp]
 role = "package"
 why = "the zenoh ROS interop lanes: the peer runs `source /opt/ros/<distro>/setup.bash && export RMW_IMPLEMENTATION=rmw_zenoh_cpp`, so the RMW must resolve in the ROS prefix. Without it those lanes report `[SKIPPED:capability]`, which reads as green rather than as absent coverage (2026-08-17: three issues closed unverifiable that way). The apt name is DISTRO-PARAMETRIC and DERIVED, never spelled: `ros_package` states the ROS name and the CLI applies bloom's rule, `ros-<distro>-<pkg with _ -> ->`, from $ROS_DISTRO (default humble). phase-435 W3. It replaced `{ros_distro}` (issue 1128), which was the same fix with the literal still written out — expressible for apt alone, and repeating the derivable prefix in every row. Before either, this row could spell only one distro, so it pinned humble while every consumer that cared composed `ros-${DISTRO}-...` itself."
-ros_package = "rmw_zenoh_cpp"
+# issue 1853 — the router AND the `libzenohc.so` it links, as a PAIR. bloom's
+# Depends are unversioned, so naming only `rmw_zenoh_cpp` let apt upgrade the
+# router to 0.1.11 over an image's 0.1.9 `zenoh_cpp_vendor`. That router exits 1
+# before rcutils logging is up ("logging system isn't initialized"), so no
+# cell got a verdict. Both names in one install command move together.
+ros_package = ["rmw_zenoh_cpp", "zenoh_cpp_vendor"]
 # No dnf/pacman: ROS 2 is not packaged there, and docs/development/ros2-on-non-ubuntu.md
 # routes those hosts through an Ubuntu distrobox, whose setup script installs this.
 #
