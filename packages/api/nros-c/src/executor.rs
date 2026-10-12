@@ -372,22 +372,48 @@ pub extern "C" fn rclc_executor_get_zero_initialized_executor() -> rclc_executor
     rclc_executor_t::default()
 }
 
-/// Initialize an executor.
+/// Initialize an executor — rclc's signature (phase-492 W1.b).
 ///
-/// # Parameters
-/// * `executor` - Pointer to a zero-initialized executor
-/// * `support` - Pointer to an initialized support context
-/// * `max_handles` - Maximum number of handles (capped at NROS_EXECUTOR_MAX_HANDLES)
+/// `rclc_executor_init(&executor, &support.context, n, &allocator)`, as an
+/// rclc program writes it. `context` must be the `context` member of an
+/// initialised `rclc_support_t`; that support's session is the one the
+/// executor drives. `allocator` must be NULL or `rcl_get_default_allocator()`'s
+/// (the executor lives in its own `_opaque`; nothing is allocated).
 ///
 /// # Returns
 /// * `RCL_RET_OK` on success
-/// * `RCL_RET_INVALID_ARGUMENT` if any pointer is NULL or max_handles is 0
-/// * `RCL_RET_NOT_INIT` if support is not initialized
+/// * `RCL_RET_INVALID_ARGUMENT` if `executor` is NULL, `number_of_handles` is
+///   0, or `allocator` is one we would have to ignore
+/// * `RCL_RET_NOT_INIT` if `context` names no initialised support
 ///
 /// # Safety
-/// * All pointers must be valid
+/// `executor` must be valid for writes; `context` and `allocator` NULL or
+/// readable.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rclc_executor_init(
+    executor: *mut rclc_executor_t,
+    context: *mut crate::support::rcl_context_t,
+    number_of_handles: usize,
+    allocator: *const crate::allocator::rcl_allocator_t,
+) -> rcl_ret_t {
+    if executor.is_null() || !unsafe { crate::allocator::allocator_is_accepted(allocator) } {
+        return RCL_RET_INVALID_ARGUMENT;
+    }
+    let Some(support) = (unsafe { crate::support::support_of_context(context) }) else {
+        return if context.is_null() {
+            RCL_RET_INVALID_ARGUMENT
+        } else {
+            RCL_RET_NOT_INIT
+        };
+    };
+    unsafe { executor_init_on_support(executor, support, number_of_handles) }
+}
+
+/// The body of [`rclc_executor_init`], once the context has named its support.
+///
+/// # Safety
+/// `executor` and `support` must be valid pointers.
+pub(crate) unsafe fn executor_init_on_support(
     executor: *mut rclc_executor_t,
     support: *const rclc_support_t,
     max_handles: usize,
@@ -2013,7 +2039,7 @@ unsafe fn register_subscription_entry(
 /// deserialiser immediately before the call. It is valid for the duration of
 /// the call and is overwritten by the next dispatch — copy out anything
 /// retained.
-pub type rclc_typed_subscription_callback_t =
+pub type rclc_subscription_callback_with_context_t =
     Option<unsafe extern "C" fn(msg: *const core::ffi::c_void, context: *mut core::ffi::c_void)>;
 
 /// rclc's `rclc_executor_add_subscription_with_context`, argument for argument
@@ -2065,7 +2091,7 @@ pub unsafe extern "C" fn rclc_executor_add_subscription_with_context(
     executor: *mut rclc_executor_t,
     subscription: *mut rcl_subscription_t,
     msg: *mut core::ffi::c_void,
-    callback: rclc_typed_subscription_callback_t,
+    callback: rclc_subscription_callback_with_context_t,
     context: *mut core::ffi::c_void,
     invocation: rclc_executor_handle_invocation_t,
 ) -> rcl_ret_t {
@@ -2144,7 +2170,7 @@ pub unsafe extern "C" fn rclc_executor_add_subscription_with_context(
 pub unsafe extern "C" fn rclc_executor_add_subscription_raw(
     executor: *mut rclc_executor_t,
     subscription: *mut rcl_subscription_t,
-    callback: crate::subscription::rclc_subscription_callback_t,
+    callback: crate::subscription::rclc_subscription_raw_callback_t,
     context: *mut core::ffi::c_void,
     invocation: rclc_executor_handle_invocation_t,
 ) -> rcl_ret_t {
@@ -2177,7 +2203,7 @@ pub unsafe extern "C" fn rclc_executor_add_subscription_raw(
 /// `node.subscription(t).generic(..).message_info()` builder; rclc's
 /// generic-with-info subscription). Direct-arg form (no `rcl_subscription_t`
 /// struct): the callback signature differs from the plain
-/// `rclc_subscription_callback_t`, so this is its own entry point rather than
+/// `rclc_subscription_raw_callback_t`, so this is its own entry point rather than
 /// a flag on `rclc_executor_add_subscription_raw`.
 ///
 /// **Not removable** (issue 1668): it takes no subscription object and hands
@@ -2395,7 +2421,7 @@ pub unsafe extern "C" fn rclc_executor_add_timer(
         // phase-430 W1 — the clock the timer was initialised on selects the
         // schedule, and every timer this crate creates ends at the ONE dispatch
         // `Executor::register_timer_on_clock`. A NULL clock is the wall timer
-        // `rcl_timer_init` makes, which is `TimerClockSource::Steady` — the
+        // `rclc_timer_init_with_context` makes, which is `TimerClockSource::Steady` — the
         // pre-425 code path, byte for byte.
         //
         // The clock's type is read HERE rather than cached at init because that
@@ -2472,7 +2498,7 @@ pub unsafe extern "C" fn rclc_executor_add_timer(
 pub unsafe extern "C" fn rclc_executor_add_subscription_in_group(
     executor: *mut rclc_executor_t,
     subscription: *mut rcl_subscription_t,
-    callback: crate::subscription::rclc_subscription_callback_t,
+    callback: crate::subscription::rclc_subscription_raw_callback_t,
     context: *mut core::ffi::c_void,
     invocation: rclc_executor_handle_invocation_t,
     callback_group: *const c_char,
@@ -2706,7 +2732,7 @@ pub unsafe extern "C" fn rclc_executor_add_timer_in_group(
 pub unsafe extern "C" fn rclc_executor_add_service_raw(
     executor: *mut rclc_executor_t,
     service: *mut rcl_service_t,
-    callback: crate::service::rclc_service_callback_t,
+    callback: crate::service::rclc_service_raw_callback_t,
     context: *mut core::ffi::c_void,
 ) -> rcl_ret_t {
     validate_not_null!(executor, service);
@@ -2842,7 +2868,7 @@ pub unsafe extern "C" fn rclc_executor_add_service_raw(
 /// # Safety
 /// * Both pointers must reference initialized objects.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn rclc_executor_add_client(
+pub unsafe extern "C" fn rclc_executor_attach_client(
     executor: *mut rclc_executor_t,
     client: *mut rcl_client_t,
 ) -> rcl_ret_t {
@@ -2982,7 +3008,7 @@ pub unsafe extern "C" fn rclc_executor_add_client(
 /// # Safety
 /// * All pointers must be valid and point to initialized objects
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn rclc_executor_add_action_server(
+pub unsafe extern "C" fn rclc_executor_attach_action_server(
     executor: *mut rclc_executor_t,
     server: *mut rcl_action_server_t,
 ) -> rcl_ret_t {
@@ -3062,7 +3088,7 @@ pub unsafe extern "C" fn rclc_executor_add_action_server(
         // not delay the reply the client is blocking on.
         // Phase 193.4b — the action server's QoS (set via
         // rclc_action_server_init_with_qos; defaults to services_default via
-        // rcl_action_server_init). Applies to the three underlying service
+        // rclc_action_server_init_with_callbacks). Applies to the three underlying service
         // servers.
         let server_qos = server_ref.get_qos_settings();
         // Phase 189.M3.3.b — requested sched-context slot (bind applied at the
@@ -3136,7 +3162,7 @@ pub unsafe extern "C" fn rclc_executor_add_action_server(
 /// # Safety
 /// * `executor` and `client` must be valid pointers to initialized structs.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn rclc_executor_add_action_client(
+pub unsafe extern "C" fn rclc_executor_attach_action_client(
     executor: *mut rclc_executor_t,
     client: *mut rcl_action_client_t,
 ) -> rcl_ret_t {
@@ -3266,7 +3292,7 @@ pub unsafe extern "C" fn rclc_executor_add_action_client(
 /// Remove an action server from the executor — issue 1609, the C twin of
 /// issue 1496's resolution 2.
 ///
-/// `rclc_executor_add_action_server` registers an arena entry whose callback
+/// `rclc_executor_attach_action_server` registers an arena entry whose callback
 /// `context` is `&server->_internal`, and `rcl_action_server_fini` does not
 /// (and cannot) undo it: `fini` is handed only the entity, and the executor's
 /// own tables — `handle_count` and the trigger entity table — live in the
@@ -3328,7 +3354,7 @@ pub unsafe extern "C" fn rclc_executor_remove_action_server(
 
     let handle_id = server._internal.handle.handle_id();
     let rust_exec = get_executor_from_ptr(opaque_ptr);
-    // SAFETY: the entry was registered by `rclc_executor_add_action_server`
+    // SAFETY: the entry was registered by `rclc_executor_attach_action_server`
     // through `register_action_server_raw_sized` with exactly these const
     // parameters, and `server._internal` (the only copy of its handle) is
     // reset below, so nothing names the slot after it is handed back.
@@ -3350,7 +3376,7 @@ pub unsafe extern "C" fn rclc_executor_remove_action_server(
 ///
 /// The client half of [`rclc_executor_remove_action_server`], with the same
 /// three tables and the same reason: the arena entry
-/// `rclc_executor_add_action_client` registered holds `client` itself as its
+/// `rclc_executor_attach_action_client` registered holds `client` itself as its
 /// callback `context`, and `rcl_action_client_fini` cannot reach the
 /// executor to undo it. The entry is dropped in place
 /// (`Executor::release_action_client_raw`, the default-sized form the add
@@ -3396,7 +3422,7 @@ pub unsafe extern "C" fn rclc_executor_remove_action_client(
 
     let entry_index = client._internal.arena_entry_index as usize;
     let rust_exec = get_executor_from_ptr(opaque_ptr);
-    // SAFETY: registered by `rclc_executor_add_action_client` through the
+    // SAFETY: registered by `rclc_executor_attach_action_client` through the
     // default-sized `register_action_client_raw`; the index is cleared below,
     // so no copy of it is used after the slot is handed back.
     let released = rust_exec.release_action_client_raw(entry_index);
@@ -3460,13 +3486,15 @@ fn forget_removed_handle(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rclc_executor_remove_subscription(
     executor: *mut rclc_executor_t,
-    subscription: *mut rcl_subscription_t,
+    subscription: *const rcl_subscription_t,
 ) -> rcl_ret_t {
     validate_not_null!(executor, subscription);
 
     let executor_ptr = executor as *mut core::ffi::c_void;
     let executor = &mut *executor;
-    let subscription = &mut *subscription;
+    // phase-492 W1.b — rclc takes `const`; the entity is the caller's mutable
+    // storage, and removal clears the handle slot it records.
+    let subscription = &mut *subscription.cast_mut();
 
     validate_state!(
         executor,
@@ -3517,12 +3545,14 @@ pub unsafe extern "C" fn rclc_executor_remove_subscription(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rclc_executor_remove_timer(
     executor: *mut rclc_executor_t,
-    timer: *mut rcl_timer_t,
+    timer: *const rcl_timer_t,
 ) -> rcl_ret_t {
     validate_not_null!(executor, timer);
 
     let executor = &mut *executor;
-    let timer = &mut *timer;
+    // phase-492 W1.b — rclc takes `const`; the entity is the caller's mutable
+    // storage, and removal clears the handle slot it records.
+    let timer = &mut *timer.cast_mut();
 
     validate_state!(
         executor,
@@ -3571,13 +3601,15 @@ pub unsafe extern "C" fn rclc_executor_remove_timer(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rclc_executor_remove_service(
     executor: *mut rclc_executor_t,
-    service: *mut rcl_service_t,
+    service: *const rcl_service_t,
 ) -> rcl_ret_t {
     validate_not_null!(executor, service);
 
     let executor_ptr = executor as *mut core::ffi::c_void;
     let executor = &mut *executor;
-    let service = &mut *service;
+    // phase-492 W1.b — rclc takes `const`; the entity is the caller's mutable
+    // storage, and removal clears the handle slot it records.
+    let service = &mut *service.cast_mut();
 
     validate_state!(
         executor,
@@ -3610,7 +3642,7 @@ pub unsafe extern "C" fn rclc_executor_remove_service(
 /// Remove a service client from the executor — issue 1631, rclc's
 /// `rclc_executor_remove_client`.
 ///
-/// Until phase-487 W2 the arena entry `rclc_executor_add_client` registered
+/// Until phase-487 W2 the arena entry `rclc_executor_attach_client` registered
 /// dispatched replies through a trampoline that READ the `rcl_client_t`, so
 /// after `rcl_client_fini` alone a late reply was a use-after-free of a stack
 /// or freed client; the entry now holds the user's callback itself. This drops the entry (the client leaves the graph, and a
@@ -3627,13 +3659,15 @@ pub unsafe extern "C" fn rclc_executor_remove_service(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rclc_executor_remove_client(
     executor: *mut rclc_executor_t,
-    client: *mut rcl_client_t,
+    client: *const rcl_client_t,
 ) -> rcl_ret_t {
     validate_not_null!(executor, client);
 
     let executor_ptr = executor as *mut core::ffi::c_void;
     let executor = &mut *executor;
-    let client = &mut *client;
+    // phase-492 W1.b — rclc takes `const`; the entity is the caller's mutable
+    // storage, and removal clears the handle slot it records.
+    let client = &mut *client.cast_mut();
 
     validate_state!(
         executor,
@@ -4311,17 +4345,34 @@ mod verification {
     #[kani::unwind(5)]
     fn executor_init_null_ptrs() {
         // NULL executor → INVALID_ARGUMENT
-        let support = crate::support::rclc_support_get_zero_initialized();
+        let mut support = crate::support::rclc_support_get_zero_initialized();
         assert_eq!(
-            unsafe { rclc_executor_init(core::ptr::null_mut(), &support, 4) },
+            unsafe {
+                rclc_executor_init(
+                    core::ptr::null_mut(),
+                    &mut support.context,
+                    4,
+                    core::ptr::null(),
+                )
+            },
             RCL_RET_INVALID_ARGUMENT,
         );
 
-        // NULL support → INVALID_ARGUMENT
+        // NULL context → INVALID_ARGUMENT
         let mut executor = rclc_executor_get_zero_initialized_executor();
         assert_eq!(
-            unsafe { rclc_executor_init(&mut executor, core::ptr::null(), 4) },
+            unsafe {
+                rclc_executor_init(&mut executor, core::ptr::null_mut(), 4, core::ptr::null())
+            },
             RCL_RET_INVALID_ARGUMENT,
+        );
+
+        // A context no initialised support owns → NOT_INIT
+        assert_eq!(
+            unsafe {
+                rclc_executor_init(&mut executor, &mut support.context, 4, core::ptr::null())
+            },
+            RCL_RET_NOT_INIT,
         );
     }
 
@@ -4579,7 +4630,7 @@ pub unsafe extern "C" fn rclc_executor_bind_handle_to_sched_context(
 // A LOCAL alias, not `nros_node::ShutdownCallbackFn`. cbindgen runs with
 // `parse_deps = false`, so a type owned by another crate in an `extern "C"`
 // signature degrades to an opaque struct that C cannot call through — the same
-// reason `rcl_timer_callback_t` is spelled here rather than imported.
+// reason `rclc_timer_callback_with_context_t` is spelled here rather than imported.
 pub type rclc_shutdown_callback_t = Option<unsafe extern "C" fn(context: *mut core::ffi::c_void)>;
 
 /// Handle to a registered shutdown hook.

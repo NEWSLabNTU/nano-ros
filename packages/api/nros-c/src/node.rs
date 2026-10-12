@@ -1023,7 +1023,7 @@ pub unsafe extern "C" fn rcl_node_is_valid(node: *const rcl_node_t) -> bool {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rcl_node_get_domain_id(
     node: *const rcl_node_t,
-    domain_id: *mut u32,
+    domain_id: *mut usize,
 ) -> rcl_ret_t {
     validate_not_null!(node, domain_id);
     let node_ref = &*node;
@@ -1033,7 +1033,8 @@ pub unsafe extern "C" fn rcl_node_get_domain_id(
     {
         match resolve_session_and_domain(node_ref) {
             Some((_session, resolved)) => {
-                *domain_id = resolved;
+                // rcl's out-type is `size_t` (phase-492 W1.b).
+                *domain_id = resolved as usize;
                 RCL_RET_OK
             }
             None => RCL_RET_NOT_INIT,
@@ -1050,7 +1051,9 @@ pub unsafe extern "C" fn rcl_node_get_domain_id(
 /// rules — what a topic or service name a caller builds at runtime will
 /// actually become on the wire.
 ///
-/// rcl's `rcl_node_resolve_name`. Gap `c:node_resolve_name` records the
+/// rcl's `rcl_node_resolve_name` without its allocator: the caller supplies
+/// the output buffer, hence the distinct `rclc_` name (phase-492 W1.b).
+/// Gap `c:node_resolve_name` records the
 /// reason it was missing: our names are resolved at codegen/launch time
 /// (RFC-0046), so a C caller constructing one dynamically had no way to ask.
 ///
@@ -1083,7 +1086,7 @@ pub unsafe extern "C" fn rcl_node_get_domain_id(
 /// * `input_name` must be NULL or a valid NUL-terminated C string.
 /// * `output_name` must be NULL or writable for `output_size` bytes.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn rcl_node_resolve_name(
+pub unsafe extern "C" fn rclc_node_resolve_name(
     node: *const rcl_node_t,
     input_name: *const c_char,
     only_expand: bool,
@@ -1168,7 +1171,7 @@ pub unsafe extern "C" fn rcl_node_resolve_name(
 ///   the fallback, not the preference.
 /// * legacy node (`rclc_node_init_default` / `nros_node_init`) → expansion
 ///   only. There is no executor, and `declare_remap` is an executor call, so
-///   there are no rules to drop — unlike `rcl_node_resolve_name`, which is
+///   there are no rules to drop — unlike `rclc_node_resolve_name`, which is
 ///   ASKED for the rules and must refuse when it cannot read them.
 ///
 /// Returns `None` when the source name cannot be expanded (empty, a `~` with
@@ -2032,7 +2035,7 @@ mod accessor_tests {
             let input_c = alloc_cstr(input);
             assert_eq!(
                 unsafe {
-                    rcl_node_resolve_name(
+                    rclc_node_resolve_name(
                         &node,
                         input_c.as_ptr() as *const c_char,
                         true,
@@ -2058,7 +2061,7 @@ mod accessor_tests {
         let mut buf = [0xAAu8; 64];
         assert_eq!(
             unsafe {
-                rcl_node_resolve_name(
+                rclc_node_resolve_name(
                     &node,
                     input_c.as_ptr() as *const c_char,
                     false,
@@ -2098,7 +2101,7 @@ mod accessor_tests {
         let mut buf = [0xAAu8; 64];
         assert_eq!(
             unsafe {
-                rcl_node_resolve_name(
+                rclc_node_resolve_name(
                     &node,
                     input_c.as_ptr() as *const c_char,
                     false,
@@ -2121,7 +2124,7 @@ mod accessor_tests {
         let empty = alloc_cstr("");
         assert_eq!(
             unsafe {
-                rcl_node_resolve_name(
+                rclc_node_resolve_name(
                     &node,
                     core::ptr::null(),
                     true,
@@ -2133,7 +2136,7 @@ mod accessor_tests {
         );
         assert_eq!(
             unsafe {
-                rcl_node_resolve_name(
+                rclc_node_resolve_name(
                     &node,
                     empty.as_ptr() as *const c_char,
                     true,
@@ -2150,7 +2153,7 @@ mod accessor_tests {
     #[test]
     fn domain_id_on_a_session_less_node_is_reported_not_guessed() {
         let node = unbound_node("talker", "/");
-        let mut domain: u32 = 0xFFFF;
+        let mut domain: usize = 0xFFFF;
         let rc = unsafe { rcl_node_get_domain_id(&node, &mut domain) };
         assert_ne!(rc, RCL_RET_OK);
         assert_eq!(domain, 0xFFFF, "a failed read must not write the out-param");
@@ -2215,7 +2218,7 @@ mod accessor_tests {
         executor.max_handles = 8;
         executor.state = crate::executor::rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED;
         // A real executor always carries a support object, and since issue 1386
-        // `rcl_node_is_valid` / `rcl_node_resolve_name` ask it whether the
+        // `rcl_node_is_valid` / `rclc_node_resolve_name` ask it whether the
         // node's CONTEXT is alive (rcl: "rcl_shutdown has been called since the
         // node was initialized"). The session pointer stays NULL — that is what
         // this harness is for — but an executor with no support at all is a
@@ -2265,7 +2268,7 @@ mod accessor_tests {
         let input_c = alloc_cstr(input);
         let mut buf = [0u8; 128];
         let rc = unsafe {
-            rcl_node_resolve_name(
+            rclc_node_resolve_name(
                 node,
                 input_c.as_ptr() as *const c_char,
                 only_expand,
@@ -2323,7 +2326,7 @@ mod accessor_tests {
         assert!(unsafe { rcl_node_is_valid(&second) });
     }
 
-    /// `rcl_node_resolve_name(only_expand = false)` is ASKED for the remap
+    /// `rclc_node_resolve_name(only_expand = false)` is ASKED for the remap
     /// rules, so it must read them for every node that reaches an executor. The
     /// primary node answered `RCL_RET_NOT_INIT` — the reported symptom of issue
     /// 1384, and the mildest of its three outcomes.

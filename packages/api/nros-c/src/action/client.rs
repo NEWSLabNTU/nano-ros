@@ -30,13 +30,13 @@ const FEEDBACK_FRAMING_LEN: usize = CDR_HEADER_LEN + GOAL_ID_SEQ_PREFIX_LEN + Go
 ///
 /// Lightweight — stores only the arena entry index and executor pointer.
 /// The `ActionClientCore` (transport handles) lives in the executor's arena,
-/// created by `rclc_executor_add_action_client`.
+/// created by `rclc_executor_attach_action_client`.
 #[repr(C)]
 pub struct ActionClientInternal {
-    /// Arena entry index (set by rclc_executor_add_action_client).
+    /// Arena entry index (set by rclc_executor_attach_action_client).
     /// -1 means not registered with executor.
     pub arena_entry_index: i32,
-    /// Pointer to the executor (set by rclc_executor_add_action_client).
+    /// Pointer to the executor (set by rclc_executor_attach_action_client).
     pub executor_ptr: *mut core::ffi::c_void,
 }
 
@@ -80,7 +80,7 @@ pub enum rclc_action_client_state_t {
     /// Not initialized
     RCLC_ACTION_CLIENT_STATE_UNINITIALIZED = 0,
     /// Initialized. For a `rcl_action_client_t` the transport is created
-    /// by `rclc_executor_add_action_client`; for a
+    /// by `rclc_executor_attach_action_client`; for a
     /// `rclc_polling_action_client_t` its `ActionClientCore` is live in the
     /// struct.
     RCLC_ACTION_CLIENT_STATE_INITIALIZED = 1,
@@ -123,8 +123,8 @@ pub struct rcl_action_client_t {
     pub node: crate::node::rclc_node_ref_t,
     /// Phase 189.M3.3.b — scheduling-context slot to bind the action client's
     /// executor handle to. `0` = inherit the executor / Node default; set via
-    /// `rclc_action_client_init_with_options`. When non-zero,
-    /// `rclc_executor_add_action_client` binds the handle after
+    /// `rcl_action_client_init`'s `options`. When non-zero,
+    /// `rclc_executor_attach_action_client` binds the handle after
     /// registration. No effect on the L1 polling path.
     pub sched_context_id: crate::executor::rclc_sched_context_id_t,
     /// Internal state (arena entry index + executor pointer). Phase 87.5:
@@ -202,13 +202,23 @@ pub extern "C" fn rcl_action_get_zero_initialized_client() -> rcl_action_client_
     rcl_action_client_t::default()
 }
 
-/// Initialize an action client.
+/// Initialize an action client — rcl's signature (phase-492 W1.b):
+/// `rcl_action_client_init(&client, &node, ROSIDL_GET_ACTION_TYPE_SUPPORT(...),
+/// "name", &options)`. The type support is our descriptor
+/// (`ROSIDL_GET_ACTION_TYPE_SUPPORT` yields its address, RFC-0089 2026-10-12).
+/// `options` may be NULL for the defaults; a non-zero `sched_context` is
+/// applied by `rclc_executor_attach_action_client` once the handle exists.
+///
+/// # Safety
+/// All non-NULL pointers must be valid and the node initialized; `options`
+/// may be NULL.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rcl_action_client_init(
     client: *mut rcl_action_client_t,
     node: *const rcl_node_t,
-    action_name: *const core::ffi::c_char,
     type_info: *const rclc_action_type_t,
+    action_name: *const core::ffi::c_char,
+    options: *const rcl_action_client_options_t,
 ) -> rcl_ret_t {
     validate_not_null!(client, node, action_name, type_info);
 
@@ -237,9 +247,13 @@ pub unsafe extern "C" fn rcl_action_client_init(
     client.node = unsafe { crate::node::node_ref_of(node) };
 
     // Metadata only — no transport handles created here.
-    // Transport handles are created in rclc_executor_add_action_client,
+    // Transport handles are created in rclc_executor_attach_action_client,
     // which places the ActionClientCore in the executor's arena.
     client._internal = ActionClientInternal::new();
+
+    if !options.is_null() {
+        client.sched_context_id = (*options).sched_context;
+    }
 
     client.state = rclc_action_client_state_t::RCLC_ACTION_CLIENT_STATE_INITIALIZED;
 
@@ -254,7 +268,7 @@ pub struct rcl_action_client_options_t {
     /// Scheduling-context slot to bind the action client's executor handle to.
     /// `0` = inherit the executor / Node default. A non-zero value must be an id
     /// from `rclc_executor_create_sched_context`; the bind is applied by
-    /// `rclc_executor_add_action_client` once the handle exists. No effect
+    /// `rclc_executor_attach_action_client` once the handle exists. No effect
     /// on the L1 polling path.
     pub sched_context: crate::executor::rclc_sched_context_id_t,
     /// Reserved for future use; must be zero. Pads for ABI stability.
@@ -265,32 +279,6 @@ pub struct rcl_action_client_options_t {
 #[unsafe(no_mangle)]
 pub extern "C" fn rcl_action_client_get_default_options() -> rcl_action_client_options_t {
     rcl_action_client_options_t::default()
-}
-
-/// Phase 189.M3.3.b — initialize an action client with named options. Like
-/// [`rcl_action_client_init`] except a non-zero `options->sched_context` is
-/// stashed so `rclc_executor_add_action_client` binds the resulting
-/// executor handle to that scheduling context once known.
-///
-/// # Safety
-/// All non-NULL pointers must be valid + the node initialized; `options` may be
-/// NULL.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn rclc_action_client_init_with_options(
-    client: *mut rcl_action_client_t,
-    node: *const rcl_node_t,
-    action_name: *const core::ffi::c_char,
-    type_info: *const rclc_action_type_t,
-    options: *const rcl_action_client_options_t,
-) -> rcl_ret_t {
-    let ret = rcl_action_client_init(client, node, action_name, type_info);
-    if ret != RCL_RET_OK {
-        return ret;
-    }
-    if !options.is_null() {
-        (*client).sched_context_id = (*options).sched_context;
-    }
-    RCL_RET_OK
 }
 
 /// Set feedback callback.
@@ -362,7 +350,7 @@ pub unsafe extern "C" fn rclc_action_client_wait_for_action_server(
             return RCL_RET_NOT_INIT;
         }
         // Note: action clients store an opaque pointer into
-        // `executor._opaque` (see `rclc_executor_add_action_client`),
+        // `executor._opaque` (see `rclc_executor_attach_action_client`),
         // not to the outer `rclc_executor_t`, so we can't recover the
         // wrapper from `internal.executor_ptr`. Take `executor` as a
         // separate argument — same convention as
@@ -1047,8 +1035,14 @@ pub unsafe extern "C" fn rclc_action_client_poll(client: *mut rcl_action_client_
 /// the entry (the action leaves the graph) and brings the executor's
 /// `handle_count` back down.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn rcl_action_client_fini(client: *mut rcl_action_client_t) -> rcl_ret_t {
-    validate_not_null!(client);
+pub unsafe extern "C" fn rcl_action_client_fini(
+    client: *mut rcl_action_client_t,
+    node: *mut crate::node::rcl_node_t,
+) -> rcl_ret_t {
+    // phase-492 W1.b — rcl's arity: the node the entity was created on.
+    // Checked non-NULL only; teardown needs nothing from it (RFC-0089
+    // ADOPT-BOUNDED, ledger `c:action_client_fini`).
+    validate_not_null!(client, node);
 
     let client = &mut *client;
 
@@ -1684,8 +1678,9 @@ mod verification {
                 rcl_action_client_init(
                     ptr::null_mut(),
                     &node,
-                    action_name.as_ptr() as *const core::ffi::c_char,
                     &type_info,
+                    action_name.as_ptr() as *const core::ffi::c_char,
+                    ptr::null(),
                 )
             },
             RCL_RET_INVALID_ARGUMENT,
@@ -1698,8 +1693,9 @@ mod verification {
                 rcl_action_client_init(
                     &mut cli,
                     ptr::null(),
-                    action_name.as_ptr() as *const core::ffi::c_char,
                     &type_info,
+                    action_name.as_ptr() as *const core::ffi::c_char,
+                    ptr::null(),
                 )
             },
             RCL_RET_INVALID_ARGUMENT,
@@ -1708,7 +1704,9 @@ mod verification {
         // NULL action_name
         let mut cli = rcl_action_get_zero_initialized_client();
         assert_eq!(
-            unsafe { rcl_action_client_init(&mut cli, &node, ptr::null(), &type_info) },
+            unsafe {
+                rcl_action_client_init(&mut cli, &node, &type_info, ptr::null(), ptr::null())
+            },
             RCL_RET_INVALID_ARGUMENT,
         );
 
@@ -1719,6 +1717,7 @@ mod verification {
                 rcl_action_client_init(
                     &mut cli,
                     &node,
+                    ptr::null(),
                     action_name.as_ptr() as *const core::ffi::c_char,
                     ptr::null(),
                 )
@@ -1740,8 +1739,9 @@ mod verification {
                 rcl_action_client_init(
                     &mut cli,
                     &node,
-                    action_name.as_ptr() as *const core::ffi::c_char,
                     &type_info,
+                    action_name.as_ptr() as *const core::ffi::c_char,
+                    ptr::null(),
                 )
             },
             RCL_RET_NOT_INIT,
@@ -1768,14 +1768,21 @@ mod verification {
     fn action_client_fini_null_safety() {
         // NULL → INVALID_ARGUMENT
         assert_eq!(
-            unsafe { rcl_action_client_fini(ptr::null_mut()) },
+            unsafe {
+                rcl_action_client_fini(
+                    ptr::null_mut(),
+                    &mut crate::node::rcl_get_zero_initialized_node(),
+                )
+            },
             RCL_RET_INVALID_ARGUMENT,
         );
 
         // UNINITIALIZED → NOT_INIT
         let mut cli = rcl_action_get_zero_initialized_client();
         assert_eq!(
-            unsafe { rcl_action_client_fini(&mut cli) },
+            unsafe {
+                rcl_action_client_fini(&mut cli, &mut crate::node::rcl_get_zero_initialized_node())
+            },
             RCL_RET_NOT_INIT,
         );
     }

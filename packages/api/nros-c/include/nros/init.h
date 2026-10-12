@@ -11,7 +11,7 @@
  * Typical usage:
  * @code
  * rclc_support_t support = rclc_support_get_zero_initialized();
- * rclc_support_init(&support, NULL, 0);
+ * rclc_support_init_with_locator(&support, NULL, 0);
  * // ... create nodes, publishers, etc.
  * nros_support_fini(&support);
  * @endcode

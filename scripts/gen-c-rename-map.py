@@ -65,6 +65,36 @@ OVERRIDES = {
     "nros_lifecycle_register_on_cleanup": "rclc_lifecycle_state_machine_register_on_cleanup",
     "nros_lifecycle_register_on_configure": "rclc_lifecycle_state_machine_register_on_configure",
     "nros_lifecycle_register_on_deactivate": "rclc_lifecycle_state_machine_register_on_deactivate",
+    # phase-492 W1.b — parity's `systematic` rows are a SPELLING match, not a
+    # contract match, and W1 adopted them all; these took upstream's name over
+    # a different contract. `check-c-api-upstream-signatures` measures that now.
+    # Each value is (new, class, why).
+    "nros_timer_init": ("rclc_timer_init_with_context", "ours", "differs from `rcl_timer_init`: our callback gets the caller's context (rcl_compat.h §4) (phase-492 W1.b)"),
+    "nros_timer_callback_t": ("rclc_timer_callback_with_context_t", "ours", "differs from `rcl_timer_callback_t`: context, not last_call_time (phase-492 W1.b)"),
+    "nros_clock_get_now": ("rclc_clock_get_now_time", "ours", "differs from `rcl_clock_get_now`: writes an rclc_time_t (phase-492 W1.b)"),
+    "nros_clock_get_now_ns": ("rcl_clock_get_now", "adopt", "conforms to upstream `rcl_clock_get_now` (measured) (phase-492 W1.b)"),
+    "nros_node_resolve_name": ("rclc_node_resolve_name", "ours", "differs from `rcl_node_resolve_name`: caller buffer, no allocator (phase-492 W1.b)"),
+    "nros_action_server_init": ("rclc_action_server_init_with_callbacks", "ours", "differs from `rcl_action_server_init`: binds the callbacks (phase-492 W1.b)"),
+    "nros_action_publish_feedback": ("rclc_action_publish_feedback_raw", "ours", "differs from `rclc_action_publish_feedback`: CDR bytes (phase-492 W1.b)"),
+    "nros_action_server_goal_exists": ("rclc_action_server_goal_exists", "ours", "differs from `rcl_action_server_goal_exists`: our goal handle (phase-492 W1.b)"),
+    "nros_subscription_callback_t": ("rclc_subscription_raw_callback_t", "ours", "differs from `rclc_subscription_callback_t`: CDR bytes + context (phase-492 W1.b)"),
+    "nros_service_callback_t": ("rclc_service_raw_callback_t", "ours", "differs from `rclc_service_callback_t`: CDR bytes + context (phase-492 W1.b)"),
+    "nros_executor_add_client": ("rclc_executor_attach_client", "ours", "differs from `rclc_executor_add_client`: no message/callback args (phase-492 W1.b)"),
+    "nros_executor_add_action_client": ("rclc_executor_attach_action_client", "ours", "differs from `rclc_executor_add_action_client`: callbacks bound at init (phase-492 W1.b)"),
+    "nros_executor_add_action_server": ("rclc_executor_attach_action_server", "ours", "differs from `rclc_executor_add_action_server`: callbacks bound at init (phase-492 W1.b)"),
+    "nros_support_init": ("rclc_support_init_with_locator", "ours", "the (locator, domain) form; `rclc_support_init` now takes rclc's arguments (phase-492 W1.b)"),
+    "nros_typed_subscription_callback_t": ("rclc_subscription_callback_with_context_t", "adopt", "identical to rclc's (the alias is gone) (phase-492 W1.b)"),
+}
+
+# phase-492 W1.b — `systematic` rows whose contract was MADE to conform
+# (rcl's arity and types), so they adopt upstream's name on a measured basis.
+SIGNATURE_CONFORMED = {
+    "nros_publisher_fini", "nros_subscription_fini", "nros_service_fini", "nros_client_fini",
+    "nros_action_client_fini", "nros_action_server_fini", "nros_clock_init",
+    "nros_executor_init", "nros_action_client_init", "nros_node_get_domain_id",
+    "nros_timer_get_time_since_last_call", "nros_executor_remove_client",
+    "nros_executor_remove_service", "nros_executor_remove_subscription",
+    "nros_executor_remove_timer",
 }
 
 # Headers that hold the ENTRY / BOOT conventions: how an image starts, which
@@ -75,6 +105,11 @@ ENTRY_HEADERS = {
     "app_main.h", "app_config.h", "boot_config.h", "entry_config.h", "main.h",
     "tier_task_memory_freertos.h", "tier_task_memory_zephyr.h",
 }
+
+# phase-492 W1.b — reached only through a `<nros/baked_rmw.h>` macro, which
+# forwards the build's baked RMW selector (`NROS_ENTRY_RMW`). A build fact's
+# carrier, not an API call.
+BAKED_SEAMS = {"nros_c_support_init_baked"}
 
 HOOKS = {
     "nros_app_main",
@@ -188,6 +223,9 @@ def build_map():
         if name in seam_tokens or name.startswith(("nros_rmw_", "nros_platform_", "nros_board_", "nros_cpp_", "NROS_RMW_")):
             rows.append((name, name, "seam", "declared by a port seam or the C++ FFI"))
             continue
+        if name in BAKED_SEAMS:
+            rows.append((name, name, "build", "carries the baked RMW selector from a header macro"))
+            continue
         if name in HOOKS or name in entry_only or name.startswith(("nros_app_", "NROS_APP_")):
             rows.append((name, name, "hook", "defined by the application or entry, called by startup code"))
             continue
@@ -208,9 +246,17 @@ def build_map():
             rows.append((name, "RCLC_" + stem(name), "ours", "API constant with no upstream spelling"))
             continue
         if name in OVERRIDES:
-            rows.append((name, OVERRIDES[name], "ours", "reviewed: its rclc_ spelling is upstream's, with a different contract"))
+            v = OVERRIDES[name]
+            if isinstance(v, tuple):
+                rows.append((name, *v))
+            else:
+                rows.append((name, v, "ours", "reviewed: its rclc_ spelling is upstream's, with a different contract"))
             continue
         bucket, their = by_ours.get(name, (None, None))
+        if bucket == "systematic" and name not in SIGNATURE_CONFORMED:
+            # A spelling match whose contract nobody checked: never adopt on
+            # that alone (phase-492 W1.b). Review it, then list it above.
+            bucket = "differs"
         if bucket in ("same", "systematic") and their:
             if their in existing:
                 rows.append((name, their, "alias", f"`{their}` already names it (a compat alias); the definition takes it"))

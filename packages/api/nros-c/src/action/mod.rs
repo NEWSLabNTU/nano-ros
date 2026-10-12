@@ -5,8 +5,8 @@
 //!
 //! The action server follows the same metadata-only init → executor registration
 //! pattern as subscriptions and services:
-//! 1. `rcl_action_server_init()` stores metadata (name, type, callbacks)
-//! 2. `rclc_executor_add_action_server()` creates RMW entities and registers
+//! 1. `rclc_action_server_init_with_callbacks()` stores metadata (name, type, callbacks)
+//! 2. `rclc_executor_attach_action_server()` creates RMW entities and registers
 //!    with the nros-node executor
 //! 3. Operation functions delegate through `ActionServerRawHandle`
 

@@ -136,7 +136,7 @@ pub extern "C" fn rcl_get_zero_initialized_guard_condition() -> rcl_guard_condit
 /// `node` must be bound to an executor through `rclc_executor_node_init` — the
 /// executor exists first, then the node. A node from the legacy
 /// `rclc_node_init_default` path reaches no executor and gets
-/// `RCL_RET_NOT_INIT`, which is what `rcl_node_resolve_name` answers for the
+/// `RCL_RET_NOT_INIT`, which is what `rclc_node_resolve_name` answers for the
 /// same reason: the capability is UNREACHABLE from that node, not absent.
 ///
 /// # Returns
@@ -175,7 +175,7 @@ pub unsafe extern "C" fn rclc_node_create_guard_condition(
 
     // The arena the flag lives in belongs to the executor; a node that reaches
     // none cannot create one. Same answer, same reason, as
-    // `rcl_node_resolve_name` gives for the remap table.
+    // `rclc_node_resolve_name` gives for the remap table.
     //
     // The predicate is "is this node BOUND to an executor". It used to be
     // spelled out here because `is_multi_session()` also required
@@ -624,7 +624,7 @@ mod tests {
 
     /// An UNBOUND node reaches no executor, so it reaches no arena — and the
     /// arena is where the flag lives. `RCL_RET_NOT_INIT` is the same answer
-    /// `rcl_node_resolve_name` gives for the same reason, rather than the
+    /// `rclc_node_resolve_name` gives for the same reason, rather than the
     /// silently inert object the retired three-call shape produced.
     #[test]
     fn create_guard_condition_refuses_a_node_with_no_executor() {
