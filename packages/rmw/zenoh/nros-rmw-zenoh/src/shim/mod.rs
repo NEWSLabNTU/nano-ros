@@ -79,7 +79,9 @@ pub use crate::zpico::ZenohId;
 
 // Re-export submodule types
 pub use publisher::ZenohPublisher;
-pub use service::{InboxRing, InboxSpec, InboxStorage, ZenohServiceClient, ZenohServiceServer};
+pub use service::{
+    InboxDropStats, InboxRing, InboxSpec, InboxStorage, ZenohServiceClient, ZenohServiceServer,
+};
 pub use session::{ZenohSession, effective_client_locator, normalize_locator};
 pub use subscriber::{ZenohSubscriber, overflow_drops_total, required_rx_bytes};
 pub use transport::{ZenohRmw, ZenohTransport};

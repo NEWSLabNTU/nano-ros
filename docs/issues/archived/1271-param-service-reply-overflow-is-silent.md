@@ -67,6 +67,14 @@ pins the reply-overflow row. The reconcile that attaches services to nodes
 logs its failure once too, instead of being dropped every spin (the Cyclone
 case, issue 1268).
 
+**phase-461 W4 (2026-10-13).** The transport-inbox case now names the
+REQUEST'S LENGTH as well as `NROS_PARAM_SERVICE_INBOX_BYTES`: the zenoh shim
+keeps an overflowing request's length in its ring entry and reports it through
+`ServiceTrait::refused_request_len`, and the `InboxOverflow` arm reads it.
+Below the parameter services, the shim now counts every inbox drop per
+queryable (ring full, oversized) and says each episode once
+(`ZenohServiceServer::inbox_drop_stats`).
+
 Still open: answering with `SetParametersResult.reason` instead of dropping,
 flagging `list_parameters` truncation, and sizing the reply buffer from the
 declared parameters (phase-446 W4).

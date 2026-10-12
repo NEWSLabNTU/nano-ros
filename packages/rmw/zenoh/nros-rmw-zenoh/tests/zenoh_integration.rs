@@ -1212,6 +1212,21 @@ fn a_service_server_receives_through_the_ring_the_caller_supplied() {
         ),
         "97 bytes into a 96-byte caller slot must be MessageTooLarge"
     );
+    // phase-461 W4 -- counted, and its LENGTH reported: the parameter
+    // service's issue-1271 line names both this and the inbox knob.
+    assert_eq!(
+        server.refused_request_len(),
+        Some(97),
+        "an inbox overflow keeps the request's length for the caller"
+    );
+    assert_eq!(
+        server.inbox_drop_stats(),
+        nros_rmw_zenoh::shim::InboxDropStats {
+            ring_full: 0,
+            overflow: 1
+        },
+        "one oversized request is one overflow, no ring-full drop"
+    );
 
     // 3 - depth is the caller's: with one request held, the next is the
     // ring-full drop, which the callback declines before taking a reply seq.
@@ -1261,6 +1276,16 @@ fn a_service_server_receives_through_the_ring_the_caller_supplied() {
     server
         .send_response(seq, b"ok")
         .expect("the reply to a taken request goes out");
+    // phase-461 W4 -- the second request at depth 1 is ONE counted ring-full
+    // drop, beside the C shim's decline count for the same event.
+    assert_eq!(
+        server.inbox_drop_stats(),
+        nros_rmw_zenoh::shim::InboxDropStats {
+            ring_full: 1,
+            overflow: 1
+        },
+        "two requests in one batch at depth 1: exactly one ring-full drop"
+    );
     assert!(
         !server.has_request(),
         "the second request was dropped, not queued behind the first"
