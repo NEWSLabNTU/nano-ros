@@ -86,7 +86,7 @@ derives every one of those from `board = "native"` and writes them to
 
 Retargeting is therefore almost entirely one line. *Almost*: this
 native talker still names its board crate (`nros-board-linux`) in
-`[dependencies]`, because its RMW is a cargo feature, so that line has
+`[dependencies]`, because its RMW and ROS edition are still cargo features, so that line has
 to move with the `board =` one. The bare-metal, FreeRTOS, NuttX,
 ThreadX-Linux and RTIC Rust examples no longer do: they depend on a generated
 `<pkg>_nros_selection` package that `nros sync` writes for the image's
