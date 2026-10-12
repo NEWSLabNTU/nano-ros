@@ -1320,11 +1320,12 @@ test-live-peer-regression runner="all" verbose="":
     set -euo pipefail
     runner="{{runner}}"
     case "$runner" in
-        host|board|all) ;;
+        host|board|board-zephyr|board-ci|all) ;;
         *)
             echo "test-live-peer-regression: runner='$runner' is not one of" >&2
-            echo "  host | board | all. host = the cells whose board is this" >&2
-            echo "  machine; board = the cells that need a board toolchain." >&2
+            echo "  host | board | board-zephyr | board-ci | all. host = the cells" >&2
+            echo "  whose board is this machine; board = the cells that need a" >&2
+            echo "  board toolchain; board-<image> = those whose CI image builds them." >&2
             exit 2
             ;;
     esac

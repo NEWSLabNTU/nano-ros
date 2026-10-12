@@ -68,6 +68,11 @@ jobs:
       setup_scopes: ${{ steps.split.outputs.setup_scopes }}
       build_scopes: ${{ steps.split.outputs.build_scopes }}
       narrowing: ${{ steps.split.outputs.narrowing }}
+      ci_board_cells: ${{ steps.split.outputs.ci_board_cells }}
+      has_ci_board: ${{ steps.split.outputs.has_ci_board }}
+      ci_setup_scopes: ${{ steps.split.outputs.ci_setup_scopes }}
+      ci_build_scopes: ${{ steps.split.outputs.ci_build_scopes }}
+      ci_narrowing: ${{ steps.split.outputs.ci_narrowing }}
     steps:
       - uses: actions/checkout@v4
       # In the container for its `python3-tomli`: the tool reads the ledger with
@@ -77,17 +82,30 @@ jobs:
         run: |
           tool=scripts/check-interop-verdicts.py
           host="$(python3 "$tool" --list-passing --runner host | tr '\n' ' ')"
-          board="$(python3 "$tool" --list-passing --runner board | tr '\n' ' ')"
-          setup="$(python3 "$tool" --list-passing --runner board --scopes setup | tr '\n' ' ')"
-          build="$(python3 "$tool" --list-passing --runner board --scopes build | tr '\n' ' ')"
-          narrowing="$(python3 "$tool" --list-passing --runner board --narrowing | tr '\n' ' ')"
+          # Issue 1758 — a board row is built by the job whose IMAGE can build
+          # it (`BOARD_IMAGES` in the tool): `board-zephyr` for the Zephyr
+          # image's job, `board-ci` for the `nano-ros-ci` image's.
+          board="$(python3 "$tool" --list-passing --runner board-zephyr | tr '\n' ' ')"
+          setup="$(python3 "$tool" --list-passing --runner board-zephyr --scopes setup | tr '\n' ' ')"
+          build="$(python3 "$tool" --list-passing --runner board-zephyr --scopes build | tr '\n' ' ')"
+          narrowing="$(python3 "$tool" --list-passing --runner board-zephyr --narrowing | tr '\n' ' ')"
           has_board=false
           [ -n "$(echo $board)" ] && has_board=true
+          ci_board="$(python3 "$tool" --list-passing --runner board-ci | tr '\n' ' ')"
+          ci_setup="$(python3 "$tool" --list-passing --runner board-ci --scopes setup | tr '\n' ' ')"
+          ci_build="$(python3 "$tool" --list-passing --runner board-ci --scopes build | tr '\n' ' ')"
+          ci_narrowing="$(python3 "$tool" --list-passing --runner board-ci --narrowing | tr '\n' ' ')"
+          has_ci_board=false
+          [ -n "$(echo $ci_board)" ] && has_ci_board=true
           printf 'this runner:  %s\n' "$host"
           printf 'a board:      %s\n' "$board"
           printf 'setup scopes: %s\n' "$setup"
           printf 'build scopes: %s\n' "$build"
           printf 'narrowing:    %s\n' "$narrowing"
+          printf 'a board (ci image):        %s\n' "$ci_board"
+          printf 'setup scopes (ci image):   %s\n' "$ci_setup"
+          printf 'build scopes (ci image):   %s\n' "$ci_build"
+          printf 'narrowing (ci image):      %s\n' "$ci_narrowing"
           {
               printf 'host_cells=%s\n' "$host"
               printf 'board_cells=%s\n' "$board"
@@ -95,6 +113,11 @@ jobs:
               printf 'setup_scopes=%s\n' "$setup"
               printf 'build_scopes=%s\n' "$build"
               printf 'narrowing=%s\n' "$narrowing"
+              printf 'ci_board_cells=%s\n' "$ci_board"
+              printf 'has_ci_board=%s\n' "$has_ci_board"
+              printf 'ci_setup_scopes=%s\n' "$ci_setup"
+              printf 'ci_build_scopes=%s\n' "$ci_build"
+              printf 'ci_narrowing=%s\n' "$ci_narrowing"
           } >> "$GITHUB_OUTPUT"
 
   regression:
@@ -542,8 +565,9 @@ jobs:
                       echo "  zephyr and qemu. A row with a recorded PASS needs" >&2
                       echo "  '$s', which it cannot — so this run would report a" >&2
                       echo "  green over cells it never built." >&2
-                      echo "Give that board its own job (or its own image) and" >&2
-                      echo "  add it to LANES in scripts/ci/lane-stage.py." >&2
+                      echo "Its platform is mapped to the wrong image in BOARD_IMAGES" >&2
+                      echo "  (scripts/check-interop-verdicts.py): this job takes only" >&2
+                      echo "  the board-zephyr rows." >&2
                       exit 1
                       ;;
               esac
@@ -617,7 +641,7 @@ jobs:
         run: |
           source ./activate.sh
           set +e
-          just native test-live-peer-regression board
+          just native test-live-peer-regression board-zephyr
           rc=$?
           set -e
           ran=false
@@ -634,7 +658,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: live-peer-junit-board
-          path: tmp/live-peer-junit/board/
+          path: tmp/live-peer-junit/board-zephyr/
           if-no-files-found: ignore
           retention-days: 14
 
@@ -661,6 +685,162 @@ jobs:
              {"name": "Run the board cells with a recorded PASS", "conclusion": "${{ steps.cells.outcome }}"}]
           NROS_LANE_CELLS_RAN: ${{ steps.cells.outputs.cells_ran }}
         run: python3 scripts/ci/lane-stage.py --report --lane "live-peer regression (board)"
+
+  # Issue 1758 — the board rows the Zephyr image cannot build. FreeRTOS (and
+  # NuttX, ThreadX, bare-metal QEMU) need the ARM/RISC-V cross compilers and
+  # their libc, which only `nano-ros-ci` carries, so these rows get their own
+  # job in that image instead of being refused by the Zephyr one. Which rows
+  # land here is `BOARD_IMAGES` in scripts/check-interop-verdicts.py
+  # (`--runner board-ci`), never a list in this file. Provisioning follows the
+  # nightly's platform job, which builds the same scopes in the same image.
+  board-ci:
+    name: rows whose board is NOT this runner (ci image)
+    needs: [membership]
+    if: needs.membership.outputs.has_ci_board == 'true'
+    runs-on: ubuntu-22.04
+    container:
+      image: ghcr.io/newslabntu/nano-ros-ci:humble
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+      # The same host-tool mounts as the Zephyr job, for the same reason.
+      volumes:
+        - /usr/local/lib/android:/__host-reclaim/android
+        - /usr/share/dotnet:/__host-reclaim/dotnet
+        - /usr/local/.ghcup:/__host-reclaim/ghcup
+        - /opt/ghc:/__host-reclaim/ghc
+        - /usr/share/swift:/__host-reclaim/swift
+        - /usr/local/share/powershell:/__host-reclaim/powershell
+    defaults:
+      run:
+        shell: bash
+    outputs:
+      stage_label: ${{ steps.stage.outputs.label }}
+      reached_cells: ${{ steps.stage.outputs.reached_cells }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the nros CLI
+        id: cli
+        run: |
+          git submodule update --init --depth 1 packages/cli/third-party/play_launch
+          cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
+          "$GITHUB_WORKSPACE/packages/cli/target/release/nros" source-stamp >/dev/null
+
+      - name: Reclaim disk before the SDK setup
+        id: disk
+        run: scripts/ci/reclaim-disk.sh "before the SDK setup"
+
+      - name: Upload the disk transcript — issue 1353
+        if: ${{ !cancelled() && env.NROS_DISK_TRANSCRIPT != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: disk-transcript-live-peer-board-ci
+          path: ${{ env.NROS_DISK_TRANSCRIPT }}
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Provision the declared system closure (phase-413 W3)
+        id: system
+        run: |
+          source ./activate.sh
+          nros setup --system --sudo
+
+      # The scopes come from the rows, through the same tool. The guard is the
+      # Zephyr job's, mirrored: a scope this image cannot provision is refused
+      # rather than run as if it could.
+      - name: just setup the scopes those rows need
+        id: setup
+        env:
+          SCOPES: ${{ needs.membership.outputs.ci_setup_scopes }}
+        run: |
+          source ./activate.sh
+          for s in $SCOPES; do
+              case "$s" in
+                  freertos|nuttx|threadx_linux|threadx_riscv64|qemu) ;;
+                  *)
+                      echo "This lane runs in the nano-ros-ci image and can provision" >&2
+                      echo "  freertos, nuttx, threadx_linux, threadx_riscv64 and qemu." >&2
+                      echo "  A row with a recorded PASS needs '$s', which it cannot." >&2
+                      echo "Its platform is mapped to the wrong image in BOARD_IMAGES" >&2
+                      echo "  (scripts/check-interop-verdicts.py)." >&2
+                      exit 1
+                      ;;
+              esac
+          done
+          for s in $SCOPES; do
+              echo "=== just setup $s ==="
+              just setup "$s"
+          done
+
+      - name: Build the fixtures those rows resolve
+        id: fixtures
+        env:
+          SCOPES: ${{ needs.membership.outputs.ci_build_scopes }}
+          NARROWING: ${{ needs.membership.outputs.ci_narrowing }}
+        run: |
+          source ./activate.sh
+          for kv in $NARROWING; do
+              echo "narrowing: $kv"
+              export "$kv"
+          done
+          for s in $SCOPES; do
+              echo "=== just build $s ==="
+              just build "$s"
+          done
+
+      - name: Provision cargo-nextest
+        id: nextest
+        run: |
+          source ./activate.sh
+          nros setup --tool cargo-nextest
+          # Re-source: a store tool's bin dir is on PATH only if it existed when
+          # activate.sh was sourced (issue 1666).
+          source ./activate.sh
+          cargo nextest --version
+
+      - name: Run the board cells with a recorded PASS
+        id: cells
+        run: |
+          source ./activate.sh
+          set +e
+          just native test-live-peer-regression board-ci
+          rc=$?
+          set -e
+          ran=false
+          [ "$rc" -le 1 ] && ran=true
+          printf 'cells_ran=%s\n' "$ran" >> "$GITHUB_OUTPUT"
+          exit $rc
+
+      - name: Upload the cells' junit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-peer-junit-board-ci
+          path: tmp/live-peer-junit/board-ci/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Ledger after the run
+        if: always()
+        run: |
+          source ./activate.sh
+          just interop-verdicts || true
+
+      - name: Which stage did this lane reach?
+        id: stage
+        if: always()
+        env:
+          NROS_LANE_STEPS: >-
+            [{"name": "Build the nros CLI", "conclusion": "${{ steps.cli.outcome }}"},
+             {"name": "Reclaim disk before the SDK setup", "conclusion": "${{ steps.disk.outcome }}"},
+             {"name": "Provision the declared system closure (phase-413 W3)", "conclusion": "${{ steps.system.outcome }}"},
+             {"name": "just setup the scopes those rows need", "conclusion": "${{ steps.setup.outcome }}"},
+             {"name": "Build the fixtures those rows resolve", "conclusion": "${{ steps.fixtures.outcome }}"},
+             {"name": "Provision cargo-nextest", "conclusion": "${{ steps.nextest.outcome }}"},
+             {"name": "Run the board cells with a recorded PASS", "conclusion": "${{ steps.cells.outcome }}"}]
+          NROS_LANE_CELLS_RAN: ${{ steps.cells.outputs.cells_ran }}
+        run: python3 scripts/ci/lane-stage.py --report --lane "live-peer regression (board, ci image)"
 
   # The job NAME carries the stage, for the same reason `run-matrix.yml`'s
   # `coverage` job does: a check-run name is the last piece of a run that is
@@ -747,4 +927,46 @@ jobs:
               echo "The board cells did not run, so this run says NOTHING about"
               echo "whether they still pass. It is a verdict about the lane —"
               echo "most likely its toolchain, its image or its fixtures."
+          fi
+
+  # Issue 1758 — the ci-image board job's own name, with the same fallback
+  # chain as `stage-board`: each image's rows get their own verdict, so a red
+  # in one never reads as the other's.
+  stage-board-ci:
+    name: "live-peer board (ci image) — ${{ needs.board-ci.outputs.stage_label || (needs.membership.result != 'success' && 'NO VERDICT: could not split the ledger by runner') || (needs.membership.outputs.has_ci_board == 'true' && needs.board-ci.result == 'skipped' && 'DID NOT START') || (needs.membership.outputs.has_ci_board == 'true' && 'NO VERDICT: the job ended before it reported') || 'no cell on a ci-image board has a recorded PASS' }}"
+    needs: [membership, board-ci]
+    if: always()
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Say in the run list what the log would have to be opened for
+        env:
+          LABEL: ${{ needs.board-ci.outputs.stage_label }}
+          REACHED: ${{ needs.board-ci.outputs.reached_cells }}
+          HAS_BOARD: ${{ needs.membership.outputs.has_ci_board }}
+          CELLS: ${{ needs.membership.outputs.ci_board_cells }}
+          SPLIT: ${{ needs.membership.result }}
+          BOARD_RESULT: ${{ needs.board-ci.result }}
+        run: |
+          label="$LABEL"
+          reached="$REACHED"
+          if [ "$SPLIT" != "success" ]; then
+              echo "The ledger could not be split by runner, so this run does not"
+              echo "know whether it OWED anything. Not a verdict about the code."
+              exit 0
+          fi
+          if [ "$HAS_BOARD" != "true" ]; then
+              echo "No cell on a ci-image board has a recorded PASS, so there is"
+              echo "nothing for this job to guard yet."
+              exit 0
+          fi
+          if [ -z "$label" ]; then
+              if [ "$BOARD_RESULT" = "skipped" ]; then label="DID NOT START"
+              else label="NO VERDICT: the job ended before it reported"; fi
+          fi
+          echo "live-peer regression (board, ci image): $label"
+          echo "  rows: $CELLS"
+          if [ "$reached" != "true" ]; then
+              echo ""
+              echo "The board cells did not run, so this run says NOTHING about"
+              echo "whether they still pass. It is a verdict about the lane."
           fi

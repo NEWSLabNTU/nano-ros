@@ -204,7 +204,29 @@ def test_sources(cells: list[dict]) -> dict[str, str | None]:
 # support. The question this split actually asks is whether the cell's BOARD is
 # the runner itself.
 HOST_PLATFORM = "Linux"
-RUNNERS = ("host", "board", "all")
+RUNNERS = ("host", "board", "board-zephyr", "board-ci", "all")
+
+# platform -> the CI image whose job can build and run its cells: `zephyr` is
+# `nano-ros-zephyr-ci` (the Zephyr SDK, west), `ci` is `nano-ros-ci` (the ARM
+# and RISC-V cross compilers with their libc, which the Zephyr image does not
+# carry). A `board-<image>` runner selects one image's rows, so each image's
+# job builds only what it can (issue 1758's FreeRTOS row: the Zephyr-image job
+# refused `freertos`, correctly, and the board half had no verdict).
+#
+# A platform with a `BOARD_SCOPES` entry and no image here is an ERROR at
+# selection time, for the reason that map gives: a row no job owns would run
+# nowhere and report nothing.
+BOARD_IMAGES: "dict[str, str]" = {
+    "ZephyrNativeSim": "zephyr",
+    "ZephyrQemuCortexM": "zephyr",
+    "FreertosMps2": "ci",
+    "FreertosPosix": "ci",
+    "NuttxArm": "ci",
+    "NuttxRiscv": "ci",
+    "ThreadxLinux": "ci",
+    "ThreadxRiscv64": "ci",
+    "QemuBaremetal": "ci",
+}
 
 # platform -> the `just setup <scope>` tokens that provision it, or None for a
 # platform no lane can provision today.
@@ -298,6 +320,28 @@ def known_scopes() -> set[str]:
 def runner_of(platform: str) -> str:
     """`host` if the cell runs on the runner itself, else `board`."""
     return "host" if platform == HOST_PLATFORM else "board"
+
+
+def runs_on(platform: str, runner: str) -> bool:
+    """Whether a cell on `platform` belongs to `runner`'s rows.
+
+    `board-<image>` is a board cell whose platform `BOARD_IMAGES` gives to that
+    image. A board platform with no image raises, naming it.
+    """
+    if runner == "all":
+        return True
+    if runner in ("host", "board"):
+        return runner_of(platform) == runner
+    if runner_of(platform) != "board":
+        return False
+    image = BOARD_IMAGES.get(platform)
+    if image is None:
+        raise LedgerError(
+            f"a cell on `{platform}` has a recorded PASS, and BOARD_IMAGES in "
+            f"scripts/check-interop-verdicts.py does not say which CI image's "
+            f"job builds it — so no `board-<image>` job would run it"
+        )
+    return runner == f"board-{image}"
 
 
 def scopes_for(platforms, role: str = "setup") -> list[str]:
@@ -569,11 +613,9 @@ def in_runner(cells: list[dict], ids, runner: str) -> list[str]:
     crashing the regression lane over it helps nobody.
     """
     by_id = {c["id"]: c for c in cells}
-    if runner == "all":
-        return [c for c in ids if c in by_id]
     return [
         c for c in ids
-        if c in by_id and runner_of(by_id[c]["platform"]) == runner
+        if c in by_id and runs_on(by_id[c]["platform"], runner)
     ]
 
 
@@ -1747,6 +1789,14 @@ def _self_test_runner_split(
     ]
     assert in_runner(synth, ["h", "b"], "host") == ["h"], "selftest: host filter"
     assert in_runner(synth, ["h", "b"], "board") == ["b"], "selftest: board filter"
+    # Issue 1758 — a board row belongs to exactly one image's job.
+    for plat in BOARD_SCOPES:
+        if BOARD_SCOPES[plat] is not None:
+            assert plat in BOARD_IMAGES, f"selftest: {plat} has scopes and no image"
+    assert runs_on("FreertosMps2", "board-ci"), "selftest: freertos is a ci-image row"
+    assert not runs_on("FreertosMps2", "board-zephyr"), "selftest: freertos in zephyr"
+    assert runs_on("ZephyrNativeSim", "board-zephyr"), "selftest: zephyr row"
+    assert not runs_on(HOST_PLATFORM, "board-ci"), "selftest: host is no board row"
     assert in_runner(synth, ["h", "b"], "all") == ["h", "b"], "selftest: all filter"
     assert in_runner(synth, ["h", "gone"], "all") == ["h"], (
         "selftest: an id no longer in CELLS crashed the lane instead of being "
@@ -2183,7 +2233,7 @@ def main(argv: list[str]) -> int:
             return 0
         if args.host_compile_checks:
             try:
-                extra = [] if args.runner == "board" else _host_ros2_pseudo_cells()
+                extra = [] if args.runner.startswith("board") else _host_ros2_pseudo_cells()
                 print("\n".join(host_compile_checks_for(
                     cells + extra, passing + [c["id"] for c in extra]
                 )))

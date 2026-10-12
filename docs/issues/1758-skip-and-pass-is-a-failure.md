@@ -307,3 +307,25 @@ decision: a FreeRTOS board job (or image), registered in
 lane that can provision it. Until then the board half of live-peer reports
 NO VERDICT every night. The host half failed the same night for an unrelated
 reason, a resolver contract error fixed in the same PR as this note.
+
+### The decision: one board job per CI image (2026-10-12)
+
+Taken. A board row is now built by the job whose image can build it:
+
+- `scripts/check-interop-verdicts.py` gains `BOARD_IMAGES`, which maps each
+  board platform to `zephyr` or `ci`, and two runners, `board-zephyr` and
+  `board-ci`. A board platform with scopes and no image is an error, not a
+  silent drop, and the self-test asserts that every platform with scopes has
+  an image.
+- `live-peer.yml`'s `board` job takes the `board-zephyr` rows. A new
+  `board-ci` job takes the `board-ci` rows in `nano-ros-ci:humble`, which
+  carries the ARM cross compiler and its libc. It is provisioned the way the
+  nightly's platform job is. Each job has its own `LaneSpec` and its own
+  report job (`stage-board`, `stage-board-ci`), so a red in one image's rows
+  never reads as the other's.
+- `just native test-live-peer-regression` accepts `board-zephyr` and
+  `board-ci`.
+
+Today the split is two Zephyr cells and one FreeRTOS cell
+(`freertos-mps2-pubsub-c-zenoh-n2r`, setup `freertos qemu`, build
+`freertos`, narrowed to `NROS_FIXTURE_ID=workspace-c-freertos`).
