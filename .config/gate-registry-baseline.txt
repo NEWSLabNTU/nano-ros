@@ -233,6 +233,7 @@ ps-zombie-blind
 px4-archive-header-pairing
 python
 qos-profile-ssot
+queue-notify-decision
 readiness-marker-literals
 reconfigure-on-change
 reconfigure-stale
@@ -310,6 +311,7 @@ version-lockstep
 wait-evidence-discarded
 weak-symbols
 west-leaf-vocabulary
+workflow-checkout-before-repo-path
 workflow-doctor-after-setup
 workflow-indexed-apt
 workflow-repo-env

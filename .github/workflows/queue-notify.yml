@@ -29,6 +29,9 @@ on:
 permissions:
   contents: read
   pull-requests: write
+  # issue 1843 — the ejection decision reads the completed run's JOBS, and
+  # `queue-triage` lists merge-group runs; both are the Actions API.
+  actions: read
 
 jobs:
   notify:
@@ -40,14 +43,49 @@ jobs:
           && github.event.workflow_run.conclusion == 'failure' }}
     runs-on: ubuntu-latest
     steps:
+      # issue 1843 — this job runs `scripts/ci/*.sh`, and until 2026-10-12 it
+      # had no checkout: `bash scripts/ci/queue-triage.sh 2>/dev/null` failed
+      # on a missing file, the failure was swallowed, and the verdict was
+      # `UNKNOWN` on every run, so the INFRA notice phase-396 W4 wrote was
+      # unreachable. A `workflow_run` job checks out the DEFAULT branch — the
+      # trusted tree, never the pull request's head — and needs no token in
+      # `.git/config` (gate: `check-workflow-checkout-before-repo-path`).
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
       - name: Comment on the ejected pull request
         env:
           GH_TOKEN: ${{ github.token }}
           HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
           RUN_URL: ${{ github.event.workflow_run.html_url }}
           WORKFLOW: ${{ github.event.workflow_run.name }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          NROS_QUEUE_REPO: ${{ github.repository }}
         run: |
           set -uo pipefail
+
+          # issue 1843 — did this run EJECT anything? A merge group is decided
+          # by the REQUIRED status checks alone (on `main`: the one context
+          # `CI`, gate.yml's `ci-ok`). `queue` carries none, so its red L3
+          # (issue 1841) posted "Ejected ... do not re-queue" on #2045 and
+          # #2047, which then merged. A run with no failed required context is
+          # not an ejection; the run that carries one fires this notifier on
+          # its own completion, so skipping here loses nothing.
+          decision="$(bash scripts/ci/queue-ejected.sh "$RUN_ID" "$RUN_ATTEMPT")" \
+            || decision="UNVERIFIED queue-ejected.sh exited non-zero"
+          echo "ejection decision: $decision"
+          case "$decision" in
+            EJECTED*) ;;
+            NOT_EJECTED*)
+              echo "::notice::\`$WORKFLOW\` failed on a merge group, but no REQUIRED check failed (${decision#*[[:space:]]}) — not an ejection, nothing posted"
+              exit 0 ;;
+            *)
+              # A missed ejection is worse than a false notice: the author
+              # would wait on a pull request that never merges.
+              echo "::warning::could not decide whether this run ejected anything (${decision#*[[:space:]]}) — posting the notice anyway" ;;
+          esac
 
           # `gh-readonly-queue/main/pr-19-<sha>` — the queue puts the PR number
           # in the ref, which is the only place it appears.
@@ -72,7 +110,9 @@ jobs:
           # and re-queuing burns a batch slot against a check that cannot go
           # green for anyone.
           verdict=UNKNOWN
-          if triage="$(bash scripts/ci/queue-triage.sh 2>/dev/null)"; then
+          # Scoped to the workflow that ejected (issue 1843): `queue`'s L3, red
+          # for everyone, would otherwise label every `gate` ejection INFRA.
+          if triage="$(NROS_TRIAGE_WORKFLOW="$WORKFLOW" bash scripts/ci/queue-triage.sh)"; then
             case "$triage" in
               *"NOT YOUR PULL REQUEST"*)    verdict=INFRA ;;
               *"LIKELY YOUR PULL REQUEST"*) verdict=MINE ;;

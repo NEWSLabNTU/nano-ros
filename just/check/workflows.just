@@ -709,6 +709,25 @@ lane-stage-reporting:
 workflow-repo-env:
     @python3 scripts/check-workflow-repo-env.py
 
+# issue 1843 — a step that reaches the repository (`scripts/…`, `just`,
+# `./activate.sh`, `uses: ./…`) must run after a checkout. A job starts in an
+# EMPTY workspace; `queue-notify.yml` had no checkout and ran its triage script
+# inside `if "$(… 2>/dev/null)"`, so the missing file read as a verdict of
+# UNKNOWN on every run and nothing ever failed. Same command/prose split as
+# `workflow-repo-env` (`scripts/lib/workflow_commands.py`).
+[private]
+workflow-checkout-before-repo-path:
+    @python3 scripts/check-workflow-checkout-before-repo-path.py
+
+# issue 1843 — `queue-notify`'s two decisions, as pure classifiers: did this
+# failed merge-group run carry a failed REQUIRED context (an ejection), and is
+# the failing check red across pull requests (INFRA). The first posted
+# "Ejected" for every non-required `queue` red; the second had no gate at all.
+[private]
+queue-notify-decision:
+    @bash scripts/ci/queue-ejected.sh --selftest
+    @bash scripts/ci/queue-triage.sh --selftest
+
 # nano-ros is PUBLIC and the self-hosted runners share machines with unrelated
 # research work. A self-hosted job reachable from a fork's `pull_request` runs
 # contributor code on that hardware. The property held by care alone until
