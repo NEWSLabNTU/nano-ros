@@ -31,8 +31,12 @@ mirror it maintains as a `mirror-generated-header.sh <leaf> <build> <gen>
 the same script `--resolve` which source that command copies. No path is
 spelled here, and the source rule exists once.
 
-Not covered, and said so: a Makefile-generator build dir (its commands live in
-`CMakeFiles/*/build.make`) is counted and reported, not compared.
+A Makefile-generator build dir states the SAME command as a recipe line in
+`CMakeFiles/<target>.dir/build.make` (one per target, nested subproject dirs
+included) — issue 1832: CI's lanes configure with Unix Makefiles, and while
+this gate read `build.ninja` only, it compared 0 pairs in every CI run
+("15 Makefile-generator build dir(s) not compared"). One derivation per
+generator (`mirror_commands`) feeds the one comparison below.
 
 A pair whose SHARED source is gone (a deleted cargo store) resolves to the
 leaf fallback. When that leaf copy is OLDER than the mirror, it cannot be what
@@ -86,13 +90,41 @@ def build_dirs(root: Path):
                 yield Path(dirpath), "make"
 
 
-def mirror_commands(build_ninja: Path):
-    """The (leaf, build, gen, name, dest) of every mirror command in it."""
+def _read(path: Path) -> str:
     try:
-        text = build_ninja.read_text(encoding="utf-8", errors="replace")
+        return path.read_text(encoding="utf-8", errors="replace")
     except OSError:
-        return []
-    return sorted(set(CMD.findall(text)))
+        return ""
+
+
+def _build_make_files(build_dir: Path):
+    """Every `CMakeFiles/<target>.dir/build.make` of a Makefile build dir,
+    including nested subproject dirs (`nano_ros/packages/api/nros-c/...`).
+    A nested dir holding its OWN `CMakeCache.txt` is a separate build dir the
+    outer walk yields itself, so it is not entered here."""
+    # walk-ok: untracked build output under ONE build dir, pruned like the
+    # outer walk (cargo/target/generated never hold a CMake target dir).
+    for dirpath, dirnames, filenames in os.walk(build_dir):
+        here = Path(dirpath)
+        dirnames[:] = [
+            d for d in dirnames
+            if d not in SKIP_DIRS - {"CMakeFiles"} and not d.startswith("target")
+            and not (here / d / "CMakeCache.txt").is_file()]
+        if "build.make" in filenames and here.parent.name == "CMakeFiles":
+            yield here / "build.make"
+
+
+def mirror_commands(build_dir: Path, generator: str):
+    """The (leaf, build, gen, name, dest) of every mirror command the build
+    dir states — from `build.ninja` (ninja) or every target's `build.make`
+    (make). Both spell the command line identically, so one regex serves."""
+    if generator == "ninja":
+        texts = [_read(build_dir / "build.ninja")]
+    elif generator == "make":
+        texts = [_read(f) for f in _build_make_files(build_dir)]
+    else:
+        raise ValueError(f"unknown generator {generator!r}")
+    return sorted({c for t in texts for c in CMD.findall(t)})
 
 
 def resolve(leaf: str, build: str, gen: str, name: str) -> str | None:
@@ -109,16 +141,16 @@ def same(a: str, b: str) -> bool:
 
 
 def scan(root: Path, fix: bool = False):
-    """Returns (dirs, make_dirs, compared, drift[(dest, src)], fixed, gone)."""
+    """Returns (dirs, make_dirs, compared, drift[(dest, src)], fixed, gone).
+    `dirs` counts every build dir scanned; `make_dirs` the Makefile ones."""
     dirs = make_dirs = compared = fixed = gone = 0
     drift = []
     seen = set()
     for d, gen in build_dirs(root):
+        dirs += 1
         if gen == "make":
             make_dirs += 1
-            continue
-        dirs += 1
-        for leaf, build, gsub, name, dest in mirror_commands(d / "build.ninja"):
+        for leaf, build, gsub, name, dest in mirror_commands(d, gen):
             if dest in seen or not Path(dest).is_file():
                 continue  # not built yet: nothing to be stale
             seen.add(dest)
@@ -204,6 +236,57 @@ def self_test() -> None:
         dest.unlink()
         assert scan(root)[2] == 0, "an unbuilt mirror is not compared"
 
+    # issue 1832 — a Makefile-generator build dir (what CI's lanes configure):
+    # the command sits in a NESTED subproject's `CMakeFiles/<t>.dir/build.make`
+    # as a tab-indented recipe line, and must be compared, not just counted.
+    with tempfile.TemporaryDirectory() as t:
+        root = Path(t)
+        b = root / "build" / "cmake-fixtures" / "cpp_leaf"
+        crate = b / "nano_ros" / "packages" / "api" / "nros-cpp"
+        tdir = crate / "CMakeFiles" / "nros_cpp_config_header.dir"
+        shared = b / "cargo" / "ws_1" / "nros-cpp-generated" / "nros"
+        for p in (crate / "include" / "nros", tdir, shared):
+            p.mkdir(parents=True)
+        (b / "CMakeCache.txt").write_text("CMAKE_GENERATOR:INTERNAL=Unix Makefiles\n")
+        (b / "Makefile").write_text("all:\n")
+        name = "nros_cpp_config_generated.h"
+        (crate / name).write_text("#define Y_SIZE 1\n")
+        (shared / name).write_text("#define Y_SIZE 2\n")
+        dest = crate / "include" / "nros" / name
+        (tdir / "build.make").write_text(
+            f"{dest}: {crate}/libnros_cpp.a\n"
+            f"\tcd {crate} && bash {MIRROR} {crate / name} {b} "
+            f"nros-cpp-generated {name} {dest}\n")
+
+        empty = scan(root)
+        assert empty[:2] == (1, 1) and empty[2] == 0, \
+            f"an UNBUILT mirror in a Makefile dir compares nothing, got {empty}"
+
+        dest.write_text("#define Y_SIZE 2\n")
+        dirs, make_dirs, compared, drift, _, _ = scan(root)
+        assert (dirs, make_dirs, compared, drift) == (1, 1, 1, []), \
+            f"a Makefile dir's current mirror is COMPARED, got {(dirs, make_dirs, compared, drift)}"
+
+        dest.write_text("#define Y_SIZE 1\n")
+        _, _, compared, drift, _, _ = scan(root)
+        assert compared == 1 and [d for d, _ in drift] == [str(dest)], \
+            "a drifted mirror in a Makefile dir fails"
+
+        _, _, _, _, fixed, _ = scan(root, fix=True)
+        assert fixed == 1 and dest.read_text() == "#define Y_SIZE 2\n", \
+            "--fix re-mirrors through the Makefile dir's own command"
+
+        # build.make outside a `CMakeFiles/<t>.dir/` is not a target's rules,
+        # and a nested dir with its own CMakeCache.txt is its OWN build dir.
+        (crate / "build.make").write_text((tdir / "build.make").read_text())
+        nested = b / "sub"
+        (nested / "CMakeFiles" / "x.dir").mkdir(parents=True)
+        (nested / "CMakeCache.txt").write_text("")
+        (nested / "Makefile").write_text("")
+        assert len(mirror_commands(b, "make")) == 1, "only target build.make files count"
+        assert [d for d, _ in build_dirs(root)] == [b, nested], \
+            "a nested CMake build dir is its own build dir"
+
 
 def main(argv: list[str]) -> int:
     fix = "--fix" in argv
@@ -224,12 +307,12 @@ against the wrong storage sizes (silent `_opaque` overflow at runtime).
 Fix: `python3 scripts/check-sizes-header-mirrors.py --fix` re-runs each drifted
 mirror command (what the build does). Then find the missing edge:
   ninja -C <build-dir> -t query <...>/include/nros/nros_config_generated.h
+(Makefile dir: the rule for that path in CMakeFiles/<target>.dir/build.make)
 — issues 0268, 1783.""")
         return 1
     if fix and fixed:
         print(f"re-mirrored {fixed} stale pair(s) through mirror-generated-header.sh")
-    note = (f"; {make_dirs} Makefile-generator build dir(s) not compared"
-            if make_dirs else "")
+    note = (f" ({make_dirs} of them Makefile-generator)" if make_dirs else "")
     if gone:
         note += (f"; {gone} mirror(s) whose shared source is gone (older leaf "
                  "copy only) not compared")

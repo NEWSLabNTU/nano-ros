@@ -42,3 +42,19 @@ For each gate, either:
 
 Then delete the gate's row from `.config/ci-check-fast-skips.txt`; the
 allowlist script fails the job until it is gone.
+
+## Progress
+
+- **`sizes-header-mirrors` — gate side fixed.** It now derives the
+  `(mirror, source)` pairs from a Makefile build dir too: the same
+  `mirror-generated-header.sh` command line, read from every
+  `CMakeFiles/<target>.dir/build.make` (nested subproject dirs included), fed
+  to the one comparison. Self-test has a synthetic Makefile dir (current pair
+  compared, drifted pair fails, `--fix` re-mirrors, mutation of the make
+  derivation fails it). Measured on real `build/cmake-fixtures/*` dirs (the
+  layout the CI log's 15 dirs are): a 16-dir host tree compared 29 pairs, 0
+  drift; a hand-drifted `nros_cpp_config_generated.h` failed the gate. Its
+  `ci-check-fast-skips.txt` row stays: `check fast` is still buildless. What
+  is left is confirming the fixture-building lane's log now reads `OK — N
+  pair(s)` rather than NOT VERIFIED.
+- `artifact-identity-budget` — unchanged, still open.

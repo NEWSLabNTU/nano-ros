@@ -7,4 +7,4 @@
 ivc-fsp	the NVIDIA Orin SPE FSP tree is proprietary and cannot be provisioned on a hosted runner (phase-418 418.4)
 zephyr-workspace-foreign-checkout	inspects a developer host's provisioned Zephyr workspaces for one owned by another checkout; a fresh CI checkout has none by construction (issue 1387)
 artifact-identity-budget	reads a built workspace fixture tree; check-fast is buildless by contract, and no CI lane verifies it yet (issue 1832)
-sizes-header-mirrors	reads built nros-c/nros-cpp header mirrors; check-fast is buildless by contract, and no CI lane verifies it yet (issue 1832)
+sizes-header-mirrors	reads built nros-c/nros-cpp header mirrors; check-fast is buildless by contract. Lanes that build fixtures configure with Unix Makefiles, which the gate compares since issue 1832 (it read build.ninja only before)
