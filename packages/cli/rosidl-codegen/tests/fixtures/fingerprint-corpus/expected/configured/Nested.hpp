@@ -41,8 +41,8 @@ namespace fingerprint_corpus { namespace msg {
 
 /// Nested message structure (repr(C) compatible)
 struct Nested {
-    fingerprint-corpus::msg::Shapes one = {};
-    rclcpp::FixedSequence<fingerprint-corpus::msg::Shapes, 64> many = {};
+    fingerprint_corpus::msg::Shapes one = {};
+    rclcpp::FixedSequence<fingerprint_corpus::msg::Shapes, 64> many = {};
 
     // Type metadata
     static constexpr const char* TYPE_NAME = "fingerprint-corpus::msg::dds_::Nested_";

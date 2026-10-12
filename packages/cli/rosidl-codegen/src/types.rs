@@ -1452,7 +1452,12 @@ pub fn cpp_type_for_field(field_type: &FieldType, current_package: Option<&str>)
             // namespace context (pkg::msg for messages, pkg::srv for services).
             let pkg = package.as_deref().or(current_package);
             if let Some(pkg) = pkg {
-                format!("{}::msg::{}", pkg, name)
+                // The C++ namespace is the package's C identifier spelling: a
+                // hyphenated package (`fingerprint-corpus`) is `fingerprint_corpus`,
+                // as the `namespace` the pack opens already is. Measured by the
+                // retargeted `repr-memory-agreement` (phase-492 W7), which is the
+                // first thing that ever compiled a nested field of such a package.
+                format!("{}::msg::{}", to_c_package_name(pkg), name)
             } else {
                 name.clone()
             }

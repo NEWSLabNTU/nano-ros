@@ -259,6 +259,26 @@ sees zero allocations across publish and take.
   - `interop_e2e` cyclone cells against ROS 2 Humble `rmw_cyclonedds_cpp`
     (C talker to ROS 2, ROS 2 to C listener, C service server): 3/3.
   - `parameters_roundtrip` 2/2, `c_rosidl_refusals` 4/4.
+- `repr-memory-agreement` is retargeted. It used to compile the C pack's
+  header as a stand-in for the C++ header. After W7 the C pack is rosidl's
+  shape, its memory partner is `rosidl_generator_c`, and C and C++ nodes
+  exchange CDR rather than memory. The gate now pairs the memory that IS
+  shared: the C++ pack's `.hpp` structs against their Rust `repr(C)` glue.
+  - Both sides are compiled for armv7a (`arm-none-eabi-g++` with the nros-cpp
+    include set, against a two-macro stand-in for the config header), then the
+    symbol sizes are compared: size, alignment, every field offset, and every
+    container member offset.
+  - Pairs come from a name map derived from the corpus. Every other Rust struct
+    must be a container a pair embeds, or a srv/action `_t_view`, for which the
+    C++ pack emits no type.
+  - Result: 28 pairs, 274 probes, 3 storage arms. The self-test also checks the
+    pairing rule. A mutation (HeapString `size`/`capacity` swapped) is reported
+    at both affected fields.
+  - The first standalone compile of the C++ pack's headers found two
+    pre-existing C++ pack defects, both now fixed:
+    - a nested message of a hyphenated package was spelled `pkg-name::msg::T`;
+    - service and action headers did not include `heap_sequence.hpp` /
+      `heap_string.hpp`.
 - Codegen version 14 (MIN 14). `.config/codegen-version-surface.txt` was
   re-baselined. Ledger: the two typed rows were deleted. `c:publish` is
   `adopt-bounded`, its envelope being that `allocation` must be NULL.

@@ -705,7 +705,7 @@ repr-memory-agreement:
     set -euo pipefail
     python3 scripts/check-repr-memory-agreement.py --self-test
     _missing=""
-    for _t in arm-none-eabi-gcc arm-none-eabi-nm rustc; do
+    for _t in arm-none-eabi-g++ arm-none-eabi-nm rustc; do
         command -v "$_t" >/dev/null 2>&1 || _missing="$_missing $_t"
     done
     if [ -z "$_missing" ] && [ ! -d "$(rustc --print target-libdir --target armv7a-none-eabi)" ]; then

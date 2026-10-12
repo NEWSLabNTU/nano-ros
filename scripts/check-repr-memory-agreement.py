@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""phase-432 W1.2 — the two packs that describe ONE memory agree about it.
+"""phase-432 W1.2 — the two artifacts that describe ONE memory agree about it.
 
 WHAT THIS GATES, AND WHAT IT DELIBERATELY DOES NOT
 --------------------------------------------------
@@ -8,49 +8,58 @@ of the target without adding a MEASUREMENT of it is strictly worse than either,
 so this is the measurement.
 
 The pair is chosen by asking which two artifacts a single byte range is read
-through, not by which two look similar:
+through, not by which two look similar. Both come out of the C++ pack:
 
-  * `packs/c/message.h.jinja`         -> `typedef struct pkg_msg_name {...}`
-  * `packs/cpp/message_types.rs.jinja`-> `#[repr(C)] pub struct pkg_msg_name_t`
+  * `packs/cpp/message.hpp.jinja`      -> `struct pkg::msg::Name {...}`
+  * `packs/cpp/message_types.rs.jinja` -> `#[repr(C)] pub struct pkg_msg_name_t`
 
-The C++ pack's Rust glue receives a `*const c_void` that points at a C/C++
-object and reinterprets it as its `repr(C)` struct. Rust `repr(C)` and the C
-compiler follow the SAME ABI, so the two agree BY CONSTRUCTION unless the two
-pack filters (`c_type` + `c_array_suffix` vs `cpp_repr_c_type`) SPELL the same
-lowered field differently. That spelling is the whole hazard, and it is what
-this measures.
+The generated C++ code hands a `const void*` to ITS C++ object to the Rust FFI
+glue, which reinterprets it as the `repr(C)` struct. The C++ compiler and Rust
+`repr(C)` follow the SAME ABI, so the two agree BY CONSTRUCTION unless the two
+pack templates SPELL the same lowered field differently (`rclcpp::FixedString`
+/ `FixedSequence` / `HeapSequence` / `Span` against `cpp_repr_c_type`). That
+spelling is the whole hazard, and it is what this measures.
 
 NOT gated, on purpose:
 
+  * The C pack (`packs/c`). Until phase-492 W7 its header described the same
+    memory as the C++ header (both inline `char[N]`), so this gate compiled the
+    C header as a stand-in for the C++ one. Since W7 the C pack takes rosidl's
+    member shape (`rosidl_runtime_c__String`, `__Sequence`: pointer + size +
+    capacity over caller-owned bytes), so its memory partner is upstream ROS
+    `rosidl_generator_c`, NOT this repo's C++ pack. C and C++ nodes exchange
+    CDR, never memory, so the two are SUPPOSED to differ.
   * The IDIOMATIC Rust pack (`packs/nros/*.jinja`, what `nros generate rust`
-    emits) carries no `repr(C)` anywhere. It shares CDR with the C header --
-    a wire format, target-independent by specification -- and NOT memory.
-    Gating that pair would assert a property nobody needs.
+    emits) carries no `repr(C)` anywhere. It shares CDR with the headers -- a
+    wire format, target-independent by specification -- and NOT memory.
   * The `packs/rmw/*.jinja` pack also emits `repr(C)`, but its memory partner
-    is upstream ROS `rosidl_generator_c` (`crate::rosidl_runtime_rs::String` is
-    the `{char*, size, cap}` trio rclcpp's C generator emits), NOT this repo's C
-    pack. Our C header spells an unbounded string `char[256]`. Those two are
-    SUPPOSED to differ; pairing them would be the same mistake one pack over.
+    is likewise upstream ROS `rosidl_generator_c`
+    (`crate::rosidl_runtime_rs::String` is the `{char*, size, cap}` trio),
+    NOT this repo's C++ pack.
 
 HOW IT MEASURES
 ---------------
 Neither side is asked to describe the other. Each side is asked, in its own
 language, for numbers:
 
-    C     char probe__X__size[sizeof(X) + 1];
-          char probe__X__f__a[offsetof(X, a) + 1];
+    C++   extern "C" char probe__X__size[sizeof(T) + 1];
+          extern "C" char probe__X__f__a[__builtin_offsetof(T, a) + 1];
     Rust  #[no_mangle] static probe__X__size: [u8; size_of::<X>() + 1]
           #[no_mangle] static probe__X__f__a: [u8; offset_of!(X, a) + 1]
 
 Both are cross-compiled for the SAME non-host target (32-bit `armv7a-none-eabi`
-/ `arm-none-eabi-gcc -march=armv7-a`) to object files -- no linking, no
+/ `arm-none-eabi-g++ -march=armv7-a`) to object files -- no linking, no
 execution -- and the symbol SIZES are compared with `nm --print-size`. The `+ 1`
 exists only so a zero offset still produces a sized symbol.
 
 A 32-bit target is the point, not a convenience: `size_t` and pointers are 4
 bytes there and 8 on the host, so the RFC-0033 `heap` containers
-(`{T* data; size_t size; size_t capacity;}` vs `{*mut T, usize, usize}`) are
-measured where the answer actually depends on the target.
+(`HeapSequence<T>` / `HeapString` vs `{*mut T, usize, usize}`) are measured
+where the answer actually depends on the target.
+
+The generated headers include the per-build config header for the
+codegen-version anchor (RFC-0090) and nothing else from it; the probe supplies
+a two-macro stand-in, so the C++ side needs no runtime build.
 
 WHAT A MISMATCH LOOKS LIKE
 --------------------------
@@ -58,12 +67,16 @@ Three properties per struct pair, so a fault has somewhere to land:
 
   * total size + alignment   -- a width or capacity that differs
   * every top-level offset   -- a reordering, or an earlier field's size
-  * every sub-field offset of an anonymous C container (`{size, data}` vs
-    `{data, size, capacity}`) -- the sequence-container shape, which a
-    top-level offset cannot see because the container is ONE field
+  * every sub-field offset of a container field (`FixedSequence {size, data}`,
+    `HeapSequence {data, size, capacity}`, `Span {ptr, len}`) -- the container
+    shape, which a top-level offset cannot see because the container is ONE
+    field. The sub-field NAMES come from the Rust glue's container struct, so a
+    C++ container whose member is spelled differently is a compile error
+    naming it.
 
-Field NAMES are compared first: a pack that renames a field is a mismatch this
-reports directly rather than as a number.
+Field NAMES are compared through the compiler: every offset probe on the C++
+side names the Rust field, so a pack that renames a field fails to compile
+with the name in the diagnostic rather than reporting a number.
 
 CORPUS
 ------
@@ -79,8 +92,9 @@ answer for sources that are no longer in the tree. `nros_cli_usable` in the
 recipe is what makes that a SKIP rather than a wrong verdict.
 
 `--self-test` is the negative control: it re-runs the comparator over a
-deliberately perturbed reading and requires it to report. A gate that can only
-say OK is not evidence.
+deliberately perturbed reading and requires it to report, and pairs a Rust
+struct name with its C++ type through the same mapping the gate uses. A gate
+that can only say OK is not evidence.
 """
 
 from __future__ import annotations
@@ -95,113 +109,31 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
-import sys as _w3_sys  # noqa: E402
-from pathlib import Path as _W3Path  # noqa: E402
-_w3_sys.path.insert(0, str(_W3Path(__file__).resolve().parent / "lib"))
-import comments  # noqa: E402  phase-472 W3 — the one comment stripper
 
 REPO = Path(__file__).resolve().parents[1]
 CORPUS = REPO / "packages/cli/rosidl-codegen/tests/fixtures/fingerprint-corpus"
-# The one hand-written C header the generated ones reach for. `borrowed` fields
-# are declared with its types, so the agreement spans a generated Rust struct
-# and an AUTHORED C one -- exactly the pairing issue 0346 created.
-VIEW_H = REPO / "packages/api/nros-c/include/nros/view.h"
+CPP_INCLUDES = [
+    REPO / "packages/api/nros-cpp/include",
+    REPO / "packages/api/nros-c/include",
+    REPO / "packages/platform/nros-platform-api/include",
+]
 
 # One target, named in one place. 32-bit so pointer/size_t width is exercised.
 RUST_TARGET = "armv7a-none-eabi"
-CC_FLAGS = ["-march=armv7-a", "-ffreestanding", "-fno-common", "-std=gnu11"]
+CXX_FLAGS = ["-march=armv7-a", "-std=c++17", "-fno-exceptions", "-fno-rtti", "-fno-common"]
 
 PROBE = "nros_repr_probe"
 
-# C-pack structs with NO counterpart in the C++ pack's Rust glue, and why.
-#
-# A two-way ratchet: an unlisted orphan is a failure, and a listed one that
-# GAINS a counterpart is also a failure, so the map can only shrink. Both
-# halves have already earned their keep -- the first run put
-# `fingerprint_corpus_action_probe_goal_View` here, the capacity-key fix in
-# `generate_cpp_action_package` then gave it a counterpart, and the second half
-# of the ratchet is what said so instead of leaving a permanent excuse behind.
-C_ONLY_EXPECTED: dict[str, str] = {
-    "fingerprint_corpus_srv_probe_service_handler_t": (
-        "C-only convenience wrapper around the typed service trampoline: a "
-        "callback + context + caller-owned request/response storage + an error "
-        "tally. It carries no wire payload of its own -- the two payload "
-        "structs it embeds ARE paired and compared -- and the Rust side reaches "
-        "the same trampoline through its own typed service API rather than a "
-        "mirrored struct, so there is nothing for it to agree with."
-    ),
-    "fingerprint_corpus_srv_probe_client_handler_t": (
-        "Same shape on the client side, and C-only for the same reason."
-    ),
-}
-
-# C spellings that are types rather than struct references. Anything else that
-# looks like an identifier in a field declaration must resolve to a struct this
-# script extracted, or the script says so instead of guessing.
-C_BUILTIN = {
-    "bool",
-    "char",
-    "double",
-    "float",
-    "int",
-    "long",
-    "short",
-    "signed",
-    "unsigned",
-    "void",
-    "size_t",
-    "ptrdiff_t",
-    "int8_t",
-    "int16_t",
-    "int32_t",
-    "int64_t",
-    "uint8_t",
-    "uint16_t",
-    "uint32_t",
-    "uint64_t",
-    "struct",
-    "const",
-}
+# The per-build config header the generated `.hpp` files include for the
+# codegen-version anchor (RFC-0090). A probe compiles no runtime, so it supplies
+# exactly the two macros that anchor reads -- for whatever version the BUILT
+# `nros` stamped, read back from the generated output.
+CONFIG_STUB = "#define NROS_CODEGEN_VERSION {v}\n#define NROS_CODEGEN_VERSION_MIN {v}\n"
 
 
 # --------------------------------------------------------------------------
 # extraction
 # --------------------------------------------------------------------------
-
-
-def strip_c_comments(text: str) -> str:
-    """Remove `/*...*/` and `//`/`///` comments, keeping line structure.
-
-    Not cosmetic. Every downstream reader of a struct body treats it as C
-    DECLARATIONS: `_split_members` splits on depth-0 `;`, `_member_name` takes
-    the last token, and `unresolved_c_types` reads every identifier as a type
-    reference. A doc comment defeats all three at once -- the generated typed
-    service handler carries `/// Last NROS_SERVICE_TYPED_* code; ...`, whose
-    `;` FORGES a member named `code` and whose prose ("Your", "Installed",
-    "verbatim") reads as unresolvable type names. Comments cannot change
-    layout, so removing them before extraction loses nothing the probe
-    measures.
-
-    String and char literals are preserved, because a `//` inside one is not a
-    comment; generated C has none in a struct body today, and a stripper that
-    is wrong about that would be a silent corruption rather than a loud one.
-    """
-    # phase-472 W3 — the shared stripper (scripts/lib/comments.py).
-    return comments.strip_comments(text, "c")
-
-
-def extract_c_fnptr_typedefs(text: str) -> dict[str, str]:
-    """`typedef R (*NAME)(args);` declarations, by NAME, kept VERBATIM.
-
-    The typed service/client handlers embed one as a field, so the probe TU
-    cannot compile without it. Re-emitted rather than replaced by `void*`:
-    a function pointer is not required to be the size of a data pointer, and
-    the point of this gate is to measure what the pack actually declares.
-    """
-    out: dict[str, str] = {}
-    for m in re.finditer(r"\btypedef\b[^;{}]*?\(\s*\*\s*(\w+)\s*\)\s*\([^;{}]*\)\s*;", text):
-        out[m.group(1)] = m.group(0)
-    return out
 
 
 def _balanced_body(text: str, open_at: int) -> tuple[str, int]:
@@ -217,108 +149,70 @@ def _balanced_body(text: str, open_at: int) -> tuple[str, int]:
     raise SystemExit(f"{PROBE}: unbalanced braces at offset {open_at}")
 
 
-def _split_members(body: str) -> list[str]:
-    """Depth-0 `;`-separated declarations of a struct body."""
-    out, depth, cur = [], 0, []
-    for ch in body:
-        if ch == "{":
-            depth += 1
-        elif ch == "}":
-            depth -= 1
-        if ch == ";" and depth == 0:
-            decl = "".join(cur).strip()
-            if decl:
-                out.append(decl)
-            cur = []
-        else:
-            cur.append(ch)
-    return out
-
-
-def _member_name(decl: str) -> str:
-    """The declarator name of one C member declaration (no trailing `;`)."""
-    # Drop array suffixes and pointer-to-array parens so the name is the last
-    # token: `char data[64][256]` -> `char data`; `char (*data)[8]` -> handled
-    # by the paren arm below.
-    m = re.search(r"\(\s*\*\s*([A-Za-z_]\w*)\s*\)", decl)
-    if m:
-        return m.group(1)
-    stripped = re.sub(r"\[[^\]]*\]", "", decl).strip()
-    stripped = re.sub(r"\*", " ", stripped)
-    toks = stripped.split()
-    if not toks:
-        raise SystemExit(f"{PROBE}: cannot name declarator in `{decl}`")
-    return toks[-1]
-
-
-def _struct_info(body: str) -> dict:
-    fields, subs = [], {}
-    for decl in _split_members(body):
-        name = _member_name(decl)
-        fields.append(name)
-        if re.match(r"^struct\s*\{", decl):
-            inner, _ = _balanced_body(decl, decl.index("{"))
-            subs[name] = [_member_name(d) for d in _split_members(inner)]
-    return {"body": body, "fields": fields, "subs": subs}
-
-
-def extract_c_macro_structs(text: str) -> dict[str, dict]:
-    """`view.h`'s LE views, which a macro defines once and instantiates nine times.
-
-    They are still AUTHORED C, so they are extracted rather than re-spelled: the
-    macro's own `typedef struct {...}` body is read, its `CT` parameter is bound
-    from the invocation lines at the bottom of the header, and the result is a
-    normal struct entry. A `view`-mode numeric sequence field lands on one of
-    these, so without them the `configured` arm cannot be probed at all.
-    """
-    ctypes = {
-        m.group(1): m.group(2).strip()
-        for m in re.finditer(r"NROS__LE_VIEW_(?:INT|FLT)\(\s*(\w+)\s*,\s*([^,]+),", text)
-    }
-    m = re.search(r"#define\s+NROS__LE_VIEW_COMMON\(\s*SUFFIX\s*,\s*CT\s*\)", text)
-    if not m or not ctypes:
-        return {}
-    tail = text[m.end() :]
-    end = re.search(r"(?<!\\)\n\s*\n", tail)
-    macro = re.sub(r"\\\n", "\n", tail[: end.start() if end else len(tail)])
-    tm = re.search(r"typedef\s+struct\s*\{", macro)
-    if not tm:
-        return {}
-    body, after = _balanced_body(macro, tm.end() - 1)
-    if not re.match(r"\s*rclc_le_slice_view_##SUFFIX##_t\s*;", macro[after:]):
-        return {}
-    out = {}
-    for sfx, elem in ctypes.items():
-        out[f"rclc_le_slice_view_{sfx}_t"] = _struct_info(re.sub(r"\bCT\b", elem, body))
-    return out
-
-
-def extract_c_structs(text: str) -> dict[str, dict]:
-    """`typedef struct <tag>? { ... } NAME;` blocks, by NAME.
-
-    Records the raw body (re-emitted verbatim into the probe TU, so the probe
-    measures the pack's own bytes and not a re-spelling of them), the top-level
-    field names in order, and -- for a field declared as an ANONYMOUS struct --
-    that container's own member names.
-    """
-    out: dict[str, dict] = {}
-    for m in re.finditer(r"\btypedef\s+struct\b[^{;]*\{", text):
-        body, after = _balanced_body(text, m.end() - 1)
-        tail = text[after:]
-        nm = re.match(r"\s*([A-Za-z_]\w*)\s*;", tail)
-        if not nm:
-            continue  # `typedef struct {...} *P;` and friends: not our shape
-        out[nm.group(1)] = _struct_info(body)
-    return out
-
-
 def extract_rust_structs(text: str) -> dict[str, dict]:
-    """`#[repr(C)] pub struct NAME { pub f: T, ... }` blocks, by NAME."""
+    """`#[repr(C)] pub struct NAME { pub f: T, ... }` blocks, by NAME.
+
+    `types` records each field's Rust type spelling, so a field whose type is
+    another extracted struct (a container) can be probed member by member.
+    """
     out: dict[str, dict] = {}
     for m in re.finditer(r"#\[repr\(C\)\]\s*(?:#\[[^\]]*\]\s*)*pub struct\s+(\w+)\s*\{", text):
         body, _ = _balanced_body(text, m.end() - 1)
-        fields = re.findall(r"\bpub\s+(\w+)\s*:", body)
-        out[m.group(1)] = {"decl": text[m.start() : m.end()] + body + "}", "fields": fields}
+        pairs = re.findall(r"^\s*pub\s+(\w+)\s*:\s*(.+?),?\s*$", body, re.M)
+        out[m.group(1)] = {
+            "decl": text[m.start() : m.end()] + body + "}",
+            "fields": [f for f, _ in pairs],
+            "types": {f: t.strip() for f, t in pairs},
+        }
+    return out
+
+
+def rust_snake(name: str) -> str:
+    """The C++ pack's file/struct stem rule (`rosidl_codegen::utils::to_snake_case`)."""
+    out, prev_lower = [], False
+    for i, ch in enumerate(name):
+        if ch.isupper():
+            if i > 0 and prev_lower:
+                out.append("_")
+            out.append(ch.lower())
+            prev_lower = False
+        else:
+            out.append(ch)
+            prev_lower = ch.islower()
+    return "".join(out)
+
+
+PARTS = {"srv": ("Request", "Response"), "action": ("Goal", "Result", "Feedback")}
+
+
+def cpp_type_map(pkg: str, interfaces: list[str]) -> dict[str, str | None]:
+    """Rust glue struct name -> the C++ type it mirrors.
+
+    `pkg_msg_name_t` -> `pkg::msg::Name`, `pkg_msg_name_t_view` -> `NameView`;
+    a service/action PART is a nested struct: `pkg_srv_name_request_t` ->
+    `pkg::srv::Name::Request`. Derived from the interface FILES, so a struct
+    that maps to nothing is a struct this gate cannot pair -- reported, never
+    skipped.
+
+    A service/action part's `_view` maps to None: the C++ pack emits no view
+    type for a service or action part (only a message has `NameView`), so the
+    Rust glue's `_t_view` there mirrors nothing C++ holds and no memory is
+    shared. Known by RULE rather than listed, and never compared.
+    """
+    c_pkg = pkg.replace("-", "_")
+    out: dict[str, str] = {}
+    for f in interfaces:
+        path = Path(f)
+        kind, name = path.suffix[1:], path.stem
+        stem = f"{c_pkg}_{kind}_{rust_snake(name)}"
+        if kind == "msg":
+            out[f"{stem}_t"] = f"{c_pkg}::msg::{name}"
+            out[f"{stem}_t_view"] = f"{c_pkg}::msg::{name}View"
+        else:
+            for part in PARTS[kind]:
+                key = f"{stem}_{part.lower()}_t"
+                out[key] = f"{c_pkg}::{kind}::{name}::{part}"
+                out[f"{key}_view"] = None
     return out
 
 
@@ -355,39 +249,36 @@ HEAP_STRINGS_TOML = """[fields]
 ARM_MUST_REACH = {"heap-strings": "nros_cpp_heap_str_t"}
 
 
-def generate(nros: str, work: Path, arm: str, configured) -> tuple[Path, Path]:
-    """Emit the C and C++ packs for one storage arm from the SAME corpus."""
-    outs = {}
-    for lang in ("c", "cpp"):
-        out = work / f"{arm}-{lang}"
-        out.mkdir(parents=True, exist_ok=True)
-        args = {
-            "package_name": "fingerprint-corpus",
-            "output_dir": str(out),
-            "interface_files": interface_files(),
-            "dependencies": [],
-            "ros_edition": "humble",
-        }
-        if isinstance(configured, str):
-            cfg = work / f"{arm}-nros-codegen.toml"
-            cfg.write_text(configured)
-            args["codegen_config"] = str(cfg)
-        elif configured:
-            args["codegen_config"] = str(CORPUS / "nros-codegen.toml")
-        af = work / f"{arm}-{lang}-args.json"
-        af.write_text(json.dumps(args))
-        r = subprocess.run(
-            [nros, "codegen", "--language", lang, "--args-file", str(af)],
-            capture_output=True,
-            text=True,
+def generate(nros: str, work: Path, arm: str, configured) -> Path:
+    """Emit the C++ pack (header + its Rust glue) for one storage arm."""
+    out = work / f"{arm}-cpp"
+    out.mkdir(parents=True, exist_ok=True)
+    args = {
+        "package_name": "fingerprint-corpus",
+        "output_dir": str(out),
+        "interface_files": interface_files(),
+        "dependencies": [],
+        "ros_edition": "humble",
+    }
+    if isinstance(configured, str):
+        cfg = work / f"{arm}-nros-codegen.toml"
+        cfg.write_text(configured)
+        args["codegen_config"] = str(cfg)
+    elif configured:
+        args["codegen_config"] = str(CORPUS / "nros-codegen.toml")
+    af = work / f"{arm}-cpp-args.json"
+    af.write_text(json.dumps(args))
+    r = subprocess.run(
+        [nros, "codegen", "--language", "cpp", "--args-file", str(af)],
+        capture_output=True,
+        text=True,
+    )
+    if r.returncode != 0:
+        raise SystemExit(
+            f"{PROBE}: `nros codegen --language cpp` failed for the {arm} arm:\n"
+            f"{r.stdout}{r.stderr}"
         )
-        if r.returncode != 0:
-            raise SystemExit(
-                f"{PROBE}: `nros codegen --language {lang}` failed for the {arm} arm:\n"
-                f"{r.stdout}{r.stderr}"
-            )
-        outs[lang] = out
-    return outs["c"], outs["cpp"]
+    return out
 
 
 # --------------------------------------------------------------------------
@@ -395,90 +286,47 @@ def generate(nros: str, work: Path, arm: str, configured) -> tuple[Path, Path]:
 # --------------------------------------------------------------------------
 
 
-def topo_order(structs: dict[str, dict]) -> list[str]:
-    """C needs a complete type before it is embedded; Rust does not."""
-    order, seen = [], set()
+def container_subs(rust_structs: dict[str, dict], pair_names: set[str]) -> dict[str, dict]:
+    """Per pair: field -> the member names of its CONTAINER type, if any.
 
-    def visit(name: str, stack: tuple[str, ...]) -> None:
-        if name in seen:
-            return
-        if name in stack:
-            raise SystemExit(f"{PROBE}: cyclic C struct reference: {' -> '.join(stack + (name,))}")
-        body = structs[name]["body"]
-        for other in structs:
-            if other != name and re.search(rf"\b{re.escape(other)}\b", body):
-                visit(other, stack + (name,))
-        seen.add(name)
-        order.append(name)
-
-    for name in structs:
-        visit(name, ())
-    return order
-
-
-def unresolved_c_types(
-    structs: dict[str, dict], fnptrs: dict[str, str] | None = None
-) -> set[str]:
-    """Identifiers used as types that this script did not extract."""
-    known = set(structs) | C_BUILTIN | set(fnptrs or {})
-    missing: set[str] = set()
-
-    def walk(body: str) -> None:
-        for decl in _split_members(body):
-            declared = {_member_name(decl)}
-            flat = decl
-            while "{" in flat:
-                at = flat.index("{")
-                inner, after = _balanced_body(flat, at)
-                walk(inner)
-                for d in _split_members(inner):
-                    declared.add(_member_name(d))
-                flat = flat[:at] + " " + inner + " " + flat[after:]
-            for tok in re.findall(r"[A-Za-z_]\w*", flat):
-                if tok in declared or tok in known:
-                    continue
-                missing.add(tok)
-
-    for info in structs.values():
-        walk(info["body"])
-    return missing
-
-
-def c_probe_tu(
-    structs: dict[str, dict], pairs: list[str], arm: str, fnptrs: dict[str, str] | None = None
-) -> str:
-    lines = [
-        "/* generated by scripts/check-repr-memory-agreement.py - do not edit */",
-        "#include <stdint.h>",
-        "#include <stdbool.h>",
-        "#include <stddef.h>",
-        "",
-    ]
-    order = topo_order(structs)
-    # Forward-declare every tag first so a function-pointer typedef may name a
-    # struct through a pointer before that struct is complete -- which the
-    # generated typed client handler does. Definitions still follow in topo
-    # order, because an EMBEDDED member needs a complete type.
-    for name in order:
-        lines.append(f"typedef struct {name} {name};")
-    lines.append("")
-    for _, decl in sorted((fnptrs or {}).items()):
-        lines.append(decl)
-    if fnptrs:
-        lines.append("")
-    for name in order:
-        lines.append(f"struct {name} {{{structs[name]['body']}}};")
-    lines.append("")
-    for name in pairs:
-        info = structs[name]
-        lines.append(f"char {sym(arm, name, 'size')}[sizeof({name}) + 1];")
-        lines.append(f"char {sym(arm, name, 'align')}[_Alignof({name}) + 1];")
+    A field whose Rust type is another extracted struct that is not itself a
+    paired message (`..._t_seq_prim_seq_t`, `nros_cpp_borrow_t`, ...) is a
+    container; its members are probed one by one, because a swapped
+    `size`/`capacity` leaves every top-level offset unchanged.
+    """
+    out: dict[str, dict] = {}
+    for name in pair_names:
+        info = rust_structs[name]
+        subs = {}
         for f in info["fields"]:
-            lines.append(f"char {sym(arm, name, 'f', f)}[offsetof({name}, {f}) + 1];")
-            for sub in info["subs"].get(f, []):
+            t = info["types"].get(f, "")
+            if t in rust_structs and t not in pair_names:
+                subs[f] = rust_structs[t]["fields"]
+        out[name] = subs
+    return out
+
+
+def cpp_probe_tu(
+    headers: list[Path], pairs: list[tuple[str, str]], subs: dict[str, dict],
+    rust_structs: dict[str, dict], arm: str,
+) -> str:
+    lines = ["// generated by scripts/check-repr-memory-agreement.py - do not edit"]
+    for h in headers:
+        lines.append(f'#include "{h}"')
+    lines.append('extern "C" {')
+    for r_name, cpp in pairs:
+        lines.append(f"char {sym(arm, r_name, 'size')}[sizeof({cpp}) + 1];")
+        lines.append(f"char {sym(arm, r_name, 'align')}[alignof({cpp}) + 1];")
+        for f in rust_structs[r_name]["fields"]:
+            lines.append(
+                f"char {sym(arm, r_name, 'f', f)}[__builtin_offsetof({cpp}, {f}) + 1];"
+            )
+            for sub in subs[r_name].get(f, []):
                 lines.append(
-                    f"char {sym(arm, name, 'f', f, sub)}[offsetof({name}, {f}.{sub}) + 1];"
+                    f"char {sym(arm, r_name, 'f', f, sub)}"
+                    f"[__builtin_offsetof({cpp}, {f}.{sub}) + 1];"
                 )
+    lines.append("}")
     return "\n".join(lines) + "\n"
 
 
@@ -492,12 +340,12 @@ def rust_probe_crate(structs: dict[str, dict], pairs: list[tuple[str, str]], arm
     for name in sorted(structs):
         lines.append(structs[name]["decl"])
     lines.append("")
-    for c_name, r_name in pairs:
+    for r_name, _cpp in pairs:
         for kind, expr in (
             ("size", f"core::mem::size_of::<{r_name}>()"),
             ("align", f"core::mem::align_of::<{r_name}>()"),
         ):
-            s = sym(arm, c_name, kind)
+            s = sym(arm, r_name, kind)
             lines.append(
                 f"#[unsafe(no_mangle)] pub static {s}: [u8; {expr} + 1] = [0; {expr} + 1];"
             )
@@ -505,23 +353,19 @@ def rust_probe_crate(structs: dict[str, dict], pairs: list[tuple[str, str]], arm
 
 
 def rust_field_probes(
-    c_structs: dict[str, dict], pairs: list[tuple[str, str]], arm: str
+    rust_structs: dict[str, dict], pairs: list[tuple[str, str]],
+    subs: dict[str, dict], arm: str,
 ) -> list[str]:
-    """Offset probes, emitted from the C side's FIELD NAMES only.
-
-    The names are the one thing the two packs must share; the TYPES are never
-    read across. A field the Rust struct does not have is a rustc error naming
-    it, which is the verdict we want anyway.
-    """
+    """Offset probes, from the SAME field and container-member names the C++
+    probe names, so a member one side lacks is a compile error naming it."""
     out = []
-    for c_name, r_name in pairs:
-        info = c_structs[c_name]
-        for f in info["fields"]:
+    for r_name, _cpp in pairs:
+        for f in rust_structs[r_name]["fields"]:
             for path, sfx in [(f, (f,))] + [
-                (f"{f}.{sub}", (f, sub)) for sub in info["subs"].get(f, [])
+                (f"{f}.{sub}", (f, sub)) for sub in subs[r_name].get(f, [])
             ]:
                 expr = f"core::mem::offset_of!({r_name}, {path})"
-                s = sym(arm, c_name, "f", *sfx)
+                s = sym(arm, r_name, "f", *sfx)
                 out.append(
                     f"#[unsafe(no_mangle)] pub static {s}: [u8; {expr} + 1] = [0; {expr} + 1];"
                 )
@@ -577,13 +421,13 @@ def compare(c_vals: dict[str, int], r_vals: dict[str, int]) -> list[str]:
         # checker cannot see that, and spelling it out is cheaper than an
         # ignore comment that would also hide a real None later.
         if cv is None and rv is not None:
-            problems.append(f"  {name}: absent from the C probe, {rv - 1} in Rust")
+            problems.append(f"  {name}: absent from the C++ probe, {rv - 1} in Rust")
         elif rv is None and cv is not None:
-            problems.append(f"  {name}: {cv - 1} in C, absent from the Rust probe")
+            problems.append(f"  {name}: {cv - 1} in C++, absent from the Rust probe")
         elif cv is None or rv is None:
             problems.append(f"  {name}: absent from BOTH probes — unreachable")
         elif cv != rv:
-            problems.append(f"  {name}: C says {cv - 1}, Rust says {rv - 1}")
+            problems.append(f"  {name}: C++ says {cv - 1}, Rust says {rv - 1}")
     return problems
 
 
@@ -593,9 +437,9 @@ def compare(c_vals: dict[str, int], r_vals: dict[str, int]) -> list[str]:
 
 
 def check_arm(
-    arm: str, nros: str, cc: str, nm: str, work: Path, configured
+    arm: str, nros: str, cxx: str, nm: str, work: Path, configured
 ) -> tuple[int, int, list[str]]:
-    c_dir, cpp_dir = generate(nros, work, arm, configured)
+    cpp_dir = generate(nros, work, arm, configured)
     must = ARM_MUST_REACH.get(arm)
     # walk-ok: `cpp_dir` is this run's generated pack output, untracked.
     pack_rs = sorted(cpp_dir.rglob("*_types.rs"))
@@ -606,22 +450,8 @@ def check_arm(
             "measure that container, and a comparison that never reached it is not a pass"
         )
 
-    c_structs: dict[str, dict] = {}
-    c_fnptrs: dict[str, str] = {}
-    # walk-ok: `c_dir` is codegen output this function just produced under a
-    # temp dir — nothing here is tracked, so `git ls-files` would return
-    # nothing. The gate's own text allows scanning for untracked artifacts
-    # scoped to a build dir, which is exactly this.
-    for h in sorted(c_dir.rglob("*.h")):
-        text = strip_c_comments(h.read_text(encoding="utf-8"))
-        for name, info in extract_c_structs(text).items():
-            c_structs[name] = info
-        c_fnptrs.update(extract_c_fnptr_typedefs(text))
-    generated_names = sorted(c_structs)
-
     rust_structs: dict[str, dict] = {}
-    # walk-ok: same — `cpp_dir` is this run's generated pack output, untracked.
-    for rs in sorted(cpp_dir.rglob("*_types.rs")):
+    for rs in pack_rs:
         for name, info in extract_rust_structs(rs.read_text(encoding="utf-8")).items():
             prev = rust_structs.get(name)
             if prev and prev["decl"] != info["decl"]:
@@ -630,84 +460,62 @@ def check_arm(
                 )
             rust_structs[name] = info
 
-    if not generated_names or not rust_structs:
+    # Pair every Rust glue struct that mirrors a C++ type; the rest must be
+    # CONTAINERS some paired struct embeds. A struct that is neither is one the
+    # gate cannot account for, which is a failure, not a skip.
+    type_map = cpp_type_map("fingerprint-corpus", interface_files())
+    pairs = sorted((r, type_map[r]) for r in rust_structs if type_map.get(r))
+    pair_names = {r for r, _ in pairs}
+    no_cpp_side = {r for r in rust_structs if r in type_map and type_map[r] is None}
+    subs = container_subs(rust_structs, pair_names)
+    embedded = {
+        rust_structs[p]["types"][f] for p in pair_names for f in rust_structs[p]["fields"]
+    }
+    # Containers reachable only through an unpaired view are accounted for too.
+    embedded |= {
+        rust_structs[v]["types"][f] for v in no_cpp_side for f in rust_structs[v]["fields"]
+    }
+    orphans = sorted(
+        r for r in rust_structs
+        if r not in pair_names and r not in embedded and r not in no_cpp_side
+    )
+    if not pairs:
         raise SystemExit(
-            f"{PROBE}: the {arm} arm produced "
-            f"{len(generated_names)} C struct(s) and {len(rust_structs)} Rust struct(s) "
-            "- a corpus that emits nothing cannot agree about anything"
+            f"{PROBE}: the {arm} arm paired no Rust glue struct with a C++ type - "
+            "a corpus that pairs nothing cannot agree about anything"
         )
+    if orphans:
+        return len(pairs), 0, [
+            f"  {r}: a repr(C) struct in the C++ pack's Rust glue that mirrors no C++\n"
+            "      message type and that no paired struct embeds. Teach `cpp_type_map`\n"
+            "      its C++ name rather than dropping it."
+            for r in orphans
+        ]
 
-    # Types the generated headers reach for but do not define (`rclc_view_str_t`
-    # and friends) come from the authored C header, extracted the same way.
-    missing = unresolved_c_types(c_structs, c_fnptrs)
-    if missing:
-        view_text = strip_c_comments(VIEW_H.read_text(encoding="utf-8"))
-        authored = extract_c_structs(view_text) | extract_c_macro_structs(view_text)
-        for name, info in authored.items():
-            if name in missing:
-                c_structs[name] = info
-        c_fnptrs.update(extract_c_fnptr_typedefs(view_text))
-        missing = unresolved_c_types(c_structs, c_fnptrs)
-    if missing:
-        raise SystemExit(
-            f"{PROBE}: the {arm} arm's C output names type(s) this script cannot "
-            f"resolve: {', '.join(sorted(missing))}.\n"
-            f"  They are not defined in the generated headers and not extractable\n"
-            f"  from {VIEW_H.relative_to(REPO)}. Extend the extractor rather than\n"
-            "  dropping the type - a silently skipped type is a gate that stops\n"
-            "  covering whatever it was added for."
-        )
+    # The stamped codegen version, read back from the output, for the stub.
+    version = None
+    # walk-ok: same — `cpp_dir` is this run's generated pack output, untracked.
+    headers = sorted(cpp_dir.rglob("*.hpp"))
+    for h in headers:
+        m = re.search(r"#define NROS_EMITTED_CODEGEN_VERSION (\d+)", h.read_text(encoding="utf-8"))
+        if m:
+            version = m.group(1)
+            break
+    if version is None:
+        raise SystemExit(f"{PROBE}: the {arm} arm's headers carry no codegen-version stamp")
+    stub = work / f"{arm}-stub" / "nros"
+    stub.mkdir(parents=True, exist_ok=True)
+    (stub / "nros_config_generated.h").write_text(CONFIG_STUB.format(v=version))
 
-    # Pair by name. `X` -> `X_t`, `X_View` -> `X_t_view`: the only two spellings
-    # the C++ pack uses, and an unpaired generated struct is a failure, not a
-    # skip.
-    pairs: list[tuple[str, str]] = []
-    unpaired: list[str] = []
-    for c_name in generated_names:
-        if c_name.endswith("_View"):
-            r_name = c_name[: -len("_View")] + "_t_view"
-        else:
-            r_name = c_name + "_t"
-        if r_name in rust_structs:
-            if c_name in C_ONLY_EXPECTED:
-                unpaired.append(
-                    f"  {c_name}: recorded in C_ONLY_EXPECTED, but `{r_name}` now EXISTS.\n"
-                    "      The asymmetry is gone -- delete the entry so the pair is compared."
-                )
-            pairs.append((c_name, r_name))
-        elif c_name in C_ONLY_EXPECTED:
-            continue
-        else:
-            unpaired.append(
-                f"  {c_name}: no `{r_name}` in the C++ pack's Rust glue.\n"
-                "      One pack emits a type the other does not. If that is intended,\n"
-                "      record it in C_ONLY_EXPECTED with the reason; do not drop it."
-            )
-    if unpaired:
-        return 0, 0, unpaired
-
-    # Field NAMES first: a renamed field is a mismatch with a better message
-    # than an offset ever gives.
-    name_problems = []
-    for c_name, r_name in pairs:
-        cf, rf = c_structs[c_name]["fields"], rust_structs[r_name]["fields"]
-        if cf != rf:
-            name_problems.append(
-                f"  {c_name}: field names differ\n"
-                f"      C   : {', '.join(cf)}\n"
-                f"      Rust: {', '.join(rf)}"
-            )
-    if name_problems:
-        return len(pairs), 0, name_problems
-
-    c_src = work / f"{arm}-probe.c"
-    c_src.write_text(c_probe_tu(c_structs, [c for c, _ in pairs], arm, c_fnptrs))
-    c_obj = work / f"{arm}-probe-c.o"
-    run([cc, "-c", *CC_FLAGS, "-o", str(c_obj), str(c_src)], f"the {arm} C probe")
+    cxx_src = work / f"{arm}-probe.cpp"
+    cxx_src.write_text(cpp_probe_tu(headers, pairs, subs, rust_structs, arm))
+    cxx_obj = work / f"{arm}-probe-cpp.o"
+    incs = [f"-I{work / f'{arm}-stub'}", f"-I{cpp_dir}"] + [f"-I{d}" for d in CPP_INCLUDES]
+    run([cxx, "-c", *CXX_FLAGS, *incs, "-o", str(cxx_obj), str(cxx_src)], f"the {arm} C++ probe")
 
     rs_src = work / f"{arm}-probe.rs"
     rs_text = rust_probe_crate(rust_structs, pairs, arm)
-    rs_text += "\n".join(rust_field_probes(c_structs, pairs, arm)) + "\n"
+    rs_text += "\n".join(rust_field_probes(rust_structs, pairs, subs, arm)) + "\n"
     rs_src.write_text(rs_text)
     rs_obj = work / f"{arm}-probe-rs.o"
     run(
@@ -730,11 +538,11 @@ def check_arm(
         f"the {arm} Rust probe",
     )
 
-    c_vals = nm_sizes(nm, c_obj)
+    c_vals = nm_sizes(nm, cxx_obj)
     r_vals = nm_sizes(nm, rs_obj)
     if not c_vals or not r_vals:
         raise SystemExit(
-            f"{PROBE}: the {arm} arm read {len(c_vals)} C and {len(r_vals)} Rust probe "
+            f"{PROBE}: the {arm} arm read {len(c_vals)} C++ and {len(r_vals)} Rust probe "
             "symbols - a comparison over nothing is not a pass"
         )
     return len(pairs), len(c_vals), compare(c_vals, r_vals)
@@ -763,15 +571,33 @@ def self_test() -> int:
         print("self-test: a probe missing from one side was NOT reported", file=sys.stderr)
         fails += 1
 
+    # The pairing rule: a Rust glue name maps to the C++ type the pack emits for
+    # it, and a name the corpus does not produce maps to nothing (so it would be
+    # reported as an orphan, never silently compared against something else).
+    m = cpp_type_map("p-q", ["x/msg/LaserScan.msg", "x/srv/AddTwoInts.srv"])
+    want = {
+        "p_q_msg_laser_scan_t": "p_q::msg::LaserScan",
+        "p_q_msg_laser_scan_t_view": "p_q::msg::LaserScanView",
+        "p_q_srv_add_two_ints_request_t": "p_q::srv::AddTwoInts::Request",
+        "p_q_srv_add_two_ints_request_t_view": None,
+    }
+    for k, v in want.items():
+        if k not in m or m[k] != v:
+            print(f"self-test: `{k}` paired with {m.get(k)!r}, not {v!r}", file=sys.stderr)
+            fails += 1
+    if "p_q_msg_laser_scan_t_seq_t" in m:
+        print("self-test: a container name was paired with a C++ message type", file=sys.stderr)
+        fails += 1
+
     if fails == 0:
-        print("repr-memory-agreement self-test OK (3 comparator cases)")
+        print("repr-memory-agreement self-test OK (3 comparator cases, 2 pairing cases)")
     return 1 if fails else 0
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--nros", default="packages/cli/target/release/nros")
-    ap.add_argument("--cc", default="arm-none-eabi-gcc")
+    ap.add_argument("--cxx", default="arm-none-eabi-g++")
     ap.add_argument("--nm", default="arm-none-eabi-nm")
     ap.add_argument("--keep", action="store_true", help="keep the probe sources for inspection")
     ap.add_argument("--self-test", action="store_true", help="negative control, no toolchain")
@@ -787,7 +613,7 @@ def main() -> int:
         sys.stdout.write(_selftest_out.getvalue())
         return _selftest_rc
 
-    for tool in (args.cc, args.nm):
+    for tool in (args.cxx, args.nm):
         if shutil.which(tool) is None:
             raise SystemExit(f"{PROBE}: `{tool}` not on PATH (the recipe should have skipped)")
 
@@ -800,14 +626,14 @@ def main() -> int:
         for arm, configured in (("inline", False), ("configured", True),
                                 ("heap-strings", HEAP_STRINGS_TOML)):
             pairs, probes, probs = check_arm(
-                arm, args.nros, args.cc, args.nm, work, configured
+                arm, args.nros, args.cxx, args.nm, work, configured
             )
             total_pairs += pairs
             total_probes += probes
             problems += [f"  [{arm}] {p.strip()}" for p in probs]
         if problems:
             print(
-                "repr memory agreement FAILED - the C pack and the C++ pack's "
+                "repr memory agreement FAILED - the C++ pack's header and its "
                 f"repr(C) Rust glue describe different memory on {RUST_TARGET}:",
                 file=sys.stderr,
             )
@@ -815,7 +641,7 @@ def main() -> int:
                 print(p, file=sys.stderr)
             print(
                 "\n  Both render from ONE lowered field. A disagreement is the two\n"
-                "  pack type filters (`c_type`/`c_array_suffix` vs `cpp_repr_c_type`)\n"
+                "  C++ pack filters (`cpp_type`/`cpp_array_suffix` vs `cpp_repr_c_type`)\n"
                 "  spelling it differently - fix the filter, not the number.",
                 file=sys.stderr,
             )
