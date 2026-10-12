@@ -55,12 +55,27 @@ talker's old manifest failed the walk, naming that leaf.
 
 **What is left (why this stays open).** `NOT_ON_THE_SELECTION`, with reasons:
 
-- **native examples** (`examples/native/rust/*`, `bins/in-place-subscriptions`)
-  — the design item. Their RMW and ROS edition are cargo FEATURES that fixture
-  rows select (`--no-default-features --features rmw-xrce`, `ros-jazzy`,
-  `link-tls`). To move, each RMW has to become an image
-  (`[image.native_xrce] rmw = "xrce"`) and the rows have to name images. Not
-  decided here.
+- **native examples** (`examples/native/rust/{talker,listener,service-*,action-*}`)
+  — in scope by RFC-0031 (the RMW is `[image] rmw`; the cargo feature is the
+  lowering target) and RFC-0056 (the edition is `[system] ros_edition`), and
+  `fixtures.toml` rows already take `image = "<id>"`. The RMW axis alone could
+  become one image per RMW. They stopped on the EDITION: `just ros-editions
+  build-e2e-fixtures` builds all six with `--features "rmw-<x> ros-<edition>"`
+  for iron and jazzy, while the selection package derives one edition from
+  `[system] ros_edition` — a leaf that needs two editions has no spelling here
+  without inventing a per-image edition. Two more things a migration has to
+  solve, measured on the way: the selection is ONE directory per leaf, so two
+  fixture rows of the same leaf naming different images race on it (make runs
+  rows in parallel); and the row group key (`nros_fixture_target_dir_flag`)
+  and the test-side row selector (`FixtureVariant::rmw`) are both keyed on
+  cargo features, not on an image.
+- **`bins/in-place-subscriptions`** — issue 1340's measurement witness. Moved
+  onto the selection, it built and ran, but its eight subscriptions logged
+  "matched no recorded subscription row; its registration path stays
+  refused" and the arena reported 34,816 bytes; the hand-written manifest
+  logs neither. Reverted until that is explained (the selection's
+  `nros-board-linux` carries `census` and `profile`, issue 1419, which the
+  hand-written manifest did not).
 - **templates** (`examples/templates/*`) — the copy-out lane is red (issue
   1829), so a migrated template cannot be proven outside the checkout.
 - **board-specific test fixtures** — `bins/qemu-baremetal-main-e2e` and

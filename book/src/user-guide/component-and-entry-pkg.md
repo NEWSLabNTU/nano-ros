@@ -315,7 +315,7 @@ crate: `<pkg>_nros_selection = { path = "build/nros/selection" }`, which
 `nros::main!` reaches the board through. The in-tree bare-metal, FreeRTOS,
 NuttX, ThreadX-Linux and RTIC examples do. A
 package that still names its board crate in `[dependencies]` (the native
-examples, whose RMW is a cargo feature) has to move that line with
+examples, whose RMW and ROS edition are still cargo features) has to move that line with
 `[image.*] board`; `nros sync` refuses the mismatch, naming both crates. See
 [issue 1305](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/1305-single-package-board-crate-dep-not-generated.md).
 

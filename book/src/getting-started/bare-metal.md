@@ -139,8 +139,8 @@ which `nros sync` and `nros build` write for the image's board, and
 `"freertos"` and re-running `nros sync && nros build` builds the FreeRTOS image
 with no other edit. The other bare-metal, FreeRTOS, NuttX, ThreadX-Linux and
 RTIC Rust examples take the same dependency. The native Rust examples still
-name `nros-board-linux` by hand, because their RMW is a cargo feature the
-fixture rows select; on those the `board =` line and the `[dependencies]` row
+name `nros-board-linux` by hand, because their RMW and ROS edition are still
+cargo features; on those the `board =` line and the `[dependencies]` row
 move together, and `nros sync` refuses a mismatch naming both
 ([issue 1305](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/1305-single-package-board-crate-dep-not-generated.md)).
 In a workspace the entry is generated, so there the board line is the only
