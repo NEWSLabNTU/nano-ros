@@ -499,6 +499,7 @@ nros_cpp_action_server_set_accepted_callback	nros_cpp_action_server_set_accepted
 nros_cpp_action_server_set_callbacks	nros_cpp_action_server_set_callbacks	seam	declared by a port seam or the C++ FFI
 nros_cpp_config_generated	nros_cpp_config_generated	seam	declared by a port seam or the C++ FFI
 nros_cpp_integrity_status_t	nros_cpp_integrity_status_t	seam	declared by a port seam or the C++ FFI
+nros_cpp_node_bind_c	nros_cpp_node_bind_c	seam	declared by a port seam or the C++ FFI
 nros_cpp_node_t	nros_cpp_node_t	seam	declared by a port seam or the C++ FFI
 nros_cpp_publish_raw	nros_cpp_publish_raw	seam	declared by a port seam or the C++ FFI
 nros_cpp_publisher_create	nros_cpp_publisher_create	seam	declared by a port seam or the C++ FFI

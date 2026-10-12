@@ -2196,6 +2196,21 @@ typedef struct rcl_node_options_t {
 } rcl_node_options_t;
 
 /**
+ * phase-492 W4 — callback for a VALIDATED raw subscription
+ * (`rclc_executor_add_subscription_raw_validated`): the CDR bytes plus the
+ * sample's E2E integrity status as three scalars — the sequence `gap` since the
+ * previous sample, whether it is a `duplicate`, and `crc_valid` (`1` valid,
+ * `0` invalid, `-1` no CRC carried). Scalars rather than a struct pointer so
+ * the executor hands them over without a wrapper holding state (RFC-0019/0020).
+ */
+typedef void (*rclc_subscription_validated_callback_t)(const uint8_t *data,
+                                                       size_t len,
+                                                       int64_t gap,
+                                                       bool duplicate,
+                                                       int8_t crc_valid,
+                                                       void *context);
+
+/**
  * phase-417 W5.a — a subscription callback that receives the DESERIALISED
  * message, the shape rclc delivers
  * (`rclc_subscription_callback_with_context_t`, the alias `<rclc/executor.h>`
@@ -5220,6 +5235,27 @@ NROS_PUBLIC
 bool rclc_executor_trigger_index(const struct rclc_executor_trigger_handle_t *handles,
                                  size_t size,
                                  void *obj);
+
+/**
+ * phase-492 W4 — register a raw subscription whose callback also receives
+ * the sample's E2E integrity status (CRC + sequence gap / duplicate): the
+ * C API's form of what a C component used to reach through the C++ FFI
+ * (`nros_cpp_subscription_register_validated`), and the callback-style
+ * sibling of `rclc_polling_subscription_take_validated`.
+ *
+ * Requires the `safety-e2e` capability on both the runtime and the backend
+ * (`NROS_SAFETY_E2E=ON`); without it this answers `RCL_RET_UNSUPPORTED`.
+ *
+ * # Safety
+ * * `executor` and `subscription` must be valid, initialised objects.
+ * * `context` is passed through untouched and may be NULL.
+ */
+NROS_PUBLIC
+rcl_ret_t rclc_executor_add_subscription_raw_validated(struct rclc_executor_t *executor,
+                                                       struct rcl_subscription_t *subscription,
+                                                       rclc_subscription_validated_callback_t callback,
+                                                       void *context,
+                                                       enum rclc_executor_handle_invocation_t invocation);
 
 /**
  * rclc's `rclc_executor_add_subscription_with_context`, argument for argument
