@@ -150,8 +150,11 @@ a CMake-time output. There is no `-DNROS_RMW=` to pass: a backend selected on
 the command line disagrees with the one the rest of the build resolves from
 `system.toml`, which is the drift RFC-0098 removes.
 
-The pure `cargo build --features rmw-cyclonedds` only succeeds for
-the zenoh-pico + xrce backends today.
+A Rust example does not take `--features rmw-cyclonedds` at all: its RMW is
+its image's (issue 1305). `examples/native/rust/talker` declares
+`native_cyclonedds`, and `nros sync --image native_cyclonedds && nros build
+native_cyclonedds` builds it — the board crate's `rmw-cyclonedds` builds
+Cyclone through `nros-rmw-cyclonedds-sys`.
 
 ### A7. The board name is a typo
 
