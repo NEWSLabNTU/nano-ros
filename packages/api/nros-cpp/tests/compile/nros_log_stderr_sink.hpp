@@ -27,6 +27,8 @@
 #ifndef NROS_TESTS_NROS_LOG_STDERR_SINK_HPP
 #define NROS_TESTS_NROS_LOG_STDERR_SINK_HPP
 
+#include <stdarg.h>
+#include <stdio.h>
 #include <unistd.h>
 
 #include <nros/log.h>
@@ -48,6 +50,30 @@ void rclc_log_emit_at(rclc_logger_t, rcl_log_severity_t, const char* message, si
         (void)::write(2, message, message_len);
     }
     (void)::write(2, "\n", 1);
+}
+
+// The located printf-style entry point every `RCLC_LOG_*` / refusal macro
+// expands to. The library defines it in `c-stubs/log_fmt.c` (phase-492 moved it
+// out of `<nros/log.h>` so that header is freestanding); this probe links no
+// nano-ros archive, so it supplies the same shape: render, then the sink above.
+void rclc_log_emit_fmt_at(rclc_logger_t logger, rcl_log_severity_t severity, const char* file,
+                          uint32_t line, const char* fmt, ...) {
+    if (fmt == nullptr) {
+        return;
+    }
+    char buf[NROS_LOG_FMT_BUFFER_SIZE];
+    va_list args;
+    va_start(args, fmt);
+    const int written = ::vsnprintf(buf, sizeof(buf), fmt, args);
+    va_end(args);
+    if (written <= 0) {
+        return;
+    }
+    size_t n = static_cast<size_t>(written);
+    if (n >= sizeof(buf)) {
+        n = sizeof(buf) - 1;
+    }
+    rclc_log_emit_at(logger, severity, buf, n, file, line);
 }
 
 } // extern "C"

@@ -152,6 +152,12 @@ constexpr rcl_log_severity_t sink_severity(const char* level) {
 // reaches back here.
 #include "nros/result.hpp"
 #include "nros/fixed_string.hpp"
+// `LogStream::format` below renders one value with `snprintf`. It used to get
+// <stdio.h> through <nros/log.h>, which phase-492 made freestanding (the C
+// API's public headers need no libc); the C++ binding's freestanding surface
+// still has the target C library's <stdio.h> (every probe in `check cpp`
+// supplies one), so name it here rather than inherit it.
+#include <stdio.h>
 
 namespace rclcpp {
 

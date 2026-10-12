@@ -1894,7 +1894,9 @@ cpp: cpp-fmt
     # every RTOS, and every syntax-only sweep above would stay green); the
     # message LENGTH is `failed_create_aborts`'s assertion, above. A COMPILE plus
     # a symbol-table read, once per refusal: the object must call
-    # `rclc_log_emit_at`. `test -f` first, so a missing TU cannot read as a pass
+    # `rclc_log_emit_fmt_at` (nros_log's C entry point, defined in nros-c's
+    # `c-stubs/log_fmt.c` since phase-492 made `<nros/log.h>` freestanding; it
+    # forwards to `rclc_log_emit_at`). `test -f` first, so a missing TU cannot read as a pass
     # (issue 0196).
     test -f packages/api/nros-cpp/tests/compile/refusal_reaches_nros_log.cpp || { \
         echo "ERROR: refusal_reaches_nros_log.cpp is MISSING -- this check" >&2; \
@@ -1920,12 +1922,12 @@ cpp: cpp-fmt
         # `nros_grep_q` (issues 0726 / 1077): a tool error is not a miss.
         _undef="$(nm -u "$_obj")"
         _rc=0
-        nros_grep_q '\brclc_log_emit_at$' <<<"$_undef" || _rc=$?
+        nros_grep_q '\brclc_log_emit_fmt_at$' <<<"$_undef" || _rc=$?
         case "$_rc" in
             0) ;;
             1)
                 echo "check-cpp: the ${_refusal#*:} refusal does not reach nros_log on a" >&2
-                echo "  freestanding target: its object never calls rclc_log_emit_at, so on an" >&2
+                echo "  freestanding target: its object never calls rclc_log_emit_fmt_at, so on an" >&2
                 echo "  RTOS it aborts without a diagnostic (issue 1303)." >&2
                 exit 1 ;;
             *) echo "check-cpp: grep failed (rc=$_rc) reading $_obj's symbols" >&2; exit 1 ;;

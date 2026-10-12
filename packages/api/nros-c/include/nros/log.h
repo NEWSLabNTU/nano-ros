@@ -30,7 +30,6 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <stdio.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -184,9 +183,9 @@ void rclc_log_emit_at(rclc_logger_t logger, rcl_log_severity_t severity, const c
 
 /** Stack buffer the located printf-style entry point below renders into.
  *
- * NOT the `NROS_LOG_BUFFER_SIZE` knob (issue 1037): this function is compiled
- * in the CALLER's translation unit, from a header with no per-build value to
- * read, so its frame stays 256. The knob sizes nros-log's Rust formatter and
+ * NOT the `NROS_LOG_BUFFER_SIZE` knob (issue 1037): `c-stubs/log_fmt.c`
+ * renders into this from a header with no per-build value to read, so its
+ * frame stays 256. The knob sizes nros-log's Rust formatter and
  * the slots that store records, so a C record is bounded by the smaller of
  * the two. */
 #define NROS_LOG_FMT_BUFFER_SIZE 256
@@ -194,45 +193,16 @@ void rclc_log_emit_at(rclc_logger_t logger, rcl_log_severity_t severity, const c
 /**
  * phase-417 W4.d — printf-style emit carrying `__FILE__` / `__LINE__`.
  *
- * `static inline` rather than a sibling of `rclc_log_emit_fmt` in
- * `c-stubs/log_fmt.c` because the variadic entry point cannot be written in
- * Rust (`c_variadic` is unstable) and this header is the C surface's own file.
- * The cost is one copy of ~30 instructions per translation unit that logs; the
- * de-duplication — moving this beside `rclc_log_emit_fmt` and having that one
- * forward with `file = NULL` — is a follow-up in `c-stubs/log_fmt.c`.
- *
- * `rclc_log_emit_fmt` is UNCHANGED and still exported: it is the ABI existing
- * consumers link, and it simply carries no call site.
+ * Defined beside `rclc_log_emit_fmt` in `c-stubs/log_fmt.c` (the variadic
+ * entry point cannot be written in Rust: `c_variadic` is unstable), and
+ * rendered there into a @ref NROS_LOG_FMT_BUFFER_SIZE stack buffer. It was a
+ * `static inline` here until phase-492, which made this header include
+ * `<stdio.h>` for `vsnprintf`; the C API's public headers are freestanding
+ * now, so formatting happens in the library, where a libc is linked anyway.
  */
-static inline void rclc_log_emit_fmt_at(rclc_logger_t logger, rcl_log_severity_t severity,
-                                        const char* file, uint32_t line, const char* fmt, ...)
+void rclc_log_emit_fmt_at(rclc_logger_t logger, rcl_log_severity_t severity, const char* file,
+                          uint32_t line, const char* fmt, ...)
     __attribute__((format(printf, 5, 6)));
-
-static inline void rclc_log_emit_fmt_at(rclc_logger_t logger, rcl_log_severity_t severity,
-                                        const char* file, uint32_t line, const char* fmt, ...) {
-    if (logger == NULL || fmt == NULL) {
-        return;
-    }
-    char buf[NROS_LOG_FMT_BUFFER_SIZE];
-    va_list args;
-    va_start(args, fmt);
-    int written = vsnprintf(buf, sizeof(buf), fmt, args);
-    va_end(args);
-    if (written <= 0) {
-        return;
-    }
-    size_t n = (size_t)written;
-    if (n >= sizeof(buf)) {
-        /* `vsnprintf` returns the would-have-written length on overflow but
-         * writes at most `sizeof(buf) - 1` bytes. Append "..." inside the
-         * buffer to mark truncation — same convention as `rclc_log_emit_fmt`. */
-        n = sizeof(buf) - 1;
-        buf[n - 3] = '.';
-        buf[n - 2] = '.';
-        buf[n - 1] = '.';
-    }
-    rclc_log_emit_at(logger, severity, buf, n, file, line);
-}
 
 /* ---- Convenience macros ---- */
 /* The macros stage the printf args into a stack buffer inside

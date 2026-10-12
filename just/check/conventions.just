@@ -163,6 +163,15 @@ c-api-nros-names:
 c-api-upstream-signatures:
     @python3 scripts/check-c-api-upstream-signatures.py
 
+# phase-492 — the C API's public headers (every `rcl*/` / `rclc*/` /
+# `rosidl_runtime_c/` path; `nros/` is internal) compile with
+# `-ffreestanding -nostdinc`, so a part with no libc can include them. All 51
+# upstream-path headers needed <stdio.h> or <string.h> before this. Buildless,
+# with a negative control; ~1 s.
+[private]
+c-api-freestanding-headers:
+    @bash scripts/check-c-api-freestanding-headers.sh
+
 # issue 1386 — `node_ref_is_live(node_ref_of(node))` mints a reference from the
 # node and compares it against the counter it was just read from, so it is
 # CONSTANT TRUE. Four sites wrote that independently, and behind three of them
