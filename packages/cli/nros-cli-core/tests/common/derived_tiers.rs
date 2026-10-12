@@ -71,7 +71,7 @@ impl Fixture {
             std::process::id()
         ));
         fs::create_dir_all(&root).expect("create the fixture copy");
-        copy_tree(&repo.join("examples/workspaces/derived-tiers-cpp"), &root);
+        copy_sources(&repo.join("examples/workspaces/derived-tiers-cpp"), &root);
         Self { root }
     }
 
@@ -150,6 +150,31 @@ impl Fixture {
 impl Drop for Fixture {
     fn drop(&mut self) {
         let _ = fs::remove_dir_all(&self.root);
+    }
+}
+
+/// The workspace's SOURCES: everything but its top-level `build/`, the
+/// gitignored output `nros sync` / `nros build` write there.
+///
+/// Copying that too made every test of this fixture fail on a checkout where
+/// someone had synced the example: the metadata probe leaves `cargo` as a
+/// SYMLINK to the shared cargo dir, which `fs::copy` refuses ("neither a
+/// regular file nor a symlink to a regular file"). It was also the wrong
+/// input — a stale model or descriptor in the copy is a fact the test did not
+/// write.
+fn copy_sources(from: &Path, to: &Path) {
+    fs::create_dir_all(to).expect("mkdir");
+    for entry in fs::read_dir(from).expect("read the fixture") {
+        let entry = entry.expect("dir entry");
+        if entry.file_name() == "build" {
+            continue;
+        }
+        let dst = to.join(entry.file_name());
+        if entry.file_type().expect("file type").is_dir() {
+            copy_tree(&entry.path(), &dst);
+        } else {
+            fs::copy(entry.path(), &dst).expect("copy");
+        }
     }
 }
 
