@@ -63,7 +63,9 @@ impl Platform {
         match self {
             Platform::Nuttx => {
                 if !nuttx::is_nuttx_available() {
-                    nros_tests::unmet!("NUTTX_DIR unset/invalid — run `just nuttx setup`");
+                    nros_tests::unmet!(
+                        "no NuttX kernel tree provisioned — run `just nuttx setup`, or set NUTTX_DIR"
+                    );
                 }
                 if !nuttx::is_nuttx_configured() {
                     nros_tests::unmet!(
@@ -74,7 +76,7 @@ impl Platform {
             Platform::ThreadxLinux => {
                 if !threadx_linux::is_threadx_available() {
                     nros_tests::unmet!(
-                        "THREADX_DIR unset/invalid — run `just threadx_linux setup`"
+                        "no ThreadX kernel tree provisioned — run `just threadx_linux setup`, or set THREADX_DIR"
                     );
                 }
                 if !threadx_linux::is_nsos_netx_available() {

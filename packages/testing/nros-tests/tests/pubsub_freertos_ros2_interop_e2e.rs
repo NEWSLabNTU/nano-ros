@@ -102,10 +102,12 @@ fn nros_freertos_mps2_publisher_reaches_ros2_topic_echo() {
     );
     require_ros2();
     if !freertos::is_freertos_available() {
-        unmet!("FREERTOS_DIR not set or invalid — `just setup freertos`");
+        unmet!(
+            "no FreeRTOS kernel tree provisioned — run `just freertos setup`, or set FREERTOS_DIR"
+        );
     }
     if !freertos::is_lwip_available() {
-        unmet!("LWIP_DIR not set or invalid — `just setup freertos`");
+        unmet!("no lwIP tree provisioned — run `just freertos setup`, or set LWIP_DIR");
     }
     if !freertos::is_arm_gcc_available() {
         unmet!("arm-none-eabi-gcc not found — `nros setup --tool arm-none-eabi-gcc`");

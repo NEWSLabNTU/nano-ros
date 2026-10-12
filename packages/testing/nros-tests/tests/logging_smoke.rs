@@ -202,7 +202,7 @@ fn logging_smoke_threadx_riscv64_emits_every_severity() {
 #[test]
 fn logging_smoke_threadx_linux_captures_stderr() {
     if !threadx_linux::is_threadx_available() {
-        panic!("[SKIPPED] THREADX_DIR not set or invalid");
+        panic!("[SKIPPED] no ThreadX kernel tree provisioned");
     }
     if !threadx_linux::is_nsos_netx_available() {
         panic!("[SKIPPED] nsos-netx not found at packages/drivers/net/nsos-netx/");

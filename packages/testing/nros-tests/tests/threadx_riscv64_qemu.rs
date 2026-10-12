@@ -57,12 +57,12 @@ fn require_threadx_riscv64() {
     );
     if !is_threadx_available() {
         nros_tests::unmet!(
-            "THREADX_DIR not set or invalid — run `just setup-threadx` + `source .envrc`"
+            "no ThreadX kernel tree provisioned — run `just threadx_linux setup`, or set THREADX_DIR"
         );
     }
     if !is_netx_available() {
         nros_tests::unmet!(
-            "NETX_DIR not set or invalid — run `just setup-threadx` + `source .envrc`"
+            "no NetX Duo tree provisioned — run `just threadx_riscv64 setup`, or set NETX_DIR"
         );
     }
     if !is_riscv_gcc_available() {

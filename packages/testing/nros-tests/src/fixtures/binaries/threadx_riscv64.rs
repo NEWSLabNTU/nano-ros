@@ -14,19 +14,17 @@ use std::{
 // Prerequisite detection
 // =============================================================================
 
-/// `THREADX_DIR` env var set and points to a valid kernel source tree.
+/// A ThreadX kernel tree is provisioned (issue 1833: `THREADX_DIR` or the checkout or the store) and is a valid kernel source tree.
 pub fn is_threadx_available() -> bool {
-    std::env::var("THREADX_DIR")
-        .ok()
-        .map(|dir| Path::new(&dir).join("common/inc/tx_api.h").exists())
+    crate::sdk_tree::sdk_tree("threadx")
+        .map(|dir| dir.join("common/inc/tx_api.h").exists())
         .unwrap_or(false)
 }
 
-/// `NETX_DIR` env var set and points to a valid NetX Duo source tree.
+/// A NetX Duo tree is provisioned (issue 1833: `NETX_DIR` or the checkout or the store) and is a valid NetX Duo source tree.
 pub fn is_netx_available() -> bool {
-    std::env::var("NETX_DIR")
-        .ok()
-        .map(|dir| Path::new(&dir).join("common/inc/nx_api.h").exists())
+    crate::sdk_tree::sdk_tree("threadx-netxduo")
+        .map(|dir| dir.join("common/inc/nx_api.h").exists())
         .unwrap_or(false)
 }
 

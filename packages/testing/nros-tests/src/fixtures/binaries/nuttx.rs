@@ -14,19 +14,17 @@ use std::{
 // Prerequisite detection
 // =============================================================================
 
-/// `NUTTX_DIR` env var set and points to a valid kernel source tree.
+/// A NuttX kernel tree is provisioned (issue 1833: `NUTTX_DIR` or the checkout or the store) and is a valid kernel source tree.
 pub fn is_nuttx_available() -> bool {
-    std::env::var("NUTTX_DIR")
-        .ok()
-        .map(|dir| Path::new(&dir).join("Makefile").exists())
+    crate::sdk_tree::sdk_tree("nuttx-kernel")
+        .map(|dir| dir.join("Makefile").exists())
         .unwrap_or(false)
 }
 
 /// NuttX has been configured — `$NUTTX_DIR/include/nuttx/config.h` exists.
 pub fn is_nuttx_configured() -> bool {
-    std::env::var("NUTTX_DIR")
-        .ok()
-        .map(|dir| Path::new(&dir).join("include/nuttx/config.h").exists())
+    crate::sdk_tree::sdk_tree("nuttx-kernel")
+        .map(|dir| dir.join("include/nuttx/config.h").exists())
         .unwrap_or(false)
 }
 
@@ -180,7 +178,8 @@ fn elf_machine(path: &Path) -> Option<u16> {
 /// The `Err` is a ready-to-print reason naming the rebuild, because "no export"
 /// and "the wrong export" want different actions from whoever reads it.
 pub fn nuttx_kernel_path_for(arch: NuttxArch) -> Result<PathBuf, String> {
-    let dir = std::env::var("NUTTX_DIR").map_err(|_| "NUTTX_DIR not set".to_string())?;
+    let dir = crate::sdk_tree::sdk_tree("nuttx-kernel")
+        .ok_or_else(|| "no NuttX kernel tree provisioned (`just nuttx setup`)".to_string())?;
     let snapshot = Path::new(&dir).join(format!("nros-nuttx-export-{}", arch.snapshot_id()));
     snapshot_for_arch(&snapshot, arch).map_err(|why| {
         format!(
@@ -240,8 +239,8 @@ fn snapshot_for_arch(snapshot: &Path, arch: NuttxArch) -> Result<(), String> {
 /// rather than leaving the next reader to rediscover it. Empty when the tree
 /// holds this arch (or no kernel at all), so the message stays short in the
 /// common case.
-fn shared_tree_note(nuttx_dir: &str, arch: NuttxArch) -> String {
-    let kernel = Path::new(nuttx_dir).join("nuttx");
+fn shared_tree_note(nuttx_dir: &Path, arch: NuttxArch) -> String {
+    let kernel = nuttx_dir.join("nuttx");
     match elf_machine(&kernel).and_then(NuttxArch::from_elf_machine) {
         Some(held) if held != arch => format!(
             "\n  (The shared tree at {} currently holds a {held:?} kernel. That is expected and \
@@ -663,8 +662,8 @@ mod tests {
         std::fs::create_dir_all(&tree).expect("tree");
         std::fs::write(tree.join("nuttx"), elf_header(1, 0xF3)).expect("kernel");
         let dir = tree.to_str().expect("utf8");
-        assert!(shared_tree_note(dir, NuttxArch::Arm).contains("RiscV"));
-        assert_eq!(shared_tree_note(dir, NuttxArch::RiscV), "");
+        assert!(shared_tree_note(Path::new(dir), NuttxArch::Arm).contains("RiscV"));
+        assert_eq!(shared_tree_note(Path::new(dir), NuttxArch::RiscV), "");
     }
 
     #[test]

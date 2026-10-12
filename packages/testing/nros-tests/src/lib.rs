@@ -63,6 +63,7 @@ pub mod process;
 pub mod qemu;
 pub mod ros2;
 pub mod ros_env;
+pub mod sdk_tree;
 pub mod treewalk;
 pub mod zephyr;
 

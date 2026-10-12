@@ -421,7 +421,9 @@ fn require_cell_env(cell: &Exec) {
     match cell.boot {
         Boot::ThreadxLinux => {
             if !is_threadx_available() {
-                nros_tests::unmet!("THREADX_DIR not set or invalid");
+                nros_tests::unmet!(
+                    "no ThreadX kernel tree provisioned — run `just threadx_linux setup`, or set THREADX_DIR"
+                );
             }
             if !is_nsos_netx_available() {
                 nros_tests::unmet!("nsos-netx not found at packages/drivers/net/nsos-netx/");
@@ -429,10 +431,14 @@ fn require_cell_env(cell: &Exec) {
         }
         Boot::FreertosMps2 => {
             if !freertos::is_freertos_available() {
-                nros_tests::unmet!("FREERTOS_DIR not set or invalid");
+                nros_tests::unmet!(
+                    "no FreeRTOS kernel tree provisioned — run `just freertos setup`, or set FREERTOS_DIR"
+                );
             }
             if !freertos::is_lwip_available() {
-                nros_tests::unmet!("LWIP_DIR not set or invalid");
+                nros_tests::unmet!(
+                    "no lwIP tree provisioned — run `just freertos setup`, or set LWIP_DIR"
+                );
             }
             if !freertos::is_arm_gcc_available() {
                 nros_tests::unmet!("arm-none-eabi-gcc not found");
@@ -448,10 +454,14 @@ fn require_cell_env(cell: &Exec) {
         }
         Boot::ThreadxRiscv64 => {
             if !threadx_riscv64::is_threadx_available() {
-                nros_tests::unmet!("THREADX_DIR not set or invalid");
+                nros_tests::unmet!(
+                    "no ThreadX kernel tree provisioned — run `just threadx_linux setup`, or set THREADX_DIR"
+                );
             }
             if !threadx_riscv64::is_netx_available() {
-                nros_tests::unmet!("NETX_DIR not set or invalid");
+                nros_tests::unmet!(
+                    "no NetX Duo tree provisioned — run `just threadx_riscv64 setup`, or set NETX_DIR"
+                );
             }
             if !is_qemu_riscv64_available() {
                 nros_tests::unmet!("qemu-system-riscv64 not found");
