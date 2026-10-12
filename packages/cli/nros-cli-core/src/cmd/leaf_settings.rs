@@ -457,22 +457,30 @@ pub fn write_selection(
     crate::orchestration::facade::write_leaf_selection(&spec, &sys).map(Some)
 }
 
-/// Write `<leaf>/build/<image>/nros-cargo.toml`, or return `None` when `leaf`
-/// is not a leaf this road builds ([`resolve`]).
+/// Issue 1305 — a single-package Rust leaf's image-only dependencies must
+/// agree with its image's board.
 ///
-/// `who` prefixes diagnostics (`sync`, `nros build`).
-/// Issue 1305 — a single-package Rust leaf still names its board crate by hand.
+/// Two shapes, one check, run where `nros sync` and `nros build` both pass:
 ///
-/// RFC-0098 D6 generates the board dependency for a generated WORKSPACE entry
-/// only. A leaf is its own entry, so `nros::main!` asks for the crate the
-/// IMAGE's board maps to while `Cargo.toml` names whichever crate it was
-/// written with. After a one-line board switch in `system.toml`, sync used to
-/// succeed and the build then died in the leaf's own crate:
-/// "cannot find `nros_board_<new>` in the crate root". This refuses at the
-/// point both sync and build pass through, naming the two crates and the one
-/// edit, until D6 reaches leaves. The crate is the MACRO's
-/// (`entry::macro_board_crate`), because the macro's expansion is what has to
-/// compile.
+/// * **Migrated** — the leaf depends on its generated `<pkg>_nros_selection`
+///   package ([`write_selection`]), which names the image's board crate, RMW,
+///   platform and runtime, so a board switch is one line in `system.toml`.
+///   Such a leaf must name NO board crate itself: a hand-written one beside
+///   the selection is the old manifest coming back, and it is wrong the moment
+///   the image's board changes (two boards, two `#[global_allocator]`s, or a
+///   backend whose `platform-*` feature clashes). Refused, naming the crate.
+/// * **Not migrated** — the leaf still names its board crate by hand (the
+///   native leaves, whose RMW / edition is a cargo FEATURE axis; the
+///   board-specific test fixtures). `nros::main!` asks for the crate the
+///   IMAGE's board maps to while `Cargo.toml` names whichever crate it was
+///   written with, so after a board switch sync used to succeed and the build
+///   died in the leaf: "cannot find `nros_board_<new>` in the crate root".
+///   Refused, naming both crates. The crate is the MACRO's
+///   (`entry::macro_board_crate`), because the macro's expansion is what has
+///   to compile.
+///
+/// A leaf that names no board crate and no selection (issue 1815) takes its
+/// platform another way and is accepted.
 fn check_board_crate_dependency(img: &LeafImage) -> Result<()> {
     let Some(want) = crate::builder::entry::macro_board_crate(&[
         img.image_id.as_str(),
@@ -515,21 +523,36 @@ fn check_board_crate_dependency(img: &LeafImage) -> Result<()> {
             named.push(krate.replace('_', "-"));
         }
     }
-    if named.iter().any(|n| n == &want) {
-        return Ok(());
-    }
-    // Issue 1305 — a MIGRATED leaf names no board crate: it depends on its
-    // generated `<pkg>_nros_selection` package, which [`write_selection`]
-    // writes for the image's board, so there is nothing here to disagree.
-    let selection = leaf_system::selection_crate_name(&img.package).replace('_', "-");
-    if named.iter().any(|n| n == &selection) {
-        return Ok(());
-    }
     let boards: Vec<&str> = named
         .iter()
         .map(String::as_str)
         .filter(|n| n.starts_with("nros-board-"))
         .collect();
+    // A MIGRATED leaf depends on its generated selection package, which
+    // [`write_selection`] writes for the image's board — and names no board
+    // crate of its own.
+    let selection = leaf_system::selection_crate_name(&img.package).replace('_', "-");
+    if named.iter().any(|n| n == &selection) {
+        if boards.is_empty() {
+            return Ok(());
+        }
+        bail!(
+            "{}: depends on its generated selection package `{}` AND names the board \
+             crate `{}`.\n  The selection package carries the image's board crate (and its \
+             RMW, platform and runtime), so a migrated leaf names none of them: delete \
+             the board dependency from {}. A hand-written board crate beside the \
+             selection is wrong as soon as `[image.{}] board` changes (issue 1305, \
+             RFC-0098 D6).",
+            img.leaf.display(),
+            leaf_system::selection_crate_name(&img.package),
+            boards.join("`, `"),
+            manifest.display(),
+            img.image_id,
+        );
+    }
+    if named.iter().any(|n| n == &want) {
+        return Ok(());
+    }
     // Issue 1815 — a leaf that names NO board crate was not written for some
     // other board, so it is not the stale state this refuses. Such a leaf
     // takes its platform another way (`log-arena-probe` links the POSIX
@@ -546,8 +569,9 @@ fn check_board_crate_dependency(img: &LeafImage) -> Result<()> {
          image-only dependencies with an in-tree example for board `{}`: a crate the old \
          board needed can clash with the new one (an RMW backend carrying a `platform-*` \
          feature stops the build with \"Only one platform backend can be selected\").\n  \
-         (issue 1305: a single-package leaf still names its image dependencies by hand; \
-         RFC-0098 D6 generates them only for a workspace entry).",
+         (issue 1305: this leaf still names its image dependencies by hand; a leaf \
+         that depends on its generated `<pkg>_nros_selection` package instead gets \
+         them from `system.toml`, RFC-0098 D6).",
         img.leaf.display(),
         img.image_id,
         img.board,
@@ -557,6 +581,10 @@ fn check_board_crate_dependency(img: &LeafImage) -> Result<()> {
     )
 }
 
+/// Write `<leaf>/build/<image>/nros-cargo.toml`, or return `None` when `leaf`
+/// is not a leaf this road builds ([`resolve`]).
+///
+/// `who` prefixes diagnostics (`sync`, `nros build`).
 pub fn write(leaf: &Path, nano_ros_root: &Path, who: &str) -> Result<Option<LeafImage>> {
     let Some(img) = resolve(leaf, nano_ros_root)? else {
         return Ok(None);
@@ -1077,6 +1105,143 @@ mod board_crate_tests {
         assert!(
             checked >= 10,
             "the walk reached only {checked} cargo leaves"
+        );
+    }
+
+    /// Issue 1305 phase C — the leaves NOT yet on the selection package, each
+    /// with the reason it is not. Every other in-tree cargo-road leaf depends on
+    /// its `<pkg>_nros_selection` package and names no board crate (enforced by
+    /// [`check_board_crate_dependency`]), so a board switch is one line. A prefix
+    /// matches a leaf path relative to the checkout.
+    const NOT_ON_THE_SELECTION: &[(&str, &str)] = &[
+        (
+            "examples/native/rust/",
+            "RMW and ROS edition are a cargo FEATURE axis that fixture rows select \
+             (`--no-default-features --features rmw-xrce`); one image per RMW first",
+        ),
+        (
+            "packages/testing/nros-tests/bins/in-place-subscriptions",
+            "the same native RMW feature axis",
+        ),
+        (
+            "examples/templates/",
+            "copy-out templates: the template-copy-out lane is red (issue 1829), so a \
+             migrated template cannot be proven outside the checkout",
+        ),
+        (
+            "packages/testing/nros-tests/bins/qemu-baremetal-main-e2e",
+            "its node body calls `nros_board_mps2_an385::exit_success()`",
+        ),
+        (
+            "packages/testing/nros-tests/bins/rtic-run-plan-e2e",
+            "its node body calls `nros_board_mps2_an385::exit_success()`",
+        ),
+        (
+            "packages/testing/nros-tests/fixtures/",
+            "harness-templated manifests (`@NROS_REPO_DIR@`) or a custom `main`",
+        ),
+        (
+            "examples/mps2-an385-baremetal/c/",
+            "a C app on a cargo link root: its own `main.rs` names `cortex_m_rt`",
+        ),
+        (
+            "examples/mps2-an385-baremetal/cpp/",
+            "a C++ app on a cargo link root: its own `main.rs` names `cortex_m_rt`",
+        ),
+        (
+            "examples/rv-virt-threadx/rust/",
+            "lib-only staticlibs a CMake image links (no `nros::main!`); RMW chosen \
+             by leaf features",
+        ),
+        (
+            "examples/esp32-c3-baremetal/",
+            "ESP32 is dormant (issue 1525): no fixture row builds these leaves",
+        ),
+        (
+            "packages/testing/nros-tests/bins/log-arena-probe",
+            "names no board crate at all (issue 1815)",
+        ),
+    ];
+
+    /// Issue 1305 phase C — the gate the sweep leaves behind: every in-tree
+    /// cargo-road leaf outside [`NOT_ON_THE_SELECTION`] depends on its
+    /// selection package, so a NEW leaf in a migrated family that names its
+    /// board crate by hand fails here (and its own `nros sync` refuses it if it
+    /// names both). An exemption that no longer matches a leaf fails too, so
+    /// the list shrinks as families move.
+    #[test]
+    fn every_cargo_leaf_outside_the_open_classes_uses_its_selection_package() {
+        let out = crate::source_stamp::nros_git_command("git")
+            .args(["ls-files", "-z", "--", "*system.toml"])
+            .current_dir(repo())
+            .output()
+            .expect("git ls-files");
+        let mut on_selection = 0;
+        let mut used = vec![false; NOT_ON_THE_SELECTION.len()];
+        let mut stray = Vec::new();
+        for rel in String::from_utf8_lossy(&out.stdout)
+            .split('\0')
+            .filter(|s| !s.is_empty())
+        {
+            let leaf = repo().join(rel).parent().unwrap().to_path_buf();
+            if !leaf.join("Cargo.toml").is_file() {
+                continue;
+            }
+            let Some(img) = resolve(&leaf, &repo()).unwrap_or_else(|e| panic!("{rel}: {e}")) else {
+                continue;
+            };
+            let leaf_rel = Path::new(rel)
+                .parent()
+                .unwrap()
+                .to_string_lossy()
+                .to_string();
+            if let Some(i) = NOT_ON_THE_SELECTION
+                .iter()
+                .position(|(p, _)| leaf_rel.starts_with(p))
+            {
+                used[i] = true;
+                continue;
+            }
+            if depends_on_selection(&img.leaf, &img.package) {
+                on_selection += 1;
+            } else {
+                stray.push(leaf_rel);
+            }
+        }
+        assert!(
+            stray.is_empty(),
+            "these cargo leaves name their image dependencies by hand; depend on the \
+             generated `<pkg>_nros_selection = {{ path = \"build/nros/selection\" }}` \
+             instead (issue 1305), or add an exemption with its reason:\n  {}",
+            stray.join("\n  ")
+        );
+        let stale: Vec<&str> = NOT_ON_THE_SELECTION
+            .iter()
+            .zip(&used)
+            .filter(|(_, u)| !**u)
+            .map(|((p, _), _)| *p)
+            .collect();
+        assert!(stale.is_empty(), "exemptions matching no leaf: {stale:?}");
+        assert!(
+            on_selection >= 30,
+            "only {on_selection} leaves on the selection package"
+        );
+    }
+
+    /// A migrated leaf that names a board crate again is refused.
+    #[test]
+    fn a_migrated_leaf_naming_a_board_crate_is_refused() {
+        let tmp = tempfile::tempdir().unwrap();
+        let leaf = migrated_leaf(tmp.path(), "qemu-mps2-an385", "");
+        let m = read(&leaf.join("Cargo.toml")) + "nros-board-mps2-an385 = { version = \"*\" }\n";
+        std::fs::write(leaf.join("Cargo.toml"), m).unwrap();
+        let img = resolve(&leaf, &repo()).unwrap().unwrap();
+        let e = check_board_crate_dependency(&img)
+            .expect_err("selection + board crate")
+            .to_string();
+        assert!(
+            e.contains("my_talker_nros_selection") && e.contains("`nros-board-mps2-an385`"),
+            "{e}"
         );
     }
 
