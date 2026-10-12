@@ -2,8 +2,8 @@
 //!
 //! Entry pkg for the NuttX QEMU ARM talker. `nros::main!()` reads the board
 //! (`[image.*] board = "nuttx"`) from this pkg's `system.toml` (RFC-0098
-//! D3), maps `"nuttx"` → `::nros_board_nuttx_qemu::QemuArmVirt`,
-//! and emits `fn main()` that delegates to `<QemuArmVirt as BoardEntry>::run(...)`.
+//! D3), maps `"nuttx"` → `nros_board_nuttx_qemu::QemuArmVirt` (reached
+//! through the generated selection package, issue 1305), and emits `fn main()` that delegates to `<QemuArmVirt as BoardEntry>::run(...)`.
 //!
 //! Replaces the legacy `build.rs + include!(env!("OUT_DIR")/run_plan.rs)`
 //! shape end-to-end.
