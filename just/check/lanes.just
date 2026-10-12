@@ -1898,7 +1898,7 @@ cpp: cpp-fmt
         # `nros_grep_q` (issues 0726 / 1077): a tool error is not a miss.
         _undef="$(nm -u "$_obj")"
         _rc=0
-        nros_grep_q '\bnros_log_emit_at$' <<<"$_undef" || _rc=$?
+        nros_grep_q '\brclc_log_emit_at$' <<<"$_undef" || _rc=$?
         case "$_rc" in
             0) ;;
             1)
