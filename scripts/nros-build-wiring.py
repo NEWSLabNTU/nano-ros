@@ -109,7 +109,10 @@ ROLES = [
         "delegating-shim",
         "every effect is a call into a shared build crate",
         lambda t, ctx: (
+            # phase-484 W4b-2 — `board_net::emit_for_crate` is the same
+            # shape: the board's `[board.net]` recipe lives in the shared crate.
             re.search(r"nros_board_common::\w+_build::|nros_board_common::\w+_link::"
+                      r"|nros_board_common::board_net::"
                       r"|nros_zpico_build::|zephyr_build::export_kconfig", t)
             and not re.search(r"cc::Build|cmake::Config", t)
         ),

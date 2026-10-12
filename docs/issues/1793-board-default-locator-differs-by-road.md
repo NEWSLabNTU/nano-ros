@@ -8,7 +8,7 @@ type: bug
 area: [boards, threadx, config]
 severity: low
 found: 2026-10-11
-related: [1767, phase-484]
+related: [1767, phase-484, phase-497]
 ---
 
 ## What this is

@@ -22,5 +22,6 @@
       spellings of one fact drift.
     -->
     <nano_ros_provides kind="board" name="freertos"/>
+    <nano_ros_provides kind="board" name="mps2-an385-freertos"/>
   </export>
 </package>
