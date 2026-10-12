@@ -884,7 +884,7 @@ impl<'s> ParameterServer<'s> {
     ///
     /// The one path that still builds an entry is the undeclared add
     /// (`allow_undeclared`), which places an EMPTY entry first and then swaps
-    /// the value into it; see [`Self::declare_placeholder`].
+    /// the value into it; see `declare_placeholder`.
     pub fn apply_staged(
         &mut self,
         node: NodeKey,
