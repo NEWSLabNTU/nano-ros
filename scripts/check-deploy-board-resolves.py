@@ -144,15 +144,16 @@ def deploy_values():
                     doc = tomllib.load(fh)
             except Exception:
                 continue
-            # `[image.*]` as well as `[deploy.*]` (issue 0951). Images are the
-            # buildable unit, so most authored board strings live there now —
+            # `[image.*]` only: `[deploy.*]` is retired and the CLI's schema
+            # refuses it by name (phase-486 W8). Images are the buildable
+            # unit, so every authored board string lives there —
             # two in this tree (`nuttx-riscv`, `s32z270-freertos`) are named
             # ONLY on an image, and were therefore never verified by the gate
             # whose whole promise is that an unresolvable board fails HERE,
             # named, instead of becoming a silent skip three layers down.
             # `[image_defaults]` counts too: a board declared there is inherited
             # by every image that omits one.
-            for table in ("deploy", "image"):
+            for table in ("image",):
                 for name, blk in (doc.get(table) or {}).items():
                     if isinstance(blk, dict) and blk.get("board"):
                         out.setdefault(blk["board"], []).append(
@@ -251,7 +252,7 @@ def main():
     values = deploy_values()
     if not values:
         sys.exit(
-            "check-deploy-board-resolves: found no [deploy.*] / [image.*] board "
+            "check-deploy-board-resolves: found no [image.*] board "
             "values — wrong root?"
         )
 
@@ -275,17 +276,17 @@ def main():
             for w in wheres:
                 sys.stderr.write(f"      {w}\n")
         sys.stderr.write(
-            "\n  The two tables name a board differently, on purpose:\n"
+            "\n  How a board is named:\n"
             "  * `[image.*].board` (and `[image_defaults]`) is a NANO-ROS board id, a\n"
             "    descriptor `names` entry such as `zephyr` — never the framework's own\n"
             "    string. The descriptor states that (`[board.zephyr] west_board`) and\n"
             "    `nros build` passes it to `west build -b`; an image naming it is\n"
             "    refused (`ImageBlock::board`, issue 1519).\n"
-            "  * `[deploy.*].board` may name the DOWNSTREAM ecosystem's board (Zephyr's\n"
-            "    `native_sim/native/64`, PlatformIO's `esp32dev`, NuttX's\n"
-            "    `qemu-armv7a-nsh`). It must still resolve to ONE descriptor — a `names`\n"
-            "    entry, the directory, or the descriptor's `[board.zephyr] west_board` —\n"
-            "    or `nros sync` skips the leaf with a count rather than a name (0606).\n"
+            "  * Every value must resolve to ONE descriptor — a `names` entry, the\n"
+            "    directory, or the descriptor's `[board.zephyr] west_board` — or\n"
+            "    `nros sync` skips the leaf with a count rather than a name (0606).\n"
+            "    (`[deploy.*].board`, which could name the downstream id, is retired:\n"
+            "    phase-486 W8.)\n"
         )
         return 1
 

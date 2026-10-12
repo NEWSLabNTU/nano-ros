@@ -1,7 +1,7 @@
-//! `nros new --deploy <name>` deploy-target scaffolder (RFC-0004 home).
+//! `nros new --image/--host <name>` scaffolder (RFC-0004 home).
 //!
-//! Materializes a `[deploy.<name>]` target inside the bringup package's
-//! `system.toml` — the RFC-0004 §4 single source of truth for deploy targets.
+//! Materializes an `[image.<name>]` or `[host.<name>]` inside the bringup package's
+//! `system.toml` — the RFC-0004 §4 single source of truth for what is built and where.
 //! (The Phase-172 root `nros.toml` model this used to write is retired; see
 //! `docs/issues/0051-deploy-target-ssot-split-root-nros-toml-vs-system-toml.md`.)
 //!
@@ -59,7 +59,7 @@ pub struct DeployScaffold {
     /// (RFC-0004 field) so the system + deploy bootstrap together.
     pub from_launch: Option<String>,
     /// `--from-profile <name>`: base the new target on an existing
-    /// `[deploy.<name>]` in the same `system.toml` (forks its fields).
+    /// block of the same table in the same `system.toml` (forks its fields).
     pub from_profile: Option<String>,
     /// Workspace root to discover the bringup package under.
     pub workspace_root: PathBuf,
@@ -174,7 +174,7 @@ fn locate_bringup_system_toml(s: &DeployScaffold) -> Result<PathBuf> {
         0 => bail!(
             "no bringup package with a system.toml under {} — create one first \
              (`nros new system <name>_bringup --components <...>`); \
-             `nros new --deploy` only adds a [deploy.<name>] to an existing system.toml",
+             `nros new --image`/`--host` only adds a block to an existing system.toml",
             s.workspace_root.display()
         ),
         1 => Ok(candidates.into_iter().next().unwrap().1),
@@ -381,8 +381,6 @@ name = \"talker\"
         let sys = reload(&system_toml);
         let img = sys.image.get("fw").expect("[image.fw] written");
         assert_eq!(img.board.as_deref(), Some("mps2-an385-freertos"));
-        // No `[deploy.*]` is ever produced now.
-        assert!(sys.deploy.is_empty());
         let _ = std::fs::remove_dir_all(&root);
     }
 

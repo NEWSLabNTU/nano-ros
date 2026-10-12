@@ -1,8 +1,12 @@
 //! `[image.<id>]` — the buildable unit (RFC-0065 D6, phase-383 W1).
 //!
+//! **History:** the argument below is why `[image.*]` was introduced beside
+//! `[deploy.*]`. Since phase-486 W8 `[deploy.*]` is retired outright and
+//! refused by name: placement is `[host.<name>]`, the build is `[image.<id>]`.
+//!
 //! ## Why this is a NEW table and not a rename of `[deploy.*]`
 //!
-//! `[deploy.*]` is **not ours**. It is
+//! `[deploy.*]` was **not ours**. It is
 //! [`ros_launch_manifest_model::system_config::DeployBlock`], an upstream
 //! `#[serde(deny_unknown_fields)]` type, so a field added there has to land in
 //! another repository first — the wall RFC-0078 hit and recorded in
@@ -72,8 +76,8 @@ pub struct ImageBlock {
     /// Launch arguments bound at resolve time — `{ host = "robot1" }`.
     ///
     /// This is how an image selects a MACHINE: `native_entry_robot1` differs
-    /// from `native_entry_robot2` only here. Placement itself stays in
-    /// `[deploy.*]`.
+    /// from `native_entry_robot2` only here. Placement itself is
+    /// `[host.*]`.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub args: BTreeMap<String, String>,
 
@@ -922,116 +926,6 @@ entry_kind = "board-run"
     }
 }
 
-/// Fields on a deprecated `[deploy.<id>]` that another table now owns, each
-/// paired with WHERE it went (phase-383 W1.f, issue 0951). They still parse,
-/// with this warning, until 0.6.0 (issue 1809).
-///
-/// Absent by design: the fields the PARSE refuses since phase-486 W8a
-/// (`nodes`, `launch`, `domain_id`, `locator`, `rmw` — see
-/// `cargo_metadata_schema::DeployTarget`). Those reached an image only through
-/// rlm's placement, which no longer reads `[deploy.*]`, so a warning that let
-/// them through would let them be dropped silently. `kind` is absent because
-/// nothing reads it any more and it has no new home.
-///
-/// The destination is part of the datum because it is not uniform, and a lint
-/// that guesses one destination for every field sends people to a table with no
-/// such key. `nros` is SITE config about a BOARD and lives on
-/// `[board_config.<board>]`; the rest are build description.
-pub const DEPRECATED_DEPLOY_FIELDS: &[(&str, DeployFieldHome)] = &[
-    ("board", DeployFieldHome::Image),
-    ("target", DeployFieldHome::Image),
-    ("profile", DeployFieldHome::Image),
-    ("optimize", DeployFieldHome::Image),
-    ("features", DeployFieldHome::Image),
-    ("nros", DeployFieldHome::BoardConfig),
-];
-
-/// Which table a retired `[deploy.*]` field moved to.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DeployFieldHome {
-    /// `[image.<id>]` — build description, keyed by the same id.
-    Image,
-    /// `[board_config.<board>]` — site config, keyed by BOARD.
-    BoardConfig,
-}
-
-impl DeployFieldHome {
-    fn destination(self, id: &str) -> String {
-        match self {
-            DeployFieldHome::Image => format!("`[image.{id}]`"),
-            DeployFieldHome::BoardConfig => {
-                "`[board_config.<board>]`, keyed by the BOARD rather than by \
-                 this block's name"
-                    .to_string()
-            }
-        }
-    }
-
-    /// Whether a same-named `[image.<id>]` means this field has already moved.
-    ///
-    /// Only true for fields whose home IS that image. A site block is keyed by
-    /// board, so an image of the same name says nothing about whether the site
-    /// config was migrated — skipping on it would silence the one warning that
-    /// most needs to fire.
-    fn satisfied_by_image(self) -> bool {
-        matches!(self, DeployFieldHome::Image)
-    }
-}
-
-/// One deprecation warning per `[deploy.<id>]` still carrying build fields with
-/// no `[image.<id>]` beside it.
-///
-/// Follows phase-222's shipped pattern: warn on every invocation while still
-/// working, `NROS_SUPPRESS_DEPRECATION=1` to opt out, removal at a VERSION
-/// boundary rather than after a period.
-///
-/// Measured before writing this: across 63 `[deploy.*]` blocks in the tree, not
-/// one uses `rmw`, `domain_id`, `locator`, `profile`, `optimize` or `features`.
-/// Only `board` and `target` fire in practice, which is why this is a lint and
-/// not a migration.
-/// Suppression is a PARAMETER, not an env read inside the function: a lint that
-/// consults ambient state cannot be tested deterministically when the suite
-/// runs in one process. [`deprecation_suppressed`] is the one place that reads
-/// the variable.
-#[must_use]
-pub fn deprecated_deploy_build_field_warnings(
-    deploy_blocks: &BTreeMap<String, Vec<String>>,
-    images: &BTreeMap<String, ImageBlock>,
-    suppressed: bool,
-) -> Vec<String> {
-    if suppressed {
-        return Vec::new();
-    }
-    let mut out = Vec::new();
-    for (id, present) in deploy_blocks {
-        let has_image = images.contains_key(id);
-        // Group by destination so one block yields one warning per table it
-        // must migrate into, not one per field.
-        let mut grouped: BTreeMap<String, Vec<&str>> = BTreeMap::new();
-        for field in present.iter().map(String::as_str) {
-            let Some((_, home)) = DEPRECATED_DEPLOY_FIELDS.iter().find(|(f, _)| *f == field) else {
-                continue;
-            };
-            if has_image && home.satisfied_by_image() {
-                continue;
-            }
-            grouped.entry(home.destination(id)).or_default().push(field);
-        }
-        for (destination, mut hits) in grouped {
-            hits.sort_unstable();
-            out.push(format!(
-                "[deploy.{id}] carries {} — {} now owns {}. `[deploy.*]` is \
-                 removed at 0.6.0 (issue 1809); its placement already moved to \
-                 `[host.*]`. Set NROS_SUPPRESS_DEPRECATION=1 to silence.",
-                hits.join(", "),
-                destination,
-                if hits.len() == 1 { "it" } else { "them" },
-            ));
-        }
-    }
-    out
-}
-
 /// Whether the caller asked for deprecation warnings to be silenced.
 /// phase-222's spelling, reused verbatim.
 #[must_use]
@@ -1040,113 +934,9 @@ pub fn deprecation_suppressed() -> bool {
 }
 
 #[cfg(test)]
-mod deprecation_tests {
+mod launch_tests {
     use super::*;
 
-    fn blocks(pairs: &[(&str, &[&str])]) -> BTreeMap<String, Vec<String>> {
-        pairs
-            .iter()
-            .map(|(id, fs)| {
-                (
-                    (*id).to_string(),
-                    fs.iter().map(|f| (*f).to_string()).collect(),
-                )
-            })
-            .collect()
-    }
-
-    /// The site block is keyed by BOARD, so a same-named `[image.<id>]` says
-    /// NOTHING about whether it was migrated. Skipping on the image's presence
-    /// would silence exactly the workspaces furthest along — the ones that have
-    /// images for everything and an unmigrated site table underneath.
-    #[test]
-    fn a_site_block_still_warns_when_a_same_named_image_exists() {
-        let mut images = BTreeMap::new();
-        images.insert("freertos".to_string(), ImageBlock::default());
-        let w = deprecated_deploy_build_field_warnings(
-            &blocks(&[("freertos", &["board", "nros"])]),
-            &images,
-            false,
-        );
-        assert_eq!(w.len(), 1, "the image satisfies `board`, not `nros`: {w:?}");
-        assert!(w[0].contains("nros"), "{}", w[0]);
-        assert!(w[0].contains("board_config"), "{}", w[0]);
-        assert!(
-            !w[0].contains("[image.freertos]"),
-            "must not send the reader to a table with no such key: {}",
-            w[0]
-        );
-    }
-
-    #[test]
-    fn a_build_field_without_an_image_warns_once() {
-        let w = deprecated_deploy_build_field_warnings(
-            &blocks(&[("freertos", &["kind", "board"])]),
-            &BTreeMap::new(),
-            false,
-        );
-        assert_eq!(w.len(), 1, "{w:?}");
-        assert!(w[0].contains("board"), "names the field: {}", w[0]);
-        assert!(
-            w[0].contains("[image.freertos]"),
-            "names the replacement: {}",
-            w[0]
-        );
-    }
-
-    /// The fields the PARSE refuses (phase-486 W8a) never reach this lint, and
-    /// it must not claim them: a warning is "still works until 0.6.0", which
-    /// is false for a field rlm no longer reads.
-    #[test]
-    fn refused_and_inert_fields_never_warn() {
-        let w = deprecated_deploy_build_field_warnings(
-            &blocks(&[("robot1", &["kind", "nodes", "launch", "domain_id", "rmw"])]),
-            &BTreeMap::new(),
-            false,
-        );
-        assert!(w.is_empty(), "{w:?}");
-    }
-
-    #[test]
-    fn a_migrated_block_stops_warning() {
-        let mut images = BTreeMap::new();
-        images.insert("freertos".to_string(), ImageBlock::default());
-        let w = deprecated_deploy_build_field_warnings(
-            &blocks(&[("freertos", &["kind", "board"])]),
-            &images,
-            false,
-        );
-        assert!(w.is_empty(), "{w:?}");
-    }
-
-    #[test]
-    fn suppression_silences_every_warning() {
-        let w = deprecated_deploy_build_field_warnings(
-            &blocks(&[("freertos", &["board"])]),
-            &BTreeMap::new(),
-            true,
-        );
-        assert!(w.is_empty(), "{w:?}");
-    }
-
-    #[test]
-    fn target_is_a_build_field_and_kind_is_not() {
-        let field = |n: &str| DEPRECATED_DEPLOY_FIELDS.iter().find(|(f, _)| *f == n);
-        assert_eq!(
-            field("target").map(|(_, h)| *h),
-            Some(DeployFieldHome::Image)
-        );
-        // Refused at parse since phase-486 W8a, or inert: never warned.
-        for f in ["kind", "nodes", "launch", "domain_id", "locator", "rmw"] {
-            assert!(field(f).is_none(), "{f}");
-        }
-        // The one field that does NOT move to the image — a warning naming
-        // `[image.*]` for it would send the reader to a table with no such key.
-        assert_eq!(
-            field("nros").map(|(_, h)| *h),
-            Some(DeployFieldHome::BoardConfig)
-        );
-    }
     #[test]
     fn a_launch_that_names_no_file_is_refused_with_the_alternatives() {
         // phase-383 W10.a. W9.a wrote `launch = "…`"` and `launch = "names"` —

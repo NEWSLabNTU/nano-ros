@@ -125,6 +125,6 @@ fn orchestration_plan_emits_expected_entities() {
     assert_eq!(build["rmw"], "zenoh", "rmw from system.toml");
     assert_eq!(
         build["target"], "x86_64-unknown-linux-gnu",
-        "target from [deploy.native]"
+        "target derived from the native board"
     );
 }

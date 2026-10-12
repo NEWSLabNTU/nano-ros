@@ -140,8 +140,7 @@ pub struct Args {
     pub model: Option<PathBuf>,
 
     /// Phase 255 Wave 4 — RMW override, the TOP of the precedence ladder
-    /// (`--rmw` > `[image.<target>].rmw` > the deprecated
-    /// `[deploy.<target>].rmw` > `[system].rmw` > `zenoh`). Forces
+    /// (`--rmw` > `[image.<target>].rmw` > `[system].rmw` > `zenoh`). Forces
     /// the `NROS_SYSTEM_RMW*` define for this bake regardless of `system.toml`.
     #[arg(long = "rmw")]
     pub rmw: Option<String>,
@@ -187,7 +186,7 @@ fn entry_identity(value: &str, workspace: &Path) -> (PathBuf, String) {
     (abs, name)
 }
 
-/// The `[image.<id>]` / `[deploy.<id>]` block this bake selects, from whichever
+/// The `[image.<id>]` block this bake selects, from whichever
 /// flag named it.
 ///
 /// `--target` names the block itself. `--for-entry` names the entry PACKAGE and
@@ -202,7 +201,7 @@ fn entry_identity(value: &str, workspace: &Path) -> (PathBuf, String) {
 /// whole of 1312.
 ///
 /// A `--target` that names no block IS an error (phase-459 W5). That is the
-/// hand-run form of 1312: the value is a key into `[image.*]` / `[deploy.*]`,
+/// hand-run form of 1312: the value is a key into `[image.*]`,
 /// and a key no block carries used to fall through every per-target reader to
 /// the system-wide default, so `--target zephyr-cyclonedds` on the island baked
 /// the HOST's tier table into a Zephyr image with nothing said. The refusal
@@ -247,7 +246,7 @@ fn resolve_target_block(
     }
 }
 
-/// phase-459 W5 - `--target <id>` must name an `[image.<id>]` or `[deploy.<id>]`
+/// phase-459 W5 - `--target <id>` must name an `[image.<id>]`
 /// block of the bringup being baked; otherwise the bake is refused, naming the
 /// blocks it could have named.
 ///
@@ -259,10 +258,10 @@ fn resolve_target_block(
 /// the Zephyr, ESP-IDF and PlatformIO ones ask `--for-entry`, and the NuttX
 /// one pins a real block key.
 fn declared_target_block(target: &str, system: &SystemToml, bringup_dir: &Path) -> Result<String> {
-    if system.image.contains_key(target) || system.deploy.contains_key(target) {
+    if system.image.contains_key(target) {
         return Ok(target.to_string());
     }
-    let mut blocks: Vec<String> = system
+    let blocks: Vec<String> = system
         .image
         .keys()
         .map(|id| {
@@ -273,18 +272,8 @@ fn declared_target_block(target: &str, system: &SystemToml, bringup_dir: &Path) 
             }
         })
         .collect();
-    blocks.extend(
-        system
-            .deploy
-            .iter()
-            .map(|(id, d)| match (&d.board, &d.kind) {
-                (Some(b), _) => format!("[deploy.{id}]  board = \"{b}\""),
-                (None, Some(k)) => format!("[deploy.{id}]  kind = \"{k}\""),
-                (None, None) => format!("[deploy.{id}]"),
-            }),
-    );
     let declared = if blocks.is_empty() {
-        "This bringup declares no `[image.*]` or `[deploy.*]` block at all: drop `--target` \
+        "This bringup declares no `[image.*]` block at all: drop `--target` \
          for the system-wide defaults, or declare `[image.<id>] board = \"<board>\"` and name \
          that <id>."
             .to_string()
@@ -296,7 +285,7 @@ fn declared_target_block(target: &str, system: &SystemToml, bringup_dir: &Path) 
         )
     };
     bail!(
-        "codegen-system --target `{target}`: no `[image.{target}]` or `[deploy.{target}]` block \
+        "codegen-system --target `{target}`: no `[image.{target}]` block \
          in {}/system.toml. `--target` names a BLOCK KEY, not a board id or a platform-rmw \
          pair; a key no block carries used to resolve every per-target fact, the tier RTOS \
          first among them, to the HOST (issue 1312, phase-459 W5). {declared}",
@@ -329,7 +318,7 @@ mod resolve_target_block_tests {
         // goes, on a bringup whose real Zephyr image is called something else.
         let s = sys("[image.zephyr_native_sim]\nboard=\"zephyr\"\n\
              [image.native]\nboard=\"native\"\n\
-             [deploy.robot]\nkind=\"flash\"\nboard=\"qemu-armv7a-nuttx\"\n");
+             [host.robot]\n");
         let err = resolve(Some("zephyr-cyclonedds"), &s)
             .expect_err("a key no block carries must not resolve to the host")
             .to_string();
@@ -340,8 +329,8 @@ mod resolve_target_block_tests {
         );
         assert!(err.contains("[image.native]  board = \"native\""), "{err}");
         assert!(
-            err.contains("[deploy.robot]  board = \"qemu-armv7a-nuttx\""),
-            "deploy blocks are keys too: {err}"
+            !err.contains("robot"),
+            "a host is a machine, not a build: it is no `--target` key: {err}"
         );
         assert!(
             err.contains("--for-entry"),
@@ -351,16 +340,11 @@ mod resolve_target_block_tests {
     }
 
     #[test]
-    fn resolve_target_block_accepts_an_image_key_and_a_deploy_key() {
-        let s = sys("[image.zephyr_native_sim]\nboard=\"zephyr\"\n\
-             [deploy.robot]\nkind=\"flash\"\n");
+    fn resolve_target_block_accepts_an_image_key() {
+        let s = sys("[image.zephyr_native_sim]\nboard=\"zephyr\"\n");
         assert_eq!(
             resolve(Some("zephyr_native_sim"), &s).expect("an image key resolves"),
             Some("zephyr_native_sim".to_string())
-        );
-        assert_eq!(
-            resolve(Some("robot"), &s).expect("a deploy key resolves"),
-            Some("robot".to_string())
         );
     }
 
@@ -370,10 +354,7 @@ mod resolve_target_block_tests {
         let err = resolve(Some("native"), &s)
             .expect_err("nothing to name")
             .to_string();
-        assert!(
-            err.contains("declares no `[image.*]` or `[deploy.*]` block"),
-            "{err}"
-        );
+        assert!(err.contains("declares no `[image.*]` block"), "{err}");
         assert!(err.contains("drop `--target`"), "{err}");
     }
 
@@ -1062,14 +1043,14 @@ fn render_system_config_h(sys: &SystemToml, target: Option<&str>, cli_rmw: Optio
         c_escape(&sys.system.name)
     ));
     // Phase 256 Wave 8 — domain/locator resolve through the SSoT precedence too
-    // (`[deploy.<target>].domain_id`/`.locator` override `[system]`), so the C
+    // (the image's bound `[host.*]` `domain_id`/`locator` override `[system]`), so the C
     // define matches the build for a given `--target`.
     out.push_str(&format!(
         "#define NROS_SYSTEM_DOMAIN_ID {}u\n",
         sys.resolved_domain_id(target)
     ));
     // Phase 255 — RMW resolves through the SSoT precedence ladder
-    // (`[deploy.<target>].rmw` → `[system].rmw` → `zenoh`), the SAME
+    // (`[image.<target>].rmw` → `[system].rmw` → `zenoh`), the SAME
     // `resolved_rmw` the Rust planner uses, so the C define matches the build
     // for a given `--target`. `--rmw` (Wave 4) plumbs in as the top rung.
     let rmw = sys.resolved_rmw(target, cli_rmw);
@@ -1290,8 +1271,8 @@ fn render_plan_json(
             // Issue 0951 — the SELECTED target's launch, from `[image.<t>]`.
             // An image's `launch` is relative to the bringup's `launch/`
             // directory (`validate_image_launch` joins it that way). The
-            // `[deploy.<t>] launch` rung, and the any-deploy fallback below
-            // it, are gone: the parse refuses that field since phase-486 W8a.
+            // `[deploy.<t>]` rung and the "any deploy block's launch" fallback
+            // retired with the table (phase-486 W8).
             let t = target?;
             bringup
                 .system
@@ -1784,10 +1765,9 @@ pkg = "listener_pkg"
 class = "listener_pkg::ListenerNode"
 name = "listener"
 
-[deploy.zephyr_native_sim]
-kind = "qemu"
-target = "x86_64-unknown-linux-gnu"
-board = "native_sim"
+[image.zephyr_native_sim]
+board = "zephyr"
+launch = "system.launch.xml"
 "#,
         )
         .unwrap();
@@ -1904,9 +1884,9 @@ stack_bytes = 8192
 [tiers.low.posix]
 priority = 10
 
-[deploy.native]
-kind = "self"
-target = "x86_64-unknown-linux-gnu"
+[image.native]
+board = "native"
+launch = "system.launch.xml"
 "#,
         )
         .unwrap();
@@ -2259,7 +2239,7 @@ execution:
     /// the spelling of the block that names it.
     ///
     /// `--target` (and the `--for-entry` that resolves to the same block id)
-    /// names an `[image.*]`/`[deploy.*]` BLOCK. `check_executor_capacity` used
+    /// names an `[image.*]` BLOCK. `check_executor_capacity` used
     /// to read that same string as a PLATFORM name, which is true of
     /// `native`/`posix` only because an image is conventionally named after
     /// its platform. Both halves below run one bake over one workspace and one
@@ -2341,9 +2321,9 @@ pkg = "telem_pkg"
 class = "telem_pkg::Telem"
 name = "telem_node"
 
-[deploy.native]
-kind = "self"
-target = "x86_64-unknown-linux-gnu"
+[image.native]
+board = "native"
+launch = "system.launch.xml"
 "#,
         )
         .unwrap();
@@ -2513,13 +2493,15 @@ structure:
         .unwrap();
     }
 
-    /// Phase 254 — `[safety]` / `[param_services]` declared in `system.toml` (the
-    /// SSoT both codegen paths read) emit C `#define`s for conditional compile,
-    /// the analog of `NROS_SYSTEM_RMW_<TOKEN>`. Absent ⇒ no define.
+    /// Phase 254 — `[safety]` and the `param_services` axis declared in
+    /// `system.toml` (the SSoT both codegen paths read) emit C `#define`s for
+    /// conditional compile, the analog of `NROS_SYSTEM_RMW_<TOKEN>`. Absent ⇒ no
+    /// define.
     #[test]
     fn system_config_h_emits_capability_defines() {
         let sys: SystemToml = toml::from_str(
-            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n[safety]\ncrc=true\n[param_services]\n",
+            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\nfeatures=[\"param_services\"]\n\
+             [safety]\ncrc=true\n",
         )
         .unwrap();
         let h = render_system_config_h(&sys, None, None);
@@ -2542,18 +2524,17 @@ structure:
     }
 
     /// Phase 261 W4 — `[system].features = [...]` lowers identically to the typed
-    /// block on the C/C++ bake: `features = ["safety", "param_services"]` emits the
-    /// same `#define`s as the `[safety]` / `[param_services]` blocks.
+    /// block on the C/C++ bake: `features = ["safety"]` emits the same
+    /// `#define`s as the `[safety]` block. (The `[param_services]` block was the
+    /// other typed spelling; it is refused since phase-486 W8.)
     #[test]
     fn system_config_h_features_list_equivalent_to_typed_blocks() {
         let via_features: SystemToml = toml::from_str(
-            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\nfeatures=[\"safety\",\"param_services\"]\n",
+            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\nfeatures=[\"safety\"]\n",
         )
         .unwrap();
-        let via_typed: SystemToml = toml::from_str(
-            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n[safety]\n[param_services]\n",
-        )
-        .unwrap();
+        let via_typed: SystemToml =
+            toml::from_str("[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n[safety]\n").unwrap();
         assert_eq!(
             render_system_config_h(&via_features, None, None),
             render_system_config_h(&via_typed, None, None),
@@ -2649,12 +2630,12 @@ structure:
 
     /// Phase 255 Wave 3 — the C `#define NROS_SYSTEM_RMW*` resolves through the
     /// SSoT precedence: `[image.<target>].rmw` overrides `[system].rmw` for that
-    /// target; with no target the system default drives. (The rung was
-    /// `[deploy.<target>].rmw` until phase-486 W8a refused that field.)
+    /// target; with no target the system default drives.
     #[test]
-    fn system_config_h_rmw_honours_image_override() {
+    fn system_config_h_rmw_honours_the_image_override() {
         let sys: SystemToml = toml::from_str(
-            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n[image.native]\nrmw=\"cyclonedds\"\n",
+            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n\
+             [image.native]\nboard=\"native\"\nrmw=\"cyclonedds\"\n",
         )
         .unwrap();
 
@@ -2680,14 +2661,15 @@ structure:
     }
 
     /// Phase 256 Wave 8 — the C `#define NROS_SYSTEM_DOMAIN_ID` / `_LOCATOR`
-    /// resolve through the image's bound `[host.*]`, matching the build for a
-    /// target. (They were `[deploy.<target>]` fields until phase-486 W8a.)
+    /// resolve through the target's override too, matching the build for a
+    /// target. The override is the `[host.*]` the image binds (it was
+    /// `[deploy.<t>]` until phase-486 W8).
     #[test]
-    fn system_config_h_domain_locator_honour_host_override() {
+    fn system_config_h_domain_locator_honour_the_host_override() {
         let sys: SystemToml = toml::from_str(
             "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\nlocator=\"tcp/sys:7447\"\n\
              [host.robot]\ndomain_id=7\nlocator=\"tcp/robot:7450\"\n\
-             [image.robot]\nargs={ host=\"robot\" }\n",
+             [image.robot]\nboard=\"native\"\nargs={ host = \"robot\" }\n",
         )
         .unwrap();
 
@@ -2708,33 +2690,24 @@ structure:
         );
     }
 
-    /// phase-486 W8a — a `[deploy.*]` block that still places or sets a
-    /// session fact is refused BY NAME, naming each field's new home. rlm no
-    /// longer reads `[deploy.*]`, so accepting these would drop them silently.
+    /// Issue 1809 (0.6.0) — EVERY `[deploy.*]` block is refused by name,
+    /// naming both halves' homes: the placement fields phase-486 W8a already
+    /// refused, and the build fields that parsed with a warning until now.
     #[test]
-    fn a_placing_deploy_block_is_refused_naming_its_new_home() {
-        let e = toml::from_str::<SystemToml>(
-            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n\
-             [deploy.robot]\nkind=\"flash\"\ndomain_id=7\nrmw=\"xrce\"\nnodes=[\"/a\"]\n",
-        )
-        .unwrap_err()
-        .to_string();
-        for want in [
-            "[deploy.robot]",
-            "`nodes` (now `[host.<name>] nodes`)",
-            "`domain_id` (now `[host.<name>] domain_id`)",
-            "`rmw` (now `[image.<id>] rmw`)",
-            "issue 1809",
+    fn every_deploy_block_is_refused_naming_its_new_homes() {
+        for block in [
+            "[deploy.robot]\nkind=\"flash\"\ndomain_id=7\nnodes=[\"/a\"]\n",
+            "[deploy.fw]\nkind=\"embedded\"\nboard=\"freertos\"\n",
         ] {
-            assert!(e.contains(want), "missing {want:?} in: {e}");
+            let e = toml::from_str::<SystemToml>(&format!(
+                "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n{block}"
+            ))
+            .unwrap_err()
+            .to_string();
+            for want in ["`[deploy]` is retired", "[image.<id>]", "[host.<name>]"] {
+                assert!(e.contains(want), "missing {want:?} in: {e}");
+            }
         }
-        // A block of build fields alone still parses (warned until 0.6.0).
-        let ok: SystemToml = toml::from_str(
-            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n\
-             [deploy.fw]\nkind=\"embedded\"\nboard=\"freertos\"\ntarget=\"thumbv7m-none-eabi\"\n",
-        )
-        .unwrap();
-        assert_eq!(ok.deploy["fw"].board.as_deref(), Some("freertos"));
     }
 
     /// 212.E.T1 — fixture bringup w/ 2 Rust components produces the expected

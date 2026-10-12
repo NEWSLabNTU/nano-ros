@@ -179,16 +179,14 @@ pub fn run(args: Args) -> Result<()> {
             eprintln!("nros check: warning: {w}");
         }
         eprintln!(
-            // Issue 0951 — BOTH counts. `examples/workspaces/realtime-rust`
-            // has seven buildable images and zero deploy blocks, so the deploy
-            // count alone reported `0 deploy target(s)` for a workspace that
-            // builds seven things.
-            "nros check: ok (system '{}', {} component(s), {} image(s), {} deploy target(s), \
+            // Images and hosts: what is built and where it runs (`[deploy.*]`,
+            // which held both, retired in phase-486 W8).
+            "nros check: ok (system '{}', {} component(s), {} image(s), {} host(s), \
              {} overlay warning(s), {})",
             sys.system.name,
             sys.components.len(),
             sys.image.len(),
-            sys.deploy.len(),
+            sys.host.len(),
             overlay_warnings.len(),
             path.display()
         );
@@ -223,9 +221,8 @@ name = \"demo\"
 rmw = \"zenoh\"
 domain_id = 0
 
-[deploy.native]
-kind = \"self\"
-target = \"x86_64-unknown-linux-gnu\"
+[image.native]
+board = \"native\"
 ";
 
     #[test]

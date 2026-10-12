@@ -4497,12 +4497,29 @@ pub(crate) type Bringups = Vec<(String, PathBuf, plan::ImageSet)>;
 pub(crate) fn collect_images(
     packages: &[cargo_nano_ros::provider_scan::WorkspacePackage],
 ) -> Result<Bringups> {
-    let (out, warnings) = collect_images_with_warnings(
-        packages,
-        crate::orchestration::image::deprecation_suppressed(),
-    )?;
-    for w in warnings {
-        eprintln!("nros build: {w}");
+    let mut out = Vec::new();
+    for pkg in packages {
+        let system_toml = pkg.dir.join("system.toml");
+        if !system_toml.is_file() {
+            continue;
+        }
+        let text = std::fs::read_to_string(&system_toml)
+            .wrap_err_with(|| format!("reading {}", system_toml.display()))?;
+        // A retired table (`[deploy.*]`, `[param_services]`) is refused here
+        // by the schema itself, naming its replacement (phase-486 W8). The
+        // W1.f deprecation lint that used to read `[deploy.*]` build fields at
+        // this point went with the table.
+        let sys: crate::orchestration::cargo_metadata_schema::SystemToml =
+            toml::from_str(&text).wrap_err_with(|| format!("parsing {}", system_toml.display()))?;
+        out.push((
+            pkg.name.clone(),
+            pkg.dir.clone(),
+            plan::ImageSet {
+                images: effective_images(&sys),
+                defaults: sys.image_defaults.clone(),
+                default_images: sys.system.default_images.clone(),
+            },
+        ));
     }
     Ok(out)
 }
@@ -4815,21 +4832,13 @@ fn report_declared_depends(
     eyre::bail!("{msg}")
 }
 
-/// [`collect_images`], with the deprecation warnings RETURNED rather than
-/// printed and the suppression flag passed in.
-///
-/// Split for the reason the lint's own doc comment gives for taking
-/// `suppressed` as a parameter: a warning that can only be observed on stderr,
-/// under an ambient env var, cannot be tested deterministically — and the
-/// previous shape is exactly how W1.f shipped a correct, well-tested lint that
-/// no production path called. The test below asserts the WIRING, not the lint.
 /// Every `[image.*]` with its RMW RESOLVED, at the parse boundary.
 ///
 /// Issue 1304 (and issue 0938, which believed this was already true). The
 /// ladder is `SystemToml::resolved_rmw`: `[image.<id>].rmw` folded over
-/// `[image_defaults]`, then the deprecated `[deploy.<id>].rmw`, then
-/// `[system].rmw`, then `"zenoh"`. The builder read only the first rung and
-/// then defaulted straight to zenoh, so the last two were unreachable from
+/// `[image_defaults]`, then `[system].rmw`, then `"zenoh"`. The builder read
+/// only the first rung and then defaulted straight to zenoh, so the rest were
+/// unreachable from
 /// `nros build` — while 0938's own doc said "`nros build` has resolved an
 /// image's RMW from `[image.*]` since RFC-0065" and removed the duality for
 /// `nros plan` and `nros codegen-system` only.
@@ -4925,69 +4934,6 @@ mod effective_images_tests {
     }
 }
 
-fn collect_images_with_warnings(
-    packages: &[cargo_nano_ros::provider_scan::WorkspacePackage],
-    suppressed: bool,
-) -> Result<(Bringups, Vec<String>)> {
-    let mut warnings: Vec<String> = Vec::new();
-    let mut out = Vec::new();
-    for pkg in packages {
-        let system_toml = pkg.dir.join("system.toml");
-        if !system_toml.is_file() {
-            continue;
-        }
-        let text = std::fs::read_to_string(&system_toml)
-            .wrap_err_with(|| format!("reading {}", system_toml.display()))?;
-        let sys: crate::orchestration::cargo_metadata_schema::SystemToml =
-            toml::from_str(&text).wrap_err_with(|| format!("parsing {}", system_toml.display()))?;
-
-        // W1.f's deprecation lint, ACTUALLY REACHED.
-        //
-        // It shipped with four passing tests and no production caller, so no
-        // user has ever seen the warning it promised ("warn on every invocation
-        // while still working"). That is the shape `check-no-vacuous-tests`
-        // exists for, one level up: the function is correct and its tests are
-        // honest, and the feature is still absent because nothing calls it.
-        //
-        // Here rather than in `nros doctor` alone, because this is where a
-        // build reads the declaration it is warning about — the user is looking
-        // at the output already, and it costs one pass over a table that is
-        // typically empty.
-        //
-        // Field PRESENCE comes from the raw document, not from `sys.deploy`:
-        // `DeployTarget` is upstream's typed struct, so an absent key and a key
-        // set to its default are the same value once parsed, and a lint about
-        // "you wrote this key" must see what was written.
-        if let Ok(raw) = text.parse::<toml::Value>()
-            && let Some(deploys) = raw.get("deploy").and_then(|d| d.as_table())
-        {
-            let present: std::collections::BTreeMap<String, Vec<String>> = deploys
-                .iter()
-                .filter_map(|(id, block)| {
-                    let t = block.as_table()?;
-                    Some((id.clone(), t.keys().cloned().collect()))
-                })
-                .collect();
-            for w in crate::orchestration::image::deprecated_deploy_build_field_warnings(
-                &present, &sys.image, suppressed,
-            ) {
-                warnings.push(format!("{}: {w}", system_toml.display()));
-            }
-        }
-
-        out.push((
-            pkg.name.clone(),
-            pkg.dir.clone(),
-            plan::ImageSet {
-                images: effective_images(&sys),
-                defaults: sys.image_defaults.clone(),
-                default_images: sys.system.default_images.clone(),
-            },
-        ));
-    }
-    Ok((out, warnings))
-}
-
 #[cfg(test)]
 mod facade_absence_tests {
     use super::*;
@@ -5023,11 +4969,13 @@ domain_id = 0
         assert_eq!(got, vec!["lifecycle", "param_services"]);
     }
 
-    /// The deprecated typed block still counts — both spellings flip the axis.
+    /// The deprecated typed `[safety]` block still counts — both spellings
+    /// flip the axis. (`[param_services]` was the other typed block; it is
+    /// refused since phase-486 W8, so it cannot reach this predicate.)
     #[test]
     fn typed_block_is_seen() {
-        let d = bringup_with(&format!("{BASE}\n[param_services]\nenabled = true\n"));
-        assert_eq!(declared_capabilities(d.path()), vec!["param_services"]);
+        let d = bringup_with(&format!("{BASE}\n[safety]\nenabled = true\n"));
+        assert_eq!(declared_capabilities(d.path()), vec!["safety"]);
     }
 
     /// A system that declares nothing keeps the WARNING path: a missing facade
@@ -5053,19 +5001,9 @@ domain_id = 0
 }
 
 #[cfg(test)]
-mod deprecation_wiring_tests {
+mod retired_table_tests {
     use super::*;
 
-    /// The lint W1.f promised must be REACHED by the build path.
-    ///
-    /// It shipped with four passing unit tests and no production caller, so the
-    /// warning it specified ("warn on every invocation while still working")
-    /// reached nobody: `nros build` was silent and `nros doctor` never grew the
-    /// check either. The unit tests could not catch that — they call the lint
-    /// directly, which is precisely what nothing else did.
-    ///
-    /// So this asserts the WIRING rather than the lint: parse a bringup through
-    /// the real `collect_images` path and require the warning to come back.
     fn pkg(dir: &std::path::Path) -> Vec<cargo_nano_ros::provider_scan::WorkspacePackage> {
         vec![cargo_nano_ros::provider_scan::WorkspacePackage {
             name: "demo_bringup".to_string(),
@@ -5075,54 +5013,28 @@ mod deprecation_wiring_tests {
         }]
     }
 
-    fn write_system(dir: &std::path::Path, body: &str) {
-        std::fs::create_dir_all(dir).expect("mkdir");
-        std::fs::write(dir.join("system.toml"), body).expect("write");
-    }
-
+    /// phase-486 W8 — the build path REFUSES a retired table, naming the file
+    /// and the replacement. (It used to warn about `[deploy.*]` build fields
+    /// here, W1.f's lint; a warning was right while the table still worked.)
     #[test]
-    fn a_deploy_build_field_warns_through_the_build_path() {
-        let d = std::env::temp_dir().join(format!("nros-w10b-{}-{}", std::process::id(), line!()));
-        write_system(
-            &d,
-            "[system]\nname = \"s\"\nrmw = \"zenoh\"\ndomain_id = 0\n\n\
-             [deploy.legacy]\nkind = \"embedded\"\nboard = \"mps2-an385-freertos\"\n",
-        );
-
-        let (_, warnings) = collect_images_with_warnings(&pkg(&d), false).expect("collects");
-        assert_eq!(warnings.len(), 1, "expected one warning, got {warnings:?}");
-        assert!(
-            warnings[0].contains("[deploy.legacy]") && warnings[0].contains("board"),
-            "warning must name the block and the field: {}",
-            warnings[0]
-        );
-
-        // Suppression reaches the same path.
-        let (_, quiet) = collect_images_with_warnings(&pkg(&d), true).expect("collects");
-        assert!(quiet.is_empty(), "suppressed run must be silent: {quiet:?}");
-
-        std::fs::remove_dir_all(&d).ok();
-    }
-
-    /// A block that HAS its `[image.*]` is migrated, and a `kind`-only block
-    /// carries nothing that moved (placement is refused at parse since
-    /// phase-486 W8a, so it never reaches the lint). Without this the test
-    /// above would pass on a lint that warned about everything.
-    #[test]
-    fn migrated_and_kind_only_blocks_stay_silent() {
-        let d = std::env::temp_dir().join(format!("nros-w10b-{}-{}", std::process::id(), line!()));
-        write_system(
-            &d,
-            "[system]\nname = \"s\"\nrmw = \"zenoh\"\ndomain_id = 0\n\n\
-             [deploy.migrated]\nkind = \"embedded\"\nboard = \"mps2-an385-freertos\"\n\n\
-             [deploy.placement]\nkind = \"self\"\n\n\
-             [image.migrated]\nboard = \"mps2-an385-freertos\"\n",
-        );
-
-        let (_, warnings) = collect_images_with_warnings(&pkg(&d), false).expect("collects");
-        assert!(warnings.is_empty(), "expected silence, got {warnings:?}");
-
-        std::fs::remove_dir_all(&d).ok();
+    fn the_build_path_refuses_a_retired_table_naming_the_replacement() {
+        for (body, names) in [
+            (
+                "[deploy.legacy]\nkind = \"embedded\"\nboard = \"mps2-an385-freertos\"\n",
+                "[image.<id>]",
+            ),
+            ("[param_services]\n", "features = [\"param_services\"]"),
+        ] {
+            let d = tempfile::tempdir().expect("tempdir");
+            std::fs::write(
+                d.path().join("system.toml"),
+                format!("[system]\nname = \"s\"\nrmw = \"zenoh\"\ndomain_id = 0\n\n{body}"),
+            )
+            .expect("write");
+            let e = format!("{:#}", collect_images(&pkg(d.path())).expect_err("refused"));
+            assert!(e.contains("is retired") && e.contains(names), "{e}");
+            assert!(e.contains("system.toml"), "names the file: {e}");
+        }
     }
 }
 

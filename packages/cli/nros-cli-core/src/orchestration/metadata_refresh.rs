@@ -1271,11 +1271,8 @@ mod tests {
         .unwrap();
         let listed = capabilities_digest(&st).unwrap();
         assert_eq!(listed, "capabilities:param_services,lifecycle");
-        std::fs::write(&st, format!("{base}\n[param_services]\nenabled = true\n")).unwrap();
-        assert_eq!(
-            capabilities_digest(&st).unwrap(),
-            "capabilities:param_services"
-        );
+        std::fs::write(&st, format!("{base}\n[safety]\nenabled = true\n")).unwrap();
+        assert_eq!(capabilities_digest(&st).unwrap(), "capabilities:safety");
 
         // And through the freshness path: recorded under none, read after the
         // edit, it is STALE and the line names both axis sets.
@@ -1289,7 +1286,7 @@ mod tests {
         );
         assert_eq!(stale.len(), 1, "{stale:?}");
         assert!(
-            stale[0].line().contains("now capabilities:param_services"),
+            stale[0].line().contains("now capabilities:safety"),
             "{}",
             stale[0].line()
         );

@@ -127,7 +127,7 @@ chosen platform.
 
 An image names a `--board` and derives its rustc triple from that board's descriptor, so there is no `--target`. A host takes no board: a host says WHERE nodes run, and a board is what an image is BUILT for — passing one is refused rather than written.
 
-`nros new --deploy <name>` is DEPRECATED (issue 0951): `[deploy.*]` split into those two tables. It still works, dispatched by the `--kind` it always took — `self` scaffolds a host, anything else an image — and says which flag to use instead.
+`nros new --deploy <name>` is DEPRECATED (issue 0951): `[deploy.*]` split into those two tables, and a `system.toml` that still carries one is refused by name (phase-486 W8). The flag still works, dispatched by the `--kind` it always took — `self` scaffolds a host, anything else an image — and says which flag to use instead. It never writes `[deploy.*]`.
 
 ### `nros generate <lang> [--manifest <path>] [--output <dir>] [--ros-edition <edition>] [--force] [--verbose] [--generate-config]`
 
@@ -366,7 +366,7 @@ nros codegen-system --bringup demo_bringup --ahead-of-vendor px4   # + PX4 modul
 |---|---|
 | `--workspace <path>` | Workspace root (default: cwd) |
 | `--bringup <pkg>` | Bringup pkg name or path. Defaults to `[workspace.metadata.nros].default_system` |
-| `--target <id>` | The `[image.<id>]` / `[deploy.<id>]` this bake is for — it selects the domain, RMW, locator, launch and tier sub-table. A triple or platform name that matches no block selects nothing and every one of those falls back to the `[system]` default (issue 1312) |
+| `--target <id>` | The `[image.<id>]` this bake is for — it selects the domain, RMW, locator, launch and tier sub-table. A triple or platform name that matches no block selects nothing and every one of those falls back to the `[system]` default (issue 1312) |
 | `--for-entry <pkg>` | Name the ENTRY PACKAGE instead (a name, or a path to its directory) and the `[image.*]` that claims it supplies the target. What a framework configure can answer: west/ESP-IDF know the application directory, never the image id. Mutually exclusive with `--target` |
 | `--nano-ros-path <dir>` | nano-ros checkout holding `packages/boards`, for the board catalog a resolved target needs. Default: a walk up from the workspace, then this `nros` binary's own SDK root (a release's `share/nano-ros`, or the checkout an in-tree `nros` was built in) |
 | `--out <dir>` | Output directory; `nros-system/` subdir created inside. Default: `<workspace>/build/<bringup>/` |

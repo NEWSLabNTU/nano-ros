@@ -27,15 +27,14 @@ pub struct PlanOptions {
     pub manifest_files: Vec<PathBuf>,
     pub launch_args: Vec<String>,
     /// Phase 255 Wave 4 — `--rmw` override, the top of the precedence ladder
-    /// (`--rmw` > `[image.<t>].rmw` > the deprecated `[deploy.<t>].rmw` >
-    /// `[system].rmw` > `zenoh`). Sets
+    /// (`--rmw` > `[image.<t>].rmw` > `[system].rmw` > `zenoh`). Sets
     /// `plan.build.rmw` regardless of `system.toml`. `None` ⇒ resolve from
     /// `system.toml`.
     pub rmw: Option<String>,
     /// Phase 256 / issue 0951 — `--image` (alias `--target`) selects the
     /// `[image.<id>]` the planner resolves per-target values against (RMW
     /// override, build tuning). `None` ⇒ the sole image `default_images` picks
-    /// → the sole deprecated `[deploy.<t>]` → target-agnostic. See
+    /// → target-agnostic. See
     /// `SystemToml::resolve_image`.
     ///
     /// Named `image`, not `target`: in this tree `target` is the rustc triple
@@ -180,12 +179,12 @@ pub fn plan_system(options: PlanOptions) -> Result<PlanningOutput> {
     }
 
     // Phase 173.5 / 256 — derive the `build` block (board / target / rmw / profile /
-    // `[[transport]]`) from the typed `system.toml` (the selected `[deploy.<t>]`) +
+    // `[[transport]]`) from the typed `system.toml` (the selected `[image.<t>]`) +
     // `--rmw`/`--target`, then validate the transport semantics with a clear error
     // before the plan is written.
     // Issue 0951 — the board catalog, so the plan's rustc triple is DERIVED
-    // from the selected image's board rather than copied from a `[deploy.*]`
-    // field that is going away.
+    // from the selected image's board (the `[deploy.*]` field it once came
+    // from retired in phase-486 W8).
     //
     // Resolved exactly as `nros build` resolves it — literally the same
     // function since phase-447 A2 (`--nano-ros-path` → an autodetect walk →
@@ -793,12 +792,21 @@ fn schema_build_json(
     let obj = build.as_object_mut().expect("build is an object");
     // Phase 255/256 — `[system].rmw` (resolved) is the SSoT; `--rmw` tops the
     // ladder. The planner resolves the selected IMAGE (`--image`, alias
-    // `--target` → the sole image `default_images` picks → the sole deprecated
-    // `[deploy.<t>]`) and feeds it to `resolved_rmw`. With no system.toml,
-    // `--rmw` alone still drives the plan.
-    let sys = system_toml
-        .and_then(|p| std::fs::read_to_string(p).ok())
-        .and_then(|s| toml::from_str::<super::cargo_metadata_schema::SystemToml>(&s).ok());
+    // `--target` → the sole image `default_images` picks) and feeds it to
+    // `resolved_rmw`. With no system.toml, `--rmw` alone still drives the plan.
+    //
+    // A system.toml that EXISTS but does not parse is an error, not "no
+    // system.toml": swallowing it planned the defaults in silence, and since
+    // phase-486 W8 a retired table (`[deploy.*]`, `[param_services]`) is
+    // exactly such a parse error — it must reach the user, naming the
+    // replacement.
+    let sys = match system_toml.and_then(|p| std::fs::read_to_string(p).ok().map(|t| (p, t))) {
+        Some((p, text)) => Some(
+            toml::from_str::<super::cargo_metadata_schema::SystemToml>(&text)
+                .map_err(|e| eyre!("parsing {}: {e}", p.display()))?,
+        ),
+        None => None,
+    };
     // A bad `default_images` must FAIL, not quietly downgrade the plan to
     // image-agnostic. `resolve_image` returns an `Option` and can only ignore
     // it; this is the rung with an error channel.
@@ -822,45 +830,24 @@ fn schema_build_json(
     // `--target` at build time, but `generate` must pick the right board from
     // the plan).
     //
-    // Issue 0951 — `[image.<t>]` first, then the DEPRECATED `[deploy.<t>]`,
-    // per field rather than per block: mid-migration a workspace legitimately
-    // has the board on the image and nothing else anywhere, and taking the
-    // whole block from whichever table won would drop the other's fields.
-    //
-    // `target` and `optimize` are deliberately deploy-only. `target` is the
-    // rustc triple, which `[image.*]` does not carry because the board
-    // descriptor derives it; `optimize` has an `[image.*]` counterpart nowhere
-    // and is authored NOWHERE in this tree — zero occurrences across every
-    // `system.toml` — so it is carried for the deploy path only rather than
-    // given a new home it has no user for.
+    // Issue 0951 — from `[image.<t>]`. The `[deploy.<t>]` fallback (and the
+    // `target` / `optimize` fields only it carried) retired with the table in
+    // phase-486 W8; `optimize` was authored nowhere in this tree.
     if let Some(t) = selected_image.as_deref()
         && let Some(s) = sys.as_ref()
     {
         let img = s.image_for(t);
-        let dep = s.deploy.get(t);
 
-        let board = img
-            .as_ref()
-            .and_then(|i| i.board.clone())
-            .or_else(|| dep.and_then(|d| d.board.clone()));
-        if let Some(b) = board {
+        if let Some(b) = img.as_ref().and_then(|i| i.board.clone()) {
             obj.insert("board".to_string(), json!(b));
         }
-        let profile = img
-            .as_ref()
-            .and_then(|i| i.profile.clone())
-            .or_else(|| dep.and_then(|d| d.profile.clone()));
-        if let Some(p) = profile {
+        if let Some(p) = img.as_ref().and_then(|i| i.profile.clone()) {
             obj.insert("profile".to_string(), json!(p));
         }
         let features = img
             .as_ref()
             .filter(|i| !i.features.is_empty())
-            .map(|i| i.features.clone())
-            .or_else(|| {
-                dep.filter(|d| !d.features.is_empty())
-                    .map(|d| d.features.clone())
-            });
+            .map(|i| i.features.clone());
         if let Some(f) = features {
             obj.insert("features".to_string(), json!(f));
         }
@@ -889,11 +876,8 @@ fn schema_build_json(
             }
             _ => None,
         };
-        if let Some(triple) = derived.or_else(|| dep.and_then(|d| d.target.clone())) {
+        if let Some(triple) = derived {
             obj.insert("target".to_string(), json!(triple));
-        }
-        if let Some(o) = dep.and_then(|d| d.optimize.clone()) {
-            obj.insert("optimize".to_string(), json!(o));
         }
     }
     // Phase 255 Wave 5 — cross-RMW `[[bridge]]`s make a single binary link the
@@ -3968,11 +3952,10 @@ mod tests {
         );
     }
 
-    /// Phase 256 — planner target-awareness: the selected target's RMW reaches
-    /// the plan (the phase-255 stub resolved at target=None, so it never did).
-    /// The selected target comes from `--image`, else the sole image
-    /// `default_images` picks. (The rung was `[deploy.<t>].rmw` until phase-486
-    /// W8a refused that field; `[image.<t>].rmw` is its home.)
+    /// Phase 256 — planner target-awareness: the selected image's `rmw`
+    /// reaches the plan (the phase-255 stub resolved at target=None, so it
+    /// never did). The selected target comes from `--image`, else the sole
+    /// image `default_images` picks.
     #[test]
     fn schema_build_json_resolves_per_image_rmw_via_target() {
         let dir = tempfile::tempdir().unwrap();
@@ -3995,6 +3978,23 @@ mod tests {
             "sole image is the selected target"
         );
 
+        // phase-486 W8 — a retired table is an ERROR naming the file and the
+        // replacement, never a silent fall back to the defaults.
+        let retired = dir.path().join("retired.toml");
+        std::fs::write(
+            &retired,
+            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n\
+             [deploy.qemu]\nkind=\"qemu\"\nrmw=\"cyclonedds\"\n",
+        )
+        .unwrap();
+        let e = schema_build_json(Some(&retired), None, None, None)
+            .expect_err("retired table")
+            .to_string();
+        assert!(
+            e.contains("retired.toml") && e.contains("[image.<id>]"),
+            "{e}"
+        );
+
         // `default_images` drives when set + no --image.
         let st2 = dir.path().join("two.toml");
         std::fs::write(
@@ -4014,32 +4014,28 @@ mod tests {
         );
     }
 
-    /// Phase 256 Wave 3 — per-target build tuning (profile / optimize / features)
-    /// from the selected `[deploy.<t>]` reaches `plan.build`; absent fields keep
-    /// the pre-256 defaults.
+    /// Phase 256 Wave 3 — per-target build tuning (profile / features) from
+    /// the selected `[image.<t>]` reaches `plan.build`; absent fields keep the
+    /// pre-256 defaults. (`optimize` was `[deploy.<t>]`-only and authored
+    /// nowhere; it retired with the table, phase-486 W8.)
     #[test]
-    fn schema_build_json_reads_build_tuning_from_deploy() {
+    fn schema_build_json_reads_per_image_tuning_and_keeps_defaults() {
         let dir = tempfile::tempdir().unwrap();
         let st = dir.path().join("system.toml");
         std::fs::write(
             &st,
             "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n\
-             [deploy.embedded]\nkind=\"flash\"\ntarget=\"thumbv7m-none-eabi\"\nboard=\"stm32f4\"\n\
-             profile=\"release\"\noptimize=\"size\"\nfeatures=[\"a\",\"b\"]\n\
-             [deploy.native]\nkind=\"self\"\n",
+             [image.embedded]\nboard=\"stm32f4\"\n\
+             profile=\"release\"\nfeatures=[\"safety\",\"rosout\"]\n\
+             [image.native]\nboard=\"native\"\n",
         )
         .unwrap();
 
-        // The DEPRECATED path, named explicitly: this block's fields still
-        // reach the plan, including the two `[image.*]` does not carry
-        // (`target`, `optimize`). `default_images` is deliberately absent —
-        // it names IMAGES, and this fixture declares none.
         let emb = schema_build_json(Some(&st), None, Some("embedded"), None).expect("build json");
-        assert_eq!(emb["target"], "thumbv7m-none-eabi");
         assert_eq!(emb["board"], "stm32f4");
         assert_eq!(emb["profile"], "release");
-        assert_eq!(emb["optimize"], "size");
-        assert_eq!(emb["features"], json!(["a", "b"]));
+        assert_eq!(emb["features"], json!(["safety", "rosout"]));
+        assert!(emb.get("optimize").is_none());
 
         // --image native → nothing declared → pre-256 defaults (native / x86_64 /
         // debug, no optimize, empty features).
@@ -4173,36 +4169,6 @@ mod tests {
         // Neither has an `[image.*]` counterpart, and neither is authored
         // anywhere in the tree.
         assert!(o.get("optimize").is_none(), "{o:?}");
-    }
-
-    /// Mid-migration a workspace has the board on the image and the rustc
-    /// triple only on the deploy. Taking the whole block from whichever table
-    /// "won" would drop the other's fields, so the merge is per-FIELD.
-    #[test]
-    fn schema_build_json_merges_image_and_deploy_per_field() {
-        let dir = tempfile::tempdir().unwrap();
-        let st = dir.path().join("system.toml");
-        std::fs::write(
-            &st,
-            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n\
-             default_images=[\"embedded\"]\n\
-             [image.embedded]\nboard=\"mps2-an385-freertos\"\n\
-             [deploy.embedded]\nkind=\"embedded\"\n\
-             target=\"thumbv7m-none-eabi\"\nboard=\"stale-board\"\n",
-        )
-        .unwrap();
-        let v = schema_build_json(Some(&st), None, None, None).expect("build json");
-        let o = v.as_object().expect("object");
-        assert_eq!(
-            o.get("board").and_then(|b| b.as_str()),
-            Some("mps2-an385-freertos"),
-            "the image outranks the deploy on a field both carry"
-        );
-        assert_eq!(
-            o.get("target").and_then(|t| t.as_str()),
-            Some("thumbv7m-none-eabi"),
-            "and the deploy still supplies one the image cannot carry"
-        );
     }
 
     #[cfg(feature = "play-launch-parser")]

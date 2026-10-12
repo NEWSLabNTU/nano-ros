@@ -740,12 +740,9 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     let mut authored_tier_names: Vec<String> = Vec::new();
     // Phase 264 W2 — `[lifecycle]` boot autostart from `system.toml` (launch arm only).
     let mut lifecycle_code: Option<u8> = None;
-    // Phase 264 W4b — `[param_services]` declared in `system.toml` (launch arm only) →
+    // Phase 264 W4b — the `param_services` capability (launch arm: the overlay) →
     // register the ROS 2 param services + seed the volatile store from the baked params.
     let mut param_services_enabled = false;
-    // issue 0274 — `[param_services] node = "<name>"`: executor identity for
-    // the parameter services on multi-node entries (model arm).
-    let mut param_services_node: Option<String> = None;
     // Issue 1766 follow-up — on the LAUNCH arm, the const-asserts for every
     // capability axis the model's `execution.features` declares, except the two
     // whose wiring calls assert their own feature (`param_services_call`,
@@ -1239,27 +1236,18 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         lifecycle_code = model_caps.lifecycle_code;
         param_services_enabled = model_caps.param_services;
         launch_axis_asserts = model_axis_assert_tokens(&model_caps);
-        // issue 0274 (walls 2+3) — `play_launch resolve` does not populate
-        // `execution.features` yet, so ALSO read `[param_services]` straight
-        // from the bringup's system.toml. The optional `node = "<name>"`
-        // row names the executor identity the six ROS 2 parameter services
-        // hang off (FQN + the liveliness token rmw_zenoh discovery needs) —
-        // without it a multi-node entry leaves the executor node_name empty
-        // and the services are invisible to `ros2 param`.
-        // 0274 follow-up (sentinel 14.5): prefer the system.toml the model
-        // was RESOLVED against (recorded in meta.inputs) — per-target models
-        // ride per-target system tomls, and reading the fixed
-        // `<bringup>/system.toml` leaked the native profile's
-        // [param_services] into every MCU entry. Fallback: the fixed name.
-        // Issue 0293 — `meta.inputs` paths are recorded RELATIVE to the bringup
-        // package so a committed model is portable. Older models carry the
-        // resolving machine's absolute path; accept both, absolute first.
+        // phase-486 W8 — the bringup's system.toml is still TRACKED (a change
+        // re-runs the macro), and a retired table in it is refused by name. It
+        // used to be read here for `[param_services]` (issue 0274: sugar for the
+        // feature, plus a `node = "<name>"` executor identity). That read
+        // predated the overlay; the switch now arrives through
+        // `model_capabilities`, and `node` was never reachable: the strict
+        // `SystemToml` schema `nros sync` parses first refused it.
         //
-        // This matters more than provenance: an unresolvable path falls
-        // through to the fixed `<bringup>/system.toml` below, which is exactly
-        // the per-target leak recording the input was meant to prevent. With
-        // absolute paths that fallback fired on every machine except the one
-        // that resolved the model.
+        // The file is the one the model was RESOLVED against (`meta.inputs`),
+        // so per-target system tomls are honoured. Issue 0293 — those paths are
+        // recorded RELATIVE to the bringup package; older models carry an
+        // absolute one; accept both, absolute first.
         let system_toml_path = model
             .meta
             .inputs
@@ -1283,13 +1271,12 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             tracked.push(system_toml_path.clone());
             if let Ok(raw) = std::fs::read_to_string(&system_toml_path)
                 && let Ok(doc) = raw.parse::<toml::Table>()
-                && let Some(ps) = doc.get("param_services")
             {
-                param_services_enabled = true;
-                param_services_node = ps
-                    .get("node")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
+                nros_orchestration_ir::retired_tables::refuse_retired_tables(
+                    &doc,
+                    &system_toml_path,
+                )
+                .map_err(|e| syn::Error::new(model_lit.span(), format!("nros::main!: {e}")))?;
             }
         }
 
@@ -1507,7 +1494,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             // entry's own feature set.
             const _: () = ::core::assert!(
                 ::nros::__macro_support::PARAM_SERVICES_ENABLED,
-                "this system declares `[param_services]` but this `nros` build does not \
+                "this system declares the `param_services` capability but this `nros` build does not \
                  carry the `param-services` feature — the parameter services would be \
                  silently dropped. Add it to this pkg's nros dependency features."
             );
@@ -1550,12 +1537,6 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // overlay name unset and the board keeps `"node"`.
     if let [only] = node_instances.as_slice() {
         deploy_overlay_lit.node_name = Some(only.clone());
-    }
-    // issue 0274 — explicit `[param_services] node = "..."` names the primary
-    // session / executor identity (multi-node entries otherwise leave it
-    // empty and the parameter services get no liveliness attribution).
-    if let Some(n) = &param_services_node {
-        deploy_overlay_lit.node_name = Some(n.clone());
     }
     let deploy_overlay_ts = deploy_overlay_tokens(&deploy_overlay_lit);
 

@@ -107,7 +107,7 @@ fn resolving_with_host_arg_partitions_the_model() {
 
 /// Each workspace's multihost bringup, resolved per host: the model records the
 /// binding it was resolved from (`meta.args: host: robotN`) and contains ONLY
-/// that host's nodes, and `system.toml` still names the host in a `[deploy.*]`
+/// that host's nodes, and `system.toml` still names the host in a `[host.*]`
 /// block.
 ///
 /// This RESOLVES each model rather than reading a committed one. phase-330 W4

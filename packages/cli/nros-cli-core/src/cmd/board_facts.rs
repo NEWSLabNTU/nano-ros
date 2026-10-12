@@ -99,7 +99,7 @@ pub fn resolve(
         .into_iter()
         .next()
         .map(|(_, f)| f)
-        .ok_or_else(|| eyre!("{}: no [deploy.*] blocks", ws.display()))?;
+        .ok_or_else(|| eyre!("{}: no [image.*] blocks", ws.display()))?;
     // phase-400 W1 — platform packages in the USER's workspace.
     //
     // W1 says resolution is by name over a search path and that
@@ -538,22 +538,9 @@ fn pick_from(
         }
     }
     let site = system.board_config.clone();
-    // Candidates come from `[image.*]` AND `[deploy.*]`, because either can
-    // name the board and a migrated workspace has only the first. Reading
-    // deploys alone is what made `examples/workspaces/realtime-rust` — seven
-    // images, zero deploy blocks — unresolvable while its site table demanded
-    // SDK roots: the gate and this resolver disagreeing about which boards a
-    // workspace builds for.
-    //
-    // A name present in both tables is ONE candidate, with the image's board
-    // winning: mid-migration the two can disagree, and the image is the half
-    // that survives.
+    // Candidates come from `[image.*]`, the only table that names a board
+    // (`[deploy.*]` retired, phase-486 W8).
     let mut boards: BTreeMap<String, String> = BTreeMap::new();
-    for (name, dt) in &system.deploy {
-        if let Some(b) = &dt.board {
-            boards.insert(name.clone(), b.clone());
-        }
-    }
     for name in system.image.keys() {
         if let Some(b) = system.image_for(name).and_then(|i| i.board) {
             boards.insert(name.clone(), b);
@@ -569,7 +556,7 @@ fn pick_from(
         candidates.retain(|(k, _)| k == want);
         if candidates.is_empty() {
             return Err(eyre!(
-                "{}: no [image.{want}] or [deploy.{want}] naming a board",
+                "{}: no [image.{want}] naming a board",
                 path.display()
             ));
         }
@@ -592,7 +579,7 @@ fn pick_from(
         });
         if candidates.is_empty() {
             return Err(eyre!(
-                "{}: no [image.*] or [deploy.*] with board = \"{want}\" \
+                "{}: no [image.*] with board = \"{want}\" \
                  (matched through the board catalog, so every spelling of one \
                  board is tried)",
                 path.display()
@@ -600,10 +587,7 @@ fn pick_from(
         }
     }
     if candidates.is_empty() {
-        return Err(eyre!(
-            "{}: no [image.*] or [deploy.*] names a board",
-            path.display()
-        ));
+        return Err(eyre!("{}: no [image.*] names a board", path.display()));
     }
     Ok((candidates, site, origin))
 }
@@ -854,7 +838,7 @@ name = "demo"
 rmw = "zenoh"
 domain_id = 0
 
-[deploy.freertos]
+[image.freertos]
 board = "mps2-an385-freertos"
 
 [board_config."mps2-an385-freertos"]
@@ -1006,7 +990,8 @@ sdk = { freertos = "{env:FREERTOS_DIR}", lwip = "{env:LWIP_DIR}" }
     #[test]
     fn duplicate_deploys_that_agree_are_not_ambiguous() {
         let ws = ws_with(&format!(
-            "{FREERTOS_WS}\n[deploy.mps2-an385-freertos]\nboard = \"mps2-an385-freertos\"\n"
+            "{FREERTOS_WS}\n[image.mps2-an385-freertos]\nboard = \"mps2-an385-freertos\"\n\
+             rmw = \"zenoh\"\n"
         ));
         let env = |k: &str| match k {
             "FREERTOS_DIR" => Some("/opt/freertos".to_string()),
@@ -1041,7 +1026,7 @@ sdk = { freertos = "{env:FREERTOS_DIR}", lwip = "{env:LWIP_DIR}" }
     #[test]
     fn two_deploys_on_one_board_cannot_disagree() {
         let ws = ws_with(&format!(
-            "{FREERTOS_WS}\n[deploy.other]\nboard = \"mps2-an385-freertos\"\n"
+            "{FREERTOS_WS}\n[image.other]\nboard = \"mps2-an385-freertos\"\nrmw = \"zenoh\"\n"
         ));
         let env = |k: &str| match k {
             "FREERTOS_DIR" => Some("/opt/freertos".to_string()),
@@ -1074,7 +1059,7 @@ sdk = { freertos = "{env:FREERTOS_DIR}", lwip = "{env:LWIP_DIR}" }
     #[test]
     fn naming_the_deploy_picks_among_boards() {
         let ws = ws_with(&format!(
-            "{FREERTOS_WS}\n[deploy.nuttx]\nboard = \"qemu-armv7a-nuttx\"\n\n\
+            "{FREERTOS_WS}\n[image.nuttx]\nboard = \"qemu-armv7a-nuttx\"\nrmw = \"zenoh\"\n\n\
              [board_config.\"qemu-armv7a-nuttx\"]\n\
              sdk = {{ nuttx = \"{{env:NUTTX_DIR}}\" }}\n"
         ));
@@ -1137,7 +1122,7 @@ sdk = { freertos = "{env:FREERTOS_DIR}", lwip = "{env:LWIP_DIR}" }
 
     /// The regression this file's own gate demanded and this resolver could
     /// not serve: `examples/workspaces/realtime-rust` has SEVEN images and ZERO
-    /// deploy blocks, so selecting candidates from `[deploy.*]` alone made its
+    /// deploy blocks, so selecting candidates from `[deploy.*]` alone (retired since) made its
     /// site table — which `check-site-config` requires — unreachable.
     #[test]
     fn an_image_only_workspace_resolves() {
@@ -1157,7 +1142,7 @@ sdk = { freertos = "/opt/freertos", lwip = "/opt/lwip" }
 "#,
         );
         let facts = resolve(ws.path(), &repo_root(), None, None, &|_| None)
-            .expect("an image names the board just as a deploy does");
+            .expect("an image names the board");
         assert_eq!(
             facts.get("NROS_BOARD").map(String::as_str),
             Some("mps2-an385-freertos")
@@ -1234,37 +1219,6 @@ sdk = { nuttx = "/opt/riscv", nuttx_apps = "/opt/riscv-apps" }
         }
     }
 
-    /// A name in BOTH tables is one candidate, and the image's board wins —
-    /// mid-migration they can disagree, and the image is the half that
-    /// survives. Two candidates here would instead be reported as an ambiguity.
-    #[test]
-    fn an_image_outranks_a_deploy_of_the_same_name() {
-        let ws = ws_with(
-            r#"
-[system]
-name = "demo"
-rmw = "zenoh"
-domain_id = 0
-
-[image.fw]
-board = "mps2-an385-freertos"
-
-[deploy.fw]
-kind = "embedded"
-board = "threadx-linux"
-
-[board_config."mps2-an385-freertos"]
-netstack = "lwip"
-sdk = { freertos = "/opt/freertos", lwip = "/opt/lwip" }
-"#,
-        );
-        let facts = resolve(ws.path(), &repo_root(), None, None, &|_| None).expect("one answer");
-        assert_eq!(
-            facts.get("NROS_BOARD").map(String::as_str),
-            Some("mps2-an385-freertos")
-        );
-    }
-
     /// The site key is matched by RESOLUTION, not by text — a board has several
     /// legal spellings and every one of them must find the same block. Keying
     /// on the string is issue 0606 one table over: a block authored under the
@@ -1279,7 +1233,7 @@ name = "demo"
 rmw = "zenoh"
 domain_id = 0
 
-[deploy.freertos]
+[image.freertos]
 board = "mps2-an385-freertos"
 
 [board_config.freertos]

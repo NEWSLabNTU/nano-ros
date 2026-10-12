@@ -98,9 +98,7 @@ pkg = "listener_pkg"
 class = "listener_pkg::ListenerNode"
 name = "listener"
 
-[deploy.qemu_freertos]
-kind = "freertos"
-target = "thumbv7m-none-eabi"
+[image.qemu_freertos]
 board = "freertos"
 "#,
     )

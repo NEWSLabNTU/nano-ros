@@ -544,6 +544,7 @@ fn parse_file(path: &Path) -> Result<toml::Table, String> {
 /// several.
 fn from_system_toml(path: &Path) -> Result<LeafSystem, String> {
     let doc = parse_file(path)?;
+    crate::retired_tables::refuse_retired_tables(&doc, path)?;
     let system = as_table(doc.get("system"));
     let images = as_table(doc.get("image")).cloned().unwrap_or_default();
 

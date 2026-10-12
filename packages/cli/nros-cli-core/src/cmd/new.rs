@@ -152,7 +152,7 @@ pub struct Args {
     #[arg(long)]
     pub from_profile: Option<String>,
 
-    /// Overwrite an existing directory / `[deploy.<name>]` table
+    /// Overwrite an existing directory / `[image.<name>]` or `[host.<name>]` table
     #[arg(long)]
     pub force: bool,
 }

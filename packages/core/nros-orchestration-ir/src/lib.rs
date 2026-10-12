@@ -71,6 +71,9 @@ pub mod qos_agreement;
 // shared by the CLI's entry emitters and the nros::main! proc-macro, and
 // fail-loud on anything it cannot lower.
 pub mod qos_override;
+// phase-486 W8 — the `system.toml` tables nano-ros retired (`[deploy.*]`,
+// `[param_services]`), refused by every reader with one message.
+pub mod retired_tables;
 // phase-459 W4 (issue 1427, RFC-0079) - the board's priority ADDRESS PLAN,
 // which the realizer allocates a derived tier out of. Without it `realize_rtos`
 // mapped dense rank 0 onto the kernel's most urgent number, which on Zephyr

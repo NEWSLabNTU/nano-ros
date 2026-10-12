@@ -35,7 +35,8 @@ row's reach is `linux` while the platform layer beneath it stays
 bare-metal row is NVIC hardware priorities with SRP ceilings (RTIC),
 single core. These are PLATFORM DEFAULTS and there is no per-image
 override today: `[deploy.<board>] edf = <bool>` / `cores = <n>` was
-documented here but never authorable — the knob read an extras bag no
+documented here but never authorable (and `[deploy.*]` itself is retired,
+phase-486 W8) — the knob read an extras bag no
 table wrote, and upstream's `deny_unknown_fields` rejected the keys
 outright. Retired with issue 0951; issue 0259 wants the override to
 exist and needs an authoring path first.

@@ -519,8 +519,7 @@ west_board = "native_sim/native/64"       # what west is given
 
 So an image writes `board = "zephyr"`, never `board = "native_sim/native/64"`:
 the Zephyr spelling is the descriptor's to state, and an image that authors it
-is refused with the id to write instead (issue 1519). A `[deploy.*].board` may
-still name the Zephyr id; it resolves to the same descriptor.
+is refused with the id to write instead (issue 1519).
 
 Nor is it free-form. A board the catalog does not know is refused with the
 list of ones it does, because the descriptor supplies more than the `-b` string

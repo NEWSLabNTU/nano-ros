@@ -658,7 +658,7 @@
   "cpp:Publisher::get_network_flow_endpoints": {
     "verdict": "declined",
     "disposition": "absent",
-    "why": "endpoint discovery: which publishers/subscriptions exist on a topic and with what QoS. Needs dynamic discovery, which we do not have -- peers are static via `nros.toml`/Kconfig. See the graph stage for the rest of this family."
+    "why": "endpoint discovery: which publishers/subscriptions exist on a topic and with what QoS. Needs dynamic discovery, which we do not have -- peers are static via the board's `config.toml`/Kconfig. See the graph stage for the rest of this family."
   },
   "cpp:Publisher::get_published_type_allocator": {
     "verdict": "declined",
@@ -884,7 +884,7 @@
   "cpp:Subscription::get_network_flow_endpoints": {
     "verdict": "declined",
     "disposition": "absent",
-    "why": "endpoint discovery: which publishers/subscriptions exist on a topic and with what QoS. Needs dynamic discovery, which we do not have -- peers are static via `nros.toml`/Kconfig. See the graph stage for the rest of this family."
+    "why": "endpoint discovery: which publishers/subscriptions exist on a topic and with what QoS. Needs dynamic discovery, which we do not have -- peers are static via the board's `config.toml`/Kconfig. See the graph stage for the rest of this family."
   },
   "cpp:Subscription::get_publisher_count": {
     "verdict": "divergence",

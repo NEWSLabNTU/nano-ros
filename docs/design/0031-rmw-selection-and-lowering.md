@@ -50,7 +50,7 @@ so **RMW is a property of the binary**. All nodes in it inherit it.
 
 | Scope | User declares RMW in | Lowered by toolchain to |
 |---|---|---|
-| Workspace | `system.toml` `[image.<id>] rmw` (over `[image_defaults] rmw`, then `[system] rmw`; a `[deploy.<t>] rmw` is DEPRECATED and outranked) | Rust entry/node pkg → the **board crate's** `rmw-<x>` feature; C/C++ node pkg → `-DNANO_ROS_RMW`; C++ entry → CMake cache |
+| Workspace | `system.toml` `[image.<id>] rmw` (over `[image_defaults] rmw`, then `[system] rmw`; `[deploy.<t>] rmw` is retired, phase-486 W8) | Rust entry/node pkg → the **board crate's** `rmw-<x>` feature; C/C++ node pkg → `-DNANO_ROS_RMW`; C++ entry → CMake cache |
 | Single-node, with `system.toml` | `[image.<id>] rmw` (over `[image_defaults] rmw`, then `[system] rmw`) — one image per RMW when a leaf builds several | same lowering, into the leaf's generated selection package (issue 1305) |
 | Single-node, no `system.toml` | CLI/build flag, else default | same lowering |
 
@@ -80,8 +80,8 @@ feature.
 
 1. CLI / build flag — `nros … --rmw <x>`, `-DNANO_ROS_RMW=<x>`.
 2. `system.toml` `[image.<id>] rmw`, over `[image_defaults] rmw`.
-3. `system.toml` `[deploy.<target>] rmw` — **DEPRECATED**, retires with the rest
-   of `[deploy.*]`'s build fields (phase-383 W10.b).
+3. ~~`system.toml` `[deploy.<target>] rmw`~~ — **RETIRED** (phase-486 W8): the
+   whole `[deploy.*]` table is refused by name, pointing at `[image.*]`.
 4. `system.toml` `[system] rmw`.
 5. Default — `zenoh`.
 

@@ -1105,7 +1105,7 @@ mod executor_capacity_tests {
         ] {
             assert!(
                 tree.platform_executor_rungs(block).is_err(),
-                "`{block}` is an [image.*]/[deploy.*] block id — the ladder must \
+                "`{block}` is an [image.*] block id — the ladder must \
                  not resolve one as a platform (issue 1397)"
             );
         }
