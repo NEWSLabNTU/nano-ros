@@ -21,6 +21,7 @@ use nros_tests::{
     fixtures::{
         RequireFixture, Rmw, build_zephyr_cmake_example_rmw,
         build_zephyr_workspace_c_realtime_entry, build_zephyr_workspace_rust_realtime_entry,
+        staleness::with_simulated_edit,
     },
 };
 use std::{fs, path::PathBuf};
@@ -46,11 +47,11 @@ fn built_leaf(build_dir: &str, leaf: &str, resolve: fn() -> TestResult<PathBuf>)
     src
 }
 
-/// Editing a leaf's `prj.conf` must flip the verdict to stale, and restoring the
-/// bytes must flip it back. Both directions matter: the first is the hole this
-/// closes, the second is the #147 property that an mtime bump with unchanged
-/// content is NOT stale (otherwise every pull reports the whole lane stale and
-/// the verdict becomes noise nobody reads).
+/// Editing a leaf's `prj.conf` must flip the verdict to stale, and a new mtime
+/// over the SAME bytes must not. Both directions matter: the first is the hole
+/// this closes, the second is the #147 property that an mtime bump with
+/// unchanged content is NOT stale (otherwise every pull reports the whole lane
+/// stale and the verdict becomes noise nobody reads).
 fn assert_conf_edit_is_seen(build_dir: &str, leaf: &str, resolve: fn() -> TestResult<PathBuf>) {
     let src = built_leaf(build_dir, leaf, resolve);
     let conf = src.join("prj.conf");
@@ -73,9 +74,8 @@ fn assert_conf_edit_is_seen(build_dir: &str, leaf: &str, resolve: fn() -> TestRe
 
     let mut edited = original.clone();
     edited.extend_from_slice(b"\n# issue-0466 probe marker\n");
-    fs::write(&conf, &edited).expect("write prj.conf");
-    let saw_edit = resolve().is_err();
-    fs::write(&conf, &original).expect("restore prj.conf");
+    let saw_edit = with_simulated_edit(&conf, edited, || resolve().is_err());
+    let bump_is_stale = with_simulated_edit(&conf, original, || resolve().is_err());
 
     assert!(
         saw_edit,
@@ -84,10 +84,15 @@ fn assert_conf_edit_is_seen(build_dir: &str, leaf: &str, resolve: fn() -> TestRe
          next failure arrives as a product-level assertion."
     );
     assert!(
-        resolve().is_ok(),
-        "{build_dir}: still stale after restoring the original bytes — a \
+        !bump_is_stale,
+        "{build_dir}: a new mtime over unchanged bytes read as stale — a \
          content-identical mtime bump must not be stale (#147), or every pull \
          reports the lane stale."
+    );
+    assert!(
+        resolve().is_ok(),
+        "{build_dir}: still stale once the simulated edit ends — the probe kept \
+         the pretend bytes (a baseline written during the edit would do this)."
     );
 }
 
@@ -113,11 +118,9 @@ fn a_shared_cmake_input_marks_the_image_stale() {
     );
 
     let original = fs::read(&shared).expect("read");
-    let mut edited = original.clone();
+    let mut edited = original;
     edited.extend_from_slice(b"\n# phase-363 W5 probe\n");
-    fs::write(&shared, &edited).expect("write");
-    let saw = resolve().is_err();
-    fs::write(&shared, &original).expect("restore");
+    let saw = with_simulated_edit(&shared, edited, || resolve().is_err());
 
     assert!(
         saw,
@@ -126,8 +129,8 @@ fn a_shared_cmake_input_marks_the_image_stale() {
     );
     assert!(
         resolve().is_ok(),
-        "still stale after restoring the bytes — a content-identical write must \
-         not be stale (#147)"
+        "still stale once the simulated edit ends — the probe kept \
+         the pretend bytes"
     );
 }
 

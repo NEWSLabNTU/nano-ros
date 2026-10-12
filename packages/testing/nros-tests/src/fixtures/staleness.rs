@@ -32,7 +32,8 @@
 //! probe-exemptions` keeps them on it.
 
 use std::{
-    cell::Cell,
+    cell::{Cell, RefCell},
+    collections::HashMap,
     fs,
     path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
@@ -350,10 +351,74 @@ pub(crate) fn collect_source_files(path: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Simulated edits — mutate an input without touching the tree (issue 1849).
+// ---------------------------------------------------------------------------
+
+thread_local! {
+    /// Inputs this thread pretends are edited: canonical path -> bytes.
+    static SIMULATED_EDITS: RefCell<HashMap<PathBuf, Vec<u8>>> = RefCell::new(HashMap::new());
+}
+
+/// Run `f` with `path` reading as if its content were `bytes`, for every
+/// freshness probe on THIS thread, and leave the file on disk untouched.
+///
+/// Issue 1849 — the staleness tests used to prove "an edit is seen" by writing
+/// the edit into the tracked file and restoring it afterwards. The file they
+/// chose, `cmake/NanoRosCodegenCore.cmake`, is a recorded configure input of
+/// every Zephyr image, so every test resolving a Zephyr fixture in parallel
+/// read it edited (STALE) or truncated mid-write, and a test killed between
+/// write and restore left the edit in the checkout. The probe is the subject,
+/// so the probe is what sees the edit: its mtime reads as now, its size and
+/// content hash as `bytes`. Nothing else in the process, and nothing in any
+/// other process, observes it.
+///
+/// While an edit is simulated no `.nros-srcbaseline` is written, since a
+/// baseline recording the pretend bytes would poison the next real probe.
+pub fn with_simulated_edit<R>(path: &Path, bytes: Vec<u8>, f: impl FnOnce() -> R) -> R {
+    struct Restore(PathBuf);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            SIMULATED_EDITS.with(|m| m.borrow_mut().remove(&self.0));
+        }
+    }
+    let key = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    SIMULATED_EDITS.with(|m| m.borrow_mut().insert(key.clone(), bytes));
+    let _restore = Restore(key);
+    f()
+}
+
+fn any_simulated_edit() -> bool {
+    SIMULATED_EDITS.with(|m| !m.borrow().is_empty())
+}
+
+/// `(mtime_nanos, size, content_hash)` of a simulated edit of `path`, if any.
+pub(crate) fn simulated_edit(path: &Path) -> Option<(u128, u64, u64)> {
+    use std::hash::Hasher;
+    if !any_simulated_edit() {
+        return None;
+    }
+    let key = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    SIMULATED_EDITS.with(|m| {
+        let m = m.borrow();
+        let bytes = m.get(&key)?;
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        h.write(bytes);
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .ok()?
+            .as_nanos();
+        Some((now, bytes.len() as u64, h.finish()))
+    })
+}
+
 /// Non-cryptographic content hash of a file (SipHash via `DefaultHasher`) — a
 /// change detector, not a security primitive. `None` if unreadable.
 pub(crate) fn hash_file_content(path: &Path) -> Option<u64> {
     use std::hash::Hasher;
+    if let Some((_, _, h)) = simulated_edit(path) {
+        return Some(h);
+    }
     let bytes = std::fs::read(path).ok()?;
     let mut h = std::collections::hash_map::DefaultHasher::new();
     h.write(&bytes);
@@ -377,6 +442,9 @@ pub(crate) fn hash_file_content(path: &Path) -> Option<u64> {
 /// Atomically (temp + rename) write the source baseline sidecar.
 /// Nanosecond mtime of a path, if it can be read.
 fn mtime_nanos(p: &Path) -> Option<u128> {
+    if let Some((m, _, _)) = simulated_edit(p) {
+        return Some(m);
+    }
     Some(
         p.metadata()
             .ok()?
@@ -389,6 +457,9 @@ fn mtime_nanos(p: &Path) -> Option<u128> {
 }
 
 fn write_srcbaseline(path: &Path, binary_path: &Path, bin_hash: u64, files: &[PathBuf]) {
+    if any_simulated_edit() {
+        return;
+    }
     let bin_mtime = mtime_nanos(binary_path);
     // issue 0806 — the binary's MTIME rides along with its hash. The hash alone
     // cannot answer "was this rebuilt?" when the build is REPRODUCIBLE: a
@@ -485,6 +556,9 @@ pub(crate) fn candidates_changed_content_policy(
     }
 
     let file_meta = |p: &Path| -> Option<(u128, u64, u64)> {
+        if let Some(sim) = simulated_edit(p) {
+            return Some(sim);
+        }
         let meta = p.metadata().ok()?;
         let mtime = meta
             .modified()
@@ -1094,6 +1168,70 @@ mod tests {
             fresh_verdict_warning().is_none(),
             "a probe that measured normally must stay silent, or the warning \
              becomes noise and stops being read"
+        );
+    }
+
+    /// Issue 1849 — a simulated edit is seen by the content probe, changes no
+    /// byte on disk, writes no baseline, and is gone when the closure returns.
+    #[test]
+    fn a_simulated_edit_is_seen_by_the_probe_and_touches_nothing() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let src = dir.path().join("prj.conf");
+        fs::write(&src, b"CONFIG_A=y\n").expect("write source");
+        let bin = dir.path().join("zephyr.exe");
+        fs::write(&bin, b"image").expect("write binary");
+        let files = vec![src.clone()];
+        let baseline = dir.path().join(".nros-srcbaseline");
+
+        assert_eq!(
+            candidates_changed_content_policy(&bin, &files, true),
+            Some(false),
+            "a binary newer than its only source is fresh"
+        );
+        let recorded = fs::read(&baseline).expect("the fresh verdict records a baseline");
+
+        let edited = with_simulated_edit(&src, b"CONFIG_A=n\n".to_vec(), || {
+            candidates_changed_content_policy(&bin, &files, true)
+        });
+        assert_eq!(
+            edited,
+            Some(true),
+            "the probe did not see the simulated edit"
+        );
+        let bumped = with_simulated_edit(&src, b"CONFIG_A=y\n".to_vec(), || {
+            candidates_changed_content_policy(&bin, &files, true)
+        });
+        assert_eq!(
+            bumped,
+            Some(false),
+            "same bytes under a new mtime are not stale (#147)"
+        );
+
+        assert_eq!(
+            fs::read(&src).unwrap(),
+            b"CONFIG_A=y\n",
+            "the file on disk changed"
+        );
+        assert_eq!(
+            fs::read(&baseline).unwrap(),
+            recorded,
+            "a baseline was written while an edit was simulated"
+        );
+        // The poisoning case: a FIRST SIGHT during an edit records a baseline,
+        // and one recording the pretend bytes would make the real file read
+        // as edited afterwards.
+        fs::remove_file(&baseline).unwrap();
+        with_simulated_edit(&src, b"CONFIG_A=n\n".to_vec(), || {
+            candidates_changed_content_policy(&bin, &files, true)
+        });
+        assert!(
+            !baseline.exists(),
+            "a first sight during a simulated edit recorded the pretend bytes"
+        );
+        assert_eq!(simulated_edit(&src), None, "the edit outlived its closure");
+        assert_eq!(
+            candidates_changed_content_policy(&bin, &files, true),
+            Some(false)
         );
     }
 }
