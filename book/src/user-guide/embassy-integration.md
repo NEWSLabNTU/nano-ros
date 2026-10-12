@@ -162,11 +162,13 @@ network identity live beside it, and nothing about any of them appears in a
 
 A **single-package** Embassy project — one crate holding `system.toml`,
 `src/lib.rs` and `src/main.rs` — works too; it is the shape every in-tree
-RTIC example takes. Such a package is its own entry, so it does still name
-the board crate in its own `[dependencies]`, and that dependency is not
-generated yet: change `board` there and you must change the board crate
-beside it, or the build fails in your own `main.rs` with
-`cannot find <board crate> in the crate root`. That is
+RTIC example takes. Such a package is its own entry, so give it the
+generated selection dependency instead of a board crate —
+`<pkg>_nros_selection = { path = "build/nros/selection" }`, written by
+`nros sync` / `nros build` for the image's board — and changing `board` is
+again the only edit. A package that names its board crate by hand must move it
+with `board`, or the build fails in your own `main.rs` with
+`cannot find <board crate> in the crate root`. See
 [issue 1305](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/1305-single-package-board-crate-dep-not-generated.md).
 
 ## `DispatchStrategy::Deferred` is the common case

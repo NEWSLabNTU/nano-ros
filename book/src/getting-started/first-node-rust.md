@@ -84,10 +84,13 @@ derives every one of those from `board = "native"` and writes them to
 `build/native/nros-cargo.toml`, which `nros build` hands cargo with
 `--config`.
 
-Retargeting is therefore almost entirely one line. *Almost*: a
-single-package leaf is its own entry, so it still names its board crate
-in `[dependencies]`, and that line has to move with the `board =` one
-until the dependency is generated too
+Retargeting is therefore almost entirely one line. *Almost*: this
+native talker still names its board crate (`nros-board-linux`) in
+`[dependencies]`, because its RMW is a cargo feature, so that line has
+to move with the `board =` one. The bare-metal, FreeRTOS, NuttX,
+ThreadX-Linux and RTIC Rust examples no longer do: they depend on a generated
+`<pkg>_nros_selection` package that `nros sync` writes for the image's
+board, and there the `board =` line is the whole edit
 ([issue 1305](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/1305-single-package-board-crate-dep-not-generated.md)).
 Everything else the board implies — the triple, the link group, the
 QEMU runner, the cross compiler — follows the `system.toml` edit on its
@@ -276,7 +279,8 @@ Canonical, copy-out:
 Copy the directory, run `nros sync` inside it, rename the package, and your starter is ready to modify.
 To aim it at a board, change `[image.native] board` in `system.toml` to
 that board's name (`nros board list` prints them), swap the board crate
-in `[dependencies]` to match (issue 1305), and re-run `nros sync`.
+in `[dependencies]` to match (issue 1305 — or start from a bare-metal,
+FreeRTOS, NuttX or ThreadX-Linux example, whose board crate is generated), and re-run `nros sync`.
 
 ## Next
 

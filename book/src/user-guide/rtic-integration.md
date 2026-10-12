@@ -74,14 +74,15 @@ board crate that is not in that table declares its own framework in
 plain spin loop is a board change, not a code change — no `main.rs`, no
 node source, and no build command moves with it.
 
-One caveat for a **single package**: it is its own entry, so it still names
-its board crate in `[dependencies]`, and that dependency is not generated
-yet. Change `board` there and you must change the board crate beside it or
-the build fails in your own `main.rs` with `cannot find <board crate> in
-the crate root` — the image resolved the new board while the manifest still
-pins the old one, and `nros sync` reports success either way. That is
-[issue 1305](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/1305-single-package-board-crate-dep-not-generated.md).
-A workspace's generated entry has no such seam.
+One caveat for a **single package**: it is its own entry, so the board
+crate, its `rtic` feature, the RMW backend and the panic handler come from a
+generated `<pkg>_nros_selection` package the in-tree RTIC examples depend on
+(`nros sync` writes it for the image's board;
+[issue 1305](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/1305-single-package-board-crate-dep-not-generated.md)).
+`rtic` and the PAC stay in the package's own `[dependencies]`, because the
+`#[rtic::app]` expansion names `rtic::` and `device = mps2_an385_pac` from
+that crate; they belong to the RTIC program, not to the board, and are the
+only image-shaped rows such a package keeps. A workspace's generated entry has no such seam.
 
 Pick `nros::main!()` whenever:
 
@@ -174,8 +175,8 @@ locator = "tcp/192.168.1.10:7447"
 
 `board` is the only line that says RTIC. Point it at `mps2-an385-freertos`
 and the same components build as a FreeRTOS image — in a workspace, with
-nothing else to change; in a single package, together with the board crate
-in `[dependencies]` (issue 1305 above).
+nothing else to change; in a single package too, whose board comes from its
+generated selection package (issue 1305 above).
 
 ### A minimal Node pkg — pub-only Talker
 

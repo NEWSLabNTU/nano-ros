@@ -2,9 +2,12 @@
 
 **Status (2026-10-12). Re-measured on main 2026-10-11, bullet 5 on
 2026-10-12; the phase is NOT complete.** Acceptance: bullet 1 is MET for Rust and now for C/C++ (issue 1296,
-resolved). Bullet 2 is NOT MET for a single-package Rust leaf (issue 1305,
-reproduced; a switch now fails at `nros sync`, naming both crates, until D6
-reaches leaves). Bullet 3 was not measured. Bullet 4 holds for TRACKED files, and since
+resolved). Bullet 2 is MET for the 34 single-package Rust leaves on the
+generated selection package (issue 1305 phase C, 2026-10-12: the mps2
+bare-metal, FreeRTOS, NuttX, ThreadX-Linux and RTIC examples) and NOT MET for
+the classes still outside it, chiefly the native leaves, whose RMW is a cargo
+feature axis (issue 1305; a switch there fails at `nros sync`, naming both
+crates). Bullet 3 was not measured. Bullet 4 holds for TRACKED files, and since
 issue 1404 (resolved) `nros sync` also removes a stale GENERATED workspace root
 left on disk. Bullet 5 is MET since 2026-10-12 (issue 1289, resolved): its `rg`
 was narrowed to the DEPLOYMENT tables (`deploy|entry`) and returns nothing, and
@@ -40,11 +43,13 @@ workspace root build file, both gated.
 `archived/`.** The headline — pick a board in `system.toml`, run `nros build`,
 get an image — holds for Rust and not for the other two roads:
 
-* **issue 1305** — the one-line board switch is FALSE for a single-package RUST
-  leaf. It is its own entry, so it still names its board crate in
-  `[dependencies]`; RFC-0098 D6's generation reaches the generated WORKSPACE
-  entry only. Everything else (triple, link group, runner, cross compiler) does
-  follow the one line.
+* **issue 1305** — the one-line board switch is TRUE for a single-package Rust
+  leaf on its generated selection package (W4c; 34 in-tree leaves since phase C)
+  and still FALSE for the leaves outside it: the native examples (RMW and
+  edition are cargo features the fixture rows select — one image per RMW is the
+  open design item), the copy-out templates, board-specific test fixtures, C/C++
+  apps on a cargo link root, the rv-virt-threadx staticlibs and the dormant
+  ESP32 leaves. `leaf_settings::NOT_ON_THE_SELECTION` lists them with reasons.
 * ~~**issue 1296** — `nros build` does not resolve a single-package C/C++
   leaf.~~ RESOLVED 2026-10-11, together with 1308: `nros build` now configures
   the leaf's OWN `CMakeLists.txt` into `build/<image>/cmake`
@@ -246,6 +251,20 @@ esp32 stack budgets.
   `packages/testing/nros-tests/bins/entry-poc`. The other leaves keep their
   hand-written board crate and the sync refusal until the sweep (issue 1305
   lists it and the leaves that need more than the one dependency).
+  **W4c phase C — the sweep (2026-10-12, `fix/1305-phase-c-sweep`).** 32 more
+  leaves moved, one commit per family, each built (`nros sync && nros build`,
+  the family's `fixtures-build.sh` lane) and smoke-run: mps2 bare-metal
+  (listener, serial-talker/listener, talker-xrce), the six FreeRTOS, six NuttX
+  (+ the NuttX param-store bin) and six ThreadX-Linux leaves (+ the riscv64
+  param-store bin), and the eight RTIC leaves (which keep `rtic` and the PAC:
+  the `#[rtic::app]` expansion names them). The writer now derives the board
+  features `serial` (from `transport = "serial"`, dropping `ethernet`) and
+  `xrce-transport` (XRCE over that link) — `builder::entry::image_link_features`.
+  RTOS images state `panic = "platform"` beside their `main.rs`. The refusal
+  now also rejects a migrated leaf that names a board crate, and
+  `every_cargo_leaf_outside_the_open_classes_uses_its_selection_package` walks
+  every tracked leaf against `NOT_ON_THE_SELECTION`. **The box stays open for
+  the classes in that list**, the native RMW feature axis first.
   `nros sync` / `nros build` write `build/<image>/nros-cargo.toml` (board
   `cargo_config` + per-image `target-dir` + resolved `[env]` incl. the entity
   facts + in-repo patch rows) and the generated entry
@@ -465,8 +484,10 @@ esp32 stack budgets.
   `examples/mps2-an385-baremetal/rust/talker` outside the checkout, one line
   (`board = "freertos"`), `nros sync` rc=0, `nros build` rc=0, `git diff`
   shows that line only, and the FreeRTOS image boots in QEMU and publishes 27
-  messages to a router in 30 s. NOT MET yet for the leaves not migrated
-  (issue 1305).** Earlier measurement, before W4c: one line changed,
+  messages to a router in 30 s. Phase C (2026-10-12) moved the mps2
+  bare-metal, FreeRTOS, NuttX, ThreadX-Linux and RTIC examples onto the same
+  package (34 leaves). NOT MET yet for the leaves outside it — the native
+  examples first (issue 1305).** Earlier measurement, before W4c: one line changed,
   `nros sync` reported `done.`, `nros build` failed with
   `cannot find nros_board_<new_board> in the crate root`. A single-package
   leaf is its own entry, so it still names its board crate in
