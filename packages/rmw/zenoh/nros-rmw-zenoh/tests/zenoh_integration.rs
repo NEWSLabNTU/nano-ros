@@ -1455,6 +1455,60 @@ fn concurrent_declares_on_one_session_never_share_a_slot() {
     }
 }
 
+/// Issue 1835 — two threads opening a session at once must not share a slot.
+///
+/// `zpico_session_acquire` claimed a pool slot with an unlocked test-and-set,
+/// so concurrent opens could both take slot 0 and build their configs in it:
+/// one `z_open`'s `z_config_drop` freed what the other was still inserting
+/// (`double free or corruption`, or a SIGSEGV in `_z_hashmap_insert`). Opens
+/// are now serialised, so each round's threads either hold a slot of their own
+/// or are refused cleanly with `Full` once the pool is spent: never more held
+/// at once than `ZPICO_MAX_SESSIONS`, which a shared slot would exceed.
+#[test]
+fn concurrent_opens_never_share_a_session_slot() {
+    use std::sync::{Arc, Barrier};
+
+    let router = router();
+    let locator = format!("{}\0", router.locator());
+    const THREADS: usize = 4;
+    for round in 0..10 {
+        let start = Arc::new(Barrier::new(THREADS));
+        let all_opened = Arc::new(Barrier::new(THREADS));
+        let workers: Vec<_> = (0..THREADS)
+            .map(|_| {
+                let (start, all_opened, locator) =
+                    (start.clone(), all_opened.clone(), locator.clone());
+                thread::spawn(move || {
+                    start.wait();
+                    let opened = nros_rmw_zenoh::zpico::Context::new(locator.as_bytes());
+                    let held = match &opened {
+                        Ok(_) => true,
+                        Err(nros_rmw_zenoh::zpico::ZpicoError::Full) => false,
+                        Err(e) => panic!("round {round}: an open failed with {e:?}, not Full"),
+                    };
+                    // Every open of the round is held together, so two threads
+                    // in one slot cannot hide behind a close.
+                    all_opened.wait();
+                    drop(opened);
+                    held
+                })
+            })
+            .collect();
+        let held = workers
+            .into_iter()
+            .map(|w| w.join().expect("an opening thread panicked"))
+            .filter(|&h| h)
+            .count();
+        let max = nros_rmw_zenoh::zpico::ZPICO_MAX_SESSIONS as usize;
+        assert!(held >= 1, "round {round}: no open succeeded");
+        assert!(
+            held <= max,
+            "round {round}: {held} sessions open at once in a pool of {max}: \
+             two concurrent opens shared a slot"
+        );
+    }
+}
+
 /// Issue 1749 — declares and undeclares keep running across a reconnect.
 ///
 /// With `Z_FEATURE_AUTO_RECONNECT`, zenoh-pico's LEASE task re-opens a dropped

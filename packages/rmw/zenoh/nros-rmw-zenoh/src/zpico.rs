@@ -300,6 +300,60 @@ fn acquire_session_slot() -> Result<*mut zpico_sys::zpico_session_t> {
     Ok(handle)
 }
 
+/// Issue 1835 — one session OPEN at a time, process-wide.
+///
+/// Opening a session is not reentrant on three counts, all process-global:
+/// `zpico_session_acquire` tests and sets `g_session_inuse[i]` with no lock,
+/// so two threads opening at once can claim the SAME pool slot and both
+/// `memset` and configure it; the config they then build lives in that one
+/// slot, so one thread's `z_config_drop` inside `z_open` frees what the other
+/// is still inserting into (measured: `double free or corruption` in
+/// `z_config_drop`, and a SIGSEGV in `_z_hashmap_insert` on
+/// `g_sessions[0].config`); and `with_config` stages its locator in the
+/// `static mut LOC_BUF`, which a second open overwrites mid-retry.
+///
+/// Holding this across the whole open (claim, init, connect with its retries)
+/// makes the three one critical section. An open is rare and a waiter is
+/// waiting on someone else's connect, so it sleeps between tries rather than
+/// spinning; with one thread, as on every embedded image, it never waits.
+/// zenoh-pico's platform sleep. ThreadX has none outside the cooperative spin
+/// path, so its callers spin or drive `zpico_spin_once` instead.
+#[cfg(not(feature = "platform-threadx"))]
+fn sleep_ms(ms: usize) {
+    unsafe extern "C" {
+        fn z_sleep_ms(time: usize) -> i8;
+    }
+    unsafe {
+        let _ = z_sleep_ms(ms);
+    }
+}
+
+static OPEN_LOCK: portable_atomic::AtomicBool = portable_atomic::AtomicBool::new(false);
+
+struct OpenGuard;
+
+impl OpenGuard {
+    fn acquire() -> Self {
+        use portable_atomic::Ordering;
+        while OPEN_LOCK
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .is_err()
+        {
+            #[cfg(not(feature = "platform-threadx"))]
+            sleep_ms(1);
+            #[cfg(feature = "platform-threadx")]
+            core::hint::spin_loop();
+        }
+        OpenGuard
+    }
+}
+
+impl Drop for OpenGuard {
+    fn drop(&mut self) {
+        OPEN_LOCK.store(false, portable_atomic::Ordering::Release);
+    }
+}
+
 impl Context {
     /// Create a new shim context with the given locator
     ///
@@ -316,12 +370,7 @@ impl Context {
         #[cfg(not(feature = "platform-threadx"))]
         {
             let _ = session;
-            unsafe extern "C" {
-                fn z_sleep_ms(time: usize) -> i8;
-            }
-            unsafe {
-                let _ = z_sleep_ms(ms);
-            }
+            sleep_ms(ms);
         }
         #[cfg(feature = "platform-threadx")]
         {
@@ -371,6 +420,7 @@ impl Context {
 
     pub fn new(locator: &[u8]) -> Result<Self> {
         ffi_guard(|| {
+            let _open = OpenGuard::acquire();
             // Acquire a pool slot up front; release it on any init/open failure.
             let handle = acquire_session_slot()?;
             let connect = Self::connect_with_retry(handle, || {
@@ -424,6 +474,9 @@ impl Context {
         // connect buffer matches the existing design. `mode` is a `'static`
         // flash pointer and `properties` is empty on embedded, so both survive
         // as-is; only the DRAM-backed locator needs staging.
+        // Issue 1835 — held across the staging below and the whole open, so a
+        // concurrent open can neither claim this slot nor rewrite `LOC_BUF`.
+        let _open = OpenGuard::acquire();
         const LOC_CAP: usize = 256;
         static mut LOC_BUF: [u8; LOC_CAP] = [0; LOC_CAP];
         static mut LOC_VALID: bool = false;
