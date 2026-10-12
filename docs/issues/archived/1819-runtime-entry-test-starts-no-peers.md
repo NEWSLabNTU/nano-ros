@@ -1,10 +1,11 @@
 ---
 id: 1819
 title: "The generated-entry runtime test starts no peers of its own, so a row whose peer is absent passes as a printed note"
-status: open
+status: resolved
 type: tech-debt
 area: [testing, rmw]
 related: [1310, 1758, 1009, phase-445]
+resolved: 2026-10-12
 ---
 
 # What happens
@@ -44,3 +45,22 @@ The test owns its peers, the way the interop cells do:
 
 The bridge-cyclonedds row logs `[ERROR] liveliness: declare failed (KeyExpr)`
 and still registers. Not investigated; it may deserve its own issue.
+
+## Resolution (2026-10-12)
+
+`a_rows_entry_registers_its_nodes_at_runtime` now owns its peers:
+
+- it starts a leased `ZenohRouter` and/or `XrceAgent` (`start_unique`), only
+  for the backends the located rows need. That includes each bridge row's
+  endpoints, read from its tracked `nros-bridge.toml`;
+- each entry gets `NROS_LOCATOR` for its own backend, and a bridge gets
+  `NROS_BRIDGE_<NODE>_LOCATOR` per endpoint (the bridge's existing override);
+- a peer that cannot start is `unmet!` (issue 1758). A row that still does not
+  register FAILS, naming the row and the reason. The stderr "missing peer" note
+  is gone.
+
+Measured, all 24 Linux Rust rows built, no router or Agent running beforehand:
+**24 of 24 registered**, PASS. Before this change, the same host gave 1 of 24.
+Mutation (the per-row env emptied): rc=100, with the three xrce rows named, for
+example `workspace-rust-native-xrce (xrce) — the backend refused the session
+although its peer was started for it`.
