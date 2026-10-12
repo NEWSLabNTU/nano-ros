@@ -87,6 +87,11 @@ override on the command line (`-DNROS_RMW=xrce`). Valid: `zenoh`
 
 ## 4. Write a Publisher
 
+Generated C messages take rosidl's names and member shape
+(`std_msgs__msg__Int32` in `<std_msgs/msg/int32.h>`; a string member is
+`rosidl_runtime_c__String {data, size, capacity}`). The type support is
+rosidl's macro, and publishing is `rcl_publish`:
+
 Create `src/main.c`:
 
 ```c
@@ -94,46 +99,21 @@ Create `src/main.c`:
 #include <stdlib.h>
 #include <signal.h>
 
-#include <nros/init.h>
-#include <nros/node.h>
-#include <nros/publisher.h>
-#include <nros/timer.h>
-#include <nros/executor.h>
+#include <rcl/rcl.h>
+#include <rclc/rclc.h>
+#include <rclc/executor.h>
+#include <std_msgs/msg/int32.h>
 
-/* Use generated type info from nano_ros_generate_interfaces().
- * For this example we define a minimal Int32 manually. */
-typedef struct { int32_t data; } std_msgs_Int32;
-
-static const rclc_message_type_t std_msgs_Int32_type = {
-    .type_name = "std_msgs::msg::dds_::Int32_",
-    .type_hash = "RIHS01_5bf22a2e7c2c8a4ca3f55054648f6d8c7c77cc0ae5695a1ff1df0b7ef8df1f09",
-    .serialized_size_max = 8,
-};
-
-static int32_t serialize_int32(const std_msgs_Int32 *msg,
-                               uint8_t *buf, size_t len) {
-    if (len < 8) return -1;
-    /* CDR header (little-endian) */
-    buf[0] = 0x00; buf[1] = 0x01; buf[2] = 0x00; buf[3] = 0x00;
-    /* int32 payload (little-endian) */
-    buf[4] = (uint8_t)(msg->data);
-    buf[5] = (uint8_t)(msg->data >> 8);
-    buf[6] = (uint8_t)(msg->data >> 16);
-    buf[7] = (uint8_t)(msg->data >> 24);
-    return 8;
-}
-
-static rcl_publisher_t *g_pub;
-static int g_count = 0;
+static rcl_publisher_t g_pub;
+static std_msgs__msg__Int32 g_msg;
 
 static void timer_cb(struct rcl_timer_t *timer, void *ctx) {
     (void)timer; (void)ctx;
-    g_count++;
-    std_msgs_Int32 msg = { .data = g_count };
-    uint8_t buf[64];
-    int32_t len = serialize_int32(&msg, buf, sizeof(buf));
-    if (len > 0 && rclc_publish_raw(g_pub, buf, (size_t)len) == RCL_RET_OK) {
-        printf("Published: %d\n", g_count);
+    g_msg.data++;
+    /* Serialised through the descriptor the publisher was created with, into
+     * a transmit buffer bounded at build time. Nothing allocates. */
+    if (rcl_publish(&g_pub, &g_msg, NULL) == RCL_RET_OK) {
+        printf("Published: %d\n", (int)g_msg.data);
     }
 }
 
@@ -143,49 +123,61 @@ static rclc_executor_t *g_exec;
 static void on_signal(int sig) {
     (void)sig;
     running = 0;
-    if (g_exec) nros_executor_stop(g_exec);
+    if (g_exec) rclc_executor_cancel(g_exec);
 }
 
 int main(void) {
     const char *locator = getenv("NROS_LOCATOR");
     if (!locator) locator = "tcp/127.0.0.1:7447";
 
-    /* Initialise transport */
     rclc_support_t support = rclc_support_get_zero_initialized();
     if (rclc_support_init(&support, locator, 0) != RCL_RET_OK) return 1;
 
-    /* Create node */
-    rcl_node_t node = nros_node_get_zero_initialized();
-    nros_node_init(&node, &support, "c_talker", "/");
+    rcl_node_t node = rcl_get_zero_initialized_node();
+    if (rclc_node_init_default(&node, "c_talker", "/", &support) != RCL_RET_OK) return 1;
 
-    /* Create publisher */
-    rcl_publisher_t pub = nros_publisher_get_zero_initialized();
-    nros_publisher_init(&pub, &node, &std_msgs_Int32_type, "/chatter");
-    g_pub = &pub;
+    g_pub = rcl_get_zero_initialized_publisher();
+    if (rclc_publisher_init_default(&g_pub, &node,
+                                    ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
+                                    "/chatter") != RCL_RET_OK) return 1;
 
-    /* Create 1 Hz timer */
-    rcl_timer_t timer = nros_timer_get_zero_initialized();
+    rcl_timer_t timer = rcl_get_zero_initialized_timer();
     rcl_timer_init(&timer, &support, 1000000000ULL, timer_cb, NULL);
 
-    /* Create executor and add timer */
-    rclc_executor_t exec = nros_executor_get_zero_initialized();
+    rclc_executor_t exec = rclc_executor_get_zero_initialized_executor();
     rclc_executor_init(&exec, &support, 4);
-    nros_executor_add_timer(&exec, &timer);
+    rclc_executor_add_timer(&exec, &timer);
     g_exec = &exec;
 
     signal(SIGINT, on_signal);
     printf("Publishing on /chatter (Ctrl+C to stop)...\n");
-    nros_executor_spin_period(&exec, 100000000ULL);
+    rclc_executor_spin_period(&exec, 100000000ULL);
 
-    /* Tear down in reverse order */
-    nros_executor_fini(&exec);
-    nros_timer_fini(&timer);
-    rcl_publisher_fini(&pub);
-    nros_node_fini(&node);
-    nros_support_fini(&support);
+    rclc_executor_fini(&exec);
+    rcl_timer_fini(&timer);
+    rcl_publisher_fini(&g_pub);
+    rcl_node_fini(&node);
+    rclc_support_fini(&support);
     return 0;
 }
 ```
+
+A message with strings or sequences needs memory for them, and you own it.
+Either point each `data` at your own buffer (the micro-ROS idiom:
+`msg.data.data = buf; msg.data.capacity = sizeof buf;`) or wire the whole
+message with the generated helper:
+
+```c
+static std_msgs__msg__String__Storage storage;
+std_msgs__msg__String msg;
+std_msgs__msg__String__init_in(&msg, &storage);
+```
+
+rosidl's allocating `<Msg>__init` / `__fini` / `__create` / `__destroy` are
+not declared. A subscription delivers into storage the same way:
+`rclc_executor_add_subscription_with_context(&exec, &sub, &msg, cb, ctx,
+RCLC_EXECUTOR_ON_NEW_DATA)` deserialises into `msg` and refuses a sample
+that does not fit its capacities.
 
 ## 5. Build and Run
 

@@ -125,16 +125,26 @@ stub that wires signal handling and forwards to your function.
 #include <nros/node.h>
 #include <nros/publisher.h>
 #include <nros/timer.h>
-#include "std_msgs.h"
+#include <std_msgs/msg/int32.h>
 
 int nros_app_main(int argc, char** argv) {
     // 1. rclc_support_init() — opens the zenoh session
     // 2. rclc_executor_init() / rclc_node_init_default()
-    // 3. std_msgs_msg_int32_publisher_init() — typed publisher
-    // 4. rcl_timer_init() with a 1 Hz period + publish callback
+    // 3. rclc_publisher_init_default(&pub, &node,
+    //        ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32), "/chatter")
+    // 4. rcl_timer_init() with a 1 Hz period; the callback calls
+    //        rcl_publish(&pub, &msg, NULL)
     // 5. rclc_executor_spin() until SIGINT
 }
 ```
+
+Generated messages take rosidl's C names and member shape
+(`std_msgs__msg__String` in `<std_msgs/msg/string.h>`, `msg.data.data` /
+`.size` / `.capacity`). Their strings and sequences point at memory **you**
+own: wire them with the generated `<Msg>__init_in(&msg, &storage)` over a
+`<Msg>__Storage`, or point `data` at your own buffer as micro-ROS code does.
+Nothing on this path allocates, so rosidl's allocating `<Msg>__init` /
+`__fini` are not declared.
 
 ## Configure
 

@@ -187,8 +187,8 @@ the level-6 fallback, so a missing/empty config reproduces today's output exactl
 
 | mode     | Rust type                                     | C / C++ type                           | Cost                                    | Phase |
 |----------|-----------------------------------------------|----------------------------------------|-----------------------------------------|-------|
-| `inline` | `heapless::Vec<T, N>` / `heapless::String<N>` | fixed `[N]` array / `FixedSequence<N>` | `N` elems always inline                 | 1     |
-| `heap`   | `alloc::Vec<T>` (cap = hint)                  | growable seq (alloc-backed)            | dynamic; needs `alloc`/`std`            | 2     |
+| `inline` | `heapless::Vec<T, N>` / `heapless::String<N>` | C: rosidl `{data, size, capacity}` over a generated `__Storage` of `N` (phase-492 W7) / C++: `FixedSequence<N>` | `N` elems, caller-owned            | 1     |
+| `heap`   | `alloc::Vec<T>` (cap = hint)                  | C++: growable seq (alloc-backed); C: not emitted since phase-492 W7 (the cap only sizes `__Storage`; a caller wanting heap points `data` at its own block) | dynamic; needs `alloc`/`std`            | 2     |
 | `view`   | `&'a [T]` / `&'a str` into CDR buffer         | `{ const T* ptr; size_t len; }`        | pointer+len, zero-copy, callback-scoped | 3     |
 
 ### What each mode GUARANTEES
@@ -315,12 +315,14 @@ but differ in **who walks the CDR**, following the project rule that **C++ wraps
 Rust API and never re-implements serdes**:
 
 - **C — native, pointer-setting deserialize.** C already has its own CDR readers
-  (`nros-c/include/nros/cdr.h`). Codegen emits `{Msg}_View` (`view` fields as
+  (`nros-c/include/nros/cdr.h`). Codegen emits `{Msg}__View` (`view` fields as
   `{const char* data; size_t size;}` / `{const uint8_t* data; size_t size;}` / the
-  numeric LE-view) and `int32_t {Msg}_deserialize_view({Msg}_View*, const uint8_t*
+  numeric LE-view) and `int32_t {Msg}__deserialize_view({Msg}__View*, const uint8_t*
   buf, size_t len)` that walks CDR, bounds-checks against `end`, and **sets pointers
-  into `buf`** for `view` fields (`inline` fields copied as today). No `malloc`, no
-  `_fini`.
+  into `buf`** for `view` fields. Since phase-492 W7 the non-view fields are
+  rosidl-shaped and read through the `data` / `capacity` the caller wired on the
+  view, exactly as `{Msg}__deserialize` does; the view is not zeroed. No `malloc`,
+  no `_fini`.
 
 - **C++ — wraps a Rust FFI offset seam (no native C++ CDR reader).** The C++ `inline`
   path already deserializes through the Rust FFI (`ffi_deserialize`); `view` extends
