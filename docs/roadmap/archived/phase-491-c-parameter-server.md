@@ -1,10 +1,10 @@
 # Phase 491 — The C parameter server: one rclc-shaped family over the executor store
 
-**Status (2026-10-12). Every work item landed (W1–W7); C components move with phase-492 W4.**
-Implements [RFC-0105](../design/0105-c-parameter-server.md). Closes issues
-[0793](../issues/archived/0793-c-params-declared-via-legacy-store-invisible-to-ros2.md) and
-[0865](../issues/archived/0865-no-example-registers-parameter-services.md), and lands the C
-half of [1812](../issues/archived/1812-param-services-require-alloc.md). W7 closed 1812
+**Status (2026-10-12). Complete — W1–W7 landed (#1996, #2015); C components move with phase-492 W4.**
+Implements [RFC-0105](../../design/0105-c-parameter-server.md). Closes issues
+[0793](../../issues/archived/0793-c-params-declared-via-legacy-store-invisible-to-ros2.md) and
+[0865](../../issues/archived/0865-no-example-registers-parameter-services.md), and lands the C
+half of [1812](../../issues/archived/1812-param-services-require-alloc.md). W7 closed 1812
 whole. Carried out of this phase: C components, which still use the C++ shim for
 everything and move with phase-492 W4.
 
@@ -179,7 +179,7 @@ Carried, with where each goes:
   (`_atomically`); held by `a_remote_set_holds_no_parameter_value_on_the_stack`.
   The `ParamHome` region is 32,000 B at default knobs (heap-free `rmw-cffi`
   build). Detail and numbers:
-  [issue 1812](../issues/archived/1812-param-services-require-alloc.md).
+  [issue 1812](../../issues/archived/1812-param-services-require-alloc.md).
 
 ### 2026-10-12 — `/parameter_events` (W3)
 

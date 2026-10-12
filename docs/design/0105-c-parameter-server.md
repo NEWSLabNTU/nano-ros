@@ -2,7 +2,7 @@
 
 **Status:** Draft (2026-10-11; first implementation landed 2026-10-12)
 
-**Implemented by:** [phase-491](../roadmap/phase-491-c-parameter-server.md).
+**Implemented by:** [phase-491](../roadmap/archived/phase-491-c-parameter-server.md).
 **Applies:** [RFC-0089](0089-ros2-api-adoption-and-the-compile-or-conform-rule.md)
 (compile-or-conform) to the C parameter surface. **Governed by:** RFC-0019 /
 RFC-0020 — the Rust store (`nros-params`) is the implementation and C delegates.

@@ -4,7 +4,7 @@
 [RFC-0089](../design/0089-ros2-api-adoption-and-the-compile-or-conform-rule.md)
 amendment "`nros_` is phased out of the C API; ours-only names take `rclc_`"
 (2026-10-12). The C counterpart of the C++ `nros::` → `rclcpp::` flip
-(phase-427/428). Runs beside [phase-491](phase-491-c-parameter-server.md),
+(phase-427/428). Runs beside [phase-491](archived/phase-491-c-parameter-server.md),
 whose parameter surface already follows the rule.
 
 ## Why
