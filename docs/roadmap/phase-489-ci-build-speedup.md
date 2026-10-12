@@ -183,6 +183,37 @@ index, is the usual cause. Fix only what the profile shows.
 **Acceptance:** `just check fast` under 6 min wall on CI, and the `pre-push`
 hook proportionally faster.
 
+**Landed (2026-10-12).** Profiled each gate solo first. Every fix removes a
+repetition; none narrows a check, adds a cross-run cache or skips work.
+
+| gate | where the time went | fix | solo before → after |
+|---|---|---|---|
+| `knob-single-reader` | comment-stripping inside `readers_in`, i.e. once per (file, knob, spelling): 45 158 strips of 684 files | strip once per file; memoise the CMake-half strip on its own text | 180 s → 7 s |
+| `probe-workspace-caps` | each case's `pkg_a_lib` compile waited on a cold cargo build of the runtime (69 of 72 s) | both cases name one `NROS_SHARED_CARGO_ROOT` (issue 0805's input-keyed dir) inside the run's tmpdir; headers and TU compiles stay per build tree | 135 s → 72 s |
+| `rmw-ret-sign` | a per-slot regex rebuilt for every (line, slot): 53 M `re.search` calls | compile once, prefilter lines with the union, skip the empty `DUAL_RETURN` scan | 105 s → 8 s |
+| `rmw-api-comparison`, `rmw-api-parity`, `rmw-slot-producers` | `consumers_in`: one search per slot per file | one look-ahead `finditer` per file | 21 → 8, 11 → 4, 10 → 4 s |
+| `api-parity` | 92 of 93 CPU-s is the cold `cargo doc` (host builds 43 s, check 22 s, rustdoc ~25 s) | none; see below | 36 s |
+
+Outputs of `knob-single-reader`, `rmw-ret-sign` and the three slot-producer
+consumers are byte-identical before and after, and `consumers_in` was compared
+over 1814 files and 50 000 fuzz inputs. Each gate still fails on its defect: a
+second reader of `NROS_EXECUTOR_MAX_CBS`, a retired `NROS_DECLARED_MAX_QOS_DEPTH=`
+under `cmake/`, the workspace-caps walk disabled (case A goes 3/5 red), a new
+`rc < 0` on `create_session`, and a consumer planted on an inert slot.
+
+`just check fast` at -P4 on the 4-core box: **424 s → 274 s wall**, busy CPU
+1638 s → 1084 s. The lane runs at 4.0× effective parallelism, so it is
+CPU-bound: its wall time is now total CPU divided by four, not the slowest
+gate. New top five: `probe-workspace-caps` 100 s, `api-parity` 56 s,
+`hook-repo-side-effects` 38 s, `rmw-doc-slot-names` 38 s, `rmw-ret-sign` 20 s
+(contended times).
+
+Deferred: `api-parity`'s rustdoc could skip JSON for third-party crates
+(about 15 CPU-s), but a re-export of a third-party item would then drop off the
+surface silently, so it is not done. A faster shared comment stripper
+measured within noise outside cProfile. The CI number waits for the post-merge
+measurement.
+
 ### W6 — a persistent build cache for the fixture lanes
 
 Live-peer (84.5 + 33.7 min of fixture build), run-matrix (about 30 min a
