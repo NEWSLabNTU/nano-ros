@@ -9,6 +9,76 @@ found: 2026-09-11
 related: [rfc-0098, rfc-0065, phase-445]
 ---
 
+## 2026-10-12 (sweep) — 29 more leaves migrated; 4 families left, each for a stated reason (still OPEN)
+
+31 single-package Rust leaves now name only `<pkg>_nros_selection`:
+
+| family | leaves | scope | generator change | verified |
+| --- | --- | --- | --- | --- |
+| mps2 bare-metal (`qemu-mps2-an385`) | listener, serial-talker, serial-listener, talker-xrce (+ pilot talker) | `target_os = "none"` | `transport_features`; board `rmw-xrce` | sync+build 4/4; `fixtures-build.sh baremetal rust` rc=0 |
+| mps2 RTIC (`rtic-mps2-an385`) | 8 `*-rtic*` | `target_os = "none"` | own `[[board]]` row; macro routes `#[rtic::app]`, `device`, consumer | sync+build 8/8; talker-rtic in QEMU: 29 published / 30 s |
+| FreeRTOS mps2 (`freertos`) | 5 (+ pilot talker) | `target_os = "none"` | none | sync+build 5/5; `fixtures-build.sh freertos rust zenoh` rc=0; service pair in QEMU: `Result of add_two_ints: 5` |
+| NuttX (`nuttx`) | 6 | `target_os = "nuttx"` | none | sync+build 6/6; `fixtures-build.sh nuttx rust` rc=0; talker size identical to an unmigrated copy (text 708600); boots to `Executor::open`, which fails `ConnectionFailed` for the unmigrated copy too (host networking) |
+| ThreadX Linux (`threadx-linux`) | 6 | UNSCOPED (host image) | none | sync+build 6/6; `fixtures-build.sh threadx-linux rust` rc=0; talker: 19 published / 20 s |
+
+**What the generator gained.**
+
+- *The link follows the image's `transport`.* `transport_features` in a board
+  descriptor (mps2: `serial` -> `serial`, `tcp`/`udp` -> `ethernet`). The
+  selection package drops every listed link from the board's defaults and
+  adds the declared one; a transport the board has no link for is refused.
+  The serial leaves had written `default-features = false, features =
+  ["serial"]` by hand.
+- *XRCE is the board's `rmw-xrce`.* `nros-board-mps2-an385` gains
+  `rmw-xrce = ["xrce-transport"]`, the selector the facade already derives
+  from `rmw = "xrce"`; on this board XRCE rides the UART custom transport.
+- *RTIC is its own `[[board]]` row* on the same crate: `board_features =
+  ["rtic"]`, crate-root crates `rtic` / `cortex-m` / `panic-semihosting`. The
+  board crate re-exports its PAC under `rtic`; the macro's RTIC `device` is
+  that re-export, and in a selection leaf `nros::main!` routes `device`, the
+  dispatch consumer and `#[rtic::app]` through the package and brings `rtic`
+  into scope at the crate root (the expansion spells `rtic::export` relative).
+
+**Scoping (issue 1265).** A cross image scopes the table to its own target OS.
+A host-built image cannot: any cfg matching the image matches the host probe,
+so ThreadX Linux names it unscoped, and the probe builds exactly the graph it
+built before (the board crate and `nros-platform` it replaces were unscoped).
+So a board switch across target OSes (FreeRTOS -> NuttX) also edits the table
+header; within one target OS it is the `system.toml` line alone.
+
+**Not migrated, and why** (the refusal still covers each):
+
+- **`native` (6 leaves with a `system.toml`).** Their RMW is a CARGO FEATURE,
+  chosen per fixture row (`no_default_features = true, features =
+  ["rmw-xrce"]`, `["rmw-cyclonedds"]`, plus `link-tls` and an env-only peer
+  row). The selection package derives one RMW from `system.toml`, so these
+  rows must first become images (`[image.native-xrce]` …) that the fixture
+  builder and the test locators select — a fixtures-manifest change, not a
+  generator one. The other 14 `examples/native/rust/*` leaves have no
+  `system.toml`, so they are not images and the refusal never reads them.
+- **`rv-virt-threadx` (6).** No `nros::main!`: the entry is the board's
+  `app_main!(crate::register)` in the leaf's own `src/app_main.rs`, and the
+  crate is also a `staticlib` the CMake Cyclone road links with `--features
+  rmw-cyclonedds,alloc` (six `rmw = "cyclonedds"` fixture rows). Moving the
+  board crate behind the package needs that entry to become `nros::main!` and
+  the Cyclone rows to become images.
+- **Workspace templates (2: `local-msg-package/src/rust_consumer`,
+  `multi-package-workspace/src/pkg_rust_publisher`).** Form-1 packages inside
+  a workspace, so they take the workspace sync road, which writes the
+  `[patch]` row but not the package. Not attempted further: on this host the
+  UNMODIFIED `multi-package-workspace` already fails `nros sync` (the metadata
+  probe: `no matching package named nros found`), so a migration could not be
+  verified.
+- **`esp32-c3-baremetal` (2).** ESP32 is dormant (issue 1525): no lane builds,
+  tests or provisions it, so a migration could not be verified, and whether
+  `esp_app_desc!()` survives as a library item stays unmeasured.
+
+Out of scope here: the 12 C/C++ `mps2-an385-baremetal` leaves. They are
+Rust-ROOTED (issue 1512) and their shared `main.rs` calls the board's API
+(`run_bare`, `Config`, `#[entry]`) directly, so the board is in their source,
+not only their manifest; a selection package would move the line without
+making the leaf board-agnostic.
+
 ## 2026-10-12 (later) — the generated selection package landed; two pilots migrated (still OPEN)
 
 The fix the 2026-10-11 amendment describes is implemented, and two leaves use

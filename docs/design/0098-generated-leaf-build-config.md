@@ -1,6 +1,6 @@
 # RFC-0098 — A leaf's build configuration is generated from one board choice
 
-**Status:** Draft (2026-09-10; revised 2026-09-10 — generated settings live under `build/`, and a workspace has no root build file; 2026-09-11 — three facts measured by phase-445 W4; 2026-09-11 — the app rung gets its spelling and the leaf `.cargo/` is deleted, phase-445 W6; 2026-10-07 — image configuration has ONE source on every road: D10–D12, phase-481; 2026-10-07 — D11's locator revision from phase-481 W0 DECIDED: the module's `module_ext_root` hook appends the fragment; 2026-10-11 — D10–D12 IMPLEMENTED by phase-481 W1–W5: every Zephyr example states its nano-ros config in `system.toml` and no leaf conf file holds a nano-ros knob. 2026-10-11 — D1's path defers to RFC-0103 D7, and D6 covers every image-only dependency of a single-package leaf through a generated selection package. 2026-10-12 — that package IMPLEMENTED (issue 1305, two pilot leaves): the leaf names it registry-style and a per-image `[patch]` row points it at `build/<image>/nros-selection/`. Stays Draft while phase-445, D1–D9, is open)
+**Status:** Draft (2026-09-10; revised 2026-09-10 — generated settings live under `build/`, and a workspace has no root build file; 2026-09-11 — three facts measured by phase-445 W4; 2026-09-11 — the app rung gets its spelling and the leaf `.cargo/` is deleted, phase-445 W6; 2026-10-07 — image configuration has ONE source on every road: D10–D12, phase-481; 2026-10-07 — D11's locator revision from phase-481 W0 DECIDED: the module's `module_ext_root` hook appends the fragment; 2026-10-11 — D10–D12 IMPLEMENTED by phase-481 W1–W5: every Zephyr example states its nano-ros config in `system.toml` and no leaf conf file holds a nano-ros knob. 2026-10-11 — D1's path defers to RFC-0103 D7, and D6 covers every image-only dependency of a single-package leaf through a generated selection package. 2026-10-12 — that package IMPLEMENTED (issue 1305, two pilot leaves): the leaf names it registry-style and a per-image `[patch]` row points it at `build/<image>/nros-selection/`. 2026-10-12 — swept to 31 leaves: the scope follows the image's target (unscoped for a host-built image) and the link follows `[image.<id>] transport` through the descriptor's `transport_features`. Stays Draft while phase-445, D1–D9, is open)
 
 Home phase: [phase-445](../roadmap/phase-445-board-choice-generates-leaf-config.md).
 
@@ -461,6 +461,28 @@ board's `crate_root_extra`, so the leaf's crate root names no board crate either
 every crate the board's entry code names, not only the panic crate (the mps2
 bare-metal board gained `cortex-m` / `cortex-m-rt`). Two pilots migrated; the
 other single-package leaves are the open part of issue 1305.
+
+**Swept 2026-10-12 (issue 1305), with two more refinements.** 29 more leaves
+use the package (mps2 bare-metal + RTIC, FreeRTOS, NuttX, ThreadX Linux).
+
+- *The scope is the image's target, not always `target_os = "none"`.* The
+  rule "target-scoped so the host probe still builds the node" holds for a
+  CROSS image: bare-metal and FreeRTOS leaves scope `target_os = "none"`,
+  NuttX leaves `target_os = "nuttx"`. A HOST-built image (ThreadX Linux, and
+  `native` when it migrates) names the package UNSCOPED, because any cfg that
+  matches the image also matches the host probe. That costs nothing: the
+  probe already built the board crate and `nros-platform` those leaves named
+  unscoped. A consequence worth stating: a board switch that crosses a
+  target-OS boundary (FreeRTOS to NuttX) also moves this one table header.
+  Within one target OS (the switch D6 was measured on) it is the
+  `system.toml` line alone.
+- *The link is derived from the image's `transport`.* A board descriptor
+  states `transport_features` (`{ serial = ["serial"], tcp = ["ethernet"] }`
+  on mps2); the package drops every listed link from the board crate's
+  defaults and adds the declared one, and refuses a transport the board has
+  no link for. A board whose entry SHAPE differs by name gets its own
+  `[[board]]` row on the same crate (`rtic-mps2-an385`: `board_features =
+  ["rtic"]`, the RTIC crate-root crates).
 
 ## What is NOT decided here
 
