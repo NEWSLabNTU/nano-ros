@@ -1,7 +1,7 @@
 # phase-496 - board files state board facts: two executor knobs that must derive
 
 **Renumbered 2026-10-12 from 467**, which this doc shared with
-[phase-467](../phase-467-rmw-gap-closure-design-study.md). Commit messages and PRs
+[phase-467](phase-467-rmw-gap-closure-design-study.md). Commit messages and PRs
 from before the renumbering call this phase `phase-467`: a `phase-467 W1` or
 `W2` reference (the contract-monitor tables, `MAX_MONITORS`, the param-service
 inbox sentinel) means this doc; a `Row` or `Q` reference means the study.
