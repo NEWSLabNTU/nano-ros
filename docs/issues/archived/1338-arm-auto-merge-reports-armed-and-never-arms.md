@@ -2,10 +2,11 @@
 id: 1338
 title: "`arm-auto-merge` prints `armed #N` on every run and has never armed
   anything: no `--repo` with no checkout, and an `if` that tests `tee`"
-status: open
+status: resolved
 type: bug
 area: ci
 severity: high
+resolved: 2026-10-12
 related: [issue-1040, issue-1226, issue-1249, issue-0952]
 ---
 
@@ -111,3 +112,16 @@ the job instead of warning.
 **Not yet verified:** `pull_request_target` runs the workflow from the BASE
 branch, so the fix takes effect only once it is on `main`. Close this when
 the first run after that prints `armed #N` for a PR its author did not arm.
+
+## 2026-10-12 — resolved: the workflow arms
+
+`aaca87f774` (#2041) put `contents: write` on `main`. The first runs after it:
+
+| run | PR | log | armed by |
+| --- | --- | --- | --- |
+| 38237197298 | #2043 | `armed #2043` | `github-actions[bot]`, `auto_merge_enabled` at 10:34:46Z — the timeline's only arming event, so the author did not arm it |
+| 38237413866 | #2044 | `armed #2044` | merged through the queue |
+
+The last run before the merge (38234395869, #2042, 10:08Z, on the old
+workflow) still ended `Resource not accessible by integration`, which is the
+before half of the same measurement.
