@@ -25,7 +25,7 @@ Two producers, two units, one parameter name.
   value as milliseconds (`nros_cpp_qos_override_t.value`).
 
 So a contract `lease_duration: 500ms` reaches the baked table as
-`500000000` ms (about 5.8 days), and a `deadline:` of 4.3 s or more overflows
+500,000,000 ms (about 5.8 days), and a `deadline:` of 4.3 s or more overflows
 the `u32` and the build is refused with a `BadValue` naming a value the author
 never wrote. In-tree launch files that write the parameter by hand
 (`tests/fixtures/qos_agreement/launch/agrees.launch.xml`, `deadline = 100`)
