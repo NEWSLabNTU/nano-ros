@@ -1,6 +1,6 @@
 # Phase 492 — The C API drops `nros_`: upstream names, `rclc_` for the rest
 
-**Status (2026-10-12). In progress — W1, W2, W3, W5 (callers of the renamed names) and W6 landed; W4, W7, W8 open.** Implements the
+**Status (2026-10-12). In progress — W1, W2, W3, W5, W6, W7 and W8 landed, W4 part 1 landed; W4 part 2 (C components onto the C API) open.** Implements the
 [RFC-0089](../design/0089-ros2-api-adoption-and-the-compile-or-conform-rule.md)
 amendment "`nros_` is phased out of the C API; ours-only names take `rclc_`"
 (2026-10-12). The C counterpart of the C++ `nros::` → `rclcpp::` flip
@@ -178,3 +178,118 @@ sees zero allocations across publish and take.
   message API): `RCLC_C_COMPONENT`'s `configure` takes `(rcl_node_t *,
   rclc_executor_t *, StructT *)`; the 37 component sources move to the C API;
   `component.h` stops declaring `nros_cpp_*`.
+
+### 2026-10-12 — W7, W8: messages in rosidl's names and shape, type support through the descriptor
+
+- **W7 (C pack).** Struct `<pkg>__msg__<Name>` (`_Request`/`_Response`,
+  `_Goal`/`_Result`/`_Feedback`) in `<pkg>/<kind>/<snake>.h`. The file name
+  follows rosidl's `convert_camel_case_to_lower_case_underscore`
+  (`utils::to_rosidl_snake_case`; `UInt8` -> `u_int8`). The CMake output
+  predictor in `NanoRosCodegenCore.cmake` uses the same two regexes. Guards are
+  `<PKG>__<KIND>__<SNAKE>_H_` and constants `<Msg>__<CONST>`.
+  - Members use rosidl's shape: `rosidl_runtime_c__String` and the `__Sequence`
+    types, with fixed arrays and nested messages inline.
+  - Each type gets a generated `__Storage` sized by RFC-0033's capacities, and
+    `__init_in(&msg, &storage)` wires every string and sequence to it,
+    recursing into nested messages, sequence elements and array elements.
+  - Deserialize reads into the caller's `capacity` and returns -1 before writing
+    a byte of a field that does not fit. `.msg` bounds are checked in both
+    directions.
+  - rosidl's allocating `__init` / `__fini` / `__create` / `__destroy` and the
+    `__Sequence__*` functions are function-like macros that expand to an
+    undeclared identifier naming `__init_in`. The String runtime's allocating
+    functions get the same treatment.
+  - The C `heap` arm is gone: a `heap` entry only sizes `__Storage`.
+  - `view` keeps `<Msg>__View` and `__deserialize_view`. Its non-view members
+    read through caller-wired storage, and the view is not zeroed.
+  - Message, service and action share one set of payload macros
+    (`packs/c/_field.jinja`).
+- **Runtime types.** `nros-c/include/rosidl_runtime_c/` holds `string.h`,
+  `primitives_sequence.h` and the three `*_type_support_struct.h`, each under
+  upstream's include guard, so they are the one definition site.
+  `rclc_parameter.h` now includes them instead of defining its own copies.
+- **W8.**
+  - `rclc_message_type_t` gains `serialize` and `deserialize`. The service
+    descriptor gains request/response codec slots and the action descriptor
+    goal/result/feedback slots.
+  - The pack emits `<pkg>__<sub>__<Name>__nros_type` with type-erased codec
+    functions (real functions, never casts).
+  - `ROSIDL_GET_{MSG,SRV,ACTION}_TYPE_SUPPORT(P, S, N)` expands to
+    `(&P##__##S##__##N##__nros_type)`.
+  - Publishers and subscriptions keep their descriptor (`type_support`).
+  - `rcl_publish(&pub, &msg, NULL)` serialises through the descriptor into a
+    stack buffer bounded at build time. The buffer is 256 B when the type's
+    bound fits, and otherwise `MESSAGE_BUFFER_SIZE`, the image's message
+    buffer. It retries in that larger class when the sample does not fit the
+    smaller one.
+  - `rclc_executor_add_subscription_with_context` takes rclc's six arguments.
+    The deserializer and the receive hint come from the descriptor.
+  - `rmw_{publisher,subscription}_allocation_t` are declared incomplete.
+  - `rclc_executor_add_subscription_typed{,_sized}` and every per-message typed
+    helper are retired. nros-node's erased deserializer now takes
+    `(buf, len, msg)`.
+- **Tests.**
+  - `check c`:
+    - `rosidl_manual_buffer_idiom.c`: the micro-ROS idiom for `std_msgs/String`
+      and `sensor_msgs/LaserScan` compiles unchanged with `-Werror`.
+    - `rosidl_talker_listener.c`: a talker and listener using
+      `ROSIDL_GET_MSG_TYPE_SUPPORT`, `rcl_publish` and `_with_context`.
+    - Every C golden compiles with `-Werror`.
+    - `rosidl_message_no_alloc` (run): a string or sequence past its capacity
+      is refused and the guard bytes are untouched. A counting allocator sees 0
+      allocations across `__init_in`, serialize, deserialize and `rcl_publish`,
+      and a control shows the counter is live. `rcl_publish` puts the
+      serialiser's exact bytes on the stub backend. A non-NULL allocation, a
+      codec-less descriptor and an oversized message are refused.
+  - The must-not-compile verdicts are four `cxx-syntax-verdict` rows
+    (`c_rosidl_*`, consumer `tests/c_rosidl_refusals.rs`). The builder now
+    compiles a `.c` snippet as C11. The rows cover:
+    - a `rosidl_message_type_support_t` declaration;
+    - `->typesupport_identifier`;
+    - a stack `rmw_publisher_allocation_t`;
+    - `std_msgs__msg__String__init`, whose diagnostic names `__init_in`.
+  - The fingerprint corpus gained stock Humble `String`, `Header`, `Time` and
+    `LaserScan` under their real package names. Its C goldens are now laid out
+    the way rosidl lays them out.
+  - The `#[ignore]`d C heap compile check retired with the C heap arm.
+- **Runtime, on this host:**
+  - Native C fixtures (zenoh, cyclonedds) and C++/Rust peers built.
+  - `native_api` C/interop cells and `native_example_pubsub` (c zenoh, c
+    cyclone): 15/15.
+  - `interop_e2e` cyclone cells against ROS 2 Humble `rmw_cyclonedds_cpp`
+    (C talker to ROS 2, ROS 2 to C listener, C service server): 3/3.
+  - `parameters_roundtrip` 2/2, `c_rosidl_refusals` 4/4.
+- Codegen version 14 (MIN 14). `.config/codegen-version-surface.txt` was
+  re-baselined. Ledger: the two typed rows were deleted. `c:publish` is
+  `adopt-bounded`, its envelope being that `allocation` must be NULL.
+  `c:polling_subscription_take` and `c:message_serialize_fn_t` were added.
+- Deviations, measured or decided:
+  - **`rcl_take` is not declared.** `rcl_subscription_t` is executor-owned
+    (phase-487 W1) and has no subscriber of its own to take from, so rcl's name
+    with this contract would compile and differ. The analog is
+    `rclc_polling_subscription_take(&sub, &msg, NULL)`.
+  - **Action envelopes are not emitted.** The C pack emits Goal, Result and
+    Feedback. `_SendGoal_Request` and the other envelopes are assembled by the
+    action runtime.
+  - **`wstring` maps to `rosidl_runtime_c__String`**, not `U16String`. The wire
+    behaviour is unchanged from before.
+  - **Generated service helpers are kept, renamed** (`<Srv>__service_init`,
+    `__executor_add_service`, `__service_handler_t`, the client half). Their
+    handler structs carry the payloads' `__Storage`. rclc's
+    `rclc_executor_add_service` stays refused, as before.
+  - **The talker/listener probe is not literal micro-ROS code.** It uses
+    nano-ros's `rclc_support_init` / `rclc_executor_init` and the
+    `RCLC_EXECUTOR_ON_NEW_DATA` enumerator. rclc's support/executor init
+    signatures and its bare `ON_NEW_DATA` are a separate question, outside W8.
+  - **The type-check on a subscription's `msg` argument is gone with the
+    retired macros.** The macros checked its type; rclc's `void *` does not.
+    `typed_subscription_storage_mismatch_probe.c` was deleted, matching rclc.
+  - **Hand-built descriptors in examples still compile with NULL codec slots.**
+    `rcl_publish` refuses them with `RCL_RET_UNSUPPORTED`.
+  - **A fixture-environment trap.** A linked worktree inherits
+    `nano_ros_ROOT` pointing at the main checkout. That makes `find_package`
+    configure fixture build dirs against the MAIN checkout's CMake, which
+    generated the old file names. Issue 1280's class, but through
+    `nano_ros_ROOT`, which the re-root helper does not cover. The fixtures here
+    were built with `nano_ros_ROOT` set to the worktree.
+
