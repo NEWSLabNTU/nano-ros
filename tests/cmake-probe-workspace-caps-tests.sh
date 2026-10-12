@@ -265,7 +265,19 @@ run_case() {
     local label="$1" prefix="$2"
     local probe="$TEST_TMPDIR/probe-$prefix" build="$TEST_TMPDIR/build-$prefix"
     render_probe "$probe"
+    # phase-489 W5 -- both cases name ONE `NROS_SHARED_CARGO_ROOT`, the
+    # repo's own mechanism for letting build trees with IDENTICAL cargo inputs
+    # share a target dir (issue 0805): the subdirectory is the hash of the full
+    # input set (features, rmw, board, knobs, entity facts), so a case whose
+    # runtime inputs differ gets its own directory by construction. The caps
+    # file is a codegen input, not a runtime one, so B and A key alike and A
+    # reuses B's runtime staticlibs instead of a second cold cargo build of
+    # the whole runtime -- 69 of the case's 72 s. What the two cases assert on
+    # stays per build tree: the generated header is under `$build/nros-codegen`
+    # and the node's TU compiles in `$build`. The shared dir lives in this
+    # run's `$TEST_TMPDIR`, so nothing outlives the run.
     if ! cmake -S "$probe" -B "$build" -DCMAKE_PREFIX_PATH="$PROJECT_ROOT" \
+            -DNROS_SHARED_CARGO_ROOT="$TEST_TMPDIR/shared-cargo" \
             > "$TEST_TMPDIR/configure-$prefix.log" 2>&1; then
         fail "[$label] probe configure failed"
         tail -n 30 "$TEST_TMPDIR/configure-$prefix.log"

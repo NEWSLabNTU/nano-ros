@@ -370,7 +370,10 @@ probe-shared-types:
 # the compiler about a guard (issue 1167). Priced: 1 m 49 s warm, nearly all of
 # it the two `pkg_a_lib` compiles, against `api-parity`'s 217 s on this same
 # lane — so at -P32 it sits under the wall time the lane already has and adds
-# nothing to it. If that ever stops being true, the split is the next step: the
+# nothing to it. phase-489 W5 halved it (135 s -> 72 s solo): each compile was a
+# cold cargo build of the runtime, and the two cases now share one
+# `NROS_SHARED_CARGO_ROOT` (keyed on the full cargo input set), so the second
+# case reuses the first's staticlibs. If that ever stops being true, the split is the next step: the
 # codegen half alone is seconds and asserts on the header's TEXT rather than on
 # its effect. Preconditions SKIP through the ledger (no CLI, no cmake, no
 # compiler); everything past them is a hard failure.
