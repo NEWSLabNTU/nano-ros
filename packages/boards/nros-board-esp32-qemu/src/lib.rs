@@ -39,6 +39,13 @@ mod board_entry;
 // Re-export entry macro from esp-hal
 pub use esp_hal::main as entry;
 
+// Issue 1305 — the crate itself, for an entry that reaches this board through
+// its generated selection package and so has no `esp-hal` of its own:
+// `nros::main!` brings `esp_hal` into that entry's crate root from here, which
+// is the name `#[esp_hal::main]`'s expansion resolves.
+#[doc(hidden)]
+pub use esp_hal;
+
 // Re-export esp-println for user output
 pub use esp_println;
 

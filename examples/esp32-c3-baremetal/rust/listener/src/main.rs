@@ -14,11 +14,8 @@
 #![no_std]
 #![no_main]
 
-// Panic handler + bootloader app descriptor are crate-root items the
-// proc-macro cannot inject; esp-backtrace is link-forced (no leak — it
-// declares no application logic).
-use esp_backtrace as _;
-
-nros_board_esp32_qemu::esp_bootloader_esp_idf::esp_app_desc!();
+// The panic handler (`esp-backtrace`) and the bootloader app descriptor
+// (`esp_app_desc!`) are the board's crate-root items; the generated selection
+// package carries them (issue 1305), so this file names no board crate.
 
 nros::main!(panic = "own");

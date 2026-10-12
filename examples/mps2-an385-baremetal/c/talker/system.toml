@@ -16,6 +16,10 @@ name = "talker"
 # compiled-in `Config::default()` through `Config::from_image()`.
 [image.mps2-an385-baremetal]
 board = "qemu-mps2-an385"
+# The C/C++ runtime brings the panic handler (`nros-c`'s `panic-platform`,
+# RFC-0077), so the generated selection package must not link the board's
+# own provider beside it (issue 1305).
+panic = "platform"
 # `nros_tests::alloc::port_of(QemuBaremetal, C, Pubsub)` —
 # THIS cell's router port, so `tests/emulator.rs` runs each pair against its
 # own router (issue 1512). 10.0.2.2 is the guest's route to the host (slirp).

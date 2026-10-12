@@ -1,7 +1,10 @@
 //! The startup chain for the C application beside it (issue 1512).
 //!
 //! LEAF-AGNOSTIC, like `build.rs`: every C leaf in this family carries these
-//! same bytes, and differs only in `package.xml` and its own `src/*.c`.
+//! same bytes, and differs only in `package.xml`, its own `src/*.c` and the one
+//! `use` line below, which names the board through this leaf's generated
+//! `<pkg>_nros_selection` package (issue 1305) — the leaf's manifest names no
+//! board crate.
 //!
 //! `<nros/app_main.h>` has always said what bare metal needs: on this platform
 //! `NROS_APP_MAIN_REGISTER()` emits `void app_main(void)`, and "per-platform
@@ -31,7 +34,7 @@
 #![no_std]
 #![no_main]
 
-use nros_board_mps2_an385::{Config, entry, run_bare};
+use baremetal_c_service_client_nros_selection::nros_board_mps2_an385::{Config, entry, run_bare};
 
 unsafe extern "C" {
     /// The app's entry, defined in the leaf's `src/*.c` beside its
