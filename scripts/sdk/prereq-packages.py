@@ -100,8 +100,12 @@ def packages_for(index, manager, keys, ctx=None):
             continue
         pkgs = index_packages.for_release(entry.get(manager), ctx.get("release"))
         if not pkgs and entry.get("ros_package"):
-            derived = ros_os_package(manager, entry["ros_package"], ctx)
-            pkgs = [derived] if derived else []
+            # A string or a LIST (issue 1853): a list names packages that must
+            # move together, like the router and the libzenohc it links.
+            names = entry["ros_package"]
+            names = [names] if isinstance(names, str) else list(names)
+            derived = [ros_os_package(manager, n, ctx) for n in names]
+            pkgs = derived if all(derived) else []
         if not pkgs:
             unmapped.append(k)
             continue
@@ -131,6 +135,7 @@ def self_test():
             "graphviz": {"apt": ["graphviz"]},
             "dup": {"apt": ["doxygen"]},
             "ros-rmw-zenoh-cpp": {"ros_package": "rmw_zenoh_cpp"},
+            "ros-pair": {"ros_package": ["rmw_zenoh_cpp", "zenoh_cpp_vendor"]},
         }
     }
     failures = 0
@@ -156,6 +161,13 @@ def self_test():
         "ros-jazzy-rmw-zenoh-cpp"
     ]:
         print("  FAIL: ros_package did not derive")
+        failures += 1
+    # issue 1853 — a LIST derives every name, in order, for one install line.
+    if packages_for(index, "apt", ["ros-pair"], jazzy) != [
+        "ros-jazzy-rmw-zenoh-cpp",
+        "ros-jazzy-zenoh-cpp-vendor",
+    ]:
+        print("  FAIL: a ros_package list did not derive both names")
         failures += 1
     # Not packaged that way elsewhere — "unmapped" is the honest answer, and it
     # must still be an ERROR rather than a silent empty string.

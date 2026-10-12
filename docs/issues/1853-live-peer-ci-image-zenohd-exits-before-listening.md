@@ -58,3 +58,39 @@ found and started, then exited.
 3. Make `wait_for_router_ready` surface more than an uninitialised-logging
    line, so the next exit names its cause.
 4. Acceptance: a live-peer dispatch where this cell produces a verdict.
+
+## Cause (measured 2026-10-13)
+
+It was a partial apt upgrade, not anything in the harness or the image. Both
+runs pulled the same `nano-ros-ci:humble` digest (`sha256:e2e1d193…`). The
+passing run 38251106285 printed `ros-humble-rmw-zenoh-cpp is already the newest
+version (0.1.9…)`. The failing run 38291960490, a day later, unpacked
+`ros-humble-rmw-zenoh-cpp (0.1.11-1jammy.20261011…) over (0.1.9…)`, released
+on 2026-10-11, and did NOT touch `ros-humble-zenoh-cpp-vendor`. bloom's
+`Depends: ros-humble-zenoh-cpp-vendor` carries no version, so apt had no
+reason to move it. `[prereq.ros-rmw-zenoh-cpp]` named only the router, so
+`nros setup --system` asked apt for exactly one of the two.
+
+Reproduced on a workstation without installing anything: `apt-get download`
+both 0.1.11 debs, `dpkg-deb -x` them into a scratch dir, and start the 0.1.11
+`rmw_zenohd` with the harness's `ZENOH_CONFIG_OVERRIDE`.
+
+- Against the installed 0.1.9 `libzenohc.so`, it exits 1 with exactly
+  `logging system isn't initialized: call to rcutils_logging_console_output_handler failed.`
+- Against the 0.1.11 `libzenohc.so`, it runs (killed by `timeout`).
+
+## Fix
+
+- `[prereq.*] ros_package` takes a string OR a list. The row is now
+  `ros_package = ["rmw_zenoh_cpp", "zenoh_cpp_vendor"]`, so every install
+  command derived from it names both, and apt moves them as a pair. Readers:
+  `sdk_index.rs` (`PrereqDep::packages_for`) and
+  `scripts/sdk/prereq-packages.py`, each with a test. `nros setup --system`
+  now prints `... ros-humble-rmw-zenoh-cpp ros-humble-zenoh-cpp-vendor`.
+- `just ci provision-zenohd` installs the list as separate arguments.
+- `wait_for_router_ready` adds a diagnosis when the router's whole stderr is
+  the rcutils line. That line hides the real cause, and the commonest cause
+  is this release mismatch.
+
+Acceptance is unchanged: a live-peer dispatch where this cell produces a
+verdict.

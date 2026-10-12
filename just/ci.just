@@ -584,7 +584,7 @@ provision-zenohd:
     #
     # `if !`, not a bare assignment. This recipe is `set -uo pipefail` with NO
     # `-e`, so a plain `pkg="$(…)"` would leave `pkg` EMPTY and keep going —
-    # straight to the `apt-get install -y --no-install-recommends "$pkg"` below,
+    # straight to the `apt-get install -y --no-install-recommends "${pkgs[@]}"` below,
     # which exits 0 on an empty argument and then reports `installed `. Same
     # swallow as issue 1466's workflow sites, reached through a missing `-e`
     # instead of through argument position.
@@ -593,6 +593,10 @@ provision-zenohd:
         echo "  Refusing to 'install' an empty package list and call it success (issue 1466)." >&2
         exit 1
     fi
+    # issue 1853 — the row names a PAIR (the router and the libzenohc it links),
+    # so this is a list. Split it once; `"$pkg"` as one argument would ask apt
+    # for a package whose name contains a space.
+    read -ra pkgs <<< "$pkg"
     # The PREFIX probe still needs the distro directly — that is a path on this
     # host, not a package name, and `nros_zenohd_bin` is the resolver for it.
     distro="${ROS_DISTRO:-humble}"
@@ -621,14 +625,14 @@ provision-zenohd:
         source scripts/build/lane-skip.sh
         nros_lane_skip "not root: $pkg not installed. It is a declared prereq, so 'nros setup --system' prints the install command for this host and --sudo runs it. Without it every zenoh test FAILS (issue 1758)."
     fi
-    if apt-get install -y --no-install-recommends "$pkg" 2>/dev/null; then
+    if apt-get install -y --no-install-recommends "${pkgs[@]}" 2>/dev/null; then
         echo "provision-zenohd: installed $pkg"
         exit 0
     fi
     # One retry after refreshing the index — a container image's apt lists are
     # often older than the package.
     apt-get update -qq || true
-    if apt-get install -y --no-install-recommends "$pkg"; then
+    if apt-get install -y --no-install-recommends "${pkgs[@]}"; then
         echo "provision-zenohd: installed $pkg (after apt-get update)"
         exit 0
     fi
