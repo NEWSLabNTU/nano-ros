@@ -81,7 +81,12 @@ BASELINE = os.path.join(ROOT, ".config", "doc-commit-citations-baseline.txt")
 
 # Nine hex characters between backticks. See the width table above for why not
 # seven, eight or sixteen.
-CITATION = re.compile(r"`([0-9a-f]{9})`")
+# 9 OR 10 hex characters. Measured 2026-10-12: 33 backticked 10-char strings in
+# live docs, 32 of them commits here (the 33rd a zenoh-pico submodule pin) --
+# so the 9-only pattern let a whole citation width through unchecked, including
+# phase-474's own fix of its pre-queue hashes. 11/12-char strings are mostly not
+# commits (0 of 6, 3 of 7), and 16 is a cargo `-C metadata` identity.
+CITATION = re.compile(r"`([0-9a-f]{9,10})`")
 
 
 def tracked_markdown():
@@ -135,7 +140,8 @@ def resolve(hashes):
         return set()
     r = subprocess.run(["git", "-C", ROOT, "rev-list", "--all"],
                        capture_output=True, text=True)
-    reachable = {line[:9] for line in r.stdout.split()}
+    revs = r.stdout.split()
+    reachable = {line[:9] for line in revs} | {line[:10] for line in revs}
     return {h for h in hashes if h in reachable}
 
 
@@ -247,6 +253,8 @@ def self_test():
 
     real = subprocess.run(["git", "-C", ROOT, "rev-parse", "--short=9", "HEAD"],
                           capture_output=True, text=True).stdout.strip()
+    real10 = subprocess.run(["git", "-C", ROOT, "rev-parse", "--short=10", "HEAD"],
+                            capture_output=True, text=True).stdout.strip()[:10]
     dead = "0123456789"[:9]          # not a commit, and never will be
     # An object this store HOLDS and no ref REACHES -- what a rebase leaves
     # behind, and what a second checkout sharing the store contributes.
@@ -263,6 +271,8 @@ def self_test():
     cases = [
         ("a resolving citation passes", f"see `{real}` for it\n", False),
         ("a dangling citation fails", f"see `{dead}` for it\n", True),
+        ("a resolving 10-char citation passes", f"see `{real10}` for it\n", False),
+        ("a dangling 10-char citation fails", f"see `{dead}a` for it\n", True),
         ("a 16-char cargo identity is ignored",
          "unit `ef7a4cf9ec5986e9` has nine copies\n", False),
         ("an 8-char hex is ignored (below the convention)",

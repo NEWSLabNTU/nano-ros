@@ -102,3 +102,8 @@ ea9fbfae9
 # a clone that has fetched that branch resolves the hash and needs no entry.
 # Remove this when `wip/zenoh-linux-test` is deleted or merged.
 a270ceb3e
+
+# FOREIGN. issue 1802 names the zenoh-pico SUBMODULE pin it was measured at;
+# the commit is in jerry73204/zenoh-pico, never here. 10 characters, so it
+# surfaced when the citation width widened to 9-10 (2026-10-12).
+199e611fd5
