@@ -103,6 +103,12 @@ codegen-stamp-inputs:
 codegen-tool-reconfigure:
     @python3 scripts/check-codegen-tool-reconfigure.py
 
+# Issue 1857 -- a generator's outputs are its PREDICTED list, never a glob of
+# its output dir: codegen never deletes an output it stopped writing, so a glob
+# compiles every orphan beside its replacement (phase-306, phase-492).
+generator-output-glob:
+    @python3 scripts/check-generator-output-glob.py
+
 # phase-413 W2 — phase-431 W1's workspace check ("is this binary foreign to the
 # checkout my cwd is in") is meaningless for a verb the BUILD SYSTEM runs: cmake
 # uses the tool path it was configured with, from a build output dir that on a

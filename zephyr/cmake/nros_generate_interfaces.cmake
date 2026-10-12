@@ -394,18 +394,16 @@ function(nros_generate_interfaces target)
   if(_ARG_LANGUAGE STREQUAL "CPP")
     # -- C++ path: header-only .hpp + Rust FFI staticlib --
 
-    # phase-306 W1 — drop pre-split `*_ffi.rs` leftovers from an old build
-    # dir BEFORE globbing: codegen now emits `*_types.rs` + `*_exports.rs`
-    # and never rewrites/removes the legacy files, so a stale one would be
-    # include!()d alongside the split pair → duplicate items (E0428).
-    file(GLOB_RECURSE _legacy_ffi_rs "${_output_dir}/*_ffi.rs")
-    if(_legacy_ffi_rs)
-        file(REMOVE ${_legacy_ffi_rs})
-    endif()
-
-    # Collect generated files
-    file(GLOB_RECURSE _generated_headers "${_output_dir}/*.hpp")
-    file(GLOB_RECURSE _generated_rs_files "${_output_dir}/*.rs")
+    # Issue 1857 — the files codegen EMITS for this target, by prediction,
+    # never a glob of the output dir. Codegen never deletes an output it no
+    # longer writes, and this dir lives in a build tree that outlives renames
+    # (issue 1360's persistent workspace), so a glob compiles every orphan
+    # beside its replacement: phase-306's `*_ffi.rs` split (which once needed a
+    # deletion here, E0428) and phase-492's C renames both. The canonical
+    # generator (`NanoRosGenerateInterfaces.cmake`) already builds from these
+    # same lists, so they are proven complete for both languages.
+    set(_generated_headers ${_exp_hdr})
+    set(_generated_rs_files ${_exp_rs})
 
     # Propagate the per-target generated-Rust file list to the caller
     # scope so a sibling nros_generate_interfaces() call that lists
@@ -471,8 +469,12 @@ function(nros_generate_interfaces target)
   else()
     # -- C path: .c sources + .h headers --
 
-    file(GLOB_RECURSE _generated_sources "${_output_dir}/*.c")
-    file(GLOB_RECURSE _generated_headers "${_output_dir}/*.h")
+    # Issue 1857 — the predicted outputs, never a glob (see the C++ arm).
+    # Measured: after phase-492 renamed the C files to rosidl's names, a glob
+    # here compiled yesterday's `std_msgs_msg_bool.c` beside today's
+    # `bool.c`, and the orphan failed the RFC-0090 version `#error`.
+    set(_generated_sources ${_exp_src})
+    set(_generated_headers ${_exp_hdr})
 
     if(NOT _generated_sources)
       message(FATAL_ERROR
