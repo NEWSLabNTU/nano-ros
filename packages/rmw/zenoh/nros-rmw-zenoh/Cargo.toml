@@ -139,23 +139,23 @@ nros-log = { workspace = true }
 # `true` here, and this is where that is DECLARED to the build: `nros-node`
 # prices an `in_place` descriptor row at no receive region only when a backend
 # claims it (see `nros-rmw`'s `in-place-dispatch`).
-nros-rmw = { version = "0.5.0", path = "../../../core/nros-rmw", default-features = false, features = ["in-place-dispatch"] }
+nros-rmw = { version = "0.6.0", path = "../../../core/nros-rmw", default-features = false, features = ["in-place-dispatch"] }
 # Phase 115.M.3 — vtable register entry (previously shipped from
 # the retired `nros-rmw-zenoh-cffi` shim) now lives in this crate.
 # `RustBackendAdapter` requires `nros-rmw-cffi`'s `alloc` feature
 # unconditionally (it boxes every entity handle).
-nros-rmw-cffi = { version = "0.5.0", path = "../../cffi", default-features = false, features = ["alloc"] }
+nros-rmw-cffi = { version = "0.6.0", path = "../../cffi", default-features = false, features = ["alloc"] }
 nros-core = { workspace = true, default-features = false }
 # Phase 108.C.zenoh.{2,3} — needs `<P as PlatformClock>::clock_ms()`
 # for deadline / lifespan emulation. The façade crate gates the
 # ConcretePlatform pick on the same feature flags as the rest of
 # nros, so adding it here doesn't constrain platform selection.
-nros-platform = { version = "0.5.0", path = "../../../platform/nros-platform", default-features = false }
+nros-platform = { version = "0.6.0", path = "../../../platform/nros-platform", default-features = false }
 # issue 0270 — `default-features = false` so `platform-aliases` + `link-ip` are
 # NOT forced transitively; they arrive via nros-rmw-zenoh's `default` / its
 # `platform-*` features instead, so a platform whose vendor `system.c` provides
 # `z_*` natively can drop the alias TU (no double-define).
-zpico-sys = { version = "0.5.0", path = "../zpico-sys", default-features = false }
+zpico-sys = { version = "0.6.0", path = "../zpico-sys", default-features = false }
 heapless = { workspace = true }
 portable-atomic = { version = "1", default-features = false }
 atomic-waker = { version = "1.1", default-features = false, features = ["portable-atomic"] }
@@ -180,11 +180,11 @@ nros-sizing-descriptor = { path = "../../../tooling/nros-sizing-descriptor" }
 # which now takes the shared parameter-request price from here.
 nros-sizing-descriptor = { path = "../../../tooling/nros-sizing-descriptor" }
 nros-tests = { path = "../../../testing/nros-tests" }
-nros-ghost-types = { version = "0.5.0", path = "../../../verification/nros-ghost-types" }
+nros-ghost-types = { version = "0.6.0", path = "../../../verification/nros-ghost-types" }
 # Force `ConcretePlatform` resolution for tests under `platform-posix`.
 # Workspace-context builds get this via feature unification from a board
 # crate; standalone `cargo test` here doesn't.
-nros-platform = { version = "0.5.0", path = "../../../platform/nros-platform", default-features = false, features = ["platform-posix", "std"] }
+nros-platform = { version = "0.6.0", path = "../../../platform/nros-platform", default-features = false, features = ["platform-posix", "std"] }
 # Phase 227.3(B) — the Rust shim is now platform-agnostic and the
 # `--lib` unit-test binary references the zpico C-port symbols
 # unconditionally. Pin the posix C port (threading / mutex / task
@@ -192,7 +192,7 @@ nros-platform = { version = "0.5.0", path = "../../../platform/nros-platform", d
 # `cargo test -p nros-rmw-zenoh` (no `--features platform-posix`)
 # links and runs the full unit suite. Workspace-context builds get
 # this via feature unification from a board crate.
-zpico-sys = { version = "0.5.0", path = "../zpico-sys", features = ["posix"] }
+zpico-sys = { version = "0.6.0", path = "../zpico-sys", features = ["posix"] }
 
 [lints]
 workspace = true

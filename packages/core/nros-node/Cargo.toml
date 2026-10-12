@@ -233,7 +233,7 @@ nros-core = { workspace = true, default-features = false }
 nros-rmw = { workspace = true, default-features = false }
 # Phase 110.D — `Executor::open_threaded` consumes the `SchedPolicy`
 # enum from the platform-api types layer.
-nros-platform-api = { version = "0.5.0", path = "../../platform/nros-platform-api", default-features = false }
+nros-platform-api = { version = "0.6.0", path = "../../platform/nros-platform-api", default-features = false }
 nros-rmw-cffi = { workspace = true, default-features = false, optional = true }
 # Phase 104.A — concrete RMW deps (`nros-rmw-xrce-cffi`,
 # `nros-rmw-zenoh`) removed. The umbrella consumes
@@ -252,7 +252,7 @@ nros-params = { workspace = true, default-features = false }
 nros-rosgraph-msgs = { path = "../../interfaces/generated/humble/nros-rosgraph-msgs", default-features = false, optional = true }
 # Phase 88.12 — `Node::logger()` returns a `&'static Logger` from the
 # nros-log intern table.
-nros-log = { version = "0.5.0", path = "../nros-log" }
+nros-log = { version = "0.6.0", path = "../nros-log" }
 heapless = { workspace = true }
 portable-atomic = { version = "1", default-features = false }
 portable-atomic-util = { version = "0.2", default-features = false, features = ["alloc"], optional = true }
@@ -273,7 +273,7 @@ nros-lifecycle-msgs = { path = "../../interfaces/generated/humble/nros-lifecycle
 # Used by `MessageForRmw`'s `cfg(rmw_cyclonedds_present)` super-bound
 # (`schema::Message`) and by `register_type`'s schema extraction. Pure
 # schema crate — no concrete-backend coupling.
-nros-serdes = { version = "0.5.0", path = "../nros-serdes", default-features = false }
+nros-serdes = { version = "0.6.0", path = "../nros-serdes", default-features = false }
 
 # Phase 124.B.7.c — Linux signalfd / eventfd worker (neither syscall is
 # POSIX, hence the target gate below). Other targets compile without
@@ -332,7 +332,7 @@ nros-sizing-descriptor = { path = "../../tooling/nros-sizing-descriptor" }
 # Embedded targets (`target_os = "none"`) see an empty dev-dep set,
 # so the unification path collapses.
 [target.'cfg(not(target_os = "none"))'.dev-dependencies]
-nros-ghost-types = { version = "0.5.0", path = "../../verification/nros-ghost-types" }
+nros-ghost-types = { version = "0.6.0", path = "../../verification/nros-ghost-types" }
 # phase-359 W10 — the crate's own UNIT tests link the POSIX C port for
 # `nros_platform_{task,wake}_*`, which `src/` reaches through bare `extern "C"`
 # declarations and never names. `src/lib.rs` carries the matching

@@ -47,7 +47,7 @@ log-compat = ["nros-log/log-compat"]
 # `nros_platform_log_write`. The dep exists for the feature alone (no code use):
 # it is how a provider says the symbol `nros-log`'s default sink calls is
 # supplied here, so the auto-install is safe to compile in.
-nros-platform-api = { version = "0.5.0", path = "../nros-platform-api" }
+nros-platform-api = { version = "0.6.0", path = "../nros-platform-api" }
 # issue 0710 — for `LogSink`/`Record`, so the platform-ABI sink can live beside
 # the ABI it speaks. The edge points this way and only this way: `nros-log` is a
 # facade and must not depend on any port, which is what kept the sink stranded

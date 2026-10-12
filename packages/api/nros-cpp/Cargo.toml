@@ -284,21 +284,21 @@ embedded-only-reason = "staticlib+lib: the host build has no panic runtime for t
 [dependencies]
 # issue 1765 — NO `ffi-size-markers`: the size probe requests it for its own
 # nested build, and a linked image must not carry the markers. See nros-c.
-nros = { version = "0.5.0", path = "../nros", default-features = false, features = ["macros"] }
+nros = { version = "0.6.0", path = "../nros", default-features = false, features = ["macros"] }
 nros-node.workspace = true
 # Phase 241.D3-rev — bundle the C umbrella as an rlib so `libnros_cpp.a` carries the
 # full C ABI + the cffi shim + the force-linked RMW backend (one archive, one std).
 # Replaces the separate `libnros_c.a` + backend-staticlib links and nros-cpp's own
 # optional backend deps.
-nros-c = { version = "0.5.0", path = "../nros-c", default-features = false }
+nros-c = { version = "0.6.0", path = "../nros-c", default-features = false }
 # Issue 0436 — the C/C++ multi-RMW bridge ABI behind the `bridge` feature. `cffi`
 # is what emits the `rclc_init_multi` / `nros_pubsub_bridge_*` exports that
 # `<nros/bridge.h>` declares and `<nros/bridge.hpp>` wraps.
-nros-bridge = { version = "0.5.0", path = "../../rmw/bridge", default-features = false, features = ["cffi", "alloc"], optional = true }
+nros-bridge = { version = "0.6.0", path = "../../rmw/bridge", default-features = false, features = ["cffi", "alloc"], optional = true }
 # Phase 88.12 — `nros_cpp_node_get_logger` returns `&'static nros_log::Logger`.
 nros-log = { workspace = true }
 nros-platform = { workspace = true, default-features = false }
-nros-rmw = { version = "0.5.0", path = "../../core/nros-rmw", default-features = false }
+nros-rmw = { version = "0.6.0", path = "../../core/nros-rmw", default-features = false }
 # Issue 1635 / 1676 — the `/diagnostics` reporter (`src/diag.rs`) is
 # `nros::contract::DiagSink`, shared with the Rust entry; `nros-diagnostics`
 # arrives through `nros`'s `rmw-cffi`, not as a dep of this crate.

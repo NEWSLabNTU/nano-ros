@@ -377,7 +377,7 @@ host-only-reason = "cdylib/staticlib C ABI surface, built per-platform by cmake 
 # of a 587,256 B FreeRTOS zenoh talker). The probe now requests the feature for
 # its own nested build (`nros-build-helpers::shared::probe_rlib`), and
 # `nros/build.rs` refuses it anywhere else. Gate: `check-size-markers-unlinked`.
-nros = { version = "0.5.0", path = "../nros", default-features = false }
+nros = { version = "0.6.0", path = "../nros", default-features = false }
 nros-node.workspace = true
 nros-rmw.workspace = true
 nros-core.workspace = true

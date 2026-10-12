@@ -1,17 +1,18 @@
 ---
 id: 1809
 title: "`[deploy.*]` build fields are deprecated but still parsed; removal waits on the 0.6.0 release"
-status: open
+status: resolved
 type: tech-debt
 area: [cli, orchestration]
 severity: low
 found: 2026-10-11
+resolved: 2026-10-13
 related: [0951, phase-486]
 ---
 
 ## Measured
 
-[phase-383](../roadmap/archived/phase-383-colcon-like-builder.md) moved every
+[phase-383](../../roadmap/archived/phase-383-colcon-like-builder.md) moved every
 build fact into `[image.*]` (W1-W9, W10.a/c/d). Its W1.f deprecated the build
 fields inside `[deploy.*]` (`board`, `target`, `rmw`) and promised removal at the
 next minor version. That last step, W10.b, is the only item left, and the phase
@@ -58,13 +59,12 @@ the `deploy` table and `DeployTarget` in the schema, so that an old
 for `[param_services]`, naming `features = ["param_services"]`. Nothing in-tree needs migrating
 first, which `git grep -n '^\[deploy' -- '*.toml'` (empty) confirms.
 
-## Ready, held for the 0.6.0 bump (2026-10-13)
+## Resolved (2026-10-13) — removed with the 0.6.0 bump
 
-Implemented on branch `feat/1809-deploy-removal`, on top of phase-486 W8a.
-HELD by maintainer decision (2026-10-12): it is a breaking change for an
-out-of-tree `system.toml` that still writes `[deploy.*]` or
-`[param_services]`, so it lands with the 0.6.0 version bump and this issue
-stays open until then. Nothing is lost silently: 0 tracked `system.toml`
+Landed in the same change as the bundle bump to 0.6.0 (`just release-bump
+0.6.0`), on top of phase-486 W8a. It is a breaking change for an out-of-tree
+`system.toml` that still writes `[deploy.*]` or `[param_services]`, which is
+why it waited for the minor-version boundary phase-383 promised. Nothing is lost silently: 0 tracked `system.toml`
 carry either table, and an out-of-tree one is REFUSED by name.
 
 - `SystemToml::deploy`, `DeployTarget` and W8a's `refuse_rlm_placed` are gone.
@@ -85,5 +85,6 @@ carry either table, and an out-of-tree one is REFUSED by name.
 - `DeployTargetMetadata` (Cargo `[package.metadata.nros.deploy.*]`) and
   `board-facts --deploy` are other surfaces and stay.
 
-To land: rebase onto the 0.6.0 bump, re-run `just ci gate`, then archive this
-issue.
+The release itself (the `nros-v0.6.0` tag, `just changelog-release 0.6.0`,
+the book's `nros-v0.5.0` clone lines) is the maintainer's step, not part of
+this change.
