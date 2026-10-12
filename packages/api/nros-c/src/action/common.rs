@@ -69,6 +69,20 @@ pub struct rclc_action_type_t {
     pub result_serialized_size_max: usize,
     /// Maximum serialized size of feedback message
     pub feedback_serialized_size_max: usize,
+    /// phase-492 W8 — the goal part's serialiser (NULL in a descriptor built
+    /// from names alone). Generated as `<pkg>__action__<Name>__nros_type`,
+    /// what `ROSIDL_GET_ACTION_TYPE_SUPPORT(pkg, action, Name)` yields.
+    pub goal_serialize: crate::publisher::rclc_message_serialize_fn_t,
+    /// The goal part's deserialiser.
+    pub goal_deserialize: crate::publisher::rclc_message_deserialize_fn_t,
+    /// The result part's serialiser.
+    pub result_serialize: crate::publisher::rclc_message_serialize_fn_t,
+    /// The result part's deserialiser.
+    pub result_deserialize: crate::publisher::rclc_message_deserialize_fn_t,
+    /// The feedback part's serialiser.
+    pub feedback_serialize: crate::publisher::rclc_message_serialize_fn_t,
+    /// The feedback part's deserialiser.
+    pub feedback_deserialize: crate::publisher::rclc_message_deserialize_fn_t,
 }
 
 // ============================================================================

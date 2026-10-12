@@ -2,7 +2,7 @@
 /// @brief Managed-node C component.
 ///
 /// Publishes a monotonic counter on /chatter (std_msgs/Int32) every 1 s using
-/// the generated C serializer (std_msgs_msg_int32_serialize).
+/// the generated C serializer (std_msgs__msg__Int32__serialize).
 /// The lifecycle state machine (register + Configure→Activate) is handled by the
 /// generated entry's `__nros_entry_setup` via `nros_cpp_lifecycle_autostart` — this
 /// component has no lifecycle callbacks of its own. The e2e test checks that
@@ -24,12 +24,12 @@ typedef struct {
 
 static void on_tick(void* ctx) {
     talker_t* self = (talker_t*)ctx;
-    std_msgs_msg_int32 msg;
-    std_msgs_msg_int32_init(&msg);
+    std_msgs__msg__Int32 msg;
+    memset(&msg, 0, sizeof(msg));
     msg.data = self->counter;
     uint8_t buf[16];
     size_t len = 0;
-    if (std_msgs_msg_int32_serialize(&msg, buf, sizeof(buf), &len) == 0 &&
+    if (std_msgs__msg__Int32__serialize(&msg, buf, sizeof(buf), &len) == 0 &&
         nros_cpp_publish_raw(self->pub, buf, len) == 0) {
         printf("Published: %d\n", self->counter);
     }
@@ -39,8 +39,8 @@ static void on_tick(void* ctx) {
 static rcl_ret_t talker_configure(const nros_cpp_node_t* node, void* executor, talker_t* self) {
     setvbuf(stdout, NULL, _IOLBF, 0);
     self->counter = 0;
-    int32_t rc = nros_cpp_publisher_create(node, "/chatter", std_msgs_msg_int32_get_type_name(),
-                                           std_msgs_msg_int32_get_type_hash(), rclc_c_qos_default(),
+    int32_t rc = nros_cpp_publisher_create(node, "/chatter", std_msgs__msg__Int32__get_type_name(),
+                                           std_msgs__msg__Int32__get_type_hash(), rclc_c_qos_default(),
                                            self->pub);
     if (rc != 0) {
         return rc;

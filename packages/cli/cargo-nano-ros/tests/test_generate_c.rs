@@ -70,27 +70,27 @@ string sensor_id
 
     // Verify output files exist
     let output_dir = temp_dir.path().join("output");
-    assert!(output_dir.join("msg/test_msgs_msg_temperature.h").exists());
-    assert!(output_dir.join("msg/test_msgs_msg_temperature.c").exists());
+    assert!(output_dir.join("msg/temperature.h").exists());
+    assert!(output_dir.join("msg/temperature.c").exists());
     assert!(output_dir.join("test_msgs.h").exists());
 
     // Verify header content (struct name uses lowercase)
-    let header = fs::read_to_string(output_dir.join("msg/test_msgs_msg_temperature.h")).unwrap();
-    assert!(header.contains("typedef struct test_msgs_msg_temperature"));
+    let header = fs::read_to_string(output_dir.join("msg/temperature.h")).unwrap();
+    assert!(header.contains("typedef struct test_msgs__msg__Temperature {"));
     assert!(header.contains("double celsius"));
     assert!(header.contains("double fahrenheit"));
-    assert!(header.contains("char sensor_id["));
+    assert!(header.contains("rosidl_runtime_c__String sensor_id;"));
 
     // Verify source content (function names use lowercase)
-    let source = fs::read_to_string(output_dir.join("msg/test_msgs_msg_temperature.c")).unwrap();
-    assert!(source.contains("test_msgs_msg_temperature_init"));
-    assert!(source.contains("test_msgs_msg_temperature_serialize"));
-    assert!(source.contains("test_msgs_msg_temperature_deserialize"));
+    let source = fs::read_to_string(output_dir.join("msg/temperature.c")).unwrap();
+    assert!(source.contains("test_msgs__msg__Temperature__init_in"));
+    assert!(source.contains("test_msgs__msg__Temperature__serialize"));
+    assert!(source.contains("test_msgs__msg__Temperature__deserialize"));
     assert!(source.contains("#include <nros/types.h>"));
 
     // Verify umbrella header
     let umbrella = fs::read_to_string(output_dir.join("test_msgs.h")).unwrap();
-    assert!(umbrella.contains("#include \"msg/test_msgs_msg_temperature.h\""));
+    assert!(umbrella.contains("#include \"msg/temperature.h\""));
 }
 
 #[test]
@@ -125,8 +125,7 @@ float64 double_val
     generate_c_from_args_file(config).expect("Failed to generate C code");
 
     let output_dir = temp_dir.path().join("output");
-    let header =
-        fs::read_to_string(output_dir.join("msg/primitive_test_msg_all_primitives.h")).unwrap();
+    let header = fs::read_to_string(output_dir.join("msg/all_primitives.h")).unwrap();
 
     // Verify all primitive types are present with correct C types
     assert!(header.contains("bool flag"));
@@ -166,7 +165,7 @@ uint8[256] buffer
     generate_c_from_args_file(config).expect("Failed to generate C code");
 
     let output_dir = temp_dir.path().join("output");
-    let header = fs::read_to_string(output_dir.join("msg/array_test_msg_array_message.h")).unwrap();
+    let header = fs::read_to_string(output_dir.join("msg/array_message.h")).unwrap();
 
     // Arrays should include size suffix
     assert!(header.contains("int32_t fixed_array[10]"));
@@ -201,7 +200,7 @@ string name
     generate_c_from_args_file(config).expect("Failed to generate C code");
 
     let output_dir = temp_dir.path().join("output");
-    let header = fs::read_to_string(output_dir.join("msg/const_test_msg_const_message.h")).unwrap();
+    let header = fs::read_to_string(output_dir.join("msg/const_message.h")).unwrap();
 
     // Constants should be #define'd
     assert!(header.contains("#define") || header.contains("STATUS_OK"));
@@ -230,15 +229,15 @@ fn test_generate_c_multiple_messages() {
     let output_dir = temp_dir.path().join("output");
 
     // Both message files should be generated
-    assert!(output_dir.join("msg/multi_test_msg_position.h").exists());
-    assert!(output_dir.join("msg/multi_test_msg_position.c").exists());
-    assert!(output_dir.join("msg/multi_test_msg_velocity.h").exists());
-    assert!(output_dir.join("msg/multi_test_msg_velocity.c").exists());
+    assert!(output_dir.join("msg/position.h").exists());
+    assert!(output_dir.join("msg/position.c").exists());
+    assert!(output_dir.join("msg/velocity.h").exists());
+    assert!(output_dir.join("msg/velocity.c").exists());
 
     // Umbrella header should include both
     let umbrella = fs::read_to_string(output_dir.join("multi_test.h")).unwrap();
-    assert!(umbrella.contains("multi_test_msg_position.h"));
-    assert!(umbrella.contains("multi_test_msg_velocity.h"));
+    assert!(umbrella.contains("msg/position.h"));
+    assert!(umbrella.contains("msg/velocity.h"));
 }
 
 #[test]
@@ -268,12 +267,12 @@ int64 sum
     let output_dir = temp_dir.path().join("output");
 
     // Service files should be in srv/ directory
-    assert!(output_dir.join("srv/srv_test_srv_add_two_ints.h").exists());
-    assert!(output_dir.join("srv/srv_test_srv_add_two_ints.c").exists());
+    assert!(output_dir.join("srv/add_two_ints.h").exists());
+    assert!(output_dir.join("srv/add_two_ints.c").exists());
 
     // Umbrella header should include service
     let umbrella = fs::read_to_string(output_dir.join("srv_test.h")).unwrap();
-    assert!(umbrella.contains("srv/srv_test_srv_add_two_ints.h"));
+    assert!(umbrella.contains("srv/add_two_ints.h"));
 }
 
 #[test]
@@ -327,12 +326,12 @@ fn test_generate_c_snake_case_conversion() {
     let output_dir = temp_dir.path().join("output");
 
     // File name should be snake_case (all lowercase)
-    assert!(output_dir.join("msg/snake_test_msg_sensor_data.h").exists());
-    assert!(output_dir.join("msg/snake_test_msg_sensor_data.c").exists());
+    assert!(output_dir.join("msg/sensor_data.h").exists());
+    assert!(output_dir.join("msg/sensor_data.c").exists());
 
     // Struct name is also lowercase (matching file name)
-    let header = fs::read_to_string(output_dir.join("msg/snake_test_msg_sensor_data.h")).unwrap();
-    assert!(header.contains("snake_test_msg_sensor_data"));
+    let header = fs::read_to_string(output_dir.join("msg/sensor_data.h")).unwrap();
+    assert!(header.contains("snake_test__msg__SensorData"));
 }
 
 #[test]
@@ -352,10 +351,10 @@ fn test_generate_c_empty_message() {
     generate_c_from_args_file(config).expect("Failed to generate C code");
 
     let output_dir = temp_dir.path().join("output");
-    let header = fs::read_to_string(output_dir.join("msg/empty_test_msg_empty.h")).unwrap();
+    let header = fs::read_to_string(output_dir.join("msg/empty.h")).unwrap();
 
     // Empty struct should have a placeholder field
-    assert!(header.contains("_dummy") || header.contains("uint8_t"));
+    assert!(header.contains("structure_needs_at_least_one_member"));
 }
 
 #[test]
@@ -378,10 +377,7 @@ fn test_generate_c_package_name_with_hyphens() {
 
     // Hyphens should be converted to underscores in C identifiers
     // Note: file may be named with underscores or original package name - check what exists
-    let possible_files = [
-        "msg/my_custom_package_msg_test.h",
-        "msg/my-custom-package_msg_test.h",
-    ];
+    let possible_files = ["msg/test.h"];
 
     let header_path = possible_files
         .iter()
@@ -391,7 +387,7 @@ fn test_generate_c_package_name_with_hyphens() {
 
     let header = fs::read_to_string(&header_path).unwrap();
     // Struct name should have underscores instead of hyphens
-    assert!(header.contains("my_custom_package_msg_test") || header.contains("typedef struct"));
+    assert!(header.contains("my_custom_package__msg__Test"));
 }
 
 #[test]
@@ -410,10 +406,10 @@ fn test_generate_c_type_support() {
     generate_c_from_args_file(config).expect("Failed to generate C code");
 
     let output_dir = temp_dir.path().join("output");
-    let source = fs::read_to_string(output_dir.join("msg/type_test_msg_type_test.c")).unwrap();
+    let source = fs::read_to_string(output_dir.join("msg/type_test.c")).unwrap();
 
     // Type support structure should be present
     assert!(source.contains("rclc_message_type_t"));
-    assert!(source.contains("_type_support"));
-    assert!(source.contains("get_type_support"));
+    assert!(source.contains("type_test__msg__TypeTest__nros_type"));
+    assert!(source.contains(".deserialize = type_test__msg__TypeTest__nros_deserialize_erased"));
 }

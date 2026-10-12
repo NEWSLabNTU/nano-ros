@@ -1662,6 +1662,12 @@ mod verification {
             goal_serialized_size_max: 8,
             result_serialized_size_max: 264,
             feedback_serialized_size_max: 264,
+            goal_serialize: None,
+            goal_deserialize: None,
+            result_serialize: None,
+            result_deserialize: None,
+            feedback_serialize: None,
+            feedback_deserialize: None,
         }
     }
 

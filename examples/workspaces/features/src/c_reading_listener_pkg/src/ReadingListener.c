@@ -22,8 +22,8 @@ typedef struct {
 
 static void on_raw(const uint8_t* data, size_t len, void* ctx) {
     reading_listener_t* self = (reading_listener_t*)ctx;
-    custom_msgs_msg_reading msg;
-    if (custom_msgs_msg_reading_deserialize(&msg, data, len) == 0) {
+    custom_msgs__msg__Reading msg;
+    if (custom_msgs__msg__Reading__deserialize(&msg, data, len) == 0) {
         printf("reading seq=%d temp=%.1f\n", (int)msg.sequence, msg.temperature);
         self->recv++;
     }
@@ -38,7 +38,7 @@ static rcl_ret_t reading_listener_configure(const nros_cpp_node_t* node, void* e
     self->recv = 0;
     size_t handle;
     int32_t rc =
-        nros_cpp_subscription_register(node, "/reading", custom_msgs_msg_reading_get_type_name(),
+        nros_cpp_subscription_register(node, "/reading", custom_msgs__msg__Reading__get_type_name(),
                                        "", rclc_c_qos_default(), on_raw, self, &handle,
                                        /*options=*/NULL); /* phase-402: NULL = defaults */
     if (rc == 0) {

@@ -37,7 +37,10 @@ static struct {
     // rclc's: the executor deserializes into this object and calls us, rather
     // than allocating one per sample. It must outlive the subscription, which
     // here is trivially true because both are in this one `.bss` object.
-    std_msgs_msg_string msg;
+    std_msgs__msg__String msg;
+    // The bytes behind `msg.data` (phase-492 W7). The deserializer writes into
+    // the `capacity` these give and refuses a longer sample; nothing allocates.
+    std_msgs__msg__String__Storage msg_storage;
 } app;
 
 static volatile sig_atomic_t g_running = 1;
@@ -61,7 +64,7 @@ static void signal_handler(int signum) {
 
 // phase-417 W5.a — rclc's callback shape: a DESERIALIZED message, not CDR
 // bytes. `msgin` is `&app.msg`, written by the generated
-// `std_msgs_msg_string_deserialize` immediately before this call, so this body
+// `std_msgs__msg__String__deserialize` immediately before this call, so this body
 // casts and reads FIELDS and there is no CDR anywhere in it.
 //
 // A sample that cannot be decoded into `app.msg` — a string longer than the
@@ -70,11 +73,11 @@ static void signal_handler(int signum) {
 // function has no failure branch rather than a relocated one; calling it after
 // a failed decode would hand it the PREVIOUS message dressed as the new one.
 static void subscription_callback(const void* msgin, void* context) {
-    const std_msgs_msg_string* msg = (const std_msgs_msg_string*)msgin;
+    const std_msgs__msg__String* msg = (const std_msgs__msg__String*)msgin;
     listener_context_t* ctx = (listener_context_t*)context;
 
     ctx->message_count++;
-    printf("I heard: [%s]\n", msg->data);
+    printf("I heard: [%s]\n", msg->data.data);
 }
 
 // ----------------------------------------------------------------------------
@@ -126,9 +129,9 @@ int nros_app_main(int argc, char** argv) {
         .message_count = 0,
     };
 
-    RCLC_CHECK_RET(rclc_subscription_init_default(&app.subscription, &app.node,
-                                                  std_msgs_msg_string_get_type_support(),
-                                                  "/chatter"),
+    RCLC_CHECK_RET(rclc_subscription_init_default(
+                       &app.subscription, &app.node,
+                       ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, String), "/chatter"),
                    1);
     printf("Subscriber created for topic: %s\n",
            rcl_subscription_get_topic_name(&app.subscription));
@@ -139,13 +142,14 @@ int nros_app_main(int argc, char** argv) {
      *
      *   rclc_executor_add_subscription_with_context(&exec, &sub, &msg, &cb, &ctx, ON_NEW_DATA);
      *
-     * The deserializer and the receive-buffer hint are derived from the type
-     * token in the macro's own name, so they cannot disagree with each other or
-     * with `app.msg` — which the macro also checks is a `std_msgs_msg_string*`
-     * rather than trusting the FFI's `void*`. The byte-oriented
-     * `rclc_executor_add_subscription_raw` is still there for a caller doing
-     * its own CDR; this file no longer is one. */
-    RCLC_CHECK_RET(std_msgs_msg_string_executor_add_subscription(
+     * phase-492 W8: the deserializer and the receive-buffer hint come from the
+     * descriptor the subscription was created with
+     * (`ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, String)`), so this is rclc's
+     * own call. `app.msg` is wired to `app.msg_storage` first. The
+     * byte-oriented `rclc_executor_add_subscription_raw` is still there for a
+     * caller doing its own CDR; this file no longer is one. */
+    std_msgs__msg__String__init_in(&app.msg, &app.msg_storage);
+    RCLC_CHECK_RET(rclc_executor_add_subscription_with_context(
                        &app.executor, &app.subscription, &app.msg, subscription_callback,
                        &app.listener_ctx, RCLC_EXECUTOR_ON_NEW_DATA),
                    1);

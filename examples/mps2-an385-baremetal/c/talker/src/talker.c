@@ -68,7 +68,10 @@ void nros_app_register_backends(void) {
 
 typedef struct {
     rcl_publisher_t* publisher;
-    std_msgs_msg_string message;
+    std_msgs__msg__String message;
+    // The bytes behind `message.data` (phase-492 W7), wired by
+    // `std_msgs__msg__String__init_in`. The caller owns them; nothing allocates.
+    std_msgs__msg__String__Storage message_storage;
     int32_t count;
 } talker_context_t;
 
@@ -90,7 +93,7 @@ static rclc_logger_t g_logger;
 // Both take the buffer's CAPACITY and truncate rather than run past it. On a
 // Cortex-M3 with no MPU a one-byte overrun is silent corruption of whatever
 // `.bss` or stack frame follows, and a buffer here is fed a message payload
-// whose bound is `sizeof(std_msgs_msg_string::data)` — 256 — so "the payload is
+// whose bound is `sizeof(std_msgs__msg__String::data)` — 256 — so "the payload is
 // short in practice" is not a bound. `cap` is the whole buffer; each function
 // leaves room for the caller's NUL.
 
@@ -132,20 +135,21 @@ static void timer_callback(struct rcl_timer_t* timer, void* context) {
     // Pre-increment so the first payload is "Hello World: 1", matching the
     // official ROS 2 demo talker and every sibling example in this tree.
     ctx->count++;
-    const size_t msg_cap = sizeof(ctx->message.data);
-    size_t pos = append_str(ctx->message.data, msg_cap, 0u, "Hello World: ");
-    pos = append_u32(ctx->message.data, msg_cap, pos, (uint32_t)ctx->count);
-    ctx->message.data[pos] = '\0';
+    const size_t msg_cap = ctx->message.data.capacity;
+    size_t pos = append_str(ctx->message.data.data, msg_cap, 0u, "Hello World: ");
+    pos = append_u32(ctx->message.data.data, msg_cap, pos, (uint32_t)ctx->count);
+    ctx->message.data.data[pos] = '\0';
+    ctx->message.data.size = pos;
 
-    RCLC_SOFTCHECK(std_msgs_msg_string_publish(ctx->publisher, &ctx->message));
+    RCLC_SOFTCHECK(rcl_publish(ctx->publisher, &ctx->message, NULL));
 
     // The marker the QEMU e2e greps for, spelled the way the `rust/talker`
     // sibling spells it (`nros_tests::output` owns the constant). Sized from the
     // payload's own bound plus the decoration, not from what the payload happens
     // to be today.
-    char line[sizeof(ctx->message.data) + 16u];
+    char line[sizeof(ctx->message_storage.data) + 16u];
     size_t len = append_str(line, sizeof(line), 0u, "Publishing: '");
-    len = append_str(line, sizeof(line), len, ctx->message.data);
+    len = append_str(line, sizeof(line), len, ctx->message.data.data);
     len = append_str(line, sizeof(line), len, "'");
     line[len] = '\0';
     emit(RCLC_LOG_SEVERITY_INFO, line, __FILE__, __LINE__);
@@ -170,12 +174,13 @@ int nros_app_main(int argc, char** argv) {
     g_logger = rclc_node_get_logger(&app.node);
 
     RCLC_CHECK_RET(rclc_publisher_init_default(&app.publisher, &app.node,
-                                               std_msgs_msg_string_get_type_support(), "/chatter"),
+                                               ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, String),
+                                               "/chatter"),
                    1);
 
     app.talker_ctx.publisher = &app.publisher;
     app.talker_ctx.count = 0;
-    std_msgs_msg_string_init(&app.talker_ctx.message);
+    std_msgs__msg__String__init_in(&app.talker_ctx.message, &app.talker_ctx.message_storage);
 
     RCLC_CHECK_RET(
         rcl_timer_init(&app.timer, &app.support, 1000000000ULL, timer_callback, &app.talker_ctx),

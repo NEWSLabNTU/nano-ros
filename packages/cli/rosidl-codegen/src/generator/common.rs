@@ -5,9 +5,9 @@ use crate::{
         SequenceStructDef,
     },
     types::{
-        C_DEFAULT_SEQUENCE_CAPACITY, CPP_DEFAULT_SEQUENCE_CAPACITY, CPP_DEFAULT_STRING_CAPACITY,
-        NrosCodegenMode, c_cdr_read_method_for_op, c_cdr_write_method_for_op,
-        c_type_for_field_heap, constant_value_to_rust, cpp_type_for_field_heap, escape_keyword,
+        C_DEFAULT_SEQUENCE_CAPACITY, C_DEFAULT_STRING_CAPACITY, CPP_DEFAULT_SEQUENCE_CAPACITY,
+        CPP_DEFAULT_STRING_CAPACITY, NrosCodegenMode, c_cdr_read_method_for_op,
+        c_cdr_write_method_for_op, constant_value_to_rust, cpp_type_for_field_heap, escape_keyword,
         repr_c_type_for_field, to_c_package_name,
     },
     utils::to_snake_case,
@@ -85,7 +85,7 @@ pub enum GeneratorError {
 }
 
 /// Resolve the borrowed-view field type + full `CdrReader` read expression for
-/// a `view`-mode field (RFC-0033, Phase 229.6, issue 0007).
+/// a `borrowed`-mode field (RFC-0033, Phase 229.6, issue 0007).
 ///
 /// Returns `(view_rust_type, read_expr)`:
 /// - **strings** → `&'a str` via `reader.read_string()?`,
@@ -149,7 +149,7 @@ fn nros_view_for_field(
 }
 
 /// Resolve the borrowed-view **C** field type + the `nros/view.h` reader
-/// function for a `view`-mode field (RFC-0033, Phase 235, issue 0021).
+/// function for a `borrowed`-mode field (RFC-0033, Phase 235, issue 0021).
 ///
 /// Returns `(view_c_type, borrow_fn)` — both `nros/view.h` symbols. All
 /// three readers share the signature
@@ -371,9 +371,9 @@ pub(super) fn cdr_op_rust_method(op: rosidl_lower::CdrOp) -> String {
 ///
 /// | mode | Rust srv/action | C srv/action | C++ srv/action |
 /// | --- | --- | --- | --- |
-/// | `inline` | yes | yes | yes |
+/// | `owned` | yes | yes | yes |
 /// | `heap` | **yes** (0344) | **yes** (0345) | n/a (FFI-delegated) |
-/// | `view` | **yes** (0346) | **yes** (0346) | n/a |
+/// | `borrowed` | rejected — see below | rejected | n/a |
 ///
 /// **C heap (0345).** The premise 0343/0344 recorded — that supporting heap in C
 /// would need every consumer taught to free — was wrong: `rclc_service_callback_t`
@@ -383,12 +383,11 @@ pub(super) fn cdr_op_rust_method(op: rosidl_lower::CdrOp) -> String {
 /// The fix was therefore the shared arms (`_c_field.jinja`) plus a generated
 /// `_fini` per payload struct, with no framework or ownership change.
 ///
-/// **View (0346).** `view` works by emitting a `{Msg}View<'a>` / `{Msg}_View`
-/// alongside the owned struct. Until 0346 the srv/action templates emitted no
-/// view type, so the mode was rejected here rather than silently degrading to
-/// `inline`; they now emit `{Payload}View` / `{Payload}_View` +
-/// `deserialize_view`, so nothing is rejected and this stays as the one place a
-/// future unsupported combination is refused.
+/// **Why `borrowed` stays rejected everywhere.** `borrowed` works by emitting a
+/// `{Msg}View<'a>` / `{Msg}_View` alongside the owned struct; the srv/action
+/// templates emit no view type. The mode would therefore silently degrade to
+/// `owned` — the field builder keeps the owned container for the publish path —
+/// which is a wrong answer rather than an error.
 ///
 /// C++ needs no policy here: its templates delegate serialization across the FFI
 /// to the Rust core, so the container type is all that changes.
@@ -517,7 +516,7 @@ pub(super) fn field_to_nros_field_with_mode(
 
     let mut view_rust_type = String::new();
     let mut view_read_expr = String::new();
-    // RFC-0033 `view` (Phase 229.6, issue 0007): the owned `{Msg}` struct
+    // RFC-0033 `borrowed` (Phase 229.6, issue 0007): the owned `{Msg}` struct
     // keeps a default-capacity owned container for the publish path; the
     // additionally-emitted `{Msg}View<'a>` borrows this field zero-copy.
     if field.is_view() {
@@ -688,14 +687,14 @@ pub(super) fn build_c_field(
 
     let mut view_c_type = String::new();
     let mut view_read_fn = String::new();
-    if field.is_heap() {
-        // Heap is only bridgeable for shapes `c_type_for_field_heap` supports —
-        // validate here (the filter assumes it holds), reject otherwise.
-        if c_type_for_field_heap(field_type, current_package).is_none() {
-            return Err(unsupported("heap"));
-        }
-    }
-    // RFC-0033 `view` (Phase 235, issue 0021): the owned `{Msg}` struct
+    // RFC-0033 `heap` left the C emitter in phase-492 W7: every C string and
+    // sequence is `{data, size, capacity}` over memory the CALLER supplies, so a
+    // caller that wants heap memory points `data` at its own block. A `heap`
+    // entry in a shared `nros-codegen.toml` still means something to the Rust
+    // and C++ packs, so C reads it as a sizing hint for `__Storage` rather than
+    // refusing it.
+    let _ = &unsupported;
+    // RFC-0033 `borrowed` (Phase 235, issue 0021): the owned `{Msg}` struct
     // keeps its resolved-capacity container for the publish path; the emitted
     // `{Msg}_View` borrows this field zero-copy.
     if field.is_view() {
@@ -726,6 +725,41 @@ pub(super) fn build_c_field(
         0
     };
 
+    // phase-492 W7 — the `__Storage` sizes and the `.msg` bounds the generated
+    // serialiser enforces. A `.msg` bound (`string<=N`, `T[<=N]`, or a config
+    // `element_cap` folded into the element by `storage_type`) is CHECKED on
+    // both directions; a configured or built-in capacity only sizes the storage
+    // `__init_in` wires, because a caller may point `data` at a larger buffer.
+    let str_cap_of = |ft: &FieldType| -> (usize, usize) {
+        match ft {
+            FieldType::BoundedString(n) | FieldType::BoundedWString(n) => (*n, *n + 1),
+            _ => (0, C_DEFAULT_STRING_CAPACITY + 1),
+        }
+    };
+    let (str_bound, str_bytes) = if field.is_string() {
+        match (field_type, &field.storage) {
+            (
+                FieldType::String | FieldType::WString,
+                rosidl_lower::LoweredStorage::Fixed { cap }
+                | rosidl_lower::LoweredStorage::Borrowed { cap },
+            ) => (0, cap + 1),
+            _ => str_cap_of(field_type),
+        }
+    } else {
+        (0, 0)
+    };
+    let (elem_str_bound, elem_str_bytes) = match element_type_of(field_type) {
+        Some(e) if field.element_is_string() => str_cap_of(e),
+        _ => (0, 0),
+    };
+    let seq_bound = match field_type {
+        FieldType::BoundedSequence { max_size, .. } => *max_size,
+        _ => 0,
+    };
+    let elem_type = element_type_of(field_type)
+        .map(|e| crate::types::c_type_for_field(e, current_package))
+        .unwrap_or_default();
+
     let (cdr_write_method, cdr_read_method) = match field.scalar_op() {
         Some(op) => (
             c_cdr_write_method_for_op(op).to_string(),
@@ -746,7 +780,7 @@ pub(super) fn build_c_field(
     // Get nested struct names (use current_package for intra-package references)
     let nested_struct_name = if let FieldType::NamespacedType { package, name } = field_type {
         let pkg = package.as_deref().or(current_package).unwrap_or("");
-        format!("{}_msg_{}", to_c_package_name(pkg), to_snake_case(name))
+        super::naming::c_struct_name(pkg, super::naming::Kind::Msg, name)
     } else {
         String::new()
     };
@@ -754,7 +788,7 @@ pub(super) fn build_c_field(
     let element_struct_name =
         if let Some(FieldType::NamespacedType { package, name }) = element_type {
             let pkg = package.as_deref().or(current_package).unwrap_or("");
-            format!("{}_msg_{}", to_c_package_name(pkg), to_snake_case(name))
+            super::naming::c_struct_name(pkg, super::naming::Kind::Msg, name)
         } else {
             String::new()
         };
@@ -780,10 +814,17 @@ pub(super) fn build_c_field(
         is_nested: field.is_nested(),
         is_primitive_element: field.element_is_primitive(),
         is_string_element: field.element_is_string(),
-        is_heap: field.is_heap(),
+        // phase-492 W7: no C heap arm (see above).
+        is_heap: false,
         is_view: field.is_view(),
         view_c_type,
         view_read_fn,
+        str_bound,
+        str_bytes,
+        elem_str_bound,
+        elem_str_bytes,
+        seq_bound,
+        elem_type,
     })
 }
 
@@ -795,7 +836,7 @@ pub(super) fn build_c_field(
 pub(super) enum CppStorage {
     Owned(Option<usize>),
     Heap,
-    /// RFC-0033 `view` (Phase 235): a zero-copy view into the CDR buffer.
+    /// RFC-0033 `borrowed` (Phase 235): a zero-copy view into the CDR buffer.
     /// Carries the resolved owned capacity too — the owned `{Msg}` struct keeps
     /// a fixed-capacity container for the publish path; only `{Msg}View` borrows.
     Borrowed(CppView, Option<usize>),
@@ -843,7 +884,7 @@ impl CppView {
     }
 }
 
-/// Resolve the borrowed C++ view kind for a `view`-mode field. Strings and
+/// Resolve the borrowed C++ view kind for a `borrowed`-mode field. Strings and
 /// byte/numeric sequences borrow; sequences of strings or nested messages are
 /// rejected (no fixed-width byte span) — same policy as Rust and C.
 fn cpp_borrow_kind(
@@ -916,7 +957,7 @@ fn cpp_borrow_kind(
 /// Resolve the per-field storage for a C++ field (RFC-0033). Owned shapes carry
 /// their resolved capacity; `heap` is allowed only for primitive sequences
 /// (rejected for heap strings / sequences of strings / nested messages, and for
-/// `view`). Shared by the C++ header + FFI builders so both agree.
+/// `borrowed`). Shared by the C++ header + FFI builders so both agree.
 pub(super) fn resolve_cap_override(
     field: &rosidl_lower::LoweredField,
     current_package: Option<&str>,

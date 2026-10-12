@@ -94,6 +94,11 @@ pub struct rcl_subscription_t {
     pub type_hash_len: usize,
     /// Pointer to parent node
     pub node: crate::node::rclc_node_ref_t,
+    /// phase-492 W8 — the descriptor this subscription was created with, kept
+    /// so `rclc_executor_add_subscription_with_context` deserialises through
+    /// its codec with rclc's arguments. Descriptors are generated
+    /// `static const`s, so the pointer outlives the subscription.
+    pub type_support: *const rclc_message_type_t,
     /// QoS settings (stored during init, used by executor registration)
     pub qos: crate::qos::rclc_qos_t,
     /// Handle ID from executor registration (SIZE_MAX = not registered)
@@ -126,6 +131,7 @@ impl Default for rcl_subscription_t {
             type_hash: [0u8; MAX_TYPE_HASH_LEN],
             type_hash_len: 0,
             node: crate::node::rclc_node_ref_t::none(),
+            type_support: ptr::null(),
             qos: crate::qos::rclc_qos_t::default(),
             handle_id: usize::MAX,
             sched_context_id: 0,
@@ -153,6 +159,9 @@ pub struct rclc_polling_subscription_t {
     /// The node the subscriber was created on, kept so `fini` can refuse a
     /// teardown after the node's (`RCLC_RET_STALE_NODE`).
     pub node: crate::node::rclc_node_ref_t,
+    /// phase-492 W8 — the descriptor this subscription was created with, kept
+    /// so [`rclc_polling_subscription_take`] deserialises through its codec.
+    pub type_support: *const rclc_message_type_t,
     /// Inline storage for the `RawSubscription`. Internal: treat as opaque.
     pub _opaque: [u64; SUBSCRIPTION_OPAQUE_U64S],
 }
@@ -162,6 +171,7 @@ impl Default for rclc_polling_subscription_t {
         Self {
             state: rclc_subscription_state_t::RCLC_SUBSCRIPTION_STATE_UNINITIALIZED,
             node: crate::node::rclc_node_ref_t::none(),
+            type_support: ptr::null(),
             _opaque: [0u64; SUBSCRIPTION_OPAQUE_U64S],
         }
     }
@@ -253,10 +263,9 @@ pub extern "C" fn rcl_subscription_get_default_options() -> rcl_subscription_opt
 ///   does not do.
 ///
 /// So the callback is supplied where rclc supplies it, at registration:
-/// `rclc_executor_add_subscription_typed` for the typed path (rclc's
-/// `rclc_executor_add_subscription_with_context` shape) and
-/// `rclc_executor_add_subscription_raw` for the byte path, which has no rclc
-/// counterpart and therefore keeps an `nros_` name.
+/// `rclc_executor_add_subscription_with_context` for the typed path (rclc's
+/// own, phase-492 W8) and `rclc_executor_add_subscription_raw` for the byte
+/// path, which has no rclc counterpart and therefore takes an ours-only name.
 ///
 /// The typesupport parameter stays `const rclc_message_type_t *` rather than
 /// taking `rosidl_message_type_support_t`'s name: a rosidl typesupport's
@@ -344,6 +353,8 @@ pub unsafe extern "C" fn rclc_subscription_init_with_qos(
         crate::util::copy_cstr_into(type_info.type_hash, &mut subscription.type_hash);
 
     subscription.node = unsafe { crate::node::node_ref_of(node) };
+    // phase-492 W8 — the codec the typed registration reads.
+    subscription.type_support = type_info;
 
     // Store QoS settings for later use by executor registration
     subscription.qos = if qos.is_null() {
@@ -602,6 +613,7 @@ pub unsafe extern "C" fn rclc_polling_subscription_init_with_qos(
     }
 
     subscription_mut.node = unsafe { crate::node::node_ref_of(node) };
+    subscription_mut.type_support = type_info;
     subscription_mut.state = rclc_subscription_state_t::RCLC_SUBSCRIPTION_STATE_INITIALIZED;
     RCL_RET_OK
 }
@@ -702,6 +714,88 @@ pub unsafe extern "C" fn rclc_polling_subscription_take_serialized(
     #[cfg(not(feature = "rmw-cffi"))]
     {
         let _ = (subscription_mut, buf, buf_len);
+        RCL_RET_ERROR
+    }
+}
+
+/// upstream rmw's subscription pre-allocation handle, declared INCOMPLETE
+/// (phase-492 W8): a pointer to one compiles, so NULL can be passed; declaring
+/// one does not. nano-ros has no pre-allocation to hand out.
+pub struct rmw_subscription_allocation_t {
+    _private: [u8; 0],
+}
+
+/// Take one sample from a polling subscription and DESERIALISE it into
+/// `ros_message` through the subscription's descriptor — the typed sibling of
+/// [`rclc_polling_subscription_take_serialized`] (phase-492 W8).
+///
+/// This is the `rcl_take` analog. `rcl_take` itself is not declared: it takes
+/// an `rcl_subscription_t`, which here is executor-owned (phase-487 W1, RFC-0096
+/// D9) and has no subscriber of its own to take from, so the upstream name with
+/// this contract would compile and differ. A subscription the caller drains is
+/// an `rclc_polling_subscription_t`, and this is its take.
+///
+/// `ros_message` is the generated struct of the subscription's type, its strings
+/// and sequences wired to caller memory (`<Msg>__init_in`). The sample is read
+/// into the subscription's own receive buffer and decoded from there; nothing
+/// allocates.
+///
+/// # Returns
+/// * `RCL_RET_OK` — one sample was taken and decoded into `ros_message`
+/// * `RCLC_RET_TRY_AGAIN` — nothing to take
+/// * `RCL_RET_INVALID_ARGUMENT` — a NULL argument, or a non-NULL `allocation`
+/// * `RCLC_RET_BAD_SEQUENCE` — not initialised
+/// * `RCL_RET_UNSUPPORTED` — the descriptor carries no deserialiser
+/// * `RCL_RET_ERROR` — the transport failed, or the sample did not decode (a
+///   field larger than its `capacity`): the sample is consumed and
+///   `ros_message` is not a valid message
+///
+/// # Safety
+/// * `subscription` must be an initialised polling subscription.
+/// * `ros_message` must point at a message of the subscription's type.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rclc_polling_subscription_take(
+    subscription: *mut rclc_polling_subscription_t,
+    ros_message: *mut c_void,
+    allocation: *mut rmw_subscription_allocation_t,
+) -> rcl_ret_t {
+    if subscription.is_null() || ros_message.is_null() || !allocation.is_null() {
+        return RCL_RET_INVALID_ARGUMENT;
+    }
+    let subscription_mut = &mut *subscription;
+    if subscription_mut.state != rclc_subscription_state_t::RCLC_SUBSCRIPTION_STATE_INITIALIZED {
+        return RCLC_RET_BAD_SEQUENCE;
+    }
+    let Some(deserialize) = subscription_mut
+        .type_support
+        .as_ref()
+        .and_then(|t| t.deserialize)
+    else {
+        return RCL_RET_UNSUPPORTED;
+    };
+
+    #[cfg(feature = "rmw-cffi")]
+    {
+        let Some(raw) = subscription_mut.raw() else {
+            return RCLC_RET_BAD_SEQUENCE;
+        };
+        match raw.take_serialized() {
+            Ok(Some(len)) => {
+                let bytes = raw.buffer();
+                let len = len.min(bytes.len());
+                if deserialize(bytes.as_ptr(), len, ros_message) == 0 {
+                    RCL_RET_OK
+                } else {
+                    RCL_RET_ERROR
+                }
+            }
+            Ok(None) => RCLC_RET_TRY_AGAIN,
+            Err(_) => RCL_RET_ERROR,
+        }
+    }
+    #[cfg(not(feature = "rmw-cffi"))]
+    {
+        let _ = (deserialize, ros_message);
         RCL_RET_ERROR
     }
 }

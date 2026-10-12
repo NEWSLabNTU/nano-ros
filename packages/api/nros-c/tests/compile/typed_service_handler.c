@@ -5,7 +5,7 @@
  * WHAT THIS PINS, and why it is not a hand-written mock:
  *
  * The include below is the fingerprint corpus's `expected/configured/
- * Probe.srv.h` — the COMMITTED OUTPUT of `packs/c/service.h.jinja`, re-recorded
+ * fingerprint_corpus/srv/probe.h` — the COMMITTED OUTPUT of `packs/c/service.h.jinja`, re-recorded
  * by `cargo test -p rosidl-codegen --test codegen_golden` whenever the pack
  * changes. So this TU compiles what the generator actually emits, not a copy of
  * it that can rot. A pack edit that emits code C rejects fails HERE, in seconds,
@@ -23,10 +23,10 @@
  *       packages/api/nros-c/tests/compile/typed_service_handler.c
  *
  * The Probe service is the right specimen precisely because it is awkward: its
- * request carries an RFC-0033 `mode = "heap"` sequence (`items`) and a bounded
- * string, and its response carries a fixed array of strings. The heap field is
- * what makes the trampoline's `_fini` ordering load-bearing rather than
- * decorative.
+ * request carries a sequence (`items`, configured `mode = "heap"`, which C reads
+ * as a storage hint since phase-492 W7) and a string, and its response carries
+ * a sequence of strings — all rosidl-shaped `{data, size, capacity}` over the
+ * handler's own `__Storage`.
  *
  * Before W5.e this file could not have existed: the pack emitted
  * `_get_type_support`, `_get_type_name`, `_get_type_hash` and the four
@@ -35,7 +35,7 @@
  * hand at the top and bottom of its handler.
  */
 
-#include "Probe.srv.h"
+#include "fingerprint_corpus/srv/probe.h"
 
 #include "nros/client.h"
 #include "nros/service.h"
@@ -53,14 +53,14 @@
  * buffer size. That is the whole point of the stage.
  * =================================================================== */
 
-static void probe_service_handler(const fingerprint_corpus_srv_probe_request* request,
-                                  fingerprint_corpus_srv_probe_response* response, void* context) {
+static void probe_service_handler(const fingerprint_corpus__srv__Probe_Request* request,
+                                  fingerprint_corpus__srv__Probe_Response* response, void* context) {
     int64_t total = 0;
     size_t i;
 
     (void)context;
 
-    /* The heap sequence is already decoded — `.data` / `.size`, not bytes. */
+    /* The sequence is already decoded — `.data` / `.size`, not bytes. */
     for (i = 0; i < request->items.size; ++i) {
         total += request->items.data[i];
     }
@@ -72,22 +72,22 @@ static void probe_service_handler(const fingerprint_corpus_srv_probe_request* re
 /* The handler struct carries the caller-owned request and response storage, so
  * it needs the service's own storage duration. Static here, a member of the
  * node's context in a real program. */
-static fingerprint_corpus_srv_probe_service_handler_t g_probe_handler;
+static fingerprint_corpus__srv__Probe__service_handler_t g_probe_handler;
 static struct rcl_service_t g_probe_service;
 
 static rcl_ret_t bring_up_typed_service(struct rclc_executor_t* executor,
                                         const struct rcl_node_t* node) {
-    rcl_ret_t ret = fingerprint_corpus_srv_probe_service_handler_init(&g_probe_handler,
+    rcl_ret_t ret = fingerprint_corpus__srv__Probe__service_handler_init(&g_probe_handler,
                                                                       probe_service_handler, NULL);
     if (ret != RCL_RET_OK) {
         return ret;
     }
-    ret = fingerprint_corpus_srv_probe_service_init(&g_probe_service, node, "/add");
+    ret = fingerprint_corpus__srv__Probe__service_init(&g_probe_service, node, "/add");
     if (ret != RCL_RET_OK) {
         return ret;
     }
     /* phase-487 W2: the handler is bound where rclc binds it, at registration. */
-    return fingerprint_corpus_srv_probe_executor_add_service(executor, &g_probe_service,
+    return fingerprint_corpus__srv__Probe__executor_add_service(executor, &g_probe_service,
                                                              &g_probe_handler);
 }
 
@@ -109,23 +109,23 @@ static bool typed_service_is_healthy(void) {
  * =================================================================== */
 
 static const rclc_service_callback_t k_trampoline =
-    fingerprint_corpus_srv_probe_service_handle_request;
+    fingerprint_corpus__srv__Probe__service_handle_request;
 
 /* ===================================================================
  * 3. The client half — typed response callback, and the typed send/take pair.
  * =================================================================== */
 
-static void probe_response_handler(const fingerprint_corpus_srv_probe_response* response,
+static void probe_response_handler(const fingerprint_corpus__srv__Probe_Response* response,
                                    void* context) {
     (void)context;
     (void)response->sum;
 }
 
-static fingerprint_corpus_srv_probe_client_handler_t g_probe_client_handler;
+static fingerprint_corpus__srv__Probe__client_handler_t g_probe_client_handler;
 static struct rcl_client_t g_probe_client;
 
 static const rclc_response_callback_t k_response_trampoline =
-    fingerprint_corpus_srv_probe_client_handle_response;
+    fingerprint_corpus__srv__Probe__client_handle_response;
 
 static rcl_ret_t drive_typed_client(void) {
     /* Caller-supplied scratch. The service pack emits no
@@ -134,31 +134,34 @@ static rcl_ret_t drive_typed_client(void) {
      * 256-byte array that truncates without saying so. */
     uint8_t request_scratch[512];
     uint8_t response_scratch[512];
-    fingerprint_corpus_srv_probe_request request;
-    fingerprint_corpus_srv_probe_response response;
+    static fingerprint_corpus__srv__Probe_Request request;
+    static fingerprint_corpus__srv__Probe_Response response;
+    static fingerprint_corpus__srv__Probe_Request__Storage request_storage;
+    static fingerprint_corpus__srv__Probe_Response__Storage response_storage;
     rcl_ret_t ret;
 
-    ret = fingerprint_corpus_srv_probe_client_handler_init(&g_probe_client_handler,
+    ret = fingerprint_corpus__srv__Probe__client_handler_init(&g_probe_client_handler,
                                                            probe_response_handler, NULL);
     if (ret != RCL_RET_OK) {
         return ret;
     }
-    ret = fingerprint_corpus_srv_probe_client_set_response_callback(&g_probe_client,
+    ret = fingerprint_corpus__srv__Probe__client_set_response_callback(&g_probe_client,
                                                                     &g_probe_client_handler);
     if (ret != RCL_RET_OK) {
         return ret;
     }
 
-    fingerprint_corpus_srv_probe_request_init(&request);
-    fingerprint_corpus_srv_probe_response_init(&response);
+    /* phase-492 W7: the caller owns the payloads' bytes; __init_in wires them. */
+    fingerprint_corpus__srv__Probe_Request__init_in(&request, &request_storage);
+    fingerprint_corpus__srv__Probe_Response__init_in(&response, &response_storage);
 
     /* Async pair. */
-    ret = fingerprint_corpus_srv_probe_client_send_request(
+    ret = fingerprint_corpus__srv__Probe__client_send_request(
         &g_probe_client, &request, request_scratch, sizeof(request_scratch));
     if (ret != RCL_RET_OK) {
         return ret;
     }
-    ret = fingerprint_corpus_srv_probe_client_take_response(
+    ret = fingerprint_corpus__srv__Probe__client_take_response(
         &g_probe_client, &response, response_scratch, sizeof(response_scratch));
     /* RCLC_RET_TRY_AGAIN is the "no reply yet" code the raw take already
      * returns, so a polling loop written against the byte API is unchanged. */
@@ -168,12 +171,10 @@ static rcl_ret_t drive_typed_client(void) {
 
     /* ...and the blocking convenience, which forwards to `rclc_client_call` so
      * the timeout and the executor spin stay where they already live. */
-    ret = fingerprint_corpus_srv_probe_client_call(&g_probe_client, &request, &response,
+    ret = fingerprint_corpus__srv__Probe__client_call(&g_probe_client, &request, &response,
                                                    request_scratch, sizeof(request_scratch),
                                                    response_scratch, sizeof(response_scratch));
 
-    fingerprint_corpus_srv_probe_request_fini(&request);
-    fingerprint_corpus_srv_probe_response_fini(&response);
     return ret;
 }
 

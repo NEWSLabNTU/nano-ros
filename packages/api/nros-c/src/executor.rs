@@ -2004,150 +2004,88 @@ unsafe fn register_subscription_entry(
     RCL_RET_OK
 }
 
-/// phase-417 W5.a — the deserialiser handed to
-/// [`rclc_executor_add_subscription_typed`].
-///
-/// Writes the CDR bytes at `buffer[..buffer_size]` into `msg`, which is storage
-/// the CALLER owns. Returns `0` on success, non-zero on failure. This is the
-/// type-erased form of the generated `<Msg>_deserialize`, which already has
-/// exactly this contract; generated headers emit a `<Msg>_deserialize_erased`
-/// with this signature so no call goes through a cast function pointer.
-pub type rclc_message_deserialize_fn_t = Option<
-    unsafe extern "C" fn(msg: *mut core::ffi::c_void, buffer: *const u8, buffer_size: usize) -> i32,
->;
-
 /// phase-417 W5.a — a subscription callback that receives the DESERIALISED
 /// message, the shape rclc delivers
-/// (`rclc_subscription_callback_with_context_t`).
+/// (`rclc_subscription_callback_with_context_t`, the alias `<rclc/executor.h>`
+/// declares).
 ///
-/// `msg` is the caller's own storage, populated by this subscription's
-/// [`rclc_message_deserialize_fn_t`] immediately before the call. It is valid
-/// for the duration of the call and is overwritten by the next dispatch — copy
-/// out anything retained.
-///
-/// The `context` parameter is why this is the analog of rclc's
-/// *with-context* callback rather than its bare `void (*)(const void *)`: C has
-/// no closures and every other callback in this API already carries one.
+/// `msg` is the caller's own storage, populated by the subscription type's
+/// deserialiser immediately before the call. It is valid for the duration of
+/// the call and is overwritten by the next dispatch — copy out anything
+/// retained.
 pub type rclc_typed_subscription_callback_t =
     Option<unsafe extern "C" fn(msg: *const core::ffi::c_void, context: *mut core::ffi::c_void)>;
 
-/// phase-417 W5.a (RFC-0089 stage 5) — add a subscription that delivers a
-/// **deserialised message** into storage the CALLER owns.
-///
-/// The rclc-shaped registration:
+/// rclc's `rclc_executor_add_subscription_with_context`, argument for argument
+/// (phase-492 W8):
 ///
 /// ```c
-/// rclc_executor_add_subscription(&exec, &sub, &msg, &cb, ON_NEW_DATA);
 /// rclc_executor_add_subscription_with_context(&exec, &sub, &msg, &cb, &ctx, ON_NEW_DATA);
-/// rclc_executor_add_subscription_typed(&exec, &sub, &msg, MyMsg_deserialize_erased,
-///                                      &cb, &ctx, RCLC_EXECUTOR_ON_NEW_DATA);
 /// ```
 ///
-/// One argument more than rclc's, and it is the only one: `rclc_message_type_t`
-/// carries a type NAME and a type HASH and no deserialiser, so the function
-/// that writes this type into `msg` has to arrive from somewhere. Generated
-/// headers collapse it away, so a ported line is rclc's six arguments in rclc's
-/// order:
-/// `MyMsg_executor_add_subscription(&exec, &sub, &msg, &cb, &ctx, RCLC_EXECUTOR_ON_NEW_DATA)`.
+/// The deserialiser and the receive-buffer hint come from the descriptor the
+/// subscription was created with (`ROSIDL_GET_MSG_TYPE_SUPPORT(...)`, kept on
+/// the struct by `rclc_subscription_init_*`), which is why this takes no more
+/// arguments than rclc's. Before phase-492 the descriptor had no codec, so the
+/// typed registration carried a seventh argument and a generated per-type
+/// macro collapsed it away; both are gone.
 ///
 /// The CONTEXT-LESS `rclc_executor_add_subscription` (a `void (*)(const void*)`
-/// callback) is deliberately absent: adapting it needs a trampoline that
-/// remembers the original function pointer, and state in the wrapper is
-/// RFC-0019/0020's violation rather than an ergonomic. `nros/rcl_compat.h`
-/// records the same refusal.
+/// callback) stays refused: adapting it needs a trampoline that remembers the
+/// original function pointer, and state in the wrapper is RFC-0019/0020's
+/// violation rather than an ergonomic. `<rcl/types.h>` records the refusal.
 ///
-/// **No allocator is involved, and none is needed.** The caller owning the
-/// storage IS the mechanism — the same one rclc uses. The C ledger recorded our
-/// byte-oriented delivery as forced by "no allocator"; the compared surface
-/// operates under the same constraint, so the stated reason was refuted by the
-/// thing it was compared against (issue 1022, W-C3).
-///
-/// The byte-oriented [`rclc_executor_add_subscription_raw`] is untouched and stays.
-/// This is additive; a raw subscriber is a legitimate thing to want.
+/// **No allocator is involved, and none is needed.** The caller owning `msg`
+/// (its strings and sequences wired by `<Msg>__init_in`) IS the mechanism — the
+/// same one rclc uses.
 ///
 /// # What the callback sees when decoding fails
-/// **Nothing — it is not called.** A non-zero return from `deserialize` drops
-/// the sample, leaves `msg` as it was, counts a `subscription_errors` in the
-/// spin result, and emits a rate-limited `nros_log` error naming the sample
-/// length and the return code. Dispatching anyway would hand the callback the
-/// PREVIOUS message under the impression it was the new one, which is exactly
-/// the "compile and differ" RFC-0089 forbids.
+/// **Nothing — it is not called.** A sample that does not decode (malformed, or
+/// a string or sequence longer than the `capacity` the caller wired) is
+/// dropped, counted as a `subscription_errors` in the spin result, and logged
+/// (rate-limited) with its length and the return code. Dispatching anyway would
+/// hand the callback the PREVIOUS message as if it were the new one.
 ///
-/// A message too large for the caller's storage arrives here as that same
-/// failure and never as a truncation: a bounded string whose wire length
-/// exceeds its declared capacity fails in `rclc_cdr_read_string`
-/// (`str_len > max_len`), and a bounded sequence fails on
-/// `len > capacity` — both return `-1` rather than writing a short value.
-///
-/// # What is read from the subscription
-/// What describes the ENTITY — topic, type name, type hash, QoS, node binding,
-/// and the scheduling context requested via
-/// `rclc_subscription_init_with_options`. The typed callback and its `context`
-/// are supplied here, exactly as rclc's
-/// `rclc_executor_add_subscription_with_context` does, and the arena entry
-/// owns them; the subscription struct has had no callback field since
-/// phase-487 W1.
+/// # Returns
+/// * `RCL_RET_OK` on success
+/// * `RCL_RET_INVALID_ARGUMENT` — a NULL `executor` / `subscription` / `msg` /
+///   `callback`
+/// * `RCL_RET_UNSUPPORTED` — the subscription's descriptor carries no
+///   deserialiser (one built from type names alone); register it with
+///   `rclc_executor_add_subscription_raw` instead
+/// * otherwise as the raw registration
 ///
 /// # Safety
 /// * `executor` and `subscription` must be valid, initialised objects.
-/// * `msg` must point to writable storage of the type `deserialize` writes, and
-///   must stay valid for as long as the subscription is registered. Nothing
-///   here allocates it, copies it, or frees it.
+/// * `msg` must point to writable storage of the subscription's type and stay
+///   valid for as long as the subscription is registered. Nothing here
+///   allocates it, copies it, or frees it.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn rclc_executor_add_subscription_typed(
+pub unsafe extern "C" fn rclc_executor_add_subscription_with_context(
     executor: *mut rclc_executor_t,
     subscription: *mut rcl_subscription_t,
     msg: *mut core::ffi::c_void,
-    deserialize: rclc_message_deserialize_fn_t,
     callback: rclc_typed_subscription_callback_t,
     context: *mut core::ffi::c_void,
     invocation: rclc_executor_handle_invocation_t,
-) -> rcl_ret_t {
-    rclc_executor_add_subscription_typed_sized(
-        executor,
-        subscription,
-        msg,
-        deserialize,
-        callback,
-        context,
-        invocation,
-        0,
-    )
-}
-
-/// phase-417 W5.a — [`rclc_executor_add_subscription_typed`] with the
-/// receive-buffer hint stated by the caller.
-///
-/// `rx_bytes` is the same hint the raw path takes (issue 0896 / phase-403 W5):
-/// the bytes this subscription expects to receive, sizing BOTH the backend's
-/// payload size class and the executor's arena slot. `0` means "this caller
-/// states nothing" and falls back to the image default — never a claim of zero
-/// bytes. A typed caller normally HAS the number, because its message type
-/// computes one (`<Msg>_RX_MAX_SERIALIZED_SIZE`), which is why the generated
-/// macro passes it and the plain form above exists only for a type with no
-/// bound.
-///
-/// # Safety
-/// See [`rclc_executor_add_subscription_typed`].
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn rclc_executor_add_subscription_typed_sized(
-    executor: *mut rclc_executor_t,
-    subscription: *mut rcl_subscription_t,
-    msg: *mut core::ffi::c_void,
-    deserialize: rclc_message_deserialize_fn_t,
-    callback: rclc_typed_subscription_callback_t,
-    context: *mut core::ffi::c_void,
-    invocation: rclc_executor_handle_invocation_t,
-    rx_bytes: u32,
 ) -> rcl_ret_t {
     validate_not_null!(executor, subscription, msg);
 
-    let (Some(deserialize_fn), Some(callback_fn)) = (deserialize, callback) else {
+    let Some(callback_fn) = callback else {
         return RCL_RET_INVALID_ARGUMENT;
     };
     let Some(msg_nn) = core::ptr::NonNull::new(msg) else {
         return RCL_RET_INVALID_ARGUMENT;
     };
+    let Some(type_info) = (*subscription).type_support.as_ref() else {
+        return RCL_RET_UNSUPPORTED;
+    };
+    let Some(deserialize_fn) = type_info.deserialize else {
+        return RCL_RET_UNSUPPORTED;
+    };
+    // 0 = the type states no bound, so the image default applies — never a
+    // claim of zero bytes (issue 0896 / phase-403 W5).
+    let rx_bytes = type_info.serialized_size_max;
 
     // The name resolution, node routing and bookkeeping are the raw path's —
     // one helper — so the two registrations cannot become two different
@@ -2169,7 +2107,7 @@ pub unsafe extern "C" fn rclc_executor_add_subscription_typed_sized(
                     callback_fn,
                     context,
                     None,
-                    rx_bytes as usize,
+                    rx_bytes,
                 )
                 .map_err(|_| RCL_RET_ERROR)
         },
@@ -2179,7 +2117,7 @@ pub unsafe extern "C" fn rclc_executor_add_subscription_typed_sized(
 /// phase-417 stage 6 — register a BYTE-oriented subscription, supplying its
 /// callback HERE rather than at `*_init`.
 ///
-/// This is the raw-path sibling of [`rclc_executor_add_subscription_typed`].
+/// This is the raw-path sibling of [`rclc_executor_add_subscription_with_context`].
 /// `rclc_subscription_init_default` takes no callback (rclc's arity), so the
 /// byte callback that used to ride on `nros_subscription_init` is supplied at
 /// registration, which is where rclc supplies it
@@ -2195,7 +2133,7 @@ pub unsafe extern "C" fn rclc_executor_add_subscription_typed_sized(
 /// callback an init call had stored in the struct.
 ///
 /// # Returns
-/// As [`rclc_executor_add_subscription_typed`]; `RCL_RET_INVALID_ARGUMENT`
+/// As [`rclc_executor_add_subscription_with_context`]; `RCL_RET_INVALID_ARGUMENT`
 /// for a NULL `callback`, since an entry with nothing to dispatch would hold a
 /// subscriber and a slot for no reader.
 ///
@@ -3506,7 +3444,7 @@ fn forget_removed_handle(
 ///
 /// The subscription stays INITIALIZED: it can be re-added, or finalised with
 /// `rcl_subscription_fini`. Call this BEFORE `fini`. Typed message storage
-/// handed to `rclc_executor_add_subscription_typed*` is not written again
+/// handed to `rclc_executor_add_subscription_with_context` is not written again
 /// after this returns.
 ///
 /// # Returns

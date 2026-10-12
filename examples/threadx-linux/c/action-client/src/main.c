@@ -39,7 +39,7 @@ static void signal_handler(int signum) {
 // Helper: print a Fibonacci sequence
 // ----------------------------------------------------------------------------
 
-static void print_sequence(const example_interfaces_action_fibonacci_feedback* fb) {
+static void print_sequence(const example_interfaces__action__Fibonacci_Feedback* fb) {
     printf("[");
     for (uint32_t i = 0; i < fb->sequence.size; i++) {
         if (i > 0) printf(", ");
@@ -57,8 +57,10 @@ static void feedback_callback(const rclc_goal_uuid_t* goal_uuid, const uint8_t* 
     (void)goal_uuid;
     (void)context;
 
-    example_interfaces_action_fibonacci_feedback fb;
-    if (example_interfaces_action_fibonacci_feedback_deserialize(&fb, feedback, feedback_len) ==
+    example_interfaces__action__Fibonacci_Feedback fb;
+    example_interfaces__action__Fibonacci_Feedback__Storage fb_storage;
+    example_interfaces__action__Fibonacci_Feedback__init_in(&fb, &fb_storage);
+    if (example_interfaces__action__Fibonacci_Feedback__deserialize(&fb, feedback, feedback_len) ==
         0) {
         printf("Next number in sequence received: ");
         print_sequence(&fb);
@@ -123,8 +125,8 @@ int nros_app_main(int argc, char** argv) {
 
     // Build action type info using generated type name/hash
     rclc_action_type_t fibonacci_type = {
-        .type_name = example_interfaces_action_fibonacci_get_type_name(),
-        .type_hash = example_interfaces_action_fibonacci_get_type_hash(),
+        .type_name = example_interfaces__action__Fibonacci__get_type_name(),
+        .type_hash = example_interfaces__action__Fibonacci__get_type_hash(),
         .goal_serialized_size_max = 8,
         .result_serialized_size_max = 264,
         .feedback_serialized_size_max = 264,
@@ -155,13 +157,13 @@ int nros_app_main(int argc, char** argv) {
     }
 
     // Send goal: compute Fibonacci sequence of order 10
-    example_interfaces_action_fibonacci_goal goal;
-    example_interfaces_action_fibonacci_goal_init(&goal);
+    example_interfaces__action__Fibonacci_Goal goal;
+    memset(&goal, 0, sizeof(goal));
     goal.order = 10;
 
     uint8_t goal_buf[64];
     size_t goal_len = 0;
-    int32_t goal_len_rc = example_interfaces_action_fibonacci_goal_serialize(
+    int32_t goal_len_rc = example_interfaces__action__Fibonacci_Goal__serialize(
         &goal, goal_buf, sizeof(goal_buf), &goal_len);
     if (goal_len_rc != 0) {
         fprintf(stderr, "Failed to serialize goal\n");
@@ -226,9 +228,11 @@ int nros_app_main(int argc, char** argv) {
                                  result_buf, sizeof(result_buf), &result_len);
 
     if (ret == RCL_RET_OK) {
-        example_interfaces_action_fibonacci_result result;
-        if (example_interfaces_action_fibonacci_result_deserialize(&result, result_buf,
-                                                                   result_len) == 0) {
+        example_interfaces__action__Fibonacci_Result result;
+        example_interfaces__action__Fibonacci_Result__Storage result_storage;
+        example_interfaces__action__Fibonacci_Result__init_in(&result, &result_storage);
+        if (example_interfaces__action__Fibonacci_Result__deserialize(&result, result_buf,
+                                                                      result_len) == 0) {
             printf("Result received: [");
             for (uint32_t i = 0; i < result.sequence.size; i++) {
                 if (i > 0) printf(", ");

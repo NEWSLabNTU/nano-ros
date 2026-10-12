@@ -25,6 +25,57 @@ pub fn to_snake_case(s: &str) -> String {
     result
 }
 
+/// rosidl's `convert_camel_case_to_lower_case_underscore`: the file name
+/// rosidl_generator_c gives a type's header (`LaserScan` -> `laser_scan`,
+/// `UInt8` -> `u_int8`, `Float32MultiArray` -> `float32_multi_array`).
+///
+/// Two passes, as upstream: an underscore before a capital that starts a
+/// lower-case run, then before a capital that follows a lower-case letter or a
+/// digit. [`to_snake_case`] is the C++ and Rust surfaces' rule and differs on
+/// both the digit case and the acronym case.
+pub fn to_rosidl_snake_case(s: &str) -> String {
+    let c: Vec<char> = s.chars().collect();
+    // Pass 1: `(.)([A-Z][a-z]+)` -> `\1_\2`, non-overlapping, left to right.
+    let mut p1: Vec<char> = Vec::with_capacity(c.len() + 4);
+    let mut i = 0;
+    while i < c.len() {
+        if i + 2 < c.len() && c[i + 1].is_ascii_uppercase() && c[i + 2].is_ascii_lowercase() {
+            // match: c[i] then [A-Z][a-z]+
+            p1.push(c[i]);
+            p1.push('_');
+            let mut j = i + 1;
+            p1.push(c[j]);
+            j += 1;
+            while j < c.len() && c[j].is_ascii_lowercase() {
+                p1.push(c[j]);
+                j += 1;
+            }
+            i = j;
+        } else {
+            p1.push(c[i]);
+            i += 1;
+        }
+    }
+    // Pass 2: `([a-z0-9])([A-Z])` -> `\1_\2`, non-overlapping.
+    let mut out = String::with_capacity(p1.len() + 4);
+    let mut k = 0;
+    while k < p1.len() {
+        if k + 1 < p1.len()
+            && (p1[k].is_ascii_lowercase() || p1[k].is_ascii_digit())
+            && p1[k + 1].is_ascii_uppercase()
+        {
+            out.push(p1[k]);
+            out.push('_');
+            out.push(p1[k + 1]);
+            k += 2;
+        } else {
+            out.push(p1[k]);
+            k += 1;
+        }
+    }
+    out.to_lowercase()
+}
+
 /// Extract all package dependencies from a message
 pub fn extract_dependencies(message: &Message) -> BTreeSet<String> {
     let mut deps = BTreeSet::new();

@@ -379,17 +379,12 @@ pub fn generate_c_message_package_with_lookup(
         if let Some(FieldType::NamespacedType { package, name }) = field_type {
             let pkg = package.as_deref().unwrap_or(package_name);
             let dep = to_c_package_name(pkg);
-            let header_filename = artifact_names(Surface::C, Kind::Msg, pkg, name).header;
-            let type_header = if dep != c_pkg_name {
-                // Cross-package: include with subdirectory path
-                if !dependencies.contains(&dep) {
-                    dependencies.push(dep.clone());
-                }
-                format!("{}/msg/{}", dep, header_filename)
-            } else {
-                // Intra-package: include from same msg/ directory
-                header_filename
-            };
+            if dep != c_pkg_name && !dependencies.contains(&dep) {
+                dependencies.push(dep.clone());
+            }
+            // rosidl's include path, intra-package too: a header named
+            // `string.h` must never be reached by a bare quoted name.
+            let type_header = crate::generator::naming::c_msg_header_path(pkg, name);
             if !type_includes.contains(&type_header) {
                 type_includes.push(type_header);
             }
@@ -434,10 +429,13 @@ pub fn generate_c_message_package_with_lookup(
     )?;
 
     // Generate header
+    let include_path = crate::generator::naming::c_msg_header_path(package_name, message_name);
     let header_template = MessageCHeaderTemplate {
         package_name,
         message_name,
         type_hash,
+        c_package_name: c_pkg_name.clone(),
+        include_path: include_path.clone(),
         guard_name,
         struct_name: struct_name.clone(),
         constant_prefix,
@@ -462,11 +460,13 @@ pub fn generate_c_message_package_with_lookup(
         package_name,
         message_name,
         type_hash,
-        header_name: header_name.clone(),
+        c_package_name: c_pkg_name,
+        include_path,
         struct_name,
         fields,
         has_fields,
         has_view,
+        rx_max_serialized_size: bound.rx,
     };
     let source = crate::render::render_c("message.c", &source_template)
         .map_err(|e| GeneratorError::RenderError(e.to_string()))?;

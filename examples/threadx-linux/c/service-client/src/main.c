@@ -87,8 +87,8 @@ int nros_app_main(int argc, char** argv) {
 
     // Build type info using generated type name/hash
     rclc_service_type_t add_two_ints_type = {
-        .type_name = example_interfaces_srv_add_two_ints_get_type_name(),
-        .type_hash = example_interfaces_srv_add_two_ints_get_type_hash(),
+        .type_name = example_interfaces__srv__AddTwoInts__get_type_name(),
+        .type_hash = example_interfaces__srv__AddTwoInts__get_type_hash(),
     };
 
     RCLC_CHECK_RET(rclc_support_init(&app.support, locator, domain_id), 1);
@@ -107,10 +107,10 @@ int nros_app_main(int argc, char** argv) {
     int exit_code = 0;
 
     // Prepare the single request using the generated type
-    example_interfaces_srv_add_two_ints_request request;
-    example_interfaces_srv_add_two_ints_response response;
-    example_interfaces_srv_add_two_ints_request_init(&request);
-    example_interfaces_srv_add_two_ints_response_init(&response);
+    example_interfaces__srv__AddTwoInts_Request request;
+    example_interfaces__srv__AddTwoInts_Response response;
+    memset(&request, 0, sizeof(request));
+    memset(&response, 0, sizeof(response));
     request.a = a;
     request.b = b;
 
@@ -119,7 +119,7 @@ int nros_app_main(int argc, char** argv) {
     uint8_t req_buf[256];
     uint8_t resp_buf[256];
 
-    rcl_ret_t ret = example_interfaces_srv_add_two_ints_client_call(
+    rcl_ret_t ret = example_interfaces__srv__AddTwoInts__client_call(
         &app.client, &request, &response, req_buf, sizeof(req_buf), resp_buf, sizeof(resp_buf));
 
     if (ret == RCL_RET_OK) {
@@ -136,9 +136,6 @@ int nros_app_main(int argc, char** argv) {
         fprintf(stderr, "Service call failed with error %d\n", ret);
         exit_code = 1;
     }
-
-    example_interfaces_srv_add_two_ints_request_fini(&request);
-    example_interfaces_srv_add_two_ints_response_fini(&response);
 
     // Cleanup
     printf("\nShutting down...\n");

@@ -19,14 +19,14 @@ typedef struct {
 
 static void on_raw(const uint8_t* data, size_t len, void* ctx) {
     listener_t* self = (listener_t*)ctx;
-    std_msgs_msg_int32 msg;
+    std_msgs__msg__Int32 msg;
     /* issue 0737 — say why, never just `return`. A silent drop here is
      * indistinguishable from "the message never arrived", and that ambiguity
      * cost two hosts a full investigation each: the sample was matched, stored
      * and taken (Cyclone's own trace said `take: returning 1`) while the only
      * observable was an absence of output. Whatever is wrong, the reader is
      * entitled to know a message reached this callback and was rejected. */
-    if (std_msgs_msg_int32_deserialize(&msg, data, len) != 0) {
+    if (std_msgs__msg__Int32__deserialize(&msg, data, len) != 0) {
         fprintf(stderr, "listener: DROPPED a sample — deserialize failed, %zu byte(s)\n", len);
         return;
     }
@@ -42,7 +42,7 @@ static rcl_ret_t listener_configure(const nros_cpp_node_t* node, void* executor,
     self->recv = 0;
     size_t handle;
     int32_t rc =
-        nros_cpp_subscription_register(node, "/chatter", std_msgs_msg_int32_get_type_name(), "",
+        nros_cpp_subscription_register(node, "/chatter", std_msgs__msg__Int32__get_type_name(), "",
                                        rclc_c_qos_default(), on_raw, self, &handle,
                                        /*options=*/NULL); /* phase-402: NULL = defaults */
     if (rc == 0) {

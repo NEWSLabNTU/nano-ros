@@ -1038,10 +1038,21 @@ snippet_dir="$repo_root/packages/testing/nros-tests/fixtures/cpp_compat_snippets
 # status and diagnostics are RECORDED (`.verdict`, `verdict.stderr`) and the
 # build succeeds whatever the compiler said — the shape issue 1620 gave cargo and
 # cmake, for a snippet that MUST FAIL (`platform_hdr_baremetal_heap_no_malloc`).
+#
+# A `.c` snippet (phase-492 W7/W8, the `c_rosidl_*` refusals) is compiled as
+# C11 by `${CC:-cc}` over the same include set plus the committed rosidl-laid-out
+# codegen goldens, so it can `#include <std_msgs/msg/string.h>` as a ported file
+# does. One snippet per id: a `.c` beside a `.cpp` of the same id is refused.
 cxx_syntax_check() {
     local id="$1" mode="${2:-stamp}"
     local src="$snippet_dir/$id.cpp"
     local staged="$out_root/$id"
+    local lang=cxx
+    if [ -f "$snippet_dir/$id.c" ]; then
+        [ -f "$src" ] && { echo "cxx-syntax: $id has BOTH a .c and a .cpp snippet" >&2; return 2; }
+        src="$snippet_dir/$id.c"
+        lang=c
+    fi
     [ -f "$src" ] || { echo "cxx-syntax: snippet missing: $src" >&2; return 2; }
     echo "== cxx-syntax${mode/#stamp/}: $id =="
     mkdir -p "$staged"
@@ -1102,16 +1113,23 @@ cxx_syntax_check() {
         platform_hdr_*) ;;
         *) std_opt=(-DNROS_CPP_STD=1) ;;
     esac
+    local lang_std=-std=c++14
+    if [ "$lang" = c ]; then
+        cxx="${CC:-cc}"
+        lang_std=-std=c11
+        std_opt=()
+        inc+=(-I "$repo_root/packages/cli/rosidl-codegen/tests/fixtures/fingerprint-corpus/expected/rosidl")
+    fi
     rm -f "$staged/deps.d"
     if [ "$mode" = verdict ]; then
         _cc_resolver_arg=""
-        _cc_capture "$staged" verdict "$cxx" -std=c++14 -fsyntax-only \
+        _cc_capture "$staged" verdict "$cxx" "$lang_std" -fsyntax-only \
             "${std_opt[@]+"${std_opt[@]}"}" -MD -MF "$staged/deps.d" "${inc[@]}" "$src"
         _cc_write_verdict_stamp "$staged" "$_cc_last_rc"
         echo "   recorded $staged/.verdict (exit=$_cc_last_rc)"
         return 0
     fi
-    if "$cxx" -std=c++14 -fsyntax-only "${std_opt[@]+"${std_opt[@]}"}" -MD -MF "$staged/deps.d" "${inc[@]}" "$src"; then
+    if "$cxx" "$lang_std" -fsyntax-only "${std_opt[@]+"${std_opt[@]}"}" -MD -MF "$staged/deps.d" "${inc[@]}" "$src"; then
         nros_write_compile_ok "$staged"
         echo "   stamped $staged/.compile-ok"
     else

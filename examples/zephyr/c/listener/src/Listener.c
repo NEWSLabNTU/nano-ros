@@ -17,20 +17,22 @@
 
 #include <nros/component.h>
 
-#include <std_msgs/msg/std_msgs_msg_string.h>
+#include <std_msgs/msg/string.h>
 
 typedef struct {
     int recv;
     /* Decoded message lives in the component (not the callback stack):
      * String is ~256 B and RTOS dispatch stacks are small. */
-    std_msgs_msg_string msg;
+    std_msgs__msg__String msg;
+    /* The bytes behind `msg.data` (phase-492 W7), wired once in configure;
+     * a longer sample is refused, never truncated. */
+    std_msgs__msg__String__Storage msg_storage;
 } listener_t;
 
 static void on_raw(const uint8_t* data, size_t len, void* ctx) {
     listener_t* self = (listener_t*)ctx;
-    std_msgs_msg_string_init(&self->msg);
-    if (std_msgs_msg_string_deserialize(&self->msg, data, len) == 0) {
-        printf("I heard: [%s]\n", self->msg.data);
+    if (std_msgs__msg__String__deserialize(&self->msg, data, len) == 0) {
+        printf("I heard: [%s]\n", self->msg.data.data);
         self->recv++;
     }
 }
@@ -38,9 +40,10 @@ static void on_raw(const uint8_t* data, size_t len, void* ctx) {
 static rcl_ret_t listener_configure(const nros_cpp_node_t* node, void* executor, listener_t* self) {
     setvbuf(stdout, NULL, _IONBF, 0);
     (void)executor; /* node-scoped sub; executor unused */
+    std_msgs__msg__String__init_in(&self->msg, &self->msg_storage);
     size_t handle;
     int32_t rc =
-        nros_cpp_subscription_register(node, "/chatter", std_msgs_msg_string_get_type_name(), "",
+        nros_cpp_subscription_register(node, "/chatter", std_msgs__msg__String__get_type_name(), "",
                                        rclc_c_qos_default(), on_raw, self, &handle,
                                        /*options=*/NULL); /* phase-402: NULL = defaults */
     if (rc == 0) {

@@ -133,10 +133,30 @@ static rmw_ret_t stub_destroy_publisher(rmw_publisher_t* publisher) {
     return NROS_RMW_RET_UNSUPPORTED;
 }
 
+/* phase-492 W8 — in ACCEPT mode a publish succeeds and its bytes are kept, so
+ * a C probe can compare what `rcl_publish` put on the "wire" with what the
+ * message's own serialiser produces. Outside accept mode it still refuses. */
+static uint8_t s_last_payload[1024];
+static size_t s_last_payload_len = 0;
+static uint32_t s_publish_count = 0;
+
 static rmw_ret_t stub_publish(const rmw_publisher_t* publisher, rmw_byte_span_t payload) {
     (void)publisher;
-    (void)payload;
-    return NROS_RMW_RET_UNSUPPORTED;
+    if (!s_accept_entities) return NROS_RMW_RET_UNSUPPORTED;
+    if (payload.len > sizeof(s_last_payload)) return NROS_RMW_RET_ERROR;
+    memcpy(s_last_payload, payload.data, payload.len);
+    s_last_payload_len = payload.len;
+    s_publish_count++;
+    return NROS_RMW_RET_OK;
+}
+
+const uint8_t* nros_stub_rmw_last_payload(size_t* len) {
+    if (len != NULL) *len = s_last_payload_len;
+    return s_last_payload;
+}
+
+uint32_t nros_stub_rmw_publish_count(void) {
+    return s_publish_count;
 }
 
 static rmw_ret_t

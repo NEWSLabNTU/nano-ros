@@ -38,8 +38,12 @@ static struct {
     rcl_node_t node;
     rcl_action_client_t action_client;
     rclc_executor_t executor;
-    example_interfaces_action_fibonacci_feedback fb;
-    example_interfaces_action_fibonacci_result result;
+    example_interfaces__action__Fibonacci_Feedback fb;
+    example_interfaces__action__Fibonacci_Result result;
+    // The bytes behind `fb.sequence` / `result.sequence` (phase-492 W7): the
+    // deserializer writes into them and refuses a longer sequence.
+    example_interfaces__action__Fibonacci_Feedback__Storage fb_storage;
+    example_interfaces__action__Fibonacci_Result__Storage result_storage;
     uint8_t result_buf[512];
 } app;
 
@@ -107,8 +111,8 @@ static void feedback_callback(const rclc_goal_uuid_t* goal_uuid, const uint8_t* 
                               size_t feedback_len, void* context) {
     (void)goal_uuid;
     (void)context;
-    if (example_interfaces_action_fibonacci_feedback_deserialize(&app.fb, feedback, feedback_len) !=
-        0) {
+    if (example_interfaces__action__Fibonacci_Feedback__deserialize(&app.fb, feedback,
+                                                                    feedback_len) != 0) {
         emit(RCLC_LOG_SEVERITY_ERROR, "Failed to deserialize feedback", __FILE__, __LINE__);
         return;
     }
@@ -134,8 +138,8 @@ int nros_app_main(int argc, char** argv) {
     (void)argv;
 
     rclc_action_type_t fibonacci_type = {
-        .type_name = example_interfaces_action_fibonacci_get_type_name(),
-        .type_hash = example_interfaces_action_fibonacci_get_type_hash(),
+        .type_name = example_interfaces__action__Fibonacci__get_type_name(),
+        .type_hash = example_interfaces__action__Fibonacci__get_type_hash(),
         .goal_serialized_size_max = 8,
         .result_serialized_size_max = 264,
         .feedback_serialized_size_max = 264,
@@ -144,6 +148,8 @@ int nros_app_main(int argc, char** argv) {
     // `NROS_ENTRY_LOCATOR` is the one producer of the compile-time connect
     // configuration (`<nros/entry_config.h>`, issue 0946); on this leaf it is
     // the empty bottom rung — baking `system.toml`'s locator is issue 1512's.
+    example_interfaces__action__Fibonacci_Feedback__init_in(&app.fb, &app.fb_storage);
+    example_interfaces__action__Fibonacci_Result__init_in(&app.result, &app.result_storage);
     RCLC_CHECK_RET(
         rclc_support_init(&app.support, NROS_ENTRY_LOCATOR, (uint8_t)NROS_ENTRY_DOMAIN_ID), 1);
     RCLC_CHECK_RET(rclc_node_init_default(&app.node, "fibonacci_action_client", "/", &app.support),
@@ -165,13 +171,13 @@ int nros_app_main(int argc, char** argv) {
     }
 
     rcl_ret_t ret = RCL_RET_OK;
-    example_interfaces_action_fibonacci_goal goal;
-    example_interfaces_action_fibonacci_goal_init(&goal);
+    example_interfaces__action__Fibonacci_Goal goal;
+    memset(&goal, 0, sizeof(goal));
     goal.order = 10;
     uint8_t goal_buf[64];
     size_t goal_len = 0;
-    if (example_interfaces_action_fibonacci_goal_serialize(&goal, goal_buf, sizeof(goal_buf),
-                                                           &goal_len) != 0) {
+    if (example_interfaces__action__Fibonacci_Goal__serialize(&goal, goal_buf, sizeof(goal_buf),
+                                                              &goal_len) != 0) {
         emit(RCLC_LOG_SEVERITY_ERROR, "Failed to serialize goal", __FILE__, __LINE__);
         ret = RCL_RET_ERROR;
         goto cleanup;
@@ -204,8 +210,8 @@ int nros_app_main(int argc, char** argv) {
     ret = rclc_action_get_result(&app.action_client, &app.executor, &goal_uuid, &final_status,
                                  app.result_buf, sizeof(app.result_buf), &result_len);
     if (ret == RCL_RET_OK) {
-        if (example_interfaces_action_fibonacci_result_deserialize(&app.result, app.result_buf,
-                                                                   result_len) == 0) {
+        if (example_interfaces__action__Fibonacci_Result__deserialize(&app.result, app.result_buf,
+                                                                      result_len) == 0) {
             char line[64u * 13u + 32u];
             size_t len = append_str(line, sizeof(line), 0u, "Result received: ");
             len = append_sequence(line, sizeof(line), len, app.result.sequence.data,

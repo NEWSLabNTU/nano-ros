@@ -31,8 +31,8 @@ static bool add_server_callback(const uint8_t* req_data, size_t req_len, uint8_t
                                 size_t resp_cap, size_t* resp_len, void* ctx) {
     add_server_t* self = (add_server_t*)ctx;
 
-    example_interfaces_srv_add_two_ints_request req;
-    if (example_interfaces_srv_add_two_ints_request_deserialize(&req, req_data, req_len) != 0) {
+    example_interfaces__srv__AddTwoInts_Request req;
+    if (example_interfaces__srv__AddTwoInts_Request__deserialize(&req, req_data, req_len) != 0) {
         /* issue 0737 — say why. A silent reject is indistinguishable from
          * a request that never arrived. */
         fprintf(stderr, "[c_add_server_pkg] request DROPPED — deserialize failed, %zu byte(s)\n",
@@ -42,8 +42,8 @@ static bool add_server_callback(const uint8_t* req_data, size_t req_len, uint8_t
 
     self->request_count++;
 
-    example_interfaces_srv_add_two_ints_response resp;
-    example_interfaces_srv_add_two_ints_response_init(&resp);
+    example_interfaces__srv__AddTwoInts_Response resp;
+    memset(&resp, 0, sizeof(resp));
     resp.sum = req.a + req.b;
 
     printf("[c_add_server_pkg] %lld + %lld = %lld\n", (long long)req.a, (long long)req.b,
@@ -51,7 +51,7 @@ static bool add_server_callback(const uint8_t* req_data, size_t req_len, uint8_t
 
     size_t len = 0;
     int32_t len_rc =
-        example_interfaces_srv_add_two_ints_response_serialize(&resp, resp_data, resp_cap, &len);
+        example_interfaces__srv__AddTwoInts_Response__serialize(&resp, resp_data, resp_cap, &len);
     if (len_rc != 0) {
         return false;
     }
@@ -68,8 +68,8 @@ static rcl_ret_t add_server_configure(const nros_cpp_node_t* node, void* executo
 
     size_t handle;
     int32_t rc = nros_cpp_service_server_register(
-        node, "/add_two_ints", example_interfaces_srv_add_two_ints_get_type_name(),
-        example_interfaces_srv_add_two_ints_get_type_hash(), rclc_c_qos_default(),
+        node, "/add_two_ints", example_interfaces__srv__AddTwoInts__get_type_name(),
+        example_interfaces__srv__AddTwoInts__get_type_hash(), rclc_c_qos_default(),
         add_server_callback, self, /*sched_context=*/0, &handle);
     if (rc == 0) {
         printf("[c_add_server_pkg] add_two_ints server ready\n");

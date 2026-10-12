@@ -47,12 +47,12 @@ static void on_chatter_validated(const uint8_t* data, size_t len, int64_t gap, b
                duplicate ? "true" : "false");
         fflush(stdout);
 
-        std_msgs_msg_int32 msg;
-        std_msgs_msg_int32_init(&msg);
+        std_msgs__msg__Int32 msg;
+        memset(&msg, 0, sizeof(msg));
         msg.data = self->received;
         uint8_t buf[16];
         size_t buf_len = 0;
-        if (std_msgs_msg_int32_serialize(&msg, buf, sizeof(buf), &buf_len) == 0) {
+        if (std_msgs__msg__Int32__serialize(&msg, buf, sizeof(buf), &buf_len) == 0) {
             nros_cpp_publish_raw(self->pub, buf, buf_len);
         }
     } else {
@@ -72,8 +72,8 @@ static rcl_ret_t listener_configure(const nros_cpp_node_t* node, void* executor,
     self->integrity_faults = 0;
 
     /* Create /safe_ok publisher to report CRC-valid counts */
-    int32_t rc = nros_cpp_publisher_create(node, "/safe_ok", std_msgs_msg_int32_get_type_name(),
-                                           std_msgs_msg_int32_get_type_hash(), rclc_c_qos_default(),
+    int32_t rc = nros_cpp_publisher_create(node, "/safe_ok", std_msgs__msg__Int32__get_type_name(),
+                                           std_msgs__msg__Int32__get_type_hash(), rclc_c_qos_default(),
                                            self->pub);
     if (rc != 0) {
         return rc;
@@ -84,7 +84,7 @@ static rcl_ret_t listener_configure(const nros_cpp_node_t* node, void* executor,
      * Requires NROS_SAFETY_E2E=ON. */
     size_t handle;
     return nros_cpp_subscription_register_validated(
-        node, "/chatter", std_msgs_msg_int32_get_type_name(), std_msgs_msg_int32_get_type_hash(),
+        node, "/chatter", std_msgs__msg__Int32__get_type_name(), std_msgs__msg__Int32__get_type_hash(),
         rclc_c_qos_default(), on_chatter_validated, self, &handle,
         /*options=*/NULL); /* phase-402: NULL = defaults */
 }

@@ -4035,6 +4035,34 @@ id = "platform_hdr_baremetal_heap_no_malloc"
 builder = "cxx-syntax-verdict"
 output = ".verdict"
 
+# phase-492 W7/W8 — the C message surface's REFUSALS, as recorded verdicts
+# (issue 1620's shape for a compile that MUST FAIL). Each is a `.c` snippet in
+# `fixtures/cpp_compat_snippets/`, compiled as C11 against the committed
+# rosidl-laid-out codegen goldens, and each must fail NAMING its reason:
+# `rosidl_message_type_support_t` is undeclared, the descriptor has no
+# `typesupport_identifier`, `rmw_publisher_allocation_t` is incomplete, and
+# rosidl's allocating `__init` names `__init_in`. Consumer:
+# tests/c_rosidl_refusals.rs.
+[[compile_check_fixture]]
+id = "c_rosidl_typesupport_struct_refused"
+builder = "cxx-syntax-verdict"
+output = ".verdict"
+
+[[compile_check_fixture]]
+id = "c_rosidl_typesupport_member_refused"
+builder = "cxx-syntax-verdict"
+output = ".verdict"
+
+[[compile_check_fixture]]
+id = "c_rosidl_stack_publisher_allocation_refused"
+builder = "cxx-syntax-verdict"
+output = ".verdict"
+
+[[compile_check_fixture]]
+id = "c_rosidl_allocating_init_refused"
+builder = "cxx-syntax-verdict"
+output = ".verdict"
+
 # issue 1656 — the #27/#36 two-libc precedence gate
 # (`cross_libc_precedence_gate.rs`), three recorded CROSS compiles of one
 # self-contained fixture. RELATIVE, so the test reads all three: the toolchain

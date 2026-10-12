@@ -244,9 +244,13 @@ def validate_compile_check_fixture(entry):
             _fail(
                 entry, f"{builder} rows take no 'dir' (the snippet is resolved by id)"
             )
-        snippet = CXX_SNIPPET_DIR / f"{entry['id']}.cpp"
-        if not snippet.is_file():
-            _fail(entry, f"{builder} row has no snippet at {snippet.relative_to(SCRIPT_ROOT)}")
+        # phase-492 W7/W8 — a `.c` snippet is the C11 form of the same row.
+        snippets = [CXX_SNIPPET_DIR / f"{entry['id']}.{ext}" for ext in ("cpp", "c")]
+        present = [p for p in snippets if p.is_file()]
+        if not present:
+            _fail(entry, f"{builder} row has no snippet at {snippets[0].relative_to(SCRIPT_ROOT)} (or .c)")
+        if len(present) > 1:
+            _fail(entry, f"{builder} row has both a .cpp and a .c snippet; keep one")
     else:
         if not entry.get("dir"):
             _fail(entry, f"missing required key 'dir' for builder {builder!r}")

@@ -12,7 +12,7 @@
 ///
 /// `qos_talker_configure` creates the QoS-tagged publisher on /chatter + a
 /// 1 Hz timer that publishes an Int32 counter via the generated C serializer
-/// (std_msgs_msg_int32_serialize) — identical wire shape to the committed
+/// (std_msgs__msg__Int32__serialize) — identical wire shape to the committed
 /// pure-C talker, just with a non-default QoS contract.
 
 #include <stddef.h>
@@ -46,12 +46,12 @@ static nros_cpp_qos_t qos_profile(void) {
 
 static void on_tick(void* ctx) {
     qos_talker_t* self = (qos_talker_t*)ctx;
-    std_msgs_msg_int32 msg;
-    std_msgs_msg_int32_init(&msg);
+    std_msgs__msg__Int32 msg;
+    memset(&msg, 0, sizeof(msg));
     msg.data = self->count;
     uint8_t buf[16];
     size_t len = 0;
-    if (std_msgs_msg_int32_serialize(&msg, buf, sizeof(buf), &len) == 0 &&
+    if (std_msgs__msg__Int32__serialize(&msg, buf, sizeof(buf), &len) == 0 &&
         nros_cpp_publish_raw(self->pub, buf, len) == 0) {
         printf("Published: %d\n", (int)self->count);
     }
@@ -65,8 +65,8 @@ static rcl_ret_t qos_talker_configure(const nros_cpp_node_t* node, void* executo
     setvbuf(stdout, NULL, _IOLBF, 0);
     self->count = 0;
     int32_t rc =
-        nros_cpp_publisher_create(node, "/chatter", std_msgs_msg_int32_get_type_name(),
-                                  std_msgs_msg_int32_get_type_hash(), qos_profile(), self->pub);
+        nros_cpp_publisher_create(node, "/chatter", std_msgs__msg__Int32__get_type_name(),
+                                  std_msgs__msg__Int32__get_type_hash(), qos_profile(), self->pub);
     if (rc != 0) {
         return rc;
     }

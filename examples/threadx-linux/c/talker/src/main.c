@@ -24,7 +24,10 @@
 
 typedef struct {
     rcl_publisher_t* publisher;
-    std_msgs_msg_string message;
+    std_msgs__msg__String message;
+    // The bytes behind `message.data` (phase-492 W7): the caller owns them,
+    // wired by `std_msgs__msg__String__init_in` below. Nothing allocates.
+    std_msgs__msg__String__Storage message_storage;
     int count;
 } talker_context_t;
 
@@ -64,9 +67,10 @@ static void timer_callback(struct rcl_timer_t* timer, void* context) {
     // Pre-increment so the first payload is "Hello World: 1", matching the
     // official ROS 2 demo talker (demo_nodes_cpp `talker.cpp`).
     ctx->count++;
-    snprintf(ctx->message.data, sizeof(ctx->message.data), "Hello World: %d", ctx->count);
-    RCLC_SOFTCHECK(std_msgs_msg_string_publish(ctx->publisher, &ctx->message));
-    printf("Publishing: '%s'\n", ctx->message.data);
+    snprintf(ctx->message.data.data, ctx->message.data.capacity, "Hello World: %d", ctx->count);
+    ctx->message.data.size = strlen(ctx->message.data.data);
+    RCLC_SOFTCHECK(rcl_publish(ctx->publisher, &ctx->message, NULL));
+    printf("Publishing: '%s'\n", ctx->message.data.data);
 }
 
 // ----------------------------------------------------------------------------
@@ -103,7 +107,8 @@ int nros_app_main(int argc, char** argv) {
     RCLC_CHECK_RET(rclc_node_init_default(&app.node, "talker", "/", &app.support), 1);
 
     RCLC_CHECK_RET(rclc_publisher_init_default(&app.publisher, &app.node,
-                                               std_msgs_msg_string_get_type_support(), "/chatter"),
+                                               ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, String),
+                                               "/chatter"),
                    1);
 
     // Create application context
@@ -112,7 +117,7 @@ int nros_app_main(int argc, char** argv) {
         .message = {0},
         .count = 0,
     };
-    std_msgs_msg_string_init(&app.talker_ctx.message);
+    std_msgs__msg__String__init_in(&app.talker_ctx.message, &app.talker_ctx.message_storage);
 
     RCLC_CHECK_RET(
         rcl_timer_init(&app.timer, &app.support, 1000000000ULL, timer_callback, &app.talker_ctx),

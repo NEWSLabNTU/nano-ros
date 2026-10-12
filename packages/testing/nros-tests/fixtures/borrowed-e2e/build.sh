@@ -118,14 +118,14 @@ if command -v gcc >/dev/null 2>&1; then
         && cargo test -p rosidl-codegen emit_c_borrowed_e2e -- --ignored >/dev/null 2>&1 )
     _copy_emitter_depinfo
     gen="$repo_root/tmp/borrowed_e2e"
-    [ -f "$gen/e2e_msgs_msg_borrowed.h" ] || { echo "FAIL: generated C header missing" >&2; exit 1; }
+    [ -f "$gen/e2e_msgs/msg/borrowed.h" ] || { echo "FAIL: generated C header missing" >&2; exit 1; }
     driver_c="$script_dir/c/driver.c"
     echo "borrowed-e2e: compiling C proof binary…"
     gcc -std=c11 -D_DEFAULT_SOURCE -Wall -DNROS_PLATFORM_POSIX -MD -MF "$out_dir/c.d" \
         -I "$cfg_dir" -I "$platform_inc" \
         -I "$repo_root/packages/api/nros-c/include" \
         -I "$gen" \
-        "$driver_c" "$gen/e2e_msgs_msg_borrowed.c" "$anchor_o" \
+        "$driver_c" "$gen/e2e_msgs/msg/borrowed.c" "$anchor_o" \
         "$lib" -lpthread -ldl -lm \
         -o "$out_dir/borrowed_c_e2e"
     echo "   built $out_dir/borrowed_c_e2e"

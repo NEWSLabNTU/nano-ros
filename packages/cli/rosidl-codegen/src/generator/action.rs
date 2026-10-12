@@ -212,9 +212,9 @@ pub fn generate_nros_action_package(
     let result_msg = format!("{action_name}_Result");
     let feedback_msg = format!("{action_name}_Feedback");
     // Issues 0343/0344 — Rust srv/action share the message deserialize macro
-    // (`_nros_field.jinja`) so `heap` works here, and `view` emits a
-    // `{Payload}View` since issue 0346. The policy table lives on
-    // `ensure_supported_storage_for_payload`.
+    // (`_nros_field.jinja`) so `heap` works here; `borrowed` still has no view
+    // type, and the C emitter has no `_fini` to free heap fields with. The
+    // policy table lives on `ensure_supported_storage_for_payload`.
     ensure_supported_storage_for_payload(
         "action",
         PayloadLang::Rust,
@@ -418,9 +418,9 @@ pub fn generate_nros_inline_action(
     let result_msg = format!("{action_name}_Result");
     let feedback_msg = format!("{action_name}_Feedback");
     // Issues 0343/0344 — Rust srv/action share the message deserialize macro
-    // (`_nros_field.jinja`) so `heap` works here, and `view` emits a
-    // `{Payload}View` since issue 0346. The policy table lives on
-    // `ensure_supported_storage_for_payload`.
+    // (`_nros_field.jinja`) so `heap` works here; `borrowed` still has no view
+    // type, and the C emitter has no `_fini` to free heap fields with. The
+    // policy table lives on `ensure_supported_storage_for_payload`.
     ensure_supported_storage_for_payload(
         "action",
         PayloadLang::Rust,
@@ -623,9 +623,10 @@ pub fn generate_c_action_package(
     // Every name derives from one stem — see `generator::naming`.
     let names = artifact_names(Surface::C, Kind::Action, package_name, action_name);
     let action_struct_name = names.stem.clone();
-    let goal_struct_name = format!("{}_goal", names.stem);
-    let result_struct_name = format!("{}_result", names.stem);
-    let feedback_struct_name = format!("{}_feedback", names.stem);
+    // rosidl: `<pkg>__action__<Name>_Goal` / `_Result` / `_Feedback`.
+    let goal_struct_name = format!("{}_Goal", names.stem);
+    let result_struct_name = format!("{}_Result", names.stem);
+    let feedback_struct_name = format!("{}_Feedback", names.stem);
     let guard_name = names.include_guard;
     let constant_prefix = names.constant_prefix;
     let header_name = names.header;
@@ -662,18 +663,10 @@ pub fn generate_c_action_package(
         if let Some(FieldType::NamespacedType { package, name }) = field_type {
             let pkg = package.as_deref().unwrap_or(package_name);
             let dep = to_c_package_name(pkg);
-            let header_filename = artifact_names(Surface::C, Kind::Msg, pkg, name).header;
-            let type_header = if dep != c_pkg_name {
-                // Cross-package: include with subdirectory path.
-                if !dependencies.contains(&dep) {
-                    dependencies.push(dep.clone());
-                }
-                format!("{}/msg/{}", dep, header_filename)
-            } else {
-                // Intra-package: the action .h lives at <pkg>/action/, so the
-                // msg header is one level up in ../msg/.
-                format!("../msg/{}", header_filename)
-            };
+            if dep != c_pkg_name && !dependencies.contains(&dep) {
+                dependencies.push(dep.clone());
+            }
+            let type_header = crate::generator::naming::c_msg_header_path(pkg, name);
             if !type_includes.contains(&type_header) {
                 type_includes.push(type_header);
             }
@@ -686,9 +679,9 @@ pub fn generate_c_action_package(
     let result_msg = format!("{action_name}_Result");
     let feedback_msg = format!("{action_name}_Feedback");
     // Issues 0343/0344 — Rust srv/action share the message deserialize macro
-    // (`_nros_field.jinja`) so `heap` works here, and `view` emits a
-    // `{Payload}View` since issue 0346. The policy table lives on
-    // `ensure_supported_storage_for_payload`.
+    // (`_nros_field.jinja`) so `heap` works here; `borrowed` still has no view
+    // type, and the C emitter has no `_fini` to free heap fields with. The
+    // policy table lives on `ensure_supported_storage_for_payload`.
     ensure_supported_storage_for_payload(
         "action",
         PayloadLang::C,
@@ -774,7 +767,9 @@ pub fn generate_c_action_package(
     let has_feedback_fields = !feedback_fields.is_empty();
 
     // Generate header
+    let include_path = format!("{c_pkg_name}/action/{header_name}");
     let header_template = ActionCHeaderTemplate {
+        c_package_name: c_pkg_name.clone(),
         has_view_goal: goal_fields.iter().any(|f| f.is_view),
         has_view_result: result_fields.iter().any(|f| f.is_view),
         has_view_feedback: feedback_fields.iter().any(|f| f.is_view),
@@ -811,7 +806,8 @@ pub fn generate_c_action_package(
         package_name,
         action_name,
         type_hash,
-        header_name: header_name.clone(),
+        c_package_name: c_pkg_name.clone(),
+        include_path,
         action_struct_name,
         goal_struct_name,
         result_struct_name,

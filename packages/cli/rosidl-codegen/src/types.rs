@@ -692,7 +692,7 @@ pub fn nros_type_for_field_with_mode(
 /// `cap` (resolved per-field from `nros-codegen.toml`, RFC-0033). All other
 /// field shapes — bounded strings/sequences, arrays, primitives, nested types,
 /// and sequence *element* types — keep their default rendering. Used by the
-/// `inline` storage mode; the resolver picks `cap`.
+/// `owned` storage mode; the resolver picks `cap`.
 pub fn nros_type_for_field_with_capacity(
     field_type: &FieldType,
     current_package: Option<&str>,
@@ -1095,212 +1095,108 @@ pub fn annotation_value_to_constant_value(
 // C Type Mapping (for nros-c)
 // ============================================================================
 
-/// Default string capacity for C strings (matches nros-c)
+/// Default string capacity, in characters, of a `__Storage` string buffer when
+/// nothing states one (the buffer holds this plus the terminating NUL).
 pub const C_DEFAULT_STRING_CAPACITY: usize = 256;
 
-/// Default sequence capacity for C arrays
+/// Default element count of a `__Storage` sequence buffer when nothing states
+/// one.
 pub const C_DEFAULT_SEQUENCE_CAPACITY: usize = 64;
 
-/// Get the C base type string for a field type (without array suffix)
-/// For array declarations in C, the array suffix comes after the variable name.
-/// Use `c_array_suffix_for_field` to get the suffix.
-pub fn c_type_for_field(field_type: &FieldType, _current_package: Option<&str>) -> String {
+/// The C member type of a field, in rosidl_generator_c's shape (RFC-0089,
+/// phase-492 W7): a string is `rosidl_runtime_c__String`, a sequence is
+/// `rosidl_runtime_c__<elem>__Sequence` / `<pkg>__msg__<Name>__Sequence`, a
+/// nested message is its struct, a fixed array is its element (the dimension is
+/// the [`c_array_suffix_for_field`]). Every string and sequence is
+/// `{data, size, capacity}` over memory the CALLER supplies, so nothing here
+/// depends on a capacity: that lives in the generated `__Storage`.
+pub fn c_type_for_field(field_type: &FieldType, current_package: Option<&str>) -> String {
     match field_type {
+        // rosidl maps a `.msg` `char` to IDL `uint8`, so its C member is uint8_t
+        // (the C++ surface keeps `char`, which is why this is not in
+        // `c_primitive_type`).
+        FieldType::Primitive(rosidl_parser::PrimitiveType::Char) => "uint8_t".to_string(),
         FieldType::Primitive(prim) => c_primitive_type(prim),
-
-        // Strings use char as base type, with array suffix for the size
-        FieldType::String | FieldType::BoundedString(_) => "char".to_string(),
-
-        FieldType::WString | FieldType::BoundedWString(_) => "char".to_string(),
-
-        // Arrays use the element type as base type, with array suffix for the size
-        FieldType::Array { element_type, .. } => c_type_for_field(element_type, _current_package),
-
-        // Sequences use anonymous struct
-        FieldType::Sequence { element_type } => {
-            c_sequence_struct(element_type, _current_package, C_DEFAULT_SEQUENCE_CAPACITY)
+        FieldType::String
+        | FieldType::BoundedString(_)
+        | FieldType::WString
+        | FieldType::BoundedWString(_) => "rosidl_runtime_c__String".to_string(),
+        FieldType::Array { element_type, .. } => c_type_for_field(element_type, current_package),
+        FieldType::Sequence { element_type } | FieldType::BoundedSequence { element_type, .. } => {
+            c_sequence_type(element_type, current_package)
         }
-
-        FieldType::BoundedSequence {
-            element_type,
-            max_size,
-        } => c_sequence_struct(element_type, _current_package, *max_size),
-
         FieldType::NamespacedType { package, name } => {
-            let pkg = package.as_deref().or(_current_package).unwrap_or("");
-            format!(
-                "struct {}_msg_{}",
-                to_c_package_name(pkg),
-                to_snake_case(name)
-            )
+            let pkg = package.as_deref().or(current_package).unwrap_or("");
+            crate::generator::naming::c_struct_name(pkg, crate::generator::naming::Kind::Msg, name)
         }
     }
 }
 
-/// Like [`c_type_for_field`], but overrides the capacity of a **top-level
-/// unbounded** `Sequence` with `cap` (RFC-0033, `inline` mode). Strings carry
-/// their capacity in the array suffix, not the base type, so the string arms
-/// are unchanged here — see [`c_array_suffix_for_field_with_capacity`].
-pub fn c_type_for_field_with_capacity(
-    field_type: &FieldType,
-    current_package: Option<&str>,
-    cap: usize,
-) -> String {
-    match field_type {
-        FieldType::Sequence { element_type } => {
-            c_sequence_struct(element_type, current_package, cap)
-        }
-        _ => c_type_for_field(field_type, current_package),
+/// rosidl's sequence type for an element: `rosidl_runtime_c__int64__Sequence`,
+/// `rosidl_runtime_c__String__Sequence`, `geometry_msgs__msg__Point__Sequence`.
+pub fn c_sequence_type(element_type: &FieldType, current_package: Option<&str>) -> String {
+    match element_type {
+        FieldType::Primitive(p) => format!("rosidl_runtime_c__{}__Sequence", rosidl_c_prim_word(p)),
+        FieldType::String
+        | FieldType::BoundedString(_)
+        | FieldType::WString
+        | FieldType::BoundedWString(_) => "rosidl_runtime_c__String__Sequence".to_string(),
+        other => format!("{}__Sequence", c_type_for_field(other, current_package)),
     }
 }
 
-/// The C anonymous struct for an inline sequence of `cap` elements.
-///
-/// # The dimension order, which was wrong in all three callers (phase-403 W7)
-///
-/// This existed three times as
-/// `"struct {{ uint32_t size; {elem} data{elem_suffix}[{cap}]; }}"`, which puts
-/// the ELEMENT's own suffix first: a `string[]` under the built-in 256/64 came
-/// out `char data[256][64]`, and C reads that as 256 slots of `char[64]` -- the
-/// two dimensions swapped, so the container held 256 strings of 63 characters
-/// where the config said 64 strings of 255. The total byte count is the same,
-/// which is why nothing caught it: the struct is the right SIZE and the wrong
-/// SHAPE, and `rclc_cdr_read_string(..., sizeof(data[i]))` then enforced the
-/// sequence cap on the string and no cap at all on the count.
-///
-/// Latent while a sequence element could only be bounded from a `.msg` (rare in
-/// stock interfaces, absent from the corpus). W7 makes it reachable from
-/// configuration and makes the numbers CLAIMED: the derived bound now says
-/// `cap` elements of `element_cap` bytes, and a struct with those two
-/// transposed is the inventory disagreeing with the storage in the same header.
-///
-/// One helper rather than a fourth copy of the format string, because three
-/// identical spellings drifting together is what hid it.
-fn c_sequence_struct(
-    element_type: &FieldType,
-    current_package: Option<&str>,
-    cap: usize,
-) -> String {
-    let elem = c_type_for_field(element_type, current_package);
-    // `data[cap]` first: `cap` elements, each of whatever shape the element
-    // itself declares (`[N]` for a string, empty for a scalar or nested struct).
-    let elem_suffix = c_array_suffix_for_field(element_type);
-    format!("struct {{ uint32_t size; {elem} data[{cap}]{elem_suffix}; }}")
-}
-
-/// Heap (`mode = "heap"`, RFC-0033) C rendering of a **top-level unbounded**
-/// `String` / `WString` or primitive `Sequence`, mirroring rclc's
-/// `rosidl_runtime_c__{String, <T>__Sequence}`: a `{ T* data; size_t size;
-/// size_t capacity; }` struct (no inline array). The deserializer mallocs;
-/// `<struct>_fini` frees. Returns `None` for shapes C-heap does not yet support
-/// (sequences of strings / nested messages) so the caller rejects them.
-pub fn c_type_for_field_heap(
-    field_type: &FieldType,
-    current_package: Option<&str>,
-) -> Option<String> {
-    match field_type {
-        // rclc `rosidl_runtime_c__String` shape.
-        FieldType::String | FieldType::WString => {
-            Some("struct { char* data; size_t size; size_t capacity; }".to_string())
-        }
-        FieldType::Sequence { element_type } => match element_type.as_ref() {
-            FieldType::Primitive(_) => {
-                let elem = c_type_for_field(element_type, current_package);
-                Some(format!(
-                    "struct {{ {elem}* data; size_t size; size_t capacity; }}"
-                ))
-            }
-            // Heap array of fixed-capacity strings (unbounded count, bounded
-            // element): `{ char (*data)[N]; size_t size; size_t capacity; }` — a
-            // single-level heap allocation; each element is an inline `char[N]`.
-            FieldType::String | FieldType::WString => Some(format!(
-                "struct {{ char (*data)[{}]; size_t size; size_t capacity; }}",
-                C_DEFAULT_STRING_CAPACITY
-            )),
-            FieldType::BoundedString(n) | FieldType::BoundedWString(n) => Some(format!(
-                "struct {{ char (*data)[{n}]; size_t size; size_t capacity; }}"
-            )),
-            // Heap array of nested message structs (each a fixed inline struct;
-            // its own heap fields are released by the element's `_fini`, which
-            // the sequence's `_fini` calls per element).
-            FieldType::NamespacedType { .. } => {
-                let elem = c_type_for_field(element_type, current_package);
-                Some(format!(
-                    "struct {{ {elem}* data; size_t size; size_t capacity; }}"
-                ))
-            }
-            _ => None,
-        },
-        _ => None,
+/// The word rosidl's `primitives_sequence.h` names a primitive by, after the
+/// `.msg` -> IDL mapping (`byte` -> `octet`, `char` -> `uint8`, `bool` ->
+/// `boolean`, `float32` -> `float`, `float64` -> `double`).
+fn rosidl_c_prim_word(prim: &rosidl_parser::PrimitiveType) -> &'static str {
+    use rosidl_parser::PrimitiveType;
+    match prim {
+        PrimitiveType::Bool => "boolean",
+        PrimitiveType::Byte => "octet",
+        PrimitiveType::Char => "uint8",
+        PrimitiveType::Int8 => "int8",
+        PrimitiveType::Int16 => "int16",
+        PrimitiveType::Int32 => "int32",
+        PrimitiveType::Int64 => "int64",
+        PrimitiveType::UInt8 => "uint8",
+        PrimitiveType::UInt16 => "uint16",
+        PrimitiveType::UInt32 => "uint32",
+        PrimitiveType::UInt64 => "uint64",
+        PrimitiveType::Float32 => "float",
+        PrimitiveType::Float64 => "double",
     }
 }
 
-/// Like [`c_array_suffix_for_field`], but overrides the capacity of a
-/// **top-level unbounded** `String` / `WString` (the `char[N]` size) with `cap`.
-pub fn c_array_suffix_for_field_with_capacity(field_type: &FieldType, cap: usize) -> String {
-    match field_type {
-        FieldType::String | FieldType::WString => format!("[{cap}]"),
-        _ => c_array_suffix_for_field(field_type),
-    }
-}
-
-/// Get the C array suffix for a field type (e.g., "[256]" for strings, "[3]" for arrays)
-/// This comes after the field name in C declarations: `char name[256];`
-/// RFC-0068 Stage 3 — the C `c_type` spelling, as a function a pack filter can
-/// call (phase-335 step 2). Reproduces `build_c_field`'s branch exactly from the
-/// neutral facts a `CField` now carries, so the type STRING is composed in the
-/// pack (via the `c_type` filter) rather than pre-baked by the builder.
+/// RFC-0068 Stage 3 — the C `c_type` spelling a pack filter calls. Since
+/// phase-492 W7 the member type no longer depends on the storage decision: the
+/// capacity lives in `__Storage`, so `is_configurable` / `is_heap` / `cap` are
+/// accepted and ignored.
 pub fn c_type_spelling(
     field_type: &FieldType,
-    is_configurable: bool,
-    is_heap: bool,
-    cap: usize,
+    _is_configurable: bool,
+    _is_heap: bool,
+    _cap: usize,
     current_package: Option<&str>,
 ) -> String {
-    if is_configurable {
-        if is_heap {
-            // Heap is only reached for shapes `c_type_for_field_heap` supports;
-            // the builder validated that, so `unwrap_or_default` never fires.
-            c_type_for_field_heap(field_type, current_package).unwrap_or_default()
-        } else {
-            c_type_for_field_with_capacity(field_type, current_package, cap)
-        }
-    } else {
-        c_type_for_field(field_type, current_package)
-    }
+    c_type_for_field(field_type, current_package)
 }
 
 /// RFC-0068 Stage 3 — the C `array_suffix` spelling (companion to
 /// [`c_type_spelling`]).
 pub fn c_array_suffix_spelling(
     field_type: &FieldType,
-    is_configurable: bool,
-    is_heap: bool,
-    cap: usize,
+    _is_configurable: bool,
+    _is_heap: bool,
+    _cap: usize,
 ) -> String {
-    if is_configurable {
-        if is_heap {
-            String::new()
-        } else {
-            c_array_suffix_for_field_with_capacity(field_type, cap)
-        }
-    } else {
-        c_array_suffix_for_field(field_type)
-    }
+    c_array_suffix_for_field(field_type)
 }
 
+/// The array dimension of a member (`[3]` for `float64[3]`), empty for every
+/// other shape: strings and sequences are `{data, size, capacity}` structs.
 pub fn c_array_suffix_for_field(field_type: &FieldType) -> String {
     match field_type {
-        FieldType::String => format!("[{}]", C_DEFAULT_STRING_CAPACITY),
-        FieldType::BoundedString(size) => format!("[{}]", size),
-        FieldType::WString => format!("[{}]", C_DEFAULT_STRING_CAPACITY),
-        FieldType::BoundedWString(size) => format!("[{}]", size),
-        FieldType::Array { element_type, size } => {
-            // For nested arrays (rare), we need to combine suffixes
-            let inner_suffix = c_array_suffix_for_field(element_type);
-            format!("[{}]{}", size, inner_suffix)
-        }
-        // Sequences and other types don't have array suffixes (they're inline structs or scalars)
+        FieldType::Array { size, .. } => format!("[{size}]"),
         _ => String::new(),
     }
 }
@@ -1565,7 +1461,7 @@ pub fn cpp_type_for_field(field_type: &FieldType, current_package: Option<&str>)
 }
 
 /// Like [`cpp_type_for_field`], but overrides the capacity of a **top-level
-/// unbounded** `String` / `WString` / `Sequence` with `cap` (RFC-0033, `inline`).
+/// unbounded** `String` / `WString` / `Sequence` with `cap` (RFC-0033, `owned`).
 pub fn cpp_type_for_field_with_capacity(
     field_type: &FieldType,
     current_package: Option<&str>,

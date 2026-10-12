@@ -12,7 +12,7 @@
 #
 # Regenerate after a DELIBERATE surface move (bump the constant first):
 #     python3 scripts/check-codegen-version-surface.py --write-baseline
-version 13
+version 14
 9a40c1a1fadbae06 cpp|fn|component.hpp|bind_subscription_sized
 4e2616f1497bc854 cpp|struct|fixed_sequence.hpp|FixedSequence
 05b2ecfd67796b30 cpp|struct|fixed_string.hpp|FixedString
@@ -90,8 +90,6 @@ c7aac2aeb09bf083 c|fn|nros_generated.h|rclc_cdr_write_u8
 058938cc394e0981 c|fn|nros_generated.h|rclc_client_set_response_callback
 91a0a392c4dad51c c|fn|nros_generated.h|rclc_client_take_response
 507938592cf094f5 c|fn|nros_generated.h|rclc_executor_add_service_raw
-f7eca686357f6841 c|fn|nros_generated.h|rclc_executor_add_subscription_typed_sized
-2c288df579454227 c|fn|nros_generated.h|rclc_publish_raw
 578330c12d9a742f c|fn|nros_generated.h|rclc_service_init_with_qos
 520f63ff4b23a47f c|fn|nros_generated.h|rclc_service_typed_report_error
 0c7275581ffde7af c|fn|service.h|rclc_service_init_with_qos
@@ -116,7 +114,6 @@ a87c1aaaec06e282 c|type|action.h|rclc_action_type_t
 1851d2bb98603289 c|type|node_pkg.h|rcl_ret_t
 3ac5242b4a1bd5b3 c|type|nros_generated.h|rcl_client_t
 008f0d88cf1c1ad5 c|type|nros_generated.h|rcl_node_t
-df594aa1e2252401 c|type|nros_generated.h|rcl_publisher_t
 6175cf14ec868a64 c|type|nros_generated.h|rcl_ret_t
 18a742b198318d7d c|type|nros_generated.h|rcl_service_t
 ea22e5f7cdf80d0d c|type|nros_generated.h|rclc_action_type_t

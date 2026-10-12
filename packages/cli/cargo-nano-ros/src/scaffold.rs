@@ -1356,10 +1356,9 @@ ament_package()
 
 #include <stdio.h>
 
-#include <nros/init.h>
-#include <nros/node.h>
-#include <nros/publisher.h>
-#include "std_msgs.h"
+#include <rcl/rcl.h>
+#include <rclc/rclc.h>
+#include <std_msgs/msg/int32.h>
 
 int main(int argc, char** argv) {{
     (void)argc;
@@ -1379,16 +1378,15 @@ int main(int argc, char** argv) {{
 
     rcl_publisher_t pub = rcl_get_zero_initialized_publisher();
     if (rclc_publisher_init_default(&pub, &node,
-                                    std_msgs_msg_int32_get_type_support(),
+                                    ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
                                     "/chatter") != RCL_RET_OK) {{
         fprintf(stderr, "rclc_publisher_init_default failed\n");
         return 1;
     }}
 
-    std_msgs_msg_int32 msg;
-    std_msgs_msg_int32_init(&msg);
+    std_msgs__msg__Int32 msg = {{0}};
     msg.data = 0;
-    (void)std_msgs_msg_int32_publish(&pub, &msg);
+    (void)rcl_publish(&pub, &msg, NULL);
     printf("{name}: published 0 on /chatter\n");
 
     rcl_publisher_fini(&pub);

@@ -5,13 +5,15 @@
  *
  * Create a subscription with rclc_subscription_init_default() (or
  * rclc_subscription_init_with_qos()) and add it to an executor, which owns
- * its subscriber and its callback: rclc_executor_add_subscription_typed()
- * delivers deserialised messages, rclc_executor_add_subscription_raw() CDR
- * bytes.
+ * its subscriber and its callback:
+ * rclc_executor_add_subscription_with_context() delivers deserialised
+ * messages (rclc's own six arguments), rclc_executor_add_subscription_raw()
+ * CDR bytes.
  *
  * For manual polling with no executor, use the separate type
  * ::rclc_polling_subscription_t: create it with
  * rclc_polling_subscription_init() and drain it with
+ * rclc_polling_subscription_take() (deserialised, the `rcl_take` analog) or
  * rclc_polling_subscription_take_serialized() — or
  * rclc_polling_subscription_take_sequence() for a batch and
  * rclc_polling_subscription_take_validated() for the E2E-safety variant.

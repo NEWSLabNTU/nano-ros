@@ -46,7 +46,7 @@ static struct {
     rclc_executor_t executor;
     // Caller-owned response storage + the typed callback. Must outlive the
     // client, so it lives here beside it.
-    example_interfaces_srv_add_two_ints_client_handler_t handler;
+    example_interfaces__srv__AddTwoInts__client_handler_t handler;
     // Reply state shared with the callback.
     int reply_count; // bumped each time the callback fires
 } app;
@@ -55,7 +55,7 @@ static struct {
 // Response callback — fired from `rclc_executor_spin_some`, not a poll.
 // ----------------------------------------------------------------------------
 
-static void on_response(const example_interfaces_srv_add_two_ints_response* response,
+static void on_response(const example_interfaces__srv__AddTwoInts_Response* response,
                         void* context) {
     (void)context;
     app.reply_count++;
@@ -107,8 +107,8 @@ int nros_app_main(int argc, char** argv) {
     memset(&app, 0, sizeof(app));
 
     rclc_service_type_t add_two_ints_type = {
-        .type_name = example_interfaces_srv_add_two_ints_get_type_name(),
-        .type_hash = example_interfaces_srv_add_two_ints_get_type_hash(),
+        .type_name = example_interfaces__srv__AddTwoInts__get_type_name(),
+        .type_hash = example_interfaces__srv__AddTwoInts__get_type_hash(),
     };
 
     RCLC_CHECK_RET(rclc_support_init(&app.support, locator, domain_id), 1);
@@ -127,11 +127,11 @@ int nros_app_main(int argc, char** argv) {
 
     // Register the reply callback. It fires at spin, not via poll.
     RCLC_CHECK_RET(
-        example_interfaces_srv_add_two_ints_client_handler_init(&app.handler, on_response, NULL),
+        example_interfaces__srv__AddTwoInts__client_handler_init(&app.handler, on_response, NULL),
         1);
-    RCLC_CHECK_RET(
-        example_interfaces_srv_add_two_ints_client_set_response_callback(&app.client, &app.handler),
-        1);
+    RCLC_CHECK_RET(example_interfaces__srv__AddTwoInts__client_set_response_callback(&app.client,
+                                                                                     &app.handler),
+                   1);
     printf("Response callback registered\n");
 
     // Let discovery settle (the callback client has no blocking call to gate on).
@@ -141,15 +141,15 @@ int nros_app_main(int argc, char** argv) {
 
     int exit_code = 0;
 
-    example_interfaces_srv_add_two_ints_request request;
-    example_interfaces_srv_add_two_ints_request_init(&request);
+    example_interfaces__srv__AddTwoInts_Request request;
+    memset(&request, 0, sizeof(request));
     request.a = a;
     request.b = b;
 
     // Caller-owned scratch for the request's wire form; borrowed for the send.
     uint8_t req_buf[256];
     {
-        rcl_ret_t ret = example_interfaces_srv_add_two_ints_client_send_request(
+        rcl_ret_t ret = example_interfaces__srv__AddTwoInts__client_send_request(
             &app.client, &request, req_buf, sizeof(req_buf));
         if (ret != RCL_RET_OK) {
             fprintf(stderr, "Async send failed with error %d\n", ret);
@@ -168,7 +168,6 @@ int nros_app_main(int argc, char** argv) {
             }
         }
     }
-    example_interfaces_srv_add_two_ints_request_fini(&request);
     // A reply that failed to decode never reaches the callback, so a zero
     // `reply_count` alone cannot tell the two apart. `error_count` can.
     if (app.handler.error_count != 0u) {

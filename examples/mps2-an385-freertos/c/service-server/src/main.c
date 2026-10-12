@@ -53,7 +53,7 @@ static struct {
     server_context_t ctx;
     // Caller-owned request + response storage and the typed callback. It must
     // outlive the service, so it lives here beside it.
-    example_interfaces_srv_add_two_ints_service_handler_t handler;
+    example_interfaces__srv__AddTwoInts__service_handler_t handler;
 } app;
 
 static volatile sig_atomic_t g_running = 1;
@@ -75,8 +75,8 @@ static void signal_handler(int signum) {
 // Service callback - handle AddTwoInts request
 // ----------------------------------------------------------------------------
 
-static void service_callback(const example_interfaces_srv_add_two_ints_request* request,
-                             example_interfaces_srv_add_two_ints_response* response,
+static void service_callback(const example_interfaces__srv__AddTwoInts_Request* request,
+                             example_interfaces__srv__AddTwoInts_Response* response,
                              void* context) {
     server_context_t* ctx = (server_context_t*)context;
 
@@ -131,17 +131,17 @@ int nros_app_main(int argc, char** argv) {
     // `_service_init` names the type support and `_executor_add_service` binds
     // the trampoline to the handler, so neither can disagree with the type —
     // there is no hand-written `rclc_service_type_t` here any more.
-    RCLC_CHECK_RET(example_interfaces_srv_add_two_ints_service_handler_init(
+    RCLC_CHECK_RET(example_interfaces__srv__AddTwoInts__service_handler_init(
                        &app.handler, service_callback, &app.ctx),
                    1);
     RCLC_CHECK_RET(
-        example_interfaces_srv_add_two_ints_service_init(&app.service, &app.node, "/add_two_ints"),
+        example_interfaces__srv__AddTwoInts__service_init(&app.service, &app.node, "/add_two_ints"),
         1);
     printf("Service created: %s\n", rcl_service_get_service_name(&app.service));
 
     RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support, 4), 1);
     g_executor = &app.executor;
-    RCLC_CHECK_RET(example_interfaces_srv_add_two_ints_executor_add_service(
+    RCLC_CHECK_RET(example_interfaces__srv__AddTwoInts__executor_add_service(
                        &app.executor, &app.service, &app.handler),
                    1);
     printf("Executor created with %d handle(s)\n", rclc_executor_get_handle_count(&app.executor));

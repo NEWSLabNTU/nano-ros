@@ -1,5 +1,6 @@
 /*
- * phase-417 W5.a (RFC-0089 stage 5) — TYPED subscription delivery for C.
+ * phase-417 W5.a / phase-492 W8 (RFC-0089) — TYPED subscription delivery for C,
+ * in rclc's own signature.
  *
  * rclc hands a subscription callback a DESERIALISED message, on a path with no
  * allocator, by making the caller own the storage:
@@ -7,96 +8,44 @@
  *     rclc_executor_add_subscription_with_context(&exec, &sub, &msg, &cb, &ctx, ON_NEW_DATA);
  *     typedef void (*rclc_subscription_callback_with_context_t)(const void*, void*);
  *
- * Ours had no `msg` slot and delivered `(const uint8_t*, size_t)`, so EVERY
- * ported callback body had to be rewritten around a hand-written
- * `<Msg>_deserialize` call. This TU is that ported body as it should now read:
- * the callback casts and reads FIELDS, and there is no CDR anywhere in it.
+ * Until phase-492 W8 ours took a SEVENTH argument, the deserialiser, because
+ * the type descriptor carried none, and a generated per-type macro collapsed it
+ * away. The descriptor now carries `serialize` / `deserialize`, the
+ * subscription keeps the descriptor it was created with, and the registration
+ * is rclc's six arguments with no macro in between.
  *
- * Compile-only (no main). Two assertions:
- *
- *   1. the entry points exist with the DOCUMENTED signatures — taken as
- *      function POINTERS, so a drift in argument list or order fails here
- *      rather than at some consumer's call site, and
- *   2. the generated glue's SHAPE compiles: an erased deserialiser plus the
- *      five-argument rclc-ordered macro. The message type here is hand-written
- *      on purpose — `generated/` trees do not exist in a fresh clone, so a
- *      probe that included one could not run on the `check c` lane — but the
- *      two definitions below are byte-for-byte what
- *      `packages/cli/rosidl-codegen/packs/c/message.h.jinja` emits, modulo the
- *      type token.
+ * Compile-only (no main). The entry points are taken as function POINTERS with
+ * the documented signatures, so a drift in argument list or order fails here
+ * rather than at a consumer's call site. The message type is hand-written on
+ * purpose: this probe pins the API, `rosidl_talker_listener.c` pins the
+ * generated message headers.
  */
 
 #include "nros/executor.h"
+#include "nros/publisher.h"
+#include "nros/rcl_compat.h"
 #include "nros/subscription.h"
-
-/* ------------------------------------------------------------------ *
- * Stand-in for a generated message header.
- * ------------------------------------------------------------------ */
-
-/* The struct a generated header defines: fixed-capacity members, so the whole
- * thing is one `.bss` object and nothing on this path allocates. */
-typedef struct probe_msg_reading {
-    int32_t value;
-    char label[32];
-} probe_msg_reading;
-
-/* Generated: writes into caller storage, returns 0 / -1. */
-int32_t probe_msg_reading_deserialize(probe_msg_reading* msg, const uint8_t* buffer,
-                                      size_t buffer_size);
-
-/* Generated (message.h.jinja): the type-erased form. A real function, not a
- * cast of the typed one — calling through a function pointer of a different
- * type is undefined even where it happens to work, and a CFI build traps. */
-static inline int32_t probe_msg_reading_deserialize_erased(void* msg, const uint8_t* buffer,
-                                                           size_t buffer_size) {
-    return probe_msg_reading_deserialize((probe_msg_reading*)msg, buffer, buffer_size);
-}
-
-/* Generated (message.h.jinja): the five-argument, rclc-ordered registration.
- * The deserialiser and the receive-buffer hint both come from the ONE type
- * token, so they cannot disagree with each other or with the type.
- *
- * `msg` is the one argument the type token could not vouch for -- the FFI
- * parameter is `void *` -- so it is CHECKED by the conditional expression,
- * whose two branches must be compatible pointers. The negative control is
- * `typed_subscription_storage_mismatch_probe.c`, which must FAIL to compile. */
-#define PROBE_MSG_READING_RX_MAX_SERIALIZED_SIZE 48
-#define probe_msg_reading_executor_add_subscription_sized(executor, subscription, msg, cb, ctx,    \
-                                                          invocation, rx_bytes)                    \
-    rclc_executor_add_subscription_typed_sized(                                                    \
-        (executor), (subscription), (1 ? (msg) : (probe_msg_reading*)0),                           \
-        probe_msg_reading_deserialize_erased, (cb), (ctx), (invocation), (uint32_t)(rx_bytes))
-#define probe_msg_reading_executor_add_subscription(executor, subscription, msg, cb, ctx,          \
-                                                    invocation)                                    \
-    probe_msg_reading_executor_add_subscription_sized((executor), (subscription), (msg), (cb),     \
-                                                      (ctx), (invocation),                         \
-                                                      PROBE_MSG_READING_RX_MAX_SERIALIZED_SIZE)
 
 /* ------------------------------------------------------------------ *
  * 1. The entry points exist with the documented signatures.
  * ------------------------------------------------------------------ */
 
-static rcl_ret_t (*const kAddTyped)(
-    struct rclc_executor_t*, struct rcl_subscription_t*, void*, rclc_message_deserialize_fn_t,
-    rclc_typed_subscription_callback_t, void*,
-    rclc_executor_handle_invocation_t) = rclc_executor_add_subscription_typed;
+static rcl_ret_t (*const kAddWithContext)(
+    struct rclc_executor_t*, struct rcl_subscription_t*, void*, rclc_typed_subscription_callback_t,
+    void*, rclc_executor_handle_invocation_t) = rclc_executor_add_subscription_with_context;
 
-static rcl_ret_t (*const kAddTypedSized)(struct rclc_executor_t*, struct rcl_subscription_t*, void*,
-                                         rclc_message_deserialize_fn_t,
-                                         rclc_typed_subscription_callback_t, void*,
-                                         rclc_executor_handle_invocation_t,
-                                         uint32_t) = rclc_executor_add_subscription_typed_sized;
+static rcl_ret_t (*const kPublish)(const struct rcl_publisher_t*, const void*,
+                                   rmw_publisher_allocation_t*) = rcl_publish;
 
-/* The two callback typedefs are what a ported file writes its handlers against,
- * so they must be nameable and must have rclc's shapes. */
-static const rclc_typed_subscription_callback_t kNullTypedCb =
-    (rclc_typed_subscription_callback_t)0;
-static const rclc_message_deserialize_fn_t kErased = probe_msg_reading_deserialize_erased;
+static rcl_ret_t (*const kTake)(struct rclc_polling_subscription_t*, void*,
+                                rmw_subscription_allocation_t*) = rclc_polling_subscription_take;
 
-/* The raw path STAYS — this is additive, and a byte-oriented subscriber is a
- * legitimate thing to want. Naming it here is the assertion that W5.a did not
- * replace it. Since phase-487 W1 it takes its callback and context itself:
- * the subscription struct no longer stores either. */
+/* The descriptor's codec slots, with the RFC's signatures. */
+static const rclc_message_serialize_fn_t kNullSerialize = (rclc_message_serialize_fn_t)0;
+static const rclc_message_deserialize_fn_t kNullDeserialize = (rclc_message_deserialize_fn_t)0;
+
+/* The raw path STAYS: a byte-oriented subscriber is a legitimate thing to
+ * want. It takes its callback and context itself (phase-487 W1). */
 static rcl_ret_t (*const kAddRaw)(
     struct rclc_executor_t*, struct rcl_subscription_t*, rclc_subscription_callback_t, void*,
     rclc_executor_handle_invocation_t) = rclc_executor_add_subscription_raw;
@@ -105,6 +54,10 @@ static rcl_ret_t (*const kAddRaw)(
  * 2. A ported rclc node, as it now reads.
  * ------------------------------------------------------------------ */
 
+typedef struct probe_reading {
+    int32_t value;
+} probe_reading;
+
 typedef struct {
     int count;
 } probe_app_ctx;
@@ -112,40 +65,33 @@ typedef struct {
 static struct {
     rclc_executor_t executor;
     rcl_subscription_t subscription;
-    /* The caller's message storage. This is the whole mechanism: no allocator
-     * is involved on the delivery path because the storage is already here,
-     * exactly as rclc does it. */
-    probe_msg_reading msg;
+    /* The caller's message storage: no allocator on the delivery path. */
+    probe_reading msg;
     probe_app_ctx app;
 } g_app;
 
-/* The ported callback body. `const void*` + `void*` is rclc's
- * `rclc_subscription_callback_with_context_t`; the cast and the field reads are
- * all a ported rclc handler contains. Nothing here deserialises, and nothing
- * here sees CDR bytes.
- *
- * It is also never called on a failed decode — a sample that cannot be decoded
- * into `msg` (a string longer than its declared bound included) is dropped and
- * counted, so this body cannot be handed the PREVIOUS message dressed as the
- * new one. */
+/* The ported callback body: cast and read FIELDS. Never called on a failed
+ * decode — the sample is dropped and counted instead. */
 static void probe_on_reading(const void* msgin, void* context) {
-    const probe_msg_reading* msg = (const probe_msg_reading*)msgin;
+    const probe_reading* msg = (const probe_reading*)msgin;
     probe_app_ctx* ctx = (probe_app_ctx*)context;
     ctx->count += (msg->value != 0) ? 1 : 0;
 }
 
+/* rclc's callback typedef name resolves to ours. */
+static const rclc_subscription_callback_with_context_t kCb = probe_on_reading;
+
 rcl_ret_t nros_typed_subscription_probe(void);
 rcl_ret_t nros_typed_subscription_probe(void) {
-    (void)kAddTyped;
-    (void)kAddTypedSized;
+    (void)kAddWithContext;
+    (void)kPublish;
+    (void)kTake;
+    (void)kNullSerialize;
+    (void)kNullDeserialize;
     (void)kAddRaw;
-    (void)kNullTypedCb;
-    (void)kErased;
 
-    /* rclc:  rclc_executor_add_subscription_with_context(&exec, &sub, &msg, &cb, &ctx,
-     *                                                     ON_NEW_DATA);
-     * ours:  the same six arguments, in the same order. */
-    return probe_msg_reading_executor_add_subscription(&g_app.executor, &g_app.subscription,
-                                                       &g_app.msg, probe_on_reading, &g_app.app,
+    /* rclc's six arguments, in rclc's order. */
+    return rclc_executor_add_subscription_with_context(&g_app.executor, &g_app.subscription,
+                                                       &g_app.msg, kCb, &g_app.app,
                                                        RCLC_EXECUTOR_ON_NEW_DATA);
 }

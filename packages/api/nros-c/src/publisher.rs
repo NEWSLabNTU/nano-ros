@@ -14,30 +14,93 @@ use crate::{
     qos::rclc_qos_t,
 };
 
-/// Message type information.
+/// A type-erased CDR serialiser for one message type (phase-492 W8).
 ///
-/// This structure describes a ROS message type for use with publishers
-/// and subscribers.
+/// Writes `msg` (a pointer to the generated struct) into `buffer[..capacity]`
+/// with its 4-byte encapsulation header, stores the byte count in `*out_len`,
+/// and returns 0; any failure (buffer too small, a field past its `.msg`
+/// bound, a NULL `data` with a nonzero `size`) returns nonzero. Never
+/// allocates.
+pub type rclc_message_serialize_fn_t = Option<
+    unsafe extern "C" fn(
+        msg: *const c_void,
+        buffer: *mut u8,
+        capacity: usize,
+        out_len: *mut usize,
+    ) -> i32,
+>;
+
+/// A type-erased CDR deserialiser for one message type (phase-492 W8).
+///
+/// Reads `buffer[..len]` into `msg` (a pointer to the generated struct, its
+/// strings and sequences wired to caller memory) and returns 0; a malformed
+/// sample or a field that does not fit its `capacity` returns nonzero and the
+/// field is not written. Never allocates.
+pub type rclc_message_deserialize_fn_t =
+    Option<unsafe extern "C" fn(buffer: *const u8, len: usize, msg: *mut c_void) -> i32>;
+
+/// Message type descriptor: what `ROSIDL_GET_MSG_TYPE_SUPPORT(pkg, msg, Name)`
+/// yields.
+///
+/// The generated `<pkg>__msg__<Name>__nros_type` is a `static const` of this
+/// type in read-only memory. It carries the type's NAME and HASH (what the RMW
+/// needs to create an entity) and, since phase-492 W8 (RFC-0089
+/// "`ROSIDL_GET_*_TYPE_SUPPORT` adopted as a pass-through"), its CODEC, so
+/// `rcl_publish` and `rclc_executor_add_subscription_with_context` work on the
+/// generated struct with rclc's arguments. It is NOT rosidl's
+/// `rosidl_message_type_support_t`, which stays undeclared: that struct's
+/// members (`typesupport_identifier`, `data`, `func`) are a dispatcher this
+/// descriptor does not have.
 #[repr(C)]
 pub struct rclc_message_type_t {
     /// Type name (e.g., "std_msgs::msg::dds_::Int32")
     pub type_name: *const c_char,
     /// Type hash (RIHS format)
     pub type_hash: *const c_char,
-    /// Maximum serialized size (0 = dynamic/unknown)
+    /// Largest CDR payload this type can arrive as, encapsulation header
+    /// included (the generated `__RX_MAX_SERIALIZED_SIZE`). 0 = unbounded or
+    /// unknown.
     pub serialized_size_max: usize,
+    /// The type's serialiser; NULL in a descriptor built from names alone, which
+    /// `rcl_publish` refuses with `RCL_RET_UNSUPPORTED`.
+    pub serialize: rclc_message_serialize_fn_t,
+    /// The type's deserialiser; NULL in a descriptor built from names alone,
+    /// which `rclc_executor_add_subscription_with_context` refuses.
+    pub deserialize: rclc_message_deserialize_fn_t,
 }
 
-/// Service type information.
+/// Service type descriptor: what `ROSIDL_GET_SRV_TYPE_SUPPORT(pkg, srv, Name)`
+/// yields (phase-492 W8).
 ///
-/// Provides type name and hash for a ROS 2 service type.
-/// Used by generated code from `nano_ros_generate_interfaces()`.
+/// Generated as `<pkg>__srv__<Name>__nros_type`. The four codec slots are the
+/// request and response parts' serialisers, with the
+/// [`rclc_message_serialize_fn_t`] / [`rclc_message_deserialize_fn_t`]
+/// contracts; NULL where the descriptor was built from names alone.
 #[repr(C)]
 pub struct rclc_service_type_t {
     /// Type name (e.g., "example_interfaces::srv::dds_::AddTwoInts_")
     pub type_name: *const c_char,
     /// Type hash (RIHS format)
     pub type_hash: *const c_char,
+    /// The request part's serialiser.
+    pub request_serialize: rclc_message_serialize_fn_t,
+    /// The request part's deserialiser.
+    pub request_deserialize: rclc_message_deserialize_fn_t,
+    /// The response part's serialiser.
+    pub response_serialize: rclc_message_serialize_fn_t,
+    /// The response part's deserialiser.
+    pub response_deserialize: rclc_message_deserialize_fn_t,
+}
+
+/// upstream rmw's publisher pre-allocation handle, declared INCOMPLETE
+/// (phase-492 W8).
+///
+/// `rcl_publish(&pub, &msg, NULL)` compiles because a pointer to an incomplete
+/// type is fine; declaring one (`rmw_publisher_allocation_t a;`) does not,
+/// because nano-ros has no pre-allocation to hand out: the transmit buffer is
+/// already bounded at build time. Pass NULL.
+pub struct rmw_publisher_allocation_t {
+    _private: [u8; 0],
 }
 
 /// Publisher state
@@ -71,6 +134,10 @@ pub struct rcl_publisher_t {
     pub type_hash_len: usize,
     /// Pointer to parent node
     pub node: crate::node::rclc_node_ref_t,
+    /// phase-492 W8 — the descriptor this publisher was created with, kept so
+    /// `rcl_publish` can serialise through its codec. Descriptors are generated
+    /// `static const`s, so the pointer outlives the publisher.
+    pub type_support: *const rclc_message_type_t,
     /// Inline opaque storage for the RMW publisher handle.
     /// Avoids heap allocation — managed by rclc_publisher_init_default/fini.
     pub _opaque: [u64; PUBLISHER_OPAQUE_U64S],
@@ -87,6 +154,7 @@ impl Default for rcl_publisher_t {
             type_hash: [0u8; MAX_TYPE_HASH_LEN],
             type_hash_len: 0,
             node: crate::node::rclc_node_ref_t::none(),
+            type_support: ptr::null(),
             _opaque: [0u64; PUBLISHER_OPAQUE_U64S],
         }
     }
@@ -216,6 +284,8 @@ pub unsafe extern "C" fn rclc_publisher_init_with_qos(
 
     // Store node reference
     publisher.node = unsafe { crate::node::node_ref_of(node) };
+    // phase-492 W8 — the codec `rcl_publish` serialises through.
+    publisher.type_support = type_info;
 
     // Resolve the SOURCE topic name to its wire name — ROS 2 expansion plus
     // this node's launch remap rules.
@@ -435,6 +505,105 @@ pub unsafe extern "C" fn rclc_publish_raw(
     {
         RCL_RET_ERROR
     }
+}
+
+/// Publish a message — rcl's `rcl_publish`, serialising through the
+/// descriptor this publisher was created with (phase-492 W8).
+///
+/// ```c
+/// std_msgs__msg__String msg;          // wired by __init_in, or by hand
+/// rcl_publish(&publisher, &msg, NULL);
+/// ```
+///
+/// `ros_message` points at the generated struct of the publisher's type. It is
+/// serialised by the descriptor's codec into a transmit buffer on this call's
+/// stack whose size is BOUNDED AT BUILD TIME, then handed to the backend:
+///
+/// * the type's own receive bound (`serialized_size_max`) picks the smaller
+///   256-byte class when it fits;
+/// * otherwise, or when the sample does not fit the smaller class (a caller
+///   that pointed a string at a buffer larger than `__Storage` sizes), the
+///   image's message buffer size (`NROS_SUBSCRIPTION_BUFFER_SIZE`, the bound
+///   the image derives over every type it carries).
+///
+/// No heap, ever (RFC-0105 D10): nothing here, in the serialiser or in the
+/// generated struct allocates. A sample larger than the image's message buffer
+/// is refused with `RCL_RET_ERROR`; `rclc_publisher_publish_streamed` is the
+/// entry point for payloads past that bound.
+///
+/// # Parameters
+/// * `publisher` — an initialised publisher
+/// * `ros_message` — the message, of the publisher's type
+/// * `allocation` — MUST be NULL. `rmw_publisher_allocation_t` is declared
+///   incomplete: nano-ros has no pre-allocation to offer.
+///
+/// # Returns
+/// * `RCL_RET_OK` on success
+/// * `RCL_RET_INVALID_ARGUMENT` — a NULL `publisher` / `ros_message`, or a
+///   non-NULL `allocation`
+/// * `RCL_RET_NOT_INIT` — the publisher is not initialised
+/// * `RCL_RET_UNSUPPORTED` — the publisher's descriptor carries no serialiser
+///   (one built from type names alone); use `rclc_publish_raw`
+/// * `RCL_RET_ERROR` — the message did not serialise (a field past its `.msg`
+///   bound, a NULL `data` with nonzero `size`, or larger than the image's
+///   message buffer)
+/// * `RCLC_RET_PUBLISH_FAILED` — the backend refused the sample
+///
+/// # Safety
+/// * `publisher` must point at a valid publisher.
+/// * `ros_message` must point at a message of the publisher's type.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rcl_publish(
+    publisher: *const rcl_publisher_t,
+    ros_message: *const c_void,
+    allocation: *mut rmw_publisher_allocation_t,
+) -> rcl_ret_t {
+    validate_not_null!(publisher, ros_message);
+    if !allocation.is_null() {
+        return RCL_RET_INVALID_ARGUMENT;
+    }
+    let publisher_ref = &*publisher;
+    validate_state!(
+        publisher_ref,
+        rclc_publisher_state_t::RCLC_PUBLISHER_STATE_INITIALIZED
+    );
+    let Some(type_info) = publisher_ref.type_support.as_ref() else {
+        return RCL_RET_UNSUPPORTED;
+    };
+    let Some(serialize) = type_info.serialize else {
+        return RCL_RET_UNSUPPORTED;
+    };
+
+    const SMALL: usize = 256;
+    const IMAGE: usize = crate::config::MESSAGE_BUFFER_SIZE;
+    let bound = type_info.serialized_size_max;
+    if bound != 0 && bound <= SMALL && SMALL < IMAGE {
+        if let Some(rc) = publish_staged::<SMALL>(publisher, serialize, ros_message) {
+            return rc;
+        }
+    }
+    publish_staged::<IMAGE>(publisher, serialize, ros_message).unwrap_or(RCL_RET_ERROR)
+}
+
+/// Serialise `msg` into an `N`-byte stack buffer and publish it; `None` when it
+/// does not serialise into `N` bytes. A separate non-inlined frame so only the
+/// chosen class's buffer is ever on the stack.
+#[inline(never)]
+unsafe fn publish_staged<const N: usize>(
+    publisher: *const rcl_publisher_t,
+    serialize: unsafe extern "C" fn(*const c_void, *mut u8, usize, *mut usize) -> i32,
+    msg: *const c_void,
+) -> Option<rcl_ret_t> {
+    let mut buf = [0u8; N];
+    let mut len = 0usize;
+    // SAFETY: `serialize` is the descriptor's codec for this publisher's type;
+    // it writes at most `N` bytes into `buf` and reports the count.
+    let rc = unsafe { serialize(msg, buf.as_mut_ptr(), N, &mut len) };
+    if rc != 0 || len == 0 || len > N {
+        return None;
+    }
+    // SAFETY: `publisher` was validated by the caller; `buf[..len]` is live.
+    Some(unsafe { rclc_publish_raw(publisher, buf.as_ptr(), len) })
 }
 
 /// Phase 124.E.1 — streamed publish.
@@ -1096,6 +1265,8 @@ mod verification {
             type_name: type_name.as_ptr() as *const core::ffi::c_char,
             type_hash: type_hash.as_ptr() as *const core::ffi::c_char,
             serialized_size_max: 4,
+            serialize: None,
+            deserialize: None,
         };
 
         let mut node = crate::node::rcl_get_zero_initialized_node();
@@ -1266,6 +1437,8 @@ mod name_resolution_tests {
             type_name: type_name.as_ptr() as *const c_char,
             type_hash: type_hash.as_ptr() as *const c_char,
             serialized_size_max: 4,
+            serialize: None,
+            deserialize: None,
         };
         let topic = b"~/private\0";
         let mut pub_ = rcl_get_zero_initialized_publisher();

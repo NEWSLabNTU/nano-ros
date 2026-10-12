@@ -83,6 +83,12 @@ IFS=$'\x1f' read -r id builder dir _pkg _mdir _target _profiles _output <<< "$re
             "packages/api/nros-cpp/include"
             "packages/api/nros-c/include"
         )
+        # phase-492 W7/W8 — a `.c` snippet compiles against the committed
+        # rosidl-laid-out codegen goldens too, so they are an input of IT.
+        if [ -f "$repo_root/packages/testing/nros-tests/fixtures/cpp_compat_snippets/$id.c" ]; then
+            sig_paths[0]="packages/testing/nros-tests/fixtures/cpp_compat_snippets/$id.c"
+            sig_paths+=("packages/cli/rosidl-codegen/tests/fixtures/fingerprint-corpus/expected/rosidl")
+        fi
     else
         sig_paths=("$dir")
     fi
