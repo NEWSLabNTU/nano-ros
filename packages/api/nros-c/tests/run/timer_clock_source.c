@@ -119,8 +119,8 @@ int main(void) {
      * either timer exists — the state a paused simulator leaves behind. */
     struct rcl_clock_t ros_clock = rclc_clock_get_zero_initialized();
     struct rcl_clock_t steady_clock = rclc_clock_get_zero_initialized();
-    CHECK_RET(rcl_clock_init(RCLC_CLOCK_ROS_TIME, &ros_clock, NULL), RCL_RET_OK, "ROS clock init");
-    CHECK_RET(rcl_clock_init(RCLC_CLOCK_STEADY_TIME, &steady_clock, NULL), RCL_RET_OK,
+    CHECK_RET(rcl_clock_init(RCL_ROS_TIME, &ros_clock, NULL), RCL_RET_OK, "ROS clock init");
+    CHECK_RET(rcl_clock_init(RCL_STEADY_TIME, &steady_clock, NULL), RCL_RET_OK,
               "steady clock init");
 
     const int64_t sim_epoch_ns = 1000000000ll; /* 1 s, arbitrary and frozen */

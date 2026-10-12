@@ -303,7 +303,7 @@ static rcl_ret_t register_typed_subscription(struct rclc_executor_t* executor,
                                              struct rcl_subscription_t* subscription, void* msg,
                                              void* context) {
     return rclc_executor_add_subscription_with_context(executor, subscription, msg, k_typed_sub_cb,
-                                                       context, RCLC_EXECUTOR_ON_NEW_DATA);
+                                                       context, ON_NEW_DATA);
 }
 
 /* Silence "defined but not used" without needing a main(). */

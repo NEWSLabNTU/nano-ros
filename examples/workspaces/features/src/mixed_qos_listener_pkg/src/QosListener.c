@@ -59,7 +59,7 @@ static rcl_ret_t qos_listener_configure(rcl_node_t* node, rclc_executor_t* execu
         return rc;
     }
     rc = rclc_executor_add_subscription_with_context(executor, &self->sub, &self->msg, on_msg, self,
-                                                     RCLC_EXECUTOR_ON_NEW_DATA);
+                                                     ON_NEW_DATA);
     if (rc == RCL_RET_OK) {
         printf("Waiting for messages\n");
     }

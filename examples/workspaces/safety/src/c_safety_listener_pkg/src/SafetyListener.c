@@ -82,7 +82,7 @@ static rcl_ret_t listener_configure(rcl_node_t* node, rclc_executor_t* executor,
         return rc;
     }
     return rclc_executor_add_subscription_raw_validated(executor, &self->sub, on_chatter_validated,
-                                                        self, RCLC_EXECUTOR_ON_NEW_DATA);
+                                                        self, ON_NEW_DATA);
 }
 
 RCLC_C_COMPONENT(safety_listener_t, listener_configure)

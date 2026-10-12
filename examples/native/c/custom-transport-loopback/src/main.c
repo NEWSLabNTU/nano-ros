@@ -206,7 +206,7 @@ int nros_app_main(int argc, char** argv) {
     /* 2. Spin up the nros stack pointed at the `custom://` locator.
      *    Active RMW backend (zenoh-pico) routes every wire frame
      *    through our ops above. */
-    (void)rcl_clock_init(RCLC_CLOCK_SYSTEM_TIME, &app.clock, NULL);
+    (void)rcl_clock_init(RCL_SYSTEM_TIME, &app.clock, NULL);
     /* phase-426 W4 — the `nros_parameter_server_t` that stood here is GONE. It
      * was initialised and never touched again: no declare, no get, no set. A
      * caller-storage store is a SECOND store (`ros2 param` reads the

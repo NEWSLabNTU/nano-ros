@@ -93,6 +93,5 @@ rcl_ret_t nros_typed_subscription_probe(void) {
 
     /* rclc's six arguments, in rclc's order. */
     return rclc_executor_add_subscription_with_context(&g_app.executor, &g_app.subscription,
-                                                       &g_app.msg, kCb, &g_app.app,
-                                                       RCLC_EXECUTOR_ON_NEW_DATA);
+                                                       &g_app.msg, kCb, &g_app.app, ON_NEW_DATA);
 }

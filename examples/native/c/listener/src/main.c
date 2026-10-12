@@ -149,9 +149,9 @@ int nros_app_main(int argc, char** argv) {
      * byte-oriented `rclc_executor_add_subscription_raw` is still there for a
      * caller doing its own CDR; this file no longer is one. */
     std_msgs__msg__String__init_in(&app.msg, &app.msg_storage);
-    RCLC_CHECK_RET(rclc_executor_add_subscription_with_context(
-                       &app.executor, &app.subscription, &app.msg, subscription_callback,
-                       &app.listener_ctx, RCLC_EXECUTOR_ON_NEW_DATA),
+    RCLC_CHECK_RET(rclc_executor_add_subscription_with_context(&app.executor, &app.subscription,
+                                                               &app.msg, subscription_callback,
+                                                               &app.listener_ctx, ON_NEW_DATA),
                    1);
     printf("Executor created with %d handle(s)\n", rclc_executor_get_handle_count(&app.executor));
 

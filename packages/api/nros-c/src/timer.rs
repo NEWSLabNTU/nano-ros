@@ -164,13 +164,13 @@ pub unsafe extern "C" fn rclc_timer_init_with_context(
 /// The clock's TYPE selects the schedule, through the one mapping
 /// [`crate::clock::nros_timer_clock_source`]:
 ///
-/// * `RCLC_CLOCK_STEADY_TIME` — identical to [`rclc_timer_init_with_context`].
-/// * `RCLC_CLOCK_ROS_TIME` — follows the ROS clock. It stops while a
+/// * `RCL_STEADY_TIME` — identical to [`rclc_timer_init_with_context`].
+/// * `RCL_ROS_TIME` — follows the ROS clock. It stops while a
 ///   simulator is paused, halves with a bag replayed at 0.5x, and restarts its
 ///   period on a backwards jump. With no `/clock` override installed it reads
 ///   system time, the same fallback `rclcpp::Clock` has, so a node written for
 ///   simulation still runs standalone.
-/// * `RCLC_CLOCK_SYSTEM_TIME` — the wall clock, NTP steps and all.
+/// * `RCL_SYSTEM_TIME` — the wall clock, NTP steps and all.
 ///
 /// An UNINITIALIZED clock is REJECTED rather than treated as steady: a timer
 /// created on a clock the caller never initialised would silently be a wall
@@ -816,7 +816,7 @@ pub unsafe extern "C" fn rcl_timer_exchange_period(
 /// with anything else the caller timestamps:
 ///
 /// * a timer created by `rclc_timer_init_on_clock` carries an
-///   `rcl_clock_t *`, and that clock is read — so a `RCLC_CLOCK_ROS_TIME`
+///   `rcl_clock_t *`, and that clock is read — so a `RCL_ROS_TIME`
 ///   timer answers on `/clock`'s timeline and stops advancing when the
 ///   playback does, exactly as its dispatch does;
 /// * a timer created by `rcl_timer_init` is the WALL timer (rclcpp's

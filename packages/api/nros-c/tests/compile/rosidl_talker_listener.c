@@ -7,11 +7,8 @@
  * `rclc_publisher_init_default` / `rclc_subscription_init_default`,
  * `rcl_publish(&publisher, &msg, NULL)`, and
  * `rclc_executor_add_subscription_with_context` with rclc's six arguments and
- * a callback that casts `msgin` and reads FIELDS. What is NOT ported is
- * support/executor init, whose signatures nano-ros states differently
- * (`rclc_support_init(&support, locator, domain)`), and rclc's bare
- * `ON_NEW_DATA` enumerator, which nano-ros spells
- * `RCLC_EXECUTOR_ON_NEW_DATA`; both are out of W8's scope.
+ * a callback that casts `msgin` and reads FIELDS, invoked `ON_NEW_DATA` (rclc's
+ * own enumerator).
  *
  * The descriptor is also an ADDRESS CONSTANT here, so it works in a static
  * initialiser — a superset of upstream's function-call macro.
@@ -70,8 +67,8 @@ int talker_listener(void) {
 
     rc = rclc_executor_init(&executor, &support.context, 1, NULL);
     if (rc != RCL_RET_OK) return 1;
-    rc = rclc_executor_add_subscription_with_context(
-        &executor, &subscriber, &incoming, &subscription_callback, NULL, RCLC_EXECUTOR_ON_NEW_DATA);
+    rc = rclc_executor_add_subscription_with_context(&executor, &subscriber, &incoming,
+                                                     &subscription_callback, NULL, ON_NEW_DATA);
     if (rc != RCL_RET_OK) return 1;
 
     rc = rcl_publish(&publisher, &outgoing, NULL);

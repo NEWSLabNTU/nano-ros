@@ -237,9 +237,9 @@ pub type rclc_executor_trigger_t = Option<
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum rclc_executor_handle_invocation_t {
     /// Only invoke callback when new data is available
-    RCLC_EXECUTOR_ON_NEW_DATA = 0,
+    ON_NEW_DATA = 0,
     /// Always invoke callback (even with NULL data)
-    RCLC_EXECUTOR_ALWAYS = 1,
+    ALWAYS = 1,
 }
 
 /// Executor data communication semantics
@@ -250,13 +250,13 @@ pub enum rclc_executor_handle_invocation_t {
 pub enum rclc_executor_semantics_t {
     /// RCLCPP executor semantics: Data is taken from DDS just before
     /// the corresponding callback is called.
-    RCLC_SEMANTICS_RCLCPP_EXECUTOR = 0,
+    RCLCPP_EXECUTOR = 0,
     /// Logical Execution Time (LET) semantics: At one sampling point,
     /// new data of all ready subscriptions are taken from DDS.
     /// During sequential processing, the data from that sampling point
     /// is used. New data arriving after the sampling point is not
     /// considered until the next spin iteration.
-    RCLC_SEMANTICS_LOGICAL_EXECUTION_TIME = 1,
+    LET = 1,
 }
 
 /// Executor state
@@ -347,7 +347,7 @@ impl Default for rclc_executor_t {
         Self {
             state: rclc_executor_state_t::RCLC_EXECUTOR_STATE_UNINITIALIZED,
             timeout_ns: 100_000_000, // 100ms default
-            semantics: rclc_executor_semantics_t::RCLC_SEMANTICS_RCLCPP_EXECUTOR,
+            semantics: rclc_executor_semantics_t::RCLCPP_EXECUTOR,
             support: ptr::null(),
             trigger: None,
             trigger_context: ptr::null_mut(),
@@ -1368,12 +1368,10 @@ pub unsafe extern "C" fn rclc_executor_set_semantics(
     {
         let rust_exec = get_executor(executor);
         rust_exec.set_semantics(match semantics {
-            rclc_executor_semantics_t::RCLC_SEMANTICS_RCLCPP_EXECUTOR => {
+            rclc_executor_semantics_t::RCLCPP_EXECUTOR => {
                 nros_node::ExecutorSemantics::RclcppExecutor
             }
-            rclc_executor_semantics_t::RCLC_SEMANTICS_LOGICAL_EXECUTION_TIME => {
-                nros_node::ExecutorSemantics::LogicalExecutionTime
-            }
+            rclc_executor_semantics_t::LET => nros_node::ExecutorSemantics::LogicalExecutionTime,
         });
     }
 
@@ -1572,7 +1570,7 @@ pub unsafe fn host_executor_init(
     ptr::write(at!((*executor).timeout_ns), 100_000_000); // rclc_executor_init's default
     ptr::write(
         at!((*executor).semantics),
-        rclc_executor_semantics_t::RCLC_SEMANTICS_RCLCPP_EXECUTOR,
+        rclc_executor_semantics_t::RCLCPP_EXECUTOR,
     );
     ptr::write(at!((*executor).support), ptr::null());
     ptr::write(at!((*executor).trigger), None);
@@ -2004,7 +2002,7 @@ unsafe fn register_subscription_entry(
         subscription as *mut core::ffi::c_void,
     );
 
-    if invocation == rclc_executor_handle_invocation_t::RCLC_EXECUTOR_ALWAYS {
+    if invocation == rclc_executor_handle_invocation_t::ALWAYS {
         rust_exec.set_invocation(handle_id, nros_node::InvocationMode::Always);
     }
 
@@ -2356,7 +2354,7 @@ pub unsafe extern "C" fn rclc_executor_add_subscription_raw_with_info(
 /// ```c
 /// rclc_subscription_init_default(&sub, &node, &type, "/topic");
 /// rclc_executor_add_subscription_with_info(&exec, &sub, on_sample, ctx,
-///                                          RCLC_EXECUTOR_ON_NEW_DATA);
+///                                          ON_NEW_DATA);
 /// ...
 /// rclc_executor_remove_subscription(&exec, &sub);
 /// rcl_subscription_fini(&sub);
@@ -2641,7 +2639,7 @@ pub unsafe extern "C" fn rclc_executor_add_subscription_in_group(
                 );
 
                 // Apply invocation override if not the default (on-new-data = 0).
-                if invocation == rclc_executor_handle_invocation_t::RCLC_EXECUTOR_ALWAYS {
+                if invocation == rclc_executor_handle_invocation_t::ALWAYS {
                     rust_exec.set_invocation(handle_id, nros_node::InvocationMode::Always);
                 }
 
@@ -5155,17 +5153,17 @@ mod tests {
 
             assert_eq!(
                 executor.semantics,
-                rclc_executor_semantics_t::RCLC_SEMANTICS_RCLCPP_EXECUTOR
+                rclc_executor_semantics_t::RCLCPP_EXECUTOR
             );
 
             let ret = rclc_executor_set_semantics(
                 &mut executor,
-                rclc_executor_semantics_t::RCLC_SEMANTICS_RCLCPP_EXECUTOR,
+                rclc_executor_semantics_t::RCLCPP_EXECUTOR,
             );
             assert_eq!(ret, RCL_RET_OK);
             assert_eq!(
                 executor.semantics,
-                rclc_executor_semantics_t::RCLC_SEMANTICS_RCLCPP_EXECUTOR
+                rclc_executor_semantics_t::RCLCPP_EXECUTOR
             );
         }
     }
@@ -5178,15 +5176,9 @@ mod tests {
             executor.state = rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED;
             executor.max_handles = 4;
 
-            let ret = rclc_executor_set_semantics(
-                &mut executor,
-                rclc_executor_semantics_t::RCLC_SEMANTICS_LOGICAL_EXECUTION_TIME,
-            );
+            let ret = rclc_executor_set_semantics(&mut executor, rclc_executor_semantics_t::LET);
             assert_eq!(ret, RCL_RET_OK);
-            assert_eq!(
-                executor.semantics,
-                rclc_executor_semantics_t::RCLC_SEMANTICS_LOGICAL_EXECUTION_TIME
-            );
+            assert_eq!(executor.semantics, rclc_executor_semantics_t::LET);
         }
     }
 
@@ -5195,10 +5187,7 @@ mod tests {
         unsafe {
             let mut executor = rclc_executor_get_zero_initialized_executor();
 
-            let ret = rclc_executor_set_semantics(
-                &mut executor,
-                rclc_executor_semantics_t::RCLC_SEMANTICS_LOGICAL_EXECUTION_TIME,
-            );
+            let ret = rclc_executor_set_semantics(&mut executor, rclc_executor_semantics_t::LET);
             assert_eq!(ret, RCL_RET_NOT_INIT);
         }
     }

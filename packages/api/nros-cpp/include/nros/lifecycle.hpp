@@ -1125,7 +1125,7 @@ class LifecycleEngine {
     // the executor was bound. A POINTER, never a node: see `bind(Node&)`.
     ::rclcpp::Node* node_ = nullptr;
     /// This node's clock (ROS time), as `rclcpp::Node` carries one.
-    ::rclcpp::Clock clock_{RCLC_CLOCK_ROS_TIME};
+    ::rclcpp::Clock clock_{RCL_ROS_TIME};
     /// Head of the intrusive managed-entity list; see `add_managed_entity`.
     ManagedEntityInterface* managed_ = nullptr;
     TransitionCallbackType cb_configure_ = nullptr;

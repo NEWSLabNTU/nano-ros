@@ -41,7 +41,7 @@ namespace rclcpp {
 ///
 /// Usage:
 /// ```cpp
-/// rclcpp::Clock steady(RCLC_CLOCK_STEADY_TIME);
+/// rclcpp::Clock steady(RCL_STEADY_TIME);
 /// rclcpp::Time t0 = steady.now();
 /// // ...
 /// rclcpp::Duration elapsed = steady.now() - t0;
@@ -52,7 +52,7 @@ namespace rclcpp {
 /// down — so unlike `rclcpp::Clock` (which finalises an `rcl_clock_t` holding
 /// an allocator) there is nothing for a destructor to release.
 ///
-/// A `RCLC_CLOCK_ROS_TIME` clock can be driven by a simulator's or a bag
+/// A `RCL_ROS_TIME` clock can be driven by a simulator's or a bag
 /// player's `/clock` (issue 0789): `ros_time_is_active()` reports whether it
 /// is, `started()` whether a sample has arrived. The switches that INSTALL a
 /// time are the C ones (`nros_set_ros_time_override` and friends) rather than
@@ -63,7 +63,7 @@ class Clock {
   public:
     /// Construct a clock of the given type.
     ///
-    /// Defaults to `RCLC_CLOCK_SYSTEM_TIME`, matching
+    /// Defaults to `RCL_SYSTEM_TIME`, matching
     /// `rclcpp::Clock(rcl_clock_type_t = RCL_SYSTEM_TIME)`. (A `Node`'s own
     /// clock is ROS time, also as in rclcpp — see `Node::get_clock()`.)
     ///
@@ -71,7 +71,7 @@ class Clock {
     /// C++ spelling of the same four values: rclcpp likewise takes rcl's
     /// `rcl_clock_type_t`, and one vocabulary across the two languages is the
     /// point of issue 0789.
-    explicit Clock(rcl_clock_type_t clock_type = RCLC_CLOCK_SYSTEM_TIME)
+    explicit Clock(rcl_clock_type_t clock_type = RCL_SYSTEM_TIME)
         : clock_(rclc_clock_get_zero_initialized()) {
         rcl_clock_init(clock_type, &clock_, NULL);
     }
@@ -81,7 +81,7 @@ class Clock {
     /// Infallible, following the C surface: `rcl_clock_get_now` cannot fail
     /// once the clock is valid, because the platform seam (RFC-0073) either has
     /// a clock or the image did not boot. An INVALID clock — one built with
-    /// `RCLC_CLOCK_UNINITIALIZED` — reads zero; `is_valid()` is how that is
+    /// `RCL_CLOCK_UNINITIALIZED` — reads zero; `is_valid()` is how that is
     /// detected, not a `Result` on every timestamp.
     Time now() const {
         int64_t nanoseconds = 0;
@@ -101,7 +101,7 @@ class Clock {
     /// Whether a `/clock` source is driving this clock — `rclcpp::Clock::
     /// ros_time_is_active()`.
     ///
-    /// False for anything but a `RCLC_CLOCK_ROS_TIME` clock, and false for a
+    /// False for anything but a `RCL_ROS_TIME` clock, and false for a
     /// ROS-time clock with no override installed (it is reading the system
     /// clock). Infallible for the reason `now()` is: the report is a
     /// predicate, not a status the caller has to unpack.
