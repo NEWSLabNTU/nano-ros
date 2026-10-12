@@ -1,12 +1,14 @@
 ---
 id: 1839
 title: "Since phase-485 W8, both book probe tracks stop at configure: the book's setup flow never provisions the pinned Corrosion, and a configure no longer fetches it"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [book, ci, cmake, provisioning]
 related: [1439, 1304]
 found: 2026-10-12
+resolved: 2026-10-13
+resolved_in: "PR #2064"
 ---
 
 ## Measured
@@ -68,7 +70,7 @@ it) actually doing so for the probe's posix targets. It is proven by both
 setup verb is meant to carry Corrosion should be the one the book shows,
 so a user and the probe take the same road.
 
-## Fix (in review)
+## Resolution
 
 `nros setup <board>` now carries Corrosion for every board whose platform
 takes the CMake road. That is the verb the book already shows, so the
@@ -92,5 +94,8 @@ every pull request. One binds the rule against a synthetic index. The other
 reads the shipped index and checks that `native --rmw <every rmw>` and every
 CMake-road board plan Corrosion, and that no other board does.
 
-The closing criterion is still open: both `book probe` tracks in a `probe`
-run getting past configure.
+Closing criterion met. `probe` run 38296564920 was dispatched on the fix
+branch (PR #2064). Both tracks ran `corrosion  source build 0.6.1-nros1`
+inside `nros setup native --rmw cyclonedds`, both configures reported
+`Corrosion 0.6.1 via SDK store`, and both jobs finished `success`:
+`book probe — installed track` and `book probe — checkout track`.
