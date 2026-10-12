@@ -32,6 +32,16 @@
   falls back to `exec`, `namespace` to `"/"`). Both halves are emitted on
   every render, `nullptr` where nothing was declared, so the generated text
   SAYS which of the two cases a node is in.
+
+  Issue 1854 -- the QoS override table reaches the `rclcpp` arm the same way.
+  The `configure` arm installs it with `set_qos_overrides` between
+  `create_node` and `configure`; the `rclcpp` arm has no such gap (the
+  component creates its entities in its constructor), so the table rides on
+  the handle and `Node`'s handle constructor installs it as soon as the node
+  opens. The 5-argument handle is written only when the node HAS overrides, so
+  an entry without any is byte-identical to before. The `rust` arm's install
+  seam carries no table, so a `rust` node with overrides is refused before
+  this renders (`emit::admit_and_lower`).
 -#}
 {#-
   Issue 1535 — a Rust install wants the bare `Executor`, and this entry's
@@ -47,7 +57,14 @@
         int32_t crc = __nros_component_{{ n.pkg | pkg_ident }}_install(nullptr, __rexec, nullptr);
         if (crc != 0) return crc;
 {%- elif n.kind == "rclcpp" %}
-        ::rclcpp::NodeHandle __h({% if tiered %}executor{% else %}::rclcpp::global_handle(){% endif %}, {% if n.launch_name %}"{{ n.launch_name | c_str }}"{% else %}nullptr{% endif %}, {% if n.launch_namespace %}"{{ n.launch_namespace | c_str }}"{% else %}nullptr{% endif %});
+{%- if n.qos_overrides %}
+        static const ::nros_cpp_qos_override_t __nros_qos_{{ idx }}[] = {
+{%- for q in n.qos_overrides %}
+            { "{{ q.topic | c_str }}", {{ q.role }}, {{ q.policy }}, {{ q.value }} },
+{%- endfor %}
+        };
+{%- endif %}
+        ::rclcpp::NodeHandle __h({% if tiered %}executor{% else %}::rclcpp::global_handle(){% endif %}, {% if n.launch_name %}"{{ n.launch_name | c_str }}"{% else %}nullptr{% endif %}, {% if n.launch_namespace %}"{{ n.launch_namespace | c_str }}"{% else %}nullptr{% endif %}{% if n.qos_overrides %}, __nros_qos_{{ idx }}, {{ n.qos_overrides | length }}{% endif %});
         if (!__h.valid()) return static_cast<int32_t>(::rclcpp::ErrorCode::NotInitialized);
         __nros_comp_{{ idx }} = new (__nros_comp_buf_{{ idx }}) ::{{ n.class }}(__h);
         if (!__nros_comp_{{ idx }}->ok()) {

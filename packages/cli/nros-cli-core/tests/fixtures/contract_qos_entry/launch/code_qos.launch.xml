@@ -1,0 +1,7 @@
+<launch>
+  <!-- issue 1854: the SAME launch file under two contracts. Neither sets a
+       `qos_overrides.*` parameter; whatever the entry bakes comes from the
+       contract alone, through the resolver's derivation. -->
+  <node pkg="demo_pkg" exec="talker" name="talker"/>
+  <node pkg="demo_pkg" exec="handler" name="handler"/>
+</launch>

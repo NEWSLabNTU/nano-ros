@@ -1,0 +1,27 @@
+# issue 1854 -- the baseline: the contract restates the code's capacity QoS
+# and nothing else, so no override parameter is derived and the entry bakes
+# no table. `contract_liveliness.contract.yaml` differs from this file ONLY in
+# the subscriber's liveliness line.
+
+version: 1
+
+nodes:
+  talker:
+    pub:
+      availability:
+        qos:
+          depth: 1
+          durability: volatile
+
+  handler:
+    sub:
+      availability:
+        qos:
+          depth: 1
+          durability: volatile
+
+topics:
+  /availability:
+    type: std_msgs/msg/Int32
+    pub: [talker/availability]
+    sub: [handler/availability]

@@ -265,14 +265,38 @@ struct NodeHandle {
     const char* launch_name;
     /// Launch-declared namespace, same contract.
     const char* launch_namespace;
+    /// Issue 1854 -- the node's baked QoS override table (the plan's
+    /// `qos_overrides.<topic>.<role>.<policy>` parameters, lowered by
+    /// `nros_orchestration_ir::qos_override`), or `nullptr` when it has none.
+    /// The `configure` and `c` shapes get theirs from the entry's own
+    /// `set_qos_overrides` call after `create_node`; this shape constructs its
+    /// node AND its entities in the component's constructor, before the entry
+    /// could make that call, so the table rides on the handle and `Node`'s
+    /// handle constructor installs it right after the node opens -- before
+    /// the derived constructor creates anything. Must outlive the node; the
+    /// generated entry passes a `static const` array.
+    const nros_cpp_qos_override_t* qos_overrides;
+    /// Entries in `qos_overrides`; `0` = none.
+    size_t qos_override_count;
 
-    constexpr NodeHandle() : executor(nullptr), launch_name(nullptr), launch_namespace(nullptr) {}
+    constexpr NodeHandle()
+        : executor(nullptr), launch_name(nullptr), launch_namespace(nullptr),
+          qos_overrides(nullptr), qos_override_count(0) {}
     explicit constexpr NodeHandle(void* exec)
-        : executor(exec), launch_name(nullptr), launch_namespace(nullptr) {}
+        : executor(exec), launch_name(nullptr), launch_namespace(nullptr), qos_overrides(nullptr),
+          qos_override_count(0) {}
     /// The generated entry's constructor: the executor plus whatever the
     /// launch file DECLARED. Pass `nullptr` for a half it did not.
     constexpr NodeHandle(void* exec, const char* name, const char* ns)
-        : executor(exec), launch_name(name), launch_namespace(ns) {}
+        : executor(exec), launch_name(name), launch_namespace(ns), qos_overrides(nullptr),
+          qos_override_count(0) {}
+    /// The same, plus the node's baked QoS override table (issue 1854). The
+    /// generated entry writes this form only for a node whose plan carries
+    /// overrides, so an entry without any reads exactly as before.
+    constexpr NodeHandle(void* exec, const char* name, const char* ns,
+                         const nros_cpp_qos_override_t* overrides, size_t override_count)
+        : executor(exec), launch_name(name), launch_namespace(ns), qos_overrides(overrides),
+          qos_override_count(override_count) {}
     constexpr bool valid() const { return executor != nullptr; }
 
     /// The launch name if one was declared, else `fallback` — the component
@@ -737,6 +761,18 @@ class Node {
             this->init_on(handle.executor, handle.resolve_name(name), handle.resolve_namespace(ns));
         if (!r.ok()) {
             this->set_error("node create", r.raw());
+            return;
+        }
+        // Issue 1854 -- the launch's QoS overrides, installed before the
+        // derived constructor body creates a single entity (a base is fully
+        // constructed before the derived body runs), which is the ordering
+        // the `configure` shape gets from the entry's own call.
+        if (handle.qos_overrides != nullptr && handle.qos_override_count != 0) {
+            nros_cpp_ret_t qrc = ::nros_cpp_node_set_qos_overrides(&handle_, handle.qos_overrides,
+                                                                   handle.qos_override_count);
+            if (qrc != NROS_CPP_RET_OK) {
+                this->set_error("set_qos_overrides", static_cast<int32_t>(qrc));
+            }
         }
     }
 

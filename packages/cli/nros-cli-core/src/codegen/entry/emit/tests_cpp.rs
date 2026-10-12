@@ -305,6 +305,117 @@ fn typed_emit_no_qos_overrides_no_table() {
     assert!(!src.contains("set_qos_overrides"));
 }
 
+/// Issue 1854 -- an `rclcpp`-shape node's override table reaches its handle.
+///
+/// The arm constructs no node of its own (the component does, in its
+/// constructor), so before this the table was lowered, carried on the plan and
+/// rendered nowhere: an rclcpp-shape image ran the code's QoS whatever the
+/// launch or the contract stated. The overrides here are the two the island's
+/// contract once produced for `mrm_handler` (a liveliness kind and a lease),
+/// lowered by the shared lowering so the codes are the real bake's.
+#[test]
+fn typed_emit_rclcpp_shape_hands_its_qos_overrides_to_the_handle() {
+    let mut plan = fixture_plan_typed(&[(
+        "handler_pkg",
+        "handler",
+        "handler",
+        "handler_pkg::Handler",
+        "handler_pkg/Handler.hpp",
+    )]);
+    plan.nodes[0].shape = Some("rclcpp".into());
+    plan.nodes[0].qos_overrides = nros_orchestration_ir::qos_override::lower_all([
+        (
+            "qos_overrides./system/availability.subscription.liveliness",
+            "manual_by_topic",
+        ),
+        (
+            "qos_overrides./system/availability.subscription.liveliness_lease_duration",
+            "500",
+        ),
+    ])
+    .expect("fixture overrides lower");
+    // The liveliness KIND's code is the shared lowering's to choose (it names
+    // `nros_rmw`'s variant), so it is read back rather than restated.
+    let manual = plan.nodes[0]
+        .qos_overrides
+        .iter()
+        .find(|o| o.policy == 6)
+        .expect("the liveliness row lowered")
+        .value;
+    let src = emit_typed(&plan).expect("typed emit ok");
+
+    // subscription(1) / liveliness(6) / manual_by_topic; lease(7) = 500 ms.
+    assert!(
+        src.contains("static const ::nros_cpp_qos_override_t __nros_qos_0[] = {"),
+        "{src}"
+    );
+    assert!(
+        src.contains(&format!("{{ \"/system/availability\", 1, 6, {manual} }}")),
+        "{src}"
+    );
+    assert!(
+        src.contains("{ \"/system/availability\", 1, 7, 500 }"),
+        "{src}"
+    );
+    // The 5-argument handle, carrying the table and its length ...
+    assert!(src.contains(", __nros_qos_0, 2);"), "{src}");
+    // ... declared before the handle that names it, which is before the
+    // component's construction (where its entities are created).
+    let table_at = src.find("__nros_qos_0[] = {").unwrap();
+    let handle_at = src.find("::rclcpp::NodeHandle __h(").unwrap();
+    let ctor_at = src.find("__nros_comp_0 = new (").unwrap();
+    assert!(table_at < handle_at && handle_at < ctor_at, "{src}");
+    // No `configure`-shape call leaks into this arm.
+    assert!(!src.contains("set_qos_overrides"), "{src}");
+}
+
+/// Issue 1854 -- without overrides the `rclcpp` arm keeps the 3-argument
+/// handle, so an entry that bakes none is byte-identical to before.
+#[test]
+fn typed_emit_rclcpp_shape_without_overrides_keeps_the_three_argument_handle() {
+    let mut plan = fixture_plan_typed(&[(
+        "handler_pkg",
+        "handler",
+        "handler",
+        "handler_pkg::Handler",
+        "handler_pkg/Handler.hpp",
+    )]);
+    plan.nodes[0].shape = Some("rclcpp".into());
+    let src = emit_typed(&plan).expect("typed emit ok");
+    assert!(src.contains("::rclcpp::NodeHandle __h("), "{src}");
+    assert!(!src.contains("nros_cpp_qos_override_t"), "{src}");
+    assert!(!src.contains("__nros_qos_"), "{src}");
+}
+
+/// Issue 1854 -- a `rust` component's install seam carries no override table,
+/// so a C++ entry that would install one with overrides is REFUSED, naming the
+/// node, rather than rendered running the code's QoS.
+#[test]
+fn typed_emit_refuses_a_rust_component_with_qos_overrides() {
+    let mut plan = fixture_plan_typed(&[(
+        "rust_pkg",
+        "talker",
+        "talker",
+        "rust_pkg::Talker",
+        "rust_pkg/Talker.hpp",
+    )]);
+    plan.nodes[0].lang = Some(Lang::Rust);
+    plan.nodes[0].qos_overrides = nros_orchestration_ir::qos_override::lower_all([(
+        "qos_overrides./chatter.publisher.depth",
+        "5",
+    )])
+    .expect("fixture overrides lower");
+    let err = emit_typed(&plan).expect_err("a rust node with overrides must be refused");
+    assert!(err.contains("rust_pkg"), "{err}");
+    assert!(err.contains("qos_overrides"), "{err}");
+    assert!(err.contains("issue 1854"), "{err}");
+
+    // The same node without overrides still renders: the refusal is about the
+    // table, not the kind.
+    plan.nodes[0].qos_overrides.clear();
+    emit_typed(&plan).expect("a rust node without overrides renders");
+}
+
 #[test]
 fn typed_emit_rclcpp_shape_constructs_with_handle() {
     // Phase 242.4 (RFC-0044) — an rclcpp-shape component OWNS its node: the

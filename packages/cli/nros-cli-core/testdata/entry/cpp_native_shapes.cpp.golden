@@ -93,7 +93,10 @@ static int32_t __nros_entry_setup() {
         }
     }
     {
-        ::rclcpp::NodeHandle __h(::rclcpp::global_handle(), "alpha", "/island");
+        static const ::nros_cpp_qos_override_t __nros_qos_7[] = {
+            { "/island/availability", 1, 6, 3 },
+        };
+        ::rclcpp::NodeHandle __h(::rclcpp::global_handle(), "alpha", "/island", __nros_qos_7, 1);
         if (!__h.valid()) return static_cast<int32_t>(::rclcpp::ErrorCode::NotInitialized);
         __nros_comp_7 = new (__nros_comp_buf_7) ::rclcpp_pkg::RCL_TWO(__h);
         if (!__nros_comp_7->ok()) {

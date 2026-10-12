@@ -1269,7 +1269,7 @@ cpp: cpp-fmt
     # to `c++`: the driver picks the language by EXTENSION, and `c++ foo.c`
     # compiles C as C++, which mangles `nros_stub_rmw_register` and fails to
     # link against the `extern "C"` declaration in the header.
-    for _tu in executor_cancel_runtime logger_names_and_levels_runtime node_launch_identity_runtime node_unset_namespace_runtime node_destroy_releases_entries_runtime arena_capture_lifetime_runtime; do \
+    for _tu in executor_cancel_runtime logger_names_and_levels_runtime node_launch_identity_runtime node_qos_overrides_runtime node_unset_namespace_runtime node_destroy_releases_entries_runtime arena_capture_lifetime_runtime; do \
         test -f "packages/api/nros-cpp/tests/compile/$_tu.cpp" || { \
             echo "ERROR: $_tu.cpp is MISSING -- this check would pass on absence." >&2; \
             exit 1; \
@@ -1351,6 +1351,25 @@ cpp: cpp-fmt
         "$gen/nros-cpp-tests"/stub_rmw_backend.o \
         "$nros_cpp_lib" -lpthread -ldl -lm
     "$gen/nros-cpp-tests"/node_launch_identity_runtime
+    # issue 1854 -- the same shape's QoS override TABLE. The component creates
+    # its entities in its constructor, so the entry has no gap to call
+    # `set_qos_overrides` in; the table rides on the handle instead, and must
+    # be on the node by the time the derived constructor body runs. A RUN for
+    # 1456's reason: every shape of the defect compiles.
+    echo "  - an rclcpp-shape component holds its handle's QoS override table before its constructor body runs (runtime, issue 1854)"
+    c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+        -I"$gen/nros-cpp-generated" \
+        -I"$gen/nros-c-generated" \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/core/nros-rmw-abi/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -Ipackages/api/nros-c/tests/run \
+        -o "$gen/nros-cpp-tests"/node_qos_overrides_runtime \
+        packages/api/nros-cpp/tests/compile/node_qos_overrides_runtime.cpp \
+        "$gen/nros-cpp-tests"/stub_rmw_backend.o \
+        "$nros_cpp_lib" -lpthread -ldl -lm
+    "$gen/nros-cpp-tests"/node_qos_overrides_runtime
     # issue 1473 — "the caller named no namespace" has ONE meaning across the
     # two C++ node-create entry points, and it is not "the root". A RUN on an
     # executor opened at a NON-ROOT namespace, because on a root executor
