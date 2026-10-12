@@ -287,8 +287,10 @@ jobs:
     # A sibling's job-level `if:` names the events it has work on. `CI` treats a
     # skip on any OTHER event as deliberate and a skip on one of its own events as
     # a failure; `check-default-gates-run-somewhere` holds the two lists equal and
-    # requires every gate-running job here to be one `CI` inspects. Same hosted
-    # runner as before: moving the heavy siblings to self-hosted is phase-489 W2.
+    # requires every gate-running job here to be one `CI` inspects. phase-489
+    # W2 routes `check-workspace-all` and `check-test-unit` to the self-hosted
+    # runners on merge_group / workflow_dispatch (see `check-workspace-all`);
+    # everything else, and every pull request, stays hosted.
     #
     # `always()` is load-bearing on every sibling: `changes` is skipped on a merge
     # group, and a skipped dependency skips its dependents — without it no sibling
@@ -1417,16 +1419,58 @@ jobs:
 
   check-workspace-all:
     name: check / workspace-all (host + embedded clippy)
+    # phase-489 W2 — this job and `check-test-unit` are ROUTED by event.
+    #
+    #   merge_group, workflow_dispatch   [self-hosted, linux, nros-sdk-zephyr,
+    #                                    nros-big] — the L3 label set, since the
+    #                                    embedded half needs arm-none-eabi-gcc
+    #   pull_request, schedule           ubuntu-22.04 in the CI image, as before
+    #
+    # WHY ONLY THOSE EVENTS. Merge throughput is set by the merge-group run, so
+    # that is where a faster sibling pays. Three runners also carry queue L3
+    # (one at a time) and the nightly lanes; the pull-request load is about
+    # twice the merge-group load (measured over the first day after W1: 41
+    # pull_request vs 21 merge_group runs), and adding it would saturate the
+    # pool and starve L3. `schedule` runs at night, beside the nightly matrix.
+    #
+    # NEVER ON A PULL REQUEST, so never on a fork's. This is a public repo; a
+    # fork PR from a returning contributor needs no approval, and on a
+    # self-hosted runner it would run contributor code on lab machines
+    # (docs/development/multi-agent-ci-workflow.md, rule 1).
+    # `check-workflow-runner-isolation` proves the route's condition cannot be
+    # true on `pull_request` / `pull_request_target`.
+    #
+    # THE INTERLOCK. `vars.NROS_SELF_HOSTED_READY` is the same switch queue L3
+    # uses. These jobs feed the REQUIRED `CI`, and a job with no runner waits
+    # rather than fails — so if the pool is down, set the variable to `false`
+    # and both jobs go back to the hosted runner on the next run.
+    #
+    # `check-cli-tests` was NOT moved: on a host with `/opt/ros/$ROS_DISTRO`
+    # its `cli-tests` step runs the rosidl parity tests, and the runner image
+    # carries one ROS package (the zenoh router), not `std_msgs` and friends,
+    # so they would report `[NO-PKG]` and pass over nothing. That needs the
+    # interface packages in the runner image first (phase-489 W2 notes).
+    #
+    # A self-hosted checkout persists, so the first step after checkout is
+    # `scripts/ci/self-hosted-clean-tree.sh` — see its header.
     needs: changes
     if: >-
       ${{ always() && contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name)
           && (github.event_name != 'pull_request' || needs.changes.outputs.code == 'true') }}
-    runs-on: ubuntu-22.04
+    # phase-489 W2 — ROUTED: self-hosted on merge_group / workflow_dispatch,
+    # hosted (in the CI image) on pull_request / schedule. Why each half, the
+    # fork-PR rule, the interlock variable and the clean-tree step: see the
+    # `check-workspace-all` comment block. The expression is spelled ONCE, and
+    # `check-workflow-runner-isolation` parses it (scripts/lib/runner_route.py).
+    runs-on: ${{ vars.NROS_SELF_HOSTED_READY == 'true' && contains(fromJSON('["merge_group","workflow_dispatch"]'), github.event_name) && fromJSON('["self-hosted","linux","nros-sdk-zephyr","nros-big"]') || 'ubuntu-22.04' }}
     permissions:
       contents: read
       packages: read
+    # The self-hosted runner IS a container (unprivileged, no Docker), so it
+    # cannot start a job container: the image is empty there and the steps run
+    # in the runner's own image. An EMPTY image means "no container".
     container:
-      image: ghcr.io/newslabntu/nano-ros-ci:humble
+      image: ${{ !(vars.NROS_SELF_HOSTED_READY == 'true' && contains(fromJSON('["merge_group","workflow_dispatch"]'), github.event_name)) && 'ghcr.io/newslabntu/nano-ros-ci:humble' || '' }}
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
@@ -1437,10 +1481,23 @@ jobs:
       - name: Checkout nano-ros
         uses: actions/checkout@v4
 
+      # phase-489 W2 — a self-hosted checkout PERSISTS between jobs and
+      # workflows, and `actions/checkout`'s clean leaves every submodule
+      # worktree (an earlier job's pin, its build output inside). Remove all of
+      # it and ASSERT the result, so nothing below can pass on leftover state.
+      # Keeps only content-addressed caches (cargo registry, sccache) and the
+      # pinned prerequisite stores; the script says why each is safe.
+      - name: Start from a clean tree (self-hosted only)
+        if: ${{ runner.environment == 'self-hosted' }}
+        run: scripts/ci/self-hosted-clean-tree.sh
+
       # Setup below is the same as `check-fast`'s, whose comments explain each
       # step (phase-489 W1 split one job into these siblings).
+      # Hosted only: a self-hosted runner keeps its own sccache volume (shared
+      # with queue L3, 30 GB, warm), which a 1 GB restore into /tmp would only
+      # shadow.
       - name: Cache sccache directory (compiling events)
-        if: ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name) }}
+        if: ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name) && runner.environment == 'github-hosted' }}
         uses: actions/cache/restore@v4
         with:
           path: /tmp/sccache
@@ -1456,6 +1513,13 @@ jobs:
             exit 0
           fi
           sccache --version
+          # Self-hosted: leave sccache on its persistent volume and the
+          # justfile's size. Exporting the hosted 1G here would make the shared
+          # server EVICT the warm cache queue L3 also reads down to 1 GB.
+          if [ "${RUNNER_ENVIRONMENT:-}" = self-hosted ]; then
+            echo "self-hosted: sccache uses its own volume (${SCCACHE_DIR:-$HOME/.cache/sccache})"
+            exit 0
+          fi
           export SCCACHE_DIR=/tmp/sccache
           export SCCACHE_CACHE_SIZE=1G
           export SCCACHE_ERROR_LOG=/tmp/sccache-server.log
@@ -1651,12 +1715,20 @@ jobs:
     if: >-
       ${{ always() && contains(fromJSON('["merge_group","schedule","workflow_dispatch"]'), github.event_name)
           && (github.event_name != 'pull_request' || needs.changes.outputs.code == 'true') }}
-    runs-on: ubuntu-22.04
+    # phase-489 W2 — ROUTED: self-hosted on merge_group / workflow_dispatch,
+    # hosted (in the CI image) on pull_request / schedule. Why each half, the
+    # fork-PR rule, the interlock variable and the clean-tree step: see the
+    # `check-workspace-all` comment block. The expression is spelled ONCE, and
+    # `check-workflow-runner-isolation` parses it (scripts/lib/runner_route.py).
+    runs-on: ${{ vars.NROS_SELF_HOSTED_READY == 'true' && contains(fromJSON('["merge_group","workflow_dispatch"]'), github.event_name) && fromJSON('["self-hosted","linux","nros-sdk-zephyr","nros-big"]') || 'ubuntu-22.04' }}
     permissions:
       contents: read
       packages: read
+    # The self-hosted runner IS a container (unprivileged, no Docker), so it
+    # cannot start a job container: the image is empty there and the steps run
+    # in the runner's own image. An EMPTY image means "no container".
     container:
-      image: ghcr.io/newslabntu/nano-ros-ci:humble
+      image: ${{ !(vars.NROS_SELF_HOSTED_READY == 'true' && contains(fromJSON('["merge_group","workflow_dispatch"]'), github.event_name)) && 'ghcr.io/newslabntu/nano-ros-ci:humble' || '' }}
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
@@ -1667,10 +1739,23 @@ jobs:
       - name: Checkout nano-ros
         uses: actions/checkout@v4
 
+      # phase-489 W2 — a self-hosted checkout PERSISTS between jobs and
+      # workflows, and `actions/checkout`'s clean leaves every submodule
+      # worktree (an earlier job's pin, its build output inside). Remove all of
+      # it and ASSERT the result, so nothing below can pass on leftover state.
+      # Keeps only content-addressed caches (cargo registry, sccache) and the
+      # pinned prerequisite stores; the script says why each is safe.
+      - name: Start from a clean tree (self-hosted only)
+        if: ${{ runner.environment == 'self-hosted' }}
+        run: scripts/ci/self-hosted-clean-tree.sh
+
       # Setup below is the same as `check-fast`'s, whose comments explain each
       # step (phase-489 W1 split one job into these siblings).
+      # Hosted only: a self-hosted runner keeps its own sccache volume (shared
+      # with queue L3, 30 GB, warm), which a 1 GB restore into /tmp would only
+      # shadow.
       - name: Cache sccache directory (compiling events)
-        if: ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name) }}
+        if: ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name) && runner.environment == 'github-hosted' }}
         uses: actions/cache/restore@v4
         with:
           path: /tmp/sccache
@@ -1686,6 +1771,13 @@ jobs:
             exit 0
           fi
           sccache --version
+          # Self-hosted: leave sccache on its persistent volume and the
+          # justfile's size. Exporting the hosted 1G here would make the shared
+          # server EVICT the warm cache queue L3 also reads down to 1 GB.
+          if [ "${RUNNER_ENVIRONMENT:-}" = self-hosted ]; then
+            echo "self-hosted: sccache uses its own volume (${SCCACHE_DIR:-$HOME/.cache/sccache})"
+            exit 0
+          fi
           export SCCACHE_DIR=/tmp/sccache
           export SCCACHE_CACHE_SIZE=1G
           export SCCACHE_ERROR_LOG=/tmp/sccache-server.log

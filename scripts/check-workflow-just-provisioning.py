@@ -88,6 +88,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
 
 from workflow_commands import REPO, command_lines, invoke_re, load_workflows  # noqa: E402
+from runner_route import parse_image, parse_runs_on  # noqa: E402
 
 JUST = invoke_re(("just",))
 
@@ -228,6 +229,30 @@ def audit(docs):
             container = job.get("container") or {}
             image = container.get("image") if isinstance(container, dict) else container
 
+            if isinstance(image, str) and "${{" in image:
+                # phase-489 W2 — an EVENT-ROUTED job: the CI image on the hosted
+                # arm, no container on the self-hosted arm. Both halves must be
+                # spelled with the SAME condition as `runs-on`, or some event
+                # gets a bare hosted runner (no `just`) or a container on a
+                # runner that cannot start one.
+                routed = parse_image(image)
+                route = parse_runs_on(job.get("runs-on"))
+                if routed is None or route is None or routed[0] != route.cond:
+                    failures.append((
+                        path, job_name, invocations[0][0], invocations[0][1],
+                        "container.image is an expression that is not the routed "
+                        "form `${{ !(COND) && '<image>' || '' }}` with the SAME COND "
+                        "as an event-routed runs-on (scripts/lib/runner_route.py)"))
+                    continue
+                verdict, detail = image_provides_just(routed[1], dockerfiles)
+                if verdict is True:
+                    checked.append((path, job_name, f"container (hosted arm): {detail}"))
+                    self_hosted.append((path, job_name))
+                else:
+                    failures.append(
+                        (path, job_name, invocations[0][0], invocations[0][1], detail))
+                continue
+
             if image:
                 verdict, detail = image_provides_just(image, dockerfiles)
                 if verdict is True:
@@ -329,6 +354,18 @@ def self_test():
             "steps": [{"name": "go", "run": "just check fast\n"}]}, True),
         ("self-hosted", {"runs-on": ["self-hosted", "linux", "nros-big"],
             "steps": [{"name": "go", "run": "just ci matrix\n"}]}, False),
+        ("event-routed, image on the hosted arm", {
+            "runs-on": "${{ github.event_name == 'merge_group' && fromJSON('[\"self-hosted\"]') || 'ubuntu-22.04' }}",
+            "container": {"image": "${{ !(github.event_name == 'merge_group') && 'ghcr.io/newslabntu/nano-ros-ci:humble' || '' }}"},
+            "steps": [{"name": "go", "run": "just check fast\n"}]}, False),
+        ("event-routed, image cond differs from runs-on", {
+            "runs-on": "${{ github.event_name == 'merge_group' && fromJSON('[\"self-hosted\"]') || 'ubuntu-22.04' }}",
+            "container": {"image": "${{ !(github.event_name == 'schedule') && 'ghcr.io/newslabntu/nano-ros-ci:humble' || '' }}"},
+            "steps": [{"name": "go", "run": "just check fast\n"}]}, True),
+        ("event-routed, unknown hosted image", {
+            "runs-on": "${{ github.event_name == 'merge_group' && fromJSON('[\"self-hosted\"]') || 'ubuntu-22.04' }}",
+            "container": {"image": "${{ !(github.event_name == 'merge_group') && 'ubuntu:24.04' || '' }}"},
+            "steps": [{"name": "go", "run": "just check fast\n"}]}, True),
         ("no just at all", {"runs-on": "ubuntu-latest", "steps": [
             {"name": "go", "run": "cargo build --release\n"}]}, False),
         # The detector's own false positives, which decide whether this gate is
