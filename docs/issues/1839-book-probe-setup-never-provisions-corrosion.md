@@ -67,3 +67,30 @@ it) actually doing so for the probe's posix targets. It is proven by both
 `book probe` tracks in a `probe` run getting past configure. Whichever
 setup verb is meant to carry Corrosion should be the one the book shows,
 so a user and the probe take the same road.
+
+## Fix (in review)
+
+`nros setup <board>` now carries Corrosion for every board whose platform
+takes the CMake road. That is the verb the book already shows, so the
+refusal's own advice is true and the book needs no extra step. The rule is
+not a per-board list in the index. `road_build_tool` (`cmd/setup.rs`) asks
+`builder::plan::driver_for(platform, true)`, the same question the builder
+asks: `Driver::CMake` gets `[tool.corrosion]`, Zephyr (`west`) and esp32 (no
+cross-language road) do not.
+
+Measured in the ros2 box, with an empty `NROS_HOME`:
+
+- `nros setup native --rmw cyclonedds --dry-run` lists `corrosion  source
+  build 0.6.1-nros1`.
+- The real run installs `<store>/corrosion/0.6.1-nros1`. The book's
+  `examples/native/c/talker` configure then reports `Corrosion 0.6.1 via SDK
+  store` and exits 0. Against an empty store the same configure still
+  refuses, as RFC-0104 D10 intends.
+
+Guarded by two `cmd::setup` unit tests, which run in `check-cli-tests` on
+every pull request. One binds the rule against a synthetic index. The other
+reads the shipped index and checks that `native --rmw <every rmw>` and every
+CMake-road board plan Corrosion, and that no other board does.
+
+The closing criterion is still open: both `book probe` tracks in a `probe`
+run getting past configure.
