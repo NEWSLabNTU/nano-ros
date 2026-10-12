@@ -2286,3 +2286,39 @@ scheduled arm still produces no verdict for the unit tests or the embedded
 clippy either. This is the eighth night's conclusion holding with no new
 information: one `just check build` writes more than a hosted runner's disk
 holds. Nothing has yet landed that bounds what the compile tier writes.
+
+## Bounding what the tier writes: no DWARF (2026-10-12)
+
+The eighth night's conclusion was that the fix has to bound what the compile
+tier writes. Debug info is most of it, and nothing in the gate reads it.
+
+**What reads DWARF.** Nothing. `git grep` for `addr2line`, `gimli`,
+`dwarfdump`, `.debug_info` and `DW_AT_` across scripts, just recipes, the
+test and tooling crates and the workflows finds only a hint string in
+`scripts/read-boot-report.py`. `mem-report` reads the symbol table, which
+stays.
+
+**What it costs.** Measured on one local `just ci gate` built the default
+way:
+
+| | total | DWARF |
+| --- | --- | --- |
+| `target/debug/deps` | 12.3 GiB | **8.9 GiB (72 %)** |
+| `target-check-c` + `target-check-cpp` | 8.4 GiB | 3.3 GiB (39 %) |
+
+**The change.** `gate.yml` sets `CARGO_PROFILE_{DEV,TEST,RELEASE,NROS_RELWITHDEBINFO}_DEBUG=0`
+for the whole workflow. It is workflow-wide on purpose: the sccache warm job
+and every compiling job must build with the same flags, or the cache they
+share stops matching.
+
+**Measured with it.** A cold `just ci gate` in a fresh worktree with those
+variables passes all 6 steps, and writes **6.9 G** to `target/` and
+**2.8 G** to the `target-check-*` dirs, 9.7 G in all. The default-built
+checkout above holds 23 G and 17 G. That checkout carries several gate runs,
+so it is not a strict before/after. Against this issue's own CI numbers,
+though (`target/` +17 G within the step on 10-08), the tier's Rust output
+falls to a fraction of the ~38 G free after the reclaim.
+
+Not changed: the C/C++ CMake builds under `build/` still compile with `-g`,
+and this does not touch them (7.6 G cold here). The acceptance is still a
+scheduled `gate` night that reaches a verdict.

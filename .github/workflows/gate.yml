@@ -129,6 +129,22 @@ concurrency:
   # everywhere else, where a newer push's answer subsumes an older one's.
   cancel-in-progress: ${{ github.event_name != 'merge_group' }}
 
+# Issue 1353 — no DWARF in this workflow's builds. Nothing in the gate reads
+# it: no gate or test parses `.debug_*` (`git grep` for addr2line, gimli,
+# dwarfdump finds only a hint string in read-boot-report.py). It is most of
+# what the compile tier writes: measured on one local `just ci gate`, DWARF was
+# 8.9 of 12.3 GiB in `target/debug/deps` (72 %) and 3.3 of 8.4 GiB in the
+# `target-check-*` dirs (39 %). The scheduled `check build` writes ~40 G into
+# the ~38 G a hosted runner has after the reclaim, so this is the margin.
+#
+# Workflow-wide, not per job: the sccache warm job and every compiling job
+# must build with the same flags, or the cache they share stops matching.
+env:
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_PROFILE_TEST_DEBUG: "0"
+  CARGO_PROFILE_RELEASE_DEBUG: "0"
+  CARGO_PROFILE_NROS_RELWITHDEBINFO_DEBUG: "0"
+
 jobs:
   # Path-gate the narrow lanes: on a PR each runs only if its paths moved; on
   # push/schedule/dispatch the per-job `if` falls through to run them all.
