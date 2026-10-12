@@ -287,20 +287,42 @@ jobs:
       # runner's Zephyr workspace now holds build caches and a venv for the
       # foreign-checkout gate's FULL scan (its `--manifest-only` half already
       # runs before the build). So a skip here is a lost input, not an excuse:
-      # the ledger is reset, the three run, and any skip they record fails.
-      - name: Build-tree gates (issue 1832)
-        if: steps.build.outcome == 'success'
+      # each gate is its own step (a red one must not hide the next: issue
+      # 1040), resets the ledger, and fails if it recorded a skip.
+      - name: "Build-tree gate: artifact-identity-budget (issue 1832)"
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
           source ./activate.sh
           source scripts/build/check-skip.sh
           nros_check_skip_reset
           just check artifact-identity-budget
+          if [ -s "$(_nros_check_skip_file)" ]; then
+            echo "::error::artifact-identity-budget did not verify after the tier-1 build:"
+            cat "$(_nros_check_skip_file)"
+            exit 1
+          fi
+      - name: "Build-tree gate: sizes-header-mirrors (issue 1832)"
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          source ./activate.sh
+          source scripts/build/check-skip.sh
+          nros_check_skip_reset
           just check sizes-header-mirrors
+          if [ -s "$(_nros_check_skip_file)" ]; then
+            echo "::error::sizes-header-mirrors did not verify after the tier-1 build:"
+            cat "$(_nros_check_skip_file)"
+            exit 1
+          fi
+      - name: "Build-tree gate: zephyr-workspace-foreign-checkout (issue 1832)"
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          source ./activate.sh
+          source scripts/build/check-skip.sh
+          nros_check_skip_reset
           just check zephyr-workspace-foreign-checkout
-          ledger="$(_nros_check_skip_file)"
-          if [ -s "$ledger" ]; then
-            echo "::error::a build-tree gate did not verify after the tier-1 build:"
-            cat "$ledger"
+          if [ -s "$(_nros_check_skip_file)" ]; then
+            echo "::error::zephyr-workspace-foreign-checkout did not verify after the tier-1 build:"
+            cat "$(_nros_check_skip_file)"
             exit 1
           fi
       - name: just ci tier1 run
