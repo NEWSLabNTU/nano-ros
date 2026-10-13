@@ -117,8 +117,9 @@ reconfigure-stale:
 # Issue 1869 -- the launch resolver's content stamp sorted its file list in the
 # CALLER's locale, so one unchanged tree stamped differently under en_US.UTF-8
 # and C.UTF-8 and the resolver read stale after every locale switch. Asserts
-# one digest under C, C.UTF-8 and en_US.UTF-8, with a bare-sort negative
-# control. ~1 s, tmpdir git repos, no cargo.
+# one digest under a stand-in `sort` that collates differently outside
+# LC_ALL=C (and under the real en_US.UTF-8 where installed), with the pre-fix
+# function as the negative control. ~1 s, tmpdir git repos, no cargo.
 [private]
 launch-resolve-stamp-locale:
     @bash tests/launch-resolve-stamp-locale-tests.sh

@@ -35,14 +35,17 @@ digests: the writer and the reader disagree whenever their locales differ, and
   the tree only. A stamp written under a collating locale before this change
   reads stale once and is rewritten by the next `setup-launch-resolve`.
 - `tests/launch-resolve-stamp-locale-tests.sh` (`just check
-  launch-resolve-stamp-locale`): one fixture tree stamped under C, C.UTF-8 and
-  en_US.UTF-8 must agree; an edited source must still move the stamp; negative
-  control: a bare `sort` over the same names must disagree between the two
-  locales (NOT VERIFIED via `nros_check_unverified` on a host without
-  en_US.UTF-8).
+  launch-resolve-stamp-locale`): one fixture tree must stamp the same under
+  C and C.UTF-8 with a stand-in `sort` on PATH that collates differently
+  unless LC_ALL=C (host-independent: CI images carry no en_US.UTF-8), and
+  under en_US.UTF-8 with the real `sort` where that locale exists; an edited
+  source must still move the stamp; negative control: the pre-fix function,
+  recreated from the sourced file, must give two stamps under the stand-in.
 
 ## Evidence
 
-- New test against the fixed script: `[PASS] ... 3 case(s) held`.
+- New test against the fixed script: `[PASS] launch-resolve-stamp-locale: 4
+  case(s) held; the negative control reproduces the hazard`.
 - Same test with the bare `sort` restored: `[FAIL] launch-resolve-stamp-locale:
-  stamp differs between C (c0aa848b...) and en_US.UTF-8 (e0225ca3...)`.
+  stamp differs between C (a1d73492...) and a differently-collating C.UTF-8
+  (5734ee84...)`.
