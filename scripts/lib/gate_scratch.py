@@ -20,7 +20,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 def scratch_path(name):
     if not re.fullmatch(r"[A-Za-z0-9_-][A-Za-z0-9._-]*", name):
         raise ValueError("gate_scratch: bad name %r" % (name,))
-    base = os.environ.get("NROS_GATE_SCRATCH_ROOT") or os.path.join(ROOT, "build", "gate-scratch")
+    base = os.environ.get("NROS_GATE_SCRATCH_ROOT") or os.path.join(ROOT, "tmp", "gate-scratch")
     return os.path.join(base, name)
 
 

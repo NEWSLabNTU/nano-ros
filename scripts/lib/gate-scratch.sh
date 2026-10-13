@@ -23,8 +23,12 @@
 #   * the directory is EMPTY when handed out: the gate still builds from
 #     nothing, exactly as it did under a fresh `mktemp -d`. Only the NAME
 #     is stable, never the contents, so no gate can pass on a leftover.
-#   * it lives under `<checkout>/build/` (gitignored), never `/tmp`: two
-#     checkouts on one machine get two paths and never collide.
+#   * it lives under `<checkout>/tmp/` (gitignored for new files), never
+#     `/tmp`: two checkouts on one machine get two paths and never collide.
+#     NOT under `build/`: `check-sizes-header-mirrors` walks `build/` for CMake
+#     build dirs, and a probe's build tree there made it VERIFY mid-run (the
+#     first CI run of this change: `check-fast-skip-allowlist` red on
+#     "allowlisted but VERIFIED now").
 #
 # WHAT IT DOES NOT DO: serialise. Two concurrent runs of the SAME gate in the
 # SAME checkout would share a directory. `just check` runs each gate once.
@@ -39,7 +43,7 @@ nros_gate_scratch() {
     esac
     local root="${NROS_GATE_SCRATCH_ROOT:-}"
     if [ -z "$root" ]; then
-        root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)/build/gate-scratch"
+        root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)/tmp/gate-scratch"
     fi
     local dir="$root/$name"
     rm -rf "$dir" || return 1
