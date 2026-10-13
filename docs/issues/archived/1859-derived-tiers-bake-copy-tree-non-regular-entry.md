@@ -1,7 +1,8 @@
 ---
 id: 1859
 title: "`derived_tiers_bake` fails 6/6 in the compile tier: its `copy_tree` meets a non-regular entry in `examples/workspaces/derived-tiers-cpp`"
-status: open
+status: resolved
+resolved: 2026-10-13
 type: bug
 area: [ci, testing, cli]
 severity: medium
@@ -61,3 +62,7 @@ reached `cli-tests`. How long this has been red is therefore unknown.
    built beside it.
 3. Acceptance: `just check build` (or a manual gate dispatch) with
    `derived_tiers_bake` 6/6 after a `sync` of that workspace.
+
+## Resolution (2026-10-13)
+
+Fixed by #2087: the test now copies only the fixture's sources, not its build output. Whatever `sync` leaves under `build/` can no longer reach `fs::copy`. Acceptance (a build-tier `derived_tiers_bake` 6/6 after a `sync`) still comes from the next scheduled gate run.
