@@ -328,6 +328,37 @@ struct CellHeader {
     message_dispatches: AtomicUsize,
 }
 
+/// Issue 1865 — the NON-GENERIC prefix of every `ComponentCell<..>`: its
+/// header and its slot, the two fields that precede every const-generic one.
+///
+/// [`ExecutorNodeRuntime::dispatch_callback`] must reach the component state
+/// of an ENROLLED cell (the install seam's) to hand it a deferred callback,
+/// and like the stats fold it cannot name the cell's const parameters. Under
+/// `#[repr(C)]` a field's offset depends only on the fields before it, so a
+/// `repr(C)` struct that repeats the first two fields has their offsets —
+/// asserted below rather than trusted, because reordering the cell's fields
+/// would otherwise turn this cast into a read of the wrong bytes.
+#[repr(C)]
+struct CellPrefix {
+    header: CellHeader,
+    slot: RefCell<&'static mut dyn ComponentSlot>,
+}
+
+const _: () = {
+    assert!(
+        core::mem::offset_of!(ComponentCell<0, 0, 0, 0, 0>, header)
+            == core::mem::offset_of!(CellPrefix, header)
+    );
+    assert!(
+        core::mem::offset_of!(ComponentCell<0, 0, 0, 0, 0>, slot)
+            == core::mem::offset_of!(CellPrefix, slot)
+    );
+    assert!(
+        core::mem::offset_of!(ComponentCell<1, 1, 1, 1, 1>, slot)
+            == core::mem::offset_of!(CellPrefix, slot)
+    );
+};
+
 /// Shared per-component cell. Subscription / timer closures registered
 /// against the executor hold a [`CellHandle`] so they can dispatch +
 /// publish back through the resolver.
@@ -1038,8 +1069,28 @@ impl ExecutorNodeRuntime {
     /// re-entrancy. The runtime is single-threaded by construction
     /// (the dispatch task owns it via `&mut self`), so the borrow
     /// always succeeds in normal flow.
+    ///
+    /// # Both populations
+    ///
+    /// Issue 1865 — a component reaches this runtime one of two ways, and the
+    /// two are disjoint (see the `observed_callback_counts` fold, issue #140):
+    /// [`register_node`](Self::register_node) pushes it to `components`, while
+    /// the install seam every `nros::node!` `register(runtime)` goes through
+    /// (`install_node_typed*` → `register_node_borrowed`) ENROLLS it in the
+    /// executor and never pushes. This scanned `components` alone, so since
+    /// the RTIC entry moved onto `register(runtime)` (phase-289) every signaled
+    /// callback the RTIC/Embassy dispatch task forwarded reached no component.
     pub fn dispatch_callback(&mut self, cb_id: &str, ctx: &mut CallbackCtx<'_>) {
         for cell in &self.components {
+            if let Ok(mut slot) = cell.slot.try_borrow_mut() {
+                slot.dispatch(cb_id, ctx);
+            }
+        }
+        for state in self.executor.enrolled_component_states() {
+            // SAFETY: every enrolled state is a placed `ComponentCell` from
+            // `register_node_borrowed` (the only enroll site), kept alive until
+            // `Executor::drop`; `CellPrefix` is its layout-checked prefix.
+            let cell = unsafe { &*(state as *const CellPrefix) };
             if let Ok(mut slot) = cell.slot.try_borrow_mut() {
                 slot.dispatch(cb_id, ctx);
             }

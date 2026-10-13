@@ -129,8 +129,8 @@ impl PlatformConfig {
 /// | Action  | 10220 |
 ///
 /// The extra bare-metal image pairs that outnumber the workload axis (BSP
-/// pair, RTIC mixed-priority pair, large-msg bench) take the named
-/// `alloc::BAREMETAL_*_PORT` aux slots (10500/10510/10520) — nothing
+/// pair, RTIC mixed-priority pair, large-msg bench, RTIC run-plan image) take
+/// the named `alloc::BAREMETAL_*_PORT` aux slots (10500/10510/10520/10530) — nothing
 /// shares a router anymore (the pre-W4 `qemu-baremetal-shared` group is
 /// retired).
 pub const BAREMETAL: PlatformConfig = PlatformConfig {

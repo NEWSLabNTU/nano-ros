@@ -116,6 +116,14 @@ pub const BAREMETAL_MIXED_PRIORITY_PORT: u16 = aux_port(PlatformId::QemuBaremeta
 /// (`packages/testing/nros-bench/large-msg-baremetal`).
 pub const BAREMETAL_LARGE_MSG_PORT: u16 = aux_port(PlatformId::QemuBaremetal, 2);
 
+/// mps2-an385 RTIC generated-entry run-plan image
+/// (`packages/testing/nros-tests/bins/rtic-run-plan-e2e`, run by `just qemu
+/// test-rtic-main-e2e`). Issue 1865 — the image STATES this port in its
+/// `system.toml` and the recipe reads it from there; this constant only keeps
+/// the slot out of every other image's way (`allocator_injective_over_matrix`)
+/// and `baked_locator`'s test holds the two equal.
+pub const BAREMETAL_RTIC_RUN_PLAN_PORT: u16 = aux_port(PlatformId::QemuBaremetal, 3);
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -158,6 +166,7 @@ mod tests {
             BAREMETAL_BSP_PORT,
             BAREMETAL_MIXED_PRIORITY_PORT,
             BAREMETAL_LARGE_MSG_PORT,
+            BAREMETAL_RTIC_RUN_PLAN_PORT,
         ] {
             assert!(
                 !ports.contains_key(&aux),
@@ -216,7 +225,7 @@ mod tests {
         }
         println!(
             "aux: baremetal bsp={BAREMETAL_BSP_PORT} mixed={BAREMETAL_MIXED_PRIORITY_PORT} \
-             large-msg={BAREMETAL_LARGE_MSG_PORT}"
+             large-msg={BAREMETAL_LARGE_MSG_PORT} rtic-run-plan={BAREMETAL_RTIC_RUN_PLAN_PORT}"
         );
     }
 }
