@@ -267,10 +267,15 @@ def render_cmake(rows):
     ]
     typed = [r for r in rows if r.get("type")]
     out.append("# The knobs the Zephyr module defines as Kconfig symbols (phase-484 W5b):")
-    out.append("# NROS_KNOB_KCONFIG_SYMBOL_<id> is the symbol `-DNROS_OVERRIDE_<id>` sets.")
+    out.append("# NROS_KNOB_KCONFIG_SYMBOL_<id> is the symbol `-DNROS_OVERRIDE_<id>` sets;")
+    out.append("# NROS_KNOB_IMAGE_TABLE_<id> / NROS_KNOB_IMAGE_NAME_<id> are where a project")
+    out.append("# states it: `[image.<img>.knobs.<table>] <name> = <value>` (phase-484 W8).")
     out.append('set(NROS_KNOB_KCONFIG_IDS "' + ";".join(r["id"] for r in typed) + '")')
     for r in typed:
         out.append(f"set(NROS_KNOB_KCONFIG_SYMBOL_{r['id']} {kconfig_symbol(r)})")
+        table, _, name = image_key(r).rpartition(".")
+        out.append(f"set(NROS_KNOB_IMAGE_TABLE_{r['id']} {table})")
+        out.append(f"set(NROS_KNOB_IMAGE_NAME_{r['id']} {name})")
     out.append("")
     for r in rows:
         legacy = r.get("legacy", [])
@@ -496,6 +501,8 @@ def self_test():
     assert "set(NROS_KNOB_CANONICAL_ZPICO_X NROS_ZENOH_X)" in cm, cm
     assert 'set(NROS_KNOB_KCONFIG_IDS "ZENOH_X")' in cm, cm
     assert "set(NROS_KNOB_KCONFIG_SYMBOL_ZENOH_X NROS_ZENOH_X)" in cm, cm
+    assert "set(NROS_KNOB_IMAGE_TABLE_ZENOH_X zenoh)" in cm, cm
+    assert "set(NROS_KNOB_IMAGE_NAME_ZENOH_X x)" in cm, cm
     assert "NROS_Y" not in cm, "selftest: an untyped row with no legacy spelling reached the cmake table"
 
 
