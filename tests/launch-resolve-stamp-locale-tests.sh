@@ -14,23 +14,27 @@
 #
 # WHAT IS ASSERTED:
 #
-#   A. agree   -- the stamp of one tree is identical under LC_ALL=C,
-#                 C.UTF-8 and a collating locale (en_US.UTF-8).
-#   B. moves   -- an edited source still moves the stamp (the fix must not
+#   A. agree   -- the stamp of one tree is identical under LC_ALL=C and
+#                 C.UTF-8, with a stand-in `sort` first on PATH that collates
+#                 DIFFERENTLY (reverse byte order) unless it runs under
+#                 LC_ALL=C. The stand-in makes the case host-independent: CI
+#                 images ship no en_US.UTF-8, and without a locale that
+#                 collates differently the case would hold vacuously.
+#   B. real    -- where en_US.UTF-8 IS installed, the real `sort` too: the
+#                 stamp under en_US.UTF-8 equals the one under C (not run
+#                 otherwise; A already covers the rule).
+#   C. moves   -- an edited source still moves the stamp (the fix must not
 #                 have reduced the digest to a constant).
-#   C. NEGATIVE CONTROL -- a bare `sort` over the SAME file list orders it
-#                 differently under the two locales. Without it, A would also
-#                 pass on a host whose en_US locale is missing (glibc then falls
-#                 back to C silently), proving nothing. If no collating locale
-#                 is installed, C cannot run and the case is NOT VERIFIED
-#                 (`nros_check_unverified`), never a quiet pass.
+#   D. NEGATIVE CONTROL -- the pre-fix function (a bare `sort`, recreated by
+#                 rewriting the sourced file) under the same stand-in gives a
+#                 DIFFERENT stamp for the same tree under the two locales.
+#                 Without it A would also pass against a stand-in that
+#                 reordered nothing.
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=scripts/build/launch-resolve-stale.sh
 source "$root/scripts/build/launch-resolve-stale.sh"
-# shellcheck source=scripts/build/check-skip.sh
-source "$root/scripts/build/check-skip.sh"
 
 fail() {
     echo "[FAIL] launch-resolve-stamp-locale: $*" >&2
@@ -55,31 +59,51 @@ printf '[package]\n' >"$crate/Cargo.toml"
 printf 'fn c() {}\n' >"$pl/src/ros-launch-resolve/x/a_c.rs"
 printf 'fn d() {}\n' >"$pl/src/ros-launch-resolve/x/ab.rs"
 git_q -C "$pl" add -A
-git_q -C "$pl" -c user.name=t -c user.email=t@t commit -q -m pl
+git_q -C "$pl" commit -q -m pl
 git_q -C "$fx" add packages/cli/nros-launch-resolve
-git_q -C "$fx" -c user.name=t -c user.email=t@t commit -q -m fx
+git_q -C "$fx" commit -q -m fx
 
 stamp_in() { LC_ALL="$1" nros_launch_resolve_stamp "$fx" 2>/dev/null; }
 
-# A. agree
-s_c="$(stamp_in C)"
-s_cu="$(stamp_in C.UTF-8)"
-s_en="$(stamp_in en_US.UTF-8)"
+# The stand-in: byte order under LC_ALL=C, reverse byte order otherwise.
+real_sort="$(command -v sort)"
+mkdir -p "$tmp/bin"
+{
+    echo '#!/bin/sh'
+    echo "if [ \"\${LC_ALL:-}\" = C ]; then exec '$real_sort' \"\$@\"; fi"
+    echo "LC_ALL=C '$real_sort' -r \"\$@\""
+} >"$tmp/bin/sort"
+chmod +x "$tmp/bin/sort"
+
+# A. agree, under the stand-in
+s_c="$(PATH="$tmp/bin:$PATH" stamp_in C)"
+s_cu="$(PATH="$tmp/bin:$PATH" stamp_in C.UTF-8)"
 [ -n "$s_c" ] || fail "empty stamp under LC_ALL=C"
-[ "$s_c" = "$s_cu" ] || fail "stamp differs between C ($s_c) and C.UTF-8 ($s_cu)"
-[ "$s_c" = "$s_en" ] || fail "stamp differs between C ($s_c) and en_US.UTF-8 ($s_en)"
+[ "$s_c" = "$s_cu" ] || fail "stamp differs between C ($s_c) and a differently-collating C.UTF-8 ($s_cu)"
+held=3
 
-# B. moves
-printf 'fn a2() {}\n' >"$crate/src/a_c.rs"
-s_edit="$(stamp_in en_US.UTF-8)"
-[ "$s_edit" != "$s_c" ] || fail "an edited source left the stamp unchanged"
-
-# C. negative control: does a bare sort reproduce the hazard on this host?
+# B. real, where a collating locale is installed
 list="$(printf '%s\n' "x/ab.rs" "x/a_c.rs")"
 if [ "$(printf '%s\n' "$list" | LC_ALL=C sort)" != "$(printf '%s\n' "$list" | LC_ALL=en_US.UTF-8 sort 2>/dev/null)" ]; then
-    echo "[PASS] launch-resolve-stamp-locale: 3 case(s) held (C, C.UTF-8, en_US.UTF-8 agree; a bare sort disagrees)"
-else
-    nros_check_unverified launch-resolve-stamp-locale \
-        "en_US.UTF-8 is not installed, so the negative control cannot show a bare sort disagreeing (cases A and B held)" || exit 1
-    echo "[PASS] launch-resolve-stamp-locale: 2 case(s) held, negative control NOT VERIFIED"
+    s_en="$(stamp_in en_US.UTF-8)"
+    [ "$s_c" = "$s_en" ] || fail "stamp differs between C ($s_c) and en_US.UTF-8 ($s_en)"
+    held=4
 fi
+
+# D. negative control: the pre-fix function, same stand-in, same tree
+sed 's/LC_ALL=C sort |/sort |/' "$root/scripts/build/launch-resolve-stale.sh" >"$tmp/prefix.sh"
+case "$(cat "$tmp/prefix.sh")" in
+    *'LC_ALL=C sort'*) fail "could not recreate the pre-fix function" ;;
+esac
+old_stamp() {
+    PATH="$tmp/bin:$PATH" LC_ALL="$1" bash -c 'source "$1"; nros_launch_resolve_stamp "$2"' _ "$tmp/prefix.sh" "$fx" 2>/dev/null
+}
+[ "$(old_stamp C)" != "$(old_stamp C.UTF-8)" ] \
+    || fail "negative control: the pre-fix stamp did not move with the collation, so case A proves nothing"
+
+# C. moves
+printf 'fn a2() {}\n' >"$crate/src/a_c.rs"
+s_edit="$(stamp_in C.UTF-8)"
+[ "$s_edit" != "$s_c" ] || fail "an edited source left the stamp unchanged"
+
+echo "[PASS] launch-resolve-stamp-locale: $held case(s) held; the negative control reproduces the hazard"
