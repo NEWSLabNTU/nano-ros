@@ -443,10 +443,36 @@ def find_image_roots(roots):
     return found
 
 
+# Issue 1869 — `nros build` given a SHARED `--target-dir` keeps each
+# configuration's intermediates in `<target-dir>/nros-class/<key>/build/` (cargo's
+# `build.build-dir`) and uplifts only the final binaries into
+# `<target-dir>/<profile>/`. The generated config lives in the class's profile
+# dir, which holds no uplifted image; the binary compiled against THAT config is
+# its `deps/<name>-<hash>`, so that is where this gate reads it.
+CLASS_SUBDIR = "nros-class"
+CLASS_BUILD_DIR = "build"
+
+
+def is_class_build_dir(profile_dir):
+    """Is this a profile dir inside a build class's cargo build dir?"""
+    parts = os.path.normpath(profile_dir).split(os.sep)
+    # .../nros-class/<key>/build/<profile> or .../build/<triple>/<profile>
+    for back in (4, 5):
+        if len(parts) > back and parts[-back] == CLASS_SUBDIR \
+                and parts[-back + 2] == CLASS_BUILD_DIR:
+            return True
+    return False
+
+
 def images_in(profile_dir):
-    """Final artifacts of a cargo profile dir: its own files plus `examples/`."""
+    """Final artifacts of a cargo profile dir: its own files plus `examples/`.
+
+    A build class's profile dir has none of its own (see `CLASS_SUBDIR`), so
+    its images are the linked executables in `deps/`.
+    """
     out = []
-    for sub in ("", "examples"):
+    subs = ("deps",) if is_class_build_dir(profile_dir) else ("", "examples")
+    for sub in subs:
         d = os.path.join(profile_dir, sub) if sub else profile_dir
         try:
             names = sorted(os.listdir(d))
@@ -758,6 +784,19 @@ def self_test(quiet=True):
             fails.append("is_elf_image: ET_REL (an object file) must not count")
         if is_elf_image(text_file):
             fails.append("is_elf_image: a non-ELF must not count")
+
+        # Issue 1869 — a build class's profile dir holds its images in `deps/`,
+        # and an ordinary profile dir's `deps/` is never read.
+        for prof, want in (
+            (os.path.join(d, "t", CLASS_SUBDIR, "k", CLASS_BUILD_DIR, "debug"), 1),
+            (os.path.join(d, "t", CLASS_SUBDIR, "k", CLASS_BUILD_DIR, "x86", "debug"), 1),
+            (os.path.join(d, "plain", "debug"), 0),
+        ):
+            os.makedirs(os.path.join(prof, "deps"))
+            with open(os.path.join(prof, "deps", "app-0123"), "wb") as fh:
+                fh.write(b"\x7fELF\x02\x01\x01" + b"\0" * 9 + (2).to_bytes(2, "little"))
+            if len(images_in(prof)) != want:
+                fails.append(f"images_in({prof}): expected {want} image(s)")
 
     # Phase-413 W7 / issue 1001. Two properties of the scoping, both of which
     # a "it printed OK" reading cannot distinguish from their absence.

@@ -193,10 +193,31 @@ WATCH_EXEMPTIONS = Exemptions(
             "issue 1623 — the unset<->set transition needs a cargo edge (a script "
             "that first ran with it unset kept its undeclared defaults), and the "
             "CONTENT is also watched: `load_for_build_script` emits "
-            "`rerun-if-changed` on the file it names",
+            "`rerun-if-changed` on the file it names. The TEXT cannot vary inside "
+            "one fingerprint namespace (issue 1869): `nros build` given a shared "
+            "`--target-dir` names a content-keyed class copy and a build dir per "
+            "class — `SHARED_TARGET_PREMISE` below checks that road still does",
     },
     what="path-shaped watch",
 )
+# issue 1869 — the premise the 1623 row above rests on, checked rather than
+# trusted (the CORROSION_BUILD_DIR story in `ALLOWED`: an exemption is a claim
+# about code elsewhere, and a change there falsifies it silently). Several
+# workspace images building into ONE caller-named target dir each name their own
+# descriptor; only the build-class step keeps that text constant within a cargo
+# build dir and keeps two configurations out of one unit. Each needle must
+# appear in the cargo road of `nros build`.
+SHARED_TARGET_PREMISE = (
+    "packages/cli/nros-cli-core/src/cmd/build.rs",
+    ("shared_target::caller_target_dir(", "shared_target::apply(", "build.build-dir="),
+)
+
+
+def shared_target_premise_problems(text):
+    """The needles of `SHARED_TARGET_PREMISE` missing from `text`."""
+    return [n for n in SHARED_TARGET_PREMISE[1] if n not in comments.strip_comments(text, "rust")]
+
+
 WATCH_NEIGHBOURS = [
     # the same crate watching a DIFFERENT path variable…
     ("packages/tooling/nros-sizing-descriptor", "NROS_BOARD_TOML"),
@@ -636,6 +657,16 @@ def self_test():
     bad, _u = flagged(src.replace("NROS_SIZING_DESCRIPTOR", "NROS_BOARD_TOML"), crate=sd,
                       watch_ex=Exemptions(row_1623))
     expect(bad, "the issue-1623 row leaked to a NEIGHBOURING variable")
+    # issue 1869 — the premise check sees a removed call, including one that
+    # survives only in a comment.
+    live = ('let c = crate::builder::shared_target::caller_target_dir(a, e, r);\n'
+            'let k = crate::builder::shared_target::apply(t, e, p, x);\n'
+            'a.push(format!("build.build-dir={}", d));\n')
+    expect(not shared_target_premise_problems(live), "the premise check rejects the live shape")
+    gone = live.replace("let k = crate::builder::shared_target::apply(t, e, p, x);",
+                        "// crate::builder::shared_target::apply(t, e, p, x);")
+    expect(shared_target_premise_problems(gone) == ["shared_target::apply("],
+           "a build-class step left only in a comment was not reported")
     for table, neighbours in ((WATCH_EXEMPTIONS, WATCH_NEIGHBOURS),
                               (UNRESOLVED_EXEMPTIONS, UNRESOLVED_NEIGHBOURS)):
         probs = Exemptions(table.table, what=table.what).check(neighbours)
@@ -721,6 +752,27 @@ def main():
         sys.exit(1)
     stale = WATCH_EXEMPTIONS.stale() + UNRESOLVED_EXEMPTIONS.stale()
     rc = 0
+    premise_file = os.path.join(ROOT, SHARED_TARGET_PREMISE[0])
+    try:
+        with open(premise_file, encoding="utf8") as fh:
+            premise = shared_target_premise_problems(fh.read())
+    except OSError as e:
+        premise = [f"unreadable: {e}"]
+    if premise:
+        rc = 1
+        sys.stderr.write(
+            "check-path-env-fingerprints: the issue-1623 exemption's PREMISE is gone "
+            f"(issue 1869) — {SHARED_TARGET_PREMISE[0]} no longer contains:\n"
+        )
+        for n in premise:
+            sys.stderr.write(f"  {n}\n")
+        sys.stderr.write(
+            "\n  Workspace images sharing one `--target-dir` each name their own\n"
+            "  `NROS_SIZING_DESCRIPTOR`; without the build-class step\n"
+            "  (`builder::shared_target`) every alternation re-runs every consumer and\n"
+            "  differing facts share one unit. Restore it, or drop the exemption and\n"
+            "  stop watching the variable as text.\n\n"
+        )
     if unresolved:
         rc = 1
         sys.stderr.write(
