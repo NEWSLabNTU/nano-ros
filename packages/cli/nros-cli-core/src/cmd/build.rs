@@ -865,6 +865,48 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                     Some(&image_id),
                     &image,
                 )?);
+                // Issue 1869 (RFC-0100 D13) — a caller that names ONE target
+                // dir for several images (the fixture lanes) gets a build dir
+                // per CONFIGURATION inside it, and the descriptor as a class
+                // copy, so equal configurations share every unit and different
+                // ones never rebuild or reuse each other's. The user's road
+                // names no target dir and is untouched.
+                let shared_class = {
+                    let getenv = |k: &str| std::env::var(k).ok();
+                    match crate::builder::shared_target::caller_target_dir(
+                        &args.native_args,
+                        &getenv,
+                        &root,
+                    ) {
+                        Some(tdir) => {
+                            let extra = [
+                                (
+                                    "cargo_config",
+                                    descriptor.cargo_config.as_deref().unwrap_or(""),
+                                ),
+                                ("target", descriptor.target.as_deref().unwrap_or("")),
+                            ];
+                            let class = crate::builder::shared_target::apply(
+                                &tdir,
+                                &env,
+                                &mut path_env,
+                                &extra,
+                            )
+                            .map_err(|e| eyre::eyre!("`{image_id}`'s shared build class: {e}"))?;
+                            eprintln!(
+                                "nros build:   shared target dir → build class {} ({})",
+                                class.key,
+                                class.dir.display()
+                            );
+                            (!crate::builder::shared_target::caller_names_build_dir(
+                                &args.native_args,
+                                &getenv,
+                            ))
+                            .then(|| class.build_dir())
+                        }
+                        None => None,
+                    }
+                };
                 let config_path = image_dir.join(crate::builder::cargo_config::FILE_NAME);
                 crate::builder::cargo_config::write(
                     &crate::builder::cargo_config::CargoConfigSpec {
@@ -955,6 +997,16 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                         u.push("--offline".to_string());
                     }
                     cargo_prepare = Some(Handoff::new("cargo", u).in_dir(&root));
+                }
+                if let Some(build_dir) = &shared_class {
+                    // `build.build-dir` (cargo 1.91+): intermediates per class,
+                    // final artifacts still uplifted into the caller's
+                    // `--target-dir`. A TOML string, so the path is quoted.
+                    a.push("--config".to_string());
+                    a.push(format!(
+                        "build.build-dir={}",
+                        toml_edit::Value::from(build_dir.display().to_string())
+                    ));
                 }
                 a.extend(args.native_args.iter().cloned());
                 // From the workspace root, which no longer carries anything: the

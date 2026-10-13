@@ -108,10 +108,11 @@ fn main() {
     println!("cargo:idlc={}", idlc.display());
     println!("cargo:lib={}", install_lib.display());
     println!("cargo:root={}", dst.display());
-
-    // Re-export the install root in the OUT_DIR for ad-hoc inspection.
-    let out_dir = PathBuf::from(env::var_os("OUT_DIR").expect("OUT_DIR"));
-    println!("cargo:rerun-if-changed={}", out_dir.display());
+    // No `rerun-if-changed` on OUT_DIR: this script's own cmake build and
+    // install write into it, so the watch was dirty after every run and every
+    // no-change rebuild recompiled this crate and all of its dependents
+    // (measured on the workspace fixture rows during issue 1869). The inputs
+    // are `build.rs` and the Cyclone source tree, both watched above.
 }
 
 /// Drop a CMake build dir whose cached configure results describe a DIFFERENT

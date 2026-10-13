@@ -6,7 +6,9 @@ restates the file rule over the nano-ros overlay, in effect since phase-486 W4;
 see also
 [Amendment 1](#amendment-1-2026-10-03--the-unified-build-path-moved-under-this-model),
 which adds D12 and revises D4's producer and road language against RFC-0065's
-unified build path)
+unified build path, and
+[Amendment 2](#amendment-2-2026-10-13--d13-a-shared-target-dir-keys-its-build-on-the-descriptors-content),
+which adds D13 for images sharing one cargo target dir)
 
 Builds on RFC-0049 (the four-rung knob ladder supplies the precedence this model
 needs and is not re-litigated), RFC-0033 (storage modes decide whether a cap
@@ -1263,3 +1265,54 @@ D1–D11 stand. Refusal stays per field and never a default; demand stays
 unfloored; a descriptor stays relative and self-contained; the backend still
 owns its formula. D12 adds a unit (the runtime) and a reduction it borrows; it
 adds no fact and no carrier.
+
+## Amendment 2 (2026-10-13) — D13: a shared target dir keys its build on the descriptor's content
+
+Issue 1869. D4 names the descriptor to cargo BY PATH, one file per entry, and
+issue 1623 made every consumer watch the VARIABLE as well as the file (the
+unset→set edge). Both are right for a build that owns its target dir — the
+user's road, where `nros build` writes `target-dir = "<entry>/target"`. They
+collide where a caller points several images at ONE target dir (the fixture
+lanes pass `--target-dir target-fixtures` after `--`, RFC-0070 R4): cargo
+compares the variable as text, so each alternation between two images re-ran
+every consumer (issue 0491's shape), and where the two descriptors stated
+different facts the same unit carried two configurations (issue 0616's shape)
+— removing the text edge would have traded the rebuild for a wrong-config
+reuse.
+
+### D13 — the configuration is part of where a shared build lives
+
+> **When `nros build` is given a target dir by its caller, each image builds
+> in a cargo `build.build-dir` keyed on its configuration, and its descriptor
+> is named to cargo as a class copy keyed the same way.**
+
+```text
+<target-dir>/nros-class/<key>/sizing.toml   the descriptor, `[meta] entry = "class-<key>"`
+<target-dir>/nros-class/<key>/build/        cargo's build.build-dir (intermediates)
+<target-dir>/<profile>/<entry>              final artifacts, where they always were
+```
+
+1. **The key is the content, never a path.** It hashes every `[env]` value of
+   the image's settings, the board's `cargo_config` template and triple, and
+   the descriptor's TEXT as a class copy
+   (`nros_sizing_descriptor::as_build_class`) — the `nros_shared_cargo_dir`
+   rule RFC-0094 D4 applies on the cmake road. Equal configurations get one
+   key, one descriptor path (so 1623's text edge never fires between them) and
+   one build dir; different configurations never touch each other's units.
+2. **`[meta] entry` is the only field the class copy replaces**, because it is
+   the only one that names the image instead of describing it and no consumer
+   reads it. The copy must read back as exactly the descriptor it was made
+   from, or `nros build` refuses rather than share it.
+3. **The copy is written only when its text changes**, so an unchanged class
+   keeps its mtime and D4's `rerun-if-changed` edge stays quiet.
+4. **Artifacts do not move.** `build.build-dir` keeps intermediates only;
+   cargo uplifts binaries into `<target-dir>/<profile>/`, the path every
+   test-side locator derives (RFC-0070 R3 unchanged). A caller that names its
+   own `build.build-dir` keeps it and gets only the class copy.
+5. **The user's road is untouched**: no caller target dir, no class.
+
+Cost: one build tree per DISTINCT configuration instead of one per target dir,
+and a class whose configuration changed leaves its old tree behind until the
+target dir is cleaned (the CI fixture tree's 7-day reset bounds it). Gate: the
+premise is checked by `check-path-env-fingerprints` (`SHARED_TARGET_PREMISE`),
+because the 1623 exemption rests on it.

@@ -573,6 +573,42 @@ pub fn runtime_descriptor_path(build_dir: &Path) -> PathBuf {
         .join("shared.toml")
 }
 
+/// RFC-0100 D13 (issue 1869) — this descriptor as a BUILD CLASS: identical in
+/// every fact, with `[meta] entry` naming `class` instead of the entry.
+///
+/// Several images that point one cargo target dir at their own descriptors
+/// share every unit identity while handing each build script a different
+/// `NROS_SIZING_DESCRIPTOR` — a TEXT difference cargo treats as a changed input
+/// (issue 0491) and, where the facts differ too, one unit carrying two
+/// configurations (issue 0616). The builder therefore names a class copy keyed
+/// on this text, so equal facts share one path and one build dir, and
+/// different facts get different ones.
+///
+/// `entry` is the only field replaced, because it is the only one that NAMES
+/// the image rather than describing it: no consumer reads it (it exists so "a
+/// copied file still says what it is about", and a class file is about its
+/// class). Returns the class descriptor and its rendered text, and refuses when
+/// the text does not read back as exactly that descriptor — a class copy that
+/// lost a fact in the round trip would hand every image of the class the
+/// wrong numbers.
+pub fn as_build_class(
+    desc: &SizingDescriptor,
+    class: &str,
+) -> Result<(SizingDescriptor, String), String> {
+    let mut out = desc.clone();
+    out.meta.entry = class.to_string();
+    let text = render(&out);
+    let back = parse(&text, Path::new(class)).map_err(|e| e.to_string())?;
+    if back != out {
+        return Err(format!(
+            "the build-class copy of `{}`'s sizing descriptor does not round-trip; \
+             refusing to share it",
+            desc.meta.entry
+        ));
+    }
+    Ok((out, text))
+}
+
 /// What went wrong reading one.
 #[derive(Debug)]
 pub enum DescriptorError {
@@ -839,6 +875,28 @@ mod tests {
         d.policy = Policy::new(Some(64), Some(4096), Some(1));
         d.image = Image::new(Some(2), Some(1), Some(3));
         d
+    }
+
+    /// Issue 1869 — two entries with the same facts render ONE class text, and
+    /// a fact that differs renders a different one. The class key is a hash of
+    /// this text, so this is the whole "equal configs share, different ones do
+    /// not" property at the reader's end.
+    #[test]
+    fn a_build_class_differs_only_where_the_facts_do() {
+        let a = island();
+        let mut b = island();
+        b.meta.entry = "listener".into();
+        let (ca, ta) = as_build_class(&a, "class").unwrap();
+        let (_, tb) = as_build_class(&b, "class").unwrap();
+        assert_eq!(ta, tb, "the entry name is not a configuration");
+        assert_eq!(ca.meta.entry, "class");
+        assert_eq!(ca.endpoints, a.endpoints, "every fact survives");
+        assert_eq!(ca.image, a.image);
+
+        let mut c = island();
+        c.image = Image::new(Some(1), Some(1), Some(3));
+        let (_, tc) = as_build_class(&c, "class").unwrap();
+        assert_ne!(ta, tc, "a different fact is a different class");
     }
 
     /// phase-455 W5 / issue 1341 — the ONE count two pools size from.

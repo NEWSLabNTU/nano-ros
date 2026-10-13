@@ -486,10 +486,19 @@ tree; cold is 9479 s, the build right after a rebase onto main):
 | part | before | after | cause / fix |
 | --- | --- | --- | --- |
 | compile-check fixtures (68 rows) | 2297 s | 162 s | every builder `rm -rf`-ed and rebuilt; now reuses a row whose `.inputsig` (the signature the test-side probe recomputes) matches, as the west lane already did (issue 0509) |
-| the native module (154 rows) | 1883 s | 1747 s | 26 rows recompile the core crates: rows sharing a target dir point `NROS_SIZING_DESCRIPTOR` at different descriptors — [issue 1869](../issues/1869-shared-fixture-target-dir-thrashes-on-sizing-descriptor.md), not fixed; every C/C++ workspace row re-runs its cmake configure through `nros build` (~10 s each) |
+| the native module (154 rows) | 1883 s | 1747 s | 26 rows recompile the core crates: rows sharing a target dir point `NROS_SIZING_DESCRIPTOR` at different descriptors — [issue 1869](../issues/archived/1869-shared-fixture-target-dir-thrashes-on-sizing-descriptor.md), fixed after this table (see below); every C/C++ workspace row re-runs its cmake configure through `nros build` (~10 s each) |
 | `_codegen` + `check::fast` (a dependency of `build-test-fixtures`) | ~390 s | 297 s | `check fast` is 275–333 s at -P4 on this box |
 | compile-check + the post-build checks | ~2450 s | 262 s | |
 | **whole re-run** | **4720 s (50 % of cold)** | **2306 s (24 %)** | |
+
+**Issue 1869, fixed afterwards** (PR #2137, RFC-0100 D13): a caller-named target dir
+now gets one cargo `build.build-dir` per configuration, keyed on the sizing
+descriptor's content, with the descriptor named as a class copy. The 24 cargo
+workspace rows of the native lane (`workspace-fixtures-build.sh linux rust`),
+warm, no change: 19 rows / 273 s of row time before, 0 rows / 30 s after
+(the same measurement also found and removed `cyclonedds-sys`'s self-dirtying
+`OUT_DIR` watch). The native module's 1747 s above therefore drops by roughly
+240 s; the C/C++ rows' per-row cmake reconfigure is untouched.
 
 Freshness, checked on the same tree after the change: a one-line edit to a
 compile-check row's source made `_require-fixtures-ready` (lane native) fail
@@ -567,5 +576,5 @@ Open issues whose `related:` names this phase (listed 2026-10-12, so the
 link runs both ways). Listing one here records the link, not a claim that
 this phase will fix it.
 
-- [issue 1869](../issues/1869-shared-fixture-target-dir-thrashes-on-sizing-descriptor.md) — workspace fixture rows sharing a target dir rebuild the core crates every run (W6)
+- [issue 1869](../issues/archived/1869-shared-fixture-target-dir-thrashes-on-sizing-descriptor.md) — workspace fixture rows sharing a target dir rebuilt the core crates every run (W6; resolved by RFC-0100 D13)
 - [issue 1177](../issues/1177-no-alloc-nros-c-lane-runs-only-on-schedule.md) — `check::workspace-features` gates no merge, so its reds are found by embedded consumers -- two so far, and the tier i …
