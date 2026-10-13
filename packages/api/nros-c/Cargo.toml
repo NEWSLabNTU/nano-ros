@@ -52,7 +52,17 @@ default = ["panic-platform"]
 # selection. Without this feature the cfg would be permanently false and that
 # selection would vanish from the C API silently.
 env = ["nros/env"]
-std = ["alloc", "env", "nros/std", "nros-node/std", "nros-rmw/std"]
+std = ["alloc", "env", "nros/std", "nros-node/std", "nros-rmw/std", "log"]
+# Issue 1875 -- `nros-node`'s `log` feature routes its records (the
+# `nros: session open` stability marker among them) through the `log` crate.
+# A C/C++ image has no `nros::main!` to install the bridge into the nros-log
+# sinks, so `ensure_default_sinks` does it under THIS feature: the bridge
+# exists exactly where those records are compiled. `std` turns it on, as
+# `nros-node/std` turns on `nros-node/log`; a no_std image leaves it off,
+# which also keeps `log::set_logger` (it needs compare-and-swap) off the small
+# targets. A feature of its own rather than `cfg(feature = "std")`, so the
+# std census does not grow (phase-359).
+log = ["nros-node/log", "nros-platform-cffi/log-compat"]
 # Issue 1556 items 2-3 — a C application is a census PRODUCER. With this
 # feature the hosted support init answers `$NROS_CENSUS_OUT` by selecting the
 # recording backend, and the first spin writes what the recorder saw (the

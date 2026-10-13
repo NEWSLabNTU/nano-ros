@@ -244,6 +244,12 @@ pub fn ensure_default_sinks() {
         .is_ok()
     {
         nros_log::init(nros_platform_cffi::log::default_sinks());
+        // Issue 1875 -- and the `log` crate into the same sinks, which every
+        // Rust image gets from `nros::main!`. Without it the framework's
+        // `log::` records -- `nros-node`'s `nros: session open` stability
+        // marker first -- reached no console on a C or C++ image.
+        #[cfg(feature = "log")]
+        nros_platform_cffi::log::install_log_crate_bridge();
     }
 }
 
@@ -262,6 +268,9 @@ pub fn ensure_default_sinks() {
 pub unsafe extern "C" fn rclc_log_init() {
     DEFAULT_SINKS_INSTALLED.store(true, Ordering::Release);
     nros_log::init(nros_platform_cffi::log::default_sinks());
+    // Issue 1875 -- see `ensure_default_sinks`.
+    #[cfg(feature = "log")]
+    nros_platform_cffi::log::install_log_crate_bridge();
 }
 
 /// Phase 88.16.H — opaque handle to `nros_log::DEFAULT_LOGGER`.

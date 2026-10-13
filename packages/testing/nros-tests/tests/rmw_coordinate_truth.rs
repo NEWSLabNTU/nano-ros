@@ -291,6 +291,27 @@ fn built_row_binary(
     root.is_dir().then(|| row_binary(&row.id, &root)).flatten()
 }
 
+/// Issue 1875 -- can this ELF run as a process on THIS machine? Compares the
+/// ELF class and `e_machine` with the host's. A file that is not an ELF, or a
+/// host this does not model, answers yes: the test then runs it, as before.
+fn runs_on_this_host(bin: &Path) -> bool {
+    let mut head = [0u8; 20];
+    let Ok(mut f) = std::fs::File::open(bin) else {
+        return true;
+    };
+    use std::io::Read;
+    if f.read_exact(&mut head).is_err() || &head[..4] != b"\x7fELF" {
+        return true;
+    }
+    let class64 = head[4] == 2;
+    let machine = u16::from_le_bytes([head[18], head[19]]);
+    match std::env::consts::ARCH {
+        "x86_64" => class64 && machine == 62,
+        "aarch64" => class64 && machine == 183,
+        _ => true,
+    }
+}
+
 /// The audit located nothing. In a gated run that promised rows, that is a
 /// broken promise and FAILS (issue 0584 part 2 — no `[SKIPPED]` marker, so no
 /// rewrite can count it as a skip). Otherwise nothing was promised, and a skip
@@ -609,11 +630,21 @@ fn a_rows_entry_registers_its_nodes_at_runtime() {
     let mut failed: Vec<String> = Vec::new();
     let mut promised = 0usize;
     let mut targets: Vec<(&nros_tests::fixtures::lane::Row, PathBuf)> = Vec::new();
+    let mut cross = 0usize;
     for row in nros_tests::fixtures::lane::manifest_rows() {
         if row.kind != "workspace_fixture" {
             continue;
         }
         if let Some(bin) = built_row_binary(row, &mut promised) {
+            // Issue 1875 -- an image for another machine is not a host process.
+            // A host that registers `qemu-arm` in binfmt_misc STARTS an ARM
+            // firmware under user-mode QEMU, where it dies before its session,
+            // so every cross row read as "did not reach node registration".
+            // Its own QEMU cell boots it; this test asks the host-runnable ones.
+            if !runs_on_this_host(&bin) {
+                cross += 1;
+                continue;
+            }
             targets.push((row, bin));
         }
     }
@@ -675,7 +706,8 @@ fn a_rows_entry_registers_its_nodes_at_runtime() {
         .collect();
     slowest.sort_by_key(|a| std::cmp::Reverse(a.0));
     eprintln!(
-        "rmw-coordinate-truth: ran {located} entr{} in {wall:.1?} on a pool of {}; slowest: {}",
+        "rmw-coordinate-truth: ran {located} entr{} in {wall:.1?} on a pool of {} \
+         ({cross} cross-target row(s) left to their QEMU cells); slowest: {}",
         if located == 1 { "y" } else { "ies" },
         POOL_CAP.min(
             std::thread::available_parallelism()
@@ -691,8 +723,19 @@ fn a_rows_entry_registers_its_nodes_at_runtime() {
     );
 
     for ((row, bin), (status, text, took)) in targets.iter().zip(runs) {
-        let registered_ok = status.map(|s| s.success()).unwrap_or(false)
-            && text.contains(nros_tests::output::ENTRY_COMPLETE_MARKER);
+        // Issue 1875 -- what "completed" looks like is per LANGUAGE. A Rust
+        // board prints `ENTRY_COMPLETE_MARKER` before it exits 0, always. A C or
+        // C++ entry returns its funnel's code from `main`, and every funnel
+        // (`nros_board_{native,rtos}_run_*`) returns non-zero when the session
+        // fails to open or `setup` -- where the nodes register -- fails; none
+        // prints the Rust board's line. So for C/C++ the exit status IS the
+        // signal, and asking for the line failed every C/C++ row that worked.
+        // A `mixed` row is the same: every one is a cmake-driven image whose
+        // `main` is the C/C++ funnel, with the Rust nodes linked in as a
+        // staticlib, so it never prints the Rust board's line either.
+        let completed = text.contains(nros_tests::output::ENTRY_COMPLETE_MARKER)
+            || matches!(row.coord.1.as_str(), "c" | "cpp" | "mixed");
+        let registered_ok = status.map(|s| s.success()).unwrap_or(false) && completed;
         if registered_ok {
             ran += 1;
             continue;
