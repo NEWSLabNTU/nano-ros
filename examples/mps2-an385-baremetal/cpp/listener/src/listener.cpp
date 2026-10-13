@@ -24,14 +24,6 @@
 // Generated C++ bindings (`nros generate cpp`, run by build.rs).
 #include "std_msgs.hpp"
 
-// Backend registration — the image's, as on the cmake road (see the talker
-// sibling): `nros_cpp_init` calls it, and bare metal walks no `.init_array`.
-extern "C" int nros_rmw_zenoh_register(void);
-
-extern "C" void nros_app_register_backends(void) {
-    (void)nros_rmw_zenoh_register();
-}
-
 namespace {
 
 size_t append_str(char* out, size_t cap, size_t pos, const char* text) {

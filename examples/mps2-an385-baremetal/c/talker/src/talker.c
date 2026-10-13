@@ -40,26 +40,6 @@
 #include "std_msgs.h"
 
 // ----------------------------------------------------------------------------
-// Backend registration — the image's, exactly as on the cmake road
-// ----------------------------------------------------------------------------
-//
-// `rclc_support_init` calls `nros_app_register_backends()` unconditionally: the
-// weak no-op was removed in phase-249 P4a, so every C/C++ image supplies a
-// strong definition. On the cmake road `nano_ros_link_rmw()` GENERATES this exact
-// TU into the build dir; a cargo-rooted image has no such generator, so it is
-// written here.
-//
-// Not a Rust `nros_rmw_zenoh::register()` in `main.rs` instead, though that call
-// exists and is idempotent (`nros-board-mps2-an385`'s own `entry::boot` makes it):
-// this is the hook `rclc_support_init` itself reaches, so defining it is what
-// makes the ordering a property of the runtime rather than of the boot shim.
-extern int nros_rmw_zenoh_register(void);
-
-void nros_app_register_backends(void) {
-    (void)nros_rmw_zenoh_register();
-}
-
-// ----------------------------------------------------------------------------
 // Application state — all in .bss, never on the reset stack
 // ----------------------------------------------------------------------------
 

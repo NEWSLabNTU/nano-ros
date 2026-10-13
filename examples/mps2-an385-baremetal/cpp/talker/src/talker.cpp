@@ -30,20 +30,6 @@
 // Generated C++ bindings (`nros generate cpp`, run by build.rs).
 #include "std_msgs.hpp"
 
-// ----------------------------------------------------------------------------
-// Backend registration — the image's, exactly as on the cmake road
-// ----------------------------------------------------------------------------
-//
-// `nros_cpp_init` (reached through `rclcpp::init`) calls
-// `nros_app_register_backends()` unconditionally, and every C/C++ image supplies
-// the strong definition; `nano_ros_link_rmw()` generates this TU on the cmake
-// road, and a cargo-rooted image writes it. Bare metal walks no `.init_array`.
-extern "C" int nros_rmw_zenoh_register(void);
-
-extern "C" void nros_app_register_backends(void) {
-    (void)nros_rmw_zenoh_register();
-}
-
 namespace {
 
 struct TalkerContext {
