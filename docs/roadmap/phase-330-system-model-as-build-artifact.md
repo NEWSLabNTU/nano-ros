@@ -5,13 +5,15 @@
 **Touches:** phase-296 (model as sole plan input), issue 0320 (content-addressed
 staleness), RFC-0047 / RFC-0052 (scheduling dims + fail-loud contract)
 
-**Status (2026-10-12).** W1–W7 LANDED. W1–W3 landed on 2026-08-02, and W4
+**Status (2026-10-13).** W1–W7 LANDED. W1–W3 landed on 2026-08-02, and W4
 (the committed models deleted) landed with W5 and W7 on 2026-08-03.
-`check-no-tracked-models` holds the result. Three acceptance boxes below are
-still open, and all three wait on one tier-2 validation round: a clean checkout
-reproducing all 86 dims, rebuild-vs-rebuild semantic identity, and the realtime
-e2e family passing against generated models. The line this replaces said only
-"W1 landed".
+`check-no-tracked-models` holds the result. Of the three acceptance boxes
+left open, measurement on 2026-10-13 settled one and half of another: rebuild-vs-rebuild
+identity is MET, and so is the dims half of the clean-checkout box (see
+Acceptance). Still waiting on a fixture run: the clean-checkout BUILD of each
+realtime workspace's images, and the realtime e2e family passing against
+generated models. The 2026-10-12 line said all three waited on one tier-2
+validation round; the line before it said only "W1 landed".
 
 ## Goal
 
@@ -743,12 +745,28 @@ completed:
       `realtime-{rust,c,cpp,cpp-subnode-portable}`) and the generated
       models carry all 86 dims (`nros ws model-dims` against the retired
       baseline as the oracle). *Pending: the tier-2 validation round.*
-- [ ] Deleting a build directory and rebuilding reproduces **semantically
+      **The dims half is MET (2026-10-13).** `nros sync` on the four
+      workspaces, compared with `scripts/model-dims-baseline.txt` as it was
+      before `39d007dfc2` deleted it. Every one of the baseline's 108
+      workspace dim keys is generated, with two differences, both
+      deliberate:
+      - phase-374 put units on durations, so a `*_us` key is now the
+        unsuffixed one (`spin_period_us` is `spin_period`);
+      - issue 0655 moved realtime-rust's `zephyr.core` from `low` to the
+        spawned `high` tier, the only one that can honour it.
+
+      Nothing is lost. The extra keys are new data: `smp_bringup`'s model,
+      and `freertos.priority` rows. The BUILD half (each workspace's images,
+      not only its models) was not run here.
+- [x] Deleting a build directory and rebuilding reproduces **semantically
       identical** models (parsed-YAML compare — the W4.a dry run's oracle;
       byte-identity against the *committed* copies was impossible by
       construction: stale `scope`, issue-0356 `target`). A
       rebuild-vs-rebuild byte check has not been run; semantic identity is
       the property the cache actually needs.
+      **MET 2026-10-13.** I deleted `build/nros/models` in each realtime
+      workspace and re-ran `nros sync`. All 9 models came back semantically
+      identical (parsed-YAML compare) and byte-identical.
 - [ ] The realtime e2e family (the ~17 tests that lost their subject in 0380)
       passes against generated models. *Pending: the tier-2 validation round
       (fixture build fully green in round 24; ci-matrix reached its final

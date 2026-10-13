@@ -6,8 +6,10 @@ type: bug
 area: ci, testing
 severity: high
 found: 2026-10-03
-related: [1521, 1644, 1226, 1158, phase-477]
+related: [1521, 1644, 1226, 1158, phase-477, phase-466]
 ---
+
+**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)**, re-homed 2026-10-13 from phase-477, archived that day. What is left is a green tier-1 run on `main`, which is 466's acceptance.
 
 ## What this is
 

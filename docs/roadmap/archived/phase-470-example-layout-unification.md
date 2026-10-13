@@ -1,7 +1,7 @@
 # Phase 470 — example layout unification
 
 **Status (2026-10-03). COMPLETE — archived. W1–W6 LANDED; W7 and every
-remaining gap MOVED to [phase-477](../phase-477-example-gaps-and-unreported-lanes.md),
+remaining gap MOVED to [phase-477](phase-477-example-gaps-and-unreported-lanes.md),
 regrouped by theme. Three entry packages remain hand-written, each for a recorded
 reason (now phase-477 W1).** W5 is done as far as a build can
 prove it: the generator reaches Rust and C/C++, and hand-written Zephyr entries

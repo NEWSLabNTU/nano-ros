@@ -170,6 +170,12 @@ job reaching its cells, and that evidence does not exist.
 **Still unattributed:** the tier-2 nightly job fails `provision-zenohd` with
 exit 78 before reaching anything else. Nobody has claimed it.
 
+## Issues homed here (2026-10-13)
+
+| issue | why it belongs here |
+| --- | --- |
+| [#1651](../issues/1651-host-tests-red-or-cancelled-on-most-pushes.md) | `host-tests` is green nightly since 2026-10-07. What is left is a green tier-1 run on `main`, which this phase's acceptance already asks for. From the archived phase-477. |
+
 ## Two things this phase must not do
 
 **Do not fix only where the symptom was seen.** The package absence is not the

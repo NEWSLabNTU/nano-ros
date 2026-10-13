@@ -1,5 +1,12 @@
 # Phase 445 — one board choice generates the leaf's build configuration
 
+**Status (2026-10-13, later). Every work item is ticked; two things keep it
+open.** W3, the last open box, is ticked: issue 1289 settled the workspace
+members it waited on. What is left: acceptance bullet 3 (`git status` clean
+after `just ci gate` and after a fixture build), which has never been
+measured, and issue 1109 (the `board = "native"` selectors), which is homed
+here.
+
 **Status (2026-10-13). Re-measured on main 2026-10-11, bullet 5 on
 2026-10-12, bullet 2 on 2026-10-13; the phase is NOT complete.** Acceptance: bullet 1 is MET for Rust and now for C/C++ (issue 1296,
 resolved). Bullet 2 is MET for every single-package leaf on a supported board
@@ -179,7 +186,13 @@ esp32 stack budgets.
     - both workspace FreeRTOS images (both boot);
     - `workspace-cpp-{mps3-an536,s32z270}-freertos` (mps3 boots to
       "Network ready").
-- [ ] **W3 — `system.toml` in every single-package example (D3, D5, D8).** 178
+- [x] **W3 — `system.toml` in every single-package example (D3, D5, D8).** *(Ticked
+  2026-10-13. The box stayed open for the workspace members still carrying
+  the retiring tables. Issue 1289 resolved that on 2026-10-12: deployment
+  tables are gone (`git grep '^\[package\.metadata\.nros\.(entry|deploy)'`
+  over tracked manifests returns nothing), and the 43 remaining
+  `node`/`component` tables are registration, which
+  `check-leaf-deployment-spelling` reports as such.)* 178
   leaves (70 Rust, 52 C, 56 C++). `[image.X] board`, `[system] rmw/domain_id/locator`,
   network identity, `[[component]]` with entities where the board cannot be
   probed (issue 1265). `nros sync` resolves a single-package leaf from it; the

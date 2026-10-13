@@ -97,8 +97,8 @@ An example's layout is decided by **two** questions, and only the second has
 ever been written down. That is why the first keeps getting re-derived from
 whichever tree shows it most vividly, and re-attributed to that tree's platform.
 (Survey and work items:
-[phase-470](../docs/roadmap/archived/phase-470-example-layout-unification.md) (done); open gaps:
-[phase-477](../docs/roadmap/phase-477-example-gaps-and-unreported-lanes.md).)
+[phase-470](../docs/roadmap/archived/phase-470-example-layout-unification.md) (done); its gaps:
+[phase-477](../docs/roadmap/archived/phase-477-example-gaps-and-unreported-lanes.md) (done, 2026-10-13).)
 
 ### Question 1 — who owns the link?
 
