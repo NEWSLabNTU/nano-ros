@@ -1014,6 +1014,25 @@ derive is the shape that cannot disagree.
 '''
 
 [[knob]]
+id = "XRCE_BUFFER_SIZE"
+type = "int"
+prompt = "Per-slot static buffer size"
+kconfig_if = "NROS_RMW_XRCE"
+kconfig_attrs = [
+    "default 1024",
+]
+help = '''
+Size of the static buffer for each subscriber/service slot (bytes).
+Maps to XRCE_BUFFER_SIZE.
+
+phase-454 W6.b — this is the DEFAULT of the three per-family sizes
+(NROS_XRCE_SUBSCRIBER_BUFFER_SIZE, NROS_XRCE_SERVICE_REQUEST_BUFFER_SIZE,
+NROS_XRCE_SERVICE_REPLY_BUFFER_SIZE), not an array size of its own. It stays the one lever that
+moves every receive buffer at once; state a family option instead
+when only one of them needs the room.
+'''
+
+[[knob]]
 id = "XRCE_CUSTOM_TRANSPORT_MTU"
 toml = "xrce.custom_transport_mtu"
 type = "int"
@@ -1034,6 +1053,68 @@ Defaults to NROS_XRCE_TRANSPORT_MTU so an image states ONE MTU and gets
 it on whichever transport it actually links. Set this separately only
 when an image links both an IP transport and a custom one and they need
 different frame budgets.
+'''
+
+[[knob]]
+id = "XRCE_MAX_SERVICE_CLIENTS"
+type = "int"
+prompt = "Maximum concurrent service clients"
+kconfig_if = "NROS_RMW_XRCE"
+kconfig_attrs = [
+    "default 4",
+]
+help = '''
+Maximum number of concurrent XRCE service clients.
+Maps to XRCE_MAX_SERVICE_CLIENTS.
+
+Not derived: no inventory counts the clients an image opens, so this
+is stated or left at the default.
+'''
+
+[[knob]]
+id = "XRCE_MAX_SERVICE_SERVERS"
+type = "int"
+prompt = "Maximum concurrent service servers"
+kconfig_if = "NROS_RMW_XRCE"
+kconfig_attrs = [
+    "default -1",
+]
+help = '''
+Maximum number of concurrent XRCE service servers.
+Maps to XRCE_MAX_SERVICE_SERVERS.
+
+-1 means DERIVE: from the image's entity inventory, the same
+NROS_DERIVED_MAX_QUERYABLES the zenoh queryable pool uses (an XRCE
+service server is a served request endpoint, so action servers and the
+parameter/lifecycle service families count too). Zero is a legitimate
+derived answer here (issue 1033). Stating a number wins over both.
+'''
+
+[[knob]]
+id = "XRCE_MAX_SUBSCRIBERS"
+type = "int"
+prompt = "Maximum concurrent subscribers"
+kconfig_if = "NROS_RMW_XRCE"
+kconfig_attrs = [
+    "default -1",
+]
+help = '''
+Maximum number of concurrent XRCE subscribers.
+Maps to XRCE_MAX_SUBSCRIBERS.
+
+-1 means DERIVE: take the count from the image's entity inventory
+(`nano_ros_node_register(... ENTITIES ...)`), the same
+NROS_DERIVED_MAX_SUBSCRIBERS the zenoh pools use, so an action-carrying
+image gets its action-client subscriptions counted too.
+
+An image whose inventory refuses -- any component that declared no
+ENTITIES -- falls through to the crate default of 8, which is what every
+image did before issue 1033. Stating a number here still wins over both.
+
+This is worth deriving: a slot is XRCE_SUBSCRIBER_RING_DEPTH x
+XRCE_BUFFER_SIZE (32 x 1024) plus bookkeeping, so eight of them are
+266,368 bytes of the session struct -- 86% of it on a one-subscriber
+image, allocated from the Zephyr heap in a single request.
 '''
 
 [[knob]]
@@ -1472,6 +1553,26 @@ phase-461 W1 -- the one-release ALIAS of NROS_SERVICE_INBOX_BYTES,
 which defaults to this value. Set that symbol instead; this one stays
 so a board .conf that states it keeps building the same image.
 Maps to ZPICO_SERVICE_BUFFER_SIZE.
+'''
+
+[[knob]]
+id = "ZENOH_SOCKET_TIMEOUT_MS"
+type = "int"
+prompt = "zenoh-pico socket recv timeout (ms)"
+kconfig_if = "NROS_RMW_ZENOH"
+kconfig_attrs = [
+    "default 100",
+]
+help = '''
+SO_RCVTIMEO for the zenoh-pico session socket (Z_CONFIG_SOCKET_TIMEOUT).
+Zephyr's zsock layer serializes send/recv on a per-fd mutex, so the
+blocking read task holds the socket for a full recv window between
+inbound packets and EVERY tx (declare, keepalive, publish, reply)
+waits for that window — total tx throughput is capped at roughly one
+send per window (issues 0129/0139). The 100 ms default suits ~1-10 Hz
+demo lanes; high-rate publishers (e.g. RT-tier systems at 100 Hz)
+must lower this (5 ms => ~200 tx windows/s) at the cost of more
+read-task wakeups.
 '''
 
 [[knob]]

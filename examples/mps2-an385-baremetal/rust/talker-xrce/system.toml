@@ -50,9 +50,7 @@ transport = "serial"
 [image.mps2-an385-baremetal.knobs.xrce]
 # MTU matches the serial transport's; the default is 4096.
 custom_transport_mtu = 512
-
-[image.mps2-an385-baremetal.env]
-NROS_XRCE_BUFFER_SIZE = "256"
-NROS_XRCE_MAX_SUBSCRIBERS = "1"
-NROS_XRCE_MAX_SERVICE_SERVERS = "1"
-NROS_XRCE_MAX_SERVICE_CLIENTS = "1"
+buffer_size = 256
+max_subscribers = 1
+max_service_servers = 1
+max_service_clients = 1

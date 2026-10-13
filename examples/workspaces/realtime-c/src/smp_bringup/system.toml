@@ -147,9 +147,11 @@ rmw = "zenoh"
 [image.zephyr_smp]
 board = "qemu-cortex-a53"
 conf = ["prj-zenoh.conf"]
+panic = "platform"
+
 # phase-276 W2 / phase-481 W3 -- the tiers need tx windows well inside their
 # period: Zephyr zsock serializes send behind the read task's recv window
 # (issues 0129/0139). Moved from the board's prj-zenoh.conf: a nano-ros knob
 # is the image's (RFC-0098 D10), rendered into Kconfig by the module.
-env = { NROS_ZENOH_SOCKET_TIMEOUT_MS = "5" }
-panic = "platform"
+[image.zephyr_smp.knobs.zenoh]
+socket_timeout_ms = 5

@@ -1213,8 +1213,12 @@ mod tests {
                 ("executor.max_cbs", Int(16)),
                 ("log.max_level", Str("warn".into())),
                 ("zenoh.tx.batch", Bool(true)),
+                // A derived count's zero is a stated answer, not "unset"
+                // (issue 1033); it renders like any other value.
+                ("xrce.max_subscribers", Int(0)),
+                ("zenoh.socket_timeout_ms", Int(5)),
             ]),
-            &env_rows(&[("NROS_XRCE_MAX_SUBSCRIBERS", "1")]),
+            &env_rows(&[("NROS_BOOT_REPORT", "1")]),
         )
         .unwrap();
         let from_env = app_rung(
@@ -1225,7 +1229,9 @@ mod tests {
                 ("NROS_EXECUTOR_MAX_CBS", "16"),
                 ("NROS_LOG_MAX_LEVEL", "warn"),
                 ("NROS_ZENOH_TX_BATCH", "1"),
-                ("NROS_XRCE_MAX_SUBSCRIBERS", "1"),
+                ("NROS_XRCE_MAX_SUBSCRIBERS", "0"),
+                ("NROS_ZENOH_SOCKET_TIMEOUT_MS", "5"),
+                ("NROS_BOOT_REPORT", "1"),
             ]),
         )
         .unwrap();
@@ -1294,7 +1300,7 @@ mod tests {
             registry_knob_of_env_row("NROS_MAX_PUBLISHERS").map(|r| r.env),
             Some("NROS_ZENOH_MAX_PUBLISHERS")
         );
-        assert!(registry_knob_of_env_row("NROS_XRCE_MAX_SUBSCRIBERS").is_none());
+        assert!(registry_knob_of_env_row("NROS_BOOT_REPORT").is_none());
     }
 
     /// An env row that is NOT a registry knob is an app's own variable: carried

@@ -80,10 +80,10 @@ locator = "tcp/127.0.0.1:7491"
 # platform heap (issue 1324, 256 KiB on native_sim, scored against the measured
 # peak by every e2e run) and the zsock window the 100 Hz tier needs (issues
 # 0129/0139).
-env = { NROS_ZENOH_SOCKET_TIMEOUT_MS = "5" }
 
 [image.zephyr_derived.knobs.zenoh]
 read_priority = 100
+socket_timeout_ms = 5
 
 [image.zephyr_derived.knobs.zephyr]
 heap_size = 262144

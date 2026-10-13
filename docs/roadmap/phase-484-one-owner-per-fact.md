@@ -1046,10 +1046,9 @@ verb's answer is used as given.
   - an `[image.<id>] env` row naming a registry knob (by env name or by the
     Kconfig symbol west renders it to) still works and warns once, in the
     generated `IMAGE_ENV_DEPRECATED_TEMPLATE`; a knob stated both ways is an
-    error. Rows the registry does not hold (`NROS_XRCE_MAX_*`,
-    `NROS_ZENOH_SOCKET_TIMEOUT_MS`, `NROS_BOOT_REPORT`, the
-    `NROS_ENTITY_COUNT_*` set, ...) are an application's or a Kconfig-only
-    option's own rows and stay `env`, with no warning;
+    error. Rows the registry does not hold (`NROS_BOOT_REPORT`, the
+    monitor flags, the `NROS_ENTITY_COUNT_*` set, ...) are an application's
+    or a Kconfig-only option's own rows and stay `env`, with no warning;
   - migrated: 29 rows in 14 `system.toml` files. Byte identity measured with
     the new binary on the old and the new files: 575 `leaf-system` outputs
     (image-env file, Kconfig fragment and defaults, cargo-row env, stdout) per
@@ -1060,9 +1059,15 @@ verb's answer is used as given.
     image of every tracked bringup (109 rows);
   - gate: `no_tracked_system_toml_states_a_registry_knob_as_an_env_row`
     (nros-cli-core unit test, so `check-cli-tests` on every PR).
-  Left: refusing a registry-knob `env` row (after the next release), and
-  whether the Kconfig-only options that still ride `env` rows become registry
-  rows.
+  Left: refusing a registry-knob `env` row (after the next release).
+  **Registered per user decision 2026-10-13:** `NROS_XRCE_MAX_SUBSCRIBERS`,
+  `_MAX_SERVICE_SERVERS`, `_MAX_SERVICE_CLIENTS`, `NROS_XRCE_BUFFER_SIZE` and
+  `NROS_ZENOH_SOCKET_TIMEOUT_MS` are registry rows (`[image.<id>.knobs.xrce]
+  max_subscribers` …, `[image.<id>.knobs.zenoh] socket_timeout_ms`), their
+  Kconfig symbols moved into the generated section, 64 rows in 26
+  `system.toml` files migrated; 0 value differences across 1832 `leaf-system`
+  runs, one cargo leaf's `nros-cargo.toml` and four west `.config`s. The
+  monitor flags and `NROS_ENTITY_COUNT_*` stay `env` rows.
 - ~~Issue 1768 (census classifier + fail on UNCLASSIFIED).~~ Done (W7a): the `linker-script` role knows `link_script!`; gate `build-wiring-classified`.
 - ~~`canonical-build-path.md`, the book's configuration and getting-started
   pages, CLAUDE.md pointers.~~ Done (2026-10-13): the map gains "Where a

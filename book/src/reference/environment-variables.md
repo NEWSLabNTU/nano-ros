@@ -164,6 +164,12 @@ Dropping `MAX_SUBSCRIBERS`, `MAX_SERVICE_*` and `SUBSCRIBER_RING_DEPTH` to 1,
 `BUFFER_SIZE` to 256, `STREAM_HISTORY` to 4 and `CUSTOM_TRANSPORT_MTU` to 512
 takes the session struct from ~390 KB to ~10-20 KB.
 
+`BUFFER_SIZE`, the three `MAX_*` caps, `STREAM_HISTORY` and
+`CUSTOM_TRANSPORT_MTU` are knob-registry rows, so a project states them per
+image as `[image.<id>.knobs.xrce] buffer_size = 256` (`max_subscribers`,
+`max_service_servers`, `max_service_clients`, `stream_history`,
+`custom_transport_mtu`) rather than as an `env` row (RFC-0103 D6).
+
 #### On Zephyr the three entity caps DERIVE, and the minimum is 0
 
 `CONFIG_NROS_XRCE_MAX_SUBSCRIBERS` and `CONFIG_NROS_XRCE_MAX_SERVICE_SERVERS`
