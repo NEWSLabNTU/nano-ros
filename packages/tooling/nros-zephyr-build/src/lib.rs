@@ -189,8 +189,9 @@ pub fn spellings(name: &str) -> Vec<&str> {
 /// Rung 1 over every spelling: the value a person set, under whichever name.
 ///
 /// Two spellings set to DIFFERENT values is a build error naming both, the
-/// rule the cmake twin applies to a deprecated variable and its new name
-/// (`cmake/NanoRosDeprecatedNames.cmake`): picking one silently would answer a
+/// rule the cmake twin applied to a deprecated variable and its new name
+/// while it was an alias (phase-484 W7b; `cmake/NanoRosRetiredNames.cmake`
+/// now refuses the old name outright): picking one silently would answer a
 /// question nobody asked.
 fn env_spelled(name: &str, watch: bool) -> Option<(String, String)> {
     if watch {

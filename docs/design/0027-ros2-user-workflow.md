@@ -57,7 +57,7 @@ cd ..
 nros setup --target freertos-zenoh
 nros plan robot_bringup launch/system.launch.py -- robot_ns:=/car01
 nros check
-# build: west build -b mps2_an385 -- -DNANO_ROS_RMW=zenoh   (after: nros codegen-system)
+# build: west build -b mps2_an385 -- -DNROS_RMW=zenoh   (after: nros codegen-system)
 # run:   west build -t run
 nros monitor
 ```

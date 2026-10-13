@@ -753,20 +753,21 @@ repr-memory-agreement:
 sizes-header-mirrors:
     @python3 scripts/check-sizes-header-mirrors.py
 
-# phase-484 W7b — the deprecated `NANO_ROS_*` aliases work: a `-D` or `set()` of
-# an old name is adopted as its `NROS_*` name with a deprecation, and the two
-# disagreeing is a configure error (tests/cmake-deprecated-names-tests.sh).
+# phase-484 W8 — the retired `NANO_ROS_*` names are refused: a `-D`, a `set()`
+# or a stale cache entry of an old name is a configure error naming its `NROS_*`
+# replacement, the retired `NANO_ROS_ROOT` keyword likewise, and the new names
+# alone configure silently (tests/cmake-retired-names-tests.sh).
 [private]
-cmake-deprecated-names:
+cmake-retired-names:
     #!/usr/bin/env bash
     set -euo pipefail
     if ! command -v cmake >/dev/null 2>&1; then
         # shellcheck source=scripts/build/check-skip.sh
         source scripts/build/check-skip.sh
-        nros_check_skip cmake-deprecated-names "missing host tool(s): cmake"
+        nros_check_skip cmake-retired-names "missing host tool(s): cmake"
         exit 0
     fi
-    ./tests/cmake-deprecated-names-tests.sh
+    ./tests/cmake-retired-names-tests.sh
 
 # phase-486 W3 — no nano-ros reader names a SystemModel field that is not the
 # model's to carry: `execution.features` (the overlay holds the switches),

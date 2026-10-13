@@ -82,7 +82,7 @@ below); it is slated for complete retirement (phase-256).
 | | Single-node | Workspace |
 |---|---|---|
 | **Rust** | `Cargo.toml [package.metadata.nros.application]` (deploy) + `nros::main!`; optional `system.toml` to pin rmw/domain | root `[workspace.metadata.nros]` + node `[..nros.node]` + entry `[..nros.entry]` + bringup `system.toml` |
-| **C / C++** | `CMakeLists.txt` (`nano_ros_application(...)`, `NANO_ROS_PLATFORM/RMW`) + `package.xml`; optional `system.toml` | `nano_ros_node_register` / `nano_ros_entry` per pkg + **same `system.toml`** + `package.xml` |
+| **C / C++** | `CMakeLists.txt` (`nano_ros_application(...)`, `NROS_PLATFORM/RMW`) + `package.xml`; optional `system.toml` | `nano_ros_node_register` / `nano_ros_entry` per pkg + **same `system.toml`** + `package.xml` |
 
 Ownership:
 
@@ -134,7 +134,7 @@ sign, and "what is the effective config?" needs N files reconciled in your head.
 
 **Resolution, where a concern has both a native-idiom projection and a `system.toml`,** is a
 **fixed, short precedence ladder** (not an open merge): explicit CLI/build flag
-(`--rmw` / `-DNANO_ROS_*`) > `system.toml` (`[image.<id>]` > `[system]`) > the per-package
+(`--rmw` / `-DNROS_*`) > `system.toml` (`[image.<id>]` > `[system]`) > the per-package
 native projection (`[package.metadata.nros.*]` / CMake) > built-in default. One ladder, each
 rung a known file — auditable, unlike an arbitrary-file overlay.
 
@@ -466,7 +466,7 @@ tracked by phase-227; the per-tier codegen by phase-228.
 ## 8. RMW selection & retired files
 
 RMW backend selection (declared in `system.toml` / deploy override / flag, then
-lowered to a cargo feature or `-DNANO_ROS_RMW`, per-deploy scope) is owned by
+lowered to a cargo feature or `-DNROS_RMW`, per-deploy scope) is owned by
 **RFC-0031**, not this RFC.
 
 The **old** `config.toml` schema (`[network]`/`[zenoh]`/`[scheduling]`) is **retired**

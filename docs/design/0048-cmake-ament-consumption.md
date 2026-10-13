@@ -36,12 +36,12 @@ setup`), RFC-0023 (ament codegen discovery), RFC-0026 (examples layout).
 
 The pre-2026-07 shape (verified across 233 example `CMakeLists.txt`):
 
-- A ~10-line `NANO_ROS_ROOT` resolve guard copy-pasted into every leaf, **drifted
+- A ~10-line `NANO_ROS_ROOT` (since retired) resolve guard copy-pasted into every leaf, **drifted
   24–34 lines apart** — the worst state for scaffolding.
 - A per-leaf `if(NROS_RMW STREQUAL "cyclonedds") enable_language(CXX) endif()`
   **micro-option** the user had to get right.
-- Embedded leaves additionally open with `set(NANO_ROS_PLATFORM …)` +
-  `set(NANO_ROS_BOARD …)` + a `nano_ros_deploy()` call — a **different shape**
+- Embedded leaves additionally open with `set(NROS_PLATFORM …)` +
+  `set(NROS_BOARD …)` + a `nano_ros_deploy()` call — a **different shape**
   from native (which used `nano_ros_entry` + a hand-named `target_link_libraries(<pkg>__nano_ros_<lang>)`).
 - Hand-naming the generated msg libs (`std_msgs__nano_ros_c`).
 
@@ -213,10 +213,10 @@ cmake --preset mps2-an385-freertos && cmake --build --preset mps2-an385-freertos
 
 ## Old paths removed (by phase-287)
 
-- The `NANO_ROS_ROOT` resolve guard block in every leaf → `find_package(nano_ros)`.
+- The `NANO_ROS_ROOT` (since retired) resolve guard block in every leaf → `find_package(nano_ros)`.
 - `nano_ros_workspace_pkg_guard()` direct calls, `add_subdirectory(<repo-root>)`
   in leaves → internal to `nano_rosConfig.cmake`.
-- `set(NANO_ROS_PLATFORM …)` / `set(NANO_ROS_BOARD …)` / `set(NROS_RMW … CACHE)` /
+- `set(NROS_PLATFORM …)` / `set(NROS_BOARD …)` / `set(NROS_RMW … CACHE)` /
   `nano_ros_deploy(…)` CMake calls → `package.xml` `<export><nano_ros …/>`.
 - Hand-named `target_link_libraries(<t> PRIVATE <pkg>__nano_ros_<lang>)` +
   `nros_platform_link_app(<t>)` → `ament_target_dependencies` + the verbs.

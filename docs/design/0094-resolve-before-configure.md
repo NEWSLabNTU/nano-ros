@@ -222,7 +222,7 @@ status quo.
 `nros ws rmw-dispatch <name> --lines`, which resolves over the provider scan;
 the generated chain, its generator and the root's hand-written chain are all
 deleted, and the root dispatches on the DECLARED link strategy (`umbrella` /
-`cmake`) instead of on names. `NANO_ROS_RMW=uorb` configures. Issues 1214,
+`cmake`) instead of on names. `NROS_RMW=uorb` configures. Issues 1214,
 1215 and 1216 are closed; 1219's gate is not written and the issue records the
 survey that says why.
 
@@ -275,7 +275,7 @@ binary.
 
 *Met, phase-439 W4, with `uorb` as the in-tree proof: it announces itself, ships
 a descriptor and a `CMakeLists.txt`, has no `Cargo.toml`, and was refused by both
-closed lists. `NANO_ROS_RMW=uorb` now configures and `add_subdirectory` creates
+closed lists. `NROS_RMW=uorb` now configures and `add_subdirectory` creates
 its target. A uorb IMAGE still does not link on a plain host — `orb_*` is PX4's
 uORB middleware, which is a property of that backend and not of the seam.*
 

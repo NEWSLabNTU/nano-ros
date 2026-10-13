@@ -12,7 +12,7 @@ related: [issue-1753, issue-1742, rfc-0043]
 ## What was measured
 
 `cmake/NanoRosNodeRegister.cmake` has an RTOS carrier arm for ThreadX
-(`_NRC_DEPLOY` with `NANO_ROS_PLATFORM threadx`) and one for NuttX. Each
+(`_NRC_DEPLOY` with `NROS_PLATFORM threadx`) and one for NuttX. Each
 synthesises a single-node C++ entry TU and links the image. No row in
 `examples/fixtures.toml` reaches either arm: every ThreadX and NuttX C/C++
 example and workspace builds through `nano_ros_entry()`.
@@ -60,7 +60,7 @@ fixed. It was earlier: `nros-c` stopped with
 produced no image at all.
 
 The cause is the platform spelling. The recipes configure every rv-virt-threadx
-leaf with `-DNANO_ROS_PLATFORM=threadx_riscv64`, and the toolchain file's
+leaf with `-DNROS_PLATFORM=threadx_riscv64`, and the toolchain file's
 usage line documents the same. The three RTOS carrier arms in
 `NanoRosNodeRegister.cmake` compared the raw value with the bare family token
 (`STREQUAL "threadx"` / `"nuttx"` / `"freertos"`). So on any lane-built leaf
@@ -68,7 +68,7 @@ the ThreadX carrier never ran: configure succeeded, no executable was
 declared, no image applied a panic policy, and the default build compiled a
 `nros-c` staticlib with no `#[panic_handler]`.
 
-The hand reproductions in 1742 and 1753 passed `-DNANO_ROS_PLATFORM=threadx`,
+The hand reproductions in 1742 and 1753 passed `-DNROS_PLATFORM=threadx`,
 the one spelling that worked, so they never met this.
 
 `nano_ros_entry()` already normalised the variant spellings, with its own
@@ -105,7 +105,7 @@ issue 0946's two locator ladders.
   `typed_carrier_cases_cover_every_matrix_cell`, fails if the cell set and the
   test disagree.
 - **Gate `check-road-dispatch-platform-family`** (fast line):
-  - **R1:** neither dispatcher compares `NANO_ROS_PLATFORM` with a bare
+  - **R1:** neither dispatcher compares `NROS_PLATFORM` with a bare
     family token.
   - **R2:** no file under `cmake/` re-spells the normaliser's regex.
   - Mutations: putting the raw `"threadx"` compare back gives rc=1; putting
@@ -128,7 +128,7 @@ issue 0946's two locator ladders.
 ### NuttX
 
 The same family fix makes the NuttX carrier fire on lane builds
-(`NANO_ROS_PLATFORM=nuttx_armv7a`). Built by hand first, it linked, booted,
+(`NROS_PLATFORM=nuttx_armv7a`). Built by hand first, it linked, booted,
 and published `[typed_carrier] sent: 0..7` through `rmw_zenohd` under QEMU
 (arm virt, MMIO virtio-net, the harness's `start_nuttx_virt` shape).
 

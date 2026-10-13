@@ -49,7 +49,7 @@ this table has one answer in all four cells, which is the point of it:
 A single-package leaf and a workspace bringup use the same schema, so the
 resolver has one input shape and you have one thing to learn. Resolution is a
 **fixed precedence ladder**, not a merge: explicit CLI/build flag (`--rmw` /
-`-DNANO_ROS_*`) > `system.toml` (`[image.<id>]` > `[system]`) > the board
+`-DNROS_*`) > `system.toml` (`[image.<id>]` > `[system]`) > the board
 descriptor's `[knobs]` > built-in default. `nros config show` prints the
 resolved effective config with per-value provenance; `nros check` flags values
 still sourced from legacy files.

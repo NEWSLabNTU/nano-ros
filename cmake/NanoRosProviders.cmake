@@ -41,6 +41,8 @@ include_guard(GLOBAL)
 # here at file scope.
 set(_NROS_PROVIDERS_DIR "${CMAKE_CURRENT_LIST_DIR}"
     CACHE INTERNAL "dir of NanoRosProviders.cmake")
+# `nros_refuse_retired_root_keyword` (phase-484 W8).
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRetiredNames.cmake")
 
 # ---------------------------------------------------------------------------
 # nano_ros_load_providers([INDEX <path>] [WORKSPACE <dir>]
@@ -69,15 +71,9 @@ set(_NROS_PROVIDERS_DIR "${CMAKE_CURRENT_LIST_DIR}"
 function(nano_ros_load_providers)
     cmake_parse_arguments(_NP "REUSE_INDEX" "INDEX;WORKSPACE;NROS_REPO_DIR;NANO_ROS_ROOT" "" ${ARGN})
 
-    # phase-484 W7b-2 — `NROS_REPO_DIR` is the keyword; `NANO_ROS_ROOT` is its
-    # deprecated alias (the variable shim's rule, for a function argument).
-    if(DEFINED _NP_NANO_ROS_ROOT)
-        if(DEFINED _NP_NROS_REPO_DIR AND NOT "${_NP_NROS_REPO_DIR}" STREQUAL "${_NP_NANO_ROS_ROOT}")
-            message(FATAL_ERROR "nano-ros: NANO_ROS_ROOT and NROS_REPO_DIR disagree; pass only NROS_REPO_DIR.")
-        endif()
-        message(DEPRECATION "nano-ros: the NANO_ROS_ROOT keyword is deprecated; use NROS_REPO_DIR.")
-        set(_NP_NROS_REPO_DIR "${_NP_NANO_ROS_ROOT}")
-    endif()
+    # phase-484 W8 — `NROS_REPO_DIR` is the keyword; the retired `NANO_ROS_ROOT`
+    # keyword is still parsed only so that passing it is an error naming it.
+    nros_refuse_retired_root_keyword(_NP nano_ros_load_providers)
 
     if(NOT _NP_WORKSPACE)
         set(_NP_WORKSPACE "${CMAKE_SOURCE_DIR}")

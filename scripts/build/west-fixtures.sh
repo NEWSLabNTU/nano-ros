@@ -188,6 +188,9 @@ fixture_filter="${NROS_ZEPHYR_FIXTURE_FILTER:-}"
 # other rows still build.
 # shellcheck source=scripts/lib/host-idlc.sh
 source "$repo_root/scripts/lib/host-idlc.sh"
+# phase-484 W8 — the retired-name cache residue rule (rule 4 only: west owns
+# its own toolchain and build-dir choices, so rules 1–3 do not apply here).
+source "$repo_root/scripts/build/cmake-cache-guard.sh"
 # A failed query is not "no Cyclone rows" (the 1249/1466 shape): fatal.
 cyclone_ids=""
 for _wf_b in west-build west-configure; do
@@ -413,6 +416,7 @@ while IFS= read -r record; do
     # generator discards when generate fails, and `fixtures-manifest.py
     # validate-compile-checks` refuses any other output for that builder. The
     # fix is to the premise, not a second rule: west's status stays unread.
+    nros_cmake_guard_retired_names "$bld"
     env "${tc_env[@]}" west "${args[@]}" || true
     if [ -e "$bld/$output" ]; then
         west_fixture_stamp "$bld" "$builder"

@@ -159,7 +159,7 @@ supplies the same rows.
 `CMakeLists.txt` defines. `nros_generate_interfaces()` replaces
 
 ```cmake
-if(NANO_ROS_RMW STREQUAL "cyclonedds"
+if(NROS_RMW STREQUAL "cyclonedds"
    AND COMMAND nros_rmw_cyclonedds_generate_from_msg)
 ```
 
@@ -485,7 +485,7 @@ core naming it — is answered by D6.
 ### Q3 — uorb is NOT special; the three disagreeing lists are the bug
 
 **Resolved: a gap, not a deliberate bypass.** `uorb` is a first-class
-`NANO_ROS_RMW` value in two places and fatal in a third:
+`NROS_RMW` value in two places and fatal in a third:
 
 | site | accepts |
 | --- | --- |

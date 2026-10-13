@@ -346,8 +346,10 @@ if [ "${#cmake_records[@]}" -gt 0 ]; then
     # Issue 1840 added the root resolver and the foreign-checkout cache rule;
     # the two `checkout-paths.sh` helpers they call ship from that file's own
     # `export -f`.
+    # phase-484 W8 added the retired-name cache rule (its table path is an
+    # exported variable, set when the guard file was sourced).
     export -f nros_fixture_build_cmake nros_cmake_configure_if_needed \
-        nros_cmake_guard_build_dir \
+        nros_cmake_guard_build_dir nros_cmake_guard_retired_names \
         nros_cmake_toolchain_resolved_cc nros_cmake_dir_cc \
         nros_cmake_resolve_nano_ros_root nros_cmake_guard_foreign_checkout
     run nros_fixture_build_cmake

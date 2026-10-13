@@ -276,6 +276,11 @@ build_workspace() {
             echo "     removing incomplete CMake build dir: $build_subdir"
             rm -rf "$build_subdir"
         fi
+        # phase-484 W8 — `nros build` reconfigures this dir itself, so the
+        # retired-name residue rule (cmake-cache-guard.sh rule 4) runs here.
+        if [ "$lang" != "rust" ] && [ -n "$build_subdir" ]; then
+            nros_cmake_guard_retired_names "$build_subdir"
+        fi
         [ -n "$codegen_out" ] && mkdir -p "$(dirname "$codegen_out")"
 
         # issue 0649 — the `nros sync` that used to be HERE is a pre-pass over

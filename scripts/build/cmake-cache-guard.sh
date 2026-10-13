@@ -35,6 +35,16 @@
 #     checkout in every cached path and in non-path answers too. Drops
 #     `CMakeCache.txt` only; see `nros_cmake_guard_foreign_checkout`.
 #
+#  4. RETIRED NAME (phase-484 W8). A cache first configured by an older
+#     nano-ros carries the retired `NANO_ROS_*` entries that tree wrote itself
+#     (`NANO_ROS_PLATFORM:STRING`, `NANO_ROS_RMW:STRING`, …). The retired names
+#     are now a configure ERROR, so such a dir could never reconfigure — and
+#     ninja re-runs cmake on its own whenever a CMakeLists changes. Every caller
+#     of this file configures with `NROS_*` names only
+#     (`check-retired-cmake-names`), so an old name in its cache is residue,
+#     never a choice: drops those entries only; see
+#     `nros_cmake_guard_retired_names`.
+#
 # Rules 1 and 2 WIPE rather than reconfigure, because neither a pinned compiler nor
 # a cached probe result can be moved by re-running cmake.
 
@@ -102,6 +112,7 @@ nros_cmake_toolchain_resolved_cc() {
 nros_cmake_guard_build_dir() {
     local build_dir="$1"; shift
     [ -f "$build_dir/CMakeCache.txt" ] || return 0
+    nros_cmake_guard_retired_names "$build_dir"
 
     local want_tc="" cached_tc _a
     for _a in "$@"; do
@@ -200,4 +211,34 @@ nros_cmake_guard_foreign_checkout() {
     echo "  (cache bound to another nano-ros checkout: $n value(s), first $first —" >&2
     echo "   dropping $cache so it reconfigures against $here; issue 1840)" >&2
     rm -f "$cache"
+}
+
+# Rule 4 (phase-484 W8) — drop RETIRED `NANO_ROS_*` entries from a cache.
+#
+# The names are READ from the error table (`cmake/NanoRosRetiredNames.cmake`),
+# never re-spelled here. The table path is resolved when this file is sourced
+# and exported, because `fixtures-build.sh` ships these functions to make
+# workers with `export -f`, where `BASH_SOURCE` no longer names this file.
+# Only the cache lines go: a configure that still PASSES an old name is
+# refused by cmake as before.
+_NROS_RETIRED_NAMES_TABLE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/cmake/NanoRosRetiredNames.cmake"
+export _NROS_RETIRED_NAMES_TABLE
+nros_cmake_guard_retired_names() {
+    local cache="$1/CMakeCache.txt" names hits
+    [ -f "$cache" ] && [ -f "${_NROS_RETIRED_NAMES_TABLE:-}" ] || return 0
+    names="$(sed -n 's/^[[:space:]]*\(NANO_ROS_[A-Z0-9_]*\)=NROS_.*/\1/p' "$_NROS_RETIRED_NAMES_TABLE" | paste -sd'|')"
+    [ -n "$names" ] || return 0
+    hits="$(grep -Eo "^($names):" "$cache" | tr -d : | paste -sd' ')" || true
+    [ -n "$hits" ] || return 0
+    echo "  (cache carries retired name(s) $hits from an older configure of $1 —" >&2
+    echo "   dropping those entries; phase-484 W8)" >&2
+    # An entry and its `//` help lines go together: CMake refuses a cache
+    # whose help comment is followed by no entry ("Parse error in cache
+    # file"), so deleting the entry line alone breaks the dir it repairs.
+    awk -v re="^(${names}):" '
+        /^\/\// { buf = buf $0 "\n"; next }
+        $0 ~ re  { buf = ""; next }
+        { printf "%s", buf; buf = ""; print }
+        END { printf "%s", buf }' "$cache" > "$cache.nros-retired.tmp" \
+        && mv "$cache.nros-retired.tmp" "$cache"
 }

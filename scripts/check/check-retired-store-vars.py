@@ -69,7 +69,7 @@ ALLOWED = {
     "scripts/check/check-retired-store-vars.py",
     "scripts/check-sdk-store-not-enumerated.py",
     "cmake/NanoRosWorkspace.cmake",  # refuses $ENV{NANO_ROS_ROOT}
-    "scripts/check/check-deprecated-cmake-names.py",  # names the refusal to exempt it
+    "scripts/check/check-retired-cmake-names.py",  # names the refusal to exempt it
 }
 
 SELF_TESTS = [

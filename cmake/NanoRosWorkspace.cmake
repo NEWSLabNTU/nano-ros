@@ -65,9 +65,9 @@ set(_NROS_WORKSPACE_DIR "${CMAKE_CURRENT_LIST_DIR}"
 # when nothing matches.
 # ---------------------------------------------------------------------------
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRosEdition.cmake")
-# phase-484 W7b — adopt any deprecated `NANO_ROS_*` name the workspace set.
-include("${CMAKE_CURRENT_LIST_DIR}/NanoRosDeprecatedNames.cmake")
-nros_adopt_deprecated_names()
+# phase-484 W8 — refuse a retired `NANO_ROS_*` name the workspace set.
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRetiredNames.cmake")
+nros_refuse_retired_names()
 
 function(_nros_find_root start out_var)
     set(_dir "${start}")
@@ -237,15 +237,9 @@ function(nano_ros_workspace)
         "SUBDIRS"
         ${ARGN})
 
-    # phase-484 W7b-2 — `NROS_REPO_DIR` is the keyword; `NANO_ROS_ROOT` is its
-    # deprecated alias (the variable shim's rule, for a function argument).
-    if(DEFINED _NRW_NANO_ROS_ROOT)
-        if(DEFINED _NRW_NROS_REPO_DIR AND NOT "${_NRW_NROS_REPO_DIR}" STREQUAL "${_NRW_NANO_ROS_ROOT}")
-            message(FATAL_ERROR "nano-ros: NANO_ROS_ROOT and NROS_REPO_DIR disagree; pass only NROS_REPO_DIR.")
-        endif()
-        message(DEPRECATION "nano-ros: the NANO_ROS_ROOT keyword is deprecated; use NROS_REPO_DIR.")
-        set(_NRW_NROS_REPO_DIR "${_NRW_NANO_ROS_ROOT}")
-    endif()
+    # phase-484 W8 — `NROS_REPO_DIR` is the keyword; the retired `NANO_ROS_ROOT`
+    # keyword is still parsed only so that passing it is an error naming it.
+    nros_refuse_retired_root_keyword(_NRW nano_ros_workspace)
 
     # Where the WORKSPACE is, as opposed to where this root happens to sit.
     #
@@ -564,15 +558,9 @@ function(nano_ros_workspace_pkg_guard)
         ""
         ${ARGN})
 
-    # phase-484 W7b-2 — `NROS_REPO_DIR` is the keyword; `NANO_ROS_ROOT` is its
-    # deprecated alias (the variable shim's rule, for a function argument).
-    if(DEFINED _NRG_NANO_ROS_ROOT)
-        if(DEFINED _NRG_NROS_REPO_DIR AND NOT "${_NRG_NROS_REPO_DIR}" STREQUAL "${_NRG_NANO_ROS_ROOT}")
-            message(FATAL_ERROR "nano-ros: NANO_ROS_ROOT and NROS_REPO_DIR disagree; pass only NROS_REPO_DIR.")
-        endif()
-        message(DEPRECATION "nano-ros: the NANO_ROS_ROOT keyword is deprecated; use NROS_REPO_DIR.")
-        set(_NRG_NROS_REPO_DIR "${_NRG_NANO_ROS_ROOT}")
-    endif()
+    # phase-484 W8 — `NROS_REPO_DIR` is the keyword; the retired `NANO_ROS_ROOT`
+    # keyword is still parsed only so that passing it is an error naming it.
+    nros_refuse_retired_root_keyword(_NRG nano_ros_workspace_pkg_guard)
 
     if(NOT _NRG_BACKEND)
         if(NROS_RMW)

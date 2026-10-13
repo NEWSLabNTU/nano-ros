@@ -941,6 +941,33 @@ verb's answer is used as given.
   W5b lands. And the legacy `[board.knobs]` section spelling: both descriptor
   parsers (`BoardKnobsFile::parse_for_board`, the CLI's `BoardFile::parse`)
   stop accepting it and refuse it naming `[knobs]`.
+- **W8a landed (2026-10-13) — the cmake names.** The shim is now
+  `cmake/NanoRosRetiredNames.cmake`: `nros_refuse_retired_names()` (same four
+  entry points) adopts nothing and stops the configure on any of the 11 table
+  names — set by `-D`, by `set()` or left in the cache — listing every hit
+  with its `NROS_*` replacement, and for a CACHE hit printing the
+  `cmake -U … <build-dir>` that drops exactly the residue an older release
+  wrote. Old and new agreeing is an error too. The `NANO_ROS_ROOT <path>`
+  keyword of `nano_ros_workspace()`, `nano_ros_workspace_pkg_guard()` and
+  `nano_ros_load_providers()` is refused the same way
+  (`nros_refuse_retired_root_keyword`), naming `NROS_REPO_DIR`. That residue
+  is not hypothetical: 10/10 `build/cmake-fixtures` caches and 56/59 example
+  build caches in the main checkout carried tree-written `NANO_ROS_*` entries,
+  so `cmake-cache-guard.sh` gains rule 4 (drop the table's entries, with their
+  help lines, from an in-tree cache before configure), reached from the
+  guard, `workspace-fixtures-build.sh` and `west-fixtures.sh`. Gate
+  `check-retired-cmake-names` (was `check-deprecated-cmake-names`): no tracked
+  file names a table name, a retired prefix or the `NANO_ROS_*` wildcard,
+  except the table, the gate, its test, the book's
+  `reference/retired-names.md` (was `deprecated-names.md`), the env-refusal
+  gate, history (archived issues, every phase doc, the issue index,
+  the changelog) and a line that says the name is retired; OPEN issues are
+  gated. RFCs swept to the `NROS_*` names (56 renames), with the sentences
+  that are about the old spelling marked retired. cmake test
+  `cmake-retired-names` (8 cases). **The error rows stay one more release;
+  then they go and an old name is an unknown variable.** The other W8 aliases
+  (`ZENOH_LOCATOR`, `ZPICO_SMOLTCP_*`, env-spelled knob rows,
+  `[board.knobs]`) are not in this slice.
 - ~~Issue 1768 (census classifier + fail on UNCLASSIFIED).~~ Done (W7a): the `linker-script` role knows `link_script!`; gate `build-wiring-classified`.
 - ~~`canonical-build-path.md`, the book's configuration and getting-started
   pages, CLAUDE.md pointers.~~ Done (2026-10-13): the map gains "Where a

@@ -32,10 +32,10 @@
 # Menuconfig edits in that build dir are reset, exactly as any conf-fragment
 # edit resets them.
 include(${CMAKE_CURRENT_LIST_DIR}/../cmake/NanoRosReconfigure.cmake)
-# phase-484 W7b — adopt any deprecated `NANO_ROS_*` name the application set.
-include(${CMAKE_CURRENT_LIST_DIR}/../cmake/NanoRosDeprecatedNames.cmake)
+# phase-484 W8 — refuse a retired `NANO_ROS_*` name the application set.
+include(${CMAKE_CURRENT_LIST_DIR}/../cmake/NanoRosRetiredNames.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/../cmake/NanoRosArtifactLayout.cmake)  # issue 1852
-nros_adopt_deprecated_names()
+nros_refuse_retired_names()
 set(_nros_kconfig_stamp "${APPLICATION_BINARY_DIR}/nros-module-kconfig.conf")
 nros_reconfigure_settle("${_nros_kconfig_stamp}")
 nros_reconfigure_snapshot("${_nros_kconfig_stamp}" _nros_kconfig_before)

@@ -70,7 +70,7 @@ it is quoted here as the EVIDENCE this RFC's stance was workable, not as
 something a reader can go and look at. It did four things:
 
 ```cmake
-set(NANO_ROS_PLATFORM "esp_idf" CACHE STRING "" FORCE)   # 1. name the platform
+set(NROS_PLATFORM "esp_idf" CACHE STRING "" FORCE)   # 1. name the platform
 # ... map CONFIG_NROS_* (Kconfig) → nano-ros cache vars   # 2. adopt host config
 add_subdirectory("${_nros_root}" nano_ros_root)           # 3. pull in the build system
 target_link_libraries(${COMPONENT_LIB} INTERFACE NanoRos::NanoRos)  # 4. re-export
@@ -87,8 +87,8 @@ target_link_libraries(lwip INTERFACE idf::lwip)
 ```
 
 That is **every ESP32 part supported**, with no board crate, no board module, no
-`NANO_ROS_BOARD`, and no descriptor. The module comment says so outright: *"No
-NANO_ROS_BOARD requirement — IDF supplies every artefact the FreeRTOS board
+`NROS_BOARD`, and no descriptor. The module comment says so outright: *"No
+NROS_BOARD requirement — IDF supplies every artefact the FreeRTOS board
 overlays would have shipped."*
 
 The same shape already exists for NuttX (`integrations/nuttx/` — CMake entry plus
@@ -934,10 +934,10 @@ loader follows that two-hop chain"* — is only sound with one namespace.
 ### Hardcoded board discovery
 
 `cmake/platform/nano-ros-{freertos,nuttx,baremetal}.cmake` FATAL_ERROR unless the
-module is at `${CMAKE_CURRENT_LIST_DIR}/../board/nano-ros-board-${NANO_ROS_BOARD}.cmake`,
+module is at `${CMAKE_CURRENT_LIST_DIR}/../board/nano-ros-board-${NROS_BOARD}.cmake`,
 and `nano_ros_use_board()` resolves `${NROS_REPO_DIR}/packages/boards/nros-board-${NAME}`.
 Both in-tree only. Confirmed that **no consumer works around this** — every
-`NANO_ROS_BOARD` value set anywhere (`mps2-an385-baremetal`,
+`NROS_BOARD` value set anywhere (`mps2-an385-baremetal`,
 `mps2-an385-freertos`, `mps3-an536-freertos`, `s32z270-freertos`,
 `freertos-posix`, `qemu-armv7a-nuttx`, `rv-virt-nuttx`, `rv-virt-threadx`,
 `threadx-linux`) has an in-tree module,
@@ -1070,7 +1070,7 @@ generation on the table only for whatever survives step 2.
   later corrected to **45** (the first scan omitted the repo root and `config/`).
 - **Artifact coverage**: 12/27 boards have `nros-board.toml`; 2/27 have
   `board.cmake`; 8 `cmake/board/*.cmake` modules live outside `packages/boards/`.
-- **Platform module contracts**: `NANO_ROS_BOARD` required by freertos, nuttx,
+- **Platform module contracts**: `NROS_BOARD` required by freertos, nuttx,
   threadx, baremetal; not by esp_idf, zephyr, posix.
 - **Gating works end to end**: `NROS_BOARD_GATED_PKGS` → `[gated.arm-fvp] env =
   "ARM_FVP_DIR"` → `nros doctor --board`.
@@ -1141,10 +1141,10 @@ The two `FATAL_ERROR`s were the *only* thing requiring a board: every later use
 of the overlay's outputs is already guarded (`if(DEFINED FREERTOS_STARTUP_*)`,
 `if(TARGET freertos_platform)`, `if(COMMAND nros_board_link_app)`), and the Phase
 186 Cyclone block already falls back for `FREERTOS_DIR` / `LWIP_DIR`. So the edit
-is: enter board-less mode when `NANO_ROS_BOARD` is undefined *and*
+is: enter board-less mode when `NROS_BOARD` is undefined *and*
 `freertos_platform` already exists, else fail with a message that now names the
 shell option. Verified: `if`/`endif` and `function`/`endfunction` balance
-(17/17, 1/1); the `NANO_ROS_BOARD`-defined path is untouched, so mps2 is
+(17/17, 1/1); the `NROS_BOARD`-defined path is untouched, so mps2 is
 unaffected.
 
 **Revision 2 — Cortex-M7** (`config/freertos-lwip/nros-platform.toml`).
@@ -1245,8 +1245,8 @@ failing deep in a C compile:
   (buffer counts, `MEM_SIZE`), and the mps2 pair is a QEMU-sized starting point
   that must be re-tuned for the S32K344's 320 KB SRAM.
 
-**`NANO_ROS_ROOT` vs `NANO_ROS_ROOT_DIR`.** `packages/api/nros-{c,cpp}` include
-`${NANO_ROS_ROOT}/cmake/NanoRosFeatureSet.cmake`, but the root CMakeLists sets
+**`NANO_ROS_ROOT` vs `NANO_ROS_ROOT_DIR`** (both since retired for `NROS_REPO_DIR`, phase-484). `packages/api/nros-{c,cpp}` include
+`${NANO_ROS_ROOT}/cmake/NanoRosFeatureSet.cmake` (retired spelling), but the root CMakeLists sets
 `NANO_ROS_ROOT_DIR` — a different variable. Setting the former is the consumer's
 job by convention (`nano_ros_workspace()`, `NanoRosBootstrap.cmake`,
 `zephyr/CMakeLists.txt`, `integrations/px4/NanoRosPx4Module.cmake` all do it).
