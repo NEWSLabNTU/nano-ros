@@ -321,17 +321,48 @@ fn zephyr_cortex_m_c_boot_report_names_arena_exhaustion() {
          QEMU: {cmdline}\nlast decode:\n{verdict}"
     );
     // The record names the place, the shortfall and the knob — the three
-    // things an operator needs, and what the QEMU hand run recorded.
-    for expected in [
-        "RegisteringEntities",
-        "short by 16 bytes",
-        "set NROS_EXECUTOR_ARENA_SIZE >= 48",
-    ] {
-        assert!(
-            verdict.contains(expected),
-            "the decode does not say `{expected}`.\nDecode:\n{verdict}"
-        );
-    }
+    // things an operator needs.
+    //
+    // Issue 1877 — checked as ARITHMETIC, not as the numbers one build
+    // printed. The literals here were `short by 16 bytes` / `>= 48`, i.e. the
+    // size of the first entity's arena claim on the day they were recorded,
+    // and they went red the day that entity grew to 56 bytes with the decoder
+    // still exactly right. What must hold whatever the claim's size: the
+    // shortfall is the claim minus the arena's capacity, and the knob the
+    // report tells you to set is at least the claim.
+    assert!(
+        verdict.contains("RegisteringEntities"),
+        "the decode does not name the stage.\nDecode:\n{verdict}"
+    );
+    let number_after = |key: &str| -> Option<u64> {
+        let rest = &verdict[verdict.find(key)? + key.len()..];
+        rest.trim_start()
+            .split(|c: char| !c.is_ascii_digit())
+            .next()?
+            .parse()
+            .ok()
+    };
+    let claim = number_after("an allocation of")
+        .unwrap_or_else(|| panic!("the decode names no allocation size.\nDecode:\n{verdict}"));
+    let capacity = number_after("arena capacity")
+        .unwrap_or_else(|| panic!("the decode names no arena capacity.\nDecode:\n{verdict}"));
+    let short = number_after("short by")
+        .unwrap_or_else(|| panic!("the decode names no shortfall.\nDecode:\n{verdict}"));
+    let knob = number_after("set NROS_EXECUTOR_ARENA_SIZE >=")
+        .unwrap_or_else(|| panic!("the decode names no knob value.\nDecode:\n{verdict}"));
+    assert!(
+        claim > capacity,
+        "a claim of {claim} B fits a {capacity} B arena; that is no exhaustion.\nDecode:\n{verdict}"
+    );
+    assert_eq!(
+        short,
+        claim - capacity,
+        "the shortfall is not the claim minus the capacity.\nDecode:\n{verdict}"
+    );
+    assert_eq!(
+        knob, claim,
+        "the knob the report names is not the claim that failed.\nDecode:\n{verdict}"
+    );
     for (i, pc) in pc_reads.iter().enumerate() {
         let pc = pc.unwrap_or_else(|| {
             panic!("could not read the program counter (read {i}) over the QEMU monitor")
