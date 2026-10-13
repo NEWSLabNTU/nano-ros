@@ -1148,10 +1148,21 @@ jobs:
     defaults:
       run:
         shell: bash
+        working-directory: ${{ github.workspace }}/../nros-fixture-tree
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: false
+      # phase-489 W6 — the fixture lanes build in a PERSISTENT tree beside the
+      # checkout (`_work/<repo>/nros-fixture-tree`), not in the checkout
+      # `actions/checkout` just `git clean -ffdx`-ed. Every later step runs
+      # there (the job's `defaults.run.working-directory`). The tree is a
+      # user's checkout after `git pull`: this commit, tracked files restored,
+      # build output kept and NOT trusted — `just build` re-derives freshness
+      # and the test half re-probes it. See scripts/ci/fixture-tree.sh.
+      - name: Check out the persistent fixture tree at this commit
+        working-directory: ${{ github.workspace }}
+        run: scripts/ci/fixture-tree.sh sync
       - name: just setup tier2-nightly
         run: |
           source ./activate.sh

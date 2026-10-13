@@ -603,6 +603,10 @@ probe_args() {
         scripts/reserve-claim.sh) echo "--selftest" ;;
         scripts/ci/submodule-commits-reachable.sh) echo "--changed HEAD" ;;
         scripts/gen-issue-index.py) echo "--self-test" ;;
+        # Its `sync` writes a checkout BESIDE $GITHUB_WORKSPACE; under a probe's
+        # inherited CI environment that is the real tree. The self-test builds
+        # its own repos, which is the git-init path this probe is for.
+        scripts/ci/fixture-tree.sh) echo "--self-test" ;;
         *) echo "" ;;
     esac
 }

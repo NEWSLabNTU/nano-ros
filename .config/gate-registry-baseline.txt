@@ -132,6 +132,7 @@ fixture-groups
 fixture-id-guard
 fixture-staleness-probes
 fixture-stamp-honesty
+fixture-tree-persistence
 fixtures-manifest
 flake-quarantine
 flavour-lanes

@@ -577,6 +577,8 @@ LaneSpec = collections.namedtuple(
 
 LANES = (
     LaneSpec("run-matrix.yml", "matrix", "coverage", {
+        # phase-489 W6 — the persistent tree is synced before setup.
+        "Check out the persistent fixture tree at this commit": PROVISIONING,
         "just setup tier2": PROVISIONING,
         "Verify this runner's labels are true": PROVISIONING,
         "just build tier2": BUILD,
@@ -584,6 +586,8 @@ LANES = (
     }),
     # issues 1684/1685 — tier 1's cells, moved off host-tests to this runner.
     LaneSpec("run-matrix.yml", "tier1", "coverage-tier1", {
+        # phase-489 W6 — the persistent tree is synced before setup.
+        "Check out the persistent fixture tree at this commit": PROVISIONING,
         "just setup tier1": PROVISIONING,
         "Verify this runner's labels are true": PROVISIONING,
         "just build tier1": BUILD,
