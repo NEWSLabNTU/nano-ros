@@ -9,8 +9,7 @@
 #include <cstddef>
 #include <cstdint>
 
-#include <nros/component.hpp>
-#include <nros/nros.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 #include "std_msgs.hpp" // generated C++ bindings — the on_msg signature names Int32
 

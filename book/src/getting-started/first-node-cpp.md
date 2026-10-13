@@ -108,7 +108,7 @@ wrappers over the C ABI:
 
 ```cpp
 #include <nros/app_main.h>
-#include <nros/nros.hpp>
+#include <rclcpp/rclcpp.hpp>
 #include "std_msgs.hpp"
 
 #define RCLCPP_TRY_LOG(file, line, expr, ret) \

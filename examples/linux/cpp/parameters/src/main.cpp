@@ -41,9 +41,8 @@
     std::fprintf(stderr, "[nros] %s:%d %s -> %d\n", (file), (line), (expr), (int)(ret))
 
 #include <nros/app_main.h>
-#include <nros/nros.hpp>
+#include <rclcpp/rclcpp.hpp>
 #include <nros/nros_cpp_ffi.h>
-#include <nros/parameter.hpp>
 
 namespace {
 

@@ -237,8 +237,7 @@ behaviour writes `[census] on_missing = "warn"` / `on_stale = "warn"` in its
 ```cpp
 // src/talker_pkg/include/talker_pkg/Talker.hpp
 #pragma once
-#include <nros/component.hpp>
-#include <nros/nros.hpp>
+#include <rclcpp/rclcpp.hpp>
 #include "std_msgs.hpp"
 
 namespace talker_pkg {

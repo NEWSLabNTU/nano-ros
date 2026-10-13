@@ -5,7 +5,7 @@
 
 #include <cstdio>
 
-#include <nros/log.hpp> // A5 — node logging via the nros-log facade
+#include <rclcpp/rclcpp.hpp>
 
 namespace talker_pkg {
 

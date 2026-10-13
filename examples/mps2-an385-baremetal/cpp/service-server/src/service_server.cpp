@@ -11,8 +11,7 @@
 #include <string.h>
 
 #include <nros/app_main.h>
-#include <nros/log.h>
-#include <nros/nros.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 #include "example_interfaces.hpp"
 

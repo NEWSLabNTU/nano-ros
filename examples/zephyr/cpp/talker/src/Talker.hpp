@@ -6,8 +6,7 @@
 #ifndef NROS_ZEPHYR_TALKER_CPP_TALKER_HPP
 #define NROS_ZEPHYR_TALKER_CPP_TALKER_HPP
 
-#include <nros/component.hpp>
-#include <nros/nros.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 #include "std_msgs.hpp"
 
