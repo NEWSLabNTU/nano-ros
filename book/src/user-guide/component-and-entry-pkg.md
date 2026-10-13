@@ -168,7 +168,8 @@ to the launch file is picked up by the next compile with nothing regenerated.
 
 ```rust,ignore
 nros::main!();                                          // single-package: reads [image.*] board from system.toml
-nros::main!(board = LinuxBoard);                        // single-package, explicit board type
+// RETIRED (phase-484 W8c): `nros::main!(board = X)` is a compile error — an
+// out-of-tree board states `[package.metadata.nros.board] type` instead.
 nros::main!(launch = "demo_bringup");                   // multi-node (CANONICAL): the bringup's default launch
 nros::main!(launch = "demo_bringup:sim.launch.xml");    // multi-node, a named launch file
 nros::main!(                                            // multi-host: per-host slice via launch args

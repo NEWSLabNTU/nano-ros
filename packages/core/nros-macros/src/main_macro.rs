@@ -5,11 +5,13 @@
 //!
 //! ```ignore
 //! nros::main!();                                          // single-node self-bringup
-//! nros::main!(board = LinuxBoard);                       // single-node, explicit board
 //! nros::main!(launch = "demo_bringup");                   // multi-node, default launch
 //! nros::main!(launch = "demo_bringup:sim.launch.xml");    // multi-node, explicit file
-//! nros::main!(board = X, launch = "Y:Z.xml", args = [("k", "v")]);
+//! nros::main!(launch = "Y:Z.xml", args = [("k", "v")]);
 //! ```
+//!
+//! The old Form 2, `nros::main!(board = X)`, is RETIRED (phase-484 W8c) and
+//! is a compile error naming `[package.metadata.nros.board] type`.
 //!
 //! Form 1 reads `[package.metadata.nros.entry] deploy = "<board>"` from
 //! the Entry pkg's own `Cargo.toml` and maps the board key to a board
@@ -45,20 +47,27 @@ use syn::{
     punctuated::Punctuated,
 };
 
+/// The diagnostic for the retired `nros::main!(board = X)` (Form 2).
+///
+/// phase-484 W8c. Shared by the parser and its unit test so the wording is
+/// asserted where it is written.
+pub(crate) const RETIRED_BOARD_ARG: &str = "nros::main!: `board = ` is retired (phase-484 W8c). \
+     Write `nros::main!()` and state the board in the leaf's `system.toml` \
+     (`[image.<id>] board = \"<board>\"`); a board crate outside the in-tree table \
+     states its own type in its Cargo.toml as \
+     `[package.metadata.nros.board] type = \"::my_board::MyBoard\"` \
+     (emitted to the entry by `nros_build::emit_board_framework()`).";
+
 /// Parsed `nros::main!(...)` argument set.
 ///
 /// Each form maps to a different population of these fields:
 ///   - Form 1 (no args): all `None`.
-///   - Form 2 (`board = X`): `board = Some(X)`, launch / args `None`.
+///   - Form 2 (`board = X`): RETIRED (phase-484 W8c) — a compile error.
 ///   - Form 3 (`launch = "Y"`): `launch = Some("Y")`, board derived
 ///     from `[package.metadata.nros.entry] deploy`.
-///   - Form 4 (board + launch + args): all populated.
+///   - Form 4 (launch + args): both populated.
 #[derive(Default)]
 struct MainArgs {
-    /// Explicit board ident — used verbatim when supplied. None
-    /// triggers the `Cargo.toml [package.metadata.nros.entry]
-    /// deploy = "<board>"` lookup.
-    board: Option<SynPath>,
     /// `"<bringup_pkg>"` or `"<bringup_pkg>:<file.launch.xml>"`. None
     /// triggers the single-node self-bringup path (emit
     /// `<this_pkg>::register(runtime)?;`).
@@ -135,23 +144,14 @@ impl Parse for MainArgs {
         let pairs: Punctuated<KeyValue, Token![,]> = Punctuated::parse_terminated(input)?;
         for KeyValue { key, value } in pairs {
             match key.to_string().as_str() {
+                // phase-484 W8c — Form 2 is RETIRED (deprecated in W4g, shipped
+                // in release 0.5.0-nros2). An explicit board path skipped the
+                // leaf's `system.toml` and hard-wired `OwnedSpin`, so it dropped
+                // the board's framework; an out-of-tree board now states its
+                // type in its own manifest and reaches Form 1.
                 "board" => {
-                    let path = match value {
-                        KvValue::Path(p) => p,
-                        KvValue::Str(s) => {
-                            return Err(syn::Error::new(
-                                s.span(),
-                                "expected board ident (e.g. `LinuxBoard`), got string literal",
-                            ));
-                        }
-                        KvValue::Args(_) | KvValue::IdentList(_) => {
-                            return Err(syn::Error::new(
-                                key.span(),
-                                "`board = ` takes a type path, not a list",
-                            ));
-                        }
-                    };
-                    out.board = Some(path);
+                    let _ = value;
+                    return Err(syn::Error::new(key.span(), RETIRED_BOARD_ARG));
                 }
                 "launch" => {
                     let s = match value {
@@ -306,8 +306,10 @@ struct KeyValue {
 }
 
 enum KvValue {
-    /// `board = LinuxBoard` / `board = ::nros_board_linux::LinuxBoard`
-    Path(SynPath),
+    /// A bare path value. No live key takes one since the retired
+    /// `board = X` (phase-484 W8c); it is parsed so a path argument still gets
+    /// the key's own diagnostic rather than a generic syn error.
+    Path,
     /// `launch = "demo_bringup:sim.launch.xml"`
     Str(LitStr),
     /// `args = [("use_sim", "true"), ...]`
@@ -357,10 +359,10 @@ impl Parse for KeyValue {
                 value: KvValue::Str(s),
             });
         }
-        let path: SynPath = input.parse()?;
+        let _path: SynPath = input.parse()?;
         Ok(KeyValue {
             key,
-            value: KvValue::Path(path),
+            value: KvValue::Path,
         })
     }
 }
@@ -538,9 +540,8 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // --- Board resolution ---
     // `deploy` is `Some(...)` only when the macro had to read the
     // Entry pkg's `[package.metadata.nros.entry] deploy = "..."` key
-    // (form 1). When the user passes `board = X` directly we have no
-    // deploy string and default to the `OwnedSpin` framework — RTIC
-    // requires the `deploy = "rtic-mps2-an385"` opt-in for now.
+    // (form 1). Since phase-484 W8c retired `board = X` this is every
+    // entry; RTIC still requires the `deploy = "rtic-mps2-an385"` opt-in.
     //
     // phase-445 W3 (RFC-0098 D3/D5) — the board, RMW and network identity come
     // from the ONE leaf reader, `nros_orchestration_ir::leaf_system`: the leaf's
@@ -551,9 +552,8 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         SynPath,
         Option<String>,
         Option<nros_orchestration_ir::leaf_system::LeafSystem>,
-    ) = match &args.board {
-        Some(p) => (p.clone(), None, None),
-        None => {
+    ) = {
+        {
             tracked.push(manifest_dir.join("Cargo.toml"));
             // The deprecated `model = "<bringup>[:file]"` names the bringup too;
             // resolve it here so an entry spelled that way finds its image.
@@ -598,8 +598,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                          `[image.<id>] board = \"<board>\"` (e.g. `\"native\"`, \
                          `\"freertos\"`, `\"zephyr\"`; RFC-0098 D3) — or, for an entry in \
                          a workspace, give the bringup an image that builds it \
-                         (`entry = \"{entry_pkg}\"`) — or pass `board = MyBoard` to the \
-                         macro.",
+                         (`entry = \"{entry_pkg}\"`).",
                         manifest_dir.display(),
                         manifest_dir
                             .join(nros_orchestration_ir::leaf_system::SYSTEM_TOML)
@@ -639,7 +638,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                          state its type in the board crate's \
                          `[package.metadata.nros.board] type = \"::my_board::MyBoard\"` and \
                          call `nros_build::emit_board_framework()` from this package's \
-                         build.rs (or pass `board = <YourBoardZst>`).",
+                         build.rs.",
                         leaf.as_ref()
                             .map(|l| l.origin_path().display().to_string())
                             .unwrap_or_default(),
@@ -653,14 +652,9 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // Issue 1305 / RFC-0098 D6 — a single-package leaf that names no board
     // crate but depends on its generated `<pkg>_nros_selection` package
     // reaches the board THROUGH that package (which re-exports it). Only when
-    // the board was resolved from the image (`board = X` is the user's own
-    // path) and only when the board crate is not a direct dependency, so a
+    // the board crate is not a direct dependency, so a
     // generated workspace entry — which names both — is unchanged.
-    let selection: Option<Ident> = if args.board.is_none() {
-        leaf_selection_crate(&manifest_dir, &board_path)
-    } else {
-        None
-    };
+    let selection: Option<Ident> = leaf_selection_crate(&manifest_dir, &board_path);
     let board_path = match &selection {
         Some(sel) => reroot_through(&board_path, sel),
         None => board_path,
@@ -1523,9 +1517,9 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // emitted TU is byte-identical to pre-228 for every current example.
     // Issue #48 cause 1 — bake the deploy overlay from the leaf's deployment
     // identity (RFC-0098 D5: `system.toml`, else the retiring
-    // `[package.metadata.nros.deploy.<board>]`). Only Form 1 (board read from
-    // the leaf) has one; Form 2 (explicit `board = X`) gets an all-`None`
-    // overlay, so `run_with_deploy` then behaves exactly like `run`.
+    // `[package.metadata.nros.deploy.<board>]`). An entry with no leaf
+    // declaration gets an all-`None` overlay, so `run_with_deploy` then
+    // behaves exactly like `run`.
     let mut deploy_overlay_lit = match (&deploy_for_framework, &leaf_decl) {
         (Some(_), Some(leaf)) => overlay_from_leaf(leaf),
         _ => DeployOverlayLit::default(),
@@ -3078,8 +3072,7 @@ fn read_entry_executor_sizing(cargo_toml: &Path) -> Option<(usize, usize)> {
 /// must wire, read from the leaf's own `system.toml`.
 ///
 /// `None` on the model arm (the model states the axes there) and for a leaf
-/// with no `system.toml`. Form 1 already read the leaf to find its board;
-/// Form 2 names its board and reads the leaf only for this.
+/// with no `system.toml`. Form 1 already read the leaf to find its board.
 fn wire_leaf_axes(
     args: &MainArgs,
     manifest_dir: &std::path::Path,
@@ -4986,10 +4979,27 @@ mod custom_tasks_parser_tests {
 
     #[test]
     fn combines_with_other_args() {
-        let parsed = parse("board = ::nros_board_linux::LinuxBoard, custom_tasks = [foo, bar]")
-            .expect("parse combined");
-        assert!(parsed.board.is_some(), "board parsed");
+        let parsed =
+            parse("launch = \"demo_bringup\", custom_tasks = [foo, bar]").expect("parse combined");
+        assert!(parsed.launch.is_some(), "launch parsed");
         assert_eq!(parsed.custom_tasks.expect("custom_tasks set").len(), 2);
+    }
+
+    /// phase-484 W8c — the retired Form 2 is a parse error naming the
+    /// manifest key that replaced it, alone or beside other arguments.
+    #[test]
+    fn retired_board_arg_is_rejected_naming_the_metadata_key() {
+        for src in [
+            "board = ::nros_board_linux::LinuxBoard",
+            "board = LinuxBoard, launch = \"demo_bringup\"",
+        ] {
+            let err = match parse(src) {
+                Ok(_) => panic!("`{src}` must not parse"),
+                Err(e) => e.to_string(),
+            };
+            assert!(err.contains("is retired"), "{err}");
+            assert!(err.contains("[package.metadata.nros.board] type"), "{err}");
+        }
     }
 
     #[test]
@@ -5764,17 +5774,6 @@ mod leaf_axis_tests {
         assert!(
             out.contains("PARAM_SERVICES_ENABLED"),
             "no feature assert:\n{out}"
-        );
-        // Form 2 names its board and still reads the leaf's axes.
-        let out = expand(
-            "board = ::nros_board_linux::LinuxBoard",
-            "native",
-            "features = [\"param_services\"]",
-        )
-        .unwrap();
-        assert!(
-            out.contains("apply_param_services"),
-            "Form 2 dropped it:\n{out}"
         );
     }
 

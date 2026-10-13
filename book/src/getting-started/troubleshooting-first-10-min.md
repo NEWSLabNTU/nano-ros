@@ -250,12 +250,13 @@ the canonical env var:
 
 ```bash
 NROS_LOCATOR=tcp/192.168.1.50:7447 ./build/c_talker
-# Legacy alias (still accepted): ZENOH_LOCATOR=… ./build/c_talker
 ROS_DOMAIN_ID=7 ./build/c_talker         # also overridable
 ```
 
-The native Rust / C / C++ talkers all read `NROS_LOCATOR` first, fall
-back to `ZENOH_LOCATOR`, then to the build-time default. Embedded
+The native Rust / C / C++ talkers all read `NROS_LOCATOR`, then fall back
+to the build-time default. The retired `ZENOH_LOCATOR` / `ZENOH_MODE` are
+REFUSED at startup with an error naming `NROS_LOCATOR` / `NROS_SESSION_MODE`
+— unset them. Embedded
 targets have no runtime env — their locator is compile-baked from
 `system.toml` (`[image.<id>] locator`, or `[system] locator` for an image that
 does not state one), so editing that file and rebuilding is the override.

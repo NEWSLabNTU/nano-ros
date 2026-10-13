@@ -26,10 +26,13 @@ Examples use `ExecutorConfig::from_env()` for configuration:
 | `ZENOH_TLS_ROOT_CA_CERTIFICATE_BASE64` | Base64-encoded CA certificate for TLS                           | (none)               |
 | `ZENOH_TLS_VERIFY_NAME_ON_CONNECT`     | Verify server hostname in TLS (`true`/`false`)                  | (none)               |
 
-> **Deprecated legacy names**: `ZENOH_LOCATOR` and `ZENOH_MODE` are still
-> accepted (they fall back to `NROS_LOCATOR` / `NROS_SESSION_MODE`) but
-> will print a one-line deprecation warning to stderr. Migrate to the
-> `NROS_*` names. `ZENOH_TLS_*` names are kept because TLS is currently
+> **Retired legacy names** (phase-484 W8c): `ZENOH_LOCATOR` and `ZENOH_MODE`
+> are no longer read. Setting either is a startup ERROR naming its
+> replacement (`NROS_LOCATOR` / `NROS_SESSION_MODE`) — Rust panics in
+> `resolve_hosted` / returns `InitError::RetiredEnvVar` from `nros::init`,
+> C / C++ init returns `RCL_RET_INVALID_ARGUMENT` / `NROS_CPP_RET_INVALID_ARGUMENT`
+> and logs the reason. Refused rather than ignored: an ignored locator would
+> dial the default router and read as "no delivery". `ZENOH_TLS_*` names are kept because TLS is currently
 > zenoh-specific.
 
 ### TLS Notes

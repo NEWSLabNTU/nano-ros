@@ -8,7 +8,7 @@ set -e
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 Z_SUB="$PROJECT_ROOT/packages/rmw/zenoh/zpico-sys/zenoh-pico/build/examples/z_sub"
-LOCATOR="${ZENOH_LOCATOR:-tcp/127.0.0.1:7447}"
+LOCATOR="${NROS_LOCATOR:-tcp/127.0.0.1:7447}"
 
 echo "=== Capture ROS 2 Topic Key Expression ==="
 echo ""
@@ -24,7 +24,7 @@ if ! pgrep -x zenohd > /dev/null; then
     # copy of it. Nine scripts each spelled this themselves and the literal path
     # they used is wrong on any host whose ROS is not under /opt/ros.
     echo "Start it with:"
-    nros_router_hint "${ZENOH_LOCATOR:-tcp/127.0.0.1:7447}"
+    nros_router_hint "${NROS_LOCATOR:-tcp/127.0.0.1:7447}"
     exit 1
 fi
 

@@ -14,7 +14,7 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 # Paths
 TALKER="$PROJECT_ROOT/target/release/talker"
 Z_SUB="$PROJECT_ROOT/packages/rmw/zenoh/zpico-sys/zenoh-pico/build/examples/z_sub"
-LOCATOR="${ZENOH_LOCATOR:-tcp/127.0.0.1:7447}"
+LOCATOR="${NROS_LOCATOR:-tcp/127.0.0.1:7447}"
 
 # Check dependencies
 if ! pgrep -x zenohd > /dev/null; then
@@ -22,7 +22,7 @@ if ! pgrep -x zenohd > /dev/null; then
     # copy of it. Nine scripts each spelled this themselves and the literal path
     # they used is wrong on any host whose ROS is not under /opt/ros.
     echo "ERROR: zenohd not running. Start it with:"
-    nros_router_hint "${ZENOH_LOCATOR:-tcp/127.0.0.1:7447}"
+    nros_router_hint "${NROS_LOCATOR:-tcp/127.0.0.1:7447}"
     exit 1
 fi
 

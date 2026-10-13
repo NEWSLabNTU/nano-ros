@@ -95,7 +95,7 @@ own. A multi-node workspace has no such caveat: its entry is generated,
 so there the board really is one line.
 
 Native (host) images read the locator / domain from environment
-variables (`NROS_LOCATOR` — legacy alias `ZENOH_LOCATOR` — and
+variables (`NROS_LOCATOR` — the retired `ZENOH_LOCATOR` is refused at startup — and
 `ROS_DOMAIN_ID`). Embedded images bake theirs from the same
 `[image.<id>]` table (`locator`, `ip`, `gateway`, `netmask`) — the shape
 shows up under the Embedded Starters section.
@@ -181,9 +181,9 @@ Three runtime knobs, each an env override on a built-in default:
 
 | Knob | Default | Env override |
 |---|---|---|
-| Zenoh locator | `tcp/127.0.0.1:7447` | `NROS_LOCATOR` (legacy alias: `ZENOH_LOCATOR`) |
+| Zenoh locator | `tcp/127.0.0.1:7447` | `NROS_LOCATOR` |
 | ROS domain ID | `0` | `ROS_DOMAIN_ID` |
-| Zenoh mode | client | `NROS_SESSION_MODE` (legacy alias: `ZENOH_MODE`) |
+| Zenoh mode | client | `NROS_SESSION_MODE` |
 
 On native these stay environment variables — `[image.native]` declares
 no `locator`. An embedded image bakes them from its own `[image.<id>]`

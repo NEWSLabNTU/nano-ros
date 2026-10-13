@@ -360,7 +360,7 @@ build-fixtures:
     # instead of back to back.
     source scripts/build/jobserver-pool.sh
     for ex in px4-stub offboard-companion px4-probe; do
-        printf '%s\n' "echo '  → cargo build $ex (rmw-xrce, target-xrce/)' && cd examples/px4/rust/companion/$ex && cargo build $cargo_profile_args --no-default-features --features rmw-xrce --target-dir target-xrce"
+        printf '%s\n' "echo '  → cargo build $ex (rmw-xrce, target-xrce/)' && cd examples/px4/rust/companion/$ex && cargo build $cargo_profile_args --target-dir target-xrce"
     done | nros_pool_run px4-companion
     echo "PX4 XRCE fixtures built."
 

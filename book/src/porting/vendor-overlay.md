@@ -145,8 +145,9 @@ except for the `[dependencies]` line:
 ```rust
 use nros_board_stm32f4_freertos::{Config, Stm32F4};
 
-// The `nros::main!(board = Stm32F4)` macro emits this dispatch; the
-// manual form is:
+// `nros::main!()` emits this dispatch for a leaf whose `system.toml` names
+// the board (the board crate states `[package.metadata.nros.board] type =
+// "::nros_board_stm32f4_freertos::Stm32F4"`); the manual form is:
 nros_board_freertos::run_entry::<Stm32F4, _, _>(Config::default(), None, |runtime| {
     // register your nodes on `runtime`
     Ok(())

@@ -1,12 +1,13 @@
-//! `nros::main!()` proc-macro round-trip — the four accepted invocation forms
+//! `nros::main!()` proc-macro round-trip — the accepted invocation forms
 //! compile.
 //!
 //! 1. `nros::main!();` — reads `[package.metadata.nros.entry] deploy = "native"`,
 //!    emits `::demo_entry::register(runtime)?;` (lib-self bringup).
-//! 2. `nros::main!(board = ::nros_board_linux::LinuxBoard);` — explicit board.
+//! 2. (retired) `nros::main!(board = X)` — phase-484 W8c made it a compile
+//!    error; its verdict is `native_main_macro_misuse`'s `main_macro_misuse_board_arg`.
 //! 3. `nros::main!(model = "demo_bringup");` — pkg-index walk → committed
 //!    SystemModel → `::talker_pkg::register(runtime)?;` (the canonical form).
-//! 4. all explicit (board + explicit model file).
+//! 4. explicit model file (the deprecated `model =` arm).
 //!
 //! The compile proof lives in the **build stage**: each form is a compile-check
 //! fixture (`scripts/build/compile-check-fixtures.sh`, run by
@@ -28,11 +29,6 @@ fn assert_form(id: &str) -> nros_tests::TestResult<()> {
 #[test]
 fn main_macro_form1_no_args_compiles() -> nros_tests::TestResult<()> {
     assert_form("main_macro_form1")
-}
-
-#[test]
-fn main_macro_form2_board_only_compiles() -> nros_tests::TestResult<()> {
-    assert_form("main_macro_form2")
 }
 
 #[test]

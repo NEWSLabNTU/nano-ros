@@ -214,6 +214,10 @@ pub mod env;
 #[cfg(target_os = "linux")]
 pub mod host_env;
 
+/// phase-484 W8c — the retired env aliases both hosted readers refuse.
+pub mod retired_env;
+pub use retired_env::RETIRED_ENV_VARS;
+
 #[cfg(feature = "env")]
 pub use env::{ExecutorConfigEnvExt, rmw_selector};
 

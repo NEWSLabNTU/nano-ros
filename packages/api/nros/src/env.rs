@@ -24,6 +24,7 @@
 //!   one board plus the two FFI entries, `false` everywhere else.
 //! * [`rmw_selector`] — the one `$NROS_RMW` reader (issue 0687's first half).
 
+use crate::retired_env::RETIRED_ENV_VARS;
 use alloc::{
     boxed::Box,
     string::{String, ToString},
@@ -81,30 +82,14 @@ static ENV_CACHE: std::sync::OnceLock<EnvCache> = std::sync::OnceLock::new();
 /// mutates the environment, so freezing it once is both correct and the point.
 fn env_cache() -> &'static EnvCache {
     fn build() -> EnvCache {
-        // Prefer NROS_LOCATOR / NROS_SESSION_MODE; accept legacy ZENOH_*
-        // names with a deprecation warning.
+        // phase-484 W8c — the legacy `ZENOH_*` aliases are RETIRED; `env_rung`
+        // refuses them before this cache is consulted, so only the canonical
+        // names are read here.
         let locator = std::env::var("NROS_LOCATOR")
-            .or_else(|_| {
-                std::env::var("ZENOH_LOCATOR").inspect(|_| {
-                    nros_log::log_warn!(
-                        nros_log::get_logger("nros"),
-                        "ZENOH_LOCATOR is deprecated; use NROS_LOCATOR instead"
-                    );
-                })
-            })
             // Issue 0330 — unset env leaves the locator EMPTY (= absent); the
             // active backend substitutes its own default.
             .unwrap_or_default();
-        let mode_str = std::env::var("NROS_SESSION_MODE")
-            .or_else(|_| {
-                std::env::var("ZENOH_MODE").inspect(|_| {
-                    nros_log::log_warn!(
-                        nros_log::get_logger("nros"),
-                        "ZENOH_MODE is deprecated; use NROS_SESSION_MODE instead"
-                    );
-                })
-            })
-            .ok();
+        let mode_str = std::env::var("NROS_SESSION_MODE").ok();
         let mode = match mode_str.as_deref() {
             Some("peer") => SessionMode::Peer,
             _ => SessionMode::Client,
@@ -172,10 +157,21 @@ pub fn rmw_selector() -> Option<nros_core::heapless::String<RMW_SELECTOR_CAP>> {
 /// values come from the frozen [`env_cache`] — that split is what gives the
 /// resolved config `&'static str` fields without leaking per call.
 fn env_rung() -> Result<EnvRung<'static>, BootConfigError> {
+    // phase-484 W8c — a retired alias is REFUSED, never ignored: an ignored
+    // `ZENOH_LOCATOR` dials the default router and reads as "no delivery".
+    // Presence alone refuses (an empty value is still somebody's intent), and
+    // the refusal is logged here so the C / C++ shims, which only get a
+    // return code, still name the replacement.
+    for &(name, replacement) in RETIRED_ENV_VARS {
+        if std::env::var_os(name).is_some() {
+            let err = BootConfigError::RetiredEnvVar { name, replacement };
+            nros_log::log_error!(nros_log::get_logger("nros"), "{}", err);
+            return Err(err);
+        }
+    }
     let cache = env_cache();
 
-    let locator_present =
-        std::env::var("NROS_LOCATOR").is_ok() || std::env::var("ZENOH_LOCATOR").is_ok();
+    let locator_present = std::env::var("NROS_LOCATOR").is_ok();
     let domain_id = match std::env::var("ROS_DOMAIN_ID") {
         Ok(s) if !s.is_empty() => {
             // #206 — malformed is an ERROR, not a silent skip. The parse lives
@@ -254,11 +250,11 @@ pub trait ExecutorConfigEnvExt {
     /// Reads:
     /// - `NROS_LOCATOR` — Middleware locator. Unset ⇒ empty (issue 0330: the
     ///   active RMW backend applies its own default; e.g. zenoh dials
-    ///   `nros_rmw_zenoh::DEFAULT_LOCATOR`). Legacy name `ZENOH_LOCATOR` is
-    ///   accepted with a deprecation warning.
+    ///   `nros_rmw_zenoh::DEFAULT_LOCATOR`). The retired name `ZENOH_LOCATOR`
+    ///   is refused (phase-484 W8c) — see [`BootConfigError::RetiredEnvVar`].
     /// - `ROS_DOMAIN_ID` — ROS 2 domain ID (default: `0`).
     /// - `NROS_SESSION_MODE` — `"client"` or `"peer"` (default: `"client"`).
-    ///   Legacy name `ZENOH_MODE` is accepted with a deprecation warning.
+    ///   The retired name `ZENOH_MODE` is refused (phase-484 W8c).
     /// - `NROS_RMW` — the backend selector, through [`rmw_selector`]. issue
     ///   0687: `Executor::open` used to read this itself; it now takes
     ///   `ExecutorConfig::rmw`, so a config built here still selects the
@@ -270,7 +266,8 @@ pub trait ExecutorConfigEnvExt {
     /// cache. Presence and the domain id are read live, so a caller that
     /// changes the environment between calls sees the change.
     ///
-    /// **Panics** on a malformed or out-of-range `$ROS_DOMAIN_ID`, like
+    /// **Panics** on a malformed or out-of-range `$ROS_DOMAIN_ID` or a set
+    /// retired alias (`ZENOH_LOCATOR` / `ZENOH_MODE`), like
     /// [`resolve_hosted`] and the C / C++ entries. A boot identity that cannot
     /// be resolved is a configuration error; the alternative is a node silently
     /// running on domain 0, which is what issue #206 removed everywhere else.
@@ -412,7 +409,6 @@ mod tests {
     fn baked_used_when_env_unset_on_hosted() {
         let _g = env_lock();
         let _e1 = EnvGuard::unset("NROS_LOCATOR");
-        let _e2 = EnvGuard::unset("ZENOH_LOCATOR");
 
         let baked = BootConfig {
             locator: Some("tcp/baked-only:8888"),
@@ -454,6 +450,67 @@ mod tests {
             Ok(_) => panic!("expected DomainIdParse error"),
         };
         assert_eq!(err, BootConfigError::DomainIdParse);
+    }
+
+    /// phase-484 W8c — a retired alias REFUSES, naming its replacement, and
+    /// does so even beside a canonical value (half-migrated env is still a
+    /// mistake somebody should hear about).
+    #[test]
+    fn retired_zenoh_locator_is_refused_naming_nros_locator() {
+        let _l = env_lock();
+        let (locator_alias, _) = RETIRED_ENV_VARS[0];
+        let (mode_alias, _) = RETIRED_ENV_VARS[1];
+        let _a = EnvGuard::set(locator_alias, "tcp/legacy:7447");
+        let _b = EnvGuard::unset("NROS_LOCATOR");
+        let _c = EnvGuard::unset(mode_alias);
+        let err = match try_resolve_hosted(BootConfig::default()) {
+            Err(e) => e,
+            Ok(cfg) => panic!("expected RetiredEnvVar, resolved {:?}", cfg.locator),
+        };
+        assert_eq!(
+            err,
+            BootConfigError::RetiredEnvVar {
+                name: locator_alias,
+                replacement: "NROS_LOCATOR"
+            }
+        );
+        let msg = alloc::format!("{err}");
+        assert!(msg.contains("NROS_LOCATOR"), "{msg}");
+
+        let _d = EnvGuard::set("NROS_LOCATOR", "tcp/canonical:7447");
+        assert!(try_resolve_hosted(BootConfig::default()).is_err());
+    }
+
+    #[test]
+    fn retired_zenoh_mode_is_refused_naming_nros_session_mode() {
+        let _l = env_lock();
+        let (locator_alias, _) = RETIRED_ENV_VARS[0];
+        let (mode_alias, _) = RETIRED_ENV_VARS[1];
+        let _a = EnvGuard::unset(locator_alias);
+        let _b = EnvGuard::set(mode_alias, "peer");
+        let err = match try_resolve_hosted(BootConfig::default()) {
+            Err(e) => e,
+            Ok(_) => panic!("expected RetiredEnvVar"),
+        };
+        assert_eq!(
+            err,
+            BootConfigError::RetiredEnvVar {
+                name: mode_alias,
+                replacement: "NROS_SESSION_MODE"
+            }
+        );
+    }
+
+    /// Positive control for the two refusals above: the canonical name alone
+    /// resolves, with its own value.
+    #[test]
+    fn canonical_nros_locator_resolves_when_no_retired_alias_set() {
+        let _l = env_lock();
+        let _a = EnvGuard::unset(RETIRED_ENV_VARS[0].0);
+        let _b = EnvGuard::unset(RETIRED_ENV_VARS[1].0);
+        let _c = EnvGuard::set("NROS_LOCATOR", "tcp/canonical:7447");
+        let cfg = try_resolve_hosted(BootConfig::default()).expect("canonical resolves");
+        assert_eq!(cfg.locator, "tcp/canonical:7447");
     }
 
     #[test]

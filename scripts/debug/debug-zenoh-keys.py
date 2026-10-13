@@ -15,7 +15,7 @@ def main():
     config = zenoh.Config()
     config.insert_json5("mode", '"client"')
     import os
-    _loc = os.environ.get("ZENOH_LOCATOR", "tcp/127.0.0.1:7447")
+    _loc = os.environ.get("NROS_LOCATOR", "tcp/127.0.0.1:7447")
     config.insert_json5("connect/endpoints", f'["{_loc}"]')
 
     session = zenoh.open(config)

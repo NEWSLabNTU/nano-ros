@@ -586,7 +586,7 @@ Increase the corresponding `ZPICO_MAX_*` limit — all slots are occupied.
 ### smoltcp connection timeouts
 
 - Increase `NROS_SMOLTCP_CONNECT_TIMEOUT_MS` on slow networks.
-- Verify the zenohd router is reachable at the configured `ZENOH_LOCATOR`.
+- Verify the zenohd router is reachable at the configured locator (`[image.<id>] locator`; `NROS_LOCATOR` on native).
 
 ### XRCE entity creation timeouts
 

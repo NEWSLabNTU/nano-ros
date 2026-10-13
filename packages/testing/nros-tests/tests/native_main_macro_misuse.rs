@@ -68,6 +68,17 @@ fn unknown_board_emits_compile_error() -> TestResult<()> {
     )
 }
 
+#[test]
+fn retired_board_arg_emits_compile_error_naming_the_metadata_key() -> TestResult<()> {
+    // phase-484 W8c — `nros::main!(board = X)` (Form 2) is retired; the
+    // diagnostic must name the manifest key an out-of-tree board states instead.
+    assert_fails_with(
+        "main_macro_misuse_board_arg",
+        "retired `board = X`",
+        &["is retired", "[package.metadata.nros.board] type"],
+    )
+}
+
 /// The `unknown_board` overlay is the template's `system.toml` with ONE line
 /// changed. Issue 1656 turned a `sed` rewrite into a file, which made it an input
 /// the row's signature hashes — and made it able to drift from the template it

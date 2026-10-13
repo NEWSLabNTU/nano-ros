@@ -115,6 +115,15 @@ pub enum InitError {
     /// [`crate::DOMAIN_ID_MAX`]. Rejected here rather than
     /// handed to a backend that can only fail later (the #206 rule).
     DomainIdOutOfRange,
+    /// phase-484 W8c — a RETIRED environment variable is set (`ZENOH_LOCATOR`,
+    /// `ZENOH_MODE`). Refused rather than ignored: an ignored locator dials
+    /// the default router, which reads as "no delivery".
+    RetiredEnvVar {
+        /// The retired name the environment still sets.
+        name: &'static str,
+        /// The canonical name to set instead.
+        replacement: &'static str,
+    },
     /// phase-427 W10 — [`Context::create_executor`] /
     /// [`Context::create_executor_in`] resolved the identity and the RMW
     /// session open then failed.
@@ -150,6 +159,10 @@ impl core::fmt::Display for InitError {
             InitError::LaunchParseFailed => f.write_str("launch file parse failed"),
             InitError::EnvParseFailed => f.write_str("env var parse failed"),
             InitError::DomainIdOutOfRange => f.write_str("domain id out of range"),
+            InitError::RetiredEnvVar { name, replacement } => write!(
+                f,
+                "{name} is retired and no longer read; set {replacement} instead (unset {name})"
+            ),
             InitError::ExecutorOpenFailed(e) => {
                 write!(f, "RMW session open failed: {e:?}")
             }
@@ -190,12 +203,12 @@ pub struct Context {
     /// ROS 2 domain ID (`ROS_DOMAIN_ID`, default 0; baked `NROS_DOMAIN_ID`
     /// freestanding).
     pub domain_id: u32,
-    /// Middleware locator (`NROS_LOCATOR` / legacy `ZENOH_LOCATOR`; baked
+    /// Middleware locator (`NROS_LOCATOR`; baked
     /// `NROS_LOCATOR` freestanding). Empty means ABSENT: `nros` is
     /// RMW-agnostic, so the linked backend substitutes its own default
     /// (issue 0330).
     pub locator: alloc::string::String,
-    /// Session mode (`NROS_SESSION_MODE` / legacy `ZENOH_MODE`, default `Client`).
+    /// Session mode (`NROS_SESSION_MODE`, default `Client`).
     pub mode: SessionMode,
     /// RMW implementation hint (`RMW_IMPLEMENTATION` /  `NROS_RMW`).
     ///
@@ -688,8 +701,8 @@ impl Context {
 fn read_env_context(source: ContextSource) -> Result<Context, InitError> {
     // issue 0687 — through the ONE resolver, not a third parse of the same four
     // variables. This function had its own copy, and the copies had drifted:
-    // it did not warn on the legacy `$ZENOH_LOCATOR`/`$ZENOH_MODE` spellings
-    // the other reader deprecates, and it range-checked nothing, so
+    // it did not see the legacy `ZENOH_LOCATOR`/`ZENOH_MODE` spellings (now
+    // retired and refused by the shared reader), and it range-checked nothing, so
     // `ROS_DOMAIN_ID=300` reached a backend that could only fail later.
     //
     // Issue 0330 — no backend default for the locator: `nros` is RMW-agnostic,
@@ -701,6 +714,9 @@ fn read_env_context(source: ContextSource) -> Result<Context, InitError> {
         crate::env::try_resolve_hosted(nros_node::BootConfig::default()).map_err(|e| match e {
             nros_node::BootConfigError::DomainIdRange => InitError::DomainIdOutOfRange,
             nros_node::BootConfigError::DomainIdParse => InitError::EnvParseFailed,
+            nros_node::BootConfigError::RetiredEnvVar { name, replacement } => {
+                InitError::RetiredEnvVar { name, replacement }
+            }
         })?;
     let locator = alloc::string::String::from(resolved.locator);
     let domain_id = resolved.domain_id;

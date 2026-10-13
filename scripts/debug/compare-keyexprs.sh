@@ -43,7 +43,7 @@ trap cleanup EXIT
 
 # Start the router
 log_info "Starting rmw_zenohd..."
-( nros_router_exec "${ZENOH_LOCATOR:-tcp/127.0.0.1:7447}" ) > "$LOG_DIR/zenohd.log" 2>&1 &
+( nros_router_exec "${NROS_LOCATOR:-tcp/127.0.0.1:7447}" ) > "$LOG_DIR/zenohd.log" 2>&1 &
 ROUTER_PID=$!
 sleep 2
 
@@ -58,7 +58,7 @@ sleep 2
 
 # Subscribe to all data keys (not liveliness) to see what keyexpr is used
 log_info "Subscribing to 0/** to capture nros messages..."
-"${NROS_DEADLINE[@]}" 3 "$Z_SUB" -m client -e ${ZENOH_LOCATOR:-tcp/127.0.0.1:7447} -k '0/**' 2>&1 | head -10 || true
+"${NROS_DEADLINE[@]}" 3 "$Z_SUB" -m client -e ${NROS_LOCATOR:-tcp/127.0.0.1:7447} -k '0/**' 2>&1 | head -10 || true
 
 # Kill nros talker by the PID we started, not by pattern (see cleanup above).
 [ -n "$TALKER_PID" ] && kill "$TALKER_PID" 2>/dev/null
@@ -82,7 +82,7 @@ sleep 2
 
 # Subscribe to all keys to see what keyexpr ROS 2 uses
 log_info "Subscribing to 0/** to capture ROS 2 messages..."
-"${NROS_DEADLINE[@]}" 3 "$Z_SUB" -m client -e ${ZENOH_LOCATOR:-tcp/127.0.0.1:7447} -k '0/**' 2>&1 | head -10 || true
+"${NROS_DEADLINE[@]}" 3 "$Z_SUB" -m client -e ${NROS_LOCATOR:-tcp/127.0.0.1:7447} -k '0/**' 2>&1 | head -10 || true
 
 kill $ROS2_PID 2>/dev/null || true
 

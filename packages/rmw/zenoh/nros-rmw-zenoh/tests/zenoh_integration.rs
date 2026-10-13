@@ -714,7 +714,6 @@ fn client_session_with_absent_locator_dials_backend_default() {
     // is created.
     unsafe {
         std::env::remove_var("NROS_LOCATOR");
-        std::env::remove_var("ZENOH_LOCATOR");
     }
 
     let _router = or_unmet(ZenohRouter::start(port));

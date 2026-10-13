@@ -20,7 +20,7 @@ name none:
 | --- | ---: | --- |
 | `packages/api/nros-c/include/nros/entry_config.h` | 6 | locator from `CONFIG_NROS_ZENOH_LOCATOR`, else `CONFIG_NROS_RMW_XRCE` + `CONFIG_NROS_XRCE_AGENT_{ADDR,PORT}`; domain from `CONFIG_NROS_CYCLONE_DOMAIN_ID` under `NROS_RMW_CYCLONEDDS` |
 | `packages/api/nros-c/include/nros/zephyr/app_config.h` | 9 | a `.zenoh` struct member, `zenoh_{read,lease}_{priority,stack_bytes}` fields, `CONFIG_NROS_ZENOH_LOCATOR` default |
-| `packages/api/nros/src/env.rs` | 3 | the deprecated `ZENOH_LOCATOR` / `ZENOH_MODE` aliases for `NROS_LOCATOR` / `NROS_SESSION_MODE` |
+| `packages/api/nros/src/retired_env.rs` | 2 | the RETIRED `ZENOH_LOCATOR` / `ZENOH_MODE` refusal table (phase-484 W8c retired the aliases `env.rs` and `host_env.rs` honoured, 3 + 2 lines; the refusal must still spell the name it refuses) |
 
 A fifth backend with its own locator or task knobs has nowhere to put them
 without editing these files. Issue 0934 maps the wider redundancy (R15 is the

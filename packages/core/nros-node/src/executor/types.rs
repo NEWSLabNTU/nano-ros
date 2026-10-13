@@ -315,6 +315,18 @@ pub enum BootConfigError {
     DomainIdParse,
     /// Domain ID (env or baked) exceeds [`DOMAIN_ID_MAX`].
     DomainIdRange,
+    /// A RETIRED environment variable is set (phase-484 W8c: `ZENOH_LOCATOR`
+    /// → `NROS_LOCATOR`, `ZENOH_MODE` → `NROS_SESSION_MODE`).
+    ///
+    /// An error, never a silent skip: an ignored `ZENOH_LOCATOR` dials the
+    /// backend's DEFAULT router, which reads as "no delivery" rather than as
+    /// a configuration mistake.
+    RetiredEnvVar {
+        /// The retired name the environment still sets.
+        name: &'static str,
+        /// The canonical name to set instead.
+        replacement: &'static str,
+    },
 }
 
 impl core::fmt::Display for BootConfigError {
@@ -326,6 +338,10 @@ impl core::fmt::Display for BootConfigError {
             BootConfigError::DomainIdRange => {
                 write!(f, "domain id exceeds DOMAIN_ID_MAX ({DOMAIN_ID_MAX})")
             }
+            BootConfigError::RetiredEnvVar { name, replacement } => write!(
+                f,
+                "{name} is retired and no longer read; set {replacement} instead (unset {name})"
+            ),
         }
     }
 }
@@ -411,7 +427,7 @@ impl<'a> ExecutorConfig<'a> {
 
     /// Phase 104.C.3.3.b — `Default`-style constructor with an
     /// empty locator. Most users want `ExecutorConfig::from_env()`
-    /// to pick up `ZENOH_LOCATOR` / `ROS_DOMAIN_ID`; this is the
+    /// to pick up `NROS_LOCATOR` / `ROS_DOMAIN_ID`; this is the
     /// rclcpp-`NodeOptions{}` shape for callers that set every
     /// field explicitly via the chaining setters.
     pub const fn default_const() -> Self {
@@ -586,13 +602,13 @@ pub struct BootConfig<'a> {
 /// `hosted_env=false` is `None` here at the whole-rung level.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct EnvRung<'a> {
-    /// `$NROS_LOCATOR` / legacy `$ZENOH_LOCATOR`.
+    /// `$NROS_LOCATOR` (the retired `ZENOH_LOCATOR` is refused at the edge).
     pub locator: Option<&'a str>,
     /// `$ROS_DOMAIN_ID`, already parsed — a malformed value is the EDGE's
     /// error ([`BootConfigError::DomainIdParse`]), reported before it gets
     /// here, because only the edge knows the text.
     pub domain_id: Option<u32>,
-    /// `$NROS_SESSION_MODE` / legacy `$ZENOH_MODE`.
+    /// `$NROS_SESSION_MODE` (the retired `ZENOH_MODE` is refused at the edge).
     pub mode: Option<SessionMode>,
     /// `$NROS_NODE_NAME`.
     pub node_name: Option<&'a str>,

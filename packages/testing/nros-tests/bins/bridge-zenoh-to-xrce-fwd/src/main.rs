@@ -19,7 +19,7 @@
 //!
 //! ## Env vars
 //!
-//! * `ZENOH_LOCATOR` — locator for the zenoh primary session. Default
+//! * `NROS_LOCATOR` — locator for the zenoh primary session. Default
 //!   `tcp/127.0.0.1:7447`.
 //! * `XRCE_LOCATOR` — `host:port` (or `udp/host:port`) for the XRCE
 //!   agent. Default `127.0.0.1:8888`. The XRCE backend strips the
@@ -42,7 +42,7 @@ fn main() {
     nros_rmw_xrce_cffi::register().expect("register xrce backend");
 
     let zenoh_locator =
-        std::env::var("ZENOH_LOCATOR").unwrap_or_else(|_| "tcp/127.0.0.1:7447".into());
+        std::env::var("NROS_LOCATOR").unwrap_or_else(|_| "tcp/127.0.0.1:7447".into());
     let xrce_locator = std::env::var("XRCE_LOCATOR").unwrap_or_else(|_| "127.0.0.1:8888".into());
 
     let cfg = ExecutorConfig::new(&zenoh_locator)

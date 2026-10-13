@@ -20,7 +20,7 @@ echo ""
 ROUTER_PID=""
 if ! pgrep -x rmw_zenohd > /dev/null; then
     echo "Starting rmw_zenohd..."
-    ( nros_router_exec "${ZENOH_LOCATOR:-tcp/127.0.0.1:7447}" ) &
+    ( nros_router_exec "${NROS_LOCATOR:-tcp/127.0.0.1:7447}" ) &
     ROUTER_PID=$!
     # Kill by PID, never `pkill -f`: the pattern matches the shell running it.
     trap '[ -n "$ROUTER_PID" ] && kill "$ROUTER_PID" 2>/dev/null' EXIT
@@ -37,4 +37,4 @@ echo "Press Ctrl+C to stop"
 echo ""
 
 # Subscribe to all liveliness tokens
-"$Z_SUB" -m client -e ${ZENOH_LOCATOR:-tcp/127.0.0.1:7447} -k "@ros2_lv/**" 2>&1
+"$Z_SUB" -m client -e ${NROS_LOCATOR:-tcp/127.0.0.1:7447} -k "@ros2_lv/**" 2>&1

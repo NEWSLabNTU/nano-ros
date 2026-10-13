@@ -1011,6 +1011,17 @@ verb's answer is used as given.
   that nobody had misconfigured; it now answers only for the name it is asked.
   `ZENOH_LOCATOR`, the `[image.<id>]
   env` rows themselves and `nros::main!(board =)` are W8's other slices.
+
+  **W8c landed** (runtime aliases + macro form + PX4 feature): `ZENOH_LOCATOR`
+  / `ZENOH_MODE` are refused at startup by both hosted env readers
+  (`nros::env`, `nros::host_env`) with `BootConfigError::RetiredEnvVar` naming
+  `NROS_LOCATOR` / `NROS_SESSION_MODE` — ONE table, `nros_node::RETIRED_ENV_VARS`
+  — and logged at error severity so the C / C++ init return codes come with the
+  reason; `nros::main!(board = X)` is a `compile_error!` naming
+  `[package.metadata.nros.board] type` (the `main_macro_form2` row became the
+  `main_macro_misuse_board_arg` verdict, Form 4 lost its `board =`); the PX4
+  companions' inert `rmw-xrce = []` and `just/px4.just`'s
+  `--features rmw-xrce` went together. Gate: `check-retired-runtime-aliases`.
 - ~~Issue 1768 (census classifier + fail on UNCLASSIFIED).~~ Done (W7a): the `linker-script` role knows `link_script!`; gate `build-wiring-classified`.
 - ~~`canonical-build-path.md`, the book's configuration and getting-started
   pages, CLAUDE.md pointers.~~ Done (2026-10-13): the map gains "Where a

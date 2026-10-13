@@ -135,11 +135,12 @@ impl<'a> ExecutorConfig<'a> {
 > `$RMW_IMPLEMENTATION` — a variable this tree does not own would start deciding
 > identity for every nano-ros process in a sourced ROS shell).
 >
-> **The full set of env-rung variables is therefore:** `$NROS_LOCATOR` (legacy
-> `$ZENOH_LOCATOR`), `$ROS_DOMAIN_ID`, `$NROS_SESSION_MODE` (legacy
-> `$ZENOH_MODE`), `$NROS_NODE_NAME`, `$NROS_NODE_NAMESPACE`, `$NROS_RMW`. An
-> EMPTY value is "unset" for each of the string fields, never a configured
-> empty value.
+> **The full set of env-rung variables is therefore:** `$NROS_LOCATOR`,
+> `$ROS_DOMAIN_ID`, `$NROS_SESSION_MODE`, `$NROS_NODE_NAME`,
+> `$NROS_NODE_NAMESPACE`, `$NROS_RMW`. An EMPTY value is "unset" for each of
+> the string fields, never a configured empty value. The legacy `$ZENOH_LOCATOR`
+> / `$ZENOH_MODE` aliases are RETIRED (phase-484 W8c): the edge refuses a set
+> one with `BootConfigError::RetiredEnvVar`, never ignores it.
 
 Three thin call-sites map their source into `BootConfig`, then call `resolve`:
 

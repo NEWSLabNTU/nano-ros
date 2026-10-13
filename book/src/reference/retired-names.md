@@ -76,6 +76,19 @@ A board descriptor's knobs are a top-level `[knobs.<group>]` table. The
 per-board `[board.knobs.<group>]` spelling is retired the same way: a
 descriptor that still states it fails to load, naming `[knobs]`.
 
+## Retired runtime aliases and macro forms
+
+Deprecated in release `0.5.0-nros2`, retired after it. Each is now an ERROR
+naming its replacement — never silently ignored, because an ignored locator
+dials the default router and reads as "no delivery".
+
+| Retired | Use instead | What happens now |
+|---|---|---|
+| `ZENOH_LOCATOR` (env) | `NROS_LOCATOR` | startup error (Rust panic / `InitError::RetiredEnvVar`; C/C++ init returns invalid-argument and logs it) |
+| `ZENOH_MODE` (env) | `NROS_SESSION_MODE` | same |
+| `nros::main!(board = X)` | `nros::main!()` + `[image.<id>] board` in `system.toml`; an out-of-tree board crate states `[package.metadata.nros.board] type = "::my_board::MyBoard"` | `compile_error!` |
+| `--features rmw-xrce` on the PX4 companions | nothing — the xrce backend is unconditional | the feature no longer exists (cargo: unknown feature) |
+
 ## A build directory from an older release
 
 An older nano-ros wrote some of these names into the cache itself, so a build
