@@ -46,6 +46,9 @@ impl Deserialize for SetParametersRequest {
 impl RosMessage for SetParametersRequest {
     const TYPE_NAME: &'static str = "rcl_interfaces::srv::dds_::SetParameters_Request_";
     const TYPE_HASH: &'static str = "TypeHashNotSupported";
+    // Issue 1179 -- see the message template: the bound, computed from the
+    // schema, on the one trait every backend's registration can read.
+    const MAX_SERIALIZED_BOUND: Option<usize> = ::nros_serdes::size::max_serialized_bound::<Self>();
 }
 
 // ── nros_serdes::Message — runtime field schema (Request) ───────────────────
@@ -110,6 +113,9 @@ impl Deserialize for SetParametersResponse {
 impl RosMessage for SetParametersResponse {
     const TYPE_NAME: &'static str = "rcl_interfaces::srv::dds_::SetParameters_Response_";
     const TYPE_HASH: &'static str = "TypeHashNotSupported";
+    // Issue 1179 -- see the message template: the bound, computed from the
+    // schema, on the one trait every backend's registration can read.
+    const MAX_SERIALIZED_BOUND: Option<usize> = ::nros_serdes::size::max_serialized_bound::<Self>();
 }
 
 // ── nros_serdes::Message — runtime field schema (Response) ──────────────────

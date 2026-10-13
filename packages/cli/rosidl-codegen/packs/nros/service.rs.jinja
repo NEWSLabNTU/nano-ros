@@ -122,6 +122,10 @@ impl Deserialize for {{ service_name }}Request {
 impl RosMessage for {{ service_name }}Request {
     const TYPE_NAME: &'static str = "{{ package_name }}::srv::dds_::{{ service_name }}_Request_";
     const TYPE_HASH: &'static str = "{{ request_type_hash }}";
+    // Issue 1179 -- see the message template: the bound, computed from the
+    // schema, on the one trait every backend's registration can read.
+    const MAX_SERIALIZED_BOUND: Option<usize> =
+        ::nros_serdes::size::max_serialized_bound::<Self>();
 }
 
 // ── nros_serdes::Message — runtime field schema (Request) ───────────────────
@@ -247,6 +251,10 @@ impl Deserialize for {{ service_name }}Response {
 impl RosMessage for {{ service_name }}Response {
     const TYPE_NAME: &'static str = "{{ package_name }}::srv::dds_::{{ service_name }}_Response_";
     const TYPE_HASH: &'static str = "{{ response_type_hash }}";
+    // Issue 1179 -- see the message template: the bound, computed from the
+    // schema, on the one trait every backend's registration can read.
+    const MAX_SERIALIZED_BOUND: Option<usize> =
+        ::nros_serdes::size::max_serialized_bound::<Self>();
 }
 
 // ── nros_serdes::Message — runtime field schema (Response) ──────────────────

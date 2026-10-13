@@ -50,6 +50,25 @@ pub trait RosMessage: Sized + nros_serdes::Serialize + nros_serdes::Deserialize 
     /// `nanosec` at byte 8. On-target `max_age` monitors peek these two
     /// words from the raw receive buffer before deserialization.
     const STAMP_OFFSET: Option<usize> = None;
+
+    /// Issue 1179 / phase-498 W3 -- the largest serialized size of this type,
+    /// over XCDR1 and XCDR2, or `None` when no bound exists (an unbounded
+    /// member) or nobody stated one.
+    ///
+    /// Codegen emits `nros_serdes::size::max_serialized_bound::<Self>()`, the
+    /// same `const fn` over the schema in the same generated file. It is
+    /// computed, never a copied number, so it cannot drift from the schema.
+    ///
+    /// It lives HERE, not only on `nros_serdes::schema::Message`, for the
+    /// reason [`SERIALIZATION_FORMAT_ID`](Self::SERIALIZATION_FORMAT_ID)
+    /// does: `RosMessage` is the one universal trait. `MessageForRmw` requires
+    /// a schema only on a backend declaring `type-descriptors` (Cyclone), so
+    /// on zenoh and XRCE a registration site could not read the bound, and
+    /// every default receive buffer there took the image-wide size whatever
+    /// its type. Defaulted, so a hand-written message
+    /// (`examples/native/rust/custom-msg`) still compiles and keeps exactly
+    /// that default; it may state its own bound by overriding this.
+    const MAX_SERIALIZED_BOUND: Option<usize> = None;
 }
 
 /// Marker trait for a borrowed (zero-copy) ROS message family (RFC-0033

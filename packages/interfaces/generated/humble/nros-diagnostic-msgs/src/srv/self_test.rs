@@ -35,6 +35,9 @@ impl Deserialize for SelfTestRequest {
 impl RosMessage for SelfTestRequest {
     const TYPE_NAME: &'static str = "diagnostic_msgs::srv::dds_::SelfTest_Request_";
     const TYPE_HASH: &'static str = "TypeHashNotSupported";
+    // Issue 1179 -- see the message template: the bound, computed from the
+    // schema, on the one trait every backend's registration can read.
+    const MAX_SERIALIZED_BOUND: Option<usize> = ::nros_serdes::size::max_serialized_bound::<Self>();
 }
 
 // ── nros_serdes::Message — runtime field schema (Request) ───────────────────
@@ -100,6 +103,9 @@ impl Deserialize for SelfTestResponse {
 impl RosMessage for SelfTestResponse {
     const TYPE_NAME: &'static str = "diagnostic_msgs::srv::dds_::SelfTest_Response_";
     const TYPE_HASH: &'static str = "TypeHashNotSupported";
+    // Issue 1179 -- see the message template: the bound, computed from the
+    // schema, on the one trait every backend's registration can read.
+    const MAX_SERIALIZED_BOUND: Option<usize> = ::nros_serdes::size::max_serialized_bound::<Self>();
 }
 
 // ── nros_serdes::Message — runtime field schema (Response) ──────────────────

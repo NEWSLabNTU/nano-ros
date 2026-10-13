@@ -12,7 +12,7 @@
 #
 # Regenerate after a DELIBERATE surface move (bump the constant first):
 #     python3 scripts/check-codegen-version-surface.py --write-baseline
-version 14
+version 15
 9a40c1a1fadbae06 cpp|fn|component.hpp|bind_subscription_sized
 4e2616f1497bc854 cpp|struct|fixed_sequence.hpp|FixedSequence
 05b2ecfd67796b30 cpp|struct|fixed_string.hpp|FixedString
@@ -267,7 +267,7 @@ ee228e99e2294012 rust|traitimpl|nros_serdes|impl<T: Deserialize> Deserialize for
 39e194163c3aef88 rust|traitimpl|nros_serdes|impl<const N: usize> Deserialize for heapless::String<N>
 a9333c7d526cb7b2 rust|traitimpl|nros_serdes|impl<const N: usize> Serialize for heapless::String<N>
 73fe425b16279818 rust|trait|nros_core::RosAction
-7a87e42a7fc69aaa rust|trait|nros_core::RosMessage
+fa715edff259d2d9 rust|trait|nros_core::RosMessage
 3cb0c6cc55a93688 rust|trait|nros_core::RosService
 6919a2666ff65bd7 rust|trait|nros_core::SecNanosecMsg
 1b2b447ecd268b4c rust|trait|nros_core::ViewableMessage

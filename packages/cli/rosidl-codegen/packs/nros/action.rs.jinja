@@ -127,6 +127,10 @@ impl Deserialize for {{ action_name }}Goal {
 impl RosMessage for {{ action_name }}Goal {
     const TYPE_NAME: &'static str = "{{ package_name }}::action::dds_::{{ action_name }}_Goal_";
     const TYPE_HASH: &'static str = "{{ goal_type_hash }}";
+    // Issue 1179 -- see the message template: the bound, computed from the
+    // schema, on the one trait every backend's registration can read.
+    const MAX_SERIALIZED_BOUND: Option<usize> =
+        ::nros_serdes::size::max_serialized_bound::<Self>();
 }
 
 // ── nros_serdes::Message — runtime field schema (Goal) ──────────────────────
@@ -257,6 +261,10 @@ impl Deserialize for {{ action_name }}Result {
 impl RosMessage for {{ action_name }}Result {
     const TYPE_NAME: &'static str = "{{ package_name }}::action::dds_::{{ action_name }}_Result_";
     const TYPE_HASH: &'static str = "{{ result_type_hash }}";
+    // Issue 1179 -- see the message template: the bound, computed from the
+    // schema, on the one trait every backend's registration can read.
+    const MAX_SERIALIZED_BOUND: Option<usize> =
+        ::nros_serdes::size::max_serialized_bound::<Self>();
 }
 
 // ── nros_serdes::Message — runtime field schema (Result) ────────────────────
@@ -385,6 +393,10 @@ impl Deserialize for {{ action_name }}Feedback {
 impl RosMessage for {{ action_name }}Feedback {
     const TYPE_NAME: &'static str = "{{ package_name }}::action::dds_::{{ action_name }}_Feedback_";
     const TYPE_HASH: &'static str = "{{ feedback_type_hash }}";
+    // Issue 1179 -- see the message template: the bound, computed from the
+    // schema, on the one trait every backend's registration can read.
+    const MAX_SERIALIZED_BOUND: Option<usize> =
+        ::nros_serdes::size::max_serialized_bound::<Self>();
 }
 
 // ── nros_serdes::Message — runtime field schema (Feedback) ──────────────────
@@ -451,6 +463,10 @@ impl Deserialize for {{ action_name }}_SendGoal_Request {
 impl RosMessage for {{ action_name }}_SendGoal_Request {
     const TYPE_NAME: &'static str = "{{ package_name }}::action::dds_::{{ action_name }}_SendGoal_Request_";
     const TYPE_HASH: &'static str = "{{ send_goal_request_type_hash }}";
+    // Issue 1179 -- see the message template: the bound, computed from the
+    // schema, on the one trait every backend's registration can read.
+    const MAX_SERIALIZED_BOUND: Option<usize> =
+        ::nros_serdes::size::max_serialized_bound::<Self>();
 }
 
 {{ send_goal_request_schema_helper_consts -}}
@@ -498,6 +514,10 @@ impl Deserialize for {{ action_name }}_SendGoal_Response {
 impl RosMessage for {{ action_name }}_SendGoal_Response {
     const TYPE_NAME: &'static str = "{{ package_name }}::action::dds_::{{ action_name }}_SendGoal_Response_";
     const TYPE_HASH: &'static str = "{{ send_goal_response_type_hash }}";
+    // Issue 1179 -- see the message template: the bound, computed from the
+    // schema, on the one trait every backend's registration can read.
+    const MAX_SERIALIZED_BOUND: Option<usize> =
+        ::nros_serdes::size::max_serialized_bound::<Self>();
 }
 
 {{ send_goal_response_schema_helper_consts -}}
@@ -542,6 +562,10 @@ impl Deserialize for {{ action_name }}_GetResult_Request {
 impl RosMessage for {{ action_name }}_GetResult_Request {
     const TYPE_NAME: &'static str = "{{ package_name }}::action::dds_::{{ action_name }}_GetResult_Request_";
     const TYPE_HASH: &'static str = "{{ get_result_request_type_hash }}";
+    // Issue 1179 -- see the message template: the bound, computed from the
+    // schema, on the one trait every backend's registration can read.
+    const MAX_SERIALIZED_BOUND: Option<usize> =
+        ::nros_serdes::size::max_serialized_bound::<Self>();
 }
 
 {{ get_result_request_schema_helper_consts -}}
@@ -604,6 +628,10 @@ impl Deserialize for {{ action_name }}_GetResult_Response {
 impl RosMessage for {{ action_name }}_GetResult_Response {
     const TYPE_NAME: &'static str = "{{ package_name }}::action::dds_::{{ action_name }}_GetResult_Response_";
     const TYPE_HASH: &'static str = "{{ get_result_response_type_hash }}";
+    // Issue 1179 -- see the message template: the bound, computed from the
+    // schema, on the one trait every backend's registration can read.
+    const MAX_SERIALIZED_BOUND: Option<usize> =
+        ::nros_serdes::size::max_serialized_bound::<Self>();
 }
 
 {{ get_result_response_schema_helper_consts -}}
@@ -666,6 +694,10 @@ impl Deserialize for {{ action_name }}_FeedbackMessage {
 impl RosMessage for {{ action_name }}_FeedbackMessage {
     const TYPE_NAME: &'static str = "{{ package_name }}::action::dds_::{{ action_name }}_FeedbackMessage_";
     const TYPE_HASH: &'static str = "{{ feedback_message_type_hash }}";
+    // Issue 1179 -- see the message template: the bound, computed from the
+    // schema, on the one trait every backend's registration can read.
+    const MAX_SERIALIZED_BOUND: Option<usize> =
+        ::nros_serdes::size::max_serialized_bound::<Self>();
 }
 
 {{ feedback_message_schema_helper_consts -}}

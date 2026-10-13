@@ -1,7 +1,14 @@
 # Phase 498 -- the last receive buffers that are not sized from their type
 
+**Status (2026-10-14). CLOSED and archived: W1, W2 and W3 landed together.**
+W3 (issue 1179, option (a)) puts each generated type's bound on `RosMessage`,
+so default receive buffers are sized per type on every backend. W1 (issue
+1860) moves the four inline-buffer entries onto the trailing region. W2
+measured it: a native zenoh `Int32` safety listener claimed 1,736 B of arena
+before and 744 B after. Details are in the two issues.
+
 **Status (2026-10-13). Opened; nothing landed.** Carved out of
-[phase-403](archived/phase-403-type-bound-rx-sizing.md) when it was archived. 403's
+[phase-403](phase-403-type-bound-rx-sizing.md) when it was archived. 403's
 goal (every receive buffer sized from its message type) is met on the buffered
 Rust path and on the C path. What is left is the residue below, plus the
 measurement 403 never took.
@@ -54,5 +61,5 @@ the evidence and the options.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1860](../issues/1860-rx-buffer-inline-entries.md) | W1 and W2: the inline entries and the owed measurement |
-| [#1179](../issues/1179-derived-rx-default-unreachable-without-schema.md) | W3: derived-by-default sizing reaches only backends that carry a schema. Re-homed from phase-403 |
+| [#1860](../../issues/archived/1860-rx-buffer-inline-entries.md) | W1 and W2: the inline entries and the owed measurement |
+| [#1179](../../issues/archived/1179-derived-rx-default-unreachable-without-schema.md) | W3: derived-by-default sizing reaches only backends that carry a schema. Re-homed from phase-403 |

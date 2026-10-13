@@ -38,6 +38,9 @@ impl Deserialize for AddDiagnosticsRequest {
 impl RosMessage for AddDiagnosticsRequest {
     const TYPE_NAME: &'static str = "diagnostic_msgs::srv::dds_::AddDiagnostics_Request_";
     const TYPE_HASH: &'static str = "TypeHashNotSupported";
+    // Issue 1179 -- see the message template: the bound, computed from the
+    // schema, on the one trait every backend's registration can read.
+    const MAX_SERIALIZED_BOUND: Option<usize> = ::nros_serdes::size::max_serialized_bound::<Self>();
 }
 
 // ── nros_serdes::Message — runtime field schema (Request) ───────────────────
@@ -89,6 +92,9 @@ impl Deserialize for AddDiagnosticsResponse {
 impl RosMessage for AddDiagnosticsResponse {
     const TYPE_NAME: &'static str = "diagnostic_msgs::srv::dds_::AddDiagnostics_Response_";
     const TYPE_HASH: &'static str = "TypeHashNotSupported";
+    // Issue 1179 -- see the message template: the bound, computed from the
+    // schema, on the one trait every backend's registration can read.
+    const MAX_SERIALIZED_BOUND: Option<usize> = ::nros_serdes::size::max_serialized_bound::<Self>();
 }
 
 // ── nros_serdes::Message — runtime field schema (Response) ──────────────────

@@ -1,7 +1,7 @@
 # Phase 403 — the type's bound sizes every receive buffer, and third parties can say what they need
 
 **Status (2026-10-13). CLOSED and archived; the remainder is
-[phase-498](../phase-498-rx-sizing-residue.md).** The 2026-10-12 line below
+[phase-498](phase-498-rx-sizing-residue.md).** The 2026-10-12 line below
 named W2 and W3's caller-supplied-buffer half as open. Both goals were met,
 by designs other than the ones written here:
 
@@ -1615,7 +1615,7 @@ Open issues whose `related:` names this phase (listed 2026-10-12, so the
 link runs both ways). Listing one here records the link, not a claim that
 this phase will fix it.
 
-- [issue 1179](../../issues/1179-derived-rx-default-unreachable-without-schema.md) — Derived-by-default receive buffers reach only backends declaring `type-descriptors` — `MessageForRmw` carries no sche …
+- [issue 1179](../../issues/archived/1179-derived-rx-default-unreachable-without-schema.md) — Derived-by-default receive buffers reach only backends declaring `type-descriptors` — `MessageForRmw` carries no sche …
 - [issue 1228](../../issues/1228-resolve-phase-does-not-yet-delete-the-fixed-point.md) — phase-439 W2 landed the resolve phase; the three-pass fixed point is still authoritative and RFC-0094 A3 is not met
 - [issue 1252](../../issues/1252-message-bound-knobs-have-no-pre-configure-twin.md) — The message-bound half of the Zephyr chain still has no pre-configure producer, so one re-configure survives and RFC- …
 - [issue 1368](../../issues/1368-frag-max-size-not-checked-against-derived-bound.md) — The zenoh reassembly ceiling is compared to nothing - an image whose derived receive bound exceeds ZPICO_FRAG_MAX_SIZ …

@@ -1,13 +1,13 @@
 ---
 id: 1860
 title: "Four Rust subscription entries and the standalone `Subscription` still hold an inline `[u8; RX_BUF]`, sized to the image's largest type rather than their own"
-status: open
+status: resolved
 type: enhancement
 area: core
 related: [phase-403, phase-408, phase-392, phase-498, issue-1179, issue-1595]
 ---
 
-**Home: [phase-498](../roadmap/phase-498-rx-sizing-residue.md)**, carved out of
+**Home: [phase-498](../../roadmap/archived/phase-498-rx-sizing-residue.md)**, carved out of
 phase-403 when it was archived on 2026-10-13.
 
 ## What is still inline
@@ -65,3 +65,32 @@ call site remains its per-type form.
   an image that runs the changed path, naming the image. Phase-403's rule was
   that no wave is done without one, and phase-408's archive left the same
   number owed.
+
+## Resolution (2026-10-14, phase-498 W1 and W2)
+
+The four entries hold a `TrailingBuf` in the arena's trailing region, with
+no inline `[u8; RX_BUF]`, and they and their dispatch functions dropped the
+`RX_BUF` const generic.
+
+- **Typed (`.message_info()`, `.safety()`):** the slot is sized by
+  `rmw_type_registry::subscription_slot_bytes`, the one rule the buffered
+  path also uses now. A size named with `.rx_buffer::<N>()` is used
+  verbatim, else the type's bound, else `RX_BUF`. Both builders carry
+  `rx_explicit`, as the buffered builder does.
+- **Raw info and raw safety:** they have no type, so they still claim
+  `RX_BUF`, now in the trailing region.
+- **Test:** `a_message_info_subscription_is_sized_from_its_type`.
+
+Measured on native zenoh: arena claimed after registration, a temporary
+`arena_used()` print that was not committed.
+
+| image | before | after |
+| --- | --- | --- |
+| `bins/safety-chatter-listener` (`.typed::<Int32>().safety()`, no `system.toml`, so `RX_BUF` = 1,024) | 1,736 B | 744 B |
+| `bins/int32-sink` (plain typed, closure only `Int32`) | 712 B | 712 B |
+
+`int32-sink` does not move because its RX_BUF was already the closure
+maximum, which is `Int32` (issue 1595). The saving lands where a
+subscription's type is smaller than the image's largest. Static RAM
+(`mem-report`) is unchanged by construction, because the executor backing
+is sized at build time.

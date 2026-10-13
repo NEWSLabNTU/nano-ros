@@ -6908,11 +6908,7 @@ impl<'s> Executor<'s> {
         // whichever one a wave happened to touch. An explicit `Some(n)` -- what
         // `.rx_buffer::<N>()` and `.rx_buffer_from_type()` pass -- is still
         // verbatim, so the opt-out and the opt-in both bypass this line.
-        let slot_bytes = match rx_bytes {
-            Some(n) => n,
-            None => crate::rmw_type_registry::default_subscription_rx_bytes::<M>(RX_BUF)
-                .unwrap_or(RX_BUF),
-        };
+        let slot_bytes = crate::rmw_type_registry::subscription_slot_bytes::<M>(rx_bytes, RX_BUF);
 
         let open = self.open_subscription(&SubscriptionRequest {
             node_id: Some(node_id),
@@ -7245,32 +7241,39 @@ impl<'s> Executor<'s> {
     where
         F: FnMut(&[u8], &nros_core::RawMessageInfo) + 'static,
     {
-        type Entry<F, const N: usize> = SubBufferedRawInfoEntry<F, N>;
+        type Entry<F> = SubBufferedRawInfoEntry<F>;
 
-        let SubscriptionOpen { slot, handle, .. } =
-            self.open_subscription(&SubscriptionRequest {
-                node_id: Some(node_id),
-                topic_name,
-                type_name,
-                type_hash,
-                qos,
-                backend_hint: None,
-                slot_bytes: RX_BUF,
-                // The callback also receives the sample's wire ATTACHMENT, which
-                // `process_raw_in_place` does not carry: it hands over borrowed
-                // payload bytes and nothing else. Not a limitation of the backend.
-                in_place_capable: false,
-            })?;
+        let SubscriptionOpen {
+            slot,
+            handle,
+            slot_bytes,
+            ..
+        } = self.open_subscription(&SubscriptionRequest {
+            node_id: Some(node_id),
+            topic_name,
+            type_name,
+            type_hash,
+            qos,
+            backend_hint: None,
+            slot_bytes: RX_BUF,
+            // The callback also receives the sample's wire ATTACHMENT, which
+            // `process_raw_in_place` does not carry: it hands over borrowed
+            // payload bytes and nothing else. Not a limitation of the backend.
+            in_place_capable: false,
+        })?;
 
-        let offset = self.arena_alloc::<Entry<F, RX_BUF>>()?;
+        // Issue 1860 -- in the trailing region, as the C twin. A raw subscription
+        // has no type to derive from, so the size is still `RX_BUF`.
+        let (offset, trailing) = self.arena_alloc_with_trailing::<Entry<F>>(slot_bytes)?;
         unsafe {
             let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
-            let entry_ptr = arena_ptr.add(offset) as *mut Entry<F, RX_BUF>;
+            let buffer = super::arena::TrailingBuf::init(arena_ptr.add(trailing), slot_bytes);
+            let entry_ptr = arena_ptr.add(offset) as *mut Entry<F>;
             core::ptr::write(
                 entry_ptr,
                 Entry {
                     handle,
-                    buffer: [0u8; RX_BUF],
+                    buffer,
                     att: [0u8; super::arena::RAW_INFO_ATT_CAP],
                     callback,
                 },
@@ -7281,11 +7284,11 @@ impl<'s> Executor<'s> {
             offset,
             kind: EntryKind::Subscription,
             arena_len: super::arena::ArenaLen::UNRECORDED,
-            try_process: sub_buffered_raw_info_try_process::<F, RX_BUF>,
-            has_data: sub_buffered_raw_info_has_data::<F, RX_BUF>,
+            try_process: sub_buffered_raw_info_try_process::<F>,
+            has_data: sub_buffered_raw_info_has_data::<F>,
             pre_sample: no_pre_sample,
             invocation: InvocationMode::OnNewData,
-            drop_fn: drop_entry::<Entry<F, RX_BUF>>,
+            drop_fn: drop_entry::<Entry<F>>,
         };
         self.emplace_entry(slot, meta, TraceName::Text(topic_name));
         self.apply_node_default_sched(slot, Some(node_id), None);
@@ -7317,37 +7320,42 @@ impl<'s> Executor<'s> {
             SubBufferedRawSafetyEntry, sub_buffered_raw_safety_has_data,
             sub_buffered_raw_safety_try_process,
         };
-        type Entry<F, const N: usize> = SubBufferedRawSafetyEntry<F, N>;
+        type Entry<F> = SubBufferedRawSafetyEntry<F>;
 
-        let SubscriptionOpen { slot, handle, .. } =
-            self.open_subscription(&SubscriptionRequest {
-                node_id: Some(node_id),
-                topic_name,
-                type_name,
-                type_hash,
-                qos,
-                backend_hint: None,
-                slot_bytes: RX_BUF,
-                // The sample is taken through `take_validated`, which computes the
-                // integrity status as it copies. `process_raw_in_place` has no
-                // validating form, so this shape cannot use it.
-                //
-                // phase-457 W5 (issue 1522) — as the SHAPE, for the reason its
-                // sibling in `register_subscription_buffered_raw_on` gives.
-                in_place_capable:
-                    super::declared_shape::DeclaredSubscriptionShape::BufferedRawSafety
-                        .in_place_capable(),
-            })?;
+        let SubscriptionOpen {
+            slot,
+            handle,
+            slot_bytes,
+            ..
+        } = self.open_subscription(&SubscriptionRequest {
+            node_id: Some(node_id),
+            topic_name,
+            type_name,
+            type_hash,
+            qos,
+            backend_hint: None,
+            slot_bytes: RX_BUF,
+            // The sample is taken through `take_validated`, which computes the
+            // integrity status as it copies. `process_raw_in_place` has no
+            // validating form, so this shape cannot use it.
+            //
+            // phase-457 W5 (issue 1522) — as the SHAPE, for the reason its
+            // sibling in `register_subscription_buffered_raw_on` gives.
+            in_place_capable: super::declared_shape::DeclaredSubscriptionShape::BufferedRawSafety
+                .in_place_capable(),
+        })?;
 
-        let offset = self.arena_alloc::<Entry<F, RX_BUF>>()?;
+        // Issue 1860 -- in the trailing region; untyped, so still `RX_BUF` bytes.
+        let (offset, trailing) = self.arena_alloc_with_trailing::<Entry<F>>(slot_bytes)?;
         unsafe {
             let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
-            let entry_ptr = arena_ptr.add(offset) as *mut Entry<F, RX_BUF>;
+            let buffer = super::arena::TrailingBuf::init(arena_ptr.add(trailing), slot_bytes);
+            let entry_ptr = arena_ptr.add(offset) as *mut Entry<F>;
             core::ptr::write(
                 entry_ptr,
                 Entry {
                     handle,
-                    buffer: [0u8; RX_BUF],
+                    buffer,
                     callback,
                 },
             );
@@ -7357,11 +7365,11 @@ impl<'s> Executor<'s> {
             offset,
             kind: EntryKind::Subscription,
             arena_len: super::arena::ArenaLen::UNRECORDED,
-            try_process: sub_buffered_raw_safety_try_process::<F, RX_BUF>,
-            has_data: sub_buffered_raw_safety_has_data::<F, RX_BUF>,
+            try_process: sub_buffered_raw_safety_try_process::<F>,
+            has_data: sub_buffered_raw_safety_has_data::<F>,
             pre_sample: no_pre_sample,
             invocation: InvocationMode::OnNewData,
-            drop_fn: drop_entry::<Entry<F, RX_BUF>>,
+            drop_fn: drop_entry::<Entry<F>>,
         };
         self.emplace_entry(slot, meta, TraceName::Text(topic_name));
         self.apply_node_default_sched(slot, Some(node_id), None);
@@ -7474,41 +7482,50 @@ impl<'s> Executor<'s> {
         topic_name: &str,
         qos: QoSProfile,
         callback: F,
+        // Issue 1860 -- `Some(n)` is a size the caller NAMED (`.rx_buffer::<N>()`),
+        // used verbatim; `None` derives it from `M` exactly as the buffered path
+        // does, falling back to `RX_BUF` only where `M` states no bound.
+        rx_bytes: Option<usize>,
     ) -> Result<HandleId, NodeError>
     where
         M: crate::rmw_type_registry::MessageForRmw + 'static,
         F: FnMut(&M, Option<&nros_core::MessageInfo>) + 'static,
     {
-        type Entry<M, F, const N: usize> = SubInfoEntry<M, F, N>;
+        type Entry<M, F> = SubInfoEntry<M, F>;
 
         // Phase 212.K.7.6.b — see `create_publisher_on`.
         crate::rmw_type_registry::register_type::<M>()?;
 
-        let SubscriptionOpen { slot, handle, .. } =
-            self.open_subscription(&SubscriptionRequest {
-                node_id,
-                topic_name,
-                type_name: <M as RosMessage>::TYPE_NAME,
-                type_hash: <M as RosMessage>::TYPE_HASH,
-                qos,
-                backend_hint: None,
-                slot_bytes: RX_BUF,
-                // The entry's `pre_sample` hook stages a `MessageInfo` beside the
-                // payload before the callback runs; an in-place drain has no
-                // pre-sample step to hang it on.
-                in_place_capable: false,
-            })?;
+        let SubscriptionOpen {
+            slot,
+            handle,
+            slot_bytes,
+            ..
+        } = self.open_subscription(&SubscriptionRequest {
+            node_id,
+            topic_name,
+            type_name: <M as RosMessage>::TYPE_NAME,
+            type_hash: <M as RosMessage>::TYPE_HASH,
+            qos,
+            backend_hint: None,
+            slot_bytes: crate::rmw_type_registry::subscription_slot_bytes::<M>(rx_bytes, RX_BUF),
+            // The entry's `pre_sample` hook stages a `MessageInfo` beside the
+            // payload before the callback runs; an in-place drain has no
+            // pre-sample step to hang it on.
+            in_place_capable: false,
+        })?;
 
-        let offset = self.arena_alloc::<Entry<M, F, RX_BUF>>()?;
+        let (offset, trailing) = self.arena_alloc_with_trailing::<Entry<M, F>>(slot_bytes)?;
 
         unsafe {
             let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
-            let entry_ptr = arena_ptr.add(offset) as *mut Entry<M, F, RX_BUF>;
+            let buffer = super::arena::TrailingBuf::init(arena_ptr.add(trailing), slot_bytes);
+            let entry_ptr = arena_ptr.add(offset) as *mut Entry<M, F>;
             core::ptr::write(
                 entry_ptr,
                 Entry {
                     handle,
-                    buffer: [0u8; RX_BUF],
+                    buffer,
                     sampled_len: 0,
                     callback,
                     _phantom: PhantomData,
@@ -7520,11 +7537,11 @@ impl<'s> Executor<'s> {
             offset,
             kind: EntryKind::Subscription,
             arena_len: super::arena::ArenaLen::UNRECORDED,
-            try_process: sub_info_try_process::<M, F, RX_BUF>,
-            has_data: sub_info_has_data::<M, F, RX_BUF>,
-            pre_sample: sub_info_pre_sample::<M, F, RX_BUF>,
+            try_process: sub_info_try_process::<M, F>,
+            has_data: sub_info_has_data::<M, F>,
+            pre_sample: sub_info_pre_sample::<M, F>,
             invocation: InvocationMode::OnNewData,
-            drop_fn: drop_entry::<Entry<M, F, RX_BUF>>,
+            drop_fn: drop_entry::<Entry<M, F>>,
         };
         self.emplace_entry(slot, meta, TraceName::Text(topic_name));
         self.apply_node_default_sched(slot, node_id, None);
@@ -7538,40 +7555,47 @@ impl<'s> Executor<'s> {
         topic_name: &str,
         qos: QoSProfile,
         callback: F,
+        // Issue 1860 -- as `register_subscription_with_info_sized_inner`.
+        rx_bytes: Option<usize>,
     ) -> Result<HandleId, NodeError>
     where
         M: crate::rmw_type_registry::MessageForRmw + 'static,
         F: FnMut(&M, &nros_rmw::IntegrityStatus) + 'static,
     {
-        type Entry<M, F, const N: usize> = SubSafetyEntry<M, F, N>;
+        type Entry<M, F> = SubSafetyEntry<M, F>;
 
         // Phase 212.K.7.6.b — see `create_publisher_on`.
         crate::rmw_type_registry::register_type::<M>()?;
 
-        let SubscriptionOpen { slot, handle, .. } =
-            self.open_subscription(&SubscriptionRequest {
-                node_id,
-                topic_name,
-                type_name: <M as RosMessage>::TYPE_NAME,
-                type_hash: <M as RosMessage>::TYPE_HASH,
-                qos,
-                backend_hint: None,
-                slot_bytes: RX_BUF,
-                // Same as the raw safety sibling: the status comes out of
-                // `take_validated`, which is a copying take.
-                in_place_capable: false,
-            })?;
+        let SubscriptionOpen {
+            slot,
+            handle,
+            slot_bytes,
+            ..
+        } = self.open_subscription(&SubscriptionRequest {
+            node_id,
+            topic_name,
+            type_name: <M as RosMessage>::TYPE_NAME,
+            type_hash: <M as RosMessage>::TYPE_HASH,
+            qos,
+            backend_hint: None,
+            slot_bytes: crate::rmw_type_registry::subscription_slot_bytes::<M>(rx_bytes, RX_BUF),
+            // Same as the raw safety sibling: the status comes out of
+            // `take_validated`, which is a copying take.
+            in_place_capable: false,
+        })?;
 
-        let offset = self.arena_alloc::<Entry<M, F, RX_BUF>>()?;
+        let (offset, trailing) = self.arena_alloc_with_trailing::<Entry<M, F>>(slot_bytes)?;
 
         unsafe {
             let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
-            let entry_ptr = arena_ptr.add(offset) as *mut Entry<M, F, RX_BUF>;
+            let buffer = super::arena::TrailingBuf::init(arena_ptr.add(trailing), slot_bytes);
+            let entry_ptr = arena_ptr.add(offset) as *mut Entry<M, F>;
             core::ptr::write(
                 entry_ptr,
                 Entry {
                     handle,
-                    buffer: [0u8; RX_BUF],
+                    buffer,
                     sampled_len: 0,
                     callback,
                     _phantom: PhantomData,
@@ -7583,11 +7607,11 @@ impl<'s> Executor<'s> {
             offset,
             kind: EntryKind::Subscription,
             arena_len: super::arena::ArenaLen::UNRECORDED,
-            try_process: sub_safety_try_process::<M, F, RX_BUF>,
-            has_data: sub_safety_has_data::<M, F, RX_BUF>,
-            pre_sample: sub_safety_pre_sample::<M, F, RX_BUF>,
+            try_process: sub_safety_try_process::<M, F>,
+            has_data: sub_safety_has_data::<M, F>,
+            pre_sample: sub_safety_pre_sample::<M, F>,
             invocation: InvocationMode::OnNewData,
-            drop_fn: drop_entry::<Entry<M, F, RX_BUF>>,
+            drop_fn: drop_entry::<Entry<M, F>>,
         };
         self.emplace_entry(slot, meta, TraceName::Text(topic_name));
         self.apply_node_default_sched(slot, node_id, None);

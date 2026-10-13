@@ -41,6 +41,10 @@ impl RosMessage for Clock {
     // RFC-0052 W3a — Header/Time-leading type: `stamp.sec` at CDR byte
     // 4 (raw-buffer peek for on-target max_age monitors).
     const STAMP_OFFSET: Option<usize> = Some(4);
+    // Issue 1179 -- the type's bound on `RosMessage`, the one trait every
+    // backend's registration can read. Computed from the schema below, not
+    // copied, so it cannot drift from it.
+    const MAX_SERIALIZED_BOUND: Option<usize> = ::nros_serdes::size::max_serialized_bound::<Self>();
 }
 
 // ── nros_serdes::Message — runtime field schema ─────────────────────────────

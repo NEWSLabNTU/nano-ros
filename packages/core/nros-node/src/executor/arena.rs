@@ -286,9 +286,14 @@ impl CapturedCallback {
 
 /// Concrete subscription entry stored in the arena (with MessageInfo).
 #[repr(C)]
-pub(crate) struct SubInfoEntry<M, F, const RX_BUF: usize> {
+pub(crate) struct SubInfoEntry<M, F> {
     pub(crate) handle: session::RmwSubscriber,
-    pub(crate) buffer: [u8; RX_BUF],
+    /// Issue 1860 / phase-498 W1 -- the receive slot, in the arena's trailing
+    /// region and sized at registration (from the type's bound when the
+    /// caller names none), as `SubBufferedRawInfoCEntry` has been since
+    /// phase-408 W5b. It was an inline `[u8; RX_BUF]`, so every entry of this
+    /// shape reserved the image's closure maximum whatever its own type was.
+    pub(crate) buffer: TrailingBuf,
     /// Length of pre-sampled LET data (0 = not sampled).
     pub(crate) sampled_len: usize,
     pub(crate) callback: F,
@@ -298,9 +303,14 @@ pub(crate) struct SubInfoEntry<M, F, const RX_BUF: usize> {
 /// Concrete subscription entry stored in the arena (with safety validation).
 #[cfg(feature = "safety-e2e")]
 #[repr(C)]
-pub(crate) struct SubSafetyEntry<M, F, const RX_BUF: usize> {
+pub(crate) struct SubSafetyEntry<M, F> {
     pub(crate) handle: session::RmwSubscriber,
-    pub(crate) buffer: [u8; RX_BUF],
+    /// Issue 1860 / phase-498 W1 -- the receive slot, in the arena's trailing
+    /// region and sized at registration (from the type's bound when the
+    /// caller names none), as `SubBufferedRawInfoCEntry` has been since
+    /// phase-408 W5b. It was an inline `[u8; RX_BUF]`, so every entry of this
+    /// shape reserved the image's closure maximum whatever its own type was.
+    pub(crate) buffer: TrailingBuf,
     /// Length of pre-sampled LET data (0 = not sampled).
     pub(crate) sampled_len: usize,
     pub(crate) callback: F,
@@ -583,6 +593,12 @@ impl TrailingBuf {
         // Safety: the caller's contract — `len` writable bytes at `ptr`.
         unsafe { core::ptr::write_bytes(ptr, 0, len) };
         Self { ptr, len }
+    }
+
+    /// The whole slot, read-only, for a callback to borrow a received prefix.
+    pub(crate) fn as_slice(&self) -> &[u8] {
+        // Safety: as `as_mut_slice` -- `len` initialised bytes at `ptr`.
+        unsafe { core::slice::from_raw_parts(self.ptr, self.len) }
     }
 
     /// The whole slot, for a receive to fill.
@@ -1845,9 +1861,14 @@ pub(crate) const RAW_INFO_ATT_CAP: usize = 256;
 /// slots of a triple/ring buffer cannot carry per-message side data.
 /// One sample per dispatch (mirrors [`SubInfoEntry`]).
 #[repr(C)]
-pub(crate) struct SubBufferedRawInfoEntry<F, const RX_BUF: usize> {
+pub(crate) struct SubBufferedRawInfoEntry<F> {
     pub(crate) handle: session::RmwSubscriber,
-    pub(crate) buffer: [u8; RX_BUF],
+    /// Issue 1860 / phase-498 W1 -- the receive slot, in the arena's trailing
+    /// region and sized at registration (from the type's bound when the
+    /// caller names none), as `SubBufferedRawInfoCEntry` has been since
+    /// phase-408 W5b. It was an inline `[u8; RX_BUF]`, so every entry of this
+    /// shape reserved the image's closure maximum whatever its own type was.
+    pub(crate) buffer: TrailingBuf,
     pub(crate) att: [u8; RAW_INFO_ATT_CAP],
     pub(crate) callback: F,
 }
@@ -1855,8 +1876,8 @@ pub(crate) struct SubBufferedRawInfoEntry<F, const RX_BUF: usize> {
 /// Dispatch for raw buffered subscriptions with attachment.
 ///
 /// # Safety
-/// `ptr` must point to a valid, aligned `SubBufferedRawInfoEntry<F, RX_BUF>`.
-pub(crate) unsafe fn sub_buffered_raw_info_try_process<F, const RX_BUF: usize>(
+/// `ptr` must point to a valid, aligned `SubBufferedRawInfoEntry<F>`.
+pub(crate) unsafe fn sub_buffered_raw_info_try_process<F>(
     ptr: *mut u8,
     _delta_us: u64,
     desc_idx: u8,
@@ -1864,19 +1885,19 @@ pub(crate) unsafe fn sub_buffered_raw_info_try_process<F, const RX_BUF: usize>(
 where
     F: FnMut(&[u8], &RawMessageInfo),
 {
-    let entry = unsafe { &mut *(ptr as *mut SubBufferedRawInfoEntry<F, RX_BUF>) };
+    let entry = unsafe { &mut *(ptr as *mut SubBufferedRawInfoEntry<F>) };
     match entry
         .handle
-        .take_serialized_with_attachment(&mut entry.buffer, &mut entry.att)
+        .take_serialized_with_attachment(entry.buffer.as_mut_slice(), &mut entry.att)
     {
         // Phase 8 — hooked. One sample per dispatch (flat inline buffer, no
         // ring), so exactly one pair. `Ok(None)` and `Err(_)` never reach a
         // callback and stay bare.
         Ok(Some((len, att_len))) => {
             let info = RawMessageInfo::new(&entry.att[..att_len]);
-            trace_take(desc_idx, &entry.buffer[..len], None);
+            trace_take(desc_idx, &entry.buffer.as_slice()[..len], None);
             trace_cb_start(desc_idx);
-            (entry.callback)(&entry.buffer[..len], &info);
+            (entry.callback)(&entry.buffer.as_slice()[..len], &info);
             trace_cb_end(desc_idx);
             Ok(true)
         }
@@ -1888,11 +1909,9 @@ where
 /// Readiness check for raw buffered subscriptions with attachment.
 ///
 /// # Safety
-/// `ptr` must point to a valid `SubBufferedRawInfoEntry<F, RX_BUF>`.
-pub(crate) unsafe fn sub_buffered_raw_info_has_data<F, const RX_BUF: usize>(
-    ptr: *const u8,
-) -> bool {
-    let entry = unsafe { &*(ptr as *const SubBufferedRawInfoEntry<F, RX_BUF>) };
+/// `ptr` must point to a valid `SubBufferedRawInfoEntry<F>`.
+pub(crate) unsafe fn sub_buffered_raw_info_has_data<F>(ptr: *const u8) -> bool {
+    let entry = unsafe { &*(ptr as *const SubBufferedRawInfoEntry<F>) };
     entry.handle.has_data()
 }
 
@@ -1975,9 +1994,14 @@ pub(crate) unsafe fn sub_buffered_raw_info_c_has_data(ptr: *const u8) -> bool {
 /// buffer; one sample per dispatch.
 #[cfg(feature = "safety-e2e")]
 #[repr(C)]
-pub(crate) struct SubBufferedRawSafetyEntry<F, const RX_BUF: usize> {
+pub(crate) struct SubBufferedRawSafetyEntry<F> {
     pub(crate) handle: session::RmwSubscriber,
-    pub(crate) buffer: [u8; RX_BUF],
+    /// Issue 1860 / phase-498 W1 -- the receive slot, in the arena's trailing
+    /// region and sized at registration (from the type's bound when the
+    /// caller names none), as `SubBufferedRawInfoCEntry` has been since
+    /// phase-408 W5b. It was an inline `[u8; RX_BUF]`, so every entry of this
+    /// shape reserved the image's closure maximum whatever its own type was.
+    pub(crate) buffer: TrailingBuf,
     pub(crate) callback: F,
 }
 
@@ -1985,9 +2009,9 @@ pub(crate) struct SubBufferedRawSafetyEntry<F, const RX_BUF: usize> {
 /// buffer, then pass the raw slice + status to the callback.
 ///
 /// # Safety
-/// `ptr` must point to a valid, aligned `SubBufferedRawSafetyEntry<F, RX_BUF>`.
+/// `ptr` must point to a valid, aligned `SubBufferedRawSafetyEntry<F>`.
 #[cfg(feature = "safety-e2e")]
-pub(crate) unsafe fn sub_buffered_raw_safety_try_process<F, const RX_BUF: usize>(
+pub(crate) unsafe fn sub_buffered_raw_safety_try_process<F>(
     ptr: *mut u8,
     _delta_us: u64,
     desc_idx: u8,
@@ -1995,15 +2019,15 @@ pub(crate) unsafe fn sub_buffered_raw_safety_try_process<F, const RX_BUF: usize>
 where
     F: FnMut(&[u8], &nros_rmw::IntegrityStatus),
 {
-    let entry = unsafe { &mut *(ptr as *mut SubBufferedRawSafetyEntry<F, RX_BUF>) };
-    match entry.handle.take_validated(&mut entry.buffer) {
+    let entry = unsafe { &mut *(ptr as *mut SubBufferedRawSafetyEntry<F>) };
+    match entry.handle.take_validated(entry.buffer.as_mut_slice()) {
         // Phase 8 — hooked. One sample per dispatch. A failed validation
         // still delivers the sample WITH its status, so this arm is the only
         // callback path; `Ok(None)` / `Err(_)` fire nothing.
         Ok(Some((len, status))) => {
-            trace_take(desc_idx, &entry.buffer[..len], None);
+            trace_take(desc_idx, &entry.buffer.as_slice()[..len], None);
             trace_cb_start(desc_idx);
-            (entry.callback)(&entry.buffer[..len], &status);
+            (entry.callback)(&entry.buffer.as_slice()[..len], &status);
             trace_cb_end(desc_idx);
             Ok(true)
         }
@@ -2015,12 +2039,10 @@ where
 /// Readiness check for the generic raw safety subscription.
 ///
 /// # Safety
-/// `ptr` must point to a valid `SubBufferedRawSafetyEntry<F, RX_BUF>`.
+/// `ptr` must point to a valid `SubBufferedRawSafetyEntry<F>`.
 #[cfg(feature = "safety-e2e")]
-pub(crate) unsafe fn sub_buffered_raw_safety_has_data<F, const RX_BUF: usize>(
-    ptr: *const u8,
-) -> bool {
-    let entry = unsafe { &*(ptr as *const SubBufferedRawSafetyEntry<F, RX_BUF>) };
+pub(crate) unsafe fn sub_buffered_raw_safety_has_data<F>(ptr: *const u8) -> bool {
+    let entry = unsafe { &*(ptr as *const SubBufferedRawSafetyEntry<F>) };
     entry.handle.has_data()
 }
 
@@ -2566,8 +2588,8 @@ pub(crate) unsafe fn sub_buffered_typed_c_has_data(ptr: *const u8) -> bool {
 /// Monomorphized subscription dispatch function (with MessageInfo).
 ///
 /// # Safety
-/// `ptr` must point to a valid, aligned `SubInfoEntry<M, F, RX_BUF>`.
-pub(crate) unsafe fn sub_info_try_process<M, F, const RX_BUF: usize>(
+/// `ptr` must point to a valid, aligned `SubInfoEntry<M, F>`.
+pub(crate) unsafe fn sub_info_try_process<M, F>(
     ptr: *mut u8,
     _delta_us: u64,
     desc_idx: u8,
@@ -2576,7 +2598,7 @@ where
     M: RosMessage,
     F: FnMut(&M, Option<&MessageInfo>),
 {
-    let entry = unsafe { &mut *(ptr as *mut SubInfoEntry<M, F, RX_BUF>) };
+    let entry = unsafe { &mut *(ptr as *mut SubInfoEntry<M, F>) };
 
     // LET mode: use pre-sampled data if available (no MessageInfo in snapshot)
     //
@@ -2587,12 +2609,12 @@ where
     if entry.sampled_len > 0 {
         let len = entry.sampled_len;
         entry.sampled_len = 0;
-        let mut reader = CdrReader::new_with_header(&entry.buffer[..len])
+        let mut reader = CdrReader::new_with_header(&entry.buffer.as_slice()[..len])
             .map_err(|_| TransportError::DeserializationError)?;
         let msg = M::deserialize(&mut reader).map_err(|_| TransportError::DeserializationError)?;
         trace_take(
             desc_idx,
-            &entry.buffer[..len],
+            &entry.buffer.as_slice()[..len],
             <M as RosMessage>::STAMP_OFFSET,
         );
         trace_cb_start(desc_idx);
@@ -2601,17 +2623,20 @@ where
         return Ok(true);
     }
 
-    match entry.handle.take_serialized_with_info(&mut entry.buffer) {
+    match entry
+        .handle
+        .take_serialized_with_info(entry.buffer.as_mut_slice())
+    {
         // Phase 8 — hooked. One sample per dispatch; `Ok(None)` / `Err(_)`
         // fire nothing, and both `?`s precede the start hook.
         Ok(Some((len, info))) => {
-            let mut reader = CdrReader::new_with_header(&entry.buffer[..len])
+            let mut reader = CdrReader::new_with_header(&entry.buffer.as_slice()[..len])
                 .map_err(|_| TransportError::DeserializationError)?;
             let msg =
                 M::deserialize(&mut reader).map_err(|_| TransportError::DeserializationError)?;
             trace_take(
                 desc_idx,
-                &entry.buffer[..len],
+                &entry.buffer.as_slice()[..len],
                 <M as RosMessage>::STAMP_OFFSET,
             );
             trace_cb_start(desc_idx);
@@ -2627,9 +2652,9 @@ where
 /// Monomorphized subscription dispatch function (with safety validation).
 ///
 /// # Safety
-/// `ptr` must point to a valid, aligned `SubSafetyEntry<M, F, RX_BUF>`.
+/// `ptr` must point to a valid, aligned `SubSafetyEntry<M, F>`.
 #[cfg(feature = "safety-e2e")]
-pub(crate) unsafe fn sub_safety_try_process<M, F, const RX_BUF: usize>(
+pub(crate) unsafe fn sub_safety_try_process<M, F>(
     ptr: *mut u8,
     _delta_us: u64,
     desc_idx: u8,
@@ -2638,7 +2663,7 @@ where
     M: RosMessage,
     F: FnMut(&M, &nros_rmw::IntegrityStatus),
 {
-    let entry = unsafe { &mut *(ptr as *mut SubSafetyEntry<M, F, RX_BUF>) };
+    let entry = unsafe { &mut *(ptr as *mut SubSafetyEntry<M, F>) };
 
     // LET mode: use pre-sampled data (no IntegrityStatus in snapshot)
     //
@@ -2649,12 +2674,12 @@ where
     if entry.sampled_len > 0 {
         let len = entry.sampled_len;
         entry.sampled_len = 0;
-        let mut reader = CdrReader::new_with_header(&entry.buffer[..len])
+        let mut reader = CdrReader::new_with_header(&entry.buffer.as_slice()[..len])
             .map_err(|_| TransportError::DeserializationError)?;
         let msg = M::deserialize(&mut reader).map_err(|_| TransportError::DeserializationError)?;
         trace_take(
             desc_idx,
-            &entry.buffer[..len],
+            &entry.buffer.as_slice()[..len],
             <M as RosMessage>::STAMP_OFFSET,
         );
         trace_cb_start(desc_idx);
@@ -2670,17 +2695,17 @@ where
         return Ok(true);
     }
 
-    match entry.handle.take_validated(&mut entry.buffer) {
+    match entry.handle.take_validated(entry.buffer.as_mut_slice()) {
         // Phase 8 — hooked. One sample per dispatch; both `?`s precede the
         // start hook, and `Ok(None)` / `Err(_)` fire nothing.
         Ok(Some((len, status))) => {
-            let mut reader = CdrReader::new_with_header(&entry.buffer[..len])
+            let mut reader = CdrReader::new_with_header(&entry.buffer.as_slice()[..len])
                 .map_err(|_| TransportError::DeserializationError)?;
             let msg =
                 M::deserialize(&mut reader).map_err(|_| TransportError::DeserializationError)?;
             trace_take(
                 desc_idx,
-                &entry.buffer[..len],
+                &entry.buffer.as_slice()[..len],
                 <M as RosMessage>::STAMP_OFFSET,
             );
             trace_cb_start(desc_idx);
@@ -3737,19 +3762,19 @@ where
 /// SubInfoEntry readiness.
 ///
 /// # Safety
-/// `ptr` must point to a valid `SubInfoEntry<M, F, RX_BUF>`.
-pub(crate) unsafe fn sub_info_has_data<M, F, const RX_BUF: usize>(ptr: *const u8) -> bool {
-    let entry = unsafe { &*(ptr as *const SubInfoEntry<M, F, RX_BUF>) };
+/// `ptr` must point to a valid `SubInfoEntry<M, F>`.
+pub(crate) unsafe fn sub_info_has_data<M, F>(ptr: *const u8) -> bool {
+    let entry = unsafe { &*(ptr as *const SubInfoEntry<M, F>) };
     entry.handle.has_data()
 }
 
 /// SubSafetyEntry readiness.
 ///
 /// # Safety
-/// `ptr` must point to a valid `SubSafetyEntry<M, F, RX_BUF>`.
+/// `ptr` must point to a valid `SubSafetyEntry<M, F>`.
 #[cfg(feature = "safety-e2e")]
-pub(crate) unsafe fn sub_safety_has_data<M, F, const RX_BUF: usize>(ptr: *const u8) -> bool {
-    let entry = unsafe { &*(ptr as *const SubSafetyEntry<M, F, RX_BUF>) };
+pub(crate) unsafe fn sub_safety_has_data<M, F>(ptr: *const u8) -> bool {
+    let entry = unsafe { &*(ptr as *const SubSafetyEntry<M, F>) };
     entry.handle.has_data()
 }
 
@@ -3794,11 +3819,11 @@ pub(crate) unsafe fn always_ready(_ptr: *const u8) -> bool {
 /// Pre-sample a typed subscription with MessageInfo for LET mode.
 ///
 /// # Safety
-/// `ptr` must point to a valid, aligned `SubInfoEntry<M, F, RX_BUF>`.
-pub(crate) unsafe fn sub_info_pre_sample<M, F, const RX_BUF: usize>(ptr: *mut u8) {
-    let entry = unsafe { &mut *(ptr as *mut SubInfoEntry<M, F, RX_BUF>) };
+/// `ptr` must point to a valid, aligned `SubInfoEntry<M, F>`.
+pub(crate) unsafe fn sub_info_pre_sample<M, F>(ptr: *mut u8) {
+    let entry = unsafe { &mut *(ptr as *mut SubInfoEntry<M, F>) };
     // For LET, we sample only the data (MessageInfo is not preserved in the snapshot)
-    entry.sampled_len = match entry.handle.take_serialized(&mut entry.buffer) {
+    entry.sampled_len = match entry.handle.take_serialized(entry.buffer.as_mut_slice()) {
         Ok(Some(len)) => len,
         _ => 0,
     };
@@ -3807,11 +3832,11 @@ pub(crate) unsafe fn sub_info_pre_sample<M, F, const RX_BUF: usize>(ptr: *mut u8
 /// Pre-sample a safety subscription for LET mode.
 ///
 /// # Safety
-/// `ptr` must point to a valid, aligned `SubSafetyEntry<M, F, RX_BUF>`.
+/// `ptr` must point to a valid, aligned `SubSafetyEntry<M, F>`.
 #[cfg(feature = "safety-e2e")]
-pub(crate) unsafe fn sub_safety_pre_sample<M, F, const RX_BUF: usize>(ptr: *mut u8) {
-    let entry = unsafe { &mut *(ptr as *mut SubSafetyEntry<M, F, RX_BUF>) };
-    entry.sampled_len = match entry.handle.take_serialized(&mut entry.buffer) {
+pub(crate) unsafe fn sub_safety_pre_sample<M, F>(ptr: *mut u8) {
+    let entry = unsafe { &mut *(ptr as *mut SubSafetyEntry<M, F>) };
+    entry.sampled_len = match entry.handle.take_serialized(entry.buffer.as_mut_slice()) {
         Ok(Some(len)) => len,
         _ => 0,
     };
@@ -4557,12 +4582,12 @@ mod handle_offset_tests {
     fn every_arena_entry_begins_with_its_handle() {
         type Cb = fn();
         handle_at_zero! {
-            "SubInfoEntry"            => SubInfoEntry<u8, Cb, 37>,
+            "SubInfoEntry"            => SubInfoEntry<u8, Cb>,
             "SubBufferedEntry"        => SubBufferedEntry<u8, Cb>,
             "SubInplaceEntry"         => SubInplaceEntry<u8, Cb>,
             "SubBufferedRawEntry"     => SubBufferedRawEntry<Cb>,
             "SubBufferedViewEntry"    => SubBufferedViewEntry<u8, Cb>,
-            "SubBufferedRawInfoEntry" => SubBufferedRawInfoEntry<Cb, 41>,
+            "SubBufferedRawInfoEntry" => SubBufferedRawInfoEntry<Cb>,
             "SubBufferedRawInfoCEntry" => SubBufferedRawInfoCEntry,
             "SubBufferedRawCEntry"    => SubBufferedRawCEntry,
             "SubBufferedTypedCEntry"  => SubBufferedTypedCEntry,
