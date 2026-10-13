@@ -90,17 +90,17 @@ static void on_tick(void* ctx_ptr) {
 }
 
 int main() {
-    NROS_TRY(rclcpp::init_in("tcp/127.0.0.1:7447"));
+    RCLCPP_TRY(rclcpp::init_in("tcp/127.0.0.1:7447"));
 
     rclcpp::Node node;
-    NROS_TRY(rclcpp::create_node(node, "cpp_talker"));
+    RCLCPP_TRY(rclcpp::create_node(node, "cpp_talker"));
 
     rclcpp::Publisher<std_msgs::msg::Int32> pub;
-    NROS_TRY(node.create_publisher(pub, "/chatter"));
+    RCLCPP_TRY(node.create_publisher(pub, "/chatter"));
 
     Ctx ctx{ &pub, 0 };
     rclcpp::Timer timer;
-    NROS_TRY(node.create_wall_timer(timer, 1000, on_tick, &ctx));
+    RCLCPP_TRY(node.create_wall_timer(timer, 1000, on_tick, &ctx));
 
     std::signal(SIGINT, on_signal);
     while (g_running && rclcpp::ok()) {
@@ -112,7 +112,7 @@ int main() {
 }
 ```
 
-`NROS_TRY(expr)` short-circuits on the first error — equivalent to the
+`RCLCPP_TRY(expr)` short-circuits on the first error — equivalent to the
 Rust `?` operator. Available without `NROS_CPP_STD`.
 
 ## 5. Build and Run
@@ -135,7 +135,7 @@ Replace the publisher loop with a subscription:
 
 ```cpp
 rclcpp::Subscription<std_msgs::msg::Int32> sub;
-NROS_TRY(node.create_subscription(sub, "/chatter", rclcpp::QoS(10),
+RCLCPP_TRY(node.create_subscription(sub, "/chatter", rclcpp::QoS(10),
     [](const std_msgs::msg::Int32& msg) {
         std::printf("Received: %d\n", msg.data);
     }));

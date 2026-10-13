@@ -7,7 +7,7 @@
  * `shutdown` or after a fatal transport error).
  *
  * @code
- * NROS_TRY(rclcpp::init_in("tcp/127.0.0.1:7447"));
+ * RCLCPP_TRY(rclcpp::init_in("tcp/127.0.0.1:7447"));
  * while (rclcpp::ok()) rclcpp::spin_once(100);
  * rclcpp::shutdown_in();
  * @endcode
@@ -37,7 +37,7 @@
  *
  * @code
  * rclcpp::Publisher<std_msgs::msg::Int32> pub;
- * NROS_TRY(node.create_publisher(pub, "/chatter"));
+ * RCLCPP_TRY(node.create_publisher(pub, "/chatter"));
  * std_msgs::msg::Int32 m{}; m.data = 42;
  * pub.publish(m);
  * @endcode
@@ -107,7 +107,7 @@
 
 /**
  * @defgroup grp_errors errors
- * @brief Result/ErrorCode and the `NROS_TRY` macro.
+ * @brief Result/ErrorCode and the `RCLCPP_TRY` macro.
  *
  * See @ref error_codes for the full code table and recovery guidance.
  *

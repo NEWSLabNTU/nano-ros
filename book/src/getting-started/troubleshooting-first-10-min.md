@@ -239,7 +239,7 @@ nros::init returned NROS_CPP_RET_TRANSPORT_ERROR (-100)
 
 Same root cause as B1/B2 — zenohd not reachable.
 `NROS_CPP_RET_TRANSPORT_ERROR = -100` is the C++ result code that
-`NROS_TRY_RET` propagates from `main()`; on POSIX this becomes
+`RCLCPP_TRY_RET` propagates from `main()`; on POSIX this becomes
 `(unsigned char)-100 = 156` as the process exit code. Treat
 "exited 156 after starting" as the C++ equivalent of B1.
 

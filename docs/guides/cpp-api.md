@@ -7,7 +7,7 @@ The nros C++ API (`nros-cpp`) provides a freestanding C++14 interface for embedd
 - **Freestanding C++14** — no STL dependency in default mode
 - **Direct Rust FFI** — wraps `nros-node` directly via typed `extern "C"` FFI (not the C API), preserving type safety per message type
 - **rclcpp naming, in upstream's namespaces** — `rclcpp::Node`, `Publisher<M>`, `Subscription<M>`, `Service<S>`, `Client<S>`, `Timer`, `GuardCondition`, `Executor`, and `rclcpp_action::Server<A>` / `Client<A>`. There is no `nros::` namespace: every user-facing name is in `rclcpp::`, `rclcpp_action::` or `rclcpp_lifecycle::` (RFC-0089, phase-483). The RTOS extensions with no upstream counterpart (`Poll*`, the `*Storage` types, `FixedString`, …) are in `rclcpp::` too
-- **Result-based error handling** — `rclcpp::Result` + `NROS_TRY` macro (no exceptions)
+- **Result-based error handling** — `rclcpp::Result` + `RCLCPP_TRY` macro (no exceptions)
 - **Generated message types** — `std_msgs::msg::Int32`, `example_interfaces::srv::AddTwoInts`, etc.
 - **Opt-in std surface** — `NROS_CPP_STD` enables `std::string`, `std::function`, `std::chrono` conveniences and `rclcpp::Node`. It is a PORTING surface, requested by the build; it is never detected from the toolchain
 
@@ -127,17 +127,17 @@ rclcpp::Result ret = rclcpp::init_in("tcp/127.0.0.1:7447", 0);
 
 // Or explicit executor (multi-executor patterns)
 rclcpp::Executor executor;
-NROS_TRY(rclcpp::Executor::create(executor, "tcp/127.0.0.1:7447"));
+RCLCPP_TRY(rclcpp::Executor::create(executor, "tcp/127.0.0.1:7447"));
 ```
 
 ### Node
 
 ```cpp
 rclcpp::Node node;
-NROS_TRY(rclcpp::create_node(node, "my_node"));
+RCLCPP_TRY(rclcpp::create_node(node, "my_node"));
 
 // Or with explicit executor:
-NROS_TRY(executor.create_node(node, "my_node", "/namespace"));
+RCLCPP_TRY(executor.create_node(node, "my_node", "/namespace"));
 ```
 
 ### Publisher
@@ -146,11 +146,11 @@ NROS_TRY(executor.create_node(node, "my_node", "/namespace"));
 #include "std_msgs.hpp"
 
 rclcpp::Publisher<std_msgs::msg::Int32> pub;
-NROS_TRY(node.create_publisher(pub, "/chatter"));
+RCLCPP_TRY(node.create_publisher(pub, "/chatter"));
 
 std_msgs::msg::Int32 msg;
 msg.data = 42;
-NROS_TRY(pub.publish(msg));
+RCLCPP_TRY(pub.publish(msg));
 ```
 
 ### Subscription
@@ -163,7 +163,7 @@ executor arena delivers to a callback.
 
 ```cpp
 rclcpp::PollSubscription<std_msgs::msg::Int32> sub;
-NROS_TRY(node.create_subscription(sub, "/chatter"));
+RCLCPP_TRY(node.create_subscription(sub, "/chatter"));
 
 rclcpp::spin_once(100);
 
@@ -183,7 +183,7 @@ using AddTwoInts = example_interfaces::srv::AddTwoInts;
 // `rclcpp::PollService<S>` (phase-456 W5) — the caller owns the server and
 // drains it. `rclcpp::Service<S>` is the DISPATCH server, which takes a handler.
 rclcpp::PollService<AddTwoInts> srv;
-NROS_TRY(node.create_service(srv, "/add_two_ints"));
+RCLCPP_TRY(node.create_service(srv, "/add_two_ints"));
 
 // In your main loop:
 rclcpp::spin_once(10);
@@ -203,12 +203,12 @@ if (srv.take_request(req, seq).ok()) {
 // the reply. `rclcpp::Client<S>` is the DISPATCH client, whose one verb is
 // `async_send_request` and whose reply reaches a handler during `spin_once`.
 rclcpp::PollClient<AddTwoInts> client;
-NROS_TRY(node.create_client(client, "/add_two_ints"));
+RCLCPP_TRY(node.create_client(client, "/add_two_ints"));
 
 AddTwoInts::Request req;
 req.a = 1; req.b = 2;
 AddTwoInts::Response resp;
-NROS_TRY(client.call(req, resp));
+RCLCPP_TRY(client.call(req, resp));
 // resp.sum == 3
 ```
 
@@ -227,15 +227,15 @@ takes each goal request itself, is `rclcpp::PollingActionServer<A>`.
 using Fibonacci = example_interfaces::action::Fibonacci;
 
 rclcpp_action::Server<Fibonacci> srv;
-NROS_TRY(node.create_action_server(srv, "/fibonacci"));
+RCLCPP_TRY(node.create_action_server(srv, "/fibonacci"));
 
 // Stateless callables: an empty-capture lambda or a plain function pointer.
 // The `*_with_ctx` forms add a `void*` for state.
-NROS_TRY(srv.set_goal_callback([](const uint8_t id[16], const Fibonacci::Goal& goal) {
+RCLCPP_TRY(srv.set_goal_callback([](const uint8_t id[16], const Fibonacci::Goal& goal) {
     return goal.order > 0 ? rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE
                           : rclcpp_action::GoalResponse::REJECT;
 }));
-NROS_TRY(srv.set_accepted_callback([](const uint8_t id[16]) {
+RCLCPP_TRY(srv.set_accepted_callback([](const uint8_t id[16]) {
     // Record `id`; the work happens outside the callback, which must return
     // promptly.
 }));
@@ -258,15 +258,15 @@ srv.complete_goal(goal_id, result);  // GoalStatus::Succeeded; another overload 
 
 ```cpp
 rclcpp_action::Client<Fibonacci> client;
-NROS_TRY(node.create_action_client(client, "/fibonacci"));
+RCLCPP_TRY(node.create_action_client(client, "/fibonacci"));
 
 Fibonacci::Goal goal;
 goal.order = 10;
 uint8_t goal_id[16];
-NROS_TRY(client.send_goal(goal, goal_id));
+RCLCPP_TRY(client.send_goal(goal, goal_id));
 
 Fibonacci::Result result;
-NROS_TRY(client.get_result(goal_id, result));
+RCLCPP_TRY(client.get_result(goal_id, result));
 ```
 
 These helpers are syntactic sugar over `send_goal_async()` + `spin_once()`; they cannot be called from inside a dispatch callback (returns `RCLC_RET_REENTRANT`).
@@ -276,11 +276,11 @@ These helpers are syntactic sugar over `send_goal_async()` + `spin_once()`; they
 ```cpp
 auto fut = client.send_goal_future(goal);
 typename decltype(client)::GoalAccept accept;
-NROS_TRY(fut.wait(executor.handle(), 5000, accept));
+RCLCPP_TRY(fut.wait(executor.handle(), 5000, accept));
 if (accept.accepted) {
     auto rfut = client.get_result_future(accept.goal_id);
     Fibonacci::Result result;
-    NROS_TRY(rfut.wait(executor.handle(), 10000, result));
+    RCLCPP_TRY(rfut.wait(executor.handle(), 10000, result));
 }
 ```
 
@@ -293,7 +293,7 @@ auto& fb_stream = client.feedback_stream();
 Fibonacci::Feedback fb;
 while (fb_stream.try_next(fb).ok()) { /* ... */ }
 // Or blocking:
-NROS_TRY(fb_stream.wait_next(executor.handle(), 500, fb));
+RCLCPP_TRY(fb_stream.wait_next(executor.handle(), 500, fb));
 ```
 
 For per-goal feedback dispatch, use the callback API.
@@ -317,9 +317,9 @@ opts.result = [](const uint8_t id[16], int32_t status, const uint8_t* data, size
     // status: 4=Succeeded, 5=Canceled, 6=Aborted
 };
 opts.context = &my_state;
-NROS_TRY(client.set_callbacks(opts));
+RCLCPP_TRY(client.set_callbacks(opts));
 
-NROS_TRY(client.send_goal_async(goal, goal_id));  // fire-and-forget
+RCLCPP_TRY(client.send_goal_async(goal, goal_id));  // fire-and-forget
 while (!my_state.done) { rclcpp::spin_once(10); }
 ```
 
@@ -335,8 +335,8 @@ void on_timer(void* ctx) {
 }
 
 rclcpp::Timer timer;
-NROS_TRY(node.create_wall_timer(timer, 1000, on_timer));      // 1000ms period
-NROS_TRY(node.create_timer_oneshot(timer, 5000, on_timer)); // one-shot after 5s
+RCLCPP_TRY(node.create_wall_timer(timer, 1000, on_timer));      // 1000ms period
+RCLCPP_TRY(node.create_timer_oneshot(timer, 5000, on_timer)); // one-shot after 5s
 
 timer.cancel();
 timer.reset();  // restart from zero
@@ -352,7 +352,7 @@ void on_signal(void* ctx) {
 }
 
 rclcpp::GuardCondition guard;
-NROS_TRY(node.create_guard_condition(guard, on_signal));
+RCLCPP_TRY(node.create_guard_condition(guard, on_signal));
 
 // From another thread:
 guard.trigger();
@@ -363,10 +363,10 @@ guard.trigger();
 
 ```cpp
 rclcpp::Executor executor;
-NROS_TRY(rclcpp::Executor::create(executor));
+RCLCPP_TRY(rclcpp::Executor::create(executor));
 
 rclcpp::Node node;
-NROS_TRY(executor.create_node(node, "my_node"));
+RCLCPP_TRY(executor.create_node(node, "my_node"));
 
 // Create publishers, subscriptions, etc. on node...
 
@@ -392,13 +392,13 @@ executor.spin_for(5000, 50);    // bounded; executor.spin() blocks until shutdow
 
 ## Error Handling
 
-All fallible operations return `rclcpp::Result`. Use `NROS_TRY` for early return:
+All fallible operations return `rclcpp::Result`. Use `RCLCPP_TRY` for early return:
 
 ```cpp
 rclcpp::Result setup() {
-    NROS_TRY(rclcpp::init_in());
-    NROS_TRY(rclcpp::create_node(node, "my_node"));
-    NROS_TRY(node.create_publisher(pub, "/topic"));
+    RCLCPP_TRY(rclcpp::init_in());
+    RCLCPP_TRY(rclcpp::create_node(node, "my_node"));
+    RCLCPP_TRY(node.create_publisher(pub, "/topic"));
     return rclcpp::Result::success();
 }
 ```

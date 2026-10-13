@@ -7,7 +7,7 @@
 // the portable ones (this source builds native AND on the RTOS boards).
 #include <stdlib.h>
 
-#define NROS_TRY_LOG(file, line, expr, ret)                                                        \
+#define RCLCPP_TRY_LOG(file, line, expr, ret)                                                      \
     fprintf(stderr, "[nros] %s:%d %s -> %d\n", (file), (line), (expr), (int)(ret))
 
 #include <nros/app_main.h>
@@ -32,7 +32,7 @@ int nros_app_main(int argc, char** argv) {
     // Launch-aware init. Falls back to the env overlay
     // (`$NROS_LOCATOR` / `$ROS_DOMAIN_ID` / `$RMW_IMPLEMENTATION`) when
     // no `$NROS_RUNTIME_OVERLAY` / launch XML is in scope.
-    NROS_TRY_RET(rclcpp::init_with_launch_auto(argc, argv), 1);
+    RCLCPP_TRY_RET(rclcpp::init_with_launch_auto(argc, argv), 1);
 
     // Operands from the first two positional args (default: 2 3).
     int64_t a = 2;
@@ -53,7 +53,7 @@ int nros_app_main(int argc, char** argv) {
 #endif
 
     rclcpp::Node node;
-    NROS_TRY_RET(rclcpp::create_node(node, "add_two_ints_client"), 1);
+    RCLCPP_TRY_RET(rclcpp::create_node(node, "add_two_ints_client"), 1);
     printf("Node created: %s\n", node.get_name());
 
     // phase-456 W9 — the FUTURE-style client is `rclcpp::PollClient<S>`: this
@@ -62,7 +62,7 @@ int nros_app_main(int argc, char** argv) {
     // is `async_send_request` and whose entity the executor arena owns — see
     // `service-client-callback` for that road.
     rclcpp::PollClient<example_interfaces::srv::AddTwoInts> client;
-    NROS_TRY_RET(node.create_client(client, "/add_two_ints"), 1);
+    RCLCPP_TRY_RET(node.create_client(client, "/add_two_ints"), 1);
 
     example_interfaces::srv::AddTwoInts::Request req;
     req.a = a;

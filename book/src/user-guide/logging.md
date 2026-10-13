@@ -336,8 +336,8 @@ C++ (`<nros/rosout.hpp>`):
 
 ```cpp
 rclcpp::rosout::Publisher rosout;
-NROS_TRY(rosout.create(node));          // or create(node, rclcpp::RosoutQoS())
-NROS_TRY(rclcpp::rosout::enable());
+RCLCPP_TRY(rosout.create(node));          // or create(node, rclcpp::RosoutQoS())
+RCLCPP_TRY(rclcpp::rosout::enable());
 for (;;) {
     rclcpp::spin_once(10);
     rosout.pump();

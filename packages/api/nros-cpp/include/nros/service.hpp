@@ -111,7 +111,7 @@ namespace rclcpp {
 ///     resp.sum = req.a + req.b;
 /// }
 /// rclcpp::Service<AddTwoInts> srv;
-/// NROS_TRY(node.create_service(srv, "/add_two_ints", &add));
+/// RCLCPP_TRY(node.create_service(srv, "/add_two_ints", &add));
 /// // ... or, in ported shape:
 /// auto handle = node.create_service<AddTwoInts>("/add_two_ints", &add);
 /// ```

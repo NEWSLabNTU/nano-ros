@@ -11,15 +11,15 @@ freestanding C++14 surface that mirrors `rclcpp`.
 
 int main() {
     // 1. Initialise the global session.
-    NROS_TRY(rclcpp::init_in("tcp/127.0.0.1:7447"));
+    RCLCPP_TRY(rclcpp::init_in("tcp/127.0.0.1:7447"));
 
     // 2. Create a node.
     rclcpp::Node node;
-    NROS_TRY(rclcpp::create_node(node, "cpp_talker"));
+    RCLCPP_TRY(rclcpp::create_node(node, "cpp_talker"));
 
     // 3. Create a typed publisher.
     rclcpp::Publisher<std_msgs::msg::Int32> pub;
-    NROS_TRY(node.create_publisher(pub, "/chatter"));
+    RCLCPP_TRY(node.create_publisher(pub, "/chatter"));
 
     // 4. Publish messages.
     std_msgs::msg::Int32 msg{};
@@ -51,7 +51,7 @@ The C++ API is organised into the following module groups (see the
 | @ref grp_executor "executor"   | Callback dispatch, timers, guard conditions |
 | @ref grp_clock "clock"         | Monotonic and wall-clock time |
 | @ref grp_qos "qos"             | Quality-of-Service settings |
-| @ref grp_errors "errors"       | Error codes, `rclcpp::Result`, `NROS_TRY` |
+| @ref grp_errors "errors"       | Error codes, `rclcpp::Result`, `RCLCPP_TRY` |
 | @ref grp_support "support"     | `Span`, `FixedString`, `FixedSequence`, `std_compat` |
 
 ## Header Organisation

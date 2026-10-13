@@ -49,7 +49,7 @@ namespace rclcpp {
 /// ```cpp
 /// using Fib = example_interfaces::action::Fibonacci;
 /// rclcpp::PollingActionClient<Fib> cli;
-/// NROS_TRY(node.create_polling_action_client(cli, "/fibonacci"));
+/// RCLCPP_TRY(node.create_polling_action_client(cli, "/fibonacci"));
 /// uint8_t goal_id[16];
 /// typename Fib::Goal g;  g.order = 10;
 /// cli.send_goal(g, goal_id);

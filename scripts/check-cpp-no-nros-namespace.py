@@ -149,7 +149,7 @@ def self_test() -> int:
         ("line comment", "// it was nros::Timer\nrclcpp::Timer t;\n"),
         ("block comment", "/* nros::QoS\n nros::init */ int x;\n"),
         ("include path", "#include <nros/nros.hpp>\n"),
-        ("c identifier", "nros_cpp_init(); NROS_TRY(x);\n"),
+        ("c identifier", "nros_cpp_init(); RCLCPP_TRY(x);\n"),
         ("other namespace", "namespace nros_board {}\n"),
         ("rust macro in a message", 'puts("use the Rust `nros::main!` entry");\n'),
     ]

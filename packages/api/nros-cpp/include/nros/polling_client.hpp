@@ -106,11 +106,11 @@ namespace rclcpp {
 /// Usage (future — preferred):
 /// ```cpp
 /// rclcpp::PollClient<example_interfaces::srv::AddTwoInts> client;
-/// NROS_TRY(node.create_client(client, "/add_two_ints"));
-/// NROS_TRY(client.wait_for_service(10000));
+/// RCLCPP_TRY(node.create_client(client, "/add_two_ints"));
+/// RCLCPP_TRY(client.wait_for_service(10000));
 /// auto fut = client.send_request(req);
 /// typename decltype(client)::ResponseType resp;
-/// NROS_TRY(fut.wait(executor.handle(), 5000, resp));
+/// RCLCPP_TRY(fut.wait(executor.handle(), 5000, resp));
 /// ```
 template <typename S> class PollClient {
   public:

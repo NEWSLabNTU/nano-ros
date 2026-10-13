@@ -4,7 +4,7 @@
 /**
  * @file result.hpp
  * @ingroup grp_errors
- * @brief `rclcpp::Result`, `rclcpp::ErrorCode`, and the `NROS_TRY` macro.
+ * @brief `rclcpp::Result`, `rclcpp::ErrorCode`, and the `RCLCPP_TRY` macro.
  *
  * See @ref error_codes for the full code table and recovery guidance.
  */
@@ -37,7 +37,7 @@
 /// configuration. That is the rule `scripts/check-cpp-capability-layout.sh`
 /// measures, both types are named in its list, and it is why phase-427 W8
 /// forbids this header a third capability gate. The two it has stay two:
-/// `<cstdio>` for the default `NROS_TRY_LOG`, and the body of that macro.
+/// `<cstdio>` for the default `RCLCPP_TRY_LOG`, and the body of that macro.
 ///
 /// The spelling is measured, not assumed (gcc 12.3 and clang 14, `-std=c++14`,
 /// which is the standard the `cpp` lane compiles these headers with):
@@ -170,7 +170,7 @@ static_assert(static_cast<int32_t>(ErrorCode::NotFound) == -4 &&
 /// `ResultOf<T>` when it produces a value. This is the whole error channel —
 /// RFC-0018 forbids exceptions, so nothing here throws, and RFC-0089
 /// §"The error channel, settled" is the rule for which one an API picks.
-/// Use the NROS_TRY macro for early return on error.
+/// Use the RCLCPP_TRY macro for early return on error.
 ///
 /// ONE TEMPLATE, TWO SPELLINGS — and the second spelling is forced by the
 /// language rather than chosen. RFC-0089 asks for one template named `Result`,
@@ -250,18 +250,18 @@ using Result = ResultOf<void>;
 /// Usage:
 /// ```cpp
 /// rclcpp::Result do_stuff() {
-///     NROS_TRY(rclcpp::init());
-///     NROS_TRY(node.create_publisher(pub, "/topic"));
+///     RCLCPP_TRY(rclcpp::init());
+///     RCLCPP_TRY(node.create_publisher(pub, "/topic"));
 ///     return rclcpp::Result::success();
 /// }
 /// ```
-#define NROS_TRY(expr)                                                                             \
+#define RCLCPP_TRY(expr)                                                                           \
     do {                                                                                           \
         ::rclcpp::Result _nros_r = (expr);                                                         \
         if (!_nros_r.ok()) return _nros_r;                                                         \
     } while (0)
 
-/// Like NROS_TRY but for callers that need a custom return value
+/// Like RCLCPP_TRY but for callers that need a custom return value
 /// (e.g. `int main` examples returning 1 on failure).
 ///
 /// Phase 123.B.1 — when `NROS_CPP_STD` is defined (POSIX / Zephyr
@@ -270,36 +270,37 @@ using Result = ResultOf<void>;
 /// `stderr` so first-time users see failures immediately. Embedded
 /// builds without stdio fall through to the silent default.
 ///
-/// Override `NROS_TRY_LOG(file, line, expr, ret)` before including
+/// Override `RCLCPP_TRY_LOG(file, line, expr, ret)` before including
 /// this header to attach a custom logger (Zephyr's `LOG_ERR`,
 /// semihosting, defmt, etc.). Opt out entirely with
-/// `#define NROS_TRY_LOG(file, line, expr, ret) ((void)0)`.
-#ifndef NROS_TRY_LOG
+/// `#define RCLCPP_TRY_LOG(file, line, expr, ret) ((void)0)`.
+#ifndef RCLCPP_TRY_LOG
 #if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0) // hosted-family: hosted-console
-#define NROS_TRY_LOG(file, line, expr, ret)                                                        \
+#define RCLCPP_TRY_LOG(file, line, expr, ret)                                                      \
     ::fprintf(stderr, "[nros] %s:%d %s -> %d\n", (file), (line), (expr), (int)(ret))
 #else
-#define NROS_TRY_LOG(file, line, expr, ret) ((void)(file), (void)(line), (void)(expr), (void)(ret))
+#define RCLCPP_TRY_LOG(file, line, expr, ret)                                                      \
+    ((void)(file), (void)(line), (void)(expr), (void)(ret))
 #endif
 #endif
 
-#define NROS_TRY_RET(expr, retval)                                                                 \
+#define RCLCPP_TRY_RET(expr, retval)                                                               \
     do {                                                                                           \
         ::rclcpp::Result _nros_r = (expr);                                                         \
         if (!_nros_r.ok()) {                                                                       \
-            NROS_TRY_LOG(__FILE__, __LINE__, #expr, _nros_r.raw());                                \
+            RCLCPP_TRY_LOG(__FILE__, __LINE__, #expr, _nros_r.raw());                              \
             return (retval);                                                                       \
         }                                                                                          \
     } while (0)
 
-/// Like NROS_TRY but for void-returning callers (RTOS `app_main(void)`,
-/// task entry points, …). Logs the failure via the same `NROS_TRY_LOG`
-/// hook as `NROS_TRY_RET` and bails with a bare `return;`.
-#define RCLC_CHECK(expr)                                                                           \
+/// Like RCLCPP_TRY but for void-returning callers (RTOS `app_main(void)`,
+/// task entry points, …). Logs the failure via the same `RCLCPP_TRY_LOG`
+/// hook as `RCLCPP_TRY_RET` and bails with a bare `return;`.
+#define RCLCPP_CHECK(expr)                                                                         \
     do {                                                                                           \
         ::rclcpp::Result _nros_r = (expr);                                                         \
         if (!_nros_r.ok()) {                                                                       \
-            NROS_TRY_LOG(__FILE__, __LINE__, #expr, _nros_r.raw());                                \
+            RCLCPP_TRY_LOG(__FILE__, __LINE__, #expr, _nros_r.raw());                              \
             return;                                                                                \
         }                                                                                          \
     } while (0)

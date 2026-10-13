@@ -101,10 +101,10 @@ class OnShutdownCallbackHandle : public ShutdownCallbackHandle {
 /// Usage:
 /// ```cpp
 /// rclcpp::Executor executor;
-/// NROS_TRY(rclcpp::Executor::create(executor));
+/// RCLCPP_TRY(rclcpp::Executor::create(executor));
 ///
 /// rclcpp::Node node;
-/// NROS_TRY(executor.create_node(node, "my_node"));
+/// RCLCPP_TRY(executor.create_node(node, "my_node"));
 ///
 /// // Create publishers, subscriptions, etc. on node...
 ///

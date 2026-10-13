@@ -41,7 +41,7 @@ namespace rclcpp {
 /// void on_signal(void* ctx) { /* handle event */ }
 ///
 /// rclcpp::GuardCondition guard;
-/// NROS_TRY(node.create_guard_condition(guard, on_signal));
+/// RCLCPP_TRY(node.create_guard_condition(guard, on_signal));
 ///
 /// // From another thread:
 /// guard.trigger();

@@ -274,7 +274,7 @@ namespace rclcpp_action {
 /// ```cpp
 /// using Fib = example_interfaces::action::Fibonacci;
 /// rclcpp_action::Server<Fib> srv;
-/// NROS_TRY(node.create_action_server(srv, "/fibonacci"));
+/// RCLCPP_TRY(node.create_action_server(srv, "/fibonacci"));
 ///
 /// srv.set_goal_callback(
 ///     [](const uint8_t[16], const Fib::Goal& g) {

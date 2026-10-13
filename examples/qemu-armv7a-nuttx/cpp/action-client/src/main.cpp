@@ -7,7 +7,7 @@
 // the portable ones (this source builds native AND on the RTOS boards).
 #include <stdlib.h>
 
-#define NROS_TRY_LOG(file, line, expr, ret)                                                        \
+#define RCLCPP_TRY_LOG(file, line, expr, ret)                                                      \
     fprintf(stderr, "[nros] %s:%d %s -> %d\n", (file), (line), (expr), (int)(ret))
 
 #include <nros/app_main.h>
@@ -30,14 +30,14 @@ int nros_app_main(int argc, char** argv) {
     printf("===================================\n");
 
     // Launch-aware init. Env overlay active today.
-    NROS_TRY_RET(rclcpp::init_with_launch_auto(argc, argv), 1);
+    RCLCPP_TRY_RET(rclcpp::init_with_launch_auto(argc, argv), 1);
 
     rclcpp::Node node;
-    NROS_TRY_RET(rclcpp::create_node(node, "fibonacci_action_client"), 1);
+    RCLCPP_TRY_RET(rclcpp::create_node(node, "fibonacci_action_client"), 1);
     printf("Node created: %s\n", node.get_name());
 
     rclcpp_action::Client<example_interfaces::action::Fibonacci> client;
-    NROS_TRY_RET(node.create_action_client(client, "/fibonacci"), 1);
+    RCLCPP_TRY_RET(node.create_action_client(client, "/fibonacci"), 1);
     rclcpp::Result ret;
 
     // Default order=10; override via NROS_TEST_GOAL_ORDER for tests that

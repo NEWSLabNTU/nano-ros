@@ -13,7 +13,7 @@
 // the portable ones (this source builds native AND on the RTOS boards).
 #include <stdlib.h>
 
-#define NROS_TRY_LOG(file, line, expr, ret)                                                        \
+#define RCLCPP_TRY_LOG(file, line, expr, ret)                                                      \
     fprintf(stderr, "[nros] %s:%d %s -> %d\n", (file), (line), (expr), (int)(ret))
 
 #include <nros/app_main.h>
@@ -51,7 +51,7 @@ int nros_app_main(int argc, char** argv) {
 
     // Launch-aware init. Env overlay
     // (`$NROS_LOCATOR` / `$ROS_DOMAIN_ID`) active today.
-    NROS_TRY_RET(rclcpp::init_with_launch_auto(argc, argv), 1);
+    RCLCPP_TRY_RET(rclcpp::init_with_launch_auto(argc, argv), 1);
 
     // Operands from the first two positional args (default: 2 3).
     int64_t a = 2;
@@ -72,13 +72,13 @@ int nros_app_main(int argc, char** argv) {
 #endif
 
     rclcpp::Node node;
-    NROS_TRY_RET(rclcpp::create_node(node, "add_two_ints_client_cb"), 1);
+    RCLCPP_TRY_RET(rclcpp::create_node(node, "add_two_ints_client_cb"), 1);
     printf("Node created: %s\n", node.get_name());
 
     // Callback-style client. The arena dispatches `on_response` at
     // `spin_once`; sends are non-blocking via `async_send_request`.
     rclcpp::Client<example_interfaces::srv::AddTwoInts> client;
-    NROS_TRY_RET(node.create_client(client, "/add_two_ints", &on_response), 1);
+    RCLCPP_TRY_RET(node.create_client(client, "/add_two_ints", &on_response), 1);
     printf("Callback service client created for: /add_two_ints\n");
 
     // Let discovery settle (the callback client has no Future to gate on).

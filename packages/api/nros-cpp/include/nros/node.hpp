@@ -686,7 +686,7 @@ namespace rclcpp {
 /// Usage:
 /// ```cpp
 /// rclcpp::Node node;
-/// NROS_TRY(rclcpp::Node::create(node, "my_node"));
+/// RCLCPP_TRY(rclcpp::Node::create(node, "my_node"));
 /// ```
 ///
 /// Three shapes collapsed here: the freestanding out-ref node, the hosted
@@ -3130,7 +3130,7 @@ inline Result Executor::create_node(::rclcpp::Node& out, const char* name, const
 // Usage:
 // ```cpp
 // rclcpp::Node node;
-// NROS_TRY(executor.node_builder("egress")
+// RCLCPP_TRY(executor.node_builder("egress")
 //              .rmw("cyclonedds")
 //              .domain_id(0)
 //              .build(node));

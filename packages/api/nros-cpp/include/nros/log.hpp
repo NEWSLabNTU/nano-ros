@@ -94,7 +94,7 @@ constexpr rcl_log_severity_t sink_severity(const char* level) {
  *
  * ```cpp
  * rclcpp::Node node;
- * NROS_TRY(rclcpp::create_node(node, "my_node"));
+ * RCLCPP_TRY(rclcpp::create_node(node, "my_node"));
  * auto logger = node.get_logger();
  * RCLC_LOG_INFO(logger, "started; domain=%u", 42);
  * ```

@@ -154,7 +154,7 @@ class Talker {
     void on_tick() { ++count_; }
 
     rclcpp::Result configure(rclcpp::Node& node) {
-        NROS_TRY(node.create_publisher(pub_, "chatter"));
+        RCLCPP_TRY(node.create_publisher(pub_, "chatter"));
         return node.create_wall_timer<Talker, &Talker::on_tick>(timer_, 1000, this);
     }
 };

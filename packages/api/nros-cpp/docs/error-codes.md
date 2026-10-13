@@ -1,7 +1,7 @@
 # Error Codes {#error_codes}
 
 `rclcpp::Result` wraps an `rclcpp::ErrorCode` (a strongly-typed `int32_t`
-enum). Use `result.ok()` for success checks, or the `NROS_TRY(expr)`
+enum). Use `result.ok()` for success checks, or the `RCLCPP_TRY(expr)`
 macro to short-circuit on the first error.
 
 ## ErrorCode Table
@@ -18,18 +18,18 @@ macro to short-circuit on the first error.
 | `-7` | `Reentrant` | A blocking call was made from inside a callback. | Re-architect to use the executor or an async path. |
 | `-100` | `TransportError` | Underlying transport rejected the operation. | Often paired with a `_Z_ERR_*` log line; see @ref troubleshooting. |
 
-## NROS_TRY
+## RCLCPP_TRY
 
 ```cpp
 rclcpp::Result init_pubsub(rclcpp::Node& node) {
     rclcpp::Publisher<MyMsg> pub;
-    NROS_TRY(node.create_publisher(pub, "/topic"));   // early-return on error
-    NROS_TRY(pub.publish(seed_msg));
+    RCLCPP_TRY(node.create_publisher(pub, "/topic"));   // early-return on error
+    RCLCPP_TRY(pub.publish(seed_msg));
     return rclcpp::Result::success();
 }
 ```
 
-`NROS_TRY(expr)` evaluates `expr` once and, if the result is not
+`RCLCPP_TRY(expr)` evaluates `expr` once and, if the result is not
 success, returns it from the enclosing function. Only valid inside
 functions that themselves return `rclcpp::Result`.
 

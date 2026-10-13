@@ -326,7 +326,7 @@ double v = node->get_parameter("ctrl_period").as_double();
 
 // nano-ros
 rclcpp::Node node;
-NROS_TRY(rclcpp::Node::create(node, "ctrl"));
+RCLCPP_TRY(rclcpp::Node::create(node, "ctrl"));
 double period = node.declare_parameter<double>("ctrl_period", 0.15);
 double v = 0.0;
 node.get_parameter<double>("ctrl_period", v);
