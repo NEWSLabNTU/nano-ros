@@ -2095,7 +2095,11 @@ platform = "baremetal"
 lang = "rust"
 dir = "packages/testing/qemu-smoltcp-bridge"
 
+# issue 1865 — `just qemu test-rtic-main-e2e` runs this image against a router it
+# starts on the port the image's `system.toml` states, so the recipe builds THIS
+# row by id and reads its artifact dir from the row, never from a second spelling.
 [[fixture]]
+id = "baremetal-rtic-run-plan-e2e"
 platform = "baremetal"
 lang = "rust"
 dir = "packages/testing/nros-tests/bins/rtic-run-plan-e2e"

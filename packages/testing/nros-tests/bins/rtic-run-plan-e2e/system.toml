@@ -18,5 +18,13 @@ dispatch = "deferred"
 
 # RTIC on bare-metal MPS2-AN385 (QEMU). The network identity overlays the
 # board's compiled-in `Config::default()` through `BoardEntry::run_with_deploy`.
+#
+# issue 1865 — the locator is the ONE home of the router port: `just qemu
+# test-rtic-main-e2e` starts its router on whatever port this states
+# (`scripts/lib/image_locator.py`). Its own allocator slot,
+# `nros_tests::alloc::BAREMETAL_RTIC_RUN_PLAN_PORT`, so it shares no router with
+# the RTIC talker/listener pair on 10200. Without it the image baked the board
+# default `tcp/10.0.2.2:7450`, which nothing listened on.
 [image.mps2-an385-baremetal]
 board = "rtic-mps2-an385"
+locator = "tcp/10.0.2.2:10530"

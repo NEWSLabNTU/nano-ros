@@ -70,6 +70,29 @@ pub fn baked_locator_in(root: &Path, fixture_id: &str) -> Result<String, String>
         if let Some(l) = stated {
             return Ok(l.to_owned());
         }
+    } else if let (Some(dir), None) = (str_at(&row, &["dir"]), str_at(&row, &["image"])) {
+        // Issue 1865 — a single-package LEAF row (phase-484 W4e): no `image`,
+        // its own `system.toml` beside its `Cargo.toml` declaring ONE image,
+        // which `nros::main!` bakes exactly as a bringup's. The same reading
+        // `scripts/lib/image_locator.py` gives the router recipes.
+        let leaf = root.join(dir);
+        if leaf.join("Cargo.toml").is_file() && leaf.join("system.toml").is_file() {
+            let path = leaf.join("system.toml");
+            let doc = read_doc(&path)?;
+            let images: Vec<&String> = doc
+                .get("image")
+                .and_then(|v| v.as_table())
+                .map(|t| t.keys().collect())
+                .unwrap_or_default();
+            if let [id] = images.as_slice() {
+                let stated = str_at(&doc, &["image", id, "locator"])
+                    .or_else(|| str_at(&doc, &["image_defaults", "locator"]))
+                    .or_else(|| str_at(&doc, &["system", "locator"]));
+                if let Some(l) = stated {
+                    return Ok(l.to_owned());
+                }
+            }
+        }
     }
     str_at(&row, &["env", "NROS_LOCATOR"])
         .or_else(|| str_at(&row, &["cmake_defs", "NROS_ENTRY_LOCATOR"]))
@@ -145,6 +168,21 @@ mod tests {
             })
             .collect();
         assert!(bad.is_empty(), "issue 1581:\n  {}", bad.join("\n  "));
+    }
+
+    /// Issue 1865 — the RTIC run-plan leaf dials its own allocator slot.
+    /// `just qemu test-rtic-main-e2e` starts its router on whatever the leaf
+    /// states, so the two cannot part; this holds the STATED port to the
+    /// allocator's, so the slot cannot drift onto another image's router.
+    #[test]
+    fn rtic_run_plan_leaf_dials_its_aux_port() {
+        let loc = baked_locator_in(&crate::project_root(), "baremetal-rtic-run-plan-e2e")
+            .unwrap_or_else(|e| panic!("issue 1865: {e}"));
+        assert_eq!(
+            locator_port(&loc),
+            Some(crate::alloc::BAREMETAL_RTIC_RUN_PLAN_PORT),
+            "issue 1865: the RTIC run-plan leaf bakes `{loc}`"
+        );
     }
 
     /// Negative control: a row with no carrier is an error, not a default.

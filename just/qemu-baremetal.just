@@ -317,19 +317,13 @@ test-lan9118 verbose="": _require-profile-dir build-fixtures
 build-rtic-main-e2e:
     #!/usr/bin/env bash
     set -e
-    source scripts/build/cargo.sh
-    # issue 0488 residue 1 — this leaf IS a `[[fixture]]` row
-    # (examples/mps2-an385-baremetal/rust), and its platform `baremetal` is migrated, so the fixture
-    # lane compiles it into `build/cargo-fixtures/<slug>`. The bare in-leaf build
-    # here wrote the leaf's own `target/` instead, and `test-rtic-main-e2e` then
-    # `-kernel`ed THAT — a second copy nothing else reads, and a path that
-    # disagrees with where the lane writes.
-    source scripts/build/fixtures-target-dir.sh
-    cargo_profile_args="$(nros_cargo_profile_arg_string)"
-    rtic_tdir_flag="$(nros_fixture_target_dir_flag baremetal "" "")"
-    cd packages/testing/nros-tests/bins/rtic-run-plan-e2e
-    # shellcheck disable=SC2086
-    cargo build $cargo_profile_args $rtic_tdir_flag --quiet
+    # issue 1865 — build the manifest ROW, through the same builder every lane
+    # uses. The bare `cargo build` in the leaf this replaced could not have
+    # worked since phase-445 W6 / issue 1305: the leaf has no `.cargo/` and
+    # depends on a selection package only `nros sync` writes, so the recipe
+    # failed on a missing `build/nros/selection/Cargo.toml` before compiling
+    # anything (issue 0488 residue 1 was the same second build path, one level up).
+    bash scripts/build/fixtures-build.sh baremetal rust --id baremetal-rtic-run-plan-e2e
 
 # Run the Phase 216.B generated-entry RTIC E2E fixture on QEMU MPS2-AN385.
 [group("debug")]
@@ -342,21 +336,32 @@ test-rtic-main-e2e verbose="": _require-profile-dir build-rtic-main-e2e
     if ! zenohd_bin="$(nros_zenohd_bin)"; then
         nros_lane_skip "the ROS zenoh router is absent — install \`ros-<distro>-rmw-zenoh-cpp\` or set NROS_RMW_ZENOHD (phase-362)"
     fi
-    # issue 0488 residue 1 — the kernel path comes from the same
-    # `nros_fixture_group` answer `build-rtic-main-e2e` builds with.
+    # issue 1025 — the artifact dir from the ROW, args and env read from the
+    # manifest, never re-supplied here.
     source scripts/build/fixtures-target-dir.sh
-    rtic_artifacts="$(nros_fixture_row_artifact_dir packages/testing/nros-tests/bins/rtic-run-plan-e2e baremetal "" "")"
+    rtic_artifacts="$(nros_fixture_row_artifact_dir_by_id baremetal-rtic-run-plan-e2e baremetal)"
+    # issue 1865 — the router listens where the IMAGE dials: the port its
+    # `system.toml` states, read by the one helper the locator gate uses too.
+    # This was a literal 10200 while the image baked the board default 7450,
+    # so the image never reached the router this recipe started.
+    if ! rtic_port="$(python3 scripts/lib/image_locator.py packages/testing/nros-tests/bins/rtic-run-plan-e2e --port)"; then
+        echo "test-rtic-main-e2e: the image states no router port (see above)" >&2
+        exit 1
+    fi
     zenoh_log={{LOG_DIR}}/latest/qemu-rtic-main-e2e-zenohd.log
     # phase-362 — `rmw_zenohd` is configured by env, not argv. Backgrounded with
     # a log here, so it uses the binary + override directly rather than
     # `nros_router_exec` (which execs) — through `nros_router_env_exec` in a
     # subshell, so it runs in its prefix's environment (issue 1695).
-    ( ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:10200"];scouting/multicast/enabled=false' \
+    ( ZENOH_CONFIG_OVERRIDE="listen/endpoints=[\"tcp/127.0.0.1:${rtic_port}\"];scouting/multicast/enabled=false" \
         nros_router_env_exec "$zenohd_bin" ) > "$zenoh_log" 2>&1 &
     zenoh_pid=$!
     trap 'kill "$zenoh_pid" 2>/dev/null || true; wait "$zenoh_pid" 2>/dev/null || true' EXIT
     sleep 0.5
+    # The image exits on its first dispatched callback, seconds after the
+    # session opens (measured 5 s); 60 s is the deadline, not a wait.
     ./tests/run-test.sh --name qemu-rtic-main-e2e --log {{LOG_DIR}}/latest/qemu-rtic-main-e2e.log \
+        --timeout 60 \
         --qemu {{ if verbose != "" { "--verbose" } else { "" } }} -- \
         "{{QEMU_BIN}}" -cpu cortex-m3 -machine mps2-an385 -nographic \
             -icount shift=auto \

@@ -66,6 +66,9 @@ impl nros::RosMessage for TestMsg {
 
 static TALKER_FIRES: AtomicU32 = AtomicU32::new(0);
 static TALKER_PUB_ERRORS: AtomicU32 = AtomicU32::new(0);
+/// Issue 1865 — callbacks handed in through `dispatch_callback`, the entry the
+/// RTIC / Embassy dispatch task forwards a signaled callback to.
+static TALKER_SIGNALED: AtomicU32 = AtomicU32::new(0);
 
 struct Talker;
 impl Component for Talker {
@@ -98,6 +101,8 @@ impl ExecutableNode for Talker {
                 TALKER_PUB_ERRORS.fetch_add(1, Ordering::SeqCst);
             }
             *state += 1;
+        } else if cb.as_str() == "on_signal" {
+            TALKER_SIGNALED.fetch_add(1, Ordering::SeqCst);
         }
     }
     fn tick(_state: &mut Self::State, _ctx: &mut TickCtx<'_>) {}
@@ -193,5 +198,50 @@ fn dispatch_routes_publisher_resolver(zenohd_unique: ZenohRouter) {
     assert_eq!(
         errs, 0,
         "publisher resolver must route the dispatched publish (errs = {errs})"
+    );
+}
+
+/// Issue 1865 — a signaled callback reaches a component installed through the
+/// `register(runtime)` seam.
+///
+/// That seam ENROLLS the component in the executor and never pushes it to the
+/// runtime's own `components` list, and `dispatch_callback` used to scan that
+/// list alone. So every callback an RTIC / Embassy dispatch task forwarded —
+/// the board's queue drained into `dispatch_callback` — reached no component,
+/// and the RTIC run-plan image (`just qemu test-rtic-main-e2e`), which exits
+/// from its first such callback, never exited.
+#[rstest]
+fn signaled_callback_reaches_an_installed_component(zenohd_unique: ZenohRouter) {
+    require_zenohd();
+    TALKER_SIGNALED.store(0, Ordering::SeqCst);
+
+    let locator = zenohd_unique.locator();
+    let cfg = ExecutorConfig::new(&locator)
+        .node_name("m5a4_signaled")
+        .domain_id(182);
+    let executor = Executor::open(&cfg).expect("Executor::open failed");
+    let mut runtime = ExecutorNodeRuntime::from_executor(executor);
+    {
+        let mut ctx = RuntimeCtx::with_runtime(&mut runtime);
+        talker_register(&mut ctx).expect("component register");
+    }
+    // The install seam's population, not the runtime's: what the fix must reach.
+    assert_eq!(runtime.executor().component_slot_count(), 1);
+    assert_eq!(runtime.component_count(), 0);
+
+    struct NoPublishers;
+    impl nros::PublisherResolver for NoPublishers {
+        fn publish_raw(&self, _entity_id: &str, _data: &[u8]) -> NodeResult<()> {
+            Ok(())
+        }
+    }
+    let resolver = NoPublishers;
+    let mut ctx = CallbackCtx::new(&[], &resolver);
+    runtime.dispatch_callback("on_signal", &mut ctx);
+
+    assert_eq!(
+        TALKER_SIGNALED.load(Ordering::SeqCst),
+        1,
+        "dispatch_callback must reach the component the register(runtime) seam installed"
     );
 }

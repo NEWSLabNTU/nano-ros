@@ -37,6 +37,14 @@ policed by `check-entry-locator-ssot`):
      the image's locator OVER the default the env feeds (its deploy-overlay
      merge), so an equal row value is a second home that can only drift.
      State it once, in `system.toml`.
+  5. (issue 1865) a `just` recipe that starts a router AND runs a fixture
+     row's artifact takes the router's port from the image —
+     `scripts/lib/image_locator.py`, the same `system.toml` the build bakes —
+     never from a literal, and the row it runs is not a NO_ROUTER row. The
+     recipe is the router half of the pair rule 1 checks the image half of:
+     `test-rtic-main-e2e` listened on 10200 while its image baked the board
+     default 7450, and the row was exempted as router-less by a reason that
+     named a test which never ran it.
 
 Scope (phase-484 W4e): a single-package cargo LEAF row — no `image`, a
 `system.toml` beside its `Cargo.toml` declaring its one image — is an image row
@@ -81,6 +89,9 @@ except ImportError:  # Python < 3.11
     import tomli as tomllib
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
+from check_just_sources import just_sources  # noqa: E402
+from image_locator import leaf_image_id, stated_locator  # noqa: E402
 MANIFEST = "examples/fixtures.toml"
 ENV_READ = re.compile(r'option_env!\(\s*"NROS_LOCATOR"\s*\)')
 # issue 1836 — what "this board applies the image's `system.toml` locator" looks
@@ -128,12 +139,14 @@ OVERLAY_ELSEWHERE = {
 # Rows that dial NO router on purpose, by `dir`, with why. Rule 1 does not
 # apply to them; nothing else is relaxed.
 NO_ROUTER = {
-    "packages/testing/nros-tests/bins/rtic-run-plan-e2e": (
-        "baremetal_run_plan_runtime.rs runs it with no zenohd and asserts the board "
-        "reaches Executor::open and reports ConnectionFailed"
-    ),
+    # Issue 1865 — `rtic-run-plan-e2e` sat here as "the same test" for months.
+    # `baremetal_run_plan_runtime.rs` runs only the non-RTIC image below; the
+    # RTIC one's consumer is `just qemu test-rtic-main-e2e`, which starts a
+    # router — so it states a locator now, and rule 5 refuses the exemption
+    # for any row a router recipe runs.
     "packages/testing/nros-tests/bins/qemu-baremetal-main-e2e": (
-        "same test, the non-RTIC board — no router by design"
+        "baremetal_run_plan_runtime.rs runs it with no zenohd and asserts the board "
+        "reaches Executor::open and reports ConnectionFailed — no router by design"
     ),
     # Issue 1305 — single-package leaves since they moved onto their selection
     # package (a `system.toml` naming the board), but with a hand-written `main`
@@ -194,23 +207,19 @@ def image_locator(row, root):
         path = leaf_system_toml(row, root)
         with open(path, "rb") as f:
             doc = tomllib.load(f)
-        images = sorted(doc.get("image", {}))
-        if len(images) != 1:
-            return None, path, f"a leaf declares {len(images)} images; name one with `image`"
-        image_id = images[0]
+        image_id = leaf_image_id(doc)
+        if image_id is None:
+            n = len(doc.get("image", {}))
+            return None, path, f"a leaf declares {n} images; name one with `image`"
         row["image"] = image_id
     else:
         path = os.path.join(root, row["dir"], row.get("bringup", "src/demo_bringup"), "system.toml")
         with open(path, "rb") as f:
             doc = tomllib.load(f)
         image_id = row["image"].split(":")[-1]
-    image = doc.get("image", {}).get(image_id)
-    if image is None:
-        return None, path, f"`[image.{image_id}]` is not declared"
-    for table in (image, doc.get("image_defaults", {}), doc.get("system", {})):
-        if isinstance(table.get("locator"), str):
-            return table["locator"], path, None
-    return None, path, None
+    # issue 1865 — ONE reading of the overlay, shared with the router recipes.
+    locator, err = stated_locator(doc, image_id)
+    return locator, path, err
 
 
 def crates_say(crates, root, pattern):
@@ -324,6 +333,57 @@ def check_rows(rows, table, locate):
     return problems, audit
 
 
+# Rule 5 (issue 1865). A recipe header, as `check-just-recipe-paths.py` reads it.
+RECIPE_DEF = re.compile(r"^([A-Za-z_][A-Za-z0-9_-]*)(?:\s+[^:\n]*)?:(?!=)")
+ROUTER_START = re.compile(r"\bnros_router_(?:env_)?exec\b|listen/endpoints=")
+ROW_ARTIFACT = re.compile(r"\bnros_fixture_row_artifact_dir(?:_by_id)?\b")
+LITERAL_LISTEN = re.compile(r"tcp/[0-9.]+:[0-9]+")
+
+
+def recipe_bodies(text):
+    """Yield (name, body) for each recipe in one justfile's text."""
+    lines = text.splitlines()
+    i = 0
+    while i < len(lines):
+        m = RECIPE_DEF.match(lines[i])
+        if not m:
+            i += 1
+            continue
+        j = i + 1
+        while j < len(lines) and (not lines[j].strip() or lines[j][:1].isspace()):
+            j += 1
+        yield m.group(1), "\n".join(lines[i + 1 : j])
+        i = j
+
+
+def check_router_recipes(sources, rows):
+    """Rule 5 over `[(label, text)]`. A recipe that starts a router and runs a
+    fixture row's artifact must read the port off the image, and must not run
+    a row exempted as router-less."""
+    by_id = {r["id"]: r for r in rows if "id" in r}
+    problems = []
+    for label, text in sources:
+        for name, body in recipe_bodies(text):
+            if not (ROUTER_START.search(body) and ROW_ARTIFACT.search(body)):
+                continue
+            where = f"{label}: recipe `{name}`"
+            if "image_locator.py" not in body or LITERAL_LISTEN.search(body):
+                problems.append(
+                    f"{where} starts a router and runs a fixture image, but does not take the "
+                    f"router's port from the image (`python3 scripts/lib/image_locator.py "
+                    f"<leaf> --port`) — a literal port is a second home for the image's "
+                    f"locator and parts from it (issue 1865)"
+                )
+            named = {by_id[i]["dir"] for i in by_id if re.search(rf"\b{re.escape(i)}\b", body)}
+            named |= {d for d in NO_ROUTER if d in body}
+            for d in sorted(named & set(NO_ROUTER)):
+                problems.append(
+                    f"{where} starts a router for `{d}`, which NO_ROUTER exempts as dialling "
+                    f"none — the exemption is false; state the image's locator and drop it"
+                )
+    return problems
+
+
 def self_test():
     table = {"brd": (False, []), "envbrd": (True, [])}
 
@@ -349,6 +409,17 @@ def self_test():
         got = len(run(row, stated))
         if got != want:
             bad.append(f"self-test '{name}': {got} problem(s), expected {want}")
+    # Rule 5 — the 1865 shape (a literal port), its fix, and a false exemption.
+    rows5 = [{"id": "r5", "dir": next(iter(NO_ROUTER))}, {"id": "ok5", "dir": "x/leaf"}]
+    lit = "t:\n    nros_router_exec tcp/127.0.0.1:10200\n    nros_fixture_row_artifact_dir_by_id ok5\n"
+    good = ("t:\n    p=$(python3 scripts/lib/image_locator.py x/leaf --port)\n"
+            "    nros_router_exec tcp/127.0.0.1:$p\n    nros_fixture_row_artifact_dir_by_id ok5\n")
+    exempt = good.replace("ok5", "r5")
+    for name, text, want in (("literal router port", lit, 1), ("port from the image", good, 0),
+                             ("router for a NO_ROUTER row", exempt, 1)):
+        got = len(check_router_recipes([("self-test", text)], rows5))
+        if got != want:
+            bad.append(f"self-test rule 5 '{name}': {got} problem(s), expected {want}")
     # The table verifier must catch a claim the sources contradict.
     if not verify_table({"freertos": (True, READS_ENV["freertos"][1])}, ROOT):
         bad.append("self-test: a false READS_ENV claim (freertos reads env) was not caught")
@@ -378,6 +449,11 @@ def main(argv):
     problems = verify_table(READS_ENV, ROOT) + verify_overlay(READS_ENV, ROOT)
     row_problems, audit = check_rows(rows, READS_ENV, lambda r: image_locator(r, ROOT))
     problems += row_problems
+    sources = []
+    for path in just_sources(ROOT):
+        with open(path, encoding="utf-8") as f:
+            sources.append((os.path.relpath(path, ROOT), f.read()))
+    problems += check_router_recipes(sources, rows)
     if "--audit" in argv:
         print("\n".join(audit))
     if problems:
