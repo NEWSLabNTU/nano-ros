@@ -63,3 +63,23 @@ cargo-generated header. Nothing re-runs it after the second cargo write.
   Makefile generator or only ninja.
 </content>
 </invoke>
+
+### 2026-10-13: it now stops the scheduled tier-1 lane
+
+The host-tests schedule run
+[38341537002](https://github.com/NEWSLabNTU/nano-ros/actions/runs/38341537002)
+(main at `e79e8cb88`), job "tier-1 gates (just check)", on a hosted runner in
+a FRESH checkout, failed its fast line on exactly this gate:
+
+```
+===== FAIL (sizes-header-mirrors, rc=1, 3172ms) =====
+STALE MIRROR: examples/workspaces/features/build/nros-metadata/metadata-probe-cmake/build/nano_ros/packages/api/nros-cpp/include/nros/nros_cpp_config_generated.h
+STALE MIRROR: examples/templates/multi-node-workspace-cpp/build/nros-metadata/metadata-probe-cmake/build/nano_ros/packages/api/nros-cpp/include/nros/nros_cpp_config_generated.h
+2 stale sizes-header mirror(s)
+```
+
+The four scheduled host-tests runs before it (2026-10-09 to 10-12) passed. So
+the stale mirror no longer needs a long-lived checkout; one `nros sync` inside
+the lane is enough, and severity `low` understates it now. The workspace set
+differs from the measurement above: `features` and the
+`multi-node-workspace-cpp` template, not `cpp` or `derived-tiers-cpp`.
