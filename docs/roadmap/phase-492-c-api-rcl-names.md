@@ -114,12 +114,13 @@ sees zero allocations across publish and take.
   names, and build knobs (RFC-0089 amendment, "What does NOT move").
 * The C++ API, already on `rclcpp::`.
 
-## Open regressions
+## Regressions
 
-* [issue 1876](../issues/1876-nuttx-arm-c-images-never-reach-readiness.md):
-  NuttX-ARM C images fail `rclc_subscription_init_default` with
-  `RCL_RET_INVALID_ARGUMENT` after the rename, so four tier-2 cells never reach
-  readiness.
+* [issue 1876](../issues/archived/1876-nuttx-arm-c-images-never-reach-readiness.md)
+  (resolved by issue 1879): NuttX-ARM C images failed
+  `rclc_subscription_init_default` with `RCL_RET_INVALID_ARGUMENT`, because
+  W8's data-object type support was read through a GOT that `dramboot.ld`
+  never copies to RAM. NuttX C TUs now build without PIC.
 
 ## Progress
 
