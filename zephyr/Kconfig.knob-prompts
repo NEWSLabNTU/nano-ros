@@ -93,8 +93,20 @@ config NROS_ZEPHYR_HEAP_SIZE
 
 if NROS_RMW_XRCE
 
+config NROS_XRCE_BUFFER_SIZE
+    int "Per-slot static buffer size"
+
 config NROS_XRCE_CUSTOM_TRANSPORT_MTU
     int "XRCE custom-transport MTU"
+
+config NROS_XRCE_MAX_SERVICE_CLIENTS
+    int "Maximum concurrent service clients"
+
+config NROS_XRCE_MAX_SERVICE_SERVERS
+    int "Maximum concurrent service servers"
+
+config NROS_XRCE_MAX_SUBSCRIBERS
+    int "Maximum concurrent subscribers"
 
 config NROS_XRCE_STREAM_HISTORY
     int "Reliable stream history depth"
@@ -174,6 +186,9 @@ config NROS_ZENOH_READ_PRIORITY
 
 config NROS_SERVICE_BUFFER_SIZE
     int "Per-service static buffer size (alias of NROS_SERVICE_INBOX_BYTES)"
+
+config NROS_ZENOH_SOCKET_TIMEOUT_MS
+    int "zenoh-pico socket recv timeout (ms)"
 
 config NROS_SUBSCRIBER_LARGE_SIZE
     int "Large-class payload buffer size (-1 = derive)"

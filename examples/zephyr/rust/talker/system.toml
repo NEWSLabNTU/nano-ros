@@ -50,7 +50,9 @@ locator = "udp/127.0.0.1:2018"
 #   * SERVICE_SERVERS: the derived 1 is the queryable a TRANSIENT_LOCAL
 #     publisher costs on ZENOH, which XRCE does not create, so 0 is stated;
 #   * SERVICE_CLIENTS has no derivation at all.
-env = { NROS_XRCE_MAX_SERVICE_SERVERS = "0", NROS_XRCE_MAX_SERVICE_CLIENTS = "0" }
+[image.zephyr_xrce.knobs.xrce]
+max_service_servers = 0
+max_service_clients = 0
 
 [image.zephyr_cyclonedds]
 board = "zephyr"

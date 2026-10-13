@@ -46,7 +46,10 @@ locator = "udp/127.0.0.1:2018"
 # Zephyr leaf's entity inventory does not compose (measured, phase-481 W3:
 # refused for every C/C++ leaf and five of the six Rust ones), and the client
 # cap has no derivation at all, so `-1` would fall to the crate default.
-env = { NROS_XRCE_MAX_SUBSCRIBERS = "0", NROS_XRCE_MAX_SERVICE_SERVERS = "3", NROS_XRCE_MAX_SERVICE_CLIENTS = "0" }
+[image.zephyr_xrce.knobs.xrce]
+max_subscribers = 0
+max_service_servers = 3
+max_service_clients = 0
 
 [image.zephyr_cyclonedds]
 board = "zephyr"
