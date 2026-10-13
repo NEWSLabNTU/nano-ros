@@ -90,6 +90,21 @@ get_filename_component(_NROS_IMAGE_KCONFIG_ROOT "${CMAKE_CURRENT_LIST_DIR}/../..
 set(_NROS_IMAGE_KCONFIG_ROOT "${_NROS_IMAGE_KCONFIG_ROOT}" CACHE INTERNAL
     "the nano-ros module root the module_ext_root hook renders against (phase-481 W1)")
 
+# phase-484 W8 — the spelling a project writes a knob in, for a refusal to name:
+# `[image.<image>.knobs.<table>] <name> = <value>`. A Kconfig bool's `y`/`n` is
+# TOML's `true`/`false`; anything else is carried as written.
+function(_nros_image_knob_spelling _out _image _id _val)
+    set(_v "${_val}")
+    if(_v STREQUAL "y")
+        set(_v "true")
+    elseif(_v STREQUAL "n")
+        set(_v "false")
+    endif()
+    set(${_out}
+        "`[image.${_image}.knobs.${NROS_KNOB_IMAGE_TABLE_${_id}}] ${NROS_KNOB_IMAGE_NAME_${_id}} = ${_v}`"
+        PARENT_SCOPE)
+endfunction()
+
 function(nros_image_kconfig_hook)
     if(DEFINED APPLICATION_BINARY_DIR)
         set(_bin "${APPLICATION_BINARY_DIR}")
@@ -227,9 +242,10 @@ function(nros_image_kconfig_hook)
             else()
                 set(_val "$CACHE{CLI_CONFIG_${_sym}}")
             endif()
+            _nros_image_knob_spelling(_spell "${_image}" "${_id}" "${_val}")
             string(APPEND _cli_knobs
                 "\n  -DCONFIG_${_sym}=${_val}  ->  -DNROS_OVERRIDE_${_id}=${_val} for this "
-                "build, or `env = { NROS_${_id} = \"${_val}\" }` in [image.${_image}]")
+                "build, or ${_spell} in system.toml")
         endif()
     endforeach()
     if(NOT _cli_knobs STREQUAL "")
@@ -393,10 +409,10 @@ function(_nros_image_kconfig_refuse_conf_knobs files system image)
                 set(_val "${CMAKE_MATCH_2}")
                 if(_sym IN_LIST _syms)
                     set(_id "${_id_of_${_sym}}")
+                    _nros_image_knob_spelling(_spell "${image}" "${_id}" "${_val}")
                     string(APPEND _found
-                        "\n  ${_f}: CONFIG_${_sym}=${_val}  ->  `env = { NROS_${_id} = "
-                        "\"${_val}\" }` in [image.${image}], or -DNROS_OVERRIDE_${_id}=${_val} "
-                        "for one build")
+                        "\n  ${_f}: CONFIG_${_sym}=${_val}  ->  ${_spell} in system.toml, "
+                        "or -DNROS_OVERRIDE_${_id}=${_val} for one build")
                 endif()
             endif()
         endforeach()
