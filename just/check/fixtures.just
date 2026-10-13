@@ -98,6 +98,14 @@ example-leaf-build-dirs:
 example-leaf-target-dirs:
     @python3 scripts/check-example-leaf-target-dirs.py
 
+# issue 1866 — the cmake side of the same question: every `build-<rmw>/` name
+# `Rmw::build_dir()` returns (plus `build/`), under every fixture row's `dir`,
+# is ignored — asked of git itself (`check-ignore --no-index`), so a leaf with
+# no per-leaf `.gitignore` cannot leave its build tree untracked again.
+[private]
+fixture-build-dirs-ignored:
+    @python3 scripts/check-fixture-build-dirs-ignored.py
+
 # Phase 118.I.5 — keep collapsed examples from regrowing a retired RMW
 # directory axis without an explicit documented carve-out.
 [private]
