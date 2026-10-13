@@ -127,6 +127,7 @@ ffi-struct-mirrors
 fixture-artifact-dir-inputs
 fixture-binary-names
 fixture-boards-declared
+fixture-build-dirs-ignored
 fixture-groups
 fixture-id-guard
 fixture-staleness-probes

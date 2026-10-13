@@ -199,6 +199,21 @@ examples/**/target-*/
 # fixture sweep. No `examples/**/build/` path is tracked, here or anywhere.
 examples/**/build/
 
+# issue 1866 — the fixture harness configures a cmake row into `build-<rmw>/`
+# (`Rmw::build_dir()`), beside the leaf, in `examples/` AND `packages/testing/`.
+# Those were ignored only by per-leaf `.gitignore` lines, so a leaf without one
+# (`bins/contract-monitor-cpp`, until issue 1845) left its build tree untracked
+# after a fixture build. One rule per name, gated by `check-fixture-build-dirs-
+# ignored`, which reads the names from `Rmw::build_dir()` and the dirs from
+# `examples/fixtures.toml`.
+examples/**/build-zenoh/
+examples/**/build-xrce/
+examples/**/build-cyclonedds/
+packages/testing/**/build/
+packages/testing/**/build-zenoh/
+packages/testing/**/build-xrce/
+packages/testing/**/build-cyclonedds/
+
 # Phase 277 W7 — standalone example/workspace Cargo.locks are never committed.
 # They are not reproducibility-critical (scripts/build/cargo.sh prefetch
 # refreshes them without --locked) and committed copies go stale (known-issue
