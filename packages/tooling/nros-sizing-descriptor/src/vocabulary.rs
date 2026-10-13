@@ -467,6 +467,39 @@ vocabulary! {
     }
 }
 
+vocabulary! {
+    /// `[image] infra_families` — which of the runtime's own service families
+    /// the image builds: the ROS parameter services (six servers per node) and
+    /// the REP-2002 lifecycle services (five per executor). The spellings are
+    /// the four the `NROS_DECLARED_INFRA_QUERYABLES` carrier used, which this
+    /// field retired; [`crate::infra::declared_families`] parses them, so the
+    /// two readers that price these servers keep one parser.
+    ///
+    /// `None` is a statement ("neither family"), not an absence.
+    InfraFamilies {
+        /// Neither family.
+        None => "none",
+        /// The parameter services only.
+        Param => "param",
+        /// The lifecycle services only.
+        Lifecycle => "lifecycle",
+        /// Both.
+        ParamLifecycle => "param+lifecycle",
+    }
+}
+
+impl InfraFamilies {
+    /// From the two switches.
+    pub fn from_switches(param_services: bool, lifecycle: bool) -> Self {
+        match (param_services, lifecycle) {
+            (true, true) => Self::ParamLifecycle,
+            (true, false) => Self::Param,
+            (false, true) => Self::Lifecycle,
+            (false, false) => Self::None,
+        }
+    }
+}
+
 impl ParamStore {
     /// Does the image build a store?
     pub fn is_built(self) -> bool {
@@ -509,6 +542,7 @@ mod tests {
         round_trip!(Reliability);
         round_trip!(Durability);
         round_trip!(RegistrationPath);
+        round_trip!(InfraFamilies);
     }
 
     /// The one vocabulary the macro does not build, held to the same rule.

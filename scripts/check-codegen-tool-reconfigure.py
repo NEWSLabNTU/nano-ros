@@ -153,7 +153,6 @@ VERSION_HELPER = "nros_codegen_version_stale"
 # execute_process `COMMAND`, and keeps its own rule: NON_EMITTING_ARG below.)
 NOT_EMITTING = {
     "ws entity-inventory": "a fact verb, read back inside its own configure (module docstring)",
-    "ws entity-facts": "a fact verb, read back inside its own configure (module docstring)",
     "ws entity-census": "`path` locates a census and `check` gives a verdict on one (issue 1556); neither writes code a build compiles",
     "image-facts": "a fact verb, read back inside its own configure (module docstring)",
     "board cmake-vars": "a fact verb, read back inside its own configure (module docstring)",

@@ -128,9 +128,9 @@ use eyre::Result;
 /// tier 2 red — `nros codegen resolve-deps` refused a correct, freshly built
 /// binary — and the fix exempted the three verbs whose symptom was seen.
 ///
-/// These five are the rest of the same class, measured from a foreign checkout:
+/// These were the rest of the same class, measured from a foreign checkout:
 /// `ws providers`, `ws order`, `ws entity-inventory`, `ws board-facts` and
-/// `ws entity-facts` all get `this nros does not belong to the checkout it is
+/// `ws entity-facts` (retired, phase-486) all got `this nros does not belong to the checkout it is
 /// being run against`. Their cmake call sites are
 /// `NanoRos{Providers,Workspace,EntityInventory,BoardFacts,EntityFacts}.cmake`,
 /// none of which sets `WORKING_DIRECTORY`, so every one inherits the cwd that
@@ -172,7 +172,6 @@ fn ws_cmd_name(args: &cmd::ws::Args) -> &'static str {
         cmd::ws::Sub::Providers(_)
         | cmd::ws::Sub::Order(_)
         | cmd::ws::Sub::BoardFacts(_)
-        | cmd::ws::Sub::EntityFacts(_)
         | cmd::ws::Sub::EntityInventory(_)
         | cmd::ws::Sub::LeafSystem(_)
         | cmd::ws::Sub::SizingDescriptor(_)

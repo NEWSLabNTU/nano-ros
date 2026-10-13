@@ -353,17 +353,22 @@ fn main() {
     let desc = sizing_descriptor();
     let mut demand = XrceDemand::derive_stated(desc.as_ref(), param_inbox_stated);
     // Issue 1743 — the service-server slots, completed from the runtime's own
-    // servers. Outside `derive_stated` because one of its inputs is the
-    // `NROS_DECLARED_INFRA_QUERYABLES` fact as well as the descriptor. The node
-    // count is the descriptor's `[image] model_nodes` since phase-486 W9 (the
-    // `NROS_DECLARED_NODES` carrier retired), passed in that carrier's
-    // spelling so the shared rule keeps its one parser.
+    // servers. Both completing facts are the descriptor's since phase-486
+    // (`[image] infra_families` and `model_nodes`; their `NROS_DECLARED_*`
+    // carriers retired), passed in those carriers' spellings so the shared
+    // rule keeps its one parser.
+    let infra_families = desc.as_ref().and_then(|d| {
+        d.image
+            .infra_families()
+            .stated()
+            .map(|f| f.tag().to_string())
+    });
     let model_nodes = desc
         .as_ref()
         .and_then(|d| d.image.model_nodes().stated().map(usize::to_string));
     demand.derive_service_servers(
         desc.as_ref(),
-        declared_fact(ENV_DECLARED_INFRA).as_deref(),
+        infra_families.as_deref(),
         model_nodes.as_deref(),
     );
     demand.report();
@@ -978,22 +983,9 @@ const ENV_SUBSCRIBER_RING_DEPTH: &str = "NROS_XRCE_SUBSCRIBER_RING_DEPTH";
 // Issue 1722 — bound to `XRCE_PARAM_REQUEST_BYTES` by `xrce-config.txt`. The
 // backend-neutral knob, not an XRCE one: nros-node checks a statement of it.
 const ENV_PARAM_REQUEST: &str = "NROS_PARAM_SERVICE_INBOX_BYTES";
-// Issue 1743 — the service-server slot count, and the two facts that complete
-// it with the runtime's own parameter and lifecycle servers.
+// Issue 1743 — the service-server slot count. The two facts that complete it
+// with the runtime's own parameter and lifecycle servers are the descriptor's.
 const ENV_SERVICE_SERVERS: &str = "NROS_XRCE_MAX_SERVICE_SERVERS";
-const ENV_DECLARED_INFRA: &str = "NROS_DECLARED_INFRA_QUERYABLES";
-
-/// A `NROS_DECLARED_*` fact from the environment, WATCHED: an image that gains
-/// a node or a service family must re-run this script, or its slots stay sized
-/// for the image it used to be (issue 1122). The watches are spelled in full,
-/// one per fact, because `check-declared-fact-carriers` reads them by name.
-/// Emptiness is read by `nros_sizing_descriptor::infra::stated` at the rule, so
-/// an empty carrier is undeclared here exactly as it is in the zenoh build
-/// (issue 1429).
-fn declared_fact(name: &str) -> Option<String> {
-    println!("cargo:rerun-if-env-changed=NROS_DECLARED_INFRA_QUERYABLES");
-    env::var(name).ok()
-}
 
 /// Rung 3.5 of the ladder in `packages/rmw/xrce/xrce-config.txt`.
 ///

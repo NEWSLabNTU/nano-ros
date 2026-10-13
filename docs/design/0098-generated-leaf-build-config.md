@@ -160,8 +160,9 @@ entity-facts` already answers that from the SystemModel's `execution.features`
 `NROS_DECLARED_SERVICE_SERVERS` + `NROS_DECLARED_INFRA_QUERYABLES` +
 `NROS_DECLARED_NODES`. (Issue 1649 later retired the application half,
 `NROS_DECLARED_SERVICE_SERVERS`, onto the sizing descriptor's `[image]
-service_server_queryables`, and phase-486 W9 the node count, onto `[image]
-model_nodes`; the infrastructure fact remains.) So the facts are CARRIED, never the count (issue 0460),
+service_server_queryables`, phase-486 W9 the node count onto `[image]
+model_nodes`, and phase-486 W9b the infrastructure fact onto `[image]
+infra_families`, retiring `nros ws entity-facts` with it.) So the facts are CARRIED, never the count (issue 0460),
 and they go in that image's own `build/<coord>/<entry>/nros-cargo.toml` `[env]`. This
 closes the question the first revision left open: today a workspace member's
 sidecar is the workspace root's, shared by every image, and cargo reads

@@ -399,6 +399,13 @@ pub struct DescriptorInputs<'a> {
     /// `None` when this producer read no bringup at all; `store` is then stated
     /// only when the contract's declarations answer it on their own.
     pub infra: Option<InfraServices>,
+    /// phase-486 -- `[image] infra_families`: which runtime service families
+    /// the image builds, as its `NROS_DECLARED_INFRA_QUERYABLES` carrier used
+    /// to say. Not always [`Self::infra`]'s: the cargo leaf unions in the
+    /// families its manifest compiles (`leaf_entity_env::leaf_infra`), where
+    /// the store view keeps `param_services` only where it is compiled in.
+    /// `None` leaves the field ABSENT, the carrier's absence.
+    pub infra_families: Option<nros_sizing_descriptor::InfraFamilies>,
     /// Whether the linked backend carries type descriptors.
     pub backend_schema: Option<BackendSchema>,
     /// Whether the linked backend dispatches in place (phase-454 W5). `None`
@@ -1414,6 +1421,8 @@ fn image_facts(inputs: &DescriptorInputs<'_>) -> nros_sizing_descriptor::Image {
     // floors the count at one (`infra::declared_nodes`), so `0` and absent are
     // one answer, and absent keeps an empty model at no file.
     img.set_model_nodes(inputs.infra.map(|i| i.model_nodes).filter(|&n| n > 0));
+    // phase-486 -- the families travel with it, as their two carriers did.
+    img.set_infra_families(inputs.infra_families);
     img
 }
 
@@ -1904,10 +1913,13 @@ pub fn write_for_leaf(
     // `param-services`, which every C++ image carries (issue 1529) and which no
     // road reads, this feature is the leaf's own choice. No model leaves it
     // `None`, and the field ABSENT.
-    let infra = leaf_store_infra(
-        model.as_ref(),
-        crate::leaf_entity_env::manifest_infra(leaf).0,
-    );
+    let manifest = crate::leaf_entity_env::manifest_infra(leaf);
+    let infra = leaf_store_infra(model.as_ref(), manifest.0);
+    // phase-486 -- the families the image's queryable table is sized for: the
+    // model UNIONED with the manifest, the carrier's own rule, NOT the store
+    // view above.
+    let infra_families =
+        crate::leaf_entity_env::leaf_infra(model.as_ref(), manifest).map(families_of);
     let inventory = match (inventory, model) {
         (Some(inv), Some(model)) => {
             let joined = crate::contract_join::join(&inv, &model);
@@ -1953,6 +1965,7 @@ pub fn write_for_leaf(
         heap_budget_bytes: heap_budget(path_env, &img.board),
         params: params.as_ref(),
         infra,
+        infra_families,
         // A cargo leaf is a Rust entry by construction: this road is cargo, and
         // the C/C++ images go through cmake.
         language: Some(EntryLanguage::Rust),
@@ -2536,6 +2549,13 @@ fn compose_unwired(
     // Zero is absent, as in `image_facts`: every consumer floors it at one.
     let model_nodes = model_nodes.filter(|&n| n > 0);
     desc.image.set_model_nodes(model_nodes);
+    // phase-486 -- the families wherever the node count is stated: the two
+    // carriers always travelled together. (An empty model therefore states
+    // neither and keeps no file; its carrier said `none`, which no consumer can
+    // act on for an image with no node.)
+    if model_nodes.is_some() {
+        desc.image.set_infra_families(Some(families_of(infra)));
+    }
     if !img.bound_inventories.is_empty() {
         let (bounds, bounds_error) =
             match crate::leaf_payload_classes::bound_rows_from_tables(img.bound_inventories) {
@@ -2566,6 +2586,11 @@ fn compose_unwired(
         desc.meta.set_composed_entries(rt.entries.to_vec());
     }
     Some(desc)
+}
+
+/// The `[image] infra_families` spelling of an [`InfraServices`].
+fn families_of(infra: InfraServices) -> nros_sizing_descriptor::InfraFamilies {
+    infra.families()
 }
 
 /// [`Wiring::Composed`]'s descriptor, and the directory its inventory was
@@ -2619,6 +2644,7 @@ fn compose_wired<'i>(
         // standalone leaf's `[system] features`), so `[params] store` is the
         // envelope over a shared runtime's images by the same union.
         infra: Some(inventory.infra()),
+        infra_families: Some(families_of(inventory.infra())),
         // No ONE entry language: this road is several packages. Since issue
         // 1393 that costs nothing a backend can answer without it — on a
         // descriptor-carrying backend every language gives `typed_bound`, and
@@ -3357,6 +3383,7 @@ mod tests {
             params: None,
             // And no bringup read, so `[params] store` stays ABSENT too.
             infra: None,
+            infra_families: None,
             language: Some(EntryLanguage::Rust),
             backend_schema: Some(BackendSchema::Schemaless),
             backend_dispatch: Some(BackendDispatch::InPlace),

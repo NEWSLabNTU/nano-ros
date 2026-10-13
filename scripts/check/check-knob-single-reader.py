@@ -489,6 +489,26 @@ RETIRED = {
             "packages/cli/nros-cli-core/src/leaf_entity_env.rs",
         ),
     ),
+    # phase-486 -- the last queryable raw input. Its KEPT reason (RFC-0100's
+    # 2026-10-03 ruling: a contract-less image writes no descriptor) went with
+    # W9, which gave every resolved model's image a file; the families are a
+    # MODEL fact, stated beside the node count. With it went the
+    # `nros ws entity-facts` verb and the cmake fold that carried nothing else.
+    "the service-family `NROS_DECLARED_*` carrier": Retired(
+        what="NROS_DECLARED_INFRA_QUERYABLES (and `nros ws entity-facts`, "
+        "`nros_record_entity_facts`, `nros_fold_entity_facts`)",
+        resolves_now=(
+            "the sizing descriptor's `[image] infra_families` "
+            "(nros-zpico-build, nros-rmw-xrce-cffi)"
+        ),
+        wave="phase-486",
+        forbid=[
+            (":(glob)cmake/**/*.cmake", r"NROS_DECLARED_INFRA_QUERYABLES[;=]"),
+            (":(glob)zephyr/**/*.cmake", r"_nros_resolve_(derivable_)?knob\(NROS_DECLARED_INFRA_QUERYABLES\b"),
+            (":(glob)packages/**/*.rs", r'"NROS_DECLARED_INFRA_QUERYABLES'),
+        ],
+        cite=(),
+    ),
     "the `nros-metadata.json` `entities` reader": Retired(
         what="the Rust reader of a component's declared entities in nros-metadata.json",
         resolves_now=(
@@ -643,14 +663,6 @@ _D12_UNMEASURED = (
 # a stated entity fact. Its 2026-10-10 successor ("a stated fact earns a file,
 # whatever it came from") retired the two carriers this ruling kept for a
 # contract-less image (phase-486 W9); the feature token below is the one left.
-_CONTRACTLESS_FEATURE = (
-    "a FEATURE token (`execution.features`: param / lifecycle services) that "
-    "exists for a model with no wiring, i.e. for the contract-less images that "
-    "write no descriptor by design (RFC-0100 D4, ruled 2026-10-03, issue "
-    "1655); a field would repeat it on the images that have one and retire it "
-    "on none"
-)
-
 _BOARD_CAPACITY = (
     "a BOARD capacity (RFC-0100 D1 target fact), deliberately absent from the "
     "descriptor -- the contract states the NEED, never the size"
@@ -658,20 +670,8 @@ _BOARD_CAPACITY = (
 
 KEPT = {
     # ---- the queryable raw inputs ----------------------------------------
-    # `NROS_DECLARED_NODES` and `NROS_DECLARED_SUBSCRIPTION_BUFFER_SIZE` are
-    # RETIRED above (phase-486 W9).
-    #
-    # Issue 1655 ruling: the feature token is a MODEL-only fact. It exists
-    # for a model with no wiring at all (`declared_infra` is always emitted,
-    # contract or not), and "no stated entity fact => no file" (RFC-0100 D4,
-    # 2026-10-03) meant exactly those images had no descriptor -- so the
-    # carrier was the delivery there by design. phase-486 W9 changed the
-    # premise: every resolved model's image now states `[image] model_nodes`
-    # and so has a file. This carrier can follow onto a descriptor field the
-    # same way; W9 retired only the two it was scoped to. Measured: dropping it
-    # on the native configure moves ZPICO_MAX_QUERYABLES 6 -> 23 (the table
-    # becomes undeclared).
-    "NROS_DECLARED_INFRA_QUERYABLES": ByDesign(100, "D4", _CONTRACTLESS_FEATURE),
+    # `NROS_DECLARED_NODES`, `NROS_DECLARED_SUBSCRIPTION_BUFFER_SIZE` (phase-486
+    # W9) and `NROS_DECLARED_INFRA_QUERYABLES` (phase-486) are RETIRED above.
     # ---- the parameter store (was 1408, then 1407; the road is D12's) ----
     "NROS_DECLARED_MAX_STRING_VALUE_LEN": ByDesign(100, "D1", _BOARD_CAPACITY),
     "NROS_DECLARED_MAX_ARRAY_LEN": ByDesign(100, "D1", _BOARD_CAPACITY),

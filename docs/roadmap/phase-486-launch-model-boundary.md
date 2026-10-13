@@ -1,6 +1,6 @@
 # Phase 486 — the launch model carries what every realizer reads; nano-ros's own facts move to an overlay
 
-**Status (2026-10-13). W0–W4, W7 and W8a–W8c LANDED (W4 #2034, W7 #2038, W8a #2067, W8b rlm `v0.1.57`, W8c this pin bump); W5 landed in play_launch (`ca7eb1a`, its phase 86 W1–W4) and W6 in rlm (`v0.1.55`/`v0.1.56`). W9 in review (#2076). The 0.6.0 deletion of `[deploy.*]`/`[param_services]` is ready and HELD for the version bump (issue 1809, draft #2081). Design revised 2026-10-12 and 2026-10-13 (below).** Implements RFC-0060's
+**Status (2026-10-13). W0–W4, W7 and W8a–W8c LANDED (W4 #2034, W7 #2038, W8a #2067, W8b rlm `v0.1.57`, W8c #2089); W5 landed in play_launch (`ca7eb1a`, its phase 86 W1–W4) and W6 in rlm (`v0.1.55`/`v0.1.56`). W9 LANDED (#2076), and W9b retires the last carrier (below). The 0.6.0 deletion of `[deploy.*]`/`[param_services]` landed with the bundle bump to 0.6.0 (issue 1809; PR #2081). Design revised 2026-10-12 and 2026-10-13 (below).** Implements RFC-0060's
 [2026-10-10 amendment](../design/0060-launch-toolchain-three-layers.md#amendment-2026-10-10--what-the-systemmodel-may-carry-and-where-nano-ross-own-facts-go)
 and RFC-0100's
 [2026-10-10 ruling](../design/0100-rmw-agnostic-sizing-model.md#ruling-2026-10-10--a-stated-fact-earns-a-file-whatever-it-came-from).
@@ -698,7 +698,53 @@ since issue 1649. Every road that sent either carrier names one.)
   worktrees (`undefined symbol NROS`).
 - **Left for later:** `NROS_DECLARED_INFRA_QUERYABLES`. Its KEPT reason was
   that a contract-less image has no file. Every resolved model's image now
-  has one, so it can follow onto a descriptor field the same way.
+  has one, so it can follow onto a descriptor field the same way. (Done: W9b.)
+
+### W9b result (2026-10-13) — the service-family carrier
+
+- **Where the fact lives now:** `[image] infra_families`, a vocabulary of the
+  carrier's own four spellings (`none`, `param`, `lifecycle`,
+  `param+lifecycle`), so `nros_sizing_descriptor::infra` keeps its one parser.
+  It is stated wherever the carrier was sent: every composed image, and every
+  unwired one that states `model_nodes` (the two carriers always travelled
+  together). On a cargo leaf it is the carrier's own rule, the model's
+  families UNIONED with the service features the leaf's `nros` dependency
+  enables (`leaf_entity_env::leaf_infra`) -- not `[params] store`'s view, which
+  keeps `param_services` only where it is compiled in (issue 1706).
+- **Readers:** `nros-zpico-build` (queryable table, its floor, the liveliness
+  pool) and `nros-rmw-xrce-cffi` (service-server slots) read the field.
+  `InfraServices::token()` became `families()`, returning the vocabulary.
+- **Deleted, because it carried nothing else:** `nros ws entity-facts`, the
+  cmake `nros_record_entity_facts` / `nros_fold_entity_facts` (and issue
+  1429's `_nros_entity_fact` reader), the cargo workspace's per-image
+  `entity_facts` settings rows and the cargo leaf's sidecar fact rows. The
+  standalone cmake leaf keeps writing its descriptor
+  (`nros_record_leaf_entity_facts`), and a census leaf whose census cannot
+  answer is still FATAL, now through `nros_sizing_descriptor_from_leaf
+  REQUIRED`. `check-knob-single-reader` has a RETIRED entry, wave
+  "phase-486"; no `KEPT` row for a queryable input remains.
+- **West, which carried NO carrier, now states the families.** That arms the
+  zenoh floor check there for the first time, which was the risk this
+  retirement was waiting on (the floor once refused a west talker at 1 slot
+  against 12, with the families ABSENT and read as "both").
+- **Measured** with W9's method, main (A) vs this branch (B), plus a negative
+  control on main with the carrier dropped (C):
+
+  | road | image | A vs B | A vs C |
+  | --- | --- | --- | --- |
+  | cmake multi-entry | `workspaces/cpp` `native`, `param_services` temporarily on (reverted) | 0 of 65 | `ZPICO_MAX_QUERYABLES` 22→32, `MAX_LIVELINESS` 29→36, `QUERYABLE_TABLE_DECLARED` true→false |
+  | cargo workspace | `features`: `native_rust_custom_msg` (unwired), `native_rust_qos`, `native_rust_params_xrce` | 0 in value (one cargo hash inside a path in XRCE's vendor record) | queryables 25→32 and 18→32, liveliness 38→16, `DECLARED` true→false |
+  | cargo leaf / standalone cmake leaf | `native/rust/talker`, `native/cpp/talker` | 0 of 57 | -- |
+  | Zephyr west | `features` `zephyr_rust_params` (`param_services`), native_sim | 0 of 26 (a package index of source mtimes) | -- |
+
+  West was built in a hard-link copy of the main checkout's Zephyr workspace
+  whose `nano-ros` points at the tree under test (`/home/aeon/zephyr-ws-wt`):
+  the shared `~/.nros/workspaces/zephyr/3.7` names a manifest directory holding
+  only `west.yml`, so no checkout can build west through it. The west image
+  links on both sides, with the floor check now armed, and every generated
+  config is identical: west states its `ZPICO_*` tables from Kconfig, so the
+  families change no default it reads. `zephyr_cpp_params` was not measured:
+  it fails to find `nano_rosConfig.cmake` on main and here alike.
 
 ## Migration
 

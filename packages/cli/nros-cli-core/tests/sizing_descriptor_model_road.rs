@@ -345,6 +345,10 @@ fn bound_tables_turn_the_model_roads_payload_refusals_into_facts() {
         heap_budget_bytes: Some(65_536),
         params: Some(inv.param_declarations()),
         infra: Some(inv.infra()),
+        infra_families: Some(nros_sizing_descriptor::InfraFamilies::from_switches(
+            inv.infra().param_services,
+            inv.infra().lifecycle,
+        )),
         language: Some(EntryLanguage::CFamily),
         backend_schema: None,
         backend_dispatch: None,
@@ -528,6 +532,14 @@ fn an_unwired_image_states_the_retired_carriers_facts_as_the_wired_road_does() {
     let with_tables = unwired(&dir.join("unwired"), &tables);
     assert_eq!(with_tables.desc.image.model_nodes().stated(), Some(&nodes));
     assert_eq!(wired.desc.image.model_nodes().stated(), Some(&nodes));
+    // phase-486 -- and the service families, the retired
+    // `NROS_DECLARED_INFRA_QUERYABLES` carrier's fact, the same on both.
+    let families = infra.families();
+    assert_eq!(
+        with_tables.desc.image.infra_families().stated(),
+        Some(&families)
+    );
+    assert_eq!(wired.desc.image.infra_families().stated(), Some(&families));
     // The fixture's closure carries unbounded types, so both roads REFUSE the
     // maximum (the carrier's `derived` guard would not have fired either) --
     // what this asserts is that the unwired road reaches the SAME rule over the

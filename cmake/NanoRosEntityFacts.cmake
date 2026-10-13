@@ -24,118 +24,11 @@ include_guard(GLOBAL)
 
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCorrosionEnv.cmake")
 
-# _nros_entity_fact(<out-var> <PROPERTY>)
-#
-# Read one accumulator property into a variable that is ALWAYS DEFINED, so
-# `if(NOT <out-var> STREQUAL "")` means what it reads as.
-#
-# THE TRAP THIS EXISTS FOR (issue 1429). `get_property()` leaves its output
-# variable UNDEFINED when the property was never set -- it does not set it to
-# the empty string. `if()` dereferences a bare word only when it names a DEFINED
-# variable and otherwise compares the LITERAL NAME, so for an unset property
-# `if(NOT _tl STREQUAL "")` compares `_tl` against `""`, which is never equal,
-# and the guard that exists to skip an absent fact takes its branch instead --
-# emitting `NROS_DECLARED_TL_PUBLISHERS=` with no value.
-#
-# That is a FOURTH answer on a carrier whose contract has three (absent,
-# `refused`, a count), and the consumer is written to be loud about a value it
-# cannot read rather than to guess one -- 1015 and 1033 are what guessing costs.
-# So an unset property reached `NROS_DECLARED_TL_PUBLISHERS="" is neither a
-# count nor `refused`', a panic in `nros-zpico-build`'s build script, on every
-# C/C++ workspace whose model describes no wiring.
-#
-# Measured, not reasoned: a property SET to the empty string skips correctly
-# (the variable is then defined), which is why this reads as a fix for a case
-# that cannot happen. The two cases differ, and only the unset one is live.
-#
-# ONE SPELLING, not a quoted `if()` per site. `if(NOT "${_tl}" STREQUAL "")` is
-# equally correct and was the first draft; it is rejected because it is
-# invisible -- three sites already carried the unquoted form, two of them masked
-# by an accident of which properties happen to be set, and nothing distinguishes
-# a site that was fixed from one nobody looked at. A named reader is greppable,
-# and `check-declared-fact-carriers` reads it. (Same shape as #282 -> #326: a
-# second idiom beside the first is how a class fix stops being one.)
-function(_nros_entity_fact _out _prop)
-    get_property(_v GLOBAL PROPERTY ${_prop})
-    set(${_out} "${_v}" PARENT_SCOPE)
-endfunction()
-
-# nros_record_entity_facts(<model-path>)
-#
-# Ask `nros ws entity-facts` about ONE entry's model and fold the answer into
-# this configure's accumulated view.
-#
-# Deliberately soft on failure, exactly like `nros_resolve_board_facts`: a model
-# that is not there yet, a CLI that has not been built, an entry addressed the
-# `MODEL` way at a path that does not exist — all mean "this configure has no
-# entity facts to carry", which is the state every build was in before this
-# wave. Nothing here is a configuration error, so nothing here is fatal.
-function(nros_record_entity_facts _model)
-    if(_model STREQUAL "" OR NOT EXISTS "${_model}")
-        return()
-    endif()
-    if(NOT DEFINED _NANO_ROS_CODEGEN_TOOL OR NOT EXISTS "${_NANO_ROS_CODEGEN_TOOL}")
-        return()
-    endif()
-
-    # One run per distinct model — several entries share a bringup, and the
-    # workspaces that do (workspaces/c has 7) would otherwise pay the verb once
-    # per entry for the same answer.
-    string(MAKE_C_IDENTIFIER "NROS_ENTITY_FACTS_MEMO__${_model}" _memo)
-    get_property(_seen GLOBAL PROPERTY ${_memo})
-    if(_seen)
-        return()
-    endif()
-    set_property(GLOBAL PROPERTY ${_memo} TRUE)
-
-    execute_process(
-        COMMAND "${_NANO_ROS_CODEGEN_TOOL}" ws entity-facts --model "${_model}"
-        OUTPUT_VARIABLE _out
-        ERROR_VARIABLE _err
-        RESULT_VARIABLE _rc
-        OUTPUT_STRIP_TRAILING_WHITESPACE)
-    if(NOT _rc EQUAL 0)
-        string(REGEX REPLACE "\n+" " " _why "${_err}")
-        string(SUBSTRING "${_why}" 0 200 _why)
-        message(STATUS "nano-ros: entity facts NOT read from ${_model} — ${_why}")
-        return()
-    endif()
-
-    nros_fold_entity_facts("${_out}")
-endfunction()
-
-# nros_fold_entity_facts(<KEY=VALUE text>)
-#
-# Fold ONE answer — whatever produced it — into this configure's accumulated
-# view. Extracted from `nros_record_entity_facts` by issue 1142 so the
-# STANDALONE-LEAF road (`NanoRosLeafEntityFacts.cmake`) folds through the same
-# code: two readings of one `KEY=VALUE` contract is how the two roads would come
-# to size one image two ways.
-#
-# The caller decides whether there is anything to fold. A producer that
-# ABSTAINS must not reach here — an empty fold would still assert
-# `NROS_ENTITY_FACTS_SEEN`, which is the
-# "nobody described this image" state said in a way that reads as an answer.
-function(nros_fold_entity_facts _out)
-    set_property(GLOBAL PROPERTY NROS_ENTITY_FACTS_SEEN TRUE)
-
-    string(REPLACE "\n" ";" _lines "${_out}")
-    foreach(_line IN LISTS _lines)
-        if(_line MATCHES "^NROS_DECLARED_INFRA_QUERYABLES=(.*)$")
-            set(_infra "${CMAKE_MATCH_1}")
-            if(_infra MATCHES "param")
-                set_property(GLOBAL PROPERTY NROS_ENTITY_INFRA_PARAM TRUE)
-            endif()
-            if(_infra MATCHES "lifecycle")
-                set_property(GLOBAL PROPERTY NROS_ENTITY_INFRA_LIFECYCLE TRUE)
-            endif()
-        endif()
-        # phase-486 W9 -- the node count (`NROS_DECLARED_NODES`, MAX across the
-        # configure's models) is no longer carried: the sizing descriptor's
-        # `[image] model_nodes` states it, the runtime file the same MAX
-        # (`InfraServices::union`).
-    endforeach()
-endfunction()
+# phase-486 -- `nros_record_entity_facts` / `nros_fold_entity_facts` (and the
+# `_nros_entity_fact` reader issue 1429 added for them) are RETIRED with the
+# last `NROS_DECLARED_*` fact they carried, the runtime's service families. The
+# sizing descriptor states it (`[image] infra_families`) on every image this
+# configure names one for, beside the node count (`model_nodes`, W9).
 
 # nros_entity_facts_env_deferred(<target>)
 #
@@ -144,8 +37,9 @@ endfunction()
 # immediate form only if you can prove every `nano_ros_add_entry()` has already
 # run, which almost nothing can.
 #
-# WHY DEFERRED (phase-392 W5.g). The facts are accumulated by
-# `nros_record_entity_facts`, which runs inside `nano_ros_add_entry()` — and an
+# WHY DEFERRED (phase-392 W5.g). The facts were accumulated by
+# `nros_record_entity_facts` (retired, phase-486), which ran inside
+# `nano_ros_add_entry()` -- as do the sizing descriptor's inputs -- and an
 # entry is declared LAST in a configure by design ("the first point guaranteed
 # to be AFTER every nano_ros_node_register()"). Every caller that applies the env
 # inline therefore reads an EMPTY accumulator. Traced on
@@ -296,8 +190,9 @@ endfunction()
 #     declares them (issue 1270); the leaf road's inventory comes from
 #     metadata, which cannot. A short queryable table is a registration
 #     failure at boot, not a smaller pool (issues 1061, 0460).
-#     The CMake road completes it through `NROS_DECLARED_INFRA_QUERYABLES`
-#     instead, which is why that fact exists.
+#     The CMake road completes it from the sizing descriptor's `[image]
+#     infra_families` instead (it was the `NROS_DECLARED_INFRA_QUERYABLES`
+#     carrier until phase-486).
 #
 # Two exclusions this comment used to list are GONE (issue 1233): both
 # `NROS_EXECUTOR_MAX_NODES` and `NROS_SUBSCRIPTION_BUFFER_SIZE` now travel all
@@ -365,9 +260,8 @@ function(_nros_entity_budget_env _out_var)
     # knows only from the model it was composed with -- on a multi-entry
     # configure, ONE entry's model. The consumer completes it instead, as it
     # does the queryable table: `nros-zpico-build` adds the node and
-    # infrastructure tokens from `NROS_DECLARED_INFRA_QUERYABLES` and the
-    # descriptor's `[image] model_nodes` to its `[image]
-    # entity_liveliness_tokens` (issue 1713; it kept the zpico default of 16
+    # infrastructure tokens from the descriptor's `[image] infra_families` and
+    # `model_nodes` to its `[image] entity_liveliness_tokens` (issue 1713; it kept the zpico default of 16
     # until then, short for a param + lifecycle image).
     set(_out "")
     # Issue 1649 (RFC-0100 D12) -- NINE entity counts were retired onto the
@@ -618,78 +512,26 @@ function(nros_entity_facts_env _target)
             "${_param_env} (phase-446 W4)")
     endif()
 
-    get_property(_seen GLOBAL PROPERTY NROS_ENTITY_FACTS_SEEN)
-    if(NOT _seen)
-        # Not a warning: a pure-C workspace with no LAUNCH entry, or a
-        # configure whose models are not resolved yet, has always sized the
-        # table from the backend's own default and still does. The payload
-        # fact still travels, when there is one.
-        if(_payload_env)
-            if(_NEF_ENV_OUT)
-                set(${_NEF_ENV_OUT} "${_payload_env}" PARENT_SCOPE)
-            else()
-                if(NOT COMMAND corrosion_set_env_vars)
-                    message(FATAL_ERROR
-                        "nros_entity_facts_env(${_target}): Corrosion not loaded")
-                endif()
-                nros_corrosion_env_target("${_target}" _target)
-                corrosion_set_env_vars(${_target} ${_payload_env})
-            endif()
-            message(STATUS
-                "nano-ros: large-payload class sized from the declaration — "
-                "${_payload_env} (issue 1122)")
-        endif()
+    # phase-486 -- what remains to deliver is the descriptor's path and the
+    # payload / budget / parameter-store env above. The queryable table's
+    # inputs all come from the descriptor (issue 1649 retired the carriers of
+    # the application counts from the sizing descriptor's fields), and the node
+    # count and service families too (phase-486).
+    if(NOT _payload_env)
         return()
     endif()
-
-    get_property(_param GLOBAL PROPERTY NROS_ENTITY_INFRA_PARAM)
-    get_property(_lc GLOBAL PROPERTY NROS_ENTITY_INFRA_LIFECYCLE)
-    if(_param AND _lc)
-        set(_infra "param+lifecycle")
-    elseif(_param)
-        set(_infra "param")
-    elseif(_lc)
-        set(_infra "lifecycle")
-    else()
-        set(_infra "none")
-    endif()
-    set(_env "NROS_DECLARED_INFRA_QUERYABLES=${_infra}")
-
-    # phase-426 W3 -- how many nodes claim a set of parameter services. Not
-    # carried since phase-486 W9: the sizing descriptor's `[image] model_nodes`
-    # states it, on every image this configure names a descriptor for.
-
-    # Issue 1649 -- the application's own counts (service servers, three per
-    # action server, and the transient-local cache queryables) are NOT carried
-    # here any more: `NROS_DECLARED_SERVICE_SERVERS` and
-    # `NROS_DECLARED_TL_PUBLISHERS` were retired onto the sizing descriptor
-    # (`[image] service_server_queryables`, the transient-local rows), which
-    # every configure names and both zenoh build scripts read first. Dropping
-    # them was zero-diff on every road that carried them; with no descriptor
-    # the same drop moves ZPICO_MAX_QUERYABLES.
-    set(_app "application counts from the sizing descriptor")
-
-    if(_payload_env)
-        list(APPEND _env "${_payload_env}")
-    endif()
     if(_NEF_ENV_OUT)
-        set(${_NEF_ENV_OUT} "${_env}" PARENT_SCOPE)
+        set(${_NEF_ENV_OUT} "${_payload_env}" PARENT_SCOPE)
     else()
         if(NOT COMMAND corrosion_set_env_vars)
             message(FATAL_ERROR "nros_entity_facts_env(${_target}): Corrosion not loaded")
         endif()
         # issue 0657 — attach to the target the cargo command actually READS.
         nros_corrosion_env_target("${_target}" _target)
-        corrosion_set_env_vars(${_target} ${_env})
+        corrosion_set_env_vars(${_target} ${_payload_env})
     endif()
     message(STATUS
-        "nano-ros: queryable table sized from the declaration — "
-        "infrastructure ${_infra}, ${_app} (phase-392 W5)")
-    if(_payload_env)
-        message(STATUS
-            "nano-ros: large-payload class sized from the declaration — "
-            "${_payload_env} (issue 1122)")
-    endif()
+        "nano-ros: sizing facts delivered from the declaration — ${_payload_env}")
 endfunction()
 
 

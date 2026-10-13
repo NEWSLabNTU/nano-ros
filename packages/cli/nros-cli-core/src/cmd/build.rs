@@ -693,7 +693,11 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                 let Some(nros_root) = nano_ros_root.as_deref() else {
                     eyre::bail!("no nano-ros checkout; the board catalog could not have loaded");
                 };
-                let mut env = generated.entity_facts.clone();
+                // phase-486 -- no `NROS_DECLARED_*` fact rides the settings file
+                // any more: the node count and the service families are the
+                // image's sizing descriptor's (`[image] model_nodes`,
+                // `infra_families`), written below.
+                let mut env = std::collections::BTreeMap::new();
                 if let Some(r) = &resolved {
                     env.extend(derived_pool_env(&r.resolved));
                 }
@@ -1847,7 +1851,7 @@ fn unsynced_inputs(
     let mut out = Vec::new();
     // A leaf with no `[[component]]` has no synthesised launch and so no model;
     // the facts then stay absent by design and nothing is missing.
-    if !img.decl.components.is_empty() && crate::leaf_entity_env::leaf_model_facts(root).is_none() {
+    if !img.decl.components.is_empty() && crate::leaf_entity_env::leaf_model(root).is_none() {
         out.push("the resolved model under `build/nros/models/`".to_string());
     }
     let Ok(doc) = std::fs::read_to_string(root.join("Cargo.toml"))
@@ -2595,14 +2599,6 @@ fn generate_entry(
         }
     };
 
-    // phase-392 W5 — the ENTITY facts, from the SAME model, ONE read. Computed
-    // BEFORE the hand-written check below, because a hand-written entry is
-    // built with the image's settings file too (RFC-0098 D7): the facts belong
-    // to the IMAGE, whoever wrote its `main`. The fixture lane used to fetch
-    // them for exactly those entries with a second `nros ws entity-facts`
-    // invocation and export them per build — a second carrier, now retired.
-    let entity_facts = entity_facts_at(&model_path);
-
     // A workspace that still has its hand-written entry keeps it. Generating a
     // second one would be redundant at best and a conflicting `[[bin]]` name at
     // worst — and D13's migration is a DELETION: remove the hand-written entry
@@ -2616,20 +2612,14 @@ fn generate_entry(
     let want = crate::builder::entry::package_name(image_id);
     let hand_written = root.join("src").join(&want);
     if hand_written.join("Cargo.toml").is_file() || hand_written.join("CMakeLists.txt").is_file() {
-        return Ok(GeneratedEntry {
-            dir: None,
-            entity_facts,
-        });
+        return Ok(GeneratedEntry { dir: None });
     }
 
     let mut plan = match crate::codegen::entry::plan_from_model(&model_path, image.board.clone()) {
         Ok(p) => p,
         Err(e) => {
             eprintln!("nros build: warning: cannot plan `{image_id}`: {e}");
-            return Ok(GeneratedEntry {
-                dir: None,
-                entity_facts,
-            });
+            return Ok(GeneratedEntry { dir: None });
         }
     };
     // phase-470 W5.b2 (issue 1288) — resolve the SCHEDULE, because the board
@@ -2731,7 +2721,6 @@ fn generate_entry(
             .map_err(|e| eyre::eyre!("generating the west application for `{image_id}`: {e}"))?;
         return Ok(GeneratedEntry {
             dir: Some(entry_dir_for_deps),
-            entity_facts,
         });
     }
 
@@ -3127,10 +3116,7 @@ fn generate_entry(
             .map_err(|e| eyre::eyre!("regenerating the entry for `{image_id}`: {e}"))?;
     }
 
-    Ok(GeneratedEntry {
-        dir: Some(dir),
-        entity_facts,
-    })
+    Ok(GeneratedEntry { dir: Some(dir) })
 }
 
 /// What [`generate_entry`] produced for one image.
@@ -3139,34 +3125,6 @@ struct GeneratedEntry {
     /// The generated entry package, or `None` when a hand-written one
     /// suppressed generation or the launch could not be resolved here.
     dir: Option<PathBuf>,
-    /// The image's entity facts (`NROS_DECLARED_*`), for its settings file.
-    entity_facts: std::collections::BTreeMap<String, String>,
-}
-
-/// phase-392 W5 — the ENTITY facts of the model at `model_path`.
-///
-/// Until phase-392 only `cmake/NanoRosEntityFacts.cmake` delivered them, so the
-/// CARGO path silently kept the undeclared fallback (32 hosted / 8 embedded) —
-/// a hard failure on a small target: `esp32_entry` overflowed DRAM by 8,804 B
-/// carrying `SERVICE_BUFFERS` sized for 8 service servers it does not have.
-/// The consumer (`nros-zpico-build`) derives `ZPICO_MAX_QUERYABLES` from these;
-/// they are CARRIED, never the count (issue 0460). Since RFC-0098 D7 they go in
-/// the image's settings file rather than the handoff's environment.
-fn entity_facts_at(model_path: &std::path::Path) -> std::collections::BTreeMap<String, String> {
-    // phase-486 W3 -- the model AND the nano-ros overlay beside it.
-    match nros_orchestration_ir::overlay::LoadedModel::load(model_path) {
-        Ok(m) => crate::cmd::entity_facts::facts_from_model(&m),
-        Err(e) => {
-            // Not fatal: the undeclared fallback is the historical behaviour.
-            // Say so rather than silently sizing for 8.
-            eprintln!(
-                "nros build: warning: cannot read `{}` for entity facts, so the \
-                 backend keeps its undeclared table budget: {e}",
-                model_path.display()
-            );
-            std::collections::BTreeMap::new()
-        }
-    }
 }
 
 /// Issue 0827 — the pool knobs stage 3.5 DERIVED for this image, as `[env]`

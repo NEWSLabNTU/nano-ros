@@ -1,42 +1,31 @@
 # NanoRosLeafEntityFacts.cmake — issue 1142 (phase-412 W5): a STANDALONE CMake
 # leaf sizes its pools from its own declaration instead of a guess.
 #
-# THE GAP THIS CLOSES. Three declaration channels existed and a standalone
-# copy-out project was in between all three:
+# THE GAP THIS CLOSED. A copy-out project (`find_package(nano_ros)` +
+# `nano_ros_add_executable`) has no bringup and no SystemModel, so the model
+# roads never reach it, it is not a Zephyr image, and it is not a cargo leaf.
+# Its pools were sized from `if hosted { 32 } else { 8 }`, a guess by
+# construction; issue 1028 measured what a wrong guess on a sibling path costs
+# (142,336 B of `.bss` on an image with zero queryables).
 #
-#   * CMake WORKSPACE — a resolved SystemModel, `nros ws entity-facts --model`,
-#     folded by `nros_record_entity_facts` (NanoRosEntityFacts.cmake). A leaf
-#     with no bringup has no model, so that function returns early by design.
-#   * ZEPHYR — `CONFIG_NROS_MAX_QUERYABLES` at the `-1` derive sentinel. Not a
-#     Zephyr image, so it does not apply.
-#   * CARGO LEAF — `nros sync`'s `[env]` sidecar. Not a cargo leaf, so the
-#     sidecar never reaches a `cmake`-driven build.
+# THE ANSWER IS RFC-0098 D3/D8: the leaf states its board in `system.toml`,
+# and a component the host cannot probe DECLARES its entities there --
+# `entities = [...]` in the `EntityDecl::parse` grammar, or `"census"` (issue
+# 1556). This module is the CMake side of reading that.
 #
-# So `NROS_DECLARED_SERVICE_SERVERS` and `NROS_DECLARED_INFRA_QUERYABLES` never
-# arrived, and `queryable_default_from` took its last arm — `if hosted { 32 }
-# else { 8 }`, a guess by construction. Issue 1028 measured what a wrong guess
-# on a sibling path costs: 142,336 B of `.bss` on an image with zero queryables.
+# NOTHING IS DERIVED HERE. Since phase-486 the declaration reaches the
+# consumers through ONE carrier, the leaf's SIZING DESCRIPTOR
+# (`nros ws sizing-descriptor --from-leaf`, phase-457 W0.b), which applies the
+# model road's own counting rules and states the node count and the runtime's
+# service families (`[image] model_nodes`, `infra_families`). The
+# `nros ws entity-facts --leaf` verb and the `NROS_DECLARED_*` fold it fed are
+# retired: a second carrier of one fact is how two roads come to size one image
+# two ways.
 #
-# THE ANSWER IS ALREADY DECIDED, by RFC-0098 D3/D8: every leaf states its board
-# in `system.toml`, and a component the host cannot probe DECLARES its entities
-# there — `entities = [...]`, the `EntityDecl::parse` grammar, the same grammar
-# `nano_ros_node_register(... ENTITIES ...)` uses. This module is only the
-# CMake side of reading it, which is what RFC-0098's "What is NOT decided" left
-# open.
-#
-# NOTHING IS DERIVED HERE. `nros ws entity-facts --leaf` applies the model
-# road's own counting rule (a service server is one queryable, an action server
-# is three, either client is none) and prints the SAME three `KEY=VALUE` facts;
-# `nros_fold_entity_facts` folds them into the SAME accumulator; and
-# `nros_entity_facts_env` — already deferred onto `nros_cpp-static` /
-# `nros_c-static` — delivers them through the SAME `corrosion_set_env_vars`
-# carrier. A second derivation is how two roads come to size one image two ways.
-#
-# A DEFAULT, NEVER AN OVERRIDE. The facts travel as `NROS_DECLARED_*`, which the
-# consuming build script reads as a DEFAULT: an image that states
-# `ZPICO_MAX_QUERYABLES` still wins, and the build script refuses a stated value
-# below the derived FLOOR rather than silently lowering the pool
-# (`check_queryable_override`). That is phase-412's ladder, unchanged.
+# A DEFAULT, NEVER AN OVERRIDE. The consuming build scripts read the descriptor
+# as a DEFAULT: an image that states `ZPICO_MAX_QUERYABLES` still wins, and the
+# zenoh build refuses a stated value below the derived FLOOR rather than
+# silently lowering the pool (`check_queryable_override`).
 
 include_guard(GLOBAL)
 
@@ -51,23 +40,19 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosSizingDescriptor.cmake")
 
 # nros_record_leaf_entity_facts(<leaf-dir>)
 #
-# Fold what a standalone leaf's `system.toml` DECLARES into this configure's
-# entity facts. Call after `nano_ros_read_leaf_system()`, from the arm that
-# already knows the leaf directory; the delivery happens later, at the deferred
-# flush, so ordering here is only "before the end of the top-level scope".
+# Write the sizing descriptor for what a standalone leaf's `system.toml`
+# DECLARES. Call after `nano_ros_read_leaf_system()`, from the arm that already
+# knows the leaf directory. (The name predates phase-486, when this also folded
+# `NROS_DECLARED_*` facts.)
 #
-# SOFT ON EVERY ABSENCE, exactly like `nros_record_entity_facts`. No
-# `system.toml`, no CLI, a CLI that refuses — each means "this configure has no
-# leaf facts to carry", which is the state every standalone leaf was already in.
-# None of them is a configuration error, so none of them is fatal.
+# SOFT ON EVERY ABSENCE: no `system.toml`, no CLI, a CLI that refuses -- each
+# means "this configure has no leaf descriptor", the state every standalone
+# leaf was already in. Except a census leaf whose census cannot answer, which
+# has nothing else to size from and is FATAL (issue 1556).
 #
 # THE ONE THING IT IS LOUD ABOUT is a leaf that declares NOTHING, because that
-# is the case a reader can act on and the case that otherwise looks identical to
-# success. `nros_entity_facts_env` stays silent when no facts were seen — by
-# design, since "a configure whose models are not resolved yet has always sized
-# the table from the backend's own default" — so without this line the fallback
-# deciding is indistinguishable from the declaration deciding. It names the file
-# to edit and the key to add.
+# is the case a reader can act on and the case that otherwise looks identical
+# to success. It names the file to edit and the key to add.
 function(nros_record_leaf_entity_facts _dir)
     if(_dir STREQUAL "" OR NOT EXISTS "${_dir}/system.toml")
         return()
@@ -104,28 +89,6 @@ function(nros_record_leaf_entity_facts _dir)
     file(STRINGS "${_dir}/system.toml" _nros_leaf_census_optin
         REGEX "^[ \t]*entities[ \t]*=[ \t]*\"census\"")
 
-    execute_process(
-        COMMAND "${_nros}" ws entity-facts --leaf "${_dir}"
-        OUTPUT_VARIABLE _out
-        ERROR_VARIABLE _err
-        RESULT_VARIABLE _rc
-        OUTPUT_STRIP_TRAILING_WHITESPACE)
-    if(NOT _rc EQUAL 0)
-        # A leaf that sizes from its census has NO other statement to fall back
-        # on: degrading to the backend's guess here is issue 1142's 31 KB
-        # (`cpp/action-client`) chosen by nobody. Refuse, with the verb's own
-        # reason -- it names the command that takes the census.
-        if(_nros_leaf_census_optin)
-            message(FATAL_ERROR
-                "nano-ros: ${_dir}/system.toml sizes from its census, and the census "
-                "cannot answer:\n${_err}")
-        endif()
-        string(REGEX REPLACE "\n+" " " _why "${_err}")
-        string(SUBSTRING "${_why}" 0 200 _why)
-        message(STATUS
-            "nano-ros: leaf entity facts NOT read from ${_dir}/system.toml — ${_why}")
-        return()
-    endif()
     if(_nros_leaf_census_optin)
         # Re-taking the census (after a `src/` edit) must reconfigure, because
         # this configure is what read it. ASKED for, never spelled: the CLI
@@ -141,54 +104,24 @@ function(nros_record_leaf_entity_facts _dir)
         endif()
     endif()
 
-    if(_out STREQUAL "" AND _nros_leaf_census_optin)
-        # The verb abstained for a census leaf: this IS the host census build
-        # (`nros ws entity-census take --leaf`), which is not sized by the
-        # census it produces.
-        message(STATUS
-            "nano-ros: ${_dir} -- host census build; pools at the hosted defaults "
-            "(issue 1556)")
-        return()
-    endif()
-
-    if(_out STREQUAL "")
-        # The verb ABSTAINED: the leaf declares no entities. Say what the
-        # reader can do about it, and say that the fallback is what decided
-        # (issue 0973's rule — "nobody stated it" is true and unactionable on
-        # its own).
-        message(STATUS
-            "nano-ros: ${_dir}/system.toml declares no entities, so the queryable "
-            "table keeps the backend's FALLBACK budget (issue 1142). To size it "
-            "from the declaration, add `entities = [...]` to its `[[component]]` "
-            "— e.g. entities = [\"publisher:std_msgs/msg/String:/chatter\", \"timer\"] "
-            "(RFC-0098 D8); the runtime's own service families are "
-            "`[system] features`.")
-        return()
-    endif()
-
-    nros_fold_entity_facts("${_out}")
-
-    # phase-457 W0.b (issues 1407 / 1378) — and the SIZING DESCRIPTOR for the
-    # same declaration, on the road that had none.
+    # phase-486 -- the leaf's facts reach its consumers through its SIZING
+    # DESCRIPTOR only (phase-457 W0.b gave this road one; issues 1407 / 1378).
+    # `nros ws entity-facts --leaf` and the fold it fed carried the last
+    # `NROS_DECLARED_*` facts of this road -- the node count (retired in W9) and
+    # the service families (retired with the verb) -- and the descriptor states
+    # both (`[image] model_nodes`, `infra_families`).
     #
-    # The four `NROS_DECLARED_*` facts above are this road's carriers, and issue
-    # 1407 records why they could not retire when phase-454 W14 gave the other
-    # two roads a producer: a standalone leaf has no SystemModel, so
-    # `--from-model` can never reach it. It is also the road that FAILED (1378).
-    # This closes that half — the declaration now reaches the descriptor schema
-    # too, so a consumer that reads the descriptor gets the same answer here as
-    # on the cargo-leaf road instead of nothing.
-    #
-    # AFTER the fold, not instead of it: the descriptor and the carriers are read
-    # by different consumers at different rungs, and the consumers that rank the
-    # descriptor first already do so (`transient_local_publishers`, which falls
-    # back to the carrier on `Fact::Absent`). Writing both is what makes the
-    # ranking observable rather than a claim.
+    # A census leaf has no other statement to fall back on, so a census that
+    # cannot answer is FATAL here (issue 1556), as it was on the verb.
     #
     # `PROJECT_NAME` is the entry name: a standalone leaf's `project()` runs
     # before its `find_package(nano_ros)`, so this is the name every other
     # per-entry artifact in this build dir is keyed by.
-    nros_sizing_descriptor_from_leaf(_nros_leaf_descriptor
+    set(_nros_leaf_required "")
+    if(_nros_leaf_census_optin)
+        set(_nros_leaf_required REQUIRED)
+    endif()
+    nros_sizing_descriptor_from_leaf(_nros_leaf_descriptor ${_nros_leaf_required}
         CLI       "${_nros}"
         LEAF      "${_dir}"
         ENTRY     "${PROJECT_NAME}"
@@ -197,6 +130,22 @@ function(nros_record_leaf_entity_facts _dir)
         message(STATUS
             "nano-ros: sizing descriptor written from ${_dir}/system.toml — "
             "${_nros_leaf_descriptor} (phase-457 W0.b, issue 1378)")
+    elseif(_nros_leaf_census_optin)
+        # This IS the host census build (`nros ws entity-census take --leaf`),
+        # which is not sized by the census it produces.
+        message(STATUS
+            "nano-ros: ${_dir} -- host census build; pools at the hosted defaults "
+            "(issue 1556)")
+    else()
+        # The leaf declares no entities. Say what the reader can do about it,
+        # and say that the fallback is what decided (issue 0973's rule).
+        message(STATUS
+            "nano-ros: ${_dir}/system.toml declares no entities, so the queryable "
+            "table keeps the backend's FALLBACK budget (issue 1142). To size it "
+            "from the declaration, add `entities = [...]` to its `[[component]]` "
+            "— e.g. entities = [\"publisher:std_msgs/msg/String:/chatter\", \"timer\"] "
+            "(RFC-0098 D8); the runtime's own service families are "
+            "`[system] features`.")
     endif()
     # A configure re-runs when the declaration changes. `nano_ros_read_leaf_system`
     # already registers this file, but that is its dependency and not ours: a

@@ -610,12 +610,10 @@ function(nano_ros_entry)
         # a rung nothing writes. Worse, it ran AFTER the verb's `model_gate`
         # check (phase-460 W1), so a re-routed model was one the gate never saw.
 
-        # phase-392 W5.c — the entity figures this entry DECLARES, folded into
-        # the configure's accumulated view. One runtime staticlib serves every
-        # entry here, so the union is applied once by
-        # `nros_synth_runtime_umbrella`, which runs after the SUBDIRS loop.
+        # phase-392 W5.c recorded the entity figures this entry DECLARES here
+        # (`nros_record_entity_facts`); phase-486 retired that with the last
+        # `NROS_DECLARED_*` fact it folded. The sizing descriptor states them.
         include("${_NROS_ENTRY_DIR}/NanoRosEntityFacts.cmake")
-        nros_record_entity_facts("${_NRA_MODEL}")
 
         # phase-463 W4 -- and, for a cross image, whether the CODE agrees with
         # the contract those figures came from. See the function's header.

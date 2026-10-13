@@ -1,11 +1,12 @@
 //! phase-403 W9 (issue 0965) -- `nros ws entity-inventory`, the verb that turns
 //! an image's component declarations into the three transports.
 //!
-//! Sibling of [`crate::cmd::entity_facts`], and deliberately shaped like it: one
-//! resolution, one implementation. The DIFFERENCE is which question it answers
-//! and where the answer comes from.
+//! Sibling of the retired `nros ws entity-facts` (phase-486 deleted it with the
+//! last carrier it sent), and shaped like it was: one resolution, one
+//! implementation. The DIFFERENCE was which question it answered and where the
+//! answer came from.
 //!
-//! `entity-facts` reads the resolved SystemModel and ABSTAINS unless somebody
+//! `entity-facts` read the resolved SystemModel and ABSTAINED unless somebody
 //! authored a `<stem>.contract.yaml` beside the launch file, because a launch
 //! file names a node and never says what that node wires (issue 0973 —
 //! measured 2026-09-06: 5 of the tree's 114 resolvable models describe wiring,
@@ -180,7 +181,7 @@ pub struct EntityInventoryArgs {
 /// Build the inventory from one parsed metadata document.
 ///
 /// A pure function over the document, with file IO lifted out, for the reason
-/// `entity_facts::facts_from_model` is: a sizing rule verified by reading is how
+/// the retired `facts_from_model` was: a sizing rule verified by reading is how
 /// this campaign's other defects survived.
 fn inventory_from_metadata(source: &str, doc: &MetadataDoc) -> Result<EntityInventory> {
     let mut inv = EntityInventory::new(source);

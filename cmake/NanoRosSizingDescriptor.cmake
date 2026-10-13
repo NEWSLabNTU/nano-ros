@@ -383,8 +383,13 @@ endfunction()
 # means "this configure has no leaf descriptor to carry", which is the state
 # every standalone leaf was already in. None is a configuration error, so none
 # is fatal.
+#
+# `REQUIRED` turns a refusal into a FATAL_ERROR: a leaf that sizes from its
+# census (`entities = "census"`) has no other statement to fall back on, so
+# degrading to the backend's guess there is issue 1142's 31 KB chosen by nobody
+# (issue 1556).
 function(nros_sizing_descriptor_from_leaf _out_var)
-    cmake_parse_arguments(_nsl "" "CLI;LEAF;ENTRY;BUILD_DIR" "" ${ARGN})
+    cmake_parse_arguments(_nsl "REQUIRED" "CLI;LEAF;ENTRY;BUILD_DIR" "" ${ARGN})
     set(${_out_var} "" PARENT_SCOPE)
 
     if(NOT _nsl_LEAF OR NOT EXISTS "${_nsl_LEAF}/system.toml")
@@ -420,6 +425,11 @@ function(nros_sizing_descriptor_from_leaf _out_var)
         RESULT_VARIABLE _rc
         OUTPUT_STRIP_TRAILING_WHITESPACE)
     if(NOT _rc EQUAL 0)
+        if(_nsl_REQUIRED)
+            message(FATAL_ERROR
+                "nano-ros: ${_nsl_LEAF}/system.toml sizes from its census, and the census "
+                "cannot answer:\n${_err}")
+        endif()
         string(REGEX REPLACE "\n+" " " _why "${_err}")
         string(SUBSTRING "${_why}" 0 200 _why)
         message(STATUS

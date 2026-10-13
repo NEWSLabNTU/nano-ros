@@ -128,53 +128,22 @@ mod hosted_tests {
     }
 }
 
-/// Issue 1429 — the ONE reader every `NROS_DECLARED_*` carrier is read through.
-///
-/// A carrier here is three-valued on purpose: ABSENT (this road states
-/// nothing), `refused` (this road looked and cannot bound it), or a count.
-/// Issues 1015 and 1033 are what a silent default over a derived count costs,
-/// so a value that is none of the three is LOUD rather than guessed.
-///
-/// **An empty string is a fourth thing, and it is `absent`.** A variable
-/// exported with no value carries no claim — there is nothing to distinguish
-/// from "nobody said", because an empty string IS nobody saying anything, and
-/// `0` (a legitimate answer here) has its own spelling. Reading it as malformed
-/// is what panicked every C/C++ workspace whose model describes no wiring:
-///
-/// ```text
-/// NROS_DECLARED_TL_PUBLISHERS="" is neither a count nor `refused`.
-/// ```
-///
-/// THE EMITTER'S BUG IS FIXED SEPARATELY, in `cmake/NanoRosEntityFacts.cmake`
-/// (`_nros_entity_fact`), and that is where the defect lived. This side is
-/// total anyway, because **a build script does not own its environment**: a
-/// carrier can arrive empty from a CI `env:` block, a `cmake -E env VAR=`, or a
-/// wrapper that exports every name it knows — none of which the emitter can
-/// reach. A library build script that aborts the build on someone else's blank
-/// variable is hostile, and it aborts at the one place with no context to
-/// explain itself.
-///
-/// Total is NOT silent. The empty case is announced, so a producer that
-/// regresses is still audible — it simply costs a warning instead of the build.
-/// `check-declared-fact-carriers` is the other half: it refuses an emitter that
-/// can compose a valueless carrier at all, so the two sides cannot each assume
-/// the other is handling it.
-fn declared_fact(name: &str) -> Option<String> {
-    let raw = std::env::var(name).ok();
-    if raw.is_some() && stated(raw.as_deref()).is_none() {
-        println!(
-            "cargo:warning={name} is set to an EMPTY value, which states nothing, so it \
-             is being read as UNDECLARED. A declared fact is absent, the word `refused`, \
-             or a count. If this image meant to declare something, its producer composed \
-             a carrier with no value (issue 1429)."
-        );
-        return None;
-    }
-    raw
+/// phase-486 — `[image] infra_families`, the runtime's own service families,
+/// from the named descriptor, in the four spellings the retired
+/// `NROS_DECLARED_INFRA_QUERYABLES` carrier used (the rules below keep their
+/// one parser, `nros_sizing_descriptor::infra`). `None` -- no descriptor, or
+/// the field absent -- is that carrier's absence: assume both families when
+/// SIZING, and do not check a FLOOR.
+fn described_infra_families() -> Option<String> {
+    let desc = nros_sizing_descriptor::from_build_env().unwrap_or_else(|e| panic!("{e}"))?;
+    desc.image
+        .infra_families()
+        .stated()
+        .map(|f| f.tag().to_string())
 }
 
 // Issue 1429 — `stated`, the ONE predicate for "did this carrier state
-// anything", is separate from [`declared_fact`] and pure, so the RULES below
+// anything", is pure, so the RULES below
 // are total on their own terms. Since issue 1743 it is
 // `nros_sizing_descriptor::infra::stated`, so the XRCE build reads an empty
 // carrier exactly as this one does.
@@ -194,8 +163,8 @@ fn declared_fact(name: &str) -> Option<String> {
 /// user's entities and never the runtime's: deriving the total from the app's
 /// service count alone is issue 0460's defect exactly.
 ///
-/// `NROS_DECLARED_INFRA_QUERYABLES` carries whether those runtime services are
-/// compiled in. Absent, both are assumed present — the safe direction, since
+/// The descriptor's `[image] infra_families` says whether those runtime
+/// services are compiled in. Absent, both are assumed present — the safe direction, since
 /// over-reserving wastes RAM while under-reserving fails at boot.
 ///
 /// With no declaration at all this returns the historical embedded budget and
@@ -212,7 +181,10 @@ fn resolve_queryable_default() -> QueryableSizing {
     // It also makes the knob untestable by hand: setting either variable and
     // rebuilding produces a byte-identical image, which is exactly how this was
     // found.
-    println!("cargo:rerun-if-env-changed=NROS_DECLARED_INFRA_QUERYABLES");
+    // The infrastructure families and the node count come from the sizing
+    // descriptor since phase-486 (their `NROS_DECLARED_*` carriers retired);
+    // the descriptor file's content edge (`load_for_build_script`) re-runs this
+    // script when either moves.
     // phase-426 W3 — the parameter services are PER NODE, so the image's node
     // count is a term in this pool. phase-486 W9 retired its carrier
     // (`NROS_DECLARED_NODES`) onto the descriptor's `[image] model_nodes`; the
@@ -222,28 +194,21 @@ fn resolve_queryable_default() -> QueryableSizing {
     // transient-local count come from the sizing DESCRIPTOR only; the two
     // `NROS_DECLARED_*` carriers that used to be watched here were retired
     // (zero-diff with them dropped on every road that carried them).
-    // Issue 1429 — every one of these goes through `declared_fact`, not
-    // `env::var(..).ok()`. Three of the four were tolerant of an empty value by
-    // accident (they parse and fall back) and two PANIC on one; routing them
-    // together is what stops the next carrier inheriting whichever half its
-    // author copied.
     // Issue 1655 -- the application's count, DESCRIPTOR FIRST: `[image]
     // service_server_queryables` is the same derivation the carrier delivers,
     // and `nros-rmw-zenoh` reads it in the same order, so the table and the
     // builtin share it is subtracted from agree on one number.
     //
-    // BUT ONLY BESIDE A STATED INFRASTRUCTURE TERM. The two carriers always
-    // travelled as a pair, and `queryable_floor_from` reads an absent infra
-    // as "assume every runtime service is present" -- right for a table it
-    // SIZES, wrong for a floor it REFUSES on. The Zephyr west road names a
-    // descriptor (issue 1407) and carries neither carrier: its table comes
-    // from the resolver's `NROS_MAX_QUERYABLES`, which already counts the
-    // infrastructure. Taking the descriptor's count there turned a floor of 0
-    // into "app + every param/lifecycle service" and refused a talker image at
-    // 1 slot against a floor of 12 (measured, `examples/workspaces/cpp`
-    // zephyr). Where no infra fact arrived, the app count stays the carrier's
-    // -- i.e. none on that road, exactly as before.
-    let infra = declared_fact("NROS_DECLARED_INFRA_QUERYABLES");
+    // BUT ONLY BESIDE A STATED INFRASTRUCTURE TERM. `queryable_floor_from`
+    // reads an absent infra as "assume every runtime service is present" --
+    // right for a table it SIZES, wrong for a floor it REFUSES on. Taking the
+    // descriptor's app count with no infra fact turned a floor of 0 into "app
+    // + every param/lifecycle service" and refused a talker image at 1 slot
+    // against a floor of 12 (measured, `examples/workspaces/cpp` zephyr,
+    // before the families reached the descriptor). Since phase-486 every road
+    // that names a descriptor states the families, the Zephyr west road
+    // included, so the floor is what the image declares.
+    let infra = described_infra_families();
     let declared = app_count_from(infra.as_deref(), described_service_server_queryables);
     let nodes = described_model_nodes();
     let tl = transient_local_publishers();
@@ -509,7 +474,8 @@ fn check_queryable_override(requested: usize, sizing: &QueryableSizing) {
     }
 }
 
-/// What `NROS_DECLARED_INFRA_QUERYABLES` costs, in slots.
+/// What the runtime's own service families (`[image] infra_families`) cost,
+/// in slots.
 ///
 /// ONE parser, shared by the default and the floor: two readings of the same
 /// spelling is how a sizing rule and its check come to disagree.
@@ -537,8 +503,8 @@ fn infra_queryables(infra: Option<&str>, nodes: Option<&str>) -> usize {
 /// `native_rust_qos` lost eight of its parameter services to `Full`.
 fn resolve_liveliness_default() -> usize {
     // The same three inputs, watched the same way, as the queryable table;
-    // `declared_fact` / `from_build_env` emit their own rerun edges.
-    let infra = declared_fact("NROS_DECLARED_INFRA_QUERYABLES");
+    // `from_build_env` emits the descriptor's own rerun edge.
+    let infra = described_infra_families();
     let desc = nros_sizing_descriptor::from_build_env().unwrap_or_else(|e| panic!("{e}"));
     let nodes = desc
         .as_ref()
@@ -936,10 +902,10 @@ mod queryable_default_tests {
     }
 
     /// An unknown infrastructure spelling is a BROKEN CHANNEL, not an unknown
-    /// feature — `nros ws entity-facts` emits one of four strings and drops
-    /// names it does not recognise (`safety`) before it gets here.
+    /// feature — the descriptor's `InfraFamilies` vocabulary holds four
+    /// spellings and refuses any other at parse.
     #[test]
-    #[should_panic(expected = "NROS_DECLARED_INFRA_QUERYABLES")]
+    #[should_panic(expected = "infra_families")]
     fn an_unknown_infra_spelling_panics_even_without_an_app_count() {
         queryable_default_from(None, Some("safety"), None, 0, true);
     }
