@@ -159,16 +159,22 @@ and reports no error.
 | `NROS_XRCE_MAX_SERVICE_CLIENTS`    | Max concurrent service clients                                              | `4`     | 0   | nros-rmw-xrce |
 | `NROS_XRCE_STREAM_HISTORY`         | Reliable stream history depth; sizes the per-session output buffer          | `16`    | 4   | nros-rmw-xrce |
 | `NROS_XRCE_CUSTOM_TRANSPORT_MTU`   | Custom transport MTU; stream buffers are `MTU x STREAM_HISTORY`             | `4096`  | 128 | nros-rmw-xrce |
+| `NROS_XRCE_TRANSPORT_MTU`          | UDP/TCP transport MTU, and the Zephyr default of `CUSTOM_TRANSPORT_MTU`     | `4096` (Zephyr `512`) | 128 | nros-rmw-xrce |
+| `NROS_XRCE_SUBSCRIBER_BUFFER_SIZE` | Subscriber ring entry size; derived from the declared subscriptions when unstated (Zephyr: `-1`) | `BUFFER_SIZE` | 1 | nros-rmw-xrce |
+| `NROS_XRCE_SERVICE_REQUEST_BUFFER_SIZE` | Service-server request entry size                                      | `BUFFER_SIZE` | 1 | nros-rmw-xrce |
+| `NROS_XRCE_SERVICE_REPLY_BUFFER_SIZE`   | Service-client reply slot size                                         | `BUFFER_SIZE` | 1 | nros-rmw-xrce |
 
 Dropping `MAX_SUBSCRIBERS`, `MAX_SERVICE_*` and `SUBSCRIBER_RING_DEPTH` to 1,
 `BUFFER_SIZE` to 256, `STREAM_HISTORY` to 4 and `CUSTOM_TRANSPORT_MTU` to 512
 takes the session struct from ~390 KB to ~10-20 KB.
 
-`BUFFER_SIZE`, the three `MAX_*` caps, `STREAM_HISTORY` and
-`CUSTOM_TRANSPORT_MTU` are knob-registry rows, so a project states them per
-image as `[image.<id>.knobs.xrce] buffer_size = 256` (`max_subscribers`,
-`max_service_servers`, `max_service_clients`, `stream_history`,
-`custom_transport_mtu`) rather than as an `env` row (RFC-0103 D6).
+Every variable in this table is a knob-registry row, so a project states it
+per image as `[image.<id>.knobs.xrce] buffer_size = 256` — the name without
+`NROS_XRCE_`, lowercased (`max_subscribers`, `max_service_servers`,
+`max_service_clients`, `subscriber_ring_depth`, `subscriber_buffer_size`,
+`service_request_buffer_size`, `service_reply_buffer_size`, `stream_history`,
+`transport_mtu`, `custom_transport_mtu`) — rather than as an `env` row
+(RFC-0103 D6).
 
 #### On Zephyr the three entity caps DERIVE, and the minimum is 0
 

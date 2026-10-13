@@ -167,7 +167,7 @@ What the module renders, and from where:
 | `domain_id = 7` (image, `[defaults]` or `[system]`) | `CONFIG_NROS_DOMAIN_ID` |
 | `[image.<id>.knobs.zenoh] max_queryables = 12` | `CONFIG_NROS_MAX_QUERYABLES=12` — a registry knob, spelled as a board's `[knobs]` is (see [Configuration](../user-guide/configuration.md#per-image-build-knobs)) |
 | `[image.<id>.knobs.xrce] max_subscribers = 0` | `CONFIG_NROS_XRCE_MAX_SUBSCRIBERS=0` — likewise |
-| `env = { NROS_XRCE_SUBSCRIBER_RING_DEPTH = "1" }` | `CONFIG_NROS_XRCE_SUBSCRIBER_RING_DEPTH=1` — any other option in the reference below, spelled without `CONFIG_` |
+| `env = { NROS_ZEPHYR_TASK_STACK_SIZE = "16384" }` | `CONFIG_NROS_ZEPHYR_TASK_STACK_SIZE=16384` — any other option in the reference below, spelled without `CONFIG_` |
 | `conf = ["prj-xrce.conf"]` | that Zephyr-native fragment, added ahead of your own `EXTRA_CONF_FILE` |
 
 An `env` row with no Kconfig symbol is not lost: it reaches the image's cargo
@@ -372,8 +372,17 @@ The answer, and why it came out that way, is written to
 | `CONFIG_NROS_XRCE_MAX_SERVICE_SERVERS` | int | -1 (derive) | Max service servers |
 | `CONFIG_NROS_XRCE_MAX_SERVICE_CLIENTS` | int | 4 | Max service clients |
 | `CONFIG_NROS_XRCE_SUBSCRIBER_RING_DEPTH` | int | 32 | Queued samples per subscriber |
-| `CONFIG_NROS_XRCE_BUFFER_SIZE` | int | 1024 | Per-slot buffer size |
+| `CONFIG_NROS_XRCE_BUFFER_SIZE` | int | 1024 | Per-slot buffer size; the default of the three below |
+| `CONFIG_NROS_XRCE_SUBSCRIBER_BUFFER_SIZE` | int | -1 (derive) | Subscriber ring entry size |
+| `CONFIG_NROS_XRCE_SERVICE_REQUEST_BUFFER_SIZE` | int | -1 (= `BUFFER_SIZE`) | Service-server request entry size |
+| `CONFIG_NROS_XRCE_SERVICE_REPLY_BUFFER_SIZE` | int | -1 (= `BUFFER_SIZE`) | Service-client reply slot size |
 | `CONFIG_NROS_XRCE_STREAM_HISTORY` | int | 16 | Reliable stream depth (2-16) |
+
+Every option in this table except the agent address and port is a
+knob-registry row: a project with a `system.toml` states it as
+`[image.<id>.knobs.xrce] <name>` — the option without `CONFIG_NROS_XRCE_`,
+lowercased (`transport_mtu = 512`, `subscriber_ring_depth = 1`) — not in
+`prj.conf`, where the symbol has no prompt.
 
 ### C API Options (visible when `CONFIG_NROS_C_API=y`)
 
