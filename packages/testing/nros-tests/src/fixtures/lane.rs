@@ -597,6 +597,53 @@ pub fn skip_reason_for_coord(
     (!coords.contains(coord)).then(|| out_of_lane_coord(label, coord))
 }
 
+/// Issue 1874 -- the rows on `platform` whose crate BUILDS `binary_name`: its
+/// `[package] name`, or a `[[bin]] name`, in `<row.dir>/Cargo.toml`.
+///
+/// A shared group dir (`build/cargo-fixtures/<platform>`) attributes to no row
+/// by PATH (issue 1684), but every binary in it has a name, and the name is
+/// the crate's. Exactly one producing row is an attribution; none or several
+/// is not, and the caller must then keep failing closed.
+pub fn rows_producing_binary(platform: &str, binary_name: &str) -> Vec<&'static Row> {
+    rows_producing_binary_in(
+        manifest_rows(),
+        &crate::project_root(),
+        platform,
+        binary_name,
+    )
+}
+
+/// [`rows_producing_binary`] over given rows and root, for tests.
+pub fn rows_producing_binary_in<'a>(
+    rows: &'a [Row],
+    root: &Path,
+    platform: &str,
+    binary_name: &str,
+) -> Vec<&'a Row> {
+    rows.iter()
+        .filter(|r| r.coord.0 == platform)
+        .filter(|r| {
+            let Ok(text) = std::fs::read_to_string(root.join(&r.dir).join("Cargo.toml")) else {
+                return false;
+            };
+            let Ok(doc) = text.parse::<toml::Table>() else {
+                return false;
+            };
+            let pkg = doc
+                .get("package")
+                .and_then(|p| p.get("name"))
+                .and_then(toml::Value::as_str);
+            let bins = doc
+                .get("bin")
+                .and_then(toml::Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(|b| b.get("name").and_then(toml::Value::as_str));
+            pkg == Some(binary_name) || bins.into_iter().any(|b| b == binary_name)
+        })
+        .collect()
+}
+
 fn out_of_lane_coord(label: &str, coord: &Coord) -> String {
     format!(
         "out of lane: {} is at coordinate {},{},{}, which this run's lane does not \
