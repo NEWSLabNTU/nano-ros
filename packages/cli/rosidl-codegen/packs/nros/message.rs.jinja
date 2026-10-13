@@ -147,6 +147,11 @@ impl RosMessage for {{ message_name }} {
     // {{ stamp_offset }} (raw-buffer peek for on-target max_age monitors).
     const STAMP_OFFSET: Option<usize> = Some({{ stamp_offset }});
 {%- endif %}
+    // Issue 1179 -- the type's bound on `RosMessage`, the one trait every
+    // backend's registration can read. Computed from the schema below, not
+    // copied, so it cannot drift from it.
+    const MAX_SERIALIZED_BOUND: Option<usize> =
+        ::nros_serdes::size::max_serialized_bound::<Self>();
 }
 {%- if has_view %}
 

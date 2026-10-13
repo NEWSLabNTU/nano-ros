@@ -35,6 +35,9 @@ impl Deserialize for GetAvailableStatesRequest {
 impl RosMessage for GetAvailableStatesRequest {
     const TYPE_NAME: &'static str = "lifecycle_msgs::srv::dds_::GetAvailableStates_Request_";
     const TYPE_HASH: &'static str = "TypeHashNotSupported";
+    // Issue 1179 -- see the message template: the bound, computed from the
+    // schema, on the one trait every backend's registration can read.
+    const MAX_SERIALIZED_BOUND: Option<usize> = ::nros_serdes::size::max_serialized_bound::<Self>();
 }
 
 // ── nros_serdes::Message — runtime field schema (Request) ───────────────────
@@ -91,6 +94,9 @@ impl Deserialize for GetAvailableStatesResponse {
 impl RosMessage for GetAvailableStatesResponse {
     const TYPE_NAME: &'static str = "lifecycle_msgs::srv::dds_::GetAvailableStates_Response_";
     const TYPE_HASH: &'static str = "TypeHashNotSupported";
+    // Issue 1179 -- see the message template: the bound, computed from the
+    // schema, on the one trait every backend's registration can read.
+    const MAX_SERIALIZED_BOUND: Option<usize> = ::nros_serdes::size::max_serialized_bound::<Self>();
 }
 
 // ── nros_serdes::Message — runtime field schema (Response) ──────────────────

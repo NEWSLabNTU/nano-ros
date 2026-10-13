@@ -35,7 +35,7 @@
 ///
 /// Gated by `check-codegen-version-surface`, which fails when the surface
 /// generated code names changes and this constant does not.
-pub const NROS_CODEGEN_VERSION: u32 = 14;
+pub const NROS_CODEGEN_VERSION: u32 = 15;
 
 /// The oldest codegen version this runtime still accepts.
 ///
@@ -213,6 +213,13 @@ pub const NROS_CODEGEN_VERSION: u32 = 14;
 /// version-13 C tree names a descriptor layout and entry points this runtime
 /// no longer has, so it is refused by version. Rust and C++ trees are
 /// unaffected, but the version is one number for all three.
+///
+/// Still 14 while [`NROS_CODEGEN_VERSION`] moved to 15 (issue 1179, phase-498
+/// W3). Generated `RosMessage` impls now state `MAX_SERIALIZED_BOUND`, the
+/// type's size bound, so a typed subscription is sized from its type on every
+/// backend. The trait const is DEFAULTED (`None`), so a version-14 tree still
+/// compiles against this runtime and only keeps the image-wide receive size it
+/// had. Nothing it names is gone, so it is accepted.
 ///
 /// The range `[NROS_CODEGEN_VERSION_MIN, NROS_CODEGEN_VERSION]` is expressed to
 /// C and C++ as a SET OF DEFINED SYMBOLS rather than as a comparison — see

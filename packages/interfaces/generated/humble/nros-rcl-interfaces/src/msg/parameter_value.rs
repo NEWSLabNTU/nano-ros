@@ -125,6 +125,10 @@ impl Deserialize for ParameterValue {
 impl RosMessage for ParameterValue {
     const TYPE_NAME: &'static str = "rcl_interfaces::msg::dds_::ParameterValue_";
     const TYPE_HASH: &'static str = "TypeHashNotSupported";
+    // Issue 1179 -- the type's bound on `RosMessage`, the one trait every
+    // backend's registration can read. Computed from the schema below, not
+    // copied, so it cannot drift from it.
+    const MAX_SERIALIZED_BOUND: Option<usize> = ::nros_serdes::size::max_serialized_bound::<Self>();
 }
 
 // ── nros_serdes::Message — runtime field schema ─────────────────────────────

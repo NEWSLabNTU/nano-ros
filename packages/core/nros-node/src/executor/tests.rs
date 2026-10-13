@@ -286,6 +286,157 @@ impl Deserialize for TestMsg {
     }
 }
 
+/// Issue 1179 -- `TestMsg` as CODEGEN emits it: the same fields and schema,
+/// plus the `RosMessage::MAX_SERIALIZED_BOUND` override every generated type
+/// carries (`packs/nros/message.rs.jinja`). `TestMsg` itself stays the
+/// hand-written shape, the one that keeps today's default.
+#[derive(Debug, Clone, PartialEq)]
+struct GeneratedMsg {
+    data: i32,
+}
+
+impl RosMessage for GeneratedMsg {
+    const TYPE_NAME: &'static str = "test/msg/GeneratedMsg";
+    const TYPE_HASH: &'static str = "test_hash_generated";
+    const MAX_SERIALIZED_BOUND: Option<usize> = nros_serdes::size::max_serialized_bound::<Self>();
+}
+
+impl nros_serdes::schema::Message for GeneratedMsg {
+    const TYPE_NAME: &'static str = "test/msg/GeneratedMsg";
+    const FIELDS: &'static [nros_serdes::schema::Field] = &[nros_serdes::schema::Field {
+        name: "data",
+        ty: nros_serdes::schema::FieldType::Int32,
+        offset: 0,
+    }];
+}
+
+impl Serialize for GeneratedMsg {
+    fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
+        writer.write_i32(self.data)
+    }
+}
+
+impl Deserialize for GeneratedMsg {
+    fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError> {
+        Ok(Self {
+            data: reader.read_i32()?,
+        })
+    }
+}
+
+/// Issue 1179 -- a generated type is sized from its own bound on EVERY
+/// backend: the answer reads `RosMessage`, so it does not depend on whether
+/// `MessageForRmw` carries a schema (it does only under
+/// `cfg(rmw_needs_type_descriptors)`, i.e. Cyclone, and this test runs on the
+/// arm without it too). Before, this was `None` on zenoh and XRCE.
+#[test]
+fn a_generated_type_derives_its_receive_size_on_every_backend() {
+    let bound = nros_serdes::size::max_serialized_bound::<GeneratedMsg>()
+        .expect("an int32 message is bounded");
+    let rx = crate::config::DEFAULT_RX_BUF_SIZE;
+    assert!(
+        bound < rx,
+        "the fixture needs a bound below the default buffer"
+    );
+    assert_eq!(
+        crate::rmw_type_registry::default_subscription_rx_bytes::<GeneratedMsg>(rx),
+        Some(bound.next_multiple_of(4)),
+        "the default receive size is the type's bound, framed to 4"
+    );
+    assert_eq!(
+        crate::rmw_type_registry::subscription_rx_hint::<GeneratedMsg>(rx),
+        bound,
+        "the backend hint is the type's own bound"
+    );
+    assert!(crate::rmw_type_registry::subscription_buffer_ok::<
+        GeneratedMsg,
+    >());
+}
+
+/// Issue 1860 / phase-498 W1 -- a `.message_info()` subscription's slot is
+/// sized from its type, as the buffered path's is, instead of reserving the
+/// image's closure maximum inline. Compared registration against
+/// registration, so the entry struct cancels out and the difference is
+/// exactly the slot. `TestMsg` (hand-written, no bound) is the control: it
+/// keeps `DEFAULT_RX_BUF_SIZE`, as before.
+#[test]
+fn a_message_info_subscription_is_sized_from_its_type() {
+    let rx = crate::config::DEFAULT_RX_BUF_SIZE;
+    let bound = nros_serdes::size::max_serialized_bound::<GeneratedMsg>()
+        .expect("an int32 message is bounded");
+    let framed = bound.next_multiple_of(4);
+    assert!(
+        framed < rx,
+        "the fixture needs a bound below the default buffer"
+    );
+
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let nid = executor.node_builder("info_sizing").build().unwrap();
+    let before = executor.arena_used();
+    executor
+        .node_mut(nid)
+        .subscription("/generated")
+        .typed::<GeneratedMsg>()
+        .message_info()
+        .build(|_: &GeneratedMsg, _: Option<&nros_core::MessageInfo>| {})
+        .unwrap();
+    let generated = executor.arena_used() - before;
+    let before = executor.arena_used();
+    executor
+        .node_mut(nid)
+        .subscription("/hand_written")
+        .typed::<TestMsg>()
+        .message_info()
+        .build(|_: &TestMsg, _: Option<&nros_core::MessageInfo>| {})
+        .unwrap();
+    let hand_written = executor.arena_used() - before;
+    // The arena hands out regions on its grain, so compare against the
+    // difference a grain-rounded slot can make, not a raw subtraction.
+    assert!(
+        hand_written > generated,
+        "a bounded type must claim less than the default slot: {generated} vs {hand_written}"
+    );
+    assert!(
+        hand_written - generated >= rx - framed - super::spin::ARENA_GRAIN,
+        "the saving is the slot's difference ({} B), up to one arena grain; got {} B",
+        rx - framed,
+        hand_written - generated
+    );
+
+    // `.rx_buffer::<N>()` is still verbatim: a named size is not re-derived.
+    let before = executor.arena_used();
+    executor
+        .node_mut(nid)
+        .subscription("/named")
+        .typed::<GeneratedMsg>()
+        .message_info()
+        .rx_buffer::<{ crate::config::DEFAULT_RX_BUF_SIZE }>()
+        .build(|_: &GeneratedMsg, _: Option<&nros_core::MessageInfo>| {})
+        .unwrap();
+    assert_eq!(
+        executor.arena_used() - before,
+        hand_written,
+        "a named size claims exactly what the default-sized control claims"
+    );
+}
+
+/// The other half: a hand-written type that states no bound keeps exactly
+/// the caller's default, on every backend (phase-380 W4's promise to
+/// `examples/native/rust/custom-msg`).
+#[test]
+fn a_hand_written_type_without_a_bound_keeps_the_default() {
+    let rx = crate::config::DEFAULT_RX_BUF_SIZE;
+    assert_eq!(
+        crate::rmw_type_registry::default_subscription_rx_bytes::<TestMsg>(rx),
+        None
+    );
+    assert_eq!(
+        crate::rmw_type_registry::subscription_rx_hint::<TestMsg>(rx),
+        rx
+    );
+    assert!(crate::rmw_type_registry::subscription_buffer_ok::<TestMsg>());
+}
+
 /// CDR-encode a TestMsg(value) including CDR header.
 fn encode_test_msg(value: i32) -> ([u8; 256], usize) {
     let mut buf = [0u8; 256];

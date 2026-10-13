@@ -56,6 +56,10 @@ impl Deserialize for ProbeGoal {
 impl RosMessage for ProbeGoal {
     const TYPE_NAME: &'static str = "fingerprint-corpus::action::dds_::Probe_Goal_";
     const TYPE_HASH: &'static str = "fingerprint";
+    // Issue 1179 -- see the message template: the bound, computed from the
+    // schema, on the one trait every backend's registration can read.
+    const MAX_SERIALIZED_BOUND: Option<usize> =
+        ::nros_serdes::size::max_serialized_bound::<Self>();
 }
 
 // ── nros_serdes::Message — runtime field schema (Goal) ──────────────────────
@@ -120,6 +124,10 @@ impl Deserialize for ProbeResult {
 impl RosMessage for ProbeResult {
     const TYPE_NAME: &'static str = "fingerprint-corpus::action::dds_::Probe_Result_";
     const TYPE_HASH: &'static str = "fingerprint";
+    // Issue 1179 -- see the message template: the bound, computed from the
+    // schema, on the one trait every backend's registration can read.
+    const MAX_SERIALIZED_BOUND: Option<usize> =
+        ::nros_serdes::size::max_serialized_bound::<Self>();
 }
 
 // ── nros_serdes::Message — runtime field schema (Result) ────────────────────
@@ -180,6 +188,10 @@ impl Deserialize for ProbeFeedback {
 impl RosMessage for ProbeFeedback {
     const TYPE_NAME: &'static str = "fingerprint-corpus::action::dds_::Probe_Feedback_";
     const TYPE_HASH: &'static str = "fingerprint";
+    // Issue 1179 -- see the message template: the bound, computed from the
+    // schema, on the one trait every backend's registration can read.
+    const MAX_SERIALIZED_BOUND: Option<usize> =
+        ::nros_serdes::size::max_serialized_bound::<Self>();
 }
 
 // ── nros_serdes::Message — runtime field schema (Feedback) ──────────────────
@@ -253,6 +265,10 @@ impl Deserialize for Probe_SendGoal_Request {
 impl RosMessage for Probe_SendGoal_Request {
     const TYPE_NAME: &'static str = "fingerprint-corpus::action::dds_::Probe_SendGoal_Request_";
     const TYPE_HASH: &'static str = "fingerprint";
+    // Issue 1179 -- see the message template: the bound, computed from the
+    // schema, on the one trait every backend's registration can read.
+    const MAX_SERIALIZED_BOUND: Option<usize> =
+        ::nros_serdes::size::max_serialized_bound::<Self>();
 }
 
 #[allow(non_upper_case_globals)]
@@ -317,6 +333,10 @@ impl Deserialize for Probe_SendGoal_Response {
 impl RosMessage for Probe_SendGoal_Response {
     const TYPE_NAME: &'static str = "fingerprint-corpus::action::dds_::Probe_SendGoal_Response_";
     const TYPE_HASH: &'static str = "fingerprint";
+    // Issue 1179 -- see the message template: the bound, computed from the
+    // schema, on the one trait every backend's registration can read.
+    const MAX_SERIALIZED_BOUND: Option<usize> =
+        ::nros_serdes::size::max_serialized_bound::<Self>();
 }
 
 #[allow(non_upper_case_globals)]
@@ -373,6 +393,10 @@ impl Deserialize for Probe_GetResult_Request {
 impl RosMessage for Probe_GetResult_Request {
     const TYPE_NAME: &'static str = "fingerprint-corpus::action::dds_::Probe_GetResult_Request_";
     const TYPE_HASH: &'static str = "fingerprint";
+    // Issue 1179 -- see the message template: the bound, computed from the
+    // schema, on the one trait every backend's registration can read.
+    const MAX_SERIALIZED_BOUND: Option<usize> =
+        ::nros_serdes::size::max_serialized_bound::<Self>();
 }
 
 #[allow(non_upper_case_globals)]
@@ -427,6 +451,10 @@ impl Deserialize for Probe_GetResult_Response {
 impl RosMessage for Probe_GetResult_Response {
     const TYPE_NAME: &'static str = "fingerprint-corpus::action::dds_::Probe_GetResult_Response_";
     const TYPE_HASH: &'static str = "fingerprint";
+    // Issue 1179 -- see the message template: the bound, computed from the
+    // schema, on the one trait every backend's registration can read.
+    const MAX_SERIALIZED_BOUND: Option<usize> =
+        ::nros_serdes::size::max_serialized_bound::<Self>();
 }
 
 #[allow(non_upper_case_globals)]
@@ -486,6 +514,10 @@ impl Deserialize for Probe_FeedbackMessage {
 impl RosMessage for Probe_FeedbackMessage {
     const TYPE_NAME: &'static str = "fingerprint-corpus::action::dds_::Probe_FeedbackMessage_";
     const TYPE_HASH: &'static str = "fingerprint";
+    // Issue 1179 -- see the message template: the bound, computed from the
+    // schema, on the one trait every backend's registration can read.
+    const MAX_SERIALIZED_BOUND: Option<usize> =
+        ::nros_serdes::size::max_serialized_bound::<Self>();
 }
 
 #[allow(non_upper_case_globals)]

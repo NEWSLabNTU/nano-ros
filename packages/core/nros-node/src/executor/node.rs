@@ -3215,6 +3215,7 @@ impl<'c, 'e, 't, 's, M: MessageForRmw + 'static, const RX: usize>
             topic: self.topic,
             qos: self.qos,
             sched: self.sched,
+            rx_explicit: self.rx_explicit,
             _phantom: PhantomData,
         }
     }
@@ -3228,6 +3229,7 @@ impl<'c, 'e, 't, 's, M: MessageForRmw + 'static, const RX: usize>
             topic: self.topic,
             qos: self.qos,
             sched: self.sched,
+            rx_explicit: self.rx_explicit,
             _phantom: PhantomData,
         }
     }
@@ -3333,6 +3335,9 @@ pub struct TypedSubInfoBuilder<
     topic: &'t str,
     qos: QoSProfile,
     sched: Option<super::sched_context::SchedContextId>,
+    /// Issue 1860 -- did the consumer NAME `RX` (`.rx_buffer::<N>()`), or is it
+    /// the default the type's bound is clamped to? As `TypedSubscriptionBuilder`.
+    rx_explicit: bool,
     _phantom: PhantomData<M>,
 }
 
@@ -3355,6 +3360,7 @@ impl<'c, 'e, 't, 's, M: MessageForRmw + 'static, const RX: usize>
             topic: self.topic,
             qos: self.qos,
             sched: self.sched,
+            rx_explicit: true,
             _phantom: PhantomData,
         }
     }
@@ -3371,6 +3377,7 @@ impl<'c, 'e, 't, 's, M: MessageForRmw + 'static, const RX: usize>
                 self.topic,
                 self.qos,
                 callback,
+                if self.rx_explicit { Some(RX) } else { None },
             )?;
         if let Some(sc) = self.sched {
             self.ctx.executor.bind_handle_to_sched_context(handle, sc)?;
@@ -3394,6 +3401,9 @@ pub struct TypedSubSafetyBuilder<
     topic: &'t str,
     qos: QoSProfile,
     sched: Option<super::sched_context::SchedContextId>,
+    /// Issue 1860 -- did the consumer NAME `RX` (`.rx_buffer::<N>()`), or is it
+    /// the default the type's bound is clamped to? As `TypedSubscriptionBuilder`.
+    rx_explicit: bool,
     _phantom: PhantomData<M>,
 }
 
@@ -3417,6 +3427,7 @@ impl<'c, 'e, 't, 's, M: MessageForRmw + 'static, const RX: usize>
             topic: self.topic,
             qos: self.qos,
             sched: self.sched,
+            rx_explicit: true,
             _phantom: PhantomData,
         }
     }
@@ -3433,6 +3444,7 @@ impl<'c, 'e, 't, 's, M: MessageForRmw + 'static, const RX: usize>
                 self.topic,
                 self.qos,
                 callback,
+                if self.rx_explicit { Some(RX) } else { None },
             )?;
         if let Some(sc) = self.sched {
             self.ctx.executor.bind_handle_to_sched_context(handle, sc)?;

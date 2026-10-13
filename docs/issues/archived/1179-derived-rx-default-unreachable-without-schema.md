@@ -1,13 +1,13 @@
 ---
 id: 1179
 title: "Derived-by-default receive buffers reach only backends declaring `type-descriptors` — `MessageForRmw` carries no schema on zenoh or XRCE"
-status: open
+status: resolved
 type: enhancement
 area: core
 related: [phase-392, phase-403, issue-0896, phase-394, phase-498, issue-1860]
 ---
 
-**Home: [phase-498](../roadmap/phase-498-rx-sizing-residue.md)** (W3), re-homed 2026-10-13 from phase-403, archived that day. Phase-403 had re-homed it on 2026-10-12 from phase-392, also archived.
+**Home: [phase-498](../../roadmap/archived/phase-498-rx-sizing-residue.md)** (W3), re-homed 2026-10-13 from phase-403, archived that day. Phase-403 had re-homed it on 2026-10-12 from phase-392, also archived.
 
 ## Problem
 
@@ -106,3 +106,32 @@ The assertion above is real on both arms, but only the second invocation above
 can catch a regression in the derivation itself. Verified by reverting the
 choke-point change and re-running: the descriptor arm fails with
 `left: 5376, right: 2340`, the default arm stays green.
+
+## Resolution (2026-10-14, phase-498 W3)
+
+Option (a). `nros_core::RosMessage` gained
+`const MAX_SERIALIZED_BOUND: Option<usize> = None`. Codegen emits
+`nros_serdes::size::max_serialized_bound::<Self>()` in every generated
+`impl RosMessage`: messages, service request and response, and all eight
+action types. It is the same `const fn` over the schema in the same file, so
+it cannot drift from it.
+
+- **One arm instead of two.** `rmw_type_registry`'s
+  `subscription_rx_hint`, `default_subscription_rx_bytes` and
+  `subscription_buffer_ok` read that const, so the
+  `cfg(rmw_needs_type_descriptors)` split is gone from all three. A generated
+  type is sized from its bound on zenoh and XRCE as on Cyclone, and the "the
+  type fits the default buffer" build assertion now holds on every backend.
+  The native fixture lane builds with it, so no in-tree image is newly
+  refused.
+- **A hand-written type** that does not override the const keeps the
+  caller's default, which is what `examples/native/rust/custom-msg` relies
+  on. One consequence of the single arm: on Cyclone, a hand-written type
+  that has a schema but no override no longer derives. Every generated type
+  carries both, and such a type can opt in with one line.
+- **Codegen version 14 to 15**, with the minimum still 14: a version-14
+  tree compiles and keeps the image-wide size. The surface baseline, the
+  golden corpus, the two buildless config headers and the committed
+  `packages/interfaces/generated/` crates were all regenerated.
+- **Tests:** `a_generated_type_derives_its_receive_size_on_every_backend` and
+  `a_hand_written_type_without_a_bound_keeps_the_default`.
