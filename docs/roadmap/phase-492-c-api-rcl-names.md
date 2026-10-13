@@ -463,3 +463,13 @@ sees zero allocations across publish and take.
   block in `book/src/` outside `porting/` includes a header from
   `packages/api/nros-c/include/nros/`. The set is derived from that directory,
   so port-seam headers stay legal. Main's tree has 141 violations.
+
+### 2026-10-13 — open regression: NuttX C entity init (issue 1872)
+
+Filed from nightly 38346448295 (`d134dc83f0`), the first nightly after this
+phase's rename. The NuttX C listener's `rclc_subscription_init_default(…,
+ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, String), …)` and the C service
+server's `example_interfaces__srv__AddTwoInts__service_init` both return -3
+(`RCL_RET_INVALID_ARGUMENT`) right after the node is created. NuttX Rust,
+C++ and C action pass in the same run, and the previous nightly passed both
+cells. Issue 1872 has the window and a repro.
