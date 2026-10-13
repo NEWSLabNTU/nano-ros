@@ -1,12 +1,13 @@
 ---
 id: 1858
 title: "After `nros sync`, the metadata probe's mirrored `nros_cpp_config_generated.h` is stale against the header cargo last wrote, and `check-sizes-header-mirrors` fails on any checkout that synced a C++ workspace"
-status: open
+status: resolved
 type: bug
 area: [build, cmake]
-severity: low
+severity: medium
 found: 2026-10-13
-related: [issue-1783, issue-0268, issue-0834, issue-0616]
+resolved: 2026-10-13
+related: [issue-1783, issue-0268, issue-0834, issue-0616, issue-0805, issue-1700]
 ---
 
 ## Measured
@@ -61,8 +62,6 @@ cargo-generated header. Nothing re-runs it after the second cargo write.
 - The edge: the mirror should depend on the header it copies, as issue 1783
   made it for the normal C/C++ build. Check whether 1783's fix reaches the
   Makefile generator or only ninja.
-</content>
-</invoke>
 
 ### 2026-10-13: it now stops the scheduled tier-1 lane
 
@@ -102,3 +101,42 @@ STALE MIRROR: examples/templates/multi-node-workspace-cpp/build/nros-metadata/â€
 The workspaces are the same two as tier 1's. While this stands, tier 2 has no
 signal at all, which is the issue-1158 shape (a lane that never reaches its
 cells).
+
+## Resolution (2026-10-13)
+
+**Root cause: the shared cargo dir's key missed a feature.** The probe's
+`cargo/` is a symlink into `build/corrosion-cargo/metadata-probe/<key>`,
+shared by every probe build with an equal key (issue 0805). `nros-c` computes
+the key from its features at import time. `nros_apply_panic_policy` adds
+`panic-platform` later, with `corrosion_set_features()`, so it was not in the
+key. Two workspaces equal on the key but differing in their ending (`features`
+with `panic-platform`, `managed` without; likewise `mixed` / `cpp`) therefore
+took turns rewriting one `nros-cpp-generated/nros_cpp_config_generated.h`.
+Each probe's mirror was right when it was copied and went stale on the next
+sync of the other workspace. That explains both observations: the "second
+cargo run" was another workspace's probe, and a CI fresh checkout reaches the
+failure because `just generate-bindings` syncs every workspace in one pass.
+The header was not the only shared output: the archive in the same dir was
+shared too, so a later incremental probe build could link the other
+workspace's archive.
+
+Reproduced on `origin/main`: syncing `features`, then `managed`, made
+`features`' mirror STALE. Syncing `mixed`, then `cpp`, did the same to
+`mixed`'s.
+
+**Fix.** `nros_apply_panic_policy` records the feature it applies in the
+GLOBAL property `NROS_SHARED_CARGO_LATE_FEATURES`. The end-of-configure re-key
+(`_nros_entity_facts_rekey_shared_cargo_dir`, issue 1700) appends a
+`late_features=` field, and it now re-keys when that field is non-empty even
+if there are no entity facts. An image with no late feature keeps its key.
+Measured after the fix, rebuilding the four probes in the failing order:
+
+- `features` and `managed` key to `64bbb5df69c4` and `38265e322fb9`;
+- `mixed` and `cpp` key to `ddb2119461cd` and `d1088a68552b`;
+- `check-sizes-header-mirrors` reports OK over 15 pairs across 5 build dirs.
+
+The sweep for other late cargo inputs on the runtime targets was
+`git grep -nE 'corrosion_(set_env_vars|add_target_rustflags|set_cargo_flags|set_features)\(' -- cmake packages/api zephyr`.
+Only the features call was outside the key; profile, board facts, image env,
+knobs and entity facts are already key fields. The mirror rule's stamp-only
+edge (the "Open" item above) was not the cause, and was left as it is.

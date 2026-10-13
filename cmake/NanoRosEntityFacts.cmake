@@ -86,6 +86,21 @@ function(_nros_entity_facts_rekey_shared_cargo_dir)
         return()
     endif()
     nros_entity_facts_env("" ENV_OUT _facts)
+    # Issue 1858 -- features applied to the runtime crates AFTER `nros-c` keyed
+    # the directory (`nros_apply_panic_policy`'s `panic-platform`). They change
+    # what the build scripts write (the config header's VARIANT stamp) exactly
+    # as the facts do, so they complete the key the same way. Measured: the
+    # `features` and `managed` workspaces' metadata probes keyed equal, one with
+    # `panic-platform` and one without, and each `nros sync` left the other's
+    # mirrored header stale. Empty for an image with no late feature, so its key
+    # does not move.
+    get_property(_late GLOBAL PROPERTY NROS_SHARED_CARGO_LATE_FEATURES)
+    if(_late)
+        list(REMOVE_DUPLICATES _late)
+        list(SORT _late)
+        string(REPLACE ";" "," _late "${_late}")
+        list(APPEND _facts "late_features=${_late}")
+    endif()
     if(NOT _facts)
         return()
     endif()
