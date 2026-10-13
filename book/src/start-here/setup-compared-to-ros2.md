@@ -172,7 +172,7 @@ Multi-RMW bridges (one binary, two or more backends) use
   `<your-package>/generated/` (or `OUT_DIR` for Cargo builds), not in
   an installed ROS message library.
 - **Configuration is build-time on embedded.** Runtime env vars
-  (`ROS_DOMAIN_ID`, `NROS_LOCATOR` — legacy alias `ZENOH_LOCATOR`,
+  (`ROS_DOMAIN_ID`, `NROS_LOCATOR`,
   …) work on POSIX; embedded targets bake the same values from their
   `[image.<id>]` row in `system.toml` (`locator`, `ip`, `gateway`,
   `netmask`) and `[system]` (`rmw`, `domain_id`) — one file, and the

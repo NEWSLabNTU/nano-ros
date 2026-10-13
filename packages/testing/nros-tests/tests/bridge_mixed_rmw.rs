@@ -80,14 +80,14 @@ fn test_zenoh_to_xrce_bridge_e2e(
     std::thread::sleep(Duration::from_secs(1));
 
     // 1. Spawn the bridge first — its egress XRCE publisher is what the
-    //    listener needs to discover. ZENOH_LOCATOR → ingress, XRCE_LOCATOR →
+    //    listener needs to discover. NROS_LOCATOR → ingress, XRCE_LOCATOR →
     //    egress. The TT schedule has a 3 ms ingress window in a 10 ms major
     //    frame; at 1 Hz publish, each sample lands within an ingress window
     //    with overwhelming probability.
     let mut bridge_cmd = Command::new(&bridge_bin);
     bridge_cmd
         .env("RUST_LOG", "info")
-        .env("ZENOH_LOCATOR", &zenoh_locator)
+        .env("NROS_LOCATOR", &zenoh_locator)
         .env("XRCE_LOCATOR", &xrce_locator);
     let mut bridge = ManagedProcess::spawn_command(bridge_cmd, "bridge-zenoh-to-xrce-fwd")
         .expect("spawn bridge");

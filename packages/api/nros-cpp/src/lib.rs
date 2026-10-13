@@ -2363,8 +2363,7 @@ pub unsafe extern "C" fn nros_board_native_run_components_named_in(
     // here and pass them down as the BAKED rung. `nros_cpp_init` already
     // applies the env rung through `try_resolve_hosted`, so the overlay was a
     // second reader of the same two variables — and it disagreed with the
-    // first: it did not accept the legacy `$ZENOH_LOCATOR`, printed no
-    // deprecation warning, and turned a malformed or out-of-range
+    // first: it did not see the (since retired) legacy locator alias, and turned a malformed or out-of-range
     // `$ROS_DOMAIN_ID` into a SILENT domain 0, which is the failure mode #206
     // fixed for every other language. Passing NULL/0 (the unset sentinels)
     // hands the whole question to the one resolver.

@@ -13,12 +13,9 @@ path = "src/main.rs"
 [package.metadata.nros.application]
 deploy = ["px4"]
 
-[features]
-# Phase 277 W3.b — single-RMW example: the xrce backend dep is unconditional
-# (below). `rmw-xrce` is kept as a no-op feature name so existing
-# `--features rmw-xrce` invocations (just/px4.just) keep working.
-default = ["rmw-xrce"]
-rmw-xrce = []
+# phase-484 W8c — no `[features]`: single-RMW example, the xrce backend dep
+# is unconditional (below). The inert `rmw-xrce = []` feature kept for
+# `just/px4.just`'s `--features rmw-xrce` is retired together with that flag.
 
 [dependencies]
 # phase-359 W10 — was `["std", …]`. The stub is a hosted binary, but it builds

@@ -1,0 +1,9 @@
+//! Overlay for compile-check row `main_macro_misuse_board_arg` (issue 1656): `compile-check-fixtures.sh`
+//! copies `cases/<id>/` over the staged template, so this file is a row INPUT
+//! (`.inputsig` hashes the template dir) rather than text inside the script.
+//!
+//! phase-484 W8c — misuse verdict: the RETIRED Form 2 (`board = X`) must be a
+//! compile error naming `[package.metadata.nros.board] type`. This row was the
+//! Form 2 positive proof (`main_macro_form2`) until the form was retired.
+
+nros::main!(board = ::demo_entry_nros_selection::nros_board_linux::LinuxBoard);

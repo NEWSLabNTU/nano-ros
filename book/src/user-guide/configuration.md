@@ -400,8 +400,8 @@ On the `native` host build, `ExecutorConfig::from_env()` reads at process start
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `ROS_DOMAIN_ID` | ROS 2 domain ID | `0` |
-| `NROS_LOCATOR` | Router address (legacy alias `ZENOH_LOCATOR`) | `tcp/127.0.0.1:7447` |
-| `NROS_SESSION_MODE` | `client` / `peer` (legacy alias `ZENOH_MODE`) | `client` |
+| `NROS_LOCATOR` | Router address | `tcp/127.0.0.1:7447` |
+| `NROS_SESSION_MODE` | `client` / `peer` | `client` |
 | `ZENOH_TLS_ROOT_CA_CERTIFICATE*` | TLS CA cert (path / base64) | (none) |
 
 ## By deployment scenario

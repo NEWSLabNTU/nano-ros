@@ -209,6 +209,16 @@ node-ref-fresh-mint:
 retired-store-vars:
     @python3 scripts/check/check-retired-store-vars.py
 
+# phase-484 W8c — the runtime aliases `ZENOH_LOCATOR` / `ZENOH_MODE` are
+# retired (both hosted readers REFUSE a set one, from ONE table in
+# `packages/api/nros/src/retired_env.rs`) and so is `nros::main!(board = X)`
+# (a `compile_error!`). This keeps a READ of either alias, or a Form 2 call,
+# from coming back anywhere outside that table and the one verdict fixture
+# that proves the refusal. Buildless, ~0.3 s; self-tests every shape each run.
+[private]
+retired-runtime-aliases:
+    @python3 scripts/check/check-retired-runtime-aliases.py
+
 # phase-484 W3 (RFC-0103 D5) — every `[source.*]` row that names a `submodule`
 # states its pin (`git` + `ref`), so the pin can be read without a checkout: an
 # installed SDK root clones from it, and the store keys a tree by its sha. Issue

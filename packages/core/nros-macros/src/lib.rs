@@ -17,22 +17,23 @@ mod entry_parity;
 mod main_macro;
 mod source_metadata_sidecars;
 
-/// One-line `fn main()` for Entry pkgs. Four forms:
+/// One-line `fn main()` for Entry pkgs:
 ///
 /// ```ignore
 /// nros::main!();                                          // single-node self-bringup
-/// nros::main!(board = LinuxBoard);                       // single-node, explicit board
 /// nros::main!(launch = "demo_bringup");                   // multi-node, default launch
 /// nros::main!(launch = "demo_bringup:sim.launch.xml");    // multi-node, explicit file
 /// nros::main!(
-///     board  = LinuxBoard,
 ///     launch = "demo_bringup:sim.launch.xml",
 ///     args   = [("use_sim", "true")],
 /// );
 /// ```
 ///
-/// Reads `[package.metadata.nros.entry] deploy = "<board>"` from the
-/// Entry pkg's own `Cargo.toml` when `board = …` is absent; consults
+/// Reads the board from the leaf's `system.toml` (`[image.<id>] board`), else
+/// `[package.metadata.nros.entry] deploy = "<board>"`. The old explicit
+/// `board = X` argument is RETIRED (phase-484 W8c): it is a compile error
+/// naming `[package.metadata.nros.board] type`, the out-of-tree board's own
+/// statement of its type. Consults
 /// the workspace pkg-index (Phase 212.N.10) to resolve the bringup
 /// pkg's launch file (Phase 212.N.11 parser).
 ///

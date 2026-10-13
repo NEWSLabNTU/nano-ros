@@ -69,9 +69,7 @@ fn nros_init_returns_context() {
     // Scrub the relevant env so we see the defaults.
     let _g1 = EnvGuard::unset("ROS_DOMAIN_ID");
     let _g2 = EnvGuard::unset("NROS_LOCATOR");
-    let _g3 = EnvGuard::unset("ZENOH_LOCATOR");
     let _g4 = EnvGuard::unset("NROS_SESSION_MODE");
-    let _g5 = EnvGuard::unset("ZENOH_MODE");
     let _g6 = EnvGuard::unset("NROS_RMW");
     let _g7 = EnvGuard::unset("RMW_IMPLEMENTATION");
 
@@ -104,8 +102,6 @@ fn nros_init_with_launch_auto_applies_env_defaults() {
     let _g1 = EnvGuard::set("ROS_DOMAIN_ID", "42");
     let _g2 = EnvGuard::set("NROS_LOCATOR", "tcp/10.0.0.1:7777");
     let _g3 = EnvGuard::set("RMW_IMPLEMENTATION", "rmw_zenoh_cpp");
-    // Scrub the legacy aliases so they don't shadow the new vars.
-    let _g4 = EnvGuard::unset("ZENOH_LOCATOR");
     let _g5 = EnvGuard::unset("NROS_RMW");
 
     let ctx = nros::init_with_launch_auto().expect("init_with_launch_auto failed");
@@ -122,12 +118,32 @@ fn nros_init_with_launch_auto_applies_env_defaults() {
     );
 }
 
+/// phase-484 W8c — the retired `ZENOH_LOCATOR` alias is REFUSED by
+/// `nros::init`, naming `NROS_LOCATOR`; an ignored locator would dial the
+/// default router and read as "no delivery".
+#[test]
+fn nros_init_refuses_retired_locator_alias() {
+    let _g = env_lock().lock().unwrap();
+    let _g1 = EnvGuard::unset("ROS_DOMAIN_ID");
+    let _g2 = EnvGuard::unset("NROS_LOCATOR");
+    let retired = nros::RETIRED_ENV_VARS[0].0;
+    let _g3 = EnvGuard::set(retired, "tcp/127.0.0.1:7447");
+    let err = nros::init().expect_err("a set retired alias must refuse");
+    assert_eq!(
+        err,
+        nros::InitError::RetiredEnvVar {
+            name: retired,
+            replacement: "NROS_LOCATOR"
+        }
+    );
+    assert!(err.to_string().contains("NROS_LOCATOR"), "{err}");
+}
+
 #[test]
 fn nros_init_with_launch_path_resolves_relative() {
     let _g = env_lock().lock().unwrap();
     let _g1 = EnvGuard::set("ROS_DOMAIN_ID", "7");
     let _g2 = EnvGuard::unset("NROS_LOCATOR");
-    let _g3 = EnvGuard::unset("ZENOH_LOCATOR");
 
     // Stage a placeholder launch file (XML parsing isn't wired this
     // wave — see module docs; the runtime only verifies the path

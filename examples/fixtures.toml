@@ -3610,12 +3610,6 @@ dir = "packages/testing/nros-tests/fixtures/n9_workspace"
 output = ".compile-ok"
 
 [[compile_check_fixture]]
-id = "main_macro_form2"
-builder = "cargo-check"
-dir = "packages/testing/nros-tests/fixtures/n9_workspace"
-output = ".compile-ok"
-
-[[compile_check_fixture]]
 id = "main_macro_form3"
 builder = "cargo-check"
 dir = "packages/testing/nros-tests/fixtures/n9_workspace"
@@ -3660,6 +3654,13 @@ output = ".verdict"
 
 [[compile_check_fixture]]
 id = "main_macro_misuse_unknown_board"
+builder = "cargo-check-verdict"
+dir = "packages/testing/nros-tests/fixtures/n9_workspace"
+output = ".verdict"
+
+# phase-484 W8c — the retired `nros::main!(board = X)` (Form 2) must refuse.
+[[compile_check_fixture]]
+id = "main_macro_misuse_board_arg"
 builder = "cargo-check-verdict"
 dir = "packages/testing/nros-tests/fixtures/n9_workspace"
 output = ".verdict"

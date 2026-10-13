@@ -226,7 +226,7 @@ BASELINE = {
     # `Context::new` read a `--params-file` with ONE `std::fs::read_to_string`
     # (under `param-services`, inside the `env`-only parse). The YAML subset is
     # parsed by `nros_node::ros_args::parse_params_yaml`, no std.
-    "nros": {"cfg": 5, "path": 17},
+    "nros": {"cfg": 5, "path": 15},
     #
     # phase-359 W10: 13 -> 2 cfg, 8 -> 1 path. `platform.rs` was three std/no_std
     # PAIRS — clock, wall clock, sleep — and every C consumer links a platform

@@ -818,7 +818,7 @@ config NROS_ZENOH_LOCATOR
       deployment: it is what `ros2 run rmw_zenoh_cpp rmw_zenohd` listens on
       and what a `rmw_zenoh_cpp` node connects to, and it is what our own
       launcher defaults to (`just zenohd` -> `nros_router_exec
-      "${ZENOH_LOCATOR:-tcp/127.0.0.1:7447}"`, `nros_router_hint`).
+      "${NROS_LOCATOR:-tcp/127.0.0.1:7447}"`, `nros_router_hint`).
 
       This default was 7456, which is nothing's default but this line's. The
       two halves of our OWN documented workflow therefore disagreed: a user

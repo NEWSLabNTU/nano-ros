@@ -15,7 +15,7 @@
 //!
 //! ## Env vars
 //!
-//! * `ZENOH_LOCATOR` — zenoh primary session. Default `tcp/127.0.0.1:7447`.
+//! * `NROS_LOCATOR` — zenoh primary session. Default `tcp/127.0.0.1:7447`.
 //! * `ROS_DOMAIN_ID` — Cyclone DDS egress domain. Default `0`.
 
 use log::{info, warn};
@@ -44,7 +44,7 @@ fn main() {
     nros_rmw_cyclonedds_sys::register().expect("register cyclonedds backend");
 
     let zenoh_locator =
-        std::env::var("ZENOH_LOCATOR").unwrap_or_else(|_| "tcp/127.0.0.1:7447".into());
+        std::env::var("NROS_LOCATOR").unwrap_or_else(|_| "tcp/127.0.0.1:7447".into());
     let domain_id: u32 = std::env::var("ROS_DOMAIN_ID")
         .ok()
         .and_then(|v| v.parse().ok())

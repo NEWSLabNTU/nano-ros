@@ -2,14 +2,14 @@
 //!
 //! Each compile-check row of this template overlays this file with its own
 //! `cases/<id>/src/demo_entry/src/main.rs.case` (issue 1656) — the four
-//! `nros::main!()` forms, and the misuse verdicts:
+//! `nros::main!()` forms, and the misuse verdicts (the old Form 2,
+//! `board = X`, is retired — phase-484 W8c — and is now the
+//! `main_macro_misuse_board_arg` verdict):
 //!
 //! ```ignore
 //! nros::main!();                                          // Form 1
-//! nros::main!(board = ::demo_entry_nros_selection::nros_board_linux::LinuxBoard); // Form 2
 //! nros::main!(launch = "demo_bringup");                   // Form 3
 //! nros::main!(
-//!     board  = ::demo_entry_nros_selection::nros_board_linux::LinuxBoard,
 //!     launch = "demo_bringup:sim.launch.xml",
 //!     args   = [("use_sim", "true")],
 //! );                                                       // Form 4
