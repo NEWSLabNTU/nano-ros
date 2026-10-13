@@ -1,7 +1,7 @@
 ---
 id: 1846
 title: "live-peer's host job fills a 110 GB runner disk building the fixtures its cells resolve, so the host rows produce no verdict"
-status: open
+status: resolved
 type: bug
 area: [ci, testing]
 severity: medium
@@ -101,3 +101,15 @@ sharing removes most of what each extra row cost.
 
 Still open until a live-peer host job reaches its cells with that headroom
 printed.
+
+## Resolution (2026-10-13)
+
+Live-peer 38339329107, dispatched on `main` (`0e5dfe6758`) after PRs #2103
+(issue 1845) and #2105, is green in every job. The host job reports
+`VERDICT: cells ran and passed`, and so do both board jobs.
+
+The free-disk line shows where the space goes now. 104 GB free before the
+first build, then 88 GB after the eight workspace rows, 87/82/80 GB after the
+C cyclonedds, C zenoh and C++ zenoh rows, 78/77/72 GB after the three Rust
+pairs, and 68 GB after the two compile-checks. The fixture build now uses
+about 36 GB. The same steps used to exhaust 110 GB at the last compile-check.
