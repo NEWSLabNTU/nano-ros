@@ -386,10 +386,13 @@ jobs:
       # gives artifacts mtimes newer than their sources — the museum-binary
       # class CLAUDE.md's fixture-mtime treadmill describes.
       #
-      # 1 GB, not the 2 GB the GHA backend was given: this now competes with the
-      # CLI cache (~774 MB) inside the repository's single 10 GB pool, and every
-      # run writes a new entry under a per-SHA key. `restore-keys` makes an
-      # older entry a partial hit, which is all a content-hashed cache needs.
+      # Sized by phase-489 W5 against what the warm job now stores (see
+      # docs/roadmap/phase-489-ci-build-speedup.md): the old 1 GB was FULL with
+      # the CLI build alone (1009 MiB of 1 GiB), so adding the `check-fast`
+      # compiles to it would have evicted one set to hold the other. Every run
+      # of the warm job writes a new entry under a per-SHA key inside the
+      # repository's single 10 GB pool; `restore-keys` makes an older entry a
+      # partial hit, which is all a content-hashed cache needs.
       - name: Cache sccache directory (compiling events)
         if: ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name) }}
         # RESTORE-ONLY. A save here writes a cache the run can never read again:
@@ -406,6 +409,13 @@ jobs:
           key: sccache-${{ runner.os }}-check-${{ github.sha }}
           restore-keys: |
             sccache-${{ runner.os }}-check-
+
+      # phase-489 W5 — which CPU did this run land on? The same gate set has
+      # measured 6.0 min and 12.2 min of busy CPU on hosted runners, every gate
+      # 1.6-2.0x slower in the slow runs, and the log named no CPU model, so the
+      # hardware explanation stayed a suspicion. Evidence only: no behaviour.
+      - name: Report runner hardware
+        run: scripts/ci/report-runner-hardware.sh
 
       - name: Configure sccache (compiling events)
         if: ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name) }}
@@ -437,7 +447,7 @@ jobs:
           # `${V:-UNSET}` expands to the VALUE when V is set, so the obvious
           # one-liner prints "SET<the url>". Ask the question directly.
           export SCCACHE_DIR=/tmp/sccache
-          export SCCACHE_CACHE_SIZE=1G
+          export SCCACHE_CACHE_SIZE=2G
           # The stats counters give a write-error COUNT and no reason. 777 of
           # 777 writes failed on run 33294943815 with the backend started and
           # both variables present, so the next question is WHY, and only the
@@ -452,7 +462,7 @@ jobs:
               echo "SCCACHE_LOG=warn"
               # Well under the 10 GB cap this store does NOT share; the
               # justfile's 30G default is a developer-workstation figure.
-              echo "SCCACHE_CACHE_SIZE=1G"
+              echo "SCCACHE_CACHE_SIZE=2G"
             } >> "$GITHUB_ENV"
           else
             echo "::warning::sccache unavailable — the compile tier runs UNCACHED (issue 0874)."
@@ -881,6 +891,13 @@ jobs:
           restore-keys: |
             sccache-${{ runner.os }}-check-
 
+      # phase-489 W5 — which CPU did this run land on? The same gate set has
+      # measured 6.0 min and 12.2 min of busy CPU on hosted runners, every gate
+      # 1.6-2.0x slower in the slow runs, and the log named no CPU model, so the
+      # hardware explanation stayed a suspicion. Evidence only: no behaviour.
+      - name: Report runner hardware
+        run: scripts/ci/report-runner-hardware.sh
+
       - name: Configure sccache (compiling events)
         if: ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name) }}
         run: |
@@ -890,7 +907,7 @@ jobs:
           fi
           sccache --version
           export SCCACHE_DIR=/tmp/sccache
-          export SCCACHE_CACHE_SIZE=1G
+          export SCCACHE_CACHE_SIZE=2G
           export SCCACHE_ERROR_LOG=/tmp/sccache-server.log
           export SCCACHE_LOG=warn
           if sccache --start-server >/tmp/sccache-start.log 2>&1; then
@@ -898,7 +915,7 @@ jobs:
               echo "SCCACHE_DIR=/tmp/sccache"
               echo "SCCACHE_ERROR_LOG=/tmp/sccache-server.log"
               echo "SCCACHE_LOG=warn"
-              echo "SCCACHE_CACHE_SIZE=1G"
+              echo "SCCACHE_CACHE_SIZE=2G"
             } >> "$GITHUB_ENV"
           else
             echo "::warning::sccache unavailable — the compile tier runs UNCACHED (issue 0874)."
@@ -1139,6 +1156,13 @@ jobs:
           restore-keys: |
             sccache-${{ runner.os }}-check-
 
+      # phase-489 W5 — which CPU did this run land on? The same gate set has
+      # measured 6.0 min and 12.2 min of busy CPU on hosted runners, every gate
+      # 1.6-2.0x slower in the slow runs, and the log named no CPU model, so the
+      # hardware explanation stayed a suspicion. Evidence only: no behaviour.
+      - name: Report runner hardware
+        run: scripts/ci/report-runner-hardware.sh
+
       - name: Configure sccache (compiling events)
         if: ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name) }}
         run: |
@@ -1148,7 +1172,7 @@ jobs:
           fi
           sccache --version
           export SCCACHE_DIR=/tmp/sccache
-          export SCCACHE_CACHE_SIZE=1G
+          export SCCACHE_CACHE_SIZE=2G
           export SCCACHE_ERROR_LOG=/tmp/sccache-server.log
           export SCCACHE_LOG=warn
           if sccache --start-server >/tmp/sccache-start.log 2>&1; then
@@ -1156,7 +1180,7 @@ jobs:
               echo "SCCACHE_DIR=/tmp/sccache"
               echo "SCCACHE_ERROR_LOG=/tmp/sccache-server.log"
               echo "SCCACHE_LOG=warn"
-              echo "SCCACHE_CACHE_SIZE=1G"
+              echo "SCCACHE_CACHE_SIZE=2G"
             } >> "$GITHUB_ENV"
           else
             echo "::warning::sccache unavailable — the compile tier runs UNCACHED (issue 0874)."
@@ -1513,6 +1537,13 @@ jobs:
           restore-keys: |
             sccache-${{ runner.os }}-check-
 
+      # phase-489 W5 — which CPU did this run land on? The same gate set has
+      # measured 6.0 min and 12.2 min of busy CPU on hosted runners, every gate
+      # 1.6-2.0x slower in the slow runs, and the log named no CPU model, so the
+      # hardware explanation stayed a suspicion. Evidence only: no behaviour.
+      - name: Report runner hardware
+        run: scripts/ci/report-runner-hardware.sh
+
       - name: Configure sccache (compiling events)
         if: ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name) }}
         run: |
@@ -1529,7 +1560,7 @@ jobs:
             exit 0
           fi
           export SCCACHE_DIR=/tmp/sccache
-          export SCCACHE_CACHE_SIZE=1G
+          export SCCACHE_CACHE_SIZE=2G
           export SCCACHE_ERROR_LOG=/tmp/sccache-server.log
           export SCCACHE_LOG=warn
           if sccache --start-server >/tmp/sccache-start.log 2>&1; then
@@ -1537,7 +1568,7 @@ jobs:
               echo "SCCACHE_DIR=/tmp/sccache"
               echo "SCCACHE_ERROR_LOG=/tmp/sccache-server.log"
               echo "SCCACHE_LOG=warn"
-              echo "SCCACHE_CACHE_SIZE=1G"
+              echo "SCCACHE_CACHE_SIZE=2G"
             } >> "$GITHUB_ENV"
           else
             echo "::warning::sccache unavailable — the compile tier runs UNCACHED (issue 0874)."
@@ -1771,6 +1802,13 @@ jobs:
           restore-keys: |
             sccache-${{ runner.os }}-check-
 
+      # phase-489 W5 — which CPU did this run land on? The same gate set has
+      # measured 6.0 min and 12.2 min of busy CPU on hosted runners, every gate
+      # 1.6-2.0x slower in the slow runs, and the log named no CPU model, so the
+      # hardware explanation stayed a suspicion. Evidence only: no behaviour.
+      - name: Report runner hardware
+        run: scripts/ci/report-runner-hardware.sh
+
       - name: Configure sccache (compiling events)
         if: ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name) }}
         run: |
@@ -1787,7 +1825,7 @@ jobs:
             exit 0
           fi
           export SCCACHE_DIR=/tmp/sccache
-          export SCCACHE_CACHE_SIZE=1G
+          export SCCACHE_CACHE_SIZE=2G
           export SCCACHE_ERROR_LOG=/tmp/sccache-server.log
           export SCCACHE_LOG=warn
           if sccache --start-server >/tmp/sccache-start.log 2>&1; then
@@ -1795,7 +1833,7 @@ jobs:
               echo "SCCACHE_DIR=/tmp/sccache"
               echo "SCCACHE_ERROR_LOG=/tmp/sccache-server.log"
               echo "SCCACHE_LOG=warn"
-              echo "SCCACHE_CACHE_SIZE=1G"
+              echo "SCCACHE_CACHE_SIZE=2G"
             } >> "$GITHUB_ENV"
           else
             echo "::warning::sccache unavailable — the compile tier runs UNCACHED (issue 0874)."
@@ -1973,6 +2011,13 @@ jobs:
           restore-keys: |
             sccache-${{ runner.os }}-check-
 
+      # phase-489 W5 — which CPU did this run land on? The same gate set has
+      # measured 6.0 min and 12.2 min of busy CPU on hosted runners, every gate
+      # 1.6-2.0x slower in the slow runs, and the log named no CPU model, so the
+      # hardware explanation stayed a suspicion. Evidence only: no behaviour.
+      - name: Report runner hardware
+        run: scripts/ci/report-runner-hardware.sh
+
       - name: Configure sccache (compiling events)
         if: ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name) }}
         run: |
@@ -1982,7 +2027,7 @@ jobs:
           fi
           sccache --version
           export SCCACHE_DIR=/tmp/sccache
-          export SCCACHE_CACHE_SIZE=1G
+          export SCCACHE_CACHE_SIZE=2G
           export SCCACHE_ERROR_LOG=/tmp/sccache-server.log
           export SCCACHE_LOG=warn
           if sccache --start-server >/tmp/sccache-start.log 2>&1; then
@@ -1990,7 +2035,7 @@ jobs:
               echo "SCCACHE_DIR=/tmp/sccache"
               echo "SCCACHE_ERROR_LOG=/tmp/sccache-server.log"
               echo "SCCACHE_LOG=warn"
-              echo "SCCACHE_CACHE_SIZE=1G"
+              echo "SCCACHE_CACHE_SIZE=2G"
             } >> "$GITHUB_ENV"
           else
             echo "::warning::sccache unavailable — the compile tier runs UNCACHED (issue 0874)."
@@ -2165,6 +2210,13 @@ jobs:
           restore-keys: |
             sccache-${{ runner.os }}-check-
 
+      # phase-489 W5 — which CPU did this run land on? The same gate set has
+      # measured 6.0 min and 12.2 min of busy CPU on hosted runners, every gate
+      # 1.6-2.0x slower in the slow runs, and the log named no CPU model, so the
+      # hardware explanation stayed a suspicion. Evidence only: no behaviour.
+      - name: Report runner hardware
+        run: scripts/ci/report-runner-hardware.sh
+
       - name: Configure sccache (compiling events)
         if: ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name) }}
         run: |
@@ -2174,7 +2226,7 @@ jobs:
           fi
           sccache --version
           export SCCACHE_DIR=/tmp/sccache
-          export SCCACHE_CACHE_SIZE=1G
+          export SCCACHE_CACHE_SIZE=2G
           export SCCACHE_ERROR_LOG=/tmp/sccache-server.log
           export SCCACHE_LOG=warn
           if sccache --start-server >/tmp/sccache-start.log 2>&1; then
@@ -2182,7 +2234,7 @@ jobs:
               echo "SCCACHE_DIR=/tmp/sccache"
               echo "SCCACHE_ERROR_LOG=/tmp/sccache-server.log"
               echo "SCCACHE_LOG=warn"
-              echo "SCCACHE_CACHE_SIZE=1G"
+              echo "SCCACHE_CACHE_SIZE=2G"
             } >> "$GITHUB_ENV"
           else
             echo "::warning::sccache unavailable — the compile tier runs UNCACHED (issue 0874)."
@@ -2600,7 +2652,7 @@ jobs:
   # product is a populated cache.
   warm-cache:
     name: warm the compile-tier cache (main only)
-    if: ${{ github.event_name == 'push' }}
+    if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-22.04
     permissions:
       contents: read
@@ -2680,6 +2732,13 @@ jobs:
       # (issue 0874): PROVE the backend in this step, publish to `$GITHUB_ENV`
       # only if the server started. A broken sccache handed to `rustc` fails
       # the COMPILER rather than losing a cache.
+      # phase-489 W5 — which CPU did this run land on? The same gate set has
+      # measured 6.0 min and 12.2 min of busy CPU on hosted runners, every gate
+      # 1.6-2.0x slower in the slow runs, and the log named no CPU model, so the
+      # hardware explanation stayed a suspicion. Evidence only: no behaviour.
+      - name: Report runner hardware
+        run: scripts/ci/report-runner-hardware.sh
+
       - name: Configure sccache
         run: |
           # Create the dir unconditionally: the cache path must exist at save
@@ -2692,7 +2751,7 @@ jobs:
           fi
           sccache --version
           export SCCACHE_DIR=/tmp/sccache
-          export SCCACHE_CACHE_SIZE=1G
+          export SCCACHE_CACHE_SIZE=2G
           export SCCACHE_ERROR_LOG=/tmp/sccache-server.log
           export SCCACHE_LOG=warn
           if sccache --start-server >/tmp/sccache-start.log 2>&1; then
@@ -2700,7 +2759,7 @@ jobs:
               echo "SCCACHE_DIR=/tmp/sccache"
               echo "SCCACHE_ERROR_LOG=/tmp/sccache-server.log"
               echo "SCCACHE_LOG=warn"
-              echo "SCCACHE_CACHE_SIZE=1G"
+              echo "SCCACHE_CACHE_SIZE=2G"
               # The half the `check` job does not need. Without it the builds
               # below are plain rustc and this job is decorative.
               # Issue 1646 — the SHIM, which runs a `staticlib` uncached
@@ -2783,8 +2842,118 @@ jobs:
             packages/cli/nros-launch-resolve/target/release/libplay_launch_parser_pyexec.so
           key: nros-cli-bin-${{ runner.os }}-${{ steps.cli-key.outputs.key }}
 
+      # phase-489 W5 — warm what the `check-fast` job actually COMPILES.
+      #
+      # Until now this job warmed the CLI build and nothing else, so the
+      # restored sccache answered none of `check-fast`'s ~1240 compile requests
+      # (30 hits, 3.7 %) and its compile-heavy gates (`probe-workspace-caps`,
+      # `api-parity`, `declared-qos-registration`, ...) ran cold on every pull
+      # request. The honest way to warm a gate is to RUN it, the way a user
+      # does, so this runs `just check fast` itself after the same provisioning
+      # as the `check-fast` job (the steps below are copies of its steps of the
+      # same name). A pull request or a queue entry never waits on this job; it
+      # reads the cache it leaves behind. Compile
+      # requests are keyed on the checkout path (`/__w/nano-ros/nano-ros`) and
+      # the compiler flags, which this job and the consumers share.
+      - name: Provision clang-format (pinned by [tool.clang-format])
+        run: |
+          source ./activate.sh
+          just setup-clang-format
+
+      - name: Provision Corrosion (pinned by [tool.corrosion])
+        run: |
+          source ./activate.sh
+          just workspace install-corrosion
+
+      - name: Provision compile-tier sources
+        run: |
+          source ./activate.sh
+          nros setup \
+            --source px4-rs --source zenoh-pico --source mbedtls --source micro-cdr \
+            --source micro-xrce-dds-client --source cyclonedds-src
+
+      - name: Fetch the pin baseline for check-submodule-pins
+        run: |
+          base="${GITHUB_BASE_REF:-main}"
+          git fetch --no-tags --quiet --depth=1 origin \
+            "+refs/heads/$base:refs/remotes/origin/$base"
+          echo "NROS_SUBMODULE_PIN_BASELINE=origin/$base" >> "$GITHUB_ENV"
+
+      - name: Init submodules whose pin moved (commits only)
+        run: |
+          base="${GITHUB_BASE_REF:-main}"
+          git ls-tree -r "origin/$base" \
+            | awk '$2 == "commit" { print $4 "\t" $3 }' \
+            | while IFS=$'\t' read -r path base_sha; do
+                [ -n "$path" ] || continue
+                head_sha="$(git ls-tree -r HEAD -- "$path" \
+                            | awk '$2 == "commit" { print $3 }')"
+                [ -n "$head_sha" ] || continue
+                [ "$head_sha" != "$base_sha" ] || continue
+                [ ! -e "$path/.git" ] || continue
+                echo "  pin moved in $path (${base_sha:0:12} -> ${head_sha:0:12}); initialising"
+                git submodule update --init --filter=tree:0 "$path" \
+                  || git submodule update --init "$path" \
+                  || true
+              done
+
+      - name: Fetch submodule history for check-submodule-pins
+        run: |
+          base="${GITHUB_BASE_REF:-main}"
+          git ls-tree -r "origin/$base" \
+            | awk '$2 == "commit" { print $4 "\t" $3 }' \
+            | while IFS=$'\t' read -r path sha; do
+                [ -n "$path" ] || continue
+                [ -e "$path/.git" ] || continue
+                git -C "$path" cat-file -e "${sha}^{commit}" 2>/dev/null && continue
+                echo "  deepening $path for $sha"
+                git -C "$path" fetch --no-tags --quiet --unshallow 2>/dev/null \
+                  || git -C "$path" fetch --no-tags --quiet origin "$sha" 2>/dev/null \
+                  || true
+              done
+
+      - name: Fetch commit history for the citation gates (commits only)
+        timeout-minutes: 6
+        run: |
+          base="${GITHUB_BASE_REF:-main}"
+          if [ "$(git rev-parse --is-shallow-repository)" = true ]; then
+            git fetch --no-tags --quiet --depth=1 origin \
+              "+refs/heads/$base:refs/remotes/origin/$base"
+            . scripts/lib/deadline.sh
+            "${NROS_DEADLINE[@]}" 300 git fetch --no-tags --quiet --filter=tree:0 --unshallow \
+              origin "+refs/heads/$base:refs/remotes/origin/$base"
+          fi
+          test "$(git rev-parse --is-shallow-repository)" = false
+          git rev-list --count HEAD
+
+      - name: Provision the sources the fast-line source gates read
+        timeout-minutes: 8
+        run: |
+          git submodule update --init --depth 1 \
+            packages/rmw/zenoh/zpico-sys/zenoh-pico \
+            packages/rmw/xrce/xrce-sys/micro-cdr \
+            packages/rmw/xrce/xrce-sys/micro-xrce-dds-client \
+            third-party/nuttx/libc
+          rev="$(awk '/- name: zephyr$/ { z = 1 } z && /revision:/ { print $2; exit }' west.yml)"
+          [ -n "$rev" ] || { echo "no zephyr revision in west.yml" >&2; exit 1; }
+          if [ ! -d zephyr-workspace/zephyr/lib/cpp/minimal/include ]; then
+            git clone --quiet --depth 1 --filter=blob:none --sparse --branch "$rev" \
+              https://github.com/zephyrproject-rtos/zephyr.git zephyr-workspace/zephyr
+            git -C zephyr-workspace/zephyr sparse-checkout set lib/cpp/minimal/include
+          fi
+
+      # NOT `continue-on-error`: this runs a gate, and `ci-ok` hears it
+      # (`check-default-gates-run-somewhere`). The save below is `!cancelled()`
+      # instead, so a gate that flakes on main still leaves the ~1 GB of
+      # compiles that DID finish.
+      - name: just check fast (warms the compiles `check-fast` makes)
+        run: |
+          source ./activate.sh
+          echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
+          PATH="$GITHUB_WORKSPACE/packages/cli/target/release:$PATH" just check fast
+
       - name: Save sccache directory
-        if: steps.sccache-cache.outputs.cache-hit != 'true'
+        if: ${{ !cancelled() && steps.sccache-cache.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v4
         with:
           path: /tmp/sccache
@@ -3008,6 +3177,7 @@ jobs:
       - check-test-unit
       - check-lane-contracts
       - check-build
+      - warm-cache
       - scaffold-journey
       - colcon-parity
       - sdk-index
@@ -3066,6 +3236,7 @@ jobs:
           sibling check-test-unit      "${{ needs.check-test-unit.result }}"      "merge_group schedule workflow_dispatch"
           sibling check-lane-contracts "${{ needs.check-lane-contracts.result }}" "merge_group schedule workflow_dispatch"
           sibling check-build          "${{ needs.check-build.result }}"          "schedule workflow_dispatch"
+          sibling warm-cache           "${{ needs.warm-cache.result }}"           "push workflow_dispatch"
 
           # The narrow lanes are path-gated BY DESIGN, so `skipped` is a real
           # answer for them: their paths did not move. Only a failure counts.
