@@ -291,6 +291,10 @@ jobs:
           # 37883358718). DERIVED from the cells' tests, directly or through
           # the nros-tests helper they call
           # (`check-interop-verdicts.py --host-workspace-fixtures`).
+          # Issue 1846 — free space after every build, so a disk-full run says
+          # which build ate it instead of only where it finally died.
+          avail() { echo "  disk: $(df -h --output=avail / | tail -n 1 | tr -d ' ') free"; }
+          avail
           if ! wss="$(python3 scripts/check-interop-verdicts.py --list-passing --runner host --host-workspace-fixtures)"; then
               echo "::error::could not derive the host cells' workspace fixtures"
               exit 1
@@ -303,6 +307,7 @@ jobs:
                   [ -n "$id" ] || continue
                   echo "=== workspace-fixtures-build.sh linux --id $id ==="
                   bash scripts/build/workspace-fixtures-build.sh linux --id "$id"
+                  avail
               done <<< "$wss"
           fi
           # DERIVED, not written: one `fixtures-build.sh linux <lang> <rmw>` per
@@ -317,6 +322,7 @@ jobs:
               echo "=== fixtures-build.sh $b ==="
               # `$b` is `linux <lang> <rmw>`: unquoted on purpose, three args.
               bash scripts/build/fixtures-build.sh $b
+              avail
           done <<< "$builds"
           # The `[[compile_check_fixture]]` rows the host cells' tests resolve,
           # which no `fixtures-build.sh <triple>` builds: `cpp_multi_node_entry`
@@ -343,6 +349,7 @@ jobs:
               [ -n "$id" ] || continue
               echo "=== compile-check-fixtures.sh (NROS_FIXTURE_ID=$id) ==="
               NROS_FIXTURE_ID="$id" bash scripts/build/compile-check-fixtures.sh
+              avail
           done <<< "$ccs"
 
       # `host`, not everything — phase-441 W4. A board cell's image is built by
