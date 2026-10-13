@@ -119,7 +119,7 @@ fi
 # cmake path, which bootstraps them at configure) — that page's flow belongs
 # to a future zenoh-track probe run under `--rmw zenoh`. Rust coverage lives
 # in verify-first-node.sh's scaffolded-workspace run instead.
-CLONE_SUBST=(--subst 'git clone --branch nros-v0.5.0 https://github.com/NEWSLabNTU/nano-ros.git:::git clone --branch "$PROBE_BRANCH" "$PROBE_CLONE_URL" nano-ros')
+CLONE_SUBST=(--subst 'git clone --branch nros-v0.6.0 https://github.com/NEWSLabNTU/nano-ros.git:::git clone --branch "$PROBE_BRANCH" "$PROBE_CLONE_URL" nano-ros')
 C_CD_SUBST=()
 # Which `track=` blocks of the book this run reads — how the reader got `nros`.
 BOOK_TRACK=checkout

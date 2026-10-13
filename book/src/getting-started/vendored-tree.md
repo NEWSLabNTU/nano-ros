@@ -16,7 +16,7 @@ Vendor the repo as a git submodule (or subtree) and pin a release tag:
 
 ```bash
 git submodule add https://github.com/NEWSLabNTU/nano-ros.git third_party/nano-ros
-git -C third_party/nano-ros checkout nros-v0.5.0
+git -C third_party/nano-ros checkout nros-v0.6.0
 git add third_party/nano-ros
 ```
 
@@ -190,7 +190,7 @@ An application, a message package, a board *overlay crate*, and a
 custom transport all live entirely in **your** tree — no diff.
 
 Workflow for the diff: keep a branch in your nano-ros fork
-(`company/nros-v0.5.0-patches`), and on upgrade rebase it onto the new
+(`company/nros-v0.6.0-patches`), and on upgrade rebase it onto the new
 tag rather than merging. The registration edits are a few lines each;
 conflicts are rare and loud.
 
@@ -198,7 +198,7 @@ conflicts are rare and loud.
 
 ```bash
 git -C third_party/nano-ros fetch origin --tags
-git -C third_party/nano-ros rebase --onto nros-v0.6.0 nros-v0.5.0 company/patches
+git -C third_party/nano-ros rebase --onto nros-v0.7.0 nros-v0.6.0 company/patches
 # build + test, then:
 git add third_party/nano-ros
 ```

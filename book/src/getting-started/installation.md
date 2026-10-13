@@ -110,7 +110,7 @@ in a section below.
 
 ```sh probe=20 track=checkout
 # 1. Pull the source at a pinned version (or `main` for latest):
-git clone --branch nros-v0.5.0 https://github.com/NEWSLabNTU/nano-ros.git
+git clone --branch nros-v0.6.0 https://github.com/NEWSLabNTU/nano-ros.git
 cd nano-ros
 
 # 2. Build the `nros` CLI from source (installs rustup if needed):
@@ -516,10 +516,10 @@ Consumers pin the **source tree**, not a package: clone (or submodule)
 at a `nros-v<X.Y.Z>` git tag —
 
 ```sh
-git clone --branch nros-v0.5.0 https://github.com/NEWSLabNTU/nano-ros.git
+git clone --branch nros-v0.6.0 https://github.com/NEWSLabNTU/nano-ros.git
 # or, as a submodule in your project:
 git submodule add -b main https://github.com/NEWSLabNTU/nano-ros third_party/nano-ros
-git -C third_party/nano-ros checkout nros-v0.5.0
+git -C third_party/nano-ros checkout nros-v0.6.0
 ```
 
 The tag names the **bundle version**: the `nros` CLI built from that
