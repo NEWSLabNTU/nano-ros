@@ -221,7 +221,7 @@ making it depend on which image you asked for would reconfigure on every switch.
 
 One cmake configure builds the nano-ros runtime (`nros-c` / `nros-cpp` and the
 RMW) **once** for every image on it, so a knob only one image states — a
-`[image.<id>] env` row such as `NROS_LOG_MAX_LEVEL = "warn"` — would have no
+`[image.<id>.knobs]` row such as `[knobs.log] max_level = "warn"` — would have no
 build to land in. So an image whose resolved configuration differs gets its own
 configure, keyed by a hash of that configuration (RFC-0098 D12, phase-481 W4):
 
@@ -231,7 +231,12 @@ board = "native"
 
 [image.warn]             # -> build/posix-zenoh-native-cfga50aa93c83/
 board = "native"
-env = { NROS_LOG_MAX_LEVEL = "warn", NROS_EXECUTOR_MAX_CBS = "13" }
+
+[image.warn.knobs.log]
+max_level = "warn"
+
+[image.warn.knobs.executor]
+max_cbs = 13
 ```
 
 (`packages/testing/nros-tests/fixtures/image_config_ws`; each binary prints

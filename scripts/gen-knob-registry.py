@@ -20,6 +20,12 @@ equal. Every spelling of a knob derives from its row:
            as that error table, then the rows go.
   Kconfig  `CONFIG_<kconfig>`, default `CONFIG_NROS_<id>`
   TOML     `[knobs.<toml>]`, where the ladder has a key for it
+  image    `[image.<id>.knobs.<group>] <name>` in a project's system.toml
+           (phase-484 W8): the `toml` key where the row has one, so a project
+           and a board spell a knob the same way, else the id split at its
+           first `_` (`ZEPHYR_HEAP_SIZE` -> `zephyr.heap_size`). An
+           `[image.<id>] env` row naming the knob still works and is
+           deprecated, with `IMAGE_ENV_DEPRECATED_TEMPLATE`'s words.
 
 A row whose knob has a Zephyr Kconfig symbol also carries that symbol's
 DEFINITION — `type`, `prompt`, the `if` it sits under (`kconfig_if`), its
@@ -71,11 +77,20 @@ RETIRED = (
     "{legacy} is a retired spelling of {env} (RFC-0103 D2b; retired in phase-484 W8, "
     "after release 0.5.0-nros2 deprecated it) -- set {env} instead"
 )
+# The one warning an `[image.<id>] env` row earns when its key is a registry
+# knob (phase-484 W8, RFC-0103 D6): the row still works, and the knob's own
+# spelling is `[image.<id>.knobs.<group>] <name>`. `{image}`, `{env}`,
+# `{group}` and `{name}` are replaced by the CLI.
+IMAGE_ENV_DEPRECATED = (
+    "[image.{image}] env {env} is a deprecated spelling of the knob "
+    "[image.{image}.knobs.{group}] {name} (RFC-0103 D6, phase-484 W8) -- move the row "
+    "there; an env row naming a registry knob is refused after the next release"
+)
 
 ID = re.compile(r"^[A-Z][A-Z0-9_]*$")
 ENV = re.compile(r"^(NROS|ZPICO)_[A-Z0-9_]+$")
 TOML_KEY = re.compile(r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$")
-FIELDS = {"id", "legacy", "kconfig", "toml",
+FIELDS = {"id", "legacy", "kconfig", "toml", "names",
           "type", "prompt", "kconfig_if", "kconfig_attrs", "help"}
 # The Kconfig definition is all-or-nothing: `type` says the module defines the
 # symbol, and the rest only mean something beside it.
@@ -92,6 +107,7 @@ def load_from_text(text):
     errors = []
     spellings = {}
     tomls = {}
+    image_keys = {}
     for i, r in enumerate(rows):
         where = f"knob #{i + 1} ({r.get('id', '?')})"
         extra = set(r) - FIELDS
@@ -126,7 +142,18 @@ def load_from_text(text):
                 errors.append(f"{where}: `toml` must be `<group>.<name>`")
             if t in tomls:
                 errors.append(f"{where}: toml key `{t}` is already {tomls[t]}")
-            tomls[t] = ident
+        names = r.get("names")
+        if names is not None and (ty != "int" or not names or not all(
+                isinstance(n, str) and re.match(r"^[a-z][a-z0-9_]*$", n) for n in names)):
+            errors.append(f"{where}: `names` is a non-empty list of lowercase words, on an int row")
+        if ID.match(ident):
+            key = image_key(r)
+            if key is None:
+                errors.append(f"{where}: an id with no `_` needs a `toml` key to be stated in a project")
+            elif key in image_keys:
+                errors.append(f"{where}: image key `{key}` is already {image_keys[key]}")
+            else:
+                image_keys[key] = ident
     ids = [r.get("id") for r in rows]
     if ids != sorted(ids):
         errors.append("rows must be sorted by id (a merge then conflicts on one row, not the file)")
@@ -135,6 +162,24 @@ def load_from_text(text):
 
 def q(s):
     return f'"{s}"'
+
+
+def image_key(r):
+    """`<group>.<name>` under `[image.<id>.knobs]`: the row's `toml` key, else
+    the id split at its first `_`, lowercased. None when neither exists."""
+    if r.get("toml"):
+        return r["toml"]
+    head, sep, tail = r["id"].partition("_")
+    return f"{head.lower()}.{tail.lower()}" if sep else None
+
+
+def int_range(r):
+    """The first `range <lo> <hi>` attribute line, as integers, or None."""
+    for a in r.get("kconfig_attrs", []):
+        m = re.match(r"^\s*range\s+(-?\d+)\s+(-?\d+)\s*$", a)
+        if m:
+            return int(m.group(1)), int(m.group(2))
+    return None
 
 
 def render(rows):
@@ -160,6 +205,12 @@ def render(rows):
         out.append("        legacy: &[" + ", ".join(q(x) for x in legacy) + "],")
         out.append(f"        kconfig: {q(kconfig)},")
         out.append(f"        toml: {'Some(' + q(toml) + ')' if toml else 'None'},")
+        out.append(f"        image_key: {q(image_key(r))},")
+        ty = r.get("type")
+        out.append(f"        ty: {'Some(' + q(ty) + ')' if ty else 'None'},")
+        rng = int_range(r)
+        out.append(f"        range: {'Some((' + str(rng[0]) + ', ' + str(rng[1]) + '))' if rng else 'None'},")
+        out.append("        names: &[" + ", ".join(q(x) for x in r.get("names", [])) + "],")
         out.append("    },")
         if kconfig != "CONFIG_" + env:
             pairs.append((env, kconfig))
@@ -191,6 +242,10 @@ def render(rows):
     out.append("/// The refusal when a knob arrives under a RETIRED spelling (phase-484 W8).")
     out.append("/// Substitute `{legacy}` and `{env}`; the cmake twin refuses in the same words.")
     out.append(f"pub const RETIRED_TEMPLATE: &str = {q(RETIRED)};")
+    out.append("")
+    out.append("/// The warning an `[image.<id>] env` row earns when it names a registry knob")
+    out.append("/// (phase-484 W8). Substitute `{image}`, `{env}`, `{group}` and `{name}`.")
+    out.append(f"pub const IMAGE_ENV_DEPRECATED_TEMPLATE: &str = {q(IMAGE_ENV_DEPRECATED)};")
     out.append("")
     return "\n".join(out)
 
@@ -383,6 +438,19 @@ def self_test():
     text = "\n".join(errs)
     for want in ("already a spelling", "only where it differs", "`<group>.<name>`", "sorted by id"):
         assert want in text, f"selftest: no `{want}` error in {errs!r}"
+    # phase-484 W8 -- the image spelling: the board's `toml` key, else the id
+    # split at its first `_`; two rows on one key, or `names` off an int row,
+    # are refused.
+    assert image_key({"id": "ZEPHYR_HEAP_SIZE"}) == "zephyr.heap_size"
+    assert image_key({"id": "MAX_ARRAY_LEN", "toml": "params.max_array_len"}) == "params.max_array_len"
+    _, errs = load_from_text(
+        '[[knob]]\nid = "A_B"\ntoml = "zenoh.x"\n\n'
+        '[[knob]]\nid = "ZENOH_X"\ntype = "bool"\nnames = ["off"]\n')
+    text = "\n".join(errs)
+    assert "image key `zenoh.x` is already A_B" in text, errs
+    assert "`names` is a non-empty list" in text, errs
+    rs = render([{"id": "LOG_X", "type": "int", "kconfig_attrs": ["range 0 6"], "names": ["off"]}])
+    assert 'image_key: "log.x",\n        ty: Some("int"),\n        range: Some((0, 6)),\n        names: &["off"],' in rs, rs
     rendered = render([{"id": "ZENOH_X", "legacy": ["ZPICO_X"], "kconfig": "NROS_X"}, {"id": "Y"}])
     assert '("NROS_ZENOH_X", "CONFIG_NROS_X")' in rendered
     assert '("ZPICO_X"' not in rendered, "selftest: a retired spelling got a Kconfig pair"

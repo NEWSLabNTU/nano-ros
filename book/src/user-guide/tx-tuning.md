@@ -88,9 +88,10 @@ latency-sensitive** topics (control setpoints, e-stop), never for streams.
 | per-publisher express | `tx_express` in the QoS profile (all languages, below) | same | same | off |
 
 On Zephyr the Kconfig column names the symbol the build ends up with; you
-state it as an image `env` row in `system.toml`, without the `CONFIG_`
-prefix — `env = { NROS_ZENOH_TX_BATCH = "1", NROS_ZENOH_SOCKET_TIMEOUT_MS = "5" }` —
-never in `prj.conf` (phase-481).
+state it in `system.toml`, never in `prj.conf` (phase-481): a registry knob
+as `[image.<id>.knobs.zenoh.tx] batch = true`, and any other option as an
+image `env` row without the `CONFIG_` prefix —
+`env = { NROS_ZENOH_SOCKET_TIMEOUT_MS = "5" }`.
 
 All of these are **compile-time** knobs (embedded images have no runtime
 config), and all default **off** — an untuned build is byte-identical to

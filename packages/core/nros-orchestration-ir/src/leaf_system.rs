@@ -169,6 +169,75 @@ pub struct LeafComponent {
     pub dispatch: Option<String>,
 }
 
+/// One `[image.<id>.knobs]` value, as TOML typed it (phase-484 W8).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum KnobValue {
+    Int(i64),
+    Bool(bool),
+    Str(String),
+}
+
+impl std::fmt::Display for KnobValue {
+    /// The value as it is written in TOML (`16`, `true`, `"warn"`).
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            KnobValue::Int(n) => write!(f, "{n}"),
+            KnobValue::Bool(b) => write!(f, "{b}"),
+            KnobValue::Str(s) => write!(f, "{s:?}"),
+        }
+    }
+}
+
+/// Flatten a `knobs` table into `<group>.<name>` → value: nested tables join
+/// their keys with `.`, so `[knobs.zenoh.tx] batch = true` is `zenoh.tx.batch`.
+/// A value directly under `knobs` (no group), an array, a float or a date is an
+/// error naming the key; `table` is how the caller spells the table
+/// (`[image.talker.knobs]`).
+pub fn flatten_knobs(t: &toml::Table, table: &str) -> Result<BTreeMap<String, KnobValue>, String> {
+    fn walk(
+        t: &toml::Table,
+        prefix: &str,
+        table: &str,
+        out: &mut BTreeMap<String, KnobValue>,
+    ) -> Result<(), String> {
+        for (k, v) in t {
+            let key = if prefix.is_empty() {
+                k.clone()
+            } else {
+                format!("{prefix}.{k}")
+            };
+            let value = match v {
+                toml::Value::Table(inner) => {
+                    walk(inner, &key, table, out)?;
+                    continue;
+                }
+                _ if prefix.is_empty() => {
+                    return Err(format!(
+                        "`{table}` row `{k}` has no group -- a knob is \
+                         `[<table>.<group>] <name> = <value>`, e.g. `[image.<id>.knobs.zephyr] \
+                         heap_size = 262144`"
+                    ));
+                }
+                toml::Value::Integer(n) => KnobValue::Int(*n),
+                toml::Value::Boolean(b) => KnobValue::Bool(*b),
+                toml::Value::String(s) => KnobValue::Str(s.clone()),
+                other => {
+                    return Err(format!(
+                        "`{table}` knob `{key}` is a {}, and a knob is an integer, a bool or \
+                         a string",
+                        other.type_str()
+                    ));
+                }
+            };
+            out.insert(key, value);
+        }
+        Ok(())
+    }
+    let mut out = BTreeMap::new();
+    walk(t, "", table, &mut out)?;
+    Ok(out)
+}
+
 /// A leaf's resolved deployment.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LeafSystem {
@@ -200,6 +269,15 @@ pub struct LeafSystem {
     /// talker-xrce`'s XRCE transport budget, on a board whose other twelve
     /// images want the defaults.
     pub env: BTreeMap<String, String>,
+    /// `[image.<id>.knobs.<group>] <name> = <value>` — the same APP rung,
+    /// spelled the way a board's `[knobs.<group>]` is (RFC-0103 D6, phase-484
+    /// W8), keyed by the dotted `<group>.<name>`. `[image_defaults.knobs]`
+    /// underneath, key by key, like [`Self::env`].
+    ///
+    /// Read as written: which knob a key names, and whether its value fits,
+    /// is the registry's answer (`nros-zephyr-build`), which the CLI asks
+    /// before rendering each one into the carrier [`Self::env`] rides.
+    pub knobs: BTreeMap<String, KnobValue>,
     /// Issue 1142 — `[system] features`, the SAME key a workspace bringup's
     /// `system.toml` carries (`features = ["param_services"]`, which reaches a
     /// resolved model as `execution.features`).
@@ -688,6 +766,8 @@ fn image_system(
     // and the image overwrites only what it also names.
     let mut env = env_table(defaults, path, id)?;
     env.extend(env_table(image, path, id)?);
+    let mut knobs = knobs_table(defaults, path, "image_defaults.knobs")?;
+    knobs.extend(knobs_table(image, path, &format!("image.{id}.knobs"))?);
     let mut conf = conf_list(defaults, path, "image_defaults")?;
     conf.extend(conf_list(image, path, &format!("image.{id}"))?);
 
@@ -699,6 +779,7 @@ fn image_system(
         network,
         components,
         env,
+        knobs,
         features: features_key(system, path)?,
         conf,
     })
@@ -725,6 +806,24 @@ fn conf_list(block: Option<&toml::Table>, path: &Path, table: &str) -> Result<Ve
             })
         })
         .collect()
+}
+
+/// `[<table>.<group>] <name> = <value>` of one image block, flattened.
+fn knobs_table(
+    block: Option<&toml::Table>,
+    path: &Path,
+    table: &str,
+) -> Result<BTreeMap<String, KnobValue>, String> {
+    let Some(v) = block.and_then(|b| b.get("knobs")) else {
+        return Ok(BTreeMap::new());
+    };
+    let t = v.as_table().ok_or_else(|| {
+        format!(
+            "{}: `[{table}]` must be a TABLE of `[{table}.<group>] <name> = <value>` rows",
+            path.display()
+        )
+    })?;
+    flatten_knobs(t, &format!("[{table}]")).map_err(|e| format!("{}: {e}", path.display()))
 }
 
 /// `env = { KEY = "VALUE" }` of one image block.
@@ -1326,6 +1425,60 @@ domain_id = 4
         let l = read(d.path()).unwrap().unwrap();
         assert_eq!(l.env["A"], "image", "the image wins the key it also names");
         assert_eq!(l.env["B"], "base", "and inherits the one it does not");
+    }
+
+    /// phase-484 W8 (RFC-0103 D6) — `[image.<id>.knobs.<group>] <name>`,
+    /// flattened to `<group>.<name>` and typed as written; nested groups join
+    /// with `.`, and `[image_defaults.knobs]` sits underneath key by key.
+    #[test]
+    fn image_knobs_are_read_flat_and_typed_over_the_defaults() {
+        let src = format!(
+            "{SYSTEM}\n[image.esp32.knobs.zephyr]\nheap_size = 98304\n\n\
+             [image.esp32.knobs.zenoh.tx]\nbatch = true\n\n\
+             [image.esp32.knobs.log]\nmax_level = \"warn\"\n\n\
+             [image_defaults.knobs.zephyr]\nheap_size = 1\n\n\
+             [image_defaults.knobs.executor]\nmax_cbs = 16\n"
+        );
+        let d = leaf(&[("Cargo.toml", CARGO), ("system.toml", &src)]);
+        let l = read(d.path()).unwrap().unwrap();
+        assert_eq!(
+            l.knobs["zephyr.heap_size"],
+            KnobValue::Int(98304),
+            "the image wins"
+        );
+        assert_eq!(
+            l.knobs["executor.max_cbs"],
+            KnobValue::Int(16),
+            "the default fills in"
+        );
+        assert_eq!(l.knobs["zenoh.tx.batch"], KnobValue::Bool(true));
+        assert_eq!(l.knobs["log.max_level"], KnobValue::Str("warn".into()));
+        assert!(
+            l.env.is_empty(),
+            "knobs are not env rows until the CLI renders them"
+        );
+    }
+
+    #[test]
+    fn a_knob_with_no_group_or_an_unusable_value_is_refused() {
+        for (body, want) in [
+            ("[image.esp32.knobs]\nheap_size = 1\n", "has no group"),
+            (
+                "[image.esp32.knobs.zephyr]\nheap_size = 1.5\n",
+                "is a float",
+            ),
+            (
+                "[image.esp32.knobs.zephyr]\nheap_size = [1]\n",
+                "is a array",
+            ),
+        ] {
+            let d = leaf(&[
+                ("Cargo.toml", CARGO),
+                ("system.toml", &format!("{SYSTEM}\n{body}")),
+            ]);
+            let e = read(d.path()).unwrap_err();
+            assert!(e.contains(want) && e.contains("[image.esp32.knobs]"), "{e}");
+        }
     }
 
     #[test]

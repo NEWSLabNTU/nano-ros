@@ -26,7 +26,7 @@ went with them). Between them they carried
     package collapse: valid TOML, happy cargo, every NuttX Rust entry failing at
     LINK time;
   * 17 leaves' `[env]` blocks, which are now the board descriptor's
-    `[knobs]`, a transport implication, or `[image.<id>] env`;
+    `[knobs]`, a transport implication, or `[image.<id>.knobs]` / `env`;
   * an `include = [...]` line that `nros sync` REWROTE on every build, which
     CLAUDE.md answered with a rule ("never commit that line") that had already
     been broken twice.
@@ -143,7 +143,9 @@ def main() -> int:
         "\n"
         "  a triple / link group / build-std  -> the board descriptor's `cargo_config`\n"
         "  a hardware budget                  -> the descriptor's `[knobs]`\n"
-        "  a knob only THIS image wants       -> `[image.<id>] env` in `system.toml`\n"
+        "  a knob only THIS image wants       -> `[image.<id>.knobs.<group>] <name>` in\n"
+        "                                        `system.toml` (an app's own variable:\n"
+        "                                        `[image.<id>] env`)\n"
         "  a `[patch.crates-io]` row          -> generated; do not commit it\n"
         "\n"
         "Untrack it:  git rm --cached <path>",

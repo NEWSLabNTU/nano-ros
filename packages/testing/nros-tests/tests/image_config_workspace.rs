@@ -2,7 +2,7 @@
 //! cmake road.
 //!
 //! `fixtures/image_config_ws` declares two native images on one coordinate:
-//! `plain` states nothing, `warn` states `[image.warn] env`. One configure
+//! `plain` states nothing, `warn` states `[image.warn.knobs]`. One configure
 //! builds `nros-c` / `nros-cpp` once for every image on it, so a configured
 //! image must get its OWN configure (`build/<coord>-cfg<hash>/`) — otherwise
 //! its knobs are dropped, or leak into the other image. Each binary prints what
@@ -22,21 +22,21 @@ const BRINGUP: &str = "packages/testing/nros-tests/fixtures/image_config_ws/src/
 /// nros-node's builtin `NROS_EXECUTOR_MAX_CBS`.
 const BUILTIN_MAX_CBS: usize = 4;
 
-/// `[image.warn] env`, as authored — read rather than restated, so the test
+/// `[image.warn.knobs]`, as authored — read rather than restated, so the test
 /// cannot pass against a fixture that changed under it.
-fn warn_env() -> toml::Table {
+fn warn_knobs() -> toml::Table {
     let path = project_root().join(BRINGUP).join("system.toml");
     let text =
         std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
     let v: toml::Value =
         toml::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", path.display()));
     assert!(
-        v["image"]["plain"].get("env").is_none(),
+        v["image"]["plain"].get("env").is_none() && v["image"]["plain"].get("knobs").is_none(),
         "the premise: `plain` states no configuration"
     );
-    v["image"]["warn"]["env"]
+    v["image"]["warn"]["knobs"]
         .as_table()
-        .expect("`warn` states `[image.warn] env`")
+        .expect("`warn` states `[image.warn.knobs]`")
         .clone()
 }
 
@@ -64,17 +64,18 @@ fn field(line: &str, key: &str) -> String {
 
 #[test]
 fn each_workspace_image_builds_against_its_own_configuration() {
-    let env = warn_env();
-    let max_cbs: usize = env["NROS_EXECUTOR_MAX_CBS"]
-        .as_str()
-        .expect("`warn` states NROS_EXECUTOR_MAX_CBS")
-        .parse()
-        .expect("a count");
+    let knobs = warn_knobs();
+    let max_cbs = usize::try_from(
+        knobs["executor"]["max_cbs"]
+            .as_integer()
+            .expect("`warn` states `[image.warn.knobs.executor] max_cbs`"),
+    )
+    .expect("a count");
     assert_ne!(
         max_cbs, BUILTIN_MAX_CBS,
         "`warn` states the builtin, which hides a dropped rung"
     );
-    assert_eq!(env["NROS_LOG_MAX_LEVEL"].as_str(), Some("warn"));
+    assert_eq!(knobs["log"]["max_level"].as_str(), Some("warn"));
 
     let plain = fixtures::build_workspace_cmake_generated_entry(
         "workspace-image-config-plain",
@@ -109,12 +110,12 @@ fn each_workspace_image_builds_against_its_own_configuration() {
     assert_eq!(
         field(&w, "max_handles"),
         max_cbs.to_string(),
-        "`[image.warn] env` NROS_EXECUTOR_MAX_CBS did not reach nros-c: {w}"
+        "`[image.warn.knobs.executor] max_cbs` (NROS_EXECUTOR_MAX_CBS) did not reach nros-c: {w}"
     );
     assert_eq!(
         field(&w, "info_enabled"),
         "0",
-        "`[image.warn] env` NROS_LOG_MAX_LEVEL=warn did not reach nros-log: {w}"
+        "`[image.warn.knobs.log] max_level = \"warn\"` (NROS_LOG_MAX_LEVEL) did not reach nros-log: {w}"
     );
     assert_eq!(field(&w, "warn_enabled"), "1", "{w}");
 }

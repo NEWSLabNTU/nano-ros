@@ -47,9 +47,11 @@ transport = "serial"
 # `NROS_XRCE_STREAM_HISTORY = "4"` and `NROS_XRCE_SUBSCRIBER_RING_DEPTH = "1"`
 # were beside these in the leaf config and are GONE: both equal the default
 # `packages/rmw/xrce/xrce-config.txt` already states, so they said nothing.
-[image.mps2-an385-baremetal.env]
+[image.mps2-an385-baremetal.knobs.xrce]
 # MTU matches the serial transport's; the default is 4096.
-NROS_XRCE_CUSTOM_TRANSPORT_MTU = "512"
+custom_transport_mtu = 512
+
+[image.mps2-an385-baremetal.env]
 NROS_XRCE_BUFFER_SIZE = "256"
 NROS_XRCE_MAX_SUBSCRIBERS = "1"
 NROS_XRCE_MAX_SERVICE_SERVERS = "1"

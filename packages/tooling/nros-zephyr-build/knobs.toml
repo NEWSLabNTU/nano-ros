@@ -468,6 +468,8 @@ Replaces the deprecated early-records-<N> cargo features.
 id = "LOG_MAX_LEVEL"
 toml = "log.max_level"
 type = "int"
+# A project or board may also write the level's name; the index is the value.
+names = ["trace", "debug", "info", "warn", "error", "fatal", "off"]
 prompt = "nros-log compile-time severity ceiling"
 kconfig_attrs = [
     "default 0",

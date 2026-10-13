@@ -8,7 +8,7 @@
 # ONE IMAGE PER RMW (phase-481 W3, RFC-0098 D10/D11). The nano-ros Zephyr
 # module renders the selected image into a Kconfig fragment merged after every
 # conf file: the RMW choice from `rmw`, the language API from the package, the
-# agent endpoint from `locator`, and every `env` knob. So the `prj*.conf` files
+# agent endpoint from `locator`, and every `knobs` / `env` row. So the `prj*.conf` files
 # hold Zephyr's own settings only, and each image's `conf` names the fragment
 # its RMW needs (networking, POSIX, heap), which the module adds before that
 # rendering. Build one with `west build ... -- -DNROS_IMAGE=<id>`; with none,
@@ -53,7 +53,10 @@ locator = "udp/127.0.0.1:2018"
 # 52,080 of the 66,048-byte default and kept 13,968 B, under the gate's
 # 24,576 floor ("set CONFIG_NROS_ZEPHYR_HEAP_SIZE >= 76656"). 96 KiB keeps
 # the floor with room for the run-to-run variance one dump cannot show.
-env = { NROS_XRCE_MAX_SUBSCRIBERS = "1", NROS_XRCE_MAX_SERVICE_SERVERS = "0", NROS_XRCE_MAX_SERVICE_CLIENTS = "0", NROS_ZEPHYR_HEAP_SIZE = "98304" }
+env = { NROS_XRCE_MAX_SUBSCRIBERS = "1", NROS_XRCE_MAX_SERVICE_SERVERS = "0", NROS_XRCE_MAX_SERVICE_CLIENTS = "0" }
+
+[image.zephyr_xrce.knobs.zephyr]
+heap_size = 98304
 
 [image.zephyr_cyclonedds]
 board = "zephyr"
