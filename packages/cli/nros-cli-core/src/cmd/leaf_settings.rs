@@ -400,51 +400,34 @@ pub(crate) fn transport_implications_of(
 /// --image-env-out` hands exactly these rows to the CMAKE road, which has no
 /// settings file of its own. One composition, so a C leaf and a Rust leaf
 /// cannot read one `system.toml` two ways.
-#[must_use]
-pub fn image_layers(decl: &LeafSystem) -> BTreeMap<String, String> {
+pub fn image_layers(decl: &LeafSystem) -> Result<BTreeMap<String, String>> {
+    refuse_retired_env_keys(&decl.env)?;
     let mut env = BTreeMap::new();
     transport_implications(decl, &mut env);
-    env.extend(
-        decl.env
-            .iter()
-            .map(|(k, v)| (canonical_env_key(k), v.clone())),
-    );
-    env
+    env.extend(decl.env.iter().map(|(k, v)| (k.clone(), v.clone())));
+    Ok(env)
 }
 
-/// phase-484 W5a (RFC-0103 D2b) — an `[image.<id>] env` row is carried under
-/// its knob's CANONICAL env spelling, whichever spelling the image wrote.
+/// phase-484 W8 (RFC-0103 D2b) — an `[image.<id>] env` row keyed by a RETIRED
+/// knob spelling (`ZPICO_MAX_QUERYABLES`) is refused, naming the canonical one
+/// (`NROS_ZENOH_MAX_QUERYABLES`), in the registry's words. Release 0.5.0-nros2
+/// carried such a row under its canonical key with a deprecation; carrying it
+/// now would keep the retired name working through `system.toml` alone.
 ///
-/// Every writer this tree owns writes the canonical name; a row a person
-/// wrote under a legacy one (`ZPICO_MAX_QUERYABLES`) must still reach the same
-/// place. Carrying it verbatim would put the legacy name beside a canonical
-/// row another layer derives (`NROS_ZENOH_MAX_QUERYABLES` in the sidecar), and
-/// the build script refuses two spellings of one knob that disagree — so the
-/// image's statement, which outranks a derivation, would stop the build
-/// instead. A key the registry does not hold is carried as written.
-#[must_use]
-pub fn canonical_env_key(key: &str) -> String {
-    if let Some(notice) = nros_zephyr_build::deprecation_notice(key) {
-        // Once per key per run: an image's layers are rendered on more than
-        // one road (`sync` writes the cargo file and the Kconfig fragment).
-        use std::{
-            collections::BTreeSet,
-            sync::{Mutex, OnceLock},
-        };
-        static SEEN: OnceLock<Mutex<BTreeSet<String>>> = OnceLock::new();
-        let first = SEEN
-            .get_or_init(|| Mutex::new(BTreeSet::new()))
-            .lock()
-            .map(|mut seen| seen.insert(key.to_string()))
-            .unwrap_or(true);
-        if first {
-            eprintln!("warning: nros: [image.<id>] env: {notice}");
-        }
+/// Every key that names a retired spelling is listed, so one edit fixes them
+/// all. A key the registry does not hold is carried as written.
+pub fn refuse_retired_env_keys(env: &BTreeMap<String, String>) -> Result<()> {
+    let refusals: Vec<String> = env
+        .keys()
+        .filter_map(|k| nros_zephyr_build::retired_spelling_refusal(k))
+        .collect();
+    if refusals.is_empty() {
+        return Ok(());
     }
-    match nros_zephyr_build::knob_row(key) {
-        Some(row) => row.env.to_string(),
-        None => key.to_string(),
-    }
+    Err(eyre::eyre!(
+        "[image.<id>] env:\n  {}",
+        refusals.join("\n  ")
+    ))
 }
 
 /// phase-481 W4 (RFC-0098 D12) — [`image_layers`] for a WORKSPACE image: what
@@ -452,19 +435,14 @@ pub fn canonical_env_key(key: &str) -> String {
 /// roads read it — the cargo road into the image's `nros-cargo.toml`, the
 /// cmake road into its configure's image-env file and, through
 /// `cmake_coordinate`, into WHICH configure it shares.
-#[must_use]
 pub fn image_block_layers(
     image: &crate::orchestration::image::ImageBlock,
-) -> BTreeMap<String, String> {
+) -> Result<BTreeMap<String, String>> {
+    refuse_retired_env_keys(&image.env)?;
     let mut env = BTreeMap::new();
     transport_implications_of(image.transport.as_deref(), &mut env);
-    env.extend(
-        image
-            .env
-            .iter()
-            .map(|(k, v)| (canonical_env_key(k), v.clone())),
-    );
-    env
+    env.extend(image.env.iter().map(|(k, v)| (k.clone(), v.clone())));
+    Ok(env)
 }
 
 /// Issue 1305 / RFC-0098 D6 — does the leaf manifest depend on its generated
@@ -860,10 +838,10 @@ pub fn write(
     // Layer 4 — the APP rung: what this IMAGE states (`[image.<id>] env`).
     // Last, so it outranks the board and the implications above and is
     // outranked only by the calling environment.
+    refuse_retired_env_keys(&img.decl.env)?;
     for (k, v) in &img.decl.env {
-        let k = canonical_env_key(k);
-        path_env.remove(&k);
-        env.insert(k, v.clone());
+        path_env.remove(k);
+        env.insert(k.clone(), v.clone());
     }
 
     // No absolute path in the hint: the file is otherwise checkout-independent,

@@ -105,6 +105,16 @@ fn target_os_is_hosted(target_os: Option<&str>) -> bool {
 mod hosted_tests {
     use super::*;
 
+    /// phase-484 W8 — the tx/wire env accessor answers only for the name it
+    /// is asked. Answering for a RETIRED spelling with the row's Kconfig value
+    /// made `knob_env` refuse every Zephyr C image with `CONFIG_NROS_ZENOH_TX_BATCH=y`
+    /// (measured on native_sim c/talker) although nothing set the old name.
+    #[test]
+    fn the_env_accessor_never_answers_for_a_retired_spelling() {
+        let retired = "ZPICO_TX_BATCH"; // a retired spelling of NROS_ZENOH_TX_BATCH
+        assert_eq!(kconfig_fallback_str(retired), None);
+    }
+
     #[test]
     fn an_rtos_that_names_itself_is_not_hosted() {
         // issue 1028's exact regression: this returned `true` and cost 106,752 B.
@@ -439,7 +449,7 @@ fn check_queryable_override(requested: usize, sizing: &QueryableSizing) {
     }
     if requested < sizing.floor {
         panic!(
-            "ZPICO_MAX_QUERYABLES={requested} is below this image's DERIVED floor of \
+            "NROS_ZENOH_MAX_QUERYABLES={requested} is below this image's DERIVED floor of \
              {} (phase-392 W5.f).\n  \
              A service server IS a zenoh queryable. This image declares the \
              infrastructure services and application service servers that claim those \
@@ -1089,7 +1099,7 @@ fn shim_config_from_env() -> ShimConfig {
     // has a single service. Replacing the guess needs the declaration to reach
     // here from the resolved model; see issue 0827.
     let sizing = resolve_queryable_default();
-    let max_queryables = env_usize("ZPICO_MAX_QUERYABLES", sizing.default);
+    let max_queryables = env_usize("NROS_ZENOH_MAX_QUERYABLES", sizing.default);
     check_queryable_override(max_queryables, &sizing);
     ShimConfig {
         // issue 1199 — the DECLARED road supplies the default when cmake
@@ -1106,11 +1116,11 @@ fn shim_config_from_env() -> ShimConfig {
         // descriptor. Their `NROS_DECLARED_*` carriers RETIRED onto these
         // fields (issue 1649). Floored as the carriers were.
         max_publishers: env_usize(
-            "ZPICO_MAX_PUBLISHERS",
+            "NROS_ZENOH_MAX_PUBLISHERS",
             described_floored(nros_sizing_descriptor::Image::publisher_count).unwrap_or(8),
         ),
         max_subscribers: env_usize(
-            "ZPICO_MAX_SUBSCRIBERS",
+            "NROS_ZENOH_MAX_SUBSCRIBERS",
             described_floored(nros_sizing_descriptor::Image::subscriber_count).unwrap_or(8),
         ),
         max_queryables,
@@ -1118,7 +1128,7 @@ fn shim_config_from_env() -> ShimConfig {
         // Issue 1713 -- DERIVED from the declared facts, like the queryable
         // table above; it was a flat 16 that two nodes' parameter services
         // alone (12) all but filled. A named knob still wins, as everywhere.
-        max_liveliness: env_usize("ZPICO_MAX_LIVELINESS", resolve_liveliness_default()),
+        max_liveliness: env_usize("NROS_ZENOH_MAX_LIVELINESS", resolve_liveliness_default()),
         // phase-412 — the graph cache, which had NO cargo-lane producer at all.
         // Default matches the C `#ifndef` fallback exactly: the two must agree,
         // because a build that goes through cargo now states the number and one
@@ -1128,8 +1138,8 @@ fn shim_config_from_env() -> ShimConfig {
         // policy is applied (search `shim_config.graph_discovery =`), because
         // the derived rung needs the FINAL link set, which is not known here.
         graph_discovery: true,
-        max_pending_gets: env_usize("ZPICO_MAX_PENDING_GETS", 4),
-        max_sessions: env_usize("ZPICO_MAX_SESSIONS", 1),
+        max_pending_gets: env_usize("NROS_ZENOH_MAX_PENDING_GETS", 4),
+        max_sessions: env_usize("NROS_ZENOH_MAX_SESSIONS", 1),
         // phase-400 W6 — BUILTINS, like the tx pair below: these five are
         // ladder knobs now, and `resolve_wire` overwrites them where the rungs
         // are known (search `shim_config.get_reply_buf_size =`). Reading the
@@ -1147,8 +1157,8 @@ fn shim_config_from_env() -> ShimConfig {
         // Defaults MIRROR the `#define` fallbacks in
         // `zpico-sys/c/zpico/zpico.c` (16 / 16). A different number here would
         // not be a tuning choice, it would be the two lanes disagreeing.
-        read_task_priority: env_usize("ZPICO_READ_TASK_PRIORITY", 16),
-        lease_task_priority: env_usize("ZPICO_LEASE_TASK_PRIORITY", 16),
+        read_task_priority: env_usize("NROS_ZENOH_READ_PRIORITY", 16),
+        lease_task_priority: env_usize("NROS_ZENOH_LEASE_PRIORITY", 16),
     }
 }
 
@@ -1188,7 +1198,18 @@ fn zenoh_buffer_config_from_env(posix: bool) -> ZenohBufferConfig {
 /// It is also `resolve_tx`'s general env front-end, so it is called with names
 /// that are not knobs at all (`NROS_BOARD`, `NROS_BOARD_TOML`). `Knob` handles
 /// those by deriving a `CONFIG_` key no `.config` declares, which is a miss.
+///
+/// phase-484 W8 — it answers for the name it is ASKED, never for a retired
+/// spelling of the same row: `knob(name)` resolves the whole row (env, then
+/// Kconfig), so asked for a retired spelling it would hand back the row's
+/// Kconfig value, and `knob_env`'s retirement probe would read that as "the
+/// retired spelling is set" and refuse a build nobody misconfigured. The
+/// canonical read below still refuses a retired spelling that IS set, against
+/// the real environment.
 fn kconfig_fallback_str(name: &str) -> Option<String> {
+    if nros_zephyr_build::retired_spelling_refusal(name).is_some() {
+        return None;
+    }
     nros_zephyr_build::knob(name).stated_str()
 }
 
@@ -1280,7 +1301,10 @@ fn resolve_graph_cache_size() -> usize {
     // `#ifndef` fallback exactly: a build that goes through cargo states the
     // number and one that does not falls through to the literal in `zpico.c`.
     // The two must agree or the same source compiles to two sizes.
-    env_usize("ZPICO_GRAPH_CACHE_SIZE", from_entities.unwrap_or(65536))
+    env_usize(
+        "NROS_ZENOH_GRAPH_CACHE_SIZE",
+        from_entities.unwrap_or(65536),
+    )
 }
 
 /// D9 -- `ZPICO_GRAPH_DISCOVERY` over the ladder: the environment, then the
@@ -1292,7 +1316,7 @@ fn resolve_graph_cache_size() -> usize {
 /// asking, so it SAYS so, once per build script run: a graph query that answers
 /// `Unsupported` on a board is a surprise unless the build told someone why.
 fn resolve_graph_discovery(link: &LinkFeatures) -> bool {
-    let stated = nros_zephyr_build::knob("ZPICO_GRAPH_DISCOVERY").stated();
+    let stated = nros_zephyr_build::knob("NROS_ZENOH_GRAPH_DISCOVERY").stated();
     match stated {
         Some(v) => v != 0,
         None => {
@@ -1758,19 +1782,16 @@ pub fn run() {
     // (`nros board-facts`) and names WHICH `[[board]]` when a file declares
     // several — `packages/boards/nros-board-nuttx` declares two that differ in
     // ISA, so a file-level answer would be issue 0606 one table over. Read
-    // BEFORE the load: phase-445 W2 made the legacy `[board.knobs]` per-entry, so the knob
-    // rung needs the name as much as the capabilities below do.
+    // BEFORE the load: the capabilities below are per-entry.
     println!("cargo:rerun-if-env-changed=NROS_BOARD");
     let board_name = env_get("NROS_BOARD");
     let board_knobs = env_get("NROS_BOARD_TOML").map(|path| {
         let p = PathBuf::from(&path);
         println!("cargo:rerun-if-changed={}", p.display());
-        let file = platform_config::BoardKnobsFile::load_for_board(&p, board_name.as_deref())
-            .unwrap_or_else(|e| panic!("{path}: {e}"));
-        if let Some(notice) = file.deprecation_notice() {
-            println!("cargo:warning=nros: {path}: {notice}");
-        }
-        file
+        // phase-484 W8 — a descriptor on the retired `[board.knobs]` is
+        // refused by the load, naming the top-level `[knobs]`.
+        platform_config::BoardKnobsFile::load_for_board(&p, board_name.as_deref())
+            .unwrap_or_else(|e| panic!("{path}: {e}"))
     });
     let tx_knobs = match (&platforms_tree, platform_name) {
         (Some(tree), Some(name)) => {

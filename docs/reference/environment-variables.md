@@ -95,9 +95,11 @@ All optional — platform-appropriate defaults apply if unset.
 
 ### Zenoh-pico (`NROS_ZENOH_*`)
 
-Each knob here was spelled `ZPICO_<X>` before phase-484 W5a (RFC-0103 D2b);
-the old spelling is still read, with a deprecation warning naming the new one,
-until phase-484 W8. Setting both to different values stops the build.
+Each knob here was spelled `ZPICO_<X>` before phase-484 W5a (RFC-0103 D2b).
+That old spelling is now **retired** (phase-484 W8): set in the environment or
+in an `[image.<id>] env` row, it stops the build with an error naming the
+`NROS_ZENOH_*` name to use. The full list is
+[the retired-names table](../../book/src/reference/retired-names.md#retired-knob-spellings).
 
 | Variable                           | Description                                            | Default          | Crate          |
 |------------------------------------|--------------------------------------------------------|------------------|----------------|

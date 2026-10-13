@@ -29,11 +29,9 @@ fn main() {
     // plain `cargo build`), and the builtins below then stand.
     //
     // Each rung goes in through `.rung()`, below the environment and above the
-    // builtin: `NROS_SMOLTCP_*` and its deprecated `ZPICO_SMOLTCP_*` spelling
-    // (a legacy row in the knob registry, phase-484 W5a) still win above it,
-    // and a builtin applies only where no descriptor said anything. Two
-    // spellings stating DIFFERENT values is a build error now, where the
-    // hand-written fallback this replaced silently preferred the new one.
+    // builtin: `NROS_SMOLTCP_*` still wins above it, and a builtin applies only
+    // where no descriptor said anything. The old `ZPICO_SMOLTCP_*` spelling is
+    // retired (phase-484 W8): set, it stops the build naming its replacement.
     //
     // This crate reads the ladder from `nros-platform-config` rather than
     // `nros-board-common`: the board crate reaches back here through

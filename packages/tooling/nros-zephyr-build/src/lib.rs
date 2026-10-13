@@ -102,7 +102,8 @@ pub struct KnobRow {
     pub id: &'static str,
     /// The canonical env spelling, `NROS_<id>`.
     pub env: &'static str,
-    /// Older env spellings, still read until phase-484 W8 retires them.
+    /// RETIRED env spellings (phase-484 W8): set, each stops the build naming
+    /// [`Self::env`]. Kept one release as the error table, then removed.
     pub legacy: &'static [&'static str],
     /// The Kconfig symbol the `$DOTCONFIG` rung reads. Defaults to
     /// `CONFIG_NROS_<id>`; the zenoh pools read the RMW-agnostic demand symbol
@@ -139,9 +140,7 @@ pub struct KconfigKnob {
 // Generated, so rustfmt leaves it as the generator wrote it and `--check` stays exact.
 #[rustfmt::skip]
 mod knob_registry;
-pub use knob_registry::{
-    CONFLICT_TEMPLATE, DEPRECATION_TEMPLATE, KCONFIG_KNOBS, KCONFIG_PAIRS, KNOBS,
-};
+pub use knob_registry::{KCONFIG_KNOBS, KCONFIG_PAIRS, KNOBS, RETIRED_TEMPLATE};
 
 /// The Kconfig knob whose symbol is `symbol` (with or without `CONFIG_`).
 #[must_use]
@@ -156,7 +155,7 @@ pub fn kconfig_knob_by_id(id: &str) -> Option<&'static KconfigKnob> {
     KCONFIG_KNOBS.iter().find(|k| k.id == id)
 }
 
-/// The registry row a spelling names, canonical or legacy.
+/// The registry row a spelling names, canonical or retired.
 #[must_use]
 pub fn knob_row(name: &str) -> Option<&'static KnobRow> {
     KNOBS
@@ -174,8 +173,12 @@ pub fn knob_by_toml(key: &str) -> Option<&'static KnobRow> {
     KNOBS.iter().find(|r| r.toml == Some(key))
 }
 
-/// Every env spelling of the knob `name` names, canonical first. A name the
-/// registry does not hold is its own only spelling.
+/// Every env spelling of the knob `name` names, canonical first, then the
+/// RETIRED ones. A name the registry does not hold is its own only spelling.
+///
+/// Only the canonical spelling is READ; the retired ones are listed so a
+/// build script WATCHES them (`cargo:rerun-if-env-changed`) and refuses one
+/// the moment it is set, instead of keeping a stale artifact (phase-484 W8).
 #[must_use]
 pub fn spellings(name: &str) -> Vec<&str> {
     match knob_row(name) {
@@ -186,57 +189,31 @@ pub fn spellings(name: &str) -> Vec<&str> {
     }
 }
 
-/// Rung 1 over every spelling: the value a person set, under whichever name.
-///
-/// Two spellings set to DIFFERENT values is a build error naming both, the
-/// rule the cmake twin applied to a deprecated variable and its new name
-/// while it was an alias (phase-484 W7b; `cmake/NanoRosRetiredNames.cmake`
-/// now refuses the old name outright): picking one silently would answer a
-/// question nobody asked.
+/// Rung 1: the value set under the knob's CANONICAL spelling, after refusing
+/// any retired spelling that is set (phase-484 W8).
 fn env_spelled(name: &str, watch: bool) -> Option<(String, String)> {
     if watch {
         for s in spellings(name) {
             println!("cargo:rerun-if-env-changed={s}");
         }
     }
-    let found = read_spelled_from(name, &|k| env::var(k).ok());
-    if let Some((spelled, _)) = &found
-        && let Some(notice) = deprecation_notice(spelled)
-        && first_notice_for(spelled)
-    {
-        println!("cargo:warning=nros: {notice}");
-    }
-    found
+    read_spelled_from(name, &|k| env::var(k).ok())
 }
 
-/// phase-484 W5a — what a build prints when a knob's value arrives under a
-/// LEGACY spelling, or `None` for a canonical (or unregistered) name.
+/// phase-484 W8 — the refusal a RETIRED spelling earns, or `None` for a
+/// canonical (or unregistered) name.
 ///
-/// The words are the registry's (`DEPRECATION_TEMPLATE`, generated with the
-/// cmake twin's from one string in `scripts/gen-knob-registry.py`), so a
-/// configure and a build script name the same replacement the same way.
+/// The words are the registry's (`RETIRED_TEMPLATE`, generated with the cmake
+/// twin's from one string in `scripts/gen-knob-registry.py`), so a configure,
+/// a build script and the CLI refuse the same name the same way.
 #[must_use]
-pub fn deprecation_notice(spelled: &str) -> Option<String> {
+pub fn retired_spelling_refusal(spelled: &str) -> Option<String> {
     let row = knob_row(spelled)?;
     (row.env != spelled).then(|| {
-        DEPRECATION_TEMPLATE
+        RETIRED_TEMPLATE
             .replace("{legacy}", spelled)
             .replace("{env}", row.env)
     })
-}
-
-/// Once per spelling per build-script process: a knob read by several call
-/// sites (the zpico runner reads some twice) warns once, not per read.
-fn first_notice_for(spelled: &str) -> bool {
-    use std::{
-        collections::BTreeSet,
-        sync::{Mutex, OnceLock},
-    };
-    static SEEN: OnceLock<Mutex<BTreeSet<String>>> = OnceLock::new();
-    SEEN.get_or_init(|| Mutex::new(BTreeSet::new()))
-        .lock()
-        .map(|mut seen| seen.insert(spelled.to_string()))
-        .unwrap_or(true)
 }
 
 /// [`read_spelled_from`]'s value alone, for a reader that injects its env
@@ -246,38 +223,31 @@ pub fn read_spelled(name: &str, env: &dyn Fn(&str) -> Option<String>) -> Option<
     read_spelled_from(name, env).map(|(_, v)| v)
 }
 
-/// Rung 1 through an injected accessor: `(spelling, value)` for the first
-/// spelling set, canonical first, after checking that no other spelling
-/// disagrees. An empty value counts as unset.
+/// Rung 1 through an injected accessor: `(spelling, value)` when the knob's
+/// canonical spelling is set. An empty value counts as unset.
 ///
 /// # Panics
 ///
-/// When two spellings hold different values — see `env_spelled`'s rule.
+/// When a RETIRED spelling of the knob is set (non-empty), whatever the
+/// canonical one holds: [`retired_spelling_refusal`]'s sentence, naming the
+/// replacement. Release 0.5.0-nros2 read it with a deprecation; reading it
+/// now would keep a second name for one knob alive indefinitely.
 #[must_use]
 pub fn read_spelled_from(
     name: &str,
     env: &dyn Fn(&str) -> Option<String>,
 ) -> Option<(String, String)> {
-    let mut found: Option<(String, String)> = None;
-    for s in spellings(name) {
-        let Some(v) = env(s).filter(|v| !v.trim().is_empty()) else {
-            continue;
-        };
-        match &found {
-            None => found = Some((s.to_string(), v)),
-            Some((first, fv)) if fv.trim() != v.trim() => panic!(
-                "nros-zephyr-build: {}",
-                CONFLICT_TEMPLATE
-                    .replace("{first_value}", fv)
-                    .replace("{other_value}", &v)
-                    .replace("{first}", first)
-                    .replace("{other}", s)
-                    .replace("{env}", spellings(name)[0])
-            ),
-            Some(_) => {}
+    let all = spellings(name);
+    for s in &all[1..] {
+        if env(s).is_some_and(|v| !v.trim().is_empty()) {
+            let refusal = retired_spelling_refusal(s).expect("a non-canonical spelling");
+            panic!("nros-zephyr-build: {refusal}");
         }
     }
-    found
+    let canonical = all[0];
+    env(canonical)
+        .filter(|v| !v.trim().is_empty())
+        .map(|v| (canonical.to_string(), v))
 }
 
 /// The Kconfig symbol a knob resolves from: its registry row's, for any of its
@@ -628,7 +598,8 @@ mod tests {
         unsafe {
             env::set_var("DOTCONFIG", &laddered);
             for k in [
-                "ZPICO_SUBSCRIBER_RING_DEPTH",
+                "NROS_ZENOH_SUBSCRIBER_RING_DEPTH",
+                "ZPICO_SUBSCRIBER_RING_DEPTH", // retired spelling: cleared for the refusal case
                 "NROS_EXECUTOR_MAX_CBS",
                 "NROS_EXECUTOR_MAX_SC",
             ] {
@@ -637,7 +608,7 @@ mod tests {
         }
 
         assert_eq!(
-            knob("ZPICO_SUBSCRIBER_RING_DEPTH").resolve(4),
+            knob("NROS_ZENOH_SUBSCRIBER_RING_DEPTH").resolve(4),
             7,
             "a tabulated knob must resolve through its KCONFIG_PAIRS row"
         );
@@ -664,36 +635,48 @@ mod tests {
         );
         // Rung 1 keeps winning. Migrating a knob into the ladder must not take
         // an operator's override away.
-        unsafe { env::set_var("ZPICO_SUBSCRIBER_RING_DEPTH", "13") };
+        unsafe { env::set_var("NROS_ZENOH_SUBSCRIBER_RING_DEPTH", "13") };
         assert_eq!(
-            knob("ZPICO_SUBSCRIBER_RING_DEPTH").rung(Some(5)).resolve(4),
+            knob("NROS_ZENOH_SUBSCRIBER_RING_DEPTH")
+                .rung(Some(5))
+                .resolve(4),
             13,
             "an explicit env value must outrank every other rung"
         );
-        // phase-484 W5a — rung 1 reads EVERY spelling of the knob, whichever
-        // one the caller names. Agreeing spellings are one value; disagreeing
-        // ones are a build error rather than a silent pick.
-        unsafe { env::set_var("NROS_ZENOH_SUBSCRIBER_RING_DEPTH", "13") };
-        assert_eq!(knob("ZPICO_SUBSCRIBER_RING_DEPTH").resolve(4), 13);
-        unsafe { env::set_var("NROS_ZENOH_SUBSCRIBER_RING_DEPTH", "14") };
-        let split = std::panic::catch_unwind(|| knob("ZPICO_SUBSCRIBER_RING_DEPTH").resolve(4));
-        assert!(split.is_err(), "two spellings, two values, must refuse");
-        unsafe { env::remove_var("ZPICO_SUBSCRIBER_RING_DEPTH") };
-        assert_eq!(
-            knob("ZPICO_SUBSCRIBER_RING_DEPTH").resolve(4),
-            14,
-            "a reader naming the legacy spelling must see the canonical one"
-        );
+        // phase-484 W8 — a RETIRED spelling set is a build error naming the
+        // canonical one, whether or not the canonical one agrees, and whichever
+        // spelling the caller asked for.
+        unsafe { env::set_var("ZPICO_SUBSCRIBER_RING_DEPTH", "13") }; // retired spelling: the refusal case
+        let agreeing =
+            std::panic::catch_unwind(|| knob("NROS_ZENOH_SUBSCRIBER_RING_DEPTH").resolve(4));
         unsafe { env::remove_var("NROS_ZENOH_SUBSCRIBER_RING_DEPTH") };
+        let alone =
+            std::panic::catch_unwind(|| knob("NROS_ZENOH_SUBSCRIBER_RING_DEPTH").resolve(4));
+        unsafe { env::remove_var("ZPICO_SUBSCRIBER_RING_DEPTH") }; // retired spelling: cleared
+        assert!(
+            agreeing.is_err(),
+            "a retired spelling beside the canonical must refuse"
+        );
+        assert!(
+            alone.is_err(),
+            "a retired spelling alone must refuse, not be read"
+        );
+        assert_eq!(
+            knob("NROS_ZENOH_SUBSCRIBER_RING_DEPTH").resolve(4),
+            7,
+            "with the retired spelling gone the ladder reads on"
+        );
         // A non-numeric env value is ABSENT by default and a build error under
         // `strict_env` — the one policy difference between the readers, and an
         // INPUT rather than a second function.
-        unsafe { env::set_var("ZPICO_SUBSCRIBER_RING_DEPTH", "not-a-number") };
-        let junk_default = knob("ZPICO_SUBSCRIBER_RING_DEPTH").resolve(4);
+        unsafe { env::set_var("NROS_ZENOH_SUBSCRIBER_RING_DEPTH", "not-a-number") };
+        let junk_default = knob("NROS_ZENOH_SUBSCRIBER_RING_DEPTH").resolve(4);
         let junk_strict = std::panic::catch_unwind(|| {
-            knob("ZPICO_SUBSCRIBER_RING_DEPTH").strict_env().resolve(4)
+            knob("NROS_ZENOH_SUBSCRIBER_RING_DEPTH")
+                .strict_env()
+                .resolve(4)
         });
-        unsafe { env::remove_var("ZPICO_SUBSCRIBER_RING_DEPTH") };
+        unsafe { env::remove_var("NROS_ZENOH_SUBSCRIBER_RING_DEPTH") };
         assert_eq!(
             junk_default, 7,
             "a junk env value falls through to Kconfig by default"
@@ -705,7 +688,9 @@ mod tests {
         // The string flavour reads the same two rungs, and maps a Kconfig bool
         // to the `1`/`0` the C shim's `-D` takes.
         assert_eq!(
-            knob("ZPICO_SUBSCRIBER_RING_DEPTH").stated_str().as_deref(),
+            knob("NROS_ZENOH_SUBSCRIBER_RING_DEPTH")
+                .stated_str()
+                .as_deref(),
             Some("7")
         );
 
@@ -727,22 +712,25 @@ mod tests {
     /// tables carried were exactly that, and the two `NROS_PARAM_SERVICE_INBOX_*`
     /// knobs 1490 measured as LIVE splits were among the names that shape
     /// affects.
-    /// phase-484 W5a — a legacy spelling is named with its replacement, in the
-    /// registry's words; a canonical or unregistered name earns nothing.
+    /// phase-484 W8 — a retired spelling is refused naming its replacement,
+    /// in the registry's words; a canonical or unregistered name earns nothing.
     #[test]
-    fn a_legacy_spelling_names_its_replacement() {
-        let n = deprecation_notice("ZPICO_FRAG_MAX_SIZE").expect("a legacy spelling");
+    fn a_retired_spelling_names_its_replacement() {
+        let n = retired_spelling_refusal("ZPICO_FRAG_MAX_SIZE").expect("a retired spelling");
         assert!(
-            n.starts_with(
-                "ZPICO_FRAG_MAX_SIZE is a deprecated spelling of NROS_ZENOH_FRAG_MAX_SIZE"
-            ),
+            n.starts_with("ZPICO_FRAG_MAX_SIZE is a retired spelling of NROS_ZENOH_FRAG_MAX_SIZE"),
             "{n}"
         );
+        assert!(n.contains("set NROS_ZENOH_FRAG_MAX_SIZE instead"), "{n}");
         assert!(!n.contains('{'), "every placeholder substituted: {n}");
-        assert_eq!(deprecation_notice("NROS_ZENOH_FRAG_MAX_SIZE"), None);
-        assert_eq!(deprecation_notice("NROS_NOT_A_KNOB"), None);
-        assert!(first_notice_for("ZPICO_TEST_ONCE"));
-        assert!(!first_notice_for("ZPICO_TEST_ONCE"), "once per spelling");
+        assert_eq!(retired_spelling_refusal("NROS_ZENOH_FRAG_MAX_SIZE"), None);
+        assert_eq!(retired_spelling_refusal("NROS_NOT_A_KNOB"), None);
+        // The injected-accessor reader refuses too, and only for a SET value.
+        let set = |k: &str| (k == "ZPICO_FRAG_MAX_SIZE").then(|| "512".to_string()); // retired spelling
+        let refused = std::panic::catch_unwind(|| read_spelled("NROS_ZENOH_FRAG_MAX_SIZE", &set));
+        assert!(refused.is_err(), "a set retired spelling must refuse");
+        let empty = |k: &str| (k == "ZPICO_FRAG_MAX_SIZE").then(String::new); // retired, but empty
+        assert_eq!(read_spelled("NROS_ZENOH_FRAG_MAX_SIZE", &empty), None);
     }
 
     #[test]

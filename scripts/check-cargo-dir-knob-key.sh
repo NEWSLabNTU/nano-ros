@@ -151,12 +151,20 @@ knob2_again="$(probe with-knobs DIR NROS_ZENOH_MAX_QUERYABLES=2)"
 expect_eq "the same configuration computed twice must give the same directory" \
     "$knob2" "$knob2_again"
 
-# phase-484 W5a — a LEGACY spelling reaches the build script, so it must reach
-# the key, and under the canonical name: the same image stated either way is
-# one cargo directory.
-legacy2="$(probe with-knobs DIR ZPICO_MAX_QUERYABLES=2)"
-expect_eq "a value exported under the legacy ZPICO_MAX_QUERYABLES must key like NROS_ZENOH_MAX_QUERYABLES" \
-    "$knob2" "$legacy2"
+# phase-484 W8 — a RETIRED spelling (`ZPICO_MAX_QUERYABLES`) is refused by
+# the configure, naming the canonical one, rather than keyed: the build script
+# would refuse it too, so a directory keyed on it could never be built.
+retired=ZPICO_MAX_QUERYABLES # the retired spelling under test
+legacy_rc=0
+legacy_out="$(env "$retired=2" cmake -DNROS_PROBE_ROOT="$TMP/store" \
+    -DNROS_PROBE_MODE=with-knobs -DNROS_PROBE_RESOLVED= -P "$PROBE" 2>&1)" || legacy_rc=$?
+named=0
+nros_grep_q "set NROS_ZENOH_MAX_QUERYABLES instead" <<<"$legacy_out" || named=$?
+if [ "$legacy_rc" -eq 0 ] || [ "$named" -ne 0 ]; then
+    echo "[FAIL] a configure with the retired $retired set must stop naming NROS_ZENOH_MAX_QUERYABLES (rc=$legacy_rc):" >&2
+    printf '%s\n' "$legacy_out" >&2
+    fail=1
+fi
 
 knob4="$(probe with-knobs DIR NROS_ZENOH_MAX_QUERYABLES=4)"
 expect_ne "two images differing only in the VALUE of NROS_ZENOH_MAX_QUERYABLES share a cargo directory" \

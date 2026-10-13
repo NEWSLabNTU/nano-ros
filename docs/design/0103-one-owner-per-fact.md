@@ -198,8 +198,10 @@ which order, so the two phases do not build the same carrier twice.
    (`NROS_ZENOH_MAX_PUBLISHERS`), the shape `NROS_XRCE_*`, `NROS_CYCLONEDDS_*`
    and `NROS_ZENOH_TX_BATCH` already have. Today's other spellings
    (`ZPICO_*`, `ZPICO_SMOLTCP_*`, ThreadX's `NROS_ZENOH_READ_PRIORITY` beside
-   `ZPICO_READ_TASK_PRIORITY`) are legacy rows, accepted with a deprecation
-   until W8. The TOML spelling is `[knobs.<group>] <name>`.
+   `ZPICO_READ_TASK_PRIORITY`) were legacy rows, accepted with a deprecation
+   for one release and RETIRED in phase-484 W8: set, each is refused naming
+   `NROS_<ID>`, and the `legacy` column is kept one more release as that
+   error table. The TOML spelling is `[knobs.<group>] <name>`.
 
    The Kconfig symbol is a COLUMN, not the id. Its default is
    `CONFIG_NROS_<ID>`; a row names another symbol where today's Kconfig
@@ -431,9 +433,10 @@ rows a contributor edits, which rung 4 serves from the checkout anyway.
   `[capabilities]`, `[net]` (the file kind already says the owner, so
   `[board.knobs]` → `[knobs]`). **Landed for `[knobs]` (phase-484 W5):** a board descriptor's knob
   section is the top-level `[knobs]` (`[knobs.<group>]`), applying to every
-  `[[board]]` in the file. The per-entry `[board.knobs]` is read with a
-  deprecation notice until phase-484 W8; a file stating both is refused by
-  both parsers (`BoardKnobsFile`, the CLI's `BoardFile`).
+  `[[board]]` in the file. The per-entry `[board.knobs]` was read with a
+  deprecation notice for one release and is RETIRED (phase-484 W8): both
+  parsers (`BoardKnobsFile`, the CLI's `BoardFile`) refuse it, naming
+  `[knobs]`.
 
 ### D7 — Generated output lives under `<build>/nros/`
 
@@ -624,6 +627,10 @@ Still open:
    hook does not read (board fragments, snippets).
 
 ## Changelog
+
+- 2026-10-13 — Phase-484 W8b retired the legacy knob spellings and
+  `[board.knobs]`: each is now an error naming its replacement, the registry's
+  `legacy` column kept one release as the error table.
 
 - 2026-10-13 — **Stable.** Phase-484 W1–W7 implemented D1–D9 as amended
   above; issue 1767 archived with a per-resource resolution, and the

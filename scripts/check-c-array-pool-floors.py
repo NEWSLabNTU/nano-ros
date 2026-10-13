@@ -224,7 +224,7 @@ FLOOR_PRODUCERS = [
         # Two spellings: `NOT_DERIVED_*` (the knob is withheld) and
         # `*_DERIVED_BY_CONSUMER` (phase-445 W1 — the producer carries the
         # facts and the consumer floors the count itself, issue 0460).
-        r'(?:NOT_DERIVED[A-Z_]*|[A-Z_]*DERIVED_BY_CONSUMER): &str = "{knob}"',
+        r'(?:NOT_DERIVED[A-Z_]*|[A-Z_]*DERIVED_BY_CONSUMER): &str = "{env}"',
         "the cargo-leaf `[env]` sidecar",
         _ZPICO_POOLS,
     ),
@@ -614,8 +614,8 @@ _nros_c_array_pool_floor(_d "${X}" ZPICO_MAX_LIVELINESS)
 """
 
 GOOD_RUST = """
-const QUERYABLES_DERIVED_BY_CONSUMER: &str = "ZPICO_MAX_QUERYABLES";
-const LIVELINESS_DERIVED_BY_CONSUMER: &str = "ZPICO_MAX_LIVELINESS";
+const QUERYABLES_DERIVED_BY_CONSUMER: &str = "NROS_ZENOH_MAX_QUERYABLES";
+const LIVELINESS_DERIVED_BY_CONSUMER: &str = "NROS_ZENOH_MAX_LIVELINESS";
         ("NROS_ZENOH_MAX_PUBLISHERS", floor(knobs.max_publishers)),
         ("NROS_ZENOH_MAX_SUBSCRIBERS", floor(knobs.max_subscribers)),
 """
@@ -753,7 +753,7 @@ def selftest() -> int:
     # says this lane does not derive the queryable count and the knob is back to
     # being an unfloored production.
     silent = GOOD_RUST.replace(
-        'const QUERYABLES_DERIVED_BY_CONSUMER: &str = "ZPICO_MAX_QUERYABLES";', ""
+        'const QUERYABLES_DERIVED_BY_CONSUMER: &str = "NROS_ZENOH_MAX_QUERYABLES";', ""
     )
     assert any(
         "ZPICO_MAX_QUERYABLES" in p for p in check_producers(producer_texts(rust=silent))
@@ -769,7 +769,7 @@ def selftest() -> int:
         for p in check_producers(producer_texts(cmake=lvl_dropped))
     )
     lvl_silent = GOOD_RUST.replace(
-        'const LIVELINESS_DERIVED_BY_CONSUMER: &str = "ZPICO_MAX_LIVELINESS";', ""
+        'const LIVELINESS_DERIVED_BY_CONSUMER: &str = "NROS_ZENOH_MAX_LIVELINESS";', ""
     )
     assert any(
         "ZPICO_MAX_LIVELINESS" in p

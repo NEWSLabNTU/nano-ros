@@ -370,6 +370,18 @@ kconfig-knob-forwarding:
 knob-registry:
     @python3 scripts/gen-knob-registry.py --check
 
+# phase-484 W8 (RFC-0103 D2b) — the 32 `legacy` spellings in `knobs.toml` are
+# RETIRED: every reader refuses one that is set. This keeps any ENV reader or
+# writer (a Rust literal / `knob()` / `rerun-if-env-changed`, a cargo `[env]` or
+# `[image] env` row, cmake `ENV{}` / `_nros_knob_env(`, a shell `export` or
+# `X=` prefix, a workflow `env:` row, Python `os.environ`, a documented command)
+# from naming one. The same words stay legal as the shim's C MACRO names, which
+# is why the rule is about env USE and not about the word. Buildless, ~1 s;
+# self-tests every shape both ways on each run.
+[private]
+retired-knob-spellings:
+    @python3 scripts/check/check-retired-knob-spellings.py
+
 # phase-484 W5a (RFC-0103 D2b) — the module `zephyr/Kconfig`'s knob section is
 # RENDERED from the same registry (`type`/`prompt`/`kconfig_if`/`kconfig_attrs`/
 # `help` on each row), so a knob's Kconfig definition has one home. This holds

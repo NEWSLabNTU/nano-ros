@@ -148,9 +148,8 @@ function(nros_knob_key_fields out_var)
         if("${_k}" IN_LIST _seen)
             continue()
         endif()
-        # phase-484 W5a -- under ANY spelling of the knob's registry row, keyed
-        # under the canonical one: a value exported as `ZPICO_MAX_QUERYABLES`
-        # reaches the build script, so it must reach the key too.
+        # phase-484 W8 -- the canonical spelling; a RETIRED one that is set
+        # (`ZPICO_MAX_QUERYABLES`) stops the configure here, naming it.
         _nros_knob_env(${_k} _v)
         if(NOT _v STREQUAL "")
             list(APPEND _seen "${_k}")

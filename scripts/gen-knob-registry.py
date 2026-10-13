@@ -6,7 +6,7 @@
 
 Input:  packages/tooling/nros-zephyr-build/knobs.toml   (the ONLY hand-kept list)
 Output: packages/tooling/nros-zephyr-build/src/knob_registry.rs
-        cmake/NanoRosKnobRegistry.cmake   (the legacy spellings, for the cmake lanes)
+        cmake/NanoRosKnobRegistry.cmake   (the retired spellings, for the cmake lanes)
         zephyr/Kconfig                    (the knob section, between its markers)
         zephyr/Kconfig.knob-prompts       (a guest's prompts, phase-484 W5b)
 
@@ -15,7 +15,9 @@ a knob reaches it), so it cannot parse TOML at build time; the table is
 generated and committed instead, and `just check knob-registry` holds the two
 equal. Every spelling of a knob derives from its row:
 
-  env      `NROS_<id>`, plus each `legacy` name, accepted until phase-484 W8
+  env      `NROS_<id>`. Each `legacy` name is RETIRED (phase-484 W8): set, it
+           stops the build naming `NROS_<id>`. The column stays one release
+           as that error table, then the rows go.
   Kconfig  `CONFIG_<kconfig>`, default `CONFIG_NROS_<id>`
   TOML     `[knobs.<toml>]`, where the ladder has a key for it
 
@@ -31,9 +33,10 @@ too) for a guest, which adds each prompt back under the same `if`/`depends on`.
 file equal to the render, and refuses a registry symbol defined anywhere else
 in `zephyr/Kconfig`.
 
-`KCONFIG_PAIRS` is emitted for every SPELLING whose Kconfig symbol is not
-`CONFIG_<spelling>` — the shape `kconfig_key_for` and its harvesting gate
-(`check-kconfig-knob-forwarding`) already read.
+`KCONFIG_PAIRS` is emitted for every CANONICAL spelling whose Kconfig symbol is
+not `CONFIG_<spelling>` — the shape `kconfig_key_for` and its harvesting gate
+(`check-kconfig-knob-forwarding`) already read. A retired spelling has no pair:
+nothing reads one any more (phase-484 W8).
 """
 import re
 import sys
@@ -57,18 +60,16 @@ KCONFIG_BEGIN = "# >>> knob registry >>>"
 KCONFIG_END = "# <<< knob registry <<<"
 KCONFIG_TYPES = {"bool", "int", "hex", "string"}
 
-# The two messages a legacy spelling earns, written ONCE here and emitted into
-# both outputs (phase-484 W5a): the Rust ladder (`nros-zephyr-build`) and the
-# cmake lanes (`cmake/NanoRosKnobEnv.cmake`) substitute `{legacy}`, `{env}` and
-# `{value}` and print the result, so the build script and the configure say the
-# same words. Rust format braces are NOT used — both sides do a plain replace.
-DEPRECATION = (
-    "{legacy} is a deprecated spelling of {env} (RFC-0103 D2b); "
-    "set {env} instead -- {legacy} is read until phase-484 W8 and then refused"
-)
-CONFLICT = (
-    "{first}={first_value} and {other}={other_value} name ONE knob with two values; "
-    "{other} is a deprecated spelling of {env} (RFC-0103 D2b) -- set only {env}"
+# The one message a retired spelling earns, written ONCE here and emitted into
+# both outputs (phase-484 W8): the Rust ladder (`nros-zephyr-build`) and the
+# cmake lanes (`cmake/NanoRosKnobEnv.cmake`) substitute `{legacy}` and `{env}`
+# and stop the build with the result, so a build script and a configure refuse
+# in the same words. Rust format braces are NOT used — both sides do a plain
+# replace. Release 0.5.0-nros2 printed W5a's deprecation for one release; this
+# is what that deprecation promised.
+RETIRED = (
+    "{legacy} is a retired spelling of {env} (RFC-0103 D2b; retired in phase-484 W8, "
+    "after release 0.5.0-nros2 deprecated it) -- set {env} instead"
 )
 
 ID = re.compile(r"^[A-Z][A-Z0-9_]*$")
@@ -160,12 +161,11 @@ def render(rows):
         out.append(f"        kconfig: {q(kconfig)},")
         out.append(f"        toml: {'Some(' + q(toml) + ')' if toml else 'None'},")
         out.append("    },")
-        for s in [env] + legacy:
-            if kconfig != "CONFIG_" + s:
-                pairs.append((s, kconfig))
+        if kconfig != "CONFIG_" + env:
+            pairs.append((env, kconfig))
     out.append("];")
     out.append("")
-    out.append("/// The env spellings whose Kconfig symbol is not `CONFIG_<spelling>`,")
+    out.append("/// The canonical env spellings whose Kconfig symbol is not `CONFIG_<spelling>`,")
     out.append("/// derived from [`KNOBS`]. Read through [`crate::kconfig_key_for`].")
     out.append("pub const KCONFIG_PAIRS: &[(&str, &str)] = &[")
     for s, k in sorted(pairs):
@@ -188,13 +188,9 @@ def render(rows):
         out.append("    },")
     out.append("];")
     out.append("")
-    out.append("/// What a build prints when a knob arrives under a legacy spelling.")
-    out.append("/// Substitute `{legacy}` and `{env}`; the cmake twin prints the same text.")
-    out.append(f"pub const DEPRECATION_TEMPLATE: &str = {q(DEPRECATION)};")
-    out.append("")
-    out.append("/// The refusal when two spellings of one knob hold different values.")
-    out.append("/// Substitute `{first}`, `{first_value}`, `{other}`, `{other_value}`, `{env}`.")
-    out.append(f"pub const CONFLICT_TEMPLATE: &str = {q(CONFLICT)};")
+    out.append("/// The refusal when a knob arrives under a RETIRED spelling (phase-484 W8).")
+    out.append("/// Substitute `{legacy}` and `{env}`; the cmake twin refuses in the same words.")
+    out.append(f"pub const RETIRED_TEMPLATE: &str = {q(RETIRED)};")
     out.append("")
     return "\n".join(out)
 
@@ -206,12 +202,12 @@ def render_cmake(rows):
         "# Edit knobs.toml and re-run the script; `just check knob-registry` holds the",
         "# two equal. Read through `_nros_knob_env` (cmake/NanoRosKnobEnv.cmake).",
         "#",
-        "# The LEGACY env spellings of each knob (RFC-0103 D2b, phase-484 W5a), keyed",
-        "# both ways: NROS_KNOB_LEGACY_<canonical> lists the old names a value may",
-        "# still arrive under, NROS_KNOB_CANONICAL_<legacy> names the row it belongs to.",
+        "# The RETIRED env spellings of each knob (RFC-0103 D2b, phase-484 W8) -- the",
+        "# error table, kept one release: NROS_KNOB_LEGACY_<canonical> lists the old",
+        "# names that now stop a configure, NROS_KNOB_CANONICAL_<legacy> names the row",
+        "# each belongs to.",
         "",
-        f'set(NROS_KNOB_DEPRECATION_TEMPLATE "{DEPRECATION}")',
-        f'set(NROS_KNOB_CONFLICT_TEMPLATE "{CONFLICT}")',
+        f'set(NROS_KNOB_RETIRED_TEMPLATE "{RETIRED}")',
         "",
     ]
     typed = [r for r in rows if r.get("type")]
@@ -389,7 +385,7 @@ def self_test():
         assert want in text, f"selftest: no `{want}` error in {errs!r}"
     rendered = render([{"id": "ZENOH_X", "legacy": ["ZPICO_X"], "kconfig": "NROS_X"}, {"id": "Y"}])
     assert '("NROS_ZENOH_X", "CONFIG_NROS_X")' in rendered
-    assert '("ZPICO_X", "CONFIG_NROS_X")' in rendered
+    assert '("ZPICO_X"' not in rendered, "selftest: a retired spelling got a Kconfig pair"
     assert '"NROS_Y"' in rendered and '("NROS_Y"' not in rendered, "selftest: a derived pair was emitted"
     kc_rows = [
         {"id": "Z", "type": "int", "prompt": "z", "kconfig_attrs": ["default 4"], "help": "a\n\nb"},

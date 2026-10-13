@@ -737,14 +737,13 @@ def board_toml_claims(repo):
             refused.append((rel, f"could not be parsed as TOML: {exc}"))
             continue
         # RFC-0103 D6 — the rung is the top-level `[knobs]`, applying to every
-        # `[[board]]` in the file; the per-entry `[board.knobs]` is the legacy
-        # spelling (read until phase-484 W8), consulted only when the file
-        # states no top-level table — the parsers refuse a file stating both.
+        # `[[board]]` in the file. The per-entry `[board.knobs]` is retired
+        # (phase-484 W8) and both parsers refuse it, so it is no rung here.
         top = doc.get("knobs")
         for board in doc.get("board", []):
             if not isinstance(board, dict):
                 continue
-            knobs = top if isinstance(top, dict) else (board.get("knobs") or {})
+            knobs = top if isinstance(top, dict) else {}
             words = knobs.get("executor", {}).get("backing_u64s")
             if not isinstance(words, int) or words <= 0:
                 continue  # absent derives, 0 declines — neither is a claim
