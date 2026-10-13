@@ -254,6 +254,25 @@ def check_registry(lines: list[str], name: str) -> tuple[list[str], list[str]]:
     if dupes:
         problems.append(f"  {name}: listed twice: {', '.join(dupes)}")
 
+    # Issue 1882 -- the registry is a LIST, and its body never runs: the runner
+    # reads the names and calls `just check <gate>` for each. `@just native
+    # check` sat in this body for six weeks after #0993 and linted nothing.
+    # A command that must run is a gate on the list, not a line under it.
+    k = e
+    dead = []
+    while k < len(lines) and (lines[k].startswith((" ", "\t")) or not lines[k].strip()):
+        t = lines[k].strip()
+        if t and not t.startswith("#"):
+            dead.append(t)
+        k += 1
+    if dead:
+        problems.append(
+            f"  {name}: has a recipe body ({len(dead)} line(s), first: `{dead[0]}`).\n"
+            f"      The runner derives its work from the dependency NAMES and never\n"
+            f"      runs this body, so nothing under the list executes. Make the\n"
+            f"      command a gate recipe and list it (issue 1882)."
+        )
+
     return flat, problems
 
 
@@ -382,8 +401,18 @@ def self_test() -> None:
     runs decays into a comment.
     """
     good = [f"{BUILD_REGISTRY}: \\", "    alpha \\", "    beta \\", "    gamma \\",
-            f"    {SENTINEL}", "    @echo hi"]
+            f"    {SENTINEL}"]
     assert check_registry(good, BUILD_REGISTRY)[1] == [], "selftest: rejected a well-formed list"
+
+    # Issue 1882: a body on the registry is code the runner never reaches.
+    with_body = good + ["    @just native check"]
+    assert any("body" in p for p in check_registry(with_body, BUILD_REGISTRY)[1]), (
+        "selftest: missed a registry body"
+    )
+    commented = good + ["    # a comment is not a command"]
+    assert check_registry(commented, BUILD_REGISTRY)[1] == [], (
+        "selftest: refused a comment under the registry"
+    )
 
     crowded = [f"{BUILD_REGISTRY}: \\", "    alpha beta \\", "    gamma \\",
                f"    {SENTINEL}", "    @echo hi"]
@@ -438,7 +467,6 @@ def self_test() -> None:
         f"{BUILD_REGISTRY}: \\",
         "    heavy-gate \\",
         f"    {SENTINEL}",
-        "    @true",
         "",
         "[private]",
         "heavy-gate:",

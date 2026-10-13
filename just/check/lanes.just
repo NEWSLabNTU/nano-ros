@@ -3602,6 +3602,19 @@ workspace-embedded:
         exit 1
     fi
 
+# Issue 1882 -- the native-example clippy fan-out, as a GATE on `build-serial`.
+# `check::build` runs `just check <gate>` for each name on that list and never
+# the `build-serial:` recipe BODY, so the `@just native check` that used to end
+# that body went unreached from 2026-09-03 (#0993) and nothing linted
+# `examples/` for six weeks. A call in the body is a second spelling that can
+# rot unseen; a name on the list is the only thing the runner reads.
+# A module cannot name another module's recipe as a dependency, hence the call.
+# Needs the generated message bindings (`just generate-bindings`); `native::check`
+# refuses with that remedy when they are absent.
+[private]
+native-check:
+    @just native check
+
 # Check workspace with various feature combinations
 [private]
 workspace-features:

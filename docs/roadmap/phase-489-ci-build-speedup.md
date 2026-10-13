@@ -639,5 +639,4 @@ link runs both ways). Listing one here records the link, not a claim that
 this phase will fix it.
 
 - [issue 1869](../issues/archived/1869-shared-fixture-target-dir-thrashes-on-sizing-descriptor.md) — workspace fixture rows sharing a target dir rebuilt the core crates every run (W6; resolved by RFC-0100 D13)
-- [issue 1882](../issues/1882-check-build-native-check-unreached.md) — `just check build` no longer reaches `native check`, so native-example clippy has no lane (found by the `check-lane-contracts` reach fix)
 - [issue 1177](../issues/1177-no-alloc-nros-c-lane-runs-only-on-schedule.md) — `check::workspace-features` gates no merge, so its reds are found by embedded consumers -- two so far, and the tier i …
