@@ -271,8 +271,126 @@ pub fn regenerate(
     Ok(chosen.into_values().map(|(_, p)| p).collect())
 }
 
+/// Issue 1873 — the keep list, beside the pin set: ranges no locked root
+/// resolves that a LEAF needs, each with why. Also read by the Python gate
+/// (`scripts/lib/cargo_pins.py`).
+pub const LEAF_ONLY_PINS: &str = "locks/leaf-only-pins.toml";
+
+/// `(name, compat range)` pairs from the keep list's `[[keep]]` entries.
+pub fn parse_keep(text: &str) -> Result<std::collections::BTreeSet<(String, String)>> {
+    let doc: toml::Value = toml::from_str(text).wrap_err("parse the leaf-only pin list")?;
+    let mut out = std::collections::BTreeSet::new();
+    for k in doc
+        .get("keep")
+        .and_then(|v| v.as_array())
+        .into_iter()
+        .flatten()
+    {
+        let s = |f: &str| k.get(f).and_then(|v| v.as_str()).map(str::to_string);
+        match (s("name"), s("range")) {
+            (Some(n), Some(r)) => {
+                out.insert((n, r));
+            }
+            _ => eyre::bail!("a [[keep]] entry needs `name` and `range`: {k}"),
+        }
+    }
+    Ok(out)
+}
+
+/// Issue 1873 — drop the pins whose range no locked root resolves and the keep
+/// list does not name. `regenerate` never drops anything, on purpose (a leaf
+/// may need a range no root has), so a bump left its old range behind: issue
+/// 1805 moved every root to quick-xml 0.41 and 0.37.5 stayed pinned.
+///
+/// Returns `(kept, dropped)`. Refuses when a kept pin depends on a dropped
+/// one, since cargo would then seed an entry whose dependency is gone.
+pub fn prune(
+    pins: &[RegistryPkg],
+    roots: &[Vec<RegistryPkg>],
+    keep: &std::collections::BTreeSet<(String, String)>,
+) -> Result<(Vec<RegistryPkg>, Vec<RegistryPkg>)> {
+    let used: std::collections::BTreeSet<(String, String)> = roots
+        .iter()
+        .flatten()
+        .map(|p| (p.name.clone(), compat_range(&p.version)))
+        .collect();
+    let (kept, dropped): (Vec<_>, Vec<_>) = pins.iter().cloned().partition(|p| {
+        let key = (p.name.clone(), compat_range(&p.version));
+        used.contains(&key) || keep.contains(&key)
+    });
+    for k in &kept {
+        for d in &k.dependencies {
+            // A dependency is `name` or, where several versions exist,
+            // `name version`.
+            let mut it = d.split_whitespace();
+            let (dn, dv) = (it.next().unwrap_or_default(), it.next());
+            let hit = dropped.iter().any(|x| {
+                x.name == dn
+                    && dv.is_none_or(|v| x.version == v)
+                    && !kept
+                        .iter()
+                        .any(|y| y.name == dn && dv.is_none_or(|v| y.version == v))
+            });
+            if hit {
+                eyre::bail!(
+                    "pruning would leave {} {} depending on `{d}`, which no root resolves; \
+                     keep that range in {LEAF_ONLY_PINS} or prune {} too",
+                    k.name,
+                    k.version,
+                    k.name
+                );
+            }
+        }
+    }
+    Ok((kept, dropped))
+}
+
 #[cfg(test)]
 mod tests {
+    fn dep_pkg(n: &str, v: &str, deps: &[&str]) -> RegistryPkg {
+        RegistryPkg {
+            name: n.into(),
+            version: v.into(),
+            source: "registry+https://github.com/rust-lang/crates.io-index".into(),
+            checksum: None,
+            dependencies: deps.iter().map(|d| (*d).to_string()).collect(),
+        }
+    }
+
+    /// Issue 1873 — a superseded range goes, a kept one stays, and a kept pin
+    /// may not lose its dependency.
+    #[test]
+    fn prune_drops_what_no_root_and_no_keep_entry_claims() {
+        let pins = vec![
+            dep_pkg("quick-xml", "0.37.5", &["memchr"]),
+            dep_pkg("quick-xml", "0.41.0", &["memchr"]),
+            dep_pkg("memchr", "2.7.4", &[]),
+            dep_pkg("nom", "7.1.3", &["memchr", "minimal-lexical"]),
+            dep_pkg("minimal-lexical", "0.2.1", &[]),
+        ];
+        let roots = vec![vec![
+            dep_pkg("quick-xml", "0.41.0", &[]),
+            dep_pkg("memchr", "2.7.4", &[]),
+        ]];
+        let mut keep = std::collections::BTreeSet::new();
+        keep.insert(("nom".to_string(), "7".to_string()));
+        keep.insert(("minimal-lexical".to_string(), "0.2".to_string()));
+        let (kept, dropped) = prune(&pins, &roots, &keep).unwrap();
+        assert_eq!(
+            dropped
+                .iter()
+                .map(|p| p.version.as_str())
+                .collect::<Vec<_>>(),
+            ["0.37.5"]
+        );
+        assert_eq!(kept.len(), 4);
+
+        // Keeping `nom` without its dependency is refused, not half-done.
+        keep.remove(&("minimal-lexical".to_string(), "0.2".to_string()));
+        let err = prune(&pins, &roots, &keep).unwrap_err().to_string();
+        assert!(err.contains("minimal-lexical"), "{err}");
+    }
+
     use super::*;
 
     const PINS: &str = "version = 4\n\n[[package]]\nname = \"heapless\"\nversion = \"0.8.0\"\n\

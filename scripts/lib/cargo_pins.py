@@ -101,3 +101,37 @@ def one_per_range_violations(pins):
     for p in registry_packages(pins):
         seen.setdefault((p["name"], compat_range(p["version"])), []).append(p["version"])
     return [(n, r, vs) for (n, r), vs in sorted(seen.items()) if len(vs) > 1]
+
+
+# Issue 1873 — a pin range no locked root resolves is either kept ON PURPOSE,
+# for a leaf this repo does not lock, or it is what a bump left behind.
+# `nros update` never drops a range (`registry_pins::regenerate`), so issue
+# 1805's quick-xml 0.37 -> 0.41 bump kept the 0.37.5 pin it moved off for two
+# RUSTSEC advisories, and `just check deny` reads no pin file. The keep list
+# turns "nobody decided" into a named decision.
+LEAF_ONLY_PINS = "locks/leaf-only-pins.toml"
+
+
+def leaf_only_pins(root):
+    """{(name, range): why} from the keep list; {} when the file is absent."""
+    path = os.path.join(root, LEAF_ONLY_PINS)
+    if not os.path.exists(path):
+        return {}
+    with open(path, "rb") as fh:
+        data = tomllib.load(fh)
+    return {(k["name"], k["range"]): k.get("why", "") for k in data.get("keep", [])}
+
+
+def root_ranges(locks):
+    """Every (name, compat range) the given root locks resolve from the registry."""
+    return {(p["name"], compat_range(p["version"])) for lock in locks for p in registry_packages(lock)}
+
+
+def unclaimed_pins(pins, root_locks, keep):
+    """Pins neither a locked root resolves nor the keep list names, and keep
+    entries that no longer describe an unclaimed pin (stale either way)."""
+    used = root_ranges(root_locks)
+    pinned = {(p["name"], compat_range(p["version"])): p["version"] for p in registry_packages(pins)}
+    orphans = sorted((n, r, v) for (n, r), v in pinned.items() if (n, r) not in used and (n, r) not in keep)
+    stale = sorted(k for k in keep if k not in pinned or k in used)
+    return orphans, stale

@@ -51,6 +51,14 @@ def self_test():
     dup = {"package": [_pkg("heapless", "0.8.0"), _pkg("heapless", "0.8.1"), _pkg("heapless", "0.9.0")]}
     assert cp.one_per_range_violations(dup) == [("heapless", "0.8", ["0.8.0", "0.8.1"])], "duplicate missed"
     assert cp.compat_range("0.0.5") == "0.0.5" and cp.compat_range("2.1.0+x") == "2"
+    # Issue 1873 — a range no root resolves must be kept on purpose.
+    left = {"package": [_pkg("quick-xml", "0.37.5"), _pkg("quick-xml", "0.41.0"), _pkg("nom", "7.1.3")]}
+    root = {"package": [_pkg("quick-xml", "0.41.0")]}
+    orphans, stale = cp.unclaimed_pins(left, [root], {("nom", "7"): "a leaf"})
+    assert orphans == [("quick-xml", "0.37", "0.37.5")], f"superseded pin missed: {orphans}"
+    assert stale == [], stale
+    _, stale = cp.unclaimed_pins(left, [root], {("nom", "7"): "", ("quick-xml", "0.41"): ""})
+    assert stale == [("quick-xml", "0.41")], f"keep entry for a root-used range missed: {stale}"
 
 
 def main():
@@ -95,6 +103,21 @@ def main():
             print(f"check-cargo-registry-pins: {rel} locks {name} {have}, {where} in {pins_rel}",
                   file=sys.stderr)
             failed = True
+
+    root_locks = [cp.load_lock(os.path.join(ROOT, cp.lock_path(r)))
+                  for r in roots if cp.lock_path(r) in tracked]
+    orphans, stale = cp.unclaimed_pins(pins, root_locks, cp.leaf_only_pins(ROOT))
+    for name, rng, version in orphans:
+        print(f"check-cargo-registry-pins: {pins_rel} pins {name} {version} ({rng}.x), which no "
+              f"locked root resolves. If a bump left it behind, retire it with "
+              f"`nros update --pins --prune`; if a leaf needs it, list it in "
+              f"{cp.LEAF_ONLY_PINS} with why (issue 1873).", file=sys.stderr)
+        failed = True
+    for name, rng in stale:
+        print(f"check-cargo-registry-pins: {cp.LEAF_ONLY_PINS} keeps {name} {rng}.x, which is "
+              "not pinned, or which a locked root resolves anyway -- drop the entry.",
+              file=sys.stderr)
+        failed = True
 
     if failed:
         print("Remedy: `nros update --crate <name> [--precise <v>]` (moves the roots and the "

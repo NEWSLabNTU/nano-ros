@@ -38,6 +38,11 @@ pub struct Args {
     /// between roots are settled upward first.
     #[arg(long)]
     pub pins: bool,
+    /// With `--pins`: also DROP every pinned range no locked root resolves and
+    /// `locks/leaf-only-pins.toml` does not keep (issue 1873). Regeneration
+    /// alone never drops a range, so a bump leaves the old one pinned.
+    #[arg(long, requires = "pins")]
+    pub prune: bool,
 
     /// Move a Rust registry crate's pin: every locked root that uses it is
     /// re-resolved with `cargo update`, the roots are brought into agreement,
@@ -92,7 +97,7 @@ pub fn run(args: Args) -> Result<()> {
         return update_project(&index, &args, &cwd);
     }
     if args.pins {
-        update_pins(&root, &index)
+        update_pins(&root, &index, args.prune)
     } else if let Some(name) = &args.krate {
         update_crate(&root, &index, name, args.precise.as_deref(), &cwd)
     } else if let Some(name) = &args.source {
@@ -234,7 +239,7 @@ fn write_pins(path: &Path, pins: &[RegistryPkg]) -> Result<()> {
     Ok(())
 }
 
-fn update_pins(root: &Path, index: &SdkIndex) -> Result<()> {
+fn update_pins(root: &Path, index: &SdkIndex, prune: bool) -> Result<()> {
     let (rel, path) = pins_path(root, index)?;
     let previous = read_pins(&path)?;
     let roots: Vec<PathBuf> = index
@@ -243,7 +248,29 @@ fn update_pins(root: &Path, index: &SdkIndex) -> Result<()> {
         .iter()
         .map(|r| root.join(r))
         .collect();
-    let next = loop_unify(&roots, root, &previous)?;
+    let mut next = loop_unify(&roots, root, &previous)?;
+    if prune {
+        let keep_path = root.join(crate::orchestration::registry_pins::LEAF_ONLY_PINS);
+        let keep = match std::fs::read_to_string(&keep_path) {
+            Ok(t) => crate::orchestration::registry_pins::parse_keep(&t)?,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Default::default(),
+            Err(e) => return Err(e).wrap_err_with(|| format!("read {}", keep_path.display())),
+        };
+        let locks = roots
+            .iter()
+            .map(|d| read_lock(d))
+            .collect::<Result<Vec<_>>>()?;
+        let (kept, dropped) = crate::orchestration::registry_pins::prune(&next, &locks, &keep)?;
+        for p in &dropped {
+            println!(
+                "nros update --pins --prune: retired {} {} (no locked root resolves it, and {} does not keep it)",
+                p.name,
+                p.version,
+                crate::orchestration::registry_pins::LEAF_ONLY_PINS
+            );
+        }
+        next = kept;
+    }
     write_pins(&path, &next)?;
     report_moves(&previous, &next, &rel);
     Ok(())
