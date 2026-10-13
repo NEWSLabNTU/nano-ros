@@ -1,5 +1,20 @@
 # Phase 433 — the RMW contract is closed; proving it works is a different job
 
+**Status (2026-10-13). CLOSED and archived.** The 2026-10-12 line below
+listed three items as open, and none of them is:
+
+- **W4 landed on 2026-09-06** (`9f56d94d5b`): `check-interop-cell-runners`
+  fails a Runtime interop cell whose test binary no recipe or workflow
+  invokes. It is on the fast line, since `check fast` membership is derived
+  (`check-gate-lists.py --list`).
+- **W6 job 1, the actions family, landed on 2026-09-06** (`8f82cfee9d`):
+  `ros2_action_e2e` is bound to interop cells. `.config/interop-verdicts.toml`
+  records a pass for both Cyclone action cells (2026-09-07) and for the
+  zenoh `n2r` cell (2026-10-06).
+- **W7 became its own phase.** The on-target cell that is not QoS is
+  [phase-441](../phase-441-rmw-on-target-verification.md), which opens by
+  quoting W7 and calling itself "that phase".
+
 **Status (2026-10-12). W0, W1, W3, W5.a and W5 LANDED.** W5 is the scheduled
 live-peer lane over the cells that passed. W2 has run: 17 of 20 cells carry a
 live verdict (`63f142819c`). In W6, job 2 (a QoS event against a live peer,
@@ -290,7 +305,7 @@ must be re-checked against artifact timestamps before it is believed
 issue.
 
 **The pre-flight is done** (PR #592, which added the
-[W2 pre-flight doc](archived/phase-433-w2-preflight.md), now archived as an input) and it changes the order. All 11 binaries compile. Ten of eleven are expected
+[W2 pre-flight doc](phase-433-w2-preflight.md), now archived as an input) and it changes the order. All 11 binaries compile. Ten of eleven are expected
 to produce a real verdict given a Humble box; `graph_interop` has the strongest
 assertions in the set and should go first. Two exceptions:
 
@@ -627,4 +642,4 @@ Open issues whose `related:` names this phase (listed 2026-10-12, so the
 link runs both ways). Listing one here records the link, not a claim that
 this phase will fix it.
 
-- [issue 0902](../issues/0902-action-goal-completion-is-variable.md) — action goals complete between 20 % and 90 % of the time on the same build, with no session expiry and no fault to exp …
+- [issue 0902](../../issues/0902-action-goal-completion-is-variable.md) — action goals complete between 20 % and 90 % of the time on the same build, with no session expiry and no fault to exp …
