@@ -65,3 +65,39 @@ locally in a fresh `build/` and record `du -sh` after each build. Then narrow
 the largest consumer to the rows the cells resolve, the way the workspace
 half already is. Closed by this job reaching "Run the cells with a recorded
 PASS" on a hosted runner.
+
+## Cause (2026-10-13)
+
+The plain-row C/C++ builds did not share their cargo directory. `just native
+build-fixture-extras` exports `NROS_CMAKE_EXTRA_DEFS` (with
+`-DNROS_SHARED_CARGO_ROOT`, `CMAKE_BUILD_TYPE=Release`, the codegen tool, …)
+before calling `fixtures-build.sh`. The live-peer host job calls
+`fixtures-build.sh linux <lang> <rmw>` DIRECTLY and passed none. Its log shows
+42 C/C++ leaf configures with no extra defs, so each leaf compiled the whole
+Rust stack (`nros-c`/`nros-cpp` plus the RMW) into its own
+`build-<rmw>/cargo/`. One local unshared leaf (`examples/native/c/talker/build-zenoh`)
+holds 2.9 GB, nearly all of it that cargo directory. The same omission meant
+the lane built these fixtures in a different shape from `just native` (no
+Release build type).
+
+Measured with the defs, from fresh build dirs: `c/talker` and `c/listener`
+(zenoh) both link `build-*/cargo` to ONE keyed directory, 1.3 GB, and each leaf
+dir is 48 MB. Thirteen C zenoh leaves therefore need about 2 GB instead of
+13 × 1.3–2.9 GB.
+
+The earlier lead in this issue, that the unnarrowed rows were the cost, was
+half right. The rows are still built per (lang, rmw) and not per cell, but
+sharing removes most of what each extra row cost.
+
+## Fix
+
+- `scripts/build/native-cmake-defs.sh`: `nros_native_cmake_extra_defs`, the
+  one spelling of the native C/C++ defs. `native.just` wrote it twice by hand.
+- `fixtures-build.sh` applies it itself for `linux` when the caller states no
+  `NROS_CMAKE_EXTRA_DEFS` (a caller's own value still wins), so a direct call
+  builds what `just native` builds.
+- The live-peer host job prints free disk after every build, so the next
+  exhaustion names the build that caused it.
+
+Still open until a live-peer host job reaches its cells with that headroom
+printed.

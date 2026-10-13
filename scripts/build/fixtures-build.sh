@@ -304,6 +304,24 @@ if [ "${#cmake_records[@]}" -gt 0 ]; then
     # cmake cells — configure once (Ninja via the helper) + cmake --build.
     # shellcheck source=/dev/null
     source scripts/build/cmake-incremental.sh
+    # issue 1846 — a linux caller that states no defs gets the ones `just
+    # native` uses, from the one function both read. A direct call used to
+    # configure with NONE, so every leaf built its own cargo directory (no
+    # `NROS_SHARED_CARGO_ROOT`) and a 110 GB runner ran out of disk. A caller's
+    # own value still wins, as before.
+    if [ "$platform" = "linux" ] && [ -z "${NROS_CMAKE_EXTRA_DEFS+x}" ]; then
+        # shellcheck source=scripts/build/build-root.sh
+        source scripts/build/build-root.sh
+        # shellcheck source=scripts/build/native-cmake-defs.sh
+        source scripts/build/native-cmake-defs.sh
+        nros_cargo_ensure_codegen_c
+        if ! NROS_CMAKE_EXTRA_DEFS="$(nros_native_cmake_extra_defs \
+                "$(nros_cargo_codegen_c_bin)" "$PWD")"; then
+            echo "fixtures: could not derive the native cmake defs" >&2
+            exit 1
+        fi
+        echo "fixtures: linux cmake defs (nros_native_cmake_extra_defs): $NROS_CMAKE_EXTRA_DEFS"
+    fi
     export NROS_CMAKE_EXTRA_DEFS="${NROS_CMAKE_EXTRA_DEFS:-}"
     nros_fixture_build_cmake() {
         local dir sub defs target
