@@ -115,16 +115,13 @@ strong `nros_app_register_backends()` stub (calling
 is comes from `[system] rmw`, not from a `-D` on the command line.
 
 The C entry point is **`int nros_app_main(int argc, char **argv)`**
-(not `main`); `<nros/app_main.h>` provides the OS-side `main`
+(not `main`); `<rclc/rclc.h>` declares it and provides the OS-side `main`
 stub that wires signal handling and forwards to your function.
 
 ```c
-#include <nros/app_main.h>
-#include <nros/init.h>
-#include <nros/executor.h>
-#include <nros/node.h>
-#include <nros/publisher.h>
-#include <nros/timer.h>
+#include <rcl/rcl.h>
+#include <rclc/executor.h>
+#include <rclc/rclc.h>
 #include <std_msgs/msg/int32.h>
 
 int nros_app_main(int argc, char** argv) {

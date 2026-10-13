@@ -446,3 +446,20 @@ sees zero allocations across publish and take.
   header (57, everything outside `nros/`) compiles on its own with
   `-ffreestanding -nostdinc`, with a negative control. Against main's headers
   it fails 51 of 57.
+
+### 2026-10-13 — user code includes the API only at upstream's paths
+
+- Scope chosen by the maintainer: "includes only, now". The entry and boot
+  names a C app writes (`nros_app_main`, `NROS_APP_MAIN_REGISTER`,
+  `NROS_ENTRY_*`, `NROS_LOCATOR`) keep `nros_` until the `nros/*.h` -> `rclc`
+  rename and move together with it. The C++ side is not in this step.
+- `<nros/nros.h>` (the umbrella every upstream-path header includes) now also
+  includes `<nros/component.h>`, so `RCLC_C_COMPONENT` arrives with
+  `<rclc/rclc.h>`.
+- 80 C example sources dropped `<nros/{app_main,check,component,log}.h>`. A
+  file that had no upstream-path include left gets `<rclc/rclc.h>`. The book's
+  C snippets and the `nros new` C component scaffold were changed the same way.
+- Gate `check-c-user-includes` (fast line): no example C source and no ```c
+  block in `book/src/` outside `porting/` includes a header from
+  `packages/api/nros-c/include/nros/`. The set is derived from that directory,
+  so port-seam headers stay legal. Main's tree has 141 violations.

@@ -12,7 +12,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#include <nros/component.h>
+#include <rclc/rclc.h>
 
 #include <example_interfaces/action/fibonacci.h>
 

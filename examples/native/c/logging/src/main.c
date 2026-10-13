@@ -13,10 +13,8 @@
  *     ./build/c_logging
  */
 
-#include <nros/app_main.h>
 #include <rclc/init.h>
 #include <rclc/node.h>
-#include <nros/log.h>
 
 #include <stdint.h>
 #include <stdio.h>

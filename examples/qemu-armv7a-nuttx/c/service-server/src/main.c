@@ -25,9 +25,7 @@
 #include <string.h>
 #include <signal.h>
 
-// rclc include paths; nros/ holds the nano-ros-only entry and check helpers
-#include <nros/app_main.h>
-#include <nros/check.h>
+// The C API at rcl/rclc's include paths
 #include <rclc/executor.h>
 #include <rclc/init.h>
 #include <rclc/node.h>

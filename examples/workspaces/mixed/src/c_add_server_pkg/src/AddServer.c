@@ -15,7 +15,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#include <nros/component.h>
+#include <rclc/rclc.h>
 
 // Generated C bindings for example_interfaces/srv/AddTwoInts
 // (nros_find_interfaces(LANGUAGE C) → example_interfaces__nano_ros_c).

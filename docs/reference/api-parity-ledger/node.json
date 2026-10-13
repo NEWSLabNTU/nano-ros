@@ -560,5 +560,9 @@
   "rust:DeclarativeNode": {
     "verdict": "extension",
     "why": "machinery `nros::node!` expands into. Public because the macro resolves it through `::nros::`, not because a user writes it -- the module says so in its own first line (\"shared by metadata discovery and generated runtimes\"). rclrs has no counterpart because rclrs has no codegen step. Issue 1789: this should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is.\n\nphase-483 W3 — re-keyed from `DeclaredNode`: the declarative constructors are now the `nros::DeclarativeNode` extension trait on `nros::Node`, so a component's node and a program's node are one type."
+  },
+  "c:cpp_node_bind_c": {
+    "verdict": "extension",
+    "why": "phase-492 (2026-10-13) -- not user API. `nros_cpp_node_bind_c` / `nros_cpp_node_t` are the C++ binding's seam that `RCLC_C_COMPONENT` expands to: the generated entry hosts a C component on the C++ binding's context and binds the component's `rcl_node_t` / `rclc_executor_t` to it (W4). They reach the C parity surface only because `<nros/nros.h>` now includes `<nros/component.h>`, so `<rclc/rclc.h>` carries `RCLC_C_COMPONENT` and C user code needs no `<nros/*.h>` include. A user never writes either name; they keep `nros_cpp_` as seam names (c-api-rename-map class `seam`)."
   }
 }

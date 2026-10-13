@@ -850,14 +850,13 @@ mod component_scaffold {
 
         let source = fs::read_to_string(dir.join("src/Talker.c")).unwrap();
         assert!(source.contains("RCLC_C_COMPONENT(c_talker_t, talker_configure)"));
-        // The C API at rcl/rclc's include paths; `<nros/component.h>` stays for
-        // the nano-ros-only `RCLC_C_COMPONENT`.
-        for inc in [
-            "<rcl/rcl.h>",
-            "<rclc/rclc.h>",
-            "<rclc/executor.h>",
-            "<nros/component.h>",
-        ] {
+        // The C API at rcl/rclc's include paths only: `<nros/*.h>` is internal,
+        // and `<rclc/rclc.h>` carries `RCLC_C_COMPONENT`.
+        assert!(
+            !source.contains("<nros/"),
+            "internal header in user code:\n{source}"
+        );
+        for inc in ["<rcl/rcl.h>", "<rclc/rclc.h>", "<rclc/executor.h>"] {
             assert!(
                 source.contains(&format!("#include {inc}")),
                 "missing {inc}:\n{source}"

@@ -14,8 +14,6 @@
 #include <string.h>
 #include <unistd.h>
 
-#include <nros/app_main.h>
-#include <nros/check.h>
 #include <rclc/init.h>
 #include <rclc/node.h>
 #include <rclc/subscription.h>

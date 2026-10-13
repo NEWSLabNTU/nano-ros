@@ -11,8 +11,7 @@
 #include <stdio.h>
 
 #include <std_msgs/std_msgs.h>
-#include <nros/component.h>
-#include <nros/log.h> /* A5 — node logging via the nros-log facade */
+#include <rclc/rclc.h>
 
 typedef struct {
     rcl_publisher_t pub;

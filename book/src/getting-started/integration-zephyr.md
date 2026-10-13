@@ -115,7 +115,7 @@ nros_components_register_node(talker_lib
 #include <stdint.h>
 #include <stdio.h>
 
-#include <nros/component.h>
+#include <rclc/rclc.h>
 #include <std_msgs/msg/int32.h>
 
 typedef struct {

@@ -15,7 +15,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#include <nros/component.h>
+#include <rclc/rclc.h>
 
 #include "std_msgs.h"
 

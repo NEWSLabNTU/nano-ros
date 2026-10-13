@@ -25,6 +25,9 @@
 #include "nros/lifecycle.h"
 #include "nros/action.h"
 #include "nros/node_pkg.h"
+/* `RCLC_C_COMPONENT` — so a C component includes only <rclc/rclc.h>; the nros/
+ * headers are internal (phase-492, maintainer ruling 2026-10-13). */
+#include "nros/component.h"
 #include "nros/cdr.h"
 /* issue 0795 — the RFC-0033 zero-copy reader (`nros_cdr_borrow_*`,
  * `rclc_view_str_t`, the `rclc_le_slice_view_*_t` family). Reached only

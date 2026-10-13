@@ -29,8 +29,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <nros/app_main.h>
-#include <nros/check.h>
 #include <rcl/time.h>
 #include <rclc/executor.h>
 #include <rclc/init.h>
