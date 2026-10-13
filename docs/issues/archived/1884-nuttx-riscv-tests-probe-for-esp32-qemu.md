@@ -1,12 +1,13 @@
 ---
 id: 1884
 title: "NuttX-riscv tests report `qemu-system-riscv32 not found` on a host with a working one: they ask the ESP32 probe, which demands the Espressif fork's `esp32c3` machine"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [testing, nuttx, ci]
 related: [1525, 0488, 1851]
 found: 2026-10-14
+resolved: 2026-10-14
 ---
 
 ## Measured
@@ -61,18 +62,21 @@ So `nuttx-riscv,c,zenoh`, a tier-2 coordinate, reports an unmet precondition on
 every host without a hand-installed Espressif QEMU. `unmet!` fails the test, so
 the lane stays red with nothing measured.
 
-## Fix (proposed)
+## Fix
 
-- Give the NuttX-riscv sites their own probe beside `start_nuttx_riscv` in
-  `nros-tests/src/qemu.rs`: resolve with the same `qemu_system_path` the boot
-  uses and require the `virt` machine. Keep `esp32::is_qemu_riscv32_available`
-  for ESP32 only.
-- Sweep: `git grep -n "is_qemu_riscv32_available" -- packages/testing`. The
-  remaining caller, `logging_smoke.rs`'s ESP32 test, is correct as it is (and
-  `#[ignore]`d under 1525).
-- Consider a gate: a boot helper and its precondition probe must resolve the
-  same binary (issue 1851's "one ladder" rule, which already applies to *which*
-  binary runs).
+- `nros_tests::qemu::qemu_system_has_machine(exe, machine)` asks the binary
+  `qemu_system_path` resolves, the one the boot runs, whether it offers the
+  machine. `is_qemu_riscv32_virt_available()` sits beside
+  `start_nuttx_riscv` and asks for `virt`.
+- `c_riscv_nuttx_e2e` and `realtime_tiers`' `Boot::NuttxRiscv` use it. The
+  ESP32 probe stays for ESP32 only; its remaining callers
+  (`esp32_emulator.rs`, `logging_smoke.rs`) boot ESP32 images.
+- Gate: `check-qemu-one-ladder` now also refuses a Rust file that calls the
+  ESP32 probe without booting an ESP32 image (`start_esp32_qemu`). It has
+  self-test cases, and putting the old call back in `c_riscv_nuttx_e2e.rs`
+  fails it.
+
+Sweep: `git grep -n "is_qemu_riscv32_available\|require_qemu_riscv32" -- '*.rs'`
 
 ## Support status of riscv32 (as of 2026-10-14)
 

@@ -102,6 +102,35 @@ pub fn qemu_system_available(exe: &str) -> bool {
         .is_ok_and(|s| s.success())
 }
 
+/// Whether [`qemu_system_path`]`(exe)` runs and offers `machine`.
+///
+/// The question a precondition must ask is the one its BOOT needs: the binary
+/// the boot helper will resolve, with the machine it will pass to `-M`.
+pub fn qemu_system_has_machine(exe: &str, machine: &str) -> bool {
+    let Ok(out) = qemu_system_cmd(exe).args(["-machine", "help"]).output() else {
+        return false;
+    };
+    out.status.success()
+        && String::from_utf8_lossy(&out.stdout)
+            .lines()
+            .any(|l| l.split_whitespace().next() == Some(machine))
+}
+
+/// Whether [`QemuProcess::start_nuttx_riscv`] can boot: its binary
+/// (`qemu-system-riscv32` through [`qemu_system_path`]) with the `virt`
+/// machine.
+///
+/// Issue 1884 — the NuttX riscv tests asked
+/// [`crate::esp32::is_qemu_riscv32_available`] instead. That probe is for
+/// ESP32-C3: it resolves the Espressif fork's store row and demands its
+/// `esp32c3` machine, which a NuttX rv-virt image never uses. A stock
+/// `qemu-system-riscv32` (apt `qemu-system-misc`, what the CI image installs)
+/// boots the image and failed that probe, so the tier-2 `nuttx-riscv`
+/// coordinate reported an unmet precondition on every host without the fork.
+pub fn is_qemu_riscv32_virt_available() -> bool {
+    qemu_system_has_machine("qemu-system-riscv32", "virt")
+}
+
 /// `qemu-system-arm` through [`qemu_system_path`].
 pub fn qemu_system_arm_path() -> std::ffi::OsString {
     qemu_system_path("qemu-system-arm")

@@ -552,8 +552,9 @@ fn require_cell_env(boot: Boot) {
             }
         }
         Boot::NuttxRiscv => {
-            if !nros_tests::esp32::is_qemu_riscv32_available() {
-                nros_tests::unmet!("qemu-system-riscv32 not found");
+            // Issue 1884 — the probe the boot needs (`-M virt`), not ESP32's.
+            if !nros_tests::qemu::is_qemu_riscv32_virt_available() {
+                nros_tests::unmet!("qemu-system-riscv32 with the `virt` machine not found");
             }
         }
         Boot::FreertosMps2 => {
