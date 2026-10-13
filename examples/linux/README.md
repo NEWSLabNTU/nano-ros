@@ -58,7 +58,7 @@ Contributor test lanes: `just linux test` (Rust), `test-c`, `test-cpp`, `test-rm
 | talker / listener | yes | yes | yes (+`-rtic`, `serial-*`) |
 | service-server / service-client | yes (+`-callback`) | yes (+`-callback`) | yes (+`-rtic`, `-async`, `-callback`) |
 | action-server / action-client | yes | yes (+`-callback`) | yes (+`-rtic`, `-async`) |
-| extras | custom-msg, custom-platform, custom-transport-loopback, logging, parameters, safety-listener | logging, parameters, safety-listener, component-poc, component-node-poc, transform-poc | custom-msg, custom-transport-{talker,listener}, lifecycle-node, logging |
+| extras | custom-msg, custom-platform, custom-transport-loopback, logging, parameters, safety-listener | logging, parameters, safety-listener | custom-msg, custom-transport-{talker,listener}, lifecycle-node, logging |
 
 (`rust/dds/` is a shared cyclonedds build-support crate, not an example case.)
 

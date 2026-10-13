@@ -5,7 +5,7 @@
 /// member-callback subscription, a typed member timer) as member calls. No
 /// `configure(Node&)`, no callback names, no raw bytes at the authoring surface.
 ///
-/// Compare `examples/linux/cpp/component-poc/` (the RFC-0043 default-construct +
+/// Compare `examples/native/cpp/component-poc/` (the RFC-0043 default-construct +
 /// `configure(Node&)` + raw-bytes shape this supersedes for rclcpp-faithful nodes).
 ///
 /// Run both roles in one process (default) or split:
