@@ -216,7 +216,10 @@ locator = "tcp/10.0.2.2:7471"
 # phase-276 W2 / phase-481 W3 -- the tiers need tx windows well inside their
 # period: Zephyr zsock serializes send behind the read task's recv window
 # (issues 0129/0139). Moved from the board's prj-zenoh.conf: a nano-ros knob
-env = { NROS_ZEPHYR_HEAP_SIZE = "262144", NROS_ZENOH_SOCKET_TIMEOUT_MS = "5" }
+env = { NROS_ZENOH_SOCKET_TIMEOUT_MS = "5" }
+
+[image.zephyr.knobs.zephyr]
+heap_size = 262144
 
 # SITE config for this board (RFC-0072 §5): where THIS checkout keeps the
 # SDK roots it builds against. Keyed by BOARD, not by a deploy or image

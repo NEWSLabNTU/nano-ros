@@ -356,14 +356,26 @@ pub fn render(
         }
     }
 
-    // `[image.<id>] env` (after what the image's `transport` implies).
+    // `[image.<id>] env` and `[image.<id>.knobs]` (after what the image's
+    // `transport` implies). A knob row says which spelling stated it.
+    let knob_from: BTreeMap<String, String> = leaf
+        .knobs
+        .iter()
+        .filter_map(|(k, v)| {
+            nros_zephyr_build::knob_by_image_key(k)
+                .map(|r| (r.env.to_string(), format!("knobs {k} = {v}")))
+        })
+        .collect();
     for (key, value) in crate::cmd::leaf_settings::image_layers(leaf).map_err(|e| e.to_string())? {
         let symbol = nros_zephyr_build::kconfig_key_for(&key);
         let Some(sym) = syms.get(&symbol) else {
             out.cargo_rows.insert(key, value);
             continue;
         };
-        let from = format!("env {key} = \"{value}\"");
+        let from = knob_from
+            .get(&key)
+            .cloned()
+            .unwrap_or_else(|| format!("env {key} = \"{value}\""));
         if let (Some(guard), Some(chosen)) = (&sym.rmw_guard, rmw_sym)
             && guard.as_str() != chosen
         {

@@ -207,8 +207,68 @@ pub struct ImageBlock {
     /// this is for a number that differs between two images of the SAME board.
     /// The ONE reader is `nros_orchestration_ir::leaf_system`, the same reader
     /// that answers for the deployment identity beside it.
+    ///
+    /// A row whose key is a REGISTRY knob is the deprecated spelling of
+    /// [`Self::knobs`] (phase-484 W8): it works and warns. Rows the registry
+    /// does not hold are this table's lasting use.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub env: BTreeMap<String, String>,
+
+    /// `[image.<id>.knobs.<group>] <name> = <value>` — the same APP rung,
+    /// spelled the way a board's `[knobs.<group>]` is (RFC-0103 D6, phase-484
+    /// W8). Each key is a registry knob, rendered into the carrier [`Self::env`]
+    /// rides (`cmd::leaf_settings::app_rung`); an `env` row naming a registry
+    /// knob is the deprecated spelling of one of these.
+    #[serde(default, skip_serializing_if = "ImageKnobs::is_empty")]
+    pub knobs: ImageKnobs,
+}
+
+/// `[image.<id>.knobs]`, flattened to `<group>.<name>` → value by the one
+/// reader both roads share (`nros_orchestration_ir::leaf_system::flatten_knobs`).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ImageKnobs(pub BTreeMap<String, nros_orchestration_ir::leaf_system::KnobValue>);
+
+impl ImageKnobs {
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
+impl Serialize for ImageKnobs {
+    /// Back to the nested shape it was written in.
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        use nros_orchestration_ir::leaf_system::KnobValue;
+        let mut root = toml::Table::new();
+        for (key, v) in &self.0 {
+            let mut parts: Vec<&str> = key.split('.').collect();
+            let leaf = parts.pop().unwrap_or_default();
+            let mut t = &mut root;
+            for p in parts {
+                t = t
+                    .entry(p.to_string())
+                    .or_insert_with(|| toml::Value::Table(toml::Table::new()))
+                    .as_table_mut()
+                    .ok_or_else(|| serde::ser::Error::custom(format!("knob `{key}`")))?;
+            }
+            let value = match v {
+                KnobValue::Int(n) => toml::Value::Integer(*n),
+                KnobValue::Bool(b) => toml::Value::Boolean(*b),
+                KnobValue::Str(x) => toml::Value::String(x.clone()),
+            };
+            t.insert(leaf.to_string(), value);
+        }
+        root.serialize(s)
+    }
+}
+
+impl<'de> Deserialize<'de> for ImageKnobs {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let t = toml::Table::deserialize(d)?;
+        nros_orchestration_ir::leaf_system::flatten_knobs(&t, "[image.<id>.knobs]")
+            .map(ImageKnobs)
+            .map_err(serde::de::Error::custom)
+    }
 }
 
 impl ImageBlock {
@@ -270,6 +330,12 @@ impl ImageBlock {
                 merged.extend(self.env.clone());
                 merged
             },
+            // The same overlay, for the same reason: a base knob is a default.
+            knobs: {
+                let mut merged = base.knobs.0.clone();
+                merged.extend(self.knobs.0.clone());
+                ImageKnobs(merged)
+            },
         }
     }
 }
@@ -295,6 +361,30 @@ mod tests {
         // Absent is an EMPTY table, never a missing field: a caller extends it
         // unconditionally.
         assert!(parse("board = \"native\"\n").env.is_empty());
+    }
+
+    /// phase-484 W8 (RFC-0103 D6) — a workspace image's `[image.<id>.knobs]`
+    /// parses nested, merges over the base key by key like `env`, serializes
+    /// back to the shape it was written in, and renders to the SAME rows the
+    /// env spelling states.
+    #[test]
+    fn workspace_image_knobs_merge_and_render_like_env_rows() {
+        let base = parse("[knobs.executor]\nmax_cbs = 8\n[knobs.zephyr]\nheap_size = 1\n");
+        let specific =
+            parse("[knobs.zephyr]\nheap_size = 262144\n[knobs.zenoh.tx]\nbatch = true\n");
+        let merged = specific.with_base(&base);
+        let rows = crate::cmd::leaf_settings::image_block_layers(None, &merged).unwrap();
+        let env = parse(
+            "env = { NROS_EXECUTOR_MAX_CBS = \"8\", NROS_ZEPHYR_HEAP_SIZE = \"262144\", \
+             NROS_ZENOH_TX_BATCH = \"1\" }\n",
+        );
+        assert_eq!(
+            rows,
+            crate::cmd::leaf_settings::image_block_layers(None, &env).unwrap()
+        );
+        let back: ImageBlock = toml::from_str(&toml::to_string(&merged).unwrap()).unwrap();
+        assert_eq!(back, merged, "serializes to the nested shape it parses");
+        assert!(toml::from_str::<ImageBlock>("[knobs]\nmax_cbs = 1\n").is_err());
     }
 
     /// Issue 1340 — `producers` parses, is unset by default, and a specific

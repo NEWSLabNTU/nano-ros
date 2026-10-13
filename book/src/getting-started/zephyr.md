@@ -165,7 +165,8 @@ What the module renders, and from where:
 | `locator = "tcp/…"` (zenoh) | `CONFIG_NROS_ZENOH_LOCATOR` |
 | `locator = "udp/<host>:<port>"` (XRCE) | `CONFIG_NROS_XRCE_AGENT_ADDR` + `_PORT` |
 | `domain_id = 7` (image, `[defaults]` or `[system]`) | `CONFIG_NROS_DOMAIN_ID` |
-| `env = { NROS_MAX_QUERYABLES = "12" }` | `CONFIG_NROS_MAX_QUERYABLES=12` — any knob in the reference below, spelled without `CONFIG_` |
+| `[image.<id>.knobs.zenoh] max_queryables = 12` | `CONFIG_NROS_MAX_QUERYABLES=12` — a registry knob, spelled as a board's `[knobs]` is (see [Configuration](../user-guide/configuration.md#per-image-build-knobs)) |
+| `env = { NROS_XRCE_MAX_SUBSCRIBERS = "0" }` | `CONFIG_NROS_XRCE_MAX_SUBSCRIBERS=0` — any other option in the reference below, spelled without `CONFIG_` |
 | `conf = ["prj-xrce.conf"]` | that Zephyr-native fragment, added ahead of your own `EXTRA_CONF_FILE` |
 
 An `env` row with no Kconfig symbol is not lost: it reaches the image's cargo
@@ -238,7 +239,7 @@ The image's `conf` file carries what the backend needs from Zephyr itself:
   prerequisites (thread-local storage, dynamic threads, `NET_TCP`, …) are
   `select`ed by `CONFIG_NROS_RMW_CYCLONEDDS`. Its `ddsrt_malloc` draws on the
   nano-ros platform heap, 1 MiB by default under Cyclone — raise it with
-  `env = { NROS_ZEPHYR_HEAP_SIZE = "…" }` on the image, not in the conf.
+  `[image.<id>.knobs.zephyr] heap_size = …` on the image, not in the conf.
 
 On `native_sim`, add the NSOS host-socket offload
 (`CONFIG_NET_SOCKETS_OFFLOAD=y` + `CONFIG_NET_NATIVE_OFFLOADED_SOCKETS=y`) so
@@ -279,9 +280,10 @@ target_sources(app PRIVATE src/main.c)
 ## Kconfig Reference
 
 All options are under `menuconfig NROS` in `zephyr/Kconfig`. They are what the
-module RENDERS from `system.toml`: set one as an image `env` row with the
-`CONFIG_` dropped (`env = { NROS_MAX_PUBLISHERS = "4" }`), never in a conf
-file. The RMW, API, endpoint and domain rows have their own `system.toml`
+module RENDERS from `system.toml`, never from a conf file: a registry knob as
+`[image.<id>.knobs.<group>] <name>` (`[image.zephyr.knobs.zenoh]
+max_publishers = 4`), any other option as an image `env` row with the
+`CONFIG_` dropped (`env = { NROS_XRCE_MAX_SUBSCRIBERS = "1" }`). The RMW, API, endpoint and domain rows have their own `system.toml`
 keys (table above).
 
 ### Common Options

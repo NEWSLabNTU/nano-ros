@@ -698,6 +698,10 @@ NON_READ_CALLEES = {
     # phase-484 W8 -- the refusal sentence for a retired spelling. It takes a
     # NAME and reads no environment; `knob()` / `read_spelled` are the reads.
     "retired_spelling_refusal",
+    # phase-484 W8 -- the registry ROW a name is (`knob_row`), and which knob an
+    # `[image.<id>] env` row's key names (`registry_knob_of_env_row`). Both are
+    # table lookups on a NAME and read no environment.
+    "knob_row", "registry_knob_of_env_row",
     "define",          # emits a C preprocessor macro
     "set_var", "remove_var", "with_env",  # WRITES an environment
     "push", "insert",  # builds a list / a fact map

@@ -1,5 +1,6 @@
-//! Issue 1712 — a C/C++ leaf's `[image.<id>] env` (RFC-0049's APP rung)
-//! reaches the cargo builds the CMAKE road drives.
+//! Issue 1712 — a C/C++ leaf's APP rung (RFC-0049; `[image.<id>.knobs]`
+//! since phase-484 W8, rendered into the same rows `[image.<id>] env`
+//! states) reaches the cargo builds the CMAKE road drives.
 //!
 //! The cargo road writes the rows into `nros-cargo.toml` `[env]`; the cmake
 //! road parsed them and dropped them, so a C image could override its board
@@ -27,33 +28,35 @@ const LEAF: &str = "packages/testing/nros-tests/bins/image-env-probe-c";
 /// nros-node's builtin `NROS_EXECUTOR_MAX_CBS`.
 const BUILTIN_MAX_CBS: usize = 4;
 
-/// `[image.native] env` of the probe, as authored.
-fn image_env() -> toml::Table {
+/// `[image.native.knobs]` of the probe, as authored (RFC-0103 D6: the APP
+/// rung, rendered into the same carrier an `[image.<id>] env` row rides).
+fn image_knobs() -> toml::Table {
     let path = project_root().join(LEAF).join("system.toml");
     let text =
         std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
     let v: toml::Value =
         toml::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", path.display()));
-    v["image"]["native"]["env"]
+    v["image"]["native"]["knobs"]
         .as_table()
-        .expect("the probe image states `[image.native] env`")
+        .expect("the probe image states `[image.native.knobs]`")
         .clone()
 }
 
 #[test]
 fn a_c_leaf_image_env_reaches_the_cargo_builds_cmake_drives() {
-    let env = image_env();
-    let max_cbs: usize = env["NROS_EXECUTOR_MAX_CBS"]
-        .as_str()
-        .expect("the probe states NROS_EXECUTOR_MAX_CBS")
-        .parse()
-        .expect("a count");
+    let knobs = image_knobs();
+    let max_cbs = usize::try_from(
+        knobs["executor"]["max_cbs"]
+            .as_integer()
+            .expect("the probe states `[image.native.knobs.executor] max_cbs`"),
+    )
+    .expect("a count");
     assert_ne!(
         max_cbs, BUILTIN_MAX_CBS,
         "the image states the builtin, which hides a dropped rung"
     );
     assert_eq!(
-        env["NROS_LOG_MAX_LEVEL"].as_str(),
+        knobs["log"]["max_level"].as_str(),
         Some("warn"),
         "the probe's line asserts a `warn` ceiling (INFO filtered, WARN kept)"
     );

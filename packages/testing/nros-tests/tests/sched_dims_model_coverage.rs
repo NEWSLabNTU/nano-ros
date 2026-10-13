@@ -177,22 +177,24 @@ fn derived_bringup_problems(system_toml: &std::path::Path, doc: &toml::Value) ->
     // entry is keyed on the id, so two bringups sharing it share one west
     // application directory.
     const DERIVED_IMAGE: &str = "zephyr_derived";
-    // phase-481 W3 — the band is the IMAGE's `env` row now (rendered into
+    // phase-481 W3 — the band is the IMAGE's own knob now (rendered into
     // `CONFIG_NROS_ZENOH_READ_PRIORITY` by the Zephyr module, after every conf
     // file), not a `prj-lowered-band.conf` that had to be named LAST in `conf`
-    // to survive Kconfig's last-wins merge (issue 0876).
-    const BAND_KEY: &str = "NROS_ZENOH_READ_PRIORITY";
+    // to survive Kconfig's last-wins merge (issue 0876). Spelled
+    // `[image.<id>.knobs.zenoh] read_priority` since phase-484 W8.
+    const BAND_KEY: &str = "read_priority";
     let band = doc
         .get("image")
         .and_then(|i| i.get(DERIVED_IMAGE))
-        .and_then(|z| z.get("env"))
+        .and_then(|z| z.get("knobs"))
+        .and_then(|k| k.get("zenoh"))
         .and_then(|e| e.get(BAND_KEY))
-        .and_then(|v| v.as_str());
-    if band != Some("100") {
+        .and_then(|v| v.as_integer());
+    if band != Some(100) {
         out.push(format!(
-            "`[image.{DERIVED_IMAGE}] env` does not set {BAND_KEY} = \"100\" (it is {band:?}) — on a \
-             default band the projection and the image's plan agree, and the cell cannot see a \
-             regression"
+            "`[image.{DERIVED_IMAGE}.knobs.zenoh]` does not set {BAND_KEY} = 100 (it is {band:?}) \
+             — on a default band the projection and the image's plan agree, and the cell cannot \
+             see a regression"
         ));
     }
     out

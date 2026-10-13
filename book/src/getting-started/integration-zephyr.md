@@ -241,7 +241,8 @@ domain_id = 0
 board = "zephyr"            # the concrete board is west's `-b`
 rmw = "zenoh"               # zenoh | xrce | cyclonedds
 # locator = "tcp/192.0.2.10:7447"
-# env = { NROS_MAX_PUBLISHERS = "4" }
+# [image.zephyr.knobs.zenoh]
+# max_publishers = 4
 ```
 
 ```

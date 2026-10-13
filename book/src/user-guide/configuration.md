@@ -96,6 +96,40 @@ boot `Config`; the C/C++ entry codegen bakes the same values into its
 generated glue. Nothing is written in `Cargo.toml`, in `package.xml` or on a
 `cmake` command line.
 
+### Per-image build knobs
+
+A build knob that one image needs, and that its board does not state, goes in
+`[image.<id>.knobs.<group>]`. The table has the same shape as a board
+descriptor's `[knobs.<group>]`:
+
+```toml
+[image.zephyr_xrce.knobs.zephyr]
+heap_size = 98304            # NROS_ZEPHYR_HEAP_SIZE
+
+[image.native.knobs.log]
+max_level = "warn"           # NROS_LOG_MAX_LEVEL (a level name or 0..6)
+
+[image.native.knobs.executor]
+max_cbs = 16                 # NROS_EXECUTOR_MAX_CBS
+```
+
+Each key is a row of the knob registry
+(`packages/tooling/nros-zephyr-build/knobs.toml`). The key is the row's board
+key where it has one (`executor.max_cbs`, `zenoh.tx.batch`); otherwise it is
+the env name without `NROS_`, split at the first `_` (`NROS_ZEPHYR_HEAP_SIZE`
+becomes `zephyr.heap_size`). An unknown key, a value of the wrong type or a
+value outside the knob's range stops `nros sync` / `nros build` with an error
+that names the key. The value reaches the build exactly as the knob's
+`NROS_*` variable would: through the generated cargo config on the cargo
+road, the image env file on the cmake road, and the Kconfig defaults on west.
+It sits on the image rung (above the board, below an exported variable).
+
+`[image.<id>] env = { NAME = "value" }` still carries an application's own
+build variable, a name the registry does not hold. An `env` row that names a
+registry knob still works in this release, and prints a warning that names
+its `knobs` spelling. It will be refused after the next release. A knob
+stated both ways in one image is an error.
+
 RT/stack/priority for a single-node embedded app comes from **board-crate
 Cargo features + Kconfig** (`prj*.conf` on Zephyr), not a config file.
 Multi-node RT is declared in `system.toml` (`[tiers.<name>.<rtos>]` +

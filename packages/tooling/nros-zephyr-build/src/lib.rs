@@ -112,6 +112,18 @@ pub struct KnobRow {
     pub kconfig: &'static str,
     /// `<group>.<name>` under `[knobs]`, where the platform/board ladder has one.
     pub toml: Option<&'static str>,
+    /// `<group>.<name>` under a project's `[image.<id>.knobs]` (phase-484 W8,
+    /// RFC-0103 D6): [`Self::toml`] where the row has one, so a project and a
+    /// board spell the knob the same way, else the id split at its first `_`.
+    pub image_key: &'static str,
+    /// The Kconfig type (`bool`, `int`, `hex`, `string`) of a row the Zephyr
+    /// module defines, which is also what an `[image.<id>.knobs]` value must be.
+    pub ty: Option<&'static str>,
+    /// The row's `range <lo> <hi>`, inclusive, where it states one.
+    pub range: Option<(i64, i64)>,
+    /// Names an `int` knob also accepts in TOML, the index being the value
+    /// (`log.max_level = "warn"`). Empty for every other row.
+    pub names: &'static [&'static str],
 }
 
 /// A knob the nano-ros Zephyr module DEFINES as a Kconfig symbol — a registry
@@ -140,7 +152,9 @@ pub struct KconfigKnob {
 // Generated, so rustfmt leaves it as the generator wrote it and `--check` stays exact.
 #[rustfmt::skip]
 mod knob_registry;
-pub use knob_registry::{KCONFIG_KNOBS, KCONFIG_PAIRS, KNOBS, RETIRED_TEMPLATE};
+pub use knob_registry::{
+    IMAGE_ENV_DEPRECATED_TEMPLATE, KCONFIG_KNOBS, KCONFIG_PAIRS, KNOBS, RETIRED_TEMPLATE,
+};
 
 /// The Kconfig knob whose symbol is `symbol` (with or without `CONFIG_`).
 #[must_use]
@@ -171,6 +185,36 @@ pub fn knob_row(name: &str) -> Option<&'static KnobRow> {
 #[must_use]
 pub fn knob_by_toml(key: &str) -> Option<&'static KnobRow> {
     KNOBS.iter().find(|r| r.toml == Some(key))
+}
+
+/// The registry row a project states as `[image.<id>.knobs.<group>] <name>`,
+/// by its dotted key (`"zephyr.heap_size"`, `"zenoh.tx.batch"`; phase-484 W8).
+#[must_use]
+pub fn knob_by_image_key(key: &str) -> Option<&'static KnobRow> {
+    KNOBS.iter().find(|r| r.image_key == key)
+}
+
+impl KnobRow {
+    /// `(group, name)` of [`Self::image_key`]: everything before the last `.`,
+    /// and the last segment (`("zenoh.tx", "batch")`).
+    #[must_use]
+    pub fn image_group_name(&self) -> (&'static str, &'static str) {
+        self.image_key
+            .rsplit_once('.')
+            .unwrap_or(("", self.image_key))
+    }
+
+    /// The warning an `[image.<image>] env` row keyed by this knob's env
+    /// spelling earns (phase-484 W8), in the registry's words.
+    #[must_use]
+    pub fn image_env_deprecation(&self, image: &str) -> String {
+        let (group, name) = self.image_group_name();
+        IMAGE_ENV_DEPRECATED_TEMPLATE
+            .replace("{image}", image)
+            .replace("{env}", self.env)
+            .replace("{group}", group)
+            .replace("{name}", name)
+    }
 }
 
 /// Every env spelling of the knob `name` names, canonical first, then the
@@ -516,6 +560,37 @@ fn kconfig_raw(body: &str, key: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+    /// phase-484 W8 — a project states a knob as `[image.<id>.knobs.<group>]
+    /// <name>`: the board's `toml` key where the row has one, else the id split
+    /// at its first `_`. Every row is found by its own key, and the deprecation
+    /// an env row earns names exactly that spelling.
+    #[test]
+    fn every_knob_has_one_image_key_and_the_warning_names_it() {
+        for r in KNOBS {
+            assert_eq!(knob_by_image_key(r.image_key), Some(r), "{}", r.id);
+            if let Some(t) = r.toml {
+                assert_eq!(
+                    r.image_key, t,
+                    "{}: a project spells it as a board does",
+                    r.id
+                );
+            }
+        }
+        let heap = knob_by_image_key("zephyr.heap_size").expect("mechanical key");
+        assert_eq!(heap.env, "NROS_ZEPHYR_HEAP_SIZE");
+        let batch = knob_by_image_key("zenoh.tx.batch").expect("the board's key");
+        assert_eq!(batch.image_group_name(), ("zenoh.tx", "batch"));
+        let w = heap.image_env_deprecation("talker");
+        assert!(
+            w.contains("[image.talker] env NROS_ZEPHYR_HEAP_SIZE")
+                && w.contains("[image.talker.knobs.zephyr] heap_size"),
+            "{w}"
+        );
+        let level = knob_row("NROS_LOG_MAX_LEVEL").unwrap();
+        assert_eq!((level.ty, level.range), (Some("int"), Some((0, 6))));
+        assert!(level.names.contains(&"warn"));
+    }
+
     /// Issue 1134 — the three outcomes must stay three.
     ///
     /// These exercise [`dotconfig`] through the real `DOTCONFIG` environment

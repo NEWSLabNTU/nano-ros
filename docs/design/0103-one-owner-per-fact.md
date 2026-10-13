@@ -546,6 +546,13 @@ bridge/TAP launch, multi-NIC and the collision refusal are
 `[image.<id>] env` rows (RFC-0098's APP rung, used by phase-481) stay valid:
 an env name maps mechanically to its canonical id under D6, so they become a
 spelling of `[image.<id>.knobs]` and retire only after phase-481 closes.
+**Built (phase-484 W8):** `[image.<id>.knobs.<group>] <name>` is parsed on
+every road, validated against the registry (key, type, range) and rendered
+into the same rows an `env` entry states, so it needs no carrier of its own.
+The key is the row's `toml` key, else its id split at the first `_`. An
+`env` row naming a registry knob is deprecated (one warning naming the
+knobs spelling) and is refused after the next release; stating one knob both
+ways is an error. Env rows the registry does not hold stay valid.
 
 ### Resource target paths
 
@@ -627,6 +634,10 @@ Still open:
    hook does not read (board fragments, snippets).
 
 ## Changelog
+
+- 2026-10-13 — `[image.<id>.knobs]` built (phase-484 W8): the project's knob
+  home of the §3 table, rendered into the `env` rows' carrier on every road;
+  an `[image.<id>] env` row naming a registry knob is deprecated.
 
 - 2026-10-13 — Phase-484 W8b retired the legacy knob spellings and
   `[board.knobs]`: each is now an error naming its replacement, the registry's

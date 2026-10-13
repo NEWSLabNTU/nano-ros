@@ -122,6 +122,22 @@ one release as that error table; `check-retired-knob-spellings` keeps every
 env reader and writer off the old names (the same words stay as the zenoh-pico
 shim's C macro names).
 
+**The app rung's two spellings, one set of rows** (phase-484 W8, RFC-0103
+D6). An image states a registry knob as `[image.<id>.knobs.<group>] <name> =
+<value>`, the shape a board's `[knobs.<group>]` has (the key is the row's
+`toml` key, else its id split at the first `_`). `cmd::leaf_settings::app_rung`
+validates each key against the registry (`knob_by_image_key`: unknown key,
+type, `range`, `names` are errors naming it) and renders it to the knob's env
+spelling, which is the row an `[image.<id>] env` entry states. Every carrier
+below is fed from those rows, so moving a row between the two spellings
+changes no byte of any carrier (measured on 29 rows: 575 dumped files
+identical, the west `Kconfig.from-system-toml` differing only in its
+provenance comment). An `env` row naming a registry knob, by its env name or
+by the Kconfig symbol west renders it to, still works and prints one
+`IMAGE_ENV_DEPRECATED_TEMPLATE` warning; stating a knob both ways is an error.
+The gate `no_tracked_system_toml_states_a_registry_knob_as_an_env_row`
+(`check-cli-tests`) keeps the tree on the knobs spelling.
+
 **The app rung's carrier, per road** (issue 1712). Cargo: the generated
 `nros-cargo.toml` `[env]`. CMake: `--config <build>/nros/nros-image-env.toml`
 on every cargo command the configure spawns (written by `nros ws leaf-system
@@ -130,8 +146,8 @@ wins and a changed row re-runs the build scripts that read it. West
 (phase-481 W1, RFC-0098 D11, phase-484 W5b): the nano-ros module's
 `module_ext_root` hook writes two files. Knobs go to
 `<build>/nros/Kconfig.from-system-toml`, which the module's prompt-less knob
-section `osource`s first, so the image's `[image.<id>] env` value is the
-symbol's `default` and reaches `$DOTCONFIG`. A one-build override is
+section `osource`s first, so the image's `[image.<id>.knobs]` (or `env`)
+value is the symbol's `default` and reaches `$DOTCONFIG`. A one-build override is
 `-DNROS_OVERRIDE_<ID>=<v>`; a `-DCONFIG_<knob>` or a knob line in a conf file
 is refused, naming `system.toml`. The image's RMW choice, endpoint and domain
 stay in the conf fragment `<build>/nros/<image>.conf`, LAST in

@@ -137,15 +137,15 @@ State it per image or per board, like every other knob:
 
 ```toml
 # system.toml — this image only
-[image.native]
-env = { NROS_LOG_MAX_LEVEL = "info" }
+[image.native.knobs.log]
+max_level = "info"
 
 # nros-board.toml — every image on the board
 [knobs.log]
 max_level = "info"
 ```
 
-Environment / `[image.<id>] env` beats Kconfig beats the board; `nros config
+Environment / `[image.<id>.knobs]` beats Kconfig beats the board; `nros config
 explain` prints which rung decided it. A Rust `nros_*!` call below the ceiling
 folds to a constant-false branch and its format call is dead-code-eliminated.
 C and C++ records — formatted on the C side — are refused by the same check
@@ -236,7 +236,7 @@ a bounded arena. When a child cannot be made:
 `nros-log` formats each record into a stack-resident `heapless::String<N>`.
 Overflow truncates and appends `…`; the macro never panics on a long format
 string. That `N`, and the two static rings, are knobs on the same ladder as
-the ceiling (`[knobs.log] <key>`, `[image.<id>] env`, Kconfig
+the ceiling (`[knobs.log] <key>`, `[image.<id>.knobs.log] <key>`, Kconfig
 `CONFIG_<knob>`):
 
 | Knob | Key | Default | What it sizes |

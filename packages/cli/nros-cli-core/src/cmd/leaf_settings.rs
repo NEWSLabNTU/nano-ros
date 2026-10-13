@@ -401,11 +401,159 @@ pub(crate) fn transport_implications_of(
 /// settings file of its own. One composition, so a C leaf and a Rust leaf
 /// cannot read one `system.toml` two ways.
 pub fn image_layers(decl: &LeafSystem) -> Result<BTreeMap<String, String>> {
-    refuse_retired_env_keys(&decl.env)?;
     let mut env = BTreeMap::new();
     transport_implications(decl, &mut env);
-    env.extend(decl.env.iter().map(|(k, v)| (k.clone(), v.clone())));
+    env.extend(leaf_app_rung(decl)?);
     Ok(env)
+}
+
+/// The APP rung of a leaf's image alone — its `[image.<id>.knobs]` rendered,
+/// beside its `[image.<id>] env` rows ([`app_rung`]).
+pub fn leaf_app_rung(decl: &LeafSystem) -> Result<BTreeMap<String, String>> {
+    app_rung(
+        Some(decl.image.as_deref().unwrap_or("<id>")),
+        &decl.knobs,
+        &decl.env,
+    )
+}
+
+/// phase-484 W8 (RFC-0103 D6) — the APP rung's rows: `[image.<id>.knobs]`
+/// rendered to each knob's env spelling, beside the `[image.<id>] env` rows.
+/// ONE carrier — the rows land wherever env rows always have (the cargo
+/// `[env]`, the cmake image-env file, the Zephyr `Kconfig.from-system-toml`),
+/// so a knob stated either way reaches the build identically.
+///
+/// Refused: a key the registry does not hold, a value its row's type or
+/// range does not admit, a retired env spelling, and one knob stated BOTH
+/// ways. An env row naming a registry knob still works, and is warned about
+/// once, naming the knobs spelling (`image` is `None` where no warning should
+/// print — a coordinate digest, which re-reads rows another call writes).
+pub fn app_rung(
+    image: Option<&str>,
+    knobs: &BTreeMap<String, nros_orchestration_ir::leaf_system::KnobValue>,
+    env: &BTreeMap<String, String>,
+) -> Result<BTreeMap<String, String>> {
+    refuse_retired_env_keys(env)?;
+    let id = image.unwrap_or("<id>");
+    let mut rows = BTreeMap::new();
+    let mut errors = Vec::new();
+    for (key, value) in knobs {
+        match knob_env_row(id, key, value) {
+            Ok((row, v)) => {
+                if let Some(k) = env
+                    .keys()
+                    .find(|k| registry_knob_of_env_row(k) == Some(row))
+                {
+                    errors.push(format!(
+                        "knob {key} is stated twice -- as `[image.{id}.knobs.{}] {}` and as \
+                         the env row `{k}`; keep the knobs one",
+                        row.image_group_name().0,
+                        row.image_group_name().1,
+                    ));
+                }
+                rows.insert(row.env.to_string(), v);
+            }
+            Err(e) => errors.push(e),
+        }
+    }
+    if !errors.is_empty() {
+        return Err(eyre!("[image.{id}.knobs]:\n  {}", errors.join("\n  ")));
+    }
+    if let Some(image) = image {
+        for k in env.keys() {
+            if let Some(row) = registry_knob_of_env_row(k) {
+                warn_once(&row.image_env_deprecation(image).replace(row.env, k));
+            }
+        }
+    }
+    rows.extend(env.iter().map(|(k, v)| (k.clone(), v.clone())));
+    Ok(rows)
+}
+
+/// The registry knob an `[image.<id>] env` row's KEY names: its canonical env
+/// spelling, or the Kconfig symbol a west build renders the row to
+/// (`NROS_MAX_PUBLISHERS` -> `CONFIG_NROS_MAX_PUBLISHERS`, the zenoh pool's
+/// symbol). `None` for an application's own variable. A retired spelling is
+/// refused before this is asked.
+pub fn registry_knob_of_env_row(key: &str) -> Option<&'static nros_zephyr_build::KnobRow> {
+    let symbol = format!("CONFIG_{key}");
+    nros_zephyr_build::KNOBS
+        .iter()
+        .find(|r| r.env == key || r.kconfig == symbol)
+}
+
+/// Print `msg` as a warning the first time this process sees it. A sync or a
+/// build reads one image's rows several times (settings, coordinate, Kconfig).
+fn warn_once(msg: &str) {
+    use std::sync::{Mutex, OnceLock};
+    static SEEN: OnceLock<Mutex<std::collections::BTreeSet<String>>> = OnceLock::new();
+    let seen = SEEN.get_or_init(Default::default);
+    if seen
+        .lock()
+        .map(|mut s| s.insert(msg.to_string()))
+        .unwrap_or(true)
+    {
+        eprintln!("warning: {msg}");
+    }
+}
+
+/// One `[image.<id>.knobs]` key → its registry row and the env value it
+/// renders to: an int as decimal, a bool as `1`/`0`, a string (a `string`
+/// knob, or one of an `int` knob's `names`) verbatim — the spellings the
+/// env rows it replaces were written in, so a migrated row is byte-identical.
+fn knob_env_row(
+    id: &str,
+    key: &str,
+    value: &nros_orchestration_ir::leaf_system::KnobValue,
+) -> std::result::Result<(&'static nros_zephyr_build::KnobRow, String), String> {
+    use nros_orchestration_ir::leaf_system::KnobValue;
+    let (group, name) = key.rsplit_once('.').unwrap_or(("", key));
+    let Some(row) = nros_zephyr_build::knob_by_image_key(key) else {
+        let hint = nros_zephyr_build::KNOBS
+            .iter()
+            .find(|r| r.image_key.rsplit_once('.').map(|(_, n)| n) == Some(name))
+            .map(|r| {
+                let (g, n) = r.image_group_name();
+                format!(" (did you mean `[image.{id}.knobs.{g}] {n}`?)")
+            })
+            .unwrap_or_default();
+        return Err(format!(
+            "`[image.{id}.knobs.{group}] {name}` names no knob in the registry \
+             (packages/tooling/nros-zephyr-build/knobs.toml){hint}"
+        ));
+    };
+    let bad = |want: &str| {
+        format!(
+            "`[image.{id}.knobs.{group}] {name} = {value}`: {} is {want}",
+            row.env
+        )
+    };
+    let rendered = match (row.ty, value) {
+        (Some("int" | "hex") | None, KnobValue::Int(n)) => {
+            if let Some((lo, hi)) = row.range
+                && !(lo..=hi).contains(n)
+            {
+                return Err(bad(&format!("in {lo}..={hi}")));
+            }
+            n.to_string()
+        }
+        (Some("int"), KnobValue::Str(s)) if !row.names.is_empty() => {
+            if !row.names.iter().any(|n| n.eq_ignore_ascii_case(s)) {
+                return Err(bad(&format!(
+                    "an integer or one of {}",
+                    row.names.join("/")
+                )));
+            }
+            s.clone()
+        }
+        (Some("int"), _) => return Err(bad("an integer")),
+        (Some("hex"), _) => return Err(bad("an integer")),
+        (Some("bool") | None, KnobValue::Bool(b)) => if *b { "1" } else { "0" }.to_string(),
+        (Some("bool"), _) => return Err(bad("a bool (true / false)")),
+        (Some("string") | None, KnobValue::Str(s)) => s.clone(),
+        (Some(_), _) => return Err(bad("a string")),
+    };
+    Ok((row, rendered))
 }
 
 /// phase-484 W8 (RFC-0103 D2b) — an `[image.<id>] env` row keyed by a RETIRED
@@ -435,13 +583,16 @@ pub fn refuse_retired_env_keys(env: &BTreeMap<String, String>) -> Result<()> {
 /// roads read it — the cargo road into the image's `nros-cargo.toml`, the
 /// cmake road into its configure's image-env file and, through
 /// `cmake_coordinate`, into WHICH configure it shares.
+///
+/// `image_id` names the image in a deprecation warning and an error; `None`
+/// reads the rows quietly (a coordinate digest).
 pub fn image_block_layers(
+    image_id: Option<&str>,
     image: &crate::orchestration::image::ImageBlock,
 ) -> Result<BTreeMap<String, String>> {
-    refuse_retired_env_keys(&image.env)?;
     let mut env = BTreeMap::new();
     transport_implications_of(image.transport.as_deref(), &mut env);
-    env.extend(image.env.iter().map(|(k, v)| (k.clone(), v.clone())));
+    env.extend(app_rung(image_id, &image.knobs.0, &image.env)?);
     Ok(env)
 }
 
@@ -838,10 +989,9 @@ pub fn write(
     // Layer 4 — the APP rung: what this IMAGE states (`[image.<id>] env`).
     // Last, so it outranks the board and the implications above and is
     // outranked only by the calling environment.
-    refuse_retired_env_keys(&img.decl.env)?;
-    for (k, v) in &img.decl.env {
-        path_env.remove(k);
-        env.insert(k.clone(), v.clone());
+    for (k, v) in leaf_app_rung(&img.decl)? {
+        path_env.remove(&k);
+        env.insert(k, v);
     }
 
     // No absolute path in the hint: the file is otherwise checkout-independent,
@@ -1021,6 +1171,7 @@ mod tests {
                 .iter()
                 .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
                 .collect(),
+            knobs: BTreeMap::new(),
             // Issue 1142's `[system] features`. ABSENT MEANS NONE, and no test
             // in here asks about the runtime service families, so the helper
             // states the empty claim once instead of per test.
@@ -1034,6 +1185,198 @@ mod tests {
         assert_eq!(
             settings_path(Path::new("/w/talker"), "native"),
             PathBuf::from("/w/talker/build/native/nros-cargo.toml")
+        );
+    }
+
+    fn knobs(rows: &[(&str, leaf_system::KnobValue)]) -> BTreeMap<String, leaf_system::KnobValue> {
+        rows.iter()
+            .map(|(k, v)| ((*k).to_string(), v.clone()))
+            .collect()
+    }
+
+    fn env_rows(rows: &[(&str, &str)]) -> BTreeMap<String, String> {
+        rows.iter()
+            .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
+            .collect()
+    }
+
+    /// phase-484 W8 (RFC-0103 D6) — a knob stated in `[image.<id>.knobs]`
+    /// renders to EXACTLY the row an `[image.<id>] env` row states, so moving a
+    /// row from one to the other changes no byte of any carrier.
+    #[test]
+    fn a_knobs_row_renders_to_the_env_row_it_replaces() {
+        use leaf_system::KnobValue::{Bool, Int, Str};
+        let from_knobs = app_rung(
+            None,
+            &knobs(&[
+                ("zephyr.heap_size", Int(98304)),
+                ("executor.max_cbs", Int(16)),
+                ("log.max_level", Str("warn".into())),
+                ("zenoh.tx.batch", Bool(true)),
+            ]),
+            &env_rows(&[("NROS_XRCE_MAX_SUBSCRIBERS", "1")]),
+        )
+        .unwrap();
+        let from_env = app_rung(
+            None,
+            &BTreeMap::new(),
+            &env_rows(&[
+                ("NROS_ZEPHYR_HEAP_SIZE", "98304"),
+                ("NROS_EXECUTOR_MAX_CBS", "16"),
+                ("NROS_LOG_MAX_LEVEL", "warn"),
+                ("NROS_ZENOH_TX_BATCH", "1"),
+                ("NROS_XRCE_MAX_SUBSCRIBERS", "1"),
+            ]),
+        )
+        .unwrap();
+        assert_eq!(from_knobs, from_env);
+    }
+
+    #[test]
+    fn a_knob_the_registry_does_not_admit_is_refused_naming_it() {
+        use leaf_system::KnobValue::{Bool, Int, Str};
+        let refused = |key: &str, v: leaf_system::KnobValue| {
+            app_rung(Some("talker"), &knobs(&[(key, v)]), &BTreeMap::new())
+                .unwrap_err()
+                .to_string()
+        };
+        let e = refused("zephyr.heap_sise", Int(1));
+        assert!(
+            e.contains("`[image.talker.knobs.zephyr] heap_sise` names no knob"),
+            "{e}"
+        );
+        let e = refused("zenoh.max_queryable", Int(1));
+        assert!(e.contains("names no knob"), "{e}");
+        let e = refused("executor.heap_size", Int(1));
+        assert!(
+            e.contains("did you mean `[image.talker.knobs.zephyr] heap_size`"),
+            "{e}"
+        );
+        let e = refused("log.max_level", Int(7));
+        assert!(e.contains("NROS_LOG_MAX_LEVEL is in 0..=6"), "{e}");
+        let e = refused("log.max_level", Str("loud".into()));
+        assert!(e.contains("an integer or one of trace/"), "{e}");
+        let e = refused("zephyr.heap_size", Str("98304".into()));
+        assert!(e.contains("is an integer"), "{e}");
+        let e = refused("zephyr.heap_size", Bool(true));
+        assert!(e.contains("is an integer"), "{e}");
+        let e = refused("zenoh.graph_discovery", Int(1));
+        assert!(e.contains("is a bool"), "{e}");
+    }
+
+    /// One knob, two spellings, is two owners of one fact: refused, never
+    /// ranked.
+    #[test]
+    fn a_knob_stated_as_both_a_knob_and_an_env_row_is_refused() {
+        let e = app_rung(
+            Some("talker"),
+            &knobs(&[("zephyr.heap_size", leaf_system::KnobValue::Int(1))]),
+            &env_rows(&[("NROS_ZEPHYR_HEAP_SIZE", "2")]),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(e.contains("stated twice"), "{e}");
+        assert!(e.contains("NROS_ZEPHYR_HEAP_SIZE"), "{e}");
+        // The Kconfig spelling a west build renders an env row to is the same
+        // knob too (`NROS_MAX_PUBLISHERS` is `CONFIG_NROS_MAX_PUBLISHERS`).
+        let e = app_rung(
+            Some("talker"),
+            &knobs(&[("zenoh.max_publishers", leaf_system::KnobValue::Int(1))]),
+            &env_rows(&[("NROS_MAX_PUBLISHERS", "2")]),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(
+            e.contains("stated twice") && e.contains("NROS_MAX_PUBLISHERS"),
+            "{e}"
+        );
+        assert_eq!(
+            registry_knob_of_env_row("NROS_MAX_PUBLISHERS").map(|r| r.env),
+            Some("NROS_ZENOH_MAX_PUBLISHERS")
+        );
+        assert!(registry_knob_of_env_row("NROS_XRCE_MAX_SUBSCRIBERS").is_none());
+    }
+
+    /// An env row that is NOT a registry knob is an app's own variable: carried
+    /// as written. A retired spelling is still refused.
+    #[test]
+    fn a_non_knob_env_row_is_carried_and_a_retired_one_refused() {
+        let rows = app_rung(
+            Some("t"),
+            &BTreeMap::new(),
+            &env_rows(&[("MY_APP_FLAG", "x")]),
+        )
+        .unwrap();
+        assert_eq!(rows["MY_APP_FLAG"], "x");
+        let e = app_rung(
+            Some("t"),
+            &BTreeMap::new(),
+            &env_rows(&[("ZPICO_MAX_QUERYABLES", "4")]), // a retired spelling
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(e.contains("NROS_ZENOH_MAX_QUERYABLES"), "{e}");
+    }
+
+    /// The GATE (phase-484 W8): no tracked `system.toml` states a REGISTRY knob
+    /// as an `[image.<id>] env` / `[image_defaults] env` row — that spelling is
+    /// deprecated, and the tree uses the one it recommends. Read raw, so it
+    /// covers every file whatever road builds it.
+    #[test]
+    fn no_tracked_system_toml_states_a_registry_knob_as_an_env_row() {
+        let repo = || {
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../../..")
+                .canonicalize()
+                .unwrap()
+        };
+        let out = crate::source_stamp::nros_git_command("git")
+            .args(["ls-files", "-z", "--", "*system.toml"])
+            .current_dir(repo())
+            .output()
+            .expect("git ls-files");
+        let mut offenders = Vec::new();
+        let mut files = 0;
+        for rel in String::from_utf8_lossy(&out.stdout)
+            .split('\0')
+            .filter(|s| !s.is_empty())
+        {
+            let text = std::fs::read_to_string(repo().join(rel)).unwrap();
+            let doc: toml::Table = text.parse().unwrap_or_else(|e| panic!("{rel}: {e}"));
+            files += 1;
+            let mut blocks: Vec<(String, &toml::Table)> = Vec::new();
+            if let Some(d) = doc.get("image_defaults").and_then(|v| v.as_table()) {
+                blocks.push(("image_defaults".into(), d));
+            }
+            if let Some(imgs) = doc.get("image").and_then(|v| v.as_table()) {
+                for (id, b) in imgs {
+                    if let Some(b) = b.as_table() {
+                        blocks.push((format!("image.{id}"), b));
+                    }
+                }
+            }
+            for (table, b) in blocks {
+                let Some(env) = b.get("env").and_then(|v| v.as_table()) else {
+                    continue;
+                };
+                for k in env.keys() {
+                    if let Some(row) = registry_knob_of_env_row(k) {
+                        let (g, n) = row.image_group_name();
+                        offenders.push(format!(
+                            "{rel}: [{table}] env {k} -> [{table}.knobs.{g}] {n}"
+                        ));
+                    }
+                }
+            }
+        }
+        assert!(
+            files >= 30,
+            "the walk reached only {files} system.toml files"
+        );
+        assert!(
+            offenders.is_empty(),
+            "a registry knob is stated as an env row; move each to its knobs spelling:\n  {}",
+            offenders.join("\n  ")
         );
     }
 

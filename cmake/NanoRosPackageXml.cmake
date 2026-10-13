@@ -381,7 +381,7 @@ function(nano_ros_read_leaf_system)
             # cargo builds this configure drives serve every image it holds,
             # so one member's image cannot claim them.
             message(WARNING
-                "nano-ros: ${_NRL_DIR}/system.toml states `[image.<id>] env`, but this "
+                "nano-ros: ${_NRL_DIR}/system.toml states `[image.<id>.knobs]` / `env` rows, but this "
                 "package is not the top-level project of its configure, whose cargo "
                 "builds it cannot claim for one image (issue 1721).")
         else()

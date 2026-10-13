@@ -59,14 +59,14 @@ fn board_statement() -> usize {
     usize::try_from(n).expect("a count")
 }
 
-/// `NROS_LOG_DYNAMIC_LOGGERS` in the probe's `[image.native] env`.
+/// `[image.native.knobs.log] dynamic_loggers` of the probe (the APP rung,
+/// RFC-0103 D6; it reaches the build as `NROS_LOG_DYNAMIC_LOGGERS`).
 fn image_statement() -> usize {
     let v = read_toml("packages/testing/nros-tests/bins/log-arena-probe/system.toml");
-    v["image"]["native"]["env"]["NROS_LOG_DYNAMIC_LOGGERS"]
-        .as_str()
-        .expect("the probe image states NROS_LOG_DYNAMIC_LOGGERS")
-        .parse()
-        .expect("a count")
+    let n = v["image"]["native"]["knobs"]["log"]["dynamic_loggers"]
+        .as_integer()
+        .expect("the probe image states `[image.native.knobs.log] dynamic_loggers`");
+    usize::try_from(n).expect("a count")
 }
 
 /// The record's address in the LIVE process: the ELF's symbol address, plus the
@@ -224,7 +224,7 @@ fn an_image_env_outranks_the_board_for_the_runtime_logger_arena() {
 /// issue 1037 — the rest of the logging tenant rides the same ladder, and the
 /// platform clock comes from the platform's CAPABILITY.
 ///
-/// The probe's image env states every `NROS_LOG_*` knob at a non-builtin
+/// The probe's `[image.native.knobs.log]` states every `NROS_LOG_*` knob at a non-builtin
 /// value; its line reads each one back from the BUILT binary. `clock=1`
 /// with no `platform-clock` feature anywhere in the leaf's graph is the
 /// capability path: the `native` board's platform is `posix`, whose
@@ -232,12 +232,19 @@ fn an_image_env_outranks_the_board_for_the_runtime_logger_arena() {
 #[test]
 fn every_log_knob_is_read_back_from_the_image_env() {
     let v = read_toml("packages/testing/nros-tests/bins/log-arena-probe/system.toml");
-    let env = &v["image"]["native"]["env"];
-    let stated = |k: &str| -> String {
-        env[k]
-            .as_str()
-            .unwrap_or_else(|| panic!("the probe image states {k}"))
-            .to_string()
+    // `[image.native.knobs.log]`, each knob reaching the build as its
+    // `NROS_LOG_<NAME>` env spelling (RFC-0103 D6).
+    let knobs = &v["image"]["native"]["knobs"]["log"];
+    let stated = |env: &str| -> String {
+        let k = env
+            .strip_prefix("NROS_LOG_")
+            .expect("a log knob")
+            .to_ascii_lowercase();
+        match knobs.get(&k) {
+            Some(toml::Value::String(s)) => s.clone(),
+            Some(toml::Value::Integer(n)) => n.to_string(),
+            _ => panic!("the probe image states `[image.native.knobs.log] {k}`"),
+        }
     };
     // Builtins (packages/core/nros-log/build.rs), which no statement may equal.
     let want: [(&str, &str, usize, usize); 4] = [

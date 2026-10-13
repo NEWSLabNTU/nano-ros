@@ -26,4 +26,9 @@ name = "image_env_probe"
 
 [image.native]
 board = "native"
-env = { NROS_EXECUTOR_MAX_CBS = "13", NROS_LOG_MAX_LEVEL = "warn" }
+
+[image.native.knobs.executor]
+max_cbs = 13
+
+[image.native.knobs.log]
+max_level = "warn"
