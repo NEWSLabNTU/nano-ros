@@ -264,7 +264,7 @@ An app with NO `system.toml` gets no rendering and is configured by Kconfig
 defaults and the RMW snippets alone.
 
 `CONFIG_NROS=y` activates the shell, which maps Kconfig values to
-`NANO_ROS_*` CMake cache vars and `add_subdirectory()`s the root
+`NROS_*` CMake cache vars and `add_subdirectory()`s the root
 nano-ros CMake. `NanoRos::NanoRos` is linked into your `app`
 library transparently.
 

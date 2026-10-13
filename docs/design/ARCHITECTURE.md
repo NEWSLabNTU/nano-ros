@@ -55,7 +55,7 @@ never cross-implied:
 `nros` declares an EMPTY `default`; the user picks each axis explicitly, and the standard
 library with it (see the `std`/`alloc` contract below). **RMW is a
 declared, language-agnostic selection** (`system.toml` / deploy override / CLI flag), *lowered* by
-the toolchain to a Rust cargo feature or a CMake `-DNANO_ROS_RMW`. Scope is per-deploy-binary
+the toolchain to a Rust cargo feature or a CMake `-DNROS_RMW`. Scope is per-deploy-binary
 (nodes inherit; in-process multi-RMW only via `[[bridge]]`); the cargo feature is the lowering
 target, not the user-facing knob.
 

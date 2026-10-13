@@ -58,8 +58,8 @@ override reaching cargo and ignored by the Zephyr road. Full list in issue 1767.
 
 | fact | places |
 | --- | --- |
-| RMW | 6 in one leaf (`examples/zephyr/rust/talker`: `system.toml`, `prj-zenoh.conf`, snippet, `sample.yaml SNIPPET`, an inert cargo feature, `CMakeLists --features`), plus `NANO_ROS_RMW`, `NROS_RMW`, `--rmw`, `fixtures.toml` |
-| board | `[image] board`, west `-b`, `--west-board`, `-DNANO_ROS_BOARD`, `nros::main!(board=)`, `NROS_BOARD`, cargo deps, `sample.yaml`, `boards/*.conf` names |
+| RMW | 6 in one leaf (`examples/zephyr/rust/talker`: `system.toml`, `prj-zenoh.conf`, snippet, `sample.yaml SNIPPET`, an inert cargo feature, `CMakeLists --features`), plus `NANO_ROS_RMW` (retired), `NROS_RMW`, `--rmw`, `fixtures.toml` |
+| board | `[image] board`, west `-b`, `--west-board`, `-DNANO_ROS_BOARD` (retired), `nros::main!(board=)`, `NROS_BOARD`, cargo deps, `sample.yaml`, `boards/*.conf` names |
 | domain id | `[system]`, `[image]`, `CONFIG_NROS_DOMAIN_ID`, `CONFIG_NROS_CYCLONE_DOMAIN_ID`, `ROS_DOMAIN_ID`, baked `NROS_DOMAIN_ID`, test `config.toml`; on Zephyr only Kconfig is load-bearing (issue 1550) |
 | locator | `[image]`, Kconfig, `NROS_LOCATOR`/`ZENOH_LOCATOR`, baked `option_env!`, board `config.rs` literals, cmake `NROS_APP_CONFIG` defaults, `NROS_LEAF_LOCATOR` |
 | IP / gateway | `[image]`, board `config.rs`, cmake `NROS_APP_CONFIG`, test `config.toml` |
@@ -68,8 +68,8 @@ override reaching cargo and ignored by the Zephyr road. Full list in issue 1767.
 And one knob carries up to three NAMES: Kconfig `NROS_ZENOH_TX_BATCH` = env
 `ZPICO_TX_BATCH` = TOML `[knobs.zenoh.tx] batch`; `NROS_MAX_SUBSCRIBERS` is
 floored into `ZPICO_MAX_SUBSCRIBERS`; `[board.knobs.net]` becomes
-`NROS_SMOLTCP_*` with a deprecated `ZPICO_SMOLTCP_*` alias. cmake mixes
-`NANO_ROS_*` and `NROS_*`. Precedence differs by road (RFC-0049's ladder;
+`NROS_SMOLTCP_*` with a deprecated `ZPICO_SMOLTCP_*` alias. cmake mixed
+`NANO_ROS_*` (since retired) and `NROS_*`. Precedence differs by road (RFC-0049's ladder;
 Zephyr's `_nros_resolve_knob` env > image > Kconfig > derived > default; a
 descriptor's `force = true`; cmake cache before ENV).
 
@@ -408,7 +408,7 @@ rows a contributor edits, which rung 4 serves from the checkout anyway.
   locates the root from its own path (`CMAKE_CURRENT_LIST_DIR`), never from
   the environment. There is no chicken-and-egg: building the CLI
   (`just setup-cli`) is a `cargo build` whose scripts find the checkout from
-  `CARGO_MANIFEST_DIR`. `NANO_ROS_ROOT` retires as before. One marker,
+  `CARGO_MANIFEST_DIR`. `NANO_ROS_ROOT` is retired as before. One marker,
   `packages/core/nros-core/Cargo.toml` (`nros_build_paths::CHECKOUT_MARKER` —
   corrected by phase-484 W1: ~25 sites already used it, only two walks used
   the index, and both files sit at every SDK root).
@@ -453,7 +453,7 @@ Each has one path function in Rust; cmake and shell ask `nros locate artifact
 
 RFC-0094 already decides knob values before configure, so the header can be
 written then, before any compile — which deletes the three `OUT_DIR` JSON
-parsers and the PX4 `${NANO_ROS_ROOT}/target/...` literal. Cargo dependents
+parsers and the PX4 `${NANO_ROS_ROOT}/target/...` literal (a retired name). Cargo dependents
 keep `DEP_NROS_C_*` (RFC-0101 D2). Until resolve owns it, one parser in
 `nros_build_paths` serves every non-cargo consumer.
 
@@ -529,7 +529,7 @@ bridge/TAP launch, multi-NIC and the collision refusal are
 
 | fact | home | rendered into | retired |
 | --- | --- | --- | --- |
-| board | `[image.<id>] board` | west `-b` (via `west_board`), cmake, cargo | `NROS_BOARD`, `main!(board=)`, `-DNANO_ROS_BOARD`; alias casing (match case-insensitively) |
+| board | `[image.<id>] board` | west `-b` (via `west_board`), cmake, cargo | `NROS_BOARD`, `main!(board=)`, `-DNANO_ROS_BOARD` (retired); alias casing (match case-insensitively) |
 | RMW | `[image.<id>] rmw` | Kconfig choice, snippet, cargo features | inert `rmw-*` features, `CMakeLists --features` (the conf lines are phase-481's) |
 | domain id | `[system] domain_id`, `[image]` override | Kconfig (closes 1550), baked default | `NROS_DOMAIN_ID`, `CYCLONE_DOMAIN_ID` as inputs; `ROS_DOMAIN_ID` stays the runtime override |
 | locator, transport | `[image]` → platform default | Kconfig, baked default, cmake config | board `config.rs` literals, `ZENOH_LOCATOR`; `NROS_LOCATOR` stays the runtime override |
@@ -580,7 +580,7 @@ Each wave deletes what it replaces in the same change.
 6. **Generated layout.** `<build>/nros/`; the header written by resolve; one
    `OUT_DIR` parser until then.
 7. **Leftovers.** Test-bin `config.toml`, `[board.knobs]` → `[knobs]`,
-   `NANO_ROS_*` cmake vars, issue 1768.
+   `NANO_ROS_*` cmake vars (retired, phase-484 W8), issue 1768.
 
 ## 5. Alternatives rejected
 
@@ -629,7 +629,7 @@ Still open:
   above; issue 1767 archived with a per-resource resolution, and the
   three locations it still found more than one way (host-tool binaries, QEMU,
   the generated-header names) were fixed as issues 1850, 1851 and 1852. D10's network tables, bridge and multi-NIC boards are phase-497.
-  Old names (legacy knob spellings, `[board.knobs]`, the `NANO_ROS_*` cmake
+  Old names (legacy knob spellings, `[board.knobs]`, the `NANO_ROS_*` cmake (retired)
   aliases, `nros::main!(board =)`) retire in phase-484 W8, after a release.
 
 - 2026-10-12 — D6 amended: the `nros` binary knows its own SDK root (a

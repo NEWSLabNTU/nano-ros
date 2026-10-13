@@ -106,7 +106,7 @@ FreeRTOS  1) nros codegen system --out target/<triple>/baked/
           (Cyclone path: cmake -B build/<b> && cmake --build build/<b> && probe-rs run ...)
 
 ThreadX   1) nros codegen system --out build/<b>/nros-system
-          2) cmake -B build/<b> -DNANO_ROS_PLATFORM=threadx -DNANO_ROS_BOARD=<b> -DNROS_RMW=<rmw> && cmake --build build/<b>
+          2) cmake -B build/<b> -DNROS_PLATFORM=threadx -DNROS_BOARD=<b> -DNROS_RMW=<rmw> && cmake --build build/<b>
           3) build/<b>/firmware   (threadx-linux: just run it; rv64-qemu: qemu-system-riscv64 ...)
 
 ESP-IDF   RETIRED (phase-468 W2). This workflow described the deleted

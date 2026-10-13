@@ -1,10 +1,10 @@
 cmake_minimum_required(VERSION 3.22)
 project(NanoRos VERSION 0.1.0 LANGUAGES C CXX)
 
-# phase-484 W7b — `NANO_ROS_*` is a deprecated alias of `NROS_*`: adopt any old
-# name the consumer set, before the first option() below reads a new one.
-include("${CMAKE_CURRENT_LIST_DIR}/cmake/NanoRosDeprecatedNames.cmake")
-nros_adopt_deprecated_names()
+# phase-484 W8 — a retired `NANO_ROS_*` name is a configure error naming its
+# `NROS_*` replacement; refuse it before the first option() below reads a name.
+include("${CMAKE_CURRENT_LIST_DIR}/cmake/NanoRosRetiredNames.cmake")
+nros_refuse_retired_names()
 
 # ---------------------------------------------------------------------------
 # Phase 137 — Top-level entry point for source-distribution consumption.

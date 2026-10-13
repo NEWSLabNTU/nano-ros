@@ -25,12 +25,10 @@
 # from the `NROS_PLATFORM` / `NROS_RMW` cache vars as before.
 
 # This config file sits at the checkout root, so its own directory is the root.
-# phase-484 W7b — adopt any deprecated `NANO_ROS_*` name the project set,
-# BEFORE the root is stated: this config file's own directory IS the root, so a
-# deprecated root alias the project passed (also CMake's find hint) is adopted and then
-# superseded here rather than compared with it.
-include("${CMAKE_CURRENT_LIST_DIR}/cmake/NanoRosDeprecatedNames.cmake")
-nros_adopt_deprecated_names()
+# phase-484 W8 — refuse a retired `NANO_ROS_*` name the project set, before
+# anything reads a name. This config file's own directory IS the root.
+include("${CMAKE_CURRENT_LIST_DIR}/cmake/NanoRosRetiredNames.cmake")
+nros_refuse_retired_names()
 set(NROS_REPO_DIR "${CMAKE_CURRENT_LIST_DIR}")
 
 # --- Zephyr arm (287-W6) ------------------------------------------------------
@@ -157,7 +155,7 @@ if(NROS_EXPORT_FOUND)
     # root CMakeLists declares `NROS_PLATFORM`/`NROS_RMW` with cached
     # posix/zenoh defaults; a directory-scope set here would shadow them only
     # on the FIRST configure — on any reconfigure the stale cached default is
-    # visible to the `NOT NANO_ROS_*` guards, the leaf's value is skipped, and a
+    # visible to the `NOT NROS_*` guards, the leaf's value is skipped, and a
     # freertos leaf silently reconfigures as posix (Threads_FOUND death on a
     # cross toolchain). Writing them into the cache on first parse makes
     # reconfigures stable; an explicit `-D` still wins (the guard sees it).

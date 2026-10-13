@@ -86,7 +86,7 @@ Two implementations, only one of which achieves it:
 | | carrier | actual granularity |
 |---|---|---|
 | **Rust** | the generated `<entry>_nros_selection` facade | **per entry** |
-| **C / C++** | `NANO_ROS_FEATURES` → `nros_feature_set` → one shared `libnros_cpp.a` per configure | **per workspace configure** |
+| **C / C++** | `NROS_FEATURES` → `nros_feature_set` → one shared `libnros_cpp.a` per configure | **per workspace configure** |
 
 The rust facade is the evidence — the same entry name, two systems:
 
@@ -104,7 +104,7 @@ an entry consumes.** What differs is the freedom each language has to vary it:
   `sync: N bringups declare a system … selection facades are not generated for
   multi-system workspaces (phase-315 W1 models one declaration per workspace)`;
 - C/C++ can have several bringups, but every entry in one configure shares the
-  single `NANO_ROS_FEATURES` value, so the capability set cannot vary between
+  single `NROS_FEATURES` value, so the capability set cannot vary between
   them either. (Worse, each bake `FORCE`-writes that cache var, so with several
   bringups the last one configured silently wins.)
 
@@ -254,7 +254,7 @@ so the RMW seam is exercised almost exclusively by single-node micro-examples.
 code says otherwise for one half of each:
 
 - the safety **talker** is the plain talker. Its own doc: with
-  `NANO_ROS_SAFETY_E2E=ON` "the zenoh backend automatically attaches a CRC-32 +
+  `NROS_SAFETY_E2E=ON` "the zenoh backend automatically attaches a CRC-32 +
   sequence number on every publish — **no code change required here**". So it is
   a pure configuration variant and belongs in the feature-set column above —
   where it covers the WHOLE language workspace rather than one pair of nodes;
@@ -391,7 +391,7 @@ example" no longer finds it under their language.
 
 - **Should the phase-315 one-system-per-workspace limit be lifted?** It is the
   binding constraint behind R2. Rust cannot generate selection facades for a
-  multi-system workspace, and C/C++ `FORCE`-write a single `NANO_ROS_FEATURES`
+  multi-system workspace, and C/C++ `FORCE`-write a single `NROS_FEATURES`
   per configure, so a workspace has one capability set whichever language it is.
   Lifting it would let a capability travel with its entry — the "image-level"
   granularity `NanoRosFeatureSet.cmake` already claims — and would make R1's

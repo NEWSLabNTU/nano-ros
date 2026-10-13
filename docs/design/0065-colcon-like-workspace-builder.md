@@ -107,7 +107,7 @@ first decisive:
    `nros-pkg-index`'s `package.xml` walk; ordering is `nros ws order` (phase-348
    W4), already called by `nano_ros_workspace(ORDER_FROM_DEPENDS)`.
 3. **No target concept.** The existing `task/nros/build.py` shows the strain in
-   its own comment: it reads `NANO_ROS_RMW` from an env var because *"the
+   its own comment: it reads `NANO_ROS_RMW` (a since-retired name) from an env var because *"the
    standalone per-package colcon task has no system config in scope"*.
 4. **A second implementation to keep in sync.** Discovery and ordering in Python
    beside the Rust ones is the "second spelling instead of a shared helper"
@@ -384,8 +384,8 @@ An entry package does not *have* a `main`; it *gives* one to a board.
 So entry and board are **independent axes that get paired**, not one implying
 the other. The C/C++ side already encodes this: `nano_ros_entry` takes `DEPLOY
 <board1> [<board2> …]`, a **list** of supported boards, gated by
-`if("${NANO_ROS_BOARD}" IN_LIST _NRA_DEPLOY)`. phase-372 W2 made one C++ leaf
-serve two boards with `BOARD ${NANO_ROS_BOARD}`.
+`if("${NROS_BOARD}" IN_LIST _NRA_DEPLOY)`. phase-372 W2 made one C++ leaf
+serve two boards with `BOARD ${NROS_BOARD}`.
 
 **Therefore the entry is derivable from `(launch, args, board)` and is
 generated into `build/<coord>/`.** A workspace contains no entry packages.

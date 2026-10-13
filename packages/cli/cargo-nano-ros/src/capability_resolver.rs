@@ -210,7 +210,7 @@ mod tests {
                 c.declared
             );
             // An axis with a cmake_token must set exactly that token; one without
-            // must NOT set any `NANO_ROS_*` option for the axis.
+            // must NOT set any `NROS_*` option for the axis.
             if let Some(tok) = c.cmake_token {
                 assert!(
                     src.contains(&format!("set({tok} ON")),

@@ -249,7 +249,7 @@ dispatcher setup spelling.
 ## 6. Cost of adopting
 
 50 `package.xml` files carry a `board=` export; example directories, board
-crates, `cmake/board/*.cmake`, `NANO_ROS_BOARD` fixture coordinates and the
+crates, `cmake/board/*.cmake`, `NROS_BOARD` fixture coordinates and the
 book all spell one. Six `examples/<board>/` directories move. Nothing keys on
 the string, so the change is mechanical — which is exactly why it needs a phase
 with a staged plan rather than one sweeping commit.

@@ -388,7 +388,7 @@ The practical consequence for a workspace author: **caps that must apply to ever
 member belong at the workspace root.** A file beside a package's `package.xml` still
 applies to what that package generates and still wins over an ancestor, but it is not a
 place from which to bound a type another package may generate first — under
-`NANO_ROS_GEN_CACHE_DIR` a stock package such as `std_msgs` is generated ONCE for the
+`NROS_GEN_CACHE_DIR` a stock package such as `std_msgs` is generated ONCE for the
 whole project, so caps attached to a consumer belong to whichever consumer the configure
 reached first. An ancestor of every consumer cannot have that ambiguity, which is the
 reason issue 1470 chose the workspace root over "any package that declares caps".

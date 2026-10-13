@@ -151,7 +151,7 @@ which an out-of-tree user does not have. That is the whole problem.
   `CARGO_MANIFEST_DIR` four levels under the repo root, so no walk-up reaches a
   leaf.
 * **Exactly one board is active per configure** — cmake selects entries with
-  `if/elseif` on `NANO_ROS_BOARD`, and the toolchain file must be fixed before
+  `if/elseif` on `NROS_BOARD`, and the toolchain file must be fixed before
   `project()`. So the *source* must describe N boards while *delivery* carries 1.
 
 ## 4. What six ecosystems agree on — and the revised model

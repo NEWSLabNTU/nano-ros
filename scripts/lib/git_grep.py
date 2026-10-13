@@ -8,7 +8,7 @@ engine rejects, a pathspec it cannot parse. The natural Python spelling,
 
 reads all three through `stdout`, and the third prints nothing there. So a
 gate that FORBIDS a pattern turns "git did not run" into "the pattern is
-absent" and passes. `check-deprecated-cmake-names` reported OK over a `git
+absent" and passes. `check-deprecated-cmake-names` (now `check-retired-cmake-names`) reported OK over a `git
 archive` export, where git searched nothing, and 13 of the 14 call sites
 already on main behaved the same way — a gate that cannot fail outside a
 checkout, or on a regex git cannot parse, looks exactly like a gate that

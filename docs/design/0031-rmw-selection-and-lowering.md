@@ -54,7 +54,7 @@ so **RMW is a property of the binary**. All nodes in it inherit it.
 | Single-node, with `system.toml` | `[image.<id>] rmw` (over `[image_defaults] rmw`, then `[system] rmw`) — one image per RMW when a leaf builds several | same lowering, into the leaf's generated selection package (issue 1305) |
 | Single-node, no `system.toml` | CLI/build flag, else default | same lowering |
 
-The Rust **board-crate `rmw-<x>` feature** and the CMake `NANO_ROS_RMW` var are
+The Rust **board-crate `rmw-<x>` feature** and the CMake `NROS_RMW` var are
 the **lowering targets** the toolchain sets (or a user sets manually as an
 override). They are documented as *the mechanism the build uses*, never as *the
 way you pick a backend*.
@@ -78,7 +78,7 @@ feature.
 
 ### Precedence (highest wins)
 
-1. CLI / build flag — `nros … --rmw <x>`, `-DNANO_ROS_RMW=<x>`.
+1. CLI / build flag — `nros … --rmw <x>`, `-DNROS_RMW=<x>`.
 2. `system.toml` `[image.<id>] rmw`, over `[image_defaults] rmw`.
 3. ~~`system.toml` `[deploy.<target>] rmw`~~ — **RETIRED** (phase-486 W8): the
    whole `[deploy.*]` table is refused by name, pointing at `[image.*]`.
@@ -208,7 +208,7 @@ shims, never a concrete `rmw-*` / `platform-*` feature or backend/platform dep).
   `nros/platform-<x>` in a generated entry's default features when the entry
   deps a board crate; the board carries the platform.
 
-The CMake `-DNANO_ROS_RMW` / C lowering path is unchanged (the C symbols already
+The CMake `-DNROS_RMW` / C lowering path is unchanged (the C symbols already
 come from the board / CMake layer). After every consumer migrates, the `nros`
 umbrella drops its `rmw-*` / `platform-*` features and the optional concrete
 deps entirely (phase-248 C5c).
@@ -277,7 +277,7 @@ global edit, and is the validatable gate.
 the CRC machinery is feature-gated inside the zpico Rust shim). A C/C++ embedded build
 linking the zenoh backend does not validate CRC. Extending the axis to C/C++ needs a
 CMake/C `#define` (the `resolve_capability.cmake_token` / `.c_define` slots, mirroring
-`resolve_rmw`'s `-DNANO_ROS_RMW` + `NROS_SYSTEM_RMW_<TOK>`) plus a zpico-C safety gate —
+`resolve_rmw`'s `-DNROS_RMW` + `NROS_SYSTEM_RMW_<TOK>`) plus a zpico-C safety gate —
 a deeper, separate gap.
 
 **Status:** targets 1 (entry) + 2 (native backend) landed (phase-250 + issue-0072

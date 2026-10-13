@@ -97,7 +97,7 @@ where it gets declared and probed.
 ## D3 — The store rung goes LAST on the resolution ladder
 
 `cmd/build.rs` and the scaffolded `CMakeLists.txt` both resolve a nano-ros root
-three ways, all of them a checkout: an explicit `-DNANO_ROS_ROOT` /
+three ways, all of them a checkout: an explicit `-DNROS_REPO_DIR` /
 `--nano-ros-path`, then `NROS_REPO_DIR`, then a relative walk-up.
 
 A fourth rung is added — **the running toolchain's own SDK root** — and it is

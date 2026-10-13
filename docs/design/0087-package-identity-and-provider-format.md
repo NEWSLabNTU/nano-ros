@@ -153,7 +153,7 @@ platform). `<nano_ros …/>` exists today (91 files: `deploy` 90, `rmw` 51,
 **The two directions are not unified, and the reason is `deploy`.** Provider
 kinds are `rmw`, `board`, `platform` (and later `serdes`). `deploy` is *not* a
 kind — it names a `[deploy.*]` block in `system.toml`, which
-`NanoRosPackageXml.cmake` maps to the `NANO_ROS_PLATFORM` axis. So the
+`NanoRosPackageXml.cmake` maps to the `NROS_PLATFORM` axis. So the
 consumption tag is not provider selection under different attribute names; it
 mixes provider selection with a system-model reference. Merging the tags would
 flatten a distinction that is real in both cardinality (provision is 0..N —

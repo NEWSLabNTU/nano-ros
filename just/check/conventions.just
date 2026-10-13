@@ -135,7 +135,8 @@ ancestry-truncation:
 # search" (not a repository; a regex git rejects), and prints nothing on stdout
 # for either. 13 of the 14 Python call sites read 128 as "no match", so outside
 # a checkout a gate that FORBIDS a spelling searched nothing and said OK
-# (`check-deprecated-cmake-names` over a `git archive` export). One helper,
+# (`check-deprecated-cmake-names`, now `check-retired-cmake-names`, over a
+# `git archive` export). One helper,
 # `scripts/lib/git_grep.py`, raises on any other status; this keeps a raw
 # `["git", …, "grep", …]` literal from reappearing. Buildless (an AST walk over
 # tracked `.py`), ~0.5 s; every run self-tests its own pattern AND the
@@ -288,11 +289,11 @@ board-net-one-home:
 build-wiring-classified:
     @python3 scripts/nros-build-wiring.py --check-classified
 
-# phase-484 W7b — cmake's `NANO_ROS_*` names converge on `NROS_*`; the old
-# user-facing ones are DEPRECATED ALIASES adopted by
-# `cmake/NanoRosDeprecatedNames.cmake` at every entry point. This keeps that
-# file the only reader of an old name (and of the retired internal prefixes).
-# Buildless, ~0.3 s; self-tests its pattern on each run.
+# phase-484 W8 — cmake's `NANO_ROS_*` names are retired (each a configure error
+# naming its `NROS_*` replacement, `cmake/NanoRosRetiredNames.cmake`). No
+# tracked file outside that error table, the history record and a few named
+# exemptions names one — or one of the retired internal prefixes.
+# Buildless, ~0.3 s; self-tests its pattern and its exemptions on each run.
 [private]
-deprecated-cmake-names:
-    @python3 scripts/check/check-deprecated-cmake-names.py
+retired-cmake-names:
+    @python3 scripts/check/check-retired-cmake-names.py

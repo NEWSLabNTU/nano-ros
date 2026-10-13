@@ -119,8 +119,8 @@ cmake_minimum_required(VERSION 3.22)
 project(my_talker CXX)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-set(NANO_ROS_PLATFORM posix CACHE STRING "")
-set(NANO_ROS_RMW      zenoh CACHE STRING "")
+set(NROS_PLATFORM posix CACHE STRING "")
+set(NROS_RMW      zenoh CACHE STRING "")
 add_subdirectory($ENV{NANO_ROS_DIR} nano_ros)
 
 add_executable(my_talker src/main.cpp)
@@ -143,7 +143,7 @@ Commands:
 export NANO_ROS_DIR=$HOME/repos/nano-ros
 
 # 3. cmake — configure (per-RMW build dir; no source edits to swap)
-cmake -S . -B build -DNANO_ROS_PLATFORM=posix -DNANO_ROS_RMW=zenoh
+cmake -S . -B build -DNROS_PLATFORM=posix -DNROS_RMW=zenoh
 # -- Configuring nano-ros (platform=posix, rmw=zenoh)
 # -- Generating interfaces: std_msgs (CPP)
 # -- Configuring done
@@ -310,7 +310,7 @@ nros new system robot_ws --lang cpp
 # created robot_ws/{CMakeLists.txt,talker_pkg,listener_pkg,demo_bringup}
 
 # 2. cmake — configure superbuild
-cmake -S . -B build -DNANO_ROS_PLATFORM=posix -DNANO_ROS_RMW=cyclonedds \
+cmake -S . -B build -DNROS_PLATFORM=posix -DNROS_RMW=cyclonedds \
       -DNanoRos_DIR=$HOME/repos/nano-ros
 # -- nano_ros: workspace system = demo_bringup
 # -- nano_ros: writing build/.nros/workspace.json
@@ -360,8 +360,8 @@ Key files (diff vs multi-rust: cmake at root, Corrosion bridge; diff vs multi-cp
 # CMakeLists.txt (root)
 cmake_minimum_required(VERSION 3.22)
 project(demo_ws LANGUAGES C CXX)
-set(NANO_ROS_PLATFORM posix      CACHE STRING "")
-set(NANO_ROS_RMW      cyclonedds CACHE STRING "")
+set(NROS_PLATFORM posix      CACHE STRING "")
+set(NROS_RMW      cyclonedds CACHE STRING "")
 add_subdirectory($ENV{NANO_ROS_DIR} nano_ros)
 
 include(FetchContent)
@@ -395,7 +395,7 @@ Commands:
 export NANO_ROS_DIR=$HOME/repos/nano-ros
 
 # 2. cmake — configure (Corrosion finds cargo, imports talker_pkg)
-cmake -S . -B build -DNANO_ROS_PLATFORM=posix -DNANO_ROS_RMW=cyclonedds
+cmake -S . -B build -DNROS_PLATFORM=posix -DNROS_RMW=cyclonedds
 # -- Corrosion: Found cargo 1.85
 # -- Importing crate talker_pkg (staticlib)
 
@@ -415,7 +415,7 @@ cargo run -p native_entry            # native run (no nros deploy — Phase 222)
 # [listener] heard: 1
 ```
 
-Cross-language pub/sub works because both components link `NanoRos::NanoRos` with the same `NANO_ROS_RMW` and consume one shared `nros generate` output — wire-identical descriptors on the bus.
+Cross-language pub/sub works because both components link `NanoRos::NanoRos` with the same `NROS_RMW` and consume one shared `nros generate` output — wire-identical descriptors on the bus.
 
 ---
 
@@ -427,7 +427,7 @@ Cross-language pub/sub works because both components link `NanoRos::NanoRos` wit
 - **Multi-node → add `<system>_bringup` pkg.** Carries `package.xml` + `system.toml` + `launch/`. No source, no `Cargo.toml`, no `CMakeLists.txt`. Workspace pointer (`workspace.metadata.nros.default_system` in Rust, `nano_ros_workspace_metadata(SYSTEM …)` in CMake) names it.
 - **Single-node → no bringup pkg.** One crate / one cmake project, that is the whole repo.
 - **Component pkg → never carries launch files.** Launch lives in bringup. Component pkgs carry one `[package.metadata.nros.component]` (Rust) or one `add_executable` + `target_link_libraries(NanoRos::NanoRos)` (C++).
-- **RMW pick is build-time, not source.** Cargo feature (`--features rmw-cyclonedds`) or cmake cache (`-DNANO_ROS_RMW=cyclonedds`). Per-RMW build dirs (`build-zenoh/`, `build-cdds/`) — no source edits to swap.
+- **RMW pick is build-time, not source.** Cargo feature (`--features rmw-cyclonedds`) or cmake cache (`-DNROS_RMW=cyclonedds`). Per-RMW build dirs (`build-zenoh/`, `build-cdds/`) — no source edits to swap.
 - **`nros generate` is single-source-of-truth for type descriptors.** One invocation per workspace; both languages read the same `generated/` tree. Skip this and Cyclone silently diverges on type hash.
 
 ## Anti-patterns

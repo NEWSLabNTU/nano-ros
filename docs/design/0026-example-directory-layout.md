@@ -30,7 +30,7 @@ RMW is selected **at build time**, not encoded in the path:
   reads). The workspace helpers (`nano_ros_workspace()` /
   `nano_ros_workspace_pkg_guard()` in `cmake/NanoRosWorkspace.cmake`) publish
   the resolved backend under **both** names — `NROS_RMW` (the short helper
-  alias) and `NANO_ROS_RMW` (the root variable the `cmake/platform/*` modules
+  alias) and `NROS_RMW` (the root variable the `cmake/platform/*` modules
   consume) — so either layer sees a consistent value. Examples document only
   `-DNROS_RMW`.
 - Zephyr → a `prj-<rmw>.conf` Kconfig overlay.
@@ -66,13 +66,13 @@ The copy-out contract is **tested** (phase-277 W6): Rust manifests declare
 nano-ros crates registry-style (`nros = { version = "*" }`) with a tracked
 `# nros-managed` `[patch.crates-io]` block that `nros sync` re-points at any
 checkout; C/C++ CMakeLists resolve the nano-ros root through one guard —
-`-DNANO_ROS_ROOT=<path>` cache var, else the `NROS_REPO_DIR` env var, else the
+`-DNANO_ROS_ROOT=<path>` cache var (a name since retired), else the `NROS_REPO_DIR` env var, else the
 in-repo relative walk-up. Copying a directory out of the repo and building it
 against a checkout is part of the CI-checked surface
 (`just zephyr check-copy-out`, W6 smokes).
 
 > **The C/C++ CMakeLists shape is being reshaped by [RFC-0048](0048-cmake-ament-consumption.md)**
-> (phase-287, #171 D5): the `-DNANO_ROS_ROOT` guard becomes source-backed
+> (phase-287, #171 D5): the `-DNANO_ROS_ROOT` guard (name since retired) becomes source-backed
 > `find_package(nano_ros)`, one ament-convention `CMakeLists.txt` byte-identical
 > across platforms, with board/RMW moved into `package.xml <export>`. The
 > copy-out contract itself (build a copied-out leaf against a checkout) is
@@ -237,7 +237,7 @@ under `packages/testing/{nros-tests/bins,nros-bench,nros-smoke}/`, not `examples
   unaffected.
 - 2026-07 — Phase-277 refresh: workspaces two-layer scheme (base 4 +
   `ws-<topic>-<lang>`); `-DNROS_RMW` documented as the user knob with the
-  `NANO_ROS_RMW` root variable published by the workspace helpers; tested
+  `NROS_RMW` root variable published by the workspace helpers; tested
   copy-out contract (W6) recorded; `examples/**/Cargo.lock` gitignore policy;
   README tier policy + lint; rust `cyclonedds/talker-aemv8r` carve-out added;
   `qemu-riscv-nuttx` partial platform noted; `_entry` naming exception blessed
