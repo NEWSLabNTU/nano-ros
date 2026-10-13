@@ -1051,4 +1051,11 @@ size_t nros_platform_task_stack_unused_bytes(void) {
     return 0;
 }
 
+/* phase-436 E5: the capped query (`nros/platform.h`). This port does not instrument stacks,
+ * so it answers 0, like the full query. */
+size_t nros_platform_task_stack_unused_bytes_upto(size_t limit) {
+    size_t unused = nros_platform_task_stack_unused_bytes();
+    return unused < limit ? unused : limit;
+}
+
 /* Issue 1732's termination guard lives in `termination.c` (issue 1776). */

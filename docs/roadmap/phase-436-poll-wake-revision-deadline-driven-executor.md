@@ -5,7 +5,8 @@ through A3's clear accessor is on `main`: W1-W7 (#849), A2 (#871), E3 + E4
 (#881), A3 (#899). What remains, in the order I would take it:
 
 1. **E5: make the stack-headroom query cheap when the stack has not grown.**
-   (Amended 2026-10-13 to a threshold scan: see E5 under Path E.)
+   (Amended 2026-10-13 to a threshold scan, and LANDED the same day; ASI's
+   re-measure is what is left. See E5 under Path E.)
    E4's once-a-second scan still costs ~33 ms on ASI's FVP image. The Zephyr
    port's `k_thread_stack_space_get` walks every unused byte, and FreeRTOS's
    `uxTaskGetStackHighWaterMark` does the same. ThreadX is already O(1)
@@ -896,6 +897,30 @@ wired, so every other port parks on the millisecond `wake_wait_ms` floor.
     `0`, uninstrumented.
 
   Zephyr first, since it is the port ASI runs. The exit stays as written.
+
+  **LANDED 2026-10-13 (the nano-ros half).**
+  - **ABI:** `nros_platform_task_stack_unused_bytes_upto(limit)` in
+    `nros/platform.h`, regenerated with the pinned bindgen, plus the trait
+    method `PlatformThreading::task_stack_unused_bytes_upto` (defaulted to
+    the full query, capped) and the free function
+    `nros_platform_api::stack_unused_bytes_upto`.
+  - **Zephyr:** reads at most `limit` bytes from `stack_info.start`. It falls
+    back to the capped full query under CONFIG_USERSPACE,
+    CONFIG_THREAD_STACK_MEM_MAPPED or CONFIG_NO_UNUSED_STACK_INSPECTION.
+  - **FreeRTOS, ThreadX and POSIX** cap their full query.
+  - **The executor** asks the capped query with the declared minimum. Below
+    the cap the answer is the exact headroom, so a breach reports it without
+    a second scan. The E3 "blind" probe asks `upto(1)`, so setting a minimum
+    no longer runs a full scan either.
+
+  **Measured on native_sim** (Zephyr 3.7, the C talker with CONFIG_INIT_STACKS
+  and CONFIG_THREAD_STACK_INFO, a temporary boot probe that was not
+  committed): full = 16,344 of 16,384 B. `upto(n)` equalled `min(full, n)`
+  for n = 1, full - 1, full, full + 1, full / 8 and SIZE_MAX. The image
+  links, which is issue 1075's failure mode for this configuration. No lane
+  builds with stack painting on, so the probe was the only run, and the
+  per-second stall on ASI's FVP image is still the island's to re-measure.
+  That re-measure is the exit above.
 
 ### Order
 

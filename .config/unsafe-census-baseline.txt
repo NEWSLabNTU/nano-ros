@@ -49,8 +49,8 @@ nros-nuttx-riscv-ffi                 1   0     0       1      0
 nros-orchestration-ir                4   0     0       0      0
 nros-params                          3   1     0       0      0
 nros-platform                        8   2     1       4      0
-nros-platform-api                   20   5     1       6      0
-nros-platform-cffi                  97   0     4     112      0
+nros-platform-api                   21   5     1       7      0
+nros-platform-cffi                  97   0     4     113      0
 nros-platform-critical-section       2   2     1       1      0
 nros-platform-esp32-qemu            17   0     2      16      0
 nros-platform-mps2-an385            19   6     3       7      0

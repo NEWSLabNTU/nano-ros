@@ -1308,6 +1308,13 @@ size_t nros_platform_task_stack_unused_bytes(void) {
 #endif
 }
 
+/* phase-436 E5: the capped query (`nros/platform.h`). The full query is already O(1) here
+ * (`tx_thread_stack_highest_ptr`), so it is capped, not re-implemented. */
+size_t nros_platform_task_stack_unused_bytes_upto(size_t limit) {
+    size_t unused = nros_platform_task_stack_unused_bytes();
+    return unused < limit ? unused : limit;
+}
+
 /* Issue 1763 (first met in issue 1759) — `rust_eh_personality`, WEAK, for a
  * HOST image whose Rust half links no libstd.
  *

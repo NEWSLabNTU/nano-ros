@@ -87,6 +87,10 @@ unsafe extern "C" {
     pub fn nros_platform_task_stack_unused_bytes() -> usize;
 }
 unsafe extern "C" {
+    #[doc = " The same query, capped: `min(unused, limit)`, reading at most `limit`\n  bytes of the stack (phase-436 E5).\n\n  The executor's `stack-headroom-runtime` rule asks one question, \"are at\n  least `limit` bytes unused?\", and on a painted stack that is true exactly\n  when the `limit` bytes at the stack's deep end still hold the paint. So a\n  port that SCANS (Zephyr walks from `stack_info.start`) answers it by\n  reading those bytes only, never the whole unused region: on the Autoware\n  safety island's FVP image the full scan was a 32.6 ms stall once a second.\n  Below `limit` the scan stops at the first used byte, so the answer is the\n  exact headroom and a breach needs no second, full scan.\n\n  A port with a cheaper or no measurement answers\n  `min(nros_platform_task_stack_unused_bytes(), limit)`. `0` keeps the\n  meaning above: not instrumented."]
+    pub fn nros_platform_task_stack_unused_bytes_upto(limit: usize) -> usize;
+}
+unsafe extern "C" {
     #[doc = " Total managed heap size in bytes (used + free), or `0` if unknown."]
     pub fn nros_platform_heap_total_bytes() -> usize;
 }

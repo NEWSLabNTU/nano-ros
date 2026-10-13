@@ -291,6 +291,23 @@ size_t nros_platform_heap_used_bytes(void);
  *  full. */
 size_t nros_platform_task_stack_unused_bytes(void);
 
+/** The same query, capped: `min(unused, limit)`, reading at most `limit`
+ *  bytes of the stack (phase-436 E5).
+ *
+ *  The executor's `stack-headroom-runtime` rule asks one question, "are at
+ *  least `limit` bytes unused?", and on a painted stack that is true exactly
+ *  when the `limit` bytes at the stack's deep end still hold the paint. So a
+ *  port that SCANS (Zephyr walks from `stack_info.start`) answers it by
+ *  reading those bytes only, never the whole unused region: on the Autoware
+ *  safety island's FVP image the full scan was a 32.6 ms stall once a second.
+ *  Below `limit` the scan stops at the first used byte, so the answer is the
+ *  exact headroom and a breach needs no second, full scan.
+ *
+ *  A port with a cheaper or no measurement answers
+ *  `min(nros_platform_task_stack_unused_bytes(), limit)`. `0` keeps the
+ *  meaning above: not instrumented. */
+size_t nros_platform_task_stack_unused_bytes_upto(size_t limit);
+
 /** Total managed heap size in bytes (used + free), or `0` if unknown. */
 size_t nros_platform_heap_total_bytes(void);
 

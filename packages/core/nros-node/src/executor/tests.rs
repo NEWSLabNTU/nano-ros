@@ -10980,7 +10980,7 @@ fn a_headroom_bound_on_a_port_without_stack_data_is_reported_blind() {
     executor.set_min_stack_headroom_bytes(1024);
     assert_eq!(
         executor.stack_headroom_blind(),
-        nros_platform_api::stack_unused_bytes() == 0,
+        nros_platform_api::stack_unused_bytes_upto(1) == 0,
         "blind must mean exactly: a bound is set and the port reports no stack data"
     );
 }
