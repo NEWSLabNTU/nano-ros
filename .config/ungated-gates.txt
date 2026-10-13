@@ -90,6 +90,13 @@ rmw-xrce
 # --- need a linked image to measure ---
 mem-report
 
+# --- need the generated message bindings, and ~21 min of embedded clippy ---
+# native-check refuses without `just generate-bindings` (20 min cold from the
+# probes) and runs `nros sync` + clippy on 49 example leaves, 27 of them
+# cross-compiled; 20m53s measured at 32 cores (issue 1882). No PR job builds
+# the bindings and the cost is issue 0993's; it is the nightly's to pay.
+native-check
+
 # --- need a provisioned SDK STORE to measure (issue 1744) ---
 # dist-runtime-deps reads each dist's ELF dependency closure from the SDK
 # store (`~/.nros/sdk`). No pull_request / merge_group runner carries a store,
