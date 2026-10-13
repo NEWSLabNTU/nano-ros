@@ -88,6 +88,22 @@ GROUPS = {
         "the west meta-tool itself (workspace init/update, `west build`)",
         [("west", "west")],
     ),
+    # Issue 1870 -- Zephyr's size reports. `west build -t ram_report` /
+    # `-t rom_report` run `scripts/footprint/size_report`, which imports
+    # `anytree` (requirements-base.txt: "for ram/rom reports"). A 4.4 venv made
+    # from the `zephyr-build` list alone had none, so every size report on that
+    # line failed with `ModuleNotFoundError: No module named 'anytree'` while
+    # `west build` itself succeeded.
+    #
+    # A SEPARATE group, not a `zephyr-build` member, by that group's own rule:
+    # no nano-ros lane runs a size report, so a missing `anytree` must not fail
+    # `just zephyr setup`. It is installed by `provision-py312-venv.sh --create`
+    # and REPORTED (a warning with the install line) by setup and doctor, which
+    # is what a downstream project measuring its footprint needs.
+    "zephyr-size-report": (
+        "`west build -t ram_report` / `-t rom_report` (Zephyr's size reports)",
+        [("anytree", "anytree")],
+    ),
     # PX4 ships its own `Tools/setup/requirements.txt`, and that file — not this
     # list — is the authority. These three are the ones `just px4 setup`
     # documented as the reason it was installing anything: kconfiglib for the
@@ -163,7 +179,7 @@ print(json.dumps(out))
 # Everything else defaults to the ambient interpreter — a PX4 or PlatformIO
 # check answered against Zephyr's venv would report on a Python that lane never
 # runs, which is the same wrong-interpreter mistake one level over.
-ZEPHYR_GROUPS = {"west", "zephyr-build"}
+ZEPHYR_GROUPS = {"west", "zephyr-build", "zephyr-size-report"}
 
 
 def default_python(groups):

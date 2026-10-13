@@ -191,6 +191,11 @@ doctor:
         printf '%s\n' "$zpy_report" | sed 's/^/            /'
         fail=1
     fi
+    # Issue 1870 -- the size reports' one extra module. WARN, not MISSING:
+    # `west build` works without it; `-t ram_report` / `-t rom_report` do not.
+    if [ -n "$zpy" ] && ! python3 scripts/check-python-deps.py --python "$zpy" --quiet zephyr-size-report >/dev/null 2>&1; then
+        echo "  [WARN] no anytree in $zpy: west build -t ram_report / -t rom_report will fail (pip install anytree)"
+    fi
     if [ -d "$WORKSPACE/zephyr" ]; then
         echo "  [OK] Zephyr workspace: $WORKSPACE"
     else
