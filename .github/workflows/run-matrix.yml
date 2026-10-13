@@ -41,6 +41,7 @@ jobs:
     defaults:
       run:
         shell: bash
+        working-directory: ${{ github.workspace }}/../nros-fixture-tree
     # WHICH STAGE DID THIS RUN REACH? — issue 1158 item 3.
     #
     # Consumed by the `coverage` job below, which puts it in its own NAME so the
@@ -53,6 +54,17 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: false
+      # phase-489 W6 — the fixture lanes build in a PERSISTENT tree beside the
+      # checkout (`_work/<repo>/nros-fixture-tree`), not in the checkout
+      # `actions/checkout` just `git clean -ffdx`-ed. Every later step runs
+      # there (the job's `defaults.run.working-directory`). The tree is a
+      # user's checkout after `git pull`: this commit, tracked files restored,
+      # build output kept and NOT trusted — `just build` re-derives freshness
+      # and the test half re-probes it. See scripts/ci/fixture-tree.sh.
+      - name: Check out the persistent fixture tree at this commit
+        id: tree
+        working-directory: ${{ github.workspace }}
+        run: scripts/ci/fixture-tree.sh sync
       # A lane answers two questions with different answers: which fixtures must
       # be FRESH (its cell cover) and which must EXIST (a property of the run).
       # `lane=tier2` is the build tier 2's run requires — see #482 / phase-340 W3.
@@ -182,11 +194,11 @@ jobs:
         with:
           name: post-submit-junit
           path: |
-            target/nextest/**/junit*.xml
-            build/**/*.log
-            tmp/build-test-fixtures-*/*.log
-            tmp/build-test-fixtures-*/**/*.log
-            tmp/build-test-fixtures-*/*.joblog
+            ${{ env.NROS_FIXTURE_TREE }}/target/nextest/**/junit*.xml
+            ${{ env.NROS_FIXTURE_TREE }}/build/**/*.log
+            ${{ env.NROS_FIXTURE_TREE }}/tmp/build-test-fixtures-*/*.log
+            ${{ env.NROS_FIXTURE_TREE }}/tmp/build-test-fixtures-*/**/*.log
+            ${{ env.NROS_FIXTURE_TREE }}/tmp/build-test-fixtures-*/*.joblog
           if-no-files-found: ignore
           retention-days: 14
       - name: Sweep orphans and disk
@@ -221,7 +233,8 @@ jobs:
         if: always()
         env:
           NROS_LANE_STEPS: >-
-            [{"name": "just setup tier2", "conclusion": "${{ steps.setup.outcome }}"},
+            [{"name": "Check out the persistent fixture tree at this commit", "conclusion": "${{ steps.tree.outcome }}"},
+             {"name": "just setup tier2", "conclusion": "${{ steps.setup.outcome }}"},
              {"name": "Verify this runner's labels are true", "conclusion": "${{ steps.doctor.outcome }}"},
              {"name": "just build tier2", "conclusion": "${{ steps.build.outcome }}"},
              {"name": "just ci matrix", "conclusion": "${{ steps.cells.outcome }}"}]
@@ -256,6 +269,7 @@ jobs:
     defaults:
       run:
         shell: bash
+        working-directory: ${{ github.workspace }}/../nros-fixture-tree
     outputs:
       stage_label: ${{ steps.stage.outputs.label }}
       reached_cells: ${{ steps.stage.outputs.reached_cells }}
@@ -263,6 +277,17 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: false
+      # phase-489 W6 — the fixture lanes build in a PERSISTENT tree beside the
+      # checkout (`_work/<repo>/nros-fixture-tree`), not in the checkout
+      # `actions/checkout` just `git clean -ffdx`-ed. Every later step runs
+      # there (the job's `defaults.run.working-directory`). The tree is a
+      # user's checkout after `git pull`: this commit, tracked files restored,
+      # build output kept and NOT trusted — `just build` re-derives freshness
+      # and the test half re-probes it. See scripts/ci/fixture-tree.sh.
+      - name: Check out the persistent fixture tree at this commit
+        id: tree
+        working-directory: ${{ github.workspace }}
+        run: scripts/ci/fixture-tree.sh sync
       - name: just setup tier1
         id: setup
         run: |
@@ -339,11 +364,11 @@ jobs:
         with:
           name: tier1-junit
           path: |
-            target/nextest/**/junit*.xml
-            build/**/*.log
-            tmp/build-test-fixtures-*/*.log
-            tmp/build-test-fixtures-*/**/*.log
-            tmp/build-test-fixtures-*/*.joblog
+            ${{ env.NROS_FIXTURE_TREE }}/target/nextest/**/junit*.xml
+            ${{ env.NROS_FIXTURE_TREE }}/build/**/*.log
+            ${{ env.NROS_FIXTURE_TREE }}/tmp/build-test-fixtures-*/*.log
+            ${{ env.NROS_FIXTURE_TREE }}/tmp/build-test-fixtures-*/**/*.log
+            ${{ env.NROS_FIXTURE_TREE }}/tmp/build-test-fixtures-*/*.joblog
           if-no-files-found: ignore
           retention-days: 14
       - name: Sweep orphans and disk
@@ -355,7 +380,8 @@ jobs:
         if: always()
         env:
           NROS_LANE_STEPS: >-
-            [{"name": "just setup tier1", "conclusion": "${{ steps.setup.outcome }}"},
+            [{"name": "Check out the persistent fixture tree at this commit", "conclusion": "${{ steps.tree.outcome }}"},
+             {"name": "just setup tier1", "conclusion": "${{ steps.setup.outcome }}"},
              {"name": "Verify this runner's labels are true", "conclusion": "${{ steps.doctor.outcome }}"},
              {"name": "just build tier1", "conclusion": "${{ steps.build.outcome }}"},
              {"name": "just ci tier1 run", "conclusion": "${{ steps.cells.outcome }}"}]

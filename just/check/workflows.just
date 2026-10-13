@@ -745,6 +745,16 @@ cli-submodule-sync:
 workflow-runner-isolation:
     @python3 scripts/check-workflow-runner-isolation.py
 
+# phase-489 W6 — the self-hosted fixture lanes build in a persistent tree
+# beside the checkout (`scripts/ci/fixture-tree.sh`). Holds the workflow half
+# (self-hosted only, never a merge-gating job, every step and upload in the
+# tree, every self-hosted `just build` job in it) and runs the script's own
+# self-test (build output kept, tracked edits undone, an unchanged source keeps
+# its mtime across a pull, an over-age tree goes cold).
+[group("checks")]
+fixture-tree-persistence:
+    @python3 scripts/check-fixture-tree-persistence.py
+
 [group("checks")]
 workflow-setup-spelling:
     @python3 scripts/check-workflow-setup-spelling.py
