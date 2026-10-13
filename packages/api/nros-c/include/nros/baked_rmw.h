@@ -57,13 +57,24 @@
  * other field's precedence. An entry that wants to name a backend explicitly
  * calls `rclc_support_init_rmw` itself, and nothing here overrides it.
  *
- * An image with no bake is unchanged: with `NROS_ENTRY_RMW` undefined these
- * macros do not exist, and a single-backend registry resolves namelessly as it
+ * An image with no RMW bake gets only the `rclc_support_init` macro, with a
+ * NULL selector, so a single-backend registry resolves namelessly as it
  * always has.
+ *
+ * ## The locator and domain (phase-499 W2)
+ *
+ * `rclc_support_init` also forwards `NROS_ENTRY_LOCATOR` / `NROS_ENTRY_DOMAIN_ID`
+ * (`<nros/entry_config.h>`'s ladder), for the same reason as the selector: they
+ * are macros in the CALLER's translation unit, which the Rust init cannot see.
+ * An empty locator (the ladder's bottom rung) is passed as NULL, "absent", so
+ * the backend applies its own default exactly as before. This is still the
+ * baked rung: the hosted environment wins in the resolver.
  */
 
 #ifndef NROS_BAKED_RMW_H
 #define NROS_BAKED_RMW_H
+
+#include "nros/entry_config.h"
 
 #ifdef NROS_ENTRY_RMW
 
@@ -76,13 +87,24 @@
  * which `rclc_support_init_rmw` already treats as no selector (issue 1050
  * defect 3). So no `#if` on the VALUE is needed here, only on its presence. */
 #define rclc_support_init(support, argc, argv, allocator)                                          \
-    nros_c_support_init_baked((support), (argc), (argv), (allocator), NROS_ENTRY_RMW)
+    nros_c_support_init_baked((support), (argc), (argv), (allocator), NROS_ENTRY_RMW,              \
+                              (NROS_ENTRY_LOCATOR)[0] != '\0' ? (NROS_ENTRY_LOCATOR)               \
+                                                              : (const char*)0,                    \
+                              (uint8_t)(NROS_ENTRY_DOMAIN_ID))
 
 #define rclc_support_init_with_locator(support, locator, domain_id)                                \
     rclc_support_init_rmw((support), (locator), (domain_id), NULL, NROS_ENTRY_RMW)
 
 #define rclc_support_init_named(support, locator, domain_id, session_name)                         \
     rclc_support_init_rmw((support), (locator), (domain_id), (session_name), NROS_ENTRY_RMW)
+
+#else /* !NROS_ENTRY_RMW */
+
+#define rclc_support_init(support, argc, argv, allocator)                                          \
+    nros_c_support_init_baked((support), (argc), (argv), (allocator), (const char*)0,              \
+                              (NROS_ENTRY_LOCATOR)[0] != '\0' ? (NROS_ENTRY_LOCATOR)               \
+                                                              : (const char*)0,                    \
+                              (uint8_t)(NROS_ENTRY_DOMAIN_ID))
 
 #endif /* NROS_ENTRY_RMW */
 

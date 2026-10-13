@@ -65,21 +65,6 @@ int nros_app_main(int argc, char** argv) {
         }
     }
 
-    // Get configuration from environment
-    const char* locator = getenv("NROS_LOCATOR");
-    if (!locator) {
-        locator = NROS_ENTRY_LOCATOR;
-    }
-
-    const char* domain_str = getenv("ROS_DOMAIN_ID");
-    uint8_t domain_id = (uint8_t)NROS_ENTRY_DOMAIN_ID;
-    if (domain_str) {
-        domain_id = (uint8_t)atoi(domain_str);
-    }
-
-    printf("Locator: %s\n", locator);
-    printf("Domain ID: %d\n", domain_id);
-
     // Zero-initialize all static state
     memset(&app, 0, sizeof(app));
 
@@ -89,7 +74,8 @@ int nros_app_main(int argc, char** argv) {
         .type_hash = example_interfaces__srv__AddTwoInts__get_type_hash(),
     };
 
-    RCLC_CHECK_RET(rclc_support_init_with_locator(&app.support, locator, domain_id), 1);
+    rcl_allocator_t allocator = rcl_get_default_allocator();
+    RCLC_CHECK_RET(rclc_support_init(&app.support, argc, argv, &allocator), 1);
     printf("Support initialized\n");
     RCLC_CHECK_RET(rclc_node_init_default(&app.node, "add_two_ints_client", "/", &app.support), 1);
     printf("Node created: %s\n", rcl_node_get_name(&app.node));

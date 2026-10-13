@@ -27,14 +27,10 @@ int main(void) {
     setvbuf(stdout, NULL, _IOLBF, 0);
 #endif
 
-    const char* locator = getenv("NROS_LOCATOR");
-    if (locator == NULL) {
-        locator = NROS_ENTRY_LOCATOR;
-    }
-
     rclc_support_t support = rclc_support_get_zero_initialized();
-    if (rclc_support_init_with_locator(&support, locator, 0) != 0) {
-        fprintf(stderr, "rclc_support_init failed (locator=%s)\n", locator);
+    rcl_allocator_t allocator = rcl_get_default_allocator();
+    if (rclc_support_init(&support, 0, NULL, &allocator) != 0) {
+        fprintf(stderr, "rclc_support_init failed\n");
         return 1;
     }
 

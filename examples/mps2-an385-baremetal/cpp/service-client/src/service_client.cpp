@@ -63,7 +63,7 @@ int nros_app_main(int argc, char** argv) {
     rclcpp::Node node;
     rclcpp::PollClient<example_interfaces::srv::AddTwoInts> client;
 
-    if (!rclcpp::init_in(NROS_ENTRY_LOCATOR, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID)).ok()) {
+    if (!rclcpp::init_in().ok()) {
         emit(rclc_log_default_logger(), RCLC_LOG_SEVERITY_ERROR, "rclcpp::init failed", __FILE__,
              __LINE__);
         return 1;

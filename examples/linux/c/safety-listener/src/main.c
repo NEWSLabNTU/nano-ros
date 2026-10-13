@@ -33,16 +33,10 @@ int nros_app_main(int argc, char** argv) {
     setvbuf(stdout, NULL, _IOLBF, 0);
 #endif
 
-    const char* locator = getenv("NROS_LOCATOR");
-    if (!locator) {
-        locator = NROS_ENTRY_LOCATOR;
-    }
-    const char* domain_str = getenv("ROS_DOMAIN_ID");
-    uint8_t domain_id = domain_str ? (uint8_t)atoi(domain_str) : 0;
-
     printf("nros C Safety Listener\n");
     memset(&app, 0, sizeof(app));
-    RCLC_CHECK_RET(rclc_support_init_with_locator(&app.support, locator, domain_id), 1);
+    rcl_allocator_t allocator = rcl_get_default_allocator();
+    RCLC_CHECK_RET(rclc_support_init(&app.support, argc, argv, &allocator), 1);
     RCLC_CHECK_RET(rclc_node_init_default(&app.node, "c_safety_listener", "/", &app.support), 1);
 
     // Polling-mode subscription — the validated receive path is poll-only.

@@ -259,20 +259,12 @@ int nros_app_main(int argc, char** argv) {
     // Demo platform time functions
     demo_platform_time();
 
-    // Get configuration
-    const char* locator = getenv("NROS_LOCATOR");
-    if (!locator) locator = NROS_ENTRY_LOCATOR;
-
-    const char* domain_str = getenv("ROS_DOMAIN_ID");
-    uint8_t domain_id = domain_str ? (uint8_t)atoi(domain_str) : 0;
-
     printf("\n=== Initialization ===\n");
-    printf("Locator: %s\n", locator);
-    printf("Domain ID: %d\n", domain_id);
 
     // Initialize support
     app.support = rclc_support_get_zero_initialized();
-    rcl_ret_t ret = rclc_support_init_with_locator(&app.support, locator, domain_id);
+    rcl_allocator_t allocator = rcl_get_default_allocator();
+    rcl_ret_t ret = rclc_support_init(&app.support, argc, argv, &allocator);
     if (ret != RCL_RET_OK) {
         fprintf(stderr, "Failed to init support: %d\n", ret);
         return 1;

@@ -8766,20 +8766,29 @@ rcl_ret_t rclc_support_init(struct rclc_support_t *support,
                             const struct rcl_allocator_t *allocator);
 
 /**
- * [`rclc_support_init`] with the image's BAKED RMW selector — the seam
- * `<nros/baked_rmw.h>`'s `rclc_support_init` macro forwards to when the
- * build defines `NROS_ENTRY_RMW` (issue 1531). Not for callers: an
+ * [`rclc_support_init`] with the image's BAKED connect rungs — the seam
+ * `<nros/baked_rmw.h>`'s `rclc_support_init` macro forwards to: the RMW
+ * selector (`NROS_ENTRY_RMW`, issue 1531) and, since phase-499 W2, the
+ * locator and domain (`NROS_ENTRY_LOCATOR` / `NROS_ENTRY_DOMAIN_ID`). Those
+ * are macros defined in the CALLER's translation unit — a cargo-rooted C
+ * image bakes them there (`nros_cc_flags::entry_config`) — so only a header
+ * can carry them here; without this a C image calling rclc's form dialled
+ * the backend default (measured: every bare-metal C cell, ConnectionFailed),
+ * while C++'s inline `init_in()` read them. They are the BAKED rung: the
+ * hosted environment still wins in the resolver. Not for callers: an
  * application names a backend with [`rclc_support_init_rmw`].
  *
  * # Safety
- * As [`rclc_support_init`]; `rmw` NULL or a NUL-terminated string.
+ * As [`rclc_support_init`]; `rmw` and `locator` NULL or NUL-terminated.
  */
 NROS_PUBLIC
 rcl_ret_t nros_c_support_init_baked(struct rclc_support_t *support,
                                     int argc,
                                     const char *const *argv,
                                     const struct rcl_allocator_t *allocator,
-                                    const char *rmw);
+                                    const char *rmw,
+                                    const char *locator,
+                                    uint8_t domain_id);
 
 /**
  * Initialize the support context with an explicit locator and domain.

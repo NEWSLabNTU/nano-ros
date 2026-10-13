@@ -101,12 +101,11 @@ int nros_app_main(int argc, char** argv) {
     (void)argc;
     (void)argv;
 
-    // `NROS_ENTRY_LOCATOR` is the one producer of the compile-time connect
-    // configuration (`<nros/entry_config.h>`, issue 0946); on this leaf it is
-    // the empty bottom rung — baking `system.toml`'s locator is issue 1512's.
-    RCLC_CHECK_RET(rclc_support_init_with_locator(&app.support, NROS_ENTRY_LOCATOR,
-                                                  (uint8_t)NROS_ENTRY_DOMAIN_ID),
-                   1);
+    // `rclc_support_init` takes the connect configuration from the build
+    // (`<nros/entry_config.h>`, issue 0946); on this leaf that is the empty
+    // bottom rung, and baking `system.toml`'s locator is issue 1512's.
+    rcl_allocator_t allocator = rcl_get_default_allocator();
+    RCLC_CHECK_RET(rclc_support_init(&app.support, argc, argv, &allocator), 1);
     RCLC_CHECK_RET(rclc_node_init_default(&app.node, "add_two_ints_server", "/", &app.support), 1);
     g_logger = rclc_node_get_logger(&app.node);
 

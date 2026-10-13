@@ -62,7 +62,8 @@ log_info!(node.logger(), "subscribed to {}", topic);
 
 int main(void) {
     rclc_support_t support = rclc_support_get_zero_initialized();
-    rclc_support_init_with_locator(&support, "tcp/127.0.0.1:7447", 0);
+    rcl_allocator_t allocator = rcl_get_default_allocator();
+    rclc_support_init(&support, 0, NULL, &allocator); /* locator: build, then NROS_LOCATOR */
 
     rcl_node_t node = rcl_get_zero_initialized_node();
     rclc_node_init_default(&node, "my_node", "/", &support);

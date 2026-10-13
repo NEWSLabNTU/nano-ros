@@ -173,16 +173,33 @@ pub unsafe extern "C" fn rclc_support_init(
     argv: *const *const c_char,
     allocator: *const crate::allocator::rcl_allocator_t,
 ) -> rcl_ret_t {
-    unsafe { nros_c_support_init_baked(support, argc, argv, allocator, core::ptr::null()) }
+    unsafe {
+        nros_c_support_init_baked(
+            support,
+            argc,
+            argv,
+            allocator,
+            core::ptr::null(),
+            core::ptr::null(),
+            0,
+        )
+    }
 }
 
-/// [`rclc_support_init`] with the image's BAKED RMW selector — the seam
-/// `<nros/baked_rmw.h>`'s `rclc_support_init` macro forwards to when the
-/// build defines `NROS_ENTRY_RMW` (issue 1531). Not for callers: an
+/// [`rclc_support_init`] with the image's BAKED connect rungs — the seam
+/// `<nros/baked_rmw.h>`'s `rclc_support_init` macro forwards to: the RMW
+/// selector (`NROS_ENTRY_RMW`, issue 1531) and, since phase-499 W2, the
+/// locator and domain (`NROS_ENTRY_LOCATOR` / `NROS_ENTRY_DOMAIN_ID`). Those
+/// are macros defined in the CALLER's translation unit — a cargo-rooted C
+/// image bakes them there (`nros_cc_flags::entry_config`) — so only a header
+/// can carry them here; without this a C image calling rclc's form dialled
+/// the backend default (measured: every bare-metal C cell, ConnectionFailed),
+/// while C++'s inline `init_in()` read them. They are the BAKED rung: the
+/// hosted environment still wins in the resolver. Not for callers: an
 /// application names a backend with [`rclc_support_init_rmw`].
 ///
 /// # Safety
-/// As [`rclc_support_init`]; `rmw` NULL or a NUL-terminated string.
+/// As [`rclc_support_init`]; `rmw` and `locator` NULL or NUL-terminated.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_c_support_init_baked(
     support: *mut rclc_support_t,
@@ -190,6 +207,8 @@ pub unsafe extern "C" fn nros_c_support_init_baked(
     argv: *const *const c_char,
     allocator: *const crate::allocator::rcl_allocator_t,
     rmw: *const c_char,
+    locator: *const c_char,
+    domain_id: u8,
 ) -> rcl_ret_t {
     if !unsafe { crate::allocator::allocator_is_accepted(allocator) } {
         return RCL_RET_INVALID_ARGUMENT;
@@ -203,7 +222,7 @@ pub unsafe extern "C" fn nros_c_support_init_baked(
             return RCL_RET_UNSUPPORTED;
         }
     }
-    unsafe { rclc_support_init_rmw(support, core::ptr::null(), 0, core::ptr::null(), rmw) }
+    unsafe { rclc_support_init_rmw(support, locator, domain_id, core::ptr::null(), rmw) }
 }
 
 /// Initialize the support context with an explicit locator and domain.

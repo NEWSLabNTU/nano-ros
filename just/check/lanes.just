@@ -212,9 +212,18 @@ c: c-fmt
     # Negative control: with NO bake the nameless spelling must SURVIVE. An image
     # with no bake resolves namelessly exactly as it always has, and a macro that
     # fired anyway would pass a token that does not exist.
+    # phase-499 W2 — rclc's form ALWAYS forwards now, because the baked
+    # locator and domain are macros in the caller's TU that the Rust init
+    # cannot see (bare-metal C dialled the backend default without this). With
+    # no RMW bake the selector is NULL — nameless resolution, as before.
+    _pp_bare_joined="$(printf '%s' "$_pp_bare" | tr '\n' ' ')"
     _rung_assert \
-        "with NO bake, rclc_support_init must stay nameless (issue 1531)." \
-        'rc = rclc_support_init(' "$_pp_bare" match
+        "with NO RMW bake, rclc_support_init must forward a NULL selector (phase-499 W2)." \
+        'rc = nros_c_support_init_baked[^;]*(const char\*)0' "$_pp_bare_joined" match
+    _pp_loc_joined="$(_pp '-DNROS_ENTRY_LOCATOR="tcp/192.0.2.7:7447"' | tr '\n' ' ')"
+    _rung_assert \
+        "a baked NROS_ENTRY_LOCATOR must reach rclc_support_init's seam (phase-499 W2)." \
+        'rc = nros_c_support_init_baked[^;]*"tcp/192.0.2.7:7447"' "$_pp_loc_joined" match
     _rung_assert \
         "with NO bake, rclc_support_init_with_locator must stay nameless (issue 1531)." \
         'rc_locator = rclc_support_init_with_locator(' "$_pp_bare" match

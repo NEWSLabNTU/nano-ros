@@ -139,12 +139,10 @@ int nros_app_main(int argc, char** argv) {
     rclcpp::Timer timer;
     TalkerContext ctx = {};
 
-    // `NROS_ENTRY_LOCATOR` / `NROS_ENTRY_DOMAIN_ID` are the ONE producer of the
-    // compile-time connect configuration (`<nros/entry_config.h>`, issue 0946).
-    // Here the locator is the empty bottom rung, which the linked backend fills
-    // with its own default; baking this image's `[image.*] locator` from
-    // `system.toml` is what the runtime lane needs and is tracked on issue 1512.
-    if (!rclcpp::init_in(NROS_ENTRY_LOCATOR, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID)).ok()) {
+    // `init_in()` takes the connect configuration from the build
+    // (`<nros/entry_config.h>`, issue 0946); on this leaf that is the empty
+    // bottom rung, and baking `system.toml`'s locator is issue 1512's.
+    if (!rclcpp::init_in().ok()) {
         emit(rclc_log_default_logger(), RCLC_LOG_SEVERITY_ERROR, "rclcpp::init failed", __FILE__,
              __LINE__);
         return 1;

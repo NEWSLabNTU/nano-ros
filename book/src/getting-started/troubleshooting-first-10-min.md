@@ -216,10 +216,10 @@ Default ports: `tcp/127.0.0.1:7447` on POSIX,
 `7452` NuttX, `7453` ThreadX-RV, `7454` ESP32, `7455`
 ThreadX-Linux, `7447` Zephyr.
 
-### B2. C: `RCLC_CHECK failed: rclc_support_init_with_locator(...) -> -4`
+### B2. C: `RCLC_CHECK failed: rclc_support_init(...) -> -4`
 
 ```
-RCLC_CHECK failed at src/main.c:152: rclc_support_init_with_locator(&app.support, locator, domain_id) -> -4
+RCLC_CHECK failed at src/main.c:92: rclc_support_init(&app.support, argc, argv, &allocator) -> -4
 ```
 
 Process exits `1` (the `retval` passed to `RCLC_CHECK_RET`).
