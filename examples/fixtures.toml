@@ -2973,21 +2973,21 @@ target = "c_parameters"
 platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
-dir = "examples/linux/cpp/component-poc"
+dir = "packages/testing/nros-tests/bins/component-poc"
 target = "component_poc"
 
 [[fixture]]
 platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
-dir = "examples/linux/cpp/component-node-poc"
+dir = "packages/testing/nros-tests/bins/component-node-poc"
 target = "component_node_poc"
 
 [[fixture]]
 platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
-dir = "examples/linux/cpp/transform-poc"
+dir = "packages/testing/nros-tests/bins/transform-poc"
 target = "transform_poc"
 
 [[fixture]]
