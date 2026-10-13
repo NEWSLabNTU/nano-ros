@@ -29,11 +29,8 @@
 // image has; the declaration comes from the toolchain's header.
 #include <string.h>
 
-#include <nros/app_main.h>
-#include <nros/check.h>
 #include <rclc/executor.h>
 #include <rclc/init.h>
-#include <nros/log.h>
 #include <rclc/node.h>
 #include <rclc/publisher.h>
 #include <rcl/rcl.h>

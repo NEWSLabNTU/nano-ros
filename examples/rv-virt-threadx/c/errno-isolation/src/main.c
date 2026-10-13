@@ -31,7 +31,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <nros/app_main.h>
+#include <rclc/rclc.h>
 #include <nros/platform.h>
 
 /* Markers. `nros_tests::output` greps these; keep them in lockstep with

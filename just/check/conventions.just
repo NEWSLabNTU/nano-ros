@@ -173,6 +173,15 @@ c-api-upstream-signatures:
 c-api-freestanding-headers:
     @bash scripts/check-c-api-freestanding-headers.sh
 
+# phase-492 — user-facing C (example sources, ```c blocks in the book outside
+# porting/) includes the C API only at upstream's paths; <nros/*.h> from
+# nros-c is internal (maintainer ruling 2026-10-13). The internal set is
+# derived from the directory, so port-seam headers owned by other packages are
+# outside the rule by construction. Self-tested on every run; ~0.2 s.
+[private]
+c-user-includes:
+    @python3 scripts/check-c-user-includes.py
+
 # issue 1386 — `node_ref_is_live(node_ref_of(node))` mints a reference from the
 # node and compares it against the counter it was just read from, so it is
 # CONSTANT TRUE. Four sites wrote that independently, and behind three of them

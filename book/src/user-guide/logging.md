@@ -58,9 +58,7 @@ log_info!(node.logger(), "subscribed to {}", topic);
 ### C
 
 ```c
-#include <nros/init.h>
-#include <nros/node.h>
-#include <nros/log.h>
+#include <rclc/rclc.h> /* also brings the RCLC_LOG_* macros */
 
 int main(void) {
     rclc_support_t support = rclc_support_get_zero_initialized();

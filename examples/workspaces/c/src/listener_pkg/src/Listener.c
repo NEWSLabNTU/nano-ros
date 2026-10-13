@@ -11,7 +11,7 @@
 #include <stdio.h>
 
 #include <std_msgs/std_msgs.h>
-#include <nros/component.h>
+#include <rclc/rclc.h>
 
 typedef struct {
     rcl_subscription_t sub;

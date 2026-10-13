@@ -176,5 +176,9 @@
     "verdict": "extension",
     "why": "copy out as a `std::string`, present only where `<string>` is (`NROS_CPP_HAS_STD_STRING`). See `cpp:FixedString`.",
     "bucket": "ours-only"
+  },
+  "c:cpp_node_t": {
+    "verdict": "extension",
+    "why": "phase-492 (2026-10-13) -- not user API. `nros_cpp_node_bind_c` / `nros_cpp_node_t` are the C++ binding's seam that `RCLC_C_COMPONENT` expands to: the generated entry hosts a C component on the C++ binding's context and binds the component's `rcl_node_t` / `rclc_executor_t` to it (W4). They reach the C parity surface only because `<nros/nros.h>` now includes `<nros/component.h>`, so `<rclc/rclc.h>` carries `RCLC_C_COMPONENT` and C user code needs no `<nros/*.h>` include. A user never writes either name; they keep `nros_cpp_` as seam names (c-api-rename-map class `seam`)."
   }
 }

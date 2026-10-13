@@ -859,7 +859,6 @@ nano_ros_add_node({node_name} CLASS {pkg_sym}::{class_name} TYPED
 #include <stdint.h>
 #include <stdio.h>
 
-#include <nros/component.h>
 #include <rcl/rcl.h>
 #include <rclc/executor.h>
 #include <rclc/rclc.h>

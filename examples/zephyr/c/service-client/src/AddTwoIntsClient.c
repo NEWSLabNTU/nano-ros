@@ -11,7 +11,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#include <nros/component.h>
+#include <rclc/rclc.h>
 
 #include <example_interfaces/srv/add_two_ints.h>
 

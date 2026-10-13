@@ -15,7 +15,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#include <nros/component.h>
+#include <rclc/rclc.h>
 
 #include "example_interfaces.h"
 #include "std_msgs.h"

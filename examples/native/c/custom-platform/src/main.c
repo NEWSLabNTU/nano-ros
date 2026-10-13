@@ -22,10 +22,8 @@
 // On real bare-metal: link a board crate that forwards the
 // platform-bare-metal feature instead.
 
-// rclc include paths; nros/ holds the nano-ros-only entry and check helpers
-#include <nros/app_main.h>
+// The C API at rcl/rclc's include paths
 #include <rclc/init.h>
-#include <nros/log.h>
 #include <rclc/node.h>
 #include <rclc/publisher.h>
 #include <rclc/timer.h>
