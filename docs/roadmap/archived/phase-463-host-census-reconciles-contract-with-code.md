@@ -20,7 +20,7 @@ Successor to [phase-308](phase-308-cpp-metadata-producer.md) and
 [phase-313](phase-313-workspace-scoped-metadata-probe.md) (the C/C++
 recorder and its probe, both landed and both, it turns out, not wired to
 anything that compares), and the verifying half that
-[phase-403](../phase-403-type-bound-rx-sizing.md) W9 promised: "the declaration
+[phase-403](phase-403-type-bound-rx-sizing.md) W9 promised: "the declaration
 supplies and the running image verifies". On the island the running image is
 the S32K344, and its verification is `ExecutorFull` at boot with no console.
 This phase moves the verifying half to the host, where it can refuse a build.
