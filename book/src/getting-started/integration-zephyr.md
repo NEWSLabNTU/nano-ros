@@ -216,7 +216,7 @@ manifest:
       import: true               # pulls Zephyr's own modules
     - name: nano-ros
       remote: nano-ros
-      revision: nros-v0.5.0      # pin a release tag (west needs SOME
+      revision: nros-v0.6.0      # pin a release tag (west needs SOME
                                  # revision — its default `master` does
                                  # not exist here). `main` works for
                                  # tracking tip, but a tag keeps your
