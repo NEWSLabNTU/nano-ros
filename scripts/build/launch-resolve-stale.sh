@@ -90,7 +90,7 @@ nros_launch_resolve_stale() {
 # and missing files are skipped so a partially-checked-out tree degrades to a
 # different stamp rather than an error.
 #
-# Issue 1869 -- sorted in BYTE order (`LC_ALL=C`), not the caller's locale.
+# Issue 1871 -- sorted in BYTE order (`LC_ALL=C`), not the caller's locale.
 # A bare `sort` collates under whatever LC_ALL/LANG the caller inherited, and
 # en_US.UTF-8 and C.UTF-8 order the resolver's file list differently (the
 # UTF-8 collation weights `_` and `.` below letters, byte order does not). The

@@ -1,5 +1,5 @@
 ---
-id: 1869
+id: 1871
 title: "The launch resolver's content stamp sorted its file list in the caller's locale, so one tree read fresh under C.UTF-8 and stale under en_US.UTF-8"
 status: resolved
 type: bug

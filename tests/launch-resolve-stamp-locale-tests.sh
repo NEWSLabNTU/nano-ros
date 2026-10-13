@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# tests/launch-resolve-stamp-locale-tests.sh -- issue 1869
+# tests/launch-resolve-stamp-locale-tests.sh -- issue 1871
 #
 # `nros_launch_resolve_stamp` (scripts/build/launch-resolve-stale.sh) must give
 # ONE digest for one tree, whatever locale the caller runs in.
