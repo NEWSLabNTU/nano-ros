@@ -108,8 +108,23 @@ config NROS_XRCE_MAX_SERVICE_SERVERS
 config NROS_XRCE_MAX_SUBSCRIBERS
     int "Maximum concurrent subscribers"
 
+config NROS_XRCE_SERVICE_REPLY_BUFFER_SIZE
+    int "Service-client reply slot size"
+
+config NROS_XRCE_SERVICE_REQUEST_BUFFER_SIZE
+    int "Service-server request ring entry size"
+
 config NROS_XRCE_STREAM_HISTORY
     int "Reliable stream history depth"
+
+config NROS_XRCE_SUBSCRIBER_BUFFER_SIZE
+    int "Subscriber ring entry size"
+
+config NROS_XRCE_SUBSCRIBER_RING_DEPTH
+    int "Queued samples per subscriber"
+
+config NROS_XRCE_TRANSPORT_MTU
+    int "XRCE transport MTU"
 
 endif # NROS_RMW_XRCE
 

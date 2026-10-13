@@ -1068,6 +1068,18 @@ verb's answer is used as given.
   `system.toml` files migrated; 0 value differences across 1832 `leaf-system`
   runs, one cargo leaf's `nros-cargo.toml` and four west `.config`s. The
   monitor flags and `NROS_ENTITY_COUNT_*` stay `env` rows.
+  **The rest of the XRCE knobs followed (2026-10-14):**
+  `NROS_XRCE_SUBSCRIBER_RING_DEPTH`, `_SUBSCRIBER_BUFFER_SIZE`,
+  `_SERVICE_REQUEST_BUFFER_SIZE`, `_SERVICE_REPLY_BUFFER_SIZE` and
+  `NROS_XRCE_TRANSPORT_MTU` are registry rows with their Kconfig definitions
+  unchanged, so every `xrce-config.txt` `knob`/`define` env name now has one
+  (`AGENT_ADDR`/`_PORT` are the locator's rendering, not knobs). No tracked
+  `system.toml` stated any of them, so nothing migrated; 0 value differences
+  across 1395 `leaf-system` runs, talker-xrce's `nros-cargo.toml`, and
+  c/listener `zephyr_xrce`'s `.config` (455 symbols, order only). The census
+  blind spot that let them sit unregistered is closed: `config-knob-census`
+  reads `xrce-config.txt`'s rows as READ TABLES (the build resolves them by
+  variable, so no read call spelled them), with a negative control.
 - ~~Issue 1768 (census classifier + fail on UNCLASSIFIED).~~ Done (W7a): the `linker-script` role knows `link_script!`; gate `build-wiring-classified`.
 - ~~`canonical-build-path.md`, the book's configuration and getting-started
   pages, CLAUDE.md pointers.~~ Done (2026-10-13): the map gains "Where a

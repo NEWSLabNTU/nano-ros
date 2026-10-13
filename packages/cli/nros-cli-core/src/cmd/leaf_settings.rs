@@ -1217,6 +1217,10 @@ mod tests {
                 // (issue 1033); it renders like any other value.
                 ("xrce.max_subscribers", Int(0)),
                 ("zenoh.socket_timeout_ms", Int(5)),
+                // The derive sentinel is a stated value too: -1 renders as -1.
+                ("xrce.subscriber_buffer_size", Int(-1)),
+                ("xrce.subscriber_ring_depth", Int(1)),
+                ("xrce.transport_mtu", Int(512)),
             ]),
             &env_rows(&[("NROS_BOOT_REPORT", "1")]),
         )
@@ -1231,6 +1235,9 @@ mod tests {
                 ("NROS_ZENOH_TX_BATCH", "1"),
                 ("NROS_XRCE_MAX_SUBSCRIBERS", "0"),
                 ("NROS_ZENOH_SOCKET_TIMEOUT_MS", "5"),
+                ("NROS_XRCE_SUBSCRIBER_BUFFER_SIZE", "-1"),
+                ("NROS_XRCE_SUBSCRIBER_RING_DEPTH", "1"),
+                ("NROS_XRCE_TRANSPORT_MTU", "512"),
                 ("NROS_BOOT_REPORT", "1"),
             ]),
         )

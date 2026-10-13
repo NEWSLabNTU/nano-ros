@@ -147,6 +147,17 @@ KNOB_CLASS = {
     # that no build script reads, and hardcoded to 4096 on the UDP path anyway —
     # so every Zephyr XRCE image paid 2 x 4096 x 16 for its stream buffers.
     "NROS_XRCE_TRANSPORT_MTU": ("sizing", "transport MTU (UDP/TCP); numeric"),
+    # phase-484 W8 -- the XRCE session pools, SEEN since this census reads
+    # `xrce-config.txt`'s rows (READ_TABLES below): the build reads them by
+    # variable, so no read call spelled them and they were never counted.
+    "NROS_XRCE_MAX_SUBSCRIBERS": ("derived", "subscriber slot count; NROS_DERIVED_MAX_SUBSCRIBERS from the entity inventory (issue 1033)"),
+    "NROS_XRCE_MAX_SERVICE_SERVERS": ("derived", "service-server slot count; NROS_DERIVED_MAX_QUERYABLES from the entity inventory (issue 1033)"),
+    "NROS_XRCE_MAX_SERVICE_CLIENTS": ("sizing", "service-client slot count; no inventory counts the clients an image opens"),
+    "NROS_XRCE_SUBSCRIBER_RING_DEPTH": ("sizing", "samples per subscriber slot; a burst policy, not derivable"),
+    "NROS_XRCE_BUFFER_SIZE": ("sizing", "the default of the three per-family receive sizes"),
+    "NROS_XRCE_SUBSCRIBER_BUFFER_SIZE": ("derived", "subscriber ring entry; the largest declared subscription wire bound (phase-403 W8)"),
+    "NROS_XRCE_SERVICE_REQUEST_BUFFER_SIZE": ("sizing", "service request entry; not derived from service rows (the param/lifecycle families are not itemised)"),
+    "NROS_XRCE_SERVICE_REPLY_BUFFER_SIZE": ("sizing", "service-client reply slot; not derived, same reason as the request size"),
     "NROS_ZENOH_MAX_LARGE_SUBSCRIBERS": ("derived", "pool cardinality; multiplies LARGE_PAYLOADS, phase-392"),
     "NROS_ZENOH_SERVICE_BUFFER_SIZE": ("derived", "SERVICE_BUFFERS is MAX_SESSIONS x MAX_QUERYABLES; phase-392"),
     # phase-461 W1 / issue 1352 -- the service inbox per FAMILY. The two slot
@@ -790,12 +801,78 @@ def build_env_sources():
     return sorted(set(out))
 
 
+# READ TABLES — files whose ROWS are read sites (phase-484 W8).
+#
+# `nros-rmw-xrce-cffi/build.rs` reads every XRCE knob by VARIABLE: it walks the
+# `knob` and `define` rows of `xrce-config.txt` and resolves each row's `<env>`
+# column, so no read call in any build source spells the name. The call matcher
+# above could therefore never see them, and nine XRCE knobs were read by a
+# build and absent from this census — which is how they stayed out of the knob
+# registry while every gate here passed. `check-knob-ends` had already learnt
+# the same lesson (`xrce_manifest_readers`); this is that arm, for this census.
+#
+# The grammar is not re-implemented: `check-xrce-config-manifest.py` owns the
+# parser, and a second copy is how two readers come to disagree about a record
+# the gate accepts.
+XRCE_CONFIG_MANIFEST = "packages/rmw/xrce/xrce-config.txt"
+
+
+def _xrce_manifest_module():
+    mod = _xrce_manifest_module.__dict__.get("_mod")
+    if mod is None:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "_census_xrce_manifest",
+            os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                         "check-xrce-config-manifest.py"),
+        )
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        _xrce_manifest_module._mod = mod
+    return mod
+
+
+def xrce_manifest_env(text):
+    """The env names `xrce-config.txt`'s `knob` and `define` rows bind."""
+    _values, knobs, _flags, defines = _xrce_manifest_module().parse_manifest(
+        text, XRCE_CONFIG_MANIFEST
+    )
+    return {env for _t, _token, env, _d, _m in knobs} | {env for _m, env, _min in defines}
+
+
+# path -> the function that names what its rows read. A new table that a build
+# script walks by variable belongs here, or its knobs are invisible again.
+READ_TABLES = {XRCE_CONFIG_MANIFEST: xrce_manifest_env}
+
+
+def read_table_env(prefix):
+    """`<PREFIX>_*` names a READ TABLE binds. A table that is missing is an
+    error, not an empty set: a moved file must not read as "reads nothing"."""
+    names = set()
+    for rel, names_of in READ_TABLES.items():
+        path = os.path.join(ROOT, rel)
+        if not os.path.exists(path):
+            raise SystemExit(f"config-knob-census: read table {rel} is missing; "
+                             "update READ_TABLES")
+        names |= {n for n in names_of(read(path)) if n.startswith(prefix + "_")}
+    return names
+
+
 def build_script_env(prefix):
-    """`<PREFIX>_*` names a build-time source reads from the environment."""
+    """`<PREFIX>_*` names a build-time source reads from the environment —
+    through a read call, or through a READ TABLE's rows."""
     names = set()
     for p in build_env_sources():
         names |= _env_names_in(read(p), prefix)
-    return names
+    return names | read_table_env(prefix)
+
+
+def unregistered_knobs(by_class, spelled):
+    """Names classified as a KNOB that are no spelling in the knob registry."""
+    return sorted(
+        n for cls in ("ladder", "sizing", "derived") for n in by_class.get(cls, [])
+        if n not in spelled and n not in SELECTIONS
+    )
 
 
 def self_test() -> None:
@@ -878,6 +955,38 @@ def self_test() -> None:
         "NROS_FROM_ENV_CALL",
         "ZPICO_FROM_FLAG_CALL",
     }, f"selftest: ladder-mapping reader got {sorted(got)!r}"
+
+    # The READ TABLE arm (phase-484 W8): a name bound only by an
+    # `xrce-config.txt` row — read by variable, spelled in no read call — must
+    # be SEEN, so that an unregistered one reaches the registry check below
+    # rather than passing unseen. Both row kinds that bind an env name count; a
+    # `value` row binds none, and a comment is not a row.
+    table = (
+        "# define XRCE_IN_A_COMMENT NROS_XRCE_COMMENTED 1\n"
+        "value  uxr  UCLIENT_X  1\n"
+        "knob   uxr  UCLIENT_Y  NROS_XRCE_FROM_KNOB_ROW  4096  128\n"
+        "define XRCE_Z          NROS_XRCE_FROM_DEFINE_ROW 1\n"
+    )
+    got = xrce_manifest_env(table)
+    assert got == {"NROS_XRCE_FROM_KNOB_ROW", "NROS_XRCE_FROM_DEFINE_ROW"}, (
+        f"selftest: read-table reader got {sorted(got)!r}"
+    )
+    with tempfile.TemporaryDirectory() as d:
+        os.makedirs(os.path.join(d, os.path.dirname(XRCE_CONFIG_MANIFEST)))
+        with open(os.path.join(d, XRCE_CONFIG_MANIFEST), "w") as fh:
+            fh.write(table)
+        real, ROOT = ROOT, d
+        try:
+            seen = read_table_env("NROS")
+            unregistered = unregistered_knobs(
+                {"sizing": sorted(seen)}, {"NROS_XRCE_FROM_KNOB_ROW"}
+            )
+        finally:
+            ROOT = real
+    assert unregistered == ["NROS_XRCE_FROM_DEFINE_ROW"], (
+        "selftest: a read-table name with no registry row was not reported "
+        f"({unregistered!r})"
+    )
 
 
 def main() -> int:
@@ -987,11 +1096,7 @@ def main() -> int:
     # knob registry, which is what every reader resolves it through. A knob
     # this census sees and the registry does not is a reader the registry
     # cannot rename, alias or derive a Kconfig symbol for.
-    spelled = registry_spellings()
-    unregistered = sorted(
-        n for cls in ("ladder", "sizing", "derived") for n in by_class.get(cls, [])
-        if n not in spelled and n not in SELECTIONS
-    )
+    unregistered = unregistered_knobs(by_class, registry_spellings())
     if unregistered:
         sys.stderr.write(
             "config-knob-census: FAILED — knob(s) with no row in "
