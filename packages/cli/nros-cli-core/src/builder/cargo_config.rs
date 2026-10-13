@@ -443,7 +443,7 @@ build-std = ["core", "alloc"]
             target_dir: PathBuf::from(
                 "/nros/examples/workspaces/rust/build/esp32-zenoh/esp32_entry/target",
             ),
-            env: BTreeMap::from([("NROS_DECLARED_INFRA_QUERYABLES".into(), "param".into())]),
+            env: BTreeMap::from([("NROS_EXECUTOR_MAX_NODES".into(), "2".into())]),
             path_env: BTreeMap::new(),
             patches: BTreeMap::new(),
             build_hint: None,
@@ -599,14 +599,11 @@ build-std = ["core", "alloc"]
     }
 
     #[test]
-    fn entity_facts_are_env_and_never_forced() {
+    fn derived_env_rows_are_env_and_never_forced() {
         // A lane that sets the same variable must win (RFC-0049's ladder).
         let body = render(&spec(), &cfg_path()).unwrap();
         let v = parsed(&body);
-        assert_eq!(
-            v["env"]["NROS_DECLARED_INFRA_QUERYABLES"].as_str(),
-            Some("param")
-        );
+        assert_eq!(v["env"]["NROS_EXECUTOR_MAX_NODES"].as_str(), Some("2"));
         assert!(!body.contains("force = true"), "{body}");
     }
 

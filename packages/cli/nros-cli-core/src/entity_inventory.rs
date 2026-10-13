@@ -984,10 +984,10 @@ const PRIMARY_NODE_LIVELINESS_TOKENS: usize = 1;
 /// No component declares them, and for a while that was read as "this
 /// inventory cannot see them". It can: the BRINGUP says so. `[param_services]`
 /// and `[lifecycle]` (or `features = [...]`) land in the model's
-/// `execution.features`, the same fact `nros ws entity-facts` hands the cmake
-/// road as `NROS_DECLARED_INFRA_QUERYABLES`, and both read it through
-/// [`InfraServices::from_model`] so the two roads cannot disagree about
-/// whether a family is in the image.
+/// `execution.features` (the overlay since phase-486 W3), the same fact the
+/// sizing descriptor states as `[image] infra_families`, and both read it
+/// through [`InfraServices::from_model`] so the inventory and the descriptor
+/// cannot disagree about whether a family is in the image.
 ///
 /// Counted into the SESSION pool (`max_queryables`) and never into `MAX_CBS`:
 /// both families live outside the executor arena (see the module docs).
@@ -1089,18 +1089,12 @@ impl InfraServices {
         }
     }
 
-    /// The `NROS_DECLARED_INFRA_QUERYABLES` spelling.
-    ///
-    /// The consumer PANICS on a token it does not know
-    /// (`nros-zpico-build::infra_queryables`), so these four strings are a
-    /// contract -- written in exactly one place, on every road.
-    pub fn token(self) -> &'static str {
-        match (self.param_services, self.lifecycle) {
-            (true, true) => "param+lifecycle",
-            (true, false) => "param",
-            (false, true) => "lifecycle",
-            (false, false) => "none",
-        }
+    /// The `[image] infra_families` statement of these two switches -- the
+    /// spelling the descriptor carries and both zenoh and XRCE build scripts
+    /// parse (it was the `NROS_DECLARED_INFRA_QUERYABLES` carrier's until
+    /// phase-486). One place spells the four strings: the vocabulary.
+    pub fn families(self) -> nros_sizing_descriptor::InfraFamilies {
+        nros_sizing_descriptor::InfraFamilies::from_switches(self.param_services, self.lifecycle)
     }
 
     /// Nodes carrying the parameter family on an image of `components`
@@ -7375,7 +7369,9 @@ execution:
                 .for_each(|n| n.lifecycle_autostart = Some(autostart));
             assert!(model_declares_lifecycle_block(&block.clone()));
             assert_eq!(
-                InfraServices::from_model(&block.clone(), None).token(),
+                InfraServices::from_model(&block.clone(), None)
+                    .families()
+                    .tag(),
                 "lifecycle"
             );
             let k = derive(&block);
@@ -7391,7 +7387,9 @@ execution:
         // Negative control: no block and no feature is still no family.
         assert!(!model_declares_lifecycle_block(&(infra_model("")).clone()));
         assert_eq!(
-            InfraServices::from_model(&infra_model(""), None).token(),
+            InfraServices::from_model(&infra_model(""), None)
+                .families()
+                .tag(),
             "none"
         );
     }

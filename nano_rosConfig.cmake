@@ -142,7 +142,7 @@ if(NROS_LEAF_SYSTEM)
     # Issue 1142 — and what the leaf DECLARES it creates (RFC-0098 D8). This is
     # the third thing its `system.toml` answers, after the board and the
     # deployment identity: a standalone leaf has no bringup and no SystemModel,
-    # so `nros_record_entity_facts` returns early and the RMW would size its
+    # so the model roads never reach it and the RMW would size its
     # queryable table from a literal. Recorded HERE, before nano-ros is
     # imported, because the delivery is deferred to the end of the top-level
     # scope (`nros_entity_facts_env_deferred`, already armed on

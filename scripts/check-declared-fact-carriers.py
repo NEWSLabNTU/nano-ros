@@ -329,12 +329,11 @@ FACT_DISPOSITION = {
             "registration failure at boot rather than a smaller pool"),
         "declared": NotCarried(
             _LEAF, _QUERYABLES_COMPLETED,
-            "the declared road carries the RAW infrastructure input "
-            "(NROS_DECLARED_INFRA_QUERYABLES), the node count and the "
-            "application's counts come from the sizing descriptor (phase-486 "
-            "W9 and issue 1649 retired their carriers), and the consumer "
-            "completes the sum, so the derived count itself has nothing to "
-            "carry"),
+            "the RAW inputs -- the application's counts, the node count and "
+            "the service families -- come from the sizing descriptor "
+            "(issue 1649 and phase-486 retired their carriers), and the "
+            "consumer completes the sum, so the derived count itself has "
+            "nothing to carry"),
     },
     "NROS_DERIVED_EXECUTOR_MAX_NODES": {
         "resolver": ("NROS_RESOLVED_NROS_EXECUTOR_MAX_NODES",),
@@ -586,13 +585,6 @@ DESCRIPTOR_TWINS = {
 
 # Facts with no leaf-road twin, each for a stated reason.
 ROAD_UNPAIRED = {
-    "NROS_DECLARED_INFRA_QUERYABLES":
-        "completes ZPICO_MAX_QUERYABLES and (issue 1743) "
-        "NROS_XRCE_MAX_SERVICE_SERVERS, which no cargo- or cmake-road "
-        "producer states as a count: "
-        "the consumer derives it from the facts (issue 0460). Since phase-445 "
-        "W1 the cargo-leaf road carries this FACT itself "
-        "(`leaf_entity_env::leaf_facts`), so there is no knob to pair.",
     "NROS_DECLARED_QOS_MODELS": "QoS wiring, not a pool size.",
     "NROS_DECLARED_QOS_PENDING": "QoS wiring, not a pool size.",
     "NROS_DECLARED_QOS_SCHEDULED": "QoS wiring, not a pool size.",

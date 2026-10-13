@@ -22,10 +22,7 @@
 
 use std::path::{Path, PathBuf};
 
-use nros_cli_core::cmd::{
-    entity_facts,
-    sizing_descriptor::{SizingDescriptorArgs, run},
-};
+use nros_cli_core::cmd::sizing_descriptor::{SizingDescriptorArgs, run};
 
 /// The nano-ros repo root (`packages/cli/nros-cli-core` → up three).
 fn repo() -> PathBuf {
@@ -108,21 +105,6 @@ fn the_leaves_issue_1378_measured_get_a_descriptor_that_states_their_queryables(
     for lang in ["c", "cpp"] {
         let leaf = leaf_copy(lang, dir.path(), &format!("[\"{ACTION_SERVER}\"]"));
 
-        // The verb the cmake leaf road calls states the infrastructure and
-        // node facts, and no longer the application's counts (issue 1649).
-        let facts = entity_facts::facts_from_leaf(&leaf)
-            .expect("the leaf reads")
-            .expect("it declares entities, so the verb does not abstain");
-        for retired in [
-            "NROS_DECLARED_TL_PUBLISHERS",
-            "NROS_DECLARED_SERVICE_SERVERS",
-        ] {
-            assert!(
-                !facts.contains_key(retired),
-                "{lang}: `{retired}` was retired onto the descriptor (issue 1649): {facts:?}"
-            );
-        }
-
         // The DESCRIPTOR's answer, from the road this wave adds.
         let build_dir = dir.path().join(lang);
         run(SizingDescriptorArgs {
@@ -169,17 +151,19 @@ fn the_leaves_issue_1378_measured_get_a_descriptor_that_states_their_queryables(
             desc.endpoints[0].kind,
             nros_sizing_descriptor::EndpointKind::ActionServer
         );
-        // phase-486 W9 -- the node count reaches the consumers on the
-        // descriptor (`[image] model_nodes`, one per `[[component]]`), and the
-        // carrier verb no longer states it.
+        // phase-486 -- the facts the retired `NROS_DECLARED_*` carriers sent
+        // this road (`nros ws entity-facts --leaf`, deleted with them) are the
+        // descriptor's: the node count, one per `[[component]]` (W9), and the
+        // service families its `[system] features` declare -- none here.
         assert_eq!(
             desc.image.model_nodes().stated(),
             Some(&1),
             "{lang}: one component, one node"
         );
-        assert!(
-            !facts.contains_key("NROS_DECLARED_NODES"),
-            "{lang}: the retired carrier is not emitted: {facts:?}"
+        assert_eq!(
+            desc.image.infra_families().stated(),
+            Some(&nros_sizing_descriptor::InfraFamilies::None),
+            "{lang}: no `[system] features`, neither family"
         );
         checked += 1;
     }
@@ -221,17 +205,12 @@ fn the_leaf_roads_descriptor_carries_no_absolute_path() {
 }
 
 /// Issue 1556 -- the leaves as they ARE: `entities = "census"` with no census
-/// taken refuses on BOTH readers (the carrier verb and this descriptor road),
-/// naming the command that takes it. Never a silent fall back to the RMW's
+/// taken refuses on the descriptor road, naming the command that takes it. Never a silent fall back to the RMW's
 /// guess, which for this leaf is issue 1142's tens of kilobytes.
 #[test]
 fn the_census_opt_in_refuses_without_a_census() {
     let dir = tempfile::tempdir().expect("scratch");
     let leaf = leaf_copy("cpp", dir.path(), "\"census\"");
-    let err = entity_facts::facts_from_leaf(&leaf)
-        .expect_err("no census, no answer")
-        .to_string();
-    assert!(err.contains("entity-census take --leaf"), "{err}");
     let err = run(SizingDescriptorArgs {
         from_leaf: Some(leaf.clone()),
         build_dir: Some(dir.path().join("b")),

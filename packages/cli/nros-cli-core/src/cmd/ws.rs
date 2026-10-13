@@ -123,18 +123,6 @@ pub enum Sub {
     #[command(name = "seed-lock")]
     SeedLock(SeedLockArgs),
 
-    /// phase-392 W5.b/W5.c — print the ENTITY figure a backend sizes its
-    /// tables from (`NROS_DECLARED_INFRA_QUERYABLES`; the node count moved
-    /// onto the sizing descriptor, phase-486 W9), as `KEY=VALUE` lines, for
-    /// whoever is about to invoke cargo.
-    ///
-    /// Same delivery seam and same reason as `board-facts`: the process
-    /// environment is the only carrier that reaches a workspace member's cargo
-    /// invocation (issue 0460). Different QUESTION — this one is answered by
-    /// the resolved SystemModel, not by the board.
-    #[command(name = "entity-facts")]
-    EntityFacts(crate::cmd::entity_facts::EntityFactsArgs),
-
     /// phase-445 W3 (RFC-0098 D3/D5) — print a single-package leaf's
     /// deployment (board, RMW, domain, network identity, and the C/C++ deploy
     /// token) from its `system.toml`, as `KEY=VALUE` lines.
@@ -150,13 +138,14 @@ pub enum Sub {
     /// `nano_ros_node_register(... ENTITIES …)` declarations into the ENTITY
     /// inventory, and derive `NROS_EXECUTOR_MAX_CBS` from it.
     ///
-    /// The sibling question to `entity-facts`, asked of a source that can
-    /// answer it. `entity-facts` reads the resolved SystemModel and abstains on
-    /// every one in this tree, because a launch file names a node and never
-    /// says what that node wires; the register call does.
+    /// The sibling question to the retired `entity-facts` (phase-486), asked of
+    /// a source that can answer it. `entity-facts` read the resolved
+    /// SystemModel and abstained on every one in this tree, because a launch
+    /// file names a node and never says what that node wires; the register
+    /// call does.
     ///
     /// Prints the env transport (`KEY=VALUE`) on stdout — the same carrier and
-    /// the same reason as `board-facts` / `entity-facts` — and optionally
+    /// the same reason as `board-facts` — and optionally
     /// writes the canonical JSON and the `include()`able CMake projection.
     ///
     /// REFUSES, printing nothing, when any component in the image declared no
@@ -169,7 +158,7 @@ pub enum Sub {
     /// CENSUS producer: what the code actually creates, node by node.
     ///
     /// The third question in the family above, asked of the only source that
-    /// can answer it. `entity-facts` reads the resolved model, `entity-inventory`
+    /// can answer it. The model roads read the resolved model, `entity-inventory`
     /// reads what the components DECLARE; both read declarations, and nothing
     /// in the tree checked that a declaration is true. A census is evidence:
     /// the entry's hosted boot funnel, run with `NROS_CENSUS_OUT` set, writes
@@ -588,7 +577,6 @@ pub fn run(args: Args) -> Result<()> {
         Sub::CentralPatch(a) => run_central_patch(a),
         Sub::BoardFacts(a) => crate::cmd::board_facts::run(a),
         Sub::SeedLock(a) => run_seed_lock(a),
-        Sub::EntityFacts(a) => crate::cmd::entity_facts::run(a),
         Sub::LeafSystem(a) => crate::cmd::leaf_system::run(a),
         Sub::EntityInventory(a) => crate::cmd::entity_inventory::run(a),
         Sub::EntityCensus(a) => crate::cmd::entity_census::run(a),

@@ -49,8 +49,8 @@ use serde::Deserialize;
 use crate::{
     fact::Fact,
     vocabulary::{
-        Basis, CapacityNeed, Durability, EndpointKind, History, ParamStore, RegistrationPath,
-        Reliability, Status,
+        Basis, CapacityNeed, Durability, EndpointKind, History, InfraFamilies, ParamStore,
+        RegistrationPath, Reliability, Status,
     },
 };
 
@@ -620,6 +620,7 @@ pub struct Image {
     service_server_queryables: Option<usize>,
     entity_liveliness_tokens: Option<usize>,
     model_nodes: Option<usize>,
+    infra_families: Option<InfraFamilies>,
     #[serde(default)]
     refused: BTreeMap<String, String>,
 }
@@ -646,6 +647,7 @@ impl Image {
         "service_server_queryables",
         "entity_liveliness_tokens",
         "model_nodes",
+        "infra_families",
     ];
 
     /// Distinct `(name, namespace)` nodes the image registers — one per declared
@@ -837,9 +839,9 @@ impl Image {
     ///
     /// The application half only, by the rule [`Self::service_server_queryables`]
     /// states: the node tokens and the runtime's parameter and lifecycle
-    /// entities are NOT in it, because `nros-zpico-build` adds them from the
-    /// `NROS_DECLARED_NODES` / `NROS_DECLARED_INFRA_QUERYABLES` facts, which
-    /// reach it on roads no descriptor reaches. A transient-local cache
+    /// entities are NOT in it, because `nros-zpico-build` adds them from
+    /// [`Self::model_nodes`] and [`Self::infra_families`] (the facts its two
+    /// retired `NROS_DECLARED_*` carriers sent). A transient-local cache
     /// queryable is not in it either: it declares no token.
     pub fn entity_liveliness_tokens(&self) -> Fact<usize> {
         fact(
@@ -866,6 +868,19 @@ impl Image {
     /// stated fact earns a file whatever it came from.
     pub fn model_nodes(&self) -> Fact<usize> {
         fact(&self.model_nodes, "model_nodes", &self.refused)
+    }
+
+    /// Which of the runtime's own service families the image builds (see
+    /// [`InfraFamilies`]). The `NROS_DECLARED_INFRA_QUERYABLES` carrier's
+    /// descriptor home: a MODEL fact (the bringup's `features`, plus, on a
+    /// cargo leaf, the service features its own `nros` dependency enables), so
+    /// an image with no wiring states it too.
+    ///
+    /// ABSENT keeps its old meaning, the carrier's absence: nobody said, so a
+    /// consumer that SIZES assumes both families and one that REFUSES on a
+    /// floor does not check.
+    pub fn infra_families(&self) -> Fact<InfraFamilies> {
+        fact(&self.infra_families, "infra_families", &self.refused)
     }
 
     pub fn new(
@@ -965,6 +980,10 @@ impl Image {
         self.model_nodes = v;
         self
     }
+    pub fn set_infra_families(&mut self, v: Option<InfraFamilies>) -> &mut Self {
+        self.infra_families = v;
+        self
+    }
 
     pub fn refuse(&mut self, field: &str, reason: impl Into<String>) -> &mut Self {
         debug_assert!(
@@ -1001,6 +1020,7 @@ impl Image {
             "service_server_queryables" => self.service_server_queryables?.to_string(),
             "entity_liveliness_tokens" => self.entity_liveliness_tokens?.to_string(),
             "model_nodes" => self.model_nodes?.to_string(),
+            "infra_families" => quoted(self.infra_families?.tag()),
             _ => return None,
         })
     }
@@ -1055,6 +1075,7 @@ impl Image {
                     self.entity_liveliness_tokens.is_some(),
                 ),
                 ("model_nodes", self.model_nodes.is_some()),
+                ("infra_families", self.infra_families.is_some()),
             ],
         )
     }

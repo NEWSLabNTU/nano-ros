@@ -484,8 +484,8 @@ function(nros_nuttx_build_example)
     # composition, delivered through this lane's own carrier.
     #
     # IMMEDIATE rather than deferred, and that is right for the road this
-    # serves: a standalone leaf records its declaration inside
-    # `find_package(nano_ros)` (`nros_record_leaf_entity_facts`), strictly
+    # serves: a standalone leaf records its declaration (its sizing descriptor)
+    # inside `find_package(nano_ros)` (`nros_record_leaf_entity_facts`), strictly
     # before the verb that reaches here. A workspace entry records in
     # `nano_ros_add_entry`, so on that road this may read an empty accumulator
     # and deliver nothing — which is what this lane delivered before, never

@@ -18,7 +18,7 @@ pub struct ShimConfig {
     pub max_subscribers: usize,
     pub max_queryables: usize,
     /// phase-392 W5.e — whether [`ShimConfig::max_queryables`] was sized from a
-    /// DECLARATION (the resolved SystemModel, via `nros ws entity-facts`) or
+    /// DECLARATION (the image's sizing descriptor) or
     /// from the backend's own budget.
     ///
     /// The runtime needs to know which, because the two produce the same

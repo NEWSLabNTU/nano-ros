@@ -329,7 +329,8 @@ nros_armv8r_cflags_env(nros_ws_runtime-static)
     # after the SUBDIRS loop above has processed them all" — true of the NODE
     # packages, false of the ENTRY, which `nano_ros_add_entry` declares LAST by
     # design ("the first point in a configure that is guaranteed to be AFTER
-    # every nano_ros_node_register()"). `nros_record_entity_facts` runs there.
+    # every nano_ros_node_register()"). `nros_record_entity_facts` ran there
+    # (retired, phase-486); the sizing descriptor's inputs are recorded there.
     #
     # MEASURED on `examples/workspaces/mixed`: the consumer logged
     # `seen=<empty>` at configure line 17 and the seven models were recorded at

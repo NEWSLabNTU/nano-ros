@@ -29,8 +29,7 @@ the declaration does not** (`nros_cli_core::leaf_entity_env`):
 
 `NROS_ZENOH_MAX_QUERYABLES` is a third case: `nros sync` never states it as a count.
 It carries the FACTS (the sizing descriptor's `[image]
-service_server_queryables` and `model_nodes`, and
-`NROS_DECLARED_INFRA_QUERYABLES`) and
+service_server_queryables`, `model_nodes` and `infra_families`) and
 `nros-zpico-build` adds the parameter and lifecycle costs itself, beside the
 code that registers them (issue 0460). A leaf with no readable model gets no
 facts and the consumer keeps its undeclared budget — 8 embedded, 32 hosted;

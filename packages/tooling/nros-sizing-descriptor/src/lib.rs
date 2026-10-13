@@ -72,8 +72,8 @@ pub use fact::Fact;
 pub use render::{portability_violation, render};
 pub use schema::{Endpoint, Image, Meta, Params, Policy, SizingDescriptor, Target, Types};
 pub use vocabulary::{
-    Basis, CapacityNeed, Durability, EndpointKind, History, ParamStore, RegistrationPath,
-    Reliability, Status,
+    Basis, CapacityNeed, Durability, EndpointKind, History, InfraFamilies, ParamStore,
+    RegistrationPath, Reliability, Status,
 };
 
 /// How many TRANSIENT_LOCAL publishers this image declares.

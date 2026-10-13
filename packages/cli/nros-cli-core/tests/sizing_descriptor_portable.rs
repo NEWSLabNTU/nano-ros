@@ -121,6 +121,7 @@ fn descriptor_text(root: &Path) -> String {
         // subject unchanged by issue 1408.
         params: None,
         infra: None,
+        infra_families: None,
         language: Some(EntryLanguage::Rust),
         backend_schema: Some(BackendSchema::Schemaless),
         // phase-454 W5 — zenoh dispatches IN PLACE (measured), which is the
