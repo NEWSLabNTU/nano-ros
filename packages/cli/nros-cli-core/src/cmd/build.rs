@@ -1402,6 +1402,13 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                     &board,
                     nano_ros_root.as_deref(),
                 ));
+                // Issue 1867 -- the image's `nros` module is THIS checkout. The
+                // store workspace's manifest project carries none (issue 1258),
+                // so without this every image built against it aborted at
+                // Kconfig on `undefined symbol NROS`.
+                if let Some(nr) = nano_ros_root.as_deref() {
+                    resolved_opt.push(crate::builder::zephyr::module_arg(nr));
+                }
                 if !west_opts.is_empty() || !cmake_extra.is_empty() || !resolved_opt.is_empty() {
                     // Everything after `--` is a cmake option for the app.
                     a.push("--".to_string());

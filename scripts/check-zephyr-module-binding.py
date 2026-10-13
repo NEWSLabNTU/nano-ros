@@ -90,7 +90,7 @@ SEARCH_SUFFIXES = (".just", ".sh", ".bash")
 # below cannot see — `colcon_nano_ros/task/nros/build.py` ran a configuring
 # `west build` for as long as this gate existed.
 EXTRA_DIRS = (".github", "packages")
-EXTRA_SUFFIXES = (".yml", ".yaml", ".py")
+EXTRA_SUFFIXES = (".yml", ".yaml", ".py", ".rs")
 
 # The west invocation, in every spelling this tree uses: `west build`,
 # `"${west_cmd[@]}" build`, `… -m west build`.
@@ -215,6 +215,43 @@ def iter_files(root: str):
     yield from sorted(seen)
 
 
+# Issue 1867 -- the CLI's own west handoff. `nros build` spells the call as a
+# Rust argv (`Handoff::new("west", a)`), with `build` and every `-D` pushed
+# onto `a` lines earlier, so neither the shell regexes nor the Python argv
+# pattern can see it. It configured every Zephyr image `nros build` made with
+# no module at all; against the store workspace (issue 1258) that is
+# `undefined symbol NROS` at Kconfig. Reach narrower than the rule, the fourth
+# time in this gate.
+RUST_WEST = re.compile(r'\b(?:Handoff|Command)::new\(\s*"west"')
+# The one Rust spelling of the flag: `builder::zephyr::module_arg`, the twin of
+# `zephyr-module.sh cmake-arg`. A hand-written `-DZEPHYR_EXTRA_MODULES=` in
+# Rust is a second spelling, exactly as it is in shell.
+RUST_SANCTIONED = "module_arg("
+RUST_FN = re.compile(r"^\s*(?:pub(?:\([^)]*\))?\s+)?(?:async\s+)?(?:unsafe\s+)?fn\s", re.M)
+# `west --version` is a probe, not a build.
+RUST_PROBE = re.compile(r'"--version"')
+
+
+def rust_commands(text: str):
+    """Yield (line_number, enclosing_fn_text) for every non-test Rust west call.
+
+    The evidence is the helper call in the ENCLOSING FUNCTION: the argv is
+    assembled before the handoff, so the call line alone says nothing. Test
+    modules are out: a unit test asserting a handoff's display is not a build.
+    """
+    cut = re.search(r"^\s*#\[cfg\(test\)\]\s*\n\s*mod\s", text, re.M)
+    body = text[: cut.start()] if cut else text
+    for m in RUST_WEST.finditer(body):
+        call_end = body.find(";", m.end())
+        if RUST_PROBE.search(body[m.start(): call_end if call_end != -1 else len(body)]):
+            continue
+        starts = [f.start() for f in RUST_FN.finditer(body, 0, m.start())]
+        start = starts[-1] if starts else 0
+        nxt = RUST_FN.search(body, m.end())
+        end = nxt.start() if nxt else len(body)
+        yield body[: m.start()].count("\n") + 1, body[start:end]
+
+
 # A Python argv list: `["west", "build", …]`, over as many lines as it takes.
 PY_WEST_BUILD = re.compile(r"""(['"])west\1\s*,\s*(['"])build\2""")
 
@@ -277,6 +314,8 @@ def offenders(root: str):
             # because in Python the command IS strings.
             text = comments.strip_comments(text, "python")
             cmds = python_commands(text)
+        elif path.endswith(".rs"):
+            cmds = rust_commands(comments.strip_comments(text, "rust"))
         else:
             cmds = logical_commands(text)
         for lineno, cmd in cmds:
@@ -335,6 +374,8 @@ def argv_array_carries_module(array: str, file_text: str) -> bool:
 
 
 def is_offence(cmd: str, path: str, file_text: str) -> bool:
+    if path.endswith(".rs"):
+        return RUST_SANCTIONED not in cmd
     if path.endswith(".py"):
         # No shell helper to call from Python: the evidence is the flag NAME in
         # the argv the function assembles (phase-472 W2).
@@ -564,6 +605,58 @@ def selftest(root: str, quiet: bool = False) -> int:
         "scripts/x.py",
         True,
     )
+    # Issue 1867 -- the CLI's Rust argv handoff, in its real shape.
+    def expect_rs(name, text, should_fail):
+        nonlocal fails
+        got = any(is_offence(cmd, "x.rs", text) for _l, cmd in rust_commands(text))
+        if got != should_fail:
+            print(f"  SELFTEST FAIL: {name}", file=sys.stderr)
+            fails += 1
+        elif not quiet:
+            print(f"  ok: {name}")
+
+    rs_west = (
+        "fn plan() {\n    let mut a = vec![\"build\".to_string()];\n"
+        "    a.push(\"--\".into());\n@MOD@"
+        "    let h = Handoff::new(\"west\", a).in_dir(&root);\n}\n"
+    )
+    expect_rs(
+        "a Rust `Handoff::new(\"west\", a)` without the module is an offence",
+        rs_west.replace("@MOD@", ""),
+        True,
+    )
+    expect_rs(
+        "...and passes when its function pushes `module_arg(..)`",
+        rs_west.replace("@MOD@", "    a.push(crate::builder::zephyr::module_arg(nr));\n"),
+        False,
+    )
+    expect_rs(
+        "...and a hand-written flag is a second spelling",
+        rs_west.replace("@MOD@", '    a.push(format!("-DZEPHYR_EXTRA_MODULES={}", r));\n'),
+        True,
+    )
+    expect_rs(
+        "...and the helper in the NEXT function does not cover it",
+        rs_west.replace("@MOD@", "") + "fn other() { module_arg(r); }\n",
+        True,
+    )
+    expect_rs(
+        "`Command::new(\"west\").arg(\"--version\")` is a probe, not a build",
+        'pub fn is_west_available() -> bool {\n    Command::new("west")\n'
+        '        .arg("--version")\n        .status();\n}\n',
+        False,
+    )
+    expect_rs(
+        "a handoff inside `#[cfg(test)] mod` is a unit test, not a build",
+        '#[cfg(test)]\nmod tests {\n    fn t() { Handoff::new("west", ["build"]); }\n}\n',
+        False,
+    )
+    if not any(p.endswith(".rs") for p, _l, _c in offenders(root)[1]):
+        print("  SELFTEST FAIL: no Rust west handoff harvested from the tree", file=sys.stderr)
+        fails += 1
+    elif not quiet:
+        print("  ok: the CLI's Rust west handoff is in the harvest")
+
     expect(
         "a workflow `run: west build <app>` is command position",
         "      - run: west build -b native_sim examples/zephyr/c/talker\n",
@@ -638,6 +731,8 @@ def main() -> int:
             f"  source {HELPER}\n"
             '  nros_module_arg="$(nros_zephyr_module_cmake_arg "$repo_root")"\n'
             '  west build … -- … "$nros_module_arg"\n'
+            "\nIn Rust (the CLI's handoff, issue 1867), push "
+            "`crate::builder::zephyr::module_arg(root)` after `--`.\n"
             "\nResolve it BEFORE any `cd` into the workspace. If the "
             "application genuinely loads no nros module, add it to EXEMPT in "
             "this script with the reason.",

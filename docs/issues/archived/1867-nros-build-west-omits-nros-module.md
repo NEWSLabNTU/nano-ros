@@ -1,11 +1,12 @@
 ---
 id: 1867
 title: "`nros build`'s west road never names the `nros` module, so every image built against the shared store workspace fails Kconfig"
-status: open
+status: resolved
 type: bug
 area: [cli, zephyr, build]
 severity: high
 found: 2026-10-13
+resolved: 2026-10-13
 related: [1258, 1379, 0196]
 ---
 
@@ -85,3 +86,26 @@ W1 fixed three of seven builders, and the gate was supposed to stop the next one
    workspace links. Also confirm that a legacy bound workspace (symlinked
    manifest project) still configures, because
    `zephyr/cmake/nros_checkout_guard.cmake` arbitrates when both name a module.
+
+## Resolution (2026-10-13)
+
+1. `builder::zephyr::module_arg(root)`, the Rust twin of `zephyr-module.sh
+   cmake-arg`, returns `-DZEPHYR_EXTRA_MODULES=<root>`. The root is
+   canonicalised, the same physical spelling `pwd -P` gives. The `Driver::West`
+   arm pushes it into the cmake zone after `--`. Test:
+   `a_west_image_names_this_checkout_as_its_nros_module`.
+2. `check-zephyr-module-binding` now reads `.rs`. A
+   `Handoff::new("west"…)` / `Command::new("west")` outside a `#[cfg(test)] mod`
+   is an offence unless its enclosing function calls `module_arg(`. A
+   `--version` probe is not a build. There are six new selftest rows, and a
+   self-check that the CLI's handoff is in the harvest. Mutation: deleting the
+   call from `build.rs` fails the gate, naming the line.
+3. Measured, `nros build --workspace examples/workspaces/features
+   zephyr_rust_params`:
+   - **store workspace (unbound):** links, `zephyr_modules.txt` `"nros":"<this
+     checkout>"`;
+   - **bound to this checkout (legacy symlink):** links, same module;
+   - **bound to ANOTHER checkout:** configures, and the module and
+     `NROS_REPO_DIR` are both this checkout's. The extra module wins over the
+     manifest project's, so nothing is mixed. `just/zephyr-setup.just` said
+     the opposite and is corrected.

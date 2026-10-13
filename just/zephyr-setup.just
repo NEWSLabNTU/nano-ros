@@ -79,8 +79,13 @@ setup *ARGS:
         #     states entity-inventory schema version 6; this reader understands 3.
         #
         # Two checkouts, one image — the `3` is simply what the OLD tree's
-        # module says. `-DZEPHYR_EXTRA_MODULES` does not rescue it: west's
-        # manifest project already provides a module named `nros`, and it wins.
+        # module says. A build that passes `-DZEPHYR_EXTRA_MODULES=<checkout>`
+        # is NOT mixed, though: measured on the 3.7 line (issue 1867), with the
+        # manifest project bound to another checkout, `zephyr_modules.txt`
+        # names the extra module as `nros` and `NROS_REPO_DIR` follows it — the
+        # extra module wins. So the bound project bites only a `west build`
+        # that names no module (a hand-typed one, or a builder that forgot),
+        # and unbinding is what makes that build fail loudly instead of mixing.
         #
         # `--from-config` because the project name is the basename of whichever
         # checkout ran `west init -l`, which for a SHARED store workspace is not

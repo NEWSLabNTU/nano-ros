@@ -185,6 +185,21 @@ pub fn sanitize_board(board: &str) -> String {
     board.replace('/', "_")
 }
 
+/// The `-D` that names THIS checkout as the image's `nros` module — issue 1867.
+///
+/// The Rust spelling of `scripts/lib/zephyr-module.sh cmake-arg`. Since issue
+/// 1258 the store workspace's manifest project holds only `west.yml`, so a
+/// configuring `west build` that does not name a module gets none, and Kconfig
+/// aborts on `undefined symbol NROS`. The value is the checkout ROOT (the
+/// directory holding `zephyr/module.yml`), never `<root>/zephyr`, and it is
+/// physical, as the shell helper's `pwd -P` is, so `nros_checkout_guard.cmake`
+/// compares the same spelling the other builders pass.
+#[must_use]
+pub fn module_arg(nano_ros_root: &Path) -> String {
+    let root = std::fs::canonicalize(nano_ros_root).unwrap_or_else(|_| nano_ros_root.to_path_buf());
+    format!("-DZEPHYR_EXTRA_MODULES={}", root.display())
+}
+
 /// Render the overlays as `west build` arguments, appended after `--`.
 #[must_use]
 pub fn west_args(o: &ZephyrOverlays) -> Vec<String> {
