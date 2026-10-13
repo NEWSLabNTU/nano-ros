@@ -114,6 +114,15 @@ reconfigure-stale:
     fi
     ./tests/cmake-reconfigure-stale-tests.sh
 
+# Issue 1869 -- the launch resolver's content stamp sorted its file list in the
+# CALLER's locale, so one unchanged tree stamped differently under en_US.UTF-8
+# and C.UTF-8 and the resolver read stale after every locale switch. Asserts
+# one digest under C, C.UTF-8 and en_US.UTF-8, with a bare-sort negative
+# control. ~1 s, tmpdir git repos, no cargo.
+[private]
+launch-resolve-stamp-locale:
+    @bash tests/launch-resolve-stamp-locale-tests.sh
+
 # Analyze per-function stack usage (requires nightly + llvm-tools)
 # Usage: just check stack [example-dir] [top]
 # Default: examples/qemu/rs-wcet-bench, top 30

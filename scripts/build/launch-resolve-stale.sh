@@ -89,6 +89,14 @@ nros_launch_resolve_stale() {
 # Sorted so the digest is content-determined rather than filesystem-determined,
 # and missing files are skipped so a partially-checked-out tree degrades to a
 # different stamp rather than an error.
+#
+# Issue 1869 -- sorted in BYTE order (`LC_ALL=C`), not the caller's locale.
+# A bare `sort` collates under whatever LC_ALL/LANG the caller inherited, and
+# en_US.UTF-8 and C.UTF-8 order the resolver's file list differently (the
+# UTF-8 collation weights `_` and `.` below letters, byte order does not). The
+# digest hashes the lines in that order, so one unchanged tree had two stamps:
+# a resolver built from a C.UTF-8 shell read as STALE from an en_US.UTF-8 one
+# and vice versa, and `setup-launch-resolve` rebuilt it on every locale switch.
 nros_launch_resolve_stamp() {
     local root="${1:-.}"
     local crate="$root/packages/cli/nros-launch-resolve"
@@ -99,7 +107,7 @@ nros_launch_resolve_stamp() {
             | grep -E '\.rs$|Cargo\.(toml|lock)$' | sed "s|^|$root/|"
         git -C "$pl" ls-files "src/ros-launch-resolve" 2>/dev/null \
             | grep -E '\.rs$|Cargo\.(toml|lock)$' | sed "s|^|$pl/|"
-    } | sort | while IFS= read -r f; do
+    } | LC_ALL=C sort | while IFS= read -r f; do
         # REPO-RELATIVE path in the digest. `sha256sum` prints "<hash>  <path>",
         # so hashing that line verbatim makes the stamp depend on how the caller
         # spelled the root — `setup-launch-resolve` passes an absolute
