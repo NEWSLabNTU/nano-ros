@@ -83,3 +83,22 @@ the stale mirror no longer needs a long-lived checkout; one `nros sync` inside
 the lane is enough, and severity `low` understates it now. The workspace set
 differs from the measurement above: `features` and the
 `multi-node-workspace-cpp` template, not `cpp` or `derived-tiers-cpp`.
+
+### 2026-10-13 05:xx: it stops tier 2 too, before any cell
+
+Both tier-2 nightly runs on main at `d134dc83f` stopped at the head of the lane,
+in `check fast`, on this gate. Neither reached the build or a cell:
+
+- nightly dispatch 38346448295, job 115128892923 "tier 2 nightly (pairwise cover)"
+- nightly schedule 38350414982, job 115141298601, same job
+
+```
+check-fast (parallel): 1 of 441 gate(s) FAILED
+error: recipe `sizes-header-mirrors` failed on line 754 with exit code 1
+STALE MIRROR: examples/workspaces/features/build/nros-metadata/…
+STALE MIRROR: examples/templates/multi-node-workspace-cpp/build/nros-metadata/…
+```
+
+The workspaces are the same two as tier 1's. While this stands, tier 2 has no
+signal at all, which is the issue-1158 shape (a lane that never reaches its
+cells).
