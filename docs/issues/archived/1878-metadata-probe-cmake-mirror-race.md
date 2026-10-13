@@ -1,13 +1,32 @@
 ---
 id: 1878
 title: "The cmake metadata probe builds nros-cpp twice with different features into one cargo dir, so its sizes-header mirror is stale after every fresh build"
-status: open
+status: resolved
 type: bug
 area: [build, cmake, tooling]
 severity: medium
 found: 2026-10-13
-related: [0268, 1783, 1832, 0616, phase-466]
+related: [1858, 0268, 1783, 1832, 0616, phase-466]
+resolved_in: 0fc6da85d6 (issue 1858; this is a duplicate)
 ---
+
+**RESOLVED — a duplicate of issue 1858, fixed by `0fc6da85d6` before this was
+filed.** Both worktrees that measured it were based on a `main` from before
+that commit (`d134dc83f0` and `eb55764fa1`), and none of their shared probe
+keys carry the `late_features=` field the fix adds.
+
+The cause is the one 1858 found, and it answers both "Not yet known" items
+below. The probe's `cargo/` is a symlink into a shared directory keyed on
+`nros-c`'s import-time features. `nros_apply_panic_policy` adds
+`panic-platform` later, outside that key, so probe projects equal on the key
+and different in their ending took turns rewriting one `nros-cpp-generated/`
+header and one uplifted archive. In the worktree that hit it, the `features`
+and `managed` probes shared key `5cbcfbef50c9`, one applying the ending and
+one not. The two `nros-cpp` units in that directory
+differ by exactly `panic-platform`, and both are root builds of the crate,
+not dependencies of something else. The end-of-configure re-key now appends
+`late_features=`, so the two get different directories.
+
 
 ## Measured
 
