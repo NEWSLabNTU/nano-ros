@@ -64,7 +64,7 @@ nros_components_register_node(talker_lib
     EXECUTABLE talker
     SHAPE configure
     TYPED
-    DEPLOY native)
+    DEPLOY linux)
 ```
 
 ```c
@@ -117,7 +117,7 @@ program, in `src/demo_bringup/system.toml`:
 rmw = "zenoh"
 
 [image.native]
-board = "native"
+board = "linux"
 ```
 
 The launch file names the Node pkgs, whatever they are written in:

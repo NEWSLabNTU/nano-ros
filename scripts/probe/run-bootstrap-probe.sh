@@ -186,7 +186,7 @@ python3 "$SCRIPT_DIR/extract-book-steps.py" \
     --distro "$PROBE_DISTRO" \
     --track "$BOOK_TRACK" \
     "${CLONE_SUBST[@]}" \
-    --subst "nros setup <board> --rmw <zenoh|xrce|cyclonedds>:::nros setup native --rmw $PROBE_RMW" \
+    --subst "nros setup <board> --rmw <zenoh|xrce|cyclonedds>:::nros setup linux --rmw $PROBE_RMW" \
     ${C_CD_SUBST[@]+"${C_CD_SUBST[@]}"} \
     "${CHAPTERS[@]/#/$REPO_ROOT/}"
 

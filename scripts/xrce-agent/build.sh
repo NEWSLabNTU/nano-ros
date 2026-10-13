@@ -157,7 +157,7 @@ fi
 # init submodules here.
 if [ ! -f "$AGENT_SRC/CMakeLists.txt" ]; then
     echo "Error: Micro-XRCE-DDS Agent not provisioned." >&2
-    echo "  Run:  nros setup native --rmw xrce   (installs the prebuilt agent)" >&2
+    echo "  Run:  nros setup linux --rmw xrce   (installs the prebuilt agent)" >&2
     echo "  Or, to build from source, first check out the submodule:" >&2
     echo "        git submodule update --init --recursive third-party/xrce/agent" >&2
     exit 1

@@ -46,7 +46,7 @@ and you do not need a ROS distro on the machine.
 source ./activate.sh        # OR: direnv allow / source ./activate.fish
 
 # 2. Provision a board + RMW (analogous to `rosdep install`):
-nros setup native --rmw zenoh
+nros setup linux --rmw zenoh
 
 # 3. Build and run something (analogous to `colcon build`):
 #    `nros sync` generates the message bindings and the build settings

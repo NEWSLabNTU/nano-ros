@@ -24,4 +24,4 @@ name = "listener"
 rmw = "zenoh"
 
 [image.native]
-board = "native"
+board = "linux"

@@ -621,13 +621,13 @@ mod tests {
         let root = tmp.path();
         let d = discovered(vec![pkg(root, "talker_pkg", true)]);
         let mut sp = spec(root);
-        sp.board = Some("native".to_string());
+        sp.board = Some("linux".to_string());
         sp.entries = vec![CmakeEntry {
             name: "native_robot1_entry".to_string(),
             launch: "multihost.launch.xml".to_string(),
             args: vec![("host".to_string(), "robot1".to_string())],
             lang: Language::C,
-            deploy: "native".to_string(),
+            deploy: "linux".to_string(),
             panic: None,
         }];
         let body = render(&d, &root.join("build/posix"), &sp).expect("renders");
@@ -641,8 +641,8 @@ mod tests {
             body.contains("LAUNCH_ARGS host=robot1"),
             "how an image selects a machine: {body}"
         );
-        assert!(body.contains("BOARD   native"), "{body}");
-        assert!(body.contains("DEPLOY  native"), "{body}");
+        assert!(body.contains("BOARD   linux"), "{body}");
+        assert!(body.contains("DEPLOY  linux"), "{body}");
         assert!(
             body.contains("TYPED"),
             "all 57 entries in this tree are TYPED: {body}"
@@ -677,7 +677,7 @@ mod tests {
         let root = tmp.path();
         let d = discovered(vec![pkg(root, "talker_pkg", true)]);
         let mut sp = spec(root);
-        sp.board = Some("native".to_string());
+        sp.board = Some("linux".to_string());
         sp.entries = ["robot1", "robot2"]
             .iter()
             .map(|host| CmakeEntry {
@@ -685,7 +685,7 @@ mod tests {
                 launch: "multihost.launch.xml".to_string(),
                 args: vec![("host".to_string(), (*host).to_string())],
                 lang: Language::C,
-                deploy: "native".to_string(),
+                deploy: "linux".to_string(),
                 panic: None,
             })
             .collect();

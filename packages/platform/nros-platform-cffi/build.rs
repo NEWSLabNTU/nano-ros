@@ -105,8 +105,13 @@ fn main() {
         nros_cc_flags::header_deps::emit_header_deps(std::path::Path::new(
             &std::env::var("OUT_DIR").expect("OUT_DIR"),
         ));
-        // pthread + librt for downstream test binaries (rt supplies timer_*).
+        // pthread for downstream test binaries. librt (timer_*) is a GLIBC
+        // split, so it is linked only when the TARGET is Linux — phase-500
+        // W1: the posix port's build config says only POSIX things, and a
+        // Linux fact is derived from the target, never asserted for POSIX.
         println!("cargo:rustc-link-lib=pthread");
-        println!("cargo:rustc-link-lib=rt");
+        if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("linux") {
+            println!("cargo:rustc-link-lib=rt");
+        }
     }
 }

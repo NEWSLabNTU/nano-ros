@@ -36,7 +36,7 @@ Then provision the native host (installs the zenoh client stack into a
 shared store; the router itself comes from your ROS 2 install —
 `ros2 run rmw_zenoh_cpp rmw_zenohd`):
 ```sh
-nros setup native --rmw zenoh
+nros setup linux --rmw zenoh
 ```
 
 See [Install + first build (Linux)](./installation.md) for more.
@@ -69,7 +69,7 @@ class = "native_c_talker::Talker"
 name  = "talker"
 
 [image.native]
-board = "native"
+board = "linux"
 ```
 
 `find_package(nano_ros)` reads it, derives the platform from the board,

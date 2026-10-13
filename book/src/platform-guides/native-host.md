@@ -1,17 +1,17 @@
 # Native (Host) Build
 
-Use the `native` (host) target for first experiments, CI smoke tests, and
-ROS 2 interoperability checks on Linux or *BSD. It uses OS sockets, the
+Use the host (`linux`) board for first experiments, CI smoke tests, and
+ROS 2 interoperability checks on Linux. It uses OS sockets, the
 host process environment, and the same source checkout layout as the
 embedded targets.
 
-`native` is a *role* — the host build rather than a cross build — not a
-reach claim. The reach is `linux`: the platform layer
-(`nros-platform-posix`) is POSIX-clean, but the host board crate's
-`apply_tier_affinity` calls `sched_setaffinity` with `cpu_set_t`, which
-libc does not define for macOS, and only Linux is tested in CI. **macOS is
-not supported** (AGENTS.md, phase-260); *BSD is a supported path that no
-lane exercises.
+The host board is named `linux` (`[image.<id>] board = "linux"`) because
+that is all it supports: the platform layer (`nros-platform-posix`) is
+POSIX, but the host board crate's `apply_tier_affinity` calls
+`sched_setaffinity` with `cpu_set_t`, which libc does not define for
+macOS, Windows or FreeBSD. **Only Linux is supported** (AGENTS.md,
+phase-260, phase-500). `native` no longer names a board; writing it is
+refused with a hint naming `linux`.
 
 ## When to Use It
 
@@ -37,7 +37,7 @@ machine? Use `--rmw cyclonedds` — it needs no daemon.
 source ./activate.sh        # OR: direnv allow / source ./activate.fish
 
 # Provision the native host (zenoh RMW is the default):
-nros setup native --rmw zenoh        # or: --rmw xrce / --rmw cyclonedds
+nros setup linux --rmw zenoh        # or: --rmw xrce / --rmw cyclonedds
 ```
 
 `native` and `linux` are the two names of this board (`native` the role,
@@ -104,7 +104,7 @@ walkthrough for generated messages and runnable commands.
 
 ## Build and Run
 
-Start the RMW host daemon (installed by `nros setup native`). For
+Start the RMW host daemon (installed by `nros setup linux`). For
 zenoh:
 
 ```bash

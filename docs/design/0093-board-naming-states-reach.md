@@ -16,6 +16,13 @@ superseded-by: null
 > last; never name the emulator; borrow the vendor's word; and leave out what
 > the index already carries as a field.
 
+**Amendment 2026-10-14 ([phase-500](../roadmap/phase-500-linux-host-name.md)).**
+The host board was exempt from this RFC ("CLAUDE.md owns these"). The
+maintainer's ruling ends the exemption by applying R1 to it: `native` names
+every general-purpose host, the board builds on Linux only (it fails on darwin,
+windows and freebsd), so its one name is `linux`. `native` is refused with a
+hint; `posix` stays the PLATFORM's name and is no board's.
+
 **Amends nothing.** It settles the question phase-422 W7 recorded and deferred:
 of two board vocabularies that both resolve, which is canonical. The answer is
 neither as a house style — the rule below SELECTS a name per board, and it
@@ -206,7 +213,7 @@ non-goals.
 | `threadx-linux` | system | unchanged |
 | — · `freertos-posix` | system | unchanged; add to index |
 | `zephyr` | meta — Zephyr supplies its own boards | unchanged |
-| `native` · `posix` | host | unchanged (CLAUDE.md owns these) |
+| `native` · `posix` | host | `linux` — amended 2026-10-14, see below |
 
 Sixteen index keys become twelve. The two `rv-virt-*` entries are the same QEMU
 machine at different ISA widths and are distinguished by the `arch` field

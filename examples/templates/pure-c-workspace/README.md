@@ -17,5 +17,5 @@ resolved from the launch file.
 export NROS_REPO_DIR=/path/to/nano-ros
 nros sync
 nros build native
-./build/posix-zenoh-native/cmake/native_entry
+./build/posix-zenoh-linux/cmake/native_entry
 ```

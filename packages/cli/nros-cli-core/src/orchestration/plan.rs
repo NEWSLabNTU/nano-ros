@@ -910,7 +910,7 @@ mod transport_tests {
         // Phase 204.15 inc 3 — `[build.cc]` deserializes; absent ⇒ None.
         assert!(build_with("").cc.is_none());
         let json = r#"{
-            "target": "x", "board": "native", "rmw": "zenoh", "profile": "release",
+            "target": "x", "board": "linux", "rmw": "zenoh", "profile": "release",
             "features": [], "cfg": {},
             "cc": { "debug": true, "opt_level": "s", "cflags": ["-fno-plt"] }
         }"#;
@@ -1043,7 +1043,7 @@ mod transport_tests {
     #[test]
     fn a_transport_naming_interfaces_is_rejected() {
         let json = r#"{
-            "target": "x", "board": "native", "rmw": "zenoh",
+            "target": "x", "board": "linux", "rmw": "zenoh",
             "profile": "release", "features": [], "cfg": {},
             "transports": [
                 { "kind": "ethernet", "ip": "10.0.2.50/24",
@@ -1059,7 +1059,7 @@ mod transport_tests {
     #[test]
     fn unknown_transport_kind_is_rejected() {
         let json = r#"{
-            "target": "x", "board": "native", "rmw": "zenoh",
+            "target": "x", "board": "linux", "rmw": "zenoh",
             "profile": "release", "features": [], "cfg": {},
             "transports": [ { "kind": "bluetooth" } ]
         }"#;

@@ -14,4 +14,4 @@ class = "rosout_talker_cpp::Talker"
 name = "rosout_talker"
 
 [image.native]
-board = "native"
+board = "linux"

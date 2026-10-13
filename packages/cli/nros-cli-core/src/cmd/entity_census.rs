@@ -1430,7 +1430,7 @@ fn locate_entry_binary(build: &Path, entry: &str) -> Result<PathBuf> {
         }
     }
     // Issue 1419 -- the layout `nros build` writes: one generated root per
-    // image, `<build>/<root>/cmake/<entry>` (`build/posix-zenoh-native/cmake/
+    // image, `<build>/<root>/cmake/<entry>` (`build/posix-zenoh-linux/cmake/
     // native_entry`). The three spellings above are a hand-configured
     // workspace's; with only those, `run --entry native_entry` refused on every
     // workspace `nros build` had built. A SEARCH over the roots that exist, and
@@ -1505,7 +1505,7 @@ fn locate_entry_binary(build: &Path, entry: &str) -> Result<PathBuf> {
     }
     bail!(
         "no native binary for entry `{entry}`. Tried:\n{}\n\
-         Build the workspace for `DEPLOY native` first (the census binary IS the boot \
+         Build the workspace for `DEPLOY linux` first (the census binary IS the boot \
          binary -- there is no separate census build), or name it with `--binary`.",
         candidates
             .iter()
@@ -1879,7 +1879,7 @@ mod tests {
     #[test]
     fn an_nros_build_image_root_is_searched_and_an_ambiguity_refuses() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let native = dir.path().join("posix-zenoh-native").join("cmake");
+        let native = dir.path().join("posix-zenoh-linux").join("cmake");
         std::fs::create_dir_all(&native).unwrap();
         std::fs::write(native.join("native_entry"), b"").unwrap();
         std::fs::create_dir_all(dir.path().join("threadx-linux-zenoh").join("cmake")).unwrap();
@@ -1888,15 +1888,15 @@ mod tests {
             native.join("native_entry")
         );
 
-        let second = dir.path().join("posix-cyclonedds-native").join("cmake");
+        let second = dir.path().join("posix-cyclonedds-linux").join("cmake");
         std::fs::create_dir_all(&second).unwrap();
         std::fs::write(second.join("native_entry"), b"").unwrap();
         let err = locate_entry_binary(dir.path(), "native_entry")
             .expect_err("two roots, one name")
             .to_string();
         assert!(err.contains("2 image roots"), "{err}");
-        assert!(err.contains("posix-zenoh-native"), "{err}");
-        assert!(err.contains("posix-cyclonedds-native"), "{err}");
+        assert!(err.contains("posix-zenoh-linux"), "{err}");
+        assert!(err.contains("posix-cyclonedds-linux"), "{err}");
     }
 
     /// A contract and a census that agree: one talker, one publisher on

@@ -1550,7 +1550,7 @@ nros = { version = "*", features = ["std", "param-services"] }
             dir.join("system.toml"),
             format!(
                 "[system]\nname = \"p\"\nrmw = \"zenoh\"\n\n[[component]]\npkg = \"p\"\n{decl}\n\
-                 [image.native]\nboard = \"native\"\n"
+                 [image.native]\nboard = \"linux\"\n"
             ),
         )
         .unwrap();

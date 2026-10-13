@@ -41,7 +41,7 @@
 # `mps2-an385-freertos/` and `zephyr/`, each a leaf with its own
 # `CMakeLists.txt` and `system.toml`, and no `system.toml` at the root. Building
 # the root then failed with "declares no `[image.*]`". The first repair counted
-# only `board = "native"` images, which turned the gate green by checking
+# only `board = "linux"` images, which turned the gate green by checking
 # neither sub-project. The rule is now one function,
 # `scripts/lib/template_projects.py`: a `system.toml` under a `src/` component
 # belongs to the directory above it, anything else to its own directory.
@@ -52,7 +52,7 @@
 #
 # ## Host and cross projects
 #
-# A project whose images are all `board = "native"` is built the way a user
+# A project whose images are all `board = "linux"` is built the way a user
 # builds a workspace: `nros sync` + `nros build --workspace`.
 #
 # A CROSS project is built by the road its board DECLARES, every parameter read
@@ -361,7 +361,7 @@ run_one() {
     local brc=0 host=0 cross=()
     while IFS= read -r b; do
         [ -n "$b" ] || continue
-        if [ "$b" = "native" ]; then host=1; else cross+=("$b"); fi
+        if [ "$b" = "linux" ]; then host=1; else cross+=("$b"); fi
     done <<< "$boards"
 
     if [ "$host" -eq 1 ]; then
@@ -483,7 +483,7 @@ self_test() {
     for tmpl in $(discover_templates); do
         local root_boards native_rc=0
         root_boards="$(project_boards "$tmpl" "." 2>/dev/null)"
-        nros_grep_q -x native <<<"$root_boards" || native_rc=$?
+        nros_grep_q -x linux <<<"$root_boards" || native_rc=$?
         [ "$native_rc" -le 1 ] || return 2
         [ "$native_rc" -eq 0 ] || continue
         rel="$(git ls-files "$templates_dir/$tmpl" | sed -n '/\/package\.xml$/{p;q;}')"
@@ -525,7 +525,7 @@ cross_self_test() {
     for tmpl in $(discover_templates); do
         while IFS= read -r proj; do
             [ "$proj" != "." ] || continue
-            b="$(project_boards "$tmpl" "$proj" | grep -vx native | head -n1)"
+            b="$(project_boards "$tmpl" "$proj" | grep -vx linux | head -n1)"
             [ -n "$b" ] && [ -f "$templates_dir/$tmpl/$proj/CMakeLists.txt" ] || continue
             label="$(project_label "$tmpl" "$proj")"
             work="$(mktemp -d "${TMPDIR:-/tmp}/nros-template-selftest.XXXXXX")" || return 2

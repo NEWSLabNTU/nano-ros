@@ -1810,21 +1810,21 @@ mod tests {
         let sys = |text: &str| -> SystemToml { toml::from_str(text).unwrap() };
         let head = "[system]\nname = \"t\"\nrmw = \"zenoh\"\ndomain_id = 0\n";
         // Nothing stated anywhere: humble.
-        let bare = sys(&format!("{head}[image.a]\nboard = \"native\"\n"));
+        let bare = sys(&format!("{head}[image.a]\nboard = \"linux\"\n"));
         assert_eq!(
             bare.image_ros_edition(Some("a")).unwrap(),
             RosEdition::Humble
         );
         // System only.
         let s = sys(&format!(
-            "{head}ros_edition = \"iron\"\n[image.a]\nboard = \"native\"\n"
+            "{head}ros_edition = \"iron\"\n[image.a]\nboard = \"linux\"\n"
         ));
         assert_eq!(s.image_ros_edition(Some("a")).unwrap(), RosEdition::Iron);
         // Defaults over system; the image over both.
         let s = sys(&format!(
             "{head}ros_edition = \"iron\"\n[image_defaults]\nros_edition = \"jazzy\"\n\
-             [image.a]\nboard = \"native\"\n\
-             [image.b]\nboard = \"native\"\nros_edition = \"humble\"\n"
+             [image.a]\nboard = \"linux\"\n\
+             [image.b]\nboard = \"linux\"\nros_edition = \"humble\"\n"
         ));
         assert_eq!(s.image_ros_edition(Some("a")).unwrap(), RosEdition::Jazzy);
         assert_eq!(s.image_ros_edition(Some("b")).unwrap(), RosEdition::Humble);
@@ -1833,12 +1833,12 @@ mod tests {
         assert_eq!(s.image_ros_edition(Some("zz")).unwrap(), RosEdition::Iron);
         // A typo is refused, naming where it was written.
         let t = sys(&format!(
-            "{head}[image.a]\nboard = \"native\"\nros_edition = \"jazy\"\n"
+            "{head}[image.a]\nboard = \"linux\"\nros_edition = \"jazy\"\n"
         ));
         let e = t.image_ros_edition(Some("a")).unwrap_err().to_string();
         assert!(e.contains("[image.a]") && e.contains("jazy"), "{e}");
         let t = sys(&format!(
-            "{head}[image_defaults]\nros_edition = \"foxy\"\n[image.a]\nboard = \"native\"\n"
+            "{head}[image_defaults]\nros_edition = \"foxy\"\n[image.a]\nboard = \"linux\"\n"
         ));
         let e = t.image_ros_edition(Some("a")).unwrap_err().to_string();
         assert!(e.contains("[image_defaults]") && e.contains("foxy"), "{e}");
@@ -2311,7 +2311,7 @@ rmw = "zenoh"
 domain_id = 0
 
 [image.native]
-board = "native"
+board = "linux"
 rmw = "cyclonedds"
 
 [image.qemu]
@@ -2338,7 +2338,7 @@ domain_id = 0
 rmw = "cyclonedds"
 
 [image.gw]
-board = "native"
+board = "linux"
 "#,
         )
         .unwrap();
@@ -2369,11 +2369,11 @@ domain_id = 0
 serdes = "uorb"
 
 [image.gw]
-board = "native"
+board = "linux"
 serdes = "flatbuf"
 
 [image.plain]
-board = "native"
+board = "linux"
 "#,
         )
         .unwrap();
@@ -2396,7 +2396,7 @@ domain_id = 0
 serdes = "flatbuf"
 
 [image.gw]
-board = "native"
+board = "linux"
 "#,
         )
         .unwrap();
@@ -2408,7 +2408,7 @@ board = "native"
     #[test]
     fn a_system_declaring_no_serdes_is_cdr_everywhere() {
         let bare: SystemToml = toml::from_str(
-            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n[image.gw]\nboard=\"native\"\n",
+            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n[image.gw]\nboard=\"linux\"\n",
         )
         .unwrap();
         assert_eq!(bare.resolved_serdes(None, None), "cdr");
@@ -2429,7 +2429,7 @@ board = "native"
         let two: SystemToml = toml::from_str(
             "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n\
              default_images=[\"native\"]\n\
-             [image.native]\nboard=\"native\"\n[image.qemu]\nboard=\"native\"\n",
+             [image.native]\nboard=\"linux\"\n[image.qemu]\nboard=\"linux\"\n",
         )
         .unwrap();
         assert_eq!(two.resolve_image(Some("qemu")).as_deref(), Some("qemu"));
@@ -2443,7 +2443,7 @@ board = "native"
         let many: SystemToml = toml::from_str(
             "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n\
              default_images=[\"a\",\"b\"]\n\
-             [image.a]\nboard=\"native\"\n[image.b]\nboard=\"native\"\n",
+             [image.a]\nboard=\"linux\"\n[image.b]\nboard=\"linux\"\n",
         )
         .unwrap();
         assert_eq!(many.resolve_image(None), None);
@@ -2455,7 +2455,7 @@ board = "native"
         // says so.
         let retired: SystemToml = toml::from_str(
             "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\ndefault_target=\"a\"\n\
-             [image.a]\nboard=\"native\"\n[image.b]\nboard=\"native\"\n",
+             [image.a]\nboard=\"linux\"\n[image.b]\nboard=\"linux\"\n",
         )
         .unwrap();
         assert_eq!(retired.resolve_image(None), None, "it must not decide");
@@ -2490,7 +2490,7 @@ board = "native"
         // Two images are ambiguous.
         let two_images: SystemToml = toml::from_str(
             "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n\
-             [image.a]\nboard=\"native\"\n[image.b]\nboard=\"native\"\n",
+             [image.a]\nboard=\"linux\"\n[image.b]\nboard=\"linux\"\n",
         )
         .unwrap();
         assert_eq!(two_images.resolve_image(None), None);
@@ -2504,8 +2504,8 @@ board = "native"
         let sys: SystemToml = toml::from_str(
             "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n\
              [image_defaults]\nrmw=\"cyclonedds\"\nprofile=\"release\"\n\
-             [image.a]\nboard=\"native\"\n\
-             [image.b]\nboard=\"native\"\nprofile=\"debug\"\n",
+             [image.a]\nboard=\"linux\"\n\
+             [image.b]\nboard=\"linux\"\nprofile=\"debug\"\n",
         )
         .unwrap();
         let a = sys.image_for("a").expect("declared");
@@ -2527,9 +2527,9 @@ board = "native"
             "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=1\nlocator=\"tcp/sys:7447\"\n\
              [host.robot1]\ndomain_id=7\nlocator=\"tcp/r1:7447\"\n\
              [host.robot2]\n\
-             [image.native_robot1]\nboard=\"native\"\nargs={ host = \"robot1\" }\n\
-             [image.native_robot2]\nboard=\"native\"\nargs={ host = \"robot2\" }\n\
-             [image.plain]\nboard=\"native\"\n",
+             [image.native_robot1]\nboard=\"linux\"\nargs={ host = \"robot1\" }\n\
+             [image.native_robot2]\nboard=\"linux\"\nargs={ host = \"robot2\" }\n\
+             [image.plain]\nboard=\"linux\"\n",
         )
         .unwrap();
 
@@ -2560,7 +2560,7 @@ board = "native"
         let sys: SystemToml = toml::from_str(
             "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=1\n\
              [host.robot1]\ndomain_id=7\n\
-             [image.a]\nboard=\"native\"\nargs={ machine = \"robot1\" }\n",
+             [image.a]\nboard=\"linux\"\nargs={ machine = \"robot1\" }\n",
         )
         .unwrap();
         assert_eq!(sys.resolved_domain_id(Some("a")), 7);
@@ -2573,7 +2573,7 @@ board = "native"
         let sys: SystemToml = toml::from_str(
             "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=1\n\
              [host.a]\ndomain_id=7\n[host.b]\ndomain_id=9\n\
-             [image.i]\nboard=\"native\"\nargs={ x = \"a\", y = \"b\" }\n",
+             [image.i]\nboard=\"linux\"\nargs={ x = \"a\", y = \"b\" }\n",
         )
         .unwrap();
         assert!(sys.host_for_image("i").is_none());
@@ -2589,8 +2589,8 @@ board = "native"
         let sys: SystemToml = toml::from_str(
             "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\nlocator=\"tcp/sys:7447\"\n\
              [host.robot]\ndomain_id=7\nlocator=\"tcp/robot:7450\"\n\
-             [image.robot]\nboard=\"native\"\nargs={ host = \"robot\" }\n\
-             [image.native]\nboard=\"native\"\n",
+             [image.robot]\nboard=\"linux\"\nargs={ host = \"robot\" }\n\
+             [image.native]\nboard=\"linux\"\n",
         )
         .unwrap();
 
@@ -2738,13 +2738,13 @@ rate_hz = 5
         let raw = r#"
 [application]
 name = "demo_app"
-deploy = ["native", "mps2-an385-baremetal"]
+deploy = ["linux", "mps2-an385-baremetal"]
 "#;
         let v: PackageMetadataNros = toml::from_str(raw).expect("parse");
         v.validate().expect("application-shape ok");
         let app = v.application.as_ref().expect("application present");
         assert_eq!(app.name.as_deref(), Some("demo_app"));
-        assert_eq!(app.deploy, vec!["native", "mps2-an385-baremetal"]);
+        assert_eq!(app.deploy, vec!["linux", "mps2-an385-baremetal"]);
         assert!(v.component.is_none());
         assert!(v.components.is_empty());
 
@@ -2813,7 +2813,7 @@ bogus = true
     fn rejects_unknown_field_in_application() {
         let raw = r#"
 [application]
-deploy = ["native"]
+deploy = ["linux"]
 oops = 1
 "#;
         let err = toml::from_str::<PackageMetadataNros>(raw)
@@ -2849,7 +2849,7 @@ class = "alpha_pkg::Node"
 name = "alpha"
 
 [application]
-deploy = ["native"]
+deploy = ["linux"]
 "#;
         let v: PackageMetadataNros = toml::from_str(raw).expect("parse");
         let err = v.validate().expect_err("mutex must trip");

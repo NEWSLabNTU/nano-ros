@@ -17,7 +17,7 @@ From the repository root:
 ```bash
 source ./activate.sh
 cd examples/workspaces/cpp
-nros setup native
+nros setup linux
 nros sync            # once per workspace: generated message bindings
 nros build native
 ```

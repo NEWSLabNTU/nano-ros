@@ -41,4 +41,4 @@ to = "cyclonedds:dds"
 rmw = "zenoh"
 
 [image.native]
-board = "native"
+board = "linux"

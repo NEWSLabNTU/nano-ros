@@ -11,7 +11,7 @@ path = "src/main.rs"
 
 # Phase 212.L.2 — Application pkg shape. Native-only deploy target.
 [package.metadata.nros.application]
-deploy = ["native"]
+deploy = ["linux"]
 
 [dependencies]
 nros = { version = "*", default-features = false, features = ["std", "alloc", "env", "rmw-cffi", "ros-humble"] }

@@ -345,7 +345,7 @@ nros new node talker_pkg
 ```
 
 It writes the package and adds the `[[component]]` row to your bringup. (Use
-`nros new <name> --platform native` only for a standalone *runnable project* —
+`nros new <name> --platform linux` only for a standalone *runnable project* —
 it pins a board crate, so an entry on another platform cannot link it.)
 
 #### The entry: `nros new entry`

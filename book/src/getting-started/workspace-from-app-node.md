@@ -108,7 +108,7 @@ source ./activate.fish        # fish
 
 Then provision the native host:
 ```sh
-nros setup native --rmw zenoh
+nros setup linux --rmw zenoh
 ```
 
 ## The three roles in practice
@@ -129,7 +129,7 @@ row per program), and a `launch/` directory with ROS 2 launch XML. **No
 `Cargo.toml`, no compiled code.** Naming convention `<system>_bringup`,
 matching nav2 / Autoware / turtlebot3.
 
-**Image** — not a package. `[image.native] board = "native"` is a row in
+**Image** — not a package. `[image.native] board = "linux"` is a row in
 that `system.toml`, and `nros build native` turns it into a program: it
 generates, under `build/`, the entry that links the Node pkgs and the board
 crate and hands control to the nano-ros runtime. A second board is a second

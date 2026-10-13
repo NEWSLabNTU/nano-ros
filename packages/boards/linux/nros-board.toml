@@ -2,36 +2,32 @@
 # Crate-less: the generated package depends on `nros-platform-cffi` (emitted by
 # the CLI's per-platform extra-deps path) rather than on the board crate.
 #
-# THE WORDS (CLAUDE.md "Naming") answer two different questions:
+# THE WORDS (CLAUDE.md "Naming", phase-500):
 #
-#   native   ROLE — this is the host build, not a cross build
-#   posix    REACH — works on any POSIX-compliant system
-#   linux    REACH — works only on Linux
+#   native   every general-purpose host (Linux, macOS, Windows)
+#   posix    POSIX-compliant systems
+#   linux    Linux specifically
 #
-# So `native` sits beside either reach word; `posix` and `linux` cannot sit
-# beside each other.
+# This board's one name is `linux`, and that is MEASURED (phase-500 survey
+# M1): `nros-board-linux`'s `apply_tier_affinity` calls `sched_setaffinity`
+# with `cpu_set_t`/`CPU_SET`, ungated by `cfg(target_os)`, and libc does not
+# define those for apple, windows or freebsd (FreeBSD's type is `cpuset_t`).
+# The crate builds on Linux only, so `native` claimed more than it delivers:
+# phase-500 W1 dropped it, and an image writing `board = "native"` is refused
+# with a hint naming `linux`. `posix` is the PLATFORM below, never a board name.
 #
-# This board's reach is `linux`, and that is MEASURED. `nros-board-linux`'s
-# `apply_tier_affinity` calls `sched_setaffinity` with `cpu_set_t`/`CPU_SET`,
-# ungated by `cfg(target_os)`, and libc 0.2.189 defines those for linux,
-# android, freebsd, dragonfly, fuchsia and cygwin — and NOT for apple. The
-# crate therefore cannot build on macOS, so `posix` was a false claim.
+# `platform = "posix"` is unchanged and correct: `nros-platform-posix`'s C
+# sources are POSIX.1-2008 plus BSD sockets (NuttX compiles the same files
+# under -Werror). The platform layer names software-stack facts; the board
+# layer names what we support. The Linux-only call lives in the BOARD crate,
+# which is why the two layers legitimately carry different words.
 #
-# (Strictly the reach is "Linux and some BSDs, not macOS". `linux` is the
-# closest of the three available words; making `posix` true would mean
-# cfg-gating the affinity call to a loud no-op off Linux, which is a product
-# change nobody has asked for.)
-#
-# `platform = "posix"` is unchanged and correct: `nros-platform-posix` IS
-# POSIX-clean — `sched_yield`, `sched_get_priority_{min,max}`,
-# `pthread_setschedparam`, `SCHED_FIFO`, and its one `__linux__` selects
-# `MSG_NOSIGNAL` behind a portable `#else`. The platform layer names
-# software-stack facts; the board layer names what we claim to support. The
-# Linux-only call lives in the BOARD crate, which is why the two layers
-# legitimately carry different words.
+# `nros-cli-core/tests/board_key_table.rs` holds `names` to
+# `nros_orchestration_ir::HOST_BOARD_KEYS`, both entry key tables and the sdk
+# index's `[board.*]` keys. Gate: `check-host-platform-vocabulary`.
 
 [[board]]
-names = ["native", "linux"]
+names = ["linux"]
 platform = "posix"
 toolchain = "stable"
 entry_kind = "hosted-main"

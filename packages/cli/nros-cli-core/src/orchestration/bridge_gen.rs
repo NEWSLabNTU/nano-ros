@@ -415,9 +415,10 @@ fn rmw_set(build: &PlanBuildOptions) -> Vec<&'static str> {
 
 /// phase-263 B3 — a native Rust entry (built by plain cargo, no CMake layer)
 /// must take `nros-rmw-cyclonedds-sys` as a cargo dep; a CMake / corrosion build
-/// links the cyclone staticlib itself. Native / posix boards are the cargo case.
+/// links the cyclone staticlib itself. The host board is the cargo case, under
+/// either of its names (issue 1109).
 fn cyclone_links_via_cargo(build: &PlanBuildOptions) -> bool {
-    matches!(build.board.as_str(), "native" | "posix")
+    nros_orchestration_ir::is_host_board_key(&build.board)
 }
 
 fn interface_type_name(interface: &super::schema::InterfaceRef) -> String {
@@ -513,7 +514,7 @@ mod tests {
 
     fn build_with(transports: Vec<PlanTransport>) -> PlanBuildOptions {
         let mut build: PlanBuildOptions = serde_json::from_value(serde_json::json!({
-            "target": "x", "board": "native", "rmw": "zenoh",
+            "target": "x", "board": "linux", "rmw": "zenoh",
             "profile": "release", "features": [], "cfg": {}
         }))
         .unwrap();
@@ -582,7 +583,7 @@ mod tests {
                 { "rmw": "zenoh", "domain": 5, "locator": "tcp/b:7447" }
             ], "topics": topics }],
             "build": {
-                "target": "x86_64-unknown-linux-gnu", "board": "native", "rmw": "zenoh",
+                "target": "x86_64-unknown-linux-gnu", "board": "linux", "rmw": "zenoh",
                 "profile": "release", "features": [], "cfg": {},
                 "transports": [
                     { "kind": "ethernet", "rmw": "zenoh", "locator": "tcp/a:7447" },

@@ -40,7 +40,7 @@ source ./activate.fish        # fish
 
 Then provision the native host:
 ```sh
-nros setup native --rmw zenoh
+nros setup linux --rmw zenoh
 ```
 
 ---
@@ -59,7 +59,7 @@ to maintain it in: a workspace is a directory of packages (RFC-0098 D9), and
 `nros build` discovers them under `src/`, generating the entry that names them
 as path dependencies under `build/`.
 
-(`nros new <name> --platform native --lang rust` is the other verb, and a
+(`nros new <name> --platform linux --lang rust` is the other verb, and a
 different output — a standalone *runnable project* that states its own board
 in its own `system.toml`. Use it for a copy-out example, not for a workspace
 member.)

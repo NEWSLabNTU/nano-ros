@@ -129,7 +129,7 @@ pub struct BoardFacts {
 /// **Read from `board_path_for`, NOT from the descriptor's `board_crate`, and
 /// the difference is load-bearing.** Those two disagree: the `linux` descriptor
 /// declares no `board_crate` ("crate-less host board"), while
-/// `nros_orchestration_ir::board_path_for("native")` returns
+/// `nros_orchestration_ir::board_path_for("linux")` returns
 /// `::nros_board_linux::LinuxBoard` — which the macro emits, and which
 /// therefore must be in scope or the generated entry does not compile. The
 /// hand-written `native_entry` depends on `nros-board-linux` for exactly this
@@ -139,10 +139,9 @@ pub struct BoardFacts {
 /// what has to build. Two sources for one fact is this repository's named
 /// defect class; this function picks the one that is checkable by compilation.
 /// Tries each key in order and takes the first that resolves. The mapping is
-/// keyed on the DEPLOY token (`native`, `freertos`, `zephyr`) — not on the
-/// board name, which is why `linux` alone misses and `native` hits. An image id
-/// is the natural first candidate (it IS the deploy key), with the board and
-/// platform as fallbacks for an image named something else entirely.
+/// keyed on the board key (`linux`, `freertos`, `zephyr`). Callers pass the
+/// image id, then its board, then its platform; an id that is not a board key
+/// (`native` since phase-500 W1) simply misses and the board answers.
 #[must_use]
 pub fn macro_board_crate(candidates: &[&str]) -> Option<String> {
     for key in candidates {
@@ -771,11 +770,11 @@ mod tests {
 
     #[test]
     fn the_board_crate_follows_the_first_candidate_the_macro_resolves() {
-        // `[image.native_service_server] board = "native"`: the id is not a
+        // `[image.native_service_server] board = "linux"`: the id is not a
         // board key, the board is — and the macro resolves the SAME way
         // (`nros::main!` tries the image's board, then its id).
         assert_eq!(
-            macro_board_crate(&["native", "native_service_server", "posix"]).as_deref(),
+            macro_board_crate(&["linux", "native_service_server", "posix"]).as_deref(),
             Some("nros-board-linux")
         );
     }
@@ -984,11 +983,11 @@ mod tests {
     #[test]
     fn the_board_crate_comes_from_the_macros_mapping_not_the_descriptor() {
         // The `linux` descriptor declares NO board_crate, but
-        // board_path_for("native") returns ::nros_board_linux::LinuxBoard —
+        // board_path_for("linux") returns ::nros_board_linux::LinuxBoard —
         // which the macro emits, so it must be in scope or the entry does not
         // compile. Two sources for one fact; this picks the checkable one.
         assert_eq!(
-            macro_board_crate(&["native"]).as_deref(),
+            macro_board_crate(&["linux"]).as_deref(),
             Some("nros-board-linux")
         );
         assert_eq!(
@@ -996,13 +995,15 @@ mod tests {
             Some("nros-board-zephyr")
         );
         assert_eq!(macro_board_crate(&["not-a-board"]), None);
-        // The mapping is keyed on the DEPLOY token, not the board name, so
-        // `linux` misses and the fallback chain is what saves it.
-        assert_eq!(macro_board_crate(&["linux"]), None);
+        // `posix` is the PLATFORM, never a board key; `native` no longer is
+        // one (phase-500 W1). Issue 1109: this asserted `None` for `linux`
+        // and leaned on the fallback chain to rescue it.
+        assert_eq!(macro_board_crate(&["posix"]), None);
+        assert_eq!(macro_board_crate(&["native"]), None);
         assert_eq!(
             macro_board_crate(&["robot1", "linux", "posix"]).as_deref(),
             Some("nros-board-linux"),
-            "an image named something else falls back to its platform"
+            "an image named something else falls back to its board"
         );
     }
 

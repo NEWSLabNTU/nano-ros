@@ -31,7 +31,7 @@ fn boot_shape(board: &str) -> BootShape {
 
 fn fixture_plan(nodes: &[(&str, &str)]) -> Plan {
     Plan {
-        board: "native".into(),
+        board: "linux".into(),
         nodes: nodes
             .iter()
             .map(|(pkg, exec)| PlanNode {
@@ -69,7 +69,7 @@ fn fixture_plan(nodes: &[(&str, &str)]) -> Plan {
 /// [`fixture_plan_rclcpp`] for the construct-with-handle shape.
 fn fixture_plan_typed(nodes: &[(&str, &str, &str, &str, &str)]) -> Plan {
     Plan {
-        board: "native".into(),
+        board: "linux".into(),
         nodes: nodes
             .iter()
             .map(|(pkg, exec, name, class, header)| PlanNode {
@@ -1682,8 +1682,8 @@ fn typed_emit_tiered_creates_each_node_at_its_plan_namespace() {
 #[test]
 fn every_board_family_derives_its_boot_shape_once() {
     for (board, want) in [
-        ("native", BootShape::Host),
-        ("posix", BootShape::Host),
+        ("linux", BootShape::Host),
+        ("linux", BootShape::Host),
         ("zephyr", BootShape::Kernel),
         ("nuttx", BootShape::App),
         ("freertos", BootShape::App),
@@ -1722,7 +1722,7 @@ would collide with the one the board defines"
 #[test]
 fn boards_with_run_tiers_still_emit_their_own_wrapper() {
     for (board, wrapper) in [
-        ("native", "int main(int /*argc*/, char** /*argv*/) {"),
+        ("linux", "int main(int /*argc*/, char** /*argv*/) {"),
         ("zephyr", "int main(void) {"),
         (
             "nuttx",
@@ -1760,7 +1760,7 @@ fn only_the_host_entry_omits_the_locator_argument() {
         "talker_pkg/Talker.hpp",
     )]);
 
-    plan.board = "native".into();
+    plan.board = "linux".into();
     let host = emit_typed(&plan).expect("native emit ok");
     assert!(
         host.contains("run_components(nros_boot_config_node_name("),

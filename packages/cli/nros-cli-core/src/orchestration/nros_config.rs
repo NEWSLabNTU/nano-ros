@@ -1098,7 +1098,7 @@ class = "listener_pkg::ListenerNode"
 name = "listener"
 
 [image.native]
-board = "native"
+board = "linux"
 "#,
         )
         .unwrap();
@@ -1423,8 +1423,8 @@ locator = "tcp/127.0.0.1:7447"
                     "[package]\nname = \"alpha_pkg\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\
                      [lib]\npath = \"src/lib.rs\"\n\
                      [package.metadata.nros.component]\nclass = \"alpha_pkg::Node\"\n\
-                     [package.metadata.nros.deploy.a]\nboard = \"native\"\ndomain_id = 7\n\
-                     [package.metadata.nros.deploy.b]\nboard = \"native\"\n{second}"
+                     [package.metadata.nros.deploy.a]\nboard = \"linux\"\ndomain_id = 7\n\
+                     [package.metadata.nros.deploy.b]\nboard = \"linux\"\n{second}"
                 ),
             )
             .unwrap();
@@ -1517,7 +1517,7 @@ path = "src/lib.rs"
 
 [package.metadata.nros.application]
 name = "demo_app"
-deploy = ["native"]
+deploy = ["linux"]
 
 [package.metadata.nros.deploy.native]
 board = "native_sim/native/64"
@@ -1652,7 +1652,7 @@ name = "alpha"
             .system
             .image_for("native")
             .expect("native image present");
-        assert_eq!(native.board.as_deref(), Some("native"));
+        assert_eq!(native.board.as_deref(), Some("linux"));
 
         // The bringup pkg's ament block is preserved.
         assert_eq!(

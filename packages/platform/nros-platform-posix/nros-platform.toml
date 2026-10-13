@@ -21,7 +21,14 @@ serial   = true    # tty
 clock = true       # issue 1037 — exports nros_platform_clock_ns (src/platform.c)
 
 [build.zenoh]
-defines = ["ZENOH_GENERIC", "ZENOH_LINUX"]
+defines = ["ZENOH_GENERIC"]
+# phase-500 W1 — this file names POSIX facts only. `ZENOH_LINUX` (zenoh-pico's
+# `unix.h` platform arm) is a LINUX fact, so it is derived from the target
+# triple, never asserted for every POSIX system. The zpico shim derives it the
+# same way (`nros-zpico-build` runner, `target.contains("linux")`).
+defines_conditional = [
+  { name = "ZENOH_LINUX", when = { target_match = "linux" } },
+]
 # Phase 156 — `Z_FEATURE_MULTI_THREAD = 1` so
 # `zp_start_read_task` / `zp_start_lease_task` actually spawn
 # pthreads via `_z_task_init` (rather than returning -1
@@ -47,7 +54,10 @@ extra_sources = [
   { path = "{src}/system/unix/network.c" },
   { path = "{src}/system/unix/tls.c" },
 ]
-system_libs = ["pthread", "rt"]
+# phase-500 W1 — `rt` (timer_*) is a glibc split, a Linux fact; it is linked
+# where the target is derived (`nros-platform-cffi/build.rs`, the posix
+# CMakeLists), not listed here for every POSIX system.
+system_libs = ["pthread"]
 mbedtls = "pkg-config"
 # Phase 204.9 — POSIX zenoh-pico had no `compile` line, so it built
 # with no per-fn/data sections (every embedded platform sets them).

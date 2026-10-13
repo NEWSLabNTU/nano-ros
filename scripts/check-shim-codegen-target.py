@@ -8,7 +8,7 @@ block of the bringup being baked. Everything that block decides — the
 `[tiers.*.<rtos>]` sub-table first among them, then the resolved domain id, RMW,
 locator and per-image launch — comes from there. An id that names NO block is
 not refused: `tier_resolver::target_board_id` simply finds nothing, and
-`derive_target_rtos` answers `BoardFamily::Native.tier_rtos_key()`. So a
+`derive_target_rtos` answers `BoardFamily::Linux.tier_rtos_key()`. So a
 synthesised string costs an embedded image the host's scheduling parameters,
 silently, and the build is otherwise indistinguishable from a correct one.
 

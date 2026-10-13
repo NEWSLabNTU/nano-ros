@@ -13,7 +13,7 @@ fn emit_typed(plan: &Plan) -> Result<String, String> {
 
 fn fixture_plan(nodes: &[(&str, &str)]) -> Plan {
     Plan {
-        board: "native".into(),
+        board: "linux".into(),
         nodes: nodes
             .iter()
             .map(|(pkg, exec)| PlanNode {
@@ -434,7 +434,7 @@ fn fixture_plan_with_tiers() -> Plan {
         members: vec![("telem".into(), "telem_grp".into())],
     };
     Plan {
-        board: "native".into(),
+        board: "linux".into(),
         nodes: vec![
             PlanNode {
                 pkg: "ctrl_pkg".into(),

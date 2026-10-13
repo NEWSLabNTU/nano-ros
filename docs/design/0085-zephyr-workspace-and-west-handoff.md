@@ -785,7 +785,7 @@ two-tree-check: OK
 trees, a workspace that never lived in the checkout, and an image that builds.
 
 One gap it left: there is no verb that scaffolds a NODE package.
-`nros new <name> --platform native` makes a standalone runnable project, which
+`nros new <name> --platform linux` makes a standalone runnable project, which
 pins a board an entry on another platform cannot link. The check writes the
 minimum by hand and says so.
 

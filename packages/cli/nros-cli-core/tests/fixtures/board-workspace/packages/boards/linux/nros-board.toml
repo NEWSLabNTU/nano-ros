@@ -1,0 +1,18 @@
+# Phase 195.C — board profile descriptor for the host target, mirroring
+# production (`packages/boards/linux/nros-board.toml`).
+# Crate-less: there is no `nros-board-*` crate; the generated package depends on
+# `nros-platform-cffi` (emitted by the CLI's per-platform extra-deps path).
+#
+# phase-500 W1 — `names = ["linux"]`, as production. This copy used to say
+# `["native", "posix"]`: `native` is no board's name any more (it is every
+# general-purpose host, and the host board builds on Linux only), and `posix`
+# is the PLATFORM. `check-host-platform-vocabulary` reads every tracked
+# descriptor, this one included.
+
+[[board]]
+names = ["linux"]
+platform = "posix"
+toolchain = "stable"
+platform_feature = "platform-posix"
+link_kind = "none"
+entry_kind = "hosted-main"

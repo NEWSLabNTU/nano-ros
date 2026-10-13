@@ -1991,7 +1991,7 @@ name = "demo"
         )
         .unwrap();
         let system = "[system]\nname = \"demo\"\nrmw = \"zenoh\"\ndomain_id = 0\n\n\
-                      [image.native]\nboard = \"native\"\n";
+                      [image.native]\nboard = \"linux\"\n";
         std::fs::write(bringup.join("system.toml"), system).unwrap();
         let bound = |ws: &Path| -> bool {
             let w = Workspace::discover(ws).unwrap();
@@ -2441,12 +2441,12 @@ class = "node_pkg::Node"
     NAME    talker
     CLASS   talker_pkg::Talker
     SOURCES src/Talker.cpp src/Helper.cpp
-    DEPLOY  native freertos
+    DEPLOY  linux freertos
 "#;
         let kw = parse_cmake_kwargs(body).unwrap();
         assert_eq!(kw.single("NAME").as_deref(), Some("talker"));
         assert_eq!(kw.single("CLASS").as_deref(), Some("talker_pkg::Talker"));
-        assert_eq!(kw.multi("DEPLOY"), vec!["native", "freertos"]);
+        assert_eq!(kw.multi("DEPLOY"), vec!["linux", "freertos"]);
         assert_eq!(
             kw.multi("SOURCES"),
             vec!["src/Talker.cpp", "src/Helper.cpp"]
@@ -2477,7 +2477,7 @@ nano_ros_node_register(
     NAME    talker
     CLASS   talker_pkg::Talker
     SOURCES src/Talker.cpp
-    DEPLOY  native)
+    DEPLOY  linux)
 "#,
         );
 
@@ -2489,7 +2489,7 @@ nano_ros_node_register(
         assert_eq!(summary.component, "talker");
         assert_eq!(summary.class.as_deref(), Some("talker_pkg::Talker"));
         assert_eq!(summary.language, ComponentLanguage::Cpp);
-        assert_eq!(summary.deploy_targets, vec!["native"]);
+        assert_eq!(summary.deploy_targets, vec!["linux"]);
 
         let synth = ws.synthetic_metadata_artifacts();
         assert_eq!(synth.len(), 1);
@@ -2531,7 +2531,7 @@ source_metadata = "metadata/talker.json"
         );
         s.write(
             "src/talker_pkg/CMakeLists.txt",
-            r#"nano_ros_node_register(NAME talker CLASS talker_pkg::Talker DEPLOY native)
+            r#"nano_ros_node_register(NAME talker CLASS talker_pkg::Talker DEPLOY linux)
 "#,
         );
         let ws = Workspace::discover(&s.0).unwrap();
@@ -2551,7 +2551,7 @@ source_metadata = "metadata/talker.json"
         );
         s.write(
             "src/talker_pkg/CMakeLists.txt",
-            "nano_ros_node_register(NAME t CLASS p::C DEPLOY native)\n",
+            "nano_ros_node_register(NAME t CLASS p::C DEPLOY linux)\n",
         );
         let decls = Workspace::discover(&s.0)
             .unwrap()
@@ -2571,7 +2571,7 @@ source_metadata = "metadata/talker.json"
         );
         s.write(
             "src/talker_pkg/CMakeLists.txt",
-            "nano_ros_node_register(NAME t CLASS register_t DEPLOY native)\n",
+            "nano_ros_node_register(NAME t CLASS register_t DEPLOY linux)\n",
         );
         let decls = Workspace::discover(&s.0)
             .unwrap()
@@ -2596,7 +2596,7 @@ source_metadata = "metadata/talker.json"
     CLASS c_talker_pkg::Talker
     LANGUAGE C
     SOURCES src/Talker.c
-    DEPLOY native)
+    DEPLOY linux)
 "#,
         );
         let ws = Workspace::discover(&s.0).unwrap();
@@ -2668,7 +2668,7 @@ type = "std_msgs/msg/Int32"
         );
         s.write(
             "src/talker_pkg/CMakeLists.txt",
-            "nano_ros_node_register(CLASS p::T DEPLOY native)\n",
+            "nano_ros_node_register(CLASS p::T DEPLOY linux)\n",
         );
         let ws = Workspace::discover(&s.0).unwrap();
         assert!(ws.packages[0].cmake_component_metadata.is_empty());
@@ -2691,11 +2691,11 @@ type = "std_msgs/msg/Int32"
 
     #[test]
     fn parse_add_node_cpp_source_and_deploy() {
-        let body = "listener CLASS ws::Listener src/Listener.cpp DEPLOY native";
+        let body = "listener CLASS ws::Listener src/Listener.cpp DEPLOY linux";
         let s = parse_add_node_call(body, "cpp_pkg", Path::new("CMakeLists.txt")).unwrap();
         assert_eq!(s.component, "listener");
         assert_eq!(s.language, ComponentLanguage::Cpp);
-        assert_eq!(s.deploy_targets, vec!["native".to_string()]);
+        assert_eq!(s.deploy_targets, vec!["linux".to_string()]);
     }
 
     #[test]
@@ -2730,11 +2730,11 @@ type = "std_msgs/msg/Int32"
         // Before the keyword existed, `LANGUAGE CPP` was two positional tokens:
         // cmake put them in UNPARSED_ARGUMENTS and appended both to SOURCES.
         // The parser has to consume the value, not file it under sources.
-        let body = "listener CLASS ws::Listener LANGUAGE CPP src/Listener.cpp DEPLOY native";
+        let body = "listener CLASS ws::Listener LANGUAGE CPP src/Listener.cpp DEPLOY linux";
         let s = parse_add_node_call(body, "cpp_pkg", Path::new("CMakeLists.txt")).unwrap();
         assert_eq!(s.language, ComponentLanguage::Cpp);
         assert_eq!(s.component, "listener");
-        assert_eq!(s.deploy_targets, vec!["native".to_string()]);
+        assert_eq!(s.deploy_targets, vec!["linux".to_string()]);
     }
 
     #[test]

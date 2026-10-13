@@ -29,7 +29,7 @@ group_tiers = { telem = "low" }
 # on purpose: the `orch_tiers_single` staging keeps only what precedes the first
 # `[tiers.` line.
 [image.demo]
-board = "native"
+board = "linux"
 
 # Two priority tiers (RFC-0015 §4.2). Only the `posix` sub-table is needed for
 # the native deploy; priorities are raw POSIX (advisory on native).

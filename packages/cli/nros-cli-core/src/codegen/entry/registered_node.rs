@@ -187,7 +187,7 @@ mod tests {
     /// which is where the shared emitter puts it.
     #[test]
     fn every_board_names_the_session() {
-        for board in ["native", "zephyr", "nuttx", "threadx", "freertos"] {
+        for board in ["linux", "zephyr", "nuttx", "threadx", "freertos"] {
             for n in [cpp(board), c(board)] {
                 let src = n.emit().expect("emit");
                 assert!(
@@ -245,7 +245,7 @@ mod tests {
             );
         }
 
-        let native = cpp("native").emit().expect("emit");
+        let native = cpp("linux").emit().expect("emit");
         assert!(
             native.contains("int main(int /*argc*/, char** /*argv*/)"),
             "native is a host main taking argc/argv"
@@ -263,7 +263,7 @@ mod tests {
     /// survived the preprocessor. Taken in Rust, only the live arm is emitted.
     #[test]
     fn the_rclcpp_shape_places_the_component_in_an_arena() {
-        let mut n = cpp("native");
+        let mut n = cpp("linux");
         n.shape = Some("rclcpp".into());
         let src = n.emit().expect("emit");
         assert!(

@@ -23,4 +23,4 @@ nros_components_register_node(pkg_cpp_listener_lib
     HEADER Listener.hpp
     SHAPE configure
     TYPED
-    DEPLOY native)
+    DEPLOY linux)

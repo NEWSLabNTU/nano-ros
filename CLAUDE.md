@@ -49,29 +49,20 @@ pointer here — never grow CLAUDE.md with design/impl detail.**
 | Verify the book's setup flow on a pristine host | `just probe bootstrap` — runs the `probe=NN`-tagged book blocks in a clean container (`scripts/probe/`, issue 0204), down BOTH front doors: the checkout track, and `just probe installed` (phase-447 A3) — builds the asset `release-nros.yml` would publish, then `first-project.md` on a host with NO checkout |
 
 ## Naming
-- **`native` / `posix` / `linux` answer TWO different questions — never synonyms.**
-  - **native** — ROLE: this is the HOST build, not a cross build.
-  - **posix** — REACH: works on any POSIX-compliant system.
-  - **linux** — REACH: works only on Linux.
+- **`native` / `posix` / `linux` are three different reaches — never synonyms**
+  (maintainer ruling 2026-10-14, [phase-500](docs/roadmap/phase-500-linux-host-name.md)):
+  - **native** — every general-purpose host (Linux, macOS, Windows).
+  - **posix** — POSIX-compliant systems.
+  - **linux** — Linux specifically.
 
-  `native` sits beside either reach; the two reaches exclude each other. They
-  had collapsed — the host board read `names = ["linux", "native", "posix"]`,
-  asserting both reaches at once. **Which one is false is MEASURED, and the
-  first answer was wrong:** `nros-platform-posix` IS POSIX-clean (`sched_yield`,
-  `sched_get_priority_*`, `pthread_setschedparam`, `SCHED_FIFO`; its one
-  `__linux__` picks `MSG_NOSIGNAL` behind a portable `#else`) — but the BOARD
-  crate is not. `nros-board-linux::apply_tier_affinity` calls
-  `sched_setaffinity` with `cpu_set_t`/`CPU_SET`, **ungated by
-  `cfg(target_os)`**, and libc defines those for linux/android/freebsd/
-  dragonfly/fuchsia/cygwin and **not apple** — so the crate cannot build on
-  macOS and `posix` was the false claim. The board is `["native", "linux"]`,
-  the platform stays `posix`, and the two layers legitimately differ: the
-  platform names software-stack facts, the board names what we support.
-  Gates: `check-host-platform-vocabulary` (no board claims both reaches) and
-  `check-posix-platform-purity` (the crate named for the standard holds to one —
-  Linux-only code belongs in `nros-board-linux`). (Strictly the reach is "Linux and
-  some BSDs, not macOS"; `linux` is the closest of the three words. Making
-  `posix` true would mean cfg-gating that affinity call to a loud no-op.)
+  Name a thing by what it actually supports. The host BOARD is **`linux`**:
+  `nros-board-linux::apply_tier_affinity` uses `cpu_set_t`/`sched_setaffinity`,
+  which fails on darwin, windows and freebsd (measured), so `native` is refused
+  as a board with a hint. The PLATFORM stays **`posix`** (`nros-platform-posix`
+  — NuttX compiles the same sources) and its package config carries no Linux
+  facts; `[tiers.*.posix]` keeps its name (external rlm/play_launch vocabulary;
+  its `core` key is Linux-only). No macOS/BSD support is claimed. Gates:
+  `check-host-platform-vocabulary`, `check-posix-platform-purity`.
 - **nano-ros** — project name (prose, docs)
 - **nros** — code shorthand (crates, Rust/C idents, `CONFIG_NROS_*`)
 - **nano_ros** — C header dir, CMake targets (`NanoRos::NanoRos`), CMake fn (`nros_generate_interfaces()`)

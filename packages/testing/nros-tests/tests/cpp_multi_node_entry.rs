@@ -39,7 +39,7 @@ where
 fn multi_node_workspace_cpp_typed_configures_and_builds() -> nros_tests::TestResult<()> {
     let exe = nros_tests::fixtures::require_cmake_fixture(
         "cpp_robot_entry",
-        "build/posix-zenoh-native/cmake/native_entry",
+        "build/posix-zenoh-linux/cmake/native_entry",
     )?;
     assert!(
         exe.is_file(),
@@ -168,7 +168,7 @@ fn multi_node_workspace_cpp_typed_pubsub_e2e(
     nros_tests::fixtures::require_zenohd();
     let exe = nros_tests::fixtures::require_cmake_fixture(
         "cpp_robot_entry",
-        "build/posix-zenoh-native/cmake/native_entry",
+        "build/posix-zenoh-linux/cmake/native_entry",
     )?;
     let locator = zenohd.locator();
 
@@ -239,7 +239,7 @@ fn multi_node_workspace_cpp_per_node_graph_nodes(
 
     let exe = nros_tests::fixtures::require_cmake_fixture(
         "cpp_robot_entry",
-        "build/posix-zenoh-native/cmake/native_entry",
+        "build/posix-zenoh-linux/cmake/native_entry",
     )?;
 
     let locator = zenohd_unique.locator();

@@ -106,7 +106,7 @@ name = "listener"
 board = "mps2-an385"
 
 [image.native]
-board = "native"
+board = "linux"
 "#,
     )
     .unwrap();

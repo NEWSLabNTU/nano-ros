@@ -678,7 +678,7 @@ mod tests {
             // fixture DATA: a blanket `.toml`/`.json` clause would pull these
             // in, and a fixture edit would then force a CLI rebuild for nothing.
             "packages/cli/nros-cli-core/tests/fixtures/orchestration/plan_pub_sub.json",
-            "packages/cli/nros-cli-core/tests/fixtures/board-workspace/packages/boards/posix/nros-board.toml",
+            "packages/cli/nros-cli-core/tests/fixtures/board-workspace/packages/boards/linux/nros-board.toml",
             // vendored + CLI-test trees: a parallel session touching them must
             // not read as CLI staleness.
             "packages/cli/third-party/play_launch/src/lib.rs",

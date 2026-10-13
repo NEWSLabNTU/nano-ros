@@ -17,7 +17,7 @@ embedded targets.
 ## How it is built (important)
 
 The executable `baremetal_demo` runs on the **Rust POSIX platform port** — the
-one `[image.native] board = "native"` in `system.toml` selects — so it builds and
+one `[image.native] board = "linux"` in `system.toml` selects — so it builds and
 runs on a desktop. `src/platform_impl.c`
 implements the **same** `nros_platform_*` symbols, so it cannot be linked into
 that binary too — two implementations of one ABI is a duplicate-definition

@@ -207,7 +207,7 @@ rmw = "zenoh"
 default_images = ["native"]
 
 [image_defaults]
-board = "native"
+board = "linux"
 
 [image.native]
 

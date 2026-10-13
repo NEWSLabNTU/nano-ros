@@ -266,5 +266,5 @@ case ":$PATH:" in
         ;;
 esac
 echo ""
-echo "nros-install: next →  nros setup <board>    (e.g. \`nros setup native\`)"
+echo "nros-install: next →  nros setup <board>    (e.g. \`nros setup linux\`)"
 echo "nros-install:         nros new <name>       scaffold a project"

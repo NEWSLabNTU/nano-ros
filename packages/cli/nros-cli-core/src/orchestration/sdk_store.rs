@@ -2060,7 +2060,7 @@ fn take_command_log() -> Vec<String> {
 ///
 /// A source recipe runs with its cwd inside the upstream checkout, and rustup
 /// resolves the toolchain from the directory it is invoked in. zenoh 1.7.2
-/// carries `rust-toolchain.toml` `channel = "1.85.0"`, so `nros setup native`
+/// carries `rust-toolchain.toml` `channel = "1.85.0"`, so `nros setup linux`
 /// silently downloads a SECOND toolchain — measured in 0374 as
 /// `info: syncing channel updates for '1.85.0-…'` on a host that already had
 /// the nano-ros pin, and this host still carries that 1.85.0 as a result.

@@ -51,7 +51,7 @@ from a nano-ros checkout (it reads `./nros-sdk-index.toml`):
 
 ```bash
 nros setup mps2-an385-freertos      # arm-none-eabi-gcc + qemu + FreeRTOS-Kernel + lwip
-nros setup native --rmw cyclonedds
+nros setup linux --rmw cyclonedds
 nros setup --list                 # every package + version
 nros setup --licenses             # license-gated SDKs (NVIDIA SPE, ARM FVP)
 ```

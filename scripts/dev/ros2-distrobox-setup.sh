@@ -123,7 +123,7 @@ source it rather than exporting them by hand. Then, inside the box:
   cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
   nros_box_publish                 # put the box CLI where consumers look
   nros setup --system              # system packages — SEE BELOW, do not skip
-  nros setup native --rmw zenoh
+  nros setup linux --rmw zenoh
   just doctor                      # confirm; fix anything it reports
 
 `nros setup --system` is the step this box goes wrong without, and it fails

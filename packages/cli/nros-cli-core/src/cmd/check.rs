@@ -222,7 +222,7 @@ rmw = \"zenoh\"
 domain_id = 0
 
 [image.native]
-board = \"native\"
+board = \"linux\"
 ";
 
     #[test]

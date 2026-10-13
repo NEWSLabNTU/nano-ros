@@ -65,6 +65,7 @@
 
 # issue 0326 — `_nros_is_zephyr()` lives here.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCodegenCore.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosHostBoard.cmake")  # phase-500 W1
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosArtifactLayout.cmake")  # issue 1852
 
 # issue 1467 — `nros_link_runtime_umbrella()`: the ONE decision about which
@@ -607,6 +608,7 @@ function(nano_ros_node_register)
     # still pass `DEPLOY <rtos>` — those branches gate on `<rtos> IN_LIST
     # _NRC_DEPLOY`, so absence is a no-op (the metadata `deploy` array is empty
     # and the Entry/system.toml is the selection point).
+    nros_refuse_retired_deploy("nano_ros_node_register(${_NRC_NAME})" ${_NRC_DEPLOY})
     set(_nrc_required NAME CLASS SOURCES)
     if(_NRC_EXISTING_TARGET)
         set(_nrc_required NAME CLASS) # sources live on the existing target
@@ -1275,9 +1277,9 @@ function(nano_ros_node_register)
         if(_nrc_lang STREQUAL "CPP")
             set(NROS_ENTRY_CLASS "${_NRC_CLASS}")
             set(NROS_ENTRY_CLASS_HEADER "${_nrc_header}")
-            _nros_node_register_entry_tu(native cpp "${_entry_src}")
+            _nros_node_register_entry_tu("${NROS_HOST_DEPLOY}" cpp "${_entry_src}")
         else() # C
-            _nros_node_register_entry_tu(native c "${_entry_src}")
+            _nros_node_register_entry_tu("${NROS_HOST_DEPLOY}" c "${_entry_src}")
         endif()
 
         _nros_node_register_carrier_image(${PROJECT_NAME} "${_pkg_sym}" "${_NRC_PANIC}" "${_entry_src}" ${_NRC_SOURCES})

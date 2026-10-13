@@ -1111,7 +1111,7 @@ locator = "tcp/10.0.2.2:9800"
             (
                 "system.toml",
                 "[system]\nname = \"t\"\nfeatures = [\"param_services\", \"lifecycle\"]\n\
-                 \n[image.i]\nboard = \"native\"\n",
+                 \n[image.i]\nboard = \"linux\"\n",
             ),
         ]);
         let l = read(d.path()).unwrap().expect("declared");
@@ -1122,7 +1122,7 @@ locator = "tcp/10.0.2.2:9800"
             (
                 "system.toml",
                 "[system]\nname = \"t\"\nfeatures = \"param_services\"\n\
-                 \n[image.i]\nboard = \"native\"\n",
+                 \n[image.i]\nboard = \"linux\"\n",
             ),
         ]);
         let e = read(d.path()).unwrap_err();
@@ -1366,7 +1366,7 @@ domain_id = 4
 
     #[test]
     fn several_images_need_a_default() {
-        let two = format!("{SYSTEM}\n[image.native]\nboard = \"native\"\n");
+        let two = format!("{SYSTEM}\n[image.native]\nboard = \"linux\"\n");
         let d = leaf(&[("Cargo.toml", CARGO), ("system.toml", &two)]);
         let e = read(d.path()).unwrap_err();
         assert!(e.contains("default_images"), "{e}");
@@ -1374,7 +1374,7 @@ domain_id = 4
         let chosen = two.replace("[system]\n", "[system]\ndefault_images = [\"native\"]\n");
         let d = leaf(&[("Cargo.toml", CARGO), ("system.toml", &chosen)]);
         let l = read(d.path()).unwrap().unwrap();
-        assert_eq!(l.board.as_deref(), Some("native"));
+        assert_eq!(l.board.as_deref(), Some("linux"));
         // `native` sets no locator of its own: the system default applies.
         assert_eq!(l.network.locator.as_deref(), Some("tcp/10.0.2.2:7447"));
     }

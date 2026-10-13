@@ -13,14 +13,15 @@
 #   * `NAME` (required) — exe target + Entry pkg entity name.
 #   * `SOURCES` (required, multi-value) — sources passed to
 #     `add_executable`.
-#   * `DEPLOY` (required, multi-value) — `native` is always allowed.
-#     Phase 235.B: a non-`native` DEPLOY target is the embedded path and
+#   * `DEPLOY` (required, multi-value) — `linux` (the host board) is always
+#     allowed; `native` is refused naming `linux` (phase-500 W1).
+#     Phase 235.B: a non-`linux` DEPLOY target is the embedded path and
 #     REQUIRES a resolved Board — either an explicit `BOARD <key>` or one
 #     derived from the Phase 215 `nano_ros_use_board(<name>)` import
-#     (`NROS_BOARD_RUNNER`). Without a Board, a non-`native` DEPLOY
+#     (`NROS_BOARD_RUNNER`). Without a Board, a non-`linux` DEPLOY
 #     rejects configure with FATAL_ERROR (the pre-235 native-only rule).
 #   * `BOARD` (optional, single-value) — Phase 212.N.6 addition: the
-#     codegen board key (`native`, `zephyr`, `fvp-aemv8r-smp`, …) the
+#     codegen board key (`linux`, `zephyr`, `fvp-aemv8r-smp`, …) the
 #     Entry pkg targets; flows to `nros codegen entry --board` and
 #     selects the C++ Board adapter (`LinuxBoard` / `ZephyrBoard`).
 #     Stored as the `NROS_BOARD` target property. Absent BOARD is
@@ -49,6 +50,7 @@ set(_NROS_ENTRY_DIR "${CMAKE_CURRENT_LIST_DIR}" CACHE INTERNAL "nano_ros_entry m
 # (it predates this module). The include is guarded inside that file,
 # so re-including is a no-op when callers already loaded it.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosNodeRegister.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosHostBoard.cmake")  # phase-500 W1
 # Shared helpers (nros_resolve_cli — issue #219). include_guard'd.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCodegenCore.cmake")
 # `nros_panic_policy_feature` — the ONE policy->feature mapping, shared with the
@@ -156,7 +158,7 @@ endfunction()
 # `ExecutorFull` at boot on a board with no wired console, which is the failure
 # the safety island paid for on 2026-09-04.
 #
-# WHY ONLY FOR A NON-`native` DEPLOY. The census PRODUCER is the native image.
+# WHY ONLY FOR A NON-`linux` DEPLOY. The census PRODUCER is the native image.
 # Asking a native configure for a fresh census would ask an artifact to precede
 # the build that makes it. A cross configure has no such circularity: the native
 # image is a separate build that already happened, or has not, and that is
@@ -179,10 +181,10 @@ endfunction()
 function(_nros_entry_require_fresh_census)
     cmake_parse_arguments(_RFC "" "NAME;MODEL;BRINGUP" "DEPLOY" ${ARGN})
 
-    # `native` alone is the producer's own configure -- see above.
+    # `linux` alone is the producer's own configure -- see above.
     set(_cross FALSE)
     foreach(_t IN LISTS _RFC_DEPLOY)
-        if(NOT _t STREQUAL "native")
+        if(NOT _t STREQUAL "${NROS_HOST_DEPLOY}")
             set(_cross TRUE)
         endif()
     endforeach()
@@ -394,18 +396,20 @@ function(nano_ros_entry)
         set(_NRA_BOARD "zephyr")
     endif()
 
-    # DEPLOY gate. `native` is always allowed. A non-`native` DEPLOY
-    # target is the embedded path (Phase 235.B) and REQUIRES a resolved
-    # BOARD — either passed explicitly or derived above from the Phase 215
-    # import. Without one, fail loudly (the pre-235 native-only rule).
+    # DEPLOY gate. `linux` (the host board) is always allowed; `native` is
+    # refused naming it (phase-500 W1). Any other DEPLOY target is the
+    # embedded path (Phase 235.B) and REQUIRES a resolved BOARD — either
+    # passed explicitly or derived above from the Phase 215 import. Without
+    # one, fail loudly (the pre-235 host-only rule).
+    nros_refuse_retired_deploy("nano_ros_entry(${_NRA_NAME})" ${_NRA_DEPLOY} ${_NRA_BOARD})
     foreach(_t IN LISTS _NRA_DEPLOY)
-        if(NOT _t STREQUAL "native" AND NOT _NRA_BOARD)
+        if(NOT _t STREQUAL "${NROS_HOST_DEPLOY}" AND NOT _NRA_BOARD)
             message(FATAL_ERROR
                 "nano_ros_entry: DEPLOY target '${_t}' rejected — "
                 "embedded Entry pkgs need a Board. Either import a board "
                 "via `nano_ros_use_board(<name>)` (sets NROS_BOARD_RUNNER) "
-                "or pass `BOARD <key>` (e.g. zephyr). Native pkgs use "
-                "`DEPLOY native`.")
+                "or pass `BOARD <key>` (e.g. zephyr). Host pkgs use "
+                "`DEPLOY linux`.")
         endif()
     endforeach()
 
@@ -808,7 +812,7 @@ function(nano_ros_entry)
     if(TARGET ${_NRA_NAME}
        AND NROS_PLATFORM STREQUAL "posix"
        AND COMMAND nros_platform_link_app
-       AND ("native" IN_LIST _NRA_DEPLOY))
+       AND ("${NROS_HOST_DEPLOY}" IN_LIST _NRA_DEPLOY))
         nros_platform_link_app_deferred(${_NRA_NAME})
     endif()
 

@@ -360,7 +360,7 @@ mod tests {
         assert_eq!(merged.env["C"], "image");
         // Absent is an EMPTY table, never a missing field: a caller extends it
         // unconditionally.
-        assert!(parse("board = \"native\"\n").env.is_empty());
+        assert!(parse("board = \"linux\"\n").env.is_empty());
     }
 
     /// phase-484 W8 (RFC-0103 D6) — a workspace image's `[image.<id>.knobs]`
@@ -391,7 +391,7 @@ mod tests {
     /// block's value wins over the base table's.
     #[test]
     fn producers_is_unset_by_default_and_the_image_wins() {
-        assert_eq!(parse("board = \"native\"\n").producers, None);
+        assert_eq!(parse("board = \"linux\"\n").producers, None);
         let off = parse("producers = false\n");
         assert_eq!(off.producers, Some(false));
         assert_eq!(
@@ -923,6 +923,10 @@ pub fn resolve_board_id<'c>(
             labels.join(", ")
         )),
         DeployResolution::Unknown => {
+            // phase-500 W1 — a retired key names its replacement, not a list.
+            if let Some(hint) = nros_entry_lower::retired_board_key_hint(board) {
+                return Err(format!("`{origin} = \"{board}\"`: {hint}"));
+            }
             let mut known: Vec<&str> = catalog
                 .descriptors()
                 .iter()
@@ -1041,6 +1045,18 @@ entry_kind = "board-run"
             .expect_err("must reject");
         assert!(e.contains("[image.freertos]"), "names the image: {e}");
         assert!(e.contains("mps2-an385-freertos"), "lists known boards: {e}");
+    }
+
+    /// phase-500 W1 — `native` no longer names a board; the refusal names
+    /// the replacement rather than listing every known board.
+    #[test]
+    fn a_retired_native_board_is_refused_naming_linux() {
+        let cat = catalog();
+        let e = resolve_image_board(&cat, "native", &image_with_board("native"))
+            .expect_err("must reject");
+        assert!(e.contains("[image.native] board"), "names the line: {e}");
+        assert!(e.contains("write `linux`"), "names the replacement: {e}");
+        assert!(!e.contains("Known boards"), "a hint, not a list: {e}");
     }
 
     #[test]

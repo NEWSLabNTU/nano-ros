@@ -963,7 +963,7 @@ mod tests {
         let bringup = root.join("src/demo_bringup");
         std::fs::create_dir_all(&bringup).unwrap();
         let system = "[system]\nname = \"demo\"\nrmw = \"zenoh\"\ndomain_id = 0\n\n\
-                      [image.native]\nboard = \"native\"\n";
+                      [image.native]\nboard = \"linux\"\n";
         std::fs::write(bringup.join("system.toml"), system).unwrap();
         let sys: SystemToml = toml::from_str(system).unwrap();
         let pkg = |name: &str, extra: &str| {

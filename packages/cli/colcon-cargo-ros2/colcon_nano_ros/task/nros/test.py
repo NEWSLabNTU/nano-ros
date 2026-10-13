@@ -56,7 +56,7 @@ class NrosTestTask(TaskExtensionPoint):
             test_results_dir = build_base
         test_results_path = test_results_dir / "nros_test.xml"
 
-        if platform == "native":
+        if platform == "linux":
             rc, stdout, stderr = self._run_native(pkg, install_base)
         elif platform in ("freertos", "baremetal", "nuttx"):
             rc, stdout, stderr = self._run_qemu(pkg, install_base, platform)

@@ -3,7 +3,7 @@
 # package OUT of the nano-ros root workspace so cargo doesn't try to
 # resolve the `px4-sitl-tests` path-dep into the `px4-rs` submodule
 # at workspace-load time. The submodule may be absent on a clean clone
-# (`nros setup native --rmw zenoh` does not fetch it); when it's
+# (`nros setup linux --rmw zenoh` does not fetch it); when it's
 # missing, the root workspace still loads cleanly. Building / testing
 # THIS crate requires the submodule, and is invoked only by
 # `just px4 test-sitl`.

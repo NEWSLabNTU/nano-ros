@@ -25,7 +25,7 @@ name = "talker"
 # for `just ros_editions build-e2e-fixtures`; the id is `native`, then `_<rmw>`
 # unless zenoh, then `_<edition>` unless humble.
 [image_defaults]
-board = "native"
+board = "linux"
 
 [image.native]
 

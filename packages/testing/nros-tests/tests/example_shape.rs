@@ -380,7 +380,7 @@ fn read_leaf_system_toml(path: &Path, cls: &mut ProofKindClassification) -> Resu
 fn expected_deploy_target_for(rel: &Path) -> Option<&'static str> {
     let s = rel.to_string_lossy();
     // M.1 + M.2 native examples use `[package.metadata.nros.application]`
-    // with `deploy = ["native"]` (an array, not a subtable) — different
+    // with `deploy = ["linux"]` (an array, not a subtable) — different
     // shape from the RTOS examples. Skip the subtable-keyed assertion
     // here; native classification is covered by Test 2.
     if s.contains("/native/") {

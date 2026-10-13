@@ -264,11 +264,11 @@ pub fn render_probe_main(o: &CmakeProbeOptions) -> Result<String> {
 
 /// A one-node plan describing just this component.
 ///
-/// `board = "native"` because the probe is a HOST binary — the same reason one
+/// `board = "linux"` because the probe is a HOST binary — the same reason one
 /// probe covers every deploy target.
 fn probe_plan(o: &CmakeProbeOptions, language: nros_lang::Language) -> Plan {
     Plan {
-        board: "native".into(),
+        board: "linux".into(),
         bringup: format!("{}_metadata_probe", o.package),
         launch_file: o.package_dir.join("metadata-probe.launch.xml"),
         nodes: vec![PlanNode {

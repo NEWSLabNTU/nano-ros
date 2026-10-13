@@ -129,6 +129,25 @@ pub fn is_known_framework(name: &str) -> bool {
     FRAMEWORKS.contains(&name)
 }
 
+/// Every key that selects the HOST board — its descriptor's `names`
+/// (`packages/boards/linux/nros-board.toml`), and nothing else.
+///
+/// phase-500 W1 (issue 1109). The host board is Linux-only, so its one name is
+/// `linux`; `native` (every general-purpose host) was dropped and is refused
+/// with a hint (`nros_entry_lower::retired_board_key_hint`), and `posix` is the
+/// PLATFORM, no board's name. Every "is this the host?" question asks
+/// [`is_host_board_key`] rather than spelling its own match: three sites once
+/// spelled `"native" | "posix"` while the descriptor said otherwise.
+/// `nros-cli-core/tests/board_key_table.rs` holds this list, `BOARD_PATHS`,
+/// the entry family table, the sdk index's `[board.*]` keys and the
+/// descriptor's `names` to one set.
+pub const HOST_BOARD_KEYS: &[&str] = &["linux"];
+
+/// Whether `key` selects the host board. See [`HOST_BOARD_KEYS`].
+pub fn is_host_board_key(key: &str) -> bool {
+    HOST_BOARD_KEYS.contains(&key)
+}
+
 /// The framework an IN-TREE board key implies, as a canonical name.
 ///
 /// Issue 0415 — this table used to live in `nros-macros`, keyed on the deploy
@@ -213,8 +232,8 @@ pub fn framework_for_board_key(key: &str) -> Option<&'static str> {
 /// board. Out-of-tree replacements supply their own `board_crate` — see
 /// `book/src/porting/stm32f4-out-of-tree.md`.
 pub const BOARD_PATHS: &[(&str, &str, bool)] = &[
-    ("native", "::nros_board_linux::LinuxBoard", true),
-    ("posix", "::nros_board_linux::LinuxBoard", true),
+    // The host board's descriptor `names`, exactly: see [`HOST_BOARD_KEYS`].
+    ("linux", "::nros_board_linux::LinuxBoard", true),
     (
         "freertos",
         "::nros_board_mps2_an385_freertos::Mps2An385",
@@ -1580,8 +1599,7 @@ mod tests {
     #[test]
     fn known_boards_resolve() {
         let known = [
-            "native",
-            "posix",
+            "linux",
             "freertos",
             "freertos-qemu-mps2-an385",
             "mps2-an385-freertos",
@@ -1612,6 +1630,10 @@ mod tests {
     #[test]
     fn unknown_board_returns_none() {
         assert!(board_path_for("totally-unknown-rtos").is_none());
+        // `posix` is a platform, and no board's name; `native` was dropped
+        // (phase-500 W1).
+        assert!(board_path_for("posix").is_none());
+        assert!(board_path_for("native").is_none());
     }
 
     /// `freertos` must map to the FreeRTOS board, not LinuxBoard.

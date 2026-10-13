@@ -106,7 +106,7 @@ rmw = "zenoh"
 board = "mps2-an385-freertos"
 
 [image.native]
-board = "native"
+board = "linux"
 
 [image.nuttx]
 board = "qemu-armv7a-nuttx"

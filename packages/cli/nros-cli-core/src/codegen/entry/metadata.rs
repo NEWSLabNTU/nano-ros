@@ -184,11 +184,11 @@ mod tests {
       "components": [
         {"name": "talker", "class": "talker_pkg::Talker",
          "class_header": "talker_pkg/Talker.hpp",
-         "sources": ["src/Talker.cpp"], "deploy": ["native"],
+         "sources": ["src/Talker.cpp"], "deploy": ["linux"],
          "pkg_dir": "/ws/src/talker_pkg", "lang": "cpp", "shape": "rclcpp"},
         {"name": "listener", "class": "listener_pkg::Listener",
          "class_header": "listener_pkg/Listener.hpp",
-         "sources": ["src/Listener.cpp"], "deploy": ["native"],
+         "sources": ["src/Listener.cpp"], "deploy": ["linux"],
          "pkg_dir": "/ws/src/listener_pkg", "lang": "cpp"}
       ],
       "applications": [],
@@ -197,7 +197,7 @@ mod tests {
 
     fn plan(nodes: &[(&str, &str)]) -> Plan {
         Plan {
-            board: "native".into(),
+            board: "linux".into(),
             nodes: nodes
                 .iter()
                 .map(|(pkg, exec)| PlanNode {

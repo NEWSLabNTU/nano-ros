@@ -84,7 +84,7 @@ name = "my_app"
 rmw  = "cyclonedds"
 
 [image.native]
-board = "native"
+board = "linux"
 ```
 
 `nros sync` writes those settings to `build/<image-id>/nros-cargo.toml`

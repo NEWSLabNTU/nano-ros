@@ -1,7 +1,7 @@
 //! Phase 212.N.9 — Entry pkg `main.rs` collapsed to one line.
 //!
 //! `nros::main!()` (no args) reads the board
-//! (`[image.*] board = "native"`) from this pkg's `system.toml`
+//! (`[image.*] board = "linux"`) from this pkg's `system.toml`
 //! (RFC-0098 D3), maps `"native"` → `::nros_board_linux::LinuxBoard`,
 //! and emits `fn main()` that delegates to
 //! `<LinuxBoard as BoardEntry>::run(...)`. The setup closure

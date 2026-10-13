@@ -100,17 +100,17 @@ struct PlatformSpec {
 /// any file is written, and reused by [`scaffold_rust`].
 fn platform_spec(platform: &str) -> Result<PlatformSpec> {
     let spec = match platform {
-        // native + posix both resolve to `nros_board_linux::LinuxBoard`
-        // (`board_path_for`); `nros-board-linux` is not reachable via any deploy
-        // token, so the hosted template uses `nros-board-linux` for both.
-        "native" => PlatformSpec {
+        // The host board (`nros_board_linux::LinuxBoard`), selected by its one
+        // name, `linux` (phase-500 W1: the board builds on Linux only).
+        // `native` and `posix` are DEPRECATED aliases kept for one cycle —
+        // released book pages say `--platform linux` — and scaffold exactly
+        // what `linux` does; `nros new` prints the deprecation. Neither may
+        // reach a scaffolded file: `native` is no board's name any more and
+        // `posix` is the platform (it once scaffolded `board = "posix"`, which
+        // `nros build` refuses).
+        "linux" | "native" | "posix" => PlatformSpec {
             board_crate: "nros-board-linux",
-            deploy_token: "native",
-            kind: PlatformKind::Hosted,
-        },
-        "posix" => PlatformSpec {
-            board_crate: "nros-board-linux",
-            deploy_token: "posix",
+            deploy_token: "linux",
             kind: PlatformKind::Hosted,
         },
         "baremetal" => PlatformSpec {
@@ -336,7 +336,10 @@ fn scaffold_system_toml(
 ) -> String {
     let self_bringup =
         lang == Language::Rust && matches!(spec.kind, PlatformKind::SelfBringup { .. });
-    let board = if self_bringup {
+    // Issue 1109 / phase-500 — a hosted image names the host board by its
+    // board key (`linux`), never by the `--platform` word (`posix` is not a
+    // board, `native` no longer one).
+    let board = if self_bringup || matches!(spec.kind, PlatformKind::Hosted) {
         spec.deploy_token
     } else {
         platform
@@ -675,11 +678,11 @@ find_package(std_msgs REQUIRED)
 
 # Typed component (RFC-0043). No add_executable, no `main()`; the linked
 # Entry pkg's typed runtime constructs this class + calls `configure(node)`
-# on the real executor. `DEPLOY native` also builds a standalone runnable
+# on the real executor. `DEPLOY linux` also builds a standalone runnable
 # single-node ELF via the typed native carrier.
 nano_ros_add_node({node_name} CLASS {pkg_sym}::{class_name}
     SOURCES src/{class_name}.cpp
-    DEPLOY  native)
+    DEPLOY  linux)
 
 # The verb generated the package.xml `<depend>` closure as INTERFACE libs
 # (`std_msgs__nano_ros_cpp` etc.) carrying the generated headers' include
@@ -838,11 +841,11 @@ find_package(nano_ros REQUIRED)
 find_package(std_msgs REQUIRED)
 
 # Typed C component (RFC-0043), written against the C API with the generated
-# `std_msgs` bindings (declared in package.xml). `DEPLOY native` also builds a
+# `std_msgs` bindings (declared in package.xml). `DEPLOY linux` also builds a
 # standalone runnable single-node ELF via the typed C carrier.
 nano_ros_add_node({node_name} CLASS {pkg_sym}::{class_name} TYPED
     SOURCES src/{class_name}.c
-    DEPLOY  native)
+    DEPLOY  linux)
 "#,
     );
     fs::write(dir.join("CMakeLists.txt"), cmake)?;
@@ -1485,8 +1488,8 @@ int main(int argc, char** argv) {{
 ///
 /// Issue 0916: this was `platform != "native"`, a literal comparison against
 /// ONE of the two host spellings. `native` and `posix` are aliases for the same
-/// `PlatformKind::Hosted`, differing only in `deploy_token`, so
-/// `--platform posix` got an embedded network config and `--platform native`
+/// `PlatformKind::Hosted`, so
+/// `--platform posix` got an embedded network config and `--platform linux`
 /// did not — two spellings of one platform producing different trees.
 ///
 /// Asking the KIND is the fix, not adding `&& platform != "posix"`: a third
@@ -1536,7 +1539,7 @@ mod tests {
         // Phase 227.4 / issue 0333 — `--rmw xrce` makes the hosted feature set
         // default to rmw-xrce (all three backends are wired, one is the default).
         let d = tmp();
-        scaffold_rust("foo", "native", "rmw-xrce", "ros-humble", d.path()).unwrap();
+        scaffold_rust("foo", "linux", "rmw-xrce", "ros-humble", d.path()).unwrap();
         let toml = fs::read_to_string(d.path().join("Cargo.toml")).unwrap();
         assert!(
             toml.contains(r#"default = ["rmw-xrce"]"#),
@@ -1549,7 +1552,7 @@ mod tests {
         // Issue 0333 defect 2 — native is the hosted shape: a real `fn main()`
         // that registers the linked RMW and spins, NOT the retired no_mangle stub.
         let d = tmp();
-        scaffold_rust("foo", "native", "rmw-cyclonedds", "ros-humble", d.path()).unwrap();
+        scaffold_rust("foo", "linux", "rmw-cyclonedds", "ros-humble", d.path()).unwrap();
         let toml = fs::read_to_string(d.path().join("Cargo.toml")).unwrap();
         assert!(toml.contains(r#"default = ["rmw-cyclonedds"]"#), "{toml}");
         assert!(toml.contains("nros-board-linux = {"), "{toml}");
@@ -1574,7 +1577,7 @@ mod tests {
         // system.toml `scaffold_package` writes (RFC-0098 D3), so it does not
         // appear in the CMakeLists.
         let dc = tmp();
-        scaffold_c("bar", "native", "cyclonedds", dc.path()).unwrap();
+        scaffold_c("bar", "linux", "cyclonedds", dc.path()).unwrap();
         let cm = fs::read_to_string(dc.path().join("CMakeLists.txt")).unwrap();
         assert!(
             cm.contains("find_package(nano_ros REQUIRED)"),
@@ -1594,7 +1597,7 @@ mod tests {
         );
 
         let dpp = tmp();
-        scaffold_cpp("baz", "native", "xrce", dpp.path()).unwrap();
+        scaffold_cpp("baz", "linux", "xrce", dpp.path()).unwrap();
         let cm = fs::read_to_string(dpp.path().join("CMakeLists.txt")).unwrap();
         assert!(
             cm.contains("nano_ros_add_executable(baz src/main.cpp)"),
@@ -1618,7 +1621,7 @@ mod tests {
         let cfg = ScaffoldConfig {
             name: "pkg_unknown_rmw_227_4_fixture".to_string(),
             lang: Language::Rust,
-            platform: "native".to_string(),
+            platform: "linux".to_string(),
             rmw: "dust-dds".to_string(),
             ros_edition: "humble".to_string(),
             use_case: "talker".to_string(),
@@ -1678,6 +1681,7 @@ mod tests {
     #[test]
     fn platform_spec_covers_every_advertised_platform() {
         for p in [
+            "linux",
             "native",
             "posix",
             "freertos",
@@ -1691,16 +1695,15 @@ mod tests {
         ] {
             platform_spec(p).unwrap_or_else(|e| panic!("{p} must resolve: {e}"));
         }
-        // native/posix are hosted against nros-board-linux (posix's deploy token
-        // resolves to LinuxBoard, not nros-board-linux).
-        assert!(matches!(
-            platform_spec("posix").unwrap().kind,
-            PlatformKind::Hosted
-        ));
-        assert_eq!(
-            platform_spec("posix").unwrap().board_crate,
-            "nros-board-linux"
-        );
+        // linux and its deprecated aliases native/posix are one hosted spec
+        // against nros-board-linux, selecting the host board as `linux`
+        // (phase-500 W1: `native` is no board's name, `posix` the platform).
+        for p in ["linux", "native", "posix"] {
+            let spec = platform_spec(p).unwrap();
+            assert!(matches!(spec.kind, PlatformKind::Hosted), "{p}");
+            assert_eq!(spec.board_crate, "nros-board-linux", "{p}");
+            assert_eq!(spec.deploy_token, "linux", "{p}");
+        }
         assert!(matches!(
             platform_spec("baremetal").unwrap().kind,
             PlatformKind::SelfBringup { .. }
@@ -1821,6 +1824,8 @@ mod hosted_alias_tests {
     /// QEMU-slirp network settings that a host build has no use for.
     #[test]
     fn the_two_hosted_spellings_agree_about_nros_toml() {
+        // phase-500 W1 — and `linux`, the canonical one, which both now alias.
+        assert!(!needs_scaffolded_nros_toml("linux"));
         assert!(!needs_scaffolded_nros_toml("native"));
         assert!(!needs_scaffolded_nros_toml("posix"));
     }

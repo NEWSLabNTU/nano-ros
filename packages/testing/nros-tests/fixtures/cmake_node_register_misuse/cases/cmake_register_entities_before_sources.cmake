@@ -9,5 +9,5 @@ macro(verdict_body)
         CLASS demo::Talker
         ENTITIES sub:std_msgs/msg/String:/chatter
         SOURCES src/dummy.cpp
-        DEPLOY native)
+        DEPLOY linux)
 endmacro()

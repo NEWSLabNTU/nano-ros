@@ -56,7 +56,7 @@ nano_ros_node_register(
     CLASS talker_pkg::Talker
     LANGUAGE C|CPP
     SOURCES src/Talker.c
-    DEPLOY native)
+    DEPLOY linux)
 ```
 
 Key idea: the Entry pkg links Node pkgs through exported register
@@ -105,7 +105,7 @@ in the bringup's `system.toml` is one Entry:
 
 ```toml
 [image.native]
-board = "native"
+board = "linux"
 
 [image.esp32]
 board   = "esp32-qemu"

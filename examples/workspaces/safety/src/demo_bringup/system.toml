@@ -96,27 +96,27 @@ out    = "rust_safety_talker_model.yaml"
 rmw = "zenoh"
 
 [image.native_c_safety_listener]
-board = "native"
+board = "linux"
 launch = "c_safety_listener.launch.xml"
 
 [image.native_c_safety_talker]
-board = "native"
+board = "linux"
 launch = "c_safety_talker.launch.xml"
 
 [image.native_cpp_safety_listener]
-board = "native"
+board = "linux"
 launch = "cpp_safety_listener.launch.xml"
 
 [image.native_cpp_safety_talker]
-board = "native"
+board = "linux"
 launch = "cpp_safety_talker.launch.xml"
 
 [image.native_rust_safety_listener]
-board = "native"
+board = "linux"
 launch = "rust_safety_listener.launch.xml"
 
 [image.native_rust_safety_talker]
-board = "native"
+board = "linux"
 launch = "rust_safety_talker.launch.xml"
 
 # phase-470 W5.b2 (issue 1288) — its entry and the west application around it

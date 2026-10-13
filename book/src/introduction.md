@@ -2,7 +2,7 @@
 
 nano-ros is a lightweight ROS 2 client library for embedded real-time systems.
 It runs on bare-metal microcontrollers, FreeRTOS, NuttX, ThreadX, and Zephyr,
-as well as Linux and *BSD. The entire core stack is `no_std` compatible.
+as well as Linux hosts. The entire core stack is `no_std` compatible.
 
 ```mermaid
 flowchart TB
@@ -143,7 +143,7 @@ and `esp32` are different platforms. Detail:
 
 | Platform   | RTOS          | Network Stack  | Targets                      |
 |------------|---------------|----------------|------------------------------|
-| POSIX      | Linux / *BSD  | OS sockets     | x86-64, aarch64              |
+| POSIX      | Linux         | OS sockets     | x86-64, aarch64              |
 | Bare-metal | None          | smoltcp        | Cortex-M3, ESP32-C3          |
 | FreeRTOS   | FreeRTOS      | lwIP           | Cortex-M3 (QEMU)             |
 | NuttX      | NuttX         | BSD sockets    | Cortex-A7 (QEMU), RISC-V32 (QEMU rv-virt) |

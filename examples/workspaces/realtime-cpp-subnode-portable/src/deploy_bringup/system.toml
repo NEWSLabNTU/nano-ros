@@ -44,7 +44,7 @@ priority = 1
 rmw = "zenoh"
 
 [image.native]
-board = "native"
+board = "linux"
 
 # phase-427 W12 (issue 1247) — the FREESTANDING image of the same package.
 # RFC-0089 correction 1 measured that deriving `rclcpp::Node` costs nothing on a

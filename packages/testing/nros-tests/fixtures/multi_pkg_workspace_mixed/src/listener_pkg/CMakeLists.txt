@@ -21,7 +21,7 @@ nros_components_register_node(listener_lib
     PLUGIN listener_pkg::Listener
     EXECUTABLE listener
     SHAPE configure
-    DEPLOY native)
+    DEPLOY linux)
 
 
 # The consuming test (`cmake_mixed_corrosion_bridge_builds`) only

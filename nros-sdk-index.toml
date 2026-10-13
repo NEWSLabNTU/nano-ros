@@ -1537,12 +1537,13 @@ packages = ["cyclonedds", "cyclonedds-src", "rosidl"]
 # are descriptive. Keyed by the canonical board id (examples/<board>/ dir name
 # or the board-crate name). ---
 
-[board.native]
-arch = "x86_64"
-platform = "posix"
-packages = [] # host daemon comes from the RMW axis (default rmw.zenoh)
-
-[board.posix]
+# The host board. Its key is its descriptor's name (`packages/boards/linux/
+# nros-board.toml`): `linux`, because the board builds on Linux only. phase-500
+# W1 dropped `[board.native]` (`nros setup native` still resolves here, as a
+# deprecated alias, for one cycle) and `[board.posix]` (`posix` is the
+# PLATFORM, no board's name). `nros-cli-core/tests/board_key_table.rs` holds
+# this key to the descriptor's names.
+[board.linux]
 arch = "x86_64"
 platform = "posix"
 packages = [] # host daemon comes from the RMW axis (default rmw.zenoh)

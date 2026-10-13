@@ -43,4 +43,4 @@ to = "xrce:agent"
 rmw = "zenoh"
 
 [image.native]
-board = "native"
+board = "linux"

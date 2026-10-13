@@ -41,7 +41,7 @@ workspace crosses languages:
 The **coordinate** is the platform and the RMW — `posix-zenoh`,
 `freertos-cyclonedds` — plus, for CMake, the board, because CMake pins one
 compiler per configure and two boards on one platform would otherwise share a
-cache: `posix-zenoh-native`, `freertos-zenoh-mps2-an385-freertos`.
+cache: `posix-zenoh-linux`, `freertos-zenoh-mps2-an385-freertos`.
 
 Everything above is under `build/`, and that is the rule rather than a
 coincidence: a workspace has **no root `Cargo.toml` and no root
@@ -122,7 +122,7 @@ executable lands at the top of that directory:
 ```
 
 For example, `examples/workspaces/c` builds `[image.native]` to
-`build/posix-zenoh-native/cmake/native_entry` and its FreeRTOS image to
+`build/posix-zenoh-linux/cmake/native_entry` and its FreeRTOS image to
 `build/freertos-zenoh-mps2-an385-freertos/cmake/freertos_entry`. (Node packages
 also build their own executables, under `cmake/pkg/<pkg>/<pkg>`; the *image* is
 the one at the top level.)

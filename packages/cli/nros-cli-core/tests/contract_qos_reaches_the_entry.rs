@@ -53,7 +53,7 @@ fn plan_for(stem: &str) -> Plan {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-    let plan = plan_from_model(&model, Some("native".to_string()));
+    let plan = plan_from_model(&model, Some("linux".to_string()));
     let _ = fs::remove_dir_all(&out);
     let mut plan = plan.expect("plan from the resolved model");
     // What `metadata::enrich_plan` would fill from the cmake metadata: both

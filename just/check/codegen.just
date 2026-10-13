@@ -471,7 +471,7 @@ entry-domain-agreement:
 # `[image.<id>]` / `[deploy.<id>]` block some bringup declares.
 #
 # `--target` selects that block, and an id naming NONE is not refused: the tier
-# resolver falls through to `BoardFamily::Native`, so an embedded image silently
+# resolver falls through to `BoardFamily::Linux`, so an embedded image silently
 # bakes the HOST's `[tiers.*.posix]` priorities. Four shims had synthesised one;
 # 1312 fixed two and left NuttX and PlatformIO with no tracked id in their
 # comments, which is why it could add no gate. Buildless; `--self-test` drives

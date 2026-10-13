@@ -231,7 +231,7 @@ function(_nros_config_header_stamp _out_var _owner)
         # for the prerequisite), and it cannot be removed without reintroducing
         # 0740 — but with a shared OUTPUT path it also gives N independent make
         # rules writing ONE file. Measured in
-        # `examples/workspaces/features/build/posix-zenoh-native/cmake`: 16
+        # `examples/workspaces/features/build/posix-zenoh-linux/cmake`: 16
         # targets each declaring `_nros_cfg_stamp/nros_config_generated.stamp`.
         # Under `make -j` several can run `copy_if_different` on it at once, and
         # a failure in any one makes GNU make delete the file the others just

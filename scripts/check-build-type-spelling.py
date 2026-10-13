@@ -241,7 +241,7 @@ def read_evidence(pkg_xml, pkg_dir, rel_path):
         # A package pinned to a platform, a provider, or a bringup: nothing
         # else can build it, whatever else it also ships.
         "platform_committed": bool(
-            {"provides", "board-kind", "system.toml"} & ev or deploy not in ("", "native")
+            {"provides", "board-kind", "system.toml"} & ev or deploy not in ("", "linux")
         ),
     }
 

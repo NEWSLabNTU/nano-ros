@@ -35,7 +35,7 @@
 #     emits one of those needs no arm here.
 #
 # Both modes are covered: `--component` (a library node, platform-agnostic) and
-# project mode (`--platform native`), because they emit different files.
+# project mode (`--platform linux`), because they emit different files.
 #
 # ## What counts as built
 #
@@ -151,7 +151,7 @@ scaffold_one() {
     if [ "$mode" = "component" ]; then
         ( cd "$parent" && "$nros" new "$variant" --component --lang "$lang" ) > "$log" 2>&1 || rc=$?
     else
-        ( cd "$parent" && "$nros" new "$variant" --platform native --lang "$lang" ) > "$log" 2>&1 || rc=$?
+        ( cd "$parent" && "$nros" new "$variant" --platform linux --lang "$lang" ) > "$log" 2>&1 || rc=$?
     fi
     return "$rc"
 }

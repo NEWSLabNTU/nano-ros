@@ -20,7 +20,7 @@
 #
 # WHERE IT RUNS, and why it is SERIAL. `take` builds a native image into the
 # same build tree the native fixture rows build into
-# (`<ws>/build/posix-zenoh-native/cmake`), and `build-test-fixtures` runs its
+# (`<ws>/build/posix-zenoh-linux/cmake`), and `build-test-fixtures` runs its
 # platform stages in PARALLEL. A take inside the freertos stage racing the
 # native stage's own build of that tree is two cmake builds in one directory.
 # So `build-test-fixtures` runs this ONCE, before any stage starts, and exports

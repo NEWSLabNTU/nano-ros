@@ -71,7 +71,12 @@ pub struct Args {
     /// Target platform (required in project mode). `esp32` is not offered:
     /// ESP32 support is dormant (issue 1525) — the scaffold code is kept, the
     /// front door is closed.
-    #[arg(long, value_parser = ["native", "freertos", "nuttx", "threadx", "zephyr", "posix", "baremetal"])]
+    ///
+    /// `linux` is the host board (phase-500 W1). `native` and `posix` are
+    /// DEPRECATED aliases for it, kept one cycle because released book pages
+    /// say `--platform linux`; they print a notice and scaffold what `linux`
+    /// does.
+    #[arg(long, value_parser = ["linux", "freertos", "nuttx", "threadx", "zephyr", "baremetal", "native", "posix"])]
     pub platform: Option<String>,
 
     /// RMW backend. Defaults per mode: `zenoh` for project/component
@@ -178,7 +183,23 @@ fn language_arg(flag: Option<&str>, default: nros_lang::Language) -> Result<nros
     }
 }
 
-pub fn run(args: Args) -> Result<()> {
+/// The `--platform` value with a deprecated host alias (`native`, `posix`)
+/// replaced by `linux`, announcing the replacement on stderr (phase-500 W1).
+fn canonical_platform(platform: String) -> String {
+    match platform.as_str() {
+        "native" | "posix" => {
+            eprintln!(
+                "nros new: `--platform {platform}` is deprecated; using `--platform linux` \
+                 (the host board builds on Linux only — phase-500)."
+            );
+            "linux".to_string()
+        }
+        _ => platform,
+    }
+}
+
+pub fn run(mut args: Args) -> Result<()> {
+    args.platform = args.platform.take().map(canonical_platform);
     // phase-290 W4.b — package-scaffold modes: `nros new platform <name>` /
     // `nros new board <name> --for-platform <p>`.
     let keyword = args.name.as_ref().and_then(|p| p.to_str());
@@ -205,7 +226,7 @@ pub fn run(args: Args) -> Result<()> {
     }
 
     // `nros new node <name>` — a NODE package. Board- and RMW-agnostic; see
-    // `new_node`'s module docs for why `--platform native` is not the way to
+    // `new_node`'s module docs for why `--platform linux` is not the way to
     // make one.
     if args
         .name
@@ -503,9 +524,9 @@ pub fn run(args: Args) -> Result<()> {
     if args.workspace {
         let lang = language_arg(args.lang.as_deref(), nros_lang::Language::Cpp)?;
         let rmw = args.rmw.clone().unwrap_or_else(|| "cyclonedds".to_string());
-        if args.platform.as_deref().unwrap_or("native") != "native" {
+        if args.platform.as_deref().unwrap_or("linux") != "linux" {
             bail!(
-                "`nros new --workspace` scaffolds the native workspace shape; \
+                "`nros new --workspace` scaffolds the host workspace shape; \
                  add embedded deploys afterwards with `nros new --deploy <name> \
                  --board <board>` (see the book's Growing Your Project section)."
             );

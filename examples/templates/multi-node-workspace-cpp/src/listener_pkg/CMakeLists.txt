@@ -16,7 +16,7 @@ nros_components_register_node(listener_lib
     PLUGIN listener_pkg::Listener
     EXECUTABLE listener
     SHAPE configure
-    DEPLOY native)
+    DEPLOY linux)
 
 target_link_libraries(listener_lib
     PUBLIC std_msgs__nano_ros_cpp)

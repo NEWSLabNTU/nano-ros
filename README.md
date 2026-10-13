@@ -45,7 +45,7 @@ The project integrates formal verification (Kani bounded model checking, CBMC fo
 ## Requirements
 
 - Rust nightly (edition 2024)
-- `nros setup native --rmw <zenoh|xrce|cyclonedds>` provisions the RMW host
+- `nros setup linux --rmw <zenoh|xrce|cyclonedds>` provisions the RMW host
   daemon (zenohd, Micro-XRCE-DDS Agent, or Cyclone DDS) — no manual build step
 - ROS 2 Humble — required for message codegen (`nros sync`/`generate`),
   CycloneDDS, and every ROS 2 interop path. Only the pre-generated native
@@ -89,7 +89,7 @@ of first-build failures.
 ### 3. Provision a board + RMW
 
 ```bash
-nros setup native --rmw zenoh
+nros setup linux --rmw zenoh
 ```
 
 Installs the zenoh router (`zenohd`) into `~/.nros/sdk`. See
@@ -174,7 +174,7 @@ class = "native_c_talker::Talker"
 name  = "talker"
 
 [image.native]
-board = "native"
+board = "linux"
 ```
 
 See [First Node — C](book/src/getting-started/first-node-c.md) for a complete C walkthrough.
@@ -193,7 +193,7 @@ the version-spanning consumption guide + compatibility matrix.
 nano-ros communicates with ROS 2 nodes via the rmw_zenoh protocol:
 
 ```bash
-# Terminal 1: zenohd (installed by `nros setup native --rmw zenoh`)
+# Terminal 1: zenohd (installed by `nros setup linux --rmw zenoh`)
 ros2 run rmw_zenoh_cpp rmw_zenohd
 
 # Terminal 2: nano-ros talker

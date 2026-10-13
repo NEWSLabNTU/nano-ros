@@ -37,7 +37,7 @@ build it — silently, because an absent subdir is not an error.
 **The ritual.** `examples/workspaces/rust/README.md` tells a user to type:
 
 ```bash
-nros setup native
+nros setup linux
 nros sync
 nros codegen-system --bringup demo_bringup
 nros check --bringup src/demo_bringup

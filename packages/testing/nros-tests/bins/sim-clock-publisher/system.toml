@@ -19,7 +19,7 @@ default_images = ["native"]
 
 # Host build. The locator and domain stay runtime env on native.
 [image_defaults]
-board = "native"
+board = "linux"
 
 # One image per RMW (RFC-0031): `nros sync --image <id> && nros build <id>`.
 [image.native]

@@ -11,7 +11,7 @@ The image is where you say it, beside the board it is built for:
 profile = "nros-relwithdebinfo"   # the base every image folds over
 
 [image.native]
-board = "native"
+board = "linux"
 
 [image.mps2]
 board   = "qemu-mps2-an385"

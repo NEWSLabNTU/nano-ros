@@ -323,7 +323,8 @@ fn linked_rmw_set(build: &PlanBuildOptions) -> std::collections::BTreeSet<&str> 
 /// multiple RMW backends into one process is routine.
 fn plan_target_is_hosted(build: &PlanBuildOptions) -> bool {
     // macOS dropped (phase-260) — no darwin/apple hosted target.
-    matches!(build.board.as_str(), "native" | "posix")
+    // Issue 1109 — the host board under either of its names.
+    nros_orchestration_ir::is_host_board_key(&build.board)
         || build.target.contains("linux")
         || build.target.contains("windows")
 }
@@ -782,7 +783,7 @@ fn schema_build_json(
 ) -> Result<Value> {
     let mut build = json!({
         "target": "x86_64-unknown-linux-gnu",
-        "board": "native",
+        "board": "linux",
         "rmw": "zenoh",
         "profile": "debug",
         "features": [],
@@ -3685,7 +3686,7 @@ mod tests {
         // No system.toml ⇒ pre-173.5 defaults, empty transports — keeps existing
         // plans byte-identical.
         let build = schema_build_json(None, None, None, None).expect("build json");
-        assert_eq!(build["board"], "native");
+        assert_eq!(build["board"], "linux");
         assert_eq!(build["rmw"], "zenoh");
         assert_eq!(build["target"], "x86_64-unknown-linux-gnu");
         assert_eq!(build["transports"].as_array().unwrap().len(), 0);
@@ -3963,7 +3964,7 @@ mod tests {
         std::fs::write(
             &st,
             "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n\
-             [image.qemu]\nboard=\"native\"\nrmw=\"cyclonedds\"\n",
+             [image.qemu]\nboard=\"linux\"\nrmw=\"cyclonedds\"\n",
         )
         .unwrap();
 
@@ -4000,7 +4001,7 @@ mod tests {
         std::fs::write(
             &st2,
             "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\ndefault_images=[\"a\"]\n\
-             [image.a]\nboard=\"native\"\nrmw=\"xrce\"\n[image.b]\nboard=\"native\"\n",
+             [image.a]\nboard=\"linux\"\nrmw=\"xrce\"\n[image.b]\nboard=\"linux\"\n",
         )
         .unwrap();
         assert_eq!(
@@ -4027,7 +4028,7 @@ mod tests {
             "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n\
              [image.embedded]\nboard=\"stm32f4\"\n\
              profile=\"release\"\nfeatures=[\"safety\",\"rosout\"]\n\
-             [image.native]\nboard=\"native\"\n",
+             [image.native]\nboard=\"linux\"\n",
         )
         .unwrap();
 
@@ -4041,7 +4042,7 @@ mod tests {
         // debug, no optimize, empty features).
         let nat = schema_build_json(Some(&st), None, Some("native"), None).expect("build json");
         assert_eq!(nat["target"], "x86_64-unknown-linux-gnu");
-        assert_eq!(nat["board"], "native");
+        assert_eq!(nat["board"], "linux");
         assert_eq!(nat["profile"], "debug");
         assert!(nat.get("optimize").is_none());
         assert_eq!(nat["features"], json!([]));
@@ -4130,7 +4131,7 @@ mod tests {
         std::fs::write(
             &st,
             "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n\
-             default_images=[\"typo\"]\n[image.real]\nboard=\"native\"\n",
+             default_images=[\"typo\"]\n[image.real]\nboard=\"linux\"\n",
         )
         .unwrap();
         let e = schema_build_json(Some(&st), None, None, None)
@@ -4641,7 +4642,7 @@ topics:
                 "trace": { "system_config": "nros.toml", "launch_record": "r", "generated_by": "t" },
                 "components": [], "instances": [], "interfaces": [], "sched_contexts": [],
                 "build": {
-                    "target": "x86_64-unknown-linux-gnu", "board": "native", "rmw": rmw,
+                    "target": "x86_64-unknown-linux-gnu", "board": "linux", "rmw": rmw,
                     "profile": "release", "features": [], "cfg": {}, "transports": []
                 }
             });

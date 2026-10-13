@@ -2,7 +2,7 @@
 
 **Status:** Draft (2026-09-10; revised 2026-09-10 — generated settings live under `build/`, and a workspace has no root build file; 2026-09-11 — three facts measured by phase-445 W4; 2026-09-11 — the app rung gets its spelling and the leaf `.cargo/` is deleted, phase-445 W6; 2026-10-07 — image configuration has ONE source on every road: D10–D12, phase-481; 2026-10-07 — D11's locator revision from phase-481 W0 DECIDED: the module's `module_ext_root` hook appends the fragment; 2026-10-11 — D10–D12 IMPLEMENTED by phase-481 W1–W5: every Zephyr example states its nano-ros config in `system.toml` and no leaf conf file holds a nano-ros knob. 2026-10-11 — D1's path defers to RFC-0103 D7, and D6 covers every image-only dependency of a single-package leaf through a generated selection package. Stays Draft while phase-445, D1–D9, is open)
 
-Home phase: [phase-445](../roadmap/phase-445-board-choice-generates-leaf-config.md).
+Home phase: [phase-445](../roadmap/archived/phase-445-board-choice-generates-leaf-config.md).
 
 Amends RFC-0049 (gives the board descriptor's `[knobs]` the leaf-level budgets
 it was meant to own), phase-341 / RFC-0032 "third leg" (the board projection is

@@ -106,8 +106,8 @@ def self_test() -> int:
         for k, got, want in bad:
             print(f"template_projects SELF-TEST FAILED: {k} -> {got!r}, want {want!r}", file=sys.stderr)
         return 1
-    got = images('[system]\nname="x"\n[image.a]\nboard="native"\n[image.b]\nboard="zephyr"\n')
-    if got != [("a", "native"), ("b", "zephyr")]:
+    got = images('[system]\nname="x"\n[image.a]\nboard="linux"\n[image.b]\nboard="zephyr"\n')
+    if got != [("a", "linux"), ("b", "zephyr")]:
         print(f"template_projects SELF-TEST FAILED: images() -> {got!r}", file=sys.stderr)
         return 1
     print("self-test OK: a sub-project leaf is its own project; a src/ bringup belongs to the root.")

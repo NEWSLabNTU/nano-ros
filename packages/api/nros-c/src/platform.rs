@@ -5,7 +5,7 @@
 //! For `no_std` builds, the C platform layer is called.
 //!
 //! The C platform layer is selected at compile time via preprocessor macros:
-//! - `NROS_PLATFORM_POSIX` - Linux, macOS, POSIX systems
+//! - `NROS_PLATFORM_POSIX` - POSIX systems (the in-tree host board is Linux)
 //! - `NROS_PLATFORM_ZEPHYR` - Zephyr RTOS
 //! - `NROS_PLATFORM_FREERTOS` - FreeRTOS
 //! - `NROS_PLATFORM_BAREMETAL` - Bare-metal (user provides time/sleep)
