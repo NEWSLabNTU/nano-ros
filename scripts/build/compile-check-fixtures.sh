@@ -1025,28 +1025,78 @@ write_compile_check_sig() {
         > "$stamp_dir/.inputsig" 2>/dev/null || rm -f "$stamp_dir/.inputsig"
 }
 
+# phase-489 W6 — REUSE a row whose inputs did not change, like the west lane
+# already does (issue 0509, `west-fixtures.sh`). Every builder below used to
+# `rm -rf` its staged dir and rebuild unconditionally, so a no-change re-run of
+# `just build native` spent ~41 of its ~79 minutes (4-core box) re-making
+# fixtures byte-for-byte: the warm tree a self-hosted lane keeps bought nothing
+# here.
+#
+# The freshness question was already answered and thrown away: the `.inputsig`
+# written after each build is the SAME signature the test-side staleness probe
+# recomputes (issue 0196's rule — the build may not watch less than the gate),
+# covering the manifest record, the row's sources, the dep closure its last
+# build recorded (`*.d`), the CLI's codegen fingerprint and the launch
+# resolver's identity. Reuse requires ALL of: an identical signature, no
+# `.build-failed`, the success marker the builder writes (`.compile-ok`, or a
+# recorded `.verdict` for verdict rows) and the declared `output`. Any doubt
+# falls through to the old unconditional rebuild, so the failure mode is the
+# old cost, never a stale fixture. `NROS_COMPILE_CHECK_REBUILD=1` forces it.
+cc_row_reusable() {
+    local record="$1" stamp_dir="$2" want have _id _b _d _p mdir _t _pr output
+    [ "${NROS_COMPILE_CHECK_REBUILD:-0}" = 0 ] || return 1
+    # The record's own fields; `output` is cut at the next separator because
+    # `read`'s last variable keeps the rest of the record.
+    IFS=$'\x1f' read -r _id _b _d _p mdir _t _pr output <<< "$record"
+    output="${output%%$'\x1f'*}"
+    [ -f "$stamp_dir/.inputsig" ] && [ ! -e "$stamp_dir/.build-failed" ] || return 1
+    case "$output" in
+        ""|.compile-ok)
+            # The marker IS the artifact (or a verdict row's recorded verdict).
+            [ -f "$stamp_dir/.compile-ok" ] || [ -f "$stamp_dir/.verdict" ] || return 1 ;;
+        *)
+            # A built artifact: under the staged dir, or under its manifest dir
+            # (`stage_and_build` builds `<staged>/<mdir>`). Missing → rebuild:
+            # a missing artifact must build, never be skipped.
+            [ -e "$stamp_dir/$output" ] || [ -e "$stamp_dir/${mdir:-.}/$output" ] || return 1 ;;
+    esac
+    want="$(bash "$repo_root/scripts/build/compile-check-signature.sh" "$record" 2>/dev/null || true)"
+    have="$(cat "$stamp_dir/.inputsig" 2>/dev/null || true)"
+    [ -n "$want" ] && [ "$want" = "$have" ] || return 1
+    echo "   reused $stamp_dir — inputs unchanged (.inputsig)"
+}
+
 # cargo-check. A row with a TARGET is an in-place cross-check of an existing
 # example dir; without one it is a staged `cargo check` whose stamp is the proof.
 while IFS=$'\x1f' read -r id builder dir pkg mdir target profiles output; do
     [ -n "$id" ] || continue
     [ -n "$target" ] && continue
-    run_fixture "$out_root/$id" "$id" "$builder" stage_and_check "$id" "$dir"
-    write_compile_check_sig "$id$(printf '\x1f')$builder$(printf '\x1f')$dir$(printf '\x1f')$pkg$(printf '\x1f')$mdir$(printf '\x1f')$target$(printf '\x1f')$profiles$(printf '\x1f')$output" "$out_root/$id"
+    _cc_rec="$id$(printf '\x1f')$builder$(printf '\x1f')$dir$(printf '\x1f')$pkg$(printf '\x1f')$mdir$(printf '\x1f')$target$(printf '\x1f')$profiles$(printf '\x1f')$output"
+    if ! cc_row_reusable "$_cc_rec" "$out_root/$id"; then
+        run_fixture "$out_root/$id" "$id" "$builder" stage_and_check "$id" "$dir"
+        write_compile_check_sig "$_cc_rec" "$out_root/$id"
+    fi
 done < <(_lane_on cargo-check && compile_check_records cargo-check || true)
 
 # cargo-clippy. No target-bearing variant: a cross clippy would need the target
 # toolchain, and no row asks for one.
 while IFS=$'\x1f' read -r id builder dir pkg mdir target profiles output; do
     [ -n "$id" ] || continue
-    run_fixture "$out_root/$id" "$id" "$builder" stage_and_clippy "$id" "$dir"
-    write_compile_check_sig "$id$(printf '\x1f')$builder$(printf '\x1f')$dir$(printf '\x1f')$pkg$(printf '\x1f')$mdir$(printf '\x1f')$target$(printf '\x1f')$profiles$(printf '\x1f')$output" "$out_root/$id"
+    _cc_rec="$id$(printf '\x1f')$builder$(printf '\x1f')$dir$(printf '\x1f')$pkg$(printf '\x1f')$mdir$(printf '\x1f')$target$(printf '\x1f')$profiles$(printf '\x1f')$output"
+    if ! cc_row_reusable "$_cc_rec" "$out_root/$id"; then
+        run_fixture "$out_root/$id" "$id" "$builder" stage_and_clippy "$id" "$dir"
+        write_compile_check_sig "$_cc_rec" "$out_root/$id"
+    fi
 done < <(_lane_on cargo-clippy && compile_check_records cargo-clippy || true)
 
 # cargo-check-verdict (issue 1620) — record the compile's verdict, never fail on it.
 while IFS=$'\x1f' read -r id builder dir pkg mdir target profiles output; do
     [ -n "$id" ] || continue
-    run_fixture "$out_root/$id" "$id" "$builder" stage_and_check_verdict "$id" "$dir"
-    write_compile_check_sig "$id$(printf '\x1f')$builder$(printf '\x1f')$dir$(printf '\x1f')$pkg$(printf '\x1f')$mdir$(printf '\x1f')$target$(printf '\x1f')$profiles$(printf '\x1f')$output" "$out_root/$id"
+    _cc_rec="$id$(printf '\x1f')$builder$(printf '\x1f')$dir$(printf '\x1f')$pkg$(printf '\x1f')$mdir$(printf '\x1f')$target$(printf '\x1f')$profiles$(printf '\x1f')$output"
+    if ! cc_row_reusable "$_cc_rec" "$out_root/$id"; then
+        run_fixture "$out_root/$id" "$id" "$builder" stage_and_check_verdict "$id" "$dir"
+        write_compile_check_sig "$_cc_rec" "$out_root/$id"
+    fi
 done < <(_lane_on cargo-check-verdict && compile_check_records cargo-check-verdict || true)
 
 # cmake-configure-verdict (issue 1620). Stamps under compile-check/<id>, NOT
@@ -1054,22 +1104,31 @@ done < <(_lane_on cargo-check-verdict && compile_check_records cargo-check-verdi
 # and the signature/stale probe key their dir on `builder = cmake-configure`.
 while IFS=$'\x1f' read -r id builder dir pkg mdir target profiles output; do
     [ -n "$id" ] || continue
-    run_fixture "$out_root/$id" "$id" "$builder" stage_and_configure_verdict "$id" "$dir"
-    write_compile_check_sig "$id$(printf '\x1f')$builder$(printf '\x1f')$dir$(printf '\x1f')$pkg$(printf '\x1f')$mdir$(printf '\x1f')$target$(printf '\x1f')$profiles$(printf '\x1f')$output" "$out_root/$id"
+    _cc_rec="$id$(printf '\x1f')$builder$(printf '\x1f')$dir$(printf '\x1f')$pkg$(printf '\x1f')$mdir$(printf '\x1f')$target$(printf '\x1f')$profiles$(printf '\x1f')$output"
+    if ! cc_row_reusable "$_cc_rec" "$out_root/$id"; then
+        run_fixture "$out_root/$id" "$id" "$builder" stage_and_configure_verdict "$id" "$dir"
+        write_compile_check_sig "$_cc_rec" "$out_root/$id"
+    fi
 done < <(_lane_on cmake-configure-verdict && compile_check_records cmake-configure-verdict || true)
 
 while IFS=$'\x1f' read -r id builder dir pkg mdir target profiles output; do
     [ -n "$id" ] || continue
-    run_fixture "$out_root/$id" "$id" "$builder" \
-        stage_and_build "$id" "$dir" "${mdir:-.}" "${pkg:-demo_entry}"
-    write_compile_check_sig "$id$(printf '\x1f')$builder$(printf '\x1f')$dir$(printf '\x1f')$pkg$(printf '\x1f')$mdir$(printf '\x1f')$target$(printf '\x1f')$profiles$(printf '\x1f')$output" "$out_root/$id"
+    _cc_rec="$id$(printf '\x1f')$builder$(printf '\x1f')$dir$(printf '\x1f')$pkg$(printf '\x1f')$mdir$(printf '\x1f')$target$(printf '\x1f')$profiles$(printf '\x1f')$output"
+    if ! cc_row_reusable "$_cc_rec" "$out_root/$id"; then
+        run_fixture "$out_root/$id" "$id" "$builder" \
+            stage_and_build "$id" "$dir" "${mdir:-.}" "${pkg:-demo_entry}"
+        write_compile_check_sig "$_cc_rec" "$out_root/$id"
+    fi
 done < <(_lane_on cargo-build && compile_check_records cargo-build || true)
 
 while IFS=$'\x1f' read -r id builder dir pkg mdir target profiles output; do
     [ -n "$id" ] || continue
-    run_fixture "$out_root/$id" "$id" "$builder" \
-        stage_and_cross_build "$id" "$dir" "${mdir:-.}" "$pkg" "$target" "${profiles:-debug}"
-    write_compile_check_sig "$id$(printf '\x1f')$builder$(printf '\x1f')$dir$(printf '\x1f')$pkg$(printf '\x1f')$mdir$(printf '\x1f')$target$(printf '\x1f')$profiles$(printf '\x1f')$output" "$out_root/$id"
+    _cc_rec="$id$(printf '\x1f')$builder$(printf '\x1f')$dir$(printf '\x1f')$pkg$(printf '\x1f')$mdir$(printf '\x1f')$target$(printf '\x1f')$profiles$(printf '\x1f')$output"
+    if ! cc_row_reusable "$_cc_rec" "$out_root/$id"; then
+        run_fixture "$out_root/$id" "$id" "$builder" \
+            stage_and_cross_build "$id" "$dir" "${mdir:-.}" "$pkg" "$target" "${profiles:-debug}"
+        write_compile_check_sig "$_cc_rec" "$out_root/$id"
+    fi
 done < <(_lane_on cross-build && compile_check_records cross-build || true)
 # C++ syntax-only compile-checks (id : snippet.cpp under
 # packages/testing/nros-tests/fixtures/cpp_compat_snippets/). `c++ -fsyntax-only`
@@ -1265,14 +1324,20 @@ stage_and_script() {
 
 while IFS=$'\x1f' read -r id builder dir pkg mdir target profiles output; do
     [ -n "$id" ] || continue
-    run_fixture "$out_root/$id" "$id" "$builder" stage_and_script "$id" "$dir"
-    write_compile_check_sig "$id$(printf '\x1f')$builder$(printf '\x1f')$dir$(printf '\x1f')$pkg$(printf '\x1f')$mdir$(printf '\x1f')$target$(printf '\x1f')$profiles$(printf '\x1f')$output" "$out_root/$id"
+    _cc_rec="$id$(printf '\x1f')$builder$(printf '\x1f')$dir$(printf '\x1f')$pkg$(printf '\x1f')$mdir$(printf '\x1f')$target$(printf '\x1f')$profiles$(printf '\x1f')$output"
+    if ! cc_row_reusable "$_cc_rec" "$out_root/$id"; then
+        run_fixture "$out_root/$id" "$id" "$builder" stage_and_script "$id" "$dir"
+        write_compile_check_sig "$_cc_rec" "$out_root/$id"
+    fi
 done < <(_lane_on fixture-script && compile_check_records fixture-script || true)
 
 while IFS=$'\x1f' read -r id builder dir pkg mdir target profiles output; do
     [ -n "$id" ] || continue
-    run_fixture "$out_root/$id" "$id" "$builder" cxx_compile_verdict "$id" "$dir" "$target"
-    write_compile_check_sig "$id$(printf '\x1f')$builder$(printf '\x1f')$dir$(printf '\x1f')$pkg$(printf '\x1f')$mdir$(printf '\x1f')$target$(printf '\x1f')$profiles$(printf '\x1f')$output" "$out_root/$id"
+    _cc_rec="$id$(printf '\x1f')$builder$(printf '\x1f')$dir$(printf '\x1f')$pkg$(printf '\x1f')$mdir$(printf '\x1f')$target$(printf '\x1f')$profiles$(printf '\x1f')$output"
+    if ! cc_row_reusable "$_cc_rec" "$out_root/$id"; then
+        run_fixture "$out_root/$id" "$id" "$builder" cxx_compile_verdict "$id" "$dir" "$target"
+        write_compile_check_sig "$_cc_rec" "$out_root/$id"
+    fi
 done < <(_lane_on cxx-compile-verdict && compile_check_records cxx-compile-verdict || true)
 
 cmake_n=0
@@ -1283,8 +1348,11 @@ if [ -n "$_cc_cmake_rows" ]; then
     mkdir -p "$cmake_out"
     while IFS=$'\x1f' read -r id builder dir pkg mdir target profiles output; do
         [ -n "$id" ] || continue
-        run_fixture "$cmake_out/$id" "$id" "$builder" build_cmake_fixture "$id" "$dir"
-        write_compile_check_sig "$id$(printf '\x1f')$builder$(printf '\x1f')$dir$(printf '\x1f')$pkg$(printf '\x1f')$mdir$(printf '\x1f')$target$(printf '\x1f')$profiles$(printf '\x1f')$output" "$cmake_out/$id"
+        _cc_rec="$id$(printf '\x1f')$builder$(printf '\x1f')$dir$(printf '\x1f')$pkg$(printf '\x1f')$mdir$(printf '\x1f')$target$(printf '\x1f')$profiles$(printf '\x1f')$output"
+        if ! cc_row_reusable "$_cc_rec" "$cmake_out/$id"; then
+            run_fixture "$cmake_out/$id" "$id" "$builder" build_cmake_fixture "$id" "$dir"
+            write_compile_check_sig "$_cc_rec" "$cmake_out/$id"
+        fi
         cmake_n=$((cmake_n + 1))
     done <<< "$_cc_cmake_rows"
     # Phase 246 — the ThreadX `threadx_bringup_rv64` configure-only baker-audit
@@ -1301,9 +1369,7 @@ cxx_skipped=""
 # compiler" (issue 1656).
 _cc_cxx_rows="$( { _lane_on cxx-syntax && compile_check_records cxx-syntax; } || true)"
 _cc_cxxv_rows="$( { _lane_on cxx-syntax-verdict && compile_check_records cxx-syntax-verdict; } || true)"
-if [ -z "$_cc_cxx_rows$_cc_cxxv_rows" ]; then
-    :
-elif command -v "${CXX:-c++}" >/dev/null 2>&1; then
+if [ -n "$_cc_cxx_rows$_cc_cxxv_rows" ] && command -v "${CXX:-c++}" >/dev/null 2>&1; then
     # Issue #34 — generate the per-build config headers the snippets need
     # (`nros_cpp_config_generated.h` / `nros_config_generated.h`). nros-cpp's /
     # nros-c's build.rs emit them under `target/nros-{cpp,c}-generated/` on a host
@@ -1311,6 +1377,27 @@ elif command -v "${CXX:-c++}" >/dev/null 2>&1; then
     # cargo build fails, the headers stay absent and the snippets that include
     # them leave no stamp (consuming test reports the gap per tier). The sizes
     # need not be exact — this is a `-fsyntax-only` check, not a link.
+    # phase-489 W6 — the headers are an input to a row that BUILDS. When every
+    # row this invocation holds is reusable (`cc_row_reusable`), nothing reads
+    # them, and the cargo build below is the only work left in the unit.
+    _cc_cxx_need=0
+    while IFS=$'\x1f' read -r id builder dir pkg mdir target profiles output; do
+        [ -n "$id" ] || continue
+        cc_row_reusable "$id$(printf '\x1f')$builder$(printf '\x1f')$dir$(printf '\x1f')$pkg$(printf '\x1f')$mdir$(printf '\x1f')$target$(printf '\x1f')$profiles$(printf '\x1f')$output" \
+            "$out_root/$id" >/dev/null || { _cc_cxx_need=1; break; }
+    done <<< "$_cc_cxx_rows"$'\n'"$_cc_cxxv_rows"
+fi
+if [ -z "$_cc_cxx_rows$_cc_cxxv_rows" ]; then
+    :
+elif [ "${_cc_cxx_need:-1}" = 0 ]; then
+    echo "== cxx-syntax: every row reusable — config headers not regenerated =="
+    while IFS=$'\x1f' read -r id builder dir pkg mdir target profiles output; do
+        [ -n "$id" ] || continue
+        cc_row_reusable "$id$(printf '\x1f')$builder$(printf '\x1f')$dir$(printf '\x1f')$pkg$(printf '\x1f')$mdir$(printf '\x1f')$target$(printf '\x1f')$profiles$(printf '\x1f')$output" \
+            "$out_root/$id" || true
+        cxx_n=$((cxx_n + 1))
+    done <<< "$_cc_cxx_rows"$'\n'"$_cc_cxxv_rows"
+elif command -v "${CXX:-c++}" >/dev/null 2>&1; then
     echo "== generating nros-cpp / nros-c config headers for cxx-syntax =="
     # phase-361 W3 — `std` is EXPLICIT. `nros-c`/`nros-cpp` used to default to
     # it; now `default = []`, and this is a HOST build, so without asking the
@@ -1348,14 +1435,20 @@ elif command -v "${CXX:-c++}" >/dev/null 2>&1; then
     done
     while IFS=$'\x1f' read -r id builder dir pkg mdir target profiles output; do
         [ -n "$id" ] || continue
-        run_fixture "$out_root/$id" "$id" "$builder" cxx_syntax_check "$id"
-        write_compile_check_sig "$id$(printf '\x1f')$builder$(printf '\x1f')$dir$(printf '\x1f')$pkg$(printf '\x1f')$mdir$(printf '\x1f')$target$(printf '\x1f')$profiles$(printf '\x1f')$output" "$out_root/$id"
+        _cc_rec="$id$(printf '\x1f')$builder$(printf '\x1f')$dir$(printf '\x1f')$pkg$(printf '\x1f')$mdir$(printf '\x1f')$target$(printf '\x1f')$profiles$(printf '\x1f')$output"
+        if ! cc_row_reusable "$_cc_rec" "$out_root/$id"; then
+            run_fixture "$out_root/$id" "$id" "$builder" cxx_syntax_check "$id"
+            write_compile_check_sig "$_cc_rec" "$out_root/$id"
+        fi
         cxx_n=$((cxx_n + 1))
     done <<< "$_cc_cxx_rows"
     while IFS=$'\x1f' read -r id builder dir pkg mdir target profiles output; do
         [ -n "$id" ] || continue
-        run_fixture "$out_root/$id" "$id" "$builder" cxx_syntax_check "$id" verdict
-        write_compile_check_sig "$id$(printf '\x1f')$builder$(printf '\x1f')$dir$(printf '\x1f')$pkg$(printf '\x1f')$mdir$(printf '\x1f')$target$(printf '\x1f')$profiles$(printf '\x1f')$output" "$out_root/$id"
+        _cc_rec="$id$(printf '\x1f')$builder$(printf '\x1f')$dir$(printf '\x1f')$pkg$(printf '\x1f')$mdir$(printf '\x1f')$target$(printf '\x1f')$profiles$(printf '\x1f')$output"
+        if ! cc_row_reusable "$_cc_rec" "$out_root/$id"; then
+            run_fixture "$out_root/$id" "$id" "$builder" cxx_syntax_check "$id" verdict
+            write_compile_check_sig "$_cc_rec" "$out_root/$id"
+        fi
         cxx_n=$((cxx_n + 1))
     done <<< "$_cc_cxxv_rows"
 else
