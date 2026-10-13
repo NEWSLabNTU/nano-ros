@@ -485,6 +485,45 @@ def images_in(profile_dir):
     return out
 
 
+_HASH_SUFFIX = re.compile(r"-[0-9a-f]{16}$")
+
+
+def distinct_apps(images):
+    """How many different programs these images are.
+
+    `examples/<n>-<hash>` and `<n>` are one program, and cargo spells a package
+    `native-rs-x` / `native_rs_x` both ways, so normalise both.
+    """
+    return len({
+        _HASH_SUFFIX.sub("", os.path.basename(p)).replace("_", "-") for p in images
+    })
+
+
+def attributable(profile_dir, images):
+    """None when this profile dir's config can be attributed to its images,
+    else the reason it cannot (issue 1885).
+
+    The config is read from `<profile>/build/nros-node-*/out/`, ONE per profile
+    dir. In an ordinary profile dir several programs built with different
+    sizing share that `out/` and the last build script to run wins, so the
+    config describes one program and says nothing about the others: it FAILED
+    `action-client` (which declares an action client, ACTION_CLIENTS=1) on the
+    config `listener` had just written (0). A build class (`CLASS_SUBDIR`,
+    issue 1869) is keyed by configuration, so every image in it shares one.
+    """
+    if is_class_build_dir(profile_dir):
+        return None
+    n = distinct_apps(images)
+    if n > 1:
+        return (
+            f"{n} programs share this profile dir's one generated config "
+            f"(last build script wins) — built before a shared target dir "
+            f"keyed its build dir by configuration (issues 1869/1885); "
+            f"rebuild the fixtures to examine them"
+        )
+    return None
+
+
 def knob_of(config_paths):
     """(action_clients, max_cbs, arena_size) or (None, reason).
 
@@ -586,6 +625,10 @@ def main(argv=None, _self_test=True):
     for profile, configs in sorted(find_image_roots(roots).items()):
         imgs = images_in(profile)
         if not imgs:
+            continue
+        ambiguous = attributable(profile, imgs)
+        if ambiguous:
+            skipped_roots.append((profile, ambiguous, len(imgs)))
             continue
         knob, why = knob_of(configs)
         if knob is None:
@@ -797,6 +840,19 @@ def self_test(quiet=True):
                 fh.write(b"\x7fELF\x02\x01\x01" + b"\0" * 9 + (2).to_bytes(2, "little"))
             if len(images_in(prof)) != want:
                 fails.append(f"images_in({prof}): expected {want} image(s)")
+
+    # Issue 1885 — a profile dir whose programs share one generated config is
+    # not attributable; a build class (one configuration) always is; one
+    # program (twice spelled) always is.
+    for prof, apps, want_ambiguous in (
+        (os.path.join("t", "debug"), ["a-1111111111111111", "b-2222222222222222"], True),
+        (os.path.join("t", "debug"), ["native_x-0123456789abcdef", "native-x"], False),
+        (os.path.join("t", CLASS_SUBDIR, "k", CLASS_BUILD_DIR, "debug"),
+         ["a-1111111111111111", "b-2222222222222222"], False),
+    ):
+        got = attributable(prof, apps) is not None
+        if got != want_ambiguous:
+            fails.append(f"attributable({prof}, {apps}): expected {want_ambiguous}")
 
     # Phase-413 W7 / issue 1001. Two properties of the scoping, both of which
     # a "it printed OK" reading cannot distinguish from their absence.

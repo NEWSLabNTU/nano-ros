@@ -906,6 +906,26 @@ pub fn write(
     who: &str,
     image: Option<&str>,
 ) -> Result<Option<LeafImage>> {
+    Ok(write_shared(leaf, nano_ros_root, who, image, &[])?.map(|(img, _)| img))
+}
+
+/// [`write`] for a caller that may name ONE cargo target dir for several
+/// images (`native_args`: the cargo arguments after `--`).
+///
+/// Issue 1869 (RFC-0100 D13) gave the WORKSPACE road a build dir per sizing
+/// configuration inside such a target dir; the single-package road did not, so
+/// every leaf of a fixture group shared one `nros-node` build-script `out/`
+/// and the last leaf to build overwrote the others' generated config (issue
+/// 1885). With a caller target dir this keys the image's configuration, points
+/// the descriptor at its class copy, and returns the class so the caller can
+/// pass `build.build-dir`. No caller target dir: nothing changes.
+pub fn write_shared(
+    leaf: &Path,
+    nano_ros_root: &Path,
+    who: &str,
+    image: Option<&str>,
+    native_args: &[String],
+) -> Result<Option<(LeafImage, Option<crate::builder::shared_target::Class>)>> {
     let Some(img) = resolve_image(leaf, nano_ros_root, image)? else {
         return Ok(None);
     };
@@ -994,6 +1014,25 @@ pub fn write(
         env.insert(k, v);
     }
 
+    // Issue 1885 — a caller-named target dir gets a build class (see above).
+    let shared = {
+        let getenv = |k: &str| std::env::var(k).ok();
+        let (cwd, _) = build_command(&img);
+        match crate::builder::shared_target::caller_target_dir(native_args, &getenv, &cwd) {
+            Some(tdir) => {
+                let extra = [
+                    ("cargo_config", img.cargo_config.as_deref().unwrap_or("")),
+                    ("target", img.target.as_deref().unwrap_or("")),
+                ];
+                Some(
+                    crate::builder::shared_target::apply(&tdir, &env, &mut path_env, &extra)
+                        .map_err(|e| eyre!("`{}`'s shared build class: {e}", img.image_id))?,
+                )
+            }
+            None => None,
+        }
+    };
+
     // No absolute path in the hint: the file is otherwise checkout-independent,
     // and the command is written relative to the directory it names.
     let (_cwd, args) = build_command(&img);
@@ -1029,7 +1068,7 @@ pub fn write(
     cargo_config::write(&spec, &img.config_path)
         .map_err(|e| eyre!("writing the settings for `{}`: {e}", img.image_id))?;
     wire_settings_into_leaf_config(leaf, &img.image_id, who)?;
-    Ok(Some(img))
+    Ok(Some((img, shared)))
 }
 
 /// The `include` a leaf's own `.cargo/config.toml` carries so that a plain

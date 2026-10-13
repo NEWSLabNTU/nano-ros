@@ -1696,11 +1696,12 @@ fn plan_leaf_image(
     }
 
     // ---- stage 4 — the one settings file ------------------------------------
-    let Some(img) = crate::cmd::leaf_settings::write(
+    let Some((img, shared_class)) = crate::cmd::leaf_settings::write_shared(
         root,
         &nros_root,
         "nros build",
         Some(img.image_id.as_str()),
+        &args.native_args,
     )?
     else {
         eyre::bail!(
@@ -1732,6 +1733,21 @@ fn plan_leaf_image(
     });
     if args.offline {
         a.push("--frozen".to_string());
+    }
+    if let Some(class) = &shared_class {
+        eprintln!(
+            "nros build:   shared target dir → build class {} ({})",
+            class.key,
+            class.dir.display()
+        );
+        let getenv = |k: &str| std::env::var(k).ok();
+        if !crate::builder::shared_target::caller_names_build_dir(&args.native_args, &getenv) {
+            a.push("--config".to_string());
+            a.push(format!(
+                "build.build-dir={}",
+                toml_edit::Value::from(class.build_dir().display().to_string())
+            ));
+        }
     }
     a.extend(args.native_args.iter().cloned());
     Ok(Some(vec![ResolvedBuild {
