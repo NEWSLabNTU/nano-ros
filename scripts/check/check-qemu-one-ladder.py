@@ -23,6 +23,14 @@ This refuses a QEMU launched or probed by bare NAME in code:
 A string literal is prose to this gate (an `echo` naming the binary, a
 `"$(nros_qemu_bin qemu-system-arm)"` substitution). Buildless, ~0.2 s;
 self-tests its matcher on every run and reports stale allowlist entries.
+
+Issue 1884 — the PROBE must ask what the BOOT needs, too. The ESP32 probe
+(`esp32::is_qemu_riscv32_available` / `require_qemu_riscv32`) resolves the
+Espressif fork's store row and demands its `esp32c3` machine. Two NuttX
+rv-virt tests called it, so a stock `qemu-system-riscv32`, which boots
+`-M virt` fine, read as missing on every host without the fork. So a Rust
+file that calls the ESP32 probe must also boot an ESP32 image
+(`start_esp32_qemu`); anything else asks `qemu::qemu_system_has_machine`.
 """
 from __future__ import annotations
 
@@ -68,6 +76,28 @@ SELF_TESTS = [
 ]
 
 
+ESP32_PROBE = re.compile(r"\b(?:is_qemu_riscv32_available|require_qemu_riscv32)\s*\(")
+ESP32_BOOT = re.compile(r"\bstart_esp32_qemu\s*\(")
+ESP32_PROBE_HOME = "packages/testing/nros-tests/src/esp32.rs"
+
+ESP32_SELF_TESTS = [
+    # (text, should_be_refused)
+    ("if !nros_tests::esp32::is_qemu_riscv32_available() { unmet!() }\n"
+     "QemuProcess::start_nuttx_riscv(&t, true)", True),
+    ("require_qemu_riscv32();\nlet q = start_esp32_qemu(flash, false);", False),
+    ("// esp32::is_qemu_riscv32_available() is ESP32's\n"
+     "if !nros_tests::qemu::is_qemu_riscv32_virt_available() {}", False),
+]
+
+
+def esp32_probe_misused(text: str) -> list[int]:
+    """Lines calling the ESP32 probe in a file that boots no ESP32 image."""
+    code = comments.strip_comments(text, "rust")
+    if ESP32_BOOT.search(code):
+        return []
+    return [n for n, line in enumerate(code.splitlines(), 1) if ESP32_PROBE.search(line)]
+
+
 def lang_of(path: str) -> str | None:
     if Path(path).name == "justfile":
         return "just"
@@ -100,6 +130,11 @@ def self_test() -> int:
         if got != want:
             bad += 1
             print(f"  self-test FAILED: {text!r} ({lang}) matched={got}, want {want}")
+    for text, want in ESP32_SELF_TESTS:
+        got = bool(esp32_probe_misused(text))
+        if got != want:
+            bad += 1
+            print(f"  self-test FAILED (esp32 probe): {text!r} refused={got}, want {want}")
     return bad
 
 
@@ -130,7 +165,27 @@ def main() -> int:
             continue
         found += [f"{f}:{n}" for n in lines]
     stale = sorted(set(ALLOWED) - seen_allowed - {"scripts/check/check-qemu-one-ladder.py"})
+    misused = []
+    for f in git_grep.run(
+        ["-lE", r"is_qemu_riscv32_available|require_qemu_riscv32", "--", "packages/*.rs"],
+        ROOT,
+    ).split():
+        if f == ESP32_PROBE_HOME:
+            continue
+        text = (ROOT / f).read_text(errors="replace")
+        misused += [f"{f}:{n}" for n in esp32_probe_misused(text)]
     rc = 0
+    if misused:
+        rc = 1
+        print("check-qemu-one-ladder: the ESP32 QEMU probe guards a boot that is not ESP32 "
+              "(issue 1884):\n")
+        for h in misused:
+            print(f"  {h}")
+        print(
+            "\nIt demands the Espressif fork's `esp32c3` machine. Ask for the machine the"
+            "\nboot passes to -M instead: nros_tests::qemu::qemu_system_has_machine"
+            "(\"qemu-system-<arch>\", \"<machine>\")."
+        )
     if found:
         rc = 1
         print("check-qemu-one-ladder: a QEMU binary is launched or probed by bare NAME:\n")
@@ -148,7 +203,7 @@ def main() -> int:
         for f in stale:
             print(f"  {f}")
     if rc == 0:
-        print(f"check-qemu-one-ladder: OK ({len(SELF_TESTS)} self-test cases; "
+        print(f"check-qemu-one-ladder: OK ({len(SELF_TESTS) + len(ESP32_SELF_TESTS)} self-test cases; "
               f"{len(ALLOWED)} allowlisted)")
     return rc
 

@@ -45,8 +45,9 @@ fn c_riscv_nuttx_talker_delivers_cross_process() {
         "the riscv NuttX C talker",
     );
     require_zenohd();
-    if !nros_tests::esp32::is_qemu_riscv32_available() {
-        nros_tests::unmet!("qemu-system-riscv32 not found");
+    // Issue 1884 — the probe the boot needs (`-M virt`), not ESP32's.
+    if !nros_tests::qemu::is_qemu_riscv32_virt_available() {
+        nros_tests::unmet!("qemu-system-riscv32 with the `virt` machine not found");
     }
 
     let talker = build_nuttx_riscv_c_talker()
