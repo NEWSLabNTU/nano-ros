@@ -23,10 +23,7 @@ include $(APPDIR)/Make.defs
 #
 # `$(APPDIR)` is the user's own apps tree (NuttX exports it), so it is the only
 # root here that belongs to the person running the build. `$(CURDIR)` is not,
-# for the symlink reason above — which is also why the sibling
-# `apps-external-template/Makefile` needs no such line: the staging script
-# COPIES it into `apps/external/<bringup>/`, so its `$(CURDIR)` is already the
-# user's tree.
+# for the symlink reason above.
 #
 # The ARCH is in the coordinate deliberately. One apps tree serves both
 # `qemu-armv7a` and `rv-virt` (issue 0525), `SUFFIX` is `$(CWD)` dotted and so

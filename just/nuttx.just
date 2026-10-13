@@ -388,9 +388,11 @@ build-fixtures-riscv:
 # Phase 212.M-F.16 — the legacy Phase 157.C `build-fixtures-make`
 # recipe (native external-app make path that produced the
 # `nuttx_make_e2e` kernel ELF) was retired here. The Phase 212.H.2
-# multi-pkg workspace path (`scripts/nuttx/stage-external-apps.sh
-# --bringup <dir>`, driven from `phase212_h2_nuttx`) is the only
-# supported NuttX make-path now; per-example staging was dropped
+# per-bringup make path that replaced it (`stage-external-apps.sh
+# --bringup <dir>`) is retired too (issue 1883 — it could not build an
+# image); a NuttX workspace image is built on the cargo road
+# (`nros build`, fixture row `workspace-rust-qemu-nuttx`). Per-example
+# staging was dropped
 # under M-F.12 and the host-codegen / per-example FFI baker scripts
 # under M-F.16's commit 1/4.
 #

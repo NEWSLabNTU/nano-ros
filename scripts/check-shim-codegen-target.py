@@ -17,6 +17,8 @@ issue 1312 (`--for-entry <PKG|dir>`: the image that CLAIMS the entry answers,
 which is the question a framework configure can actually ask). The NuttX and
 PlatformIO shims were left, and issue 1396 fixed both — NuttX by pinning the
 image id in `nros_bringup.mk`, PlatformIO by asking `--for-entry` as well.
+The NuttX per-bringup shim was later RETIRED (issue 1883: it could not build an
+image at all); its pre- and post-1396 text survives below as self-test input.
 
 WHAT IT CHECKS
 
@@ -27,7 +29,8 @@ and let whatever ASSIGNS that variable check it, or ask `--for-entry <pkg|dir>`
 and let the image that claims the entry answer. A variable value is out of
 scope by construction — this gate cannot evaluate it, and the assigning
 producer is where the check belongs. `scripts/nuttx/stage-external-apps.sh
---image` is that producer's check, and it is what the 1396 fix added.
+--image` was that producer's check for the NuttX shim until issue 1883 retired
+both.
 
 The one way out is an authored marker on the invocation naming THAT VALUE and
 a TRACKED ISSUE ID — the CLAUDE.md rule for a tolerated gap, and the thing
@@ -459,8 +462,8 @@ def self_test(verbose: bool, quiet: bool = False) -> int:
     # the tree and demands the file exist.
     chk("docs are not", not is_build_file("docs/issues/README.md"))
     chk("a book page is not", not is_build_file("book/src/x.yml"))
-    chk("the NuttX template Makefile is", is_build_file(
-        "integrations/nuttx/apps-external-template/Makefile"))
+    chk("the NuttX integration Makefile is", is_build_file(
+        "integrations/nuttx/Makefile"))
     chk("the PlatformIO hook is", is_build_file("integrations/platformio/nros_codegen.py"))
     chk("a vendor-SDK integration shell is", is_build_file(
         "integrations/s32ds/CMakeLists.txt"))

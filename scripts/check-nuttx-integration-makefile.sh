@@ -29,7 +29,7 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 
 fail=0
-for mk in integrations/nuttx/Makefile integrations/nuttx/apps-external-template/Makefile; do
+for mk in integrations/nuttx/Makefile; do
     [ -f "$mk" ] || continue
 
     # --- (1) every repo path the Makefile names must exist ------------------

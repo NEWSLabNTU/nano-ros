@@ -98,6 +98,8 @@ Zephyr    1) nros codegen system --out build/<b>/nros-system
 
 NuttX     1) nros codegen system --out build/<b>/baked-headers
           2) make -C $NUTTX_DIR -j   (apps/external/<bringup> staged by stage-external-apps.sh; cargo runs from context::)
+             [RETIRED, issue 1883 — this road never built an image; a NuttX workspace
+              image is built on the cargo road: `[image.<id>] board = "qemu-armv7a-nuttx"` + `nros build`]
           3) make -C $NUTTX_DIR flash   (board-specific; or qemu runner)
 
 FreeRTOS  1) nros codegen system --out target/<triple>/baked/
