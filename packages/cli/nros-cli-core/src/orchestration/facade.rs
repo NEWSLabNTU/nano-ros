@@ -379,10 +379,11 @@ pub fn write_leaf_selection(spec: &LeafSelectionSpec<'_>, sys: &SystemToml) -> R
     // The image's panic policy, when it states one (RFC-0077). `own` (or
     // unstated) means the board's crate-root provider is the image's handler.
     let base = sys.image_defaults.clone().unwrap_or_default();
-    let panic = sys
-        .image
-        .get(spec.image_id)
-        .and_then(|i| i.with_base(&base).panic);
+    let image = sys.image.get(spec.image_id).map(|i| i.with_base(&base));
+    let panic = image.as_ref().and_then(|i| i.panic.clone());
+    // Issue 1340 — `[image.<id>] producers = false` drops the host board's
+    // census + profile producers from THIS image's selection.
+    let host_producers = image.as_ref().and_then(|i| i.producers).unwrap_or(true);
     let carries_root_items = panic.as_deref().is_none_or(|p| p == "own");
     let mut board = spec.board.clone();
     if !carries_root_items {
@@ -395,6 +396,7 @@ pub fn write_leaf_selection(spec: &LeafSelectionSpec<'_>, sys: &SystemToml) -> R
         spec.nano_ros_root,
         &dir,
         &board_features,
+        host_producers,
     )
     .map_err(|e| eyre::eyre!("selection for {}: {e}", spec.leaf.display()))?;
 

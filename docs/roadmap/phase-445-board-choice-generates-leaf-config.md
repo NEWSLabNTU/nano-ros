@@ -56,14 +56,13 @@ workspace root build file, both gated.
 get an image — holds for Rust and not for the other two roads:
 
 * ~~**issue 1305** — the one-line board switch is false for a single-package
-  Rust leaf.~~ RESOLVED 2026-10-13: 97 in-tree leaves are on their generated
+  Rust leaf.~~ RESOLVED 2026-10-13: 98 in-tree leaves are on their generated
   selection package (W4c phases C–F), templates, mps2 C/C++ cargo link roots,
   the native hand-written-`main` examples and (phase F) every
-  `packages/testing/` program, bench and fixture entry included. What still
-  names a board crate is the rv-virt-threadx libs a CMake image links (out of
-  scope by shape), issue 1340's measurement witness
-  `bins/in-place-subscriptions` (kept on purpose: moving it changes the image
-  1340 measures) — `leaf_settings::NOT_ON_THE_SELECTION` — and the leaves of a
+  `packages/testing/` program, bench and fixture entry included — issue
+  1340's witness with `[image.native] producers = false`. What still names a
+  board crate is the rv-virt-threadx libs a CMake image links (out of scope by
+  shape, `leaf_settings::NOT_ON_THE_SELECTION`) and the leaves of a
   scaffold board (the dormant ESP32, issue 1525).
 * ~~**issue 1296** — `nros build` does not resolve a single-package C/C++
   leaf.~~ RESOLVED 2026-10-11, together with 1308: `nros build` now configures
@@ -329,10 +328,12 @@ esp32 stack budgets.
   byte-pool allocator answered libstd's first allocation with NULL); fixture
   entries a bringup claims (`[image.<id>] entry = "<pkg>"`) get their
   selection from THAT image (`leaf_settings::write_entry_selection`, also read
-  by `ws board-facts`), so their network identity stays in one place. 97
-  leaves on the selection. `bins/in-place-subscriptions` stays (issue 1340's
-  witness: migrating it adds `metadata_mode::STATE` 75,992 B and undoes the
-  in-place arena saving, EXECUTOR_BACKING 20,864 -> 45,440 B).
+  by `ws board-facts`), so their network identity stays in one place. 98
+  leaves on the selection with `bins/in-place-subscriptions` (issue 1340's
+  witness), which states `[image.native] producers = false`: the selection
+  otherwise gives a host image the census + profile producers
+  (`metadata_mode::STATE` 75,992 B, EXECUTOR_BACKING 20,864 -> 45,440 B);
+  with the opt-out it measures the hand-written image to the byte (+0 RAM).
   `nros sync` / `nros build` write `build/<image>/nros-cargo.toml` (board
   `cargo_config` + per-image `target-dir` + resolved `[env]` incl. the entity
   facts + in-repo patch rows) and the generated entry

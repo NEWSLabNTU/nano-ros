@@ -175,6 +175,21 @@ pub struct ImageBlock {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub entry: Option<String>,
 
+    /// `producers = false` — build this image WITHOUT the host board's
+    /// build-time producers, the entity-census recorder and the profiler
+    /// (`nros-board-linux/census` + `/profile`, issue 1419 / phase-463 W7).
+    ///
+    /// Unset (the default) keeps them: the host image is the census and
+    /// profile producer for its workspace, and every other road relies on
+    /// that. They are not free — `nros::metadata_mode::STATE` alone is
+    /// ~76 KB of `.bss` — so an image whose own MEMORY is the measurement
+    /// opts out (issue 1340's witness, `bins/in-place-subscriptions`). It is
+    /// not a capability axis ([`Self::features`] only ADDS registry
+    /// capabilities); it removes two crate features the selection writer
+    /// otherwise adds by board, and has no effect on a board that has none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub producers: Option<bool>,
+
     /// Capability axes for this image, over the system's own list.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub features: Vec<String>,
@@ -235,6 +250,7 @@ impl ImageBlock {
             // the images that do not name one, and an image that does is
             // making a choice the base cannot have made for it.
             entry: pick(&self.entry, &base.entry),
+            producers: self.producers.or(base.producers),
             // Lists CONCATENATE base-then-specific: conf fragments are ordered
             // and later ones override earlier, which is exactly Zephyr's
             // CONF_FILE semantics. A specific block extends the base set rather
@@ -279,6 +295,25 @@ mod tests {
         // Absent is an EMPTY table, never a missing field: a caller extends it
         // unconditionally.
         assert!(parse("board = \"native\"\n").env.is_empty());
+    }
+
+    /// Issue 1340 — `producers` parses, is unset by default, and a specific
+    /// block's value wins over the base table's.
+    #[test]
+    fn producers_is_unset_by_default_and_the_image_wins() {
+        assert_eq!(parse("board = \"native\"\n").producers, None);
+        let off = parse("producers = false\n");
+        assert_eq!(off.producers, Some(false));
+        assert_eq!(
+            ImageBlock::default().with_base(&off).producers,
+            Some(false),
+            "a base `producers = false` reaches an image that says nothing"
+        );
+        assert_eq!(
+            parse("producers = true\n").with_base(&off).producers,
+            Some(true)
+        );
+        assert!(toml::from_str::<ImageBlock>("producer = false\n").is_err());
     }
 
     /// `deny_unknown_fields` is why the key had to be added here at all - a
