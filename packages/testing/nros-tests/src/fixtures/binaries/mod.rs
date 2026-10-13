@@ -4178,11 +4178,22 @@ fn shared_group_lane_check(
             "shared fixture group `{platform}` names no matrix platform token"
         )));
     };
-    if let Some(reason) = crate::fixtures::lane::skip_reason_for_platforms(
-        &[id],
-        &format!("the shared `{platform}` fixture `{binary_name}`"),
-        coords,
-    ) {
+    let label = format!("the shared `{platform}` fixture `{binary_name}`");
+    if let Some(reason) = crate::fixtures::lane::skip_reason_for_platforms(&[id], &label, coords) {
+        crate::lane_skip!("{reason}");
+    }
+    // Issue 1874 -- the lane DOES select this platform, but not necessarily
+    // this binary's row. The build narrows per ROW coordinate, so a tier-2
+    // build that selects `baremetal,c,zenoh` builds the C rows and not the Rust
+    // or C++ ones; asking only "is the platform in the lane" then failed every
+    // out-of-lane binary in the shared dir as "MISSING for an in-lane
+    // coordinate" (15 of tier 2's 21 reds). The binary's NAME attributes it to
+    // its row; exactly one producing row skips by that row's coordinate, and
+    // anything else keeps failing closed.
+    if let [row] = crate::fixtures::lane::rows_producing_binary(platform, binary_name).as_slice()
+        && let Some(reason) =
+            crate::fixtures::lane::skip_reason_for_coord(&row.coord, &label, coords)
+    {
         crate::lane_skip!("{reason}");
     }
     Ok(())
@@ -7665,6 +7676,49 @@ mod tests {
     /// returns `Ok` so the presence/freshness check that follows still fails
     /// hard on an absent binary — the negative control, without which "skip
     /// everything" would pass the first arm.
+    /// Issue 1874 -- a lane that selects the platform at ONE coordinate (tier 2:
+    /// `baremetal,c,zenoh`) skips a shared-dir binary whose own row sits at
+    /// another (`qemu-rtic-talker`, a Rust row), and still sends an in-lane row's
+    /// binary (`baremetal-c-talker`) to the hard presence check. Before, both
+    /// fell through and the Rust one failed as "MISSING for an in-lane
+    /// coordinate" because the build had, correctly, not built it.
+    #[test]
+    fn a_shared_group_binary_skips_by_its_own_rows_coordinate() {
+        use std::collections::BTreeSet;
+        let tier2: BTreeSet<_> = [(
+            "baremetal".to_string(),
+            "c".to_string(),
+            "zenoh".to_string(),
+        )]
+        .into_iter()
+        .collect();
+        assert_eq!(
+            crate::fixtures::lane::rows_producing_binary("baremetal", "qemu-rtic-talker").len(),
+            1,
+            "the binary name attributes to exactly one row"
+        );
+        let out = std::panic::catch_unwind(|| {
+            shared_group_lane_check("baremetal", "qemu-rtic-talker", Some(&tier2))
+        });
+        let msg = match out {
+            Err(p) => p
+                .downcast_ref::<String>()
+                .cloned()
+                .or_else(|| p.downcast_ref::<&str>().map(|s| s.to_string()))
+                .unwrap_or_default(),
+            Ok(r) => panic!("an out-of-lane ROW must skip, got {r:?}"),
+        };
+        assert_eq!(crate::skip_marker::class_in(&msg), Some("lane"), "{msg}");
+        assert!(
+            shared_group_lane_check("baremetal", "baremetal-c-talker", Some(&tier2)).is_ok(),
+            "an in-lane row's binary still falls through to the presence check"
+        );
+        assert!(
+            crate::fixtures::lane::rows_producing_binary("baremetal", "no-such-binary").is_empty(),
+            "an unknown name attributes to nothing and so never skips"
+        );
+    }
+
     #[test]
     fn a_shared_group_skips_only_when_its_platform_is_out_of_lane() {
         use std::collections::BTreeSet;
