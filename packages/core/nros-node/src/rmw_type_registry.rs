@@ -291,7 +291,7 @@ pub const fn subscription_buffer_ok<M: MessageForRmw>() -> bool {
 /// This is the inversion the wave is: before it, a subscription that named no
 /// number was charged `DEFAULT_RX_BUF_SIZE` per slot and the type's own bound
 /// reached the arena only if the consumer wrote
-/// [`rx_buffer_from_type`](crate::executor::node::TypedSubscriptionBuilder::rx_buffer_from_type)
+/// `TypedSubscriptionBuilder::rx_buffer_from_type`
 /// or `nros::rx_buffer_for!`. A consumer who did not know those exist got the
 /// global, silently — the same failure the derivation was written to prevent.
 /// Now the derivation is the default and `.rx_buffer::<N>()` is the opt-out.
