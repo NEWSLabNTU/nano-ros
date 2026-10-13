@@ -8,6 +8,26 @@
 
 use std::env;
 
+/// Issue 1879 — the code model every C/C++ TU linked into the NuttX flat-build
+/// kernel ELF must use: NO PIC.
+///
+/// The image is `-static` with no GOT-init startup, and the board's
+/// `dramboot.ld` places `.got` AFTER `_edata`, outside the `.data` range
+/// `__start` copies from `_eronly` — so every GOT slot reads 0 at run time,
+/// and cc-rs's default `-fPIC` routes every reference to an EXTERN DATA symbol
+/// through one. C++ hit it first (COMDAT statics; `nros::init` failed) and was
+/// the only language fixed, on the unmeasured belief that C TUs "rely on the
+/// default PIC for their NuttX kernel-symbol references"; zenoh-pico's C, the
+/// heaviest NuttX-symbol user in the image, has always been `pic = false`
+/// (`nros-platform-nuttx/nros-platform.toml`). C stayed latent while an app
+/// reached its type support through a getter FUNCTION; phase-492 W8 made
+/// `ROSIDL_GET_MSG_TYPE_SUPPORT` the address of a `__nros_type` DATA object,
+/// and every C entity init returned `RCL_RET_INVALID_ARGUMENT` on a NULL type
+/// support. One spelling for every `cc::Build` feeding that link.
+pub(crate) fn flat_kernel_code_model(build: &mut cc::Build) {
+    build.pic(false);
+}
+
 /// Compile the NuttX C platform port into `libnros_platform_nuttx.a` and emit
 /// the `cargo:rustc-link-lib` directive. All arch-specifics come from env (the
 /// board overlay sets them); defaults are the qemu-arm cortex-a7 hardfloat
@@ -67,6 +87,7 @@ pub fn run_platform() {
     // members (nothing references them yet) and the referencers then fail with
     // `undefined reference to nros_platform_*`. See issue-0048.
     platform.cargo_metadata(false);
+    flat_kernel_code_model(&mut platform);
     platform.compiler(&nuttx_cross);
     for f in &cflags {
         platform.flag(f);
@@ -166,6 +187,7 @@ pub fn compile_entry_seams(seam_srcs: &[&std::path::Path]) {
     // — after every rlib, so the C++ entry's `nros_board_nuttx_run_tiers`
     // reference resolves regardless of archive order (issue-0048 / RFC-0042 D3).
     seam.cargo_metadata(false);
+    flat_kernel_code_model(&mut seam);
     seam.compiler(&nuttx_cross);
     for f in &cflags {
         seam.flag(f);

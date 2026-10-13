@@ -165,14 +165,9 @@ pub fn run_nuttx() {
         for f in &arch_cflags {
             build.flag(f);
         }
+        // Issue 1879 — no PIC, for C and C++ alike (see the helper).
+        crate::nuttx_platform_build::flat_kernel_code_model(build);
         if want_cpp {
-            // NuttX flat-build kernel ELF is `-static` with no GOT-init startup;
-            // cc-rs's default `-fPIC` emits R_ARM_GOT_BREL relocations for COMDAT
-            // statics that the static linker leaves zero (→ `nros::init` fails).
-            // Disable PIC for C++ only — C TUs rely on the default PIC for their
-            // NuttX kernel-symbol references.
-            build.pic(false);
-
             // issue-0036 — NuttX C++ libc header precedence. The toolchain's
             // libstdc++ `<cstdlib>` does `#include_next <stdlib.h>`, which skips
             // the `-I` NuttX include dir and reaches the toolchain's **newlib**
