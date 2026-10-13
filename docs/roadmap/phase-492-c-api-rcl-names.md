@@ -481,3 +481,15 @@ server's `example_interfaces__srv__AddTwoInts__service_init` both return -3
 (`RCL_RET_INVALID_ARGUMENT`) right after the node is created. NuttX Rust,
 C++ and C action pass in the same run, and the previous nightly passed both
 cells. Issue 1872 has the window and a repro.
+**Resolved 2026-10-14** by issue 1879: NuttX C TUs were `-fPIC`, and the
+flat kernel never initialises the GOT that the new `&<Msg>__nros_type` was
+read through.
+
+### 2026-10-13 — handed on to phase-499
+
+The maintainer ruled the rest of the user surface on 2026-10-13 (RFC-0089
+amendment "the user surface is upstream's"): the entry and boot names, the
+C++ examples and `NROS_TRY_*` move in
+[phase-499](phase-499-user-surface-entry-and-cpp.md), not with the later
+internal-header rename as the "includes only" step had deferred them.
+

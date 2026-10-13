@@ -1,6 +1,6 @@
 # RFC-0089 — ROS 2 API adoption, and the compile-or-conform rule
 
-**Status:** Stable (2026-10-07). Drafted 2026-09-04. Amended 2026-10-12 (the C API drops `nros_`).
+**Status:** Stable (2026-10-07). Drafted 2026-09-04. Amended 2026-10-12 (the C API drops `nros_`) and 2026-10-13 (the user surface: upstream include paths only, the app writes `main`).
 **Amends / refines:** RFC-0036 (divergence catalog) — adds the DISPOSITION half:
 a divergence must say what a porting user gets, not only why we differ.
 RFC-0018 (C++ surface mirroring rclcpp) — states the condition under which the
@@ -1273,6 +1273,76 @@ what it maps today (return codes, the documented refusals) moves into
 Work items: [phase-492](../roadmap/phase-492-c-api-rcl-names.md). The
 parameter surface is designed in [RFC-0105](0105-c-parameter-server.md) and
 already follows this rule.
+
+## Settled: the user surface is upstream's — include paths, `main`, and no `nros` spelling (2026-10-13)
+
+Decided by the maintainer on 2026-10-13, extending the 2026-10-12 C ruling to
+everything a user WRITES. The goal is migration: an rclc, micro-ROS or rclcpp
+program should port with no nano-ros vocabulary to learn.
+
+**1. Headers.** `<nros/*.h>` and `<nros/*.hpp>` are INTERNAL; they will be
+renamed into `rclc` / `rclcpp` later. User code includes the API only at
+upstream's paths: `<rcl/*.h>`, `<rclc/*.h>`, `<rcl_action/*.h>`,
+`<rcl_lifecycle/*.h>`, `<rclc_lifecycle/*.h>`, `<rclc_parameter/*.h>` for C;
+`<rclcpp/rclcpp.hpp>` (and its siblings as they are added) for C++. Each
+umbrella carries the nano-ros-only parts too (`RCLC_C_COMPONENT`,
+`RCLC_CHECK_RET`, `RCLC_LOG_*`; the C++ typed-component support), so no user
+file needs an internal header. Port-seam headers (`<nros/platform.h>`,
+`<nros/rmw_vtable.h>`, `<nros/transport.h>`) are not user headers in this
+sense: they are written by a PORTER against nano-ros, and they stay.
+Gates: `check-c-user-includes` and its C++ counterpart.
+
+**2. The public C headers are freestanding.** They compile with
+`-ffreestanding -nostdinc`, so a part with no libc can include them; libc calls
+live in the library (`c-stubs/`, Rust). Gate: `check-c-api-freestanding-headers`.
+
+**3. The application writes `main`.** rclc and rclcpp programs write
+`int main(int argc, char** argv)`; micro-ROS's RTOS templates write
+`appMain`, which is a template convention, not library API. nano-ros asked
+for `int nros_app_main(int, char**)` plus `NROS_APP_MAIN_REGISTER()` because
+on FreeRTOS, ThreadX and bare metal the BOARD owns `main`: it brings up the
+kernel, the network and the executor arena, then calls the app from a task.
+That ownership stays; the spelling moves to the build. Where the board owns
+`main`, the build compiles the APP's translation units with
+`-Dmain=nros_app_main` (NuttX's `apps/Application.mk` does exactly this, and
+nano-ros has relied on it there since phase-157). `nros_app_main` becomes an
+internal link contract between the build and the board, and
+`NROS_APP_MAIN_REGISTER()` retires. On POSIX and Zephyr the app's `main` is
+the process entry, as it is today through the shim.
+
+C++ is the case that needs care: a renamed `main` is an ordinary function and
+gets C++ linkage. The umbrella therefore declares
+`extern "C" int nros_app_main(int, char**)` BEFORE the user's definition, and
+C++ gives a later definition with the same signature the earlier declaration's
+C linkage. A `main` with another signature (`int main()`) would be a different
+overload with C++ linkage; the supported forms, and how the build reports an
+unsupported one rather than failing at link, are measured in phase-499.
+
+**4. Configuration the user used to pass stays out of user code.**
+`rclc_support_init(&support, argc, argv, &allocator)` (upstream's signature,
+phase-492 W1.b) already resolves the locator and domain from the build and,
+on a hosted target, the environment (`NROS_LOCATOR`, `ROS_DOMAIN_ID`).
+Examples call it; `NROS_ENTRY_LOCATOR` / `NROS_ENTRY_DOMAIN_ID` become
+internal. `rclc_support_init_with_locator` stays as an ours-only extension
+for a program that names its locator explicitly. The backend registration
+hook `nros_app_register_backends()` is GENERATED on every road from the
+image's RMW (the cmake road already does, `nano_ros_link_rmw`); no example
+writes it.
+
+**5. Ours-only C++ names take `rclcpp`.** The error-propagation macros
+`NROS_TRY_RET` / `NROS_TRY_LOG` become `RCLCPP_TRY_RET` / `RCLCPP_TRY_LOG`,
+the C++ twin of C's `RCLC_CHECK_RET`. rclcpp reports errors by exception and
+has no such macro, so the name is ours inside upstream's prefix: the same
+trade "`nros::` is phased out; ours-only names take `rclcpp::`" made for
+types (2026-09-05). A raw FFI type a user touches
+(`nros_cpp_integrity_status_t`) gets an `rclcpp::` type instead.
+
+**What does NOT move:** build and test facts (`NROS_CPP_STD`,
+`NROS_BRIDGE_RMW`, `NROS_RUNTIME_OVERLAY`, the `NROS_TEST_*` knobs), the
+operator's `NROS_LOCATOR` environment variable (configuration, like an RMW's
+own variables), the port seams, and `nros_cpp_init_multi` (a PX4 integration
+seam with no rclcpp shape). Implemented by
+[phase-499](../roadmap/phase-499-user-surface-entry-and-cpp.md).
 
 ## Settled: each language follows ITS OWN upstream (2026-09-04)
 
