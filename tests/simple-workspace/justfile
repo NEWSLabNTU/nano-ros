@@ -14,6 +14,7 @@
 #   - ROS 2 sourced: source /opt/ros/humble/setup.bash
 
 # Path to nros (absolute, resolved at runtime)
+# host-tool-path-ok: a standalone user-style workspace; it finds an installed nros the way a user project does.
 nros_cli := `if [ -n "${NROS_CLI:-}" ]; then printf '%s' "$NROS_CLI"; else command -v nros 2>/dev/null || printf nros; fi`
 
 # Default recipe

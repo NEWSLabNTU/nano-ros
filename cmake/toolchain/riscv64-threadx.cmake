@@ -244,7 +244,13 @@ if(NOT _riscv_stdcxx MATCHES "^/" OR NOT EXISTS "${_riscv_stdcxx}")
         # reachable, but this is a TOOLCHAIN file: it is re-evaluated for every
         # `try_compile`, so pulling in a module there multiplies its cost by
         # the probe count rather than paying it once.
-        find_program(_NROS_CLI_RV_FOUND nros)
+        #
+        # Issue 1880 — and a bare `find_program` searched PATH only, so in a
+        # linked worktree it found the PARENT checkout's `nros`, which reads
+        # the parent's index pins. The shared resolver is one small module
+        # (an include_guard, one function); its checkout rung answers first.
+        include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosCli.cmake")
+        nros_resolve_cli(_NROS_CLI_RV_FOUND CONTEXT "riscv64-threadx toolchain" OPTIONAL)
         if(_NROS_CLI_RV_FOUND)
             set(_NROS_CLI_RV "${_NROS_CLI_RV_FOUND}")
         endif()

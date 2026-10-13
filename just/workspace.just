@@ -530,7 +530,9 @@ doctor:
     else
         nros_intree_real=""
     fi
+    # host-tool-path-ok: doctor shadow check: the question IS what PATH resolves.
     if command -v nros >/dev/null 2>&1; then
+        # host-tool-path-ok: doctor shadow check: the question IS what PATH resolves.
         nros_resolved="$(command -v nros)"
         nros_resolved_real="$(readlink -f "$nros_resolved" 2>/dev/null || echo "$nros_resolved")"
         # Phase 220.A.1 — FAIL on stale shadow. If the resolved `nros` on

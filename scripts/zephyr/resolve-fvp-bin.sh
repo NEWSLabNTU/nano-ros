@@ -77,8 +77,11 @@ fi
 # 3. The SDK store. `nros sdk-path` prints the prefix for an installed tool and
 #    exits non-zero when it is absent, so a missing store is silent here rather
 #    than an error the caller has to distinguish from "no FVP anywhere".
-if command -v nros >/dev/null 2>&1; then
-    if _store="$(nros sdk-path arm-fvp 2>/dev/null)" && [ -n "$_store" ]; then
+# Issue 1880 — the ONE CLI ladder (`nros_cli_bin`), not PATH.
+# shellcheck source=../build/cargo.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../build/cargo.sh"
+if _fvp_cli="$(nros_cli_bin 2>/dev/null)"; then
+    if _store="$("$_fvp_cli" sdk-path arm-fvp 2>/dev/null)" && [ -n "$_store" ]; then
         if emit_dir "$_store/bin" 2>/dev/null || emit_dir "$_store" 2>/dev/null; then
             exit 0
         fi

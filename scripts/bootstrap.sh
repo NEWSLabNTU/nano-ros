@@ -276,7 +276,9 @@ build_in_tree_cli() {
 #   2. Otherwise — rustup if needed, init the CLI submodule, cargo build.
 install_nros_source() {
     ensure_path
+    # host-tool-path-ok: the user installer/doctor: the question IS whether nros is on PATH.
     if command -v nros >/dev/null 2>&1; then
+        # host-tool-path-ok: the user installer/doctor: the question IS whether nros is on PATH.
         echo "bootstrap: nros already on PATH ($(command -v nros))."
         echo "bootstrap: next →  nros setup <board>   then use cargo / cmake / west / idf.py"
         return 0
@@ -404,7 +406,9 @@ shell_doctor() {
     echo "=== nano-ros shell-doctor ==="
 
     # 1. nros on PATH?
+    # host-tool-path-ok: the user installer/doctor: the question IS whether nros is on PATH.
     if command -v nros >/dev/null 2>&1; then
+        # host-tool-path-ok: the user installer/doctor: the question IS whether nros is on PATH.
         echo "[OK] nros on PATH: $(command -v nros)"
     else
         echo "[FAIL] nros not on PATH — run \`source ./activate.sh\` or \`scripts/bootstrap.sh base\`."

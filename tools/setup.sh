@@ -144,30 +144,16 @@ list_known_platforms() {
 list_known_rmws()       { grep -oE '^\[rmw\.[a-z0-9_-]+\]'       "$INDEX" | sed 's/^\[rmw\.//; s/\]//' | sort -u; }
 list_known_references() { grep -oE '^\[reference\.[a-z0-9_-]+\]' "$INDEX" | sed 's/^\[reference\.//; s/\]//' | sort -u; }
 
-# Resolve an `nros` binary for index-driven source provisioning: one on PATH,
-# else the cargo-built one in the codegen submodule's target dir (the
-# contributor path already builds it for codegen). Empty ⇒ none available yet
-# (e.g. pre-rustup on a fresh machine); the caller falls back to git.
+# Resolve an `nros` binary for index-driven source provisioning — issue 1880:
+# the ONE ladder, `nros_cli_bin` (scripts/build/cargo.sh: $NROS_CLI, this
+# checkout's build, PATH, the store). This used to keep its own copy with PATH
+# FIRST, so in a linked worktree it ran the parent checkout's `nros` and the
+# stale-binary guard stopped the bootstrap. Empty ⇒ none available yet (e.g.
+# pre-rustup on a fresh machine); the caller falls back to git.
 resolve_nros_bin() {
-    if command -v nros >/dev/null 2>&1; then
-        command -v nros
-        return 0
-    fi
-    # Phase 195.D retired the codegen submodule. Phase 218 brought the CLI
-    # back in-tree at `packages/cli/`; `just setup-cli` builds it. Prefer
-    # the in-tree binary, fall back to ~/.nros/bin (transitional).
-    local root
-    root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-    local in_tree="$root/packages/cli/target/release/nros"
-    if [[ -x "$in_tree" ]]; then
-        echo "$in_tree"
-        return 0
-    fi
-    local cand="${NROS_CLI:-${NROS_HOME:-$HOME/.nros}/bin/nros}"
-    if [[ -x "$cand" ]]; then
-        echo "$cand"
-        return 0
-    fi
+    # shellcheck source=../scripts/build/cargo.sh
+    . "${REPO_ROOT}/scripts/build/cargo.sh" || return 0
+    nros_cli_bin 2>/dev/null || true
 }
 
 # ---------------------------------------------------------- list-targets

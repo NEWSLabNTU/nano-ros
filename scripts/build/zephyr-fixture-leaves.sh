@@ -190,8 +190,10 @@ if [ -z "$make_bin" ]; then
     # same tool the same way and already carries the `command -v` test. This is
     # its unguarded sibling.
     _sdk_make=""
-    if command -v nros >/dev/null 2>&1; then
-        _sdk_make="$(nros sdk-path make 2>/dev/null || true)"
+    # Issue 1880 — the ONE CLI ladder (`nros_cli_bin`, sourced above), not
+    # PATH: in a linked worktree PATH names the parent checkout's binary.
+    if _nros_cli="$(nros_cli_bin 2>/dev/null)"; then
+        _sdk_make="$("$_nros_cli" sdk-path make 2>/dev/null || true)"
     fi
     if [ -n "$_sdk_make" ] && [ -x "$_sdk_make/bin/make" ]; then
         make_bin="$_sdk_make/bin/make"

@@ -42,11 +42,13 @@ marker_hits="$(find / -xdev \( -path /proc -o -path "$nros_store" \) -prune -o \
 [ -z "$marker_hits" ] \
     || probe_fail "a nano-ros root exists outside the store: $marker_hits"
 
+# host-tool-path-ok: the probe asks whether the INSTALL put nros on PATH.
 command -v nros >/dev/null || probe_fail "nros is not on PATH after the install step"
 # The release prefix is CONSTRUCTED from the binary on PATH, never found by
 # globbing the store for a version (`check-sdk-store-not-enumerated`, issue
 # 0625): `<store>/sdk/nros/<version>/bin/nros`, so stripping `/bin/nros` gives
 # the prefix and its parent must be the store's `nros` directory.
+# host-tool-path-ok: the probe asks what the INSTALL put on PATH.
 nros_bin="$(readlink -f "$(command -v nros)")"
 nros_prefix="${nros_bin%/bin/nros}"
 [ "$nros_prefix" != "$nros_bin" ] && [ "${nros_prefix%/*}" = "$nros_store/sdk/nros" ] \

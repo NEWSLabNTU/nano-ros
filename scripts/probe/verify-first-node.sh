@@ -23,6 +23,7 @@ source ./activate.sh
 # shellcheck source=scripts/lib/deadline.sh
 . "$repo_root/scripts/lib/deadline.sh"
 
+# host-tool-path-ok: the probe asks whether bootstrap+activate put nros on PATH.
 command -v nros >/dev/null || { echo "PROBE FAIL: nros not on PATH after bootstrap+activate"; exit 1; }
 nros version
 command -v cmake >/dev/null || { echo "PROBE FAIL: cmake not present — the host-prereqs block must install it"; exit 1; }

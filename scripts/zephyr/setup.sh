@@ -235,8 +235,11 @@ if [ $MISSING -eq 1 ]; then
     # phase-327 W3 — the OS-package remedy is DERIVED from the index (never a
     # hand-written apt line): the printer composes the native command for THIS
     # host's package manager. ninja has a sudo-less installer of its own.
-    if command -v nros >/dev/null 2>&1; then
-        nros setup --system || true
+    # Issue 1880 — the ONE CLI ladder, not PATH.
+    # shellcheck source=../build/cargo.sh
+    . "$NROS_REPO_DIR/scripts/build/cargo.sh"
+    if _zs_cli="$(nros_cli_bin 2>/dev/null)"; then
+        "$_zs_cli" setup --system || true
     else
         echo "  (build the CLI first — just setup-cli — then run: nros setup --system)"
     fi

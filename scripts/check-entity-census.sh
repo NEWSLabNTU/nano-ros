@@ -101,7 +101,7 @@ resolve_nros() {
         "${CARGO_TARGET_DIR:-}/debug/nros" \
         "$(nros_cli_bin --checkout-only 2>/dev/null || true)" \
         "$repo_root/packages/cli/target/debug/nros" \
-        "$(command -v nros 2>/dev/null || true)"
+        "$(nros_cli_bin 2>/dev/null || true)"
     do
         [ -n "$c" ] && [ -x "$c" ] || continue
         # A CLI that predates this wave has no such subcommand and exits

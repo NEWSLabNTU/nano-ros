@@ -49,6 +49,17 @@
 #
 # shellcheck shell=bash
 
+# Issue 1880 — `nros_cli_bin` from scripts/build/cargo.sh, sourced on first use
+# (this lib is sourced from places that have not loaded cargo.sh).
+_NROS_ZEPHYR_SDK_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+_nros_zephyr_sdk_cli() {
+    if ! declare -F nros_cli_bin >/dev/null 2>&1; then
+        # shellcheck source=../build/cargo.sh
+        . "$_NROS_ZEPHYR_SDK_LIB_DIR/../build/cargo.sh" || return 1
+    fi
+    nros_cli_bin 2>/dev/null
+}
+
 nros_zephyr_sdk_default_root() {
     (cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 }
@@ -103,8 +114,11 @@ nros_zephyr_sdk_store_dir() {
     # ASK the CLI rather than restating its layout. `nros sdk-path` is the
     # producer of that answer, and it answers without touching the disk, so an
     # absent SDK still resolves.
-    if command -v nros >/dev/null 2>&1; then
-        base="$(nros sdk-path "$tool" 2>/dev/null || true)"
+    # Issue 1880 — the ONE CLI ladder (`nros_cli_bin`), not PATH: in a linked
+    # worktree PATH names the parent checkout's `nros` and its index pins.
+    local _zsdk_cli
+    if _zsdk_cli="$(_nros_zephyr_sdk_cli)"; then
+        base="$("$_zsdk_cli" sdk-path "$tool" 2>/dev/null || true)"
     fi
     if [ -n "$base" ]; then
         printf '%s\n' "$base"

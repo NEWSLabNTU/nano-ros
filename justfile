@@ -4227,10 +4227,12 @@ setup-cli:
     # FAIL hard. We intentionally do NOT exit non-zero — setup-cli's job
     # is to produce the binary, not enforce shell hygiene.
     warn_stale_shadow() {
+        # host-tool-path-ok: shadow check: the question IS what PATH resolves.
         if ! command -v nros >/dev/null 2>&1; then
             return
         fi
         local resolved
+        # host-tool-path-ok: shadow check: the question IS what PATH resolves.
         resolved="$(command -v nros)"
         local resolved_real
         resolved_real="$(readlink -f "$resolved" 2>/dev/null || echo "$resolved")"
@@ -5206,12 +5208,14 @@ _doctor-host:
     # different, not incompatible. `refuse_if_foreign_to_workspace` (W1) refuses
     # it at `nros build`; this is the same answer at the moment someone is
     # asking whether their machine is ready, which is cheaper than at build time.
+    # host-tool-path-ok: shadow check: the question IS what PATH resolves.
     if command -v nros >/dev/null 2>&1; then
         # issue 1850 — strictly THIS checkout's build (`NROS_CLI=`).
         # shellcheck source=scripts/build/cargo.sh
         source "{{justfile_directory()}}/scripts/build/cargo.sh"
         in_tree="$(NROS_CLI= nros_cli_bin --checkout-only)" \
             || in_tree="(not built — just setup-cli)"
+        # host-tool-path-ok: shadow check: the question IS what PATH resolves.
         shadow="$(command -v nros)"
         shadow_real="$(readlink -f "$shadow" 2>/dev/null || echo "$shadow")"
         in_tree_real="$(readlink -f "$in_tree" 2>/dev/null || echo "$in_tree")"

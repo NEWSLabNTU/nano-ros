@@ -17,10 +17,20 @@ include_guard(GLOBAL)
 # `_nros_resolve_codegen_tool` in NanoRosCodegenCore.cmake). One documented precedence order:
 #
 #   1. `$ENV{NROS_CLI}` — explicit per-invocation override (must EXIST).
-#   2. An already-resolved shared codegen-tool cache var
+#   2. The CLI built by the checkout these modules live in
+#      (`<checkout>/packages/cli/target/release/nros`) — issue 1880. A linked
+#      worktree inherits its parent shell's PATH, so the PATH rung found the
+#      PARENT checkout's `nros`: an older binary that refused this tree's flags
+#      (`unexpected argument '--image-env-out'`) or tripped the stale-binary
+#      guard. The shell resolver `nros_cli_bin` (scripts/build/cargo.sh) has
+#      had this rung, in this place, since phase-484 W2d; this is its twin. It
+#      sits ahead of rung 3 because a build dir configured before the fix
+#      cached the PATH answer. An installed SDK root has no
+#      `packages/cli/target`, so the rung is silent there.
+#   3. An already-resolved shared codegen-tool cache var
 #      (`_NANO_ROS_CODEGEN_TOOL`, then `_NROS_ZEPHYR_CODEGEN_TOOL`) when it
 #      holds a real path — one configure resolves the CLI once.
-#   3. `find_program`: the environment PATH first (activate.sh wires the
+#   4. `find_program`: the environment PATH first (activate.sh wires the
 #      in-tree CLI — the sweep-contract SSoT), THEN the provisioned store
 #      (`$NROS_HOME/bin`, `~/.nros/bin`) as PATHS fallbacks. PATHS, never
 #      HINTS: hints are searched BEFORE PATH, so a stale provisioned
@@ -33,6 +43,12 @@ include_guard(GLOBAL)
 
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosStoreRoot.cmake")
 
+# Issue 1880 — the checkout these modules belong to, captured at include time
+# (a function's CMAKE_CURRENT_LIST_DIR is its caller's).
+get_filename_component(_NROS_CLI_MODULE_CHECKOUT "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
+set(_NROS_CLI_MODULE_CHECKOUT "${_NROS_CLI_MODULE_CHECKOUT}" CACHE INTERNAL
+    "issue 1880 - the checkout NanoRosCli.cmake lives in")
+
 function(nros_resolve_cli _out)
     cmake_parse_arguments(_RC "OPTIONAL" "CONTEXT" "" ${ARGN})
     if(NOT _RC_CONTEXT)
@@ -40,6 +56,12 @@ function(nros_resolve_cli _out)
     endif()
     if(DEFINED ENV{NROS_CLI} AND EXISTS "$ENV{NROS_CLI}")
         set(${_out} "$ENV{NROS_CLI}" PARENT_SCOPE)
+        return()
+    endif()
+    # host-tool-path-ok: rung 2, the checkout's own CLI (issue 1880).
+    set(_own "${_NROS_CLI_MODULE_CHECKOUT}/packages/cli/target/release/nros")
+    if(EXISTS "${_own}" AND NOT IS_DIRECTORY "${_own}")
+        set(${_out} "${_own}" PARENT_SCOPE)
         return()
     endif()
     foreach(_cv _NANO_ROS_CODEGEN_TOOL _NROS_ZEPHYR_CODEGEN_TOOL)
@@ -57,6 +79,7 @@ function(nros_resolve_cli _out)
     # different store's front and is not searched.
     nros_store_root(_nros_store)
     set(_paths "${_nros_store}/bin")
+    # host-tool-path-ok: rung 4 of THIS resolver (PATH, then the store).
     find_program(_NROS_CLI_RESOLVED NAMES nros PATHS ${_paths}
         DOC "nros CLI (shared resolver — issue #219)")
     if(_NROS_CLI_RESOLVED)

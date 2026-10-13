@@ -35,6 +35,18 @@
 # serial walk — same order, same output — when a pool is unavailable or
 # pointless, so callers need no second code path.
 
+# Issue 1880 — the CLI that answers `sdk-path`, from the ONE ladder
+# (`nros_cli_bin`, scripts/build/cargo.sh), never PATH alone: a linked worktree
+# inherits its parent's PATH, whose `nros` reads the PARENT's index pins.
+_NROS_POOL_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+_nros_pool_cli() {
+    if ! declare -F nros_cli_bin >/dev/null 2>&1; then
+        # shellcheck source=cargo.sh
+        . "$_NROS_POOL_LIB_DIR/cargo.sh" || return 1
+    fi
+    nros_cli_bin 2>/dev/null
+}
+
 # Is a pool worth setting up?
 #   * NROS_JOBSERVER=1 means an OUTER jobserver already owns the tokens; nesting
 #     a second pool would double-count them.
@@ -46,9 +58,9 @@
 # thing that does not work. `$repo_root` is unused now that the binary lives in
 # the store rather than `third-party/make/`.
 nros_pinned_make() {
-    command -v nros >/dev/null 2>&1 || return 1
-    local dir
-    dir="$(nros sdk-path make 2>/dev/null)" || return 1
+    local cli dir
+    cli="$(_nros_pool_cli)" || return 1
+    dir="$("$cli" sdk-path make 2>/dev/null)" || return 1
     [ -n "$dir" ] && [ -x "$dir/bin/make" ] || return 1
     printf '%s\n' "$dir/bin/make"
 }
@@ -58,9 +70,9 @@ nros_pinned_make() {
 # >=1.13 is the half that JOINS make 4.4's fifo jobserver; the index pins 1.13.x,
 # so existence is the check here and the version floor is the pin's.
 nros_pinned_ninja() {
-    command -v nros >/dev/null 2>&1 || return 1
-    local dir
-    dir="$(nros sdk-path ninja 2>/dev/null)" || return 1
+    local cli dir
+    cli="$(_nros_pool_cli)" || return 1
+    dir="$("$cli" sdk-path ninja 2>/dev/null)" || return 1
     [ -n "$dir" ] && [ -x "$dir/bin/ninja" ] || return 1
     printf '%s\n' "$dir/bin/ninja"
 }
