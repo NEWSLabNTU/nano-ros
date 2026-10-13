@@ -1552,6 +1552,38 @@ fn typed_emit_tiers_rclcpp_embedded_node_is_seeded() {
     assert!(seed_at < ctor_at, "seed must precede rclcpp construction");
 }
 
+/// phase-459 W6 — the entry builds a workspace's components itself (not
+/// through the `NROS_COMPONENT` factory), so it is the entry that holds the
+/// constructor to the registration's CALLBACK_GROUPS: the scope is installed
+/// BEFORE the constructor, cleared and checked AFTER it, and both precede the
+/// `ok()` check that halts boot. A node that declared nothing gets none of it.
+#[test]
+fn an_rclcpp_node_is_constructed_under_its_declared_callback_groups() {
+    let mut plan = fixture_plan_rclcpp(&[
+        ("sub_pkg", "sub", "sub", "sub_pkg::Sub", "sub_pkg/Sub.hpp"),
+        ("aux_pkg", "aux", "aux", "aux_pkg::Aux", "aux_pkg/Aux.hpp"),
+    ]);
+    plan.nodes[0].callback_groups = vec!["ctrl".into(), "telem".into()];
+    let src = emit_typed(&plan).expect("rclcpp emit ok");
+    let decl = "::rclcpp::detail::DeclaredCallbackGroups __nros_groups_0{\"|ctrl|telem|\", 0u};";
+    let install = src.find(decl).expect("the declared list is installed");
+    let ctor = src
+        .find("__nros_comp_0 = new (__nros_comp_buf_0) ::sub_pkg::Sub(__h);")
+        .unwrap();
+    let finish = src
+        .find("::rclcpp::detail::finish_declared_callback_groups(*__nros_comp_0, __nros_groups_0);")
+        .expect("the post-constructor check");
+    let ok = src.find("if (!__nros_comp_0->ok())").unwrap();
+    assert!(
+        install < ctor && ctor < finish && finish < ok,
+        "order; src:\n{src}"
+    );
+    assert!(
+        !src.contains("__nros_groups_1"),
+        "a node with no CALLBACK_GROUPS installs no scope"
+    );
+}
+
 #[test]
 fn typed_emit_no_tiers_uses_plain_create_node() {
     // Guard: empty resolved_tiers keeps byte-identical plain create (no seed, no sched).

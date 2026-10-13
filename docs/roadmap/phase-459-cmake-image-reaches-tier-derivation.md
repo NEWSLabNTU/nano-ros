@@ -1,6 +1,9 @@
 # phase-459 - a C++ image reaches the rate-monotonic tier derivation from what it authors
 
-**Status (2026-09-21). PROPOSED; nothing landed.** Numbered 459 because
+**Status (2026-10-14). W0, W1, W2, W4, W5, W6 and W7 LANDED; W3 not started.**
+W3 needs an rlm tag carrying a `derived` tier key first (see its row). Each
+wave's `Status:` line below says what it measured. Planned 2026-09-21,
+numbered 459 because
 phases 456-458 were being opened concurrently by other sessions; this is
 highest-existing (455) + 4. Its sibling, phase-460, covers the formal checks the
 same investigation found missing on the contract chain.
@@ -305,7 +308,7 @@ run on the fixture's `.config` reports zero violations; the negative control
 pins `CONFIG_NROS_ZENOH_READ_PRIORITY=16` (the pre-0852 band) and the resolver
 must report the stale band, as the script's own selftest already does.
 
-Claim: phase-459-W4. Depends on: phase-459-W0 (fixture gate only). Owns: packages/core/nros-orchestration-ir/src/rtos_realizer.rs; packages/core/nros-orchestration-ir/src/priority_plan.rs (new) and its mod line in lib.rs; the realize_rtos call in packages/core/nros-orchestration-ir/src/derive.rs; scripts/lib/priority_plan.py; scripts/check-tier-priority-plan-image.py; docs/design/0079-priority-is-allocated-not-authored.md; packages/platform/nros-platform/src/board/tier.rs. Gate: cargo test -p nros-orchestration-ir priority_plan; python3 scripts/check-tier-priority-plan-image.py on the fixture .config. Status: PR #1231, in the queue; `realize_rtos` allocates from `PriorityPlan::pool.app` rather than from a hardcoded band, and the island projection holds: 30 Hz at priority 5, 10 Hz at 6, with the transport band [0, 4] and the application pool [5, 14] read from the board's own `.config`. Gates: `priority_plan` 9 passed (163 crate-wide), `check-tier-priority-plan-image.py` OK on the island `.config` with 8 pins, and a READ=16 negative control reports the stale band [0, 14] and fails those pins; selftest OK over 14 cases.
+Claim: phase-459-W4. Depends on: phase-459-W0 (fixture gate only). Owns: packages/core/nros-orchestration-ir/src/rtos_realizer.rs; packages/core/nros-orchestration-ir/src/priority_plan.rs (new) and its mod line in lib.rs; the realize_rtos call in packages/core/nros-orchestration-ir/src/derive.rs; scripts/lib/priority_plan.py; scripts/check-tier-priority-plan-image.py; docs/design/0079-priority-is-allocated-not-authored.md; packages/platform/nros-platform/src/board/tier.rs. Gate: cargo test -p nros-orchestration-ir priority_plan; python3 scripts/check-tier-priority-plan-image.py on the fixture .config. Status: landed in PR #1231 (d37ff02af5, merged 2026-09-23; fix 54ef745640); `realize_rtos` allocates from `PriorityPlan::pool.app` rather than from a hardcoded band, and the island projection holds: 30 Hz at priority 5, 10 Hz at 6, with the transport band [0, 4] and the application pool [5, 14] read from the board's own `.config`. Gates: `priority_plan` 9 passed (163 crate-wide), `check-tier-priority-plan-image.py` OK on the island `.config` with 8 pins, and a READ=16 negative control reports the stale band [0, 14] and fails those pins; selftest OK over 14 cases.
 
 **W5 - the hand-run form is refused.** `codegen-system --target <id>` where
 `<id>` names no `[image.*]` / `[deploy.*]` block in the bringup refuses with
@@ -323,7 +326,42 @@ declared group, is refused at node construction with a code naming both
 island's case. Gate: the existing `realtime-cpp` fixture is unchanged; a new
 negative test declares `CALLBACK_GROUPS ctrl telem` and creates only `ctrl`.
 
-Claim: phase-459-W6. Depends on: none. Owns: packages/api/nros-cpp/include/nros/node.hpp; packages/api/nros-cpp/include/nros/callback_group.hpp; cmake/NanoRosNodeRegister.cmake; packages/cli/nros-cli-core/src/codegen/entry/registered_node.rs; a negative test under packages/api/nros-cpp/tests/compile/ (new). Gate: the negative test; examples/workspaces/realtime-cpp unchanged. Status: not started.
+Claim: phase-459-W6. Depends on: none. Owns: packages/api/nros-cpp/include/nros/node.hpp; packages/api/nros-cpp/include/nros/callback_group.hpp; cmake/NanoRosNodeRegister.cmake; packages/cli/nros-cli-core/src/codegen/entry/registered_node.rs; a negative test under packages/api/nros-cpp/tests/compile/ (new). Gate: the negative test; examples/workspaces/realtime-cpp unchanged. Status: landed 2026-10-14 (below).
+
+**W6 result.**
+- **Two constructors, one check.** A component is built either by the
+  `NROS_COMPONENT` factory (single-node carriers) or by the generated C++
+  entry, which constructs a workspace's components itself and so never reaches
+  the factory. That second path was not in this row's file list and was found
+  by the end-to-end run: with only the factory wired, a mismatched
+  `realtime-cpp` subnode booted clean. Both now install the declared list
+  (`rclcpp::detail::DeclaredCallbackGroups`, `|a|b|`) around the constructor
+  and call `finish_declared_callback_groups` after it.
+- **Where the list comes from.** The factory reads
+  `NROS_DECLARED_CALLBACK_GROUPS`, which `nano_ros_node_register` defines on
+  the component's OWN target (`_nros_declare_callback_groups`, a union under one
+  definition when an EXISTING_TARGET hosts several registrations). The entry
+  reads `LoweredNode::declared_callback_groups`, built from the plan's
+  `callback_groups`, which is the cmake metadata the derivation ranks. The list
+  is never read inside `Node`'s inline methods: they are compiled into many TUs
+  with different lists, which would be an ODR violation.
+- **Refusals** (code `DECLARED_CALLBACK_GROUP_MISMATCH`, -459, both through
+  `set_error`, so the entry's `ok()` check halts boot naming the node):
+  `create_callback_group` with an undeclared name, and, after the
+  constructor, a declared name never created when more than one is declared.
+  One declared and none created is node-level placement and stays allowed.
+  No `CALLBACK_GROUPS` means nothing is checked.
+- **Measured** on `realtime-cpp` `native_subnode` against a router:
+  - unchanged: runs;
+  - `CALLBACK_GROUPS ctrl telem aux`: halts with exit 53 and `never created
+    callback group "aux"`;
+  - `CALLBACK_GROUPS ctrl`: halts with `created callback group "telem"`.
+
+  `declared_callback_groups.cpp` (in `just check cpp`) catches three mutants:
+  admit-everything, never-missing, and prefix-match.
+- **Not covered:** a NuttX kernel link that recompiles a component's sources
+  through cc-rs does not get the definition, so the factory path there checks
+  nothing. The entry path is unaffected.
 
 **W7 - the trigger rate, once issue 1372 item 2 lands.** The mapper reads
 `trigger.timer.rate_hz` in preference to the first output's `min_rate_hz`.

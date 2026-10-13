@@ -169,6 +169,15 @@ fn lower_node(n: &PlanNode) -> LoweredNode {
         } else {
             None
         },
+        // phase-459 W6 — the registration's CALLBACK_GROUPS (`enrich_plan`
+        // reads them off the cmake metadata), held against the code at
+        // construction. A C++ class only: nothing else calls
+        // `create_callback_group`.
+        declared_callback_groups: if kind.is_cpp_class() && !n.callback_groups.is_empty() {
+            Some(format!("|{}|", n.callback_groups.join("|")))
+        } else {
+            None
+        },
     }
 }
 

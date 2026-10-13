@@ -123,6 +123,14 @@ pub struct LoweredNode {
     /// (`talker_pkg::Talker`). `None` for every other kind.
     #[serde(default)]
     pub class: Option<String>,
+    /// phase-459 W6 — the component registration's `CALLBACK_GROUPS`, as the
+    /// `|a|b|` list `rclcpp::detail::DeclaredCallbackGroups` reads, or `None`
+    /// when it declared none. A C++ entry installs it around the component's
+    /// constructor so `create_callback_group` is held to it, and checks after
+    /// it that every declared group was created. It is the list the tier
+    /// derivation ranked, so the two cannot disagree silently.
+    #[serde(default)]
+    pub declared_callback_groups: Option<String>,
 }
 
 /// The facts a language pack renders an entry from — and, since phase-494 W2,

@@ -66,7 +66,16 @@
 {%- endif %}
         ::rclcpp::NodeHandle __h({% if tiered %}executor{% else %}::rclcpp::global_handle(){% endif %}, {% if n.launch_name %}"{{ n.launch_name | c_str }}"{% else %}nullptr{% endif %}, {% if n.launch_namespace %}"{{ n.launch_namespace | c_str }}"{% else %}nullptr{% endif %}{% if n.qos_overrides %}, __nros_qos_{{ idx }}, {{ n.qos_overrides | length }}{% endif %});
         if (!__h.valid()) return static_cast<int32_t>(::rclcpp::ErrorCode::NotInitialized);
+{%- if n.declared_callback_groups %}
+        /* phase-459 W6 -- the registration's CALLBACK_GROUPS, held against the code. */
+        ::rclcpp::detail::DeclaredCallbackGroups __nros_groups_{{ idx }}{"{{ n.declared_callback_groups | c_str }}", 0u};
+        ::rclcpp::detail::declared_callback_groups_scope() = &__nros_groups_{{ idx }};
+{%- endif %}
         __nros_comp_{{ idx }} = new (__nros_comp_buf_{{ idx }}) ::{{ n.class }}(__h);
+{%- if n.declared_callback_groups %}
+        ::rclcpp::detail::declared_callback_groups_scope() = nullptr;
+        ::rclcpp::detail::finish_declared_callback_groups(*__nros_comp_{{ idx }}, __nros_groups_{{ idx }});
+{%- endif %}
         if (!__nros_comp_{{ idx }}->ok()) {
             ::rclcpp::detail::report_component_failure("{{ n.name | c_str }}", __nros_comp_{{ idx }}->error_what(), __nros_comp_{{ idx }}->error_code());
             return __nros_comp_{{ idx }}->error_code();
@@ -91,7 +100,17 @@
         int32_t crc = __nros_c_component_{{ n.pkg | pkg_ident }}_configure(__nros_node_{{ idx }}.ffi_handle(), __nros_node_{{ idx }}.executor_handle(), self);
         if (crc != 0) return crc;
 {%- else %}
+{%- if n.declared_callback_groups %}
+        /* phase-459 W6 -- the registration's CALLBACK_GROUPS, held against the code. */
+        ::rclcpp::detail::DeclaredCallbackGroups __nros_groups_{{ idx }}{"{{ n.declared_callback_groups | c_str }}", 0u};
+        ::rclcpp::detail::declared_callback_groups_scope() = &__nros_groups_{{ idx }};
+{%- endif %}
         r = __nros_comp_{{ idx }}.configure(__nros_node_{{ idx }});
+{%- if n.declared_callback_groups %}
+        ::rclcpp::detail::declared_callback_groups_scope() = nullptr;
+        ::rclcpp::detail::finish_declared_callback_groups(__nros_node_{{ idx }}, __nros_groups_{{ idx }});
+        if (!__nros_node_{{ idx }}.ok()) return __nros_node_{{ idx }}.error_code();
+{%- endif %}
         if (!r.ok()) return static_cast<int32_t>(r.raw());
 {%- endif %}
 {%- endif -%}

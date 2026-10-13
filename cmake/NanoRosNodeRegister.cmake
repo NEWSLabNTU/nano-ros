@@ -475,6 +475,32 @@ endmacro()
 # 2026-09-05 are not a concern. Until then a loud refusal beats either failure
 # above.
 # ---------------------------------------------------------------------------
+# phase-459 W6 -- hand a component's `CALLBACK_GROUPS` to its OWN compile, as
+# `NROS_DECLARED_CALLBACK_GROUPS="|a|b|"`. The `NROS_COMPONENT` factory reads it
+# (it expands in the component's TU, the only one that sees this target's
+# definitions) and holds `create_callback_group` to it: a group created and not
+# declared, or declared and never created (with more than one declared), halts
+# boot naming both. The keyword already reaches the tier derivation through
+# `nros-metadata.json`; this is the same list reaching the code it describes.
+#
+# Through a target PROPERTY, appended per registration, so an EXISTING_TARGET
+# that hosts more than one registration gets the union under ONE definition
+# rather than two `-D`s that disagree. No keyword => no definition => the
+# factory checks nothing (the registration said nothing).
+function(_nros_declare_callback_groups _tgt)
+    if(NOT ARGN)
+        return()
+    endif()
+    set_property(TARGET ${_tgt} APPEND PROPERTY NROS_DECLARED_CALLBACK_GROUPS ${ARGN})
+    get_target_property(_armed ${_tgt} NROS_DECLARED_CALLBACK_GROUPS_DEFINED)
+    if(_armed)
+        return()
+    endif()
+    set_property(TARGET ${_tgt} PROPERTY NROS_DECLARED_CALLBACK_GROUPS_DEFINED TRUE)
+    target_compile_definitions(${_tgt} PRIVATE
+        "NROS_DECLARED_CALLBACK_GROUPS=\"|$<JOIN:$<REMOVE_DUPLICATES:$<TARGET_PROPERTY:${_tgt},NROS_DECLARED_CALLBACK_GROUPS>>,|>|\"")
+endfunction()
+
 function(_nros_entities_retired _call)
     if(NOT "ENTITIES" IN_LIST ARGN)
         return()
@@ -726,6 +752,7 @@ function(nano_ros_node_register)
         # links that name).
         target_compile_definitions(${_NRC_EXISTING_TARGET} PRIVATE
             "NROS_NODE_CLASS_NAME=\"${_NRC_CLASS}\"")
+        _nros_declare_callback_groups(${_NRC_EXISTING_TARGET} ${_NRC_CALLBACK_GROUPS})
         if(NOT _lib STREQUAL "${_NRC_EXISTING_TARGET}" AND NOT TARGET ${_lib})
             add_library(${_lib} INTERFACE)
             target_link_libraries(${_lib} INTERFACE ${_NRC_EXISTING_TARGET})
@@ -807,6 +834,7 @@ function(nano_ros_node_register)
             add_library(${_lib} INTERFACE)
         else()
             add_library(${_lib} STATIC ${_NRC_SOURCES})
+            _nros_declare_callback_groups(${_lib} ${_NRC_CALLBACK_GROUPS})
             if(_nrc_lang STREQUAL "C")
                 set_target_properties(${_lib} PROPERTIES LINKER_LANGUAGE C)
             endif()

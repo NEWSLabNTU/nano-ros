@@ -706,10 +706,31 @@ constexpr ::rclcpp::QoS qos_from_declared(int depth, int reliability, int durabi
 /// The factory returns `::rclcpp::Node*` — phase-427 W4. It used to return
 /// `::nros::ComponentNode*`, a type that WRAPPED a node; the merged type IS one,
 /// so the entry's post-construct `ok()` check now reads the node itself.
+///
+/// phase-459 W6 -- the factory is also where the node's callback groups are
+/// held to its registration's `CALLBACK_GROUPS`. It runs in the COMPONENT's
+/// translation unit, the one TU that sees this component's
+/// `NROS_DECLARED_CALLBACK_GROUPS` (`nano_ros_node_register` defines it on the
+/// component's own target), so the list is read here and handed to
+/// `create_callback_group` through a scope around the constructor — never
+/// compiled into `Node`'s inline methods. A group created but not declared
+/// latches in `create_callback_group`; a declared group never created latches
+/// here, after the constructor. Either way the entry's `ok()` check halts boot.
+#ifdef NROS_DECLARED_CALLBACK_GROUPS
+#define _NROS_COMP_DECLARED_GROUPS NROS_DECLARED_CALLBACK_GROUPS
+#else
+#define _NROS_COMP_DECLARED_GROUPS nullptr
+#endif
+
 #define NROS_COMPONENT(Class)                                                                      \
     extern "C" ::rclcpp::Node* _NROS_COMP_FACTORY_SYM(NROS_PKG_NAME)(void* storage,                \
                                                                      void* node_handle) {          \
-        return new (storage) Class(::rclcpp::NodeHandle(node_handle));                             \
+        ::rclcpp::detail::DeclaredCallbackGroups _nros_groups{_NROS_COMP_DECLARED_GROUPS, 0u};     \
+        ::rclcpp::detail::declared_callback_groups_scope() = &_nros_groups;                        \
+        Class* _nros_node = new (storage) Class(::rclcpp::NodeHandle(node_handle));                \
+        ::rclcpp::detail::declared_callback_groups_scope() = nullptr;                              \
+        ::rclcpp::detail::finish_declared_callback_groups(*_nros_node, _nros_groups);              \
+        return _nros_node;                                                                         \
     }                                                                                              \
     extern "C" const char _NROS_COMP_CLASS_SYM(NROS_PKG_NAME)[] =                                  \
         _NROS_COMP_STR(NROS_PKG_NAME) "::" _NROS_COMP_STR(Class);                                  \
