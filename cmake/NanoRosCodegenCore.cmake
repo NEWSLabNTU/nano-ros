@@ -431,6 +431,7 @@ function(nros_codegen_version_assert_fresh _tool)
         "cached and keeps using. Re-run the configure with this tree's binary "
         "— build it with ./scripts/bootstrap.sh (contributors: source "
         "./activate.sh && just setup-cli), then:\n"
+        # host-tool-path-ok: a remedy a person types, not a lookup.
         "  cmake -D_NANO_ROS_CODEGEN_TOOL=<this tree>/packages/cli/target/release/nros <build-dir>\n"
         "and see `just check tier-preconditions`, which asks whether the "
         "workspace belongs to this checkout at all.")

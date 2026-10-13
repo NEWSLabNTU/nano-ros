@@ -43,6 +43,19 @@ source bash at all). Split spellings (`.join("target/release")` beside a
 binary-name constant) are not matched — the two owners themselves use that
 shape.
 
+Issue 1880 — the second half of the same rule: a lookup that asks PATH ALONE
+(`command -v nros`, `which nros`, cmake `find_program(<v> nros)`) skips the
+ladder's checkout rung, and in a linked worktree PATH names the PARENT
+checkout's `nros`. cmake's `nros_resolve_cli` lacked that rung, and
+`tools/setup.sh`, `compile-check-fixtures.sh`, `jobserver-pool.sh`,
+`zephyr-fixture-leaves.sh`, `nros_seed_leaf_lock` and the riscv64 toolchain
+asked PATH directly — a configure from a worktree that had not sourced
+`activate.sh` ran an older binary and failed on `unexpected argument`. A
+PATH-only lookup is refused under the same scope plus `tools/`, `cmake/`,
+`zephyr/` and `integrations/`; the doctors and shadow checks that ask PATH ON
+PURPOSE (their question IS "what does PATH say") carry the marker. String
+contents are prose for this rule (an `echo "which nros …"` is a message).
+
 Buildless, ~0.2 s; self-tests its matcher on every run (negative control: a
 re-added literal must fail).
 """
@@ -62,6 +75,12 @@ PATTERN = re.compile(
     r"|release/nros-launch-resolve(?![\w-])"
 )
 MARKER = "host-tool-path-ok:"
+# Issue 1880 — a lookup of `nros` that asks PATH alone.
+PATH_ONLY = re.compile(
+    r"command\s+-v\s+nros(?![\w-])|\bwhich\s+nros(?![\w-])"
+    r"|find_program\s*\([^)]*\bnros(?![\w-])"
+)
+PATH_ONLY_LANGS = {"sh", "just", "cmake"}
 
 # path -> why it may spell the layout.
 ALLOWED = {
@@ -84,7 +103,8 @@ ALLOWED = {
     ),
 }
 
-SCOPE = ["just", "justfile", "scripts", "tests", "packages"]
+SCOPE = ["just", "justfile", "scripts", "tests", "packages",
+         "tools", "cmake", "zephyr", "integrations"]
 
 
 def in_scope(path: str) -> bool:
@@ -107,6 +127,16 @@ SELF_TESTS = [
     ('x="packages/cli/target/release/nros-foo"', "sh", False),
     ('    printf x  # host-tool-path-ok: the definition\n'
      '    printf "%s" "$r/packages/cli/target/release/nros"', "sh", False),
+    # issue 1880 — PATH-only lookups.
+    ('    if command -v nros >/dev/null 2>&1; then', "sh", True),
+    ('    cli="${NROS_CLI:-$(command -v nros || true)}"', "sh", True),
+    ('        find_program(_NROS_CLI_RV_FOUND nros)', "cmake", True),
+    ('    echo "(or whatever `which nros` reports)"', "sh", False),
+    ('    cli="$(nros_cli_bin 2>/dev/null || true)"', "sh", False),
+    ('    nros_resolve_cli(_cli CONTEXT "x" OPTIONAL)', "cmake", False),
+    ('    find_program(_NROS_CLI_RESOLVED NAMES nros PATHS ${_p})  # host-tool-path-ok: rung 4',
+     "cmake", False),
+    ('    find_program(NINJA ninja)', "cmake", False),
     # Rust (2026-10-13 follow-up).
     ('    let cli = project_root().join("packages/cli/target/release/nros");', "rust", True),
     ('    let r =\n        repo.join("packages/cli/nros-launch-resolve/target/release/nros-launch-resolve");',
@@ -126,10 +156,15 @@ def lang_of(path: str) -> str | None:
 
 def hits(text: str, lang: str) -> list[int]:
     code = comments.strip_comments(text, lang).splitlines()
+    prose_free = (
+        comments.strip_comments(text, lang, strings=True).splitlines()
+        if lang in PATH_ONLY_LANGS else []
+    )
     raw = text.splitlines()
     out = []
     for n, line in enumerate(code, 1):
-        if not PATTERN.search(line):
+        path_only = n - 1 < len(prose_free) and PATH_ONLY.search(prose_free[n - 1])
+        if not (PATTERN.search(line) or path_only):
             continue
         here = raw[n - 1] if n - 1 < len(raw) else ""
         prev = raw[n - 2] if n >= 2 else ""
@@ -154,7 +189,8 @@ def main() -> int:
         print("check-host-tool-path-literals --self-test: FAILED")
         return 1
     files = git_grep.run(
-        ["-lIE", r"packages/cli/target/release/nros|release/nros-launch-resolve",
+        ["-lIE", r"packages/cli/target/release/nros|release/nros-launch-resolve"
+         r"|command -v nros|which nros|find_program.*nros",
          "--", *SCOPE],
         ROOT,
     ).split()

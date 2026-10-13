@@ -30,6 +30,7 @@ if(NOT NROS_REPO_DIR)
     if(nano_ros_ROOT)
         set(NROS_REPO_DIR "${nano_ros_ROOT}")
     else()
+        # host-tool-path-ok: no SDK root was given, so this is a user project; its installed `nros` is on PATH.
         find_program(NROS_TOOLCHAIN_EXECUTABLE nros)
         if(NROS_TOOLCHAIN_EXECUTABLE)
             execute_process(

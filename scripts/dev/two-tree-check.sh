@@ -70,6 +70,7 @@ if [ ! -d "$ZEPHYR_WS/zephyr" ]; then
     exit 1
 fi
 
+# host-tool-path-ok: the question IS "did you source activate.sh" (PATH).
 command -v nros >/dev/null 2>&1 || {
     echo "two-tree-check: no \`nros\` on PATH — source ./activate.sh" >&2
     exit 1

@@ -27,7 +27,7 @@
 # did before RFC-0104, and this says so once.
 nros_seed_leaf_lock() {
     local dir="$1"
-    local cli="${NROS_CLI:-${NROS_CLI_BIN:-${nros_cli:-$(command -v nros || true)}}}"
+    local cli="${NROS_CLI:-${NROS_CLI_BIN:-${nros_cli:-$(nros_cli_bin 2>/dev/null || true)}}}"
     if [ -z "$cli" ]; then
         echo "   (no nros CLI: $dir resolves without the registry pin set)" >&2
         return 0
@@ -526,8 +526,10 @@ nros_cli_bin() {
         return 0
     fi
     [ "$_checkout_only" = 1 ] && return 1
+    # host-tool-path-ok: rung 3 of nros_cli_bin itself (PATH).
     if command -v nros >/dev/null 2>&1; then
         local _path_nros
+        # host-tool-path-ok: rung 3 of nros_cli_bin itself (PATH).
         _path_nros="$(command -v nros)"
         printf '%s\n' "$_path_nros"
         return 0

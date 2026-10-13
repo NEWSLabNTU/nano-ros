@@ -321,8 +321,9 @@ fi
 #
 #    WARN, not fail: a serial walk is correct, only slow.
 _pre_make=""
-if command -v nros >/dev/null 2>&1; then
-    _pre_make="$(nros sdk-path make 2>/dev/null)/bin/make"
+# Issue 1880 — the ONE CLI ladder (`nros_cli_bin`, cargo.sh sourced above).
+if _pre_cli="$(nros_cli_bin 2>/dev/null)"; then
+    _pre_make="$("$_pre_cli" sdk-path make 2>/dev/null)/bin/make"
 fi
 if [ -z "$_pre_make" ] || [ ! -x "$_pre_make" ] ||
     ! "$_pre_make" --version 2>/dev/null | head -1 | grep -q "4\.4"; then

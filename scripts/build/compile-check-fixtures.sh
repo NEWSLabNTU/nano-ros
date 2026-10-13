@@ -247,7 +247,7 @@ _cc_row_resolves_in_macro() {
 # hand-written board crate (`main_macro_misuse_unknown_board`) is left alone.
 _cc_write_selections() {
     local staged="$1" manifest dir cli
-    cli="${NROS_CLI_BIN:-${NROS_CLI:-$(command -v nros || true)}}"
+    cli="${NROS_CLI_BIN:-$(nros_cli_bin 2>/dev/null || true)}"
     while IFS= read -r -d '' manifest; do
         case "${manifest#"$staged"/}" in
             build/* | */build/* | target/* | */target/*) continue ;;
@@ -306,7 +306,7 @@ stage_tree() {
             _cc_resolver_arg="--resolver"
         fi
     elif find "$staged" -maxdepth 3 -name package.xml -print -quit 2>/dev/null | grep -q .; then
-        local _sync_cli="${NROS_CLI_BIN:-${NROS_CLI:-$(command -v nros || true)}}"
+        local _sync_cli="${NROS_CLI_BIN:-$(nros_cli_bin 2>/dev/null || true)}"
         if [ -z "$_sync_cli" ]; then
             echo "compile-check: nros CLI not found — cannot resolve staged models (just setup-cli)" >&2
             return 2
@@ -580,7 +580,7 @@ cmake_skipped=""
 # for none never reaches a cmake prerequisite — and one that did fails on it.
 cmake_fixture_prereqs() {
     command -v cmake >/dev/null 2>&1 || _unmet_lane_prereq "cmake-fixtures: cmake not on PATH"
-    local nb="${NROS_CLI:-$(command -v nros || true)}"
+    local nb="$(nros_cli_bin 2>/dev/null || true)"
     [ -n "$nb" ] || {
         echo "cmake-fixtures: nros CLI not found — cannot codegen entries (source ./activate.sh, or just setup-cli)" >&2
         exit 2
@@ -712,7 +712,7 @@ stage_and_cross_build() {
     # a soft skip is what let this lane build only in a shell that still
     # exported an old `activate.sh` port.
     local facts
-    facts="$(NROS_CLI="${NROS_CLI_BIN:-${NROS_CLI:-$(command -v nros || true)}}" \
+    facts="$(NROS_CLI="${NROS_CLI_BIN:-$(nros_cli_bin 2>/dev/null || true)}" \
         NROS_REPO_ROOT="$repo_root" nros_board_facts "$staged/$subdir" required)" || return 2
     local profile
     for profile in ${profiles//,/ }; do
@@ -1507,7 +1507,7 @@ px4_fail_n=0
 if _cc_px4_selected; then
     [ -d "$px4_autopilot_dir/msg" ] || _unmet_lane_prereq \
         "px4: PX4-Autopilot submodule absent (git submodule update --init third-party/px4/PX4-Autopilot)"
-    command -v nros >/dev/null 2>&1 || _unmet_lane_prereq "px4: nros CLI not on PATH (source ./activate.sh)"
+    nros_cli_bin >/dev/null 2>&1 || _unmet_lane_prereq "px4: no nros CLI (just setup-cli, or source ./activate.sh)"
     # issue 0520 — this script is invoked ONCE PER COMPILE-CHECK UNIT (87 of them
     # under `build-test-fixtures lane=all`, in parallel), and every invocation
     # regenerates px4_msgs into the SAME three `<leaf>/generated` dirs. The
@@ -1566,7 +1566,7 @@ if _cc_px4_selected; then
         # (`git ls-files examples/px4 | grep -c cargo` is 0), so this was not a
         # host quirk: every checkout that ran the px4 compile-check hit it, and
         # the bindings this block exists to type-check never once did.
-        px4_cli="${NROS_CLI_BIN:-${NROS_CLI:-$(command -v nros || true)}}"
+        px4_cli="${NROS_CLI_BIN:-$(nros_cli_bin 2>/dev/null || true)}"
         if [ -z "$px4_cli" ]; then
             echo "   px4: nros CLI not found — cannot sync $id (just setup-cli)" >&2
             px4_fail_n=$((px4_fail_n + 1))
