@@ -138,6 +138,8 @@ import tempfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, os.path.join(HERE, "api_parity"))
+sys.path.insert(0, os.path.join(HERE, "lib"))
+from gate_scratch import gate_scratch  # noqa: E402  phase-489 W5: a STABLE path, so sccache hits
 
 import correlate  # noqa: E402
 import extract_cxx  # noqa: E402
@@ -1714,7 +1716,7 @@ def report(langs, show, check, suggest, include_internal, grep=None, topic=None,
     per_lang_rows = []
     known_by_lang = {}
     contradictions = []
-    with tempfile.TemporaryDirectory() as tmpdir:
+    with gate_scratch("api-parity") as tmpdir:
         for lang in langs:
             rows, prov, removed = run_lang(lang, tmpdir, include_internal)
             # issue 1323 -- every key the extraction knows, for the reverse walk:
@@ -3033,7 +3035,7 @@ def main():
     show = set(args.show or ["differs", "arity-only", "systematic",
                              "ours-only", "theirs-only"])
     if args.by_topic:
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with gate_scratch("api-parity") as tmpdir:
             return by_topic(langs, tmpdir)
 
     grep = re.compile(args.grep) if args.grep else None

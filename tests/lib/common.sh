@@ -69,6 +69,20 @@ init_test_tmpdir() {
     export TEST_TMPDIR
 }
 
+# phase-489 W5 — `init_stable_test_tmpdir <name>`: the same TEST_TMPDIR contract
+# at a path that is a function of (checkout, name), EMPTY when handed out. For a
+# gate that compiles Rust under its tmpdir: sccache's key contains the cargo
+# target dir's path, so a `mktemp -d` tree misses on every run. Rationale and
+# the measurement: scripts/lib/gate-scratch.sh. Cleanup is the same
+# `cleanup_test_tmpdir`.
+init_stable_test_tmpdir() {
+    local name="${1:?init_stable_test_tmpdir <name>}"
+    # shellcheck source=scripts/lib/gate-scratch.sh
+    source "$(dirname "${BASH_SOURCE[0]}")/../../scripts/lib/gate-scratch.sh"
+    TEST_TMPDIR="$(nros_gate_scratch "$name")" || return 1
+    export TEST_TMPDIR
+}
+
 cleanup_test_tmpdir() {
     if [ -n "${TEST_TMPDIR:-}" ] && [ -d "$TEST_TMPDIR" ]; then
         rm -rf "$TEST_TMPDIR"

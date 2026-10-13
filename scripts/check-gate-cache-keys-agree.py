@@ -29,6 +29,15 @@ BEFORE the verb and saving AFTER it. Both lanes run on `main`'s schedule, so
 they share one cache scope; a job whose key or paths drifted would still go
 green and simply never share, which is the same silent no-op as above.
 
+Phase-489 W5 adds a third: the sccache directory the `check-*` jobs restore is
+only worth restoring if the warm job FILLED it with the compiles those jobs
+make. `warm-cache` used to warm the CLI build alone, so `check-fast` (~1240
+compile requests, almost all in its own gates) restored a cache that answered 30
+of them (3.7 %). The rule: `warm-cache` runs `just check fast` AFTER it
+configures sccache and BEFORE it saves the directory, and every job names the
+SAME `SCCACHE_CACHE_SIZE` (a smaller warmer silently evicts what a larger
+consumer expects to find).
+
 Run:  python3 scripts/check-gate-cache-keys-agree.py [--self-test]
 """
 
@@ -222,6 +231,42 @@ def all_bindings_problems():
     return checked, out
 
 
+# phase-489 W5 — the warm job must fill the sccache dir with what `check-fast` compiles.
+FAST_VERB = re.compile(r"^\s*(?:PATH=\S+\s+)?just check fast\s*$", re.M)
+
+
+def sccache_warm_problems(warm_body, all_bodies):
+    """Problems with how `warm-cache` fills the sccache directory, and with the
+    cache size the jobs name. `all_bodies` is {job: body}."""
+    out = []
+    sizes = {}
+    for job, body in all_bodies.items():
+        for m in re.finditer(r"SCCACHE_CACHE_SIZE=(\d+[KMGT])\b", body):
+            sizes.setdefault(m.group(1), set()).add(job)
+    if len(sizes) > 1:
+        out.append(
+            "jobs disagree on SCCACHE_CACHE_SIZE: %s — the warm job and its consumers "
+            "must name one size, or the smaller evicts what the larger expects"
+            % "; ".join("%s in %s" % (v, sorted(j)) for v, j in sorted(sizes.items()))
+        )
+    cfg = re.search(r"^\s*- name: Configure sccache", warm_body, re.M)
+    fast = FAST_VERB.search(warm_body)
+    save = re.search(r"^\s*- name: Save sccache directory", warm_body, re.M)
+    if not (cfg and save):
+        out.append("`warm-cache` has no `Configure sccache` / `Save sccache directory` step")
+    elif not fast:
+        out.append(
+            "`warm-cache` never runs `just check fast`, so the sccache entry it saves holds "
+            "the CLI build and none of what `check-fast` compiles (3.7 %% hit rate, phase-489 W5)"
+        )
+    elif not (cfg.start() < fast.start() < save.start()):
+        out.append(
+            "`warm-cache` must run `just check fast` AFTER `Configure sccache` (or the compiles "
+            "bypass the cache) and BEFORE `Save sccache directory` (or they are never saved)"
+        )
+    return out
+
+
 def self_test():
     t = (
         "jobs:\n"
@@ -326,6 +371,33 @@ def self_test():
     for what, text in mutations.items():
         assert bindings_problems("t", jobs(text)["j"]), "bindings rule missed: " + what
 
+    # phase-489 W5 — the warm-job rule: the real shape passes, each mutation is caught.
+    warm_good = (
+        "    steps:\n"
+        "      - name: Configure sccache\n"
+        "        run: |\n"
+        "          export SCCACHE_CACHE_SIZE=2G\n"
+        "      - name: just check fast\n"
+        "        run: |\n"
+        "          source ./activate.sh\n"
+        "          just check fast\n"
+        "      - name: Save sccache directory\n"
+        "        uses: actions/cache/save@v4\n"
+    )
+    consumer = "    steps:\n      - run: export SCCACHE_CACHE_SIZE=2G\n"
+    assert sccache_warm_problems(warm_good, {"w": warm_good, "c": consumer}) == []
+    for what, wbody, bodies in (
+        ("no fast verb", warm_good.replace("just check fast\n      - name: Save", "echo hi\n      - name: Save"), None),
+        ("fast after save", warm_good.replace(
+            "      - name: just check fast\n        run: |\n          source ./activate.sh\n          just check fast\n", "")
+            + "      - name: late\n        run: |\n          just check fast\n", None),
+        ("fast before configure", "    steps:\n      - run: |\n          just check fast\n"
+            + warm_good.split("    steps:\n", 1)[1].replace("just check fast\n", "true\n"), None),
+        ("size drift", warm_good, {"w": warm_good, "c": consumer.replace("2G", "1G")}),
+    ):
+        got = sccache_warm_problems(wbody, bodies or {"w": wbody, "c": consumer})
+        assert got, "warm-cache rule missed: " + what
+
     sys.stdout.write("check-gate-cache-keys-agree self-test: OK\n")
 
 
@@ -392,6 +464,11 @@ def main():
                         "paths:\n      consumer: %s\n      warmer:   %s"
                         % (c, warmer, key, list(cpaths), list(paths))
                     )
+
+    if "warm-cache" in js:
+        sprob = sccache_warm_problems(js["warm-cache"], js)
+        problems += sprob
+        checked += 1
 
     bjobs, bprob = all_bindings_problems()
     if bjobs == 0:

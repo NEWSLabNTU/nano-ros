@@ -95,7 +95,7 @@ export nano_ros_ROOT="$PROJECT_ROOT"
 export NROS_WORKSPACE="$PROJECT_ROOT"
 export NROS_REPO_DIR="$PROJECT_ROOT"
 
-init_test_tmpdir "nros-probe-workspace-caps"
+init_stable_test_tmpdir "probe-workspace-caps"
 trap 'cleanup_test_tmpdir' EXIT
 
 WS="$TEST_TMPDIR/ws"
