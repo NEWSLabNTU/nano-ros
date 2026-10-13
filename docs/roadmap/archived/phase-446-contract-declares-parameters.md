@@ -1,5 +1,12 @@
 # Phase 446 -- the contract declares each node's parameters
 
+**Status (2026-10-13). CLOSED and archived.** Every nano-ros work item has
+landed. Issue 1271, homed below, resolved in #2091. W7 is the Autoware Safety
+Island's own end-to-end run on native, native_sim and MR-CANHUBK344, which is
+work in the island's repository. It is carried as `446-W7` in
+[phase-474](../phase-474-safety-island-board-findings.md)'s cross-repo
+section and acceptance list, beside the island's other S32K344 board runs.
+
 **Status (2026-10-12). W1–W6 and F1–F3 LANDED; W7 open.** W1 and W2 landed
 upstream and are pinned. W3 is issue 1272 (`f316429529`) and W5 is issue 1270
 (`8604a25ac7`), and both issues are archived. W4 and W6 landed on 2026-09-10/11,
@@ -427,4 +434,4 @@ evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| ~~[#1271](../issues/archived/1271-param-service-reply-overflow-is-silent.md)~~ | RESOLVED 2026-10-13. A set request past a wire cap is answered per parameter with a reason, and a cut `list_parameters` is logged once. F3 had already sized the reply buffer. |
+| ~~[#1271](../../issues/archived/1271-param-service-reply-overflow-is-silent.md)~~ | RESOLVED 2026-10-13. A set request past a wire cap is answered per parameter with a reason, and a cut `list_parameters` is logged once. F3 had already sized the reply buffer. |

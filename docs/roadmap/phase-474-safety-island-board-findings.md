@@ -1086,6 +1086,22 @@ ring overflows 0; the island's gate act still PASS.
     shape: 4 derived tiers, 4 timers) passes that join 4 <-> 4. What is still
     unverified is the island's real graph and its contract `paths.*.output`.
 
+- **Carved out of [phase-446](archived/phase-446-contract-declares-parameters.md)**
+  (its W7) when it was archived on 2026-10-13. Every nano-ros half has
+  landed: the contract's `params:`, the store and the parameter services
+  sized from them (W1-W6, F1-F3), and replies that refuse with a reason
+  (issue 1271). What is left is the island's run.
+  - **`446-W7` -- the island's parameters, end to end.** The island declares
+    its 21 parameters in its contract, loads each package's parameter file
+    in its launch, and builds and boots on native, native_sim and
+    MR-CANHUBK344 with parameter services on. Acceptance: the demo's VERDICT
+    PASS on both islands, and the board image's heap use with parameter
+    services measured and recorded here. The measurement that opened
+    phase-446 is the baseline: the worst-case store was 285,440 B at 32
+    slots and exhausted the 64 KiB nros heap at boot, the declared store is
+    4,200 B for the image's 25 slots, and the parameter services took
+    196 KiB of buffers for four nodes before issue 1270.
+
 ## Order
 
 D1 before I1 and D2 before I2; I1 and I2 before T4. D3 waits on the
@@ -1155,6 +1171,10 @@ I13's DTCM rings); I14 is the no-DMA alternative and is independent.
       window re-anchors on the first new sample, test
       `a_stream_at_its_rate_armed_mid_period_is_not_judged_slow`, issue
       1725. The board rerun of 2026-10-09 still read 9999 of 10000: I9.)
+- [ ] 446-W7: the island's 21 declared parameters build and boot with
+      parameter services on native, native_sim and MR-CANHUBK344; the demo
+      reads VERDICT PASS on both islands, and the board's heap use with the
+      services is recorded under "Cross-repo" above.
 - [ ] I9: a stream at exactly its declared rate is not judged slow in any
       window, however late the closing tick runs. (Host half here: the count
       is judged against floor(min_rate * window), test
