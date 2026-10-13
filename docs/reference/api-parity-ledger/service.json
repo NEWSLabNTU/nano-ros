@@ -1483,5 +1483,9 @@
   "c:executor_attach_client": {
     "verdict": "divergence",
     "why": "see `c:executor_add_client`. phase-492 W1.b."
+  },
+  "cpp:Node::start_parameter_services": {
+    "verdict": "extension",
+    "why": "phase-499 W4 (RFC-0089 amendment 2026-10-13) -- serves the node's parameters on the six rcl_interfaces/srv/* services. rclcpp starts them from NodeOptions::start_parameter_services(true); that option is REFUSED here (NodeOptions carries no runtime state, see options.hpp), so a node calls this instead of the nros_cpp_register_parameter_services FFI a user used to reach for. Ours-only under rclcpp:: by the 2026-09-05 rule; no upstream Node method of that name exists to collide with."
   }
 }

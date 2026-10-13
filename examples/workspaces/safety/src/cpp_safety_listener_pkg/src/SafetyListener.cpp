@@ -2,7 +2,7 @@
 //
 // Registers a safety subscription via `node.create_subscription_with_safety()`.
 // The handler receives the typed message AND the E2E CRC/sequence status via
-// `nros_cpp_integrity_status_t`. CRC-valid messages increment the received count
+// `rclcpp::IntegrityStatus`. CRC-valid messages increment the received count
 // and republish it on /safe_ok — which the cross-process e2e
 // (tests/cpp_c_safety_integrity_e2e.rs) subscribes to and asserts climbs.
 //
@@ -16,7 +16,7 @@
 namespace cpp_safety_listener_pkg {
 
 // `Node::create_subscription_with_safety` takes a plain function-pointer-convertible
-// callback `void(const M&, const nros_cpp_integrity_status_t&)` — the integrity path
+// callback `void(const M&, const rclcpp::IntegrityStatus&)` — the integrity path
 // has no `void* ctx` seam (unlike the plain callback path), so it cannot carry `this`.
 // A typed component is a singleton, so we forward through a file-static instance
 // pointer set in `configure` and a non-capturing lambda (the `+` forces the
@@ -28,7 +28,7 @@ SafetyListener* g_safety_listener_self = nullptr;
 } // namespace
 
 void SafetyListener::on_chatter(const std_msgs::msg::Int32& msg,
-                                const nros_cpp_integrity_status_t& status) {
+                                const rclcpp::IntegrityStatus& status) {
     if (status.crc_valid == 1) {
         received_++;
         std::printf("[LISTENER] CRC ok — data=%d count=%d gap=%lld dup=%s\n", msg.data, received_,
@@ -58,14 +58,14 @@ void SafetyListener::on_chatter(const std_msgs::msg::Int32& msg,
     if (!r.ok()) return r;
 
     // Register the integrity-carrying subscription on /chatter.
-    // The callback receives (const Int32&, const nros_cpp_integrity_status_t&).
+    // The callback receives (const Int32&, const rclcpp::IntegrityStatus&).
     // Requires NROS_SAFETY_E2E=ON; the method is declared in node.hpp and
     // defined in subscription.hpp, both gated on #if defined(NROS_SAFETY_E2E).
     // The `+` forces the non-capturing lambda to a function pointer (the API's
     // required signature); it forwards to the singleton's `on_chatter`.
     return node.create_subscription_with_safety<std_msgs::msg::Int32>(
         sub_, "/chatter", ::rclcpp::QoS::default_profile(),
-        +[](const std_msgs::msg::Int32& msg, const nros_cpp_integrity_status_t& status) {
+        +[](const std_msgs::msg::Int32& msg, const rclcpp::IntegrityStatus& status) {
             if (g_safety_listener_self != nullptr) {
                 g_safety_listener_self->on_chatter(msg, status);
             }

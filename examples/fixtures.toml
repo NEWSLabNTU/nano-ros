@@ -891,7 +891,7 @@ build_subdir = "build/posix-zenoh-linux/cmake"
 
 # Phase 269 W1 — parameterised C workspace. [param_services] bakes nros_cpp_declare_param
 # calls into the generated entry; the C component reads the live value via
-# nros_cpp_get_param_integer. Consumed by tests/cpp_c_param_live_read_e2e.rs.
+# rclc_parameter_get_int. Consumed by tests/cpp_c_param_live_read_e2e.rs.
 [[workspace_fixture]]
 id = "workspace-c-native-realtime"
 platform = "linux"

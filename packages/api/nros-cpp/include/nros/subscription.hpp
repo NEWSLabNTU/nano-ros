@@ -126,6 +126,13 @@ nros_cpp_ret_t nros_cpp_subscription_register_validated(
 
 namespace rclcpp {
 
+/// E2E message-integrity status of one received sample (issue 0073): the
+/// sequence `gap` since the previous in-order sample, `duplicate`, and
+/// `crc_valid` (`1` ok, `0` mismatch, `-1` no CRC on the wire). The C++
+/// spelling of the FFI struct (RFC-0089, 2026-10-13: ours-only names take
+/// `rclcpp::`), a typedef rather than a mirror so the two can never drift.
+using IntegrityStatus = ::nros_cpp_integrity_status_t;
+
 /// Maximum topic name length stored inside a subscription.
 /// Mirrors `PUBLISHER_TOPIC_NAME_MAX`. Phase 87.6 thin-wrapper refactor:
 /// topic name owned C++-side, not inside a runtime handle.
@@ -230,7 +237,7 @@ template <typename M> class Subscription {
     // `NROS_SAFETY_E2E` (lowered from `[system].features = ["safety"]`).
 #if defined(NROS_SAFETY_E2E)
     using TypedSubscriptionSafetyFn = void (*)(const M& msg,
-                                               const nros_cpp_integrity_status_t& integrity);
+                                               const ::rclcpp::IntegrityStatus& integrity);
 #endif // NROS_SAFETY_E2E
 
     /// Get the topic name.
@@ -395,8 +402,8 @@ template <typename M> class Subscription {
     /// Phase 269 W3 — trampoline matching `RawSubscriptionSafetyCallback`
     /// (`void(data, len, gap, duplicate, crc_valid, ctx)`). Deserializes the CDR
     /// sample into `M`, packs the three integrity scalars into an
-    /// `nros_cpp_integrity_status_t`, and runs the user's
-    /// `(const M&, const nros_cpp_integrity_status_t&)` handler.
+    /// `rclcpp::IntegrityStatus`, and runs the user's
+    /// `(const M&, const ::rclcpp::IntegrityStatus&)` handler.
     static void message_safety_trampoline(const uint8_t* data, size_t len, int64_t gap,
                                           bool duplicate, int8_t crc_valid, void* ctx) {
         auto* self = static_cast<Subscription*>(ctx);

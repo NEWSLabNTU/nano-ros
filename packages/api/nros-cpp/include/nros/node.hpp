@@ -1510,6 +1510,16 @@ class Node {
     /// `nullptr` on an uninitialized node.
     void* executor_handle() const { return initialized_ ? executor_handle_ : nullptr; }
 
+    /// Serve this node's parameters on the six `rcl_interfaces/srv/*`
+    /// services under its fully-qualified name, so `ros2 param` reaches them.
+    /// rclcpp starts them from `NodeOptions::start_parameter_services(true)`;
+    /// that option is refused here (NodeOptions carries no runtime state), so
+    /// this is the ours-only call a node makes instead (RFC-0089, 2026-10-13:
+    /// a user calls no `nros_cpp_*` FFI). Idempotent per executor.
+    Result start_parameter_services() {
+        return Result(nros_cpp_register_parameter_services(executor_handle()));
+    }
+
     // ---- Graph queries — phase-417 stage 2b (RFC-0089) --------------------
     //
     // rclcpp puts these on the node. `rclcpp::Executor` owns them here because
@@ -1838,7 +1848,7 @@ class Node {
     ///
     /// Arena-registered like the `create_subscription_with_info` overload above
     /// (so `options.sched_context` is functional). The handler is invoked as
-    /// `callback(const M&, const nros_cpp_integrity_status_t&)` on each new sample.
+    /// `callback(const M&, const ::rclcpp::IntegrityStatus&)` on each new sample.
     ///
     /// Requires `NROS_SAFETY_E2E=ON` (lowered from
     /// `[system].features = ["safety"]` via `NanoRosCapabilities.cmake`).
@@ -1851,7 +1861,7 @@ class Node {
     /// gap-closure design study).
     template <typename M, typename F,
               typename = typename std::enable_if<std::is_convertible<
-                  F, void (*)(const M&, const nros_cpp_integrity_status_t&)>::value>::type>
+                  F, void (*)(const M&, const ::nros_cpp_integrity_status_t&)>::value>::type>
     Result create_subscription_with_safety(::rclcpp::Subscription<M>& out, const char* topic,
                                            const ::rclcpp::QoS& qos, F callback,
                                            const ::rclcpp::SubscriptionOptions& options = {});
