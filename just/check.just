@@ -270,6 +270,7 @@ build-serial: \
     excluded-crate-tests \
     launch-resolve-builds \
     mem-report \
+    native-check \
     node-std-tests \
     nros-log-riscv32 \
     required-features-tests \
@@ -285,12 +286,6 @@ build-serial: \
     workspace-all \
     workspace-features \
     _gate-list-end
-    # `native::check`, which was a DEPENDENCY at the root. A module cannot name
-    # another module's recipe — from in here `native::` would mean a submodule
-    # of `check` — so it becomes an explicit call. Same constraint the sibling
-    # `ci` module hit.
-    @just native check
-    @echo "Build checks passed!"
 
 # Fast tier — BUILDLESS, SOURCE-FREE gates only (fmt/clang-format AST checks,
 # ABI/board mirrors, manifest + convention scripts). No cargo build/clippy/test

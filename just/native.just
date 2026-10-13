@@ -560,43 +560,10 @@ check JOBS="75%":
         exit 1
     fi
 
-    check_one() {
-        local toml="$1"
-        local dir="$(dirname "$toml")"
-        local platform="$(echo "$dir" | cut -d/ -f2)"
-        local flags=""
-        local env_prefix=""
-        # phase-336 — embedded examples lint at the ambient profile rather than a
-        # hardcoded `--release`; resolved once above and passed in by variable.
-        if [ "$platform" != "native" ]; then flags="$NROS_EXAMPLE_PROFILE_FLAGS"; fi
-        if [ "$platform" = "esp32" ] || [ "$platform" = "esp32-c3-baremetal" ]; then
-            env_prefix="SSID=${SSID:-test} PASSWORD=${PASSWORD:-test}"
-        fi
-        # Quiet by default: no per-example label, and cargo --quiet suppresses
-        # the "Checking …" progress + the "Blocking waiting for file lock on
-        # package cache" spam (every parallel job contends the shared ~/.cargo
-        # package-cache lock). A failing clippy still prints its diagnostic with
-        # the example's file path, so failures stay identifiable. Set
-        # NROS_CHECK_VERBOSE=1 to restore the per-example progress label.
-        if [ -n "${NROS_CHECK_VERBOSE:-}" ]; then echo "  check $dir"; fi
-        # `-p <leaf>`, not a bare `fmt --check`: run inside the leaf, cargo fmt
-        # formats every member of THAT leaf's workspace — which, once a
-        # developer has run `nros sync`, includes the `generated/*` message
-        # crates. Those are USER-side codegen output (gitignored, regenerated
-        # per host), so the gate was checking rustfmt's opinion of a code
-        # generator's output and failing `just ci` for exactly the people who
-        # followed the setup instructions. A fresh clone has no `generated/`,
-        # so CI never saw it and main stayed green.
-        pkg="$(sed -n 's/^name[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$dir/Cargo.toml" | head -1)"
-        # No `-j`: this path runs one leaf at a time (outer jobserver owns the
-        # tokens, and cargo joins it). The old NROS_EXAMPLE_INNER_JOBS cap went
-        # with the GNU parallel fan-out that needed it — issue 0466.
-        # issue 0624 — one target dir PER LEAF (each is its own workspace root,
-        # RFC-0026), never the leaf's own `target/` and never one dir shared by
-        # all 39 (issue 0616: a `--target-dir` serves exactly ONE root).
-        local lintdir="$NROS_EXAMPLE_LINT_DIR/$(echo "${dir#examples/}" | tr '/' '-')"
-        ( cd "$dir" && cargo +{{NIGHTLY}} fmt --check -p "$pkg" && eval $env_prefix cargo clippy --quiet --target-dir "$lintdir" $flags )
-    }
+    # The per-leaf lint lives in ONE script, called from both branches below
+    # (issue 1882: they were two hand-kept copies of the derivation, and neither
+    # rendered the board-image leaves `nros sync` owns).
+    check_one() { bash scripts/build/lint-example-leaf.sh "$(dirname "$1")"; }
     export -f check_one
     export NIGHTLY="{{NIGHTLY}}"
 
@@ -625,30 +592,12 @@ check JOBS="75%":
         while read -r toml; do check_one "$toml"; done < "$toml_list"
     else
         source scripts/build/jobserver-pool.sh
-        # ONE self-contained line per leaf. A make recipe is one command per
-        # line, so the unit cannot be an exported bash function spliced in with
-        # `declare -f` (multi-line, and make runs recipes under /bin/sh). Derive
-        # the per-leaf bits here — the same three `check_one` computes — and
-        # emit a flat command.
+        # ONE self-contained line per leaf: a make recipe is one command per
+        # line, and the unit is just the script call (env is exported above).
         units="$(mktemp "${TMPDIR:-/tmp}/nros_check_units.XXXXXX")"
         trap 'rm -f "$toml_list" "$missing" "$units"' EXIT
         while read -r toml; do
-            d="$(dirname "$toml")"
-            plat="$(echo "$d" | cut -d/ -f2)"
-            f=""
-            [ "$plat" != "native" ] && f="$NROS_EXAMPLE_PROFILE_FLAGS"
-            e=""
-            case "$plat" in
-                esp32 | esp32-c3-baremetal) e="SSID=${SSID:-test} PASSWORD=${PASSWORD:-test}" ;;
-            esac
-            pkg="$(sed -n 's/^name[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$d/Cargo.toml" | head -1)"
-            # No `-j`: the pool's tokens are the budget now (cargo joins it).
-            # issue 0624 — same per-leaf target dir as the serial branch above.
-            # BOTH branches must carry it: fixing only one leaves `SERIAL=1`
-            # writing the leaf `target/` dirs this gate exists to keep empty.
-            ld="$NROS_EXAMPLE_LINT_DIR/$(echo "${d#examples/}" | tr '/' '-')"
-            printf 'cd %s && cargo +%s fmt --check -p %s && %s cargo clippy --quiet --target-dir %s %s\n' \
-                "$d" "{{NIGHTLY}}" "$pkg" "$e" "$ld" "$f"
+            printf 'bash scripts/build/lint-example-leaf.sh %s\n' "$(dirname "$toml")"
         done < "$toml_list" > "$units"
         nros_pool_run check-examples < "$units"
     fi
