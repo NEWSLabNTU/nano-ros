@@ -98,6 +98,69 @@ PRODUCER_CALL = re.compile(r"just\s+(build-test-fixtures|build-compile-check-fix
                            r"|generate-bindings|build-examples)")
 
 
+# issue 1881 — a recipe's precondition is often stated ONE FILE AWAY. `test-all`
+# depends on `_require-fixtures`, whose whole body is
+#
+#     source scripts/build/fixture-lane.sh
+#     nros_fixtures_stamp_require "${NROS_FIXTURE_LANE:-all}"
+#
+# and the hard failure ("Run:  just build-test-fixtures" … `return 1`) lives in
+# that sourced FUNCTION. Reading the recipe text alone saw neither half, so
+# `just test-all` on a merge-gating job that builds no fixture read as clean.
+_SOURCE_LINE = re.compile(r"^\s*(?:source|\.)\s+[\"']?([A-Za-z0-9_./-]+\.sh)[\"']?\s*$")
+_BASH_FN = re.compile(r"^(?:function\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*\(\)\s*\{?\s*$")
+
+
+@__import__("functools").lru_cache(maxsize=None)
+def _bash_functions(path):
+    """{name: body text} for the column-0 functions of one shell file."""
+    try:
+        with open(path, encoding="utf8", errors="replace") as fh:
+            lines = fh.read().split("\n")
+    except OSError:
+        return {}
+    out, name, buf = {}, None, []
+    for line in lines:
+        if name is None:
+            m = _BASH_FN.match(line)
+            if m:
+                name, buf = m.group(1), []
+            continue
+        if line.startswith("}"):
+            out[name] = "\n".join(buf)
+            name = None
+            continue
+        buf.append(line)
+    return out
+
+
+def sourced_function_text(body):
+    """The bodies of the sourced shell functions a recipe body CALLS — and,
+    transitively, the same file's functions those call. Comments stripped, so a
+    function that only MENTIONS a producer in prose does not count."""
+    base = os.path.dirname(os.path.abspath(JUSTFILE))
+    fns = {}
+    for line in body:
+        m = _SOURCE_LINE.match(line)
+        if m:
+            fns.update(_bash_functions(os.path.normpath(os.path.join(base, m.group(1)))))
+    if not fns:
+        return ""
+    text = "\n".join(l for l in body if not l.lstrip().startswith("#"))
+    seen, stack = set(), [text]
+    out = []
+    while stack:
+        t = stack.pop()
+        for name, fbody in fns.items():
+            if name in seen or not re.search(r"(?<![\w-])" + re.escape(name) + r"(?![\w-])", t):
+                continue
+            seen.add(name)
+            fbody = "\n".join(l for l in fbody.split("\n") if not l.lstrip().startswith("#"))
+            out.append(fbody)
+            stack.append(fbody)
+    return "\n".join(out)
+
+
 def required_producers(recipes, reached):
     """{producer: recipe} for every recipe in `reached` that HARD-FAILS telling
     you to run a producer first.
@@ -112,12 +175,85 @@ def required_producers(recipes, reached):
     — a comment, a hint printed on success — does not count.
     """
     out = {}
-    for r in reached:
-        body = "\n".join(recipes.get(r, {}).get("body", []))
-        if "exit 1" not in body and "exit 2" not in body:
+    for group, r in remedy_groups(recipes, reached):
+        for producer in sorted(group):
+            out.setdefault(producer, r)
+    return out
+
+
+def remedy_groups(recipes, reached):
+    """[(frozenset of producers, recipe)] — one entry per remedy LINE, whose
+    producers are ALTERNATIVES: `native::check` says "Run 'just
+    generate-bindings' (or 'just build-test-fixtures')", and a job running
+    either satisfies it."""
+    out = []
+    for r in sorted(reached):
+        lines = tuple(recipes.get(r, {}).get("body", []))
+        out.extend((group, r) for group in _body_remedies(lines))
+    return out
+
+
+@__import__("functools").lru_cache(maxsize=None)
+def _body_remedies(lines):
+    # The same pair, one file away: a sourced function that names the
+    # producer AND returns non-zero (issue 1881).
+    lines = list(lines)
+    return tuple(group
+                 for text in (lines, sourced_function_text(lines).split("\n"))
+                 for group in _remedies_before_failure(text))
+
+
+_EXIT = re.compile(r"\b(?:exit|return)\s+(\d+)\b")
+
+
+def _remedies_before_failure(lines):
+    """Producers a body names as the remedy for a hard failure: the mention
+    counts when the NEXT `exit`/`return` after it is non-zero.
+
+    The pair used to be "mentions a producer anywhere, can exit non-zero
+    anywhere", which held only while no recipe printed a producer as ADVICE —
+    `build` ends `echo 'Run "just build-examples" for example crates'` after an
+    `exit 2` belonging to scope validation, and once variadic recipes became
+    visible (issue 1881) that read as a hard requirement.
+    """
+    found = []
+    for i, line in enumerate(lines):
+        if line.lstrip().startswith("#"):
             continue
-        for m in PRODUCER_CALL.finditer(body):
-            out.setdefault(m.group(1), r)
+        hits = [m.group(1) for m in PRODUCER_CALL.finditer(line)]
+        if not hits:
+            continue
+        for later in lines[i:]:
+            if later.lstrip().startswith("#"):
+                continue
+            m = _EXIT.search(later)
+            if m:
+                if m.group(1) in ("1", "2"):
+                    found.append(frozenset(hits))
+                break
+    return found
+
+
+def job_producers(recipes, invoked):
+    """The PRODUCERS a job runs through the lanes it invokes (issue 1881).
+
+    A producer is run when it is in a lane's closure as a recipe (a header
+    dependency — `_codegen: … generate-bindings …`) or is CALLED on an
+    executable body line — `nros_scope_exec just build-test-fixtures` in
+    `_build-scope`. An `echo`ed remedy or a comment is advice, not a run, and
+    is what `required_producers` reads as the opposite: a precondition.
+    """
+    out = set()
+    for recipe, _events in invoked:
+        reached = closure(recipes, recipe)
+        out |= set(PRODUCERS) & reached
+        for r in reached:
+            for line in recipes.get(r, {}).get("body", []):
+                t = line.strip()
+                if t.startswith(("#", "echo", "@echo", "printf")):
+                    continue
+                for m in PRODUCER_CALL.finditer(t):
+                    out.add(m.group(1))
     return out
 
 
@@ -449,7 +585,7 @@ _RESOLVER_CALL = re.compile(
 # header describes.
 RECIPE = re.compile(
     r"^(_?[a-z][a-z0-9-]*)"
-    r"(?:\s+[A-Za-z_][A-Za-z0-9_]*(?:=(?:\"[^\"]*\"|'[^']*'|\S+))?)*"
+    r"(?:\s+[*+$]?[A-Za-z_][A-Za-z0-9_]*(?:=(?:\"[^\"]*\"|'[^']*'|\S+))?)*"
     r"\s*:(.*)$"
 )
 CARGO_TEST = re.compile(r"--test\s+([A-Za-z0-9_]+)")
@@ -592,6 +728,7 @@ DERIVED_LANES = {"check::fast": "fast-serial", "check::fast-serial": "fast-seria
                  "check::fast-parallel": "fast-serial", "check::build": "build-serial"}
 
 
+@__import__("functools").lru_cache(maxsize=None)
 def _derived_members(lane):
     """The gate names a derived lane runs, as `check::<name>`."""
     import subprocess
@@ -604,6 +741,43 @@ def _derived_members(lane):
     if r.returncode != 0:
         return []
     return [f"check::{n.strip()}" for n in r.stdout.split("\n") if n.strip()]
+
+
+_EMBEDDED_JUST = re.compile(r"(?:^|[\s;&|(])@?just\s+((?:[a-z0-9_:-]+\s*)+)")
+
+
+def embedded_just_calls(line, recipes):
+    """Recipes a body line CALLS when the call is not the whole line (issue 1881).
+
+    `JUST_CALL` wants `just a b` and nothing else on the line, which is the
+    spelling of a plain step. The user verbs do not write that:
+
+        just _test-scope "$tok" "$verbose" || rc=1
+        just _require-build-sources _require-fixtures-ready test-zpico-multisession || exit 1
+        nros_scope_exec just build-test-fixtures "lane=$tok"
+
+    so `test` and `build` reached nothing past their own bodies, and `just test`
+    on a merge-gating job read as clean while hard-requiring a fixture build.
+    Leading recipe-name words are taken while they ARE recipes (a pair is one
+    edge when `<a>::<b>` exists); comments and `echo`ed advice are not calls.
+    """
+    t = line.strip()
+    if t.startswith(("#", "echo", "@echo", "printf")):
+        return []
+    out = []
+    for m in _EMBEDDED_JUST.finditer(t):
+        words = m.group(1).split()
+        i = 0
+        while i < len(words):
+            if i + 1 < len(words) and f"{words[i]}::{words[i + 1]}" in recipes:
+                out.append(f"{words[i]}::{words[i + 1]}")
+                i += 2
+            elif words[i] in recipes:
+                out.append(words[i])
+                i += 1
+            else:
+                break
+    return out
 
 
 def closure(recipes, root):
@@ -619,6 +793,7 @@ def closure(recipes, root):
         for m in STEPS_ARRAY.finditer("\n".join(recipes[r]["body"])):
             stack.extend(m.group(1).split())
         for line in recipes[r]["body"]:
+            stack.extend(embedded_just_calls(line, recipes))
             m = JUST_CALL.match(line)
             if not m:
                 continue
@@ -931,6 +1106,26 @@ def stamp_invocations(recipes, reached):
                 inv["ids"] = admission_stamp_ids(derived) if derived else set()
             out.append(inv)
     return out
+
+
+def missing_stamp_rows(recipes, test, via, invocations, id_builder):
+    """[(id, builder)] the test asserts that no stamp invocation in `via`, or a
+    recipe it depends on, builds (issue 1656 — asked per ROW).
+
+    The producer must be the recipe that RUNS the test, or one it depends on: a
+    lane runs its steps in order, so a stamp built by a LATER sibling step is
+    absent when an earlier one runs the test on a fresh runner — which a
+    closure-wide search reported as covered.
+    """
+    want = sorted(
+        (i, id_builder[i]) for i in stamp_ids_used(test)
+        if i in id_builder and id_builder[i]
+        and not id_builder[i].startswith("west-")
+    )
+    own = set(closure(recipes, via))
+    local = [inv for inv in invocations if inv["recipe"] in own]
+    return [(i, b) for i, b in want
+            if not any(invocation_builds(inv, i, b) for inv in local)]
 
 
 def invocation_builds(inv, fixture_id, builder):
@@ -1273,6 +1468,115 @@ def leaf_builds_without_sync(recipes):
     return out
 
 
+def ci_job_findings(recipes_map):
+    """Every CI job lane that resolves an artifact its JOB does not build
+    (phase-396 W5, issue 1030, issue 1881) — one string per finding."""
+    ci_findings = []
+
+    # issue 1030 — a PROVISIONING step narrower than what consumes it.
+    #
+    # Separate loop, before the tier rules, because it differs from them twice
+    # over and both differences are why the defect it catches went unseen for
+    # four days:
+    #
+    #  * It is EVENT-LEVEL. The tier rules ask "does the job run the producer",
+    #    and gate.yml's old `check` job did — on `pull_request`/`merge_group`. On
+    #    `schedule` that step is skipped while two steps needing it still run,
+    #    so a presence test answers yes and the lane dies anyway.
+    #  * It is not restricted to `GATING_EVENTS`. That restriction is a stated
+    #    severity call for the tier rules and stands. It does not apply here: a
+    #    step that cannot run AT ALL on its own event is broken on every event
+    #    it claims, and the scheduled gate was red four consecutive nights
+    #    proving it.
+    #
+    # It also runs on jobs that DO build artifacts — the `if producers` exemption
+    # below is about a job being allowed to resolve what it builds, which says
+    # nothing about whether it builds it on the right events.
+    ordered = ordered_setup_requirements(recipes_map)
+    for wf, job, recipes, _producers in workflow_jobs():
+        ran_on = {}
+        for name, events in recipes:
+            if name.startswith("setup-"):
+                ran_on.setdefault(name, set()).update(events)
+        for recipe, events in sorted({(r, tuple(sorted(e))) for r, e in recipes}):
+            for need in sorted(ordered.get(recipe, ())):
+                gap = sorted(set(events) - ran_on.get(need, set()))
+                if gap:
+                    ci_findings.append(
+                        f"{wf}:{job} runs `just {recipe}` on {','.join(gap)} "
+                        f"without `just {need}`, which the justfile orders before "
+                        f"it — widen that step's `if:` to cover these events"
+                    )
+
+    for wf, job, recipes, producers in workflow_jobs():
+        # phase-489 W1 — this exemption was per JOB, and it used to cover the
+        # whole required gate: the single `check` job ran `generate-bindings`
+        # on the nightly, so every merge-gating lane in it went unexamined.
+        #
+        # issue 1881 — and per job it still was: a job running ANY producer
+        # skipped every rule below, so `check-build` (which runs
+        # `generate-bindings`) could carry a runtime-fixture lane unexamined.
+        # The exemption is now PER PRODUCER: a job may resolve what it builds,
+        # and only that. "What it builds" is DERIVED from the lanes it runs —
+        # `just build tier2-nightly` builds fixtures through `_build-scope`,
+        # a producer no literal step names.
+        invoked = lane_invocations(recipes, recipes_map)
+        id_builder_all = None
+        built = set(producers) | job_producers(recipes_map, invoked)
+        for recipe, events in sorted(invoked):
+            # Every lane that produces a verdict, gating or not — see
+            # SCANNED_EVENTS. `workflow_run` is excluded because the only lane
+            # names on it are advice text in a posted comment.
+            if not (set(events) & SCANNED_EVENTS):
+                continue
+            sev = "gating" if set(events) & GATING_EVENTS else "report"
+            reached = closure(recipes_map, recipe)
+            job_makes_stamps = any(
+                "compile-check-fixtures.sh" in line
+                for r in reached
+                for line in recipes_map.get(r, {}).get("body", [])
+            )
+            for group, via in remedy_groups(recipes_map, reached):
+                if group & built:
+                    continue
+                alts = " or ".join(f"`just {p}`" for p in sorted(group))
+                ci_findings.append(f"[{sev}] {wf}:{job} runs `{recipe}` -> `{via}` "
+                                   f"hard-requires {alts}, which the job never runs")
+            lane_invs = None
+            for test, via in sorted(tests_invoked(recipes_map, reached).items()):
+                used, found = resolvers_used(test)
+                if not found or not used:
+                    continue
+                runtime = sorted(u for u in used if u in RUNTIME_RESOLVERS)
+                if runtime:
+                    if "build-test-fixtures" not in built:
+                        ci_findings.append(f"[{sev}] {wf}:{job} runs `{recipe}` -> `{test}` "
+                                           f"needs RUNTIME fixture ({','.join(runtime)})")
+                elif built & {"build-test-fixtures", "build-compile-check-fixtures"}:
+                    continue
+                elif not job_makes_stamps:
+                    ci_findings.append(f"[{sev}] {wf}:{job} runs `{recipe}` -> `{test}` "
+                                       f"needs a COMPILE stamp nothing in the job builds")
+                else:
+                    # issue 1881 — PER ROW, as the authored tiers ask (issue
+                    # 1656). "Something in the closure runs the stamp builder"
+                    # is presence, and a job passed it while its invocation
+                    # built other rows than the test asserts.
+                    if lane_invs is None:
+                        lane_invs = stamp_invocations(recipes_map, reached)
+                    if id_builder_all is None:
+                        id_builder_all = builder_of_ids()
+                    missing = missing_stamp_rows(recipes_map, test, via,
+                                                 lane_invs, id_builder_all)
+                    if missing:
+                        ci_findings.append(
+                            f"[{sev}] {wf}:{job} runs `{recipe}` -> `{test}` needs COMPILE "
+                            f"stamp row(s) {', '.join(f'{i} ({b})' for i, b in missing)} "
+                            f"that no invocation in `{via}` or its dependencies builds")
+
+    return ci_findings
+
+
 def main():
     if "--selftest" in sys.argv:
         return selftest(verbose=True)
@@ -1349,20 +1653,7 @@ def main():
             # an invocation narrowed to the admitted tests' own stamps, and
             # would have called every such stamp unbuilt.
             if used:
-                want = sorted(
-                    (i, id_builder[i]) for i in stamp_ids_used(test)
-                    if i in id_builder and id_builder[i]
-                    and not id_builder[i].startswith("west-")
-                )
-                # The producer must be the recipe that RUNS the test, or one it
-                # depends on: a lane runs its steps in order, so a stamp built
-                # by a LATER sibling step is absent when an earlier one runs
-                # the test on a fresh runner — which a closure-wide search
-                # reported as covered.
-                own = set(closure(recipes, via))
-                local = [inv for inv in invocations if inv["recipe"] in own]
-                missing = [(i, b) for i, b in want
-                           if not any(invocation_builds(inv, i, b) for inv in local)]
+                missing = missing_stamp_rows(recipes, test, via, invocations, id_builder)
                 if missing:
                     seen = "; ".join(
                         f"`{inv['recipe']}`"
@@ -1403,78 +1694,7 @@ def main():
     # without a producer — same defect, on a lane issue 0878 has already
     # established nobody is watching). Recording them is the point: a new one
     # fails, and refreshing the baseline is a deliberate act.
-    ci_findings = []
-
-    # issue 1030 — a PROVISIONING step narrower than what consumes it.
-    #
-    # Separate loop, before the tier rules, because it differs from them twice
-    # over and both differences are why the defect it catches went unseen for
-    # four days:
-    #
-    #  * It is EVENT-LEVEL. The tier rules ask "does the job run the producer",
-    #    and gate.yml's old `check` job did — on `pull_request`/`merge_group`. On
-    #    `schedule` that step is skipped while two steps needing it still run,
-    #    so a presence test answers yes and the lane dies anyway.
-    #  * It is not restricted to `GATING_EVENTS`. That restriction is a stated
-    #    severity call for the tier rules and stands. It does not apply here: a
-    #    step that cannot run AT ALL on its own event is broken on every event
-    #    it claims, and the scheduled gate was red four consecutive nights
-    #    proving it.
-    #
-    # It also runs on jobs that DO build artifacts — the `if producers` exemption
-    # below is about a job being allowed to resolve what it builds, which says
-    # nothing about whether it builds it on the right events.
-    ordered = ordered_setup_requirements(recipes_map)
-    for wf, job, recipes, _producers in workflow_jobs():
-        ran_on = {}
-        for name, events in recipes:
-            if name.startswith("setup-"):
-                ran_on.setdefault(name, set()).update(events)
-        for recipe, events in sorted({(r, tuple(sorted(e))) for r, e in recipes}):
-            for need in sorted(ordered.get(recipe, ())):
-                gap = sorted(set(events) - ran_on.get(need, set()))
-                if gap:
-                    ci_findings.append(
-                        f"{wf}:{job} runs `just {recipe}` on {','.join(gap)} "
-                        f"without `just {need}`, which the justfile orders before "
-                        f"it — widen that step's `if:` to cover these events"
-                    )
-
-    for wf, job, recipes, producers in workflow_jobs():
-        # phase-489 W1 — this exemption is per JOB, and it used to cover the
-        # whole required gate: the single `check` job ran `generate-bindings`
-        # on the nightly, so every merge-gating lane in it went unexamined.
-        # Split into `check-*` siblings, only `check-build` builds artifacts;
-        # the rest are now each held to "resolves only what THIS job builds".
-        if producers:
-            continue  # the job builds artifacts; it may resolve them
-        for recipe, events in sorted(lane_invocations(recipes, recipes_map)):
-            # Every lane that produces a verdict, gating or not — see
-            # SCANNED_EVENTS. `workflow_run` is excluded because the only lane
-            # names on it are advice text in a posted comment.
-            if not (set(events) & SCANNED_EVENTS):
-                continue
-            sev = "gating" if set(events) & GATING_EVENTS else "report"
-            reached = closure(recipes_map, recipe)
-            job_makes_stamps = any(
-                "compile-check-fixtures.sh" in line
-                for r in reached
-                for line in recipes_map.get(r, {}).get("body", [])
-            )
-            for producer, via in sorted(required_producers(recipes_map, reached).items()):
-                ci_findings.append(f"[{sev}] {wf}:{job} runs `{recipe}` -> `{via}` "
-                                   f"hard-requires `just {producer}`, which the job never runs")
-            for test, via in sorted(tests_invoked(recipes_map, reached).items()):
-                used, found = resolvers_used(test)
-                if not found or not used:
-                    continue
-                runtime = sorted(u for u in used if u in RUNTIME_RESOLVERS)
-                if runtime:
-                    ci_findings.append(f"[{sev}] {wf}:{job} runs `{recipe}` -> `{test}` "
-                                       f"needs RUNTIME fixture ({','.join(runtime)})")
-                elif not job_makes_stamps:
-                    ci_findings.append(f"[{sev}] {wf}:{job} runs `{recipe}` -> `{test}` "
-                                       f"needs a COMPILE stamp nothing in the job builds")
+    ci_findings = ci_job_findings(recipes_map)
 
     base_path = os.path.join(ROOT, ".config", "lane-contract-baseline.json")
     if "--update" in sys.argv:
@@ -2112,6 +2332,95 @@ def selftest(verbose=False):
             "plat_x::build" in got and not any(k.startswith("plat-x") for k in got))
         chk("a file the module IMPORTS joins that module",
             got.get("plat_x::fixtures", {}).get("deps") == ["plat_x::build"])
+
+    # ---- issue 1881 — the CI-job rule's REACH, end to end on a temp tree ----
+    #
+    # Three mutations of a merge-gating job that each read as clean. Every one
+    # is a SHAPE the real justfile has, reduced to the edge the walk missed.
+    with tempfile.TemporaryDirectory() as d:
+        jf = os.path.join(d, "justfile")
+        wf = os.path.join(d, "workflows")
+        td = os.path.join(d, "tests")
+        for sub in (wf, td, os.path.join(d, "scripts")):
+            os.makedirs(sub)
+        saved_tests = TESTS_DIR
+        globals()["JUSTFILE"], globals()["WORKFLOW_DIR"] = jf, wf
+        globals()["TESTS_DIR"] = td
+        with open(os.path.join(d, "scripts", "lane.sh"), "w", encoding="utf8") as fh:
+            fh.write("# a comment naming just build-test-fixtures is not a remedy\n"
+                     "_stamp_missing() {\n    [ ! -f stamp ]\n}\n"
+                     "require_stamp() {\n"
+                     "    if _stamp_missing; then\n"
+                     "        echo \"  Run:  just build-test-fixtures\" >&2\n"
+                     "        return 1\n    fi\n}\n")
+        just_text = (
+            "_require-fixtures:\n"
+            "    #!/usr/bin/env bash\n"
+            "    source scripts/lane.sh\n"
+            "    require_stamp\n\n"
+            # `test-all`: the precondition is a DEPENDENCY whose body defers
+            # to a sourced function.
+            "test-all verbose=\"\": _require-fixtures\n"
+            "    cargo nextest run --workspace\n\n"
+            # `test *scope`: a VARIADIC recipe (once invisible to the parser)
+            # whose precondition is an EMBEDDED call, not a whole-line one.
+            "test *scope:\n"
+            "    just _require-fixtures || exit 1\n"
+            "    cargo nextest run --workspace\n\n"
+            # The producer, reached only through a quoted-argument call.
+            "build *scope:\n"
+            "    just _build-scope \"$tok\"\n"
+            "    echo 'Run \"just build-examples\" for example crates'\n\n"
+            "_build-scope tok:\n"
+            "    nros_scope_exec just build-test-fixtures \"lane=$tok\"\n\n"
+            "build-test-fixtures:\n    true\n\n"
+            # Per-row stamps: the gate builds a stamp, just not the one its
+            # test asserts.
+            "stamps:\n"
+            "    NROS_COMPILE_CHECK_LANES=cargo-check bash scripts/build/compile-check-fixtures.sh\n"
+            "    cargo nextest run --test t_stamp\n")
+        with open(jf, "w", encoding="utf8") as fh:
+            fh.write(just_text)
+        with open(os.path.join(td, "t_stamp.rs"), "w", encoding="utf8") as fh:
+            fh.write('fn f() { require_compile_check("row_a"); }\n')
+
+        def job_findings(run_lines):
+            with open(os.path.join(wf, "gate.yml"), "w", encoding="utf8") as fh:
+                fh.write("on:\n  pull_request:\n  merge_group:\njobs:\n  sib:\n    steps:\n"
+                         + "".join(f"      - run: {line}\n" for line in run_lines))
+            return ci_job_findings(parse_justfile())
+
+        got = job_findings(["just test-all"])
+        chk("`just test-all` on a merge-gating job that builds no fixture is a finding",
+            any("sib runs `test-all` -> `_require-fixtures` hard-requires "
+                "`just build-test-fixtures`" in f and f.startswith("[gating]") for f in got))
+        got = job_findings(["just test tier1"])
+        chk("a VARIADIC recipe's EMBEDDED `just x || exit 1` call is followed",
+            any("runs `test` -> `_require-fixtures`" in f for f in got))
+        chk("...and the same job that RUNS the producer, reached only through a "
+            "quoted-argument call, is clean",
+            job_findings(["just build tier1", "just test tier1"]) == [])
+        chk("`echo`ed advice after a failure path is not a precondition",
+            not any("build-examples" in f for f in job_findings(["just build tier1"])))
+        alt = {"r": {"deps": [], "body": [
+            "    echo \"Run 'just generate-bindings' (or 'just build-test-fixtures') first\"",
+            "    exit 1"]}}
+        chk("producers on ONE remedy line are alternatives",
+            remedy_groups(alt, ["r"]) == [(frozenset({"generate-bindings",
+                                                      "build-test-fixtures"}), "r")])
+        chk("a producer named only in a COMMENT of the sourced file is no remedy",
+            remedy_groups({"r": {"deps": [], "body": ["    source scripts/lane.sh",
+                                                      "    true"]}}, ["r"]) == [])
+        # Per row: the invocation runs the builder for the WRONG lane.
+        inv = [{"recipe": "stamps", "lanes": {"cargo-check"}, "builders": None,
+                "ids": None}]
+        r = parse_justfile()
+        chk("a stamp invocation filtered to another builder does not cover the row",
+            missing_stamp_rows(r, "t_stamp", "stamps", inv, {"row_a": "cxx-syntax"})
+            == [("row_a", "cxx-syntax")])
+        chk("...and one that builds that builder does",
+            missing_stamp_rows(r, "t_stamp", "stamps", inv, {"row_a": "cargo-check"}) == [])
+        globals()["TESTS_DIR"] = saved_tests
 
     globals()["JUSTFILE"], globals()["WORKFLOW_DIR"] = real[0], real_wf
 
