@@ -199,7 +199,9 @@ pub struct AgeMonitorSpec {
 /// On a painted Zephyr stack the query walks every UNUSED byte from the stack
 /// base (`z_stack_space_get`), so querying on every spin put that scan inside
 /// the control loop. The high-water mark only grows, so a throttled check sees
-/// the same low mark and only sees it later.
+/// the same low mark and only sees it later. Since E5 the query is also capped
+/// at the declared minimum (`stack_unused_bytes_upto`), so it reads at most
+/// that many bytes.
 pub(crate) const STACK_HEADROOM_CHECK_INTERVAL_US: u64 = 1_000_000;
 
 /// The same limit for a build with no clock: once per this many spins.

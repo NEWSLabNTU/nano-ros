@@ -499,6 +499,17 @@ pub trait PlatformThreading {
     fn task_stack_unused_bytes() -> usize {
         0
     }
+
+    /// [`task_stack_unused_bytes`](Self::task_stack_unused_bytes), capped at
+    /// `limit`, reading at most `limit` bytes of the stack (phase-436 E5).
+    ///
+    /// The default is the full query, capped, which is right for a port
+    /// whose measurement is already cheap or absent. A port that SCANS for
+    /// paint overrides it to read only the `limit` bytes at the deep end; see
+    /// `nros_platform_task_stack_unused_bytes_upto` in `nros/platform.h`.
+    fn task_stack_unused_bytes_upto(limit: usize) -> usize {
+        Self::task_stack_unused_bytes().min(limit)
+    }
     // -- Tasks --
 
     /// Spawn a new task. `task` is opaque caller-provided storage;
@@ -1143,4 +1154,20 @@ pub fn stack_unused_bytes() -> usize {
     // SAFETY: a plain query with no arguments and no state; every port either
     // answers or returns 0.
     unsafe { nros_platform_task_stack_unused_bytes() }
+}
+
+/// [`stack_unused_bytes`], capped at `limit`: `min(unused, limit)`, reading at
+/// most `limit` bytes of the calling task's stack (phase-436 E5).
+///
+/// What the `stack-headroom-runtime` rule needs: whether at least `limit`
+/// bytes are unused. Below `limit` the answer is the exact headroom, so a
+/// breach is reported without a second, full scan. `0` means "not
+/// instrumented", as for [`stack_unused_bytes`].
+pub fn stack_unused_bytes_upto(limit: usize) -> usize {
+    unsafe extern "C" {
+        fn nros_platform_task_stack_unused_bytes_upto(limit: usize) -> usize;
+    }
+    // SAFETY: a plain query; `limit` is a value, and every port either
+    // answers or returns 0.
+    unsafe { nros_platform_task_stack_unused_bytes_upto(limit) }
 }

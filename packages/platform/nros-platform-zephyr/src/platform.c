@@ -1531,3 +1531,48 @@ size_t nros_platform_task_stack_unused_bytes(void) {
     return 0;
 #endif
 }
+
+/* phase-436 E5: the capped query (`nros/platform.h`), and the reason it
+ * exists. `k_thread_stack_space_get` walks EVERY unused byte from the deep end
+ * of the stack, so its cost is the headroom itself: on the Autoware safety
+ * island's FVP image (458,992 B unused) it was a 32.6 ms stall once a second,
+ * and the island turned CONFIG_INIT_STACKS off to get rid of it. The
+ * headroom rule only asks whether `limit` bytes are unused, which holds
+ * exactly when the `limit` bytes at the deep end still hold the paint, so
+ * this reads those and stops.
+ *
+ * The scan MIRRORS `z_stack_space_get` (kernel/thread.c, identical on 3.7 and
+ * 4.4) rather than calling it: that function is declared only in the kernel's
+ * private `kernel_internal.h`. Same start (`stack_info.start`), same 4-byte
+ * skip under CONFIG_STACK_SENTINEL, same 0xAA paint, same direction.
+ *
+ * The configurations where Zephyr's own function does more than that scan
+ * take the full query, capped, so they can never answer differently from it:
+ * - CONFIG_USERSPACE: a user thread cannot read its `struct k_thread`; the
+ *   syscall exists for that.
+ * - CONFIG_THREAD_STACK_MEM_MAPPED: the stack may not be mapped.
+ * - CONFIG_NO_UNUSED_STACK_INSPECTION: the hardware faults on a read of the
+ *   unused part of the stack the caller is running on, and the kernel refuses
+ *   (the full query answers 0, "not instrumented"). */
+size_t nros_platform_task_stack_unused_bytes_upto(size_t limit) {
+#if defined(CONFIG_INIT_STACKS) && defined(CONFIG_THREAD_STACK_INFO) &&                            \
+    !defined(CONFIG_USERSPACE) && !defined(CONFIG_THREAD_STACK_MEM_MAPPED) &&                      \
+    !defined(CONFIG_NO_UNUSED_STACK_INSPECTION)
+    const struct k_thread* self = k_current_get();
+    const uint8_t* deep = (const uint8_t*)self->stack_info.start;
+    size_t size = self->stack_info.size;
+#if defined(CONFIG_STACK_SENTINEL)
+    deep += 4;
+    size -= 4;
+#endif
+    size_t bound = limit < size ? limit : size;
+    size_t unused = 0;
+    while (unused < bound && deep[unused] == 0xaaU) {
+        unused++;
+    }
+    return unused;
+#else
+    size_t unused = nros_platform_task_stack_unused_bytes();
+    return unused < limit ? unused : limit;
+#endif
+}

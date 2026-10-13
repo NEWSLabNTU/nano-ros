@@ -4047,7 +4047,10 @@ impl<'s> Executor<'s> {
         // port once, here. Entries set the bound at boot on the thread it
         // describes, so the answer is about the right stack and the warning
         // lands once per tier, next to the tier's other boot lines.
-        self.stack_headroom_blind = bytes != 0 && nros_platform_api::stack_unused_bytes() == 0;
+        // phase-436 E5 -- "does the port answer at all?" needs one byte, not
+        // the whole unused region the full query would scan.
+        self.stack_headroom_blind =
+            bytes != 0 && nros_platform_api::stack_unused_bytes_upto(1) == 0;
         if self.stack_headroom_blind {
             nros_log::log_warn!(
                 nros_log::get_logger("nros"),
@@ -4073,8 +4076,10 @@ impl<'s> Executor<'s> {
     ///
     /// Runs on the same tick as the other rules and feeds the same ring.
     /// Queries the port at most once per `STACK_HEADROOM_CHECK_INTERVAL_US`
-    /// (phase-436 E4): on a painted Zephyr stack the query scans every unused
-    /// byte, so an every-spin query put that scan inside the control loop.
+    /// (phase-436 E4): on a painted Zephyr stack the full query scans every
+    /// unused byte, so an every-spin query put that scan inside the control
+    /// loop. Since E5 the query is capped at the declared minimum, so a scan
+    /// reads at most that many bytes.
     /// Nothing at all when no minimum was declared.
     fn check_stack_headroom_rule(&mut self) {
         if self.min_stack_headroom_bytes == 0 {
@@ -4093,7 +4098,12 @@ impl<'s> Executor<'s> {
         self.stack_headroom_last_check_us = Some(now_us.unwrap_or(0));
         self.stack_headroom_spins_since_check = 0;
         self.stack_headroom_checks = self.stack_headroom_checks.saturating_add(1);
-        let unused = nros_platform_api::stack_unused_bytes();
+        // phase-436 E5 -- the CAPPED query. The rule only asks whether
+        // `min_stack_headroom_bytes` are unused, and a port that scans for
+        // paint answers that by reading those bytes alone. Below the cap the
+        // answer is the exact headroom, which is what a breach reports, so
+        // no second, full scan is needed. E4's throttle still applies.
+        let unused = nros_platform_api::stack_unused_bytes_upto(self.min_stack_headroom_bytes);
         // 0 means the port does not instrument stacks, not that the stack is
         // full. Reporting a violation there would be a fault invented from an
         // absence of data.
