@@ -493,3 +493,10 @@ fixture-row-keep-going:
 # files only; ratcheted reasons in `.config/example-build-coverage-baseline.txt`.
 example-build-coverage:
     @python3 scripts/check-example-build-coverage.py
+
+# Issue 1845 -- every `nros-sdk.lock` a build can write in this checkout is
+# gitignored. An unignored one is a `nros_source_manifest` input, so each entry
+# build re-staled its sibling workspace fixtures. Asks git per workspace and
+# project directory, and self-tests the old root-only rule on a throwaway repo.
+sdk-lock-ignored:
+    @bash scripts/check-sdk-lock-ignored.sh
