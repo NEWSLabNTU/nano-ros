@@ -8,7 +8,7 @@ area: [build, testing]
 related: [0993, 1881, 0898, phase-489]
 found: 2026-10-14
 resolved: 2026-10-14
-resolved_in: "PR #PRNUM"
+resolved_in: "PR #2154"
 ---
 
 ## Measured
