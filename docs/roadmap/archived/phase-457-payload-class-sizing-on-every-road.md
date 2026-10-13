@@ -3,7 +3,7 @@
 **Archived 2026-10-11.** Every work item landed or was answered; the remainder went to issues 1649 and 1595, both resolved.
 
 **Number shared until 2026-10-12** with the mapper-input phase, now
-[phase-495](../phase-495-consume-the-shared-derivation.md). An older `phase-457` reference
+[phase-495](phase-495-consume-the-shared-derivation.md). An older `phase-457` reference
 about the mapper input, the contract trigger, `rlm` or the island parity fixture
 means that doc, not this one.
 

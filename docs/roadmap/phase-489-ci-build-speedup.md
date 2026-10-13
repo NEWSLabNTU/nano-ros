@@ -1,9 +1,10 @@
 # Phase 489 — CI build speed-up: the required gate first, then the build-bound lanes
 
-**Status (2026-10-12). W1, W3 and W5 landed, acceptance pending; W2 landed
-switched off (see W2).** Their measured acceptance waits for post-merge runs
-(see each item). W4 landed (see W4), acceptance pending on the scheduled
-lanes; W6 landed in part, acceptance not met (see W6); W7 not started. The numbers below were measured from the GitHub Actions API over 2026-10-09 to 2026-10-10. They are
+**Status (2026-10-13). W1 and W3 met their acceptance; W4 met it on a hit and
+cut the miss path by half; W5 landed, CI acceptance NOT met; W2 landed and is
+switched OFF again after a three-hour trial starved the merge queue; W6
+landed in part, acceptance not met; W7 is handed to the runner operators.**
+Each item's own section has the post-merge numbers. The numbers below were measured from the GitHub Actions API over 2026-10-09 to 2026-10-10. They are
 the baseline every work item is judged against. Implements no new RFC
 decision. It continues the cost work of
 [phase-353](archived/phase-353-build-and-fixture-cost.md),
@@ -111,8 +112,13 @@ event the sibling's own `if:` excludes. `check-default-gates-run-somewhere`
 gained R3 (every gate job is in `CI`'s `needs:`, inspected, with an excuse list
 equal to its `if:`), and `check-lane-contracts` now examines 32 merge-gating
 lane invocations where it examined 3 — the single job's nightly
-`generate-bindings` had exempted all of it. The 25-min median waits for 20
-post-merge batches.
+`generate-bindings` had exempted all of it.
+
+**Acceptance met (measured 2026-10-12).** The 40 successful `gate`
+merge-group runs from 05:02Z to 21:44Z, all after #2006 merged (00:12Z), have
+a median of **15.2 min** (11.1–21.7) against the 25-min target and the
+49.3-min baseline. Runs from the W2 trial below are excluded: their wall time
+is runner queueing, not the gate.
 
 ### W2 — run the gate's heavy siblings on the self-hosted runners
 
@@ -197,10 +203,34 @@ clone: a submodule at an older commit with a stale `build/` inside, `target/`,
 `generated/` — `--check` fails naming each, the clean leaves none, and the
 job's own `git submodule update --init` then lands at this commit's pin.
 
-**Still to do.** The acceptance numbers need the variable on: a green
-`workflow_dispatch` run on the pool first, then the moved siblings' merge-group
-median against the table above (at least 40 % below), and a merge group after
-one runner is re-provisioned with no warm-runner-only red.
+**Trial (2026-10-13), switched off again.** A `workflow_dispatch` run on main
+(38312520026) with the variable set put both siblings on `newslab-133`, green:
+`workspace-all` 3–4 min, `test-unit` 1.5 min (1966 passed, 6 skipped). The
+clean step ran in 1 s; the CLI restore + build and the resolver took about
+80 s of the workspace-all job. The variable was then left on from 05:14Z to
+08:20Z for merge groups:
+
+| | `workspace-all` | `test-unit` |
+| --- | --- | --- |
+| run time on the pool (16 jobs, all green, all three runners) | 1.9–6.8 min | 1.3–6.2 min |
+| hosted merge-group median, for comparison | 13.9 min | 9.4 min |
+| **wait for a runner** | **5–122 min** | **10–164 min** |
+
+The jobs are 60–85 % faster and the 40 % bar is cleared on run time, but a
+gate run that took about 15 min end to end now waited an hour or more, so the
+variable was unset. Two causes, both on the runner side: three runners now
+carried queue L3 plus two siblings for each of up to five queue entries, and
+`newslab-133` sat online and idle while about 14 routed jobs were queued —
+the same symptom recorded above when this item was written. Jobs already
+queued with the variable on kept their self-hosted `runs-on` and drained
+over the following hours; none was cancelled, because cancelling a queue
+entry's required check ejects the PR.
+
+**Still to do, before the variable goes on again:** a runner that reports
+idle must take queued work (an operator diagnosis, beside W7), and either
+more runners or a label that keeps L3 and the siblings from competing for
+the same three. `check-cli-tests` still needs the ROS interface packages in
+the runner image. The acceptance median then needs the variable left on.
 
 ### W3 — make the CLI cache cost seconds, not 3.8 minutes
 
@@ -227,8 +257,11 @@ resolver), whose own freshness check skips or builds, then asserts
 `source-stamp`. Measured locally: a
 restored binary skips the build and `setup-launch-resolve` skips; a `.rs` or
 `.jinja` edit makes `source-stamp` exit 1 and moves the key. `check-cli-tests`
-alone still restores the full target tree for its test targets. The 30-s
-restore figure waits for post-merge runs.
+alone still restores the full target tree for its test targets.
+
+**Acceptance met (measured 2026-10-13).** Over the last 20 successful
+merge-group runs, the restore step in `check-fast` took 0–1 s against the
+30-s target and the 3.8-min baseline.
 
 ### W4 — stop regenerating message bindings from cold (19–22 min)
 
@@ -321,10 +354,15 @@ the PR branch (same commit, hosted `ubuntu-22.04`, CI image):
 | 38306090379 — cache empty, shared probe runtime | 1 s (miss) | **11.4 min** (was 18.7) | 3 s |
 | 38308233601 — exact hit | 2 s | **14 s** | skipped |
 
-The key step costs 1 s with the ament walk included. Still to do: the same
-numbers from the scheduled runs on `main` (the `gate` check-build sibling has
-not run the cache yet), and how often a night's first lane falls back to a
-prefix hit rather than a cold restore.
+The key step costs 1 s with the ament walk included.
+
+**Scheduled runs on main (2026-10-13).** Both lanes took the miss path, as
+predicted: `host-tests` 38341537002 spent 696 s in `generate message
+bindings` (1154 s the night before), and the `gate` check-build sibling,
+38336075498, spent 673 s (1420 s the night before). Restore and save cost
+1–2 s each. Still to do: a night where the second lane lands on the first
+lane's commit, to see the scheduled hit, and how often a night's first lane
+gets a prefix hit rather than a cold restore.
 
 ### W5 — shorten the slowest fast-line gates
 
@@ -365,8 +403,16 @@ gate. New top five: `probe-workspace-caps` 100 s, `api-parity` 56 s,
 Deferred: `api-parity`'s rustdoc could skip JSON for third-party crates
 (about 15 CPU-s), but a re-export of a third-party item would then drop off the
 surface silently, so it is not done. A faster shared comment stripper
-measured within noise outside cProfile. The CI number waits for the post-merge
-measurement.
+measured within noise outside cProfile.
+
+**CI acceptance NOT met (measured 2026-10-13).** Over the last 20 successful
+merge-group runs, the `just check fast` step took 363–735 s, median about
+**11 min**, against the 6-min target and the 10.0-min baseline (4 runs). So
+the local 424 s → 274 s did not reach CI at all, and why is not yet known:
+the baseline is small, and since W1 the step shares no job with the others,
+so that is not it. Still to do: profile the step on the hosted runner itself
+(per-gate times from one run's log) before shaving more gates, and decide
+whether the fast line belongs on a larger runner.
 
 ### W6 — a persistent build cache for the fixture lanes
 
@@ -491,6 +537,11 @@ Compare `nproc`, the jobserver budget, disk type and free space, and other
 tenants (CLAUDE.md: `/home` is shared by 14 users) across the three runners.
 Until it is fixed, consider a label that keeps the critical-path L3 job off
 it.
+
+**Handed to the runner operators (2026-10-13).** It needs the hosts, and so
+does the W2 symptom of a runner that reports idle and takes no job. Both are
+for whoever administers the runner machines; this repo cannot see them
+beyond job logs.
 
 **Acceptance:** `newslab-server-241`'s L3 median within 25 % of the other
 two runners'.

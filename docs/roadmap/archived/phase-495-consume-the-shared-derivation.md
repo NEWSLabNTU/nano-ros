@@ -1,20 +1,28 @@
 # Phase 495 - consume the shared mapper-input derivation, keep the realizer
 
 **Renumbered 2026-10-12 from 457**, which this doc shared with
-[phase-457](archived/phase-457-payload-class-sizing-on-every-road.md). Commit messages and
+[phase-457](phase-457-payload-class-sizing-on-every-road.md). Commit messages and
 PRs from before the renumbering call this phase `phase-457`: a `phase-457`
 reference about the mapper input, the contract trigger, `rlm` or the island
 parity fixture means this doc.
 
-**Status (2026-09-21). Planned; nothing landed.** Numbered 457 rather than 456
+**Status (2026-10-13). Complete, archived.** All four waves landed: W1 in
+PR #1198, W2 in PR #1218, W3 in PR #1227, W4 on 2026-09-29 (each wave's
+status line below). The `min_rate_hz` gate holds as written: the remaining
+hits in `nros-orchestration-ir` are `contract_monitors.rs`, the run-time
+promise monitor this doc keeps, and comments plus a test fixture in
+`rtos_realizer.rs` that pin the schedule to the timer rather than the
+promise. Nothing in the realizer ranks from it.
+
+**Original status (2026-09-21). Planned; nothing landed.** Numbered 457 rather than 456
 on purpose: 455 was the highest phase on `main` when this was written and a
 concurrent branch may take 456; a clash in numbers is worse than a gap.
 Consumer side of ros-launch-manifest design issue #52
 (`docs/design-issues.md`) and play_launch phase 78
 (`docs/roadmap/phase-78-one-derivation-two-consumers.md`). Successor to
-[phase-434](archived/phase-434-contract-seams-closed.md), which closed the `miss`,
+[phase-434](phase-434-contract-seams-closed.md), which closed the `miss`,
 `max_jitter_ms` and `node_concurrency` seams and left this one, and to
-[phase-296](archived/phase-296-system-model-consumption.md) W5, which wrote
+[phase-296](phase-296-system-model-consumption.md) W5, which wrote
 `mapper_input.rs` in the first place.
 
 ## Parallel plan

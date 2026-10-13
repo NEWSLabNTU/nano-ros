@@ -22,7 +22,7 @@ TTL, and an open PR supersedes them). `owns` is the set of files a wave edits;
 two waves with disjoint `owns` cannot conflict. Every path below exists in the
 tree today unless marked `(new)`. The two external dependencies the status
 paragraph names by description now have numbers: the shared MapperInput
-derivation phase is [phase-495](phase-495-consume-the-shared-derivation.md)
+derivation phase is [phase-495](archived/phase-495-consume-the-shared-derivation.md)
 (its W2 is the call), and the tier-derivation fix is
 [phase-459](phase-459-cmake-image-reaches-tier-derivation.md) (its W2 is the
 wave after which a grouped node has a SchedContext on target).
