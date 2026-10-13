@@ -49,7 +49,7 @@ int nros_app_main(int argc, char** argv) {
         rclcpp::spin_once(100);
 
         std_msgs::msg::Int32 msg;
-        nros_cpp_integrity_status_t status;
+        rclcpp::IntegrityStatus status;
         // Result is true while a sample was received+deserialized (TryAgain → false).
         while (sub.take_validated(msg, status)) {
             count++;

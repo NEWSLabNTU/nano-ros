@@ -142,13 +142,13 @@ template <typename M> class PollSubscription {
     ///                1=valid, 0=mismatch, -1=no CRC on the wire).
     /// @return Result::success() on a received+deserialized message; TryAgain if
     ///         none available; NotInitialized / Error otherwise.
-    Result take_validated(M& msg, nros_cpp_integrity_status_t& status) {
+    Result take_validated(M& msg, ::rclcpp::IntegrityStatus& status) {
         return take_validated_sized<::rclcpp::rx_buffer_capacity<M>::value>(msg, status);
     }
 
     /// @ref take_validated with the receive buffer sized by the CALLER.
     /// See @ref take_sized (issue 0964).
-    template <size_t Cap> Result take_validated_sized(M& msg, nros_cpp_integrity_status_t& status) {
+    template <size_t Cap> Result take_validated_sized(M& msg, ::rclcpp::IntegrityStatus& status) {
         if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
         uint8_t buf[Cap];
         size_t len = 0;

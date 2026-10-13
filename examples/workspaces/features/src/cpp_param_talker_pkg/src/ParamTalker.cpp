@@ -7,15 +7,14 @@
 
 #include <cstdio>
 
-#include <nros/nros_cpp_ffi.h>
-
 namespace cpp_param_talker_pkg {
 
 void ParamTalker::on_tick() {
-    // Phase 269 W1 — live param read via the executor FFI: re-read publish_period_ms
-    // from the executor's volatile store each tick. Boots at launch-baked initial (250).
+    // Phase 269 W1 — live param read: re-read publish_period_ms from the node's
+    // parameter store each tick (`ros2 param set` writes the same store). Boots at
+    // the launch-baked initial (250).
     int64_t live = -1;
-    nros_cpp_get_param_integer(executor_handle_, "publish_period_ms", &live);
+    (void)node_->get_parameter<int64_t>("publish_period_ms", live);
 
     std_msgs::msg::Int32 m;
     m.data = static_cast<int32_t>(live);
@@ -26,7 +25,7 @@ void ParamTalker::on_tick() {
 
 ::rclcpp::Result ParamTalker::configure(::rclcpp::Node& node) {
     ::setvbuf(stdout, nullptr, _IONBF, 0);
-    executor_handle_ = node.executor_handle();
+    node_ = &node;
     ::rclcpp::Result r = node.create_publisher(pub_, "/chatter");
     if (!r.ok()) return r;
     return node.create_wall_timer<ParamTalker, &ParamTalker::on_tick>(timer_, 500, this);

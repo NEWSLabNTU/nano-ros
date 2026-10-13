@@ -42,7 +42,6 @@
 
 #include <nros/app_main.h>
 #include <rclcpp/rclcpp.hpp>
-#include <nros/nros_cpp_ffi.h>
 
 namespace {
 
@@ -68,8 +67,8 @@ int run() {
     // this the parameters are still in the right store — they are simply not
     // reachable from outside the image, which is what the roundtrip below
     // proves and `ros2 param get` proves the rest of.
-    if (nros_cpp_register_parameter_services(node.executor_handle()) != NROS_CPP_RET_OK) {
-        std::fprintf(stderr, "register parameter services failed\n");
+    if (!node.start_parameter_services().ok()) {
+        std::fprintf(stderr, "start parameter services failed\n");
         return 1;
     }
 

@@ -2062,5 +2062,9 @@
   "c:subscription_callback_with_context_t": {
     "verdict": "extension",
     "why": "rclc's own `rclc_subscription_callback_with_context_t` (`void (*)(const void *msg, void *context)`, `rclc/executor_handle.h`), adopted as the DEFINITION in phase-492 W1.b (it was our `rclc_typed_subscription_callback_t` plus an alias). The extractor records rclc's executor_handle aliases on neither side as a pair, so the report sees only ours; the contract is identical."
+  },
+  "cpp:IntegrityStatus": {
+    "verdict": "extension",
+    "why": "phase-499 W4 (RFC-0089 amendment 2026-10-13) -- the E2E message-integrity status (gap, duplicate, crc_valid) a safety subscription delivers (issue 0073). ROS 2 has no end-to-end integrity check, so there is no counterpart. A typedef of the FFI struct nros_cpp_integrity_status_t rather than a mirror, so the two cannot drift; it gives the user an rclcpp:: spelling."
   }
 }

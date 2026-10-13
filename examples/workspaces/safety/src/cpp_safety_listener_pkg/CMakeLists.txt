@@ -11,7 +11,7 @@ find_package(std_msgs REQUIRED)
 # Phase 269 W3 — C++ safety-listener component. Uses
 # `node.create_subscription_with_safety<M>()` to register an integrity-carrying
 # subscription on /chatter; the typed callback receives (const Int32&, const
-# nros_cpp_integrity_status_t&). Requires NROS_SAFETY_E2E=ON.
+# rclcpp::IntegrityStatus&). Requires NROS_SAFETY_E2E=ON.
 nano_ros_auto_add_library(cpp_safe_listener_lib STATIC src/SafetyListener.cpp)
 
 nros_components_register_node(cpp_safe_listener_lib

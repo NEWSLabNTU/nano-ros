@@ -7,12 +7,12 @@
 namespace cpp_param_talker_pkg {
 
 /// ParamTalker — Phase 269 W1: reads `publish_period_ms` live each tick from the
-/// executor-backed parameter store via `nros_cpp_get_param_integer` and publishes
+/// node's parameter store via `Node::get_parameter` and publishes
 /// the value on /chatter.
 class ParamTalker {
     ::rclcpp::Publisher<std_msgs::msg::Int32> pub_;
     ::rclcpp::Timer timer_;
-    void* executor_handle_ = nullptr; /* saved at configure for live reads in on_tick */
+    ::rclcpp::Node* node_ = nullptr; /* saved at configure for live reads in on_tick */
 
     void on_tick();
 
