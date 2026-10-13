@@ -504,6 +504,13 @@ function(nros_apply_panic_policy policy context)
                     "or PANIC own.")
             endif()
             corrosion_set_features(${_app_target} FEATURES ${_app_feature})
+            # Issue 1858 -- a feature set HERE lands after `nros-c` keyed the
+            # shared cargo dir on its features, so two images that differ only
+            # in their ending hashed equal and took turns rewriting one
+            # `nros-cpp-generated/` header (and one archive). Record it; the
+            # end-of-configure re-key folds it into the key.
+            set_property(GLOBAL APPEND PROPERTY NROS_SHARED_CARGO_LATE_FEATURES
+                "${_app_feature}")
             set(_app_applied TRUE)
         endif()
     endforeach()
