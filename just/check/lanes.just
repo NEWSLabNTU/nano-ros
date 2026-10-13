@@ -3516,6 +3516,14 @@ workspace-all:
     set -uo pipefail
     jobs="${NROS_BUILD_JOBS:-$(nproc 2>/dev/null || echo 8)}"
     half=$(( jobs / 2 )); [ "$half" -lt 1 ] && half=1
+    # Issue 1868: install the pinned toolchain ONCE, before forking. Each half's
+    # first `cargo` goes through the rustup proxy, which installs whatever the
+    # toolchain file names that is missing. Two halves doing that at once race
+    # on rustup's shared downloads dir ("component download failed for
+    # rust-std-<target>: could not rename 'downloaded' file"), which ejected
+    # three merge-queue batches on 2026-10-13. The same rule `rustup target add`
+    # follows further down: serially, first.
+    cargo --version >/dev/null
     # The HOST half is the real host clippy (`--workspace --all-targets`,
     # `-D warnings`, then per crate). It was `just check workspace`, an echo —
     # see that recipe for what that cost.
