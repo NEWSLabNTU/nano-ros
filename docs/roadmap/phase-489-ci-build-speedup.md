@@ -414,6 +414,68 @@ so that is not it. Still to do: profile the step on the hosted runner itself
 (per-gate times from one run's log) before shaving more gates, and decide
 whether the fast line belongs on a larger runner.
 
+**Follow-up (2026-10-14, PR #2144): sccache hit rate, and the hardware.**
+Two measured suspicions from the paragraph above, both now evidence.
+
+*Hardware.* Every compiling gate job prints the CPU
+(`scripts/ci/report-runner-hardware.sh`). The same `just check fast` landed
+on `AMD EPYC 7763` (4 vCPU = 2 cores x 2 threads) and on `AMD EPYC 9V74`: busy
+CPU 2385-2897 s on the first against 2118-2253 s on the second, and wall 607-736
+s against 541-573 s, across runs of one change with the same cache state. That is the
+bimodal spread the profile found; it is the runner pool, not the gates.
+
+*Why sccache hit 3.7 %.* Reproduced on a fresh checkout with sccache 0.17.0:
+a cold `just check fast` makes 1239 compile requests with 28 hits (CI: 1241
+and 30). A second run on the same cache, same path, targets wiped: 74.5 %.
+The same cache from a moved checkout: 40.8 %. Two causes, one fixed here:
+
+1. **A tmpdir in the key.** Of the 208 misses that survive a same-path rerun,
+   148 were `api-parity`'s `rustdoc-ours` build under a Python tempdir and 57
+   `probe-workspace-caps` under `mktemp -d`: sccache's Rust key contains the
+   cargo target dir's path. `SCCACHE_BASEDIRS` is supported by 0.17.0 and does
+   NOT normalise a Rust key (a two-crate cargo project built under two sibling
+   target dirs: 2 misses of 2, with and without it), so it is not used. Both
+   gates now build under `<checkout>/tmp/gate-scratch/<name>`, emptied first
+   and removed after (`scripts/lib/gate-scratch.sh`, `gate_scratch.py`,
+   `init_stable_test_tmpdir`): only the NAME is stable, never the contents.
+   Under `build/` it made `check-sizes-header-mirrors` verify mid-run and
+   `check-fast-skip-allowlist` red on the PR's first run. The two gates alone,
+   second run: 109 hits / 206 misses -> 310 / 5. Left alone: `rustprobe` and
+   `build-root` tempdirs, 2 misses.
+2. **The warm job warmed the wrong thing.** The cache a pull request
+   restores holds what `warm-cache` compiled, which was the CLI build
+   (`cargo test --no-run` on `packages/cli`) and none of `check-fast`'s ~1240
+   requests. `warm-cache` now runs `just check fast` after the same
+   provisioning, and saves with `!cancelled()`; it also runs on
+   `workflow_dispatch` so a branch can prove it, and `ci-ok` hears it
+   (`check-default-gates-run-somewhere`).
+
+Cache sizing: the warm job's dir is 1.4 GiB on disk and 1415-1532 MiB as an
+entry (the old 1 GiB cap was full with the CLI alone), so
+`SCCACHE_CACHE_SIZE` is 2G in every job; `check-gate-cache-keys-agree` holds
+one size and the warm ordering (`just check fast` after configure, before
+save). Pool: 7.8 GB active after the runs below. An entry is per sha, so two
+retained sccache entries are ~3 GB of the 10 GB beside W3's 12 MB and W4's
+1 MB; the 4.2 GB `nros-cli-*` entry is the real pressure and is not touched.
+
+Measured on CI (`check / fast`, PR #2144):
+
+| run | cache restored | CPU | hits | `just check fast` | busy |
+|---|---|---|---|---|---|
+| pull_request, first push | main (CLI only) | EPYC 7763 | 6.4 % | 736 s | 2897 s |
+| pull_request, fixed | main (CLI only) | EPYC 9V74 | 3.7 % | 573 s | 2253 s |
+| dispatch 1 (old gate paths in the cache) | branch, 1st warm | EPYC 7763 | 57.9 % | 607 s | 2385 s |
+| dispatch 2 | branch, warm on the final sha | EPYC 9V74 | **89.4 %** (730 / 817) | 541 s | 2118 s |
+
+A pull request cannot restore a branch's cache (it reads `refs/pull/N/merge`
+and `main` only), so its row is the baseline; the hit rate shows on the
+dispatch, and on pull requests once `main`'s warm job has run this change.
+The time saved is small next to the hit rate (573 -> 541 s on the same CPU
+model, `declared-qos-registration` 97 -> 34 s, `api-parity` 92 -> 68 s,
+`codegen-size-bound-golden` 87 -> 42 s, `probe-workspace-caps` 158 -> 124
+s): most of a fast run's CPU is not compile. Acceptance (< 6 min) is still
+NOT met; the runner CPU is the larger lever.
+
 ### W6 — a persistent build cache for the fixture lanes
 
 Live-peer (84.5 + 33.7 min of fixture build), run-matrix (about 30 min a
