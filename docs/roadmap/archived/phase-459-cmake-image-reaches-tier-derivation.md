@@ -1,8 +1,8 @@
 # phase-459 - a C++ image reaches the rate-monotonic tier derivation from what it authors
 
-**Status (2026-10-14). W0, W1, W2, W4, W5, W6 and W7 LANDED; W3 not started.**
-W3 needs an rlm tag carrying a `derived` tier key first (see its row). Each
-wave's `Status:` line below says what it measured. Planned 2026-09-21,
+**Status (2026-10-14). COMPLETE — archived. W0, W1, W2, W4, W5, W6 and W7
+LANDED; W3 SUPERSEDED by issue 1426's rule 2, not built** (see its `Status:`
+line). Each wave's `Status:` line below says what it measured. Planned 2026-09-21,
 numbered 459 because
 phases 456-458 were being opened concurrently by other sessions; this is
 highest-existing (455) + 4. Its sibling, phase-460, covers the formal checks the
@@ -73,13 +73,13 @@ phase 78:
 - `docs/design/0079-priority-is-allocated-not-authored.md`:
   `phase-459-W4` only.
 
-Owns [issue 1426](../issues/archived/1426-cmake-callback-groups-never-reach-codegen-system-and-the-entry-never-derives.md)
-and [issue 1427](../issues/archived/1427-realizer-allocates-rank-zero-above-the-transport-band.md),
+Owns [issue 1426](../../issues/archived/1426-cmake-callback-groups-never-reach-codegen-system-and-the-entry-never-derives.md)
+and [issue 1427](../../issues/archived/1427-realizer-allocates-rank-zero-above-the-transport-band.md),
 both resolved and archived.
 Closes the reachability half of
-[issue 1371](../issues/1371-tier-derivation-silent-on-empty-callback-groups.md)
+[issue 1371](../../issues/1371-tier-derivation-silent-on-empty-callback-groups.md)
 (the silence half stays 1371's) and takes item 2 of
-[issue 1372](../issues/archived/1372-contract-trigger-rate-is-dead-data.md) as a
+[issue 1372](../../issues/archived/1372-contract-trigger-rate-is-dead-data.md) as a
 dependency, not as its own work. Builds on RFC-0047 (groups in code, bindings in
 `system.toml`), RFC-0052 (the realizer), RFC-0079 (priority is allocated, not
 authored) and RFC-0032 section 5.1 (the degenerate gate).
@@ -285,7 +285,7 @@ and W3's "one named tier SPLIT by rank" — rule 2 gives a named tier ONE
 priority, the most urgent rank among its members, and records a `Degradation`
 when the members disagree rather than inventing `ctrl-0`/`ctrl-1`.
 
-Claim: phase-459-W3. Depends on: phase-495-W1; an rlm PR adding the derived key to model/src/system_config.rs, tagged. Owns: TierDef in packages/cli/nros-cli-core/src/orchestration/cargo_metadata_schema.rs; the binding refusals in packages/cli/nros-cli-core/src/orchestration/model_ingest.rs; the tiers.is_empty() test in packages/cli/nros-cli-core/src/cmd/codegen_system.rs; derived-tier naming in packages/core/nros-orchestration-ir/src/derive.rs; the four Cargo.toml pin lines and Cargo.lock (second bump); packages/cli/nros-cli-core/tests/derived_tier_marker.rs (new). Gate: cargo test -p nros-cli-core --test derived_tier_marker. Status: not started.
+Claim: phase-459-W3. Depends on: phase-495-W1; an rlm PR adding the derived key to model/src/system_config.rs, tagged. Owns: TierDef in packages/cli/nros-cli-core/src/orchestration/cargo_metadata_schema.rs; the binding refusals in packages/cli/nros-cli-core/src/orchestration/model_ingest.rs; the tiers.is_empty() test in packages/cli/nros-cli-core/src/cmd/codegen_system.rs; derived-tier naming in packages/core/nros-orchestration-ir/src/derive.rs; the four Cargo.toml pin lines and Cargo.lock (second bump); packages/cli/nros-cli-core/tests/derived_tier_marker.rs (new). Gate: cargo test -p nros-cli-core --test derived_tier_marker. Status: superseded, 2026-10-14 — not built. What W3 was FOR is on main: `derive::placement_is_unauthored` (issue 1426, rule 2) reads a `[tiers.<n>]` with no platform sub-table as the allocation request, so `[tiers.ctrl]` + `group_tiers = { main = "ctrl" }` already derives with no new key, and the table-shaped `tiers.is_empty()` guard is gone from all three sites (`codegen_system.rs`, `codegen/entry/mod.rs`, `nros-macros` `main_macro.rs`). Measured at the v0.1.57 pin: rlm's `sched/src/types.rs::TierDef` is still `deny_unknown_fields` with no `derived` key, so W3 would still cost an rlm PR, a tag and a pin move across eight manifests. What it would add over rule 2 is small: an EXPLICIT marker rather than an inferred one, refusing a sub-table beside the marker, and splitting one named tier by rank (rule 2 gives a named tier ONE thread at its most urgent member's priority and records a `Degradation` when members disagree). Reopen as a new phase only if an image needs the per-rank split.
 
 **W4 - the allocation honours the board's plan.** `realize_rtos` takes a
 `PriorityPlan` beside `SchedCaps`. For a STATIC plan (FreeRTOS, NuttX, ThreadX
