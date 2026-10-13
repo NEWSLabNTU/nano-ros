@@ -44,12 +44,12 @@ remedy() {
   nano-ros does not create this venv. Either of these makes one:
 
       uv venv --python 3.12 "$VENV"
-      "$VENV/bin/python" -m pip install west pyelftools PyYAML pykwalify packaging jsonschema
+      "$VENV/bin/python" -m pip install west pyelftools PyYAML pykwalify packaging jsonschema anytree
 
   or, with a python3.12 already on PATH:
 
       python3.12 -m venv "$VENV"
-      "$VENV/bin/python" -m pip install west pyelftools PyYAML pykwalify packaging jsonschema
+      "$VENV/bin/python" -m pip install west pyelftools PyYAML pykwalify packaging jsonschema anytree
 
   4.4 builds run west THROUGH it:
       $VENV/bin/python -m west build ...    (or prepend $VENV/bin to PATH)
@@ -64,7 +64,7 @@ if [ ! -x "$PY" ] && [ "$CREATE" = 1 ]; then
     # filtering is here: the header line names the group, and the block's SECOND
     # indented line is the packages.
     pkgs="$(python3 "$here/scripts/check-python-deps.py" --list \
-        | awk 'BEGIN{split("west zephyr-build",w," "); for(i in w) want[w[i]]=1}
+        | awk 'BEGIN{split("west zephyr-build zephyr-size-report",w," "); for(i in w) want[w[i]]=1}
                /^[^ ]/ {g=$1; blk=0; next}
                {blk++; if (blk==2 && (g in want)) print}')"
     if [ -z "$pkgs" ]; then
@@ -118,6 +118,14 @@ if ! python3 "$here/scripts/check-python-deps.py" --python "$PY" west zephyr-bui
     echo "ERROR: the 4.4 venv is missing Python packages — see the report above." >&2
     remedy
     exit 1
+fi
+
+# Issue 1870 -- the size-report module is a WARNING, not a refusal: `west
+# build` works without it and no nano-ros lane runs a size report, but every
+# `-t ram_report` / `-t rom_report` on this venv fails until it is installed.
+if ! python3 "$here/scripts/check-python-deps.py" --python "$PY" --quiet zephyr-size-report 2>/dev/null; then
+    echo "[py312] WARN: no anytree in $VENV, so \`west build -t ram_report\` / \`-t rom_report\` will fail." >&2
+    echo "[py312]   install it:  uv pip install --python \"$PY\" anytree   (or: \"$PY\" -m pip install anytree)" >&2
 fi
 
 echo "[py312] ready. 4.4 builds run west THROUGH this venv:"

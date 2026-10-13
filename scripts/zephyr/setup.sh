@@ -599,6 +599,14 @@ if ! python3 "$NROS_REPO_DIR/scripts/check-python-deps.py" --python "$NROS_PY" \
     fi
     exit 1
 fi
+# Issue 1870 -- Zephyr's size reports (`-t ram_report` / `-t rom_report`)
+# import `anytree`, which the build-only subset above leaves out. Reported, not
+# required: no nano-ros lane runs a size report.
+if ! python3 "$NROS_REPO_DIR/scripts/check-python-deps.py" --python "$NROS_PY" \
+        --quiet zephyr-size-report 2>/dev/null; then
+    log_warn "No anytree in $NROS_PY: \`west build -t ram_report\` / \`-t rom_report\` will fail."
+    log_warn "  install it into that interpreter: pip install anytree (it is in $REQ_BASE)"
+fi
 
 # Create environment script
 create_env_script
