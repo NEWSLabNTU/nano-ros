@@ -45,3 +45,31 @@ Either of these, measured by a week with no rustup-download reds:
    bounded retry around `rustup toolchain install` / `rustup target add`.
 
 A retry alone hides the dependency rather than removing it.
+
+## Update 2026-10-13 05:20: two shapes, and one is a race, not the network
+
+Two more merge-queue ejections followed: #2115 (merge_group gate 38348211661)
+and #2114 again (38349553423). Both were in `check / workspace-all`:
+
+```
+error: component download failed for rust-std-armv7a-none-eabi: could not rename 'downloaded' file from '/usr/local/rustup/downloads/….partial' to '…'
+error: component download failed for rust-std-aarch64-unknown-none: could not rename 'downloaded' file …
+```
+
+Together with #2114's first ejection, that makes three `could not rename`
+failures in that one job, each on a different `rust-std` target. That is not a
+network failure. `check::workspace-all` (`just/check/lanes.just`) forks
+`check test-targets` and `check workspace-embedded` with `&`. Each half's first
+`cargo` goes through the rustup proxy, which installs the targets the root
+`rust-toolchain.toml` names when they are missing. Two proxies installing at
+once race on `/usr/local/rustup/downloads`. The same file already says so for
+`rustup target add` ("FIRST, serially: two concurrent adds of different
+targets touch the same toolchain dir"). `workspace-all` is the one fork that
+did not follow it; a sweep of `&`-forked cargo/just calls finds no other.
+
+Fix, in the same change: `workspace-all` runs `cargo --version` once before
+forking, so the toolchain is complete before either half starts.
+
+The OTHER shape, `could not download file from 'https://static.rust-lang.org/…'`
+(#2094 at 01:07 and #2111), is a real fetch failure. The image or cache
+remedy above still applies to it.
