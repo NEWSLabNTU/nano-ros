@@ -6,7 +6,7 @@ phase-403, and the C++ pack on 2026-09-01 (`rx_size_bound<M>`, one
 `derive_message_bound` for both languages). phase-456 W7 (`19ee1bc581`) then
 made every C++ subscription registration state its bound. Acceptance item 4, a
 `mem-report --baseline` number for the saving, was never taken. It belongs with
-[phase-403](../phase-403-type-bound-rx-sizing.md)'s "Measurement, first not last".
+[phase-403](phase-403-type-bound-rx-sizing.md)'s "Measurement, first not last".
 
 **Status (2026-09-01). W1, W2 and W4 are LANDED on the C pack — by other work,
 not by this phase.** Re-measured against the tree rather than read off this

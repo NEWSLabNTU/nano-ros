@@ -5,6 +5,7 @@ through A3's clear accessor is on `main`: W1-W7 (#849), A2 (#871), E3 + E4
 (#881), A3 (#899). What remains, in the order I would take it:
 
 1. **E5: make the stack-headroom query cheap when the stack has not grown.**
+   (Amended 2026-10-13 to a threshold scan: see E5 under Path E.)
    E4's once-a-second scan still costs ~33 ms on ASI's FVP image. The Zephyr
    port's `k_thread_stack_space_get` walks every unused byte, and FreeRTOS's
    `uxTaskGetStackHighWaterMark` does the same. ThreadX is already O(1)
@@ -857,6 +858,44 @@ wired, so every other port parks on the millisecond `wake_wait_ms` floor.
   full re-scan to bound staleness. **Exit:** a painted image with no
   per-second stall in the CTF trace; then ASI turns `CONFIG_INIT_STACKS` back
   on.
+
+  **AMENDED 2026-10-13: ask the rule's question, not the high-water mark's.**
+  Still needed. Every tiered Zephyr and FreeRTOS image arms the rule by
+  itself: `zephyr_run_tiers.c` and `freertos_run_tiers.c` call
+  `nros_cpp_executor_derive_min_stack_headroom`, which sets the minimum to
+  stack / 8 (`STACK_HEADROOM_DIVISOR`). So any such image built with stack
+  painting pays the scan on every tier thread, not only ASI's.
+
+  The window-and-rescan design above answers more than the rule asks.
+  `check_stack_headroom` (`executor/monitor.rs`) needs only
+  `unused >= min_bytes`. Unused is counted as painted bytes contiguous from
+  the stack's deep end, so that holds exactly when the deepest `min_bytes`
+  bytes are all still painted. Scanning only those bytes gives the same
+  verdict:
+
+  - **exact**, so it needs no guard window, no periodic rescan and no
+    staleness bound. A write anywhere in that region is seen on the next
+    check, however it got there.
+  - **bounded by the minimum, not by the unused stack:** 1/8 of the stack at
+    the derived default, so roughly 4-5 ms on ASI's image instead of 33 ms.
+    It can be cut further by checking a slice of the region per spin.
+  - **the number for the report** still needs the full count. Take it only
+    on a breach, which is rare and is already reported once and then only
+    when worse.
+
+  What it needs is a bounded query beside `nros_platform_task_stack_unused_bytes`.
+  It answers whether at least N bytes are unused, scanning at most N:
+  - **Zephyr:** scan from `k_current_get()->stack_info.start` for the paint
+    byte, under the same `CONFIG_INIT_STACKS` + `CONFIG_THREAD_STACK_INFO`
+    gate (issue 1075). Mirror whatever `k_thread_stack_space_get` adjusts
+    (the user-mode stack offset, the growth direction) rather than
+    re-deriving it.
+  - **FreeRTOS:** `uxTaskGetStackHighWaterMark` takes no limit, so the port
+    scans from the task's stack base itself.
+  - **ThreadX** is already O(1) and answers it directly. **POSIX** stays
+    `0`, uninstrumented.
+
+  Zephyr first, since it is the port ASI runs. The exit stays as written.
 
 ### Order
 

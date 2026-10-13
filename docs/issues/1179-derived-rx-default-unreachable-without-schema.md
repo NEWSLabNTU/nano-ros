@@ -4,10 +4,10 @@ title: "Derived-by-default receive buffers reach only backends declaring `type-d
 status: open
 type: enhancement
 area: core
-related: [phase-392, phase-403, issue-0896, phase-394]
+related: [phase-392, phase-403, issue-0896, phase-394, phase-498, issue-1860]
 ---
 
-**Home: [phase-403](../roadmap/phase-403-type-bound-rx-sizing.md)** — re-homed 2026-10-12 from phase-392, which is archived.
+**Home: [phase-498](../roadmap/phase-498-rx-sizing-residue.md)** (W3), re-homed 2026-10-13 from phase-403, archived that day. Phase-403 had re-homed it on 2026-10-12 from phase-392, also archived.
 
 ## Problem
 

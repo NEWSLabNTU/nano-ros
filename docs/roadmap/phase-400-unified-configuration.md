@@ -599,7 +599,7 @@ zenoh entity caps and pools (phase-392) — see the re-scope above.
 `NROS_SUBSCRIPTION_BUFFER_SIZE`, `ZPICO_SUBSCRIBER_BUFFER_SIZE`,
 `ZPICO_SUBSCRIBER_LARGE_SIZE`, `ZPICO_SUBSCRIBER_SIZE_THRESHOLD` and
 `ZPICO_PUBLISHER_TX_BUFFER_SIZE` are receive/transmit buffer sizes that
-[phase-403](phase-403-type-bound-rx-sizing.md) and
+[phase-403](archived/phase-403-type-bound-rx-sizing.md) and
 [phase-408](archived/phase-408-cpp-message-derived-buffers.md) are making **derived from
 the message type**. A ladder rung would give each a per-platform default —
 entrenching the global those phases exist to remove. The census classifies them

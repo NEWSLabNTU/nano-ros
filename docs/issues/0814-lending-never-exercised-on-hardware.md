@@ -5,8 +5,10 @@ title: "The whole zero-copy surface sits behind `feature = \"lending\"`, which o
 status: open
 type: test-gap
 area: rmw
-related: [issue-0812, issue-0813, issue-0781, issue-1400, issue-1369, issue-1422, phase-391, rfc-0010, rfc-0089, phase-394, phase-433, phase-460]
+related: [issue-0812, issue-0813, issue-0781, issue-1400, issue-1369, issue-1422, phase-391, rfc-0010, rfc-0089, phase-394, phase-433, phase-460, phase-441]
 ---
+
+**Home: [phase-441](../roadmap/phase-441-rmw-on-target-verification.md)**, re-homed 2026-10-13 from phase-433, archived that day. 433's on-target row is 441's subject, and this issue is the lending surface never exercised on an embedded target.
 
 ## Problem
 

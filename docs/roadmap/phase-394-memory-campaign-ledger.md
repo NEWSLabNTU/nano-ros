@@ -252,7 +252,7 @@ it really does (`lanes.just:1709`, `--ignored --exact`, "1 passed" in a live
 run). An `#[ignore]` whose reason says "run via the lane" is dead coverage until
 someone confirms the lane runs it.
 
-Homes, for the record: 0814 → phase-433 (the loans row; phase-391 disowns it);
+Homes, for the record: 0814 → phase-433 (the loans row; phase-391 disowns it; moved 2026-10-13 to phase-441 when 433 was archived);
 0816 → phase-391; 0880 → phase-392; 1228 and 1252 → phase-439 (W2's named
 remainder).
 

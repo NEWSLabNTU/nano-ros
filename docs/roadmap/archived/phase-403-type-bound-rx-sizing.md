@@ -1,5 +1,27 @@
 # Phase 403 — the type's bound sizes every receive buffer, and third parties can say what they need
 
+**Status (2026-10-13). CLOSED and archived; the remainder is
+[phase-498](../phase-498-rx-sizing-residue.md).** The 2026-10-12 line below
+named W2 and W3's caller-supplied-buffer half as open. Both goals were met,
+by designs other than the ones written here:
+
+- **W2 (Rust, per-type buffer 1):** `register_subscription_buffered_on`
+  takes the slot size as a runtime `usize`, and leaving it unset derives it
+  from `M` (phase-392 W3c). Its comment calls this "W2's per-type sizing".
+  The const-generic form W2 imagined (`Sub<{ M::BOUND }>`) does not compile
+  on stable Rust.
+- **W3 (C, decoupled storage):** the C path passes the type support's
+  `serialized_size_max` as the slot size, and the payload lives in the
+  arena's trailing region (`SubBufferedRawInfoCEntry`, phase-408 W5b). The
+  caller owns the message storage, as in rclc, so the `RawSubscriptionRef`
+  with a lifetime across the C boundary was never needed, and the footgun
+  this doc warned about never shipped.
+
+Four Rust entries still hold `[u8; RX_BUF]` inline. That is bounded now by
+the image's closure maximum (issue 1595), not a fixed 1,024. Those entries
+are issue 1860. The "Measurement, first not last" number was never taken.
+Both went to phase-498, with issue 1179, which was homed here.
+
 **Status (2026-10-12). W0, W1, W4 (one half), W6, W7, W7b, W8, W9 and steps 1-3
 are LANDED. W5 (arena slots) was delivered by step 3, the derived arena
 (2026-09-03, corrected under issue 1190). What remains is W2 (buffer 1 on the
@@ -22,12 +44,12 @@ SUPERSEDED and now says so -- it was reversed the day after it was written and
 missed when its sibling was marked. And step 3's residue ("what is still owed is
 step 2's actual wiring") is CLOSED: phase-412 W3 carried the declared depths into
 the cargo env in `e4b576489`, which this doc never recorded. Opened because
-[phase 402](archived/phase-402-c-subscription-options-struct.md) delivered the PLUMBING
+[phase 402](phase-402-c-subscription-options-struct.md) delivered the PLUMBING
 for a per-type receive hint and stopped there: the hint now reaches the backend
 and changes nothing's size. Depends on
-[issue 0896](../issues/archived/0896-c-cpp-subscriptions-never-state-a-buffer-hint.md)
+[issue 0896](../../issues/archived/0896-c-cpp-subscriptions-never-state-a-buffer-hint.md)
 for the bound itself and overlaps
-[issue 0900](../issues/archived/0900-arena-slots-budgeted-at-action-client-worst-case.md)
+[issue 0900](../../issues/archived/0900-arena-slots-budgeted-at-action-client-worst-case.md)
 for the arena.
 
 ## There are TWO receive buffers per subscription, and neither is precise
@@ -837,7 +859,7 @@ calls once per package so one build names every type that blew its budget.
 not terminate in any useful sense" now has a number behind it. The diagnostic the
 budget produces, and the evidence that a budget-free type is unaffected in every
 respect, are in
-[issue 0962](../issues/archived/0962-nested-bounded-sequences-cost-the-product-of-their-caps.md).
+[issue 0962](../../issues/archived/0962-nested-bounded-sequences-cost-the-product-of-their-caps.md).
 
 This does NOT fix the multiplication. `size_bound` still walks a bounded sequence
 element by element; what changed is that the number is legible and that a user
@@ -1593,7 +1615,7 @@ Open issues whose `related:` names this phase (listed 2026-10-12, so the
 link runs both ways). Listing one here records the link, not a claim that
 this phase will fix it.
 
-- [issue 1179](../issues/1179-derived-rx-default-unreachable-without-schema.md) — Derived-by-default receive buffers reach only backends declaring `type-descriptors` — `MessageForRmw` carries no sche …
-- [issue 1228](../issues/1228-resolve-phase-does-not-yet-delete-the-fixed-point.md) — phase-439 W2 landed the resolve phase; the three-pass fixed point is still authoritative and RFC-0094 A3 is not met
-- [issue 1252](../issues/1252-message-bound-knobs-have-no-pre-configure-twin.md) — The message-bound half of the Zephyr chain still has no pre-configure producer, so one re-configure survives and RFC- …
-- [issue 1368](../issues/1368-frag-max-size-not-checked-against-derived-bound.md) — The zenoh reassembly ceiling is compared to nothing - an image whose derived receive bound exceeds ZPICO_FRAG_MAX_SIZ …
+- [issue 1179](../../issues/1179-derived-rx-default-unreachable-without-schema.md) — Derived-by-default receive buffers reach only backends declaring `type-descriptors` — `MessageForRmw` carries no sche …
+- [issue 1228](../../issues/1228-resolve-phase-does-not-yet-delete-the-fixed-point.md) — phase-439 W2 landed the resolve phase; the three-pass fixed point is still authoritative and RFC-0094 A3 is not met
+- [issue 1252](../../issues/1252-message-bound-knobs-have-no-pre-configure-twin.md) — The message-bound half of the Zephyr chain still has no pre-configure producer, so one re-configure survives and RFC- …
+- [issue 1368](../../issues/1368-frag-max-size-not-checked-against-derived-bound.md) — The zenoh reassembly ceiling is compared to nothing - an image whose derived receive bound exceeds ZPICO_FRAG_MAX_SIZ …

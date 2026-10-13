@@ -48,7 +48,7 @@ So the order was: join the contract to the descriptor (W12), then decide a
 second producer (W14), then W9 — which ran the retirement test per fact and
 answered it with a ledger rather than a deletion. Home phase for
 [RFC-0100](../../design/0100-rmw-agnostic-sizing-model.md). Successor to
-[phase-403](../phase-403-type-bound-rx-sizing.md) (the bound inventory and the
+[phase-403](phase-403-type-bound-rx-sizing.md) (the bound inventory and the
 entity inventory, both landed) and [phase-412](phase-412-derived-counts-and-sizes.md)
 (derived counts). **Answers phase-412 W5**, which is still open and states the
 question this phase exists to settle:
