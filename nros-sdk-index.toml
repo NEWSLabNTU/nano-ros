@@ -137,7 +137,7 @@ packages = ["cmake", "clang"]
 version = "0.5.0-nros2"
 front = ["bin/nros"]
 smoke = [
-    { run = "bin/nros --codegen-version", expect = "14" },
+    { run = "bin/nros --codegen-version", expect = "15" },
 ]
 upstream = "dfd1d099910169a1948cb262652027479ef1cbd5" # = source.ref
 [tool.nros.source]
