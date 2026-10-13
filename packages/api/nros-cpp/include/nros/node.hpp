@@ -389,6 +389,43 @@ inline void report_declared_depth_mismatch(const char* node_name, const char* to
 #endif
 }
 
+/// phase-459 W6 -- the boot-time diagnostic for a callback group the code and
+/// the registration's `CALLBACK_GROUPS` disagree on. `how` is `"created"` (the
+/// code made a group the keyword did not declare) or `"declared"` (the keyword
+/// declared one the constructor never made). Names both sides: the group, and
+/// the declared list it was checked against. `name` is not NUL-terminated at
+/// `len` when it points into that list.
+inline void report_callback_group_mismatch(const char* node_name, const char* how, const char* name,
+                                           int len, const char* list) {
+    const char* node = (node_name != nullptr) ? node_name : "?";
+    const char* group = (name != nullptr) ? name : "?";
+    const char* declared = (list != nullptr) ? list : "";
+    // "created": the code made a group the keyword never declared.
+    // "declared": the keyword declared a group the constructor never made.
+    const bool created = (how != nullptr && how[0] == 'c');
+    if (created) {
+        NROS_ERROR("node \"%s\": created callback group \"%.*s\", not in CALLBACK_GROUPS \"%s\"",
+                   node, len, group, declared);
+    } else {
+        NROS_ERROR("node \"%s\": CALLBACK_GROUPS \"%s\" declares \"%.*s\", never created", node,
+                   declared, len, group);
+    }
+#if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0) // hosted-family: hosted-console
+    ::fprintf(stderr,
+              created ? "[nros] FATAL: node \"%s\" created callback group \"%.*s\", which its "
+                        "registration's CALLBACK_GROUPS \"%s\" does not declare.\n"
+                      : "[nros] FATAL: node \"%s\" never created callback group \"%.*s\", which "
+                        "its registration's CALLBACK_GROUPS \"%s\" declares.\n",
+              node, len, group, declared);
+    ::fprintf(stderr,
+              "      The tier derivation ranks the declared list and the executor binds what the "
+              "code creates, so the two must name the same groups (ONE declared group and none "
+              "created is node-level placement, and is allowed). Fix the "
+              "nano_ros_node_register(... CALLBACK_GROUPS ...) line or the create_callback_group "
+              "call.\n");
+#endif
+}
+
 /// issue 1256 -- the code `set_error` records when a subscription's QoS
 /// RELIABILITY or DURABILITY disagrees with what its contract declared. The
 /// same number as @ref DECLARED_DEPTH_MISMATCH: both are the image contradicting
@@ -2101,7 +2138,27 @@ class Node {
     ///
     /// @param name  Group name — must be a string literal or static-lifetime
     ///              string; the pointer is stored directly (no copy).
+    ///
+    /// phase-459 W6 -- inside a component's construction, a name its
+    /// registration's `CALLBACK_GROUPS` did not declare is a named boot failure
+    /// (`DECLARED_CALLBACK_GROUP_MISMATCH`): the tier derivation ranked the
+    /// declared list, so an undeclared group would run on a tier nobody ranked.
+    /// The token is still returned, so the constructor's remaining calls are
+    /// well-formed; the latch halts boot after it.
     ::rclcpp::CallbackGroup create_callback_group(const char* name) {
+        if (!::rclcpp::detail::admit_callback_group(name)) {
+            const ::rclcpp::detail::DeclaredCallbackGroups* g =
+                ::rclcpp::detail::declared_callback_groups_scope();
+            const char* list = (g != nullptr) ? g->list : nullptr;
+            int len = 0;
+            while (name[len] != '\0')
+                ++len;
+            ::rclcpp::detail::report_callback_group_mismatch(this->get_name(), "created", name, len,
+                                                             list);
+            this->set_error("create_callback_group: the group is not in this registration's "
+                            "CALLBACK_GROUPS",
+                            ::rclcpp::detail::DECLARED_CALLBACK_GROUP_MISMATCH);
+        }
         return ::rclcpp::CallbackGroup{name};
     }
 
@@ -3161,6 +3218,24 @@ class NodeBuilder {
 inline NodeBuilder Executor::node_builder(const char* name) {
     return NodeBuilder(initialized_ ? handle() : nullptr, name);
 }
+
+namespace detail {
+/// phase-459 W6 — the post-constructor half: every declared group must have
+/// been created (node-level placement — one declared, none created — is
+/// allowed; see `first_uncreated_callback_group`). Called by BOTH constructors
+/// of a component: the `NROS_COMPONENT` factory and the generated C++ entry,
+/// which builds a workspace's components itself.
+inline void finish_declared_callback_groups(::rclcpp::Node& node,
+                                            const DeclaredCallbackGroups& groups) {
+    const char* missing = nullptr;
+    int len = 0;
+    if (first_uncreated_callback_group(groups, &missing, &len)) {
+        report_callback_group_mismatch(node.get_name(), "declared", missing, len, groups.list);
+        node.set_error("a CALLBACK_GROUPS group was never created",
+                       DECLARED_CALLBACK_GROUP_MISMATCH);
+    }
+}
+} // namespace detail
 
 } // namespace rclcpp
 

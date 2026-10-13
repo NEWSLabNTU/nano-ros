@@ -28,7 +28,13 @@ static int32_t __nros_entry_setup_tier_0(void* executor) {
     {
         ::rclcpp::Result r = ::rclcpp::create_node_on(__nros_node_0, executor, "ctrl", "/");
         if (!r.ok()) return static_cast<int32_t>(r.raw());
+        /* phase-459 W6 -- the registration's CALLBACK_GROUPS, held against the code. */
+        ::rclcpp::detail::DeclaredCallbackGroups __nros_groups_0{"|ctrl_grp|", 0u};
+        ::rclcpp::detail::declared_callback_groups_scope() = &__nros_groups_0;
         r = __nros_comp_0.configure(__nros_node_0);
+        ::rclcpp::detail::declared_callback_groups_scope() = nullptr;
+        ::rclcpp::detail::finish_declared_callback_groups(__nros_node_0, __nros_groups_0);
+        if (!__nros_node_0.ok()) return __nros_node_0.error_code();
         if (!r.ok()) return static_cast<int32_t>(r.raw());
     }
     return 0;
@@ -40,7 +46,13 @@ static int32_t __nros_entry_setup_tier_1(void* executor) {
     {
         ::rclcpp::Result r = ::rclcpp::create_node_on(__nros_node_1, executor, "telem", "/");
         if (!r.ok()) return static_cast<int32_t>(r.raw());
+        /* phase-459 W6 -- the registration's CALLBACK_GROUPS, held against the code. */
+        ::rclcpp::detail::DeclaredCallbackGroups __nros_groups_1{"|telem_grp|", 0u};
+        ::rclcpp::detail::declared_callback_groups_scope() = &__nros_groups_1;
         r = __nros_comp_1.configure(__nros_node_1);
+        ::rclcpp::detail::declared_callback_groups_scope() = nullptr;
+        ::rclcpp::detail::finish_declared_callback_groups(__nros_node_1, __nros_groups_1);
+        if (!__nros_node_1.ok()) return __nros_node_1.error_code();
         if (!r.ok()) return static_cast<int32_t>(r.raw());
     }
     return 0;

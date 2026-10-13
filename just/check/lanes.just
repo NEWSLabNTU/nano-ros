@@ -1165,6 +1165,27 @@ cpp: cpp-fmt
         -o "$gen/nros-cpp-tests"/failed_create_aborts \
         packages/api/nros-cpp/tests/compile/failed_create_aborts.cpp
     "$gen/nros-cpp-tests"/failed_create_aborts
+    # phase-459 W6 — a node's callback groups and its registration's
+    # CALLBACK_GROUPS must agree. RUNTIME for the reason the probe above gives:
+    # the refusal is decided at boot, so a syntax-only sweep is green either
+    # way. Same link shape (header-only inlines + the stderr log sink).
+    # `test -f` first — a missing TU must not read as a pass (issue 0196).
+    test -f packages/api/nros-cpp/tests/compile/declared_callback_groups.cpp || { \
+        echo "ERROR: declared_callback_groups.cpp is MISSING -- this check would pass" >&2; \
+        echo "       on absence." >&2; \
+        exit 1; \
+    }
+    echo "  - callback groups agree with CALLBACK_GROUPS (runtime, c++14)"
+    c++ -std=c++14 -fno-exceptions -fno-rtti \
+        -I"$cppgen" \
+        -I"$cgen" \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -Wl,--unresolved-symbols=ignore-all \
+        -o "$gen/nros-cpp-tests"/declared_callback_groups \
+        packages/api/nros-cpp/tests/compile/declared_callback_groups.cpp
+    "$gen/nros-cpp-tests"/declared_callback_groups
     # phase-417 stage 3 — `Publisher::publish` must refuse an UNINITIALISED
     # publisher. RUNTIME for the same reason as the probe above: the defect was
     # that nothing stopped, and `-fsyntax-only` is green either way. It asserts
