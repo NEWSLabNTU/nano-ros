@@ -1,6 +1,14 @@
 # Phase 445 — one board choice generates the leaf's build configuration
 
-**Status (2026-10-13, later). Every work item is ticked; two things keep it
+**Status (2026-10-14). Every work item is ticked and acceptance bullet 3 is
+MEASURED and MET; one thing keeps it open: issue 1109** (the
+`board = "native"` selectors), which is homed here. The maintainer ruled on
+2026-10-14 that the host board's one name is `linux` (`native` means any
+general-purpose host — Linux, macOS, Windows — and this board is Linux-only),
+so 1109 closes by phasing `native` out of the board selector, the lane, the
+image ids and `examples/native/`, not by choosing per site.
+
+**Status (2026-10-13, later; superseded above). Every work item is ticked; two things keep it
 open.** W3, the last open box, is ticked: issue 1289 settled the workspace
 members it waited on. What is left: acceptance bullet 3 (`git status` clean
 after `just ci gate` and after a fixture build), which has never been
@@ -571,6 +579,18 @@ esp32 stack budgets.
   compiler — did follow the one line. Met for a C/C++ leaf (no board crate)
   and for a workspace (generated entry).
 - `git status` is clean after `just ci gate` and after a fixture build.
+  **MET 2026-10-14**, measured on a fresh worktree of `e98d30f977` with
+  `git status --porcelain --untracked-files=all --ignore-submodules=none`
+  plus the same inside every submodule: 0 lines after the fresh checkout,
+  after setup (`setup-cli`, `setup-worktree`, `setup-launch-resolve`), after
+  `just ci gate` (rc=0), after `just setup tier1` (rc=0), after
+  `just build-test-fixtures lane=tier1` (rc=0), and after a second
+  `just ci gate` over the built fixtures (rc=0). The two known sources of dirt
+  went first: issue 1863 (an unlocked build rewrote play_launch's tracked
+  parser lock on every setup) and issue 1866 (a cmake fixture's
+  `build-<rmw>/` was ignored only by per-leaf lines). Note the order the
+  measurement needed: `build-test-fixtures` refuses until `just setup <lane>`
+  has provisioned its build sources, which is the documented chain.
 - `find examples -path '*/.cargo/*'` returns nothing, and no directory under
   `examples/workspaces/` or `examples/templates/` has a root `Cargo.toml` or
   `CMakeLists.txt`.
