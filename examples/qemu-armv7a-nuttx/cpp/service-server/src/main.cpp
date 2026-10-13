@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <signal.h>
 
-#define NROS_TRY_LOG(file, line, expr, ret)                                                        \
+#define RCLCPP_TRY_LOG(file, line, expr, ret)                                                      \
     fprintf(stderr, "[nros] %s:%d %s -> %d\n", (file), (line), (expr), (int)(ret))
 
 #include <nros/app_main.h>
@@ -44,14 +44,14 @@ int nros_app_main(int argc, char** argv) {
 
     // Launch-aware init. Env overlay is the active source today
     // (`$NROS_LOCATOR` / `$ROS_DOMAIN_ID`).
-    NROS_TRY_RET(rclcpp::init_with_launch_auto(argc, argv), 1);
+    RCLCPP_TRY_RET(rclcpp::init_with_launch_auto(argc, argv), 1);
 
     rclcpp::Node node;
-    NROS_TRY_RET(rclcpp::create_node(node, "add_two_ints_server"), 1);
+    RCLCPP_TRY_RET(rclcpp::create_node(node, "add_two_ints_server"), 1);
     printf("Node created: %s\n", node.get_name());
 
     rclcpp::PollService<example_interfaces::srv::AddTwoInts> srv;
-    NROS_TRY_RET(node.create_service(srv, "/add_two_ints"), 1);
+    RCLCPP_TRY_RET(node.create_service(srv, "/add_two_ints"), 1);
     rclcpp::Result ret;
 
     // Set up signal handler

@@ -13,7 +13,7 @@
 #include <stdlib.h>
 #include <cstring>
 
-#define NROS_TRY_LOG(file, line, expr, ret)                                                        \
+#define RCLCPP_TRY_LOG(file, line, expr, ret)                                                      \
     fprintf(stderr, "[nros] %s:%d %s -> %d\n", (file), (line), (expr), (int)(ret))
 
 #include <nros/app_main.h>
@@ -95,14 +95,14 @@ int nros_app_main(int argc, char** argv) {
 
     // Launch-aware init. Env overlay
     // (`$NROS_LOCATOR` / `$ROS_DOMAIN_ID`) active today.
-    NROS_TRY_RET(rclcpp::init_with_launch_auto(argc, argv), 1);
+    RCLCPP_TRY_RET(rclcpp::init_with_launch_auto(argc, argv), 1);
 
     rclcpp::Node node;
-    NROS_TRY_RET(rclcpp::create_node(node, "fibonacci_action_client_cb"), 1);
+    RCLCPP_TRY_RET(rclcpp::create_node(node, "fibonacci_action_client_cb"), 1);
     printf("Node created: %s\n", node.get_name());
 
     rclcpp_action::Client<example_interfaces::action::Fibonacci> client;
-    NROS_TRY_RET(node.create_action_client(client, "/fibonacci"), 1);
+    RCLCPP_TRY_RET(node.create_action_client(client, "/fibonacci"), 1);
     printf("Callback action client created for: /fibonacci\n");
 
     // Register the three callbacks before sending the goal.
@@ -111,7 +111,7 @@ int nros_app_main(int argc, char** argv) {
     options.feedback = &on_feedback;
     options.result = &on_result;
     options.context = nullptr;
-    NROS_TRY_RET(client.set_callbacks(options), 1);
+    RCLCPP_TRY_RET(client.set_callbacks(options), 1);
 
     // Let discovery settle.
     for (int i = 0; i < 20; i++) {

@@ -13,7 +13,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#define NROS_TRY_LOG(file, line, expr, ret)                                                        \
+#define RCLCPP_TRY_LOG(file, line, expr, ret)                                                      \
     fprintf(stderr, "[nros] %s:%d %s -> %d\n", (file), (line), (expr), (int)(ret))
 
 #include <nros/app_main.h>
@@ -33,15 +33,15 @@ int nros_app_main(int argc, char** argv) {
 
     // Phase 212.M.2 — `rclcpp::init_in()` pulls locator + domain_id from
     // `$NROS_LOCATOR` / `$ROS_DOMAIN_ID` at runtime.
-    NROS_TRY_RET(rclcpp::init_in(), 1);
+    RCLCPP_TRY_RET(rclcpp::init_in(), 1);
 
     rclcpp::Node node;
-    NROS_TRY_RET(rclcpp::create_node(node, "cpp_safety_listener"), 1);
+    RCLCPP_TRY_RET(rclcpp::create_node(node, "cpp_safety_listener"), 1);
 
     // Poll-mode subscription — the validated receive path is poll-only.
     // phase-456 W2b gave that fact a type: `rclcpp::PollSubscription<M>`.
     rclcpp::PollSubscription<std_msgs::msg::Int32> sub;
-    NROS_TRY_RET(node.create_subscription(sub, "/chatter"), 1);
+    RCLCPP_TRY_RET(node.create_subscription(sub, "/chatter"), 1);
     printf("Waiting for Int32 messages on /chatter...\n");
 
     int count = 0;

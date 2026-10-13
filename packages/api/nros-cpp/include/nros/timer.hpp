@@ -179,7 +179,7 @@ class TimerHandle : private TimerOps {
 /// void on_timer(void* ctx) { /* periodic work */ }
 ///
 /// rclcpp::Timer timer;
-/// NROS_TRY(node.create_wall_timer(timer, 1000, on_timer));  // 1000ms period
+/// RCLCPP_TRY(node.create_wall_timer(timer, 1000, on_timer));  // 1000ms period
 /// // timer fires during rclcpp::spin_once()
 /// timer.cancel();
 /// timer.reset();  // restart from zero

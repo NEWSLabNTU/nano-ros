@@ -93,7 +93,7 @@ the next sample, not a replay of the simulation's history.
 
 ```cpp
 rclcpp::Timer t;
-NROS_TRY(node.create_timer(t, *node.get_clock(), 100, on_tick));
+RCLCPP_TRY(node.create_timer(t, *node.get_clock(), 100, on_tick));
 ```
 
 ### Rust

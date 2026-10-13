@@ -12,8 +12,8 @@
  *
  * @code
  * rclcpp::rosout::Publisher rosout;
- * NROS_TRY(rosout.create(node));          // bounded QoS; or create(node, rclcpp::RosoutQoS())
- * NROS_TRY(rclcpp::rosout::enable());       // AFTER the publisher
+ * RCLCPP_TRY(rosout.create(node));          // bounded QoS; or create(node, rclcpp::RosoutQoS())
+ * RCLCPP_TRY(rclcpp::rosout::enable());       // AFTER the publisher
  * for (;;) {
  *     executor.spin_some(10ms);
  *     rosout.pump();

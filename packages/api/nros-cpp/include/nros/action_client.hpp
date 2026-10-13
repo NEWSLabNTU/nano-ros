@@ -84,13 +84,13 @@ namespace rclcpp_action {
 /// Usage:
 /// ```cpp
 /// rclcpp_action::Client<example_interfaces::action::Fibonacci> client;
-/// NROS_TRY(node.create_action_client(client, "/fibonacci"));
+/// RCLCPP_TRY(node.create_action_client(client, "/fibonacci"));
 /// typename decltype(client)::GoalType goal;
 /// goal.order = 10;
 /// uint8_t goal_id[16];
-/// NROS_TRY(client.send_goal(goal, goal_id));
+/// RCLCPP_TRY(client.send_goal(goal, goal_id));
 /// typename decltype(client)::ResultType result;
-/// NROS_TRY(client.get_result(goal_id, result));
+/// RCLCPP_TRY(client.get_result(goal_id, result));
 /// ```
 template <typename A> class Client {
   public:
@@ -267,7 +267,7 @@ template <typename A> class Client {
     /// ```cpp
     /// auto fut = client.send_goal_future(goal);
     /// GoalAccept accept;
-    /// NROS_TRY(fut.wait(executor.handle(), 5000, accept));
+    /// RCLCPP_TRY(fut.wait(executor.handle(), 5000, accept));
     /// if (accept.accepted) { /* use accept.goal_id */ }
     /// ```
     ///
@@ -304,7 +304,7 @@ template <typename A> class Client {
     /// ```cpp
     /// auto fut = client.get_result_future(goal_id);
     /// ResultType result;
-    /// NROS_TRY(fut.wait(executor.handle(), 10000, result));
+    /// RCLCPP_TRY(fut.wait(executor.handle(), 10000, result));
     /// ```
     ///
     /// @param goal_id  16-byte goal UUID from send_goal() or GoalAccept.
@@ -379,7 +379,7 @@ template <typename A> class Client {
     /// Usage (blocking):
     /// ```cpp
     /// FeedbackType fb;
-    /// NROS_TRY(client.feedback_stream().wait_next(executor.handle(), 500, fb));
+    /// RCLCPP_TRY(client.feedback_stream().wait_next(executor.handle(), 500, fb));
     /// ```
     ///
     /// Usage (non-blocking):

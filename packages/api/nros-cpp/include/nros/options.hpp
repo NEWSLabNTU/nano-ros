@@ -44,7 +44,7 @@ static constexpr int SCHED_CONTEXT_UNSET = -1;
 /// ```cpp
 /// rclcpp::SubscriptionOptions opts;
 /// opts.sched_context = my_sc_id;
-/// NROS_TRY(node.create_subscription<Msg>(sub, "/topic",
+/// RCLCPP_TRY(node.create_subscription<Msg>(sub, "/topic",
 ///                                         rclcpp::QoS::default_profile(),
 ///                                         opts));
 /// ```

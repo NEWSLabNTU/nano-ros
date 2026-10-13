@@ -85,7 +85,7 @@ namespace rclcpp {
 /// Usage:
 /// ```cpp
 /// rclcpp::PollSubscription<std_msgs::msg::String> sub;
-/// NROS_TRY(node.create_subscription(sub, "/chatter"));
+/// RCLCPP_TRY(node.create_subscription(sub, "/chatter"));
 /// rclcpp::spin_once(10);
 /// uint8_t buf[256];
 /// size_t len;
@@ -309,7 +309,7 @@ template <typename M> class PollSubscription {
     /// Use for blocking reception with executor spin:
     /// ```cpp
     /// M msg;
-    /// NROS_TRY(sub.stream().wait_next(executor.handle(), 1000, msg));
+    /// RCLCPP_TRY(sub.stream().wait_next(executor.handle(), 1000, msg));
     /// ```
     ::rclcpp::Stream<M>& stream() {
         if (initialized_ && !stream_.is_valid()) {
@@ -467,7 +467,7 @@ template <typename M> class PollSubscription {
 /// Usage:
 /// ```cpp
 /// rclcpp::PollingSubscription<std_msgs::msg::Int32> sub;
-/// NROS_TRY(node.create_polling_subscription(sub, "/count"));
+/// RCLCPP_TRY(node.create_polling_subscription(sub, "/count"));
 /// // ... later, in a timer tick or the main loop:
 /// rclcpp::spin_once(executor, 0);           // pump the transport
 /// if (const auto* v = sub.take_data()) {  // newest known value, or nullptr

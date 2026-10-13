@@ -134,7 +134,7 @@ namespace rclcpp {
 /// Usage:
 /// ```cpp
 /// rclcpp::Publisher<std_msgs::msg::String> pub;
-/// NROS_TRY(node.create_publisher(pub, "/chatter"));
+/// RCLCPP_TRY(node.create_publisher(pub, "/chatter"));
 /// pub.publish_raw(cdr_data, cdr_len);
 /// ```
 template <typename M> class Publisher {

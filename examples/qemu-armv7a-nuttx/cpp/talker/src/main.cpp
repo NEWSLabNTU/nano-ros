@@ -5,8 +5,8 @@
 #include <stdlib.h>
 #include <signal.h>
 
-// Route NROS_TRY_RET through fprintf (we have stdio).
-#define NROS_TRY_LOG(file, line, expr, ret)                                                        \
+// Route RCLCPP_TRY_RET through fprintf (we have stdio).
+#define RCLCPP_TRY_LOG(file, line, expr, ret)                                                      \
     fprintf(stderr, "[nros] %s:%d %s -> %d\n", (file), (line), (expr), (int)(ret))
 
 #include <nros/app_main.h>
@@ -77,21 +77,21 @@ int nros_app_main(int argc, char** argv) {
     // Phase 212.M.2 — `rclcpp::init_in()` (no-arg) pulls locator + domain_id
     // from `$NROS_LOCATOR` / `$ROS_DOMAIN_ID` at runtime. Falling back
     // defaults match the prior hand-rolled env reads.
-    NROS_TRY_RET(rclcpp::init_in(), 1);
+    RCLCPP_TRY_RET(rclcpp::init_in(), 1);
 
     rclcpp::Node node;
-    NROS_TRY_RET(rclcpp::create_node(node, "talker"), 1);
+    RCLCPP_TRY_RET(rclcpp::create_node(node, "talker"), 1);
     printf("Node created: %s\n", node.get_name());
 
     rclcpp::Publisher<std_msgs::msg::String> pub;
-    NROS_TRY_RET(node.create_publisher(pub, "/chatter"), 1);
+    RCLCPP_TRY_RET(node.create_publisher(pub, "/chatter"), 1);
 
     TalkerContext ctx;
     ctx.publisher = &pub;
     ctx.count = 0;
 
     rclcpp::Timer timer;
-    NROS_TRY_RET(node.create_wall_timer(timer, 1000, timer_callback, &ctx), 1);
+    RCLCPP_TRY_RET(node.create_wall_timer(timer, 1000, timer_callback, &ctx), 1);
 
     // Set up signal handler
     signal(SIGINT, signal_handler);

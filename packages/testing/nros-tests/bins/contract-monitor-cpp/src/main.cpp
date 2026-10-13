@@ -91,7 +91,7 @@ int nros_app_main(int argc, char** argv) {
     const bool contracted = env_u64("CM_CONTRACT", 1) != 0;
 
     printf("contract-monitor cpp pub (rate contract on %s)\n", kHeaderTopic);
-    NROS_TRY_RET(rclcpp::init_in(), 1);
+    RCLCPP_TRY_RET(rclcpp::init_in(), 1);
     void* exec = rclcpp::global_handle();
     if (exec == nullptr) {
         fprintf(stderr, "cm_pub_cpp: no executor handle\n");
@@ -124,9 +124,9 @@ int nros_app_main(int argc, char** argv) {
     }
 
     rclcpp::Node node;
-    NROS_TRY_RET(rclcpp::create_node(node, "pub", "/cm"), 1);
+    RCLCPP_TRY_RET(rclcpp::create_node(node, "pub", "/cm"), 1);
     rclcpp::Publisher<std_msgs::msg::Header> pub;
-    NROS_TRY_RET(node.create_publisher(pub, kHeaderTopic), 1);
+    RCLCPP_TRY_RET(node.create_publisher(pub, kHeaderTopic), 1);
 
     printf("cm_pub_cpp: period=%llums stale=%llums run=%llums contract=%d\n",
            static_cast<unsigned long long>(period_ms), static_cast<unsigned long long>(stale_ms),

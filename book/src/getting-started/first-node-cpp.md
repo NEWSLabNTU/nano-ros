@@ -111,30 +111,30 @@ wrappers over the C ABI:
 #include <nros/nros.hpp>
 #include "std_msgs.hpp"
 
-#define NROS_TRY_LOG(file, line, expr, ret) \
+#define RCLCPP_TRY_LOG(file, line, expr, ret) \
     std::fprintf(stderr, "[nros] %s:%d %s -> %d\n", file, line, expr, (int)ret)
 
 int nros_app_main(int argc, char** argv) {
-    NROS_TRY_RET(rclcpp::init_in("tcp/127.0.0.1:7447", 0), 1);
+    RCLCPP_TRY_RET(rclcpp::init_in("tcp/127.0.0.1:7447", 0), 1);
 
     rclcpp::Node node;
-    NROS_TRY_RET(rclcpp::create_node(node, "talker"), 1);
+    RCLCPP_TRY_RET(rclcpp::create_node(node, "talker"), 1);
 
     rclcpp::Publisher<std_msgs::msg::String> pub;
-    NROS_TRY_RET(node.create_publisher(pub, "/chatter"), 1);
+    RCLCPP_TRY_RET(node.create_publisher(pub, "/chatter"), 1);
 
     // ... register a timer + spin
 }
 ```
 
-`NROS_TRY_RET` short-circuits on any non-OK return code and logs the
-expression that failed. Define `NROS_TRY_LOG` once (any sink — here
+`RCLCPP_TRY_RET` short-circuits on any non-OK return code and logs the
+expression that failed. Define `RCLCPP_TRY_LOG` once (any sink — here
 `std::fprintf`) and reuse it across every call site.
 
 ## If you write the `rclcpp::Node` constructor instead
 
 `rclcpp::create_node(node, "talker")` above returns a `Result`, and
-`NROS_TRY_RET` checks it. The rclcpp-shaped constructor has no return value to
+`RCLCPP_TRY_RET` checks it. The rclcpp-shaped constructor has no return value to
 check — and on a `-fno-exceptions` target, which every nano-ros build is
 (RFC-0018), it cannot throw the way upstream's does either. It records the
 failure and reports it through `ok()`:
@@ -242,7 +242,7 @@ line in 30 seconds:
 
 1. Confirm the router is running (terminal 1). Without it,
    `rclcpp::init_in` returns `-100` (TransportError) — the
-   `NROS_TRY_RET` macro logs the failed call to stderr.
+   `RCLCPP_TRY_RET` macro logs the failed call to stderr.
 2. Check stderr for `[nros] …/main.cpp:LINE rclcpp::init_in(...) -> -N`
    diagnostics. `-3` / `-100` both indicate transport open failed.
 3. See [Troubleshooting — First 10 Minutes](./troubleshooting-first-10-min.md).

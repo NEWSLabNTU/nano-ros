@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <signal.h>
 
-#define NROS_TRY_LOG(file, line, expr, ret)                                                        \
+#define RCLCPP_TRY_LOG(file, line, expr, ret)                                                      \
     fprintf(stderr, "[nros] %s:%d %s -> %d\n", (file), (line), (expr), (int)(ret))
 
 #include <nros/app_main.h>
@@ -47,16 +47,16 @@ int nros_app_main(int argc, char** argv) {
 
     // Phase 212.M.2 — `rclcpp::init_in()` (no-arg) pulls locator + domain_id
     // from `$NROS_LOCATOR` / `$ROS_DOMAIN_ID` at runtime.
-    NROS_TRY_RET(rclcpp::init_in(), 1);
+    RCLCPP_TRY_RET(rclcpp::init_in(), 1);
 
     rclcpp::Node node;
-    NROS_TRY_RET(rclcpp::create_node(node, "listener"), 1);
+    RCLCPP_TRY_RET(rclcpp::create_node(node, "listener"), 1);
     printf("Node created: %s\n", node.get_name());
 
     // phase-456 W2b — the taking subscriber is `rclcpp::PollSubscription<M>`;
     // `rclcpp::Subscription<M>` is the one the executor dispatches into.
     rclcpp::PollSubscription<std_msgs::msg::String> sub;
-    NROS_TRY_RET(node.create_subscription(sub, "/chatter"), 1);
+    RCLCPP_TRY_RET(node.create_subscription(sub, "/chatter"), 1);
     // phase-342 W7 — the READINESS marker the test harness waits on
     // (`nros_tests::output::LISTENER_READY_MARKER`, via `expect_ready`). Every
     // listener in every language prints this same line; the demo should not

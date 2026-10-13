@@ -36,8 +36,8 @@
 #include <cstring>
 #include <string>
 
-// Route NROS_TRY_RET through fprintf (we have stdio).
-#define NROS_TRY_LOG(file, line, expr, ret)                                                        \
+// Route RCLCPP_TRY_RET through fprintf (we have stdio).
+#define RCLCPP_TRY_LOG(file, line, expr, ret)                                                      \
     std::fprintf(stderr, "[nros] %s:%d %s -> %d\n", (file), (line), (expr), (int)(ret))
 
 #include <nros/app_main.h>
@@ -60,10 +60,10 @@ unsigned spin_ms() {
 }
 
 int run() {
-    NROS_TRY_RET(rclcpp::init_in(), 1);
+    RCLCPP_TRY_RET(rclcpp::init_in(), 1);
 
     rclcpp::Node node;
-    NROS_TRY_RET(rclcpp::create_node(node, "cpp_parameters"), 1);
+    RCLCPP_TRY_RET(rclcpp::create_node(node, "cpp_parameters"), 1);
 
     // The six `rcl_interfaces/srv/*` servers, under this node's FQN. Without
     // this the parameters are still in the right store — they are simply not

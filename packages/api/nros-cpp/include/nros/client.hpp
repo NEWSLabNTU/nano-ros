@@ -120,11 +120,11 @@ namespace rclcpp {
 /// ```cpp
 /// void on_response(const AddTwoInts::Response& resp) { /* ... */ }
 /// rclcpp::Client<AddTwoInts> client;
-/// NROS_TRY(node.create_client(client, "/add_two_ints", &on_response));
-/// NROS_TRY(client.async_send_request(req));
+/// RCLCPP_TRY(node.create_client(client, "/add_two_ints", &on_response));
+/// RCLCPP_TRY(client.async_send_request(req));
 /// // ... or, in ported shape:
 /// auto handle = node.create_client<AddTwoInts>("/add_two_ints", &on_response);
-/// NROS_TRY(handle.async_send_request(req));
+/// RCLCPP_TRY(handle.async_send_request(req));
 /// ```
 template <typename S> class Client {
   public:

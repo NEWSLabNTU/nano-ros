@@ -166,7 +166,7 @@ ops.read  = [](void *ud, uint8_t *buf, std::size_t len, std::uint32_t to) -> std
     return my_uart_read((MyUart*)ud, buf, len, to);
 };
 auto r = rclcpp::set_custom_transport(ops);
-NROS_TRY(r);
+RCLCPP_TRY(r);
 ```
 
 > **Captureless lambdas only.** All four fields are raw C function

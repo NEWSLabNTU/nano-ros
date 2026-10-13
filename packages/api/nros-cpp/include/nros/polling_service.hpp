@@ -82,7 +82,7 @@ namespace rclcpp {
 /// Usage:
 /// ```cpp
 /// rclcpp::PollService<example_interfaces::srv::AddTwoInts> srv;
-/// NROS_TRY(node.create_service(srv, "/add_two_ints"));
+/// RCLCPP_TRY(node.create_service(srv, "/add_two_ints"));
 /// typename decltype(srv)::RequestType req;
 /// int64_t seq;
 /// if (srv.take_request(req, seq).ok()) {

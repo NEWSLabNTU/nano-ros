@@ -166,7 +166,7 @@ namespace rclcpp {
 /// Usage:
 /// ```cpp
 /// rclcpp::Subscription<std_msgs::msg::String> sub;
-/// NROS_TRY(node.create_subscription(sub, "/chatter", &on_message));
+/// RCLCPP_TRY(node.create_subscription(sub, "/chatter", &on_message));
 /// rclcpp::spin_once(10);   // `on_message` runs from here
 /// ```
 ///

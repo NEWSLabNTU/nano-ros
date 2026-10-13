@@ -57,7 +57,7 @@ namespace rclcpp {
 /// ```cpp
 /// auto& stream = sub.stream();
 /// MsgType msg;
-/// NROS_TRY(stream.wait_next(executor.handle(), 5000, msg));
+/// RCLCPP_TRY(stream.wait_next(executor.handle(), 5000, msg));
 /// ```
 template <typename T> class Stream {
   public:

@@ -57,7 +57,7 @@ template <typename S> class PollClient;
 /// ```cpp
 /// auto fut = client.send_request(req);
 /// ResponseType resp;
-/// NROS_TRY(fut.wait(executor.handle(), 5000, resp));
+/// RCLCPP_TRY(fut.wait(executor.handle(), 5000, resp));
 /// ```
 ///
 /// @tparam Cap  Bytes the RECEIVE buffer holds. Defaults to `T`'s own derived
