@@ -1,7 +1,25 @@
 # Phase 477 — example gaps and unreported lanes
 
+**Status (2026-10-13). CLOSED and archived.** The line below is the
+phase's opening state. Each wave's own `Status` line records it done:
+W1 (1288), W2 (1650), W4 (1509), W5 (1512), W6 (1652) and W7 (1535, 1627).
+Three open issues leave with homes:
+
+- **W3's host-tests item, issue 1651,** moves to
+  [phase-466](../phase-466-scheduled-lanes-produce-verdicts.md). Its first half
+  holds: `host-tests.yml` has reported `success` on every scheduled run on
+  `main` since 2026-10-07. That job now runs unit tests and gates, because
+  the fixture-backed tier-1 suite moved to `run-matrix.yml`'s self-hosted
+  `tier1` job (0d22363e35). 1651's own closing condition, a green tier-1 run
+  on `main`, is 466's acceptance: the 2026-10-12 tier-1 nightly stopped at a
+  build gate that #2070 fixed.
+- **Issues 1511 and 1520**, the entry-customisation docs this phase named
+  "in this theme" without owning them, move to
+  [phase-452](../phase-452-copy-out-front-door.md), which owns what a new user
+  copies and reads.
+
 **Status (2026-10-03). All work items open.** Successor to
-[phase-470](archived/phase-470-example-layout-unification.md), which landed the
+[phase-470](phase-470-example-layout-unification.md), which landed the
 example taxonomy and generated every Zephyr workspace entry it could build
 (W1–W6). This phase holds what that work FOUND but did not own, regrouped by
 theme rather than by the order it was discovered. Implements no new RFC.
@@ -39,7 +57,7 @@ own "class 2 does not exist" rule forbids.
 
 ### W1 — entry migration residue
 
-Issue [1288](../issues/archived/1288-zephyr-rust-workspace-entries-not-generated.md):
+Issue [1288](../../issues/archived/1288-zephyr-rust-workspace-entries-not-generated.md):
 three hand-written entries remain, none a generator gap.
 
 - **`rust/src/zephyr_entry_robot1`** — add a `cmd::build` unit test that an
@@ -91,18 +109,18 @@ baseline built on the same tree (after stating three lines of the
 `system.toml`). Issue 1288 resolved and archived. The runtime check
 (`verify-fvp-runtime`) is red on BOTH images — Cyclone's 1 MiB receive buffer
 exhausts the 1 MiB nros heap at participant create — filed as
-[1814](../issues/archived/1814-fvp-cyclone-heap-exhausted-at-participant-create.md)
+[1814](../../issues/archived/1814-fvp-cyclone-heap-exhausted-at-participant-create.md)
 and resolved the same day: the 64 KiB Cyclone `Sizing` baseline was gated on
 `CONFIG_BOARD_NATIVE_SIM` where it meant every Zephyr board, so the FVP image
 ran Cyclone's desktop defaults. One predicate now
 (`NROS_RMW_CYCLONEDDS_EMBEDDED_TARGET`); `verify-fvp-runtime` passes in 3.6 s.
 
-Also in this theme: [1289](../issues/archived/1289-workspace-node-tables-still-in-manifests.md)
+Also in this theme: [1289](../../issues/archived/1289-workspace-node-tables-still-in-manifests.md)
 (resolved 2026-10-12: the node tables are registration and stay; the empty
 entry markers and `default_namespace = "/"` went),
-[1520](../issues/1520-ambiguity-example-cited-everywhere-was-the-manufactured-one.md)
+[1520](../../issues/1520-ambiguity-example-cited-everywhere-was-the-manufactured-one.md)
 (the `entry =` ambiguity docs cite), and
-[1511](../issues/1511-no-worked-example-of-entry-customisation.md) (the
+[1511](../../issues/1511-no-worked-example-of-entry-customisation.md) (the
 customisation tutorial, deferred until the last hand-written entry is gone).
 
 **Acceptance:** 1288 closes — each remaining entry migrated or recorded as a
@@ -110,7 +128,7 @@ deliberate exception.
 
 ### W2 — examples no lane builds
 
-Issue [1650](../issues/archived/1650-examples-no-lane-builds.md). `workspaces/launch`,
+Issue [1650](../../issues/archived/1650-examples-no-lane-builds.md). `workspaces/launch`,
 `templates/multi-package-workspace`, `templates/zephyr-byo` and (partly)
 `templates/multi-node-workspace` are compiled by nothing. The two TT bridge
 examples that were also in this set were DELETED (maintainer decision): their
@@ -134,17 +152,17 @@ roots the census found, and `just check example-build-coverage` (188/194 built,
 
 ### W3 — lanes that do not report
 
-- Issue [1651](../issues/1651-host-tests-red-or-cancelled-on-most-pushes.md) —
+- Issue [1651](../../issues/1651-host-tests-red-or-cancelled-on-most-pushes.md) —
   `host-tests.yml` has not gone green since 2026-06-17: 24 of its last 30 runs
   cancelled by the next merge, the rest failing at `just ci tier1`. The highest-
   severity item in this phase: it is the only lane running the fixture-backed
   `nros-tests` suite on the host.
-- Issue [1627](../issues/archived/1627-west-configure-fixture-passes-on-failed-configure.md)
+- Issue [1627](../../issues/archived/1627-west-configure-fixture-passes-on-failed-configure.md)
   — a `west-configure` fixture counts a failed configure as built when its
   declared output is written before the generate step. **Resolved 2026-10-10
   (D1):** the rows declare `build.ninja`, gated by `validate-compile-checks`;
   the Cyclone provisioning red it uncovers is issue
-  [1777](../issues/archived/1777-west-cyclone-rows-without-idlc.md) (resolved 2026-10-11).
+  [1777](../../issues/archived/1777-west-cyclone-rows-without-idlc.md) (resolved 2026-10-11).
 - **The FVP lanes were exempt on a false premise** (2026-10-05). Five recipes
   (`build-/run-fvp-ws-entry`, `build-/run-fvp-board-import`,
   `verify-fvp-runtime`) were excluded from "a NAMED lane must work" as
@@ -173,7 +191,7 @@ it waits on the CI-budget decision; 1651 stays open.
 
 ### W4 — invariance gates
 
-- Issue [1509](../issues/archived/1509-node-packages-name-no-platform-or-rmw.md) — the
+- Issue [1509](../../issues/archived/1509-node-packages-name-no-platform-or-rmw.md) — the
   node-package gate (phase-470 W7, moved here). A node package names no platform
   or RMW. Now that entries are generated there is one place a platform may be
   named, which is what makes the rule statable.
@@ -196,7 +214,7 @@ landing and red under a mutation.
 
 ### W5 — bare metal, the remaining roads
 
-Issue [1512](../issues/archived/1512-c-api-does-not-reach-bare-metal.md) is open for the
+Issue [1512](../../issues/archived/1512-c-api-does-not-reach-bare-metal.md) is open for the
 **C-rooted** cmake road only: the board has no linker script with `SECTIONS`/
 `ENTRY`, no C reset/vector startup, and no C-callable board init (which needs a
 new board-seam staticlib, since `nros-c` cannot depend on a board). The six C
@@ -211,13 +229,13 @@ the image's declared locator/network reaches the C/C++ compile and the boot
 config, a quiet smoltcp spin is no longer reported as a connection failure, and
 the four bare-metal C/C++ pubsub/service cells are `Runtime`
 (`test_qemu_baremetal_capi_e2e`). The action pairs joined them with issue
-[1797](../issues/archived/1797-baremetal-capi-action-round-trip-unreliable.md):
+[1797](../../issues/archived/1797-baremetal-capi-action-round-trip-unreliable.md):
 a burst of batches desynchronised the smoltcp read, which now takes zenoh-pico's
 bounded multi-batch path — all six C/C++ bare-metal cells are `Runtime`.
 
 ### W6 — board identity residue
 
-Issue [1652](../issues/archived/1652-framework-board-strings-in-names-nuttx-platformio.md)
+Issue [1652](../../issues/archived/1652-framework-board-strings-in-names-nuttx-platformio.md)
 — NuttX's `qemu-armv7a-nsh` and PlatformIO's `esp32dev` still sit in `names`
 the way the Zephyr id did before issue 1519. Needs a typed per-ecosystem field
 first.
@@ -227,7 +245,7 @@ first.
 
 ### W7 — a runtime bug the migration exposed
 
-Issue [1535](../issues/archived/1535-mixed-zephyr-entry-segv-in-cffi-publisher-vtable.md) — the
+Issue [1535](../../issues/archived/1535-mixed-zephyr-entry-segv-in-cffi-publisher-vtable.md) — the
 `mixed` Zephyr image SEGVs on its first publish
 (`CffiPublisher::poll_status_events` reads an unusable vtable). Pre-existing: the
 hand-written image did the same, and the generated one reproduces it byte for
@@ -241,14 +259,14 @@ NULL. Putting that literal back at `85ae1d156` reproduces the backtrace exactly.
 image publishes and receives. What this change adds: `component.h` now asserts
 all four C storage sizes against the per-build header, so a short buffer fails
 to compile, with an expected-failure probe in `just check c`. It also fixes
-[1787](../issues/archived/1787-cpp-entry-hands-rust-install-a-context-not-an-executor.md),
+[1787](../../issues/archived/1787-cpp-entry-hands-rust-install-a-context-not-an-executor.md),
 a second latent corruption on the same path: the C++ entry handed the Rust
 install an nros-cpp context, not an executor.
 
 **Status 2026-10-11:** done — issue 1535 resolved (PR #1891). `just ci gate`
 6/6 and the `zephyr/mixed/entry_pubsub` cell green on the rebased tree. The
 probe gap found on the way is issue
-[1794](../issues/archived/1794-zephyr-mixed-entry-probe-examines-nothing.md),
+[1794](../../issues/archived/1794-zephyr-mixed-entry-probe-examines-nothing.md),
 resolved: the Zephyr probe counts what it compares and reads every linked
 cargo staticlib's `.d` (mixed entry 0 → 3388 inputs).
 
@@ -352,7 +370,7 @@ the tier-1 job of run 37945434581.
 declare `build.ninja`, gated by `validate-compile-checks`; `require_west_fixture`
 requires the build stamp; D2 needed no lane change, tier 2 already builds the
 five rows). The Cyclone provisioning red D1 exposes is issue 1777.
-**Issue [1777](../issues/archived/1777-west-cyclone-rows-without-idlc.md)
+**Issue [1777](../../issues/archived/1777-west-cyclone-rows-without-idlc.md)
 resolved 2026-10-11 (option 2):** the Zephyr lane asks for a host `idlc`
 (`scripts/lib/host-idlc.sh`) before configuring a Cyclone row — derived by
 `west_compile_check_rmw` — and fails with the remedy instead of at configure.

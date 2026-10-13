@@ -290,6 +290,13 @@ point: it is not in progress, and it will not start itself.
 * Documentation content beyond the shape it teaches. W3 is about the build shape
   being current, not a rewrite of the book.
 
+## Issues homed here (2026-10-13)
+
+| issue | why it belongs here |
+| --- | --- |
+| [#1511](../issues/1511-no-worked-example-of-entry-customisation.md) | every entry is generated now, so nothing shows a user the escape hatch: a worked example of customising an entry. From the archived phase-477. |
+| [#1520](../issues/1520-ambiguity-example-cited-everywhere-was-the-manufactured-one.md) | the `entry =` ambiguity the docs cite was manufactured (issue 1517), so the docs explain a case that no longer exists. From the archived phase-477. |
+
 ## Open issues that name this phase
 
 Open issues whose `related:` names this phase (listed 2026-10-12, so the

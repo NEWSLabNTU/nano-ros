@@ -11,8 +11,8 @@ The whole-tree taxonomy lives in
 questions (*who owns the link?* and *leaf or workspace?*), the classes, and the
 two that deliberately do not exist. This file owns the **workspace** half of it.
 Survey and work items:
-[phase-470](../../docs/roadmap/archived/phase-470-example-layout-unification.md) (done); open gaps:
-[phase-477](../../docs/roadmap/phase-477-example-gaps-and-unreported-lanes.md).
+[phase-470](../../docs/roadmap/archived/phase-470-example-layout-unification.md) (done); its gaps:
+[phase-477](../../docs/roadmap/archived/phase-477-example-gaps-and-unreported-lanes.md) (done, 2026-10-13).
 
 Three classes reach this directory, and **the class is a property of an IMAGE,
 not of a directory**:

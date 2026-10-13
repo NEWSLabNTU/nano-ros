@@ -7,8 +7,10 @@ type: docs
 area: [docs, examples, cli]
 severity: low
 found: 2026-09-27
-related: [1517, 1288, 1511, phase-477]
+related: [1517, 1288, 1511, phase-477, phase-452]
 ---
+
+**Home: [phase-452](../roadmap/phase-452-copy-out-front-door.md)**, re-homed 2026-10-13 from phase-477, archived that day, which named it without owning it.
 
 ## What this is
 
