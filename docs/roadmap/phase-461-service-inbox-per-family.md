@@ -1,6 +1,10 @@
 # phase-461 -- the service inbox is sized per family, and the parameter family brings its own
 
-**Status (2026-09-21). PLANNED, nothing landed.** Numbered highest + 6 because
+**Status (2026-10-13). W1, W2, W2b, W3 and W4 LANDED; W5 and W6 not
+started.** W1 #1215, W2 #1223, W2b #1224, W3 #1225 (all 2026-09-23), W4 #2098
+(2026-10-13); each wave's `Status:` line below says what it measured. What is
+left is W5 (the island links, and `nros image-facts` says why) and W6 (a
+parameter store without a server). Planned 2026-09-21. Numbered highest + 6 because
 five other phases were being opened concurrently (456-460 are theirs). Owns
 [issue 1352](../issues/archived/1352-param-set-request-exceeds-service-buffer.md), which
 PR #1043 FILED (merged 2026-09-13) and did not fix. Completes the half of
@@ -354,7 +358,7 @@ sized from the same `NROS_DECLARED_PARAM_SERVICE_SHAPE` token W2 reads, so
 one geometry is stated once and derived to the same number by two build
 scripts on purpose.
 
-Claim: phase-461-W2b. Depends on: phase-461-W1, phase-461-W2. Owns: packages/rmw/zenoh/nros-rmw-zenoh/src/shim/service.rs (the family selection and BUILTIN_INBOX), packages/rmw/zenoh/nros-rmw-zenoh/build.rs (the third table's sizing), packages/rmw/zenoh/nros-rmw-zenoh/tests/zenoh_integration.rs, scripts/check/config-knob-census.py (the knob's description), book/src/reference/environment-variables.md. Gate: the zenoh_integration builtin-family test and just check knob-single-reader. Status: PR #1224, in the queue; frees 83,040 B at the island's 32-bit entry size. The overflow it is measured against is 56,848 B, not the 53,912 B an earlier draft of this line claimed: the island's own `board-build` recipe on pin f0d191c98 was run on 2026-09-24 and printed `region 'RAM' overflowed by 56848 bytes`, which is the figure `docs/roadmap/phase-5-contract-chain.md` already carried. Headroom is therefore 26,192 B and not 29,128 B. Both numbers are still projections over a measured baseline, and island-W3 replaces them with a link or refutes them.
+Claim: phase-461-W2b. Depends on: phase-461-W1, phase-461-W2. Owns: packages/rmw/zenoh/nros-rmw-zenoh/src/shim/service.rs (the family selection and BUILTIN_INBOX), packages/rmw/zenoh/nros-rmw-zenoh/build.rs (the third table's sizing), packages/rmw/zenoh/nros-rmw-zenoh/tests/zenoh_integration.rs, scripts/check/config-knob-census.py (the knob's description), book/src/reference/environment-variables.md. Gate: the zenoh_integration builtin-family test and just check knob-single-reader. Status: landed in PR #1224 (5e09e377a2, merged 2026-09-23); frees 83,040 B at the island's 32-bit entry size. The overflow it is measured against is 56,848 B, not the 53,912 B an earlier draft of this line claimed: the island's own `board-build` recipe on pin f0d191c98 was run on 2026-09-24 and printed `region 'RAM' overflowed by 56848 bytes`, which is the figure `docs/roadmap/phase-5-contract-chain.md` already carried. Headroom is therefore 26,192 B and not 29,128 B. Both numbers are still projections over a measured baseline, and island-W3 replaces them with a link or refutes them.
 
 One portability bug was found and fixed in this wave after CI caught it: the "nobody declared this" sentinel for `DECLARED_APP_QUERYABLES` was the build HOST's `usize::MAX` printed into generated code as a decimal, which does not fit the 32-bit `usize` the board compiles with. It is emitted as the TOKEN now. It could only ever have failed on a cross build, which is the one thing this wave exists to make possible.
 
@@ -424,7 +428,7 @@ string-valued or array-valued parameter still pays the user-service slot here,
 and closing that is W2's ABI hop or a carrier for the derived size -- not a
 second resolution of the board's capacities in this crate.
 
-Claim: phase-461-W2b. Depends on: phase-461-W1. Owns: packages/rmw/zenoh/nros-rmw-zenoh/src/shim/service.rs (the third table and the name match; W1 then W2b then W4), packages/rmw/zenoh/nros-rmw-zenoh/build.rs (BUILTIN_INBOX_BYTES/_DEPTH, declared_app_queryables, param_request_max_from; W1 then W2b then W3), scripts/check/config-knob-census.py (the two knob rows, shared with W2). Gate: cargo test -p nros-rmw-zenoh --features platform-posix --lib, the router-backed zenoh_integration tests, just mem-report on bins/sim-clock-listener before and after, just check fast. Status: not started.
+Claim: phase-461-W2b. Depends on: phase-461-W1. Owns: packages/rmw/zenoh/nros-rmw-zenoh/src/shim/service.rs (the third table and the name match; W1 then W2b then W4), packages/rmw/zenoh/nros-rmw-zenoh/build.rs (BUILTIN_INBOX_BYTES/_DEPTH, declared_app_queryables, param_request_max_from; W1 then W2b then W3), scripts/check/config-knob-census.py (the two knob rows, shared with W2). Gate: cargo test -p nros-rmw-zenoh --features platform-posix --lib, the router-backed zenoh_integration tests, just mem-report on bins/sim-clock-listener before and after, just check fast. Status: landed in PR #1224 (5e09e377a2, merged 2026-09-23) -- the same wave as the W2b section above, which this one restates; the earlier section carries the measurement.
 
 ### W3 [cli] -- service and action request types are priced
 
@@ -444,7 +448,7 @@ inbox lands below 1,024 in `entity_inventory.cmake`; a service whose request
 carries an uncapped unbounded field refuses the derivation naming the member,
 as the message road already does.
 
-Claim: phase-461-W3. Depends on: phase-461-W1. Owns: packages/cli/rosidl-codegen/src/bounds.rs, packages/cli/nros-cli-core/src/entity_inventory.rs (the NROS_DERIVED_*_INBOX_BYTES rows), cmake/NanoRosEntityInventory.cmake, packages/rmw/zenoh/nros-rmw-zenoh/build.rs (declared_service_request_bytes). Gate: just check knob-delivery, the OperateMrm pricing and the unbounded-member refusal. Status: PR #1225, in the queue; service and action request types are priced from the declared endpoints, `NROS_DECLARED_SERVICE_INBOX_BYTES` and `NROS_DECLARED_ACTION_INBOX_BYTES` ride the DECLARED road below both ladder rungs so a stated Kconfig or env value still wins. Gates: `config-knob-census`, `check-knob-single-reader` and `check-declared-fact-carriers` all OK, the last reporting 28 declared facts produced, consumed and watched.
+Claim: phase-461-W3. Depends on: phase-461-W1. Owns: packages/cli/rosidl-codegen/src/bounds.rs, packages/cli/nros-cli-core/src/entity_inventory.rs (the NROS_DERIVED_*_INBOX_BYTES rows), cmake/NanoRosEntityInventory.cmake, packages/rmw/zenoh/nros-rmw-zenoh/build.rs (declared_service_request_bytes). Gate: just check knob-delivery, the OperateMrm pricing and the unbounded-member refusal. Status: landed in PR #1225 (e0d4c5c507, merged 2026-09-23; doc fix 78963bcfc5); service and action request types are priced from the declared endpoints, `NROS_DECLARED_SERVICE_INBOX_BYTES` and `NROS_DECLARED_ACTION_INBOX_BYTES` ride the DECLARED road below both ladder rungs so a stated Kconfig or env value still wins. Gates: `config-knob-census`, `check-knob-single-reader` and `check-declared-fact-carriers` all OK, the last reporting 28 declared facts produced, consumed and watched.
 
 ### W4 [rmw-zenoh, nros-node] -- an inbox drop is counted and said once
 
