@@ -28,4 +28,4 @@ name = "listener"
 # block, which carried a `board`: that is a build fact, and a machine is not a
 # build.
 [image.native]
-board = "native"
+board = "linux"

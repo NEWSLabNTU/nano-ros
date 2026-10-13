@@ -50,8 +50,9 @@ pub use node::{LoweredEntry, LoweredNode, NodeIdentity, QosOverride, sanitize_pk
 )]
 #[serde(rename_all = "snake_case")]
 pub enum BoardFamily {
-    /// The host build (`native`, `posix`).
-    Native,
+    /// The host board (`linux`) — phase-500: the host board is Linux-only,
+    /// so its family is named for it.
+    Linux,
     Zephyr,
     Nuttx,
     Freertos,
@@ -79,7 +80,7 @@ impl BoardFamily {
     /// Every family, in a stable order — so a consumer that must handle all of
     /// them iterates rather than lists, and cannot go stale.
     pub const ALL: [BoardFamily; 5] = [
-        BoardFamily::Native,
+        BoardFamily::Linux,
         BoardFamily::Zephyr,
         BoardFamily::Nuttx,
         BoardFamily::Freertos,
@@ -94,7 +95,7 @@ impl BoardFamily {
     /// KERNEL calls `main(void)`, which is why boot shape is three-valued and
     /// not this predicate.
     pub fn is_embedded(self) -> bool {
-        self != BoardFamily::Native
+        self != BoardFamily::Linux
     }
 
     /// Does this family's boards honor the per-entry executor sizing an entry
@@ -110,7 +111,7 @@ impl BoardFamily {
     /// reads). Issue 1397: those two used to be one string doing both jobs,
     /// and the string was neither.
     pub fn honors_entry_sizing(self) -> bool {
-        self == BoardFamily::Native
+        self == BoardFamily::Linux
     }
 
     /// The C-ABI runners this family exports, or `None` when it has no C
@@ -170,7 +171,7 @@ impl BoardFamily {
     /// defined in the tree.
     pub fn c_abi_runners(self) -> Option<CAbiRunners> {
         match self {
-            BoardFamily::Native => Some(CAbiRunners {
+            BoardFamily::Linux => Some(CAbiRunners {
                 run_components: Some("nros_board_native_run_components_named_in"),
                 run_tiers: Some("nros_board_native_run_tiers_in"),
                 // Issue 1597 — the host too. Its runners are Rust and used to
@@ -266,7 +267,7 @@ impl BoardFamily {
     /// board it names.
     pub fn tier_rtos_key(self) -> &'static str {
         match self {
-            BoardFamily::Native => "posix",
+            BoardFamily::Linux => "posix",
             other => other.as_str(),
         }
     }
@@ -275,7 +276,7 @@ impl BoardFamily {
     pub fn boot_shape(self) -> BootShape {
         match self {
             BoardFamily::Zephyr => BootShape::Kernel,
-            BoardFamily::Native => BootShape::Host,
+            BoardFamily::Linux => BootShape::Host,
             BoardFamily::Nuttx | BoardFamily::Freertos | BoardFamily::Threadx => BootShape::App,
         }
     }
@@ -283,7 +284,7 @@ impl BoardFamily {
     /// The family's canonical name — the same string the serde repr uses.
     pub fn as_str(self) -> &'static str {
         match self {
-            BoardFamily::Native => "native",
+            BoardFamily::Linux => "linux",
             BoardFamily::Zephyr => "zephyr",
             BoardFamily::Nuttx => "nuttx",
             BoardFamily::Freertos => "freertos",
@@ -435,8 +436,13 @@ impl CAbiRunners {
 /// the bare-metal `mps2-an385`. A C or C++ entry has no runner for them, so
 /// asking for their family is an error, not a guess.
 pub const BOARD_KEYS: &[(&str, BoardFamily)] = &[
-    ("native", BoardFamily::Native),
-    ("posix", BoardFamily::Native),
+    // Issue 1109 / phase-500 — the host board's key is its descriptor's
+    // `names` (`packages/boards/linux/nros-board.toml`), and nothing else:
+    // `linux`, because the board is Linux-only. `native` was dropped
+    // (phase-500 W1) and is refused with a hint by [`retired_board_key_hint`];
+    // `posix` is the PLATFORM and no board's name. `board_key_table.rs` holds
+    // this row, `HOST_BOARD_KEYS`, `BOARD_PATHS` and the descriptor together.
+    ("linux", BoardFamily::Linux),
     // ONE key for the zephyr descriptor. `native_sim/native/64` was a second
     // from phase-445 W5 until issue 1519, because bringups authored it as an
     // image board; that is Zephyr's id, which `nros build` now refuses on an
@@ -474,6 +480,9 @@ pub struct UnknownBoard {
 
 impl core::fmt::Display for UnknownBoard {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        if let Some(hint) = retired_board_key_hint(&self.key) {
+            return f.write_str(&hint);
+        }
         write!(
             f,
             "unknown board key `{}` — the entry pipeline knows: ",
@@ -491,6 +500,33 @@ impl core::fmt::Display for UnknownBoard {
 
 impl core::error::Error for UnknownBoard {}
 
+/// Board keys that USED to select a board and no longer do, each with the key
+/// that replaced it.
+///
+/// phase-500 W1 — `native` selected the host board until the maintainer's
+/// 2026-10-14 ruling: `native` names the whole class of general-purpose hosts
+/// (Linux, macOS, Windows), while the board under every host image,
+/// `nros-board-linux`, builds on Linux only (`apply_tier_affinity`'s
+/// `cpu_set_t`/`sched_setaffinity` fail on darwin, windows and freebsd). So the
+/// selector claimed more than the board delivers, and `linux` is the one name.
+///
+/// Every consumer that refuses an unknown board key asks
+/// [`retired_board_key_hint`] first, so a retired key gets ONE message — the
+/// replacement — wherever it is written, instead of a list of known keys to
+/// search.
+pub const RETIRED_BOARD_KEYS: &[(&str, &str)] = &[("native", "linux")];
+
+/// The refusal for a retired board key (see [`RETIRED_BOARD_KEYS`]), naming
+/// its replacement; `None` for any other key.
+pub fn retired_board_key_hint(key: &str) -> Option<alloc::string::String> {
+    let (_, now) = RETIRED_BOARD_KEYS.iter().find(|(old, _)| *old == key)?;
+    Some(alloc::format!(
+        "board `{key}` no longer names a board: write `{now}`. The host board \
+         builds on Linux only, so `{key}` (every general-purpose host) claimed \
+         more than it delivers (phase-500)."
+    ))
+}
+
 /// The keys of [`BOARD_KEYS`], in table order.
 pub fn known_board_keys() -> impl Iterator<Item = &'static str> {
     BOARD_KEYS.iter().map(|(key, _)| *key)
@@ -499,7 +535,7 @@ pub fn known_board_keys() -> impl Iterator<Item = &'static str> {
 /// Which family a board key names.
 ///
 /// An unknown key is an ERROR that names the known keys (issue 1285). This
-/// used to fall back to [`BoardFamily::Native`], which made an embedded key
+/// used to fall back to [`BoardFamily::Linux`], which made an embedded key
 /// the table had not learned look exactly like a host build. The failure then
 /// arrived minutes later, at link, as an undefined `app_main`.
 pub fn board_family(board: &str) -> Result<BoardFamily, UnknownBoard> {
@@ -592,10 +628,11 @@ mod tests {
         // 19 keys the C++ emitter knew, plus the two RTOS keys only the Rust
         // pack knew (`nuttx-riscv`, `freertos-qemu-mps2-an385`, issue 1285),
         // plus `native_sim/native/64` (phase-445 W5), which issue 1519 retired
-        // again.
+        // again; minus `native`, which phase-500 W1 retired (the host board's
+        // one name is `linux`).
         assert_eq!(
             BOARD_KEYS.len(),
-            21,
+            20,
             "a key was added or removed without a row"
         );
     }
@@ -614,9 +651,9 @@ mod tests {
     /// host is `posix` there, not `native`.
     #[test]
     fn tier_rtos_key_is_the_spelling_the_tier_tables_use() {
-        assert_eq!(BoardFamily::Native.tier_rtos_key(), "posix");
+        assert_eq!(BoardFamily::Linux.tier_rtos_key(), "posix");
         for f in BoardFamily::ALL {
-            if f != BoardFamily::Native {
+            if f != BoardFamily::Linux {
                 assert_eq!(f.tier_rtos_key(), f.as_str());
             }
         }
@@ -761,7 +798,7 @@ mod tests {
         for f in BoardFamily::ALL {
             assert_eq!(
                 f.is_embedded(),
-                f != BoardFamily::Native,
+                f != BoardFamily::Linux,
                 "{} embeddedness",
                 f.as_str()
             );
@@ -773,7 +810,7 @@ mod tests {
         for f in BoardFamily::ALL {
             // Exhaustive match: a new family fails to compile here first.
             let named = match f {
-                BoardFamily::Native => "native",
+                BoardFamily::Linux => "linux",
                 BoardFamily::Zephyr => "zephyr",
                 BoardFamily::Nuttx => "nuttx",
                 BoardFamily::Freertos => "freertos",

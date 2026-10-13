@@ -174,7 +174,7 @@ class = "talker_pkg::Talker"
 name  = "talker"
 
 [image.native]
-board = "native"
+board = "linux"
 # rmw = "cyclonedds"         # optional per-image override of [system].rmw
 
 [host.native]                # WHERE the nodes run; no `nodes` means all of them

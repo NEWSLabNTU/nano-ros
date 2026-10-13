@@ -68,7 +68,7 @@ ROS's `rmw_zenoh_cpp/rmw_zenohd`. See
 [Do I need ROS 2 installed?](../getting-started/installation.md#do-i-need-ros-2-installed).
 
 ```sh
-nros setup native --rmw zenoh            # host build (router comes from ROS)
+nros setup linux --rmw zenoh            # host build (router comes from ROS)
 nros setup mps2-an385-freertos --rmw xrce  # arm-none-eabi-gcc, qemu, FreeRTOS, XRCE agent
 nros setup zephyr                        # Zephyr west workspace + SDK bits
 ```

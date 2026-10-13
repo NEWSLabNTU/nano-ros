@@ -10,4 +10,4 @@ nros_components_register_node(listener_lib
     PLUGIN listener_pkg::Listener
     EXECUTABLE listener
     SHAPE configure
-    DEPLOY native)
+    DEPLOY linux)

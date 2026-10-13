@@ -40,7 +40,7 @@ source ./activate.fish        # fish
 
 Then provision the native host:
 ```sh
-nros setup native --rmw zenoh
+nros setup linux --rmw zenoh
 ```
 
 ---
@@ -103,7 +103,7 @@ class = "listener_pkg::Listener"
 name = "listener"
 
 [image.native]
-board = "native"
+board = "linux"
 
 [host.native]
 ```
@@ -310,7 +310,7 @@ Both `nros check` forms pass for the canonical template at
 this guide. Copy the whole directory out and rename the packages, then:
 
 ```bash
-nros setup native
+nros setup linux
 nros sync            # once per workspace — message bindings + build settings
 nros build native
 ```

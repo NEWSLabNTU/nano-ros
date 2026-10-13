@@ -317,7 +317,7 @@ mod resolve_target_block_tests {
         // The island's hand-run form: a platform-rmw pair where a block key
         // goes, on a bringup whose real Zephyr image is called something else.
         let s = sys("[image.zephyr_native_sim]\nboard=\"zephyr\"\n\
-             [image.native]\nboard=\"native\"\n\
+             [image.native]\nboard=\"linux\"\n\
              [host.robot]\n");
         let err = resolve(Some("zephyr-cyclonedds"), &s)
             .expect_err("a key no block carries must not resolve to the host")
@@ -327,7 +327,7 @@ mod resolve_target_block_tests {
             err.contains("[image.zephyr_native_sim]  board = \"zephyr\""),
             "the refusal names the block to use, with its board: {err}"
         );
-        assert!(err.contains("[image.native]  board = \"native\""), "{err}");
+        assert!(err.contains("[image.native]  board = \"linux\""), "{err}");
         assert!(
             !err.contains("robot"),
             "a host is a machine, not a build: it is no `--target` key: {err}"
@@ -362,7 +362,7 @@ mod resolve_target_block_tests {
     fn resolve_target_block_without_a_target_is_still_the_documented_default() {
         // No `--target`, no `--for-entry`: the system-wide default, unchanged
         // by this wave. The refusal is for a key that was GIVEN and is wrong.
-        let s = sys("[image.native]\nboard=\"native\"\n");
+        let s = sys("[image.native]\nboard=\"linux\"\n");
         assert_eq!(resolve(None, &s).expect("no flag, no refusal"), None);
     }
 }
@@ -1885,7 +1885,7 @@ stack_bytes = 8192
 priority = 10
 
 [image.native]
-board = "native"
+board = "linux"
 launch = "system.launch.xml"
 "#,
         )
@@ -2322,7 +2322,7 @@ class = "telem_pkg::Telem"
 name = "telem_node"
 
 [image.native]
-board = "native"
+board = "linux"
 launch = "system.launch.xml"
 "#,
         )
@@ -2635,7 +2635,7 @@ structure:
     fn system_config_h_rmw_honours_the_image_override() {
         let sys: SystemToml = toml::from_str(
             "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n\
-             [image.native]\nboard=\"native\"\nrmw=\"cyclonedds\"\n",
+             [image.native]\nboard=\"linux\"\nrmw=\"cyclonedds\"\n",
         )
         .unwrap();
 
@@ -2669,7 +2669,7 @@ structure:
         let sys: SystemToml = toml::from_str(
             "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\nlocator=\"tcp/sys:7447\"\n\
              [host.robot]\ndomain_id=7\nlocator=\"tcp/robot:7450\"\n\
-             [image.robot]\nboard=\"native\"\nargs={ host = \"robot\" }\n",
+             [image.robot]\nboard=\"linux\"\nargs={ host = \"robot\" }\n",
         )
         .unwrap();
 

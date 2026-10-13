@@ -5,7 +5,7 @@ run it. C++ and CMake, publishing on your machine, with **nothing else
 running** — no router, no daemon, no ROS 2 installation.
 
 This assumes the two-step [install](installation.md) is done (`nros` on
-your PATH, `nros setup native --rmw cyclonedds` run once).
+your PATH, `nros setup linux --rmw cyclonedds` run once).
 
 ## Scaffold
 
@@ -50,7 +50,7 @@ where that came from.
 ## Run
 
 ```bash
-./build/posix-cyclonedds-native/cmake/native_entry
+./build/posix-cyclonedds-linux/cmake/native_entry
 ```
 
 ```text
@@ -107,7 +107,7 @@ file: the entry is generated per image under `build/`.
 
 - `nros: RMW session open failed` on a busy machine usually means the
   DDS port range on your `ROS_DOMAIN_ID` is contended — pick another:
-  `ROS_DOMAIN_ID=57 ./build/posix-cyclonedds-native/cmake/native_entry`.
+  `ROS_DOMAIN_ID=57 ./build/posix-cyclonedds-linux/cmake/native_entry`.
 - Everything else: [Troubleshooting — First 10 Minutes](troubleshooting-first-10-min.md).
 
 ## Where to go next

@@ -28,11 +28,11 @@
       first — `check-provider-announcements.py` compares them, because two
       spellings of one fact drift.
     -->
-    <!-- `native` is the ROLE (host build, not cross); `linux` is the REACH.
-         Not `posix`: `apply_tier_affinity` calls `sched_setaffinity`, which
-         libc does not define for apple, so this cannot build on macOS.
+    <!-- `linux`, the one name (phase-500 W1): `apply_tier_affinity` calls
+         `sched_setaffinity`, which libc does not define for apple, windows or
+         freebsd, so this board builds on Linux only. `native` (every
+         general-purpose host) and `posix` (the platform) are not its names.
          See CLAUDE.md "Naming". -->
-    <nano_ros_provides kind="board" name="native"/>
     <nano_ros_provides kind="board" name="linux"/>
   </export>
 </package>

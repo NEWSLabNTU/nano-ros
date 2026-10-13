@@ -14,10 +14,10 @@ class = "probe_pkg::Probe"
 name = "probe"
 
 [image.plain]
-board = "native"
+board = "linux"
 
 [image.warn]
-board = "native"
+board = "linux"
 
 [image.warn.knobs.log]
 max_level = "warn"

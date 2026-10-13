@@ -9,7 +9,7 @@ nano_ros_entry(
     NAME demo_entry
     SOURCES src/main.cpp
     PANIC   platform
-    DEPLOY native)
+    DEPLOY linux)
 
 target_link_libraries(demo_entry PRIVATE
     talker_pkg_talker_component

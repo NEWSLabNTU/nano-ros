@@ -29,7 +29,7 @@
 #     nano_ros_node_register(NAME talker
 #                            CLASS talker_pkg::Talker
 #                            SOURCES src/Talker.cpp
-#                            DEPLOY native)
+#                            DEPLOY linux)
 #
 # `nano_ros_workspace_pkg_guard()` is the dual:
 #

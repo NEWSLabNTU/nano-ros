@@ -1629,7 +1629,7 @@ fn plan_leaf_image(
     let catalog = crate::orchestration::board_descriptor::BoardCatalog::load(&nros_root)
         .map_err(|e| eyre::eyre!("board catalog under {}: {e}", nros_root.display()))?;
     let Some(descriptor) = crate::cmd::board_facts::resolve_board(&catalog, &img.board) else {
-        eyre::bail!("board `{}` is claimed by no board descriptor", img.board);
+        eyre::bail!("{}", crate::cmd::board_facts::unresolved_board(&img.board));
     };
     let mut missing = crate::builder::preflight::check(descriptor, root, Some(&nros_root));
     // The toolchain half only. preflight's sync probe is a WORKSPACE heuristic
@@ -1850,7 +1850,7 @@ fn plan_single_package_cmake(
     let catalog = crate::orchestration::board_descriptor::BoardCatalog::load(&nros_root)
         .map_err(|e| eyre::eyre!("board catalog under {}: {e}", nros_root.display()))?;
     let Some(descriptor) = crate::cmd::board_facts::resolve_board(&catalog, &board) else {
-        eyre::bail!("board `{board}` is claimed by no board descriptor");
+        eyre::bail!("{}", crate::cmd::board_facts::unresolved_board(&board));
     };
     let platform = descriptor.platform.kebab().to_string();
     if plan::driver_for_board(&platform, descriptor.entry_kind, true) != Ok(Driver::CMake) {
@@ -2577,7 +2577,7 @@ fn plan_packages(
         };
         out.push(ResolvedBuild {
             qualified: pkg.name.clone(),
-            board: "native".to_string(),
+            board: "linux".to_string(),
             platform: "posix".to_string(),
             driver,
             handoff: Some(handoff),
@@ -4942,7 +4942,7 @@ mod effective_images_tests {
     ) -> crate::orchestration::cargo_metadata_schema::SystemToml {
         let text = format!(
             "[system]\nname = \"demo\"\nrmw = \"{header_rmw}\"\ndomain_id = 0\n\n\
-             [image.native]\nboard = \"native\"\n{image_extra}"
+             [image.native]\nboard = \"linux\"\n{image_extra}"
         );
         toml::from_str(&text).unwrap_or_else(|e| panic!("parse: {e}\n{text}"))
     }
@@ -5527,7 +5527,7 @@ mod multi_image_drive_tests {
     fn plan(id: &str, hand: Handoff) -> ResolvedBuild {
         ResolvedBuild {
             qualified: format!("demo:{id}"),
-            board: "native".to_string(),
+            board: "linux".to_string(),
             platform: "posix".to_string(),
             driver: Driver::Cargo,
             handoff: Some(hand),
@@ -5725,7 +5725,7 @@ mod single_package_tests {
     use super::*;
 
     /// The nano-ros checkout this crate is built from — its board catalog is
-    /// what resolves `board = "native"`.
+    /// what resolves `board = "linux"`.
     fn nros_root() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../../..")
@@ -5748,7 +5748,7 @@ mod single_package_tests {
         std::fs::write(
             leaf.join("system.toml"),
             "[system]\nname = \"demo\"\nrmw = \"zenoh\"\ndomain_id = 0\n\n\
-             [image.native]\nboard = \"native\"\n",
+             [image.native]\nboard = \"linux\"\n",
         )
         .unwrap();
         leaf
@@ -5796,7 +5796,7 @@ mod single_package_tests {
             .parse()
             .expect("the settings file is TOML");
         assert_eq!(v["build"]["target-dir"].as_str(), Some("native/target"));
-        assert_eq!(v["env"]["NROS_BOARD"].as_str(), Some("native"));
+        assert_eq!(v["env"]["NROS_BOARD"].as_str(), Some("linux"));
         assert!(
             v["profile"].get("nros-minsizerel").is_some(),
             "the presets travel with the file"
@@ -5848,7 +5848,7 @@ mod single_package_tests {
             leaf.join("system.toml"),
             "[system]\nname = \"native_c_talker\"\nrmw = \"zenoh\"\ndomain_id = 0\n\n\
              [[component]]\npkg = \"native_c_talker\"\nname = \"talker\"\n\n\
-             [image.native]\nboard = \"native\"\n",
+             [image.native]\nboard = \"linux\"\n",
         )
         .unwrap();
         leaf
@@ -5879,7 +5879,7 @@ mod single_package_tests {
             "{build}"
         );
         // Nothing generated a workspace root beside the leaf.
-        assert!(!leaf.join("build/posix-zenoh-native").exists());
+        assert!(!leaf.join("build/posix-zenoh-linux").exists());
     }
 
     #[test]

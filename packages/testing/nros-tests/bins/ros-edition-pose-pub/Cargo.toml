@@ -16,7 +16,7 @@ name = "ros-edition-pose-pub"
 path = "src/main.rs"
 
 [package.metadata.nros.application]
-deploy = ["native"]
+deploy = ["linux"]
 
 [dependencies]
 # `nros/rmw-cyclonedds`, the typed-descriptor marker the Cyclone path needs

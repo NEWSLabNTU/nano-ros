@@ -61,21 +61,18 @@ pip install --user catkin_pkg 'empy==3.3.4' lark PyYAML
 (`base-devel` is a package *group*, and it covers `pkg-config`;
 `ca-certificates` ships with the base system.)
 
-**macOS:** `xcode-select --install`, plus `brew install cmake pkg-config zstd`,
-then `pip install --user catkin_pkg 'empy==3.3.4' lark PyYAML`.
-
 (`cmake` builds the C/C++ quick start and every workspace root; `zstd`
 unpacks the prebuilt SDK assets `nros setup` fetches; `python3-dev` is
 needed once, while `bootstrap.sh` builds the launch resolver — it embeds
 CPython to parse ROS launch files. Each tool's absence produces an error
 naming it. The Python packages feed `rosidl_adapter`, the ROS
-message-to-IDL step the CycloneDDS backend uses — on Fedora/Arch/macOS
+message-to-IDL step the CycloneDDS backend uses — on Fedora/Arch
 install `catkin_pkg`, `empy==3.3.4`, `lark` and `PyYAML` via pip or your
 package manager; empy must stay 3.x.)
 
 These few packages are the only ones you install by hand. Per-board OS
 dependencies later on are declared in the index and printed for *your*
-package manager — apt, dnf, pacman or brew — by:
+package manager — apt, dnf or pacman — by:
 
 ```sh
 nros setup --system          # what is missing + the exact install command
@@ -250,7 +247,7 @@ name = "my_robot"
 rmw  = "cyclonedds"
 
 [image.native]
-board = "native"
+board = "linux"
 ```
 
 `nros sync` resolves the launch files and generates what the board
@@ -406,9 +403,9 @@ it in the SDK store the configure stops and names this command.
 
 | Command | Provisions |
 |---|---|
-| `nros setup native` | host build; zenoh-pico + mbedtls sources (**no router — see above**) |
-| `nros setup native --rmw xrce` | host build; the Micro-XRCE-DDS agent |
-| `nros setup native --rmw cyclonedds` | host build; Cyclone DDS runtime + `idlc` |
+| `nros setup linux` | host build; zenoh-pico + mbedtls sources (**no router — see above**) |
+| `nros setup linux --rmw xrce` | host build; the Micro-XRCE-DDS agent |
+| `nros setup linux --rmw cyclonedds` | host build; Cyclone DDS runtime + `idlc` |
 | `nros setup mps2-an385-freertos` | `arm-none-eabi-gcc`, patched `qemu-system-arm`, FreeRTOS + lwIP sources |
 | `nros setup qemu-armv7a-nuttx` | `arm-none-eabi-gcc`, qemu, NuttX sources |
 | `nros setup rv-virt-threadx` | `riscv64-*-gcc`, qemu, ThreadX/NetX sources |

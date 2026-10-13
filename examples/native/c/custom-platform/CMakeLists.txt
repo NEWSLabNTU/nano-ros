@@ -7,7 +7,7 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 find_package(nano_ros REQUIRED)
 
 # Despite the "baremetal_demo" name, this example runs on the POSIX
-# platform shim (the Rust port linked via `DEPLOY native`) so it builds
+# platform shim (the Rust port linked via `DEPLOY linux`) so it builds
 # and runs on a desktop. The lesson is twofold: the high-level nros C API
 # in `src/main.c`, and `src/platform_impl.c` — a reference implementation
 # of the canonical `<nros/platform.h>` ABI you would port to your target.

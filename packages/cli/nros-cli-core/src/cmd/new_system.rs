@@ -357,7 +357,9 @@ fn render_system_toml(pkg_name: &str, components: &[String]) -> Result<String> {
     image.insert(
         "native".to_string(),
         ImageBlock {
-            board: Some("native".to_string()),
+            // phase-500 W1 — the host board's one name. The image ID stays
+            // `native` until phase-500 W3 renames image ids.
+            board: Some("linux".to_string()),
             ..Default::default()
         },
     );
@@ -620,6 +622,7 @@ mod tests {
         assert_eq!(sys.system.default_target, None);
         assert_eq!(sys.system.default_images, vec!["native".to_string()]);
         assert!(sys.image.contains_key("native"));
+        assert_eq!(sys.image["native"].board.as_deref(), Some("linux"));
         assert_eq!(sys.components.len(), 2);
         assert_eq!(sys.components[0].pkg, "talker_pkg");
         assert_eq!(sys.components[1].pkg, "listener_pkg");
@@ -823,6 +826,6 @@ mod scaffold_vocabulary_tests {
             .split("[image.native]")
             .nth(1)
             .expect("an [image.native] block");
-        assert!(image.contains("board = \"native\""), "{out}");
+        assert!(image.contains("board = \"linux\""), "{out}");
     }
 }

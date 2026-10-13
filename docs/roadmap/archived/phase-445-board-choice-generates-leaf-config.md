@@ -1,12 +1,13 @@
 # Phase 445 — one board choice generates the leaf's build configuration
 
-**Status (2026-10-14). Every work item is ticked and acceptance bullet 3 is
-MEASURED and MET; one thing keeps it open: issue 1109** (the
-`board = "native"` selectors), which is homed here. The maintainer ruled on
-2026-10-14 that the host board's one name is `linux` (`native` means any
-general-purpose host — Linux, macOS, Windows — and this board is Linux-only),
-so 1109 closes by phasing `native` out of the board selector, the lane, the
-image ids and `examples/native/`, not by choosing per site.
+**Status (2026-10-14). Complete: every work item is ticked, every acceptance
+bullet is MET, and no homed issue is left.** Acceptance bullet 3 was measured
+on 2026-10-14 (`git status` empty, submodules included, after a fresh setup,
+`just ci gate`, `just setup tier1`, `build-test-fixtures lane=tier1` and a
+second `ci gate`). Issue 1109 (the `board = "native"` selectors) moved to
+[phase-500](../phase-500-linux-host-name.md), which carries the maintainer's
+2026-10-14 naming ruling (`native` is dropped as a board name; the host board
+is `linux`) and lands its first item, W1.
 
 **Status (2026-10-13, later; superseded above). Every work item is ticked; two things keep it
 open.** W3, the last open box, is ticked: issue 1289 settled the workspace
@@ -83,7 +84,7 @@ both are recorded against the acceptance bullets they falsify rather than
 ticked. Archiving before they are answered would assert a claim the tree
 contradicts — the stale-status class phase-413 exists to remove.
 Opened 2026-09-10; revised the same day to the colcon shape (RFC-0098 D1/D9). Implements
-[RFC-0098](../design/0098-generated-leaf-build-config.md).
+[RFC-0098](../../design/0098-generated-leaf-build-config.md).
 
 **Prior phases:** 341 (the board `cargo_config` projection), 331 (the
 generated `<entry>_nros_selection` package), 412 (derived counts), 392 W5
@@ -603,7 +604,7 @@ esp32 stack budgets.
   spelling of a C/C++ package's `nros_components_register_node(<target> PLUGIN
   pkg::Class …)`, which mirrors ROS's `rclcpp_components_register_node` — not a
   deployment, so RFC-0098 D5's retirement does not apply to it ([issue
-  1289](../issues/archived/1289-workspace-node-tables-still-in-manifests.md)).
+  1289](../../issues/archived/1289-workspace-node-tables-still-in-manifests.md)).
   The `entry` half went because "is an entry" became "an image claims it"
   (`leaf_system::claiming_image`) in every reader — the selection facade,
   `nros check`'s dispatch lint, the metadata probe's `deploy_bound`, and the
@@ -628,11 +629,11 @@ evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1117](../issues/archived/1117-cross-build-accepts-unpinned-host-toolchain.md) (resolved 2026-10-11) | a cross build silently accepted an unpinned host toolchain — the pin said one thing and the build fell through to the distribution's `arm-none-eabi-gcc`. The board descriptor is what should carry it, and preflight is what should print it |
-| [#1261](../issues/archived/1261-capabilities-decided-by-two-sources-disagree-at-link.md) | an image's capabilities are decided in two places and a disagreement is silent. Generated from the entry's BRINGUP is this phase's shape; restated per consumer as `-DNANO_ROS_FEATURES` is the state it replaces |
-| [#1265](../issues/archived/1265-cross-only-leaves-cannot-be-probed.md) | the metadata probe cannot run for a cross-only leaf, so esp32 and mps2 examples must DECLARE their entities. W3 cites this as the reason leaves declare; owning the probe is the fix the citation stands in for |
-| [#1277](../issues/archived/1277-preflight-build-std-board-demands-rust-std.md) (resolved 2026-10-11) | `nros build` preflight demands a prebuilt `rust-std` for a board that builds its own core. The preflight must require `rust-src` instead, against W4's rendered `nros-cargo.toml` |
-| [#1109](../issues/1109-board-native-vs-linux-naming-sweep.md) | re-homed 2026-10-12 from phase-401 (archived). About 194 `board = "native"` selectors predate the native/linux split, and the board a leaf states is this phase's input |
+| [#1117](../../issues/archived/1117-cross-build-accepts-unpinned-host-toolchain.md) (resolved 2026-10-11) | a cross build silently accepted an unpinned host toolchain — the pin said one thing and the build fell through to the distribution's `arm-none-eabi-gcc`. The board descriptor is what should carry it, and preflight is what should print it |
+| [#1261](../../issues/archived/1261-capabilities-decided-by-two-sources-disagree-at-link.md) | an image's capabilities are decided in two places and a disagreement is silent. Generated from the entry's BRINGUP is this phase's shape; restated per consumer as `-DNANO_ROS_FEATURES` is the state it replaces |
+| [#1265](../../issues/archived/1265-cross-only-leaves-cannot-be-probed.md) | the metadata probe cannot run for a cross-only leaf, so esp32 and mps2 examples must DECLARE their entities. W3 cites this as the reason leaves declare; owning the probe is the fix the citation stands in for |
+| [#1277](../../issues/archived/1277-preflight-build-std-board-demands-rust-std.md) (resolved 2026-10-11) | `nros build` preflight demands a prebuilt `rust-std` for a board that builds its own core. The preflight must require `rust-src` instead, against W4's rendered `nros-cargo.toml` |
+| [#1109](../../issues/1109-board-native-vs-linux-naming-sweep.md) | re-homed 2026-10-12 from phase-401 (archived), and **re-homed again 2026-10-14 to [phase-500](../phase-500-linux-host-name.md)**, which owns the host-board naming ruling. About 194 `board = "native"` selectors predated the native/linux split, and the board a leaf states is this phase's input |
 
 ## Open issues that name this phase
 
@@ -640,5 +641,5 @@ Open issues whose `related:` names this phase (listed 2026-10-12, so the
 link runs both ways). Listing one here records the link, not a claim that
 this phase will fix it.
 
-- [issue 1281](../issues/1281-riscv-nuttx-c-talker-router-drops-session.md) — `c_riscv_nuttx_talker_delivers_cross_process` fails again: the guest connects and the router drops its session after …
-- [issue 1511](../issues/1511-no-worked-example-of-entry-customisation.md) — Generating every entry removes the last example of a hand-written one, and there is no tutorial for the escape hatch …
+- [issue 1281](../../issues/1281-riscv-nuttx-c-talker-router-drops-session.md) — `c_riscv_nuttx_talker_delivers_cross_process` fails again: the guest connects and the router drops its session after …
+- [issue 1511](../../issues/1511-no-worked-example-of-entry-customisation.md) — Generating every entry removes the last example of a hand-written one, and there is no tutorial for the escape hatch …

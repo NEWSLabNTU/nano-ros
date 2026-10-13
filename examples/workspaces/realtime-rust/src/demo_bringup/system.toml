@@ -171,8 +171,13 @@ panic = "own"
 # the resolver asserts against this line. Gate: `check-image-locator-bake`.
 locator = "tcp/10.0.2.2:7891"
 
+# issue 1109 — `linux`, the REACH word, not `native`, the ROLE word: this image
+# authors `[tiers.high.posix] core = 0`, a pin the host board applies with
+# `sched_setaffinity` — Linux's call, which no POSIX standard has. So the image
+# itself needs Linux, and says so here. Both words select the same board.
+# Gate: `check-host-platform-vocabulary`.
 [image.native]
-board = "native"
+board = "linux"
 
 [image.nuttx]
 board = "nuttx"

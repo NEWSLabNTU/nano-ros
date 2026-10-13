@@ -18,7 +18,7 @@ Build one with the user workflow:
 ```bash
 source ./activate.sh
 cd examples/workspaces/<rust|c|cpp|mixed>
-nros setup native
+nros setup linux
 nros sync
 nros build              # every [image.*]; or: nros build <image-id>
 ```

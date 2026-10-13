@@ -24,7 +24,7 @@
 //!
 //! * **O.6 `application-rtos-deploy-forbidden` (hard error).** A component
 //!   pkg whose `Cargo.toml` declares `[package.metadata.nros.application]`
-//!   MUST only name `"native"` in its `deploy = […]` allow-list. Application
+//!   MUST only name `"linux"` (the host board) in its `deploy = […]` allow-list. Application
 //!   pkgs are native-only by definition (Phase 212.L.2 / M-F.1); naming an
 //!   RTOS rejects with the `application-rtos-deploy-forbidden` diagnostic.
 //!
@@ -252,7 +252,7 @@ pub fn lint_class_pkg_prefix(bringup_dir: &Path, bringup_pkg_name: &str) -> Resu
 ///   (`entry-deploy-missing`, phase 212.L.2 / N.7); the board now lives in a
 ///   `system.toml` image, and nothing reads the key.
 /// * **O.6 `application-rtos-deploy-forbidden`** — every entry in
-///   `[package.metadata.nros.application].deploy` MUST be `"native"`. Phase
+///   `[package.metadata.nros.application].deploy` MUST be `"linux"`. Phase
 ///   212.L.2 / M-F.1 — Application pkgs are native-only orchestration roots.
 ///
 /// Both lints bail with an eyre error whose diagnostic id is embedded in the
@@ -306,7 +306,8 @@ fn lint_cargo_metadata_nros(cargo_toml_path: &Path, pkg_name: &str) -> Result<()
     // ---- O.6 application-rtos-deploy-forbidden ----------------------------
     if let Some(app) = nros.get("application") {
         // `deploy` is optional; when present it must be a list of strings,
-        // and every entry must be exactly "native".
+        // and every entry must be exactly "linux", the host board (phase-500
+        // W1: `native` no longer names a board and gets the rename hint).
         if let Some(deploy) = app.get("deploy") {
             let Some(arr) = deploy.as_array() else {
                 // Wrong type — leave to the strict schema validator; this
@@ -317,10 +318,13 @@ fn lint_cargo_metadata_nros(cargo_toml_path: &Path, pkg_name: &str) -> Result<()
                 let Some(s) = entry.as_str() else {
                     continue;
                 };
-                if s != "native" {
+                if let Some(hint) = nros_entry_lower::retired_board_key_hint(s) {
+                    bail!("{pkg_name}: `[package.metadata.nros.application] deploy`: {hint}");
+                }
+                if !nros_orchestration_ir::is_host_board_key(s) {
                     bail!(
                         "{pkg_name}: Application pkg may not deploy to RTOS \
-                         target '{s}' (Applications are native-only; use \
+                         target '{s}' (Applications are host-only; use \
                          Component pkg + Entry pkg for RTOS deployment) \
                          [diagnostic: application-rtos-deploy-forbidden]"
                     );
@@ -977,7 +981,7 @@ mod tests {
             pkg.join("Cargo.toml"),
             "[package]\nname=\"demo_app\"\nversion=\"0.1.0\"\n\
              [package.metadata.nros.application]\n\
-             deploy = [\"native\", \"freertos\"]\n",
+             deploy = [\"linux\", \"freertos\"]\n",
         )
         .unwrap();
         fs::write(pkg.join("src/lib.rs"), "// stub\n").unwrap();
@@ -1000,12 +1004,31 @@ mod tests {
             pkg.join("Cargo.toml"),
             "[package]\nname=\"demo_app\"\nversion=\"0.1.0\"\n\
              [package.metadata.nros.application]\n\
+             deploy = [\"linux\"]\n",
+        )
+        .unwrap();
+        fs::write(pkg.join("src/lib.rs"), "// stub\n").unwrap();
+        let report = check_workspace(&root).expect("host-only application ok");
+        assert_eq!(report.pkgs_visited, 1);
+    }
+
+    /// phase-500 W1 — `native` no longer names the host board; the refusal
+    /// names its replacement instead of calling it an RTOS.
+    #[test]
+    fn check_workspace_refuses_retired_native_deploy_with_hint() {
+        let root = temp_root("o6_app_retired_native");
+        let pkg = root.join("demo_app");
+        fs::create_dir_all(pkg.join("src")).unwrap();
+        fs::write(
+            pkg.join("Cargo.toml"),
+            "[package]\nname=\"demo_app\"\nversion=\"0.1.0\"\n\
+             [package.metadata.nros.application]\n\
              deploy = [\"native\"]\n",
         )
         .unwrap();
         fs::write(pkg.join("src/lib.rs"), "// stub\n").unwrap();
-        let report = check_workspace(&root).expect("native-only application ok");
-        assert_eq!(report.pkgs_visited, 1);
+        let msg = check_workspace(&root).unwrap_err().to_string();
+        assert!(msg.contains("write `linux`"), "diag: {msg}");
     }
 
     /// Verifies workspace checks accept application packages without a deploy list.
@@ -1132,7 +1155,7 @@ mod tests {
             b.join("system.toml"),
             format!(
                 "[system]\nname = \"demo\"\nrmw = \"zenoh\"\ndomain_id = 0\n\n\
-                 [image.demo]\nboard = \"native\"\nentry = \"{entry_dir}\"\n"
+                 [image.demo]\nboard = \"linux\"\nentry = \"{entry_dir}\"\n"
             ),
         )
         .unwrap();
@@ -1236,7 +1259,7 @@ mod tests {
             format!(
                 "[system]\nname = \"{dir}\"\n\n[[component]]\npkg = \"{dir}\"\n\
                  class = \"{dir}::Stub\"\nname = \"stub\"\n{dispatch_line}\n\
-                 [image.native]\nboard = \"native\"\n"
+                 [image.native]\nboard = \"linux\"\n"
             ),
         )
         .unwrap();

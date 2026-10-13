@@ -16,4 +16,4 @@ name = "raw_goal_probe"
 
 # Host build.
 [image.native]
-board = "native"
+board = "linux"

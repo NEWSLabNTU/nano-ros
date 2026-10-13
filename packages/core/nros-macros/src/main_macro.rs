@@ -630,6 +630,10 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                     .and_then(|v| syn::parse_str::<SynPath>(v.trim()).ok())
             });
             let resolved = resolved.ok_or_else(|| {
+                // phase-500 W1 — a retired key gets its replacement, not a list.
+                if let Some(hint) = nros_entry_lower::retired_board_key_hint(&deploy) {
+                    return syn::Error::new(Span::call_site(), format!("nros::main!: {hint}"));
+                }
                 syn::Error::new(
                     Span::call_site(),
                     format!(
@@ -906,12 +910,10 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         }
 
         let rtos = derive_target_rtos(deploy_for_framework.as_deref());
-        let board_key = deploy_for_framework.as_deref().unwrap_or("native");
+        let board_key = deploy_for_framework.as_deref().unwrap_or("linux");
 
         // Slice: keep the nodes this Entry's board deploys. No deploy layer =
-        // every node (single-image default). Board match mirrors the CLI's
-        // `plan_from_model`: Linux target ⇒ native/posix; Mcu target ⇒ exact
-        // board key OR the deploy's `kind` family (extra.kind, e.g. "zephyr").
+        // every node (single-image default).
         // (The bake-time host filter is gone — phase-326 / issue 0364:
         // multi-host partitions at RESOLVE time, so a per-host model already
         // contains only that host's nodes.)
@@ -4017,7 +4019,7 @@ mod image_plan_tests {
 fn derive_target_rtos(deploy: Option<&str>) -> String {
     match deploy {
         Some(key) => nros_entry_lower::tier_rtos_key_for(key),
-        None => nros_entry_lower::BoardFamily::Native.tier_rtos_key(),
+        None => nros_entry_lower::BoardFamily::Linux.tier_rtos_key(),
     }
     .to_string()
 }
@@ -4063,8 +4065,7 @@ mod target_rtos_tests {
     #[test]
     fn rtos_keys_keep_their_rtos() {
         for (key, rtos) in [
-            ("native", "posix"),
-            ("posix", "posix"),
+            ("linux", "posix"),
             ("freertos", "freertos"),
             ("mps2-an385-freertos", "freertos"),
             ("freertos-qemu-mps2-an385", "freertos"),
@@ -5231,7 +5232,7 @@ mod derived_sizing_tests {
         // posix honors the emitted sizing (which covers the count by
         // construction); a wiring-free model has nothing to assert; an
         // explicit `board = <Zst>` has no key to classify.
-        assert!(executor_capacity_assert(9, Some("posix"), EntrySizing::Derived(12)).is_empty());
+        assert!(executor_capacity_assert(9, Some("linux"), EntrySizing::Derived(12)).is_empty());
         assert!(executor_capacity_assert(0, Some("zephyr"), EntrySizing::BuildDefault).is_empty());
         assert!(executor_capacity_assert(9, None, EntrySizing::BuildDefault).is_empty());
     }
@@ -5370,7 +5371,7 @@ mod framework_ssot_tests {
     #[test]
     fn in_tree_board_keys_resolve_to_an_emit_shape() {
         for key in [
-            "native",
+            "linux",
             "freertos",
             "threadx-linux",
             "threadx-qemu-riscv64",
@@ -5403,7 +5404,7 @@ mod framework_ssot_tests {
         // SAFETY: every reader of the variable in this crate's tests holds
         // `TEST_ENV_LOCK`; the var is removed below.
         unsafe { std::env::set_var("NROS_BOARD_FRAMEWORK", "embasy") };
-        let err = try_framework_for("native").unwrap_err();
+        let err = try_framework_for("linux").unwrap_err();
         assert!(
             err.contains("embasy"),
             "the error must name the bad value: {err}"
@@ -5411,7 +5412,7 @@ mod framework_ssot_tests {
         assert!(err.contains("embassy"), "and list the known ones: {err}");
 
         unsafe { std::env::set_var("NROS_BOARD_FRAMEWORK", "embassy") };
-        assert_eq!(try_framework_for("native").unwrap(), Framework::Embassy);
+        assert_eq!(try_framework_for("linux").unwrap(), Framework::Embassy);
         unsafe { std::env::remove_var("NROS_BOARD_FRAMEWORK") };
     }
 
@@ -5444,7 +5445,9 @@ mod framework_ssot_tests {
             }
         }
         // Both arms must be exercised, or the assertion above is one-sided.
-        assert!(hosted >= 2, "only {hosted} hosted board key(s)");
+        // One hosted key since phase-500 W1 dropped `native` (`linux` is the
+        // host board's one name).
+        assert!(hosted >= 1, "only {hosted} hosted board key(s)");
         assert!(
             freestanding >= 10,
             "only {freestanding} freestanding board key(s)"
@@ -5766,7 +5769,7 @@ mod leaf_axis_tests {
     /// registered.
     #[test]
     fn form1_wires_a_declared_param_services_axis() {
-        let out = expand("", "native", "features = [\"param_services\"]").unwrap();
+        let out = expand("", "linux", "features = [\"param_services\"]").unwrap();
         assert!(
             out.contains("apply_param_services"),
             "no services wired:\n{out}"
@@ -5781,7 +5784,7 @@ mod leaf_axis_tests {
     fn form1_wires_lifecycle_with_its_autostart_and_asserts_every_axis_feature() {
         let out = expand(
             "",
-            "native",
+            "linux",
             "features = [\"lifecycle\", \"rosout\", \"safety\"]\n\n[lifecycle]\nautostart = \"active\"",
         )
         .unwrap();
@@ -5803,7 +5806,7 @@ mod leaf_axis_tests {
     /// assertions above are about the declaration.
     #[test]
     fn a_leaf_with_no_features_wires_nothing() {
-        let out = expand("", "native", "").unwrap();
+        let out = expand("", "linux", "").unwrap();
         for absent in [
             "apply_param_services",
             "apply_lifecycle",
@@ -5816,7 +5819,7 @@ mod leaf_axis_tests {
 
     #[test]
     fn an_axis_that_cannot_be_honoured_is_refused_by_name() {
-        let e = expand("", "native", "features = [\"param_servics\"]").unwrap_err();
+        let e = expand("", "linux", "features = [\"param_servics\"]").unwrap_err();
         assert!(
             e.contains("param_servics") && e.contains("known axes"),
             "{e}"

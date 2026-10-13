@@ -438,7 +438,7 @@ mod tests {
     fn image_env_is_written_as_an_unforced_env_table() {
         let td = leaf_dir(
             "[system]\nname = \"c\"\nrmw = \"zenoh\"\n\n\
-             [image.native]\nboard = \"native\"\ntransport = \"serial\"\n\
+             [image.native]\nboard = \"linux\"\ntransport = \"serial\"\n\
              env = { NROS_LOG_MAX_LEVEL = \"warn\", NROS_LINK_IP = \"1\", Q = \"a\\\"b\" }\n",
         );
         let leaf = leaf_system::read(td.path()).unwrap().unwrap();
@@ -478,7 +478,7 @@ mod tests {
     fn a_retired_image_env_key_is_refused() {
         let td = leaf_dir(
             "[system]\nname = \"c\"\nrmw = \"zenoh\"\n\n\
-             [image.native]\nboard = \"native\"\n\
+             [image.native]\nboard = \"linux\"\n\
              env = { ZPICO_MAX_QUERYABLES = \"4\" }\n", // retired spelling: the refusal case
         );
         let leaf = leaf_system::read(td.path()).unwrap().unwrap();
@@ -492,7 +492,7 @@ mod tests {
         // Negative control: the canonical key is carried as written.
         let td = leaf_dir(
             "[system]\nname = \"c\"\nrmw = \"zenoh\"\n\n\
-             [image.native]\nboard = \"native\"\n\
+             [image.native]\nboard = \"linux\"\n\
              env = { NROS_ZENOH_MAX_QUERYABLES = \"4\" }\n",
         );
         let leaf = leaf_system::read(td.path()).unwrap().unwrap();

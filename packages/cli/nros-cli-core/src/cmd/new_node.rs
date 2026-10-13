@@ -2,7 +2,7 @@
 //!
 //! WHY THIS VERB EXISTS
 //!
-//! There was no way to make one. `nros new <name> --platform native` produces a
+//! There was no way to make one. `nros new <name> --platform linux` produces a
 //! standalone RUNNABLE project, which pins a board crate and a platform port —
 //! correct for what it is, and wrong for a package an entry links onto a
 //! different platform. Building a workspace with one showed exactly that:
@@ -289,7 +289,7 @@ mod tests {
 
     /// The whole point of the verb: a node package names NO platform.
     ///
-    /// `nros new <name> --platform native` pins `nros-board-linux` and a
+    /// `nros new <name> --platform linux` pins `nros-board-linux` and a
     /// platform port, so a Zephyr entry linking it fails with `no matching
     /// package named 'nros-board-linux'`. A node package must be deployable
     /// to any board its entry chooses.

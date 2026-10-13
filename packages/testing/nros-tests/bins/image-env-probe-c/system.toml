@@ -25,7 +25,7 @@ class = "image_env_probe_c::Probe"
 name = "image_env_probe"
 
 [image.native]
-board = "native"
+board = "linux"
 
 [image.native.knobs.executor]
 max_cbs = 13

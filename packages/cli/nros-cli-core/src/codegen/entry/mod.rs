@@ -15,7 +15,7 @@
 //! let plan = plan_from_launch(PlanInput {
 //!     workspace: ws.as_path(),
 //!     launch_spec: "demo_bringup:system.launch.xml",
-//!     board: Some("native".into()),
+//!     board: Some("linux".into()),
 //!     arg_overrides: vec![],
 //! })?;
 //! // phase-494 — one renderer for every C-ABI pack; the language picks the
@@ -71,7 +71,7 @@ pub type Lang = nros_lang::Language;
 /// Resolved plan handed to one of the three emitters.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Plan {
-    /// Board key from [`PlanInput::board`]; `"native"` by default.
+    /// Board key from [`PlanInput::board`]; `"linux"` (the host board) by default.
     pub board: String,
     /// Per-node entries in launch-file order (top-scope first, then
     /// each `<group>`'s children). Duplicates per `(pkg, exec)` are
@@ -429,11 +429,8 @@ fn non_qos_params(params: &[(String, String)]) -> Vec<(String, String)> {
 /// — the embedded image has no record.json), execution supplies tiers,
 /// group bindings, capability features, and per-node deploy facts.
 ///
-/// Board slice: with deploy entries present, `board == "native"/"posix"`
-/// keeps `linux`-targeted nodes and any other board key keeps
-/// `mcu:<that board>` nodes; a model WITHOUT deploy entries deploys every
-/// node (single-image case). An empty slice is a hard error — a bake for
-/// a board no node targets is a placement bug, not an empty entry.
+/// `board` picks the tier sub-table (`nros_entry_lower::tier_rtos_key_for`);
+/// which nodes this image runs is PLACEMENT (phase-486 W3), never the board.
 pub fn plan_from_model(model_path: &Path, board: Option<String>) -> Result<Plan> {
     use crate::orchestration::model_ingest;
 
@@ -463,7 +460,7 @@ pub fn plan_from_model(model_path: &Path, board: Option<String>) -> Result<Plan>
     // `on_violation` with no `max_age_ms` to detect it by).
     model_ingest::violation_rows(&model)
         .map_err(|e| eyre::eyre!("model `{}`: {e}", model_path.display()))?;
-    let board = board.unwrap_or_else(|| "native".to_string());
+    let board = board.unwrap_or_else(|| "linux".to_string());
     // Issue 1285 — only a key the entry table knows HAS a tier sub-table.
     //
     // This function is shared: `nros codegen entry` (C/C++, where the key must
@@ -1031,7 +1028,7 @@ contracts: {}
         )
         .unwrap();
 
-        let plan = plan_from_model(&model, Some("native".into())).expect("plan from model");
+        let plan = plan_from_model(&model, Some("linux".into())).expect("plan from model");
         let node = &plan.nodes[0];
         let params: BTreeMap<_, _> = node.params.iter().cloned().collect();
 
@@ -1142,7 +1139,7 @@ contracts: {}
     /// Helper that builds a single-node [`Plan`] with the given node name.
     fn single_node_plan(name: &str) -> Plan {
         Plan {
-            board: "native".into(),
+            board: "linux".into(),
             nodes: vec![PlanNode {
                 pkg: "test_pkg".into(),
                 exec: name.into(),
@@ -1308,7 +1305,7 @@ contracts: {}
         ];
 
         let mut plan = Plan {
-            board: "native".into(),
+            board: "linux".into(),
             nodes: vec![
                 PlanNode {
                     pkg: "ctrl_pkg".into(),
@@ -1433,7 +1430,7 @@ contracts: {}
         telem_gt.insert("telem_grp".to_string(), "low".to_string());
 
         let mut plan = Plan {
-            board: "native".into(),
+            board: "linux".into(),
             nodes: vec![
                 PlanNode {
                     pkg: "ctrl_pkg".into(),
@@ -1526,7 +1523,7 @@ contracts: {}
         use std::path::PathBuf;
         fn plan_with(namespace: Option<&str>) -> Plan {
             Plan {
-                board: "native".into(),
+                board: "linux".into(),
                 nodes: vec![PlanNode {
                     pkg: "talker_pkg".into(),
                     exec: "talker".into(),
@@ -1748,7 +1745,7 @@ contracts: {}
     fn resolve_plan_sched_no_tiers_is_noop() {
         use std::path::PathBuf;
         let mut plan = Plan {
-            board: "native".into(),
+            board: "linux".into(),
             nodes: vec![PlanNode {
                 pkg: "talker_pkg".into(),
                 exec: "talker".into(),
@@ -1844,7 +1841,7 @@ contracts: {}
         };
 
         let mut plan = Plan {
-            board: "native".into(),
+            board: "linux".into(),
             nodes: vec![node("fast", None), node("slow", Some("/bay"))],
             depfile_paths: vec![],
             bringup: "demo".into(),

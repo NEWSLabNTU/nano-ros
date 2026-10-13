@@ -40,7 +40,7 @@ name = "mrm_handler"
 rmw = "zenoh"
 
 [image.native]
-board = "native"
+board = "linux"
 
 [image.zephyr]
 board = "zephyr"

@@ -22,7 +22,7 @@ logger = colcon_logger.getChild(__name__)
 # and is kept because `_nros_deploy_to_platform` accepts any non-host name.
 # None means native (no --target flag).
 PLATFORM_TARGETS = {
-    "native": None,
+    "linux": None,
     "freertos": "thumbv7m-none-eabi",
     "baremetal": "thumbv7m-none-eabi",
     "nuttx": "thumbv7m-none-eabi",
@@ -33,7 +33,7 @@ PLATFORM_TARGETS = {
 # Platform → CMake toolchain file name (relative to nano-ros cmake/toolchain/).
 # None means native (no toolchain file).
 PLATFORM_TOOLCHAINS = {
-    "native": None,
+    "linux": None,
     "freertos": "arm-freertos-armcm3.cmake",
     "baremetal": "arm-none-eabi.cmake",
     "nuttx": "arm-nuttx.cmake",
@@ -41,12 +41,12 @@ PLATFORM_TOOLCHAINS = {
     "zephyr": None,  # Zephyr uses west build
 }
 
-# Platform (`deploy=` value) → NROS_PLATFORM CMake cache value. `native`
+# Platform (`deploy=` value) → NROS_PLATFORM CMake cache value. `linux`
 # → `posix` is the identical mapping `_nros_deploy_to_platform` makes in
 # cmake/NanoRosPackageXml.cmake. Falls back to the value itself when unmapped,
 # so CMake refuses an unknown platform module by name rather than here.
 PLATFORM_CMAKE = {
-    "native": "posix",
+    "linux": "posix",
     "freertos": "freertos_armcm3",
     "baremetal": "baremetal",
     "nuttx": "nuttx",

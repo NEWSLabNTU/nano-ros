@@ -7,7 +7,7 @@ Desktop/host examples in C, C++ and Rust. Just module: **`native`**
 
 ```sh
 source ./activate.sh          # PATH: nros, play_launch_parser (zenohd stays off PATH; `just native zenohd` resolves it)
-nros setup native             # host toolchains (zenoh RMW default)
+nros setup linux             # host toolchains (zenoh RMW default)
 ```
 
 No SDK env vars needed for Rust. C/C++ copy-outs resolve the nano-ros root via

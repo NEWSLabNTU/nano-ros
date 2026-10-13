@@ -3,7 +3,7 @@
 The Quick Start runs on `--rmw cyclonedds` — no router daemon exists
 on that path, so "no output" there is never a router problem; skip
 section B's router branches. The zenoh walkthroughs (First Node pages)
-additionally assume `nros setup native --rmw zenoh` has run and the
+additionally assume `nros setup linux --rmw zenoh` has run and the
 ROS 2 zenoh router (`ros2 run rmw_zenoh_cpp rmw_zenohd`) is reachable. When something goes wrong in the first ten minutes, the
 error you see usually points at one of the predictable misses below.
 
@@ -118,7 +118,7 @@ ld: cannot find -lcyclonedds-ddsc
 The Cyclone DDS runtime wasn't provisioned:
 
 ```bash
-nros setup native --rmw cyclonedds
+nros setup linux --rmw cyclonedds
 ```
 
 ### A6. `cargo build --features rmw-cyclonedds` can't link

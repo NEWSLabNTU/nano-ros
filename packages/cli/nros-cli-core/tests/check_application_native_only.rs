@@ -2,7 +2,7 @@
 //! `application-rtos-deploy-forbidden` lint.
 //!
 //! Stages a fixture workspace whose sole pkg declares
-//! `[package.metadata.nros.application]` with `deploy = ["native",
+//! `[package.metadata.nros.application]` with `deploy = ["linux",
 //! "freertos"]`, runs `nros check --workspace <root>`, and asserts the
 //! diagnostic id `application-rtos-deploy-forbidden` surfaces in the error
 //! message (Application pkgs are native-only per Phase 212.L.2 / M-F.1).

@@ -53,7 +53,7 @@ fn cpp_board_class(family: &str) -> Result<String, Error> {
         )
     })?;
     Ok(match f {
-        BoardFamily::Native => "::rclcpp::board::LinuxBoard",
+        BoardFamily::Linux => "::rclcpp::board::LinuxBoard",
         BoardFamily::Zephyr => "::rclcpp::board::ZephyrBoard",
         BoardFamily::Nuttx => "::rclcpp::board::NuttxBoard",
         BoardFamily::Freertos => "::rclcpp::board::FreertosBoard",

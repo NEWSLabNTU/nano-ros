@@ -111,7 +111,7 @@ class TestDeploy:
         # cmake/NanoRosPackageXml.cmake: no cross-compilation requested means
         # the host axis. Not a stand-in for a fact that went missing.
         d = write_pkg(tmp_path, "host_pkg", "<build_type>nros_cargo</build_type>")
-        assert manifest.deploy(d) == "native"
+        assert manifest.deploy(d) == "linux"
 
     def test_a_commented_out_tag_does_not_declare_a_platform(self, tmp_path):
         # Issue 0516's class: a manifest that DOCUMENTS the tag in a comment
@@ -121,7 +121,7 @@ class TestDeploy:
             "commented_pkg",
             '<build_type>nros_cargo</build_type>\n<!-- <nano_ros deploy="freertos"/> -->',
         )
-        assert manifest.deploy(d) == "native"
+        assert manifest.deploy(d) == "linux"
 
 
 class TestNeedsRustBindings:

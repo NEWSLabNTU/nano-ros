@@ -392,6 +392,14 @@ pub fn resolve_board<'a>(catalog: &'a BoardCatalog, board: &str) -> Option<&'a B
     }
 }
 
+/// Why `board` resolved to no descriptor: a retired key's replacement
+/// (phase-500 W1 — `native` is `linux`), else the generic refusal. The callers
+/// of [`resolve_board`] that refuse a miss share this text.
+pub fn unresolved_board(board: &str) -> String {
+    nros_entry_lower::retired_board_key_hint(board)
+        .unwrap_or_else(|| format!("board `{board}` is claimed by no board descriptor"))
+}
+
 /// One candidate: the name it was selected by, and the board it resolves to.
 ///
 /// A BOARD, not the whole block: since the site table became board-keyed

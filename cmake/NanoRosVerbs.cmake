@@ -114,7 +114,7 @@ endfunction()
 #     [PANIC <policy>] [TYPED])
 #
 # Standalone entry. DEPLOY/BOARD default to the package.xml `<export>` tuple in
-# W4; until then DEPLOY defaults to `native` and an embedded board is passed
+# W4; until then DEPLOY defaults to `linux` and an embedded board is passed
 # explicitly (or comes from a prior `nano_ros_use_board`).
 #
 # 287-W6 workspace slice 3 — LAUNCH/TYPED pass through to
@@ -153,7 +153,7 @@ function(nano_ros_add_executable name)
         if(NROS_DEPLOY)
             set(_NRE_DEPLOY "${NROS_DEPLOY}")
         else()
-            set(_NRE_DEPLOY native)
+            set(_NRE_DEPLOY "${NROS_HOST_DEPLOY}")
         endif()
     endif()
     if(NOT _NRE_BOARD AND NROS_BOARD)

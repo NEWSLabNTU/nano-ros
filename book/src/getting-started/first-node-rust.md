@@ -38,7 +38,7 @@ source ./activate.fish        # fish
 Then provision the native host (installs the zenoh client stack into a
 shared store; the router itself comes from your ROS 2 install):
 ```sh
-nros setup native --rmw zenoh
+nros setup linux --rmw zenoh
 ```
 
 See [Install + first build (Linux)](./installation.md) for more.
@@ -75,12 +75,12 @@ class = "native_rs_talker::Talker"
 name  = "talker"
 
 [image.native]
-board = "native"
+board = "linux"
 ```
 
 **You never hand-write a build setting.** No target triple, no linker
 flag, no `[patch.crates-io]` table, no `.cargo/config.toml`: `nros sync`
-derives every one of those from `board = "native"` and writes them to
+derives every one of those from `board = "linux"` and writes them to
 `build/native/nros-cargo.toml`, which `nros build` hands cargo with
 `--config`.
 

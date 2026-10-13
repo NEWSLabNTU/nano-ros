@@ -13,7 +13,7 @@ workspace, then provision the board's toolchain with `nros setup`:
 # Build the in-tree nros CLI (Phase 218), then provision your board (+ RMW):
 ./scripts/bootstrap.sh base
 source ./activate.sh        # OR: direnv allow / source ./activate.fish
-nros setup native --rmw zenoh        # or mps2-an385-freertos, zephyr, …
+nros setup linux --rmw zenoh        # or mps2-an385-freertos, zephyr, …
 ```
 
 `nros setup` provides most components prebuilt per platform per RMW; a few
@@ -104,7 +104,7 @@ class = "my_robot_node::Talker"
 name  = "talker"
 
 [image.native]               # one per program you want to build
-board = "native"
+board = "linux"
 
 [image.mps2]                 # an embedded image carries its network identity too
 board   = "qemu-mps2-an385"

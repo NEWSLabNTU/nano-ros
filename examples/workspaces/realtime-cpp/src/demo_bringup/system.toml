@@ -194,14 +194,14 @@ rmw = "cyclonedds"
 conf = ["prj.conf", "prj-cyclonedds.conf"]
 
 [image.native]
-board = "native"
+board = "linux"
 
 [image.native_rclcpp]
-board = "native"
+board = "linux"
 launch = "rclcpp_system.launch.xml"
 
 [image.native_subnode]
-board = "native"
+board = "linux"
 launch = "subnode_system.launch.xml"
 
 [image.nuttx]

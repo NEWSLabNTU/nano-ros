@@ -90,14 +90,14 @@ table row in the Bringup pkg's `system.toml`:
 rmw = "zenoh"
 
 [image.native]
-board = "native"
+board = "linux"
 
 [image.freertos]
 board = "mps2-an385-freertos"
 panic = "own"
 
 [image.native_robot1]
-board  = "native"
+board  = "linux"
 launch = "multihost.launch.xml"
 args   = { host = "robot1" }
 ```
@@ -231,7 +231,7 @@ package *and* its `[image.*]` row together. The verb accepts no other platform,
 and says why:
 
 ```text
-`nros new entry` currently scaffolds Zephyr entries only (got --platform native).
+`nros new entry` currently scaffolds Zephyr entries only (got --platform linux).
 Every other platform builds through cargo or cmake, where the entry is
 GENERATED from the image and needs no package of its own (RFC-0065 D3).
 ```
@@ -295,7 +295,7 @@ class = "native_rs_talker::Talker"
 name = "talker"
 
 [image.native]
-board = "native"
+board = "linux"
 ```
 
 ```rust,ignore
@@ -367,7 +367,7 @@ more nodes means a workspace with a Bringup pkg.
 |---|---|
 | Reusable node logic, board-independent | Node pkg (`nros::node!()`) |
 | A runnable program: N nodes on one board | An `[image.<id>]` row + `nros build <id>` |
-| A single-node project with no workspace | One package with its own `system.toml` — `[image.native] board = "native"` |
+| A single-node project with no workspace | One package with its own `system.toml` — `[image.native] board = "linux"` |
 | Same nodes on multiple boards | One Node pkg set + one `[image.*]` row per board |
 | Launch topology + the image table | Bringup pkg (declarative — the one package a workspace must have) |
 | A Zephyr application directory | `nros new entry <name> --platform zephyr` |

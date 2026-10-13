@@ -50,9 +50,14 @@ target_compile_options(nros_platform_posix PRIVATE
 # Cargo's cc-rs path handles linking via `cargo:rustc-link-lib`; the
 # CMake target carries them as INTERFACE link libraries so downstream
 # find_package consumers inherit both.
+#
+# phase-500 W1 — librt is a GLIBC split, a LINUX fact, so it is derived from
+# the target system rather than asserted for every POSIX system.
 find_package(Threads REQUIRED)
 target_link_libraries(nros_platform_posix PUBLIC Threads::Threads)
-target_link_libraries(nros_platform_posix PUBLIC rt)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    target_link_libraries(nros_platform_posix PUBLIC rt)
+endif()
 
 # Phase 140 — install rules + Config.cmake.in template deleted.
 # Consumed in-tree via `add_subdirectory(...)` from

@@ -72,7 +72,7 @@ Zephyr or NuttX workspace? Two-step path:
 
 1. **Linux first** — [First Project](../getting-started/first-project.md)
    on your host verifies the whole stack in ~10 minutes, with no daemon
-   and no ROS 2 install: `nros setup native --rmw cyclonedds`, one
+   and no ROS 2 install: `nros setup linux --rmw cyclonedds`, one
    scaffold command, then `nros sync` and `nros build`.
 2. **Then your target** — start at
    **[How Integration Works](../getting-started/how-integration-works.md)**:
@@ -98,7 +98,7 @@ first, then move it to your target.
 
 1. **[Install](../getting-started/installation.md)** — three commands:
    `./scripts/bootstrap.sh`, `source ./activate.sh` (every new shell),
-   then `nros setup native --rmw cyclonedds`. Those set up the machine;
+   then `nros setup linux --rmw cyclonedds`. Those set up the machine;
    the per-project step comes next.
 2. **[First Project](../getting-started/first-project.md)** — one
    scaffolded workspace, then `nros sync` and `nros build`, publishing

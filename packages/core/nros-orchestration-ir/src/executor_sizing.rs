@@ -214,7 +214,7 @@ pub fn derive_max_callbacks(counted: usize) -> usize {
 /// read) is "unknown" — reported as not honoring is a false alarm, so callers
 /// skip the check instead.
 pub fn board_honors_entry_sizing(deploy_key: &str) -> bool {
-    matches!(deploy_key, "native" | "posix")
+    crate::is_host_board_key(deploy_key)
 }
 
 #[cfg(test)]
@@ -285,8 +285,13 @@ mod tests {
 
     #[test]
     fn only_hosted_boards_honor_entry_sizing() {
-        assert!(board_honors_entry_sizing("native"));
-        assert!(board_honors_entry_sizing("posix"));
+        assert!(
+            !board_honors_entry_sizing("native"),
+            "phase-500: `native` is no board"
+        );
+        assert!(board_honors_entry_sizing("linux"));
+        // `posix` is not a name of any board.
+        assert!(!board_honors_entry_sizing("posix"));
         assert!(!board_honors_entry_sizing("zephyr"));
         assert!(!board_honors_entry_sizing("freertos"));
     }

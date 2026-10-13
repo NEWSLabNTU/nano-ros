@@ -277,7 +277,7 @@ fn tier_spec(
 /// The matrix. One row per (board family x entry shape) that reaches a
 /// compiler, because the emitter is what every C/C++ image boots through.
 pub(super) fn cases() -> Vec<(&'static str, Plan, Emitter)> {
-    let boards = ["native", "zephyr", "nuttx", "freertos", "threadx"];
+    let boards = ["linux", "zephyr", "nuttx", "freertos", "threadx"];
     let mut out: Vec<(&'static str, Plan, Emitter)> = Vec::new();
 
     // Keep the names 'static without a macro: one arm per board.
@@ -291,7 +291,7 @@ pub(super) fn cases() -> Vec<(&'static str, Plan, Emitter)> {
             ],
         );
         let (n1, n2, nc) = match board {
-            "native" => ("cpp_native_one", "cpp_native_two", "c_native_one"),
+            "linux" => ("cpp_native_one", "cpp_native_two", "c_native_one"),
             "zephyr" => ("cpp_zephyr_one", "cpp_zephyr_two", "c_zephyr_one"),
             "nuttx" => ("cpp_nuttx_one", "cpp_nuttx_two", "c_nuttx_one"),
             "freertos" => ("cpp_freertos_one", "cpp_freertos_two", "c_freertos_one"),
@@ -317,7 +317,7 @@ pub(super) fn cases() -> Vec<(&'static str, Plan, Emitter)> {
     out.push((
         "c_native_rich",
         plan(
-            "native",
+            "linux",
             // The same package TWICE plus a second one: the forward-declaration
             // loop dedups by package, so a repeat must not emit a second
             // `extern` while it still gets its own node storage.
@@ -353,19 +353,19 @@ pub(super) fn cases() -> Vec<(&'static str, Plan, Emitter)> {
             value: 2,
         },
     ];
-    out.push(("c_native_qos", plan("native", vec![c_qos]), Emitter::C));
+    out.push(("c_native_qos", plan("linux", vec![c_qos]), Emitter::C));
 
-    let mut c_svc = plan("native", vec![c_node("c_talker_pkg", "talker")]);
+    let mut c_svc = plan("linux", vec![c_node("c_talker_pkg", "talker")]);
     c_svc.param_services = true;
     c_svc.lifecycle = Some("active".into());
     out.push(("c_native_services", c_svc, Emitter::C));
 
-    let mut c_tier_svc = c_tiered_plan("native");
+    let mut c_tier_svc = c_tiered_plan("linux");
     c_tier_svc.param_services = true;
     c_tier_svc.lifecycle = Some("configure".into());
     out.push(("c_native_tiers_services", c_tier_svc, Emitter::C));
 
-    out.push(("c_native_tiers", c_tiered_plan("native"), Emitter::C));
+    out.push(("c_native_tiers", c_tiered_plan("linux"), Emitter::C));
     out.push(("c_nuttx_tiers", c_tiered_plan("nuttx"), Emitter::C));
     // issue 1551 — Zephyr's runner takes the tiers' executor storage, so this
     // is the row that pins the emitted `.bss` static and the `_in` call.
@@ -389,12 +389,12 @@ pub(super) fn cases() -> Vec<(&'static str, Plan, Emitter)> {
     // C++ pack's single-executor rows.
     out.push((
         "c_native_group_split",
-        group_split(c_tiered_plan("native")),
+        group_split(c_tiered_plan("linux")),
         Emitter::C,
     ));
     out.push((
         "c_native_groups_default_tier",
-        c_default_tier_plan("native"),
+        c_default_tier_plan("linux"),
         Emitter::C,
     ));
 
@@ -404,7 +404,7 @@ pub(super) fn cases() -> Vec<(&'static str, Plan, Emitter)> {
     // them are the reference it mirrors.
     let monitored_pair = || {
         plan(
-            "native",
+            "linux",
             vec![
                 c_node("c_talker_pkg", "talker"),
                 c_node("c_listener_pkg", "listener"),
@@ -414,13 +414,13 @@ pub(super) fn cases() -> Vec<(&'static str, Plan, Emitter)> {
     out.push(("c_native_monitors", monitored_pair(), Emitter::CMonitored));
     out.push((
         "c_native_tiers_monitors",
-        c_tiered_plan("native"),
+        c_tiered_plan("linux"),
         Emitter::CMonitored,
     ));
     out.push((
         "cpp_native_monitors",
         plan(
-            "native",
+            "linux",
             vec![
                 typed_node("talker_pkg", "talker"),
                 typed_node("listener_pkg", "listener"),
@@ -431,7 +431,7 @@ pub(super) fn cases() -> Vec<(&'static str, Plan, Emitter)> {
 
     out.push((
         "rust_native_one",
-        plan("native", vec![node("talker_pkg", "talker", None)]),
+        plan("linux", vec![node("talker_pkg", "talker", None)]),
         Emitter::Rust,
     ));
 
@@ -457,7 +457,7 @@ pub(super) fn cases() -> Vec<(&'static str, Plan, Emitter)> {
     }];
     out.push((
         "rust_native_rich",
-        plan("native", vec![rich, node("listener_pkg", "listener", None)]),
+        plan("linux", vec![rich, node("listener_pkg", "listener", None)]),
         Emitter::Rust,
     ));
 
@@ -492,7 +492,7 @@ pub(super) fn cases() -> Vec<(&'static str, Plan, Emitter)> {
     out.push((
         "cpp_native_rich",
         plan(
-            "native",
+            "linux",
             vec![cpp_rich, typed_node("listener_pkg", "listener")],
         ),
         Emitter::Cpp,
@@ -526,7 +526,7 @@ pub(super) fn cases() -> Vec<(&'static str, Plan, Emitter)> {
     out.push((
         "cpp_native_shapes",
         plan(
-            "native",
+            "linux",
             vec![
                 typed_node("talker_pkg", "talker"),
                 dup_header,
@@ -544,12 +544,12 @@ pub(super) fn cases() -> Vec<(&'static str, Plan, Emitter)> {
     // param-services + lifecycle close a setup function with a block no other
     // C++ row emits, on BOTH paths — and on the tiered path only tier 0 gets
     // it, because they are process facts rather than per-tier ones.
-    let mut cpp_svc = plan("native", vec![typed_node("talker_pkg", "talker")]);
+    let mut cpp_svc = plan("linux", vec![typed_node("talker_pkg", "talker")]);
     cpp_svc.param_services = true;
     cpp_svc.lifecycle = Some("active".into());
     out.push(("cpp_native_services", cpp_svc, Emitter::Cpp));
 
-    let mut cpp_tier_svc = cpp_tiered_plan("native");
+    let mut cpp_tier_svc = cpp_tiered_plan("linux");
     cpp_tier_svc.param_services = true;
     cpp_tier_svc.lifecycle = Some("configure".into());
     out.push(("cpp_native_tiers_services", cpp_tier_svc, Emitter::Cpp));
@@ -559,7 +559,7 @@ pub(super) fn cases() -> Vec<(&'static str, Plan, Emitter)> {
     // has no `run_tiers`, so a tiered ThreadX plan takes the single-executor
     // sched-context path instead, and that divergence is the thing worth
     // pinning.
-    out.push(("cpp_native_tiers", cpp_tiered_plan("native"), Emitter::Cpp));
+    out.push(("cpp_native_tiers", cpp_tiered_plan("linux"), Emitter::Cpp));
     out.push(("cpp_zephyr_tiers", cpp_tiered_plan("zephyr"), Emitter::Cpp));
     out.push(("cpp_nuttx_tiers", cpp_tiered_plan("nuttx"), Emitter::Cpp));
     out.push((
@@ -583,7 +583,7 @@ pub(super) fn cases() -> Vec<(&'static str, Plan, Emitter)> {
     // the one row where a native tiered plan does NOT take `run_tiers`.
     out.push((
         "cpp_native_group_split",
-        group_split(cpp_tiered_plan("native")),
+        group_split(cpp_tiered_plan("linux")),
         Emitter::Cpp,
     ));
 
@@ -591,14 +591,14 @@ pub(super) fn cases() -> Vec<(&'static str, Plan, Emitter)> {
     // returns BEFORE the boot config and the board wrapper.
     out.push((
         "cpp_native_probe",
-        plan("native", vec![typed_node("talker_pkg", "talker")]),
+        plan("linux", vec![typed_node("talker_pkg", "talker")]),
         Emitter::CppProbe,
     ));
 
     // #0266 — `time_slice_us` has no C++ tier-ABI field, so the emitter
     // REFUSES rather than dropping a declared value. The harness records a
     // refusal as its golden, so this row pins the refusal itself.
-    let mut ts = cpp_tiered_plan("native");
+    let mut ts = cpp_tiered_plan("linux");
     if let Some(t) = ts.resolved_tiers.as_mut() {
         t.tiers[0].time_slice_us = Some(2_000);
     }
@@ -620,7 +620,7 @@ pub(super) fn cases() -> Vec<(&'static str, Plan, Emitter)> {
     //
     // Five boards x two languages: every boot shape (host / kernel / app) and
     // both component seams (the C++ class, the C factory/configure pair).
-    for board in ["native", "zephyr", "nuttx", "threadx", "freertos"] {
+    for board in ["linux", "zephyr", "nuttx", "threadx", "freertos"] {
         let cpp_node = super::registered_node::RegisteredNode {
             board: board.into(),
             node_name: "talker".into(),
@@ -657,7 +657,7 @@ pub(super) fn cases() -> Vec<(&'static str, Plan, Emitter)> {
     // enough: the shape selects the component body, and the board selects the
     // boot wrapper, which the ten rows above already cover.
     let rclcpp = super::registered_node::RegisteredNode {
-        board: "native".into(),
+        board: "linux".into(),
         node_name: "talker".into(),
         pkg_sym: "talker_pkg".into(),
         language: Lang::Cpp,
@@ -665,7 +665,7 @@ pub(super) fn cases() -> Vec<(&'static str, Plan, Emitter)> {
         header: Some("talker_pkg/Talker.hpp".into()),
         shape: Some("rclcpp".into()),
     };
-    out.push(("node_register_native_rclcpp", rclcpp.plan(), Emitter::Cpp));
+    out.push(("node_register_linux_rclcpp", rclcpp.plan(), Emitter::Cpp));
 
     out
 }
@@ -890,7 +890,7 @@ fn branch_of(src: &str) -> super::ExecutorShape {
 fn both_entry_packs_take_the_plans_executor_branch() {
     use super::ExecutorShape::{SchedContexts, Single, Tiers};
     let mut checked = 0usize;
-    for board in ["native", "zephyr", "nuttx", "freertos", "threadx"] {
+    for board in ["linux", "zephyr", "nuttx", "freertos", "threadx"] {
         // Written out, not derived from `board_has_run_tiers`: this test
         // checks that predicate too.
         let multi_tier = if board == "threadx" {
@@ -993,7 +993,7 @@ fn sched_call_checks(src: &str) -> ([usize; 3], Vec<String>) {
 #[test]
 fn both_entry_packs_check_every_sched_binding() {
     let mut rendered = 0usize;
-    for board in ["native", "zephyr", "nuttx", "freertos", "threadx"] {
+    for board in ["linux", "zephyr", "nuttx", "freertos", "threadx"] {
         let mut plans = vec![("group split", group_split(c_tiered_plan(board)))];
         if board == "threadx" {
             plans.push(("multi-tier", c_tiered_plan(board)));

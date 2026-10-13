@@ -17,7 +17,7 @@ rmw = "zenoh"
 domain_id = 0
 
 [image.native]
-board = "native"
+board = "linux"
 env = { NROS_BOOT_REPORT = "1" }
 
 [image.native.knobs.log]

@@ -342,7 +342,7 @@ mod tests {
     /// stale literal asserting the old answer.
     #[test]
     fn a_c_entry_renders_as_c_exactly_where_the_board_has_a_c_runner() {
-        for board in ["native", "zephyr", "nuttx", "freertos", "threadx"] {
+        for board in ["linux", "zephyr", "nuttx", "freertos", "threadx"] {
             let has_runner = nros_entry_lower::board_family(board)
                 .unwrap()
                 .has_c_run_components();
@@ -379,7 +379,7 @@ mod tests {
     #[test]
     fn the_c_board_surface_is_where_this_phase_left_it() {
         use nros_entry_lower::BoardFamily;
-        assert!(BoardFamily::Native.has_c_run_components());
+        assert!(BoardFamily::Linux.has_c_run_components());
         assert!(BoardFamily::Freertos.has_c_run_components());
         assert!(BoardFamily::Zephyr.has_c_run_components());
         assert!(BoardFamily::Nuttx.has_c_run_components());
@@ -404,7 +404,7 @@ mod tests {
     /// A Rust entry is not a C-family TU, so CMake must not link it as one.
     #[test]
     fn a_rust_entry_is_not_c_family() {
-        let got = entry_pack_for(Language::Rust, "native").unwrap();
+        let got = entry_pack_for(Language::Rust, "linux").unwrap();
         assert!(!got.c_family);
         assert_eq!(got.extension, "rs");
     }

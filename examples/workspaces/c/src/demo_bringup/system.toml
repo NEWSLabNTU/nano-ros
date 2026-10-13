@@ -98,43 +98,43 @@ board = "freertos-posix"
 rmw = "cyclonedds"
 
 [image.native]
-board = "native"
+board = "linux"
 
 [image.native_action_client]
-board = "native"
+board = "linux"
 launch = "action_client.launch.xml"
 
 [image.native_action_server]
-board = "native"
+board = "linux"
 launch = "action_server.launch.xml"
 
 # RMW variants of the default topology. On the CMAKE driver an image's `rmw`
 # genuinely configures the build (it becomes `-DNROS_RMW`), unlike the cargo
 # driver where it only names a directory — issue 0831.
 [image.native_cyclonedds]
-board = "native"
+board = "linux"
 rmw = "cyclonedds"
 
 [image.native_xrce]
-board = "native"
+board = "linux"
 rmw = "xrce"
 
 [image.native_robot1]
-board = "native"
+board = "linux"
 launch = "multihost.launch.xml"
 args = { host = "robot1" }
 
 [image.native_robot2]
-board = "native"
+board = "linux"
 launch = "multihost.launch.xml"
 args = { host = "robot2" }
 
 [image.native_service_client]
-board = "native"
+board = "linux"
 launch = "service_client.launch.xml"
 
 [image.native_service_server]
-board = "native"
+board = "linux"
 launch = "service_server.launch.xml"
 
 [image.nuttx]

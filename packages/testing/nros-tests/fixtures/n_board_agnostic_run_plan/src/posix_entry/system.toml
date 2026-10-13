@@ -13,4 +13,4 @@ domain_id = 0
 # is the ROLE word (host build, not cross), which is what this fixture is
 # actually contrasting against its `freertos_entry` sibling.
 [image.native]
-board = "native"
+board = "linux"

@@ -73,7 +73,7 @@ ThreadX) they are real task priorities.
 ```bash
 source ./activate.sh
 cd examples/workspaces/realtime-rust
-nros setup native
+nros setup linux
 nros sync
 nros build native
 ./build/posix-zenoh/native_entry/target/debug/native_entry

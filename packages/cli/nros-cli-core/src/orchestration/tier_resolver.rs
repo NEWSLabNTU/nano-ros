@@ -438,7 +438,7 @@ mod tests {
         /// teach this function to read a platform out of the string.
         #[test]
         fn no_board_id_is_the_host_default() {
-            let s = sys("[image.fw]\nboard=\"native\"\n");
+            let s = sys("[image.fw]\nboard=\"linux\"\n");
             let empty = crate::orchestration::board_descriptor::BoardCatalog::default();
             assert_eq!(rtos(&s, Some("fw")), Ok("posix"));
             for target in [Some("nope"), Some("zephyr-zenoh"), None] {
@@ -461,7 +461,7 @@ mod tests {
         #[test]
         fn every_in_tree_image_board_reads_its_platform() {
             for (id, want) in [
-                ("native", "posix"),
+                ("linux", "posix"),
                 ("zephyr", "zephyr"),
                 ("threadx-linux", "threadx"),
                 ("rv-virt-threadx", "threadx"),
@@ -546,7 +546,7 @@ mod tests {
             );
             // Descriptor NAMES. (`mps2-an385-freertos` resolves too, through
             // the directory alias, but the list names only `names` entries.)
-            for known in ["freertos", "zephyr", "native"] {
+            for known in ["freertos", "zephyr", "linux"] {
                 assert!(err.contains(known), "message omits `{known}`: {err}");
             }
         }

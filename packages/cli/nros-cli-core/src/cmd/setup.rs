@@ -327,7 +327,7 @@ pub fn run(args: Args) -> Result<()> {
         // from a board's `[tool.*]`/`[source.*]` package set. Narrowing it is a
         // redesign of the doctor, not a fix for the silent typo, so the report
         // says what it covered instead of implying the board scoped it.
-        if let Some(notice) = check_board_argument(&index, args.board.as_deref())? {
+        if let Some(notice) = check_board_argument(&index, setup_board_arg(&args).as_deref())? {
             eprintln!("{notice}");
         }
         return run_check_all(&index, &index_workspace(&index_path));
@@ -365,7 +365,8 @@ pub fn run(args: Args) -> Result<()> {
         );
     }
 
-    let board = match args.board.as_deref() {
+    let board_arg = setup_board_arg(&args);
+    let board = match board_arg.as_deref() {
         Some(b) => b,
         None => {
             bail!("nros setup: give a <board>, `--tool <name>`, `--list`, or `--licenses`")
@@ -1477,7 +1478,7 @@ pub fn resolve_index(explicit: &Path) -> Result<PathBuf> {
 /// Issue 1304 — that holds only when the index sits IN a nano-ros root. An
 /// index read from the store (`<store>/fetch/`, RFC-0097 D5) or out of the
 /// release asset (`<prefix>/share/nros/`) sits in neither, so its parent said
-/// nothing about where a source belongs, and an installed `nros setup native`
+/// nothing about where a source belongs, and an installed `nros setup linux`
 /// ran `git ls-tree` in `~/.nros/fetch`. For those two the answer is the SDK
 /// root a BUILD will read — the same four-rung ladder `nros build` and
 /// `nros sdk-root` walk (RFC-0099 D3), so a checkout still wins for a
@@ -1582,7 +1583,7 @@ fn describe_source(
 ///
 /// issue 0374 — installation.md promises "prebuilt toolchains per platform per
 /// RMW", and for the book's own headline board that is not what happens:
-/// `[tool.zenohd]` carries no `dist.<host>` row, so `nros setup native` cargo-
+/// `[tool.zenohd]` carries no `dist.<host>` row, so `nros setup linux` cargo-
 /// builds zenoh 1.7.2. On a first run that took minutes, pulled a SECOND rust
 /// toolchain (the zenoh checkout pins its own), and left 792 MB in the store —
 /// none of it announced. The per-package plan line ("source build … (no
@@ -1743,6 +1744,33 @@ fn describe(action: &InstallAction, version: &str, host: &str) -> String {
 /// board was ever looked up), and a unit test on this function cannot see
 /// dispatch order. It binds the rule; the single call site above is what makes
 /// the rule reachable, and only running the binary proves that.
+/// The `<board>` argument, with a RETIRED board key
+/// (`nros_entry_lower::RETIRED_BOARD_KEYS`) replaced by its successor and a
+/// deprecation notice on stderr.
+///
+/// phase-500 W1 — `native` stopped naming the host board (it is `linux`).
+/// An image that writes `board = "native"` is refused, because a tracked file
+/// can be fixed once. This verb is different: released book pages and READMEs
+/// tell users to type `nros setup linux`, so it keeps working for one cycle
+/// (the same deprecation window phase-500 W2 gives the `native` lane/scope)
+/// and says which word to use instead.
+fn setup_board_arg(args: &Args) -> Option<String> {
+    let board = args.board.as_deref()?;
+    match nros_entry_lower::RETIRED_BOARD_KEYS
+        .iter()
+        .find(|(old, _)| *old == board)
+    {
+        Some((old, now)) => {
+            eprintln!(
+                "nros setup: `{old}` is a deprecated board name; using `{now}` \
+                 (write `nros setup {now}` — phase-500)."
+            );
+            Some((*now).to_string())
+        }
+        None => Some(board.to_string()),
+    }
+}
+
 fn check_board_argument(index: &SdkIndex, board: Option<&str>) -> Result<Option<String>> {
     let Some(board) = board else {
         return Ok(None);
@@ -1830,7 +1858,7 @@ pub const CMAKE_ROAD_TOOL: &str = "corrosion";
 /// RFC-0104 D10 took Corrosion's configure-time fetch away: a configure with no
 /// Corrosion in the store refuses and names `nros setup`. The board's
 /// `packages` list never named it, because the fetch used to cover for it, so
-/// the book's own `nros setup native` produced a host every C/C++ configure
+/// the book's own `nros setup linux` produced a host every C/C++ configure
 /// refused. Whether a board needs it is not authored per board — that would be
 /// a second, hand-kept answer to a question the builder already decides. It is
 /// [`crate::builder::plan::driver_for`] asked for a graph that crosses
@@ -4016,7 +4044,7 @@ mod tests {
         // phase-422 W7. `--check` walks the `[system.*]`/`[rust.*]`/`[python.*]`
         // classes and a board does not narrow that, so the board argument used
         // to be dropped on the floor: `nros setup not-a-board --check` printed
-        // the same all-clear as `nros setup native --check` and exited 0. The
+        // the same all-clear as `nros setup linux --check` and exited 0. The
         // one command a user runs to ASK whether a board is provisionable
         // answered yes for a name that is not a board.
         //
@@ -4116,7 +4144,7 @@ mod tests {
 
     #[test]
     fn shipped_index_native_setup_provisions_what_a_cmake_configure_needs() {
-        // Issue 1839, against the REAL index: the book's `nros setup native
+        // Issue 1839, against the REAL index: the book's `nros setup linux
         // --rmw <any>` must plan the tool `nros_resolve_corrosion()` refuses
         // without, and so must every board whose platform takes the cmake road.
         let path =
@@ -4127,7 +4155,7 @@ mod tests {
             "nros-sdk-index.toml lost [tool.{CMAKE_ROAD_TOOL}]"
         );
         for rmw in idx.rmw.keys() {
-            let set = resolve_packages_with_rmw(&idx, "native", Some(rmw)).unwrap();
+            let set = resolve_packages_with_rmw(&idx, "linux", Some(rmw)).unwrap();
             assert!(
                 set.contains(&CMAKE_ROAD_TOOL),
                 "native --rmw {rmw}: {set:?}"
@@ -5067,11 +5095,17 @@ fn run_workspace_scan(
         // "your deploy is a scope" — that is a message to write, not a branch
         // to keep empty-handed, and it belongs with whoever knows which text
         // each deserves.
-        if scopes.is_empty() || scopes.contains(&t.deploy) {
-            println!(
-                "      contributors: ./scripts/bootstrap.sh  (or: just setup {})",
-                t.deploy
-            );
+        // phase-500 W1 — the host board's deploy token is `linux`, while its
+        // `just setup` scope stays `native` until phase-500 W2 renames it (the
+        // same table as `check-board-vocabulary.py`'s DEPLOY_SCOPE; W2 deletes
+        // both).
+        let scope = if t.deploy == "linux" {
+            "native".to_string()
+        } else {
+            t.deploy.clone()
+        };
+        if scopes.is_empty() || scopes.contains(&scope) {
+            println!("      contributors: ./scripts/bootstrap.sh  (or: just setup {scope})");
         } else {
             let candidates: Vec<&String> = scopes
                 .iter()
@@ -5243,11 +5277,11 @@ mod workspace_scan_tests {
     #[test]
     fn a_family_board_reports_no_separate_board() {
         let sys = "[system]\nname = \"t\"\nrmw = \"zenoh\"\ndomain_id = 0\n\n\
-                   [image.native]\nboard = \"native\"\nrmw = \"cyclonedds\"\n";
+                   [image.native]\nboard = \"linux\"\nrmw = \"cyclonedds\"\n";
         let catalog = shipped_catalog();
         let got = deploy_targets(sys, Some(&catalog));
         assert_eq!(got.len(), 1);
-        assert_eq!(got[0].deploy, "native");
+        assert_eq!(got[0].deploy, "linux");
         assert_eq!(got[0].board, None);
         assert_eq!(got[0].rmw.as_deref(), Some("cyclonedds"));
     }

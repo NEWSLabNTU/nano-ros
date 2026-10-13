@@ -7,5 +7,5 @@ macro(verdict_body)
     nano_ros_entry(
         NAME my_app
         SOURCES src/dummy.cpp
-        DEPLOY native zephyr)
+        DEPLOY linux zephyr)
 endmacro()

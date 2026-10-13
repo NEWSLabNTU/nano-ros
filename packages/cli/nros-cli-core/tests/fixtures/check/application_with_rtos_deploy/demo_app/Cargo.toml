@@ -9,4 +9,4 @@ version = "0.1.0"
 edition = "2021"
 
 [package.metadata.nros.application]
-deploy = ["native", "freertos"]
+deploy = ["linux", "freertos"]

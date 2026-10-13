@@ -323,8 +323,10 @@ example-platform-not-shadowed:
 executor-stack-floor:
     @python3 scripts/check-executor-stack-floor.py
 
-# `native` is a ROLE (host build); `posix` and `linux` are two REACHES and a
-# board has one. See CLAUDE.md "Naming".
+# phase-500 W1 — the host board is `linux` (it builds on Linux only): no
+# descriptor, selector, deploy list, cmake DEPLOY or sdk-index key names it
+# `native` (every general-purpose host) or `posix` (the platform). See
+# CLAUDE.md "Naming".
 [private]
 host-platform-vocabulary:
     @python3 scripts/check-host-platform-vocabulary.py

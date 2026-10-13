@@ -8,5 +8,5 @@ macro(verdict_body)
         NAME talker
         CLASS demo::Talker
         SOURCES src/dummy.cpp
-        DEPLOY native)
+        DEPLOY linux)
 endmacro()

@@ -562,8 +562,8 @@ mod tests {
     fn an_image_adds_switches_over_the_system_list_and_defaults_apply_to_every_image() {
         let ov = o("[system]\nfeatures = [\"safety\"]\n\
                     [image_defaults]\nfeatures = [\"rosout\"]\n\
-                    [image.a]\nboard = \"native\"\nfeatures = [\"param_services\"]\n\
-                    [image.b]\nboard = \"native\"\n");
+                    [image.a]\nboard = \"linux\"\nfeatures = [\"param_services\"]\n\
+                    [image.b]\nboard = \"linux\"\n");
         assert_eq!(
             ov.features_for_image("a"),
             vec!["safety", "rosout", "param_services"]

@@ -124,7 +124,7 @@ impl PlatformKind {
     /// `bare-metal` is the cargo-feature / descriptor spelling (`config/bare-metal/`,
     /// `platform = "bare-metal"`, [`kebab`](Self::kebab),
     /// `nros-rmw-zenoh/platform-bare-metal`). This function already translates two
-    /// others of the same kind — `Posix` -> `native`, both ThreadX kinds ->
+    /// others of the same kind — `Posix` -> `linux` (the host board, phase-500), both ThreadX kinds ->
     /// `threadx` — so a per-namespace spelling is what it is FOR.
     /// `nros_feature_set()`'s bare-metal arm accepts both.
     ///
@@ -138,7 +138,7 @@ impl PlatformKind {
     /// states its own platform. `Stm32`/`OrinSpe` have no in-tree board at all.
     pub fn cmake_deploy(self) -> Option<&'static str> {
         Some(match self {
-            PlatformKind::Posix => "native",
+            PlatformKind::Posix => "linux",
             PlatformKind::Freertos => "freertos",
             PlatformKind::BareMetal => "baremetal",
             PlatformKind::Nuttx => "nuttx",
@@ -164,7 +164,7 @@ impl PlatformKind {
     pub fn board_family(self) -> Option<nros_entry_lower::BoardFamily> {
         use nros_entry_lower::BoardFamily as F;
         match self {
-            PlatformKind::Posix => Some(F::Native),
+            PlatformKind::Posix => Some(F::Linux),
             PlatformKind::Freertos => Some(F::Freertos),
             PlatformKind::Zephyr => Some(F::Zephyr),
             PlatformKind::Nuttx => Some(F::Nuttx),

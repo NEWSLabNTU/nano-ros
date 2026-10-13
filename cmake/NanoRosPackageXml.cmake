@@ -20,11 +20,14 @@
 # silently ignored tuple would configure a freertos leaf as a host build.
 
 include_guard(GLOBAL)
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosHostBoard.cmake")
 
-# `deploy` attribute → the `NROS_PLATFORM` module axis. `native` is the host
-# build (it maps to the `posix` platform axis value); the RTOS names map 1:1.
+# `deploy` attribute → the `NROS_PLATFORM` module axis. `linux` is the host
+# board (it maps to the `posix` platform axis value); the RTOS names map 1:1.
+# `native` is refused naming `linux` (phase-500 W1).
 function(_nros_deploy_to_platform deploy out_var)
-    if(deploy STREQUAL "native" OR deploy STREQUAL "")
+    nros_refuse_retired_deploy("nano-ros deploy" "${deploy}")
+    if(deploy STREQUAL "${NROS_HOST_DEPLOY}" OR deploy STREQUAL "")
         set(${out_var} "posix" PARENT_SCOPE)
     else()
         set(${out_var} "${deploy}" PARENT_SCOPE)
@@ -396,7 +399,7 @@ function(nano_ros_read_leaf_system)
             "nano-ros: `nros ws leaf-system ${_NRL_DIR}` printed no deploy token:\n${_out}")
     endif()
 
-    # A board that IS its deploy token (`native`, `zephyr`) names no separate
+    # A board that IS its deploy token (`linux`, `zephyr`) names no separate
     # provider — exactly the tuple shape `<nano_ros deploy="native"/>` had.
     set(_board "${_NROS_LEAF_BOARD}")
     if(_board STREQUAL _NROS_LEAF_DEPLOY)

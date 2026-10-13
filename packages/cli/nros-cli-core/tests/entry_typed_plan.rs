@@ -65,11 +65,11 @@ const METADATA: &str = r#"{
   "components": [
     {"name": "talker", "class": "talker_pkg::Talker",
      "class_header": "talker_pkg/Talker.hpp",
-     "sources": ["src/Talker.cpp"], "deploy": ["native"],
+     "sources": ["src/Talker.cpp"], "deploy": ["linux"],
      "pkg_dir": "/ws/src/talker_pkg", "lang": "cpp"},
     {"name": "listener", "class": "listener_pkg::Listener",
      "class_header": "listener_pkg/Listener.hpp",
-     "sources": ["src/Listener.cpp"], "deploy": ["native"],
+     "sources": ["src/Listener.cpp"], "deploy": ["linux"],
      "pkg_dir": "/ws/src/listener_pkg", "lang": "cpp"}
   ],
   "applications": [],
@@ -81,7 +81,7 @@ fn typed_plan_from_template_emits_constructed_components() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let model = template_model(tmp.path());
 
-    let plan = entry::plan_from_model(&model, Some("native".into())).expect("plan from model");
+    let plan = entry::plan_from_model(&model, Some("linux".into())).expect("plan from model");
 
     // Two nodes, in LAUNCH order — the template's `system.launch.xml` lists
     // talker then listener. This asserted the reverse until issue 0382:

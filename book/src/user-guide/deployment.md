@@ -19,7 +19,7 @@ nros build
 cd my_robot
 nros sync
 nros build
-./build/posix-cyclonedds-native/cmake/native_entry
+./build/posix-cyclonedds-linux/cmake/native_entry
 ```
 
 `nros metadata` / `nros plan` / `nros check` are the inspection path, not

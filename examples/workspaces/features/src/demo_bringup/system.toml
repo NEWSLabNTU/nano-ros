@@ -243,96 +243,96 @@ out    = "mixed_params_model.yaml"
 rmw = "zenoh"
 
 [image.native_c_custom_msg_listener]
-board = "native"
+board = "linux"
 launch = "c_custom_msg_listener.launch.xml"
 
 [image.native_c_custom_msg_talker]
-board = "native"
+board = "linux"
 launch = "c_custom_msg_talker.launch.xml"
 
 [image.native_c_lifecycle]
-board = "native"
+board = "linux"
 launch = "c_lifecycle.launch.xml"
 
 [image.native_c_params]
-board = "native"
+board = "linux"
 
 [image.native_c_qos_listener]
-board = "native"
+board = "linux"
 launch = "c_qos_listener.launch.xml"
 
 [image.native_c_qos_talker]
-board = "native"
+board = "linux"
 launch = "c_qos_talker.launch.xml"
 
 [image.native_cpp_custom_msg_listener]
-board = "native"
+board = "linux"
 launch = "cpp_custom_msg_listener.launch.xml"
 
 [image.native_cpp_custom_msg_talker]
-board = "native"
+board = "linux"
 launch = "cpp_custom_msg_talker.launch.xml"
 
 [image.native_cpp_lifecycle]
-board = "native"
+board = "linux"
 launch = "cpp_lifecycle.launch.xml"
 
 [image.native_cpp_params]
-board = "native"
+board = "linux"
 launch = "cpp_params.launch.xml"
 
 [image.native_cpp_qos_listener]
-board = "native"
+board = "linux"
 launch = "cpp_qos_listener.launch.xml"
 
 [image.native_cpp_qos_talker]
-board = "native"
+board = "linux"
 launch = "cpp_qos_talker.launch.xml"
 
 [image.native_mixed_custom_msg_listener]
-board = "native"
+board = "linux"
 launch = "mixed_custom_msg_listener.launch.xml"
 
 [image.native_mixed_custom_msg_talker]
-board = "native"
+board = "linux"
 launch = "mixed_custom_msg_talker.launch.xml"
 
 [image.native_mixed_qos_listener]
-board = "native"
+board = "linux"
 launch = "mixed_qos_listener.launch.xml"
 
 [image.native_mixed_qos_talker]
-board = "native"
+board = "linux"
 launch = "mixed_qos_talker.launch.xml"
 
 [image.native_mixed_params]
-board = "native"
+board = "linux"
 launch = "mixed_params.launch.xml"
 
 [image.native_rust_custom_msg]
-board = "native"
+board = "linux"
 launch = "rust_custom_msg.launch.xml"
 
 [image.native_rust_lifecycle]
-board = "native"
+board = "linux"
 launch = "rust_lifecycle.launch.xml"
 
 [image.native_rust_params]
-board = "native"
+board = "linux"
 launch = "rust_params.launch.xml"
 
 # issue 1722 — the params image on XRCE, with 25 declared parameters.
 [image.native_rust_params_xrce]
-board = "native"
+board = "linux"
 launch = "rust_params_xrce.launch.xml"
 rmw = "xrce"
 
 [image.native_rust_qos]
-board = "native"
+board = "linux"
 launch = "rust_qos.launch.xml"
 
 [image.native_rust_remap]
-board = "native"
+board = "linux"
 launch = "rust_remap.launch.xml"
 
 # phase-470 W5.b1 (issue 1288) — MIGRATED, all three. The hand-written

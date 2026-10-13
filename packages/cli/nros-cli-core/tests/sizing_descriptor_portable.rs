@@ -42,7 +42,7 @@ fn plant(root: &Path) {
     .unwrap();
     std::fs::write(
         leaf.join("system.toml"),
-        "[image.native]\nboard = \"native\"\n",
+        "[image.native]\nboard = \"linux\"\n",
     )
     .unwrap();
     // What `nros sync`'s metadata probe writes.

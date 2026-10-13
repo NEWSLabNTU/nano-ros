@@ -101,13 +101,13 @@ fn unknown_board_overlay_differs_from_the_template_only_in_its_board() {
         "cases/main_macro_misuse_unknown_board/src/demo_entry/system.toml.case",
     ));
     assert!(
-        template.contains("\nboard = \"native\"\n"),
-        "the template entry no longer states `board = \"native\"` — the misuse row's \
+        template.contains("\nboard = \"linux\"\n"),
+        "the template entry no longer states `board = \"linux\"` — the misuse row's \
          premise moved; update its overlay"
     );
     assert_eq!(
         overlay,
-        template.replace("\nboard = \"native\"\n", "\nboard = \"frobnicator\"\n"),
+        template.replace("\nboard = \"linux\"\n", "\nboard = \"frobnicator\"\n"),
         "the unknown-board overlay drifted from src/demo_entry/system.toml: it must be \
          the template from `[system]` on with only the board replaced"
     );

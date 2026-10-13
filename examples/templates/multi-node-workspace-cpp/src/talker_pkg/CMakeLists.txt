@@ -21,7 +21,7 @@ nros_components_register_node(talker_lib
     PLUGIN talker_pkg::Talker
     EXECUTABLE talker
     SHAPE configure
-    DEPLOY native)
+    DEPLOY linux)
 
 target_link_libraries(talker_lib
     PUBLIC std_msgs__nano_ros_cpp)

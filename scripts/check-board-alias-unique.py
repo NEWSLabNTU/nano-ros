@@ -125,7 +125,8 @@ def deploy_families():
         if m:
             out.add(m.group(1))
     if "posix" in out:
-        out.add("native")
+        # The host board's deploy token (phase-500 W1: `linux`, was `native`).
+        out.add("linux")
     return out
 
 
@@ -166,7 +167,7 @@ def self_test():
 
     # The families really are read from the tree.
     fams = deploy_families()
-    assert "threadx" in fams and "native" in fams, sorted(fams)
+    assert "threadx" in fams and "linux" in fams, sorted(fams)
 
     # Two BLOCKS in one file may share a name — the rule is per file.
     same_file = [("boards/z/nros-board.toml", ["nuttx", "nuttx", "nuttx-riscv"])]

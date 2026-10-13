@@ -928,13 +928,13 @@ mod tests {
         let head = "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n";
 
         // No launch key at all — nothing to verify, no problem.
-        std::fs::write(&cfg, format!("{head}[image.a]\nboard=\"native\"\n")).unwrap();
+        std::fs::write(&cfg, format!("{head}[image.a]\nboard=\"linux\"\n")).unwrap();
         assert_eq!(check_bringup_blocks(&cfg).unwrap(), Some(0));
 
         // Names a file that does not exist.
         std::fs::write(
             &cfg,
-            format!("{head}[image.a]\nboard=\"native\"\nlaunch=\"gone.launch.xml\"\n"),
+            format!("{head}[image.a]\nboard=\"linux\"\nlaunch=\"gone.launch.xml\"\n"),
         )
         .unwrap();
         assert_eq!(check_bringup_blocks(&cfg).unwrap(), Some(1));

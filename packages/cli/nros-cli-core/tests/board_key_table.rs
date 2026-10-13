@@ -159,7 +159,7 @@ fn a_spelling_in_both_namespaces_names_the_same_rtos() {
 /// `BOARD_PATHS` fails here until someone says which family it is.
 fn rust_zst_family() -> BTreeMap<&'static str, Option<BoardFamily>> {
     BTreeMap::from([
-        ("::nros_board_linux::LinuxBoard", Some(BoardFamily::Native)),
+        ("::nros_board_linux::LinuxBoard", Some(BoardFamily::Linux)),
         (
             "::nros_board_mps2_an385_freertos::Mps2An385",
             Some(BoardFamily::Freertos),
@@ -605,4 +605,105 @@ fn a_zephyr_boards_west_b_comes_from_its_descriptor() {
         "acme-zephyr-board",
         "with no stated west_board the authored id is all there is to pass"
     );
+}
+
+/// Issue 1109 / phase-500 W1 — the host board's keys are ONE set, read six
+/// ways: the descriptor's `names`, `HOST_BOARD_KEYS` (what every "is this the
+/// host?" predicate asks), the `Linux` rows of `BOARD_KEYS`, the `LinuxBoard`
+/// rows of `BOARD_PATHS`, the keys that honor per-entry sizing, and the
+/// `nros-sdk-index.toml` `[board.*]` keys whose platform is `posix` (what
+/// `nros setup <board>` looks up). A key in any one of them and not the rest
+/// is a spelling that changes the build — or, for the sdk index, a board
+/// `nros setup` cannot provision: the index had `[board.native]` and
+/// `[board.posix]` and no `[board.linux]`, so `nros setup linux` failed while
+/// every other consumer had learned the name (the 0196 reach gap — this test
+/// did not read the index).
+///
+/// The set is exactly `["linux"]`. `native` was dropped (it is every
+/// general-purpose host; the board builds on Linux only) and must be REFUSED
+/// with a hint, not merely absent; `posix` is the platform.
+///
+/// Scoped to the HOST board on purpose. Asked of every board, the same rule is
+/// red today for reasons outside this issue: `threadx-riscv64` is a descriptor
+/// name `BOARD_KEYS` lacks, `BOARD_PATHS` splits one descriptor by entry shape
+/// (`rtic-mps2-an385` vs bare `mps2-an385`), and ESP32 is dormant (issue 1525).
+#[test]
+fn the_host_board_keys_are_one_set_everywhere() {
+    use nros_cli_core::orchestration::board_descriptor::BoardCatalog;
+
+    let catalog = BoardCatalog::load_with_extra(&repo_root(), &[]).expect("in-tree board catalog");
+    let host: Vec<_> = catalog
+        .descriptors()
+        .iter()
+        .filter(|d| d.platform.board_family() == Some(BoardFamily::Linux))
+        .collect();
+    assert_eq!(host.len(), 1, "exactly one host board descriptor");
+    let descriptor: BTreeSet<&str> = host[0].names.iter().map(String::as_str).collect();
+    assert_eq!(
+        descriptor,
+        BTreeSet::from(["linux"]),
+        "phase-500 W1: the host board's one name is `linux`"
+    );
+
+    let predicate: BTreeSet<&str> = nros_orchestration_ir::HOST_BOARD_KEYS
+        .iter()
+        .copied()
+        .collect();
+    let family: BTreeSet<&str> = BOARD_KEYS
+        .iter()
+        .filter(|(_, f)| *f == BoardFamily::Linux)
+        .map(|(k, _)| *k)
+        .collect();
+    let zst: BTreeSet<&str> = nros_orchestration_ir::BOARD_PATHS
+        .iter()
+        .filter(|(_, p, _)| *p == "::nros_board_linux::LinuxBoard")
+        .map(|(k, _, _)| *k)
+        .collect();
+    let sizing: BTreeSet<&str> = known_board_keys()
+        .chain(nros_orchestration_ir::board_path_keys())
+        .chain(["posix", "native"])
+        .filter(|k| nros_orchestration_ir::executor_sizing::board_honors_entry_sizing(k))
+        .collect();
+    let index_text = std::fs::read_to_string(repo_root().join("nros-sdk-index.toml"))
+        .expect("read nros-sdk-index.toml");
+    let index: toml::Table = toml::from_str(&index_text).expect("parse nros-sdk-index.toml");
+    let sdk: BTreeSet<String> = index
+        .get("board")
+        .and_then(toml::Value::as_table)
+        .expect("[board.*] table")
+        .iter()
+        .filter(|(_, v)| v.get("platform").and_then(toml::Value::as_str) == Some("posix"))
+        .map(|(k, _)| k.clone())
+        .collect();
+    let sdk: BTreeSet<&str> = sdk.iter().map(String::as_str).collect();
+
+    assert_eq!(
+        predicate, descriptor,
+        "HOST_BOARD_KEYS vs the descriptor's names"
+    );
+    assert_eq!(
+        family, descriptor,
+        "BOARD_KEYS' Linux rows vs the descriptor's names"
+    );
+    assert_eq!(
+        zst, descriptor,
+        "BOARD_PATHS' LinuxBoard rows vs the descriptor's names"
+    );
+    assert_eq!(
+        sizing, descriptor,
+        "board_honors_entry_sizing vs the descriptor's names"
+    );
+    assert_eq!(
+        sdk, descriptor,
+        "nros-sdk-index.toml's posix-platform [board.*] keys vs the descriptor's names \
+         (what `nros setup <board>` resolves)"
+    );
+
+    // A retired key is refused NAMING its replacement, by every consumer
+    // that refuses an unknown key through the entry table.
+    for (old, now) in nros_entry_lower::RETIRED_BOARD_KEYS {
+        assert!(!descriptor.contains(old), "`{old}` is retired");
+        let msg = board_family(old).unwrap_err().to_string();
+        assert!(msg.contains(&format!("write `{now}`")), "{msg}");
+    }
 }

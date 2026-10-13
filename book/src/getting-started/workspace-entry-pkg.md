@@ -5,7 +5,7 @@ You declare it as a row in your Bringup pkg's `system.toml` —
 
 ```toml
 [image.native]
-board = "native"
+board = "linux"
 ```
 
 — and build it by name:
@@ -53,7 +53,7 @@ source ./activate.fish        # fish
 Then provision the native host (the canonical first image target; for Zephyr /
 FreeRTOS / ESP32 swap in the matching `nros setup` board):
 ```sh
-nros setup native --rmw zenoh
+nros setup linux --rmw zenoh
 nros sync                     # generated message bindings, once per workspace
 ```
 
@@ -123,7 +123,7 @@ Images live in the Bringup pkg beside the topology they boot —
 rmw = "zenoh"
 
 [image.native]
-board = "native"
+board = "linux"
 
 [image.freertos]
 board = "mps2-an385-freertos"
@@ -135,11 +135,11 @@ board = "freertos-posix"
 rmw = "cyclonedds"
 
 [image.native_service_server]
-board = "native"
+board = "linux"
 launch = "service_server.launch.xml"
 
 [image.native_robot1]
-board = "native"
+board = "linux"
 launch = "multihost.launch.xml"
 args = { host = "robot1" }
 
@@ -204,9 +204,9 @@ settings and nothing generated ever appears beside a package — no leaf
 
 The coordinate is the platform and the RMW, plus — for cmake, which pins one
 compiler per configure — the board. So `[image.native]` in
-`examples/workspaces/c` configures `build/posix-zenoh-native/` into
-`build/posix-zenoh-native/cmake/` and leaves its binary at
-`build/posix-zenoh-native/cmake/native_entry`. On the cargo driver `nros build`
+`examples/workspaces/c` configures `build/posix-zenoh-linux/` into
+`build/posix-zenoh-linux/cmake/` and leaves its binary at
+`build/posix-zenoh-linux/cmake/native_entry`. On the cargo driver `nros build`
 names the entry package it wrote as it goes:
 
 ```text
@@ -226,11 +226,11 @@ build to land in. So an image whose resolved configuration differs gets its own
 configure, keyed by a hash of that configuration (RFC-0098 D12, phase-481 W4):
 
 ```toml
-[image.plain]            # states nothing -> build/posix-zenoh-native/
-board = "native"
+[image.plain]            # states nothing -> build/posix-zenoh-linux/
+board = "linux"
 
-[image.warn]             # -> build/posix-zenoh-native-cfga50aa93c83/
-board = "native"
+[image.warn]             # -> build/posix-zenoh-linux-cfga50aa93c83/
+board = "linux"
 
 [image.warn.knobs.log]
 max_level = "warn"
@@ -331,7 +331,7 @@ Zephyr is the only platform the verb accepts, which is the rule stated by the
 tool itself:
 
 ```text
-`nros new entry` currently scaffolds Zephyr entries only (got --platform native).
+`nros new entry` currently scaffolds Zephyr entries only (got --platform linux).
 Every other platform builds through cargo or cmake, where the entry is
 GENERATED from the image and needs no package of its own (RFC-0065 D3).
 ```
@@ -538,7 +538,7 @@ nros build native
 # in another shell, for the zenoh backend:
 ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd &
 
-./build/posix-zenoh-native/cmake/native_entry
+./build/posix-zenoh-linux/cmake/native_entry
 ```
 
 The binary opens the executor, registers `talker` + `listener` composed into a

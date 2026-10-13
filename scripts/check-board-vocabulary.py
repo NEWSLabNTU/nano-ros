@@ -285,8 +285,8 @@ def self_test():
     assert got == ["rv-virt-threadx"], got
     # A `board` key outside an `[image.*]` table is not an image's board.
     assert exports('[board_config."x"]\nboard = "nope"\n') == []
-    assert exports('[image.a]\nboard = "native"\n[image.b]\nboard = "zephyr"\n') == [
-        "native",
+    assert exports('[image.a]\nboard = "linux"\n[image.b]\nboard = "zephyr"\n') == [
+        "linux",
         "zephyr",
     ]
     # Issue 1660: the population is every leaf, Rust included — the hole was a
@@ -301,15 +301,21 @@ def self_test():
     assert judge("cat1", False, ns) == "ok", "a catalog name resolves a Rust leaf"
     assert judge("cat1", True, ns) == "not-index", "a C/C++ leaf still needs an index key"
     assert judge("c1", True, ns) == "ok"
-    assert judge("native", False, ns) == "family"
+    assert judge("linux", False, ns) == "family"
     sys.stdout.write("check-board-vocabulary self-test: OK\n")
 
 
-# A board that IS its deploy family (`native`, `zephyr`) names no separate
+# A board that IS its deploy family (`linux`, `zephyr`) names no separate
 # board — exactly the old `<nano_ros deploy="native"/>` shape, which carried no
 # `board=` and so was never checked here. `nano_ros_read_leaf_system()` blanks
 # it on the same rule.
-FAMILY_BOARDS = {"native", "zephyr"}
+FAMILY_BOARDS = {"linux", "zephyr"}  # phase-500 W1: the host board is `linux`
+
+# A deploy token whose `just setup` scope is spelled differently. The host
+# board is `linux` since phase-500 W1 while its scope is still `native` until
+# phase-500 W2 renames it — the same table as `cmd::setup`'s DEPLOY_SCOPE, and
+# W2 deletes both.
+DEPLOY_SCOPE = {"linux": "native"}
 
 
 def main():
@@ -379,8 +385,9 @@ def main():
                 # The deploy family IS a scope; keep asserting that much, since
                 # `nros setup --workspace` still prints a command from it.
                 seen_deploy.setdefault(board, f)
-                if board not in scope_set and not any(
-                    s.startswith(board + "_") for s in scope_set
+                scope = DEPLOY_SCOPE.get(board, board)
+                if scope not in scope_set and not any(
+                    s.startswith(scope + "_") for s in scope_set
                 ):
                     bad_deploy.setdefault(board, f)
                 continue

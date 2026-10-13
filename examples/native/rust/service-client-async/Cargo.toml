@@ -8,7 +8,7 @@ description = "Example async service client using nros with tokio background spi
 # Phase 212.L.2 — Application pkg shape. Native-only deploy target.
 # `nros check` rejects any RTOS in this list.
 [package.metadata.nros.application]
-deploy = ["native"]
+deploy = ["linux"]
 
 [dependencies]
 nros = { version = "*", default-features = false, features = ["std", "alloc", "rmw-cffi", "env"] }

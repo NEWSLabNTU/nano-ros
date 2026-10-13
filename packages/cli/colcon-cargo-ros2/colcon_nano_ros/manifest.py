@@ -68,7 +68,7 @@ BUILD_PATH_BY_TYPE = {
 # (`deploy STREQUAL ""` → the host axis). It is not a guess standing in for a
 # missing fact: a package that requests no cross-compilation is asking for the
 # host, and colcon builds into a host prefix by construction.
-DEFAULT_DEPLOY = "native"
+DEFAULT_DEPLOY = "linux"  # the host board (phase-500 W1)
 
 
 def is_nros_type(pkg_type):

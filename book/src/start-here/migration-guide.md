@@ -30,7 +30,7 @@ git clone --branch=v<X.Y.Z> https://github.com/NEWSLabNTU/nano-ros.git
 cd nano-ros
 ./scripts/bootstrap.sh              # build the nros CLI (no `just` needed)
 source ./activate.sh
-nros setup native --rmw zenoh       # native/ROS/zenoh quick start
+nros setup linux --rmw zenoh       # native/ROS/zenoh quick start
 ```
 
 Read [Setup Compared to Standard ROS 2](setup-compared-to-ros2.md)

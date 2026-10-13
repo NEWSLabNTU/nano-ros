@@ -128,6 +128,9 @@ pub fn lower(plan: &Plan) -> LoweredEntry {
 /// it is issue 1435. See [`refuse_non_owned_spin`].
 pub fn emit_lowered(entry: &LoweredEntry) -> Result<String, String> {
     let board_path = board_path_for(&entry.board).ok_or_else(|| {
+        if let Some(hint) = nros_entry_lower::retired_board_key_hint(&entry.board) {
+            return hint;
+        }
         format!(
             "the Rust entry pack has no board ZST for `{}`. Known boards: {}.",
             entry.board,
@@ -382,7 +385,7 @@ mod tests {
 
     fn fixture_plan(nodes: &[(&str, &str)]) -> Plan {
         Plan {
-            board: "native".into(),
+            board: "linux".into(),
             nodes: nodes
                 .iter()
                 .map(|(pkg, exec)| PlanNode {
@@ -530,7 +533,7 @@ mod tests {
             plan.board = board.into();
             let err = emit(&plan).expect_err(board);
             assert!(err.contains(&format!("`{board}`")), "{err}");
-            for known in ["native", "mps2-an385-freertos", "zephyr"] {
+            for known in ["linux", "mps2-an385-freertos", "zephyr"] {
                 assert!(
                     err.contains(known),
                     "`{board}`: message omits `{known}`: {err}"

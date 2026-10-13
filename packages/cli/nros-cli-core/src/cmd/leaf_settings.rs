@@ -256,8 +256,9 @@ fn leaf_image_from_decl(
         .map_err(|e| eyre!("board catalog under {}: {e}", nano_ros_root.display()))?;
     let Some(d) = crate::cmd::board_facts::resolve_board(&catalog, &board) else {
         bail!(
-            "{}: board `{board}` is claimed by no board descriptor under {}",
+            "{}: {} under {}",
             decl.origin_path().display(),
+            crate::cmd::board_facts::unresolved_board(&board),
             nano_ros_root.display()
         );
     };
@@ -1485,7 +1486,7 @@ mod tests {
             package: "demo".into(),
             decl: decl(None, &[]),
             image_id: "native".into(),
-            board: "native".into(),
+            board: "linux".into(),
             platform: "posix".into(),
             target: None,
             cargo_config: None,
@@ -1895,7 +1896,7 @@ mod board_crate_tests {
         .unwrap();
         std::fs::write(
             leaf.join("system.toml"),
-            "[system]\nname = \"t\"\nrmw = \"zenoh\"\n\n[image.native]\nboard = \"native\"\n",
+            "[system]\nname = \"t\"\nrmw = \"zenoh\"\n\n[image.native]\nboard = \"linux\"\n",
         )
         .unwrap();
         let img = resolve(&leaf, &repo()).unwrap().expect("a cargo leaf");
@@ -1995,7 +1996,7 @@ mod board_crate_tests {
         std::fs::write(
             leaf.join("system.toml"),
             "[system]\nname = \"t\"\nrmw = \"zenoh\"\ndefault_images = [\"native\"]\n\n\
-             [image_defaults]\nboard = \"native\"\n\n\
+             [image_defaults]\nboard = \"linux\"\n\n\
              [image.native]\n\n\
              [image.native_xrce_jazzy]\nrmw = \"xrce\"\nros_edition = \"jazzy\"\n",
         )
@@ -2102,7 +2103,7 @@ mod board_crate_tests {
         .unwrap();
         std::fs::write(
             leaf.join("system.toml"),
-            "[system]\nname = \"t\"\nrmw = \"zenoh\"\n\n[image.native]\nboard = \"native\"\n",
+            "[system]\nname = \"t\"\nrmw = \"zenoh\"\n\n[image.native]\nboard = \"linux\"\n",
         )
         .unwrap();
         assert!(write_selection(&leaf, &repo(), None).unwrap().is_none());
@@ -2183,7 +2184,7 @@ mod board_crate_tests {
             std::fs::write(
                 leaf.join("system.toml"),
                 format!(
-                    "[system]\nname = \"p\"\nrmw = \"zenoh\"\n\n[image.native]\nboard = \"native\"\n{extra}"
+                    "[system]\nname = \"p\"\nrmw = \"zenoh\"\n\n[image.native]\nboard = \"linux\"\n{extra}"
                 ),
             )
             .unwrap();
@@ -2223,7 +2224,7 @@ mod board_crate_tests {
         .unwrap();
         std::fs::write(
             leaf.join("system.toml"),
-            "[system]\nname = \"p\"\nrmw = \"zenoh\"\n\n[image.native]\nboard = \"native\"\n",
+            "[system]\nname = \"p\"\nrmw = \"zenoh\"\n\n[image.native]\nboard = \"linux\"\n",
         )
         .unwrap();
         let img = resolve(&leaf, &repo()).unwrap().expect("a cargo leaf");

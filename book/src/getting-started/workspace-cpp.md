@@ -18,11 +18,11 @@ changes language-side is the cmake-fn / macro surface.
 |---|---|---|
 | **Node pkg** | `lib.rs` with `nros::node!(MyNode)`, declared by a `[[component]]` row in the bringup's `system.toml` | `Talker.{hpp,cpp}` with a `configure(::rclcpp::Node&)` component method (C++) / `RCLC_C_COMPONENT` (C); `CMakeLists.txt` calling `nano_ros_auto_add_library` + `nros_components_register_node` (RFC-0057) |
 | **Bringup pkg** | `package.xml` + `system.toml` + `launch/*.launch.xml` (no `Cargo.toml`) | identical (language-agnostic) |
-| **Image** | `[image.native] board = "native"` in the bringup's `system.toml` | identical (language-agnostic) |
-| **The entry** | GENERATED into `build/<coord>/native_entry/` — a `Cargo.toml` and a `nros::main!(launch = "demo_bringup")` | GENERATED into `build/<coord>/CMakeLists.txt` — a `nano_ros_add_executable(native_entry BOARD … BRINGUP … LAUNCH … LANG cpp TYPED DEPLOY native)` call, plus the `main` TU the verb emits |
+| **Image** | `[image.native] board = "linux"` in the bringup's `system.toml` | identical (language-agnostic) |
+| **The entry** | GENERATED into `build/<coord>/native_entry/` — a `Cargo.toml` and a `nros::main!(launch = "demo_bringup")` | GENERATED into `build/<coord>/CMakeLists.txt` — a `nano_ros_add_executable(native_entry BOARD … BRINGUP … LAUNCH … LANG cpp TYPED DEPLOY linux)` call, plus the `main` TU the verb emits |
 | **Workspace root** | none — the generated entry's own `Cargo.toml` is the cargo root | none — the generated `build/<coord>/CMakeLists.txt` is the cmake root, calling `nano_ros_workspace(WORKSPACE_ROOT … BACKEND zenoh PLATFORM posix SYSTEM demo_bringup SUBDIRS …)` |
 | **Build** | `nros sync` then `nros build native` | `nros sync` then `nros build native` |
-| **Boot** | `./build/posix-zenoh/native_entry/target/debug/native_entry` | `./build/posix-zenoh-native/cmake/native_entry` |
+| **Boot** | `./build/posix-zenoh/native_entry/target/debug/native_entry` | `./build/posix-zenoh-linux/cmake/native_entry` |
 
 The reference C++ workspace ships in-tree at
 [`examples/workspaces/cpp/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/workspaces/cpp).
@@ -319,7 +319,7 @@ Declare the program you want in the bringup's `system.toml` —
 rmw = "zenoh"
 
 [image.native]
-board = "native"
+board = "linux"
 ```
 
 — and `nros build native` emits this into that generated root. `BOARD` and
@@ -385,7 +385,7 @@ body, the user's TU is documentation + IDE hint.
 ```bash
 nros sync
 nros build native
-./build/posix-zenoh-native/cmake/native_entry
+./build/posix-zenoh-linux/cmake/native_entry
 ```
 
 `nros build` resolves the SystemModel for you (via the pinned
@@ -429,7 +429,7 @@ syntax the user types into the two package roles.
 |---|---|
 | `nros new --component <name> --lang cpp --use-case talker` | C++ Node pkg; `--component` is the compatibility scaffold flag |
 | `nros new system <name>_bringup --components a,b` | Bringup pkg (language-agnostic — works for both Rust and C++ workspaces) |
-| `nros new <name> --lang cpp --platform native` | A standalone single-package *project* — its own `CMakeLists.txt` and its own `system.toml`; the copy-out shape, not a workspace member |
+| `nros new <name> --lang cpp --platform linux` | A standalone single-package *project* — its own `CMakeLists.txt` and its own `system.toml`; the copy-out shape, not a workspace member |
 | `nros new entry <name> --platform zephyr` | A Zephyr application package + its `[image.*]` row. The verb accepts no other platform: everywhere else the entry is generated |
 
 The C-side compatibility scaffold (`nros new --component … --lang c`) is
