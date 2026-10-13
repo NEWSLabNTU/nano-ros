@@ -407,11 +407,16 @@ pub fn image_link_features(
 /// which a workspace entry gets from its separate facade crate instead).
 /// Paths are relative to `from_dir`, the directory of the manifest the lines
 /// go into.
+///
+/// `host_producers` — whether the host board crate gets its census and
+/// profile producers (issue 1419 / phase-463 W7). `true` on every road except
+/// a leaf image that states `[image.<id>] producers = false` (issue 1340).
 pub fn image_dependency_lines(
     board: &BoardFacts,
     nano_ros_root: &Path,
     from_dir: &Path,
     extra_board_features: &[String],
+    host_producers: bool,
 ) -> Result<Vec<String>, String> {
     let mut out: Vec<String> = Vec::new();
     if let Some(krate) = &board.board_crate {
@@ -427,7 +432,7 @@ pub fn image_dependency_lines(
         // it; the recorder is registered only when `$NROS_CENSUS_OUT` asks.
         let mut features = board.board_features.clone();
         features.extend(extra_board_features.iter().cloned());
-        if krate == HOST_BOARD_CRATE {
+        if krate == HOST_BOARD_CRATE && host_producers {
             features.push("census".to_string());
             // phase-463 W7 — and the PROFILE producer (`$NROS_PROFILE_OUT`),
             // for the same reason and on the same key: host-only by
@@ -605,7 +610,7 @@ pub fn render_manifest(
          features = [\"alloc\", \"rmw-cffi\", \"macros\"] }}\n"
     ));
 
-    for line in image_dependency_lines(board, &spec.nano_ros_root, entry_dir, &[])? {
+    for line in image_dependency_lines(board, &spec.nano_ros_root, entry_dir, &[], true)? {
         out.push_str(&line);
         out.push('\n');
     }

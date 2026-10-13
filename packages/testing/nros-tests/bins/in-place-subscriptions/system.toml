@@ -14,3 +14,9 @@ name = "eight_listener"
 # `ROS_DOMAIN_ID`).
 [image.native]
 board = "native"
+# Issue 1340 — this image's static memory is the measurement, so it builds
+# WITHOUT the host board's census + profile producers the selection package
+# otherwise adds to every host image (issue 1419 / phase-463 W7):
+# `nros::metadata_mode::STATE` alone is ~76 KB, and a census image prices its
+# subscriptions as buffered, which undoes the in-place saving 1340 records.
+producers = false

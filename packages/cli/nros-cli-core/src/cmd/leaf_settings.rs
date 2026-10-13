@@ -1294,28 +1294,16 @@ mod board_crate_tests {
     }
 
     /// Issue 1305 — the leaves NOT on the selection package, each with the
-    /// reason it is not, every one of them out of scope BY SHAPE or by
-    /// measurement. Every other in-tree cargo-road leaf on a supported board —
+    /// reason it is not, every one of them out of scope BY SHAPE. Every other in-tree cargo-road leaf on a supported board —
     /// the examples, the copy-out templates' Rust packages, the mps2 C/C++ apps
     /// on a cargo link root, and (phase F) every `packages/testing/` program,
-    /// bench and harness-templated fixture entry — depends on its
+    /// bench and harness-templated fixture entry (issue 1340's witness
+    /// included, with `[image.native] producers = false`) — depends on its
     /// `<pkg>_nros_selection` package and names no board crate (enforced by
     /// [`check_board_crate_dependency`]). A leaf for a `tier = "scaffold"`
     /// board is skipped by that DERIVED property, never listed here. A prefix
     /// matches a leaf path relative to the checkout.
     const NOT_ON_THE_SELECTION: &[(&str, &str)] = &[
-        (
-            "packages/testing/nros-tests/bins/in-place-subscriptions",
-            "issue 1340's measurement witness, kept on its hand-written manifest ON \
-             PURPOSE: the selection gives the host board `census` + `profile` on every \
-             road (`entry::image_dependency_lines`, issues 1419 / phase-463 W7), and \
-             the image 1340 measures changes with it. Re-measured 2026-10-13 with \
-             `just mem-report`, hand-written -> selection: RAM 199,386 -> 310,298 B \
-             (+110,912); `nros::metadata_mode::state::STATE` +75,992 B (new); \
-             EXECUTOR_BACKING 20,864 -> 45,440 B, +24,576 = 8 x 3,072, i.e. exactly \
-             the in-place saving 1340 records (arena 10,240 -> 34,816). Moving it is \
-             a decision about 1340's baseline, not a mechanical edit",
-        ),
         (
             "examples/rv-virt-threadx/rust/",
             "lib-only staticlibs a CMake image links (no `nros::main!`): the CMake \
@@ -1499,7 +1487,7 @@ mod board_crate_tests {
             "no leaf matched a `tier = \"scaffold\"` board ({scaffold:?})"
         );
         assert!(
-            on_selection >= 97,
+            on_selection >= 98,
             "only {on_selection} leaves on the selection package"
         );
     }
@@ -1802,6 +1790,50 @@ mod board_crate_tests {
                 .unwrap()
                 .is_none()
         );
+    }
+
+    /// Issue 1340 — the host board's census + profile producers are ON for a
+    /// host image's selection by default, and `[image.<id>] producers = false`
+    /// drops exactly those two features (nothing else in the line moves).
+    #[test]
+    fn producers_false_drops_the_host_census_and_profile_features() {
+        let line = |extra: &str| {
+            let tmp = tempfile::tempdir().unwrap();
+            let leaf = tmp.path().join("probe");
+            std::fs::create_dir_all(leaf.join("src")).unwrap();
+            std::fs::write(
+                leaf.join("Cargo.toml"),
+                "[package]\nname = \"probe\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n\
+                 [dependencies]\nprobe_nros_selection = { path = \"build/nros/selection\" }\n",
+            )
+            .unwrap();
+            std::fs::write(
+                leaf.join("system.toml"),
+                format!(
+                    "[system]\nname = \"p\"\nrmw = \"zenoh\"\n\n[image.native]\nboard = \"native\"\n{extra}"
+                ),
+            )
+            .unwrap();
+            let sel = write_selection(&leaf, &repo(), None).unwrap().unwrap();
+            read(&sel.dir.join("Cargo.toml"))
+                .lines()
+                .find(|l| l.starts_with("nros-board-linux "))
+                .expect("board line")
+                .to_string()
+        };
+        let on = line("");
+        assert!(
+            on.contains("\"census\"") && on.contains("\"profile\""),
+            "{on}"
+        );
+        let off = line("producers = false\n");
+        assert!(!off.contains("census") && !off.contains("profile"), "{off}");
+        assert_eq!(
+            on.replace(", \"census\", \"profile\"", ""),
+            off,
+            "only the two producer features move"
+        );
+        assert_eq!(line("producers = true\n"), on, "`true` is the default");
     }
 
     /// Issue 1815 — no board crate is not a stale board crate.

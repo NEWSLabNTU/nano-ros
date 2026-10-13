@@ -264,6 +264,25 @@ Found on the way: renaming the fixture's component left its
 `metadata/<old>.json` behind and the leaf road composed it in — 13 rows and a
 162,936-byte arena for an image that registers 8. Filed as issue 1639.
 
+### Addendum (2026-10-13) — the witness on its selection package, producers off
+
+Issue 1305 phase F moved every `packages/testing/` program onto its generated
+selection package. That package gives a host image the board's census and
+profile producers (`nros-board-linux/census` + `/profile`, issue 1419 /
+phase-463 W7), which changes THIS image: built both ways with `just
+mem-report --baseline`, RAM 199,386 -> 310,298 B, `nros::metadata_mode::state::
+STATE` +75,992 B (new) and `EXECUTOR_BACKING` 20,864 -> 45,440 B (+24,576 =
+8 x 3,072, the saving recorded above). So the selection writer gained a
+per-image opt-out, `[image.<id>] producers = false` (default unset = on), and
+the witness states it. Migrated with it, the image measures exactly the
+hand-written one: RAM 199,386 B, section and symbol RAM +0,
+`EXECUTOR_BACKING` 20,864 B, no `metadata_mode` symbol, text/data/bss
+988,224 / 42,448 / 156,938 on both (the ELF bytes differ only in debug info
+naming the selection crate). Dropping the line brings STATE and the 45,440-byte
+backing straight back. Against `rmw_zenohd`, eight `Subscriber created` lines
+and 24 of 24 samples (`ros2 topic pub -t 3`, humble, on each topic), no
+`BufferTooSmall`.
+
 ### What guards it instead
 
 `packages/core/nros-node/tests/arena_model_in_place.rs`, on the `test-unit`

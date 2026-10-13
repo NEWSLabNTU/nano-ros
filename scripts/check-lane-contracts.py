@@ -1024,9 +1024,8 @@ SHIPPED_EXEMPT = {
     # are only what is left outside the selection road.
     "nros-board-linux": (
         "per-image shape: every host image takes it through its generated "
-        "selection package (rmw / edition / `census` + `profile` from the image); "
-        "the one authored consumer left is issue 1340's measurement witness, "
-        "`bins/in-place-subscriptions`"
+        "selection package (rmw / edition, and `census` + `profile` unless the "
+        "image says `producers = false`); no authored consumer is left"
     ),
     "nros-board-nuttx-qemu": (
         "cross-only, per-image shape: every NuttX image takes it through its "

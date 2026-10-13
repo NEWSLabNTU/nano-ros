@@ -16,10 +16,11 @@ Phase E's walk read `examples/` only. Widened to `packages/testing/` (both
 shapes: `system.toml` leaves and image-less `[package]` manifests), it went red
 on the pre-migration tree naming exactly the 30 packages the phase E
 "Not covered by the walk" note counted, plus the 8 that `NOT_ON_THE_SELECTION`
-had exempted by shape (rc=101). Branch `fix/1305-testing-packages`. 97 leaves
-are on the selection package now (was 69); the floor is 97.
+had exempted by shape (rc=101). Branch `fix/1305-testing-packages` (+
+`fix/1305-in-place-opt-out` for the witness). 98 leaves are on the selection
+package now (was 69); the floor is 98.
 
-**What moved (28).**
+**What moved (29).**
 
 - **Native test bins** (`action-client-multigoal`, `action-server-concurrent`,
   `graph-probe`, `int32-sink`, `int32-source`, `message-info-observer`,
@@ -77,13 +78,22 @@ are on the selection package now (was 69); the floor is 97.
   overlays the pre-1305 manifest, because no selection exists for a board no
   descriptor claims and its subject is the macro's own refusal.
 
-**Not moved, with the reason measured.** `bins/in-place-subscriptions` —
-issue 1340's witness. Built both ways (`nros sync && nros build native`, `just
-mem-report --baseline`): RAM 199,386 -> 310,298 B (+110,912);
-`nros::metadata_mode::state::STATE` +75,992 B (new); `EXECUTOR_BACKING` 20,864
--> 45,440 B, +24,576 = 8 x 3,072, exactly the in-place saving 1340 records. Its
-move is a decision about 1340's baseline and was left to the maintainer.
-`examples/rv-virt-threadx/rust/*` stay out by shape: the CMake road picks the
+**`bins/in-place-subscriptions` — moved last, with an opt-out.** Issue 1340's
+witness. Built both ways (`nros sync && nros build native`, `just mem-report
+--baseline`): on the plain selection RAM 199,386 -> 310,298 B (+110,912),
+`nros::metadata_mode::state::STATE` +75,992 B (new), `EXECUTOR_BACKING` 20,864
+-> 45,440 B (+24,576 = 8 x 3,072, exactly 1340's in-place saving), because the
+selection gives every host image the board's census + profile producers. The
+maintainer chose a per-image opt-out: `[image.<id>] producers = false`
+(`ImageBlock::producers`, default unset = on; not a capability axis, since
+`[image] features` only ADDS registry capabilities). The selection writer then
+omits exactly those two features (`image_dependency_lines(..., host_producers)`;
+unit-tested on/off). Migrated with it: RAM 199,386 B, +0 section and symbol RAM,
+`EXECUTOR_BACKING` 20,864 B, no `metadata_mode` symbol; mutation (line dropped)
+-> STATE 75,992 B and backing 45,440 B again; restored -> +0. Runtime: 8
+subscribers, 24 / 24 samples from `ros2 topic pub`. Floor 98.
+
+**Not moved.** `examples/rv-virt-threadx/rust/*` stay out by shape: the CMake road picks the
 RMW (`-DNROS_RMW`) and links the backend itself, so a cargo-road selection
 (one image's board, RMW and runtime) has nothing to select. `log-arena-probe`
 names no board. ESP32 stays dormant (scaffold rule).
