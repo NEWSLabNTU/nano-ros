@@ -23,6 +23,13 @@ What this gate holds, so the old mechanism cannot creep back half-alive:
      the launch resolver (`just setup-cli`, `just setup-launch-resolve`), and
      every repo-root nextest run (`nros_cargo_nextest_args`).
 
+Rule 3 is asked of EVERY cargo invocation in those recipes, not of named
+lines (issue 1863). It used to match two authored lines, so the second build
+in `setup-launch-resolve` — the parser's Python half, in play_launch's own
+workspace — ran unlocked and rewrote that TRACKED lock on every setup
+(dropping its `[[patch.unused]]` table). In a persistent CI workspace that
+left the submodule dirty, which is what made issue 1841 refuse.
+
 Buildless, ~0.1 s.
 """
 
@@ -34,11 +41,39 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 RETIRED = "NROS_" + "CARGO_FLAGS"  # spelled split so this file is not a hit
 
-LOCKED_SITES = [
-    ("justfile", re.compile(r'cargo build --release --locked --manifest-path "\$root/packages/cli/Cargo\.toml"')),
-    ("justfile", re.compile(r'cargo build --release --locked --manifest-path "\$crate/Cargo\.toml"')),
-    ("scripts/build/cargo.sh", re.compile(r'nros_cargo_nextest_args\(\) \{[^}]*echo "--locked"', re.S)),
-]
+# Recipes whose every cargo invocation builds a closed-graph root.
+CLOSED_ROOT_RECIPES = ("setup-cli", "setup-launch-resolve")
+NEXTEST_SITE = ("scripts/build/cargo.sh",
+                re.compile(r'nros_cargo_nextest_args\(\) \{[^}]*echo "--locked"', re.S))
+CARGO_CALL = re.compile(r"(?:^|[\s;&|(])cargo\s+(?:build|run|test|check|metadata|install|rustc)\b")
+
+
+def recipe_commands(justfile: str, name: str) -> list[str] | None:
+    """The command lines of recipe `name` (comments dropped, `\\`
+    continuations joined), or None if the recipe is absent."""
+    lines = justfile.splitlines()
+    head = re.compile(rf"^{re.escape(name)}(?:\s[^:]*)?:")
+    try:
+        start = next(i for i, l in enumerate(lines) if head.match(l))
+    except StopIteration:
+        return None
+    body = []
+    for l in lines[start + 1:]:
+        if l and not l[0].isspace():
+            break
+        body.append(l)
+    cmds, cur = [], ""
+    for l in body:
+        t = l.strip()
+        if not t or t.startswith("#"):
+            continue
+        cur += " " + t.rstrip("\\")
+        if not t.endswith("\\"):
+            cmds.append(cur.strip())
+            cur = ""
+    if cur:
+        cmds.append(cur.strip())
+    return cmds
 
 
 def violations(files: dict[str, str]) -> list[str]:
@@ -54,16 +89,33 @@ def violations(files: dict[str, str]) -> list[str]:
         bad.append(f"{RETIRED} is retired (phase-485 W4) but named in:\n    "
                    + "\n    ".join(sorted(hits))
                    + "\n  Drop the reader/setter; a closed-root build passes `--locked` itself.")
-    for rel, pat in LOCKED_SITES:
-        if not pat.search(files.get(rel, "")):
-            bad.append(f"{rel}: a closed-graph root build lost its `--locked` ({pat.pattern})")
+    for name in CLOSED_ROOT_RECIPES:
+        cmds = recipe_commands(files.get("justfile", ""), name)
+        calls = [c for c in (cmds or []) if CARGO_CALL.search(c)]
+        if not calls:
+            bad.append(f"justfile: recipe `{name}` has no cargo invocation to check "
+                       "(renamed or moved? update CLOSED_ROOT_RECIPES)")
+        for c in calls:
+            if "--locked" not in c:
+                bad.append(f"justfile: `{name}` runs cargo without `--locked` — it may rewrite a "
+                           f"tracked lock (issue 1863):\n      {c}")
+    rel, pat = NEXTEST_SITE
+    if not pat.search(files.get(rel, "")):
+        bad.append(f"{rel}: repo-root nextest lost its `--locked` ({pat.pattern})")
     return bad
 
 
 def self_test() -> None:
     good = {
-        "justfile": 'cargo build --release --locked --manifest-path "$root/packages/cli/Cargo.toml"\n'
-                    'cargo build --release --locked --manifest-path "$crate/Cargo.toml"\n',
+        "justfile": 'setup-cli:\n'
+                    '    cargo build --release --locked --manifest-path "$root/packages/cli/Cargo.toml"\n'
+                    'setup-launch-resolve:\n'
+                    '    # cargo build here in a comment is not a call\n'
+                    '    cargo build --release --locked --manifest-path "$crate/Cargo.toml"\n'
+                    '    cargo build --release --locked --manifest-path "$ws/Cargo.toml" \\\n'
+                    '        -p parser --lib\n'
+                    'other:\n'
+                    '    cargo build --release\n',
         "scripts/build/cargo.sh": 'nros_cargo_nextest_args() {\n    echo "--locked"\n}\n',
         "docs/x.md": RETIRED,
     }
@@ -72,6 +124,12 @@ def self_test() -> None:
     assert len(violations({**good, "a.sh": f"{RETIRED}= cargo build"})) == 1, "a setter passed"
     dropped = {**good, "justfile": good["justfile"].replace("--release --locked", "--release", 1)}
     assert len(violations(dropped)) == 1, "a lost --locked passed"
+    # issue 1863's shape: the SECOND build of a recipe, continued over lines.
+    second = {**good, "justfile": good["justfile"].replace(
+        '--locked --manifest-path "$ws', '--manifest-path "$ws')}
+    assert len(violations(second)) == 1, "an unlocked second build passed"
+    gone = {**good, "justfile": good["justfile"].replace("setup-cli:", "setup-kli:")}
+    assert len(violations(gone)) == 1, "a renamed recipe passed vacuously"
 
 
 def tracked() -> list[str]:
@@ -92,7 +150,10 @@ def main() -> int:
     if bad:
         print("check-cargo-locked FAILED:\n  " + "\n  ".join(bad), file=sys.stderr)
         return 1
-    print(f"check-cargo-locked: shim retired; {len(LOCKED_SITES)} closed-root builds pass --locked")
+    n = sum(len([c for c in recipe_commands(files["justfile"], r) or [] if CARGO_CALL.search(c)])
+            for r in CLOSED_ROOT_RECIPES)
+    print(f"check-cargo-locked: shim retired; {n} cargo calls in {len(CLOSED_ROOT_RECIPES)} "
+          "closed-root recipes + repo-root nextest pass --locked")
     return 0
 
 
