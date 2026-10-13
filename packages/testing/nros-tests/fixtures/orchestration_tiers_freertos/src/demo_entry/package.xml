@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<!-- Issue 1305 — the Entry pkg is a ROS package so `nros sync` scans it and
+     writes its generated selection package (the board crate it links). -->
+<package format="3">
+  <name>demo_entry</name>
+  <version>0.1.0</version>
+  <description>Multi-tier orchestration fixture (FreeRTOS) — Entry pkg consuming `nros::main!(launch = "demo_bringup")`.</description>
+  <maintainer email="dev@example.org">nano-ros tests</maintainer>
+  <license>MIT OR Apache-2.0</license>
+  <exec_depend>ctrl_pkg</exec_depend>
+  <exec_depend>telem_pkg</exec_depend>
+  <exec_depend>demo_bringup</exec_depend>
+  <export>
+    <build_type>nros_cargo</build_type>
+  </export>
+</package>

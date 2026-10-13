@@ -101,6 +101,23 @@ def has_provider(src_dir: Path) -> bool:
     return False
 
 
+def claiming_image(leaf_dir: Path, pkg: str) -> "tuple[str, str | None] | None":
+    """The `[image.<id>]` block (text) and its board that a SIBLING bringup
+    claims for the entry `leaf_dir` (package `pkg`) with `entry = "<pkg>"` (or
+    the directory name), or `None` when no bringup beside it does."""
+    names = {pkg, leaf_dir.name}
+    for bringup in sorted(leaf_dir.parent.glob("*/system.toml")):
+        text = bringup.read_text(encoding="utf-8", errors="replace")
+        for block in re.split(r"^\[", text, flags=re.M):
+            if not block.startswith("image."):
+                continue
+            entry = re.search(r'^entry\s*=\s*"([^"]+)"', block, re.M)
+            if entry and entry.group(1) in names:
+                board = re.search(r'^board\s*=\s*"([^"]+)"', block, re.M)
+                return block, board.group(1) if board else None
+    return None
+
+
 def selection_supplies(leaf_dir: Path) -> "bool | None":
     """Issue 1305 — the provider a MIGRATED leaf gets from its selection package.
 
@@ -120,11 +137,22 @@ def selection_supplies(leaf_dir: Path) -> "bool | None":
     sel = pkg.group(1).replace("-", "_") + "_nros_selection"
     if not re.search(rf"^{sel}\s*=", text, re.M):
         return None
-    system = (leaf_dir / "system.toml").read_text(encoding="utf-8", errors="replace")
+    own = leaf_dir / "system.toml"
+    if own.is_file():
+        system = own.read_text(encoding="utf-8", errors="replace")
+        board = leaf_board(leaf_dir)
+    else:
+        # A workspace ENTRY with no `system.toml` of its own: its image is the
+        # one a sibling bringup claims for it (`[image.<id>] entry = "<pkg>"`),
+        # which is what `nros sync` writes its selection from
+        # (`leaf_settings::write_entry_selection`).
+        claimed = claiming_image(leaf_dir, pkg.group(1))
+        if claimed is None:
+            return None
+        system, board = claimed
     stated = re.search(r'^panic\s*=\s*"([a-z]+)"', system, re.M)
     if stated and stated.group(1) != "own":
         return False
-    board = leaf_board(leaf_dir)
     extra = board_crate_root_extra(board) if board else ""
     return any(re.search(rf"\b(use|extern\s+crate)\s+{c}\b", extra) for c in PROVIDER_CRATES)
 

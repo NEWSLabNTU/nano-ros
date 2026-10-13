@@ -1,0 +1,20 @@
+# What this test image deploys to (RFC-0098 D3/D5). It keeps its own `main`
+# (no `nros::main!`, no session) and declares no component table; the file
+# names its board, which reaches the build through the generated selection
+# package (issue 1305) — the board crate, its platform and runtime crates, and
+# the target / link settings `build/<image>/nros-cargo.toml` carries.
+# The program opens no session; `rmw` is the image's backend all the same, as
+# for every image (the board crate is built with it).
+
+[system]
+name = "logging_smoke_threadx_linux"
+rmw = "zenoh"
+domain_id = 0
+
+[image.threadx-linux]
+board = "threadx-linux"
+# `main.rs` declares its own `#[panic_handler]` (RFC-0077).
+panic = "platform"
+
+[board_config."threadx-linux"]
+netstack = "netxduo"

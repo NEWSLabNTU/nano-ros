@@ -16,7 +16,7 @@ use log::{error, info};
 use nros::prelude::*;
 
 fn main() {
-    nros_board_linux::register_linked_rmw();
+    ros_edition_pose_pub_nros_selection::nros_board_linux::register_linked_rmw();
     env_logger::init();
 
     let ctx = nros::init_with_launch_auto().expect("nros init failed");
@@ -45,13 +45,14 @@ fn main() {
             msg.pose.position.z = -3.5;
             msg.pose.orientation.w = 1.0;
             match publisher.publish(&msg) {
-                Ok(()) => info!("Publishing PoseStamped x={} z={}", msg.pose.position.x, msg.pose.position.z),
+                Ok(()) => info!(
+                    "Publishing PoseStamped x={} z={}",
+                    msg.pose.position.x, msg.pose.position.z
+                ),
                 Err(e) => error!("Publish error: {:?}", e),
             }
         })
         .expect("Failed to register publish timer");
 
-    executor
-        .spin(SpinOptions::default())
-        .expect("spin error");
+    executor.spin(SpinOptions::default()).expect("spin error");
 }

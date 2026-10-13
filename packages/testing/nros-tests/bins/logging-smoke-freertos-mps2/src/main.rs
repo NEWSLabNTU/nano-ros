@@ -11,7 +11,9 @@
 #![no_std]
 #![no_main]
 
-use nros_board_mps2_an385_freertos::{Config, Mps2An385};
+use logging_smoke_freertos_mps2_nros_selection::nros_board_mps2_an385_freertos::{
+    Config, Mps2An385,
+};
 use nros_log::{
     Logger, Severity, log_debug, log_error, log_fatal, log_info, log_warn, nros_trace,
     register_logger,

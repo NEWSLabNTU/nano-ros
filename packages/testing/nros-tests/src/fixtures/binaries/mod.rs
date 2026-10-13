@@ -1247,13 +1247,11 @@ pub fn build_example_rmw(name: &str, binary_name: &str, rmw: Rmw) -> TestResult<
     // directory: correct only while every RMW variant authors `target-<rmw>`,
     // which is the column phase-340 W2.d deletes.
     //
-    // `FixtureVariant::rmw` is the feature-selected shape (`--no-default-features
-    // --features rmw-<x>`), which is exactly what this function's own doc
-    // comment says the build runs.
-    //
-    // Issue 1305 — `select_rmw_row`, which also answers for a leaf that picks
-    // its RMW by IMAGE (`examples/native/rust/*`): there the zenoh build is the
-    // plain row and the others are `image = "native_<rmw>"` rows.
+    // Issue 1305 — `select_rmw_row`: a leaf picks its RMW by IMAGE
+    // (`examples/native/rust/*`): the zenoh build is the plain row and the
+    // others are `image = "native_<rmw>"` rows. (The feature-selected shape,
+    // `--no-default-features --features rmw-<x>`, has no rows left since
+    // phase F, and its selector is gone.)
     let leaf = format!("examples/{name}");
     if crate::fixtures::groups::leaf_has_rows(&leaf) {
         let row = crate::fixtures::groups::select_rmw_row(&leaf, rmw)?;
@@ -4241,20 +4239,16 @@ pub fn build_native_param_two_node_talker() -> TestResult<&'static Path> {
     static NATIVE_PARAM_TWO_NODE_BINARY: OnceCell<PathBuf> = OnceCell::new();
     NATIVE_PARAM_TWO_NODE_BINARY
         .get_or_try_init(|| {
-            // issue 1268 — `select_row`, not `select_sole_row`: the leaf has TWO
-            // rows (the Cyclone sibling below), and the sole-row selector refuses
-            // a multi-row leaf rather than guessing.
+            // issue 1268 — not `select_sole_row`: the leaf has TWO rows (the
+            // Cyclone sibling below), and the sole-row selector refuses a
+            // multi-row leaf rather than guessing.
             //
-            // issue 1620 — `rmw(Zenoh)`, not `plain()`. This said `plain()` "because
-            // the zenoh row authors no `rmw` and no features", but `b6055b6f3`
-            // gave that row `rmw = "zenoh"`, `no_default_features` and
-            // `features = ["rmw-zenoh"]` so it mirrors its Cyclone sibling — and
-            // `plain()` then matched NO row, so both zenoh cases failed with
-            // `no [[fixture]] row … Selector { rmw: "" … }` in every lane. The two
-            // builders now select by the same rule.
-            let row = crate::fixtures::groups::select_row(
+            // issue 1620 — the two builders select by the same rule. Issue 1305:
+            // that rule is the IMAGE now (`native` / `native_cyclonedds` in the
+            // leaf's `system.toml`), which `select_rmw_row` reaches from an RMW.
+            let row = crate::fixtures::groups::select_rmw_row(
                 "packages/testing/nros-tests/bins/param-two-node-talker",
-                &crate::fixtures::groups::FixtureVariant::rmw(crate::fixtures::Rmw::Zenoh),
+                crate::fixtures::Rmw::Zenoh,
             )?;
             let profile = cargo_target_profile_dir();
             let rel = PathBuf::from(format!("{profile}/param-two-node-talker"));
@@ -4278,9 +4272,9 @@ pub fn build_native_param_two_node_talker_cyclonedds() -> TestResult<&'static Pa
     static NATIVE_PARAM_TWO_NODE_CYCLONE_BINARY: OnceCell<PathBuf> = OnceCell::new();
     NATIVE_PARAM_TWO_NODE_CYCLONE_BINARY
         .get_or_try_init(|| {
-            let row = crate::fixtures::groups::select_row(
+            let row = crate::fixtures::groups::select_rmw_row(
                 "packages/testing/nros-tests/bins/param-two-node-talker",
-                &crate::fixtures::groups::FixtureVariant::rmw(crate::fixtures::Rmw::Cyclonedds),
+                crate::fixtures::Rmw::Cyclonedds,
             )?;
             let profile = cargo_target_profile_dir();
             let rel = PathBuf::from(format!("{profile}/param-two-node-talker"));
@@ -4335,9 +4329,9 @@ pub fn build_graph_probe_rmw(rmw: Rmw) -> TestResult<&'static Path> {
         Rmw::Xrce => &XRCE_ABSENT,
     };
     cell.get_or_try_init(|| {
-        let row = crate::fixtures::groups::select_row(
+        let row = crate::fixtures::groups::select_rmw_row(
             "packages/testing/nros-tests/bins/graph-probe",
-            &crate::fixtures::groups::FixtureVariant::rmw(rmw),
+            rmw,
         )?;
         let profile = cargo_target_profile_dir();
         let rel = PathBuf::from(format!("{profile}/graph-probe"));
@@ -4446,9 +4440,9 @@ pub fn build_int32_sink_rmw(rmw: Rmw) -> TestResult<&'static Path> {
         Rmw::Cyclonedds => &CYCLONE_BIN,
     };
     cell.get_or_try_init(|| {
-        let row = crate::fixtures::groups::select_row(
+        let row = crate::fixtures::groups::select_rmw_row(
             "packages/testing/nros-tests/bins/int32-sink",
-            &crate::fixtures::groups::FixtureVariant::rmw(rmw),
+            rmw,
         )?;
         let profile = cargo_target_profile_dir();
         let rel = PathBuf::from(format!("{profile}/int32-sink"));
@@ -4463,9 +4457,9 @@ pub fn build_int32_sink_rmw(rmw: Rmw) -> TestResult<&'static Path> {
 pub fn build_sim_clock_publisher() -> TestResult<&'static Path> {
     static BIN: OnceCell<PathBuf> = OnceCell::new();
     BIN.get_or_try_init(|| {
-        let row = crate::fixtures::groups::select_row(
+        let row = crate::fixtures::groups::select_rmw_row(
             "packages/testing/nros-tests/bins/sim-clock-publisher",
-            &crate::fixtures::groups::FixtureVariant::rmw(Rmw::Cyclonedds),
+            Rmw::Cyclonedds,
         )?;
         let profile = cargo_target_profile_dir();
         let rel = PathBuf::from(format!("{profile}/sim-clock-publisher"));
@@ -4479,9 +4473,9 @@ pub fn build_sim_clock_publisher() -> TestResult<&'static Path> {
 pub fn build_sim_clock_listener() -> TestResult<&'static Path> {
     static BIN: OnceCell<PathBuf> = OnceCell::new();
     BIN.get_or_try_init(|| {
-        let row = crate::fixtures::groups::select_row(
+        let row = crate::fixtures::groups::select_rmw_row(
             "packages/testing/nros-tests/bins/sim-clock-listener",
-            &crate::fixtures::groups::FixtureVariant::rmw(Rmw::Cyclonedds),
+            Rmw::Cyclonedds,
         )?;
         let profile = cargo_target_profile_dir();
         let rel = PathBuf::from(format!("{profile}/sim-clock-listener"));
@@ -4507,7 +4501,7 @@ pub fn build_int32_source() -> TestResult<&'static Path> {
     BIN.get_or_try_init(|| {
         let row = crate::fixtures::groups::select_row(
             "packages/testing/nros-tests/bins/int32-source",
-            &crate::fixtures::groups::FixtureVariant::rmw(Rmw::Zenoh),
+            &crate::fixtures::groups::FixtureVariant::platform_rmw(Rmw::Zenoh),
         )?;
         let profile = cargo_target_profile_dir();
         let rel = PathBuf::from(format!("{profile}/int32-source"));
@@ -4539,10 +4533,19 @@ pub fn build_action_server_concurrent(rmw: Rmw) -> TestResult<&'static Path> {
         }
     };
     cell.get_or_try_init(|| {
-        let row = crate::fixtures::groups::select_row(
-            "packages/testing/nros-tests/bins/action-server-concurrent",
-            &crate::fixtures::groups::FixtureVariant::rmw(rmw),
-        )?;
+        // Issue 1305 — the RMW is the IMAGE; the zenoh row also enables the
+        // leaf's `zenoh-reply-slots` probe (issue 0902), so it is selected by
+        // that feature and the XRCE one by its image.
+        let row = match rmw {
+            Rmw::Zenoh => crate::fixtures::groups::select_row(
+                "packages/testing/nros-tests/bins/action-server-concurrent",
+                &crate::fixtures::groups::FixtureVariant::features(&["zenoh-reply-slots"]),
+            )?,
+            _ => crate::fixtures::groups::select_rmw_row(
+                "packages/testing/nros-tests/bins/action-server-concurrent",
+                rmw,
+            )?,
+        };
         let profile = cargo_target_profile_dir();
         let rel = PathBuf::from(format!("{profile}/action-server-concurrent"));
         require_prebuilt_row_binary_fresh(row, &rel)
@@ -4568,7 +4571,7 @@ pub fn build_action_client_multigoal(rmw: Rmw) -> TestResult<&'static Path> {
     cell.get_or_try_init(|| {
         let row = crate::fixtures::groups::select_row(
             "packages/testing/nros-tests/bins/action-client-multigoal",
-            &crate::fixtures::groups::FixtureVariant::rmw(rmw),
+            &crate::fixtures::groups::FixtureVariant::platform_rmw(rmw),
         )?;
         let profile = cargo_target_profile_dir();
         let rel = PathBuf::from(format!("{profile}/action-client-multigoal"));

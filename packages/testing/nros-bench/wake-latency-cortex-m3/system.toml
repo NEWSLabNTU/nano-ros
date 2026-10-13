@@ -1,0 +1,18 @@
+# What this bench image deploys to (RFC-0098 D3/D5). Both bins keep their own
+# `main` (no `nros::main!`) and declare no component table; the file names their
+# board, which reaches the build through the generated selection package (issue
+# 1305) — the board crate, its RMW backend, platform and panic provider, plus
+# the target and link settings `build/<image>/nros-cargo.toml` carries.
+
+[system]
+name = "wake_latency_cortex_m3"
+rmw = "zenoh"
+domain_id = 0
+
+# FreeRTOS on QEMU MPS2-AN385. The network identity comes from the crate's own
+# configs (`src/lib.rs`), not from here.
+[image.mps2-an385-freertos]
+board = "freertos"
+
+[board_config."mps2-an385-freertos"]
+netstack = "lwip"

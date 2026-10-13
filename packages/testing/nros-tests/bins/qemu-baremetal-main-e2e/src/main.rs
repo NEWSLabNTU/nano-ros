@@ -4,11 +4,10 @@
 //! register, `Executor::open`, `RuntimeCtx`, node registration, spin) is
 //! emitted by `nros::main!()` from `[image.*] board =
 //! \"qemu-mps2-an385"` + `node_pkgs`. The only hand-written lines are the
-//! bare-metal attrs + panic handler.
+//! bare-metal attrs; the panic handler is the board's crate-root provider,
+//! linked by the generated selection package (issue 1305).
 
 #![no_std]
 #![no_main]
-
-use panic_semihosting as _;
 
 nros::main!(panic = "own");

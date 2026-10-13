@@ -318,19 +318,6 @@ impl FixtureVariant {
         Self(Selector::default())
     }
 
-    /// RMW chosen by cargo FEATURE: `rmw = "<x>"`, `features = ["rmw-<x>"]`,
-    /// `no_default_features = true` (37 rows). The shape every
-    /// `build_example_rmw` call site means.
-    pub fn rmw(rmw: super::Rmw) -> Self {
-        Self(Selector {
-            rmw: rmw.cmake_value().to_string(),
-            features: rmw.cargo_feature().to_string(),
-            no_default_features: true,
-            env: String::new(),
-            image: String::new(),
-        })
-    }
-
     /// RMW baked by the platform / board / Kconfig rather than by a feature:
     /// `rmw = "<x>"` and no features (144 rows).
     pub fn platform_rmw(rmw: super::Rmw) -> Self {
@@ -494,15 +481,13 @@ pub fn leaf_is_multi_row(dir: &str) -> bool {
 /// The row of `dir` that builds `rmw` — the selection `build_example_rmw`
 /// means (issue 1305).
 ///
-/// Two leaf shapes answer it differently, and the LEAF's rows say which:
-///
-/// * a leaf whose rows select the RMW by cargo FEATURE (`features =
-///   ["rmw-<x>"]`, `no_default_features`) — [`FixtureVariant::rmw`], exactly;
-/// * a leaf whose rows select it by IMAGE (`image = "<id>"`, the RFC-0031
-///   spelling: `examples/native/rust/*`) — the one row with no feature, env or
-///   `no_default_features` variant whose COORDINATE (`row_coord`, the single
-///   computation, carried in the export) is `rmw`. That is the image row for a
-///   non-default RMW and the leaf's plain row for its default one.
+/// The RMW is an IMAGE fact (RFC-0031: `image = "<id>"` on a row, the
+/// `[image.<id>] rmw` of the leaf's `system.toml`), never a cargo feature: since
+/// issue 1305 phase F no row selects its RMW by an `rmw-<x>` feature, so the
+/// answer is the one row with no feature, env or `no_default_features` variant
+/// whose COORDINATE (`row_coord`, the single computation, carried in the
+/// export) is `rmw` — the image row for a non-default RMW, the leaf's plain row
+/// for its default one.
 ///
 /// Fails closed like [`select_row`]: none, or more than one, is an error.
 pub fn select_rmw_row(dir: &str, rmw: super::Rmw) -> TestResult<&'static GroupRow> {
@@ -517,9 +502,6 @@ pub fn select_rmw_row_in<'a>(
 ) -> TestResult<&'a GroupRow> {
     let dir = dir.trim_end_matches('/');
     let at: Vec<&GroupRow> = rows.iter().filter(|r| r.dir == dir).collect();
-    if !at.iter().any(|r| !r.selector.image.is_empty()) {
-        return select_row_in(rows, dir, &FixtureVariant::rmw(rmw));
-    }
     let hits: Vec<&GroupRow> = at
         .iter()
         .copied()
@@ -533,7 +515,7 @@ pub fn select_rmw_row_in<'a>(
     match hits.as_slice() {
         [row] => Ok(row),
         none_or_many => Err(TestError::BuildFailed(format!(
-            "{dir} selects its RMW by image, and {} of its rows build {} with no other \
+            "{dir}: {} of its rows build {} with no other \
              variant (want exactly 1). Rows: {}",
             none_or_many.len(),
             rmw.cmake_value(),
@@ -985,8 +967,11 @@ mod tests {
         let n = |v: &FixtureVariant| rows.iter().filter(|r| r.selector == v.0).count();
         assert!(n(&FixtureVariant::plain()) > 0, "plain rows exist");
         assert!(
-            n(&FixtureVariant::rmw(crate::fixtures::Rmw::Zenoh)) > 0,
-            "feature-selected RMW rows exist"
+            n(&FixtureVariant::image(
+                crate::fixtures::Rmw::Xrce,
+                "native_xrce"
+            )) > 0,
+            "image-selected RMW rows exist"
         );
         assert!(
             n(&FixtureVariant::platform_rmw(crate::fixtures::Rmw::Zenoh)) > 0,

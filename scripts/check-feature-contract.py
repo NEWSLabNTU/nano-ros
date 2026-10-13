@@ -437,6 +437,25 @@ def builds_a_final_artifact(doc):
     return bool(doc.get("bin"))
 
 
+# Issue 1305 — board crates whose every IMAGE dep-site is a GENERATED selection
+# package (`<leaf>/build/nros/selection`, written by `nros sync` from the
+# image's `system.toml` and the board descriptor). Those manifests are build
+# output, which this gate deliberately does not read (`is_build_output`), and
+# they name the board's features EXPLICITLY (`default-features = false,
+# features = [<descriptor board_features>, <rmw>, ...]`), `image-runtime`
+# included. So "every authored dep-site passes `default-features = false`" is
+# true and is not the hazard clause (d) is about: the tracked dep-sites left are
+# CMake-road FFI staticlibs that must NOT take the image runtime. Printed as a
+# note, never skipped silently.
+DEFAULT_REACHED_BY_SELECTION = {
+    "nros-board-nuttx-qemu": (
+        "every image takes it through its generated selection package, which "
+        "names `image-runtime` from the board descriptor; the tracked dep-sites "
+        "are the CMake-road FFI crates (`nros-nuttx-ffi`, `nros-nuttx-riscv-ffi`)"
+    ),
+}
+
+
 def clause_d(mans):
     """No `default` feature is unreachable from every dep-site."""
     by_name = {}
@@ -491,6 +510,9 @@ def clause_d(mans):
         # Issue 0615 — the crate's own build is a consumer the dep-site view
         # cannot see. Recorded rather than skipped silently: a gate that
         # exempts without saying so is how issue 0442 hid.
+        if nm in DEFAULT_REACHED_BY_SELECTION:
+            exempt.append(f"{nm} (selection-mediated: {DEFAULT_REACHED_BY_SELECTION[nm]})")
+            continue
         if builds_a_final_artifact(doc):
             exempt.append(f"{nm} (own build is final: {sorted(set((doc.get('lib') or {}).get('crate-type') or []) | ({'bin'} if doc.get('bin') else set()))})")
             continue
@@ -524,7 +546,7 @@ def clause_d(mans):
                 f"      at the dep-sites that need it."
             )
     if exempt:
-        print(f"  note (d) exempt, own build is final: {', '.join(exempt)}")
+        print(f"  note (d) exempt: {', '.join(exempt)}")
     return bad
 
 

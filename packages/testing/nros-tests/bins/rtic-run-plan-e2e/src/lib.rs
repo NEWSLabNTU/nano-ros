@@ -43,7 +43,7 @@ impl ExecutableNode for E2eNode {
     fn on_callback(state: &mut Self::State, callback: Callback<'_>, _ctx: &mut CallbackCtx<'_>) {
         if callback.as_str() == "__nros_e2e" && !state.fired {
             state.fired = true;
-            nros_board_mps2_an385::exit_success();
+            qemu_rtic_main_e2e_nros_selection::nros_board_mps2_an385::exit_success();
         }
     }
 

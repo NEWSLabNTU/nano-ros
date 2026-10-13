@@ -26,12 +26,12 @@ extern crate nros_platform_cffi as _;
 /// cannot fail (the shape `check-no-vacuous-tests` exists for). The caller
 /// prints the distinction, so a consumer asserting `refusals=0` is red on the
 /// build that could never have answered.
-#[cfg(feature = "rmw-zenoh")]
+#[cfg(feature = "zenoh-reply-slots")]
 fn reply_slot_refusals() -> Option<u32> {
     Some(nros_rmw_zenoh::reply_slot_refusals_total())
 }
 
-#[cfg(not(feature = "rmw-zenoh"))]
+#[cfg(not(feature = "zenoh-reply-slots"))]
 fn reply_slot_refusals() -> Option<u32> {
     None
 }
@@ -39,7 +39,7 @@ fn reply_slot_refusals() -> Option<u32> {
 fn main() -> ! {
     // Register the RMW backend the build linked (idempotent; must run before
     // the executor opens).
-    nros_board_linux::register_linked_rmw();
+    action_server_concurrent_nros_selection::nros_board_linux::register_linked_rmw();
 
     env_logger::init();
 

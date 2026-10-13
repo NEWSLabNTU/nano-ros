@@ -46,7 +46,7 @@ use std_msgs::msg::String as StringMsg;
 
 fn main() {
     env_logger::init();
-    nros_board_linux::register_linked_rmw();
+    message_info_observer_nros_selection::nros_board_linux::register_linked_rmw();
 
     // Contains "Listener" for the same reason int32-sink's banner does: the
     // e2e spawn helpers key readiness off that word.

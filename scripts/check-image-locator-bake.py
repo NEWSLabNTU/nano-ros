@@ -135,6 +135,34 @@ NO_ROUTER = {
     "packages/testing/nros-tests/bins/qemu-baremetal-main-e2e": (
         "same test, the non-RTIC board — no router by design"
     ),
+    # Issue 1305 — single-package leaves since they moved onto their selection
+    # package (a `system.toml` naming the board), but with a hand-written `main`
+    # that never reaches `nros::main!`'s bake: an image `locator` would be read
+    # by nothing.
+    "packages/testing/nros-tests/bins/logging-smoke-freertos-mps2": (
+        "no-session `run_bare` smoke — opens no Executor and dials nothing"
+    ),
+    "packages/testing/nros-tests/bins/logging-smoke-nuttx-qemu-arm": (
+        "no-session logging smoke — opens no Executor and dials nothing"
+    ),
+    "packages/testing/nros-tests/bins/logging-smoke-threadx-linux": (
+        "no-session `run_bare` smoke — opens no Executor and dials nothing"
+    ),
+    "packages/testing/nros-tests/bins/logging-smoke-threadx-riscv64": (
+        "no-session `run_bare` smoke — opens no Executor and dials nothing"
+    ),
+    "packages/testing/nros-tests/bins/pool-exhaustion-threadx-linux": (
+        "takes the one pool slot raw, then asserts the second `Context::new` is "
+        "refused `Full` before it dials — no router by design"
+    ),
+    "packages/testing/nros-bench/large-msg-baremetal": (
+        "hand-written `#[entry]` main: its `Config { zenoh_locator }` literal is "
+        "the locator (`run_bare(config, …)`); no `nros::main!` bakes the image's"
+    ),
+    "packages/testing/nros-bench/wake-latency-cortex-m3": (
+        "hand-written mains: `src/lib.rs`'s `LOCATOR` const feeds both bins' "
+        "`Config`; no `nros::main!` bakes the image's"
+    ),
 }
 
 

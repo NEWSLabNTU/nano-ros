@@ -9,7 +9,9 @@
 #![no_std]
 #![no_main]
 
-use nros_board_threadx_qemu_riscv64::{Config, ThreadxQemuRiscv64};
+use logging_smoke_threadx_riscv64_nros_selection::nros_board_threadx_qemu_riscv64::{
+    Config, ThreadxQemuRiscv64,
+};
 use nros_log::{
     Logger, Severity, log_debug, log_error, log_fatal, log_info, log_warn, nros_trace,
     register_logger,

@@ -1513,8 +1513,6 @@ platform = "linux"
 lang = "rust"
 rmw = "zenoh"
 dir = "packages/testing/nros-tests/bins/param-two-node-talker"
-no_default_features = true
-features = ["rmw-zenoh"]
 
 # issue 1268 / phase-444 W6 — the SAME two-node image on Cyclone.
 #
@@ -1527,18 +1525,16 @@ features = ["rmw-zenoh"]
 # for `native-multinode-rust-cyclone`.
 #
 # No `target_dir`: the column was deleted in issue 0517 step 3 and a row's
-# identity IS its configuration. These two rows are told apart by
-# `no_default_features` + `features`, and selected with
-# `groups::select_row(dir, FixtureVariant::rmw(Cyclonedds))` — several rows of a
-# leaf deliberately share `<dir>/target`.
+# identity IS its configuration. These two rows are told apart by the IMAGE
+# (`system.toml` declares `native` and `native_cyclonedds`, issue 1305), and
+# selected with `groups::select_rmw_row(dir, Cyclonedds)`.
 [[fixture]]
 id = "param-two-node-talker-cyclone"
 platform = "linux"
 lang = "rust"
 rmw = "cyclonedds"
 dir = "packages/testing/nros-tests/bins/param-two-node-talker"
-no_default_features = true
-features = ["rmw-cyclonedds"]
+image = "native_cyclonedds"
 
 # phase-381 acceptance — the graph probe. Enumerates the ROS graph and prints
 # what it can SEE, so `graph_interop.rs` can compare it against `ros2 node
@@ -1550,8 +1546,6 @@ platform = "linux"
 lang = "rust"
 rmw = "zenoh"
 dir = "packages/testing/nros-tests/bins/graph-probe"
-no_default_features = true
-features = ["rmw-zenoh"]
 
 # phase-381 step 2 — the CYCLONE build of the graph probe. W5 gave Cyclone a
 # `ros_discovery_info` READER and only zenoh was ever run live; given that
@@ -1562,8 +1556,7 @@ platform = "linux"
 lang = "rust"
 rmw = "cyclonedds"
 dir = "packages/testing/nros-tests/bins/graph-probe"
-no_default_features = true
-features = ["rmw-cyclonedds"]
+image = "native_cyclonedds"
 
 # phase-467 Q4 — the `/rosout` bridge probe (ledger row
 # `c:logging_rosout_enabled`). Logs through `nros_log` and pumps
@@ -1651,8 +1644,6 @@ platform = "linux"
 lang = "rust"
 rmw = "zenoh"
 dir = "packages/testing/nros-tests/bins/int32-sink"
-no_default_features = true
-features = ["rmw-zenoh"]
 
 # phase-482 W3 — the publishing twin of int32-sink: Int32 on every topic in
 # `NROS_PUB_TOPICS`, every `NROS_PUB_PERIOD_MS`. The peer that feeds
@@ -1663,8 +1654,6 @@ platform = "linux"
 lang = "rust"
 rmw = "zenoh"
 dir = "packages/testing/nros-tests/bins/int32-source"
-no_default_features = true
-features = ["rmw-zenoh"]
 
 # phase-425 W5 — the `/clock` pair, the phase's end-to-end evidence. Every other
 # simulated-time test installs a ROS time by calling the setter, which proves
@@ -1681,16 +1670,14 @@ platform = "linux"
 lang = "rust"
 rmw = "cyclonedds"
 dir = "packages/testing/nros-tests/bins/sim-clock-publisher"
-no_default_features = true
-features = ["rmw-cyclonedds"]
+image = "native_cyclonedds"
 
 [[fixture]]
 platform = "linux"
 lang = "rust"
 rmw = "cyclonedds"
 dir = "packages/testing/nros-tests/bins/sim-clock-listener"
-no_default_features = true
-features = ["rmw-cyclonedds"]
+image = "native_cyclonedds"
 
 # phase-338 W3 — the XRCE build of the same sink. The zenoh->xrce declarative
 # bridge e2e needs an Int32 listener that speaks XRCE; before this it drove the
@@ -1703,8 +1690,7 @@ platform = "linux"
 lang = "rust"
 rmw = "xrce"
 dir = "packages/testing/nros-tests/bins/int32-sink"
-no_default_features = true
-features = ["rmw-xrce"]
+image = "native_xrce"
 
 # issue 0449 — the cyclone build of the same sink. The zenoh->cyclonedds
 # declarative bridge e2e needed an Int32 listener speaking cyclone; before this
@@ -1718,14 +1704,15 @@ platform = "linux"
 lang = "rust"
 rmw = "cyclonedds"
 dir = "packages/testing/nros-tests/bins/int32-sink"
-no_default_features = true
-features = ["rmw-cyclonedds"]
+image = "native_cyclonedds"
 
 # Concurrent Fibonacci action server (phase-277 W5 — was the example
 # action-server's `NROS_ACTION_CONCURRENT` escape hatch; the example slimmed
 # to the official single-goal demo, so the concurrent-goals stress role moved
 # here). Built per-RMW: Zenoh variant consumed by tests/rmw_interop.rs, XRCE
-# variant by tests/xrce_ros2_interop.rs.
+# variant by tests/xrce_ros2_interop.rs. The RMW is the IMAGE (issue 1305); the
+# zenoh row also turns on `zenoh-reply-slots`, the reply-slot refusal probe
+# only a zenoh build can answer (issue 0902).
 # phase-455 W2 gave this row an `id` so the live-peer completion probe's
 # fixtures can be built one at a time (`fixtures-build.sh linux rust --id …`).
 # Without one the only narrowing available is the whole linux/rust lane, which
@@ -1736,18 +1723,15 @@ features = ["rmw-cyclonedds"]
 id = "action-server-concurrent-zenoh"
 platform = "linux"
 lang = "rust"
-rmw = "zenoh"
 dir = "packages/testing/nros-tests/bins/action-server-concurrent"
-no_default_features = true
-features = ["rmw-zenoh"]
+features = ["zenoh-reply-slots"]
 
 [[fixture]]
 platform = "linux"
 lang = "rust"
 rmw = "xrce"
 dir = "packages/testing/nros-tests/bins/action-server-concurrent"
-no_default_features = true
-features = ["rmw-xrce"]
+image = "native_xrce"
 
 # issue 0322 — the client half of the MAX_GOALS stress pair. Sends more
 # concurrent goals than the server's `active_goals` table holds so a full table
@@ -1760,8 +1744,6 @@ platform = "linux"
 lang = "rust"
 rmw = "zenoh"
 dir = "packages/testing/nros-tests/bins/action-client-multigoal"
-no_default_features = true
-features = ["rmw-zenoh"]
 
 # TLS variant (isolated target dir).
 [[fixture]]
@@ -2359,10 +2341,15 @@ dir = "packages/testing/nros-tests/bins/logging-smoke-freertos-mps2"
 
 
 [[fixture]]
+id = "nuttx-logging-smoke"
 platform = "nuttx"
 lang = "rust"
 dir = "packages/testing/nros-tests/bins/logging-smoke-nuttx-qemu-arm"
-env = { CC_armv7a_nuttx_eabi = "arm-none-eabi-gcc" }
+# Issue 1305 — the row builds through the image's settings file from the
+# directory ABOVE the leaf, where no rust-toolchain.toml pins the nightly the
+# leaf's own file names (build-std); the toolchain is stated here, as for the
+# param-store row below.
+env = { CC_armv7a_nuttx_eabi = "arm-none-eabi-gcc", RUSTUP_TOOLCHAIN = "nightly-2026-04-11" }
 
 # Issue 1706 — a talker with one declared parameter whose contract makes the
 # store visible to the build, so the store is CARVED from the executor backing

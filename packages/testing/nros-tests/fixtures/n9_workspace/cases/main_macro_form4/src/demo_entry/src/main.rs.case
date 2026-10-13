@@ -8,6 +8,6 @@
 //! sync materialises it) via the ladder.
 
 nros::main!(
-    board = ::nros_board_linux::LinuxBoard,
+    board = ::demo_entry_nros_selection::nros_board_linux::LinuxBoard,
     model = "demo_bringup:config/system_model.yaml",
 );

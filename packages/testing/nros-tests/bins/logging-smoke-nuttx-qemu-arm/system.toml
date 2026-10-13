@@ -1,0 +1,21 @@
+# What this test image deploys to (RFC-0098 D3/D5). It keeps its own `main`
+# (no `nros::main!`, no session) and declares no component table; the file
+# names its board, which reaches the build through the generated selection
+# package (issue 1305) — the board crate, its platform and runtime crates, and
+# the target / link settings `build/<image>/nros-cargo.toml` carries.
+# The program opens no session; `rmw` is the image's backend all the same, as
+# for every image (the board crate is built with it).
+
+[system]
+name = "logging_smoke_nuttx"
+rmw = "zenoh"
+domain_id = 0
+
+# NuttX on the QEMU ARM virt machine. `main.rs` declares its own
+# `#[panic_handler]`, so the image says `platform`: the selection package then
+# links no crate-root panic provider of the board's (RFC-0077).
+[image.qemu-armv7a-nuttx]
+board = "nuttx"
+panic = "platform"
+
+[board_config."qemu-armv7a-nuttx"]

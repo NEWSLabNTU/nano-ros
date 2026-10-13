@@ -16,14 +16,13 @@
 #![no_main]
 
 use nros::prelude::*;
-use nros_board_mps2_an385_freertos::{Mps2An385, println};
 use nros_node::executor::wake_probe;
 use nros_platform_mps2_an385::timing::{CycleCounter, clock_cycles, cycles_to_ns};
-use panic_semihosting as _;
 use std_msgs::msg::Int32;
 use wake_latency_cortex_m3::{
     FANOUT_IDLE_SUBS, SCENARIO_NAME, SYSTEM_CORE_CLOCK_HZ, TARGET_SAMPLES, TOPIC, subscriber_config,
 };
+use wake_latency_cortex_m3_nros_selection::nros_board_mps2_an385_freertos::{Mps2An385, println};
 
 /// DWT-backed cycle reader exposed via `extern "C"` so the probe's
 /// `set_cycle_reader` install accepts it; widened to `u64` for uniform storage.

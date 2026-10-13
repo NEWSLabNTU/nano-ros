@@ -59,7 +59,7 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
 // Link-anchor the board crate: its `entry.rs` `nsh_main` (the NuttX
 // `CONFIG_INIT_ENTRYPOINT`) and its build.rs's propagating image-link
 // directives are the whole point of the dependency.
-use nros_board_nuttx_qemu as _;
+use logging_smoke_nuttx_qemu_arm_nros_selection::nros_board_nuttx_qemu as _;
 use nros_log::{
     Logger, Severity, log_debug, log_error, log_fatal, log_info, log_warn, nros_trace,
     register_logger,

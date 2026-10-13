@@ -10,9 +10,8 @@
 
 extern crate shared_node_pkg as _;
 
-use nros_board_mps2_an385_freertos::Mps2An385;
+use freertos_entry_nros_selection::nros_board_mps2_an385_freertos::Mps2An385;
 use nros_platform::BoardEntry;
-use panic_semihosting as _;
 
 // Phase 212.N.4 — codegen-emitted body. Identical signature to the
 // posix sibling.

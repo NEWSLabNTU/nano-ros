@@ -92,7 +92,9 @@ fn idle_soak(executor: &mut Executor, millis: u64) {
     if millis == 0 {
         return;
     }
-    info!("multigoal: idle soak {millis} ms (issue 0902 — the countdown is elapsed time, not traffic)");
+    info!(
+        "multigoal: idle soak {millis} ms (issue 0902 — the countdown is elapsed time, not traffic)"
+    );
     let deadline = std::time::Instant::now() + core::time::Duration::from_millis(millis);
     while std::time::Instant::now() < deadline {
         let _ = executor.spin_once(core::time::Duration::from_millis(50));
@@ -100,7 +102,7 @@ fn idle_soak(executor: &mut Executor, millis: u64) {
 }
 
 fn main() -> ! {
-    nros_board_linux::register_linked_rmw();
+    action_client_multigoal_nros_selection::nros_board_linux::register_linked_rmw();
     env_logger::init();
 
     let ctx = nros::init_with_launch_auto().expect("nros init failed");
@@ -125,10 +127,7 @@ fn main() -> ! {
     // and a peer present. See `idle_soak`: the reply-slot countdown is spent by
     // elapsed time, so a burst of goals on a fresh session is the one shape
     // that cannot reproduce the defect.
-    idle_soak(
-        &mut executor,
-        env_usize("NROS_MULTIGOAL_SOAK_MS", 0) as u64,
-    );
+    idle_soak(&mut executor, env_usize("NROS_MULTIGOAL_SOAK_MS", 0) as u64);
 
     let goals = env_usize("NROS_MULTIGOAL_GOALS", GOALS_DEFAULT);
     let goal = FibonacciGoal { order: ORDER };
@@ -175,7 +174,10 @@ fn main() -> ! {
                     break;
                 }
                 Err(e) => {
-                    warn!("goal {i}: acceptance timed out (attempt {}): {e:?}", attempt + 1);
+                    warn!(
+                        "goal {i}: acceptance timed out (attempt {}): {e:?}",
+                        attempt + 1
+                    );
                     // A timed-out promise leaves the in-flight flag set; clear
                     // it or the retry dies on RequestInFlight.
                     client.reset_send_goal_in_flight();

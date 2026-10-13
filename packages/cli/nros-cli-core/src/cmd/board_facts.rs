@@ -689,11 +689,39 @@ fn board_of_cargo_leaf(ws: &Path, root: &Path) -> Result<String> {
     })?;
     let doc: toml::Table =
         toml::from_str(&raw).map_err(|e| eyre!("{}: {e}", manifest.display()))?;
-    let deps: Vec<&str> = ["dependencies", "build-dependencies"]
+    let mut deps: Vec<String> = ["dependencies", "build-dependencies"]
         .iter()
         .filter_map(|t| doc.get(*t).and_then(toml::Value::as_table))
-        .flat_map(|t| t.keys().map(String::as_str))
+        .flat_map(|t| t.keys().cloned())
         .collect();
+    // Issue 1305 — a leaf on its generated selection package names its board
+    // crate THROUGH it (`<pkg>_nros_selection = { path = "build/nros/selection" }`,
+    // written by `nros sync`), so the board crate is one of the selection's
+    // dependencies. An entry whose image a bringup claims has no `system.toml`
+    // of its own and is answered here.
+    let selections: Vec<PathBuf> = doc
+        .get("dependencies")
+        .and_then(toml::Value::as_table)
+        .into_iter()
+        .flatten()
+        .filter(|(k, _)| k.ends_with("_nros_selection"))
+        .filter_map(|(_, v)| v.get("path").and_then(toml::Value::as_str))
+        .map(|p| ws.join(p).join("Cargo.toml"))
+        .collect();
+    for sel in selections {
+        if let Some(t) = std::fs::read_to_string(&sel)
+            .ok()
+            .and_then(|raw| toml::from_str::<toml::Table>(&raw).ok())
+            .and_then(|d| {
+                d.get("dependencies")
+                    .and_then(toml::Value::as_table)
+                    .cloned()
+            })
+        {
+            deps.extend(t.keys().cloned());
+        }
+    }
+    let deps: Vec<&str> = deps.iter().map(String::as_str).collect();
     let catalog = BoardCatalog::load(root)
         .map_err(|e| eyre!("board catalog under {}: {e}", root.display()))?;
     let hits: Vec<&BoardDescriptor> = catalog

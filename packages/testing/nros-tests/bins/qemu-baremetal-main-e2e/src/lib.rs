@@ -7,7 +7,7 @@
 //! Platform/RMW-agnostic application logic (RFC-0024 shape): registers a
 //! periodic timer; the first tick signals E2E success via the board's
 //! semihosting `exit_success()`. The boot scaffold (reset → `BoardEntry::run`
-//! → executor → spin) is owned by `nros::main!()` + `nros-board-mps2-an385`.
+//! → executor → spin) is owned by `nros::main!()` + the board crate its selection package names.
 
 #![no_std]
 
@@ -46,7 +46,7 @@ impl ExecutableNode for E2eNode {
             // signal a clean QEMU semihosting exit. (When no RMW peer is present
             // the executor never opens; the board's `Executor::open failed:`
             // banner is the alternate boot proof — see the E2E test.)
-            nros_board_mps2_an385::exit_success();
+            qemu_baremetal_main_e2e_nros_selection::nros_board_mps2_an385::exit_success();
         }
     }
 
