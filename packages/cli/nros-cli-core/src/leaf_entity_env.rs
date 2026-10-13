@@ -686,7 +686,7 @@ pub const DERIVED_CLOSURE_ENV_KEYS: &[&str] = &["NROS_SUBSCRIPTION_BUFFER_SIZE"]
 /// derived knob here comes from. A leaf with no readable model gets no facts,
 /// and the consumer keeps its undeclared budget (8 embedded / 32 hosted) —
 /// large, never short.
-const QUERYABLES_DERIVED_BY_CONSUMER: &str = "ZPICO_MAX_QUERYABLES";
+const QUERYABLES_DERIVED_BY_CONSUMER: &str = "NROS_ZENOH_MAX_QUERYABLES";
 
 /// `ZPICO_MAX_LIVELINESS` is not stated here either -- for the same cause and,
 /// since issue 1713, with the same remedy.
@@ -707,7 +707,7 @@ const QUERYABLES_DERIVED_BY_CONSUMER: &str = "ZPICO_MAX_QUERYABLES";
 /// families), plus the descriptor's `[image] entity_liveliness_tokens` where
 /// one is named. The Zephyr resolver road states the whole count, from an
 /// inventory composed with the model.
-const LIVELINESS_DERIVED_BY_CONSUMER: &str = "ZPICO_MAX_LIVELINESS";
+const LIVELINESS_DERIVED_BY_CONSUMER: &str = "NROS_ZENOH_MAX_LIVELINESS";
 
 /// Render the gitignored `[env]` sidecar for a derived budget.
 pub fn render_env_sidecar(
@@ -1404,7 +1404,7 @@ nros = { version = "*", features = ["std", "param-services"] }
             rows.keys().all(|k| !k.starts_with("NROS_DECLARED_")),
             "no carrier rides the sidecar: {out}"
         );
-        assert!(!rows.contains_key("ZPICO_MAX_QUERYABLES"), "{out}");
+        assert!(!rows.contains_key("NROS_ZENOH_MAX_QUERYABLES"), "{out}");
     }
 
     /// The probe running and finding nothing is a STATEMENT, not an absence.
@@ -1644,12 +1644,14 @@ nros = { version = "*", features = ["std", "param-services"] }
         assert!(out.contains("NROS_ZENOH_MAX_PUBLISHERS = \"1\""), "{out}");
         // The infra-incomplete knob must NOT be stated as a value.
         assert!(
-            !out.lines().any(|l| l.starts_with("ZPICO_MAX_QUERYABLES")),
+            !out.lines()
+                .any(|l| l.starts_with("NROS_ZENOH_MAX_QUERYABLES")),
             "the sidecar states a queryable count it cannot complete:\n{out}"
         );
         // phase-412 W2 -- and the liveliness count, for the same reason.
         assert!(
-            !out.lines().any(|l| l.starts_with("ZPICO_MAX_LIVELINESS")),
+            !out.lines()
+                .any(|l| l.starts_with("NROS_ZENOH_MAX_LIVELINESS")),
             "the sidecar states a liveliness count it cannot complete:\n{out}"
         );
         // Issue 1130 -- the cell capacity IS stated: this leaf's one component

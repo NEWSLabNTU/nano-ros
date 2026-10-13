@@ -492,20 +492,16 @@ impl BuildRungs {
 
         let platform = env.platform.filter(|s| !s.is_empty())?;
 
-        // phase-445 W2 — WHICH `[[board]]` in the file, for its `[board.knobs]`.
+        // phase-445 W2 — WHICH `[[board]]` in the file, for its entry's facts.
         // `nros ws board-facts` emits it beside `NROS_BOARD_TOML`; absent is
         // fine for a file declaring one board (or several that agree).
         let board_name = env.board.filter(|s| !s.is_empty());
 
         let board = env.board_toml.filter(|s| !s.is_empty()).map(|raw| {
-            let file = BoardKnobsFile::load_for_board(Path::new(&raw), board_name.as_deref())
-                .unwrap_or_else(|e| panic!("NROS_BOARD_TOML={raw}: {e}"));
-            // RFC-0103 D6 — a descriptor still on `[board.knobs]` is read, and
-            // says so once per build script.
-            if let Some(notice) = file.deprecation_notice() {
-                emit(format!("cargo:warning=nros: {raw}: {notice}"));
-            }
-            file
+            // RFC-0103 D6 — a descriptor still on the retired `[board.knobs]`
+            // is refused by the load (phase-484 W8), naming `[knobs]`.
+            BoardKnobsFile::load_for_board(Path::new(&raw), board_name.as_deref())
+                .unwrap_or_else(|e| panic!("NROS_BOARD_TOML={raw}: {e}"))
         });
 
         let search = build_search_path();
@@ -854,13 +850,12 @@ pub fn registry_env(group: &str, knob: &str) -> Option<&'static str> {
     nros_zephyr_build::knob_by_toml(&format!("{group}.{knob}")).map(|r| r.env)
 }
 
-/// Rung 1 for one knob: its value under ANY of its registry spellings,
-/// canonical first. Two spellings that disagree stop the build, naming both.
+/// Rung 1 for one knob: its value under its CANONICAL registry spelling.
 ///
-/// Every env read in this file goes through here, so a deprecated spelling
-/// (`ZPICO_FRAG_MAX_SIZE` for `NROS_ZENOH_FRAG_MAX_SIZE`) keeps working until
-/// phase-484 W8 retires it — and a reader that asked only the canonical name
-/// would drop it silently.
+/// Every env read in this file goes through here, so a RETIRED spelling
+/// (`ZPICO_FRAG_MAX_SIZE` for `NROS_ZENOH_FRAG_MAX_SIZE`) that is set stops
+/// the build naming the canonical one (phase-484 W8) — a reader that asked
+/// only the canonical name would drop it silently instead.
 #[must_use]
 pub fn knob_env(env: &dyn Fn(&str) -> Option<String>, key: &str) -> Option<String> {
     nros_zephyr_build::read_spelled(key, env)
@@ -868,7 +863,7 @@ pub fn knob_env(env: &dyn Fn(&str) -> Option<String>, key: &str) -> Option<Strin
 
 /// `cargo:rerun-if-env-changed` for every spelling of one knob. A build
 /// script that watched only the canonical name would not re-run when someone
-/// changed the deprecated one it still honours.
+/// set a retired one, and so would not refuse it until something else moved.
 pub fn watch_knob_env(key: &str) {
     for s in nros_zephyr_build::spellings(key) {
         println!("cargo:rerun-if-env-changed={s}");
@@ -1223,9 +1218,8 @@ pub const NET_KNOBS: &[&str] = &[
 ];
 
 /// The canonical env spelling of a net knob (`NROS_SMOLTCP_*`), from the knob
-/// registry. The `ZPICO_SMOLTCP_*` spellings are the registry's legacy rows:
-/// read at the same rung, never returned here, because nothing should start
-/// using them.
+/// registry. The `ZPICO_SMOLTCP_*` spellings are the registry's retired rows:
+/// set, each stops the build (phase-484 W8); never returned here.
 pub fn net_env_key(knob: &str) -> &'static str {
     registry_env("net", knob).unwrap_or_else(|| panic!("unknown net knob `{knob}`"))
 }
@@ -1592,7 +1586,7 @@ pub const WIRE_KNOBS: &[&str] = &[
 ];
 
 /// The canonical env spelling of a wire knob (`NROS_ZENOH_*`), from the knob
-/// registry. The `ZPICO_*` names are its legacy rows, still read.
+/// registry. The `ZPICO_*` names are its retired rows, refused when set.
 pub fn wire_env_key(knob: &str) -> &'static str {
     registry_env("zenoh.wire", knob).unwrap_or_else(|| panic!("unknown wire knob `{knob}`"))
 }
@@ -1671,19 +1665,11 @@ pub enum ConfigError {
         capability: String,
         boards: String,
     },
-    /// phase-445 W2 — the knob twin of [`Self::AmbiguousBoardCapability`]:
-    /// several `[[board]]` entries state different `[board.knobs]` and no
-    /// `NROS_BOARD` names one.
-    AmbiguousBoardKnobs {
+    /// RFC-0103 D6 / phase-484 W8 — a `[[board]]` entry states the RETIRED
+    /// `[board.knobs]`; the board rung is the top-level `[knobs]`.
+    RetiredBoardKnobs {
         path: String,
         boards: String,
-    },
-    /// phase-445 W2 / RFC-0103 D6 — a file states knobs both at the top level
-    /// (`[knobs]`, canonical) and under a `[[board]]` (the legacy
-    /// `[board.knobs]`). Two rungs in one file for the same board, with no rule
-    /// for which wins, is refused rather than merged.
-    BoardKnobsStatedTwice {
-        path: String,
     },
     /// phase-400 W3 — `transport.kind` outside the `exactly-one-of` group.
     UnknownTransport {
@@ -1739,16 +1725,10 @@ impl std::fmt::Display for ConfigError {
                  `[board.capabilities] {capability}`, and no NROS_BOARD names one. \
                  Set NROS_BOARD, or make the entries agree."
             ),
-            ConfigError::AmbiguousBoardKnobs { path, boards } => write!(
+            ConfigError::RetiredBoardKnobs { path, boards } => write!(
                 f,
-                "{path}: declares several boards ({boards}) whose `[board.knobs]` differ, and \
-                 no NROS_BOARD names one. Set NROS_BOARD, or make the entries agree."
-            ),
-            ConfigError::BoardKnobsStatedTwice { path } => write!(
-                f,
-                "{path}: states `[knobs]` at the top level AND the legacy `[board.knobs]` under \
-                 a board. The board rung is the top-level `[knobs]` (RFC-0103 D6); move the \
-                 `[board.knobs]` table there."
+                "{path}: board {boards}: {}",
+                retired_board_knobs_refusal()
             ),
             ConfigError::UnknownTransport {
                 platform,
@@ -2993,7 +2973,11 @@ impl PlatformsTree {
         imply("net.ip_stack", !serial, "NROS_NET_IP_STACK");
         // D9 (safety-island demo) -- a serial link does not carry the domain's
         // liveliness history; the graph cache is the old default on IP.
-        imply("zenoh.graph_discovery", !serial, "ZPICO_GRAPH_DISCOVERY");
+        imply(
+            "zenoh.graph_discovery",
+            !serial,
+            "NROS_ZENOH_GRAPH_DISCOVERY",
+        );
 
         Ok(ResolvedTransport {
             kind: Resolved {
@@ -3112,15 +3096,10 @@ pub struct BoardKnobsFile {
     pub boards: Vec<BoardEntryFacts>,
     /// RFC-0103 D6 — the board rung of the RFC-0049 ladder, spelled `[knobs]`
     /// at the top level: the file kind says the owner, and it applies to every
-    /// `[[board]]` the file declares. After [`Self::load_for_board`] this also
-    /// holds a selected legacy `[board.knobs]` (see [`Self::legacy_board_knobs`]).
+    /// `[[board]]` the file declares. The per-entry `[board.knobs]` spelling is
+    /// RETIRED (phase-484 W8) and refused by [`Self::parse_for_board`].
     #[serde(default)]
     pub knobs: Knobs,
-    /// Set by [`Self::parse_for_board`] when [`Self::knobs`] came from the
-    /// DEPRECATED per-entry `[board.knobs]` spelling, read until phase-484 W8.
-    /// [`Self::deprecation_notice`] is what a reader prints.
-    #[serde(skip)]
-    pub legacy_board_knobs: bool,
     // The rest of nros-board.toml (board descriptor tables) is ignored
     // here — parsed by the board registry, not the knob ladder.
     #[serde(flatten)]
@@ -3139,18 +3118,11 @@ pub struct BoardEntryFacts {
     /// fact somebody declared.
     #[serde(default)]
     pub capabilities: BTreeMap<String, bool>,
-    /// phase-445 W2 — `[board.knobs]`, the LEGACY spelling of the board rung
-    /// (RFC-0103 D6 moved it to a top-level `[knobs]`; this is read, with a
-    /// deprecation, until phase-484 W8).
-    ///
-    /// Held RAW and typed only once selected ([`BoardKnobsFile::load_for_board`]
-    /// hoists it into [`BoardKnobsFile::knobs`], which every consumer reads).
-    /// Raw because two entries are compared for AGREEMENT when no board is
-    /// named, and `Knobs` has no equality.
-    ///
-    /// Why it was under the board: the CLI's `BoardFile` used to deny a
-    /// top-level `[knobs]`. RFC-0103 D6 reversed that — the file kind already
-    /// says who owns the section, so the board prefix restated it.
+    /// `[board.knobs]`, the RETIRED spelling of the board rung (RFC-0103 D6
+    /// moved it to a top-level `[knobs]`; release 0.5.0-nros2 read it with a
+    /// deprecation, phase-484 W8 refuses it). Held RAW only so
+    /// [`BoardKnobsFile::parse_for_board`] can see it and refuse, naming
+    /// `[knobs]` — never read as a rung.
     #[serde(default)]
     pub knobs: Option<toml::Value>,
     /// phase-484 W4b (RFC-0103 D1) — `[board.net]`, the board's own network
@@ -3266,40 +3238,6 @@ impl BoardNet {
 }
 
 impl BoardKnobsFile {
-    /// The `[board.knobs]` of the entry this build is, or `None` when that
-    /// entry states none. Same selection rule as [`Self::board_capabilities`]:
-    /// a named board wins; one entry needs no name; several entries must agree
-    /// (an entry stating nothing disagrees with one stating something).
-    fn select_board_knobs(
-        &self,
-        board: Option<&str>,
-        path: &str,
-    ) -> Result<Option<toml::Value>, ConfigError> {
-        if let Some(want) = board
-            && let Some(entry) = self
-                .boards
-                .iter()
-                .find(|b| b.names.iter().any(|n| n.eq_ignore_ascii_case(want)))
-        {
-            return Ok(entry.knobs.clone());
-        }
-        let Some(first) = self.boards.first() else {
-            return Ok(None);
-        };
-        if self.boards.iter().all(|b| b.knobs == first.knobs) {
-            return Ok(first.knobs.clone());
-        }
-        Err(ConfigError::AmbiguousBoardKnobs {
-            path: path.to_string(),
-            boards: self
-                .boards
-                .iter()
-                .map(|b| b.names.join("/"))
-                .collect::<Vec<_>>()
-                .join(", "),
-        })
-    }
-
     /// `[board.net]` of the entry this build is — the same selection rule as
     /// the knobs: a named board wins; one entry needs no name; several must
     /// agree. `Ok(None)` when the entry states none.
@@ -3384,10 +3322,9 @@ impl BoardKnobsFile {
     /// Load a board file and resolve its knob rung for `board` (`NROS_BOARD`).
     ///
     /// [`Self::knobs`] is the one field every consumer reads. It comes from the
-    /// top-level `[knobs]` (RFC-0103 D6, applies to every `[[board]]`), or —
-    /// deprecated, until phase-484 W8 — from the selected entry's
-    /// `[board.knobs]`, which sets [`Self::legacy_board_knobs`]. A file stating
-    /// both is refused.
+    /// top-level `[knobs]` (RFC-0103 D6, applies to every `[[board]]`). A file
+    /// whose entry still states the retired `[board.knobs]` is refused
+    /// (phase-484 W8), naming `[knobs]`.
     pub fn load_for_board(path: &Path, board: Option<&str>) -> Result<Self, ConfigError> {
         let text = fs::read_to_string(path).map_err(|e| ConfigError::Io {
             path: path.display().to_string(),
@@ -3397,53 +3334,44 @@ impl BoardKnobsFile {
     }
 
     /// [`Self::load_for_board`] over text already read. `path` names the file in
-    /// errors only.
+    /// errors only. The board name no longer selects anything here — the
+    /// top-level `[knobs]` applies to every entry — and stays in the signature
+    /// for the readers that name one.
     pub fn parse_for_board(
         text: &str,
-        board: Option<&str>,
+        _board: Option<&str>,
         path: &str,
     ) -> Result<Self, ConfigError> {
         let parse = |source| ConfigError::Parse {
             path: path.to_string(),
             source,
         };
-        let mut file: Self = toml::from_str(text).map_err(parse)?;
-        let top_level = text
-            .parse::<toml::Table>()
-            .map(|t| t.contains_key("knobs"))
-            .unwrap_or(false);
-        let legacy = file.boards.iter().any(|b| b.knobs.is_some());
-        if top_level && legacy {
-            return Err(ConfigError::BoardKnobsStatedTwice {
+        let file: Self = toml::from_str(text).map_err(parse)?;
+        let retired: Vec<String> = file
+            .boards
+            .iter()
+            .filter(|b| b.knobs.is_some())
+            .map(|b| b.names.join("/"))
+            .collect();
+        if !retired.is_empty() {
+            return Err(ConfigError::RetiredBoardKnobs {
                 path: path.to_string(),
+                boards: retired.join(", "),
             });
-        }
-        if let Some(raw) = file.select_board_knobs(board, path)? {
-            file.knobs = raw.try_into().map_err(parse)?;
-            file.legacy_board_knobs = true;
         }
         Ok(file)
     }
-
-    /// The deprecation a reader prints when this file used the legacy
-    /// `[board.knobs]` spelling, in the knob registry's own words
-    /// (`DEPRECATION_TEMPLATE`, the sentence a legacy env spelling gets).
-    /// `None` for a file on the canonical `[knobs]`.
-    #[must_use]
-    pub fn deprecation_notice(&self) -> Option<String> {
-        self.legacy_board_knobs.then(board_knobs_deprecation_notice)
-    }
 }
 
-/// RFC-0103 D6 — the one sentence both board-descriptor parsers print for the
-/// legacy `[board.knobs]` spelling: the knob registry's
-/// [`nros_zephyr_build::DEPRECATION_TEMPLATE`], so a section and an env
-/// variable are retired in the same words.
+/// RFC-0103 D6 / phase-484 W8 — the one sentence both board-descriptor parsers
+/// refuse the retired `[board.knobs]` with: the knob registry's
+/// [`nros_zephyr_build::RETIRED_TEMPLATE`], so a section and an env variable
+/// are retired in the same words.
 #[must_use]
-pub fn board_knobs_deprecation_notice() -> String {
-    nros_zephyr_build::DEPRECATION_TEMPLATE
+pub fn retired_board_knobs_refusal() -> String {
+    nros_zephyr_build::RETIRED_TEMPLATE
         .replace("{legacy}", "`[board.knobs]`")
-        .replace("{env}", "`[knobs]` (top level, RFC-0103 D6)")
+        .replace("{env}", "a top-level `[knobs]` (RFC-0103 D6)")
 }
 
 #[cfg(test)]
@@ -3470,26 +3398,8 @@ mod board_capability_tests {
         assert!(f.capabilities.is_empty());
     }
 
-    /// phase-445 W2 — the LEGACY `[board.knobs]` is still the board rung: a single-board file
-    /// needs no name, and the value lands in `knobs`, where every consumer
-    /// (`BuildRungs::*_rungs`, `nros config explain`, zpico's runner) reads.
-    #[test]
-    fn board_knobs_are_the_board_rung() {
-        let f = BoardKnobsFile::parse_for_board(
-            "[[board]]\nnames = [\"e\"]\n\n[board.knobs.net]\nmax_udp_sockets = 2\n",
-            None,
-            "t",
-        )
-        .expect("parse");
-        assert_eq!(f.knobs.net.max_udp_sockets, Some(2));
-        // Negative control: the same number NOT under a board is not read as
-        // this board's — `file()` is the raw parse with no selection.
-        let raw = file("[[board]]\nnames = [\"e\"]\n\n[board.knobs.net]\nmax_udp_sockets = 2\n");
-        assert_eq!(raw.knobs.net.max_udp_sockets, None);
-    }
-
     /// RFC-0103 D6 — the canonical spelling is a top-level `[knobs]`, which
-    /// applies to EVERY `[[board]]` in the file and is not a deprecation.
+    /// applies to EVERY `[[board]]` in the file.
     #[test]
     fn top_level_knobs_are_the_canonical_board_rung() {
         let text = "[[board]]\nnames = [\"a\"]\n\n[[board]]\nnames = [\"b\"]\n\n\
@@ -3497,26 +3407,40 @@ mod board_capability_tests {
         for board in [None, Some("a"), Some("b")] {
             let f = BoardKnobsFile::parse_for_board(text, board, "t").expect("parse");
             assert_eq!(f.knobs.net.max_udp_sockets, Some(4), "{board:?}");
-            assert!(!f.legacy_board_knobs);
-            assert_eq!(f.deprecation_notice(), None);
         }
     }
 
-    /// The legacy `[board.knobs]` is still READ, and says so: the notice names
-    /// the canonical `[knobs]` and the phase that retires it.
+    /// phase-484 W8 — the retired `[board.knobs]` is REFUSED, naming the
+    /// top-level `[knobs]` and the board that states it: alone, beside a
+    /// `[knobs]`, and on an entry the build did not select.
     #[test]
-    fn legacy_board_knobs_are_read_with_a_deprecation() {
-        let f = BoardKnobsFile::parse_for_board(
-            "[[board]]\nnames = [\"e\"]\n\n[board.knobs.net]\nmax_udp_sockets = 2\n",
-            None,
-            "t",
-        )
-        .expect("parse");
+    fn retired_board_knobs_are_refused() {
+        let alone = "[[board]]\nnames = [\"e\"]\n\n[board.knobs.net]\nmax_udp_sockets = 2\n";
+        let both = "[knobs.net]\nmax_udp_sockets = 1\n\n[[board]]\nnames = [\"e\"]\n\
+                    [board.knobs.net]\nmax_udp_sockets = 2\n";
+        let other = "[knobs.net]\nmax_udp_sockets = 1\n\n[[board]]\nnames = [\"a\"]\n\n\
+                     [[board]]\nnames = [\"b\"]\n[board.knobs.net]\nmax_udp_sockets = 2\n";
+        for (text, board, who) in [
+            (alone, None, "e"),
+            (both, None, "e"),
+            (other, Some("a"), "b"),
+        ] {
+            let err = BoardKnobsFile::parse_for_board(text, board, "t").expect_err("must refuse");
+            assert!(
+                matches!(err, ConfigError::RetiredBoardKnobs { ref boards, .. } if boards == who),
+                "{err}"
+            );
+            let msg = err.to_string();
+            assert!(
+                msg.contains("`[board.knobs]` is a retired spelling"),
+                "{msg}"
+            );
+            assert!(msg.contains("top-level `[knobs]`"), "{msg}");
+        }
+        // Negative control: the same number under the top-level table loads.
+        let ok = "[[board]]\nnames = [\"e\"]\n\n[knobs.net]\nmax_udp_sockets = 2\n";
+        let f = BoardKnobsFile::parse_for_board(ok, None, "t").expect("canonical loads");
         assert_eq!(f.knobs.net.max_udp_sockets, Some(2));
-        let notice = f.deprecation_notice().expect("legacy spelling must warn");
-        assert!(notice.contains("`[board.knobs]`"), "{notice}");
-        assert!(notice.contains("`[knobs]`"), "{notice}");
-        assert!(notice.contains("W8"), "{notice}");
     }
 
     /// A typo under the canonical table fails naming the key.
@@ -3529,64 +3453,6 @@ mod board_capability_tests {
         )
         .expect_err("typo must not parse");
         assert!(err.to_string().contains("max_udp_sokets"), "{err}");
-    }
-
-    /// Several boards that differ are selected by name, and REFUSED unnamed.
-    #[test]
-    fn differing_board_knobs_need_a_name() {
-        let text = "[[board]]\nnames = [\"a\"]\n[board.knobs.net]\nmax_udp_sockets = 1\n\n\
-                    [[board]]\nnames = [\"b\"]\n[board.knobs.net]\nmax_udp_sockets = 3\n";
-        let b = BoardKnobsFile::parse_for_board(text, Some("b"), "t").expect("b");
-        assert_eq!(b.knobs.net.max_udp_sockets, Some(3));
-        let err = BoardKnobsFile::parse_for_board(text, None, "t").expect_err("must refuse");
-        assert!(err.to_string().contains("a, b"), "{err}");
-        // One entry stating knobs and one stating none also disagree.
-        let partial = "[[board]]\nnames = [\"a\"]\n[board.knobs.net]\nmax_udp_sockets = 1\n\n\
-                       [[board]]\nnames = [\"b\"]\n";
-        assert!(BoardKnobsFile::parse_for_board(partial, None, "t").is_err());
-        // And a file whose entries state none is not ambiguous (nuttx today).
-        let none = "[[board]]\nnames = [\"a\"]\n\n[[board]]\nnames = [\"b\"]\n";
-        assert!(BoardKnobsFile::parse_for_board(none, None, "t").is_ok());
-    }
-
-    /// A knob typo under the board fails loud (the tenants deny unknown keys).
-    #[test]
-    fn a_misspelled_board_knob_is_an_error() {
-        let err = BoardKnobsFile::parse_for_board(
-            "[[board]]\nnames = [\"e\"]\n[board.knobs.net]\nmax_udp_sokets = 2\n",
-            None,
-            "t",
-        )
-        .expect_err("typo must not parse");
-        assert!(err.to_string().contains("max_udp_sokets"), "{err}");
-    }
-
-    /// Both spellings in one file is refused, not merged.
-    #[test]
-    fn knobs_stated_twice_are_refused() {
-        let err = BoardKnobsFile::parse_for_board(
-            "[knobs.net]\nmax_udp_sockets = 1\n\n[[board]]\nnames = [\"e\"]\n\
-             [board.knobs.net]\nmax_udp_sockets = 2\n",
-            None,
-            "t",
-        )
-        .expect_err("two rungs in one file");
-        assert!(
-            matches!(err, ConfigError::BoardKnobsStatedTwice { .. }),
-            "{err}"
-        );
-        // Also when the legacy table sits on an entry the build did not select.
-        let err = BoardKnobsFile::parse_for_board(
-            "[knobs.net]\nmax_udp_sockets = 1\n\n[[board]]\nnames = [\"a\"]\n\n\
-             [[board]]\nnames = [\"b\"]\n[board.knobs.net]\nmax_udp_sockets = 2\n",
-            Some("a"),
-            "t",
-        )
-        .expect_err("two rungs in one file");
-        assert!(
-            matches!(err, ConfigError::BoardKnobsStatedTwice { .. }),
-            "{err}"
-        );
     }
 
     /// A file with no `[board.capabilities]` contributes nothing, so the
@@ -3789,7 +3655,7 @@ mod tests {
             .resolve_wire(
                 "posix",
                 Some(&board),
-                &|k| (k == "ZPICO_FRAG_MAX_SIZE").then(|| "555".to_string()),
+                &|k| (k == "NROS_ZENOH_FRAG_MAX_SIZE").then(|| "555".to_string()),
                 &defaults,
             )
             .expect("resolve");
@@ -3831,8 +3697,10 @@ mod tests {
         }
     }
 
+    /// phase-484 W8 — the env rung reads the CANONICAL spelling, and a set
+    /// RETIRED one stops the build naming it, alone or beside the canonical.
     #[test]
-    fn a_knob_is_read_under_its_canonical_and_its_legacy_spelling() {
+    fn a_knob_is_read_under_its_canonical_spelling_only() {
         let tmp = write_tree(&[("posix", "")]);
         let tree = PlatformsTree::load(tmp.path()).unwrap();
         let defaults = [("frag_max_size", 2048usize)];
@@ -3843,28 +3711,24 @@ mod tests {
         };
         let canonical = |k: &str| (k == "NROS_ZENOH_FRAG_MAX_SIZE").then(|| "321".to_string());
         assert_eq!(value(&canonical), (321, KnobSource::Env));
-        let legacy = |k: &str| (k == "ZPICO_FRAG_MAX_SIZE").then(|| "123".to_string());
-        assert_eq!(value(&legacy), (123, KnobSource::Env));
-        let both_agree = |k: &str| {
-            matches!(k, "NROS_ZENOH_FRAG_MAX_SIZE" | "ZPICO_FRAG_MAX_SIZE")
-                .then(|| "64".to_string())
-        };
-        assert_eq!(value(&both_agree), (64, KnobSource::Env));
-        // The tx levers went through literals rather than a table; same rule.
-        let tx = tx_env_only(&|k| (k == "ZPICO_TX_BATCH").then(|| "1".to_string()));
-        assert!(tx.batch.value);
         let tx = tx_env_only(&|k| (k == "NROS_ZENOH_TX_BATCH").then(|| "1".to_string()));
         assert!(tx.batch.value);
+        let retired = std::panic::catch_unwind(|| {
+            tx_env_only(&|k| (k == "ZPICO_TX_BATCH").then(|| "1".to_string())) // retired spelling: refusal case
+        });
+        assert!(retired.is_err(), "a retired tx spelling must refuse");
     }
 
     #[test]
-    #[should_panic(expected = "name ONE knob with two values")]
-    fn two_spellings_that_disagree_stop_the_build() {
+    #[should_panic(
+        expected = "ZPICO_FRAG_MAX_SIZE is a retired spelling of NROS_ZENOH_FRAG_MAX_SIZE"
+    )]
+    fn a_retired_spelling_stops_the_build() {
         let tmp = write_tree(&[("posix", "")]);
         let tree = PlatformsTree::load(tmp.path()).unwrap();
         let env = |k: &str| match k {
             "NROS_ZENOH_FRAG_MAX_SIZE" => Some("1".to_string()),
-            "ZPICO_FRAG_MAX_SIZE" => Some("2".to_string()),
+            "ZPICO_FRAG_MAX_SIZE" => Some("1".to_string()), // retired spelling: refusal case
             _ => None,
         };
         let _ = tree.resolve_wire("posix", None, &env, &[("frag_max_size", 8usize)]);
@@ -4377,7 +4241,7 @@ serial = true
         assert_eq!(tx.flush_ms.value, 40); // untouched delta falls through
 
         // env rung overrides board — including explicit re-enable
-        let env = |k: &str| (k == "ZPICO_TX_BATCH").then(|| "1".to_string());
+        let env = |k: &str| (k == "NROS_ZENOH_TX_BATCH").then(|| "1".to_string());
         let tx = tree.resolve_tx("zephyr", Some(&board), &env).unwrap();
         assert!(tx.batch.value);
         assert_eq!(tx.batch.source, KnobSource::Env);
@@ -4390,7 +4254,7 @@ serial = true
             "[knobs.zenoh.tx]\nbatch = true\nsplit_lock = true\n",
         )]);
         let tree = PlatformsTree::load(tmp.path()).unwrap();
-        let env = |k: &str| (k == "ZPICO_TX_BATCH").then(|| "0".to_string());
+        let env = |k: &str| (k == "NROS_ZENOH_TX_BATCH").then(|| "0".to_string());
         let tx = tree.resolve_tx("zephyr", None, &env).unwrap();
         assert!(!tx.batch.value, "set env 0 must beat an on-default");
         assert_eq!(tx.batch.source, KnobSource::Env);

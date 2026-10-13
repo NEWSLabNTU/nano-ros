@@ -968,6 +968,49 @@ verb's answer is used as given.
   then they go and an old name is an unknown variable.** The other W8 aliases
   (`ZENOH_LOCATOR`, `ZPICO_SMOLTCP_*`, env-spelled knob rows,
   `[board.knobs]`) are not in this slice.
+
+  **W8b landed (2026-10-13): the legacy knob spellings and `[board.knobs]`.**
+  Release 0.5.0-nros2 printed W5a's deprecation; each is now a refusal, in one
+  generated sentence (`RETIRED_TEMPLATE` / `NROS_KNOB_RETIRED_TEMPLATE`, which
+  replaced `DEPRECATION_TEMPLATE` and the now-unreachable `CONFLICT_TEMPLATE`):
+  `<old> is a retired spelling of <new> (...) -- set <new> instead`. Where:
+  - the Rust ladder — `nros_zephyr_build::read_spelled_from`, so `knob()` and
+    `nros-platform-config`'s `knob_env` — panics on any SET retired spelling of
+    the row (alone or beside the canonical, agreeing or not) and reads only
+    `NROS_<ID>`; every spelling stays WATCHED so setting one re-runs the script;
+  - cmake's `_nros_knob_env` stops the configure the same way (it is reached
+    by the shared-cargo-dir key on every cmake road and by the Zephyr
+    resolver);
+  - the CLI refuses an `[image.<id>] env` row keyed by a retired spelling
+    (`leaf_settings::refuse_retired_env_keys`, on the cargo-leaf, cmake-leaf,
+    west and workspace roads) instead of carrying it under its canonical key;
+  - both board-descriptor parsers refuse `[board.knobs]` naming the top-level
+    `[knobs]` (`ConfigError::RetiredBoardKnobs`); `AmbiguousBoardKnobs`,
+    `BoardKnobsStatedTwice`, the per-entry selection and both deprecation
+    printers are gone, and so is `no_in_tree_board_descriptor_uses_legacy_
+    board_knobs` — the parser itself now refuses what it guarded.
+  The `legacy` column stays one release as the error table (its retired
+  spellings no longer get `KCONFIG_PAIRS` rows). The gate is
+  `check-retired-knob-spellings`, and it is deliberately NOT "no tracked file
+  names one": the same `ZPICO_*` words are the shim's C macro names (RFC-0103:
+  backend-internal, generated), 145 lines of `zpico.c` alone. It refuses a
+  retired name used as an ENVIRONMENT name — a Rust literal that is the name
+  or starts `"NAME=` (`knob(..)`, `env_usize(..)`, `rerun-if-env-changed=`,
+  a diagnostic telling a person to set it), a cargo `[env]` / `[image] env` /
+  inline `env = {..}` key, cmake `ENV{}` / `_nros_knob_env(` / `-E env`,
+  shell `export` / `X=` prefixes, workflow `env:` rows, Python `os.environ`,
+  documented commands — with `.define(..)` and an explicitly marked
+  `nros-c-macro-names` region (`ZpicoConfig::defines`) exempt. Sweep: 38
+  reader/writer lines moved to the canonical name (19 in `nros-rmw-zenoh`'s
+  build script, 11 in the zpico runner, 8 in the CLI), plus the two
+  `nros-pool:` formulas, 16 pool-inventory rows, 18 census classes and five
+  gates that read those spellings back. The west measurement found one more:
+  the zpico runner's tx/wire accessor (`kconfig_fallback_str`) resolved a
+  whole ROW, so asked for `ZPICO_TX_BATCH` it answered with
+  `CONFIG_NROS_ZENOH_TX_BATCH=y` and `knob_env` refused every Zephyr C image
+  that nobody had misconfigured; it now answers only for the name it is asked.
+  `ZENOH_LOCATOR`, the `[image.<id>]
+  env` rows themselves and `nros::main!(board =)` are W8's other slices.
 - ~~Issue 1768 (census classifier + fail on UNCLASSIFIED).~~ Done (W7a): the `linker-script` role knows `link_script!`; gate `build-wiring-classified`.
 - ~~`canonical-build-path.md`, the book's configuration and getting-started
   pages, CLAUDE.md pointers.~~ Done (2026-10-13): the map gains "Where a

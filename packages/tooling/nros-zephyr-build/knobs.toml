@@ -1,7 +1,9 @@
 # The knob registry: ONE row per build-time knob (RFC-0103 D2b, phase-484 W5a).
 #
 # Every other spelling of a knob is DERIVED from its row:
-#   env      NROS_<id>; `legacy` names are accepted until phase-484 W8
+#   env      NROS_<id>; `legacy` names are RETIRED (phase-484 W8): set, each
+#            stops the build naming NROS_<id>. Kept one release as the
+#            error table, then removed.
 #   Kconfig  CONFIG_<kconfig>, default CONFIG_NROS_<id>. A row names `kconfig`
 #            only where today's symbol differs; no Kconfig symbol is renamed
 #            (phase-481 owns them). The zenoh pools read the RMW-agnostic

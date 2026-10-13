@@ -357,7 +357,7 @@ pub fn render(
     }
 
     // `[image.<id>] env` (after what the image's `transport` implies).
-    for (key, value) in crate::cmd::leaf_settings::image_layers(leaf) {
+    for (key, value) in crate::cmd::leaf_settings::image_layers(leaf).map_err(|e| e.to_string())? {
         let symbol = nros_zephyr_build::kconfig_key_for(&key);
         let Some(sym) = syms.get(&symbol) else {
             out.cargo_rows.insert(key, value);
@@ -859,7 +859,7 @@ endif # NROS
 
         let (_d, l) = leaf(
             "[system]\nname = \"t\"\nrmw = \"xrce\"\n\n[image.zephyr]\nboard = \"zephyr\"\n\
-             env = { ZPICO_MAX_QUERYABLES = \"4\" }\n",
+             env = { NROS_ZENOH_MAX_QUERYABLES = \"4\" }\n",
             &[],
         );
         let e = render(&l, None, &syms, &BTreeMap::new()).unwrap_err();

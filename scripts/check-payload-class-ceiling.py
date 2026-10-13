@@ -11,7 +11,7 @@ third is the number the RUNTIME routes on:
      (the CMake lane's `nros_derive_message_bound_knobs`)
   2. `DEFAULT_SMALL_CLASS_CEILING` — packages/cli/rosidl-codegen/src/bounds.rs
      (the cargo-leaf lane's `nros_cli_core::leaf_payload_classes`, issue 1125)
-  3. `ZPICO_SUBSCRIBER_SIZE_THRESHOLD`'s crate default —
+  3. `NROS_ZENOH_SUBSCRIBER_SIZE_THRESHOLD`'s crate default —
      packages/rmw/zenoh/nros-rmw-zenoh/build.rs, which becomes
      `SUBSCRIBER_SIZE_THRESHOLD` and half of the shim's `SMALL_CLASS_CEILING`
 
@@ -57,9 +57,9 @@ SPELLINGS = [
         r"pub const DEFAULT_SMALL_CLASS_CEILING:\s*usize\s*=\s*(\d+)",
     ),
     (
-        "crate default ZPICO_SUBSCRIBER_SIZE_THRESHOLD",
+        "crate default NROS_ZENOH_SUBSCRIBER_SIZE_THRESHOLD",
         "packages/rmw/zenoh/nros-rmw-zenoh/build.rs",
-        r'env_usize\("ZPICO_SUBSCRIBER_SIZE_THRESHOLD",\s*(\d+)\)',
+        r'env_usize\("NROS_ZENOH_SUBSCRIBER_SIZE_THRESHOLD",\s*(\d+)\)',
     ),
 ]
 
@@ -133,7 +133,7 @@ def selftest():
     samples = [
         "set(NROS_MESSAGE_BOUNDS_DEFAULT_SMALL_CEILING 2048 CACHE INTERNAL\n",
         "pub const DEFAULT_SMALL_CLASS_CEILING: usize = 2048;\n",
-        'let t: usize = env_usize("ZPICO_SUBSCRIBER_SIZE_THRESHOLD", 2048);\n',
+        'let t: usize = env_usize("NROS_ZENOH_SUBSCRIBER_SIZE_THRESHOLD", 2048);\n',
     ]
     for (label, _, pattern), text in zip(SPELLINGS, samples):
         assert read_spelling(text, pattern) == 2048, label

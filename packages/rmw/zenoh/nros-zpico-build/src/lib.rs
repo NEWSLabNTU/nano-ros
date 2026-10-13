@@ -187,6 +187,9 @@ impl ShimConfig {
     /// 0626's knobs reached the C lane and not this one for exactly as long as
     /// nobody could write that assertion.
     pub fn defines(&self) -> Vec<(&'static str, String)> {
+        // nros-c-macro-names: begin -- the shim's C MACRO names (RFC-0103:
+        // backend-internal, generated, never user inputs); the knobs that set
+        // them are `NROS_ZENOH_*`. `check-retired-knob-spellings` skips this.
         let mut out = vec![
             ("ZPICO_MAX_PUBLISHERS", self.max_publishers.to_string()),
             ("ZPICO_MAX_SUBSCRIBERS", self.max_subscribers.to_string()),
@@ -230,6 +233,7 @@ impl ShimConfig {
             "ZPICO_LEASE_TASK_PRIORITY",
             self.lease_task_priority.to_string(),
         ));
+        // nros-c-macro-names: end
         out
     }
 
@@ -1235,7 +1239,9 @@ int32_t zpico_init(void);\n";
             let got = cfg
                 .defines()
                 .into_iter()
+                // nros-c-macro-names: begin
                 .find(|(k, _)| *k == "ZPICO_GRAPH_DISCOVERY")
+                // nros-c-macro-names: end
                 .map(|(_, v)| v);
             assert_eq!(got.as_deref(), Some(want), "graph_discovery={on}");
         }
@@ -1303,6 +1309,7 @@ int32_t zpico_init(void);\n";
                     .1
                     .clone()
             };
+            // nros-c-macro-names: begin -- `defines()` holds C macro names.
             assert_eq!(get("ZPICO_READ_TASK_PRIORITY"), "11");
             assert_eq!(get("ZPICO_LEASE_TASK_PRIORITY"), "12");
             // The knobs that were already correct stay correct in both states —
@@ -1317,6 +1324,7 @@ int32_t zpico_init(void);\n";
                 defines.iter().any(|(k, _)| *k == "ZPICO_TX_BATCH"),
                 tx_batch
             );
+            // nros-c-macro-names: end
         }
     }
 

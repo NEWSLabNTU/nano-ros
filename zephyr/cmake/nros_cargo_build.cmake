@@ -34,8 +34,9 @@ include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosResolved.cmake")
 # them the right place to clear a date a previous pass armed. FILE scope, same
 # reason as the two above.
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosReconfigure.cmake")
-# phase-484 W5a (RFC-0103 D2b) -- `_nros_knob_env`, rung 1 under every spelling
-# of a knob's registry row. FILE scope, same reason as its neighbours.
+# phase-484 W5a/W8 (RFC-0103 D2b) -- `_nros_knob_env`, rung 1 under a knob's
+# canonical spelling, refusing a retired one. FILE scope, same reason as its
+# neighbours.
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosKnobEnv.cmake")
 # Issue 1407 -- `nros_sizing_descriptor_west_fragment`, the one path both the
 # entry (writer) and `_nros_load_west_sizing_descriptor` (reader) name. FILE
@@ -178,8 +179,8 @@ function(_nros_resolve_knob env_name kconfig_value)
     if(ARGC GREATER 2)
         set(_source "${ARGV2}")
     endif()
-    # phase-484 W5a -- the environment under ANY spelling of the knob's row
-    # (`ZPICO_FRAG_MAX_SIZE` still reaches `NROS_ZENOH_FRAG_MAX_SIZE`).
+    # phase-484 W8 -- the environment under the knob's canonical spelling; a
+    # retired one that is set (`ZPICO_FRAG_MAX_SIZE`) stops the configure.
     _nros_knob_env(${env_name} _env_value _env_from)
     if(NOT _env_value STREQUAL "")
         set(_resolved "${_env_value}")

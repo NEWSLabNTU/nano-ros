@@ -861,7 +861,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                 // tables. `[image] env` is LAST, so it outranks the
                 // implication and the derived pools and is outranked only by
                 // the calling environment (nothing here writes `force`).
-                env.extend(crate::cmd::leaf_settings::image_block_layers(&image));
+                env.extend(crate::cmd::leaf_settings::image_block_layers(&image)?);
                 let config_path = image_dir.join(crate::builder::cargo_config::FILE_NAME);
                 crate::builder::cargo_config::write(
                     &crate::builder::cargo_config::CargoConfigSpec {
@@ -1063,7 +1063,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                 // image states none.
                 let image_env = crate::cmd::leaf_system::write_image_env(
                     &manifest_dir.join(crate::builder::cmake_root::IMAGE_ENV_FILE),
-                    &crate::cmd::leaf_settings::image_block_layers(&image),
+                    &crate::cmd::leaf_settings::image_block_layers(&image)?,
                 )?
                 .is_some();
                 let spec = crate::builder::cmake_root::CmakeRootSpec {
@@ -3945,7 +3945,9 @@ fn cmake_build_dir_for(
 /// reach each image's own generated entry, never the shared runtime builds.
 fn image_config_digest(image: &crate::orchestration::image::ImageBlock) -> Option<String> {
     use sha2::{Digest as _, Sha256};
-    let rows = crate::cmd::leaf_settings::image_block_layers(image);
+    // A retired `[image] env` key is refused where the rows are WRITTEN (the
+    // cmake road's image-env file); the coordinate only needs a stable name.
+    let rows = crate::cmd::leaf_settings::image_block_layers(image).ok()?;
     if rows.is_empty() {
         return None;
     }
@@ -6213,6 +6215,7 @@ mod per_image_configure_tests {
         assert_ne!(serial, cmake_coordinate("native", &image(&[], None)));
         assert_eq!(
             crate::cmd::leaf_settings::image_block_layers(&image(&[], Some("serial")))
+                .unwrap()
                 .get("ZPICO_NO_SMOLTCP")
                 .map(String::as_str),
             Some("1")

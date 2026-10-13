@@ -644,7 +644,7 @@ pub const KNOBS: &[KnobRow] = &[
     },
 ];
 
-/// The env spellings whose Kconfig symbol is not `CONFIG_<spelling>`,
+/// The canonical env spellings whose Kconfig symbol is not `CONFIG_<spelling>`,
 /// derived from [`KNOBS`]. Read through [`crate::kconfig_key_for`].
 pub const KCONFIG_PAIRS: &[(&str, &str)] = &[
     ("NROS_ZENOH_BATCH_UNICAST_SIZE", "CONFIG_NROS_BATCH_UNICAST_SIZE"),
@@ -661,38 +661,6 @@ pub const KCONFIG_PAIRS: &[(&str, &str)] = &[
     ("NROS_ZENOH_SERVICE_BUFFER_SIZE", "CONFIG_NROS_SERVICE_BUFFER_SIZE"),
     ("NROS_ZENOH_SUBSCRIBER_LARGE_SIZE", "CONFIG_NROS_SUBSCRIBER_LARGE_SIZE"),
     ("NROS_ZENOH_SUBSCRIBER_RING_DEPTH", "CONFIG_NROS_SUBSCRIBER_RING_DEPTH"),
-    ("ZPICO_BATCH_MULTICAST_SIZE", "CONFIG_NROS_ZENOH_BATCH_MULTICAST_SIZE"),
-    ("ZPICO_BATCH_UNICAST_SIZE", "CONFIG_NROS_BATCH_UNICAST_SIZE"),
-    ("ZPICO_FRAG_MAX_SIZE", "CONFIG_NROS_FRAG_MAX_SIZE"),
-    ("ZPICO_GET_POLL_INTERVAL_MS", "CONFIG_NROS_GET_POLL_INTERVAL_MS"),
-    ("ZPICO_GET_REPLY_BUF_SIZE", "CONFIG_NROS_GET_REPLY_BUF_SIZE"),
-    ("ZPICO_GRAPH_CACHE_SIZE", "CONFIG_NROS_GRAPH_CACHE_SIZE"),
-    ("ZPICO_GRAPH_DISCOVERY", "CONFIG_NROS_ZENOH_GRAPH_DISCOVERY"),
-    ("ZPICO_LEASE_TASK_PRIORITY", "CONFIG_NROS_ZENOH_LEASE_PRIORITY"),
-    ("ZPICO_MAX_LARGE_SUBSCRIBERS", "CONFIG_NROS_MAX_LARGE_SUBSCRIBERS"),
-    ("ZPICO_MAX_LIVELINESS", "CONFIG_NROS_MAX_LIVELINESS"),
-    ("ZPICO_MAX_PENDING_GETS", "CONFIG_NROS_MAX_PENDING_GETS"),
-    ("ZPICO_MAX_PUBLISHERS", "CONFIG_NROS_MAX_PUBLISHERS"),
-    ("ZPICO_MAX_QUERYABLES", "CONFIG_NROS_MAX_QUERYABLES"),
-    ("ZPICO_MAX_SESSIONS", "CONFIG_NROS_ZENOH_MAX_SESSIONS"),
-    ("ZPICO_MAX_SUBSCRIBERS", "CONFIG_NROS_MAX_SUBSCRIBERS"),
-    ("ZPICO_MAX_TL_PUBLISHERS", "CONFIG_NROS_ZENOH_MAX_TL_PUBLISHERS"),
-    ("ZPICO_PUBLISHER_TX_BUFFER_SIZE", "CONFIG_NROS_ZENOH_PUBLISHER_TX_BUFFER_SIZE"),
-    ("ZPICO_READ_TASK_PRIORITY", "CONFIG_NROS_ZENOH_READ_PRIORITY"),
-    ("ZPICO_SERVICE_BUFFER_SIZE", "CONFIG_NROS_SERVICE_BUFFER_SIZE"),
-    ("ZPICO_SMOLTCP_BUFFER_SIZE", "CONFIG_NROS_SMOLTCP_BUFFER_SIZE"),
-    ("ZPICO_SMOLTCP_CONNECT_TIMEOUT_MS", "CONFIG_NROS_SMOLTCP_CONNECT_TIMEOUT_MS"),
-    ("ZPICO_SMOLTCP_MAX_SOCKETS", "CONFIG_NROS_SMOLTCP_MAX_SOCKETS"),
-    ("ZPICO_SMOLTCP_MAX_UDP_SOCKETS", "CONFIG_NROS_SMOLTCP_MAX_UDP_SOCKETS"),
-    ("ZPICO_SMOLTCP_SOCKET_TIMEOUT_MS", "CONFIG_NROS_SMOLTCP_SOCKET_TIMEOUT_MS"),
-    ("ZPICO_SUBSCRIBER_LARGE_SIZE", "CONFIG_NROS_SUBSCRIBER_LARGE_SIZE"),
-    ("ZPICO_SUBSCRIBER_RING_DEPTH", "CONFIG_NROS_SUBSCRIBER_RING_DEPTH"),
-    ("ZPICO_SUBSCRIBER_SIZE_THRESHOLD", "CONFIG_NROS_ZENOH_SUBSCRIBER_SIZE_THRESHOLD"),
-    ("ZPICO_TL_RETAIN_BYTES", "CONFIG_NROS_ZENOH_TL_RETAIN_BYTES"),
-    ("ZPICO_TL_RETAIN_DEPTH", "CONFIG_NROS_ZENOH_TL_RETAIN_DEPTH"),
-    ("ZPICO_TX_BATCH", "CONFIG_NROS_ZENOH_TX_BATCH"),
-    ("ZPICO_TX_BATCH_FLUSH_MS", "CONFIG_NROS_ZENOH_TX_BATCH_FLUSH_MS"),
-    ("ZPICO_TX_SPLIT_LOCK", "CONFIG_NROS_ZENOH_TX_SPLIT_LOCK"),
 ];
 
 /// The knobs the Zephyr module defines as Kconfig symbols (rows with a `type`),
@@ -1113,10 +1081,6 @@ pub const KCONFIG_KNOBS: &[crate::KconfigKnob] = &[
     },
 ];
 
-/// What a build prints when a knob arrives under a legacy spelling.
-/// Substitute `{legacy}` and `{env}`; the cmake twin prints the same text.
-pub const DEPRECATION_TEMPLATE: &str = "{legacy} is a deprecated spelling of {env} (RFC-0103 D2b); set {env} instead -- {legacy} is read until phase-484 W8 and then refused";
-
-/// The refusal when two spellings of one knob hold different values.
-/// Substitute `{first}`, `{first_value}`, `{other}`, `{other_value}`, `{env}`.
-pub const CONFLICT_TEMPLATE: &str = "{first}={first_value} and {other}={other_value} name ONE knob with two values; {other} is a deprecated spelling of {env} (RFC-0103 D2b) -- set only {env}";
+/// The refusal when a knob arrives under a RETIRED spelling (phase-484 W8).
+/// Substitute `{legacy}` and `{env}`; the cmake twin refuses in the same words.
+pub const RETIRED_TEMPLATE: &str = "{legacy} is a retired spelling of {env} (RFC-0103 D2b; retired in phase-484 W8, after release 0.5.0-nros2 deprecated it) -- set {env} instead";

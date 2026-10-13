@@ -88,7 +88,7 @@ KNOB_CLASS = {
         "domain entity budget; sizes ZPICO_GRAPH_CACHE_SIZE, which still "
         "outranks it when someone names the bytes directly",
     ),
-    "ZPICO_GRAPH_CACHE_SIZE": (
+    "NROS_ZENOH_GRAPH_CACHE_SIZE": (
         "sizing",
         "per-session graph cache bytes; sized by the PEER graph, so it is "
         "stated rather than derived",
@@ -96,7 +96,7 @@ KNOB_CLASS = {
     # phase-473 W1 -- a 0/1, not a size: whether the graph cache exists at
     # all. Its default is DERIVED from the image's links (off when every zenoh
     # link is serial or CAN), and a statement outranks that in either direction.
-    "ZPICO_GRAPH_DISCOVERY": (
+    "NROS_ZENOH_GRAPH_DISCOVERY": (
         "derived",
         "phase-473 W1 -- a 0/1, not a size: off when every compiled zenoh link "
         "is serial or CAN (graph_discovery_derived)",
@@ -113,9 +113,9 @@ KNOB_CLASS = {
         "outranks",
     ),
     "ZPICO_SUBSCRIBER_BUFFER_SIZE": ("derived", "SMALL_PAYLOADS class (phase-403)"),
-    "ZPICO_SUBSCRIBER_LARGE_SIZE": ("derived", "LARGE_PAYLOADS class (phase-403)"),
-    "ZPICO_SUBSCRIBER_SIZE_THRESHOLD": ("derived", "SMALL_CLASS_CEILING (phase-403)"),
-    "ZPICO_PUBLISHER_TX_BUFFER_SIZE": ("derived", "TX half of the same split"),
+    "NROS_ZENOH_SUBSCRIBER_LARGE_SIZE": ("derived", "LARGE_PAYLOADS class (phase-403)"),
+    "NROS_ZENOH_SUBSCRIBER_SIZE_THRESHOLD": ("derived", "SMALL_CLASS_CEILING (phase-403)"),
+    "NROS_ZENOH_PUBLISHER_TX_BUFFER_SIZE": ("derived", "TX half of the same split"),
     # phase-455 W5 / issue 1341 — the transient-local retention pool. Both are
     # DERIVED and neither is a ladder candidate, for the reason
     # ZPICO_MAX_LARGE_SUBSCRIBERS is not one: the answer is a property of what
@@ -124,17 +124,17 @@ KNOB_CLASS = {
     # publisher rows (plus one per `action_server` row, for the `/status`
     # publisher the declaration structurally cannot mention) and refuses a
     # stated value below that count.
-    "ZPICO_MAX_TL_PUBLISHERS": (
+    "NROS_ZENOH_MAX_TL_PUBLISHERS": (
         "derived",
         "retention slots for TRANSIENT_LOCAL publishers; counted from the "
         "image's declared endpoints, phase-455 W5",
     ),
-    "ZPICO_TL_RETAIN_DEPTH": (
+    "NROS_ZENOH_TL_RETAIN_DEPTH": (
         "derived",
         "samples each transient-local retention slot keeps; the deepest "
         "KEEP_LAST a transient-local publisher declares, issue 1709",
     ),
-    "ZPICO_TL_RETAIN_BYTES": (
+    "NROS_ZENOH_TL_RETAIN_BYTES": (
         "derived",
         "the retained sample's slot size — the publisher-side twin of "
         "ZPICO_SUBSCRIBER_BUFFER_SIZE, so it belongs to the same phase-403 "
@@ -147,8 +147,8 @@ KNOB_CLASS = {
     # that no build script reads, and hardcoded to 4096 on the UDP path anyway —
     # so every Zephyr XRCE image paid 2 x 4096 x 16 for its stream buffers.
     "NROS_XRCE_TRANSPORT_MTU": ("sizing", "transport MTU (UDP/TCP); numeric"),
-    "ZPICO_MAX_LARGE_SUBSCRIBERS": ("derived", "pool cardinality; multiplies LARGE_PAYLOADS, phase-392"),
-    "ZPICO_SERVICE_BUFFER_SIZE": ("derived", "SERVICE_BUFFERS is MAX_SESSIONS x MAX_QUERYABLES; phase-392"),
+    "NROS_ZENOH_MAX_LARGE_SUBSCRIBERS": ("derived", "pool cardinality; multiplies LARGE_PAYLOADS, phase-392"),
+    "NROS_ZENOH_SERVICE_BUFFER_SIZE": ("derived", "SERVICE_BUFFERS is MAX_SESSIONS x MAX_QUERYABLES; phase-392"),
     # phase-461 W1 / issue 1352 -- the service inbox per FAMILY. The two slot
     # sizes are DERIVED: W3 prices each family's `_Request` types and the
     # derivable call replaces the plain one. The two depths are policy defaults
@@ -271,14 +271,14 @@ KNOB_CLASS = {
     # --- ladder: the zenoh tx tenant (phase-282), read in the build HELPER ---
     # --- sizing: the zenoh-pico entity caps and buffers. The largest single
     # --- family left, and the one the phase doc calls "the per-entity caps".
-    "ZPICO_MAX_PUBLISHERS": ("derived", "entity cap; phase-392 is deciding whether it is derived from the declaration"),
-    "ZPICO_MAX_SUBSCRIBERS": ("derived", "entity cap; phase-392"),
-    "ZPICO_MAX_QUERYABLES": ("derived", "already a CHECKED OVERRIDE over a derived default (phase-392 W5.f)"),
-    "ZPICO_MAX_SESSIONS": ("derived", "phase-392 poses it explicitly: joins the model, or stays a knob and that phase says so"),
-    "ZPICO_MAX_LIVELINESS": ("derived", "entity cap; phase-392"),
-    "ZPICO_MAX_PENDING_GETS": ("derived", "entity cap; phase-392"),
-    "ZPICO_READ_TASK_PRIORITY": ("sizing", "transport-band priority (issue 0623)"),
-    "ZPICO_LEASE_TASK_PRIORITY": ("sizing", "transport-band priority (issue 0623)"),
+    "NROS_ZENOH_MAX_PUBLISHERS": ("derived", "entity cap; phase-392 is deciding whether it is derived from the declaration"),
+    "NROS_ZENOH_MAX_SUBSCRIBERS": ("derived", "entity cap; phase-392"),
+    "NROS_ZENOH_MAX_QUERYABLES": ("derived", "already a CHECKED OVERRIDE over a derived default (phase-392 W5.f)"),
+    "NROS_ZENOH_MAX_SESSIONS": ("derived", "phase-392 poses it explicitly: joins the model, or stays a knob and that phase says so"),
+    "NROS_ZENOH_MAX_LIVELINESS": ("derived", "entity cap; phase-392"),
+    "NROS_ZENOH_MAX_PENDING_GETS": ("derived", "entity cap; phase-392"),
+    "NROS_ZENOH_READ_PRIORITY": ("sizing", "transport-band priority (issue 0623)"),
+    "NROS_ZENOH_LEASE_PRIORITY": ("sizing", "transport-band priority (issue 0623)"),
     # --- infra ---
     "NROS_DECLARED_INFRA_QUERYABLES": ("infra", "a COUNT the resolver passes down, not a knob"),
     # phase-426 W3 — the same shape a third time: the ROS parameter services are
@@ -681,6 +681,9 @@ READ_CALLEES = {
     "env", "env_get", "env_bool", "env_usize", "env_usize_min",
     "env_usize_compat", "env_or_repo_path", "env_path_or", "flag", "knob",
     "knob_usize", "knob_bool", "req", "list", "var", "var_os",
+    # phase-484 W5a -- rung 1 through an injected accessor (the ladder's
+    # `knob_env`, and the registry tests that drive it).
+    "read_spelled",
 }
 
 # Not reads. Named rather than ignored by default, so the failure below stays
@@ -692,10 +695,9 @@ NON_READ_CALLEES = {
     # phase-484 W5a -- `cargo:rerun-if-env-changed` for every registry spelling
     # of the name. A watch, not a read; `knob_env` beside it is the read.
     "watch_knob_env",
-    # phase-484 W5a -- the deprecation notice for a legacy spelling, and its
-    # once-per-spelling latch. Both take a name the read already resolved.
-    "deprecation_notice",
-    "first_notice_for",
+    # phase-484 W8 -- the refusal sentence for a retired spelling. It takes a
+    # NAME and reads no environment; `knob()` / `read_spelled` are the reads.
+    "retired_spelling_refusal",
     "define",          # emits a C preprocessor macro
     "set_var", "remove_var", "with_env",  # WRITES an environment
     "push", "insert",  # builds a list / a fact map

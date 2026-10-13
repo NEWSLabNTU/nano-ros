@@ -363,7 +363,7 @@ pub fn run(args: LeafSystemArgs) -> Result<()> {
             }
             (Some(written), r.cargo_rows)
         }
-        None => (None, crate::cmd::leaf_settings::image_layers(&leaf)),
+        None => (None, crate::cmd::leaf_settings::image_layers(&leaf)?),
     };
     let image_env = match &args.image_env_out {
         Some(out) => write_image_env(out, &env_rows)?,
@@ -442,7 +442,7 @@ mod tests {
              env = { NROS_LOG_MAX_LEVEL = \"warn\", NROS_LINK_IP = \"1\", Q = \"a\\\"b\" }\n",
         );
         let leaf = leaf_system::read(td.path()).unwrap().unwrap();
-        let layers = crate::cmd::leaf_settings::image_layers(&leaf);
+        let layers = crate::cmd::leaf_settings::image_layers(&leaf).unwrap();
         assert_eq!(layers["ZPICO_NO_SMOLTCP"], "1", "the serial implication");
         assert_eq!(
             layers["NROS_LINK_IP"], "1",
@@ -470,6 +470,34 @@ mod tests {
         assert_eq!(std::fs::metadata(&out).unwrap().modified().unwrap(), before);
         assert_eq!(write_image_env(&out, &Default::default()).unwrap(), None);
         assert!(!out.exists());
+    }
+
+    /// phase-484 W8 -- an `[image.<id>] env` row keyed by a RETIRED knob
+    /// spelling is refused naming the canonical one, not carried.
+    #[test]
+    fn a_retired_image_env_key_is_refused() {
+        let td = leaf_dir(
+            "[system]\nname = \"c\"\nrmw = \"zenoh\"\n\n\
+             [image.native]\nboard = \"native\"\n\
+             env = { ZPICO_MAX_QUERYABLES = \"4\" }\n", // retired spelling: the refusal case
+        );
+        let leaf = leaf_system::read(td.path()).unwrap().unwrap();
+        let err = crate::cmd::leaf_settings::image_layers(&leaf)
+            .expect_err("a retired key must refuse")
+            .to_string();
+        assert!(
+            err.contains("set NROS_ZENOH_MAX_QUERYABLES instead"),
+            "{err}"
+        );
+        // Negative control: the canonical key is carried as written.
+        let td = leaf_dir(
+            "[system]\nname = \"c\"\nrmw = \"zenoh\"\n\n\
+             [image.native]\nboard = \"native\"\n\
+             env = { NROS_ZENOH_MAX_QUERYABLES = \"4\" }\n",
+        );
+        let leaf = leaf_system::read(td.path()).unwrap().unwrap();
+        let layers = crate::cmd::leaf_settings::image_layers(&leaf).unwrap();
+        assert_eq!(layers["NROS_ZENOH_MAX_QUERYABLES"], "4");
     }
 
     /// phase-481 W3 -- a leaf's `conf` resolves beside its `system.toml`; a

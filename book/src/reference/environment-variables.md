@@ -105,9 +105,10 @@ guidance and platform guides for target-specific sizing.
 
 ### Zenoh-pico (`NROS_ZENOH_*`)
 
-Each knob here was spelled `ZPICO_<X>` before phase-484 W5a (RFC-0103 D2b);
-the old spelling is still read, with a deprecation warning naming the new one,
-until phase-484 W8. Setting both to different values stops the build.
+Each knob here was spelled `ZPICO_<X>` before phase-484 W5a (RFC-0103 D2b).
+That old spelling is now **retired** (phase-484 W8): set in the environment or
+in an `[image.<id>] env` row, it stops the build with an error naming the
+`NROS_ZENOH_*` name to use. The full list is [the retired-names table](retired-names.md#retired-knob-spellings).
 
 | Variable                           | Description                                            | Default          | Crate          |
 |------------------------------------|--------------------------------------------------------|------------------|----------------|
@@ -132,11 +133,11 @@ until phase-484 W8. Setting both to different values stops the build.
 | `NROS_PARAM_SERVICE_INBOX_DEPTH`   | Requests one parameter or lifecycle service queryable holds before the newest is dropped. One, because this traffic is one request and one reply from a client that waits (`ros2 param`, rclcpp's `SyncParametersClient`) and a node's services are polled serially in one spin. Raise it to 2 for an image serving a parameter dashboard. Must be >= 1. | `1` | nros-rmw-zenoh |
 | `NROS_ZENOH_GET_REPLY_BUF_SIZE`         | Stack buffer for service client replies                | `4096`           | zpico-sys      |
 | `NROS_ZENOH_GET_POLL_INTERVAL_MS`       | Single-threaded polling interval in `zenoh_shim_get()` | `10`             | zpico-sys      |
-| `NROS_SMOLTCP_MAX_SOCKETS`        | Max concurrent TCP sockets (smoltcp); brokered default since Phase 204.2. Legacy alias: `ZPICO_SMOLTCP_MAX_SOCKETS`. | `1` (brokered) | nros-smoltcp |
-| `NROS_SMOLTCP_MAX_UDP_SOCKETS`    | Max concurrent UDP sockets (smoltcp); 1 by default, 4 with the `nros-smoltcp/rtps` feature (Phase 204.2). Legacy alias: `ZPICO_SMOLTCP_MAX_UDP_SOCKETS`. | `1` (brokered) | nros-smoltcp |
-| `NROS_SMOLTCP_BUFFER_SIZE`        | Per-socket staging buffer (smoltcp). Legacy alias: `ZPICO_SMOLTCP_BUFFER_SIZE`.                          | `2048`           | nros-smoltcp  |
-| `NROS_SMOLTCP_CONNECT_TIMEOUT_MS` | TCP connection timeout (smoltcp). Legacy alias: `ZPICO_SMOLTCP_CONNECT_TIMEOUT_MS`.                      | `30000`          | nros-smoltcp  |
-| `NROS_SMOLTCP_SOCKET_TIMEOUT_MS`  | TCP read/write timeout (smoltcp). Legacy alias: `ZPICO_SMOLTCP_SOCKET_TIMEOUT_MS`.                       | `10000`          | nros-smoltcp  |
+| `NROS_SMOLTCP_MAX_SOCKETS`        | Max concurrent TCP sockets (smoltcp); brokered default since Phase 204.2. (`ZPICO_SMOLTCP_MAX_SOCKETS` is retired.) | `1` (brokered) | nros-smoltcp |
+| `NROS_SMOLTCP_MAX_UDP_SOCKETS`    | Max concurrent UDP sockets (smoltcp); 1 by default, 4 with the `nros-smoltcp/rtps` feature (Phase 204.2). (`ZPICO_SMOLTCP_MAX_UDP_SOCKETS` is retired.) | `1` (brokered) | nros-smoltcp |
+| `NROS_SMOLTCP_BUFFER_SIZE`        | Per-socket staging buffer (smoltcp). (`ZPICO_SMOLTCP_BUFFER_SIZE` is retired.)                          | `2048`           | nros-smoltcp  |
+| `NROS_SMOLTCP_CONNECT_TIMEOUT_MS` | TCP connection timeout (smoltcp). (`ZPICO_SMOLTCP_CONNECT_TIMEOUT_MS` is retired.)                      | `30000`          | nros-smoltcp  |
+| `NROS_SMOLTCP_SOCKET_TIMEOUT_MS`  | TCP read/write timeout (smoltcp). (`ZPICO_SMOLTCP_SOCKET_TIMEOUT_MS` is retired.)                       | `10000`          | nros-smoltcp  |
 
 ### XRCE-DDS (`NROS_XRCE_*`)
 

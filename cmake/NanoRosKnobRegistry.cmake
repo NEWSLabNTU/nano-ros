@@ -3,12 +3,12 @@
 # Edit knobs.toml and re-run the script; `just check knob-registry` holds the
 # two equal. Read through `_nros_knob_env` (cmake/NanoRosKnobEnv.cmake).
 #
-# The LEGACY env spellings of each knob (RFC-0103 D2b, phase-484 W5a), keyed
-# both ways: NROS_KNOB_LEGACY_<canonical> lists the old names a value may
-# still arrive under, NROS_KNOB_CANONICAL_<legacy> names the row it belongs to.
+# The RETIRED env spellings of each knob (RFC-0103 D2b, phase-484 W8) -- the
+# error table, kept one release: NROS_KNOB_LEGACY_<canonical> lists the old
+# names that now stop a configure, NROS_KNOB_CANONICAL_<legacy> names the row
+# each belongs to.
 
-set(NROS_KNOB_DEPRECATION_TEMPLATE "{legacy} is a deprecated spelling of {env} (RFC-0103 D2b); set {env} instead -- {legacy} is read until phase-484 W8 and then refused")
-set(NROS_KNOB_CONFLICT_TEMPLATE "{first}={first_value} and {other}={other_value} name ONE knob with two values; {other} is a deprecated spelling of {env} (RFC-0103 D2b) -- set only {env}")
+set(NROS_KNOB_RETIRED_TEMPLATE "{legacy} is a retired spelling of {env} (RFC-0103 D2b; retired in phase-484 W8, after release 0.5.0-nros2 deprecated it) -- set {env} instead")
 
 # The knobs the Zephyr module defines as Kconfig symbols (phase-484 W5b):
 # NROS_KNOB_KCONFIG_SYMBOL_<id> is the symbol `-DNROS_OVERRIDE_<id>` sets.

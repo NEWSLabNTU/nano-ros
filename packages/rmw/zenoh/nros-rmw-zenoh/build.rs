@@ -30,7 +30,7 @@ fn main() {
     // issue 0682 — the peer-mode build input (`just test-zpico-peer`).
     println!("cargo:rerun-if-env-changed=ZPICO_MULTICAST_TRANSPORT");
     println!("cargo:rerun-if-env-changed=NROS_SUBSCRIBER_BUFFER_SIZE");
-    println!("cargo:rerun-if-env-changed=ZPICO_SERVICE_BUFFER_SIZE");
+    println!("cargo:rerun-if-env-changed=NROS_ZENOH_SERVICE_BUFFER_SIZE");
     // phase-461 W1 - the per-family service inboxes (`Knob::stated` prints
     // this line too; stating it here keeps the watch list in one place with
     // its siblings).
@@ -56,10 +56,10 @@ fn main() {
     println!("cargo:rerun-if-env-changed=NROS_ENTITY_APP_QUERYABLES");
     println!("cargo:rerun-if-env-changed=NROS_SERVICE_TIMEOUT_MS");
     println!("cargo:rerun-if-env-changed=NROS_KEYEXPR_STRING_SIZE");
-    println!("cargo:rerun-if-env-changed=ZPICO_SUBSCRIBER_RING_DEPTH");
-    println!("cargo:rerun-if-env-changed=ZPICO_SUBSCRIBER_LARGE_SIZE");
-    println!("cargo:rerun-if-env-changed=ZPICO_SUBSCRIBER_SIZE_THRESHOLD");
-    println!("cargo:rerun-if-env-changed=ZPICO_MAX_LARGE_SUBSCRIBERS");
+    println!("cargo:rerun-if-env-changed=NROS_ZENOH_SUBSCRIBER_RING_DEPTH");
+    println!("cargo:rerun-if-env-changed=NROS_ZENOH_SUBSCRIBER_LARGE_SIZE");
+    println!("cargo:rerun-if-env-changed=NROS_ZENOH_SUBSCRIBER_SIZE_THRESHOLD");
+    println!("cargo:rerun-if-env-changed=NROS_ZENOH_MAX_LARGE_SUBSCRIBERS");
     // issue 1122 — WATCH what we READ. Consuming a declared fact without
     // declaring it is what let the queryable tables go stale (the note on
     // `resolve_queryable_default` one crate over): an image that gains or
@@ -67,15 +67,15 @@ fn main() {
     // else forces a rebuild, and the sizing then reads as applied while being
     // stale.
     println!("cargo:rerun-if-env-changed=NROS_EXECUTOR_MAX_NODES");
-    println!("cargo:rerun-if-env-changed=ZPICO_PUBLISHER_TX_BUFFER_SIZE");
+    println!("cargo:rerun-if-env-changed=NROS_ZENOH_PUBLISHER_TX_BUFFER_SIZE");
     // phase-455 W5 / issue 1341 — the TRANSIENT_LOCAL retention pool.
-    println!("cargo:rerun-if-env-changed=ZPICO_MAX_TL_PUBLISHERS");
+    println!("cargo:rerun-if-env-changed=NROS_ZENOH_MAX_TL_PUBLISHERS");
     // (The retention pool's DECLARED demand used to arrive as the
     // `NROS_DECLARED_TL_PUBLISHERS` carrier on a road with no descriptor;
     // issue 1649 retired it -- every road names one.)
-    println!("cargo:rerun-if-env-changed=ZPICO_TL_RETAIN_BYTES");
+    println!("cargo:rerun-if-env-changed=NROS_ZENOH_TL_RETAIN_BYTES");
     // Issue 1709 -- the retention DEPTH, the third factor of that pool.
-    println!("cargo:rerun-if-env-changed=ZPICO_TL_RETAIN_DEPTH");
+    println!("cargo:rerun-if-env-changed=NROS_ZENOH_TL_RETAIN_DEPTH");
     // issue 1498 -- the retention SLOT's declared size, for the CMake road
     // (`_nros_payload_facts_env`); the leaf road reads it off the descriptor.
 
@@ -95,7 +95,7 @@ fn main() {
     // below); the carrier is the fallback for a road that names no descriptor
     // (a multi-entry cmake configure, a Zephyr west entry -- issue 1407) or one
     // whose rows cannot be the whole subscribed set.
-    let size_threshold: usize = env_usize("ZPICO_SUBSCRIBER_SIZE_THRESHOLD", 2048);
+    let size_threshold: usize = env_usize("NROS_ZENOH_SUBSCRIBER_SIZE_THRESHOLD", 2048);
     let described_classes = described_payload_classes(sizing.as_ref(), size_threshold);
     let sub_size: usize = env_usize_rung(
         "NROS_SUBSCRIBER_BUFFER_SIZE",
@@ -125,7 +125,7 @@ fn main() {
     // DEMAND, and a consumer that needs a floor applies its own.
     let declared_request_bytes = declared_service_request_bytes(sizing.as_ref(), SERVICE_FAMILY)
         .unwrap_or(SERVICE_BUFFER_SIZE_DEFAULT);
-    let svc_size: usize = env_usize("ZPICO_SERVICE_BUFFER_SIZE", declared_request_bytes);
+    let svc_size: usize = env_usize("NROS_ZENOH_SERVICE_BUFFER_SIZE", declared_request_bytes);
     // phase-461 W1 - one inbox per FAMILY (issue 1352). The user-service and
     // action families each get a slot size and a ring depth; both default to
     // what the single table was (the derived-or-1024 slot at depth 4), so an
@@ -274,7 +274,7 @@ fn main() {
     // because a board rung is a STATEMENT (RFC-0049) while a derived fact is
     // only ever a default (RFC-0100 D1).
     let ring_depth: usize = env_usize_min(
-        "ZPICO_SUBSCRIBER_RING_DEPTH",
+        "NROS_ZENOH_SUBSCRIBER_RING_DEPTH",
         limits
             .subscriber_ring_depth
             .or(declared_ring_depth(sizing.as_ref()))
@@ -291,7 +291,7 @@ fn main() {
     // number, which is the rule `_nros_bounds_publish_payload_classes` states
     // and `DERIVED_PAYLOAD_ENV_KEYS` repeats for the leaf road.
     let large_size: usize = env_usize_rung(
-        "ZPICO_SUBSCRIBER_LARGE_SIZE",
+        "NROS_ZENOH_SUBSCRIBER_LARGE_SIZE",
         described_classes.and_then(|c| (c.large_count > 0).then_some(c.large_max)),
         16384,
     );
@@ -324,7 +324,7 @@ fn main() {
     // knob itself in the child environment would have made the named override
     // unreachable, silently.
     let max_large: usize = env_usize_rung(
-        "ZPICO_MAX_LARGE_SUBSCRIBERS",
+        "NROS_ZENOH_MAX_LARGE_SUBSCRIBERS",
         described_classes.map(|c| c.large_count),
         2,
     );
@@ -363,7 +363,7 @@ fn main() {
     // `NROS_SUBSCRIBER_BUFFER_SIZE` and shares its default. The arena is
     // per-publisher, so the cost is `ZPICO_MAX_PUBLISHERS` × this — priced in
     // the inventory via the `nros-pool:` annotation beside `LendArena`.
-    let publisher_tx_size: usize = env_usize("ZPICO_PUBLISHER_TX_BUFFER_SIZE", 1024);
+    let publisher_tx_size: usize = env_usize("NROS_ZENOH_PUBLISHER_TX_BUFFER_SIZE", 1024);
     // phase-455 W5 / issue 1341 — the TRANSIENT_LOCAL retention pool, one slot
     // per TL publisher. See `transient_local_publisher_demand` for what the
     // descriptor can and cannot answer, and why an image that declares nothing
@@ -371,7 +371,7 @@ fn main() {
     // issue 1498 -- the slot SIZE is derived on every road now, not only the
     // Zephyr resolver's: see `transient_local_retain_demand`.
     let tl_retain_bytes: usize = env_usize_rung(
-        "ZPICO_TL_RETAIN_BYTES",
+        "NROS_ZENOH_TL_RETAIN_BYTES",
         transient_local_retain_demand(sizing.as_ref()),
         TL_RETAIN_BYTES_DEFAULT,
     );
@@ -384,7 +384,7 @@ fn main() {
     // the consumer (D7): a transient-local publisher retaining nothing is a
     // ring `count % 0` cannot index and a late joiner it cannot serve.
     let tl_retain_depth: usize = env_usize_min(
-        "ZPICO_TL_RETAIN_DEPTH",
+        "NROS_ZENOH_TL_RETAIN_DEPTH",
         declared_tl_retain_depth(sizing.as_ref()).unwrap_or(TL_RETAIN_DEPTH_DEFAULT),
         1,
     );
@@ -945,11 +945,11 @@ fn warn_tl_worst_case(reason: &str, bound: usize) {
 /// compile-stage answer rather than a runtime `-80`.
 fn resolve_max_tl_publishers(demand: Option<usize>) -> usize {
     let default = demand.unwrap_or(TL_PUBLISHERS_DEFAULT);
-    let requested = env_usize("ZPICO_MAX_TL_PUBLISHERS", default);
+    let requested = env_usize("NROS_ZENOH_MAX_TL_PUBLISHERS", default);
     if let Some(demand) = demand {
         if requested < demand {
             panic!(
-                "ZPICO_MAX_TL_PUBLISHERS={requested} cannot serve this image's {demand} \
+                "NROS_ZENOH_MAX_TL_PUBLISHERS={requested} cannot serve this image's {demand} \
                  declared TRANSIENT_LOCAL publisher(s).\n  \
                  A transient-local publisher retains its last sample and answers a \
                  late-joining subscriber's history query, so it costs one retention \

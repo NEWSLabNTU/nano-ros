@@ -107,7 +107,7 @@ pub const RESOLVED_CMAKE_NAME: &str = "resolved.cmake";
 /// is a FEATURE of another crate that cargo exposes to nobody.
 pub const HAND_SET_KNOBS: &[(&str, &str)] = &[
     (
-        "ZPICO_MAX_QUERYABLES",
+        "NROS_ZENOH_MAX_QUERYABLES",
         "HAND-SET on the cargo-leaf road. `max_queryables` above counts the \
          runtime's parameter and lifecycle servers when the bringup declares \
          them (issue 1270), and the Zephyr lane takes it; a cargo leaf's \
@@ -116,7 +116,7 @@ pub const HAND_SET_KNOBS: &[(&str, &str)] = &[
          1061, 1125, 1270.",
     ),
     (
-        "ZPICO_MAX_LARGE_SUBSCRIBERS",
+        "NROS_ZENOH_MAX_LARGE_SUBSCRIBERS",
         "HAND-SET: no declarative derivation. It is a count of payload BLOCKS, \
          which needs the message-bound inventory (a TYPE's size) joined to the \
          subscribed-type set — and the bound half is produced by codegen, not \

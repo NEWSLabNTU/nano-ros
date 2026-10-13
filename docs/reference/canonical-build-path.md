@@ -115,9 +115,12 @@ the registry `packages/tooling/nros-zephyr-build/knobs.toml`: id
 another. Everything else is generated from that file: the Rust `KNOBS` table
 and its derived `KCONFIG_PAIRS`, cmake's `NanoRosKnobRegistry.cmake`, and the
 knob section of `zephyr/Kconfig`. An older spelling (`ZPICO_MAX_PUBLISHERS`)
-is a legacy row: it is still read, says so once in the registry's deprecation
-sentence, and two spellings set to different values stop the build. Old
-spellings retire in phase-484 W8.
+is a RETIRED row (phase-484 W8): every reader on every road — a build script,
+a configure, the CLI's `[image.<id>] env` — refuses one that is set, in the
+registry's one refusal sentence, naming the canonical spelling. The row stays
+one release as that error table; `check-retired-knob-spellings` keeps every
+env reader and writer off the old names (the same words stay as the zenoh-pico
+shim's C macro names).
 
 **The app rung's carrier, per road** (issue 1712). Cargo: the generated
 `nros-cargo.toml` `[env]`. CMake: `--config <build>/nros/nros-image-env.toml`
@@ -247,7 +250,7 @@ they are **not interchangeable**:
   `CONFIG_{env_name}`. A knob such a reader names is a knob it resolves, so
   "does the file mention it" is a sound test.
 * **TABULATING** — an authored table, needed where the two vocabularies differ
-  (`ZPICO_SUBSCRIBER_RING_DEPTH` ↔ `CONFIG_NROS_SUBSCRIBER_RING_DEPTH`). Here a
+  (`NROS_ZENOH_SUBSCRIBER_RING_DEPTH` ↔ `CONFIG_NROS_SUBSCRIBER_RING_DEPTH`). Here a
   mention proves **nothing**: three knobs were mentioned with no table row and
   silently compiled crate defaults (issue 1490).
 

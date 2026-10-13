@@ -287,9 +287,9 @@ def selftest(verbose=False) -> int:
     model = kconfig_model(kc)
     pairs = kconfig_pairs('pub const KCONFIG_PAIRS: &[(&str, &str)] = &[\n'
                           '    // a comment ("NOT_A", "CONFIG_ROW")\n'
-                          '    ("ZPICO_MAX_QUERYABLES", "CONFIG_NROS_MAX_QUERYABLES"),\n];\n')
+                          '    ("NROS_ZENOH_MAX_QUERYABLES", "CONFIG_NROS_MAX_QUERYABLES"),\n];\n')
     chk("KCONFIG_PAIRS harvest is scoped and skips comments",
-        pairs == {"CONFIG_NROS_MAX_QUERYABLES": "ZPICO_MAX_QUERYABLES"})
+        pairs == {"CONFIG_NROS_MAX_QUERYABLES": "NROS_ZENOH_MAX_QUERYABLES"})
     files = {
         "examples/a/prj.conf": ("CONFIG_NROS=y\nCONFIG_NROS_RMW_XRCE=y\nCONFIG_NET_TCP=y\n"
                                 "# CONFIG_NROS_C_API=y\nCONFIG_NROS_C_API=y\n"
@@ -305,7 +305,7 @@ def selftest(verbose=False) -> int:
     chk("a derived-identical knob names its env row",
         ("CONFIG_NROS_EXECUTOR_MAX_CBS", "knob", 'env = { NROS_EXECUTOR_MAX_CBS = "9" }') in kinds)
     chk("a KCONFIG_PAIRS knob names the PAIRED env word",
-        ("CONFIG_NROS_MAX_QUERYABLES", "knob", 'env = { ZPICO_MAX_QUERYABLES = "4" }') in kinds)
+        ("CONFIG_NROS_MAX_QUERYABLES", "knob", 'env = { NROS_ZENOH_MAX_QUERYABLES = "4" }') in kinds)
     chk("the endpoint names `locator`", any(f[4] == "endpoint" for f in found))
     chk("CONFIG_NROS, a Zephyr symbol, a comment and an undefined symbol pass",
         len(found) == 5 and not any(f[0] == "examples/b/prj.conf" for f in found))

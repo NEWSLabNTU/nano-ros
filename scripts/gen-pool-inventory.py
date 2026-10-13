@@ -422,8 +422,9 @@ def fold_ladder_registry(knobs):
     The `<tenant>_env_key` match arms `LADDER_ENV_KEY` read are gone: each of
     those functions now asks the registry, so a ladder knob's name is written
     only in `knobs.toml`. Every row with a `toml` key is listed under its
-    CANONICAL spelling, and a legacy spelling some source still names literally
-    folds into that row — one knob, one line on the page.
+    CANONICAL spelling. A retired spelling some source still named literally
+    would fold into that row — none can now (phase-484 W8,
+    `check-retired-knob-spellings`), so the fold is a backstop.
     """
     try:
         import tomllib

@@ -912,28 +912,23 @@ struct BoardFile {
     #[serde(default)]
     #[allow(dead_code)] // validated by parsing; read by `BoardKnobsFile`
     knobs: Option<nros_board_common::platform_config::Knobs>,
-    /// Set by [`Self::parse`] when the file used the DEPRECATED per-entry
-    /// `[board.knobs]` spelling (read until phase-484 W8).
-    #[serde(skip)]
-    legacy_board_knobs: bool,
 }
 
 impl BoardFile {
     /// Parse one `nros-board.toml`.
     ///
-    /// The canonical knob section is the top-level `[knobs]` (RFC-0103 D6),
-    /// typed directly by the struct. Two per-entry tables are acknowledged
-    /// here rather than modelled as `BoardDescriptor` fields — that struct is
-    /// built literally in several places, and both are another reader's
-    /// schema (the `priority_plan` rule — acknowledged here, interpreted
-    /// elsewhere): each is VALIDATED against its owner's type, then removed
-    /// before the typed parse.
+    /// The knob section is the top-level `[knobs]` (RFC-0103 D6), typed
+    /// directly by the struct. One per-entry table is acknowledged here rather
+    /// than modelled as a `BoardDescriptor` field — that struct is built
+    /// literally in several places, and it is another reader's schema (the
+    /// `priority_plan` rule — acknowledged here, interpreted elsewhere):
+    /// `[board.net]` (phase-484 W4b) is VALIDATED against `BoardNet`, then
+    /// removed before the typed parse.
     ///
-    /// - `[board.knobs]` — the LEGACY spelling of `[knobs]` (phase-445 W2),
-    ///   read until phase-484 W8 and flagged in [`Self::legacy_board_knobs`].
-    ///   A file stating it AND a top-level `[knobs]` is refused: two rungs for
-    ///   one board with no rule for which wins.
-    /// - `[board.net]` (phase-484 W4b) — `BoardNet`.
+    /// `[board.knobs]`, the retired per-entry spelling of `[knobs]`
+    /// (phase-445 W2; deprecated in release 0.5.0-nros2), is REFUSED naming
+    /// `[knobs]` (phase-484 W8) — in the words `nros-platform-config`'s build
+    /// script reader refuses it with.
     ///
     /// A file with neither takes the direct typed parse, so its errors keep
     /// their line/column spans.
@@ -946,15 +941,25 @@ impl BoardFile {
             return Err(first);
         };
         let mut stripped = false;
-        let mut legacy = false;
         if let Some(toml::Value::Array(boards)) = table.get_mut("board") {
             for entry in boards.iter_mut() {
                 if let toml::Value::Table(t) = entry
-                    && let Some(knobs) = t.remove("knobs")
+                    && t.contains_key("knobs")
                 {
-                    knobs.try_into::<nros_board_common::platform_config::Knobs>()?;
-                    stripped = true;
-                    legacy = true;
+                    let names = t
+                        .get("names")
+                        .and_then(|n| n.as_array())
+                        .map(|n| {
+                            n.iter()
+                                .filter_map(|v| v.as_str())
+                                .collect::<Vec<_>>()
+                                .join("/")
+                        })
+                        .unwrap_or_default();
+                    return Err(<toml::de::Error as serde::de::Error>::custom(format!(
+                        "board {names}: {}",
+                        nros_board_common::platform_config::retired_board_knobs_refusal()
+                    )));
                 }
                 if let toml::Value::Table(t) = entry
                     && let Some(net) = t.remove("net")
@@ -967,43 +972,7 @@ impl BoardFile {
         if !stripped {
             return Err(first);
         }
-        if legacy && table.contains_key("knobs") {
-            return Err(<toml::de::Error as serde::de::Error>::custom(
-                "states `[knobs]` at the top level AND the legacy `[board.knobs]` under a \
-                 board. The board rung is the top-level `[knobs]` (RFC-0103 D6); move the \
-                 `[board.knobs]` table there.",
-            ));
-        }
-        let mut file: Self = toml::Value::Table(table).try_into()?;
-        file.legacy_board_knobs = legacy;
-        Ok(file)
-    }
-
-    /// Print the `[board.knobs]` deprecation for `path`, once per descriptor
-    /// per process (a catalog is loaded several times by one command), in the
-    /// words the build-script reader uses. `NROS_SUPPRESS_DEPRECATION`
-    /// silences it like every other CLI deprecation.
-    fn warn_if_legacy(&self, path: &Path) {
-        use std::{
-            collections::BTreeSet,
-            sync::{Mutex, OnceLock},
-        };
-        static SEEN: OnceLock<Mutex<BTreeSet<PathBuf>>> = OnceLock::new();
-        if !self.legacy_board_knobs || crate::orchestration::image::deprecation_suppressed() {
-            return;
-        }
-        let first = SEEN
-            .get_or_init(|| Mutex::new(BTreeSet::new()))
-            .lock()
-            .map(|mut seen| seen.insert(path.to_path_buf()))
-            .unwrap_or(true);
-        if first {
-            eprintln!(
-                "warning: {}: {}",
-                path.display(),
-                nros_board_common::platform_config::board_knobs_deprecation_notice()
-            );
-        }
+        toml::Value::Table(table).try_into()
     }
 }
 
@@ -1174,7 +1143,6 @@ impl BoardCatalog {
                 .map_err(|e| BoardLoadError::Io(descriptor_path.clone(), e))?;
             let file = BoardFile::parse(&text)
                 .map_err(|e| BoardLoadError::Parse(descriptor_path.clone(), e))?;
-            file.warn_if_legacy(&descriptor_path);
             // Absolute, like an extra root and for the same reason: the
             // workspace-relative form exists so IN-TREE paths in committed
             // nano-ros artifacts do not drift per host, and a user's board is
@@ -1332,7 +1300,6 @@ impl BoardCatalog {
                 .map_err(|e| BoardLoadError::Io(descriptor_path.clone(), e))?;
             let file = BoardFile::parse(&text)
                 .map_err(|e| BoardLoadError::Parse(descriptor_path.clone(), e))?;
-            file.warn_if_legacy(&descriptor_path);
             // Workspace-relative, forward slashes — it goes into a COMMITTED
             // generated header, so an absolute host path would be drift the
             // moment anyone else regenerates it. (Extra roots: absolute, see
@@ -2618,78 +2585,47 @@ entry_kind = "zephyr-staticlib"
         );
     }
 
-    /// RFC-0103 D6 — the top-level `[knobs]` is the canonical board rung and
-    /// loads; a knob typo under it fails naming the key; the legacy
-    /// `[board.knobs]` still loads, flagged; both in one file is refused; and
-    /// any OTHER unknown top-level key is still refused.
+    /// RFC-0103 D6 — the top-level `[knobs]` is the board rung and loads; a
+    /// knob typo under it fails naming the key; the retired `[board.knobs]` is
+    /// refused naming `[knobs]` and the board (phase-484 W8), alone or beside a
+    /// `[knobs]`; and any OTHER unknown key is still refused.
     #[test]
-    fn board_knobs_canonical_legacy_both_and_typos() {
+    fn board_knobs_canonical_retired_and_typos() {
         const HEAD: &str = "[[board]]\nnames = [\"demo\"]\nplatform = \"posix\"\n\
                             toolchain = \"stable\"\nentry_kind = \"hosted-main\"\n";
         let ok = BoardFile::parse(&format!("{HEAD}\n[knobs.net]\nmax_udp_sockets = 2\n"))
             .expect("top-level [knobs] must load");
         assert_eq!(ok.boards.len(), 1);
-        assert!(!ok.legacy_board_knobs);
 
         let typo = BoardFile::parse(&format!("{HEAD}\n[knobs.net]\nmax_udp_sokets = 2\n"))
             .expect_err("a knob typo must not load");
         assert!(typo.to_string().contains("max_udp_sokets"), "{typo}");
 
-        let legacy = BoardFile::parse(&format!("{HEAD}\n[board.knobs.net]\nmax_udp_sockets = 2\n"))
-            .expect("legacy [board.knobs] must still load");
-        assert!(legacy.legacy_board_knobs);
-        let legacy_typo =
-            BoardFile::parse(&format!("{HEAD}\n[board.knobs.net]\nmax_udp_sokets = 2\n"))
-                .expect_err("a legacy knob typo must not load");
-        assert!(
-            legacy_typo.to_string().contains("max_udp_sokets"),
-            "{legacy_typo}"
-        );
+        for text in [
+            format!("{HEAD}\n[board.knobs.net]\nmax_udp_sockets = 2\n"),
+            format!(
+                "[knobs.net]\nmax_udp_sockets = 1\n\n{HEAD}\n[board.knobs.net]\nmax_udp_sockets = 2\n"
+            ),
+        ] {
+            let err = BoardFile::parse(&text).expect_err("the retired [board.knobs] must refuse");
+            let msg = err.to_string();
+            assert!(msg.contains("board demo"), "{msg}");
+            assert!(
+                msg.contains("`[board.knobs]` is a retired spelling"),
+                "{msg}"
+            );
+            assert!(msg.contains("top-level `[knobs]`"), "{msg}");
+        }
 
-        let both = BoardFile::parse(&format!(
-            "[knobs.net]\nmax_udp_sockets = 1\n\n{HEAD}\n[board.knobs.net]\nmax_udp_sockets = 2\n"
-        ))
-        .expect_err("both spellings in one file");
-        assert!(both.to_string().contains("[board.knobs]"), "{both}");
-
-        // Any OTHER unknown key still fails, with or without knobs.
+        // Any OTHER unknown key still fails, on the stripping path too.
         let other = BoardFile::parse(&format!(
-            "{HEAD}supported_netstakcs = []\n\n[board.knobs.net]\nmax_udp_sockets = 2\n"
+            "{HEAD}supported_netstakcs = []\n\n[board.net]\nip = \"192.0.3.10\"\n"
         ))
         .expect_err("a sibling typo must still fail");
         assert!(other.to_string().contains("supported_netstakcs"), "{other}");
         let top = BoardFile::parse(&format!("[knbos.net]\nmax_udp_sockets = 2\n\n{HEAD}"))
             .expect_err("an unknown top-level table is refused");
         assert!(top.to_string().contains("knbos"), "{top}");
-    }
-
-    /// RFC-0103 D6 — no TRACKED descriptor may still use the legacy
-    /// `[board.knobs]` spelling (accepted for out-of-tree files until phase-484
-    /// W8). Reads every in-tree `nros-board.toml` through the real parser.
-    #[test]
-    fn no_in_tree_board_descriptor_uses_legacy_board_knobs() {
-        let root = repo_root_for_tests();
-        let mut dirs = Vec::new();
-        BoardCatalog::collect_board_dirs(&root.join("packages/boards"), 0, &mut dirs)
-            .expect("walk packages/boards");
-        assert!(!dirs.is_empty(), "found no in-tree board descriptors");
-        let mut offenders = Vec::new();
-        for dir in dirs {
-            let path = dir.join("nros-board.toml");
-            let Ok(text) = std::fs::read_to_string(&path) else {
-                continue;
-            };
-            let file =
-                BoardFile::parse(&text).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
-            if file.legacy_board_knobs {
-                offenders.push(path.display().to_string());
-            }
-        }
-        assert!(
-            offenders.is_empty(),
-            "these descriptors use the deprecated `[board.knobs]`; move the table to a \
-             top-level `[knobs]` (RFC-0103 D6): {offenders:?}"
-        );
     }
 
     /// The other half of the same claim: a key nobody reads must now FAIL, and
