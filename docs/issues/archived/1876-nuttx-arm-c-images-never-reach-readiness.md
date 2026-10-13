@@ -1,11 +1,11 @@
 ---
 id: 1876
 title: "NuttX-ARM C images create their node and then fail `rclc_subscription_init_default` with `RCL_RET_INVALID_ARGUMENT` (-3), so four tier-2 cells never reach readiness"
-status: open
+status: resolved
 type: bug
 severity: high
 area: [nuttx, c-api]
-related: [phase-492, 1874, 1875]
+related: [phase-492, 1874, 1875, 1879]
 found: 2026-10-13
 ---
 
@@ -59,9 +59,20 @@ The same run also warned that both NuttX C images were reported FRESH by a
 DEGRADED staleness probe and had been rewritten at 13:18, during the run. So
 the image's age against the tree is itself unverified.
 
-## Next
+## Resolution
 
-Rebuild tier 2 on current `main` and re-run these four cells SOLO before
-reading anything further. Then compare `sizeof`/`offsetof` of the
-phase-492 structs between the C headers and the Rust definitions on
-`armv7a-nuttx-eabihf`.
+Fixed by issue 1879 (`d7909df96a`), which found the cause. The struct-layout
+hypothesis above was wrong.
+
+NuttX C TUs were built with cc-rs's default `-fPIC`. Since phase-492 W8,
+`ROSIDL_GET_MSG_TYPE_SUPPORT` is the address of a `__nros_type` data object,
+and under PIC that address is read through the GOT. `dramboot.ld` places
+`.got` after `_edata`, outside what `__start` copies to RAM. So the slot read
+0, the type support passed was NULL, and the call returned -3. The earlier
+reading that the type support "is never NULL" held for the source, not for
+the image.
+
+Verified on `main` + #2149 with freshly built NuttX ARM images, each cell run
+alone: `test_rtos_pubsub_e2e` and `test_rtos_service_e2e` (NuttX, C),
+`nuttx_arm_typed_carrier_boots_and_publishes`, and `realtime_tiers`'
+`nuttx-arm/c` row all pass.
