@@ -68,7 +68,7 @@ pub fn log_level_to_severity(level: log::Level) -> Severity {
 ///
 /// Records re-emitted this way carry the original severity (mapped
 /// via [`severity_to_log_level`]); the `log::Record::target` is the
-/// nros-log [`Logger::name`].
+/// nros-log [`Logger::name`](crate::Logger::name).
 pub struct LogCrateSink;
 
 impl LogSink for LogCrateSink {
@@ -100,9 +100,9 @@ impl LogSink for LogCrateSink {
 /// A `log::Log` impl that forwards every record to nros-log's
 /// dispatcher.
 ///
-/// Looks up an intern'd nros-log [`Logger`] keyed on
+/// Looks up an intern'd nros-log [`Logger`](crate::Logger) keyed on
 /// `log::Record::target` (the canonical `log` crate per-call-site
-/// name); falls back to [`DEFAULT_LOGGER`] when not registered.
+/// name); falls back to [`DEFAULT_LOGGER`](crate::DEFAULT_LOGGER) when not registered.
 ///
 /// The fallback lends its THRESHOLD, never its NAME (issue 1613): a
 /// record whose target nobody interned is still filed under that target
