@@ -3,7 +3,7 @@
 **Status (2026-10-12). W1, W3 and W5 landed, acceptance pending; W2 landed
 switched off (see W2).** Their measured acceptance waits for post-merge runs
 (see each item). W4 landed (see W4), acceptance pending on the scheduled
-lanes; W6 and W7 not started. The numbers below were measured from the GitHub Actions API over 2026-10-09 to 2026-10-10. They are
+lanes; W6 landed in part, acceptance not met (see W6); W7 not started. The numbers below were measured from the GitHub Actions API over 2026-10-09 to 2026-10-10. They are
 the baseline every work item is judged against. Implements no new RFC
 decision. It continues the cost work of
 [phase-353](archived/phase-353-build-and-fixture-cost.md),
@@ -382,6 +382,109 @@ target dir per workspace root) and the treadmill rules for fixture mtimes.
 **Acceptance:** a no-change re-run of each lane's fixture build is under
 10 % of its cold time, with `_require-fixtures` freshness unchanged.
 
+**Landed in part (2026-10-13), acceptance NOT met.** What each lane starts
+from, measured from the job logs rather than assumed:
+
+| lane | runner | what persisted between runs |
+| --- | --- | --- |
+| run-matrix `tier 1`, `tier 2` | self-hosted | sccache (rustc only) — `actions/checkout`'s `git clean -ffdx` deleted `build/`, every `generated/`, leaf build and target dir; tier 1's clean alone took 5 min |
+| nightly `tier 2 nightly` | self-hosted | the same |
+| live-peer (all three build jobs) | **hosted** `ubuntu-22.04`, CI image | nothing |
+| nightly ports (`nuttx`, `freertos`, `threadx_linux`, …) | **hosted** `ubuntu-22.04`, CI image | nothing |
+
+So the item's premise holds for three lanes, not all: live-peer and the
+nightly ports run on hosted VMs with no tomorrow. They are left as they are —
+a persistent tree is not available there, and `actions/cache` (10 GB per repo,
+shared with W3's and W4's entries) cannot hold multi-GB fixture trees without
+evicting those. Moving them onto the pool is a routing decision of W2's kind
+(labels, image contents, capacity next to W7), not a cache.
+
+**The self-hosted lanes: a persistent tree.** The `_work/<repo>/<repo>`
+checkout is shared with queue L3 and the W2 gate siblings, which MUST start
+clean (issues 0196/1476), so the tree cannot be that checkout, nor live inside
+it (`-ff` removes a nested repo). `scripts/ci/fixture-tree.sh sync` keeps one
+BESIDE it, `_work/<repo>/nros-fixture-tree` (the `nros-runner-work` volume
+outlives the runner container), and every later step runs there
+(`defaults.run.working-directory`). The sync is a user's `git pull`: this
+commit checked out `--force` (tracked edits undone), initialised submodules
+moved to their pins, build output KEPT and not trusted — `just build <lane>`
+decides freshness exactly as on a developer's tree, clears the fixture stamp
+before building and rewrites it after, and the test half's `_require-fixtures`
++ `_check-fixtures-stale` re-probe every fixture. The tree is shaped like the
+job checkout (same `origin`, same `refs/remotes/origin/*`, `--depth=1`), so
+`origin/main` baselines and ancestry questions answer as they do there. A tree
+older than 7 days is reset to tracked content: a periodic cold run. A tree
+whose git metadata is unreadable re-creates its git dir and keeps its build
+output.
+
+Two things the first CI runs of the script found, both fixed before this
+landed: `check-hook-repo-side-effects` ran it bare under a victim repo's
+`GIT_DIR`, the default command was `sync`, and `checkout --force` wrote the
+victim's commit into the REAL tree mid-build (run 38334069002) — the script now
+clears the inherited git environment for every command, refuses a bare
+invocation, and the probe runs its `--self-test`; and a fetch from the job's
+shallow checkout without `--depth` died on a missing parent (run
+38336863204).
+
+**mtime, measured.** Ninja and cargo freshness is mtime-keyed, and git
+rewrites only the paths whose content differs, so an unchanged source keeps
+its mtime across the sync — the same property a user's pull has, and the
+reason content-keyed freshness is not needed for this tree. One trap was
+real: `checkout --force` rewrote stat-dirty but content-identical files (a
+touch, a restore) with a new mtime; the script refreshes the index first
+(self-test case).
+
+**What a no-change re-run re-did** (`just build native`, 4-core box, warm
+tree; cold is 9479 s, the build right after a rebase onto main):
+
+| part | before | after | cause / fix |
+| --- | --- | --- | --- |
+| compile-check fixtures (68 rows) | 2297 s | 162 s | every builder `rm -rf`-ed and rebuilt; now reuses a row whose `.inputsig` (the signature the test-side probe recomputes) matches, as the west lane already did (issue 0509) |
+| the native module (154 rows) | 1883 s | 1747 s | 26 rows recompile the core crates: rows sharing a target dir point `NROS_SIZING_DESCRIPTOR` at different descriptors — [issue 1869](../issues/1869-shared-fixture-target-dir-thrashes-on-sizing-descriptor.md), not fixed; every C/C++ workspace row re-runs its cmake configure through `nros build` (~10 s each) |
+| `_codegen` + `check::fast` (a dependency of `build-test-fixtures`) | ~390 s | 297 s | `check fast` is 275–333 s at -P4 on this box |
+| compile-check + the post-build checks | ~2450 s | 262 s | |
+| **whole re-run** | **4720 s (50 % of cold)** | **2306 s (24 %)** | |
+
+Freshness, checked on the same tree after the change: a one-line edit to a
+compile-check row's source made `_require-fixtures-ready` (lane native) fail
+naming that row's `.inputsig`; `just build-compile-check-fixtures` then rebuilt
+that row alone (63 reused) and the gate passed; reverting the edit rebuilt it
+once more. An edit to a cargo leaf (`examples/native/rust/talker`) is never
+judged from a stamp at all — the staleness probe for cargo rows IS a
+`cargo build`, so the gate rebuilt the binary (mtime moved) rather than pass
+the old one. Neither path can hand a stale artifact to a test.
+
+Found on the way, each a defect a warm tree hits and a cold one may not, and
+each fixed on main by its own issue while this was measured: a pre-W7b build
+dir carries the tree's OWN old `NANO_ROS_*` cache entries (phase-484 W8 now
+refuses them with the `cmake -U` line that drops the residue — every build
+dir in a CI tree postdates W7b, and the 7-day reset bounds it), and `nros
+sync`'s synthesised ament prefix registered nothing in the resource index the
+2026-10-10 parser reads ([issue 1861](../issues/archived/1861-sync-synth-ament-prefix-has-no-resource-index.md)).
+
+**CI.** The third dispatch on the branch (run 38343006472, `tier 2` on
+newslab-server-241, `tier 1` on newslab-133) synced the tree in 3 min and 1 s
+— the first sync of a tree means a submodule update — and then stopped in
+`check::fast` at `sizes-header-mirrors`, on the same two probe dirs main's own
+tier-2 nightly stopped on that morning in the ordinary cleaned checkout (runs
+38346448295, 38350414982): [issue 1858](../issues/archived/1858-metadata-probe-cpp-config-mirror-goes-stale.md),
+fixed on main the same day. So no CI run of this item reached its fixtures,
+and the second-run CI number per lane is still to be measured.
+
+Gates: `check-fixture-tree-persistence` (self-hosted only; never a
+merge-gating or clean-tree job; run default equals the script's path; sync
+directly after checkout; no step escapes the tree; uploads rooted in it; every
+self-hosted `just build` job uses it — 10 mutations) runs the script's
+`--self-test` (14 cases: build output kept, tracked edits undone, unchanged
+mtime kept, tree inside the checkout refused, over-age reset, shallow and
+`origin/*` mirrored, an inherited `GIT_DIR` does not redirect it, a bare call
+refuses, a broken git store recovers). `lane-stage.py` maps the new step to
+provisioning.
+
+**Still to do.** The CI second-run time per lane (two runs of each lane on the
+same runner), issue 1869 (the shared-dir rebuild), and `nros build`'s per-row
+cmake reconfigure. Acceptance (under 10 % of cold) is not met: 24 % locally.
+
 ### W7 — find out why `newslab-server-241` is 2–5× slower
 
 Compare `nproc`, the jobserver budget, disk type and free space, and other
@@ -413,4 +516,5 @@ Open issues whose `related:` names this phase (listed 2026-10-12, so the
 link runs both ways). Listing one here records the link, not a claim that
 this phase will fix it.
 
+- [issue 1869](../issues/1869-shared-fixture-target-dir-thrashes-on-sizing-descriptor.md) — workspace fixture rows sharing a target dir rebuild the core crates every run (W6)
 - [issue 1177](../issues/1177-no-alloc-nros-c-lane-runs-only-on-schedule.md) — `check::workspace-features` gates no merge, so its reds are found by embedded consumers -- two so far, and the tier i …
