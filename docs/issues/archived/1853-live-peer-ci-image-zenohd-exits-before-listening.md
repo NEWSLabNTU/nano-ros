@@ -1,7 +1,7 @@
 ---
 id: 1853
 title: "live-peer's ci-image board job: `rmw_zenohd` exits 1 before listening, and the only stderr is an rcutils logging error"
-status: open
+status: resolved
 type: bug
 area: [ci, testing]
 severity: medium
@@ -94,3 +94,11 @@ both 0.1.11 debs, `dpkg-deb -x` them into a scratch dir, and start the 0.1.11
 
 Acceptance is unchanged: a live-peer dispatch where this cell produces a
 verdict.
+
+## Resolution (2026-10-13)
+
+Accepted on live-peer 38321018350, dispatched on `main` (`05a52e7cdd`) after
+PR #2082. The ci-image board job, "rows whose board is NOT this runner (ci
+image)", succeeded, and its stage report reads `VERDICT: cells ran and
+passed`. The `pubsub_freertos_ros2_interop_e2e` cell that this issue
+recorded as never running produced a verdict.
