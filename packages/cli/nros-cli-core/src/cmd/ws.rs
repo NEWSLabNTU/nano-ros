@@ -1794,20 +1794,30 @@ fn model_recorded_args(model_path: &Path) -> Vec<(String, String)> {
 /// PREPENDED to any existing `AMENT_PREFIX_PATH` so a real ROS install is still
 /// found for everything else.
 ///
+/// Issue 1861 — each package is also REGISTERED, with the empty marker
+/// `<tmp>/share/ament_index/resource_index/packages/<pkg>` a real install
+/// carries. The resolver finds a package the way `ament_index` does (play_launch
+/// `aab9507a`, inside our `d23720c7` pin): a prefix counts only if it registers
+/// the package, so the symlinks alone found nothing and `nav2_compat_smoke`
+/// failed its resolve on every pin since.
+///
 /// The directory lives as long as the returned handle; the caller holds it for
 /// the duration of the sync.
 #[cfg(unix)]
 fn synth_ament_prefix(scan: &[WsPkg]) -> Option<(tempfile::TempDir, std::ffi::OsString)> {
     let dir = tempfile::TempDir::new().ok()?;
     let share = dir.path().join("share");
-    std::fs::create_dir_all(&share).ok()?;
+    let index = share.join("ament_index/resource_index/packages");
+    std::fs::create_dir_all(&index).ok()?;
     let mut linked = 0usize;
     for pkg in scan {
         let dest = share.join(&pkg.name);
         if dest.exists() {
             continue;
         }
-        if std::os::unix::fs::symlink(&pkg.dir, &dest).is_ok() {
+        if std::os::unix::fs::symlink(&pkg.dir, &dest).is_ok()
+            && std::fs::write(index.join(&pkg.name), "").is_ok()
+        {
             linked += 1;
         }
     }
@@ -6256,6 +6266,44 @@ fn run_doctor(args: DoctorArgs) -> Result<()> {
 // =============================================================================
 // Phase 210.D.1 regression tests — `[patch.crates-io]` dedup writer.
 // =============================================================================
+
+/// Issue 1861 — the synthesised prefix REGISTERS each package the way an
+/// installed one does, so a resolver that asks `ament_index` finds it.
+#[cfg(all(test, unix))]
+mod synth_ament_prefix_tests {
+    use super::*;
+
+    #[test]
+    fn every_linked_package_is_registered_in_the_resource_index() {
+        let ws = tempfile::tempdir().unwrap();
+        let pkg_dir = ws.path().join("secondary_node");
+        std::fs::create_dir_all(pkg_dir.join("launch")).unwrap();
+        let scan = vec![WsPkg {
+            name: "secondary_node".into(),
+            dir: pkg_dir.clone(),
+            manifest: pkg_dir.join("package.xml"),
+            is_msg_pkg: false,
+            is_rust_pkg: false,
+            deps: Vec::new(),
+            is_patch_consumer: true,
+        }];
+        let (dir, value) = synth_ament_prefix(&scan).expect("one package linked");
+        let prefix = dir.path();
+        assert!(
+            prefix
+                .join("share/ament_index/resource_index/packages/secondary_node")
+                .is_file(),
+            "the package is registered"
+        );
+        assert!(prefix.join("share/secondary_node/launch").is_dir());
+        assert!(
+            value
+                .to_string_lossy()
+                .starts_with(&*prefix.to_string_lossy()),
+            "the synthesised prefix is searched first"
+        );
+    }
+}
 
 #[cfg(test)]
 mod config_include_version_tests {
