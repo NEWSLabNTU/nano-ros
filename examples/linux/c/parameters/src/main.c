@@ -80,18 +80,9 @@ static int run(void) {
         (void)rcl_clock_fini(&clock);
     }
 
-    const char* locator = getenv("NROS_LOCATOR");
-    if (!locator) {
-        locator = NROS_ENTRY_LOCATOR;
-    }
-    const char* domain_str = getenv("ROS_DOMAIN_ID");
-    uint8_t domain_id = (uint8_t)NROS_ENTRY_DOMAIN_ID;
-    if (domain_str) {
-        domain_id = (uint8_t)atoi(domain_str);
-    }
-
     memset(&app, 0, sizeof(app));
-    RCLC_CHECK_RET(rclc_support_init_with_locator(&app.support, locator, domain_id), 1);
+    rcl_allocator_t allocator = rcl_get_default_allocator();
+    RCLC_CHECK_RET(rclc_support_init(&app.support, 0, NULL, &allocator), 1);
     /* 16 handles: the six rcl_interfaces parameter services plus headroom. */
     RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support.context, 16, NULL), 1);
     /* The namespace is explicit: NULL options leave it EMPTY, and an empty

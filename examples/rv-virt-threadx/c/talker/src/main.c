@@ -85,23 +85,12 @@ int nros_app_main(int argc, char** argv) {
     setvbuf(stdout, NULL, _IOLBF, 0);
 #endif
 
-    // Get configuration from environment
-    const char* locator = getenv("NROS_LOCATOR");
-    if (!locator) {
-        locator = NROS_ENTRY_LOCATOR;
-    }
-
-    const char* domain_str = getenv("ROS_DOMAIN_ID");
-    uint8_t domain_id = (uint8_t)NROS_ENTRY_DOMAIN_ID;
-    if (domain_str) {
-        domain_id = (uint8_t)atoi(domain_str);
-    }
-
     // Zero-initialize all static state (avoids return-by-value temporaries on stack)
     memset(&app, 0, sizeof(app));
 
     // Initialize support context
-    RCLC_CHECK_RET(rclc_support_init_with_locator(&app.support, locator, domain_id), 1);
+    rcl_allocator_t allocator = rcl_get_default_allocator();
+    RCLC_CHECK_RET(rclc_support_init(&app.support, argc, argv, &allocator), 1);
     RCLC_CHECK_RET(rclc_node_init_default(&app.node, "talker", "/", &app.support), 1);
 
     RCLC_CHECK_RET(rclc_publisher_init_default(&app.publisher, &app.node,

@@ -178,8 +178,10 @@ Three runtime knobs:
 | ROS domain ID | `0` | Second arg to `rclcpp::init_in` |
 | Node name | `talker` | First arg to `rclcpp::create_node` |
 
-Reading from env in C++ is `std::getenv("NROS_LOCATOR")` plus the
-same `rclcpp::init_in` call — see the GitHub source for the full pattern.
+With no arguments, `rclcpp::init_in()` (and `rclcpp::init(argc, argv)`)
+takes the locator and domain from the build, then the `NROS_LOCATOR` and
+`ROS_DOMAIN_ID` environment variables on a hosted target, so an example
+needs neither argument.
 
 ## Build
 
