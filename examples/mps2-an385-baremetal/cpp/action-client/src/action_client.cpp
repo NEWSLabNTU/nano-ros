@@ -16,13 +16,6 @@
 
 #include "example_interfaces.hpp"
 
-// Backend registration (see the talker sibling).
-extern "C" int nros_rmw_zenoh_register(void);
-
-extern "C" void nros_app_register_backends(void) {
-    (void)nros_rmw_zenoh_register();
-}
-
 namespace {
 
 using Fibonacci = example_interfaces::action::Fibonacci;

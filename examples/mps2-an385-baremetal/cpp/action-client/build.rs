@@ -207,6 +207,9 @@ fn main() {
     // `nros sync` renders into `build/<image>/nros-cargo.toml`. The app TU only:
     // the generated bindings dial nothing.
     nros_cc_flags::entry_config::bake(&mut build);
+    // phase-499 W3 — `nros_app_register_backends()`, generated from the RMW
+    // nros-c links, as the cmake road's `nano_ros_link_rmw()` does.
+    nros_cc_flags::backends::generate(&mut build);
     nros_cc_flags::header_deps::track_header_deps(&mut build);
     build.compile("baremetal_cpp_action_client_app");
     // issue 1580 — every header the compile opened, beyond the ones named above.

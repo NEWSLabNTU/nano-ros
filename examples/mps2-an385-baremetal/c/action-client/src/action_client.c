@@ -20,14 +20,6 @@
 
 #include "example_interfaces.h"
 
-// Backend registration — the image's, exactly as on the cmake road (see the
-// `c/talker` sibling for why it is written here rather than in `main.rs`).
-extern int nros_rmw_zenoh_register(void);
-
-void nros_app_register_backends(void) {
-    (void)nros_rmw_zenoh_register();
-}
-
 // All nros state — and the feedback/result staging — in .bss, never on the
 // reset stack.
 static struct {

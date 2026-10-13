@@ -19,14 +19,6 @@
 
 #include "example_interfaces.h"
 
-// Backend registration — the image's, exactly as on the cmake road (see the
-// `c/talker` sibling for why it is written here rather than in `main.rs`).
-extern int nros_rmw_zenoh_register(void);
-
-void nros_app_register_backends(void) {
-    (void)nros_rmw_zenoh_register();
-}
-
 typedef struct {
     uint32_t goal_count;
     int32_t accepted_order;

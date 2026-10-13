@@ -66,8 +66,9 @@ fn main() -> ! {
     // NOTE: the backend is deliberately NOT registered here. Bare metal runs no
     // `.init_array` and the linkme section is never walked, so registration is
     // explicit — and the hook `rclc_support_init` itself calls is the C
-    // `nros_app_register_backends()`, which the leaf's `src/*.c` defines the way
-    // `nano_ros_link_rmw()` generates it on the cmake road. A
+    // `nros_app_register_backends()`, which `build.rs` generates from nros-c's RMW
+    // features (`nros_cc_flags::backends`), as `nano_ros_link_rmw()` does on the
+    // cmake road. A
     // `nros_rmw_zenoh::register()` here would be idempotent and harmless, and it
     // would also be a second site for one fact.
 
