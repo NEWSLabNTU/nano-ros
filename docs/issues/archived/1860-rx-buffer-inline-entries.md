@@ -93,4 +93,6 @@ Measured on native zenoh: arena claimed after registration, a temporary
 maximum, which is `Int32` (issue 1595). The saving lands where a
 subscription's type is smaller than the image's largest. Static RAM
 (`mem-report`) is unchanged by construction, because the executor backing
-is sized at build time.
+is sized at build time. `mem-report --baseline` confirms it: `.bss` and
+`EXECUTOR_BACKING` are byte-identical before and after; the before/after
+report is in phase-498 W2.

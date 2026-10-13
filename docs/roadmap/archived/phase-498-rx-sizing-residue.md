@@ -48,6 +48,29 @@ so W1 gets its own number too.
 
 *Acceptance:* the two reports, and the image's name, recorded in this document.
 
+**Taken (2026-10-14).** Image: `packages/testing/nros-tests/bins/safety-chatter-listener`
+(native, zenoh, `.typed::<Int32>().safety()`), `cargo build --release` after
+`nros sync`, built once from `origin/main` (`419fd5e19c`, before W1 and W3)
+and once from this phase's branch. `just mem-report <after> --baseline
+<before.json>`:
+
+| | before | after | delta |
+| --- | --- | --- | --- |
+| RAM attributed to symbols | 515,571 B | 515,531 B | -40 B |
+| `EXECUTOR_BACKING` (`.bss`) | 88,568 B | 88,568 B | 0 |
+| `.bss` | 495,928 B | 495,928 B | 0 |
+| `.data.rel.ro` | 54,984 B | 56,728 B | +1,744 B |
+| `.text` | 1,253,052 B | 1,235,948 B | -17,104 B |
+
+So static RAM does not move. The executor backing is sized at build time, and
+W1 only changes how much of it a subscription claims at registration: 1,736 B
+before and 744 B after (from the arena print in issue 1860). The report's
+"section RAM +1,720" is `.data.rel.ro`, which is relocated read-only data
+(vtables, string-pointer tables) that the loader writes once and that
+mem-report counts as writable. It grows because the four entries lost their
+`RX_BUF` generic, so the instantiations were laid out differently. It holds no
+receive buffer. `.text` shrank by 17 KiB for the same reason.
+
 ### W3 -- derived defaults on the backends that carry no schema (issue 1179)
 
 The buffered path derives a slot from `M` only where `MessageForRmw` carries
