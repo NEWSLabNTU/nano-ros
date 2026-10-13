@@ -173,14 +173,16 @@ c-api-upstream-signatures:
 c-api-freestanding-headers:
     @bash scripts/check-c-api-freestanding-headers.sh
 
-# phase-492 — user-facing C (example sources, ```c blocks in the book outside
-# porting/) includes the C API only at upstream's paths; <nros/*.h> from
-# nros-c is internal (maintainer ruling 2026-10-13). The internal set is
-# derived from the directory, so port-seam headers owned by other packages are
-# outside the rule by construction. Self-tested on every run; ~0.2 s.
+# phase-492 / phase-499 — user-facing C and C++ (example sources, ```c/```cpp
+# blocks in the book outside porting/) use only upstream's surface: no
+# internal <nros/*.h> / <nros/*.hpp> include (the set is derived from nros-c's
+# and nros-cpp's include/nros/, so port-seam headers owned by other packages
+# stay legal by construction), and no nros_app_main / NROS_APP_MAIN_REGISTER
+# in code -- the program writes `main` (RFC-0089 amendment 2026-10-13).
+# Self-tested on every run; ~0.3 s.
 [private]
-c-user-includes:
-    @python3 scripts/check-c-user-includes.py
+user-surface:
+    @python3 scripts/check-user-surface.py
 
 # issue 1386 — `node_ref_is_live(node_ref_of(node))` mints a reference from the
 # node and compares it against the counter it was just read from, so it is

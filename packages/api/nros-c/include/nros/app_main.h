@@ -1,16 +1,20 @@
 /**
  * @file app_main.h
- * @brief Unified user-application entry point.
+ * @brief The platform entry that reaches the program's `main` — INTERNAL.
  *
- * Phase 112.C contract — every nros example, on every RTOS, defines:
+ * An application writes `int main(int argc, char **argv)`, as an rclc or
+ * rclcpp program does (RFC-0089 amendment 2026-10-13, phase-499 W5). The build
+ * compiles its sources with `main` renamed to `nros_ported_main` and generates
+ * one TU that defines `nros_app_main` to call it and expands
+ * `NROS_APP_MAIN_REGISTER()` here — `nano_ros_add_executable` on the cmake
+ * road (`_nros_apply_app_main`), `nros_cc_flags::app_main` on the cargo road,
+ * and the codegen'd entry for a generated image. `nros_app_main` is the link
+ * contract between that TU and the board's startup; no user file names it,
+ * and this header is not part of the user surface.
  *
- *     int nros_app_main(int argc, char **argv);
- *
- * The `NROS_APP_MAIN_REGISTER()` macro at file scope emits the correct
- * platform entry shim (`void app_main(void)`, `int main(void)`, or
- * `int main(int argc, char **argv)`) that forwards into the user's
- * `nros_app_main`. User code is portable across RTOSes; only the
- * one-line registration knows which entry the linker expects.
+ * `NROS_APP_MAIN_REGISTER()` emits the platform entry (`void app_main(void)`,
+ * `int main(void)`, or `int main(int argc, char **argv)`) that forwards into
+ * `nros_app_main`.
  *
  * Platform selection (in order):
  *   1. `__ZEPHYR__` defined  → emits `int main(void)` (Zephyr kernel
@@ -22,7 +26,7 @@
  *      `void app_main(void)`. Per-platform startup chains call this
  *      after platform init (network, executor arena, board hw).
  *
- * To opt out and pick the shim explicitly, define one of:
+ * To pick the shim explicitly, a generated TU invokes one of:
  *   `NROS_APP_MAIN_REGISTER_VOID`   — `void app_main(void)`
  *   `NROS_APP_MAIN_REGISTER_ZEPHYR` — `int main(void)`
  *   `NROS_APP_MAIN_REGISTER_POSIX`  — `int main(int argc, char **argv)`
@@ -38,7 +42,8 @@
 extern "C" {
 #endif
 
-/// User application entry point. Define exactly once per binary.
+/// The link contract the generated entry TU defines (it calls the program's
+/// renamed `main`) and the platform entry calls. Exactly one per binary.
 ///
 /// Returns 0 on success, non-zero on failure. The `int main` shims return
 /// it; the `void app_main(void)` shim hands it to the board through

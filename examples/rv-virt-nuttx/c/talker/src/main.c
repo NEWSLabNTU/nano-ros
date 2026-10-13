@@ -75,7 +75,7 @@ static void timer_callback(struct rcl_timer_t* timer, void* context) {
 // Main
 // ----------------------------------------------------------------------------
 
-int nros_app_main(int argc, char** argv) {
+int main(int argc, char** argv) {
     (void)argc;
     (void)argv;
 
@@ -132,5 +132,3 @@ int nros_app_main(int argc, char** argv) {
 
     return 0;
 }
-
-NROS_APP_MAIN_REGISTER()

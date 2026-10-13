@@ -71,7 +71,7 @@ static void emit(rcl_log_severity_t severity, const char* text, const char* file
     rclc_log_emit_at(g_logger, severity, text, strlen(text), file, line);
 }
 
-int nros_app_main(int argc, char** argv) {
+int main(int argc, char** argv) {
     (void)argc;
     (void)argv;
 
@@ -127,5 +127,3 @@ int nros_app_main(int argc, char** argv) {
     rclc_support_fini(&app.support);
     return exit_code;
 }
-
-NROS_APP_MAIN_REGISTER()

@@ -151,13 +151,12 @@ nano_ros_add_executable(minimal_publisher ../src/minimal_publisher.cpp ROS2_MAIN
 ```
 
 The board comes from the directory's `system.toml`, as for any nano-ros image.
-`ROS2_MAIN` does three things a microcontroller needs:
+Every `nano_ros_add_executable` reaches your `main` (phase-499): no C runtime
+calls `int main(int argc, char** argv)` on a board, so the build renames
+`main` in your sources only (never in the board's own startup) and calls it
+from the platform's entry, with `argc == 0`. `ROS2_MAIN` adds what a ported
+program needs on top of that:
 
-- **It reaches your `main`.** No C runtime calls `int main(int argc, char**
-  argv)` on a board: the board's startup calls `nros_app_main`. The build
-  renames `main` in the ported sources only (never in the board's own
-  startup) and generates the `nros_app_main` that calls it, with
-  `argc == 0`.
 - **It gives the ported code the C++ standard library.** A ported node uses
   `std::string`, `std::to_string` and `<chrono>` literals.
   - On FreeRTOS the toolchain compiles C++ `-ffreestanding`, which makes

@@ -41,7 +41,7 @@ static struct {
 // Main
 // ----------------------------------------------------------------------------
 
-int nros_app_main(int argc, char** argv) {
+int main(int argc, char** argv) {
     // Line-buffer stdout: glibc full-buffers non-tty stdout, so when piped to
     // a test harness each line must flush on its newline.
 #ifdef _IOLBF /* absent on the bare-metal riscv64-threadx libc */
@@ -131,5 +131,3 @@ int nros_app_main(int argc, char** argv) {
     printf("Goodbye!\n");
     return exit_code;
 }
-
-NROS_APP_MAIN_REGISTER()

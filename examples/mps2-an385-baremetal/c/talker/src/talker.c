@@ -16,10 +16,8 @@
 ///     string here. Records are built by hand and emitted through
 ///     `rclc_log_emit_at`, which takes text and takes no format.
 ///
-/// `NROS_APP_MAIN_REGISTER()` emits `void app_main(void)` on this platform, and
-/// `src/main.rs` is the startup chain that calls it after the board is up —
-/// which is exactly the contract `<nros/app_main.h>` already documents for
-/// bare metal.
+/// The program writes `main`; the build compiles it as `nros_ported_main` and
+/// `src/main.rs` reaches it as `nros_app_main` once the board is up (phase-499).
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -136,7 +134,7 @@ static void timer_callback(struct rcl_timer_t* timer, void* context) {
 // Entry
 // ----------------------------------------------------------------------------
 
-int nros_app_main(int argc, char** argv) {
+int main(int argc, char** argv) {
     (void)argc;
     (void)argv;
 
@@ -178,5 +176,3 @@ int nros_app_main(int argc, char** argv) {
     rclc_support_fini(&app.support);
     return 0;
 }
-
-NROS_APP_MAIN_REGISTER()

@@ -9,7 +9,6 @@
 #include <stdint.h>
 #include <string.h>
 
-#include <nros/app_main.h>
 #include <rclcpp/rclcpp.hpp>
 
 #include "example_interfaces.hpp"
@@ -96,7 +95,7 @@ rclcpp_action::GoalResponse on_goal(const uint8_t uuid[16], const Fibonacci::Goa
 
 } // namespace
 
-int nros_app_main(int argc, char** argv) {
+int main(int argc, char** argv) {
     (void)argc;
     (void)argv;
 
@@ -128,5 +127,3 @@ int nros_app_main(int argc, char** argv) {
     rclcpp::shutdown();
     return 0;
 }
-
-NROS_APP_MAIN_REGISTER()

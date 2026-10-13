@@ -40,7 +40,6 @@
 #define RCLCPP_TRY_LOG(file, line, expr, ret)                                                      \
     std::fprintf(stderr, "[nros] %s:%d %s -> %d\n", (file), (line), (expr), (int)(ret))
 
-#include <nros/app_main.h>
 #include <rclcpp/rclcpp.hpp>
 
 namespace {
@@ -170,7 +169,7 @@ int run() {
 
 } // namespace
 
-int nros_app_main(int argc, char** argv) {
+int main(int argc, char** argv) {
     (void)argc;
     (void)argv;
     // Line-buffer stdout: glibc full-buffers non-tty stdout, so when piped to
@@ -180,5 +179,3 @@ int nros_app_main(int argc, char** argv) {
 #endif
     return run();
 }
-
-NROS_APP_MAIN_REGISTER()

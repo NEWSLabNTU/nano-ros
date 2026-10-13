@@ -10,7 +10,6 @@
  *   ROSOUT_PROBE_PERIOD_MS  spin period per record (default 250)
  */
 
-#include <nros/app_main.h>
 #include <nros/nros.h>
 
 #include <stdint.h>
@@ -30,7 +29,7 @@ static struct {
     rclc_executor_t executor;
 } app;
 
-int nros_app_main(int argc, char** argv) {
+int main(int argc, char** argv) {
     (void)argc;
     (void)argv;
 #ifdef _IOLBF
@@ -88,5 +87,3 @@ int nros_app_main(int argc, char** argv) {
     rclc_support_fini(&app.support);
     return 0;
 }
-
-NROS_APP_MAIN_REGISTER()

@@ -1290,7 +1290,8 @@ umbrella carries the nano-ros-only parts too (`RCLC_C_COMPONENT`,
 file needs an internal header. Port-seam headers (`<nros/platform.h>`,
 `<nros/rmw_vtable.h>`, `<nros/transport.h>`) are not user headers in this
 sense: they are written by a PORTER against nano-ros, and they stay.
-Gates: `check-c-user-includes` and its C++ counterpart.
+Gate: `check-user-surface` (C and C++; it also refuses `nros_app_main` /
+`NROS_APP_MAIN_REGISTER` in user code).
 
 **2. The public C headers are freestanding.** They compile with
 `-ffreestanding -nostdinc`, so a part with no libc can include them; libc calls

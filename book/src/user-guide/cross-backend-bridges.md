@@ -123,13 +123,13 @@ target_link_libraries(my_bridge PRIVATE
 ```
 
 Then declare + call the register functions early in
-`nros_app_main`:
+`main`:
 
 ```c
 extern int8_t nros_rmw_xrce_register(void);
 extern int8_t nros_rmw_zenoh_register(void);
 
-int nros_app_main(int argc, char** argv) {
+int main(int argc, char** argv) {
     if (nros_rmw_xrce_register() != 0)  return 1;
     if (nros_rmw_zenoh_register() != 0) return 1;
     // ... rclc_support_init / rclc_executor_init / rclc_executor_node_init

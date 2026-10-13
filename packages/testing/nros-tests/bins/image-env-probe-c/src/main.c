@@ -10,12 +10,11 @@
  *                 is off altogether".
  */
 
-#include <nros/app_main.h>
 #include <nros/nros.h>
 
 #include <stdio.h>
 
-int nros_app_main(int argc, char** argv) {
+int main(int argc, char** argv) {
     (void)argc;
     (void)argv;
     rclc_logger_t logger = rclc_log_get_logger("image_env_probe");
@@ -26,5 +25,3 @@ int nros_app_main(int argc, char** argv) {
            rclc_logger_is_enabled(logger, RCLC_LOG_SEVERITY_WARN) ? 1 : 0);
     return 0;
 }
-
-NROS_APP_MAIN_REGISTER()

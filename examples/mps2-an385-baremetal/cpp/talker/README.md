@@ -22,7 +22,7 @@ C++-specific:
   each such include is behind `__STDC_HOSTED__` AND `__has_include`.
 * **No namespace-scope C++ objects.** `cortex-m-rt` runs no `.init_array`, so a
   global with a constructor would be used unconstructed; the node, publisher
-  and timer are locals of `nros_app_main`, which never returns.
+  and timer are locals of `main`, which never returns.
 
 `nros-codegen.toml` bounds `std_msgs/String.data` (256), as the FreeRTOS
 sibling's does.

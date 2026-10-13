@@ -15,10 +15,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include <nros/app_main.h>
 #include <rclcpp/rclcpp.hpp>
 
-int nros_app_main(int argc, char** argv) {
+int main(int argc, char** argv) {
     // Line-buffer stdout: glibc full-buffers non-tty stdout, so when piped to
     // a test harness each line must flush on its newline.
 #ifdef _IOLBF /* absent on the bare-metal riscv64-threadx libc */
@@ -61,5 +60,3 @@ int nros_app_main(int argc, char** argv) {
     rclcpp::shutdown();
     return 0;
 }
-
-NROS_APP_MAIN_REGISTER()

@@ -6,7 +6,7 @@
 /// publishes an Int32 counter, with the C API. `RCLC_C_COMPONENT` emits the C-ABI
 /// factory/configure the native typed Entry carrier (the shared entry pack)
 /// calls; the carrier runs it on the real executor (NativeBoard::run_components) —
-/// no hand-written `nros_app_main`, no `rclc_support_init`/`node_init`/
+/// no hand-written `main`, no `rclc_support_init`/`node_init`/
 /// `executor_init`/spin-loop boilerplate (issue-0049 P1/P7).
 
 #include <stddef.h>

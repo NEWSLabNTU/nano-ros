@@ -5,7 +5,8 @@
 amendment "the user surface is upstream's — include paths, `main`, and no
 `nros` spelling" (2026-10-13). Follows
 [phase-492](phase-492-c-api-rcl-names.md), which renamed the C API and moved C
-user code onto upstream include paths (`check-c-user-includes`).
+user code onto upstream include paths (`check-c-user-includes`, which W5 grew
+into `check-user-surface`).
 
 ## Why
 
@@ -43,8 +44,7 @@ The umbrella gains the typed-component support `<nros/component.hpp>` carries
 (as the C umbrella gained `component.h`). C++ examples, the book's C++
 snippets, the `nros new` C++ scaffolds and the generated C++ entry's
 user-visible includes drop `<nros/*.hpp>`, and C++ files that log through
-`RCLC_LOG_*` move to `RCLCPP_*`. Extend `check-c-user-includes` (or add its
-C++ twin) to C++ sources and ```cpp blocks, with the internal set derived
+`RCLC_LOG_*` move to `RCLCPP_*`. Extend `check-c-user-includes` (W5: `check-user-surface`) to C++ sources and ```cpp blocks, with the internal set derived
 from `packages/api/nros-cpp/include/nros/` and `packages/api/nros-c/include/nros/`.
 *Acceptance:* no user-facing C++ file includes an internal header; the gate
 fails on main's tree.
@@ -74,10 +74,9 @@ POSIX and Zephyr the user's `main` is the entry. Measure which `main`
 signatures each language and road accepts, and make an unsupported one a
 build-time refusal naming the form, never a link error. C++ examples move to
 `rclcpp::init(argc, argv)` where they do not need `init_in`.
-The materialized-entry sentinel the book shows
-(`#include <nros/main.hpp>` + `NROS_MAIN(Board, "bringup:launch")`, written
-out by `nros materialize`) is user-visible too: give it an upstream-path
-header and an `RCLCPP_`-prefixed spelling with the rest of W5.
+The materialized-entry sentinel the book showed
+(`#include <nros/main.hpp>` + `NROS_MAIN(Board, "bringup:launch")`) was
+user-visible too.
 *Acceptance:* no example writes `nros_app_main` or `NROS_APP_MAIN_REGISTER`;
 every road's example builds link; native e2e tests pass; Zephyr/NuttX/ThreadX/
 FreeRTOS images built by the tier-2 lane.

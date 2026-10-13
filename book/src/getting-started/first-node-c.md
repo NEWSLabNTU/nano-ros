@@ -114,9 +114,11 @@ strong `nros_app_register_backends()` stub (calling
 `nros_rmw_zenoh_register()` for the zenoh image above). Which RMW that
 is comes from `[system] rmw`, not from a `-D` on the command line.
 
-The C entry point is **`int nros_app_main(int argc, char **argv)`**
-(not `main`); `<rclc/rclc.h>` declares it and provides the OS-side `main`
-stub that wires signal handling and forwards to your function.
+The C entry point is **`int main(int argc, char **argv)`**, as in any rclc
+program. On a board the C runtime does not call `main`, so the build compiles
+yours under another name and reaches it from the platform's own entry
+(Zephyr's `main(void)`, an RTOS startup task); on Linux it is the process
+entry. You write `main` either way.
 
 ```c
 #include <rcl/rcl.h>
@@ -124,7 +126,7 @@ stub that wires signal handling and forwards to your function.
 #include <rclc/rclc.h>
 #include <std_msgs/msg/int32.h>
 
-int nros_app_main(int argc, char** argv) {
+int main(int argc, char** argv) {
     // 1. rclc_support_init() — opens the zenoh session
     // 2. rclc_executor_init() / rclc_node_init_default()
     // 3. rclc_publisher_init_default(&pub, &node,

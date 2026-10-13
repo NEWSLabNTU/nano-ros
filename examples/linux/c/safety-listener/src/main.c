@@ -26,7 +26,7 @@ static struct {
     rclc_polling_subscription_t subscription;
 } app;
 
-int nros_app_main(int argc, char** argv) {
+int main(int argc, char** argv) {
     (void)argc;
     (void)argv;
 #ifdef _IOLBF /* absent on the bare-metal riscv64-threadx libc */
@@ -76,5 +76,3 @@ int nros_app_main(int argc, char** argv) {
     rclc_support_fini(&app.support);
     return 0;
 }
-
-NROS_APP_MAIN_REGISTER()

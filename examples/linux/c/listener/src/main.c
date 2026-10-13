@@ -78,7 +78,7 @@ static void subscription_callback(const void* msgin, void* context) {
     printf("I heard: [%s]\n", msg->data.data);
 }
 
-int nros_app_main(int argc, char** argv) {
+int main(int argc, char** argv) {
     (void)argc;
     (void)argv;
 
@@ -162,5 +162,3 @@ int nros_app_main(int argc, char** argv) {
     printf("Goodbye!\n");
     return 0;
 }
-
-NROS_APP_MAIN_REGISTER()

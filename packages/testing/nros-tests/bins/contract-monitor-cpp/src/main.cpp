@@ -28,7 +28,6 @@
 #include <string.h>
 #include <time.h>
 
-#include <nros/app_main.h>
 #include <nros/nros.hpp>
 
 #include "std_msgs.hpp"
@@ -80,7 +79,7 @@ void on_violation(void* ctx, const nros_cpp_violation_t* v) {
 
 } // namespace
 
-int nros_app_main(int argc, char** argv) {
+int main(int argc, char** argv) {
     (void)argc;
     (void)argv;
     setvbuf(stdout, nullptr, _IOLBF, 0);
@@ -165,5 +164,3 @@ int nros_app_main(int argc, char** argv) {
     rclcpp::shutdown();
     return 0;
 }
-
-NROS_APP_MAIN_REGISTER()

@@ -16,7 +16,6 @@
 #define RCLCPP_TRY_LOG(file, line, expr, ret)                                                      \
     fprintf(stderr, "[nros] %s:%d %s -> %d\n", (file), (line), (expr), (int)(ret))
 
-#include <nros/app_main.h>
 #include <rclcpp/rclcpp.hpp>
 
 // Generated C++ bindings for example_interfaces/action/Fibonacci
@@ -84,7 +83,7 @@ void on_result(const uint8_t goal_id[16], int32_t status, const uint8_t* data, s
 // Main
 // ----------------------------------------------------------------------------
 
-int nros_app_main(int argc, char** argv) {
+int main(int argc, char** argv) {
     // Line-buffer stdout: glibc full-buffers non-tty stdout, so when piped to
     // a test harness each line must flush on its newline.
 #ifdef _IOLBF /* absent on the bare-metal riscv64-threadx libc */
@@ -184,5 +183,3 @@ int nros_app_main(int argc, char** argv) {
     printf("Goodbye!\n");
     return rc;
 }
-
-NROS_APP_MAIN_REGISTER()
