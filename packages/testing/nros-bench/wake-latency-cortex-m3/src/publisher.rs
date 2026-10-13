@@ -14,10 +14,9 @@
 #![no_main]
 
 use nros::prelude::*;
-use nros_board_mps2_an385_freertos::{Mps2An385, println};
-use panic_semihosting as _;
 use std_msgs::msg::Int32;
 use wake_latency_cortex_m3::{BURST, TOPIC, publisher_config};
+use wake_latency_cortex_m3_nros_selection::nros_board_mps2_an385_freertos::{Mps2An385, println};
 
 // The C startup jumps to the Rust `main` symbol (see #0273).
 #[unsafe(no_mangle)]

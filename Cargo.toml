@@ -481,7 +481,7 @@ exclude = [
     "packages/testing/nros-tests/fixtures/orchestration_tiers_native/src/demo_entry",
     # Phase 228.E.2 — multi-tier FreeRTOS firmware fixture (thumbv7m, own `[workspace]`).
     "packages/testing/nros-tests/fixtures/orchestration_tiers_freertos",
-    "packages/testing/nros-tests/fixtures/orchestration_tiers_freertos/entry",
+    "packages/testing/nros-tests/fixtures/orchestration_tiers_freertos/src/demo_entry",
     "packages/testing/nros-tests/fixtures/orchestration_tiers_freertos/src/ctrl_pkg",
     "packages/testing/nros-tests/fixtures/orchestration_tiers_freertos/src/telem_pkg",
     # Phase 218 — `packages/cli/` is the merged-in nros-cli tree, a

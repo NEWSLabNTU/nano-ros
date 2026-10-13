@@ -10,6 +10,118 @@ found: 2026-09-11
 related: [rfc-0098, rfc-0065, phase-445]
 ---
 
+## 2026-10-13 (phase F) — the testing packages follow
+
+Phase E's walk read `examples/` only. Widened to `packages/testing/` (both
+shapes: `system.toml` leaves and image-less `[package]` manifests), it went red
+on the pre-migration tree naming exactly the 30 packages the phase E
+"Not covered by the walk" note counted, plus the 8 that `NOT_ON_THE_SELECTION`
+had exempted by shape (rc=101). Branch `fix/1305-testing-packages`. 97 leaves
+are on the selection package now (was 69); the floor is 97.
+
+**What moved (28).**
+
+- **Native test bins** (`action-client-multigoal`, `action-server-concurrent`,
+  `graph-probe`, `int32-sink`, `int32-source`, `message-info-observer`,
+  `param-two-node-talker`, `ros-edition-pose-pub`, `rosout-talker`,
+  `sim-clock-{listener,publisher}`): a `system.toml` with one image per RMW the
+  bin was built for (`native`, `native_xrce`, `native_cyclonedds`); the
+  `rmw-*` features and backend deps left; fixture rows say `image =
+  "native_<rmw>"` and the resolvers select through `select_rmw_row` (or
+  `platform_rmw` for a single-row leaf). Two keep a backend crate for a
+  zenoh-only feature: `message-info-observer`'s `unstable-zenoh-api` (as the
+  native listener does) and `action-server-concurrent`'s new
+  `zenoh-reply-slots`, the reply-slot refusal probe the zenoh row turns on (it
+  was `cfg(feature = "rmw-zenoh")`). `just ros_editions build-fixture` writes
+  the pose publisher's selection with `ws leaf-system --write-settings`, not
+  `nros sync`, so the edition's regenerated messages survive.
+- **mps2 bins and benches** (`qemu-baremetal-main-e2e`, `rtic-run-plan-e2e`,
+  `nros-bench/{large-msg-baremetal,wake-latency-cortex-m3}`): board code
+  (`exit_success()`, `#[entry]`, `run_bare`, `Config`, `println`) is reached
+  as `<pkg>_nros_selection::nros_board_*`, the way the mps2 C mains reach it.
+  A board feature no image fact implies (`e2e-synthetic-callback`, the
+  bench's `docker`) is named on the selection dependency: the selection
+  package now passes the board crate's own features through
+  (`facade::board_feature_passthrough`). The benches' hand-written
+  `.cargo/config.toml` went (the settings file carries the triple and link
+  group; large-msg's entity counts moved to `[image.*] env`).
+- **RTOS smoke bins** (`logging-smoke-{freertos-mps2,nuttx-qemu-arm,
+  threadx-linux,threadx-riscv64}`, `pool-exhaustion-threadx-linux`): a
+  `system.toml` + `package.xml` each; three hand-written `.cargo/config.toml`
+  went. The two threadx-linux bins were hosted `std` programs; the selection
+  gives the board its descriptor feature `image-runtime` (the ThreadX
+  byte-pool `#[global_allocator]`), which answered libstd's first allocation
+  with NULL (`memory allocation of 4 bytes failed`, before any output). They
+  are `#![no_std]` + `#![no_main]` with the descriptor's C-ABI `main` now, the
+  shape every threadx-linux image has (`entry_kind = "board-run"`). The
+  FreeRTOS and NuttX smoke images now stamp records with the platform clock
+  (`[    2.001003]`): the settings file names the platform, and `nros-log`
+  stamps when it declares `clock`. `logging_smoke.rs` strips the stamp before
+  matching.
+- **Harness fixtures**: entries with their own `system.toml` (`n9_workspace`,
+  `o4_pkg_index_workspace`, `o5_nav2_compat_smoke`, both
+  `n_board_agnostic_run_plan` entries) depend on their selection; forms 2/4
+  name `::demo_entry_nros_selection::nros_board_linux::LinuxBoard`. Entries
+  whose image a BRINGUP claims (`multi_pkg_workspace_freertos/src/firmware`,
+  both `orchestration_tiers_*` entries) get no `system.toml`: giving one to the
+  FreeRTOS tiers entry shadowed the bringup's image in `nros::main!` and the
+  firmware baked the default locator (`tcp/10.0.2.2:7447` instead of `:7891`;
+  the slirp test failed). `nros sync`'s workspace arm writes such an entry's
+  selection from the claiming image instead (`leaf_settings::
+  write_entry_selection`, over `leaf_system::for_entry`, the reader
+  `nros::main!` uses), and `ws board-facts` finds the board crate through the
+  selection. `orchestration_tiers_freertos/entry` moved to `src/demo_entry`
+  (with a `package.xml`) so sync scans it. Rows that skip `nros sync`
+  (`main_macro_resolves_from_inputs`, `main_macro_misuse_*`) write the
+  selection with `ws leaf-system --write-settings`; the unknown-board case
+  overlays the pre-1305 manifest, because no selection exists for a board no
+  descriptor claims and its subject is the macro's own refusal.
+
+**Not moved, with the reason measured.** `bins/in-place-subscriptions` —
+issue 1340's witness. Built both ways (`nros sync && nros build native`, `just
+mem-report --baseline`): RAM 199,386 -> 310,298 B (+110,912);
+`nros::metadata_mode::state::STATE` +75,992 B (new); `EXECUTOR_BACKING` 20,864
+-> 45,440 B, +24,576 = 8 x 3,072, exactly the in-place saving 1340 records. Its
+move is a decision about 1340's baseline and was left to the maintainer.
+`examples/rv-virt-threadx/rust/*` stay out by shape: the CMake road picks the
+RMW (`-DNROS_RMW`) and links the backend itself, so a cargo-road selection
+(one image's board, RMW and runtime) has nothing to select. `log-arena-probe`
+names no board. ESP32 stays dormant (scaffold rule).
+
+**Benches.** No size or timing baseline file exists for either. Sizes
+(`arm-none-eabi-size`): `wake-latency-cortex-m3` (nros-minsizerel, fixture
+lane) text 299,040 -> 299,016, bss 1,207,616 -> 1,207,360;
+`wake-latency-pub` 294,536 -> 294,512, bss 1,203,368 -> 1,203,128;
+`qemu-bsp-large-msg-test` (`--release`) text 277,148 -> 278,352, bss 472,720
+-> 472,512. `wake_latency_cortex_m3` (`--features trigger-test`; its
+`!require_zenohd()` no longer compiled since issue 1758 and is fixed) gives the
+same `[UNMET] 0 samples` (no CYCCNT on QEMU) for the old and the new images;
+`test_qemu_zenoh_large_publish` passes.
+
+**Measured.** `fixtures-build.sh linux rust` rc=0 (75 rows; `nm`: every bin
+image links its own backend only), `freertos rust` rc=0, the nuttx /
+threadx-linux / threadx-riscv64 smoke and pool rows rc=0, `baremetal rust`
+rc=0, `compile-check-fixtures.sh` over the 16 fixture rows rc=0 except
+`nav2_compat_smoke`, whose `nros sync` fails on `$(find secondary_node)` before
+and after (its entry builds through the selection by hand). Tests:
+`logging_smoke` (5 platforms), `pool_exhaustion_threadx_linux`,
+`baremetal_run_plan_runtime`, `large_msg`, `action_multigoal`,
+`xrce_ros2_interop`, `graph_interop`, `params`, `params_per_node_interop`,
+`rosout_interop` (rust), `sim_time_clock_e2e`, `zero_copy`, both
+`declarative_bridge_*`, `port_templates_e2e` (topic-state monitor, posix), and
+the fixture tests `native_main_macro_{forms,misuse}`,
+`native_orchestration_tiers`, `orchestration_tiers_freertos`,
+`freertos_firmware_entry`, `board_agnostic_run_plan`, `pkg_index` pass. Not
+run: `ros_editions_nano_interop` (needs the per-edition docker images; the
+recipe's build was run for humble). `just qemu test-rtic-main-e2e` fails before
+and after: the image bakes `tcp/10.0.2.2:7450` while the recipe's router
+listens on 10200, and with a router on 7450 neither the old nor the new image
+exits within 60 s.
+
+**Gate.** Mutation: `nros-board-linux` re-added beside `graph-probe`'s
+selection -> walk rc=101 ("depends on its generated selection package ... AND
+names the board crate"); restored -> rc=0.
+
 ## 2026-10-13 (phase E) — the last classes; RESOLVED
 
 Every single-package leaf ON A SUPPORTED BOARD that named a board crate by
@@ -50,7 +162,7 @@ prints the 6 rv-virt-threadx manifests (by shape) and the 2 ESP32 ones
 `packages/testing/` with no `system.toml` that name a board crate (18
 `nros-tests/bins/*`, 2 `nros-bench/*`, 3 under `fixtures/`). They are test
 harness programs, not example leaves; whether they belong to this rule is
-open.
+open. *(Answered by phase F above: they do, and they moved.)*
 
 **Templates** (`local-msg-package/src/rust_consumer`,
 `multi-package-workspace/src/pkg_rust_publisher`; issue 1829 resolved). They

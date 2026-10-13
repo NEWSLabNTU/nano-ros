@@ -49,7 +49,7 @@ fn main() {
     // RMW; a parameter fixture that can only speak zenoh cannot answer whether
     // CYCLONE serves the six `rcl_interfaces` services — and Cyclone did not,
     // for want of a type descriptor, while the zenoh cell stayed green.
-    nros_board_linux::register_linked_rmw();
+    param_two_node_talker_nros_selection::nros_board_linux::register_linked_rmw();
 
     info!("nros two-node parameter fixture");
 
@@ -146,7 +146,5 @@ fn main() {
         info!("{}{}", PARAM_SERVICE_NODE_PREFIX, fqn.as_str());
     }
 
-    executor
-        .spin(SpinOptions::default())
-        .expect("spin error");
+    executor.spin(SpinOptions::default()).expect("spin error");
 }

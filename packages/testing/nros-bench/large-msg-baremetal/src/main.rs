@@ -7,8 +7,11 @@
 #![no_main]
 
 use nros::prelude::*;
-use nros_board_mps2_an385::{Config, println, run_bare};
-use panic_semihosting as _;
+// The board crate, through the generated selection package (issue 1305), which
+// also links the board's panic provider.
+use qemu_bsp_large_msg_test_nros_selection::nros_board_mps2_an385::{
+    self, Config, println, run_bare,
+};
 
 // phase-271 (issue #110) — this bench is a no-alloc `rmw-cffi` bare-metal target,
 // so it can't use the `alloc`-only `Executor::open` (which leaks a default

@@ -25,8 +25,10 @@ use nros::prelude::*;
 // an application can name it — which is exactly the gap this fixture found
 // (`sim-time` and `TimerClockSource` were both unreachable from `nros`).
 use nros::{TimerClockSource, TimerDuration};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{
+    Arc,
+    atomic::{AtomicU64, Ordering},
+};
 
 fn env_u64(name: &str, default: u64) -> u64 {
     std::env::var(name)
@@ -37,7 +39,7 @@ fn env_u64(name: &str, default: u64) -> u64 {
 
 fn main() {
     env_logger::init();
-    nros_board_linux::register_linked_rmw();
+    sim_clock_listener_nros_selection::nros_board_linux::register_linked_rmw();
 
     let period_ms = env_u64("NROS_SIM_PERIOD_MS", 100).max(1);
     let observe_ms = env_u64("NROS_SIM_OBSERVE_MS", 7000);

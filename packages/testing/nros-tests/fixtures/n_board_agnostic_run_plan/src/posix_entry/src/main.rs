@@ -13,8 +13,8 @@
 
 extern crate shared_node_pkg as _;
 
-use nros_board_linux::LinuxBoard;
 use nros_platform::BoardEntry;
+use posix_entry_nros_selection::nros_board_linux::LinuxBoard;
 
 // Phase 212.N.4 — codegen-emitted body. `$OUT_DIR/run_plan.rs`:
 //

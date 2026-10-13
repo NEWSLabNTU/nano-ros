@@ -17,6 +17,7 @@ cmsdk-uart                           4   0     0       0      0
 heap-free-poc-mps2                   4   0     0       0      0
 lan9118-smoltcp                      3   1     0       0      0
 logging-smoke-nuttx-qemu-arm         1   0     0       1      0
+logging-smoke-threadx-linux          1   0     0       1      0
 logging-smoke-threadx-riscv64        1   0     0       1      0
 mps2-an385-pac                       0   1     1       2      0
 nros                                75  14     3      23      0
@@ -70,7 +71,7 @@ nros-zephyr-build                   13   0     0       0      0
 nros-zpico-build                     1   0     0       0      0
 nvidia-ivc                          59  25     4      11      0
 openeth-smoltcp                     13   2     0       0      0
-pool-exhaustion-threadx-linux        1   0     0       0      0
+pool-exhaustion-threadx-linux        2   0     0       1      0
 qemu-bsp-large-msg-test              2   0     0       0      0
 qemu-rs-common                      52   0     0      15      0
 qemu-rs-lan9118                      5   0     0       0      0

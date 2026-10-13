@@ -1,0 +1,29 @@
+# Overlay for compile-check row `main_macro_misuse_unknown_board` (issue 1656).
+#
+# The template's manifest depends on its generated selection package (issue
+# 1305), which `nros sync` writes for the image's board. This case's image names
+# a board NO descriptor claims, so no selection package can exist for it — the
+# selection writer refuses the board first. The subject here is the MACRO's own
+# refusal ("unknown board `frobnicator`"), which only a manifest the selection
+# does not mediate can reach: so this case keeps the board crate by hand, the
+# shape every leaf had before issue 1305.
+[package]
+name = "demo_entry"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[[bin]]
+name = "demo_entry"
+path = "src/main.rs"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+nros = { path = "@NROS_REPO_DIR@/packages/api/nros", default-features = false, features = [
+    "alloc",
+    "rmw-cffi",
+    "ros-humble", "macros"] }
+nros-board-linux = { path = "@NROS_REPO_DIR@/packages/boards/nros-board-linux" }
+talker_pkg = { path = "../talker_pkg" }

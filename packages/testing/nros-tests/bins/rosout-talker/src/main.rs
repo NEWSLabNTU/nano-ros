@@ -43,7 +43,7 @@ fn say(line: &str) {
 
 fn main() {
     env_logger::init();
-    nros_board_linux::register_linked_rmw();
+    rosout_talker_nros_selection::nros_board_linux::register_linked_rmw();
     nros_log::init(nros_platform_cffi::log::default_sinks());
 
     let records = env_usize("ROSOUT_PROBE_RECORDS", 60);
@@ -99,7 +99,10 @@ fn main() {
         match nros::rosout::pump(&rosout) {
             Ok(n) => total += n,
             Err((n, e)) => {
-                say(&format!("ROSOUT_PROBE_PUBLISH_ERR pumped={} {e:?}", total + n));
+                say(&format!(
+                    "ROSOUT_PROBE_PUBLISH_ERR pumped={} {e:?}",
+                    total + n
+                ));
                 std::process::exit(5);
             }
         }

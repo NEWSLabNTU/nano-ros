@@ -1017,6 +1017,22 @@ SHIPPED_SHAPES = {
 # A subject with no host shape at all, and why. A reason, not a bare name:
 # an exemption without one is a rule with a hole nobody can re-check.
 SHIPPED_EXEMPT = {
+    # Issue 1305 — what ships is each IMAGE's feature list, derived by its
+    # generated selection package (`facade::write_leaf_selection`, from the
+    # image's `system.toml` + the board descriptor), not the crate's `default`.
+    # Those manifests are build output, so the authored consumers counted here
+    # are only what is left outside the selection road.
+    "nros-board-linux": (
+        "per-image shape: every host image takes it through its generated "
+        "selection package (rmw / edition / `census` + `profile` from the image); "
+        "the one authored consumer left is issue 1340's measurement witness, "
+        "`bins/in-place-subscriptions`"
+    ),
+    "nros-board-nuttx-qemu": (
+        "cross-only, per-image shape: every NuttX image takes it through its "
+        "generated selection package; the authored consumers are the CMake-road "
+        "FFI staticlibs, which must not take the image runtime"
+    ),
     "nros-board-nuttx": (
         "cross-only — a NuttX board crate has no host shape; its one consumer "
         "is the QEMU board family, built by the nuttx fixture lane, a runtime "

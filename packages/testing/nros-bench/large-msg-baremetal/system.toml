@@ -1,0 +1,30 @@
+# What this bench image deploys to (RFC-0098 D3/D5). It keeps its own `main`
+# (`#[entry]`, no `nros::main!`) and declares no component table; the file names
+# its board, which reaches the build through the generated selection package
+# (issue 1305) — the board crate, its RMW backend, the Cortex-M runtime and the
+# board's panic provider, plus the target and link settings
+# `build/<image>/nros-cargo.toml` carries.
+
+[system]
+name = "large_msg_baremetal"
+rmw = "zenoh"
+domain_id = 0
+
+[image.mps2-an385-baremetal]
+board = "qemu-mps2-an385"
+# issue 1290 -- this bench DECLARES its entities, so `arena_size_for(2)` in
+# `src/main.rs` takes the declared branch and `EXEC_SIZING.assert_covers_model`
+# is a live check rather than an inert one (`arena_model::REQUIRED` is 0 on an
+# image that declares nothing, and a check against 0 can never fail). It was
+# the `[env]` of a hand-written `.cargo/config.toml`; an image's own knob is
+# this table now (the RFC-0049 APP rung, RFC-0098 D4).
+#
+# The numbers are this file's to keep correct: `main()` creates ONE publisher
+# and registers NO callbacks -- no subscription, no timer, no service, no
+# action -- and publishers are not an arena cost (they claim no entry and no
+# receive region). If an entity is added to `main()` and not here, the arena is
+# modelled short and the registration fails with `BufferTooSmall`; if it is
+# added here and not there, the image pays bytes it does not use. Issue 0810 --
+# the service client and guard condition claim arena too, and the model refuses
+# to run (falling back to the worst case) unless every kind it sums is stated.
+env = { NROS_ENTITY_COUNT_SUBSCRIPTION = "0", NROS_ENTITY_COUNT_TIMER = "0", NROS_ENTITY_COUNT_SERVICE_SERVER = "0", NROS_ENTITY_COUNT_ACTION_CLIENT = "0", NROS_ENTITY_COUNT_ACTION_SERVER = "0", NROS_ENTITY_COUNT_SERVICE_CLIENT = "0", NROS_ENTITY_COUNT_GUARD_CONDITION = "0" }

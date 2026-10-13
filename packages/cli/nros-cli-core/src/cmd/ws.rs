@@ -3021,6 +3021,37 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
             for p in scan.iter().filter(|p| p.is_rust_pkg && !p.is_msg_pkg) {
                 if let Some(sel) = crate::cmd::leaf_settings::write_selection(&p.dir, nrp, None)? {
                     println!("sync: selection → {}", sel.dir.display());
+                    continue;
+                }
+                // An ENTRY with no `system.toml` of its own takes its image
+                // from the bringup that claims it (`[image.<id>] entry =
+                // "<pkg>"`), as `nros::main!` does: its selection comes from
+                // that image, so the network identity is stated once.
+                let mut claimed: Vec<&Path> = Vec::new();
+                for b in scan.iter().filter(|b| {
+                    b.dir != p.dir
+                        && b.dir
+                            .join(nros_orchestration_ir::leaf_system::SYSTEM_TOML)
+                            .is_file()
+                }) {
+                    if let Some(sel) =
+                        crate::cmd::leaf_settings::write_entry_selection(&p.dir, &b.dir, nrp)?
+                    {
+                        println!("sync: selection → {}", sel.dir.display());
+                        claimed.push(&b.dir);
+                    }
+                }
+                if claimed.len() > 1 {
+                    bail!(
+                        "sync: {} bringups claim the entry {} ({}) — an entry is ONE image's",
+                        claimed.len(),
+                        p.dir.display(),
+                        claimed
+                            .iter()
+                            .map(|d| d.display().to_string())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    );
                 }
             }
         }

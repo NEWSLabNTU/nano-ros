@@ -50,6 +50,43 @@ const EXPECTED_LINES: &[&str] = &[
     "[FATAL] smoke: fatal payload",
 ];
 
+/// `output` with the platform clock's `[sssss.uuuuuu] ` prefix removed from each
+/// record (`[INFO] smoke: [    2.001019] info payload` -> `[INFO] smoke: info
+/// payload`), so [`EXPECTED_LINES`] asks about the level, the name and the
+/// message whether or not the image renders a timestamp.
+///
+/// Whether it does is a property of the image, not of this test: `nros-log`
+/// stamps a record when the platform declares `[capabilities] clock` (issue
+/// 1037, #503), which it learns from the image's build settings. Issue 1305
+/// moved these fixtures onto their selection package and build settings file,
+/// which name the platform, so the FreeRTOS and NuttX images now stamp their
+/// records like every other image on those platforms.
+fn strip_clock(output: &str) -> String {
+    output
+        .lines()
+        .map(|line| {
+            let Some(at) = line.find(": [") else {
+                return line.to_string();
+            };
+            let rest = &line[at + 3..];
+            let Some(close) = rest.find("] ") else {
+                return line.to_string();
+            };
+            let stamp = &rest[..close];
+            if !stamp.is_empty()
+                && stamp
+                    .chars()
+                    .all(|c| c == ' ' || c == '.' || c.is_ascii_digit())
+            {
+                format!("{}: {}", &line[..at], &rest[close + 2..])
+            } else {
+                line.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 /// Phase 88.15.a — bare-metal MPS2-AN385 over QEMU semihosting.
 ///
 /// issue 0422 — the `qemu` in the NAME is load-bearing, for the reason spelled
@@ -76,8 +113,8 @@ fn logging_smoke_qemu_baremetal_mps2_emits_every_severity() {
         .wait_for_output(Duration::from_secs(15))
         .expect("QEMU timed out waiting for log output");
 
-    assert_output_contains(&output, EXPECTED_LINES);
-    assert_output_contains(&output, &[LOGGING_SMOKE_CHILD_RECORD]);
+    assert_output_contains(&strip_clock(&output), EXPECTED_LINES);
+    assert_output_contains(&strip_clock(&output), &[LOGGING_SMOKE_CHILD_RECORD]);
 }
 
 /// Phase 88.15.b — MPS2-AN385 + FreeRTOS + lwIP over QEMU
@@ -103,8 +140,8 @@ fn logging_smoke_freertos_mps2_emits_every_severity() {
         .wait_for_output(Duration::from_secs(30))
         .expect("QEMU timed out waiting for log output");
 
-    assert_output_contains(&output, EXPECTED_LINES);
-    assert_output_contains(&output, &[LOGGING_SMOKE_CHILD_RECORD]);
+    assert_output_contains(&strip_clock(&output), EXPECTED_LINES);
+    assert_output_contains(&strip_clock(&output), &[LOGGING_SMOKE_CHILD_RECORD]);
 }
 
 /// Phase 88.15.c — NuttX QEMU ARM virt. NuttX uses the POSIX C
@@ -139,11 +176,11 @@ fn logging_smoke_nuttx_qemu_arm_emits_every_severity() {
     let mut qemu =
         QemuProcess::start_nuttx_virt(binary, true).expect("failed to start QEMU (nuttx-virt)");
     let output = qemu
-        .wait_for_output_pattern("[FATAL] smoke: fatal payload", Duration::from_secs(45))
+        .wait_for_output_pattern("fatal payload", Duration::from_secs(45))
         .expect("QEMU timed out waiting for log output");
 
-    assert_output_contains(&output, EXPECTED_LINES);
-    assert_output_contains(&output, &[LOGGING_SMOKE_CHILD_RECORD]);
+    assert_output_contains(&strip_clock(&output), EXPECTED_LINES);
+    assert_output_contains(&strip_clock(&output), &[LOGGING_SMOKE_CHILD_RECORD]);
 }
 
 /// Phase 88.15.d — ThreadX + NetX Duo on QEMU RISC-V `virt`. The
@@ -171,8 +208,8 @@ fn logging_smoke_threadx_riscv64_emits_every_severity() {
         .wait_for_output(Duration::from_secs(30))
         .expect("QEMU timed out waiting for log output");
 
-    assert_output_contains(&output, EXPECTED_LINES);
-    assert_output_contains(&output, &[LOGGING_SMOKE_CHILD_RECORD]);
+    assert_output_contains(&strip_clock(&output), EXPECTED_LINES);
+    assert_output_contains(&strip_clock(&output), &[LOGGING_SMOKE_CHILD_RECORD]);
 }
 
 /// ThreadX Linux runs as a host process but uses the ThreadX platform
@@ -217,8 +254,8 @@ fn logging_smoke_threadx_linux_captures_stderr() {
         .wait_for_all_output(Duration::from_secs(15))
         .expect("ThreadX Linux logging smoke timed out waiting for output");
 
-    assert_output_contains(&output, EXPECTED_LINES);
-    assert_output_contains(&output, &[LOGGING_SMOKE_CHILD_RECORD]);
+    assert_output_contains(&strip_clock(&output), EXPECTED_LINES);
+    assert_output_contains(&strip_clock(&output), &[LOGGING_SMOKE_CHILD_RECORD]);
     assert_output_contains(&output, &["Application completed successfully."]);
 }
 

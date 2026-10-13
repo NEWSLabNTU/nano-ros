@@ -18,7 +18,7 @@ use std_msgs::msg::Int32;
 
 fn main() {
     env_logger::init();
-    nros_board_linux::register_linked_rmw();
+    int32_source_nros_selection::nros_board_linux::register_linked_rmw();
 
     let topics: Vec<&'static str> = std::env::var("NROS_PUB_TOPICS")
         .ok()

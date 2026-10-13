@@ -11,7 +11,7 @@
 
 #![no_std]
 
-use nros_board_mps2_an385_freertos::{BaseConfig, Config};
+use wake_latency_cortex_m3_nros_selection::nros_board_mps2_an385_freertos::{BaseConfig, Config};
 
 /// zenohd locator. The port MUST match `nros_tests::platform::FREERTOS.zenohd_port`
 /// (= 7000 + FreertosMps2 index 2 * 400 = 7800). Slirp routes the guest's

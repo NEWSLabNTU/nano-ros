@@ -84,7 +84,7 @@ fn main() {
     // exact thing that made `int32-sink` unusable as the XRCE half of a bridge
     // test (phase-338 W3). A graph probe that can only speak zenoh cannot
     // answer whether CYCLONE reads the graph, which is the next question.
-    nros_board_linux::register_linked_rmw();
+    graph_probe_nros_selection::nros_board_linux::register_linked_rmw();
     // The DOMAIN, which `ExecutorConfig::new` does not read.
     //
     // issue 0927 — this probe used the plain constructor, so it sat on domain 0

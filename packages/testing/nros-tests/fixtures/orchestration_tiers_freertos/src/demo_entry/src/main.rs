@@ -10,6 +10,5 @@
 
 extern crate ctrl_pkg as _;
 extern crate telem_pkg as _;
-use panic_semihosting as _;
 
 nros::main!(panic = "own", launch = "demo_bringup");

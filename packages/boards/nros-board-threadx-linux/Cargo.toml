@@ -58,9 +58,11 @@ rmw-zenoh = ["nros-board-threadx/rmw-zenoh"]
 # whole image. The descriptor's `board_features` names it for a generated entry;
 # a hand-written leaf names it itself.
 #
-# NOT a default, unlike `nros-board-nuttx/image-runtime`: two test bins
-# (`logging-smoke-threadx-linux`, `pool-exhaustion-threadx-linux`) are ordinary
-# `std` programs that boot this board from a hosted `fn main`, and libstd
-# allocates before `tx_kernel_enter` creates the pool — a byte-pool allocator
-# there would answer that first allocation with NULL.
+# NOT a default, unlike `nros-board-nuttx/image-runtime`: a hosted `std` program
+# that boots this board from `fn main` allocates in libstd before
+# `tx_kernel_enter` creates the pool, and a byte-pool allocator answers that
+# first allocation with NULL (measured: `memory allocation of 4 bytes failed`).
+# The two test bins that were such programs (`logging-smoke-threadx-linux`,
+# `pool-exhaustion-threadx-linux`) moved to the `board-run` shape with their
+# selection package in issue 1305, so every in-tree image now takes it.
 image-runtime = ["nros-platform/global-allocator"]

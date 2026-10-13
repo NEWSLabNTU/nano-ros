@@ -37,7 +37,7 @@ fn env_u64(name: &str, default: u64) -> u64 {
 
 fn main() {
     env_logger::init();
-    nros_board_linux::register_linked_rmw();
+    sim_clock_publisher_nros_selection::nros_board_linux::register_linked_rmw();
 
     let rate = env_u64("NROS_SIM_RATE", 10);
     let step_ms = env_u64("NROS_SIM_STEP_MS", 10).max(1);

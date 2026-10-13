@@ -4,4 +4,4 @@
 //!
 //! n9 form 2 (board only).
 
-nros::main!(board = ::nros_board_linux::LinuxBoard);
+nros::main!(board = ::demo_entry_nros_selection::nros_board_linux::LinuxBoard);

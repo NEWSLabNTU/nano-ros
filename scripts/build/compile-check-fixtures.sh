@@ -45,6 +45,8 @@ source "$repo_root/scripts/build/launch-resolver-identity.sh"
 # issue 1844 — the board facts a cross-build row's own cargo command needs.
 # shellcheck source=board-facts.sh
 source "$repo_root/scripts/build/board-facts.sh"
+# shellcheck source=scripts/lib/grep-q.sh
+source "$repo_root/scripts/lib/grep-q.sh"
 
 out_root="$(nros_build_dir "$NROS_KIND_COMPILE_CHECK")"
 mkdir -p "$out_root"
@@ -235,6 +237,41 @@ _cc_row_resolves_in_macro() {
     esac
 }
 
+# Issue 1305 — a staged package that depends on its generated selection
+# package (`<pkg>_nros_selection = { path = "build/nros/selection" }`) cannot be
+# LOADED by cargo until that package exists. `nros sync` writes it; a row that
+# skips the sync (no SystemModel may exist for it) writes the selection alone,
+# the way `nros build` does: `ws leaf-system --write-settings` resolves no
+# launch file and writes no model. Only for a package with a `system.toml`
+# beside it that names the selection, so a case overlay that keeps a
+# hand-written board crate (`main_macro_misuse_unknown_board`) is left alone.
+_cc_write_selections() {
+    local staged="$1" manifest dir cli
+    cli="${NROS_CLI_BIN:-${NROS_CLI:-$(command -v nros || true)}}"
+    while IFS= read -r -d '' manifest; do
+        case "${manifest#"$staged"/}" in
+            build/* | */build/* | target/* | */target/*) continue ;;
+        esac
+        dir="$(dirname "$manifest")"
+        [ -f "$dir/system.toml" ] || continue
+        local rc=0
+        nros_grep_q -E '_nros_selection *=' "$manifest" || rc=$?
+        case "$rc" in
+            0) ;;
+            1) continue ;;
+            *) echo "compile-check: could not read $manifest" >&2; return 2 ;;
+        esac
+        if [ -z "$cli" ]; then
+            echo "compile-check: nros CLI not found — cannot write the selection package of $dir (just setup-cli)" >&2
+            return 2
+        fi
+        NROS_REPO_DIR="$repo_root" "$cli" ws leaf-system --write-settings "$dir" >/dev/null || {
+            echo "compile-check: could not write the selection package of $dir" >&2
+            return 2
+        }
+    done < <(find "$staged" -maxdepth 4 -name Cargo.toml -print0)
+}
+
 stage_tree() {
     local id="$1" src="$2" staged="$3"
     _cc_resolver_arg=""
@@ -262,6 +299,7 @@ stage_tree() {
     # Any staged pkg (package.xml) can be a bringup — system.toml is OPTIONAL
     # to the resolver (o4's bringup is launch/ + package.xml only).
     if _cc_row_skips_sync "$id"; then
+        _cc_write_selections "$staged" || return 2
         # An `if`, not `&&`: as the last command of this branch a false `&&`
         # list would become stage_tree's return status and trip errexit.
         if _cc_row_resolves_in_macro "$id"; then

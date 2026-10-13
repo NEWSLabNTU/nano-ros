@@ -14,7 +14,7 @@
 extern crate primary_node as _;
 extern crate secondary_node as _;
 
-use nros_board_linux::LinuxBoard;
+use demo_entry_nros_selection::nros_board_linux::LinuxBoard;
 use nros_platform::BoardEntry;
 
 // Phase 212.N.4 — codegen-emitted body. `$OUT_DIR/run_plan.rs` defines:

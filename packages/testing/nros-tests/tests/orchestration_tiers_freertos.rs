@@ -22,7 +22,7 @@ use nros_tests::{
 use std::{path::PathBuf, time::Duration};
 
 /// Issue 0342 — this cell's allocator slot. The firmware bakes the port into
-/// its deploy locator (`fixtures/orchestration_tiers_freertos/entry/Cargo.toml`)
+/// its deploy locator (`fixtures/orchestration_tiers_freertos/src/demo_bringup/system.toml`)
 /// and the host router must listen on the same one; [`assert_fixture_port`]
 /// keeps the two from drifting.
 const ROUTER_PORT: u16 = port_of(

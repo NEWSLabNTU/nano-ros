@@ -38,7 +38,7 @@
 use std::time::Duration;
 
 use nros_tests::{
-    fixtures::{RequireFixture, ZenohRouter, is_zenohd_available, require_zenohd},
+    fixtures::{RequireFixture, ZenohRouter, require_zenohd},
     qemu::QemuProcess,
 };
 // Phase 141.B.2 / .C — wake-latency probe lives behind a Cargo
@@ -82,9 +82,9 @@ fn bench_image(name: &str) -> std::path::PathBuf {
 
 #[test]
 fn wake_latency_cortex_m3_p99_within_bound() {
-    if !is_zenohd_available() || !require_zenohd() {
-        nros_tests::unmet!("zenohd not found");
-    }
+    // issue 1758 — `require_zenohd` fails the test itself (`unmet!`, naming
+    // why) and returns `()`; the old `!require_zenohd()` no longer compiled.
+    require_zenohd();
 
     let sub_binary = bench_image("wake-latency-cortex-m3");
     let pub_binary = bench_image("wake-latency-pub");

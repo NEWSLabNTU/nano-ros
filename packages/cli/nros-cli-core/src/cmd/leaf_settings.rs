@@ -211,6 +211,41 @@ fn resolve_for(
     let Some(decl) = decl.map_err(|e| eyre!(e))? else {
         return Ok(None);
     };
+    leaf_image_from_decl(leaf, nano_ros_root, want, package, decl)
+}
+
+/// Issue 1305 — a workspace ENTRY package with no `system.toml` of its own,
+/// whose image is the one a bringup CLAIMS for it (`[image.<id>] entry =
+/// "<pkg>"`, or the image the builder would generate that entry for —
+/// [`leaf_system::for_entry`], the reader `nros::main!` uses for the same
+/// entry). `None` when `entry` is not a package, states its own deployment
+/// (that is [`resolve`]'s), or no image of `bringup` claims it.
+pub fn resolve_claimed_entry(
+    entry: &Path,
+    bringup: &Path,
+    nano_ros_root: &Path,
+) -> Result<Option<LeafImage>> {
+    if entry.join(leaf_system::SYSTEM_TOML).is_file() {
+        return Ok(None);
+    }
+    let Some(package) = package_name(entry) else {
+        return Ok(None);
+    };
+    let Some(decl) = leaf_system::for_entry(entry, &package, bringup).map_err(|e| eyre!(e))? else {
+        return Ok(None);
+    };
+    leaf_image_from_decl(entry, nano_ros_root, Driver::Cargo, package, decl)
+}
+
+/// The tail [`resolve_for`] and [`resolve_claimed_entry`] share: the image's
+/// board through the catalog, and the road check.
+fn leaf_image_from_decl(
+    leaf: &Path,
+    nano_ros_root: &Path,
+    want: Driver,
+    package: String,
+    decl: LeafSystem,
+) -> Result<Option<LeafImage>> {
     let Some(board) = decl.board.clone() else {
         bail!(
             "{}: names no board (RFC-0098 D3: `[image.<id>] board = \"<board>\"`)",
@@ -477,6 +512,33 @@ pub fn write_selection(
     if !depends_on_selection(&img.leaf, &img.package) {
         return Ok(None);
     }
+    write_selection_for(&img, nano_ros_root).map(Some)
+}
+
+/// [`write_selection`] for a workspace ENTRY whose image a bringup claims
+/// ([`resolve_claimed_entry`]): `nros sync`'s workspace arm asks it of every
+/// package with no `system.toml` of its own, so an entry the bringup names
+/// (`[image.freertos] entry = "firmware"`) gets its board crate from that
+/// image exactly as a single-package leaf gets it from its own — and the
+/// image's network identity stays in the ONE place `nros::main!` reads it.
+pub fn write_entry_selection(
+    entry: &Path,
+    bringup: &Path,
+    nano_ros_root: &Path,
+) -> Result<Option<crate::orchestration::facade::Facade>> {
+    let Some(img) = resolve_claimed_entry(entry, bringup, nano_ros_root)? else {
+        return Ok(None);
+    };
+    if !depends_on_selection(&img.leaf, &img.package) {
+        return Ok(None);
+    }
+    write_selection_for(&img, nano_ros_root).map(Some)
+}
+
+fn write_selection_for(
+    img: &LeafImage,
+    nano_ros_root: &Path,
+) -> Result<crate::orchestration::facade::Facade> {
     let catalog = BoardCatalog::load(nano_ros_root)
         .map_err(|e| eyre!("board catalog under {}: {e}", nano_ros_root.display()))?;
     let Some(d) = crate::cmd::board_facts::resolve_board(&catalog, &img.board) else {
@@ -488,7 +550,7 @@ pub fn write_selection(
         img.platform.as_str(),
     ];
     let facts = crate::builder::entry::BoardFacts::from_descriptor_for(d, &candidates);
-    let sys = system_toml(&img)?;
+    let sys = system_toml(img)?;
     let spec = crate::orchestration::facade::LeafSelectionSpec {
         package: &img.package,
         leaf: &img.leaf,
@@ -499,7 +561,7 @@ pub fn write_selection(
         candidates: &candidates,
         nano_ros_root,
     };
-    crate::orchestration::facade::write_leaf_selection(&spec, &sys).map(Some)
+    crate::orchestration::facade::write_leaf_selection(&spec, &sys)
 }
 
 /// The leaf's `system.toml` through the typed bringup schema, so every typo
@@ -1232,12 +1294,11 @@ mod board_crate_tests {
     }
 
     /// Issue 1305 — the leaves NOT on the selection package, each with the
-    /// reason it is not. Since phase E (2026-10-13) every entry is out of scope
-    /// BY SHAPE (board code in the node, a harness-templated manifest, a lib a
-    /// CMake image links, a measurement witness); no migratable class is left.
-    /// Every other in-tree cargo-road leaf on a supported board — the copy-out
-    /// templates' Rust packages, the mps2 C/C++ apps on a cargo link root and
-    /// the native examples with a hand-written `main` included — depends on its
+    /// reason it is not, every one of them out of scope BY SHAPE or by
+    /// measurement. Every other in-tree cargo-road leaf on a supported board —
+    /// the examples, the copy-out templates' Rust packages, the mps2 C/C++ apps
+    /// on a cargo link root, and (phase F) every `packages/testing/` program,
+    /// bench and harness-templated fixture entry — depends on its
     /// `<pkg>_nros_selection` package and names no board crate (enforced by
     /// [`check_board_crate_dependency`]). A leaf for a `tier = "scaffold"`
     /// board is skipped by that DERIVED property, never listed here. A prefix
@@ -1247,30 +1308,21 @@ mod board_crate_tests {
             "packages/testing/nros-tests/bins/in-place-subscriptions",
             "issue 1340's measurement witness, kept on its hand-written manifest ON \
              PURPOSE: the selection gives the host board `census` + `profile` on every \
-             road (`entry::image_dependency_lines`, issues 1419 / phase-463 W7 — the \
-             generated host entry is a census and profile producer), which adds \
-             `nros::metadata_mode` STATE (75,992 B), grows EXECUTOR_BACKING 20,864 -> \
-             45,440 B (arena 34,816). Not a road-dependent writer bug; migrating \
-             would change the image 1340 measures (re-measured 2026-10-12; the eight \
-             `matched no recorded subscription row` warnings it also showed were a \
-             runtime defect, now warned only in a census run)",
-        ),
-        (
-            "packages/testing/nros-tests/bins/qemu-baremetal-main-e2e",
-            "its node body calls `nros_board_mps2_an385::exit_success()`",
-        ),
-        (
-            "packages/testing/nros-tests/bins/rtic-run-plan-e2e",
-            "its node body calls `nros_board_mps2_an385::exit_success()`",
-        ),
-        (
-            "packages/testing/nros-tests/fixtures/",
-            "harness-templated manifests (`@NROS_REPO_DIR@`) or a custom `main`",
+             road (`entry::image_dependency_lines`, issues 1419 / phase-463 W7), and \
+             the image 1340 measures changes with it. Re-measured 2026-10-13 with \
+             `just mem-report`, hand-written -> selection: RAM 199,386 -> 310,298 B \
+             (+110,912); `nros::metadata_mode::state::STATE` +75,992 B (new); \
+             EXECUTOR_BACKING 20,864 -> 45,440 B, +24,576 = 8 x 3,072, i.e. exactly \
+             the in-place saving 1340 records (arena 10,240 -> 34,816). Moving it is \
+             a decision about 1340's baseline, not a mechanical edit",
         ),
         (
             "examples/rv-virt-threadx/rust/",
-            "lib-only staticlibs a CMake image links (no `nros::main!`); RMW chosen \
-             by leaf features",
+            "lib-only staticlibs a CMake image links (no `nros::main!`): the CMake \
+             road picks the RMW (`-DNROS_RMW`) and links the backend itself, so the \
+             cargo-road selection package — one `[image]`'s board, RMW and runtime — \
+             has nothing to select; the board crate is target-scoped so the node \
+             still builds for the host probe",
         ),
         (
             "packages/testing/nros-tests/bins/log-arena-probe",
@@ -1351,8 +1403,16 @@ mod board_crate_tests {
         // phase E). Every tracked `[package]` manifest under `examples/` with no
         // `system.toml` beside it is asked here: naming a board crate makes it a
         // stray, because a leaf with no image cannot get a selection package.
+        // Phase F widened it to `packages/testing/` — the test programs, benches
+        // and harness fixtures, 22 of which sat outside the walk the same way.
         let out = crate::source_stamp::nros_git_command("git")
-            .args(["ls-files", "-z", "--", "examples/**/Cargo.toml"])
+            .args([
+                "ls-files",
+                "-z",
+                "--",
+                "examples/**/Cargo.toml",
+                "packages/testing/**/Cargo.toml",
+            ])
             .current_dir(repo())
             .output()
             .expect("git ls-files");
@@ -1393,6 +1453,18 @@ mod board_crate_tests {
                 unsupported += 1;
                 continue;
             }
+            // A workspace ENTRY whose image a bringup claims has no
+            // `system.toml` of its own and is on its selection package all the
+            // same (`write_entry_selection`, phase F).
+            if boards.is_empty()
+                && doc
+                    .get("package")
+                    .and_then(|p| p.get("name"))
+                    .and_then(|n| n.as_str())
+                    .is_some_and(|name| depends_on_selection(leaf, name))
+            {
+                on_selection += 1;
+            }
             if !boards.is_empty() {
                 stray.push(format!(
                     "{leaf_rel}: names `{}` and has no `system.toml` (no image, so no \
@@ -1403,7 +1475,8 @@ mod board_crate_tests {
         }
         assert!(
             imageless >= 1,
-            "the image-less arm reached no `[package]` manifest under examples/"
+            "the image-less arm reached no `[package]` manifest under examples/ or \
+             packages/testing/"
         );
         assert!(
             stray.is_empty(),
@@ -1426,7 +1499,7 @@ mod board_crate_tests {
             "no leaf matched a `tier = \"scaffold\"` board ({scaffold:?})"
         );
         assert!(
-            on_selection >= 69,
+            on_selection >= 97,
             "only {on_selection} leaves on the selection package"
         );
     }
@@ -1591,8 +1664,11 @@ mod board_crate_tests {
         assert!(umbrella(&jazzy_m).contains("\"ros-jazzy\""), "{jazzy_m}");
         assert!(board(&jazzy_m).contains("\"ros-jazzy\""), "{jazzy_m}");
         assert!(board(&jazzy_m).contains("\"rmw-xrce\""), "{jazzy_m}");
-        assert!(!jazzy_m.contains("ros-humble"), "{jazzy_m}");
-        assert!(!jazzy_m.contains("rmw-zenoh"), "{jazzy_m}");
+        // What the image SELECTS — the dependency table, not the board's own
+        // features the package passes through for a leaf to name (phase F).
+        let selected = jazzy_m.split("\n[features]\n").next().unwrap();
+        assert!(!selected.contains("ros-humble"), "{jazzy_m}");
+        assert!(!selected.contains("rmw-zenoh"), "{jazzy_m}");
         // An image the file does not declare is refused, naming the ones it does.
         let e = write_selection(&leaf, &repo(), Some("native_iron"))
             .expect_err("undeclared image")
@@ -1670,6 +1746,62 @@ mod board_crate_tests {
         .unwrap();
         assert!(write_selection(&leaf, &repo(), None).unwrap().is_none());
         assert!(!leaf.join("build").exists());
+    }
+
+    /// Issue 1305 phase F — a workspace ENTRY with no `system.toml` of its own
+    /// gets its selection from the bringup image that claims it (`entry =
+    /// "<pkg>"`), the board's own features passed through for a
+    /// board-specific leaf; an entry no image claims gets nothing.
+    #[test]
+    fn a_claimed_entry_gets_its_selection_from_the_bringup_image() {
+        let tmp = tempfile::tempdir().unwrap();
+        let bringup = tmp.path().join("src/demo_bringup");
+        let entry = tmp.path().join("src/firmware");
+        std::fs::create_dir_all(&bringup).unwrap();
+        std::fs::create_dir_all(entry.join("src")).unwrap();
+        std::fs::write(
+            bringup.join("system.toml"),
+            "[system]\nname = \"demo\"\nrmw = \"zenoh\"\n\n\
+             [image.freertos]\nboard = \"freertos\"\nentry = \"firmware\"\n\
+             locator = \"tcp/10.0.2.2:7891\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            entry.join("Cargo.toml"),
+            "[package]\nname = \"firmware\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n\
+             [dependencies]\nfirmware_nros_selection = { path = \"build/nros/selection\" }\n",
+        )
+        .unwrap();
+        let sel = write_entry_selection(&entry, &bringup, &repo())
+            .unwrap()
+            .expect("the bringup claims `firmware`");
+        let manifest = read(&sel.dir.join("Cargo.toml"));
+        assert!(
+            manifest.contains("nros-board-mps2-an385-freertos = {"),
+            "{manifest}"
+        );
+        assert!(
+            manifest.contains("\n[features]\n")
+                && manifest.contains("[\"nros-board-mps2-an385-freertos/rmw-zenoh\"]"),
+            "{manifest}"
+        );
+        assert!(
+            read(&sel.dir.join("src/lib.rs")).contains("pub use nros_board_mps2_an385_freertos;")
+        );
+
+        let other = tmp.path().join("src/other");
+        std::fs::create_dir_all(other.join("src")).unwrap();
+        std::fs::write(
+            other.join("Cargo.toml"),
+            "[package]\nname = \"other\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n\
+             [dependencies]\nother_nros_selection = { path = \"build/nros/selection\" }\n",
+        )
+        .unwrap();
+        assert!(
+            write_entry_selection(&other, &bringup, &repo())
+                .unwrap()
+                .is_none()
+        );
     }
 
     /// Issue 1815 — no board crate is not a stale board crate.

@@ -13,9 +13,8 @@
 #![no_std]
 #![no_main]
 
-use nros_board_mps2_an385_freertos::Mps2An385;
+use firmware_nros_selection::nros_board_mps2_an385_freertos::Mps2An385;
 use nros_platform::BoardEntry;
-use panic_semihosting as _;
 
 // Phase 212.M.5.a.3 — keep the per-pkg Node crates alive against
 // `--gc-sections`. `nros::node!()` emits its symbols with

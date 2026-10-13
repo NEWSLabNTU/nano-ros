@@ -70,7 +70,17 @@ build-fixture distro="jazzy":
     # shellcheck source=scripts/build/cargo.sh
     source "{{justfile_directory()}}/scripts/build/cargo.sh"
     nros_seed_leaf_lock "$FIX"
-    ( cd "$FIX" && cargo build --target-dir "$FIX_TARGET_DIR" )
+    # Issue 1305 — the leaf names no board or RMW; its `system.toml` image does.
+    # `ws leaf-system --write-settings` writes the image's selection package and
+    # settings file WITHOUT re-running codegen (a `nros sync` here would
+    # regenerate `generated/` from the HOST's definitions, undoing the edition's
+    # above). Cargo then builds through that file, from the directory above the
+    # leaf, as `nros build` does (scripts/build/leaf-settings.sh records why).
+    SETTINGS="$(NROS_REPO_DIR="{{justfile_directory()}}" "$NROS" ws leaf-system --write-settings "$FIX" \
+        | sed -n 's/^NROS_LEAF_SETTINGS=//p')"
+    [ -f "$SETTINGS" ] || { echo "error: no settings file for $FIX" >&2; exit 1; }
+    ( cd "$(dirname "$FIX")" && cargo build --manifest-path "$FIX/Cargo.toml" \
+        --config "$SETTINGS" --target-dir "$FIX_TARGET_DIR" )
     # profile-literal-ok: unprofiled: the docker edition fixtures build with a plain `cargo build`
     echo "build-fixture {{distro}}: $FIX_TARGET_DIR/debug/ros-edition-pose-pub"
 

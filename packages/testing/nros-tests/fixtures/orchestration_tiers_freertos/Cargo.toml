@@ -11,7 +11,7 @@
 
 [workspace]
 resolver = "2"
-members = ["entry", "src/ctrl_pkg", "src/telem_pkg"]
+members = ["src/demo_entry", "src/ctrl_pkg", "src/telem_pkg"]
 exclude = ["src/demo_bringup"]
 
 # Cross-build hygiene: keep the host `std` default from cascading into the

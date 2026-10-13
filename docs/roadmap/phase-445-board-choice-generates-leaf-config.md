@@ -33,8 +33,9 @@ selection package. The FreeRTOS switch of the mps2 Rust talker needed two
 message is corrected). W1, W4 and W5 are ticked (W4 was open for 1305 alone;
 1305 resolved 2026-10-13, W4c phase E). The
 1296 fix routed around a bringup named two ways rather than unifying it (issue
-1813). RFC-0098 stays Draft until 1305 and 1288 (blocked by 1253) close and
-bullet 3 is measured; 1289 resolved 2026-10-12, 1305 resolved 2026-10-13.
+1813). RFC-0098 stays Draft until bullet 3 is measured; 1288 resolved
+2026-10-11 (all three hand-written Zephyr entries migrated, so it blocks
+nothing), 1289 resolved 2026-10-12, 1305 resolved 2026-10-13.
 
 *(2026-09-11: Every wave is WRITTEN; the phase is NOT complete, and
 two of its five acceptance bullets are measured NOT MET.)* W1, W2, W3b, W4b, W5
@@ -48,13 +49,15 @@ workspace root build file, both gated.
 get an image — holds for Rust and not for the other two roads:
 
 * ~~**issue 1305** — the one-line board switch is false for a single-package
-  Rust leaf.~~ RESOLVED 2026-10-13: 69 in-tree leaves are on their generated
-  selection package (W4c phases C–E), templates, mps2 C/C++ cargo link roots
-  and the native hand-written-`main` examples included. What still names a
-  board crate is out of scope by shape (board code in the node,
-  harness-templated fixtures, the rv-virt-threadx libs a CMake image links;
-  `leaf_settings::NOT_ON_THE_SELECTION`) or because its board is a scaffold
-  (the dormant ESP32, issue 1525).
+  Rust leaf.~~ RESOLVED 2026-10-13: 97 in-tree leaves are on their generated
+  selection package (W4c phases C–F), templates, mps2 C/C++ cargo link roots,
+  the native hand-written-`main` examples and (phase F) every
+  `packages/testing/` program, bench and fixture entry included. What still
+  names a board crate is the rv-virt-threadx libs a CMake image links (out of
+  scope by shape), issue 1340's measurement witness
+  `bins/in-place-subscriptions` (kept on purpose: moving it changes the image
+  1340 measures) — `leaf_settings::NOT_ON_THE_SELECTION` — and the leaves of a
+  scaffold board (the dormant ESP32, issue 1525).
 * ~~**issue 1296** — `nros build` does not resolve a single-package C/C++
   leaf.~~ RESOLVED 2026-10-11, together with 1308: `nros build` now configures
   the leaf's OWN `CMakeLists.txt` into `build/<image>/cmake`
@@ -299,6 +302,24 @@ esp32 stack budgets.
   not by path, and was not touched. Mutation-checked. With 1305 resolved, D6
   is met for every single-package leaf on a supported board, so the box is
   ticked.
+  **W4c phase F — the testing packages (2026-10-13,
+  `fix/1305-testing-packages`).** Phase E's walk read `examples/` only, so 30
+  `packages/testing/` packages still named a board crate (22 with no
+  `system.toml`, 8 previously exempt by shape); the walk now reads
+  `packages/testing/` too (it went red naming all 30 on the pre-migration
+  tree). 28 moved: 17 test bins and 2 benches gained a `system.toml` (native
+  bins one image per RMW they were built for, rows select by `image`); the
+  mps2 e2e bins and the benches reach board code through
+  `<pkg>_nros_selection::nros_board_*`, with board-only features (`docker`,
+  `e2e-synthetic-callback`) passed through the selection's new `[features]`;
+  the two threadx-linux `std` bins moved to the board's `board-run` shape (the
+  byte-pool allocator answered libstd's first allocation with NULL); fixture
+  entries a bringup claims (`[image.<id>] entry = "<pkg>"`) get their
+  selection from THAT image (`leaf_settings::write_entry_selection`, also read
+  by `ws board-facts`), so their network identity stays in one place. 97
+  leaves on the selection. `bins/in-place-subscriptions` stays (issue 1340's
+  witness: migrating it adds `metadata_mode::STATE` 75,992 B and undoes the
+  in-place arena saving, EXECUTOR_BACKING 20,864 -> 45,440 B).
   `nros sync` / `nros build` write `build/<image>/nros-cargo.toml` (board
   `cargo_config` + per-image `target-dir` + resolved `[env]` incl. the entity
   facts + in-repo patch rows) and the generated entry
