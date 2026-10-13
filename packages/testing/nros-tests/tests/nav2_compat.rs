@@ -3,7 +3,7 @@
 //!
 //! The Entry pkg's `build.rs` drives `nros_build::generate_run_plan` against a
 //! nav2-shaped `launch/system.launch.xml` (the v1 tag set: `<arg>`, `<include>`,
-//! `<param value="$(var …)"/>`, `<remap>`, `$(find <pkg>)`). The codegen path
+//! `<param value="$(var …)"/>`, `<remap>`, `$(find-pkg-share <pkg>)`). The codegen path
 //! must accept every directive + emit a `run_plan(runtime)` body registering
 //! both `primary_node` and `secondary_node`, plus an `nros-plan.json` carrying
 //! the resolved `<arg>` / `<remap>` / `<include>` evidence.
@@ -123,7 +123,7 @@ fn n11_launch_xml_ros2_compat_smoke() -> nros_tests::TestResult<()> {
         plan_json.contains("primary/chatter"),
         "nros-plan.json missing the `<remap>` target `primary/chatter`:\n{plan_json}"
     );
-    // `<include file="$(find secondary_node)/launch/secondary.launch.xml"/>`.
+    // `<include file="$(find-pkg-share secondary_node)/launch/secondary.launch.xml"/>`.
     assert!(
         plan_json.contains("secondary_node") && plan_json.contains("primary_node"),
         "nros-plan.json missing a package ref — `<include>` sub-tree not expanded:\n{plan_json}"

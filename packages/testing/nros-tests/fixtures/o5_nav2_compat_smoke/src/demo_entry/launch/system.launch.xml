@@ -13,9 +13,11 @@
     <param value="$(var arg)"/> — primary's `robot_namespace` param
                                   picks up the `<arg>` default.
     <remap from= to=/>          — primary's `chatter` remapped.
-    <include file="$(find …)"/> — pulls secondary_node's sibling
-                                  launch.xml in via the pkg-index
-                                  `$(find …)` resolver.
+    <include file="$(find-pkg-share …)"/>
+                              — pulls secondary_node's sibling
+                                  launch.xml in through ament's package
+                                  index (ROS 2 launch has no ROS 1
+                                  `$(find …)`; issue 1864).
 
   Keep this file READABLE — it is the nav2 copy-paste target. Stripping
   directives defeats the purpose of the smoke.
@@ -32,9 +34,10 @@
   </node>
 
   <!-- Phase 212.M-F.20: nav2-canonical `$(find-pkg-share <pkg>)` include.
-       The planner (`orchestration/planner.rs::parse_launch_file_record`)
-       synthesizes a throwaway ament prefix from the workspace pkg-index
-       (`build_pkg_index`) and prepends it to the parser's
+       `nros sync` (`cmd/ws.rs::synth_ament_prefix`) synthesizes a throwaway
+       ament prefix over the workspace's own packages — a `share/<pkg>` link
+       AND the `share/ament_index/resource_index/packages/<pkg>` marker that
+       registers it (issue 1861) — and prepends it to the resolver's
        AMENT_PREFIX_PATH, so `find-pkg-share` resolves the in-tree
        `secondary_node` with no install step. -->
   <include file="$(find-pkg-share secondary_node)/launch/secondary.launch.xml">

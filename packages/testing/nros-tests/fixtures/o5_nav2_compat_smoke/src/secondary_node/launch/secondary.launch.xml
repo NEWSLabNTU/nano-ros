@@ -3,7 +3,7 @@
   Phase 212.O.5 fixture — secondary launch.xml.
 
   Shipped inside the `secondary_node` package and pulled into the
-  primary launch via `<include file="$(find secondary_node)/launch/secondary.launch.xml"/>`.
+  primary launch via `<include file="$(find-pkg-share secondary_node)/launch/secondary.launch.xml"/>`.
   Copy-paste shape from nav2's `bringup/launch/localization_launch.py`
   / robot_state_publisher's `launch/rsp.launch.xml` sub-includes:
   a single `<arg>` declaration with a default, then one `<node>` that
