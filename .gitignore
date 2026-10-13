@@ -85,8 +85,13 @@ tools/*
 # Per-developer local Claude Code settings
 .claude/settings.local.json
 
-# Per-machine SDK resolution lock written by `nros setup`
-/nros-sdk.lock
+# The project lock `nros setup` / `nros build` writes (RFC-0104 D4). In a
+# checkout it is a BUILD ARTIFACT at any depth, not only at the root: every
+# example workspace gets one from its first entry build, and an untracked,
+# unignored lock is an input to `nros_source_manifest`, so each entry build
+# re-staled every sibling workspace fixture (issue 1845). In a user's own
+# project it is theirs to commit; this file never reaches one.
+nros-sdk.lock
 
 # Phase 193 — separate target-dir for concurrent embedded clippy (just check workspace-all)
 /target-embedded/
