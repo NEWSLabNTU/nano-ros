@@ -8,7 +8,7 @@
 # pkg drives `nros-build` codegen against a nav2-style launch.xml that
 # exercises the v1 tag set landed in Phase 212.N.11:
 #
-#   <node>, <arg>, <include file="$(find pkg)/…">, <param value="$(arg …)"/>, <remap>.
+#   <node>, <arg>, <include file="$(find-pkg-share pkg)/…">, <param value="$(var …)"/>, <remap>.
 #
 # The per-pkg `[workspace]` tables keep this fixture from being folded
 # into the outer nano-ros workspace (mirrors the H.3 / H.4 shape).

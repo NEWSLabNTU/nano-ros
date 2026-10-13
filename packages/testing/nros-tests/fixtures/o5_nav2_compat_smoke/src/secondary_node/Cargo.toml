@@ -1,10 +1,10 @@
 # Phase 212.O.5 fixture — secondary Component pkg (Rust, no_std).
 #
 # This pkg ships a sibling `launch/secondary.launch.xml` that the
-# primary launch `<include>`s via `$(find secondary_node)/launch/…`.
-# The launch_parser's pkg-index walk resolves that substitution to the
-# absolute path of this directory (the pkg-index keys by `package.xml`
-# `<name>` element — see [`nros_build::pkg_index`]).
+# primary launch `<include>`s via `$(find-pkg-share secondary_node)/launch/…`.
+# `nros sync` registers this package in the ament prefix it synthesizes for
+# the launch resolver (issue 1861), so that substitution resolves to this
+# directory with no install step.
 
 [workspace]
 
