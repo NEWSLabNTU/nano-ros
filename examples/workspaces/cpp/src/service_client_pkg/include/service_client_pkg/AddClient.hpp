@@ -2,8 +2,7 @@
 
 #include <cstdint>
 
-#include <nros/component.hpp>
-#include <nros/nros.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 #include "example_interfaces.hpp"
 

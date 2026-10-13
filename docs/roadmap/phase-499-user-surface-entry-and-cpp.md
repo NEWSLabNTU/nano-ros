@@ -74,6 +74,10 @@ POSIX and Zephyr the user's `main` is the entry. Measure which `main`
 signatures each language and road accepts, and make an unsupported one a
 build-time refusal naming the form, never a link error. C++ examples move to
 `rclcpp::init(argc, argv)` where they do not need `init_in`.
+The materialized-entry sentinel the book shows
+(`#include <nros/main.hpp>` + `NROS_MAIN(Board, "bringup:launch")`, written
+out by `nros materialize`) is user-visible too: give it an upstream-path
+header and an `RCLCPP_`-prefixed spelling with the rest of W5.
 *Acceptance:* no example writes `nros_app_main` or `NROS_APP_MAIN_REGISTER`;
 every road's example builds link; native e2e tests pass; Zephyr/NuttX/ThreadX/
 FreeRTOS images built by the tier-2 lane.

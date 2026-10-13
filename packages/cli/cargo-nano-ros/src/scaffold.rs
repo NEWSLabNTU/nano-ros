@@ -699,7 +699,6 @@ target_link_libraries({pkg_sym}_{node_name}_component
         // `rclcpp::` then; they are defined there now, and `nros::` is gone.
         r#"#pragma once
 
-#include <nros/component.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include "std_msgs.hpp"

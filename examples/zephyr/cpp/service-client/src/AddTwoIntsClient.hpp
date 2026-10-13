@@ -10,8 +10,7 @@
 #include <cstddef>
 #include <cstdint>
 
-#include <nros/component.hpp>
-#include <nros/nros.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 namespace zephyr_cpp_service_client {
 

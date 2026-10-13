@@ -16,7 +16,7 @@
 #include <new>
 
 #include <nros/main.hpp> // LinuxBoard::run_components (real executor)
-#include <nros/nros.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 #include "std_msgs.hpp"
 

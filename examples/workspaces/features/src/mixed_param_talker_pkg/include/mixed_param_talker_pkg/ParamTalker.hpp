@@ -1,7 +1,6 @@
 #pragma once
 
-#include <nros/component.hpp>
-#include <nros/nros.hpp>
+#include <rclcpp/rclcpp.hpp>
 #include <rclc/types.h> /* rcl_node_t — the C half's handle on this node */
 
 #include "std_msgs.hpp"

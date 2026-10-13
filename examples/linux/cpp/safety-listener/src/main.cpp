@@ -17,7 +17,7 @@
     fprintf(stderr, "[nros] %s:%d %s -> %d\n", (file), (line), (expr), (int)(ret))
 
 #include <nros/app_main.h>
-#include <nros/nros.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 // Generated C++ bindings for std_msgs/msg/Int32
 #include "std_msgs.hpp"

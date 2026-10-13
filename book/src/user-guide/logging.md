@@ -80,8 +80,7 @@ int main(void) {
 ### C++
 
 ```cpp
-#include <nros/nros.hpp>
-#include <nros/log.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 int main() {
     rclcpp::init_in("tcp/127.0.0.1:7447", 0);

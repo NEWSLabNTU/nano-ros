@@ -3,8 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 
-#include <nros/component.hpp>
-#include <nros/nros.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 #include "custom_msgs.hpp"
 

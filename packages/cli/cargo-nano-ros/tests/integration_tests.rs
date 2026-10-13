@@ -900,7 +900,11 @@ mod component_scaffold {
         // Header at include/<pkg>/<Class>.hpp (typed Entry includes it by that path).
         let hpp = fs::read_to_string(dir.join("include/cpp_talker/Talker.hpp")).unwrap();
         assert!(hpp.contains("::rclcpp::Result configure(::rclcpp::Node& node);"));
-        assert!(hpp.contains("#include <nros/component.hpp>"));
+        // Upstream include path only: `<nros/*.hpp>` is internal (RFC-0089, 2026-10-13).
+        assert!(
+            !hpp.contains("<nros/"),
+            "internal header in user code:\n{hpp}"
+        );
         assert!(hpp.contains("#include <rclcpp/rclcpp.hpp>"));
         assert!(!hpp.contains("<nros/nros.hpp>"));
         assert!(

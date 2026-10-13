@@ -9,7 +9,7 @@
     fprintf(stderr, "[nros] %s:%d %s -> %d\n", (file), (line), (expr), (int)(ret))
 
 #include <nros/app_main.h>
-#include <nros/nros.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 // Generated C++ bindings for example_interfaces/action/Fibonacci
 #include "example_interfaces.hpp"

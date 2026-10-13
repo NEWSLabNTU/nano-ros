@@ -16,8 +16,7 @@
 #include <stdlib.h>
 
 #include <nros/app_main.h>
-#include <nros/nros.hpp>
-#include <nros/log.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 int nros_app_main(int argc, char** argv) {
     // Line-buffer stdout: glibc full-buffers non-tty stdout, so when piped to

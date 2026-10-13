@@ -14,9 +14,8 @@
 #include <cstdlib>
 #include <cstring>
 
-#include <nros/component.hpp>
 #include <nros/main.hpp>
-#include <nros/nros.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 #include "std_msgs.hpp"
 

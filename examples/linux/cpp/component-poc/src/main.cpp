@@ -11,9 +11,8 @@
 #include <cstdlib>
 #include <cstring>
 
-#include <nros/component.hpp>
 #include <nros/main.hpp> // Phase 240.2 — LinuxBoard::run_components (real executor)
-#include <nros/nros.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 #include "std_msgs.hpp"
 

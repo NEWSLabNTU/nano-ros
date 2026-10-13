@@ -32,7 +32,7 @@
 // nano-ros files carry no per-file copyright block; PX4's BSD 3-clause header
 // names the PX4 Development Team and is a licensing practice, not a style rule.
 
-#include <nros/nros.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 #include <px4_platform_common/defines.h>
 #include <px4_platform_common/log.h>

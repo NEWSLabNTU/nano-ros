@@ -45,7 +45,7 @@
  *   which computes the same hash the Rust `px4_msgs` crate carries (issue 0362).
  ****************************************************************************/
 
-#include <nros/nros.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 #include <px4_platform_common/defines.h>
 #include <px4_platform_common/log.h>
