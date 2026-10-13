@@ -188,6 +188,30 @@ fn a_west_image_builds_in_its_own_dir_unless_the_caller_names_one() {
     );
 }
 
+/// Issue 1867 — the west handoff names THIS checkout as the image's `nros`
+/// module. The store workspace's manifest project carries none (issue 1258), so
+/// a plan without the flag aborted at Kconfig on `undefined symbol NROS`. The
+/// value is the checkout ROOT, physical, never `<root>/zephyr`.
+#[test]
+fn a_west_image_names_this_checkout_as_its_nros_module() {
+    let tmp = tempfile::tempdir().unwrap();
+    fixture(tmp.path());
+    let plans = plan_builds(&args(tmp.path(), &["zephyr"])).expect("resolves");
+    let line = plans[0].handoff.as_ref().expect("handoff").display();
+    let root = std::fs::canonicalize(repo_root()).unwrap();
+    let want = format!("-DZEPHYR_EXTRA_MODULES={}", root.display());
+    assert!(line.contains(&want), "{want} missing: {line}");
+    assert!(
+        !line.contains(&format!("{want}/zephyr")),
+        "the module ROOT, not its zephyr/ subdirectory: {line}"
+    );
+    let (_, cmake_zone) = line.split_once(" -- ").expect("a cmake zone");
+    assert!(
+        cmake_zone.contains(&want),
+        "a cmake -D belongs after `--`: {line}"
+    );
+}
+
 /// Issue 1519 — the image authors the NANO-ROS id (`zephyr`, above) and `-b`
 /// is the descriptor's `[board.zephyr] west_board`. Authoring that framework
 /// string instead used to work only because the descriptor also listed it as
