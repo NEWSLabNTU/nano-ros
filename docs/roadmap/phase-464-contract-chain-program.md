@@ -5,7 +5,7 @@ This phase owns no code. It sequences six nano-ros phases, one play_launch
 phase, one ros-launch-manifest design issue and the safety island's own
 units into milestones ordered by what each guarantees, and it fixes the
 protocol several agent sessions use to work on them at once. The phases it
-indexes are [457](phase-495-consume-the-shared-derivation.md),
+indexes are [457](archived/phase-495-consume-the-shared-derivation.md),
 [459](phase-459-cmake-image-reaches-tier-derivation.md),
 [460](phase-460-formal-checks-on-the-contract-chain.md),
 [461](phase-461-service-inbox-per-family.md),
