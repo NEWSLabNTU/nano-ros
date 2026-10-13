@@ -391,7 +391,7 @@ one-line script is in the truth-pass section above.
    - Client `prune_*`.
    - Most of these need the backend to answer, and THAT half is here: Cyclone's
      graph slots are W3 above. Lending is issue 0814, homed in
-     [phase-433](../phase-433-rmw-live-verification.md)'s **loans** row, and has
+     [phase-433](phase-433-rmw-live-verification.md)'s **loans** row, and has
      never run on hardware.
 4. **Lifecycle, 15 rows** — home **phase-417 stage 4 W4.f**, the work item added
    2026-09-13 because this shard previously had no owner named anywhere.

@@ -1,7 +1,7 @@
 # Phase 433 W2 — preflight: which live-peer interop cells can produce a verdict
 
 **Status (2026-10-12). Archived 2026-10-12 as an input document.** This was
-[phase-433](../phase-433-rmw-live-verification.md)'s W2 preflight: what each
+[phase-433](phase-433-rmw-live-verification.md)'s W2 preflight: what each
 live-peer interop cell could verify before any peer existed. phase-433 itself
 stays active and links here.
 
