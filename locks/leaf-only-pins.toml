@@ -1,0 +1,63 @@
+# Registry pin ranges that NO locked root resolves, kept on purpose (issue 1873).
+#
+# `locks/cargo-registry.lock` seeds every leaf lock (RFC-0104 D3), and
+# `nros update` never drops a range on its own, because a leaf this repo does
+# not lock may still resolve it. That left every bump's OLD range pinned. Issue
+# 1805 moved every root to quick-xml 0.41 for two RUSTSEC advisories, and
+# 0.37.5 stayed in the pin set, which `just check deny` never reads.
+#
+# So a range no root resolves must be NAMED here, with the leaf that needs it,
+# or `check-cargo-registry-pins` fails. A range nothing needs is retired with
+# `nros update --pins --prune`. `why` cites a leaf lock that resolved the range
+# when this list was written (2026-10-13), or says plainly that nothing was
+# found.
+
+[[keep]]
+name = "syn"
+range = "3"
+why = "proc-macro dependency of the Cortex-M leaves (cortex-m-macros), e.g. examples/mps2-an385-freertos/rust/talker"
+
+[[keep]]
+name = "core_detect"
+range = "1"
+why = "encoding_rs dependency in the embedded Rust leaves, e.g. examples/mps2-an385-freertos/rust/talker"
+
+[[keep]]
+name = "multiversion_no_op"
+range = "1"
+why = "encoding_rs dependency in the embedded Rust leaves, e.g. examples/mps2-an385-freertos/rust/talker"
+
+[[keep]]
+name = "simdutf8"
+range = "0.1"
+why = "encoding_rs dependency in the embedded Rust leaves, e.g. examples/mps2-an385-freertos/rust/talker"
+
+[[keep]]
+name = "nom"
+range = "7"
+why = "bindgen's cexpr in the Zephyr Rust leaves, e.g. examples/zephyr/rust/talker"
+
+[[keep]]
+name = "minimal-lexical"
+range = "0.2"
+why = "nom 7's dependency in the Zephyr Rust leaves, e.g. examples/zephyr/rust/talker"
+
+[[keep]]
+name = "env_logger"
+range = "0.11"
+why = "the PX4 companion leaves, e.g. examples/px4/rust/companion/px4-stub"
+
+[[keep]]
+name = "env_filter"
+range = "2"
+why = "env_logger 0.11's dependency in the PX4 companion leaves, e.g. examples/px4/rust/companion/px4-stub"
+
+[[keep]]
+name = "include_dir"
+range = "0.7"
+why = "UNVERIFIED: no root ever resolved it and no leaf lock on the measuring host does; kept rather than guessed. Retire it when a full leaf sweep confirms nothing needs it."
+
+[[keep]]
+name = "include_dir_macros"
+range = "0.7"
+why = "UNVERIFIED: include_dir 0.7's dependency; retire it with include_dir."
