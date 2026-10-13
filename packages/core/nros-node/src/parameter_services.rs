@@ -4024,68 +4024,153 @@ mod tests {
     const PAINT: usize = 256 * 1024;
     const PATTERN: u8 = 0xA5;
 
-    /// Paint `PAINT` bytes of the stack below the caller with [`PATTERN`].
-    #[inline(never)]
-    #[allow(clippy::large_stack_arrays)] // the stack IS what is measured
-    fn paint_stack() {
-        let mut buf = [MaybeUninit::<u8>::uninit(); PAINT];
-        let p = buf.as_mut_ptr().cast::<u8>();
-        for i in 0..PAINT {
-            // SAFETY: `i < PAINT`, inside `buf`.
-            unsafe { p.add(i).write_volatile(PATTERN) };
-        }
-        core::hint::black_box(&mut buf);
+    /// What one call of [`stack_window`] does with its buffer.
+    #[derive(Clone, Copy, PartialEq)]
+    enum Window {
+        /// Fill it with [`PATTERN`].
+        Paint,
+        /// Record the bytes this frame's OWN prologue clobbered, then repaint.
+        FindProbes,
+        /// Count the untouched bytes at the deep end.
+        Read,
     }
 
-    /// How many bytes at the DEEP end of the painted region still hold the
-    /// pattern: everything a call between [`paint_stack`] and this did not
-    /// reach.
+    /// ONE function paints the region, finds its own stack probes, and reads
+    /// the region back, so all three calls — made from one caller frame —
+    /// see the buffer at the SAME address with the SAME prologue. Two
+    /// functions cannot promise that: their frame layouts are the compiler's
+    /// choice, and on aarch64 a separate reader saved 16 B more registers
+    /// than the painter, so its buffer began 16 never-painted (zero) bytes
+    /// below the paint and every measurement read as the whole `PAINT`. The
+    /// address is returned and compared rather than assumed.
+    ///
+    /// A frame this size is stack-probed in its prologue. On x86_64 LLVM's
+    /// inline probe STORES a zero word once per page (on aarch64 it is a
+    /// load and stores nothing), so the reader's own prologue clobbers its
+    /// buffer before it can look. Those words are MEASURED, not guessed:
+    /// [`Window::FindProbes`] runs the same prologue over a freshly painted
+    /// buffer and records every byte that is no longer the pattern; a read
+    /// skips exactly those. (A guess — "a short run of zeros is a probe" —
+    /// also skipped a zero enum tag, which is precisely the single write a
+    /// value-sized temporary can leave behind.)
     #[inline(never)]
     #[allow(clippy::large_stack_arrays)] // the stack IS what is measured
-    fn untouched_stack() -> usize {
+    fn stack_window(mode: Window, probes: &mut AllocVec<usize>) -> (usize, usize) {
         let mut buf = [MaybeUninit::<u8>::uninit(); PAINT];
         let p = buf.as_mut_ptr().cast::<u8>();
-        // SAFETY (both closures): `i < PAINT`, inside `buf`; the bytes are
-        // whatever an earlier frame left there, read as plain `u8`s.
+        // SAFETY (both closures): every caller passes `i < PAINT`, inside
+        // `buf`; a read returns whatever an earlier frame left there, as a
+        // plain `u8`.
         let at = |i: usize| unsafe { p.add(i).read_volatile() };
-        // The stack grows DOWN, so the deepest bytes are the lowest addresses.
-        // A run of at most 8 ZERO bytes is not a frame: it is this function's
-        // own stack probe (LLVM's inline probing stores a zero word once per
-        // page as it moves the stack pointer down over `buf`), so it is
-        // stepped over. Anything else ends the untouched region — a return
-        // address alone is a non-zero word.
-        let mut n = 0;
-        while n < PAINT {
-            if at(n) == PATTERN {
-                n += 1;
-                continue;
+        let paint = || {
+            for i in 0..PAINT {
+                // SAFETY: as above.
+                unsafe { p.add(i).write_volatile(PATTERN) };
             }
-            let mut end = n;
-            while end < PAINT && end - n < 9 && at(end) != PATTERN {
-                end += 1;
+        };
+        let mut untouched = 0;
+        match mode {
+            Window::Paint => paint(),
+            Window::FindProbes => {
+                probes.clear();
+                probes.extend((0..PAINT).filter(|&i| at(i) != PATTERN));
+                assert!(
+                    probes.len() <= 8 * (PAINT / 4096 + 1),
+                    "{} bytes clobbered by the window's own prologue: more than one \
+                     probe word a page, so they are not probes",
+                    probes.len()
+                );
+                paint();
             }
-            let probe = end - n <= 8 && (n..end).all(|i| at(i) == 0);
-            if !probe {
-                break;
+            Window::Read => {
+                // The stack grows DOWN, so the deepest bytes are the lowest
+                // addresses. `probes` is ascending.
+                let mut skip = probes.iter().peekable();
+                while untouched < PAINT {
+                    if skip.next_if_eq(&&untouched).is_none() && at(untouched) != PATTERN {
+                        break;
+                    }
+                    untouched += 1;
+                }
             }
-            n = end;
         }
         core::hint::black_box(&mut buf);
-        n
+        (p as usize, untouched)
     }
 
-    /// The stack `f` uses, by painting: the three calls share one caller
+    /// The stack pointer of the function this is inlined into: where the
+    /// frames of everything it calls begin.
+    #[inline(always)]
+    fn stack_pointer() -> Option<usize> {
+        let sp: usize;
+        // SAFETY (each arm): reads one register into a local; touches no
+        // memory and no flags.
+        #[cfg(target_arch = "x86_64")]
+        unsafe {
+            core::arch::asm!("mov {}, rsp", out(reg) sp, options(nomem, nostack, preserves_flags))
+        };
+        #[cfg(target_arch = "x86")]
+        unsafe {
+            core::arch::asm!("mov {}, esp", out(reg) sp, options(nomem, nostack, preserves_flags))
+        };
+        #[cfg(any(target_arch = "aarch64", target_arch = "arm"))]
+        unsafe {
+            core::arch::asm!("mov {}, sp", out(reg) sp, options(nomem, nostack, preserves_flags))
+        };
+        #[cfg(any(target_arch = "riscv32", target_arch = "riscv64"))]
+        unsafe {
+            core::arch::asm!("mv {}, sp", out(reg) sp, options(nomem, nostack, preserves_flags))
+        };
+        #[cfg(not(any(
+            target_arch = "x86_64",
+            target_arch = "x86",
+            target_arch = "aarch64",
+            target_arch = "arm",
+            target_arch = "riscv32",
+            target_arch = "riscv64"
+        )))]
+        return None;
+        #[allow(unreachable_code)]
+        Some(sp)
+    }
+
+    /// The stack `f` uses, by painting: every call below shares one caller
     /// frame, so `f`'s frames overwrite the region the painter filled, and
     /// the pattern that survives at the deep end is what it never reached.
-    /// Approximate to within the painter's own few bytes of frame, and run
-    /// on a fresh thread so no earlier frame of this test is in the way.
+    ///
+    /// The depth is counted from the caller's stack pointer — where `f`'s
+    /// frames begin — not from the top of the painted buffer, which sits
+    /// below it by the window's own register saves (104 B measured on
+    /// aarch64, dev and release; the compiler's to change). Counting from the
+    /// buffer's top under-read by exactly that, enough to drop the control
+    /// below one value on aarch64. `f`'s writes into that gap are
+    /// not seen, so a call reaching no painted byte reports the gap itself:
+    /// an upper bound, never an under-read. Run on a fresh thread so no
+    /// earlier frame of this test is in the way.
     fn stack_used_by<R: Send + 'static>(f: impl FnOnce() -> R + Send + 'static) -> (usize, R) {
         std::thread::Builder::new()
             .stack_size(4 * PAINT)
             .spawn(move || {
-                paint_stack();
+                // Reserved up front, so no call below grows it.
+                let mut probes = AllocVec::with_capacity(8 * (PAINT / 4096 + 1));
+                let (painted, _) = stack_window(Window::Paint, &mut probes);
+                let (found, _) = stack_window(Window::FindProbes, &mut probes);
                 let r = f();
-                (PAINT - untouched_stack(), r)
+                let (read, untouched) = stack_window(Window::Read, &mut probes);
+                assert!(
+                    painted == found && found == read,
+                    "the window moved between calls ({painted:#x}, {found:#x}, \
+                     {read:#x}): the measurement compares different memory"
+                );
+                // No register read on this architecture: fall back to the
+                // buffer's top, which under-reads by the window's saves.
+                let top = stack_pointer().unwrap_or(painted + PAINT);
+                assert!(
+                    top >= painted + PAINT && top - (painted + PAINT) < 4096,
+                    "the caller's stack pointer {top:#x} is not just above the window \
+                     [{painted:#x}, +{PAINT})"
+                );
+                (top - (painted + untouched), r)
             })
             .expect("measuring thread")
             .join()
