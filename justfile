@@ -4562,8 +4562,12 @@ setup-launch-resolve:
     # dependency graph — a normal dep would put the link back.
     _pyexec_ws="$crate/../third-party/play_launch/src/ros-launch-resolve/parser"
     echo "[setup-launch-resolve] building the Python half (dlopen'ed at runtime)…"
+    # `--locked` (issue 1863): this lock is play_launch's TRACKED file, and an
+    # unlocked build rewrites it (it drops the `[[patch.unused]]` table upstream
+    # commits from its colcon environment), which dirties the submodule — in a
+    # persistent CI workspace, the residue issue 1841 had to discard.
     # profile-literal-ok: host tool: the resolver's own Python half
-    cargo build --release --manifest-path "$_pyexec_ws/Cargo.toml" \
+    cargo build --release --locked --manifest-path "$_pyexec_ws/Cargo.toml" \
         -p play_launch_parser_pyexec --lib --features extension-module,abi3
     _pyexec_so="$(dirname "$bin")/libplay_launch_parser_pyexec.so"
     # profile-literal-ok: host tool: reads back where that build put it
