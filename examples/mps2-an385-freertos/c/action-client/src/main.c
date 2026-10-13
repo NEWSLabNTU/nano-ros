@@ -90,7 +90,7 @@ static void result_callback(const rclc_goal_uuid_t* goal_uuid, rclc_goal_status_
 // Main
 // ----------------------------------------------------------------------------
 
-int nros_app_main(int argc, char** argv) {
+int main(int argc, char** argv) {
     (void)argc;
     (void)argv;
 
@@ -244,5 +244,3 @@ cleanup:
     printf("Goodbye!\n");
     return (ret == RCL_RET_OK) ? 0 : 1;
 }
-
-NROS_APP_MAIN_REGISTER()

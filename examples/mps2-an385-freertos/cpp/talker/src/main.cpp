@@ -9,7 +9,6 @@
 #define RCLCPP_TRY_LOG(file, line, expr, ret)                                                      \
     fprintf(stderr, "[nros] %s:%d %s -> %d\n", (file), (line), (expr), (int)(ret))
 
-#include <nros/app_main.h>
 #include <rclcpp/rclcpp.hpp>
 
 // Generated C++ bindings for std_msgs/msg/String
@@ -62,7 +61,7 @@ static void timer_callback(void* context) {
 // Main
 // ----------------------------------------------------------------------------
 
-int nros_app_main(int argc, char** argv) {
+int main(int argc, char** argv) {
     // Line-buffer stdout: glibc full-buffers non-tty stdout, so when piped to
     // a test harness each line must flush on its newline.
 #ifdef _IOLBF /* absent on the bare-metal riscv64-threadx libc */
@@ -111,5 +110,3 @@ int nros_app_main(int argc, char** argv) {
     printf("Goodbye!\n");
     return 0;
 }
-
-NROS_APP_MAIN_REGISTER()

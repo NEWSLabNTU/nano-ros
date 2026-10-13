@@ -11,7 +11,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include <nros/app_main.h>
 #include <nros/log.hpp>
 #include <nros/nros.hpp>
 #include <nros/rosout.hpp>
@@ -23,7 +22,7 @@ static int env_int(const char* key, int fallback) {
 
 static int run(rclcpp::Node& node, int records, int period_ms);
 
-int nros_app_main(int argc, char** argv) {
+int main(int argc, char** argv) {
 #ifdef _IOLBF
     setvbuf(stdout, nullptr, _IOLBF, 0);
 #endif
@@ -88,5 +87,3 @@ static int run(rclcpp::Node& node, int records, int period_ms) {
     printf("ROSOUT_PROBE_DONE pumped=%zu\n", total);
     return 0;
 }
-
-NROS_APP_MAIN_REGISTER()

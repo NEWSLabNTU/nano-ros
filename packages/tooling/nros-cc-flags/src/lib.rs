@@ -63,6 +63,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod app_main;
 pub mod backends;
 pub mod entry_config;
 pub mod header_deps;

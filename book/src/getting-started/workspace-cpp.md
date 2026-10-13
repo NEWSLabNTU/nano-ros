@@ -368,16 +368,9 @@ package's own `CMakeLists.txt`:
   writes the generated entry out to `src/<image>_entry/` and `nros build`
   then leaves it alone.
 
-There the user's `main.cpp` is a single declarative line:
-
-```cpp
-// src/linux_entry/src/main.cpp
-#include <nros/main.hpp>
-NROS_MAIN(rclcpp::board::LinuxBoard, "demo_bringup:system.launch.xml")
-```
-
-`NROS_MAIN(...)` is a sentinel macro — the cmake fn owns the generated
-body, the user's TU is documentation + IDE hint.
+Either way the entry package needs no source file of its own: the cmake
+function generates the whole body (the `main` above), so an entry's
+`CMakeLists.txt` names the bringup and launch file and nothing else.
 
 ## Build + boot
 

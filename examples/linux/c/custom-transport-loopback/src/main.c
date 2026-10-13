@@ -171,10 +171,10 @@ static void timer_callback(rcl_timer_t* timer, void* arg) {
 }
 
 /* --------------------------------------------------------------
- * main (via nros_app_main — see <nros/app_main.h>)
+ * main
  * -------------------------------------------------------------- */
 
-int nros_app_main(int argc, char** argv) {
+int main(int argc, char** argv) {
     (void)argc;
     (void)argv;
 
@@ -291,10 +291,3 @@ int nros_app_main(int argc, char** argv) {
 
     return fail;
 }
-
-// Phase 212.M native/c sweep — emit the POSIX `int main(int argc,
-// char** argv)` shim that forwards into `nros_app_main` (see
-// <nros/app_main.h>). Pre-212 example shipped a bare `main()` here;
-// the canonical shape uses the macro so the entry point is uniform
-// across the example matrix.
-NROS_APP_MAIN_REGISTER()

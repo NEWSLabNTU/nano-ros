@@ -10,7 +10,6 @@
 #include <stdint.h>
 #include <string.h>
 
-#include <nros/app_main.h>
 #include <rclcpp/rclcpp.hpp>
 
 #include "example_interfaces.hpp"
@@ -48,7 +47,7 @@ void emit(rclc_logger_t logger, rcl_log_severity_t severity, const char* text, c
 
 } // namespace
 
-int nros_app_main(int argc, char** argv) {
+int main(int argc, char** argv) {
     (void)argc;
     (void)argv;
 
@@ -97,5 +96,3 @@ int nros_app_main(int argc, char** argv) {
     rclcpp::shutdown();
     return 0;
 }
-
-NROS_APP_MAIN_REGISTER()

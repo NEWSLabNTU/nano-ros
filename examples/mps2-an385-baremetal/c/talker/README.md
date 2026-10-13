@@ -46,10 +46,11 @@ four, so a C-rooted link would have to re-implement them — a second bring-up
 path beside the Rust one, which is the duplication this repo treats as a defect.
 
 So the image is rooted in **cargo**, `src/main.rs` owns the reset entry and the
-board bring-up, and `build.rs` compiles `src/talker.c` into it. That is exactly
-the arrangement `<nros/app_main.h>` already documents for this platform:
-`NROS_APP_MAIN_REGISTER()` emits `void app_main(void)`, and "per-platform startup
-chains call this after platform init (network, executor arena, board hw)".
+board bring-up, and `build.rs` compiles `src/talker.c` into it. The program
+writes `main`; `build.rs` compiles it as `nros_ported_main` and generates the
+`nros_app_main` that `src/main.rs` calls after platform init (network,
+executor arena, board hw) — `nros_cc_flags::app_main`, the cargo twin of the
+cmake road's generated entry (phase-499).
 
 `cmake/platform/nano-ros-baremetal.cmake` and
 `cmake/board/nano-ros-board-mps2-an385-baremetal.cmake` still exist and are what

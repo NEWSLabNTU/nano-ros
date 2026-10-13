@@ -49,10 +49,11 @@
 #include <string.h>
 
 #include <nros/action.h>
-#include <nros/app_main.h>
 #include <nros/check.h>
 #include <nros/init.h>
 #include <nros/node.h>
+/* Reads the baked connect ladder itself (test bin, not a user example). */
+#include <nros/entry_config.h>
 
 #include "example_interfaces.h"
 
@@ -96,7 +97,7 @@ static uint32_t read_u32_le(const uint8_t* p) {
     return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
 }
 
-int nros_app_main(int argc, char** argv) {
+int main(int argc, char** argv) {
     (void)argc;
     (void)argv;
 
@@ -253,5 +254,3 @@ int nros_app_main(int argc, char** argv) {
     rclc_support_fini(&app.support);
     return 0;
 }
-
-NROS_APP_MAIN_REGISTER()

@@ -181,6 +181,9 @@ fn main() {
     // phase-499 W3 — `nros_app_register_backends()`, generated from the RMW
     // nros-c links, as the cmake road's `nano_ros_link_rmw()` does.
     nros_cc_flags::backends::generate(&mut build);
+    // phase-499 W5 — the program writes `main`; it is compiled as
+    // `nros_ported_main` and reached as the `nros_app_main` main.rs calls.
+    nros_cc_flags::app_main::generate(&mut build, false);
 
     let app_sources = c_sources(Path::new("src"));
     assert!(

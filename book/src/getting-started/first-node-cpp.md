@@ -100,22 +100,23 @@ is a C translation unit, so C must be enabled in this directory scope
 or the link fails. Backend selection is `[system] rmw` in `system.toml`,
 not CMake code and not a configure-line cache variable.
 
-The C++ entry point is **`int nros_app_main(int argc, char** argv)`**
-(same as C); `<nros/app_main.h>` provides the OS-side `main` stub.
+The C++ entry point is **`int main(int argc, char** argv)`**, as in any
+rclcpp program; the build reaches it from the platform's entry, as for C.
+Write that exact signature: the build declares the renamed function with it,
+so another form fails at link naming `nros_ported_main(int, char**)`.
 
 The body uses typed `rclcpp::Publisher<M>` / `rclcpp::Subscription<M>`
 wrappers over the C ABI:
 
 ```cpp
-#include <nros/app_main.h>
 #include <rclcpp/rclcpp.hpp>
 #include "std_msgs.hpp"
 
 #define RCLCPP_TRY_LOG(file, line, expr, ret) \
     std::fprintf(stderr, "[nros] %s:%d %s -> %d\n", file, line, expr, (int)ret)
 
-int nros_app_main(int argc, char** argv) {
-    RCLCPP_TRY_RET(rclcpp::init_in("tcp/127.0.0.1:7447", 0), 1);
+int main(int argc, char** argv) {
+    RCLCPP_TRY_RET(rclcpp::init_in(), 1);
 
     rclcpp::Node node;
     RCLCPP_TRY_RET(rclcpp::create_node(node, "talker"), 1);

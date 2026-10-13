@@ -223,7 +223,7 @@ static void demo_guard_condition(void) {
 // Main
 // ============================================================================
 
-int nros_app_main(int argc, char** argv) {
+int main(int argc, char** argv) {
     (void)argc;
     (void)argv;
 
@@ -383,5 +383,3 @@ cleanup_support:
 
     return exit_code;
 }
-
-NROS_APP_MAIN_REGISTER()

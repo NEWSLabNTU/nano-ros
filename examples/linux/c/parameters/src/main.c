@@ -181,7 +181,7 @@ static int run(void) {
     return 0;
 }
 
-int nros_app_main(int argc, char** argv) {
+int main(int argc, char** argv) {
     (void)argc;
     (void)argv;
     // Line-buffer stdout: glibc full-buffers non-tty stdout, so when piped to
@@ -191,5 +191,3 @@ int nros_app_main(int argc, char** argv) {
 #endif
     return run();
 }
-
-NROS_APP_MAIN_REGISTER()

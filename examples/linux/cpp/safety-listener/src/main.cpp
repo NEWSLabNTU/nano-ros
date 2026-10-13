@@ -16,13 +16,12 @@
 #define RCLCPP_TRY_LOG(file, line, expr, ret)                                                      \
     fprintf(stderr, "[nros] %s:%d %s -> %d\n", (file), (line), (expr), (int)(ret))
 
-#include <nros/app_main.h>
 #include <rclcpp/rclcpp.hpp>
 
 // Generated C++ bindings for std_msgs/msg/Int32
 #include "std_msgs.hpp"
 
-int nros_app_main(int argc, char** argv) {
+int main(int argc, char** argv) {
     (void)argc;
     (void)argv;
 #ifdef _IOLBF /* absent on the bare-metal riscv64-threadx libc */
@@ -62,5 +61,3 @@ int nros_app_main(int argc, char** argv) {
     rclcpp::shutdown();
     return 0;
 }
-
-NROS_APP_MAIN_REGISTER()

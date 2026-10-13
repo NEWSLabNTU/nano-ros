@@ -117,7 +117,7 @@ static void* observer_entry(void* arg) {
     return NULL;
 }
 
-int nros_app_main(int argc, char** argv) {
+int main(int argc, char** argv) {
     (void)argc;
     (void)argv;
     printf("errno-isolation: start\n");
@@ -191,5 +191,3 @@ int nros_app_main(int argc, char** argv) {
     printf("%s\n", MARK_PASS);
     return 0;
 }
-
-NROS_APP_MAIN_REGISTER()

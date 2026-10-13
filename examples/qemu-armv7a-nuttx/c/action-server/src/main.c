@@ -178,7 +178,7 @@ static void accepted_callback(rcl_action_server_t* server, const rclc_goal_handl
 // Main
 // ----------------------------------------------------------------------------
 
-int nros_app_main(int argc, char** argv) {
+int main(int argc, char** argv) {
     (void)argc;
     (void)argv;
 
@@ -244,5 +244,3 @@ int nros_app_main(int argc, char** argv) {
     printf("Goodbye!\n");
     return 0;
 }
-
-NROS_APP_MAIN_REGISTER()

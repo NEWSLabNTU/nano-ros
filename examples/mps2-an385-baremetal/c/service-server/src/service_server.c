@@ -89,7 +89,7 @@ static void service_callback(const example_interfaces__srv__AddTwoInts_Request* 
     emit(RCLC_LOG_SEVERITY_INFO, line, __FILE__, __LINE__);
 }
 
-int nros_app_main(int argc, char** argv) {
+int main(int argc, char** argv) {
     (void)argc;
     (void)argv;
 
@@ -128,5 +128,3 @@ int nros_app_main(int argc, char** argv) {
     rclc_support_fini(&app.support);
     return 0;
 }
-
-NROS_APP_MAIN_REGISTER()

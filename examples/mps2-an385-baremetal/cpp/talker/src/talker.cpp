@@ -15,8 +15,8 @@
 ///     `n=%d`. Records are built by hand and emitted through `rclc_log_emit_at`,
 ///     exactly as the `c/talker` sibling does.
 ///
-/// `NROS_APP_MAIN_REGISTER()` emits `void app_main(void)` on this platform and
-/// `src/main.rs` calls it once the board is up.
+/// The program writes `main`; the build compiles it as `nros_ported_main` and
+/// `src/main.rs` reaches it as `nros_app_main` once the board is up (phase-499).
 
 #include <stddef.h>
 #include <stdint.h>
@@ -24,7 +24,6 @@
 // `libc-stubs` defines.
 #include <string.h>
 
-#include <nros/app_main.h>
 #include <rclcpp/rclcpp.hpp>
 
 // Generated C++ bindings (`nros generate cpp`, run by build.rs).
@@ -110,7 +109,7 @@ void timer_callback(void* context) {
 // Entry
 // ----------------------------------------------------------------------------
 
-int nros_app_main(int argc, char** argv) {
+int main(int argc, char** argv) {
     (void)argc;
     (void)argv;
 
@@ -159,5 +158,3 @@ int nros_app_main(int argc, char** argv) {
     rclcpp::shutdown();
     return 0;
 }
-
-NROS_APP_MAIN_REGISTER()
