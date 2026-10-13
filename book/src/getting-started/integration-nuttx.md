@@ -64,11 +64,13 @@ surfaces it under `Application Configuration → External Modules`.
 > **Contributors (in-tree checkout):** `just setup nuttx` runs both of the
 > above in one step against this repository's own NuttX checkout.
 
-Passing `--bringup <dir>` additionally stages a per-bringup app
-(`external/<bringup>/`, with the bringup tree symlinked alongside as
-`external/<bringup>-source`) — the Phase 212 multi-package workspace
-shape. There are no per-EXAMPLE symlinks: that staging loop was
-retired in phase-212.M-F.12 when the bringup path superseded it.
+The script stages the integration shell only. A NuttX **workspace image** (a
+bringup with several components) is not built through the apps tree: add an
+`[image.<id>]` with `board = "qemu-armv7a-nuttx"` to the bringup's
+`system.toml` and run `nros build` — see `examples/workspaces/rust`
+`[image.nuttx]`. The script's old `--bringup <dir>` / `--image <id>` flags
+staged a per-bringup app that could not build an image, and now refuse
+(issue 1883).
 
 If you'd rather wire it yourself (e.g. into a vendored apps tree):
 
@@ -235,10 +237,9 @@ count at 1, matching the official ROS 2 demo talker. If no
 ### Auto-configure glue (NSH built-in registration)
 
 The `make`-driven build above relies on a host-side glue layer. In-tree
-that is `scripts/nuttx/stage-external-apps.sh --bringup <dir>`, the only
-supported NuttX make path since phase-212 M-F.16 retired the per-example
-`build-fixtures-make` recipe. If you wire a NuttX workspace by hand,
-reproduce the same three steps:
+that is `scripts/nuttx/stage-external-apps.sh` plus `kconfig-tweak`. If you
+wire the integration shell into your own NuttX tree by hand, reproduce the same
+three steps:
 
 1. **Bring the required symbols into your config.** Stock NuttX
    `qemu-armv7a/nsh` ships without `CONFIG_NET=y`, virtio-net, or
@@ -253,8 +254,7 @@ reproduce the same three steps:
    authoritative list) and re-run `make olddefconfig`.
 2. **Stage the integration shell.** Run
    `scripts/nuttx/stage-external-apps.sh "$NUTTX_APPS_DIR"` to symlink
-   `integrations/nuttx/` into `$NUTTX_APPS_DIR/external/` (add
-   `--bringup <dir>` for a workspace app). Remove `$NUTTX_APPS_DIR/Kconfig` so
+   `integrations/nuttx/` into `$NUTTX_APPS_DIR/external/`. Remove `$NUTTX_APPS_DIR/Kconfig` so
    NuttX's `mkkconfig.sh` rediscovers the new
    `apps/external/Kconfig`.
 3. **Flip the nano-ros Kconfig knobs via `kconfig-tweak`.** The

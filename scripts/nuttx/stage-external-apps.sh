@@ -9,62 +9,44 @@
 #
 # Usage:
 #   stage-external-apps.sh <nuttx-apps-dir> [nros-codegen-binary]
-#                          [--bringup <bringup-pkg-dir>] [--image <id>] [--copy]
 #
 # Required: <nuttx-apps-dir> must exist and look like a NuttX apps
 # tree (has a `Make.defs` at the top level).
 #
-# Phase 212.H.2 — `--bringup <dir>` additionally stages a Phase 212
-# `<system>_bringup` package at `apps/external/<basename(dir)>/` from
-# the per-bringup template at `integrations/nuttx/apps-external-template/`.
-# The bringup source tree itself is symlinked at
-# `apps/external/<bringup>-source` (or copied with `--copy`); the
-# template files (Make.defs, Makefile, Kconfig) are written into the
-# `apps/external/<bringup>/` shell along with `nros_bringup.mk`
-# pinning the workspace + bringup name. Idempotent.
-#
-# Issue 1396 — `--image <id>` pins WHICH `[image.<id>]` of that bringup
-# is being staged, into the same fragment. The template's `context::`
-# rule used to pass a synthesised `--target nuttx`, and `--target` names
-# a BLOCK: for the one bringup anything in-tree stages through this
-# template the blocks are `[image.qemu-armv7a-nuttx]`, so `nuttx` named
-# none and every answer it selects — the `[tiers.*.<rtos>]` sub-table
-# first among them — fell back to the system-wide default, which for the
-# tier resolver is the HOST (issue 1312 measured that fallback). An app
-# living in the NuttX apps tree cannot use `--for-entry` the way the
-# Zephyr and ESP-IDF shims do, because no `[image.*]` can claim an entry
-# outside the workspace; this script is the one place that has both the
-# id (from its caller) and the `system.toml` to check it against.
-#
-# Unpinned stays legal and is no worse than before: the template then
-# passes no `--target` at all and says so, rather than naming a block
-# that does not exist.
+# Issue 1883 — the Phase 212.H.2 `--bringup <dir>` / `--image <id>` /
+# `--copy` staging is RETIRED. It wrote a per-bringup app from
+# `integrations/nuttx/apps-external-template/`, and that app could not
+# build: its cargo call ran upstream `RUST_CARGO_BUILD` (`-Zbuild-std`) on
+# the stable toolchain, named a `Cargo.toml` a bringup never has, and
+# linked a fixture glue calling `nros_system_main()`, which
+# `nros codegen-system` stopped emitting in Phase 258. No lane built it, so
+# all three breaks stayed hidden. A NuttX workspace image is a CARGO-road
+# image: an `[image.<id>] board = "qemu-armv7a-nuttx"` block in the
+# bringup's `system.toml`, built by `nros build` — `examples/workspaces/rust`
+# `[image.nuttx]` (fixture row `workspace-rust-qemu-nuttx`). The flags now
+# refuse rather than silently stage nothing.
 
 set -euo pipefail
 
 if [ $# -lt 1 ]; then
-    echo "usage: $0 <nuttx-apps-dir> [nros-codegen-binary] [--bringup <dir>]" \
-         "[--image <id>] [--copy]" >&2
+    echo "usage: $0 <nuttx-apps-dir> [nros-codegen-binary]" >&2
     exit 2
 fi
 
 NUTTX_APPS_DIR="$1"; shift
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 INTEGRATION="$ROOT/integrations/nuttx"
-TEMPLATE="$INTEGRATION/apps-external-template"
-BRINGUP_DIR=""
-BRINGUP_IMAGE=""
-COPY_MODE="symlink"
 CODEGEN_ARG=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
-        --bringup)
-            BRINGUP_DIR="$2"; shift 2 ;;
-        --image)
-            BRINGUP_IMAGE="$2"; shift 2 ;;
-        --copy)
-            COPY_MODE="copy"; shift ;;
+        --bringup|--image|--copy)
+            echo "error: $1 is retired (issue 1883): the per-bringup NuttX apps template" >&2
+            echo "       could not build an image, so it is gone. A NuttX workspace image" >&2
+            echo "       is built on the cargo road: add [image.<id>] with" >&2
+            echo "       board = \"qemu-armv7a-nuttx\" to the bringup's system.toml and run" >&2
+            echo "       \`nros build\` (see examples/workspaces/rust, [image.nuttx])." >&2
+            exit 2 ;;
         *)
             if [ -z "$CODEGEN_ARG" ] && [ "${1:0:2}" != "--" ]; then
                 CODEGEN_ARG="$1"; shift
@@ -100,18 +82,13 @@ ln -sfn "$INTEGRATION" "$EXT/nano-ros"
 # explicitly. NuttX's bundled kconfig-conf doesn't support the
 # `osource` glob directive (post-v4.18 kconfig), so generate a
 # Kconfig file with explicit source statements for the integration
-# shell. Phase 212.H.2 `--bringup <dir>` (below) appends a bringup
-# row when supplied.
+# shell.
 #
 # Phase 212.M-F.12 — the legacy Phase 157.C nuttx-examples staging
 # loop (per-example symlinks under `examples/qemu-armv7a-nuttx/{c,cpp}/`
 # + per-example codegen / cpp-FFI staticlib accumulation) was retired
 # here. M-F.10.5 deleted the `cmake/templates/nros_app_config.h.in`
-# template the per-example baker required, and the Phase 212 multi-pkg
-# workspace path (`--bringup`) supersedes the per-example shape.
-# Carving the loop out also unblocks
-# `phase212_h2_nuttx::nuttx_qemu_arm_2_component_bringup_builds` on
-# hosts with NuttX provisioned. Phase 212.M-F.16 followed up by
+# template the per-example baker required. Phase 212.M-F.16 followed up by
 # retiring the orphan `gen-interfaces.py` / `gen-cpp-ffi-crates.py` /
 # `gen-wrappers.sh` driver scripts the loop used to invoke.
 {
@@ -124,95 +101,6 @@ ln -sfn "$INTEGRATION" "$EXT/nano-ros"
     echo ""
     echo "endmenu"
 } > "$EXT/Kconfig"
-
-# Phase 212.H.2 — optional `--bringup <dir>` staging. Symlinks (or
-# copies) the bringup workspace next to the apps/external/ tree and
-# writes the per-bringup template (Make.defs + Makefile + Kconfig +
-# nros_bringup.mk pinning) at apps/external/<bringup>/.
-if [ -n "$BRINGUP_DIR" ]; then
-    if [ ! -d "$BRINGUP_DIR" ]; then
-        echo "error: --bringup target $BRINGUP_DIR not found" >&2
-        exit 1
-    fi
-    if [ ! -d "$TEMPLATE" ]; then
-        echo "error: integration template missing: $TEMPLATE" >&2
-        exit 1
-    fi
-    bringup_name="$(basename "$BRINGUP_DIR")"
-    bringup_workspace="$(cd "$BRINGUP_DIR/.." && pwd)"
-    if [ "$(basename "$bringup_workspace")" = "src" ]; then
-        bringup_workspace="$(dirname "$bringup_workspace")"
-    fi
-    # Issue 1396 — a pinned image id must name a block the bringup actually
-    # declares. Checked HERE rather than trusted, because `--target` takes an
-    # unknown id silently: `tier_resolver::target_board_id` finds nothing and
-    # `derive_target_rtos` answers with the HOST's key, so a typo costs an
-    # image the whole `[tiers.*.<rtos>]` table with no diagnostic anywhere.
-    # Both TOML spellings of the key are accepted (`[image.x]` and
-    # `[image."x"]`), and `[deploy.*]` because the CLI resolves either.
-    if [ -n "$BRINGUP_IMAGE" ]; then
-        system_toml="$BRINGUP_DIR/system.toml"
-        if [ ! -f "$system_toml" ]; then
-            echo "error: --image $BRINGUP_IMAGE given but $system_toml does not exist" >&2
-            exit 1
-        fi
-        # `grep -F` takes NEWLINE-separated patterns, so this is the four
-        # spellings at once. Routed through `nros_grep_q` (issue 0726): a grep
-        # that fails to START must not read as "the block is absent", which is
-        # a confident false claim about the bringup.
-        # shellcheck source=scripts/lib/grep-q.sh
-        source "$ROOT/scripts/lib/grep-q.sh"
-        image_patterns="[image.${BRINGUP_IMAGE}]
-[image.\"${BRINGUP_IMAGE}\"]
-[deploy.${BRINGUP_IMAGE}]
-[deploy.\"${BRINGUP_IMAGE}\"]"
-        # issue 1249 — the status is INSPECTED, so it is captured at the `||`.
-        image_rc=0
-        nros_grep_q -F -- "$image_patterns" "$system_toml" || image_rc=$?
-        if [ "$image_rc" -ne 0 ]; then
-            echo "error: --image $BRINGUP_IMAGE names no block in $system_toml" >&2
-            echo "       declared blocks:" >&2
-            # `|| true`: a bringup declaring none is exactly the case this
-            # message is for, and under `set -e` grep's empty exit would kill
-            # the script before it printed the reason.
-            grep -E '^\[(image|deploy)\.' "$system_toml" | sed 's/^/         /' >&2 || true
-            exit 1
-        fi
-    fi
-    shell_dst="$EXT/$bringup_name"
-    mkdir -p "$shell_dst"
-    for f in Make.defs Makefile Kconfig; do
-        install -m 0644 "$TEMPLATE/$f" "$shell_dst/$f"
-    done
-    {
-        echo "# Generated by stage-external-apps.sh (Phase 212.H.2). DO NOT EDIT."
-        printf 'NROS_BRINGUP_NAME      := %s\n' "$bringup_name"
-        printf 'NROS_BRINGUP_WORKSPACE := %s\n' "$bringup_workspace"
-        # Issue 1396 — empty means "no image pinned"; the template then passes
-        # no `--target` rather than a synthesised one.
-        printf 'NROS_BRINGUP_IMAGE     := %s\n' "$BRINGUP_IMAGE"
-    } > "$shell_dst/nros_bringup.mk"
-    if [ -z "$BRINGUP_IMAGE" ]; then
-        echo "note: no --image pinned for $bringup_name; the bake will take the" >&2
-        echo "      system-wide defaults, including the HOST tier tables (issue 1396)." >&2
-    fi
-    src_link="$EXT/${bringup_name}-source"
-    if [ "$COPY_MODE" = "copy" ]; then
-        rm -rf "$src_link"
-        cp -a "$BRINGUP_DIR" "$src_link"
-    else
-        ln -sfn "$BRINGUP_DIR" "$src_link"
-    fi
-    # Re-emit apps/external/Kconfig with the bringup row appended.
-    {
-        cat "$EXT/Kconfig"
-        echo ""
-        echo "# Phase 212.H.2 bringup (auto-appended)"
-        echo "source \"\$APPSDIR/external/$bringup_name/Kconfig\""
-    } > "$EXT/Kconfig.tmp"
-    mv "$EXT/Kconfig.tmp" "$EXT/Kconfig"
-    echo "Staged Phase 212 bringup pkg: $bringup_name → $shell_dst"
-fi
 
 echo "Staged nano-ros external apps under $EXT/"
 ls -la "$EXT" | sed 's/^/  /'
