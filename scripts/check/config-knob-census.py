@@ -794,6 +794,8 @@ def _strip_comments(txt):
 
 def _const_bindings(txt, prefix):
     """{IDENT: name} for every `const|static IDENT: &str = "<PREFIX>_*";`."""
+    if f'"{prefix}_' not in txt:  # the pattern needs that literal (phase-489 W5)
+        return {}
     return {
         m.group(1): m.group(2)
         for m in re.finditer(_CONST_RE.format(prefix=prefix), _strip_comments(txt))
@@ -818,13 +820,25 @@ def _calls_in(txt, prefix, shared=None):
     track. Macros are excluded by the absence of `!` from the callee pattern,
     which keeps `panic!("NROS_X unset")` and friends out.
     """
+    # Prefilter (phase-489 W5): both literal matchers need `"<PREFIX>_` in the
+    # text, and the constant-call matcher needs one of the bound identifiers.
+    # Nearly every file names neither, and these regexes are the gate's cost
+    # (the scan was ~7 CPU-s). Same output: a file that fails the prefilter
+    # could not have matched.
+    shared = shared or {}
+    has_literal = f'"{prefix}_' in txt
+    if not has_literal and not any(k in txt for k in shared):
+        return []
     stripped = _strip_comments(txt)
-    out = [
-        (m.group(1).rsplit("::", 1)[-1], m.group(2))
-        for m in re.finditer(_CALL_RE.format(prefix=prefix), stripped)
-    ]
-    bindings = dict(shared or {})
-    bindings.update(_const_bindings(txt, prefix))
+    out = []
+    if has_literal:
+        out = [
+            (m.group(1).rsplit("::", 1)[-1], m.group(2))
+            for m in re.finditer(_CALL_RE.format(prefix=prefix), stripped)
+        ]
+    bindings = dict(shared)
+    if has_literal:
+        bindings.update(_const_bindings(txt, prefix))
     if bindings:
         out += [
             (m.group(1).rsplit("::", 1)[-1], bindings[m.group(2)])

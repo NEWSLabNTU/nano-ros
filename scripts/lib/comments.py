@@ -41,6 +41,7 @@ prints the stripped text (language from the suffix unless `--lang`).
 
 from __future__ import annotations
 
+import functools
 import re
 import sys
 from pathlib import Path
@@ -80,6 +81,16 @@ def lang_for(path) -> str | None:
 
 def strip_comments(text: str, lang: str, *, strings: bool = False) -> str:
     """`text` with every comment blanked (same length, newlines kept)."""
+    return _strip_cached(text, lang, strings)
+
+
+# Pure function of an immutable key returning an immutable str, so a repeat is
+# free. A gate that asks about N patterns re-strips the same tracked file N
+# times (`check-retired-platform-clock-symbols`: 4704 strips of ~470 files);
+# memoising here fixes every such caller at once instead of each gate growing
+# its own cache (phase-489 W5). Bounded by entry count; process-local.
+@functools.lru_cache(maxsize=2048)
+def _strip_cached(text: str, lang: str, strings: bool) -> str:
     return _run(text, lang, strings, list(text))
 
 
@@ -139,7 +150,13 @@ def strip_file(path, *, lang: str | None = None, strings: bool = False) -> str:
 
 
 def _blank(out: list, a: int, b: int) -> None:
-    for k in range(a, min(b, len(out))):
+    b = min(b, len(out))
+    if type(out) is list:
+        # A plain buffer takes one slice assignment; `_Recorder` must see every
+        # offset it blanks, so it keeps the per-index loop.
+        out[a:b] = ["\n" if ch == "\n" else " " for ch in out[a:b]]
+        return
+    for k in range(a, b):
         if out[k] != "\n":
             out[k] = " "
 
@@ -160,11 +177,26 @@ _RUST_RAW = re.compile(r"(?<![A-Za-z0-9_])(?:br|cr|r)(#*)\"")
 _CPP_RAW = re.compile(r"(?<![A-Za-z0-9_])(?:u8|u|U|L)?R\"([^ ()\\\t\v\f\n\"]{0,16})\(")
 
 
+_NEXT_C = re.compile(r"/[/*]|[\"']")
+_NEXT_CPP = re.compile(r"/[/*]|[\"']|" + _CPP_RAW.pattern)
+_NEXT_RUST = re.compile(r"/[/*]|[\"']|" + _RUST_RAW.pattern)
+
+
 def _strip_c(text: str, lang: str, strings: bool, out: list) -> str:
     rust = lang == "rust"
     n = len(text)
     i = 0
+    # Jump to the next offset where ANY branch below can fire instead of testing
+    # every character: every other offset only did `i += 1`. The candidate set is
+    # the union of the branch conditions (a comment opener, a quote, and the
+    # raw-string openers, with their own look-behind), so the scan is identical
+    # by construction (phase-489 W5; verified byte-for-byte over the tracked tree).
+    nxt = _NEXT_RUST if rust else (_NEXT_CPP if lang == "cpp" else _NEXT_C)
     while i < n:
+        m = nxt.search(text, i)
+        if m is None:
+            break
+        i = m.start()
         c = text[i]
         if c == "/" and text.startswith("//", i):
             j = _eol(text, i)
