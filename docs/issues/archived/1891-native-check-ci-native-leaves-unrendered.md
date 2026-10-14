@@ -1,12 +1,13 @@
 ---
 id: 1891
 title: "`native-check` on CI: the native example leaves are linted without `nros sync`, so their generated selection package and patch rows do not exist"
-status: open
+status: resolved
 type: bug
 area: [ci, build, examples]
 severity: medium
 found: 2026-10-14
-related: [1882, 1305]
+resolved: 2026-10-14
+related: [1882, 1305, 1888]
 ---
 
 ## Measured
@@ -69,3 +70,7 @@ already been synced, so they were not fresh.
 2. Acceptance: a scheduled or manually dispatched gate where `check-build`
    passes `native-check` from a fresh checkout. The way 1882 measured it does
    not count, because the leaves were already synced.
+
+## Resolution (2026-10-14): a duplicate of issue 1888
+
+Issue 1888 was filed earlier the same day for the same defect: `lint-example-leaf.sh` gated `nros sync` on `platform != native`, so native leaves were never rendered. The fix landed with 1888. `lint-example-leaf.sh` now syncs every leaf that has a `system.toml`, native included, and 1888 records the measurement. This issue is archived as a duplicate, and its evidence (scheduled gate run 38498943417) is a second sighting of 1888.
