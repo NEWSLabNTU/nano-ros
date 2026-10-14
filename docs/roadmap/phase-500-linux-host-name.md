@@ -181,8 +181,8 @@ priorities, prose) and are out of scope.
     `lane_build_covers_run::the_retired_native_lane_resolves_to_linux_with_a_deprecation`
     pins the alias and goes with it.
   - Left alone, each for a stated reason: image ids (`[image.native*]`, W3);
-    `examples/native/` and every path into it, including
-    `lint-example-leaf.sh`'s directory test (W4); the C ABI
+    `examples/native/` and every path into it (W4) — `lint-example-leaf.sh`'s
+    directory test is gone, decided by leaf shape since issue 1892; the C ABI
     `nros_board_native_run_*`; `posix` as the platform; the gate recipe
     `just check native-check` (a gate name in the `check` module, not the
     module or lane — renaming it touches the gate lists, so it waits for W5);
