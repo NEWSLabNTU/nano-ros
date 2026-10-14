@@ -30,6 +30,7 @@ unsafe extern "C" {
     fn _z_mutex_unlock(m: *mut c_void) -> i8;
     fn _z_condvar_init(cv: *mut c_void) -> i8;
     fn _z_condvar_drop(cv: *mut c_void) -> i8;
+    fn _z_condvar_wait(cv: *mut c_void, m: *mut c_void) -> i8;
     fn _z_condvar_wait_until(cv: *mut c_void, m: *mut c_void, abstime_ms: *const u64) -> i8;
     fn nros_platform_clock_ns() -> u64;
 }
@@ -90,6 +91,41 @@ fn a_null_deadline_is_an_error_not_an_unbounded_wait() {
             Z_ERR_GENERIC
         );
         assert_eq!(_z_mutex_unlock(m), 0);
+        assert_eq!(_z_condvar_drop(cv), 0);
+        assert_eq!(_z_mutex_drop(m), 0);
+    }
+}
+
+/// Issue 1196 / phase-436 D2 -- `_z_condvar_wait` is zenoh-pico's UNBOUNDED
+/// wait, and the platform ABI no longer has one. The shim bridges it with one
+/// bounded wait on a deadline it owns (`NROS_ZP_CONDVAR_SLICE_MS`, 1000 ms) and
+/// reports the slice expiring as a spurious wake (`0`), which every caller
+/// absorbs by re-testing its predicate. With no signaller this used to block
+/// forever; it must now come back, with `0`, after about one slice -- and not
+/// early, which would turn every idle zenoh-pico wait into a poll.
+#[test]
+fn an_unsignalled_wait_returns_as_a_spurious_wake_after_one_slice() {
+    let mut cv = Box::new(Storage([0; 256]));
+    let mut m = Box::new(Storage([0; 256]));
+    let cv = cv.0.as_mut_ptr().cast::<c_void>();
+    let m = m.0.as_mut_ptr().cast::<c_void>();
+    unsafe {
+        assert_eq!(_z_condvar_init(cv), 0);
+        assert_eq!(_z_mutex_init(m), 0);
+        assert_eq!(_z_mutex_lock(m), 0);
+        let start = Instant::now();
+        let rc = _z_condvar_wait(cv, m);
+        let elapsed = start.elapsed();
+        assert_eq!(_z_mutex_unlock(m), 0);
+        assert_eq!(rc, 0, "an expired slice is a spurious wake (0), got {rc}");
+        assert!(
+            elapsed >= Duration::from_millis(990),
+            "the slice must not end early (an idle wait would become a poll): {elapsed:?}"
+        );
+        assert!(
+            elapsed < Duration::from_secs(10),
+            "the wait must be bounded by its slice: {elapsed:?}"
+        );
         assert_eq!(_z_condvar_drop(cv), 0);
         assert_eq!(_z_mutex_drop(m), 0);
     }

@@ -25,7 +25,7 @@ through A3's clear accessor is on `main`: W1-W7 (#849), A2 (#871), E3 + E4
 4. Path B's B2 LANDED 2026-09-25 (smoltcp `poll_delay` is the first real
    deadline source; the target-run half of the exit is still open — see Path
    B). Path C's C1 (FreeRTOS) and C2 (POSIX/NuttX) LANDED 2026-10-15; C3
-   (bare metal) stays deferred. Then Path D (D1 measure 1195, D2 close 1196), E1
+   (bare metal) stays deferred. Then Path D (D1 DONE 2026-10-15; D2's ABI half DONE, its zenoh-pico paths open in 1196), E1
    (issue 1232, resolved and archived since), and A2b (LANDED 2026-10-15).
 
 Two process lessons that cost time here:
@@ -80,8 +80,9 @@ Five things the work changed about the phase as written:
   not an adapter waiting to be written.
 
 Issues 1192, 1193, 1194 and 1242 are resolved and archived (W1-W3 landed via #849; 1242 via
-W7.b). 1195 and 1196 stay open on purpose: the stack delivered only part of each. 1195's
-remaining consequence is Path D1, and 1196's closing condition is Path D2.
+W7.b). 1195 and 1196 stayed open after that stack, which delivered only part of each. Path
+D1 closed 1195 on 2026-10-15; D2 took the unbounded symbol out of the ABI the same day, and
+1196 stays open for the zenoh-pico paths its 2026-10-15 design study found.
 
 Deferred deliberately: the `wake_wait_ns` platform slot (the rounding contract
 fixes issue 1193's harm without making five ports grow a required symbol) and
@@ -428,7 +429,7 @@ Each is a filed issue; the issue holds the evidence.
 * **W3 — [issue 1194](../issues/archived/1194-jitter-measured-in-microseconds-waited-in-milliseconds.md):
   jitter measured in µs, waited in ms.** Falls out of W2; the deliverable is
   the declared-granularity contract, not a coarser statistic.
-* **W4 — [issue 1195](../issues/1195-promise-wait-polls-instead-of-using-the-waker.md):
+* **W4 — [issue 1195](../issues/archived/1195-promise-wait-polls-instead-of-using-the-waker.md):
   `Promise::wait` polls a 10 ms grid and overshoots shorter timeouts.** The one
   place the waker exists and is bypassed.
 * **W5 — [issue 1196](../issues/1196-platform-condvar-wait-is-unbounded.md):
@@ -902,24 +903,35 @@ wiring that came before it, and both worth a decision rather than a drift:
 
 ### Path D — Waits that still bypass the waker.
 
-* **D1 — issue 1195's first consequence: MEASURE, then fix or close.** The
-  issue named two harms. W4 fixed the second: `WaitBudget` is now bounded by
-  a clock deadline and `next_spin_interval` never spins past it, so
-  `wait(1ms)` no longer runs a full 10 ms. The first — reply latency
-  quantized to 10 ms on backends with a real listener (Cyclone's
-  `on_data_available`) — is UNVERIFIED either way. The `handles.rs` loops
-  still slice on `DEFAULT_SPIN_INTERVAL_MS = 10`, but each slice is a
-  `spin_once` that parks on the wake object the listener signals, so the
-  slice may already be a ceiling rather than a quantum. Measure a Cyclone
-  reply arriving mid-slice: if it returns early, close 1195; if not, the
-  listener is not reaching the wake object and that is the fix.
-* **D2 — issue 1196's closing condition.** The unbounded
-  `nros_platform_condvar_wait` is still exported by five ports (esp-idf,
-  freertos, posix — and so nuttx — threadx, zephyr), and one caller
-  remains: `zpico-sys/c/zpico/platform_aliases.c:302`.
-  `check-no-unbounded-condvar-wait.sh` holds the line meanwhile. It closes
-  when that caller is bridged through a caller-owned deadline (or zenoh-pico
-  gains `_z_condvar_wait_until`) and the symbol leaves the ABI.
+* **D1 — issue 1195's first consequence: MEASURE, then fix or close. DONE
+  (2026-10-15); 1195 resolved.** Measured with a native service pair timing
+  300 back-to-back calls (the tick path's `call_raw`, which loops
+  `spin_once(10 ms)` exactly as `Promise::wait` does). Cyclone was never
+  quantized — p50 66-77 us, 0 of 280 calls at or above 9 ms; its
+  participant-level `on_data_available` listener reaches the wake object, so
+  the 10 ms slice is a ceiling, not a quantum. **Zenoh was quantized** — p50
+  10.1 ms, 280 of 280 calls a whole slice — because requests and replies land
+  on zenoh-pico's read task and only the subscriber's arrival callback fired
+  the runtime wake. `queryable_callback` and `reply_waker_callback` now call
+  `fire_runtime_wake()` too: p50 0.19 ms, 0 of 280. Pinned by
+  `nros-rmw-zenoh` `shim::service::tests::reply_arrival_fires_the_runtime_wake`.
+  Numbers and method in the archived issue.
+* **D2 — issue 1196. ABI half DONE (2026-10-15); 1196 stays open.**
+  The last caller, `zpico-sys/c/zpico/platform_aliases.c`'s
+  `_z_condvar_wait`, waits once on `condvar_wait_until` with a deadline the
+  shim owns (1000 ms) and returns an expired slice as a spurious wakeup —
+  legal for a condvar, and absorbed by every caller's predicate loop (all
+  five upstream sites and `zpico.c`'s `z_get` checked). The unbounded
+  `nros_platform_condvar_wait` then left the ABI: the header, every C port
+  (esp-idf had already left the tree), the custom-platform example, the cffi
+  export macro and the Rust `PlatformThreading` trait with its three
+  bare-metal implementors, bindings regenerated.
+  `check-no-unbounded-condvar-wait.sh` lost its exemption list and now refuses
+  the symbol in any form. Issue 1196's design study (2026-10-15, beside issue
+  1906) moved its closing condition to cover the two zenoh-pico paths that
+  never went through this symbol — Zephyr's own system layer and FreeRTOS's
+  vendored one — plus deleting `zpico_get` and a class gate for forever-waits;
+  those remain, listed in the issue.
 
 ### Path E — Stack headroom: wired, and on ASI blind.
 

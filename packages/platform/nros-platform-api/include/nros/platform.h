@@ -676,41 +676,28 @@ int8_t nros_platform_condvar_signal_all(void *cv);
  *  latency cost). */
 int8_t nros_platform_condvar_signal_from_isr(void *cv);
 
-/** Atomically release `m` and block on `cv`. The mutex is re-acquired
- *  before this function returns.
- *
- *  **NOT REAL-TIME — this wait is UNBOUNDED.** Every port implements it with
- *  its forever spelling (`TX_WAIT_FOREVER`, `portMAX_DELAY`, `K_FOREVER`), so
- *  a caller that blocks here has no deadline and no way to be woken by one.
- *  Nothing on the executor path calls it, and nothing new should: the
- *  executor's own wait uses the BOUNDED `nros_platform_wake_wait_ms`, and a
- *  condvar caller that needs a bound has `condvar_wait_until` directly below.
- *
- *  Kept rather than deleted because removing an exported symbol breaks
- *  out-of-tree ports, and marked here rather than left neutral because
- *  `condvar_wait` is the OBVIOUS spelling — the next port reaches for it and
- *  loses the bound silently. `scripts/check-no-unbounded-condvar-wait.sh`
- *  enforces the "nothing new" half; see issue 1196 and phase-436 W5.
- *
- *  "No unbounded wait" is only a property of the system if it is a property of
- *  the API. */
-int8_t nros_platform_condvar_wait(void *cv, void *m);
-
-/** Like `condvar_wait`, but with an absolute monotonic deadline in
- *  MILLISECONDS on the `nros_platform_clock_ns()` epoch — i.e.
- *  `clock_ns() / 1000000`. Returns 0 when signalled, 1 on timeout and
- *  -1 on error, the same codes as `nros_platform_wake_wait_ms` (issue
+/** Atomically release `m` and block on `cv` until signalled or until the
+ *  absolute monotonic deadline `abstime`, in MILLISECONDS on the
+ *  `nros_platform_clock_ns()` epoch — i.e. `clock_ns() / 1000000`. The mutex
+ *  is re-acquired before this returns. Returns 0 when signalled, 1 on timeout
+ *  and -1 on error, the same codes as `nros_platform_wake_wait_ms` (issue
  *  1906: FreeRTOS returned -1 on timeout, so a caller could not tell a
- *  timeout from a failure). A port rounds the remaining time UP to its
- *  tick, so the wait never times out before its deadline.
+ *  timeout from a failure). A port rounds the remaining time UP to its tick,
+ *  so the wait never times out before its deadline.
  *
- *  Spelt out because this said "`clock_ms` units" after RFC-0073 /
- *  phase-352 W6 retired `nros_platform_clock_ms`: it named a function
- *  that no longer exists, leaving a port author no way to resolve the
- *  unit from this header. The unit itself never changed — every port
- *  names the parameter `abstime_ms` and the Rust trait says
- *  milliseconds — so this is the wording catching up, not an ABI
- *  change. */
+ *  This is the ONLY condvar wait in the ABI. The unbounded
+ *  `nros_platform_condvar_wait` was removed (issue 1196, phase-436 D2): it sat
+ *  here with a neutral name, every port implemented it with its forever
+ *  spelling, and "no unbounded wait" is only a property of the system if it
+ *  is a property of the API. A caller whose own contract is unbounded — the
+ *  zenoh-pico shim's `_z_condvar_wait` was the last one — loops over bounded
+ *  waits and re-tests its predicate, which a condvar caller must do anyway
+ *  because of spurious wakeups. `scripts/check-no-unbounded-condvar-wait.sh`
+ *  keeps the symbol from coming back.
+ *
+ *  The unit is spelt out because this said "`clock_ms` units" after RFC-0073 /
+ *  phase-352 W6 retired `nros_platform_clock_ms`; it never changed — every
+ *  port names the parameter `abstime_ms`. */
 int8_t nros_platform_condvar_wait_until(void *cv, void *m, uint64_t abstime);
 
 /* ---- Threading: wake primitive (Phase 130) ----

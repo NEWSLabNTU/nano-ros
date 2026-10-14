@@ -899,11 +899,6 @@ int8_t nros_platform_condvar_signal_from_isr(void* cv) {
     return pthread_cond_signal((pthread_cond_t*)cv) == 0 ? 0 : -1;
 }
 
-int8_t nros_platform_condvar_wait(void* cv, void* m) {
-    if (cv == NULL || m == NULL) return -1;
-    return pthread_cond_wait((pthread_cond_t*)cv, (pthread_mutex_t*)m) == 0 ? 0 : -1;
-}
-
 int8_t nros_platform_condvar_wait_until(void* cv, void* m, uint64_t abstime_ms) {
     if (cv == NULL || m == NULL) return -1;
     struct timespec ts = {
@@ -1047,15 +1042,6 @@ int8_t nros_platform_condvar_signal_all(void* cv) {
  * the caller gets an error rather than a deadlock. */
 static bool nros_zephyr_held_once(const struct k_mutex* mu) {
     return mu->owner == k_current_get() && mu->lock_count == 1U;
-}
-
-int8_t nros_platform_condvar_wait(void* cv, void* m) {
-    if (cv == NULL || m == NULL) return -1;
-    struct k_condvar* c = NROS_Z_HANDLE(cv);
-    struct k_mutex* mu = NROS_Z_HANDLE(m);
-    if (c == NULL || mu == NULL) return -1;
-    if (!nros_zephyr_held_once(mu)) return -1;
-    return k_condvar_wait(c, mu, K_FOREVER) == 0 ? 0 : -1;
 }
 
 int8_t nros_platform_condvar_wait_until(void* cv, void* m, uint64_t abstime_ms) {

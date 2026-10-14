@@ -1055,13 +1055,6 @@ static int8_t nros_threadx_condvar_wait_ticks(nros_threadx_condvar_t *c, void *m
     return -1;
 }
 
-int8_t nros_platform_condvar_wait(void *cv, void *m) {
-    NROS_THREADX_KERNEL_ONLY_FATAL();
-    if (cv == NULL || m == NULL) return -1;
-    int8_t rc = nros_threadx_condvar_wait_ticks((nros_threadx_condvar_t *) cv, m, TX_WAIT_FOREVER);
-    return rc == 0 ? 0 : -1;
-}
-
 int8_t nros_platform_condvar_wait_until(void *cv, void *m, uint64_t abstime_ms) {
     NROS_THREADX_KERNEL_ONLY_FATAL();
     if (cv == NULL || m == NULL) return -1;
