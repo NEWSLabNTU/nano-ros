@@ -53,6 +53,15 @@
 #         keyed without the entity facts). Issue 1684 cites it as what blocked
 #         the tier-1 fixture build. REMOVE THIS ROW when #1707 merges.
 #
+#   1902  IN FLIGHT — filed on PR #2212 (`chore/file-remaining-issues`); the
+#         fix (BOARD_KEYS misses descriptor names) cites it from the key
+#         tables and their gate. REMOVE THESE ROWS when #2212 merges and the
+#         issue is archived as resolved.
+#
 docs/roadmap/archived/phase-431-ship-the-nros-binary.md:1110
 just/check/docs.just:1110
+packages/cli/nros-cli-core/tests/board_key_table.rs:1902
+packages/cli/nros-entry-lower/src/lib.rs:1902
+packages/core/nros-macros/src/main_macro.rs:1902
+packages/core/nros-orchestration-ir/src/lib.rs:1902
 scripts/build/rustdoc-set.sh:1110

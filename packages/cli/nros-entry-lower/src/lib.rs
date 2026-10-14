@@ -416,7 +416,10 @@ impl CAbiRunners {
 /// [`board_family`] and `board_to_rtos` now read this table. The Rust pack's
 /// key set, `nros_orchestration_ir::BOARD_PATHS`, is Rust-pack-local spelling
 /// and stays in its own crate. `nros-cli-core/tests/board_key_table.rs`
-/// checks it against this table.
+/// checks it against this table, and checks this table against the board
+/// descriptors both ways (issue 1902): every descriptor `names` entry on an
+/// RTOS platform is a row here with that platform's family, and every row
+/// resolves in the board catalog.
 ///
 /// Rows, by family:
 /// - Zephyr: every Phase 215 board (FVP, qemu-zephyr, …) compiles with
@@ -450,14 +453,22 @@ pub const BOARD_KEYS: &[(&str, BoardFamily)] = &[
     // not.
     ("zephyr", BoardFamily::Zephyr),
     ("fvp-aemv8r-smp", BoardFamily::Zephyr),
-    ("armfvp", BoardFamily::Zephyr),
+    // Issue 1902 — every name a board descriptor publishes is a key here, with
+    // its descriptor's family; `board_key_table.rs` derives that from the
+    // catalog, so a new descriptor name with no row is red. These two are
+    // `tier = "scaffold"` Zephyr boards, keyed like the scaffold an536 below.
+    // `armfvp` was a row until then: it is Zephyr's FVP RUNNER, not a board's
+    // name, and no catalog lookup could find it.
+    ("mps2-an385-zephyr", BoardFamily::Zephyr),
+    ("qemu-cortex-a53", BoardFamily::Zephyr),
     ("nuttx", BoardFamily::Nuttx),
     ("qemu-armv7a-nuttx", BoardFamily::Nuttx),
     ("rv-virt-nuttx", BoardFamily::Nuttx),
     ("nuttx-riscv", BoardFamily::Nuttx),
     ("freertos", BoardFamily::Freertos),
+    // `freertos-qemu-mps2-an385` (the retired `-bsp` crate's spelling of this
+    // board) left with issue 1902: no descriptor names it.
     ("mps2-an385-freertos", BoardFamily::Freertos),
-    ("freertos-qemu-mps2-an385", BoardFamily::Freertos),
     ("freertos-posix", BoardFamily::Freertos),
     ("s32z270-freertos", BoardFamily::Freertos),
     ("s32z270", BoardFamily::Freertos),
@@ -465,6 +476,9 @@ pub const BOARD_KEYS: &[(&str, BoardFamily)] = &[
     ("an536", BoardFamily::Freertos),
     ("threadx", BoardFamily::Threadx),
     ("threadx-linux", BoardFamily::Threadx),
+    // Issue 1902 — `threadx-riscv64` is the qemu-riscv64 descriptor's own name;
+    // the catalog accepted it and the typed entry refused it.
+    ("threadx-riscv64", BoardFamily::Threadx),
     ("threadx-qemu-riscv64", BoardFamily::Threadx),
     ("rv-virt-threadx", BoardFamily::Threadx),
 ];
@@ -608,7 +622,6 @@ mod tests {
         for (key, rtos) in [
             ("s32z270", "freertos"),
             ("an536", "freertos"),
-            ("armfvp", "zephyr"),
             ("fvp-aemv8r-smp", "zephyr"),
         ] {
             assert_eq!(tier_rtos_key_for(key), rtos, "`{key}`");
@@ -643,10 +656,13 @@ mod tests {
         // pack knew (`nuttx-riscv`, `freertos-qemu-mps2-an385`, issue 1285),
         // plus `native_sim/native/64` (phase-445 W5), which issue 1519 retired
         // again; minus `native`, which phase-500 W1 retired (the host board's
-        // one name is `linux`).
+        // one name is `linux`). Issue 1902: plus the three descriptor names it
+        // lacked (`threadx-riscv64`, `mps2-an385-zephyr`, `qemu-cortex-a53`),
+        // minus the two keys no descriptor names (`armfvp`,
+        // `freertos-qemu-mps2-an385`).
         assert_eq!(
             BOARD_KEYS.len(),
-            20,
+            21,
             "a key was added or removed without a row"
         );
     }

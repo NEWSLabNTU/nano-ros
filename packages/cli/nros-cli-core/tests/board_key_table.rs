@@ -77,14 +77,14 @@ fn an_unknown_key_errors_at_every_consumer() {
     }
 }
 
-/// The four keys the old SUBSTRING match sent to `posix`, because none of them
-/// contains its RTOS's name.
+/// The keys the old SUBSTRING match sent to `posix`, because none of them
+/// contains its RTOS's name. (`armfvp` was a fourth until issue 1902 deleted
+/// it: it is a Zephyr runner, not a board.)
 #[test]
 fn substring_victims_get_their_real_rtos() {
     for (key, rtos) in [
         ("s32z270", "freertos"),
         ("an536", "freertos"),
-        ("armfvp", "zephyr"),
         ("fvp-aemv8r-smp", "zephyr"),
     ] {
         assert_eq!(board_to_rtos(key), Ok(rtos), "`{key}`");
@@ -125,10 +125,10 @@ fn a_spelling_in_both_namespaces_names_the_same_rtos() {
         );
         assert_eq!(platform.tier_rtos_key(), family.tier_rtos_key(), "`{key}`");
     }
-    // Measured 2026-09-11: 18 of the 21 keys resolve in the catalog. The
-    // exceptions are `armfvp` and `freertos-qemu-mps2-an385`, which it does not
-    // know, and `threadx`, which two descriptors claim. A floor, so the
-    // comparison cannot quietly become vacuous.
+    // Measured 2026-09-11: 18 of the 21 keys resolved in the catalog. Since
+    // issue 1902 every key does, and `threadx`, which two descriptors claim, is
+    // the one this loop skips (`every_entry_key_resolves_in_the_board_catalog`
+    // checks it). A floor, so the comparison cannot quietly become vacuous.
     assert!(shared >= 15, "only {shared} keys resolve in the catalog");
 
     let mut no_rtos = 0;
@@ -231,10 +231,11 @@ fn family_keys_without_a_rust_board_are_exactly_these() {
         c_cpp_only,
         BTreeSet::from([
             "an536",
-            "armfvp",
             "freertos-posix",
             "fvp-aemv8r-smp",
+            "mps2-an385-zephyr",
             "mps3-an536-freertos",
+            "qemu-cortex-a53",
             "s32z270",
             "s32z270-freertos",
             "threadx",
@@ -623,10 +624,12 @@ fn a_zephyr_boards_west_b_comes_from_its_descriptor() {
 /// general-purpose host; the board builds on Linux only) and must be REFUSED
 /// with a hint, not merely absent; `posix` is the platform.
 ///
-/// Scoped to the HOST board on purpose. Asked of every board, the same rule is
-/// red today for reasons outside this issue: `threadx-riscv64` is a descriptor
-/// name `BOARD_KEYS` lacks, `BOARD_PATHS` splits one descriptor by entry shape
-/// (`rtic-mps2-an385` vs bare `mps2-an385`), and ESP32 is dormant (issue 1525).
+/// Scoped to the HOST board because the six-way SET equality is a host fact:
+/// `BOARD_PATHS` splits one descriptor by entry shape (`rtic-mps2-an385` vs
+/// bare `mps2-an385`), so a board-type equality cannot hold for every board.
+/// The every-board half of the rule, compared by FAMILY, is
+/// [`every_descriptor_name_is_an_entry_key_of_its_family`] and
+/// [`every_entry_key_resolves_in_the_board_catalog`] (issue 1902).
 #[test]
 fn the_host_board_keys_are_one_set_everywhere() {
     use nros_cli_core::orchestration::board_descriptor::BoardCatalog;
@@ -706,4 +709,160 @@ fn the_host_board_keys_are_one_set_everywhere() {
         let msg = board_family(old).unwrap_err().to_string();
         assert!(msg.contains(&format!("write `{now}`")), "{msg}");
     }
+}
+
+/// Issue 1902 — every name a board descriptor publishes is an entry key, with
+/// the family its descriptor's `platform` implies. Asked of EVERY descriptor
+/// in the catalog, so a new board is covered with no edit here.
+///
+/// The host-only test above was the only name-set comparison against the
+/// descriptors, and `the_rust_pack_key_set_agrees_with_the_family_table`
+/// starts from `BOARD_PATHS`, so a descriptor name in neither table was never
+/// looked at. `threadx-riscv64` — a name of a tier-2 board — was exactly that:
+/// `nros ws leaf-system` and the board catalog accepted it, and
+/// `nros codegen entry --typed` refused it as an unknown key (issue 0196's
+/// shape: the rule is about every board, the test read one).
+///
+/// FAMILIES are compared, never board types: one descriptor may map to more
+/// than one Rust board type (`nros-board-mps2-an385` is RTIC and direct-exec,
+/// phase-337 W6.a), and that is a Rust-pack choice, not a disagreement.
+///
+/// No tier exemption, deliberately. A `tier = "scaffold"` board's names are
+/// names the catalog already accepts (the an536 FreeRTOS board is scaffold and
+/// its keys were always here), so a scaffold Zephyr board refused by the entry
+/// codegen is the same disagreement. ESP32 (dormant, issue 1525) needs no
+/// exemption either: its platform has no RTOS family, so the rule asks the
+/// opposite of it — that no key claims one of its names — which holds.
+#[test]
+fn every_descriptor_name_is_an_entry_key_of_its_family() {
+    use nros_cli_core::orchestration::board_descriptor::BoardCatalog;
+
+    let catalog = BoardCatalog::load_with_extra(&repo_root(), &[]).expect("in-tree board catalog");
+    let mut missing = Vec::new();
+    let mut wrong = Vec::new();
+    let mut with_family = 0;
+    let mut without_family = 0;
+    for d in catalog.descriptors() {
+        let src = d.source.as_deref().unwrap_or("<no source>");
+        let want = d.platform.board_family();
+        for name in &d.names {
+            match (want, board_family(name)) {
+                (Some(want), Ok(got)) => {
+                    with_family += 1;
+                    if got != want {
+                        wrong.push(format!(
+                            "`{name}` ({src}, platform `{}`): BOARD_KEYS says {}, the \
+                             descriptor implies {}",
+                            d.platform.kebab(),
+                            got.as_str(),
+                            want.as_str()
+                        ));
+                    }
+                }
+                (Some(want), Err(_)) => {
+                    with_family += 1;
+                    missing.push(format!(
+                        "`{name}` ({src}, platform `{}`): no BOARD_KEYS row — add a \
+                         `{}` row for it to nros_entry_lower::BOARD_KEYS",
+                        d.platform.kebab(),
+                        want.as_str()
+                    ));
+                }
+                (None, Ok(got)) => {
+                    without_family += 1;
+                    wrong.push(format!(
+                        "`{name}` ({src}, platform `{}`): the platform has no RTOS family, \
+                         but BOARD_KEYS claims {} — a C entry would get a runner the board \
+                         does not have",
+                        d.platform.kebab(),
+                        got.as_str()
+                    ));
+                }
+                (None, Err(_)) => without_family += 1,
+            }
+        }
+    }
+    assert!(
+        missing.is_empty() && wrong.is_empty(),
+        "board descriptor names and the entry key table disagree (issue 1902):\n  \
+         missing:\n    {}\n  wrong family:\n    {}",
+        missing.join("\n    "),
+        wrong.join("\n    ")
+    );
+    // Floors, so neither arm can go vacuous. Measured 2026-10-15: 23 names on
+    // RTOS-family descriptors, 9 on no-RTOS ones (bare-metal mps2, esp32).
+    assert!(
+        with_family >= 20,
+        "only {with_family} RTOS-family names checked"
+    );
+    assert!(
+        without_family >= 5,
+        "only {without_family} no-RTOS names checked"
+    );
+}
+
+/// Issue 1902, the reverse direction — every key the entry pipeline accepts
+/// (`BOARD_KEYS`, and the Rust pack's `BOARD_PATHS`) selects a board the
+/// catalog can find, through the same `resolve_deploy` every image road uses
+/// (a name, a downstream id, the package-directory alias of issue 0606, or the
+/// platform). A key the catalog cannot resolve is accepted by the entry tables
+/// and refused by `nros sync`/`nros build`, so it only ever reached a hand-run
+/// `nros codegen entry` or `nros::main!` — a selector for no board.
+///
+/// Three such keys were deleted rather than listed: `armfvp` (Zephyr's FVP
+/// RUNNER name, not a board: the board is `fvp-aemv8r-smp`),
+/// `freertos-qemu-mps2-an385` (the retired `-bsp` crate's spelling of
+/// `mps2-an385-freertos`) and `qemu-rtic-mps2-an385` (an alias of
+/// `rtic-mps2-an385`). No in-tree leaf, fixture or test selected any of them.
+/// `mps2-an385` stays: it is the directory alias of `nros-board-mps2-an385`,
+/// so it resolves, and `nros new --platform baremetal` scaffolds it.
+///
+/// A key several descriptors claim (`threadx`: the Linux sim and qemu-riscv64,
+/// picked by target in `BoardCatalog`) must name ONE family across all of them.
+#[test]
+fn every_entry_key_resolves_in_the_board_catalog() {
+    use nros_cli_core::orchestration::board_descriptor::{BoardCatalog, DeployResolution};
+
+    let catalog = BoardCatalog::load_with_extra(&repo_root(), &[]).expect("in-tree board catalog");
+    let mut unknown = Vec::new();
+    let mut ambiguous = 0;
+    let keys: BTreeSet<&str> = known_board_keys()
+        .chain(nros_orchestration_ir::board_path_keys())
+        .collect();
+    for &key in &keys {
+        match catalog.resolve_deploy(key) {
+            DeployResolution::Board(_) => {}
+            DeployResolution::Unknown => unknown.push(key),
+            DeployResolution::Ambiguous(labels) => {
+                ambiguous += 1;
+                let families: BTreeSet<Option<&str>> = catalog
+                    .descriptors()
+                    .iter()
+                    .filter(|d| d.answers_to(key))
+                    .map(|d| d.platform.board_family().map(BoardFamily::as_str))
+                    .collect();
+                assert_eq!(
+                    families.len(),
+                    1,
+                    "`{key}` is claimed by {labels:?}, which name different families \
+                     {families:?} — the entry tables can give it only one"
+                );
+                assert_eq!(
+                    families.into_iter().next().flatten(),
+                    board_family(key).ok().map(BoardFamily::as_str),
+                    "`{key}`: the descriptors claiming it and BOARD_KEYS disagree"
+                );
+            }
+        }
+    }
+    assert!(
+        unknown.is_empty(),
+        "entry keys no board descriptor answers to (issue 1902): {unknown:?}. Add the \
+         key to the board's `names` in its nros-board.toml, or delete it from \
+         nros_entry_lower::BOARD_KEYS / nros_orchestration_ir::BOARD_PATHS"
+    );
+    // `threadx` is the measured ambiguous key (2026-10-15); a floor of one keeps
+    // that arm from going vacuous unnoticed.
+    assert!(ambiguous >= 1, "no ambiguous key checked");
+    assert!(keys.len() >= 25, "only {} keys checked", keys.len());
 }
