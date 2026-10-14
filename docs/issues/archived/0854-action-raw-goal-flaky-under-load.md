@@ -2,10 +2,11 @@
 id: 854
 title: "`action_raw_goal_ships_one_cdr_header` times out in-sweep and passes solo
   with a 16x margin — starved, not slow"
-status: open
+status: resolved
 type: bug
 area: testing
 related: [phase-395]
+resolved: 2026-10-15
 ---
 
 ## Problem
@@ -102,3 +103,30 @@ guessing, and short enough that the entry cannot be forgotten.
 Do not raise the timeout to make it green. That converts a diagnosable
 starvation signal into a longer sweep that still fails under heavier load, and it
 destroys the 16× margin that is currently the evidence for the diagnosis.
+
+## Resolution (2026-10-15)
+
+The test no longer times out under any load this host could put on it, so its
+quarantine entry is removed. The registry is now empty.
+
+Measured on fixtures freshly built with `just linux build-fixture-extras`:
+
+| condition | runs | result | time per run |
+| --- | --- | --- | --- |
+| solo | 5 | 5 pass | 0.71–1.04 s |
+| solo, beside 96 CPU-bound processes (2× `nproc`) | 10 | 10 pass | 0.86–0.98 s |
+| 32 copies at once, each with its own router and domain | 32 | 32 pass | 0.85–0.95 s |
+
+Two things changed since this was filed:
+
+- The solo time fell from 3.6 s to 0.7 s. Issue 0959's teardown fix is the
+  likely cause, since it removed a keep-alive wait from every session close.
+  That attribution is inferred, not bisected.
+- Neither form of contention this issue named reproduces a slowdown: CPU, or
+  many routers and sessions on the loopback at once. Under both, the run takes
+  about 0.9 s against its 60 s budget.
+
+Not measured: a real full `test-all` sweep. The tier-1 lane's recent CI runs
+uploaded no junit, so there is no in-sweep record to compare against. If the
+timeout returns in a sweep, file it fresh with that run's junit, and do not
+raise the timeout (see "Not to do" above).

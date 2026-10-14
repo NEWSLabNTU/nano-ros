@@ -2,11 +2,12 @@
 id: 1235
 title: "`nros sync` refuses a correctly paired resolver on older commits, so the
   board image cannot be built across a bisect"
-status: open
+status: resolved
 type: bug
 area: build
 severity: high
 related: [issue-0409, issue-0419, issue-0561, issue-1177, issue-1227, phase-424]
+resolved: 2026-10-15
 ---
 
 **Home: none** — unhomed after phase-424 was archived 2026-10-12; no active phase fits.
@@ -141,3 +142,34 @@ For anyone who needs to build an older commit before this is fixed:
     ./packages/cli/target/release/nros source-stamp    # must say: fresh
 
 That gets the stamp fresh. It does NOT fix the pairing mismatch above.
+
+## Resolution (2026-10-15)
+
+The unknown mechanism is issue 1659's, which is fixed. The two remaining
+complaints are fixed or gone.
+
+**The pairing mismatch.** The bisect harness ran under `git bisect run`, which
+exports `GIT_DIR`. `GIT_DIR` overrides `git -C`, so `play_launch_pin`'s
+`git -C packages/cli/third-party/play_launch rev-parse HEAD` answered with the
+superproject's HEAD. That is the nano-ros commit under test, exactly the table
+above. The `.git` guard could not help, because the submodule was initialised.
+Issue 1659 measured the same symptom over 25 bisect steps. Its fix
+(3a0aec0260, 2026-10-03) makes every `git` the CLI spawns clear the inherited
+git environment first. The regression test
+`play_launch_pin_ignores_an_inherited_git_dir` runs the pin under an inherited
+`GIT_DIR`, and it passes on `main`.
+
+**The remedies that no-op.** `build.rs` now watches the submodule's commit
+through `build-support/submodule_watch.rs` (issue 0921, 304adfe484), so moving
+the pin re-runs the build script and `setup-cli` rebuilds. The STALE stamp that
+`setup-cli` could not clear was the worktree index-path defect issue 1336
+fixed.
+
+**The box-sync gate.** `check-box-sync-covers-tracked-source` was deleted with
+the box-sync script when issue 1248 retired it (670fe34351).
+
+**Bisecting a commit older than 3a0aec0260.** The CLI built at such a commit
+still carries the bug, because it is that commit's code that runs. Clear git's
+environment in the bisect script before building:
+
+    for v in $(git rev-parse --local-env-vars); do unset "$v"; done

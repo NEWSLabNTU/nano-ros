@@ -468,9 +468,10 @@ A batch red is ambiguous between a real defect and a flake, and bisection
 amplifies the cost. Quarantine means the test **still runs and still records**
 but no longer blocks; it does not mean deleted.
 
-Today's candidate: `action_raw_goal_ships_one_cdr_header` — 60 s timeout
-in-sweep, 3.6 s solo, 5/5 passes. A 16× margin, load-induced. Now issue 0854 and
-the first entry in `.config/flake-quarantine.toml`.
+The first entry was `action_raw_goal_ships_one_cdr_header`: a 60 s timeout
+in-sweep, 3.6 s solo, 5/5 passes (issue 0854). It left the registry on
+2026-10-15, once a re-measurement could not make it fail under load, so the
+registry is empty today.
 
 Two rules the registry enforces, both aimed at the same failure — a quarantine
 that quietly becomes permanent:
