@@ -1,9 +1,9 @@
 # Phase 486 — the launch model carries what every realizer reads; nano-ros's own facts move to an overlay
 
-**Status (2026-10-13). W0–W4, W7 and W8a–W8c LANDED (W4 #2034, W7 #2038, W8a #2067, W8b rlm `v0.1.57`, W8c #2089); W5 landed in play_launch (`ca7eb1a`, its phase 86 W1–W4) and W6 in rlm (`v0.1.55`/`v0.1.56`). W9 LANDED (#2076), and W9b retires the last carrier (below). The 0.6.0 deletion of `[deploy.*]`/`[param_services]` landed with the bundle bump to 0.6.0 (issue 1809; PR #2081). Design revised 2026-10-12 and 2026-10-13 (below).** Implements RFC-0060's
-[2026-10-10 amendment](../design/0060-launch-toolchain-three-layers.md#amendment-2026-10-10--what-the-systemmodel-may-carry-and-where-nano-ross-own-facts-go)
+**Status (2026-10-14). COMPLETE, archived. W0–W4, W7 and W8a–W8c LANDED (W4 #2034, W7 #2038, W8a #2067, W8b rlm `v0.1.57`, W8c #2089); W5 landed in play_launch (`ca7eb1a`, its phase 86 W1–W4) and W6 in rlm (`v0.1.55`/`v0.1.56`). W9 LANDED (#2076), and W9b retires the last carrier (below). The 0.6.0 deletion of `[deploy.*]`/`[param_services]` landed with the bundle bump to 0.6.0 (issue 1809; PR #2081). Design revised 2026-10-12 and 2026-10-13 (below).** Implements RFC-0060's
+[2026-10-10 amendment](../../design/0060-launch-toolchain-three-layers.md#amendment-2026-10-10--what-the-systemmodel-may-carry-and-where-nano-ross-own-facts-go)
 and RFC-0100's
-[2026-10-10 ruling](../design/0100-rmw-agnostic-sizing-model.md#ruling-2026-10-10--a-stated-fact-earns-a-file-whatever-it-came-from).
+[2026-10-10 ruling](../../design/0100-rmw-agnostic-sizing-model.md#ruling-2026-10-10--a-stated-fact-earns-a-file-whatever-it-came-from).
 Spans three repositories, which move in a fixed order (below):
 `ros-launch-manifest` (rlm, `docs/model-boundary.md`), `play_launch`
 (phase 86) and nano-ros (this doc).
