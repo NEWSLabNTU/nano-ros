@@ -1270,7 +1270,7 @@ vocabulary alive, which is the thing being removed. `rcl_compat.h` retires:
 what it maps today (return codes, the documented refusals) moves into
 `<rcl/types.h>` and the family headers.
 
-Work items: [phase-492](../roadmap/phase-492-c-api-rcl-names.md). The
+Work items: [phase-492](../roadmap/archived/phase-492-c-api-rcl-names.md). The
 parameter surface is designed in [RFC-0105](0105-c-parameter-server.md) and
 already follows this rule.
 
@@ -1343,7 +1343,7 @@ types (2026-09-05). A raw FFI type a user touches
 operator's `NROS_LOCATOR` environment variable (configuration, like an RMW's
 own variables), the port seams, and `nros_cpp_init_multi` (a PX4 integration
 seam with no rclcpp shape). Implemented by
-[phase-499](../roadmap/phase-499-user-surface-entry-and-cpp.md).
+[phase-499](../roadmap/archived/phase-499-user-surface-entry-and-cpp.md).
 
 ## Settled: each language follows ITS OWN upstream (2026-09-04)
 

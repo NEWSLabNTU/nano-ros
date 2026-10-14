@@ -1,10 +1,10 @@
 # Phase 492 — The C API drops `nros_`: upstream names, `rclc_` for the rest
 
-**Status (2026-10-12). In progress — W1, W2, W3, W5, W6, W7 and W8 landed, W4 part 1 landed; W4 part 2 (C components onto the C API) open.** Implements the
-[RFC-0089](../design/0089-ros2-api-adoption-and-the-compile-or-conform-rule.md)
+**Status (2026-10-15). Complete — W1–W8 landed, W4 in two parts; the regression it opened (issue 1876) is resolved by issue 1879, and the rest of the user surface moved to phase-499.** Implements the
+[RFC-0089](../../design/0089-ros2-api-adoption-and-the-compile-or-conform-rule.md)
 amendment "`nros_` is phased out of the C API; ours-only names take `rclc_`"
 (2026-10-12). The C counterpart of the C++ `nros::` → `rclcpp::` flip
-(phase-427/428). Runs beside [phase-491](archived/phase-491-c-parameter-server.md),
+(phase-427/428). Runs beside [phase-491](phase-491-c-parameter-server.md),
 whose parameter surface already follows the rule.
 
 ## Why
@@ -116,7 +116,7 @@ sees zero allocations across publish and take.
 
 ## Regressions
 
-* [issue 1876](../issues/archived/1876-nuttx-arm-c-images-never-reach-readiness.md)
+* [issue 1876](../../issues/archived/1876-nuttx-arm-c-images-never-reach-readiness.md)
   (resolved by issue 1879): NuttX-ARM C images failed
   `rclc_subscription_init_default` with `RCL_RET_INVALID_ARGUMENT`, because
   W8's data-object type support was read through a GOT that `dramboot.ld`
