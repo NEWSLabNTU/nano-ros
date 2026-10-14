@@ -366,7 +366,7 @@ phase-455 W2 evidence: completed 3/3 after a 10000 ms soak with 3 peer up/down
 cycles; server says `reply-slot: refusals=0`
 ```
 
-Runner: `just native test-action-completion`. The rate is recorded as EVIDENCE;
+Runner: `just linux test-action-completion`. The rate is recorded as EVIDENCE;
 the assertions are `completed == sent` and `reply-slot: refusals=0`, which are
 statements rather than samples — that is what this issue asked for when it said
 a spread with no observable cause is not measurable as a regression gate.
@@ -408,7 +408,7 @@ phase-444 W2's board run, phase-455 W3's live ROS 2 zenoh action cells, or issue
 
 Issue 1332's route 2, landed and **resolved**:
 `zenoh_integration::a_declined_query_hands_its_reply_slot_back`, run by
-`just native test-reply-slot-decline`. It sends `capacity + 2` EMPTY-PAYLOAD
+`just linux test-reply-slot-decline`. It sends `capacity + 2` EMPTY-PAYLOAD
 queries — the exact shape the shim's liveliness arm drops — to a real
 `ZenohServiceServer`'s own keyexpr, on one session, and then reads the table.
 

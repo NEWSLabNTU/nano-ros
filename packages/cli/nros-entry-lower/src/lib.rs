@@ -500,8 +500,8 @@ impl core::fmt::Display for UnknownBoard {
 
 impl core::error::Error for UnknownBoard {}
 
-/// Board keys that USED to select a board and no longer do, each with the key
-/// that replaced it.
+/// Board keys that do not select a board, each with the key to write instead
+/// and why the key is not a board's name.
 ///
 /// phase-500 W1 — `native` selected the host board until the maintainer's
 /// 2026-10-14 ruling: `native` names the whole class of general-purpose hosts
@@ -510,20 +510,34 @@ impl core::error::Error for UnknownBoard {}
 /// `cpu_set_t`/`sched_setaffinity` fail on darwin, windows and freebsd). So the
 /// selector claimed more than the board delivers, and `linux` is the one name.
 ///
+/// phase-500 W5 — `posix` is the PLATFORM (`nros-platform-posix`), and it once
+/// reached the host board as a board key through the catalog's platform
+/// fallback (`BoardCatalog::resolve_deploy`) and as a `nros new --platform`
+/// alias. It is refused the same way now.
+///
 /// Every consumer that refuses an unknown board key asks
 /// [`retired_board_key_hint`] first, so a retired key gets ONE message — the
 /// replacement — wherever it is written, instead of a list of known keys to
-/// search.
-pub const RETIRED_BOARD_KEYS: &[(&str, &str)] = &[("native", "linux")];
+/// search. This is a REFUSAL table: nothing maps a key through it.
+pub const RETIRED_BOARD_KEYS: &[(&str, &str, &str)] = &[
+    (
+        "native",
+        "linux",
+        "`native` names every general-purpose host, and the host board builds on Linux only",
+    ),
+    (
+        "posix",
+        "linux",
+        "`posix` is the platform (`nros-platform-posix`), not a board",
+    ),
+];
 
 /// The refusal for a retired board key (see [`RETIRED_BOARD_KEYS`]), naming
 /// its replacement; `None` for any other key.
 pub fn retired_board_key_hint(key: &str) -> Option<alloc::string::String> {
-    let (_, now) = RETIRED_BOARD_KEYS.iter().find(|(old, _)| *old == key)?;
+    let (_, now, why) = RETIRED_BOARD_KEYS.iter().find(|(old, _, _)| *old == key)?;
     Some(alloc::format!(
-        "board `{key}` no longer names a board: write `{now}`. The host board \
-         builds on Linux only, so `{key}` (every general-purpose host) claimed \
-         more than it delivers (phase-500)."
+        "board `{key}` does not name a board: write `{now}`. {why} (phase-500)."
     ))
 }
 

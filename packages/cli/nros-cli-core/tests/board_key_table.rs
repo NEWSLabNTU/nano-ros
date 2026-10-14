@@ -701,7 +701,7 @@ fn the_host_board_keys_are_one_set_everywhere() {
 
     // A retired key is refused NAMING its replacement, by every consumer
     // that refuses an unknown key through the entry table.
-    for (old, now) in nros_entry_lower::RETIRED_BOARD_KEYS {
+    for (old, now, _) in nros_entry_lower::RETIRED_BOARD_KEYS {
         assert!(!descriptor.contains(old), "`{old}` is retired");
         let msg = board_family(old).unwrap_err().to_string();
         assert!(msg.contains(&format!("write `{now}`")), "{msg}");

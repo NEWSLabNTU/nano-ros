@@ -158,7 +158,7 @@ nros_pool_run() {
     # would corrupt its artifacts", so its key must name an artifact SET. One
     # constant name for every pool claimed that any two pools in a tree share
     # artifacts, which nothing measured: `just check build` fans out
-    # `native-check` (pool `check-examples`: `build/example-lint/<leaf>`, leaf
+    # `linux-check` (pool `check-examples`: `build/example-lint/<leaf>`, leaf
     # `Cargo.lock`s, the `nros sync` output of the board-image leaves it lints)
     # and `source-gates` (pool `compile-check`: `build/compile-check-fixtures/
     # <id>`), disjoint write sets, and whichever started second was REFUSED —

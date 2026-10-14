@@ -102,17 +102,6 @@ mod cyclonedds 'just/cyclonedds.just'
 mod ros_editions 'just/ros-editions.just'
 mod probe 'just/probe.just'
 
-# DEPRECATED spelling of `mod linux` — phase-500 W2. `just native <recipe> …`  retired-host-token: alias
-# prints the notice from the ONE retired-token table
-# (`_NROS_RETIRED_HOST_TOKENS`, scripts/build/fixture-lane.sh) and forwards to
-# `just linux <recipe> …`. `just` has no module alias, so this is a recipe;
-# phase-500 W5 deletes it together with the table row.
-[private]
-[positional-arguments]
-native *ARGS:
-    @bash -c 'source scripts/build/fixture-lane.sh && nros_retired_host_token native >/dev/null'
-    @just linux "$@"
-
 # =============================================================================
 # Recipe organization (convention — keep new recipes consistent)
 # =============================================================================
@@ -4850,8 +4839,12 @@ setup target="" tier="" *extra:
             *)
                 # shellcheck source=scripts/build/scope.sh
                 source scripts/build/scope.sh
-                # phase-500 W2 — `native` is a deprecated spelling of `linux`.
-                target="$(nros_retired_host_token "$target")"
+                # phase-500 W5 — a retired host token (`native`) is refused,
+                # naming `linux`, before any arm could read it.
+                if hint="$(nros_retired_host_token_hint "$target")"; then
+                    echo "just setup: unknown scope '$target' — $hint" >&2
+                    exit 2
+                fi
                 if nros_scope_is_platform "$target" \
                    && nros_scope_module_has_verb "$target" setup; then
                     # Focused platform setup may still shell `nros setup …`;

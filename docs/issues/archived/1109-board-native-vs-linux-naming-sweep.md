@@ -9,7 +9,7 @@ found: 2026-09-06
 related: [1107, 1108, phase-401, phase-445, phase-500]
 ---
 
-**Home: [phase-500](../../roadmap/phase-500-linux-host-name.md)** — re-homed
+**Home: [phase-500](../../roadmap/archived/phase-500-linux-host-name.md)** — re-homed
 2026-10-14 from phase-445 (re-homed there 2026-10-12 from phase-401, which is
 archived).
 

@@ -46,9 +46,8 @@ invisible to the old gate's `tests` exclusion):
      `mod native`, `native::<recipe>`, `NROS_TEST_SCOPE|NROS_FIXTURE_LANE|
      NROS_FIXTURE_SCOPE=native`, `lane-filter.sh native`, `--scope native` or
      a renamed `native_<test>` binary (nextest `binary(...)` filters included),
-     and `native` is in neither `_NROS_LANES` nor `_NROS_SCOPE_PLATFORMS`. The
-     DEPRECATED alias (one cycle; phase-500 W5 removes it) is allowed only on a
-     line carrying the pragma `retired-host-token: alias`.
+     and `native` is in neither `_NROS_LANES` nor `_NROS_SCOPE_PLATFORMS`.
+     The gate recipe `native-check` is `linux-check` (phase-500 W5).
   8. (phase-500 W3) Host IMAGE IDS are `linux…`: no tracked file outside the
      history series holds an `[image.native…]` header (TOML, or TOML inlined in
      a test or a doc), no `examples/fixtures.toml` row names
@@ -67,7 +66,7 @@ invisible to the old gate's `tests` exclusion):
      directory. Every plan must equal the shape's expected plan, so a
      `platform != "native"` test (1882's, which left 21 host leaves unrendered
      on a fresh checkout) fails here on a pull request instead of in the
-     nightly-only `native-check`. Then every tracked example leaf whose
+     nightly-only `linux-check`. Then every tracked example leaf whose
      `system.toml` declares an `[image.<id>]` — of any id — must plan a render.
  10. (phase-500 W4) The host EXAMPLE DIRECTORY is `examples/linux/`: no
      tracked path lies under `examples/native/`, and no tracked file outside
@@ -75,12 +74,28 @@ invisible to the old gate's `tests` exclusion):
      relative to `examples/` (`"native/rust/…"`, `'native/c/…'` — the
      `build_example("native/rust/talker", …)` shape the test fixtures use).
      No alias: a moved directory cannot have one.
+ 11. (phase-500 W5) NO ALIAS maps `native` or `posix` to the host board or
+     lane — each REFUSES, naming `linux`. Statically: no tracked file outside
+     the history series spells an `old=new` retired-token row (`native=linux`,
+     `posix=linux`), the retired mapping function `nros_retired_host_token`,
+     a deprecation notice that hands the old word on (`'native' is now`,
+     `` `--platform native` is deprecated``, `is a deprecated board name`), a
+     scaffold arm matching `"linux" | "native"` / `"posix"`; `fixture-lane.sh`'s
+     `_NROS_RETIRED_HOST_TOKENS` holds bare words, no `=`; the root justfile
+     has no `native` recipe or alias. Behaviourally, the shell front doors are
+     RUN with `native`: the lane validator, `nros_lane_build_lane`, the scope
+     validator and `lane-filter.sh` must each exit non-zero naming `'linux'`.
+     The Rust front doors (`nros setup native|posix`, `nros new --platform
+     native|posix`, `BoardCatalog::resolve_deploy("posix")`) are unit tests:
+     `setup.rs::a_retired_host_board_key_is_refused_naming_linux`,
+     `new.rs::a_retired_host_platform_is_refused_naming_linux`,
+     `board_descriptor.rs::retired_host_board_keys_resolve_to_nothing`,
+     `image.rs::a_retired_host_board_key_is_refused_naming_linux`; the lane
+     one is also `lane_build_covers_run::the_retired_native_lane_is_refused_naming_linux`.
 
 WHAT IT DELIBERATELY DOES NOT CHECK
 
-Prose, and the deprecated CLI ALIASES (`nros new --platform native|posix`,
-`nros setup native`), which exist for released book pages and are retired by
-phase-500 W5. The fixture ROW
+Prose. The fixture ROW
 ids (`workspace-rust-native-…`) are a coordinate vocabulary of their own, like
 the interop cell ids. `native` in its other senses (Zephyr
 `native_sim`, RTOS-native priorities, interop cell ids, prose) is not a lane.
@@ -214,9 +229,9 @@ RETIRED_LANE_RE = re.compile(
     r"|\bnative::[a-z_]"
     r"|--scope native\b"
     r"|just/native\.just"
+    r"|\bnative-check\b"
     r"|\bnative_(?:" + "|".join(RENAMED_TESTS) + r")\b",
     re.M)
-ALIAS_PRAGMA = "retired-host-token: alias"
 # The history series: they record what WAS typed, and rewriting them would
 # falsify the record. Everything else is a live instruction to a reader.
 HISTORY = ("docs/roadmap/", "docs/issues/", "CHANGELOG.md", "changelog.d/",
@@ -230,11 +245,9 @@ TOKEN_LISTS = (("scripts/build/fixture-lane.sh", "_NROS_LANES"),
 
 def lane_problems(text):
     """(line number, matched spelling) for every retired host-lane spelling in
-    `text` that is not on a line carrying the alias pragma."""
+    `text`."""
     out = []
     for n, line in enumerate(text.split("\n"), 1):
-        if ALIAS_PRAGMA in line:
-            continue
         out += [(n, m.group(0)) for m in RETIRED_LANE_RE.finditer(line)]
     return out
 
@@ -282,11 +295,9 @@ FIXTURES = "examples/fixtures.toml"
 
 def image_id_problems(text):
     """(line number, matched spelling) for every retired host image id, or a
-    name derived from one, in `text` (alias-pragma lines excepted)."""
+    name derived from one, in `text`."""
     out = []
     for n, line in enumerate(text.split("\n"), 1):
-        if ALIAS_PRAGMA in line:
-            continue
         out += [(n, m.group(0)) for m in RETIRED_IMAGE_RE.finditer(line)]
     return out
 
@@ -354,6 +365,99 @@ def check_example_dir():
             continue
         problems += [(f"{rel}:{n}", f"`{w}` — the host example directory is `examples/linux/` "
                       "(phase-500 W4)") for n, w in example_dir_problems(text)]
+    return problems
+
+
+# Check 11 — phase-500 W5. No alias maps `native` / `posix` to the host board
+# or lane. The shapes each W1/W2 alias had, so a re-added one is caught by the
+# shape it would take; ONE list, a new shape joins it.
+RETIRED_ALIAS_RE = re.compile(
+    r"\b(?:native|posix)=linux\b"  # an old=new retired-token row
+    r"|\bnros_retired_host_token\b(?!_hint)"  # the W2 mapping function
+    r"|'(?:native|posix)' is now\b"  # its notice
+    r"|`--platform (?:native|posix)` is deprecated"  # W1 `nros new` notice
+    r"|is a deprecated board name"  # W1 `nros setup` notice
+    r"|\"linux\"\s*\|\s*\"(?:native|posix)\"|\"(?:native|posix)\"\s*\|\s*\"linux\"")  # a scaffold arm
+ROOT_JUSTFILE = "justfile"
+ROOT_NATIVE_RECIPE_RE = re.compile(
+    r"^(?:@)?native(?:\s+[^:=\n]*)?:(?!=)|^alias\s+native\b", re.M)
+FIXTURE_LANE = "scripts/build/fixture-lane.sh"
+
+
+def alias_problems(text):
+    """(line number, matched spelling) for every retired-alias shape in `text`."""
+    out = []
+    for n, line in enumerate(text.split("\n"), 1):
+        out += [(n, m.group(0)) for m in RETIRED_ALIAS_RE.finditer(line)]
+    return out
+
+
+def root_recipe_problems(text):
+    """(line number, header) for a `native` recipe or alias in the root justfile."""
+    return [(text.count("\n", 0, m.start()) + 1, m.group(0).strip())
+            for m in ROOT_NATIVE_RECIPE_RE.finditer(text)]
+
+
+def retired_table_problems(text):
+    m = re.search(r'^_NROS_RETIRED_HOST_TOKENS="([^"]*)"', text, re.M)
+    if not m:
+        return ["_NROS_RETIRED_HOST_TOKENS not found (the refusal has no table)"]
+    rows = m.group(1).split()
+    out = [f"_NROS_RETIRED_HOST_TOKENS row `{r}` maps a retired token (a refusal "
+           "table holds bare words)" for r in rows if "=" in r]
+    if "native" not in [r.split("=", 1)[0] for r in rows]:
+        out.append("_NROS_RETIRED_HOST_TOKENS does not list `native`")
+    return out
+
+
+# (what, shell snippet run from the repo root) — each must exit non-zero and
+# name `'linux'`. `native` is passed as data, so a re-added mapping turns the
+# exit status green and fails here.
+FRONT_DOORS = (
+    ("lane argument (`lane=native`)",
+     'source scripts/build/fixture-lane.sh; l="$(nros_lane_arg lane=native)"; '
+     'nros_lane_validate "$l"'),
+    ("nros_lane_build_lane", "source scripts/build/fixture-lane.sh; nros_lane_build_lane native"),
+    ("scope (`just build|test|doctor|setup native`)",
+     "source scripts/build/scope.sh; nros_scope_validate_all native"),
+    ("lane-filter.sh", "bash scripts/test/lane-filter.sh native"),
+)
+
+
+def front_door_problems(run=None):
+    run = run or (lambda snip: subprocess.run(
+        ["bash", "-c", snip], cwd=ROOT, capture_output=True, text=True))
+    out = []
+    for what, snip in FRONT_DOORS:
+        r = run(snip)
+        text = (r.stdout or "") + (r.stderr or "")
+        if r.returncode == 0:
+            out.append((what, f"accepts `native` (rc=0) — it must REFUSE: {text.strip()[:200]}"))
+        elif "'linux'" not in text:
+            out.append((what, f"refuses `native` without naming `linux`: {text.strip()[:200]}"))
+    return out
+
+
+def check_aliases():
+    problems = []
+    for rel in git_grep.lines(["-lIE", r"(native|posix)=linux|nros_retired_host_token"
+                               r"|is now|is deprecated|deprecated board|\"(native|posix)\"",
+                               "--", ".", ":!third-party"], ROOT):
+        if rel.startswith(HISTORY) or rel == SELF or "/third-party/" in f"/{rel}":
+            continue
+        try:
+            with open(os.path.join(ROOT, rel), encoding="utf8", errors="replace") as fh:
+                text = fh.read()
+        except OSError:
+            continue
+        problems += [(f"{rel}:{n}", f"`{w}` — a retired host alias must REFUSE naming "
+                      "`linux`, never map (phase-500 W5)") for n, w in alias_problems(text)]
+    with open(os.path.join(ROOT, ROOT_JUSTFILE), encoding="utf8") as fh:
+        problems += [(f"{ROOT_JUSTFILE}:{n}", f"`{h}` — no `native` recipe forwards to "
+                      "`just linux` (phase-500 W5)") for n, h in root_recipe_problems(fh.read())]
+    with open(os.path.join(ROOT, FIXTURE_LANE), encoding="utf8") as fh:
+        problems += [(FIXTURE_LANE, p) for p in retired_table_problems(fh.read())]
+    problems += front_door_problems()
     return problems
 
 
@@ -526,9 +630,9 @@ def self_test():
         ("format: native::format\n", [(1, "native::f")]),
         ('filter = "binary(native_api)"\n', [(1, "native_api")]),
         ("env NROS_FIXTURE_LANE=native x\n", [(1, "NROS_FIXTURE_LANE=native")]),
-        ("just native test  # retired-host-token: alias\n", []),
         ("just zephyr native_sim\n", []),  # another sense
-        ("just check native-check\n", []),  # a gate recipe name, not the module
+        ("just check native-check\n", [(1, "native-check")]),  # W5: `linux-check`
+        ("just check linux-check\n", []),
         ("examples/native/rust/talker\n", []),  # a directory: check 10
         ("native-pubsub-rust-zenoh-n2r\n", []),  # an interop cell id
     ]:
@@ -553,7 +657,6 @@ def self_test():
         ('"native_robot1_entry_nros_selection"\n', [(1, "native_robot1_entry_nros_selection")]),
         ("build_native_workspace_rust_entry()\n", []),  # a helper's name, no id
         ("linux_entry linux_robot1_entry\n", []),
-        ("[image.native]  # retired-host-token: alias\n", []),
     ]:
         got = image_id_problems(body)
         if got != exp:
@@ -590,6 +693,58 @@ def self_test():
         got = example_dir_problems(body)
         if got != exp:
             fails.append(f"example dir {body!r}: expected {exp}, got {got}")
+    for body, exp in [
+        ('_NROS_RETIRED_HOST_TOKENS="native"\n', []),
+        ('_NROS_RETIRED_HOST_TOKENS="native=linux"\n',
+         [(1, "native=linux")]),
+        ('    nros_retired_host_token "$tok" quiet\n', [(1, "nros_retired_host_token")]),
+        ('    nros_retired_host_token_hint "$tok"\n', []),
+        ("echo \"DEPRECATED: 'native' is now 'linux'\"\n", [(1, "'native' is now")]),
+        ('"nros new: `--platform native` is deprecated; using linux"\n',
+         [(1, "`--platform native` is deprecated")]),
+        ('"nros setup: `{old}` is a deprecated board name"\n', [(1, "is a deprecated board name")]),
+        ('        "linux" | "native" | "posix" => PlatformSpec {\n', [(1, '"linux" | "native"')]),
+        ('        "posix" | "linux" => x,\n', [(1, '"posix" | "linux"')]),
+        ('        "posix" | "native" => &mut def.posix,\n', []),  # tier key: external vocab
+        ('        "linux" => PlatformSpec {\n', []),
+        ("NROS_PLATFORM=posix\n", []),
+    ]:
+        got = alias_problems(body)
+        if got != exp:
+            fails.append(f"alias {body!r}: expected {exp}, got {got}")
+    for body, exp in [
+        ("mod linux 'just/linux.just'\n", []),
+        ("[private]\nnative *ARGS:\n    @just linux \"$@\"\n", [(2, "native *ARGS:")]),
+        ("@native:\n", [(1, "@native:")]),
+        ("alias native := linux\n", [(1, "alias native")]),
+        ("native-check:\n", []),  # check 7's, not a root alias
+        ("native_x := '1'\n", []),
+    ]:
+        got = root_recipe_problems(body)
+        if got != exp:
+            fails.append(f"root recipe {body!r}: expected {exp}, got {got}")
+    for body, exp in [
+        ('_NROS_RETIRED_HOST_TOKENS="native"\n', []),
+        ('_NROS_RETIRED_HOST_TOKENS="native=linux"\n',
+         ["_NROS_RETIRED_HOST_TOKENS row `native=linux` maps a retired token (a refusal "
+          "table holds bare words)"]),
+        ("", ["_NROS_RETIRED_HOST_TOKENS not found (the refusal has no table)"]),
+    ]:
+        got = retired_table_problems(body)
+        if got != exp:
+            fails.append(f"retired table {body!r}: expected {exp}, got {got}")
+
+    class R:
+        def __init__(self, rc, out):
+            self.returncode, self.stdout, self.stderr = rc, out, ""
+    for result, n in [
+        (R(2, "unknown lane 'native' — write 'linux'"), 0),
+        (R(0, "linux"), len(FRONT_DOORS)),  # a mapping that came back
+        (R(2, "unknown lane 'native'"), len(FRONT_DOORS)),  # refused, no hint
+    ]:
+        got = front_door_problems(lambda _s, r=result: r)
+        if len(got) != n:
+            fails.append(f"front door rc={result.returncode}: expected {n} problem(s), got {got}")
     good = {"render": "1", "config": "", "flags": PLAN_FLAGS}
     for plans, n in [
         ({"native": good, "mps2": good}, 0),
@@ -621,25 +776,25 @@ def main():
               file=sys.stderr)
         return 1
     problems = (check_descriptors() + check_files() + check_lane_vocabulary()
-                + check_image_ids() + check_example_dir())
+                + check_image_ids() + check_example_dir() + check_aliases())
     if problems:
         print("check-host-platform-vocabulary: the host board, lane, module, scope or "
               "image id or example directory is spelled by a word other than `linux` "
-              "(phase-500 W1-W4):\n", file=sys.stderr)
+              "(phase-500 W1-W5):\n", file=sys.stderr)
         for rel, what in problems:
             print(f"  {rel}: {what}", file=sys.stderr)
         print(
             "\n  native = every general-purpose host (Linux, macOS, Windows)\n"
             "  posix  = POSIX-compliant systems (the PLATFORM's name)\n"
             "  linux  = Linux — the host board, which builds on Linux only\n"
-            "  See CLAUDE.md “Naming” and docs/roadmap/phase-500-linux-host-name.md.",
+            "  See CLAUDE.md “Naming” and docs/roadmap/archived/phase-500-linux-host-name.md.",
             file=sys.stderr,
         )
         return 1
     print("check-host-platform-vocabulary OK — the host board is `linux` in every "
           "descriptor, selector, deploy list, cmake DEPLOY and sdk-index key, and the "
           "host lane / just module / scope / test binaries / image ids / example directory "
-          "say `linux`; the example "
+          "say `linux`, no alias maps `native`/`posix` to it (each front door refuses); the example "
           "lint decides by leaf shape, not platform directory.")
     return 0
 

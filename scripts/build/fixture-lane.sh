@@ -61,34 +61,27 @@ NROS_FIXTURE_STAMP="${NROS_FIXTURE_STAMP:-target/nextest/.fixtures-built}"
 #                  collapse them again.
 _NROS_LANES="all linux tier1 tier2 tier2-nightly"
 
-# Retired spellings of a lane / scope / `just` module token, as `old=new`
-# pairs — phase-500 W2. `native` named the Linux host lane, scope and module
-# until the maintainer's 2026-10-14 ruling (native = any general-purpose host,
-# linux = Linux); the host build is Linux-only, so `linux` is the true word.
-#
-# ONE table, read by every entry point that accepts such a token (lane args,
-# scope tokens, `lane-filter.sh`, the build stamp; the root `native` recipe
-# in the justfile is its one `just`-side twin). DEPRECATED for one cycle:
-# phase-500 W5 deletes the `native=linux` row, after which the old spelling is
-# an unknown token. `check-host-platform-vocabulary` (check 7) refuses any
-# other use of the old spelling.
-_NROS_RETIRED_HOST_TOKENS="native=linux"
+# Retired spellings of the host lane / scope / `just` module — phase-500.
+# `native` named them until the maintainer's 2026-10-14 ruling (native = any
+# general-purpose host, linux = Linux); the host build is Linux-only, so the
+# word is `linux`. W2 kept `native` as a deprecated alias for one cycle and W5
+# RETIRED it: a retired token is REFUSED, naming its successor, never mapped.
+# `check-host-platform-vocabulary` (check 11) refuses an `old=new` mapping
+# table, a function that echoes a successor, and a root `native` recipe.
+_NROS_RETIRED_HOST_TOKENS="native"
 
-# nros_retired_host_token <tok> [quiet] — echo the token's current spelling.
-# A retired token prints a deprecation notice to stderr (unless `quiet`, for a
-# value read back from a file the old spelling wrote, e.g. a build stamp).
-nros_retired_host_token() {
-    local tok="${1:-}" quiet="${2:-}" pair
-    for pair in $_NROS_RETIRED_HOST_TOKENS; do
-        if [ "$tok" = "${pair%%=*}" ]; then
-            if [ "$quiet" != "quiet" ]; then
-                echo "DEPRECATED: '${pair%%=*}' is now '${pair#*=}' (phase-500 W2; the old spelling is removed in W5)." >&2
-            fi
-            echo "${pair#*=}"
+# nros_retired_host_token_hint <tok> — print why a retired token is refused
+# (to stdout, for the caller's error message) and return 0; return 1, printing
+# nothing, for any other token. Never a mapping: the caller refuses.
+nros_retired_host_token_hint() {
+    local tok="${1:-}" old
+    for old in $_NROS_RETIRED_HOST_TOKENS; do
+        if [ "$tok" = "$old" ]; then
+            echo "'$old' is no longer a lane, scope or module name: write 'linux' (the host build is Linux-only — phase-500)."
             return 0
         fi
     done
-    echo "$tok"
+    return 1
 }
 
 # Normalize a lane argument as it arrives from `just`.
@@ -102,7 +95,7 @@ nros_retired_host_token() {
 nros_lane_arg() {
     local lane="${1:-all}"
     lane="${lane#lane=}"
-    nros_retired_host_token "${lane:-all}" "${2:-}"
+    echo "${lane:-all}"
 }
 
 nros_lane_validate() {
@@ -111,6 +104,11 @@ nros_lane_validate() {
     for known in $_NROS_LANES; do
         if [ "$lane" = "$known" ]; then return 0; fi
     done
+    local hint
+    if hint="$(nros_retired_host_token_hint "$lane")"; then
+        echo "fixture-lane: unknown lane '$lane' — $hint" >&2
+        return 2
+    fi
     echo "fixture-lane: unknown lane '$lane' — expected one of: $_NROS_LANES" >&2
     return 2
 }
@@ -557,8 +555,10 @@ nros_fixtures_stamp_lane() {
     [ -f "$NROS_FIXTURE_STAMP" ] || return 1
     local lane
     lane="$(sed -n 's/^lane=//p' "$NROS_FIXTURE_STAMP" | head -1)"
-    # A stamp written before phase-500 W2 names the retired `native` lane.
-    nros_retired_host_token "${lane:-all}" quiet
+    # A stamp written before phase-500 W2 names the retired `native` lane; it
+    # is echoed as written, so it covers no current lane and the run asks for
+    # a rebuild (phase-500 W5 — never read as `linux`).
+    echo "${lane:-all}"
 }
 
 # nros_lane_run_is_narrowed <build-lane>

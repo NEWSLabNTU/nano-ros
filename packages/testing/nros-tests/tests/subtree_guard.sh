@@ -261,7 +261,7 @@ echo "  ok: two checkouts get separate locks, and the refusal names the holder"
 #
 # Issue 1886. `jobserver-pool.sh` ran EVERY pool under one guard name, so the
 # tree's lock meant "some pool is running" — and `just check build` fans out
-# two gates that each run one (`native-check` -> pool `check-examples`,
+# two gates that each run one (`linux-check` -> pool `check-examples`,
 # `source-gates` -> pool `compile-check`). Whichever started second refused,
 # and `ci gate` went red on main while each gate passed alone. Their write sets
 # were MEASURED disjoint (issue 1886), so the key is the pool's LABEL.

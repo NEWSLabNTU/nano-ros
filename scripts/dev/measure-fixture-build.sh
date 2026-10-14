@@ -9,7 +9,7 @@
 # whose procedure lives in prose is not a measurement anyone can repeat, and the
 # whole point of W1/W5 is comparing two runs.
 #
-# Usage:  bash scripts/dev/measure-fixture-build.sh [lane]     (default: native)
+# Usage:  bash scripts/dev/measure-fixture-build.sh [lane]     (default: linux)
 #
 # Emits a markdown block on stdout, ready to paste into
 # `docs/roadmap/data/phase-331-w<N>-baseline.md`, and leaves the full build log
@@ -26,7 +26,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
-LANE="${1:-native}"
+LANE="${1:-linux}"
 LOG="tmp/measure-fixture-build-${LANE}.log"
 mkdir -p tmp
 

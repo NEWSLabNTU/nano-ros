@@ -269,8 +269,8 @@ build-serial: \
     embedded-feature-unification \
     excluded-crate-tests \
     launch-resolve-builds \
+    linux-check \
     mem-report \
-    native-check \
     node-std-tests \
     nros-log-riscv32 \
     required-features-tests \

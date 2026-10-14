@@ -127,10 +127,6 @@ nros_scope_normalize() {
         # The base setup tier is the host quick start.
         base | quickstart | minimal | default) tok="base" ;;
     esac
-    # phase-500 W2 — a retired spelling (`native`) resolves to its current one.
-    # Quiet here: this runs several times per token; `nros_scope_validate_all`
-    # is the entry point that prints the deprecation, once per token.
-    tok="$(nros_retired_host_token "$tok" quiet)"
     printf '%s' "$tok"
 }
 
@@ -233,9 +229,6 @@ nros_scope_expand() {
 nros_scope_validate_all() {
     local tok rc=0
     for tok in "$@"; do
-        # Prints the deprecation for a retired token (phase-500 W2); discards
-        # the mapping, which `nros_scope_normalize` applies everywhere.
-        nros_retired_host_token "${tok#*=}" >/dev/null
         if [ "$(nros_scope_kind "$tok")" = "unknown" ]; then
             nros_scope_reject "$tok" || rc=2
         fi
@@ -246,7 +239,12 @@ nros_scope_validate_all() {
 # The failure a mistyped scope gets. It prints the whole namespace, because the
 # one thing a person needs at that moment is the list of legal words.
 nros_scope_reject() {
-    local tok="${1:-}"
+    local tok="${1:-}" hint
+    # phase-500 W5 — a retired host token is refused naming its successor.
+    if hint="$(nros_retired_host_token_hint "$(nros_scope_normalize "$tok")")"; then
+        echo "unknown scope '$tok': $hint" >&2
+        return 2
+    fi
     echo "unknown scope '$tok'." >&2
     echo "" >&2
     echo "  platforms: $_NROS_SCOPE_PLATFORMS" >&2

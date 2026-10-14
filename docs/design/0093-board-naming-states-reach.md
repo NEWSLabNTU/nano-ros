@@ -16,7 +16,7 @@ superseded-by: null
 > last; never name the emulator; borrow the vendor's word; and leave out what
 > the index already carries as a field.
 
-**Amendment 2026-10-14 ([phase-500](../roadmap/phase-500-linux-host-name.md)).**
+**Amendment 2026-10-14 ([phase-500](../roadmap/archived/phase-500-linux-host-name.md)).**
 The host board was exempt from this RFC ("CLAUDE.md owns these"). The
 maintainer's ruling ends the exemption by applying R1 to it: `native` names
 every general-purpose host, the board builds on Linux only (it fails on darwin,

@@ -50,15 +50,16 @@ pointer here — never grow CLAUDE.md with design/impl detail.**
 
 ## Naming
 - **`native` / `posix` / `linux` are three different reaches — never synonyms**
-  (maintainer ruling 2026-10-14, [phase-500](docs/roadmap/phase-500-linux-host-name.md)):
+  (maintainer ruling 2026-10-14, [phase-500](docs/roadmap/archived/phase-500-linux-host-name.md)):
   - **native** — every general-purpose host (Linux, macOS, Windows).
   - **posix** — POSIX-compliant systems.
   - **linux** — Linux specifically.
 
   Name a thing by what it actually supports. The host BOARD is **`linux`**:
   `nros-board-linux::apply_tier_affinity` uses `cpu_set_t`/`sched_setaffinity`,
-  which fails on darwin, windows and freebsd (measured), so `native` is refused
-  as a board with a hint. The PLATFORM stays **`posix`** (`nros-platform-posix`
+  which fails on darwin, windows and freebsd (measured), so `native` and `posix`
+  are refused as board/lane/scope words with a hint naming `linux` — no alias
+  maps them (phase-500 W5). The PLATFORM stays **`posix`** (`nros-platform-posix`
   — NuttX compiles the same sources) and its package config carries no Linux
   facts; `[tiers.*.posix]` keeps its name (external rlm/play_launch vocabulary;
   its `core` key is Linux-only). No macOS/BSD support is claimed. Gates:

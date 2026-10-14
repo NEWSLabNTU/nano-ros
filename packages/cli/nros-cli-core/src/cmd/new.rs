@@ -72,11 +72,11 @@ pub struct Args {
     /// ESP32 support is dormant (issue 1525) — the scaffold code is kept, the
     /// front door is closed.
     ///
-    /// `linux` is the host board (phase-500 W1). `native` and `posix` are
-    /// DEPRECATED aliases for it, kept one cycle because released book pages
-    /// say `--platform linux`; they print a notice and scaffold what `linux`
-    /// does.
-    #[arg(long, value_parser = ["linux", "freertos", "nuttx", "threadx", "zephyr", "baremetal", "native", "posix"])]
+    /// `linux` is the host board (phase-500 W1). `native` and `posix` were
+    /// deprecated aliases for it until phase-500 W5; they are still PARSED
+    /// (hidden from `--help`) only so `run` can refuse them naming `linux`,
+    /// instead of clap's bare "invalid value".
+    #[arg(long, value_parser = platform_values())]
     pub platform: Option<String>,
 
     /// RMW backend. Defaults per mode: `zenoh` for project/component
@@ -183,23 +183,47 @@ fn language_arg(flag: Option<&str>, default: nros_lang::Language) -> Result<nros
     }
 }
 
-/// The `--platform` value with a deprecated host alias (`native`, `posix`)
-/// replaced by `linux`, announcing the replacement on stderr (phase-500 W1).
-fn canonical_platform(platform: String) -> String {
-    match platform.as_str() {
-        "native" | "posix" => {
-            eprintln!(
-                "nros new: `--platform {platform}` is deprecated; using `--platform linux` \
-                 (the host board builds on Linux only — phase-500)."
-            );
-            "linux".to_string()
-        }
-        _ => platform,
-    }
+/// The `--platform` values: the offered set, plus the retired host aliases
+/// (`nros_entry_lower::RETIRED_BOARD_KEYS`) HIDDEN, so they reach
+/// [`refuse_retired_platform`] rather than a generic clap rejection.
+fn platform_values() -> clap::builder::PossibleValuesParser {
+    use clap::builder::PossibleValue;
+    let offered = [
+        "linux",
+        "freertos",
+        "nuttx",
+        "threadx",
+        "zephyr",
+        "baremetal",
+    ]
+    .into_iter()
+    .map(PossibleValue::new);
+    let retired = nros_entry_lower::RETIRED_BOARD_KEYS
+        .iter()
+        .map(|(old, _, _)| PossibleValue::new(*old).hide(true));
+    clap::builder::PossibleValuesParser::new(offered.chain(retired))
 }
 
-pub fn run(mut args: Args) -> Result<()> {
-    args.platform = args.platform.take().map(canonical_platform);
+/// phase-500 W5 — `--platform native|posix` is REFUSED, naming
+/// `--platform linux`. W1 kept both as deprecated aliases of `linux` for one
+/// cycle (released book pages typed them); the cycle is over, and an alias
+/// that silently maps is how a reader learns a word the project retired.
+fn refuse_retired_platform(platform: Option<&str>) -> Result<()> {
+    let Some(p) = platform else { return Ok(()) };
+    if let Some((_, now, why)) = nros_entry_lower::RETIRED_BOARD_KEYS
+        .iter()
+        .find(|(old, _, _)| *old == p)
+    {
+        bail!(
+            "nros new: `--platform {p}` is not a platform choice: write `--platform {now}`. \
+             {why} (phase-500)."
+        );
+    }
+    Ok(())
+}
+
+pub fn run(args: Args) -> Result<()> {
+    refuse_retired_platform(args.platform.as_deref())?;
     // phase-290 W4.b — package-scaffold modes: `nros new platform <name>` /
     // `nros new board <name> --for-platform <p>`.
     let keyword = args.name.as_ref().and_then(|p| p.to_str());
@@ -573,4 +597,44 @@ pub fn run(mut args: Args) -> Result<()> {
         use_case: args.use_case,
         force: args.force,
     })
+}
+
+#[cfg(test)]
+mod retired_platform_tests {
+    use super::*;
+    use clap::{CommandFactory, Parser};
+
+    #[derive(Parser)]
+    struct Cli {
+        #[command(flatten)]
+        args: Args,
+    }
+
+    /// phase-500 W5 — `nros new --platform native|posix` PARSES (so the
+    /// refusal can name the replacement) and then REFUSES, naming
+    /// `--platform linux`, before any file is written. It once mapped both to
+    /// `linux` with a deprecation notice (W1).
+    #[test]
+    fn a_retired_host_platform_is_refused_naming_linux() {
+        for p in ["native", "posix"] {
+            let cli = Cli::try_parse_from(["nros-new", "x", "--platform", p, "--lang", "rust"])
+                .unwrap_or_else(|e| panic!("`--platform {p}` must reach the refusal: {e}"));
+            let err = run(cli.args).expect_err("must refuse").to_string();
+            assert!(
+                err.contains(&format!("`--platform {p}`"))
+                    && err.contains("write `--platform linux`"),
+                "{p}: {err}"
+            );
+        }
+        // The offered set does not advertise them.
+        let help = Cli::command().render_long_help().to_string();
+        let values = help
+            .lines()
+            .find(|l| l.contains("possible values: linux"))
+            .unwrap_or_else(|| panic!("no --platform value list in help:\n{help}"));
+        assert!(
+            !values.contains("native") && !values.contains("posix"),
+            "{values}"
+        );
+    }
 }
