@@ -127,7 +127,16 @@ concurrency:
   # verdict, and GitHub then ejects pull requests that were never actually
   # tested — the opposite of what the queue is for. Superseding is right
   # everywhere else, where a newer push's answer subsumes an older one's.
-  cancel-in-progress: ${{ github.event_name != 'merge_group' }}
+  #
+  # ...EXCEPT a push to `main`. That run's only product is `warm-cache`, which
+  # takes 12-25 min, while merges land every 10-60 min: with cancel-in-progress
+  # the next merge killed it mid-run (6 of the last 8 warm jobs `cancelled`,
+  # phase-489 W5), so the cache `check-*` restores never tracked main. Without
+  # cancelling, GitHub queues the next run behind it and keeps only the NEWEST
+  # pending one — the latest main still wins, and every started warm completes.
+  # `ci-ok` is unaffected: a queued run is not a result, and a push run gates
+  # nothing (PRs and the queue read their own events' runs).
+  cancel-in-progress: ${{ github.event_name != 'merge_group' && github.event_name != 'push' }}
 
 # Issue 1353 — no DWARF in this workflow's builds. Nothing in the gate reads
 # it: no gate or test parses `.debug_*` (`git grep` for addr2line, gimli,

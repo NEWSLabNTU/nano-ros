@@ -267,7 +267,45 @@ def sccache_warm_problems(warm_body, all_bodies):
     return out
 
 
+def concurrency_problems(text):
+    """The workflow-level `cancel-in-progress` must be false for `push` (and
+    `merge_group`): a cancelled push run is a cancelled `warm-cache`, and the
+    main-scope cache then never tracks main (phase-489 W5). The expression is a
+    `&&` chain of `github.event_name != '<ev>'` terms, or a literal."""
+    m = re.search(r"^concurrency:\n(?:[ \t]+.*\n|[ \t]*\n)*?[ \t]+cancel-in-progress:[ \t]*(.+)$", text, re.M)
+    if not m:
+        return ["gate.yml has no workflow-level `concurrency: cancel-in-progress:` — this rule asserted nothing"]
+    expr = m.group(1).strip()
+    expr = re.sub(r"^\$\{\{\s*|\s*\}\}$", "", expr)
+    out = []
+    for ev in ("push", "merge_group"):
+        val = True
+        for term in expr.split("&&"):
+            term = term.strip()
+            t = re.fullmatch(r"github\.event_name\s*(!=|==)\s*'([a-z_]+)'", term)
+            if t:
+                val = val and ((t.group(2) != ev) if t.group(1) == "!=" else (t.group(2) == ev))
+            elif term == "false":
+                val = False
+            elif term != "true":
+                return ["cancel-in-progress term %r is not understood — keep it a `&&` chain of event_name tests" % term]
+        if val:
+            out.append(
+                "workflow `cancel-in-progress` is TRUE for a %r run: the next merge cancels the "
+                "in-flight `warm-cache`, so main's cache stops tracking main (6 of 8 cancelled, "
+                "phase-489 W5)" % ev
+            )
+    return out
+
+
 def self_test():
+    cw = "concurrency:\n  group: g\n  # c\n  cancel-in-progress: ${{ %s }}\n\nenv:\n  A: 1\n"
+    assert concurrency_problems(cw % "github.event_name != 'merge_group' && github.event_name != 'push'") == []
+    assert concurrency_problems(cw % "false") == []
+    for bad in ("github.event_name != 'merge_group'", "true", "github.event_name != 'push'"):
+        assert concurrency_problems(cw % bad), "concurrency rule missed: " + bad
+    assert concurrency_problems("name: x\n"), "missing concurrency must be reported"
+
     t = (
         "jobs:\n"
         "  a:\n"
@@ -464,6 +502,10 @@ def main():
                         "paths:\n      consumer: %s\n      warmer:   %s"
                         % (c, warmer, key, list(cpaths), list(paths))
                     )
+
+    with open(GATE, encoding="utf8") as fh:
+        problems += concurrency_problems(fh.read())
+    checked += 1
 
     if "warm-cache" in js:
         sprob = sccache_warm_problems(js["warm-cache"], js)

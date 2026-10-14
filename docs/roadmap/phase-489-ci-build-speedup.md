@@ -1,9 +1,12 @@
 # Phase 489 — CI build speed-up: the required gate first, then the build-bound lanes
 
-**Status (2026-10-13). W1 and W3 met their acceptance; W4 met it on a hit and
-cut the miss path by half; W5 landed, CI acceptance NOT met; W2 landed and is
-switched OFF again after a three-hour trial starved the merge queue; W6
-landed in part, acceptance not met; W7 is handed to the runner operators.**
+**Status (2026-10-15). W1 and W3 met their acceptance; W4 met it on a hit and
+cut the miss path by half; W5 landed, CI acceptance NOT met (PR hit rate now
+measured, 93.7 %; main's warm job was being cancelled, fixed in PR #2200 --
+see W5); W2 landed and is switched OFF again after a three-hour trial starved
+the merge queue (PR #2177 since routed `check-cli-tests` and added its image
+row, still off); W6 landed in part (PR #2170), acceptance not met; W7 is
+handed to the runner operators.**
 Each item's own section has the post-merge numbers. The numbers below were measured from the GitHub Actions API over 2026-10-09 to 2026-10-10. They are
 the baseline every work item is judged against. Implements no new RFC
 decision. It continues the cost work of
@@ -494,6 +497,28 @@ model, `declared-qos-registration` 97 -> 34 s, `api-parity` 92 -> 68 s,
 s): most of a fast run's CPU is not compile. Acceptance (< 6 min) is still
 NOT met; the runner CPU is the larger lever.
 
+**Post-merge, on a pull request (2026-10-14).** PR run 38516297631
+(`pull_request`, after PR #2144 merged): `check / fast` restored main's cache and
+hit 930 of 993 executed requests (93.7 %); the `just check fast` step took
+447 s on EPYC 9V74, against 541-573 s before on the same CPU model. Still above
+the 6-minute target.
+
+**The warm job was being cancelled (measured 2026-10-14).** Of the last 15 push
+runs of `gate.yml` on main, 3 ended `cancelled`; 6 of 8 warm runs did during the
+earlier merge burst. Each cancelled warm job ended within seconds of the NEXT
+push run being created (run 38529104856 cancelled 07:44:58, the next run
+created 07:43:44): the workflow-level `concurrency` group is per ref and event,
+with `cancel-in-progress` true for every event but `merge_group`, so the next
+merge killed the in-flight warm. A warm job takes 12-25 min and merges land
+every 10-60 min, so a burst of merges left main's cache several commits stale.
+Fix (PR #2200): `cancel-in-progress` is also false for `push`, so GitHub queues
+the next run behind the running one and keeps only the newest pending; every
+started warm completes and the cache tracks main. Pull requests still
+supersede. `ci-ok` is unchanged: `warm-cache` runs on push/dispatch only.
+`check-gate-cache-keys-agree` now asserts the expression is false for `push`
+and `merge_group` (self-test mutations: dropping the `push` term, or `true`,
+are caught).
+
 ### W6 — a persistent build cache for the fixture lanes
 
 Live-peer (84.5 + 33.7 min of fixture build), run-matrix (about 30 min a
@@ -664,6 +689,23 @@ beyond job logs.
 
 **Acceptance:** `newslab-server-241`'s L3 median within 25 % of the other
 two runners'.
+
+## Self-hosted runner cache observations (2026-10-09..14)
+
+From the runner-sweep logs of the three self-hosted runners:
+
+- **sccache** grew from 5-15 GiB to about 30-31 GiB on all three and
+  plateaued (about 0.5 GiB/day near the top). That is consistent with a
+  ~30 GiB cap set in the runners' environment; this repo sets no self-hosted
+  `SCCACHE_CACHE_SIZE`, so it is unconfirmed.
+- **fixtures area** 1.4-56.6 GiB against its 60 GiB budget (133 peaked at
+  56.6 GiB on 10-13).
+- **cargo-targets** 1-4 GiB typical; never pruned, because `cargo-sweep` is not
+  installed.
+- Filesystem free space is shared with other tenants and is not a measure of
+  our caches.
+
+Operator asks: confirm the sccache cap, and install `cargo-sweep`.
 
 ## Measuring
 
