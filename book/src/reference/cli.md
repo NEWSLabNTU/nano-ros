@@ -282,7 +282,7 @@ what `nros ws status` reports non-fatally. `--dry-run` prints what it would do.
 `nros generate-rust` stays the low-level codegen-only primitive (no side
 effects beyond `generated/`).
 
-### `nros build [<image>…] [--workspace <dir>] [--all] [--dry-run] [--offline] [--packages-select <p>…] [--packages-up-to <p>…] [-- <native args>]`
+### `nros build [<image>…] [--workspace <dir>] [--all] [--dry-run] [--offline] [--check[=clippy]] [--packages-select <p>…] [--packages-up-to <p>…] [-- <native args>]`
 
 The colcon-like build verb: discover packages, resolve the image, preflight,
 generate the build root, then hand off to the native tool. The final stage is an
@@ -301,6 +301,17 @@ nros build linux -- --release   # arguments after `--` go to the native tool
 A build without a sync fails at the first preflight with one line naming
 `nros sync`, rather than four frames down in cargo's manifest parser. `--dry-run`
 prints the stages and the command that would run, and performs no I/O.
+
+`--check` type-checks a cargo image instead of building it: every stage runs as
+for a build (the image's settings file, its lock), and only the final command
+becomes `cargo check`, or `cargo clippy` with `--check=clippy`. Lint flags go
+after a second `--`. A cmake or west image is refused, since neither tool has a
+check that is not a build. Like a build, a check needs `nros sync` first.
+
+```sh
+nros build linux --check                          # cargo check
+nros build linux --check=clippy -- -- -D warnings # cargo clippy, warnings denied
+```
 
 In a single-package C/C++ leaf, `nros build` configures the leaf's own
 `CMakeLists.txt` into `build/<image>/cmake` with `-DNROS_IMAGE=<id>` and the

@@ -159,6 +159,7 @@ pub fn run(args: Args) -> Result<()> {
         // would answer a question nobody asked.
         packages_select: Vec::new(),
         packages_up_to: Vec::new(),
+        check: None,
         native_args: Vec::new(),
     };
 
