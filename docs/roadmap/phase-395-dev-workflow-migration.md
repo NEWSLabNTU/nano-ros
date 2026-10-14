@@ -204,7 +204,7 @@ reads one account. `--check` refuses an expired entry, a non-open issue or a
 missing field; expiry is a hard failure because quarantine without expiry is
 deletion with extra steps. `just retest-failures-solo` produces the evidence an
 entry must earn. 19 hermetic selftest assertions, run by the gate. First entry
-is issue 0854.
+is issue 0854 (resolved 2026-10-15; the registry is empty since).
 
 ## W6 — Runner scripts, and one runner
 
@@ -910,7 +910,7 @@ evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#0854](../issues/0854-action-raw-goal-flaky-under-load.md) | `action_raw_goal_ships_one_cdr_header` times out in-sweep and passes solo. W5 names it as quarantine entry #1 — a quarantine entry with no owner and no expiry is a permanent one |
+| [#0854](../issues/archived/0854-action-raw-goal-flaky-under-load.md) | `action_raw_goal_ships_one_cdr_header` times out in-sweep and passes solo. W5 names it as quarantine entry #1 — a quarantine entry with no owner and no expiry is a permanent one |
 | [#1053](../issues/archived/1053-rfc-ids-have-no-reservation.md) | RFC ids have no reservation, so two sessions both wrote 0087 and two more wrote 0089. W1 already solved this race for issues and phases; the third series is the same fix, not a new one |
 
 ## Issues re-homed here (2026-10-12)

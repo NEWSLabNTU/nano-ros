@@ -34,17 +34,6 @@
 # quarantine records that we chose not to fix it YET. Without an issue that
 # choice has no owner and no place to write down what was learned.
 
-[[quarantined]]
-test = "action_raw_goal_ships_one_cdr_header"
-binary = "nros-tests::action_raw_goal_e2e"
-issue = "0854"
-added = "2026-08-28"
-expires = "2026-10-27"
-evidence = "60s timeout in-sweep; 3.6s solo; 5/5 solo passes. A 16x margin."
-reason = """
-Load-induced, not a defect in the behaviour under test. The assertion is that a
-raw goal ships exactly one CDR header, which does not depend on timing; what
-depends on timing is reaching the assertion inside the 60s budget while ~31
-other gates compete for the host. The 16x solo margin is the evidence: a test
-that needs 3.6s and is given 60s is not slow, it is starved.
-"""
+# No entries. The last one, issue 0854's action_raw_goal_ships_one_cdr_header,
+# was removed on 2026-10-15: it now passes in 0.7 s solo and in under 1 s with
+# 32 copies and 96 CPU-bound processes running beside it.

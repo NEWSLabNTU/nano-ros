@@ -318,8 +318,20 @@ def _selftest_body(quiet=False):
             print(f"  FAIL  {desc}{(': ' + detail) if detail else ''}")
             failed += 1
 
+    # The well-formed entry needs an OPEN issue, so take one from the tree
+    # rather than naming one: a named id goes stale the day it is resolved
+    # (0854 was named here, and closing it turned this self-test red).
+    open_issue = next(
+        (f[:4] for f in sorted(os.listdir(os.path.join(ROOT, "docs", "issues")))
+         if f.endswith(".md") and f[:4].isdigit() and issue_status(f[:4]) == (True, "open")),
+        None,
+    )
+    if open_issue is None:
+        print("quarantine self-test: FAILED — no open issue under docs/issues/ "
+              "to build a well-formed entry on", file=sys.stderr)
+        raise SystemExit(1)
     base = {
-        "test": "t", "binary": "b", "issue": "0854",
+        "test": "t", "binary": "b", "issue": open_issue,
         "added": "2026-01-01", "expires": "2099-01-01",
         "evidence": "e", "reason": "r",
     }
