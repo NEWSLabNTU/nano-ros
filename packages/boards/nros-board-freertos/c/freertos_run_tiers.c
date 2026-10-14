@@ -41,6 +41,14 @@ extern int nros_cpp_executor_derive_min_stack_headroom(void* executor, size_t st
 
 extern int nros_cpp_spin_once(void* handle, int32_t timeout_ms);
 
+/* phase-436 C1 — the wake-source seam's C-ABI surface (W7.a) and this port's
+ * park. Same wiring as `zephyr_run_tiers.c`. */
+extern void* nros_cpp_executor_wake_handle(void* executor);
+extern int nros_cpp_executor_set_park_primitive(void* executor, int8_t (*park)(void*, uint64_t),
+                                                void* ctx, uint64_t granularity_us);
+extern int8_t nros_platform_wake_park_until_us(void* w, uint64_t deadline_us);
+extern uint64_t nros_platform_wake_park_granularity_us(void);
+
 /* issue 0636 option 3 — the tier spin loop's scheduled gap.
  *
  * ONE implementation, shared with the Rust tier runners
@@ -95,6 +103,36 @@ extern int nros_cpp_executor_storage_check(const void* storage, size_t bytes);
  * Every FreeRTOS board compiles exactly one board TU, so each supplies one
  * STRONG definition — no weak fallback, and no board `#ifdef` here. */
 extern void nros_board_freertos_console_write(const char* s);
+
+/* phase-436 C1 — install FreeRTOS's park on `executor`, if this build has a
+ * wake object to park on.
+ *
+ * FreeRTOS cannot wait finer than a tick, so this gains no resolution at the
+ * usual 1000 Hz. What it changes is what the executor CLAIMS: with no park
+ * installed it assumes the millisecond of the `wake_wait_ms` ABI, which is
+ * wrong at any coarser `configTICK_RATE_HZ` (issue 1242), and the park rounds
+ * a sub-tick request UP to a tick where `wake_wait_ms`'s `pdMS_TO_TICKS` used
+ * to truncate it to a non-blocking poll.
+ *
+ * The ctx is the executor's OWN wake object, deliberately: the backend's
+ * listener signals that one. A park on a fresh semaphore would sleep its whole
+ * deadline with data already waiting, because `spin_once` drops the transport
+ * drain to non-blocking once a port has parked.
+ *
+ * Silent no-op when no wake object exists; that build keeps the millisecond
+ * `wake_wait_ms` path it already had. */
+static void freertos_install_park(void* executor, const char* tier_name) {
+    void* wake = nros_cpp_executor_wake_handle(executor);
+    if (wake == NULL) {
+        return;
+    }
+    if (nros_cpp_executor_set_park_primitive(executor, nros_platform_wake_park_until_us, wake,
+                                             nros_platform_wake_park_granularity_us()) != 0) {
+        nros_board_freertos_console_write("nros: park primitive NOT installed tier=`");
+        nros_board_freertos_console_write((tier_name != NULL) ? tier_name : "?");
+        nros_board_freertos_console_write("` — falling back to the millisecond wake path\n");
+    }
+}
 
 /* --- Local tier-spec type ---
  *
@@ -395,6 +433,7 @@ static void freertos_tier_task(void* arg) {
         nros_board_freertos_console_write((ctx->name != NULL) ? ctx->name : "?");
         nros_board_freertos_console_write("` — the rule stays off\n");
     }
+    freertos_install_park(ctx->executor_storage, ctx->name);
 
     /* Run the tier's node-setup function. */
     if (ctx->setup != NULL) {
@@ -844,6 +883,7 @@ int32_t nros_board_freertos_run_tiers_tasks_in(const char* locator, uint8_t doma
     if (boot->n_groups > 0 && boot->groups != NULL) {
         nros_cpp_executor_set_active_groups(boot_storage, boot->groups, boot->n_groups);
     }
+    freertos_install_park(boot_storage, boot->name);
 
     /* Boot tier node setup. */
     if (boot->setup != NULL) {

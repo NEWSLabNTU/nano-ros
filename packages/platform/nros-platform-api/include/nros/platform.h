@@ -705,10 +705,11 @@ int8_t nros_platform_condvar_wait_until(void *cv, void *m, uint64_t abstime);
  * ABI (which on libc hangs past `pthread_cond_timedwait` deadlines).
  *
  * Per-platform impl:
- *  * POSIX:    `sem_t` with `sem_timedwait` (`CLOCK_MONOTONIC`).
+ *  * POSIX:    `sem_t` with `sem_clockwait(CLOCK_MONOTONIC)` (glibc >= 2.30;
+ *              elsewhere `sem_timedwait` on a re-anchored REALTIME deadline).
  *  * Zephyr:   `k_sem` (kernel-native, libc-pthread-free).
  *  * FreeRTOS: `xSemaphoreCreateBinary` + `xSemaphoreGiveFromISR`.
- *  * NuttX:    POSIX `sem_t` via NuttX libc (`sem_timedwait`).
+ *  * NuttX:    the POSIX source, via NuttX libc (`sem_clockwait`).
  *  * ThreadX:  `tx_semaphore` (ISR-safe `tx_semaphore_put`).
  *  * bare:     atomic flag + busy-spin against the platform clock.
  *

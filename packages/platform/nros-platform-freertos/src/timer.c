@@ -23,6 +23,9 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+/* platform.c — the port's one microseconds-to-ticks conversion (ceiling). */
+extern TickType_t nros_freertos_us_to_ticks_ceil(uint64_t us);
+
 typedef struct {
     TimerHandle_t                   kernel;
     nros_platform_timer_callback_t  callback;
@@ -59,13 +62,13 @@ static void *create_timer(uint32_t value_us, int periodic,
     t->cancelled = 0;
     t->periodic  = periodic;
 
-    /* Round up sub-millisecond periods to one tick. */
-    uint32_t period_ms = (value_us + 999u) / 1000u;
-    if (period_ms == 0) period_ms = 1;
-
+    /* phase-436 C1 — microseconds straight to ticks, rounded UP and never
+     * zero. This rounded to milliseconds first and then went through the
+     * TRUNCATING `pdMS_TO_TICKS`, so below 1000 Hz a period under one tick
+     * became 0 ticks, which `xTimerCreate` refuses (`configASSERT`). */
     t->kernel = xTimerCreate(
         "nros_timer",
-        pdMS_TO_TICKS(period_ms),
+        nros_freertos_us_to_ticks_ceil((uint64_t) value_us),
         periodic ? pdTRUE : pdFALSE,
         (void *) t,
         timer_trampoline);

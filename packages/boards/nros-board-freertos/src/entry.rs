@@ -705,6 +705,32 @@ where
     Ok(())
 }
 
+// phase-436 C1 — FreeRTOS's park, and the tick period that is its real floor.
+//
+// FreeRTOS has no sub-tick wait (`xSemaphoreTake` counts ticks), so at the
+// usual 1000 Hz this gains no resolution. What it changes is the executor's
+// CLAIM: with nothing installed it assumes the `wake_wait_ms` ABI's
+// millisecond, which over-claims at any coarser `configTICK_RATE_HZ` (issue
+// 1242), and the park rounds a sub-tick request UP to a tick where
+// `pdMS_TO_TICKS` used to truncate it to a non-blocking poll.
+//
+// `//` not `///`: rustdoc documents nothing on an extern block.
+unsafe extern "C" {
+    fn nros_platform_wake_park_until_us(w: *mut c_void, deadline_us: u64) -> i8;
+    fn nros_platform_wake_park_granularity_us() -> u64;
+}
+
+/// Install the park on `crt`'s executor. Advisory: a build with no wake object
+/// keeps the path it had.
+fn install_park(crt: &mut ::nros::node_runtime::ExecutorNodeRuntime) {
+    let granularity = unsafe { nros_platform_wake_park_granularity_us() };
+    let _ = ::nros::port_park::install_port_park(
+        crt.executor_mut(),
+        nros_platform_wake_park_until_us,
+        granularity,
+    );
+}
+
 /// Spawned tier task: open an `Executor` over the shared session, install this
 /// tier's `active_groups` filter, register (the off-tier callbacks are gated
 /// out), spawn the NEXT tier once its own setup returns (issue #144 chained
@@ -744,6 +770,7 @@ where
     // quietly narrower set. Nothing here can return an error (the tier
     // runner is `-> ()`), so the fail-closed state IS the report.
     let _ = crt.executor_mut().set_active_groups(tier.groups);
+    install_park(&mut crt);
     // W5.4 — shared tier→SchedContext lowering (Sporadic / EDF / TT).
     crt.apply_tier_sched_policy(
         tier.class,
@@ -935,6 +962,7 @@ where
     // quietly narrower set. Nothing here can return an error (the tier
     // runner is `-> ()`), so the fail-closed state IS the report.
     let _ = crt.executor_mut().set_active_groups(boot_tier.groups);
+    install_park(&mut crt);
     {
         let mut runtime = RuntimeCtx::with_runtime(&mut crt);
         if let Err(e) = (ctx.setup)(&mut runtime) {
