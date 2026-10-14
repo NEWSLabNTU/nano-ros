@@ -2377,6 +2377,29 @@ fn drive(
 /// error instead of cargo's "offline mode (via `--offline`) can
 /// sometimes cause surprising resolution failures" note.
 fn run_configure(cfg: &Handoff) -> Result<()> {
+    // phase-489 W6 — a cmake configure that cannot change anything is skipped:
+    // `cmake -S -B` re-runs the whole configure on every call (20 of 20 rows of
+    // a no-change C workspace re-run did), and `cmake --build`, which follows,
+    // re-runs it itself when a registered input moved. See `cmake_configure`.
+    let stamp = crate::builder::cmake_configure::ConfigureStamp::of(cfg);
+    if let Some(s) = &stamp {
+        if s.is_current() {
+            eprintln!(
+                "nros build: cmake configure up to date ({}); `cmake --build` re-checks its inputs",
+                s.build_dir().display()
+            );
+            return Ok(());
+        }
+        s.invalidate();
+    }
+    run_configure_step(cfg)?;
+    if let Some(s) = &stamp {
+        s.record();
+    }
+    Ok(())
+}
+
+fn run_configure_step(cfg: &Handoff) -> Result<()> {
     let st = cfg
         .command()
         .status()
