@@ -16,6 +16,13 @@
 # (`no matching package named nros`, `failed to load manifest for dependency
 # ..._nros_selection`) -- the red six weeks of no lane hid. So render first, and
 # hand cargo the rendered config, exactly as `nros build` does.
+#
+# Issue 1888: a `native` leaf with a `system.toml` is the same kind of project.
+# Its manifest names `<leaf>_nros_selection` too, rendered into
+# `build/nros/selection/` by the same sync. The first version synced only
+# non-native leaves, so 20 of the 22 `examples/native/rust/*` leaves linted only
+# where an earlier fixture build had happened to sync them, and failed
+# `cargo metadata` everywhere else.
 set -euo pipefail
 dir="${1:?leaf dir}"
 platform="$(echo "$dir" | cut -d/ -f2)"
@@ -36,7 +43,7 @@ pkg="$(sed -n 's/^name[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$dir/Cargo.t
 lintdir="$NROS_EXAMPLE_LINT_DIR/$(echo "${dir#examples/}" | tr '/' '-')"
 
 cfg=()
-if [ "$platform" != "native" ] && [ -f "$dir/system.toml" ]; then
+if [ -f "$dir/system.toml" ]; then
     # `nros sync` is idempotent; its chatter is not this gate's output, so it is
     # kept for the failure path only.
     log="$(mktemp "${TMPDIR:-/tmp}/nros_lint_sync.XXXXXX")"

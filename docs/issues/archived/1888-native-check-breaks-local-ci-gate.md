@@ -1,12 +1,13 @@
 ---
 id: 1888
 title: "`native-check` on `build-serial` makes `just ci gate` red on a host that has not built fixtures: it needs bindings and synced native leaves, and once it collided with a jobserver pool already holding the tree"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [build, ci, testing]
-related: [1882, 0952, 1881]
+related: [1882, 0952, 1881, 1886]
 found: 2026-10-14
+resolved: 2026-10-14
 ---
 
 ## Measured
@@ -83,3 +84,40 @@ parallel lane, so finding 2 can reach it too.
 - **Pool.** Either the pool guard is keyed per label, or every `build-serial`
   gate that takes the pool is serialised against the others. Then one
   `just ci gate` on a fresh worktree should show all three findings gone.
+
+## Resolution (2026-10-14)
+
+All three are fixed in the lane, so it meets its own preconditions.
+
+1. **Bindings.** The precondition in `just/linux.just` skips any leaf that
+   has a `system.toml`. `lint-example-leaf.sh` syncs those leaves before
+   linting them, and that sync writes `generated/`. Measured: with
+   `examples/mps2-an385-baremetal/cpp/listener/generated` moved aside,
+   `nros sync` wrote it back with the same packages; only the
+   `generate-bindings` stamp file differed. The precondition still applies to
+   a leaf the lint does not sync, and no such leaf in today's fan-out
+   declares a message dependency.
+2. **Subtree guard.** `nros_pool_run` now takes the guard as
+   `jobserver-pool-<label>` (`scripts/build/jobserver-pool.sh`). This half
+   landed separately as issue 1886 (a549fd0c05, through
+   `nros_pool_guard_name`), and this branch's own copy of the change was
+   dropped when it was rebased onto that. The holder
+   was `source-gates`: it runs `compile-check-fixtures.sh` with no id
+   filter, which takes `nros_pool_run compile-check`. Pools with different
+   labels build disjoint artifacts. A second run of the same label is still
+   refused, and its orphans are still reaped. No script reads the lock name.
+3. **Native leaves.** `lint-example-leaf.sh` syncs every leaf with a
+   `system.toml`, native included, and passes the rendered
+   `build/<image>/nros-cargo.toml` as it does for the board leaves.
+
+**Measured.** I set up all three conditions at once: no `generated/` in
+`mps2-an385-baremetal/cpp/action-client`, 20 of 22 native leaves unsynced,
+and nothing pre-built. Then I ran `just ci gate`. In `check::build`,
+`native-check` passed in 128 s, running in parallel with `source-gates`.
+Afterwards `action-client/generated` held its five packages again, and 21
+native leaves had `build/nros/selection/`. The 22nd, `logging`, has no
+`system.toml` and does not need one. The step's one red was
+`rmw-cyclonedds`: 33 of 34 passed, and `ros2_srv_e2e` hit
+`Failed to find a free participant index for domain 4`. That is a foreign
+ROS 2 stack on the measuring host holding the domain; this change does not
+touch it.
