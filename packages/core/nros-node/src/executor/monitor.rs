@@ -38,7 +38,7 @@
 //!   takes the trigger input (the earliest take not yet answered) and, at the
 //!   end of a dispatch that published one of the path's outputs, judges
 //!   take-to-dispatch-end against the path's `max_latency_ms`
-//!   ([`route_take`], [`route_judge`]). Record only: the rule has no action.
+//!   (`route_take`, `route_judge`). Record only: the rule has no action.
 //!
 //! phase-462 W2 adds one more on the same drain, and it is the other half of
 //! what the contract's `on_violation` lowers to:
