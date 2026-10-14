@@ -1,14 +1,15 @@
 ---
 id: 934
 title: "The same fact is authored in up to five config surfaces; no SSoT is declared for rmw, board or domain"
-status: open
+status: resolved
+resolved: 2026-10-14
 area: build, api
 severity: medium
 found: 2026-08-30
 related: [0931, RFC-0065, RFC-0048, RFC-0046, RFC-0014, RFC-0033, phase-405, phase-484]
 ---
 
-**Home: [phase-484](../roadmap/phase-484-one-owner-per-fact.md)** — re-homed 2026-10-12 from phase-405, which is archived.
+**Home: [phase-484](../../roadmap/phase-484-one-owner-per-fact.md)** — re-homed 2026-10-12 from phase-405, which is archived.
 
 # Config redundancy map
 
@@ -75,7 +76,7 @@ stated precedence".
   RESOLVER READS the image" — this needs a code wave before a data wave.
   This entry also named `examples/workspaces/mixed`'s `[deploy.freertos]` as
   carrying a duplicate `board`; it does not — it carries `kind` and a `.nros`
-  block and NO board, which is [issue 0940](archived/0940-deploy-site-config-unreachable-without-board.md).
+  block and NO board, which is [issue 0940](0940-deploy-site-config-unreachable-without-board.md).
   The duplicated pair there is `[deploy.mps2-an385-freertos]` vs
   `[image.freertos]`.
 * **R11** — `[system].features` vs the typed `[safety]`/`[param_services]`
@@ -234,7 +235,7 @@ site a PROJECTION with a gate, or delete it:
 2. **R9/R10** — one parser per table; delete `[wcet]` or wire it.
 3. **R12/R11/R4** — execute the deprecations already declared.
 
-Related: [issue 0931](archived/0931-retire-model-and-default-launch.md) is the same
+Related: [issue 0931](0931-retire-model-and-default-launch.md) is the same
 question one layer up, for `nano_ros_entry`'s arguments.
 
 ## Status (2026-10-14): most rows are gone; what is left
@@ -263,3 +264,28 @@ holds for rmw and board. Each is authored in `system.toml` (`[system]` /
 
 Close this once phase-484 rules on those, or split them into their own
 issues.
+
+## Resolution (2026-10-14)
+
+This was a survey, and RFC-0103 / phase-484 ("one owner per fact") is the
+program it asked for. The status above asked to close it "once phase-484 rules
+on those, or split them into their own issues". Each remaining row is now
+fixed here, recorded as settled, or split into its own issue.
+
+| item | now | where |
+| --- | --- | --- |
+| R1 `rmw` | **fixed here.** `[deploy.*]` is refused by the schema (phase-486 W8). `resolved_rmw` is one ladder, cli > image > system. The `package.xml <nano_ros …/>` tuple is refused. The generated cmake root takes `BACKEND` from the resolved rmw. The residue: `nano_rosConfig.cmake` cached the leaf's `NROS_RMW` / `NROS_PLATFORM` / `NROS_BOARD` only when the cache was EMPTY, so editing `rmw` in `system.toml` (a CONFIGURE_DEPENDS input) reconfigured to the stale value silently. | `cmake/NanoRosLeafCache.cmake`: a value nano-ros cached (recognised by its helpstring, which also covers build dirs configured before) follows the file and says so. A person's `-D` or a project's own `set()` still wins. Gate `cmake-leaf-cache` (4 cases; dropping the follow branch fails case 2). |
+| R2 `board` | resolved | `[image.*]` is the only board table. The tuple is refused. Fixture rows restate it under R4's gate. |
+| R3 `domain_id` | resolved | `[host.*] > [system]`; the `[deploy]` rung is retired, and `domain_id_override` has no CLI reader left. |
+| R4 fixture rows | gated, not removed | 0 `entry =` rows, 142 `image =`; `_require_image_rmw` checks the restated rmw. |
+| R5 SDK roots | resolved | Derived (phase-484 W3); the site-config rule is inverted. |
+| R8 `platform` | unsettled, as filed | Stated in the index `[board.*]`, `nros-board.toml` and `board-support.toml`. Still in "Not settled". |
+| R9 `[[model]]` / `default_launch` | **split** | [issue 1895](../1895-system-toml-models-read-raw-not-typed.md): three parsers, and the typed field has no reader. |
+| R10 wcet | resolved | Has a production reader (`build.rs`). |
+| R11 `[param_services]` | resolved | Refused by the schema. |
+| R12 | moot | `[deploy.*]` is retired. |
+| R13 entry ↔ deploy | **split** | `[package.metadata.nros.entry].deploy` is refused. The CMake `DEPLOY`/`BOARD` keyword still wins with no comparison: [issue 1894](../1894-entry-deploy-board-keyword-beside-system-toml.md). |
+| R15 knob chain | resolved | Generated: platform TOML → `knobs.toml` → Kconfig. |
+| "agree by accident" (Verbs) | resolved | `nano_ros_add_executable` parses `BRINGUP` / `PANIC` / `LAUNCH_ARGS` itself (issue 1136). |
+| `CONFIG_NROS_INIT_DELAY_MS` | **fixed here** | Deliberately user-facing (`gen-config-surface.py` `PROVIDED`), not dead. But the guide and the `zpico-zephyr` README taught it through `zpico_zephyr_wait_network`, which no longer exists. Both now call `nros_platform_zephyr_wait_network`. |
+

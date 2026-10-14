@@ -518,9 +518,7 @@ target_sources(app PRIVATE src/main.cpp)
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 
-extern "C" {
-#include <zpico_zephyr.h>
-}
+#include <nros/platform_zephyr.h>
 
 #include <nros/nros.hpp>
 #include "std_msgs.hpp"
@@ -529,7 +527,7 @@ LOG_MODULE_REGISTER(my_app, LOG_LEVEL_INF);
 
 int main(void)
 {
-    zpico_zephyr_wait_network(CONFIG_NROS_INIT_DELAY_MS);
+    nros_platform_zephyr_wait_network(CONFIG_NROS_INIT_DELAY_MS);
 
     rclcpp::Result ret = rclcpp::init_in(CONFIG_NROS_ZENOH_LOCATOR, CONFIG_NROS_DOMAIN_ID);
     if (!ret.ok()) return 1;
