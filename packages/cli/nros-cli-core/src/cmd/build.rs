@@ -104,9 +104,83 @@ pub struct Args {
     #[arg(long, value_name = "PKG", num_args = 1..)]
     pub packages_up_to: Vec<String>,
 
+    /// Type-check the image instead of building it: `cargo check`, or
+    /// `cargo clippy` with `--check=clippy`.
+    ///
+    /// Everything before the cargo command is the same as a build — the
+    /// generated message crates, the `<pkg>_nros_selection` crate, the
+    /// image's settings file and its lock — because none of it is optional
+    /// for a check either: a leaf whose manifest names the selection crate
+    /// cannot even be LOADED until sync has written it, so a bare
+    /// `cargo check` in a fresh checkout fails at manifest parse with an
+    /// error that never says why. Only the final verb changes, so a check
+    /// here and a build here see one dependency graph.
+    ///
+    /// Cargo images only; a cmake or west image is refused, since neither
+    /// tool has a check that is not a build.
+    #[arg(
+        long,
+        value_enum,
+        value_name = "TOOL",
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "check"
+    )]
+    pub check: Option<CheckTool>,
+
     /// Arguments after `--` go to the native tool verbatim.
     #[arg(last = true)]
     pub native_args: Vec<String>,
+}
+
+/// The cargo command `nros build --check` runs in place of `cargo build`.
+#[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CheckTool {
+    /// `cargo check`.
+    Check,
+    /// `cargo clippy`. Lint flags go after a second `--`:
+    /// `nros build --check=clippy -- -- -D warnings`.
+    Clippy,
+}
+
+impl CheckTool {
+    fn verb(self) -> &'static str {
+        match self {
+            CheckTool::Check => "check",
+            CheckTool::Clippy => "clippy",
+        }
+    }
+}
+
+/// `nros build --check`: swap the final `cargo build` of every plan for
+/// `tool`, and refuse an image no cargo command drives.
+///
+/// One pass over the finished plans rather than a branch at each of the three
+/// places a cargo handoff is assembled (generated entry, single-package leaf,
+/// workspace member): every one of them starts its arguments with `build`,
+/// so the rewrite is the same everywhere, and a fourth road gets it for free.
+fn retarget_to_check(plans: &mut [ResolvedBuild], tool: CheckTool) -> Result<()> {
+    for p in plans.iter_mut() {
+        if p.driver != Driver::Cargo {
+            eyre::bail!(
+                "`--check` type-checks a cargo image, and `{}` is built by {},                  which has no check that is not a build. Run `nros build {}`                  without `--check`.",
+                p.qualified,
+                p.driver.program(),
+                p.qualified
+            );
+        }
+        let Some(hand) = p.handoff.as_mut() else {
+            continue;
+        };
+        match hand.args.first() {
+            Some(a) if a == "build" => hand.args[0] = tool.verb().into(),
+            other => eyre::bail!(
+                "`{}`: expected the cargo handoff to start with `build`, found                  {other:?} — the `--check` rewrite does not know this road",
+                p.qualified
+            ),
+        }
+    }
+    Ok(())
 }
 
 /// One resolved build: what to say, and what to run.
@@ -1989,7 +2063,10 @@ pub fn run(args: Args) -> Result<()> {
         }
     }
 
-    let plans = plan_builds(&args)?;
+    let mut plans = plan_builds(&args)?;
+    if let Some(tool) = args.check {
+        retarget_to_check(&mut plans, tool)?;
+    }
     pin_this_project(&args)?;
     if !args.dry_run {
         let drifts = drift_before_build(&plans, args.nano_ros_path.clone())?;
@@ -5425,6 +5502,7 @@ mod selection_wiring_tests {
             offline: true,
             packages_select: select.iter().map(|s| (*s).to_string()).collect(),
             packages_up_to: up_to.iter().map(|s| (*s).to_string()).collect(),
+            check: None,
             native_args: Vec::new(),
         }
     }
@@ -5479,6 +5557,31 @@ mod selection_wiring_tests {
             .expect("parses");
         assert_eq!(b.images, vec!["linux"]);
         assert_eq!(b.packages_select, vec!["talker_pkg"]);
+    }
+
+    /// `--check` takes its tool only with `=`, so a bare `--check` never
+    /// swallows the image name after it.
+    #[test]
+    fn check_parses_bare_and_with_a_tool() {
+        let a = Args::try_parse_from(["build", "--check", "linux"]).expect("parses");
+        assert_eq!(a.check, Some(CheckTool::Check));
+        assert_eq!(a.images, vec!["linux"]);
+
+        let b = Args::try_parse_from([
+            "build",
+            "linux",
+            "--check=clippy",
+            "--",
+            "--",
+            "-D",
+            "warnings",
+        ])
+        .expect("parses");
+        assert_eq!(b.check, Some(CheckTool::Clippy));
+        assert_eq!(b.native_args, vec!["--", "-D", "warnings"]);
+
+        let c = Args::try_parse_from(["build", "linux"]).expect("parses");
+        assert_eq!(c.check, None);
     }
 
     /// The wiring: an unknown name must be refused by `plan_builds` itself.
@@ -5793,6 +5896,7 @@ mod single_package_tests {
             offline: false,
             packages_select: Vec::new(),
             packages_up_to: Vec::new(),
+            check: None,
             native_args: Vec::new(),
         }
     }
@@ -5915,6 +6019,46 @@ mod single_package_tests {
             .expect_err("wrong image")
             .to_string();
         assert!(e.contains("[image.esp32]") && e.contains("linux"), "{e}");
+    }
+
+    /// `--check` keeps every stage a build runs and changes only cargo's
+    /// verb: the same manifest, the same generated settings, the same cwd.
+    #[test]
+    fn check_swaps_only_the_cargo_verb_of_a_leaf_build() {
+        let tmp = tempfile::tempdir().unwrap();
+        let leaf = leaf(tmp.path());
+        let built = plan_builds(&args(&leaf, &[])).expect("plans");
+        let built = built[0].handoff.as_ref().unwrap().clone();
+        for (tool, verb) in [(CheckTool::Check, "check"), (CheckTool::Clippy, "clippy")] {
+            let mut plans = plan_builds(&args(&leaf, &[])).expect("plans");
+            retarget_to_check(&mut plans, tool).expect("a cargo image checks");
+            let h = plans[0].handoff.as_ref().unwrap();
+            assert_eq!(h.args[0], verb);
+            assert_eq!(h.args[1..], built.args[1..], "only the verb moves");
+            assert_eq!(h.cwd, built.cwd);
+            assert!(
+                h.display().contains(&format!(
+                    "cargo {verb} --manifest-path talker/Cargo.toml --config \
+                     talker/build/linux/nros-cargo.toml"
+                )),
+                "{}",
+                h.display()
+            );
+        }
+    }
+
+    #[test]
+    fn check_refuses_an_image_cargo_does_not_drive() {
+        let tmp = tempfile::tempdir().unwrap();
+        let leaf = c_leaf(tmp.path());
+        let mut plans = plan_builds(&args(&leaf, &[])).expect("plans");
+        let e = retarget_to_check(&mut plans, CheckTool::Check)
+            .expect_err("cmake has no check")
+            .to_string();
+        assert!(
+            e.contains("native_c_talker:linux") && e.contains("cmake"),
+            "names the image and its driver: {e}"
+        );
     }
 }
 

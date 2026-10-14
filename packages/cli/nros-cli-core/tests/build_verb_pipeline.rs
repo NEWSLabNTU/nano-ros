@@ -123,6 +123,7 @@ fn selected_args(ws: &Path, images: &[&str], select: &[&str], up_to: &[&str]) ->
         offline: false,
         packages_select: select.iter().map(|s| (*s).to_string()).collect(),
         packages_up_to: up_to.iter().map(|s| (*s).to_string()).collect(),
+        check: None,
         native_args: Vec::new(),
     }
 }
