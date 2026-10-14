@@ -200,8 +200,8 @@ which order, so the two phases do not build the same carrier twice.
    (`ZPICO_*`, `ZPICO_SMOLTCP_*`, ThreadX's `NROS_ZENOH_READ_PRIORITY` beside
    `ZPICO_READ_TASK_PRIORITY`) were legacy rows, accepted with a deprecation
    for one release and RETIRED in phase-484 W8: set, each is refused naming
-   `NROS_<ID>`, and the `legacy` column is kept one more release as that
-   error table. The TOML spelling is `[knobs.<group>] <name>`.
+   `NROS_<ID>`, and the `legacy` column stays as that error table for good
+   (2026-10-14): without it a retired spelling would be ignored, not refused. The TOML spelling is `[knobs.<group>] <name>`.
 
    The Kconfig symbol is a COLUMN, not the id. Its default is
    `CONFIG_NROS_<ID>`; a row names another symbol where today's Kconfig
@@ -550,9 +550,9 @@ spelling of `[image.<id>.knobs]` and retire only after phase-481 closes.
 every road, validated against the registry (key, type, range) and rendered
 into the same rows an `env` entry states, so it needs no carrier of its own.
 The key is the row's `toml` key, else its id split at the first `_`. An
-`env` row naming a registry knob is deprecated (one warning naming the
-knobs spelling) and is refused after the next release; stating one knob both
-ways is an error. Env rows the registry does not hold stay valid.
+`env` row naming a registry knob is refused, naming the knobs spelling
+(release 0.6.0 carried it as a deprecation warning). Env rows the registry
+does not hold stay valid.
 
 ### Resource target paths
 
@@ -634,6 +634,13 @@ Still open:
    hook does not read (board fragments, snippets).
 
 ## Changelog
+
+- 2026-10-14 — An `[image.<id>] env` row naming a registry knob is refused
+  (phase-484 W8), after release 0.6.0 shipped its deprecation.
+- 2026-10-14 — The retired-name error tables (W8a's cmake names, W8b's
+  `legacy` column and `[board.knobs]`, W8c's runtime aliases) are kept for
+  good instead of dropped after one release: a dropped row makes an old name
+  silently ignored, not refused.
 
 - 2026-10-13 — `[image.<id>.knobs]` built (phase-484 W8): the project's knob
   home of the §3 table, rendered into the `env` rows' carrier on every road;

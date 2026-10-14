@@ -16,16 +16,16 @@ generated and committed instead, and `just check knob-registry` holds the two
 equal. Every spelling of a knob derives from its row:
 
   env      `NROS_<id>`. Each `legacy` name is RETIRED (phase-484 W8): set, it
-           stops the build naming `NROS_<id>`. The column stays one release
-           as that error table, then the rows go.
+           stops the build naming `NROS_<id>`. The column stays as that
+           error table for good: an unlisted old name would be ignored.
   Kconfig  `CONFIG_<kconfig>`, default `CONFIG_NROS_<id>`
   TOML     `[knobs.<toml>]`, where the ladder has a key for it
   image    `[image.<id>.knobs.<group>] <name>` in a project's system.toml
            (phase-484 W8): the `toml` key where the row has one, so a project
            and a board spell a knob the same way, else the id split at its
            first `_` (`ZEPHYR_HEAP_SIZE` -> `zephyr.heap_size`). An
-           `[image.<id>] env` row naming the knob still works and is
-           deprecated, with `IMAGE_ENV_DEPRECATED_TEMPLATE`'s words.
+           `[image.<id>] env` row naming the knob is refused, in
+           `IMAGE_ENV_RETIRED_TEMPLATE`'s words.
 
 A row whose knob has a Zephyr Kconfig symbol also carries that symbol's
 DEFINITION — `type`, `prompt`, the `if` it sits under (`kconfig_if`), its
@@ -77,14 +77,15 @@ RETIRED = (
     "{legacy} is a retired spelling of {env} (RFC-0103 D2b; retired in phase-484 W8, "
     "after release 0.5.0-nros2 deprecated it) -- set {env} instead"
 )
-# The one warning an `[image.<id>] env` row earns when its key is a registry
-# knob (phase-484 W8, RFC-0103 D6): the row still works, and the knob's own
-# spelling is `[image.<id>.knobs.<group>] <name>`. `{image}`, `{env}`,
+# The error an `[image.<id>] env` row earns when its key is a registry knob
+# (phase-484 W8, RFC-0103 D6): the knob's one spelling is
+# `[image.<id>.knobs.<group>] <name>`. Release 0.6.0 warned with these words
+# minus the refusal; this is what that warning promised. `{image}`, `{env}`,
 # `{group}` and `{name}` are replaced by the CLI.
-IMAGE_ENV_DEPRECATED = (
-    "[image.{image}] env {env} is a deprecated spelling of the knob "
-    "[image.{image}.knobs.{group}] {name} (RFC-0103 D6, phase-484 W8) -- move the row "
-    "there; an env row naming a registry knob is refused after the next release"
+IMAGE_ENV_RETIRED = (
+    "[image.{image}] env {env} names the knob [image.{image}.knobs.{group}] {name} "
+    "(RFC-0103 D6; refused in phase-484 W8, after release 0.6.0 deprecated it) -- "
+    "move the row there"
 )
 
 ID = re.compile(r"^[A-Z][A-Z0-9_]*$")
@@ -243,9 +244,9 @@ def render(rows):
     out.append("/// Substitute `{legacy}` and `{env}`; the cmake twin refuses in the same words.")
     out.append(f"pub const RETIRED_TEMPLATE: &str = {q(RETIRED)};")
     out.append("")
-    out.append("/// The warning an `[image.<id>] env` row earns when it names a registry knob")
+    out.append("/// The refusal an `[image.<id>] env` row earns when it names a registry knob")
     out.append("/// (phase-484 W8). Substitute `{image}`, `{env}`, `{group}` and `{name}`.")
-    out.append(f"pub const IMAGE_ENV_DEPRECATED_TEMPLATE: &str = {q(IMAGE_ENV_DEPRECATED)};")
+    out.append(f"pub const IMAGE_ENV_RETIRED_TEMPLATE: &str = {q(IMAGE_ENV_RETIRED)};")
     out.append("")
     return "\n".join(out)
 
@@ -258,7 +259,7 @@ def render_cmake(rows):
         "# two equal. Read through `_nros_knob_env` (cmake/NanoRosKnobEnv.cmake).",
         "#",
         "# The RETIRED env spellings of each knob (RFC-0103 D2b, phase-484 W8) -- the",
-        "# error table, kept one release: NROS_KNOB_LEGACY_<canonical> lists the old",
+        "# error table, kept for good: NROS_KNOB_LEGACY_<canonical> lists the old",
         "# names that now stop a configure, NROS_KNOB_CANONICAL_<legacy> names the row",
         "# each belongs to.",
         "",
@@ -331,7 +332,7 @@ def render_kconfig_section(rows):
         "# No symbol here has a prompt (phase-484 W5b). The module hook writes the",
         "# file sourced below BEFORE Kconfig runs, and its definitions come first:",
         "#   * a project with a system.toml -- each knob's value from the image",
-        "#     (`[image.<id>] env NROS_<ID>`, or `-DNROS_OVERRIDE_<ID>` for one",
+        "#     (`[image.<id>.knobs.<group>] <name>`, or `-DNROS_OVERRIDE_<ID>` for one",
         "#     build) as a `default`. With no prompt anywhere, a prj.conf line or a",
         "#     -DCONFIG_<knob> is a configure error: system.toml is the one source.",
         "#   * a guest (no system.toml) -- a copy of zephyr/Kconfig.knob-prompts,",

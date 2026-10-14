@@ -374,14 +374,16 @@ mod tests {
             parse("[knobs.zephyr]\nheap_size = 262144\n[knobs.zenoh.tx]\nbatch = true\n");
         let merged = specific.with_base(&base);
         let rows = crate::cmd::leaf_settings::image_block_layers(None, &merged).unwrap();
-        let env = parse(
-            "env = { NROS_EXECUTOR_MAX_CBS = \"8\", NROS_ZEPHYR_HEAP_SIZE = \"262144\", \
-             NROS_ZENOH_TX_BATCH = \"1\" }\n",
-        );
-        assert_eq!(
-            rows,
-            crate::cmd::leaf_settings::image_block_layers(None, &env).unwrap()
-        );
+        // The rows the retired env spelling of these knobs stated.
+        let env: std::collections::BTreeMap<String, String> = [
+            ("NROS_EXECUTOR_MAX_CBS", "8"),
+            ("NROS_ZEPHYR_HEAP_SIZE", "262144"),
+            ("NROS_ZENOH_TX_BATCH", "1"),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect();
+        assert_eq!(rows, env);
         let back: ImageBlock = toml::from_str(&toml::to_string(&merged).unwrap()).unwrap();
         assert_eq!(back, merged, "serializes to the nested shape it parses");
         assert!(toml::from_str::<ImageBlock>("[knobs]\nmax_cbs = 1\n").is_err());

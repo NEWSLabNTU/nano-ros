@@ -4,7 +4,7 @@
 # two equal. Read through `_nros_knob_env` (cmake/NanoRosKnobEnv.cmake).
 #
 # The RETIRED env spellings of each knob (RFC-0103 D2b, phase-484 W8) -- the
-# error table, kept one release: NROS_KNOB_LEGACY_<canonical> lists the old
+# error table, kept for good: NROS_KNOB_LEGACY_<canonical> lists the old
 # names that now stop a configure, NROS_KNOB_CANONICAL_<legacy> names the row
 # each belongs to.
 

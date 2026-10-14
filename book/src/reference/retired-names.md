@@ -109,6 +109,7 @@ hints and keep their spelling.
 `NANO_ROS_ROOT` as an **environment** variable is retired by its own rule: a
 configure that finds it set stops, naming `NROS_REPO_DIR`.
 
-The error table is kept for one more release, so a project that skips a
-release still hears what to type. After that the old names are simply unknown
-variables.
+The error table stays: a retired name is refused for good, naming what to
+type. Dropping the rows would turn `-DNANO_ROS_PLATFORM=zephyr` (or a stale
+cache entry an older nano-ros wrote) into an unknown variable, and the
+configure would build the default platform without a word.

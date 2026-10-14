@@ -465,8 +465,9 @@ pub fn defaults_text(leaf: &LeafSystem, r: &Rendered) -> String {
          #\n\
          # The nano-ros knobs of {origin} [image.{image}].\n\
          # They have NO prompt, so a prj.conf line or a -DCONFIG_<knob> for one of\n\
-         # them is a configure error: state a knob as `env NROS_<ID> = \"<v>\"` in\n\
-         # [image.{image}], or pass -DNROS_OVERRIDE_<ID>=<v> for one build.\n"
+         # them is a configure error: state a knob as\n\
+         # `[image.{image}.knobs.<group>] <name> = <v>`, or pass\n\
+         # -DNROS_OVERRIDE_<ID>=<v> for one build.\n"
     );
     let knobs = nros_zephyr_build::KCONFIG_KNOBS;
     let mut conds: Vec<Option<&str>> = vec![None];
@@ -489,9 +490,12 @@ pub fn defaults_text(leaf: &LeafSystem, r: &Rendered) -> String {
             match stated {
                 Some(l) => s.push_str(&format!("# {} ({})\n", l.from, k.id)),
                 None => s.push_str(&format!(
-                    "# {} not stated: the module default (`env NROS_{}`, \
+                    "# {} not stated: the module default (`knobs {}`, \
                      `-DNROS_OVERRIDE_{}`)\n",
-                    k.id, k.id, k.id
+                    k.id,
+                    nros_zephyr_build::knob_row(&format!("NROS_{}", k.id))
+                        .map_or("<group>.<name>", |r| r.image_key),
+                    k.id
                 )),
             }
             s.push_str(&format!("config {}\n    {}\n", k.symbol, k.ty));
@@ -685,8 +689,9 @@ endif # NROS
         let (_d, l) = leaf(
             "[system]\nname = \"t\"\nrmw = \"zenoh\"\n\n\
              [image.zephyr]\nboard = \"zephyr\"\nlocator = \"tcp/10.0.2.2:7447\"\n\
-             env = { NROS_EXECUTOR_MAX_CBS = \"13\", NROS_ZENOH_MAX_QUERYABLES = \"9\", \
-             NROS_ZENOH_TX_BATCH = \"1\", NROS_LINK_IP = \"0\" }\n",
+             env = { NROS_LINK_IP = \"0\" }\n\
+             knobs = { executor = { max_cbs = 13 }, zenoh = { max_queryables = 9, \
+             tx = { batch = true } } }\n",
             &[],
         );
         let r = render(&l, Some(Language::C), &syms, &BTreeMap::new()).unwrap();
@@ -718,7 +723,7 @@ endif # NROS
         let d = defaults_text(&l, &r);
         assert!(
             d.contains(
-                "# env NROS_EXECUTOR_MAX_CBS = \"13\" (EXECUTOR_MAX_CBS)\n\
+                "# knobs executor.max_cbs = 13 (EXECUTOR_MAX_CBS)\n\
                  config NROS_EXECUTOR_MAX_CBS\n    int\n    default 13\n"
             ),
             "{d}"
@@ -758,7 +763,7 @@ endif # NROS
         let syms = KconfigSymbols::parse(KCONFIG);
         let (_d, l) = leaf(
             "[system]\nname = \"t\"\nrmw = \"zenoh\"\n\n[image.zephyr]\nboard = \"zephyr\"\n\
-             env = { NROS_EXECUTOR_MAX_CBS = \"13\" }\n",
+             knobs = { executor = { max_cbs = 13 } }\n",
             &[],
         );
         let o = |kv: &[(&str, &str)]| -> BTreeMap<String, String> {
@@ -860,18 +865,18 @@ endif # NROS
         let syms = KconfigSymbols::parse(KCONFIG);
         let (_d, l) = leaf(
             "[system]\nname = \"t\"\nrmw = \"zenoh\"\n\n[image.zephyr]\nboard = \"zephyr\"\n\
-             env = { NROS_LOG_MAX_LEVEL = \"warn\" }\n",
+             knobs = { log = { max_level = \"warn\" } }\n",
             &[],
         );
         let e = render(&l, None, &syms, &BTreeMap::new()).unwrap_err();
         assert!(
-            e.contains("NROS_LOG_MAX_LEVEL = \"warn\"") && e.contains("an int"),
+            e.contains("log.max_level = \"warn\"") && e.contains("an int"),
             "{e}"
         );
 
         let (_d, l) = leaf(
             "[system]\nname = \"t\"\nrmw = \"xrce\"\n\n[image.zephyr]\nboard = \"zephyr\"\n\
-             env = { NROS_ZENOH_MAX_QUERYABLES = \"4\" }\n",
+             knobs = { zenoh = { max_queryables = 4 } }\n",
             &[],
         );
         let e = render(&l, None, &syms, &BTreeMap::new()).unwrap_err();

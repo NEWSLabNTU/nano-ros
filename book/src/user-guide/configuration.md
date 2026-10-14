@@ -129,9 +129,8 @@ It sits on the image rung (above the board, below an exported variable).
 
 `[image.<id>] env = { NAME = "value" }` still carries an application's own
 build variable, a name the registry does not hold. An `env` row that names a
-registry knob still works in this release, and prints a warning that names
-its `knobs` spelling. It will be refused after the next release. A knob
-stated both ways in one image is an error.
+registry knob is an error that names its `knobs` spelling (release 0.6.0
+accepted it with a warning).
 
 RT/stack/priority for a single-node embedded app comes from **board-crate
 Cargo features + Kconfig** (`prj*.conf` on Zephyr), not a config file.

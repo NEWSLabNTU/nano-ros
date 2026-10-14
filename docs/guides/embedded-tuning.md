@@ -482,8 +482,8 @@ variables. The CMake integration automatically maps Kconfig to the corresponding
 `system.toml`, which keeps every knob's Kconfig prompt. In a project WITH a
 `system.toml` the knob symbols have no prompt, so a `prj.conf` line or a
 `-DCONFIG_<knob>` for one is a configure error naming the replacement: state the
-knob in the image, `[image.<id>] env = { NROS_ZENOH_MAX_QUERYABLES = "4" }` (the env
-spelling), and pass `-DNROS_OVERRIDE_<ID>=<value>` (`-DNROS_OVERRIDE_ZENOH_MAX_QUERYABLES=4`)
+knob in the image, `[image.<id>.knobs.zenoh] max_queryables = 4` (an `env` row
+naming a registry knob is refused since phase-484 W8), and pass `-DNROS_OVERRIDE_<ID>=<value>` (`-DNROS_OVERRIDE_ZENOH_MAX_QUERYABLES=4`)
 for a single build. The module hook writes the result to
 `<build>/nros/Kconfig.from-system-toml`.
 
