@@ -65,7 +65,7 @@ including `#[init]`, `__nros_spin`, and (if any deployed Node declares
 `DispatchStrategy::Deferred`) `__nros_dispatch`.
 
 The framework is a property of the **board**, never something you spell in
-a manifest: `rtic-mps2-an385` and `qemu-rtic-mps2-an385` resolve to `rtic`,
+a manifest: `rtic-mps2-an385` resolves to `rtic`,
 `zephyr` to Zephyr, `esp32-qemu` and `esp32-c3-baremetal` to the ESP32
 shape, and every other board — native, FreeRTOS, NuttX, ThreadX,
 non-RTIC bare-metal — to the default owned-spin `fn main`. An out-of-tree

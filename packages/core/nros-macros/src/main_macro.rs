@@ -4039,8 +4039,7 @@ mod image_plan_tests {
 ///   Rust producers now agree.
 ///
 ///   A Rust key with NO RTOS family (`esp32-qemu`, `esp32-c3-baremetal`,
-///   `rtic-mps2-an385`, `qemu-rtic-mps2-an385`, `qemu-mps2-an385`,
-///   `mps2-an385`) gets `NO_RTOS_TIER_KEY`, which selects no sub-table. The
+///   `rtic-mps2-an385`, `qemu-mps2-an385`, `mps2-an385`) gets `NO_RTOS_TIER_KEY`, which selects no sub-table. The
 ///   substring match gave those keys the host's sub-table. An authored tier on
 ///   such a board is now refused by `resolve_tiers`, and no in-tree leaf
 ///   authors one.
@@ -4074,15 +4073,15 @@ mod target_rtos_tests {
         }
     }
 
-    /// The six keys the substring match answered `posix` for. None of them is a
-    /// host, and none has an RTOS.
+    /// The no-RTOS keys the substring match answered `posix` for (six until
+    /// issue 1902 removed `qemu-rtic-mps2-an385`). None of them is a host, and
+    /// none has an RTOS.
     #[test]
     fn no_rtos_rust_keys_select_no_sub_table() {
         for key in [
             "esp32-qemu",
             "esp32-c3-baremetal",
             "rtic-mps2-an385",
-            "qemu-rtic-mps2-an385",
             "qemu-mps2-an385",
             "mps2-an385",
         ] {
@@ -4101,13 +4100,13 @@ mod target_rtos_tests {
             ("linux", "posix"),
             ("freertos", "freertos"),
             ("mps2-an385-freertos", "freertos"),
-            ("freertos-qemu-mps2-an385", "freertos"),
             ("zephyr", "zephyr"),
             ("nuttx", "nuttx"),
             ("nuttx-riscv", "nuttx"),
             ("rv-virt-nuttx", "nuttx"),
             ("qemu-armv7a-nuttx", "nuttx"),
             ("threadx-linux", "threadx"),
+            ("threadx-riscv64", "threadx"),
             ("threadx-qemu-riscv64", "threadx"),
             ("rv-virt-threadx", "threadx"),
         ] {
@@ -4698,7 +4697,7 @@ struct RticBoardSpec {
 
 fn rtic_board_spec_for(deploy: &str) -> Option<RticBoardSpec> {
     let (device, dispatchers, consumer, tick_irq) = match deploy {
-        "rtic-mps2-an385" | "qemu-rtic-mps2-an385" => (
+        "rtic-mps2-an385" => (
             "mps2_an385_pac",
             &["UARTRX0", "UARTTX0"][..],
             // phase-337 W6.a — folded into `nros-board-mps2-an385`'s `rtic`

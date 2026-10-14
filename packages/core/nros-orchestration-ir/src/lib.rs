@@ -163,7 +163,7 @@ pub fn is_host_board_key(key: &str) -> bool {
 /// `None` means "no in-tree opinion", which callers read as `owned-spin`.
 pub fn framework_for_board_key(key: &str) -> Option<&'static str> {
     Some(match key {
-        "rtic-mps2-an385" | "qemu-rtic-mps2-an385" => "rtic",
+        "rtic-mps2-an385" => "rtic",
         // Issue 1435 — `native_sim/native/64` was a second `BOARD_PATHS` key
         // for this board and was missing here, so it read `owned-spin` and
         // emitted a `BoardEntry::run` `ZephyrBoard` does not implement. Issue
@@ -240,11 +240,6 @@ pub const BOARD_PATHS: &[(&str, &str, bool)] = &[
         false,
     ),
     (
-        "freertos-qemu-mps2-an385",
-        "::nros_board_mps2_an385_freertos::Mps2An385",
-        false,
-    ),
-    (
         "mps2-an385-freertos",
         "::nros_board_mps2_an385_freertos::Mps2An385",
         false,
@@ -256,6 +251,13 @@ pub const BOARD_PATHS: &[(&str, &str, bool)] = &[
     (
         "threadx-linux",
         "::nros_board_threadx_linux::ThreadxLinux",
+        false,
+    ),
+    // Issue 1902 — `threadx-riscv64` is the descriptor's own name for this
+    // board; the catalog accepted it and both entry tables lacked it.
+    (
+        "threadx-riscv64",
+        "::nros_board_threadx_qemu_riscv64::ThreadxQemuRiscv64",
         false,
     ),
     (
@@ -302,13 +304,10 @@ pub const BOARD_PATHS: &[(&str, &str, bool)] = &[
     // refuses it, naming `zephyr`) and a key for it here would be a second
     // opinion that still accepted it.
     ("zephyr", "::nros_board_zephyr::ZephyrBoard", false),
+    // `qemu-rtic-mps2-an385` was a second key for this ZST until issue 1902:
+    // no descriptor names it, so no image could select it.
     (
         "rtic-mps2-an385",
-        "::nros_board_mps2_an385::RticMps2An385",
-        false,
-    ),
-    (
-        "qemu-rtic-mps2-an385",
         "::nros_board_mps2_an385::RticMps2An385",
         false,
     ),
@@ -1601,9 +1600,9 @@ mod tests {
         let known = [
             "linux",
             "freertos",
-            "freertos-qemu-mps2-an385",
             "mps2-an385-freertos",
             "threadx-linux",
+            "threadx-riscv64",
             "threadx-qemu-riscv64",
             "rv-virt-threadx",
             "nuttx",
@@ -1614,7 +1613,6 @@ mod tests {
             "esp32-c3-baremetal",
             "zephyr",
             "rtic-mps2-an385",
-            "qemu-rtic-mps2-an385",
             "qemu-mps2-an385",
             "mps2-an385",
         ];
@@ -1639,11 +1637,7 @@ mod tests {
     /// `freertos` must map to the FreeRTOS board, not LinuxBoard.
     #[test]
     fn freertos_key_maps_to_freertos_board() {
-        for key in [
-            "freertos",
-            "freertos-qemu-mps2-an385",
-            "mps2-an385-freertos",
-        ] {
+        for key in ["freertos", "mps2-an385-freertos"] {
             let path = board_path_for(key).expect("freertos keys must resolve");
             assert!(
                 path.contains("nros_board_mps2_an385_freertos"),

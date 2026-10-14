@@ -244,7 +244,7 @@ const RENDERED_FRAMEWORK: &str = "owned-spin";
 ///   (Zephyr owns `main`; the macro's `Framework::Zephyr` arm emits a
 ///   `rust_main` staticlib export instead) —
 ///   `error[E0277]: the trait bound `ZephyrBoard: BoardEntry` is not satisfied`.
-/// - `rtic-mps2-an385` / `qemu-rtic-mps2-an385` → `RticMps2An385`, which
+/// - `rtic-mps2-an385` → `RticMps2An385`, which
 ///   implements `RticBoardEntry` — a SEPARATE trait, not a subtrait — so the
 ///   same `E0277`.
 /// - `esp32-qemu` / `esp32-c3-baremetal` → `Esp32QemuEntry`, which DOES
@@ -618,7 +618,6 @@ mod tests {
                 "esp32-c3-baremetal",
                 "zephyr",
                 "rtic-mps2-an385",
-                "qemu-rtic-mps2-an385",
             ],
             "the refused set moved — read issue 1435 before editing this list"
         );
