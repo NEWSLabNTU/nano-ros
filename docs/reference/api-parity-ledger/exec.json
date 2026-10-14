@@ -895,6 +895,10 @@
     "verdict": "extension",
     "why": "Measured against the recorded upstream surfaces (`docs/reference/api-surface/{rclc,rclcpp,rclrs}.json`): none of them contains `park`, `wake_source`, `spin_nominal` or `granularity` at all, so there is no upstream name to align to. Same basis as the `Executor::release_jitter` pair beside it.\n\nphase-436. What the release-jitter number is WORTH, reported rather than applied — silently coarsening a bound could mask real lateness. A declared cadence (`set_spin_nominal_us`) is paced by the caller, as nros-cpp's tiers are with `platform_sleep_us` between spins, and that sleep is finer than the wait, so the measurement really is good to a microsecond and coarsening it would understate it."
   },
+  "rust:Executor::late_wakes_beyond_granularity": {
+    "verdict": "extension",
+    "why": "Measured against the recorded upstream surfaces (`docs/reference/api-surface/{rclc,rclcpp,rclrs}.json`): none of them contains `park`, `wake_source`, `spin_nominal` or `granularity` at all, so there is no upstream name to align to. Same basis as the `Executor::release_jitter` pair beside it.\n\nphase-436 A2c. Of the late wakes `release_jitter` counts, those late by more than `release_jitter_granularity_us`. A loop paced by a tick-granular park is late by a fraction of a tick on most wakes by design, so `late_wakes` approaches `total_wakes` on a loop that keeps its period; this count is the lateness the measurement can resolve."
+  },
   "rust:Executor::remove_on_shutdown_callback": {
     "verdict": "extension",
     "why": "See `rust:Executor::remove_pre_shutdown_callback`. Issue 0790."
@@ -959,6 +963,10 @@
   "rust:Executor::set_spin_nominal_us": {
     "verdict": "extension",
     "why": "Measured against the recorded upstream surfaces (`docs/reference/api-surface/{rclc,rclcpp,rclrs}.json`): none of them contains `park`, `wake_source`, `spin_nominal` or `granularity` at all, so there is no upstream name to align to. Same basis as the `Executor::release_jitter` pair beside it.\n\nphase-436. Declares how often this executor's loop intends to come round, in microseconds; `0` (the default) falls back to the `spin_once` timeout. Needed because a driver's pacing and its blocking bound are separate numbers: nros-cpp's tier loops sleep `spin_period_us` between spins but pass a fixed 10 ms timeout, so the release-jitter rule judged every tier against 10 ms regardless of the declared contract — too lax for a 1 ms tier and far too strict for a 30 ms one."
+  },
+  "rust:Executor::set_spin_nominal_wait_paced_us": {
+    "verdict": "extension",
+    "why": "Measured against the recorded upstream surfaces (`docs/reference/api-surface/{rclc,rclcpp,rclrs}.json`): none of them contains `park`, `wake_source`, `spin_nominal` or `granularity` at all, so there is no upstream name to align to. Same basis as the `Executor::release_jitter` pair beside it.\n\nphase-436 A2b. Declares the cadence of a loop that the `spin_once` WAIT paces, as opposed to `set_spin_nominal_us`, which also claims the caller paces the loop with its own, finer sleep. The declared cadence becomes the period of the release grid in place of the timeout, the timeout still bounds each wait, and the jitter is reported at the park granularity rather than at 1 us."
   },
   "rust:Executor::set_trigger": {
     "verdict": "extension",

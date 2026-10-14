@@ -14,6 +14,7 @@ through A3's clear accessor is on `main`: W1-W7 (#849), A2 (#871), E3 + E4
    default image because of this (ASI ff12002), and turns it back on once E5
    lands. Design and evidence are under Path E below.
 2. **A2c: make `late_wakes` respect the granularity the executor reports.**
+   (LANDED 2026-10-15 with A2b. See A2b and A2c under Path A.)
 3. **A3, the loaded run on ASI, is blocked on ASI's side.** Every nano-ros
    commit with the A3 accessor also carries phase-427 W4's `ComponentNode`
    deletion (`1f3b88aec`, ~40 commits before `64a350ce4`), and ASI's
@@ -25,7 +26,7 @@ through A3's clear accessor is on `main`: W1-W7 (#849), A2 (#871), E3 + E4
    deadline source; the target-run half of the exit is still open — see Path
    B). Then Path C (C1 FreeRTOS, C2 POSIX/NuttX;
    C3 bare metal deferred), Path D (D1 measure 1195, D2 close 1196), E1
-   (issue 1232), and A2b.
+   (issue 1232, resolved and archived since), and A2b (LANDED 2026-10-15).
 
 Two process lessons that cost time here:
 - **When a parent PR merges, rebase its child before anyone queues it.** A
@@ -537,8 +538,23 @@ watched run.
     facts, the nominal to judge against and who paces the loop, and the C arm
     needs the first without the second. Until they are split, the inferred
     nominal (timeout == period) is the honest one there.
-  * **A2b — open:** split the nominal from the pacing claim, so a wait-paced
-    loop can declare its cadence without over-claiming.
+  * **A2b — LANDED 2026-10-15:** split the nominal from the pacing claim, so
+    a wait-paced loop can declare its cadence without over-claiming.
+    `Executor::set_spin_nominal_wait_paced_us` (C:
+    `nros_cpp_executor_set_spin_nominal_wait_paced_us`) declares a cadence
+    for a loop paced by the `spin_once` wait. It does not change what
+    `set_spin_nominal_us` means, which still says the caller paces itself.
+    The declared cadence becomes the period of the release grid that
+    phase-474 I11 gave every `spin_once(timeout)` loop, in place of the
+    timeout. The timeout still bounds each wait, so a loop that passes whole
+    milliseconds for a 1.5 ms cadence wakes at 1 ms (not a release) and then
+    parks the remaining 0.5 ms onto the grid point. The jitter is reported
+    at the park granularity, as for an undeclared loop. No entry calls it
+    yet. The RTOS tier loops pass the period as the timeout, so the two only
+    differ where a period is not whole milliseconds or is raised to
+    `SPIN_PERIOD_FLOOR_MS`. Moving those entries is a behaviour change on
+    targets with no local run, so it is left to whoever owns them; on Zephyr
+    that is the C arm ASI runs.
   * **Left for A3:** the ASI side printing these on a cadence.
 
 * **A3 — a loaded FVP cross-check. IN PROGRESS: the readout is live on ASI,
@@ -577,7 +593,15 @@ watched run.
     `nros_cpp_executor_clear_release_jitter_stats` exposes the existing Rust
     `clear_release_jitter_stats`, and the ASI readout clears after every
     report, so each line covers its own `window_ms`.
-  * **A2c — open: `late_wakes` ignores the granularity it reports.** A wake
+  * **A2c — LANDED 2026-10-15** as a separate count, so `late_wakes` keeps
+    its meaning: `Executor::late_wakes_beyond_granularity()` (C:
+    `nros_cpp_executor_late_wakes_beyond_granularity`), cleared with the
+    other statistics. It counts the late wakes whose lateness exceeds
+    `release_jitter_granularity_us()`. A unit test runs the A3 shape (a
+    10 ms grid, a 1 ms-tick park, 300 us of work per release): 45 of 51
+    wakes are late and none is beyond the granule, and one 2.5 ms overrun
+    is. The original report follows.
+  * **A2c — was open: `late_wakes` ignores the granularity it reports.** A wake
     counts as late at `interval - nominal > 0`, one microsecond over. On a
     loop paced by a relative `spin_once` timeout, every interval is nominal
     plus work plus tick rounding, so about 99 % of wakes count as late with E4
@@ -805,7 +829,8 @@ wired, so every other port parks on the millisecond `wake_wait_ms` floor.
 
 ### Path E — Stack headroom: wired, and on ASI blind.
 
-* **E1 — issue 1232.** Zephyr ignores a tier's declared `stack_bytes`: every
+* **E1 — issue 1232. RESOLVED** (the issue is archived; this item is kept
+  for the record). Zephyr ignored a tier's declared `stack_bytes`: every
   SPAWNED tier gets the fixed pool slot. It matters for images with spawned
   tiers. It does not block ASI, whose only tier is the boot tier.
 * **E2 — ASI's headroom rule. Already WIRED; the gap is that it cannot

@@ -5673,6 +5673,60 @@ pub unsafe extern "C" fn nros_cpp_executor_set_spin_nominal_us(
     NROS_CPP_RET_OK
 }
 
+/// phase-436 A2b — declare the loop's cadence, in microseconds, for a loop
+/// paced by the `spin_once` wait itself. `0` withdraws it.
+///
+/// [`nros_cpp_executor_set_spin_nominal_us`] also says the caller paces the
+/// loop with its own sleep, so the jitter is reported at 1 us. A loop like
+/// `for (;;) nros_cpp_spin_once(h, period_ms)` is paced by a tick-granular
+/// park instead: declaring through that call over-claims resolution, and not
+/// declaring makes the timeout the period, which is wrong whenever the two
+/// differ (a cadence that is not whole milliseconds, or one raised to a
+/// floor). This one sets the period of the release grid the loop runs on,
+/// keeps the timeout as a bound on each wait, and reports the jitter at the
+/// park granularity.
+///
+/// # Safety
+/// `handle` must be a live executor handle from this ABI, or NULL.
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_executor_set_spin_nominal_wait_paced_us(
+    handle: *mut c_void,
+    us: u64,
+) -> nros_cpp_ret_t {
+    let Some(ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    ctx.executor.set_spin_nominal_wait_paced_us(us);
+    NROS_CPP_RET_OK
+}
+
+/// phase-436 A2c — of the late wakes [`nros_cpp_executor_release_jitter`]
+/// counts, how many were late by more than its `granularity_us`.
+///
+/// A wake counts as late at one microsecond past its release, so on a loop
+/// paced by a tick-granular park nearly every wake is late by a fraction of a
+/// tick, by design. This count leaves that rounding out. It is cleared by
+/// [`nros_cpp_executor_clear_release_jitter_stats`] with the rest.
+///
+/// # Safety
+/// `handle` must be a live executor handle from this ABI, or NULL.
+/// `late_beyond` must be NULL or point at writable `uint32_t` storage.
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_executor_late_wakes_beyond_granularity(
+    handle: *mut c_void,
+    late_beyond: *mut u32,
+) -> nros_cpp_ret_t {
+    let Some(ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    if !late_beyond.is_null() {
+        unsafe { *late_beyond = ctx.executor.late_wakes_beyond_granularity() };
+    }
+    NROS_CPP_RET_OK
+}
+
 /// phase-436 A2 — which deadline source bounded a park, as
 /// [`nros_cpp_executor_last_park`] reports it. `PLATFORM` also carries the
 /// index the platform source was registered at.
@@ -7326,6 +7380,22 @@ mod jitter_readout_tests {
     fn clearing_the_jitter_stats_refuses_a_null_handle() {
         let rc = unsafe { nros_cpp_executor_clear_release_jitter_stats(core::ptr::null_mut()) };
         assert_eq!(rc, NROS_CPP_RET_INVALID_ARGUMENT);
+    }
+
+    /// phase-436 A2b / A2c — the two calls added beside the readout keep its
+    /// null-handle contract.
+    #[test]
+    fn the_wait_paced_cadence_and_granule_count_refuse_a_null_handle() {
+        let rc = unsafe {
+            nros_cpp_executor_set_spin_nominal_wait_paced_us(core::ptr::null_mut(), 1_500)
+        };
+        assert_eq!(rc, NROS_CPP_RET_INVALID_ARGUMENT);
+        let mut beyond = 7u32;
+        let rc = unsafe {
+            nros_cpp_executor_late_wakes_beyond_granularity(core::ptr::null_mut(), &mut beyond)
+        };
+        assert_eq!(rc, NROS_CPP_RET_INVALID_ARGUMENT);
+        assert_eq!(beyond, 7, "a refused call wrote its output");
     }
 }
 

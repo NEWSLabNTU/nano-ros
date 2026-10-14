@@ -2055,6 +2055,12 @@ pub struct Executor<'s> {
     /// sleeps 30 ms has a 30 ms cadence and a 10 ms timeout, and judging it
     /// against the timeout reports a loop that is late on every single wake.
     pub(crate) spin_nominal_declared_us: u64,
+    /// phase-436 A2b -- the declared cadence is met by the `spin_once` WAIT
+    /// itself (`set_spin_nominal_wait_paced_us`), not by a sleep the caller
+    /// adds between spins (`set_spin_nominal_us`). A wait-paced cadence runs
+    /// on the release grid and is worth one park granule; a self-paced one is
+    /// judged from entry to entry and is worth a microsecond.
+    pub(crate) spin_nominal_wait_paced: bool,
     /// phase-436 — the bound the last park was computed with, in us, and the
     /// source that won it. See `WakeSourceId`.
     pub(crate) last_park_bound_us: u64,
@@ -2082,6 +2088,11 @@ pub struct Executor<'s> {
     /// a glitch, the second means the period cannot be met at all.
     pub(crate) late_wakes: u32,
     pub(crate) total_wakes: u32,
+    /// phase-436 A2c -- late wakes whose lateness exceeds the granularity the
+    /// measurement was made at (`release_jitter_granularity_us`). On a loop
+    /// paced by a tick-granular park nearly every wake is late by a fraction
+    /// of a tick, by design; `late_wakes` counts those, this does not.
+    pub(crate) late_wakes_beyond_granule: u32,
     /// Issue 0514 / 1635 / phase-474 I1 -- what happens to a detected contract
     /// violation: the log switch, the drain-and-report hook, the image's sink,
     /// and the ring (CARVED, phase-409) with its total and dropped counters.
@@ -2298,6 +2309,7 @@ impl<'s> Executor<'s> {
             stack_headroom_checks: 0,
             spin_nominal_us: 0,
             spin_nominal_declared_us: 0,
+            spin_nominal_wait_paced: false,
             last_park_bound_us: 0,
             last_park_source: WakeSourceId::CallerBudget,
             last_park_achieved_us: 0,
@@ -2307,6 +2319,7 @@ impl<'s> Executor<'s> {
             park_granularity_declared_us: 0,
             late_wakes: 0,
             total_wakes: 0,
+            late_wakes_beyond_granule: 0,
             violations: super::monitor::ViolationChannel::new(monitor_violations),
             alive_slots,
             slot_tags,
@@ -3154,26 +3167,33 @@ impl<'s> Executor<'s> {
     /// `Future::wait`-style busy spins out of the statistic and off the grid.
     fn record_release_jitter(&mut self, timeout: core::time::Duration) -> u64 {
         let timeout_us = timeout.as_micros().min(u64::MAX as u128) as u64;
-        if self.spin_nominal_declared_us == 0 {
+        if !self.spin_nominal_self_paced() {
             if timeout_us == 0 {
                 return 0;
             }
             let Some(now) = self.now_us() else {
                 return timeout_us;
             };
-            self.spin_nominal_us = timeout_us;
-            if self.grid.period_us != timeout_us {
+            // phase-436 A2b -- a wait-paced declaration supplies the grid's
+            // period; otherwise the timeout stands in for it.
+            let period_us = if self.spin_nominal_declared_us != 0 {
+                self.spin_nominal_declared_us
+            } else {
+                timeout_us
+            };
+            self.spin_nominal_us = period_us;
+            if self.grid.period_us != period_us {
                 // First periodic spin, or a new period: anchor here, so the
                 // first park is a whole period exactly as before.
-                self.grid.period_us = timeout_us;
-                self.grid.next_us = now.saturating_add(timeout_us);
-            } else if now >= self.grid.next_us.saturating_add(timeout_us) {
+                self.grid.period_us = period_us;
+                self.grid.next_us = now.saturating_add(period_us);
+            } else if now >= self.grid.next_us.saturating_add(period_us) {
                 // The loop came back a whole period or more after its next
                 // release was due: serve the latest due point once and drop
                 // the ones before it. The first dropped point is a release
                 // that never happened, so its lateness at this moment (a
                 // period or more) is what the jitter rule judges.
-                let missed = (now - self.grid.next_us) / timeout_us;
+                let missed = (now - self.grid.next_us) / period_us;
                 self.note_dropped_release(now - self.grid.next_us);
                 self.grid.skipped = self
                     .grid
@@ -3182,9 +3202,13 @@ impl<'s> Executor<'s> {
                 self.grid.next_us = self
                     .grid
                     .next_us
-                    .saturating_add(missed.saturating_mul(timeout_us));
+                    .saturating_add(missed.saturating_mul(period_us));
             }
-            return self.grid.next_us.saturating_sub(now);
+            // The timeout still bounds the wait. With a declared period it
+            // may be shorter than the period (a caller that passes whole
+            // milliseconds for a 1.5 ms cadence); a wake before the grid
+            // point is then not a release, and the next spin parks again.
+            return self.grid.next_us.saturating_sub(now).min(timeout_us);
         }
         // phase-474 I7 -- the violation reporter's own time since the last
         // sample is not a late release (see `flush_violation_reports`). Taken
@@ -3201,10 +3225,7 @@ impl<'s> Executor<'s> {
             if let Some(late) = interval.checked_sub(nominal_us)
                 && late > 0
             {
-                self.late_wakes = self.late_wakes.saturating_add(1);
-                if late > self.max_release_jitter_us {
-                    self.max_release_jitter_us = late;
-                }
+                self.count_late_wake(late);
             }
         }
         self.last_spin_entry_us = Some(now);
@@ -3220,7 +3241,7 @@ impl<'s> Executor<'s> {
     /// one period. Points the park itself overslept by a whole period are
     /// skipped at the next entry, not served in a burst.
     fn record_grid_release(&mut self, now: u64) {
-        if self.spin_nominal_declared_us != 0 || self.grid.period_us == 0 {
+        if self.spin_nominal_self_paced() || self.grid.period_us == 0 {
             return;
         }
         if now < self.grid.next_us {
@@ -3232,10 +3253,7 @@ impl<'s> Executor<'s> {
             .saturating_sub(report_us);
         self.total_wakes = self.total_wakes.saturating_add(1);
         if late > 0 {
-            self.late_wakes = self.late_wakes.saturating_add(1);
-            if late > self.max_release_jitter_us {
-                self.max_release_jitter_us = late;
-            }
+            self.count_late_wake(late);
         }
         self.grid.next_us = self.grid.next_us.saturating_add(self.grid.period_us);
         if now >= self.grid.next_us {
@@ -3252,6 +3270,22 @@ impl<'s> Executor<'s> {
                 .next_us
                 .saturating_add(missed.saturating_mul(self.grid.period_us));
         }
+    }
+
+    /// One wake that came back `late_us` (> 0) after its release was due.
+    fn count_late_wake(&mut self, late_us: u64) {
+        self.late_wakes = self.late_wakes.saturating_add(1);
+        if late_us > self.release_jitter_granularity_us() {
+            self.late_wakes_beyond_granule = self.late_wakes_beyond_granule.saturating_add(1);
+        }
+        if late_us > self.max_release_jitter_us {
+            self.max_release_jitter_us = late_us;
+        }
+    }
+
+    /// A cadence the caller meets with its own sleep between spins.
+    fn spin_nominal_self_paced(&self) -> bool {
+        self.spin_nominal_declared_us != 0 && !self.spin_nominal_wait_paced
     }
 
     /// The lateness of a grid release that was dropped rather than served,
@@ -3289,12 +3323,25 @@ impl<'s> Executor<'s> {
         )
     }
 
+    /// phase-436 A2c -- of the `late` wakes `release_jitter` counts, those
+    /// late by more than [`Self::release_jitter_granularity_us`].
+    ///
+    /// A wake is late at one microsecond past its release. A loop paced by a
+    /// tick-granular park comes back up to a tick past it on every wake, by
+    /// design, so `late` approaches `total` on a loop that is keeping its
+    /// period perfectly well. This count leaves that rounding out: it is the
+    /// lateness the measurement can actually resolve. Cleared with the rest.
+    pub fn late_wakes_beyond_granularity(&self) -> u32 {
+        self.late_wakes_beyond_granule
+    }
+
     /// Reset the release-jitter statistics. For monitoring code that logs
     /// and clears per window, so a single early outlier does not pin the
     /// maximum for the life of the process.
     pub fn clear_release_jitter_stats(&mut self) {
         self.max_release_jitter_us = 0;
         self.late_wakes = 0;
+        self.late_wakes_beyond_granule = 0;
         self.total_wakes = 0;
         self.last_spin_entry_us = None;
         self.jitter_reported_us = 0;
@@ -3490,7 +3537,7 @@ impl<'s> Executor<'s> {
     /// judges, because silently coarsening a bound could mask real lateness.
     /// It says what the number is worth.
     pub fn release_jitter_granularity_us(&self) -> u64 {
-        if self.spin_nominal_declared_us != 0 {
+        if self.spin_nominal_self_paced() {
             1
         } else {
             self.park_granularity_us()
@@ -4011,8 +4058,35 @@ impl<'s> Executor<'s> {
     /// pass a fixed 10 ms timeout, so the release-jitter rule judged every
     /// tier against 10 ms regardless of what the contract declared -- too lax
     /// for a 1 ms tier and far too strict for a 30 ms one.
+    ///
+    /// This also says the CALLER paces the loop (a sleep finer than the
+    /// park), so the measurement is reported at 1 us. A loop paced by the
+    /// `spin_once` wait itself declares with
+    /// [`Self::set_spin_nominal_wait_paced_us`] instead.
     pub fn set_spin_nominal_us(&mut self, us: u64) {
         self.spin_nominal_declared_us = us;
+        self.spin_nominal_wait_paced = false;
+    }
+
+    /// phase-436 A2b -- declare the loop's cadence, in microseconds, for a
+    /// loop paced by the `spin_once` wait itself. `0` withdraws it.
+    ///
+    /// [`Self::set_spin_nominal_us`] couples two facts: the period to judge
+    /// against, and that the caller paces the loop with its own sleep. A loop
+    /// like `for (;;) spin_once(period_ms)` has the first without the second.
+    /// Declaring through the coupled setter would report its jitter at 1 us
+    /// when the park it waits on is tick-granular (issue 1194's failure); not
+    /// declaring at all makes the timeout the period, which is wrong whenever
+    /// the timeout is not the period (a cadence that is not whole
+    /// milliseconds, or one raised to a floor).
+    ///
+    /// Here the cadence is the period of the release grid that a
+    /// `spin_once(timeout)` loop already runs on, and the timeout stays a
+    /// bound on each wait. The jitter is judged at grid releases and reported
+    /// at the park granularity.
+    pub fn set_spin_nominal_wait_paced_us(&mut self, us: u64) {
+        self.spin_nominal_declared_us = us;
+        self.spin_nominal_wait_paced = us != 0;
     }
 
     pub fn set_min_stack_headroom_bytes(&mut self, bytes: usize) {
