@@ -79,6 +79,9 @@ config NROS_PARAM_EVENTS_DEPTH
 config NROS_PARAM_SERVICE_BUFFER_SIZE
     int "Parameter service request/reply buffer size (bytes) (-1 = derive)"
 
+config NROS_PARAM_SERVICE_INBOX_BYTES
+    int "Parameter/lifecycle service inbox slot size (bytes, -1 = derive)"
+
 config NROS_PUBSUB_QOS_DEPTH
     int "QoS history depth the arena budgets per subscription"
 
@@ -138,9 +141,6 @@ config NROS_ACTION_INBOX_DEPTH
 
 config NROS_GRAPH_MAX_ENTITIES
     int "Entities you expect on this ROS 2 domain (0 = state the bytes instead)"
-
-config NROS_PARAM_SERVICE_INBOX_BYTES
-    int "Parameter/lifecycle service inbox slot size (bytes, -1 = derive)"
 
 config NROS_PARAM_SERVICE_INBOX_DEPTH
     int "Parameter/lifecycle service inbox ring depth"
