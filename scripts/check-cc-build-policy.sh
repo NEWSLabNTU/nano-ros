@@ -100,13 +100,16 @@ selftest >/dev/null || {
 }
 
 fail=0
+_gg=""  # set by nros_git_grep (printf -v)
+nros_git_grep _gg -l "cc::Build::new()" -- "${POPULATION[@]}"
 while IFS= read -r f; do
+    [ -n "$f" ] || continue
     n="$(ungoverned "$f")"
     if [ -n "$n" ]; then
         echo "  $f — $n cc::Build::new() and no nros_cc_flags:: call"
         fail=1
     fi
-done < <(git grep -l "cc::Build::new()" -- "${POPULATION[@]}" 2>/dev/null)
+done <<<"$_gg"
 
 if [ "$fail" -ne 0 ]; then
     cat >&2 <<'EOF'

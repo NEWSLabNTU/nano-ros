@@ -45,6 +45,8 @@
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
+# shellcheck source=scripts/lib/grep-q.sh
+source scripts/lib/grep-q.sh
 
 status=0
 
@@ -131,6 +133,8 @@ fi
 locks_checked=0
 if [ -n "$pin" ]; then
     off_pin=""
+    _gg=""  # set by nros_git_grep (printf -v)
+    nros_git_grep _gg -l 'name = "cbindgen"' -- '*Cargo.lock'
     while IFS= read -r lock; do
         [ -n "$lock" ] || continue
         locks_checked=$((locks_checked + 1))
@@ -138,9 +142,7 @@ if [ -n "$pin" ]; then
         if [ "$locked" != "$pin" ]; then
             off_pin="$off_pin\n         $lock (has $locked)"
         fi
-    done <<EOF
-$(git grep -l 'name = "cbindgen"' -- '*Cargo.lock')
-EOF
+    done <<<"$_gg"
     if [ -n "$off_pin" ]; then
         echo "[FAIL] these tracked locks disagree with the cbindgen pin ($pin):" >&2
         # shellcheck disable=SC2059

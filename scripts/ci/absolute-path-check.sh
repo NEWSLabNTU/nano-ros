@@ -23,7 +23,10 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 
 # `git grep` = tracked files only; untracked build output is irrelevant here.
-hits="$(git grep -nE '/home/|/Users/' -- examples/ packages/ | grep -vE '\.md:' || true)"
+# shellcheck source=scripts/lib/grep-q.sh
+source scripts/lib/grep-q.sh
+nros_git_grep hits -nE '/home/|/Users/' -- examples/ packages/
+hits="$(grep -vE '\.md:' <<<"$hits" || true)"
 
 if [ -n "$hits" ]; then
     echo "[FAIL] build-host absolute paths in tracked code/config:" >&2

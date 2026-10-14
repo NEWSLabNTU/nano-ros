@@ -50,6 +50,8 @@ set -uo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
+# shellcheck source=scripts/lib/grep-q.sh
+source scripts/lib/grep-q.sh
 
 broken=0
 
@@ -62,7 +64,11 @@ broken=0
 # itself makes the gate fail on its own documentation — which is what it did
 # the moment it landed. A gate that cannot describe the bug it prevents is
 # worse than one that quietly skips one file.
+_gg=""  # set by nros_git_grep (printf -v)
+nros_git_grep _gg -onE "docs/(design|issues|roadmap)/(phase-)?[0-9]{3,4}-[a-z0-9.-]+\.md" -- . \
+    ':!scripts/check-doc-refs.sh'
 while IFS= read -r hit; do
+    [ -n "$hit" ] || continue
     src="${hit%%:*}"
     rest="${hit#*:}"
     line="${rest%%:*}"
@@ -76,8 +82,7 @@ while IFS= read -r hit; do
     fi
     echo "  $src:$line -> $ref" >&2
     broken=$((broken + 1))
-done < <(git grep -onE "docs/(design|issues|roadmap)/(phase-)?[0-9]{3,4}-[a-z0-9.-]+\.md" -- . \
-    ':!scripts/check-doc-refs.sh' 2>/dev/null)
+done <<<"$_gg"
 
 # Phase docs link each other by BARE FILENAME from inside `docs/roadmap/`
 # (`[phase-NNN](phase-NNN-slug.md)`), which the absolute-path scan above cannot
@@ -89,7 +94,10 @@ done < <(git grep -onE "docs/(design|issues|roadmap)/(phase-)?[0-9]{3,4}-[a-z0-9
 #
 # Resolve relative to the LINKING file's directory, then apply the same
 # archived/ fallback as above.
+nros_git_grep _gg -onE "\]\(((\.\./)*[a-z][a-z-]*/)*(phase-[0-9]{3}[a-z0-9.-]*|[0-9]{4}-[a-z0-9-]+)\.md\)" -- 'docs/**/*.md' \
+    ':!scripts/check-doc-refs.sh'
 while IFS= read -r hit; do
+    [ -n "$hit" ] || continue
     src="${hit%%:*}"
     rest="${hit#*:}"
     line="${rest%%:*}"
@@ -127,8 +135,7 @@ while IFS= read -r hit; do
     fi
     echo "  $src:$line -> $ref (relative to $(dirname "$src"))" >&2
     broken=$((broken + 1))
-done < <(git grep -onE "\]\(((\.\./)*[a-z][a-z-]*/)*(phase-[0-9]{3}[a-z0-9.-]*|[0-9]{4}-[a-z0-9-]+)\.md\)" -- 'docs/**/*.md' \
-    ':!scripts/check-doc-refs.sh' 2>/dev/null)
+done <<<"$_gg"
 
 if [ "$broken" -ne 0 ]; then
     {

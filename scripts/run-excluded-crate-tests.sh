@@ -46,6 +46,8 @@ cd "$repo_root" || exit 2
 
 # shellcheck source=scripts/build/cargo.sh
 source scripts/build/cargo.sh
+# shellcheck source=scripts/lib/grep-q.sh
+source scripts/lib/grep-q.sh
 
 # path-prefix -> why its tests are not this script's business.
 exempt_reason() {
@@ -79,7 +81,7 @@ has_tests() {
     [ -f "$dir/Cargo.toml" ] || return 1
     # `git grep` over the tracked files under it: an index lookup, not a walk
     # (`check-no-tracked-file-find`), and it cannot see a stray `target/`.
-    git grep -q -F -- '#[test]' -- "$dir" 2>/dev/null
+    nros_git_grep_q -F -- '#[test]' -- "$dir"
 }
 
 # The controls, on the normal path — a lane that cannot be seen to refuse is a

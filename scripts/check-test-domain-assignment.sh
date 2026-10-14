@@ -62,16 +62,17 @@ fail=0
 # only `.env("ROS_DOMAIN_ID", "N")` and the `${..:-N}` default. Comment lines
 # are prose. `init_api.rs` parses the variable IN-PROCESS (it asserts the
 # parsed value) and joins no bus, so a literal there is the test's subject.
-env_literals="$(git grep -nE '\.env\("ROS_DOMAIN_ID", *"[0-9]+"\)|ROS_DOMAIN_ID="?\$\{ROS_DOMAIN_ID:-[0-9]+\}|ROS_DOMAIN_ID="?[0-9]+|set\("ROS_DOMAIN_ID", *"[0-9]+"\)' \
-    -- packages/testing packages/rmw \
-    | grep -v 'px4_xrce_e2e.rs' \
+_gg=""  # set by nros_git_grep (printf -v)
+nros_git_grep _gg -nE '\.env\("ROS_DOMAIN_ID", *"[0-9]+"\)|ROS_DOMAIN_ID="?\$\{ROS_DOMAIN_ID:-[0-9]+\}|ROS_DOMAIN_ID="?[0-9]+|set\("ROS_DOMAIN_ID", *"[0-9]+"\)' \
+    -- packages/testing packages/rmw
+env_literals="$(grep -v 'px4_xrce_e2e.rs' <<<"$_gg" \
     | grep -v 'src/ros_env.rs' \
     | grep -v 'tests/init_api.rs' \
     | grep -vE '^[^:]+:[0-9]+:[[:space:]]*(//|#|\*)' \
     || true)"
-session_literals="$(git grep -nE 'create_session\([^,]+, *[^,]+, *[0-9]+ *,' \
-    -- packages/rmw/cyclonedds \
-    || true)"
+session_literals=""  # set by nros_git_grep (printf -v)
+nros_git_grep session_literals -nE 'create_session\([^,]+, *[^,]+, *[0-9]+ *,' \
+    -- packages/rmw/cyclonedds
 literals="$(printf '%s\n%s' "$env_literals" "$session_literals" | grep -v '^$' || true)"
 
 if [ -n "$literals" ]; then

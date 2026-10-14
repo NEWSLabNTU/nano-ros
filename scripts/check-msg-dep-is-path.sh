@@ -248,7 +248,7 @@ done < <(git ls-files '*/Cargo.toml' 'Cargo.toml')
 
 # The patch entries are retired with the registry names: a path dep needs none,
 # and a leftover entry makes cargo warn about an unused patch.
-patch_leftovers="$(git grep -nE "^($MSG_CRATES) = .*# nros-managed" -- '*config.toml' || true)"
+nros_git_grep patch_leftovers -nE "^($MSG_CRATES) = .*# nros-managed" -- '*config.toml'
 if [ -n "$patch_leftovers" ]; then
     echo "FAIL: retired message-crate [patch.crates-io] entries remain (RFC-0067 D1):" >&2
     printf '%s\n' "$patch_leftovers" | sed 's/^/      /' >&2

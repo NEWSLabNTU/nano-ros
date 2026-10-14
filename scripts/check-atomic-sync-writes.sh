@@ -135,7 +135,9 @@ fi
 # first one failed to reach the sidecar.
 # `git grep`, not `grep -r`: check-no-tracked-file-find rejects a filesystem
 # walk to locate TRACKED files (measured 7m36s -> 0.8s over the same 232 paths).
-dupes="$(git grep -ln 'fn atomic_write' -- "$CORE" "$LOW" | grep -v 'atomic_file.rs' || true)"
+_gg=""  # set by nros_git_grep (printf -v)
+nros_git_grep _gg -ln 'fn atomic_write' -- "$CORE" "$LOW"
+dupes="$(grep -v 'atomic_file.rs' <<<"$_gg" || true)"
 if [ -n "$dupes" ]; then
     echo "ERROR: a second atomic_write implementation exists — use nros_cli_core::atomic_file:" >&2
     echo "$dupes" | sed 's/^/  /' >&2
@@ -151,8 +153,8 @@ fi
 #
 # The generated metadata harness is exempt by the same reasoning as above: it is
 # emitted as source into a standalone crate that cannot depend on the CLI.
-renames="$(git grep -n 'fs::rename(&tmp' -- "$CORE" "$LOW" \
-    | grep -v 'atomic_file.rs' \
+nros_git_grep _gg -n 'fs::rename(&tmp' -- "$CORE" "$LOW"
+renames="$(grep -v 'atomic_file.rs' <<<"$_gg" \
     | grep -v 'std::fs::rename(&tmp, out)' || true)"
 if [ -n "$renames" ]; then
     echo "ERROR: a private temp+rename exists — call atomic_file::atomic_write instead:" >&2

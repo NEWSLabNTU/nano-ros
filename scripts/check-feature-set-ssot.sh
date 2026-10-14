@@ -13,6 +13,8 @@
 # check rather than a convention.
 set -uo pipefail
 cd "$(dirname "$0")/.."
+# shellcheck source=scripts/lib/grep-q.sh
+source scripts/lib/grep-q.sh
 
 fail=0
 note() { printf '  %s\n' "$1"; }
@@ -121,12 +123,13 @@ nros_edition_selftest
 #    mapping and should join the `integrations/` treatment above.
 # Comment lines are excluded: the conversion sites legitimately REFERENCE the
 # old hardcode when explaining why they no longer do it.
-edition_hits=$(git grep -nE "$NROS_EDITION_RE" -- \
+_gg=""  # set by nros_git_grep (printf -v)
+nros_git_grep _gg -nE "$NROS_EDITION_RE" -- \
     'cmake/*.cmake' 'cmake/*/*.cmake' 'CMakeLists.txt' \
     'packages/**/CMakeLists.txt' 'packages/**/*.cmake' \
     'zephyr/CMakeLists.txt' 'zephyr/**/CMakeLists.txt' 'zephyr/**/*.cmake' \
-    'integrations/' 2>/dev/null \
-    | grep -v '^cmake/NanoRosRosEdition.cmake:' \
+    'integrations/'
+edition_hits=$(grep -v '^cmake/NanoRosRosEdition.cmake:' <<<"$_gg" \
     | grep -vE "$NROS_EDITION_KCONFIG_MAP" \
     | grep -v ':[0-9]*:[[:space:]]*#' | cut -d: -f1 | sort -u || true)
 if [ -n "$edition_hits" ]; then
@@ -145,10 +148,10 @@ fi
 #    transport axis (tcp/udp) with nothing to do with cargo. An earlier version
 #    of this check matched the bare substring and reported six files that were
 #    not duplication at all — which is how a gate loses its credibility.
-plat_hits=$(git grep -n 'set(_platform_features\|set(_rmw_features' -- 'cmake/*.cmake' \
+nros_git_grep _gg -n 'set(_platform_features\|set(_rmw_features' -- 'cmake/*.cmake' \
     'cmake/*/*.cmake' 'packages/api/nros-c/CMakeLists.txt' \
-    'packages/api/nros-cpp/CMakeLists.txt' 2>/dev/null \
-    | grep -v ':[0-9]*:[[:space:]]*#' | cut -d: -f1 | sort -u || true)
+    'packages/api/nros-cpp/CMakeLists.txt'
+plat_hits=$(grep -v ':[0-9]*:[[:space:]]*#' <<<"$_gg" | cut -d: -f1 | sort -u || true)
 if [ -n "$plat_hits" ]; then
     echo "FAIL: a platform/rmw→cargo-feature assembly outside cmake/NanoRosFeatureSet.cmake:"
     echo "$plat_hits" | while read -r f; do note "$f"; done
@@ -161,6 +164,7 @@ fi
 #    is not an overridable default — it makes every other edition unbuildable in
 #    that workspace. Entries own the choice.
 leaf_hits=""
+nros_git_grep _gg -ln '"ros-\(humble\|iron\|jazzy\)"' -- 'examples/**/Cargo.toml'
 while read -r f; do
     [ -n "$f" ] || continue
     # An IMAGE owns the edition. That is an entry package, and also a
@@ -176,7 +180,7 @@ while read -r f; do
     grep -q '^\[\[bin\]\]' "$f" && continue
     [ -f "$(dirname "$f")/src/main.rs" ] && continue
     leaf_hits="${leaf_hits}${f}"$'\n'
-done < <(git grep -ln '"ros-\(humble\|iron\|jazzy\)"' -- 'examples/**/Cargo.toml' 2>/dev/null || true)
+done <<<"$_gg"
 if [ -n "${leaf_hits//[$'\n']/}" ]; then
     echo "FAIL: node package(s) name a ROS edition — the edition is image-level:"
     echo "$leaf_hits" | while read -r f; do [ -n "$f" ] && note "$f"; done
@@ -192,8 +196,9 @@ fi
 #    (-DNROS_ROS_EDITION) replaces; this keeps the cargo selector
 #    equivalent. Invisible until someone tries a second edition, which is
 #    exactly why it needs a gate rather than a convention.
-default_hits=$(git grep -n '^default = \[.*ros-\(humble\|iron\|jazzy\)' \
-    -- '*/Cargo.toml' 2>/dev/null | cut -d: -f1 | sort -u || true)
+nros_git_grep _gg -n '^default = \[.*ros-\(humble\|iron\|jazzy\)' \
+    -- '*/Cargo.toml'
+default_hits=$(cut -d: -f1 <<<"$_gg" | sort -u || true)
 if [ -n "$default_hits" ]; then
     echo "FAIL: a ROS edition inside a \`default\` feature list:"
     echo "$default_hits" | while read -r f; do note "$f"; done
@@ -289,10 +294,10 @@ fi
 #    list(APPEND _caps safety)` is the option round-trip, which is how a
 #    STANDALONE project selects the axis with `-DNROS_SAFETY_E2E=ON`. That
 #    is a selector, not a platform default.
-cap_branch=$(git grep -nE 'list\(APPEND _caps [^)]*(param_services|lifecycle)' \
+nros_git_grep _gg -nE 'list\(APPEND _caps [^)]*(param_services|lifecycle)' \
     -- 'cmake/*.cmake' 'packages/api/nros-c/CMakeLists.txt' \
-    'packages/api/nros-cpp/CMakeLists.txt' 2>/dev/null \
-    | grep -v ':[0-9]*:[[:space:]]*#' || true)
+    'packages/api/nros-cpp/CMakeLists.txt'
+cap_branch=$(grep -v ':[0-9]*:[[:space:]]*#' <<<"$_gg" || true)
 if [ -n "$cap_branch" ]; then
     echo "FAIL: a branch appends a capability instead of reading the declaration:"
     printf '%s\n' "$cap_branch" | while IFS= read -r h; do note "$h"; done
@@ -308,9 +313,9 @@ fi
 #    `-D` ended up defended by a closed ticket and outlived the bug it hid. A
 #    fixture that forces the knob tests something the user's declaration does
 #    not produce.
-fixture_forced=$(git grep -nE 'cmake_defs.*NANO_ROS_(SAFETY_E2E|FEATURES)' \
-    -- examples/fixtures.toml 2>/dev/null \
-    | grep -v ':[0-9]*:[[:space:]]*#' || true)
+nros_git_grep _gg -nE 'cmake_defs.*NANO_ROS_(SAFETY_E2E|FEATURES)' \
+    -- examples/fixtures.toml
+fixture_forced=$(grep -v ':[0-9]*:[[:space:]]*#' <<<"$_gg" || true)
 if [ -n "$fixture_forced" ]; then
     echo "FAIL: a fixture row forces a capability knob instead of declaring it:"
     printf '%s\n' "$fixture_forced" | while IFS= read -r h; do note "$h"; done
@@ -331,9 +336,9 @@ fi
 #
 #    `PackageMetadataNros::deploy_bound()` is that one place. This forbids
 #    re-deriving it at a call site.
-bound_hits=$(git grep -nE 'nros\.(entry\.is_some\(\)|deploy\.is_empty\(\))' \
-    -- 'packages/cli/**/*.rs' 'packages/core/**/*.rs' 2>/dev/null \
-    | grep -v 'fn deploy_bound' \
+nros_git_grep _gg -nE 'nros\.(entry\.is_some\(\)|deploy\.is_empty\(\))' \
+    -- 'packages/cli/**/*.rs' 'packages/core/**/*.rs'
+bound_hits=$(grep -v 'fn deploy_bound' <<<"$_gg" \
     | grep -v ':[0-9]*:[[:space:]]*//' || true)
 if [ -n "$bound_hits" ]; then
     echo "FAIL: deploy-bound re-derived at a call site instead of via deploy_bound():"

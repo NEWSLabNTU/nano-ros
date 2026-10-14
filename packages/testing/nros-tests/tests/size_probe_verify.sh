@@ -60,12 +60,12 @@ echo "=== 0464 — the fallbacks stay deleted ==="
 # "just make it build" change reinstating either would be silent at runtime, so
 # the guard is here rather than in a comment.
 guard_fail=0
-if git grep -n "find_dep_rlib_filesystem\|NROS_SIZES_PROBE_MODE\|NROS_SIZES_PROBE_TIMEOUT_SECS" \
-        -- packages/tooling/nros-sizes-build/src >/dev/null 2>&1; then
+if nros_git_grep_q "find_dep_rlib_filesystem\|NROS_SIZES_PROBE_MODE\|NROS_SIZES_PROBE_TIMEOUT_SECS" \
+        -- packages/tooling/nros-sizes-build/src; then
     echo "FAIL: the polling fallback is back in nros-sizes-build (issue 0464)"
     guard_fail=1
 fi
-if git grep -n "FALLBACK_SIZES" -- packages/tooling/nros-build-helpers/src >/dev/null 2>&1; then
+if nros_git_grep_q "FALLBACK_SIZES" -- packages/tooling/nros-build-helpers/src; then
     echo "FAIL: committed size constants are back in nros-build-helpers (issue 0464)"
     guard_fail=1
 fi

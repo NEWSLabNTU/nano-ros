@@ -290,8 +290,18 @@ need -f nros-sdk-index.toml "the Corrosion + cross-toolchain pins, read from the
 # `@NROS_REPO_DIR@/packages/cli/...`; that is not a cargo path dep and belongs to
 # no workspace, so the relative form is the right pattern to key on.)
 missing=""
-for dep in $(git -C "$repo" grep -h -o -E 'path = "(\.\./)+cli/[A-Za-z0-9_.-]+"' HEAD \
-        -- '*Cargo.toml' ':(exclude)packages/cli' | sed -e 's|.*/cli/||' -e 's|"$||' | sort -u); do
+# Exit 1 is "no runtime crate path-deps into cli"; anything else is a git grep
+# that did not search, which must not read as that answer (issue 1816). POSIX
+# sh, so the bash helper `nros_git_grep` is out of reach and this is its
+# contract spelled inline.
+gg_rc=0
+cli_deps="$(git -C "$repo" grep -h -o -E 'path = "(\.\./)+cli/[A-Za-z0-9_.-]+"' HEAD \
+    -- '*Cargo.toml' ':(exclude)packages/cli')" || gg_rc=$?
+if [ "$gg_rc" -gt 1 ]; then
+    echo "nano-ros: git grep for packages/cli path deps failed (rc=$gg_rc)" >&2
+    exit 2
+fi
+for dep in $(printf '%s\n' "$cli_deps" | sed -e 's|.*/cli/||' -e 's|"$||' | sort -u); do
     [ -e "$root/packages/cli/$dep" ] || missing="$missing packages/cli/$dep"
 done
 if [ -n "$missing" ]; then
