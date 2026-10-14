@@ -742,3 +742,40 @@ rules out a repository-wide runner-group restriction, unless 118 sits in a
 different group from 133. **What would close it:** remove or re-register 118,
 or read its `_diag/Runner_*.log`. Until then the tier-2 job waits for 133 to
 finish L3, and the two lanes share one working runner.
+
+## The third shape with three runners, none re-registered mid-wait (2026-10-14)
+
+Sampled at **07:35Z**. All three repository runners read `online,
+busy=false`, with labels `self-hosted, Linux, X64, nros-qemu,
+nros-sdk-zephyr, nros-big`:
+
+```
+1652  nano-ros-runner-newslab-118-server
+1679  nano-ros-runner-newslab-133
+1708  nano-ros-runner-newslab-server-241
+```
+
+Two jobs asking for `[self-hosted, linux, nros-qemu, nros-sdk-zephyr,
+nros-big]` sat `queued` with no `runner_name`:
+
+| run | job | created | waiting at 07:35Z |
+|---|---|---|---|
+| run-matrix **38522377739** (schedule 06:28), `tier 1 (cells)` | **115722612938** | 06:52:53Z | 42 min |
+| nightly **38527151921** (schedule 07:15), `tier 2 nightly (pairwise cover)` | **115730089599** | 07:15:29Z | 20 min |
+
+**This weakens the 2026-10-09 explanation** ("jobs queued before a
+re-registration are never claimed"). Both waiters were created while all
+three runners were registered. `newslab-server-241` had itself just run the
+same run-matrix's `tier 2 (1-wise matrix)` job, which ended at about
+06:52:35Z. The `tier 1 (cells)` job was created 18 s later and was never
+claimed by 241 or by the two runners beside it.
+
+The nightly's other in-progress jobs (`nuttx`, `threadx_*`, `qemu`,
+`freertos`) carry no self-hosted runner name, so there is no competing
+self-hosted work to explain the idle time.
+
+**Not established:** whether the runner that just finished a job
+re-registered afterwards (an ephemeral or container restart would give it a
+new registration and reproduce the 10-09 mechanism). Runner ids would show
+that, and these were not recorded before 07:35Z. A restart of the runner
+containers is the known operator remedy.
