@@ -9,7 +9,7 @@ found: 2026-08-31
 related: [0940, 0949, 0950, phase-405, RFC-0072, phase-484]
 ---
 
-**Home: [phase-484](../../roadmap/phase-484-one-owner-per-fact.md)** — re-homed 2026-10-12 from phase-405, which is archived.
+**Home: [phase-484](../../roadmap/archived/phase-484-one-owner-per-fact.md)** — re-homed 2026-10-12 from phase-405, which is archived.
 
 # A resolution that cannot succeed prints STATUS and continues
 

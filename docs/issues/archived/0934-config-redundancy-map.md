@@ -9,7 +9,7 @@ found: 2026-08-30
 related: [0931, RFC-0065, RFC-0048, RFC-0046, RFC-0014, RFC-0033, phase-405, phase-484]
 ---
 
-**Home: [phase-484](../../roadmap/phase-484-one-owner-per-fact.md)** — re-homed 2026-10-12 from phase-405, which is archived.
+**Home: [phase-484](../../roadmap/archived/phase-484-one-owner-per-fact.md)** — re-homed 2026-10-12 from phase-405, which is archived.
 
 # Config redundancy map
 

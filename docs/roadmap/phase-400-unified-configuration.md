@@ -61,7 +61,7 @@ them. When W3 lands that file is a transport stanza and nothing else.
 
 ### Boundary with phase-484 (stated 2026-10-14)
 
-[Phase-484](phase-484-one-owner-per-fact.md)
+[Phase-484](archived/phase-484-one-owner-per-fact.md)
 ([RFC-0103](../design/0103-one-owner-per-fact.md)) does not take over W6. The
 two phases answer different questions about a knob:
 

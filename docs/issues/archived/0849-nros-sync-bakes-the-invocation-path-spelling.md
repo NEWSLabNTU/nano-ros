@@ -10,7 +10,7 @@ related: [issue-0616, issue-0457, issue-0463, phase-484]
 resolved: 2026-10-14
 ---
 
-**Home: [phase-484](../../roadmap/phase-484-one-owner-per-fact.md)** — re-homed 2026-10-12 from phase-383, which is archived.
+**Home: [phase-484](../../roadmap/archived/phase-484-one-owner-per-fact.md)** — re-homed 2026-10-12 from phase-383, which is archived.
 
 ## Problem
 
