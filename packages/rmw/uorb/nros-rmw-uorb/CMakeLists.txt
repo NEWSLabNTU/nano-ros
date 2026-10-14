@@ -93,22 +93,16 @@ if(NROS_RMW_UORB_LINK_PX4)
 endif()
 
 # ---- Static library --------------------------------------------------------
-set(_nros_rmw_uorb_sources
-    src/vtable.cpp
-    src/session.cpp
-    src/publisher.cpp
-    src/subscriber.cpp
-    src/service.cpp
-    src/topic_registry.cpp
-    src/qos.cpp
-    src/callback_default.cpp
-)
+# The source list is shared with every other build of this backend (the PX4
+# module helper and the register-check gate) — see the file for why.
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/NrosRmwUorbSources.cmake")
+set(_nros_rmw_uorb_sources ${NROS_RMW_UORB_SOURCES})
 if(NROS_RMW_UORB_BUILD_PX4_GLUE)
     if(NOT NROS_RMW_UORB_LINK_PX4)
         message(FATAL_ERROR
             "NROS_RMW_UORB_BUILD_PX4_GLUE=ON requires NROS_RMW_UORB_LINK_PX4=ON.")
     endif()
-    list(APPEND _nros_rmw_uorb_sources src/px4_callback_glue.cpp)
+    list(APPEND _nros_rmw_uorb_sources ${NROS_RMW_UORB_PX4_GLUE_SOURCES})
 endif()
 
 add_library(nros_rmw_uorb STATIC ${_nros_rmw_uorb_sources})

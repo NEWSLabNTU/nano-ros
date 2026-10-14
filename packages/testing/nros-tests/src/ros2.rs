@@ -417,11 +417,35 @@ impl Ros2Process {
         distro: &str,
         window: Duration,
     ) -> TestResult<Self> {
+        Self::topic_echo_in_overlay(topic, msg_type, locator, distro, window, None)
+    }
+
+    /// [`Self::topic_echo_for`] for a message type the distro does NOT ship —
+    /// sourcing `overlay_setup` (an ament `setup.bash` / `local_setup.bash`)
+    /// AFTER the distro, the way a ROS 2 user layers a workspace.
+    ///
+    /// phase-325 W3.4: `px4_msgs` is not in `/opt/ros/<distro>`, so a subscriber
+    /// of the PX4 bridge's `px4_msgs/msg/DebugKeyValue` cannot load its type
+    /// without one. Kept on THIS wrapper rather than a second spawn path so the
+    /// peer gets the same zenoh session config, group-suicide wrapper and
+    /// unbuffered stdout as every other interop subscriber.
+    pub fn topic_echo_in_overlay(
+        topic: &str,
+        msg_type: &str,
+        locator: &str,
+        distro: &str,
+        window: Duration,
+        overlay_setup: Option<&std::path::Path>,
+    ) -> TestResult<Self> {
         let (env_setup, config_dir) = ros2_env_setup_with_locator(distro, locator);
+        let overlay = match overlay_setup {
+            Some(p) => format!(" && source {}", p.display()),
+            None => String::new(),
+        };
         let secs = window.as_secs().max(1);
         let deadline = crate::process::deadline(secs);
         let cmd = format!(
-            "{env_setup} && PYTHONUNBUFFERED=1 {deadline} ros2 topic echo {topic} {msg_type} --qos-reliability best_effort"
+            "{env_setup}{overlay} && PYTHONUNBUFFERED=1 {deadline} ros2 topic echo {topic} {msg_type} --qos-reliability best_effort"
         );
 
         Self::spawn_bash(&cmd, format!("ros2 topic echo {topic}"), Some(config_dir))

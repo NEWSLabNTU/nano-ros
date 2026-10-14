@@ -285,30 +285,31 @@ function(nros_px4_add_module)
     list(APPEND _fwd INCLUDES ${_NROS_PX4_INCLUDES})
 
     # Each named backend contributes its own sources, includes and flags. The
-    # alternative — every caller hand-listing the backend's 8 .cpp files, its two
-    # include dirs and its one -D, as nros-px4-register-check does — is a copy of
-    # build knowledge per module, and the copies drift the moment the backend
-    # gains a file. BACKENDS names WHAT; this decides HOW.
+    # alternative — every caller hand-listing the backend's .cpp files, its two
+    # include dirs and its one -D — is a copy of build knowledge per module, and
+    # the copies drift the moment the backend gains a file. They did: this list
+    # and nros-px4-register-check's both missed `qos.cpp` (issue 1437) while the
+    # backend's own CMakeLists had it, so every PX4 image stopped linking. All
+    # three now include `NrosRmwUorbSources.cmake`. BACKENDS names WHAT; this
+    # decides HOW.
     foreach(_b IN LISTS NPX_BACKENDS)
         if(_b STREQUAL "uorb")
             set(_uorb "${NROS_REPO_DIR}/packages/rmw/uorb/nros-rmw-uorb")
             if(NOT EXISTS "${_uorb}/src/vtable.cpp")
                 message(FATAL_ERROR "nros_px4_add_module: uORB backend not found at ${_uorb}")
             endif()
+            # The backend's OWN source list — this used to be a copy, and it
+            # drifted exactly as the paragraph above predicts (`qos.cpp`,
+            # issue 1437, phase-325 W3.4).
+            include("${_uorb}/cmake/NrosRmwUorbSources.cmake")
             list(APPEND _fwd
                 INCLUDES ${_uorb}/include ${_uorb}/src
                 # Flips uorb_abi.hpp to "#include <uORB/uORB.h>" mode, i.e. the
                 # real PX4 headers rather than the mock ABI the unit smoke uses.
                 COMPILE_FLAGS -DNROS_RMW_UORB_USE_PX4_HEADER=1
                 SRCS
-                    ${_uorb}/src/vtable.cpp
-                    ${_uorb}/src/session.cpp
-                    ${_uorb}/src/publisher.cpp
-                    ${_uorb}/src/subscriber.cpp
-                    ${_uorb}/src/service.cpp
-                    ${_uorb}/src/topic_registry.cpp
-                    ${_uorb}/src/callback_default.cpp
-                    ${_uorb}/src/px4_callback_glue.cpp)
+                    ${NROS_RMW_UORB_SOURCES}
+                    ${NROS_RMW_UORB_PX4_GLUE_SOURCES})
             set(_needs_work_queue TRUE)
         elseif(_b IN_LIST _NROS_PX4_NETWORKED_BACKENDS)
             # A NETWORKED backend contributes nothing at the cmake layer: it is

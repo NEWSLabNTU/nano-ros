@@ -41,6 +41,8 @@ if(NOT EXISTS "${NROS_RMW_CFFI_INCLUDE_DIR}/nros/rmw_vtable.h")
         "nros-rmw-cffi headers not found at NROS_RMW_CFFI_INCLUDE_DIR='${NROS_RMW_CFFI_INCLUDE_DIR}'")
 endif()
 
+include("${NROS_RMW_UORB_CPP_DIR}/cmake/NrosRmwUorbSources.cmake")
+
 px4_add_module(
     MODULE         modules__nros_register_check
     MAIN           nros_register_check
@@ -58,14 +60,10 @@ px4_add_module(
         # the uORB backend (`register_fallback.c`), not in this example. Real
         # (cargo-linked) builds override it with the Rust strong symbol.
         ${NROS_RMW_UORB_CPP_DIR}/src/register_fallback.c
-        ${NROS_RMW_UORB_CPP_DIR}/src/vtable.cpp
-        ${NROS_RMW_UORB_CPP_DIR}/src/session.cpp
-        ${NROS_RMW_UORB_CPP_DIR}/src/publisher.cpp
-        ${NROS_RMW_UORB_CPP_DIR}/src/subscriber.cpp
-        ${NROS_RMW_UORB_CPP_DIR}/src/service.cpp
-        ${NROS_RMW_UORB_CPP_DIR}/src/topic_registry.cpp
-        ${NROS_RMW_UORB_CPP_DIR}/src/callback_default.cpp
-        ${NROS_RMW_UORB_CPP_DIR}/src/px4_callback_glue.cpp
+        # The backend's OWN list, not a copy (phase-325 W3.4: the copy here
+        # had missed `qos.cpp` since issue 1437).
+        ${NROS_RMW_UORB_SOURCES}
+        ${NROS_RMW_UORB_PX4_GLUE_SOURCES}
 )
 # `px4_work_queue` is the lib that provides
 # `SubscriptionCallbackWorkItem` + `WorkQueueManager`. External

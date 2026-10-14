@@ -1,7 +1,13 @@
 # Phase 325 — uORB interop: direct, and bridged to any RMW
 
-**Status (2026-09-04). W0, W1 and W2 LANDED 2026-07-31; W3's GATE PASSED the
-same day; W3.1-W3.4 remain — and are NO LONGER BLOCKED.**
+**Status (2026-10-14). W0-W4 DONE: W3.4 LANDED today — a stock PX4 module's
+uORB topic reaches a real ROS 2 subscriber through the bridge, asserted by
+`px4_bridge_ros2_e2e` (receipts under W3). Two open issues bound what that
+proves: the bridge's `edition` argument does not reach the zenoh backend
+(issue 1893), and the xrce build links but does not boot (issue 1896).**
+
+**Previously (2026-09-04).** W0, W1 and W2 LANDED 2026-07-31; W3's GATE PASSED
+the same day; W3.1-W3.4 remain — and are NO LONGER BLOCKED.
 
 The 2026-07-31 line read "Draft. Not started." while 14 of this phase's 18 boxes
 were ticked and W0/W1/W2 each carry a RESULT section dated that same day. The
@@ -658,14 +664,148 @@ a runtime symptom.
 - [x] **W3.3** Build it against **at least two** backends (zenoh + one of
       xrce/cyclonedds). One backend does not demonstrate selection; it
       demonstrates a hardcoded bridge with extra ceremony.
-- [ ] **W3.4** A test with a **real ROS 2 node** subscribing the bridged topic.
+- [x] **W3.4** A test with a **real ROS 2 node** subscribing the bridged topic.
       `packages/testing/nros-tests/src/ros2.rs` + `ros_env.rs` already spawn real
       ROS 2 peers for the interop cells — reuse that, do not invent a second way.
 
 **Acceptance:** a stock PX4 module's uORB topic reaches a real ROS 2 subscriber
 through the bridge, and the same source builds against a second backend.
 
-#### W3.1-W3.3 LANDED (2026-09-04); W3.4 remains and is scoped below
+#### W3.4 LANDED (2026-10-14): a real ROS 2 subscriber decodes the bridged topic
+
+`packages/testing/nros-px4-sitl-test/tests/px4_bridge_ros2_e2e.rs`, run by
+`just px4 test-bridge-ros2`. Every hop is foreign to nano-ros except the bridge:
+
+```
+px4_mavlink_debug --uORB--> nros_uorb_bridge --zenoh/CDR--> rmw_zenohd --> ros2 topic echo
+ (stock PX4 example)                                       (ROS's router)  (rmw_zenoh_cpp + px4_msgs)
+```
+
+The peer is `nros_tests::ros2::Ros2Process` — the interop cells' own wrapper,
+reached by giving the out-of-workspace crate an `nros-tests` path dep, plus one
+new constructor (`topic_echo_in_overlay`, which sources an ament overlay after
+the distro) — and `ZenohRouter::start_unique()` for a private router. No second
+harness. (The crate's `Cargo.lock` is gitignored, so no lock moved.)
+
+Commands, from a fresh worktree on this host:
+
+```sh
+just px4 setup                                   # provisioning (see host note)
+NROS_PX4_BRIDGE_RMW=zenoh just px4 build-bridge-example debug_key_value humble
+just px4 build-px4-msgs-ros humble               # new: the px4_msgs ament overlay
+just px4 test-bridge-ros2                        # new: both builds, then the test
+```
+
+Decisive output (`--no-capture`):
+
+```
+ROS 2 humble subscriber decoded 3 bridged samples, first Some(Sample { timestamp: 3720000, key: "velx", value: 7.0 }), last Some(Sample { timestamp: 4720000, key: "velx", value: 9.0 })
+first echoed document:
+timestamp: 3720000
+key:
+- 118
+- 101
+- 108
+- 120
+- 0            (x6 more)
+value: 7.0
+PASS [  13.490s] nros-px4-sitl-test::px4_bridge_ros2_e2e ros2_subscriber_receives_a_stock_px4_topic_through_the_bridge
+```
+
+and through the recipe: `PASS [ 5.907s] ... ros2_subscriber_receives_a_stock_px4_topic_through_the_bridge`.
+
+`key` is `velx` — what `px4_mavlink_debug` `strncpy`s into a `char[10]` on uORB —
+decoded by rosidl's own typesupport, and `value` advances by one per publish,
+which a transposed `key`/`value` (the memcpy the README warns about) could not
+produce. The test asserts both on every sample, plus a non-zero `timestamp`.
+
+**Mutation-tested.** `out.key[0] = 'X'` in `translate()`, rebuilt: RED with
+`ROS 2 decoded key "Xelx" (expected "velx" ...)`. Reverted: green.
+
+**Where `px4_msgs` comes from.** No ROS 2 distro ships it, so
+`just px4 build-px4-msgs-ros <distro>` builds it from THIS PX4 tree's `.msg`
+files (`msg/*.msg` + `msg/versioned/*.msg` + `srv/*.srv` — 235 msgs and 1 srv at
+v1.17.0) with the distro's own rosidl, into `build/px4-msgs-ros/<distro>/install`.
+That is what upstream's `px4_msgs` repo is — PX4's CI copies the same files out
+— but pinned to the tree the bridge is compiled against. The `package.xml` and
+`CMakeLists.txt` are WRITTEN by the recipe, not tracked, so no source-time
+package scan finds a rosidl package in the repo. No sudo, no apt; ~6 min cold.
+
+**Preconditions FAIL, never pass.** The test consumes prebuilt artifacts only
+(CLAUDE.md's no-build-in-tests rule) and names the command for each: the px4
+binary must CONTAIN `nros_uorb_bridge`, `px4_mavlink_debug` and
+`nros_rmw_zenoh_register` (binary content, not the surviving module directory —
+the trap below); the overlay must hold `DebugKeyValue.msg` and
+`local_setup.bash`; `require_ros2()` fails a lane that claims ROS 2 without it.
+
+Five things the run found that the plan did not predict:
+
+* **The bridge did not build.** Two regressions had landed after W3.3, both
+  invisible because no merge-gating lane builds a PX4 image:
+  * `std_detect.hpp:21` wrote `nros/*.hpp` inside a `/** */` block, which PX4's
+    `-Wall -Werror` rejects (`"/*" within comment`). Fixed there and at the two
+    other block comments with the same shape (`parameter.hpp`,
+    `node_parameters.hpp`). `check-cpp-hosted-minimal-libcpp` — fast line, and
+    already parsing every public header — now compiles them `-Werror=comment`,
+    with a nested-comment negative control in its selftest. Mutation-tested:
+    restoring the glob fails 26 of 59 headers.
+  * issue 1437 added `src/qos.cpp` to the uORB backend's own CMakeLists and to
+    neither of the two other copies of its source list (`nros_px4_add_module`,
+    the register-check gate) — the drift the helper's own comment predicted —
+    so every PX4 image failed to LINK on `nros_rmw_uorb::qos_admit`. All three
+    now include one list,
+    `packages/rmw/uorb/nros-rmw-uorb/cmake/NrosRmwUorbSources.cmake`. Sweep:
+    `git grep -nE '/src/(vtable|session|publisher|subscriber|service|topic_registry|qos|callback_default|px4_callback_glue)\.cpp' -- '*.cmake' '*CMakeLists.txt'`
+    — only `EXISTS` probes remain. All three consumers re-measured after the
+    change: `just px4 build-sitl-cpp` (register-check) links, rc=0;
+    `just px4 test-sitl-example` (W2, the helper with `BACKENDS uorb`) PASS
+    2.293 s; and the bridge, above.
+* **`px4_mavlink_debug start` blocks.** Its main IS the publish loop (100
+  samples at 2 Hz), so `Px4Sitl::shell()` returns only after the producer has
+  finished. The test spawns the same `bin/px4-px4_mavlink_debug` client and
+  kills it on every exit path.
+* **`nros_uorb_bridge start`'s `PX4_INFO` comes back as the shell client's
+  stdout**, not through the daemon log — W2.4's `listener` finding, measured
+  again: the first draft waited on the log for `bridging ... (zenoh)` and timed
+  out with the bridge up.
+* **The edition guard the first draft carried was wrong — issue 1893.** It
+  refused an Iron+ (RIHS01) image against a Humble subscriber; a `jazzy` image
+  then delivered to the Humble subscriber exactly as the `humble` one did. The
+  zenoh backend takes the data key's hash segment from its OWN `ros-*` cargo
+  feature, which the bridge archive never receives, so every bridge image keys
+  `TypeHashNotSupported` whatever its header says. The guard is gone (it
+  asserted something the wire does not carry) and the recipe pins `humble`, the
+  one pairing whose halves agree. The CLI's `--ros-edition humble` warning,
+  which told users that pairing would NOT work, now says it does.
+* **The xrce build links and does not boot — issue 1896.** Re-verified W3.3's
+  second backend:
+
+      NROS_PX4_BRIDGE_RMW=xrce just px4 build-bridge-example debug_key_value humble   -> rc=0
+      -- nros_uorb_bridge: outward backend = xrce
+      nros_app_register_backends.c: Backends registered: uorb, xrce
+
+  So the SOURCE builds against a second backend, as W3.3 claimed and as W3's
+  acceptance asks. Booted, that image SEGVs in PX4's own `uxrce_dds_client`
+  (`#0 0x0`, `#1 uxr_ping_agent_attempts`, `#2 UxrceddsClient::setupSession`):
+  PX4's `libmicroxrcedds_client.a` and the bridge's `libnros_cpp.a` both define
+  the `uxr_*` symbols and the linker took one copy for both. "Reaches ROS 2
+  over a second backend" would not hold today, and is not claimed. The test
+  refuses an xrce image by content (`registers no zenoh backend`) instead of
+  letting it read as `BootTimeout`.
+
+**Host note (newslab-server-241), not a repo change.** This host's `~/.local`
+jsonschema stack is broken on Python 3.10 (`No module named 'attrs'`, then
+`TypeVar(default=)`), which stops PX4's own `validate_json.py` step. The SITL
+builds above ran with `PYTHONPATH=<worktree>/tmp/w325/pydeps` holding
+`pip install --target` copies of jsonschema + attrs + typing_extensions; nothing
+system-wide was touched. `just px4 setup` also reports `pyros_genmsg` missing,
+while `genmsg` imports and the build needs nothing more.
+
+Not covered: a Jazzy subscriber (none on this host; issue 1893 predicts the
+default `jazzy` image is invisible to one), and any CI lane —
+`test-bridge-ros2` is `[group("debug")]` like `test-sitl-example`, on demand.
+
+#### W3.1-W3.3 LANDED (2026-09-04); W3.4 was scoped below and is now done
 
 W3.1 and W3.2 were done on 2026-08-06 and the boxes were never ticked — the
 module is `examples/px4/cpp/bridge/src/modules/nros_uorb_bridge/`, its README
@@ -703,7 +843,7 @@ Three defects the BUILD found that the plumbing check did not:
   collapsed to `""zenoh""` and g++ rejected it ten minutes into a SITL build.
   `target_compile_definitions` quotes the value itself.
 
-**W3.4 is NOT done, and it is not a tail of this work.** It needs a real PX4
+**(As scoped on 2026-09-04 — now DONE, see "W3.4 LANDED" above.)** W3.4 needs a real PX4
 SITL run with a ROS 2 subscriber; there is no host lane, because the only uORB
 double in the tree is a link-time mock inside one CMake smoke binary
 (`packages/rmw/uorb/nros-rmw-uorb/tests/register_smoke.cpp`) with no broker and
@@ -796,7 +936,16 @@ name BOTH explicitly rather than rely on registration order — the generated
 argument list, not a contract. `void* exec_handle` comes from
 `Node::executor_handle()`.
 
-##### Remaining for W3, and it is not plumbing
+##### What W3 needed beyond plumbing (2026-07-31) — DONE
+
+**Stale as a to-do list since 2026-08-06.** Everything below landed: the codegen
+step is `nros generate-px4-msgs --lang cpp` (issue 0362), the field-by-field map
+is `translate()` in `NrosUorbBridge.cpp`, the typed publish CDR-encodes with the
+generated type, the second backend is W3.3, and the ROS 2 peer test is W3.4.
+Kept because the reasoning for each step is still the reasoning. One claim in it
+is corrected by measurement: what decides whether a Humble `rmw_zenoh` peer gets
+this bridge's data is the zenoh backend's own edition feature, not the
+generated type hash (issue 1893).
 
 The gate is passed, the link works, and the session mechanism is identified. What
 is left is the part the plan under-described: **the bridge has to TRANSLATE.**

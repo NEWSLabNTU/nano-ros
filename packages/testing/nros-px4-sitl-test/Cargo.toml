@@ -34,6 +34,14 @@ path = "tests/px4_xrce_e2e.rs"
 name = "px4_uorb_interop_e2e"
 path = "tests/px4_uorb_interop_e2e.rs"
 
+# phase-325 W3.4 — the bridge's acceptance: a stock PX4 module's uORB topic
+# reaches a REAL ROS 2 subscriber. Consumes the SITL image from
+# `just px4 build-bridge-example` and the `px4_msgs` overlay from
+# `just px4 build-px4-msgs-ros`; builds neither.
+[[test]]
+name = "px4_bridge_ros2_e2e"
+path = "tests/px4_bridge_ros2_e2e.rs"
+
 [dependencies]
 # Path-dep into the px4-rs submodule. Out-of-workspace, so its
 # absence on a fresh clone is a build-time error here only, not a
@@ -42,3 +50,8 @@ px4-sitl-tests = { path = "../../../third-party/px4/px4-rs/tests/sitl" }
 # phase-336 — the ambient build profile, so the probe looks where the builder
 # wrote instead of naming a profile that can be renamed out from under it.
 nros-cargo-profile = { path = "../../tooling/nros-cargo-profile" }
+# phase-325 W3.4 — the ROS 2 peer machinery every interop cell uses
+# (`Ros2Process`, the router fixture, `require_ros2`). Reused rather than a
+# second harness; a path dep is fine here because this crate is already
+# outside the root workspace.
+nros-tests = { path = "../nros-tests" }

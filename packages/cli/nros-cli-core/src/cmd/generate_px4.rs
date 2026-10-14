@@ -96,14 +96,18 @@ pub fn run(args: Args) -> Result<()> {
             );
         }
         nros_lang::Language::Cpp => {
-            // Issue 0362 — the RIHS01 hash is load-bearing on the wire, and Humble
-            // has no type hash at all. Warn rather than silently emit a placeholder
-            // an rmw_zenoh peer will never match.
+            // Issue 0362 — the RIHS01 hash is load-bearing on the wire for an
+            // Iron+ peer, and Humble has no type hash at all. The Humble sentinel
+            // is not a placeholder, though: it is the literal `rmw_zenoh_cpp` on
+            // Humble keys on, and phase-325 W3.4 measured a Humble image of the
+            // PX4 bridge delivering to a Humble `ros2 topic echo`. The old text
+            // here told Humble users to switch to iron|jazzy, which is the one
+            // pairing that does not work for them.
             if !edition.uses_type_hash() {
                 eprintln!(
-                    "warning: --ros-edition {} predates REP-2011, so the emitted TYPE_HASH is a \
-                     placeholder. A peer that keys discovery on the type hash (rmw_zenoh) needs \
-                     --ros-edition iron|jazzy.",
+                    "note: --ros-edition {} predates REP-2011, so TYPE_HASH is \
+                     `TypeHashNotSupported` — what a Humble rmw_zenoh peer expects. An Iron+ \
+                     peer keys on RIHS01 and needs --ros-edition iron|jazzy.",
                     args.ros_edition
                 );
             }
