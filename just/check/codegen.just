@@ -769,6 +769,21 @@ cmake-retired-names:
     fi
     ./tests/cmake-retired-names-tests.sh
 
+# issue 0934 R1 — a leaf `system.toml` fact nano_rosConfig cached (rmw,
+# platform, board) FOLLOWS the file on reconfigure, while a person's `-D` or a
+# project's own `set()` still wins (tests/cmake-leaf-cache-tests.sh).
+[private]
+cmake-leaf-cache:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! command -v cmake >/dev/null 2>&1; then
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip cmake-leaf-cache "missing host tool(s): cmake"
+        exit 0
+    fi
+    ./tests/cmake-leaf-cache-tests.sh
+
 # phase-486 W3 — no nano-ros reader names a SystemModel field that is not the
 # model's to carry: `execution.features` (the overlay holds the switches),
 # `Deploy.extra`, `Deploy.target`, or a first-node-wins lifecycle read. rlm

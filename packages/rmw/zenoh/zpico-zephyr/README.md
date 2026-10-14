@@ -11,10 +11,11 @@ which provides the nros-c library (C) or Kconfig-to-Cargo bridging (Rust).
 ## API
 
 ```c
+#include <nros/platform_zephyr.h>   // the network wait is a platform primitive
 #include <zpico_zephyr.h>
 
 // Wait for Zephyr network interface to come up
-zpico_zephyr_wait_network(2000);
+nros_platform_zephyr_wait_network(2000);
 
 // Initialize and open zenoh session
 zpico_zephyr_init_session("tcp/127.0.0.1:7456");

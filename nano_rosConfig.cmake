@@ -157,15 +157,18 @@ if(NROS_EXPORT_FOUND)
     # on the FIRST configure — on any reconfigure the stale cached default is
     # visible to the `NOT NROS_*` guards, the leaf's value is skipped, and a
     # freertos leaf silently reconfigures as posix (Threads_FOUND death on a
-    # cross toolchain). Writing them into the cache on first parse makes
-    # reconfigures stable; an explicit `-D` still wins (the guard sees it).
-    if(NROS_EXPORT_DEPLOY AND NOT NROS_PLATFORM)
+    # cross toolchain). Writing them into the cache makes reconfigures stable;
+    # an explicit `-D` still wins. And a value WE cached follows the file when
+    # it changes (issue 0934 R1, `NanoRosLeafCache.cmake`): it used to stick
+    # at the first configure's value.
+    include("${NROS_REPO_DIR}/cmake/NanoRosLeafCache.cmake")
+    if(NROS_EXPORT_DEPLOY)
         _nros_deploy_to_platform("${NROS_EXPORT_DEPLOY}" _nros_leaf_platform)
-        set(NROS_PLATFORM "${_nros_leaf_platform}" CACHE STRING
+        nros_leaf_cache_set(NROS_PLATFORM "${_nros_leaf_platform}"
             "nano-ros platform (derived from the leaf system.toml board)")
     endif()
-    if(NROS_EXPORT_RMW AND NOT NROS_RMW)
-        set(NROS_RMW "${NROS_EXPORT_RMW}" CACHE STRING
+    if(NROS_EXPORT_RMW)
+        nros_leaf_cache_set(NROS_RMW "${NROS_EXPORT_RMW}"
             "RMW backend (from the leaf system.toml rmw)")
     endif()
     # phase-484 W4f — the board MODULE the leaf's board names, not the alias
@@ -175,8 +178,8 @@ if(NROS_EXPORT_FOUND)
     else()
         set(_nros_leaf_cmake_board "${NROS_EXPORT_BOARD}")
     endif()
-    if(_nros_leaf_cmake_board AND NOT NROS_BOARD)
-        set(NROS_BOARD "${_nros_leaf_cmake_board}" CACHE STRING
+    if(_nros_leaf_cmake_board)
+        nros_leaf_cache_set(NROS_BOARD "${_nros_leaf_cmake_board}"
             "nano-ros board module (from the leaf system.toml [image] board)")
     endif()
     # The verbs pick DEPLOY/BOARD up from these directory-scope vars.
