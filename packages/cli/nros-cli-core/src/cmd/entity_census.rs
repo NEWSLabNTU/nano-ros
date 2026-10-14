@@ -678,7 +678,7 @@ fn leaf_executable_name(leaf: &Path) -> Result<String> {
 /// Issue 1556 item 4 -- `take --leaf`: the census of a standalone C/C++ leaf.
 ///
 /// The SAME `src/` the cross image compiles, configured for the HOST board
-/// (`-DNROS_LEAF_BOARD=native`, which `nros ws leaf-system --board`
+/// (`-DNROS_LEAF_BOARD=linux`, which `nros ws leaf-system --board`
 /// honours), built to its fixed point like a workspace's native image, and run
 /// in census mode. Every input that decides what the program creates is the
 /// cross image's own; only the board differs, and the board is not a fact the
@@ -727,7 +727,7 @@ fn take_leaf_census(leaf: &Path, timeout_secs: u64) -> Result<()> {
             .arg("-G")
             .arg("Ninja")
             .arg(format!("-Dnano_ros_DIR={}", root.display()))
-            .arg("-DNROS_LEAF_BOARD=native")
+            .arg("-DNROS_LEAF_BOARD=linux")
             .env(LEAF_CENSUS_HOST_ENV, "1")
             .status()
             .wrap_err("running cmake (configure) for the host census build")?;
