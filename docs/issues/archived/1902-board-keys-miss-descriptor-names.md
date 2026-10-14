@@ -1,13 +1,50 @@
 ---
 id: 1902
 title: "Three board-descriptor names are not entry keys: `threadx-riscv64` is accepted by the catalog and refused by the entry codegen, so the every-board alias test is red"
-status: open
+status: resolved
 type: bug
 area: [tooling, build]
 severity: low
 found: 2026-10-15
+resolved: 2026-10-15
 related: [1285, 1109, 1519, 1525, phase-500]
 ---
+
+## Resolution (2026-10-15)
+
+Fixed on branch `fix/1902-board-keys` (commit "fix(#1902): every board
+descriptor name is an entry key, gated both ways"), following the fix
+direction below.
+
+- `BOARD_KEYS` gained `threadx-riscv64`, `mps2-an385-zephyr` and
+  `qemu-cortex-a53`. `BOARD_PATHS` gained `threadx-riscv64` too, next to
+  `rv-virt-threadx` (same ZST). `nros codegen entry --typed --board
+  threadx-riscv64` now exits 0. Its TU matches the `rv-virt-threadx` one
+  except for the banner's board line.
+- Reverse direction: no key is listed with a reason. The three keys no
+  descriptor names were deleted, because nothing in-tree selected them and
+  no image could: `armfvp` (Zephyr's FVP runner, not a board),
+  `freertos-qemu-mps2-an385` and `qemu-rtic-mps2-an385` (aliases of
+  `mps2-an385-freertos` / `rtic-mps2-an385`). `mps2-an385` stays. It is
+  the directory alias of `nros-board-mps2-an385`, so the catalog resolves
+  it, and `nros new --platform baremetal` scaffolds it.
+- The gate is two tests in `packages/cli/nros-cli-core/tests/board_key_table.rs`.
+  Both read every descriptor through `BoardCatalog`.
+  `every_descriptor_name_is_an_entry_key_of_its_family` compares
+  families only, never board types (the mps2 split). It has no scaffold
+  exemption: the scaffold an536 keys were already rows, and esp32 falls
+  out by having no RTOS family.
+  `every_entry_key_resolves_in_the_board_catalog` requires every
+  `BOARD_KEYS`/`BOARD_PATHS` key to resolve through `resolve_deploy`, and
+  requires an ambiguous key (`threadx`) to name one family.
+- Mutation-proved: dropping the `threadx-riscv64` row, changing its family,
+  re-adding `armfvp`, re-adding `qemu-rtic-mps2-an385` to `BOARD_PATHS`, or
+  dropping `qemu-cortex-a53` each turns the test red. The `BOARD_PATHS`
+  mutation is caught by the new reverse test alone.
+
+Still unmeasured: a Rust riscv64 leaf built with
+`board = "threadx-riscv64"`, and the side observation about
+`NROS_LEAF_CMAKE_BOARD=threadx`.
 
 ## Summary
 
