@@ -177,11 +177,11 @@ What was decided, and why:
   and run-matrix sat queued. A required-path job routed to that pool waits
   rather than fails, so `NROS_SELF_HOSTED_READY` (on, for L3, which nothing
   requires) was not reused.
-- **`check-cli-tests` was held back, then routed (PR #PRNUM).** With
+- **`check-cli-tests` was held back, then routed (PR #2177).** With
   `/opt/ros/$ROS_DISTRO/share` present its `cli-tests` step runs the rosidl
   parity tests `--ignored`, and they FAIL on an absent interface package
   (`[NO-PKG]`, issue 1552). The runner image carried one ROS package (the zenoh
-  router). PR #PRNUM adds `[prereq.ros-interface-packages]` to
+  router). PR #2177 adds `[prereq.ros-interface-packages]` to
   `nros-sdk-index.toml` — `std_msgs`, `geometry_msgs`, `sensor_msgs`,
   `example_interfaces`, measured from the `ros_input` / `ros_input_dir` call
   sites in `rosidl-codegen/tests/{parity,comparison}_test.rs`; the apt names
