@@ -11,7 +11,7 @@ submodule drift that bit three times during the 0285 work.
 
 **The layers, the repositories and the linking rule are unchanged. This
 amendment rules on the CONTENT of the artifact that crosses the layer 2 →
-layer 4 seam.** Work items, retirement and migration: [phase-486](../roadmap/phase-486-launch-model-boundary.md).
+layer 4 seam.** Work items, retirement and migration: [phase-486](../roadmap/archived/phase-486-launch-model-boundary.md).
 
 ### The rule
 
