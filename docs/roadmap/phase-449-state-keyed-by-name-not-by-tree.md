@@ -375,7 +375,7 @@ independent, the other shares across trees that should be.
 
 ### W7 — the runner builds into its own checkout
 
-[Issue 1166](../issues/1166-ci-runner-builds-into-a-developer-checkout.md). The
+[Issue 1166](../issues/archived/1166-ci-runner-builds-into-a-developer-checkout.md). The
 self-hosted runner's `.env` pins `NROS_ZEPHYR_WORKSPACE` into a developer's
 working tree, the lane's own verification reports that as `[OK]`, and a west
 build dir carries neither the board nor the checkout in its name.
@@ -398,21 +398,18 @@ build dir carries neither the board nor the checkout in its name.
       first assertion alone would pass against a check that refuses every
       workspace: it fails on a workspace inside a second checkout, the refusal
       NAMES both trees, and a workspace outside every checkout still passes.
-- [ ] The runner's workspace is its own — **NOT DONE, and not mine to do.**
-      This is host configuration: the runner checkout has no `zephyr-workspace/`
-      and no `.west/`, so repointing `.env` means provisioning it a workspace
-      first (or pointing it at the store, which W3 makes viable). The issue
-      records it as the maintainer's call and says the other two defects are
-      what let it go unnoticed; one of those is now closed, so the condition is
-      reported instead of silently passed.
+- [x] The runner's workspace is its own. The tier-2 runner became a
+      container with its own store workspace
+      (`/home/runner/.nros/workspaces/zephyr/3.7`, run 38357336803), so no
+      developer checkout is reachable from it.
 
-**Issue 1166's third defect is out of this item's scope and stays open.** A west
-build dir is `build-<example>-<rmw>` — no board, no checkout — so `mps2_an385`
-and `native_sim` builds of one example collide, and across checkouts west
-refuses with an error about the developer's own command. Renaming it moves
-`check-west-leaf-vocabulary`'s modelled names, every `…/zephyr/zephyr.elf`
-literal and the test-side resolver together (the #393 rule), which is a larger
-change than this item's two boxes and is left recorded rather than half-done.
+**Issue 1166's third defect is fixed (2026-10-15).** Issue 1596 had already
+moved the fixture lane's west build dirs to a per-checkout build root. The one
+recipe left on the shared workspace, `just zephyr build-one`, now builds into
+that root as `build-one-<example>-<rmw>-<board>`. The name holds the board, and
+the `build-one-` prefix keeps it apart from the fixture leaves, so
+`check-west-leaf-vocabulary` and the test resolvers are untouched: no test
+reads this path.
 
 ### W8 — `just setup zephyr` can repair what it skips
 
@@ -479,4 +476,3 @@ link runs both ways). Listing one here records the link, not a claim that
 this phase will fix it.
 
 - [issue 1158](../issues/1158-tier2-lane-has-produced-no-verdict-for-six-days.md) — The tier-2 lane has produced no runtime verdict in six consecutive scheduled runs, and no pre-merge event can produce …
-- [issue 1399](../issues/1399-zephyr-shared-store-build-dir-has-no-lock.md) — Two checkouts building the same Zephyr leaf into the shared store workspace collide with no lock — west's sanity chec …
