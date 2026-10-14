@@ -154,6 +154,12 @@ pub(crate) mod mock;
 #[cfg(all(feature = "param-services", any(has_rmw, test)))]
 pub mod parameter_services;
 
+// Issue 1897 -- the parameter STORE's executor state, on its own feature.
+// `param-services` implies `param-store`, and the six servers' module above
+// builds on this one; a `param-store` image compiles none of them.
+#[cfg(all(feature = "param-store", any(has_rmw, test)))]
+pub(crate) mod param_store;
+
 // Issue 1468 — the parameter family's message GEOMETRY, which BOTH service
 // families are sized from, so its gate is the DISJUNCTION of theirs.
 //
@@ -170,7 +176,7 @@ pub mod parameter_services;
 // picks. `any(has_rmw, test)` is carried over unchanged from both module
 // gates, so no image compiles this that did not compile it before.
 #[cfg(all(
-    any(feature = "param-services", feature = "lifecycle-services"),
+    any(feature = "param-store", feature = "lifecycle-services"),
     any(has_rmw, test)
 ))]
 pub mod param_sizing;
@@ -197,14 +203,14 @@ pub(crate) fn tx_writer(buf: &mut [u8]) -> Result<nros_core::CdrWriter<'_>, nros
 // list for the reason the list exists: `nros-c` and `nros-cpp` depend on
 // `nros-node` and not on `nros-params`, so a type they cannot name here is a
 // capability their surface cannot expose, whatever the store does.
-#[cfg(feature = "param-services")]
+#[cfg(feature = "param-store")]
 pub use nros_params::{
     NodeKey as ParameterNodeKey, OnSetContext, OnSetParameterFn, OnSetParameterHandle,
     ParameterDescriptor, ParameterRange, ParameterServer, ParameterType, ParameterValue,
     SetParameterResult,
 };
 // phase-491 — the bounds a C caller's buffers are sized against (RFC-0105 D10).
-#[cfg(feature = "param-services")]
+#[cfg(feature = "param-store")]
 pub use nros_params::{
     MAX_ARRAY_LEN, MAX_BYTE_ARRAY_LEN, MAX_PARAM_NAME_LEN, MAX_STRING_VALUE_LEN,
 };
@@ -315,7 +321,8 @@ pub use executor::SpinPeriodResult;
 // silently changes what their firmware image is; naming the feature they must
 // add does not.
 // ---------------------------------------------------------------------------
-// Issue 1812 — `param-services` no longer requires `alloc`. The store, the
+// Issue 1812 — the parameter store (`param-store` since issue 1897) no longer
+// requires `alloc`. The store, the
 // service state, the shared buffer pair and the staging slot a remote set
 // decodes into are all CARVED from the executor backing when the build knows
 // the image builds a store (`nros_params::IMPLIED_STORE_SLOTS`). Without a
@@ -323,10 +330,10 @@ pub use executor::SpinPeriodResult;
 // refused HERE, naming the knob, rather than at the first declaration.
 // (`lifecycle-services` keeps its own guard below: its processor is still
 // boxed, which is a separate item.)
-#[cfg(all(feature = "param-services", not(feature = "alloc"), any(has_rmw, test)))]
+#[cfg(all(feature = "param-store", not(feature = "alloc"), any(has_rmw, test)))]
 const _: () = assert!(
     nros_params::IMPLIED_STORE_SLOTS > 0,
-    "`param-services` without `alloc` needs the parameter store carved from the executor \
+    "`param-store` without `alloc` needs the parameter store carved from the executor \
      backing, and this build carves none: set NROS_PARAM_STORE=1 (sized by \
      NROS_MAX_PARAMETERS), or declare `params:` in the contract / `param_services` in the \
      bringup, or add \"alloc\" to this crate's features (issue 1812)"

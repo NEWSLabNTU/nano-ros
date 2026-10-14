@@ -1890,9 +1890,16 @@ impl crate::node::FrameSink for ExecutorSink<'_> {
                 // identical to the pre-Wave-2 behavior.
                 #[cfg(feature = "param-store")]
                 {
+                    // Issue 1897 -- a store-only build has no services to
+                    // stand up; it builds the store and serves nothing.
                     if executor.params().is_none() {
+                        #[cfg(feature = "param-services")]
                         executor
                             .register_parameter_services()
+                            .map_err(decl_err_from_node)?;
+                        #[cfg(not(feature = "param-services"))]
+                        executor
+                            .register_parameter_store()
                             .map_err(decl_err_from_node)?;
                     }
                     let value = param_default_to_value(metadata.parameter_default.as_ref());

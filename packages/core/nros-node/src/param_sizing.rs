@@ -573,6 +573,13 @@ const _: () = assert!(
 /// its five queryables over exactly these sets, and it always was. The old
 /// name said "parameter" about a number that is the node table's, which is
 /// why the lifecycle side read it under a name it had no business naming.
+// Issue 1897 -- read by the two service families and the store's
+// `use_sim_time` placeholders; a store-only build without `sim-time` has none.
+#[cfg(any(
+    feature = "param-services",
+    feature = "lifecycle-services",
+    feature = "sim-time"
+))]
 pub(crate) const MAX_SERVICE_SETS: usize = if crate::config::MAX_NODES == 0 {
     1
 } else {

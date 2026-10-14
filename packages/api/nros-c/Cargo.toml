@@ -355,7 +355,13 @@ alloc-stats = ["nros-platform/alloc-stats"]
 # the ROS 2 parameter services it registers (~/get_parameters,
 # ~/set_parameters, ...). Without it the whole rclc parameter surface is absent
 # and the header says so (issue 0865).
-param-services = ["nros/param-services", "nros-node/param-services"]
+param-services = ["param-store", "nros/param-services", "nros-node/param-services"]
+# Issue 1897 -- the parameter STORE alone. nros-c has no store-only C surface
+# (rclc's parameter API IS a server), so this exists for one reason: the
+# executor this crate's sizes probe measures must carry the store whenever the
+# linked one does (issue 0665), and an nros-cpp built with `param-store` links
+# an executor that does.
+param-store = ["nros/param-store", "nros-node/param-store"]
 
 # Expose ROS 2 lifecycle services (~/change_state, ~/get_state, etc. — REP-2002)
 # via `rclc_executor_register_lifecycle_services`. Requires alloc for boxed
