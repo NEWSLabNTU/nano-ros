@@ -3,11 +3,12 @@ id: 1166
 title: "The self-hosted runner builds Zephyr into a developer's checkout, the lane's own
   verification reports that as `[OK]`, and a west build dir carries neither the
   board nor the checkout in its name"
-status: open
+status: resolved
 type: bug
 area: [ci, build]
 severity: high
 related: [1157, 1025, 0759, 0980, phase-449]
+resolved: 2026-10-15
 ---
 
 ## What
@@ -144,3 +145,30 @@ and the failure looks like a slow build rather than a bug.
 What would close it: derive `build-one`'s dir from the same build root, with
 the board in the name. Move any test-side reader of that path in the same
 commit.
+
+## Resolution (2026-10-15)
+
+Defect 3 is fixed, which closes the issue. Defects 1 and 2 were already gone
+(see the 2026-10-14 status above).
+
+`just zephyr build-one` now builds into this checkout's west build root
+(`scripts/lib/zephyr-workspace.sh build-root`, issue 1596), the root the
+fixture lane already uses. The dir is named
+`build-one-<example>-<rmw>-<board>`, with `/` in the board turned into `-`:
+
+```
+$ just zephyr build-one c/talker zenoh
+Zephyr 3.7: building zephyr/c/talker (zenoh, native_sim/native/64) -> <checkout>/build/zephyr-workspace-builds/3.7/build-one-c-talker-zenoh-native_sim-native-64
+Built: <checkout>/build/zephyr-workspace-builds/3.7/build-one-c-talker-zenoh-native_sim-native-64/zephyr/zephyr.elf
+```
+
+Its `CMakeCache.txt` names this checkout's `examples/zephyr/c/talker`. Another
+checkout derives `<that checkout>/build/zephyr-workspace-builds/3.7`, so two
+checkouts no longer share a dir, and two boards no longer share a name.
+
+The `build-one-` prefix matters. The fixture leaves sit in the same root as
+`build-<leaf>`, and their names are routing keys (issue 1016). A distinct
+prefix means `build-one` never configures a fixture's dir, and nothing in
+`check-west-leaf-vocabulary` or the test resolvers had to move, because no test
+reads a `build-one` path. `just zephyr clean` and `gc-zephyr-builds.py` both
+take `build-*`, so they still reach these dirs.

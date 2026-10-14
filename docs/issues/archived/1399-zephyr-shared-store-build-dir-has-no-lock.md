@@ -3,12 +3,13 @@ id: 1399
 title: "Two checkouts building the same Zephyr leaf into the shared store
   workspace collide with no lock — west's sanity check catches the sequential
   case and not the concurrent one"
-status: open
+status: resolved
 type: bug
 area: [build, zephyr]
 severity: medium
 found: 2026-09-20
 related: [issue-1379, issue-1258, issue-1016, phase-440, phase-449, phase-478]
+resolved: 2026-10-15
 ---
 
 ## What happens
@@ -63,3 +64,27 @@ membership and the fixture resolvers move in the same change.
 Two checkouts running the same `just zephyr build-one` concurrently either
 serialise, or one refuses naming the holder. Neither silently configures into
 the other's build directory.
+
+## Resolution (2026-10-15)
+
+Fixed by the second direction above: the store workspace is a source location
+only, and builds land under the invoking checkout.
+
+- Issue 1596 moved the fixture lane's west build dirs to a per-checkout build
+  root (`scripts/lib/zephyr-workspace.sh build-root`, which is
+  `<checkout>/build/zephyr-workspace-builds/<version>` by default).
+- Issue 1166's fix moved the last recipe, `just zephyr build-one`, into the same
+  root as `build-one-<example>-<rmw>-<board>`.
+
+So two checkouts building the same leaf now target two directories, and there
+is nothing to lock. Measured: `build-one c/talker zenoh` configures
+`<checkout>/build/zephyr-workspace-builds/3.7/build-one-c-talker-zenoh-native_sim-native-64`,
+and `zephyr-workspace.sh --root <other checkout> build-root` answers a path
+under the other checkout.
+
+The routing concern above does not apply. The fixture leaf names did not
+change, and `build-one`'s dirs carry their own prefix that no lane routes on.
+
+Not covered: two concurrent `build-one` runs of the same leaf and board from
+ONE checkout still share a dir. That is one operator racing themselves, not
+the cross-checkout case this issue is about.

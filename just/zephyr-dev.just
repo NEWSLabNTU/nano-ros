@@ -147,8 +147,22 @@ build-one example rmw="zenoh" board="native_sim/native/64":
         tail="$(pwd)/cmake/zephyr/qemu-cortex-m3.conf"
         ;;
     esac
-    bd="build-$(echo '{{example}}' | tr '/' '-')-{{rmw}}"
-    echo "Zephyr {{NROS_ZEPHYR_VERSION}}: building zephyr/{{example}} ({{rmw}}, {{board}}) -> $workspace/$bd"
+    # issues 1166 + 1399 — the build dir is THIS checkout's, and its name holds
+    # the board. It used to be `$workspace/build-<example>-<rmw>`: the workspace
+    # is shared by every checkout on the host (RFC-0095 D1), and the name was
+    # the same for every board. So two checkouts, or two boards, configured one
+    # directory: west refused the sequential case with an error about the
+    # developer's own command, and nothing caught the concurrent one.
+    #
+    # The root is issue 1596's per-checkout build root, the one the fixture
+    # lane already uses. The `build-one-` prefix keeps these dirs apart from
+    # the fixture leaves there (`build-<leaf>`, routed by NAME, issue 1016),
+    # and keeps them under `just zephyr clean` and `gc-zephyr-builds.py`, which
+    # both take `build-*`. No test reads this path.
+    build_root="$(scripts/lib/zephyr-workspace.sh --version "{{NROS_ZEPHYR_VERSION}}" build-root)"
+    mkdir -p "$build_root"
+    bd="$build_root/build-one-$(echo '{{example}}' | tr '/' '-')-{{rmw}}-$(echo '{{board}}' | tr '/' '-')"
+    echo "Zephyr {{NROS_ZEPHYR_VERSION}}: building zephyr/{{example}} ({{rmw}}, {{board}}) -> $bd"
     cd "$workspace"
     # phase-400 W5 — share the cargo dependency mass across images.
     #
@@ -166,7 +180,7 @@ build-one example rmw="zenoh" board="native_sim/native/64":
         -DCONF_FILE="$conf" ${tail:+-DEXTRA_CONF_FILE="$tail"} \
         -DNROS_IMAGE="zephyr_{{rmw}}" -D_NANO_ROS_CODEGEN_TOOL="$codegen_tool" \
         -DNROS_SHARED_CARGO_ROOT="$shared_cargo_root" "$nros_module_arg"
-    echo "Built: $workspace/$bd/zephyr/zephyr.elf"
+    echo "Built: $bd/zephyr/zephyr.elf"
 
 # Phase 180.B item 5 — copy-out CI check. Copies an example OUT of the
 # repo tree and builds it against the nano-ros Zephyr module on the 4.4
