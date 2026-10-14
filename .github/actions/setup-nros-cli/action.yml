@@ -27,8 +27,8 @@ description: >
   reproduce `probe.yml`'s exit 127 with the failure pointing at this file rather
   than at the workflow that reached it. `check-workflow-just-provisioning`
   (phase-466 W2) expands this action into each consuming job and answers the
-  question there. The sibling `.github/actions/setup-qemu-patched` installs
-  `just` itself, which is the other legitimate answer.
+  question there. A step that installs `just` itself (`probe.yml`'s
+  "Install just (if absent)") is the other legitimate answer.
 
 runs:
   using: composite

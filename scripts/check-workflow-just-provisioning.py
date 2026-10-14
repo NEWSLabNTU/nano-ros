@@ -92,8 +92,8 @@ from runner_route import parse_image, parse_runs_on  # noqa: E402
 
 JUST = invoke_re(("just",))
 
-# How `just` gets onto a machine. Both Dockerfiles and
-# `.github/actions/setup-qemu-patched` use the first; the second is what
+# How `just` gets onto a machine. Both Dockerfiles and `probe.yml`'s
+# "Install just (if absent)" step use the first; the second is what
 # `scripts/sdk-env.sh` tells a human to type. A third-party action whose name
 # ends in `setup-just` is the community convention.
 INSTALLERS = ("just.systems/install.sh", "cargo install just")
@@ -300,7 +300,7 @@ def report(failures, self_hosted, checked, quiet=False):
         print("  recipe, and `just doctor` needs `just`. Give the job one of:")
         print("    * container: ghcr.io/newslabntu/nano-ros-ci:humble  (bakes it), or")
         print("    * a step BEFORE the first invocation, copying the one in")
-        print("      .github/actions/setup-qemu-patched: `command -v just` guard,")
+        print("      .github/workflows/probe.yml (\"Install just\"): `command -v just` guard,")
         print("      https://just.systems/install.sh --to \"$HOME/.local/bin\",")
         print("      then append that dir to $GITHUB_PATH.")
         return 1

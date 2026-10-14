@@ -60,9 +60,8 @@ jobs:
       # found` and exit 127 on this workflow's first scheduled run, before
       # either probe container started.
       #
-      # Same installer and same `~/.local/bin` destination as
-      # `.github/actions/setup-qemu-patched`, so PATH reads the way a
-      # contributor's checkout does.
+      # The `~/.local/bin` destination is the one a contributor's checkout
+      # uses, so PATH reads the same way.
       - name: Install just (if absent)
         run: |
           set -euo pipefail

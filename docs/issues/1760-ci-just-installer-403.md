@@ -33,11 +33,12 @@ runner, not a change in the repository.
 
 ## Where the pattern lives
 
-Three call sites pipe the installer with `-sSf` and no retry:
+Two call sites pipe the installer with `-sSf` and no retry (a third,
+`.github/actions/setup-qemu-patched`, was deleted on 2026-10-14 with the
+QEMU submodule it keyed on):
 
 - `.github/workflows/probe.yml:71` (checkout track)
 - `.github/workflows/probe.yml:98` (installed track)
-- `.github/actions/setup-qemu-patched/action.yml:139`
 
 `curl --retry` would not help as written: curl does not retry an HTTP 403.
 
