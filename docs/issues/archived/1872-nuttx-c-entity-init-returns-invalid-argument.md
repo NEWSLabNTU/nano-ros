@@ -1,12 +1,13 @@
 ---
 id: 1872
 title: "NuttX C images: `rclc_subscription_init_default` and the typed `…__service_init` return RCL_RET_INVALID_ARGUMENT (-3) since the phase-492 C API rename"
-status: open
+status: resolved
 type: bug
 area: [nuttx, api, testing]
 severity: high
 found: 2026-10-13
-related: [phase-492, 1838, 1836]
+resolved: 2026-10-14
+related: [phase-492, 1838, 1836, 1879]
 ---
 
 ## Measured
@@ -94,3 +95,31 @@ after the NuttX fixtures are built.
 The two NuttX C cells pass in a nightly, with the cause named. If the cause
 is a type-support or descriptor path that only the NuttX C road takes, add a
 check that would have caught it before the nightly.
+
+## Resolution (2026-10-14) — fixed by issue 1879
+
+Another session found and fixed the same cause the same day as issue 1879
+(`d7909df96a`). That fix makes NuttX C and C++ TUs build without PIC,
+through `nuttx_platform_build::flat_kernel_code_model`. This issue was diagnosed
+independently, and the two diagnoses agree:
+
+- **Measured** in QEMU with `gdb-multiarch` on the listener image.
+  `rclc_subscription_init_default` received a NULL type support (`r2 = 0x0`)
+  while `std_msgs__msg__String__nros_type` is defined at `0x680f78`.
+- `.got` starts at exactly `_edata` (`0x40200da0`), and the flat kernel's
+  startup copies only `[_sdata, _edata)`. So the GOT slot that
+  `-fPIC` reads `&<Msg>__nros_type` through is never initialised.
+- Phase-492 made `ROSIDL_GET_MSG_TYPE_SUPPORT` take that address, which is
+  why the window opens there.
+
+**Verified with the non-PIC build** (the same flag change as 1879, built
+here before 1879 landed):
+
+- `rtos_e2e` NuttX C passes 3/3 (pubsub, service, action).
+- The riscv board's C talker (`c_riscv_nuttx_e2e`) delivers to a native
+  listener. The riscv FFI crate calls the same `run_nuttx()`, so 1879's fix
+  covers it too. Issue 1879 does not record a riscv run.
+
+**Not measured:** why the C action cell passed while it was built with PIC.
+`ROSIDL_GET_ACTION_TYPE_SUPPORT` also takes `&…__nros_type`. It no longer
+matters, since no NuttX C object is PIC any more.
