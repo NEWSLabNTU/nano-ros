@@ -115,8 +115,16 @@ impl Rung {
 /// Walk the ladder, and say which rung answered. `None` means none did.
 #[must_use]
 pub fn resolve_explained_from(rungs: Rungs<'_>) -> Option<(PathBuf, Rung)> {
+    // Issue 0849 — the PHYSICAL spelling, like every other rung (the workspace
+    // walk starts from a canonical root, the own-checkout rung from the
+    // canonical exe). Patch rows are diffed from this root against canonical
+    // anchors, so a `--nano-ros-path` reached through a symlink climbed out to
+    // `/` and back down the link, the central `nros-patch.toml` named the
+    // realpath, and cargo saw every core crate twice and refused on `links`.
+    // A path that does not exist is passed on as written, for the caller's
+    // own "not a nano-ros checkout" error.
     if let Some(p) = rungs.explicit {
-        return Some((p, Rung::Explicit));
+        return Some((std::fs::canonicalize(&p).unwrap_or(p), Rung::Explicit));
     }
     if let Some(p) = rungs
         .workspace
@@ -311,6 +319,38 @@ mod tests {
             got,
             Some((checkout, Rung::Explicit)),
             "--nano-ros-path must outrank everything"
+        );
+    }
+
+    /// Issue 0849 — `--nano-ros-path` through a symlink answers the PHYSICAL
+    /// checkout, the spelling every other rung and the central patch file use.
+    /// Two spellings of one checkout reaching one cargo resolution is two
+    /// copies of every core crate, refused on `links`.
+    #[cfg(unix)]
+    #[test]
+    fn an_explicit_path_through_a_symlink_answers_the_real_checkout() {
+        let tmp = tempfile::tempdir().unwrap();
+        let real = tmp.path().join("real/nano-ros");
+        std::fs::create_dir_all(&real).unwrap();
+        let link = tmp.path().join("via-link");
+        std::os::unix::fs::symlink(tmp.path().join("real"), &link).unwrap();
+        let got = resolve_explained_from(Rungs {
+            explicit: Some(link.join("nano-ros")),
+            ..Rungs::default()
+        });
+        assert_eq!(
+            got,
+            Some((std::fs::canonicalize(&real).unwrap(), Rung::Explicit))
+        );
+        // A path that does not exist is passed on as written, so the caller's
+        // own error names what the user typed.
+        let missing = tmp.path().join("nope");
+        assert_eq!(
+            resolve_explained_from(Rungs {
+                explicit: Some(missing.clone()),
+                ..Rungs::default()
+            }),
+            Some((missing, Rung::Explicit))
         );
     }
 

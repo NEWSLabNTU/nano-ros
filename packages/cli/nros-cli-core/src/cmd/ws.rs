@@ -5192,6 +5192,11 @@ fn render_managed_entries(
     registry_named: &HashSet<String>,
 ) -> Result<Vec<(String, String)>> {
     let authority_dir = authority.parent().unwrap();
+    // Issue 0849 — every row is diffed against `authority_dir`; a root reached
+    // through a symlink would climb out to `/` and back down the link, a second
+    // spelling of the checkout the central patch file names by its realpath.
+    let canonical_nrp = nano_ros_path.map(|p| p.canonicalize().unwrap_or_else(|_| p.to_path_buf()));
+    let nano_ros_path = canonical_nrp.as_deref();
     let mut out: Vec<(String, String)> = Vec::new();
     // issue 0363 — crates whose lookup-table path is dead. Collected rather than
     // failing on the first, so one run reports every stale mapping.

@@ -3300,6 +3300,11 @@ pub(crate) fn registry_patches_from(
     nano_ros_root: &std::path::Path,
     seeds: &[PathBuf],
 ) -> std::collections::BTreeMap<String, PathBuf> {
+    // Issue 0849 — rows are spelled from this root; a symlinked spelling beside
+    // canonical seeds is two copies of every core crate to cargo.
+    let nano_ros_root = &nano_ros_root
+        .canonicalize()
+        .unwrap_or_else(|_| nano_ros_root.to_path_buf());
     let mut out = std::collections::BTreeMap::new();
     let mut seen = std::collections::BTreeSet::new();
     let mut queue: Vec<PathBuf> = seeds.to_vec();
@@ -6407,6 +6412,43 @@ mod per_image_configure_tests {
             "examples/fixtures.toml `build_subdir` disagrees with `cmake_coordinate` \
              (phase-481 W4 — write what nros build uses):\n  {}",
             wrong.join("\n  ")
+        );
+    }
+}
+
+#[cfg(all(test, unix))]
+mod registry_patch_spelling_tests {
+    use super::*;
+
+    /// Issue 0849 — a nano-ros root reached through a symlink still spells
+    /// every patch row by the checkout's realpath, the spelling the central
+    /// `nros-patch.toml` uses. Two spellings in one resolution are two copies
+    /// of every core crate, which cargo refuses on `links`.
+    #[test]
+    fn a_symlinked_nano_ros_root_patches_by_the_real_checkout() {
+        let tmp = tempfile::tempdir().unwrap();
+        let real = tmp.path().join("real");
+        let board = real.join("nr/packages/boards/nros-board-x");
+        std::fs::create_dir_all(&board).unwrap();
+        std::fs::write(
+            board.join("Cargo.toml"),
+            "[package]\nname = \"nros-board-x\"\n",
+        )
+        .unwrap();
+        let link = tmp.path().join("via-link");
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        let leaf = tmp.path().join("leaf");
+        std::fs::create_dir_all(&leaf).unwrap();
+        std::fs::write(
+            leaf.join("Cargo.toml"),
+            "[package]\nname = \"leaf\"\n\n[dependencies]\nnros-board-x = \"*\"\n",
+        )
+        .unwrap();
+        let rows = registry_patches(&leaf, &link.join("nr"), &leaf);
+        assert_eq!(
+            rows.get("nros-board-x"),
+            Some(&board.canonicalize().unwrap()),
+            "{rows:?}"
         );
     }
 }
