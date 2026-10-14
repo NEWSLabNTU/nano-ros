@@ -135,8 +135,15 @@ fn zephyr_cpp_violation_channel_reports_one_overrun_after_arming() -> TestResult
             .and_then(|n| n.parse().ok())
             .unwrap_or(0);
         let floor = if k == 0 { 181 } else { 250 };
-        assert!(measured >= floor, "route {k} measured {measured} ms: `{line}`");
-        assert!(*at > run_at, "a route verdict before arming:\n{}", excerpt());
+        assert!(
+            measured >= floor,
+            "route {k} measured {measured} ms: `{line}`"
+        );
+        assert!(
+            *at > run_at,
+            "a route verdict before arming:\n{}",
+            excerpt()
+        );
     }
     assert!(
         routes[1].0 > late_tick,
