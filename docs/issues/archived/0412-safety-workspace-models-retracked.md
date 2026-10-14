@@ -18,7 +18,7 @@ check-no-tracked-models: tracked SystemModel files found:
   Author the data in system.toml and re-run `nros sync`; never track the model.
 ```
 
-The gate is [phase-330](../roadmap/phase-330-system-model-as-build-artifact.md)
+The gate is [phase-330](../../roadmap/archived/phase-330-system-model-as-build-artifact.md)
 W7.e, added precisely because [issue 0380](archived/0380-model-regeneration-destroys-hand-authored-execution-dims.md) was four hand-edit
 deletions of committed models. It is working as designed; the invariant it
 guards regressed.

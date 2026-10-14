@@ -1,19 +1,22 @@
 # phase-330 — the SystemModel becomes a build artifact (implement RFC-0063)
 
-**Implements:** [RFC-0063](../design/0063-system-model-is-a-build-artifact.md)
+**Implements:** [RFC-0063](../../design/0063-system-model-is-a-build-artifact.md)
 **Closes:** issue 0380 (and retires its transitional guards)
 **Touches:** phase-296 (model as sole plan input), issue 0320 (content-addressed
 staleness), RFC-0047 / RFC-0052 (scheduling dims + fail-loud contract)
 
-**Status (2026-10-13).** W1–W7 LANDED. W1–W3 landed on 2026-08-02, and W4
-(the committed models deleted) landed with W5 and W7 on 2026-08-03.
-`check-no-tracked-models` holds the result. Of the three acceptance boxes
-left open, measurement on 2026-10-13 settled one and half of another: rebuild-vs-rebuild
-identity is MET, and so is the dims half of the clean-checkout box (see
-Acceptance). Still waiting on a fixture run: the clean-checkout BUILD of each
-realtime workspace's images, and the realtime e2e family passing against
-generated models. The 2026-10-12 line said all three waited on one tier-2
-validation round; the line before it said only "W1 landed".
+**Status (2026-10-14): COMPLETE, archived.** W1–W7 landed: W1–W3 on
+2026-08-02, and W4 (the committed models deleted) with W5 and W7 on
+2026-08-03. `check-no-tracked-models` holds the result. Every acceptance box
+is now met on the host: the native half of the realtime workspaces was built
+from a fresh worktree and the native realtime e2e family passed against
+generated models on 2026-10-14 (see Acceptance). The RTOS half of the same two
+boxes (Zephyr, NuttX, FreeRTOS, ThreadX cells) is not a design question this
+phase still owns. Those fixtures are built only by the scheduled tier-2 lanes,
+so their verdict is handed to
+[phase-466](../phase-466-scheduled-lanes-produce-verdicts.md) (work item W5).
+RFC-0063 is `Stable`. Issue 1121, the one open issue that named this phase, is
+re-homed to [phase-439](../phase-439-resolve-before-configure.md).
 
 ## Goal
 
@@ -609,7 +612,7 @@ actually move — editing it now would describe a state the tree is not in.
       So six are real W4.a blockers, not 24: a bringup that cannot sync cannot
       regenerate its model. Detail, evidence and the "do not migrate blind"
       warning on the FreeRTOS descriptor are in
-      [issue 0392](../issues/archived/0392-sync-blocked-fixtures.md).
+      [issue 0392](../../issues/archived/0392-sync-blocked-fixtures.md).
 
       Original item: **W4.a** Remove all **120** tracked `*/config/*model.yaml` (80 under
       `examples/workspaces/`, 40 under test fixtures); add the build location
@@ -741,7 +744,7 @@ completed:
 
 - [x] No tracked `*/config/*model.yaml` remains (112 at deletion time;
       `check-no-tracked-models` in check-fast enforces it).
-- [ ] A clean checkout builds every realtime workspace (post-331 names:
+- [x] A clean checkout builds every realtime workspace (post-331 names:
       `realtime-{rust,c,cpp,cpp-subnode-portable}`) and the generated
       models carry all 86 dims (`nros ws model-dims` against the retired
       baseline as the oracle). *Pending: the tier-2 validation round.*
@@ -758,6 +761,20 @@ completed:
       Nothing is lost. The extra keys are new data: `smp_bringup`'s model,
       and `freertos.priority` rows. The BUILD half (each workspace's images,
       not only its models) was not run here.
+      **The native BUILD half is MET (2026-10-14).** In a fresh worktree
+      (`just setup-worktree`, `setup-cli`, `setup-launch-resolve`,
+      `nros setup --build-sources`), `just build-test-fixtures lane=native`
+      built every native realtime row of `examples/fixtures.toml`:
+      `workspace-rust-native-realtime`,
+      `workspace-rust-native-realtime-derived`,
+      `workspace-c-native-realtime`, `workspace-cpp-native-realtime`,
+      `workspace-cpp-native-realtime-rclcpp`,
+      `workspace-cpp-native-realtime-subnode` and
+      `workspace-cpp-native-realtime-subnode-portable` (`== native == OK`).
+      The RTOS rows (`workspace-{rust,c,cpp}-nuttx{,-riscv}-realtime`,
+      `workspace-rust-{threadx-linux,freertos}-realtime` and the Zephyr west
+      leaves) are built only by the scheduled tier-2 lanes; their build is
+      phase-466 W5.
 - [x] Deleting a build directory and rebuilding reproduces **semantically
       identical** models (parsed-YAML compare — the W4.a dry run's oracle;
       byte-identity against the *committed* copies was impossible by
@@ -767,10 +784,26 @@ completed:
       **MET 2026-10-13.** I deleted `build/nros/models` in each realtime
       workspace and re-ran `nros sync`. All 9 models came back semantically
       identical (parsed-YAML compare) and byte-identical.
-- [ ] The realtime e2e family (the ~17 tests that lost their subject in 0380)
+- [x] The realtime e2e family (the ~17 tests that lost their subject in 0380)
       passes against generated models. *Pending: the tier-2 validation round
       (fixture build fully green in round 24; ci-matrix reached its final
       check stage).*
+      **The native half is MET (2026-10-14)**, on the fixtures above, with a
+      bare `cargo nextest run` (aarch64 host, ROS 2 Humble sourced):
+      - `native_orchestration_tiers`: 6 of 6 pass, including
+        `multi_tier_binary_runs_both_tiers_with_router`;
+      - `realtime_subnode_cpp_e2e` and `realtime_subnode_cpp_portable_e2e`:
+        pass;
+      - `sched_dims_model_coverage`: pass;
+      - `realtime_tiers_e2e`: all 6 native rows pass; the other 14 rows are
+        RTOS cells;
+      - `sched_dims_applied_e2e`: the `linux rust CorePin` cell passes; the
+        other 16 cells are RTOS cells.
+
+      Every red in that run is `[UNMET PRECONDITION] fixture not built` (or
+      no FreeRTOS kernel tree) on a Zephyr, NuttX, FreeRTOS or ThreadX cell.
+      None is a wrong answer from a fixture that ran. Those cells get their
+      verdict from the tier-2 nightly, which is phase-466 W5.
 - [x] A copied-out standalone example still builds (W3.c) — the esp32 /
       freertos / native standalone families built green in the round-24
       fixture sweep, and the compile-check forms (W7.g) cover the
@@ -797,6 +830,8 @@ completed:
 
 Open issues whose `related:` names this phase (listed 2026-10-12, so the
 link runs both ways). Listing one here records the link, not a claim that
-this phase will fix it.
+this phase will fix it. Issue 1121 was re-homed to
+[phase-439](../phase-439-resolve-before-configure.md) on 2026-10-14, when this
+phase closed.
 
-- [issue 1121](../issues/1121-contract-sidecar-has-no-model-freshness-edge.md) — Adding a `<stem>.contract.yaml` does not invalidate the SystemModel it feeds — `nros sync` leaves the stale model in …
+- [issue 1121](../../issues/1121-contract-sidecar-has-no-model-freshness-edge.md) — Adding a `<stem>.contract.yaml` does not invalidate the SystemModel it feeds — `nros sync` leaves the stale model in …

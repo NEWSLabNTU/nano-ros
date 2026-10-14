@@ -137,6 +137,7 @@ are diagnosis waves, and what a wave ends up editing depends on what it finds.
 | `phase-466-W2` | LANDED (#1209). Not `probe.yml` -- the narrow fix was already on main. The class gate `check-workflow-just-provisioning` plus the sweep of every workflow and composite action that invokes `just` | done |
 | `phase-466-W3` | LANDED (#1210). THREE independent bugs: the missing `-DZEPHYR_EXTRA_MODULES`, the runner's absent rosidl python deps (1457, kept open -- not fixable in this repository), and a missing `mkdir -p` at `fixture-lane.sh:343` that silently lost issue 0499's lower bound | done |
 | `phase-466-W4` | LANDED (#1212). Both lanes die in ONE step on a full disk (issue 1353). A survivable disk-report channel plus `scripts/ci/reclaim-disk.sh`, with `live-peer.yml`'s inline copy folded into it | done |
+| `phase-466-W5` | OPEN (2026-10-14, handed over by the archived phase-330). The RTOS half of phase-330's two last acceptance boxes: build the RTOS realtime workspace fixtures and get a verdict from `realtime_tiers_e2e` and `sched_dims_applied_e2e` on them. See "W5 -- the RTOS realtime cells" below | waits on a tier-2 nightly that reaches its cells |
 
 W1 and W3 may collide on the Zephyr image: if W3's `msg2idl.py` failure turns
 out to be another missing package in that image, the Dockerfile edit belongs
@@ -176,6 +177,37 @@ exit 78 before reaching anything else. Nobody has claimed it.
 | --- | --- |
 | [#1651](../issues/1651-host-tests-red-or-cancelled-on-most-pushes.md) | `host-tests` is green nightly since 2026-10-07. What is left is a green tier-1 run on `main`, which this phase's acceptance already asks for. From the archived phase-477. |
 | [#1878](../issues/archived/1878-metadata-probe-cmake-mirror-race.md) | RESOLVED as a duplicate of issue 1858 (`0fc6da85d6`). The cmake metadata probe's stale sizes-header mirror stopped tier 1 and tier 2 at `check fast` (`sizes-header-mirrors`) before any cell. The cause was a shared probe cargo dir whose key left out the late-applied `panic-platform` feature. |
+
+## W5 -- the RTOS realtime cells (from phase-330, 2026-10-14)
+
+Phase-330 (the SystemModel as a build artifact, RFC-0063) closed with its
+native half measured: on 2026-10-14 a fresh worktree built every native
+realtime row with `just build-test-fixtures lane=native`, and the native realtime
+e2e family passed against generated models. That covered `native_orchestration_tiers`
+(6/6), `realtime_subnode_cpp_e2e`, `realtime_subnode_cpp_portable_e2e`,
+`sched_dims_model_coverage`, the 6 native rows of `realtime_tiers_e2e` and the
+`linux rust CorePin` cell of `sched_dims_applied_e2e`.
+
+Every other cell of those two tests was `[UNMET PRECONDITION] fixture not
+built`. These are 14 of the 20 `realtime_tiers` rows and 16 of the 17
+`sched_dims_applied` cells, on Zephyr, NuttX (arm and riscv), FreeRTOS and
+ThreadX-linux. Those fixtures are built only by the scheduled tier-2 lanes,
+which is this phase's subject, so their verdict is homed here:
+
+- the fixture rows: `workspace-{rust,c,cpp}-nuttx-realtime`,
+  `workspace-{rust,c,cpp}-nuttx-riscv-realtime`,
+  `workspace-rust-threadx-linux-realtime`, `workspace-rust-freertos-realtime`
+  (plus the FreeRTOS C/C++ entries the tests resolve), and the Zephyr west
+  leaves `build-ws-{rs,c,cpp}-realtime-entry-zenoh`,
+  `build-ws-cpp-derived-tiers-entry-zenoh`,
+  `build-ws-rs-realtime-derived-entry-zenoh` and
+  `build-ws-c-realtime-entry-smp`;
+- the tests: `realtime_tiers_e2e` and `sched_dims_applied_e2e`.
+
+Done when one scheduled run builds those rows and both tests report a verdict
+on every RTOS cell: green, or red for a reason about the code under test. An
+`UNMET PRECONDITION` is not a verdict. A red that is a real defect gets its own
+issue; it does not reopen phase-330.
 
 ## Two things this phase must not do
 

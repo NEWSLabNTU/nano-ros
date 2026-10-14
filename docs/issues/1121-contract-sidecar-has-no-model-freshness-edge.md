@@ -6,10 +6,10 @@ type: bug
 area: cli, tooling
 severity: medium
 found: 2026-09-06
-related: [1120, 0475, 1018, phase-424, phase-330, phase-460, phase-478]
+related: [1120, 0475, 1018, phase-424, phase-330, phase-439, phase-460, phase-478]
 ---
 
-**Home: [phase-330](../roadmap/phase-330-system-model-as-build-artifact.md)** — re-homed 2026-10-12 from phase-424, which is archived.
+**Home: [phase-439](../roadmap/phase-439-resolve-before-configure.md)** — re-homed 2026-10-14 from phase-330, which is archived (and on 2026-10-12 from phase-424 before it).
 
 # The file that sizes the image is not an input to the thing that reads it
 
