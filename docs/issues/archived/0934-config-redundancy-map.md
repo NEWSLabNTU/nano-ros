@@ -280,7 +280,7 @@ fixed here, recorded as settled, or split into its own issue.
 | R4 fixture rows | gated, not removed | 0 `entry =` rows, 142 `image =`; `_require_image_rmw` checks the restated rmw. |
 | R5 SDK roots | resolved | Derived (phase-484 W3); the site-config rule is inverted. |
 | R8 `platform` | unsettled, as filed | Stated in the index `[board.*]`, `nros-board.toml` and `board-support.toml`. Still in "Not settled". |
-| R9 `[[model]]` / `default_launch` | **split** | [issue 1895](../1895-system-toml-models-read-raw-not-typed.md): three parsers, and the typed field has no reader. |
+| R9 `[[model]]` / `default_launch` | **split** | [issue 1895](1895-system-toml-models-read-raw-not-typed.md): three parsers, and the typed field has no reader. |
 | R10 wcet | resolved | Has a production reader (`build.rs`). |
 | R11 `[param_services]` | resolved | Refused by the schema. |
 | R12 | moot | `[deploy.*]` is retired. |

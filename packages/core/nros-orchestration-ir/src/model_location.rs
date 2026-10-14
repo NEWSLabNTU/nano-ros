@@ -150,47 +150,24 @@ pub fn launch_to_model_rel(
     args: &[(String, String)],
 ) -> Result<String, String> {
     let system_toml = bringup_dir.join("system.toml");
-    let doc: Option<toml::Table> = std::fs::read_to_string(&system_toml)
-        .ok()
-        .and_then(|raw| raw.parse::<toml::Table>().ok());
-
-    let default_launch = doc
-        .as_ref()
-        .and_then(|d| d.get("system"))
-        .and_then(|s| s.get("default_launch"))
-        .and_then(|v| v.as_str())
-        .unwrap_or("system.launch.xml")
-        .to_string();
+    // issue 1895 — the typed slice, the one parser of these two keys. A
+    // `system.toml` that exists and does not parse is an error here; the raw
+    // read it replaced answered "no declarations" and derived a default.
+    let cfg = crate::system_launch::SystemLaunch::read(&system_toml)?;
+    let default_launch = cfg.default_launch().to_string();
     let launch = launch_file.unwrap_or(&default_launch);
 
     // [[model]] declarations for this launch file.
-    let decls: Vec<(Vec<(String, String)>, String)> = doc
-        .as_ref()
-        .and_then(|d| d.get("model"))
-        .and_then(|m| m.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|e| {
-                    let decl_launch = e.get("launch")?.as_str()?;
-                    if decl_launch != launch {
-                        return None;
-                    }
-                    let out = e.get("out")?.as_str()?.to_string();
-                    let mut decl_args: Vec<(String, String)> = e
-                        .get("args")
-                        .and_then(|a| a.as_table())
-                        .map(|t| {
-                            t.iter()
-                                .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
-                                .collect()
-                        })
-                        .unwrap_or_default();
-                    decl_args.sort();
-                    Some((decl_args, out))
-                })
-                .collect()
+    let decls: Vec<(Vec<(String, String)>, String)> = cfg
+        .models
+        .iter()
+        .filter(|d| d.launch == launch)
+        .map(|d| {
+            let decl_args: Vec<(String, String)> =
+                d.args.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+            (decl_args, d.out.clone())
         })
-        .unwrap_or_default();
+        .collect();
 
     let mut want: Vec<(String, String)> = args.to_vec();
     want.sort();
@@ -228,18 +205,16 @@ pub fn launch_to_model_rel(
 }
 
 /// The bringup's default launch file (`[system] default_launch`, or the
-/// conventional `system.launch.xml`).
-pub fn default_launch(bringup_dir: &Path) -> String {
-    std::fs::read_to_string(bringup_dir.join("system.toml"))
-        .ok()
-        .and_then(|raw| raw.parse::<toml::Table>().ok())
-        .as_ref()
-        .and_then(|d| d.get("system"))
-        .and_then(|s| s.get("default_launch"))
-        .and_then(|v| v.as_str())
-        .unwrap_or("system.launch.xml")
-        .to_string()
+/// conventional `system.launch.xml`). An unparsable `system.toml` is an error
+/// naming it (issue 1895), never the conventional name.
+pub fn default_launch(bringup_dir: &Path) -> Result<String, String> {
+    crate::system_launch::SystemLaunch::read(&bringup_dir.join("system.toml"))
+        .map(|c| c.default_launch().to_string())
 }
+
+/// A launch file name and its argument bindings — the inputs that produce one
+/// model.
+pub type LaunchInputs = (String, Vec<(String, String)>);
 
 /// The INVERSE of [`launch_to_model_rel`]: given a model's bringup-relative
 /// path, the `(launch file, args)` that produce it.
@@ -249,56 +224,41 @@ pub fn default_launch(bringup_dir: &Path) -> String {
 /// to do that it needs the inputs back. Declarations are checked first — they
 /// are the SSoT for arg-bound variants — then the derive rule is reversed.
 ///
-/// `None` means the path does not correspond to any launch this bringup has,
-/// which is a user error worth reporting with the model name in it.
+/// `Ok(None)` means the path does not correspond to any launch this bringup
+/// has, which is a user error worth reporting with the model name in it. `Err`
+/// is a `system.toml` that does not parse (issue 1895).
 pub fn model_rel_to_inputs(
     bringup_dir: &Path,
     model_rel: &str,
-) -> Option<(String, Vec<(String, String)>)> {
+) -> Result<Option<LaunchInputs>, String> {
     let name = Path::new(model_rel)
         .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or(model_rel);
 
-    let doc: Option<toml::Table> = std::fs::read_to_string(bringup_dir.join("system.toml"))
-        .ok()
-        .and_then(|raw| raw.parse::<toml::Table>().ok());
+    let cfg = crate::system_launch::SystemLaunch::read(&bringup_dir.join("system.toml"))?;
 
     // 1. A `[[model]]` declaration whose `out` is this file.
-    if let Some(arr) = doc
-        .as_ref()
-        .and_then(|d| d.get("model"))
-        .and_then(|m| m.as_array())
-    {
-        for e in arr {
-            let out = e.get("out").and_then(|v| v.as_str()).unwrap_or_default();
-            let out_name = Path::new(out)
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or(out);
-            if out_name != name {
-                continue;
-            }
-            let launch = e.get("launch").and_then(|v| v.as_str())?.to_string();
-            let args: Vec<(String, String)> = e
-                .get("args")
-                .and_then(|a| a.as_table())
-                .map(|t| {
-                    t.iter()
-                        .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
-                        .collect()
-                })
-                .unwrap_or_default();
-            return Some((launch, args));
+    for d in &cfg.models {
+        let out_name = Path::new(&d.out)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or(&d.out);
+        if out_name != name {
+            continue;
         }
+        let args: Vec<(String, String)> =
+            d.args.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+        return Ok(Some((d.launch.clone(), args)));
     }
 
     // 2. Reverse the derive rule.
     if name == "system_model.yaml" {
-        return Some((default_launch(bringup_dir), Vec::new()));
+        return Ok(Some((cfg.default_launch().to_string(), Vec::new())));
     }
-    let stem = name.strip_suffix("_model.yaml")?;
-    Some((format!("{stem}.launch.xml"), Vec::new()))
+    Ok(name
+        .strip_suffix("_model.yaml")
+        .map(|stem| (format!("{stem}.launch.xml"), Vec::new())))
 }
 
 /// The `nros-launch-resolve` helper's file name — in a checkout, in the store's
@@ -558,7 +518,7 @@ pub fn ensure_model(
     model_rel: &str,
 ) -> Result<(PathBuf, Vec<PathBuf>), String> {
     let system_toml = bringup_dir.join("system.toml");
-    let (launch_file, args) = model_rel_to_inputs(bringup_dir, model_rel).ok_or_else(|| {
+    let (launch_file, args) = model_rel_to_inputs(bringup_dir, model_rel)?.ok_or_else(|| {
         format!(
             "`{model_rel}` names no launch of bringup `{}` — expected \
              `config/system_model.yaml` (the default launch), `config/<stem>_model.yaml` \

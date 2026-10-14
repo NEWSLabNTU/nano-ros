@@ -558,7 +558,8 @@ pub struct AmentMaintainer {
 /// * `[[domain]]` — optional per-system domain routing.
 /// * `[[bridge]]` — optional cross-RMW bridges.
 /// * `[[model]]` — phase-330 W4.0: a model this bringup produces from a launch
-///   file plus argument bindings (see [`SystemModelEntry`]).
+///   file plus argument bindings (see
+///   [`nros_orchestration_ir::system_launch::ModelDecl`]).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SystemToml {
@@ -658,8 +659,12 @@ pub struct SystemToml {
     /// says which bindings matter. That fact used to live only in the committed
     /// model's own `meta.args`, i.e. inside the artifact the model is supposed
     /// to be regenerated from; declaring it here moves it into the inputs.
+    ///
+    /// The row type is `nros_orchestration_ir::system_launch::ModelDecl`, the
+    /// one the readers use (issue 1895): it is stated once, below this crate,
+    /// so this schema and `model_location` cannot read a row two ways.
     #[serde(default, rename = "model", skip_serializing_if = "Vec::is_empty")]
-    pub models: Vec<SystemModelEntry>,
+    pub models: Vec<nros_orchestration_ir::system_launch::ModelDecl>,
     /// Phase 228.A (RFC-0015 §4.2) — `[tiers.<name>]` priority/scheduling tiers.
     /// The system owner maps the symbolic tier names a node's callback groups
     /// reference to per-RTOS task knobs. Empty → the single-tier degenerate case.
@@ -982,20 +987,6 @@ impl SystemToml {
         }
         self.wcet_profile_for(image_id)
     }
-}
-
-/// phase-330 W4.0 — one `[[model]]` entry: which launch file, with which
-/// argument bindings, produces which model file.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct SystemModelEntry {
-    /// Launch file name, relative to the bringup's `launch/`.
-    pub launch: String,
-    /// Output model file name (`<stem>_<binding>_model.yaml` by convention).
-    pub out: String,
-    /// Launch argument bindings, passed as `key:=value`.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub args: BTreeMap<String, String>,
 }
 
 /// Phase 256 Wave 1 — `[lifecycle]` in `system.toml`. `autostart` ∈
