@@ -2,10 +2,11 @@
 id: 736
 title: "`realtime_tiers` nuttx-arm/rust: the fast tier now outruns the slow one
   but only ~2.4x against a 3x bar — was a 10x inversion, now a marginal shortfall"
-status: open
+status: resolved
 type: bug
 area: core, platform, testing
 related: [phase-281, issue-0636, issue-0623, phase-359]
+resolved: 2026-10-14
 ---
 
 ## Symptom
@@ -1014,3 +1015,23 @@ instrumentation is reverted and nothing in the product changed.
 3. Only then re-open the question the issue has been circling: whether
    `budget_us = 5000 / period_us = 10000` is unsatisfiable on this target, or
    the kernel is mis-serving a satisfiable declaration.
+
+## Resolution (2026-10-14)
+
+The row passes its 3x bar now, three runs out of three. That is the repeat
+count this issue asked for before calling it fixed.
+
+- **Fixture.** `workspace-rust-nuttx-realtime`, built fresh for this
+  measurement on `main` at `ab8376daa8`
+  (`workspace-fixtures-build.sh nuttx --id workspace-rust-nuttx-realtime`,
+  21 s), plus the host observer `int32-sink-zenoh`.
+- **Run.** `cargo nextest run -p nros-tests --test realtime_tiers_e2e
+  --retries 0`, three times in a row on an otherwise idle host.
+- **Result.** Each run reported `20 row(s) ran` and `19 of 20 row(s) FAILED`.
+  Every one of the 19 was an `[UNMET PRECONDITION]` for a fixture this
+  measurement did not build. The `nuttx-arm/rust` row was absent from the
+  failure list each time, so `ctrl_max >= 3 * telem_max` held in 3 of 3 runs.
+
+The proof prints the counters only on failure, so the ratio itself is not
+recorded. If this row regresses, the assertion's message carries both
+counters and the raw observer output (issue 0447).

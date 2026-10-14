@@ -1105,7 +1105,7 @@ Open issues whose `related:` names this phase (listed 2026-10-12, so the
 link runs both ways). Listing one here records the link, not a claim that
 this phase will fix it.
 
-- [issue 0849](../issues/0849-nros-sync-bakes-the-invocation-path-spelling.md) — `nros sync` bakes the invocation's path SPELLING into every leaf patch table, so working through a symlink to the che …
+- [issue 0849](../issues/archived/0849-nros-sync-bakes-the-invocation-path-spelling.md) — `nros sync` bakes the invocation's path SPELLING into every leaf patch table, so working through a symlink to the che …
 - [issue 0930](../issues/0930-built-qemu-can-be-stale-against-its-pin.md) — The built QEMU can be older than the commit `third-party/qemu/qemu` pins, and nothing says so
 - [issue 0934](../issues/0934-config-redundancy-map.md) — The same fact is authored in up to five config surfaces; no SSoT is declared for rmw, board or domain
 - [issue 0941](../issues/0941-board-facts-soft-failure-hides-unreachable-site-config.md) — `nros_resolve_board_facts` fails SOFT, so an unreachable site-config block is silent

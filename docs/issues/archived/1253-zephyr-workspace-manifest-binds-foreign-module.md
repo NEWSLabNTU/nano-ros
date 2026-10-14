@@ -3,10 +3,11 @@ id: 1253
 title: "A Zephyr workspace compiles the nano-ros MODULE of whichever checkout
   provisioned it — tier 2 built another checkout's headers beside this tree's
   entries, and judged images no run of this tree made"
-status: open
+status: resolved
 type: bug
 area: ci, zephyr, build
 related: [issue-1158, phase-440, phase-431, rfc-0095, rfc-0079, phase-449, phase-445, phase-478]
+resolved: 2026-10-14
 ---
 
 ## Problem
@@ -135,3 +136,24 @@ guard still refuses, correctly) and the lock would still not serialise, so it
 would fix one of three consequences while making the shared layout look
 supported. Worth revisiting only if a shared workspace becomes a supported
 configuration (RFC-0095's store-resolved workspace is the likelier home).
+
+## Resolution (2026-10-14)
+
+The step this issue left to a human, moving the job into a container, is done.
+Scheduled tier-2 run 38357336803 (job 115163162559, 2026-10-13, `d134dc83f0`)
+ran on `nano-ros-runner-newslab-server-241`:
+
+- The machine name was a container id (`94fe405928de`), and the checkout was
+  at `/home/runner/_work/nano-ros/nano-ros`.
+- `runner-doctor` reported `[OK] Zephyr workspace:
+  /home/runner/.nros/workspaces/zephyr/3.7`. That is the container's own
+  store workspace, not another checkout.
+- `./scripts/check-zephyr-workspace-checkout.sh` then ran against it.
+  Including its manifest-only foreign-module check
+  (`check-zephyr-workspace-foreign-checkout.py`), it reported nothing and
+  exited 0. So the workspace no longer binds another checkout's `nros`
+  module.
+
+That run went red later, at `sizes-header-mirrors` (issue 1858), not at
+preconditions. The job still checks this on every run, so a workspace
+provisioned by a foreign checkout fails loudly again.

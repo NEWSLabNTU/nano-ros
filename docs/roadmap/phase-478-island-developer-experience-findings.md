@@ -100,7 +100,7 @@ What the tree does today:
 - The phase-431 W1 guard (`refuse_if_foreign_to_workspace`,
   `packages/cli/nros-cli-core/src/stale_guard.rs`) refuses a foreign `nros`
   inside a checkout, but stands down under `NROS_SKIP_STALE_CHECK` and when the
-  other tree has no `packages/cli` ([issue 1253](../issues/1253-zephyr-workspace-manifest-binds-foreign-module.md),
+  other tree has no `packages/cli` ([issue 1253](../issues/archived/1253-zephyr-workspace-manifest-binds-foreign-module.md),
   open). A downstream project with a vendored nano-ros (the island's
   `third-party/nano-ros`) is a checkout with a `packages/cli`, so it is a valid
   donor for a nano-ros worktree that has not run `just setup-cli`.

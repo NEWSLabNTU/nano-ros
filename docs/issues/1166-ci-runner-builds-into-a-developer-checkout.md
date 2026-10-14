@@ -119,3 +119,28 @@ not under `build/`.
 Do not "fix" this by deleting the developer's build dirs from CI, or CI's from
 the developer's tree: whichever side runs second destroys the other's cache,
 and the failure looks like a slow build rather than a bug.
+
+## Status (2026-10-14): defects 1 and 2 are gone, defect 3 is live in one recipe
+
+- **Defect 1 (the runner writes into a developer tree): gone.** The tier-2
+  runner is a container. Run 38357336803 (job 115163162559) built in
+  `/home/runner/_work/nano-ros/nano-ros`, and its Zephyr workspace is the
+  container's own store, `/home/runner/.nros/workspaces/zephyr/3.7`
+  (`runner-doctor`: `[OK] Zephyr workspace`). No developer checkout is
+  reachable from it.
+- **Defect 2 (verification reports it as OK): covered.** The same job runs
+  `./scripts/check-zephyr-workspace-checkout.sh`, which fails when a
+  provisioned root or the workspace's `nros` module belongs to another
+  checkout. It ran clean.
+- **Defect 3 (a west build dir names neither board nor checkout): still live,
+  in the dev recipe only.**
+  - The fixture lane builds under a per-checkout build root
+    (`scripts/lib/zephyr-workspace.sh build-root`, issue 1596).
+  - `just zephyr build-one` still builds into
+    `$workspace/build-<example>-<rmw>` (`just/zephyr-dev.just:150`). That
+    name has no board, in a workspace two checkouts can share. So two boards,
+    or two checkouts, still collide there.
+
+What would close it: derive `build-one`'s dir from the same build root, with
+the board in the name. Move any test-side reader of that path in the same
+commit.
