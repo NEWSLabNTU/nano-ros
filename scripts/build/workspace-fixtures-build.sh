@@ -72,6 +72,8 @@ source "$repo_root/scripts/build/cargo.sh"
 source "$repo_root/scripts/build/leaf-cache.sh"
 # shellcheck source=scripts/build/cmake-incremental.sh
 source "$repo_root/scripts/build/cmake-incremental.sh"
+# shellcheck source=scripts/build/unignored-writes.sh
+source "$repo_root/scripts/build/unignored-writes.sh"
 
 cd "$repo_root"
 
@@ -261,6 +263,12 @@ build_workspace() {
     # minutes and wrote 47 000 lines with no time in any of them, so which
     # rows cost what was unanswerable from the log it already uploads.
     local row_t0=$SECONDS
+    # Issue 1862 -- what this dir held unignored BEFORE the row, so that only
+    # a file the build itself writes is refused below.
+    local unignored_before
+    unignored_before="$(mktemp)"
+    nros_unignored_snapshot "$repo_root" "$dir" > "$unignored_before"
+    local row_rc=0
     (
         cd "$repo_root/$dir"
         if [ "$lang" != "rust" ] && [ -n "$build_subdir" ] && \
@@ -549,11 +557,18 @@ build_workspace() {
         else
             stamp_dir="$build_subdir"
         fi
+        # Issue 1862 -- a file the build left here unignored is a signature
+        # input, so it would re-stale every row built from this dir before
+        # this one. Refuse the row rather than stamp it.
+        nros_refuse_unignored_writes "$repo_root" "$dir" "$unignored_before" "workspace fixture '$id'" \
+            || return 2
         mkdir -p "$stamp_dir"
         bash "$repo_root/scripts/build/workspace-fixture-signature.sh" "$record" \
             > "$stamp_dir/.nros-workspace-fixture.$id.inputsig"
-    )
+    ) || row_rc=$?
+    rm -f "$unignored_before"
     echo "     row-time: $id $((SECONDS - row_t0))s"
+    return "$row_rc"
 }
 
 # Group-worker re-entry (parallel fan-out below): when NROS_WS_RECORDS_FILE is
