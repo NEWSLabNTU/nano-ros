@@ -8,7 +8,7 @@ area: testing, tooling
 related: [issue-0196, issue-0917, phase-413, phase-484]
 ---
 
-**Home: [phase-484](../../roadmap/phase-484-one-owner-per-fact.md)** — re-homed 2026-10-12 from phase-413, which is archived.
+**Home: [phase-484](../../roadmap/archived/phase-484-one-owner-per-fact.md)** — re-homed 2026-10-12 from phase-413, which is archived.
 
 ## What happens
 

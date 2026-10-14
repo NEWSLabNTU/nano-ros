@@ -1,14 +1,16 @@
 # Phase 484 -- one owner per fact: resource locations and configuration
 
-**Status (2026-10-14).** W0–W8 landed; RFC-0103 is Stable and issue 1767 is
-archived, and so are its residue issues 1850, 1851 and 1852. W8's last slice
-refused the env spelling of a registry knob after release 0.6.0 shipped its
-warning, and its error tables are KEPT rather than dropped (decision below).
-What keeps the doc open is the four issues homed here (0849, 0930, 0934, 0941;
-see the end). Implements
-[RFC-0103](../design/0103-one-owner-per-fact.md). Tracks issues
-[1767](../issues/archived/1767-resource-location-resolved-many-ways.md) and
-[1768](../issues/archived/1768-build-wiring-census-misses-link-script-macro.md).
+**Status (2026-10-15). COMPLETE — archived.** W0–W8 landed; RFC-0103 is
+Stable and issue 1767 is archived, and so are its residue issues 1850, 1851
+and 1852. W8's last slice refused the env spelling of a registry knob after
+release 0.6.0 shipped its warning, and its error tables are KEPT rather than
+dropped (decision below). Every issue homed here is resolved: 0849, 0930,
+0934 and 0941, and the three 0934 split out — 1894, 1895 and 1816 (see the
+end). Four open issues still cite this phase's work (1299, 1784, 1793, 1842);
+none is homed here, and 1793 is phase-497's. Implements
+[RFC-0103](../../design/0103-one-owner-per-fact.md). Tracks issues
+[1767](../../issues/archived/1767-resource-location-resolved-many-ways.md) and
+[1768](../../issues/archived/1768-build-wiring-census-misses-link-script-macro.md).
 
 **Not this phase:** the Zephyr leaf `.conf` migration, the image Kconfig
 fragment renderer, per-image workspace configures and issues 1721/1757 —
@@ -18,8 +20,8 @@ gave 481, came back here when 481 closed without it (see W5).
 **Boundary with phase-400** (stated 2026-10-14). This phase gives every knob
 one name, one registry row and one authored home. It does not decide which
 env-only knobs get board and platform rungs on the RFC-0049 ladder. That is
-[phase-400](phase-400-unified-configuration.md) W6
-([RFC-0086](../design/0086-unified-configuration-transport-tenant-and-coupling.md)),
+[phase-400](../phase-400-unified-configuration.md) W6
+([RFC-0086](../../design/0086-unified-configuration-transport-tenant-and-coupling.md)),
 whose backlog is 17 names (`just check config-knob-census`). Each of those
 lands as a `toml =` key on its registry row here, with no work item in this
 phase.
@@ -499,7 +501,7 @@ This wave does the part every board needs now:
 - the per-image last-octet override stays.
 
 The `[network.*]` table, bridge/TAP launch, multi-NIC and the collision
-refusal are [phase-497](phase-497-networks-have-owners.md).
+refusal are [phase-497](../phase-497-networks-have-owners.md).
 
 Landed:
 
@@ -1139,11 +1141,11 @@ Open issues whose `related:` names this phase (listed 2026-10-12, so the
 link runs both ways). Listing one here records the link, not a claim that
 this phase will fix it.
 
-- [issue 0849](../issues/archived/0849-nros-sync-bakes-the-invocation-path-spelling.md) — `nros sync` bakes the invocation's path SPELLING into every leaf patch table, so working through a symlink to the che …
-- ~~[issue 0930](../issues/archived/0930-built-qemu-can-be-stale-against-its-pin.md) — The built QEMU can be older than the commit `third-party/qemu/qemu` pins, and nothing says so~~ Resolved 2026-10-14: the `build/qemu` prefix answers only while its `.nros-provenance` names the pinned version.
-- ~~[issue 0934](../issues/archived/0934-config-redundancy-map.md) — The same fact is authored in up to five config surfaces; no SSoT is declared for rmw, board or domain~~ Resolved 2026-10-14 item by item; R1's stale cached rmw/platform/board fixed (`NanoRosLeafCache.cmake`), R9 and R13 split out:
-- ~~[issue 1894](../issues/archived/1894-entry-deploy-board-keyword-beside-system-toml.md) — `nano_ros_add_executable(DEPLOY|BOARD …)` wins over the leaf `system.toml` with no comparison~~ Resolved 2026-10-15: beside a leaf `system.toml`, a disagreeing entry keyword is a configure error naming both (`NanoRosEntryAgreement.cmake`).
-- ~~[issue 1895](../issues/archived/1895-system-toml-models-read-raw-not-typed.md) — `system.toml` `[[model]]` and `default_launch` are parsed three ways, and the typed field has no reader~~ Resolved 2026-10-15: one typed slice, `nros_orchestration_ir::system_launch`, read by every Rust reader.
-- ~~[issue 0941](../issues/archived/0941-board-facts-soft-failure-hides-unreachable-site-config.md) — `nros_resolve_board_facts` fails SOFT, so an unreachable site-config block is silent~~ Resolved 2026-10-14: the verb owns "nothing to carry"; every other board-facts failure stops the configure.
-- [issue 1811](../issues/archived/1811-nightly-ports-read-in-tree-sources-after-store-move.md) — After phase-484 moved source trees into the store, four nightly RTOS port jobs still look for them in-tree or through …
-- ~~[issue 1816](../issues/archived/1816-git-grep-error-read-as-no-match.md) — A `git grep` that could not search reads as "no match", so a forbidding gate passes outside a checkout~~ Resolved 2026-10-15: every Python and shell `git grep` goes through a helper that refuses exit 128, gated by `check-git-grep-status`.
+- [issue 0849](../../issues/archived/0849-nros-sync-bakes-the-invocation-path-spelling.md) — `nros sync` bakes the invocation's path SPELLING into every leaf patch table, so working through a symlink to the che …
+- ~~[issue 0930](../../issues/archived/0930-built-qemu-can-be-stale-against-its-pin.md) — The built QEMU can be older than the commit `third-party/qemu/qemu` pins, and nothing says so~~ Resolved 2026-10-14: the `build/qemu` prefix answers only while its `.nros-provenance` names the pinned version.
+- ~~[issue 0934](../../issues/archived/0934-config-redundancy-map.md) — The same fact is authored in up to five config surfaces; no SSoT is declared for rmw, board or domain~~ Resolved 2026-10-14 item by item; R1's stale cached rmw/platform/board fixed (`NanoRosLeafCache.cmake`), R9 and R13 split out:
+- ~~[issue 1894](../../issues/archived/1894-entry-deploy-board-keyword-beside-system-toml.md) — `nano_ros_add_executable(DEPLOY|BOARD …)` wins over the leaf `system.toml` with no comparison~~ Resolved 2026-10-15: beside a leaf `system.toml`, a disagreeing entry keyword is a configure error naming both (`NanoRosEntryAgreement.cmake`).
+- ~~[issue 1895](../../issues/archived/1895-system-toml-models-read-raw-not-typed.md) — `system.toml` `[[model]]` and `default_launch` are parsed three ways, and the typed field has no reader~~ Resolved 2026-10-15: one typed slice, `nros_orchestration_ir::system_launch`, read by every Rust reader.
+- ~~[issue 0941](../../issues/archived/0941-board-facts-soft-failure-hides-unreachable-site-config.md) — `nros_resolve_board_facts` fails SOFT, so an unreachable site-config block is silent~~ Resolved 2026-10-14: the verb owns "nothing to carry"; every other board-facts failure stops the configure.
+- [issue 1811](../../issues/archived/1811-nightly-ports-read-in-tree-sources-after-store-move.md) — After phase-484 moved source trees into the store, four nightly RTOS port jobs still look for them in-tree or through …
+- ~~[issue 1816](../../issues/archived/1816-git-grep-error-read-as-no-match.md) — A `git grep` that could not search reads as "no match", so a forbidding gate passes outside a checkout~~ Resolved 2026-10-15: every Python and shell `git grep` goes through a helper that refuses exit 128, gated by `check-git-grep-status`.
