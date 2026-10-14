@@ -12,5 +12,5 @@ domain_id = 0
 # calls `sched_setaffinity`, which libc does not define for apple. `native`
 # is the ROLE word (host build, not cross), which is what this fixture is
 # actually contrasting against its `freertos_entry` sibling.
-[image.native]
+[image.linux]
 board = "linux"

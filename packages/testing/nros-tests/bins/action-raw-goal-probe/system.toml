@@ -15,5 +15,5 @@ class = "action_raw_goal_probe::RawGoalProbe"
 name = "raw_goal_probe"
 
 # Host build.
-[image.native]
+[image.linux]
 board = "linux"

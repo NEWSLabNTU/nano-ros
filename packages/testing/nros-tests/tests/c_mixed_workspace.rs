@@ -9,8 +9,8 @@
 //! `pure_c_workspace` cmake fixtures (`compile-check-fixtures.sh`, run by
 //! `build-test-fixtures`) build each template into `build/cmake-fixtures/<id>/`.
 //! Since phase-445 W5 the templates have no root build file (RFC-0098 D9), so
-//! that build is `nros build` over the bringup's `[image.native]`, and the
-//! entry is the GENERATED `native_entry` in place of the deleted hand-written
+//! that build is `nros build` over the bringup's `[image.linux]`, and the
+//! entry is the GENERATED `linux_entry` in place of the deleted hand-written
 //! `src/robot_entry`. These tests assert the prebuilt binary rather than
 //! building at run time (issue 0034 / AGENTS.md "No compilation inside tests").
 //! Fixture absence (no cmake / `codegen entry`-capable nros / play_launch_parser)
@@ -19,7 +19,7 @@
 fn assert_entry(id: &str) -> nros_tests::TestResult<()> {
     let exe = nros_tests::fixtures::require_cmake_fixture(
         id,
-        "build/posix-zenoh-linux/cmake/native_entry",
+        "build/posix-zenoh-linux/cmake/linux_entry",
     )?;
     assert!(
         exe.is_file(),

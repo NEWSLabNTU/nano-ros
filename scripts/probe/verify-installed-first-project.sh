@@ -52,7 +52,7 @@ esac
 # from the talker and `Received: N` from the listener, both in one process.
 # Require the SECOND tick of each, so the timer fired more than once and
 # delivery is a stream rather than a coincidence.
-bin=./build/posix-cyclonedds-linux/cmake/native_entry
+bin=./build/posix-cyclonedds-linux/cmake/linux_entry
 [ -x "$bin" ] || probe_fail "the entry binary first-project.md runs is missing at $PWD/${bin#./}"
 
 log=/tmp/installed-first-project.log

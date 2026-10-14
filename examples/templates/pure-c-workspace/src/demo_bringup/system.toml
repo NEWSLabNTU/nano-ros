@@ -20,9 +20,9 @@ name = "listener"
 # The implicit machine this system runs on (issue 0951).
 [host.native]
 
-# The buildable unit (RFC-0065 D6). `nros build native` generates the cmake root
-# and this image's entry (`native_entry`) under `build/posix-zenoh-linux/` —
+# The buildable unit (RFC-0065 D6). `nros build linux` generates the cmake root
+# and this image's entry (`linux_entry`) under `build/posix-zenoh-linux/` —
 # the hand-written root `CMakeLists.txt` and `src/robot_entry` it replaces are
 # gone (RFC-0098 D9, phase-445 W5).
-[image.native]
+[image.linux]
 board = "linux"

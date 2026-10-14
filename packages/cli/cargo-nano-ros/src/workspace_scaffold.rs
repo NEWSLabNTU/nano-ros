@@ -306,7 +306,7 @@ pub fn scaffold_workspace(cfg: &WorkspaceScaffold) -> Result<()> {
             // `orchestration::nano_ros_root`). Advertising the export made the
             // first documented command unrunnable for exactly the reader who
             // installed a release. Same commands as first-project.md.
-            "Next steps:\n  cd {0}\n  nros sync\n  nros build\n  ./build/posix-{1}-native/cmake/native_entry\n\
+            "Next steps:\n  cd {0}\n  nros sync\n  nros build\n  ./build/posix-{1}-linux/cmake/linux_entry\n\
              (`nros build` finds nano-ros itself; `nros sdk-root --explain` prints the root it uses.)",
             cfg.dir.display(),
             cfg.rmw
@@ -315,7 +315,7 @@ pub fn scaffold_workspace(cfg: &WorkspaceScaffold) -> Result<()> {
             // The cargo road's coordinate carries the RMW too (`posix-<rmw>`);
             // only the cmake road appends the board.
             "Next steps:\n  cd {0}\n  nros sync\n  nros build\n  \
-             RUST_LOG=info ./build/posix-{1}/native_entry/target/debug/native_entry",
+             RUST_LOG=info ./build/posix-{1}/linux_entry/target/debug/linux_entry",
             cfg.dir.display(),
             cfg.rmw
         ),
@@ -368,7 +368,7 @@ mod tests {
             "the entry is generated"
         );
         let sys = std::fs::read_to_string(ws.join("src/demo_bringup/system.toml")).unwrap();
-        assert!(sys.contains("[image.native]"), "an image to build: {sys}");
+        assert!(sys.contains("[image.linux]"), "an image to build: {sys}");
     }
 
     #[test]

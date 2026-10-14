@@ -324,7 +324,7 @@ The build command is `nros build` (Rust and workspaces) or `cmake --build`
 | `zephyr` | `src/lib.rs` (staticlib) or `src/main.cpp` | `west build` (after `nros sync`) | Kconfig + west module — the one carve-out where `nros build` is not the verb. |
 
 Artifacts land under `<leaf>/build/<image-id>/target/[<triple>/]<profile>/<bin>`:
-`examples/native/rust/talker` gives `build/native/target/debug/talker`,
+`examples/native/rust/talker` gives `build/linux/target/debug/talker`,
 `examples/mps2-an385-baremetal/rust/talker` gives
 `build/mps2-an385-baremetal/target/thumbv7m-none-eabi/debug/qemu-bsp-talker`.
 

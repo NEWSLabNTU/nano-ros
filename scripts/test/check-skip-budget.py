@@ -191,7 +191,7 @@ def self_test() -> int:
     # one of the two spellings for months while the rule named the class, so the
     # spelling it missed is asserted here rather than left to a future reader.
     fixture_cases = [
-        ("native_entry fixture not built: Io(...)", True),
+        ("linux_entry fixture not built: Io(...)", True),
         ("qos-override-pubsub fixture not prebuilt (Io)", True),
         ("nros-launch-resolve not built (run `just setup-launch-resolve`)", True),
         ("fixture binary MISSING at /x/y", True),

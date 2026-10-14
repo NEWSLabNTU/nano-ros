@@ -15,6 +15,6 @@ name = "entry_poc"
 
 # Host build. The locator and domain stay runtime env on native
 # (`NROS_LOCATOR` / `ROS_DOMAIN_ID`); the board applies only the node name.
-[image.native]
+[image.linux]
 board = "linux"
 locator = "tcp/127.0.0.1:7447"

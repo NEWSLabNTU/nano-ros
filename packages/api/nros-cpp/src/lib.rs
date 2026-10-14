@@ -2103,7 +2103,7 @@ fn census_write(_session: &core::ffi::CStr, out_path: &str) -> i32 {
 /// SINGLE-executor C++ native entry calls. It never reached
 /// [`nros_board_native_run_components_named_ns`], so `$NROS_CENSUS_OUT` was
 /// read by no code on that road: a census run of the in-tree C++ workspace's
-/// `native_entry` booted normally, dialled zenoh, and exited 156 on
+/// `linux_entry` booted normally, dialled zenoh, and exited 156 on
 /// `ConnectionFailed` -- the producer phase-463 W2 named did not exist for the
 /// entry shape the C++ workspaces generate. These two calls are that runner's
 /// half of the switch, and they reuse the funnel's own three functions rather
@@ -6850,7 +6850,7 @@ mod census_funnel_tests {
     /// the slot the contract forgot stopped setup at `ExecutorFull`, the census
     /// came out INCOMPLETE, and the entity that did not fit was the one row the
     /// recorder never saw. Measured on `examples/workspaces/cpp`'s
-    /// `native_entry` built with `NROS_EXECUTOR_MAX_CBS=1`: exit 250,
+    /// `linux_entry` built with `NROS_EXECUTOR_MAX_CBS=1`: exit 250,
     /// `0 sub / 1 pub / 1 timer`, `census INCOMPLETE`. After: every timer is
     /// recorded and the run exits 0.
     ///
@@ -7020,7 +7020,7 @@ mod census_funnel_tests {
     /// node to attribute the publisher to and refused it, and the install
     /// returned that refusal — so the setup stopped before creating a single
     /// node, the dump found nothing (`rc=-2`) and the run exited 156. Measured
-    /// on `examples/workspaces/derived-tiers-cpp`'s `native_entry`, the
+    /// on `examples/workspaces/derived-tiers-cpp`'s `linux_entry`, the
     /// live-peer lane's census prepass. After: the census run arms no reporter
     /// (it never spins, so it could never publish one), records exactly the
     /// node's own publisher — no `/diagnostics` row, which the inventory counts

@@ -4,7 +4,7 @@ An **image** is one buildable program: a topology, a board, and a backend.
 You declare it as a row in your Bringup pkg's `system.toml` —
 
 ```toml
-[image.native]
+[image.linux]
 board = "linux"
 ```
 
@@ -12,7 +12,7 @@ board = "linux"
 
 ```sh
 nros sync
-nros build native
+nros build linux
 ```
 
 There is no package to write. `nros build` discovers your Node pkgs, reads the
@@ -92,15 +92,15 @@ Error: this workspace declares 14 images and no default.
 
   demo_bringup:freertos
   demo_bringup:freertos_posix
-  demo_bringup:native
-  demo_bringup:native_action_client
-  demo_bringup:native_action_server
-  demo_bringup:native_cyclonedds
-  demo_bringup:native_robot1
-  demo_bringup:native_robot2
-  demo_bringup:native_service_client
-  demo_bringup:native_service_server
-  demo_bringup:native_xrce
+  demo_bringup:linux
+  demo_bringup:linux_action_client
+  demo_bringup:linux_action_server
+  demo_bringup:linux_cyclonedds
+  demo_bringup:linux_robot1
+  demo_bringup:linux_robot2
+  demo_bringup:linux_service_client
+  demo_bringup:linux_service_server
+  demo_bringup:linux_xrce
   demo_bringup:nuttx
   demo_bringup:threadx
   demo_bringup:zephyr
@@ -122,7 +122,7 @@ Images live in the Bringup pkg beside the topology they boot —
 [image_defaults]
 rmw = "zenoh"
 
-[image.native]
+[image.linux]
 board = "linux"
 
 [image.freertos]
@@ -134,11 +134,11 @@ board = "freertos-posix"
 # and this board has no lwIP.
 rmw = "cyclonedds"
 
-[image.native_service_server]
+[image.linux_service_server]
 board = "linux"
 launch = "service_server.launch.xml"
 
-[image.native_robot1]
+[image.linux_robot1]
 board = "linux"
 launch = "multihost.launch.xml"
 args = { host = "robot1" }
@@ -148,9 +148,9 @@ board = "zephyr"
 conf = ["prj-zenoh.conf"]
 ```
 
-Read it as a table of variants over one topology. `native` and
-`native_cyclonedds` differ in a backend; `native` and `native_service_server`
-differ in a launch file; `native_robot1` and `native_robot2` differ in one
+Read it as a table of variants over one topology. `linux` and
+`linux_cyclonedds` differ in a backend; `linux` and `linux_service_server`
+differ in a launch file; `linux_robot1` and `linux_robot2` differ in one
 launch argument. Nothing is duplicated to express any of that.
 
 | Key | Meaning |
@@ -176,7 +176,7 @@ are replaced by the specific block, `args` merges, `conf` and `features`
 concatenate. Without it an eight-image workspace repeats its RMW eight times,
 and eight copies of one fact is how they start disagreeing.
 
-`[system] default_images = ["native"]` is what a bare `nros build` then builds.
+`[system] default_images = ["linux"]` is what a bare `nros build` then builds.
 
 ## What `nros build` generates
 
@@ -203,14 +203,14 @@ settings and nothing generated ever appears beside a package — no leaf
 `.cargo/config.toml`, no board projection to commit.
 
 The coordinate is the platform and the RMW, plus — for cmake, which pins one
-compiler per configure — the board. So `[image.native]` in
+compiler per configure — the board. So `[image.linux]` in
 `examples/workspaces/c` configures `build/posix-zenoh-linux/` into
 `build/posix-zenoh-linux/cmake/` and leaves its binary at
-`build/posix-zenoh-linux/cmake/native_entry`. On the cargo driver `nros build`
+`build/posix-zenoh-linux/cmake/linux_entry`. On the cargo driver `nros build`
 names the entry package it wrote as it goes:
 
 ```text
-nros build:   entry → …/build/posix-zenoh/native_entry
+nros build:   entry → …/build/posix-zenoh/linux_entry
 ```
 
 The generated cmake root lists **every** image on that coordinate, not just the
@@ -493,9 +493,9 @@ hardware init before the runtime, or a fully manual executor loop — take
 ownership of the generated entry:
 
 ```console
-$ nros build native          # generate it first — materialize copies, it does not re-emit
-$ nros materialize native
-wrote …/src/native_entry
+$ nros build linux          # generate it first — materialize copies, it does not re-emit
+$ nros materialize linux
+wrote …/src/linux_entry
 
 This entry is YOURS now — `nros build` will not regenerate it.
 ```
@@ -533,12 +533,12 @@ Build it, start a router if your backend needs one, run the binary:
 ```bash
 cd examples/workspaces/c
 nros sync
-nros build native
+nros build linux
 
 # in another shell, for the zenoh backend:
 ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd &
 
-./build/posix-zenoh-linux/cmake/native_entry
+./build/posix-zenoh-linux/cmake/linux_entry
 ```
 
 The binary opens the executor, registers `talker` + `listener` composed into a

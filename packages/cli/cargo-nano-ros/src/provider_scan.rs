@@ -1860,7 +1860,7 @@ mod tests {
     ///
     /// Found the hard way — four real workspaces broke when this sorted purely
     /// by name. Their entry packages declare no `<exec_depend>` at all, so a
-    /// name-sorted order was free to interleave `native_entry` between
+    /// name-sorted order was free to interleave `linux_entry` between
     /// `ctrl_pkg` and `telem_pkg` without violating any stated constraint, and
     /// the entry's codegen then ran before the node metadata it reads existed.
     #[test]
@@ -1874,8 +1874,8 @@ mod tests {
             &pkg_xml("ctrl_pkg", &[]),
         );
         write(
-            &root.join("src/native_entry/package.xml"),
-            &pkg_xml("native_entry", &[]),
+            &root.join("src/linux_entry/package.xml"),
+            &pkg_xml("linux_entry", &[]),
         );
         write(
             &root.join("src/telem_pkg/package.xml"),
@@ -1891,10 +1891,10 @@ mod tests {
             .into_iter()
             .map(|p| p.name)
             .collect();
-        assert_eq!(by_name, vec!["ctrl_pkg", "native_entry", "telem_pkg"]);
+        assert_eq!(by_name, vec!["ctrl_pkg", "linux_entry", "telem_pkg"]);
 
         // The authored order is preserved instead.
-        let authored: Vec<PathBuf> = ["ctrl_pkg", "telem_pkg", "native_entry"]
+        let authored: Vec<PathBuf> = ["ctrl_pkg", "telem_pkg", "linux_entry"]
             .iter()
             .map(|n| root.join("src").join(n))
             .collect();
@@ -1903,7 +1903,7 @@ mod tests {
             .into_iter()
             .map(|p| p.name)
             .collect();
-        assert_eq!(got, vec!["ctrl_pkg", "telem_pkg", "native_entry"]);
+        assert_eq!(got, vec!["ctrl_pkg", "telem_pkg", "linux_entry"]);
     }
 
     /// Preference must not override a DECLARED dependency — otherwise the

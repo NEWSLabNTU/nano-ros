@@ -1218,7 +1218,7 @@ int32_t nros_board_native_run_components_named(const char *session_name,
  * SINGLE-executor C++ native entry calls. It never reached
  * [`nros_board_native_run_components_named_ns`], so `$NROS_CENSUS_OUT` was
  * read by no code on that road: a census run of the in-tree C++ workspace's
- * `native_entry` booted normally, dialled zenoh, and exited 156 on
+ * `linux_entry` booted normally, dialled zenoh, and exited 156 on
  * `ConnectionFailed` -- the producer phase-463 W2 named did not exist for the
  * entry shape the C++ workspaces generate. These two calls are that runner's
  * half of the switch, and they reuse the funnel's own three functions rather

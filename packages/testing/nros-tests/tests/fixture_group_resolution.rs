@@ -75,12 +75,12 @@ fn talker_variants() -> Vec<(&'static str, FixtureVariant)> {
         // zenoh build is the plain row: two images of one leaf must land in two
         // group dirs exactly as two feature sets did.
         (
-            "image native_xrce",
-            FixtureVariant::image(Rmw::Xrce, "native_xrce"),
+            "image linux_xrce",
+            FixtureVariant::image(Rmw::Xrce, "linux_xrce"),
         ),
         (
-            "image native_cyclonedds",
-            FixtureVariant::image(Rmw::Cyclonedds, "native_cyclonedds"),
+            "image linux_cyclonedds",
+            FixtureVariant::image(Rmw::Cyclonedds, "linux_cyclonedds"),
         ),
     ]
 }

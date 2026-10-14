@@ -18,11 +18,11 @@ changes language-side is the cmake-fn / macro surface.
 |---|---|---|
 | **Node pkg** | `lib.rs` with `nros::node!(MyNode)`, declared by a `[[component]]` row in the bringup's `system.toml` | `Talker.{hpp,cpp}` with a `configure(::rclcpp::Node&)` component method (C++) / `RCLC_C_COMPONENT` (C); `CMakeLists.txt` calling `nano_ros_auto_add_library` + `nros_components_register_node` (RFC-0057) |
 | **Bringup pkg** | `package.xml` + `system.toml` + `launch/*.launch.xml` (no `Cargo.toml`) | identical (language-agnostic) |
-| **Image** | `[image.native] board = "linux"` in the bringup's `system.toml` | identical (language-agnostic) |
-| **The entry** | GENERATED into `build/<coord>/native_entry/` — a `Cargo.toml` and a `nros::main!(launch = "demo_bringup")` | GENERATED into `build/<coord>/CMakeLists.txt` — a `nano_ros_add_executable(native_entry BOARD … BRINGUP … LAUNCH … LANG cpp TYPED DEPLOY linux)` call, plus the `main` TU the verb emits |
+| **Image** | `[image.linux] board = "linux"` in the bringup's `system.toml` | identical (language-agnostic) |
+| **The entry** | GENERATED into `build/<coord>/linux_entry/` — a `Cargo.toml` and a `nros::main!(launch = "demo_bringup")` | GENERATED into `build/<coord>/CMakeLists.txt` — a `nano_ros_add_executable(linux_entry BOARD … BRINGUP … LAUNCH … LANG cpp TYPED DEPLOY linux)` call, plus the `main` TU the verb emits |
 | **Workspace root** | none — the generated entry's own `Cargo.toml` is the cargo root | none — the generated `build/<coord>/CMakeLists.txt` is the cmake root, calling `nano_ros_workspace(WORKSPACE_ROOT … BACKEND zenoh PLATFORM posix SYSTEM demo_bringup SUBDIRS …)` |
-| **Build** | `nros sync` then `nros build native` | `nros sync` then `nros build native` |
-| **Boot** | `./build/posix-zenoh/native_entry/target/debug/native_entry` | `./build/posix-zenoh-linux/cmake/native_entry` |
+| **Build** | `nros sync` then `nros build linux` | `nros sync` then `nros build linux` |
+| **Boot** | `./build/posix-zenoh/linux_entry/target/debug/linux_entry` | `./build/posix-zenoh-linux/cmake/linux_entry` |
 
 The reference C++ workspace ships in-tree at
 [`examples/workspaces/cpp/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/workspaces/cpp).
@@ -318,17 +318,17 @@ Declare the program you want in the bringup's `system.toml` —
 [image_defaults]
 rmw = "zenoh"
 
-[image.native]
+[image.linux]
 board = "linux"
 ```
 
-— and `nros build native` emits this into that generated root. `BOARD` and
+— and `nros build linux` emits this into that generated root. `BOARD` and
 `DEPLOY` come from the resolved image, so a generated entry cannot disagree
 with the board it was generated for; there is no `SOURCES`, because the verb
 generates the translation unit carrying `main`:
 
 ```cmake
-nano_ros_add_executable(native_entry
+nano_ros_add_executable(linux_entry
     BOARD   native
     BRINGUP "${CMAKE_CURRENT_SOURCE_DIR}/../../src/demo_bringup"
     LAUNCH  default
@@ -338,7 +338,7 @@ nano_ros_add_executable(native_entry
 ```
 
 At configure time the cmake fn shells `nros codegen entry --lang cpp --typed`,
-emits `${CMAKE_BINARY_DIR}/native_entry_nros_main_generated.cpp` (the canonical
+emits `${CMAKE_BINARY_DIR}/linux_entry_nros_main_generated.cpp` (the canonical
 `int main()` body that constructs each launch node's component + calls
 `configure(node)` on the real executor via `LinuxBoard::run_components`),
 appends it to the target's sources, and auto-links every
@@ -372,7 +372,7 @@ package's own `CMakeLists.txt`:
 There the user's `main.cpp` is a single declarative line:
 
 ```cpp
-// src/native_entry/src/main.cpp
+// src/linux_entry/src/main.cpp
 #include <nros/main.hpp>
 NROS_MAIN(rclcpp::board::LinuxBoard, "demo_bringup:system.launch.xml")
 ```
@@ -384,8 +384,8 @@ body, the user's TU is documentation + IDE hint.
 
 ```bash
 nros sync
-nros build native
-./build/posix-zenoh-linux/cmake/native_entry
+nros build linux
+./build/posix-zenoh-linux/cmake/linux_entry
 ```
 
 `nros build` resolves the SystemModel for you (via the pinned
@@ -404,7 +404,7 @@ The build produces:
 - `src/talker_pkg/libtalker_pkg_talker_component.a` — the Node pkg static lib
   (`_component` is the compatibility target suffix).
 - `src/listener_pkg/liblistener_pkg_listener_component.a` — ditto.
-- `native_entry` — the image's executable, with the generated
+- `linux_entry` — the image's executable, with the generated
   `int main()` + register-call sequence + Board boot stub linked in.
 
 `cmake configure` is incremental — pinned `CMAKE_CONFIGURE_DEPENDS` on

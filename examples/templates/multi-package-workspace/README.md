@@ -112,7 +112,7 @@ cmake -S src/pkg_cpp_listener -B src/pkg_cpp_listener/build \
       -DNROS_GEN_CACHE_DIR="$PWD/build/nros-gen-cache"
 cmake --build src/pkg_cpp_listener/build
 
-# Rust — its `system.toml` declares `[image.native]`.
+# Rust — its `system.toml` declares `[image.linux]`.
 cd src/pkg_rust_publisher && nros sync && nros build
 ```
 
@@ -124,7 +124,7 @@ Per-package output:
 
 * `src/pkg_c_talker/build/pkg_c_talker`
 * `src/pkg_cpp_listener/build/pkg_cpp_listener`
-* `src/pkg_rust_publisher/build/native/target/debug/pkg_rust_publisher`
+* `src/pkg_rust_publisher/build/linux/target/debug/pkg_rust_publisher`
 
 ## Run
 
@@ -146,7 +146,7 @@ Each listener should print `received: N` once per second.
 For a Rust↔C interop demo, swap step 2 with:
 
 ```bash
-./src/pkg_rust_publisher/build/native/target/debug/pkg_rust_publisher
+./src/pkg_rust_publisher/build/linux/target/debug/pkg_rust_publisher
 ```
 
 The C++ listener picks up either publisher's stream — both round-trip

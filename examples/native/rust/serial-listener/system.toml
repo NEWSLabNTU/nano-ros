@@ -9,11 +9,11 @@ name = "native_rs_xrce_serial_listener"
 rmw = "xrce"
 domain_id = 0
 # The image a bare `nros sync` / `nros build` / `cargo build` builds.
-default_images = ["native"]
+default_images = ["linux"]
 
 # Host build. The locator and domain stay runtime env on native.
 [image_defaults]
 board = "linux"
 
 # XRCE over a serial PTY; the locator (`serial://…`) is runtime env.
-[image.native]
+[image.linux]

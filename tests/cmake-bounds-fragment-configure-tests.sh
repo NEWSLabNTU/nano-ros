@@ -9,11 +9,11 @@
 # `nros-c` / `nros-cpp` / the RMW backend.
 #
 # It used to be a build-time custom-command output only. Measured on
-# `examples/workspaces/cpp` `demo_bringup:native`: from a clean build dir every
+# `examples/workspaces/cpp` `demo_bringup:linux`: from a clean build dir every
 # configure pass of the FIRST `nros build` composed "5 of 5 message-bound
 # fragments have not been written yet", the image compiled every derived
 # message-bound knob at its placeholder, and the SECOND `nros build` produced a
-# different `native_entry` (the fixed point). A fixture build builds once, so
+# different `linux_entry` (the fixed point). A fixture build builds once, so
 # every fixture of a cmake workspace image was the unsettled one.
 #
 # WHAT IS ASSERTED

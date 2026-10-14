@@ -27,5 +27,5 @@ name = "listener"
 # Issue 0951 — the buildable unit. Split out of the `kind = "self"` deploy
 # block, which carried a `board`: that is a build fact, and a machine is not a
 # build.
-[image.native]
+[image.linux]
 board = "linux"

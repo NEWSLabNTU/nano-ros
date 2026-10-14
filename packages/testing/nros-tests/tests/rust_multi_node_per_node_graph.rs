@@ -4,8 +4,8 @@
 //! The image is `examples/workspaces/rust`'s default launch,
 //! `demo_bringup:system.launch.xml`, a 2-node topology:
 //!   `<node name="talker"/>` + `<node name="listener"/>`
-//! built once per RMW from the same sources: `[image.native]` (zenoh, row
-//! `workspace-rust-native`) and `[image.native_cyclonedds]` (row
+//! built once per RMW from the same sources: `[image.linux]` (zenoh, row
+//! `workspace-rust-native`) and `[image.linux_cyclonedds]` (row
 //! `workspace-rust-native-cyclonedds`). Each case asserts [`EXPECTED_NODES`],
 //! the one set every RMW must present, so a divergence between backends fails
 //! a test rather than a user.
@@ -101,7 +101,7 @@ fn assert_node_set(rmw: &str, listing: &str) {
     );
 }
 
-/// zenoh: `workspace-rust-native` `native_entry`, through a unique router.
+/// zenoh: `workspace-rust-native` `linux_entry`, through a unique router.
 #[rstest]
 fn rust_multi_node_entry_per_node_graph_nodes(
     zenohd_unique: ZenohRouter,
@@ -110,7 +110,7 @@ fn rust_multi_node_entry_per_node_graph_nodes(
     nros_tests::ros2::require_ros2();
 
     let entry = build_native_workspace_rust_entry()
-        .require("workspace-rust-native native_entry")
+        .require("workspace-rust-native linux_entry")
         .to_path_buf();
 
     let locator = zenohd_unique.locator();
@@ -121,7 +121,7 @@ fn rust_multi_node_entry_per_node_graph_nodes(
         .env("NROS_ENTRY_SPIN_MS", "20000")
         .env("NROS_ENTRY_SPIN_STEP_MS", "10");
     let mut deploy = ManagedProcess::spawn_command(cmd, "rust-native-entry")
-        .expect("failed to start native_entry");
+        .expect("failed to start linux_entry");
 
     let node_list = poll_for_expected_set(Duration::from_secs(15), || {
         ros2_node_list(&locator, DEFAULT_ROS_DISTRO).unwrap_or_default()
@@ -133,7 +133,7 @@ fn rust_multi_node_entry_per_node_graph_nodes(
     Ok(())
 }
 
-/// Cyclone: `workspace-rust-native-cyclonedds` `native_cyclonedds_entry`, on a
+/// Cyclone: `workspace-rust-native-cyclonedds` `linux_cyclonedds_entry`, on a
 /// domain of its own and pinned to loopback on BOTH sides (issue 1137 — the
 /// `ros2` side is pinned by its env string, ours by `apply_to_command`; half a
 /// pin is no discovery, and reads as an empty graph).
@@ -142,7 +142,7 @@ fn rust_multi_node_entry_per_node_graph_nodes_cyclonedds() -> nros_tests::TestRe
     require_ros2_cyclonedds();
 
     let entry = build_native_workspace_rust_cyclonedds_entry()
-        .require("workspace-rust-native-cyclonedds native_cyclonedds_entry")
+        .require("workspace-rust-native-cyclonedds linux_cyclonedds_entry")
         .to_path_buf();
 
     // A domain of our own: Cyclone discovers by SPDP, so a shared domain would
@@ -159,7 +159,7 @@ fn rust_multi_node_entry_per_node_graph_nodes_cyclonedds() -> nros_tests::TestRe
         .env("NROS_ENTRY_SPIN_STEP_MS", "10");
     nros_tests::dds_isolation::apply_to_command(&mut cmd);
     let mut deploy = ManagedProcess::spawn_command(cmd, "rust-native-cyclonedds-entry")
-        .expect("failed to start native_cyclonedds_entry");
+        .expect("failed to start linux_cyclonedds_entry");
 
     let node_list = poll_for_expected_set(Duration::from_secs(20), || {
         ros2_node_list_rmw_with_domain(DEFAULT_ROS_DISTRO, "rmw_cyclonedds_cpp", domain)
@@ -194,7 +194,7 @@ fn node_info_section(info: &str, section: &str) -> Vec<String> {
         .collect()
 }
 
-/// XRCE: `workspace-rust-native-xrce` `native_xrce_entry`, through its own
+/// XRCE: `workspace-rust-native-xrce` `linux_xrce_entry`, through its own
 /// Agent, on a domain of its own. The image speaks XRCE and the AGENT is the
 /// DDS participant, so the Agent is what gets pinned to loopback
 /// (`XrceAgent::start_unique` applies the issue-1009 profile), opposite a
@@ -205,7 +205,7 @@ fn rust_multi_node_entry_per_node_graph_nodes_xrce() -> nros_tests::TestResult<(
     require_ros2_dds();
 
     let entry = build_native_workspace_rust_xrce_entry()
-        .require("workspace-rust-native-xrce native_xrce_entry")
+        .require("workspace-rust-native-xrce linux_xrce_entry")
         .to_path_buf();
 
     let agent = XrceAgent::start_unique().expect("failed to start the XRCE Agent");
@@ -221,7 +221,7 @@ fn rust_multi_node_entry_per_node_graph_nodes_xrce() -> nros_tests::TestResult<(
         .env("NROS_ENTRY_SPIN_MS", "25000")
         .env("NROS_ENTRY_SPIN_STEP_MS", "10");
     let mut deploy = ManagedProcess::spawn_command(cmd, "rust-native-xrce-entry")
-        .expect("failed to start native_xrce_entry");
+        .expect("failed to start linux_xrce_entry");
 
     let node_list = poll_for_expected_set(Duration::from_secs(20), || {
         ros2_node_list_rmw_with_domain(DEFAULT_ROS_DISTRO, "rmw_fastrtps_cpp", domain)
@@ -344,7 +344,7 @@ fn xrce_entry_leaves_the_graph(entry: &std::path::Path, ending: Ending) {
         Ending::Sigterm => cmd.env_remove("NROS_ENTRY_SPIN_MS"),
     };
     let mut deploy = ManagedProcess::spawn_command(cmd, "rust-native-xrce-entry")
-        .expect("failed to start native_xrce_entry");
+        .expect("failed to start linux_xrce_entry");
 
     // Precondition: the image is IN the graph, or "gone afterwards" proves nothing.
     let during = poll_for_expected_set(Duration::from_secs(15), || list(domain));
@@ -418,7 +418,7 @@ fn rust_multi_node_entry_leaves_the_graph_when_it_ends_xrce() -> nros_tests::Tes
     require_xrce_agent();
     require_ros2_dds();
     let entry = build_native_workspace_rust_xrce_entry()
-        .require("workspace-rust-native-xrce native_xrce_entry")
+        .require("workspace-rust-native-xrce linux_xrce_entry")
         .to_path_buf();
     xrce_entry_leaves_the_graph(&entry, Ending::Clean);
     xrce_entry_leaves_the_graph(&entry, Ending::Sigterm);

@@ -24,7 +24,7 @@ path = "src/main.rs"
 [workspace]
 
 # This package is an ENTRY because the `system.toml` beside this manifest
-# declares its image: what it deploys to — `[image.native] board = "linux"`,
+# declares its image: what it deploys to — `[image.linux] board = "linux"`,
 # which `nros::main!()` maps to `nros_board_linux::LinuxBoard`, reached through
 # the generated selection package below — and the node it registers
 # (RFC-0098 D3/D5). No manifest table marks it (issue 1289).

@@ -27,7 +27,7 @@
 //!   same directory, so no single binary there can satisfy both, and blaming
 //!   either is a false accusation.
 //! * A RENAME leaves an ORPHAN. Repointing these two rows at their new images
-//!   left the old `native_entry` beside the new `native_xrce_entry` — issue
+//!   left the old `linux_entry` beside the new `linux_xrce_entry` — issue
 //!   0215's class, and not what this gate is about.
 //!
 //! Naming the row's binary from the manifest (field 13's `<image>_entry`, or

@@ -510,7 +510,7 @@ fn infra_queryables(infra: Option<&str>, nodes: Option<&str>) -> usize {
 /// publisher like any other, so an image carrying them on two nodes needs
 /// 6 x 2 + 5 + 1 tokens before its application declares anything -- and the
 /// pool was a flat 16 on every road but Zephyr's, which is how
-/// `native_rust_qos` lost eight of its parameter services to `Full`.
+/// `linux_rust_qos` lost eight of its parameter services to `Full`.
 fn resolve_liveliness_default() -> usize {
     // The same three inputs, watched the same way, as the queryable table;
     // `from_build_env` emits the descriptor's own rerun edge.
@@ -992,7 +992,7 @@ mod queryable_default_tests {
 mod liveliness_default_tests {
     use super::*;
 
-    /// The tokens `native_rust_qos` declares, counted in the issue from the
+    /// The tokens `linux_rust_qos` declares, counted in the issue from the
     /// shim's creation calls: the session's node, two node names, three
     /// application endpoints, the parameter family on both nodes, the
     /// lifecycle family's five servers and its `transition_event` publisher.

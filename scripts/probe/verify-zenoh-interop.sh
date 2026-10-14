@@ -65,7 +65,7 @@ exec 3>&- 3<&- || true
 # `cargo run` in this directory does not resolve at all. The path is the one
 # the page prints.
 cd examples/native/rust/talker
-bin=build/native/target/debug/talker
+bin=build/linux/target/debug/talker
 [ -x "$bin" ] || {
     echo "PROBE FAIL: $bin missing — step 30's \`nros build\` did not produce it"
     exit 1

@@ -179,7 +179,7 @@ fn exec_for(platform: MP, lang: ML) -> Vec<Exec> {
         (MP::Linux, ML::Rust) => vec![
             Exec {
                 label: "rust",
-                resolver: native_rust_entry,
+                resolver: linux_rust_entry,
                 port,
                 boot: Boot::Native,
                 proof: Proof::CounterRatio3x,
@@ -187,7 +187,7 @@ fn exec_for(platform: MP, lang: ML) -> Vec<Exec> {
             },
             Exec {
                 label: "rust-derived",
-                resolver: native_rust_derived_entry,
+                resolver: linux_rust_derived_entry,
                 port,
                 boot: Boot::Native,
                 proof: Proof::CounterRatio3x,
@@ -198,7 +198,7 @@ fn exec_for(platform: MP, lang: ML) -> Vec<Exec> {
         ],
         (MP::Linux, ML::C) => vec![Exec {
             label: "c",
-            resolver: native_c_entry,
+            resolver: linux_c_entry,
             port,
             boot: Boot::Native,
             proof: Proof::CountRatio3x,
@@ -207,7 +207,7 @@ fn exec_for(platform: MP, lang: ML) -> Vec<Exec> {
         (MP::Linux, ML::Cpp) => vec![
             Exec {
                 label: "cpp",
-                resolver: native_cpp_entry,
+                resolver: linux_cpp_entry,
                 port,
                 boot: Boot::Native,
                 proof: Proof::CountRatio3x,
@@ -215,7 +215,7 @@ fn exec_for(platform: MP, lang: ML) -> Vec<Exec> {
             },
             Exec {
                 label: "cpp-rclcpp",
-                resolver: native_cpp_rclcpp_entry,
+                resolver: linux_cpp_rclcpp_entry,
                 port,
                 boot: Boot::Native,
                 proof: Proof::CountRatio3x,
@@ -225,7 +225,7 @@ fn exec_for(platform: MP, lang: ML) -> Vec<Exec> {
             },
             Exec {
                 label: "cpp-derived",
-                resolver: native_cpp_derived_entry,
+                resolver: linux_cpp_derived_entry,
                 port,
                 boot: Boot::Native,
                 proof: Proof::ConsoleTicks(DERIVED_TIERS_CPP_NODES),
@@ -386,22 +386,22 @@ fn plat_str(p: MP) -> &'static str {
 
 // Resolver adapters: normalize the `&'static Path` builders onto the
 // `PathBuf`-returning zephyr shape so one fn-pointer column fits all.
-fn native_rust_entry() -> TestResult<PathBuf> {
+fn linux_rust_entry() -> TestResult<PathBuf> {
     build_native_workspace_rust_realtime_entry().map(|p| p.to_path_buf())
 }
-fn native_c_entry() -> TestResult<PathBuf> {
+fn linux_c_entry() -> TestResult<PathBuf> {
     build_native_workspace_c_realtime_entry().map(|p| p.to_path_buf())
 }
-fn native_cpp_entry() -> TestResult<PathBuf> {
+fn linux_cpp_entry() -> TestResult<PathBuf> {
     build_native_workspace_cpp_realtime_entry().map(|p| p.to_path_buf())
 }
-fn native_cpp_rclcpp_entry() -> TestResult<PathBuf> {
+fn linux_cpp_rclcpp_entry() -> TestResult<PathBuf> {
     build_native_workspace_cpp_rclcpp_realtime_entry().map(|p| p.to_path_buf())
 }
-fn native_rust_derived_entry() -> TestResult<PathBuf> {
+fn linux_rust_derived_entry() -> TestResult<PathBuf> {
     build_native_workspace_rust_realtime_derived_entry().map(|p| p.to_path_buf())
 }
-fn native_cpp_derived_entry() -> TestResult<PathBuf> {
+fn linux_cpp_derived_entry() -> TestResult<PathBuf> {
     build_native_workspace_cpp_derived_tiers_entry().map(|p| p.to_path_buf())
 }
 fn nuttx_rust_entry() -> TestResult<PathBuf> {

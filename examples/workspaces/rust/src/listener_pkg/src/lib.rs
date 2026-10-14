@@ -1,6 +1,6 @@
 //! Listener Node pkg — subscribes to `std_msgs/Int32` on `/chatter`.
 //!
-//! Board-agnostic Node pkg. The sibling Entry pkg (`native_entry`)
+//! Board-agnostic Node pkg. The sibling Entry pkg (`linux_entry`)
 //! wires it onto a board via the `nros::main!(launch = "demo_bringup:...")`
 //! macro, which emits one `listener_pkg::register(runtime)?;` call per
 //! matching `<node>` entry in the launch file.

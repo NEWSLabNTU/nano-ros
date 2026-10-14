@@ -25,5 +25,5 @@ name = "burst_talker"
 [image_defaults]
 rmw = "zenoh"
 
-[image.native]
+[image.linux]
 board = "linux"

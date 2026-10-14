@@ -2,7 +2,7 @@
 //!
 //! The declarative sibling of `bridge_mixed_rmw::test_zenoh_to_xrce_bridge_e2e`
 //! (which drives the hand-written `bridge-zenoh-to-xrce-fwd` bin). Here the bridge
-//! is the `bridge-xrce` `native_entry` — a PLAIN `nros::main!` whose
+//! is the `bridge-xrce` `linux_entry` — a PLAIN `nros::main!` whose
 //! `system.toml` declares a `[[bridge]]` to `xrce:agent`. `nros sync` bakes
 //! `nros-bridge.toml` (the xrce egress node carries the agent locator), the macro
 //! emits `run_from_config_str` + the backend `register()` calls, and the runtime
@@ -11,7 +11,7 @@
 //! ## Topology
 //!
 //! ```text
-//!   native_rs_talker ─ zenoh ─► zenohd ─► native_entry (xrce bridge) ─ XRCE ─►
+//!   native_rs_talker ─ zenoh ─► zenohd ─► linux_entry (xrce bridge) ─ XRCE ─►
 //!                                                                   MicroXRCEAgent
 //!                                                                        │ DDS
 //!                                                                        ▼
@@ -67,7 +67,7 @@ fn declarative_zenoh_to_xrce_bridge_to_nros_listener(zenohd_unique: ZenohRouter)
     require_zenohd();
     require_xrce_agent();
     let bridge_bin = build_native_workspace_rust_bridge_xrce_entry()
-        .require("bridge-xrce native_entry (row `workspace-rust-native-bridge-xrce`); run \\ `just linux build-workspace-fixtures`")
+        .require("bridge-xrce linux_entry (row `workspace-rust-native-bridge-xrce`); run \\ `just linux build-workspace-fixtures`")
         .to_path_buf();
 
     let zenoh_locator = zenohd_unique.locator();
@@ -94,7 +94,7 @@ fn declarative_zenoh_to_xrce_bridge_to_nros_listener(zenohd_unique: ZenohRouter)
             format!("NROS_BRIDGE_{XRCE_NODE}_DOMAIN"),
             domain.to_string(),
         );
-    let mut bridge = ManagedProcess::spawn_command(bridge_cmd, "bridge-xrce-native_entry")
+    let mut bridge = ManagedProcess::spawn_command(bridge_cmd, "bridge-xrce-linux_entry")
         .expect("spawn declarative xrce bridge entry");
     std::thread::sleep(Duration::from_secs(2));
 

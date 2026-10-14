@@ -24,11 +24,11 @@ pkg = "image_env_probe_c"
 class = "image_env_probe_c::Probe"
 name = "image_env_probe"
 
-[image.native]
+[image.linux]
 board = "linux"
 
-[image.native.knobs.executor]
+[image.linux.knobs.executor]
 max_cbs = 13
 
-[image.native.knobs.log]
+[image.linux.knobs.log]
 max_level = "warn"

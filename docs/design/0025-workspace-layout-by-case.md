@@ -248,7 +248,7 @@ nros plan
 # wrote build/demo_bringup/plan.json
 
 # 5. nros — launch native
-cargo run -p native_entry            # native run (no nros deploy — Phase 222)
+cargo run -p linux_entry            # native run (no nros deploy — Phase 222)
 # [listener] hi 0
 # [listener] hi 1
 ```
@@ -326,7 +326,7 @@ nros plan demo_bringup
 # resolved 2 nodes across 1 domain (default/cyclonedds/0)
 
 # 5. nros — launch native
-cargo run -p native_entry            # native run (no nros deploy — Phase 222)
+cargo run -p linux_entry            # native run (no nros deploy — Phase 222)
 # [listener] got: hello 0
 # [listener] got: hello 1
 ```
@@ -410,7 +410,7 @@ nros plan demo_bringup
 # plan: 2 nodes, 1 topic (chatter: std_msgs/Int32)
 
 # 5. nros — launch native
-cargo run -p native_entry            # native run (no nros deploy — Phase 222)
+cargo run -p linux_entry            # native run (no nros deploy — Phase 222)
 # [listener] heard: 0
 # [listener] heard: 1
 ```

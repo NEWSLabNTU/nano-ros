@@ -9,7 +9,7 @@
 //! BUILT image is exactly the one the features could not answer.
 //!
 //! The fixture (`bins/log-arena-probe`) is built for the `native` board, whose
-//! descriptor states one number, with an `[image.native] env` that states
+//! descriptor states one number, with an `[image.linux] env` that states
 //! another. Both are READ here rather than restated, and asserted to differ —
 //! from each other and from the builtin 16 — so the test cannot pass on a value
 //! that leaked from the wrong rung.
@@ -59,13 +59,13 @@ fn board_statement() -> usize {
     usize::try_from(n).expect("a count")
 }
 
-/// `[image.native.knobs.log] dynamic_loggers` of the probe (the APP rung,
+/// `[image.linux.knobs.log] dynamic_loggers` of the probe (the APP rung,
 /// RFC-0103 D6; it reaches the build as `NROS_LOG_DYNAMIC_LOGGERS`).
 fn image_statement() -> usize {
     let v = read_toml("packages/testing/nros-tests/bins/log-arena-probe/system.toml");
     let n = v["image"]["native"]["knobs"]["log"]["dynamic_loggers"]
         .as_integer()
-        .expect("the probe image states `[image.native.knobs.log] dynamic_loggers`");
+        .expect("the probe image states `[image.linux.knobs.log] dynamic_loggers`");
     usize::try_from(n).expect("a count")
 }
 
@@ -162,7 +162,7 @@ fn an_image_env_outranks_the_board_for_the_runtime_logger_arena() {
     assert_eq!(
         field("capacity"),
         image,
-        "the image's `[image.native] env` NROS_LOG_DYNAMIC_LOGGERS={image} did not win over the \
+        "the image's `[image.linux] env` NROS_LOG_DYNAMIC_LOGGERS={image} did not win over the \
          board's {board} (a capacity of {board} means the APP rung was dropped; {BUILTIN} means \
          both were)"
     );
@@ -224,7 +224,7 @@ fn an_image_env_outranks_the_board_for_the_runtime_logger_arena() {
 /// issue 1037 — the rest of the logging tenant rides the same ladder, and the
 /// platform clock comes from the platform's CAPABILITY.
 ///
-/// The probe's `[image.native.knobs.log]` states every `NROS_LOG_*` knob at a non-builtin
+/// The probe's `[image.linux.knobs.log]` states every `NROS_LOG_*` knob at a non-builtin
 /// value; its line reads each one back from the BUILT binary. `clock=1`
 /// with no `platform-clock` feature anywhere in the leaf's graph is the
 /// capability path: the `native` board's platform is `posix`, whose
@@ -232,7 +232,7 @@ fn an_image_env_outranks_the_board_for_the_runtime_logger_arena() {
 #[test]
 fn every_log_knob_is_read_back_from_the_image_env() {
     let v = read_toml("packages/testing/nros-tests/bins/log-arena-probe/system.toml");
-    // `[image.native.knobs.log]`, each knob reaching the build as its
+    // `[image.linux.knobs.log]`, each knob reaching the build as its
     // `NROS_LOG_<NAME>` env spelling (RFC-0103 D6).
     let knobs = &v["image"]["native"]["knobs"]["log"];
     let stated = |env: &str| -> String {
@@ -243,7 +243,7 @@ fn every_log_knob_is_read_back_from_the_image_env() {
         match knobs.get(&k) {
             Some(toml::Value::String(s)) => s.clone(),
             Some(toml::Value::Integer(n)) => n.to_string(),
-            _ => panic!("the probe image states `[image.native.knobs.log] {k}`"),
+            _ => panic!("the probe image states `[image.linux.knobs.log] {k}`"),
         }
     };
     // Builtins (packages/core/nros-log/build.rs), which no statement may equal.
@@ -309,7 +309,7 @@ fn every_log_knob_is_read_back_from_the_image_env() {
         assert_eq!(
             field(key),
             value,
-            "{knob}: the image's `[image.native] env` states {value}, the binary reads back \
+            "{knob}: the image's `[image.linux] env` states {value}, the binary reads back \
              {} ({builtin} is the builtin, i.e. the APP rung was dropped)",
             field(key)
         );

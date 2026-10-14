@@ -1259,7 +1259,7 @@ mod tests {
             format!(
                 "[system]\nname = \"{dir}\"\n\n[[component]]\npkg = \"{dir}\"\n\
                  class = \"{dir}::Stub\"\nname = \"stub\"\n{dispatch_line}\n\
-                 [image.native]\nboard = \"linux\"\n"
+                 [image.linux]\nboard = \"linux\"\n"
             ),
         )
         .unwrap();

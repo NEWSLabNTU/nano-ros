@@ -440,7 +440,7 @@ pub enum RuntimeError {
     /// and nothing about WHY, and the image printed nothing else. Two static
     /// strings rather than a log call, because not every entry crate depends on
     /// `log` — the first attempt emitted `::log::error!` from the macro and
-    /// broke `native_rust_qos_entry` with `cannot find 'log' in the crate root`.
+    /// broke `linux_rust_qos_entry` with `cannot find 'log' in the crate root`.
     Capability {
         /// `"lifecycle"` / `"param_services"`.
         name: &'static str,

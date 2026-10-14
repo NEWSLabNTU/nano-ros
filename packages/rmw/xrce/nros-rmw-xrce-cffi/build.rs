@@ -1085,7 +1085,7 @@ impl XrceDemand {
     ///
     /// Every service server's request lands in `XRCE_SERVICE_REQUEST_BUFFER_SIZE`,
     /// and the parameter services are servers like any other. Measured on main
-    /// (`features` workspace, `native_rust_params_xrce`, 25 declared integers
+    /// (`features` workspace, `linux_rust_params_xrce`, 25 declared integers
     /// with 35-byte names): a stock `set_parameters` naming them (~2.4 KB) was
     /// dropped by the 1,024-byte default, though the contract had priced it.
     ///

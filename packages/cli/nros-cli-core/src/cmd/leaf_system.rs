@@ -438,7 +438,7 @@ mod tests {
     fn image_env_is_written_as_an_unforced_env_table() {
         let td = leaf_dir(
             "[system]\nname = \"c\"\nrmw = \"zenoh\"\n\n\
-             [image.native]\nboard = \"linux\"\ntransport = \"serial\"\n\
+             [image.linux]\nboard = \"linux\"\ntransport = \"serial\"\n\
              env = { NROS_LINK_IP = \"1\", Q = \"a\\\"b\" }\n\
              knobs = { log = { max_level = \"warn\" } }\n",
         );
@@ -479,7 +479,7 @@ mod tests {
     fn a_retired_image_env_key_is_refused() {
         let td = leaf_dir(
             "[system]\nname = \"c\"\nrmw = \"zenoh\"\n\n\
-             [image.native]\nboard = \"linux\"\n\
+             [image.linux]\nboard = \"linux\"\n\
              env = { ZPICO_MAX_QUERYABLES = \"4\" }\n", // retired spelling: the refusal case
         );
         let leaf = leaf_system::read(td.path()).unwrap().unwrap();
@@ -495,7 +495,7 @@ mod tests {
         // is carried.
         let td = leaf_dir(
             "[system]\nname = \"c\"\nrmw = \"zenoh\"\n\n\
-             [image.native]\nboard = \"linux\"\n\
+             [image.linux]\nboard = \"linux\"\n\
              env = { NROS_ZENOH_MAX_QUERYABLES = \"4\" }\n",
         );
         let leaf = leaf_system::read(td.path()).unwrap().unwrap();
@@ -503,12 +503,12 @@ mod tests {
             .expect_err("an env row naming a registry knob must refuse")
             .to_string();
         assert!(
-            err.contains("[image.native.knobs.zenoh] max_queryables"),
+            err.contains("[image.linux.knobs.zenoh] max_queryables"),
             "{err}"
         );
         let td = leaf_dir(
             "[system]\nname = \"c\"\nrmw = \"zenoh\"\n\n\
-             [image.native]\nboard = \"linux\"\n\
+             [image.linux]\nboard = \"linux\"\n\
              knobs = { zenoh = { max_queryables = 4 } }\n",
         );
         let leaf = leaf_system::read(td.path()).unwrap().unwrap();

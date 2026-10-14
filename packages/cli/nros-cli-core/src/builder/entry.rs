@@ -132,7 +132,7 @@ pub struct BoardFacts {
 /// `nros_orchestration_ir::board_path_for("linux")` returns
 /// `::nros_board_linux::LinuxBoard` — which the macro emits, and which
 /// therefore must be in scope or the generated entry does not compile. The
-/// hand-written `native_entry` depends on `nros-board-linux` for exactly this
+/// hand-written `linux_entry` depends on `nros-board-linux` for exactly this
 /// reason, and the same holds for zephyr.
 ///
 /// So: the macro's mapping is authoritative here, because the macro's output is
@@ -770,11 +770,11 @@ mod tests {
 
     #[test]
     fn the_board_crate_follows_the_first_candidate_the_macro_resolves() {
-        // `[image.native_service_server] board = "linux"`: the id is not a
+        // `[image.linux_service_server] board = "linux"`: the id is not a
         // board key, the board is — and the macro resolves the SAME way
         // (`nros::main!` tries the image's board, then its id).
         assert_eq!(
-            macro_board_crate(&["linux", "native_service_server", "posix"]).as_deref(),
+            macro_board_crate(&["linux", "linux_service_server", "posix"]).as_deref(),
             Some("nros-board-linux")
         );
     }
@@ -784,19 +784,15 @@ mod tests {
         // RFC-0098 D5 retired `[package.metadata.nros.entry] deploy`; the
         // image is found by the entry's NAME (`leaf_system::claiming_image`).
         // Issue 1289 retired the table too: the claim is what makes an entry.
-        let m = render_manifest(
-            &spec(),
-            &hosted(),
-            Path::new("/ws/build/posix/native_entry"),
-        )
-        .unwrap();
+        let m =
+            render_manifest(&spec(), &hosted(), Path::new("/ws/build/posix/linux_entry")).unwrap();
         assert!(!m.contains("[package.metadata.nros"), "{m}");
         assert!(!m.contains("deploy"), "{m}");
     }
 
     fn spec() -> EntrySpec {
         EntrySpec {
-            image_id: "native".to_string(),
+            image_id: "linux".to_string(),
             launch: "demo_bringup:system.launch.xml".to_string(),
             args: BTreeMap::new(),
             panic: None,
@@ -811,7 +807,7 @@ mod tests {
                 ),
             ],
             nano_ros_root: PathBuf::from("/nros"),
-            facade_dir: Some(PathBuf::from("/ws/build/nros/nros-selection/native_entry")),
+            facade_dir: Some(PathBuf::from("/ws/build/nros/nros-selection/linux_entry")),
             bringup_deps: Vec::new(),
             west: None,
         }
@@ -841,7 +837,7 @@ mod tests {
         }
     }
 
-    const DIR: &str = "/ws/build/posix-zenoh/native_entry";
+    const DIR: &str = "/ws/build/posix-zenoh/linux_entry";
 
     #[test]
     fn a_hosted_entry_is_a_bin_with_no_no_std() {
@@ -1009,7 +1005,7 @@ mod tests {
 
     #[test]
     fn launch_args_reach_the_macro() {
-        // How an image selects a MACHINE: native_entry_robot1 and _robot2
+        // How an image selects a MACHINE: linux_robot1_entry and _robot2
         // differ only here.
         let mut s = spec();
         s.args.insert("host".to_string(), "robot1".to_string());
@@ -1028,7 +1024,7 @@ mod tests {
 
     #[test]
     fn the_package_name_is_derived_from_the_image() {
-        assert_eq!(package_name("native"), "native_entry");
+        assert_eq!(package_name("linux"), "linux_entry");
         // An image id may carry characters a crate name cannot.
         assert_eq!(package_name("esp32-qemu"), "esp32_qemu_entry");
     }
@@ -1039,10 +1035,10 @@ mod tests {
         // someone's hand-written main.
         let tmp = tempfile::tempdir().unwrap();
         let parent = tmp.path();
-        let dir = parent.join("native_entry");
+        let dir = parent.join("linux_entry");
         std::fs::create_dir_all(dir.join("src")).unwrap();
         std::fs::write(dir.join("src/main.rs"), "// MINE\n").unwrap();
-        super::super::materialize::Stamp::current("native", "linux", "posix", "hosted-main")
+        super::super::materialize::Stamp::current("linux", "linux", "posix", "hosted-main")
             .write(&dir)
             .unwrap();
 
@@ -1080,10 +1076,10 @@ mod tests {
         let m = render_manifest(&spec(), &hosted(), Path::new(DIR)).expect("renders");
         assert!(m.contains("DO NOT EDIT"), "{m}");
         assert!(
-            m.contains("nros materialize native"),
+            m.contains("nros materialize linux"),
             "names the escape: {m}"
         );
-        assert!(render_source(&spec(), &hosted()).contains("nros materialize native"));
+        assert!(render_source(&spec(), &hosted()).contains("nros materialize linux"));
     }
 
     // ---- phase-470 W5.b2: the derived board features (issue 1288) ----------

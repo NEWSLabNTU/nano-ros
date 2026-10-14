@@ -1306,7 +1306,7 @@ def selftest_attribution():
         ("_RNvNtNtCs1_9nros_node8executor7backing16EXECUTOR_BACKING.llvm.7",
          "nros_node::executor::backing::EXECUTOR_BACKING (.llvm.7)", "[executor storage]"),
         ("_RNvNvCs1_12native_entry16___nros_entry_run28___NROS_TIER_EXECUTOR_BACKING",
-         "native_entry::__nros_entry_run::__NROS_TIER_EXECUTOR_BACKING", "[executor storage]"),
+         "linux_entry::__nros_entry_run::__NROS_TIER_EXECUTOR_BACKING", "[executor storage]"),
         ("__nros_comp_buf_3", "__nros_comp_buf_3", "[component storage]"),
         ("_RNvCs1_8ctrl_pkg36___NROS_COMPONENT_ctrl_pkg_SLOT_STORE",
          "ctrl_pkg::___NROS_COMPONENT_ctrl_pkg_SLOT_STORE", "[component storage]"),

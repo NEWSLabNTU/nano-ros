@@ -105,7 +105,7 @@ rmw = "zenoh"
 [image.freertos]
 board = "mps2-an385-freertos"
 
-[image.native]
+[image.linux]
 board = "linux"
 
 [image.nuttx]

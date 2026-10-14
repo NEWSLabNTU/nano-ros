@@ -173,7 +173,7 @@ pkg   = "talker_pkg"
 class = "talker_pkg::Talker"
 name  = "talker"
 
-[image.native]
+[image.linux]
 board = "linux"
 # rmw = "cyclonedds"         # optional per-image override of [system].rmw
 

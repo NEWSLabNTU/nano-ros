@@ -203,7 +203,7 @@ pub struct ImageSet {
 /// Resolve the requested image(s).
 ///
 /// `requested` is what the user typed — bare (`native`) or qualified
-/// (`demo_bringup:native`). Empty means "use the declared defaults".
+/// (`demo_bringup:linux`). Empty means "use the declared defaults".
 ///
 /// Errors are the product here: every failure names what was asked for, what
 /// exists, and how to disambiguate. A builder that guesses builds the wrong
@@ -338,10 +338,10 @@ mod tests {
 
     #[test]
     fn a_lone_image_needs_no_argument() {
-        let b = ws(&[("demo_bringup", set(&[("native", "linux-x86_64")], &[]))]);
+        let b = ws(&[("demo_bringup", set(&[("linux", "linux-x86_64")], &[]))]);
         let got = resolve(&b, &[]).expect("resolves");
         assert_eq!(got.len(), 1);
-        assert_eq!(got[0].2, "native");
+        assert_eq!(got[0].2, "linux");
     }
 
     #[test]
@@ -350,7 +350,7 @@ mod tests {
             "demo_bringup",
             set(
                 &[
-                    ("native", "linux-x86_64"),
+                    ("linux", "linux-x86_64"),
                     ("freertos", "mps2-an385-freertos"),
                 ],
                 &[],
@@ -368,63 +368,63 @@ mod tests {
             "demo_bringup",
             set(
                 &[
-                    ("native", "linux-x86_64"),
+                    ("linux", "linux-x86_64"),
                     ("freertos", "mps2-an385-freertos"),
                 ],
-                &["native"],
+                &["linux"],
             ),
         )]);
         let got = resolve(&b, &[]).expect("resolves");
         assert_eq!(got.len(), 1);
-        assert_eq!(got[0].2, "native");
+        assert_eq!(got[0].2, "linux");
     }
 
     #[test]
     fn an_id_declared_by_two_bringups_demands_qualification() {
         // phase-383 F7 — nano-ros-rt-eval has demo_bringup AND load_bringup.
         let b = ws(&[
-            ("demo_bringup", set(&[("native", "linux-x86_64")], &[])),
-            ("load_bringup", set(&[("native", "linux-x86_64")], &[])),
+            ("demo_bringup", set(&[("linux", "linux-x86_64")], &[])),
+            ("load_bringup", set(&[("linux", "linux-x86_64")], &[])),
         ]);
-        let e = resolve(&b, &["native".to_string()]).expect_err("ambiguous");
-        assert!(e.contains("demo_bringup:native"), "{e}");
-        assert!(e.contains("load_bringup:native"), "{e}");
+        let e = resolve(&b, &["linux".to_string()]).expect_err("ambiguous");
+        assert!(e.contains("demo_bringup:linux"), "{e}");
+        assert!(e.contains("load_bringup:linux"), "{e}");
         assert!(e.contains("Qualify"), "{e}");
     }
 
     #[test]
     fn a_qualified_id_resolves_across_bringups() {
         let b = ws(&[
-            ("demo_bringup", set(&[("native", "linux-x86_64")], &[])),
-            ("load_bringup", set(&[("native", "linux-x86_64")], &[])),
+            ("demo_bringup", set(&[("linux", "linux-x86_64")], &[])),
+            ("load_bringup", set(&[("linux", "linux-x86_64")], &[])),
         ]);
-        let got = resolve(&b, &["load_bringup:native".to_string()]).expect("resolves");
+        let got = resolve(&b, &["load_bringup:linux".to_string()]).expect("resolves");
         assert_eq!(got.len(), 1);
         assert_eq!(got[0].0, "load_bringup");
     }
 
     #[test]
     fn several_images_can_be_requested_at_once() {
-        // phase-383 F10 — `cargo build -p native_entry -p peer_entry` is
+        // phase-383 F10 — `cargo build -p linux_entry -p peer_entry` is
         // nano-ros-rt-eval's actual `just build`.
         let b = ws(&[(
             "demo_bringup",
-            set(&[("native", "linux-x86_64"), ("peer", "linux-x86_64")], &[]),
+            set(&[("linux", "linux-x86_64"), ("peer", "linux-x86_64")], &[]),
         )]);
-        let got = resolve(&b, &["native".to_string(), "peer".to_string()]).expect("resolves");
+        let got = resolve(&b, &["linux".to_string(), "peer".to_string()]).expect("resolves");
         assert_eq!(got.len(), 2);
     }
 
     #[test]
     fn an_unknown_image_lists_what_exists() {
-        let b = ws(&[("demo_bringup", set(&[("native", "linux-x86_64")], &[]))]);
+        let b = ws(&[("demo_bringup", set(&[("linux", "linux-x86_64")], &[]))]);
         let e = resolve(&b, &["nativ".to_string()]).expect_err("must reject");
-        assert!(e.contains("demo_bringup:native"), "{e}");
+        assert!(e.contains("demo_bringup:linux"), "{e}");
     }
 
     #[test]
     fn defaults_fold_into_each_image() {
-        let mut s = set(&[("native", "linux-x86_64")], &[]);
+        let mut s = set(&[("linux", "linux-x86_64")], &[]);
         s.defaults = Some(ImageBlock {
             rmw: Some("zenoh".to_string()),
             ..Default::default()

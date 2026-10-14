@@ -614,7 +614,7 @@ mod tests {
         //
         // This wave was marked complete while the emitter never emitted it. The
         // existing test passed anyway, because it asserted the root MENTIONS
-        // `native_entry`, which it did as a discovered SUBDIR. Deleting the
+        // `linux_entry`, which it did as a discovered SUBDIR. Deleting the
         // hand-written package produced a workspace that built its node
         // libraries and no executable at all.
         let tmp = tempfile::tempdir().unwrap();
@@ -623,7 +623,7 @@ mod tests {
         let mut sp = spec(root);
         sp.board = Some("linux".to_string());
         sp.entries = vec![CmakeEntry {
-            name: "native_robot1_entry".to_string(),
+            name: "linux_robot1_entry".to_string(),
             launch: "multihost.launch.xml".to_string(),
             args: vec![("host".to_string(), "robot1".to_string())],
             lang: Language::C,
@@ -633,7 +633,7 @@ mod tests {
         let body = render(&d, &root.join("build/posix"), &sp).expect("renders");
 
         assert!(
-            body.contains("nano_ros_add_executable(native_robot1_entry"),
+            body.contains("nano_ros_add_executable(linux_robot1_entry"),
             "{body}"
         );
         assert!(body.contains("LAUNCH  multihost.launch.xml"), "{body}");
@@ -667,7 +667,7 @@ mod tests {
 
     #[test]
     fn two_images_differing_only_in_args_render_differently() {
-        // Issue 1136. `native_robot1` and `native_robot2` share a board, a
+        // Issue 1136. `linux_robot1` and `linux_robot2` share a board, a
         // launch file, a language and a deploy — `args` is the ONLY thing that
         // distinguishes them, and it is what picks the per-host `[[model]]`
         // variant. Stop emitting it and the two calls become the same call:
@@ -696,8 +696,8 @@ mod tests {
         // Compare with the target NAME removed: that difference is free, and
         // the question is whether anything the BUILD reads differs too.
         let strip = |c: &str| {
-            c.replacen("native_robot1_entry", "", 1)
-                .replacen("native_robot2_entry", "", 1)
+            c.replacen("linux_robot1_entry", "", 1)
+                .replacen("linux_robot2_entry", "", 1)
         };
         assert_ne!(
             strip(calls[0]),
@@ -714,7 +714,7 @@ mod tests {
         // hand-written package is deleted.
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
-        let d = discovered(vec![pkg(root, "native_entry", true)]);
+        let d = discovered(vec![pkg(root, "linux_entry", true)]);
         let body = render(&d, &root.join("build/posix"), &spec(root)).expect("renders");
         assert!(
             !body.contains("nano_ros_add_executable"),
@@ -727,11 +727,11 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
         let zephyr = pkg(root, "zephyr_entry", true);
-        let d = discovered(vec![pkg(root, "native_entry", true), zephyr.clone()]);
+        let d = discovered(vec![pkg(root, "linux_entry", true), zephyr.clone()]);
         let mut s = spec(root);
         s.excluded = [zephyr.dir.clone()].into_iter().collect();
         let body = render(&d, &root.join("build/posix"), &s).expect("renders");
-        assert!(body.contains("native_entry"), "{body}");
+        assert!(body.contains("linux_entry"), "{body}");
         assert!(!body.contains("zephyr_entry"), "{body}");
     }
 
@@ -797,7 +797,7 @@ mod tests {
             declared(root, "c_talker_pkg", false, true, "nros_cmake"),
             declared(root, "crate_with_harness", true, true, "nros_cargo"),
         ]);
-        let body = render(&d, &root.join("build/native"), &spec(root)).expect("renders");
+        let body = render(&d, &root.join("build/linux"), &spec(root)).expect("renders");
         assert!(body.contains("c_talker_pkg"), "{body}");
         assert!(
             !body.contains("crate_with_harness"),
@@ -818,7 +818,7 @@ mod tests {
             true,
             "nros_cmake",
         )]);
-        let body = render(&d, &root.join("build/native"), &spec(root)).expect("renders");
+        let body = render(&d, &root.join("build/linux"), &spec(root)).expect("renders");
         assert!(body.contains("rust_heartbeat_pkg"), "{body}");
     }
 
@@ -829,7 +829,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
         let d = discovered(vec![pkg(root, "legacy_pkg", true)]);
-        let body = render(&d, &root.join("build/native"), &spec(root)).expect("renders");
+        let body = render(&d, &root.join("build/linux"), &spec(root)).expect("renders");
         assert!(body.contains("legacy_pkg"), "{body}");
     }
 
@@ -842,7 +842,7 @@ mod tests {
             declared(root, "healthy_pkg", false, true, "nros_cmake"),
             declared(root, "misdeclared_pkg", true, false, "nros_cmake"),
         ]);
-        let e = render(&d, &root.join("build/native"), &spec(root))
+        let e = render(&d, &root.join("build/linux"), &spec(root))
             .expect_err("a misdeclared participant must not be silently dropped");
         assert!(e.contains("misdeclared_pkg"), "must NAME the package: {e}");
         assert!(e.contains("CMakeLists.txt"), "and the missing file: {e}");

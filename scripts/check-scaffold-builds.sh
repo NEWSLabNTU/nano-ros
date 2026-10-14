@@ -53,7 +53,7 @@
 # | variant | artifact, measured 2026-09-22 |
 # | --- | --- |
 # | `rust_component` (no `system.toml`) | `target/debug/librust_component.rlib` |
-# | `rust_project` (`[image.native]`) | `build/native/target/debug/rust_project` |
+# | `rust_project` (`[image.linux]`) | `build/linux/target/debug/rust_project` |
 #
 # The second is RFC-0098 D1: a leaf that states a board gets one generated
 # settings file per image, `build/<image>/nros-cargo.toml`, carrying a per-image
@@ -423,10 +423,10 @@ locator_self_test() {
     }
 
     # 1 — the RFC-0098 D1 layout, by name.
-    _plant "$work/c1" native
-    mkdir -p "$dir/build/native/target/debug"
-    : > "$dir/build/native/target/debug/$name"
-    _expect "RFC-0098 project layout" found "build/native/target/debug/$name"
+    _plant "$work/c1" linux
+    mkdir -p "$dir/build/linux/target/debug"
+    : > "$dir/build/linux/target/debug/$name"
+    _expect "RFC-0098 project layout" found "build/linux/target/debug/$name"
 
     # 2 — the component layout (no image, so cargo's default `target/`).
     _plant "$work/c2"
@@ -435,28 +435,28 @@ locator_self_test() {
     _expect "component target/ layout" found "target/debug/lib$name.rlib"
 
     # 3 — a build that produced nothing at all.
-    _plant "$work/c3" native
-    mkdir -p "$dir/build/native/target/debug"
+    _plant "$work/c3" linux
+    mkdir -p "$dir/build/linux/target/debug"
     _expect "nothing built" refused
 
     # 4 — only a STALE artifact: right path, older than the build.
-    _plant "$work/c4" native
-    mkdir -p "$dir/build/native/target/debug"
-    : > "$dir/build/native/target/debug/$name"
-    touch -d '2020-01-01 00:00:00' "$dir/build/native/target/debug/$name"
+    _plant "$work/c4" linux
+    mkdir -p "$dir/build/linux/target/debug"
+    : > "$dir/build/linux/target/debug/$name"
+    touch -d '2020-01-01 00:00:00' "$dir/build/linux/target/debug/$name"
     _expect "stale artifact only" refused
 
     # 5 — only another package's binary, in the right directory.
-    _plant "$work/c5" native
-    mkdir -p "$dir/build/native/target/debug"
-    : > "$dir/build/native/target/debug/some_other_pkg"
-    : > "$dir/build/native/target/debug/libnros_core.rlib"
+    _plant "$work/c5" linux
+    mkdir -p "$dir/build/linux/target/debug"
+    : > "$dir/build/linux/target/debug/some_other_pkg"
+    : > "$dir/build/linux/target/debug/libnros_core.rlib"
     _expect "another package's artifact only" refused
 
     # 6 — the stamp itself is the precondition: without one, nothing may pass.
-    _plant "$work/c6" native
-    mkdir -p "$dir/build/native/target/debug"
-    : > "$dir/build/native/target/debug/$name"
+    _plant "$work/c6" linux
+    mkdir -p "$dir/build/linux/target/debug"
+    : > "$dir/build/linux/target/debug/$name"
     stamp=""
     _expect "no pre-build stamp" refused
 

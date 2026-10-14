@@ -109,10 +109,10 @@ heap_size = 98304            # NROS_ZEPHYR_HEAP_SIZE
 [image.zephyr_xrce.knobs.xrce]
 max_subscribers = 1          # NROS_XRCE_MAX_SUBSCRIBERS (-1, the default, derives it)
 
-[image.native.knobs.log]
+[image.linux.knobs.log]
 max_level = "warn"           # NROS_LOG_MAX_LEVEL (a level name or 0..6)
 
-[image.native.knobs.executor]
+[image.linux.knobs.executor]
 max_cbs = 16                 # NROS_EXECUTOR_MAX_CBS
 ```
 

@@ -699,7 +699,7 @@ const QUERYABLES_DERIVED_BY_CONSUMER: &str = "NROS_ZENOH_MAX_QUERYABLES";
 ///
 /// Until 1713 nothing completed it either, and the knob kept the zpico default
 /// of 16, which this comment called "larger and safe". It was neither:
-/// `native_rust_qos` (two nodes, `param_services` and a `[lifecycle]` block)
+/// `linux_rust_qos` (two nodes, `param_services` and a `[lifecycle]` block)
 /// needs 24, and eight of its parameter services failed `declare failed
 /// (Full)` -- working, and invisible to `ros2 service list`. Now
 /// `nros-zpico-build` completes the pool from the SAME `NROS_DECLARED_*`
@@ -1551,7 +1551,7 @@ nros = { version = "*", features = ["std", "param-services"] }
             dir.join("system.toml"),
             format!(
                 "[system]\nname = \"p\"\nrmw = \"zenoh\"\n\n[[component]]\npkg = \"p\"\n{decl}\n\
-                 [image.native]\nboard = \"linux\"\n"
+                 [image.linux]\nboard = \"linux\"\n"
             ),
         )
         .unwrap();

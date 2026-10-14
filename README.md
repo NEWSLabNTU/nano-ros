@@ -106,12 +106,12 @@ ros2 run rmw_zenoh_cpp rmw_zenohd      # contributor shortcut: just linux zenohd
 # Terminal 2: Talker
 cd examples/native/rust/talker
 nros sync && nros build                # generated msg crates, then the image
-RUST_LOG=info ./build/native/target/debug/talker
+RUST_LOG=info ./build/linux/target/debug/talker
 
 # Terminal 3: Listener
 cd examples/native/rust/listener
 nros sync && nros build
-RUST_LOG=info ./build/native/target/debug/listener
+RUST_LOG=info ./build/linux/target/debug/listener
 ```
 
 `nros sync` reads the example's `system.toml` — the one place a board, an RMW
@@ -173,7 +173,7 @@ pkg   = "native_c_talker"
 class = "native_c_talker::Talker"
 name  = "talker"
 
-[image.native]
+[image.linux]
 board = "linux"
 ```
 
@@ -198,7 +198,7 @@ ros2 run rmw_zenoh_cpp rmw_zenohd
 
 # Terminal 2: nano-ros talker
 cd examples/native/rust/talker && nros sync && nros build
-RUST_LOG=info ./build/native/target/debug/talker
+RUST_LOG=info ./build/linux/target/debug/talker
 
 # Terminal 3: ROS 2 listener
 source /opt/ros/humble/setup.bash

@@ -1,13 +1,14 @@
 # Phase 500 — the host board is `linux`
 
-**Status (2026-10-14). W1 and W2 landed on their branches; W3–W5 open.** W1 drops
+**Status (2026-10-14). W1, W2 and W3 landed on their branches; W4–W5 open.** W1 drops
 `native` as a board name: the host board descriptor names `["linux"]`, every
 tracked selector / deploy token / cmake `DEPLOY` / sdk-index key writes
 `linux`, `native` is refused with a hint naming `linux`, and
 `check-host-platform-vocabulary` holds it. W2 renamed the lane, the `just`
 module, the setup/build/test/doctor scope and the host test binaries to
-`linux`, keeping `native` as a deprecated alias. Image ids and the
-`examples/native/` directory still say `native` (W3–W4), and the deprecated
+`linux`, keeping `native` as a deprecated alias. W3 renamed the host image
+ids (`[image.native*]` → `[image.linux*]`) and every name derived from them.
+The `examples/native/` directory still says `native` (W4), and the deprecated
 aliases are W5's to retire.
 
 Implements the naming rule of
@@ -190,10 +191,41 @@ priorities, prose) and are out of scope.
     flash runner, RTOS-native priorities and prose; and the HISTORY series
     (`docs/roadmap/`, `docs/issues/`, `CHANGELOG.md`, audit reports), which
     record what was typed then.
-- [ ] **W3 — image ids.** `[image.native*]` → `[image.linux*]` (229 headers in
+- [x] **W3 — image ids.** `[image.native*]` → `[image.linux*]` (229 headers in
   95 `system.toml`), `examples/fixtures.toml` `image = "native…"` rows, the
   derived `native_entry` package names, settings paths
-  (`build/native/nros-cargo.toml`), and every test keyed on an id.
+  (`build/native/nros-cargo.toml`), and every test keyed on an id. One commit.
+  - **Ids.** The 50 host ids (`native`, `native_xrce`, `native_cyclonedds_jazzy`,
+    `native_robot1`, `native_rust_qos`, …) → `linux…`: 230 `[image.*]` headers
+    in 97 `system.toml` / `.case` files, plus every `[image.native…]` inlined in
+    a test, a script self-test or a doc (422 headers in all); 32
+    `default_images = ["native"]`; 96 `examples/fixtures.toml` `image =` rows.
+  - **Derived names.** Nothing in the derivations changed — they are functions
+    of the id (`leaf_system::entry_package_name` = `<id>_entry`,
+    `selection_crate_name`, `leaf_settings::settings_path` =
+    `build/<id>/nros-cargo.toml`, the cmake entry's
+    `<entry>_nros_main_generated.cpp` / `_link_libs.cmake`). Their spellings
+    moved with the ids in the SAME commit (#393): every `native…_entry` locator
+    in `nros_tests::fixtures::binaries` and the tests (387 spellings), the
+    `build/native/…` paths in the book / READMEs / scripts, the
+    `<bringup>:native` qualified ids, `nros build|sync|materialize native…`,
+    `--image native…`, `-DNROS_IMAGE=native`, and stale prose that still named
+    the pre-migration `native_entry_robot1` / `native_safety_*_entry`.
+  - **CLI.** The scaffold `nros new --workspace` writes `[image.linux]` +
+    `default_images = ["linux"]`; every CLI/IR unit test whose synthetic system
+    declares the id says `linux`. Two W1 leftovers on the way: `nros codegen
+    entry --board` defaulted to the retired `native` board key (now `linux`),
+    and two hints recommended `board = "native"` (`entity_census`,
+    `nros::main!`).
+  - **No alias.** An image id is a label the workspace authors, not a CLI
+    front door, and no code special-cases `native` as an id, so a user's own
+    `[image.native]` keeps building.
+  - Left alone: the fixture ROW ids (`workspace-rust-native-…`, a coordinate
+    vocabulary like the interop cell ids), the test helper names
+    `build_native_workspace_*_entry` (named for the host, not an id), example
+    PACKAGE names (`native_c_talker`, …; W4), `[host.native]` machine tables,
+    `[package.metadata.nros.deploy.*]` keys in fixtures, and every path into
+    `examples/native/` (W4).
 - [ ] **W4 — `examples/native/` → `examples/linux/`.** The sibling example dirs
   are named for their board (`mps2-an385-freertos`, `threadx-linux`, …). ~310
   moved files, ~112 code references (test locators, `just` recipes, workflows),
@@ -247,6 +279,15 @@ priorities, prose) and are out of scope.
   `retired-host-token: alias`. Self-test on every run.
 - **W3** — no tracked `[image.native*]`; fixtures and tests resolve the renamed
   ids; gate (mutation-proved) refuses a new `[image.native…]`.
+  **Gate:** `check-host-platform-vocabulary` check 8 (fast line) — no tracked
+  file outside the history series holds an `[image.native…]` header, a
+  `native…_entry` name or its `_nros_main_generated` / `_link_libs` /
+  `_nros_selection` products, and no `examples/fixtures.toml` row has
+  `image = "native…"`. Self-test on every run. **Mutation-proved**:
+  `[image.linux]` → `[image.native]` in `examples/native/rust/talker/system.toml`
+  → rc=1 naming the line; `image = "native"` on the `workspace-rust-native`
+  row → rc=1 naming the row; `native_entry_nros_main_generated.cpp` back in
+  `cpp_multi_node_entry.rs` → rc=1; each restored → rc=0.
 - **W4** — no tracked path under `examples/native/`; every locator moved in the
   same commit; gate (mutation-proved) refuses the old directory.
 - **W5** — a gate (mutation-proved) that no alias path remains: each retired

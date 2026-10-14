@@ -43,7 +43,7 @@ priority = 1
 [image_defaults]
 rmw = "zenoh"
 
-[image.native]
+[image.linux]
 board = "linux"
 
 # phase-427 W12 (issue 1247) — the FREESTANDING image of the same package.

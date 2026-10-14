@@ -42,7 +42,7 @@ fn plant(root: &Path) {
     .unwrap();
     std::fs::write(
         leaf.join("system.toml"),
-        "[image.native]\nboard = \"linux\"\n",
+        "[image.linux]\nboard = \"linux\"\n",
     )
     .unwrap();
     // What `nros sync`'s metadata probe writes.
@@ -108,7 +108,7 @@ fn descriptor_text(root: &Path) -> String {
     let schema_shapes = rows.into_iter().map(|r| (r.type_name, r.shape)).collect();
 
     let inputs = DescriptorInputs {
-        entry: "native".into(),
+        entry: "linux".into(),
         inventory: Some(&inv),
         bounds,
         schema_shapes,

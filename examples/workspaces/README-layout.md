@@ -104,8 +104,8 @@ Measured 2026-09-27 — rust 17 rows, c 15, cpp 16, **12 common to all three**:
 | present in | missing from | what it is |
 |---|---|---|
 | rust | c, cpp | `esp32` — the ESP32-C3 board build |
-| rust | c, cpp | `native_service_inprocess` — same-process service round-trip |
-| rust | c, cpp | `native_showcase` — the combined showcase launch |
+| rust | c, cpp | `linux_service_inprocess` — same-process service round-trip |
+| rust | c, cpp | `linux_showcase` — the combined showcase launch |
 | rust | c, cpp | `zephyr_robot1` — the per-host Zephyr multi-host image (class 1z) |
 | rust, c | cpp | `nuttx` — the NuttX board build |
 | c, cpp | rust | `freertos_posix` — the `freertos-posix` board (Cyclone DDS) |

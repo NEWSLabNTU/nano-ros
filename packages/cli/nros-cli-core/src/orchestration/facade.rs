@@ -92,7 +92,7 @@ struct RuntimeDeps {
 ///
 /// Issue 0831. `[image.<id>].rmw` used to reach exactly one thing on the cargo
 /// driver — `coordinate()`, which names the build DIRECTORY — while the backend
-/// came from here, off `[system] rmw`. So `[image.native_cyclonedds]` produced
+/// came from here, off `[system] rmw`. So `[image.linux_cyclonedds]` produced
 /// `build/posix-cyclonedds/…` containing a zenoh binary: measured 0 occurrences
 /// of "cyclone" and 1916 of "zenoh" in the artifact. A directory named for a
 /// backend it does not contain reads as coverage, and two of tier 2's fourteen
@@ -856,7 +856,7 @@ fn render_manifest(
 /// leaves the `..`s embedded. Cargo reads such a path fine, but `rel_from`
 /// below compares components to find the common prefix, and an un-collapsed
 /// `..` makes every path look divergent — producing a correct-but-absurd
-/// `../../../src/native_entry/../../../../../packages/...`.
+/// `../../../src/linux_entry/../../../../../packages/...`.
 fn lexical_normalize(p: &Path) -> PathBuf {
     let mut out: Vec<std::path::Component<'_>> = Vec::new();
     for c in p.components() {
@@ -919,7 +919,7 @@ mod tests {
     fn rel_from_walks_up_then_down() {
         assert_eq!(
             rel_from(
-                Path::new("/ws/build/nros-sync/facade/native_entry"),
+                Path::new("/ws/build/nros-sync/facade/linux_entry"),
                 Path::new("/repo/packages/api/nros")
             ),
             "../../../../../repo/packages/api/nros"
@@ -963,7 +963,7 @@ mod tests {
         let bringup = root.join("src/demo_bringup");
         std::fs::create_dir_all(&bringup).unwrap();
         let system = "[system]\nname = \"demo\"\nrmw = \"zenoh\"\ndomain_id = 0\n\n\
-                      [image.native]\nboard = \"linux\"\n";
+                      [image.linux]\nboard = \"linux\"\n";
         std::fs::write(bringup.join("system.toml"), system).unwrap();
         let sys: SystemToml = toml::from_str(system).unwrap();
         let pkg = |name: &str, extra: &str| {
@@ -989,10 +989,10 @@ mod tests {
             write("talker_pkg", &marked).is_none(),
             "a marker no image backs is not an entry"
         );
-        // Unmarked, claimed by name (`[image.native]` -> `native_entry`).
-        let claimed = pkg("native_entry", "");
-        let f = write("native_entry", &claimed).expect("an image claims it: a facade");
-        assert_eq!(f.entry, "native_entry");
+        // Unmarked, claimed by name (`[image.linux]` -> `linux_entry`).
+        let claimed = pkg("linux_entry", "");
+        let f = write("linux_entry", &claimed).expect("an image claims it: a facade");
+        assert_eq!(f.entry, "linux_entry");
     }
 
     #[test]
@@ -1000,7 +1000,7 @@ mod tests {
         // The exact shape a real entry produces: its `nros` dep is written
         // relative to itself, and joining leaves the hops embedded.
         assert_eq!(
-            lexical_normalize(Path::new("/ws/src/native_entry/../../../packages/api/nros")),
+            lexical_normalize(Path::new("/ws/src/linux_entry/../../../packages/api/nros")),
             Path::new("/packages/api/nros")
         );
         assert_eq!(

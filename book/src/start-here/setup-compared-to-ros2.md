@@ -55,7 +55,7 @@ nros setup linux --rmw zenoh
 cd examples/native/rust/talker
 nros sync
 nros build
-./build/native/target/debug/talker
+./build/linux/target/debug/talker
 ```
 
 Step 3 is the one that maps most directly onto ROS 2, and it maps

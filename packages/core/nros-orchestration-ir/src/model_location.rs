@@ -946,7 +946,7 @@ mod tests {
 
     /// Two images of one multi-host system must not resolve to ONE model.
     ///
-    /// Issue 1136. `native_robot1` and `native_robot2` differ in exactly one
+    /// Issue 1136. `linux_robot1` and `linux_robot2` differ in exactly one
     /// thing — `args = { host = … }`, emitted as `LAUNCH_ARGS host=…` — and
     /// that single difference is what picks the per-host `[[model]]` variant.
     /// Drop it anywhere along the chain and both images resolve the whole

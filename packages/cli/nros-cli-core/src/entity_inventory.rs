@@ -839,7 +839,7 @@ pub struct EntityInventory {
 ///
 /// [`EntityInventory::from_model`] answers `None` for a model that describes no
 /// wiring, which loses all of this with the rows. A shared runtime still needs
-/// it for such an image -- `examples/workspaces/cpp`'s `native_robot1`/`2` run
+/// it for such an image -- `examples/workspaces/cpp`'s `linux_robot1`/`2` run
 /// `multihost.launch.xml`, which has no contract -- because "which components
 /// does this image start" is what bounds that image's own need.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -1059,7 +1059,7 @@ impl InfraServices {
     /// The REGISTRATION reads the second (`nros::main!`'s `lifecycle_code`,
     /// `codegen::entry`'s `Plan::lifecycle`), so an image whose bringup used
     /// the block registered five lifecycle servers and a `transition_event`
-    /// publisher into pools derived without them: `native_rust_remap` was
+    /// publisher into pools derived without them: `linux_rust_remap` was
     /// sized `ZPICO_MAX_PUBLISHERS=1`, its own `/remapped_out` took the slot,
     /// and the entry died at boot with `Capability { name: "lifecycle",
     /// reason: "Transport::InvalidConfig" }` before it published once. Either
@@ -3795,7 +3795,7 @@ impl EntityInventory {
         // `register_lifecycle_services` creates its five servers and its
         // `transition_event` publisher on the EXECUTOR's node, which is the
         // session's own name, so in a multi-node image it claims the same
-        // extra slot the reporter does. Measured on `native_rust_qos` once a
+        // extra slot the reporter does. Measured on `linux_rust_qos` once a
         // contract made the table exact (2 slots, 3 names): the image died at
         // boot with `Capability { name: "lifecycle", reason:
         // "Transport::ConnectionFailed" }`. Both land on ONE name, so they
@@ -6829,7 +6829,7 @@ mod tests {
 
     /// Issue 1740 -- the lifecycle family registers on the EXECUTOR's node
     /// name, so a lifecycle image needs one node-table slot beyond its
-    /// components. Without it `native_rust_qos`, sized exactly by its contract
+    /// components. Without it `linux_rust_qos`, sized exactly by its contract
     /// (2 slots, 3 names), died at boot: `Capability { name: "lifecycle",
     /// reason: "Transport::ConnectionFailed" }`.
     #[test]
@@ -7357,7 +7357,7 @@ execution:
     /// entry registers the family from that field. So the block alone must
     /// size the pools exactly as `features = ["lifecycle"]` does: five
     /// queryables and the `transition_event` publisher. Before the fix this
-    /// derived `features = []`'s numbers, and `native_rust_remap` (one
+    /// derived `features = []`'s numbers, and `linux_rust_remap` (one
     /// publisher of its own) was built with `ZPICO_MAX_PUBLISHERS=1` and died
     /// at boot registering lifecycle.
     #[test]
@@ -10417,7 +10417,7 @@ mod shared_runtime_tests {
     /// `examples/workspaces/cpp`'s shape, cut down: the heavier image is NOT
     /// the last one. The old composition wrote one fragment per entry and the
     /// last entry's won, so the shared runtime got the service server's one
-    /// callback and `native_entry` (two) died `ExecutorFull` at boot.
+    /// callback and `linux_entry` (two) died `ExecutorFull` at boot.
     #[test]
     fn the_shared_runtime_holds_every_image_whatever_order_they_come_in() {
         let meta = registered(&["talker", "listener", "server"]);
@@ -10599,7 +10599,7 @@ mod shared_runtime_tests {
         assert_eq!(shared.derive(), union.derive());
     }
 
-    /// Issue 1701 -- `examples/workspaces/cpp`'s `native_robot1`: an image
+    /// Issue 1701 -- `examples/workspaces/cpp`'s `linux_robot1`: an image
     /// whose launch file has no contract, starting components another image's
     /// contract describes. Its own need is those components, taken from that
     /// statement -- not a refusal (every pool at its crate default) and not

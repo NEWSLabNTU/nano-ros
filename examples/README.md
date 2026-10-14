@@ -62,7 +62,7 @@ Each example is a standalone Cargo + CMake package — no walk-up in the manifes
   cp -r examples/native/rust/talker ~/my-talker && cd ~/my-talker
   export NROS_REPO_DIR=/path/to/nano-ros
   nros sync     # generated/ message crates + build/<image>/nros-cargo.toml
-  nros build    # or: nros build native
+  nros build    # or: nros build linux
   ```
 
   Driving cargo yourself is supported — hand it the file `nros sync` wrote. Run it from the directory *above* the package: the leaf's own `.cargo/` still exists and cargo would read it a second time (phase-445 W6 deletes that directory, after which the working directory stops mattering).
@@ -70,7 +70,7 @@ Each example is a standalone Cargo + CMake package — no walk-up in the manifes
   ```bash
   cd ~
   cargo build --manifest-path my-talker/Cargo.toml \
-              --config my-talker/build/native/nros-cargo.toml
+              --config my-talker/build/linux/nros-cargo.toml
   ```
 
   A single-package **Rust** leaf is its own entry, and on a supported board it names no board crate: it depends on `<pkg>_nros_selection = { path = "build/nros/selection" }`, which `nros sync` / `nros build` generate with the image's board crate, RMW backend and runtime crates (RFC-0098 D6), so switching it to another board is the `[image.*] board` line, as it is for a C/C++ leaf and a workspace ([issue 1305](../docs/issues/archived/1305-single-package-board-crate-dep-not-generated.md)).
@@ -485,11 +485,11 @@ Each block assumes a zenoh router running on `tcp/127.0.0.1:7447` — `ros2 run 
 ```bash
 # terminal 2
 cd examples/native/rust/talker && nros sync && nros build
-./build/native/target/debug/talker
+./build/linux/target/debug/talker
 
 # terminal 3
 cd examples/native/rust/listener && nros sync && nros build
-./build/native/target/debug/listener
+./build/linux/target/debug/listener
 ```
 
 ### QEMU bare-metal Cortex-M3 (MPS2-AN385)
@@ -520,7 +520,7 @@ ros2 run rmw_zenoh_cpp rmw_zenohd
 
 # terminal 2
 cd examples/native/rust/talker && nros sync && nros build
-./build/native/target/debug/talker
+./build/linux/target/debug/talker
 
 # terminal 3
 source /opt/ros/humble/setup.bash

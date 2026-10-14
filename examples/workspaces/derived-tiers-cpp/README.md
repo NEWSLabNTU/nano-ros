@@ -45,7 +45,7 @@ placement, which is the island's case and the one W6 keeps legal.
 ```sh
 source ./activate.sh
 cd examples/workspaces/derived-tiers-cpp
-nros build demo_bringup:native --workspace . --offline
+nros build demo_bringup:linux --workspace . --offline
 ```
 
 `src/zephyr_entry/` is the hand-written west application `[image.zephyr]`

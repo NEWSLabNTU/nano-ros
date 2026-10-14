@@ -769,7 +769,7 @@ fn endpoint_row(
         // "neither of its two sizes"; once phase-457-payload W2 handed the model
         // roads their bound tables and W4 their triple, that reason was FALSE on
         // a row stating both `wire_bound_bytes` and `[target] pointer_bytes`
-        // beside it (measured: `examples/workspaces/cpp`'s `native_entry`). The
+        // beside it (measured: `examples/workspaces/cpp`'s `linux_entry`). The
         // chain refuses on whichever input is actually missing and names the
         // refusal it inherits, so the diagnosis is the row's own.
         if unattributed.is_some() {
@@ -4384,7 +4384,7 @@ mod tests {
     /// this field outright, with a reason claiming the region had "neither of its
     /// two sizes", on a row that stated `wire_bound_bytes` and whose descriptor
     /// stated `[target] pointer_bytes` — `examples/workspaces/cpp`'s
-    /// `native_entry.toml` carried exactly that pair.
+    /// `linux_entry.toml` carried exactly that pair.
     #[test]
     fn handed_the_tables_the_model_road_states_the_region_the_leaf_road_states() {
         let inv = inventory(vec![sub("std_msgs/msg/String", "/chatter", Some(10))]);

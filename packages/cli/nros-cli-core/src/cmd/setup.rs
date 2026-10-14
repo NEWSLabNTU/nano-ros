@@ -5271,7 +5271,7 @@ mod workspace_scan_tests {
     #[test]
     fn a_family_board_reports_no_separate_board() {
         let sys = "[system]\nname = \"t\"\nrmw = \"zenoh\"\ndomain_id = 0\n\n\
-                   [image.native]\nboard = \"linux\"\nrmw = \"cyclonedds\"\n";
+                   [image.linux]\nboard = \"linux\"\nrmw = \"cyclonedds\"\n";
         let catalog = shipped_catalog();
         let got = deploy_targets(sys, Some(&catalog));
         assert_eq!(got.len(), 1);

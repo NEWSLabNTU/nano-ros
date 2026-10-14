@@ -13,13 +13,13 @@ Two commands, whatever the workspace shape:
 cd examples/native/rust/talker
 nros sync
 nros build
-./build/native/target/debug/talker
+./build/linux/target/debug/talker
 
 # A workspace — same two commands, one entry generated per [image.*]:
 cd my_robot
 nros sync
 nros build
-./build/posix-cyclonedds-linux/cmake/native_entry
+./build/posix-cyclonedds-linux/cmake/linux_entry
 ```
 
 `nros metadata` / `nros plan` / `nros check` are the inspection path, not

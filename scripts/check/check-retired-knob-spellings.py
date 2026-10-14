@@ -246,7 +246,7 @@ SELF_TESTS = [
     ("rust", '// nros-c-macro-names: begin\n("ZPICO_X", n.to_string()),\n// nros-c-macro-names: end\n', False),
     ("rust", '// nros-c-macro-names: begin\n// nros-c-macro-names: end\nknob("ZPICO_X")\n', True),
     ("toml", "[env]\nZPICO_X = \"4\"\n", True),
-    ("toml", "[image.native.env]\nZPICO_X = \"4\"\n", True),
+    ("toml", "[image.linux.env]\nZPICO_X = \"4\"\n", True),
     ("toml", "[[fixture]]\nenv = { ZPICO_X = \"2\" }\n", True),
     ("toml", "defines_env = { ZPICO_X = { env = \"NROS_ZENOH_X\" } }\n", False),
     ("toml", "[defines]\nZPICO_X = \"4\"\n", False),

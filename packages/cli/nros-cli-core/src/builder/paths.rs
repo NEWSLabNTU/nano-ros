@@ -64,7 +64,7 @@ mod tests {
     #[test]
     fn a_sibling_needs_one_step_up() {
         assert_eq!(
-            relative(Path::new("/ws/build/native"), Path::new("/ws/src/talker")).as_deref(),
+            relative(Path::new("/ws/build/linux"), Path::new("/ws/src/talker")).as_deref(),
             Some("../../src/talker")
         );
     }
@@ -99,7 +99,7 @@ mod tests {
         // that motivated this phase do it.
         assert_eq!(
             relative(
-                Path::new("/opt/u/ws/build/native"),
+                Path::new("/opt/u/ws/build/linux"),
                 Path::new("/opt/u/nano-ros/packages/api/nros")
             )
             .as_deref(),
@@ -111,7 +111,7 @@ mod tests {
     fn a_relative_input_yields_none_rather_than_a_wrong_answer() {
         // No shared root component. Returning None forces the caller to fail
         // rather than silently emit something host-specific.
-        assert!(relative(Path::new("build/native"), Path::new("/ws/src/a")).is_none());
+        assert!(relative(Path::new("build/linux"), Path::new("/ws/src/a")).is_none());
     }
 
     #[test]
@@ -128,7 +128,7 @@ mod tests {
         // generated file that differed by host separator would not be
         // byte-identical across machines.
         let r = relative(
-            &PathBuf::from("/ws/build/native"),
+            &PathBuf::from("/ws/build/linux"),
             &PathBuf::from("/ws/src/a/b/c"),
         )
         .expect("resolves");

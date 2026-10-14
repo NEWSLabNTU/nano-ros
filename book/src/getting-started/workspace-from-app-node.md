@@ -129,8 +129,8 @@ row per program), and a `launch/` directory with ROS 2 launch XML. **No
 `Cargo.toml`, no compiled code.** Naming convention `<system>_bringup`,
 matching nav2 / Autoware / turtlebot3.
 
-**Image** — not a package. `[image.native] board = "linux"` is a row in
-that `system.toml`, and `nros build native` turns it into a program: it
+**Image** — not a package. `[image.linux] board = "linux"` is a row in
+that `system.toml`, and `nros build linux` turns it into a program: it
 generates, under `build/`, the entry that links the Node pkgs and the board
 crate and hands control to the nano-ros runtime. A second board is a second
 row, not a second directory.
@@ -140,7 +140,7 @@ group:
 
 ```bash
 nros sync      # generated message bindings + the generated build settings
-nros build     # every [image.*]; or name one: nros build native
+nros build     # every [image.*]; or name one: nros build linux
 ```
 
 `nros sync` is yours to run once per workspace, and again whenever you edit

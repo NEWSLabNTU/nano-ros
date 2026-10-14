@@ -246,7 +246,7 @@ The bringup's `system.toml` names the board once per deploy target:
 name = "my_robot"
 rmw  = "cyclonedds"
 
-[image.native]
+[image.linux]
 board = "linux"
 ```
 
@@ -257,7 +257,7 @@ or `idf.py`:
 
 ```bash
 nros sync
-nros build                     # or: nros build native
+nros build                     # or: nros build linux
 ```
 
 `nros new my_robot --workspace` scaffolds exactly that layout — see

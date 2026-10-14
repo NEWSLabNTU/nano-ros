@@ -9,18 +9,18 @@ is required ([RFC-0026](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/de
 cp -r examples/native/rust/serial-listener ~/my-serial-listener && cd ~/my-serial-listener
 export NROS_REPO_DIR=/path/to/nano-ros   # your nano-ros checkout
 nros sync     # generated/ message crates + build/<image>/nros-cargo.toml
-nros build    # or: nros build native
+nros build    # or: nros build linux
 ```
 
 ## Run
 
 Needs the host daemon of the RMW `system.toml` names.
-`nros build` leaves the binary at `build/native/target/debug/xrce-serial-listener`.
+`nros build` leaves the binary at `build/linux/target/debug/xrce-serial-listener`.
 
 ## Config
 
 Board, RMW, domain and locator: `system.toml` beside `Cargo.toml`
-(`[image.native]` + `[system]`, RFC-0098 D3/D5). No build command
+(`[image.linux]` + `[system]`, RFC-0098 D3/D5). No build command
 carries any of them.
 
 `Cargo.toml` names no board crate. The board crate, its RMW backend and

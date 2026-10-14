@@ -199,16 +199,16 @@ mod tests {
         (c, path_env[nros_sizing_descriptor::DESCRIPTOR_ENV].clone())
     }
 
-    /// The issue's own pair: `native` (2 nodes) and `native_service_server`
+    /// The issue's own pair: `linux` (2 nodes) and `linux_service_server`
     /// (1 node) must NOT share; two entries with equal facts must, down to the
     /// byte of the path cargo compares.
     #[test]
     fn equal_facts_share_a_class_and_different_facts_do_not() {
         let tmp = tempfile::tempdir().unwrap();
         let tdir = tmp.path().join("target-fixtures");
-        let a = write_desc(tmp.path(), "native", 2);
-        let b = write_desc(tmp.path(), "native_service_inprocess", 2);
-        let c = write_desc(tmp.path(), "native_service_server", 1);
+        let a = write_desc(tmp.path(), "linux", 2);
+        let b = write_desc(tmp.path(), "linux_service_inprocess", 2);
+        let c = write_desc(tmp.path(), "linux_service_server", 1);
         let (ca, pa) = class_for(&tdir, &a);
         let (cb, pb) = class_for(&tdir, &b);
         let (cc, pc) = class_for(&tdir, &c);
@@ -235,7 +235,7 @@ mod tests {
     fn an_unchanged_class_keeps_its_mtime() {
         let tmp = tempfile::tempdir().unwrap();
         let tdir = tmp.path().join("t");
-        let a = write_desc(tmp.path(), "native", 2);
+        let a = write_desc(tmp.path(), "linux", 2);
         let (_, p) = class_for(&tdir, &a);
         let before = std::fs::metadata(&p).unwrap().modified().unwrap();
         std::thread::sleep(std::time::Duration::from_millis(20));

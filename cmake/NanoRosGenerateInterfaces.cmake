@@ -446,7 +446,7 @@ function(nros_generate_interfaces target)
   # build against "N of N fragments have not been written yet", compiled every
   # message-bound knob at its placeholder, and only the SECOND `nros build`
   # re-configured with the real answer and rebuilt -- measured on
-  # `examples/workspaces/cpp` `demo_bringup:native`: `native_entry` differed
+  # `examples/workspaces/cpp` `demo_bringup:linux`: `linux_entry` differed
   # between build 1 and build 2 and settled at build 2.
   #
   # So when the fragment is missing or older than an input, codegen runs NOW,

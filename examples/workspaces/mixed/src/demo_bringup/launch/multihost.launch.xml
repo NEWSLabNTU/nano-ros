@@ -4,8 +4,8 @@
      RESOLVE: robot1 runs the C talker + Rust heartbeat, robot2 the C++
      listener, `all` (the default) keeps all three. Bake one model per host:
        nros-launch-resolve … multihost.launch.xml host:=robot1 -o config/multihost_robot1_model.yaml
-     `native_entry_robot1` consumes the robot1 model (talker+heartbeat),
-     `native_entry_robot2` the robot2 model (listener) — a genuinely
+     `linux_robot1_entry` consumes the robot1 model (talker+heartbeat),
+     `linux_robot2_entry` the robot2 model (listener) — a genuinely
      mixed-language multi-host topology. Plain ROS 2 XML — the retired
      `<node machine=…>` form was ROS 1 syntax ROS 2 rejects. -->
 <launch>

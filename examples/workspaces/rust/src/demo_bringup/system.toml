@@ -112,7 +112,7 @@ panic = "own"
 # Gate: `check-image-locator-bake`.
 locator = "tcp/10.0.2.2:7830"
 
-[image.native]
+[image.linux]
 board = "linux"
 launch = "system.launch.xml"
 
@@ -121,47 +121,47 @@ launch = "system.launch.xml"
 # `[system] rmw`), so `build/posix-cyclonedds/` now holds a cyclonedds binary.
 # Before the fix these two coordinates were fixture rows claiming an RMW against
 # an image that declared none, and tier 2 ran zenoh for both.
-[image.native_cyclonedds]
+[image.linux_cyclonedds]
 board = "linux"
 launch = "system.launch.xml"
 rmw = "cyclonedds"
 
-[image.native_xrce]
+[image.linux_xrce]
 board = "linux"
 launch = "system.launch.xml"
 rmw = "xrce"
 
-[image.native_action_client]
+[image.linux_action_client]
 board = "linux"
 launch = "action_client.launch.xml"
 
-[image.native_action_server]
+[image.linux_action_server]
 board = "linux"
 launch = "action_server.launch.xml"
 
-[image.native_robot1]
+[image.linux_robot1]
 board = "linux"
 launch = "multihost.launch.xml"
 args = { host = "robot1" }
 
-[image.native_robot2]
+[image.linux_robot2]
 board = "linux"
 launch = "multihost.launch.xml"
 args = { host = "robot2" }
 
-[image.native_service_client]
+[image.linux_service_client]
 board = "linux"
 launch = "service_client.launch.xml"
 
-[image.native_service_inprocess]
+[image.linux_service_inprocess]
 board = "linux"
 launch = "service_inprocess.launch.xml"
 
-[image.native_service_server]
+[image.linux_service_server]
 board = "linux"
 launch = "service_server.launch.xml"
 
-[image.native_showcase]
+[image.linux_showcase]
 board = "linux"
 launch = "showcase.launch.xml"
 

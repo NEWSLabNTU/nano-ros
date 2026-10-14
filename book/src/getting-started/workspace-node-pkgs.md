@@ -313,7 +313,7 @@ Node pkgs its launch file names:
 ```bash
 # From examples/workspaces/rust/ (or your workspace root):
 nros sync
-nros build native
+nros build linux
 ```
 
 `nros sync` writes the generated message crates and the build settings each

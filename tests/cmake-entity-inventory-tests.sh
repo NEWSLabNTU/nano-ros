@@ -808,7 +808,7 @@ fi
 # own model, into ONE fragment, and links ONE runtime into every entry. When
 # each call passed only its own model, the fragment the readers found after
 # the entries was the LAST entry's, and `examples/workspaces/cpp`'s
-# `native_entry` (two callbacks) got the service server's MAX_CBS of 1 and died
+# `linux_entry` (two callbacks) got the service server's MAX_CBS of 1 and died
 # `ExecutorFull` at boot. The last call must name EVERY model, each once.
 # ---------------------------------------------------------------------------
 log_info "J. every entry's model reaches the last derivation, each once"

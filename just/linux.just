@@ -253,7 +253,7 @@ setup:
 # tolerate:
 #
 #   nros build: warning: no selection facade at …/generated/nros-selection/… —
-#   building `native_rust_qos` without its RMW, ROS edition and capability
+#   building `linux_rust_qos` without its RMW, ROS edition and capability
 #   features. Run `nros sync` first if this Entry needs them (issue 0937).
 #
 # That warning is GONE (issue 0831): a missing facade is now written from the
@@ -1063,7 +1063,7 @@ test-ros2-multinode-cpp verbose="":
     @just _test-focused 'binary(=cpp_multi_node_entry)' {{verbose}}
 
 # DECLARATIVE zenoh → Cyclone DDS bridge e2e (phase-267 W-B, issues 0106 / 0107
-# / 0109). The bridge is a `native_entry` whose `system.toml` declares the
+# / 0109). The bridge is a `linux_entry` whose `system.toml` declares the
 # `[[bridge]]`; `nros sync` bakes `nros-bridge.toml` and the macro emits the
 # pump. Only the receiver-asserting case wants a stock ROS 2 peer, and it
 # needs `rmw_cyclonedds_cpp` specifically.

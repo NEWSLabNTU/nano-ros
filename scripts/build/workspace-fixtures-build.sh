@@ -468,7 +468,7 @@ build_workspace() {
                 # property of the TEST, not of the program.
                 # QUALIFIED `<bringup>:<image>`. A workspace may declare the
                 # same image id in more than one bringup — `realtime-c` has
-                # `demo_bringup:native` and `smp_bringup:native` — and an
+                # `demo_bringup:linux` and `smp_bringup:linux` — and an
                 # unqualified name is then ambiguous and refused. The row
                 # already names its bringup, so qualifying costs nothing and is
                 # unambiguous everywhere, including single-bringup workspaces.

@@ -1251,7 +1251,7 @@ impl SystemToml {
     /// Issue 0951 — `domain_id` and `locator` are a MACHINE's runtime facts, so
     /// they live on `[host.*]`. But the id a caller resolves is an IMAGE id, and
     /// the two are not the same name: `examples/workspaces/rust` builds images
-    /// `native_robot1` / `native_robot2` for hosts `robot1` / `robot2`. The link
+    /// `linux_robot1` / `linux_robot2` for hosts `robot1` / `robot2`. The link
     /// is the image's `args` — the launch-argument bindings that are already
     /// "how an image selects a MACHINE" (see [`super::image::ImageBlock::args`]).
     ///
@@ -2310,7 +2310,7 @@ name = "d"
 rmw = "zenoh"
 domain_id = 0
 
-[image.native]
+[image.linux]
 board = "linux"
 rmw = "cyclonedds"
 
@@ -2321,10 +2321,10 @@ board = "qemu-mps2-an385"
         .unwrap();
 
         // CLI flag wins over everything.
-        assert_eq!(sys.resolved_rmw(Some("native"), Some("xrce")), "xrce");
+        assert_eq!(sys.resolved_rmw(Some("linux"), Some("xrce")), "xrce");
         // [image.<t>].rmw overrides [system].rmw — issue 0938: `nros build`
         // and `codegen-system` read the same rung.
-        assert_eq!(sys.resolved_rmw(Some("native"), None), "cyclonedds");
+        assert_eq!(sys.resolved_rmw(Some("linux"), None), "cyclonedds");
         // And `[image_defaults]` is the base, exactly as `facade::image_rmw`
         // merges it — one answer for `nros build` and `nros plan`.
         let defaults: SystemToml = toml::from_str(
@@ -2428,13 +2428,13 @@ board = "linux"
         // CLI flag wins.
         let two: SystemToml = toml::from_str(
             "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n\
-             default_images=[\"native\"]\n\
-             [image.native]\nboard=\"linux\"\n[image.qemu]\nboard=\"linux\"\n",
+             default_images=[\"linux\"]\n\
+             [image.linux]\nboard=\"linux\"\n[image.qemu]\nboard=\"linux\"\n",
         )
         .unwrap();
         assert_eq!(two.resolve_image(Some("qemu")).as_deref(), Some("qemu"));
         // No flag → the one image `default_images` names.
-        assert_eq!(two.resolve_image(None).as_deref(), Some("native"));
+        assert_eq!(two.resolve_image(None).as_deref(), Some("linux"));
 
         // `default_images` naming SEVERAL is not an answer to "which one".
         // A bringup that builds three images has no single "the" target, and
@@ -2527,24 +2527,24 @@ board = "linux"
             "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=1\nlocator=\"tcp/sys:7447\"\n\
              [host.robot1]\ndomain_id=7\nlocator=\"tcp/r1:7447\"\n\
              [host.robot2]\n\
-             [image.native_robot1]\nboard=\"linux\"\nargs={ host = \"robot1\" }\n\
-             [image.native_robot2]\nboard=\"linux\"\nargs={ host = \"robot2\" }\n\
+             [image.linux_robot1]\nboard=\"linux\"\nargs={ host = \"robot1\" }\n\
+             [image.linux_robot2]\nboard=\"linux\"\nargs={ host = \"robot2\" }\n\
              [image.plain]\nboard=\"linux\"\n",
         )
         .unwrap();
 
         // The image names its machine through `args`; the machine states the
         // runtime facts.
-        assert_eq!(sys.resolved_domain_id(Some("native_robot1")), 7);
+        assert_eq!(sys.resolved_domain_id(Some("linux_robot1")), 7);
         assert_eq!(
-            sys.resolved_locator(Some("native_robot1")).as_deref(),
+            sys.resolved_locator(Some("linux_robot1")).as_deref(),
             Some("tcp/r1:7447")
         );
         // A host that overrides nothing falls to `[system]` — not to the other
         // host's values.
-        assert_eq!(sys.resolved_domain_id(Some("native_robot2")), 1);
+        assert_eq!(sys.resolved_domain_id(Some("linux_robot2")), 1);
         assert_eq!(
-            sys.resolved_locator(Some("native_robot2")).as_deref(),
+            sys.resolved_locator(Some("linux_robot2")).as_deref(),
             Some("tcp/sys:7447")
         );
         // An image bound to no host is a system-level answer.
@@ -2590,7 +2590,7 @@ board = "linux"
             "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\nlocator=\"tcp/sys:7447\"\n\
              [host.robot]\ndomain_id=7\nlocator=\"tcp/robot:7450\"\n\
              [image.robot]\nboard=\"linux\"\nargs={ host = \"robot\" }\n\
-             [image.native]\nboard=\"linux\"\n",
+             [image.linux]\nboard=\"linux\"\n",
         )
         .unwrap();
 
@@ -2600,10 +2600,10 @@ board = "linux"
             sys.resolved_locator(Some("robot")).as_deref(),
             Some("tcp/robot:7450")
         );
-        // native overrides neither → [system] defaults.
-        assert_eq!(sys.resolved_domain_id(Some("native")), 0);
+        // linux overrides neither → [system] defaults.
+        assert_eq!(sys.resolved_domain_id(Some("linux")), 0);
         assert_eq!(
-            sys.resolved_locator(Some("native")).as_deref(),
+            sys.resolved_locator(Some("linux")).as_deref(),
             Some("tcp/sys:7447")
         );
         // no target → [system] defaults.

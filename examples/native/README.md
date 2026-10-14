@@ -33,7 +33,7 @@ ros2 run rmw_zenoh_cpp rmw_zenohd        # zenohd on tcp/127.0.0.1:7447
 # terminal 2: any leaf in this tree, same two commands
 cd examples/native/rust/talker
 nros sync && nros build
-./build/native/target/debug/talker
+./build/linux/target/debug/talker
 ```
 
 A C or C++ leaf skips `nros sync` — its message bindings are a CMake-time

@@ -4028,7 +4028,7 @@ mod tests {
             "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n\
              [image.embedded]\nboard=\"stm32f4\"\n\
              profile=\"release\"\nfeatures=[\"safety\",\"rosout\"]\n\
-             [image.native]\nboard=\"linux\"\n",
+             [image.linux]\nboard=\"linux\"\n",
         )
         .unwrap();
 
@@ -4038,9 +4038,9 @@ mod tests {
         assert_eq!(emb["features"], json!(["safety", "rosout"]));
         assert!(emb.get("optimize").is_none());
 
-        // --image native → nothing declared → pre-256 defaults (native / x86_64 /
+        // --image linux → nothing declared → pre-256 defaults (native / x86_64 /
         // debug, no optimize, empty features).
-        let nat = schema_build_json(Some(&st), None, Some("native"), None).expect("build json");
+        let nat = schema_build_json(Some(&st), None, Some("linux"), None).expect("build json");
         assert_eq!(nat["target"], "x86_64-unknown-linux-gnu");
         assert_eq!(nat["board"], "linux");
         assert_eq!(nat["profile"], "debug");

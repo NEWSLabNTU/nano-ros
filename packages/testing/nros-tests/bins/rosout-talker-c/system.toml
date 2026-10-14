@@ -13,5 +13,5 @@ pkg = "rosout_talker_c"
 class = "rosout_talker_c::Talker"
 name = "rosout_talker"
 
-[image.native]
+[image.linux]
 board = "linux"

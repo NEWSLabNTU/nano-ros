@@ -317,7 +317,7 @@ mod resolve_target_block_tests {
         // The island's hand-run form: a platform-rmw pair where a block key
         // goes, on a bringup whose real Zephyr image is called something else.
         let s = sys("[image.zephyr_native_sim]\nboard=\"zephyr\"\n\
-             [image.native]\nboard=\"linux\"\n\
+             [image.linux]\nboard=\"linux\"\n\
              [host.robot]\n");
         let err = resolve(Some("zephyr-cyclonedds"), &s)
             .expect_err("a key no block carries must not resolve to the host")
@@ -327,7 +327,7 @@ mod resolve_target_block_tests {
             err.contains("[image.zephyr_native_sim]  board = \"zephyr\""),
             "the refusal names the block to use, with its board: {err}"
         );
-        assert!(err.contains("[image.native]  board = \"linux\""), "{err}");
+        assert!(err.contains("[image.linux]  board = \"linux\""), "{err}");
         assert!(
             !err.contains("robot"),
             "a host is a machine, not a build: it is no `--target` key: {err}"
@@ -351,7 +351,7 @@ mod resolve_target_block_tests {
     #[test]
     fn resolve_target_block_on_a_bringup_with_no_blocks_says_to_drop_the_flag() {
         let s = sys("");
-        let err = resolve(Some("native"), &s)
+        let err = resolve(Some("linux"), &s)
             .expect_err("nothing to name")
             .to_string();
         assert!(err.contains("declares no `[image.*]` block"), "{err}");
@@ -362,7 +362,7 @@ mod resolve_target_block_tests {
     fn resolve_target_block_without_a_target_is_still_the_documented_default() {
         // No `--target`, no `--for-entry`: the system-wide default, unchanged
         // by this wave. The refusal is for a key that was GIVEN and is wrong.
-        let s = sys("[image.native]\nboard=\"linux\"\n");
+        let s = sys("[image.linux]\nboard=\"linux\"\n");
         assert_eq!(resolve(None, &s).expect("no flag, no refusal"), None);
     }
 }
@@ -1884,7 +1884,7 @@ stack_bytes = 8192
 [tiers.low.posix]
 priority = 10
 
-[image.native]
+[image.linux]
 board = "linux"
 launch = "system.launch.xml"
 "#,
@@ -1933,7 +1933,7 @@ execution:
         run(Args {
             workspace: Some(dir.clone()),
             bringup: None,
-            target: Some("native".into()),
+            target: Some("linux".into()),
             out: Some(out.clone()),
             ahead_of_vendor: None,
             file: None,
@@ -2120,7 +2120,7 @@ execution:
     /// `write_tiered_workspace`, re-pointed at TWO images whose block names
     /// disagree with the boards they build (issue 1397).
     ///
-    /// `[image.rt_host]` builds the HOSTED board and `[image.native]` builds a
+    /// `[image.rt_host]` builds the HOSTED board and `[image.linux]` builds a
     /// ZEPHYR one, so neither block id is its platform's name — the case a
     /// reader of the block STRING gets backwards in both directions. The model
     /// registers nine callback entities (eight subscriptions + one service
@@ -2165,7 +2165,7 @@ launch = "system.launch.xml"
 
 # And a Zephyr image whose block carries the host's name. Legal: the block
 # namespace is the author's, and nothing ties it to a platform.
-[image.native]
+[image.linux]
 board = "zephyr"
 launch = "system.launch.xml"
 "#,
@@ -2241,7 +2241,7 @@ execution:
     /// `--target` (and the `--for-entry` that resolves to the same block id)
     /// names an `[image.*]` BLOCK. `check_executor_capacity` used
     /// to read that same string as a PLATFORM name, which is true of
-    /// `native`/`posix` only because an image is conventionally named after
+    /// `linux`/`posix` only because an image is conventionally named after
     /// its platform. Both halves below run one bake over one workspace and one
     /// model; the only difference is which image is named, and the two are
     /// each other's negative control — they get OPPOSITE verdicts, so a fix
@@ -2283,11 +2283,11 @@ execution:
         // `BoardEntry` body, drops the sizing and opens at the compiled
         // `MAX_CBS` — so nine entities against a table of four is the runtime
         // `create_* (code=-6 Full)` issue 0257 exists to catch at bake time.
-        // Reading `native` as a platform name says "hosted, it derives its way
+        // Reading `linux` as a platform name says "hosted, it derives its way
         // out" and ships the image.
-        let err = bake(&dir.join("build/native"), "native")
+        let err = bake(&dir.join("build/linux"), "linux")
             .expect_err(
-                "issue 1397: `native` builds a ZEPHYR board, which ignores per-entry \
+                "issue 1397: `linux` builds a ZEPHYR board, which ignores per-entry \
                  sizing — 9 entities do not fit the default 4",
             )
             .to_string();
@@ -2321,7 +2321,7 @@ pkg = "telem_pkg"
 class = "telem_pkg::Telem"
 name = "telem_node"
 
-[image.native]
+[image.linux]
 board = "linux"
 launch = "system.launch.xml"
 "#,
@@ -2394,7 +2394,7 @@ contracts:
         run(Args {
             workspace: Some(dir.clone()),
             bringup: None,
-            target: Some("native".into()),
+            target: Some("linux".into()),
             out: Some(out.clone()),
             ahead_of_vendor: None,
             file: None,
@@ -2635,12 +2635,12 @@ structure:
     fn system_config_h_rmw_honours_the_image_override() {
         let sys: SystemToml = toml::from_str(
             "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n\
-             [image.native]\nboard=\"linux\"\nrmw=\"cyclonedds\"\n",
+             [image.linux]\nboard=\"linux\"\nrmw=\"cyclonedds\"\n",
         )
         .unwrap();
 
         // `--target native` → the image override wins.
-        let h = render_system_config_h(&sys, Some("native"), None);
+        let h = render_system_config_h(&sys, Some("linux"), None);
         assert!(
             h.contains("#define NROS_SYSTEM_RMW \"cyclonedds\"\n"),
             "{h}"
@@ -2655,7 +2655,7 @@ structure:
 
         // Phase 255 Wave 4 — `--rmw xrce` tops the ladder, beating both the
         // image override and `[system].rmw`.
-        let hc = render_system_config_h(&sys, Some("native"), Some("xrce"));
+        let hc = render_system_config_h(&sys, Some("linux"), Some("xrce"));
         assert!(hc.contains("#define NROS_SYSTEM_RMW \"xrce\"\n"), "{hc}");
         assert!(hc.contains("#define NROS_SYSTEM_RMW_XRCE\n"), "{hc}");
     }
@@ -2980,7 +2980,7 @@ path = "src/lib.rs"
 class = "alpha_pkg::Node"
 name = "alpha"
 
-[package.metadata.nros.deploy.native]
+[package.metadata.nros.deploy.linux]
 board = "zephyr"
 rmw = "zenoh"
 domain_id = 7
@@ -2994,7 +2994,7 @@ locator = "tcp/127.0.0.1:7447"
         run(Args {
             workspace: Some(dir.clone()),
             bringup: Some("alpha_pkg".into()),
-            target: Some("native".into()),
+            target: Some("linux".into()),
             out: Some(out.clone()),
             ahead_of_vendor: None,
             file: None,
@@ -3065,7 +3065,7 @@ path = "src/lib.rs"
 class = "alpha_pkg::Node"
 name = "alpha"
 
-[package.metadata.nros.deploy.native]
+[package.metadata.nros.deploy.linux]
 rmw = "cyclonedds"
 domain_id = 3
 "#,
@@ -3261,7 +3261,7 @@ path = "src/lib.rs"
 class = "native_rs_talker::Node"
 name = "talker"
 
-[package.metadata.nros.deploy.native]
+[package.metadata.nros.deploy.linux]
 rmw = "zenoh"
 domain_id = 11
 "#,
@@ -3273,7 +3273,7 @@ domain_id = 11
         run(Args {
             workspace: Some(dir.clone()),
             bringup: Some(ex_dir.to_string_lossy().into_owned()),
-            target: Some("native".into()),
+            target: Some("linux".into()),
             out: Some(out.clone()),
             ahead_of_vendor: None,
             file: None,

@@ -75,8 +75,8 @@ pub struct ImageBlock {
 
     /// Launch arguments bound at resolve time — `{ host = "robot1" }`.
     ///
-    /// This is how an image selects a MACHINE: `native_entry_robot1` differs
-    /// from `native_entry_robot2` only here. Placement itself is
+    /// This is how an image selects a MACHINE: `linux_robot1_entry` differs
+    /// from `linux_robot2_entry` only here. Placement itself is
     /// `[host.*]`.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub args: BTreeMap<String, String>,
@@ -680,8 +680,8 @@ mod selection_tests {
 
     #[test]
     fn a_single_image_is_unambiguous() {
-        let got = select_default_images(&images(&["native"]), &[]).expect("ok");
-        assert_eq!(got, ImageSelection::Images(vec!["native".to_string()]));
+        let got = select_default_images(&images(&["linux"]), &[]).expect("ok");
+        assert_eq!(got, ImageSelection::Images(vec!["linux".to_string()]));
     }
 
     #[test]
@@ -689,12 +689,12 @@ mod selection_tests {
         // RFC-0065 D1 — list and fail, never guess. `examples/workspaces/rust`
         // declares eight images across three cross toolchains.
         let got =
-            select_default_images(&images(&["native", "freertos", "zephyr"]), &[]).expect("ok");
+            select_default_images(&images(&["linux", "freertos", "zephyr"]), &[]).expect("ok");
         assert_eq!(
             got,
             ImageSelection::Ambiguous(vec![
                 "freertos".to_string(),
-                "native".to_string(),
+                "linux".to_string(),
                 "zephyr".to_string()
             ])
         );
@@ -702,9 +702,9 @@ mod selection_tests {
 
     #[test]
     fn default_images_disambiguates() {
-        let got = select_default_images(&images(&["native", "freertos"]), &["native".to_string()])
+        let got = select_default_images(&images(&["linux", "freertos"]), &["linux".to_string()])
             .expect("ok");
-        assert_eq!(got, ImageSelection::Images(vec!["native".to_string()]));
+        assert_eq!(got, ImageSelection::Images(vec!["linux".to_string()]));
     }
 
     #[test]
@@ -717,10 +717,10 @@ mod selection_tests {
 
     #[test]
     fn a_default_naming_no_declared_image_is_an_error() {
-        let e = select_default_images(&images(&["native"]), &["nativ".to_string()])
+        let e = select_default_images(&images(&["linux"]), &["linu".to_string()])
             .expect_err("must reject");
-        assert!(e.contains("nativ"), "error names the typo: {e}");
-        assert!(e.contains("native"), "error lists what IS declared: {e}");
+        assert!(e.contains("linu"), "error names the typo: {e}");
+        assert!(e.contains("linux"), "error lists what IS declared: {e}");
     }
 
     #[test]
@@ -1054,9 +1054,9 @@ entry_kind = "board-run"
     #[test]
     fn a_retired_native_board_is_refused_naming_linux() {
         let cat = catalog();
-        let e = resolve_image_board(&cat, "native", &image_with_board("native"))
+        let e = resolve_image_board(&cat, "linux", &image_with_board("native"))
             .expect_err("must reject");
-        assert!(e.contains("[image.native] board"), "names the line: {e}");
+        assert!(e.contains("[image.linux] board"), "names the line: {e}");
         assert!(e.contains("write `linux`"), "names the replacement: {e}");
         assert!(!e.contains("Known boards"), "a hint, not a list: {e}");
     }
@@ -1064,7 +1064,7 @@ entry_kind = "board-run"
     #[test]
     fn an_image_without_a_board_says_why_that_is_not_buildable() {
         let cat = catalog();
-        let e = resolve_image_board(&cat, "native", &ImageBlock::default()).expect_err("reject");
+        let e = resolve_image_board(&cat, "linux", &ImageBlock::default()).expect_err("reject");
         assert!(e.contains("declares no `board`"), "{e}");
     }
 }
@@ -1098,7 +1098,7 @@ mod launch_tests {
 
         // The real corruption, verbatim.
         img.launch = Some("…`".to_string());
-        let e = validate_image_launch("native", &img, bringup).expect_err("refused");
+        let e = validate_image_launch("linux", &img, bringup).expect_err("refused");
         assert!(e.contains("names no launch file"), "{e}");
         assert!(
             e.contains("system.launch.xml"),
@@ -1107,12 +1107,12 @@ mod launch_tests {
 
         // A real one passes.
         img.launch = Some("system.launch.xml".to_string());
-        assert!(validate_image_launch("native", &img, bringup).is_ok());
+        assert!(validate_image_launch("linux", &img, bringup).is_ok());
 
         // Both spellings of "the bringup's own default" are always valid.
         img.launch = Some("default".to_string());
-        assert!(validate_image_launch("native", &img, bringup).is_ok());
+        assert!(validate_image_launch("linux", &img, bringup).is_ok());
         img.launch = None;
-        assert!(validate_image_launch("native", &img, bringup).is_ok());
+        assert!(validate_image_launch("linux", &img, bringup).is_ok());
     }
 }

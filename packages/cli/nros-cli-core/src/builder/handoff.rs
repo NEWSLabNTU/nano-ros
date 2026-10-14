@@ -220,7 +220,7 @@ pub fn exec(handoff: &Handoff) -> Result<std::convert::Infallible, String> {
 /// For the one case `exec` cannot serve: an invocation that planned SEVERAL
 /// images. `exec` replaces this process, so it can only ever be the LAST thing
 /// an invocation does — and issue 1206 measured what that costs when a loop
-/// forgets it. `nros build native_service_client native_service_server` planned
+/// forgets it. `nros build linux_service_client linux_service_server` planned
 /// two images, announced one, built one, and exited 0.
 ///
 /// Three ordinary invocations plan more than one image — `--all`, several
@@ -275,7 +275,7 @@ mod tests {
     fn a_handoff_is_inert_until_exec() {
         // Constructing one must do no I/O: `--dry-run` prints it, tests assert
         // on it, and only then does anyone hand over.
-        let h = Handoff::new("cargo", ["build", "-p", "native_entry"])
+        let h = Handoff::new("cargo", ["build", "-p", "linux_entry"])
             .in_dir("/nonexistent/build/dir")
             .with_env("CARGO_TERM_COLOR", "always");
         assert_eq!(h.program, OsString::from("cargo"));

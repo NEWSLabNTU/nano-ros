@@ -14,5 +14,5 @@ name = "pub"
 
 # Host build. The locator and domain stay runtime env on native
 # (`NROS_LOCATOR` / `ROS_DOMAIN_ID`); the board applies only the node name.
-[image.native]
+[image.linux]
 board = "linux"

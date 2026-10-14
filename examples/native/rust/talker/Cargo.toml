@@ -25,8 +25,8 @@ path = "src/lib.rs"
 # Zenoh link options. Not declared capabilities — RFC-0031's capability
 # registry (`capability_resolver::CAPABILITIES`) has no entry for them — so they
 # stay features of this package and name the zenoh backend only to forward to
-# it. Meaningful on a zenoh image only (`native`, `native_iron`,
-# `native_jazzy`); the selection package brings the backend itself.
+# it. Meaningful on a zenoh image only (`linux`, `linux_iron`,
+# `linux_jazzy`); the selection package brings the backend itself.
 link-tls = ["dep:nros-rmw-zenoh", "nros-rmw-zenoh/link-tls"]
 
 [dependencies]

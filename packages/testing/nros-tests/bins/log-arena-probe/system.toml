@@ -16,11 +16,11 @@ name = "log_arena_probe"
 rmw = "zenoh"
 domain_id = 0
 
-[image.native]
+[image.linux]
 board = "linux"
 env = { NROS_BOOT_REPORT = "1" }
 
-[image.native.knobs.log]
+[image.linux.knobs.log]
 dynamic_loggers = 24
 max_level = "info"
 buffer_size = 384

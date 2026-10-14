@@ -1,7 +1,7 @@
 //! Phase 211.A — the deploy "second-stage": a PLANNED native system, built
 //! from a launch topology, actually RUNS and publishes to the ROS graph.
 //!
-//! `examples/workspaces/rust/src/native_entry` is an Entry pkg whose
+//! `examples/workspaces/rust/src/linux_entry` is an Entry pkg whose
 //! `nros::main!(launch = "demo_bringup:system.launch.xml")` resolves the
 //! `demo_bringup` topology (a `talker` + a `listener` node), bakes the typed
 //! entry, and the native board runs it. This test proves the full
@@ -48,7 +48,7 @@ fn deployed_native_system_publishes_to_ros_graph(zenohd_unique: ZenohRouter) {
     // Prebuilt fixtures (built by `just linux build-fixtures` /
     // `build-workspace-fixtures`); out of lane skips, absent fails.
     let entry = build_native_workspace_rust_entry()
-        .require("native_entry")
+        .require("linux_entry")
         .to_path_buf();
     let listener_bin = build_int32_sink().require("build native listener");
     let locator = zenohd_unique.locator();
@@ -81,7 +81,7 @@ fn deployed_native_system_publishes_to_ros_graph(zenohd_unique: ZenohRouter) {
         .env("NROS_ENTRY_SPIN_MS", "10000")
         .env("NROS_ENTRY_SPIN_STEP_MS", "10");
     let mut deploy =
-        ManagedProcess::spawn_command(entry_cmd, "native_entry").expect("spawn native_entry");
+        ManagedProcess::spawn_command(entry_cmd, "linux_entry").expect("spawn linux_entry");
 
     let listener_output = listener
         .wait_for_output_count(

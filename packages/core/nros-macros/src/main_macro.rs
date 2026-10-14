@@ -595,7 +595,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                     Span::call_site(),
                     format!(
                         "nros::main!: `{}` declares no board.\n  Hint: write `{}` with \
-                         `[image.<id>] board = \"<board>\"` (e.g. `\"native\"`, \
+                         `[image.<id>] board = \"<board>\"` (e.g. `\"linux\"`, \
                          `\"freertos\"`, `\"zephyr\"`; RFC-0098 D3) — or, for an entry in \
                          a workspace, give the bringup an image that builds it \
                          (`entry = \"{entry_pkg}\"`).",
@@ -610,7 +610,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             // back to the image id when the declared board was not a table key
             // (for a Zephyr image whose `board` spells the framework's name) —
             // which also made a TYPO build for whatever board the image id
-            // names: `[image.native] board = "frobnicator"` compiled as native,
+            // names: `[image.linux] board = "frobnicator"` compiled as native,
             // the declared value unable to take effect and nothing saying so
             // (`unknown_board_emits_compile_error`). The table is the one
             // answer, as it was before W5 — and a framework spelling such as
@@ -3267,7 +3267,7 @@ fn lifecycle_call_tokens(lifecycle_code: Option<u8>) -> proc_macro2::TokenStream
              dropped. Add it to this pkg's nros dependency features (issue 1766)."
         );
         // issue 0460 — carry the reason. Not a `log::` call: an entry crate
-        // need not depend on `log` (`native_rust_qos_entry` does not).
+        // need not depend on `log` (`linux_rust_qos_entry` does not).
         runtime.apply_lifecycle(#code).map_err(|reason| {
             ::nros::__macro_support::nros_platform::RuntimeError::Capability {
                 name: "lifecycle",
@@ -3727,7 +3727,7 @@ mod baked_boot_config_namespace_tests {
     /// `plan_from_model` derives `/` from an unnamespaced FQN and
     /// `boot_config_view` bakes it with the bit set, so a Rust image built from
     /// the same launch file must produce the same blob. Measured on the C side
-    /// (`native_c_params`, whose `c_params.launch.xml` declares no namespace):
+    /// (`linux_c_params`, whose `c_params.launch.xml` declares no namespace):
     /// `.set_flags = NROS_BOOT_SET_NODE_NAME | NROS_BOOT_SET_NAMESPACE`,
     /// `.namespace_ = "/"`. (`/` and `""` are the same namespace at runtime —
     /// `names.rs` collapses the root and `node_identity_hash` normalises `""`

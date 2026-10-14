@@ -9,18 +9,18 @@ is required ([RFC-0026](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/de
 cp -r examples/native/rust/action-client ~/my-action-client && cd ~/my-action-client
 export NROS_REPO_DIR=/path/to/nano-ros   # your nano-ros checkout
 nros sync     # generated/ message crates + build/<image>/nros-cargo.toml
-nros build    # or: nros build native
+nros build    # or: nros build linux
 ```
 
 ## Run
 
 Needs a zenoh router (`ros2 run rmw_zenoh_cpp rmw_zenohd`).
-`nros build` leaves the binary at `build/native/target/debug/action-client`.
+`nros build` leaves the binary at `build/linux/target/debug/action-client`.
 
 ## Config
 
 Board, RMW, domain and locator: `system.toml` beside `Cargo.toml`
-(`[image.native]` + `[system]`, RFC-0098 D3/D5). No build command
+(`[image.linux]` + `[system]`, RFC-0098 D3/D5). No build command
 carries any of them.
 
 `Cargo.toml` names no board crate. The board crate, its RMW backend and

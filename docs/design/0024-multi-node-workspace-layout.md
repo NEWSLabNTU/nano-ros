@@ -293,7 +293,7 @@ nros plan                                               # NROS (default_system =
 ### Step 5 — Deploy + launch
 
 ```bash
-cargo run -p native_entry            # native run (no nros deploy — Phase 222)
+cargo run -p linux_entry            # native run (no nros deploy — Phase 222)
 ros2 launch robot_bringup system.launch.xml                  # ROS 2 (when wanted)
 # or
 nros launch robot_bringup                                     # NROS (host-side, no ament install needed)
@@ -340,7 +340,7 @@ Steps 4–5 unchanged. Step 4's `nros plan` becomes either bare `nros plan robot
 
 ## 10. Next concrete steps
 
-1. **Prototype 3-package fixture** at `packages/testing/nros-tests/fixtures/multi_pkg_workspace/`: `demo_bringup` + `talker_pkg` + `listener_pkg`. Path A (no Cargo.toml in bringup). Run `cargo build` + `nros plan demo_bringup` + `cargo run -p native_entry`. Confirm cargo workspace happy w/ excluded pkg.
+1. **Prototype 3-package fixture** at `packages/testing/nros-tests/fixtures/multi_pkg_workspace/`: `demo_bringup` + `talker_pkg` + `listener_pkg`. Path A (no Cargo.toml in bringup). Run `cargo build` + `nros plan demo_bringup` + `cargo run -p linux_entry`. Confirm cargo workspace happy w/ excluded pkg.
 2. **Spike `nros emit package-xml`** from `system.toml`. Validate against colcon-outer workflow (run `colcon build` on the fixture inside a host ROS 2 install). Confirms Autoware-style outer integration unbroken.
 3. **Spike mixed-language fixture**: `talker_pkg` (Rust) + `listener_pkg` (C++) + `demo_bringup`. Top-level `CMakeLists.txt` + `corrosion_import_crate`. Confirm rustc errors still reach terminal verbatim through cmake.
 4. **Resolve OPEN 3** (`nros launch`). Prototype host-side launcher reading `system.launch.xml` w/o ament index. If clean, retire `<buildtool_depend>` from bringup pkg.
@@ -403,7 +403,7 @@ my_ws/
     │   ├── config/
     │   │   └── params.yaml
     │   └── README.md
-    └── native_entry/                     # Entry pkg (Rust)
+    └── linux_entry/                     # Entry pkg (Rust)
         ├── package.xml
         ├── Cargo.toml
         └── src/main.rs                   # nros::main!(launch = "demo_bringup:system.launch.xml")
@@ -506,7 +506,7 @@ NROS_MAIN(nros::board::LinuxBoard, "demo_bringup:sim.launch.xml");
 ```cmake
 find_package(nano_ros REQUIRED)
 nros_entry(
-    NAME    native_entry
+    NAME    linux_entry
     BOARD   native
     LAUNCH  "demo_bringup:sim.launch.xml"
 )

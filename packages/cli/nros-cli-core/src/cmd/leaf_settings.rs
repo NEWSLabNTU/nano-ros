@@ -1175,8 +1175,8 @@ mod tests {
     fn decl(transport: Option<&str>, env: &[(&str, &str)]) -> LeafSystem {
         LeafSystem {
             origin: leaf_system::Origin::SystemToml("/w/talker/system.toml".into()),
-            image: Some("native".into()),
-            board: Some("native".into()),
+            image: Some("linux".into()),
+            board: Some("linux".into()),
             rmw: None,
             network: leaf_system::Network {
                 transport: transport.map(str::to_string),
@@ -1199,8 +1199,8 @@ mod tests {
     #[test]
     fn the_settings_file_sits_under_the_leafs_build_dir_per_image() {
         assert_eq!(
-            settings_path(Path::new("/w/talker"), "native"),
-            PathBuf::from("/w/talker/build/native/nros-cargo.toml")
+            settings_path(Path::new("/w/talker"), "linux"),
+            PathBuf::from("/w/talker/build/linux/nros-cargo.toml")
         );
     }
 
@@ -1473,12 +1473,12 @@ mod tests {
             leaf: PathBuf::from("/w/examples/talker"),
             package: "demo".into(),
             decl: decl(None, &[]),
-            image_id: "native".into(),
+            image_id: "linux".into(),
             board: "linux".into(),
             platform: "posix".into(),
             target: None,
             cargo_config: None,
-            config_path: settings_path(Path::new("/w/examples/talker"), "native"),
+            config_path: settings_path(Path::new("/w/examples/talker"), "linux"),
         };
         let (cwd, args) = build_command(&img);
         assert_eq!(cwd, PathBuf::from("/w/examples"));
@@ -1489,7 +1489,7 @@ mod tests {
                 "--manifest-path",
                 "talker/Cargo.toml",
                 "--config",
-                "talker/build/native/nros-cargo.toml"
+                "talker/build/linux/nros-cargo.toml"
             ]
         );
     }
@@ -1520,12 +1520,12 @@ mod tests {
     fn a_second_sync_neither_duplicates_the_include_nor_touches_the_file() {
         let tmp = tempfile::tempdir().unwrap();
         let leaf = tmp.path();
-        wire_settings_into_leaf_config(leaf, "native", "sync").unwrap();
+        wire_settings_into_leaf_config(leaf, "linux", "sync").unwrap();
         let cfg = leaf.join(".cargo/config.toml");
         let first = std::fs::read_to_string(&cfg).unwrap();
         let mtime = std::fs::metadata(&cfg).unwrap().modified().unwrap();
 
-        wire_settings_into_leaf_config(leaf, "native", "sync").unwrap();
+        wire_settings_into_leaf_config(leaf, "linux", "sync").unwrap();
         assert_eq!(std::fs::read_to_string(&cfg).unwrap(), first);
         assert_eq!(std::fs::metadata(&cfg).unwrap().modified().unwrap(), mtime);
         assert_eq!(first.matches("nros-cargo.toml").count(), 1, "{first}");
@@ -1543,10 +1543,10 @@ mod tests {
             "include = [\"../../nros-patch.toml\"]\n",
         )
         .unwrap();
-        wire_settings_into_leaf_config(leaf, "native", "sync").unwrap();
+        wire_settings_into_leaf_config(leaf, "linux", "sync").unwrap();
         let text = std::fs::read_to_string(leaf.join(".cargo/config.toml")).unwrap();
         assert!(text.contains("../../nros-patch.toml"), "{text}");
-        assert!(text.contains("../build/native/nros-cargo.toml"), "{text}");
+        assert!(text.contains("../build/linux/nros-cargo.toml"), "{text}");
     }
 
     /// A leaf that states its OWN `[build] target` / `rustflags` keeps the
@@ -1560,7 +1560,7 @@ mod tests {
         std::fs::create_dir_all(leaf.join(".cargo")).unwrap();
         let authored = "[build]\ntarget = \"thumbv7m-none-eabi\"\n";
         std::fs::write(leaf.join(".cargo/config.toml"), authored).unwrap();
-        wire_settings_into_leaf_config(leaf, "native", "sync").unwrap();
+        wire_settings_into_leaf_config(leaf, "linux", "sync").unwrap();
         assert_eq!(
             std::fs::read_to_string(leaf.join(".cargo/config.toml")).unwrap(),
             authored
@@ -1592,11 +1592,11 @@ mod tests {
     fn switching_image_replaces_the_stale_settings_include() {
         let tmp = tempfile::tempdir().unwrap();
         let leaf = tmp.path();
-        wire_settings_into_leaf_config(leaf, "native", "sync").unwrap();
+        wire_settings_into_leaf_config(leaf, "linux", "sync").unwrap();
         wire_settings_into_leaf_config(leaf, "mps2-an385-baremetal", "sync").unwrap();
         let text = std::fs::read_to_string(leaf.join(".cargo/config.toml")).unwrap();
         assert!(
-            !text.contains("../build/native/nros-cargo.toml"),
+            !text.contains("../build/linux/nros-cargo.toml"),
             "the stale include survived: {text}"
         );
         assert!(
@@ -1660,7 +1660,7 @@ mod board_crate_tests {
     /// the examples, the copy-out templates' Rust packages, the mps2 C/C++ apps
     /// on a cargo link root, and (phase F) every `packages/testing/` program,
     /// bench and harness-templated fixture entry (issue 1340's witness
-    /// included, with `[image.native] producers = false`) — depends on its
+    /// included, with `[image.linux] producers = false`) — depends on its
     /// `<pkg>_nros_selection` package and names no board crate (enforced by
     /// [`check_board_crate_dependency`]). A leaf for a `tier = "scaffold"`
     /// board is skipped by that DERIVED property, never listed here. A prefix
@@ -1884,7 +1884,7 @@ mod board_crate_tests {
         .unwrap();
         std::fs::write(
             leaf.join("system.toml"),
-            "[system]\nname = \"t\"\nrmw = \"zenoh\"\n\n[image.native]\nboard = \"linux\"\n",
+            "[system]\nname = \"t\"\nrmw = \"zenoh\"\n\n[image.linux]\nboard = \"linux\"\n",
         )
         .unwrap();
         let img = resolve(&leaf, &repo()).unwrap().expect("a cargo leaf");
@@ -1983,15 +1983,15 @@ mod board_crate_tests {
         .unwrap();
         std::fs::write(
             leaf.join("system.toml"),
-            "[system]\nname = \"t\"\nrmw = \"zenoh\"\ndefault_images = [\"native\"]\n\n\
+            "[system]\nname = \"t\"\nrmw = \"zenoh\"\ndefault_images = [\"linux\"]\n\n\
              [image_defaults]\nboard = \"linux\"\n\n\
-             [image.native]\n\n\
-             [image.native_xrce_jazzy]\nrmw = \"xrce\"\nros_edition = \"jazzy\"\n",
+             [image.linux]\n\n\
+             [image.linux_xrce_jazzy]\nrmw = \"xrce\"\nros_edition = \"jazzy\"\n",
         )
         .unwrap();
         let humble = write_selection(&leaf, &repo(), None).unwrap().unwrap();
         let humble_m = read(&humble.dir.join("Cargo.toml"));
-        let jazzy = write_selection(&leaf, &repo(), Some("native_xrce_jazzy"))
+        let jazzy = write_selection(&leaf, &repo(), Some("linux_xrce_jazzy"))
             .unwrap()
             .unwrap();
         let jazzy_m = read(&jazzy.dir.join("Cargo.toml"));
@@ -2020,10 +2020,10 @@ mod board_crate_tests {
         assert!(!selected.contains("ros-humble"), "{jazzy_m}");
         assert!(!selected.contains("rmw-zenoh"), "{jazzy_m}");
         // An image the file does not declare is refused, naming the ones it does.
-        let e = write_selection(&leaf, &repo(), Some("native_iron"))
+        let e = write_selection(&leaf, &repo(), Some("linux_iron"))
             .expect_err("undeclared image")
             .to_string();
-        assert!(e.contains("native_xrce_jazzy"), "{e}");
+        assert!(e.contains("linux_xrce_jazzy"), "{e}");
     }
 
     /// The point of the package: a board switch in `system.toml` is the ONE
@@ -2091,7 +2091,7 @@ mod board_crate_tests {
         .unwrap();
         std::fs::write(
             leaf.join("system.toml"),
-            "[system]\nname = \"t\"\nrmw = \"zenoh\"\n\n[image.native]\nboard = \"linux\"\n",
+            "[system]\nname = \"t\"\nrmw = \"zenoh\"\n\n[image.linux]\nboard = \"linux\"\n",
         )
         .unwrap();
         assert!(write_selection(&leaf, &repo(), None).unwrap().is_none());
@@ -2172,7 +2172,7 @@ mod board_crate_tests {
             std::fs::write(
                 leaf.join("system.toml"),
                 format!(
-                    "[system]\nname = \"p\"\nrmw = \"zenoh\"\n\n[image.native]\nboard = \"linux\"\n{extra}"
+                    "[system]\nname = \"p\"\nrmw = \"zenoh\"\n\n[image.linux]\nboard = \"linux\"\n{extra}"
                 ),
             )
             .unwrap();
@@ -2217,7 +2217,7 @@ mod board_crate_tests {
         .unwrap();
         std::fs::write(
             leaf.join("system.toml"),
-            "[system]\nname = \"p\"\nrmw = \"zenoh\"\n\n[image.native]\nboard = \"linux\"\n",
+            "[system]\nname = \"p\"\nrmw = \"zenoh\"\n\n[image.linux]\nboard = \"linux\"\n",
         )
         .unwrap();
         let img = resolve(&leaf, &repo()).unwrap().expect("a cargo leaf");

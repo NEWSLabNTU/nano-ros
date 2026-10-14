@@ -105,7 +105,7 @@ name = "listener"
 [image.qemu_freertos]
 board = "mps2-an385"
 
-[image.native]
+[image.linux]
 board = "linux"
 "#,
     )

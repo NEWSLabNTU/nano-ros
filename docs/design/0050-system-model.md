@@ -344,7 +344,7 @@ on our side. No objection.
 closes the field we named; #236 step 3 is done and validated. But 46.1 defaults
 a machine-only deploy to `target: linux`, and that collides with board≠host
 orthogonality: one host (`robot1`) can be realized by *different boards*
-(`native_entry_robot1` vs `zephyr_entry_robot1`). A launch-only model has no
+(`linux_robot1_entry` vs `zephyr_entry_robot1`). A launch-only model has no
 board placement, so a defaulted `target: linux` is ambiguous — our board slice
 can't tell "explicitly on linux, a zephyr image must skip it" from "board
 unplaced, the entry decides". Ask: when a deploy is derived from `machine`

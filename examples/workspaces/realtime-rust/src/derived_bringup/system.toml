@@ -93,7 +93,7 @@ heap_size = 262144
 # this bringup's contract (`launch/system.contract.yaml`), and a census is a
 # run of the native image of the same launch (`nros ws entity-census take
 # --image derived_bringup:zephyr_derived` builds and runs this one). Not
-# `native`: an image id names the generated entry directory, and
-# demo_bringup's `native` already owns `native_entry` (issue 1582).
-[image.native_derived]
+# `linux`: an image id names the generated entry directory, and
+# demo_bringup's `linux` already owns `linux_entry` (issue 1582).
+[image.linux_derived]
 board = "linux"
