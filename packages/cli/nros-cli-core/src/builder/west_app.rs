@@ -198,7 +198,11 @@ pub fn capability_kconfig_cmake(capabilities: &[String]) -> String {
          # where Kconfig runs.\n",
     );
     for (axis, sym) in CAPABILITY_KCONFIG {
-        let on = capabilities.iter().any(|c| c == axis);
+        // phase-461 W6 -- the `params` axis states the store the way a launch
+        // seed implies it: `CONFIG_NROS_PARAM_STORE`, never the services.
+        let on = capabilities
+            .iter()
+            .any(|c| c == axis || (*axis == PARAM_STORE_AXIS && c == "params"));
         out.push_str(&format!(
             "set({sym} {} CACHE STRING \"declared by the bringup\" FORCE)\n",
             if on { "y" } else { "n" }
@@ -916,6 +920,26 @@ mod tests {
         assert!(!code.contains("nano_ros_use_board"), "{code}");
         assert!(!code.contains("prj.conf"), "names no fragment: {code}");
         assert!(!code.contains("EXTRA_CARGO_ARGS"), "{code}");
+    }
+
+    /// phase-461 W6 -- the `params` axis states the STORE, as a seed does,
+    /// and leaves the services' symbol `n`: that is what makes nros-params
+    /// reserve no service sets (`PARAM_SERVICES_SERVED`).
+    #[test]
+    fn the_params_axis_states_the_store_and_not_the_services() {
+        let s = render_cmakelists(&WestApp {
+            project: "p".to_string(),
+            capabilities: vec!["params".to_string()],
+            ..Default::default()
+        });
+        assert!(
+            s.contains("set(CONFIG_NROS_PARAM_STORE y CACHE STRING"),
+            "{s}"
+        );
+        assert!(
+            s.contains("set(CONFIG_NROS_CAPABILITY_PARAM_SERVICES n CACHE STRING"),
+            "{s}"
+        );
     }
 
     /// Issue 1706 -- a launch `<param>` seeds the store, so the heap default

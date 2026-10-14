@@ -61,6 +61,11 @@ pub const LEAF_CAPABILITY_AXES: &[LeafAxis] = &[
         compiled_flag: "PARAM_SERVICES_ENABLED",
     },
     LeafAxis {
+        declared: "params",
+        nros_feature: "param-store",
+        compiled_flag: "PARAM_STORE_ENABLED",
+    },
+    LeafAxis {
         declared: "lifecycle",
         nros_feature: "lifecycle-services",
         compiled_flag: "LIFECYCLE_SERVICES_ENABLED",
@@ -85,6 +90,9 @@ pub struct LeafCapabilities {
     pub axes: Vec<&'static LeafAxis>,
     /// `param_services` is declared: register the six parameter services.
     pub param_services: bool,
+    /// phase-461 W6 -- `params` is declared and `param_services` is not: build
+    /// the parameter store before the nodes register, and serve nothing.
+    pub param_store: bool,
     /// `lifecycle` is declared: register the five REP-2002 services and drive
     /// boot autostart at this level (0 none / 1 configure / 2 active — the
     /// encoding `apply_lifecycle` takes). `[lifecycle] autostart` gives the
@@ -136,6 +144,7 @@ pub fn read(
         }
     }
     out.param_services = out.axes.iter().any(|a| a.declared == "param_services");
+    out.param_store = !out.param_services && out.axes.iter().any(|a| a.declared == "params");
     let lifecycle = out.axes.iter().any(|a| a.declared == "lifecycle");
     let autostart = match doc.get("lifecycle") {
         None => None,
@@ -208,6 +217,20 @@ mod tests {
     }
 
     #[test]
+    fn params_is_the_store_and_yields_to_param_services() {
+        let c = read(&feats(&["params"]), &doc(""), Path::new(F)).unwrap();
+        assert!(c.param_store && !c.param_services);
+        assert_eq!(c.axes, vec![axis("params").unwrap()]);
+        let both = read(
+            &feats(&["params", "param_services"]),
+            &doc(""),
+            Path::new(F),
+        )
+        .unwrap();
+        assert!(both.param_services && !both.param_store);
+    }
+
+    #[test]
     fn param_services_is_wired_and_asserted() {
         let c = read(&feats(&["param_services"]), &doc(""), Path::new(F)).unwrap();
         assert!(c.param_services);
@@ -233,7 +256,7 @@ mod tests {
     fn an_unknown_axis_is_refused_naming_the_known_ones() {
         let e = read(&feats(&["param_service"]), &doc(""), Path::new(F)).unwrap_err();
         assert!(
-            e.contains("`param_service`") && e.contains("param_services, lifecycle"),
+            e.contains("`param_service`") && e.contains("param_services, params, lifecycle"),
             "{e}"
         );
     }

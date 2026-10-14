@@ -3798,6 +3798,45 @@ fn a_truncated_description_is_reported_by_the_next_spin_once() {
     );
 }
 
+/// phase-461 W6 -- `register_parameter_store` is the store without the
+/// services: declarations land, nothing is requested, so no spin ever creates
+/// a parameter queryable. A later `register_parameter_services` keeps the same
+/// store and adds the request.
+#[cfg(feature = "param-services")]
+#[test]
+fn the_parameter_store_registers_no_service() {
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    executor.register_parameter_store().expect("store builds");
+    assert!(executor.params().is_some(), "the store exists");
+    assert!(executor.declare_parameter("rate", nros_params::ParameterValue::Integer(5)));
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    assert!(
+        !executor.parameter_services_pending(),
+        "a store-only image requests no service"
+    );
+    assert!(
+        executor
+            .params
+            .as_deref()
+            .is_some_and(|p| !p.requested && p.services.is_empty()),
+        "no set of six was requested or created"
+    );
+    // Idempotent, and the services can still join on top of the same store.
+    executor
+        .register_parameter_store()
+        .expect("second call is a no-op");
+    if nros_params::PARAM_SERVICES_SERVED {
+        executor
+            .register_parameter_services()
+            .expect("services join the store");
+        assert_eq!(
+            executor.get_parameter_integer("rate"),
+            Some(5),
+            "store kept"
+        );
+    }
+}
+
 // -- phase-426 W1/W2: the executor's parameter API --
 
 /// phase-426 W2 -- `Executor::set_parameter` IS `ParameterServer::apply`.
