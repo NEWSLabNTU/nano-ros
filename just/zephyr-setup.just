@@ -22,12 +22,13 @@ setup *ARGS:
     # idlc and nothing here requested it. The backend list is derived from
     # `examples/fixtures.toml`, like the other lanes'.
     #
-    # Through the `native` board, not `zephyr`: these are host tools, and
+    # Through the `linux` board, not `zephyr`: these are host tools, and
     # `nros setup zephyr` would also complete the store's Zephyr SDK, which a
     # CI image bakes and `--skip-sdk` exists to leave alone.
     echo "[zephyr setup] provisioning host tools for this lane's backends..."
     source scripts/build/platform-rmws.sh
-    nros_setup_board_rmws native zephyr
+    # phase-500 W5 retired the `native` alias, and `nros setup` now refuses it.
+    nros_setup_board_rmws linux zephyr
     if [ -d "$WORKSPACE/zephyr" ] && [[ "$ARGS" != *--force* ]]; then
         echo "Zephyr workspace already present at $WORKSPACE"
         echo "To reinstall, run: just zephyr setup --force"
