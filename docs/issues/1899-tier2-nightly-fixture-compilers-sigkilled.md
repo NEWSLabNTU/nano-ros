@@ -73,3 +73,24 @@ reported `923G free on the checkout's volume`.
 3. Make the failure say so. A fixture build whose compile was SIGKILLed
    should print "killed (likely memory)" instead of letting a size-probe panic
    about a missing rlib be the first readable line.
+
+## Second sighting, same host: the runner itself died (2026-10-14 18:38Z)
+
+Run-matrix **38615001083** (workflow_dispatch, main `36ec94ba0`), job
+**116027718879** `tier 2 (1-wise matrix)` on
+`nano-ros-runner-newslab-118-server`, ran from 18:25:21Z to 18:38:23Z. It has
+no failing step. The log is `BlobNotFound`, and the only annotation reads:
+
+```
+The self-hosted runner lost communication with the server. Verify the machine
+is running and has a healthy network connection. Anything in your workflow
+that terminates the runner process, starves it …
+```
+
+That is the runner-death shape (the one 1353 also describes). It is recorded
+here rather than under 1353 because it is the same host and the same lane as
+the 07:15 SIGKILLs above, and an OOM killer that picks the runner agent instead
+of a `rustc` produces exactly this. It is **not** evidence of OOM on its own:
+the kernel log covering 18:25–18:39Z on `newslab-118-server` is what would
+separate memory from a network drop or a container restart. Item 1 of "What
+would close this" now has two windows to check.
