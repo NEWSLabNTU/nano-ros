@@ -2189,7 +2189,12 @@ mod board_crate_tests {
             "{on}"
         );
         let off = line("producers = false\n");
-        assert!(!off.contains("census") && !off.contains("profile"), "{off}");
+        // Quoted, as features: the line also holds the board crate's PATH, and a
+        // checkout whose directory name contains `census` matched the bare word.
+        assert!(
+            !off.contains("\"census\"") && !off.contains("\"profile\""),
+            "{off}"
+        );
         assert_eq!(
             on.replace(", \"census\", \"profile\"", ""),
             off,
