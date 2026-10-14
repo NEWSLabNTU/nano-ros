@@ -99,3 +99,29 @@ Any one of these, and the choice is a real trade-off rather than obvious:
 
 Re-running the failed jobs cleared it on #1546, so nothing is blocked by this
 right now.
+
+## Second sighting, 2026-10-14: in the merge group, as an ejection
+
+The same error shape ejected PR #2166 (a docs-only change filing issue 1891)
+from the merge queue. Merge-group run **38507231306**, job **115667400933**
+`check / fast (every event)`:
+
+```
+check-fast (parallel): 1 of 447 gate(s) FAILED
+===== FAIL (api-parity, rc=1, 51845ms) =====
+error: failed to get `pastey` as a dependency of package `nros v0.6.0 (…/packages/api/nros)`
+  download of pa/st/pastey failed
+  [28] Timeout was reached (Connection timed out after 30002 milliseconds)
+```
+
+This time the dependency is `pastey` instead of `ignore`, so the crate the error
+names is unrelated to the diff, the same as before. Two things are new:
+
+- **It now costs a batch, not a re-run.** On a pull request the remedy was
+  re-running one job. In the merge group, `grouping_strategy` is ALLGREEN, so
+  the red gate removed the PR from the queue (`RemovedFromMergeQueueEvent`
+  reason `failed_checks`, 03:49:29Z). It was re-queued afterwards.
+- **The "not yet frequent" caveat above has weakened.** There are now two
+  occurrences, twelve days apart, on two different events. That is still not a
+  rate, but the case for remedy 1 (retry) has grown. Remedy 1 is cheap and does
+  not hide a real parity mismatch.
