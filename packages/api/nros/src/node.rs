@@ -1841,7 +1841,7 @@ pub struct CallbackCtx<'a> {
     /// site from the component cell (`None` until `[param_services]` registers the store).
     /// Read with [`parameter`](Self::parameter). Gated so it is zero-cost when
     /// `param-services` is off.
-    #[cfg(feature = "param-services")]
+    #[cfg(feature = "param-store")]
     params: Option<&'a crate::ParameterServer<'a>>,
     /// phase-426 W3 — WHICH node's parameters `parameter()` reads.
     ///
@@ -1849,7 +1849,7 @@ pub struct CallbackCtx<'a> {
     /// is keyed the same way, so a context that carries the store without the
     /// key can only ever answer for one node — which is how every component on
     /// a multi-node executor came to read the primary's values.
-    #[cfg(feature = "param-services")]
+    #[cfg(feature = "param-store")]
     param_node: nros_params::NodeKey,
 }
 
@@ -1864,13 +1864,13 @@ impl<'a> CallbackCtx<'a> {
             decision: None,
             #[cfg(feature = "safety-e2e")]
             integrity: None,
-            #[cfg(feature = "param-services")]
+            #[cfg(feature = "param-store")]
             params: None,
             // phase-426 W3 — the store is keyed by node and this context does
             // not know which one until the dispatch site says so
             // (`set_param_server`). PRIMARY until then, which is the executor's
             // first node and what a single-node image means.
-            #[cfg(feature = "param-services")]
+            #[cfg(feature = "param-store")]
             param_node: nros_params::NodeKey::PRIMARY,
         }
     }
@@ -1892,13 +1892,13 @@ impl<'a> CallbackCtx<'a> {
             reply: None,
             decision: None,
             integrity: Some(integrity),
-            #[cfg(feature = "param-services")]
+            #[cfg(feature = "param-store")]
             params: None,
             // phase-426 W3 — the store is keyed by node and this context does
             // not know which one until the dispatch site says so
             // (`set_param_server`). PRIMARY until then, which is the executor's
             // first node and what a single-node image means.
-            #[cfg(feature = "param-services")]
+            #[cfg(feature = "param-store")]
             param_node: nros_params::NodeKey::PRIMARY,
         }
     }
@@ -1923,13 +1923,13 @@ impl<'a> CallbackCtx<'a> {
             decision: None,
             #[cfg(feature = "safety-e2e")]
             integrity: None,
-            #[cfg(feature = "param-services")]
+            #[cfg(feature = "param-store")]
             params: None,
             // phase-426 W3 — the store is keyed by node and this context does
             // not know which one until the dispatch site says so
             // (`set_param_server`). PRIMARY until then, which is the executor's
             // first node and what a single-node image means.
-            #[cfg(feature = "param-services")]
+            #[cfg(feature = "param-store")]
             param_node: nros_params::NodeKey::PRIMARY,
         }
     }
@@ -1949,13 +1949,13 @@ impl<'a> CallbackCtx<'a> {
             decision: Some(DecisionSink::Goal(out)),
             #[cfg(feature = "safety-e2e")]
             integrity: None,
-            #[cfg(feature = "param-services")]
+            #[cfg(feature = "param-store")]
             params: None,
             // phase-426 W3 — the store is keyed by node and this context does
             // not know which one until the dispatch site says so
             // (`set_param_server`). PRIMARY until then, which is the executor's
             // first node and what a single-node image means.
-            #[cfg(feature = "param-services")]
+            #[cfg(feature = "param-store")]
             param_node: nros_params::NodeKey::PRIMARY,
         }
     }
@@ -1974,13 +1974,13 @@ impl<'a> CallbackCtx<'a> {
             decision: Some(DecisionSink::Cancel(out)),
             #[cfg(feature = "safety-e2e")]
             integrity: None,
-            #[cfg(feature = "param-services")]
+            #[cfg(feature = "param-store")]
             params: None,
             // phase-426 W3 — the store is keyed by node and this context does
             // not know which one until the dispatch site says so
             // (`set_param_server`). PRIMARY until then, which is the executor's
             // first node and what a single-node image means.
-            #[cfg(feature = "param-services")]
+            #[cfg(feature = "param-store")]
             param_node: nros_params::NodeKey::PRIMARY,
         }
     }
@@ -1988,7 +1988,7 @@ impl<'a> CallbackCtx<'a> {
     /// Phase 264 W4c — thread the executor's volatile parameter store into this context.
     /// The dispatch site calls this after construction (the store reaches the callback via
     /// the component cell, not the constructor args). No-op-equivalent when `None`.
-    #[cfg(feature = "param-services")]
+    #[cfg(feature = "param-store")]
     pub fn set_param_server(
         &mut self,
         params: Option<&'a crate::ParameterServer<'a>>,
@@ -2002,7 +2002,7 @@ impl<'a> CallbackCtx<'a> {
     /// parameter is undeclared, the wrong type, or `[param_services]` is not enabled.
     /// Returns the **live** value — the launch-baked initial, or whatever a `ros2 param
     /// set` last wrote (RFC-0004 §10; values are volatile, lost at the next boot).
-    #[cfg(feature = "param-services")]
+    #[cfg(feature = "param-store")]
     pub fn parameter<T: crate::ParameterVariant>(&self, name: &str) -> Option<T> {
         self.params
             // phase-426 W3 — the store is keyed by node, and the key is the
@@ -2257,7 +2257,7 @@ pub struct TickCtx<'a> {
     /// Phase 264 W4c — the executor's volatile parameter store, threaded by the tick
     /// driver (`tick_one_cell` already holds the executor). `None` until
     /// `[param_services]` registers the store. Read with [`parameter`](Self::parameter).
-    #[cfg(feature = "param-services")]
+    #[cfg(feature = "param-store")]
     params: Option<&'a crate::ParameterServer<'a>>,
     /// phase-426 W3 — WHICH node's parameters `parameter()` reads.
     ///
@@ -2265,7 +2265,7 @@ pub struct TickCtx<'a> {
     /// is keyed the same way, so a context that carries the store without the
     /// key can only ever answer for one node — which is how every component on
     /// a multi-node executor came to read the primary's values.
-    #[cfg(feature = "param-services")]
+    #[cfg(feature = "param-store")]
     param_node: nros_params::NodeKey,
 }
 
@@ -2280,20 +2280,20 @@ impl<'a> TickCtx<'a> {
             publishers,
             actions,
             clients,
-            #[cfg(feature = "param-services")]
+            #[cfg(feature = "param-store")]
             params: None,
             // phase-426 W3 — the store is keyed by node and this context does
             // not know which one until the dispatch site says so
             // (`set_param_server`). PRIMARY until then, which is the executor's
             // first node and what a single-node image means.
-            #[cfg(feature = "param-services")]
+            #[cfg(feature = "param-store")]
             param_node: nros_params::NodeKey::PRIMARY,
         }
     }
 
     /// Phase 264 W4c — thread the executor's volatile parameter store in (the tick
     /// driver holds the executor directly). No-op-equivalent when `None`.
-    #[cfg(feature = "param-services")]
+    #[cfg(feature = "param-store")]
     pub fn set_param_server(
         &mut self,
         params: Option<&'a crate::ParameterServer<'a>>,
@@ -2306,7 +2306,7 @@ impl<'a> TickCtx<'a> {
     /// Phase 264 W4c — read this node's parameter `name` as `T` during `tick`, or `None`
     /// if undeclared, the wrong type, or `[param_services]` is off. Returns the live
     /// value (baked initial or last `ros2 param set`; volatile — RFC-0004 §10).
-    #[cfg(feature = "param-services")]
+    #[cfg(feature = "param-store")]
     pub fn parameter<T: crate::ParameterVariant>(&self, name: &str) -> Option<T> {
         self.params
             // phase-426 W3 — the store is keyed by node, and the key is the
@@ -2870,7 +2870,7 @@ mod tests {
 
     // Phase 264 W4c — a callback reads the live parameter value through
     // `CallbackCtx::parameter::<T>` once the dispatch site threads the store in.
-    #[cfg(feature = "param-services")]
+    #[cfg(feature = "param-store")]
     #[test]
     fn callback_ctx_reads_param() {
         struct NoopResolver;

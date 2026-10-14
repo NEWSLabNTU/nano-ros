@@ -143,6 +143,16 @@ pub trait NodeDispatchRuntime {
         Ok(())
     }
 
+    /// phase-461 W6 -- build the parameter STORE and register no service: the
+    /// `params` capability axis. `nros::main!` calls this (via
+    /// [`RuntimeCtx::apply_param_store`]) before the per-node `register` calls
+    /// when the system declares `params` and not `param_services`. Default
+    /// no-op (non-executor runtimes, or `nros` built without `param-store`,
+    /// which the entry const-asserts against).
+    fn apply_param_store(&mut self) -> Result<(), &'static str> {
+        Ok(())
+    }
+
     /// Phase 258 (Track 2, 2a) — raw `*mut Executor` (as `void*`) for the
     /// owned-spin entry, so a Node pkg's `register(runtime)` wrapper can call
     /// the uniform `__nros_component_<pkg>_install(.., executor, ..)` seam
@@ -354,6 +364,14 @@ impl<'a> RuntimeCtx<'a> {
     /// (issue 1272). No-op unless `nros` is built with `param-services`.
     pub fn apply_param_services(&mut self) -> Result<(), &'static str> {
         self.runtime.apply_param_services()
+    }
+
+    /// phase-461 W6 -- build the parameter store without its services
+    /// (forwards to [`NodeDispatchRuntime::apply_param_store`]). Emitted where
+    /// [`Self::apply_param_services`] would be, for a system declaring
+    /// `params` alone. No-op unless `nros` is built with `param-store`.
+    pub fn apply_param_store(&mut self) -> Result<(), &'static str> {
+        self.runtime.apply_param_store()
     }
 
     /// Lookup a param by name; first match wins. Linear scan

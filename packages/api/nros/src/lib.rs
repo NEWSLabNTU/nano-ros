@@ -1308,6 +1308,13 @@ pub mod __macro_support {
     /// returns nothing.
     pub const PARAM_SERVICES_ENABLED: bool = cfg!(feature = "param-services");
 
+    /// phase-461 W6 — whether THIS `nros` build carries the parameter STORE
+    /// (`param-store`, which `param-services` implies). A system declaring the
+    /// `params` axis const-asserts it, for the reason above: without the
+    /// feature `apply_param_store` is a no-op and every `declare_parameter`
+    /// is refused at boot instead of at compile time.
+    pub const PARAM_STORE_ENABLED: bool = cfg!(feature = "param-store");
+
     /// Issue 1766 — the same answer for the other capability axes a leaf
     /// can declare in `[system] features`. A Form-1 `nros::main!()`
     /// const-asserts the flag of every declared axis

@@ -213,8 +213,14 @@ stream = ["nros-node/stream"]
 # FFI reentrancy guards (critical-section around all RMW FFI calls).
 ffi-sync = ["nros-node/ffi-sync"]
 
-# Parameter services for ROS 2 interop (ros2 param list/get/set).
-param-services = ["nros-node/param-services"]
+# phase-461 W6 — the parameter STORE: `declare_parameter`, launch seeds,
+# `--ros-args -p`, `ctx.parameter`. No queryable. nros-node has not split the
+# store from the service code yet, so this forwards its one feature and the
+# six servers stay linked and dormant (they go up only on request).
+param-store = ["nros-node/param-services"]
+# Parameter services for ROS 2 interop (ros2 param list/get/set): the store
+# plus `apply_param_services`, which registers the six servers per node.
+param-services = ["param-store", "nros-node/param-services"]
 
 # Lifecycle services for ROS 2 interop (ros2 lifecycle set|get|list|nodes — REP-2002).
 lifecycle-services = ["nros-node/lifecycle-services"]

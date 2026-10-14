@@ -54,8 +54,8 @@ endfunction()
 # adding a row there + an arm here is the only edit a future axis needs.
 #
 # Known axes mirror the registry: `safety` → `NROS_SAFETY_E2E`;
-# `param_services` is known but carries NO `cmake_token` (informational `#define`
-# only), so it lowers to no option. An unknown name is a hard error (typo guard),
+# `param_services` and `params` are known but carry NO `cmake_token`
+# (informational `#define` only), so it lowers to no option. An unknown name is a hard error (typo guard),
 # matching the Rust `validate_and_warn_capabilities`.
 function(nros_lower_system_features features)
     foreach(_feat IN LISTS features)
@@ -85,6 +85,12 @@ function(nros_lower_system_features features)
             # is measured against C++ layouts by
             # `check-cpp-capability-layout`, whose CAPS list it joined in W4.
             add_compile_definitions(NROS_SYSTEM_PARAM_SERVICES)
+        elseif(_feat STREQUAL "params")
+            # phase-461 W6 — the parameter store without the six services.
+            # Known axis, no CMake knob; the cargo feature (`param-store`) is
+            # chosen per image by `nros_feature_set` and on the west road by
+            # `zephyr/CMakeLists.txt`. Directory-wide for 0745's reason.
+            add_compile_definitions(NROS_SYSTEM_PARAM_STORE)
         elseif(_feat STREQUAL "lifecycle")
             # Phase 269 W2 — Known axis, no CMake knob. The CARGO feature
             # (`lifecycle-services`) is chosen per image from the same list:
@@ -105,7 +111,7 @@ function(nros_lower_system_features features)
         else()
             message(FATAL_ERROR
                 "nros_lower_system_features: unknown capability '${_feat}' in "
-                "NROS_FEATURES (known axes: safety, param_services, lifecycle, rosout)")
+                "NROS_FEATURES (known axes: safety, param_services, params, lifecycle, rosout)")
         endif()
     endforeach()
 endfunction()

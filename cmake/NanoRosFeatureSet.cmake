@@ -94,7 +94,7 @@ endfunction()
 #                                        only there is the cargo feature
 #                                        board-specific (issue 1512); defaults to
 #                                        the ambient NROS_BOARD
-#     CAPABILITIES <param_services;lifecycle;safety;…>
+#     CAPABILITIES <param_services;params;lifecycle;safety;…>
 #     [NO_STD_CROSS]                     force the embedded tier regardless of
 #                                        CMAKE_CROSSCOMPILING (native_sim is a
 #                                        cross build that wants the std tier)
@@ -326,6 +326,17 @@ function(nros_feature_set out_var)
         if(_cap STREQUAL "")
         elseif(_cap STREQUAL "param_services")
             list(APPEND _feats param-services)
+        elseif(_cap STREQUAL "params")
+            # phase-461 W6 — the parameter STORE without the six services.
+            # nros-cpp has the split (`param-store`, issue 1529); nros-c does
+            # not, so the C crate takes its one feature and links the service
+            # code dormant: no entry registers it, and the inventory claims no
+            # queryable for it.
+            if(_FS_CRATE STREQUAL "c")
+                list(APPEND _feats param-services)
+            else()
+                list(APPEND _feats param-store)
+            endif()
         elseif(_cap STREQUAL "lifecycle")
             list(APPEND _feats lifecycle-services)
         elseif(_cap STREQUAL "rosout")
@@ -357,7 +368,7 @@ function(nros_feature_set out_var)
         else()
             message(FATAL_ERROR
                 "nros_feature_set: unknown capability '${_cap}' "
-                "(known: param_services, lifecycle, safety, rosout)")
+                "(known: param_services, params, lifecycle, safety, rosout)")
         endif()
     endforeach()
 

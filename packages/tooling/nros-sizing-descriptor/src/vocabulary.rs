@@ -459,6 +459,9 @@ vocabulary! {
         Declared => "declared",
         /// The bringup declares the `param_services` capability axis.
         ParamServices => "param_services",
+        /// The bringup declares the `params` capability axis: the store
+        /// without the six services (phase-461 W6).
+        Params => "params",
         /// A launch `<param>` seeds a node's parameters (issue 1706 (b)),
         /// with or without the services.
         LaunchSeed => "launch_seed",

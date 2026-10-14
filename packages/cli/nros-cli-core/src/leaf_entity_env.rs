@@ -1297,6 +1297,7 @@ mod tests {
                 lifecycle,
                 model_nodes: nodes,
                 launch_seeds_params: false,
+                param_store: false,
             })
         };
         let bare = derive(None);

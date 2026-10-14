@@ -772,7 +772,8 @@ impl Drop for RefuseParameterStore {
 /// Issue 1856 -- name the build statement that left `what` out of this image.
 ///
 /// `nros_params::PARAM_SERVICES_SERVED` is false only when the build STATED
-/// `NROS_CAPABILITY_PARAM_SERVICES=0`; the carved home then has no service
+/// `NROS_CAPABILITY_PARAM_SERVICES=0`, or the bringup declared the `params`
+/// axis without `param_services` (phase-461 W6); the carved home then has no service
 /// sets and no request/reply pair, so the call cannot be satisfied at run
 /// time. Cold and out of line: it formats.
 #[cfg(feature = "param-services")]
@@ -781,9 +782,10 @@ impl Drop for RefuseParameterStore {
 fn report_parameter_services_not_built(what: &str) {
     nros_log::log_error!(
         nros_log::get_logger("nros"),
-        "{} refused: this image was built with NROS_CAPABILITY_PARAM_SERVICES=0, so its \
-         executor reserves no parameter-service sets or buffers. Declare `param_services` \
-         in the bringup's `[system] features` (issue 1856).",
+        "{} refused: this image declares the parameter store without its services \
+         (the `params` axis, or NROS_CAPABILITY_PARAM_SERVICES=0), so its executor \
+         reserves no parameter-service sets or buffers. Declare `param_services` in the \
+         bringup's `[system] features` (issue 1856, phase-461 W6).",
         what
     );
 }
@@ -11750,6 +11752,25 @@ impl<'s> Executor<'s> {
 
 #[cfg(feature = "param-services")]
 impl<'s> Executor<'s> {
+    /// phase-461 W6 — build the parameter STORE and register no service.
+    ///
+    /// What an image declaring the `params` axis (and not `param_services`)
+    /// calls ahead of its nodes: launch seeds and `declare_parameter` land in
+    /// the store, and `ros2 param` reaches none of it, because no queryable
+    /// was created. The primary node's `use_sim_time` placeholder is seeded
+    /// as it is for a served store; nothing can SET it here, which is the
+    /// axis' stated limit.
+    ///
+    /// Idempotent, and a later [`Self::register_parameter_services`] keeps
+    /// this store and adds the six services on top of it.
+    pub fn register_parameter_store(&mut self) -> Result<(), NodeError> {
+        if self.ensure_parameter_store() {
+            Ok(())
+        } else {
+            Err(NodeError::Transport(TransportError::BadAlloc))
+        }
+    }
+
     /// Issue 0745 — lazily create the parameter STORE (no services yet).
     /// Launch-param seeding runs before any node is constructed; the six
     /// service servers attach later in `register_parameter_services`,

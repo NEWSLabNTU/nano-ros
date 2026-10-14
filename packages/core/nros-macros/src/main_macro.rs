@@ -741,6 +741,9 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // Phase 264 W4b — the `param_services` capability (launch arm: the overlay) →
     // register the ROS 2 param services + seed the volatile store from the baked params.
     let mut param_services_enabled = false;
+    // phase-461 W6 — the `params` axis without `param_services`: build the
+    // store before the nodes register, serve nothing.
+    let mut param_store_enabled = false;
     // Issue 1766 follow-up — on the LAUNCH arm, the const-asserts for every
     // capability axis the model's `execution.features` declares, except the two
     // whose wiring calls assert their own feature (`param_services_call`,
@@ -1231,6 +1234,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             .map_err(|e| syn::Error::new(model_lit.span(), format!("nros::main!: {e}")))?;
         lifecycle_code = model_caps.lifecycle_code;
         param_services_enabled = model_caps.param_services;
+        param_store_enabled = model_caps.param_store;
         launch_axis_asserts = model_axis_assert_tokens(&model_caps);
         // phase-486 W8 — the bringup's system.toml is still TRACKED (a change
         // re-runs the macro), and a retired table in it is refused by name. It
@@ -1324,6 +1328,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     let leaf_axis_asserts = wire_leaf_axes(&args, &manifest_dir, leaf_decl.as_ref(), &mut tracked)?
         .map_or_else(proc_macro2::TokenStream::new, |caps| {
             param_services_enabled |= caps.param_services;
+            param_store_enabled |= caps.param_store;
             if caps.lifecycle_autostart.is_some() {
                 lifecycle_code = caps.lifecycle_autostart;
             }
@@ -1333,7 +1338,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // and emit neither the parameter nor the lifecycle services, on EITHER arm.
     // A declaration they cannot honour is refused, never dropped.
     if matches!(framework, Framework::Rtic | Framework::Embassy)
-        && (param_services_enabled || lifecycle_code.is_some())
+        && (param_services_enabled || param_store_enabled || lifecycle_code.is_some())
     {
         return Err(syn::Error::new(
             Span::call_site(),
@@ -1342,7 +1347,12 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                  register the runtime's parameter or lifecycle services, so the declaration \
                  would be dropped in silence (issue 1766). Remove it from `[system] features`, \
                  or deploy on a board whose entry runs the OwnedSpin, Zephyr or ESP32 shape.",
-                match (param_services_enabled, lifecycle_code.is_some()) {
+                match (
+                    param_services_enabled || param_store_enabled,
+                    lifecycle_code.is_some(),
+                ) {
+                    (true, true) if param_store_enabled => "`params` and `lifecycle`",
+                    (true, false) if param_store_enabled => "`params`",
                     (true, true) => "`param_services` and `lifecycle`",
                     (true, false) => "`param_services`",
                     _ => "`lifecycle`",
@@ -1407,9 +1417,15 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // contract declares, BEFORE any node registers, so a node whose code
     // declares a name its contract does not (or with another type) refuses
     // registration naming the node, the parameter and the contract. Only with
-    // `[param_services]`: without a store no parameter is declared at all.
+    // `[param_services]` or `params`: without a store no parameter is declared
+    // at all.
     let declared_params_call: proc_macro2::TokenStream =
-        if param_services_enabled && !declared_nodes.is_empty() {
+        if (param_services_enabled || param_store_enabled) && !declared_nodes.is_empty() {
+            let store_axis = if param_store_enabled {
+                "params"
+            } else {
+                "param_services"
+            };
             let node_lits = declared_nodes.iter().map(|n| {
                 let f = LitStr::new(&n.fqn, Span::call_site());
                 let c = LitStr::new(&n.contract, Span::call_site());
@@ -1428,7 +1444,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                     .apply_declared_params(&[ #( #node_lits ),* ], &[ #( #row_lits ),* ])
                     .map_err(|reason| {
                         ::nros::__macro_support::nros_platform::RuntimeError::Capability {
-                            name: "param_services",
+                            name: #store_axis,
                             reason,
                         }
                     })?;
@@ -1498,6 +1514,19 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             runtime.apply_param_services().map_err(|reason| {
                 ::nros::__macro_support::nros_platform::RuntimeError::Capability {
                     name: "param_services",
+                    reason,
+                }
+            })?;
+        }
+    } else if param_store_enabled {
+        // phase-461 W6 — the `params` axis: the store, before the per-node
+        // `register` calls so each cell captures it (W4c), and no services.
+        // Its feature is asserted with the other axes (`leaf_axis_asserts` /
+        // `launch_axis_asserts`, `PARAM_STORE_ENABLED`).
+        quote! {
+            runtime.apply_param_store().map_err(|reason| {
+                ::nros::__macro_support::nros_platform::RuntimeError::Capability {
+                    name: "params",
                     reason,
                 }
             })?;
@@ -3155,6 +3184,8 @@ struct ModelCapabilities {
     lifecycle_code: Option<u8>,
     /// `param_services` is among the overlay's switches.
     param_services: bool,
+    /// phase-461 W6 — `params` is, and `param_services` is not.
+    param_store: bool,
     /// Every capability axis the overlay's switches name, de-duplicated.
     axes: Vec<&'static nros_orchestration_ir::leaf_capabilities::LeafAxis>,
 }
@@ -3184,6 +3215,8 @@ fn model_capabilities(
     Ok(ModelCapabilities {
         lifecycle_code,
         param_services: features.iter().any(|f| f == "param_services"),
+        param_store: !features.iter().any(|f| f == "param_services")
+            && features.iter().any(|f| f == "params"),
         axes,
     })
 }
@@ -5778,6 +5811,23 @@ mod leaf_axis_tests {
             out.contains("PARAM_SERVICES_ENABLED"),
             "no feature assert:\n{out}"
         );
+    }
+
+    /// phase-461 W6 -- `params` builds the store and registers nothing; with
+    /// `param_services` beside it the services win and the store is theirs.
+    #[test]
+    fn form1_wires_a_declared_params_axis_as_the_store_alone() {
+        let out = expand("", "linux", "features = [\"params\"]").unwrap();
+        assert!(out.contains("apply_param_store"), "no store wired:\n{out}");
+        assert!(
+            out.contains("PARAM_STORE_ENABLED"),
+            "no feature assert:\n{out}"
+        );
+        assert!(!out.contains("apply_param_services"), "{out}");
+
+        let both = expand("", "linux", "features = [\"param_services\", \"params\"]").unwrap();
+        assert!(both.contains("apply_param_services"), "{both}");
+        assert!(!both.contains("apply_param_store"), "{both}");
     }
 
     #[test]

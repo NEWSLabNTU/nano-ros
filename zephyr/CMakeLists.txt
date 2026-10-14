@@ -835,6 +835,11 @@ if(CONFIG_NROS_CPP_API)
     if("param_services" IN_LIST NROS_FEATURES)
         add_compile_definitions(NROS_SYSTEM_PARAM_SERVICES)
     endif()
+    # phase-461 W6 -- the `params` axis: the store this road already builds
+    # (`param-store`), declared. No services, so nothing else changes here.
+    if("params" IN_LIST NROS_FEATURES)
+        add_compile_definitions(NROS_SYSTEM_PARAM_STORE)
+    endif()
 
     # phase-8 W4 — callback tracing (see `_nros_trace_suffix` above). Appended
     # BEFORE the umbrella's `string(REPLACE "," ";" _umb_feats ...)` below, so

@@ -167,7 +167,7 @@ fn main() {
     // for every image (`CONFIG_NROS_CAPABILITY_PARAM_SERVICES`, forwarded as
     // 0 or 1), and a road that states nothing keeps the services, because an
     // application there may register them from its own code.
-    let services_served = param_services_served();
+    let services_served = param_services_served(params);
 
     let contents = format!(
         "/// Maximum number of parameters the server can store \
@@ -296,18 +296,28 @@ fn store_implied(params: Option<&nros_sizing_descriptor::Params>) -> bool {
 
 /// Issue 1856 -- may this image serve its store through the six services?
 ///
-/// `NROS_CAPABILITY_PARAM_SERVICES` STATED as 0 is the one "no". Absent is
-/// "yes", deliberately: on the cargo and cmake roads nothing states the axis,
-/// and an application there may call `register_parameter_services` from its
-/// own code, which the build cannot see. A store implied by the contract's
-/// `params:` alone (the island's case) does not imply the services; the
-/// descriptor's `[params] store` names only the FIRST source, so it cannot
-/// answer this and is not read here.
-fn param_services_served() -> bool {
-    !matches!(
-        nros_zephyr_build::knob("NROS_CAPABILITY_PARAM_SERVICES").stated(),
-        Some(0)
-    )
+/// Two statements say "no", and nothing else does:
+///
+/// * `NROS_CAPABILITY_PARAM_SERVICES` STATED as 0 -- the Zephyr west road
+///   states the axis for every image;
+/// * phase-461 W6 -- the descriptor's `[params] store = "params"`: the bringup
+///   declared the `params` axis (the store without the services) and NOT
+///   `param_services`, which would name itself first in `ParamStore::ALL`
+///   order. That is a declaration, so the cargo and cmake roads, which state
+///   no Kconfig, can answer too.
+///
+/// Absent is "yes", deliberately: an application on those roads may call
+/// `register_parameter_services` from its own code, which the build cannot
+/// see. Any OTHER store source (the contract's `params:`, a launch seed) says
+/// nothing about the services, so it does not answer this.
+fn param_services_served(params: Option<&nros_sizing_descriptor::Params>) -> bool {
+    let declared_store_only = params
+        .is_some_and(|p| p.store().stated() == Some(&nros_sizing_descriptor::ParamStore::Params));
+    !declared_store_only
+        && !matches!(
+            nros_zephyr_build::knob("NROS_CAPABILITY_PARAM_SERVICES").stated(),
+            Some(0)
+        )
 }
 
 /// The STATED rungs of one parameter knob: env, then Kconfig, then the descriptor

@@ -210,8 +210,20 @@ time** — embedded targets do no runtime file loading, the same approach the
 domain ID uses. Editing the YAML re-runs codegen. A `from=` naming a file
 that doesn't exist is a build error, not a silent skip.
 
-> **Note:** the baked values are seeded through the parameter services, so
-> they reach nodes only when `param_services` is enabled in `system.toml`.
+> **Note:** the baked values are seeded into the node's parameter **store**.
+> Two capability axes in `[system] features` decide what else the image gets:
+>
+> | declared | store (`declare_parameter`, launch seeds, `--ros-args -p`) | `ros2 param` services |
+> | --- | --- | --- |
+> | `params` | yes | no — nothing is served, and the image claims no queryable for it |
+> | `param_services` | yes | six per node (`get`, `set`, `list`, `describe`, …) |
+>
+> Pick `params` on a small target that only needs its nodes to read their
+> configuration: the six services cost a queryable each per node, plus their
+> buffers. What it gives up: `ros2 param get|set|list|describe|dump` finds
+> nothing for the image's nodes, and the `use_sim_time` runtime switch has
+> nothing to set it. Which parameters exist is a contract fact; whether they
+> are served is this bringup fact.
 
 > **Note:** Python `.launch.py` files ARE resolved by `nros sync` (the
 > RFC-0060 resolver executes them with its bundled CPython; `$(find-pkg-share)`

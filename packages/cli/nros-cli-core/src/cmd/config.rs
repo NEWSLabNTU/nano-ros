@@ -632,6 +632,8 @@ fn render_resolved(workspace: &Path, system: &str) -> Result<String> {
         // `[param_services]` has no typed block any more (phase-486 W8): the
         // axis is `features`-only, so the typed column is always empty.
         ("param_services", None),
+        // phase-461 W6 -- the store without the services; `features`-only.
+        ("params", None),
         (
             "lifecycle",
             sys.lifecycle.as_ref().map(|l| l.autostart.clone()),

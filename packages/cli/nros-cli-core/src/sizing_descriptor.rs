@@ -1529,11 +1529,14 @@ fn compose_store(p: &mut Params, decl: Option<&ParamDeclarations>, infra: Option
         Some(ParamDeclarations::Absent) | None => Some(false),
     };
     let axis = infra.is_some_and(|i| i.param_services);
+    let store_axis = infra.is_some_and(|i| i.param_store);
     let seed = infra.is_some_and(|i| i.launch_seeds_params);
     let store = if declared == Some(true) {
         ParamStore::Declared
     } else if axis {
         ParamStore::ParamServices
+    } else if store_axis {
+        ParamStore::Params
     } else if seed {
         ParamStore::LaunchSeed
     } else if let Some(ParamDeclarations::Refused { reason }) = decl {
@@ -5000,6 +5003,18 @@ execution:
         assert!(p.implies_store());
         // The count is NOT faked to carry it: `declared` stays absent.
         assert_eq!(p.declared().tag(), "absent");
+    }
+
+    /// phase-461 W6 -- the `params` axis states a store of its own, named for
+    /// itself; beside `param_services` the services' axis names it, by
+    /// [`ParamStore::ALL`] order.
+    #[test]
+    fn the_params_axis_states_a_store_without_the_services() {
+        let p = store_of(&store_model("params", ""));
+        assert_eq!(p.store().stated(), Some(&ParamStore::Params));
+        assert!(p.implies_store());
+        let both = store_of(&store_model("param_services, params", ""));
+        assert_eq!(both.store().stated(), Some(&ParamStore::ParamServices));
     }
 
     /// The cargo LEAF road keeps the axis only where the leaf's `nros` dependency

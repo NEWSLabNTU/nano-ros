@@ -87,6 +87,18 @@ pub const CAPABILITIES: &[Capability] = &[
         c_define: Some("NROS_SYSTEM_PARAM_SERVICES"),
         cmake_token: None,
     },
+    // phase-461 W6 — the parameter STORE without the six services: launch
+    // seeds and `declare_parameter` work, `ros2 param` reaches nothing, and the
+    // image claims no queryable for it. `param_services` implies the store, so
+    // declaring both is a `param_services` image. Entry-umbrella-only, like its
+    // sibling: the store lives in the executor, not the transport.
+    Capability {
+        declared: "params",
+        nros_feature: "param-store",
+        backend_feature: None,
+        c_define: Some("NROS_SYSTEM_PARAM_STORE"),
+        cmake_token: None,
+    },
     // Phase 269 W2 — REP-2002 lifecycle services (register + autostart). Entry-umbrella-only —
     // the runtime registers the five services and drives the boot autostart policy; there is no
     // backend wire feature (lifecycle state lives in the executor, not the transport).
@@ -154,6 +166,17 @@ mod tests {
         assert!(!c.backend_supports("zenoh"));
         // Phase 261 W1 — informational `#define`, no CMake knob.
         assert_eq!(c.c_define, Some("NROS_SYSTEM_PARAM_SERVICES"));
+        assert_eq!(c.cmake_token, None);
+    }
+
+    /// phase-461 W6 — the store axis lowers to the store feature alone; the
+    /// six services are `param_services`' to add.
+    #[test]
+    fn params_is_the_store_without_the_services() {
+        let c = capability("params").expect("params axis");
+        assert_eq!(c.nros_feature, "param-store");
+        assert_eq!(c.backend_feature, None);
+        assert_eq!(c.c_define, Some("NROS_SYSTEM_PARAM_STORE"));
         assert_eq!(c.cmake_token, None);
     }
 

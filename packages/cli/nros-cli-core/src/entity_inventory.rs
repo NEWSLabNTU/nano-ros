@@ -1011,6 +1011,12 @@ pub struct InfraServices {
     /// generated entry fills through the same declare path a `param_services`
     /// image uses (`shared/declare_calls.jinja`).
     pub launch_seeds_params: bool,
+    /// phase-461 W6 -- the bringup declares the `params` axis: the parameter
+    /// STORE without the six services. Like [`Self::launch_seeds_params`] it
+    /// creates no server and counts into no pool; it implies the store
+    /// (`[params] store = "params"`). An image declaring both `params` and
+    /// `param_services` is a `param_services` image.
+    pub param_store: bool,
 }
 
 /// Issue 1706 -- does any node of `model` have a launch-seeded parameter?
@@ -1086,6 +1092,7 @@ impl InfraServices {
             model_nodes: nodes,
             // A feature list has no launch tree to seed from.
             launch_seeds_params: false,
+            param_store: has("params"),
         }
     }
 
@@ -1148,6 +1155,7 @@ impl InfraServices {
             lifecycle: self.lifecycle || other.lifecycle,
             model_nodes: self.model_nodes.max(other.model_nodes),
             launch_seeds_params: self.launch_seeds_params || other.launch_seeds_params,
+            param_store: self.param_store || other.param_store,
         }
     }
 }
@@ -7326,6 +7334,18 @@ execution:
         assert_eq!(
             both.max_cbs, none.max_cbs,
             "both families live outside the executor arena: no callback slot"
+        );
+
+        // phase-461 W6 -- the `params` axis is the store without the
+        // services: no queryable, no service node.
+        let store = knobs("params");
+        assert_eq!(store.max_queryables, none.max_queryables);
+        assert_eq!(store.infra_queryables, 0);
+        assert_eq!(store.param_service_nodes, 0);
+        // And beside `param_services` it changes nothing: that image serves.
+        assert_eq!(
+            knobs("param_services, params").max_queryables,
+            params.max_queryables
         );
 
         // `safety` is a real feature and not a queryable question.

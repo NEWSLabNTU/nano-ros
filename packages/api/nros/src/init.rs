@@ -633,7 +633,7 @@ impl Context {
                     to: rule.to,
                 });
             }
-            #[cfg(feature = "param-services")]
+            #[cfg(feature = "param-store")]
             if !self.ros_params.is_empty() {
                 let params = self
                     .ros_params
@@ -806,13 +806,13 @@ enum RosArgsRefusal<'a> {
     /// [`Context::config`] was asked for a config that cannot carry the rules.
     UnreachableExecutor,
     /// phase-482 W5 — `--params-file <path>` could not be read or parsed.
-    #[cfg(feature = "param-services")]
+    #[cfg(feature = "param-store")]
     ParamsFile {
         path: alloc::string::String,
         why: alloc::string::String,
     },
     /// phase-482 W5 — the parameter store could not be allocated (issue 1706).
-    #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+    #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
     NoParamStore,
 }
 
@@ -836,9 +836,9 @@ impl core::fmt::Display for RosArgsRefusal<'_> {
                  overrides into the executor Executor::open builds from it; use \
                  Context::create_executor() or create_executor_in(), which install them",
             ),
-            #[cfg(feature = "param-services")]
+            #[cfg(feature = "param-store")]
             Self::ParamsFile { path, why } => write!(f, "`--params-file {path}`: {why}"),
-            #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+            #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
             Self::NoParamStore => f.write_str(
                 "the parameter store could not be allocated, so the parameter overrides have \
                  nowhere to go",
@@ -877,7 +877,7 @@ where
     let owned: alloc::vec::Vec<String> =
         args.into_iter().map(|a| String::from(a.as_ref())).collect();
     let mut rules = alloc::vec::Vec::new();
-    #[cfg_attr(not(feature = "param-services"), allow(unused_mut))]
+    #[cfg_attr(not(feature = "param-store"), allow(unused_mut))]
     let mut params: alloc::vec::Vec<ArgvParam> = alloc::vec::Vec::new();
     let remap = |r: nros_node::ros_args::RemapArg<'_>| ArgvRemap {
         node: r.node.map(String::from),
@@ -888,7 +888,7 @@ where
     // honoured, each file's entries landing where its flag stood (so a later
     // `-p` overrides it and a later file overrides an earlier `-p`). Without
     // one, the remap-only parse refuses them by name.
-    #[cfg(feature = "param-services")]
+    #[cfg(feature = "param-store")]
     let parsed = {
         let mut events = alloc::vec::Vec::new();
         let r = nros_node::ros_args::parse_ros_args_events(owned.iter().map(|a| a.as_str()), |a| {
@@ -929,7 +929,7 @@ where
         }
         r
     };
-    #[cfg(not(feature = "param-services"))]
+    #[cfg(not(feature = "param-store"))]
     let parsed = nros_node::ros_args::parse_ros_args(owned.iter().map(|a| a.as_str()), |r| {
         rules.push(remap(r))
     });
@@ -1055,7 +1055,7 @@ mod ros_args_refusal_tests {
 
     /// Without a parameter store there is nowhere to put an override, so the
     /// parse refuses it by name rather than dropping it.
-    #[cfg(not(feature = "param-services"))]
+    #[cfg(not(feature = "param-store"))]
     #[test]
     #[should_panic(expected = "refused: `-p`")]
     fn parameter_overrides_are_still_refused_by_name() {
@@ -1063,7 +1063,7 @@ mod ros_args_refusal_tests {
         let _ = init_with_args(["/usr/bin/talker", "--ros-args", "-r", "a:=b", "-p", "x:=1"]);
     }
 
-    #[cfg(feature = "param-services")]
+    #[cfg(feature = "param-store")]
     fn param(node: Option<&str>, name: &str, value: &str) -> ArgvParam {
         ArgvParam {
             node: node.map(alloc::string::String::from),
@@ -1074,7 +1074,7 @@ mod ros_args_refusal_tests {
 
     /// phase-482 W5 — `-p` and a `--params-file` ride on the context in argv
     /// order, the file's entries where its flag stood, beside the remaps.
-    #[cfg(feature = "param-services")]
+    #[cfg(feature = "param-store")]
     #[test]
     fn parameter_overrides_ride_on_the_context_in_argv_order() {
         let _env = crate::env::test_env_lock();
@@ -1114,7 +1114,7 @@ mod ros_args_refusal_tests {
 
     /// An unreadable parameter file is refused, naming the path — never a
     /// silently empty set of overrides.
-    #[cfg(feature = "param-services")]
+    #[cfg(feature = "param-store")]
     #[test]
     #[should_panic(expected = "--params-file /nonexistent/nros-w5.yaml")]
     fn an_unreadable_params_file_is_refused_by_path() {
