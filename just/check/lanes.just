@@ -3171,9 +3171,11 @@ required-features-tests:
     cargo nextest run "${cargo_nextest_args[@]}" \
         -p nros-rmw-cffi --features alloc,lending \
         --test loan_fallback --test loan_native
+    # Issue 1906 -- `condvar_shim_codes` needs the same `platform-posix`: it
+    # calls the zenoh-pico alias shim against the POSIX port.
     cargo nextest run "${cargo_nextest_args[@]}" \
         -p nros-rmw-zenoh --features lending,platform-posix \
-        --test lending_traits
+        --test lending_traits --test condvar_shim_codes
     # Issue 0972 — the same class one crate over, and a MODULE rather than a
     # test file. `nros-c`'s `mod node` is inside `rmw_modules!`, whose expansion
     # is `#[cfg(feature = "rmw-cffi")]`; `just test-unit` runs

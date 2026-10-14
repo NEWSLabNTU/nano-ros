@@ -14,7 +14,7 @@ Behavioural parity with [`nros-platform-threadx`](../nros-platform-threadx)'s Ru
 | Time       | Wall clock unsupported; returns 0 |
 | Tasks      | `tx_thread_create` + `tx_thread_terminate` + `tx_thread_delete`. `task_init`'s `attr` parameter is a `nros_threadx_task_attr_t` carrying name + priority + stack pointer + stack depth — ThreadX does not allocate task stacks. |
 | Mutexes    | `tx_mutex_create(TX_INHERIT)`. ThreadX mutexes are recursive by design; `mutex_*` and `mutex_rec_*` share the same primitive. |
-| Condvars   | `tx_semaphore`-backed. `condvar_signal_all` matches the Rust impl's "wake one" approximation (ThreadX has no broadcast). |
+| Condvars   | `tx_semaphore` plus a waiter count, so `condvar_signal_all` wakes every waiter (issue 1906). |
 
 ## Byte-pool wiring
 

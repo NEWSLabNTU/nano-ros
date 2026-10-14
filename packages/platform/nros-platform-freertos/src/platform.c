@@ -858,27 +858,35 @@ int8_t nros_platform_condvar_wait_until(void *cv, void *m, uint64_t abstime_ms) 
     nros_freertos_condvar_t *c = (nros_freertos_condvar_t *) cv;
 
     uint64_t now = (nros_platform_clock_ns() / 1000000ULL);
-    uint32_t rel_ms = abstime_ms > now ? (uint32_t) (abstime_ms - now) : 0;
+    uint64_t rel_ms = abstime_ms > now ? abstime_ms - now : 0;
+    /* Issue 1906 -- round UP and stay finite. `pdMS_TO_TICKS` rounds down,
+     * so the wait timed out before its deadline, and a remainder under one
+     * tick became a zero-tick poll that a predicate loop spins on. A
+     * product that landed on `portMAX_DELAY` would also have turned this
+     * bounded wait into an unbounded one. */
+    uint64_t ticks64 = (rel_ms * (uint64_t) configTICK_RATE_HZ + 999U) / 1000U;
+    TickType_t ticks = ticks64 >= (uint64_t) portMAX_DELAY ? (TickType_t) (portMAX_DELAY - 1)
+                                                         : (TickType_t) ticks64;
 
     xSemaphoreTake((SemaphoreHandle_t) c->mutex, portMAX_DELAY);
     c->waiters++;
     xSemaphoreGive((SemaphoreHandle_t) c->mutex);
 
     nros_platform_mutex_unlock(m);
-    BaseType_t ret = xSemaphoreTake((SemaphoreHandle_t) c->sem, pdMS_TO_TICKS(rel_ms));
+    BaseType_t ret = xSemaphoreTake((SemaphoreHandle_t) c->sem, ticks);
     nros_platform_mutex_lock(m);
 
     if (ret != pdTRUE) {
-        /* Phase 121.3.freertos-parity — return -1 (non-zero, matches
-         * the deleted Rust impl byte-for-byte) so zenoh-pico's
-         * `_z_condvar_wait_until` callers see the same error-shaped
-         * return value they used to. Returning +1 (positive non-zero)
-         * subtly diverges and lets some callers treat it as success-
-         * with-spurious-wake. */
+        /* Issue 1906 -- a timeout is `1`, the code every other port and the
+         * header give it. This returned `-1`, an error, so a caller could not
+         * tell a timeout from a failure. (Phase 121.3 chose `-1` so that a
+         * zenoh-pico caller would not read `+1` as success. The answer to
+         * that is translating at the zenoh-pico seam, which
+         * `platform_aliases.c` now does.) */
         xSemaphoreTake((SemaphoreHandle_t) c->mutex, portMAX_DELAY);
         c->waiters--;
         xSemaphoreGive((SemaphoreHandle_t) c->mutex);
-        return -1;
+        return 1;
     }
     return 0;
 }

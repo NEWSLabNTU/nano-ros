@@ -595,8 +595,9 @@ pub trait PlatformThreading {
     fn condvar_wait(cv: *mut c_void, m: *mut c_void) -> i8;
 
     /// Wait with absolute monotonic deadline (milliseconds since
-    /// the [`PlatformClock::clock_ns`] epoch). Returns non-zero on
-    /// timeout.
+    /// the [`PlatformClock::clock_ns`] epoch). Returns 0 when
+    /// signalled, 1 on timeout and -1 on error (issue 1906). The
+    /// remaining time rounds UP to the port's tick.
     fn condvar_wait_until(cv: *mut c_void, m: *mut c_void, abstime: u64) -> i8;
 
     // -- Wake primitive (Phase 130) --

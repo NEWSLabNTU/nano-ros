@@ -944,24 +944,60 @@ int8_t nros_platform_mutex_rec_lock(void *m)     { return nros_platform_mutex_lo
 int8_t nros_platform_mutex_rec_try_lock(void *m) { return nros_platform_mutex_try_lock(m); }
 int8_t nros_platform_mutex_rec_unlock(void *m)   { return nros_platform_mutex_unlock(m); }
 
-/* ---- Condvar — tx_semaphore-backed ----
+/* ---- Condvar — tx_semaphore plus a waiter count ----
  *
- * Storage is a `TX_SEMAPHORE`. Signal does tx_semaphore_put; wait
- * does tx_semaphore_get with the caller's mutex released around the
- * blocking call. Matches the Rust impl's behaviour.
- */
+ * ThreadX has no condition variable, so this is a counting semaphore and a
+ * count of the threads registered to wait on it. Every update to `waiters`
+ * runs with interrupts disabled (TX_DISABLE / TX_RESTORE), which makes it
+ * safe from an ISR as well as from a thread.
+ *
+ * - wait: register (`waiters++`) while the caller still holds `m`, release
+ *   `m`, then take the semaphore. A signal that lands between the release
+ *   and the take is not lost, because the semaphore counts it.
+ * - signal: if anyone is registered, deregister one and put one token.
+ * - broadcast: deregister everyone and put one token each.
+ * - timeout: deregister ourselves if a signaller has not already done it.
+ *   If one has, its token stays behind and the next waiter takes it as a
+ *   spurious wake, which condvar semantics allow and every caller's
+ *   predicate loop absorbs.
+ *
+ * Issue 1906. This was a bare TX_SEMAPHORE, so `signal_all` could put only
+ * one token: with two waiters the second slept forever, and zenoh-pico
+ * broadcasts on close and notifier drop. A signal with nobody waiting also
+ * banked a token, so later waits returned at once. Counting waiters fixes
+ * both. */
+typedef struct {
+    TX_SEMAPHORE sem;
+    ULONG waiters;
+} nros_threadx_condvar_t;
 
 int8_t nros_platform_condvar_init(void *cv) {
     NROS_THREADX_KERNEL_ONLY_FATAL();
     if (cv == NULL) return -1;
-    return tx_semaphore_create((TX_SEMAPHORE *) cv, (char *) "nros_cv", 0) == TX_SUCCESS
-        ? 0 : -1;
+    nros_threadx_condvar_t *c = (nros_threadx_condvar_t *) cv;
+    c->waiters = 0;
+    return tx_semaphore_create(&c->sem, (char *) "nros_cv", 0) == TX_SUCCESS ? 0 : -1;
 }
 
 int8_t nros_platform_condvar_drop(void *cv) {
     NROS_THREADX_KERNEL_ONLY_FATAL();
     if (cv == NULL) return -1;
-    return tx_semaphore_delete((TX_SEMAPHORE *) cv) == TX_SUCCESS ? 0 : -1;
+    return tx_semaphore_delete(&((nros_threadx_condvar_t *) cv)->sem) == TX_SUCCESS ? 0 : -1;
+}
+
+/* Deregister up to `max` waiters and put one token for each. Returns -1 if
+ * a put failed. Callable from a thread or an ISR. */
+static int8_t nros_threadx_condvar_release(nros_threadx_condvar_t *c, ULONG max) {
+    TX_INTERRUPT_SAVE_AREA
+    TX_DISABLE
+    ULONG n = c->waiters < max ? c->waiters : max;
+    c->waiters -= n;
+    TX_RESTORE
+    int8_t rc = 0;
+    while (n-- > 0u) {
+        if (tx_semaphore_put(&c->sem) != TX_SUCCESS) rc = -1;
+    }
+    return rc;
 }
 
 /* Issue 1750 -- a SIGNAL from a foreign thread is refused rather than fatal:
@@ -970,48 +1006,70 @@ int8_t nros_platform_condvar_drop(void *cv) {
 int8_t nros_platform_condvar_signal(void *cv) {
     NROS_THREADX_KERNEL_ONLY_OR_RETURN(-1);
     if (cv == NULL) return -1;
-    return tx_semaphore_put((TX_SEMAPHORE *) cv) == TX_SUCCESS ? 0 : -1;
+    return nros_threadx_condvar_release((nros_threadx_condvar_t *) cv, 1u);
 }
 
 int8_t nros_platform_condvar_signal_all(void *cv) {
-    /* tx_semaphore has no broadcast; the Rust impl issues a single
-     * put. Match that behaviour. Callers needing broadcast can
-     * loop, but the semantic is "wake at least one". */
-    return nros_platform_condvar_signal(cv);
+    NROS_THREADX_KERNEL_ONLY_OR_RETURN(-1);
+    if (cv == NULL) return -1;
+    return nros_threadx_condvar_release((nros_threadx_condvar_t *) cv, ~(ULONG) 0);
 }
 
-/* Phase 124.B.7.a — ISR-safe signal.
- *
- * tx_semaphore_put is ISR-safe under ThreadX (callable from any
- * context, including ISRs). Same impl as the thread-context path. */
+/* Phase 124.B.7.a — ISR-safe signal. `tx_semaphore_put` is ISR-safe, and
+ * the waiter count is updated with interrupts disabled. */
 int8_t nros_platform_condvar_signal_from_isr(void *cv) {
     NROS_THREADX_KERNEL_ONLY_OR_RETURN(-1);
     if (cv == NULL) return -1;
-    return tx_semaphore_put((TX_SEMAPHORE *) cv) == TX_SUCCESS ? 0 : -1;
+    return nros_threadx_condvar_release((nros_threadx_condvar_t *) cv, 1u);
+}
+
+/* Register as a waiter, release `m`, wait up to `ticks`, re-take `m`.
+ * Returns 0 when woken, 1 on timeout or abort, -1 on error. */
+static int8_t nros_threadx_condvar_wait_ticks(nros_threadx_condvar_t *c, void *m, ULONG ticks) {
+    {
+        TX_INTERRUPT_SAVE_AREA
+        TX_DISABLE
+        c->waiters++;
+        TX_RESTORE
+    }
+    nros_platform_mutex_unlock(m);
+    UINT rc = tx_semaphore_get(&c->sem, ticks);
+    if (rc != TX_SUCCESS) {
+        TX_INTERRUPT_SAVE_AREA
+        TX_DISABLE
+        if (c->waiters > 0u) c->waiters--;
+        TX_RESTORE
+    }
+    nros_platform_mutex_lock(m);
+    if (rc == TX_SUCCESS)                               return 0;
+    if (rc == TX_NO_INSTANCE || rc == TX_WAIT_ABORTED)  return 1;
+    return -1;
 }
 
 int8_t nros_platform_condvar_wait(void *cv, void *m) {
     NROS_THREADX_KERNEL_ONLY_FATAL();
     if (cv == NULL || m == NULL) return -1;
-    nros_platform_mutex_unlock(m);
-    UINT rc = tx_semaphore_get((TX_SEMAPHORE *) cv, TX_WAIT_FOREVER);
-    nros_platform_mutex_lock(m);
-    return rc == TX_SUCCESS ? 0 : -1;
+    int8_t rc = nros_threadx_condvar_wait_ticks((nros_threadx_condvar_t *) cv, m, TX_WAIT_FOREVER);
+    return rc == 0 ? 0 : -1;
 }
 
 int8_t nros_platform_condvar_wait_until(void *cv, void *m, uint64_t abstime_ms) {
     NROS_THREADX_KERNEL_ONLY_FATAL();
     if (cv == NULL || m == NULL) return -1;
     uint64_t now = (nros_platform_clock_ns() / 1000000ULL);
-    ULONG timeout_ticks = abstime_ms > now
-        ? (ULONG) ((abstime_ms - now) * TX_TIMER_TICKS_PER_SECOND / 1000U)
-        : 0;
-    nros_platform_mutex_unlock(m);
-    UINT rc = tx_semaphore_get((TX_SEMAPHORE *) cv, timeout_ticks);
-    nros_platform_mutex_lock(m);
-    if (rc == TX_SUCCESS)       return 0;
-    if (rc == TX_NO_INSTANCE)   return 1;  /* timeout */
-    return -1;
+    /* Issue 1906 -- round UP, like `wake_wait_ms` below, and stay finite.
+     * Rounding down timed out before the deadline, and at 100 Hz any
+     * remainder under 10 ms became TX_NO_WAIT, a poll that a predicate loop
+     * spins on until the deadline passes. A product that landed on
+     * TX_WAIT_FOREVER would have made this wait unbounded. */
+    ULONG ticks = TX_NO_WAIT;
+    if (abstime_ms > now) {
+        ULONG tps = TX_TIMER_TICKS_PER_SECOND;
+        if (tps == 0u) tps = 100u;
+        uint64_t t = ((abstime_ms - now) * (uint64_t) tps + 999u) / 1000u;
+        ticks = t >= (uint64_t) TX_WAIT_FOREVER ? (ULONG) (TX_WAIT_FOREVER - 1u) : (ULONG) t;
+    }
+    return nros_threadx_condvar_wait_ticks((nros_threadx_condvar_t *) cv, m, ticks);
 }
 
 /* ============================================================
@@ -1164,14 +1222,14 @@ size_t nros_platform_mutex_storage_size(void) { return sizeof(TX_MUTEX); }
 size_t nros_platform_mutex_storage_align(void) { return _Alignof(TX_MUTEX); }
 size_t nros_platform_mutex_rec_storage_size(void) { return sizeof(TX_MUTEX); }
 size_t nros_platform_mutex_rec_storage_align(void) { return _Alignof(TX_MUTEX); }
-size_t nros_platform_condvar_storage_size(void) { return sizeof(TX_SEMAPHORE); }
-size_t nros_platform_condvar_storage_align(void) { return _Alignof(TX_SEMAPHORE); }
+size_t nros_platform_condvar_storage_size(void) { return sizeof(nros_threadx_condvar_t); }
+size_t nros_platform_condvar_storage_align(void) { return _Alignof(nros_threadx_condvar_t); }
 
 _Static_assert(NROS_PLATFORM_MUTEX_STORAGE_SIZE >= sizeof(TX_MUTEX),
                "NROS_PLATFORM_MUTEX_STORAGE_SIZE too small for this port");
 _Static_assert(NROS_PLATFORM_MUTEX_REC_STORAGE_SIZE >= sizeof(TX_MUTEX),
                "NROS_PLATFORM_MUTEX_REC_STORAGE_SIZE too small for this port");
-_Static_assert(NROS_PLATFORM_CONDVAR_STORAGE_SIZE >= sizeof(TX_SEMAPHORE),
+_Static_assert(NROS_PLATFORM_CONDVAR_STORAGE_SIZE >= sizeof(nros_threadx_condvar_t),
                "NROS_PLATFORM_CONDVAR_STORAGE_SIZE too small for this port");
 _Static_assert(NROS_PLATFORM_TASK_STORAGE_SIZE >= sizeof(nros_threadx_task_t),
                "NROS_PLATFORM_TASK_STORAGE_SIZE too small for this port");
