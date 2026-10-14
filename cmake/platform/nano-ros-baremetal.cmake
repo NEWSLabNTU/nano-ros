@@ -58,7 +58,7 @@ function(nros_platform_link_app target)
             "under cmake/board/nano-ros-board-*.cmake).")
     endif()
     set(_board_module
-        "${CMAKE_CURRENT_LIST_DIR}/../board/nano-ros-board-${NROS_BOARD}.cmake")
+        "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../board/nano-ros-board-${NROS_BOARD}.cmake")
     if(NOT EXISTS "${_board_module}")
         message(FATAL_ERROR
             "nros_platform_link_app: no board module at ${_board_module}. "

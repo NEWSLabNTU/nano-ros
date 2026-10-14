@@ -372,7 +372,7 @@ else()
         # already satisfied".
         # Issue 1880 — through the shared resolver, whose checkout rung answers
         # before PATH (a linked worktree's PATH names the parent's `nros`).
-        include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosCli.cmake")
+        include("${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../../cmake/NanoRosCli.cmake")
         nros_resolve_cli(_NROS_CLI_IDLC_FOUND CONTEXT "cyclonedds idlc" OPTIONAL)
         if(_NROS_CLI_IDLC_FOUND)
             set(_NROS_CLI_IDLC "${_NROS_CLI_IDLC_FOUND}")
