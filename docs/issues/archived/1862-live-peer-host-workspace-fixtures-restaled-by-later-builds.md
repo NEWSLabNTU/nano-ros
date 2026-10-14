@@ -125,9 +125,18 @@ same rule for cmake build trees.
 
 ## Not covered
 
-The general class is still open. Any file a build writes into a workspace
-dir that is not ignored becomes a signature input, and it re-stales that
-workspace's earlier rows. `.inputsig` hashes untracked files on purpose,
-because an uncommitted source is an input. The two gates above cover the
-two writers known so far. Neither reads what a build actually writes.
+Nothing in this lane, as of the follow-up. The general class was that any
+file a build writes into a workspace dir that is not ignored becomes a
+signature input. `.inputsig` hashes untracked files on purpose, because an
+uncommitted source is an input.
 
+`workspace-fixtures-build.sh` now snapshots the workspace's unignored paths
+before each row. It refuses the row, naming each file, if the build added
+one (`scripts/build/unignored-writes.sh`, gate
+`check unignored-build-writes`). So a third writer fails its own row
+instead of re-staling the rows built before it. With `!nros-sdk.lock`
+appended to `examples/workspaces/rust/.gitignore`, building
+`workspace-rust-native` is refused and names the lock.
+
+The compile-check lane also hashes its row `dir`, but it builds in a staged
+copy and never writes into `dir`, so it is not wired.

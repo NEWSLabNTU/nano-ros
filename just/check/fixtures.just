@@ -508,3 +508,13 @@ example-build-coverage:
 # project directory, and self-tests the old root-only rule on a throwaway repo.
 sdk-lock-ignored:
     @bash scripts/check-sdk-lock-ignored.sh
+
+# Issue 1862 -- the workspace fixture builder refuses a row whose build left a
+# file in the workspace that git neither tracks nor ignores, because the
+# signature hashes it and it re-stales every row built there before. The ignore
+# rules (`sdk-lock-ignored`, `fixture-build-dirs-ignored`) cover the writers
+# known so far. This one is about what a build actually writes. The gate runs
+# the helper's selftest: a new write is refused, while an ignored write and a
+# file present before the build are not.
+unignored-build-writes:
+    @bash scripts/build/unignored-writes.sh selftest
