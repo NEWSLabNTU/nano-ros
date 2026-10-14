@@ -1169,6 +1169,10 @@ mod tests {
         //     component's `register` runs. Scales with nothing.
         //   * phase-474 I11's `ReleaseGrid`: the spin loop's release grid (its
         //     period, next release and skipped count). Scales with nothing.
+        //   * phase-436 A2b/A2c: whether a declared cadence is wait-paced (a
+        //     `bool`) and the count of late wakes beyond the granule (a `u32`).
+        //     Two scalars that scale with nothing, named so the next field added
+        //     beside them shows up here.
         #[allow(unused_mut)]
         let mut ceiling =
             1280 + size_of::<super::super::spin::SessionStore>()
@@ -1178,6 +1182,8 @@ mod tests {
                 + size_of::<usize>()
                 + size_of::<Option<core::ptr::NonNull<()>>>()
                 + size_of::<super::super::spin::ReleaseGrid>()
+                + size_of::<bool>()
+                + size_of::<u32>()
                 + size_of::<
                     [Option<super::super::spin::WakeSourceSlot>;
                         super::super::spin::MAX_WAKE_SOURCES],

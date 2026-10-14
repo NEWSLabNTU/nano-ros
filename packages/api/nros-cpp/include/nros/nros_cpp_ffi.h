@@ -2167,6 +2167,40 @@ nros_cpp_ret_t nros_cpp_executor_set_park_primitive(void *handle,
 nros_cpp_ret_t nros_cpp_executor_set_spin_nominal_us(void *handle, uint64_t us);
 
 /**
+ * phase-436 A2b — declare the loop's cadence, in microseconds, for a loop
+ * paced by the `spin_once` wait itself. `0` withdraws it.
+ *
+ * [`nros_cpp_executor_set_spin_nominal_us`] also says the caller paces the
+ * loop with its own sleep, so the jitter is reported at 1 us. A loop like
+ * `for (;;) nros_cpp_spin_once(h, period_ms)` is paced by a tick-granular
+ * park instead: declaring through that call over-claims resolution, and not
+ * declaring makes the timeout the period, which is wrong whenever the two
+ * differ (a cadence that is not whole milliseconds, or one raised to a
+ * floor). This one sets the period of the release grid the loop runs on,
+ * keeps the timeout as a bound on each wait, and reports the jitter at the
+ * park granularity.
+ *
+ * # Safety
+ * `handle` must be a live executor handle from this ABI, or NULL.
+ */
+nros_cpp_ret_t nros_cpp_executor_set_spin_nominal_wait_paced_us(void *handle, uint64_t us);
+
+/**
+ * phase-436 A2c — of the late wakes [`nros_cpp_executor_release_jitter`]
+ * counts, how many were late by more than its `granularity_us`.
+ *
+ * A wake counts as late at one microsecond past its release, so on a loop
+ * paced by a tick-granular park nearly every wake is late by a fraction of a
+ * tick, by design. This count leaves that rounding out. It is cleared by
+ * [`nros_cpp_executor_clear_release_jitter_stats`] with the rest.
+ *
+ * # Safety
+ * `handle` must be a live executor handle from this ABI, or NULL.
+ * `late_beyond` must be NULL or point at writable `uint32_t` storage.
+ */
+nros_cpp_ret_t nros_cpp_executor_late_wakes_beyond_granularity(void *handle, uint32_t *late_beyond);
+
+/**
  * phase-436 A2 — read the release-jitter probe from a C or C++ entry.
  *
  * `max_us` is the worst wake past its nominal release since the executor

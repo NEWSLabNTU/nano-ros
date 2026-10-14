@@ -14485,3 +14485,139 @@ fn parameter_events_publish_each_change_in_its_slot() {
         "new-then-set is still NEW, at the latest value"
     );
 }
+
+// ===========================================================================
+// phase-436 A2b / A2c -- a wait-paced cadence, and lateness the granularity
+// can resolve.
+// ===========================================================================
+
+private_test_clock!(wait_paced_grid_clock);
+private_test_clock!(wait_paced_granule_clock);
+private_test_clock!(late_beyond_granule_clock);
+
+/// A loop that passes whole milliseconds for a 1.5 ms cadence. Undeclared,
+/// the 1 ms timeout would be the period. Declared wait-paced, the grid runs at
+/// 1.5 ms: the timeout still bounds each wait, the wake at 1 ms is not a
+/// release, and the next spin parks the remaining 0.5 ms onto the grid point.
+#[test]
+fn a_wait_paced_cadence_sets_the_grid_and_the_timeout_still_bounds_each_wait() {
+    unsafe extern "C" fn park(_c: *mut core::ffi::c_void, us: u64) -> i8 {
+        wait_paced_grid_clock::set_us(wait_paced_grid_clock::now_us() + us);
+        1
+    }
+    wait_paced_grid_clock::claim_at_us(1_000_000);
+    let mut ex = executor_with_clock_fn(MockSession::new(), wait_paced_grid_clock::now_us);
+    ex.set_park_primitive(park, core::ptr::null_mut(), 1);
+    ex.set_spin_nominal_wait_paced_us(1_500);
+    let timeout = core::time::Duration::from_millis(1);
+    for k in 1..=100u64 {
+        ex.spin_once(timeout);
+        assert_eq!(
+            wait_paced_grid_clock::now_us(),
+            1_000_000 + (k - 1) * 1_500 + 1_000,
+            "spin {k}: the first wait is bounded by the 1 ms timeout"
+        );
+        ex.spin_once(timeout);
+        assert_eq!(
+            wait_paced_grid_clock::now_us(),
+            1_000_000 + k * 1_500,
+            "spin {k}: the second wait lands on the 1.5 ms grid point"
+        );
+    }
+    assert_eq!(
+        ex.spin_nominal_us, 1_500,
+        "judged against the declared cadence"
+    );
+    assert_eq!(
+        ex.release_jitter(),
+        (0, 0, 100),
+        "the early wakes are not releases; the 100 releases are on time"
+    );
+    assert_eq!(ex.skipped_releases(), 0);
+}
+
+/// The coupled setter reports 1 us because the caller's own sleep paces the
+/// loop. A wait-paced declaration is worth one park granule, the same as an
+/// undeclared loop, and declaring through the coupled setter afterwards takes
+/// the self-paced reading back.
+#[test]
+fn a_wait_paced_cadence_reports_the_park_granularity() {
+    unsafe extern "C" fn park(_c: *mut core::ffi::c_void, us: u64) -> i8 {
+        wait_paced_granule_clock::set_us(wait_paced_granule_clock::now_us() + us);
+        1
+    }
+    wait_paced_granule_clock::claim_at_us(0);
+    let mut ex = executor_with_clock_fn(MockSession::new(), wait_paced_granule_clock::now_us);
+    ex.set_park_primitive(park, core::ptr::null_mut(), 250);
+    assert_eq!(ex.release_jitter_granularity_us(), 250);
+    ex.set_spin_nominal_wait_paced_us(5_000);
+    assert_eq!(
+        ex.release_jitter_granularity_us(),
+        250,
+        "a wait-paced loop cannot be judged finer than the park"
+    );
+    ex.set_spin_nominal_us(5_000);
+    assert_eq!(
+        ex.release_jitter_granularity_us(),
+        1,
+        "the coupled setter still claims a self-paced loop"
+    );
+    ex.set_spin_nominal_wait_paced_us(5_000);
+    ex.set_spin_nominal_wait_paced_us(0);
+    assert_eq!(
+        ex.spin_nominal_declared_us, 0,
+        "zero withdraws the declaration"
+    );
+    assert_eq!(ex.release_jitter_granularity_us(), 250);
+}
+
+/// The A3 capture: a 10 ms grid on a 1 ms-tick park, with 300 us of work after
+/// each release. Every park rounds up to the tick, so most releases land a
+/// fraction of a tick late -- `late` counts them, as it always did, and none
+/// is late beyond the 1 ms the measurement is worth. Then one real 2.5 ms
+/// overrun: that one is beyond the granule.
+#[test]
+fn rounding_to_the_park_tick_is_late_but_not_beyond_the_granule() {
+    unsafe extern "C" fn park(_c: *mut core::ffi::c_void, us: u64) -> i8 {
+        late_beyond_granule_clock::set_us(late_beyond_granule_clock::now_us() + us);
+        1
+    }
+    late_beyond_granule_clock::claim_at_us(0);
+    let mut ex = executor_with_clock_fn(MockSession::new(), late_beyond_granule_clock::now_us);
+    ex.set_park_primitive(park, core::ptr::null_mut(), 1_000);
+    let period = core::time::Duration::from_millis(10);
+    ex.spin_once(period);
+    for _ in 0..50 {
+        late_beyond_granule_clock::set_us(late_beyond_granule_clock::now_us() + 300);
+        ex.spin_once(period);
+    }
+    let (max_us, late, total) = ex.release_jitter();
+    assert_eq!(total, 51);
+    // Rounding lands exactly on the point only when the remaining budget is
+    // a whole number of ticks, so most wakes -- not all -- are late.
+    assert!(
+        late > total / 2,
+        "tick rounding is late on most wakes: {late} of {total}"
+    );
+    assert!(
+        max_us <= 1_000,
+        "and never by more than a tick: {max_us} us"
+    );
+    assert_eq!(
+        ex.late_wakes_beyond_granularity(),
+        0,
+        "nothing was late by more than the granularity reports"
+    );
+
+    // One genuine overrun: 2.5 ms of work past where the next release is due.
+    late_beyond_granule_clock::set_us(late_beyond_granule_clock::now_us() + 12_500);
+    ex.spin_once(period);
+    assert_eq!(ex.late_wakes_beyond_granularity(), 1);
+
+    ex.clear_release_jitter_stats();
+    assert_eq!(
+        ex.late_wakes_beyond_granularity(),
+        0,
+        "cleared with the rest"
+    );
+}
