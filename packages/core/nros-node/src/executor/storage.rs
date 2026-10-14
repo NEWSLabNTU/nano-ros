@@ -1215,6 +1215,25 @@ mod tests {
             >()
             .saturating_sub(size_of::<usize>());
         }
+        // phase-425 W3b / phase-430 W1 -- `use_sim_time`'s state: the `/clock`
+        // handle, the requested and stated flags, and the silence watch. None
+        // scales with a knob. They sat unnamed inside the 1280 until a build
+        // that also carried `param-services` and `lifecycle-services` went
+        // 4 B over it, so they are named here like the rest.
+        #[cfg(feature = "sim-time")]
+        {
+            ceiling += size_of::<Option<super::super::types::HandleId>>()
+                + 2 * size_of::<bool>()
+                + size_of::<crate::time_source::SilenceWatch>();
+        }
+        // `lifecycle-services`' runtime state is BOXED; this value holds one
+        // optional pointer to it, which scales with nothing.
+        #[cfg(feature = "lifecycle-services")]
+        {
+            ceiling += size_of::<
+                Option<alloc::boxed::Box<crate::lifecycle_services::LifecycleRuntimeState>>,
+            >();
+        }
         assert!(
             value <= ceiling,
             "`Executor` is {value} B at MAX_CBS={CBS} / MAX_NODES={NODES}, over \
