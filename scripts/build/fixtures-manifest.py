@@ -1367,6 +1367,11 @@ def west_leaf_image(entry):
 
 
 def _system_default_launch(entry, path):
+    # Issue 1895 — the typed reader is `nros_orchestration_ir::system_launch`.
+    # This validation runs on the fast line, where no `nros` is built to ask,
+    # so it reads the one key itself; a Rust test
+    # (`the_fixture_manifest_reads_the_same_key_and_default`) holds this key and
+    # DEFAULT_LAUNCH_FILE to that module.
     system = _load_toml(entry, path).get("system") or {}
     return system.get("default_launch")
 

@@ -368,10 +368,17 @@ fn launch_tree_unrecorded(
     bringup_dir: &Path,
 ) -> Option<String> {
     let name = model_path.file_name()?.to_str()?;
-    let (launch_file, _args) = nros_orchestration_ir::model_location::model_rel_to_inputs(
+    // A `system.toml` that does not parse cannot say which launch tree this
+    // model came from, so the model cannot be shown current: that is a stale
+    // reason, never "nothing to compare" (issue 1895).
+    let (launch_file, _args) = match nros_orchestration_ir::model_location::model_rel_to_inputs(
         bringup_dir,
         &format!("config/{name}"),
-    )?;
+    ) {
+        Ok(Some(found)) => found,
+        Ok(None) => return None,
+        Err(e) => return Some(e),
+    };
     let launch_dir = bringup_dir.join("launch");
     let launch = launch_dir.join(&launch_file);
     if !launch.is_file() {

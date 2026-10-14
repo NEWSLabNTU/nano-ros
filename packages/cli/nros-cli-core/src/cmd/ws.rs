@@ -1547,30 +1547,6 @@ fn stamp_resolver_pin(staged: &Path) -> Result<()> {
 // phase-330 W4.0 / phase-460 W1 -- `launch_include_names` moved to
 // `crate::model_gate`, whose launch-tree walk asks the same question.
 
-/// phase-330 W4.0 — a `[[model]]` declaration in a bringup's `system.toml`.
-///
-/// Binding variants exist because a launch file takes ARGUMENTS
-/// (`multihost.launch.xml host:=robot1`). Nothing in the launch tree records
-/// which bindings matter: today that fact lives in the committed model's
-/// `meta.args`, i.e. in the artifact W4.a wants to delete. Declaring it here
-/// moves the fact into the INPUTS, which is RFC-0063's whole thesis applied one
-/// level deeper.
-///
-/// ```toml
-/// [[model]]
-/// launch = "multihost.launch.xml"
-/// out    = "multihost_robot1_model.yaml"
-/// args   = { host = "robot1" }
-/// ```
-#[derive(Debug, Clone)]
-pub struct ModelDecl {
-    pub launch: String,
-    pub out: String,
-    pub args: Vec<(String, String)>,
-}
-
-/// Read `[[model]]` declarations from a bringup's `system.toml`. A malformed or
-/// absent table yields none — the derived defaults still apply.
 /// issue 0409 direction 3 — a resolved model must actually CARRY the params its
 /// inputs declared.
 ///
@@ -1726,34 +1702,6 @@ fn resolver_warnings(model_path: &Path) -> Vec<String> {
                 .collect()
         })
         .unwrap_or_default()
-}
-
-fn system_toml_model_decls(system_toml: &Path) -> Vec<ModelDecl> {
-    let Ok(raw) = std::fs::read_to_string(system_toml) else {
-        return Vec::new();
-    };
-    let Ok(val) = toml::from_str::<toml::Value>(&raw) else {
-        return Vec::new();
-    };
-    let Some(arr) = val.get("model").and_then(|m| m.as_array()) else {
-        return Vec::new();
-    };
-    arr.iter()
-        .filter_map(|e| {
-            let launch = e.get("launch")?.as_str()?.to_string();
-            let out = e.get("out")?.as_str()?.to_string();
-            let args = e
-                .get("args")
-                .and_then(|a| a.as_table())
-                .map(|t| {
-                    t.iter()
-                        .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
-                        .collect::<Vec<_>>()
-                })
-                .unwrap_or_default();
-            Some(ModelDecl { launch, out, args })
-        })
-        .collect()
 }
 
 fn model_recorded_args(model_path: &Path) -> Vec<(String, String)> {
@@ -2042,6 +1990,11 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool, model_dir: Option<&Path>
         }
         let cfg_dir = pkg.dir.join("config");
         let system_toml = pkg.dir.join("system.toml");
+        // issue 1895 — `[system] default_launch` + `[[model]]`, read typed and
+        // ONCE per bringup. The raw reads this replaced dropped a malformed
+        // row without a word, so a declared variant could stop being resolved.
+        let launch_cfg = nros_orchestration_ir::system_launch::SystemLaunch::read(&system_toml)
+            .map_err(|e| eyre::eyre!("{e}"))?;
         // Input mtime horizon: launch XMLs + system.toml.
         let mut newest_input: Option<std::time::SystemTime> = None;
         let mut launches: Vec<std::path::PathBuf> = Vec::new();
@@ -2090,15 +2043,10 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool, model_dir: Option<&Path>
         let mut targets: Vec<(std::path::PathBuf, std::path::PathBuf)> = Vec::new();
         let default_launch = {
             // `[system] default_launch` else system.launch.xml else the single file.
-            let named = std::fs::read_to_string(&system_toml)
-                .ok()
-                .and_then(|raw| toml::from_str::<toml::Value>(&raw).ok())
-                .and_then(|v| {
-                    v.get("system")?
-                        .get("default_launch")?
-                        .as_str()
-                        .map(|s| launch_dir.join(s))
-                });
+            let named = launch_cfg
+                .default_launch
+                .as_deref()
+                .map(|s| launch_dir.join(s));
             named
                 .filter(|p| p.is_file())
                 .or_else(|| {
@@ -2146,10 +2094,7 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool, model_dir: Option<&Path>
         // deploy blocks then fail to place. So declarations REPLACE derivation
         // for their launch file rather than adding to it.
         let declared_launches: std::collections::HashSet<String> =
-            system_toml_model_decls(&system_toml)
-                .into_iter()
-                .map(|d| d.launch)
-                .collect();
+            launch_cfg.models.iter().map(|d| d.launch.clone()).collect();
         for lf in &launches {
             if Some(lf) == default_launch.as_ref() {
                 continue;
@@ -2172,7 +2117,7 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool, model_dir: Option<&Path>
         // phase-330 W4.0 — `[[model]]` declarations: the binding variants,
         // moved OUT of the committed filenames and into `system.toml` so the
         // inputs carry them. `launch` + `out` + `args`.
-        for decl in system_toml_model_decls(&system_toml) {
+        for decl in &launch_cfg.models {
             let lf = launch_dir.join(&decl.launch);
             if !lf.is_file() {
                 continue;
@@ -2342,10 +2287,11 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool, model_dir: Option<&Path>
                 .file_name()
                 .and_then(|s| s.to_str())
                 .and_then(|name| {
-                    system_toml_model_decls(&system_toml)
-                        .into_iter()
+                    launch_cfg
+                        .models
+                        .iter()
                         .find(|d| d.out == name)
-                        .map(|d| d.args)
+                        .map(|d| d.args.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
                 })
                 .unwrap_or_default();
             let args = if declared_args.is_empty() {
