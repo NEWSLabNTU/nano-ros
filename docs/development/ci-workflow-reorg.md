@@ -71,7 +71,7 @@ nearly everything keys on `packages/**`.
 **P2 — `just check` ≠ `check.yml` (drift).** They run different gate sets both
 ways, so CI can be green while `just check` is red (and vice versa):
 - in `just check` only: `check-no-direct-kernel-alloc`, `check-board-manifest-drift`,
-  `check-weak-symbols`, `native::check`, `check-python`.
+  `check-weak-symbols`, `linux::check`, `check-python`.
 - in `check.yml` only: `check-decoupling`, `check-version-lockstep`, and 3
   test-gates (`platform_header_matrix`, `cross_libc_precedence_gate`,
   `zephyr_prjconf_requirements`).

@@ -226,7 +226,7 @@ compiled output with one whose artifact is the compile's VERDICT. The
 `cargo-check-verdict` / `cmake-configure-verdict` builders run the compile in
 the build stage, record its exit status and stderr, and succeed whatever it
 said; the test asserts the verdict through `require_compile_verdict`.
-`native_main_macro_misuse`, `cmake_platform_matrix`, `cmake_node_register_misuse`
+`linux_main_macro_misuse`, `cmake_platform_matrix`, `cmake_node_register_misuse`
 and `diagnostic_verbatim` moved that way (and `native_orchestration_misuse` was
 deleted as a duplicate of the `orch_tiers_multi` build). A configure verdict's
 dependency closure comes from cmake's own `--trace-format=json-v1` record,

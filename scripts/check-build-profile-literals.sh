@@ -8,7 +8,7 @@
 # opts that one site out of the decision — and the failure is quiet: the build
 # writes one directory and the reader looks in another, so a fresh, working
 # image reads as "fixture missing" (issue #156; the same shape again in the
-# freertos/threadx run lanes and in `just native size`, whose
+# freertos/threadx run lanes and in `just linux size`, whose
 # `|| echo "build failed"` reported a wrong path as a broken build).
 #
 # THE RULE

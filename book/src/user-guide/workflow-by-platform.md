@@ -227,7 +227,7 @@ commands there.
 
 | platform | grid row | `nros setup <board>` | examples under | recipes (contributors) | starter page |
 |---|---|---|---|---|---|
-| Linux host | `linux` | `native` | `examples/native/` | `just native …` | [Native host build](../platform-guides/native-host.md) |
+| Linux host | `linux` | `linux` | `examples/native/` | `just linux …` | [Native host build](../platform-guides/native-host.md) |
 | FreeRTOS (QEMU MPS2-AN385) | `freertos` | `mps2-an385-freertos` | `examples/mps2-an385-freertos/` | `just freertos …` | [FreeRTOS](../getting-started/freertos.md) |
 | NuttX (Arm) | `nuttx` | `qemu-armv7a-nuttx` | `examples/qemu-armv7a-nuttx/` | `just nuttx …` | [NuttX](../getting-started/integration-nuttx.md) |
 | NuttX (RISC-V) | `nuttx-riscv` | `rv-virt-nuttx` | `examples/rv-virt-nuttx/` | `just nuttx …` | [NuttX](../getting-started/integration-nuttx.md) |

@@ -16,7 +16,7 @@ neither ever worked, not once, on any host:
   2026-05-12 (`f5aeb8faf`, phase-115.K.2) and the recipe was written on
   2026-05-13 (`68c89568c`, phase-121.7.i), whose roadmap entry claims "CI now
   exercises it".
-* `just native test-ros2-shell` — `./tests/ros2-interop.sh`, a script phase-16
+* `just linux test-ros2-shell` — `./tests/ros2-interop.sh`, a script phase-16
   planned and never committed. It has never existed in git history at all.
 
 The 1097 case is the sharper one, and it is why this gate checks the MANIFEST
@@ -607,7 +607,7 @@ def main():
         "  `just` resolves none of this — the shell does, when the recipe RUNS.\n"
         "  A recipe on no lane can therefore be dead for months and still read,\n"
         "  to the next person, as coverage that exists. Issue 1097 is one that\n"
-        "  was born dead and sat for four months; `just native test-ros2-shell`\n"
+        "  was born dead and sat for four months; `just linux test-ros2-shell`\n"
         "  named a script that was never committed at all.\n"
         "\n"
         "  Point it at what replaced the coverage, or delete it — but do not\n"

@@ -2,7 +2,7 @@
 //!
 //! Exercises the prebuilt CMake C and C++ examples (talker, listener,
 //! service-server/-client, action-server/-client) as a single parametrised
-//! suite. `just native build-fixtures` stages these under isolated
+//! suite. `just linux build-fixtures` stages these under isolated
 //! `build-<rmw>/` dirs so tests do not compile or overwrite native
 //! archives at runtime. Language-agnostic tests are generated as two cases
 //! (`::case_1_C` and `::case_2_Cpp`) via `#[rstest]`; language-specific
@@ -17,7 +17,7 @@
 //! duplicated the matrix consumers (`test_native_talker_listener_communication`
 //! rust-zenoh pubsub; `test_native_service_communication` c/cpp-zenoh service;
 //! `test_native_cyclonedds_{service,action}` c/cpp-cyclone) were FOLDED into
-//! `native_example_pubsub_e2e` / `native_example_reqresp_e2e` (phase-329 W4).
+//! `linux_example_pubsub_e2e` / `linux_example_reqresp_e2e` (phase-329 W4).
 //!
 //! Consolidates what used to be `c_api.rs` + `cpp_api.rs` (Phase 85.1).
 

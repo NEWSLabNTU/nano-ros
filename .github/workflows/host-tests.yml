@@ -20,7 +20,7 @@
 #     measured at +37 G for the linux half ALONE (unfinished, 32 cores), +39 G
 #     for the whole tier, against ~16 G free here.
 #   * PROVISIONING. Tier 1 covers Zephyr native_sim and ThreadX-Linux, which
-#     `just setup native` does not provision: 81 undeclared capability skips.
+#     `just setup linux` does not provision: 81 undeclared capability skips.
 #
 # The self-hosted runner already carries the Zephyr SDK and the disk for
 # tier 2; tier 1 runs there after it.
@@ -108,7 +108,7 @@ jobs:
       # RESTORE here, SAVE right after the build below — deliberately split.
       #
       # `actions/cache` saves in a POST step, at job end. By then this job has
-      # run `just setup native`, built fixtures and run `just ci tier1`, and all
+      # run `just setup linux`, built fixtures and run `just ci tier1`, and all
       # of them write into `packages/cli/target` too. So the entry stored is not
       # "the CLI build" but "whatever the whole job left behind".
       #
@@ -156,7 +156,7 @@ jobs:
           key: nros-cli-${{ runner.os }}-${{ hashFiles('packages/cli/Cargo.lock', 'packages/cli/**/Cargo.toml', 'packages/cli/**/*.rs') }}
 
       # phase-413 W5 — the scope verb.
-      # `just setup native` expands to `nros setup --build-sources` and
+      # `just setup linux` expands to `nros setup --build-sources` and
       # `just ci provision-zenohd`, which is exactly what this job spelled out,
       # plus the CLI/resolver and the host facts every tier asserts.
       #
@@ -164,10 +164,10 @@ jobs:
       # use. That is the price of one vocabulary: a job body is
       # `just setup <scope>` plus one command, and both are prebuilt tarball
       # fetches from the index rather than source builds.
-      - name: just setup native
+      - name: just setup linux
         run: |
           source ./activate.sh
-          just setup native
+          just setup linux
 
       - name: just test-unit
         run: |
@@ -190,7 +190,7 @@ jobs:
   # verdict is its own.
   #
   # It needs what `gate.yml`'s nightly compile tier needs and nothing more: the
-  # CLI, `just setup native` (which also builds `nros-launch-resolve`), the
+  # CLI, `just setup linux` (which also builds `nros-launch-resolve`), the
   # `cxx-syntax` compile-check fixtures and the example message bindings.
   gates:
     name: tier-1 gates (just check)
@@ -270,20 +270,20 @@ jobs:
           echo "NROS_CI_BUILD_JOBS=$jobs" >> "$GITHUB_ENV"
           echo "runner: ${cpus} cpu, ${mem_gb} GiB -> NROS_CI_BUILD_JOBS=${jobs}"
 
-      - name: just setup native
+      - name: just setup linux
         run: |
           source ./activate.sh
-          just setup native
+          just setup linux
 
       - name: Export play_launch_parser on PATH
         run: |
-          # issue 1758 — `just setup native` provisions it; not finding it is a
+          # issue 1758 — `just setup linux` provisions it; not finding it is a
           # provisioning failure, not a step to wave through with `|| true`.
           # Resolved through activate.sh (the store's PATH SSoT), not a find
           # under a guessed store root.
           source ./activate.sh
           if ! plp="$(command -v play_launch_parser)"; then
-            echo "::error::play_launch_parser not on PATH after just setup native + activate.sh"
+            echo "::error::play_launch_parser not on PATH after just setup linux + activate.sh"
             exit 1
           fi
           dirname "$plp" >> "$GITHUB_PATH"
@@ -295,7 +295,7 @@ jobs:
           source ./activate.sh
           just build-compile-check-fixtures cxx-syntax
 
-      # `just setup native` already builds it; named here because
+      # `just setup linux` already builds it; named here because
       # `check-lane-contracts` asks for the producer `generate-bindings` is
       # ordered after, and a no-op rebuild costs seconds.
       - name: Build nros-launch-resolve (generate-bindings shells out to it)
@@ -324,7 +324,7 @@ jobs:
           key: ${{ steps.bindings-key.outputs.key }}
           restore-keys: ${{ steps.bindings-key.outputs.restore-prefix }}
 
-      - name: generate message bindings (native::check asserts them)
+      - name: generate message bindings (linux::check asserts them)
         id: generate-bindings
         run: |
           source ./activate.sh

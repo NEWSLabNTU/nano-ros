@@ -348,7 +348,7 @@ Under R2 the large workspaces do not grow at all — the feature demos go to
 replaced by **one** (plus `features/`'s own build, which is larger than any
 single themed workspace but far smaller than the 11 it replaces).
 
-**Measured, 2026-08-03.** Cold `just build-test-fixtures lane=native`, every
+**Measured, 2026-08-03.** Cold `just build-test-fixtures lane=linux`, every
 manifest-declared build tree wiped first:
 
 | | W1 (`82b82a6d6`, before) | W5 (after) | delta |

@@ -5,7 +5,7 @@
 > it is a read-only diagnostic, and phase-350 W0 deleted the stale row where it
 > claimed this leaf was outside the manifest.) What remains here is `stm32f4-porting/{polling,rtic}` — **porting
 > templates that NOTHING builds**. They are not workspace members and
-> `just/native.just` only runs `size` on a prebuilt binary `|| echo "build
+> `just/linux.just` only runs `size` on a prebuilt binary `|| echo "build
 > failed"`, so they can rot silently. Treat them as documentation-with-code,
 > and expect them to lag the APIs they demonstrate.
 

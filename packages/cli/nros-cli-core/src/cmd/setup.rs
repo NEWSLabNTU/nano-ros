@@ -2383,7 +2383,7 @@ fn run_system(
 
     let mut prereqs = index.prereqs();
     if !roles.is_empty() {
-        // Narrowing is by ROLE, not by name: `just setup native` wants the host
+        // Narrowing is by ROLE, not by name: `just setup linux` wants the host
         // facts, and telling that user about `gcc-riscv64-unknown-elf` is noise
         // — which is how a real missing package gets scrolled past.
         let want: std::collections::BTreeSet<&str> = roles.iter().map(String::as_str).collect();
@@ -5095,15 +5095,9 @@ fn run_workspace_scan(
         // "your deploy is a scope" — that is a message to write, not a branch
         // to keep empty-handed, and it belongs with whoever knows which text
         // each deserves.
-        // phase-500 W1 — the host board's deploy token is `linux`, while its
-        // `just setup` scope stays `native` until phase-500 W2 renames it (the
-        // same table as `check-board-vocabulary.py`'s DEPLOY_SCOPE; W2 deletes
-        // both).
-        let scope = if t.deploy == "linux" {
-            "native".to_string()
-        } else {
-            t.deploy.clone()
-        };
+        // phase-500 W2 — the host deploy token and its `just setup` scope are
+        // both `linux`, so the deploy name IS the scope again.
+        let scope = t.deploy.clone();
         if scopes.is_empty() || scopes.contains(&scope) {
             println!("      contributors: ./scripts/bootstrap.sh  (or: just setup {scope})");
         } else {

@@ -2372,7 +2372,7 @@ jobs:
       # It was (phase-395, `197eef4fa`, "PR cheap, batch thorough"), and the
       # amortisation argument was right: pay for expensive verification once per
       # batch instead of once per push. What it missed is that `check-build` was
-      # never RUNNABLE here. It ends with `native::check`, which hard-requires
+      # never RUNNABLE here. It ends with `linux::check`, which hard-requires
       # generated message bindings, and includes `check-source-gates`, which
       # asserts prebuilt `.compile-ok` fixtures. This job builds the CLI,
       # provisions sources, and stops — so neither exists, and the required
@@ -2464,7 +2464,7 @@ jobs:
           key: ${{ steps.bindings-key.outputs.key }}
           restore-keys: ${{ steps.bindings-key.outputs.restore-prefix }}
 
-      - name: generate message bindings (native::check asserts them)
+      - name: generate message bindings (linux::check asserts them)
         id: generate-bindings
         if: ${{ contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
         run: |

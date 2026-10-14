@@ -480,7 +480,7 @@ blanket `nros setup --system`. They are not marginal: `cmake`, `ninja`, `make`,
 inside an error message; `just workspace apt-packages` PRINTS the command (by
 design — composing it is the tool's job, running it is the user's), and
 `just setup <scope>` never reaches even that. Simulated on a developer host: 38
-present, 5 missing, 3 unprobed, and `just setup native` pulls none of the five.
+present, 5 missing, 3 unprobed, and `just setup linux` pulls none of the five.
 So the documented bootstrap does not provision the system closure, and a user
 discovers it when a build fails.
 

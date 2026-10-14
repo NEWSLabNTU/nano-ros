@@ -2257,7 +2257,7 @@ fn require_prebuilt_workspace_binary(
         // call site laundered it into `[SKIPPED] … not built` and the lane
         // greened having run nothing. 21 of the tree's 61 laundering sites
         // resolve through here.
-        return absent_fixture_verdict(binary_path, "just native build-workspace-fixtures");
+        return absent_fixture_verdict(binary_path, "just linux build-workspace-fixtures");
     }
 
     let expected = current_workspace_fixture_signature(fixture_id)?;
@@ -2267,14 +2267,14 @@ fn require_prebuilt_workspace_binary(
         // `BuildFailed`: a stale fixture must never launder into a skip.
         TestError::FixtureNotBuilt(format!(
             "Workspace fixture stamp missing for {fixture_id}: {} ({e})\n\
-             Run `just native build-workspace-fixtures` first.",
+             Run `just linux build-workspace-fixtures` first.",
             stamp_path.display()
         ))
     })?;
     if actual.trim_end() != expected {
         return Err(TestError::BuildFailed(format!(
             "Workspace fixture {fixture_id} is stale: {}\n\
-             Run `just native build-workspace-fixtures` first.",
+             Run `just linux build-workspace-fixtures` first.",
             stamp_path.display()
         )));
     }
@@ -4005,7 +4005,7 @@ pub fn build_native_workspace_mixed_entry_robot2() -> TestResult<&'static Path> 
 /// Phase 118 — collapsed-shape native C talker, RMW-parametrized.
 ///
 /// Returns the prebuilt binary for the named RMW. The fixture build
-/// chain (`just native build-fixtures`) configures + builds
+/// chain (`just linux build-fixtures`) configures + builds
 /// `examples/native/c/talker/` once per RMW into separate
 /// `build-{zenoh,dds,xrce}/` dirs.
 pub fn build_native_c_talker_rmw(rmw: Rmw) -> TestResult<&'static Path> {
@@ -4937,7 +4937,7 @@ pub fn require_west_fixture(id: &str, rel: &str) -> TestResult<PathBuf> {
 
 /// Resolve the prebuilt `entry-poc` fixture (cached). The
 /// `packages/testing/nros-tests/bins/entry-poc` Entry pkg (`nros::main!()` →
-/// native `BoardEntry::run`) is built by `just native build-fixtures` /
+/// native `BoardEntry::run`) is built by `just linux build-fixtures` /
 /// `build-test-fixtures` (examples/fixtures.toml). Tests consume the artifact
 /// instead of running `cargo build` at run time (issue 0034).
 pub fn build_entry_poc() -> TestResult<&'static Path> {
@@ -4959,7 +4959,7 @@ pub fn build_entry_poc() -> TestResult<&'static Path> {
 /// Returns the prebuilt binary for the named RMW. Phase 220.C path B
 /// retired the cmake/corrosion cyclonedds bridge; every RMW (incl.
 /// Cyclone) now resolves to a pure-cargo `target-<rmw>/<profile>/talker`
-/// binary produced by `just native build-fixtures`. Cached per RMW so
+/// binary produced by `just linux build-fixtures`. Cached per RMW so
 /// repeated lookups in a nextest run avoid filesystem-stat overhead.
 pub fn build_native_talker_rmw(rmw: Rmw) -> TestResult<&'static Path> {
     static ZENOH_CELL: OnceCell<PathBuf> = OnceCell::new();
@@ -6946,7 +6946,7 @@ mod fixture_absence_class_tests {
         let exe = std::env::current_exe().expect("current_exe");
         let cases: [(&str, &[(&str, &str)]); 3] = [
             ("0", &[]),
-            ("1", &[("NROS_TEST_SCOPE", "native")]),
+            ("1", &[("NROS_TEST_SCOPE", "linux")]),
             ("1", &[("NROS_TEST_COORDS", "/dev/null")]),
         ];
         for (want, vars) in cases {

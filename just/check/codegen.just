@@ -551,7 +551,7 @@ generated-leaf-regenerable:
 # issue 0571 — a matrix consumer the lane filter cannot reach by NAME must
 # narrow its own cell list (`nros_tests::lane_scope::admits`). Four consumers
 # are ONE generically-named test each over every platform's cells, so
-# `scripts/test/lane-filter.sh native` excludes nothing of theirs: tier 1 boots
+# `scripts/test/lane-filter.sh linux` excludes nothing of theirs: tier 1 boots
 # whatever images exist, and the cells whose images do not exist vanish into a
 # green. Buildless.
 # phase-351 W5 — every cargo target cmake creates must receive the resolved

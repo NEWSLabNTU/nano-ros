@@ -442,7 +442,7 @@ if [ "${#cargo_records[@]}" -gt 0 ]; then
         # rust fixtures still pre-codegen separately until E.3.d.embedded.
         # issue 0649 — the `nros sync` that used to live HERE is now a pre-pass
         # in the parent (`nros_presync_row_dirs`, below). It ran per ROW, and a
-        # workspace has many rows: measured over one `lane=native` build, 185
+        # workspace has many rows: measured over one `lane=linux` build, 185
         # invocations for 69 distinct targets, `examples/workspaces/features`
         # synced 22 times for its 24 manifest rows. Sync is per-WORKSPACE and
         # idempotent — its outputs (generated msg crates, the patch config,
@@ -585,7 +585,7 @@ if [ "${#cargo_records[@]}" -gt 0 ]; then
     # not simulating a user procedure: a user runs `nros sync` once and then
     # builds, where the loop ran it once per manifest ROW — 22 times for
     # `examples/workspaces/features`, whose 24 rows share one directory. 185
-    # invocations for 69 distinct targets in one `lane=native` build, 63 % of
+    # invocations for 69 distinct targets in one `lane=linux` build, 63 % of
     # them repeats.
     #
     # Safe to hoist on both axes that could have made it unsafe, and both were

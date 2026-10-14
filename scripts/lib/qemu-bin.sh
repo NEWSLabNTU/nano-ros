@@ -5,7 +5,7 @@
 #
 #   1. `QEMU_SYSTEM_<ARCH>` (e.g. `QEMU_SYSTEM_ARM`) — an explicit override.
 #   2. The project-local prefix `build/qemu/bin` ($NROS_KIND_QEMU; made by
-#      `just qemu setup-qemu` / `just native setup`).
+#      `just qemu setup-qemu` / `just linux setup`).
 #   3. The `nros setup` store at the PINNED version:
 #      `<store>/sdk/<tool>/<pin>/bin` — constructed from the pin, never by
 #      listing the store (issue 1546).

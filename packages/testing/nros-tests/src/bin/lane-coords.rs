@@ -54,7 +54,7 @@
 //! `scripts/build/fixture-lane.sh`.
 //!
 //! They still differ for tier 1, whose run is filtered by NAME
-//! (`NROS_TEST_SCOPE=native`) and so needs the broader `native` build. Since
+//! (`NROS_TEST_SCOPE=linux`) and so needs the broader `linux` build. Since
 //! phase-340 W3 tier 2 and the nightly lane narrow their run at fixture
 //! RESOLUTION time instead, to exactly `coords(lane)` — so for those two the
 //! answers coincide, and `--build-lane` prints the lane itself.

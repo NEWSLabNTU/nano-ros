@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# One example leaf's lint: rustfmt --check, then clippy. `just native check`
+# One example leaf's lint: rustfmt --check, then clippy. `just linux check`
 # runs this per leaf, from BOTH its serial and its pooled branch, so the two
 # cannot drift (they had: three copies of the per-leaf derivation).
 #

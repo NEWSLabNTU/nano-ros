@@ -92,7 +92,7 @@ mod zephyr 'just/zephyr.just'
 # ESP32 is DORMANT (issue 1525): `just/esp32.just` is kept for future use and
 # deliberately not mounted, so no recipe, preset or lane builds or tests it.
 mod qemu 'just/qemu-baremetal.just'
-mod native 'just/native.just'
+mod linux 'just/linux.just'
 mod xrce 'just/xrce.just'
 mod docker 'just/docker.just'
 mod workspace 'just/workspace.just'
@@ -102,12 +102,23 @@ mod cyclonedds 'just/cyclonedds.just'
 mod ros_editions 'just/ros-editions.just'
 mod probe 'just/probe.just'
 
+# DEPRECATED spelling of `mod linux` — phase-500 W2. `just native <recipe> …`  retired-host-token: alias
+# prints the notice from the ONE retired-token table
+# (`_NROS_RETIRED_HOST_TOKENS`, scripts/build/fixture-lane.sh) and forwards to
+# `just linux <recipe> …`. `just` has no module alias, so this is a recipe;
+# phase-500 W5 deletes it together with the table row.
+[private]
+[positional-arguments]
+native *ARGS:
+    @bash -c 'source scripts/build/fixture-lane.sh && nros_retired_host_token native >/dev/null'
+    @just linux "$@"
+
 # =============================================================================
 # Recipe organization (convention — keep new recipes consistent)
 # =============================================================================
 # Two axes:
 #   * `mod <name>`  — namespaced platform/tool recipes: `just <name> <verb>`
-#                     (native/zephyr/freertos/… build|test|build-fixtures|setup).
+#                     (linux/zephyr/freertos/… build|test|build-fixtures|setup).
 #   * `[group(...)]` — display category for ROOT recipes in `just --list`.
 #
 # Group taxonomy (root recipes):
@@ -176,10 +187,10 @@ default:
         "    just build  <scope>        build its test fixtures" \
         "    just test   <scope>        run its tests" \
         "" \
-        "    scope = a platform   native zephyr freertos nuttx threadx_linux" \
+        "    scope = a platform   linux zephyr freertos nuttx threadx_linux" \
         "                         threadx_riscv64 qemu px4 xrce" \
         "                         cyclonedds" \
-        "         or a preset     all native tier1 tier2 tier2-nightly" \
+        "         or a preset     all linux tier1 tier2 tier2-nightly" \
         "" \
         "    Naming a scope IS the specification: it is what you asked to be" \
         "    covered. Unnamed = best effort over what is provisioned, reported." \
@@ -240,7 +251,7 @@ list-all:
 # position, the same word `setup`, `doctor` and `test` take:
 #
 #   just build tier2       the tier-2 fixture cover (was: build-test-fixtures lane=tier2)
-#   just build native      every native fixture row     (was: lane=native)
+#   just build linux       every host fixture row       (was: the `native` lane)
 #   just build zephyr      one platform's fixtures      (was: just zephyr build-fixtures)
 #
 # A LANE token routes through `build-test-fixtures`, because that is what
@@ -295,7 +306,7 @@ _build-scope tok:
     source scripts/build/scope.sh
     tok="$(nros_scope_normalize "{{tok}}")"
     # LANE first, unlike `_test-scope`: a lane build stamps its coverage
-    # (`nros_fixtures_stamp_write`), and `native` is a lane, so the stamped
+    # (`nros_fixtures_stamp_write`), and `linux` is a lane, so the stamped
     # path is the better answer for the one token that is both.
     if nros_scope_is_lane "$tok"; then
         nros_scope_exec just build-test-fixtures "lane=$tok"
@@ -304,7 +315,7 @@ _build-scope tok:
     if nros_scope_is_platform "$tok"; then
         nros_scope_require_module_verb "$tok" build-fixtures
         echo "note: a single-platform build writes no fixture stamp; \`just test\` still" >&2
-        echo "      wants a lane build (\`just build native|tier1|tier2|all\`)." >&2
+        echo "      wants a lane build (\`just build linux|tier1|tier2|all\`)." >&2
         nros_scope_exec just "$tok" build-fixtures
         exit 0
     fi
@@ -315,7 +326,7 @@ _build-scope tok:
 # example matrix still compiles after a core change.
 [group("main")]
 build-examples: build \
-    native::build-examples \
+    linux::build-examples \
     freertos::build-examples threadx_linux::build-examples threadx_riscv64::build-examples
     @echo "Workspace + examples built."
 
@@ -534,7 +545,7 @@ _cmake-cargo-stale-guard build_dir:
 
 # Format everything: Rust workspace + examples, C, C++, Python
 #
-# Issue 0474 — `_require-leaf-includes` FIRST. `native::format` runs
+# Issue 0474 — `_require-leaf-includes` FIRST. `linux::format` runs
 # `cargo fmt` in every example leaf, and an unsynced leaf makes cargo fail
 # during MANIFEST PARSE with a path that never mentions `nros sync` (issue
 # 0463). That guard was wired to `build-test-fixtures-leaves` and
@@ -542,7 +553,7 @@ _cmake-cargo-stale-guard build_dir:
 # `format` is a third walking the same leaves. CLAUDE.md tells you to run
 # `just format` BEFORE broad changes, so it is the site a newcomer hits first.
 [group("main")]
-format: _require-leaf-includes format-workspace native::format format-c format-cpp format-python
+format: _require-leaf-includes format-workspace linux::format format-c format-cpp format-python
     @echo "All formatting completed!"
 
 # Profile a project's build — passive, read-only (phase-251). Parses the timing
@@ -1830,8 +1841,8 @@ test *scope:
 
 # One scope token's test run.
 #
-# `native` is both a platform module and a lane. Its run goes through the LANE
-# (issue 1758), like its build does, narrowed to the native rows by coordinate
+# `linux` is both a platform module and a lane. Its run goes through the LANE
+# (issue 1758), like its build does, narrowed to the host rows by coordinate
 # so `test-all` does not claim the whole tree. Any other platform goes to its
 # module's `test`, narrowed to that platform's rows.
 [private]
@@ -1843,19 +1854,19 @@ _test-scope tok verbose="":
     tok="$(nros_scope_normalize "{{tok}}")"
     # shellcheck source=scripts/build/fixture-lane.sh
     source scripts/build/fixture-lane.sh
-    # Issue 1758 — `native` is the one token that is a platform AND a lane, and
-    # its RUN goes through the lane: `test-all`, narrowed to the native rows,
-    # preflighted against the stamp `just build native` (lane=native) writes,
-    # with the junit rewrite and the skip budget. The module recipe `just native
+    # Issue 1758 — `linux` is the one token that is a platform AND a lane, and
+    # its RUN goes through the lane: `test-all`, narrowed to the host rows,
+    # preflighted against the stamp `just build linux` (lane=linux) writes,
+    # with the junit rewrite and the skip budget. The module recipe `just linux
     # test` selected every nros-tests binary but a hand-kept group list over a
     # build of only the example rows, so compile-check, cmake and west fixtures
     # it never built failed in it. One build verb, one run verb, one scope.
-    if [ "$tok" = "native" ]; then
-        coords="$(nros_scope_coords_file native)" || exit 1
-        [ -n "$coords" ] || { echo "_test-scope: native owns no coordinate?" >&2; exit 1; }
-        unclaimed="$(nros_lane_unclaimed native)"
-        echo "scope: native run narrowed to its own coordinates ($coords)"
-        nros_scope_exec env NROS_FIXTURE_LANE=native "NROS_TEST_COORDS=$coords" \
+    if [ "$tok" = "linux" ]; then
+        coords="$(nros_scope_coords_file linux)" || exit 1
+        [ -n "$coords" ] || { echo "_test-scope: linux owns no coordinate?" >&2; exit 1; }
+        unclaimed="$(nros_lane_unclaimed linux)"
+        echo "scope: linux run narrowed to its own coordinates ($coords)"
+        nros_scope_exec env NROS_FIXTURE_LANE=linux "NROS_TEST_COORDS=$coords" \
             "NROS_TEST_UNCLAIMED=$unclaimed" just test-all {{verbose}}
         exit 0
     fi
@@ -1980,17 +1991,17 @@ build-test-fixtures lane="all": _require-owned-provisioned-roots check::fast _re
     # first in the same tree, so `test-all` inherited them by accident — never a
     # contract, and gone once tier 1's gates and run split across two jobs
     # (issue 1651). They belong to the linux platform, so any lane that builds
-    # the `native` module builds them here; the tests deselect themselves in a
+    # the `linux` module builds them here; the tests deselect themselves in a
     # lane that selects no linux coordinate.
     # shellcheck source=scripts/lib/grep-q.sh
     source scripts/lib/grep-q.sh
-    lane="$(nros_lane_arg "{{lane}}")"
+    lane="$(nros_lane_arg "{{lane}}" quiet)"
     want_host_proofs=0
     if [ "$lane" = "all" ]; then
         want_host_proofs=1
     else
         lane_mods="$(nros_lane_modules "$lane")"
-        if nros_grep_q -x native <<<"$lane_mods"; then want_host_proofs=1; fi
+        if nros_grep_q -x linux <<<"$lane_mods"; then want_host_proofs=1; fi
     fi
     if [ "$want_host_proofs" = 1 ]; then
         bash scripts/build/link-determinism-fixture.sh
@@ -2003,7 +2014,7 @@ build-test-fixtures lane="all": _require-owned-provisioned-roots check::fast _re
     # Issue 0393 — the stamp records the LANE AND ITS COORDINATES, not just a
     # timestamp, so the preflight can ask "does what was built cover what I am
     # about to run?" instead of "did a build finish?".
-    nros_fixtures_stamp_write "$(nros_lane_arg "{{lane}}")"
+    nros_fixtures_stamp_write "$(nros_lane_arg "{{lane}}" quiet)"
     # issue 0499 option 2 — record the identity reading HERE, where the tree is
     # known-fresh, because this is the one moment its number can be trusted. In
     # `check::fast` the same script reads whatever a long-lived tree accumulated;
@@ -2085,7 +2096,7 @@ build-test-fixtures-leaves lane="all": _require-owned-provisioned-roots _require
             echo "build-test-fixtures: lane $lane selected zero modules — refusing to build nothing" >&2
             exit 2
         }
-        # `native` is module-level (build every native row); the tier lanes also
+        # `linux` is module-level (build every host row); the tier lanes also
         # narrow the ROWS each surviving module builds.
         coords_file="$(nros_lane_coords_file "$lane")"
         if [ -n "$coords_file" ]; then
@@ -2155,7 +2166,7 @@ build-test-fixtures-leaves lane="all": _require-owned-provisioned-roots _require
         # in the child's environment and cannot leak to an unrelated `just` this
         # recipe might later run. Unset is NAMED — see scripts/build/lane-skip.sh.
         if in_lane zephyr; then run_stage zephyr env NROS_LANE_INCLUDED=zephyr just zephyr build-fixtures; fi
-        for platform in native qemu freertos nuttx threadx_linux threadx_riscv64 px4; do
+        for platform in linux qemu freertos nuttx threadx_linux threadx_riscv64 px4; do
             in_lane "$platform" || continue
             run_stage "$platform" env "NROS_LANE_INCLUDED=$platform" just "$platform" build-fixtures
         done
@@ -2195,7 +2206,7 @@ build-test-fixtures-leaves lane="all": _require-owned-provisioned-roots _require
         # early made it empty, `grep -c .` returned 1, and `set -e` killed the
         # recipe before the banner even printed.
         outer=0
-        for _p in zephyr native qemu freertos nuttx threadx_linux threadx_riscv64 px4; do
+        for _p in zephyr linux qemu freertos nuttx threadx_linux threadx_riscv64 px4; do
             if in_lane "$_p"; then outer=$((outer + 1)); fi
         done
         [ "$outer" -lt 1 ] && outer=1
@@ -2231,7 +2242,7 @@ build-test-fixtures-leaves lane="all": _require-owned-provisioned-roots _require
     # must agree, so they read one variable rather than three copies of the
     # literal list.
     lane_platforms=""
-    for platform in zephyr native qemu freertos nuttx threadx_linux threadx_riscv64 px4; do
+    for platform in zephyr linux qemu freertos nuttx threadx_linux threadx_riscv64 px4; do
         if in_lane "$platform"; then lane_platforms="$lane_platforms $platform"; fi
     done
     lane_platforms="${lane_platforms# }"
@@ -2576,7 +2587,7 @@ _check-fixtures-stale:
     # and to check an explicitly-set one against it.
     case "${NROS_FIXTURE_LANE:-}" in
         ""|all) implied=all ;;
-        native) implied=native ;;
+        linux)  implied=linux ;;
         *)      implied=coords ;;
     esac
 
@@ -2605,8 +2616,8 @@ _check-fixtures-stale:
             NROS_FIXTURE_SCOPE_ORIGIN="lane:${NROS_FIXTURE_LANE:-unset}" \
                 exec ./scripts/check-fixtures-stale.sh
             ;;
-        native)
-            NROS_FIXTURE_SCOPE=native NROS_FIXTURE_SCOPE_ORIGIN="lane:${NROS_FIXTURE_LANE}" \
+        linux)
+            NROS_FIXTURE_SCOPE=linux NROS_FIXTURE_SCOPE_ORIGIN="lane:${NROS_FIXTURE_LANE}" \
                 exec ./scripts/check-fixtures-stale.sh
             ;;
         coords)
@@ -2683,7 +2694,7 @@ test-all verbose="": _require-fixtures-ready test-zpico-multisession
         args+=(--success-output never --failure-output "${NROS_TEST_FAILURE_OUTPUT:-never}")
     fi
     env_exclude=()
-    # RFC-0061 / phase-318 W4 — scope the RUN to the lane. `NROS_TEST_SCOPE=native`
+    # RFC-0061 / phase-318 W4 — scope the RUN to the lane. `NROS_TEST_SCOPE=linux`
     # (tier 1) drops every non-host binary; the exclusions are DERIVED from
     # `PlatformId`, so adding a platform extends them with no second edit
     # (ci_lane::tests::lane_filter_tokens_cover_every_non_native_platform gates it).
@@ -2745,7 +2756,7 @@ test-all verbose="": _require-fixtures-ready test-zpico-multisession
     just test-miri || failed=1
     echo ""
     echo "=== C Codegen Tests ==="
-    just native _test-c-codegen {{verbose}} || failed=1
+    just linux _test-c-codegen {{verbose}} || failed=1
     echo ""
     echo "JUnit XML:  $junit"
     echo "Other logs: {{LOG_DIR}}/latest/"
@@ -2893,7 +2904,7 @@ rust-rtos-link-check: _codegen
         fi
     }
     # issue 0551's rule, applied to all three leaves rather than one. This lane
-    # LINKS against each RTOS's kernel source, and `just setup native` — what a
+    # LINKS against each RTOS's kernel source, and `just setup linux` — what a
     # host lane runs — provisions only the index's `build_sources` (the RMW
     # sources), never an RTOS kernel. So on a fresh runner the FreeRTOS leaf
     # died inside zpico-build with `FREERTOS_DIR=…: missing include`, and the
@@ -2988,15 +2999,15 @@ rust-rtos-link-check: _codegen
 #
 # Issue 0393 — tier 1's BUILD narrows too, not just its gate and its run:
 #
-#     just build-test-fixtures lane=native   # one module, ~180 of 337 rows
+#     just build-test-fixtures lane=linux   # one module, ~180 of 337 rows
 #     just ci
 #
-# `NROS_FIXTURE_LANE=native` makes `_require-fixtures` accept that scoped build
+# `NROS_FIXTURE_LANE=linux` makes `_require-fixtures` accept that scoped build
 # and — the other half — REJECT it for an unscoped `test-all`, so a tier-1 stamp
 # can no longer vouch for a tier-3 run.
 #
-# Why `native` and not `tier1`: this lane scopes its run with
-# `NROS_TEST_SCOPE=native`, which selects every native test BINARY. That is a
+# Why `linux` and not `tier1`: this lane scopes its run with
+# `NROS_TEST_SCOPE=linux`, which selects every native test BINARY. That is a
 # broader set than `coords(Tier1)` (10 of 50 coordinates), so building only the
 # tier-1 coordinates would leave the remaining native binaries absent and the
 # run would mass-fail "Binary not found". The build set has to cover the run
@@ -3964,7 +3975,7 @@ format-c:
     echo "Formatting C code... ($CF)"
     find packages/api/nros-c/include -name '*.h' -not -name 'nros_generated.h' -print0 | xargs -0 "$CF" -i
     "$CF" -i packages/rmw/zenoh/zpico-zephyr/src/*.c packages/rmw/zenoh/zpico-zephyr/include/*.h
-    # phase-338 — EVERY platform's C examples, not just native. The portability
+    # phase-338 — EVERY platform's C examples, not just linux. The portability
     # gate compares copies line by line, so a formatter that reaches one copy and
     # not its siblings manufactures divergence: `examples/native/c/listener` was
     # clean while its five siblings had drifted, and matching them meant leaving
@@ -4777,12 +4788,12 @@ setup target="" tier="" *extra:
           "" \
           "Platform scopes:" \
           "" \
-          "  native zephyr freertos nuttx threadx_linux threadx_riscv64" \
+          "  linux zephyr freertos nuttx threadx_linux threadx_riscv64" \
           "  qemu px4 xrce cyclonedds" \
           "" \
           "Preset scopes (a named set of platforms — the fixture lanes):" \
           "" \
-          "  all native tier1 tier2 tier2-nightly" \
+          "  all linux tier1 tier2 tier2-nightly" \
           "" \
           "Readiness checks:" \
           "" \
@@ -4839,6 +4850,8 @@ setup target="" tier="" *extra:
             *)
                 # shellcheck source=scripts/build/scope.sh
                 source scripts/build/scope.sh
+                # phase-500 W2 — `native` is a deprecated spelling of `linux`.
+                target="$(nros_retired_host_token "$target")"
                 if nros_scope_is_platform "$target" \
                    && nros_scope_module_has_verb "$target" setup; then
                     # Focused platform setup may still shell `nros setup …`;
@@ -4851,7 +4864,7 @@ setup target="" tier="" *extra:
                 fi
                 # phase-411 W4 — a PRESET provisions the set it names.
                 #
-                # The menu above has advertised "Preset scopes … all native
+                # The menu above has advertised "Preset scopes … all linux
                 # tier1 tier2 tier2-nightly" since W3, while the dispatch fell
                 # through to the legacy `--target=<platform>-<rmw>` arm and
                 # died with "is not a <platform>-<rmw> tuple". A documented
@@ -5108,8 +5121,8 @@ doctor *scope:
     nros_scope_report doctor
     exit "$host_rc"
 
-# One scope token's readiness. `native` is the host, so its readiness IS the
-# shared-tooling block — there is no `native` module `doctor` to call and there
+# One scope token's readiness. `linux` is the host, so its readiness IS the
+# shared-tooling block — there is no `linux` module `doctor` to call and there
 # should not be one, since a second host probe is a second answer.
 [private]
 _doctor-scope tok:
@@ -5121,8 +5134,8 @@ _doctor-scope tok:
     if nros_scope_is_platform "$tok"; then
         echo ""
         echo "=== $tok ==="
-        if [ "$tok" = "native" ]; then
-            # Propagate: `just doctor native` and the default scope reach ONE
+        if [ "$tok" = "linux" ]; then
+            # Propagate: `just doctor linux` and the default scope reach ONE
             # block, so they must reach one verdict too (phase-431 W2).
             rc=0
             nros_scope_exec just _doctor-host || rc=$?
@@ -5142,7 +5155,7 @@ _doctor-scope tok:
     nros_scope_reject "$tok"
 
 # The host's shared tooling — the CLI, python, clang-format, sccache, the ROS
-# router. Extracted from `doctor` by phase-411 W3 so `just doctor native` and
+# router. Extracted from `doctor` by phase-411 W3 so `just doctor linux` and
 # the default scope reach the SAME block rather than a second copy of it.
 [private]
 _doctor-host:
@@ -5173,7 +5186,7 @@ _doctor-host:
     fi
     # Issue 1758 — its sibling (issue 1487): a `play_launch` move stales BOTH
     # binaries, and `nros sync` refuses a resolver built from another checkout
-    # as the first step of `just build native`. SKIPs (rc 0) when none is built.
+    # as the first step of `just build linux`. SKIPs (rc 0) when none is built.
     if lr_out="$(bash "{{justfile_directory()}}/scripts/check-launch-resolve-fresh.sh" 2>&1)"; then
         echo "  [OK] nros-launch-resolve agrees with this checkout's play_launch"
     else
@@ -5183,7 +5196,7 @@ _doctor-host:
     fi
     # Issue 1758 — a submodule BEHIND its recorded pin is the next thing the
     # chain trips on (measured: `nros-launch-resolve`'s `--locked` refusal 54
-    # minutes into `just test native`, on a `play_launch` 123 commits behind).
+    # minutes into `just test linux`, on a `play_launch` 123 commits behind).
     # Same probe `check tier-preconditions` runs first; summary lines only.
     if drift_out="$(bash "{{justfile_directory()}}/scripts/check-submodule-drift.sh" 2>&1)"; then
         echo "  [OK] submodules at the commits this checkout records"
@@ -5779,7 +5792,7 @@ book-serve:
 # Clean example build artifacts across platform namespaces.
 [group("maintenance")]
 clean-examples:
-    just native clean
+    just linux clean
     just qemu clean
     just freertos clean
     just nuttx clean

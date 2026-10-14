@@ -24,7 +24,7 @@ impl Component for Listener {
         let mut node = ctx.create_node(NodeOptions::new("listener"))?;
         let _sub =
             node.create_subscription_for_callback_name::<StringMsg>("on_chatter", "/chatter")?;
-        // phase-338 W3 — readiness marker. `native_api.rs` gates on
+        // phase-338 W3 — readiness marker. `linux_api.rs` gates on
         // "Subscriber created" (`.expect("rust-listener did not become ready")`),
         // and the native listener could not become Node-class while only it
         // emitted the line. Additive for embedded, whose readiness comes from

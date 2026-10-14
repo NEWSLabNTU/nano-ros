@@ -6,7 +6,7 @@
 # issue 0493 — the ONE CMAKE_PREFIX_PATH derivation (SDK Corrosion). Sourced
 # here so every caller of `nros_cmake_configure_if_needed` gets it without
 # repeating the wiring: workspace-fixtures-build.sh, fixtures-build.sh,
-# phase226-cxx-eff.sh and just/native.just all route through this function.
+# phase226-cxx-eff.sh and just/linux.just all route through this function.
 # shellcheck source=scripts/build/cmake-prefix.sh
 . "$(dirname "${BASH_SOURCE[0]}")/cmake-prefix.sh"
 # Export at SOURCE time, not inside the configure function: `fixtures-build.sh`

@@ -11,9 +11,9 @@
 //! client, and prove the client logs the server-computed result. Service →
 //! `Result of add_two_ints: 5` (the demo `2 + 3`); Action → `Result received:`
 //! (Fibonacci). Per-RMW isolation is the pubsub consumer's, faithful to the
-//! working `services`/`actions`/`native_api`/`xrce.rs` tests.
+//! working `services`/`actions`/`linux_api`/`xrce.rs` tests.
 //!
-//! Run: `cargo nextest run -p nros-tests --test native_example_reqresp_e2e`.
+//! Run: `cargo nextest run -p nros-tests --test linux_example_reqresp_e2e`.
 
 use nros_tests::{
     TestResult,
@@ -115,7 +115,7 @@ fn roles(
             "Waiting for action",
             ACTION_RESULT_PREFIX,
         ),
-        (l, w) => panic!("native_example_reqresp_e2e: no roles for {l:?}/{w:?}"),
+        (l, w) => panic!("linux_example_reqresp_e2e: no roles for {l:?}/{w:?}"),
     }
 }
 
@@ -170,7 +170,7 @@ const DECLARED_CASES: &[(ML, MR, MW)] = &[
 ///
 /// Was a single #[test] folding over all 18 cells at 82.8 s, with a hand-rolled
 /// `catch_unwind` classifying skip-vs-fail. Same two costs the pubsub consumer
-/// had, and the same fix — see `native_example_pubsub_e2e.rs` for the full
+/// had, and the same fix — see `linux_example_pubsub_e2e.rs` for the full
 /// reasoning:
 ///
 ///   * the fold serialized 18 cells no scheduler could enter;

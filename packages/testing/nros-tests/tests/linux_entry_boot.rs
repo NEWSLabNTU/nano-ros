@@ -11,7 +11,7 @@
 //! ```
 //!
 //! The **compile** proof is the build of that crate as a fixture
-//! (`examples/fixtures.toml`), built by `just native build-fixtures` /
+//! (`examples/fixtures.toml`), built by `just linux build-fixtures` /
 //! `build-test-fixtures`. If the `nros::main!()` proc-macro expansion didn't
 //! compile, the fixture build fails in the build stage. Both tests here consume
 //! the prebuilt artifact rather than running `cargo build` at run time — see

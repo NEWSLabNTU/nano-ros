@@ -27,7 +27,7 @@ Measured, issue 1366: `examples/workspaces/rust/Cargo.toml` — generated
 2026-09-01, gitignored — listed `src/esp32_entry` at line 29. phase-445 W5
 deleted that hand-written package and moved its generation to `[image.esp32]`
 (`build/<coord>/esp32_entry`), so `src/esp32_entry` is a path no tracked
-directory and no generator provides. `just build-test-fixtures lane=native`
+directory and no generator provides. `just build-test-fixtures lane=linux`
 stopped in that workspace and every later row in the lane went unbuilt.
 
 # What a finding means, and what it does not

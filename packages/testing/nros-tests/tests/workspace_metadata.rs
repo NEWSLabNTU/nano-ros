@@ -13,7 +13,7 @@
 //!    produces `${CMAKE_BINARY_DIR}/nros-metadata.json` containing the
 //!    expected component + application + deploy entries.
 //! 2. Workspace Entry pkg fixture tests — require binaries produced by
-//!    `just native build-workspace-fixtures`; tests do not run Cargo or
+//!    `just linux build-workspace-fixtures`; tests do not run Cargo or
 //!    CMake build steps.
 //!
 //! The metadata diagnostic fails as an unmet precondition

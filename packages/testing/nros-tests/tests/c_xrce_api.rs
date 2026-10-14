@@ -1,13 +1,13 @@
 //! C XRCE-DDS API integration tests
 //!
 //! Tests the C examples (c-xrce-talker, c-xrce-listener) prebuilt with
-//! CMake using the XRCE-DDS backend. `just native build-fixtures` stages
+//! CMake using the XRCE-DDS backend. `just linux build-fixtures` stages
 //! them under `examples/native/c/{talker,listener}/build-xrce/`; test
 //! bodies only resolve and execute those binaries.
 //!
 //! Prerequisites:
 //!   just build-xrce-agent   # Build the Micro-XRCE-DDS Agent from source
-//!   just native build-fixtures  # Prebuild C XRCE example binaries
+//!   just linux build-fixtures  # Prebuild C XRCE example binaries
 
 use nros_tests::{
     count_pattern,
@@ -176,14 +176,14 @@ fn test_c_xrce_talker_listener_communication(
 // request/response + action goal/feedback/result roundtrips, mirroring the
 // Rust `tests/xrce.rs` service/action tests but driving the C `build-xrce/`
 // binaries against a unique XRCE Agent. Binaries are prebuilt by
-// `just native build-fixtures`; an unmet precondition when absent.
+// `just linux build-fixtures`; an unmet precondition when absent.
 // =============================================================================
 
 /// Resolve a native C XRCE example binary (prebuilt), or skip.
 fn nano_c_xrce(case: &str, binary: &str) -> PathBuf {
     build_native_c_example_rmw(case, binary, Rmw::Xrce).unwrap_or_else(|e| {
         nros_tests::unmet!(
-            "native/c/{case} xrce fixture not prebuilt (run `just native build-fixtures`): {e:?}"
+            "native/c/{case} xrce fixture not prebuilt (run `just linux build-fixtures`): {e:?}"
         )
     })
 }

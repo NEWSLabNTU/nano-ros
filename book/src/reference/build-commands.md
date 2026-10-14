@@ -278,7 +278,7 @@ bin=build/cargo-fixtures/baremetal/thumbv7m-none-eabi/nros-relwithdebinfo
 ```
 
 Build those first with `just qemu build-fixtures` (or `just
-build-test-fixtures lane=native`).
+build-test-fixtures lane=linux`).
 
 **The artifact directory is computed, not fixed.** Since phase-340 P2 a
 platform's cargo fixtures build into a shared group directory under

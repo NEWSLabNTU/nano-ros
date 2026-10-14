@@ -39,13 +39,24 @@ invisible to the old gate's `tests` exclusion):
   5. Every cmake file: no `DEPLOY` keyword argument is a retired host word.
   6. `nros-sdk-index.toml`: no `[board.native]` / `[board.posix]`, and a
      `[board.linux]` exists (`nros setup linux` once failed for lack of it).
+  7. (phase-500 W2) The host LANE, `just` MODULE, setup/build/test/doctor
+     SCOPE and the host test binaries are `linux`: no tracked file outside the
+     history series (docs/roadmap, docs/issues, CHANGELOG, audit reports)
+     spells `lane=native`, `just [setup|build|test|doctor] native`,
+     `mod native`, `native::<recipe>`, `NROS_TEST_SCOPE|NROS_FIXTURE_LANE|
+     NROS_FIXTURE_SCOPE=native`, `lane-filter.sh native`, `--scope native` or
+     a renamed `native_<test>` binary (nextest `binary(...)` filters included),
+     and `native` is in neither `_NROS_LANES` nor `_NROS_SCOPE_PLATFORMS`. The
+     DEPRECATED alias (one cycle; phase-500 W5 removes it) is allowed only on a
+     line carrying the pragma `retired-host-token: alias`.
 
 WHAT IT DELIBERATELY DOES NOT CHECK
 
 Prose, and the deprecated CLI ALIASES (`nros new --platform native|posix`,
 `nros setup native`), which exist for released book pages and are retired by
 phase-500 W5. Image IDS (`[image.native]`) are labels, renamed by W3. The
-`native` lane / just module / scope are W2.
+`examples/native/` directory is W4. `native` in its other senses (Zephyr
+`native_sim`, RTOS-native priorities, interop cell ids, prose) is not a lane.
 
 Usage:  check-host-platform-vocabulary.py
 """
@@ -63,6 +74,7 @@ except ModuleNotFoundError:  # Python < 3.11
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
 import file_kinds  # noqa: E402  phase-472 W5 — populations by kind
+import git_grep  # noqa: E402  issue 1816 — a failed search raises
 
 HOST = "linux"
 # Words that must never select the host board. `native` is retired (phase-500
@@ -160,6 +172,74 @@ def sdk_index_problems(doc):
     return out
 
 
+# Check 7 — phase-500 W2. Every spelling that once named the host lane, module,
+# scope or test binaries. ONE list; a new spelling joins it.
+RENAMED_TESTS = ("api", "async_roundtrip_e2e", "entry_boot",
+                 "example_executor_bound_node_e2e", "example_pubsub_e2e",
+                 "example_reqresp_e2e", "main_macro_forms", "main_macro_misuse",
+                 "orchestration_tiers")
+RETIRED_LANE_RE = re.compile(
+    r"\bjust (?:setup |build |test |doctor )?native\b(?![-_])"
+    r"|\blane=native\b"
+    r"|\bNROS_(?:TEST_SCOPE|FIXTURE_LANE|FIXTURE_SCOPE)=native\b"
+    r"|lane-filter\.sh native\b"
+    r"|^mod native\b"
+    r"|\bnative::[a-z_]"
+    r"|--scope native\b"
+    r"|just/native\.just"
+    r"|\bnative_(?:" + "|".join(RENAMED_TESTS) + r")\b",
+    re.M)
+ALIAS_PRAGMA = "retired-host-token: alias"
+# The history series: they record what WAS typed, and rewriting them would
+# falsify the record. Everything else is a live instruction to a reader.
+HISTORY = ("docs/roadmap/", "docs/issues/", "CHANGELOG.md", "changelog.d/",
+           "docs/development/audit-findings-", ".superpowers/", "docs/superpowers/")
+# This file's own docstring and self-test spell every retired form on purpose.
+SELF = "scripts/check-host-platform-vocabulary.py"
+TOKEN_LISTS = (("scripts/build/fixture-lane.sh", "_NROS_LANES"),
+               ("scripts/build/scope.sh", "_NROS_SCOPE_PLATFORMS"))
+
+
+def lane_problems(text):
+    """(line number, matched spelling) for every retired host-lane spelling in
+    `text` that is not on a line carrying the alias pragma."""
+    out = []
+    for n, line in enumerate(text.split("\n"), 1):
+        if ALIAS_PRAGMA in line:
+            continue
+        out += [(n, m.group(0)) for m in RETIRED_LANE_RE.finditer(line)]
+    return out
+
+
+def token_list_problems(text, var):
+    m = re.search(rf'^{var}="([^"]*)"', text, re.M)
+    if not m:
+        return [f"{var} not found (the gate would pass vacuously)"]
+    return [f"{var} lists `native` (write `linux`)"] if "native" in m.group(1).split() else []
+
+
+def check_lane_vocabulary():
+    problems = []
+    # `git grep` narrows the population to candidate files fast; the regex
+    # above is the judge.
+    # issue 1816 — a failed search must raise, never read as "no match".
+    for rel in git_grep.lines(["-lIE", r"native(::|\.just|_| |$|\b)", "--",
+                               ".", ":!third-party"], ROOT):
+        if rel.startswith(HISTORY) or rel == SELF or "/third-party/" in f"/{rel}":
+            continue
+        try:
+            with open(os.path.join(ROOT, rel), encoding="utf8", errors="replace") as fh:
+                text = fh.read()
+        except OSError:
+            continue
+        problems += [(f"{rel}:{n}", f"`{w}` — the host lane/module/scope is `linux`")
+                     for n, w in lane_problems(text)]
+    for rel, var in TOKEN_LISTS:
+        with open(os.path.join(ROOT, rel), encoding="utf8") as fh:
+            problems += [(rel, p) for p in token_list_problems(fh.read(), var)]
+    return problems
+
+
 def check_files():
     problems = []
     for rel in file_kinds.files_of_kind("system-toml", repo=ROOT) + tracked("*system.toml.case"):
@@ -236,6 +316,32 @@ def self_test():
         got = sdk_index_problems(tomllib.loads(body))
         if got != exp:
             fails.append(f"sdk index {body!r}: expected {exp}, got {got}")
+    for body, exp in [
+        ("just linux test\n", []),
+        ("just native test\n", [(1, "just native")]),
+        ("  just setup native\n", [(1, "just setup native")]),
+        ("just build-test-fixtures lane=native\n", [(1, "lane=native")]),
+        ("mod native 'just/native.just'\n", [(1, "mod native"), (1, "just/native.just")]),
+        ("format: native::format\n", [(1, "native::f")]),
+        ('filter = "binary(native_api)"\n', [(1, "native_api")]),
+        ("env NROS_FIXTURE_LANE=native x\n", [(1, "NROS_FIXTURE_LANE=native")]),
+        ("just native test  # retired-host-token: alias\n", []),
+        ("just zephyr native_sim\n", []),  # another sense
+        ("just check native-check\n", []),  # a gate recipe name, not the module
+        ("examples/native/rust/talker\n", []),  # the directory is W4
+        ("native-pubsub-rust-zenoh-n2r\n", []),  # an interop cell id
+    ]:
+        got = lane_problems(body)
+        if got != exp:
+            fails.append(f"lane {body!r}: expected {exp}, got {got}")
+    for body, exp in [
+        ('_NROS_LANES="all linux tier1"\n', []),
+        ('_NROS_LANES="all native tier1"\n', ["_NROS_LANES lists `native` (write `linux`)"]),
+        ("", ["_NROS_LANES not found (the gate would pass vacuously)"]),
+    ]:
+        got = token_list_problems(body, "_NROS_LANES")
+        if got != exp:
+            fails.append(f"token list {body!r}: expected {exp}, got {got}")
     if "packages/cli/nros-cli-core/tests/fixtures/board-workspace/packages/boards/linux/nros-board.toml" \
             not in descriptors():
         fails.append("the CLI test-fixture host descriptor is not in the population")
@@ -246,10 +352,10 @@ def self_test():
 
 
 def main():
-    problems = check_descriptors() + check_files()
+    problems = check_descriptors() + check_files() + check_lane_vocabulary()
     if problems:
-        print("check-host-platform-vocabulary: the host board is selected by a word "
-              "other than `linux` (phase-500 W1):\n", file=sys.stderr)
+        print("check-host-platform-vocabulary: the host board, lane, module or scope is "
+              "spelled by a word other than `linux` (phase-500 W1/W2):\n", file=sys.stderr)
         for rel, what in problems:
             print(f"  {rel}: {what}", file=sys.stderr)
         print(
@@ -261,7 +367,8 @@ def main():
         )
         return 1
     print("check-host-platform-vocabulary OK — the host board is `linux` in every "
-          "descriptor, selector, deploy list, cmake DEPLOY and sdk-index key.")
+          "descriptor, selector, deploy list, cmake DEPLOY and sdk-index key, and the "
+          "host lane / just module / scope / test binaries say `linux`.")
     return 0
 
 

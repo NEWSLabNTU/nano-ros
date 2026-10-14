@@ -1,6 +1,6 @@
 //! Does THIS run's lane admit a given platform? — issue 0571.
 //!
-//! `scripts/test/lane-filter.sh native` narrows a tier-1 run by excluding test
+//! `scripts/test/lane-filter.sh linux` narrows a tier-1 run by excluding test
 //! BINARY names and TEST names that carry a platform token. Issue 0357 already
 //! recorded that binary exclusion alone is not enough, because the matrix
 //! consumers put every platform's cases in one generically-named binary, and
@@ -41,7 +41,7 @@
 //!
 //! # Issue 1684 — keyed on the run's COORDINATES now, not `NROS_TEST_SCOPE`
 //!
-//! This read `NROS_TEST_SCOPE=native` (host board only), which no recipe has
+//! This read `NROS_TEST_SCOPE=linux` (host board only), which no recipe has
 //! set since phase-395 W19 moved tier 1 to coordinate scoping
 //! (`NROS_TEST_COORDS`). So under every lane `admits` answered "yes" for
 //! everything, and the five consumers below booted whatever image happened to
@@ -98,15 +98,15 @@ pub const EXEMPT: &[(&str, &str)] = &[
         "the same, for the sched-dim tables",
     ),
     (
-        "native_example_pubsub_e2e.rs",
+        "linux_example_pubsub_e2e.rs",
         "filters to `PlatformId::Linux` before doing anything, so its cell set          is the host board by construction and `admits` would be a no-op",
     ),
     (
-        "native_example_reqresp_e2e.rs",
+        "linux_example_reqresp_e2e.rs",
         "the same, for the request/response cells",
     ),
     (
-        "native_example_executor_bound_node_e2e.rs",
+        "linux_example_executor_bound_node_e2e.rs",
         "the same, for the ExecutorBoundNode cell: `is_executor_bound_node_cell` \
          requires `PlatformId::Linux`, and both the test and its tripwire read \
          cells only through that predicate, so no non-host fixture is reachable",

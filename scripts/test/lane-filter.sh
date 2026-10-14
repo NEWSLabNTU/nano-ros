@@ -2,8 +2,8 @@
 # Print the nextest filter expressions that scope a run to a CI lane.
 # RFC-0061 / phase-318 W4.
 #
-# Usage: lane-filter.sh <native|all>
-#   native  -> exclusion expressions that drop every NON-host test binary
+# Usage: lane-filter.sh <linux|all>
+#   linux   -> exclusion expressions that drop every NON-host test binary
 #   all     -> nothing (tier 2/3 run the whole matrix)
 #
 # Why derive instead of list: a hand-written exclusion list is the failure mode
@@ -30,9 +30,13 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 
 lane="${1:-all}"
+# phase-500 W2 — a retired spelling (`native`) maps through the one table.
+# shellcheck source=scripts/build/fixture-lane.sh
+. scripts/build/fixture-lane.sh
+lane="$(nros_retired_host_token "$lane")"
 case "$lane" in
     all) exit 0 ;;
-    native) ;;
+    linux) ;;
     nostd)
         # phase-359 W9 — the no_std FLAVOUR lane. Emitted as an INCLUSION union,
         # not exclusions, and that is forced by this file's own hazard: the host
@@ -79,7 +83,7 @@ $flavours
 EOF
         exit 0
         ;;
-    *) echo "lane-filter.sh: expected 'native', 'nostd' or 'all', got '$lane'" >&2; exit 2 ;;
+    *) echo "lane-filter.sh: expected 'linux', 'nostd' or 'all', got '$lane'" >&2; exit 2 ;;
 esac
 
 matrix="packages/testing/nros-tests/src/matrix.rs"

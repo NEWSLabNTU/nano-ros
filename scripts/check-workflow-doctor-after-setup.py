@@ -127,7 +127,7 @@ def self_test():
         # a setup with no doctor is fine
         (steps("just setup tier2", "just ci matrix build"), []),
         # the `just` spelling of the doctor is caught too
-        (steps("just runner-doctor nros-big", "just setup native"), [0]),
+        (steps("just runner-doctor nros-big", "just setup linux"), [0]),
         # several setups: the FIRST one is the bound
         (steps("just setup tier2", "just runner-doctor nros-big", "just setup zephyr"), []),
         (steps("just runner-doctor nros-big", "just setup tier2", "just setup zephyr"), [0]),

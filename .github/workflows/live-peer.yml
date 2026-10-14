@@ -285,7 +285,7 @@ jobs:
           # fixture built before it — then the rows. Building rows first cost a
           # whole box batch on 2026-09-06.
           # The WORKSPACE rows the host cells resolve, not all of them. This
-          # was `just native build-workspace-fixtures` — every native workspace
+          # was `just linux build-workspace-fixtures` — every native workspace
           # row, 121 of them — for a membership that reaches 8, and it filled
           # the runner's disk with 111 G free after the reclaim (run
           # 37883358718). DERIVED from the cells' tests, directly or through
@@ -367,7 +367,7 @@ jobs:
         run: |
           source ./activate.sh
           set +e
-          just native test-live-peer-regression host
+          just linux test-live-peer-regression host
           rc=$?
           set -e
           ran=false
@@ -632,7 +632,7 @@ jobs:
               just build "$s"
           done
 
-      # The cells run under `cargo nextest`, which `just setup native` installs
+      # The cells run under `cargo nextest`, which `just setup linux` installs
       # and this job never runs: its scopes are `zephyr`/`qemu`, and the Zephyr
       # image ships no nextest. Run 37180326202 built every board fixture and
       # then stopped at `error: no such command: nextest`. The index pins the
@@ -655,7 +655,7 @@ jobs:
         run: |
           source ./activate.sh
           set +e
-          just native test-live-peer-regression board-zephyr
+          just linux test-live-peer-regression board-zephyr
           rc=$?
           set -e
           ran=false
@@ -818,7 +818,7 @@ jobs:
         run: |
           source ./activate.sh
           set +e
-          just native test-live-peer-regression board-ci
+          just linux test-live-peer-regression board-ci
           rc=$?
           set -e
           ran=false

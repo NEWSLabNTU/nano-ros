@@ -8,7 +8,7 @@
 # those two steps a reader observes an EMPTY file — and an empty file is not a
 # corrupt one, it is "EOF while parsing a value at line 1 column 0", which reads
 # like a bug in whatever PRODUCED the content rather than a race. That is how
-# 0498 presented: `build-test-fixtures lane=native` died on a sidecar that was
+# 0498 presented: `build-test-fixtures lane=linux` died on a sidecar that was
 # 1345 bytes and valid when inspected seconds later.
 #
 # `build-test-fixtures` fans out one `nros sync` per fixture row, and several

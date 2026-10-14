@@ -165,7 +165,7 @@ def required_producers(recipes, reached):
     """{producer: recipe} for every recipe in `reached` that HARD-FAILS telling
     you to run a producer first.
 
-    The declaration is the recipe's own remediation text. `native::check` ends:
+    The declaration is the recipe's own remediation text. `linux::check` ends:
 
         echo "  Run 'just generate-bindings' (or 'just build-test-fixtures')..."
         exit 1
@@ -183,7 +183,7 @@ def required_producers(recipes, reached):
 
 def remedy_groups(recipes, reached):
     """[(frozenset of producers, recipe)] — one entry per remedy LINE, whose
-    producers are ALTERNATIVES: `native::check` says "Run 'just
+    producers are ALTERNATIVES: `linux::check` says "Run 'just
     generate-bindings' (or 'just build-test-fixtures')", and a job running
     either satisfies it."""
     out = []
@@ -388,7 +388,7 @@ def lane_invocations(words, recipes_map):
     """{(qualified recipe, events)} for the lanes a job's `run:` lines invoke.
 
     `workflow_jobs` yields a FLAT word stream, and a lane is often two words:
-    `just check build`, `just ci tier1`, `just native build-workspace-fixtures`.
+    `just check build`, `just ci tier1`, `just linux build-workspace-fixtures`.
     Testing each word against the recipe map on its own is wrong twice over.
 
       * It MISSES every module lane. Neither `ci` nor `tier1` is a recipe, so
@@ -574,7 +574,7 @@ _RESOLVER_CALL = re.compile(
 
 # Parameters may be UPPERCASE and their defaults quoted — `check JOBS="75%":`
 # is a real recipe header, and the old `[a-z_]+=\S*` matched neither the
-# name nor the `"75%"`. It therefore skipped `native::check`, which is the
+# name nor the `"75%"`. It therefore skipped `linux::check`, which is the
 # one recipe whose missing precondition froze the merge queue (phase-396).
 # phase-410 W4 — a leading `_` is allowed. `[private]` recipes in this repo are
 # `_`-prefixed by convention (`_lane-gate`, `_require-fixtures`,
@@ -595,7 +595,7 @@ def parse_justfile():
     """{recipe: {deps, body}} across the root justfile AND `just/*.just`.
 
     phase-396 W5 — modules were invisible, and that is where the defect lived.
-    `check-build`'s last dependency is `native::check`, which hard-requires
+    `check-build`'s last dependency is `linux::check`, which hard-requires
     generated message bindings; the closure walk stopped at the root justfile,
     so the gate could not see it and reported the tier clean while the required
     check was red for every pull request.
@@ -1679,7 +1679,7 @@ def main():
     #
     # The loop above checks two AUTHORED tiers. That is not where this bit us:
     # phase-395 put `check-build` on the merge group, `check-build` reaches
-    # `native::check` (generated message bindings) and `check-source-gates`
+    # `linux::check` (generated message bindings) and `check-source-gates`
     # (`.compile-ok` stamps), the job produces neither, and the required check
     # was red for EVERY pull request for a day. Nothing here looked, because
     # `check-build` was not in LANES.
@@ -2082,15 +2082,15 @@ def selftest(verbose=False):
     # ---- phase-396 W5: the pieces that were BLIND, each with a case ----
 
     # The recipe header regex skipped `check JOBS="75%":` — uppercase parameter,
-    # quoted default with a `%`. That one miss hid `native::check`, which is the
+    # quoted default with a `%`. That one miss hid `linux::check`, which is the
     # recipe whose unmet precondition froze the queue.
-    mod = _parse_one(['check JOBS="75%":', '    echo hi', '', 'other:', '    x'], "native")
+    mod = _parse_one(['check JOBS="75%":', '    echo hi', '', 'other:', '    x'], "linux")
     chk("a recipe with an UPPERCASE quoted-default parameter is parsed",
-        "native::check" in mod)
-    chk("module recipes are keyed <module>::<recipe>", "native::other" in mod)
-    bare = _parse_one(["a: b", "    x", "b:", "    y"], "native")
+        "linux::check" in mod)
+    chk("module recipes are keyed <module>::<recipe>", "linux::other" in mod)
+    bare = _parse_one(["a: b", "    x", "b:", "    y"], "linux")
     chk("a bare dep inside a module resolves to that module",
-        bare["native::a"]["deps"] == ["native::b"])
+        bare["linux::a"]["deps"] == ["linux::b"])
 
     # The producer rule: a hard-failing remediation IS the declaration.
     rp = {"r": {"deps": [], "body": ["    echo \"Run 'just generate-bindings' first\"",

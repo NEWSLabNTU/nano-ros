@@ -28,7 +28,7 @@ Four call sites, four identical mistakes, four green tests. And note WHAT was
 swallowed: zenohd, ROS 2 and the fixture had all already passed their own
 guards, so a `false` here meant "everything is up and our node is not in the
 graph" — a delivery failure, the exact thing those four tests exist to detect.
-Under `--failure-output never` (what `just native test-ros2-params` passes) the
+Under `--failure-output never` (what `just linux test-ros2-params` passes) the
 `eprintln!` was not shown either, so the only evidence was invisible.
 
 ## Why the signature and not the call site

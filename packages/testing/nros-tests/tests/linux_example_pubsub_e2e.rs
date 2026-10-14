@@ -14,7 +14,7 @@
 //! talker + listener and
 //! proves the listener sees the `I heard:` marker (the plain example pair is
 //! String on both ends in every language), under the isolation + env each RMW
-//! needs — faithful to the working `nano2nano`/`native_api`/`xrce.rs` tests:
+//! needs — faithful to the working `nano2nano`/`linux_api`/`xrce.rs` tests:
 //! - **zenoh** — ephemeral `zenohd`; both dial `NROS_LOCATOR`; assert ≥3.
 //! - **cyclone** — unique `ROS_DOMAIN_ID` + `LD_LIBRARY_PATH=build/install/lib`
 //!   (the cyclone libs load at runtime; without it the backend is dead and
@@ -23,7 +23,7 @@
 //! - **xrce** — ephemeral Agent + `XRCE_MSG_COUNT` bounded receive; readiness +
 //!   settle; assert ≥1.
 //!
-//! Run with: `cargo nextest run -p nros-tests --test native_example_pubsub_e2e`.
+//! Run with: `cargo nextest run -p nros-tests --test linux_example_pubsub_e2e`.
 
 use nros_tests::{
     TestResult,
@@ -210,7 +210,7 @@ fn run_cell(cell: &MCell) {
     let mut _zenohd: Option<ZenohRouter> = None;
     let mut _agent: Option<XrceAgent> = None;
 
-    // Per-RMW recipe, faithful to the working `native_api`/`xrce.rs` tests:
+    // Per-RMW recipe, faithful to the working `linux_api`/`xrce.rs` tests:
     // (min delivered samples to assert, whether the listener needs a
     // ready-marker + stabilisation wait before the talker starts).
     let (min_count, needs_settle) = match cell.rmw {
@@ -227,7 +227,7 @@ fn run_cell(cell: &MCell) {
             // The cyclone example binaries load libcyclonedds from
             // `build/install/lib` at runtime; without LD_LIBRARY_PATH the
             // backend never initialises and NOTHING delivers (this was the
-            // 2026-08-04 root cause). Mirrors `native_api::spawn_cyclone_binary`.
+            // 2026-08-04 root cause). Mirrors `linux_api::spawn_cyclone_binary`.
             let domain = unique_ros_domain_id().to_string();
             let cyclone_lib = nros_tests::project_root().join("build/install/lib");
             let ldp = match std::env::var_os("LD_LIBRARY_PATH") {

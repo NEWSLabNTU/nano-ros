@@ -21,7 +21,7 @@ just build                 # workspace + transports (fast inner loop)
 just build-examples        # + every example
 just build-all             # + test fixtures (everything test-all consumes)
 just build-test-fixtures   # just the fixtures + writes the test-all stamp
-just build-test-fixtures lane=native   # only what tier 1 (`just ci`) runs
+just build-test-fixtures lane=linux   # only what tier 1 (`just ci`) runs
 
 just test-unit             # ~5s          ⊂
 just test-integration      # ~30s         ⊂
@@ -162,7 +162,7 @@ wrong binary. The discipline:
   with the **lane and the fixture coordinates it built**, not just a timestamp;
   `test-all`'s `_require-fixtures` fast-fails (~1 s) if the stamp is absent *or
   does not cover* the **run** implied by `NROS_FIXTURE_LANE` (bypass:
-  `NROS_SKIP_FIXTURE_CHECK=1`). So a `lane=native` build satisfies `just ci`
+  `NROS_SKIP_FIXTURE_CHECK=1`). So a `lane=linux` build satisfies `just ci`
   (tier 1) and is correctly rejected by an unscoped `test-all`. A pre-issue-0393
   timestamp-only stamp is read as `lane=all`, which is what it meant.
 
@@ -176,7 +176,7 @@ wrong binary. The discipline:
 
   | lane | run narrowed by | build lane |
   | --- | --- | --- |
-  | tier 1 | test/binary NAME (`NROS_TEST_SCOPE=native`) | `native` |
+  | tier 1 | test/binary NAME (`NROS_TEST_SCOPE=linux`) | `linux` |
   | tier 2, nightly | fixture COORDINATE (`NROS_TEST_COORDS`) | itself |
 
   Tier 2 needs the second kind because it is 1-wise over platform: every

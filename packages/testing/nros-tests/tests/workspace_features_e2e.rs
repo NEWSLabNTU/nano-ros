@@ -452,7 +452,7 @@ const DECLARED_CASES: &[(ML, MW)] = &[
 ];
 
 /// THE consumer — ONE TEST PER CELL (phase-342 W1). Was a single #[test]
-/// folding 17 cells at 62.9 s; see `native_example_pubsub_e2e.rs` for the full
+/// folding 17 cells at 62.9 s; see `linux_example_pubsub_e2e.rs` for the full
 /// reasoning. Same two wins: the cells now schedule, and a failure names the
 /// `(lang, workload)` instead of reporting `N of 17`.
 #[rstest]

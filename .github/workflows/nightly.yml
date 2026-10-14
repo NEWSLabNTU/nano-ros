@@ -17,7 +17,7 @@
 #   - `lane`          computes the cover (`lane-coords tier2-nightly`)
 #   - `changes`       derives the platform matrix from it, instead of a hand list
 #   - `lane-coverage` asserts every lane module actually has a job somewhere in
-#                     nightly CI — `native` in host-tests.yml, `zephyr` on the
+#                     nightly CI — `linux` in host-tests.yml, `zephyr` on the
 #                     05:00 cron, the rest in the platform matrix
 # Without that last job the coverage claim would be a sentence in an RFC: a new
 # platform could join the matrix, join the lane, and never be built by anything.
@@ -218,7 +218,7 @@ jobs:
           LANE_MODULES: ${{ needs.lane.outputs.modules }}
         run: |
           set -euo pipefail
-          # Modules THIS job can run. The lane also needs `native` and `zephyr`,
+          # Modules THIS job can run. The lane also needs `linux` and `zephyr`,
           # which have their own homes in the tier (host-tests / the 05:00 cron) —
           # `lane-coverage` asserts that, rather than this list quietly implying it.
           runnable="qemu freertos nuttx threadx_linux threadx_riscv64"
@@ -594,9 +594,9 @@ jobs:
           fi
           # Homes OUTSIDE the platform matrix. Each entry names the lane that
           # actually runs it, so a stale entry is legible rather than a bare
-          # allow-list. `native` also gates tier 1 on every commit.
+          # allow-list. `linux` also gates tier 1 on every commit.
           declare -A elsewhere=(
-            [native]="run-matrix.yml tier1 — cron 0 6, just ci tier1 run (+ host-tests.yml test-unit)"
+            [linux]="run-matrix.yml tier1 — cron 0 6, just ci tier1 run (+ host-tests.yml test-unit)"
             [zephyr]="nightly.yml zephyr-* jobs — cron 0 5"
           )
           ran="$(jq -r '.[]' <<<"$RAN" | tr '\n' ' ')"
@@ -1175,7 +1175,7 @@ jobs:
       # host with it needs nothing from the system") and falls back to the
       # system qemu only when that is absent. That path is inside the CHECKOUT,
       # and `just setup tier2-nightly` creates it — the lane expands to
-      # `freertos native nuttx qemu threadx_linux threadx_riscv64 zephyr`,
+      # `freertos linux nuttx qemu threadx_linux threadx_riscv64 zephyr`,
       # and the `qemu` module's `setup` ends in `just qemu setup-qemu`.
       #
       # Asserting before provisioning asks the host for something the next step

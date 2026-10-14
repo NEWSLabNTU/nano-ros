@@ -26,7 +26,7 @@
 #     DEPENDENCY of the recipe that was named, not the recipe. Silent.
 #   * otherwise                                  => somebody typed it. Notice.
 #
-# The second test is what keeps `just native test` from printing a second,
+# The second test is what keeps `just linux test` from printing a second,
 # confusing notice for the `build-fixtures` dependency it pulls in.
 #
 # Never fails, never changes an exit status: a deprecation that can break a

@@ -15,7 +15,7 @@ NIGHTLY := `awk '/^channel/ {gsub(/"/, "", $3); print $3; exit}' tools/rust-tool
 # Build native core artifacts.
 [group("main")]
 build:
-    @echo "Native example module has no separate core build; use 'just native build-examples' for examples."
+    @echo "Native example module has no separate core build; use 'just linux build-examples' for examples."
 
 # Build all Rust examples (auto-discovered, excludes zephyr + cross-compiled RTOS).
 #
@@ -23,8 +23,8 @@ build:
 # crates (per the copy-out invariant in AGENTS.md), so each cargo invocation can
 # run concurrently without requiring GNU parallel. JOBS defaults to the global
 # NROS_BUILD_JOBS budget (itself nproc unless overridden), falling back to 75 %
-# of cores. Override per-invocation with `just native build-examples 4` or
-# `NROS_BUILD_JOBS=4 just native build-examples` for tighter machines. Just
+# of cores. Override per-invocation with `just linux build-examples 4` or
+# `NROS_BUILD_JOBS=4 just linux build-examples` for tighter machines. Just
 # recipe parameters are positional; `JOBS=4` is parsed as a literal argument.
 [group("main")]
 build-examples JOBS=env_var_or_default("NROS_BUILD_JOBS", "75%"):
@@ -159,13 +159,13 @@ build-examples JOBS=env_var_or_default("NROS_BUILD_JOBS", "75%"):
 # Build all example binaries used as test fixtures (Rust + C + C++ + workspaces).
 [group("full-matrix")]
 build-fixtures: build-fixture-rust build-fixture-extras build-workspace-fixtures
-    @bash scripts/dev/deprecated-scope-alias.sh native build-fixtures "just build native"
+    @bash scripts/dev/deprecated-scope-alias.sh linux build-fixtures "just build linux"
     @echo "Native test fixtures built."
 
-# Provision what the NATIVE lane needs — phase-413 W5.
+# Provision what the LINUX lane needs — phase-413 W5.
 #
-# `just setup native` expands to the modules of the `native` preset, which is
-# `[native]` — and this module had NO `setup` recipe, so the verb ran the common
+# `just setup linux` expands to the modules of the `linux` preset, which is
+# `[linux]` — and this module had NO `setup` recipe, so the verb ran the common
 # preamble (submodule init, CLI, launch resolver) and then printed "native has no
 # `setup` recipe — nothing to provision". Meanwhile `host-tests.yml` provisioned
 # the native lane in five hand-rolled steps, because the verb genuinely did not
@@ -221,12 +221,12 @@ setup:
     just ci provision-zenohd || rc=$?
     if [ "$rc" -eq 78 ]; then
         printf '%s\n' \
-            "native setup: the 'recipe provision-zenohd failed with exit code 78' line above" \
+            "linux setup: the 'recipe provision-zenohd failed with exit code 78' line above" \
             "              is EXPECTED and is NOT a failure. just announces every non-zero" \
             "              recipe exit; 78 is the lane-skip protocol (sysexits EX_CONFIG," \
             "              scripts/build/lane-skip.sh) and this is the caller that reads it" \
             "              (gate: check-lane-skip-interpreters). Issue 1477." \
-            "native setup: rmw_zenohd not provisioned — zenoh lanes will SKIP. RFC-0075: we" \
+            "linux setup: rmw_zenohd not provisioned — zenoh lanes will SKIP. RFC-0075: we" \
             "              ship no router, it comes from ROS, so a host with no ROS install" \
             "              cannot have one and the zenoh cells report [SKIPPED:capability]."
     elif [ "$rc" -ne 0 ]; then
@@ -239,8 +239,8 @@ setup:
     # known-optional command" form — a decision that is visible in the log,
     # not a fallback between two verbs.
     nros setup --tool play_launch_parser --index nros-sdk-index.toml \
-        || echo "native setup: play_launch_parser unavailable — workspace-entry fixtures will SKIP"
-    echo "native lane provisioned."
+        || echo "linux setup: play_launch_parser unavailable — workspace-entry fixtures will SKIP"
+    echo "linux lane provisioned."
 
 # Build native workspace fixtures from examples/fixtures.toml.
 #
@@ -552,7 +552,7 @@ check JOBS="75%":
         fi
     done < "$toml_list"
     if [ -s "$missing" ]; then
-        echo "native check: $(wc -l < "$missing" | tr -d ' ') example(s) are missing their generated message bindings:" >&2
+        echo "linux check: $(wc -l < "$missing" | tr -d ' ') example(s) are missing their generated message bindings:" >&2
         cat "$missing" >&2
         echo "" >&2
         echo "  Bindings are build-time + ROS-version-dependent (gitignored, not shipped in git)." >&2
@@ -669,9 +669,9 @@ _build-c-example dir *CMAKE_ARGS:
 build-c:
     #!/usr/bin/env bash
     set -e
-    just native _build-c-example examples/native/c/talker
-    just native _build-c-example examples/native/c/listener
-    just native _build-c-example examples/native/c/custom-msg
+    just linux _build-c-example examples/native/c/talker
+    just linux _build-c-example examples/native/c/listener
+    just linux _build-c-example examples/native/c/custom-msg
     echo "C examples built!"
 
 # Build C XRCE examples only (no tests)
@@ -679,8 +679,8 @@ build-c:
 build-c-xrce:
     #!/usr/bin/env bash
     set -e
-    just native _build-c-example examples/native/c/talker  "-DNROS_RMW=xrce -DNROS_RMW=xrce"
-    just native _build-c-example examples/native/c/listener "-DNROS_RMW=xrce -DNROS_RMW=xrce"
+    just linux _build-c-example examples/native/c/talker  "-DNROS_RMW=xrce -DNROS_RMW=xrce"
+    just linux _build-c-example examples/native/c/listener "-DNROS_RMW=xrce -DNROS_RMW=xrce"
     echo "C XRCE examples built!"
 
 # Clean C examples build
@@ -710,12 +710,12 @@ _build-cpp-example dir *CMAKE_ARGS:
 build-cpp:
     #!/usr/bin/env bash
     set -e
-    just native _build-cpp-example examples/native/cpp/talker
-    just native _build-cpp-example examples/native/cpp/listener
-    just native _build-cpp-example examples/native/cpp/service-server
-    just native _build-cpp-example examples/native/cpp/service-client
-    just native _build-cpp-example examples/native/cpp/action-server
-    just native _build-cpp-example examples/native/cpp/action-client
+    just linux _build-cpp-example examples/native/cpp/talker
+    just linux _build-cpp-example examples/native/cpp/listener
+    just linux _build-cpp-example examples/native/cpp/service-server
+    just linux _build-cpp-example examples/native/cpp/service-client
+    just linux _build-cpp-example examples/native/cpp/action-server
+    just linux _build-cpp-example examples/native/cpp/action-client
     echo "C++ examples built!"
 
 # Clean C++ examples build
@@ -741,7 +741,7 @@ clean-cpp:
 [group("main")]
 test verbose="": build-fixtures
     #!/usr/bin/env bash
-    bash scripts/dev/deprecated-scope-alias.sh native test "just test native"
+    bash scripts/dev/deprecated-scope-alias.sh linux test "just test linux"
     set -e
     source scripts/build/cargo.sh
     cargo_nextest_args=($(nros_cargo_nextest_args))
@@ -751,11 +751,11 @@ test verbose="": build-fixtures
     # The remaining explicit `binary(...)` excludes are carve-outs with
     # their own focused lane and no shared group: zephyr (native_sim
     # fixtures), esp32_emulator, large_msg (test-large-msg), and the
-    # native_api / parameters_roundtrip / c_xrce_api fixture lanes
-    # (test-native-api, test-c-xrce). Unlike root `just test`, this lane
+    # linux_api / parameters_roundtrip / c_xrce_api fixture lanes
+    # (test-linux-api, test-c-xrce). Unlike root `just test`, this lane
     # keeps the QEMU RTOS e2e groups in.
     args=(-p nros-tests --no-fail-fast \
-          -E 'not (group(=ros2-interop) or binary(xrce_ros2_interop) or binary(zephyr) or binary(esp32_emulator) or binary(large_msg) or binary(native_api) or binary(parameters_roundtrip) or binary(c_xrce_api))')
+          -E 'not (group(=ros2-interop) or binary(xrce_ros2_interop) or binary(zephyr) or binary(esp32_emulator) or binary(large_msg) or binary(linux_api) or binary(parameters_roundtrip) or binary(c_xrce_api))')
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
@@ -767,15 +767,15 @@ test-all verbose="":
     #!/usr/bin/env bash
     set +e
     failed=0
-    just native test {{verbose}} || failed=1
-    just native test-large-msg {{verbose}} || failed=1
-    just native test-ros2 {{verbose}} || failed=1
-    just native test-ros2-params {{verbose}} || failed=1
-    just native test-ros2-lifecycle {{verbose}} || failed=1
-    just native test-ros2-action {{verbose}} || failed=1
-    just native test-native-api {{verbose}} || failed=1
-    just native test-c-xrce {{verbose}} || failed=1
-    just native _test-c-codegen {{verbose}} || failed=1
+    just linux test {{verbose}} || failed=1
+    just linux test-large-msg {{verbose}} || failed=1
+    just linux test-ros2 {{verbose}} || failed=1
+    just linux test-ros2-params {{verbose}} || failed=1
+    just linux test-ros2-lifecycle {{verbose}} || failed=1
+    just linux test-ros2-action {{verbose}} || failed=1
+    just linux test-linux-api {{verbose}} || failed=1
+    just linux test-c-xrce {{verbose}} || failed=1
+    just linux _test-c-codegen {{verbose}} || failed=1
     if [ $failed -ne 0 ]; then
         echo "FAIL: Some native tests failed."
         exit 1
@@ -1037,7 +1037,7 @@ test-ros2-qos-override verbose="":
 # One graph node per launch component in `ros2 node list`, Rust entry (#104 /
 # phase-268 W3). The gate it exercises lives in the shared zenoh shim, so this
 # and the C++ lane below are the two languages of one claim. The entry is
-# `workspace-rust-native`, from `just native build-fixtures`; the router ships
+# `workspace-rust-native`, from `just linux build-fixtures`; the router ships
 # with `rmw_zenoh_cpp`.
 # Runs `rust_multi_node_per_node_graph`; needs ROS 2 + `rmw_zenoh_cpp` + that entry.
 [group("debug")]
@@ -1079,7 +1079,7 @@ test-bridge-zenoh-to-cyclonedds-imperative verbose="":
 
 # DECLARATIVE zenoh → XRCE bridge e2e. xrce is lazy-registration, so unlike the
 # Cyclone sibling there is no descriptor staging on the egress side. It lives
-# here rather than under `xrce` because its nano side is a `NativeFixtures`
+# here rather than under `xrce` because its nano side is a `LinuxFixtures`
 # entry, same as its Cyclone siblings — the Agent is the peer, not the subject.
 # The Agent comes from `just xrce setup`.
 # Runs `declarative_bridge_zenoh_to_xrce`; needs `rmw_zenohd` + an XRCE Agent + fixtures.
@@ -1106,7 +1106,7 @@ test-ros2-advertised-state verbose="":
 # check-rust-rmw` it survived by being `[group("debug")]`, on no lane, and
 # named by nothing.
 #
-# ROS 2 interop is covered by `just native test-ros2` (the `interop_e2e`
+# ROS 2 interop is covered by `just linux test-ros2` (the `interop_e2e`
 # nextest binary) and by `interop::CELLS` (RFC-0051).
 #
 # Gate: `check-just-recipe-paths`.
@@ -1120,14 +1120,14 @@ _test-c-codegen verbose="":
 
 # Run the full native C/C++ API nextest lane.
 [group("debug")]
-test-native-api verbose="":
+test-linux-api verbose="":
     #!/usr/bin/env bash
     set -e
     # Consumes prebuilt per-RMW CMake fixtures; run
     # `just build-test-fixtures` first for the full matrix.
     source scripts/build/cargo.sh
     cargo_nextest_args=($(nros_cargo_nextest_args))
-    args=(-p nros-tests --test native_api --test parameters_roundtrip --no-fail-fast)
+    args=(-p nros-tests --test linux_api --test parameters_roundtrip --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
@@ -1141,13 +1141,13 @@ test-c verbose="":
     source scripts/build/cargo.sh
     cargo_nextest_args=($(nros_cargo_nextest_args))
     just init-test-logs
-    args=(-p nros-tests --test native_api --no-fail-fast \
+    args=(-p nros-tests --test linux_api --no-fail-fast \
           -E 'test(/Language__C$/) or test(test_c_)')
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
     cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
-    just native _test-c-codegen {{verbose}}
+    just linux _test-c-codegen {{verbose}}
 
 # C++ API integration tests (needs cmake + zenohd)
 [group("debug")]
@@ -1157,7 +1157,7 @@ test-cpp verbose="":
     source scripts/build/cargo.sh
     cargo_nextest_args=($(nros_cargo_nextest_args))
     args=(-p nros-tests --no-fail-fast \
-          -E '(binary(native_api) and (test(Language__Cpp) or test(test_cpp_))) or binary(parameters_roundtrip)')
+          -E '(binary(linux_api) and (test(Language__Cpp) or test(test_cpp_))) or binary(parameters_roundtrip)')
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi

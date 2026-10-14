@@ -137,7 +137,7 @@ tier1 part="all":
     esac
 
 # phase-395 W19 — COORDINATE-scoped, like tier 2, and no longer
-# `NROS_TEST_SCOPE=native`.
+# `NROS_TEST_SCOPE=linux`.
 #
 # The name filter excluded `zephyr` and `threadx` outright — the very
 # platforms `board-support.toml` grants tier 1 — so the lane covered one of

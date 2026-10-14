@@ -208,7 +208,7 @@ def setup_closure(justfile_text, _just_files):
     Getting this wrong made the gate useless in exactly the case it exists for:
     with module recipes folded in, `just/workspace.just`'s own `setup` contains
     `just workspace install-corrosion`, so deleting that line from
-    `_setup-common` still "passed" -- while `just setup native` (which never
+    `_setup-common` still "passed" -- while `just setup linux` (which never
     chains `just workspace setup`) left corrosion unprovisioned. That is the
     original bug, reading green. Caught by mutation-testing this gate.
     """

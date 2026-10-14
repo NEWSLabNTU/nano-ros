@@ -101,7 +101,7 @@ dormant for now (issue 1525): its code is kept, nothing builds it.
 
 ```bash
 # Terminal 1: Zenoh router (resolves the install from step 3 automatically)
-ros2 run rmw_zenoh_cpp rmw_zenohd      # contributor shortcut: just native zenohd
+ros2 run rmw_zenoh_cpp rmw_zenohd      # contributor shortcut: just linux zenohd
 
 # Terminal 2: Talker
 cd examples/native/rust/talker

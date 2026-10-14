@@ -217,7 +217,7 @@ fi
 # long-lived machine it read a directory nothing had written since the rename
 # and reported pure accumulation as a budget breach. Measured here: 8 identities
 # for `nros` against a ceiling of 5, entirely history, and a full
-# `build-test-fixtures lane=native` (2 616 s) did not recreate the path, which is
+# `build-test-fixtures lane=linux` (2 616 s) did not recreate the path, which is
 # what the SKIP message told the user to run.
 #
 # Both failure modes come from naming a path instead of finding one. Take the
@@ -307,8 +307,8 @@ CEILING_IDENTITIES=5
 CEILING_COPIES=5
 # ----------------------------------------------------------------------------
 
-# issue 0901 — `lane=native` was the advice and it does not build these trees.
-# Measured: a full `just build-test-fixtures lane=native` (2 616 s) left every
+# issue 0901 — `lane=linux` was the advice and it does not build these trees.
+# Measured: a full `just build-test-fixtures lane=linux` (2 616 s) left every
 # `examples/workspaces/*/build-workspace-fixtures*` untouched at its previous
 # mtime. The workspace fixtures come from the WORKSPACE build, so name that.
 # Advice that does not produce the artifact is worse than no advice: it costs

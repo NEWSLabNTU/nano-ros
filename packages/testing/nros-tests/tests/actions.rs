@@ -4,7 +4,7 @@
 //!
 //! **Bucket (phase-329): KEEP — behavior one-offs, not matrix cells.** The plain
 //! rust/zenoh DELIVERY case folded into the native-example req/resp matrix
-//! consumer (`native_example_reqresp_e2e.rs`).
+//! consumer (`linux_example_reqresp_e2e.rs`).
 
 use nros_tests::fixtures::{
     ManagedProcess, ZenohRouter, action_client_binary, action_server_binary, require_zenohd,
@@ -94,7 +94,7 @@ fn test_action_client_starts(zenohd_unique: ZenohRouter, action_client_binary: P
 }
 
 // phase-329 W4 — the DELIVERY test (rust/zenoh) FOLDED into the native-example
-// req/resp matrix consumer (`native_example_reqresp_e2e.rs`, the
+// req/resp matrix consumer (`linux_example_reqresp_e2e.rs`, the
 // `(Linux, Rust, Zenoh, Action)` cell). Kept below: server/client startup
 // one-offs + the binaries-exist fixture-artifact check.
 

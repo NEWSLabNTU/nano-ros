@@ -47,7 +47,7 @@ use std::{
 ///   1. `QEMU_SYSTEM_<ARCH>` (e.g. `QEMU_SYSTEM_ARM`) — developer override /
 ///      CI pin.
 ///   2. The project-local prefix `<project_root>/build/qemu/bin/` (made by
-///      `just qemu setup-qemu` / `just native setup`).
+///      `just qemu setup-qemu` / `just linux setup`).
 ///   3. The `nros setup` store, at the PINNED `[tool.qemu]` version.
 ///   4. `$PATH`, so a host that never ran setup still produces the documented
 ///      `[SKIPPED]` rather than an exec error.

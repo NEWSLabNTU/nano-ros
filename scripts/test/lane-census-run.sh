@@ -11,7 +11,7 @@
 # NROS_CENSUS_RUNS (default 1) repeats the RUN, not the build: a target is only
 # admissible if it reaches a verdict every time. Measured reason — two targets
 # that compile at test time (`cmake_platform_matrix`,
-# `native_main_macro_misuse`) failed in one full parallel census and passed in
+# `linux_main_macro_misuse`) failed in one full parallel census and passed in
 # isolation in both image variants with identical source (issue 1620). One run
 # cannot tell that from a real red; two disagreeing runs can.
 #

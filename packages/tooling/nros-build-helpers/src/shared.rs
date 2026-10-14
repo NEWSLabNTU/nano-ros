@@ -611,7 +611,7 @@ fn variant_of(header: &str) -> Option<&str> {
 /// mismatch check, that no consumer reads, and that does not reach the size
 /// ANCHOR (issue 0369 derives that from the values). Rewriting for it made the
 /// file oscillate on every build, which is issue 1461: the three C
-/// `native_example_pubsub_e2e` coordinates spent 18 days reporting a STALE
+/// `linux_example_pubsub_e2e` coordinates spent 18 days reporting a STALE
 /// verdict instead of a runtime result, for a binary that was correct.
 ///
 /// So the owner's write uses the same equality its own verifier uses. A

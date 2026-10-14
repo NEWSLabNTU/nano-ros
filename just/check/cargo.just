@@ -165,7 +165,7 @@ node-package-invariance:
 # the pre-phase-445 builder while being absent from a clone. A member of it that
 # no tracked directory and no generator provides makes cargo refuse to LOAD the
 # workspace, at MANIFEST PARSE — which is what stopped `build-test-fixtures
-# lane=native`.
+# lane=linux`.
 example-workspace-members:
     @python3 scripts/check-example-workspace-members.py
 

@@ -189,7 +189,7 @@ fn nano_cyclone_c_binary(case: &str, binary: &str) -> std::path::PathBuf {
 }
 
 /// Spawn a nano-ros Cyclone binary on `domain_id`, wiring `LD_LIBRARY_PATH`
-/// to the in-tree `libddsc` (mirrors `native_api.rs::spawn_cyclone_binary`).
+/// to the in-tree `libddsc` (mirrors `linux_api.rs::spawn_cyclone_binary`).
 fn spawn_nano_cyclone(binary: &Path, name: &str, domain_id: u8) -> ManagedProcess {
     let mut cmd = Command::new(binary);
     cmd.env("ROS_DOMAIN_ID", domain_id.to_string())

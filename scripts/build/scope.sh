@@ -26,9 +26,9 @@
 #              named platform set and inventing a second vocabulary beside it
 #              is how two spellings of one fact start.
 #
-# `native` is deliberately in BOTH sets: it is a platform module and a lane
+# `linux` is deliberately in BOTH sets: it is a platform module and a lane
 # name. That is legal precisely because they denote the SAME scope — the
-# `native` lane is every row of the `native` module, which `nros_lane_modules`
+# `linux` lane is every row of the `linux` module, which `nros_lane_modules`
 # spells out. `check-scope-namespace` asserts it, so a future preset that
 # collides with a platform meaning something else fails on the fast line
 # instead of silently re-scoping somebody's run.
@@ -43,11 +43,11 @@
 #          `just <plat> build-fixtures`, the same call that recipe's own
 #          fan-out makes.
 #   test   a coordinate-scoped lane (tier1/tier2/tier2-nightly), `all` and
-#          `native` go to the lane run (`test-all` narrowed by
+#          `linux` go to the lane run (`test-all` narrowed by
 #          `NROS_TEST_COORDS`); any other platform token goes to `just <plat>
 #          test`, narrowed to that platform's own rows (issue 1758).
 #
-# `native` resolves through the lane for BOTH verbs (issue 1758): its module
+# `linux` resolves through the lane for BOTH verbs (issue 1758): its module
 # `test` recipe ran nearly every nros-tests binary over a build of only the
 # example rows, so the build and the run disagreed about what the scope was.
 #
@@ -78,7 +78,7 @@ fi
 # person names them.
 # `esp32` left 2026-10-07: ESP32 support is DORMANT (issue 1525) and its `just`
 # module is unmounted.
-_NROS_SCOPE_PLATFORMS="native zephyr freertos nuttx threadx_linux threadx_riscv64 qemu px4 xrce cyclonedds"
+_NROS_SCOPE_PLATFORMS="linux zephyr freertos nuttx threadx_linux threadx_riscv64 qemu px4 xrce cyclonedds"
 
 # Modules that are deliberately NOT scope tokens, with the reason — because
 # "why is `docker` not a scope?" is the question a reader will have, and an
@@ -127,6 +127,10 @@ nros_scope_normalize() {
         # The base setup tier is the host quick start.
         base | quickstart | minimal | default) tok="base" ;;
     esac
+    # phase-500 W2 — a retired spelling (`native`) resolves to its current one.
+    # Quiet here: this runs several times per token; `nros_scope_validate_all`
+    # is the entry point that prints the deprecation, once per token.
+    tok="$(nros_retired_host_token "$tok" quiet)"
     printf '%s' "$tok"
 }
 
@@ -160,7 +164,7 @@ nros_scope_is_lane() {
 
 # platform | preset | unknown.
 #
-# PLATFORM-first, and only for the human-readable label: `native` is both, and
+# PLATFORM-first, and only for the human-readable label: `linux` is both, and
 # "platform" is the more informative of the two true answers. It cannot change
 # any resolution, because the two denote the same scope — which is exactly what
 # `check-scope-namespace` asserts, and the reason a collision is allowed at all.
@@ -176,7 +180,7 @@ nros_scope_kind() {
 
 # The platform set a preset denotes, one per line.
 #
-# `all` and `native` answer statically. The tier lanes answer through
+# `all` and `linux` answer statically. The tier lanes answer through
 # `nros_lane_modules`, which is `lane-coords --modules` — the SAME selection
 # the fixture build fans out over, so a tier's scope cannot differ between what
 # `doctor` reports and what `build` builds. That costs a `cargo run` when no
@@ -190,8 +194,8 @@ nros_scope_preset_expand() {
             printf '%s\n' $_NROS_SCOPE_PLATFORMS
             return 0
             ;;
-        native)
-            echo native
+        linux)
+            echo linux
             return 0
             ;;
     esac
@@ -229,6 +233,9 @@ nros_scope_expand() {
 nros_scope_validate_all() {
     local tok rc=0
     for tok in "$@"; do
+        # Prints the deprecation for a retired token (phase-500 W2); discards
+        # the mapping, which `nros_scope_normalize` applies everywhere.
+        nros_retired_host_token "${tok#*=}" >/dev/null
         if [ "$(nros_scope_kind "$tok")" = "unknown" ]; then
             nros_scope_reject "$tok" || rc=2
         fi
@@ -297,13 +304,13 @@ nros_scope_exec() {
 # The default scope: what this host has provisioned, PROBED
 # ---------------------------------------------------------------------------
 
-# Does `<platform>` have a module `doctor` to probe? `native` is the host — the
+# Does `<platform>` have a module `doctor` to probe? `linux` is the host — the
 # machine you are typing on — so it has no separate provisioning question and
 # the root `doctor`'s host block is its readiness report.
 nros_scope_has_module_doctor() {
     local p
     p="$(nros_scope_normalize "${1:-}")"
-    [ "$p" != "native" ]
+    [ "$p" != "linux" ]
 }
 
 # rc 0 when `<platform>` is provisioned. The probe IS the module's own

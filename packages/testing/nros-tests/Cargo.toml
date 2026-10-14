@@ -244,8 +244,8 @@ name = "actions"
 path = "tests/actions.rs"
 
 [[test]]
-name = "native_api"
-path = "tests/native_api.rs"
+name = "linux_api"
+path = "tests/linux_api.rs"
 
 [[test]]
 name = "xrce"

@@ -18,8 +18,8 @@ cell whose source file exists" was the check.
 MEASURED 2026-09-06, before this gate: 17 Runtime cells naming 11 distinct test
 binaries, of which 3 are named by a recipe --
 
-    interop_e2e        `just native test-ros2`, `just native test-ros2-lifecycle`
-    params             `just native test-ros2-params`
+    interop_e2e        `just linux test-ros2`, `just linux test-ros2-lifecycle`
+    params             `just linux test-ros2-params`
     xrce_ros2_interop  `just xrce test-ros2`
 
 -- and 8 are named by no recipe and no workflow, covering 9 cells. Every one of
@@ -32,7 +32,7 @@ WHAT "NO RUNNER" DOES AND DOES NOT MEAN
 It does NOT mean the binaries never execute, and an earlier draft of this file
 said they did not. Measured 2026-09-06: the ROS-interop exclusion
 (`not (group(=ros2-interop) or binary(xrce_ros2_interop) or ...)`) belongs to
-`just native test` and `just test-integration`, NOT to the root sweep. Root
+`just linux test` and `just test-integration`, NOT to the root sweep. Root
 `just test-all` runs `cargo nextest --workspace` and filters only by lane
 coordinate, absent toolchains and `ros_editions`, so the ten native interop
 binaries are in it -- including on `host-tests.yml`'s integration job, which
@@ -383,7 +383,7 @@ NOT_GROUP = re.compile(r"\bnot\s*\(")
 def _negated_spans(text: str) -> list[tuple[int, int]]:
     """[(start, end)] of every `not ( ... )` filterset group.
 
-    `just native test` and `just test-integration` spell their exclusions
+    `just linux test` and `just test-integration` spell their exclusions
     `-E 'not (group(=ros2-interop) or binary(xrce_ros2_interop) or ...)'`.
     Reading that as an invocation would credit a runner to every binary those
     lanes REFUSE to run, which is the inverse of the truth. (Root `just
@@ -588,10 +588,10 @@ pub const CELLS: &[InteropCell] = &[
     // tests/alpha_e2e.rs -- the one with a lane.
     ic("cell-alpha",
        c(Linux, Rust, Zenoh, Pubsub, Interop, Runtime),
-       NativeFixtures, RosEdition(Zenoh), NanoToRos, "alpha_e2e"),
+       LinuxFixtures, RosEdition(Zenoh), NanoToRos, "alpha_e2e"),
     ic("cell-beta",
        c(Linux, Rust, Zenoh, Service, Interop, Runtime),
-       NativeFixtures, RosEdition(Zenoh), BiDir, "beta_e2e"),
+       LinuxFixtures, RosEdition(Zenoh), BiDir, "beta_e2e"),
     ic("cell-carved",
        c(ZephyrNativeSim, Cpp, Cyclonedds, Qos, Interop,
          CarveOut("no lane; the string mentions ic( and Runtime on purpose")),
@@ -698,7 +698,7 @@ def self_test(verbose: bool = False) -> None:
     ), "selftest: missed a `--test` on a bare shell-array line"
 
     # --- the verdict -----------------------------------------------------
-    have = {"alpha_e2e": ["just/native.just:2"]}
+    have = {"alpha_e2e": ["just/linux.just:2"]}
     ok = "cell-beta  # issue 1127 -- no lane yet\n"
     problems, stats = evaluate(cells, have, ok)
     assert problems == [], f"selftest: rejected a well-formed tree: {problems}"
@@ -721,7 +721,7 @@ def self_test(verbose: bool = False) -> None:
                for p in evaluate(cells, have, "cell-carved  # issue 1127\n")[0]), (
         "selftest: accepted a ledger line for a non-Runtime cell"
     )
-    both = {"alpha_e2e": ["just/native.just:2"], "beta_e2e": ["just/x.just:9"]}
+    both = {"alpha_e2e": ["just/linux.just:2"], "beta_e2e": ["just/x.just:9"]}
     assert any("now HAS a runner" in p for p in evaluate(cells, both, ok)[0]), (
         "selftest: a listed cell that gained a lane was not asked to leave"
     )

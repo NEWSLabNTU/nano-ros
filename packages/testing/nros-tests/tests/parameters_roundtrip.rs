@@ -24,7 +24,7 @@
 //! /cpp_parameters` enumerates them. That needs a ROS 2 peer and lives in the
 //! interop lane; the examples' own file comments carry the commands.
 //!
-//! Build ahead of time with `just native build-fixtures`; nothing compiles at
+//! Build ahead of time with `just linux build-fixtures`; nothing compiles at
 //! run time.
 
 use nros_tests::{
