@@ -87,6 +87,17 @@ nros_pool_available() {
     return 0
 }
 
+# The subtree-guard name a pool runs under — issue 1886. One guard per LABEL:
+# a label names one script's unit list, i.e. one artifact set, which is what
+# the guard's refusal protects. A label is a bare token at every call site
+# (`check-examples`, `compile-check`, `no-std`, `px4-companion`,
+# `build-all-extras`); anything else is folded to `_` so it stays one path
+# segment of the lock file.
+nros_pool_guard_name() {
+    local label="${1:?label}"
+    printf 'jobserver-pool-%s\n' "${label//[^A-Za-z0-9_.-]/_}"
+}
+
 # nros_pool_run <label> [work_root]   — commands on stdin, one per line.
 nros_pool_run() {
     local label="$1"
@@ -141,7 +152,22 @@ nros_pool_run() {
     # leave the units running. Passthrough when already inside a guarded tree.
     source "$repo_root/scripts/build/subtree-guard.sh"
     # issue 1403 — stall watchdog inside the guard (see make-stall-watchdog.py).
-    nros_guard_exec "jobserver-pool" \
+    #
+    # issue 1886 — the guard is keyed on the pool's LABEL, never on "a pool".
+    # The guard's lock means "this tree's <name> build is running; a second one
+    # would corrupt its artifacts", so its key must name an artifact SET. One
+    # constant name for every pool claimed that any two pools in a tree share
+    # artifacts, which nothing measured: `just check build` fans out
+    # `native-check` (pool `check-examples`: `build/example-lint/<leaf>`, leaf
+    # `Cargo.lock`s, the `nros sync` output of the board-image leaves it lints)
+    # and `source-gates` (pool `compile-check`: `build/compile-check-fixtures/
+    # <id>`), disjoint write sets, and whichever started second was REFUSED —
+    # `ci gate` red on main, each gate green alone. Two pools with the SAME
+    # label are one script over one artifact set, and still refuse: a second
+    # `just linux check` in another terminal is the case this guard exists for.
+    # `nros_pool_guard_name` is the one spelling, and the selftest
+    # (`subtree_guard.sh`) drives `nros_pool_run` itself, not the name.
+    nros_guard_exec "$(nros_pool_guard_name "$label")" \
         python3 "$repo_root/scripts/build/make-stall-watchdog.py" \
         --label "jobserver-pool $label" --diag-dir "$work_root" -- \
         env -u MAKEFLAGS -u CARGO_MAKEFLAGS \

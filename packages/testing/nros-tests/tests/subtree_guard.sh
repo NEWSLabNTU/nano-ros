@@ -257,4 +257,74 @@ kill -TERM -"$sl_pgid" 2>/dev/null || true
 rm -f "$lock_a"
 echo "  ok: two checkouts get separate locks, and the refusal names the holder"
 
-echo "subtree-guard: all 4 paths OK (trap, refuse, reap, per-tree)"
+# --- path 5: sibling pools in one tree do not refuse each other -------------
+#
+# Issue 1886. `jobserver-pool.sh` ran EVERY pool under one guard name, so the
+# tree's lock meant "some pool is running" — and `just check build` fans out
+# two gates that each run one (`native-check` -> pool `check-examples`,
+# `source-gates` -> pool `compile-check`). Whichever started second refused,
+# and `ci gate` went red on main while each gate passed alone. Their write sets
+# were MEASURED disjoint (issue 1886), so the key is the pool's LABEL.
+#
+# This drives the real `nros_pool_run`, not the name helper: a call site that
+# bypassed the helper would pass a name-level test and still collide. Pinned
+# make is replaced by a stub that holds the guard for a few seconds, so the case
+# needs no SDK and runs on the fast line wherever the guard runs.
+#
+# Both halves are asserted, because each alone passes a wrong guard: sibling
+# labels must BOTH start (the 1886 defect), and a second pool with the SAME
+# label must still REFUSE (a foreign build in this tree — what the guard is for;
+# a guard keyed on nothing would pass the first half).
+pool_lib="$repo_root/scripts/build/jobserver-pool.sh"
+[ -f "$pool_lib" ] || fail "$pool_lib not found"
+cat > "$work/stub-make" <<'STUB'
+#!/usr/bin/env bash
+# Stands in for pinned make 4.4: answers the version probe, otherwise holds the
+# pool's guard for STUB_HOLD seconds and succeeds.
+[ "${1:-}" = "--version" ] && { echo "GNU Make 4.4.1 (subtree_guard.sh stub)"; exit 0; }
+sleep "${STUB_HOLD:-0}"
+STUB
+chmod +x "$work/stub-make"
+
+# One pool, in a fresh shell with no inherited guard/jobserver: `$1` = label,
+# `$2` = seconds to hold. Two units, so the pool path (not the serial fallback)
+# is the one taken.
+run_pool() {
+    env -u NROS_SUBTREE_GUARD -u NROS_JOBSERVER -u NROS_GUARD_DISABLE \
+        -u NROS_GUARD_FORCE -u MAKEFLAGS STUB_HOLD="$2" \
+        POOL_LIB="$pool_lib" STUB_MAKE="$work/stub-make" POOL_WORK="$work/pool" \
+        bash -c '
+            cd "$(dirname "$POOL_LIB")/../.." || exit 9
+            . "$POOL_LIB"
+            nros_pinned_make() { printf "%s\n" "$STUB_MAKE"; }
+            printf "true\ntrue\n" | nros_pool_run "$1" "$POOL_WORK"
+        ' _ "$1"
+}
+# The tree's lock DIRECTORY, not one lock's path: the wait below must not
+# assume the name under test, or a guard that reverted to one shared name would
+# fail here ("never took its lock") instead of at the assertion that explains it.
+pool_lock_dir() {
+    local any
+    any="$( cd "$repo_root" && . "$guard" && _nros_guard_lock_path probe )"
+    printf '%s\n' "${any%/*}"
+}
+pool_lock_held() { compgen -G "$(pool_lock_dir)/jobserver-pool*.pgid" >/dev/null; }
+
+mkdir -p "$work/pool"
+run_pool sibling-a 8 > "$work/pool-a.log" 2>&1 &
+pool_a=$!
+wait_until 15 pool_lock_held \
+    || fail "pool 'sibling-a' never took a guard lock under $(pool_lock_dir); log: $(cat "$work/pool-a.log")"
+
+run_pool sibling-b 0 > "$work/pool-b.log" 2>&1 \
+    || fail "a pool with a DIFFERENT label was refused while 'sibling-a' ran — the issue 1886 collision (two gates in one lane fan-out, disjoint artifacts). Log: $(cat "$work/pool-b.log")"
+
+run_pool sibling-a 0 > "$work/pool-a2.log" 2>&1 \
+    && fail "a second pool with the SAME label started while the first ran — the guard no longer refuses a concurrent build of one artifact set"
+nros_grep_q -F "already running" "$work/pool-a2.log" \
+    || fail "the same-label pool failed, but not with the guard's refusal. Log: $(cat "$work/pool-a2.log")"
+
+wait "$pool_a" || fail "pool 'sibling-a' itself failed. Log: $(cat "$work/pool-a.log")"
+echo "  ok: sibling pool labels run concurrently; a same-label pool still refuses"
+
+echo "subtree-guard: all 5 paths OK (trap, refuse, reap, per-tree, sibling pools)"
