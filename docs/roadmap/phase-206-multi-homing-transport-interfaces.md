@@ -16,7 +16,26 @@ format.
 reason this phase was rescoped: the old plan built a nano-ros abstraction over
 something the backends already have words for.
 
-**Status (2026-09-05). W1, W2, W3 and W5 LANDED; W4 landed
+**Status (2026-10-14). W1–W5 landed, W6 is out of scope, and two acceptance
+items are open. The phase stays active because no other phase owns them.**
+W2's RTOS gap closed at LINK stage on 2026-09-06 (`9ae2711744`:
+`workspace-zephyr-cpp-cyclonedds` carries the SSoT's exact bytes in a
+`zephyr.elf` that links Cyclone). The Acceptance bullet's "COMPILE-stage only"
+predates that. The two open items:
+
+* **zenoh `listen` from a C entry and from an embedded image.** The seam
+  exists: W3's `rmw_session_options_t` properties, plus
+  `cmake/NanoRosRmwUserConfig.cmake` baking `<bringup>/rmw/zenoh.conf`. But
+  the tree tracks no `rmw/zenoh.conf` and no test uses it.
+* **Hosted multi-homing on `lo` plus a real NIC**, configured only by the
+  user's Cyclone `<General><Interfaces>`. It needs a host with a second
+  interface.
+
+A board that STATES several NICs (interface facts, a network per interface)
+is [phase-497](phase-497-networks-have-owners.md) W4 (RFC-0103 D10), not this
+phase. This phase stays "nano-ros models no NICs" for the middleware config.
+
+**Earlier status (2026-09-05). W1, W2, W3 and W5 LANDED; W4 landed
 (issue 1067 resolved); W6 needs no work by design.** The phase is functionally complete: a user writes
 their backend's own config, the bytes reach the backend's own parser, and
 nano-ros models no NICs. What remains is W4's decision, which is about board API

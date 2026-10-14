@@ -1,6 +1,24 @@
 # Phase 357 — WCET as declared data: making derived scheduling mean something
 
-**Status (2026-09-04). W3 DONE; W1 DONE — RFC-0078 landed AND its type and
+**Status (2026-10-14). Archived; W1 and W3 done, W2's remainder handed to
+[issue 0259](../../issues/0259-realizer-placement-nonpreempt-not-derived.md).**
+W1: RFC-0078 is in `docs/design/` and `WcetProfile` plus its validator are in
+`packages/core/nros-orchestration-ir/src/wcet.rs`. W3: issue 0519 is resolved
+and archived. W2 met its own acceptance ("at least one of `budget`,
+`placement` or `non_preempt` is DERIVED"): `budget`/`B_i` and feasibility
+landed 2026-08-19, and the performance half of `placement` landed 2026-09-04
+(`rtos_realizer.rs` sets `placement_real = Native` after a worst-fit packing).
+What is left is `non_preempt` (still `preempt_real =
+DimRealization::NotRequested` in `rtos_realizer.rs`), hardware-locality
+placement and chain colocation. Each needs a model input, not realizer
+logic, and issue 0259 already records all three, so it owns them. No phase
+has a work item for them today. One leftover from W3 was folded into W1 and
+W1 did not settle it: `SchedContextConfig.period_ms` / `budget_ms` /
+`deadline_ms` (`nros-cli-core/src/orchestration/config.rs`) are still
+milliseconds, and RFC-0078 kept rlm's `exec_ms` slot in ms. Issue 0259 now
+records that too.
+
+**Earlier status (2026-09-04). W3 DONE; W1 DONE — RFC-0078 landed AND its type and
 validator are in the tree; W2 is the only open strand, and it is blocked on
 model INPUTS rather than on W1.** The 2026-08-18 line said the type and
 validator were "still to come" and W2 was "blocked behind that"; both halves
@@ -16,7 +34,7 @@ tier, which is a MODEL change scoped in issue 0259. Note the inputs those would
 consume are still SYNTHETIC — RFC-0078's worked example says so, because QEMU
 cannot measure cycles and there is no hardware lane.
 
-**Previously (2026-08-18):** [phase-356](archived/phase-356-test-evidence-and-measurement-trust.md)
+**Previously (2026-08-18):** [phase-356](phase-356-test-evidence-and-measurement-trust.md)
 W2 landed the artifact (#403 resolved), which was the only thing holding W1.
 Three orchestration issues that are one dependency chain, not three tasks.
 
@@ -32,7 +50,7 @@ Three orchestration issues that are one dependency chain, not three tasks.
   already: the artifact carries no `clock_hz` and says `convertible_to_time:
   false`, so a declaration in `ms` cannot be derived from it as it stands.
 * **W1 update 2026-08-18** — the schema is
-  [RFC-0078](../design/0078-wcet-is-declared-per-profile.md): keyed on a named
+  [RFC-0078](../../design/0078-wcet-is-declared-per-profile.md): keyed on a named
   measurement PROFILE, declaring cycles plus `clock_hz` with the conversion to
   rlm's millisecond slot done inside this repo, per BOUNDARY at rlm's own
   `node/path` identity. Scope was RFC-only, so the type and validator remain.
@@ -67,14 +85,14 @@ Three orchestration issues that are one dependency chain, not three tasks.
   correct; what was missing was a test pinning it, now added and proven by
   sabotage. The issue's SchedContext half is unowned and folded into W1 below.
 
-**Owns:** [issue 0259](../issues/0259-realizer-placement-nonpreempt-not-derived.md),
-[issue 0404](../issues/archived/0404-wcet-declaration-schema.md),
-[issue 0519](../issues/archived/0519-plan-timer-period-truncates-sub-millisecond.md)
+**Owns:** [issue 0259](../../issues/0259-realizer-placement-nonpreempt-not-derived.md),
+[issue 0404](../../issues/archived/0404-wcet-declaration-schema.md),
+[issue 0519](../../issues/archived/0519-plan-timer-period-truncates-sub-millisecond.md)
 (**RESOLVED** — see the issue for what closed it).
 
-**Related:** [phase-296](archived/phase-296-system-model-consumption.md) (IN PROGRESS,
-names #259 and #260), [phase-162](phase-162-rt-scheduling-harness.md) (the
-harness that can measure), [phase-356](archived/phase-356-test-evidence-and-measurement-trust.md)
+**Related:** [phase-296](phase-296-system-model-consumption.md) (IN PROGRESS,
+names #259 and #260), [phase-162](../phase-162-rt-scheduling-harness.md) (the
+harness that can measure), [phase-356](phase-356-test-evidence-and-measurement-trust.md)
 W2 (the bench that produces the numbers), RFC-0031 / the `system.toml` schema.
 
 ## The chain, in order

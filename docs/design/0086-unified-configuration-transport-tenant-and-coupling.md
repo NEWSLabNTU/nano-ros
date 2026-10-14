@@ -1,6 +1,9 @@
 # RFC-0086 — Unified configuration: the transport tenant, coupling verbs, and retiring the per-lane knob
 
 **Status:** Draft (2026-08-30)
+**Boundary (2026-10-14):** a knob's name, legacy spellings and registry row
+belong to [RFC-0103](0103-one-owner-per-fact.md) (phase-484). Which knobs
+get ladder rungs is still this RFC's question (phase-400 W6).
 **Amends / refines:** RFC-0049 (hierarchical platform/board config) — gives its
 ladder reach and adds knob-to-knob constraints; RFC-0071 (RMW backend
 descriptor) — adopts D8's one-family rule and closes the leak D8 names.

@@ -12,6 +12,15 @@ fragment renderer, per-image workspace configures and issues 1721/1757 —
 phase-481 built and archived them (2026-10-11). W5b, which RFC-0103 D2b first
 gave 481, came back here when 481 closed without it (see W5).
 
+**Boundary with phase-400** (stated 2026-10-14). This phase gives every knob
+one name, one registry row and one authored home. It does not decide which
+env-only knobs get board and platform rungs on the RFC-0049 ladder. That is
+[phase-400](phase-400-unified-configuration.md) W6
+([RFC-0086](../design/0086-unified-configuration-transport-tenant-and-coupling.md)),
+whose backlog is 17 names (`just check config-knob-census`). Each of those
+lands as a `toml =` key on its registry row here, with no work item in this
+phase.
+
 ## Why
 
 Two censuses (2026-10-09/10, RFC-0103 §1): 13 mechanisms locate a resource and

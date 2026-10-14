@@ -7,7 +7,18 @@ work; this phase owns the host-side / kernel-side / board-side
 setup that turns the parked acceptance criteria into runnable
 gates.
 
-**Status.** Not Started — re-audited against the tree 2026-09-06.
+**Status (2026-10-14). PARKED, mostly blocked on hardware.** Not started.
+The tree has no `rt-harness`, no `nros-bench/nuttx-sched-sporadic` and no
+`just/rt.just`. 162.A needs a `CAP_SYS_NICE`/RT-kernel host and 162.C needs
+real Cortex-M3 silicon, and no lane provides either. 162.B is the exception:
+`CONFIG_SCHED_SPORADIC=y` is already in the NuttX QEMU defconfigs, so its
+bench and budget assertion (B.2/B.3) could run under QEMU today. A CPU-budget
+number from an emulator is weak evidence, though, and nobody has asked for
+it. Unpark the phase when an RT host or a board exists. Until then,
+phase-357's WCET derivations (now tracked by #259) run only on declared,
+synthetic numbers.
+
+**Earlier status.** Not Started — re-audited against the tree 2026-09-06.
 
 None of this phase's six new deliverables exist (`rt-harness`,
 `nuttx-sched-sporadic`, `just/rt.just`, the RT chapter, the procurement doc),

@@ -7,6 +7,21 @@ area: orchestration
 related: [phase-296, rfc-0052, 0403, 0404, phase-357]
 ---
 
+**Home: this issue, since 2026-10-14.** It owns what is left of
+[phase-357](../roadmap/archived/phase-357-wcet-as-declared-data.md) W2. That
+phase is archived with W1 (RFC-0078, `wcet.rs`) and W3 (issue 0519) done. Of
+W2, `budget`/`B_i`, feasibility, utilisation and the performance half of
+`placement` were derived (sections below). Still open: **`non_preempt`**,
+which needs per-callback priorities within a tier (`rtos_realizer.rs` still
+initialises `preempt_real = DimRealization::NotRequested` and nothing sets it),
+**hardware-locality placement**, **chain colocation**, and the plan-schema
+unit that issue 0519 raised and phase-357 folded into W1 without settling:
+`SchedContextConfig.period_ms` / `budget_ms` / `deadline_ms`
+(`nros-cli-core/src/orchestration/config.rs`) are still milliseconds, while
+the runtime `SchedContext` is in µs. The title predates
+the 2026-08-19 and 2026-09-04 landings. "budget/placement can't be derived"
+is no longer true of the performance half.
+
 ## Original finding (phase-296 W5.5–W5.11, 2026-07-24)
 
 `realize_rtos` (`packages/core/nros-orchestration-ir/src/rtos_realizer.rs`)

@@ -1,6 +1,17 @@
 # Phase 400 — the unified config system: build it, migrate onto it, retire the rest
 
-**Status (2026-09-04): W1-W5, W7 and W8 done; W6's `executor`, `transport`,
+**Status (2026-10-14).** W1–W5 and W7 are unchanged. W6 is still open:
+`just check config-knob-census` now counts **53** ladder knobs in 12 tenants
+(`log` landed with issue 1037) and **17** sizing names still to migrate. The
+17 are the graph and QoS-depth caps, six `NROS_XRCE_*` sizes and the MTU,
+the three inbox depths, `NROS_EXECUTOR_MAX_VIOLATIONS`, the two zenoh
+transport-band priorities, `NROS_SERVICE_TIMEOUT_MS` and
+`NROS_ENTRY_SPIN_MS`. `NROS_ZEPHYR_HEAP_SIZE` is still outside the ladder
+(`MemoryKnobs` holds 2). W8's one-reader gate exists
+(`check-knob-single-reader`); retiring the legacy env SPELLINGS moved to
+phase-484 W8. See "Boundary with phase-484" below.
+
+**Earlier status (2026-09-04): W1-W5, W7 and W8 done; W6's `executor`, `transport`,
 `zenoh.tx`, `memory`, `params`, `rmw`, `net`, `runtime`, `zenoh.wire`, `xrce` and `zenoh.limits` tenants done, its remaining tenants
 outstanding.** Design is
 [RFC-0086](../design/0086-unified-configuration-transport-tenant-and-coupling.md),
@@ -47,6 +58,31 @@ kinds have one.
 — fifteen hand-written Kconfig lines turning off an IP stack, three drivers and
 three zenoh link features, because choosing a transport could not imply any of
 them. When W3 lands that file is a transport stanza and nothing else.
+
+### Boundary with phase-484 (stated 2026-10-14)
+
+[Phase-484](phase-484-one-owner-per-fact.md)
+([RFC-0103](../design/0103-one-owner-per-fact.md)) does not take over W6. The
+two phases answer different questions about a knob:
+
+* **484 owns the knob's IDENTITY.** It decides one canonical name, its legacy
+  spellings and their retirement, the Kconfig symbol, and where the value is
+  authored. All of that lives in the registry,
+  `packages/tooling/nros-zephyr-build/knobs.toml`.
+* **400 owns the knob's REACH.** It decides whether a knob gets platform and
+  board rungs on the RFC-0049 ladder and an `nros config explain` row, or
+  stays env-only or derived.
+
+The registry is now where a W6 migration is written down. A row gains a
+`toml = "<group>.<key>"` and the matching ladder struct gains the field.
+`NROS_SERVICE_TIMEOUT_MS` already has its `toml` key
+(`zenoh.limits.service_timeout_ms`) and a `ZenohLimitKnobs` field. It is
+still in the backlog because its two readers (`nros-rmw-zenoh/build.rs`'s
+`env_usize` and `nros-build-helpers/src/c.rs`'s `knob(..).resolve`) do not
+take the board or platform rung.
+So W6 keeps its remaining 17 here and does each through 484's registry. It
+does not reopen 484. W8's legacy-spelling retirement belongs to phase-484
+W8, and the one-reader rule stays here (`check-knob-single-reader`).
 
 ---
 

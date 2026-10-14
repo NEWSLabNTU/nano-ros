@@ -1,11 +1,27 @@
 # phase-464 - the contract-chain program: milestones, claims, and the parallel order
 
-**Status (2026-09-21). PROPOSED; an umbrella, nothing lands under this number.**
+**Status (2026-10-14). In progress: an umbrella, and nothing lands under
+this number. Three of its six indexed phases are archived.** Each indexed
+phase's own status line is current. This table only summarises them:
+
+| phase | state (2026-10-14) |
+| --- | --- |
+| [495](archived/phase-495-consume-the-shared-derivation.md) (opened as 457; M1 track B) | **archived 2026-10-13**, W1–W4 landed |
+| [459](archived/phase-459-cmake-image-reaches-tier-derivation.md) (M2) | **archived 2026-10-14**, W3 superseded by issue 1426's rule 2 |
+| [463](archived/phase-463-host-census-reconciles-contract-with-code.md) (M1 track A, M2) | **archived 2026-10-12**, every in-tree wave landed |
+| [460](phase-460-formal-checks-on-the-contract-chain.md) (M0, M3) | W1, W2, W4, W5, W6, W7 landed; W3's first half (1368) not started |
+| [461](phase-461-service-inbox-per-family.md) (M3) | W1–W4 landed; W5 (the island links) and W6 not started |
+| [462](phase-462-safety-vocabulary-on-target.md) (M2, M4) | W1 landed (PR #1170); W2–W6 not started |
+
+The milestone tables below are the 2026-09-21 plan. Their rows for the three
+archived phases are done.
+
+**Original status (2026-09-21). PROPOSED; an umbrella, nothing lands under this number.**
 This phase owns no code. It sequences six nano-ros phases, one play_launch
 phase, one ros-launch-manifest design issue and the safety island's own
 units into milestones ordered by what each guarantees, and it fixes the
 protocol several agent sessions use to work on them at once. The phases it
-indexes are [457](archived/phase-495-consume-the-shared-derivation.md),
+indexes are [495, opened as 457](archived/phase-495-consume-the-shared-derivation.md),
 [459](archived/phase-459-cmake-image-reaches-tier-derivation.md),
 [460](phase-460-formal-checks-on-the-contract-chain.md),
 [461](phase-461-service-inbox-per-family.md),
