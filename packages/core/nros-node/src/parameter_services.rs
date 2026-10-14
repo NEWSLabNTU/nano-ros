@@ -1365,8 +1365,8 @@ pub(crate) struct ParamServiceBuffers<'s> {
 
 impl<'s> ParamServiceBuffers<'s> {
     /// Where the request buffer lives — for the tests that prove a carved
-    /// pair is the backing's.
-    #[cfg(test)]
+    /// pair is the backing's. Those tests are mock-session only.
+    #[cfg(all(test, not(feature = "rmw-cffi")))]
     pub(crate) fn request_addr(&self) -> usize {
         self.request.as_ptr() as usize
     }

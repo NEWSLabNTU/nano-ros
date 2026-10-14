@@ -1270,8 +1270,8 @@ impl<'a, const TX_BUF: usize> PublishLoan<'a, TX_BUF> {
     /// released by its own Drop when this `PublishLoan` is dropped.
     pub fn discard(mut self) {
         self.committed = true;
-        // backend_slot's Option<Slot> drops here, releasing the slot.
-        drop(self.backend_slot.take());
+        // Overwriting drops the backend's slot here, which releases it.
+        self.backend_slot = None;
     }
 }
 

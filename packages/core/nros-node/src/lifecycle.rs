@@ -333,7 +333,7 @@ impl LifecyclePollingNodeCtx {
     /// The executor calls this until it returns `None` and publishes each one
     /// on `~/transition_event`. A state machine nobody drains fills its queue
     /// and counts the overflow; it never blocks a transition.
-    #[cfg(feature = "lifecycle-services")]
+    #[cfg(all(feature = "lifecycle-services", any(has_rmw, test)))]
     pub(crate) fn take_announcement(&mut self) -> Option<TransitionAnnouncement> {
         self.announcements.pop_front()
     }
@@ -343,7 +343,7 @@ impl LifecyclePollingNodeCtx {
     ///
     /// Read-and-clear rather than read, so a drainer reports a burst once
     /// instead of once per spin for the rest of the image's life.
-    #[cfg(feature = "lifecycle-services")]
+    #[cfg(all(feature = "lifecycle-services", any(has_rmw, test)))]
     pub(crate) fn take_dropped_announcements(&mut self) -> u32 {
         core::mem::replace(&mut self.announcements_dropped, 0)
     }
