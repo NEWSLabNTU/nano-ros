@@ -2,10 +2,11 @@
 id: 788
 title: "The same API verb is spelled differently in our C, C++ and Rust — and in
   two cases one language ships both spellings"
-status: open
+status: resolved
 type: bug
 area: api
 related: [rfc-0036, phase-379, issue-0783, issue-0784]
+resolved: 2026-10-14
 ---
 
 ## Problem
@@ -92,3 +93,15 @@ the sweep is scoped correctly:
 
 Anything the sweep changes should be re-checked with `scripts/api-parity.py`,
 not by reading, which is the whole reason the correlator exists.
+
+## Resolution (2026-10-14)
+
+Superseded. The three spellings it compared are gone:
+- C now uses rcl/rclc names (phase-492). `nros/nros_generated.h`
+  declares 340 distinct `rcl_`/`rclc_` functions against 13 `nros_`.
+- C++ uses `rclcpp::` (phase-483).
+- Rust uses `create_subscription`.
+
+The duplicate `server_available` / `is_server_ready` pair left core.
+Phase-379 is archived. A cross-language naming difference found against
+today's surfaces is a new issue.

@@ -2,11 +2,12 @@
 id: 1316
 title: "The declared-parameter boot check (phase-446 W6) is unreachable from an
   embedded C++ node: it sits on the hosted-only `Node::declare_parameter`"
-status: open
+status: resolved
 type: bug
 area: api, cpp
 severity: medium
 related: [issue-1272]
+resolved: 2026-10-14
 ---
 
 ## What happens
@@ -64,3 +65,11 @@ Put the check where every language road passes, rather than on one facade:
 
 Either way a test should build a node through the freestanding path with a
 parameter the contract does not declare, and assert the boot refuses.
+
+## Resolution (2026-10-14)
+
+The freestanding path is no longer a separate path. `NROS_CPP_NODE_HOSTED`
+was deleted (`50de97ae23`, phase-476 W3), and `declare_parameter` is no
+longer behind a hosted guard. So the declared-parameter boot check in its
+body is reached on every build. No freestanding regression test was added
+for it.

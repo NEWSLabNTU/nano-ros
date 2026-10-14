@@ -3,11 +3,12 @@ id: 1347
 title: "`just queue-triage` said MINE for a check broken across 11 pull
   requests: an ALLGREEN batch CANCELS the entries behind a failure, and the
   classifier counts only `failure`"
-status: open
+status: resolved
 type: bug
 area: ci
 severity: high
 related: [issue-1158, issue-0952, issue-1040, phase-450]
+resolved: 2026-10-14
 ---
 
 ## Symptom
@@ -102,3 +103,11 @@ end, which is worse than filing nothing.
   or more PRs classifies INFRA.
 - The printed run list distinguishes verdicts from cancellations, so a reader
   can see how much of the history carried no signal.
+
+## Resolution (2026-10-14)
+
+`scripts/ci/queue-triage.sh:58-62` sets cancelled, skipped and running
+entries aside and reports cancelled separately. Its `selftest()` runs on
+every invocation. The other note here, about the queue check itself (NuttX
+`config.h` in L3), is a different defect. If it is still live it needs its
+own issue.

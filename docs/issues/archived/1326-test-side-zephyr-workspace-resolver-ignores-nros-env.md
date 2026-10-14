@@ -2,12 +2,13 @@
 id: 1326
 title: "Pointing a run at a private Zephyr workspace takes THREE environment
   variables under two different names, and nothing says so"
-status: open
+status: resolved
 type: tech-debt
 area: [testing, build, zephyr]
 severity: low
 found: 2026-09-11
 related: [1166, 1171, 1010, phase-440, phase-448]
+resolved: 2026-10-14
 ---
 
 ## What
@@ -57,3 +58,9 @@ question. The ratchet line can then shrink to "accepts a symlink" alone.
 
 The full fix is the ratchet's: the Rust side calls the one resolver. That is
 phase-440 W1's remaining work, not this issue's.
+
+## Resolution (2026-10-14)
+
+`zephyr_workspace_path()` in `packages/testing/nros-tests/src/zephyr.rs`
+now asks the shared ladder, `scripts/lib/zephyr-workspace.sh resolve`
+(issues 1685 and 1700), which honours `NROS_ZEPHYR_WORKSPACE`.

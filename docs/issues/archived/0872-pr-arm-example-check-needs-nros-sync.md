@@ -1,14 +1,15 @@
 ---
 id: 872
 title: "The PR/nightly check arm has never run to completion — each fix exposes the next environment gap"
-status: open
+status: resolved
 area: ci
 severity: medium
 found: 2026-08-28
 related: [phase-395, 0816]
+resolved: 2026-10-14
 ---
 
-**Home: [phase-395](../roadmap/phase-395-dev-workflow-migration.md)** — re-homed 2026-10-12 from phase-396, which is archived.
+**Home: [phase-395](../../roadmap/phase-395-dev-workflow-migration.md)** — re-homed 2026-10-12 from phase-396, which is archived.
 
 # The PR/nightly check arm has never run to completion
 
@@ -79,3 +80,10 @@ skip-vs-sync decision made deliberately rather than under merge pressure.
 `UNKNOWN STEP` for container jobs, so the failing RECIPE has to be read out of
 the log body (`error: recipe \`X\` failed`) rather than the step header. The
 first four rounds were diagnosed that way.
+
+## Resolution (2026-10-14)
+
+Obsolete. The job `check (fast on push; full on PR/nightly)` no longer
+exists in `.github/workflows`. `check-build` runs on schedule and dispatch
+only. The precondition of missing generated bindings is a nightly concern
+now, owned by issue 1353 and phase-466.

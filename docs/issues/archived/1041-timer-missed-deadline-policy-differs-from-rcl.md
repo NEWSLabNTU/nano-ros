@@ -2,10 +2,11 @@
 id: 1041
 title: "A repeating timer CATCHES UP after a stall where rcl SKIPS — N callbacks
   instead of one, and phase-417's node-stack collapse made a ported node meet it"
-status: open
+status: resolved
 type: bug
 area: api, core
 related: [phase-417, rfc-0087, rfc-0002, phase-430, phase-436]
+resolved: 2026-10-14
 ---
 
 ## Problem
@@ -88,3 +89,13 @@ periods were never honoured — activations always landed on spin boundaries —
 but the floor is now explicit where it used to be hidden inside the shim's own
 `steady_clock` comparison. A sub-millisecond request should probably be a
 build-time error rather than a silent 0.
+
+## Resolution (2026-10-14)
+
+The live timer path no longer catches up. The arena timer's
+`TimerOverrunPolicy` defaults to `Skip`, as rcl does
+(`packages/core/nros-node/src/executor/arena.rs:347`, issue 0505,
+`914d4d9e25`). `register_timer` takes that default, and C++ timers register
+through the same executor path. The `timer.rs` `fire()` this issue cited is
+dead code. Not ruled here: the side note that a sub-millisecond period
+truncates to 0 ms.

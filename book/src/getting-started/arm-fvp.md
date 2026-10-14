@@ -15,7 +15,7 @@ the build half.
 > their runners had been deleted, so they built images nothing booted. What
 > remains is the part with consumers — the board-crate import surface and the
 > workspace Entry. FVP support is intended to grow back from those. See
-> [`docs/roadmap/phase-217-arm-fvp-local-runtime.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/roadmap/phase-217-arm-fvp-local-runtime.md).
+> [`docs/roadmap/archived/phase-217-arm-fvp-local-runtime.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/roadmap/archived/phase-217-arm-fvp-local-runtime.md).
 
 ## When to use
 
@@ -150,7 +150,7 @@ interop contract (byte-compatible with `rmw_cyclonedds_cpp`).
 
 ## Cross-references
 
-- [`docs/roadmap/phase-217-arm-fvp-local-runtime.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/roadmap/phase-217-arm-fvp-local-runtime.md)
+- [`docs/roadmap/archived/phase-217-arm-fvp-local-runtime.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/roadmap/archived/phase-217-arm-fvp-local-runtime.md)
   — the roadmap doc for the FVP runtime slice (contributor detail
   on what has landed vs what is ongoing).
 - [`docs/roadmap/archived/phase-117-cyclonedds-rmw.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/roadmap/archived/phase-117-cyclonedds-rmw.md)

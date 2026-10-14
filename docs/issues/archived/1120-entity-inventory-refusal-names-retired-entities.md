@@ -1,12 +1,13 @@
 ---
 id: 1120
 title: "The entity inventory's refusal tells you to add `ENTITIES`, which phase-412 retired and made a hard configure error"
-status: open
+status: resolved
 type: bug
 area: cli, docs
 severity: medium
 found: 2026-09-06
 related: [0965, 1121, phase-412, phase-478]
+resolved: 2026-10-14
 ---
 
 # Two halves of one phase disagree, and a new user meets the wrong half first
@@ -59,3 +60,10 @@ USER reads; the parser legitimately still knows the token, because
 The fix is to make the refusal name the contract sidecar, its path shape, and
 what to write for a component that really creates nothing — the cmake error is
 the model, and it is good.
+
+## Resolution (2026-10-14)
+
+Fixed in `51fdfef44b` (#1033), the day this was filed. The refusal now
+names the bringup's `<stem>.contract.yaml`
+(`nros-cli-core/src/entity_inventory.rs:3632`). A unit test asserts that it
+never tells the user to add `ENTITIES`.

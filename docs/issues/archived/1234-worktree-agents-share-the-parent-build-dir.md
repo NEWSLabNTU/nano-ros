@@ -1,12 +1,13 @@
 ---
 id: 1234
 title: "A linked worktree inherits `NROS_REPO_DIR` and writes its build dir and SKIP LEDGER into the parent checkout — one tree's skips appear in another's gate summary"
-status: open
+status: resolved
 type: bug
 area: ci, tooling
 severity: medium
 found: 2026-09-08
 related: [1161, 1184, 0584, phase-449]
+resolved: 2026-10-14
 ---
 
 # Two checkouts, one skip ledger
@@ -92,3 +93,10 @@ source ./activate.sh          # exports NROS_REPO_DIR=<main checkout>
 ( cd /tmp/wt && just check fast )   # its skips land in the MAIN tree's ledger
 grep agent /home/aeon/repos/nano-ros/build/check-skips/checks.skipped
 ```
+
+## Resolution (2026-10-14)
+
+`just/sdk-env.just:87` sets `NROS_REPO_DIR` from the running checkout
+(`_NROS_HERE`). The activate scripts no longer export it (issue 1280,
+phase-454 W3), so a linked worktree no longer inherits the parent's
+value.

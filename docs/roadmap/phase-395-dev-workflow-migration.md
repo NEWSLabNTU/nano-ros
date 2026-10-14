@@ -895,7 +895,7 @@ holds the evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#0895](../issues/0895-format-walks-unbuilt-colcon-workspace-leaves.md) | `just format` is red or green depending on whether a migrated colcon workspace has been BUILT |
+| [#0895](../issues/archived/0895-format-walks-unbuilt-colcon-workspace-leaves.md) | `just format` is red or green depending on whether a migrated colcon workspace has been BUILT |
 | [#0925](../issues/archived/0925-box-sync-copies-generated-manifests.md) | `ros2-box-sync.sh` copies the GENERATED workspace manifests, so the box and the host disagree |
 | [#0957](../issues/archived/0957-format-blocked-by-unexcluded-workspace-leaf.md) | **RESOLVED 2026-10-12** (`f24e9c519f`) — `just format` failed whole-tree because a workspace leaf was in neither the root members nor the excludes; the root now excludes the whole `examples/workspaces` prefix |
 | [#0986](../issues/archived/0986-pre-push-hook-corrupts-the-repo-it-guards.md) | **CLOSED 2026-09-06** — the pre-push hook wrote into the repository it was guarding. One clearing helper (`nros_clear_inherited_git_env`, list taken from `git rev-parse --local-env-vars`) replaces four divergent hand-written `unset`s |
@@ -911,7 +911,7 @@ evidence, the item is *close it*.
 | issue | why it belongs here |
 | --- | --- |
 | [#0854](../issues/0854-action-raw-goal-flaky-under-load.md) | `action_raw_goal_ships_one_cdr_header` times out in-sweep and passes solo. W5 names it as quarantine entry #1 — a quarantine entry with no owner and no expiry is a permanent one |
-| [#1053](../issues/1053-rfc-ids-have-no-reservation.md) | RFC ids have no reservation, so two sessions both wrote 0087 and two more wrote 0089. W1 already solved this race for issues and phases; the third series is the same fix, not a new one |
+| [#1053](../issues/archived/1053-rfc-ids-have-no-reservation.md) | RFC ids have no reservation, so two sessions both wrote 0087 and two more wrote 0089. W1 already solved this race for issues and phases; the third series is the same fix, not a new one |
 
 ## Issues re-homed here (2026-10-12)
 
@@ -920,10 +920,10 @@ about the dev and CI workflow this phase owns.
 
 | issue | from | why it belongs here |
 | --- | --- | --- |
-| [#0872](../issues/0872-pr-arm-example-check-needs-nros-sync.md) | phase-396 | the PR/nightly example-check arm still fails on missing generated message bindings, so the lane cannot finish |
+| [#0872](../issues/archived/0872-pr-arm-example-check-needs-nros-sync.md) | phase-396 | the PR/nightly example-check arm still fails on missing generated message bindings, so the lane cannot finish |
 | [#1091](../issues/1091-ledger-shards-conflict-on-sorted-key-insert.md) | phase-396 | the api-parity ledger is still sorted shards that conflict on insert, the last of #1072's shared-append class |
 | [#1205](../issues/1205-doc-commit-citations-local-fetch-state.md) | phase-419 | `check-doc-commit-citations` answers "in my object store", not "in this history" |
-| [#0996](../issues/0996-ci-workflow-audit-tier-promises.md) | phase-413 | the CI workflow audit's findings that remain after phase-413's waves landed |
+| [#0996](../issues/archived/0996-ci-workflow-audit-tier-promises.md) | phase-413 | the CI workflow audit's findings that remain after phase-413's waves landed |
 | [#1155](../issues/1155-arch-flags-tests-in-no-lane.md) | phase-413 | `nros-board-common`'s `arch_flags` tests run in no lane |
 
 ## Open issues that name this phase

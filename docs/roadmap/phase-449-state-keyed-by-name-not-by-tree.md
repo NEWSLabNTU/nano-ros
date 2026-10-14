@@ -53,7 +53,7 @@ named something else**:
   other build was in an unrelated clone ([#1157](../issues/archived/1157-subtree-guard-lock-is-host-global-not-per-tree.md)).
 * A `just check fast` summary listed skips that were untrue of the checkout that
   printed them — the linked worktree's, delivered into the parent's ledger
-  ([#1234](../issues/1234-worktree-agents-share-the-parent-build-dir.md)).
+  ([#1234](../issues/archived/1234-worktree-agents-share-the-parent-build-dir.md)).
 * `just nuttx build-riscv-c`, run inside a worktree, reconfigured the MAIN
   checkout's NuttX kernel from `qemu-armv7a` to `rv-virt` and rewrote its
   `.config`, `include/nuttx/config.h` and `nuttx` binary. Nothing in the
@@ -307,7 +307,7 @@ DIFFERENT checkout → RE-ROOT and say so, this checkout → KEEP).
 
 ### W5 — a worktree's build dir and skip ledger are its own — DONE
 
-[Issue 1234](../issues/1234-worktree-agents-share-the-parent-build-dir.md). A
+[Issue 1234](../issues/archived/1234-worktree-agents-share-the-parent-build-dir.md). A
 linked worktree inherits `NROS_REPO_DIR`, so it writes its build dir and its
 skip ledger into the parent, and one tree's skips appear in another's gate
 summary. Parallel agent sessions are the normal way work happens here, so this

@@ -249,7 +249,7 @@ D3 for every `NROS_DERIVED_*` pool knob, liveliness first.
 
 ### I5 -- refusals that point at something that exists, failures that reach the record
 
-- [Issue 1120](../issues/1120-entity-inventory-refusal-names-retired-entities.md)
+- [Issue 1120](../issues/archived/1120-entity-inventory-refusal-names-retired-entities.md)
   reads `status: open`, but its defect is gone on main: the refusal now names the
   contract sidecar (`entity_inventory.rs`, near the "declare no entities"
   refusal), fixed under issue 1033 by `51fdfef44`; `ENTITIES` remains only in
