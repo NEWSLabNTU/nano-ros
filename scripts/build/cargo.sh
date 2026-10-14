@@ -165,6 +165,20 @@ nros_cargo_nextest_args() {
     return 0
 }
 
+# The same flags for a nextest run OUTSIDE the root workspace, i.e. without
+# `--locked`. `packages/testing/nros-px4-sitl-test` is out-of-workspace on
+# purpose (it path-deps the px4-rs submodule) and its `Cargo.lock` is
+# GITIGNORED, so on a fresh checkout there is no lock and `--locked` refuses to
+# create one: all three `just px4 test-*` recipes died in `cargo metadata`
+# before running a test. A gitignored lock is not a promise to anyone, so there
+# is nothing for `--locked` to protect there. Use this only for such a crate;
+# a TRACKED lock still wants `nros_cargo_nextest_args`.
+nros_cargo_nextest_args_unlocked() {
+    nros_cargo_nextest_profile_args || return 1
+    nros_nextest_cpu_budget_args
+    return 0
+}
+
 # Single-string form, for callers that splice into a command line.
 nros_cargo_profile_arg_string() {
     _nros_profile_query args "$(nros_cargo_profile_name)"

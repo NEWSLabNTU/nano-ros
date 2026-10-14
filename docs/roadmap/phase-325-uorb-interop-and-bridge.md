@@ -2,9 +2,10 @@
 
 **Status (2026-10-14). W0-W4 DONE: W3.4 LANDED today — a stock PX4 module's
 uORB topic reaches a real ROS 2 subscriber through the bridge, asserted by
-`px4_bridge_ros2_e2e` (receipts under W3). Two open issues bound what that
-proves: the bridge's `edition` argument does not reach the zenoh backend
-(issue 1893), and the xrce build links but does not boot (issue 1896).**
+`px4_bridge_ros2_e2e` (receipts under W3). A `jazzy` image reaches a real
+Jazzy subscriber too since issue 1893 was fixed (2026-10-15, measured by hand
+in the `ros_editions` Jazzy image). One open issue bounds what this proves: the
+xrce build links but does not boot (issue 1896).**
 
 **Previously (2026-09-04).** W0, W1 and W2 LANDED 2026-07-31; W3's GATE PASSED
 the same day; W3.1-W3.4 remain — and are NO LONGER BLOCKED.
@@ -777,6 +778,15 @@ Five things the run found that the plan did not predict:
   asserted something the wire does not carry) and the recipe pins `humble`, the
   one pairing whose halves agree. The CLI's `--ros-edition humble` warning,
   which told users that pairing would NOT work, now says it does.
+  **Fixed 2026-10-15 (issue 1893), and it was two faults, not one.** The
+  edition now reaches the backend (zenoh's descriptor declares
+  `edition_feature`, and the recipe names `nros-rmw-zenoh/ros-<edition>` from
+  it), and with only that
+  fix a Jazzy subscriber still received 0 samples: nano-ros hashed the `.msg`
+  `char[10] key` as REP-2011 `CHAR` where rosidl hashes it as `uint8`, so the
+  bridge's RIHS01 (`9f784632…`) was one no Jazzy peer computes (`e89a9760…`).
+  With both fixed, a `jazzy` image delivered 47 samples (`key: velx`) to
+  `ros2 topic echo` in `nano-ros-ros:jazzy` (`rmw_zenoh_cpp` 0.2.11).
 * **The xrce build links and does not boot — issue 1896.** Re-verified W3.3's
   second backend:
 
@@ -801,8 +811,9 @@ builds above ran with `PYTHONPATH=<worktree>/tmp/w325/pydeps` holding
 system-wide was touched. `just px4 setup` also reports `pyros_genmsg` missing,
 while `genmsg` imports and the build needs nothing more.
 
-Not covered: a Jazzy subscriber (none on this host; issue 1893 predicts the
-default `jazzy` image is invisible to one), and any CI lane —
+Not covered by the TEST: a Jazzy subscriber — measured by hand only (issue
+1893's receipt), since the host has no Jazzy and the test spawns its peer on the
+host — and any CI lane —
 `test-bridge-ros2` is `[group("debug")]` like `test-sitl-example`, on demand.
 
 #### W3.1-W3.3 LANDED (2026-09-04); W3.4 was scoped below and is now done
@@ -943,9 +954,10 @@ step is `nros generate-px4-msgs --lang cpp` (issue 0362), the field-by-field map
 is `translate()` in `NrosUorbBridge.cpp`, the typed publish CDR-encodes with the
 generated type, the second backend is W3.3, and the ROS 2 peer test is W3.4.
 Kept because the reasoning for each step is still the reasoning. One claim in it
-is corrected by measurement: what decides whether a Humble `rmw_zenoh` peer gets
-this bridge's data is the zenoh backend's own edition feature, not the
-generated type hash (issue 1893).
+is corrected by measurement: what decides whether a `rmw_zenoh` peer gets this
+bridge's data is the zenoh backend's own edition feature AND the generated type
+hash, and until issue 1893 the first never received the edition and the second
+was wrong for any message with a `char` field.
 
 The gate is passed, the link works, and the session mechanism is identified. What
 is left is the part the plan under-described: **the bridge has to TRANSLATE.**

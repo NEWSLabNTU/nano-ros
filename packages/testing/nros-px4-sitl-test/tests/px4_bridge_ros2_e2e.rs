@@ -35,12 +35,11 @@
 //! on the theory that the hash segment of the key expression would hide it —
 //! and an image generated with `--ros-edition jazzy` delivered to the Humble
 //! subscriber exactly as the `humble` one did (`rmw_zenoh_cpp` 0.1.9, measured
-//! 2026-10-14). Not because the hash is ignored: the zenoh backend picks the
-//! DATA key's hash segment from its own `ros-*` cargo feature, which the
-//! bridge's archive never receives, so every bridge image keys Humble's
-//! `TypeHashNotSupported` whatever the header says (issue 1893). A guard on the
-//! header asserts something the wire does not carry; the recipe builds
-//! `humble`, the one pairing whose halves agree.
+//! 2026-10-14). That was issue 1893: the zenoh backend picks the DATA key's hash
+//! segment from its own `ros-*` cargo feature, which the bridge's archive never
+//! received. It does now, so the edition matters on the wire — the recipe
+//! builds `humble` because the subscriber is [`ros2::DEFAULT_ROS_DISTRO`], and
+//! the two must change together.
 
 use std::{
     fs,

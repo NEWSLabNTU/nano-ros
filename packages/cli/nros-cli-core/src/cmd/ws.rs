@@ -702,6 +702,7 @@ fn run_rmw_dispatch(args: RmwDispatchArgs) -> Result<()> {
         ("NROS_RMW_UMBRELLA_CFFI_FEATURE", r.cffi_feature.clone()),
         ("NROS_RMW_C_CFFI_FEATURE", d.c_cffi_feature.clone()),
         ("NROS_RMW_RLIB_DEP", d.rlib_dep.clone()),
+        ("NROS_RMW_EDITION_FEATURE", d.edition_feature.clone()),
         ("NROS_RMW_CARGO_FEATURE", r.cargo_feature.clone()),
         ("NROS_RMW_C_DEFINE_TOKEN", r.c_define_token.clone()),
         ("NROS_RMW_CPP_DEFINE", d.cpp_define.clone()),

@@ -85,6 +85,13 @@ pub struct RmwDescriptor {
     /// `nros-c` units writing one generated header (issues 1461, 1100).
     /// `check-nros-c-feature-agreement` holds both halves to it.
     pub c_cffi_feature: String,
+    /// `[rmw.link].edition_feature` — this backend's own feature for a ROS
+    /// edition, with `{edition}` where the edition goes (`ros-{edition}`), or
+    /// empty for a backend whose wire does not depend on it. The C/C++ road
+    /// appends `<rlib_dep>/<feature>` so the umbrella crates never name the
+    /// backend (RFC-0071). Issue 1893: without it a jazzy zenoh image keyed
+    /// Humble's `TypeHashNotSupported`.
+    pub edition_feature: String,
     /// `[rmw.capabilities]` — capability name -> THIS backend's own feature.
     /// An open vocabulary by design (RFC-0071 D6): core never learns the
     /// right-hand side, so a third-party backend can offer a capability
@@ -162,6 +169,7 @@ pub fn parse_rmw_descriptor(text: &str, origin: &str) -> Result<RmwDescriptor, S
             ("rmw.link", "needs_cxx_linker") => d.needs_cxx_linker = value == "true",
             ("rmw.link", "strategy") => d.link_strategy = scalar(),
             ("rmw.link", "c_cffi_feature") => d.c_cffi_feature = scalar(),
+            ("rmw.link", "edition_feature") => d.edition_feature = scalar(),
             ("rmw.capabilities", k) => d.capabilities.push((k.to_string(), scalar())),
             ("rmw.codegen", "per_message") => d.per_message_hook = scalar(),
             _ => {}
@@ -175,6 +183,21 @@ pub fn parse_rmw_descriptor(text: &str, origin: &str) -> Result<RmwDescriptor, S
             d.link_strategy,
             LINK_STRATEGIES.join(" | ")
         ));
+    }
+    if !d.edition_feature.is_empty() {
+        if !d.edition_feature.contains("{edition}") {
+            return Err(format!(
+                "{origin}: [rmw.link].edition_feature is {:?}, which has no `{{edition}}` — \
+                 every edition would select the same feature",
+                d.edition_feature
+            ));
+        }
+        if d.rlib_dep.is_empty() {
+            return Err(format!(
+                "{origin}: [rmw.link].edition_feature needs an `rlib_dep` — it is a feature \
+                 OF that crate, and a backend that is not bundled has nowhere to receive it"
+            ));
+        }
     }
     if d.link_strategy.is_empty() {
         d.link_strategy = derive_link_strategy(&d.rlib_dep, &d.cmake_target)
@@ -281,6 +304,34 @@ mod tests {
         )
         .unwrap_err();
         assert!(err.contains("umbrela"), "{err}");
+    }
+
+    // Issue 1893 — the edition feature is a template OF the bundled rlib.
+    #[test]
+    fn an_edition_feature_is_a_template_of_the_bundled_rlib() {
+        let d = parse_rmw_descriptor(
+            "[rmw]\ncpp_define = \"X\"\n[rmw.link]\nrlib_dep = \"a\"\n\
+             edition_feature = \"ros-{edition}\"\n",
+            "acme",
+        )
+        .unwrap();
+        assert_eq!(d.edition_feature, "ros-{edition}");
+
+        let no_slot = parse_rmw_descriptor(
+            "[rmw]\ncpp_define = \"X\"\n[rmw.link]\nrlib_dep = \"a\"\n\
+             edition_feature = \"ros-jazzy\"\n",
+            "acme",
+        )
+        .unwrap_err();
+        assert!(no_slot.contains("{edition}"), "{no_slot}");
+
+        let no_rlib = parse_rmw_descriptor(
+            "[rmw]\ncpp_define = \"X\"\n[rmw.provides.cmake]\ntarget = \"t\"\n\
+             [rmw.link]\nedition_feature = \"ros-{edition}\"\n",
+            "acme",
+        )
+        .unwrap_err();
+        assert!(no_rlib.contains("rlib_dep"), "{no_rlib}");
     }
 
     #[test]

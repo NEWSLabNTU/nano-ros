@@ -75,6 +75,8 @@ set(_NROS_RMW_DISPATCH_DIR "${CMAKE_CURRENT_LIST_DIR}"
 #   NROS_RMW_UMBRELLA_CFFI_FEATURE  the nros-cpp cffi feature, or ""
 #   NROS_RMW_C_CFFI_FEATURE         the nros-c cffi feature, or ""
 #   NROS_RMW_RLIB_DEP               backend rlib bundled in the umbrella, or ""
+#   NROS_RMW_EDITION_FEATURE        that rlib's feature for an edition, with
+#                                   `{edition}` unsubstituted, or "" (issue 1893)
 #   NROS_RMW_CARGO_FEATURE          the board crate's `rmw-<name>` feature
 #   NROS_RMW_C_DEFINE_TOKEN         the `NROS_SYSTEM_RMW_<TOKEN>` token
 #   NROS_RMW_CPP_DEFINE             the define nros-cpp puts on its INTERFACE
@@ -99,6 +101,7 @@ set(_NROS_RMW_DISPATCH_VARS
     NROS_RMW_UMBRELLA_CFFI_FEATURE
     NROS_RMW_C_CFFI_FEATURE
     NROS_RMW_RLIB_DEP
+    NROS_RMW_EDITION_FEATURE
     NROS_RMW_CARGO_FEATURE
     NROS_RMW_C_DEFINE_TOKEN
     NROS_RMW_CPP_DEFINE

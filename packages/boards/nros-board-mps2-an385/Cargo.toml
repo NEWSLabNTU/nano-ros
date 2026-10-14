@@ -40,7 +40,6 @@ nros-platform-cffi = { path = "../../platform/nros-platform-cffi" }
 # `rtic::init_with_config`).
 nros-rmw-zenoh = { path = "../../rmw/zenoh/nros-rmw-zenoh", default-features = false, features = [
     "platform-bare-metal",
-    "ros-humble",
 ], optional = true }
 
 # smoltcp network provider (ethernet only)
@@ -115,6 +114,14 @@ default = ["ethernet", "rmw-zenoh"]
 # zenoh-pico `z_*` / `_z_*` symbols still come from `zpico-sys`'s default-on
 # `platform-aliases` C TU, now pulled via the board's own `nros-rmw-zenoh` dep.
 rmw-zenoh = ["dep:nros-rmw-zenoh"]
+# ROS edition. The zenoh backend's data-key format is its own `ros-*` feature,
+# so the edition must be FORWARDED, never hardcoded on the dep: this dep used
+# to name `ros-humble`, and with no feature here `nros build` had nowhere to
+# put a jazzy image's edition (the facade forwards only to a crate that
+# declares it), so it published Humble keys — issue 1893.
+ros-humble = ["nros-rmw-zenoh?/ros-humble"]
+ros-iron = ["nros-rmw-zenoh?/ros-iron"]
+ros-jazzy = ["nros-rmw-zenoh?/ros-jazzy"]
 # Phase 252 (issue 0072) — forward a declared [safety] axis to the zenoh backend's
 # safety-e2e (CRC attach/validate); `?` keeps it inert without rmw-zenoh.
 safety-e2e = ["nros-rmw-zenoh?/safety-e2e"]

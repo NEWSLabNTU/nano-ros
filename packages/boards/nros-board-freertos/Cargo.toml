@@ -81,7 +81,6 @@ nros = { path = "../../api/nros", default-features = false, features = ["alloc",
 # `#[used]` static — is the correct mechanism (mirrors `nros-board-nuttx`).
 nros-rmw-zenoh = { path = "../../rmw/zenoh/nros-rmw-zenoh", default-features = false, features = [
     "platform-freertos",
-    "ros-humble",
 ], optional = true }
 
 [build-dependencies]
@@ -123,6 +122,14 @@ default = []
 # longer relies on `nros::__register_linked_rmw()` (`nros/rmw-zenoh`). Lets the
 # board link+register zenoh WITHOUT forwarding the umbrella feature.
 rmw-zenoh = ["dep:nros-rmw-zenoh"]
+# ROS edition. The zenoh backend's data-key format is its own `ros-*` feature,
+# so the edition must be FORWARDED, never hardcoded on the dep: this dep used
+# to name `ros-humble`, and with no feature here `nros build` had nowhere to
+# put a jazzy image's edition (the facade forwards only to a crate that
+# declares it), so it published Humble keys — issue 1893.
+ros-humble = ["nros-rmw-zenoh?/ros-humble"]
+ros-iron = ["nros-rmw-zenoh?/ros-iron"]
+ros-jazzy = ["nros-rmw-zenoh?/ros-jazzy"]
 # Phase 252 (issue 0072) — forward a declared [safety] axis to the zenoh backend's
 # safety-e2e (CRC attach/validate); `?` keeps it inert without rmw-zenoh. Re-exported
 # by the per-board overlay (nros-board-mps2-an385-freertos) the descriptor names.

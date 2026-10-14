@@ -208,7 +208,13 @@ fn primitive_id(p: &PrimitiveType) -> u8 {
     match p {
         PrimitiveType::Bool => type_id::BOOLEAN,
         PrimitiveType::Byte => type_id::BYTE,
-        PrimitiveType::Char => type_id::CHAR,
+        // A `.msg` `char` is rosidl's deprecated alias of `uint8`: rosidl_adapter
+        // rewrites it to `uint8` on the way to `.idl`, and the hash is computed
+        // from the `.idl`, so it is UINT8 here, never REP-2011's CHAR (13). Only
+        // the `.msg` parser produces this variant. Issue 1893: PX4's
+        // `DebugKeyValue` (`char[10] key`) hashed to a value no Jazzy peer
+        // computes, so the bridge's data key matched no subscriber.
+        PrimitiveType::Char => type_id::UINT8,
         PrimitiveType::Int8 => type_id::INT8,
         PrimitiveType::UInt8 => type_id::UINT8,
         PrimitiveType::Int16 => type_id::INT16,
@@ -1039,6 +1045,40 @@ mod tests {
         assert_eq!(
             rihs01(&header_desc),
             "RIHS01_f49fb3ae2cf070f793645ff749683ac6b06203e41c891e17701b1cb597ce6a01"
+        );
+    }
+
+    // Issue 1893 — a `.msg` `char` hashes as rosidl's `uint8`. Golden is the
+    // hash a live Jazzy (`ros-jazzy-rosidl-*`, 2026-10) reported for
+    // `px4_msgs/msg/DebugKeyValue` built from the pinned PX4 tree's `.msg`
+    // (`ros2 topic info -v`); the old CHAR (13) mapping gave
+    // `RIHS01_9f784632…`, which no ROS 2 peer computes.
+    #[test]
+    fn msg_char_hashes_as_uint8_like_rosidl() {
+        use rosidl_parser::ast::FieldType as Ast;
+        let field = |n: &str, t: Ast| mk_field(n, t);
+        let msg = synth_msg(vec![
+            field("timestamp", Ast::Primitive(PrimitiveType::UInt64)),
+            field(
+                "key",
+                Ast::Array {
+                    element_type: Box::new(Ast::Primitive(PrimitiveType::Char)),
+                    size: 10,
+                },
+            ),
+            field("value", Ast::Primitive(PrimitiveType::Float32)),
+        ]);
+        let desc = build_type_description("px4_msgs/msg/DebugKeyValue", &msg, |_| None).unwrap();
+        assert_eq!(
+            rihs01(&desc),
+            "RIHS01_e89a9760f505a9dfed23a149d7eed32d03f8dd4fdd90e3ba2ae385e4f77d3e63"
+        );
+        // A scalar `char` too: Jazzy's shipped `std_msgs/msg/Char.json`.
+        let scalar = synth_msg(vec![field("data", Ast::Primitive(PrimitiveType::Char))]);
+        let desc = build_type_description("std_msgs/msg/Char", &scalar, |_| None).unwrap();
+        assert_eq!(
+            rihs01(&desc),
+            "RIHS01_3ad2d04dd29ba19d04b16659afa3ccaedd691914b02a64e82e252f2fa6a586a9"
         );
     }
 
