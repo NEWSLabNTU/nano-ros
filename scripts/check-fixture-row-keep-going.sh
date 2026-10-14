@@ -27,6 +27,10 @@ bad() { echo "$GATE: FAIL — $*" >&2; fail=1; }
 
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/nros-row-ledger.XXXXXX")"
 trap 'rm -rf "$tmp"' EXIT
+# Issue 1905 -- case D runs the owner, which appends its failed rows to
+# `$GITHUB_STEP_SUMMARY`. Inherited from a CI step, that put this case's fake
+# `x rc=1` row on the real job's summary page. Give the owner a file of ours.
+export GITHUB_STEP_SUMMARY="$tmp/step-summary"
 
 lib="$PWD/scripts/build/fixture-row-ledger.sh"
 # shellcheck source=scripts/lib/grep-q.sh
