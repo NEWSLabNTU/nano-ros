@@ -1333,7 +1333,7 @@ pub const KCONFIG_KNOBS: &[crate::KconfigKnob] = &[
         symbol: "NROS_PARAM_SERVICE_INBOX_BYTES",
         id: "PARAM_SERVICE_INBOX_BYTES",
         ty: "int",
-        kconfig_if: Some("NROS_RMW_ZENOH"),
+        kconfig_if: None,
         depends: &[],
     },
     crate::KconfigKnob {

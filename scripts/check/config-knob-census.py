@@ -202,6 +202,33 @@ KNOB_CLASS = {
         "A / issue 0880). A placement, not a size",
     ),
     # --- infra: not knobs ---
+    # The sixteen below are read through a CONSTANT (`const X: &str =
+    # "NROS_..."`, then `env::var(X)`), which this census could not see until
+    # the const-binding arm. None of them is a size.
+    "NROS_CC_STRICT_DECLS": ("infra", "debug flag: disables the strict C declaration flags"),
+    "NROS_CENSUS_OUT": ("infra", "path the entity census writes"),
+    "NROS_ENTRY_DOMAIN_ID": (
+        "infra",
+        "the image's DECLARED domain id, carried as an `[env]` row; a value the "
+        "image states, not a size with a rung",
+    ),
+    "NROS_ENTRY_LOCATOR": (
+        "infra",
+        "the image's DECLARED locator, carried as an `[env]` row; a selection, "
+        "not a size",
+    ),
+    "NROS_LEAF_CENSUS_HOST": ("infra", "marks the entity census's host build of a leaf"),
+    "NROS_PROFILE_INPUTS": ("infra", "build-profile input path"),
+    "NROS_PROFILE_OUT": ("infra", "build-profile output path"),
+    "NROS_SETUP_JOBS": ("infra", "`nros setup` concurrency"),
+    "NROS_SETUP_SESSION": ("infra", "path of the `nros setup` session ledger"),
+    "NROS_SIZES_PROBE_BUILD": ("infra", "marks the sizes probe's own build"),
+    "NROS_SIZING_DESCRIPTOR": ("infra", "the sizing descriptor's path; an input to derivation"),
+    "NROS_SKIP_VERSION_CHECK": ("infra", "policy flag on the codegen ABI guard"),
+    "NROS_TEST_1659_ROOT": ("infra", "test hook (issue 1659)"),
+    "NROS_TEST_1659_WANT": ("infra", "test hook (issue 1659)"),
+    "NROS_TEST_PROBE_ENV_DIR": ("infra", "test hook for the setup probe"),
+    "ZPICO_MULTICAST_TRANSPORT": ("infra", "link toggle: compiles in multicast transport + scouting"),
     "NROS_ALLOW_UNRESOLVED_DEPS": ("infra", "policy flag"),
     # phase-422 W8 — its own flag, deliberately NOT reusing the one above.
     # A wrong-role dep RESOLVES; we decline it. Overloading the
@@ -695,6 +722,10 @@ READ_CALLEES = {
     # phase-484 W5a -- rung 1 through an injected accessor (the ladder's
     # `knob_env`, and the registry tests that drive it).
     "read_spelled",
+    # The const-binding arm -- `nros-rmw-xrce-cffi`'s rungs 1-3 for one
+    # manifest row (`Self::stated(env_name, ..)`), resolved through
+    # `nros_zephyr_build::knob`.
+    "stated",
 }
 
 # Not reads. Named rather than ignored by default, so the failure below stays
@@ -731,41 +762,94 @@ NON_READ_CALLEES = {
     # knob, never the knob's value. The value's one read is the
     # `env_opt_string(knob)` beside it, which this census already counts.
     "knob_source_code",
+    # The const-binding arm. `XrceDemand::for_knob(env)` looks a name up in
+    # the map of values the image's DECLARATIONS imply; it reads no
+    # environment (`stated` beside it is the read). `Command::env_remove`
+    # clears a CHILD's variable.
+    "for_knob", "env_remove",
 }
 
 _CALL_RE = r'([A-Za-z_][A-Za-z0-9_:]*)\s*\(\s*&?"({prefix}_[A-Z0-9_]+)"'
 
+# A name read THROUGH A CONSTANT. `const DISABLE_ENV: &str = "NROS_X";` and
+# then `env::var(DISABLE_ENV)` is a read the literal matcher above cannot see,
+# because no call spells the name: ~20 names were read that way and absent from
+# this census, the gap phase-484 W8 found for `xrce-config.txt` one idiom over.
+# The binding and the call can sit in different files (a helper crate exports
+# the constant), so the table is built over every build source; an identifier
+# bound to two different names is resolved only in the file that binds it.
+_CONST_RE = (
+    r'\b(?:pub(?:\([a-z]+\))?\s+)?(?:const|static)\s+([A-Z][A-Z0-9_]*)\s*:'
+    r'\s*&(?:\'static\s+)?str\s*=\s*"({prefix}_[A-Z0-9_]+)"\s*;'
+)
+_CONST_CALL_RE = (
+    r'([A-Za-z_][A-Za-z0-9_:]*)\s*\(\s*&?(?:[A-Za-z_][A-Za-z0-9_]*::)*'
+    r'([A-Z][A-Z0-9_]*)(?=\s*[,)])'
+)
 
-def _calls_in(txt, prefix):
-    """(callee, name) for every call taking a `<PREFIX>_*` literal first.
+
+def _strip_comments(txt):
+    return re.sub(r"(?m)^\s*(///|//!|//).*$", "", txt)
+
+
+def _const_bindings(txt, prefix):
+    """{IDENT: name} for every `const|static IDENT: &str = "<PREFIX>_*";`."""
+    return {
+        m.group(1): m.group(2)
+        for m in re.finditer(_CONST_RE.format(prefix=prefix), _strip_comments(txt))
+    }
+
+
+def shared_const_bindings(sources, prefix):
+    """The cross-file binding table: identifiers bound to exactly ONE name."""
+    seen = {}
+    for path in sources:
+        for ident, name in _const_bindings(read(path), prefix).items():
+            seen.setdefault(ident, set()).add(name)
+    return {ident: next(iter(n)) for ident, n in seen.items() if len(n) == 1}
+
+
+def _calls_in(txt, prefix, shared=None):
+    """(callee, name) for every call taking a `<PREFIX>_*` name first --
+    spelled as a literal, or through a constant bound to one.
 
     Comments are stripped first: a knob named in a comment is documentation,
     not a reader, and counting it inflates the number this gate exists to
     track. Macros are excluded by the absence of `!` from the callee pattern,
     which keeps `panic!("NROS_X unset")` and friends out.
     """
-    stripped = re.sub(r"(?m)^\s*(///|//).*$", "", txt)
-    return [
+    stripped = _strip_comments(txt)
+    out = [
         (m.group(1).rsplit("::", 1)[-1], m.group(2))
         for m in re.finditer(_CALL_RE.format(prefix=prefix), stripped)
     ]
+    bindings = dict(shared or {})
+    bindings.update(_const_bindings(txt, prefix))
+    if bindings:
+        out += [
+            (m.group(1).rsplit("::", 1)[-1], bindings[m.group(2)])
+            for m in re.finditer(_CONST_CALL_RE, stripped)
+            if m.group(2) in bindings
+        ]
+    return out
 
 
-def _env_names_in(txt, prefix):
+def _env_names_in(txt, prefix, shared=None):
     """`<PREFIX>_*` names READ from the environment in one source string.
 
     Factored out so the selftest drives it on synthetic input.
     """
-    return {n for callee, n in _calls_in(txt, prefix) if callee in READ_CALLEES}
+    return {n for callee, n in _calls_in(txt, prefix, shared) if callee in READ_CALLEES}
 
 
 def unknown_idioms(sources, prefixes):
     """Callees that neither read nor demonstrably-don't. See READ_CALLEES."""
     out = {}
+    shared = {prefix: shared_const_bindings(sources, prefix) for prefix in prefixes}
     for path in sources:
         txt = read(path)
         for prefix in prefixes:
-            for callee, name in _calls_in(txt, prefix):
+            for callee, name in _calls_in(txt, prefix, shared[prefix]):
                 if callee not in READ_CALLEES and callee not in NON_READ_CALLEES:
                     out.setdefault(callee, set()).add(name)
     return out
@@ -862,8 +946,10 @@ def build_script_env(prefix):
     """`<PREFIX>_*` names a build-time source reads from the environment —
     through a read call, or through a READ TABLE's rows."""
     names = set()
-    for p in build_env_sources():
-        names |= _env_names_in(read(p), prefix)
+    sources = build_env_sources()
+    shared = shared_const_bindings(sources, prefix)
+    for p in sources:
+        names |= _env_names_in(read(p), prefix, shared)
     return names | read_table_env(prefix)
 
 
@@ -903,6 +989,34 @@ def self_test() -> None:
         'flags.push("NROS_THING");',
     ):
         assert not _env_names_in(src, "NROS"), f"selftest: false positive on {src!r}"
+
+    # The const-binding arm: a name read through a CONSTANT is a read, whether
+    # the constant is bound in the same file or exported by a helper crate.
+    src = 'pub const DISABLE_ENV: &str = "NROS_VIA_CONST";\nlet v = std::env::var(DISABLE_ENV);'
+    assert _env_names_in(src, "NROS") == {"NROS_VIA_CONST"}, "selftest: missed a const-bound read"
+    src = 'let v = env::var(&helper::OTHER_ENV).ok();'
+    assert _env_names_in(src, "NROS", {"OTHER_ENV": "NROS_ELSEWHERE"}) == {"NROS_ELSEWHERE"}, (
+        "selftest: missed a read through a constant bound in another file"
+    )
+    # ...but binding a constant reads nothing, a comment binds nothing, and a
+    # constant handed to a non-read (`set_var`) is not a read.
+    for src in (
+        'pub const DISABLE_ENV: &str = "NROS_VIA_CONST";',
+        '// const X: &str = "NROS_VIA_CONST";\nstd::env::var(X);',
+        'const X: &str = "NROS_VIA_CONST";\nstd::env::set_var(X, "1");',
+    ):
+        assert not _env_names_in(src, "NROS"), f"selftest: false positive on {src!r}"
+    # An identifier bound to two names across files is not resolved globally.
+    import tempfile as _tf
+    with _tf.TemporaryDirectory() as d:
+        a, b = os.path.join(d, "a.rs"), os.path.join(d, "b.rs")
+        with open(a, "w") as fh:
+            fh.write('const ENV: &str = "NROS_A";')
+        with open(b, "w") as fh:
+            fh.write('const ENV: &str = "NROS_B";\nconst ONLY: &str = "NROS_C";')
+        assert shared_const_bindings([a, b], "NROS") == {"ONLY": "NROS_C"}, (
+            "selftest: an ambiguous constant was resolved across files"
+        )
 
     # An idiom in NEITHER list must be reported rather than silently dropped:
     # that silent drop is exactly what hid five knobs behind a local `knob()`.

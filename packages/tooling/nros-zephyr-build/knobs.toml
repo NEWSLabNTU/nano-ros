@@ -690,7 +690,6 @@ once per service.
 id = "PARAM_SERVICE_INBOX_BYTES"
 type = "int"
 prompt = "Parameter/lifecycle service inbox slot size (bytes, -1 = derive)"
-kconfig_if = "NROS_RMW_ZENOH"
 kconfig_attrs = [
     "default -1",
 ]
@@ -713,6 +712,12 @@ this symbol, rather than dropping a well-formed request at run time
 be this symbol's derive sentinel, and the readers took it literally.
 On XRCE the same number is XRCE_PARAM_REQUEST_BYTES, which raises
 NROS_XRCE_SERVICE_REQUEST_BUFFER_SIZE to fit it (issue 1722).
+
+Not under NROS_RMW_ZENOH, unlike PARAM_SERVICE_INBOX_DEPTH (whose ring
+only a caller-inbox backend allocates): nros-node and the XRCE backend
+read this size too, so an XRCE image must be able to state it. Under
+the zenoh `if` it was undeclared there, while XRCE's own refusal told
+the user to set it.
 Maps to NROS_PARAM_SERVICE_INBOX_BYTES.
 '''
 
