@@ -4,7 +4,7 @@ title: "`nros_platform_condvar_wait` blocks forever by construction, beside a bo
 status: open
 type: tech-debt
 area: platform
-related: [issue-1192, phase-436]
+related: [issue-1192, phase-436, issue-1906, issue-1907, issue-1750]
 ---
 
 ## Problem
@@ -86,3 +86,91 @@ through a deadline the caller owns — or zenoh-pico gains a bounded
 `_z_condvar_wait_until` upstream and the last legitimate caller disappears with
 it. Until one of those happens the gate is the answer, and this issue is the
 record of why the exemption exists.
+
+## Design study (2026-10-15): the gate watches one path of three
+
+A read-only study of every port, zenoh-pico's call sites and the vendored
+kernels found that this issue looks at the wrong layer. Its findings, each
+re-checked against the tree:
+
+**zenoh-pico reaches an unbounded condvar wait by three paths, and the gate
+sees one.**
+
+| Platform | Path | Unbounded wait |
+| --- | --- | --- |
+| POSIX, NuttX, ThreadX | alias shim, `platform_aliases.c` `_z_condvar_wait` | `nros_platform_condvar_wait` (the gate's only subject) |
+| Zephyr | the shim's system section is skipped; `zephyr/nros_zenoh_zephyr_system.c` | `pthread_cond_wait` (line 277) |
+| FreeRTOS | the full alias TU is excluded; vendored `zenoh-pico/src/system/freertos/system.c` | `xSemaphoreTake(cv->sem, portMAX_DELAY)` |
+
+So the FreeRTOS `nros_platform_condvar_wait` this issue cites has no zenoh
+caller at all, and the gate's "confined to the shim" claim is about one third
+of the platforms. Our own code has one more: `zpico.c:3969` (`zpico_get`)
+calls `_z_condvar_wait` directly. `zpico_get` has no in-tree caller (nros-c
+and nros-cpp say so explicitly). Its wait cannot simply take a deadline,
+because its reply context lives on the stack and leaving early would be a
+use-after-free. That is an ownership problem, and no wake period fixes it.
+
+**Real defects in the implementations underneath, which matter more than the
+API shape,** are filed and fixed as issue 1906: the shim's timeout code, the
+ThreadX broadcast that woke one waiter, the POSIX/NuttX wall-clock timed wait
+and timeouts rounded down. Issue 1907 records the lock-contract gaps: no
+priority inheritance on POSIX or NuttX (which removes this issue's premise
+that every mutex wait is bounded by PI), and a condvar wait under a
+recursively held mutex deadlocking on three ports.
+
+Issue 1750's justification for refusing a foreign thread's signal
+(`threadx platform.c`: "every wait here takes a timeout ... so a lost signal
+costs latency and nothing else") is false while an unbounded `condvar_wait`
+exists. A waiter that loses its only signal there waits forever.
+
+### Recommended design: retire the symbol as RFC-0073 retired `clock_ms`
+
+1. `nros_platform_condvar_wait` becomes a `static inline` in
+   `nros/platform.h`: one `condvar_wait_until(now + NROS_PLATFORM_CONDVAR_WAKE_MS)`,
+   with a timeout reported as a spurious wake (`0`). Ports stop defining it,
+   and the Rust trait gets a default `condvar_wait` that `export_platform!` no
+   longer exports. An out-of-tree C port that still defines the symbol gets a
+   `NROS_PLATFORM_LEGACY_CONDVAR_WAIT` escape for one release.
+2. This is legal and changes no caller. A condvar may wake spuriously, and
+   every unbounded caller loops on its predicate (`fifo_mt`, `ring_mt`,
+   `sync_group`, `scheduler`, `zpico_get`). The period (100–1000 ms) is not
+   about latency. It recovers a lost signal, such as issue 1750's refusals,
+   and a counter makes a wait that overruns its expectation observable. The
+   power cost is close to zero, because nothing reachable blocks indefinitely
+   on these waits in normal operation.
+3. Apply the same change to `zephyr/nros_zenoh_zephyr_system.c`. On FreeRTOS,
+   route condvars through the shim (a `Z_FEATURE_NROS_PLATFORM_SYNC` guard on
+   the zenoh-pico fork, like the existing ALLOC/SLEEP/RANDOM ones) or patch
+   the vendored forever-wait there.
+4. Delete `zpico_get`, the last unbounded wait we own outright.
+
+Rejected:
+
+- Looping inside the shim only rebuilds the unbounded wait one level up.
+- An "infinite" sentinel deadline is the same unbounded wait spelled
+  differently.
+- A new bounded API upstream is unnecessary: zenoh-pico already has
+  `_z_condvar_wait_until`. Worth sending upstream instead: the sites that
+  return with the mutex HELD on a wait error, namely
+  `_Z_RETURN_IF_ERR(_z_condvar_wait(...))` in `fifo_mt.c:81,116` and
+  `ring_mt.c:106`, and the early `return ret` in `sync_group.c:103`.
+
+### What the gate becomes
+
+Two gates replace `check-no-unbounded-condvar-wait.sh`:
+
+- A retired-symbol gate modelled on `check-retired-platform-clock-symbols`:
+  nothing defines or calls `nros_platform_condvar_wait` outside the header's
+  inline.
+- A class gate for forever-waits on a condition or semaphore in code we own:
+  `pthread_cond_wait`, `k_condvar_wait`/`k_sem_take` with `K_FOREVER`,
+  `portMAX_DELAY` and `TX_WAIT_FOREVER` on anything but a mutex, and
+  `_z_condvar_wait(`. Its self-test includes `zpico.c:3969`. Mutex locks stay
+  exempt, on the condition that issue 1907's priority inheritance is real on
+  every port.
+
+### What closes this issue
+
+Steps 1–4 landed, and both gates green with the old one deleted. That is
+phase-sized work, and it should follow issue 1906, because a bounded wait
+leans on exactly the timeout codes and broadcast that 1906 fixes.

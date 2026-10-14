@@ -246,3 +246,121 @@ fn task_init_join_round_trip() {
     assert_eq!(rc, 0, "task_init must succeed");
     assert_eq!(CffiPlatform::task_join(task), 0, "task_join must succeed");
 }
+
+/// Issue 1906 -- a timed wait nobody signals returns `1` (the timeout code in
+/// `nros/platform.h`), and never before its deadline.
+///
+/// This also pins the condvar's clock. The deadline is on the
+/// `nros_platform_clock_ns` epoch, CLOCK_MONOTONIC, and `wait_until` hands it
+/// to `pthread_cond_timedwait` unchanged. On a condvar that kept the default
+/// CLOCK_REALTIME, that deadline (seconds since boot) would read as decades in
+/// the past and the wait would return at once, so the lower bound below fails.
+#[test]
+fn condvar_wait_until_times_out_with_code_1_and_not_before_its_deadline() {
+    const WAIT_MS: u64 = 50;
+    let cv = Box::into_raw(Box::new(MaybeUninit::<libc::pthread_cond_t>::zeroed())) as *mut c_void;
+    let m = Box::into_raw(Box::new(MaybeUninit::<libc::pthread_mutex_t>::zeroed())) as *mut c_void;
+    assert_eq!(CffiPlatform::condvar_init(cv), 0);
+    assert_eq!(CffiPlatform::mutex_init(m), 0);
+
+    let deadline_ms = CffiPlatform::clock_ns() / 1_000_000 + WAIT_MS;
+    let start = Instant::now();
+    assert_eq!(CffiPlatform::mutex_lock(m), 0);
+    // A spurious wake returns 0 early; wait again for the same deadline.
+    let rc = loop {
+        let rc = CffiPlatform::condvar_wait_until(cv, m, deadline_ms);
+        if rc != 0 {
+            break rc;
+        }
+    };
+    assert_eq!(CffiPlatform::mutex_unlock(m), 0);
+    let elapsed = start.elapsed();
+
+    assert_eq!(rc, 1, "a timed-out wait must return the timeout code 1");
+    assert!(
+        elapsed >= Duration::from_millis(WAIT_MS - 1),
+        "timed out after {elapsed:?}, before its {WAIT_MS} ms deadline"
+    );
+
+    assert_eq!(CffiPlatform::condvar_drop(cv), 0);
+    assert_eq!(CffiPlatform::mutex_drop(m), 0);
+    unsafe {
+        let _ = Box::from_raw(cv as *mut MaybeUninit<libc::pthread_cond_t>);
+        let _ = Box::from_raw(m as *mut MaybeUninit<libc::pthread_mutex_t>);
+    }
+}
+
+/// Issue 1906 -- `condvar_signal_all` wakes EVERY waiter, not one. zenoh-pico
+/// broadcasts on close and on a notifier drop; on ThreadX this woke a single
+/// waiter and the rest slept forever. This is the contract every port must
+/// meet, measured here on the reference port.
+#[test]
+fn condvar_signal_all_wakes_every_waiter() {
+    use std::sync::{
+        Arc,
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+    };
+    const WAITERS: usize = 3;
+
+    let cv = Box::into_raw(Box::new(MaybeUninit::<libc::pthread_cond_t>::zeroed())) as *mut c_void;
+    let m = Box::into_raw(Box::new(MaybeUninit::<libc::pthread_mutex_t>::zeroed())) as *mut c_void;
+    assert_eq!(CffiPlatform::condvar_init(cv), 0);
+    assert_eq!(CffiPlatform::mutex_init(m), 0);
+    let (cv_addr, m_addr) = (cv as usize, m as usize);
+
+    let released = Arc::new(AtomicBool::new(false));
+    let waiting = Arc::new(AtomicUsize::new(0));
+    let woken = Arc::new(AtomicUsize::new(0));
+    let workers: Vec<_> = (0..WAITERS)
+        .map(|_| {
+            let (released, waiting, woken) = (
+                Arc::clone(&released),
+                Arc::clone(&waiting),
+                Arc::clone(&woken),
+            );
+            std::thread::spawn(move || {
+                let (cv, m) = (cv_addr as *mut c_void, m_addr as *mut c_void);
+                assert_eq!(CffiPlatform::mutex_lock(m), 0);
+                waiting.fetch_add(1, Ordering::SeqCst);
+                // Bounded, so a missed broadcast fails the test rather than
+                // hanging it: 5 s is far past any scheduling delay.
+                let deadline_ms = CffiPlatform::clock_ns() / 1_000_000 + 5_000;
+                while !released.load(Ordering::SeqCst) {
+                    if CffiPlatform::condvar_wait_until(cv, m, deadline_ms) == 1 {
+                        break;
+                    }
+                }
+                if released.load(Ordering::SeqCst) {
+                    woken.fetch_add(1, Ordering::SeqCst);
+                }
+                assert_eq!(CffiPlatform::mutex_unlock(m), 0);
+            })
+        })
+        .collect();
+
+    // Every worker registers under `m` before it waits, so once all have
+    // counted themselves and `m` is ours, all of them are inside the wait.
+    while waiting.load(Ordering::SeqCst) < WAITERS {
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    assert_eq!(CffiPlatform::mutex_lock(m), 0);
+    released.store(true, Ordering::SeqCst);
+    assert_eq!(CffiPlatform::condvar_signal_all(cv), 0);
+    assert_eq!(CffiPlatform::mutex_unlock(m), 0);
+
+    for w in workers {
+        w.join().unwrap();
+    }
+    assert_eq!(
+        woken.load(Ordering::SeqCst),
+        WAITERS,
+        "a broadcast must wake every waiter"
+    );
+
+    assert_eq!(CffiPlatform::condvar_drop(cv), 0);
+    assert_eq!(CffiPlatform::mutex_drop(m), 0);
+    unsafe {
+        let _ = Box::from_raw(cv as *mut MaybeUninit<libc::pthread_cond_t>);
+        let _ = Box::from_raw(m as *mut MaybeUninit<libc::pthread_mutex_t>);
+    }
+}

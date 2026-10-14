@@ -583,11 +583,28 @@ int8_t nros_platform_mutex_rec_unlock(void *m) {
 
 /* ---- Condition variables ---- */
 
+/* Issue 1906 -- the condvar keeps time on CLOCK_MONOTONIC, the clock
+ * `nros_platform_clock_ns` reads, so `wait_until` can hand its deadline to
+ * `pthread_cond_timedwait` unchanged. The default clock is CLOCK_REALTIME,
+ * and the deadline used to be re-anchored on it: a wall-clock step during
+ * the wait (NTP, a manual `date`) then moved the deadline with it, longer
+ * when the clock stepped back and early when it stepped forward. Upstream
+ * zenoh-pico's unix layer sets the same attribute. NuttX honours it too
+ * (`pthread_condattr_setclock`, `cond->clockid`). */
 int8_t nros_platform_condvar_init(void *cv) {
     if (cv == NULL) {
         return -1;
     }
-    return pthread_cond_init((pthread_cond_t *) cv, NULL) == 0 ? 0 : -1;
+    pthread_condattr_t attr;
+    if (pthread_condattr_init(&attr) != 0) {
+        return -1;
+    }
+    int rc = pthread_condattr_setclock(&attr, CLOCK_MONOTONIC);
+    if (rc == 0) {
+        rc = pthread_cond_init((pthread_cond_t *) cv, &attr);
+    }
+    pthread_condattr_destroy(&attr);
+    return rc == 0 ? 0 : -1;
 }
 
 int8_t nros_platform_condvar_drop(void *cv) {
@@ -648,26 +665,16 @@ int8_t nros_platform_condvar_wait_until(void *cv, void *m, uint64_t abstime_ms) 
     if (cv == NULL || m == NULL) {
         return -1;
     }
-    /* `abstime_ms` is in the same epoch as `nros_platform_clock_ms`
-     * (monotonic). pthread_cond_timedwait uses CLOCK_REALTIME by
-     * default; we convert the monotonic deadline into a relative
-     * delay and re-anchor against REALTIME. */
-    uint64_t now_mono_ms = (nros_platform_clock_ns() / 1000000ULL);
-    uint64_t rel_ms = abstime_ms > now_mono_ms ? abstime_ms - now_mono_ms : 0;
-
-    struct timespec realtime;
-    if (clock_gettime(CLOCK_REALTIME, &realtime) != 0) {
-        return -1;
-    }
-    realtime.tv_sec  += (time_t) (rel_ms / 1000);
-    realtime.tv_nsec += (long)   ((rel_ms % 1000) * 1000000);
-    if (realtime.tv_nsec >= 1000000000L) {
-        realtime.tv_sec  += 1;
-        realtime.tv_nsec -= 1000000000L;
-    }
+    /* `abstime_ms` is on the `nros_platform_clock_ns` epoch, which is
+     * CLOCK_MONOTONIC, and so is this condvar's clock (`condvar_init`). The
+     * deadline therefore passes straight through, with no re-anchoring that
+     * a wall-clock step could move. */
+    struct timespec deadline;
+    deadline.tv_sec  = (time_t) (abstime_ms / 1000);
+    deadline.tv_nsec = (long)   ((abstime_ms % 1000) * 1000000);
     int r = pthread_cond_timedwait((pthread_cond_t *) cv,
                                    (pthread_mutex_t *) m,
-                                   &realtime);
+                                   &deadline);
     if (r == 0)         return 0;
     if (r == ETIMEDOUT) return 1;
     return -1;

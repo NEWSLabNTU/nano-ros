@@ -2181,10 +2181,24 @@ pub fn run() {
         let mut alias_build = cc::Build::new();
         // issue 0383 — implicit-function-declaration / int-conversion as errors.
         nros_cc_flags::strict_decls(&mut alias_build);
+        // issue 1906 — the condvar wrapper returns zenoh-pico's own result
+        // codes (`Z_ETIMEDOUT`), so it reads them from
+        // `zenoh-pico/utils/result.h` rather than restating the numbers.
+        // That header includes only `<stdint.h>`. Under `system-zenohpico`
+        // the prefix was already validated (and its link lines emitted) by
+        // `use_system_zenoh_pico`, so only its include dir is taken here.
+        let zenoh_pico_include = if use_system {
+            nros_build_paths::env_path("ZENOH_PICO_DIR")
+                .map(|d| d.join("include"))
+                .unwrap_or_else(|| zenoh_pico_src.join("include"))
+        } else {
+            zenoh_pico_src.join("include")
+        };
         alias_build
             .file(manifest_dir.join("c/zpico/platform_aliases.c"))
             .include(&nros_platform_cffi_include)
             .include(manifest_dir.join("c/zpico"))
+            .include(&zenoh_pico_include)
             // Phase 129.D — `NROS_PLATFORM_ALIASES` unlocks the
             // alias TU's clock-variant + network wrappers, which
             // depend on the generic `z_clock_t = uint64_t` typedef

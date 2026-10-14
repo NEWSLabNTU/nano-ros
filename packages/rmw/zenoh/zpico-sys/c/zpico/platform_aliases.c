@@ -327,11 +327,33 @@ int8_t _z_condvar_wait(void *cv, void *m) {
 #ifdef NROS_PLATFORM_ALIASES
 
 #ifndef NROS_PLATFORM_ALIASES_SKIP_SYSTEM
+#include "zenoh-pico/utils/result.h"
+
+/* Issue 1906 -- translate the platform's codes into zenoh-pico's.
+ *
+ * The platform returns 0 when signalled, 1 on timeout and -1 on error
+ * (`nros/platform.h`). zenoh-pico's contract is `_Z_RES_OK` /
+ * `Z_ETIMEDOUT` / a negative error, and every upstream system layer maps
+ * it. This shim passed the platform's value through unchanged, so a
+ * timeout arrived as `1`. `_z_sync_group_wait_deadline` tests
+ * `ret == Z_ETIMEDOUT`, misses it, takes its `ret != _Z_RES_OK` branch and
+ * returns while still holding `counter_mutex`, which blocks every later
+ * notifier drop and close for good.
+ *
+ * A NULL deadline is an error, not an unbounded wait. No zenoh-pico caller
+ * passes one (each passes `&deadline`), and upstream's own implementations
+ * dereference it unconditionally. Falling back to `condvar_wait` here was
+ * a contract this shim invented, and it was the second unbounded wait the
+ * issue-1196 gate had to exempt. */
 int8_t _z_condvar_wait_until(void *cv, void *m, const uint64_t *abstime_ms) {
     if (abstime_ms == NULL) {
-        return nros_platform_condvar_wait(cv, m);
+        return _Z_ERR_GENERIC;
     }
-    return nros_platform_condvar_wait_until(cv, m, *abstime_ms);
+    int8_t rc = nros_platform_condvar_wait_until(cv, m, *abstime_ms);
+    if (rc == 0) {
+        return _Z_RES_OK;
+    }
+    return rc > 0 ? Z_ETIMEDOUT : _Z_ERR_GENERIC;
 }
 
 /* -------------------------------------------------------------------------

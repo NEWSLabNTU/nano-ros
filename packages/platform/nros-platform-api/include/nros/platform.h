@@ -682,7 +682,11 @@ int8_t nros_platform_condvar_wait(void *cv, void *m);
 
 /** Like `condvar_wait`, but with an absolute monotonic deadline in
  *  MILLISECONDS on the `nros_platform_clock_ns()` epoch — i.e.
- *  `clock_ns() / 1000000`. Returns non-zero on timeout.
+ *  `clock_ns() / 1000000`. Returns 0 when signalled, 1 on timeout and
+ *  -1 on error, the same codes as `nros_platform_wake_wait_ms` (issue
+ *  1906: FreeRTOS returned -1 on timeout, so a caller could not tell a
+ *  timeout from a failure). A port rounds the remaining time UP to its
+ *  tick, so the wait never times out before its deadline.
  *
  *  Spelt out because this said "`clock_ms` units" after RFC-0073 /
  *  phase-352 W6 retired `nros_platform_clock_ms`: it named a function
