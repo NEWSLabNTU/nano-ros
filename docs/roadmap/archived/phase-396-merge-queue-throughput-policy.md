@@ -217,7 +217,7 @@ holds the evidence, the item is *close it*.
 | issue | why it belongs here |
 | --- | --- |
 | [#0871](../../issues/archived/0871-ci-check-build-asserts-fixtures-it-never-builds.md) | every PR red on a fixture CI never builds, and `main` cannot see it because the required gate does not run on push — **RESOLVED 2026-10-12** (`e44ba14cd6`) |
-| [#0872](../../issues/0872-pr-arm-example-check-needs-nros-sync.md) | the PR/nightly check arm has never run to completion — each fix exposes the next environment gap. The pattern this phase keeps meeting — **re-homed to [phase-395](../phase-395-dev-workflow-migration.md) 2026-10-12** |
+| [#0872](../../issues/archived/0872-pr-arm-example-check-needs-nros-sync.md) | the PR/nightly check arm has never run to completion — each fix exposes the next environment gap. The pattern this phase keeps meeting — **re-homed to [phase-395](../phase-395-dev-workflow-migration.md) 2026-10-12** |
 | [#0874](../../issues/archived/0874-sccache-ghac-v1-sunset-breaks-every-rustc.md) | sccache 0.8.2 speaks a GitHub cache API that no longer exists, so the compile tier pays full cost on every run — **RESOLVED 2026-10-12** (`38a219578d`) |
 
 ## Issues formerly homed here (survey 2026-09-11; re-homed or resolved 2026-10-12)

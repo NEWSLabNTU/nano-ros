@@ -80,7 +80,7 @@ failure mode this phase spent its whole length removing from the code.
 **Implements:** [RFC-0091](../../design/0091-one-entry-codegen-producer-many-language-packs.md),
 which **amends** [RFC-0068](../../design/0068-language-neutral-codegen-ir.md).
 **Closes:** [#1102](../../issues/archived/1102-entry-emitters-build-source-with-writeln.md).
-**Touches:** [#1062](../../issues/1062-add-node-language-inference.md)
+**Touches:** [#1062](../../issues/archived/1062-add-node-language-inference.md)
 (two language readers disagreeing — W2.1 removes the second reader).
 
 ## Why this phase exists
@@ -912,4 +912,4 @@ evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1062](../../issues/1062-add-node-language-inference.md) | `nano_ros_add_node` has two language readers that disagree. The doc records it as 'Touches: #1062', which is not a work item; RFC-0091's one-Language work is the fix |
+| [#1062](../../issues/archived/1062-add-node-language-inference.md) | `nano_ros_add_node` has two language readers that disagree. The doc records it as 'Touches: #1062', which is not a work item; RFC-0091's one-Language work is the fix |

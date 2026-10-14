@@ -1,12 +1,13 @@
 ---
 id: 1053
 title: "RFC ids have no reservation, so two sessions both wrote 0087 — then two more wrote 0089. The same race `just issue-new` and `just phase-new` exist to stop"
-status: open
+status: resolved
 type: bug
 area: docs, tooling
 severity: medium
 found: 2026-09-04
 related: [0884, phase-395, phase-420, phase-421, phase-429]
+resolved: 2026-10-14
 ---
 
 # Two RFCs numbered 0087, hours apart, both correct by the documented rule
@@ -123,3 +124,10 @@ until both merge, at which point `docs/design/` holds two RFC-0089s and every
 `RFC-0089` citation in the tree is ambiguous — with no gate saying so. The
 uniqueness check in the Fix section above is the part that turns this from
 "noticed by luck" into "noticed by CI".
+
+## Resolution (2026-10-14)
+
+RFC ids now have a reservation. `just rfc-new` (`justfile:656`,
+`c005f90b56`) claims `refs/rfc-ids/NNNN` on origin through
+`scripts/reserve-rfc-id.sh`, the same way issue ids are claimed.
+`scripts/ci/issue-ids-check.sh` refuses duplicate RFC ids.

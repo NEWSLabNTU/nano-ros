@@ -953,4 +953,4 @@ defect is the executor's timer policy, which is this phase's subject.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1041](../issues/1041-timer-missed-deadline-policy-differs-from-rcl.md) | a repeating timer CATCHES UP after a stall where rcl SKIPS — N callbacks instead of one. Partly fixed already: the executor arena defaults to `Skip`, and `nros-node/src/timer.rs:354` is the unswept sibling, which is the fix-the-class shape rather than a new defect |
+| [#1041](../issues/archived/1041-timer-missed-deadline-policy-differs-from-rcl.md) | a repeating timer CATCHES UP after a stall where rcl SKIPS — N callbacks instead of one. Partly fixed already: the executor arena defaults to `Skip`, and `nros-node/src/timer.rs:354` is the unswept sibling, which is the fix-the-class shape rather than a new defect |

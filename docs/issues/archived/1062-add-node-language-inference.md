@@ -3,10 +3,11 @@ id: 1062
 title: "`nano_ros_add_node` has two language readers that disagree — cmake
   expands SOURCES, the scanner reads the raw text, and the loser is a silent
   `C`"
-status: open
+status: resolved
 type: bug
 area: tooling
 related: [issue-0939, issue-0641, rfc-0057, phase-432]
+resolved: 2026-10-14
 ---
 
 ## Symptom
@@ -117,3 +118,10 @@ verb appends to `_srcs`, so `LANGUAGE` and `CPP` become two source files.
 The class fallback is still a guess — that is the point of printing it. A C
 component whose class carries `::` and whose sources are hidden behind a
 variable will guess wrong, out loud, with the remedy in the message.
+
+## Resolution (2026-10-14)
+
+Both readers now agree. `nano_ros_add_node` takes an explicit `LANGUAGE`,
+and the CLI's workspace scanner reads the same keyword
+(`cmake/NanoRosVerbs.cmake:331`, `:366`;
+`nros-cli-core/src/orchestration/workspace.rs`).

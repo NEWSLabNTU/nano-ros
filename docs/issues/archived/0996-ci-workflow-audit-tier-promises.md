@@ -2,13 +2,14 @@
 id: 996
 title: "CI audit: the same lane passes in the queue and fails after merge, four of
   six lanes carry no signal, and the provisioning system is bypassed by hand"
-status: open
+status: resolved
 type: bug
 area: ci, tooling
 related: [0992, 0876, 0883, phase-413, phase-395]
+resolved: 2026-10-14
 ---
 
-**Home: [phase-395](../roadmap/phase-395-dev-workflow-migration.md)** — re-homed 2026-10-12 from phase-413, which is archived.
+**Home: [phase-395](../../roadmap/phase-395-dev-workflow-migration.md)** — re-homed 2026-10-12 from phase-413, which is archived.
 
 Audit of all 11 workflows against the four properties they are supposed to have:
 a workflow reads as a user session; provisioning goes through `nros setup`; each
@@ -257,3 +258,10 @@ item in the order below.
    `gate.yml` to the same artifact rule as the merge-gating arms. If it should,
    the fix is one entry in `GATING_EVENTS`; if it should not, the reason belongs
    in that file, because the next person will ask.
+
+## Resolution (2026-10-14)
+
+Item 5, the push arm of `check-lane-contracts`, was the last one open.
+`scripts/check-lane-contracts.py:460` now scans
+`GATING_EVENTS | REPORTING_EVENTS`, and `push` is among them (widened under
+issue 1030).

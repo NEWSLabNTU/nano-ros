@@ -1,11 +1,12 @@
 ---
 id: 895
 title: "`just format` is red or green depending on whether a migrated colcon workspace has been BUILT"
-status: open
+status: resolved
 area: build
 severity: medium
 found: 2026-08-29
 related: [0359, 0463, phase-383, RFC-0065, phase-395]
+resolved: 2026-10-14
 ---
 
 # `just format` walks into leaves whose workspace root is a build artifact
@@ -119,3 +120,10 @@ neither requires nor forbids the table for a member, which is why `mixed` and
 rm -f examples/workspaces/launch/Cargo.toml    # already absent on a fresh clone
 just format
 ```
+
+## Resolution (2026-10-14)
+
+Fixed by phase-445 W5 (`f24e9c519f`, 2026-09-10). The root `Cargo.toml`
+now excludes the whole `examples/workspaces` prefix (`Cargo.toml:236`). An
+unbuilt colcon leaf therefore no longer resolves to the repo-root workspace,
+which was the error `just format` reported.

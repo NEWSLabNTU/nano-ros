@@ -3,10 +3,11 @@ id: 1245
 title: "The free `nros::spin(duration_ms, poll_ms)` is issue 0338's bounded-spin
   trap, one level up — 0338 renamed the Executor method and left the free
   overload behind"
-status: open
+status: resolved
 type: bug
 area: api, cpp
 related: [rfc-0089, phase-427]
+resolved: 2026-10-14
 ---
 
 ## Problem
@@ -75,3 +76,10 @@ Found during phase-427's Rust spin-family rename. `nros.hpp` is the header
 PR #755 (phase-427's C++ node merge) is rewriting, and a deprecation attribute
 landing in it mid-merge is a conflict for no urgency — nothing is broken today,
 only misnamed. It belongs to the C++ wave that owns that header.
+
+## Resolution (2026-10-14)
+
+The overload is gone. The bounded free spin is now
+`rclcpp::spin_in(duration_ms, poll_ms)`
+(`packages/api/nros-cpp/include/nros/nros.hpp:212`). `spin` takes only a
+node, after the phase-483 move to `rclcpp::`.

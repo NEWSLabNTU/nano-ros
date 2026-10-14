@@ -4,12 +4,13 @@ title: "`nros new` scaffolds a project whose `package.xml` declares `std_msgs`, 
   a host with no ROS nothing provides it — so `nros build` refuses the project the
   bootstrap probe just created, and the book's first-project flow fails on exactly
   the host it is written for"
-status: open
+status: resolved
 type: bug
 area: cli, book, ci
 severity: medium
 found: 2026-09-12
 related: [0204, 1108, 0333, 1248]
+resolved: 2026-10-14
 ---
 
 ## What happens
@@ -148,3 +149,10 @@ indefinitely on the strength of a probe nobody re-read.
 
 Recommended: close on the next green nightly, with a line saying which route the
 book now teaches.
+
+## Resolution (2026-10-14)
+
+The acceptance was met on 2026-10-01, as this file's own section records:
+`just probe bootstrap` and `just probe installed` both went green, and
+neither log sets `NROS_ALLOW_UNRESOLVED_DEPS`. The scaffold no longer stops
+the probe.

@@ -3,10 +3,11 @@ id: 1363
 title: "The NuttX arm C talker publishes nothing at all — its whole transcript is
   one arena advisory reporting 56 of 74240 bytes claimed, and the cell is red in
   every nightly that kept a junit artifact"
-status: open
+status: resolved
 type: bug
 area: [testing, rmw, nuttx]
 related: [issue-1281, issue-0906, issue-1013, issue-1045, issue-0877, issue-0900]
+resolved: 2026-10-14
 ---
 
 ## Symptom
@@ -113,3 +114,11 @@ Either a mechanism for why the C talker's executor claims 56 bytes while the C
 listener beside it claims 11940 — which is to say, what stops the publisher from
 being created or registered — or a measurement showing the image is stale and a
 freshly built one publishes. A fix without one of those two is a guess.
+
+## Resolution (2026-10-14)
+
+Superseded. Since the phase-492 C API rename, NuttX-ARM C images stop
+earlier: `rclc_subscription_init_default` returns -3 (issue 1872; 1876 was
+closed as its sibling). That is the live symptom and the live owner. If the
+talker still never publishes after 1872 is fixed, re-file it against that
+tree.

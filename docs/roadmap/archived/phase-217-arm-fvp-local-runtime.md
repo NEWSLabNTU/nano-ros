@@ -8,6 +8,8 @@ smokes shipped, runtime tracked as the never-landed 117.13.) and stays
 strictly local — Corellium AVH staging is a separate path (different
 firmware format + remote provisioning + auth, out of scope here).
 
+**Status (2026-10-14). ARCHIVED (superseded).** Archived because nothing drives it; the 2026-10-12 note below says why.
+
 **Status (2026-10-12). PARKED.** Track A (run recipes, the FVP resolver and
 installer) landed 2026-06-03. The rest is superseded rather than pending. The
 FVP is now a pinned public download (`nros setup --tool arm-fvp`, no licence),
