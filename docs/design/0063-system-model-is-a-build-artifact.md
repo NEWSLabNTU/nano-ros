@@ -1,10 +1,15 @@
 # RFC-0063 — The SystemModel is a build artifact, not a committed source
 
-**Status:** Draft (2026-08-02)
+**Status:** Stable (2026-10-14). Drafted 2026-08-02. Implemented by phase-330
+W1-W7, and `check-no-tracked-models` enforces it. The four open questions
+below are answered in place. RFC-0060's 2026-10-10 amendment (phase-486)
+refines what the model carries: nano-ros build facts go in the `nros.toml`
+overlay beside it. That leaves this RFC's decision unchanged. One known gap
+in the freshness claim is open, as issue 1121 (see Consequences).
 **Amends:** phase-296 (committed SystemModel as the sole `nros plan` input),
 issue 0320 (content-addressed model staleness), RFC-0047 / RFC-0052 (scheduling
 dims and their fail-loud contract).
-**Implemented by:** [phase-330](../roadmap/phase-330-system-model-as-build-artifact.md)
+**Implemented by:** [phase-330](../roadmap/archived/phase-330-system-model-as-build-artifact.md)
 **Motivated by:** issue 0380 — two regeneration commits deleted committed
 models, stripped 17 hand-authored scheduling dims, and ~17 realtime e2e tests
 silently lost their subject.
@@ -70,6 +75,10 @@ provenance exists because a committed artifact can silently disagree with its
 inputs. A build-directory artifact regenerated per build cannot: the ordinary
 build-system freshness rules apply, the same way object files do not carry
 sha256 provenance of their sources.
+*Known gap (issue 1121, open):* the resolver reads a contract sidecar
+(`<stem>.contract.yaml`), but adding one does not re-resolve the model it
+feeds. So `nros sync` can leave a stale model in place. The rule above still
+stands, and the missing edge is a bug against it.
 
 **Issue 0380's guards become transitional.** The sync-time refusal and
 `check-model-dims` protect data that will no longer exist in a committed file.
@@ -127,14 +136,25 @@ read the marker.
 - **Config surface for the dims.** Exact schema for per-platform scoped tiers
   in the system config, and whether it lives in `system.toml`'s
   `nros_orchestration_ir` schema or beside it.
+  *Answered (phase-330 W1):* in `system.toml`'s `[tiers.<name>.<rtos>]`
+  tables, the `nros_orchestration_ir` schema. The resolver already parsed them
+  into rlm's `TierPlatformSpec`, so the gap was nano-ros's narrower mirror and
+  needed no fork change.
 - **Build location.** `build/<pkg>/system_model.yaml` mirrors colcon most
   closely; the alternative is a single workspace-level `build/nros/`.
+  *Answered (phase-330 W3):* a workspace-level
+  `<ws>/build/nros/models/<bringup>/`.
 - **Migration.** The committed models carry hand-authored dims that the inputs
   cannot yet express, so the inputs must gain them BEFORE the models are
   deleted, or the migration reproduces issue 0380 at scale.
+  *Answered (phase-330 W1-W4):* the inputs gained the dims first, and 112
+  committed models were deleted after a round-trip proved nothing was lost.
 - **Consumers that read a committed path today.** `nros plan`, the entry
   codegen and the cmake integration resolve the model by convention; each needs
   to follow the build-directory location.
+  *Answered (phase-330 W3/W7):* every consumer locates the model through
+  `nros_orchestration_ir::model_location`, and an entry names its input
+  (`launch = "bringup[:file]"`), not a model path.
 
 ## Non-goals
 

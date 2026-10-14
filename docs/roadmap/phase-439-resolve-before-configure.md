@@ -514,3 +514,4 @@ evidence, the item is *close it*.
 | --- | --- |
 | [#1228](../issues/1228-resolve-phase-does-not-yet-delete-the-fixed-point.md) | W2 landed the resolve phase and its own text says 'Remainder is issue 1228'. That is a hand-off, and the remainder is this phase's unmet A3 |
 | [#1252](../issues/1252-message-bound-knobs-have-no-pre-configure-twin.md) | the message-bound half of the same chain has no pre-configure producer. Without it RFC-0094 A3 cannot be met, which makes it a work item here rather than a note |
+| [#1121](../issues/1121-contract-sidecar-has-no-model-freshness-edge.md) | a new `<stem>.contract.yaml` is a resolver input that `nros sync` does not record, so the model it feeds stays stale. Recording every resolve input is this phase's digest question. Re-homed 2026-10-14 from phase-330, archived; phase-460 rules it out of scope |

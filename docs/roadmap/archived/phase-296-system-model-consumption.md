@@ -9,7 +9,7 @@ The 2026-07-23 line below reported "**17 CMake + 7 Rust** holdouts" and read as
 migration debt for six weeks. It is not debt, and re-counting it is the wrong
 repair. Its classifier counts entries whose non-comment lines still carry
 `LAUNCH "…"` / `launch = "…"`, because R4's target was to move every entry ONTO
-`MODEL`/`model =`. [phase-330](../phase-330-system-model-as-build-artifact.md) W7
+`MODEL`/`model =`. [phase-330](phase-330-system-model-as-build-artifact.md) W7
 — *"Input-addressed entries: `launch =` replaces `model =`"* (2026-08-03) —
 reversed exactly that: entries name their INPUT, SystemModels are build
 artifacts, and `model =`/`MODEL` are now DEPRECATED expert overrides (CLAUDE.md
