@@ -1,7 +1,7 @@
 # Phase 499 — The user surface is upstream's: include paths, `main`, and the C++ examples
 
-**Status (2026-10-14). W1–W5, W7, W8 landed (W6 folded into W4); RTOS images other than ThreadX-Linux and bare metal are left to the tier-2 lane.** Implements the
-[RFC-0089](../design/0089-ros2-api-adoption-and-the-compile-or-conform-rule.md)
+**Status (2026-10-15). Complete — W1–W5, W7, W8 landed in #2196 (W6 folded into W4); RTOS images other than ThreadX-Linux and bare metal are left to the tier-2 lane.** Implements the
+[RFC-0089](../../design/0089-ros2-api-adoption-and-the-compile-or-conform-rule.md)
 amendment "the user surface is upstream's — include paths, `main`, and no
 `nros` spelling" (2026-10-13). Follows
 [phase-492](phase-492-c-api-rcl-names.md), which renamed the C API and moved C
