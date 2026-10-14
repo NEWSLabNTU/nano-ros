@@ -182,6 +182,17 @@ function(nros_feature_set out_var)
         # back — so the DECLARATION gates the use of the name.
         if(NROS_RMW_RLIB_DEP AND _fs_rmw_feature)
             list(APPEND _feats "${_fs_rmw_feature}")
+            # issue 1893 — the edition's THIRD destination. `ros-<edition>`
+            # above reaches `nros` and stops at `nros-node`, inert since phase
+            # 104.A, while a backend may key its WIRE on the edition (zenoh's
+            # data key). The backend declares its own feature for it, and this
+            # names it as a dependency feature of the bundled rlib, so neither
+            # umbrella crate has to name a backend to forward it (RFC-0071).
+            if(NROS_RMW_EDITION_FEATURE)
+                string(REPLACE "{edition}" "${_edition}" _fs_ed_feat
+                    "${NROS_RMW_EDITION_FEATURE}")
+                list(APPEND _feats "${NROS_RMW_RLIB_DEP}/${_fs_ed_feat}")
+            endif()
         else()
             list(APPEND _feats rmw-cffi)
         endif()

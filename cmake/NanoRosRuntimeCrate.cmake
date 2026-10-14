@@ -110,8 +110,30 @@ static _KEEP_BACKEND: unsafe extern \"C\" fn() = nros_cpp::nros_cpp_auto_registe
 
     # ---- Synthesise the crate ----
     set(_feat_toml "")
+    set(_backend_dep_line "")
     foreach(_f IN LISTS _W_CPP_FEATURES)
-        string(APPEND _feat_toml "\"${_f}\", ")
+        # issue 1893 — `nros_feature_set()` names the bundled backend's edition
+        # feature as `<rlib>/<feature>`, which `--features` accepts and a
+        # dependency's `features = [...]` does NOT ("not allowed to contain
+        # slashes"). Here it becomes a DIRECT dep on that rlib carrying the
+        # feature; cargo unifies it with nros-cpp's own (same path, one unit).
+        if(_f MATCHES "^([^/]+)/(.+)$")
+            set(_bdep "${CMAKE_MATCH_1}")
+            set(_bfeat "${CMAKE_MATCH_2}")
+            nros_rmw_dispatch("${_W_BACKEND}")
+            if(NOT _bdep STREQUAL NROS_RMW_RLIB_DEP
+                    OR NOT EXISTS "${NROS_RMW_PACKAGE_DIR}/Cargo.toml")
+                message(FATAL_ERROR
+                    "nros runtime crate: feature '${_f}' names '${_bdep}', but backend "
+                    "'${_W_BACKEND}' bundles '${NROS_RMW_RLIB_DEP}' from "
+                    "'${NROS_RMW_PACKAGE_DIR}' — only the bundled rlib's own feature "
+                    "can be carried as a direct dependency (issue 1893).")
+            endif()
+            string(APPEND _backend_dep_line
+                "${_bdep} = { path = \"${NROS_RMW_PACKAGE_DIR}\", default-features = false, features = [\"${_bfeat}\"] }\n")
+        else()
+            string(APPEND _feat_toml "\"${_f}\", ")
+        endif()
     endforeach()
 
     file(WRITE "${_W_OUT_DIR}/Cargo.toml"
@@ -130,7 +152,7 @@ crate-type = [\"staticlib\"]
 
 [dependencies]
 nros-cpp = { path = \"${NROS_REPO_DIR}/packages/api/nros-cpp\", default-features = false, features = [${_feat_toml}] }
-${_dep_lines}
+${_backend_dep_line}${_dep_lines}
 [workspace]
 
 # phase-336 — NO mirrored `[profile.*]` block. This umbrella is its own

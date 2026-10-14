@@ -280,8 +280,24 @@ build-bridge-example topics="debug_key_value" edition="jazzy":
     # BACKENDS-vs-session-NAME half is not: asking for a backend by a name
     # nothing registered opens nothing and reports a transport failure, which
     # reads as a dead network. One value removes that.
+    # issue 1893 — the edition's THIRD destination. Step [1/4] writes it into
+    # the generated TYPE_HASH, but a backend may key its wire on it (zenoh's data
+    # key), and `nros-cpp/ros-*` stops at nros-node. The backend DECLARES its
+    # own feature (`[rmw.link] edition_feature`), read here from the same
+    # dispatch cmake reads, and named as `<rlib>/<feature>`. Without it a jazzy
+    # image advertised a RIHS01 hash on Humble's `TypeHashNotSupported` key.
+    if ! dispatch="$(nros ws rmw-dispatch "$RMW" --lines)"; then
+        echo "ERROR: nros ws rmw-dispatch $RMW failed" >&2
+        exit 1
+    fi
+    RLIB="$(printf '%s\n' "$dispatch" | awk -F'\t' '$1=="NROS_RMW_RLIB_DEP"{print $2}')"
+    ED_FEAT="$(printf '%s\n' "$dispatch" | awk -F'\t' '$1=="NROS_RMW_EDITION_FEATURE"{print $2}')"
+    EXTRA=""
+    if [ -n "$RLIB" ] && [ -n "$ED_FEAT" ]; then
+        EXTRA=",$RLIB/${ED_FEAT//\{edition\}/{{edition}}}"
+    fi
     cargo build -p nros-cpp --no-default-features \
-        --features "std,rmw-$RMW-cffi,bridge,platform-posix" --release # profile-literal-ok: symbol fixture
+        --features "std,rmw-$RMW-cffi,bridge,platform-posix,ros-{{edition}}$EXTRA" --release # profile-literal-ok: symbol fixture
     # profile-literal-ok: symbol fixture: same PX4 SITL link as above.
     # The POSIX platform archive nros_px4_add_module links (its guard names this
     # exact command when it is missing).
@@ -429,7 +445,7 @@ test-bridge-ros2:
     NROS_PX4_BRIDGE_RMW=zenoh just px4 build-bridge-example debug_key_value humble
     just px4 build-px4-msgs-ros humble
     source scripts/build/cargo.sh
-    cargo_nextest_args=($(nros_cargo_nextest_args))
+    cargo_nextest_args=($(nros_cargo_nextest_args_unlocked))
     cd packages/testing/nros-px4-sitl-test
     cargo nextest run "${cargo_nextest_args[@]}" --test px4_bridge_ros2_e2e
 
@@ -505,7 +521,7 @@ test-sitl-example: build-sitl-example
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
-    cargo_nextest_args=($(nros_cargo_nextest_args))
+    cargo_nextest_args=($(nros_cargo_nextest_args_unlocked))
     cd packages/testing/nros-px4-sitl-test
     cargo nextest run "${cargo_nextest_args[@]}" --test px4_uorb_interop_e2e
 
@@ -538,7 +554,7 @@ test-sitl: build-sitl-cpp build-fixtures
     # resolve `px4-rs` on a fresh clone. Run them from their own dir.
     set -e
     source scripts/build/cargo.sh
-    cargo_nextest_args=($(nros_cargo_nextest_args))
+    cargo_nextest_args=($(nros_cargo_nextest_args_unlocked))
     cd packages/testing/nros-px4-sitl-test
     cargo nextest run "${cargo_nextest_args[@]}" --test px4_xrce_e2e
 

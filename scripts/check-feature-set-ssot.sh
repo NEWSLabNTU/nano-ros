@@ -347,8 +347,94 @@ if [ -n "$bound_hits" ]; then
     fail=1
 fi
 
+# 9. issue 1893 — an edition must REACH the zenoh backend.
+#
+#    `nros-rmw-zenoh` picks its data-key format from its OWN `ros-*` feature
+#    (`keyexpr.rs`: RIHS01 tail on iron/jazzy, `TypeHashNotSupported`
+#    otherwise), while `nros/ros-*` stops at `nros-node`, inert since phase
+#    104.A. Two roads carry an edition to the backend, and each had a hole:
+#
+#    * The C/C++ road: cmake hands `ros-<edition>` to nros-c / nros-cpp, which
+#      may not name a backend (RFC-0071, `check-rmw-agnostic`). So the BACKEND
+#      declares its feature (`[rmw.link] edition_feature`) and
+#      `nros_feature_set()` appends `<rlib_dep>/<feature>`. Checked here: a
+#      bundled rlib whose crate HAS `ros-*` features must declare it.
+#    * The cargo road: `nros build` forwards the edition to the board crate
+#      only when the board declares the feature (`crate_declares_feature`).
+#      The five embedded boards hardcoded `ros-humble` on the dep and declared
+#      none, so a jazzy image had nowhere to put it. Checked here: a board crate
+#      with a `nros-rmw-zenoh` dep forwards each edition and hardcodes none.
+#      The two NuttX kernel-bundle crates have no `[features]` table, so
+#      nothing selects an edition through them.
+source scripts/lib/grep-q.sh
+edition_reach_scan() {
+    # $1 = board manifest. Prints one line per missing forward / hardcoded edition.
+    local m="$1" ed block
+    nros_grep_q -E '^nros-rmw-zenoh *=' "$m" || return 0
+    nros_grep_q '^\[features\]' "$m" || return 0
+    block="$(awk '/^nros-rmw-zenoh *=/{p=1} p{print} p&&/\}/{exit}' "$m")"
+    if nros_grep_q -E '"ros-(humble|iron|jazzy)"' <<<"$block"; then
+        echo "$m: the nros-rmw-zenoh dep hardcodes an edition — forward it from a ros-* feature instead"
+    fi
+    for ed in humble iron jazzy; do
+        block="$(awk -v ed="ros-$ed" '
+            $0 ~ "^"ed" *= *\\[" {p=1}
+            p {print}
+            p && /\]/ {exit}' "$m")"
+        nros_grep_q -E "\"nros-rmw-zenoh\??/ros-$ed\"" <<<"$block" \
+            || echo "$m: ros-$ed does not forward to nros-rmw-zenoh"
+    done
+}
+descriptor_edition_scan() {
+    # $1 = nros-rmw.toml. A bundled rlib with edition features must declare one.
+    local d="$1" crate
+    nros_grep_q -E '^rlib_dep *= *"[^"]+"' "$d" || return 0
+    crate="$(dirname "$d")/Cargo.toml"
+    [ -f "$crate" ] || return 0
+    nros_grep_q -E '^ros-jazzy *=' "$crate" || return 0
+    nros_grep_q -E '^edition_feature *= *"[^"]*\{edition\}[^"]*"' "$d" \
+        || echo "$d: its rlib has ros-* features but declares no [rmw.link] edition_feature"
+}
+edition_reach_selftest() {
+    local t out; t=$(mktemp -d)
+    printf '%s\n' '[features]' 'ros-humble = ["nros/ros-humble"]' \
+        'ros-iron = ["nros/ros-iron", "nros-rmw-zenoh?/ros-iron"]' \
+        'ros-jazzy = [' '    "nros/ros-jazzy",' '    "nros-rmw-zenoh?/ros-jazzy",' ']' \
+        '[dependencies]' 'nros-rmw-zenoh = { path = "x", features = [' '    "ros-humble",' '], optional = true }' \
+        > "$t/Cargo.toml"
+    printf '%s\n' '[rmw.link]' 'rlib_dep = "nros-rmw-x"' > "$t/nros-rmw.toml"
+    out="$(edition_reach_scan "$t/Cargo.toml"; descriptor_edition_scan "$t/nros-rmw.toml")"
+    printf '%s\n' '[rmw.link]' 'rlib_dep = "nros-rmw-x"' 'edition_feature = "ros-{edition}"' > "$t/nros-rmw.toml"
+    out+=$'\n'"OK:$(descriptor_edition_scan "$t/nros-rmw.toml")"
+    rm -rf "$t"
+    case "$out" in *"ros-humble does not forward"*) ;;
+        *) echo "FAIL: check-feature-set-ssot selftest — a missing edition forward slipped through" >&2; exit 1 ;; esac
+    case "$out" in *"hardcodes an edition"*) ;;
+        *) echo "FAIL: check-feature-set-ssot selftest — a hardcoded dep edition slipped through" >&2; exit 1 ;; esac
+    case "$out" in *"declares no [rmw.link] edition_feature"*) ;;
+        *) echo "FAIL: check-feature-set-ssot selftest — a descriptor without edition_feature slipped through" >&2; exit 1 ;; esac
+    case "$out" in *"ros-iron does not"*|*"ros-jazzy does not"*|*"OK:"?*)
+        echo "FAIL: check-feature-set-ssot selftest — a correct forward/descriptor was reported" >&2; exit 1 ;; esac
+}
+edition_reach_selftest
+reach_hits=""
+while IFS= read -r m; do
+    reach_hits+="$(edition_reach_scan "$m")"$'\n'
+done < <(git ls-files 'packages/boards/**/Cargo.toml')
+while IFS= read -r d; do
+    reach_hits+="$(descriptor_edition_scan "$d")"$'\n'
+done < <(git ls-files 'packages/rmw/**/nros-rmw.toml')
+if [ -n "${reach_hits//[$'\n']/}" ]; then
+    echo "FAIL: a selected ROS edition does not reach the zenoh backend (issue 1893):"
+    printf '%s' "$reach_hits" | while IFS= read -r h; do [ -n "$h" ] && note "$h"; done
+    note "Board: forward each ros-<edition> to \"nros-rmw-zenoh?/ros-<edition>\"; never hardcode one."
+    note "Backend: declare [rmw.link] edition_feature = \"ros-{edition}\" in nros-rmw.toml."
+    fail=1
+fi
+
 if [ "$fail" -eq 0 ]; then
     echo "feature-set SSoT OK — one edition source, one platform mapping, no node-level"
-    echo "editions, no default-list editions, no entry-level axis restatements."
+    echo "editions, no default-list editions, no entry-level axis restatements, every edition"
+    echo "reaches the zenoh backend."
 fi
 exit "$fail"

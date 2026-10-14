@@ -81,14 +81,13 @@ nros_uorb_bridge start
 nros_uorb_bridge status
 ```
 
-Two caveats, both measured (2026-10-14):
+Two things to know, both measured:
 
-* **Build for `humble` if your subscriber is Humble — and today, whatever it
-  is.** The `edition` argument reaches the generated header's `TYPE_HASH` but
-  not the zenoh backend, whose data key is Humble-shaped
-  (`TypeHashNotSupported`) in every bridge image, so the default `jazzy` build
-  is a Humble publisher with a Jazzy hash
-  ([issue 1893](../../../../docs/issues/1893-px4-bridge-edition-misses-zenoh-keyexpr.md)).
+* **Build for your subscriber's edition.** The `edition` argument (default
+  `jazzy`) decides the data key: a `humble` image is seen only by a Humble
+  subscriber and a `jazzy` image only by an Iron+ one. Until 2026-10-15 every
+  image published Humble keys whatever you asked for
+  ([issue 1893](../../../../docs/issues/archived/1893-px4-bridge-edition-misses-zenoh-keyexpr.md)).
 * **`NROS_PX4_BRIDGE_RMW=xrce` builds but does not boot** in `px4_sitl_default`:
   PX4's own `uxrce_dds_client` calls into the bridge's copy of
   Micro-XRCE-DDS-Client and SEGVs

@@ -69,7 +69,6 @@ log = { version = "0.4", default-features = false }
 # the overlay forwards `rmw-zenoh`; cyclonedds builds leave it off.
 nros-rmw-zenoh = { path = "../../rmw/zenoh/nros-rmw-zenoh", default-features = false, features = [
     "platform-threadx",
-    "ros-humble",
 ], optional = true }
 
 [build-dependencies]
@@ -102,3 +101,11 @@ default = []
 # per-board overlay (which the example forwards to from its own `rmw-zenoh`), so a
 # zenoh build registers a backend and a cyclonedds build (feature off) does not.
 rmw-zenoh = ["dep:nros-rmw-zenoh"]
+# ROS edition. The zenoh backend's data-key format is its own `ros-*` feature,
+# so the edition must be FORWARDED, never hardcoded on the dep: this dep used
+# to name `ros-humble`, and with no feature here `nros build` had nowhere to
+# put a jazzy image's edition (the facade forwards only to a crate that
+# declares it), so it published Humble keys — issue 1893.
+ros-humble = ["nros-rmw-zenoh?/ros-humble"]
+ros-iron = ["nros-rmw-zenoh?/ros-iron"]
+ros-jazzy = ["nros-rmw-zenoh?/ros-jazzy"]
