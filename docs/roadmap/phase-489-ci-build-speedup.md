@@ -560,7 +560,7 @@ workspace rows of the native lane (`workspace-fixtures-build.sh linux rust`),
 warm, no change: 19 rows / 273 s of row time before, 0 rows / 30 s after
 (the same measurement also found and removed `cyclonedds-sys`'s self-dirtying
 `OUT_DIR` watch). The native module's 1747 s above therefore drops by roughly
-240 s; the C/C++ rows' per-row cmake reconfigure is untouched.
+240 s; the C/C++ rows' per-row cmake reconfigure is fixed below (PR #2170).
 
 Freshness, checked on the same tree after the change: a one-line edit to a
 compile-check row's source made `_require-fixtures-ready` (lane native) fail
@@ -598,9 +598,39 @@ mtime kept, tree inside the checkout refused, over-age reset, shallow and
 refuses, a broken git store recovers). `lane-stage.py` maps the new step to
 provisioning.
 
-**Still to do.** The CI second-run time per lane (two runs of each lane on the
-same runner), issue 1869 (the shared-dir rebuild), and `nros build`'s per-row
-cmake reconfigure. Acceptance (under 10 % of cold) is not met: 24 % locally.
+**`nros build`'s per-row cmake configure, fixed afterwards** (PR #2170).
+Cause, measured: `cmake -S -B` is not make-shaped, it runs the whole configure
+and generate on every call, and `nros build` calls it once per image. A
+workspace's images share one build dir per board/RMW, so a no-change re-run of
+the linux C workspace (`workspace-fixtures-build.sh linux c`, 20 rows) printed
+`Configuring done` 20 times — nothing forced it but the call itself (the shared
+cache also held the last row's `-DNROS_RESOLVED_DIR`, which differs per image
+and would have defeated a plain "args unchanged" test). `run_configure` now
+keeps a stamp beside the cache (the `-D` arguments except that seed-only
+variable, plus the `NROS_*`/`CMAKE_*`/toolchain environment) and skips the
+explicit configure when the dir holds a generated build system and the stamp
+matches; `cmake --build` re-runs the configure itself on any registered input,
+as it already did on the bash road (`nros_cmake_configure_if_needed`). All three
+planner configure sites (workspace, single-leaf, cmake member) share the one
+helper, `builder/cmake_configure.rs`.
+
+| measurement (4-core box, warm tree, no change) | before | after |
+| --- | --- | --- |
+| C workspace rows, row time | 200 s, 20 configures | 32 s, 0 configures |
+| `just build native` | 2306 s (24 % of 9479 s cold) | 1772 s (18.7 %); a second run 2249 s (23.7 %) |
+
+Negative controls: unit tests (a changed `-D`, a changed or removed `NROS_*`
+variable, a removed build system, an invalidated stamp each force the
+configure); end to end, `touch src/demo_bringup/system.toml` made `cmake
+--build` reconfigure once while `nros` skipped its own, and a changed `NROS_*`
+variable made `nros` configure.
+
+**Still to do.** Acceptance (under 10 % of cold) is not met: 18.7 % locally.
+What the 1772 s is made of: `check fast` and `_codegen` ~300 s, the native
+module 1186 s of which about 100 single-package cargo leaf rows cost ~14 s each
+(the single-package leaf road; PR #2158 extends the shared target dir to it), and the post-build checks ~260 s. The CI second-run time per
+lane (two runs of each lane on the same self-hosted runner) is blocked on free
+runners and still unmeasured.
 
 ### W7 — find out why `newslab-server-241` is 2–5× slower
 
