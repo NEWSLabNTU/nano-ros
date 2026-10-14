@@ -22,56 +22,72 @@
 # non-native leaves, so 20 of the 22 `examples/native/rust/*` leaves linted only
 # where an earlier fixture build had happened to sync them, and failed
 # `cargo metadata` everywhere else.
+#
+# Issue 1892: every decision below is read off the leaf's SHAPE (the files it
+# holds, `scripts/build/leaf-settings.sh`), never off its platform directory.
+# 1882's `platform != "native"` test had become false (1305 put the host leaves
+# on `[image.<id>]` too), and a directory test also moves when the directory is
+# renamed (phase-500 W4). `check-host-platform-vocabulary` item 9 runs this
+# script in PLAN mode (`NROS_LINT_LEAF_PLAN=1`: print the decisions, run
+# neither sync nor cargo) over the same leaf under several platform dirs and
+# fails if any decision differs. The one platform case left is esp32's
+# SSID/PASSWORD env, a property of that firmware's source (dormant, issue 1525).
 set -euo pipefail
 dir="${1:?leaf dir}"
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/build/leaf-settings.sh
+source "$here/leaf-settings.sh"
 platform="$(echo "$dir" | cut -d/ -f2)"
-flags=""
+# The profile the fixture lane builds every one of these leaves at. It used to
+# be withheld from `native` leaves (a `--release`-for-firmware rule from before
+# the named profiles); the profiles are defined in the repo-root
+# `.cargo/config.toml`, which cargo discovers from every in-tree leaf.
+flags="${NROS_EXAMPLE_PROFILE_FLAGS:-}"
 env_prefix=()
-if [ "$platform" != "native" ]; then flags="${NROS_EXAMPLE_PROFILE_FLAGS:-}"; fi
 case "$platform" in
     esp32 | esp32-c3-baremetal) env_prefix=(env "SSID=${SSID:-test}" "PASSWORD=${PASSWORD:-test}") ;;
 esac
-if [ -n "${NROS_CHECK_VERBOSE:-}" ]; then echo "  check $dir"; fi
+plan="${NROS_LINT_LEAF_PLAN:-}"
+if [ -n "${NROS_CHECK_VERBOSE:-}" ] && [ -z "$plan" ]; then echo "  check $dir"; fi
 
 # `-p <leaf>`, not a bare `fmt --check`: once a developer has run `nros sync`
 # the leaf's workspace includes the `generated/*` message crates, user-side
 # codegen output that rustfmt has no business judging.
 pkg="$(sed -n 's/^name[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$dir/Cargo.toml" | head -1)"
-# One target dir PER LEAF (each is its own workspace root, RFC-0026; issue 0616),
-# never the leaf's own `target/` (issue 0624).
-lintdir="$NROS_EXAMPLE_LINT_DIR/$(echo "${dir#examples/}" | tr '/' '-')"
 
-# Issue 1887: EVERY leaf is rendered, native included (issue 1888 already
-# extended this to native leaves with a `system.toml`; 1887 adds the
-# `package.xml`-only ones). Since phase-445 W6 no
-# example tracks a `.cargo/` (gate `check-example-cargo-dirs`), so even a leaf
-# with no `system.toml` resolves `nros-log` only through the `[patch.crates-io]`
-# row sync writes (`examples/native/rust/logging`), and 21 native leaves name
-# their `<leaf>_nros_selection` crate. 1882 keyed rendering on the platform, so
-# on a checkout no fixture build had synced first those leaves failed at
-# manifest parse. A native leaf gets no `--config`: sync wires
-# `build/<image>/nros-cargo.toml` into the leaf's own `.cargo/config.toml` as an
-# `include` (issue 1381), and cargo joins `rustflags` across files, so reading
-# it twice is not free.
-cfg=()
-if [ -f "$dir/system.toml" ] || [ -f "$dir/package.xml" ]; then
+# Issue 1887: EVERY leaf `nros sync` can read is rendered, whatever its
+# platform. Since phase-445 W6 no example tracks a `.cargo/` (gate
+# `check-example-cargo-dirs`), so a leaf with `[image.<id>]` names its
+# generated `<leaf>_nros_selection` crate, and even a leaf with no `system.toml`
+# resolves `nros-log` only through the `[patch.crates-io]` row sync writes
+# (`examples/native/rust/logging`).
+render=0
+if nros_leaf_sync_renders "$dir"; then render=1; fi
+if [ "$render" = 1 ] && [ -z "$plan" ]; then
     # `nros sync` is idempotent; its chatter is not this gate's output, so it is
     # kept for the failure path only.
     log="$(mktemp "${TMPDIR:-/tmp}/nros_lint_sync.XXXXXX")"
     if ! (cd "$dir" && nros sync) >"$log" 2>&1; then
-        echo "native check: \`nros sync\` failed in $dir" >&2
+        echo "linux check: \`nros sync\` failed in $dir" >&2
         cat "$log" >&2
         rm -f "$log"
         exit 1
     fi
     rm -f "$log"
-    # `build/nros*` are sync's own dirs; every other `build/<id>/` is an image.
-    if [ "$platform" != "native" ] && [ -f "$dir/system.toml" ]; then
-        for f in "$dir"/build/*/nros-cargo.toml; do
-            [ -f "$f" ] && cfg+=(--config "${f#"$dir"/}")
-        done
-    fi
 fi
+# The generated settings reach a cargo run inside the leaf through sync's
+# `include` (issue 1381); `--config` only where that include is absent.
+cfg=()
+while IFS= read -r a; do [ -n "$a" ] && cfg+=("$a"); done < <(nros_leaf_inside_config_args "$dir")
+
+if [ -n "$plan" ]; then
+    printf 'render=%s\nconfig=%s\nflags=%s\npkg=%s\n' "$render" "${cfg[*]:-}" "$flags" "$pkg"
+    exit 0
+fi
+
+# One target dir PER LEAF (each is its own workspace root, RFC-0026; issue 0616),
+# never the leaf's own `target/` (issue 0624).
+lintdir="$NROS_EXAMPLE_LINT_DIR/$(echo "${dir#examples/}" | tr '/' '-')"
 
 cd "$dir"
 cargo "+$NIGHTLY" fmt --check -p "$pkg"

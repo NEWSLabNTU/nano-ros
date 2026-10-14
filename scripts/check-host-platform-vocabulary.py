@@ -58,6 +58,17 @@ invisible to the old gate's `tests` exclusion):
      `_nros_selection`. No alias: an image id is a label the workspace
      authors, not a CLI front door, so a user's own `[image.native]` still
      builds; only this tree stops spelling it.
+  9. (issue 1892) The example lint (`scripts/build/lint-example-leaf.sh`)
+     decides from a leaf's SHAPE, never from its platform DIRECTORY. The
+     script is run in PLAN mode (`NROS_LINT_LEAF_PLAN=1`: it prints whether it
+     renders the leaf with `nros sync`, its `--config` args and its profile
+     flags, and runs neither sync nor cargo) over synthetic leaves of each
+     shape, each placed under `examples/native/`, `examples/linux/` and a board
+     directory. Every plan must equal the shape's expected plan, so a
+     `platform != "native"` test (1882's, which left 21 host leaves unrendered
+     on a fresh checkout) fails here on a pull request instead of in the
+     nightly-only `native-check`. Then every tracked example leaf whose
+     `system.toml` declares an `[image.<id>]` — of any id — must plan a render.
 
 WHAT IT DELIBERATELY DOES NOT CHECK
 
@@ -328,6 +339,90 @@ def check_files():
     return problems
 
 
+LINT_LEAF = os.path.join(ROOT, "scripts", "build", "lint-example-leaf.sh")
+# Three spellings of "which platform directory": the host's current one, its
+# phase-500 W4 name, and a board's. A decision that differs between them was
+# keyed on the directory.
+PLAN_PLATFORMS = ("native", "linux", "mps2-an385-baremetal")
+
+_CARGO = '[package]\nname = "{name}"\nversion = "0.1.0"\nedition = "2024"\n'
+_SYSTEM = '[system]\nname = "s"\n\n[image.img0]\nboard = "b"\n'
+_PKG = '<?xml version="1.0"?>\n<package format="3"><name>p</name></package>\n'
+_SETTINGS = "build/img0/nros-cargo.toml"
+# shape -> (files, expected plan). Image ids are arbitrary labels on purpose.
+LEAF_SHAPES = {
+    "image leaf, not yet rendered": (
+        {"system.toml": _SYSTEM, "package.xml": _PKG},
+        {"render": "1", "config": ""}),
+    "image leaf, settings included by sync (issue 1381)": (
+        {"system.toml": _SYSTEM, "package.xml": _PKG, _SETTINGS: "",
+         ".cargo/config.toml": 'include = ["../build/img0/nros-cargo.toml"]\n'},
+        {"render": "1", "config": ""}),
+    "image leaf, settings NOT included (leaf states its own build flags)": (
+        {"system.toml": _SYSTEM, _SETTINGS: "",
+         ".cargo/config.toml": '[build]\ntarget = "x"\n'},
+        {"render": "1", "config": f"--config {_SETTINGS}"}),
+    "package.xml-only leaf (issue 1887)": (
+        {"package.xml": _PKG},
+        {"render": "1", "config": ""}),
+    "plain cargo leaf": (
+        {},
+        {"render": "0", "config": ""}),
+}
+PLAN_FLAGS = "--profile nros-plan-probe"
+
+
+def lint_plan(cwd, leaf):
+    """The lint script's decisions for `leaf` (relative to `cwd`), as a dict."""
+    env = dict(os.environ, NROS_LINT_LEAF_PLAN="1", NROS_EXAMPLE_PROFILE_FLAGS=PLAN_FLAGS)
+    r = subprocess.run(["bash", LINT_LEAF, leaf], cwd=cwd, env=env,
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        return {"error": f"rc={r.returncode}: {r.stderr.strip()}"}
+    return dict(l.split("=", 1) for l in r.stdout.splitlines() if "=" in l)
+
+
+def plan_problems(shape, expected, plans):
+    """(where, what) for every platform dir whose plan is not the shape's."""
+    want = dict(expected, flags=PLAN_FLAGS)
+    out = []
+    for platform, plan in plans.items():
+        got = {k: plan.get(k) for k in want}
+        if got != want:
+            out.append((f"examples/{platform}/… ({shape})",
+                        f"lint plan {got}, expected {want}"
+                        + (f" [{plan['error']}]" if "error" in plan else "")))
+    return out
+
+
+def check_lint_leaf_shape():
+    import tempfile
+    problems = []
+    with tempfile.TemporaryDirectory(prefix="nros-lint-plan.") as tmp:
+        for i, (shape, (files, expected)) in enumerate(LEAF_SHAPES.items()):
+            plans = {}
+            for platform in PLAN_PLATFORMS:
+                leaf = f"examples/{platform}/rust/shape{i}"
+                for rel, body in {"Cargo.toml": _CARGO.format(name=f"shape{i}"), **files}.items():
+                    path = os.path.join(tmp, leaf, rel)
+                    os.makedirs(os.path.dirname(path), exist_ok=True)
+                    with open(path, "w", encoding="utf8") as fh:
+                        fh.write(body)
+                plans[platform] = lint_plan(tmp, leaf)
+            problems += plan_problems(shape, expected, plans)
+    for rel in file_kinds.files_of_kind("system-toml", repo=ROOT):
+        leaf = os.path.dirname(rel)
+        if not rel.startswith("examples/") or not os.path.isfile(os.path.join(ROOT, leaf, "Cargo.toml")):
+            continue
+        with open(os.path.join(ROOT, rel), "rb") as fh:
+            if not isinstance(tomllib.load(fh).get("image"), dict):
+                continue
+        plan = lint_plan(ROOT, leaf)
+        if plan.get("render") != "1":
+            problems.append((leaf, f"declares [image.*] but the lint plans no `nros sync` ({plan})"))
+    return problems
+
+
 def self_test():
     """Prove each check can fail. Runs on EVERY invocation — a negative control
     nobody runs decays into a comment (`check-gate-selftests`)."""
@@ -437,6 +532,15 @@ def self_test():
         got = token_list_problems(body, "_NROS_LANES")
         if got != exp:
             fails.append(f"token list {body!r}: expected {exp}, got {got}")
+    good = {"render": "1", "config": "", "flags": PLAN_FLAGS}
+    for plans, n in [
+        ({"native": good, "mps2": good}, 0),
+        ({"native": dict(good, render="0"), "mps2": good}, 1),  # 1882's shape
+        ({"native": {"error": "rc=1"}, "mps2": good}, 1),
+    ]:
+        got = plan_problems("t", {"render": "1", "config": ""}, plans)
+        if len(got) != n:
+            fails.append(f"lint plan {plans}: expected {n} problem(s), got {got}")
     if "packages/cli/nros-cli-core/tests/fixtures/board-workspace/packages/boards/linux/nros-board.toml" \
             not in descriptors():
         fails.append("the CLI test-fixture host descriptor is not in the population")
@@ -447,6 +551,17 @@ def self_test():
 
 
 def main():
+    shape = check_lint_leaf_shape()
+    if shape:
+        print("check-host-platform-vocabulary: the example lint decides by the leaf's "
+              "platform DIRECTORY, not its shape (issue 1892):\n", file=sys.stderr)
+        for rel, what in shape:
+            print(f"  {rel}: {what}", file=sys.stderr)
+        print("\n  Decide from the files the leaf holds, through the helpers in "
+              "scripts/build/leaf-settings.sh\n  (`nros_leaf_sync_renders`, "
+              "`nros_leaf_inside_config_args`), never from `examples/<platform>/`.",
+              file=sys.stderr)
+        return 1
     problems = (check_descriptors() + check_files() + check_lane_vocabulary()
                 + check_image_ids())
     if problems:
@@ -464,7 +579,8 @@ def main():
         return 1
     print("check-host-platform-vocabulary OK — the host board is `linux` in every "
           "descriptor, selector, deploy list, cmake DEPLOY and sdk-index key, and the "
-          "host lane / just module / scope / test binaries / image ids say `linux`.")
+          "host lane / just module / scope / test binaries / image ids say `linux`; the example "
+          "lint decides by leaf shape, not platform directory.")
     return 0
 
 

@@ -1,7 +1,6 @@
 {
   "just/check/lanes.just": 1,
   "just/esp32.just": 2,
-  "just/linux.just": 1,
   "just/workspace.just": 2,
   "just/zephyr-setup.just": 1,
   "justfile": 1,

@@ -525,46 +525,20 @@ check JOBS="75%":
         | grep -vE '/zephyr/|/multi-package-workspace/|/templates/local-msg-package/|/templates/multi-node-workspace/|/templates/workspace-shadowing/|/workspaces/|esp32-c3-baremetal/rust/dds/|/mps2-an385-freertos/|/qemu-armv7a-nuttx/|/threadx-linux/|/rv-virt-threadx/|/px4/' \
         | sort > "$toml_list"
 
-    # Message-bindings precondition gate (phase-264 W4c follow-up). Example msg
-    # crates (`generated/<msg>/`) are BUILD-TIME + ROS-version-dependent, so they
-    # are gitignored and materialised by `nros sync` / `just generate-bindings`
-    # (scripts/regenerate-bindings.sh) — NOT shipped in git. `just check` does NOT
-    # sync them: that would couple a pure static check to a live ROS environment and
-    # silently rewrite each example's Cargo.toml `[patch.crates-io]` block. Instead
-    # it GATES — any example the fan-out below will check whose `package.xml`
-    # declares a message `<depend>` but whose `generated/` is absent fails the
-    # precondition with one clear, actionable error rather than a cryptic per-example
-    # cargo "failed to read generated/<msg>/Cargo.toml" deep in the parallel output.
-    #
-    # The predicate is the dependency, NOT the pkg-metadata shape: every self-bringup
-    # `[package.metadata.nros.application]` example AND every split Node pkg is
-    # covered (the previous `[package.metadata.nros.node]`-only pre-pass silently
-    # skipped all `application` examples, so single-pkg examples relied on an
-    # undocumented "build-test-fixtures ran first" ordering — issue surfaced 2026-06).
-    missing="$(mktemp "${TMPDIR:-/tmp}/nros_missing_bindings.XXXXXX")"
-    trap 'rm -f "$toml_list" "$missing"' EXIT
-    while IFS= read -r toml; do
-        dir="$(dirname "$toml")"
-        [ -f "$dir/package.xml" ] || continue
-        # Issue 1888 -- a leaf with a `system.toml` is synced by
-        # `lint-example-leaf.sh` before its lint (issue 1882), and that sync
-        # writes `generated/`. Asking for it here, before the sync, made the
-        # local `just ci gate` red on any host that had not run
-        # `just generate-bindings`, for a precondition the lane meets itself.
-        [ -f "$dir/system.toml" ] && continue
-        grep -qE '<(depend|exec_depend|build_depend)>' "$dir/package.xml" || continue
-        if [ ! -d "$dir/generated" ] || [ -z "$(ls -A "$dir/generated" 2>/dev/null)" ]; then
-            printf '  %s\n' "$dir" >> "$missing"
-        fi
-    done < "$toml_list"
-    if [ -s "$missing" ]; then
-        echo "linux check: $(wc -l < "$missing" | tr -d ' ') example(s) are missing their generated message bindings:" >&2
-        cat "$missing" >&2
-        echo "" >&2
-        echo "  Bindings are build-time + ROS-version-dependent (gitignored, not shipped in git)." >&2
-        echo "  Run 'just generate-bindings' (or 'just build-test-fixtures') first, then re-run 'just check'." >&2
-        exit 1
-    fi
+    # Message bindings are NOT a precondition of this lane (issue 1892). A
+    # leaf's `generated/` crates, its `<leaf>_nros_selection` package and its
+    # `[patch.crates-io]` rows are all written by `nros sync`, and
+    # `lint-example-leaf.sh` runs that sync itself for every leaf it can read
+    # (`nros_leaf_sync_renders`: a `system.toml` or a `package.xml`). A leaf
+    # with a message `<depend>` has a `package.xml`, so it is always rendered
+    # first. The gate that used to sit here (phase-264 W4c) refused such a leaf
+    # whose `generated/` was absent and told the user to run
+    # `just generate-bindings`, which neither syncs a leaf nor writes its
+    # `.cargo/config.toml`; issue 1888 had already exempted the `system.toml`
+    # leaves, and with 1887's `package.xml` arm it could only ever refuse a
+    # leaf the lint was about to render. What the lane needs is the `nros` CLI
+    # on PATH (`just setup-cli`, `source ./activate.sh`), and ament packages
+    # for a leaf whose messages are not in-tree.
 
     # The per-leaf lint lives in ONE script, called from both branches below
     # (issue 1882: they were two hand-kept copies of the derivation, and neither
@@ -601,7 +575,7 @@ check JOBS="75%":
         # ONE self-contained line per leaf: a make recipe is one command per
         # line, and the unit is just the script call (env is exported above).
         units="$(mktemp "${TMPDIR:-/tmp}/nros_check_units.XXXXXX")"
-        trap 'rm -f "$toml_list" "$missing" "$units"' EXIT
+        trap 'rm -f "$toml_list" "$units"' EXIT
         while read -r toml; do
             printf 'bash scripts/build/lint-example-leaf.sh %s\n' "$(dirname "$toml")"
         done < "$toml_list" > "$units"

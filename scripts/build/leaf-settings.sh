@@ -160,3 +160,57 @@ nros_leaf_lock() {
         "$@"
     ) 9>"$root/$dir/build/nros/.leaf.lock"
 }
+
+# ── issue 1892 — what a leaf NEEDS is read off its SHAPE, never its platform dir ──
+#
+# `examples/<platform>/…` is a directory name. Whether a leaf must be rendered
+# before cargo can read its manifest, and whether a cargo run INSIDE it already
+# sees its generated settings, are properties of the files the leaf holds. The
+# lint keyed both on `platform != "native"` and was wrong the day the host
+# leaves gained `[image.<id>]` (issue 1305): 21 of them failed at manifest
+# parse on any checkout no fixture build had synced first (issues 1887/1888/
+# 1891/1892). A directory test also moves when the directory is renamed
+# (phase-500 W4, `examples/native/` → `examples/linux/`), silently. These are
+# the ONE spelling; `check-host-platform-vocabulary` (item 9) proves the lint's
+# decisions are invariant under the platform directory.
+
+# nros_leaf_sync_renders <leaf-dir>
+# rc 0 when `nros sync` reads this leaf, so cargo needs it run first: a
+# `system.toml` (its `[image.<id>]` names the generated `<leaf>_nros_selection`
+# crate the manifest depends on) or a `package.xml` (message deps; and the
+# `[patch.crates-io]` rows for a registry-named in-repo crate such as
+# `nros-log`, which no tracked `.cargo/` carries since phase-445 W6).
+nros_leaf_sync_renders() {
+    [ -f "$1/system.toml" ] || [ -f "$1/package.xml" ]
+}
+
+# nros_leaf_declares_image <leaf-dir>
+# rc 0 when the leaf's `system.toml` declares an `[image.<id>]` table, of ANY
+# id: the id is a label (phase-500 W3 renames them), never the property.
+nros_leaf_declares_image() {
+    [ -f "$1/system.toml" ] && grep -qE '^[[:space:]]*\[image\.' "$1/system.toml"
+}
+
+# nros_leaf_inside_config_args <leaf-dir>
+# The `--config` args, relative to the leaf, that a cargo run INSIDE an
+# already-rendered leaf needs to read its generated settings
+# (`build/<image>/nros-cargo.toml`), one per line; nothing when it needs none.
+#
+# `nros sync` wires the settings into the leaf's own (gitignored)
+# `.cargo/config.toml` as an `include` (issue 1381), which cargo discovers from
+# the working directory. Naming the file again with `--config` would read it
+# twice, and cargo JOINS `rustflags` across files. So the flag is passed only
+# when that include is ABSENT — sync skips it for a leaf whose own config
+# states `[build] target` / `rustflags` (`wire_settings_into_leaf_config`).
+nros_leaf_inside_config_args() {
+    local dir="$1" f
+    nros_leaf_declares_image "$dir" || return 0
+    if [ -f "$dir/.cargo/config.toml" ] \
+        && grep -qE '"\.\./build/[^"]+/nros-cargo\.toml"' "$dir/.cargo/config.toml"; then
+        return 0
+    fi
+    for f in "$dir"/build/*/nros-cargo.toml; do
+        [ -f "$f" ] && printf -- '--config\n%s\n' "${f#"$dir"/}"
+    done
+    return 0
+}

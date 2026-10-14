@@ -3609,8 +3609,10 @@ workspace-embedded:
 # `examples/` for six weeks. A call in the body is a second spelling that can
 # rot unseen; a name on the list is the only thing the runner reads.
 # A module cannot name another module's recipe as a dependency, hence the call.
-# Needs the generated message bindings (`just generate-bindings`); `linux::check`
-# refuses with that remedy when they are absent.
+# Needs the `nros` CLI on PATH (`just setup-cli`, `source ./activate.sh`):
+# `lint-example-leaf.sh` renders each leaf with `nros sync` before linting it,
+# decided by the leaf's shape, so no hand sync and no `just generate-bindings`
+# (issue 1892).
 [private]
 native-check:
     @just linux check
