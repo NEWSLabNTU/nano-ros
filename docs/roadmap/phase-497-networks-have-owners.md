@@ -83,6 +83,12 @@ A board with two interfaces states both. An image attaches each to a network.
 **Acceptance:** a two-NIC configuration resolves and renders, with a unit
 test. A runtime test only where a two-NIC board exists.
 
+This is the board half of multi-homing.
+[Phase-206](phase-206-multi-homing-transport-interfaces.md) owns the
+middleware half: the user's own Cyclone `<Interfaces>` or zenoh config
+reaches the backend verbatim, and nano-ros models no NIC there. Its open
+hosted lo-plus-NIC acceptance is the runtime counterpart of this item.
+
 ## Not in this phase
 
 - The router/locator default. RFC-0103 §3 keeps it an `[image]` fact over the

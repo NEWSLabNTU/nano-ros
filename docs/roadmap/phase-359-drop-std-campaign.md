@@ -1,6 +1,19 @@
 # phase-359 — drop `std` from the core crates, and make `alloc` explicit
 
-**Status (2026-08-20). W0–W4, W6, W9 landed; W5 RE-SCOPED after measurement; W8 AUDIT COMPLETE; W7 IMPLEMENTED — NuttX is off `std`. W10 IN PROGRESS: the three `std::thread`-backed blocks are ported/deleted, `env` is split off as a CAPABILITY, and `nros-board-linux` — the last `std` platform — now runs the CORE crates on the `alloc` path, verified by a green native fixture build and `roundtrip_xprocess` 8/8. `nros-node` 106/76 -> 86/40. What remains of the manifest half: ~38 consumer manifests still naming a core crate's `std`, 10 generated message crates, 2 codegen template copies, and the ~86 `cfg` sites that must resolve before the `std` feature can be deleted from the nine crates. The clock ruling landed 2026-08-20: the platform API IS the clock, so the `std` clock fallbacks in `nros-core`, `nros-node` and `nros::time` are deleted rather than kept for the no-port build — that build supplies its own via `ExecutorConfig::clock_us`, or fails loud. Census 18 cfg sites / 16 `std::` paths; `nros-node` and `nros-core` are at zero `std::` paths.** The campaign
+**Status (2026-10-14). W10 is still open: the defaults are flipped, but the
+feature is not deleted.** Every one of the nine census crates now defaults
+off `std`. `nros`, `nros-node`, `nros-core`, `nros-rmw`, `nros-params`,
+`nros-log` and `nros-serdes` have `default = []`, and `nros-c`/`nros-cpp`
+have `default = ["panic-platform"]`. All nine still DECLARE a `std` feature.
+`just check std-census` measures **24 cfg sites / 25 `std::` paths**:
+`nros` 5/15, `nros-c` 7/1, `nros-cpp` 5/9, `nros-node` 3/0, and `nros-core`,
+`nros-params`, `nros-rmw` and `nros-serdes` 1/0 each. At least 31 tracked
+manifests outside those crates still name a core crate's `std` (single-line
+`git grep` forms only). The codegen templates and the committed message
+crates no longer do. Deleting the feature still needs those manifests and
+the remaining cfg sites to go in one change.
+
+**Earlier status (2026-08-20). W0–W4, W6, W9 landed; W5 RE-SCOPED after measurement; W8 AUDIT COMPLETE; W7 IMPLEMENTED — NuttX is off `std`. W10 IN PROGRESS: the three `std::thread`-backed blocks are ported/deleted, `env` is split off as a CAPABILITY, and `nros-board-linux` — the last `std` platform — now runs the CORE crates on the `alloc` path, verified by a green native fixture build and `roundtrip_xprocess` 8/8. `nros-node` 106/76 -> 86/40. What remains of the manifest half: ~38 consumer manifests still naming a core crate's `std`, 10 generated message crates, 2 codegen template copies, and the ~86 `cfg` sites that must resolve before the `std` feature can be deleted from the nine crates. The clock ruling landed 2026-08-20: the platform API IS the clock, so the `std` clock fallbacks in `nros-core`, `nros-node` and `nros::time` are deleted rather than kept for the no-port build — that build supplies its own via `ExecutorConfig::clock_us`, or fails loud. Census 18 cfg sites / 16 `std::` paths; `nros-node` and `nros-core` are at zero `std::` paths.** The campaign
 removes `std` from the crates that run on targets, leaving `core` and
 `core+alloc`. Implements the direction explored on 2026-08-15; supersedes the
 "separate the std/no_std lanes" framing, which manages the split rather than
