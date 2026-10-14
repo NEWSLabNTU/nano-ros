@@ -76,9 +76,12 @@ impl RosEdition {
 
     /// Get the type hash string for this edition.
     ///
-    /// Humble → the `TypeHashNotSupported` sentinel. Iron+ → the RIHS01 form;
-    /// the value is a placeholder (all-zero sha256) until phase-304 W1 computes
-    /// the real REP-2011 hash — the FORMAT is correct now, the DIGEST is not.
+    /// Humble → the `TypeHashNotSupported` sentinel. Iron+ → the RIHS01 form
+    /// with an all-zero digest, which NO peer computes. Every emitter computes
+    /// the real REP-2011 hash through `ResolvedMessage` / `ResolvedService` /
+    /// `ResolvedAction` instead (Rust phase-304 W1; C/C++ messages and services
+    /// issue 1909). The one remaining Iron+ caller is the C/C++ ACTION path,
+    /// whose raw spec carries one hash for five endpoints — issue 1913.
     pub fn type_hash(&self) -> &'static str {
         match self {
             RosEdition::Humble => "TypeHashNotSupported",
