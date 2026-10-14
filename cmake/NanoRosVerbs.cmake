@@ -28,6 +28,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCodegenCore.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosArtifactLayout.cmake")  # issue 1852
 # `nros_read_package_xml_body()` — see phase-348 W1.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosPackageXml.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosEntryAgreement.cmake")  # issue 1894
 
 # `_nros_bootstrap` / `_nros_link` (root resolve + auto-link of the generated
 # interface libs + platform — config internals since W8 retired the public
@@ -146,9 +147,19 @@ function(nano_ros_add_executable name)
     endif()
     _nros_infer_lang(_lang ${_srcs})
 
-    # DEPLOY/BOARD default to the package.xml <export><nano_ros> tuple that
-    # find_package(nano_ros) parsed into NROS_DEPLOY / NROS_BOARD (RFC-0048 §4);
-    # an explicit keyword still wins.
+    # DEPLOY/BOARD default to the leaf system.toml's `[image.<id>]`, which
+    # find_package(nano_ros) read into NROS_DEPLOY / NROS_BOARD. An explicit
+    # keyword is the only statement for a guest project with no system.toml;
+    # beside one it must AGREE (issue 1894), checked here on what the caller
+    # wrote — before the defaulting below, which would make every comparison
+    # trivially true.
+    nros_entry_keywords_agree("nano_ros_add_executable(${name})"
+        DEPLOY ${_NRE_DEPLOY} BOARD ${_NRE_BOARD})
+    # `nano_ros_entry` below receives the RESOLVED values, including a
+    # `-DNROS_BOARD` front-end override, so it must not re-check them as if a
+    # user had written them. Functions are dynamically scoped: the callee sees
+    # this.
+    set(_NROS_ENTRY_KEYWORDS_CHECKED TRUE)
     if(NOT _NRE_DEPLOY)
         if(NROS_DEPLOY)
             set(_NRE_DEPLOY "${NROS_DEPLOY}")

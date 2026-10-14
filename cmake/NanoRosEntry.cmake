@@ -51,6 +51,7 @@ set(_NROS_ENTRY_DIR "${CMAKE_CURRENT_LIST_DIR}" CACHE INTERNAL "nano_ros_entry m
 # so re-including is a no-op when callers already loaded it.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosNodeRegister.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosHostBoard.cmake")  # phase-500 W1
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosEntryAgreement.cmake")  # issue 1894
 # Shared helpers (nros_resolve_cli — issue #219). include_guard'd.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCodegenCore.cmake")
 # `nros_panic_policy_feature` — the ONE policy->feature mapping, shared with the
@@ -325,6 +326,14 @@ function(nano_ros_entry)
         "NAME;BOARD;LAUNCH;LANG;HOST;BRINGUP;PANIC"
         "SOURCES;DEPLOY;LAUNCH_ARGS"
         ${ARGN})
+
+    # Issue 1894 — a DEPLOY/BOARD a CMakeLists wrote must agree with the leaf
+    # system.toml. Skipped when `nano_ros_add_executable` already checked what
+    # ITS caller wrote and is forwarding resolved values.
+    if(NOT _NROS_ENTRY_KEYWORDS_CHECKED)
+        nros_entry_keywords_agree("nano_ros_entry(${_NRA_NAME})"
+            DEPLOY ${_NRA_DEPLOY} BOARD ${_NRA_BOARD})
+    endif()
 
     # BRINGUP with no LAUNCH means this bringup's default launch. Conditional on
     # BRINGUP on purpose: defaulting unconditionally would turn an entry with
