@@ -546,6 +546,12 @@ check JOBS="75%":
     while IFS= read -r toml; do
         dir="$(dirname "$toml")"
         [ -f "$dir/package.xml" ] || continue
+        # Issue 1888 -- a leaf with a `system.toml` is synced by
+        # `lint-example-leaf.sh` before its lint (issue 1882), and that sync
+        # writes `generated/`. Asking for it here, before the sync, made the
+        # local `just ci gate` red on any host that had not run
+        # `just generate-bindings`, for a precondition the lane meets itself.
+        [ -f "$dir/system.toml" ] && continue
         grep -qE '<(depend|exec_depend|build_depend)>' "$dir/package.xml" || continue
         if [ ! -d "$dir/generated" ] || [ -z "$(ls -A "$dir/generated" 2>/dev/null)" ]; then
             printf '  %s\n' "$dir" >> "$missing"
