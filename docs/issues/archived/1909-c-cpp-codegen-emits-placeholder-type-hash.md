@@ -1,12 +1,13 @@
 ---
 id: 1909
 title: "C and C++ message codegen emits an all-zero RIHS01 placeholder for Iron/Jazzy, so a C or C++ image built for those editions matches no ROS 2 peer"
-status: open
+status: resolved
 type: bug
 severity: high
 area: [cli, codegen, rmw-zenoh]
-related: [issue-1893, phase-304]
+related: [issue-1893, issue-1913, phase-304]
 found: 2026-10-15
+resolved: 2026-10-15
 ---
 
 ## Measured
@@ -56,3 +57,38 @@ and hard-fail on an unresolvable nested type rather than emit a plausible
 wrong one. Acceptance is a C and a C++ talker built for jazzy delivering to a
 Jazzy subscriber (`just ros_editions image jazzy` gives one on a Humble host),
 plus a golden test against a hash Jazzy ships (`/opt/ros/jazzy/share/std_msgs/msg/String.json`).
+
+## Resolution (2026-10-15)
+
+`cargo-nano-ros` now computes the hash for the C and C++ emitters the way
+`rosidl-bindgen` does: `c_message_type_hash` (`ResolvedMessage`) per message and
+`c_service_type_hash` (`ResolvedService`) per service, over the nested-type
+lookup each of the three emitter entry points already built for size bounds
+(`nested_msg_lookup` — same-package siblings, then the ament / bundled index).
+An unresolvable nested type is a hard error. Humble keeps its sentinel.
+
+A service is keyed on the SERVICE's own hash, and that is what both runtimes
+read: the C type support's `.type_hash`, and the C++ `Svc::Request::TYPE_HASH`
+that `create_service` / `create_client` hand the FFI. So the service hash goes
+into the emitter's one service `type_hash` slot; the C++ `Request` / `Response`
+structs carry it rather than their own message hashes, which nothing reads.
+
+**Actions are not fixed here** — issue 1913. The raw action spec the C/C++
+APIs reach carries ONE hash for five endpoints that a Jazzy peer keys on five
+different hashes, so they keep the placeholder until that ABI carries them.
+
+Golden test `c_cpp_type_hashes_match_what_jazzy_ships` pins `std_msgs/String`,
+`std_msgs/Header` (cross-package nested `builtin_interfaces/Time`) and
+`example_interfaces/srv/AddTwoInts` against Jazzy's shipped `.json` hashes, and
+asserts the hard error on an unresolvable nested type.
+
+**Receipts** (`nano-ros-ros:jazzy`, `rmw_zenoh_cpp` 0.2.11, Jazzy router and
+peer in the container, nano-ros side on the host, each built with
+`-DNROS_ROS_EDITION=jazzy`):
+
+```
+examples/linux/c/talker     -> ros2 topic echo /chatter         samples: 19   (was 0)
+examples/linux/cpp/talker   -> ros2 topic echo /chatter         data: 'Hello World: N'
+examples/linux/c/service-server <- ros2 service call /add_two_ints {a: 2, b: 3}
+                                                                 AddTwoInts_Response(sum=5)
+```

@@ -162,6 +162,50 @@ fn nested_msg_lookup(
     }
 }
 
+/// Issue 1909 — the REP-2011 type hash of one MESSAGE for the C/C++ emitters.
+///
+/// These used `RosEdition::type_hash()`, the phase-304 placeholder
+/// (`RIHS01_0000…`), for every type, while `rosidl-bindgen` (Rust) and
+/// `nros generate-px4-msgs` computed the real hash. So every C and C++ image
+/// generated for iron/jazzy advertised and keyed a hash no ROS 2 peer computes.
+/// Same computation as the Rust generator (`ResolvedMessage`); an unresolvable
+/// nested type is a HARD error, never a plausible wrong hash. Humble keeps its
+/// `TypeHashNotSupported` sentinel.
+fn c_message_type_hash(
+    edition: RosEdition,
+    package: &str,
+    name: &str,
+    msg: &rosidl_parser::Message,
+    resolve: &dyn Fn(&str) -> Option<rosidl_parser::Message>,
+) -> Result<String> {
+    if !edition.uses_type_hash() {
+        return Ok(edition.type_hash().to_string());
+    }
+    let fqn = format!("{package}/msg/{name}");
+    rosidl_codegen::ResolvedMessage::resolve(fqn.as_str(), msg, |f| resolve(f))
+        .map(|r| r.type_hash)
+        .map_err(|e| eyre!("RIHS01 type-hash computation failed for {fqn} ({edition:?}): {e}"))
+}
+
+/// Issue 1909 — the SERVICE's own REP-2011 hash, the one a service is keyed
+/// on (`rmw_zenoh` and nano-ros's `ServiceInfo` both). The C type support's
+/// `.type_hash` and the C++ `Svc::Request::TYPE_HASH` — which is what
+/// `nros::Node::create_service`/`create_client` hand the runtime — carry it.
+fn c_service_type_hash(
+    edition: RosEdition,
+    package: &str,
+    name: &str,
+    srv: &rosidl_parser::Service,
+    resolve: &dyn Fn(&str) -> Option<rosidl_parser::Message>,
+) -> Result<String> {
+    if !edition.uses_type_hash() {
+        return Ok(edition.type_hash().to_string());
+    }
+    rosidl_codegen::ResolvedService::resolve(package, name, srv, |f| resolve(f))
+        .map(|r| r.type_hash)
+        .map_err(|e| eyre!("RIHS01 {package}/srv/{name} ({edition:?}): {e}"))
+}
+
 /// phase-403 W6 — write the derived-bound inventory beside the generated code.
 ///
 /// Two files, one model (`rosidl_codegen::bounds`): the JSON is the artifact,
@@ -1213,7 +1257,11 @@ pub fn generate_c_from_args_file(config: GenerateCConfig) -> Result<()> {
         .wrap_err_with(|| format!("Failed to parse args file: {}", config.args_file.display()))?;
 
     let edition = parse_ros_edition(&args.ros_edition)?;
-    let type_hash = edition.type_hash();
+    // Issue 1913 — ACTIONS only. Messages and services compute their real hash
+    // (issue 1909); a C/C++ action still gets the edition placeholder because
+    // the raw action spec it reaches carries ONE hash for its five endpoints,
+    // so no single value here can be right for an iron/jazzy peer.
+    let action_type_hash = edition.type_hash();
 
     // Per-field capacity config (RFC-0033) — one spelling for both languages.
     let resolver = resolve_caps_for_args(&args)?;
@@ -1286,7 +1334,13 @@ pub fn generate_c_from_args_file(config: GenerateCConfig) -> Result<()> {
                     &args.package_name,
                     file_name,
                     &parsed,
-                    type_hash,
+                    &c_message_type_hash(
+                        edition,
+                        &args.package_name,
+                        file_name,
+                        &parsed,
+                        &nested_lookup,
+                    )?,
                     &resolver,
                     &nested_lookup,
                 )
@@ -1320,7 +1374,13 @@ pub fn generate_c_from_args_file(config: GenerateCConfig) -> Result<()> {
                     &args.package_name,
                     file_name,
                     &parsed,
-                    type_hash,
+                    &c_service_type_hash(
+                        edition,
+                        &args.package_name,
+                        file_name,
+                        &parsed,
+                        &nested_lookup,
+                    )?,
                     &resolver,
                 )
                 .wrap_err_with(|| {
@@ -1357,7 +1417,7 @@ pub fn generate_c_from_args_file(config: GenerateCConfig) -> Result<()> {
                     &args.package_name,
                     file_name,
                     &parsed,
-                    type_hash,
+                    action_type_hash,
                     &resolver,
                 )
                 .wrap_err_with(|| format!("Failed to generate C code for action: {}", file_name))?;
@@ -1440,7 +1500,11 @@ pub fn generate_c_from_args_file(config: GenerateCConfig) -> Result<()> {
 /// 4. Generates C code (headers + sources) in the output directory
 pub fn generate_c_from_package_xml(config: GenerateCStandaloneConfig) -> Result<()> {
     let edition = parse_ros_edition(&config.ros_edition)?;
-    let type_hash = edition.type_hash();
+    // Issue 1913 — ACTIONS only. Messages and services compute their real hash
+    // (issue 1909); a C/C++ action still gets the edition placeholder because
+    // the raw action spec it reaches carries ONE hash for its five endpoints,
+    // so no single value here can be right for an iron/jazzy peer.
+    let action_type_hash = edition.type_hash();
 
     let resolver = standalone_capacity_resolver(&config)?;
     let interface_packages = standalone_interface_packages(&config)?;
@@ -1544,7 +1608,13 @@ pub fn generate_c_from_package_xml(config: GenerateCStandaloneConfig) -> Result<
                         pkg_name,
                         file_name,
                         &parsed,
-                        type_hash,
+                        &c_message_type_hash(
+                            edition,
+                            pkg_name,
+                            file_name,
+                            &parsed,
+                            &nested_lookup,
+                        )?,
                         &resolver,
                         &nested_lookup,
                     )?;
@@ -1562,7 +1632,17 @@ pub fn generate_c_from_package_xml(config: GenerateCStandaloneConfig) -> Result<
                     let parsed = rosidl_parser::parse_service(&content)
                         .wrap_err_with(|| format!("Failed to parse service: {}", file_name))?;
                     let generated = rosidl_codegen::generate_c_service_package(
-                        pkg_name, file_name, &parsed, type_hash, &resolver,
+                        pkg_name,
+                        file_name,
+                        &parsed,
+                        &c_service_type_hash(
+                            edition,
+                            pkg_name,
+                            file_name,
+                            &parsed,
+                            &nested_lookup,
+                        )?,
+                        &resolver,
                     )?;
                     write_if_changed(srv_dir.join(&generated.header_name), &generated.header)?;
                     write_if_changed(srv_dir.join(&generated.source_name), &generated.source)?;
@@ -1582,7 +1662,11 @@ pub fn generate_c_from_package_xml(config: GenerateCStandaloneConfig) -> Result<
                     let parsed = rosidl_parser::parse_action(&content)
                         .wrap_err_with(|| format!("Failed to parse action: {}", file_name))?;
                     let generated = rosidl_codegen::generate_c_action_package(
-                        pkg_name, file_name, &parsed, type_hash, &resolver,
+                        pkg_name,
+                        file_name,
+                        &parsed,
+                        action_type_hash,
+                        &resolver,
                     )?;
                     write_if_changed(action_dir.join(&generated.header_name), &generated.header)?;
                     write_if_changed(action_dir.join(&generated.source_name), &generated.source)?;
@@ -2017,7 +2101,11 @@ fn generate_cpp_with(
     verbose: bool,
 ) -> Result<()> {
     let edition = parse_ros_edition(&args.ros_edition)?;
-    let type_hash = edition.type_hash();
+    // Issue 1913 — ACTIONS only. Messages and services compute their real hash
+    // (issue 1909); a C/C++ action still gets the edition placeholder because
+    // the raw action spec it reaches carries ONE hash for its five endpoints,
+    // so no single value here can be right for an iron/jazzy peer.
+    let action_type_hash = edition.type_hash();
 
     if verbose {
         println!("Generating C++ bindings for package: {}", args.package_name);
@@ -2087,7 +2175,13 @@ fn generate_cpp_with(
                     &args.package_name,
                     file_name,
                     &parsed,
-                    type_hash,
+                    &c_message_type_hash(
+                        edition,
+                        &args.package_name,
+                        file_name,
+                        &parsed,
+                        &nested_lookup,
+                    )?,
                     resolver,
                     &nested_lookup,
                 )
@@ -2139,7 +2233,13 @@ fn generate_cpp_with(
                     &args.package_name,
                     file_name,
                     &parsed,
-                    type_hash,
+                    &c_service_type_hash(
+                        edition,
+                        &args.package_name,
+                        file_name,
+                        &parsed,
+                        &nested_lookup,
+                    )?,
                     resolver,
                 )
                 .wrap_err_with(|| {
@@ -2187,7 +2287,7 @@ fn generate_cpp_with(
                     &args.package_name,
                     file_name,
                     &parsed,
-                    type_hash,
+                    action_type_hash,
                     resolver,
                 )
                 .wrap_err_with(|| {
@@ -2588,6 +2688,53 @@ mod tests {
         replace_outside_strings, rewrite_package_links,
     };
     use std::fs;
+
+    /// Issue 1909 — the C/C++ emitters' hashes are the ones Jazzy SHIPS
+    /// (`/opt/ros/jazzy/share/<pkg>/<kind>/<Name>.json`, `type_hashes[0]`), not
+    /// the phase-304 placeholder. `Header` reaches `builtin_interfaces/Time`
+    /// through the resolver, so the cross-package path is exercised too.
+    #[test]
+    fn c_cpp_type_hashes_match_what_jazzy_ships() {
+        use super::{c_message_type_hash, c_service_type_hash};
+        use rosidl_codegen::RosEdition;
+        let parse = |t: &str| rosidl_parser::parse_message(t).unwrap();
+        let time = parse("int32 sec\nuint32 nanosec\n");
+        let resolve = move |fqn: &str| (fqn == "builtin_interfaces/msg/Time").then(|| time.clone());
+        let none = |_: &str| None;
+
+        let string = parse("string data\n");
+        assert_eq!(
+            c_message_type_hash(RosEdition::Jazzy, "std_msgs", "String", &string, &none).unwrap(),
+            "RIHS01_df668c740482bbd48fb39d76a70dfd4bd59db1288021743503259e948f6b1a18"
+        );
+        let header = parse("builtin_interfaces/Time stamp\nstring frame_id\n");
+        assert_eq!(
+            c_message_type_hash(RosEdition::Jazzy, "std_msgs", "Header", &header, &resolve)
+                .unwrap(),
+            "RIHS01_f49fb3ae2cf070f793645ff749683ac6b06203e41c891e17701b1cb597ce6a01"
+        );
+        // An unresolvable nested type is an ERROR, never a plausible hash.
+        assert!(
+            c_message_type_hash(RosEdition::Jazzy, "std_msgs", "Header", &header, &none).is_err()
+        );
+        let add = rosidl_parser::parse_service("int64 a\nint64 b\n---\nint64 sum\n").unwrap();
+        assert_eq!(
+            c_service_type_hash(
+                RosEdition::Jazzy,
+                "example_interfaces",
+                "AddTwoInts",
+                &add,
+                &resolve
+            )
+            .unwrap(),
+            "RIHS01_e118de6bf5eeb66a2491b5bda11202e7b68f198d6f67922cf30364858239c81a"
+        );
+        // Humble keeps its sentinel.
+        assert_eq!(
+            c_message_type_hash(RosEdition::Humble, "std_msgs", "String", &string, &none).unwrap(),
+            "TypeHashNotSupported"
+        );
+    }
 
     /// Issue 1821 — an umbrella header is a function of its input SETS. Callers
     /// collected the dependency list from a hash set, so two runs of one binary
