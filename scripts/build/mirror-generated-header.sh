@@ -136,8 +136,29 @@ if [ "${1:-}" = "--self-test" ]; then
     else
         ok "--resolve with no header anywhere fails"
     fi
+    # Issue 1911 -- every run records that it ran, at the path `--marker` names.
+    d="$(stage NEW -)"
+    bash "$self" "$d/leaf/h.h" "$d" gen h.h "$d/dest.h" >/dev/null
+    m="$(bash "$self" --marker "$d" "$d/dest.h")"
+    [ -f "$m" ] && case "$m" in "$d"/CMakeFiles/*) true ;; *) false ;; esac \
+        && ok "a run records that it ran, inside its build dir" \
+        || bad "a run records that it ran, inside its build dir" "no marker at $m"
     [ "$fails" -eq 0 ] || exit 1
     echo "mirror-generated-header self-test OK"
+    exit 0
+fi
+
+# Issue 1911 -- where this command records that it RAN for one dest: a file in
+# the build dir's CMakeFiles, named from the dest path. The copy is
+# copy-if-different, so the dest's own mtime says when the content last moved,
+# not when the command last ran. The drift gate needs the second: a mirror that
+# differs from its source is a defect only if the command ran AFTER the source
+# was written. Spelled once, here; the gate asks `--marker`.
+mirror_ran_marker() { # <build_dir> <dest>
+    printf '%s/CMakeFiles/nros-mirror-ran/%s\n' "$1" "$(printf '%s' "$2" | tr '/' '_')"
+}
+if [ "${1:-}" = "--marker" ]; then
+    mirror_ran_marker "$2" "$3"
     exit 0
 fi
 
@@ -215,3 +236,6 @@ mkdir -p "$(dirname "$dest")"
 if [ ! -f "$dest" ] || ! cmp -s "$src" "$dest"; then
     cp -- "$src" "$dest"
 fi
+marker="$(mirror_ran_marker "$build_dir" "$dest")"
+mkdir -p "$(dirname "$marker")"
+: >"$marker"

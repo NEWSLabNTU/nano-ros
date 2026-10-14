@@ -46,6 +46,19 @@ cleaned, every one a mirror newer than its leaf. Those are counted as "source
 gone" and reported, never as drift. A leaf copy NEWER than its mirror is still
 the 0268 shape and still fails.
 
+A pair that differs because its source was written AFTER its build dir last
+ran the mirror command is not drift either (issue 1911). The shared cargo
+store is shared by design (issues 0805, 1858), so when one build dir rebuilds
+it after a core-size change, every other build dir sharing it holds a mirror
+that differs from the new source until ITS next build, which re-runs the
+mirror (issue 1783). A checkout that is not rebuilt between two gates always
+looks like this, and the self-hosted lanes build in a persistent tree that
+runs `check fast` before `just build` refreshes anything. The mirror command
+records each run (`mirror-generated-header.sh --marker`); a pair counts as
+drift only when that run is newer than the source, i.e. the build ran its copy
+and the copy still differs, which is the 0268 shape. A pair with no newer run
+is counted as "pending" and reported, never compared.
+
 `--fix` re-runs the mirror command for each drifted pair — exactly what the
 build does, out of band.
 """
@@ -133,6 +146,23 @@ def resolve(leaf: str, build: str, gen: str, name: str) -> str | None:
     return r.stdout.strip() if r.returncode == 0 and r.stdout.strip() else None
 
 
+def marker(build: str, dest: str) -> Path:
+    """Where the mirror command records that it ran for `dest` (issue 1911).
+    Asked of the script, so the path is spelled once."""
+    r = subprocess.run(["bash", str(MIRROR), "--marker", build, dest],
+                       capture_output=True, text=True, check=True)
+    return Path(r.stdout.strip())
+
+
+def ran_after(build: str, dest: str, src: str) -> bool:
+    """Did the mirror command run for `dest` after `src` was last written?"""
+    m = marker(build, dest)
+    try:
+        return os.path.getmtime(m) >= os.path.getmtime(src)
+    except OSError:
+        return False
+
+
 def same(a: str, b: str) -> bool:
     try:
         return Path(a).read_bytes() == Path(b).read_bytes()
@@ -141,9 +171,10 @@ def same(a: str, b: str) -> bool:
 
 
 def scan(root: Path, fix: bool = False):
-    """Returns (dirs, make_dirs, compared, drift[(dest, src)], fixed, gone).
-    `dirs` counts every build dir scanned; `make_dirs` the Makefile ones."""
-    dirs = make_dirs = compared = fixed = gone = 0
+    """Returns (dirs, make_dirs, compared, drift[(dest, src)], fixed, gone,
+    pending). `dirs` counts every build dir scanned; `make_dirs` the Makefile
+    ones."""
+    dirs = make_dirs = compared = fixed = gone = pending = 0
     drift = []
     seen = set()
     for d, gen in build_dirs(root):
@@ -163,6 +194,9 @@ def scan(root: Path, fix: bool = False):
             if src == leaf and os.path.getmtime(src) < os.path.getmtime(dest):
                 gone += 1  # the shared copy it was mirrored from no longer exists
                 continue
+            if not fix and not ran_after(build, dest, src):
+                pending += 1  # issue 1911: source moved since this dir last built
+                continue
             compared += 1
             if fix:
                 subprocess.run(["bash", str(MIRROR), leaf, build, gsub, name, dest],
@@ -170,7 +204,7 @@ def scan(root: Path, fix: bool = False):
                 fixed += 1
             else:
                 drift.append((dest, src))
-    return dirs, make_dirs, compared, drift, fixed, gone
+    return dirs, make_dirs, compared, drift, fixed, gone, pending
 
 
 def _sizes(path: str) -> list[str]:
@@ -206,16 +240,26 @@ def self_test() -> None:
         (b / "CMakeFiles" / "build.ninja").write_text("")
 
         dest.write_text("#define X_SIZE 2\n")
-        dirs, _, compared, drift, _, _ = scan(root)
+        dirs, _, compared, drift, _, _, _ = scan(root)
         assert (dirs, compared, drift) == (1, 1, []), \
             f"a mirror equal to the SHARED copy is current, got {(dirs, compared, drift)}"
 
         dest.write_text("#define X_SIZE 1\n")
-        _, _, compared, drift, _, _ = scan(root)
+        # Issue 1911 -- the source was written after this dir last ran its
+        # mirror: pending its next build, not drift.
+        r = scan(root)
+        assert (r[2], r[3], r[6]) == (0, [], 1), \
+            f"a source newer than the last mirror run is pending, got {r}"
+        # The mirror command ran after the source was written and the copy
+        # still differs: that is the 0268 shape.
+        m = marker(str(b), str(dest))
+        m.parent.mkdir(parents=True, exist_ok=True)
+        m.write_text("")
+        _, _, compared, drift, _, _, _ = scan(root)
         assert compared == 1 and len(drift) == 1, \
             "a mirror equal only to the stale LEAF copy is drift (0978's rule)"
 
-        _, _, _, _, fixed, _ = scan(root, fix=True)
+        _, _, _, _, fixed, _, _ = scan(root, fix=True)
         assert fixed == 1 and dest.read_text() == "#define X_SIZE 2\n", "--fix re-mirrors"
         assert scan(root)[3] == [], "after --fix nothing drifts"
 
@@ -230,6 +274,7 @@ def self_test() -> None:
         assert (r[2], r[3], r[5]) == (0, [], 1), f"source gone is not drift, got {r}"
         os.utime(crate / name, None)
         os.utime(dest, (1, 1))
+        os.utime(m, None)
         r = scan(root)
         assert len(r[3]) == 1 and r[5] == 0, f"a leaf newer than its mirror is drift, got {r}"
 
@@ -263,16 +308,20 @@ def self_test() -> None:
             f"an UNBUILT mirror in a Makefile dir compares nothing, got {empty}"
 
         dest.write_text("#define Y_SIZE 2\n")
-        dirs, make_dirs, compared, drift, _, _ = scan(root)
+        dirs, make_dirs, compared, drift, _, _, _ = scan(root)
         assert (dirs, make_dirs, compared, drift) == (1, 1, 1, []), \
             f"a Makefile dir's current mirror is COMPARED, got {(dirs, make_dirs, compared, drift)}"
 
         dest.write_text("#define Y_SIZE 1\n")
-        _, _, compared, drift, _, _ = scan(root)
+        assert scan(root)[6] == 1, "with no recorded mirror run it is pending"
+        m = marker(str(b), str(dest))
+        m.parent.mkdir(parents=True, exist_ok=True)
+        m.write_text("")
+        _, _, compared, drift, _, _, _ = scan(root)
         assert compared == 1 and [d for d, _ in drift] == [str(dest)], \
             "a drifted mirror in a Makefile dir fails"
 
-        _, _, _, _, fixed, _ = scan(root, fix=True)
+        _, _, _, _, fixed, _, _ = scan(root, fix=True)
         assert fixed == 1 and dest.read_text() == "#define Y_SIZE 2\n", \
             "--fix re-mirrors through the Makefile dir's own command"
 
@@ -291,7 +340,7 @@ def self_test() -> None:
 def main(argv: list[str]) -> int:
     fix = "--fix" in argv
     self_test()
-    dirs, make_dirs, compared, drift, fixed, gone = scan(REPO, fix)
+    dirs, make_dirs, compared, drift, fixed, gone, pending = scan(REPO, fix)
     if drift:
         for dest, src in drift:
             print(f"STALE MIRROR: {dest}\n         vs: {src}")
@@ -316,6 +365,10 @@ mirror command (what the build does). Then find the missing edge:
     if gone:
         note += (f"; {gone} mirror(s) whose shared source is gone (older leaf "
                  "copy only) not compared")
+    if pending:
+        note += (f"; {pending} mirror(s) whose source moved after their build dir "
+                 "last ran its mirror, pending that dir's next build (issue 1911), "
+                 "not compared")
     if compared == 0:
         # issue 1739 — comparing nothing is NOT VERIFIED, through the ledger.
         return check_skip.unverified(
