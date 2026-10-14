@@ -434,7 +434,7 @@ mod tests {
         let tmp = tempdir_path("root_walk");
         write_runtime_tree(&tmp, 1, 1);
         // A C consumer: package.xml + CMakeLists, no Cargo.lock in sight.
-        let consumer = tmp.join("examples/native/c/talker");
+        let consumer = tmp.join("examples/linux/c/talker");
         std::fs::create_dir_all(&consumer).unwrap();
         std::fs::write(consumer.join("package.xml"), "<package/>\n").unwrap();
         assert_eq!(runtime_root(&consumer).as_deref(), Some(tmp.as_path()));

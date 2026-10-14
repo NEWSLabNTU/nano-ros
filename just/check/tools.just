@@ -152,13 +152,13 @@ stack-all top="10":
     done
     # Rust examples (native — exclude tracing/regex infrastructure noise)
     for example in \
-        examples/native/rust/talker \
-        examples/native/rust/listener \
-        examples/native/rust/custom-msg \
-        examples/native/rust/service-server \
-        examples/native/rust/service-client \
-        examples/native/rust/action-server \
-        examples/native/rust/action-client \
+        examples/linux/rust/talker \
+        examples/linux/rust/listener \
+        examples/linux/rust/custom-msg \
+        examples/linux/rust/service-server \
+        examples/linux/rust/service-client \
+        examples/linux/rust/action-server \
+        examples/linux/rust/action-client \
     ; do
         echo "================================================================"
         ./scripts/stack-analysis.sh "$example" --top {{top}} --exclude "regex_automata|regex_syntax|aho_corasick|env_filter|env_logger|driftsort" || { echo "[FAIL] $example"; failed=$((failed + 1)); }
@@ -166,10 +166,10 @@ stack-all top="10":
     done
     # C examples (native)
     for example in \
-        examples/native/c/talker \
-        examples/native/c/listener \
-        examples/native/c/custom-msg \
-        examples/native/c/custom-transport-loopback \
+        examples/linux/c/talker \
+        examples/linux/c/listener \
+        examples/linux/c/custom-msg \
+        examples/linux/c/custom-transport-loopback \
     ; do
         echo "================================================================"
         ./scripts/stack-analysis-c.sh "$example" --top {{top}} || { echo "[FAIL] $example"; failed=$((failed + 1)); }
@@ -183,9 +183,9 @@ stack-all top="10":
 
 # Analyze stack usage of C examples (requires cmake + gcc)
 # Usage: just check stack-c [example-dir] [top]
-# Default: examples/native/c/talker, top 30
+# Default: examples/linux/c/talker, top 30
 [group("debug")]
-stack-c example="examples/native/c/talker" top="30":
+stack-c example="examples/linux/c/talker" top="30":
     ./scripts/stack-analysis-c.sh {{example}} --top {{top}}
 
 # Analyze stack usage of a pre-built ELF (e.g. Zephyr west build output)

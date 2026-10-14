@@ -144,9 +144,9 @@ jobs:
       # and then the gate cannot even build a fixture to judge it:
       #
       #   ERROR: 104 rust fixture(s) could NOT be built by the staleness probe:
-      #     examples/native/rust/talker
+      #     examples/linux/rust/talker
       #         error: failed to load manifest for dependency `std_msgs`
-      #     examples/native/rust/service-client
+      #     examples/linux/rust/service-client
       #         error: failed to load manifest for dependency `example_interfaces`
       #
       # `just build <scope>` is the stage that produces them: it runs `_codegen`

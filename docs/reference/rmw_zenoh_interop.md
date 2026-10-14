@@ -29,7 +29,7 @@ ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicas
 # Terminal 2: Run nros talker. The example is a standalone package (no root
 # workspace to `-p` into) and its RMW comes from `system.toml`
 # (`[system] rmw = "zenoh"`), not from a cargo feature.
-cd examples/native/rust/talker
+cd examples/linux/rust/talker
 nros sync          # generated/ msg crates + build/linux/nros-cargo.toml
 nros build         # -> build/linux/target/debug/talker
 NROS_LOCATOR=tcp/127.0.0.1:7447 RUST_LOG=info build/linux/target/debug/talker

@@ -16,7 +16,7 @@
 //! (`_nros_bounds_join_subscribed` in `cmake/NanoRosMessageBounds.cmake`); this
 //! module is the same join for a leaf that has no CMake at all.
 //!
-//! Measured cost of not having it: `examples/native/rust/talker`, a node with
+//! Measured cost of not having it: `examples/linux/rust/talker`, a node with
 //! ONE publisher and NO subscription, links
 //! `nros_rmw_zenoh::shim::subscriber::LARGE_PAYLOADS` at **131,072 B** — the
 //! crate default `MAX_LARGE_SUBSCRIBERS` (2) × `SUBSCRIBER_RING_DEPTH` (4) ×

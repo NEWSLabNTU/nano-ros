@@ -21,7 +21,7 @@ path = "src/main.rs"
 # what makes the pair a trampoline check rather than two unrelated runs.
 # phase-347 W1 — forwards to the BACKEND; the `nros` route was a no-op. Not a
 # declared capability (`capability_resolver::CAPABILITIES` has no entry), so it
-# stays a feature of this package, as on `examples/native/rust/listener`.
+# stays a feature of this package, as on `examples/linux/rust/listener`.
 unstable-zenoh-api = ["dep:nros-rmw-zenoh", "nros-rmw-zenoh/unstable-zenoh-api"]
 
 [dependencies]

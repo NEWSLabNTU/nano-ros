@@ -732,7 +732,7 @@ fn main() {
     // default is KEEP_LAST(**10**) -- `QoSProfile::QOS_PROFILE_DEFAULT` -- where
     // the region is an `SpscRing` of `depth + 1 = 11` slots PLUS an 11-entry
     // `usize` length array. Measured live in the ROS 2 box on
-    // `examples/native/rust/listener`: 792 (the `SubBufferedRawEntry<closure>`
+    // `examples/linux/rust/listener`: 792 (the `SubBufferedRawEntry<closure>`
     // the declarative path registers) + 11 * (1024 + 8) = **12,144 bytes for one
     // ordinary subscription**, against `3 * 1024 + 512` = 3,584 modelled. The
     // image had an 8,192-byte arena and died at `Node::register` with

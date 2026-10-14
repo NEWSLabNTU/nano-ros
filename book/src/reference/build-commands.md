@@ -97,11 +97,11 @@ source ./activate.sh
 ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd
 
 # Terminal 2: Talker
-cd examples/native/rust/talker && nros sync && nros build
+cd examples/linux/rust/talker && nros sync && nros build
 RUST_LOG=info ./build/linux/target/debug/talker
 
 # Terminal 3: Listener
-cd examples/native/rust/listener && nros sync && nros build
+cd examples/linux/rust/listener && nros sync && nros build
 RUST_LOG=info ./build/linux/target/debug/listener
 ```
 
@@ -148,7 +148,7 @@ ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tls/localhost:7447"];scouting/multicas
   --cfg 'transport/link/tls/listen_private_key:"key.pem"'
 
 # Terminal 2: Talker with TLS
-cd examples/native/rust/talker && nros sync
+cd examples/linux/rust/talker && nros sync
 cd .. && cargo build --manifest-path talker/Cargo.toml \
       --config talker/build/linux/nros-cargo.toml --features link-tls
 NROS_LOCATOR=tls/localhost:7447 \
@@ -182,7 +182,7 @@ The CA certificate must be passed via `ZENOH_TLS_ROOT_CA_CERTIFICATE_BASE64` at 
 ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd
 
 # Terminal 2: nros talker
-cd examples/native/rust/talker && nros sync && nros build
+cd examples/linux/rust/talker && nros sync && nros build
 RUST_LOG=info ./build/linux/target/debug/talker
 
 # Terminal 3: ROS 2 listener
@@ -198,11 +198,11 @@ ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
 ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd
 
 # Terminal 2: Action server (Fibonacci example)
-cd examples/native/rust/action-server && nros sync && nros build
+cd examples/linux/rust/action-server && nros sync && nros build
 ./build/linux/target/debug/action-server
 
 # Terminal 3: Action client
-cd examples/native/rust/action-client && nros sync && nros build
+cd examples/linux/rust/action-client && nros sync && nros build
 ./build/linux/target/debug/action-client
 ```
 

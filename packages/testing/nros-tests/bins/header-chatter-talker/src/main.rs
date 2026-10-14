@@ -1,6 +1,6 @@
 //! Nested-message talker (fixture for the non-flat bridge e2e).
 //!
-//! Moved out of `examples/native/rust/talker` (it was the `header` cfg-gated
+//! Moved out of `examples/linux/rust/talker` (it was the `header` cfg-gated
 //! code) so the example stays cfg-free. Publishes `std_msgs/Int32` on
 //! `/chatter` AND a NESTED `std_msgs/Header` (a `builtin_interfaces/Time`
 //! stamp and a string `frame_id`) on `/header` every 1 s, from two nodes in

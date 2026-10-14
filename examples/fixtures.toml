@@ -1320,23 +1320,23 @@ cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps2-an385-freertos", N
 id = "native-rust-talker"
 platform = "linux"
 lang = "rust"
-dir = "examples/native/rust/talker"
+dir = "examples/linux/rust/talker"
 
 [[fixture]]
 id = "native-rust-listener"
 platform = "linux"
 lang = "rust"
-dir = "examples/native/rust/listener"
+dir = "examples/linux/rust/listener"
 
 [[fixture]]
 platform = "linux"
 lang = "rust"
-dir = "examples/native/rust/lifecycle-node"
+dir = "examples/linux/rust/lifecycle-node"
 
 [[fixture]]
 platform = "linux"
 lang = "rust"
-dir = "examples/native/rust/custom-msg"
+dir = "examples/linux/rust/custom-msg"
 
 # entry-poc: the canonical Phase 212.N Entry-pkg shape (`nros::main!()` →
 # `<LinuxBoard as BoardEntry>::run`). Built here so the macro-expansion compile
@@ -1351,57 +1351,57 @@ dir = "packages/testing/nros-tests/bins/entry-poc"
 [[fixture]]
 platform = "linux"
 lang = "rust"
-dir = "examples/native/rust/service-server"
+dir = "examples/linux/rust/service-server"
 
 [[fixture]]
 platform = "linux"
 lang = "rust"
-dir = "examples/native/rust/service-client"
+dir = "examples/linux/rust/service-client"
 
 # RFC-0041 / Phase 239 — callback-receive variant of the service client.
 [[fixture]]
 platform = "linux"
 lang = "rust"
-dir = "examples/native/rust/service-client-callback"
+dir = "examples/linux/rust/service-client-callback"
 
 [[fixture]]
 platform = "linux"
 lang = "rust"
-dir = "examples/native/rust/action-server"
+dir = "examples/linux/rust/action-server"
 
 [[fixture]]
 platform = "linux"
 lang = "rust"
-dir = "examples/native/rust/action-client"
+dir = "examples/linux/rust/action-client"
 
-# Phase 275 W2 (#102 H3) — native/rust variant examples that shipped with zero
+# Phase 275 W2 (#102 H3) — linux/rust variant examples that shipped with zero
 # fixtures. Bare rows (default = ["rmw-zenoh"], same shape as the base examples
 # above) build-assert them. Runtime behavior assertions (async client actually
 # receives; logging sink emits) are a follow-up test under nros-tests/tests/.
 [[fixture]]
 platform = "linux"
 lang = "rust"
-dir = "examples/native/rust/service-client-async"
+dir = "examples/linux/rust/service-client-async"
 
 [[fixture]]
 platform = "linux"
 lang = "rust"
-dir = "examples/native/rust/action-client-async"
+dir = "examples/linux/rust/action-client-async"
 
 [[fixture]]
 platform = "linux"
 lang = "rust"
-dir = "examples/native/rust/logging"
+dir = "examples/linux/rust/logging"
 
 [[fixture]]
 platform = "linux"
 lang = "rust"
-dir = "examples/native/rust/talker-rtic"
+dir = "examples/linux/rust/talker-rtic"
 
 [[fixture]]
 platform = "linux"
 lang = "rust"
-dir = "examples/native/rust/listener-rtic"
+dir = "examples/linux/rust/listener-rtic"
 
 # Phase 211.H — qos_overrides runtime-delivery fixture (raw pub/sub bin that
 # installs a per-topic QoS override on its NodeHandle and proves it is honoured
@@ -1453,42 +1453,42 @@ dir = "packages/testing/nros-tests/bins/bridge-zenoh-to-xrce-fwd"
 [[fixture]]
 platform = "linux"
 lang = "rust"
-dir = "examples/native/rust/service-server-rtic"
+dir = "examples/linux/rust/service-server-rtic"
 
 [[fixture]]
 platform = "linux"
 lang = "rust"
-dir = "examples/native/rust/service-client-rtic"
+dir = "examples/linux/rust/service-client-rtic"
 
 [[fixture]]
 platform = "linux"
 lang = "rust"
-dir = "examples/native/rust/action-server-rtic"
+dir = "examples/linux/rust/action-server-rtic"
 
 [[fixture]]
 platform = "linux"
 lang = "rust"
-dir = "examples/native/rust/action-client-rtic"
+dir = "examples/linux/rust/action-client-rtic"
 
 [[fixture]]
 platform = "linux"
 lang = "rust"
-dir = "examples/native/rust/serial-talker"
+dir = "examples/linux/rust/serial-talker"
 
 [[fixture]]
 platform = "linux"
 lang = "rust"
-dir = "examples/native/rust/serial-listener"
+dir = "examples/linux/rust/serial-listener"
 
 [[fixture]]
 platform = "linux"
 lang = "rust"
-dir = "examples/native/rust/custom-transport-talker"
+dir = "examples/linux/rust/custom-transport-talker"
 
 [[fixture]]
 platform = "linux"
 lang = "rust"
-dir = "examples/native/rust/custom-transport-listener"
+dir = "examples/linux/rust/custom-transport-listener"
 
 # Parameterised talker (phase-277 W3.a — was the talker `param-services`
 # feature build in the DEFAULT target dir; now a dedicated fixture bin so the
@@ -1681,7 +1681,7 @@ image = "linux_cyclonedds"
 
 # phase-338 W3 — the XRCE build of the same sink. The zenoh->xrce declarative
 # bridge e2e needs an Int32 listener that speaks XRCE; before this it drove the
-# EXAMPLE (`native/rust/listener`) with a test-only `NROS_SUB_TYPE=int32` env
+# EXAMPLE (`linux/rust/listener`) with a test-only `NROS_SUB_TYPE=int32` env
 # switch, because this fixture was hardcoded to zenoh. A test fixture must not
 # pin the RMW any more than an example does.
 [[fixture]]
@@ -1694,7 +1694,7 @@ image = "linux_xrce"
 
 # issue 0449 — the cyclone build of the same sink. The zenoh->cyclonedds
 # declarative bridge e2e needed an Int32 listener speaking cyclone; before this
-# it drove `examples/native/c/listener` with a test-only `NROS_SUB_TYPE=int32`
+# it drove `examples/linux/c/listener` with a test-only `NROS_SUB_TYPE=int32`
 # switch, which is why that example carried a runtime message-type switch no ROS
 # demo has. The examples follow the ROS demos (std_msgs/String); test-only
 # payload shapes belong in a test bin.
@@ -1749,13 +1749,13 @@ dir = "packages/testing/nros-tests/bins/action-client-multigoal"
 [[fixture]]
 platform = "linux"
 lang = "rust"
-dir = "examples/native/rust/talker"
+dir = "examples/linux/rust/talker"
 features = ["link-tls"]
 
 [[fixture]]
 platform = "linux"
 lang = "rust"
-dir = "examples/native/rust/listener"
+dir = "examples/linux/rust/listener"
 features = ["link-tls"]
 
 # Peer-mode variant (isolated target dir) — issue 0711.
@@ -1772,13 +1772,13 @@ features = ["link-tls"]
 [[fixture]]
 platform = "linux"
 lang = "rust"
-dir = "examples/native/rust/talker"
+dir = "examples/linux/rust/talker"
 env = { ZPICO_MULTICAST_TRANSPORT = "1" }
 
 [[fixture]]
 platform = "linux"
 lang = "rust"
-dir = "examples/native/rust/listener"
+dir = "examples/linux/rust/listener"
 env = { ZPICO_MULTICAST_TRANSPORT = "1" }
 
 # E2E-safety talker (phase-277 W3.a — was the talker `safety-e2e` feature
@@ -1866,7 +1866,7 @@ lang = "rust"
 dir = "packages/testing/nros-tests/bins/message-info-observer"
 features = ["unstable-zenoh-api"]
 
-# Per-RMW talker/listener/service/action. The six `examples/native/rust/*`
+# Per-RMW talker/listener/service/action. The six `examples/linux/rust/*`
 # leaves select their RMW by IMAGE (`image = "linux_<rmw>"`, issue 1305 —
 # RFC-0031: the RMW is declared in `system.toml` and lowered into the leaf's
 # generated selection package), so their zenoh build is the plain row above and
@@ -1877,28 +1877,28 @@ features = ["unstable-zenoh-api"]
 platform = "linux"
 lang = "rust"
 rmw = "xrce"
-dir = "examples/native/rust/talker"
+dir = "examples/linux/rust/talker"
 image = "linux_xrce"
 
 [[fixture]]
 platform = "linux"
 lang = "rust"
 rmw = "xrce"
-dir = "examples/native/rust/listener"
+dir = "examples/linux/rust/listener"
 image = "linux_xrce"
 
 [[fixture]]
 platform = "linux"
 lang = "rust"
 rmw = "xrce"
-dir = "examples/native/rust/service-server"
+dir = "examples/linux/rust/service-server"
 image = "linux_xrce"
 
 [[fixture]]
 platform = "linux"
 lang = "rust"
 rmw = "xrce"
-dir = "examples/native/rust/service-client"
+dir = "examples/linux/rust/service-client"
 image = "linux_xrce"
 
 # issue 0466 — native rust CycloneDDS talker/listener. These two are consumed by
@@ -1914,14 +1914,14 @@ image = "linux_xrce"
 platform = "linux"
 lang = "rust"
 rmw = "cyclonedds"
-dir = "examples/native/rust/talker"
+dir = "examples/linux/rust/talker"
 image = "linux_cyclonedds"
 
 [[fixture]]
 platform = "linux"
 lang = "rust"
 rmw = "cyclonedds"
-dir = "examples/native/rust/listener"
+dir = "examples/linux/rust/listener"
 image = "linux_cyclonedds"
 
 # issue #233 cell 1 — native rust CycloneDDS service pair (proven to deliver:
@@ -1930,14 +1930,14 @@ image = "linux_cyclonedds"
 platform = "linux"
 lang = "rust"
 rmw = "cyclonedds"
-dir = "examples/native/rust/service-server"
+dir = "examples/linux/rust/service-server"
 image = "linux_cyclonedds"
 
 [[fixture]]
 platform = "linux"
 lang = "rust"
 rmw = "cyclonedds"
-dir = "examples/native/rust/service-client"
+dir = "examples/linux/rust/service-client"
 image = "linux_cyclonedds"
 
 # issue #234 — native rust CycloneDDS action pair (now delivers: server sees
@@ -1951,28 +1951,28 @@ image = "linux_cyclonedds"
 platform = "linux"
 lang = "rust"
 rmw = "cyclonedds"
-dir = "examples/native/rust/action-server"
+dir = "examples/linux/rust/action-server"
 image = "linux_cyclonedds"
 
 [[fixture]]
 platform = "linux"
 lang = "rust"
 rmw = "cyclonedds"
-dir = "examples/native/rust/action-client"
+dir = "examples/linux/rust/action-client"
 image = "linux_cyclonedds"
 
 [[fixture]]
 platform = "linux"
 lang = "rust"
 rmw = "xrce"
-dir = "examples/native/rust/action-server"
+dir = "examples/linux/rust/action-server"
 image = "linux_xrce"
 
 [[fixture]]
 platform = "linux"
 lang = "rust"
 rmw = "xrce"
-dir = "examples/native/rust/action-client"
+dir = "examples/linux/rust/action-client"
 image = "linux_xrce"
 
 # Bench / stress fixtures (default features).
@@ -2630,25 +2630,25 @@ dir = "packages/testing/nros-tests/bins/param-store-threadx-riscv64"
 platform = "linux"
 lang = "c"
 rmw = "zenoh"
-dir = "examples/native/c/talker"
+dir = "examples/linux/c/talker"
 
 [[fixture]]
 platform = "linux"
 lang = "c"
 rmw = "xrce"
-dir = "examples/native/c/talker"
+dir = "examples/linux/c/talker"
 
 [[fixture]]
 platform = "linux"
 lang = "c"
 rmw = "cyclonedds"
-dir = "examples/native/c/talker"
+dir = "examples/linux/c/talker"
 
 [[fixture]]
 platform = "linux"
 lang = "c"
 rmw = "zenoh"
-dir = "examples/native/c/listener"
+dir = "examples/linux/c/listener"
 
 # Issue 0073 — C E2E-safety listener (polls rclc_polling_subscription_take_validated).
 # Its CMakeLists forces NROS_SAFETY_E2E=ON, so the harness build (zenoh only —
@@ -2658,7 +2658,7 @@ dir = "examples/native/c/listener"
 platform = "linux"
 lang = "c"
 rmw = "zenoh"
-dir = "examples/native/c/safety-listener"
+dir = "examples/linux/c/safety-listener"
 
 # Issue 0073 / phase-259 W3 — C++ E2E-safety listener (polls
 # Subscription::take_validated). CMakeLists declares `set(NROS_FEATURES
@@ -2669,55 +2669,55 @@ dir = "examples/native/c/safety-listener"
 platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
-dir = "examples/native/cpp/safety-listener"
+dir = "examples/linux/cpp/safety-listener"
 
 [[fixture]]
 platform = "linux"
 lang = "c"
 rmw = "xrce"
-dir = "examples/native/c/listener"
+dir = "examples/linux/c/listener"
 
 [[fixture]]
 platform = "linux"
 lang = "c"
 rmw = "cyclonedds"
-dir = "examples/native/c/listener"
+dir = "examples/linux/c/listener"
 
 [[fixture]]
 platform = "linux"
 lang = "c"
 rmw = "zenoh"
-dir = "examples/native/c/service-server"
+dir = "examples/linux/c/service-server"
 
 [[fixture]]
 platform = "linux"
 lang = "c"
 rmw = "xrce"
-dir = "examples/native/c/service-server"
+dir = "examples/linux/c/service-server"
 
 [[fixture]]
 platform = "linux"
 lang = "c"
 rmw = "cyclonedds"
-dir = "examples/native/c/service-server"
+dir = "examples/linux/c/service-server"
 
 [[fixture]]
 platform = "linux"
 lang = "c"
 rmw = "zenoh"
-dir = "examples/native/c/service-client"
+dir = "examples/linux/c/service-client"
 
 [[fixture]]
 platform = "linux"
 lang = "c"
 rmw = "xrce"
-dir = "examples/native/c/service-client"
+dir = "examples/linux/c/service-client"
 
 [[fixture]]
 platform = "linux"
 lang = "c"
 rmw = "cyclonedds"
-dir = "examples/native/c/service-client"
+dir = "examples/linux/c/service-client"
 
 # RFC-0041 / Phase 239 — C service-client callback variant (zenoh + cyclonedds
 # for the 239.8 backend-parity check).
@@ -2725,49 +2725,49 @@ dir = "examples/native/c/service-client"
 platform = "linux"
 lang = "c"
 rmw = "zenoh"
-dir = "examples/native/c/service-client-callback"
+dir = "examples/linux/c/service-client-callback"
 
 [[fixture]]
 platform = "linux"
 lang = "c"
 rmw = "cyclonedds"
-dir = "examples/native/c/service-client-callback"
+dir = "examples/linux/c/service-client-callback"
 
 [[fixture]]
 platform = "linux"
 lang = "c"
 rmw = "zenoh"
-dir = "examples/native/c/action-server"
+dir = "examples/linux/c/action-server"
 
 [[fixture]]
 platform = "linux"
 lang = "c"
 rmw = "xrce"
-dir = "examples/native/c/action-server"
+dir = "examples/linux/c/action-server"
 
 [[fixture]]
 platform = "linux"
 lang = "c"
 rmw = "cyclonedds"
-dir = "examples/native/c/action-server"
+dir = "examples/linux/c/action-server"
 
 [[fixture]]
 platform = "linux"
 lang = "c"
 rmw = "zenoh"
-dir = "examples/native/c/action-client"
+dir = "examples/linux/c/action-client"
 
 [[fixture]]
 platform = "linux"
 lang = "c"
 rmw = "xrce"
-dir = "examples/native/c/action-client"
+dir = "examples/linux/c/action-client"
 
 [[fixture]]
 platform = "linux"
 lang = "c"
 rmw = "cyclonedds"
-dir = "examples/native/c/action-client"
+dir = "examples/linux/c/action-client"
 
 # Issue 0454 / phase-354 W3 — the raw-goal WIRE proof. Not an example (it is a
 # regression probe, so it lives under packages/testing/ per the examples-are-
@@ -2781,7 +2781,7 @@ lang = "c"
 rmw = "zenoh"
 dir = "packages/testing/nros-tests/bins/action-raw-goal-probe"
 
-# Phase 275 W2 (#102 H3) — native/c variant examples that shipped with zero
+# Phase 275 W2 (#102 H3) — linux/c variant examples that shipped with zero
 # fixtures. All use the standard `-DNROS_RMW` cmake path (default zenoh), so a
 # zenoh row build-asserts each. UNVERIFIED (host RAM #115): custom-transport-
 # loopback demos a bespoke layer over zenoh RMW — confirm it builds under the
@@ -2798,97 +2798,97 @@ dir = "packages/testing/nros-tests/bins/action-raw-goal-probe"
 platform = "linux"
 lang = "c"
 rmw = "zenoh"
-dir = "examples/native/c/custom-msg"
+dir = "examples/linux/c/custom-msg"
 
 [[fixture]]
 platform = "linux"
 lang = "c"
 rmw = "zenoh"
-dir = "examples/native/c/custom-platform"
+dir = "examples/linux/c/custom-platform"
 
 [[fixture]]
 platform = "linux"
 lang = "c"
 rmw = "zenoh"
-dir = "examples/native/c/custom-transport-loopback"
+dir = "examples/linux/c/custom-transport-loopback"
 
 [[fixture]]
 platform = "linux"
 lang = "c"
 rmw = "zenoh"
-dir = "examples/native/c/logging"
+dir = "examples/linux/c/logging"
 
 [[fixture]]
 platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
-dir = "examples/native/cpp/talker"
+dir = "examples/linux/cpp/talker"
 
 [[fixture]]
 platform = "linux"
 lang = "cpp"
 rmw = "xrce"
-dir = "examples/native/cpp/talker"
+dir = "examples/linux/cpp/talker"
 
 [[fixture]]
 platform = "linux"
 lang = "cpp"
 rmw = "cyclonedds"
-dir = "examples/native/cpp/talker"
+dir = "examples/linux/cpp/talker"
 
 [[fixture]]
 platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
-dir = "examples/native/cpp/listener"
+dir = "examples/linux/cpp/listener"
 
 [[fixture]]
 platform = "linux"
 lang = "cpp"
 rmw = "xrce"
-dir = "examples/native/cpp/listener"
+dir = "examples/linux/cpp/listener"
 
 [[fixture]]
 platform = "linux"
 lang = "cpp"
 rmw = "cyclonedds"
-dir = "examples/native/cpp/listener"
+dir = "examples/linux/cpp/listener"
 
 [[fixture]]
 platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
-dir = "examples/native/cpp/service-server"
+dir = "examples/linux/cpp/service-server"
 
 [[fixture]]
 platform = "linux"
 lang = "cpp"
 rmw = "xrce"
-dir = "examples/native/cpp/service-server"
+dir = "examples/linux/cpp/service-server"
 
 [[fixture]]
 platform = "linux"
 lang = "cpp"
 rmw = "cyclonedds"
-dir = "examples/native/cpp/service-server"
+dir = "examples/linux/cpp/service-server"
 
 [[fixture]]
 platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
-dir = "examples/native/cpp/service-client"
+dir = "examples/linux/cpp/service-client"
 
 [[fixture]]
 platform = "linux"
 lang = "cpp"
 rmw = "xrce"
-dir = "examples/native/cpp/service-client"
+dir = "examples/linux/cpp/service-client"
 
 [[fixture]]
 platform = "linux"
 lang = "cpp"
 rmw = "cyclonedds"
-dir = "examples/native/cpp/service-client"
+dir = "examples/linux/cpp/service-client"
 
 # RFC-0041 / Phase 239 — C++ callback variants. service-client-callback gets
 # zenoh + cyclonedds (239.8 backend-parity); action-client-callback gets zenoh.
@@ -2896,75 +2896,75 @@ dir = "examples/native/cpp/service-client"
 platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
-dir = "examples/native/cpp/service-client-callback"
+dir = "examples/linux/cpp/service-client-callback"
 
 [[fixture]]
 platform = "linux"
 lang = "cpp"
 rmw = "cyclonedds"
-dir = "examples/native/cpp/service-client-callback"
+dir = "examples/linux/cpp/service-client-callback"
 
 [[fixture]]
 platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
-dir = "examples/native/cpp/action-client-callback"
+dir = "examples/linux/cpp/action-client-callback"
 
 [[fixture]]
 platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
-dir = "examples/native/cpp/action-server"
+dir = "examples/linux/cpp/action-server"
 
 [[fixture]]
 platform = "linux"
 lang = "cpp"
 rmw = "xrce"
-dir = "examples/native/cpp/action-server"
+dir = "examples/linux/cpp/action-server"
 
 [[fixture]]
 platform = "linux"
 lang = "cpp"
 rmw = "cyclonedds"
-dir = "examples/native/cpp/action-server"
+dir = "examples/linux/cpp/action-server"
 
 [[fixture]]
 platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
-dir = "examples/native/cpp/action-client"
+dir = "examples/linux/cpp/action-client"
 
 [[fixture]]
 platform = "linux"
 lang = "cpp"
 rmw = "xrce"
-dir = "examples/native/cpp/action-client"
+dir = "examples/linux/cpp/action-client"
 
 [[fixture]]
 platform = "linux"
 lang = "cpp"
 rmw = "cyclonedds"
-dir = "examples/native/cpp/action-client"
+dir = "examples/linux/cpp/action-client"
 
 [[fixture]]
 id = "cpp-parameters"
 platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
-dir = "examples/native/cpp/parameters"
+dir = "examples/linux/cpp/parameters"
 target = "cpp_parameters"
 
 # phase-277 W5 — C sibling of cpp/parameters (the parameter/clock demo block
-# extracted from native/c/talker when the talker slimmed to chatter-only).
+# extracted from linux/c/talker when the talker slimmed to chatter-only).
 [[fixture]]
 id = "c-parameters"
 platform = "linux"
 lang = "c"
 rmw = "zenoh"
-dir = "examples/native/c/parameters"
+dir = "examples/linux/c/parameters"
 target = "c_parameters"
 
-# Phase 275 W2 (#102 H3) — native/cpp variant examples that shipped with zero
+# Phase 275 W2 (#102 H3) — linux/cpp variant examples that shipped with zero
 # fixtures. Standard `-DNROS_RMW` path (default zenoh); `target=` mirrors the
 # cmake project/exe NAME (differs from the hyphenated dir), matching the
 # cpp/parameters pattern above. UNVERIFIED (host RAM #115) — confirm the POC
@@ -2973,28 +2973,28 @@ target = "c_parameters"
 platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
-dir = "examples/native/cpp/component-poc"
+dir = "examples/linux/cpp/component-poc"
 target = "component_poc"
 
 [[fixture]]
 platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
-dir = "examples/native/cpp/component-node-poc"
+dir = "examples/linux/cpp/component-node-poc"
 target = "component_node_poc"
 
 [[fixture]]
 platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
-dir = "examples/native/cpp/transform-poc"
+dir = "examples/linux/cpp/transform-poc"
 target = "transform_poc"
 
 [[fixture]]
 platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
-dir = "examples/native/cpp/logging"
+dir = "examples/linux/cpp/logging"
 target = "cpp_logging"
 
 # ===========================================================================

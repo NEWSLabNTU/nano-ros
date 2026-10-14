@@ -60,6 +60,6 @@
 //! external runtime dependency.  They work on `no_std`/`no_alloc` targets.
 //! For async combinators (`select`, `join`), add `embassy-futures`.
 //!
-//! See `examples/native/rust/service-client-async/` (tokio) for a complete
+//! See `examples/linux/rust/service-client-async/` (tokio) for a complete
 //! working example. The Zephyr Embassy variant was dropped 2026-06-02 per
 //! Phase 212.M-F.5 — pending an async-`Node` trait decision.

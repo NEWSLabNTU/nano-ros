@@ -25,7 +25,7 @@ freestanding alike, and is what the sibling TU in the same crate
 ## Why this width and not the repo
 
 68 tracked C/C++ files use `std::printf`/`std::fprintf`. Almost all are host-only
-— `examples/native/cpp/**`, `tests/**` — where the guarantee holds and the
+— `examples/linux/cpp/**`, `tests/**` — where the guarantee holds and the
 spelling is harmless. Banning it there would be ~60 files of churn to prevent
 nothing, and would teach people to write exemptions.
 
@@ -153,7 +153,7 @@ def self_test(quiet: bool = False) -> int:
     expect("crate tests excluded",
            in_library_tree("packages/rmw/cyclonedds/nros-rmw-cyclonedds/tests/x.cpp"), False)
     expect("examples excluded",
-           in_library_tree("examples/native/cpp/parameters/src/main.cpp"), False)
+           in_library_tree("examples/linux/cpp/parameters/src/main.cpp"), False)
     # phase-472 W5 — a PUBLIC header is library code, and the population has it.
     expect("public header matches",
            in_library_tree("packages/api/nros-cpp/include/nros/log.hpp"), True)

@@ -44,8 +44,8 @@ hints:
 The coarse table works with any build; the per-crate drill-down needs `--timings`:
 
 ```console
-$ cd examples/native/rust/talker && cargo build --timings   # target/cargo-timings/ written
-$ ./target/debug/nros-build-profile examples/native/rust/talker --deep
+$ cd examples/linux/rust/talker && cargo build --timings   # target/cargo-timings/ written
+$ ./target/debug/nros-build-profile examples/linux/rust/talker --deep
 
 Backend: cargo               Total: 30.3s
 

@@ -3235,14 +3235,14 @@ domain_id = 5
     #[test]
     fn codegen_system_resolves_dir_identity_for_arbitrary_pkg_name() {
         let dir = scratch_dir("alias_dir_identity_arbitrary_name");
-        let ex_dir = dir.join("examples/native/rust/talker");
+        let ex_dir = dir.join("examples/linux/rust/talker");
         fs::create_dir_all(ex_dir.join("src")).unwrap();
         fs::write(
             dir.join("Cargo.toml"),
             r#"
 [workspace]
 resolver = "2"
-members = ["examples/native/rust/talker"]
+members = ["examples/linux/rust/talker"]
 "#,
         )
         .unwrap();

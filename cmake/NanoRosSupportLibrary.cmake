@@ -34,7 +34,7 @@
 # So the flag carries NO REBUILD EDGE. `add_dependencies()` supplies only build
 # ORDER, which ninja renders as an order-only (`||`) edge — "must exist before
 # linking", never "relink when it changes". Measured on
-# `examples/native/c/talker/build-cyclonedds`: the backend archive rebuilt at
+# `examples/linux/c/talker/build-cyclonedds`: the backend archive rebuilt at
 # 14:15 while `c_talker` stayed at 12:28 and `cmake --build` exited 0 doing
 # nothing. The executable kept the OLD backend indefinitely — museum binaries
 # by construction — and only `rm -rf` on the build dir cleared it (~687 s per

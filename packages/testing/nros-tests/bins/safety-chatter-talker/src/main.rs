@@ -4,7 +4,7 @@
 //! `/chatter` every 1 s with the zenoh backend's `safety-e2e` CRC attach
 //! baked in (a manifest feature of the backend — there is no safety-specific
 //! application code on the publish side). Extracted from the
-//! `examples/native/rust/talker --features safety-e2e` fixture build so the
+//! `examples/linux/rust/talker --features safety-e2e` fixture build so the
 //! example manifest stays free of test-only features.
 //!
 //! Paired with `tests/safety_e2e.rs`: the safety / declarative safety

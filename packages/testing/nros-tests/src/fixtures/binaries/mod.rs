@@ -1130,7 +1130,7 @@ pub fn build_example(
     // ignored parameter since it was added, and this is what every caller of
     // this funnel actually means: the default-configuration build. Naming it
     // matters here more than anywhere else, because these are the multi-row
-    // leaves — `examples/native/rust/talker` has five — so this is the funnel
+    // leaves — `examples/linux/rust/talker` has five — so this is the funnel
     // that would otherwise still need `<dir>/target` to be distinct from
     // `<dir>/target-zenoh`.
     let leaf = format!("examples/{name}");
@@ -1222,7 +1222,7 @@ impl Rmw {
 /// Phase 118 — resolve a prebuilt binary for a collapsed-shape example
 /// built under a specific RMW feature.
 ///
-/// `name` is the example dir under `examples/` (e.g. `"native/rust/talker"`,
+/// `name` is the example dir under `examples/` (e.g. `"linux/rust/talker"`,
 /// without a `<rmw>` axis). `binary_name` is the Cargo `[[bin]] name`.
 /// The build is expected to live at
 /// `examples/<name>/<rmw.target_dir()>/<profile>/<binary_name>` — the
@@ -1248,7 +1248,7 @@ pub fn build_example_rmw(name: &str, binary_name: &str, rmw: Rmw) -> TestResult<
     // which is the column phase-340 W2.d deletes.
     //
     // Issue 1305 — `select_rmw_row`: a leaf picks its RMW by IMAGE
-    // (`examples/native/rust/*`): the zenoh build is the plain row and the
+    // (`examples/linux/rust/*`): the zenoh build is the plain row and the
     // others are `image = "linux_<rmw>"` rows. (The feature-selected shape,
     // `--no-default-features --features rmw-<x>`, has no rows left since
     // phase F, and its selector is gone.)
@@ -1275,7 +1275,7 @@ pub fn build_example_rmw(name: &str, binary_name: &str, rmw: Rmw) -> TestResult<
 /// Phase 118 — resolve a prebuilt binary for a collapsed-shape C / C++
 /// example built under a specific RMW (cmake `-DNROS_RMW=<rmw>`).
 ///
-/// `name` is the example dir under `examples/` (e.g. `"native/c/talker"`).
+/// `name` is the example dir under `examples/` (e.g. `"linux/c/talker"`).
 /// `binary_name` is the cmake `add_executable` target name. The build
 /// is expected to land at
 /// `examples/<name>/<rmw.build_dir()>/<binary_name>`. The actual
@@ -4006,7 +4006,7 @@ pub fn build_native_workspace_mixed_entry_robot2() -> TestResult<&'static Path> 
 ///
 /// Returns the prebuilt binary for the named RMW. The fixture build
 /// chain (`just linux build-fixtures`) configures + builds
-/// `examples/native/c/talker/` once per RMW into separate
+/// `examples/linux/c/talker/` once per RMW into separate
 /// `build-{zenoh,dds,xrce}/` dirs.
 pub fn build_native_c_talker_rmw(rmw: Rmw) -> TestResult<&'static Path> {
     static ZENOH_CELL: OnceCell<PathBuf> = OnceCell::new();
@@ -4017,7 +4017,7 @@ pub fn build_native_c_talker_rmw(rmw: Rmw) -> TestResult<&'static Path> {
         Rmw::Xrce => &XRCE_CELL,
         Rmw::Cyclonedds => &CYCLONEDDS_CELL,
     };
-    cell.get_or_try_init(|| build_example_cmake_rmw("native/c/talker", "c_talker", rmw))
+    cell.get_or_try_init(|| build_example_cmake_rmw("linux/c/talker", "c_talker", rmw))
         .map(|p| p.as_path())
 }
 
@@ -4210,13 +4210,13 @@ fn require_qemu_baremetal_fixture(binary_name: &str) -> TestResult<PathBuf> {
 /// the `param-chatter-talker` bin — see [`build_native_param_talker`]).
 pub fn build_native_talker() -> TestResult<&'static Path> {
     NATIVE_TALKER_BINARY
-        .get_or_try_init(|| build_example("native/rust/talker", "talker", None, None))
+        .get_or_try_init(|| build_example("linux/rust/talker", "talker", None, None))
         .map(|p| p.as_path())
 }
 
 /// Resolve the prebuilt `param-chatter-talker` fixture (cached).
 ///
-/// phase-277 W3.a: was `examples/native/rust/talker --features param-services`
+/// phase-277 W3.a: was `examples/linux/rust/talker --features param-services`
 /// (the default-target talker build); now a dedicated bin
 /// (`packages/testing/nros-tests/bins/param-chatter-talker`) with the
 /// parameter services baked. Same behavior: registers the REP-2002 parameter
@@ -4296,7 +4296,7 @@ pub fn build_native_param_two_node_talker_cyclonedds() -> TestResult<&'static Pa
 
 /// Resolve the prebuilt `int32-sink` fixture (cached).
 ///
-/// phase-277 W4: was `examples/native/rust/listener` with its `NROS_SUB_TOPIC`
+/// phase-277 W4: was `examples/linux/rust/listener` with its `NROS_SUB_TOPIC`
 /// escape hatch; the example flipped to the official `std_msgs/String` chatter
 /// (`I heard: [Hello World: N]`), so the generic Int32 side-topic observer
 /// moved to a dedicated bin (`packages/testing/nros-tests/bins/int32-sink`).
@@ -4309,7 +4309,7 @@ pub fn build_native_param_two_node_talker_cyclonedds() -> TestResult<&'static Pa
 /// `rmw-{zenoh,xrce}` axis the examples do.
 ///
 /// issue 0449 — cyclonedds joined them, which is what let
-/// `examples/native/c/listener` drop its `NROS_SUB_TYPE` type switch: the
+/// `examples/linux/c/listener` drop its `NROS_SUB_TYPE` type switch: the
 /// zenoh->cyclonedds bridge e2e was the last caller that needed an Int32
 /// listener speaking a transport this bin could not.
 /// phase-381 — resolve the prebuilt `graph-probe` fixture (cached).
@@ -4970,7 +4970,7 @@ pub fn build_native_talker_rmw(rmw: Rmw) -> TestResult<&'static Path> {
         Rmw::Xrce => &XRCE_CELL,
         Rmw::Cyclonedds => &CYCLONEDDS_CELL,
     };
-    cell.get_or_try_init(|| build_example_rmw("native/rust/talker", "talker", rmw))
+    cell.get_or_try_init(|| build_example_rmw("linux/rust/talker", "talker", rmw))
         .map(|p| p.as_path())
 }
 
@@ -4986,7 +4986,7 @@ pub fn build_native_listener_rmw(rmw: Rmw) -> TestResult<&'static Path> {
         Rmw::Xrce => &XRCE_CELL,
         Rmw::Cyclonedds => &CYCLONEDDS_CELL,
     };
-    cell.get_or_try_init(|| build_example_rmw("native/rust/listener", "listener", rmw))
+    cell.get_or_try_init(|| build_example_rmw("linux/rust/listener", "listener", rmw))
         .map(|p| p.as_path())
 }
 
@@ -4998,25 +4998,25 @@ pub fn build_native_rust_example_rmw(
     binary_name: &str,
     rmw: Rmw,
 ) -> TestResult<PathBuf> {
-    build_example_rmw(&format!("native/rust/{}", case), binary_name, rmw)
+    build_example_rmw(&format!("linux/rust/{}", case), binary_name, rmw)
 }
 
 /// Phase 118 — generic native C example resolver. `case` is the
-/// directory name under `examples/native/c/` (talker, listener,
+/// directory name under `examples/linux/c/` (talker, listener,
 /// service-server, …); `binary_name` is the cmake target (e.g.
 /// `c_talker`, `c_service_server`, …).
 pub fn build_native_c_example_rmw(case: &str, binary_name: &str, rmw: Rmw) -> TestResult<PathBuf> {
-    build_example_cmake_rmw(&format!("native/c/{}", case), binary_name, rmw)
+    build_example_cmake_rmw(&format!("linux/c/{}", case), binary_name, rmw)
 }
 
 /// Phase 118 — generic native C++ example resolver. Mirror of the C
-/// helper for `examples/native/cpp/<case>/`.
+/// helper for `examples/linux/cpp/<case>/`.
 pub fn build_native_cpp_example_rmw(
     case: &str,
     binary_name: &str,
     rmw: Rmw,
 ) -> TestResult<PathBuf> {
-    build_example_cmake_rmw(&format!("native/cpp/{}", case), binary_name, rmw)
+    build_example_cmake_rmw(&format!("linux/cpp/{}", case), binary_name, rmw)
 }
 
 /// Phase 118.C — collapsed-shape ThreadX-RV64 Rust example resolver.
@@ -5592,20 +5592,20 @@ pub fn build_freertos_rust_example_rmw(
 /// Build native-rs-listener (cached)
 pub fn build_native_listener() -> TestResult<&'static Path> {
     NATIVE_LISTENER_BINARY
-        .get_or_try_init(|| build_example("native/rust/listener", "listener", None, None))
+        .get_or_try_init(|| build_example("linux/rust/listener", "listener", None, None))
         .map(|p| p.as_path())
 }
 
 static NATIVE_RS_LOGGING_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
-/// #102 H3 — build the `native/rust/logging` example (cached). Distinct from the
+/// #102 H3 — build the `linux/rust/logging` example (cached). Distinct from the
 /// `logging-smoke-*` bins: after firing every severity once it RAISES the runtime
 /// threshold to `Warn` and fires them again, so the consuming e2e can assert the
 /// runtime level filter (round-2 trace/debug/info suppressed) that the smoke bins
 /// never exercise.
 pub fn build_native_logging() -> TestResult<&'static Path> {
     NATIVE_RS_LOGGING_BINARY
-        .get_or_try_init(|| build_example("native/rust/logging", "logging", None, None))
+        .get_or_try_init(|| build_example("linux/rust/logging", "logging", None, None))
         .map(|p| p.as_path())
 }
 
@@ -5614,7 +5614,7 @@ pub fn build_native_custom_transport_talker() -> TestResult<&'static Path> {
     NATIVE_CT_TALKER_BINARY
         .get_or_try_init(|| {
             build_example(
-                "native/rust/custom-transport-talker",
+                "linux/rust/custom-transport-talker",
                 // phase-340 W2 — was `talker`, which collided with
                 // `native-rs-talker`'s binary inside the `linux` default
                 // fixture group's one flat output namespace.
@@ -5766,7 +5766,7 @@ pub fn build_native_custom_transport_listener() -> TestResult<&'static Path> {
     NATIVE_CT_LISTENER_BINARY
         .get_or_try_init(|| {
             build_example(
-                "native/rust/custom-transport-listener",
+                "linux/rust/custom-transport-listener",
                 // phase-340 W2 — was `listener`; see the talker sibling.
                 "custom-transport-listener",
                 None,
@@ -5784,7 +5784,7 @@ pub fn build_native_lifecycle_node() -> TestResult<&'static Path> {
     NATIVE_LIFECYCLE_NODE_BINARY
         .get_or_try_init(|| {
             build_example(
-                "native/rust/lifecycle-node",
+                "linux/rust/lifecycle-node",
                 "lifecycle-node",
                 Some(&["lifecycle-services"]),
                 None,
@@ -6046,7 +6046,7 @@ pub fn build_native_talker_peer() -> TestResult<&'static Path> {
     NATIVE_TALKER_PEER_BINARY
         .get_or_try_init(|| {
             let row = crate::fixtures::groups::select_row(
-                "examples/native/rust/talker",
+                "examples/linux/rust/talker",
                 &crate::fixtures::groups::FixtureVariant::plain()
                     .with_env(&[("ZPICO_MULTICAST_TRANSPORT", "1")]),
             )?;
@@ -6061,7 +6061,7 @@ pub fn build_native_listener_peer() -> TestResult<&'static Path> {
     NATIVE_LISTENER_PEER_BINARY
         .get_or_try_init(|| {
             let row = crate::fixtures::groups::select_row(
-                "examples/native/rust/listener",
+                "examples/linux/rust/listener",
                 &crate::fixtures::groups::FixtureVariant::plain()
                     .with_env(&[("ZPICO_MULTICAST_TRANSPORT", "1")]),
             )?;
@@ -6081,7 +6081,7 @@ pub fn build_native_talker_tls() -> TestResult<&'static Path> {
             // issue 0517 — "the talker row built with `link-tls`", not
             // "the talker's target-tls dir".
             let row = crate::fixtures::groups::select_row(
-                "examples/native/rust/talker",
+                "examples/linux/rust/talker",
                 &crate::fixtures::groups::FixtureVariant::features(&["link-tls"]),
             )?;
             let rel = PathBuf::from(format!("{}/talker", cargo_target_profile_dir()));
@@ -6098,7 +6098,7 @@ pub fn build_native_listener_tls() -> TestResult<&'static Path> {
     NATIVE_LISTENER_TLS_BINARY
         .get_or_try_init(|| {
             let row = crate::fixtures::groups::select_row(
-                "examples/native/rust/listener",
+                "examples/linux/rust/listener",
                 &crate::fixtures::groups::FixtureVariant::features(&["link-tls"]),
             )?;
             let rel = PathBuf::from(format!("{}/listener", cargo_target_profile_dir()));
@@ -6127,7 +6127,7 @@ pub fn listener_tls_binary() -> PathBuf {
 pub fn build_native_action_server() -> TestResult<&'static Path> {
     NATIVE_ACTION_SERVER_BINARY
         .get_or_try_init(|| {
-            build_example_rmw("native/rust/action-server", "action-server", Rmw::Zenoh)
+            build_example_rmw("linux/rust/action-server", "action-server", Rmw::Zenoh)
         })
         .map(|p| p.as_path())
 }
@@ -6136,14 +6136,14 @@ pub fn build_native_action_server() -> TestResult<&'static Path> {
 pub fn build_native_action_client() -> TestResult<&'static Path> {
     NATIVE_ACTION_CLIENT_BINARY
         .get_or_try_init(|| {
-            build_example_rmw("native/rust/action-client", "action-client", Rmw::Zenoh)
+            build_example_rmw("linux/rust/action-client", "action-client", Rmw::Zenoh)
         })
         .map(|p| p.as_path())
 }
 
 /// Resolve the prebuilt `safety-chatter-talker` fixture (cached).
 ///
-/// phase-277 W3.a: was `examples/native/rust/talker --features safety-e2e`
+/// phase-277 W3.a: was `examples/linux/rust/talker --features safety-e2e`
 /// in `target-safety/`; now a dedicated bin
 /// (`packages/testing/nros-tests/bins/safety-chatter-talker`) with the
 /// safety features baked, so the example manifest carries no test-only
@@ -6234,7 +6234,7 @@ pub fn build_monitor_capacity() -> TestResult<&'static Path> {
 /// Resolve the prebuilt `safety-chatter-listener` fixture (cached).
 ///
 /// phase-277 W3.a: was the `safety-e2e`-gated second `main` of
-/// `examples/native/rust/listener` (built into `target-safety/`); now a
+/// `examples/linux/rust/listener` (built into `target-safety/`); now a
 /// dedicated bin (`packages/testing/nros-tests/bins/safety-chatter-listener`)
 /// so the example keeps a single cfg-free `main`. Same behavior: `.safety()`
 /// subscription on /chatter logging `[SAFETY] seq_gap=.. dup=.. crc=..`.
@@ -6334,21 +6334,21 @@ pub fn action_client_binary() -> PathBuf {
 pub fn build_native_service_server() -> TestResult<&'static Path> {
     NATIVE_SERVICE_SERVER_BINARY
         .get_or_try_init(|| {
-            build_example_rmw("native/rust/service-server", "service-server", Rmw::Zenoh)
+            build_example_rmw("linux/rust/service-server", "service-server", Rmw::Zenoh)
         })
         .map(|p| p.as_path())
 }
 
 static NATIVE_RS_ASYNC_SERVICE_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
-/// #102 H3 — build the `native/rust/service-client-async` example (cached). The
+/// #102 H3 — build the `linux/rust/service-client-async` example (cached). The
 /// async/tokio service-client variant (`spin_async` + `.await` on the response
 /// Promise); paired with `build_native_service_server` in the roundtrip e2e.
 pub fn build_native_async_service_client() -> TestResult<&'static Path> {
     NATIVE_RS_ASYNC_SERVICE_CLIENT_BINARY
         .get_or_try_init(|| {
             build_example(
-                "native/rust/service-client-async",
+                "linux/rust/service-client-async",
                 "native-rs-async-service-client",
                 None,
                 None,
@@ -6359,7 +6359,7 @@ pub fn build_native_async_service_client() -> TestResult<&'static Path> {
 
 static NATIVE_RS_ASYNC_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
-/// #102 H3 — build the `native/rust/action-client-async` example (cached). The
+/// #102 H3 — build the `linux/rust/action-client-async` example (cached). The
 /// async/tokio action-client variant (background `spin_async` + `.await` on the
 /// goal/result Promises + `StreamExt` feedback); paired with
 /// `build_native_action_server` in the roundtrip e2e.
@@ -6367,7 +6367,7 @@ pub fn build_native_async_action_client() -> TestResult<&'static Path> {
     NATIVE_RS_ASYNC_ACTION_CLIENT_BINARY
         .get_or_try_init(|| {
             build_example(
-                "native/rust/action-client-async",
+                "linux/rust/action-client-async",
                 "native-rs-async-action-client",
                 None,
                 None,
@@ -6380,7 +6380,7 @@ pub fn build_native_async_action_client() -> TestResult<&'static Path> {
 pub fn build_native_service_client() -> TestResult<&'static Path> {
     NATIVE_SERVICE_CLIENT_BINARY
         .get_or_try_init(|| {
-            build_example_rmw("native/rust/service-client", "service-client", Rmw::Zenoh)
+            build_example_rmw("linux/rust/service-client", "service-client", Rmw::Zenoh)
         })
         .map(|p| p.as_path())
 }
@@ -6394,7 +6394,7 @@ pub fn build_native_service_client_callback() -> TestResult<&'static Path> {
     NATIVE_SERVICE_CLIENT_CALLBACK_BINARY
         .get_or_try_init(|| {
             build_example(
-                "native/rust/service-client-callback",
+                "linux/rust/service-client-callback",
                 "service-client-callback",
                 None,
                 None,
@@ -6422,13 +6422,13 @@ pub fn service_client_binary() -> PathBuf {
 /// Build native-rs-custom-msg (cached)
 pub fn build_native_custom_msg() -> TestResult<&'static Path> {
     NATIVE_CUSTOM_MSG_BINARY
-        .get_or_try_init(|| build_example("native/rust/custom-msg", "custom_msg", None, None))
+        .get_or_try_init(|| build_example("linux/rust/custom-msg", "custom_msg", None, None))
         .map(|p| p.as_path())
 }
 
 /// Build native-rs-custom-msg (uncached, for serialization tests)
 pub fn build_native_custom_msg_no_zenoh() -> TestResult<PathBuf> {
-    build_example("native/rust/custom-msg", "custom_msg", None, None)
+    build_example("linux/rust/custom-msg", "custom_msg", None, None)
 }
 
 /// rstest fixture that provides the native-rs-custom-msg binary path (with zenoh)
@@ -6575,14 +6575,14 @@ static NATIVE_RTIC_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Build native rtic-talker (cached)
 pub fn build_native_rtic_talker() -> TestResult<&'static Path> {
     NATIVE_RTIC_TALKER_BINARY
-        .get_or_try_init(|| build_example("native/rust/talker-rtic", "rtic-talker", None, None))
+        .get_or_try_init(|| build_example("linux/rust/talker-rtic", "rtic-talker", None, None))
         .map(|p| p.as_path())
 }
 
 /// Build native rtic-listener (cached)
 pub fn build_native_rtic_listener() -> TestResult<&'static Path> {
     NATIVE_RTIC_LISTENER_BINARY
-        .get_or_try_init(|| build_example("native/rust/listener-rtic", "rtic-listener", None, None))
+        .get_or_try_init(|| build_example("linux/rust/listener-rtic", "rtic-listener", None, None))
         .map(|p| p.as_path())
 }
 
@@ -6591,7 +6591,7 @@ pub fn build_native_rtic_service_server() -> TestResult<&'static Path> {
     NATIVE_RTIC_SERVICE_SERVER_BINARY
         .get_or_try_init(|| {
             build_example(
-                "native/rust/service-server-rtic",
+                "linux/rust/service-server-rtic",
                 "rtic-service-server",
                 None,
                 None,
@@ -6605,7 +6605,7 @@ pub fn build_native_rtic_service_client() -> TestResult<&'static Path> {
     NATIVE_RTIC_SERVICE_CLIENT_BINARY
         .get_or_try_init(|| {
             build_example(
-                "native/rust/service-client-rtic",
+                "linux/rust/service-client-rtic",
                 "rtic-service-client",
                 None,
                 None,
@@ -6619,7 +6619,7 @@ pub fn build_native_rtic_action_server() -> TestResult<&'static Path> {
     NATIVE_RTIC_ACTION_SERVER_BINARY
         .get_or_try_init(|| {
             build_example(
-                "native/rust/action-server-rtic",
+                "linux/rust/action-server-rtic",
                 "rtic-action-server",
                 None,
                 None,
@@ -6633,7 +6633,7 @@ pub fn build_native_rtic_action_client() -> TestResult<&'static Path> {
     NATIVE_RTIC_ACTION_CLIENT_BINARY
         .get_or_try_init(|| {
             build_example(
-                "native/rust/action-client-rtic",
+                "linux/rust/action-client-rtic",
                 "rtic-action-client",
                 None,
                 None,
@@ -6649,14 +6649,14 @@ pub fn build_native_rtic_action_client() -> TestResult<&'static Path> {
 /// Build the xrce-talker example binary (cached).
 pub fn build_xrce_talker() -> TestResult<&'static Path> {
     XRCE_TALKER_BINARY
-        .get_or_try_init(|| build_example_rmw("native/rust/talker", "talker", Rmw::Xrce))
+        .get_or_try_init(|| build_example_rmw("linux/rust/talker", "talker", Rmw::Xrce))
         .map(|p| p.as_path())
 }
 
 /// Build the xrce-listener example binary (cached).
 pub fn build_xrce_listener() -> TestResult<&'static Path> {
     XRCE_LISTENER_BINARY
-        .get_or_try_init(|| build_example_rmw("native/rust/listener", "listener", Rmw::Xrce))
+        .get_or_try_init(|| build_example_rmw("linux/rust/listener", "listener", Rmw::Xrce))
         .map(|p| p.as_path())
 }
 
@@ -6738,7 +6738,7 @@ pub fn px4_companion_binary() -> PathBuf {
 pub fn build_xrce_service_server() -> TestResult<&'static Path> {
     XRCE_SERVICE_SERVER_BINARY
         .get_or_try_init(|| {
-            build_example_rmw("native/rust/service-server", "service-server", Rmw::Xrce)
+            build_example_rmw("linux/rust/service-server", "service-server", Rmw::Xrce)
         })
         .map(|p| p.as_path())
 }
@@ -6747,7 +6747,7 @@ pub fn build_xrce_service_server() -> TestResult<&'static Path> {
 pub fn build_xrce_service_client() -> TestResult<&'static Path> {
     XRCE_SERVICE_CLIENT_BINARY
         .get_or_try_init(|| {
-            build_example_rmw("native/rust/service-client", "service-client", Rmw::Xrce)
+            build_example_rmw("linux/rust/service-client", "service-client", Rmw::Xrce)
         })
         .map(|p| p.as_path())
 }
@@ -6772,7 +6772,7 @@ pub fn xrce_service_client_binary() -> PathBuf {
 pub fn build_xrce_action_server() -> TestResult<&'static Path> {
     XRCE_ACTION_SERVER_BINARY
         .get_or_try_init(|| {
-            build_example_rmw("native/rust/action-server", "action-server", Rmw::Xrce)
+            build_example_rmw("linux/rust/action-server", "action-server", Rmw::Xrce)
         })
         .map(|p| p.as_path())
 }
@@ -6781,7 +6781,7 @@ pub fn build_xrce_action_server() -> TestResult<&'static Path> {
 pub fn build_xrce_action_client() -> TestResult<&'static Path> {
     XRCE_ACTION_CLIENT_BINARY
         .get_or_try_init(|| {
-            build_example_rmw("native/rust/action-client", "action-client", Rmw::Xrce)
+            build_example_rmw("linux/rust/action-client", "action-client", Rmw::Xrce)
         })
         .map(|p| p.as_path())
 }
@@ -6806,12 +6806,7 @@ pub fn xrce_action_client_binary() -> PathBuf {
 pub fn build_xrce_serial_talker() -> TestResult<&'static Path> {
     XRCE_SERIAL_TALKER_BINARY
         .get_or_try_init(|| {
-            build_example(
-                "native/rust/serial-talker",
-                "xrce-serial-talker",
-                None,
-                None,
-            )
+            build_example("linux/rust/serial-talker", "xrce-serial-talker", None, None)
         })
         .map(|p| p.as_path())
 }
@@ -6821,7 +6816,7 @@ pub fn build_xrce_serial_listener() -> TestResult<&'static Path> {
     XRCE_SERIAL_LISTENER_BINARY
         .get_or_try_init(|| {
             build_example(
-                "native/rust/serial-listener",
+                "linux/rust/serial-listener",
                 "xrce-serial-listener",
                 None,
                 None,
@@ -7121,14 +7116,14 @@ pub fn qemu_large_msg_test_binary() -> PathBuf {
 /// Build c-talker example (cached)
 pub fn build_c_talker() -> TestResult<&'static Path> {
     C_TALKER_BINARY
-        .get_or_try_init(|| build_example_cmake_rmw("native/c/talker", "c_talker", Rmw::Zenoh))
+        .get_or_try_init(|| build_example_cmake_rmw("linux/c/talker", "c_talker", Rmw::Zenoh))
         .map(|p| p.as_path())
 }
 
 /// Build c-listener example (cached)
 pub fn build_c_listener() -> TestResult<&'static Path> {
     C_LISTENER_BINARY
-        .get_or_try_init(|| build_example_cmake_rmw("native/c/listener", "c_listener", Rmw::Zenoh))
+        .get_or_try_init(|| build_example_cmake_rmw("linux/c/listener", "c_listener", Rmw::Zenoh))
         .map(|p| p.as_path())
 }
 
@@ -7148,7 +7143,7 @@ pub fn c_listener_binary() -> PathBuf {
 pub fn build_c_service_server() -> TestResult<&'static Path> {
     C_SERVICE_SERVER_BINARY
         .get_or_try_init(|| {
-            build_example_cmake_rmw("native/c/service-server", "c_service_server", Rmw::Zenoh)
+            build_example_cmake_rmw("linux/c/service-server", "c_service_server", Rmw::Zenoh)
         })
         .map(|p| p.as_path())
 }
@@ -7157,7 +7152,7 @@ pub fn build_c_service_server() -> TestResult<&'static Path> {
 pub fn build_c_service_client() -> TestResult<&'static Path> {
     C_SERVICE_CLIENT_BINARY
         .get_or_try_init(|| {
-            build_example_cmake_rmw("native/c/service-client", "c_service_client", Rmw::Zenoh)
+            build_example_cmake_rmw("linux/c/service-client", "c_service_client", Rmw::Zenoh)
         })
         .map(|p| p.as_path())
 }
@@ -7167,7 +7162,7 @@ pub fn build_c_service_client_callback() -> TestResult<&'static Path> {
     C_SERVICE_CLIENT_CALLBACK_BINARY
         .get_or_try_init(|| {
             build_example_cmake_rmw(
-                "native/c/service-client-callback",
+                "linux/c/service-client-callback",
                 "c_service_client_callback",
                 Rmw::Zenoh,
             )
@@ -7179,7 +7174,7 @@ pub fn build_c_service_client_callback() -> TestResult<&'static Path> {
 pub fn build_c_action_server() -> TestResult<&'static Path> {
     C_ACTION_SERVER_BINARY
         .get_or_try_init(|| {
-            build_example_cmake_rmw("native/c/action-server", "c_action_server", Rmw::Zenoh)
+            build_example_cmake_rmw("linux/c/action-server", "c_action_server", Rmw::Zenoh)
         })
         .map(|p| p.as_path())
 }
@@ -7206,7 +7201,7 @@ pub fn build_action_raw_goal_probe() -> TestResult<&'static Path> {
 pub fn build_c_action_client() -> TestResult<&'static Path> {
     C_ACTION_CLIENT_BINARY
         .get_or_try_init(|| {
-            build_example_cmake_rmw("native/c/action-client", "c_action_client", Rmw::Zenoh)
+            build_example_cmake_rmw("linux/c/action-client", "c_action_client", Rmw::Zenoh)
         })
         .map(|p| p.as_path())
 }
@@ -7258,14 +7253,14 @@ pub fn c_action_client_binary() -> PathBuf {
 /// Build c-xrce-talker example (cached)
 pub fn build_c_xrce_talker() -> TestResult<&'static Path> {
     C_XRCE_TALKER_BINARY
-        .get_or_try_init(|| build_example_cmake_rmw("native/c/talker", "c_talker", Rmw::Xrce))
+        .get_or_try_init(|| build_example_cmake_rmw("linux/c/talker", "c_talker", Rmw::Xrce))
         .map(|p| p.as_path())
 }
 
 /// Build c-xrce-listener example (cached)
 pub fn build_c_xrce_listener() -> TestResult<&'static Path> {
     C_XRCE_LISTENER_BINARY
-        .get_or_try_init(|| build_example_cmake_rmw("native/c/listener", "c_listener", Rmw::Xrce))
+        .get_or_try_init(|| build_example_cmake_rmw("linux/c/listener", "c_listener", Rmw::Xrce))
         .map(|p| p.as_path())
 }
 
@@ -7457,7 +7452,7 @@ static CPP_PARAMETERS_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Build cpp-talker example (cached)
 pub fn build_cpp_talker() -> TestResult<&'static Path> {
     CPP_TALKER_BINARY
-        .get_or_try_init(|| build_example_cmake_rmw("native/cpp/talker", "cpp_talker", Rmw::Zenoh))
+        .get_or_try_init(|| build_example_cmake_rmw("linux/cpp/talker", "cpp_talker", Rmw::Zenoh))
         .map(|p| p.as_path())
 }
 
@@ -7465,7 +7460,7 @@ pub fn build_cpp_talker() -> TestResult<&'static Path> {
 pub fn build_cpp_listener() -> TestResult<&'static Path> {
     CPP_LISTENER_BINARY
         .get_or_try_init(|| {
-            build_example_cmake_rmw("native/cpp/listener", "cpp_listener", Rmw::Zenoh)
+            build_example_cmake_rmw("linux/cpp/listener", "cpp_listener", Rmw::Zenoh)
         })
         .map(|p| p.as_path())
 }
@@ -7474,11 +7469,7 @@ pub fn build_cpp_listener() -> TestResult<&'static Path> {
 pub fn build_cpp_service_server() -> TestResult<&'static Path> {
     CPP_SERVICE_SERVER_BINARY
         .get_or_try_init(|| {
-            build_example_cmake_rmw(
-                "native/cpp/service-server",
-                "cpp_service_server",
-                Rmw::Zenoh,
-            )
+            build_example_cmake_rmw("linux/cpp/service-server", "cpp_service_server", Rmw::Zenoh)
         })
         .map(|p| p.as_path())
 }
@@ -7487,11 +7478,7 @@ pub fn build_cpp_service_server() -> TestResult<&'static Path> {
 pub fn build_cpp_service_client() -> TestResult<&'static Path> {
     CPP_SERVICE_CLIENT_BINARY
         .get_or_try_init(|| {
-            build_example_cmake_rmw(
-                "native/cpp/service-client",
-                "cpp_service_client",
-                Rmw::Zenoh,
-            )
+            build_example_cmake_rmw("linux/cpp/service-client", "cpp_service_client", Rmw::Zenoh)
         })
         .map(|p| p.as_path())
 }
@@ -7513,7 +7500,7 @@ pub fn build_cpp_service_client_callback() -> TestResult<&'static Path> {
     CPP_SERVICE_CLIENT_CALLBACK_BINARY
         .get_or_try_init(|| {
             build_example_cmake_rmw(
-                "native/cpp/service-client-callback",
+                "linux/cpp/service-client-callback",
                 "cpp_service_client_callback",
                 Rmw::Zenoh,
             )
@@ -7541,7 +7528,7 @@ pub fn cpp_service_client_binary() -> PathBuf {
 pub fn build_cpp_action_server() -> TestResult<&'static Path> {
     CPP_ACTION_SERVER_BINARY
         .get_or_try_init(|| {
-            build_example_cmake_rmw("native/cpp/action-server", "cpp_action_server", Rmw::Zenoh)
+            build_example_cmake_rmw("linux/cpp/action-server", "cpp_action_server", Rmw::Zenoh)
         })
         .map(|p| p.as_path())
 }
@@ -7550,7 +7537,7 @@ pub fn build_cpp_action_server() -> TestResult<&'static Path> {
 pub fn build_cpp_action_client() -> TestResult<&'static Path> {
     CPP_ACTION_CLIENT_BINARY
         .get_or_try_init(|| {
-            build_example_cmake_rmw("native/cpp/action-client", "cpp_action_client", Rmw::Zenoh)
+            build_example_cmake_rmw("linux/cpp/action-client", "cpp_action_client", Rmw::Zenoh)
         })
         .map(|p| p.as_path())
 }
@@ -7560,7 +7547,7 @@ pub fn build_cpp_action_client_callback() -> TestResult<&'static Path> {
     CPP_ACTION_CLIENT_CALLBACK_BINARY
         .get_or_try_init(|| {
             build_example_cmake_rmw(
-                "native/cpp/action-client-callback",
+                "linux/cpp/action-client-callback",
                 "cpp_action_client_callback",
                 Rmw::Zenoh,
             )
@@ -7588,7 +7575,7 @@ pub fn cpp_action_client_binary() -> PathBuf {
 pub fn build_cpp_parameters() -> TestResult<&'static Path> {
     CPP_PARAMETERS_BINARY
         .get_or_try_init(|| {
-            build_example_cmake_rmw("native/cpp/parameters", "cpp_parameters", Rmw::Zenoh)
+            build_example_cmake_rmw("linux/cpp/parameters", "cpp_parameters", Rmw::Zenoh)
         })
         .map(|p| p.as_path())
 }
@@ -7602,12 +7589,12 @@ pub fn cpp_parameters_binary() -> PathBuf {
 }
 
 /// Build c-parameters example (cached) — phase-277 W5, the C sibling of
-/// cpp-parameters (extracted from the pre-W5 native/c/talker demo block).
+/// cpp-parameters (extracted from the pre-W5 linux/c/talker demo block).
 pub fn build_c_parameters() -> TestResult<&'static Path> {
     static C_PARAMETERS_BINARY: OnceCell<PathBuf> = OnceCell::new();
     C_PARAMETERS_BINARY
         .get_or_try_init(|| {
-            build_example_cmake_rmw("native/c/parameters", "c_parameters", Rmw::Zenoh)
+            build_example_cmake_rmw("linux/c/parameters", "c_parameters", Rmw::Zenoh)
         })
         .map(|p| p.as_path())
 }

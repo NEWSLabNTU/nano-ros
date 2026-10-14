@@ -162,8 +162,8 @@ fn discover_bringup_dirs() -> Vec<PathBuf> {
 /// Top-level example trees that have been migrated through the Phase
 /// 212.M sweep. Anything outside this list is not checked.
 const MIGRATED_PREFIXES: &[&str] = &[
-    // M.1 native/rust + M.2 native/cpp
-    "examples/native/",
+    // M.1 linux/rust + M.2 linux/cpp
+    "examples/linux/",
     // M.3 Zephyr/rust (C+C++ Zephyr DEFERRED to H.1 follow-up — skip
     // those sub-trees with the rust-only filter below).
     "examples/zephyr/rust/",
@@ -181,7 +181,7 @@ const MIGRATED_PREFIXES: &[&str] = &[
 /// covered by the corresponding M.x sweep. Drawn from the explicit
 /// per-wave DEFERRED entries in the Phase 212.M table.
 const UNMIGRATED_LEAF_SUFFIXES: &[&str] = &[
-    // M.1 native/rust covered talker / listener / service-* / action-*
+    // M.1 linux/rust covered talker / listener / service-* / action-*
     // / parameters / logging. NOT covered:
     "-rtic",
     "-async",
@@ -213,10 +213,10 @@ const UNMIGRATED_PREFIXES: &[(&str, &str)] = &[
         "examples/threadx-linux/c/",
         "M.6 covered threadx-linux/{rust,cpp} only; c/ remains pre-212",
     ),
-    // M.13 (informal — sweep landed 2026-06-02) covered native/c via
-    // package.xml + nano_ros_application() cmake fn. native/c is now
+    // M.13 (informal — sweep landed 2026-06-02) covered linux/c via
+    // package.xml + nano_ros_application() cmake fn. linux/c is now
     // canonical-shape. Carve-out retired.
-    // `examples/native/rust/bridge/` UNMIGRATED entry retired 2026-06-02:
+    // `examples/linux/rust/bridge/` UNMIGRATED entry retired 2026-06-02:
     // its sole occupant moved to an `examples/bridges/` sibling category,
     // and phase-477 (2026-10-03) deleted that category outright — its two
     // time-triggered bridge leaves were built by no lane. A
@@ -901,7 +901,7 @@ fn unmigrated_trees_status_surface() {
 /// embedded: 49 canonical leaves, native-identical CMakeLists). Zephyr + workspace
 /// are NOT here — they keep their own shapes until their migration waves land.
 const AMENT_SHAPE_TREES: &[&str] = &[
-    "native",
+    "linux",
     "mps2-an385-freertos",
     "qemu-armv7a-nuttx",
     "rv-virt-nuttx",
@@ -930,6 +930,14 @@ fn standalone_leaves_use_ament_shape() {
     let mut bad: Vec<String> = Vec::new();
     let mut checked = 0usize;
     for tree in AMENT_SHAPE_TREES {
+        // A listed tree that does not exist would make every leaf under it
+        // vanish from the check (phase-500 W4 renamed `native` → `linux`).
+        if !examples_dir().join(tree).is_dir() {
+            bad.push(format!(
+                "examples/{tree} — listed in AMENT_SHAPE_TREES but absent"
+            ));
+            continue;
+        }
         for lang in ["c", "cpp"] {
             let root = examples_dir().join(tree).join(lang);
             if !root.is_dir() {

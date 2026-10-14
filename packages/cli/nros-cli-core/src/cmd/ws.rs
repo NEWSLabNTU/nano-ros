@@ -2952,7 +2952,7 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
     //  * `src/`-based: workspace root has src/, src/<pkg>/ subdirs (colcon
     //    standard).
     //  * Single-pkg: workspace root IS the pkg dir (package.xml at root).
-    //    Common for ported standalone examples (`examples/native/rust/talker`).
+    //    Common for ported standalone examples (`examples/linux/rust/talker`).
     // Heuristic: colcon-style layout iff `src/` exists AND has at least one
     // immediate subdir with `package.xml`. Falls through to single-pkg mode
     // when the workspace root itself carries `package.xml` (the standalone

@@ -15,7 +15,7 @@ Build caches grew as suffix-named siblings of their sources. Three separate
 spellings encode "which RMW" alone:
 
 ```
-examples/native/rust/talker/target-zenoh/         # cargo, RMW suffix
+examples/linux/rust/talker/target-zenoh/         # cargo, RMW suffix
 examples/workspaces/c/build-workspace-fixtures/   # cmake, stage suffix
 examples/workspaces/c/build-workspace-fixtures-freertos/   # + platform suffix
 build/cargo-fixtures/<group>/                     # phase-226 group key

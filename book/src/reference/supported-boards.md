@@ -45,7 +45,7 @@ nano-ros on them. Per-crate tier truth is the generated
 | NVIDIA       | Jetson Orin SPE      | Cortex-R5          | Armv7-R    | FreeRTOS      | Not supported (no board crate) | Board crate removed (phase-337); FreeRTOS starter + vendor BSP is the path back |
 | Arm FVP      | `Base_RevC AEMv8R` (SMP) | AEMv8-R, AArch64 profile | Armv8-R | Zephyr 3.7 | Build-only | See [ARM FVP getting-started chapter](../getting-started/arm-fvp.md); `just zephyr build-fvp-ws-entry` / `build-fvp-board-import` + their `run-` siblings. Runtime is **maintainer-run** (`just zephyr verify-fvp-runtime`). The model is NOT license-gated — `nros setup --tool arm-fvp` fetches it from a pinned Arm CDN permalink, x86_64 Linux only; what keeps it out of CI is cost, not permission |
 | Linux host   | (sim)                | x86-64 / aarch64    | x86 / Arm  | ThreadX sim   | Tested   | `examples/threadx-linux/`                                          |
-| Linux host   | (native)             | x86-64 / aarch64    | x86 / Arm  | POSIX         | Tested   | `examples/native/`                                                  |
+| Linux host   | (native)             | x86-64 / aarch64    | x86 / Arm  | POSIX         | Tested   | `examples/linux/`                                                  |
 
 ## How to add a new board
 

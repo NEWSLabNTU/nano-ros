@@ -313,7 +313,7 @@ build-fixture-rust:
     nros_repo_root="$PWD"
     for ex in talker listener service-server service-client service-client-callback action-server \
               action-client custom-transport-talker custom-transport-listener; do
-        dir="examples/native/rust/$ex"
+        dir="examples/linux/rust/$ex"
         NROS_REPO_DIR="$nros_repo_root" nros_codegen_stamp_check_or_wipe "$dir"
         "$nros_cli" sync "$dir" >/dev/null
         NROS_REPO_DIR="$nros_repo_root" nros_codegen_stamp_write "$dir"
@@ -342,7 +342,7 @@ build-fixture-rust-core:
     nros_repo_root="$PWD"
     for ex in talker listener service-server service-client service-client-callback action-server \
               action-client custom-transport-talker custom-transport-listener; do
-        dir="examples/native/rust/$ex"
+        dir="examples/linux/rust/$ex"
         NROS_REPO_DIR="$nros_repo_root" nros_codegen_stamp_check_or_wipe "$dir"
         "$nros_cli" sync "$dir" >/dev/null
         NROS_REPO_DIR="$nros_repo_root" nros_codegen_stamp_write "$dir"
@@ -390,7 +390,7 @@ build-fixture-extras:
     # cells (no pure-cargo register symbol) and the C/C++ manifest passes.
     ensure_native_rust_generated() {
         case "$1" in
-            native/rust/talker|native/rust/listener)
+            linux/rust/talker|linux/rust/listener)
                 # Phase 210.E.3.d.native — same swap as build-fixture-role-
                 # examples: `nros sync` for the patch-table + codegen flow.
                 # Phase 214.J.2 — also wipe `generated/` if trait surface
@@ -408,8 +408,8 @@ build-fixture-extras:
     # example carries an `rmw-cyclonedds = ["nros/rmw-cyclonedds"]` feature
     # that routes the typed-creator hook (K.7.6.b) into the C++ backend.
     for collapsed_case in talker listener; do
-        echo "  → native/rust/${collapsed_case} (cargo --features rmw-cyclonedds, target-cyclonedds/)"
-        ensure_native_rust_generated "native/rust/${collapsed_case}"
+        echo "  → linux/rust/${collapsed_case} (cargo --features rmw-cyclonedds, target-cyclonedds/)"
+        ensure_native_rust_generated "linux/rust/${collapsed_case}"
     done
     export NROS_CARGO_PROFILE_ARGS="$cargo_profile_args"
     bash scripts/build/fixture-make-driver.sh linux-cyclonedds-rust
@@ -621,7 +621,7 @@ size: build-examples
 [group("main")]
 clean:
     #!/usr/bin/env bash
-    find examples/native -type d \( -name target -o -name build -o -name 'build-*' \) \
+    find examples/linux -type d \( -name target -o -name build -o -name 'build-*' \) \
         -prune -exec rm -rf {} + 2>/dev/null || true
     echo "Native example build artifacts cleaned"
 
@@ -649,9 +649,9 @@ _build-c-example dir *CMAKE_ARGS:
 build-c:
     #!/usr/bin/env bash
     set -e
-    just linux _build-c-example examples/native/c/talker
-    just linux _build-c-example examples/native/c/listener
-    just linux _build-c-example examples/native/c/custom-msg
+    just linux _build-c-example examples/linux/c/talker
+    just linux _build-c-example examples/linux/c/listener
+    just linux _build-c-example examples/linux/c/custom-msg
     echo "C examples built!"
 
 # Build C XRCE examples only (no tests)
@@ -659,14 +659,14 @@ build-c:
 build-c-xrce:
     #!/usr/bin/env bash
     set -e
-    just linux _build-c-example examples/native/c/talker  "-DNROS_RMW=xrce -DNROS_RMW=xrce"
-    just linux _build-c-example examples/native/c/listener "-DNROS_RMW=xrce -DNROS_RMW=xrce"
+    just linux _build-c-example examples/linux/c/talker  "-DNROS_RMW=xrce -DNROS_RMW=xrce"
+    just linux _build-c-example examples/linux/c/listener "-DNROS_RMW=xrce -DNROS_RMW=xrce"
     echo "C XRCE examples built!"
 
 # Clean C examples build
 [group("main")]
 clean-c:
-    find examples/native/c -type d \( -name build -o -name 'build-*' \) \
+    find examples/linux/c -type d \( -name build -o -name 'build-*' \) \
         -prune -exec rm -rf {} + 2>/dev/null || true
     @echo "C examples build cleaned"
 
@@ -690,18 +690,18 @@ _build-cpp-example dir *CMAKE_ARGS:
 build-cpp:
     #!/usr/bin/env bash
     set -e
-    just linux _build-cpp-example examples/native/cpp/talker
-    just linux _build-cpp-example examples/native/cpp/listener
-    just linux _build-cpp-example examples/native/cpp/service-server
-    just linux _build-cpp-example examples/native/cpp/service-client
-    just linux _build-cpp-example examples/native/cpp/action-server
-    just linux _build-cpp-example examples/native/cpp/action-client
+    just linux _build-cpp-example examples/linux/cpp/talker
+    just linux _build-cpp-example examples/linux/cpp/listener
+    just linux _build-cpp-example examples/linux/cpp/service-server
+    just linux _build-cpp-example examples/linux/cpp/service-client
+    just linux _build-cpp-example examples/linux/cpp/action-server
+    just linux _build-cpp-example examples/linux/cpp/action-client
     echo "C++ examples built!"
 
 # Clean C++ examples build
 [group("main")]
 clean-cpp:
-    find examples/native/cpp -type d \( -name build -o -name 'build-*' \) \
+    find examples/linux/cpp -type d \( -name build -o -name 'build-*' \) \
         -prune -exec rm -rf {} + 2>/dev/null || true
     @echo "C++ examples build cleaned"
 
@@ -1176,27 +1176,27 @@ bench-fairness:
 
 # Run native Rust talker
 talker:
-    cd examples/native/rust/talker && cargo run
+    cd examples/linux/rust/talker && cargo run
 
 # Run native Rust listener
 listener:
-    cd examples/native/rust/listener && cargo run
+    cd examples/linux/rust/listener && cargo run
 
 # Run native Rust service server
 service-server:
-    cd examples/native/rust/service-server && cargo run
+    cd examples/linux/rust/service-server && cargo run
 
 # Run native Rust service client
 service-client:
-    cd examples/native/rust/service-client && cargo run
+    cd examples/linux/rust/service-client && cargo run
 
 # Run native Rust action server
 action-server:
-    cd examples/native/rust/action-server && cargo run
+    cd examples/linux/rust/action-server && cargo run
 
 # Run native Rust action client
 action-client:
-    cd examples/native/rust/action-client && cargo run
+    cd examples/linux/rust/action-client && cargo run
 
 # Start zenohd router for native examples (override bind via $NROS_LOCATOR)
 zenohd:

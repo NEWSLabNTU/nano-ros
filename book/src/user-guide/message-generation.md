@@ -276,8 +276,8 @@ Examples are standalone copy-out projects: each carries its own
 checkout and build it where it lands. Build each from its own directory:
 
 ```bash
-cd examples/native/rust/talker && nros sync && nros build
-cd examples/native/rust/service-client && nros sync && nros build
+cd examples/linux/rust/talker && nros sync && nros build
+cd examples/linux/rust/service-client && nros sync && nros build
 ```
 
 ## Regenerating Bindings
@@ -343,4 +343,4 @@ submodule is retired); cmake auto-resolves it from
 
 ### Usage
 
-See `examples/native/c/custom-msg/CMakeLists.txt` for a complete example.
+See `examples/linux/c/custom-msg/CMakeLists.txt` for a complete example.

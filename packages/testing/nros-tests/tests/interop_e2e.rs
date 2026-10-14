@@ -118,12 +118,12 @@ impl Scenario {
 /// phase-433 W3 — the LANGUAGE is the one the case actually spawns, not a
 /// constant. It was `Lang::Rust` unconditionally while every cyclone case runs
 /// `nano_cyclone_c_binary(...)` — `c_talker` / `c_listener` /
-/// `c_service_server` out of `examples/native/c/`. The per-case tripwire below
+/// `c_service_server` out of `examples/linux/c/`. The per-case tripwire below
 /// could not catch it: `interop::CELLS` declared the same wrong language, so
 /// the coordinate agreed with itself and C/Cyclone ran while Rust/Cyclone was
 /// the shape the matrix claimed. The zenoh + lifecycle cases really are Rust —
 /// `talker_binary` / `listener_binary` / `service_{server,client}_binary` /
-/// `lifecycle_node_binary` all resolve `examples/native/rust/*`, and the
+/// `lifecycle_node_binary` all resolve `examples/linux/rust/*`, and the
 /// stock-demo case's nano side is the Rust `bins/ros2-string-interop` (the C++
 /// in it is the PEER, which no coordinate names).
 fn scenario_coord(s: Scenario) -> (PlatformId, Lang, Rmw, Workload) {
@@ -184,7 +184,7 @@ fn spawn_nano_zenoh(bin: &Path, name: &str, locator: &str) -> ManagedProcess {
 /// when the fixtures aren't set up (`just cyclonedds setup`).
 fn nano_cyclone_c_binary(case: &str, binary: &str) -> std::path::PathBuf {
     build_native_c_example_rmw(case, binary, FixtureRmw::Cyclonedds).unwrap_or_else(|e| {
-        panic!("native/c/{case} cyclonedds fixture not built (run `just cyclonedds setup`): {e:?}")
+        panic!("linux/c/{case} cyclonedds fixture not built (run `just cyclonedds setup`): {e:?}")
     })
 }
 
@@ -285,7 +285,7 @@ fn poll_ros2_until(locator: &str, subcommand: &str, marker: &str, timeout: Durat
 })]
 #[case::cyclone_pubsub_ros2_to_nano(Cell {
     scenario: Scenario::CyclonePubsubRos2ToNano,
-    note: "phase-183.5: setvbuf(_IOLBF) in examples/native/c/listener made the \
+    note: "phase-183.5: setvbuf(_IOLBF) in examples/linux/c/listener made the \
            `I heard:` lines reach the harness (block-buffering, not a wire gap)",
 })]
 #[case::cyclone_service_nano_server(Cell {

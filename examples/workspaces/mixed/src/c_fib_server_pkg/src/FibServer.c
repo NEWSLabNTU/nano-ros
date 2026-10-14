@@ -7,7 +7,7 @@
 /// callback parses the Fibonacci goal `{int32 order}` with the generated
 /// `example_interfaces/action/Fibonacci` C bindings and ACCEPTS it; the accepted callback
 /// computes the sequence and completes the goal (`rclc_action_execute` + `rclc_action_succeed`),
-/// as `examples/native/c/action-server` does.
+/// as `examples/linux/c/action-server` does.
 ///
 /// Cross-process only (issue 0096): an in-process (same-executor) server+client can't talk, so
 /// the server runs as its OWN entry (`linux_action_server_entry`) and the client as another.

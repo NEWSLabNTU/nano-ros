@@ -1434,7 +1434,7 @@ that motivated the question is **inverted**, so recording it before acting:
 | type | where it is actually used |
 | --- | --- |
 | `nros::Node` | everywhere, and MOSTLY IN WORKSPACES — 51 files under `workspaces/features`, 41 under `workspaces/cpp`, 30 under `workspaces/c`, 27 under `workspaces/mixed`. The RFC-0043 typed component takes it by reference: `Result Configure(::nros::Node&)`. |
-| `nros::ComponentNode` | **five directories total** — one standalone POC (`native/cpp/component-node-poc`) and two workspace subnode packages. |
+| `nros::ComponentNode` | **five directories total** — one standalone POC (`linux/cpp/component-node-poc`) and two workspace subnode packages. |
 
 So it is not "`Node` for standalone, `ComponentNode` for workspaces". Both live
 in workspaces; they differ by ROLE. `nros::Node` is a node you are handed;
@@ -3429,7 +3429,7 @@ merge question implied.
 
 ### The three working shapes today
 
-**A — standalone `main`** (`examples/native/cpp/talker`, and every
+**A — standalone `main`** (`examples/linux/cpp/talker`, and every
 `examples/<plat>/<lang>/` leaf):
 
 ```cpp

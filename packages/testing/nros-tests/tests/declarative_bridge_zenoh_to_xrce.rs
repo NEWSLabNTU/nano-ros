@@ -103,7 +103,7 @@ fn declarative_zenoh_to_xrce_bridge_to_nros_listener(zenohd_unique: ZenohRouter)
     // observability listener must subscribe Int32; the Int32-typed agent topic
     // won't match a String sub.
     //
-    // phase-338 W3 — this drove the EXAMPLE (`native/rust/listener`) with a
+    // phase-338 W3 — this drove the EXAMPLE (`linux/rust/listener`) with a
     // test-only `NROS_SUB_TYPE=int32` switch, because `bins/int32-sink` was
     // hardcoded to zenoh and could not serve an XRCE test. The sink now carries
     // the same `rmw-*` axis the examples do, so the example is free of the

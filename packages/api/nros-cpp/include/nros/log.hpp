@@ -485,7 +485,7 @@ class Logger {
     /// `RCLCPP_INFO(get_logger(), …)`. Two overloads differing only in return
     /// type are ill-formed, so the ported channel won (RFC-0089 clause 2) and
     /// the native one is reached by conversion — including `logger == nullptr`,
-    /// which `examples/native/cpp/logging` writes.
+    /// which `examples/linux/cpp/logging` writes.
     ///
     /// Null when this logger was built from a name alone, or from an
     /// uninitialized node.

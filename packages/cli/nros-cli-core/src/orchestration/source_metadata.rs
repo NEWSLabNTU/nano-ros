@@ -111,7 +111,7 @@ pub struct SourceSubscriber {
     /// key — the Rust probe observes no registration at all, which is issue
     /// 1522. Making the Rust road STATE the row is what first sent an
     /// `in_place` through here, as `unknown field 'in_place'` on an ordinary
-    /// `nros build` of `examples/native/rust/listener`.
+    /// `nros build` of `examples/linux/rust/listener`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub in_place: Option<bool>,
     /// Issue 1648 (schema v4) -- the BUFFERED row the same registration

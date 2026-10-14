@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# Phase 118.B.1 — collapse one native/rust/<rmw>/<case> sibling into
-# native/rust/<case>. Idempotent: skips if the target dir already exists.
+# Phase 118.B.1 — collapse one linux/rust/<rmw>/<case> sibling into
+# linux/rust/<case>. Idempotent: skips if the target dir already exists.
 #
 # Usage: tmp/collapse-native-rust-case.sh <case>
 set -euo pipefail
 
 case_name="${1:?usage: $0 <case>}"
 root="$(cd "$(dirname "$0")/.." && pwd)"
-src="${root}/examples/native/rust/zenoh/${case_name}"
-dst="${root}/examples/native/rust/${case_name}"
+src="${root}/examples/linux/rust/zenoh/${case_name}"
+dst="${root}/examples/linux/rust/${case_name}"
 
 if [ ! -d "$src" ]; then
     echo "missing source: $src" >&2

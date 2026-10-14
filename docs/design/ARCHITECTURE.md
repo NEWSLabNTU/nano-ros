@@ -191,7 +191,7 @@ survive on trust — `check-feature-contract` (W4) asserts each clause, and unti
 that gate exists each is a measurement rather than an invariant.
 
 **Where a consumer gets `std` from is not uniform, and that hides sweeps.** The
-seventeen `examples/native/rust/*` reach `nros` through `nros-board-linux`,
+seventeen `examples/linux/rust/*` reach `nros` through `nros-board-linux`,
 which names `std`; the `nros-tests/bins/*` depend on `nros` directly and must
 name it themselves. A sweep that only READS leaf feature lists therefore looks
 complete while half the tree is red — when `env` became require-not-grant, six

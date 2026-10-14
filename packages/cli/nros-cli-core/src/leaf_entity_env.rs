@@ -114,7 +114,7 @@ struct ProbeEntity {
     unresolved_topic: Option<ProbeUnresolvedName>,
     /// The same field one kind over: a service server/client and an action
     /// server/client spell it `unresolved_name` (MEASURED against the probe
-    /// output of `examples/native/rust/{service,action}-*`, not assumed).
+    /// output of `examples/linux/rust/{service,action}-*`, not assumed).
     #[serde(default)]
     unresolved_name: Option<ProbeUnresolvedName>,
     /// phase-457 W3 (sidecar schema v3) -- the CALL SITE's half of this

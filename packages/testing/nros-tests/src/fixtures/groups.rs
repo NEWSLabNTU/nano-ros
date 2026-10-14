@@ -12,7 +12,7 @@
 //! share a flat `<group>/[<triple>/]<profile>/` artifact namespace and cargo
 //! does not hash the final artifact name, so the key has to separate feature /
 //! env variants of one package. Phase-340 W1 measured what happens without
-//! that: `examples/native/rust/talker`'s four rows (default, `rmw-zenoh`,
+//! that: `examples/linux/rust/talker`'s four rows (default, `rmw-zenoh`,
 //! `rmw-xrce`, `link-tls`) are four DIFFERENT binaries — 8616504 / 8616504 /
 //! 6514392 / 9034536 bytes, four distinct sha256 — and N sequential cargo
 //! invocations into one target dir keep both identities in `deps/` while
@@ -23,7 +23,7 @@
 //!
 //! # Why the variant cannot come from the call site
 //!
-//! `build_example("native/rust/talker", "talker", …)` and
+//! `build_example("linux/rust/talker", "talker", …)` and
 //! `build_example_rmw(…, Rmw::Zenoh)` — the two funnels — distinguish variants
 //! only by the authored dir STRING (`target/` vs `target-zenoh/`), and that
 //! string is exactly what a group strips
@@ -293,7 +293,7 @@ pub fn resolved(leaf_path: &Path) -> PathBuf {
 
 /// WHICH of a leaf's `[[fixture]]` rows a caller means — issue 0517.
 ///
-/// A leaf dir can carry several rows (`examples/native/rust/talker` has five),
+/// A leaf dir can carry several rows (`examples/linux/rust/talker` has five),
 /// and today the only thing separating them anywhere is the authored
 /// `target_dir` string. That string is a directory somebody had to invent, it is
 /// what a shared group strips before cargo sees it, and phase-340 W2.d wants it
@@ -339,7 +339,7 @@ impl FixtureVariant {
     }
 
     /// One image of a single-package leaf — `rmw = "<x>"`, `image = "<id>"`
-    /// and nothing else (issue 1305): how `examples/native/rust/*` select a
+    /// and nothing else (issue 1305): how `examples/linux/rust/*` select a
     /// non-default RMW now that the RMW is declared in `system.toml`
     /// (RFC-0031). [`select_rmw_row`] reaches these from an RMW alone.
     pub fn image(rmw: super::Rmw, id: &str) -> Self {
@@ -641,14 +641,14 @@ mod tests {
     fn table() -> Vec<GroupRow> {
         vec![
             GroupRow {
-                artifact_root: "examples/native/rust/talker/target".into(),
+                artifact_root: "examples/linux/rust/talker/target".into(),
                 platform: "linux".into(),
                 slug: "linux".into(),
                 shared: true,
                 ..Default::default()
             },
             GroupRow {
-                artifact_root: "examples/native/rust/talker/target-xrce".into(),
+                artifact_root: "examples/linux/rust/talker/target-xrce".into(),
                 platform: "linux".into(),
                 slug: "linux-3000917972".into(),
                 shared: true,
@@ -674,7 +674,7 @@ mod tests {
             &t,
             // profile-literal-ok: dir vocabulary: synthetic leaf paths exercising the
             // artifact-root rewrite; no build is invoked from this test data
-            Path::new("examples/native/rust/talker/target/debug/talker"),
+            Path::new("examples/linux/rust/talker/target/debug/talker"),
         )
         .unwrap();
         assert_eq!(row.slug, "linux");
@@ -684,7 +684,7 @@ mod tests {
             &t,
             // profile-literal-ok: dir vocabulary: synthetic leaf paths exercising the
             // artifact-root rewrite; no build is invoked from this test data
-            Path::new("examples/native/rust/talker/target-xrce/debug/talker"),
+            Path::new("examples/linux/rust/talker/target-xrce/debug/talker"),
         )
         .unwrap();
         assert_eq!(
@@ -739,7 +739,7 @@ mod tests {
             &table(),
             // profile-literal-ok: dir vocabulary: synthetic leaf paths exercising the
             // artifact-root rewrite; no build is invoked from this test data
-            Path::new("examples/native/rust/talker/target/debug/talker"),
+            Path::new("examples/linux/rust/talker/target/debug/talker"),
         )
         .unwrap();
         assert_eq!(
@@ -824,14 +824,14 @@ mod tests {
         // synthetic: the real table would pass under the tie-breaking rule too.
         let rows = vec![
             GroupRow {
-                artifact_root: "examples/native/rust/talker/target".into(),
+                artifact_root: "examples/linux/rust/talker/target".into(),
                 platform: "linux".into(),
                 slug: "linux".into(),
                 shared: true,
                 ..Default::default()
             },
             GroupRow {
-                artifact_root: "examples/native/rust/talker/target".into(),
+                artifact_root: "examples/linux/rust/talker/target".into(),
                 platform: "linux".into(),
                 slug: "linux-553222167".into(),
                 shared: true,
@@ -841,7 +841,7 @@ mod tests {
         assert!(
             attribute(
                 &rows,
-                Path::new("examples/native/rust/talker/target/x/talker")
+                Path::new("examples/linux/rust/talker/target/x/talker")
             )
             .is_none(),
             "an ambiguous root must not redirect: no redirect resolves the leaf \
@@ -855,7 +855,7 @@ mod tests {
         same[1].slug = "linux".into();
         let (row, suffix) = attribute(
             &same,
-            Path::new("examples/native/rust/talker/target/x/talker"),
+            Path::new("examples/linux/rust/talker/target/x/talker"),
         )
         .expect("one group, so the answer is unambiguous");
         assert_eq!(row.slug, "linux");
@@ -865,7 +865,7 @@ mod tests {
         // longest-match give up whenever two shorter roots collide.
         let mut deeper = rows.clone();
         deeper.push(GroupRow {
-            artifact_root: "examples/native/rust/talker/target/x".into(),
+            artifact_root: "examples/linux/rust/talker/target/x".into(),
             platform: "linux".into(),
             slug: "linux-deeper".into(),
             shared: true,
@@ -873,7 +873,7 @@ mod tests {
         });
         let (row, _) = attribute(
             &deeper,
-            Path::new("examples/native/rust/talker/target/x/talker"),
+            Path::new("examples/linux/rust/talker/target/x/talker"),
         )
         .expect("the deeper root is unambiguous");
         assert_eq!(row.slug, "linux-deeper");
@@ -987,7 +987,7 @@ mod tests {
     fn an_unnameable_variant_is_an_error_not_a_guess() {
         assert!(
             select_row(
-                "examples/native/rust/talker",
+                "examples/linux/rust/talker",
                 &FixtureVariant::features(&["nope"])
             )
             .is_err(),

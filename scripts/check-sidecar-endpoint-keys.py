@@ -21,7 +21,7 @@ frames from the writer and naming neither it nor the schema:
   reader (`leaf_entity_env`), not this one. It sat undetected for a fortnight
   because no producer that reaches this reader emitted the key: the Rust probe
   observes no registration at all. Closing issue 1522 made the Rust road state
-  the row, and the first `nros build` of `examples/native/rust/listener` after
+  the row, and the first `nros build` of `examples/linux/rust/listener` after
   it failed exactly as above.
 
 That second one is the argument for a gate rather than a third fix. The bug is

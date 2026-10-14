@@ -6,7 +6,7 @@
 //! module boundary. The two modules carry DIFFERENT feature gates
 //! (`param-services` and `lifecycle-services`), so `lifecycle-services`
 //! without `param-services` -- a legal, shipped configuration; it is what
-//! `examples/native/rust/lifecycle-node` builds -- did not compile at all.
+//! `examples/linux/rust/lifecycle-node` builds -- did not compile at all.
 //!
 //! The split is the fix and it is also the honest shape. Two things shared one
 //! file: the parameter SERVICES, which need the `rcl_interfaces` message crate

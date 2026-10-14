@@ -16,7 +16,7 @@
  * `ComponentNode`'s facade) so a parameter declared in C++ lands in the one
  * `nros_params::ParameterServer` the six `rcl_interfaces/srv/...` servers read
  * - and left this one standing, still shipped and still the whole of
- * `examples/native/cpp/parameters`. Its parameters were invisible to
+ * `examples/linux/cpp/parameters`. Its parameters were invisible to
  * `ros2 param get`, which is the exact defect phase-426 exists to remove.
  *
  * A caller-owned store with no executor turned out to have no consumer:

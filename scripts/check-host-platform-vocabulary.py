@@ -69,12 +69,18 @@ invisible to the old gate's `tests` exclusion):
      on a fresh checkout) fails here on a pull request instead of in the
      nightly-only `native-check`. Then every tracked example leaf whose
      `system.toml` declares an `[image.<id>]` — of any id — must plan a render.
+ 10. (phase-500 W4) The host EXAMPLE DIRECTORY is `examples/linux/`: no
+     tracked path lies under `examples/native/`, and no tracked file outside
+     the history series spells `examples/native` or a quoted example locator
+     relative to `examples/` (`"native/rust/…"`, `'native/c/…'` — the
+     `build_example("native/rust/talker", …)` shape the test fixtures use).
+     No alias: a moved directory cannot have one.
 
 WHAT IT DELIBERATELY DOES NOT CHECK
 
 Prose, and the deprecated CLI ALIASES (`nros new --platform native|posix`,
 `nros setup native`), which exist for released book pages and are retired by
-phase-500 W5. The `examples/native/` directory is W4, and the fixture ROW
+phase-500 W5. The fixture ROW
 ids (`workspace-rust-native-…`) are a coordinate vocabulary of their own, like
 the interop cell ids. `native` in its other senses (Zephyr
 `native_sim`, RTOS-native priorities, interop cell ids, prose) is not a lane.
@@ -214,7 +220,8 @@ ALIAS_PRAGMA = "retired-host-token: alias"
 # The history series: they record what WAS typed, and rewriting them would
 # falsify the record. Everything else is a live instruction to a reader.
 HISTORY = ("docs/roadmap/", "docs/issues/", "CHANGELOG.md", "changelog.d/",
-           "docs/development/audit-findings-", ".superpowers/", "docs/superpowers/")
+           "docs/development/audit-findings-", "docs/development/build-ux-audit.md",
+           "docs/design/archived/", ".superpowers/", "docs/superpowers/")
 # This file's own docstring and self-test spell every retired form on purpose.
 SELF = "scripts/check-host-platform-vocabulary.py"
 TOKEN_LISTS = (("scripts/build/fixture-lane.sh", "_NROS_LANES"),
@@ -267,6 +274,7 @@ def check_lane_vocabulary():
 # entry's generated TU and link-libs file).
 RETIRED_IMAGE_RE = re.compile(
     r"\[image\.native(?=[\]._])"
+    r"|\[\"image\"\]\[\"native(?=[\"_])"
     r"|\bnative(?:_[a-z0-9]+)*_entry"
     r"(?:_(?:nros_main_generated|link_libs|nros_selection))?\b")
 FIXTURES = "examples/fixtures.toml"
@@ -298,7 +306,7 @@ def fixture_image_problems(doc):
 
 def check_image_ids():
     problems = []
-    for rel in git_grep.lines(["-lIE", r"image\.native|native[a-z0-9_]*_entry", "--",
+    for rel in git_grep.lines(["-lIE", r"image\.native|\"image\"\]\[\"native|native[a-z0-9_]*_entry", "--",
                                ".", ":!third-party"], ROOT):
         if rel.startswith(HISTORY) or rel == SELF or "/third-party/" in f"/{rel}":
             continue
@@ -312,6 +320,40 @@ def check_image_ids():
     with open(os.path.join(ROOT, FIXTURES), "rb") as fh:
         problems += [(FIXTURES, f"row `{i}` image = {img!r} (write `linux{img[6:]}`)")
                      for i, img in fixture_image_problems(tomllib.load(fh))]
+    return problems
+
+
+# Check 10 — phase-500 W4. The host example directory, by full path or by the
+# `examples/`-relative locator the test fixtures build from.
+RETIRED_DIR = "examples/native/"
+RETIRED_DIR_RE = re.compile(
+    r"\bexamples/native\b(?![-_])"
+    r"|[\"']native/(?:rust|c|cpp)\b")
+
+
+def example_dir_problems(text):
+    """(line number, matched spelling) for every reference to the retired host
+    example directory in `text`."""
+    out = []
+    for n, line in enumerate(text.split("\n"), 1):
+        out += [(n, m.group(0)) for m in RETIRED_DIR_RE.finditer(line)]
+    return out
+
+
+def check_example_dir():
+    problems = [(rel, f"tracked under `{RETIRED_DIR}` — the host examples live in `examples/linux/`")
+                for rel in tracked(RETIRED_DIR)]
+    for rel in git_grep.lines(["-lIE", r"examples/native|native/(rust|c|cpp)", "--",
+                               ".", ":!third-party"], ROOT):
+        if rel.startswith(HISTORY) or rel == SELF or "/third-party/" in f"/{rel}":
+            continue
+        try:
+            with open(os.path.join(ROOT, rel), encoding="utf8", errors="replace") as fh:
+                text = fh.read()
+        except OSError:
+            continue
+        problems += [(f"{rel}:{n}", f"`{w}` — the host example directory is `examples/linux/` "
+                      "(phase-500 W4)") for n, w in example_dir_problems(text)]
     return problems
 
 
@@ -487,7 +529,7 @@ def self_test():
         ("just native test  # retired-host-token: alias\n", []),
         ("just zephyr native_sim\n", []),  # another sense
         ("just check native-check\n", []),  # a gate recipe name, not the module
-        ("examples/native/rust/talker\n", []),  # the directory is W4
+        ("examples/native/rust/talker\n", []),  # a directory: check 10
         ("native-pubsub-rust-zenoh-n2r\n", []),  # an interop cell id
     ]:
         got = lane_problems(body)
@@ -500,6 +542,8 @@ def self_test():
         ("x\n[image.native_xrce]\n", [(2, "[image.native")]),
         ('s = "[image.native.knobs.log]\\n"\n', [(1, "[image.native")]),
         ("[image.native_sim_thing]\n", [(1, "[image.native")]),
+        ('v["image"]["native"]["knobs"]\n', [(1, '["image"]["native')]),  # a parsed id
+        ('v["image"]["linux"]["knobs"]\n', []),
         ("[image.nativeish]\n", []),  # not the retired id
         ("[image.zephyr_native_sim]\n", []),  # a Zephyr image
         ("./build/src/native_entry/native_entry\n",
@@ -532,6 +576,20 @@ def self_test():
         got = token_list_problems(body, "_NROS_LANES")
         if got != exp:
             fails.append(f"token list {body!r}: expected {exp}, got {got}")
+    for body, exp in [
+        ("cd examples/linux/rust/talker\n", []),
+        ("cd examples/native/rust/talker\n", [(1, "examples/native")]),
+        ("x\nfind examples/native -type d\n", [(2, "examples/native")]),
+        ('build_example("native/rust/talker", "talker")\n', [(1, '"native/rust')]),
+        ("fmt('native/c/{}')\n", [(1, "'native/c")]),
+        ('build_example("linux/rust/talker", "talker")\n', []),
+        ("zephyr/native_sim/native/64\n", []),  # a Zephyr board, not the dir
+        ("examples/native_sim_demo\n", []),
+        ("dist/native/ build/native/\n", []),  # not the example tree
+    ]:
+        got = example_dir_problems(body)
+        if got != exp:
+            fails.append(f"example dir {body!r}: expected {exp}, got {got}")
     good = {"render": "1", "config": "", "flags": PLAN_FLAGS}
     for plans, n in [
         ({"native": good, "mps2": good}, 0),
@@ -563,10 +621,11 @@ def main():
               file=sys.stderr)
         return 1
     problems = (check_descriptors() + check_files() + check_lane_vocabulary()
-                + check_image_ids())
+                + check_image_ids() + check_example_dir())
     if problems:
         print("check-host-platform-vocabulary: the host board, lane, module, scope or "
-              "image id is spelled by a word other than `linux` (phase-500 W1/W2/W3):\n", file=sys.stderr)
+              "image id or example directory is spelled by a word other than `linux` "
+              "(phase-500 W1-W4):\n", file=sys.stderr)
         for rel, what in problems:
             print(f"  {rel}: {what}", file=sys.stderr)
         print(
@@ -579,7 +638,8 @@ def main():
         return 1
     print("check-host-platform-vocabulary OK — the host board is `linux` in every "
           "descriptor, selector, deploy list, cmake DEPLOY and sdk-index key, and the "
-          "host lane / just module / scope / test binaries / image ids say `linux`; the example "
+          "host lane / just module / scope / test binaries / image ids / example directory "
+          "say `linux`; the example "
           "lint decides by leaf shape, not platform directory.")
     return 0
 

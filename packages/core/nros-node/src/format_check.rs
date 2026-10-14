@@ -54,7 +54,7 @@
 //! under uORB, the one backend whose format differs and the reason the check
 //! exists. The const is defaulted rather than required for the reason
 //! phase-380 W4 recorded: tightening the message contract to serve a build
-//! assertion broke `examples/native/rust/custom-msg`, the documented
+//! assertion broke `examples/linux/rust/custom-msg`, the documented
 //! hand-written-message pattern. A default costs those implementors nothing.
 //!
 //! # Proving the negative case

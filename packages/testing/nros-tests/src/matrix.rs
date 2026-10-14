@@ -167,7 +167,7 @@ impl PlatformId {
             //
             // The LANE (`lane=linux`, `_NROS_LANES`) and the `just` MODULE
             // (`just linux …`, see `just_module` below) followed in phase-500
-            // W2. The `examples/native/` DIRECTORY is a `dir =` value, not
+            // W2. The `examples/linux/` DIRECTORY is a `dir =` value, not
             // this token; it moves in phase-500 W4.
             PlatformId::Linux => &["linux"],
             PlatformId::ZephyrNativeSim => &["zephyr"],
@@ -386,7 +386,7 @@ pub enum Workload {
     /// to deliver to. The subject is the node→executor BINDING, which fails
     /// entirely inside one process — `rclc_publisher_init_default` answered
     /// `RCL_RET_NOT_INIT` for four phases and the only in-tree caller
-    /// (`examples/native/c/custom-platform`) was a build-only fixture, so
+    /// (`examples/linux/c/custom-platform`) was a build-only fixture, so
     /// nothing ran the binary and nothing saw it. A pubsub cell would not have
     /// caught it either: every pubsub example uses the LEGACY
     /// `rclc_node_init_default`, which was never affected.
@@ -660,7 +660,7 @@ pub const CELLS: &[Cell] = &[
     cell(Linux, Rust, Zenoh,      Pubsub,  Example, Runtime),
     cell(Linux, C,    Zenoh,      Pubsub,  Example, Runtime),
     cell(Linux, Cpp,  Zenoh,      Pubsub,  Example, Runtime),
-    // issue 1384 — `examples/native/c/custom-platform`, the one in-tree caller
+    // issue 1384 — `examples/linux/c/custom-platform`, the one in-tree caller
     // of `rclc_executor_node_init` that creates an eager entity. Its
     // fixtures.toml row was BUILD-ONLY, so nothing ran the binary and its
     // publisher failed RCL_RET_NOT_INIT unobserved for four phases.

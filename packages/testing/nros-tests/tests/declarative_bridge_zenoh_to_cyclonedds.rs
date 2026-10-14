@@ -79,7 +79,7 @@ const CYCLONE_NODE: &str = "S1";
 
 /// Resolve the Int32 sink built for cyclonedds.
 ///
-/// issue 0449 — this used to drive `examples/native/c/listener` with
+/// issue 0449 — this used to drive `examples/linux/c/listener` with
 /// `NROS_SUB_TYPE=int32`, a runtime message-type switch that existed ONLY for
 /// this test. The examples follow the ROS demos, which publish
 /// `std_msgs/String`; a test that needs a different payload uses a test bin.

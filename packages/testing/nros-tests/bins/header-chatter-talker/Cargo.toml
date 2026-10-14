@@ -6,7 +6,7 @@ version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 publish = false
-description = "Nested-message talker fixture (extracted from the examples/native/rust/talker `header` feature gates in phase-277 W3.a). Publishes std_msgs/Int32 on /chatter AND a NESTED std_msgs/Header (builtin_interfaces/Time stamp + string frame_id) on /header every 1 s, so the declarative bridge's non-flat typed forwarding can be exercised end-to-end. Consumed by tests/declarative_bridge_zenoh_to_cyclonedds.rs."
+description = "Nested-message talker fixture (extracted from the examples/linux/rust/talker `header` feature gates in phase-277 W3.a). Publishes std_msgs/Int32 on /chatter AND a NESTED std_msgs/Header (builtin_interfaces/Time stamp + string frame_id) on /header every 1 s, so the declarative bridge's non-flat typed forwarding can be exercised end-to-end. Consumed by tests/declarative_bridge_zenoh_to_cyclonedds.rs."
 
 [[bin]]
 name = "header-chatter-talker"

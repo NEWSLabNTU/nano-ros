@@ -267,7 +267,7 @@ fn runtime_propagates_init_failure(zenohd_unique: ZenohRouter) {
 // `main` for a separate reason (rust-lld undefined `nros_platform_*` symbols
 // — pre-existing, not introduced here). A true e2e Talker / Listener
 // exchange therefore needs an out-of-process fixture pair, which the runtime
-// API supports the same way the existing `examples/native/rust/{talker,
+// API supports the same way the existing `examples/linux/rust/{talker,
 // listener}` consume `Executor::open` directly — the runtime adds the
 // wrap-each-binary-in-`ExecutorNodeRuntime` step without changing the
 // pub/sub data path. See the M.5.a.3 BSP baker wave for that lifecycle test.

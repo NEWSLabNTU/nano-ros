@@ -164,7 +164,7 @@ else
     VERIFIER="verify-first-node.sh"
     # The C-chapter `cd` subst rides only this track (each --subst must match
     # EXACTLY ONCE, and the zenoh track does not extract that chapter).
-    C_CD_SUBST=(--subst 'cd examples/native/c/talker:::cd "$(git rev-parse --show-toplevel)/examples/native/c/talker"')
+    C_CD_SUBST=(--subst 'cd examples/linux/c/talker:::cd "$(git rev-parse --show-toplevel)/examples/linux/c/talker"')
 fi
 
 workdir="$(mktemp -d)"

@@ -6,7 +6,7 @@ version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 publish = false
-description = "Generic std_msgs/Int32 observer fixture (extracted from the examples/native/rust/listener `NROS_SUB_TOPIC` escape hatch in phase-277 W4, when the example flipped to the official std_msgs/String chatter). Subscribes to the Int32 topic named by `NROS_SUB_TOPIC` (default `/chatter`) and prints `Received: N` per message. Used by the service/action/param/safety/realtime e2e tests as a cross-process sink for Int32 side topics (/sum, /fib_result, /safe_ok, /ctrl, /telem, ...)."
+description = "Generic std_msgs/Int32 observer fixture (extracted from the examples/linux/rust/listener `NROS_SUB_TOPIC` escape hatch in phase-277 W4, when the example flipped to the official std_msgs/String chatter). Subscribes to the Int32 topic named by `NROS_SUB_TOPIC` (default `/chatter`) and prints `Received: N` per message. Used by the service/action/param/safety/realtime e2e tests as a cross-process sink for Int32 side topics (/sum, /fib_result, /safe_ok, /ctrl, /telem, ...)."
 
 [[bin]]
 name = "int32-sink"

@@ -711,8 +711,8 @@ registry row and re-renders. **Per-road diff (2026-10-12)**, `origin/main`
 and every resolved value dumped with legacy names mapped to canonical (build
 script `OUT_DIR` consts/defines, `cargo:rustc-env/cfg`, `CMakeCache`
 `NROS_RESOLVED_*`/`NROS_KNOB_SOURCE_*`, the zephyr `.config`, the leaf
-`nros-cargo.toml [env]`): cargo leaf `examples/native/rust/talker` 202 rows,
-cmake `examples/native/c/talker` 243 rows, west `features`
+`nros-cargo.toml [env]`): cargo leaf `examples/linux/rust/talker` 202 rows,
+cmake `examples/linux/c/talker` 243 rows, west `features`
 `zephyr_rust_params` on Zephyr 3.7 `native_sim/native/64` (the image whose
 `ZPICO_MAX_QUERYABLES` row moved; 70 resolver + 83 Kconfig + 14,481
 build-script rows) 14,634 rows — **0 differences on all three**. Not measured:

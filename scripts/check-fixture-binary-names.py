@@ -93,7 +93,7 @@ def _params(sig):
 
 
 def _fmt_to_template(fmt, fmt_args, params):
-    """`"native/c/{}"` + (`case`,) -> `"native/c/{0}"` over the resolver's params."""
+    """`"linux/c/{}"` + (`case`,) -> `"linux/c/{0}"` over the resolver's params."""
     out, it = "", iter(fmt_args)
     for piece in re.split(r"(\{[^{}]*\})", fmt):
         if piece.startswith("{") and piece.endswith("}"):

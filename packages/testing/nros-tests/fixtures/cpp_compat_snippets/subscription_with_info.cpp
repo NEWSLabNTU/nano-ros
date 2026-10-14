@@ -5,7 +5,7 @@
 // public C++ API. Runtime delivery of the attachment is covered by the
 // cross-RMW bridge e2e tests; this snippet exists because phase-277 W5
 // removed the `if (false)` instantiation block from the
-// examples/native/cpp/listener example (examples stay demo-only).
+// examples/linux/cpp/listener example (examples stay demo-only).
 //
 // The message type is a minimal stand-in with the same static surface the
 // generated C++ bindings expose (`TYPE_NAME` / `TYPE_HASH` /

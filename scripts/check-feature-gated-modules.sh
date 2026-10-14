@@ -9,7 +9,7 @@
 # invisible. That is exactly how phase-461 W2 landed an unconditional
 # `use crate::parameter_services::{…}` inside `lifecycle_services` — green on
 # its own pull request, and `Build rust core fixtures` red on `host-tests`
-# minutes after the merge, because `examples/native/rust/lifecycle-node` picks
+# minutes after the merge, because `examples/linux/rust/lifecycle-node` picks
 # `lifecycle-services` and not `param-services`.
 #
 # The feature list is DERIVED from `lib.rs`, not written here: a hand-kept list

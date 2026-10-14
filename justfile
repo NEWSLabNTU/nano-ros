@@ -360,7 +360,7 @@ build-example-extras:
     rg --files examples -g Cargo.toml \
         | sed 's#/Cargo.toml$##' \
         | grep -Ev '^examples/(zephyr|mps2-an385-freertos|qemu-armv7a-nuttx|threadx-linux|rv-virt-threadx|mps2-an385-baremetal|esp32-c3-baremetal)/' \
-        | grep -Ev '^examples/native/rust/(talker|listener|lifecycle-node|custom-msg|service-server|service-client|action-server|action-client|talker-rtic|listener-rtic|service-server-rtic|service-client-rtic|action-server-rtic|action-client-rtic|serial-talker|serial-listener)$' \
+        | grep -Ev '^examples/linux/rust/(talker|listener|lifecycle-node|custom-msg|service-server|service-client|action-server|action-client|talker-rtic|listener-rtic|service-server-rtic|service-client-rtic|action-server-rtic|action-client-rtic|serial-talker|serial-listener)$' \
         | sort > "$list"
 
     build_one() {
@@ -561,7 +561,7 @@ format: _require-leaf-includes format-workspace linux::format format-c format-cp
 # west/cmake/idf; target*/cargo-timings/ for cargo) into a stage table. It never
 # builds. For per-crate cargo detail, build with `cargo build --timings` first.
 #   just profile examples/zephyr/rust/talker
-#   just profile examples/native/rust/talker --deep
+#   just profile examples/linux/rust/talker --deep
 # The analyzer bin is also runnable standalone for external copy-out projects:
 #   ./target/debug/nros-build-profile <dir> --deep
 [group("main")]
@@ -3742,7 +3742,7 @@ api-parity lang="":
 # this table pasted by hand into a roadmap doc; every wave of that campaign is
 # a saving measured against it, so it needs to be re-runnable.
 #
-#   just mem-report examples/native/rust/talker/target-zenoh/nros-fast-release/talker
+#   just mem-report examples/linux/rust/talker/target-zenoh/nros-fast-release/talker
 #   just mem-report <elf> --json > before.json   # then --baseline before.json
 [group("dev")]
 mem-report *args:
@@ -3977,7 +3977,7 @@ format-c:
     "$CF" -i packages/rmw/zenoh/zpico-zephyr/src/*.c packages/rmw/zenoh/zpico-zephyr/include/*.h
     # phase-338 — EVERY platform's C examples, not just linux. The portability
     # gate compares copies line by line, so a formatter that reaches one copy and
-    # not its siblings manufactures divergence: `examples/native/c/listener` was
+    # not its siblings manufactures divergence: `examples/linux/c/listener` was
     # clean while its five siblings had drifted, and matching them meant leaving
     # native unformatted. Same file, same rule, every platform.
     git ls-files -z 'examples/*/c/**/*.c' 'examples/*/c/**/*.h' ':!examples/px4/**' | xargs -0 "$CF" -i

@@ -855,7 +855,7 @@ pub fn e2e_setup(example: &str) -> (DockerRosEnv, std::path::PathBuf, u8) {
 }
 
 /// The per-edition cyclone build of native example `name` (phase-310), under
-/// `examples/native/rust/<name>/target-ros-edition-<edition>-cyclone/debug/<name>`
+/// `examples/linux/rust/<name>/target-ros-edition-<edition>-cyclone/debug/<name>`
 /// — produced by `just ros_editions build-e2e-fixtures <edition>` (cyclone is the
 /// default RMW). Delegates to [`example_bin_rmw`] so the cyclone lanes share the
 /// phase-311 per-(edition, rmw) path convention.

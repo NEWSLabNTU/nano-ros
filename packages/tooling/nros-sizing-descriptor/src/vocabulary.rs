@@ -253,7 +253,7 @@ vocabulary! {
         /// **phase-457 W3 prices this row at NO RECEIVE REGION** —
         /// [`Endpoint::claims_no_receive_region`](crate::Endpoint::claims_no_receive_region),
         /// issue 1340, measured at 10,840 bytes a subscription on
-        /// `examples/native/rust/listener` at `KEEP_LAST(10)`. It used to be
+        /// `examples/linux/rust/listener` at `KEEP_LAST(10)`. It used to be
         /// priced at the type's bound, an over-statement W5 left alone on
         /// purpose.
         ///

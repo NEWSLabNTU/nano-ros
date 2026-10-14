@@ -48,7 +48,7 @@ log_info "Using nros CLI: $NROS_CLI_BIN"
 
 log_info "Configuring native-c-custom-msg example..."
 
-EXAMPLE_DIR="$PROJECT_ROOT/examples/native/c/custom-msg"
+EXAMPLE_DIR="$PROJECT_ROOT/examples/linux/c/custom-msg"
 BUILD_DIR="$EXAMPLE_DIR/build"
 
 # Clean any existing build

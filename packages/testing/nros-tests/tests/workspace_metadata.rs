@@ -67,8 +67,8 @@ fn cmake_workspace_metadata_emits_components_cmake() -> nros_tests::TestResult<(
         "metadata missing linux_entry application entry:\n{body}"
     );
     assert!(
-        body.contains("\"native\""),
-        "metadata missing native deploy target:\n{body}"
+        body.contains("\"deploy\": [\"linux\"]"),
+        "metadata missing linux deploy target:\n{body}"
     );
     Ok(())
 }

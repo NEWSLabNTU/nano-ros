@@ -469,7 +469,7 @@ mistaken for a quiet peer. (`zpico_reply_slot_declines` landed on `main` hours
 later and is the counter to use next time; it was not in the tree under test.)
 
 **Subject.** A nano-ros zenoh SERVICE server
-(`examples/native/rust/service-server --features rmw-zenoh`), which is the same
+(`examples/linux/rust/service-server --features rmw-zenoh`), which is the same
 zenoh-pico queryable an action server is. Deliberately not an action server: on
 `main` today no zenoh action server starts at all — issue **1341**.
 

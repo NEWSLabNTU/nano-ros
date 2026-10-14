@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Phase 118.B.3 — collapse one native/cpp/<rmw>/<case> sibling into
-# native/cpp/<case>. C++ side has zenoh + dds today (no xrce dir);
+# Phase 118.B.3 — collapse one linux/cpp/<rmw>/<case> sibling into
+# linux/cpp/<case>. C++ side has zenoh + dds today (no xrce dir);
 # the canonical add_subdirectory + -DNROS_RMW glue handles both.
 #
 # Usage: tmp/collapse-native-cpp-case.sh <case>
@@ -8,8 +8,8 @@ set -euo pipefail
 
 case_name="${1:?usage: $0 <case>}"
 root="$(cd "$(dirname "$0")/.." && pwd)"
-src="${root}/examples/native/cpp/zenoh/${case_name}"
-dst="${root}/examples/native/cpp/${case_name}"
+src="${root}/examples/linux/cpp/zenoh/${case_name}"
+dst="${root}/examples/linux/cpp/${case_name}"
 
 if [ ! -d "$src" ]; then
     echo "missing source: $src" >&2

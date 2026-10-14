@@ -1673,7 +1673,7 @@ fn test_zephyr_workspace_entry_native_sim_e2e() {
     // the observability listener must subscribe the SAME type (the message type
     // is baked into the wire keyexpr) or the router never matches it.
     //
-    // phase-338 W3 — this was the EXAMPLE (`native/rust/listener`) with a
+    // phase-338 W3 — this was the EXAMPLE (`linux/rust/listener`) with a
     // test-only `NROS_SUB_TYPE=int32` switch; the switch moved to
     // `bins/int32-sink`, which subscribes Int32 natively. Readiness is
     // unchanged ("Waiting for"); the per-message marker is not — the sink

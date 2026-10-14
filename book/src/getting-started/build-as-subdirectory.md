@@ -109,7 +109,7 @@ manifests into the same root CMake. Each shell is a
 ## What the in-tree examples do instead
 
 Worth reading as the contrast, because it is the shape most projects
-want. `examples/native/c/talker/CMakeLists.txt` is fourteen lines and
+want. `examples/linux/c/talker/CMakeLists.txt` is fourteen lines and
 sets no cache variable at all:
 
 ```cmake

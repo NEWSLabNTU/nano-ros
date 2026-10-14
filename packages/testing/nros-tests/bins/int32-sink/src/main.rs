@@ -1,6 +1,6 @@
 //! Generic Int32 sink (fixture for cross-process e2e observation).
 //!
-//! Moved out of `examples/native/rust/listener` in phase-277 W4: the example
+//! Moved out of `examples/linux/rust/listener` in phase-277 W4: the example
 //! flipped to the official ROS 2 demo behavior (`std_msgs/String`,
 //! `I heard: [Hello World: N]`) and dropped its test-only `NROS_SUB_TOPIC`
 //! escape hatch. This bin keeps the old sink behavior for the tests that

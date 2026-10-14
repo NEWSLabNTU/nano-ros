@@ -52,7 +52,7 @@ fn maintainer_xml() -> String {
 enum PlatformKind {
     /// Hosted std binary: explicit `register_linked_rmw()` +
     /// `nros::init_with_launch_auto()` + `Executor::open` + `spin`.
-    /// Models `examples/native/rust/talker`. (native, posix)
+    /// Models `examples/linux/rust/talker`. (native, posix)
     Hosted,
     /// `#![no_std]` `nros::main!()` Form-1 self-bringup — `main.rs` is the
     /// one-line entry, `lib.rs` is the node (`nros::node!`), and
@@ -989,7 +989,7 @@ codegen-units = 1
 
 /// Hosted (native/posix) — a plain `fn main()` that registers the linked RMW,
 /// opens an executor, and spins a String talker. Models
-/// `examples/native/rust/talker`.
+/// `examples/linux/rust/talker`.
 fn scaffold_rust_hosted(
     name: &str,
     spec: &PlatformSpec,
@@ -1353,7 +1353,7 @@ ament_package()
 //
 // Minimal nano-ros C talker — publishes one `std_msgs/Int32` message on
 // `/chatter`, then returns. Swap the body for your own logic; see
-// `examples/native/c/talker/src/main.c` for a fuller shape (timer,
+// `examples/linux/c/talker/src/main.c` for a fuller shape (timer,
 // executor, signal handler).
 
 #include <stdio.h>
@@ -1433,7 +1433,7 @@ ament_package()
 //
 // Minimal nano-ros C++ talker — publishes one `std_msgs/Int32` message on
 // `/chatter`, then returns. Swap the body for your own logic; see
-// `examples/native/cpp/talker/src/main.cpp` for a fuller shape (timer,
+// `examples/linux/cpp/talker/src/main.cpp` for a fuller shape (timer,
 // executor, signal handler).
 
 #include <cstdio>

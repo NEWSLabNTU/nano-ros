@@ -19,7 +19,7 @@
 # Issue 1888: a `native` leaf with a `system.toml` is the same kind of project.
 # Its manifest names `<leaf>_nros_selection` too, rendered into
 # `build/nros/selection/` by the same sync. The first version synced only
-# non-native leaves, so 20 of the 22 `examples/native/rust/*` leaves linted only
+# non-native leaves, so 20 of the 22 `examples/linux/rust/*` leaves linted only
 # where an earlier fixture build had happened to sync them, and failed
 # `cargo metadata` everywhere else.
 #
@@ -60,7 +60,7 @@ pkg="$(sed -n 's/^name[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$dir/Cargo.t
 # `check-example-cargo-dirs`), so a leaf with `[image.<id>]` names its
 # generated `<leaf>_nros_selection` crate, and even a leaf with no `system.toml`
 # resolves `nros-log` only through the `[patch.crates-io]` row sync writes
-# (`examples/native/rust/logging`).
+# (`examples/linux/rust/logging`).
 render=0
 if nros_leaf_sync_renders "$dir"; then render=1; fi
 if [ "$render" = 1 ] && [ -z "$plan" ]; then

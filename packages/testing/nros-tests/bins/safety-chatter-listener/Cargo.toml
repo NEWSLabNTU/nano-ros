@@ -6,7 +6,7 @@ version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 publish = false
-description = "Imperative E2E-safety listener fixture (moved out of examples/native/rust/listener in phase-277 W3.a). Subscribes /chatter Int32 via the builder `.safety()` opt-in and logs the per-message IntegrityStatus (`[SAFETY] seq_gap=.. dup=.. crc=..`). Cross-process subscriber for tests/safety_e2e.rs, paired with the safety-chatter-talker fixture over zenohd. The declarative (`Node` + NodeContext) sibling lives in bins/declarative-safety-listener."
+description = "Imperative E2E-safety listener fixture (moved out of examples/linux/rust/listener in phase-277 W3.a). Subscribes /chatter Int32 via the builder `.safety()` opt-in and logs the per-message IntegrityStatus (`[SAFETY] seq_gap=.. dup=.. crc=..`). Cross-process subscriber for tests/safety_e2e.rs, paired with the safety-chatter-talker fixture over zenohd. The declarative (`Node` + NodeContext) sibling lives in bins/declarative-safety-listener."
 
 [[bin]]
 name = "safety-chatter-listener"

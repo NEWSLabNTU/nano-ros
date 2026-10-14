@@ -140,7 +140,7 @@ rmw = "cyclonedds"
 ```
 
 ```bash
-cd examples/native/c/talker        # (or cpp)
+cd examples/linux/c/talker        # (or cpp)
 cmake -B build-cyclone -Dnano_ros_ROOT="$(nros sdk-root)"
 cmake --build build-cyclone
 ```
@@ -151,7 +151,7 @@ the command line disagrees with the one the rest of the build resolves from
 `system.toml`, which is the drift RFC-0098 removes.
 
 A Rust example does not take `--features rmw-cyclonedds` at all: its RMW is
-its image's (issue 1305). `examples/native/rust/talker` declares
+its image's (issue 1305). `examples/linux/rust/talker` declares
 `linux_cyclonedds`, and `nros sync --image linux_cyclonedds && nros build
 linux_cyclonedds` builds it — the board crate's `rmw-cyclonedds` builds
 Cyclone through `nros-rmw-cyclonedds-sys`.
@@ -348,7 +348,7 @@ When all else fails, include:
 ## What success looks like
 
 A correctly-running Rust Linux talker
-(`examples/native/rust/talker`) prints something like this on
+(`examples/linux/rust/talker`) prints something like this on
 stderr (with `RUST_LOG=info`):
 
 ```text
@@ -360,7 +360,7 @@ stderr (with `RUST_LOG=info`):
 (That is the full expected output — the talker logs one line per
 publish, nothing else.)
 
-A correctly-running C talker (`examples/native/c/talker`) prints
+A correctly-running C talker (`examples/linux/c/talker`) prints
 on stdout:
 
 ```text

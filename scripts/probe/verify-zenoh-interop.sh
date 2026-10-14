@@ -64,7 +64,7 @@ exec 3>&- 3<&- || true
 # no longer teaches — and W6 deletes the leaf `.cargo/`, after which a bare
 # `cargo run` in this directory does not resolve at all. The path is the one
 # the page prints.
-cd examples/native/rust/talker
+cd examples/linux/rust/talker
 bin=build/linux/target/debug/talker
 [ -x "$bin" ] || {
     echo "PROBE FAIL: $bin missing — step 30's \`nros build\` did not produce it"

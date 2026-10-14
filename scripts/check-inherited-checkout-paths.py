@@ -655,7 +655,7 @@ def probe_cmake_incremental_root(tmp: Path) -> list[str]:
     outside = tmp / "opt/ci-sdk/nano-ros"
     outside.mkdir(parents=True)
     here = str(ROOT.resolve())
-    src = ROOT / "examples/native/c/talker"
+    src = ROOT / "examples/linux/c/talker"
     problems: list[str] = []
 
     def resolve(extra: dict[str, str]) -> str:

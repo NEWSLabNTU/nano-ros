@@ -1,6 +1,6 @@
 # Phase 500 — the host board is `linux`
 
-**Status (2026-10-14). W1, W2 and W3 landed on their branches; W4–W5 open.** W1 drops
+**Status (2026-10-14). W1–W4 landed on their branches; W5 open.** W1 drops
 `native` as a board name: the host board descriptor names `["linux"]`, every
 tracked selector / deploy token / cmake `DEPLOY` / sdk-index key writes
 `linux`, `native` is refused with a hint naming `linux`, and
@@ -8,15 +8,15 @@ tracked selector / deploy token / cmake `DEPLOY` / sdk-index key writes
 module, the setup/build/test/doctor scope and the host test binaries to
 `linux`, keeping `native` as a deprecated alias. W3 renamed the host image
 ids (`[image.native*]` → `[image.linux*]`) and every name derived from them.
-The `examples/native/` directory still says `native` (W4), and the deprecated
-aliases are W5's to retire.
+W4 moved `examples/native/` to `examples/linux/` with every locator into it.
+The deprecated aliases are W5's to retire.
 
 Implements the naming rule of
 [RFC-0093](../design/0093-board-naming-states-reach.md) ("a board name states
 the reach of its build") for the host board, which RFC-0093 §4 had left
 "unchanged (CLAUDE.md owns these)". Feature axes: ARCHITECTURE §2, RFC-0005,
 RFC-0006. Homes issue
-[#1109](../issues/1109-board-native-vs-linux-naming-sweep.md), re-homed from
+[#1109](../issues/archived/1109-board-native-vs-linux-naming-sweep.md), re-homed from
 [phase-445](archived/phase-445-board-choice-generates-leaf-config.md).
 
 ## The ruling (maintainer, 2026-10-14) — authoritative
@@ -226,10 +226,51 @@ priorities, prose) and are out of scope.
     PACKAGE names (`native_c_talker`, …; W4), `[host.native]` machine tables,
     `[package.metadata.nros.deploy.*]` keys in fixtures, and every path into
     `examples/native/` (W4).
-- [ ] **W4 — `examples/native/` → `examples/linux/`.** The sibling example dirs
-  are named for their board (`mps2-an385-freertos`, `threadx-linux`, …). ~310
-  moved files, ~112 code references (test locators, `just` recipes, workflows),
-  ~388 doc references. Last, so W2/W3 land against stable paths.
+- [x] **W4 — `examples/native/` → `examples/linux/`.** The sibling example dirs
+  are named for their board (`mps2-an385-freertos`, `threadx-linux`, …). One
+  commit.
+  - **Move.** `git mv examples/native examples/linux`: 310 tracked files.
+  - **Locators, same commit (#393).** Every `examples/native…` spelling and
+    every `examples/`-relative locator (`build_example("native/rust/talker", …)`,
+    `format!("native/c/{}", …)`) outside the history series: the
+    `nros_tests::fixtures::{binaries,groups,cache_key}` locators and the tests,
+    194 `examples/fixtures.toml` `dir =` rows, the root `Cargo.toml` excludes,
+    `just/linux.just`, `just/ros-editions.just`, scripts and their self-tests,
+    `.github/workflows` comments, the book, live docs and RFCs, READMEs,
+    CLAUDE.md / AGENTS.md path spellings — ~640 spellings in ~240 files. Open
+    issues and active phase docs that cite the current tree moved with it;
+    measured history (a `du` line in #1353, #1109's own summary) did not.
+  - **Keyed on the directory, now keyed on a property.**
+    `scripts/docs/gen-example-readmes.py` had `NATIVE_PLATFORMS = {"native",
+    "threadx-linux"}` (which leaves print a host run line); it is DERIVED now —
+    a platform directory runs on the host when every board its leaves select
+    has no cross `[build] target` and is not a Zephyr staticlib. The directory
+    lists that are directory lists by design (`example_portability.rs`
+    `GROUPS`, `example_shape.rs` `AMENT_SHAPE_TREES`, `examples/README.md`'s
+    tables, `scripts/ci/dep-chain-check.sh` cells, whose board word is also the
+    `nros setup` argument) say `linux`; `AMENT_SHAPE_TREES` now fails on a
+    listed tree that does not exist instead of skipping it.
+  - **The coordinate does NOT change.** A fixture row's coordinate is its
+    authored `platform` field (`row_coord()`), which already said `linux` since
+    W1/W2; nothing derives it from the directory. Row ids
+    (`native-rust-talker`, `workspace-rust-native-…`) stay, as W3 left them.
+    One side effect: `fixtures-build.sh`'s node-pkg pre-sync globs
+    `examples/$platform/`, which for the host read `examples/linux/` and so
+    matched nothing until this move (no host leaf is a node pkg, so it changed
+    no build).
+  - **Package names stay.** The siblings prefix packages with their platform
+    FAMILY, not their directory (`mps2-an385-freertos/` → `freertos_*`,
+    `mps2-an385-baremetal/` → `baremetal_*`/`qemu_*`, `threadx-linux/` →
+    `threadx_*`/`threadx_linux_*`), and under the ruling `native` names the
+    class of general-purpose hosts, so `native_c_talker` / `native-rs-*` follow
+    that convention as written.
+  - **A W3 leftover fixed.** `just ros_editions` built its image id at run time
+    (`IMG="native"` + `_<rmw>` + `_<edition>`), which check 8's literal regex
+    could not see; it read `--image native_cyclonedds_jazzy` against a leaf that
+    declares `linux_cyclonedds_jazzy`. Now `IMG="linux"`.
+  - **No alias.** A moved directory cannot have one. The released book
+    (`nros-v0.5.0`) documents `examples/native/…` paths; a reader of that book
+    is reading that release's tree.
 - [ ] **W5 — retire the aliases.** Remove every alias that still maps `native`
   or `posix` to the host board or lane: the W2 deprecated `native`
   lane/module/scope alias, `nros new --platform native|posix`,
@@ -290,6 +331,16 @@ priorities, prose) and are out of scope.
   `cpp_multi_node_entry.rs` → rc=1; each restored → rc=0.
 - **W4** — no tracked path under `examples/native/`; every locator moved in the
   same commit; gate (mutation-proved) refuses the old directory.
+  **Gate:** `check-host-platform-vocabulary` check 10 (fast line) — no tracked
+  path under `examples/native/`, and no tracked file outside the history series
+  spells `examples/native` or a quoted `examples/`-relative locator
+  (`"native/rust/…"`, `'native/c/…'`); the history series gained
+  `docs/design/archived/` and the dated `build-ux-audit.md`. Self-test on every run (Zephyr
+  `native_sim/native/64`, `dist/native/`, `build/native/` are not the tree).
+  **Mutation-proved**: `cd examples/native/rust/talker` back in `README.md` →
+  rc=1 naming `README.md:107`; `"native/rust/talker"` back in
+  `nros_tests::fixtures::binaries` → rc=1 naming the line; a tracked
+  `examples/native/probe.txt` → rc=1 naming the path; each restored → rc=0.
 - **W5** — a gate (mutation-proved) that no alias path remains: each retired
   spelling refuses with a hint naming `linux`; docs and book updated.
 
@@ -297,4 +348,4 @@ priorities, prose) and are out of scope.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1109](../issues/1109-board-native-vs-linux-naming-sweep.md) | `board = "native"` selectors; re-homed 2026-10-14 from phase-445. Partially done by W1; closes with W4 (W5 retires the aliases it leaves) |
+| [#1109](../issues/archived/1109-board-native-vs-linux-naming-sweep.md) | `board = "native"` selectors; re-homed 2026-10-14 from phase-445. Partially done by W1; closes with W4 (W5 retires the aliases it leaves) |

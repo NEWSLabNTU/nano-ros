@@ -24,7 +24,7 @@ Options:
 Examples:
   scripts/build/phase226-cxx-eff.sh --lang c --rmw zenoh --role talker
   scripts/build/phase226-cxx-eff.sh --lang cpp --rmw xrce --limit 2
-  scripts/build/phase226-cxx-eff.sh --cell examples/native/c/talker:build-zenoh
+  scripts/build/phase226-cxx-eff.sh --cell examples/linux/c/talker:build-zenoh
 
 Notes:
   This script is diagnostic only. It is not used by normal builds.

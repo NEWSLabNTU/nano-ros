@@ -16,7 +16,7 @@
 //!
 //! The examples are the real assertion. Each exits 0 only when every roundtrip
 //! passes, and encodes WHICH assertion failed in its non-zero exit code — see
-//! `examples/native/{c/parameters/src/main.c, cpp/parameters/src/main.cpp}`. The
+//! `examples/linux/{c/parameters/src/main.c, cpp/parameters/src/main.cpp}`. The
 //! stdout greps below pin the values actually read back, so an example that
 //! exits 0 while printing defaults still fails here.
 //!

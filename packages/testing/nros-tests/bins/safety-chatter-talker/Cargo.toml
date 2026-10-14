@@ -6,7 +6,7 @@ version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 publish = false
-description = "E2E-safety talker fixture (extracted from the examples/native/rust/talker `safety-e2e` feature build in phase-277 W3.a). Publishes std_msgs/Int32 on /chatter every 1 s with the zenoh backend's safety-e2e CRC attach baked in. Cross-process publisher for tests/safety_e2e.rs, paired with safety-chatter-listener / declarative-safety-listener over zenohd."
+description = "E2E-safety talker fixture (extracted from the examples/linux/rust/talker `safety-e2e` feature build in phase-277 W3.a). Publishes std_msgs/Int32 on /chatter every 1 s with the zenoh backend's safety-e2e CRC attach baked in. Cross-process publisher for tests/safety_e2e.rs, paired with safety-chatter-listener / declarative-safety-listener over zenohd."
 
 [[bin]]
 name = "safety-chatter-talker"

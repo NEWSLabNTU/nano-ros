@@ -10,7 +10,7 @@ Two commands, whatever the workspace shape:
 
 ```bash
 # A single Rust package:
-cd examples/native/rust/talker
+cd examples/linux/rust/talker
 nros sync
 nros build
 ./build/linux/target/debug/talker

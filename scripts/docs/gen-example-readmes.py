@@ -11,7 +11,7 @@ build it standalone, where to run it, and which file carries the deploy knobs.
 Anything platform-specific (flashing, QEMU invocation, SDK env) stays in the
 platform README, which we link rather than duplicate — one source of truth.
 
-Hand-written pages (`native/c/custom-platform`, `zephyr/cpp/talker`, …) always
+Hand-written pages (`linux/c/custom-platform`, `zephyr/cpp/talker`, …) always
 win: a page is only ever rewritten if it still carries the generated banner
 (`GENERATED_BANNER` below), and without `--force` nothing existing is touched
 at all.
@@ -29,6 +29,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import functools
 import pathlib
 import re
 import subprocess
@@ -38,10 +39,61 @@ REPO = pathlib.Path(__file__).resolve().parents[2]
 EXAMPLES = REPO / "examples"
 SKIP_TOP = {"workspaces", "templates"}
 
-# Platforms whose binaries run on the host; everything else is cross-built and
-# run under QEMU / on hardware, so we point at the platform README instead of
-# inventing a run line.
-NATIVE_PLATFORMS = {"native", "threadx-linux"}
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python < 3.11
+    import tomli as tomllib
+
+
+def _board_catalog() -> dict[str, list[dict]]:
+    """Board name -> every tracked descriptor `[[board]]` table claiming it."""
+    out = subprocess.run(
+        ["git", "ls-files", "*nros-board.toml"],
+        cwd=REPO, capture_output=True, text=True, check=True,
+    ).stdout.split()
+    cat: dict[str, list[dict]] = {}
+    for rel in out:
+        if "/tests/" in f"/{rel}" or "/third-party/" in f"/{rel}":
+            continue
+        with open(REPO / rel, "rb") as fh:
+            for board in tomllib.load(fh).get("board", []):
+                for name in board.get("names", []):
+                    cat.setdefault(name, []).append(board)
+    return cat
+
+
+def _runs_on_host(board: dict) -> bool:
+    """A board whose image is a host process: no cross `[build] target` in its
+    cargo config, and not a Zephyr staticlib (west owns that build)."""
+    if board.get("entry_kind") == "zephyr-staticlib":
+        return False
+    cfg = board.get("cargo_config") or ""
+    return not (tomllib.loads(cfg).get("build") or {}).get("target") if cfg else True
+
+
+@functools.lru_cache(maxsize=None)
+def host_run_platforms() -> frozenset[str]:
+    """Platform directories whose binaries run on the host; everything else is
+    cross-built and run under QEMU / on hardware, so we point at the platform
+    README instead of inventing a run line.
+
+    DERIVED (phase-500 W4) from the boards the directory's leaves select in
+    `system.toml` — a directory qualifies when every such board runs on the
+    host — never from the directory's name, which once said `native`.
+    """
+    cat = _board_catalog()
+    boards: dict[str, set[str]] = {}
+    for leaf in canonical_leaves():
+        system = leaf / "system.toml"
+        if not system.is_file():
+            continue
+        names = set(re.findall(r'^board\s*=\s*"([^"]+)"', system.read_text(), re.M))
+        boards.setdefault(leaf.parts[-3], set()).update(names)
+    return frozenset(
+        plat
+        for plat, names in boards.items()
+        if names and all(cat.get(n) and all(_runs_on_host(b) for b in cat[n]) for n in names)
+    )
 
 
 def canonical_leaves() -> list[pathlib.Path]:
@@ -123,7 +175,7 @@ def render(leaf: pathlib.Path) -> str:
     platform, language, case = leaf.parts[-3:]
     is_rust = (leaf / "Cargo.toml").is_file()
     is_cmake = (leaf / "CMakeLists.txt").is_file()
-    native = platform in NATIVE_PLATFORMS
+    native = platform in host_run_platforms()
     zephyr = platform == "zephyr"
     image = deploy_target(leaf)
     binary = bin_name(leaf) if is_rust else None

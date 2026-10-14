@@ -2,7 +2,7 @@
 //!
 //! Tests the C examples (c-xrce-talker, c-xrce-listener) prebuilt with
 //! CMake using the XRCE-DDS backend. `just linux build-fixtures` stages
-//! them under `examples/native/c/{talker,listener}/build-xrce/`; test
+//! them under `examples/linux/c/{talker,listener}/build-xrce/`; test
 //! bodies only resolve and execute those binaries.
 //!
 //! Prerequisites:
@@ -56,7 +56,7 @@ fn test_c_xrce_talker_starts(c_xrce_talker_binary: PathBuf) {
     let mut talker =
         ManagedProcess::spawn_command(cmd, "c-xrce-talker").expect("Failed to start c-xrce-talker");
 
-    // Phase-277 W5.C1 slimmed native/c/talker to the official-demo shape,
+    // Phase-277 W5.C1 slimmed linux/c/talker to the official-demo shape,
     // which dropped the "Support initialized" print — the publish line is
     // the talker's started-marker now (also proves the timer fired).
     let output = talker
@@ -183,7 +183,7 @@ fn test_c_xrce_talker_listener_communication(
 fn nano_c_xrce(case: &str, binary: &str) -> PathBuf {
     build_native_c_example_rmw(case, binary, Rmw::Xrce).unwrap_or_else(|e| {
         nros_tests::unmet!(
-            "native/c/{case} xrce fixture not prebuilt (run `just linux build-fixtures`): {e:?}"
+            "linux/c/{case} xrce fixture not prebuilt (run `just linux build-fixtures`): {e:?}"
         )
     })
 }

@@ -170,7 +170,7 @@ fixtures, a lib a CMake image links) are listed with their reasons in
 
 The canonical shape is an ament package — 152 of the 162 example
 `CMakeLists.txt` files in the tree, and what a new one should copy. Verbatim
-from `examples/native/c/talker/`:
+from `examples/linux/c/talker/`:
 
 ```cmake
 cmake_minimum_required(VERSION 3.22)
@@ -324,7 +324,7 @@ The build command is `nros build` (Rust and workspaces) or `cmake --build`
 | `zephyr` | `src/lib.rs` (staticlib) or `src/main.cpp` | `west build` (after `nros sync`) | Kconfig + west module — the one carve-out where `nros build` is not the verb. |
 
 Artifacts land under `<leaf>/build/<image-id>/target/[<triple>/]<profile>/<bin>`:
-`examples/native/rust/talker` gives `build/linux/target/debug/talker`,
+`examples/linux/rust/talker` gives `build/linux/target/debug/talker`,
 `examples/mps2-an385-baremetal/rust/talker` gives
 `build/mps2-an385-baremetal/target/thumbv7m-none-eabi/debug/qemu-bsp-talker`.
 

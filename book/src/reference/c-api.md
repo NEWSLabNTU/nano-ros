@@ -97,7 +97,7 @@ but it follows the same async-then-spin contract.
 Canonical pattern: declare the executor, register the client, then
 either call the blocking helper or drive `rclc_executor_spin_some()`
 yourself between async calls until your callback flags the result. See
-the example layouts in `examples/native/c/action-client/` and
+the example layouts in `examples/linux/c/action-client/` and
 `examples/mps2-an385-freertos/c/action-client/`.
 
 Phase 122.3 added a separate L1 polling family

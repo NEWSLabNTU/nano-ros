@@ -10,7 +10,7 @@
 # hand and the verification survived only in a commit message:
 #
 #   phase-340 W1  owners keyed on the ROW, not the leaf directory — without it
-#                 `examples/native/rust/talker`'s four rows dedup to one owner
+#                 `examples/linux/rust/talker`'s four rows dedup to one owner
 #                 and 11 real `linux` collisions report as zero.
 #   phase-340 B1  LIB artifacts included — staticlib/cdylib/dylib land flat and
 #                 unhashed. `libnros_c.a` exists at 438 copies across ~30

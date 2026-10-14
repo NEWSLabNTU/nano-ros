@@ -6,7 +6,7 @@ version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 publish = false
-description = "Parameterised talker fixture (extracted from the examples/native/rust/talker `param-services` feature gates in phase-277 W3.a). Registers the REP-2002 parameter services, declares an integer `start_value` parameter, starts its /chatter Int32 counter from it, and publishes every 1 s. Consumed by tests/params.rs (default-value + declaration + ros2 param interop tests)."
+description = "Parameterised talker fixture (extracted from the examples/linux/rust/talker `param-services` feature gates in phase-277 W3.a). Registers the REP-2002 parameter services, declares an integer `start_value` parameter, starts its /chatter Int32 counter from it, and publishes every 1 s. Consumed by tests/params.rs (default-value + declaration + ros2 param interop tests)."
 
 [[bin]]
 name = "param-chatter-talker"

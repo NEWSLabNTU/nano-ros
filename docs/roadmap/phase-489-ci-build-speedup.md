@@ -584,7 +584,7 @@ Freshness, checked on the same tree after the change: a one-line edit to a
 compile-check row's source made `_require-fixtures-ready` (lane native) fail
 naming that row's `.inputsig`; `just build-compile-check-fixtures` then rebuilt
 that row alone (63 reused) and the gate passed; reverting the edit rebuilt it
-once more. An edit to a cargo leaf (`examples/native/rust/talker`) is never
+once more. An edit to a cargo leaf (`examples/linux/rust/talker`) is never
 judged from a stamp at all — the staleness probe for cargo rows IS a
 `cargo build`, so the gate rebuilt the binary (mtime moved) rather than pass
 the old one. Neither path can hand a stale artifact to a test.

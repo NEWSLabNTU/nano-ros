@@ -156,7 +156,7 @@ pub fn resolve(leaf: &Path, nano_ros_root: &Path) -> Result<Option<LeafImage>> {
 }
 
 /// [`resolve`] for ONE named image of the leaf (issue 1305). A cargo leaf may
-/// declare several images — one per RMW and ROS edition, `examples/native/
+/// declare several images — one per RMW and ROS edition, `examples/linux/
 /// rust/talker` has nine — and `nros sync --image <id>` / `nros build <id>`
 /// build the one named. `None` keeps the leaf's own rule (one image, or
 /// `[system] default_images`); naming an image the file does not declare is
@@ -1749,7 +1749,7 @@ mod board_crate_tests {
         // The walk above only reaches a leaf that HAS a `system.toml`, so a cargo
         // package that names a board crate and declares no image at all was
         // invisible to it — the gate's reach was narrower than its rule (issue
-        // 0196's shape; 15 `examples/native/rust/*` leaves sat there, issue 1305
+        // 0196's shape; 15 `examples/linux/rust/*` leaves sat there, issue 1305
         // phase E). Every tracked `[package]` manifest under `examples/` with no
         // `system.toml` beside it is asked here: naming a board crate makes it a
         // stray, because a leaf with no image cannot get a selection package.

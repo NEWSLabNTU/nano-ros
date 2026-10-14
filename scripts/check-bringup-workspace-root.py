@@ -250,17 +250,17 @@ def self_test() -> None:
         # A `system.toml` BESIDE a package manifest is a single-package LEAF, so
         # it is not a bringup and needs no enclosing root. Both spellings of
         # `is_package_dir`.
-        add(repo, "examples/native/rust/talker/system.toml")
-        add(repo, "examples/native/rust/talker/Cargo.toml", "[package]\nname = \"t\"\n")
-        add(repo, "examples/native/c/talker/system.toml")
-        add(repo, "examples/native/c/talker/CMakeLists.txt")
+        add(repo, "examples/linux/rust/talker/system.toml")
+        add(repo, "examples/linux/rust/talker/Cargo.toml", "[package]\nname = \"t\"\n")
+        add(repo, "examples/linux/c/talker/system.toml")
+        add(repo, "examples/linux/c/talker/CMakeLists.txt")
         assert offenders(repo) == [], offenders(repo)
 
         # …and the same directory WITHOUT a package manifest IS a bringup, so the
         # exemption above is measured rather than assumed.
-        add(repo, "examples/native/cpp/orphan/system.toml")
-        assert offenders(repo) == ["examples/native/cpp/orphan"], offenders(repo)
-        git(repo, "rm", "-q", "--cached", "examples/native/cpp/orphan/system.toml")
+        add(repo, "examples/linux/cpp/orphan/system.toml")
+        assert offenders(repo) == ["examples/linux/cpp/orphan"], offenders(repo)
+        git(repo, "rm", "-q", "--cached", "examples/linux/cpp/orphan/system.toml")
 
         # A bringup outside `examples/` is in scope — the rule is about bringups,
         # not about a directory name.

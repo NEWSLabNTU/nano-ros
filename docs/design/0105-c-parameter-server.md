@@ -33,7 +33,7 @@ Measured on main at `846a275e3e` (2026-10-11):
 | Family | Shape | Served to `ros2 param`? | Callers |
 | --- | --- | --- | --- |
 | `nros_parameter_server_t` + `nros_parameter_declare_*` (+ deprecated `nros_param_*`) | rclc-like server object, caller-owned storage | **No.** It is a separate store that no service reads (issue 0793) | one compile test and the crate's own unit tests |
-| `nros_executor_{declare,get,set}_param_*` (+ `_on(node)`) | executor-keyed, no server object, no arrays | Yes | `examples/native/c/parameters`, the metadata census, two gate scripts |
+| `nros_executor_{declare,get,set}_param_*` (+ `_on(node)`) | executor-keyed, no server object, no arrays | Yes | `examples/linux/c/parameters`, the metadata census, two gate scripts |
 | `nros_cpp_get_param_*` (from C components) | C++ shim reached from C | Yes | `c_param_talker_pkg`, codegen `tests_c.rs` |
 
 The upstream-shaped family is served by nothing, the served family has

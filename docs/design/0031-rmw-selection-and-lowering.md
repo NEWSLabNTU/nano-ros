@@ -133,7 +133,7 @@ build path (RFC-0005 / Phase 175), even for an otherwise-Rust binary. The
 
 > **Amended 2026-10-12 (issue 1305).** No example selects its RMW with a cargo
 > feature any more. A single-package example declares one `[image.<id>]` per
-> RMW (and per ROS edition) in its `system.toml` — `examples/native/rust/talker`
+> RMW (and per ROS edition) in its `system.toml` — `examples/linux/rust/talker`
 > declares `linux`, `linux_xrce`, `linux_cyclonedds` and the iron/jazzy
 > images — and depends on its GENERATED `<pkg>_nros_selection` package, which
 > `nros sync --image <id>` / `nros build <id>` write with the board crate's

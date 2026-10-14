@@ -31,7 +31,7 @@
 //! any subscriber *receives* — so two follow-ups close the loop end-to-end:
 //!
 //! * **A — always-on gate** (`test_zenoh_to_cyclonedds_bridge_to_nano_listener`):
-//!   receive side is an *in-tree* nano-ros Cyclone listener (`native/c/listener`,
+//!   receive side is an *in-tree* nano-ros Cyclone listener (`linux/c/listener`,
 //!   `rmw-cyclonedds` fixture). No ROS 2 install needed; composes with
 //!   `cyclonedds_ros2_interop.rs` (nano cyclone pub → stock `rmw_cyclonedds_cpp`,
 //!   already gated) to give full zenoh→stock coverage.
@@ -45,7 +45,7 @@
 //! `require_coord_in_lane` run inside the resolver, BEFORE the existence check,
 //! and panic `[SKIPPED:lane]`. Both fixtures this file names have manifest rows
 //! at `linux,rust,cyclonedds` (`bins/bridge-zenoh-to-cyclonedds-fwd`) and
-//! `linux,c,cyclonedds` (`examples/native/c/listener`, `build-cyclonedds`), and
+//! `linux,c,cyclonedds` (`examples/linux/c/listener`, `build-cyclonedds`), and
 //! both are in the build set of every lane that selects those coordinates
 //! (measured: tier 1 and tier2-nightly build them; tier 2 selects neither, so
 //! the resolver lane-skips there and this file's `Err` arm is unreachable).
@@ -78,11 +78,11 @@ const MSG_TYPE: &str = "std_msgs/msg/String";
 /// HARD FAILURE, not a skip — issue 1124; see the module note above.
 fn nano_cyclone_listener() -> PathBuf {
     build_native_c_example_rmw("listener", "c_listener", Rmw::Cyclonedds)
-        .require("native/c/listener cyclonedds (run `just cyclonedds setup`)")
+        .require("linux/c/listener cyclonedds (run `just cyclonedds setup`)")
 }
 
 fn spawn_cyclone_listener(binary: &Path, domain: u8) -> ManagedProcess {
-    // The native/c/listener cyclone fixture statically links `libddsc.a`
+    // The linux/c/listener cyclone fixture statically links `libddsc.a`
     // (self-provisioned from source, Phase 186) — no `LD_LIBRARY_PATH` wiring.
     let mut cmd = Command::new(binary);
     cmd.env("ROS_DOMAIN_ID", domain.to_string())

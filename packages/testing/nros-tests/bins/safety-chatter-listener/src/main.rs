@@ -1,6 +1,6 @@
 //! Imperative E2E-safety listener (cross-process subscriber fixture).
 //!
-//! Moved out of `examples/native/rust/listener` (it was the `safety-e2e`
+//! Moved out of `examples/linux/rust/listener` (it was the `safety-e2e`
 //! cfg-gated second `main`) so the example stays cfg-free. Subscribes to
 //! `std_msgs/Int32` on `/chatter` through the imperative builder's
 //! `.safety()` opt-in and logs the per-message integrity status

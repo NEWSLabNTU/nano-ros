@@ -13,7 +13,7 @@ examples/
 └── templates/<name>/                          # multi-platform recipes (Pattern A workspace, etc.)
 ```
 
-- **Platform** (10): `native`, `px4`, `mps2-an385-baremetal`, `mps2-an385-freertos`, `qemu-armv7a-nuttx`, `esp32-c3-baremetal`, `rv-virt-nuttx`, `rv-virt-threadx`, `threadx-linux`, `zephyr`
+- **Platform** (10): `linux`, `px4`, `mps2-an385-baremetal`, `mps2-an385-freertos`, `qemu-armv7a-nuttx`, `esp32-c3-baremetal`, `rv-virt-nuttx`, `rv-virt-threadx`, `threadx-linux`, `zephyr`
 - **Language**: `c`, `cpp`, `rust`
 - **Example** (cases): `talker`, `listener`, `service-{server,client}`, `action-{server,client}`, `custom-msg`, plus variant suffixes: `-rtic`, `-rtic-mixed`, `-async`, `-serial`, `-aemv8r`, etc.
 
@@ -59,7 +59,7 @@ Each example is a standalone Cargo + CMake package — no walk-up in the manifes
 - **Rust** — manifests declare nano-ros crates registry-style (`nros = { version = "*" }`) and carry Rust-toolchain facts only. Which board the leaf deploys to is stated once, in `system.toml` beside the manifest (`[image.<id>] board`, RFC-0098 D3); `nros sync` turns that choice into the generated build settings under `build/<image>/`, and `nros build` reads them. Copy the directory anywhere, point it at your checkout, and build:
 
   ```bash
-  cp -r examples/native/rust/talker ~/my-talker && cd ~/my-talker
+  cp -r examples/linux/rust/talker ~/my-talker && cd ~/my-talker
   export NROS_REPO_DIR=/path/to/nano-ros
   nros sync     # generated/ message crates + build/<image>/nros-cargo.toml
   nros build    # or: nros build linux
@@ -78,7 +78,7 @@ Each example is a standalone Cargo + CMake package — no walk-up in the manifes
 - **C / C++** — every CMakeLists resolves the nano-ros root through one guard: `-DNROS_REPO_DIR=<path>` cache var, else the `NROS_REPO_DIR` env var (exported by `activate.sh`), else the in-repo relative walk-up. That flag says where the checkout is and nothing else — the board, the RMW, the domain and the network identity come from the leaf's `system.toml`, not from `-D` flags and not from the retired `package.xml` `<nano_ros deploy= board= rmw=/>` tuple. A single-package C/C++ leaf needs no `nros sync`: its message bindings are a CMake-time output. Copy the directory anywhere, then:
 
   ```bash
-  cp -r examples/native/c/talker ~/my-c-talker && cd ~/my-c-talker
+  cp -r examples/linux/c/talker ~/my-c-talker && cd ~/my-c-talker
   cmake -S . -B build -DNROS_REPO_DIR=/path/to/nano-ros   # or: export NROS_REPO_DIR=…
   cmake --build build
   ```
@@ -136,7 +136,7 @@ what gets called "the Zephyr layout":
 
 | | Rust leaf files | trees |
 | --- | --- | --- |
-| **cargo owns the link** | `Cargo.toml` + `src/main.rs` (plus `src/lib.rs` where the node logic is shared) | `native`, `mps2-an385-baremetal`, `mps2-an385-freertos`, `esp32-c3-baremetal`, `qemu-armv7a-nuttx`, `threadx-linux` |
+| **cargo owns the link** | `Cargo.toml` + `src/main.rs` (plus `src/lib.rs` where the node logic is shared) | `linux`, `mps2-an385-baremetal`, `mps2-an385-freertos`, `esp32-c3-baremetal`, `qemu-armv7a-nuttx`, `threadx-linux` |
 | **cmake owns the link** | `CMakeLists.txt` + `src/lib.rs` + `src/app_main.rs`; cargo emits a **staticlib**, and cmake links it into an image whose startup is C | `zephyr/rust/*`, `rv-virt-threadx/rust/*` |
 
 The predicate is mechanical, so recount rather than trusting the lists above —
@@ -183,7 +183,7 @@ by phase-445 W5).
 | **1z** | workspace, Zephyr image | the image row builds through `west`; its application is GENERATED (phase-470 W5) unless a hand-written `src/*_entry` package still claims it | every Zephyr `[image.*]` row. None in-tree is hand-written since phase-477 W1 — [issue 1288](../docs/issues/archived/1288-zephyr-rust-workspace-entries-not-generated.md); count them with the command below, not from this table |
 | **1b** | workspace with **no bringup** | `.colcon_workspace`, no `*_bringup` — builds every package in dependency order, colcon's default | `templates/local-msg-package` (a `system.toml` beside a *package*) and `templates/workspace-shadowing` (none at all) |
 | **3** | leaf, cargo owns the link, node-class | leaf has `Cargo.toml`, no `CMakeLists.txt`, and a `system.toml` | most Rust leaves (question 1, first row) **and** the cargo-rooted bare-metal C/C++ leaves |
-| **3a** | leaf, cargo owns the link, **application-shaped** | `[package.metadata.nros.application]` in `Cargo.toml`; the leaf owns `main` and its executor; **no `system.toml`**, never built through `nros build` | 16 `native/rust/*` leaves — the RTIC, async, custom-transport, serial, lifecycle and logging demos. They show what the node-class shape cannot express (the imperative executor API, a user-supplied transport, an RTIC app), so they are a class, not a backlog |
+| **3a** | leaf, cargo owns the link, **application-shaped** | `[package.metadata.nros.application]` in `Cargo.toml`; the leaf owns `main` and its executor; **no `system.toml`**, never built through `nros build` | 16 `linux/rust/*` leaves — the RTIC, async, custom-transport, serial, lifecycle and logging demos. They show what the node-class shape cannot express (the imperative executor API, a user-supplied transport, an RTIC app), so they are a class, not a backlog |
 | **4** | leaf, cmake owns the link | leaf has `CMakeLists.txt` (`+ prj*.conf` on Zephyr) | every C and C++ leaf on a platform whose startup is C — all but the bare-metal ones; plus `zephyr/rust/*` and `rv-virt-threadx/rust/*` |
 | **X** | foreign-build integration | no `system.toml` and nothing for `nros build` to generate; a *foreign* build consumes the tree | `examples/px4/` — see below |
 
@@ -265,9 +265,9 @@ Cell content: `<count>` of `talker|listener|service-{server,client}|action-{serv
 
 | Platform                  | Language | zenoh | xrce | cyclonedds | uorb |
 |---------------------------|----------|-------|------|------------|------|
-| `native`                  | c        | 6+    | 6    | 6          | –    |
-| `native`                  | cpp      | 6+    | –    | 6          | –    |
-| `native`                  | rust     | 6+    | 6+   | 6          | –    |
+| `linux`                   | c        | 6+    | 6    | 6          | –    |
+| `linux`                   | cpp      | 6+    | –    | 6          | –    |
+| `linux`                   | rust     | 6+    | 6+   | 6          | –    |
 | `px4`                     | cpp      | –     | –    | –          | – ²  |
 | `px4`                     | rust     | –     | companion+stub | – | –    |
 | `mps2-an385-baremetal`      | c        | 6 ³   | –    | –          | –    |
@@ -361,9 +361,9 @@ spin up examples here without first lifting the underlying constraint.
 | `px4/{c,rust}/*` (px4 has no example-tree uORB cell)   | PX4 integration is uORB-only (the platform's native pub/sub), and Phase 115.K.4 collapsed `nros-rmw-uorb` to a single C++ port (the legacy Rust crate was deleted). `packages/testing/nros-px4-register-check/` is the canonical surface (the former `examples/px4/rust/uorb/` README-only placeholder was retired in phase-277 W7). | Won't lift: C is not on the PX4 module API, and the Rust uORB backend was retired in Phase 115.K.4 (see `docs/roadmap/phase-115-runtime-transport-vtable.md`). No C/Rust PX4 examples are planned.                  |
 | `cyclonedds` on bare-metal (`mps2-an385-baremetal`, `esp32-c3-baremetal`) | Cyclone DDS requires a hosted runtime — BSD sockets, threads, heap, libc. Pure Cortex-M / esp-hal bare-metal targets have none, so the C++ Cyclone stack cannot run (Phase 171.C.gate decision). | Won't lift on bare-metal. Cyclone DDS is the hosted-platform DDS backend; embedded targets use the zenoh-pico or XRCE backends instead. |
 | `cyclonedds` on NuttX QEMU (`qemu-armv7a-nuttx` × all langs) | Deferred-upstream: a Cyclone DDS NuttX socket-shim port is an upstream-scale effort not attempted in nano-ros. FreeRTOS is no longer in this bucket; Phase 175 added FreeRTOS/lwIP Cyclone fixture wiring. | An upstream Cyclone DDS NuttX port (socket shim + config + heap budget), then a nano-ros example cell. |
-| pure-cargo `cyclonedds` Rust binaries on `native` / `threadx-linux` | Still intentionally unsupported: `nros-rmw-cyclonedds-sys` exposes only the C register shim, so a plain Cargo build has no way to build+link the C++ Cyclone lib + `libddsc`. Native Rust Cyclone now uses the Phase 175 CMake/Corrosion path instead. | Use the CMake/Corrosion fixture path for Cyclone-backed Rust examples, or scope a new staticlib crate separately. |
+| pure-cargo `cyclonedds` Rust binaries on `linux` / `threadx-linux` | Still intentionally unsupported: `nros-rmw-cyclonedds-sys` exposes only the C register shim, so a plain Cargo build has no way to build+link the C++ Cyclone lib + `libddsc`. Native Rust Cyclone now uses the Phase 175 CMake/Corrosion path instead. | Use the CMake/Corrosion fixture path for Cyclone-backed Rust examples, or scope a new staticlib crate separately. |
 | `cyclonedds` service/action on `rv-virt-threadx` (`c`/`cpp`) — talker+listener only | De-scoped (Phase 275 W4): Cyclone on ThreadX RISC-V64 is *experimental* and its runtime still needs participant-init diagnosis (Phase 177.22). Only talker/listener are wired, exercised by the AF_UNIX two-QEMU pub/sub e2e (`test_threadx_riscv64_cyclonedds_two_qemu_pubsub`). Service/action would need bidirectional RTPS discovery over that L2 tunnel, unproven on this port; the zenoh RMW covers the full 6-role set here. | Land the Phase 177.22 participant-init fix, then a two-QEMU Cyclone request/response e2e before adding `service-*`/`action-*` cyclone fixture rows. |
-| `zephyr/rust/service-client-async` | Dropped 2026-06-02 per Phase 212.M-F.5 — the Embassy-driven async client has no `Node` / `ExecutableNode` analogue today. The native tokio sibling (`examples/native/rust/service-client-async/`) remains as the async-client reference. | Decide on an async executable-node trait (deferred until L-Wave / runtime authors pick the path), then re-introduce the example. |
+| `zephyr/rust/service-client-async` | Dropped 2026-06-02 per Phase 212.M-F.5 — the Embassy-driven async client has no `Node` / `ExecutableNode` analogue today. The native tokio sibling (`examples/linux/rust/service-client-async/`) remains as the async-client reference. | Decide on an async executable-node trait (deferred until L-Wave / runtime authors pick the path), then re-introduce the example. |
 
 If you believe one of these cells should be filled, please open an issue
 referencing the gating phase before adding directories — the lint in
@@ -462,7 +462,7 @@ examples to your own board.
 
 | `examples/<plat>/` | Profile | Guide |
 |---|---|---|
-| `native/` | Host native (Linux) | `nros sync` + `nros build` — no integration shell needed. |
+| `linux/` | Host (Linux) | `nros sync` + `nros build` — no integration shell needed. |
 | `mps2-an385-baremetal/` | Cargo-first bare-metal | [Generic board crate](../book/src/concepts/board-integration.md#generic-board-crate) (`nros-board-baremetal-cortex-m`) |
 | `mps2-an385-freertos/` | Cargo-first FreeRTOS | [Generic board crate](../book/src/concepts/board-integration.md#generic-board-crate) (`nros-board-freertos`); reference overlay `nros-board-mps2-an385-freertos`. For STM32 / NXP / Espressif FreeRTOS, write a [vendor overlay](../book/src/porting/vendor-overlay.md). |
 | `qemu-armv7a-nuttx/` | NuttX native shell | [NuttX integration shell](../book/src/getting-started/integration-nuttx.md) — `apps/external/nano-ros/`. |
@@ -484,11 +484,11 @@ Each block assumes a zenoh router running on `tcp/127.0.0.1:7447` — `ros2 run 
 
 ```bash
 # terminal 2
-cd examples/native/rust/talker && nros sync && nros build
+cd examples/linux/rust/talker && nros sync && nros build
 ./build/linux/target/debug/talker
 
 # terminal 3
-cd examples/native/rust/listener && nros sync && nros build
+cd examples/linux/rust/listener && nros sync && nros build
 ./build/linux/target/debug/listener
 ```
 
@@ -519,7 +519,7 @@ nano-ros pubs/subs are rmw_zenoh-compatible. Quickest round-trip:
 ros2 run rmw_zenoh_cpp rmw_zenohd
 
 # terminal 2
-cd examples/native/rust/talker && nros sync && nros build
+cd examples/linux/rust/talker && nros sync && nros build
 ./build/linux/target/debug/talker
 
 # terminal 3

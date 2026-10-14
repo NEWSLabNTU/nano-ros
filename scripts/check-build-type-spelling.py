@@ -251,7 +251,7 @@ def classify(ev, rel_path):
 
     `ambiguous` is not indecision — it is the honest answer for a package that
     is BOTH a message package and a nano-ros application and is not pinned to
-    a platform (`examples/native/c/custom-msg` is one: it declares
+    a platform (`examples/linux/c/custom-msg` is one: it declares
     `<member_of_group>rosidl_interface_packages</member_of_group>` AND
     `<nano_ros deploy="native"/>`). Which side of D2's boundary such a package
     belongs on is a semantic judgement, and W3 is where semantic judgements

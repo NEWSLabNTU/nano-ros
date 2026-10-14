@@ -5,7 +5,7 @@
 //! `zero_copy::test_zero_copy_message_info` states its subject as "MessageInfo
 //! (sequence number, GID) is correctly passed through **the zero-copy
 //! trampoline**" — a RECEIVE-side property. It used to assert that by grepping
-//! `examples/native/rust/listener` for `seq=`, which stopped working when
+//! `examples/linux/rust/listener` for `seq=`, which stopped working when
 //! phase-277 slimmed the example to the two lines a ROS 2 demo prints. Two
 //! things made the obvious repairs wrong:
 //!

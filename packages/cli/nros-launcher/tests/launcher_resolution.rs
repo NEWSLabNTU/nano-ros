@@ -163,7 +163,7 @@ fn a_checkout_makes_the_launcher_stand_aside() {
     let root = project(tmp.path(), "nano-ros");
     std::fs::create_dir_all(root.join("packages/core/nros-core")).unwrap();
     std::fs::write(root.join("packages/core/nros-core/Cargo.toml"), "").unwrap();
-    let inside = project(tmp.path(), "nano-ros/examples/native/rust/talker");
+    let inside = project(tmp.path(), "nano-ros/examples/linux/rust/talker");
 
     let plan = launch::resolve(&ctx(&inside, &store, Session::interactive())).unwrap();
     let Plan::InCheckout { .. } = &plan else {

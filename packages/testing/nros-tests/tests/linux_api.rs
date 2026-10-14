@@ -88,7 +88,7 @@ impl Language {
     }
 
     /// Substring proving the TALKER started and is publishing. Phase-277
-    /// W5.C1 slimmed `native/c/talker` to match the official ROS 2 demo,
+    /// W5.C1 slimmed `linux/c/talker` to match the official ROS 2 demo,
     /// which dropped the `"Support initialized"` print — the publish line
     /// (identical wording in both languages, demo parity) is the reliable
     /// started-marker for talkers; it also proves the timer fired.

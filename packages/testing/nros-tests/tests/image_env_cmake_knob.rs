@@ -36,7 +36,7 @@ fn image_knobs() -> toml::Table {
         std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
     let v: toml::Value =
         toml::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", path.display()));
-    v["image"]["native"]["knobs"]
+    v["image"]["linux"]["knobs"]
         .as_table()
         .expect("the probe image states `[image.linux.knobs]`")
         .clone()

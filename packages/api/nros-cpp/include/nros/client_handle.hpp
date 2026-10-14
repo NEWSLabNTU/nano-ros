@@ -47,7 +47,7 @@ namespace rclcpp {
 ///
 /// Re-measured on this base (phase-456 W9, the same four trees: `examples/`,
 /// `tests/`, `book/`, `packages/`): still ONE verb INVOKED, still one site —
-/// `examples/native/cpp/service-client-callback/src/main.cpp:95`, plus
+/// `examples/linux/cpp/service-client-callback/src/main.cpp:95`, plus
 /// `tests/compile/bind_service.cpp:139`, which W3 added to pin that a MOVED
 /// registered client can still send. Nothing else is invoked on a dispatch
 /// client anywhere.

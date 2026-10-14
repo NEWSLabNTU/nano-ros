@@ -9,7 +9,7 @@
 //! was an image built and measured by hand.
 //!
 //! That measurement (issue 1340, 2026-10-01): a five-subscription copy of
-//! `examples/native/rust/listener` on zenoh, every row `KEEP_LAST(1)` and
+//! `examples/linux/rust/listener` on zenoh, every row `KEEP_LAST(1)` and
 //! `registration_path = "in_place"`. Its arena model said `REQUIRED` 7,168
 //! (`ARENA_SIZE` 8,192, the floor), against 22,528 for the same image with the
 //! rows priced as buffered; `just mem-report --baseline` read

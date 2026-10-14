@@ -7,7 +7,7 @@
 # phase-338 W3 / issue 0449 — one image per RMW. This bin was hardcoded to
 # zenoh, which made it unusable as the XRCE half of the zenoh->xrce bridge e2e;
 # the cyclone image is what let the zenoh->cyclonedds bridge e2e stop driving
-# `examples/native/c/listener` with an `NROS_SUB_TYPE=int32` env switch.
+# `examples/linux/c/listener` with an `NROS_SUB_TYPE=int32` env switch.
 
 [system]
 name = "int32_sink"

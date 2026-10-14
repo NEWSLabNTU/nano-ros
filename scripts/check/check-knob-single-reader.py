@@ -440,7 +440,7 @@ RETIRED = {
     # FIRST. Dropping the carriers with the descriptor named was zero-diff on
     # every road that carried them: cmake native (five entries) and freertos
     # (mps2-an385, zenoh); the Zephyr west road (TL); the CARGO LEAF
-    # (`examples/native/rust/service-server`, 0 of 16 build-script outputs);
+    # (`examples/linux/rust/service-server`, 0 of 16 build-script outputs);
     # the cargo WORKSPACE image (`examples/workspaces/rust`
     # linux_action_server with a contracted action server: SERVICE_SERVERS=3
     # and TL_PUBLISHERS=1 dropped, 0 of 16 outputs differ); and the standalone

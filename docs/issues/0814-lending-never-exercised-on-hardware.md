@@ -257,7 +257,7 @@ that a typed loan for plain types is the *natural* shape — and also that its o
 consumer is a Cyclone-with-iceoryx deployment, which is not a target we ship.
 
 One cost to record against a typed dual: not every message type has a
-`schema::Message`. `examples/native/rust/custom-msg` hand-writes `RosMessage` +
+`schema::Message`. `examples/linux/rust/custom-msg` hand-writes `RosMessage` +
 `Serialize` + `Deserialize` and has no schema; phase-380 W4 was reverted the same day
 for breaking exactly that
 (`docs/roadmap/archived/phase-380-serialized-size-bound.md:245-256`). A typed loan

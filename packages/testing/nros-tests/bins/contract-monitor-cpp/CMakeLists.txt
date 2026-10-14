@@ -5,7 +5,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # phase-462 W1 (RFC-0052) -- the C++ twin of bins/contract-monitor's
-# `contract-monitor-pub`. Same shape as examples/native/cpp/talker
+# `contract-monitor-pub`. Same shape as examples/linux/cpp/talker
 # deliberately: it must be built by the SAME toolchain path a real C++
 # consumer uses, because the opaque-size constants (`NROS_PUBLISHER_SIZE`,
 # which this wave grew by one pointer) come from the generated config that

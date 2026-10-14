@@ -6,7 +6,7 @@
 #
 # Usage: ./scripts/stack-analysis-c.sh [example-dir] [--top N] [--filter PATTERN]
 #
-# Defaults to examples/native/c-talker if no example-dir given.
+# Defaults to examples/linux/c-talker if no example-dir given.
 # Paths are resolved relative to the repository root (auto-detected).
 
 set -euo pipefail
@@ -38,7 +38,7 @@ while [[ $# -gt 0 ]]; do
         -h|--help)
             echo "Usage: $0 [example-dir] [--top N] [--filter PATTERN]"
             echo ""
-            echo "  example-dir   Path to a CMake-based C example (default: examples/native/c-talker)"
+            echo "  example-dir   Path to a CMake-based C example (default: examples/linux/c-talker)"
             echo "                Relative paths are resolved from the repository root."
             echo "  --top N       Show top N functions by stack size (default: 30)"
             echo "  --filter PAT  Only show functions matching grep pattern"
@@ -57,7 +57,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Resolve example dir
-EXAMPLE_DIR="${EXAMPLE_DIR:-examples/native/c-talker}"
+EXAMPLE_DIR="${EXAMPLE_DIR:-examples/linux/c-talker}"
 if [[ "$EXAMPLE_DIR" != /* ]]; then
     EXAMPLE_DIR="$REPO_ROOT/$EXAMPLE_DIR"
 fi

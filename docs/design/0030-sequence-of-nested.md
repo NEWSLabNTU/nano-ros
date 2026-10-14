@@ -520,8 +520,8 @@ deserialize. If this passes, native-rust action e2e will pass too.
 
 ### Test 3 — action e2e smoke
 
-Wire the existing `examples/native/rust/action-server` +
-`examples/native/rust/action-client` (already feature-gated on
+Wire the existing `examples/linux/rust/action-server` +
+`examples/linux/rust/action-client` (already feature-gated on
 `rmw-cyclonedds`) into the existing `tests/registry_smoke.rs` runner
 or a new harness, exchange Fibonacci goal→accept→feedback→result on
 `ROS_DOMAIN_ID=80`, assert client receives result. This is the

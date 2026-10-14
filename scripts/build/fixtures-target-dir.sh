@@ -358,7 +358,7 @@ nros_fixture_row_artifact_dir_by_id() {
 #
 # The platform defaults to the leaf's `examples/<platform>/…` component, which
 # is the DIRECTORY vocabulary and only sometimes a manifest platform id
-# (`examples/native/**` is manifest platform `linux`). That mismatch is why the
+# (`examples/linux/**` is manifest platform `linux`). That mismatch is why the
 # fallback exists and why it must not be a silent leaf-`target/`: a caller that
 # knows the manifest id should pass it.
 nros_example_build_target_dir() {

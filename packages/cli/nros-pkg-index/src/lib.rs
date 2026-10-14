@@ -62,7 +62,7 @@ const SKIP_DIRS: &[&str] = &[
     // and the index refuses the duplicate:
     //
     //   nros::main!: build_pkg_index: duplicate pkg name `native_talker` in
-    //   workspace `/…/nano-ros`: `/…/.claude/worktrees/agent-…/examples/native/
+    //   workspace `/…/nano-ros`: `/…/.claude/worktrees/agent-…/examples/linux/
     //   rust/custom-transport-listener` and `…/custom-transport-talker`
     //
     // That broke a zephyr fixture build in the MAIN checkout because a

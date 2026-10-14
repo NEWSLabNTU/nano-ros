@@ -19,7 +19,7 @@ Nothing enforced this before.  `baremetal` — the one migrated platform
 
 **The gate is also what refuted phase-340 W1's proposed platform-grained group
 key** (2026-08-08).  Under that key `linux`'s 65 rows become one group, and
-`examples/native/rust/talker`'s four rows — default, `rmw-zenoh`, `rmw-xrce`,
+`examples/linux/rust/talker`'s four rows — default, `rmw-zenoh`, `rmw-xrce`,
 `link-tls` — all write `cargo-fixtures/linux/<profile>/talker`.  The shipped
 version of this gate reported "no artifact-name collisions" for exactly that
 configuration, because A1 keyed its owner set on the leaf DIRECTORY and the four
@@ -372,7 +372,7 @@ def collisions(by_group):
 
     That half was not academic.  W1 tested the platform-grained group key the
     phase doc proposed and this function reported ZERO collisions for `linux`,
-    because `examples/native/rust/talker`'s four rows (default, `rmw-zenoh`,
+    because `examples/linux/rust/talker`'s four rows (default, `rmw-zenoh`,
     `rmw-xrce`, `link-tls`) dedup to one `(package, directory)` owner.  Measured
     on the provisioned tree, those four rows are four DIFFERENT binaries at one
     name — 8616504 / 8616504 / 6514392 / 9034536 bytes, four distinct sha256 —

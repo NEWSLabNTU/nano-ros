@@ -723,7 +723,7 @@ mod tests {
 
     #[test]
     fn raw_extern_c_callbacks_drive_the_ctx_state_machine() {
-        // Issue 0335 — the raw-FFI shape the `native/rust/lifecycle-node` example
+        // Issue 0335 — the raw-FFI shape the `linux/rust/lifecycle-node` example
         // used to demonstrate (a user hand-writing `extern "C"` callbacks against
         // the C-parity seam). Relocated here as automated coverage so the example
         // can show the safe `LifecycleCallbacks` trait instead of an FFI test.

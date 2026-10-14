@@ -48,7 +48,7 @@ separately rather than as one undifferentiated blob:
     `__rustc::__rust_alloc` demangled and `_RNvCs..._7___rustc12___rust_alloc`
     mangled — three underscores, a length prefix, and a crate path around the
     name. A whole-name set matched NONE of them; the first run of this gate
-    against `examples/native/rust/talker` reported five `c-heap` symbols and
+    against `examples/linux/rust/talker` reported five `c-heap` symbols and
     zero Rust ones from a binary that plainly contains eight. The names in this
     family are distinctive enough that a substring carries none of the
     `free`/`freeaddrinfo` risk that makes substring matching wrong for
