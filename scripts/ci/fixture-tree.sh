@@ -206,6 +206,12 @@ self_test() {
     t="$(mktemp -d)"
     trap 'rm -rf "$t"' RETURN
     export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
+    # Issue 1905 -- `sync_tree` appends to `$GITHUB_ENV`, and inherited from a
+    # CI step that is the JOB's file: every later step read this sandbox's
+    # path as the fixture tree. Point it at a file of our own, which also lets
+    # the writer be checked below.
+    local GITHUB_ENV="$t/github-env"
+    : >"$GITHUB_ENV"
     local ok=0 bad=0
     pass() { echo "  ok   $*"; ok=$((ok + 1)); }
     fail() { echo "  FAIL $*"; bad=$((bad + 1)); }
@@ -222,6 +228,9 @@ self_test() {
     sync_tree "$ws" "$tree" 7 >/dev/null
     [ "$(git -C "$tree" rev-parse HEAD)" = "$(git -C "$ws" rev-parse HEAD)" ] \
         && pass "first sync checks out the job's commit" || fail "first sync HEAD"
+    [ "$(cat "$GITHUB_ENV")" = "NROS_FIXTURE_TREE=$tree" ] \
+        && pass "sync exports the tree to the step environment file it was given" \
+        || fail "GITHUB_ENV holds '$(cat "$GITHUB_ENV")'"
 
     # Build output survives; a tracked edit an earlier job left is undone.
     mkdir -p "$tree/build"; echo out > "$tree/build/obj"

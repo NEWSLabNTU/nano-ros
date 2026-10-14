@@ -177,6 +177,7 @@ exit 78 before reaching anything else. Nobody has claimed it.
 | --- | --- |
 | [#1651](../issues/1651-host-tests-red-or-cancelled-on-most-pushes.md) | `host-tests` is green nightly since 2026-10-07. What is left is a green tier-1 run on `main`, which this phase's acceptance already asks for. From the archived phase-477. |
 | [#1878](../issues/archived/1878-metadata-probe-cmake-mirror-race.md) | RESOLVED as a duplicate of issue 1858 (`0fc6da85d6`). The cmake metadata probe's stale sizes-header mirror stopped tier 1 and tier 2 at `check fast` (`sizes-header-mirrors`) before any cell. The cause was a shared probe cargo dir whose key left out the late-applied `panic-platform` feature. |
+| [#1905](../issues/archived/1905-gate-self-tests-write-job-env.md) | RESOLVED. `fixture-tree.sh --self-test`, reached by `check fast` inside `just build tier1`, appended a sandbox `NROS_FIXTURE_TREE` to the job's `$GITHUB_ENV`. Every step after the build then read a deleted temp tree, so tier 1 built everything and reached no cell (run 38615001083). The gate runner now unsets the job files, and both self-tests that reached a writer isolate themselves. |
 
 ## W5 -- the RTOS realtime cells (from phase-330, 2026-10-14)
 

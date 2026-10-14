@@ -149,6 +149,17 @@ label="${lane%-serial}"
 out_dir="$(mktemp -d "${TMPDIR:-/tmp}/nros-gates.XXXXXX")"
 trap 'rm -rf "$out_dir"' EXIT
 
+# Issue 1905 -- a gate answers a question; it never writes the GitHub job's
+# state. The files these variables name are read back by EVERY later step of
+# the job, so a gate whose self-test exercises a writer appends a sandbox's
+# values to the real job: `fixture-tree.sh --self-test` (reached by
+# `fixture-tree-persistence`) put `NROS_FIXTURE_TREE=/tmp/tmp.X/...` into
+# `$GITHUB_ENV` during `just build tier1`, so every step after it ran against a
+# deleted temp tree and tier 1 never reached a cell. Unset here, for both the
+# serial and the parallel path, so no gate in either lane can reach them; the
+# self-tests also isolate themselves, for a gate run on its own.
+unset GITHUB_ENV GITHUB_OUTPUT GITHUB_PATH GITHUB_STATE GITHUB_STEP_SUMMARY
+
 # The skip log is shared, so reset it once, before the fan-out.
 just _check-skip-reset >/dev/null 2>&1 || true
 
