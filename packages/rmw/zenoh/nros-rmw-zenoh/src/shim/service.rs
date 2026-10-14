@@ -943,6 +943,14 @@ extern "C" fn queryable_callback(
     // this server (event-driven callers).
     buffer.waker.wake();
 
+    // Issue 1195 / phase-436 D1 — fire the nros-node runtime wake callback,
+    // as `subscriber_notify_callback` does (issue 0317). This callback runs on
+    // the zenoh-pico read task, so `drive_io`'s poll path never sees the
+    // arrival; without this a parked server slept out its whole `spin_once`
+    // slice before dispatching the request. Measured on native zenoh: every
+    // service round trip took one 10 ms slice (p50 10.1 ms).
+    super::fire_runtime_wake();
+
     // Wake the executor spin loop (if waiting)
     #[cfg(feature = "std")]
     signal_executor_wake();
@@ -1492,6 +1500,12 @@ unsafe extern "C" fn reply_waker_callback(session_index: i32, slot: i32) {
         let idx = session_index as usize * ZPICO_MAX_PENDING_GETS + slot as usize;
         REPLY_WAKERS[idx].wake();
     }
+    // Issue 1195 / phase-436 D1 — and the executor parked in `Promise::wait`
+    // (or the tick path's `call_raw`), which waits on the runtime wake, not on
+    // `REPLY_WAKERS`. Same reason as in `queryable_callback`: the reply lands
+    // on the read task, where `drive_io` never sees it. Fired for the
+    // channel-close edge too — a timeout is something a waiter must also see.
+    super::fire_runtime_wake();
 }
 
 /// Register the reply waker callback with the C shim.
@@ -2023,6 +2037,30 @@ impl ClientTrait for ZenohServiceClient {
 pub(super) mod tests {
     use super::*;
     use nros_rmw::TransportError;
+
+    /// Issue 1195 / phase-436 D1 — a reply arriving on the read task must wake
+    /// the executor's runtime wake, not only the async `REPLY_WAKERS`. Without
+    /// it a `Promise::wait` parked in `spin_once` slept out the whole slice:
+    /// every native zenoh round trip measured one 10 ms slice (p50 10.1 ms),
+    /// and 0.19 ms with the wake fired.
+    #[test]
+    fn reply_arrival_fires_the_runtime_wake() {
+        use core::sync::atomic::AtomicUsize;
+        static FIRED: AtomicUsize = AtomicUsize::new(0);
+        extern "C" fn count(_ctx: *mut core::ffi::c_void) {
+            FIRED.fetch_add(1, Ordering::SeqCst);
+        }
+        crate::shim::set_runtime_wake_cb(Some(count), core::ptr::null_mut());
+        let before = FIRED.load(Ordering::SeqCst);
+        unsafe { reply_waker_callback(0, 0) };
+        let after = FIRED.load(Ordering::SeqCst);
+        crate::shim::set_runtime_wake_cb(None, core::ptr::null_mut());
+        assert_eq!(
+            after,
+            before + 1,
+            "a reply arrival must fire the runtime wake exactly once"
+        );
+    }
 
     // --- Service buffer helpers ---
 
