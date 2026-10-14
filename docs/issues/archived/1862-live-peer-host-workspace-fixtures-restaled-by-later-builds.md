@@ -1,12 +1,13 @@
 ---
 id: 1862
 title: "live-peer host job: the workspace fixtures it builds first read STALE at run time, because the row builds after them re-stale them"
-status: open
+status: resolved
 type: bug
 area: [ci, testing]
 severity: medium
 found: 2026-10-13
-related: [0835, 0828, 1353, 1846]
+resolved: 2026-10-14
+related: [0835, 0828, 1353, 1845, 1846, 1866]
 ---
 
 ## Measured
@@ -72,3 +73,61 @@ Not yet known: WHICH input moved. Read the `probe:` / NOT RUN lines, or diff the
    builds rewriting the shared input. The second fixes the class (0835).
 3. Acceptance: a live-peer dispatch where these four cells produce a verdict
    rather than STALE.
+
+## Resolution (2026-10-14)
+
+The cause was issue 1845, and its fix (`b766d64c9e`, #2103) had already
+closed this. The lead above was wrong: the triple and compile-check builds
+re-staled nothing. The workspace rows re-staled each other.
+
+**Which input moved.** `nros build` records each entry it builds in
+`<workspace>/nros-sdk.lock`, one `[cargo."build/<platform>-<rmw>/<entry>"]`
+section per entry, so the file grows with every row built in that workspace.
+Before `b766d64c9e` that file was untracked and not ignored. So
+`nros_source_manifest` (`git ls-files --cached --others --exclude-standard`)
+hashed it into every row's `.inputsig`. Each row's stamp therefore went stale
+as soon as the next row in the same workspace was built.
+
+**The failing run fits exactly.** In run 38321018350 (main at `05a52e7cd`,
+before `b766d64c9e`), the job built
+`examples/workspaces/rust` in the order `native`, `cyclonedds`, `xrce`, and
+logged `nros build:   recorded → …/examples/workspaces/rust/nros-sdk.lock`
+after each. The cells then found:
+
+| row | built | verdict |
+| --- | --- | --- |
+| `workspace-rust-native` | 1st of 3 in `rust/` | STALE |
+| `workspace-rust-native-cyclonedds` | 2nd of 3 | STALE |
+| `workspace-rust-native-xrce` | last | PASS (`…per_node_graph_nodes_xrce`) |
+| `workspace-features-rust-params` | 1st of 3 in `features/` | STALE |
+| `workspace-features-rust-params-xrce` | 2nd of 3 | STALE |
+
+The bridge rows build in their own workspaces, so nothing came after them.
+They passed. A later-built row of a *different* family could not explain
+`native-xrce` passing while `native` failed, since both rows hash the same
+workspace sources and the same tools.
+
+**Discriminator.** `05a52e7cd` lacks `b766d64c9e`, and `0e5dfe6758` has it.
+Live-peer runs 38339329107 (`0e5dfe6758`, dispatch) and 38346122083
+(`7d41ce9a89`, schedule) both pass all four cells:
+
+- `test_ros2_param_set_reconfigures_live_read`
+- `xrce_set_parameters_naming_25_declared_lands`
+- `rust_multi_node_entry_per_node_graph_nodes`
+- `rust_multi_node_entry_per_node_graph_nodes_cyclonedds`
+
+That meets acceptance 3. Both runs build the rows in the same order as
+before, so the order was not the cause.
+
+**What keeps it closed.** `just check sdk-lock-ignored` (issue 1845) holds
+the ignore rule. `check fixture-build-dirs-ignored` (issue 1866) holds the
+same rule for cmake build trees.
+
+## Not covered
+
+The general class is still open. Any file a build writes into a workspace
+dir that is not ignored becomes a signature input, and it re-stales that
+workspace's earlier rows. `.inputsig` hashes untracked files on purpose,
+because an uncommitted source is an input. The two gates above cover the
+two writers known so far. Neither reads what a build actually writes.
+
