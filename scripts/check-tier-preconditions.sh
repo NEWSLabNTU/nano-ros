@@ -89,6 +89,14 @@ probe "a submodule is not at the commit this superproject records" \
     "git submodule update <path>   (bypass: NROS_SKIP_SUBMODULE_DRIFT_CHECK=1)" \
     bash scripts/check-submodule-drift.sh
 
+# The project-local QEMU (`build/qemu`, rung 2 of the QEMU ladder) is ONE
+# directory across `[tool.qemu]` pin bumps, so it can hold a version nobody
+# pinned — issue 0930 found one predating the LAN9118 RX fix every mps2-an385
+# cell drives. The ladder now refuses it at use; this says so before a run.
+probe "the project-local QEMU (build/qemu) is not the version the index pins" \
+    "just linux setup   (re-provisions build/qemu at the pin; or: just qemu setup-qemu, or remove build/qemu to use the store copy)" \
+    bash -c '. scripts/lib/qemu-bin.sh && nros_qemu_prefix_check'
+
 # 2. The CLI's source stamp. Before fixtures because everything downstream keys on it, and
 #    because ANY tree refresh — pull, rebase, stash, rsync — re-arms it. That
 #    re-arming is what makes the contract once-per-refresh rather than

@@ -693,7 +693,7 @@ true nor false.
   that moved, and the gate distinguishes NOT VERIFIED (a skip, reported through
   the `nros_check_skip` ledger) from a measured non-fast-forward, with both
   directions mutation-tested on its normal path.
-* **[#0930](../../issues/0930-built-qemu-can-be-stale-against-its-pin.md)** — the — **re-homed to [phase-484](../phase-484-one-owner-per-fact.md) 2026-10-12**
+* **[#0930](../../issues/archived/0930-built-qemu-can-be-stale-against-its-pin.md)** — the — **re-homed to [phase-484](../phase-484-one-owner-per-fact.md) 2026-10-12**
   built QEMU can be older than the commit `third-party/qemu/qemu` pins, and
   nothing says so. Provisioning that silently disagrees with the pin is the same
   failure one layer down.
@@ -711,7 +711,7 @@ evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#0930](../../issues/0930-built-qemu-can-be-stale-against-its-pin.md) | the built QEMU can be older than the commit `third-party/qemu/qemu` pins. It is already an adopted bullet above; this row is the work item that bullet never became — a probe that fails on a stale build, not a note that one is possible — **re-homed to [phase-484](../phase-484-one-owner-per-fact.md) 2026-10-12** |
+| [#0930](../../issues/archived/0930-built-qemu-can-be-stale-against-its-pin.md) | the built QEMU can be older than the commit `third-party/qemu/qemu` pins. It is already an adopted bullet above; this row is the work item that bullet never became — a probe that fails on a stale build, not a note that one is possible — **re-homed to [phase-484](../phase-484-one-owner-per-fact.md) 2026-10-12** |
 | [#0996](../../issues/archived/0996-ci-workflow-audit-tier-promises.md) | the workflow audit that OPENED this phase. Its measured findings — the same lane passing in the queue and failing after merge — still carry no numbered item, so the phase's own premise is the part of it nobody owns — **re-homed to [phase-395](../phase-395-dev-workflow-migration.md) 2026-10-12** |
 | [#1038](../../issues/archived/1038-nightly-job-does-not-provision-its-lane.md) | filed explicitly under W2 item 3: three of six nightly cell failures are ONE class, the platform job building a different package set. A prose pointer inside a work item is not the item — **RESOLVED 2026-10-12** (`9de62f253a`) |
 | [#1040](../../issues/archived/1040-gating-lanes-that-report-nothing-accumulate-reds.md) | `check-api-parity` runs in no workflow and `check-build` only on dispatch. Adopted above as a bullet; the residue needing an item is the PLACEMENT — api-parity is post-submit where it has to be pre-merge — **RESOLVED 2026-10-12** (`2019640f7c`) |

@@ -1140,7 +1140,7 @@ link runs both ways). Listing one here records the link, not a claim that
 this phase will fix it.
 
 - [issue 0849](../issues/archived/0849-nros-sync-bakes-the-invocation-path-spelling.md) — `nros sync` bakes the invocation's path SPELLING into every leaf patch table, so working through a symlink to the che …
-- [issue 0930](../issues/0930-built-qemu-can-be-stale-against-its-pin.md) — The built QEMU can be older than the commit `third-party/qemu/qemu` pins, and nothing says so
+- ~~[issue 0930](../issues/archived/0930-built-qemu-can-be-stale-against-its-pin.md) — The built QEMU can be older than the commit `third-party/qemu/qemu` pins, and nothing says so~~ Resolved 2026-10-14: the `build/qemu` prefix answers only while its `.nros-provenance` names the pinned version.
 - [issue 0934](../issues/0934-config-redundancy-map.md) — The same fact is authored in up to five config surfaces; no SSoT is declared for rmw, board or domain
 - [issue 0941](../issues/0941-board-facts-soft-failure-hides-unreachable-site-config.md) — `nros_resolve_board_facts` fails SOFT, so an unreachable site-config block is silent
 - [issue 1811](../issues/archived/1811-nightly-ports-read-in-tree-sources-after-store-move.md) — After phase-484 moved source trees into the store, four nightly RTOS port jobs still look for them in-tree or through …

@@ -76,8 +76,18 @@ pub(crate) fn qemu_system_path_in(
     }
     if project_prefix {
         // phase-334 W2.b step 2 — the Rust mirror of `nros_build_dir`.
-        let local = crate::build_dir(crate::kind::QEMU, &["bin"]).join(exe);
+        let prefix = crate::build_dir(crate::kind::QEMU, &[]);
+        let local = prefix.join("bin").join(exe);
         if local.exists() {
+            if let Err(why) = project_prefix_matches_pin(&prefix, tool) {
+                panic!(
+                    "{} is not the QEMU the index pins: {why}. A test must not run on \
+                     an emulator nobody chose (issue 0930) -- re-provision it with \
+                     `just qemu setup-qemu`, or remove {} to use the store copy",
+                    local.display(),
+                    prefix.display()
+                );
+            }
             return local.into_os_string();
         }
     }
@@ -85,6 +95,43 @@ pub(crate) fn qemu_system_path_in(
         return store.into_os_string();
     }
     std::ffi::OsString::from(exe)
+}
+
+/// Issue 0930 — whether the project prefix holds the version `[tool.<tool>]`
+/// pins, read from the `.nros-provenance` marker `nros setup --prefix` writes.
+///
+/// The prefix is ONE directory across pin bumps (the store is keyed by
+/// version, so its rung cannot go stale), and nothing else re-checks it: a
+/// binary built before a patch landed kept answering. No marker is a prefix
+/// nobody can date, which is refused the same way. With no readable pin there
+/// is nothing to compare against, and the prefix is taken as chosen.
+pub(crate) fn project_prefix_matches_pin(
+    prefix: &std::path::Path,
+    tool: &str,
+) -> Result<(), String> {
+    let Some(pin) = nros_build_paths::sdk_pinned_version(tool) else {
+        return Ok(());
+    };
+    let marker = prefix.join(".nros-provenance");
+    let Ok(text) = std::fs::read_to_string(&marker) else {
+        return Err(format!(
+            "it has no {} (it was not installed by `nros setup`), so its version is \
+             unknown; the index pins {pin}",
+            marker.display()
+        ));
+    };
+    let held = text.lines().find_map(|l| {
+        let (k, v) = l.split_once('=')?;
+        (k.trim() == "version").then(|| v.trim().trim_matches('"').to_string())
+    });
+    match held {
+        Some(v) if v == pin => Ok(()),
+        Some(v) => Err(format!("it holds {v}; the index pins {pin}")),
+        None => Err(format!(
+            "{} names no version; the index pins {pin}",
+            marker.display()
+        )),
+    }
 }
 
 /// A fresh [`Command`] for [`qemu_system_path`]`(exe)`.
@@ -1543,6 +1590,34 @@ mod tests {
         let (passed, failed) = parse_test_results(output);
         assert_eq!(passed, 3);
         assert_eq!(failed, 1);
+    }
+
+    /// Issue 0930 — the project prefix answers only when its marker names the
+    /// version the index pins; a stale or undated one is refused, naming both.
+    #[test]
+    fn the_project_prefix_must_hold_the_pinned_qemu() {
+        let pin = nros_build_paths::sdk_pinned_version("qemu").expect("[tool.qemu] is pinned");
+        let d = tempfile::tempdir().unwrap();
+        let why = project_prefix_matches_pin(d.path(), "qemu").unwrap_err();
+        assert!(
+            why.contains("version is unknown") && why.contains(&pin),
+            "{why}"
+        );
+        let mark = |v: &str| {
+            std::fs::write(
+                d.path().join(".nros-provenance"),
+                format!("kind = \"prebuilt\"\nversion = \"{v}\"\n"),
+            )
+            .unwrap()
+        };
+        mark("11.0.0-nros0");
+        let why = project_prefix_matches_pin(d.path(), "qemu").unwrap_err();
+        assert!(
+            why.contains("holds 11.0.0-nros0") && why.contains(&pin),
+            "{why}"
+        );
+        mark(&pin);
+        assert_eq!(project_prefix_matches_pin(d.path(), "qemu"), Ok(()));
     }
 
     #[test]

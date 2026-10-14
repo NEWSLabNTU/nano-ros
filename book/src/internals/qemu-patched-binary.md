@@ -2,8 +2,8 @@
 
 nano-ros ships a project-local QEMU build that the test harness uses
 in preference to whatever `qemu-system-arm` is on `$PATH`. This
-chapter explains why it exists, how it gets built, how a test picks
-it up, and how to add a new patch.
+chapter explains why it exists, where it comes from, how a test picks
+it up, and how to change it.
 
 ## Why
 
@@ -12,9 +12,9 @@ Two production-blocking issues motivated the patched build:
 1. **LAN9118 RX FIFO drain bug** (mainline QEMU through at least
    11.0). Under sustained burst RX, the LAN9118 emulator's
    `lan9118_can_receive()` can stop returning true even after the
-   guest drains the FIFO, so frames silently disappear.
-   bisected this and ships the fix as
-   `third-party/qemu/patches/0001-hw-net-lan9118-add-can_receive-flush-on-FIFO-drain.patch`.
+   guest drains the FIFO, so frames silently disappear. The fix is a
+   commit on our fork branch (`hw/net/lan9118: flush queued packets when
+   RX is enabled`).
    Bare-metal MPS2-AN385 RTPS / Zenoh tests on the system QEMU
    sporadically fail without it.
 
@@ -25,94 +25,50 @@ Two production-blocking issues motivated the patched build:
    broken `-netdev socket,mcast=` cross-process path. With a too-old
    system QEMU, those tests fall back to `[SKIPPED]`.
 
-Both problems disappear once tests use the patched build at
-`build/qemu/bin/qemu-system-arm`.
+Both problems disappear once tests use the patched build.
 
-## Layout
+## Where it comes from
+
+The patches live on a branch of our QEMU fork,
+`NEWSLabNTU/qemu` `nano-ros-v11.0.0-patches`, and
+[nano-ros-sdk](https://github.com/NEWSLabNTU/nano-ros-sdk) publishes it as a
+prebuilt dist. `nros-sdk-index.toml` pins it as one row, `[tool.qemu]`
+(`version = "11.0.0-nros6"` at the time of writing — read the index, not this
+line), with a `[tool.qemu.source]` recipe for a host that has no prebuilt.
+There is no QEMU submodule in this tree any more.
+
+Two places can hold it:
 
 ```
-third-party/qemu/qemu/              # submodule, pinned to stable-11.0
-third-party/qemu/patches/           # patch series, applied on top
-  0001-hw-net-lan9118-…patch
-build/qemu/bin/qemu-system-arm      # final installed binary
-build/qemu/share/qemu/…             # firmware, etc.
+~/.nros/sdk/qemu/<version>/bin/qemu-system-arm   # the store: `nros setup --tool qemu`
+build/qemu/bin/qemu-system-arm                   # project-local: `just qemu setup-qemu`
 ```
 
-The submodule URL and pin live in `.gitmodules`:
-
-```
-[submodule "third-party/qemu/qemu"]
-    path = third-party/qemu/qemu
-    url = https://gitlab.com/qemu-project/qemu.git
-    branch = stable-11.0
-```
-
-`stable-11.0` is QEMU 11.0.x — already past the 7.2 cutoff for
-`-netdev dgram unix` and recent enough that the patch series is
-small.
-
-## Build
-
-`just qemu setup-qemu` (pulled in by `just setup qemu` and
-`just setup all`) does the full
-build:
-
-```bash
-just qemu setup-qemu
-```
-
-The recipe:
-
-1. Inits the submodule shallowly if it is not already present.
-2. Short-circuits when `build/qemu/bin/qemu-system-arm` is newer
-   than every file under `third-party/qemu/patches/` (touch a patch
-   to force a rebuild).
-3. Resets the submodule to its pinned tip, applies every `.patch`
-   under `third-party/qemu/patches/` in alphabetical order via
-   `git apply`.
-4. Configures with `--target-list=arm-softmmu` (no other arches, no
-   docs, no tools) and `--enable-slirp`.
-5. `make -j$(nproc) && make install` into `build/qemu/`.
-
-End-to-end cost is roughly ten minutes the first time and ~150 MB
-of disk. Subsequent runs are no-ops.
-
-`just qemu doctor` reports the build status and clearly distinguishes
-the patched build from the system fallback.
+The store path is keyed by version, so it cannot drift from the pin. The
+project prefix is ONE directory across pin bumps, which is why it carries the
+`.nros-provenance` marker `nros setup` writes, naming the version it holds
+(issue 0930). `just qemu setup-qemu` runs
+`nros setup --tool qemu --prefix build/qemu`, which is a no-op when that marker
+names the pinned version and replaces the prefix when it does not.
 
 ## How tests pick it up
 
-The single resolver lives in
-`packages/testing/nros-tests/src/qemu.rs`:
+ONE ladder (issue 1851), in `packages/testing/nros-tests/src/qemu.rs`
+(`qemu_system_path`) and its shell twin `scripts/lib/qemu-bin.sh`
+(`nros_qemu_bin`):
 
-```rust
-pub fn qemu_system_arm_path() -> std::ffi::OsString { … }
-pub fn qemu_system_arm_cmd()  -> std::process::Command { … }
-```
+1. `QEMU_SYSTEM_<ARCH>` (`QEMU_SYSTEM_ARM`) — an explicit override.
+2. The project prefix `build/qemu/bin/` — **only while its
+   `.nros-provenance` names the version the index pins**. A prefix holding
+   another version, or none (a hand build), is REFUSED with the remedy
+   (`just qemu setup-qemu`, or remove `build/qemu`), never skipped: a test
+   must not run on an emulator nobody chose. `just check tier-preconditions`
+   reports the same thing before a run.
+3. The store copy at the pinned version.
+4. `$PATH`.
 
-Selection order:
-
-1. `QEMU_SYSTEM_ARM` env var — developer override / CI pin.
-2. Project-local `<workspace>/build/qemu/bin/qemu-system-arm`
-   when it exists (auto-detected via `CARGO_MANIFEST_DIR` walk
-   to the workspace `Cargo.toml`).
-3. System `qemu-system-arm` on `$PATH` — kept as fallback so a
-   minimal install still produces a clean `[SKIPPED]` rather than
-   an exec error.
-
-Every `Command::new("qemu-system-arm")` in the test crates goes
-through this helper. New tests must use it.
-
-`just/qemu-baremetal.just`, `just/nuttx.just` and `just/freertos.just`
-do the same in shell, gating their `qemu-system-arm` invocations
-through:
-
-```just
-QEMU_BIN := absolute_path("build/qemu") / "bin/qemu-system-arm"
-
-# inside a recipe:
-{{ if path_exists(QEMU_BIN) == "true" { QEMU_BIN } else { "qemu-system-arm" } }} -M virt …
-```
+Every QEMU launch in the test crates, `just/` and `scripts/` goes through
+it (`check-qemu-one-ladder`).
 
 ## Smoke test
 
@@ -127,31 +83,16 @@ Tests use `nros_tests::unmet!` when the patched build is absent —
 a fresh clone without `just qemu setup-qemu` FAILS with a clear
 `[UNMET PRECONDITION]` naming the remedy instead of silently passing.
 
-## Adding a new patch
+## Adding a patch, or moving the pin
 
-1. Land the upstream fix or write a downstream-only patch against
-   the pinned submodule tip.
-2. Save it as a numbered file under `third-party/qemu/patches/`
-   (e.g. `0002-hw-net-…patch`). Keep one logical change per patch.
-3. Bump any inline comment that names specific patches.
-4. Touch the patch file (or just commit it) — `just qemu setup-qemu`
-   detects the patch is newer than the installed binary and
-   rebuilds.
-5. Bump the relevant CI cache key (see) so other
-   machines also rebuild.
+1. Land the change on the fork branch (`nano-ros-v11.0.0-patches`), one
+   logical change per commit.
+2. Cut a new nano-ros-sdk QEMU release from it.
+3. Bump `[tool.qemu] version` and the dist rows in `nros-sdk-index.toml`.
 
-## Submodule pin bump
-
-When upstream rolls a new stable branch and an existing patch
-either lands upstream or no longer applies cleanly:
-
-1. Edit `.gitmodules` `branch = stable-…` to the new branch name.
-2. `cd third-party/qemu/qemu && git fetch && git checkout
-   origin/stable-…`
-3. Re-run `just qemu setup-qemu`. If a patch fails to apply,
-   either drop it (landed upstream) or rebase it onto the new tip.
-4. Commit the submodule SHA bump together with any patch-series
-   updates.
+Every checkout then sees its `build/qemu` as stale until it re-runs
+`just qemu setup-qemu`; the store copy is fetched at the new version on the
+next `nros setup --tool qemu`.
 
 ## Scope
 
