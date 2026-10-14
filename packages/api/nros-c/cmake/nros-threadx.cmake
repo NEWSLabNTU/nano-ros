@@ -431,10 +431,11 @@ function(nros_threadx_strip_builtins archive)
             NO_DEFAULT_PATH)
         set(NROS_THREADX_LLVM_AR "${_llvm_ar}" CACHE FILEPATH "" FORCE)
         # The strip script ships next to this module in the install
-        # tree; resolve it from CMAKE_CURRENT_LIST_DIR (where this
-        # cmake file sits at include() time).
+        # tree; resolve it from CMAKE_CURRENT_FUNCTION_LIST_DIR, the file
+        # this function is DEFINED in. CMAKE_CURRENT_LIST_DIR inside a
+        # function body is the CALLER's directory.
         set(NROS_THREADX_STRIP_SCRIPT
-            "${CMAKE_CURRENT_LIST_DIR}/strip-compiler-builtins.sh"
+            "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/strip-compiler-builtins.sh"
             CACHE FILEPATH "" FORCE)
     endif()
 

@@ -325,3 +325,11 @@ build-wiring-classified:
 [private]
 retired-cmake-names:
     @python3 scripts/check/check-retired-cmake-names.py
+
+# `CMAKE_CURRENT_LIST_DIR` inside a function body is the CALLER's directory,
+# so a path built from it misses whenever another file calls the function (the
+# Zephyr CycloneDDS `NanoRosCli.cmake` include did). Write
+# `CMAKE_CURRENT_FUNCTION_LIST_DIR`. Buildless; self-tests its scanner.
+[private]
+cmake-function-list-dir:
+    @python3 scripts/check/check-cmake-function-list-dir.py
