@@ -167,6 +167,56 @@ def cargo_owned(name: str) -> bool:
     return name.startswith(CARGO_PREFIX) or name in CARGO_EXACT
 
 
+# One template per producer spelling; `{n}` is the variable NAME. Order matters
+# only for WHICH file is reported first, never for whether one is.
+PRODUCER_FORMS = [
+    r"export {n}=",
+    r"\bset\s*\(\s*ENV\{{{n}\}}",
+    r"\bENV\{{{n}\}}",
+    r"^\s*{n}\s*=",
+    r'["\']{n}["\']\s*,',
+    # `cmake -E env "NAME=value"` / `env NAME=value cmd` — the spelling
+    # `nros-nuttx.cmake` uses for the NuttX `APP_*` inputs.
+    r'["\']{n}=',
+]
+
+_PRODUCES: dict[str, str | None] = {}  # name -> first producing file, or None
+
+
+def prefetch_producers(names) -> None:
+    """Resolve many names with ONE `git grep` per spelling, not one per name.
+
+    `repo_produces` used to run a full `git grep` of the producer pathspec for
+    every (name, spelling) pair: ~230 of them, 33 CPU-s for a gate whose answer
+    is a handful of bytes. The query is the same `-E` over the same pathspec;
+    the NAME is now an alternation, and `-o` says which alternative matched
+    (phase-489 W5). Results are identical by construction -- git still matches
+    line by line -- and the self-test below still asks for a name nothing sets.
+    """
+    names = [n for n in dict.fromkeys(names) if n not in _PRODUCES]
+    if not names:
+        return
+    for n in names:
+        assert re.fullmatch(r"[A-Za-z0-9_]+", n), n  # alternation, not escaping
+    alt = "|".join(names)
+    spec = producer_pathspec()
+    found: dict[str, str] = {}
+    for form in PRODUCER_FORMS:
+        out = git_grep.run(["-oE", form.format(n=f"({alt})"), "--", *spec], ROOT)
+        pick = re.compile(form.format(n=r"(?P<n>[A-Za-z0-9_]+)"))
+        mine: dict[str, str] = {}
+        for line in out.splitlines():
+            path, _, text = line.partition(":")
+            m = pick.search(text)
+            if m and m.group("n") in names:
+                mine.setdefault(m.group("n"), path)
+        for n in names:  # first SPELLING that hits wins, as before
+            if n not in found and n in mine:
+                found[n] = mine[n]
+    for n in names:
+        _PRODUCES[n] = found.get(n)
+
+
 def repo_produces(name: str) -> str | None:
     """The first file in this repo that SETS `name`, or None.
 
@@ -174,21 +224,9 @@ def repo_produces(name: str) -> str | None:
     missing one would make a name read as foreign when we chose its value —
     reporting a site that has no defect (issue 1452's direction).
     """
-    patterns = [
-        rf"export {re.escape(name)}=",
-        rf"\bset\s*\(\s*ENV\{{{re.escape(name)}\}}",
-        rf"\bENV\{{{re.escape(name)}\}}",
-        rf"^\s*{re.escape(name)}\s*=",
-        rf'["\']{re.escape(name)}["\']\s*,',
-        # `cmake -E env "NAME=value"` / `env NAME=value cmd` — the spelling
-        # `nros-nuttx.cmake` uses for the NuttX `APP_*` inputs.
-        rf'["\']{re.escape(name)}=',
-    ]
-    for pat in patterns:
-        out = git_grep.run(["-lE", pat, "--", *producer_pathspec()], ROOT)
-        if out.strip():
-            return out.split()[0]
-    return None
+    if name not in _PRODUCES:
+        prefetch_producers([name])
+    return _PRODUCES[name]
 
 
 # The `nros_build_paths` resolvers that take a variable NAME as a literal. One
@@ -206,6 +244,7 @@ def foreign_reads(census) -> dict[str, set[str]]:
     rows = census.build_scripts() + census.build_script_libs()
     subject = set(census.path_vars())
     out: dict[str, set[str]] = {}
+    cands: list[tuple[str, str]] = []
     for r in rows:
         code = census.strip_line_comments(
             (ROOT / r["path"]).read_text(errors="replace"))
@@ -217,9 +256,12 @@ def foreign_reads(census) -> dict[str, set[str]]:
             # read that reaches the resolver is not a bare read at all.
             if is_routed(code, name):
                 continue
-            if repo_produces(name):
-                continue
-            out.setdefault(name, set()).add(r["path"])
+            cands.append((name, r["path"]))
+    prefetch_producers(n for n, _ in cands)
+    for name, path in cands:
+        if repo_produces(name):
+            continue
+        out.setdefault(name, set()).add(path)
     return out
 
 
@@ -255,6 +297,8 @@ def self_test() -> int:
         not any(cargo_owned(n) for n in
                 ("THREADX_DIR", "ZENOH_PICO_DIR", "NV_SPE_FSP_DIR", "APP_MAIN_CPP")))
 
+    prefetch_producers(["THREADX_PORT", "NROS_DEFINITELY_NOT_A_REAL_VARIABLE_1588",
+                        "APP_MAIN_CPP", "NROS_TRACE", "PKG_CONFIG_PATH"])
     # Predicate 3 — measured against the two names the probe separated.
     chk("a name this repo sets is an internal channel, not foreign",
         repo_produces("THREADX_PORT") is not None)

@@ -189,11 +189,16 @@ fi
 
 run_one() {
     local gate="$1" dir="$2" start end rc
+    local cpu
     start=$(date +%s%N)
-    just check "$gate" >"$dir/$gate.out" 2>&1
+    # CPU seconds (user+sys of the gate's whole process tree) beside the wall:
+    # at -P4 on a 4-vCPU runner the lane is CPU-bound, so a gate's CPU is its
+    # real cost and its wall is mostly queueing (phase-489 W5).
+    cpu=$( { TIMEFORMAT='%U %S'; time just check "$gate" >"$dir/$gate.out" 2>&1; } 2>&1 )
     rc=$?
     end=$(date +%s%N)
-    printf '%s\t%s\t%s\n' "$gate" "$rc" "$(( (end - start) / 1000000 ))" \
+    cpu=$(printf '%s' "$cpu" | tail -1 | awk '{printf "%d", ($1 + $2) * 1000}')
+    printf '%s\t%s\t%s\t%s\n' "$gate" "$rc" "$(( (end - start) / 1000000 ))" "${cpu:-0}" \
         >>"$dir/results.tsv"
     return 0
 }
@@ -205,7 +210,7 @@ grep -vE '^\s*(#|$)' "$list" \
 _lane_wall_ms=$(( ($(date +%s%N) - _lane_start) / 1000000 ))
 
 failed=0
-while IFS=$'\t' read -r gate rc ms; do
+while IFS=$'\t' read -r gate rc ms _cpu; do
     if [ "$rc" != "0" ]; then
         failed=$((failed + 1))
         printf '\n===== FAIL (%s, rc=%s, %sms) =====\n' "$gate" "$rc" "$ms"
@@ -230,11 +235,17 @@ done <"$out_dir/results.tsv"
 #
 # Printed always rather than behind a flag: the number is free (the file is
 # already written), and a diagnostic nobody turns on is one nobody reads.
+[ -n "${NROS_GATE_TIMINGS_FILE:-}" ] && cp "$out_dir/results.tsv" "$NROS_GATE_TIMINGS_FILE"
 _busy_ms=$(awk -F'\t' '{s += $3} END {print s + 0}' "$out_dir/results.tsv")
 printf '\ncheck-%s: slowest gates (ms)\n' "$label"
 sort -k3 -rn "$out_dir/results.tsv" | head -10 \
     | awk -F'\t' -v busy="$_busy_ms" \
         '{printf "  %8d  %5.1f%%  %s\n", $3, (busy ? 100 * $3 / busy : 0), $1}'
+# The same gates ranked by CPU: at -P4 on a 4-vCPU runner the lane is CPU-bound
+# (busy / wall ~ 3.9), so a gate's CPU, not its wall, is what it costs the rest.
+printf 'check-%s: top gates by CPU (ms, user+sys)\n' "$label"
+sort -k4 -rn "$out_dir/results.tsv" | head -10 \
+    | awk -F'\t' '{printf "  %8d  %s\n", $4, $1}'
 printf '  busy %ds over wall %ds at -P%s => %.1fx effective parallelism\n' \
     "$((_busy_ms / 1000))" "$((_lane_wall_ms / 1000))" "$jobs" \
     "$(awk -v b="$_busy_ms" -v w="$_lane_wall_ms" 'BEGIN {printf "%.1f", (w ? b / w : 0)}')"

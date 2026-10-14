@@ -186,9 +186,13 @@ def prefetch(names):
     names = [n for n in dict.fromkeys(names) if n not in _GREP]
     if not names:
         return
-    args = ["-o", "-w", "-F"]
-    for n in names:
-        args += ["-e", n]
+    # ONE extended-regex alternation, not `-F -e a -e b …`: git's multi-pattern
+    # fixed-string matcher is quadratic in the pattern count (125 names over the
+    # tracked tree: 15.3 s wall, ~40 CPU-s on 3 threads) and the alternation
+    # returns byte-identical output in 0.2 s (phase-489 W5). Every name is an
+    # identifier, so none needs escaping; assert it rather than escape it.
+    assert all(IDENT.fullmatch(n) for n in names), names
+    args = ["-o", "-w", "-E", "|".join(names)]
     args += ["--", "packages", "examples", "cmake", "scripts", "zephyr", "third-party"]
     out = git_grep.run(args, ROOT)
     for n in names:

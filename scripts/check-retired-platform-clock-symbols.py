@@ -169,6 +169,10 @@ def offenders(files):
                 raw = fh.read()
         except OSError:
             continue
+        # Stripping only BLANKS text, so a file whose raw text names no retired
+        # symbol cannot name one in its code: skip the strip (phase-489 W5).
+        if not any(sym in raw for sym in RETIRED):
+            continue
         code = strip_comments(raw, rel)
         if rel.endswith(".rs"):
             code = strip_doc_attrs(code)
@@ -316,7 +320,10 @@ def extra_definers(files):
     for rel in files:
         try:
             with open(os.path.join(ROOT, rel), encoding="utf-8", errors="replace") as fh:
-                code = strip_comments(fh.read(), rel)
+                raw = fh.read()
+            if not any(sym in raw for sym in RETIRED):  # same prefilter as offenders()
+                continue
+            code = strip_comments(raw, rel)
             if rel.endswith(".rs"):
                 code = strip_doc_attrs(code)
         except OSError:
