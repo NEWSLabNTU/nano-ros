@@ -3623,7 +3623,7 @@ workspace-embedded:
 # decided by the leaf's shape, so no hand sync and no `just generate-bindings`
 # (issue 1892).
 [private]
-native-check:
+linux-check:
     @just linux check
 
 # Check workspace with various feature combinations

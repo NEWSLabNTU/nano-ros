@@ -279,30 +279,64 @@ fn shell_unclaimed_matches_the_rust_declaration() {
     assert_ne!(code, 0, "an unknown lane must fail, got:\n{out}");
 }
 
-/// phase-500 W2 — `native` was the host lane's name until the 2026-10-14
-/// ruling. For one cycle it is a DEPRECATED spelling: it resolves to `linux`
-/// and says so, and a stamp written under the old name still reads as `linux`.
-/// phase-500 W5 deletes the alias row and this test with it.
+/// phase-500 W5 — `native` was the host lane / scope / module name until the
+/// 2026-10-14 ruling, and a deprecated alias of `linux` for one cycle (W2).
+/// The alias is RETIRED: every front door that once mapped it now REFUSES it,
+/// naming `linux`, and a stamp written under the old name covers no run. A
+/// mapping that comes back (the token resolving, rc 0) fails here.
+///
+/// The token is built at run time so `check-host-platform-vocabulary`
+/// (check 7) does not read this test as a live use of the old lane spelling.
 #[test]
-fn the_retired_native_lane_resolves_to_linux_with_a_deprecation() {
-    let (code, out) = lane_sh("nros_lane_arg lane=native", None); // retired-host-token: alias
-    assert_eq!(code, 0, "nros_lane_arg lane=native failed:\n{out}"); // retired-host-token: alias
-    assert!(
-        out.lines().any(|l| l.trim() == "linux"),
-        "`lane=native` must resolve to `linux`:\n{out}" // retired-host-token: alias
+fn the_retired_native_lane_is_refused_naming_linux() {
+    let old = ["nat", "ive"].concat();
+    let refused = |what: &str, code: i32, out: &str| {
+        assert_ne!(code, 0, "{what} must REFUSE `{old}`, not map it:\n{out}");
+        assert!(
+            out.contains(&format!("'{old}'")) && out.contains("write 'linux'"),
+            "{what} must name the replacement `linux`:\n{out}"
+        );
+    };
+    // The lane argument (`just build-test-fixtures lane=<old>`): stripped,
+    // never mapped, then refused by the validator every lane helper calls.
+    let (code, out) = lane_sh(
+        &format!("l=\"$(nros_lane_arg lane={old})\"; nros_lane_validate \"$l\""),
+        None,
     );
-    assert!(
-        out.contains("DEPRECATED") && out.contains("'native' is now 'linux'"),
-        "the old spelling must print its replacement:\n{out}"
+    refused("nros_lane_arg | nros_lane_validate", code, &out);
+    let (code, out) = lane_sh(&format!("nros_lane_build_lane {old}"), None);
+    refused("nros_lane_build_lane", code, &out);
+    // The scope (`just build|test|doctor <old>`) and `just setup <old>`'s arm.
+    let (code, out) = lane_sh(
+        &format!("source scripts/build/scope.sh; nros_scope_validate_all {old}"),
+        None,
     );
+    refused("nros_scope_validate_all", code, &out);
+    // The nextest filter.
+    let root = nros_tests::project_root();
+    let lf = Command::new("bash")
+        .arg("scripts/test/lane-filter.sh")
+        .arg(&old)
+        .current_dir(&root)
+        .output()
+        .expect("run lane-filter.sh");
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&lf.stdout),
+        String::from_utf8_lossy(&lf.stderr)
+    );
+    refused("lane-filter.sh", lf.status.code().unwrap_or(-1), &text);
+    // A stamp written under the old name is not read as `linux`.
     let dir = tmpdir();
-    let stamp = write_stamp(&dir, "native", &[]);
+    let stamp = write_stamp(&dir, &old, &[]);
     let (code, out) = lane_sh(
         "nros_fixtures_stamp_require linux",
         Some(stamp.to_str().unwrap()),
     );
-    let why = "a pre-W2 `lane=native` stamp must satisfy a linux run"; // retired-host-token: alias
-    assert_eq!(code, 0, "{why}:\n{out}");
+    assert_ne!(
+        code, 0,
+        "a pre-W2 `{old}` stamp must not satisfy a linux run:\n{out}"
+    );
     let _ = std::fs::remove_file(&stamp);
 }
 

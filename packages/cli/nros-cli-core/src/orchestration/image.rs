@@ -1049,16 +1049,29 @@ entry_kind = "board-run"
         assert!(e.contains("mps2-an385-freertos"), "lists known boards: {e}");
     }
 
-    /// phase-500 W1 — `native` no longer names a board; the refusal names
-    /// the replacement rather than listing every known board.
+    /// phase-500 W1/W5 — neither `native` (W1) nor `posix` (W5: the
+    /// platform, which the catalog's platform fallback once answered with the
+    /// host board) names a board; the refusal names the replacement rather
+    /// than listing every known board.
     #[test]
-    fn a_retired_native_board_is_refused_naming_linux() {
+    fn a_retired_host_board_key_is_refused_naming_linux() {
         let cat = catalog();
-        let e = resolve_image_board(&cat, "linux", &image_with_board("native"))
-            .expect_err("must reject");
-        assert!(e.contains("[image.linux] board"), "names the line: {e}");
-        assert!(e.contains("write `linux`"), "names the replacement: {e}");
-        assert!(!e.contains("Known boards"), "a hint, not a list: {e}");
+        for key in ["native", "posix"] {
+            let e = resolve_image_board(&cat, "linux", &image_with_board(key))
+                .expect_err("must reject");
+            assert!(
+                e.contains("[image.linux] board"),
+                "{key}: names the line: {e}"
+            );
+            assert!(
+                e.contains("write `linux`"),
+                "{key}: names the replacement: {e}"
+            );
+            assert!(
+                !e.contains("Known boards"),
+                "{key}: a hint, not a list: {e}"
+            );
+        }
     }
 
     #[test]

@@ -10,8 +10,10 @@ that is all it supports: the platform layer (`nros-platform-posix`) is
 POSIX, but the host board crate's `apply_tier_affinity` calls
 `sched_setaffinity` with `cpu_set_t`, which libc does not define for
 macOS, Windows or FreeBSD. **Only Linux is supported** (AGENTS.md,
-phase-260, phase-500). `native` no longer names a board; writing it is
-refused with a hint naming `linux`.
+phase-260, phase-500). Neither `native` (every general-purpose host) nor
+`posix` (the platform) names a board: `board = "…"`, `nros setup`,
+`nros new --platform` and the `just` lane/scope words refuse both with a
+hint naming `linux`.
 
 ## When to Use It
 
@@ -19,13 +21,13 @@ refused with a hint naming `linux`.
   subscriber.
 - You are validating message generation, CMake integration, or ROS 2
   interop before moving to an RTOS.
-- Your deployment target is Linux, *BSD, or an embedded Linux system.
+- Your deployment target is Linux or an embedded Linux system.
 
 ## Setup
 
 Build the in-tree `nros` CLI (Phase 218), then provision the native
 host. For a host build there is no cross-toolchain to fetch — `nros
-setup native` installs the client stack (and for xrce the
+setup linux` installs the client stack (and for xrce the
 Micro-XRCE-DDS agent) into a shared store. The zenoh router is NOT
 installed: it comes from a ROS 2 install
 (`ros2 run rmw_zenoh_cpp rmw_zenohd`, RFC-0075). No ROS 2 on this

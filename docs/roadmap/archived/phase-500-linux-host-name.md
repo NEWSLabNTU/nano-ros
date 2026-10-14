@@ -1,6 +1,6 @@
 # Phase 500 — the host board is `linux`
 
-**Status (2026-10-14). W1–W4 landed on their branches; W5 open.** W1 drops
+**Status (2026-10-14). Complete — W1–W5 landed; archived with W5.** W1 drops
 `native` as a board name: the host board descriptor names `["linux"]`, every
 tracked selector / deploy token / cmake `DEPLOY` / sdk-index key writes
 `linux`, `native` is refused with a hint naming `linux`, and
@@ -9,15 +9,17 @@ module, the setup/build/test/doctor scope and the host test binaries to
 `linux`, keeping `native` as a deprecated alias. W3 renamed the host image
 ids (`[image.native*]` → `[image.linux*]`) and every name derived from them.
 W4 moved `examples/native/` to `examples/linux/` with every locator into it.
-The deprecated aliases are W5's to retire.
+W5 retired every alias: each old spelling of the host board, lane, scope or
+module now REFUSES with a hint naming `linux`, and the gate fails a re-added
+mapping.
 
 Implements the naming rule of
-[RFC-0093](../design/0093-board-naming-states-reach.md) ("a board name states
+[RFC-0093](../../design/0093-board-naming-states-reach.md) ("a board name states
 the reach of its build") for the host board, which RFC-0093 §4 had left
 "unchanged (CLAUDE.md owns these)". Feature axes: ARCHITECTURE §2, RFC-0005,
 RFC-0006. Homes issue
-[#1109](../issues/archived/1109-board-native-vs-linux-naming-sweep.md), re-homed from
-[phase-445](archived/phase-445-board-choice-generates-leaf-config.md).
+[#1109](../../issues/archived/1109-board-native-vs-linux-naming-sweep.md), re-homed from
+[phase-445](phase-445-board-choice-generates-leaf-config.md).
 
 ## The ruling (maintainer, 2026-10-14) — authoritative
 
@@ -271,16 +273,56 @@ priorities, prose) and are out of scope.
   - **No alias.** A moved directory cannot have one. The released book
     (`nros-v0.5.0`) documents `examples/native/…` paths; a reader of that book
     is reading that release's tree.
-- [ ] **W5 — retire the aliases.** Remove every alias that still maps `native`
-  or `posix` to the host board or lane: the W2 deprecated `native`
-  lane/module/scope alias, `nros new --platform native|posix`,
-  `nros setup native`, and any sdk-index / board-lookup / fixture-coordinate
-  spelling of `posix` or `native` meaning the Linux host board (e.g.
-  `BoardCatalog::resolve_deploy`'s platform-kebab fallback, which answers
-  `posix` with the host board). Afterwards each refuses with a hint naming
-  `linux`. `posix` STAYS as the platform's name (`nros-platform-posix`,
-  `platform-posix`, `NROS_PLATFORM=posix`, `[tiers.*.posix]`); only its use as
-  an alias for the Linux host board or lane goes.
+- [x] **W5 — retire the aliases.** One commit. Every alias that mapped
+  `native` or `posix` to the host board or lane now REFUSES, naming `linux`.
+  `posix` stays the PLATFORM's name (`nros-platform-posix`, `platform-posix`,
+  `NROS_PLATFORM=posix`, `[tiers.*.posix]`).
+  - **Board keys — one refusal table.** `nros_entry_lower::RETIRED_BOARD_KEYS`
+    is `(old, new, why)` and gains `posix` (`"posix is the platform, not a
+    board"`); `retired_board_key_hint` gives every consumer the same text
+    (`board `posix` does not name a board: write `linux`. …`). The cmake mirror
+    `nros_refuse_retired_deploy` (`cmake/NanoRosHostBoard.cmake`) refuses
+    `posix` too: `_nros_deploy_to_platform`'s identity arm used to send a
+    `posix` DEPLOY token to the host platform.
+  - **`BoardCatalog::resolve_deploy`.** A retired key is `Unknown` before any
+    rule runs; the platform rule had answered `posix` with the host board.
+    `resolve_board_id`, `board_facts::unresolved_board` and the other callers
+    already turn `Unknown` for a retired key into the hint.
+  - **`nros setup native|posix`.** W1's `setup_board_arg` (map + notice) is
+    deleted; `resolve_packages` refuses a retired key ahead of the index lookup,
+    so `--check`, the provisioning path and the RMW union all refuse — even
+    against an index that still carried the old row.
+  - **`nros new --platform native|posix`.** `canonical_platform` (map + notice)
+    is deleted. The two words are still PARSED, hidden from `--help`, only so
+    `refuse_retired_platform` can say `write --platform linux` instead of
+    clap's bare "invalid value"; `cargo_nano_ros::scaffold::platform_spec`
+    lost its `"native" | "posix"` arm and its error lists `linux`.
+  - **Lane / scope / module (W2's alias).** `_NROS_RETIRED_HOST_TOKENS` is a
+    REFUSAL table of bare words (`native`), read by
+    `nros_retired_host_token_hint`, which prints why and never returns a
+    successor. `nros_lane_arg` no longer maps; `nros_lane_validate`,
+    `nros_scope_reject`, `lane-filter.sh` and `just setup`'s scope arm refuse
+    with the hint. A pre-W2 stamp reading `lane=native` covers no lane and asks
+    for a rebuild. The root `native *ARGS` forwarder is deleted: `just native …`
+    now gets `just`'s own "does not contain recipe" (a module cannot be
+    aliased, and a refusing recipe would be a `native` recipe all the same).
+  - **Gate recipe.** `just check native-check` → `just check linux-check`
+    (`build-serial`, `.config/ungated-gates.txt`, comments); no forwarder.
+  - **Survey leftovers fixed.** `scripts/dev/measure-fixture-build.sh` defaulted
+    to the retired lane; the book's `native-host.md` still said `nros setup
+    native` and claimed *BSD deployment; `book/src/reference/cli.md` listed
+    `native`/`posix` as `--platform` values.
+  - **Left alone, each for a reason.** `nros_orchestration_ir`'s
+    `"posix" | "native"` TIER-RTOS arms (`[tiers.*.posix]`, external rlm /
+    play_launch vocabulary the ruling keeps); `BoardCatalog::resolve`'s
+    `*-linux*`-target fallback (any unknown board, not a `native`/`posix`
+    alias; its one caller passes an empty target); the `posix` platform in
+    `tools/host-env.sh`, `NROS_BENCH_PORT`, xrce's `build.rs`; synthetic test
+    labels (`DistManifest::new("native", …)`, `[host.native]`); and the
+    history series.
+  - **Pragma retired.** `retired-host-token: alias` is gone from the gate and
+    the tree; the W2 lane test became
+    `the_retired_native_lane_is_refused_naming_linux`.
 
 ## Acceptance
 
@@ -316,8 +358,9 @@ priorities, prose) and are out of scope.
   `mod native`, `native::<recipe>`, `NROS_TEST_SCOPE|NROS_FIXTURE_LANE|
   NROS_FIXTURE_SCOPE=native`, `lane-filter.sh native`, `--scope native`,
   `just/native.just`, `native_<renamed test>`), and `native` is in neither
-  `_NROS_LANES` nor `_NROS_SCOPE_PLATFORMS`; an alias line carries the pragma
-  `retired-host-token: alias`. Self-test on every run.
+  `_NROS_LANES` nor `_NROS_SCOPE_PLATFORMS`; an alias line carried the pragma
+  `retired-host-token: alias` (retired with the alias in W5). Self-test on
+  every run.
 - **W3** — no tracked `[image.native*]`; fixtures and tests resolve the renamed
   ids; gate (mutation-proved) refuses a new `[image.native…]`.
   **Gate:** `check-host-platform-vocabulary` check 8 (fast line) — no tracked
@@ -343,9 +386,48 @@ priorities, prose) and are out of scope.
   `examples/native/probe.txt` → rc=1 naming the path; each restored → rc=0.
 - **W5** — a gate (mutation-proved) that no alias path remains: each retired
   spelling refuses with a hint naming `linux`; docs and book updated.
+  **Gate:** `check-host-platform-vocabulary` check 11 (fast line). Static: no
+  tracked file outside the history series spells an `old=new` retired-token
+  row (`native=linux`, `posix=linux`), the W2 mapping function
+  `nros_retired_host_token`, a notice handing the old word on (`'native' is
+  now`, `` `--platform native` is deprecated``, `is a deprecated board name`)
+  or a `"linux" | "native"`/`"posix"` match arm; `_NROS_RETIRED_HOST_TOKENS`
+  holds bare words; the root justfile has no `native` recipe or alias. Check 7
+  also refuses `native-check`. Behavioural: the gate RUNS the shell front
+  doors with `native` — lane argument + validator, `nros_lane_build_lane`, the
+  scope validator, `lane-filter.sh` — and each must exit non-zero naming
+  `'linux'`. Self-test on every run (incl. a fake runner returning rc=0, and
+  rc≠0 without the hint). The Rust front doors are unit tests:
+  `setup.rs::a_retired_host_board_key_is_refused_naming_linux` (`nros setup
+  native|posix`, `--check`, the RMW union), `new.rs::retired_platform_tests`
+  (`nros new --platform native|posix`, and `--help` lists neither),
+  `board_descriptor.rs::retired_host_board_keys_resolve_to_nothing` and
+  `image.rs::a_retired_host_board_key_is_refused_naming_linux`
+  (`resolve_deploy("posix")`, `board = "posix"`); the lane one is
+  `lane_build_covers_run::the_retired_native_lane_is_refused_naming_linux`.
+  **Mutation-proved** (each restored → rc=0):
+
+  | mutation | guard | rc |
+  | --- | --- | --- |
+  | `_NROS_RETIRED_HOST_TOKENS="native=linux"` | gate | 1 (the row, `native=linux`, and both lane doors lose the hint) |
+  | root `native *ARGS:` forwarder back | gate | 1 (`justfile:107`) |
+  | `"linux" \| "native" \| "posix" =>` back in `platform_spec` | gate | 1 (`scaffold.rs:108`) |
+  | `nros_lane_arg` maps `native` → `linux` | gate / lane test | 1 / 101 |
+  | `lane-filter.sh` maps `native` → `linux` | gate / lane test | 1 / 101 |
+  | recipe `native-check` back | gate | 1 (`lanes.just:3617`) |
+  | `resolve_packages` maps `native`/`posix` → `linux` | setup test | 101 |
+  | `refuse_retired_platform` accepts | new test | 101 |
+  | `resolve_deploy` guard narrowed to `native` only | deploy tests | 101 (`posix` must not resolve) |
+
+  Run on the W5 tree: `just build-test-fixtures lane=linux` rc=0,
+  `just check linux-check` rc=0, `just ci gate` rc=0 (check fast + build,
+  test-unit, test-lane-contracts). `nros setup native` / `just native` no
+  longer resolve, so the doc-recipe-refs baseline gained one row: the frozen
+  "Recently resolved" digest in `docs/issues/README.md` records issue 0660's
+  `just native test-rmw` as history.
 
 ## Issues homed here
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1109](../issues/archived/1109-board-native-vs-linux-naming-sweep.md) | `board = "native"` selectors; re-homed 2026-10-14 from phase-445. Partially done by W1; closes with W4 (W5 retires the aliases it leaves) |
+| [#1109](../../issues/archived/1109-board-native-vs-linux-naming-sweep.md) | `board = "native"` selectors; re-homed 2026-10-14 from phase-445. Partially done by W1; closes with W4 (W5 retires the aliases it leaves) |

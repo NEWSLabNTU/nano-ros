@@ -117,11 +117,14 @@ chosen platform.
 
 | Flag | Values | Default |
 |---|---|---|
-| `--platform` | `native`, `freertos`, `nuttx`, `threadx`, `zephyr`, `esp32`, `posix`, `baremetal` | (required) |
+| `--platform` | `linux`, `freertos`, `nuttx`, `threadx`, `zephyr`, `esp32`, `baremetal` | (required) |
 | `--rmw` | `zenoh`, `xrce`, `cyclonedds` | `zenoh` |
 | `--lang` | `rust`, `c`, `cpp` | `rust` |
 | `--use-case` | `talker`, `listener`, `service`, `action` | `talker` |
 | `--force` | overwrite an existing directory | off |
+
+`--platform native` and `--platform posix` are refused with a hint naming
+`linux` — the host board's one name (phase-500).
 
 **Image / host mode:** `nros new --image <name> [--board <b>]` scaffolds an `[image.<name>]` — a buildable image (RFC-0065 D6) — into the bringup package's `system.toml`; `nros new --host <name>` scaffolds a `[host.<name>]`, a machine nodes run on. Both accept `[--bringup <pkg>] [--from-launch <path>] [--from-profile <name>]`. The bringup package is discovered automatically when the workspace exposes exactly one; pass `--bringup <pkg>` to pick one when there are several. `--from-launch` also seeds the bringup `[system].default_launch`; `--from-profile` forks an existing block of the same table.
 

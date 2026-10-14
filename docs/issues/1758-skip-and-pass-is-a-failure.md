@@ -206,7 +206,7 @@ Running the chain for real found what the probes above could not.
 
 6. **The native run and the native build disagreed about the scope.** `just
    test native` went to the module recipe. That recipe selects every
-   nros-tests binary except a hand-kept group list, but its build (`just native
+   nros-tests binary except a hand-kept group list, but its build (`just linux
    build-fixtures`) builds only the example rows. 53 tests in scope failed:
    - compile-check, cmake and west fixtures that the module build never
      builds, with no coordinate to deselect them by;
@@ -323,7 +323,7 @@ Taken. A board row is now built by the job whose image can build it:
   nightly's platform job is. Each job has its own `LaneSpec` and its own
   report job (`stage-board`, `stage-board-ci`), so a red in one image's rows
   never reads as the other's.
-- `just native test-live-peer-regression` accepts `board-zephyr` and
+- `just linux test-live-peer-regression` accepts `board-zephyr` and
   `board-ci`.
 
 Today the split is two Zephyr cells and one FreeRTOS cell

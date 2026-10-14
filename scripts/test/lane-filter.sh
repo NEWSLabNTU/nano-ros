@@ -30,10 +30,13 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 
 lane="${1:-all}"
-# phase-500 W2 — a retired spelling (`native`) maps through the one table.
+# phase-500 W5 — a retired spelling (`native`) is refused, naming `linux`.
 # shellcheck source=scripts/build/fixture-lane.sh
 . scripts/build/fixture-lane.sh
-lane="$(nros_retired_host_token "$lane")"
+if hint="$(nros_retired_host_token_hint "$lane")"; then
+    echo "lane-filter: unknown lane '$lane' — $hint" >&2
+    exit 2
+fi
 case "$lane" in
     all) exit 0 ;;
     linux) ;;

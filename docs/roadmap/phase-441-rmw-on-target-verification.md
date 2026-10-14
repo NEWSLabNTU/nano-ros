@@ -532,7 +532,7 @@ is an error naming the cell, and every scope token is checked against
 `scripts/build/scope.sh` while every narrowing value is checked against
 `examples/fixtures.toml`.
 
-*The lane runs `just native test-live-peer-regression host|board`.* Three things
+*The lane runs `just linux test-live-peer-regression host|board`.* Three things
 that were wrong there had to be fixed for the acceptance to be satisfiable at
 all:
 

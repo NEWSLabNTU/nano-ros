@@ -24,7 +24,8 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosHostBoard.cmake")
 
 # `deploy` attribute → the `NROS_PLATFORM` module axis. `linux` is the host
 # board (it maps to the `posix` platform axis value); the RTOS names map 1:1.
-# `native` is refused naming `linux` (phase-500 W1).
+# `native` (phase-500 W1) and `posix` (W5 — the platform, which reached the
+# host axis through the identity arm below) are refused naming `linux`.
 function(_nros_deploy_to_platform deploy out_var)
     nros_refuse_retired_deploy("nano-ros deploy" "${deploy}")
     if(deploy STREQUAL "${NROS_HOST_DEPLOY}" OR deploy STREQUAL "")

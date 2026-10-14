@@ -1384,11 +1384,23 @@ impl BoardCatalog {
     ///    platform — `nuttx` is declared by two, so a deploy token that reached
     ///    this rule for it is ambiguous rather than "the first one".
     ///
+    /// A retired board key (`nros_entry_lower::RETIRED_BOARD_KEYS`: `native`,
+    /// `posix`) is `Unknown` before either rule runs — `posix` is a platform,
+    /// and rule 2 once answered it with the host board (phase-500 W5).
+    ///
     /// Anything else is [`DeployResolution::Unknown`] / `Ambiguous`, and the
     /// caller must write NOTHING. A projection carrying the wrong board's link
     /// args is worse than no projection: the hand-mirrored block it would
     /// shadow is at least the block that links today (issue 0440).
     pub fn resolve_deploy(&self, deploy: &str) -> DeployResolution<'_> {
+        // phase-500 W5 — a retired board key (`native`, and `posix`, the
+        // platform) resolves to NOTHING, ahead of every rule below: the
+        // platform rule answered `posix` with the host board, an alias for a
+        // board whose one name is `linux`. Callers that refuse an `Unknown`
+        // ask `nros_entry_lower::retired_board_key_hint` for the text.
+        if nros_entry_lower::retired_board_key_hint(deploy).is_some() {
+            return DeployResolution::Unknown;
+        }
         let by_name: Vec<&BoardDescriptor> = self
             .descriptors
             .iter()
@@ -2236,6 +2248,27 @@ signature = "#[nros_board_stm32f4::entry]\nfn main() -> !"
             arm.source.as_deref(),
             Some("packages/boards/nros-board-nuttx-qemu/nros-board.toml")
         );
+    }
+
+    /// phase-500 W5 — `posix` is the PLATFORM, and the platform rule once
+    /// answered it with the host board; `native` is retired (W1). Both are
+    /// `Unknown`, while the host board's one name and every other platform
+    /// token still resolve, so the guard is not "drop the platform rule".
+    #[test]
+    fn retired_host_board_keys_resolve_to_nothing() {
+        // The REAL catalog: only it has the posix-platform host board that the
+        // platform rule would answer `posix` with.
+        let cat = BoardCatalog::load(&repo_root_for_tests()).expect("load catalog");
+        for key in ["posix", "native"] {
+            assert!(
+                matches!(cat.resolve_deploy(key), DeployResolution::Unknown),
+                "`{key}` must not resolve to a board"
+            );
+        }
+        match cat.resolve_deploy("linux") {
+            DeployResolution::Board(d) => assert_eq!(d.platform, PlatformKind::Posix),
+            other => panic!("`linux` must resolve to the host board, got {other:?}"),
+        }
     }
 
     /// A token no descriptor claims resolves to `Unknown` — never to "the first

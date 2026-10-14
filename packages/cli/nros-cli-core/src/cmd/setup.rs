@@ -327,7 +327,7 @@ pub fn run(args: Args) -> Result<()> {
         // from a board's `[tool.*]`/`[source.*]` package set. Narrowing it is a
         // redesign of the doctor, not a fix for the silent typo, so the report
         // says what it covered instead of implying the board scoped it.
-        if let Some(notice) = check_board_argument(&index, setup_board_arg(&args).as_deref())? {
+        if let Some(notice) = check_board_argument(&index, args.board.as_deref())? {
             eprintln!("{notice}");
         }
         return run_check_all(&index, &index_workspace(&index_path));
@@ -365,8 +365,7 @@ pub fn run(args: Args) -> Result<()> {
         );
     }
 
-    let board_arg = setup_board_arg(&args);
-    let board = match board_arg.as_deref() {
+    let board = match args.board.as_deref() {
         Some(b) => b,
         None => {
             bail!("nros setup: give a <board>, `--tool <name>`, `--list`, or `--licenses`")
@@ -1744,33 +1743,6 @@ fn describe(action: &InstallAction, version: &str, host: &str) -> String {
 /// board was ever looked up), and a unit test on this function cannot see
 /// dispatch order. It binds the rule; the single call site above is what makes
 /// the rule reachable, and only running the binary proves that.
-/// The `<board>` argument, with a RETIRED board key
-/// (`nros_entry_lower::RETIRED_BOARD_KEYS`) replaced by its successor and a
-/// deprecation notice on stderr.
-///
-/// phase-500 W1 — `native` stopped naming the host board (it is `linux`).
-/// An image that writes `board = "native"` is refused, because a tracked file
-/// can be fixed once. This verb is different: released book pages and READMEs
-/// tell users to type `nros setup linux`, so it keeps working for one cycle
-/// (the same deprecation window phase-500 W2 gives the `native` lane/scope)
-/// and says which word to use instead.
-fn setup_board_arg(args: &Args) -> Option<String> {
-    let board = args.board.as_deref()?;
-    match nros_entry_lower::RETIRED_BOARD_KEYS
-        .iter()
-        .find(|(old, _)| *old == board)
-    {
-        Some((old, now)) => {
-            eprintln!(
-                "nros setup: `{old}` is a deprecated board name; using `{now}` \
-                 (write `nros setup {now}` — phase-500)."
-            );
-            Some((*now).to_string())
-        }
-        None => Some(board.to_string()),
-    }
-}
-
 fn check_board_argument(index: &SdkIndex, board: Option<&str>) -> Result<Option<String>> {
     let Some(board) = board else {
         return Ok(None);
@@ -1789,6 +1761,12 @@ fn check_board_argument(index: &SdkIndex, board: Option<&str>) -> Result<Option<
 /// (the failure mode the old keyword heuristic had — it mis-resolved ESP32-C3 as
 /// Xtensa). Adding a board is a `[board.<name>]` entry, no code change.
 pub fn resolve_packages<'i>(index: &'i SdkIndex, board: &str) -> Result<Vec<&'i str>> {
+    // phase-500 W5 — a retired board key (`native`, `posix`) is REFUSED naming
+    // its replacement, ahead of the lookup: W1 kept `nros setup native` as a
+    // deprecated alias of `linux` for one cycle, and that cycle is over.
+    if let Some(hint) = nros_entry_lower::retired_board_key_hint(board) {
+        bail!("nros setup: {hint}");
+    }
     match index.board.get(board) {
         Some(entry) => Ok(entry.packages.iter().map(String::as_str).collect()),
         None => {
@@ -4003,7 +3981,7 @@ mod tests {
             "[board.mps2-an385-freertos]\npackages=[\"arm-none-eabi-gcc\",\"qemu\",\"freertos-kernel\",\"lwip\"]\n\
              [board.rv-virt-threadx]\npackages=[\"riscv-none-elf-gcc\",\"qemu\",\"threadx\"]\n\
              [board.esp32-c3-baremetal]\narch=\"riscv32\"\npackages=[]\n\
-             [board.native]\npackages=[\"zenohd\"]\n\
+             [board.linux]\npackages=[\"zenohd\"]\n\
              [board.gated-example]\npackages=[\"arm-none-eabi-gcc\",\"a-gated-sdk\"]\n",
         )
         .unwrap()
@@ -4027,7 +4005,7 @@ mod tests {
                 .unwrap()
                 .is_empty()
         );
-        assert_eq!(resolve_packages(&idx, "native").unwrap(), vec!["zenohd"]);
+        assert_eq!(resolve_packages(&idx, "linux").unwrap(), vec!["zenohd"]);
         // A board whose set mixes a hosted tool with a license-gated one.
         let gated = resolve_packages(&idx, "gated-example").unwrap();
         assert!(gated.contains(&"arm-none-eabi-gcc") && gated.contains(&"a-gated-sdk"));
@@ -4036,7 +4014,37 @@ mod tests {
         let err = resolve_packages(&idx, "totally-unknown")
             .unwrap_err()
             .to_string();
-        assert!(err.contains("unknown board") && err.contains("native"));
+        assert!(err.contains("unknown board") && err.contains("linux"));
+    }
+
+    /// phase-500 W5 — `nros setup native` (W1's deprecated alias of `linux`)
+    /// and `nros setup posix` REFUSE, naming `linux`, on every path that
+    /// takes a board: the provisioning lookup, `--check`, and the RMW union.
+    /// Even an index that still carried the old row cannot answer for it.
+    #[test]
+    fn a_retired_host_board_key_is_refused_naming_linux() {
+        let stale = SdkIndex::parse(
+            "[board.native]\npackages=[\"zenohd\"]\n[board.posix]\npackages=[]\n\
+             [board.linux]\npackages=[\"zenohd\"]\n",
+        )
+        .unwrap();
+        for key in ["native", "posix"] {
+            for err in [
+                resolve_packages(&stale, key).unwrap_err().to_string(),
+                resolve_packages_with_rmw(&stale, key, None)
+                    .unwrap_err()
+                    .to_string(),
+                check_board_argument(&stale, Some(key))
+                    .unwrap_err()
+                    .to_string(),
+            ] {
+                assert!(
+                    err.contains(&format!("board `{key}`")) && err.contains("write `linux`"),
+                    "{key}: {err}"
+                );
+            }
+        }
+        assert_eq!(resolve_packages(&stale, "linux").unwrap(), vec!["zenohd"]);
     }
 
     #[test]
@@ -4050,18 +4058,17 @@ mod tests {
         //
         // This test binds the RULE, not the dispatch order that broke it —
         // see the note on `check_board_argument`.
-        let idx = SdkIndex::parse(
-            "[tool.zenohd]\nversion=\"1\"\n[board.native]\npackages=[\"zenohd\"]\n",
-        )
-        .unwrap();
+        let idx =
+            SdkIndex::parse("[tool.zenohd]\nversion=\"1\"\n[board.linux]\npackages=[\"zenohd\"]\n")
+                .unwrap();
 
         // No board named: nothing to validate, nothing to say.
         assert!(check_board_argument(&idx, None).unwrap().is_none());
 
         // A real board resolves, and the notice says what --check actually
         // covered rather than implying the board scoped it.
-        let notice = check_board_argument(&idx, Some("native")).unwrap().unwrap();
-        assert!(notice.contains("native") && notice.contains("does not"));
+        let notice = check_board_argument(&idx, Some("linux")).unwrap().unwrap();
+        assert!(notice.contains("linux") && notice.contains("does not"));
 
         // The regression itself: an unknown board must be an ERROR here, not a
         // pass, and must still list what is known.
@@ -4069,7 +4076,7 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(
-            err.contains("unknown board") && err.contains("native"),
+            err.contains("unknown board") && err.contains("linux"),
             "{err}"
         );
     }
@@ -4079,27 +4086,27 @@ mod tests {
         let idx = SdkIndex::parse(
             "[tool.zenohd]\nversion=\"1\"\n[tool.xrce-agent]\nversion=\"1\"\n\
              [rmw.zenoh]\npackages=[\"zenohd\"]\n[rmw.xrce]\npackages=[\"xrce-agent\"]\n\
-             [board.native]\npackages=[]\n[board.mps2-an385-freertos]\npackages=[\"qemu\"]\n",
+             [board.linux]\npackages=[]\n[board.mps2-an385-freertos]\npackages=[\"qemu\"]\n",
         )
         .unwrap();
         // Default RMW is zenoh.
         assert_eq!(
-            resolve_packages_with_rmw(&idx, "native", None).unwrap(),
+            resolve_packages_with_rmw(&idx, "linux", None).unwrap(),
             vec!["zenohd"]
         );
         // Explicit RMW swaps the daemon, board contributes the rest.
         assert_eq!(
-            resolve_packages_with_rmw(&idx, "native", Some("xrce")).unwrap(),
+            resolve_packages_with_rmw(&idx, "linux", Some("xrce")).unwrap(),
             vec!["xrce-agent"]
         );
         let fr = resolve_packages_with_rmw(&idx, "mps2-an385-freertos", Some("xrce")).unwrap();
         assert!(fr.contains(&"qemu") && fr.contains(&"xrce-agent"));
         // Unknown RMW errors (lists known).
-        assert!(resolve_packages_with_rmw(&idx, "native", Some("nope")).is_err());
+        assert!(resolve_packages_with_rmw(&idx, "linux", Some("nope")).is_err());
         // Legacy index without an [rmw.*] table → board set unchanged.
-        let legacy = SdkIndex::parse("[board.native]\npackages=[\"zenohd\"]\n").unwrap();
+        let legacy = SdkIndex::parse("[board.linux]\npackages=[\"zenohd\"]\n").unwrap();
         assert_eq!(
-            resolve_packages_with_rmw(&legacy, "native", None).unwrap(),
+            resolve_packages_with_rmw(&legacy, "linux", None).unwrap(),
             vec!["zenohd"]
         );
     }
@@ -4111,7 +4118,7 @@ mod tests {
         let idx = SdkIndex::parse(
             "[tool.corrosion]\nversion=\"1\"\n[tool.zenohd]\nversion=\"1\"\n\
              [rmw.zenoh]\npackages=[\"zenohd\"]\n\
-             [board.native]\nplatform=\"posix\"\npackages=[]\n\
+             [board.linux]\nplatform=\"posix\"\npackages=[]\n\
              [board.fr]\nplatform=\"freertos\"\npackages=[\"qemu\"]\n\
              [board.zephyr]\nplatform=\"zephyr\"\npackages=[]\n\
              [board.esp]\nplatform=\"esp32\"\npackages=[]\n\
@@ -4119,7 +4126,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            resolve_packages_with_rmw(&idx, "native", None).unwrap(),
+            resolve_packages_with_rmw(&idx, "linux", None).unwrap(),
             vec!["zenohd", "corrosion"]
         );
         assert!(
@@ -4138,12 +4145,12 @@ mod tests {
             );
         }
         // An index without the tool installs nothing it cannot name.
-        let no_tool = SdkIndex::parse("[board.native]\nplatform=\"posix\"\npackages=[]\n").unwrap();
-        assert!(road_build_tool(&no_tool, "native").is_none());
+        let no_tool = SdkIndex::parse("[board.linux]\nplatform=\"posix\"\npackages=[]\n").unwrap();
+        assert!(road_build_tool(&no_tool, "linux").is_none());
     }
 
     #[test]
-    fn shipped_index_native_setup_provisions_what_a_cmake_configure_needs() {
+    fn shipped_index_linux_setup_provisions_what_a_cmake_configure_needs() {
         // Issue 1839, against the REAL index: the book's `nros setup linux
         // --rmw <any>` must plan the tool `nros_resolve_corrosion()` refuses
         // without, and so must every board whose platform takes the cmake road.
@@ -4156,10 +4163,7 @@ mod tests {
         );
         for rmw in idx.rmw.keys() {
             let set = resolve_packages_with_rmw(&idx, "linux", Some(rmw)).unwrap();
-            assert!(
-                set.contains(&CMAKE_ROAD_TOOL),
-                "native --rmw {rmw}: {set:?}"
-            );
+            assert!(set.contains(&CMAKE_ROAD_TOOL), "linux --rmw {rmw}: {set:?}");
         }
         for (name, b) in &idx.board {
             let platform = b.platform.as_deref().unwrap_or_else(|| {
@@ -4214,9 +4218,9 @@ mod tests {
     fn ensure_tools_noop_without_index() {
         // No index ⇒ Ok no-op. Stated, not arranged: a temp workspace with no
         // index still reaches the STORE's copy on a host that has run `nros
-        // setup`, where `native` resolves `zenohd` and this "no-op" provisions.
+        // setup`, where `linux` resolves `zenohd` and this "no-op" provisions.
         assert_eq!(
-            ensure_tools_from("native", None).unwrap(),
+            ensure_tools_from("linux", None).unwrap(),
             Vec::<PathBuf>::new()
         );
     }
@@ -4864,7 +4868,7 @@ struct DeployTarget {
 /// in `system.toml`; the DEPLOY token is derived from the board through the
 /// board catalog (`leaf_system::deploy_token`, the same derivation the C/C++
 /// `find_package(nano_ros)` uses), and a board that IS its deploy family
-/// (`native`, `zephyr`) reports no separate board, as the tuple's
+/// (`linux`, `zephyr`) reports no separate board, as the tuple's
 /// `deploy="native"` did. RMW: `[image] rmw` over `[system] rmw`.
 fn deploy_targets(
     system_toml: &str,
@@ -5265,7 +5269,7 @@ mod workspace_scan_tests {
         assert_eq!(got[0].rmw.as_deref(), Some("zenoh"));
     }
 
-    /// A board that IS its deploy family (`native`) names no separate board —
+    /// A board that IS its deploy family (`linux`) names no separate board —
     /// the shape the retired `<nano_ros deploy="native"/>` had — and an image's
     /// own `rmw` beats the system default.
     #[test]

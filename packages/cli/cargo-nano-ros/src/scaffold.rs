@@ -52,7 +52,7 @@ fn maintainer_xml() -> String {
 enum PlatformKind {
     /// Hosted std binary: explicit `register_linked_rmw()` +
     /// `nros::init_with_launch_auto()` + `Executor::open` + `spin`.
-    /// Models `examples/linux/rust/talker`. (native, posix)
+    /// Models `examples/linux/rust/talker`. (linux)
     Hosted,
     /// `#![no_std]` `nros::main!()` Form-1 self-bringup — `main.rs` is the
     /// one-line entry, `lib.rs` is the node (`nros::node!`), and
@@ -102,13 +102,10 @@ fn platform_spec(platform: &str) -> Result<PlatformSpec> {
     let spec = match platform {
         // The host board (`nros_board_linux::LinuxBoard`), selected by its one
         // name, `linux` (phase-500 W1: the board builds on Linux only).
-        // `native` and `posix` are DEPRECATED aliases kept for one cycle —
-        // released book pages say `--platform linux` — and scaffold exactly
-        // what `linux` does; `nros new` prints the deprecation. Neither may
-        // reach a scaffolded file: `native` is no board's name any more and
-        // `posix` is the platform (it once scaffolded `board = "posix"`, which
-        // `nros build` refuses).
-        "linux" | "native" | "posix" => PlatformSpec {
+        // `native` and `posix` were deprecated aliases until phase-500 W5;
+        // `nros new` refuses them naming `linux`, and here they fall to the
+        // unsupported arm like any other word.
+        "linux" => PlatformSpec {
             board_crate: "nros-board-linux",
             deploy_token: "linux",
             kind: PlatformKind::Hosted,
@@ -165,7 +162,7 @@ fn platform_spec(platform: &str) -> Result<PlatformSpec> {
         },
         other => bail!(
             "nros new: unsupported --platform '{other}'. Supported: \
-             native, posix, freertos, baremetal, nuttx, threadx, zephyr."
+             linux, freertos, baremetal, nuttx, threadx, zephyr."
         ),
     };
     Ok(spec)
@@ -223,7 +220,7 @@ pub fn scaffold_package(cfg: &ScaffoldConfig) -> Result<()> {
     let spec = platform_spec(&cfg.platform)?;
 
     // Issue 0333 defect 2 — the Rust runnable-template rewrite covers the
-    // single-package platforms (native/posix hosted, baremetal/esp32
+    // single-package platforms (linux hosted, baremetal/esp32
     // `nros::main!()` self-bringup). The split-package (freertos/nuttx/threadx)
     // and west/Kconfig (zephyr) shapes are a follow-up; bail before writing any
     // file rather than emit a project that cannot run. C/C++ are unaffected —
@@ -233,7 +230,7 @@ pub fn scaffold_package(cfg: &ScaffoldConfig) -> Result<()> {
     {
         bail!(
             "nros new: single-package Rust scaffolding for --platform {} is not available \
-             yet — {reason}. Use native, posix or baremetal for a runnable Rust \
+             yet — {reason}. Use linux or baremetal for a runnable Rust \
              starter today.",
             cfg.platform
         );
@@ -986,7 +983,7 @@ lto = "fat"
 codegen-units = 1
 "#;
 
-/// Hosted (native/posix) — a plain `fn main()` that registers the linked RMW,
+/// Hosted (linux) — a plain `fn main()` that registers the linked RMW,
 /// opens an executor, and spins a String talker. Models
 /// `examples/linux/rust/talker`.
 fn scaffold_rust_hosted(
@@ -1486,14 +1483,12 @@ int main(int argc, char** argv) {{
 /// no use for — the host kernel owns the stack.
 ///
 /// Issue 0916: this was `platform != "native"`, a literal comparison against
-/// ONE of the two host spellings. `native` and `posix` are aliases for the same
-/// `PlatformKind::Hosted`, so
-/// `--platform posix` got an embedded network config and `--platform linux`
-/// did not — two spellings of one platform producing different trees.
+/// ONE of the host spellings of the day, so `--platform posix` got an embedded
+/// network config and another spelling did not — two spellings of one
+/// platform producing different trees.
 ///
-/// Asking the KIND is the fix, not adding `&& platform != "posix"`: a third
-/// hosted alias would reintroduce it, and the question being asked was never
-/// about the name.
+/// Asking the KIND is the fix, not comparing names: the question being asked
+/// was never about the name (phase-500 W5 left one host spelling, `linux`).
 fn needs_scaffolded_nros_toml(platform: &str) -> bool {
     !matches!(
         platform_spec(platform).map(|s| s.kind),
@@ -1681,8 +1676,6 @@ mod tests {
     fn platform_spec_covers_every_advertised_platform() {
         for p in [
             "linux",
-            "native",
-            "posix",
             "freertos",
             "baremetal",
             "nuttx",
@@ -1694,14 +1687,15 @@ mod tests {
         ] {
             platform_spec(p).unwrap_or_else(|e| panic!("{p} must resolve: {e}"));
         }
-        // linux and its deprecated aliases native/posix are one hosted spec
-        // against nros-board-linux, selecting the host board as `linux`
-        // (phase-500 W1: `native` is no board's name, `posix` the platform).
-        for p in ["linux", "native", "posix"] {
-            let spec = platform_spec(p).unwrap();
-            assert!(matches!(spec.kind, PlatformKind::Hosted), "{p}");
-            assert_eq!(spec.board_crate, "nros-board-linux", "{p}");
-            assert_eq!(spec.deploy_token, "linux", "{p}");
+        // linux is the one hosted spec, against nros-board-linux, selecting
+        // the host board as `linux` (phase-500 W1). Its retired aliases
+        // `native`/`posix` (W5) resolve to no spec at all.
+        let spec = platform_spec("linux").unwrap();
+        assert!(matches!(spec.kind, PlatformKind::Hosted));
+        assert_eq!(spec.board_crate, "nros-board-linux");
+        assert_eq!(spec.deploy_token, "linux");
+        for p in ["native", "posix"] {
+            assert!(platform_spec(p).is_err(), "{p} must not scaffold");
         }
         assert!(matches!(
             platform_spec("baremetal").unwrap().kind,
@@ -1814,19 +1808,16 @@ mod tests {
 mod hosted_alias_tests {
     use super::*;
 
-    /// `native` and `posix` are two spellings of one platform, so they must
-    /// scaffold the same tree.
+    /// The host spelling scaffolds no `nros.toml`.
     ///
-    /// Issue 0916: they did not. The C and C++ scaffolds asked
-    /// `platform != "native"`, a literal comparison against one of the two
-    /// aliases, so `--platform posix` got an `nros.toml` full of static
-    /// QEMU-slirp network settings that a host build has no use for.
+    /// Issue 0916: the C and C++ scaffolds asked `platform != "native"`, a
+    /// literal comparison against one of the host aliases of the day, so
+    /// `--platform posix` got an `nros.toml` full of static QEMU-slirp network
+    /// settings that a host build has no use for. phase-500 W5 retired those
+    /// aliases; `linux` is the one host spelling.
     #[test]
-    fn the_two_hosted_spellings_agree_about_nros_toml() {
-        // phase-500 W1 — and `linux`, the canonical one, which both now alias.
+    fn the_hosted_spelling_gets_no_nros_toml() {
         assert!(!needs_scaffolded_nros_toml("linux"));
-        assert!(!needs_scaffolded_nros_toml("native"));
-        assert!(!needs_scaffolded_nros_toml("posix"));
     }
 
     /// …and a cross target still gets one, which is what the file is for.
