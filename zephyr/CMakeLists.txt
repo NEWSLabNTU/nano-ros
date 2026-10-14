@@ -391,11 +391,11 @@ endif()
 # only when the bringup declares `param_services`, which is also the only case
 # the entity inventory counts their six queryables per node for.
 #
-# nros-cpp's `param-store` forwards `nros-c/param-services` (nros-node has not
-# split the store from the service code; phase-461 W6 does), so the nros-c
-# strings below name `param-services` in BOTH cases: the two cargo units must
-# agree (issue 1100). One variable per crate, set once, for the reason
-# `_nros_trace_suffix` above is one variable.
+# Issue 1897 -- nros-cpp forwards each feature to the same-named nros-c one,
+# and nros-node splits the two, so the nros-c strings below name the SAME
+# feature as nros-cpp's: the two cargo units must agree (issue 1100), and a
+# store-only image now compiles none of the service code. One variable per
+# crate, set once, for the reason `_nros_trace_suffix` above is one variable.
 #
 # `alloc` rides with it: the store allocates (nros-node `compile_error!`,
 # issue 1260: a capability names its requirement where it is added).
@@ -415,7 +415,7 @@ if(CONFIG_NROS_CPP_API)
     else()
         set(_nros_cpp_param_suffix ",alloc,param-store")
     endif()
-    set(_nros_c_param_suffix ",alloc,param-services")
+    set(_nros_c_param_suffix "${_nros_cpp_param_suffix}")
 endif()
 
 # Issue 1681 -- the OTHER two capability axes, by the same rule.
@@ -560,9 +560,9 @@ if(CONFIG_NROS_C_API)
     # alloc-enabled nros-node through nros-cpp — unifying removes a duplicate
     # rather than adding a capability.
     #
-    # issue 1529 -- and `param-services` whether or not the bringup declared
-    # it: the C++ half always carries the parameter store, which nros-cpp
-    # builds from `nros-c/param-services` (see `_nros_c_param_suffix`).
+    # issue 1529 -- and the parameter store whether or not the bringup
+    # declared an axis: the C++ half always carries it, and the services only
+    # when `param_services` is declared (see `_nros_c_param_suffix`).
     string(APPEND _nros_features "${_nros_c_param_suffix}")
     # issue 1681 -- and the lifecycle / safety axes, for the same reason.
     string(APPEND _nros_features "${_nros_cap_suffix}")
@@ -914,9 +914,11 @@ if(CONFIG_NROS_CPP_API)
         if(_nros_cpp_features MATCHES "(^|,)alloc(,|$)")
             string(APPEND _nros_c_for_cpp_features ",alloc")
         endif()
-        # issue 1529 -- `param-store` forwards `nros-c/param-services` too.
-        if(_nros_cpp_features MATCHES "(^|,)param-(services|store)(,|$)")
+        # issue 1897 -- each forwards the same-named nros-c feature.
+        if(_nros_cpp_features MATCHES "(^|,)param-services(,|$)")
             string(APPEND _nros_c_for_cpp_features ",param-services")
+        elseif(_nros_cpp_features MATCHES "(^|,)param-store(,|$)")
+            string(APPEND _nros_c_for_cpp_features ",param-store")
         endif()
         # issue 1681 -- nros-cpp forwards both of these to nros-c too.
         string(APPEND _nros_c_for_cpp_features "${_nros_cap_suffix}")

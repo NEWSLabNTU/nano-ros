@@ -327,16 +327,11 @@ function(nros_feature_set out_var)
         elseif(_cap STREQUAL "param_services")
             list(APPEND _feats param-services)
         elseif(_cap STREQUAL "params")
-            # phase-461 W6 — the parameter STORE without the six services.
-            # nros-cpp has the split (`param-store`, issue 1529); nros-c does
-            # not, so the C crate takes its one feature and links the service
-            # code dormant: no entry registers it, and the inventory claims no
-            # queryable for it.
-            if(_FS_CRATE STREQUAL "c")
-                list(APPEND _feats param-services)
-            else()
-                list(APPEND _feats param-store)
-            endif()
+            # phase-461 W6 — the parameter STORE without the six services
+            # (issue 1897: none of their code either). Every crate has the
+            # feature. nros-c's rclc parameter API is a server, so a C image
+            # that calls it declares `param_services`.
+            list(APPEND _feats param-store)
         elseif(_cap STREQUAL "lifecycle")
             list(APPEND _feats lifecycle-services)
         elseif(_cap STREQUAL "rosout")

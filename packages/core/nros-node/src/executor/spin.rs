@@ -735,22 +735,22 @@ pub(crate) fn group_filter_accepts(
 /// board's string/array capacities). No formula and no measured constant: the
 /// compiler's own answer, so the number reported below cannot drift from the
 /// allocation it describes.
-#[cfg(all(feature = "param-services", feature = "alloc"))]
+#[cfg(all(feature = "param-store", feature = "alloc"))]
 pub const PARAMETER_STORE_BYTES: usize = core::mem::size_of::<nros_params::ParameterStorage>();
 
 /// Issue 1706 -- a TEST seam standing in for a platform heap that returns NULL
 /// for the store's request, on the current thread only (tests run in
 /// parallel). Not a test `#[global_allocator]`: `check-feature-contract`
 /// clause (e) allows exactly one, `nros-platform`'s.
-#[cfg(all(test, feature = "std", feature = "param-services"))]
+#[cfg(all(test, feature = "std", feature = "param-store"))]
 pub(crate) struct RefuseParameterStore;
 
-#[cfg(all(test, feature = "std", feature = "param-services"))]
+#[cfg(all(test, feature = "std", feature = "param-store"))]
 std::thread_local! {
     static REFUSE_PARAMETER_STORE: core::cell::Cell<bool> = const { core::cell::Cell::new(false) };
 }
 
-#[cfg(all(test, feature = "std", feature = "param-services"))]
+#[cfg(all(test, feature = "std", feature = "param-store"))]
 impl RefuseParameterStore {
     pub(crate) fn arm() -> Self {
         REFUSE_PARAMETER_STORE.with(|c| c.set(true));
@@ -762,32 +762,11 @@ impl RefuseParameterStore {
     }
 }
 
-#[cfg(all(test, feature = "std", feature = "param-services"))]
+#[cfg(all(test, feature = "std", feature = "param-store"))]
 impl Drop for RefuseParameterStore {
     fn drop(&mut self) {
         REFUSE_PARAMETER_STORE.with(|c| c.set(false));
     }
-}
-
-/// Issue 1856 -- name the build statement that left `what` out of this image.
-///
-/// `nros_params::PARAM_SERVICES_SERVED` is false only when the build STATED
-/// `NROS_CAPABILITY_PARAM_SERVICES=0`, or the bringup declared the `params`
-/// axis without `param_services` (phase-461 W6); the carved home then has no service
-/// sets and no request/reply pair, so the call cannot be satisfied at run
-/// time. Cold and out of line: it formats.
-#[cfg(feature = "param-services")]
-#[cold]
-#[inline(never)]
-fn report_parameter_services_not_built(what: &str) {
-    nros_log::log_error!(
-        nros_log::get_logger("nros"),
-        "{} refused: this image declares the parameter store without its services \
-         (the `params` axis, or NROS_CAPABILITY_PARAM_SERVICES=0), so its executor \
-         reserves no parameter-service sets or buffers. Declare `param_services` in the \
-         bringup's `[system] features` (issue 1856, phase-461 W6).",
-        what
-    );
 }
 
 /// Issue 1706 -- say, once, that the parameter store did not fit.
@@ -797,7 +776,7 @@ fn report_parameter_services_not_built(what: &str) {
 /// size the heap, instead of surfacing as an anonymous halt in the allocator.
 /// What it can name is the REQUEST; the heap's own report (Zephyr's `HEAP
 /// EXHAUSTED` line, the board's `nros: heap peak` line) carries the capacity.
-#[cfg(feature = "param-services")]
+#[cfg(feature = "param-store")]
 #[cold]
 fn report_parameter_store_refused() {
     // Issue 1812 -- with no heap there was no allocation to refuse: the
@@ -824,7 +803,7 @@ fn report_parameter_store_refused() {
 
 /// The `alloc` half of [`report_parameter_store_refused`]: the heap refused
 /// the store's one allocation (issue 1706).
-#[cfg(all(feature = "param-services", feature = "alloc"))]
+#[cfg(all(feature = "param-store", feature = "alloc"))]
 #[cold]
 fn report_parameter_heap_store_refused() {
     let slots = nros_params::MAX_PARAMETERS;
@@ -862,7 +841,7 @@ fn report_parameter_heap_store_refused() {
 /// A `NotSet` declaration has no type to follow, so the text decides: `true` /
 /// `false`, then an integer, then a double, then a string — the order rcl's
 /// YAML reading gives an unquoted scalar.
-#[cfg(all(feature = "param-services", feature = "alloc"))]
+#[cfg(all(feature = "param-store", feature = "alloc"))]
 fn typed_param_override(
     text: &str,
     declared: &nros_params::ParameterValue,
@@ -1878,30 +1857,29 @@ pub struct Executor<'s> {
     /// when the sizing carves a store; with `alloc`, one heap allocation
     /// otherwise. Without `alloc` there is no heap arm, and an executor whose
     /// backing carves no home refuses parameters by name instead.
-    #[cfg(feature = "param-services")]
-    pub(crate) params:
-        Option<crate::parameter_services::Placed<'s, crate::parameter_services::ParamState<'s>>>,
+    #[cfg(feature = "param-store")]
+    pub(crate) params: Option<crate::param_store::Placed<'s, crate::param_store::ParamState<'s>>>,
     /// phase-382 W3' — the parameter store's slots, CARVED from this
     /// executor's backing and still uninitialised. Taken (left empty) the
     /// first time something builds the store; empty from the start when the
     /// sizing carved none, in which case the store comes from the heap.
-    #[cfg(feature = "param-services")]
+    #[cfg(feature = "param-store")]
     pub(crate) param_slots: &'s mut [MaybeUninit<nros_params::ParameterSlot>],
     /// Issue 1812 — the services' home, CARVED beside the store's slots and
     /// still uninitialised. Taken with them; empty when the sizing carved no
     /// store.
-    #[cfg(feature = "param-services")]
+    #[cfg(feature = "param-store")]
     pub(crate) param_home: &'s mut [MaybeUninit<super::storage::ParamHome>],
     /// Issue 1706 -- the parameter store's one allocation was refused by the
     /// platform heap. Recorded so the refusal is REPORTED once and not retried
     /// on every declaration: a retry cannot succeed on a heap that only shrinks
     /// from here, and on Zephyr each attempt prints its own `HEAP EXHAUSTED`.
-    #[cfg(feature = "param-services")]
+    #[cfg(feature = "param-store")]
     pub(crate) param_store_refused: bool,
     /// phase-446 W6 -- the parameters each node's contract DECLARES, baked by
     /// the entry from the SystemModel. Empty (nothing checked) until an entry
     /// hands one over with [`Self::set_declared_params`].
-    #[cfg(feature = "param-services")]
+    #[cfg(feature = "param-store")]
     pub(crate) declared_params: nros_params::DeclaredParams,
     /// phase-425 W3b — the `/clock` subscription this image installed, if any.
     /// `None` means no time source; the value is the handle so it can be
@@ -2163,7 +2141,7 @@ impl<'s> Executor<'s> {
         // build, not by a feature, so the layout never depends on one) is
         // simply never initialised. The services' home (issue 1812) is
         // zero-sized without the feature.
-        #[cfg(not(feature = "param-services"))]
+        #[cfg(not(feature = "param-store"))]
         let _ = (param_slots, param_home);
         // Slot 0 = the auto-created default Fifo SC (see field doc). carve
         // initialised the whole table to `None`; populate the reserved slot.
@@ -2253,15 +2231,15 @@ impl<'s> Executor<'s> {
             // the std-RTOS path's `node_wake: Option<...>`).
             #[cfg(all(feature = "signal-fd-wake", target_os = "linux"))]
             signal_fd: None,
-            #[cfg(feature = "param-services")]
+            #[cfg(feature = "param-store")]
             params: None,
-            #[cfg(feature = "param-services")]
+            #[cfg(feature = "param-store")]
             param_slots,
-            #[cfg(feature = "param-services")]
+            #[cfg(feature = "param-store")]
             param_home,
-            #[cfg(feature = "param-services")]
+            #[cfg(feature = "param-store")]
             param_store_refused: false,
-            #[cfg(feature = "param-services")]
+            #[cfg(feature = "param-store")]
             declared_params: nros_params::DeclaredParams::EMPTY,
             #[cfg(all(feature = "sim-time", any(has_rmw, test)))]
             sim_time_source: None,
@@ -9991,12 +9969,14 @@ impl<'s> Executor<'s> {
 
             // Parameter services live outside the arena and must be processed
             // regardless of trigger state, otherwise ROS 2 param queries time out.
-            #[cfg(feature = "param-services")]
+            #[cfg(feature = "param-store")]
             {
+                #[allow(unused_mut)] // only the services add to it
                 let mut handled = 0usize;
+                #[cfg(feature = "param-services")]
                 if let Some(params) = &mut self.params {
                     {
-                        let crate::parameter_services::ParamState {
+                        let crate::param_store::ParamState {
                             server,
                             services,
                             buffers,
@@ -10679,12 +10659,13 @@ impl<'s> Executor<'s> {
         self.violations.drain_and_report();
 
         // Process parameter services (outside the arena)
-        #[cfg(feature = "param-services")]
+        #[cfg(feature = "param-store")]
+        #[allow(unused_mut)] // only the services add to it
         let mut handled = 0usize;
         #[cfg(feature = "param-services")]
         if let Some(params) = &mut self.params {
             {
-                let crate::parameter_services::ParamState {
+                let crate::param_store::ParamState {
                     server,
                     services,
                     buffers,
@@ -10702,7 +10683,7 @@ impl<'s> Executor<'s> {
                 }
             }
         }
-        #[cfg(feature = "param-services")]
+        #[cfg(feature = "param-store")]
         self.note_param_services_ran(handled);
 
         // Process lifecycle services (outside the arena).
@@ -10975,13 +10956,6 @@ impl<'s> Executor<'s> {
     /// executor.declare_parameter("start_value", ParameterValue::Integer(0));
     /// ```
     pub fn register_parameter_services(&mut self) -> Result<(), NodeError> {
-        // Issue 1856 -- the build stated this image serves no parameter
-        // services, so its carved home has no room for a set. Say so by name
-        // rather than fail later with a full table.
-        if !nros_params::PARAM_SERVICES_SERVED {
-            report_parameter_services_not_built("the six parameter services");
-            return Err(NodeError::Transport(TransportError::Unsupported));
-        }
         // Issue 1706 -- six services over a store that does not exist would
         // answer every request with "not declared"; say what went wrong
         // instead (`report_parameter_store_refused` has named the size).
@@ -11726,7 +11700,7 @@ impl<'s> Executor<'s> {
 // phase-446 W6 -- the contract's declared parameters (cfg param-services)
 // ============================================================================
 
-#[cfg(feature = "param-services")]
+#[cfg(feature = "param-store")]
 impl<'s> Executor<'s> {
     /// Hand the executor the parameters each node's contract declares.
     ///
@@ -11750,7 +11724,7 @@ impl<'s> Executor<'s> {
 // Parameter declaration API (cfg param-services)
 // ============================================================================
 
-#[cfg(feature = "param-services")]
+#[cfg(feature = "param-store")]
 impl<'s> Executor<'s> {
     /// phase-461 W6 — build the parameter STORE and register no service.
     ///
@@ -11954,8 +11928,7 @@ impl<'s> Executor<'s> {
     fn new_param_state(
         carved: &'s mut [MaybeUninit<nros_params::ParameterSlot>],
         home: &'s mut [MaybeUninit<super::storage::ParamHome>],
-    ) -> Option<crate::parameter_services::Placed<'s, crate::parameter_services::ParamState<'s>>>
-    {
+    ) -> Option<crate::param_store::Placed<'s, crate::param_store::ParamState<'s>>> {
         let table = if carved.is_empty() {
             #[cfg(feature = "alloc")]
             {
@@ -11971,18 +11944,25 @@ impl<'s> Executor<'s> {
             // all heap-peak arithmetic, and this line is the direct answer.
             nros_log::log_info!(
                 nros_log::get_logger("nros"),
-                "parameter store: {} slots ({} B) + services ({} B) carved from the executor backing",
+                "parameter store: {} slots ({} B) + {} ({} B) carved from the executor backing",
                 carved.len(),
                 core::mem::size_of_val(carved),
+                // Issue 1897 -- the home is the store's state, plus the
+                // services' sets and buffers only where they are compiled.
+                if cfg!(feature = "param-services") {
+                    "state and services"
+                } else {
+                    "state"
+                },
                 core::mem::size_of_val(home)
             );
             nros_params::ParameterTable::init_in(carved)
         };
         let server = nros_params::ParameterServer::new_in(table);
         match home.first_mut() {
-            Some(home) => Some(crate::parameter_services::ParamHome::init_in(home, server)),
+            Some(home) => Some(crate::param_store::ParamHome::init_in(home, server)),
             #[cfg(feature = "alloc")]
-            None => crate::parameter_services::ParamState::try_boxed(server),
+            None => crate::param_store::ParamState::try_boxed(server),
             #[cfg(not(feature = "alloc"))]
             None => None,
         }
@@ -12024,7 +12004,7 @@ impl<'s> Executor<'s> {
         for p in params {
             state
                 .argv_overrides
-                .push(crate::parameter_services::ArgvParamOverride {
+                .push(crate::param_store::ArgvParamOverride {
                     node: p.node.map(alloc::string::String::from),
                     name: alloc::string::String::from(p.name),
                     value: alloc::string::String::from(p.value),
@@ -12208,6 +12188,7 @@ impl<'s> Executor<'s> {
         }
         let _ = handled;
         self.report_truncated_descriptions();
+        #[cfg(feature = "param-services")]
         self.flush_parameter_events();
     }
 
@@ -12399,6 +12380,7 @@ impl<'s> Executor<'s> {
         result
     }
 
+    #[cfg(feature = "param-services")]
     /// phase-491 W3 (RFC-0105 D8) — publish `node`'s parameter changes on
     /// `/parameter_events` (rclc's `notify_changed_over_dds`).
     ///
@@ -12416,12 +12398,6 @@ impl<'s> Executor<'s> {
     ) -> Result<(), NodeError> {
         use nros_core::RosMessage;
         type Event = nros_rcl_interfaces::msg::ParameterEvent;
-        // Issue 1856 -- an event is encoded into the services' reply buffer,
-        // which an image that serves no parameter services does not carve.
-        if !nros_params::PARAM_SERVICES_SERVED {
-            report_parameter_services_not_built("the /parameter_events publisher");
-            return Err(NodeError::Transport(TransportError::Unsupported));
-        }
         if !self.ensure_parameter_store() {
             return Err(NodeError::Transport(TransportError::BadAlloc));
         }
@@ -12469,6 +12445,7 @@ impl<'s> Executor<'s> {
         Ok(())
     }
 
+    #[cfg(feature = "param-services")]
     /// phase-491 W3 — publish every pending parameter change, one
     /// `ParameterEvent` each, oldest first. Runs after each spin's parameter
     /// services and after every C parameter call; nothing allocates.
@@ -12504,7 +12481,7 @@ impl<'s> Executor<'s> {
             let Some(params) = self.params.as_mut() else {
                 return;
             };
-            let crate::parameter_services::ParamState {
+            let crate::param_store::ParamState {
                 server,
                 buffers,
                 event_publisher,
@@ -12548,6 +12525,7 @@ impl<'s> Executor<'s> {
         }
     }
 
+    #[cfg(feature = "param-services")]
     #[cold]
     fn report_parameter_events_lost(lost: u32) {
         nros_log::log_warn!(
@@ -14174,7 +14152,7 @@ pub(crate) fn default_clock_us_fn() -> Option<fn() -> u64> {
 //
 // Its OWN impl block, gated on `sim-time`, because the methods were first
 // written next to `declare_parameter` — which lives in a
-// `#[cfg(feature = "param-services")]` block, so `reconcile_ros_time_source`
+// `#[cfg(feature = "param-store")]` block, so `reconcile_ros_time_source`
 // silently disappeared in every combo without parameter services, including the
 // one `spin_once` calls it from.
 // =============================================================================
@@ -14300,7 +14278,7 @@ impl<'s> Executor<'s> {
     /// paths; a second spelling is the drift this function exists to prevent.
     /// `pub(crate)` for the same reason: a test that changes the store directly
     /// needs the entry point a parameter service uses, not a copy of it.
-    #[cfg(all(feature = "sim-time", feature = "param-services", any(has_rmw, test)))]
+    #[cfg(all(feature = "sim-time", feature = "param-store", any(has_rmw, test)))]
     pub(crate) fn refresh_use_sim_time_from_store(&mut self) {
         // phase-426 W1 — the store is keyed by NODE, and the simulated clock is
         // not. This function is where those two facts meet, so the rule is

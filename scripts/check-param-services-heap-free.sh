@@ -13,9 +13,9 @@
 #
 #   1. NROS_PARAM_STORE=1 — the build KNOWS the image builds a store, so the
 #      default sizing carves it and the services' home with it. Must compile.
-#   1b. NROS_PARAM_STORE=1 NROS_CAPABILITY_PARAM_SERVICES=0 — a store the
-#      image holds and does not serve (issue 1856): the home carves the state
-#      alone. Must compile.
+#   1b. NROS_PARAM_STORE=1 with `param-store` alone — a store the image
+#      holds and does not serve (issue 1856; a feature since issue 1897): the
+#      home carves the state alone. Must compile.
 #   2. No store known — nothing to carve and no heap to fall back to. Must be
 #      REFUSED at compile time, naming the knob. This row is the negative
 #      control for row 1 as well: if it compiled, row 1 would be proving
@@ -87,15 +87,15 @@ if ! CARGO_TARGET_DIR="$(nros_scoped_target_dir param-heap-free)" NROS_PARAM_STO
     exit 1
 fi
 
-# Issue 1856 -- the store-only image: a store is known, and the build STATES
-# the image serves no parameter services. Its home carries no sets and no
-# buffer pair, and nothing on the store's path may reach for the heap either.
-echo "  - nros-node: param-services without alloc, store carved, services stated off"
+# Issue 1856 -- the store-only image: a store is known and no service is
+# built. Its home carries no sets and no buffer pair, and nothing on the
+# store's path may reach for the heap either. Issue 1897: "no service" is the
+# `param-store` feature now, not `NROS_CAPABILITY_PARAM_SERVICES=0`.
+echo "  - nros-node: param-store without alloc, store carved"
 if ! CARGO_TARGET_DIR="$(nros_scoped_target_dir param-heap-free-store-only)" NROS_PARAM_STORE=1 \
-        NROS_CAPABILITY_PARAM_SERVICES=0 \
-        cargo check --quiet -p nros-node --no-default-features --features "$FEATURES"; then
+        cargo check --quiet -p nros-node --no-default-features --features "rmw-cffi,param-store"; then
     echo "check-param-services-heap-free: nros-node does not build a store-only image" >&2
-    echo "  (NROS_CAPABILITY_PARAM_SERVICES=0) without \`alloc\` (issue 1856)." >&2
+    echo "  (\`param-store\`) without \`alloc\` (issue 1856)." >&2
     exit 1
 fi
 

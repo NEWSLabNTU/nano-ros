@@ -33,7 +33,9 @@ nros = { path = "../../../../../packages/api/nros", default-features = false, fe
     "alloc",
     "rmw-cffi",
     # W4c — `ctx.parameter::<T>(name)` (the live in-callback param read) is gated on
-    # `param-services`; the node declares it so it compiles standalone, not only when the
-    # Entry unifies the feature in.
-    "param-services", "macros"] }
+    # `param-store`; the node declares it so it compiles standalone, not only when the
+    # Entry unifies the feature in. Not `param-services` (issue 1897): whether the
+    # store is SERVED is the bringup's axis, and a node naming it would serve it in
+    # every image that links the node.
+    "param-store", "macros"] }
 std_msgs = { path = "../../generated/std_msgs", default-features = false }

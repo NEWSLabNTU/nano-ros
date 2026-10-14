@@ -602,7 +602,7 @@ where
     Ok(n)
 }
 
-#[cfg(all(any(has_rmw, test), feature = "param-services", feature = "alloc"))]
+#[cfg(all(any(has_rmw, test), feature = "param-store", feature = "alloc"))]
 /// Why [`apply_ros_args_with_params`] refused an argument vector.
 #[derive(Debug, Clone)]
 pub enum ApplyParamsError<'a> {
@@ -626,7 +626,7 @@ pub enum ApplyParamsError<'a> {
     NoStore,
 }
 
-#[cfg(all(any(has_rmw, test), feature = "param-services", feature = "alloc"))]
+#[cfg(all(any(has_rmw, test), feature = "param-store", feature = "alloc"))]
 impl core::fmt::Display for ApplyParamsError<'_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
@@ -643,7 +643,7 @@ impl core::fmt::Display for ApplyParamsError<'_> {
     }
 }
 
-#[cfg(all(any(has_rmw, test), feature = "param-services", feature = "alloc"))]
+#[cfg(all(any(has_rmw, test), feature = "param-store", feature = "alloc"))]
 /// [`apply_ros_args`], plus the parameter half — phase-482 W5.
 ///
 /// `-r` rules are installed as [`apply_ros_args`] installs them. `-p` overrides

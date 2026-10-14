@@ -35,9 +35,9 @@ use crate::session::ConcreteSession;
 /// Issue 1812 — the parameter services' carved home. A zero-sized stand-in
 /// where the services are not compiled, so the region costs nothing there and
 /// `carve` still has one type to place.
-#[cfg(feature = "param-services")]
-pub(crate) type ParamHome = crate::parameter_services::ParamHome;
-#[cfg(not(feature = "param-services"))]
+#[cfg(feature = "param-store")]
+pub(crate) type ParamHome = crate::param_store::ParamHome;
+#[cfg(not(feature = "param-store"))]
 pub(crate) type ParamHome = ();
 
 #[cfg(feature = "alloc")]
@@ -1200,7 +1200,7 @@ mod tests {
         // phase-382 W3' -- the parameter store's TABLE is carved (it scales
         // with `MAX_PARAMETERS` and lives in the backing); this value holds one
         // slice reference to it, which scales with nothing.
-        #[cfg(feature = "param-services")]
+        #[cfg(feature = "param-store")]
         {
             ceiling += size_of::<&mut [MaybeUninit<nros_params::ParameterSlot>]>();
             // issue 1812 -- and one slice reference to the services' home,
@@ -1210,10 +1210,7 @@ mod tests {
             ceiling += size_of::<&mut [MaybeUninit<ParamHome>]>();
             ceiling += size_of::<
                 Option<
-                    crate::parameter_services::Placed<
-                        'static,
-                        crate::parameter_services::ParamState<'static>,
-                    >,
+                    crate::param_store::Placed<'static, crate::param_store::ParamState<'static>>,
                 >,
             >()
             .saturating_sub(size_of::<usize>());

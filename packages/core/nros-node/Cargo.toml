@@ -212,8 +212,12 @@ stream = ["dep:futures-core"]
 # FFI reentrancy guards (critical-section around all RMW FFI calls).
 ffi-sync = []
 
-# Parameter services (ros2 param CLI support).
-param-services = ["dep:nros-rcl-interfaces"]
+# Issue 1897 -- the parameter STORE: declare/get/set, launch seeds, argv
+# overrides, `use_sim_time` seeding. No service, no `rcl_interfaces`.
+param-store = []
+# Parameter services (ros2 param CLI support): the six `rcl_interfaces`
+# servers per node and `/parameter_events`, over the store.
+param-services = ["param-store", "dep:nros-rcl-interfaces"]
 
 # Lifecycle services (ros2 lifecycle CLI support — REP-2002).
 lifecycle-services = ["dep:nros-lifecycle-msgs"]

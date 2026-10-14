@@ -3535,7 +3535,7 @@ fn ros_timer_fires_on_its_period_with_no_clock_source_installed() {
 /// right moment and that the gate follows the parameter. The sample path is
 /// covered by `time_source::tests` and the timer behaviour by
 /// `ros_time_timer_follows_the_simulated_clock`.
-#[cfg(all(feature = "sim-time", feature = "param-services"))]
+#[cfg(all(feature = "sim-time", feature = "param-store"))]
 // The `sim-time` gate is not decoration: `SimTimeGuard` is
 // `#[cfg(feature = "sim-time")]`, so without it this body names an undeclared
 // type (E0433) under the `--features std` invocation of `node-std-tests`.
@@ -3631,7 +3631,7 @@ fn use_sim_time_attaches_and_detaches_the_clock_source() {
 ///
 /// The negative control for the fix is the middle block: on the pre-fix code it
 /// reports `is_active() == false` while the store still reads `Some(true)`.
-#[cfg(all(feature = "sim-time", feature = "param-services"))]
+#[cfg(all(feature = "sim-time", feature = "param-store"))]
 #[test]
 fn use_sim_time_follows_the_store_verdict_not_the_caller() {
     let _sim_time = SimTimeGuard::acquire();
@@ -3727,7 +3727,7 @@ fn use_sim_time_follows_the_store_verdict_not_the_caller() {
 /// descriptor: `use_sim_time = true` with one stored a parameter and attached
 /// nothing. Same class as the ordering above, found by sweeping the seam rather
 /// than the reported site.
-#[cfg(all(feature = "sim-time", feature = "param-services"))]
+#[cfg(all(feature = "sim-time", feature = "param-store"))]
 #[test]
 fn use_sim_time_declared_with_a_descriptor_attaches_the_clock_source() {
     let _sim_time = SimTimeGuard::acquire();
@@ -3760,7 +3760,7 @@ fn use_sim_time_declared_with_a_descriptor_attaches_the_clock_source() {
 /// The log line itself goes to `nros_log`; what this pins is the handover the
 /// line depends on: the spin drains the store's record, so a second spin has
 /// nothing left to report and the line cannot repeat.
-#[cfg(feature = "param-services")]
+#[cfg(feature = "param-store")]
 #[test]
 fn a_truncated_description_is_reported_by_the_next_spin_once() {
     let mut executor: Executor = executor_with_clock(MockSession::new());
@@ -3799,10 +3799,11 @@ fn a_truncated_description_is_reported_by_the_next_spin_once() {
 }
 
 /// phase-461 W6 -- `register_parameter_store` is the store without the
-/// services: declarations land, nothing is requested, so no spin ever creates
-/// a parameter queryable. A later `register_parameter_services` keeps the same
-/// store and adds the request.
-#[cfg(feature = "param-services")]
+/// services: declarations land and nothing is requested, so no spin creates a
+/// parameter queryable. With `param-services` compiled, a later
+/// `register_parameter_services` keeps the same store and adds the request;
+/// without it (issue 1897) there is no such method to call.
+#[cfg(feature = "param-store")]
 #[test]
 fn the_parameter_store_registers_no_service() {
     let mut executor: Executor = executor_with_clock(MockSession::new());
@@ -3810,22 +3811,27 @@ fn the_parameter_store_registers_no_service() {
     assert!(executor.params().is_some(), "the store exists");
     assert!(executor.declare_parameter("rate", nros_params::ParameterValue::Integer(5)));
     let _ = executor.spin_once(core::time::Duration::from_millis(0));
-    assert!(
-        !executor.parameter_services_pending(),
-        "a store-only image requests no service"
-    );
-    assert!(
-        executor
-            .params
-            .as_deref()
-            .is_some_and(|p| !p.requested && p.services.is_empty()),
-        "no set of six was requested or created"
-    );
-    // Idempotent, and the services can still join on top of the same store.
     executor
         .register_parameter_store()
         .expect("second call is a no-op");
-    if nros_params::PARAM_SERVICES_SERVED {
+    assert_eq!(
+        executor.get_parameter_integer("rate"),
+        Some(5),
+        "store kept"
+    );
+    #[cfg(feature = "param-services")]
+    {
+        assert!(
+            !executor.parameter_services_pending(),
+            "a store-only registration requests no service"
+        );
+        assert!(
+            executor
+                .params
+                .as_deref()
+                .is_some_and(|p| !p.requested && p.services.is_empty()),
+            "no set of six was requested or created"
+        );
         executor
             .register_parameter_services()
             .expect("services join the store");
@@ -3845,7 +3851,7 @@ fn the_parameter_store_registers_no_service() {
 /// `nros-node`), so `SetParameters` was a registered service with no
 /// store-side writer any wrapper could reach, and the C facade wrote the slot
 /// through `ParameterServer::set` -- a second answer to "may this set happen".
-#[cfg(feature = "param-services")]
+#[cfg(feature = "param-store")]
 #[test]
 fn executor_set_parameter_enforces_the_wire_rules() {
     let mut executor: Executor = executor_with_clock(MockSession::new());
@@ -3896,7 +3902,7 @@ fn executor_set_parameter_enforces_the_wire_rules() {
 
 /// phase-426 W1 -- two nodes on one executor keep their parameters apart, and
 /// one node's `allow_undeclared` does not reach its sibling.
-#[cfg(feature = "param-services")]
+#[cfg(feature = "param-store")]
 #[test]
 fn two_nodes_on_one_executor_keep_their_parameters_apart() {
     use super::node_record::NodeId;
@@ -3964,7 +3970,7 @@ fn two_nodes_on_one_executor_keep_their_parameters_apart() {
 /// different values, build them afterwards, and each node must read its own.
 /// Before the fix every seed went to `NodeId::PRIMARY` and the second one was
 /// refused as a duplicate.
-#[cfg(feature = "param-services")]
+#[cfg(feature = "param-store")]
 #[test]
 fn launch_seeds_made_before_construction_land_on_the_node_built_later() {
     use super::node_record::NodeId;
@@ -4030,7 +4036,7 @@ fn launch_seeds_made_before_construction_land_on_the_node_built_later() {
 ///
 /// ROS 2 lets a node declare the name with a wrong type; what must NOT happen is
 /// a time source attaching off a value that does not mean "yes".
-#[cfg(all(feature = "sim-time", feature = "param-services"))]
+#[cfg(all(feature = "sim-time", feature = "param-store"))]
 #[test]
 fn a_non_bool_use_sim_time_attaches_nothing() {
     let session = MockSession::new();
@@ -4049,7 +4055,7 @@ fn a_non_bool_use_sim_time_attaches_nothing() {
 // threshold without sleeping five seconds. `test_clock_us` is free-running and
 // shared by the whole process (issue 1105), so the interval would be measured
 // against however much of the suite ran first.
-#[cfg(all(feature = "sim-time", feature = "param-services"))]
+#[cfg(all(feature = "sim-time", feature = "param-store"))]
 private_test_clock!(sim_silence_clock);
 
 /// phase-430 W1 — `use_sim_time` true and no `/clock` sample ever: the image
@@ -4064,7 +4070,7 @@ private_test_clock!(sim_silence_clock);
 /// Asserted through `sim_time_silence_warnings()` rather than a log grep: the
 /// contract is "exactly once", so the assertion has to be able to tell one from
 /// two, and `nros_log`'s sink is not present on every target that runs this.
-#[cfg(all(feature = "sim-time", feature = "param-services"))]
+#[cfg(all(feature = "sim-time", feature = "param-store"))]
 #[test]
 fn use_sim_time_with_no_clock_sample_is_reported_exactly_once() {
     use nros_core::clock::Clock;
@@ -4185,7 +4191,7 @@ fn use_sim_time_with_no_clock_sample_is_reported_exactly_once() {
 /// The store refuses an undeclared set (`allow_undeclared` is false), so before
 /// this the runtime switch worked on exactly the nodes that least needed it:
 /// the ones whose author had already thought about simulated time.
-#[cfg(all(feature = "sim-time", feature = "param-services"))]
+#[cfg(all(feature = "sim-time", feature = "param-store"))]
 #[test]
 fn use_sim_time_is_declared_on_a_node_that_never_named_it() {
     let _sim_time = SimTimeGuard::acquire();
@@ -4452,7 +4458,7 @@ fn use_sim_time_is_declared_on_every_node_the_services_are_published_under() {
 /// app names another parameter FIRST, so the store (and the seed) already exist
 /// when it gets to this one, which is the case a naive implementation gets
 /// wrong.
-#[cfg(all(feature = "sim-time", feature = "param-services"))]
+#[cfg(all(feature = "sim-time", feature = "param-store"))]
 #[test]
 fn an_apps_own_use_sim_time_declaration_beats_the_auto_declared_default() {
     let _sim_time = SimTimeGuard::acquire();
@@ -4497,7 +4503,7 @@ fn an_apps_own_use_sim_time_declaration_beats_the_auto_declared_default() {
 /// (`declare_parameter_with_descriptor`), and the same seam has already been
 /// wrong in exactly one of its two spellings once (issue 1202, where that path
 /// had no reserved hook at all). Both or neither.
-#[cfg(all(feature = "sim-time", feature = "param-services"))]
+#[cfg(all(feature = "sim-time", feature = "param-store"))]
 #[test]
 fn an_apps_use_sim_time_declaration_with_a_descriptor_beats_the_default() {
     let _sim_time = SimTimeGuard::acquire();
@@ -12926,7 +12932,7 @@ fn a_raw_publisher_on_a_contracted_topic_bumps_its_cell() {
 /// (`HEAP EXHAUSTED`, then issue 0589's recursion) and a FreeRTOS one hung in
 /// `MALLOC FAILED`. Every caller has a refusal to return, so it now returns it,
 /// once, without retrying.
-#[cfg(all(feature = "std", feature = "param-services"))]
+#[cfg(all(feature = "std", feature = "param-store"))]
 #[test]
 fn a_heap_too_small_for_the_parameter_store_refuses_the_declaration() {
     use nros_params::ParameterValue;
@@ -12945,6 +12951,7 @@ fn a_heap_too_small_for_the_parameter_store_refuses_the_declaration() {
             !executor.declare_parameter("rate", ParameterValue::Integer(10)),
             "a store the heap cannot supply must refuse the declaration"
         );
+        #[cfg(feature = "param-services")]
         assert!(
             executor.register_parameter_services().is_err(),
             "six services over no store is an error, not a silent no-op"
@@ -12974,7 +12981,7 @@ fn a_heap_too_small_for_the_parameter_store_refuses_the_declaration() {
 /// The capacity is the carved length and not `MAX_PARAMETERS` — a fourth
 /// declaration over three carved slots is refused as FULL, which also rules
 /// out a store that came from somewhere else and merely happened to fit.
-#[cfg(all(feature = "std", feature = "param-services"))]
+#[cfg(all(feature = "std", feature = "param-store"))]
 #[test]
 fn a_store_carved_from_the_backing_never_asks_the_heap() {
     use nros_params::ParameterValue;
@@ -12988,7 +12995,9 @@ fn a_store_carved_from_the_backing_never_asks_the_heap() {
     };
     let backing: &'static mut [core::mem::MaybeUninit<u64>] =
         alloc::boxed::Box::leak(alloc::boxed::Box::new_uninit_slice(sizing.u64_len()));
+    #[cfg(feature = "param-services")]
     let carved = backing.as_ptr_range();
+    #[cfg(feature = "param-services")]
     let carved = carved.start as usize..carved.end as usize;
     let _refuse = super::spin::RefuseParameterStore::arm();
     // SAFETY: `backing` is exactly `sizing.u64_len()` words, `'static`, and is
@@ -13006,6 +13015,7 @@ fn a_store_carved_from_the_backing_never_asks_the_heap() {
         !executor.declare_parameter("d", ParameterValue::Integer(3)),
         "the carved store holds exactly {slots} slots ({seeded} seeded)"
     );
+    #[cfg(feature = "param-services")]
     assert!(
         executor.register_parameter_services().is_ok(),
         "the services attach to the carved store, no heap store needed"
@@ -13015,60 +13025,64 @@ fn a_store_carved_from_the_backing_never_asks_the_heap() {
         Some(1),
         "values read back from the carved slots"
     );
-
-    // Issue 1812 — and the SERVICES' state is the backing's too: the state,
-    // its (inline) set of six, the shared buffer pair and the staging slot.
-    // Before 1812 each of these was a heap allocation even over a carved
-    // store, which is what kept `param-services` behind `alloc`.
-    executor.set_node_identity("carved", "/");
-    executor
-        .reconcile_parameter_services()
-        .expect("one set of six over the mock session");
-    let params = executor.params.as_ref().expect("the state exists");
     assert!(
-        matches!(params, crate::parameter_services::Placed::Carved(_)),
-        "a backing with a store carves the services' state too"
+        matches!(
+            executor.params.as_ref(),
+            Some(crate::param_store::Placed::Carved(_))
+        ),
+        "a backing with a store carves the store's state"
     );
-    let state: &crate::parameter_services::ParamState<'_> = params;
-    let within = |addr: usize, what: &str| {
+
+    #[cfg(feature = "param-services")]
+    {
+        // Issue 1812 — and the SERVICES' state is the backing's too: the state,
+        // its (inline) set of six, the shared buffer pair and the staging slot.
+        // Before 1812 each of these was a heap allocation even over a carved
+        // store, which is what kept `param-services` behind `alloc`.
+        executor.set_node_identity("carved", "/");
+        executor
+            .reconcile_parameter_services()
+            .expect("one set of six over the mock session");
+        let params = executor.params.as_ref().expect("the state exists");
         assert!(
-            carved.contains(&addr),
-            "{what} at {addr:#x} is outside the executor backing {carved:x?}"
+            matches!(params, crate::param_store::Placed::Carved(_)),
+            "a backing with a store carves the services' state too"
         );
-    };
-    within(state as *const _ as usize, "the parameter-service state");
-    within(&state.staged as *const _ as usize, "the staging slot");
-    assert_eq!(state.services.len(), 1, "one set of six, held inline");
-    within(&state.services[0] as *const _ as usize, "the set of six");
-    within(
-        state
-            .buffers
-            .as_ref()
-            .expect("a carved home brings its pair")
-            .request_addr(),
-        "the request buffer",
-    );
+        let state: &crate::param_store::ParamState<'_> = params;
+        let within = |addr: usize, what: &str| {
+            assert!(
+                carved.contains(&addr),
+                "{what} at {addr:#x} is outside the executor backing {carved:x?}"
+            );
+        };
+        within(state as *const _ as usize, "the parameter-service state");
+        within(&state.staged as *const _ as usize, "the staging slot");
+        assert_eq!(state.services.len(), 1, "one set of six, held inline");
+        within(&state.services[0] as *const _ as usize, "the set of six");
+        within(
+            state
+                .buffers
+                .as_ref()
+                .expect("a carved home brings its pair")
+                .request_addr(),
+            "the request buffer",
+        );
+    }
 }
 
-/// Issue 1856 -- the services' half of the carved home follows the build's
-/// statement about the services, and the store does not.
+/// Issue 1856 -- the services' half of the carved home follows the build, and
+/// the store does not.
 ///
-/// One test, two builds. `node-std-tests` runs it with nothing stated (every
-/// other test's build: the services are served, and the home is issue 1812's
-/// whole home) and again with `NROS_CAPABILITY_PARAM_SERVICES=0
-/// NROS_PARAM_STORE=1` (an image that HOLDS a store and serves none, the
-/// safety island's shape). Each branch asserts what its build must do, so
-/// neither run passes by skipping.
-#[cfg(all(feature = "std", feature = "param-services"))]
+/// Issue 1897 -- "the build" is the `param-services` cargo feature, which
+/// replaced the `NROS_CAPABILITY_PARAM_SERVICES=0` statement this test used to
+/// branch on. `node-std-tests` runs it with `param-services` (issue 1812's
+/// whole home) and with `param-store` alone (an image that HOLDS a store and
+/// serves none, the safety island's shape). Each build compiles the branch it
+/// must satisfy, so neither run passes by skipping.
+#[cfg(all(feature = "std", feature = "param-store"))]
 #[test]
 fn the_carved_home_reserves_the_services_only_when_the_image_serves_them() {
-    use crate::{
-        param_sizing::{MAX_SERVICE_SETS, param_service_buffer_bytes},
-        parameter_services::{
-            HOME_BUFFER_BYTES, PARAM_SERVICE_SETS, ParamHome, ParamState, ParameterServiceServers,
-            Placed,
-        },
-    };
+    use crate::param_store::{HOME_BUFFER_BYTES, ParamHome, ParamState, Placed};
     use core::mem::size_of;
     use nros_params::ParameterValue;
 
@@ -13093,10 +13107,14 @@ fn the_carved_home_reserves_the_services_only_when_the_image_serves_them() {
     );
     assert!(matches!(executor.params.as_ref(), Some(Placed::Carved(_))));
 
-    if nros_params::PARAM_SERVICES_SERVED {
+    #[cfg(feature = "param-services")]
+    {
+        use crate::{
+            param_sizing::{MAX_SERVICE_SETS, param_service_buffer_bytes},
+            parameter_services::ParameterServiceServers,
+        };
         // Issue 1812's guarantee, held: a home with the services in it, so an
         // image that serves them asks the heap for nothing.
-        assert_eq!(PARAM_SERVICE_SETS, MAX_SERVICE_SETS);
         assert_eq!(HOME_BUFFER_BYTES, param_service_buffer_bytes());
         assert!(
             size_of::<ParamState<'_>>() >= MAX_SERVICE_SETS * size_of::<ParameterServiceServers>(),
@@ -13108,24 +13126,13 @@ fn the_carved_home_reserves_the_services_only_when_the_image_serves_them() {
             .reconcile_parameter_services()
             .expect("one set of six over the mock session");
         assert_eq!(executor.params.as_ref().map(|p| p.services.len()), Some(1));
-    } else {
-        // The services' half is gone: no sets, no buffer pair. The home is the
-        // state alone, and the state is smaller than ONE set used to be.
-        assert_eq!(PARAM_SERVICE_SETS, 0);
+    }
+    #[cfg(not(feature = "param-services"))]
+    {
+        // The services' half is gone: no sets, no buffer pair, and no method
+        // that could ask for them. The home is the state alone.
         assert_eq!(HOME_BUFFER_BYTES, 0);
         assert_eq!(size_of::<ParamHome>(), size_of::<ParamState<'_>>());
-        assert!(size_of::<ParamState<'_>>() < size_of::<ParameterServiceServers>());
-        // Asking for what the build left out is refused by name, not by a
-        // full table later.
-        assert!(matches!(
-            executor.register_parameter_services(),
-            Err(NodeError::Transport(TransportError::Unsupported))
-        ));
-        assert!(matches!(
-            executor.enable_parameter_events_on(super::node_record::NodeId::PRIMARY),
-            Err(NodeError::Transport(TransportError::Unsupported))
-        ));
-        assert!(!executor.parameter_services_pending());
         // And the store still works without them.
         assert_eq!(
             executor.get_parameter("rate").and_then(|v| v.as_integer()),
@@ -13138,7 +13145,7 @@ fn the_carved_home_reserves_the_services_only_when_the_image_serves_them() {
 /// NOTHING still gets a store, from the heap, exactly as before W3'. Zero
 /// slots is the default for every image the build does not know to build a
 /// store, so this is the road an undeclared store takes.
-#[cfg(all(feature = "std", feature = "param-services"))]
+#[cfg(all(feature = "std", feature = "param-store"))]
 #[test]
 fn a_backing_that_carved_no_store_falls_back_to_the_heap() {
     use nros_params::ParameterValue;
@@ -13177,10 +13184,7 @@ fn a_backing_that_carved_no_store_falls_back_to_the_heap() {
     );
     // Issue 1812 — no carved home either, so the state is the heap's.
     assert!(
-        matches!(
-            heaped.params,
-            Some(crate::parameter_services::Placed::Heap(_))
-        ),
+        matches!(heaped.params, Some(crate::param_store::Placed::Heap(_))),
         "a backing with no store carves no services' home"
     );
 }
@@ -13866,7 +13870,7 @@ fn t4_a_timer_overrun_beside_an_idle_subscription_is_judged() {
 /// Parse `argv` the way `nros::init_with_args` / `rclcpp::init(argc, argv)` do
 /// and install its parameter overrides, from the command line and from a file
 /// whose TEXT `file` stands in for.
-#[cfg(feature = "param-services")]
+#[cfg(feature = "param-store")]
 fn install_overrides(executor: &mut Executor<'static>, argv: &[&str], file: &str) {
     let mut params = alloc::vec::Vec::new();
     let mut files = alloc::vec::Vec::new();
@@ -13911,7 +13915,7 @@ fn install_overrides(executor: &mut Executor<'static>, argv: &[&str], file: &str
 
 /// `-p rate:=25` replaces the declared default, typed by it; a later `-p` for
 /// the same name wins; a `node:` override reaches only the node of that name.
-#[cfg(feature = "param-services")]
+#[cfg(feature = "param-store")]
 #[test]
 fn argv_p_overrides_the_declared_default_per_node_and_last_wins() {
     let mut executor: Executor = executor_with_clock(MockSession::new());
@@ -13979,7 +13983,7 @@ fn argv_p_overrides_the_declared_default_per_node_and_last_wins() {
 
 /// An override that does not parse as the declared type is not applied: the
 /// default stands (RFC-0015 §9.6), and the declaration still succeeds.
-#[cfg(feature = "param-services")]
+#[cfg(feature = "param-store")]
 #[test]
 fn argv_p_with_the_wrong_type_keeps_the_default() {
     let mut executor: Executor = executor_with_clock(MockSession::new());
@@ -14005,7 +14009,7 @@ fn argv_p_with_the_wrong_type_keeps_the_default() {
 /// `--params-file`: `/**` reaches every node, a node key only that node, and
 /// nested keys become dotted names; strings, doubles and quoted values type by
 /// the declaration.
-#[cfg(feature = "param-services")]
+#[cfg(feature = "param-store")]
 #[test]
 fn params_file_overrides_reach_their_nodes_with_dotted_names() {
     let mut executor: Executor = executor_with_clock(MockSession::new());
