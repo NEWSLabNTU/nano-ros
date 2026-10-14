@@ -1,14 +1,15 @@
 ---
 id: 941
 title: "`nros_resolve_board_facts` fails SOFT, so an unreachable site-config block is silent"
-status: open
+status: resolved
+resolved: 2026-10-14
 area: build
 severity: medium
 found: 2026-08-31
 related: [0940, 0949, 0950, phase-405, RFC-0072, phase-484]
 ---
 
-**Home: [phase-484](../roadmap/phase-484-one-owner-per-fact.md)** — re-homed 2026-10-12 from phase-405, which is archived.
+**Home: [phase-484](../../roadmap/phase-484-one-owner-per-fact.md)** — re-homed 2026-10-12 from phase-405, which is archived.
 
 # A resolution that cannot succeed prints STATUS and continues
 
@@ -125,3 +126,61 @@ example** front door (`examples/qemu-armv7a-nuttx/cpp/*`), not the workspace
 bringups the 414-probe enumeration covered. Whatever the judgement call turns
 out to be, it has to answer for a `system.toml` with no `[image.<t>]` naming a
 board, not only for an unreachable `[deploy.<t>.nros]`.
+
+## Resolution (2026-10-14)
+
+The enumeration the issue asked for, done against main on 2026-10-14:
+every exit of `nros ws board-facts` (`cmd/board_facts.rs`) crossed with every
+configure shape that reaches `nros_resolve_board_facts`. Two configure shapes
+LEGITIMATELY have no board facts, and both are host builds that name no board:
+
+- a guest project, i.e. `find_package(nano_ros)` with no `system.toml` and
+  no `Cargo.toml`, or a cargo dir that depends on no board crate;
+- a bringup that declares no `[image.*]` at all (only test fixtures do: 7
+  tracked `system.toml`, all under `packages/{cli,testing}/…/fixtures`).
+
+Every other failure happens AFTER `nano_ros_read_leaf_system` has validated
+the leaf, so it is a real error. Since phase-484 W2b a skipped cross image
+also died later in `zpico-sys` on a missing `FREERTOS_PORT`, which is the
+quiet half-build this issue is about.
+
+**The verb decides, not a regex.** `nothing_to_carry` answers those two
+shapes with exit 0, no stdout, and `board-facts: nothing to carry -- <reason>`
+on stderr. Asking for a board or deploy is never "nothing". The cmake arm
+(`NanoRosBoardFacts.cmake`) now:
+- stops the configure on ANY nonzero exit, naming the workspace, the
+  `--board` / `--deploy` it asked with, and the verb's stderr;
+- prints the stated reason on STATUS for an empty answer;
+- treats a missing CLI as fatal when a `system.toml` is in scope or a board
+  is named, and as STATUS otherwise.
+
+The dead `_ws STREQUAL ""` arm is gone (the candidate list ends at
+`CMAKE_SOURCE_DIR`, which is never empty).
+
+**Why this does not repeat the two earlier misses.** `21be9c0684` (#606) and
+`5d9abbd376` (#606/#590) each made a cmake regex over the verb's error TEXT
+fatal, and each broke a lane: an unresolvable board spelling, then
+`[deploy.native]` with no `board`. Both inputs are gone (W4a's
+case-insensitive aliases and `nano_ros_read_leaf_system`'s earlier refusal;
+`[deploy.*]` is refused by the schema). More to the point, "nothing to
+carry" is now a typed outcome the verb owns, so a new error message cannot
+fall into the skip bucket by accident.
+
+**Measured.** `just build-test-fixtures lane=tier2` on a tree carrying this
+change. All 7 families built:
+`zephyr linux qemu freertos nuttx threadx_linux threadx_riscv64`.
+- 38 configures received board facts.
+- The "nothing to carry" lines were the three Zephyr guest apps
+  (`board_import_fvp`, `multi_pkg_workspace_zephyr/zephyr_app`,
+  `zephyr_self_pkg/sibling/caller`), as enumerated.
+- No configure was refused.
+
+Test: `only_a_configure_that_names_no_board_has_nothing_to_carry` covers the
+guest dir, a cargo dir on no board crate, a bringup with no image, a named
+board, and an image naming an unknown board.
+
+Found on the way and fixed separately: the host census configured as the
+retired `native` board (#2182), and a cmake function built a path from
+`CMAKE_CURRENT_LIST_DIR` (#2186). Each stopped the tier-2 fixture build
+before this change could be measured.
+

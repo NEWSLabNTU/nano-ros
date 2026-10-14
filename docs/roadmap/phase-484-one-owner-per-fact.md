@@ -1144,6 +1144,6 @@ this phase will fix it.
 - ~~[issue 0934](../issues/archived/0934-config-redundancy-map.md) — The same fact is authored in up to five config surfaces; no SSoT is declared for rmw, board or domain~~ Resolved 2026-10-14 item by item; R1's stale cached rmw/platform/board fixed (`NanoRosLeafCache.cmake`), R9 and R13 split out:
 - [issue 1894](../issues/1894-entry-deploy-board-keyword-beside-system-toml.md) — `nano_ros_add_executable(DEPLOY|BOARD …)` wins over the leaf `system.toml` with no comparison
 - [issue 1895](../issues/1895-system-toml-models-read-raw-not-typed.md) — `system.toml` `[[model]]` and `default_launch` are parsed three ways, and the typed field has no reader
-- [issue 0941](../issues/0941-board-facts-soft-failure-hides-unreachable-site-config.md) — `nros_resolve_board_facts` fails SOFT, so an unreachable site-config block is silent
+- ~~[issue 0941](../issues/archived/0941-board-facts-soft-failure-hides-unreachable-site-config.md) — `nros_resolve_board_facts` fails SOFT, so an unreachable site-config block is silent~~ Resolved 2026-10-14: the verb owns "nothing to carry"; every other board-facts failure stops the configure.
 - [issue 1811](../issues/archived/1811-nightly-ports-read-in-tree-sources-after-store-move.md) — After phase-484 moved source trees into the store, four nightly RTOS port jobs still look for them in-tree or through …
 - [issue 1816](../issues/1816-git-grep-error-read-as-no-match.md) — A `git grep` that could not search reads as "no match", so a forbidding gate passes outside a checkout

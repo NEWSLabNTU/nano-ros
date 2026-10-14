@@ -66,15 +66,15 @@ function(nros_resolve_board_facts)
     # already resolved it (explicit `DEPLOY`, else the package.xml tuple
     # `find_package(nano_ros)` parsed into `NROS_DEPLOY`). Forwarding it is
     # what keeps a multi-deploy `system.toml` from becoming an AMBIGUITY
-    # refusal — which this file's deliberately-soft error handling would then
-    # turn into a silent skip, dropping the tier/sizing facts out of the image
-    # with a STATUS line at best.
+    # refusal — which this file used to turn into a silent skip, dropping the
+    # tier/sizing facts out of the image with a STATUS line at best (a
+    # configure error since issue 0941).
     set(_deploy "${_A_DEPLOY}")
     # phase-484 W2b — a standalone leaf's `NROS_DEPLOY` is its PLATFORM token
     # (`threadx`, `freertos`), and `board-facts --deploy` matches the KEYS of
     # the leaf's `[image.*]`/`[deploy.*]` tables (`threadx-linux`). Forwarding
     # the platform made every C/C++ leaf an "no [image.threadx]" refusal,
-    # which this file soft-skips — latent until W2b moved FREERTOS_PORT and
+    # which this file soft-skipped (until issue 0941) — latent until W2b moved FREERTOS_PORT and
     # THREADX_CONFIG_DIR off the repo-wide export and onto exactly this
     # delivery, at which point `zpico-sys` panicked on every such leaf. The
     # leaf's resolved image id names the right row.
@@ -127,7 +127,7 @@ function(nros_resolve_board_facts)
     #
     # Issue 1827 — `NROS_BRINGUP_DIR` (set by `nros build`) comes before the
     # workspace: the workspace answers only while it has ONE bringup, and the
-    # verb refuses a second as ambiguous, which this file soft-skips.
+    # verb refuses a second as ambiguous (a configure error since issue 0941).
     set(_ws "${_A_WORKSPACE}")
     foreach(_cand "${NROS_BRINGUP_DIR}" "${NROS_WORKSPACE_DIR}" "${APPLICATION_SOURCE_DIR}" "${CMAKE_SOURCE_DIR}")
         if(_ws STREQUAL "" AND NOT _cand STREQUAL "")
@@ -143,17 +143,20 @@ function(nros_resolve_board_facts)
     # every Zephyr image printed the line below and skipped its board facts.
     nros_resolve_cli(_nros OPTIONAL CONTEXT "nros_resolve_board_facts")
     if(NOT _nros OR NOT EXISTS "${_nros}")
+        # Issue 0941 — without the CLI nothing can say whether this configure
+        # has facts to carry. One that states a deployment (a `system.toml` in
+        # scope) or names a board does, and skipping it is the silent half-build
+        # this function used to produce; a guest project with neither has none.
+        file(GLOB _nros_bf_sys "${_ws}/system.toml" "${_ws}/src/*/system.toml")
+        if(_nros_bf_sys OR NOT _board STREQUAL "")
+            message(FATAL_ERROR
+                "nano-ros: board facts cannot be resolved for ${_ws} — no nros CLI "
+                "(build it with `./scripts/bootstrap.sh`; contributors: "
+                "`just setup-cli`).")
+        endif()
         message(STATUS
-            "nano-ros: board facts NOT delivered — no nros CLI (build it with "
-            "`./scripts/bootstrap.sh`; contributors: `just setup-cli`).")
-        set_property(GLOBAL PROPERTY ${_memo} "")
-        set(NROS_BOARD_FACTS_ENV "" PARENT_SCOPE)
-        return()
-    endif()
-    if(_ws STREQUAL "")
-        message(STATUS
-            "nano-ros: board facts NOT delivered — no workspace/application dir "
-            "to resolve from (pass WORKSPACE).")
+            "nano-ros: board facts — none for this configure (no nros CLI, and "
+            "${_ws} states no deployment and names no board).")
         set_property(GLOBAL PROPERTY ${_memo} "")
         set(NROS_BOARD_FACTS_ENV "" PARENT_SCOPE)
         return()
@@ -177,26 +180,30 @@ function(nros_resolve_board_facts)
         RESULT_VARIABLE _rc
         OUTPUT_STRIP_TRAILING_WHITESPACE)
 
+    # Issue 0941 — the VERB decides whether this configure has facts to carry:
+    # "nothing to carry" is exit 0 with no output and its reason on stderr, and
+    # every nonzero exit is an error. So there is no list of skippable messages
+    # here any more. The two earlier hardenings (`21be9c0684`, `5d9abbd376`)
+    # each broke a lane because they matched the verb's error TEXT; the
+    # inverted rule that replaced them stayed silent on everything else,
+    # including twelve unreachable site blocks (issue 0940), and since
+    # phase-484 W2b a cross image that skips here dies later in `zpico-sys`
+    # on a missing `FREERTOS_PORT`.
     if(NOT _rc EQUAL 0)
-        # INVERTED on purpose (three tries taught this): the only failure that
-        # is a CONFIGURATION error is a deploy asking for something its board
-        # cannot do — W4's netstack domain. Everything else means "this build
-        # has no board facts to carry", which the tree has always allowed:
-        #   * `[deploy.native]` declares no `board` at all (host deploys);
-        #   * no descriptor claims the board's spelling (issue 0606);
-        #   * the dir declares no deploy (host-side helper builds).
-        # Enumerating the skips got it wrong twice — each miss turned a normal
-        # build into a FATAL — so the rule is now stated the other way round:
-        # fail only on what we can name as wrong, say so and continue otherwise.
-        if(_err MATCHES "does not support netstack" OR _err MATCHES "supported_netstacks")
-            message(FATAL_ERROR
-                "nano-ros: this deploy asks for a netstack its board does not "
-                "support (phase-351 W4):\n${_err}")
+        set(_nros_bf_asked "")
+        if(NOT _board STREQUAL "")
+            string(APPEND _nros_bf_asked " --board ${_board}")
         endif()
+        if(NOT _deploy STREQUAL "")
+            string(APPEND _nros_bf_asked " --deploy ${_deploy}")
+        endif()
+        message(FATAL_ERROR
+            "nano-ros: board facts for ${_ws}${_nros_bf_asked} could not be "
+            "resolved (`nros ws board-facts`):\n${_err}")
+    endif()
+    if(_out STREQUAL "")
         string(REGEX REPLACE "\n+" " " _why "${_err}")
-        string(SUBSTRING "${_why}" 0 200 _why)
-        message(STATUS
-            "nano-ros: board facts NOT delivered from ${_ws} — ${_why}")
+        message(STATUS "nano-ros: board facts — none for this configure: ${_why}")
         set_property(GLOBAL PROPERTY ${_memo} "")
         set(NROS_BOARD_FACTS_ENV "" PARENT_SCOPE)
         return()

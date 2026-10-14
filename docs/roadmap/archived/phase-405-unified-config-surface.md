@@ -296,7 +296,7 @@ decide.
 
 ## Adopted issue (2026-09-04)
 
-* **[#0941](../../issues/0941-board-facts-soft-failure-hides-unreachable-site-config.md)** — **re-homed to [phase-484](../phase-484-one-owner-per-fact.md) 2026-10-12**
+* **[#0941](../../issues/archived/0941-board-facts-soft-failure-hides-unreachable-site-config.md)** — **re-homed to [phase-484](../phase-484-one-owner-per-fact.md) 2026-10-12**
   — `nros_resolve_board_facts` fails SOFT, so an unreachable site-config block is
   never reported. The issue names W6 of this phase as the CLASS fix for the
   twelve instances and then says what W6 does not change: a consumer that asks
@@ -314,4 +314,4 @@ evidence, the item is *close it*.
 | --- | --- |
 | [#0931](../../issues/archived/0931-retire-model-and-default-launch.md) | `nano_ros_entry` has eleven arguments; W4 landed eleven → six keywords and the DEPLOY/BOARD derivation is still open. This phase cites the issue three times and owns none of it — **RESOLVED 2026-10-12** (`c41ead42de`) |
 | [#0934](../../issues/archived/0934-config-redundancy-map.md) | the config-redundancy survey this phase was OPENED from: one fact authored in up to five surfaces, no SSoT declared for rmw, board or deploy. Opening a phase from a survey is not homing the survey — **re-homed to [phase-484](../phase-484-one-owner-per-fact.md) 2026-10-12** |
-| [#0941](../../issues/0941-board-facts-soft-failure-hides-unreachable-site-config.md) | `nros_resolve_board_facts` fails SOFT, so an unreachable site-config block is silent. Already an 'Adopted issue' prose section here; this row promotes it to a work item — **re-homed to [phase-484](../phase-484-one-owner-per-fact.md) 2026-10-12** |
+| [#0941](../../issues/archived/0941-board-facts-soft-failure-hides-unreachable-site-config.md) | `nros_resolve_board_facts` fails SOFT, so an unreachable site-config block is silent. Already an 'Adopted issue' prose section here; this row promotes it to a work item — **re-homed to [phase-484](../phase-484-one-owner-per-fact.md) 2026-10-12** |
