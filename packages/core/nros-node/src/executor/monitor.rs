@@ -28,6 +28,18 @@
 //!   SchedContext's `deadline_us`; what ELSE happens is the tier's
 //!   [`DeadlineAction`](super::sched_context::DeadlineAction).
 //!
+//! phase10-B3 adds the route rule beside it:
+//! - `route-latency-runtime` -- a node path whose trigger is an INPUT is
+//!   budgeted from the TAKE of that input to its output, and on a node that
+//!   reads its input on a timer tick that span includes the wait for the next
+//!   tick. `max-latency-runtime` times one dispatch and cannot see the wait,
+//!   so a route made of a long tick wait and a slow dispatch could exceed its
+//!   budget while every callback passed. The executor stamps the dispatch that
+//!   takes the trigger input (the earliest take not yet answered) and, at the
+//!   end of a dispatch that published one of the path's outputs, judges
+//!   take-to-dispatch-end against the path's `max_latency_ms`
+//!   ([`route_take`], [`route_judge`]). Record only: the rule has no action.
+//!
 //! phase-462 W2 adds one more on the same drain, and it is the other half of
 //! what the contract's `on_violation` lowers to:
 //! - `silence-runtime` -- a contracted subscription that took NOTHING for a
@@ -74,7 +86,25 @@ pub struct PubMonitorCell {
     /// `0` = never observed, matching the other cells: the type has no
     /// `STAMP_OFFSET`, or no epoch source is installed.
     pub last_publish_stamp_age_us: AtomicU32,
+    /// phase10-B3 -- the route rule's state for this output
+    /// ([`MonitorSpec::route_trigger`]): the trigger subscription's executor
+    /// slot + 1 in the low 16 bits (0 = no subscription bound, set when the
+    /// subscription registers), [`ROUTE_VIOLATED`] and [`ROUTE_PENDING`] above.
+    pub route: AtomicU32,
+    /// phase10-B3 -- when the earliest take not yet answered by a publish of
+    /// this output happened, executor clock in microseconds (wrapping). Valid
+    /// while [`ROUTE_PENDING`] is set in `route`.
+    pub route_take_us: AtomicU32,
 }
+
+/// phase10-B3 -- `PubMonitorCell::route`: a take of the trigger input is
+/// waiting for this output.
+pub const ROUTE_PENDING: u32 = 1 << 31;
+/// phase10-B3 -- `PubMonitorCell::route`: the last judged route was over its
+/// budget (report once until one is within it, as the latency rule does).
+pub const ROUTE_VIOLATED: u32 = 1 << 30;
+/// phase10-B3 -- `PubMonitorCell::route`: the bound slot + 1.
+pub const ROUTE_SLOT_MASK: u32 = 0xffff;
 
 impl PubMonitorCell {
     pub const fn new() -> Self {
@@ -82,6 +112,8 @@ impl PubMonitorCell {
             count: AtomicU32::new(0),
             max_latency_us: AtomicU32::new(0),
             last_publish_stamp_age_us: AtomicU32::new(0),
+            route: AtomicU32::new(0),
+            route_take_us: AtomicU32::new(0),
         }
     }
 }
@@ -175,6 +207,15 @@ pub struct MonitorSpec {
     /// endpoint (`contracts.node_paths[..].max_latency_ms`). 0 = no
     /// latency contract.
     pub max_latency_ms: u32,
+    /// phase10-B3 -- the topic of the INPUT that triggers a node path whose
+    /// output is this endpoint (`contracts.node_paths[..].input`, resolved to
+    /// its wiring topic EXACTLY as the node passes it to
+    /// `create_subscription`), or `""` for none. A subscription on this topic
+    /// registered on the same executor is the route's trigger.
+    pub route_trigger: &'static str,
+    /// phase10-B3 -- that path's budget (ms), from the take of the trigger to
+    /// this output (`route-latency-runtime`). 0 = no route contract.
+    pub route_max_latency_ms: u32,
     /// The endpoint's counter cell.
     pub cell: &'static PubMonitorCell,
 }
@@ -313,7 +354,8 @@ pub struct Violation {
     /// `"rate-hierarchy-runtime"` | `"max-age-runtime"` |
     /// `"max-latency-runtime"` | `"deadline-miss-runtime"` |
     /// `"stack-headroom-runtime"` | `"alive-supervision-runtime"` |
-    /// `"silence-runtime"` (phase-462 W2).
+    /// `"silence-runtime"` (phase-462 W2) | `"route-latency-runtime"`
+    /// (phase10-B3).
     pub rule: &'static str,
     /// Violating endpoint ref (from the spec's `fqn`; the SC name for
     /// deadline misses).
@@ -334,7 +376,7 @@ pub struct Violation {
 /// can carry a string. Append only: a capture or a RAM dump taken before a
 /// reorder would silently decode as the wrong rule, which is the class the
 /// callback-trace marker ids are frozen against (`callback_trace.rs`).
-pub const RULE_IDS: [&str; 9] = [
+pub const RULE_IDS: [&str; 10] = [
     "rate-hierarchy-runtime",
     "max-age-runtime",
     "max-latency-runtime",
@@ -344,6 +386,8 @@ pub const RULE_IDS: [&str; 9] = [
     "silence-runtime",
     "timer-overrun-runtime",
     "release-jitter-runtime",
+    // phase10-B3.
+    "route-latency-runtime",
 ];
 
 /// The wire code of `rule` ([`RULE_IDS`] index + 1), or 0 for a rule the
@@ -1009,6 +1053,112 @@ pub(crate) fn check_latency(spec: &MonitorSpec, state: &mut MonitorState) -> Opt
     }
 }
 
+/// phase10-B3 -- bind a subscription slot as the route trigger of every row
+/// whose [`MonitorSpec::route_trigger`] is `topic`. Called once per
+/// registration; the first subscription on the topic keeps the binding.
+pub(crate) fn route_bind(table: &[MonitorSpec], topic: &str, slot: usize) {
+    if slot >= ROUTE_SLOT_MASK as usize {
+        return;
+    }
+    for spec in table.iter().take(MAX_MONITORS) {
+        if spec.route_max_latency_ms == 0 || spec.route_trigger != topic {
+            continue;
+        }
+        let w = spec.cell.route.load(Ordering::Relaxed);
+        if w & ROUTE_SLOT_MASK == 0 {
+            spec.cell.route.store(
+                (w & !ROUTE_SLOT_MASK) | (slot as u32 + 1),
+                Ordering::Relaxed,
+            );
+        }
+    }
+}
+
+/// phase10-B3 -- forget a released slot's route bindings and any take it left
+/// waiting.
+pub(crate) fn route_unbind(table: &[MonitorSpec], slot: usize) {
+    for spec in table.iter().take(MAX_MONITORS) {
+        let w = spec.cell.route.load(Ordering::Relaxed);
+        if w & ROUTE_SLOT_MASK == slot as u32 + 1 {
+            spec.cell.route.store(0, Ordering::Relaxed);
+        }
+    }
+}
+
+/// phase10-B3 -- the dispatch in `slot` took a sample at `take_us`: every
+/// route whose trigger is that slot starts its clock, unless an earlier take
+/// is still waiting for the output (the route is judged from the EARLIEST
+/// unanswered take: a take that arrives just after a tick waits for the whole
+/// next period, and that is the wait the budget has to hold).
+pub(crate) fn route_take(table: &[MonitorSpec], slot: usize, take_us: u64) {
+    let bound = slot as u32 + 1;
+    for spec in table.iter().take(MAX_MONITORS) {
+        let w = spec.cell.route.load(Ordering::Relaxed);
+        if w & ROUTE_SLOT_MASK != bound || w & ROUTE_PENDING != 0 {
+            continue;
+        }
+        spec.cell
+            .route_take_us
+            .store(take_us as u32, Ordering::Relaxed);
+        spec.cell.route.store(w | ROUTE_PENDING, Ordering::Relaxed);
+    }
+}
+
+/// phase10-B3 -- a dispatch ended at `end_us`. Every route output whose
+/// counter advanced during it (`counts_before`, as the latency rule reads it)
+/// and that has a take waiting is judged: take to dispatch end, an upper bound
+/// on take to that publish, against the path's budget. Over budget is
+/// reported once until a route is within it again.
+pub(crate) fn route_judge(
+    table: &[MonitorSpec],
+    counts_before: &[u32; MAX_MONITORS],
+    end_us: u64,
+    mut report: impl FnMut(Violation),
+) {
+    for (k, spec) in table.iter().take(MAX_MONITORS).enumerate() {
+        if spec.route_max_latency_ms == 0 {
+            continue;
+        }
+        let w = spec.cell.route.load(Ordering::Relaxed);
+        if w & ROUTE_PENDING == 0 || spec.cell.count.load(Ordering::Relaxed) == counts_before[k] {
+            continue;
+        }
+        let took_us = (end_us as u32).wrapping_sub(spec.cell.route_take_us.load(Ordering::Relaxed));
+        let measured_ms = took_us / 1_000;
+        let mut next = w & !ROUTE_PENDING;
+        if measured_ms > spec.route_max_latency_ms {
+            if w & ROUTE_VIOLATED == 0 {
+                report(Violation {
+                    rule: "route-latency-runtime",
+                    fqn: spec.fqn,
+                    measured: measured_ms,
+                    declared: spec.route_max_latency_ms,
+                });
+            }
+            next |= ROUTE_VIOLATED;
+        } else {
+            next &= !ROUTE_VIOLATED;
+        }
+        spec.cell.route.store(next, Ordering::Relaxed);
+    }
+}
+
+/// phase10-B3 -- whether any row carries a route contract.
+pub(crate) fn route_active(table: &[MonitorSpec]) -> bool {
+    table.iter().any(|m| m.route_max_latency_ms > 0)
+}
+
+/// phase10-B3 -- drop every waiting take and the report-once state (arming:
+/// a take from start-up is not a route of RUN's).
+pub(crate) fn route_reset(table: &[MonitorSpec]) {
+    for spec in table.iter() {
+        let w = spec.cell.route.load(Ordering::Relaxed);
+        spec.cell
+            .route
+            .store(w & ROUTE_SLOT_MASK, Ordering::Relaxed);
+    }
+}
+
 /// Per-age-spec dedup state.
 #[derive(Debug, Clone, Copy, Default)]
 pub(crate) struct AgeState {
@@ -1163,6 +1313,8 @@ mod tests {
             fqn: "/demo/talker/chatter",
             min_rate_hz_milli: min_milli,
             max_latency_ms: 0,
+            route_trigger: "",
+            route_max_latency_ms: 0,
             cell: &CELL,
         }
     }
@@ -1209,6 +1361,8 @@ mod tests {
             fqn: "/n/i8",
             min_rate_hz_milli: 10_000, // 10 Hz declared
             max_latency_ms: 0,
+            route_trigger: "",
+            route_max_latency_ms: 0,
             cell: &C8,
         };
         // Published at 0, 100 ms, ..., 50 s: 501 samples before arming.
@@ -1271,6 +1425,8 @@ mod tests {
             fqn: "/n/i9",
             min_rate_hz_milli: 10_000,
             max_latency_ms: 0,
+            route_trigger: "",
+            route_max_latency_ms: 0,
             cell: &C11,
         };
         let mut st = MonitorState::default();
@@ -1310,6 +1466,8 @@ mod tests {
             fqn: "/n/t",
             min_rate_hz_milli: 500, // 0.5 Hz
             max_latency_ms: 0,
+            route_trigger: "",
+            route_max_latency_ms: 0,
             cell: &C2,
         };
         let mut st = MonitorState::default();
@@ -1323,6 +1481,8 @@ mod tests {
             fqn: "/n/t",
             min_rate_hz_milli: 0,
             max_latency_ms: 0,
+            route_trigger: "",
+            route_max_latency_ms: 0,
             cell: &C2,
         };
         let mut st0 = MonitorState::default();
@@ -1452,6 +1612,8 @@ mod tests {
             fqn: "/ctrl/control/cmd",
             min_rate_hz_milli: 0,
             max_latency_ms: 10,
+            route_trigger: "",
+            route_max_latency_ms: 0,
             cell: &C3,
         };
         let mut st = MonitorState::default();
@@ -2108,5 +2270,141 @@ mod ring_record_tests {
         assert_eq!(offset_of!(ViolationRecord<4>, suppressed_before_arm), 28);
         assert_eq!(offset_of!(ViolationRecord<4>, armed), 32);
         assert_eq!(offset_of!(ViolationSlot, fqn_addr), 20);
+    }
+}
+
+/// phase10-B3 -- the route rule's pure half: binding, the earliest unanswered
+/// take, judging only on a publish of the output, report once until clean.
+#[cfg(test)]
+mod route_tests {
+    use super::*;
+
+    static CELL: PubMonitorCell = PubMonitorCell::new();
+    static OTHER: PubMonitorCell = PubMonitorCell::new();
+    static TABLE: [MonitorSpec; 2] = [
+        MonitorSpec {
+            topic: "/out",
+            fqn: "/n/out",
+            min_rate_hz_milli: 0,
+            max_latency_ms: 0,
+            route_trigger: "/in",
+            route_max_latency_ms: 149,
+            cell: &CELL,
+        },
+        MonitorSpec {
+            topic: "/other",
+            fqn: "/n/other",
+            min_rate_hz_milli: 0,
+            max_latency_ms: 0,
+            route_trigger: "",
+            route_max_latency_ms: 0,
+            cell: &OTHER,
+        },
+    ];
+
+    fn snapshot() -> [u32; MAX_MONITORS] {
+        let mut c = [0u32; MAX_MONITORS];
+        for (k, s) in TABLE.iter().enumerate() {
+            c[k] = s.cell.count.load(Ordering::Relaxed);
+        }
+        c
+    }
+
+    fn judge(end_us: u64, before: &[u32; MAX_MONITORS]) -> Vec<(u32, u32)> {
+        let mut out = Vec::new();
+        route_judge(&TABLE, before, end_us, |v| {
+            assert_eq!(v.rule, "route-latency-runtime");
+            assert_eq!(v.fqn, "/n/out");
+            out.push((v.measured, v.declared));
+        });
+        out
+    }
+
+    extern crate alloc;
+    use alloc::vec::Vec;
+
+    #[test]
+    fn route_rule() {
+        assert!(route_active(&TABLE));
+        route_bind(&TABLE, "/elsewhere", 1);
+        assert_eq!(
+            CELL.route.load(Ordering::Relaxed),
+            0,
+            "wrong topic binds nothing"
+        );
+        route_bind(&TABLE, "/in", 3);
+        route_bind(&TABLE, "/in", 5);
+        assert_eq!(
+            CELL.route.load(Ordering::Relaxed),
+            4,
+            "first subscription keeps it"
+        );
+        assert_eq!(OTHER.route.load(Ordering::Relaxed), 0);
+
+        // A take on another slot starts nothing; two takes keep the earliest.
+        route_take(&TABLE, 5, 1_000);
+        assert_eq!(CELL.route.load(Ordering::Relaxed) & ROUTE_PENDING, 0);
+        route_take(&TABLE, 3, 10_000);
+        route_take(&TABLE, 3, 90_000);
+        // A dispatch that publishes nothing judges nothing.
+        let b = snapshot();
+        assert!(judge(400_000, &b).is_empty());
+        assert_ne!(CELL.route.load(Ordering::Relaxed) & ROUTE_PENDING, 0);
+        // The output published: 10 ms -> 160 ms is 150 ms, over 149.
+        let b = snapshot();
+        CELL.count.fetch_add(1, Ordering::Relaxed);
+        assert_eq!(judge(160_000, &b), [(150, 149)]);
+        assert_eq!(
+            CELL.route.load(Ordering::Relaxed) & ROUTE_PENDING,
+            0,
+            "answered"
+        );
+        // Over again: reported once until a route is within the budget.
+        route_take(&TABLE, 3, 200_000);
+        let b = snapshot();
+        CELL.count.fetch_add(1, Ordering::Relaxed);
+        assert!(
+            judge(400_000, &b).is_empty(),
+            "still over: not reported twice"
+        );
+        route_take(&TABLE, 3, 500_000);
+        let b = snapshot();
+        CELL.count.fetch_add(1, Ordering::Relaxed);
+        assert!(judge(600_000, &b).is_empty(), "100 ms: within");
+        assert_eq!(CELL.route.load(Ordering::Relaxed) & ROUTE_VIOLATED, 0);
+        route_take(&TABLE, 3, 700_000);
+        let b = snapshot();
+        CELL.count.fetch_add(1, Ordering::Relaxed);
+        assert_eq!(
+            judge(1_000_000, &b),
+            [(300, 149)],
+            "over after clean: reported"
+        );
+        // A publish with no waiting take is not a route.
+        let b = snapshot();
+        CELL.count.fetch_add(1, Ordering::Relaxed);
+        assert!(judge(9_000_000, &b).is_empty());
+        // Arming drops a waiting take and the report-once state, keeps the
+        // binding; a release unbinds.
+        route_take(&TABLE, 3, 9_100_000);
+        route_reset(&TABLE);
+        assert_eq!(CELL.route.load(Ordering::Relaxed), 4);
+        route_unbind(&TABLE, 3);
+        assert_eq!(CELL.route.load(Ordering::Relaxed), 0);
+        // Wrapping: the stamp is the clock's low 32 bits.
+        route_bind(&TABLE, "/in", 3);
+        route_take(&TABLE, 3, u32::MAX as u64 - 9_999);
+        let b = snapshot();
+        CELL.count.fetch_add(1, Ordering::Relaxed);
+        assert!(
+            judge(u32::MAX as u64 + 90_001, &b).is_empty(),
+            "100 ms across the wrap"
+        );
+    }
+
+    #[test]
+    fn route_rule_code_is_appended() {
+        assert_eq!(rule_code("route-latency-runtime"), 10);
+        assert_eq!(rule_code("release-jitter-runtime"), 9);
     }
 }

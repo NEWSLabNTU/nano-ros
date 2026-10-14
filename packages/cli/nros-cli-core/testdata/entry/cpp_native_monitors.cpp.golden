@@ -28,7 +28,7 @@ static ::listener_pkg::LISTENER __nros_comp_1;
  * below at install (`nros_cpp_install_monitors`), so an image with no contract
  * carries none of this. */
 static const ::nros_cpp_monitor_row_t __nros_mon_rows[1] = {
-    { "/chatter", "/talker/chatter", 10000u, 30u },
+    { "/chatter", "/talker/chatter", 10000u, 30u, nullptr, 0u },
 };
 alignas(8) static unsigned char __nros_mon_storage[1 * NROS_CPP_MONITOR_ROW_STORAGE];
 static const ::nros_cpp_age_row_t __nros_age_rows[1] = {

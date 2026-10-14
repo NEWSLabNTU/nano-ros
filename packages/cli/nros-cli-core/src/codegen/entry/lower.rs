@@ -582,6 +582,8 @@ fn monitor_table(
                 fqn: r.fqn.clone(),
                 min_rate_hz_milli: r.min_rate_hz_milli,
                 max_latency_ms: r.max_latency_ms,
+                route_trigger: r.route_trigger.clone(),
+                route_max_latency_ms: r.route_max_latency_ms,
             })
             .collect(),
         ages: opts

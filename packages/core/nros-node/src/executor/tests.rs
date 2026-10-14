@@ -12887,6 +12887,8 @@ fn a_raw_publisher_on_a_contracted_topic_bumps_its_cell() {
         fqn: "/talker/chatter",
         min_rate_hz_milli: 1_000,
         max_latency_ms: 0,
+        route_trigger: "",
+        route_max_latency_ms: 0,
         cell: &CELL,
     }];
 
@@ -13562,6 +13564,8 @@ fn t4_an_overrun_after_arming_is_the_one_stored_violation() {
         fqn: "/t4/handler/status",
         min_rate_hz_milli: 0,
         max_latency_ms: 5,
+        route_trigger: "",
+        route_max_latency_ms: 0,
         cell: &CELL,
     }];
     // The lifecycle's knobs, set by the test, read by the callback.
@@ -13783,6 +13787,8 @@ fn t4_a_timer_overrun_beside_an_idle_subscription_is_judged() {
         fqn: "/t4i6/handler/mrm_state",
         min_rate_hz_milli: 0,
         max_latency_ms: 5,
+        route_trigger: "",
+        route_max_latency_ms: 0,
         cell: &CELL,
     }];
     static BUSY_MS: AtomicU32 = AtomicU32::new(0);
@@ -14111,6 +14117,8 @@ fn i7_a_slow_report_breeds_no_overrun_or_jitter_verdict() {
             fqn: "/i7/handler/mrm_state",
             min_rate_hz_milli: 0,
             max_latency_ms: 5,
+            route_trigger: "",
+            route_max_latency_ms: 0,
             cell: &CELL_A,
         },
         MonitorSpec {
@@ -14118,6 +14126,8 @@ fn i7_a_slow_report_breeds_no_overrun_or_jitter_verdict() {
             fqn: "/i7/handler/takeover_request_state",
             min_rate_hz_milli: 0,
             max_latency_ms: 5,
+            route_trigger: "",
+            route_max_latency_ms: 0,
             cell: &CELL_B,
         },
     ];
@@ -14619,5 +14629,163 @@ fn rounding_to_the_park_tick_is_late_but_not_beyond_the_granule() {
         ex.late_wakes_beyond_granularity(),
         0,
         "cleared with the rest"
+    );
+}
+
+/// phase10-B3 -- `route-latency-runtime`, the route rule, on the host
+/// executor with real time.
+///
+/// The shape of the safety island's `mrm_handler`: a subscription takes the
+/// path's trigger input and a 100 ms timer reads it and publishes the output,
+/// so the route from the take to the output is the wait for the next tick plus
+/// the tick's work. The path's budget is 149 ms; the output's callback-level
+/// budget (`max-latency-runtime`) is 150 ms, and every dispatch here is far
+/// inside it.
+///
+/// On time: a take right after a tick is answered by the next tick, ~100 ms
+/// later, and nothing is recorded. Delayed: the executor does not spin for
+/// 260 ms after a take (the tick is late), the tick then publishes in a short
+/// dispatch, and the route rule records ONE verdict naming the output with
+/// `measured >= 260` and `declared = 149`, while the callback-level measure
+/// of the same dispatch stays far below its 150 ms. The verdict is recorded
+/// only: the next on-time route is judged and clean, and nothing else changes.
+#[cfg(all(feature = "std", feature = "alloc"))]
+#[test]
+fn b3_a_late_tick_exceeds_the_route_while_every_callback_passes() {
+    use super::monitor::{MonitorSpec, PubMonitorCell};
+    use crate::executor::arena::EntryKind;
+    use core::sync::atomic::{AtomicU32, Ordering};
+    let _g = arming_lock();
+
+    static CELL: PubMonitorCell = PubMonitorCell::new();
+    static TABLE: [MonitorSpec; 1] = [MonitorSpec {
+        topic: "/b3/state",
+        fqn: "/b3/handler/state",
+        min_rate_hz_milli: 0,
+        max_latency_ms: 150,
+        route_trigger: "/b3/availability",
+        route_max_latency_ms: 149,
+        cell: &CELL,
+    }];
+    static TICKS: AtomicU32 = AtomicU32::new(0);
+    static TAKES: AtomicU32 = AtomicU32::new(0);
+
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    executor.set_monitor_table(&TABLE);
+    let nid = executor.node_builder("handler").build().expect("node");
+    let state = executor
+        .node_mut(nid)
+        .create_generic_publisher("/b3/state", "std_msgs::msg::dds_::Int32_", "")
+        .expect("contracted publisher");
+    executor
+        .node_mut(nid)
+        .create_subscription::<TestMsg, _>("/b3/availability", |_m: &TestMsg| {
+            TAKES.fetch_add(1, Ordering::SeqCst);
+        })
+        .expect("trigger subscription");
+    executor
+        .register_timer(TimerDuration::from_millis(100), move || {
+            let tick = TICKS.fetch_add(1, Ordering::SeqCst) + 1;
+            let _ = state.publish_raw(&[0, 1, 0, 0, tick as u8, 0, 0, 0]);
+        })
+        .expect("timer");
+
+    let sub_slot = executor
+        .entries
+        .iter()
+        .position(|e| {
+            e.as_ref()
+                .is_some_and(|m| m.kind == EntryKind::Subscription)
+        })
+        .expect("the subscription's slot");
+    let off = executor.entries[sub_slot].as_ref().unwrap().offset;
+    let arena_ptr = executor.arena.as_ptr() as *const u8;
+    let load = |v: i32| {
+        let (d, n) = encode_test_msg(v);
+        unsafe { &*(arena_ptr.add(off) as *const MockSubscriber) }.load(d, n);
+    };
+    assert_eq!(
+        CELL.route.load(Ordering::Relaxed) & super::monitor::ROUTE_SLOT_MASK,
+        sub_slot as u32 + 1,
+        "the trigger subscription bound itself to the route at registration"
+    );
+
+    let mut route_verdicts = alloc::vec::Vec::new();
+    let drain = |ex: &mut Executor, out: &mut alloc::vec::Vec<(u32, u32)>| {
+        ex.drain_violations(|v| {
+            if v.rule == "route-latency-runtime" {
+                assert_eq!(v.fqn, "/b3/handler/state");
+                out.push((v.measured, v.declared));
+            }
+        });
+    };
+    // Spin in 10 ms steps until the next tick has run.
+    let next_tick = |ex: &mut Executor| {
+        let t = TICKS.load(Ordering::SeqCst);
+        let mut spins = 0;
+        while TICKS.load(Ordering::SeqCst) == t && spins < 100 {
+            let _ = elapse_then_spin_once(ex, 10);
+            spins += 1;
+        }
+        assert!(TICKS.load(Ordering::SeqCst) > t, "the timer ticked");
+    };
+
+    // On time, three times: a take right after a tick, answered by the next.
+    next_tick(&mut executor);
+    for k in 0..3 {
+        load(k);
+        let _ = executor.spin_once(core::time::Duration::from_millis(0));
+        assert_eq!(TAKES.load(Ordering::SeqCst), k as u32 + 1, "taken");
+        next_tick(&mut executor);
+        drain(&mut executor, &mut route_verdicts);
+    }
+    assert!(
+        route_verdicts.is_empty(),
+        "an on-time tick records nothing: {route_verdicts:?}"
+    );
+    assert_eq!(
+        CELL.route.load(Ordering::Relaxed) & super::monitor::ROUTE_PENDING,
+        0,
+        "every take was answered"
+    );
+
+    // Delayed: a take, then 260 ms without a spin, then the late tick.
+    let _ = CELL.max_latency_us.swap(0, Ordering::Relaxed);
+    load(10);
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    let ticks = TICKS.load(Ordering::SeqCst);
+    let _ = elapse_then_spin_once(&mut executor, 260);
+    assert!(TICKS.load(Ordering::SeqCst) > ticks, "the late tick ran");
+    drain(&mut executor, &mut route_verdicts);
+    assert_eq!(
+        route_verdicts.len(),
+        1,
+        "one route verdict: {route_verdicts:?}"
+    );
+    let (measured, declared) = route_verdicts[0];
+    assert_eq!(declared, 149);
+    assert!(
+        measured >= 260,
+        "take to output, the late tick inside: {measured}"
+    );
+    let callback_us = CELL.max_latency_us.load(Ordering::Relaxed);
+    assert!(
+        callback_us < 150_000,
+        "the tick's own dispatch is inside its callback budget: {callback_us} us"
+    );
+
+    // Record only: the next on-time route is judged again and is clean.
+    route_verdicts.clear();
+    next_tick(&mut executor);
+    load(11);
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    next_tick(&mut executor);
+    drain(&mut executor, &mut route_verdicts);
+    assert!(route_verdicts.is_empty(), "{route_verdicts:?}");
+    assert_eq!(
+        CELL.route.load(Ordering::Relaxed)
+            & (super::monitor::ROUTE_PENDING | super::monitor::ROUTE_VIOLATED),
+        0,
+        "answered, and the report-once state cleared by a clean route"
     );
 }

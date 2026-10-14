@@ -4674,6 +4674,14 @@ pub struct nros_cpp_monitor_row_t {
     /// Node-path budget (ms) for paths whose output is this endpoint.
     /// 0 = no latency contract.
     pub max_latency_ms: u32,
+    /// phase10-B3 -- the topic of the input that triggers the route to this
+    /// output, as the node passes it to `create_subscription`; NULL = no
+    /// route. Same lifetime rule as `topic`. A row baked before this field
+    /// existed initialises it to NULL.
+    pub route_trigger: *const c_char,
+    /// phase10-B3 -- the route's budget (ms), take of the trigger to this
+    /// output (`route-latency-runtime`). 0 = no route contract.
+    pub route_max_latency_ms: u32,
 }
 
 /// One contracted subscriber age row (`sub_endpoints.max_age_ms`), the C
@@ -4696,8 +4704,17 @@ pub struct nros_cpp_age_row_t {
 /// (two fat pointers and a reference), and the entry is a C++ TU that cannot
 /// ask. `nros_cpp_install_monitors` checks the real requirement against the
 /// buffer it is handed and refuses a short one.
+///
+/// phase10-B3 -- 64 on a 32-bit target (the row needs 60 there), 128 on a
+/// 64-bit host, where the route's trigger topic made the spec three fat
+/// pointers. Not exported by cbindgen (it cannot spell the `if`): the header
+/// states the same expression with `sizeof(void *)`, see `cbindgen.toml`.
 #[cfg(feature = "rmw-cffi")]
-pub const NROS_CPP_MONITOR_ROW_STORAGE: usize = 64;
+pub const NROS_CPP_MONITOR_ROW_STORAGE: usize = if core::mem::size_of::<usize>() == 8 {
+    128
+} else {
+    64
+};
 
 /// Bytes of caller storage ONE age row needs (`SubMonitorCell` +
 /// `AgeMonitorSpec`); same rule as [`NROS_CPP_MONITOR_ROW_STORAGE`].
@@ -4864,6 +4881,15 @@ unsafe fn install_monitor_tables(
             let (Some(topic), Some(fqn)) = (static_str(row.topic), static_str(row.fqn)) else {
                 return NROS_CPP_RET_INVALID_ARGUMENT;
             };
+            // phase10-B3 -- NULL is "no route".
+            let route_trigger = if row.route_trigger.is_null() {
+                ""
+            } else {
+                match static_str(row.route_trigger) {
+                    Some(t) => t,
+                    None => return NROS_CPP_RET_INVALID_ARGUMENT,
+                }
+            };
             unsafe {
                 let cell = cells.add(i);
                 core::ptr::write(cell, PubMonitorCell::new());
@@ -4874,6 +4900,8 @@ unsafe fn install_monitor_tables(
                         fqn,
                         min_rate_hz_milli: row.min_rate_hz_milli,
                         max_latency_ms: row.max_latency_ms,
+                        route_trigger,
+                        route_max_latency_ms: row.route_max_latency_ms,
                         cell: &*cell,
                     },
                 );
@@ -7021,6 +7049,8 @@ mod census_funnel_tests {
             fqn: c"/census_contracted/control_cmd".as_ptr(),
             min_rate_hz_milli: 10_000,
             max_latency_ms: 0,
+            route_trigger: core::ptr::null(),
+            route_max_latency_ms: 0,
         }];
         let tables = crate::nros_cpp_monitor_tables_t {
             rows: rows.as_ptr(),

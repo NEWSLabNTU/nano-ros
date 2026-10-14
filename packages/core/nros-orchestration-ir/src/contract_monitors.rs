@@ -33,6 +33,15 @@ pub struct MonitorRow {
     /// endpoint (`contracts.node_paths`). 0 = no latency contract.
     #[serde(skip_serializing_if = "is_zero", default)]
     pub max_latency_ms: u32,
+    /// phase10-B3 -- the wiring topic of the INPUT that triggers the
+    /// tightest input-triggered node path whose output is this endpoint
+    /// (its first input), or empty for none.
+    #[serde(skip_serializing_if = "String::is_empty", default)]
+    pub route_trigger: String,
+    /// phase10-B3 -- that path's `max_latency_ms`, judged from the take of
+    /// the trigger to this output (`route-latency-runtime`). 0 = none.
+    #[serde(skip_serializing_if = "is_zero", default)]
+    pub route_max_latency_ms: u32,
 }
 
 fn is_zero(v: &u32) -> bool {
@@ -79,6 +88,9 @@ pub fn monitor_rows(model: &SystemModel) -> Result<Vec<MonitorRow>, ContractRowE
         .values()
         .flat_map(|s| s.client.iter())
         .collect();
+    // phase10-B3 -- output fqn -> (route budget, trigger topic): the
+    // tightest input-triggered path that names the output.
+    let mut routes: BTreeMap<String, (u32, String)> = BTreeMap::new();
     // W3b.5 — node-path budgets attach to the path's OUTPUT endpoints.
     for (path_ref, p) in &model.contracts.node_paths {
         let Some(lat) = p.max_latency_ms else {
@@ -94,12 +106,29 @@ pub fn monitor_rows(model: &SystemModel) -> Result<Vec<MonitorRow>, ContractRowE
                  lists no output endpoint — inconsistent model"
             )));
         }
+        // phase10-B3 -- an input-triggered path is a route from the take of
+        // its input to its output. A path with several inputs is judged from
+        // its first, the one the contract names first.
+        let trigger_topic = p.input.first().and_then(|input| {
+            model
+                .structure
+                .topics
+                .iter()
+                .find(|(_, w)| w.subscribers.iter().any(|s| s == input))
+                .map(|(t, _)| t.clone())
+        });
         for out in &p.output {
             if service_clients.contains(out) {
                 continue;
             }
             let e = by_fqn.entry(out.clone()).or_insert((0, 0));
             e.1 = e.1.max(lat);
+            if let Some(topic) = &trigger_topic {
+                let r = routes.entry(out.clone()).or_insert((lat, topic.clone()));
+                if lat < r.0 {
+                    *r = (lat, topic.clone());
+                }
+            }
         }
     }
     let mut rows = Vec::new();
@@ -116,11 +145,14 @@ pub fn monitor_rows(model: &SystemModel) -> Result<Vec<MonitorRow>, ContractRowE
                  owning topic in structure.topics — inconsistent model"
             )));
         };
+        let (route_max_latency_ms, route_trigger) = routes.remove(&ep_ref).unwrap_or_default();
         rows.push(MonitorRow {
             topic,
             fqn: ep_ref,
             min_rate_hz_milli: min_milli,
             max_latency_ms: lat_ms,
+            route_trigger,
+            route_max_latency_ms,
         });
     }
     Ok(rows)
@@ -192,11 +224,14 @@ pub fn render_monitor_rs_at(rows: &[MonitorRow], ages: &[AgeRow], paths: RenderP
     for (i, r) in rows.iter().enumerate() {
         out.push_str(&format!(
             "    MonitorSpec {{ topic: {t:?}, fqn: {f:?}, min_rate_hz_milli: {m}u32, \
-             max_latency_ms: {l}u32, cell: &NROS_MONITOR_CELL_{i} }},\n",
+             max_latency_ms: {l}u32, route_trigger: {rt:?}, route_max_latency_ms: {rl}u32, \
+             cell: &NROS_MONITOR_CELL_{i} }},\n",
             t = r.topic,
             f = r.fqn,
             m = r.min_rate_hz_milli,
             l = r.max_latency_ms,
+            rt = r.route_trigger,
+            rl = r.route_max_latency_ms,
         ));
     }
     out.push_str("];\n\n");

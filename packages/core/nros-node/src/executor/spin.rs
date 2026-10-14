@@ -3784,6 +3784,8 @@ impl<'s> Executor<'s> {
                 .max_latency_us
                 .store(0, core::sync::atomic::Ordering::Relaxed);
         }
+        // phase10-B3 -- a take waiting since start-up is not a route of RUN's.
+        super::monitor::route_reset(self.monitor_table);
         for spec in self.age_table.iter() {
             spec.cell
                 .max_age_ms
@@ -6471,6 +6473,10 @@ impl<'s> Executor<'s> {
         if let Some(st) = self.sporadic_states.get_mut(index) {
             *st = None;
         }
+        // phase10-B3 -- a released trigger subscription stops starting routes.
+        if matches!(kind, EntryKind::Subscription) {
+            super::monitor::route_unbind(self.monitor_table, index);
+        }
         if let Some(len) = meta.arena_len.get() {
             self.arena_release(meta.offset, len);
         }
@@ -6675,6 +6681,11 @@ impl<'s> Executor<'s> {
             _ => super::arena::ArenaLen::UNRECORDED,
         };
         trace_register(slot, meta.kind, name);
+        // phase10-B3 -- a subscription on a route's trigger topic is the
+        // route's trigger. The table is installed before any node exists.
+        if let (EntryKind::Subscription, TraceName::Text(topic)) = (meta.kind, &name) {
+            super::monitor::route_bind(self.monitor_table, topic, slot);
+        }
         // phase-463 W7 — the slot's identity for the host profile, keyed on the
         // arena base the dispatch sees (stable for the executor's life).
         #[cfg(feature = "profile-mode")]
@@ -10003,9 +10014,12 @@ impl<'s> Executor<'s> {
             // is callback entry to exit, as in the drains; release jitter is
             // `release-jitter-runtime`'s.
             let mon_table = self.monitor_table;
-            let lat_clock = self
-                .clock_us_fn
-                .filter(|_| mon_table.iter().any(|m| m.max_latency_ms > 0));
+            // phase10-B3 -- the route rule reads the same clock and snapshot:
+            // a timer tick is where a sampled route's output is published.
+            let lat_clock = self.clock_us_fn.filter(|_| {
+                mon_table.iter().any(|m| m.max_latency_ms > 0)
+                    || super::monitor::route_active(mon_table)
+            });
             for i in 0..self.entries.len() {
                 let Some(meta) = self.entries[i].as_ref() else {
                     continue;
@@ -10036,8 +10050,13 @@ impl<'s> Executor<'s> {
                         super::profile::dispatch_end(matches!(processed, Ok(true)));
                     }
                     if let (Some(clock), Some(t0)) = (lat_clock, start_us) {
-                        let elapsed_us = clock().saturating_sub(t0).min(u32::MAX as u64) as u32;
+                        let end_us = clock();
+                        let elapsed_us = end_us.saturating_sub(t0).min(u32::MAX as u64) as u32;
                         attribute_latency(mon_table, true, &counts_before, elapsed_us);
+                        let violations = &mut self.violations;
+                        super::monitor::route_judge(mon_table, &counts_before, end_us, |v| {
+                            violations.record(v)
+                        });
                     }
                     self.finish_dispatch(i);
                 }
@@ -10591,12 +10610,16 @@ impl<'s> Executor<'s> {
                 )
         });
         let mon_clock = self.clock_us_fn;
+        // phase10-B3 -- the route rule needs the clock and the publish-count
+        // snapshot, and nothing else; without a clock it judges nothing.
+        let route_on = mon_clock.is_some() && super::monitor::route_active(mon_table);
+        let counts_on = lat_active || route_on;
         // phase-359 W4 — one predicate, no cfg block. `cfg!` is an expression,
         // so the flavour difference stays a value instead of a branch: std
         // measures unconditionally because the sporadic runtime accounting
         // below (itself std-only) consumes the result, which is exactly what
         // the comment above described and what the four-arm sites encoded.
-        let measure_us = lat_active || dl_active || mon_clock.is_some();
+        let measure_us = counts_on || dl_active || mon_clock.is_some();
         // phase-359 W4 — ONE hoisted µs reader for the per-dispatch latency
         // measurement below. Hoisted because `now_us()` takes `&mut self` and
         // the dispatch loop already holds borrows; the std arm copies the epoch
@@ -10630,16 +10653,29 @@ impl<'s> Executor<'s> {
                 if let Some(meta) = self.entries[i].as_ref()
                     && !Self::slot_held(self.slot_tags, i)
                 {
-                    let counts_before = snapshot_pub_counts(mon_table, lat_active);
+                    let counts_before = snapshot_pub_counts(mon_table, counts_on);
                     // Measured only when a consumer wants it, matching the
                     // no_std arm this replaces — the std arm used to measure
                     // unconditionally.
                     let start_us = measure_us.then(read_us);
+                    let took_before = result.subscriptions_processed;
                     Self::begin_dispatch(self.slot_tags, i);
                     dispatch_one(meta, i, arena_ptr, delta_us, &mut result);
+                    let end_us = start_us.map(|_| read_us());
                     let elapsed_us: Option<u32> = start_us
-                        .map(|t0| read_us().saturating_sub(t0))
+                        .zip(end_us)
+                        .map(|(t0, t1)| t1.saturating_sub(t0))
                         .map(|d| d.min(u32::MAX as u64) as u32);
+                    // phase10-B3 -- a subscription dispatch takes its sample
+                    // first, so the dispatch start is the take.
+                    if route_on && let (Some(t0), Some(t1)) = (start_us, end_us) {
+                        if result.subscriptions_processed != took_before {
+                            super::monitor::route_take(mon_table, i, t0);
+                        }
+                        super::monitor::route_judge(mon_table, &counts_before, t1, |v| {
+                            let _ = deadline_misses.push(v);
+                        });
+                    }
                     if let Some(elapsed_us) = elapsed_us {
                         consume_dispatch_runtime_us(
                             i,
@@ -10675,16 +10711,29 @@ impl<'s> Executor<'s> {
                 if let Some(meta) = self.entries[i].as_ref()
                     && !Self::slot_held(self.slot_tags, i)
                 {
-                    let counts_before = snapshot_pub_counts(mon_table, lat_active);
+                    let counts_before = snapshot_pub_counts(mon_table, counts_on);
                     // Measured only when a consumer wants it, matching the
                     // no_std arm this replaces — the std arm used to measure
                     // unconditionally.
                     let start_us = measure_us.then(read_us);
+                    let took_before = result.subscriptions_processed;
                     Self::begin_dispatch(self.slot_tags, i);
                     dispatch_one(meta, i, arena_ptr, delta_us, &mut result);
+                    let end_us = start_us.map(|_| read_us());
                     let elapsed_us: Option<u32> = start_us
-                        .map(|t0| read_us().saturating_sub(t0))
+                        .zip(end_us)
+                        .map(|(t0, t1)| t1.saturating_sub(t0))
                         .map(|d| d.min(u32::MAX as u64) as u32);
+                    // phase10-B3 -- a subscription dispatch takes its sample
+                    // first, so the dispatch start is the take.
+                    if route_on && let (Some(t0), Some(t1)) = (start_us, end_us) {
+                        if result.subscriptions_processed != took_before {
+                            super::monitor::route_take(mon_table, i, t0);
+                        }
+                        super::monitor::route_judge(mon_table, &counts_before, t1, |v| {
+                            let _ = deadline_misses.push(v);
+                        });
+                    }
                     if let Some(elapsed_us) = elapsed_us {
                         consume_dispatch_runtime_us(
                             i,

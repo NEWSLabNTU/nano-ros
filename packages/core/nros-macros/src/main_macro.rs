@@ -5564,6 +5564,8 @@ mod contract_monitor_tests {
             fqn: fqn.into(),
             min_rate_hz_milli: 5_000,
             max_latency_ms: 0,
+            route_trigger: String::new(),
+            route_max_latency_ms: 0,
         }
     }
 

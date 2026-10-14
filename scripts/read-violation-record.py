@@ -69,6 +69,7 @@ RULES = (
     "silence-runtime",
     "timer-overrun-runtime",
     "release-jitter-runtime",
+    "route-latency-runtime",
 )
 
 

@@ -28,6 +28,22 @@ cpp_compat = true
 # Map usize to size_t (not uintptr_t)
 usize_is_size_t = true
 
+# phase10-B3 -- the per-row monitor storage bound depends on the pointer
+# width (the Rust const is an `if` cbindgen cannot spell, so it is excluded
+# below and stated here with the same arithmetic).
+after_includes = """
+/**
+ * Bytes of caller storage ONE publisher row needs: its `PubMonitorCell` plus
+ * its `MonitorSpec`, with the alignment step between the two regions. A
+ * bound rather than the exact sum because the exact sum is target-dependent,
+ * and the entry is a C++ TU that cannot ask. `nros_cpp_install_monitors`
+ * checks the real requirement against the buffer it is handed and refuses a
+ * short one. 64 on a 32-bit target, 128 on a 64-bit host (phase10-B3: the
+ * route's trigger topic is a third string in the spec).
+ */
+#define NROS_CPP_MONITOR_ROW_STORAGE (sizeof(void *) == 8 ? 128 : 64)
+"""
+
 [export]
 # Phase 118.D — exclude FFI symbols whose Rust signature uses
 # `Option<extern "C" fn(...)>`. cbindgen renders those as opaque
@@ -37,6 +53,8 @@ usize_is_size_t = true
 # match the actual ABI. Excluded here to avoid signature conflict
 # at the consolidation boundary.
 exclude = [
+    # phase10-B3 -- stated in `after_includes` (pointer-width dependent).
+    "NROS_CPP_MONITOR_ROW_STORAGE",
     "nros_cpp_action_server_set_callbacks",
     # issue 0796 — same reason (`Option<CppAcceptedCallback>`); declared in
     # action_server.hpp and mirrored in nros-c's component.h.

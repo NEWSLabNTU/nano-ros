@@ -15,6 +15,15 @@
 //! Release-jitter verdicts are not asserted: the overrun delays the spin as
 //! well, and on native_sim's 1 ms cadence a wake reads exactly one period late
 //! now and then (`measured=1000 declared=1000`). The safety island's S32K344 run is the acceptance; this is the CI guard.
+//!
+//! phase10-B3 adds the route rule on the same image: each tick publishes
+//! `/t4/avail`, which the handler takes itself, and `/t4/answer`, the output of
+//! the input-triggered `react` path (180 ms from that take). Asserted: exactly
+//! two `route-latency-runtime /handler/answer ... declared=180` verdicts after
+//! RUN, tick 6's (the take waits for tick 6, which busy-waits 150 ms) and tick
+//! 10's (the take of tick 9's sample busy-waits 250 ms, so tick 10 is late and
+//! short); the on-time ticks record none, and `/t4/answer`'s callback-level
+//! 180 ms (`max-latency-runtime`) records nothing.
 
 use std::time::Duration;
 
@@ -91,6 +100,52 @@ fn zephyr_cpp_violation_channel_reports_one_overrun_after_arming() -> TestResult
     assert!(
         console.contains("before arming suppressed"),
         "the arming line counts INIT's suppressed verdicts:\n{}",
+        excerpt()
+    );
+
+    // phase10-B3 -- the route rule: two late routes, nothing for the on-time
+    // ones, both after RUN.
+    let routes: Vec<(usize, &str)> = console
+        .match_indices("contract violation #")
+        .map(|(at, _)| (at, console[at..].lines().next().unwrap_or("")))
+        .filter(|(_, line)| line.contains("route-latency-runtime"))
+        .collect();
+    assert_eq!(
+        routes.len(),
+        2,
+        "two late routes (tick 6's overrun, tick 10's late tick), none on time:\n{}",
+        excerpt()
+    );
+    for (_, line) in &routes {
+        eprintln!("route verdict: {line}");
+    }
+    let late_tick = console
+        .find("[handler] took avail 9")
+        .unwrap_or_else(|| panic!("the handler never delayed tick 10:\n{}", excerpt()));
+    for (k, (at, line)) in routes.iter().enumerate() {
+        assert!(
+            line.contains("route-latency-runtime /handler/answer measured=")
+                && line.contains("declared=180 "),
+            "the verdict names the route's output and its 180 ms: `{line}`"
+        );
+        let measured: u32 = line
+            .split("measured=")
+            .nth(1)
+            .and_then(|r| r.split_whitespace().next())
+            .and_then(|n| n.parse().ok())
+            .unwrap_or(0);
+        let floor = if k == 0 { 181 } else { 250 };
+        assert!(measured >= floor, "route {k} measured {measured} ms: `{line}`");
+        assert!(*at > run_at, "a route verdict before arming:\n{}", excerpt());
+    }
+    assert!(
+        routes[1].0 > late_tick,
+        "the second verdict is the late tick's:\n{}",
+        excerpt()
+    );
+    assert!(
+        !latency.iter().any(|(_, l)| l.contains("/handler/answer")),
+        "every dispatch that published /t4/answer was inside its 180 ms:\n{}",
         excerpt()
     );
     Ok(())

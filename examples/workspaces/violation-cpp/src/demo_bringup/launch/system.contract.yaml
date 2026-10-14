@@ -7,6 +7,16 @@
 # mrm_handler) and busy-waits 150 ms in its sixth, so the run must store
 # exactly one verdict, `max-latency-runtime /handler/state`, and none for the
 # 80 ms of start-up work it does in its first tick (counted as suppressed).
+#
+# phase10-B3 -- and one route. Each tick also publishes `/t4/avail`, which
+# the handler takes itself, and `/t4/answer`, which answers the last take:
+# `react` is an input-triggered path from that take to `/t4/answer`, 180 ms,
+# installed as a `route-latency-runtime` row (and as a 180 ms
+# `max-latency-runtime` row on `/t4/answer`, which no single dispatch here
+# reaches). An on-time route is one period, ~100 ms. Two routes exceed it:
+# tick 6's (the take waits for tick 6, which then busy-waits 150 ms) and
+# tick 10's (the take of tick 9's sample busy-waits 250 ms, so tick 10 is
+# late and short).
 version: 1
 
 nodes:
@@ -16,11 +26,28 @@ nodes:
         trigger: { timer: { rate_hz: 10 } }
         output: [state]
         max_latency: 50ms
+      react:
+        trigger: { input: [avail] }
+        output: [answer]
+        max_latency: 180ms
+    sub:
+      # The handler feeds itself, so the loop is cut here, at its cache.
+      avail: { qos: { depth: 1 }, state: true }
     pub:
       state: { qos: { depth: 10 } }
+      answer: { qos: { depth: 10 } }
+      avail_out: { qos: { depth: 10 } }
 
 topics:
   /t4/state:
     type: std_msgs/msg/Int32
     external: sub
     pub: [handler/state]
+  /t4/answer:
+    type: std_msgs/msg/Int32
+    external: sub
+    pub: [handler/answer]
+  /t4/avail:
+    type: std_msgs/msg/Int32
+    pub: [handler/avail_out]
+    sub: [handler/avail]

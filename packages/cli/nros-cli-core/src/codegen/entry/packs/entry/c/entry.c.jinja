@@ -91,7 +91,7 @@ static nros_cpp_node_t __nros_node_{{ loop.index0 }};
 {%- if m.rows %}
 static const nros_cpp_monitor_row_t __nros_mon_rows{{ tag }}[{{ m.rows | length }}] = {
 {%- for r in m.rows %}
-    { "{{ r.topic | c_str }}", "{{ r.fqn | c_str }}", {{ r.min_rate_hz_milli }}u, {{ r.max_latency_ms }}u },
+    { "{{ r.topic | c_str }}", "{{ r.fqn | c_str }}", {{ r.min_rate_hz_milli }}u, {{ r.max_latency_ms }}u, {% if r.route_trigger %}"{{ r.route_trigger | c_str }}"{% else %}NULL{% endif %}, {{ r.route_max_latency_ms }}u },
 {%- endfor %}
 };
 static uint64_t __nros_mon_storage{{ tag }}[({{ m.rows | length }}u * NROS_CPP_MONITOR_ROW_STORAGE + 7u) / 8u];

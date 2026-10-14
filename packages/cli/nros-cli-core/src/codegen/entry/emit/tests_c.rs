@@ -667,6 +667,9 @@ fn c_monitor_fixture_rows() -> (Vec<MonitorRow>, Vec<AgeRow>) {
             fqn: "/talker/chatter".into(),
             min_rate_hz_milli: 10_000,
             max_latency_ms: 30,
+            // phase10-B3 -- a route row: the trigger topic and its budget.
+            route_trigger: "/trigger".into(),
+            route_max_latency_ms: 25,
         }],
         vec![AgeRow {
             topic: "/chatter".into(),
@@ -687,13 +690,24 @@ fn typed_emit_bakes_monitor_table_before_nodes() {
     let rust = render_monitor_rs(&rows, &ages);
 
     for r in &rows {
+        let trigger = if r.route_trigger.is_empty() {
+            "NULL".to_string()
+        } else {
+            format!("\"{}\"", r.route_trigger)
+        };
         let c_row = format!(
-            "{{ \"{}\", \"{}\", {}u, {}u }},",
-            r.topic, r.fqn, r.min_rate_hz_milli, r.max_latency_ms
+            "{{ \"{}\", \"{}\", {}u, {}u, {}, {}u }},",
+            r.topic, r.fqn, r.min_rate_hz_milli, r.max_latency_ms, trigger, r.route_max_latency_ms
         );
         let rust_row = format!(
-            "topic: {:?}, fqn: {:?}, min_rate_hz_milli: {}u32, max_latency_ms: {}u32",
-            r.topic, r.fqn, r.min_rate_hz_milli, r.max_latency_ms
+            "topic: {:?}, fqn: {:?}, min_rate_hz_milli: {}u32, max_latency_ms: {}u32, \
+             route_trigger: {:?}, route_max_latency_ms: {}u32",
+            r.topic,
+            r.fqn,
+            r.min_rate_hz_milli,
+            r.max_latency_ms,
+            r.route_trigger,
+            r.route_max_latency_ms
         );
         assert!(src.contains(&c_row), "C row `{c_row}` missing; src:\n{src}");
         assert!(rust.contains(&rust_row), "Rust row `{rust_row}` missing");
@@ -779,12 +793,16 @@ fn typed_emit_tiers_slice_monitor_rows_per_tier() {
             fqn: "/ctrl/cmd".into(),
             min_rate_hz_milli: 100_000,
             max_latency_ms: 5,
+            route_trigger: String::new(),
+            route_max_latency_ms: 0,
         },
         MonitorRow {
             topic: "/telemetry".into(),
             fqn: "/telem/telemetry".into(),
             min_rate_hz_milli: 1_000,
             max_latency_ms: 0,
+            route_trigger: String::new(),
+            route_max_latency_ms: 0,
         },
     ];
     let src = emit_typed_monitored(&plan, &rows, &[]).expect("tiered C emit ok");

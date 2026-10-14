@@ -1788,6 +1788,9 @@ fn monitor_fixture_rows() -> (Vec<MonitorRow>, Vec<AgeRow>) {
             fqn: "/talker/chatter".into(),
             min_rate_hz_milli: 10_000,
             max_latency_ms: 30,
+            // phase10-B3 -- a route row: the trigger topic and its budget.
+            route_trigger: "/trigger".into(),
+            route_max_latency_ms: 25,
         }],
         vec![AgeRow {
             topic: "/chatter".into(),
@@ -1825,13 +1828,24 @@ fn typed_emit_bakes_monitor_table_before_nodes() {
     // Row parity, one row at a time: what the Rust table says, the C++
     // table says, in its own spelling.
     for r in &rows {
+        let trigger = if r.route_trigger.is_empty() {
+            "nullptr".to_string()
+        } else {
+            format!("\"{}\"", r.route_trigger)
+        };
         let cpp_row = format!(
-            "{{ \"{}\", \"{}\", {}u, {}u }},",
-            r.topic, r.fqn, r.min_rate_hz_milli, r.max_latency_ms
+            "{{ \"{}\", \"{}\", {}u, {}u, {}, {}u }},",
+            r.topic, r.fqn, r.min_rate_hz_milli, r.max_latency_ms, trigger, r.route_max_latency_ms
         );
         let rust_row = format!(
-            "topic: {:?}, fqn: {:?}, min_rate_hz_milli: {}u32, max_latency_ms: {}u32",
-            r.topic, r.fqn, r.min_rate_hz_milli, r.max_latency_ms
+            "topic: {:?}, fqn: {:?}, min_rate_hz_milli: {}u32, max_latency_ms: {}u32, \
+             route_trigger: {:?}, route_max_latency_ms: {}u32",
+            r.topic,
+            r.fqn,
+            r.min_rate_hz_milli,
+            r.max_latency_ms,
+            r.route_trigger,
+            r.route_max_latency_ms
         );
         assert!(
             src.contains(&cpp_row),
@@ -1931,6 +1945,8 @@ fn typed_emit_keeps_only_rows_of_nodes_it_constructs() {
         fqn: "/elsewhere/x".into(),
         min_rate_hz_milli: 1_000,
         max_latency_ms: 0,
+        route_trigger: String::new(),
+        route_max_latency_ms: 0,
     }];
     let src = emit_typed_monitored(&plan, &other, &[]).expect("emit ok");
     assert_eq!(src, emit_typed(&plan).unwrap());
@@ -1946,10 +1962,12 @@ fn typed_emit_monitor_rows_match_namespaced_nodes() {
         fqn: "/cm/pub/cm_header".into(),
         min_rate_hz_milli: 10_000,
         max_latency_ms: 0,
+        route_trigger: String::new(),
+        route_max_latency_ms: 0,
     }];
     let src = emit_typed_monitored(&plan, &rows, &[]).expect("emit ok");
     assert!(
-        src.contains("{ \"/cm_header\", \"/cm/pub/cm_header\", 10000u, 0u },"),
+        src.contains("{ \"/cm_header\", \"/cm/pub/cm_header\", 10000u, 0u, nullptr, 0u },"),
         "{src}"
     );
 }
@@ -1966,12 +1984,16 @@ fn typed_emit_tiers_slice_monitor_rows_per_tier() {
             fqn: "/ctrl/cmd".into(),
             min_rate_hz_milli: 100_000,
             max_latency_ms: 5,
+            route_trigger: String::new(),
+            route_max_latency_ms: 0,
         },
         MonitorRow {
             topic: "/telemetry".into(),
             fqn: "/telem/telemetry".into(),
             min_rate_hz_milli: 1_000,
             max_latency_ms: 0,
+            route_trigger: String::new(),
+            route_max_latency_ms: 0,
         },
     ];
     let src = emit_typed_monitored(&plan, &rows, &[]).expect("tiered emit ok");
