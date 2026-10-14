@@ -20,10 +20,13 @@ templates):
             the TYPED C++ carrier), so there is nothing to write: delete it;
   endpoint  `CONFIG_NROS_ZENOH_LOCATOR` / `CONFIG_NROS_XRCE_AGENT_{ADDR,PORT}` —
             write the image's `locator = "…"`;
-  knob      every other `CONFIG_NROS_<X>` the module's Kconfig defines, which is
-            exactly what an `[image.<id>] env` row renders to: through
+  knob      every other `CONFIG_NROS_<X>` the module's Kconfig defines. A
+            REGISTRY knob is written `[image.<id>.knobs.<group>] <name>` (its
+            `image_key`, read from the generated registry, never restated; an
+            env row naming one is refused since phase-484 W8); any other
+            symbol is what an `[image.<id>] env` row renders to: through
             `nros_zephyr_build::KCONFIG_PAIRS` when the two names are different
-            words (read from that table, never restated), else `NROS_<X>`.
+            words, else `NROS_<X>`.
 
 `CONFIG_NROS=y` (enabling the module) is Zephyr's own switch and stays. So do
 the shared board fragments under `cmake/zephyr/` — the BOARD layer, not a leaf
@@ -124,7 +127,27 @@ def kconfig_pairs(text: str) -> dict:
     return out
 
 
-def classify(sym: str, value: str, model, pairs):
+def knob_keys(text: str) -> dict:
+    """{CONFIG symbol: (image key, type)} for every row of the generated
+    registry's `KNOBS` table — the spelling a project writes a registry knob in
+    (phase-484 W8)."""
+    rows = re.findall(r'kconfig: "(CONFIG_[A-Z0-9_]+)",.*?image_key: "([a-z0-9_.]+)",\s*'
+                      r'ty: (?:Some\("(\w+)"\)|None)', text, re.S)
+    return {sym: (key, ty) for sym, key, ty in rows}
+
+
+def knob_spelling(key: str, ty: str, v: str) -> str:
+    group, name = key.rsplit(".", 1)
+    if ty == "bool":
+        val = "true" if v == "1" else "false"
+    elif ty == "int" and re.fullmatch(r"-?[0-9]+", v):
+        val = v
+    else:
+        val = f'"{v}"'
+    return f"[image.<id>.knobs.{group}] {name} = {val}"
+
+
+def classify(sym: str, value: str, model, pairs, keys=None):
     """(kind, the system.toml spelling) for one assignment, or None when the
     line is not a nano-ros knob (CONFIG_NROS itself, or a symbol the module
     does not define — Zephyr refuses that on its own)."""
@@ -149,6 +172,8 @@ def classify(sym: str, value: str, model, pairs):
     if v in ("y", "n"):
         v = "1" if v == "y" else "0"
     v = v.strip('"')
+    if keys and sym in keys:
+        return "knob", knob_spelling(*keys[sym], v)
     return "knob", f'env = {{ {env} = "{v}" }}'
 
 
@@ -175,7 +200,7 @@ def image_label(system_toml: str | None, root: str) -> str:
     return f"[image.{ids[0]}]" if len(ids) == 1 else "[image.<id>]"
 
 
-def findings(files, read, model, pairs):
+def findings(files, read, model, pairs, keys=None):
     """[(path, lineno, symbol, value, kind, spelling)] over `files`."""
     out = []
     for path in files:
@@ -188,7 +213,7 @@ def findings(files, read, model, pairs):
             m = ASSIGN.match(line)
             if not m:
                 continue
-            c = classify(m.group(1), m.group(2), model, pairs)
+            c = classify(m.group(1), m.group(2), model, pairs, keys)
             if c:
                 out.append((path, n, m.group(1), m.group(2), c[0], c[1]))
     return out
@@ -264,8 +289,11 @@ def verdict(found, base, root):
 
 def model_and_pairs(root=ROOT):
     model = kconfig_model(open(os.path.join(root, KCONFIG), encoding="utf8").read())
-    pairs = kconfig_pairs(open(os.path.join(root, PAIRS_SRC), encoding="utf8").read())
-    return model, pairs
+    reg = open(os.path.join(root, PAIRS_SRC), encoding="utf8").read()
+    keys = knob_keys(reg)
+    if not keys:
+        raise SystemExit("check-leaf-conf-nros-knobs: KNOBS harvested empty")
+    return model, kconfig_pairs(reg), keys
 
 
 def selftest(verbose=False) -> int:
@@ -297,14 +325,18 @@ def selftest(verbose=False) -> int:
                                 "CONFIG_NROS_XRCE_AGENT_PORT=2018\nCONFIG_NROS_UNDEFINED=1\n"),
         "examples/b/prj.conf": "CONFIG_NROS=y\nCONFIG_NET_TCP=y\n",
     }
-    found = findings(sorted(files), files.get, model, pairs)
+    keys = knob_keys('    Knob {\n        kconfig: "CONFIG_NROS_EXECUTOR_MAX_CBS",\n'
+                     '        image_key: "executor.max_cbs",\n        ty: Some("int"),\n')
+    chk("the registry harvest reads a row's image key and type",
+        keys == {"CONFIG_NROS_EXECUTOR_MAX_CBS": ("executor.max_cbs", "int")})
+    found = findings(sorted(files), files.get, model, pairs, keys)
     kinds = {(f[2], f[4], f[5]) for f in found}
     chk("negative control: the RMW choice is refused, naming `rmw`",
         ("CONFIG_NROS_RMW_XRCE", "rmw", 'rmw = "xrce"') in kinds)
     chk("the language API is refused", any(f[2] == "CONFIG_NROS_C_API" and f[4] == "api" for f in found))
-    chk("a derived-identical knob names its env row",
-        ("CONFIG_NROS_EXECUTOR_MAX_CBS", "knob", 'env = { NROS_EXECUTOR_MAX_CBS = "9" }') in kinds)
-    chk("a KCONFIG_PAIRS knob names the PAIRED env word",
+    chk("a registry knob names its knobs key, not an env row",
+        ("CONFIG_NROS_EXECUTOR_MAX_CBS", "knob", "[image.<id>.knobs.executor] max_cbs = 9") in kinds)
+    chk("a non-registry KCONFIG_PAIRS symbol names the PAIRED env word",
         ("CONFIG_NROS_MAX_QUERYABLES", "knob", 'env = { NROS_ZENOH_MAX_QUERYABLES = "4" }') in kinds)
     chk("the endpoint names `locator`", any(f[4] == "endpoint" for f in found))
     chk("CONFIG_NROS, a Zephyr symbol, a comment and an undefined symbol pass",
@@ -336,8 +368,8 @@ def main() -> int:
     if selftest():
         return 1
 
-    model, pairs = model_and_pairs()
-    found = findings(tracked_confs(ROOT), read_file(ROOT), model, pairs)
+    model, pairs, keys = model_and_pairs()
+    found = findings(tracked_confs(ROOT), read_file(ROOT), model, pairs, keys)
     if args.list:
         for path, n, sym, val, kind, spelling in found:
             print(f"{path}:{n}: {sym}={val} [{kind}] -> {spelling}")

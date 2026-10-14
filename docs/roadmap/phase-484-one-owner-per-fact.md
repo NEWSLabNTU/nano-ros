@@ -1,8 +1,11 @@
 # Phase 484 -- one owner per fact: resource locations and configuration
 
-**Status (2026-10-13).** W0–W7 landed; RFC-0103 is Stable and issue 1767 is
-archived, and so are its residue issues 1850, 1851 and 1852. Only W8 is left: retiring
-the old names once the aliases have shipped in one release. Implements
+**Status (2026-10-14).** W0–W8 landed; RFC-0103 is Stable and issue 1767 is
+archived, and so are its residue issues 1850, 1851 and 1852. W8's last slice
+refused the env spelling of a registry knob after release 0.6.0 shipped its
+warning, and its error tables are KEPT rather than dropped (decision below).
+What keeps the doc open is the four issues homed here (0849, 0930, 0934, 0941;
+see the end). Implements
 [RFC-0103](../design/0103-one-owner-per-fact.md). Tracks issues
 [1767](../issues/archived/1767-resource-location-resolved-many-ways.md) and
 [1768](../issues/archived/1768-build-wiring-census-misses-link-script-macro.md).
@@ -932,8 +935,8 @@ verb's answer is used as given.
   `NANO_ROS_ROOT` as an ENVIRONMENT variable stays retired and refused.
 - **Old-name retirement pass (W8, after the aliases have shipped in one
   release).** Remove the shim's table entries (each old name then becomes a
-  configure ERROR naming its replacement, kept one more release before the
-  rows go entirely), drop the "deprecated alias" notes from the book, and
+  configure ERROR naming its replacement — kept for good, see the 2026-10-14
+  decision below), drop the "deprecated alias" notes from the book, and
   turn the gate from "only the shim reads an old name" into "no tracked file
   names one". Same pass for the other aliases this phase keeps:
   `ZENOH_LOCATOR` (runtime alias of `NROS_LOCATOR`), the `ZPICO_SMOLTCP_*`
@@ -964,8 +967,8 @@ verb's answer is used as given.
   the changelog) and a line that says the name is retired; OPEN issues are
   gated. RFCs swept to the `NROS_*` names (56 renames), with the sentences
   that are about the old spelling marked retired. cmake test
-  `cmake-retired-names` (8 cases). **The error rows stay one more release;
-  then they go and an old name is an unknown variable.** The other W8 aliases
+  `cmake-retired-names` (8 cases). **The error rows stay** — planned to go
+  after one more release; kept by the 2026-10-14 decision below. The other W8 aliases
   (`ZENOH_LOCATOR`, `ZPICO_SMOLTCP_*`, env-spelled knob rows,
   `[board.knobs]`) are not in this slice.
 
@@ -989,7 +992,7 @@ verb's answer is used as given.
     `BoardKnobsStatedTwice`, the per-entry selection and both deprecation
     printers are gone, and so is `no_in_tree_board_descriptor_uses_legacy_
     board_knobs` — the parser itself now refuses what it guarded.
-  The `legacy` column stays one release as the error table (its retired
+  The `legacy` column stays as the error table (for good, 2026-10-14) (its retired
   spellings no longer get `KCONFIG_PAIRS` rows). The gate is
   `check-retired-knob-spellings`, and it is deliberately NOT "no tracked file
   names one": the same `ZPICO_*` words are the shim's C macro names (RFC-0103:
@@ -1059,7 +1062,17 @@ verb's answer is used as given.
     image of every tracked bringup (109 rows);
   - gate: `no_tracked_system_toml_states_a_registry_knob_as_an_env_row`
     (nros-cli-core unit test, so `check-cli-tests` on every PR).
-  Left: refusing a registry-knob `env` row (after the next release).
+  **Refused (2026-10-14), after release 0.6.0 shipped the warning.** An
+  `[image.<id>] env` row naming a registry knob (by env name or by the Kconfig
+  symbol west renders it to) is an error in the registry's
+  `IMAGE_ENV_RETIRED_TEMPLATE`, naming the knobs spelling; `app_rung` refuses
+  it on every road, and the stated-both-ways error folded into it. The texts
+  that still told a reader to write one moved too: the generated
+  `Kconfig.from-system-toml` header and its per-knob "not stated" lines, the
+  module Kconfig comment, `check-leaf-conf-nros-knobs`' remedy (now the knobs
+  key, harvested from the generated registry, with a selftest row), the book's
+  Zephyr page and the embedded-tuning guide. Seven unit tests that fed env rows
+  as inputs moved to `knobs` or to an app's own variable.
   **Registered per user decision 2026-10-13:** `NROS_XRCE_MAX_SUBSCRIBERS`,
   `_MAX_SERVICE_SERVERS`, `_MAX_SERVICE_CLIENTS`, `NROS_XRCE_BUFFER_SIZE` and
   `NROS_ZENOH_SOCKET_TIMEOUT_MS` are registry rows (`[image.<id>.knobs.xrce]
@@ -1080,6 +1093,18 @@ verb's answer is used as given.
   blind spot that let them sit unregistered is closed: `config-knob-census`
   reads `xrce-config.txt`'s rows as READ TABLES (the build resolves them by
   variable, so no read call spelled them), with a negative control.
+- **Decision (2026-10-14): the error tables stay.** W8a/W8b planned to drop
+  their refusal rows one release after they shipped; 0.6.0 carried them, so
+  they were due. Dropping a row does not delete a name, it makes it IGNORED:
+  `-DNANO_ROS_PLATFORM=zephyr`, a stale cache entry an older nano-ros wrote,
+  or a `ZPICO_MAX_QUERYABLES` in the shell would build the default with no
+  message — the failure W8 replaced the aliases to prevent. The cost of
+  keeping them is ~100 lines of cmake and one registry column. So
+  `cmake/NanoRosRetiredNames.cmake`, the `legacy` column (Rust ladder, cmake
+  `_nros_knob_env`, the CLI's `refuse_retired_env_keys`), `[board.knobs]`'s
+  `RetiredBoardKnobs` and W8c's `RETIRED_ENV_VARS` all stay, and the texts
+  that promised removal now say so (book `retired-names.md`, RFC-0103 D2b,
+  `knobs.toml`, the generator and both gates).
 - ~~Issue 1768 (census classifier + fail on UNCLASSIFIED).~~ Done (W7a): the `linker-script` role knows `link_script!`; gate `build-wiring-classified`.
 - ~~`canonical-build-path.md`, the book's configuration and getting-started
   pages, CLAUDE.md pointers.~~ Done (2026-10-13): the map gains "Where a

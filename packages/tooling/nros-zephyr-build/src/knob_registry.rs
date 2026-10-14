@@ -1629,6 +1629,6 @@ pub const KCONFIG_KNOBS: &[crate::KconfigKnob] = &[
 /// Substitute `{legacy}` and `{env}`; the cmake twin refuses in the same words.
 pub const RETIRED_TEMPLATE: &str = "{legacy} is a retired spelling of {env} (RFC-0103 D2b; retired in phase-484 W8, after release 0.5.0-nros2 deprecated it) -- set {env} instead";
 
-/// The warning an `[image.<id>] env` row earns when it names a registry knob
+/// The refusal an `[image.<id>] env` row earns when it names a registry knob
 /// (phase-484 W8). Substitute `{image}`, `{env}`, `{group}` and `{name}`.
-pub const IMAGE_ENV_DEPRECATED_TEMPLATE: &str = "[image.{image}] env {env} is a deprecated spelling of the knob [image.{image}.knobs.{group}] {name} (RFC-0103 D6, phase-484 W8) -- move the row there; an env row naming a registry knob is refused after the next release";
+pub const IMAGE_ENV_RETIRED_TEMPLATE: &str = "[image.{image}] env {env} names the knob [image.{image}.knobs.{group}] {name} (RFC-0103 D6; refused in phase-484 W8, after release 0.6.0 deprecated it) -- move the row there";

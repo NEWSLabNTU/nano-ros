@@ -7,8 +7,8 @@ older names in `knobs.toml`'s `legacy` column (`ZPICO_MAX_QUERYABLES`,
 deprecation for release 0.5.0-nros2 and are now RETIRED: every reader —
 `nros_zephyr_build::knob`, `nros-platform-config`'s `knob_env`, cmake's
 `_nros_knob_env`, the CLI's `[image.<id>] env` — refuses one that is set,
-naming the canonical spelling. The column stays one release as that error
-table.
+naming the canonical spelling. The column stays as that error table for
+good: an unlisted old name would be ignored, not refused.
 
 Why the rule is "no ENV reader or writer", not "no file names one": the same
 `ZPICO_*` words are also the zenoh-pico shim's C MACROS (`-DZPICO_MAX_QUERYABLES=4`,

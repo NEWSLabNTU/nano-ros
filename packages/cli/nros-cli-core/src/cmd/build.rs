@@ -6275,8 +6275,8 @@ mod per_image_configure_tests {
     /// were spelled in `system.toml` (a `BTreeMap` has no insertion order).
     #[test]
     fn configuration_decides_which_configure_an_image_shares() {
-        let warn = cmake_coordinate("native", &image(&[("NROS_LOG_MAX_LEVEL", "warn")], None));
-        let debug = cmake_coordinate("native", &image(&[("NROS_LOG_MAX_LEVEL", "debug")], None));
+        let warn = cmake_coordinate("native", &image(&[("APP_LOG_LEVEL", "warn")], None));
+        let debug = cmake_coordinate("native", &image(&[("APP_LOG_LEVEL", "debug")], None));
         assert!(warn.starts_with("native-zenoh-cfg"), "{warn}");
         assert_ne!(warn, debug);
         let ab = cmake_coordinate("native", &image(&[("A", "1"), ("B", "2")], None));

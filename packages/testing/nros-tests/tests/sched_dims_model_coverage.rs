@@ -128,7 +128,7 @@ fn dim_keys(d: SchedDim) -> &'static [&'static [&'static str]] {
 /// must AUTHOR no tiers (else `nros::main!` reads them and never derives, and
 /// the cell's runtime assert passes over a code path it never exercised), must
 /// state the rates the derivation ranks by (the contract beside the launch
-/// file), and its image must lower the band (`env NROS_ZENOH_READ_PRIORITY`). Each problem is a string naming what is wrong.
+/// file), and its image must lower the band (`[image.<id>.knobs.zenoh] read_priority`). Each problem is a string naming what is wrong.
 fn derived_bringup_problems(system_toml: &std::path::Path, doc: &toml::Value) -> Vec<String> {
     let bringup = system_toml.parent().expect("system.toml has a parent");
     let mut out = Vec::new();

@@ -2,8 +2,8 @@
 #
 # Every other spelling of a knob is DERIVED from its row:
 #   env      NROS_<id>; `legacy` names are RETIRED (phase-484 W8): set, each
-#            stops the build naming NROS_<id>. Kept one release as the
-#            error table, then removed.
+#            stops the build naming NROS_<id>. Kept for good as the error
+#            table: an unlisted old name would be ignored, not refused.
 #   Kconfig  CONFIG_<kconfig>, default CONFIG_NROS_<id>. A row names `kconfig`
 #            only where today's symbol differs; no Kconfig symbol is renamed
 #            (phase-481 owns them). The zenoh pools read the RMW-agnostic

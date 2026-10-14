@@ -425,10 +425,10 @@ pub fn leaf_app_rung(decl: &LeafSystem) -> Result<BTreeMap<String, String>> {
 /// so a knob stated either way reaches the build identically.
 ///
 /// Refused: a key the registry does not hold, a value its row's type or
-/// range does not admit, a retired env spelling, and one knob stated BOTH
-/// ways. An env row naming a registry knob still works, and is warned about
-/// once, naming the knobs spelling (`image` is `None` where no warning should
-/// print — a coordinate digest, which re-reads rows another call writes).
+/// range does not admit, a retired env spelling, and an env row naming a
+/// registry knob — release 0.6.0 warned about that last one and named the
+/// knobs spelling; the error now does (`image` is `None` for a coordinate
+/// digest, which re-reads rows another call writes, and is spelled `<id>`).
 pub fn app_rung(
     image: Option<&str>,
     knobs: &BTreeMap<String, nros_orchestration_ir::leaf_system::KnobValue>,
@@ -441,17 +441,6 @@ pub fn app_rung(
     for (key, value) in knobs {
         match knob_env_row(id, key, value) {
             Ok((row, v)) => {
-                if let Some(k) = env
-                    .keys()
-                    .find(|k| registry_knob_of_env_row(k) == Some(row))
-                {
-                    errors.push(format!(
-                        "knob {key} is stated twice -- as `[image.{id}.knobs.{}] {}` and as \
-                         the env row `{k}`; keep the knobs one",
-                        row.image_group_name().0,
-                        row.image_group_name().1,
-                    ));
-                }
                 rows.insert(row.env.to_string(), v);
             }
             Err(e) => errors.push(e),
@@ -460,12 +449,14 @@ pub fn app_rung(
     if !errors.is_empty() {
         return Err(eyre!("[image.{id}.knobs]:\n  {}", errors.join("\n  ")));
     }
-    if let Some(image) = image {
-        for k in env.keys() {
-            if let Some(row) = registry_knob_of_env_row(k) {
-                warn_once(&row.image_env_deprecation(image).replace(row.env, k));
-            }
-        }
+    let refused: Vec<String> = env
+        .keys()
+        .filter_map(|k| {
+            registry_knob_of_env_row(k).map(|row| row.image_env_refusal(id).replace(row.env, k))
+        })
+        .collect();
+    if !refused.is_empty() {
+        return Err(eyre!("{}", refused.join("\n")));
     }
     rows.extend(env.iter().map(|(k, v)| (k.clone(), v.clone())));
     Ok(rows)
@@ -481,21 +472,6 @@ pub fn registry_knob_of_env_row(key: &str) -> Option<&'static nros_zephyr_build:
     nros_zephyr_build::KNOBS
         .iter()
         .find(|r| r.env == key || r.kconfig == symbol)
-}
-
-/// Print `msg` as a warning the first time this process sees it. A sync or a
-/// build reads one image's rows several times (settings, coordinate, Kconfig).
-fn warn_once(msg: &str) {
-    use std::sync::{Mutex, OnceLock};
-    static SEEN: OnceLock<Mutex<std::collections::BTreeSet<String>>> = OnceLock::new();
-    let seen = SEEN.get_or_init(Default::default);
-    if seen
-        .lock()
-        .map(|mut s| s.insert(msg.to_string()))
-        .unwrap_or(true)
-    {
-        eprintln!("warning: {msg}");
-    }
 }
 
 /// One `[image.<id>.knobs]` key → its registry row and the env value it
@@ -1265,23 +1241,20 @@ mod tests {
             &env_rows(&[("NROS_BOOT_REPORT", "1")]),
         )
         .unwrap();
-        let from_env = app_rung(
-            None,
-            &BTreeMap::new(),
-            &env_rows(&[
-                ("NROS_ZEPHYR_HEAP_SIZE", "98304"),
-                ("NROS_EXECUTOR_MAX_CBS", "16"),
-                ("NROS_LOG_MAX_LEVEL", "warn"),
-                ("NROS_ZENOH_TX_BATCH", "1"),
-                ("NROS_XRCE_MAX_SUBSCRIBERS", "0"),
-                ("NROS_ZENOH_SOCKET_TIMEOUT_MS", "5"),
-                ("NROS_XRCE_SUBSCRIBER_BUFFER_SIZE", "-1"),
-                ("NROS_XRCE_SUBSCRIBER_RING_DEPTH", "1"),
-                ("NROS_XRCE_TRANSPORT_MTU", "512"),
-                ("NROS_BOOT_REPORT", "1"),
-            ]),
-        )
-        .unwrap();
+        // The rows the retired `[image.<id>] env` spelling of these knobs
+        // stated, before W8 refused it.
+        let from_env = env_rows(&[
+            ("NROS_ZEPHYR_HEAP_SIZE", "98304"),
+            ("NROS_EXECUTOR_MAX_CBS", "16"),
+            ("NROS_LOG_MAX_LEVEL", "warn"),
+            ("NROS_ZENOH_TX_BATCH", "1"),
+            ("NROS_XRCE_MAX_SUBSCRIBERS", "0"),
+            ("NROS_ZENOH_SOCKET_TIMEOUT_MS", "5"),
+            ("NROS_XRCE_SUBSCRIBER_BUFFER_SIZE", "-1"),
+            ("NROS_XRCE_SUBSCRIBER_RING_DEPTH", "1"),
+            ("NROS_XRCE_TRANSPORT_MTU", "512"),
+            ("NROS_BOOT_REPORT", "1"),
+        ]);
         assert_eq!(from_knobs, from_env);
     }
 
@@ -1317,10 +1290,24 @@ mod tests {
         assert!(e.contains("is a bool"), "{e}");
     }
 
-    /// One knob, two spellings, is two owners of one fact: refused, never
-    /// ranked.
+    /// A registry knob has ONE spelling, `[image.<id>.knobs]`: an env row naming
+    /// it is refused whether or not the knobs table states it too (release
+    /// 0.6.0 warned; phase-484 W8 refuses), naming the spelling to move to.
     #[test]
-    fn a_knob_stated_as_both_a_knob_and_an_env_row_is_refused() {
+    fn an_env_row_naming_a_registry_knob_is_refused_naming_its_knobs_key() {
+        let e = app_rung(
+            Some("talker"),
+            &BTreeMap::new(),
+            &env_rows(&[("NROS_ZEPHYR_HEAP_SIZE", "2")]),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(
+            e.contains("[image.talker] env NROS_ZEPHYR_HEAP_SIZE")
+                && e.contains("[image.talker.knobs.zephyr] heap_size"),
+            "{e}"
+        );
+        // Stated both ways is the same refusal.
         let e = app_rung(
             Some("talker"),
             &knobs(&[("zephyr.heap_size", leaf_system::KnobValue::Int(1))]),
@@ -1328,19 +1315,20 @@ mod tests {
         )
         .unwrap_err()
         .to_string();
-        assert!(e.contains("stated twice"), "{e}");
-        assert!(e.contains("NROS_ZEPHYR_HEAP_SIZE"), "{e}");
+        assert!(e.contains("[image.talker.knobs.zephyr] heap_size"), "{e}");
         // The Kconfig spelling a west build renders an env row to is the same
-        // knob too (`NROS_MAX_PUBLISHERS` is `CONFIG_NROS_MAX_PUBLISHERS`).
+        // knob too (`NROS_MAX_PUBLISHERS` is `CONFIG_NROS_MAX_PUBLISHERS`),
+        // and the error quotes the row as written.
         let e = app_rung(
-            Some("talker"),
-            &knobs(&[("zenoh.max_publishers", leaf_system::KnobValue::Int(1))]),
+            None,
+            &BTreeMap::new(),
             &env_rows(&[("NROS_MAX_PUBLISHERS", "2")]),
         )
         .unwrap_err()
         .to_string();
         assert!(
-            e.contains("stated twice") && e.contains("NROS_MAX_PUBLISHERS"),
+            e.contains("[image.<id>] env NROS_MAX_PUBLISHERS")
+                && e.contains("knobs.zenoh] max_publishers"),
             "{e}"
         );
         assert_eq!(
@@ -1373,7 +1361,7 @@ mod tests {
 
     /// The GATE (phase-484 W8): no tracked `system.toml` states a REGISTRY knob
     /// as an `[image.<id>] env` / `[image_defaults] env` row — that spelling is
-    /// deprecated, and the tree uses the one it recommends. Read raw, so it
+    /// refused at build time, and this finds it on every PR instead. Read raw, so it
     /// covers every file whatever road builds it.
     #[test]
     fn no_tracked_system_toml_states_a_registry_knob_as_an_env_row() {

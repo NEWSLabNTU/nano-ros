@@ -288,7 +288,8 @@ All options are under `menuconfig NROS` in `zephyr/Kconfig`. They are what the
 module RENDERS from `system.toml`, never from a conf file: a registry knob as
 `[image.<id>.knobs.<group>] <name>` (`[image.zephyr.knobs.zenoh]
 max_publishers = 4`), any other option as an image `env` row with the
-`CONFIG_` dropped (`env = { NROS_XRCE_MAX_SUBSCRIBERS = "1" }`). The RMW, API, endpoint and domain rows have their own `system.toml`
+`CONFIG_` dropped (`env = { NROS_BOOT_REPORT = "1" }`). An env row naming a
+registry knob is refused, naming its knobs spelling. The RMW, API, endpoint and domain rows have their own `system.toml`
 keys (table above).
 
 ### Common Options

@@ -11,9 +11,9 @@
 # old name the configure quietly ignored would build the default instead of
 # what the user asked for.
 #
-# The table below is now the ERROR table. It stays for one more release, so a
-# project skipping a release still hears what to type; then the rows go and an
-# old name is simply an unknown variable.
+# The table below is the ERROR table, and it stays (decided 2026-10-14, when
+# release 0.6.0 had carried it): dropping a row would make that old name an
+# unknown variable, which is the silent default build this file exists to stop.
 #
 # This file is the ONLY non-history file in the tree that names an old name
 # (`check-retired-cmake-names`).

@@ -103,7 +103,8 @@ pub struct KnobRow {
     /// The canonical env spelling, `NROS_<id>`.
     pub env: &'static str,
     /// RETIRED env spellings (phase-484 W8): set, each stops the build naming
-    /// [`Self::env`]. Kept one release as the error table, then removed.
+    /// [`Self::env`]. Kept for good as the error table: an unlisted old name
+    /// would be ignored, not refused.
     pub legacy: &'static [&'static str],
     /// The Kconfig symbol the `$DOTCONFIG` rung reads. Defaults to
     /// `CONFIG_NROS_<id>`; the zenoh pools read the RMW-agnostic demand symbol
@@ -153,7 +154,7 @@ pub struct KconfigKnob {
 #[rustfmt::skip]
 mod knob_registry;
 pub use knob_registry::{
-    IMAGE_ENV_DEPRECATED_TEMPLATE, KCONFIG_KNOBS, KCONFIG_PAIRS, KNOBS, RETIRED_TEMPLATE,
+    IMAGE_ENV_RETIRED_TEMPLATE, KCONFIG_KNOBS, KCONFIG_PAIRS, KNOBS, RETIRED_TEMPLATE,
 };
 
 /// The Kconfig knob whose symbol is `symbol` (with or without `CONFIG_`).
@@ -204,12 +205,12 @@ impl KnobRow {
             .unwrap_or(("", self.image_key))
     }
 
-    /// The warning an `[image.<image>] env` row keyed by this knob's env
+    /// The refusal an `[image.<image>] env` row keyed by this knob's env
     /// spelling earns (phase-484 W8), in the registry's words.
     #[must_use]
-    pub fn image_env_deprecation(&self, image: &str) -> String {
+    pub fn image_env_refusal(&self, image: &str) -> String {
         let (group, name) = self.image_group_name();
-        IMAGE_ENV_DEPRECATED_TEMPLATE
+        IMAGE_ENV_RETIRED_TEMPLATE
             .replace("{image}", image)
             .replace("{env}", self.env)
             .replace("{group}", group)
@@ -580,7 +581,7 @@ mod tests {
         assert_eq!(heap.env, "NROS_ZEPHYR_HEAP_SIZE");
         let batch = knob_by_image_key("zenoh.tx.batch").expect("the board's key");
         assert_eq!(batch.image_group_name(), ("zenoh.tx", "batch"));
-        let w = heap.image_env_deprecation("talker");
+        let w = heap.image_env_refusal("talker");
         assert!(
             w.contains("[image.talker] env NROS_ZEPHYR_HEAP_SIZE")
                 && w.contains("[image.talker.knobs.zephyr] heap_size"),

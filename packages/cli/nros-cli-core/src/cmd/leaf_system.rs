@@ -439,7 +439,8 @@ mod tests {
         let td = leaf_dir(
             "[system]\nname = \"c\"\nrmw = \"zenoh\"\n\n\
              [image.native]\nboard = \"linux\"\ntransport = \"serial\"\n\
-             env = { NROS_LOG_MAX_LEVEL = \"warn\", NROS_LINK_IP = \"1\", Q = \"a\\\"b\" }\n",
+             env = { NROS_LINK_IP = \"1\", Q = \"a\\\"b\" }\n\
+             knobs = { log = { max_level = \"warn\" } }\n",
         );
         let leaf = leaf_system::read(td.path()).unwrap().unwrap();
         let layers = crate::cmd::leaf_settings::image_layers(&leaf).unwrap();
@@ -489,11 +490,26 @@ mod tests {
             err.contains("set NROS_ZENOH_MAX_QUERYABLES instead"),
             "{err}"
         );
-        // Negative control: the canonical key is carried as written.
+        // The canonical env spelling is refused too, naming the knob's one
+        // spelling (phase-484 W8: release 0.6.0 warned), and that spelling
+        // is carried.
         let td = leaf_dir(
             "[system]\nname = \"c\"\nrmw = \"zenoh\"\n\n\
              [image.native]\nboard = \"linux\"\n\
              env = { NROS_ZENOH_MAX_QUERYABLES = \"4\" }\n",
+        );
+        let leaf = leaf_system::read(td.path()).unwrap().unwrap();
+        let err = crate::cmd::leaf_settings::image_layers(&leaf)
+            .expect_err("an env row naming a registry knob must refuse")
+            .to_string();
+        assert!(
+            err.contains("[image.native.knobs.zenoh] max_queryables"),
+            "{err}"
+        );
+        let td = leaf_dir(
+            "[system]\nname = \"c\"\nrmw = \"zenoh\"\n\n\
+             [image.native]\nboard = \"linux\"\n\
+             knobs = { zenoh = { max_queryables = 4 } }\n",
         );
         let leaf = leaf_system::read(td.path()).unwrap().unwrap();
         let layers = crate::cmd::leaf_settings::image_layers(&leaf).unwrap();

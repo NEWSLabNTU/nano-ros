@@ -1080,7 +1080,7 @@ config NROS_CODEGEN_TOOL
 # No symbol here has a prompt (phase-484 W5b). The module hook writes the
 # file sourced below BEFORE Kconfig runs, and its definitions come first:
 #   * a project with a system.toml -- each knob's value from the image
-#     (`[image.<id>] env NROS_<ID>`, or `-DNROS_OVERRIDE_<ID>` for one
+#     (`[image.<id>.knobs.<group>] <name>`, or `-DNROS_OVERRIDE_<ID>` for one
 #     build) as a `default`. With no prompt anywhere, a prj.conf line or a
 #     -DCONFIG_<knob> is a configure error: system.toml is the one source.
 #   * a guest (no system.toml) -- a copy of zephyr/Kconfig.knob-prompts,
