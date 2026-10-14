@@ -78,6 +78,11 @@
 
 #ifdef NROS_ENTRY_RMW
 
+/* `argv` is cast because a program's `main` hands over `char**`, and C has no
+ * implicit `char**` -> `const char* const*` conversion (C++ does). GCC 14 makes
+ * `-Wincompatible-pointer-types` an error, so the riscv-none-elf 14.2 images
+ * stopped compiling once phase-499 W2 had every C example pass its own argv.
+ * The callee only reads it, so the cast adds const and nothing else. */
 /* The nameless spellings forward the bake. `rclc_support_init_rmw` is the
  * one that takes a selector, so it is deliberately NOT wrapped — a caller
  * naming a backend has already answered the question this macro answers.
@@ -87,10 +92,10 @@
  * which `rclc_support_init_rmw` already treats as no selector (issue 1050
  * defect 3). So no `#if` on the VALUE is needed here, only on its presence. */
 #define rclc_support_init(support, argc, argv, allocator)                                          \
-    nros_c_support_init_baked((support), (argc), (argv), (allocator), NROS_ENTRY_RMW,              \
-                              (NROS_ENTRY_LOCATOR)[0] != '\0' ? (NROS_ENTRY_LOCATOR)               \
-                                                              : (const char*)0,                    \
-                              (uint8_t)(NROS_ENTRY_DOMAIN_ID))
+    nros_c_support_init_baked(                                                                     \
+        (support), (argc), (const char* const*)(argv), (allocator), NROS_ENTRY_RMW,                \
+        (NROS_ENTRY_LOCATOR)[0] != '\0' ? (NROS_ENTRY_LOCATOR) : (const char*)0,                   \
+        (uint8_t)(NROS_ENTRY_DOMAIN_ID))
 
 #define rclc_support_init_with_locator(support, locator, domain_id)                                \
     rclc_support_init_rmw((support), (locator), (domain_id), NULL, NROS_ENTRY_RMW)
@@ -101,10 +106,10 @@
 #else /* !NROS_ENTRY_RMW */
 
 #define rclc_support_init(support, argc, argv, allocator)                                          \
-    nros_c_support_init_baked((support), (argc), (argv), (allocator), (const char*)0,              \
-                              (NROS_ENTRY_LOCATOR)[0] != '\0' ? (NROS_ENTRY_LOCATOR)               \
-                                                              : (const char*)0,                    \
-                              (uint8_t)(NROS_ENTRY_DOMAIN_ID))
+    nros_c_support_init_baked(                                                                     \
+        (support), (argc), (const char* const*)(argv), (allocator), (const char*)0,                \
+        (NROS_ENTRY_LOCATOR)[0] != '\0' ? (NROS_ENTRY_LOCATOR) : (const char*)0,                   \
+        (uint8_t)(NROS_ENTRY_DOMAIN_ID))
 
 #endif /* NROS_ENTRY_RMW */
 
