@@ -204,8 +204,16 @@ void k_panic(void) __attribute__((noreturn));
  * -- but they must still be TYPES of the right shape, because the file takes
  * `sizeof` of two of them for its storage-size entry points. */
 
+/* Issue 1907: `platform.c` checks that a condvar's mutex is held exactly once
+ * (`mu->owner == k_current_get() && mu->lock_count == 1U`), so the stub carries
+ * the two fields Zephyr's `k_mutex` has, under the same names. */
+struct k_thread;
+typedef struct k_thread* k_tid_t;
+
 struct k_mutex {
     void* opaque;
+    k_tid_t owner;
+    uint32_t lock_count;
 };
 
 struct k_condvar {
@@ -215,6 +223,11 @@ struct k_condvar {
 struct k_sem {
     void* opaque;
 };
+
+static inline k_tid_t k_current_get(void) {
+    NROS_HOST_PLATFORM_UNREACHABLE("k_current_get");
+    return (k_tid_t)0;
+}
 
 static inline int k_mutex_init(struct k_mutex* m) {
     (void)m;
