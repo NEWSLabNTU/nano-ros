@@ -1,10 +1,12 @@
 # phase-461 -- the service inbox is sized per family, and the parameter family brings its own
 
-**Status (2026-10-13). W1, W2, W2b, W3 and W4 LANDED; W5 and W6 not
-started.** W1 #1215, W2 #1223, W2b #1224, W3 #1225 (all 2026-09-23), W4 #2098
-(2026-10-13); each wave's `Status:` line below says what it measured. What is
-left is W5 (the island links, and `nros image-facts` says why) and W6 (a
-parameter store without a server). Planned 2026-09-21. Numbered highest + 6 because
+**Status (2026-10-14). W1, W2, W2b, W3, W4 and W6 LANDED; W5's book half
+landed and its `image-facts` half was declined.** W1 #1215, W2 #1223, W2b
+#1224, W3 #1225 (all 2026-09-23), W4 #2098 (2026-10-13), W5/W6 2026-10-14;
+each wave's `Status:` line below says what it measured. What is left is
+downstream: the island switching its bringup to the `params` axis and
+measuring VERDICT PASS (W6's acceptance), and issue 1897 (the store still
+links the service code, dormant). Planned 2026-09-21. Numbered highest + 6 because
 five other phases were being opened concurrently (456-460 are theirs). Owns
 [issue 1352](../issues/archived/1352-param-set-request-exceeds-service-buffer.md), which
 PR #1043 FILED (merged 2026-09-13) and did not fix. Completes the half of
@@ -523,7 +525,7 @@ The island half (the MR-CANHUBK344 rebuild and the section 5 table) is a
 separate unit, `island-W3`, in the island's own phase doc; the nano-ros half
 above is what this claim covers.
 
-Claim: phase-461-W5. Depends on: phase-461-W1, phase-461-W2. Owns: packages/cli/nros-cli-core/src/cmd/image_facts.rs, book/src/internals/measuring-static-memory.md; the island half is island-W3 in the island's own phase doc. Gate: just check knob-delivery and nros image-facts on the island image. Status: not started.
+Claim: phase-461-W5. Depends on: phase-461-W1, phase-461-W2. Owns: packages/cli/nros-cli-core/src/cmd/image_facts.rs, book/src/internals/measuring-static-memory.md; the island half is island-W3 in the island's own phase doc. Gate: just check knob-delivery and nros image-facts on the island image. Status: book half landed (2026-10-14); the `image-facts` half DECLINED. `book/src/internals/measuring-static-memory.md` gains "The three service inboxes": the three symbols, what each holds, one ring's formula, the knobs, and the stated > derived > default order a slot size takes. The island half needs nothing from here: the image links (280,968 B of 327,680, `nxp-deployment.md` section 5) and that section already records `BUILTIN_INBOX` = 24 x (1,016 + 12) B from `nm`. `nros image-facts` does not report the families, on purpose: it is a query that stops at stage 3 (issue 1716), before the two build scripts that decide a slot (`nros-rmw-zenoh/build.rs` for the user and action families, `nros-node/build.rs` for the builtin one) run, so reporting bytes from it means a third copy of their arithmetic, issue 1025's defect. `just mem-report` reads the answer off the ELF, exactly.
 
 ### W6 [cli, api] -- the workaround: a store without a server
 
@@ -604,7 +606,7 @@ native_sim to VERDICT PASS with all four components past their
 `max_queryables = 2`; `ros2 param list` on that image is empty and the book
 page for parameters says why.
 
-Claim: phase-461-W6. Depends on: phase-461-W1, phase-461-W2, phase-459-W2, phase-462-W1, phase-463-W2, phase-463-W1, phase-460-W3, phase-461-W3. Owns: packages/cli/cargo-nano-ros/src/capability_resolver.rs, packages/api/nros-cpp/Cargo.toml, packages/api/nros/Cargo.toml, packages/core/nros-node/Cargo.toml, packages/api/nros-cpp/src/params_shim.rs, packages/cli/nros-cli-core/src/entity_inventory.rs (param_nodes), packages/cli/nros-cli-core/src/codegen/entry/emit_cpp.rs (:1086), packages/cli/nros-cli-core/src/codegen/entry/emit_rust.rs, packages/api/nros/src/lib.rs (:1397), the book's parameters page. Gate: just check infra-queryable-counts, the island bringup with features = ["params"] to VERDICT PASS on native_sim, nros image-facts max_queryables = 2. Status: not started.
+Claim: phase-461-W6. Depends on: phase-461-W1, phase-461-W2, phase-459-W2, phase-462-W1, phase-463-W2, phase-463-W1, phase-460-W3, phase-461-W3. Owns: packages/cli/cargo-nano-ros/src/capability_resolver.rs, packages/api/nros-cpp/Cargo.toml, packages/api/nros/Cargo.toml, packages/core/nros-node/Cargo.toml, packages/api/nros-cpp/src/params_shim.rs, packages/cli/nros-cli-core/src/entity_inventory.rs (param_nodes), packages/cli/nros-cli-core/src/codegen/entry/emit_cpp.rs (:1086), packages/cli/nros-cli-core/src/codegen/entry/emit_rust.rs, packages/api/nros/src/lib.rs (:1397), the book's parameters page. Gate: just check infra-queryable-counts, the island bringup with features = ["params"] to VERDICT PASS on native_sim, nros image-facts max_queryables = 2. Status: landed (2026-10-14), island acceptance pending. The `params` axis is in `CAPABILITIES` (`param-store`, `NROS_SYSTEM_PARAM_STORE`) and `LEAF_CAPABILITY_AXES` (`PARAM_STORE_ENABLED`); `nros` gains `param-store` (its store-side gates moved onto it; `param-services` implies it); `Executor::register_parameter_store` builds the store and requests no service; `nros::main!` emits `apply_param_store` on both arms; the inventory already counted parameter queryables only for `param_services`, and `InfraServices::param_store` now implies the store, as `[params] store = "params"`; nros-params reads that value as "not served", so the cargo and cmake roads drop the service sets the Zephyr road drops through `CONFIG_NROS_CAPABILITY_PARAM_SERVICES=n`; the west road states `CONFIG_NROS_PARAM_STORE=y` for it; `nros_feature_set` lowers it to `param-store` (nros-cpp) or `param-services` (nros-c, which has no split). Measured on a copy of `examples/workspaces/features` with `features = ["params"]` and the node pkg on `param-store`, image `native_rust_params`, against the unmodified workspace: the same `/chatter` value (120, the bringup's `params_files` seed), the five lifecycle services and none of the six parameter services, an empty `ros2 param list` where the control lists `publish_period_ms`, and the carved service home 10,392 B against 33,400 B. NOT done here: item 1's nros-node split, so the service code links dormant (issue 1897, flash only); `nros image-facts` reports no `max_queryables` (see W5). What is left is the island's: switch `src/safety_island_bringup/system.toml` from `features = []` to `["params"]` and measure VERDICT PASS.
 
 ## Gates
 
