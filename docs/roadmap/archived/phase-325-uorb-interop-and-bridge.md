@@ -1,11 +1,13 @@
 # Phase 325 — uORB interop: direct, and bridged to any RMW
 
-**Status (2026-10-14). W0-W4 DONE: W3.4 LANDED today — a stock PX4 module's
-uORB topic reaches a real ROS 2 subscriber through the bridge, asserted by
-`px4_bridge_ros2_e2e` (receipts under W3). A `jazzy` image reaches a real
-Jazzy subscriber too since issue 1893 was fixed (2026-10-15, measured by hand
-in the `ros_editions` Jazzy image). One open issue bounds what this proves: the
-xrce build links but does not boot (issue 1896).**
+**Status (2026-10-15). COMPLETE — archived.** Every work item is done. A stock
+PX4 module's uORB topic reaches a real ROS 2 subscriber through the bridge over
+zenoh (`px4_bridge_ros2_e2e`) and over XRCE, beside PX4's own
+`uxrce_dds_client` in one image (`px4_bridge_xrce_ros2_e2e`, issue 1896). A
+`jazzy` zenoh image reaches a real Jazzy subscriber too (issue 1893, measured
+by hand in the `ros_editions` Jazzy image; no automated test runs a Jazzy peer).
+
+**Previously (2026-10-14).** W3.4 landed; issues 1893 and 1896 bounded it.
 
 **Previously (2026-09-04).** W0, W1 and W2 LANDED 2026-07-31; W3's GATE PASSED
 the same day; W3.1-W3.4 remain — and are NO LONGER BLOCKED.
@@ -25,7 +27,7 @@ blocker.
 
 **Previously (2026-07-31): Draft.** Not started.
 **Implements:** RFC-0026 (example layout), RFC-0048 (cmake consumption).
-**Successor to:** [phase-316](archived/phase-316-example-tree-axes.md) W4, which carried
+**Successor to:** [phase-316](phase-316-example-tree-axes.md) W4, which carried
 the decisions but not the work — scoping showed W4 is a phase, not a work item.
 **Informed by:** issues 0351 (proofs that observe the wrong thing), 0356
 (`px4_e2e` targets a retired tree), 0288, 0159 (`.clang-format-ignore` precedent).
@@ -802,6 +804,16 @@ Five things the run found that the plan did not predict:
   over a second backend" would not hold today, and is not claimed. The test
   refuses an xrce image by content (`registers no zenoh backend`) instead of
   letting it read as `BootTimeout`.
+* **Issue 1896 RESOLVED (2026-10-15) — the second backend now delivers too.**
+  nano-ros's Micro-XRCE-DDS-Client / micro-CDR compile under private `nros_`
+  names (`nros-rmw-xrce-cffi/build_symbol_prefix.rs`: the set is read from the
+  vendored objects' symbol tables, force-included, and verified on the
+  archive). `px4_bridge_xrce_ros2_e2e` (`just px4 test-bridge-xrce-ros2`)
+  boots the xrce image with PX4's stock `uxrce_dds_client` running beside the
+  bridge, both on one MicroXRCEAgent, and a ROS 2 humble subscriber over
+  `rmw_fastrtps_cpp` decodes 3 bridged `DebugKeyValue` (`key = "velx"`) AND 3
+  `/fmu/out/timesync_status` from PX4's own client. So W3's acceptance holds
+  on two backends, not one plus a build.
 
 **Host note (newslab-server-241), not a repo change.** This host's `~/.local`
 jsonschema stack is broken on Python 3.10 (`No module named 'attrs'`, then

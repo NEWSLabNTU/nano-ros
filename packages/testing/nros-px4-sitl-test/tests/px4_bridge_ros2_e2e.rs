@@ -120,10 +120,9 @@ fn prebuilt_bridge_sitl_dir(distro: &str) -> PathBuf {
     );
 
     // The OUTWARD backend is a build choice (W3.3), and this test's peer speaks
-    // rmw_zenoh. Checked here, before boot, because the other choice does not
-    // fail as "wrong backend": an `NROS_PX4_BRIDGE_RMW=xrce` image SEGVs inside
-    // PX4's own `uxrce_dds_client` before the startup script returns (issue
-    // 1896), which would read as `BootTimeout`.
+    // rmw_zenoh. Checked here, before boot, so a wrong fixture is named as one
+    // rather than surfacing as a delivery timeout. The xrce image has its own
+    // test, `px4_bridge_xrce_ros2_e2e` (issue 1896).
     assert!(
         contains_bytes(&bytes, b"nros_rmw_zenoh_register"),
         "{} registers no zenoh backend — it was built with another \
