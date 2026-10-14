@@ -158,3 +158,28 @@ build dirs share one `cargo/` target; build A; B must read "not rebuilt", not
 "STALE"; then corrupt A's mirror after its build, and A must read STALE. Keep
 the case on both generators, since issue 1832 says the CI lanes are Unix
 Makefiles.
+
+## First CI sightings: it now stops both tier lanes (2026-10-14)
+
+Run-matrix **38637410239** (workflow_dispatch, main `5ab72ab02`). Both fixture
+jobs ran on `newslab-118-server` in the persistent fixture tree (phase-489 W6)
+and failed before any cell, in the `check fast` that opens `just build`:
+
+- **116104004118** `tier 2 (1-wise matrix)`, step `just build tier2`
+- **116114632835** `tier 1 (cells)`, step `just build tier1`
+
+```
+check-fast (parallel): 1 of 450 gate(s) FAILED
+===== FAIL (sizes-header-mirrors, rc=1, 14091ms) =====
+STALE MIRROR: …/nros-tests/fixtures/image_config_ws/build/nros-metadata/metadata-probe-cmake/build/nano_ros/packages/api/nros-c/include/nros/nros_config_generated.h
+         vs: …/metadata-probe-cmake/build/cargo/nros-fixture-tree_15c46/nros-c-generated/nros/nros_config_generated.h
+             source: #define EXECUTOR_OPAQUE_U64S 11353
+             mirror: #define EXECUTOR_OPAQUE_U64S 11352
+```
+
+That is the shape described above, now in CI. The executor grew by 8 bytes on
+main (2248 → 2256 value size), the shared cargo dir was rebuilt for one probe,
+and every sibling probe's mirror reads stale. The persistent tree is what makes
+it bite in CI: a fresh checkout has no sibling mirror to go stale. Until this
+is fixed, every tier-1/tier-2 dispatch on a self-hosted runner whose tree
+predates an `nros-c` size change stops at this gate.
