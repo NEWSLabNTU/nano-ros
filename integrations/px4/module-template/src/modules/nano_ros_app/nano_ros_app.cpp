@@ -79,7 +79,7 @@ extern "C" __EXPORT int nano_ros_app_main(int argc, char *argv[])
 	//                                 "px4_msgs::msg::VehicleStatus",
 	//                                 ORB_ID(vehicle_status));
 	//
-	//    See docs/roadmap/phase-325-uorb-interop-and-bridge.md; the worked
+	//    See docs/roadmap/archived/phase-325-uorb-interop-and-bridge.md; the worked
 	//    example lands at examples/px4/cpp/firmware/.
 
 	return 0;

@@ -446,8 +446,30 @@ test-bridge-ros2:
     just px4 build-px4-msgs-ros humble
     source scripts/build/cargo.sh
     cargo_nextest_args=($(nros_cargo_nextest_args_unlocked))
+    # Reap what a SIGKILLed earlier run left (issue 1896: a PX4 daemon's rcS
+    # and px4-param outlive it; the test records the group, this sweeps it).
+    cargo run -q -p nros-tests --bin nros-peer-sweep 2>/dev/null || true
     cd packages/testing/nros-px4-sitl-test
     cargo nextest run "${cargo_nextest_args[@]}" --test px4_bridge_ros2_e2e
+
+# Issue 1896 — the same bridge on XRCE, in ONE image with PX4's own
+# `uxrce_dds_client`: both clients reach a ROS 2 (rmw_fastrtps_cpp) subscriber
+# through one MicroXRCEAgent. Needs the agent (`just xrce setup`). The image
+# replaces the zenoh one in the shared SITL build dir, so run the two recipes
+# one after the other, never together.
+[group("debug")]
+test-bridge-xrce-ros2:
+    #!/usr/bin/env bash
+    set -e
+    NROS_PX4_BRIDGE_RMW=xrce just px4 build-bridge-example debug_key_value humble
+    just px4 build-px4-msgs-ros humble
+    source scripts/build/cargo.sh
+    cargo_nextest_args=($(nros_cargo_nextest_args_unlocked))
+    # Reap what a SIGKILLed earlier run left (issue 1896: a PX4 daemon's rcS
+    # and px4-param outlive it; the test records the group, this sweeps it).
+    cargo run -q -p nros-tests --bin nros-peer-sweep 2>/dev/null || true
+    cd packages/testing/nros-px4-sitl-test
+    cargo nextest run "${cargo_nextest_args[@]}" --test px4_bridge_xrce_ros2_e2e
 
 # Build PX4 examples. (phase-277 W7: the former `build-sitl` recipe pointed
 # EXTERNAL_MODULES_LOCATION at the README-only `examples/px4/rust/uorb/`

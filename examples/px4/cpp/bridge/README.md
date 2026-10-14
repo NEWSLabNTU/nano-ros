@@ -81,17 +81,21 @@ nros_uorb_bridge start
 nros_uorb_bridge status
 ```
 
-Two things to know, both measured:
+One thing to know, measured:
 
 * **Build for your subscriber's edition.** The `edition` argument (default
   `jazzy`) decides the data key: a `humble` image is seen only by a Humble
   subscriber and a `jazzy` image only by an Iron+ one. Until 2026-10-15 every
   image published Humble keys whatever you asked for
   ([issue 1893](../../../../docs/issues/archived/1893-px4-bridge-edition-misses-zenoh-keyexpr.md)).
-* **`NROS_PX4_BRIDGE_RMW=xrce` builds but does not boot** in `px4_sitl_default`:
-  PX4's own `uxrce_dds_client` calls into the bridge's copy of
-  Micro-XRCE-DDS-Client and SEGVs
-  ([issue 1896](../../../../docs/issues/1896-px4-bridge-xrce-collides-with-uxrce-dds-client.md)).
+
+`NROS_PX4_BRIDGE_RMW=xrce` runs beside PX4's own `uxrce_dds_client` in one
+`px4_sitl_default` image: nano-ros's copy of Micro-XRCE-DDS-Client compiles under
+private `nros_` symbol names, so the two clients no longer bind to each other
+([issue 1896](../../../../docs/issues/archived/1896-px4-bridge-xrce-collides-with-uxrce-dds-client.md)).
+Point the bridge at the same agent PX4 dials, e.g.
+`NROS_LOCATOR=udp/127.0.0.1:8888`; `just px4 test-bridge-xrce-ros2` runs both
+into a ROS 2 subscriber.
 
 ## Test: a real ROS 2 subscriber (phase-325 W3.4)
 

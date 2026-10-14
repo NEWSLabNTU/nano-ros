@@ -127,15 +127,19 @@ endif()
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_xrce_vendor_pointer}")
 set(NROS_XRCE_VENDOR_ARCHIVE "")
 set(NROS_XRCE_CFFI_INCLUDE "")
-file(STRINGS "${_xrce_vendor_pointer}" _xrce_vendor_lines REGEX "^[a-z]+=")
+set(NROS_XRCE_PREFIX_HEADER "")
+file(STRINGS "${_xrce_vendor_pointer}" _xrce_vendor_lines REGEX "^[a-z_]+=")
 foreach(_line IN LISTS _xrce_vendor_lines)
     if(_line MATCHES "^archive=(.+)$")
         set(NROS_XRCE_VENDOR_ARCHIVE "${CMAKE_MATCH_1}")
     elseif(_line MATCHES "^include=(.+)$")
         set(NROS_XRCE_CFFI_INCLUDE "${CMAKE_MATCH_1}")
+    elseif(_line MATCHES "^prefix_header=(.+)$")
+        set(NROS_XRCE_PREFIX_HEADER "${CMAKE_MATCH_1}")
     endif()
 endforeach()
-foreach(_pair "NROS_XRCE_VENDOR_ARCHIVE;archive" "NROS_XRCE_CFFI_INCLUDE;include")
+foreach(_pair "NROS_XRCE_VENDOR_ARCHIVE;archive" "NROS_XRCE_CFFI_INCLUDE;include"
+              "NROS_XRCE_PREFIX_HEADER;prefix_header")
     list(GET _pair 0 _var)
     list(GET _pair 1 _key)
     if(NOT ${_var} OR NOT EXISTS "${${_var}}")
@@ -647,6 +651,15 @@ target_include_directories(nros_rmw_xrce_vendored INTERFACE
     "${MICROXRCEDDS_CLIENT_DIR}/src/c"
     "${MICROCDR_DIR}/include"
 )
+# Issue 1896 — the archive's `uxr_*` / `ucdr_*` symbols are `nros_`-prefixed at
+# compile time (`nros-rmw-xrce-cffi/build_symbol_prefix.rs`), so a TU that names
+# the client's API — `graph_sample.c` calls `ucdr_*` — must see the same
+# `#define`s or it references names the archive does not define. The header is
+# generated beside the objects, so its path comes from the pointer file like the
+# other two facts. `SHELL:` keeps `-include <path>` one option CMake cannot
+# de-duplicate apart.
+target_compile_options(nros_rmw_xrce_vendored INTERFACE
+    "SHELL:-include \"${NROS_XRCE_PREFIX_HEADER}\"")
 
 add_library(nros_rmw_xrce INTERFACE)
 target_include_directories(nros_rmw_xrce INTERFACE

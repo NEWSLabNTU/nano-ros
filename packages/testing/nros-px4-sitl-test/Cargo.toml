@@ -42,6 +42,13 @@ path = "tests/px4_uorb_interop_e2e.rs"
 name = "px4_bridge_ros2_e2e"
 path = "tests/px4_bridge_ros2_e2e.rs"
 
+# Issue 1896 — the same bridge on the XRCE backend, in one image with PX4's own
+# `uxrce_dds_client`: both clients deliver to ROS 2 through one agent. Consumes
+# `NROS_PX4_BRIDGE_RMW=xrce just px4 build-bridge-example`; builds nothing.
+[[test]]
+name = "px4_bridge_xrce_ros2_e2e"
+path = "tests/px4_bridge_xrce_ros2_e2e.rs"
+
 [dependencies]
 # Path-dep into the px4-rs submodule. Out-of-workspace, so its
 # absence on a fresh clone is a build-time error here only, not a

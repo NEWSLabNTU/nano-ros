@@ -22,6 +22,10 @@
 
 use std::{env, fs, path::PathBuf};
 
+// Issue 1896 — the private `nros_` prefix on the vendored client's symbols.
+#[path = "build_symbol_prefix.rs"]
+mod symbol_prefix;
+
 // NROS-XRCE-COMPILED-TREES-BEGIN
 /// The `xrce-sources.txt` trees THIS lane compiles — phase-420 W9 step 4.
 ///
@@ -76,6 +80,7 @@ fn main() {
     // grew because half the formula came from a declaration and half from a
     // literal still builds, boots and passes every knob gate.
     xrce_demand_selftest();
+    println!("cargo:rerun-if-changed=build_symbol_prefix.rs");
 
     // issue 1558 — this counted FOUR parents because phase-321 W2.d moved the
     // crate one level deeper (`packages/xrce/` -> `packages/rmw/xrce/`), and
@@ -303,7 +308,10 @@ fn main() {
         }
     };
 
-    let mut compiled = 0usize;
+    // Collected rather than added straight to `build`: the symbol-prefix probe
+    // below compiles the VENDORED ones first, with the final flags (issue 1896).
+    let mut sources: Vec<PathBuf> = Vec::new();
+    let mut vendored_sources: Vec<PathBuf> = Vec::new();
     for row in &manifest.rows {
         assert!(
             COMPILED_TREES.contains(&row.tree.as_str()),
@@ -315,12 +323,15 @@ fn main() {
             row.tree,
         );
         if condition(manifest.condition_of(&row.group, &manifest_path)) {
-            build.file(tree_root(&row.tree).join(&row.path));
-            compiled += 1;
+            let src = tree_root(&row.tree).join(&row.path);
+            if row.tree != "backend" {
+                vendored_sources.push(src.clone());
+            }
+            sources.push(src);
         }
     }
     assert!(
-        compiled > 0,
+        !sources.is_empty(),
         "nros-rmw-xrce-cffi: {} selected no sources — manifest or condition drift",
         manifest_path.display()
     );
@@ -381,6 +392,17 @@ fn main() {
         }
     }
 
+    // Issue 1896 — every global the vendored client / micro-CDR define is
+    // compiled as `nros_<name>`, so an image can hold a second, unrelated
+    // Micro-XRCE-DDS-Client (PX4's `uxrce_dds_client`). See
+    // `build_symbol_prefix.rs`. Applied last, so the probe compiles with the
+    // exact flags the real objects get.
+    let (prefix_header, renamed) = symbol_prefix::generate(&build, &vendored_sources, &out_dir);
+    symbol_prefix::force_include(&mut build, &prefix_header);
+    for src in &sources {
+        build.file(src);
+    }
+
     let archive_stem = "nros_rmw_xrce_c_inline";
     nros_cc_flags::header_deps::track_header_deps(&mut build);
     build.compile(archive_stem);
@@ -405,6 +427,9 @@ fn main() {
          `nros-rmw-xrce/CMakeLists.txt` links that path.",
         archive.display()
     );
+    if !renamed.is_empty() {
+        symbol_prefix::verify(&archive, &renamed);
+    }
     let pointer = out_dir.join(VENDOR_BUILD_POINTER);
     fs::write(
         &pointer,
@@ -414,9 +439,11 @@ fn main() {
              # compiling the vendored micro-XRCE-DDS-Client / micro-CDR sources again.\n\
              # Do not hand-edit: it is regenerated on every build of this crate.\n\
              archive={}\n\
-             include={}\n",
+             include={}\n\
+             prefix_header={}\n",
             archive.display(),
             out_dir.join("include").display(),
+            prefix_header.display(),
         ),
     )
     .unwrap_or_else(|e| {
