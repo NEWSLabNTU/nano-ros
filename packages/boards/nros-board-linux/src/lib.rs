@@ -968,6 +968,29 @@ impl LinuxBoard {
     }
 }
 
+// phase-436 C2 — the POSIX port's microsecond park (`sem_clockwait` on an
+// absolute CLOCK_MONOTONIC deadline) and its granularity, which is the
+// monotonic clock's resolution: 1 us on a Linux host with hrtimers, one tick
+// (CONFIG_USEC_PER_TICK) on NuttX, which compiles the same POSIX source. Without
+// it every park here is floored at the `wake_wait_ms` ABI's millisecond.
+//
+// `//` not `///`: rustdoc documents nothing on an extern block.
+unsafe extern "C" {
+    fn nros_platform_wake_park_until_us(w: *mut core::ffi::c_void, deadline_us: u64) -> i8;
+    fn nros_platform_wake_park_granularity_us() -> u64;
+}
+
+/// Install the park on `crt`'s executor. Advisory: a build with no wake object
+/// keeps the path it had.
+fn install_park(crt: &mut ::nros::node_runtime::ExecutorNodeRuntime) {
+    let granularity = unsafe { nros_platform_wake_park_granularity_us() };
+    let _ = ::nros::port_park::install_port_park(
+        crt.executor_mut(),
+        nros_platform_wake_park_until_us,
+        granularity,
+    );
+}
+
 /// RFC-0052 / phase-296 W3a — lower a tier's RTOS-agnostic scheduling
 /// policy onto the tier executor's DEFAULT scheduling context. One
 /// Executor per tier means "the tier's policy" == "this executor's
@@ -1099,6 +1122,7 @@ fn run_one_tier<B, F, E>(
     // quietly narrower set. Nothing here can return an error (the tier
     // runner is `-> ()`), so the fail-closed state IS the report.
     let _ = crt.executor_mut().set_active_groups(tier.groups);
+    install_park(&mut crt);
     apply_tier_sched(&mut crt, tier);
     apply_tier_affinity::<B>(tier);
     {
@@ -1148,6 +1172,7 @@ fn run_boot_tier<B, F, E>(
     // quietly narrower set. Nothing here can return an error (the tier
     // runner is `-> ()`), so the fail-closed state IS the report.
     let _ = crt.executor_mut().set_active_groups(tier.groups);
+    install_park(crt);
     apply_tier_sched(crt, tier);
     apply_tier_affinity::<B>(tier);
     {

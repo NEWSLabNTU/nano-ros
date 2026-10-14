@@ -738,6 +738,32 @@ unsafe extern "C" {
     fn nros_nuttx_apply_current_priority(name: *const core::ffi::c_char, priority: u32) -> i32;
 }
 
+// phase-436 C2 — the POSIX port's microsecond park (`sem_clockwait` on an
+// absolute CLOCK_MONOTONIC deadline) and its granularity, which is the
+// monotonic clock's resolution: 1 us on a Linux host with hrtimers, one tick
+// (CONFIG_USEC_PER_TICK) on NuttX, which compiles the same POSIX source. Without
+// it every park here is floored at the `wake_wait_ms` ABI's millisecond.
+//
+// `//` not `///`: rustdoc documents nothing on an extern block. Gated like
+// the tier runners that call it.
+#[cfg(target_os = "nuttx")]
+unsafe extern "C" {
+    fn nros_platform_wake_park_until_us(w: *mut core::ffi::c_void, deadline_us: u64) -> i8;
+    fn nros_platform_wake_park_granularity_us() -> u64;
+}
+
+/// Install the park on `crt`'s executor. Advisory: a build with no wake object
+/// keeps the path it had.
+#[cfg(target_os = "nuttx")]
+fn install_park(crt: &mut ::nros::node_runtime::ExecutorNodeRuntime) {
+    let granularity = unsafe { nros_platform_wake_park_granularity_us() };
+    let _ = ::nros::port_park::install_port_park(
+        crt.executor_mut(),
+        nros_platform_wake_park_until_us,
+        granularity,
+    );
+}
+
 /// Adopt the tier's declared priority on the current thread (no-op
 /// off-target and when the tier declares none). Name crosses the FFI as a
 /// NUL-terminated stack copy, mirroring [`apply_tier_affinity`].
@@ -976,6 +1002,7 @@ where
     // quietly narrower set. Nothing here can return an error (the tier
     // runner is `-> ()`), so the fail-closed state IS the report.
     let _ = boot_crt.executor_mut().set_active_groups(boot_tier.groups);
+    install_park(&mut boot_crt);
     // W5.4 — shared tier→SchedContext lowering (Sporadic / EDF / TT). BUT the
     // boot tier is the SESSION OWNER: `apply_tier_sched_policy` installs the
     // lowered context as the executor's *default* SchedContext, which gates
@@ -1326,6 +1353,7 @@ fn nuttx_run_one_tier<F, E>(
     // quietly narrower set. Nothing here can return an error (the tier
     // runner is `-> ()`), so the fail-closed state IS the report.
     let _ = crt.executor_mut().set_active_groups(tier.groups);
+    install_park(&mut crt);
     // W5.4 — shared tier→SchedContext lowering (Sporadic / EDF / TT).
     crt.apply_tier_sched_policy(
         tier.class,

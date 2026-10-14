@@ -24,8 +24,8 @@ through A3's clear accessor is on `main`: W1-W7 (#849), A2 (#871), E3 + E4
    `docs/roadmap/phase-11-executor-evidence.md` carries the ASI side.
 4. Path B's B2 LANDED 2026-09-25 (smoltcp `poll_delay` is the first real
    deadline source; the target-run half of the exit is still open — see Path
-   B). Then Path C (C1 FreeRTOS, C2 POSIX/NuttX;
-   C3 bare metal deferred), Path D (D1 measure 1195, D2 close 1196), E1
+   B). Path C's C1 (FreeRTOS) and C2 (POSIX/NuttX) LANDED 2026-10-15; C3
+   (bare metal) stays deferred. Then Path D (D1 measure 1195, D2 close 1196), E1
    (issue 1232, resolved and archived since), and A2b (LANDED 2026-10-15).
 
 Two process lessons that cost time here:
@@ -784,27 +784,121 @@ outside tests. Every wired port waits; none says WHEN.
 
 ### Path C — Park coverage across ports.
 
-Only Zephyr (both arms) and ThreadX implement
-`nros_platform_wake_park_until_us`. W7.a made the rest reachable; none is
-wired, so every other port parks on the millisecond `wake_wait_ms` floor.
+Before this path only Zephyr (both arms) and ThreadX implemented
+`nros_platform_wake_park_until_us`; W7.a made the rest reachable but none was
+wired, so every other port parked on the millisecond `wake_wait_ms` floor.
 
-* **C1 — FreeRTOS, and ESP-IDF with it.** `wake_wait_ms` converts with
-  `pdMS_TO_TICKS`, which TRUNCATES: exact at the usual 1000 Hz tick, but at a
-  coarser tick a sub-tick timeout becomes 0 ticks — the non-blocking path, a
-  busy loop — the platform-layer twin of issue 1193. A park needs a ceiling
-  conversion and a granularity from `configTICK_RATE_HZ` (the port already
-  derives `US_PER_TICK`).
-* **C2 — POSIX, which also covers NuttX.** NuttX has no platform source of
-  its own: `nros-platform-nuttx` compiles `nros-platform-posix/src/platform.c`.
-  The §2 note that "POSIX does not need this" was conditional on issue 1242,
-  which W7.b has now met, so the remaining gap is the `uint32_t timeout_ms`
-  ABI floor: a microsecond park on an absolute `CLOCK_MONOTONIC` deadline is
-  what gives POSIX and NuttX sub-millisecond parks.
+* **C1 — FreeRTOS, and ESP-IDF with it. LANDED (2026-10-15).** `wake_wait_ms`
+  converted with `pdMS_TO_TICKS`, which TRUNCATES: exact at the usual 1000 Hz
+  tick, but at a coarser tick a sub-tick timeout became 0 ticks — the
+  non-blocking path, a busy loop — the platform-layer twin of issue 1193.
+  What landed:
+  * One conversion, `nros_freertos_us_to_ticks_ceil` in
+    `nros-platform-freertos/src/platform.c`: microseconds to ticks, rounded
+    up, never zero for a non-zero request, saturating below `portMAX_DELAY`.
+    Every timed wait and sleep in the port goes through it — `wake_wait_ms`,
+    `condvar_wait_until`, `sleep_{us,ms,s}`, and the software-timer period in
+    `timer.c`. Two siblings had their own defects: `sleep_us` rounded up to
+    MILLISECONDS and used the count as ticks (at 100 Hz a 1 ms sleep lasted
+    10 ms), and `timer.c` went through `pdMS_TO_TICKS`, so below 1000 Hz a
+    period under one tick became 0 ticks, which `xTimerCreate` refuses.
+  * `nros_platform_wake_park_until_us` (an `xSemaphoreTake` on the wake
+    object with the ceiling tick count) and
+    `nros_platform_wake_park_granularity_us` = `ceil(1e6 / configTICK_RATE_HZ)`.
+    FreeRTOS counts the current, partly elapsed tick as one of N, so a park of
+    N ticks can return up to one tick early; that band is the declared
+    granularity, so it is stated rather than hidden.
+  * Installed on both tier runners, the same sites Zephyr and ThreadX use: the
+    Rust entry (`nros-board-freertos/src/entry.rs`, boot tier and every spawned
+    tier) and the C runner (`c/freertos_run_tiers.c`, boot and spawned).
+  * ESP-IDF shares `platform.c` (`ESP_PLATFORM`), so it gets the same code, but
+    no IDF build exists in-tree (RFC-0065 D3) and none was run.
+
+  Measured: the conversion compiled and run on the host against the FreeRTOS
+  POSIX-port headers at 1000, 100 and 128 Hz (granularity 1000, 10000 and
+  7813 us; 300 us -> 1 tick at every rate; 10001 us -> 11, 2 and 2 ticks).
+  The realtime workspace fixtures were built for mps2-an385
+  (`workspace-rust-freertos-realtime`, `workspace-c-freertos-realtime`), the C
+  image's disassembly shows both `nros_cpp_executor_set_park_primitive` calls,
+  and `realtime_tiers_e2e` passed those cells under QEMU. Every shipped
+  FreeRTOS config ticks at 1000 Hz, so on today's boards the declared
+  granularity equals the millisecond the executor already assumed; the change
+  is what happens on a board configured coarser.
+
+* **C2 — POSIX, which also covers NuttX. LANDED (2026-10-15).** NuttX has no
+  platform source of its own: `nros-platform-nuttx` compiles
+  `nros-platform-posix/src/platform.c`. What landed there:
+  * `nros_platform_wake_park_until_us` turns the executor's microseconds-from-now
+    into an ABSOLUTE deadline on `CLOCK_MONOTONIC` — the clock
+    `nros_platform_clock_ns` reads, so the park and the executor that sized it
+    measure time the same way — and waits with `sem_clockwait`. That function
+    is POSIX.1-2024, NuttX has it, and glibc has had it since 2.30 (declared only
+    under `_GNU_SOURCE`, which this file deliberately does not define, so the
+    prototype is supplied when the header withholds it). Any other libc (musl)
+    keeps `sem_timedwait` on a re-anchored `CLOCK_REALTIME` deadline, still at
+    microsecond resolution. EINTR resumes against the same absolute deadline.
+  * `wake_wait_ms` now goes through the same wait, so it no longer measures
+    its deadline on `CLOCK_REALTIME` — the header had described it as
+    `CLOCK_MONOTONIC` since phase 130, and the code had not been. A wall-clock
+    step no longer moves a pending wait.
+  * `nros_platform_wake_park_granularity_us` is `clock_getres(CLOCK_MONOTONIC)`
+    rounded up to whole microseconds, never zero. One spelling answers both
+    kernels, because each one's `clock_getres` already says the true thing:
+    1 ns on a Linux host with hrtimers (so 1 us), and `NSEC_PER_TICK` on NuttX
+    — 1000 us on the in-tree armv7-a export (`CONFIG_USEC_PER_TICK=1000`) and
+    10000 us on the riscv export. Linux timer slack (50 us by default for
+    `SCHED_OTHER`) is lateness, not granularity: the request is expressed
+    exactly and the jitter monitor measures where it lands.
+  * Installed on the tier runners of `nros-board-linux` (boot and spawned) and
+    `nros-board-nuttx` (boot and spawned).
+
+  Measured: four new host tests in
+  `nros-platform-cffi/tests/c_port_posix_wake.rs` (run by
+  `check required-features-tests`). A 300 us park never returns before its
+  deadline and the fastest of 20 finishes inside a millisecond; on this host
+  the 20 landed between 341 and 361 us, the ~50 us over being timer slack.
+  Negative control: with the park rounded up to whole milliseconds the
+  upper-bound test fails (fastest 1.046 ms). The others pin that a
+  cross-thread signal breaks a 5 s park and reports 0, that a zero deadline is
+  a non-blocking take, and that the declared granularity equals the clock's.
+  `realtime_tiers_e2e` passed its native Rust cells
+  (`workspace-rust-native-realtime`, `-derived`) with the park installed. The
+  POSIX source was cross-compiled against the in-tree NuttX armv7-a export
+  headers with no warnings, and `workspace-rust-nuttx-realtime` was built
+  (the image links `sem_clockwait` and the park) and passed its
+  `realtime_tiers_e2e` cell under QEMU (qemu-armv7a).
+
 * **C3 — bare metal. DEFERRED.** Needs a per-board one-shot compare armed
   before `wfi`, which exists nowhere today.
 * **Exit:** every port declares a granularity that matches its tick, so no
   port's jitter report claims resolution it lacks (issue 1242's rule,
-  applied everywhere).
+  applied everywhere). **Met for every port with a park** — Zephyr, ThreadX,
+  FreeRTOS, POSIX and NuttX — on the paths that install one. Bare metal keeps
+  the 1 ms fallback, which is the floor of the `wake_wait_ms` ABI it exports
+  and so is not an over-claim.
+
+Two things Path C did not change, both shared with the Zephyr and ThreadX
+wiring that came before it, and both worth a decision rather than a drift:
+
+* **Only the TIER runners install a park.** The single-executor entries
+  (`nros_rtos_run_components.c`, the Linux board's `boot_hosted`, NuttX's
+  `run_entry`, the C++ `run_components`) install nothing on any port, so the
+  dominant embedded
+  path still parks on `wake_wait_ms`. `nros_rtos_run_components.c` is shared
+  by every RTOS board and cannot assume the OPTIONAL park symbols exist, which
+  is why it was not simply extended here.
+* **A park nobody signals is not broken by data.** The park waits on the
+  executor's own wake object, which the backend signals only when the backend
+  installed a wake callback on that executor. A spawned tier over a BORROWED
+  session installs none (`install_wake_signal_on_primary` runs for the owner
+  only), and a poll-only backend (XRCE) has none to install; on those the park
+  sleeps its bound and the transport is then drained non-blockingly. Before a
+  park was installed the same executors blocked in the transport's own recv
+  for the same bound, and on multi-threaded zenoh-pico that is itself a
+  `z_sleep_ms`, so for zenoh tiers the trade is even. For XRCE it is not, and
+  gating the park on `has_async_wake` would lose the declared granularity on
+  exactly the spawned tiers that need it — so it is left as a recorded open
+  question rather than fixed in passing.
 
 ### Path D — Waits that still bypass the waker.
 

@@ -695,6 +695,61 @@ typedef struct {
     sem_t sem;
 } nros_wake_t;
 
+/* phase-436 C2 — which clock a wake wait measures its deadline on.
+ *
+ * `sem_timedwait` reads its absolute deadline on CLOCK_REALTIME, so a wall-
+ * clock step (NTP, `date -s`, a NuttX RTC set) moves every pending wait by
+ * the step. The executor's own clock is CLOCK_MONOTONIC
+ * (`nros_platform_clock_ns` above), so a REALTIME deadline is also a second
+ * clock the executor's arithmetic never sees. `sem_clockwait` takes the clock
+ * explicitly; it is POSIX.1-2024, NuttX has it, and glibc has had it since
+ * 2.30 — but glibc declares it only under `_GNU_SOURCE`, which this file
+ * deliberately does not define (see the `pthread_setname_np` note below), so
+ * the prototype is supplied here when the header withheld it.
+ *
+ * Anything else (musl today) keeps `sem_timedwait` on a REALTIME deadline
+ * re-anchored from the monotonic one: still microsecond-resolution, but
+ * exposed to wall-clock steps, as `wake_wait_ms` always was. */
+#if defined(__NuttX__) || \
+    (defined(__GLIBC__) && (__GLIBC__ > 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ >= 30)))
+#define NROS_POSIX_HAVE_SEM_CLOCKWAIT 1
+#if defined(__GLIBC__) && !defined(__USE_GNU)
+extern int sem_clockwait(sem_t *sem, clockid_t clockid, const struct timespec *abstime);
+#endif
+#endif
+
+/* Block on `wp` until signalled or until `rel_ns` from now has elapsed on
+ * CLOCK_MONOTONIC. Returns 0 = signalled, 1 = timed out, -1 = error.
+ *
+ * One wait for both entry points below, so the millisecond ABI and the
+ * microsecond park cannot disagree about the clock or the timeout mapping. */
+static int8_t nros_posix_wake_wait_rel_ns(nros_wake_t *wp, uint64_t rel_ns) {
+    struct timespec ts;
+#ifdef NROS_POSIX_HAVE_SEM_CLOCKWAIT
+    const clockid_t clk = CLOCK_MONOTONIC;
+#else
+    const clockid_t clk = CLOCK_REALTIME;
+#endif
+    if (clock_gettime(clk, &ts) != 0) return -1;
+    ts.tv_sec  += (time_t) (rel_ns / 1000000000ULL);
+    ts.tv_nsec += (long)   (rel_ns % 1000000000ULL);
+    if (ts.tv_nsec >= 1000000000L) {
+        ts.tv_sec  += 1;
+        ts.tv_nsec -= 1000000000L;
+    }
+    for (;;) {
+#ifdef NROS_POSIX_HAVE_SEM_CLOCKWAIT
+        int r = sem_clockwait(&wp->sem, clk, &ts);
+#else
+        int r = sem_timedwait(&wp->sem, &ts);
+#endif
+        if (r == 0) return 0;
+        if (errno == ETIMEDOUT) return 1;
+        if (errno == EINTR)     continue;
+        return -1;
+    }
+}
+
 int8_t nros_platform_wake_init(void *w) {
     if (w == NULL) return -1;
     nros_wake_t *wp = (nros_wake_t *) w;
@@ -709,22 +764,81 @@ int8_t nros_platform_wake_drop(void *w) {
 
 int8_t nros_platform_wake_wait_ms(void *w, uint32_t timeout_ms) {
     if (w == NULL) return -1;
+    return nros_posix_wake_wait_rel_ns((nros_wake_t *) w, (uint64_t) timeout_ms * 1000000ULL);
+}
+
+/* phase-436 C2 — the optional microsecond park, for POSIX and therefore for
+ * NuttX, which compiles this file.
+ *
+ * `nros_platform_wake_wait_ms` floors every wait at a millisecond through its
+ * `uint32_t timeout_ms` signature; the semaphore wait underneath takes a
+ * timespec and has no such floor. This is the same wait without it, so a
+ * sub-millisecond park is a sub-millisecond park instead of either a whole
+ * millisecond or (truncated) a non-blocking poll.
+ *
+ * `deadline_us` is what the executor's `ParkUntilFn` passes: microseconds
+ * from now, already rounded up to `nros_platform_wake_park_granularity_us`.
+ * It is turned into an ABSOLUTE deadline on CLOCK_MONOTONIC — the clock
+ * `nros_platform_clock_ns` reads, so the park and the executor that sized it
+ * measure time the same way — and an EINTR resumes against that same absolute
+ * deadline rather than restarting the interval.
+ *
+ * `w` MUST be the executor's own wake object (`wake_raw_ptr` /
+ * `nros_cpp_executor_wake_handle`): the backend's listener signals that one,
+ * and a park on anything else cannot be broken by data arriving.
+ *
+ * Contract: 0 = signalled, 1 = deadline expired, -1 = cannot park. */
+int8_t nros_platform_wake_park_until_us(void *w, uint64_t deadline_us) {
+    if (w == NULL) return -1;
     nros_wake_t *wp = (nros_wake_t *) w;
-    struct timespec ts;
-    if (clock_gettime(CLOCK_REALTIME, &ts) != 0) return -1;
-    uint64_t add_ns = (uint64_t) timeout_ms * 1000000ULL;
-    ts.tv_sec  += (time_t) (add_ns / 1000000000ULL);
-    ts.tv_nsec += (long)   (add_ns % 1000000000ULL);
-    if (ts.tv_nsec >= 1000000000L) {
-        ts.tv_sec  += 1;
-        ts.tv_nsec -= 1000000000L;
+    if (deadline_us == 0u) {
+        /* Non-blocking take, matching Zephyr's K_NO_WAIT and ThreadX's
+         * TX_NO_WAIT for a zero request. */
+        for (;;) {
+            if (sem_trywait(&wp->sem) == 0) return 0;
+            if (errno == EAGAIN) return 1;
+            if (errno == EINTR)  continue;
+            return -1;
+        }
     }
-    while (sem_timedwait(&wp->sem, &ts) != 0) {
-        if (errno == ETIMEDOUT) return 1;
-        if (errno == EINTR)     continue;
-        return -1;
+    /* Clamp to the longest wait the millisecond ABI can already express
+     * (UINT32_MAX ms, ~49.7 days). A longer request would only risk wrapping
+     * a 32-bit `time_t` into a deadline in the PAST — an immediate timeout —
+     * and the executor re-parks after a timeout anyway. */
+    const uint64_t max_us = (uint64_t) UINT32_MAX * 1000ULL;
+    uint64_t rel_us = deadline_us > max_us ? max_us : deadline_us;
+    return nros_posix_wake_wait_rel_ns(wp, rel_us * 1000ULL);
+}
+
+/* The finest park the function above can express, in microseconds — the
+ * resolution of the clock its deadline is measured on, rounded UP to whole
+ * microseconds and never reported as zero (issue 1242's rule: the port states
+ * what it can do; it does not claim the ABI's millisecond, nor finer than its
+ * clock).
+ *
+ * One spelling answers both kernels this file builds for, because each one's
+ * `clock_getres` already says the true thing:
+ *  * Linux hrtimers: 1 ns, so 1 us. Wake-up LATENESS (scheduling, the
+ *    per-thread timer slack, 50 us by default for SCHED_OTHER) is not
+ *    granularity — the request is expressed exactly and the jitter monitor
+ *    measures how late it actually lands.
+ *  * NuttX: `NSEC_PER_TICK`, i.e. CONFIG_USEC_PER_TICK (10 ms by default),
+ *    which IS the floor of its watchdog-timed `sem_clockwait`. */
+uint64_t nros_platform_wake_park_granularity_us(void) {
+#ifdef NROS_POSIX_HAVE_SEM_CLOCKWAIT
+    const clockid_t clk = CLOCK_MONOTONIC;
+#else
+    const clockid_t clk = CLOCK_REALTIME;
+#endif
+    struct timespec res;
+    if (clock_getres(clk, &res) != 0) {
+        /* Unknown: report the millisecond the required ABI already promises
+         * rather than claim a resolution nobody measured. */
+        return 1000u;
     }
-    return 0;
+    uint64_t ns = (uint64_t) res.tv_sec * 1000000000ULL + (uint64_t) res.tv_nsec;
+    uint64_t us = (ns + 999ULL) / 1000ULL;
+    return us == 0u ? 1u : us;
 }
 
 int8_t nros_platform_wake_signal(void *w) {

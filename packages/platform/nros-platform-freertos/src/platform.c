@@ -407,32 +407,63 @@ void *nros_platform_realloc(void *ptr, size_t size) {
 
 /* ---- Sleep ---- */
 
-static inline TickType_t ms_to_ticks(size_t ms) {
-    /* `pdMS_TO_TICKS(ms)` for portability; expands to
-     *    ((TickType_t)(((TickType_t)(ms) * (TickType_t)configTICK_RATE_HZ) / (TickType_t)1000))
-     * which is what we want. */
-    return pdMS_TO_TICKS(ms);
+/* phase-436 C1 — microseconds to ticks, rounded UP. The ONE conversion every
+ * timed wait and sleep in this port goes through — `timer.c` included, which
+ * is why it has external linkage (the `nros_freertos_` prefix keeps it out of
+ * the platform ABI).
+ *
+ * `pdMS_TO_TICKS` TRUNCATES: exact at the usual 1000 Hz tick, but at a coarser
+ * tick a sub-tick request becomes 0 ticks, which `xSemaphoreTake` and
+ * `vTaskDelay` both read as "do not block" — a busy loop for a waiter, a
+ * no-op for a sleeper (the platform-layer twin of issue 1193). The old
+ * `sleep_us` had the opposite defect: it rounded up, but to MILLISECONDS
+ * counted as ticks, so at 100 Hz a 1 ms sleep lasted 10 ms and a 15 ms sleep
+ * 150 ms.
+ *
+ * Rounded up because a wait shorter than asked is a missed deadline while a
+ * longer one is merely late. Note FreeRTOS counts the current, partly elapsed
+ * tick as one of the N, so N ticks is (N-1, N] tick periods: up to one tick
+ * EARLY. That band is exactly the granularity this port declares
+ * (`nros_platform_wake_park_granularity_us`), so the error is stated, not
+ * hidden. Saturates below `portMAX_DELAY`, which means "forever" when
+ * `INCLUDE_vTaskSuspend` is set. */
+TickType_t nros_freertos_us_to_ticks_ceil(uint64_t us);
+TickType_t nros_freertos_us_to_ticks_ceil(uint64_t us) {
+    if (us == 0u) {
+        return 0;
+    }
+    const uint64_t hz = (uint64_t) configTICK_RATE_HZ;
+    const uint64_t max_ticks = (uint64_t) (portMAX_DELAY - 1);
+    if (us > (UINT64_MAX - 999999ULL) / hz) {
+        return (TickType_t) max_ticks;
+    }
+    uint64_t n = (us * hz + 999999ULL) / 1000000ULL;
+    if (n == 0u) {
+        n = 1u;
+    }
+    return (TickType_t) (n > max_ticks ? max_ticks : n);
+}
+
+/* Milliseconds through the same ceiling. `ms * 1000` saturates rather than
+ * wraps; the conversion above then saturates the tick count. */
+static inline TickType_t ms_to_ticks(uint64_t ms) {
+    uint64_t us = (ms > UINT64_MAX / 1000ULL) ? UINT64_MAX : ms * 1000ULL;
+    return nros_freertos_us_to_ticks_ceil(us);
 }
 
 void nros_platform_sleep_us(size_t us) {
-    /* FreeRTOS tick is typically 1 ms; sub-millisecond sleep can't
-     * be honored portably. Round up to 1 tick if non-zero. */
     if (us == 0) {
         return;
     }
-    TickType_t ticks = (TickType_t) ((us + 999) / 1000);
-    if (ticks == 0) {
-        ticks = 1;
-    }
-    vTaskDelay(ticks);
+    vTaskDelay(nros_freertos_us_to_ticks_ceil((uint64_t) us));
 }
 
 void nros_platform_sleep_ms(size_t ms) {
-    vTaskDelay(ms_to_ticks(ms));
+    vTaskDelay(ms_to_ticks((uint64_t) ms));
 }
 
 void nros_platform_sleep_s(size_t s) {
-    vTaskDelay(ms_to_ticks(s * 1000U));
+    vTaskDelay(ms_to_ticks((uint64_t) s * 1000ULL));
 }
 
 /* ---- Yield ---- */
@@ -925,7 +956,9 @@ int8_t nros_platform_wake_wait_ms(void *w, uint32_t timeout_ms) {
     if (w == NULL) return -1;
     nros_wake_t *wp = (nros_wake_t *) w;
     if (wp->handle == NULL) return -1;
-    TickType_t ticks = (timeout_ms == 0u) ? 0 : pdMS_TO_TICKS(timeout_ms);
+    /* phase-436 C1 — rounded UP (`ms_to_ticks`); `pdMS_TO_TICKS` truncated a
+     * sub-tick timeout to 0 ticks, i.e. a non-blocking poll. */
+    TickType_t ticks = ms_to_ticks((uint64_t) timeout_ms);
     BaseType_t rc = xSemaphoreTake((SemaphoreHandle_t) wp->handle, ticks);
     return rc == pdTRUE ? 0 : 1;
 }
@@ -955,6 +988,42 @@ size_t nros_platform_wake_storage_size(void) {
 
 size_t nros_platform_wake_storage_align(void) {
     return __alignof__(nros_wake_t);
+}
+
+/* phase-436 C1 — the optional microsecond park, for FreeRTOS.
+ *
+ * FreeRTOS has no sub-tick wait: `xSemaphoreTake` counts ticks. So, as on
+ * ThreadX, this exists to make the executor round its park to what the kernel
+ * can do and to stop it CLAIMING more (issue 1242), not to gain resolution.
+ * At the usual 1000 Hz tick that is the millisecond `wake_wait_ms` already
+ * had; at a coarser `configTICK_RATE_HZ` it is the coarser truth.
+ *
+ * `deadline_us` is microseconds from now (the executor's `ParkUntilFn`
+ * contract), rounded UP to whole ticks by `nros_freertos_us_to_ticks_ceil` —
+ * never to zero for a non-zero request, which is the busy loop
+ * `pdMS_TO_TICKS` produced.
+ *
+ * `w` MUST be the executor's own wake object (`wake_raw_ptr` /
+ * `nros_cpp_executor_wake_handle`): the backend's listener signals that one,
+ * and a park on anything else sleeps its whole deadline with data waiting.
+ *
+ * Contract: 0 = signalled, 1 = deadline expired, -1 = cannot park. */
+int8_t nros_platform_wake_park_until_us(void *w, uint64_t deadline_us) {
+    if (w == NULL) return -1;
+    nros_wake_t *wp = (nros_wake_t *) w;
+    if (wp->handle == NULL) return -1;
+    TickType_t ticks = nros_freertos_us_to_ticks_ceil(deadline_us);
+    BaseType_t rc = xSemaphoreTake((SemaphoreHandle_t) wp->handle, ticks);
+    return rc == pdTRUE ? 0 : 1;
+}
+
+/* The tick period, rounded UP — the real floor of the park above, and of every
+ * other timed wait in this port. 1000 us at the usual 1000 Hz; 10000 us at
+ * 100 Hz. Rounded up so a rate that does not divide a second is never
+ * reported finer than it is. */
+uint64_t nros_platform_wake_park_granularity_us(void) {
+    const uint64_t hz = (uint64_t) configTICK_RATE_HZ;
+    return (1000000ULL + hz - 1ULL) / hz;
 }
 
 /* phase-359 W10 — opaque-storage sizing for `task`, the sibling of the wake

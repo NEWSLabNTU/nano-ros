@@ -414,8 +414,9 @@ impl nros_platform_api::PlatformThreading for CffiPlatform {
         unsafe { nros_platform_wake_signal_from_isr(w) }
     }
     // `wake_park_until_us` / `wake_park_granularity_us` are deliberately NOT
-    // forwarded. `platform.h` marks them OPTIONAL — only Zephyr and ThreadX
-    // define them — and this impl is linked into EVERY C port, so forwarding
+    // forwarded. `platform.h` marks them OPTIONAL — Zephyr, ThreadX, FreeRTOS
+    // and POSIX (so NuttX) define them (phase-436 W7, C1, C2); the bare-metal
+    // ports do not (C3) — and this impl is linked into EVERY C port, so forwarding
     // made an optional symbol a required one: `undefined reference to
     // nros_platform_wake_park_until_us` on POSIX, FreeRTOS, NuttX and every
     // other C port (`check-staticlib-symbols`, `check-c`). The trait defaults
