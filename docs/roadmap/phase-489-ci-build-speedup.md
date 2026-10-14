@@ -177,12 +177,30 @@ What was decided, and why:
   and run-matrix sat queued. A required-path job routed to that pool waits
   rather than fails, so `NROS_SELF_HOSTED_READY` (on, for L3, which nothing
   requires) was not reused.
-- **`check-cli-tests` stays hosted.** With `/opt/ros/$ROS_DISTRO/share`
-  present its `cli-tests` step runs the rosidl parity tests, and the runner
-  image carries one ROS package (the zenoh router) — no `std_msgs`,
-  `geometry_msgs`, `sensor_msgs` or `example_interfaces`, so they would print
-  `[NO-PKG]` and pass over nothing. Moving it needs those interface packages in
-  `[prereq.*]` for `runner-container.sh` first, and a runner rebuild.
+- **`check-cli-tests` was held back, then routed (PR #PRNUM).** With
+  `/opt/ros/$ROS_DISTRO/share` present its `cli-tests` step runs the rosidl
+  parity tests `--ignored`, and they FAIL on an absent interface package
+  (`[NO-PKG]`, issue 1552). The runner image carried one ROS package (the zenoh
+  router). PR #PRNUM adds `[prereq.ros-interface-packages]` to
+  `nros-sdk-index.toml` — `std_msgs`, `geometry_msgs`, `sensor_msgs`,
+  `example_interfaces`, measured from the `ros_input` / `ros_input_dir` call
+  sites in `rosidl-codegen/tests/{parity,comparison}_test.rs`; the apt names
+  derive from `ROS_DISTRO` (humble) like the router's — and
+  `scripts/ci/runner-container.sh` puts them in its ROS layer
+  (`AMENT_PREFIX_PATH` still unset; `ROS_DISTRO` in the image ENV is what the
+  recipe's `/opt/ros/$ROS_DISTRO/share` probe reads). `check-cli-tests` now
+  carries the same event-routed `runs-on` / `container` / clean-tree step as the
+  other two, behind the same `vars.NROS_GATE_SELF_HOSTED`; with it unset the job
+  is the hosted one it was. Checked only statically
+  (`check-workflow-runner-isolation`, `check-workflow-just-provisioning`,
+  `check-ci-image-apt-packages`, the generator's `--check`): no image was built
+  and no run happened on the pool.
+
+  **To re-enable, operators must:** rebuild the runner image
+  (`scripts/ci/runner-container.sh <labels> --build`) and redeploy the runners;
+  get the idle runners taking jobs again and settle capacity and labels (the
+  trial's starvation, below, is not fixed by this); run a green
+  `workflow_dispatch` of `gate.yml` on the pool; only then set the variable.
 - **W7 is not routed around.** GitHub labels only select, never exclude, so
   keeping jobs off `newslab-server-241` needs a new label on the other two
   runners — a registration change (`NROS_RUNNER_LABELS`, re-applied on every

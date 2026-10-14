@@ -207,7 +207,14 @@ if ! PYTHON_KEYS="$(python3 "$REPO_ROOT/scripts/sdk/python-packages.py" --emit k
     echo "runner-container: could not derive the [python.*] key set." >&2
     exit 1
 fi
-# --- the ROS layer: the zenoh router, and nothing else of ROS ----------------
+# --- the ROS layer: the zenoh router + the four interface packages cli-tests reads
+#
+# phase-489 W2 added `ros-interface-packages` (std_msgs, geometry_msgs,
+# sensor_msgs, example_interfaces) so `check-cli-tests` can run here: its
+# rosidl parity tests run `--ignored` once `/opt/ros/$ROS_DISTRO/share` exists
+# and FAIL on an absent package. The paragraphs below describe the router; they
+# still hold, and AMENT_PREFIX_PATH is still not set.
+#
 #
 # Issue 1695. Tier 2 holds zenoh cells, and since issue 1670 a lane that runs
 # them refuses to start without a router (`ci::_require-lane-router`), because
@@ -242,7 +249,7 @@ fi
 # the layer resolves catkin_pkg from packages.ros.org -- which is the image's
 # own apt answering, exactly as 1481 designed it -- and the two agree.
 ROS_DISTRO_IMAGE="${NROS_RUNNER_ROS_DISTRO:-humble}"
-ROS_PREREQ_KEYS=(ros-rmw-zenoh-cpp)
+ROS_PREREQ_KEYS=(ros-rmw-zenoh-cpp ros-interface-packages)
 if ! ROS_PACKAGES="$(ROS_DISTRO="$ROS_DISTRO_IMAGE" python3 \
         "$REPO_ROOT/scripts/sdk/prereq-packages.py" --manager apt "${ROS_PREREQ_KEYS[@]}")" \
         || [ -z "$ROS_PACKAGES" ]; then

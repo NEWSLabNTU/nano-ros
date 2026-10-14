@@ -2027,6 +2027,12 @@ ros_package = ["rmw_zenoh_cpp", "zenoh_cpp_vendor"]
 # answers honestly here. Reported as `unprobed`, which is the truthful answer;
 # `just doctor` does the real check against $ROS_DISTRO.
 
+[prereq.ros-interface-packages]
+role = "package"
+why = "the interface packages `just check cli-tests` reads. Its rosidl-codegen parity tests (`parity_test`, `comparison_test`) are `#[ignore]`d and run with `--ignored` wherever `/opt/ros/$ROS_DISTRO/share` exists; on a host that has ROS but not these, they FAIL with `[NO-PKG]` (issue 1552) rather than pass over nothing. MEASURED from the tests' `ros_input` / `ros_input_dir` call sites, not guessed: std_msgs (Header.msg + the whole-package walk), geometry_msgs (Point, Pose + walk), sensor_msgs (walk), example_interfaces (AddTwoInts.srv, Fibonacci.action). Everything else the sub-workspace reads comes from the tracked `packages/cli/interfaces/`. The apt name is DERIVED from $ROS_DISTRO exactly as `[prereq.ros-rmw-zenoh-cpp]`'s is (phase-435 W3). phase-489 W2: the self-hosted runner image lacked them, which is why `check-cli-tests` could not leave the hosted runner."
+ros_package = ["std_msgs", "geometry_msgs", "sensor_msgs", "example_interfaces"]
+# No dnf/pacman/brew and no `check` probe, for the reason the row above gives.
+
 [prereq.doxygen]
 role = "workspace"
 why = "C API reference docs (just docs-c; found undeclared by check-sysdep-remedies)"
