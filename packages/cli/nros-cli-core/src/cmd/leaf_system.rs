@@ -37,7 +37,7 @@ pub struct LeafSystemArgs {
     ///
     /// The host census of a standalone leaf builds the leaf's own `src/` for
     /// the host (`nros ws entity-census take --leaf`, which configures with
-    /// `-DNROS_LEAF_BOARD=native`). Every other row -- RMW, domain,
+    /// `-DNROS_LEAF_BOARD=linux`). Every other row -- RMW, domain,
     /// locator -- stays the leaf's: only the board, and the deploy token it
     /// implies, change.
     #[arg(long, value_name = "BOARD")]
