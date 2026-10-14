@@ -519,6 +519,37 @@ supersede. `ci-ok` is unchanged: `warm-cache` runs on push/dispatch only.
 and `merge_group` (self-test mutations: dropping the `push` term, or `true`,
 are caught).
 
+**Gate CPU, not compile (measured 2026-10-15, PR #PRNUM).** `run-gates-parallel.sh`
+now records each gate's CPU (user+sys of its process tree) beside its wall,
+prints the top ten by CPU, and `NROS_GATE_TIMINGS_FILE=<path>` keeps the whole
+table. CI run 38516297631 (job 115695798632): 444 gates, busy 1751 s over wall
+445 s, 3.9x at -P4; the slowest gate (`probe-workspace-caps`, 112 s) is a quarter
+of the wall, so the tail is not the problem and ordering the long gates first
+would change nothing: wall = busy / 4. Locally at -P4 (box2, warm sccache) 450
+gates sum to 1165 CPU-s; 298 of them cost under 1 s each (177 s together), 57
+cost over 3 s (591 s together). The compile-bound gates are `probe-workspace-caps`
+(220 CPU-s) and `api-parity` (113), left alone (cache, W5 follow-up above). The
+rest was repeated work in Python gates, five causes, each fixed with an
+output-identical change:
+
+| gate | CPU-s before -> after | cause |
+|---|---|---|
+| `rmw-doc-slot-names` | 46.6 -> 2.5 | `git grep -F -e a -e b ...` with 125 patterns: git's multi-pattern fixed matcher is quadratic (15.3 s wall, 3 threads); one `-E a\|b\|...` returns the same bytes in 0.2 s |
+| `foreign-env-path-inputs` | 36.9 -> 6.2 | one full-tree `git grep` per (name, spelling), ~230 of them; now one per spelling with `-o` naming the name (same first-file answer on all 42 names) |
+| `retired-platform-clock-symbols` | 13.7 -> 0.9 | stripped comments from every C/Rust file before asking whether the raw text names a retired symbol at all |
+| `config-knob-census`, `knob-ends` | 12.4 -> 4.4, 21.4 -> 9.2 | the call-site regexes ran over every build source; a file naming neither `"<PREFIX>_` nor a bound constant cannot match |
+| `comments._strip_c` (shared) | 14.3 -> 10.7 s for one pass over the tree incl. mask | stepped one character at a time; now jumps to the next comment/quote/raw-string opener, and `strip_comments` is memoised for the repeat asks. About 10 gates gained 1-6 CPU-s each |
+
+Stripped text is byte-identical to the old stripper over all 4222 tracked
+C/Rust/Python/shell/TOML/YAML/CMake files, strings on and off, and `code_mask`
+too; every gate's self-test and negative control still runs on the normal path.
+Locally `just check fast` at -P4: **318 s -> 272 s wall, busy 1243 -> 1075 s**
+(CPU 1165 -> 1004 s, -14 %). Scaled to the CI step (445 s): about 380 s
+projected, still above the 6-minute target; what is left is compile
+(`probe-workspace-caps`, `api-parity`, `zenoh-feature-off-compile`: about 345
+CPU-s of 1004) and `hook-repo-side-effects` (37), whose cost is building
+throwaway repositories, which is its subject.
+
 ### W6 — a persistent build cache for the fixture lanes
 
 Live-peer (84.5 + 33.7 min of fixture build), run-matrix (about 30 min a
