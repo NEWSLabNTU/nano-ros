@@ -81,6 +81,12 @@ editing `[image.linux] board` and re-running cmake; a C or C++ leaf
 names no board crate, so that is the only edit to the project — a cross
 build still passes its `-DCMAKE_TOOLCHAIN_FILE` on the command line.
 
+`nano_ros_add_executable` still accepts `DEPLOY` and `BOARD` keywords, for a
+project with no `system.toml`. Beside one they are redundant at best: a
+keyword that names a different deploy or board than the leaf's
+`[image.<id>]` stops the configure and names both files, rather than
+quietly building the `CMakeLists.txt` one.
+
 On native, locator + domain come from env vars (`NROS_LOCATOR`,
 `ROS_DOMAIN_ID`) with built-in defaults; an embedded image declares
 them in its own `[image.<id>]` table (`locator`, `ip`, `gateway`,

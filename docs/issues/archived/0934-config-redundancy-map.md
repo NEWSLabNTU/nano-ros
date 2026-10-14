@@ -284,7 +284,7 @@ fixed here, recorded as settled, or split into its own issue.
 | R10 wcet | resolved | Has a production reader (`build.rs`). |
 | R11 `[param_services]` | resolved | Refused by the schema. |
 | R12 | moot | `[deploy.*]` is retired. |
-| R13 entry ↔ deploy | **split** | `[package.metadata.nros.entry].deploy` is refused. The CMake `DEPLOY`/`BOARD` keyword still wins with no comparison: [issue 1894](../1894-entry-deploy-board-keyword-beside-system-toml.md). |
+| R13 entry ↔ deploy | **split** | `[package.metadata.nros.entry].deploy` is refused. The CMake `DEPLOY`/`BOARD` keyword still wins with no comparison: [issue 1894](1894-entry-deploy-board-keyword-beside-system-toml.md). |
 | R15 knob chain | resolved | Generated: platform TOML → `knobs.toml` → Kconfig. |
 | "agree by accident" (Verbs) | resolved | `nano_ros_add_executable` parses `BRINGUP` / `PANIC` / `LAUNCH_ARGS` itself (issue 1136). |
 | `CONFIG_NROS_INIT_DELAY_MS` | **fixed here** | Deliberately user-facing (`gen-config-surface.py` `PROVIDED`), not dead. But the guide and the `zpico-zephyr` README taught it through `zpico_zephyr_wait_network`, which no longer exists. Both now call `nros_platform_zephyr_wait_network`. |

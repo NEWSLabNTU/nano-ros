@@ -784,6 +784,22 @@ cmake-leaf-cache:
     fi
     ./tests/cmake-leaf-cache-tests.sh
 
+# issue 1894 — an entry's `DEPLOY`/`BOARD` keyword beside a leaf `system.toml`
+# must agree with its `[image.<id>]`; a disagreeing one is a configure error
+# naming both files, a guest project with no `system.toml` keeps the keyword
+# (tests/cmake-entry-agreement-tests.sh).
+[private]
+cmake-entry-agreement:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! command -v cmake >/dev/null 2>&1; then
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip cmake-entry-agreement "missing host tool(s): cmake"
+        exit 0
+    fi
+    ./tests/cmake-entry-agreement-tests.sh
+
 # phase-486 W3 — no nano-ros reader names a SystemModel field that is not the
 # model's to carry: `execution.features` (the overlay holds the switches),
 # `Deploy.extra`, `Deploy.target`, or a first-node-wins lifecycle read. rlm

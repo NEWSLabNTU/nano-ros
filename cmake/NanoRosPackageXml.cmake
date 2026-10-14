@@ -157,6 +157,7 @@ endfunction()
 #   NROS_EXPORT_BOARD    — "" (set by nano_ros_read_leaf_system())
 #   NROS_EXPORT_RMW      — "" (set by nano_ros_read_leaf_system())
 #   NROS_EXPORT_FOUND    — FALSE (TRUE once a leaf system.toml was read)
+#   NROS_EXPORT_SYSTEM_TOML — "" (the system.toml that was read)
 #   NROS_EXPORT_USES_KINDS      — every selected family, declaration order
 #   NROS_EXPORT_USES_<KIND>     — the name selected for that family
 #   NROS_EXPORT_BUILD_TYPE      — <build_type> in RFC-0087 D2 spelling, or ""
@@ -195,6 +196,7 @@ function(nano_ros_read_package_export)
     set(NROS_EXPORT_BOARD  "" PARENT_SCOPE)
     set(NROS_EXPORT_RMW    "" PARENT_SCOPE)
     set(NROS_EXPORT_FOUND  FALSE PARENT_SCOPE)
+    set(NROS_EXPORT_SYSTEM_TOML "" PARENT_SCOPE)
     set(NROS_EXPORT_USES_KINDS "" PARENT_SCOPE)
     set(NROS_EXPORT_BUILD_TYPE "" PARENT_SCOPE)
     set(NROS_EXPORT_BUILD_TYPE_RAW "" PARENT_SCOPE)
@@ -409,6 +411,9 @@ function(nano_ros_read_leaf_system)
 
     set(_kinds "${NROS_EXPORT_USES_KINDS}")
     set(NROS_EXPORT_FOUND TRUE PARENT_SCOPE)
+    # Where the image was read, so a disagreeing entry keyword can name the
+    # file (issue 1894, `NanoRosEntryAgreement.cmake`).
+    set(NROS_EXPORT_SYSTEM_TOML "${_NRL_DIR}/system.toml" PARENT_SCOPE)
     set(NROS_EXPORT_DEPLOY "${_NROS_LEAF_DEPLOY}" PARENT_SCOPE)
     # The `[image.<id>]` this leaf resolved to. NOT the deploy token above,
     # which is the PLATFORM (`threadx`), while every lookup keyed by the
