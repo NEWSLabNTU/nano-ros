@@ -1026,6 +1026,15 @@ int8_t nros_platform_condvar_signal_from_isr(void *cv) {
 /* Register as a waiter, release `m`, wait up to `ticks`, re-take `m`.
  * Returns 0 when woken, 1 on timeout or abort, -1 on error. */
 static int8_t nros_threadx_condvar_wait_ticks(nros_threadx_condvar_t *c, void *m, ULONG ticks) {
+    /* Issue 1907 -- the caller must hold `m` exactly once. Every mutex here is
+     * recursive, and the unlock below releases one level, so a caller holding
+     * it twice would keep it across the wait, and every signaller would then
+     * block on it for good. That is refused, so the caller gets an error
+     * instead of a deadlock. */
+    TX_MUTEX *mx = (TX_MUTEX *) m;
+    if (mx->tx_mutex_owner != tx_thread_identify() || mx->tx_mutex_ownership_count != 1u) {
+        return -1;
+    }
     {
         TX_INTERRUPT_SAVE_AREA
         TX_DISABLE

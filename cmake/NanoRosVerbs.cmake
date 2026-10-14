@@ -296,6 +296,38 @@ function(nano_ros_add_executable name)
     endif()
 endfunction()
 
+# The compile definitions a board that rebuilds `target`'s sources OUTSIDE
+# CMake (the NuttX boards hand them to a cargo cc-rs build) must pass on: the
+# target's own COMPILE_DEFINITIONS plus every definition set on one of its
+# SOURCES. The second half is where `_nros_apply_app_main` puts
+# `main=nros_ported_main`. Ferrying the target's property alone dropped it, so
+# every NuttX C/C++ image linked an `nros_app_main` calling an
+# `nros_ported_main` that its own `main.c` had never been renamed to.
+#
+# The cargo build takes one definition list for all of a target's sources, so
+# per-source definitions are unioned. That is exact for the rename: it is set
+# on every program source, and a source with no `main` is unaffected by it.
+function(nros_target_ferried_compile_definitions target out_var)
+    get_target_property(_ntf_defs ${target} COMPILE_DEFINITIONS)
+    if(NOT _ntf_defs)
+        set(_ntf_defs "")
+    endif()
+    get_target_property(_ntf_srcs ${target} SOURCES)
+    if(_ntf_srcs)
+        foreach(_ntf_src IN LISTS _ntf_srcs)
+            get_property(_ntf_sdefs SOURCE "${_ntf_src}" TARGET_DIRECTORY ${target}
+                PROPERTY COMPILE_DEFINITIONS)
+            if(_ntf_sdefs)
+                list(APPEND _ntf_defs ${_ntf_sdefs})
+            endif()
+        endforeach()
+    endif()
+    if(_ntf_defs)
+        list(REMOVE_DUPLICATES _ntf_defs)
+    endif()
+    set(${out_var} "${_ntf_defs}" PARENT_SCOPE)
+endfunction()
+
 # phase-482 W3 / phase-499 W5 — the program writes `main`, on every platform.
 #
 # Every platform already reaches the application through `nros_app_main`: a
