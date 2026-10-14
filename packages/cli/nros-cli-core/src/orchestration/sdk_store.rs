@@ -580,7 +580,12 @@ pub fn plan_install_on(
     prefix: &Path,
     facts: &super::host_floor::HostFacts,
 ) -> InstallAction {
-    if let Some(prov) = Provenance::read(prefix) {
+    // issue 0930 — a marker proves the prefix holds the version it NAMES, not
+    // the one the index pins today. In the store the two cannot differ (the
+    // path is `<tool>/<version>`), but an explicit `--prefix` (`build/qemu`)
+    // is ONE directory across pin bumps, so a marker for another version is a
+    // stale install to replace, never `Present`.
+    if let Some(prov) = Provenance::read(prefix).filter(|p| p.version == tool.version) {
         // issue 1259 — "unpacked" and "installed" are not the same state for a
         // bundle whose own installer completes it, so `Present` is not what a
         // provenance marker alone proves. Compare against the command the index
@@ -2808,6 +2813,34 @@ mod tests {
             InstallAction::Present
         );
         std::fs::remove_dir_all(&present).ok();
+    }
+
+    /// Issue 0930 — an explicit `--prefix` (`build/qemu`) is one directory
+    /// across pin bumps, so its marker naming ANOTHER version is a stale
+    /// install to replace, not `Present`.
+    #[test]
+    fn a_prefix_marked_for_another_version_is_not_present() {
+        let idx = SdkIndex::parse(
+            "[tool.qemu]\nversion=\"11.0.0-nros6\"\ndist.linux-x86_64={url=\"u\",sha256=\"h\"}\n",
+        )
+        .unwrap();
+        let qemu = &idx.tool["qemu"];
+        let stale = tmp("plan-stale-version");
+        Provenance {
+            kind: ProvenanceKind::Prebuilt,
+            version: "11.0.0-nros2".into(),
+            sha256: None,
+            post_install: None,
+            git_ref: None,
+            git: None,
+        }
+        .write(&stale)
+        .unwrap();
+        assert!(matches!(
+            plan_install(qemu, "linux-x86_64", &stale),
+            InstallAction::Prebuilt { .. }
+        ));
+        std::fs::remove_dir_all(&stale).ok();
     }
 
     /// phase-447 D1 — a host below a dist's floor is refused IN THE PLAN, so

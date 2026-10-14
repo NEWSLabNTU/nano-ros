@@ -65,6 +65,14 @@ CLASSIFICATION = {
         "setup",
         "`just workspace rust-targets` reads config/rust-targets.txt, the SSoT.",
     ),
+    "the project-local QEMU (build/qemu)": (
+        "manual",
+        "Not every setup path makes `build/qemu`, and none must: with no prefix the "
+        "probe passes and the ladder uses the store copy. It fails only where a "
+        "checkout OPTED into a prefix and the pin moved since (issue 0930), and "
+        "whether to re-provision it (`just linux setup` / `just qemu setup-qemu`) "
+        "or drop it for the store copy is that checkout's choice.",
+    ),
     "a submodule is not at the commit": (
         "manual",
         "Moving a submodule pointer is a human decision (CLAUDE.md): a rewind "

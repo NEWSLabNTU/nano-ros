@@ -74,11 +74,10 @@ setup-qemu:
     set -euo pipefail
     prefix={{QEMU_PREFIX}}
     bin={{QEMU_LOCAL}}
-    if [ -x "$bin" ]; then
-        echo "qemu: $bin present"
-        "$bin" --version | head -1
-        exit 0
-    fi
+    # Issue 0930 — no "the binary exists" short-circuit: that is how a QEMU
+    # built before the pin moved kept answering. `nros setup` reads the
+    # prefix's `.nros-provenance` and is a no-op only when it names the pinned
+    # version; otherwise it replaces it.
     source scripts/build/cargo.sh
     nros="$(nros_cli_bin)"
     "$nros" setup --tool qemu --prefix "$prefix" --index "$(pwd)/nros-sdk-index.toml"
@@ -441,9 +440,9 @@ run-networked TAP="tap-qemu0" IP="192.0.2.10" BINARY="":
     ./scripts/qemu/launch-mps2-an385.sh --tap {{TAP}} --ip {{IP}} --binary {{BINARY}}
 
 # Install QEMU bare-metal prerequisites (ARM zenoh-pico + patched
-# qemu-system-arm under build/qemu/). Building patched QEMU is
-# idempotent and short-circuits when build/qemu/bin/qemu-system-arm
-# is newer than every patch file.
+# qemu-system-arm under build/qemu/). Re-running is cheap: `nros setup`
+# skips a prefix whose `.nros-provenance` names the pinned version and
+# replaces one that does not (issue 0930).
 #
 # Phase 213.A.3 — this recipe covers BOTH boards built on this toolchain:
 #   * `[board.mps2-an385-baremetal]` (QEMU + arm-none-eabi-gcc)
