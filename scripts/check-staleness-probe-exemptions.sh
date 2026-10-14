@@ -80,7 +80,8 @@ if problems:
 print("|".join(pop + ["is_regenerated_inplace_header"]))
 PY
 )" || { echo "[FAIL] the exemption-predicate harvest over $OWNER failed" >&2; exit 1; }
-stray="$(git grep -lwE "$exempt_names" -- "$SRC" | grep -v "^$OWNER\$" || true)"
+nros_git_grep stray -lwE "$exempt_names" -- "$SRC"
+stray="$(grep -v "^$OWNER\$" <<<"$stray" || true)"
 if [ -n "$stray" ]; then
     echo "[FAIL] the probe exemption rule is spelled outside its owner:" >&2
     printf '  %s\n' $stray >&2

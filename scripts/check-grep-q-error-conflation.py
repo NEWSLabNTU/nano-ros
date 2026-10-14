@@ -111,7 +111,14 @@ SEARCH_ROOTS = ["scripts", "just", "justfile", "packages", "tools", "tests"]
 # structurally cannot see, because it skips any line naming `nros_grep_q` and
 # `printf | nros_grep_q` has the same race plus a subshell that swallows the
 # helper's `exit 2`.
-SELF_REFERENTIAL = ("scripts/check-pipefail-sigpipe-assertions.py",)
+#
+# `check/check-git-grep-status` (issue 1816) is the `git grep` twin: its
+# self-test holds the raw shell shapes (`if git grep -q …`) red, so it quotes
+# them for the same reason.
+SELF_REFERENTIAL = (
+    "scripts/check-pipefail-sigpipe-assertions.py",
+    "scripts/check/check-git-grep-status.py",
+)
 
 
 def tracked():

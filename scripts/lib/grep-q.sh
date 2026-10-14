@@ -181,6 +181,56 @@ nros_git_grep_q() {
     return "$rc"
 }
 
+# nros_git_grep — `git grep` whose OUTPUT a caller reads, with the same
+# contract as `nros_git_grep_q` (issue 1816).
+#
+# The idioms it replaces read exit 1 ("searched, matched nothing") and exit
+# 128 ("did NOT search": not a repository, a regex git rejects, a bad
+# pathspec) as the same empty string:
+#
+#     hits="$(git grep -n PAT -- spec || true)"      # 128 swallowed with 1
+#     done < <(git grep -l PAT -- spec 2>/dev/null)   # status discarded outright
+#
+# and every gate built on them FORBIDS a pattern, so "git did not run" became
+# "the pattern is absent" and the gate said OK.
+#
+# Same calling convention as `nros_grep_count`, for the same reason: an `exit`
+# inside `$(…)` or `<(…)` ends only that subshell, so the output comes back
+# through a NAMED VARIABLE and the fatal path runs in the caller's own shell.
+#
+#     nros_git_grep hits -nE 'pat' -- spec           # sets $hits; 0 or 1 => answer
+#     nros_git_grep hits -C "$repo" -l 'pat' HEAD    # `-C <dir>` first = `git -C <dir> grep`
+#     [ -z "$hits" ] || report "$hits"
+#
+# Everything after the variable (and an optional leading `-C <dir>`) goes to
+# `git grep` verbatim. It returns 0 whether or not anything matched — the
+# answer is the variable — and exits the caller with 2 on anything else. Read
+# the result with a here-string, never a pipe (issue 1077):
+# `grep -v x <<<"$hits"`.
+nros_git_grep() {
+    # Every local is prefixed: `printf -v` assigns the NEAREST variable of
+    # that name, so a local `out` here would swallow a caller's `out` and the
+    # caller would read nothing — measured, on `check-retired-submodule-refs`.
+    local __nros_gg_var="${1:?nros_git_grep: output variable name}"
+    shift
+    local __nros_gg_git=(git)
+    if [ "${1:-}" = "-C" ]; then
+        __nros_gg_git+=(-C "${2:?nros_git_grep: -C needs a directory}")
+        shift 2
+    fi
+    local __nros_gg_out __nros_gg_rc=0
+    __nros_gg_out="$("${__nros_gg_git[@]}" grep "$@")" || __nros_gg_rc=$?
+    if [ "$__nros_gg_rc" -ge 2 ]; then
+        echo "FATAL: git grep failed (rc=$__nros_gg_rc): git grep $*" >&2
+        echo "       This is a TOOL failure, not an empty result. Refusing to" >&2
+        echo "       draw a conclusion from a git grep that did not run" >&2
+        echo "       (issue 1816)." >&2
+        exit 2
+    fi
+    printf -v "$__nros_gg_var" '%s' "$__nros_gg_out"
+    return 0
+}
+
 # nros_grep_count — the COUNTING sibling of `nros_grep_q`, same hazard.
 #
 # `grep -c` has the identical 0 / 1 / >=2 status split, and the idiom it invites

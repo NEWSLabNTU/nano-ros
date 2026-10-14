@@ -28,6 +28,8 @@
 # really do land there.
 set -uo pipefail
 cd "$(dirname "$0")/../../../.."
+# shellcheck source=scripts/lib/grep-q.sh
+source scripts/lib/grep-q.sh
 
 M=scripts/build/fixtures-manifest.py
 fail=0
@@ -67,8 +69,8 @@ fi
 # the index lookup — the same 7m36s -> 0.8s class `check-no-tracked-file-find`
 # was written for. An untracked match could only be inside the SDK, which is not
 # a caller, so scoping to the index loses nothing.
-consumed="$(git grep -hoE '[a-z0-9-]+ +[a-z]+ +--core-only' -- just/ scripts/ 2>/dev/null \
-    | awk '{print $1}' | sort -u)"
+nros_git_grep consumed -hoE '[a-z0-9-]+ +[a-z]+ +--core-only' -- just/ scripts/
+consumed="$(awk '{print $1}' <<<"$consumed" | sort -u)"
 [ -n "$consumed" ] || { echo "FAIL: no --core-only caller found — has the flag been removed?" >&2; exit 1; }
 
 for platform in $consumed; do

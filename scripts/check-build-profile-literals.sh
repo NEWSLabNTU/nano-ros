@@ -54,6 +54,8 @@
 
 set -uo pipefail
 cd "$(dirname "$0")/.."
+# shellcheck source=scripts/lib/grep-q.sh
+source scripts/lib/grep-q.sh
 
 MARKER='profile-literal-ok'
 
@@ -79,6 +81,7 @@ scan() {
     local what="$1"
     local hit file line text
     while IFS= read -r hit; do
+        [ -n "$hit" ] || continue
         file="${hit%%:*}"
         line="${hit#*:}"
         line="${line%%:*}"
@@ -131,22 +134,23 @@ self_test
 # `cargo build --release` from a `PROFILE == "release"` comparison, so a
 # custom-profile outer build ran a whole extra release compile at a DIFFERENT
 # optimization level than the crate it was measuring (phase-336 W7).
+_gg=""  # set by nros_git_grep (printf -v)
+nros_git_grep _gg -nE -- '(--release|--profile[= ]+[a-z][a-z0-9-]*)' \
+    -- justfile 'just/*.just' 'scripts/build/*.sh' 'scripts/bootstrap.sh' \
+       'packages/tooling/*/src/**' 'packages/testing/nros-tests/src/**' "${CMAKE_FILES[@]}"
 scan "hardcoded cargo profile flag" < <(
-    git grep -nE -- '(--release|--profile[= ]+[a-z][a-z0-9-]*)' \
-        -- justfile 'just/*.just' 'scripts/build/*.sh' 'scripts/bootstrap.sh' \
-           'packages/tooling/*/src/**' 'packages/testing/nros-tests/src/**' "${CMAKE_FILES[@]}" \
-    | grep -v 'rustup' \
+    grep -v 'rustup' <<<"$_gg" \
     | grep -vE 'nros_cargo_profile|nros profile|profile_arg|profile_args|PROFILE_FLAGS|_profile"' \
     | grep -v '^packages/tooling/nros-cargo-profile/' \
     || true)
 
 # 2. Profile-named directory segments in artifact paths.
+nros_git_grep _gg -nE 'target[^ "]*/(release|debug)/' \
+    -- justfile 'just/*.just' 'scripts/build/*.sh' 'scripts/test/*.sh' \
+       "${CMAKE_FILES[@]}" 'packages/testing/nros-tests/src/**' \
+       'packages/tooling/*/src/**'
 scan "hardcoded profile directory" < <(
-    git grep -nE 'target[^ "]*/(release|debug)/' \
-        -- justfile 'just/*.just' 'scripts/build/*.sh' 'scripts/test/*.sh' \
-           "${CMAKE_FILES[@]}" 'packages/testing/nros-tests/src/**' \
-           'packages/tooling/*/src/**' \
-    | grep -vE 'packages/cli/target/release/nros|nros-launch-resolve/target/release' \
+    grep -vE 'packages/cli/target/release/nros|nros-launch-resolve/target/release' <<<"$_gg" \
     | grep -v '^packages/tooling/nros-cargo-profile/' \
     || true)
 

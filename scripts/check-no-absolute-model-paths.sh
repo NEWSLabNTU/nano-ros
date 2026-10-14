@@ -13,6 +13,8 @@
 # This gate keeps a machine-specific path from ever being committed again.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+# shellcheck source=scripts/lib/grep-q.sh
+source scripts/lib/grep-q.sh
 
 # Absolute `path:` values (list item `- path: /…` or nested `path: /…`). The
 # structure/execution layers key on `file:`/`scope:`/`to:`, never `path:`, so
@@ -23,13 +25,13 @@ cd "$(dirname "$0")/.."
 # `target/` and `build/` output to rediscover files git could have named for
 # free. Same defect as the `find` scans (scripts/check-no-tracked-file-find.sh):
 # a pruned walk of `examples/` measured 7m36s against 0.8s for the index.
-abs_paths=$(git grep -nE '^[[:space:]]*(- )?(record[[:space:]]*)?path:[[:space:]]*/' \
-  -- 'examples/**/*_model.yaml' 2>/dev/null || true)
+nros_git_grep abs_paths -nE '^[[:space:]]*(- )?(record[[:space:]]*)?path:[[:space:]]*/' \
+  -- 'examples/**/*_model.yaml'
 
 # Belt-and-suspenders: a machine home directory anywhere in a model is always a
 # non-portable leak, whatever key it hangs off.
-home_dirs=$(git grep -nE '/home/|/Users/|/root/' \
-  -- 'examples/**/*_model.yaml' 2>/dev/null || true)
+nros_git_grep home_dirs -nE '/home/|/Users/|/root/' \
+  -- 'examples/**/*_model.yaml'
 
 if [ -n "${abs_paths}${home_dirs}" ]; then
   echo "check-no-absolute-model-paths: committed SystemModel(s) carry absolute host paths (issue 0320):" >&2

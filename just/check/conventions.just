@@ -137,10 +137,13 @@ ancestry-truncation:
 # a checkout a gate that FORBIDS a spelling searched nothing and said OK
 # (`check-deprecated-cmake-names`, now `check-retired-cmake-names`, over a
 # `git archive` export). One helper,
-# `scripts/lib/git_grep.py`, raises on any other status; this keeps a raw
-# `["git", …, "grep", …]` literal from reappearing. Buildless (an AST walk over
-# tracked `.py`), ~0.5 s; every run self-tests its own pattern AND the
-# helper's two failure modes (outside a repository; a regex git rejects).
+# `scripts/lib/git_grep.py`, raises on any other status, and its shell twin
+# `nros_git_grep` (`scripts/lib/grep-q.sh`) exits; this keeps a raw
+# `["git", …, "grep", …]` literal, or a shell `git grep` in command position,
+# from reappearing. Buildless (an AST walk over tracked `.py`, a line scan over
+# tracked shell/just/workflow files), ~0.5 s; every run self-tests its own
+# patterns AND the helper's two failure modes (outside a repository; a regex
+# git rejects).
 [private]
 git-grep-status:
     @python3 scripts/check/check-git-grep-status.py

@@ -16,6 +16,8 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=scripts/lib/grep-q.sh
+source "$repo_root/scripts/lib/grep-q.sh"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
@@ -102,15 +104,18 @@ selftest
 
 # Every call site tests the status. The accepted shapes are `if ! x="$(…)"` and
 # `x="$(…)" || …`; anything else drops the refusal on the floor.
+_gg=""  # set by nros_git_grep (printf -v)
+nros_git_grep _gg -C "$repo_root" -n 'nros_zephyr_sdk_env "' -- scripts just \
+    ':!scripts/build/zephyr-toolchain.sh' ':!scripts/check-zephyr-sdk-env.sh'
 while IFS= read -r site; do
+    [ -n "$site" ] || continue
     line="${site#*:*:}"
     case "$line" in
         *'if ! '*'nros_zephyr_sdk_env'*) ;;
         *'nros_zephyr_sdk_env'*'||'*) ;;
         *) fail "a caller ignores the helper's status: $site" ;;
     esac
-done < <(cd "$repo_root" && git grep -n 'nros_zephyr_sdk_env "' -- scripts just \
-    ':!scripts/build/zephyr-toolchain.sh' ':!scripts/check-zephyr-sdk-env.sh')
+done <<<"$_gg"
 
 if [ "$fails" -ne 0 ]; then
     echo "check-zephyr-sdk-env: $fails failure(s)" >&2

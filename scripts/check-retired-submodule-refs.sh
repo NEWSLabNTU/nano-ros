@@ -19,6 +19,8 @@
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
+# shellcheck source=scripts/lib/grep-q.sh
+source scripts/lib/grep-q.sh
 
 # path-regex : what replaced it
 RETIRED=(
@@ -82,12 +84,9 @@ RETIRED_SPELLINGS=(
 # refs <pattern> [grep flags…] — the non-excluded references to a pattern.
 refs() {
     local pat="$1"; shift
-    local rc=0 out
-    out="$(git -C "${REFS_REPO:-.}" grep -n "$@" -e "$pat" -- "${EXCLUDES[@]}" 2>/dev/null)" || rc=$?
-    case "$rc" in
-        0|1) printf '%s' "$out" ;;
-        *) echo "check-retired-submodule-refs: git grep failed (rc=$rc) for $pat" >&2; exit 2 ;;
-    esac
+    local out
+    nros_git_grep out -C "${REFS_REPO:-.}" -n "$@" -e "$pat" -- "${EXCLUDES[@]}"
+    printf '%s' "$out"
 }
 
 # Negative control on the normal path (phase-472 W8/W9): a reference THROUGH

@@ -25,9 +25,14 @@ set -uo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
+# shellcheck source=scripts/lib/grep-q.sh
+source scripts/lib/grep-q.sh
 
 violations=0
+_gg=""  # set by nros_git_grep (printf -v)
+nros_git_grep _gg -lE 'path = "generated/' -- 'Cargo.toml' '**/Cargo.toml' ':!third-party'
 while IFS= read -r manifest; do
+    [ -n "$manifest" ] || continue
     dir="$(dirname "$manifest")"
     [ -f "$dir/package.xml" ] && continue
     if [ "$violations" -eq 0 ]; then
@@ -38,7 +43,7 @@ while IFS= read -r manifest; do
 # `git grep` over a tracked pathspec, not a recursive walk: the manifests are
 # all tracked, so this is an index lookup (check-no-tracked-file-find enforces
 # the rule; measured 7m36s -> 0.8s for the same paths).
-done < <(git grep -lE 'path = "generated/' -- 'Cargo.toml' '**/Cargo.toml' ':!third-party' | sort)
+done < <(sort <<<"$_gg")
 # issue 1614 (W5): EVERY tracked Cargo.toml, not `packages/**` + `examples/**`:
 # a leaf under `integrations/` or `templates/` consumes generated/ just the same,
 # and `scripts/regenerate-bindings.sh` is equally blind to it.

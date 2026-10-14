@@ -16,6 +16,8 @@
 # Exit 1 on hit, 0 on clean. Pure static lint (grep); seconds to run.
 set -uo pipefail
 cd "$(git rev-parse --show-toplevel)"
+# shellcheck source=scripts/lib/grep-q.sh
+source scripts/lib/grep-q.sh
 
 # Scratch goes in `$repo/tmp/` (gitignored), not the system `/tmp` —
 # CLAUDE.md's rule, and it matters most for a gate: these run on shared
@@ -31,12 +33,14 @@ scan() {
     local hits
     hits="$(mktemp tmp/string-conv-hits.XXXXXX)"
     # Paths to scan are the remaining args.
-    if git grep -nE "$pattern" -- "$@" \
-            ':!docs/roadmap/archived/*' \
-            ':!docs/roadmap/phase-208-*' \
-            ':!scripts/ci/string-conventions-check.sh' \
-            ':!.git/*' \
-        > "$hits" 2>/dev/null; then
+    local found
+    nros_git_grep found -nE "$pattern" -- "$@" \
+        ':!docs/roadmap/archived/*' \
+        ':!docs/roadmap/phase-208-*' \
+        ':!scripts/ci/string-conventions-check.sh' \
+        ':!.git/*'
+    printf '%s\n' "$found" > "$hits"
+    if [ -n "$found" ]; then
         echo "::error::$label: forbidden string found"
         cat "$hits"
         fail=1

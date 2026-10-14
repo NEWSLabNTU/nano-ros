@@ -66,7 +66,10 @@ fail=0
 
 # Every Rust file naming the zenohd binary helper. `git grep` so untracked
 # scratch files and build output never enter the population.
-mapfile -t candidates < <(git grep -ln 'ros_zenohd_path' -- '*.rs' || true)
+_gg=""  # set by nros_git_grep (printf -v)
+nros_git_grep _gg -ln 'ros_zenohd_path' -- '*.rs'
+candidates=()
+[ -z "$_gg" ] || mapfile -t candidates <<<"$_gg"
 
 if [ "${#candidates[@]}" -eq 0 ]; then
     echo "check-zenohd-spawn-sites: no file references ros_zenohd_path — stale" >&2

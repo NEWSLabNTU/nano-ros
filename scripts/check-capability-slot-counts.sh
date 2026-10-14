@@ -34,6 +34,8 @@
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
+# shellcheck source=scripts/lib/grep-q.sh
+source scripts/lib/grep-q.sh
 
 fail=0
 
@@ -92,8 +94,10 @@ check() {
     fi
 }
 
-lc="$(git grep -l 'pub struct LifecycleServiceServers' -- packages/core/nros-node/src | head -1)"
-pm="$(git grep -l 'pub struct ParameterServiceServers' -- packages/core/nros-node/src | head -1)"
+nros_git_grep lc -l 'pub struct LifecycleServiceServers' -- packages/core/nros-node/src
+nros_git_grep pm -l 'pub struct ParameterServiceServers' -- packages/core/nros-node/src
+lc="${lc%%$'\n'*}"
+pm="${pm%%$'\n'*}"
 check LifecycleServiceServers "$lc" LIFECYCLE_SERVICE_SLOTS
 check ParameterServiceServers "$pm" PARAM_SERVICE_SLOTS
 

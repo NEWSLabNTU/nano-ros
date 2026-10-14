@@ -417,8 +417,8 @@ scenario '
 # as a call passing the bare kind `nros_build_root` (issue 0624 shipped one, and
 # a recipe that ships helpers to its subshells has to write that line).
 scenario '
-    hits="$(git grep -nE "nros_build_dir [a-z0-9]" -- scripts just justfile \
-        | grep -v "build-root.sh" | grep -v "build_root_derivation.sh" \
+    nros_git_grep hits -nE "nros_build_dir [a-z0-9]" -- scripts just justfile
+    hits="$(grep -v "build-root.sh" <<<"$hits" | grep -v "build_root_derivation.sh" \
         | grep -vE "^[^:]+:[0-9]+: *(export|declare) -f" || true)"
     if [ -n "$hits" ]; then
         echo "  FAIL a shell call site passes a bare-word kind (use \$NROS_KIND_*)"
@@ -429,8 +429,8 @@ scenario '
     fi
 '
 scenario '
-    hits="$(git grep -nE "build_dir\(\"" -- packages \
-        | grep -v "nros-tests/src/lib.rs" || true)"
+    nros_git_grep hits -nE "build_dir\(\"" -- packages
+    hits="$(grep -v "nros-tests/src/lib.rs" <<<"$hits" || true)"
     if [ -n "$hits" ]; then
         echo "  FAIL a Rust call site passes a literal kind (use nros_tests::kind::*)"
         echo "$hits" | sed "s/^/        /"
@@ -538,7 +538,9 @@ echo "phase-340 B2 — the Rust resolver holds NO copy of the eligibility rule:"
 scenario '
     cd "$repo_root"
     rs="packages/testing/nros-tests/src"
-    if git grep -nE "var(_os)?\(\"NROS_FIXTURE_SHARED_PLATFORMS" -- "$rs"; then
+    nros_git_grep hits -nE "var(_os)?\(\"NROS_FIXTURE_SHARED_PLATFORMS" -- "$rs"
+    if [ -n "$hits" ]; then
+        echo "$hits"
         echo "  FAIL the Rust side READS NROS_FIXTURE_SHARED_PLATFORMS again —"
         echo "       that is a second copy of the eligibility rule. It belongs in"
         echo "       scripts/build/fixtures-target-dir.sh, reported per row by"

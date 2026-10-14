@@ -1,7 +1,8 @@
 ---
 id: 1816
 title: "A `git grep` that could not search reads as \"no match\", so a forbidding gate passes outside a checkout"
-status: open
+status: resolved
+resolved: 2026-10-15
 type: bug
 area: [tooling, testing]
 severity: medium
@@ -70,21 +71,30 @@ shell `grep -q` and nothing answered it for `git grep` in either language.
   and `check-cargo-json-reader`. The new gate named both on the rebase, as
   intended, and both are on the helper now — 16 sites in all.
 
-## Open — the shell half
+## Fix (shell half — landed 2026-10-15)
 
-There are about 42 `git grep` invocations in 23 shell/`just` files. The common
-spelling is
+About 40 shell `git grep` calls swallowed 128 the same way: `hits="$(git grep
+… || true)"`, `done < <(git grep …)` and `if git grep -q …`. Measured over a
+`git archive` export of `origin/main`, `check-feature-set-ssot`,
+`check-no-absolute-model-paths`, `check-generated-leaf-regenerable` and
+`ci/absolute-path-check` each said OK with no repository to search; after the
+sweep each exits 2 there.
 
-```bash
-hits="$(git grep -n PAT -- spec || true)"     # 128 swallowed with 1
-done < <(git grep -l PAT -- spec 2>/dev/null)  # status discarded outright
-```
-
-Both swallow 128 the same way. The usual shape is `set -e` plus a `|| true`
-that exists to survive exit 1. `check-retired-submodule-refs.sh` already does
-this correctly by hand: `|| rc=$?` and then `case` on 1 versus anything else.
-
-The fix wants a shell twin (`scripts/lib/git-grep.sh`, like `grep-q.sh` beside
-`git_grep.py`) and a gate. A subshell cannot exit its parent, so the helper
-has to report through the status the caller already captures. This is not done
-here; it is the remainder this issue stays open for.
+- `nros_git_grep <var> [-C <dir>] <git grep args…>` in `scripts/lib/grep-q.sh`,
+  beside the existing `nros_git_grep_q`. Exit 0 or 1 is an answer, stored in
+  `<var>`; anything else prints git's error and EXITS the caller with 2. The
+  output comes back through a named variable, not `$(…)`, because an `exit`
+  inside a command substitution ends only that subshell (the same reason
+  `nros_grep_count` is shaped that way). Its locals are prefixed: a first
+  version declared `local out`, and `printf -v out` then assigned the helper's
+  own copy, so `check-retired-submodule-refs` (whose caller variable is also
+  `out`) read nothing and went red.
+- All 36 command-position calls in 21 files are swept onto it, or onto
+  `nros_git_grep_q` where the caller only asked whether something matched. The
+  one POSIX `sh` caller, `scripts/stage-sdk-root.sh`, cannot source a bash
+  helper, so it spells the same check inline (`|| gg_rc=$?`, refuse above 1).
+- `check-git-grep-status` now also scans tracked `*.sh`, `*.bash`, `*.just`,
+  `justfile` and workflow `*.yml` for a `git grep` / `git -C <dir> grep` in
+  command position on a non-comment line. Run over `origin/main` before the
+  sweep it named exactly the 36 swept sites; its self-test holds seven raw
+  shapes red and six prose/helper lines green on every run.
