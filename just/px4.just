@@ -300,6 +300,139 @@ build-bridge-example topics="debug_key_value" edition="jazzy":
     NROS_PX4_BRIDGE_FFI_ARCHIVE="$EXT_DIR/ffi/target-bridge-ffi/release/libnros_px4_bridge_ffi.a" \
         make -C "$PX4_DIR" px4_sitl_default EXTERNAL_MODULES_LOCATION="$EXT_DIR"
 
+# Build the `px4_msgs` ROS 2 ament package from THIS PX4 tree's `.msg` files
+# (phase-325 W3.4), so a real ROS 2 subscriber can load the types the bridge
+# publishes. ROS 2 distros do not ship px4_msgs; upstream's `px4_msgs` repo is
+# the same `.msg` set PX4's CI copies out, and building it from the pinned tree
+# keeps the field layout tied to the PX4 version the bridge is compiled against.
+#
+#   just px4 build-px4-msgs-ros            # humble (the test lanes' distro)
+#   just px4 build-px4-msgs-ros jazzy
+#
+# Output: build/px4-msgs-ros/<distro>/install — source
+# `install/share/px4_msgs/local_setup.bash` after `/opt/ros/<distro>/setup.bash`.
+# The package skeleton is WRITTEN here, not tracked: a tracked `package.xml`
+# naming a rosidl interface package would be found by every source-time package
+# scan in the repo. Cold ~5-10 min (rosidl over the whole message set); warm is
+# a no-op because unchanged `.msg` files keep their mtimes.
+#
+# Needs the distro's own rosidl generators — i.e. an ament install where ROS 2
+# packages are discoverable — and nothing else; no sudo, no apt.
+[group("examples")]
+build-px4-msgs-ros distro="humble":
+    #!/usr/bin/env bash
+    set -e
+    ROOT="$(pwd)"
+    PX4_DIR="${PX4_AUTOPILOT_DIR:-$ROOT/third-party/px4/PX4-Autopilot}"
+    DISTRO='{{distro}}'
+    ROS_SETUP="/opt/ros/$DISTRO/setup.bash"
+    if [ ! -f "$ROS_SETUP" ]; then
+        echo "ERROR: no ROS 2 $DISTRO install ($ROS_SETUP missing)." >&2
+        echo "       px4_msgs is built against the distro's own rosidl generators." >&2
+        exit 1
+    fi
+    if [ ! -d "$PX4_DIR/msg" ]; then
+        echo "ERROR: PX4-Autopilot .msg tree not found at $PX4_DIR/msg" >&2
+        echo "Run: just px4 setup" >&2
+        exit 1
+    fi
+    OUT="$ROOT/build/px4-msgs-ros/$DISTRO"
+    PKG="$OUT/src/px4_msgs"
+    mkdir -p "$PKG/msg" "$PKG/srv"
+
+    # The message set: `msg/*.msg` plus `msg/versioned/*.msg` (PX4 >= 1.16 keeps
+    # its versioned core topics there; upstream px4_msgs flattens both into one
+    # `msg/`), and `srv/*.srv`. `cp -p` only when the source is newer keeps
+    # mtimes stable, so an unchanged tree regenerates nothing.
+    declare -A want=()
+    for src in "$PX4_DIR"/msg/*.msg "$PX4_DIR"/msg/versioned/*.msg; do
+        [ -f "$src" ] || continue
+        want["msg/$(basename "$src")"]=1
+        cp -p --update "$src" "$PKG/msg/"
+    done
+    for src in "$PX4_DIR"/srv/*.srv; do
+        [ -f "$src" ] || continue
+        want["srv/$(basename "$src")"]=1
+        cp -p --update "$src" "$PKG/srv/"
+    done
+    # A message PX4 dropped must not survive from an older tree.
+    for staged in "$PKG"/msg/*.msg "$PKG"/srv/*.srv; do
+        [ -f "$staged" ] || continue
+        rel="${staged#"$PKG"/}"
+        if [ -z "${want[$rel]:-}" ]; then
+            echo "  dropping $rel (no longer in $PX4_DIR)"
+            rm -f -- "$staged"
+        fi
+    done
+
+    # Write-if-changed, so a re-run does not re-configure.
+    write_if_changed() {
+        local dest="$1" tmp
+        tmp="$(mktemp)"
+        cat > "$tmp"
+        if cmp -s "$tmp" "$dest"; then rm -f "$tmp"; else mv "$tmp" "$dest"; fi
+    }
+    printf '%s\n' \
+        '<?xml version="1.0"?>' \
+        '<package format="3">' \
+        '  <name>px4_msgs</name>' \
+        '  <version>0.0.0</version>' \
+        '  <description>PX4 uORB message definitions for ROS 2, built by nano-ros `just px4 build-px4-msgs-ros` from the pinned PX4-Autopilot tree.</description>' \
+        '  <maintainer email="dev@example.com">Developer</maintainer>' \
+        '  <license>BSD-3-Clause</license>' \
+        '  <buildtool_depend>ament_cmake</buildtool_depend>' \
+        '  <buildtool_depend>rosidl_default_generators</buildtool_depend>' \
+        '  <depend>builtin_interfaces</depend>' \
+        '  <exec_depend>rosidl_default_runtime</exec_depend>' \
+        '  <member_of_group>rosidl_interface_packages</member_of_group>' \
+        '  <export><build_type>ament_cmake</build_type></export>' \
+        '</package>' | write_if_changed "$PKG/package.xml"
+    printf '%s\n' \
+        'cmake_minimum_required(VERSION 3.8)' \
+        'project(px4_msgs)' \
+        'find_package(ament_cmake REQUIRED)' \
+        'find_package(builtin_interfaces REQUIRED)' \
+        'find_package(rosidl_default_generators REQUIRED)' \
+        'file(GLOB _px4_msgs RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/msg/*.msg")' \
+        'file(GLOB _px4_srvs RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/srv/*.srv")' \
+        'rosidl_generate_interfaces(${PROJECT_NAME} ${_px4_msgs} ${_px4_srvs} DEPENDENCIES builtin_interfaces)' \
+        'ament_export_dependencies(rosidl_default_runtime)' \
+        'ament_package()' | write_if_changed "$PKG/CMakeLists.txt"
+
+    # The distro's environment is what makes its rosidl generators findable.
+    # shellcheck disable=SC1090
+    source "$ROS_SETUP"
+    echo "Building px4_msgs ($(ls "$PKG"/msg | wc -l) msgs, $(ls "$PKG"/srv | wc -l) srvs) for ROS 2 $DISTRO"
+    source scripts/build/quiet-run.sh
+    nros_run_quiet "configure px4_msgs ($DISTRO)" \
+        cmake -S "$PKG" -B "$OUT/build" -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF \
+        -DCMAKE_INSTALL_PREFIX="$OUT/install"
+    nros_run_quiet "build px4_msgs ($DISTRO)" cmake --build "$OUT/build"
+    nros_run_quiet "install px4_msgs ($DISTRO)" cmake --install "$OUT/build"
+    echo "px4_msgs for ROS 2 $DISTRO: $OUT/install"
+    echo "  source $ROS_SETUP && source $OUT/install/share/px4_msgs/local_setup.bash"
+
+# Run the phase-325 W3.4 bridge E2E: a STOCK PX4 module's uORB topic reaches a
+# REAL ROS 2 subscriber (`ros2 topic echo` over rmw_zenoh_cpp) through
+# `nros_uorb_bridge`. Builds both fixtures it consumes first — the SITL image
+# for the ROS edition of the test's distro, and the px4_msgs overlay.
+#
+# `humble` is not a parameter on purpose: the test subscribes with
+# `nros_tests::ros2::DEFAULT_ROS_DISTRO`, and the image's type hash is
+# per-edition, so a distro argument here could only build a fixture the test
+# then refuses. Change both together.
+[group("debug")]
+test-bridge-ros2:
+    #!/usr/bin/env bash
+    set -e
+    NROS_PX4_BRIDGE_RMW=zenoh just px4 build-bridge-example debug_key_value humble
+    just px4 build-px4-msgs-ros humble
+    source scripts/build/cargo.sh
+    cargo_nextest_args=($(nros_cargo_nextest_args))
+    cd packages/testing/nros-px4-sitl-test
+    cargo nextest run "${cargo_nextest_args[@]}" --test px4_bridge_ros2_e2e
+
 # Build PX4 examples. (phase-277 W7: the former `build-sitl` recipe pointed
 # EXTERNAL_MODULES_LOCATION at the README-only `examples/px4/rust/uorb/`
 # placeholder — it compiled no nano-ros module and the placeholder dir is

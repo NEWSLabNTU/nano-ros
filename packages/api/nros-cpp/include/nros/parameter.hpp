@@ -14,7 +14,7 @@
  * over the caller-storage C `nros_parameter_server_t`. The first half of W4
  * deleted the two node-owned stores (`rclcpp::Node`'s inline member and
  * `ComponentNode`'s facade) so a parameter declared in C++ lands in the one
- * `nros_params::ParameterServer` the six `rcl_interfaces/srv/*` servers read
+ * `nros_params::ParameterServer` the six `rcl_interfaces/srv/...` servers read
  * - and left this one standing, still shipped and still the whole of
  * `examples/native/cpp/parameters`. Its parameters were invisible to
  * `ros2 param get`, which is the exact defect phase-426 exists to remove.

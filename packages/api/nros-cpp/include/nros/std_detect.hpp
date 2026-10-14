@@ -18,7 +18,7 @@
  * 1240's own fix ships a sweep command for the next person precisely because
  * there was no single site to change:
  *
- *     grep -rn '__has_include' packages/api/nros-cpp/include/nros/*.hpp
+ *     grep -rn --include='*.hpp' '__has_include' packages/api/nros-cpp/include/nros/
  *
  * There is now. That sweep is this file.
  *

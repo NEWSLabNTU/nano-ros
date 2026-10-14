@@ -11,7 +11,7 @@
  * ## Why this header exists (phase-426 W4, RFC-0089)
  *
  * Three stores existed for one concept: the executor's `nros_params` table —
- * the one the six `rcl_interfaces/srv/*` servers read and therefore the one
+ * the one the six `rcl_interfaces/srv/...` servers read and therefore the one
  * `ros2 param get` sees — plus an inline `nros::ParameterServer` on
  * `rclcpp::Node` and another on `nros::ComponentNode`. A parameter declared
  * through either C++ facade was invisible to `ros2 param get`, and two nodes in

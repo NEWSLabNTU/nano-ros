@@ -81,6 +81,45 @@ nros_uorb_bridge start
 nros_uorb_bridge status
 ```
 
+Two caveats, both measured (2026-10-14):
+
+* **Build for `humble` if your subscriber is Humble — and today, whatever it
+  is.** The `edition` argument reaches the generated header's `TYPE_HASH` but
+  not the zenoh backend, whose data key is Humble-shaped
+  (`TypeHashNotSupported`) in every bridge image, so the default `jazzy` build
+  is a Humble publisher with a Jazzy hash
+  ([issue 1893](../../../../docs/issues/1893-px4-bridge-edition-misses-zenoh-keyexpr.md)).
+* **`NROS_PX4_BRIDGE_RMW=xrce` builds but does not boot** in `px4_sitl_default`:
+  PX4's own `uxrce_dds_client` calls into the bridge's copy of
+  Micro-XRCE-DDS-Client and SEGVs
+  ([issue 1896](../../../../docs/issues/1896-px4-bridge-xrce-collides-with-uxrce-dds-client.md)).
+
+## Test: a real ROS 2 subscriber (phase-325 W3.4)
+
+```sh
+just px4 test-bridge-ros2
+```
+
+builds the `humble` zenoh image, builds the `px4_msgs` ament overlay
+(`just px4 build-px4-msgs-ros humble` — no distro ships px4_msgs, so it is
+built from this PX4 tree's own `.msg` files into
+`build/px4-msgs-ros/humble/install`), then runs
+`packages/testing/nros-px4-sitl-test/tests/px4_bridge_ros2_e2e.rs`: PX4's stock
+`px4_mavlink_debug` publishes `debug_key_value` on uORB, the bridge forwards it,
+and `ros2 topic echo /fmu/out/debug_key_value px4_msgs/msg/DebugKeyValue` over
+`rmw_zenoh_cpp` must decode `key: velx` with an advancing `value`. To watch it by
+hand after the two builds:
+
+```sh
+source /opt/ros/humble/setup.bash
+ros2 run rmw_zenoh_cpp rmw_zenohd &            # the router; the bridge dials tcp/127.0.0.1:7447
+source build/px4-msgs-ros/humble/install/share/px4_msgs/local_setup.bash
+RMW_IMPLEMENTATION=rmw_zenoh_cpp ros2 topic echo /fmu/out/debug_key_value px4_msgs/msg/DebugKeyValue
+```
+
+(`px4_mavlink_debug` runs its 100-sample loop in the foreground of the shell
+command, so start it after the bridge and the subscriber.)
+
 ## Why there are four build steps
 
 Publishing on a wire (rather than into uORB) pulls in three things the W2 demo

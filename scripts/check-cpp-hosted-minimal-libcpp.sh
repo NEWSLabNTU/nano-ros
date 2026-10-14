@@ -66,7 +66,14 @@ printf '%s\n' \
     '#include "nros/nros_config_generated_buildless.h"' \
     > "$tmp/nros/nros_config_generated.h"
 
+# `-Wcomment -Werror=comment` (phase-325 W3.4): PX4 compiles every module
+# `-Wall -Werror`, and a `/*` inside a `/** ... */` block -- a glob like
+# `nros/*.hpp` written into a doc comment -- is a hard error there while every
+# other consumer of these headers compiles it. It stopped the bridge's SITL
+# build at `std_detect.hpp:21`. This loop already parses every public header,
+# so the class is gated here for the price of two flags.
 flags=(-fsyntax-only -std=c++14 -nostdinc++ -fno-exceptions -fno-rtti
+       -Wcomment -Werror=comment
        -I"$tmp" -I"$compat" -I"$cpp_inc"
        -Ipackages/api/nros-c/include
        -Ipackages/platform/nros-platform-api/include)
@@ -97,6 +104,18 @@ selftest() {
              return 1 ;;
         *"map: No such file or directory"*) ;;
         *) echo "$tag: SELFTEST FAIL — the 1431 control failed for another reason:" >&2
+           printf '%s\n' "$out" >&2
+           return 1 ;;
+    esac
+    # The comment control: a glob inside a doc block must FAIL, or the
+    # `-Werror=comment` above is not doing what the PX4 build does.
+    printf '%s\n' '/** see include/nros/*.hpp */' '#include <cstdint>' > "$tmp/nested_comment.hpp"
+    rc=0; out="$(probe_header "$tmp/nested_comment.hpp")" || rc=$?
+    case "$rc:$out" in
+        0:*) echo "$tag: SELFTEST FAIL — a '/*' inside a block comment compiled; -Werror=comment is not in force" >&2
+             return 1 ;;
+        *'"/*" within comment'*) ;;
+        *) echo "$tag: SELFTEST FAIL — the nested-comment control failed for another reason:" >&2
            printf '%s\n' "$out" >&2
            return 1 ;;
     esac
@@ -133,6 +152,8 @@ if [ "$fails" -gt 0 ]; then
     echo "$tag: FAILED — $fails of $n nros-cpp header(s) do not compile hosted against Zephyr's" >&2
     echo "  minimal libcpp. A hosted STL include needs BOTH probes (issues 0112 + 1240):" >&2
     echo "  #if defined(NROS_CPP_STD) || (defined(__STDC_HOSTED__) && __STDC_HOSTED__ && __has_include(<hdr>))" >&2
+    echo "  A '\"/*\" within comment' error is the other class this loop gates: PX4 builds" >&2
+    echo "  -Wall -Werror, so never write a glob like dir/*.hpp inside a /** */ block." >&2
     exit 1
 fi
 echo "$tag: $n nros-cpp headers compile hosted (__STDC_HOSTED__=1) with -nostdinc++ -I $compat."
