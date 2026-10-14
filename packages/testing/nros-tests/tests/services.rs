@@ -4,7 +4,7 @@
 //!
 //! **Bucket (phase-329): KEEP — behavior one-offs, not matrix cells.** The plain
 //! rust/zenoh single-request DELIVERY case folded into the native-example
-//! req/resp matrix consumer (`native_example_reqresp_e2e.rs`).
+//! req/resp matrix consumer (`linux_example_reqresp_e2e.rs`).
 //! Uses the AddTwoInts service from example_interfaces.
 
 use nros_tests::{
@@ -160,7 +160,7 @@ fn test_service_client_starts_without_server(
 // =============================================================================
 
 // phase-329 W4 — the single-request DELIVERY test (rust/zenoh) FOLDED into the
-// native-example req/resp matrix consumer (`native_example_reqresp_e2e.rs`, the
+// native-example req/resp matrix consumer (`linux_example_reqresp_e2e.rs`, the
 // `(Linux, Rust, Zenoh, Service)` cell). The tests kept here are one-offs no
 // cell covers: server startup, client-without-server, multiple sequential
 // calls, client timeout, and one server serving multiple clients.

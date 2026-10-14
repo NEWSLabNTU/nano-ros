@@ -184,7 +184,7 @@ def classify(steps, job_conclusion=None, cells_ran=None, inner=None):
 
     `cells_ran` is the FOURTH axis, and only the in-workflow half can supply it
     (phase-441 W4): a step outcome says the cells step failed, never whether the
-    cells produced results. `just native test-live-peer-regression` already
+    cells produced results. `just linux test-live-peer-regression` already
     knows — it answers 2 for "this lane could not run" and 1 for a real
     regression — and the workflow forwards that as `NROS_LANE_CELLS_RAN`.
     `None` means nobody said, which is what `--history` has for every past run,

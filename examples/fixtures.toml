@@ -1903,7 +1903,7 @@ image = "native_xrce"
 
 # issue 0466 — native rust CycloneDDS talker/listener. These two are consumed by
 # `test_native_cyclonedds_rust_talker_to_listener` /
-# `..._talker_to_rust_listener` (tests/native_api.rs, via
+# `..._talker_to_rust_listener` (tests/linux_api.rs, via
 # `build_native_{talker,listener}_rmw(Rmw::Cyclonedds)`) and had NO row, so the
 # staleness probe never examined them: the tests ran off whatever the leaf
 # `target-cyclonedds/` happened to hold. That is the museum-binary class
@@ -1946,7 +1946,7 @@ image = "native_cyclonedds"
 # `RosAction::register_protocol_types` through the generic
 # `nros_rmw::register_type_descriptor` seam (was a cfg-gated named-backend call
 # that compiled out of the example build → ActionCreationFailed). Consumed by
-# tests/native_api.rs (test_native_cyclonedds_rust_action).
+# tests/linux_api.rs (test_native_cyclonedds_rust_action).
 [[fixture]]
 platform = "linux"
 lang = "rust"
@@ -2789,7 +2789,7 @@ dir = "packages/testing/nros-tests/bins/action-raw-goal-probe"
 #
 # custom-platform is no longer in that list: issue 1384 gave it a RUNTIME cell
 # (`matrix::CELLS`, `Workload::ExecutorBoundNode`, consumed by
-# `native_example_executor_bound_node_e2e.rs`). It had to. Being build-only is
+# `linux_example_executor_bound_node_e2e.rs`). It had to. Being build-only is
 # what let its `rclc_publisher_init_default` answer RCL_RET_NOT_INIT for four
 # phases after PR #1064 moved it onto `rclc_executor_node_init` — the row
 # compiled and linked in every lane that built it, and no lane ever ran the
@@ -3632,8 +3632,8 @@ output = ".compile-ok"
 # the compiled output and false of one whose artifact is the verdict. Moving
 # them also fixed a parallelism defect that premise had hidden: run as part of
 # a full-crate nextest run, `cmake_platform_matrix` and
-# `native_main_macro_misuse` contended with each other and failed, while each
-# passed alone. Consumers: `native_main_macro_misuse.rs`,
+# `linux_main_macro_misuse` contended with each other and failed, while each
+# passed alone. Consumers: `linux_main_macro_misuse.rs`,
 # `cmake_platform_matrix.rs`, `cmake_node_register_misuse.rs`,
 # `diagnostic_verbatim.rs`, each via `require_compile_verdict`.
 #

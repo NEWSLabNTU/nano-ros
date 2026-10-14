@@ -311,12 +311,6 @@ def self_test():
 # it on the same rule.
 FAMILY_BOARDS = {"linux", "zephyr"}  # phase-500 W1: the host board is `linux`
 
-# A deploy token whose `just setup` scope is spelled differently. The host
-# board is `linux` since phase-500 W1 while its scope is still `native` until
-# phase-500 W2 renames it — the same table as `cmd::setup`'s DEPLOY_SCOPE, and
-# W2 deletes both.
-DEPLOY_SCOPE = {"linux": "native"}
-
 
 def main():
     if "--self-test" in sys.argv:
@@ -385,9 +379,8 @@ def main():
                 # The deploy family IS a scope; keep asserting that much, since
                 # `nros setup --workspace` still prints a command from it.
                 seen_deploy.setdefault(board, f)
-                scope = DEPLOY_SCOPE.get(board, board)
-                if scope not in scope_set and not any(
-                    s.startswith(scope + "_") for s in scope_set
+                if board not in scope_set and not any(
+                    s.startswith(board + "_") for s in scope_set
                 ):
                     bad_deploy.setdefault(board, f)
                 continue

@@ -17,7 +17,7 @@ justfile population by hand, and each hand-chosen set was smaller than the graph
     `just/*.just` without `justfile`  misses the 3000-line root file
 
 So a bare `cargo nextest` in `just/zephyr-setup.just`, a `sudo apt` in
-`just/check/*.just`, or a `just native <bogus>` in any module read as clean.
+`just/check/*.just`, or a `just linux <bogus>` in any module read as clean.
 Before this module covered all recipes, six scripts reading only the `check`
 index failed QUIETLY and differently (check-gate-lists derived 8 gates instead
 of 234; check-gate-selftests found 0 gate scripts; ...).

@@ -67,7 +67,7 @@ fn declarative_zenoh_to_xrce_bridge_to_nros_listener(zenohd_unique: ZenohRouter)
     require_zenohd();
     require_xrce_agent();
     let bridge_bin = build_native_workspace_rust_bridge_xrce_entry()
-        .require("bridge-xrce native_entry (row `workspace-rust-native-bridge-xrce`); run \\ `just native build-workspace-fixtures`")
+        .require("bridge-xrce native_entry (row `workspace-rust-native-bridge-xrce`); run \\ `just linux build-workspace-fixtures`")
         .to_path_buf();
 
     let zenoh_locator = zenohd_unique.locator();

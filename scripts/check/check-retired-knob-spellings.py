@@ -263,7 +263,7 @@ SELF_TESTS = [
     ("shell", 'cc -DZPICO_X=4 foo.c', False),
     ("shell", 'echo "ZPICO_X sizes it"', False),
     ("yaml", "    env:\n      ZPICO_X: 4\n", True),
-    ("yaml", "      run: ZPICO_X=4 just native", True),
+    ("yaml", "      run: ZPICO_X=4 just linux", True),
     ("yaml", "      NROS_ZENOH_X: 4", False),
     ("python", 'os.environ["ZPICO_X"] = "4"', True),
     ("python", 'os.environ.get("ZPICO_X")', True),

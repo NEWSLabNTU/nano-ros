@@ -660,7 +660,7 @@ def main(argv=None, _self_test=True):
             print(f"      {display(r)}", file=sys.stderr)
         for profile, why, n in skipped_roots:
             print(f"  - {display(profile)}: {why} ({n} image(s))", file=sys.stderr)
-        print("\n  Build first (`just build-test-fixtures lane=native`), or pass "
+        print("\n  Build first (`just build-test-fixtures lane=linux`), or pass "
               "--root DIR\n  for a tree outside the manifest. `--all-roots` walks "
               "the whole checkout.", file=sys.stderr)
         return 1

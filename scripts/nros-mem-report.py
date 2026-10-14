@@ -924,7 +924,7 @@ def report(res, top, baseline=None):
         add("   artifact, so every number below describes code that is no longer")
         add("   in the tree. Rebuild before quoting any of it — with the recipe")
         add("   that PRODUCES this artifact, which differs by lane:")
-        add("     native fixtures      just build-test-fixtures lane=native")
+        add("     native fixtures      just build-test-fixtures lane=linux")
         add("                          (measure under build/cargo-fixtures/, NOT")
         add("                           examples/**/target-*/ — the pre-phase-340")
         add("                           layout, which nothing rewrites)")

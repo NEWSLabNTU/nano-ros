@@ -550,7 +550,7 @@ fn sched_dims_applied() {
         // issue 0630 — narrow by LANE here, because no name filter can reach
         // inside one test. This is issue 0571's fix at its fifth site: that
         // issue found four consolidated matrix consumers that escape both
-        // halves of `lane-filter.sh native`, and phase-329 W2 had already
+        // halves of `lane-filter.sh linux`, and phase-329 W2 had already
         // folded ten `*_applied.rs` files into this one, making it a fifth
         // nobody listed. Without this, a tier-1 host reaches the zephyr cells,
         // finds no west-built image, and — because `NROS_TEST_SCOPE` is set —

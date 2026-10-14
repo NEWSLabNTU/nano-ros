@@ -241,9 +241,9 @@ fn shell_build_lane_matches_the_rust_declaration() {
     let _: CiLane = CiLane::Tier2;
 
     // The module-level lanes are their own build lane, in both places by
-    // construction — asserted so a future edit cannot quietly make `native`
+    // construction — asserted so a future edit cannot quietly make `linux`
     // require `all` and re-price tier 1.
-    for token in ["all", "native"] {
+    for token in ["all", "linux"] {
         let (code, out) = lane_sh(&format!("nros_lane_build_lane {token}"), None);
         assert_eq!(code, 0, "nros_lane_build_lane {token} failed:\n{out}");
         assert_eq!(out.trim(), token, "{token} must be its own build lane");
@@ -270,13 +270,40 @@ fn shell_unclaimed_matches_the_rust_declaration() {
         );
     }
     // The module-level lanes claim everything they select.
-    for token in ["all", "native"] {
+    for token in ["all", "linux"] {
         let (code, out) = lane_sh(&format!("nros_lane_unclaimed {token}"), None);
         assert_eq!(code, 0, "nros_lane_unclaimed {token} failed:\n{out}");
         assert_eq!(out.trim(), "", "{token} must claim every capability");
     }
     let (code, out) = lane_sh("nros_lane_unclaimed not-a-lane", None);
     assert_ne!(code, 0, "an unknown lane must fail, got:\n{out}");
+}
+
+/// phase-500 W2 — `native` was the host lane's name until the 2026-10-14
+/// ruling. For one cycle it is a DEPRECATED spelling: it resolves to `linux`
+/// and says so, and a stamp written under the old name still reads as `linux`.
+/// phase-500 W5 deletes the alias row and this test with it.
+#[test]
+fn the_retired_native_lane_resolves_to_linux_with_a_deprecation() {
+    let (code, out) = lane_sh("nros_lane_arg lane=native", None); // retired-host-token: alias
+    assert_eq!(code, 0, "nros_lane_arg lane=native failed:\n{out}"); // retired-host-token: alias
+    assert!(
+        out.lines().any(|l| l.trim() == "linux"),
+        "`lane=native` must resolve to `linux`:\n{out}" // retired-host-token: alias
+    );
+    assert!(
+        out.contains("DEPRECATED") && out.contains("'native' is now 'linux'"),
+        "the old spelling must print its replacement:\n{out}"
+    );
+    let dir = tmpdir();
+    let stamp = write_stamp(&dir, "native", &[]);
+    let (code, out) = lane_sh(
+        "nros_fixtures_stamp_require linux",
+        Some(stamp.to_str().unwrap()),
+    );
+    let why = "a pre-W2 `lane=native` stamp must satisfy a linux run"; // retired-host-token: alias
+    assert_eq!(code, 0, "{why}:\n{out}");
+    let _ = std::fs::remove_file(&stamp);
 }
 
 /// An unknown lane must be REFUSED, not defaulted.
@@ -375,7 +402,7 @@ fn a_narrower_lane_build_still_does_not_satisfy_a_wider_run() {
 fn an_all_build_satisfies_every_lane() {
     let dir = tmpdir();
     let stamp = write_stamp(&dir, "all", &[]);
-    for lane in ["all", "native", "tier1", "tier2", "tier2-nightly"] {
+    for lane in ["all", "linux", "tier1", "tier2", "tier2-nightly"] {
         let (code, out) = lane_sh(
             &format!("nros_fixtures_stamp_require {lane}"),
             Some(stamp.to_str().unwrap()),
@@ -389,7 +416,7 @@ fn an_all_build_satisfies_every_lane() {
 }
 
 /// Tier 1 keeps its saving — and since phase-395 W19 the saving is tier 1's OWN
-/// coordinate cover, not the `native` module.
+/// coordinate cover, not the `linux` module.
 ///
 /// # What this used to assert, and why it was wrong (issue 1314)
 ///
@@ -405,7 +432,7 @@ fn an_all_build_satisfies_every_lane() {
 ///
 /// The old premise is not merely obsolete, it is false by MEASUREMENT:
 /// `lane-coords tier1` selects `threadx-linux,c,zenoh` and `zephyr,rust,zenoh`,
-/// and the `native` module builds neither. A `native` build therefore has to be
+/// and the `linux` module builds neither. A `linux` build therefore has to be
 /// REFUSED for a tier-1 run, which is what the second arm below asserts —
 /// against the lane's own selection rather than against those two spellings, so
 /// that a tier 1 which ever becomes host-only again reports "this arm is now the
@@ -450,7 +477,7 @@ fn a_tier1_build_satisfies_the_tier1_run_and_a_native_build_does_not() {
          everybody runs before every push affordable:\n{out}"
     );
 
-    // …and a `native` MODULE build does not, because tier 1's cover reaches
+    // …and a `linux` MODULE build does not, because tier 1's cover reaches
     // past the host module. Read the reach out of the lane, never hardcode it.
     let non_host: Vec<&str> = coord_refs
         .iter()
@@ -460,11 +487,11 @@ fn a_tier1_build_satisfies_the_tier1_run_and_a_native_build_does_not() {
     assert!(
         !non_host.is_empty(),
         "tier 1 selects only host coordinates now, so the arm below asserts the \
-         wrong thing: a `native` build WOULD cover it. Re-read \
+         wrong thing: a `linux` build WOULD cover it. Re-read \
          `nros_lane_build_lane`/`CiLane::run_scope` and restate this case rather \
          than deleting the assertion — that is how issue 1314 happened."
     );
-    let native_stamp = write_stamp(&dir, "native", &[]);
+    let native_stamp = write_stamp(&dir, "linux", &[]);
     let (code, out) = lane_sh_env(
         "nros_fixtures_stamp_require tier1",
         Some(native_stamp.to_str().unwrap()),
@@ -472,8 +499,8 @@ fn a_tier1_build_satisfies_the_tier1_run_and_a_native_build_does_not() {
     );
     assert_ne!(
         code, 0,
-        "a lane=native build was accepted for a tier-1 run, but tier 1 selects \
-         {non_host:?}, which the native module does not build — the run would \
+        "a lane=linux build was accepted for a tier-1 run, but tier 1 selects \
+         {non_host:?}, which the linux module does not build — the run would \
          fail 'Binary not found' on exactly those:\n{out}"
     );
     for c in &non_host {
@@ -484,15 +511,15 @@ fn a_tier1_build_satisfies_the_tier1_run_and_a_native_build_does_not() {
         );
     }
 
-    // A `native` build does still satisfy a `native` run; without this the arm
+    // A `linux` build does still satisfy a `linux` run; without this the arm
     // above could be "passed" by refusing that too.
     let (code, out) = lane_sh(
-        "nros_fixtures_stamp_require native",
+        "nros_fixtures_stamp_require linux",
         Some(native_stamp.to_str().unwrap()),
     );
     assert_eq!(
         code, 0,
-        "a lane=native build must satisfy the native run:\n{out}"
+        "a lane=linux build must satisfy the linux run:\n{out}"
     );
 
     let _ = std::fs::remove_file(&stamp);
@@ -608,7 +635,7 @@ fn every_fixture_row_is_reachable_through_the_coordinate_filter() {
 /// A coordinate-scoped build must be REFUSED for a module-level requirement —
 /// and must refuse it by failing, not by hanging.
 ///
-/// `nros_lane_build_lane tier1` is `native`, which has no coordinate file. The
+/// `nros_lane_build_lane tier1` is `linux`, which has no coordinate file. The
 /// coverage diff below it does `comm -23 <(sort -u "$want_file") …`; handed an
 /// empty `$want_file`, `sort` reads STDIN and the preflight blocks forever. A
 /// preflight that hangs is worse than one that is wrong, because nothing reports
@@ -626,7 +653,7 @@ fn a_coordinate_scoped_build_is_refused_for_a_module_lane() {
     );
     assert_ne!(
         code, 0,
-        "a coordinate-scoped build must not satisfy the module-level `native` \
+        "a coordinate-scoped build must not satisfy the module-level `linux` \
          requirement — a coordinate cover is a strict subset of a module's \
          rows:\n{out}"
     );

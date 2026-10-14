@@ -762,7 +762,7 @@ cargo-tools:
     # whatever version is current that day; the index pins them and installs
     # into the versioned store, preferring upstream's prebuilt where there is
     # one. `cargo-nextest` is the one that mattered: it ran the whole suite,
-    # CI's runners installed it through `just setup native`, and it was the only
+    # CI's runners installed it through `just setup linux`, and it was the only
     # tool here with no pin at all while `.config/nextest.toml` is
     # version-sensitive enough that a stale filter kills every nextest run
     # (issue 0743).

@@ -8,7 +8,7 @@
 # The `main_macro_misuse_unknown_board` verdict row overlays a copy of this file
 # with the `board` line below replaced (`cases/main_macro_misuse_unknown_board/`,
 # issue 1656) to prove an unknown board is refused at expansion time;
-# `native_main_macro_misuse.rs` checks the copy differs in exactly that line.
+# `linux_main_macro_misuse.rs` checks the copy differs in exactly that line.
 
 [system]
 name = "demo_entry"

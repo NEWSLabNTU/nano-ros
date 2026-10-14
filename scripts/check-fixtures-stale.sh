@@ -28,7 +28,7 @@ fi
 # stops being runnable per task, which is how `NROS_SKIP_FIXTURE_CHECK=1`
 # became routine.
 #
-#   NROS_FIXTURE_SCOPE=native   tier 1 — host fixtures only
+#   NROS_FIXTURE_SCOPE=linux    tier 1 — host fixtures only
 #   NROS_FIXTURE_SCOPE=all      tier 3 — everything (default, unchanged)
 #   NROS_FIXTURE_SCOPE=coords   tier 2 — the coordinates the lane selected;
 #                               NROS_FIXTURE_COORDS names the file, produced by
@@ -38,9 +38,9 @@ SCOPE="${NROS_FIXTURE_SCOPE:-all}"
 scope_args=()
 case "$SCOPE" in
     all) ;;
-    # The SCOPE name is the lane (`native`, kept); the --platform value is the
-    # fixture TOKEN (`linux` since phase-337 W8.c). Different vocabularies.
-    native) scope_args=(--platform linux) ;;
+    # The SCOPE name is the lane (`linux` since phase-500 W2); the --platform
+    # value is the fixture TOKEN (`linux` since phase-337 W8.c).
+    linux) scope_args=(--platform linux) ;;
     coords)
         if [ -z "${NROS_FIXTURE_COORDS:-}" ] || [ ! -s "${NROS_FIXTURE_COORDS}" ]; then
             # Silently degrading to "check nothing" would report a lane green
@@ -53,7 +53,7 @@ case "$SCOPE" in
         scope_args=(--coords-from "$NROS_FIXTURE_COORDS")
         ;;
     *)
-        echo "ERROR: NROS_FIXTURE_SCOPE must be 'native', 'coords' or 'all' (got '$SCOPE')" >&2
+        echo "ERROR: NROS_FIXTURE_SCOPE must be 'linux', 'coords' or 'all' (got '$SCOPE')" >&2
         exit 2
         ;;
 esac
@@ -292,7 +292,7 @@ fi
 if [ ${#workspace_stale[@]} -gt 0 ]; then
     echo "ERROR: ${#workspace_stale[@]} workspace fixture(s) are missing or stale:" >&2
     printf '  %s\n' "${workspace_stale[@]}" >&2
-    echo "  Run \`just native build-workspace-fixtures\` before test-all." >&2
+    echo "  Run \`just linux build-workspace-fixtures\` before test-all." >&2
     echo "  (bypass with  NROS_SKIP_FIXTURE_CHECK=1 )" >&2
     stale_families=$((stale_families + 1))
 fi
@@ -316,17 +316,17 @@ done < <(
     # (west-fixtures.sh), never by compile-check-fixtures.sh: west needs a
     # provisioned Zephyr workspace, so the lane that owns one runs them."
     #
-    # So `NROS_FIXTURE_SCOPE=native` — tier 1, host fixtures only — started
+    # So `NROS_FIXTURE_SCOPE=linux` — tier 1, host fixtures only — started
     # failing on four `.inputsig` files the native lane has no way to produce,
     # and `just ci` could not reach a single test. That is #482's distinction:
     # which fixtures must be FRESH is the lane's cell cover, not every row in
     # the manifest.
     #
-    # Scoped to `native` deliberately. `all` (tier 3) and `coords` (tier 2)
+    # Scoped to `linux` deliberately. `all` (tier 3) and `coords` (tier 2)
     # keep demanding them: those lanes either build west or select by
     # coordinate, and silently dropping a west row there would hide a real
     # staleness — the failure mode this gate exists to prevent.
-    if [ "$SCOPE" = "native" ]; then
+    if [ "$SCOPE" = "linux" ]; then
         python3 scripts/build/fixtures-manifest.py list-compile-checks 2>/dev/null \
             | awk -F'\x1f' '$2 !~ /^west-/'
     else

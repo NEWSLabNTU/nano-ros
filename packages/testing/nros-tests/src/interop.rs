@@ -29,9 +29,9 @@ use crate::matrix::{Cell, Kind, PlatformId, Rmw, TestCell, Tier};
 /// cannot build its coordinate.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum BuildChannel {
-    /// Native example / workspace-entry binaries (`just native build-fixtures`
+    /// Native example / workspace-entry binaries (`just linux build-fixtures`
     /// families). Host platform only.
-    NativeFixtures,
+    LinuxFixtures,
     /// Zephyr workspace entry or example leaf via the west leaves lane
     /// (`scripts/build/zephyr-fixture-leaves.sh`, driven by `just zephyr
     /// build-fixtures`).
@@ -56,7 +56,7 @@ impl BuildChannel {
     /// is by `just_module_names_a_real_module`.
     pub const fn build_recipe(self) -> &'static str {
         match self {
-            BuildChannel::NativeFixtures => "just native build-fixtures",
+            BuildChannel::LinuxFixtures => "just linux build-fixtures",
             BuildChannel::ZephyrWestLeaves => "just zephyr build-fixtures",
             BuildChannel::FreertosMps2Fixtures => "just freertos build-fixtures",
         }
@@ -65,7 +65,7 @@ impl BuildChannel {
     /// The `just` module the recipe lives under (what G2 checks exists).
     pub const fn just_module(self) -> &'static str {
         match self {
-            BuildChannel::NativeFixtures => "native",
+            BuildChannel::LinuxFixtures => "linux",
             BuildChannel::ZephyrWestLeaves => "zephyr",
             BuildChannel::FreertosMps2Fixtures => "freertos",
         }
@@ -75,7 +75,7 @@ impl BuildChannel {
     /// whose platform this channel cannot produce is a mis-declared binding.
     pub const fn builds_platform(self, p: PlatformId) -> bool {
         match self {
-            BuildChannel::NativeFixtures => matches!(p, PlatformId::Linux),
+            BuildChannel::LinuxFixtures => matches!(p, PlatformId::Linux),
             BuildChannel::ZephyrWestLeaves => matches!(
                 p,
                 PlatformId::ZephyrNativeSim | PlatformId::ZephyrQemuCortexM
@@ -241,10 +241,10 @@ pub const CELLS: &[InteropCell] = &[
     // tests/interop_e2e.rs — nano example bins vs `ros2 topic`/`ros2 service`.
     ic("native-pubsub-rust-zenoh-n2r",
        c(Linux, Rust, Zenoh, Pubsub, Interop, Runtime),
-       NativeFixtures, RosEdition(Zenoh), NanoToRos, "interop_e2e"),
+       LinuxFixtures, RosEdition(Zenoh), NanoToRos, "interop_e2e"),
     ic("native-service-rust-zenoh-r2n",
        c(Linux, Rust, Zenoh, Service, Interop, Runtime),
-       NativeFixtures, RosEdition(Zenoh), BiDir, "interop_e2e"),
+       LinuxFixtures, RosEdition(Zenoh), BiDir, "interop_e2e"),
     // phase-433 W3 — the cyclone half is C, not Rust. `interop_e2e`'s three
     // cyclone cases spawn `nano_cyclone_c_binary(...)`: `c_talker`,
     // `c_listener`, `c_service_server` out of `examples/native/c/`. These rows
@@ -254,10 +254,10 @@ pub const CELLS: &[InteropCell] = &[
     // carved below.
     ic("native-pubsub-c-cyclone-n2r",
        c(Linux, C, Cyclonedds, Pubsub, Interop, Runtime),
-       NativeFixtures, RosEdition(Cyclonedds), NanoToRos, "interop_e2e"),
+       LinuxFixtures, RosEdition(Cyclonedds), NanoToRos, "interop_e2e"),
     ic("native-service-c-cyclone-r2n",
        c(Linux, C, Cyclonedds, Service, Interop, Runtime),
-       NativeFixtures, RosEdition(Cyclonedds), BiDir, "interop_e2e"),
+       LinuxFixtures, RosEdition(Cyclonedds), BiDir, "interop_e2e"),
     // The shapes the two rows above used to claim. Recorded rather than
     // dropped because the artifacts EXIST — `examples/native/rust/{talker,
     // listener,service-server,service-client}` all have `linux/rust/cyclonedds`
@@ -272,14 +272,14 @@ pub const CELLS: &[InteropCell] = &[
                    pubsub cases run the C examples (c_talker/c_listener). The Rust \
                    cyclone talker/listener fixtures are built, so the lane is \
                    affordable — file one if wanted.")),
-       NativeFixtures, RosEdition(Cyclonedds), NanoToRos, NO_TEST),
+       LinuxFixtures, RosEdition(Cyclonedds), NanoToRos, NO_TEST),
     ic("native-service-rust-cyclone-r2n-CARVED",
        c(Linux, Rust, Cyclonedds, Service, Interop,
          CarveOut("no Rust/Cyclonedds service-interop lane; interop_e2e's cyclone \
                    service case runs the C example (c_service_server). The Rust \
                    cyclone service-server/client fixtures are built, so the lane is \
                    affordable — file one if wanted.")),
-       NativeFixtures, RosEdition(Cyclonedds), BiDir, NO_TEST),
+       LinuxFixtures, RosEdition(Cyclonedds), BiDir, NO_TEST),
 
     // ── phase-381 — READ the graph a stock ROS 2 node is in ──────────────
     // tests/graph_interop.rs. The only cell whose subject is DISCOVERY rather
@@ -289,13 +289,13 @@ pub const CELLS: &[InteropCell] = &[
     // check tested our code against our own assumptions.
     ic("native-graph-rust-zenoh-r2n",
        c(Linux, Rust, Zenoh, Graph, Interop, Runtime),
-       NativeFixtures, RosEdition(Zenoh), RosToNano, "graph_interop"),
+       LinuxFixtures, RosEdition(Zenoh), RosToNano, "graph_interop"),
     // Cyclone's half. `graph.cpp` PUBLISHED `ros_discovery_info` since
     // phase-177.36 and only gained a reader in W5, which has never been run
     // against a live participant.
     ic("native-graph-rust-cyclone-r2n",
        c(Linux, Rust, Cyclonedds, Graph, Interop, Runtime),
-       NativeFixtures, RosEdition(Cyclonedds), RosToNano, "graph_interop"),
+       LinuxFixtures, RosEdition(Cyclonedds), RosToNano, "graph_interop"),
 
     // ── phase-467 Q4 — the `/rosout` bridge's live peer ──────────────────
     // tests/rosout_interop.rs, ledger row `c:logging_rosout_enabled`.
@@ -315,17 +315,17 @@ pub const CELLS: &[InteropCell] = &[
     // publisher.
     ic("native-logging-rust-zenoh-n2r",
        c(Linux, Rust, Zenoh, Logging, Interop, Runtime),
-       NativeFixtures, RosEdition(Zenoh), NanoToRos, "rosout_interop"),
+       LinuxFixtures, RosEdition(Zenoh), NanoToRos, "rosout_interop"),
     // issue 1589 — the same question through the C and C++ surfaces. The
     // bridge is one encoder (`nros_node::rosout::pump_raw`) under all three,
     // so what these add is the SURFACE: a C/C++ program creating the publisher
     // by name, declaring the capability, and pumping through its own handle.
     ic("native-logging-c-zenoh-n2r",
        c(Linux, C, Zenoh, Logging, Interop, Runtime),
-       NativeFixtures, RosEdition(Zenoh), NanoToRos, "rosout_interop"),
+       LinuxFixtures, RosEdition(Zenoh), NanoToRos, "rosout_interop"),
     ic("native-logging-cpp-zenoh-n2r",
        c(Linux, Cpp, Zenoh, Logging, Interop, Runtime),
-       NativeFixtures, RosEdition(Zenoh), NanoToRos, "rosout_interop"),
+       LinuxFixtures, RosEdition(Zenoh), NanoToRos, "rosout_interop"),
 
     // ── phase-433 W6 — the ACTIONS family's live peer ────────────────────
     // tests/ros2_action_e2e.rs. Until this row the family had NO interop cell
@@ -346,10 +346,10 @@ pub const CELLS: &[InteropCell] = &[
     // names the coordinate once.
     ic("native-action-rust-cyclone-r2n",
        c(Linux, Rust, Cyclonedds, Action, Interop, Runtime),
-       NativeFixtures, RosEdition(Cyclonedds), RosToNano, "ros2_action_e2e"),
+       LinuxFixtures, RosEdition(Cyclonedds), RosToNano, "ros2_action_e2e"),
     ic("native-action-rust-cyclone-n2r",
        c(Linux, Rust, Cyclonedds, Action, Interop, Runtime),
-       NativeFixtures, RosEdition(Cyclonedds), NanoToRos, "ros2_action_e2e"),
+       LinuxFixtures, RosEdition(Cyclonedds), NanoToRos, "ros2_action_e2e"),
 
     // ── phase-455 W3 — the SAME two directions over zenoh ────────────────
     // The rows above are the whole of the ACTIONS family's live-peer
@@ -375,24 +375,24 @@ pub const CELLS: &[InteropCell] = &[
     // names `(Linux, Rust, Zenoh, Action)` once for the pair.
     ic("native-action-rust-zenoh-r2n",
        c(Linux, Rust, Zenoh, Action, Interop, Runtime),
-       NativeFixtures, RosEdition(Zenoh), RosToNano, "ros2_action_e2e"),
+       LinuxFixtures, RosEdition(Zenoh), RosToNano, "ros2_action_e2e"),
     ic("native-action-rust-zenoh-n2r",
        c(Linux, Rust, Zenoh, Action, Interop, Runtime),
-       NativeFixtures, RosEdition(Zenoh), NanoToRos, "ros2_action_e2e"),
+       LinuxFixtures, RosEdition(Zenoh), NanoToRos, "ros2_action_e2e"),
 
     // ── Native nano XRCE ↔ Agent ↔ fastrtps ─────────────────────────────
     // tests/xrce_ros2_interop.rs.
     ic("native-pubsub-rust-xrce-n2r",
        c(Linux, Rust, Xrce, Pubsub, Interop, Runtime),
-       NativeFixtures, XrceAgent, NanoToRos, "xrce_ros2_interop"),
+       LinuxFixtures, XrceAgent, NanoToRos, "xrce_ros2_interop"),
     ic("native-service-rust-xrce-r2n",
        c(Linux, Rust, Xrce, Service, Interop, Runtime),
-       NativeFixtures, XrceAgent, BiDir, "xrce_ros2_interop"),
+       LinuxFixtures, XrceAgent, BiDir, "xrce_ros2_interop"),
 
     // ── Native nano lifecycle ↔ `ros2 lifecycle` ────────────────────────
     ic("native-lifecycle-rust-zenoh",
        c(Linux, Rust, Zenoh, Lifecycle, Interop, Runtime),
-       NativeFixtures, RosEdition(Zenoh), BiDir, "interop_e2e"),
+       LinuxFixtures, RosEdition(Zenoh), BiDir, "interop_e2e"),
 
     // ── Zephyr native_sim QoS interop ───────────────────────────────────
     // phase-441 W5 — this header read "Zephyr on-target QoS interop", which
@@ -486,11 +486,11 @@ pub const CELLS: &[InteropCell] = &[
     // the egress side. cell.rmw = the INGRESS the nano side dials.
     ic("bridge-zenoh-to-cyclone",
        c(Linux, Rust, Zenoh, Pubsub, Bridge, Runtime),
-       NativeFixtures, NanoBridge { ingress: Zenoh, egress: Cyclonedds }, NanoToRos,
+       LinuxFixtures, NanoBridge { ingress: Zenoh, egress: Cyclonedds }, NanoToRos,
        "declarative_bridge_zenoh_to_cyclonedds"),
     ic("bridge-zenoh-to-xrce",
        c(Linux, Rust, Zenoh, Pubsub, Bridge, Runtime),
-       NativeFixtures, NanoBridge { ingress: Zenoh, egress: Xrce }, NanoToRos,
+       LinuxFixtures, NanoBridge { ingress: Zenoh, egress: Xrce }, NanoToRos,
        "declarative_bridge_zenoh_to_xrce"),
 
     // ── Imperative (issue #53) zenoh→cyclone bridge — the G4 blind spot the
@@ -498,7 +498,7 @@ pub const CELLS: &[InteropCell] = &[
     //    sibling, distinct test. ──────────────────────────────────────────
     ic("bridge-zenoh-to-cyclone-imperative",
        c(Linux, Rust, Zenoh, Pubsub, Bridge, Runtime),
-       NativeFixtures, NanoBridge { ingress: Zenoh, egress: Cyclonedds }, NanoToRos,
+       LinuxFixtures, NanoBridge { ingress: Zenoh, egress: Cyclonedds }, NanoToRos,
        "bridge_zenoh_to_cyclonedds"),
 
     // ── Native nano ↔ stock ROS 2, the previously-unbound live-peer lanes
@@ -508,11 +508,11 @@ pub const CELLS: &[InteropCell] = &[
     // profile a stock rmw_zenoh_cpp peer reads (issue #52/0303/0306).
     ic("native-qos-override-rust-zenoh",
        c(Linux, Rust, Zenoh, Qos, Interop, Runtime),
-       NativeFixtures, RosEdition(Zenoh), NanoToRos, "qos_override_e2e"),
+       LinuxFixtures, RosEdition(Zenoh), NanoToRos, "qos_override_e2e"),
     // tests/params.rs — `ros2 param list/get/set` against a nano params entry.
     ic("native-params-rust-zenoh",
        c(Linux, Rust, Zenoh, Params, Interop, Runtime),
-       NativeFixtures, RosEdition(Zenoh), BiDir, "params"),
+       LinuxFixtures, RosEdition(Zenoh), BiDir, "params"),
     // tests/params_per_node_interop.rs — phase-426 W6, the cell that would have
     // caught three parameter stores coexisting. Same coordinate as its sibling
     // above and a DIFFERENT test, the shape `bridge-zenoh-to-cyclone{,-imperative}`
@@ -524,14 +524,14 @@ pub const CELLS: &[InteropCell] = &[
     // and asserts each node's own FQN answers with its own value.
     ic("native-params-per-node-rust-zenoh",
        c(Linux, Rust, Zenoh, Params, Interop, Runtime),
-       NativeFixtures, RosEdition(Zenoh), BiDir, "params_per_node_interop"),
+       LinuxFixtures, RosEdition(Zenoh), BiDir, "params_per_node_interop"),
     // tests/c_param_server_interop.rs — phase-491 W6 (RFC-0105 §Interop
     // proof): a C node built only on rclc's parameter-server API, driven by
     // stock `ros2 param` — the callback's veto, the remotely enforced range,
     // read-only, and a set that reads back.
     ic("native-params-c-zenoh",
        c(Linux, C, Zenoh, Params, Interop, Runtime),
-       NativeFixtures, RosEdition(Zenoh), BiDir, "c_param_server_interop"),
+       LinuxFixtures, RosEdition(Zenoh), BiDir, "c_param_server_interop"),
     // Issue 1268 — the SAME test against the SAME image on Cyclone (row
     // `param-two-node-talker-cyclone`). Cyclone creates a service only if its
     // request and reply types have a registered descriptor, and nothing
@@ -541,18 +541,18 @@ pub const CELLS: &[InteropCell] = &[
     // `native-multinode-rust-cyclone` two entries down, and the same shape.
     ic("native-params-per-node-rust-cyclone",
        c(Linux, Rust, Cyclonedds, Params, Interop, Runtime),
-       NativeFixtures, RosEdition(Cyclonedds), BiDir, "params_per_node_interop"),
+       LinuxFixtures, RosEdition(Cyclonedds), BiDir, "params_per_node_interop"),
     // Issue 1722 — XRCE. Its service request buffer was not sized from the
     // declared parameters: a stock 25-name `set_parameters` (~2.4 KB) was
     // dropped by the 1,024-byte default. The fixture declares those 25.
     ic("native-params-25-rust-xrce",
        c(Linux, Rust, Xrce, Params, Interop, Runtime),
-       NativeFixtures, XrceAgent, RosToNano, "params_per_node_interop"),
+       LinuxFixtures, XrceAgent, RosToNano, "params_per_node_interop"),
     // tests/rust_multi_node_per_node_graph.rs — a multi-node Rust entry shows
     // one graph node per launch component in `ros2 node list` (#104/phase-268).
     ic("native-multinode-rust-zenoh",
        c(Linux, Rust, Zenoh, EntryPubsub, Interop, Runtime),
-       NativeFixtures, RosEdition(Zenoh), NanoToRos, "rust_multi_node_per_node_graph"),
+       LinuxFixtures, RosEdition(Zenoh), NanoToRos, "rust_multi_node_per_node_graph"),
     // Issue 1269 — the SAME image on Cyclone (`[image.native_cyclonedds]`,
     // row `workspace-rust-native-cyclonedds`), asserting the SAME node set.
     // Cyclone announces nodes through `ros_discovery_info`, not liveliness
@@ -560,19 +560,19 @@ pub const CELLS: &[InteropCell] = &[
     // 1269 — so a green zenoh case says nothing about it.
     ic("native-multinode-rust-cyclone",
        c(Linux, Rust, Cyclonedds, EntryPubsub, Interop, Runtime),
-       NativeFixtures, RosEdition(Cyclonedds), NanoToRos, "rust_multi_node_per_node_graph"),
+       LinuxFixtures, RosEdition(Cyclonedds), NanoToRos, "rust_multi_node_per_node_graph"),
     // Issue 1292 — and XRCE's third. The client writes `ros_discovery_info`
     // through the Agent, with GIDs it learns (participant prefix, by a
     // self-addressed request) and predicts (endpoint keys, from the Agent's
     // numbering), so this cell asks `ros2 node info` as well as `node list`.
     ic("native-multinode-rust-xrce",
        c(Linux, Rust, Xrce, EntryPubsub, Interop, Runtime),
-       NativeFixtures, XrceAgent, NanoToRos, "rust_multi_node_per_node_graph"),
+       LinuxFixtures, XrceAgent, NanoToRos, "rust_multi_node_per_node_graph"),
     // tests/cpp_multi_node_entry.rs — the C++ typed multi-node entry's pubsub +
     // per-node graph visibility against a stock ROS 2 peer (phase-257/268).
     ic("native-multinode-cpp-zenoh",
        c(Linux, Cpp, Zenoh, EntryPubsub, Interop, Runtime),
-       NativeFixtures, RosEdition(Zenoh), NanoToRos, "cpp_multi_node_entry"),
+       LinuxFixtures, RosEdition(Zenoh), NanoToRos, "cpp_multi_node_entry"),
 
     // ── phase-433 W6 (jobs 3–5) — what we ADVERTISE about ourselves ──────
     // tests/advertised_state_interop.rs. Matched counts, the publisher GID,
@@ -594,7 +594,7 @@ pub const CELLS: &[InteropCell] = &[
     // from zero unobservable.
     ic("native-advertised-state-rust-cyclone-bidir",
        c(Linux, Rust, Cyclonedds, AdvertisedState, Interop, Runtime),
-       NativeFixtures, RosEdition(Cyclonedds), BiDir, "advertised_state_interop"),
+       LinuxFixtures, RosEdition(Cyclonedds), BiDir, "advertised_state_interop"),
 
     // ── phase-433 W6 — a QoS STATUS EVENT fires against a live peer ──────
     // tests/qos_event_interop.rs. The four event slots (`publisher_event_init`,
@@ -618,7 +618,7 @@ pub const CELLS: &[InteropCell] = &[
     // stock peer is not one we can represent.
     ic("native-qos-event-rust-zenoh-r2n",
        c(Linux, Rust, Zenoh, QosEvents, Interop, Runtime),
-       NativeFixtures, RosEdition(Zenoh), RosToNano, "qos_event_interop"),
+       LinuxFixtures, RosEdition(Zenoh), RosToNano, "qos_event_interop"),
     // Cyclone's half, carved rather than run — and the carve-out IS the W6
     // finding for that backend, measured from `vtable.cpp` rather than assumed.
     //
@@ -639,7 +639,7 @@ pub const CELLS: &[InteropCell] = &[
                    `*_take_event` pair it does implement has no caller in the \
                    tree outside its own C++ unit test. A live peer would change \
                    nothing — the gap is a runtime poll path. Issue 1164.")),
-       NativeFixtures, RosEdition(Cyclonedds), RosToNano, NO_TEST),
+       LinuxFixtures, RosEdition(Cyclonedds), RosToNano, NO_TEST),
 ];
 
 /// `cell` sentinel for a case that is evidence for NO interop cell.

@@ -38,7 +38,6 @@ docs/development/test-harness.md	orin-spe
 docs/guides/esp32-setup.md	esp32
 docs/issues/README.md	build-zenoh-pico-arm
 docs/issues/README.md	esp32
-docs/issues/README.md	native
 docs/release/migration-install-local-removal.md	install-local
 docs/research/autoware-safety-island-vs-sentinel.md	launch-autoware-baseline
 docs/research/sdk-ux/SYNTHESIS.md	new

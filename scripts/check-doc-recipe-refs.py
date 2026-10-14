@@ -374,7 +374,7 @@ def self_test() -> int:
     roots = {"ci", "format"}
     mods = {
         "check": {"fast", "default"},
-        "native": {"build"},
+        "linux": {"build"},
         "zephyr": {"build-one", "ci-both"},
     }
     cases = [

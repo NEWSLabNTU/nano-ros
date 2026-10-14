@@ -349,7 +349,7 @@ fi
 LIBS=("$ROOT"/scripts/build/*.sh "$ROOT"/scripts/lib/*.sh)
 
 # Every file that RUNS an `export -f` — issue 1656: this read `scripts/build/*.sh`
-# only, leaving the lists in the root `justfile`, `just/native.just` and
+# only, leaving the lists in the root `justfile`, `just/linux.just` and
 # `scripts/debug/debug-keyexpr.sh` closed by hand. Derived from the tree, never
 # listed. This gate's own file is excluded: its self-test fixtures are heredocs.
 mapfile -t SITES < <(cd "$ROOT" && git ls-files -- 'scripts/*.sh' 'scripts/**/*.sh' \

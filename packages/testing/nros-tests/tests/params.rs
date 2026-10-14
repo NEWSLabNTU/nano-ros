@@ -155,7 +155,7 @@ fn start_talker_with_params(locator: &str) -> ManagedProcess {
 /// This used to return `bool`, and all four callers wrote
 /// `if !require_node_discoverable(&locator) { return; }`. A bare `return` from a
 /// `#[test]` is a PASS, so on a host where our node never joined the graph the
-/// four `ros2 param *` tests reported green — and `just native
+/// four `ros2 param *` tests reported green — and `just linux
 /// test-ros2-params` passes `--failure-output never`, so the `eprintln!` that
 /// was the only evidence never reached the log either. A `require_*` helper that
 /// hands the caller a `bool` hands them the verdict; this one keeps it.

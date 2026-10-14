@@ -255,7 +255,7 @@ def check_registry(lines: list[str], name: str) -> tuple[list[str], list[str]]:
         problems.append(f"  {name}: listed twice: {', '.join(dupes)}")
 
     # Issue 1882 -- the registry is a LIST, and its body never runs: the runner
-    # reads the names and calls `just check <gate>` for each. `@just native
+    # reads the names and calls `just check <gate>` for each. `@just linux
     # check` sat in this body for six weeks after #0993 and linted nothing.
     # A command that must run is a gate on the list, not a line under it.
     k = e
@@ -405,7 +405,7 @@ def self_test() -> None:
     assert check_registry(good, BUILD_REGISTRY)[1] == [], "selftest: rejected a well-formed list"
 
     # Issue 1882: a body on the registry is code the runner never reaches.
-    with_body = good + ["    @just native check"]
+    with_body = good + ["    @just linux check"]
     assert any("body" in p for p in check_registry(with_body, BUILD_REGISTRY)[1]), (
         "selftest: missed a registry body"
     )

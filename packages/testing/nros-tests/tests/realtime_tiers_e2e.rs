@@ -622,7 +622,7 @@ fn realtime_tiers() {
     let mut failed: Vec<String> = Vec::new();
     for c in &cells {
         // issue 0571 — narrow by LANE here, because no name filter can reach
-        // inside one test. `lane-filter.sh native` excludes platform tokens in
+        // inside one test. `lane-filter.sh linux` excludes platform tokens in
         // binary and test NAMES; this binary has neither, so without this a
         // tier-1 host boots every QEMU image it happens to have lying around.
         if !nros_tests::lane_scope::admits(c.platform) {

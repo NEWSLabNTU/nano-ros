@@ -504,7 +504,7 @@ dist.macos-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/
 # sccache are, and they need no machinery this file did not already have.
 #
 # `cargo-nextest` is the one that mattered most. It is UNPINNED today and CI's
-# runners install it through `just setup native`, while `.config/nextest.toml`
+# runners install it through `just setup linux`, while `.config/nextest.toml`
 # is version-sensitive in a way that fails loudly: a stale `binary()` filter is
 # a PARSE ERROR that kills every nextest run in the repo (issue 0743), and the
 # domain-partition arithmetic in that file assumes nextest's global-slot

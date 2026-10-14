@@ -1,12 +1,12 @@
 # examples/native — host native (Linux) examples
 
 Desktop/host examples in C, C++ and Rust. Just module: **`native`**
-(`just/native.just`).
+(`just/linux.just`).
 
 ## Prerequisites
 
 ```sh
-source ./activate.sh          # PATH: nros, play_launch_parser (zenohd stays off PATH; `just native zenohd` resolves it)
+source ./activate.sh          # PATH: nros, play_launch_parser (zenohd stays off PATH; `just linux zenohd` resolves it)
 nros setup linux             # host toolchains (zenoh RMW default)
 ```
 
@@ -42,14 +42,14 @@ output — and builds with its own CMake: `cmake -B build && cmake --build build
 Contributor shortcuts inside a checkout (they drive cargo and cmake directly):
 
 ```sh
-just native zenohd &                     # resolves the installed zenohd
-just native talker                       # = cd examples/native/rust/talker && cargo run
-just native listener                     # peer in a second shell
-just native build-c                      # builds c/talker + c/listener + c/custom-msg
-just native build-cpp
+just linux zenohd &                     # resolves the installed zenohd
+just linux talker                       # = cd examples/native/rust/talker && cargo run
+just linux listener                     # peer in a second shell
+just linux build-c                      # builds c/talker + c/listener + c/custom-msg
+just linux build-cpp
 ```
 
-Contributor test lanes: `just native test` (Rust), `test-c`, `test-cpp`, `test-rmw`.
+Contributor test lanes: `just linux test` (Rust), `test-c`, `test-cpp`, `test-rmw`.
 
 ## Cases
 

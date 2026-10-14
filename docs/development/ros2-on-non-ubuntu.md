@@ -80,7 +80,7 @@ path it has on the host (issue 0375) — see "Two paths to the same checkout".
 
 Not a nicety. On a host with no ROS install, `just ci` on 2026-08-18 reported
 **176 `[SKIPPED:capability]`** tests — the whole zenoh-router-dependent surface,
-including every `native_api` interop case — and they are counted as skips only
+including every `linux_api` interop case — and they are counted as skips only
 because `test-all` rewrites them. The `check-required-features-tests` lane
 (issue 0652) runs a BARE `cargo nextest`, where the same skips are FAILURES, so
 tier 1 cannot go green on such a host at all. The box is what turns that surface

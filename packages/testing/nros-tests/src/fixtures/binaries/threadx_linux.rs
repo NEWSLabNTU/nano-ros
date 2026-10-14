@@ -65,7 +65,7 @@ fn build_rust_example(name: &str, _binary_name: &str) -> TestResult<PathBuf> {
 
 /// Resolve a ThreadX-Linux cmake example's artifact for a NAMED rmw.
 ///
-/// Issue 0786, sibling of the RV64 one. Four sites in `native_api.rs` built
+/// Issue 0786, sibling of the RV64 one. Four sites in `linux_api.rs` built
 /// `examples/threadx-linux/<lang>/<case>/build-cyclonedds/<bin>` by hand and
 /// guarded it with `.exists()`. A museum binary EXISTS, so that guard passes
 /// and the stale image runs — which is issue 0215 verbatim, recorded in a

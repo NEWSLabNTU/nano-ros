@@ -184,7 +184,7 @@ def nightly_tokens(text):
     """
     m = re.search(r'^\s*runnable="([^"]+)"', text, re.M)
     toks = set(m.group(1).split()) if m else set()
-    toks.update({"zephyr", "native"})
+    toks.update({"zephyr", "linux"})
     return toks
 
 

@@ -54,7 +54,7 @@ fn baremetal_board_run_executes_run_plan() {
     // issue 0584 x phase-351 — LANE first, before any capability probe.
     //
     // This binary boots a QEMU baremetal image, and its NAME carries no
-    // platform token, so `scripts/test/lane-filter.sh native` cannot exclude it
+    // platform token, so `scripts/test/lane-filter.sh linux` cannot exclude it
     // (issue 0357's shape) — while the native lane, correctly, does not build
     // that fixture. The old order then reported "fixture not prebuilt", a
     // CAPABILITY skip, which since 0584 is a hard failure because an in-lane

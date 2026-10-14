@@ -1,7 +1,7 @@
 //! issue 0697 — the zenoh session-pool exhaustion arm, asserted on a `no_std`
 //!
 //! The BINARY name carries the `threadx` token deliberately: tier 1's
-//! lane filter (`scripts/test/lane-filter.sh native`) excludes non-host
+//! lane filter (`scripts/test/lane-filter.sh linux`) excludes non-host
 //! platforms by `not binary(~<token>)`, and the original name
 //! `pool_exhaustion_firmware` matched no token — so `just ci` ran this
 //! test on hosts whose build lane never produces the threadx-linux

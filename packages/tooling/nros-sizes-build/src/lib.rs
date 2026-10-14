@@ -1102,7 +1102,7 @@ fn probe_key(target: &str, features: &[String]) -> String {
 ///
 /// # The measurement that produced this list
 ///
-/// 25 probe directories from one `build-test-fixtures lane=native`, all on ONE
+/// 25 probe directories from one `build-test-fixtures lane=linux`, all on ONE
 /// target triple, 19 of them sharing the SAME feature set. 35 knobs varied
 /// inside that group of 19 and not one was a sizing knob:
 ///

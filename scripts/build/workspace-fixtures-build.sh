@@ -285,7 +285,7 @@ build_workspace() {
 
         # issue 0649 — the `nros sync` that used to be HERE is a pre-pass over
         # `group_dirs` now. It ran per ROW while sync is per-WORKSPACE, and the
-        # large workspaces carry many rows: measured over one `lane=native`
+        # large workspaces carry many rows: measured over one `lane=linux`
         # build, `examples/workspaces/features` was synced 22 times for its 24
         # manifest rows.
         #
@@ -729,7 +729,7 @@ done
         # (cf3a362d6 / issue 0406): the empty string is not `--*`, so it was
         # consumed as the lang filter, and the second empty string fell through
         # to `*)` — "unknown option: " with nothing after the colon.
-        # `just native build-workspace-fixtures` failed outright on main.
+        # `just linux build-workspace-fixtures` failed outright on main.
         #
         # A stricter parser meeting a caller that always passed placeholders is
         # the entire bug, and the fix belongs on the caller: it should never

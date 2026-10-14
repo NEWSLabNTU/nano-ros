@@ -12,7 +12,7 @@
 //! private zenohd (no ROS 2 needed). Servers spin until killed; the async
 //! clients run once and exit after the await completes.
 //!
-//! Run: `cargo nextest run -p nros-tests --test native_async_roundtrip_e2e`
+//! Run: `cargo nextest run -p nros-tests --test linux_async_roundtrip_e2e`
 
 use nros_tests::fixtures::{
     ManagedProcess, RequireFixture, ZenohRouter, build_native_action_server,

@@ -709,7 +709,7 @@ incremental = false
 # QEMU's timing floors. Was `nros-fast-release` before phase-336.
 #
 # phase-340 W1 dropped `incremental = true` (here 2026-08-06). Measured on
-# `build-test-fixtures lane=native`, four alternating runs: disk -27.6 %
+# `build-test-fixtures lane=linux`, four alternating runs: disk -27.6 %
 # (43643 -> 31600 MiB, identical across reps), wall-clock -12.2 % with a warm
 # sccache and +2.4 % on the first cold run. The lanes build each leaf ONCE into
 # a per-leaf target dir, so the incremental state was written and never read.

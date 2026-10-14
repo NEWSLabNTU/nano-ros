@@ -11,7 +11,7 @@
 //! compile's VERDICT (exit status + stderr) and succeed whatever it said, and
 //! the test asserts the verdict (`cargo-check-verdict` /
 //! `cmake-configure-verdict` rows, `nros_tests::fixtures::require_compile_verdict`).
-//! Five files moved that way (`native_main_macro_misuse`, `cmake_platform_matrix`,
+//! Five files moved that way (`linux_main_macro_misuse`, `cmake_platform_matrix`,
 //! `cmake_node_register_misuse`, `diagnostic_verbatim`, and
 //! `native_orchestration_misuse`, deleted as a duplicate of `orch_tiers_multi`),
 //! and issue 1656 moved the last three (`platform_header_compile`,

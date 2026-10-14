@@ -2,15 +2,15 @@
 """One namespace for `just <verb> <scope>` — phase-411 W3.
 
 Scope is the specification: `just test zephyr`, `just build tier2`,
-`just doctor native`. Platform names and preset names share ONE argument
+`just doctor linux`. Platform names and preset names share ONE argument
 position, which buys a surface with one shape to learn — and costs exactly one
 invariant, the one this gate holds:
 
     A name may not mean two things.
 
-`native` is deliberately both a platform module and a fixture lane. That is
-legal only because they denote the SAME scope: the `native` lane is every row
-of the `native` module. Nothing enforced it. A preset added tomorrow that
+`linux` is deliberately both a platform module and a fixture lane. That is
+legal only because they denote the SAME scope: the `linux` lane is every row
+of the `linux` module. Nothing enforced it. A preset added tomorrow that
 happens to share a platform's name — or a lane whose module set quietly grows
 past the platform it is named after — would silently re-scope somebody's run,
 and the failure mode is the one phase-411 exists to remove: a run that reports
@@ -109,35 +109,35 @@ def self_test():
     so this is not behind a flag. It costs nothing: `analyse` is pure.
     """
     healthy = analyse(
-        modules=["native", "zephyr", "check"],
-        platforms=["native", "zephyr"],
+        modules=["linux", "zephyr", "check"],
+        platforms=["linux", "zephyr"],
         non_platform=["check"],
-        presets=["all", "native"],
-        expand={"native": ["native"]},
+        presets=["all", "linux"],
+        expand={"linux": ["linux"]},
     )
     assert healthy == [], f"selftest: healthy input reported {healthy}"
 
     collide = analyse(
-        modules=["native", "zephyr", "check"],
-        platforms=["native", "zephyr"],
+        modules=["linux", "zephyr", "check"],
+        platforms=["linux", "zephyr"],
         non_platform=["check"],
-        presets=["all", "native"],
-        expand={"native": ["native", "zephyr"]},
+        presets=["all", "linux"],
+        expand={"linux": ["linux", "zephyr"]},
     )
     assert len(collide) == 1 and "means something ELSE" in collide[0], collide
 
     unresolvable = analyse(
-        modules=["native"],
-        platforms=["native"],
+        modules=["linux"],
+        platforms=["linux"],
         non_platform=[],
-        presets=["native"],
-        expand={"native": None},
+        presets=["linux"],
+        expand={"linux": None},
     )
     assert len(unresolvable) == 1 and "unverifiable collision" in unresolvable[0], unresolvable
 
     unclassified = analyse(
-        modules=["native", "newthing"],
-        platforms=["native"],
+        modules=["linux", "newthing"],
+        platforms=["linux"],
         non_platform=[],
         presets=[],
         expand={},
@@ -145,8 +145,8 @@ def self_test():
     assert len(unclassified) == 1 and "neither" in unclassified[0], unclassified
 
     missing_mod = analyse(
-        modules=["native"],
-        platforms=["native", "ghost"],
+        modules=["linux"],
+        platforms=["linux", "ghost"],
         non_platform=[],
         presets=[],
         expand={},

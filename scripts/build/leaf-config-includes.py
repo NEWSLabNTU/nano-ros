@@ -45,7 +45,7 @@ workspace member can path-dep a crate under `generated/` too:
 and cargo fails identically — during manifest parse, four frames deep, naming a
 path and never `nros sync`. Issue 0474 wired this guard ahead of `format` for
 exactly that reason, but the guard only read `include` targets, so
-`native::format` still died on an unsynced leaf while the guard reported "OK"
+`linux::format` still died on an unsynced leaf while the guard reported "OK"
 (realtime-rust, 2026-08-24). A gate whose coverage is narrower than the rule it
 enforces reads as coverage — so both shapes are checked here, in ONE gate,
 rather than growing a second spelling elsewhere.
@@ -150,7 +150,7 @@ def main() -> int:
     gen_unprovisioned = []   # (manifest, path) — producer absent, not required
     px4_available = px4_msg_tree().is_dir()
     # Scoped to `examples/**` — the leaves the lanes this guard fronts actually
-    # walk (`native::format` enumerates exactly this set). `packages/cli/
+    # walk (`linux::format` enumerates exactly this set). `packages/cli/
     # testing_workspaces/**` also path-deps `generated/`, but those are CLI test
     # fixtures that the tests using them sync on demand, so requiring them here
     # would fail `just format` for trees that are not broken. Matching the gate

@@ -4,7 +4,7 @@
 //! 1. `nros::main!();` — reads `[package.metadata.nros.entry] deploy = "native"`,
 //!    emits `::demo_entry::register(runtime)?;` (lib-self bringup).
 //! 2. (retired) `nros::main!(board = X)` — phase-484 W8c made it a compile
-//!    error; its verdict is `native_main_macro_misuse`'s `main_macro_misuse_board_arg`.
+//!    error; its verdict is `linux_main_macro_misuse`'s `main_macro_misuse_board_arg`.
 //! 3. `nros::main!(model = "demo_bringup");` — pkg-index walk → committed
 //!    SystemModel → `::talker_pkg::register(runtime)?;` (the canonical form).
 //! 4. explicit model file (the deprecated `model =` arm).

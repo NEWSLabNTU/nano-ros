@@ -2,7 +2,7 @@
 # Sourced, never run. The ONE spelling of the cmake definitions every native
 # (linux) C/C++ fixture leaf is configured with.
 #
-# Issue 1846. `just native build-fixture-extras` wrote these twice by hand and
+# Issue 1846. `just linux build-fixture-extras` wrote these twice by hand and
 # exported them as `NROS_CMAKE_EXTRA_DEFS` before calling `fixtures-build.sh`.
 # The live-peer host job called `fixtures-build.sh linux <lang> <rmw>`
 # DIRECTLY and passed none. So its 42 C/C++ leaf configures ran with no

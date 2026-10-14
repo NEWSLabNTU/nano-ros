@@ -1,11 +1,13 @@
 # Phase 500 — the host board is `linux`
 
-**Status (2026-10-14). W1 landed on its branch; W2–W5 open.** W1 drops
+**Status (2026-10-14). W1 and W2 landed on their branches; W3–W5 open.** W1 drops
 `native` as a board name: the host board descriptor names `["linux"]`, every
 tracked selector / deploy token / cmake `DEPLOY` / sdk-index key writes
 `linux`, `native` is refused with a hint naming `linux`, and
-`check-host-platform-vocabulary` holds it. The lane, image ids and the
-`examples/native/` directory still say `native` (W2–W4), and the deprecated CLI
+`check-host-platform-vocabulary` holds it. W2 renamed the lane, the `just`
+module, the setup/build/test/doctor scope and the host test binaries to
+`linux`, keeping `native` as a deprecated alias. Image ids and the
+`examples/native/` directory still say `native` (W3–W4), and the deprecated
 aliases are W5's to retire.
 
 Implements the naming rule of
@@ -133,20 +135,61 @@ priorities, prose) and are out of scope.
     mapped to `linux`, because RELEASED book pages (tags `nros-v0.5.0`,
     `nros-0.5.0-nros{1,2}`) tell users to type them. `--platform posix` predates
     this phase; `nros setup native` replaces the removed `[board.native]` row.
-- [ ] **W2 — the lane, module, scope and test names.** `_NROS_LANES`
-  `native` → `linux` (`lane=linux`), `RunScope::Native`, the `just native`
-  module (`justfile`, `just/native.just`), the `native` scope token in
-  `scripts/build/scope.sh` (`just setup|doctor|build|test native`), the ten
-  `native_*.rs` test binaries and `NativeFixtures`, with `native` kept as a
-  DEPRECATED alias that prints the replacement. Move `.config/nextest.toml`
-  `binary(native_…)` filters in the SAME commit (a stale `binary()` is a parse
-  error for every nextest run — issue 0743), and the workflow steps that key on
-  `just setup native` / `just native …` (`host-tests.yml`, `live-peer.yml`,
-  `nightly.yml`). Delete the W1 bridge `DEPLOY_SCOPE = {"linux": "native"}`
-  (in `cmd::setup`'s workspace report and `check-board-vocabulary.py`), which
-  maps the host deploy token to the not-yet-renamed scope. Out of scope here:
-  the C ABI runner symbols
-  `nros_board_native_run_*` (a separate ABI rename, file an issue if wanted).
+- [x] **W2 — the lane, module, scope and test names.** One commit.
+  - **Lane.** `_NROS_LANES` `native` → `linux` (`lane=linux`);
+    `RunScope::Native` → `RunScope::Linux` (`test_scope`/`build_lane` say
+    `linux`); `NROS_TEST_SCOPE` / `NROS_FIXTURE_LANE` / `NROS_FIXTURE_SCOPE`
+    values (`justfile` `_check-fixtures-stale`, `check-fixtures-stale.sh`);
+    `scripts/test/lane-filter.sh linux`; the `fixture-lane.sh` helpers
+    (`nros_lane_coords_file`, `nros_lane_unclaimed`, `nros_lane_build_lane`,
+    `nros_lane_modules`, `nros_lane_run_is_narrowed`, the stamp-cover arm).
+  - **Module.** `just/native.just` → `just/linux.just`, `mod linux`;
+    `PlatformId::Linux.just_module()` = `linux`; `BuildChannel::NativeFixtures`
+    → `LinuxFixtures` (`just linux build-fixtures`); every `native::<recipe>`
+    dependency (`linux::format`, `linux::build-examples`, `linux::check`); the
+    lane fan-out loops in `build-test-fixtures-leaves`; `nightly.yml`'s
+    `elsewhere` map and comments.
+  - **Scope.** `_NROS_SCOPE_PLATFORMS` `native` → `linux`
+    (`just setup|doctor|build|test linux`), the `_test-scope` / `_doctor-scope`
+    host arms, the `just setup` menu, `check-scope-namespace`'s self-test.
+  - **Test binaries.** The nine `tests/native_*.rs` → `tests/linux_*.rs`
+    (`linux_api`, `linux_async_roundtrip_e2e`, `linux_entry_boot`,
+    `linux_example_executor_bound_node_e2e`, `linux_example_pubsub_e2e`,
+    `linux_example_reqresp_e2e`, `linux_main_macro_forms`,
+    `linux_main_macro_misuse`, `linux_orchestration_tiers`), with the
+    `Cargo.toml` `[[test]]`, every `.config/nextest.toml` `binary(...)` filter,
+    `.config/lane-admission/gate.txt`, `.config/fixture-require-baseline.txt`,
+    `lane_scope.rs` and the per-file gate tables in the SAME commit. The
+    module recipe `test-native-api` → `test-linux-api`.
+  - **Workflows.** `host-tests.yml` (`just setup linux`), `live-peer.yml`
+    (`just linux test-live-peer-regression …`), `nightly.yml`, `gate.yml`.
+  - **W1 bridge deleted.** `DEPLOY_SCOPE = {"linux": "native"}` is gone from
+    `cmd::setup`'s workspace report and from `check-board-vocabulary.py`: the
+    host deploy token IS the scope again.
+  - **The deprecated alias (W5 deletes each).** ONE table,
+    `_NROS_RETIRED_HOST_TOKENS="native=linux"` in
+    `scripts/build/fixture-lane.sh`, with one function
+    `nros_retired_host_token` that prints `DEPRECATED: 'native' is now
+    'linux' …` and returns `linux`. It is asked by `nros_lane_arg`
+    (`lane=native`), `nros_scope_normalize` / `nros_scope_validate_all`
+    (`just build|test|doctor native`), the `just setup` scope arm
+    (`just setup native`), `lane-filter.sh`, and the build stamp reader (a
+    pre-W2 `lane=native` stamp, quietly). `just` has no module alias, so the
+    module's twin is one private root recipe, `native *ARGS`, that prints the
+    same notice and forwards to `just linux …`. The test
+    `lane_build_covers_run::the_retired_native_lane_resolves_to_linux_with_a_deprecation`
+    pins the alias and goes with it.
+  - Left alone, each for a stated reason: image ids (`[image.native*]`, W3);
+    `examples/native/` and every path into it, including
+    `lint-example-leaf.sh`'s directory test (W4); the C ABI
+    `nros_board_native_run_*`; `posix` as the platform; the gate recipe
+    `just check native-check` (a gate name in the `check` module, not the
+    module or lane — renaming it touches the gate lists, so it waits for W5);
+    the interop cell ids `native-<workload>-…` (`interop::CELLS` names, a
+    coordinate vocabulary of their own); Zephyr `native_sim`, the `native`
+    flash runner, RTOS-native priorities and prose; and the HISTORY series
+    (`docs/roadmap/`, `docs/issues/`, `CHANGELOG.md`, audit reports), which
+    record what was typed then.
 - [ ] **W3 — image ids.** `[image.native*]` → `[image.linux*]` (229 headers in
   95 `system.toml`), `examples/fixtures.toml` `image = "native…"` rows, the
   derived `native_entry` package names, settings paths
@@ -194,6 +237,14 @@ priorities, prose) and are out of scope.
   `native` spellings print a deprecation and do the same; `check-nextest-binary-
   filters` and `check-lane-contracts` green; a gate (mutation-proved) fails a
   tracked `lane=native` / `just native` use outside the alias definition.
+  **Gate:** `check-host-platform-vocabulary` check 7 (fast line) — no tracked
+  file outside the history series spells the old lane / module / scope / test
+  binary (`lane=native`, `just [setup|build|test|doctor] native`,
+  `mod native`, `native::<recipe>`, `NROS_TEST_SCOPE|NROS_FIXTURE_LANE|
+  NROS_FIXTURE_SCOPE=native`, `lane-filter.sh native`, `--scope native`,
+  `just/native.just`, `native_<renamed test>`), and `native` is in neither
+  `_NROS_LANES` nor `_NROS_SCOPE_PLATFORMS`; an alias line carries the pragma
+  `retired-host-token: alias`. Self-test on every run.
 - **W3** — no tracked `[image.native*]`; fixtures and tests resolve the renamed
   ids; gate (mutation-proved) refuses a new `[image.native…]`.
 - **W4** — no tracked path under `examples/native/`; every locator moved in the

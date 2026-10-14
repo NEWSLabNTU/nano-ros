@@ -32,7 +32,7 @@
 //! `rclc_node_init_default`, which was never affected.
 //!
 //! Run with:
-//! `cargo nextest run -p nros-tests --test native_example_executor_bound_node_e2e`.
+//! `cargo nextest run -p nros-tests --test linux_example_executor_bound_node_e2e`.
 
 use nros_tests::{
     fixtures::{
@@ -60,7 +60,7 @@ fn is_executor_bound_node_cell(c: &MCell) -> bool {
 
 /// Tripwire — a cell added to the matrix without a case here would never run,
 /// which is the exact shape (`build-only, reads as coverage`) this file exists
-/// to close. Mirrors `native_example_pubsub_e2e`'s.
+/// to close. Mirrors `linux_example_pubsub_e2e`'s.
 #[test]
 fn executor_bound_node_cases_cover_every_matrix_cell() {
     let cells: Vec<&MCell> = nros_tests::matrix::CELLS

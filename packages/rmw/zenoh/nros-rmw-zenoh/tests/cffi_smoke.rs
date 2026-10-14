@@ -89,7 +89,7 @@ fn router_locator() -> Option<String> {
 ///
 /// **Cffi-path data flow IS verified end-to-end** by the
 /// two-process talker/listener tests in
-/// `packages/testing/nros-tests/tests/native_api.rs` +
+/// `packages/testing/nros-tests/tests/linux_api.rs` +
 /// `tests/nano2nano.rs`. Once 115.L.3's `NROS_RMW=zenoh`
 /// default-flip propagates through the example Cargo.toml files,
 /// those tests exercise the same `RustBackendAdapter<ZenohRmw>`
@@ -98,7 +98,7 @@ fn router_locator() -> Option<String> {
 /// Requires ROS's `rmw_zenohd` — nano-ros ships no router (RFC-0075). Start
 /// one with `just zenohd`; the harness resolves it via `ros_zenohd_path`.
 #[test]
-#[ignore = "in-process zenoh-pico pubsub is architecturally broken (zpico-sys static-slot limitation); cffi data flow verified by the two-process native_api/nano2nano tests once L.3 default-flip reaches the example Cargo.toml files"]
+#[ignore = "in-process zenoh-pico pubsub is architecturally broken (zpico-sys static-slot limitation); cffi data flow verified by the two-process linux_api/nano2nano tests once L.3 default-flip reaches the example Cargo.toml files"]
 fn cffi_pubsub_round_trip() {
     let locator =
         router_locator().expect("zenohd unavailable — run `nros setup <board> --rmw zenoh`");

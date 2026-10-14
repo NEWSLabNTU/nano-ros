@@ -140,7 +140,7 @@ fn declarative_zenoh_to_cyclonedds_bridge_to_nano_listener() {
     // `Err` here means the fixture is missing or stale in a lane that selected
     // it — hard failure (issue 1124).
     let bridge_bin = build_native_workspace_rust_bridge_entry()
-        .require("bridge-cyclonedds native_entry (row `workspace-rust-native-bridge`); run \\ `just native build-workspace-fixtures` (needs `just cyclonedds setup`)")
+        .require("bridge-cyclonedds native_entry (row `workspace-rust-native-bridge`); run \\ `just linux build-workspace-fixtures` (needs `just cyclonedds setup`)")
         .to_path_buf();
     let listener_bin = nano_cyclone_listener();
 

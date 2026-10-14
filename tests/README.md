@@ -38,8 +38,8 @@ just test qemu           # QEMU bare-metal tests (needs qemu-system-arm)
 just test esp32          # ESP32-C3 QEMU tests (needs qemu-system-riscv32 + espflash)
 just test-integration    # All Rust integration tests (needs zenohd)
 just test zephyr         # Zephyr E2E tests (needs west + Zephyr workspace)
-just native test-ros2    # ROS 2 interop tests (needs ROS 2 + rmw_zenoh_cpp)
-just native test-c       # C API tests (needs cmake + zenohd)
+just linux test-ros2    # ROS 2 interop tests (needs ROS 2 + rmw_zenoh_cpp)
+just linux test-c       # C API tests (needs cmake + zenohd)
 just docker test-qemu    # QEMU networked tests in Docker (needs docker)
 just test xrce           # XRCE-DDS integration tests (needs XRCE Agent)
 just xrce test-ros2      # XRCE ↔ ROS 2 DDS interop (needs XRCE Agent + ROS 2 + rmw_fastrtps)
@@ -263,8 +263,8 @@ Tests C API integration using CMake-built examples:
 **Requirements:** `cmake`, `zenohd`, Rust toolchain
 
 ```bash
-just native test-c          # Run all C tests
-just native test-c verbose  # Verbose output
+just linux test-c          # Run all C tests
+just linux test-c verbose  # Verbose output
 ```
 
 ## Requirements
@@ -473,8 +473,8 @@ ros2-interop-tests:
 | XRCE-DDS tests | `just test xrce` | XRCE Agent + socat |
 | XRCE ↔ ROS 2 interop | `just xrce test-ros2` | XRCE Agent + ROS 2 + rmw_fastrtps |
 | Zephyr tests | `just test zephyr` | west + zenohd |
-| ROS 2 zenoh interop | `just native test-ros2` | ROS 2 + rmw_zenoh |
-| C API tests (zenoh) | `just native test-c` | cmake + zenohd |
+| ROS 2 zenoh interop | `just linux test-ros2` | ROS 2 + rmw_zenoh |
+| C API tests (zenoh) | `just linux test-c` | cmake + zenohd |
 | C API tests (XRCE) | `just xrce test-c` | cmake + XRCE Agent |
 | Docker QEMU | `just docker test-qemu` | docker |
 

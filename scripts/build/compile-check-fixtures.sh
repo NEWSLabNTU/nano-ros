@@ -1028,7 +1028,7 @@ write_compile_check_sig() {
 # phase-489 W6 — REUSE a row whose inputs did not change, like the west lane
 # already does (issue 0509, `west-fixtures.sh`). Every builder below used to
 # `rm -rf` its staged dir and rebuild unconditionally, so a no-change re-run of
-# `just build native` spent ~41 of its ~79 minutes (4-core box) re-making
+# `just build linux` spent ~41 of its ~79 minutes (4-core box) re-making
 # fixtures byte-for-byte: the warm tree a self-hosted lane keeps bought nothing
 # here.
 #
@@ -1634,7 +1634,7 @@ if _cc_px4_selected; then
         bridge_ok=1
         # issue 0742 — the CRITICAL SECTION is the whole block, not the
         # generator call. This script runs once per compile-check unit, in
-        # parallel (32 of them on `lane=native`), and every one of them drives
+        # parallel (32 of them on `lane=linux`), and every one of them drives
         # this same `bridge-cpp` path: the `rm -rf` below deletes a sibling's
         # output, its `.px4_msg_stage` and the headers a third one is about to
         # read. The lock that used to wrap only `nros generate-px4-msgs` left

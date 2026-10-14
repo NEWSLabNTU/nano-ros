@@ -165,11 +165,10 @@ impl PlatformId {
             // would leave rows saying `linux` and the builder that produces them
             // still called with `native` — two spellings of one fact.
             //
-            // What did NOT move, and is not an oversight: the `native` LANE
-            // (`lane=native`, `_NROS_LANES`), the `just` MODULE (`just native
-            // …`, see `just_module` below), and the `examples/native/`
-            // DIRECTORY — that last one is a `dir =` value, not this token.
-            // Those are different vocabularies that merely share a spelling.
+            // The LANE (`lane=linux`, `_NROS_LANES`) and the `just` MODULE
+            // (`just linux …`, see `just_module` below) followed in phase-500
+            // W2. The `examples/native/` DIRECTORY is a `dir =` value, not
+            // this token; it moves in phase-500 W4.
             PlatformId::Linux => &["linux"],
             PlatformId::ZephyrNativeSim => &["zephyr"],
             // phase-337 W2.c/W2.e declared this token with NO `fixtures.toml`
@@ -222,10 +221,11 @@ impl PlatformId {
     /// that need a job list must dedupe.
     pub const fn just_module(self) -> &'static str {
         match self {
-            // The `just` MODULE keeps the name `native`: it is a third
-            // vocabulary naming a LANE, ~100 CI references deep, and RFC-0064's
-            // decision is about the board's promise, not the recipe namespace.
-            PlatformId::Linux => "native",
+            // phase-500 W2 — the module was `native` until the maintainer's
+            // 2026-10-14 ruling (native = any general-purpose host; the host
+            // build is Linux-only). The old spelling survives one cycle as a
+            // deprecated root forwarder; this answer is the real name.
+            PlatformId::Linux => "linux",
             // All three are `just zephyr …` — one module, three boards. That is
             // the RFC-0064 shape working as intended: a board is a conf bundle
             // under a family's recipes, not a namespace of its own.
@@ -828,7 +828,7 @@ pub const CELLS: &[Cell] = &[
     cell(ThreadxLinux, Rust, Zenoh, Action,  Example, Runtime),
     cell(ThreadxLinux, C,    Zenoh, Action,  Example, Runtime),
     cell(ThreadxLinux, Cpp,  Zenoh, Action,  Example, Runtime),
-    // threadx-linux cyclone: C pubsub pair proven (native_api #215 lane);
+    // threadx-linux cyclone: C pubsub pair proven (linux_api #215 lane);
     // service/action fixtures build but have no runtime lane.
     cell(ThreadxLinux, C,   Cyclonedds, Pubsub,  Example, Runtime),
     // issue #233 cell 3 — threadx C cyclone service proven (test_threadx_linux_cyclonedds_service).

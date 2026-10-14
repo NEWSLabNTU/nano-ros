@@ -823,7 +823,7 @@ pub fn skip_reason_for_workspace_id(fixture_id: &str, coords: &BTreeSet<Coord>) 
 /// The lane and coordinate set the last fixture BUILD recorded, or `None`.
 ///
 /// `None` when there is no stamp, when it is a pre-0393 bare timestamp, or when
-/// the build was not coordinate-scoped (`lane=all`, `lane=native` — the latter
+/// the build was not coordinate-scoped (`lane=all`, `lane=linux` — the latter
 /// is module-level and writes no `coord=` lines). "Cannot tell" is `None`, never
 /// "nothing was built": absence of evidence must not become evidence.
 pub fn recorded_build() -> Option<&'static (String, BTreeSet<Coord>)> {
@@ -1239,7 +1239,7 @@ mod tests {
 
     #[test]
     fn a_stamp_without_coordinates_makes_no_claim() {
-        // `lane=all` and `lane=native` write no `coord=` lines. Reading either
+        // `lane=all` and `lane=linux` write no `coord=` lines. Reading either
         // as "nothing was built" would turn every fixture into a lane skip.
         assert!(parse_stamp("lane=all\nbuilt_at=x\n").is_none());
         assert!(parse_stamp("").is_none());

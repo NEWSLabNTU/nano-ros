@@ -24,7 +24,7 @@
 //! agrees with it. Both ends of one claim, so a divergence names its own side.
 //!
 //! Live peer: `ros2` from the host's ROS 2 install, over an ephemeral `zenohd`.
-//! Runs from `just native test-ros2-params-per-node`; cell
+//! Runs from `just linux test-ros2-params-per-node`; cell
 //! `native-params-per-node-rust-zenoh` in `interop::CELLS`.
 
 use nros_tests::{

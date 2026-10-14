@@ -180,8 +180,8 @@ pub const ALL: [CiLane; 3] = [CiLane::Tier1, CiLane::Tier2, CiLane::Tier2Nightly
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum RunScope {
     /// The recipe filters the run to host binaries by NAME
-    /// (`scripts/test/lane-filter.sh native`, via `NROS_TEST_SCOPE=native`).
-    Native,
+    /// (`scripts/test/lane-filter.sh linux`, via `NROS_TEST_SCOPE=linux`).
+    Linux,
     /// The recipe runs the whole suite — no filtering of any kind.
     All,
     /// The recipe runs every test binary, but the fixture RESOLVER skips any
@@ -203,7 +203,7 @@ impl RunScope {
     /// `all` here and does its narrowing at resolution time instead.
     pub fn test_scope(self) -> &'static str {
         match self {
-            RunScope::Native => "native",
+            RunScope::Linux => "linux",
             RunScope::All | RunScope::LaneCoords => "all",
         }
     }
@@ -226,7 +226,7 @@ impl CiLane {
     ///
     /// Derived from [`CiLane::run_scope`], never declared twice:
     ///
-    /// * [`RunScope::Native`] — a module-level build of every host row, which is
+    /// * [`RunScope::Linux`] — a module-level build of every host row, which is
     ///   a strict superset of any coordinate cover of the host.
     /// * [`RunScope::All`] — every coordinate is resolved, so nothing short of
     ///   `all` covers it.
@@ -239,7 +239,7 @@ impl CiLane {
     /// for every lane.
     pub fn build_lane(self) -> &'static str {
         match self.run_scope() {
-            RunScope::Native => "native",
+            RunScope::Linux => "linux",
             RunScope::All => "all",
             RunScope::LaneCoords => self.lane_token(),
         }
@@ -415,7 +415,7 @@ fn pool(lane: CiLane) -> Vec<&'static Cell> {
         // and this list is asserted equal to it by
         // `tier1_pool_matches_board_registry` below. Hardcoding it WITHOUT that
         // test is what made three places disagree: the registry promised three
-        // platforms, this pool named one, and `lane-filter.sh native` excluded
+        // platforms, this pool named one, and `lane-filter.sh linux` excluded
         // the other two outright.
         CiLane::Tier1 => all_runtime_cells()
             .filter(|c| {
@@ -660,7 +660,7 @@ mod tests {
         let line = text
             .lines()
             .map(str::trim)
-            .find(|l| l.starts_with("for platform in zephyr native qemu"))
+            .find(|l| l.starts_with("for platform in zephyr linux qemu"))
             .unwrap_or_else(|| {
                 panic!(
                     "justfile: canonical fixture platform list not found — if it was \
@@ -841,10 +841,10 @@ _tier-build:
 
             let scope = lane.run_scope();
             match scope {
-                RunScope::Native => assert!(
-                    body.contains("NROS_TEST_SCOPE=native"),
-                    "{lane:?} declares RunScope::Native but `just {recipe}` does not set \
-                     NROS_TEST_SCOPE=native — the run would execute every platform's tests \
+                RunScope::Linux => assert!(
+                    body.contains("NROS_TEST_SCOPE=linux"),
+                    "{lane:?} declares RunScope::Linux but `just {recipe}` does not set \
+                     NROS_TEST_SCOPE=linux — the run would execute every platform's tests \
                      on fixtures the lane never built:\n{body}"
                 ),
                 RunScope::All => assert!(
@@ -1083,7 +1083,7 @@ _tier-build:
                 env!("CARGO_MANIFEST_DIR"),
                 "/../../../scripts/test/lane-filter.sh"
             ))
-            .arg("native")
+            .arg("linux")
             .output();
         // A SKIP, not a `return` — a return from a test is a PASS over nothing.
         let Ok(out) = out else {
@@ -1091,7 +1091,7 @@ _tier-build:
         };
         if !out.status.success() {
             panic!(
-                "lane-filter.sh native failed: {}",
+                "lane-filter.sh linux failed: {}",
                 String::from_utf8_lossy(&out.stderr)
             );
         }
@@ -1117,7 +1117,7 @@ _tier-build:
             }
             assert!(
                 filter.contains(&format!("binary(~{family})")),
-                "native lane would still run {:?} binaries — lane-filter.sh emitted:\n{filter}",
+                "linux lane would still run {:?} binaries — lane-filter.sh emitted:\n{filter}",
                 c.platform
             );
 
@@ -1213,14 +1213,14 @@ _tier-build:
                 env!("CARGO_MANIFEST_DIR"),
                 "/../../../scripts/test/lane-filter.sh"
             ))
-            .arg("native")
+            .arg("linux")
             .output();
         let Ok(out) = out else {
             crate::unmet!("cannot run scripts/test/lane-filter.sh (out-of-tree checkout)");
         };
         if !out.status.success() {
             panic!(
-                "lane-filter.sh native failed: {}",
+                "lane-filter.sh linux failed: {}",
                 String::from_utf8_lossy(&out.stderr)
             );
         }

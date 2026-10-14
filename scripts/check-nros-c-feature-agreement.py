@@ -26,7 +26,7 @@ times, and the three costs look nothing alike:
     two headers differed in exactly one line. Nothing failed; the file's mtime
     just moved on every build, it is a `cargo:rerun-if-changed` input and is
     listed in the staticlib's dep-info, and the fixture staleness probe read
-    that as an edited source. Three `native_example_pubsub_e2e` coordinates
+    that as an edited source. Three `linux_example_pubsub_e2e` coordinates
     returned a STALE message instead of a runtime result for EIGHTEEN DAYS.
 
 The third is the one a gate is for: it is invisible in every build log.

@@ -52,7 +52,7 @@ const fn s(key: &'static str, value: &'static str) -> Setting {
 /// # Why `incremental` is absent (phase-340 W1)
 ///
 /// It was `incremental = true` from phase-336 until 2026-08-06. Measured on
-/// `build-test-fixtures lane=native`, four alternating runs with every target
+/// `build-test-fixtures lane=linux`, four alternating runs with every target
 /// dir wiped between them:
 ///
 /// * **disk −27.6 %** (43643 -> 31600 MiB), identical to the MiB across reps.

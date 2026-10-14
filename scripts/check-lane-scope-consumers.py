@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """issue 0571 — a matrix consumer the lane filter cannot reach must narrow itself.
 
-`scripts/test/lane-filter.sh native` scopes a tier-1 run by EXCLUDING names: a
+`scripts/test/lane-filter.sh linux` scopes a tier-1 run by EXCLUDING names: a
 test binary whose name carries a platform family token (`freertos_qemu`,
 `zephyr_cortex_m_qemu`, …) and a test whose own name carries one
 (`case_05_zephyr_rust`, `Platform__Freertos`). Issue 0357 added the second half
@@ -105,17 +105,17 @@ def narrows(src):
 
 
 def lane_excluded_tokens():
-    """The binary-name tokens `lane-filter.sh native` ACTUALLY excludes.
+    """The binary-name tokens `lane-filter.sh linux` ACTUALLY excludes.
 
     phase-472 W8 — rule (a) is "the lane filter excludes this binary by name",
     so its exemption must be keyed on the filter's own output, not on
-    `just_module`'s tokens: those include `native`, which the host lane RUNS,
-    so every `native_*` consumer was exempt from narrowing its cells while being
+    `just_module`'s tokens: those include `linux`, which the host lane RUNS,
+    so every `linux_*` consumer was exempt from narrowing its cells while being
     exactly the binary the tier-1 lane executes.
     """
     import subprocess
 
-    out = subprocess.run(["bash", os.path.join(ROOT, "scripts/test/lane-filter.sh"), "native"],
+    out = subprocess.run(["bash", os.path.join(ROOT, "scripts/test/lane-filter.sh"), "linux"],
                          capture_output=True, text=True, check=True).stdout
     return set(re.findall(r"not binary\(~([a-z0-9_]+)\)", out))
 
@@ -123,7 +123,7 @@ def lane_excluded_tokens():
 def main():
     tokens = lane_excluded_tokens()
     if not tokens:
-        sys.exit("check-lane-scope-consumers: lane-filter.sh native excluded no binary token")
+        sys.exit("check-lane-scope-consumers: lane-filter.sh linux excluded no binary token")
     # Controls on the normal path (phase-472 W8): the host-only shape is exempt,
     # its neighbours — another platform, or a mix — are not.
     assert host_only("fn f(c: &Cell) -> bool { matches!(c.platform, PlatformId::Linux) }")
@@ -179,7 +179,7 @@ def main():
         sys.stderr.write(
             "\n  This test iterates matrix::CELLS across platforms, and neither its\n"
             "  binary name nor its test name carries a platform token — so\n"
-            "  `scripts/test/lane-filter.sh native` cannot exclude its embedded\n"
+            "  `scripts/test/lane-filter.sh linux` cannot exclude its embedded\n"
             "  cells (issues 0357, 0571). Narrow the cell list itself:\n\n"
             "      if !nros_tests::lane_scope::admits(c.platform) { /* record + skip */ }\n\n"
             "  and REPORT what did not run — a silently absent cell is a green\n"

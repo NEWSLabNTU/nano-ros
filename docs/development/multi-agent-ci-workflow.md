@@ -301,7 +301,7 @@ platforms cleanly:
 `ZephyrNativeSim` builds with `ZEPHYR_TOOLCHAIN_VARIANT=host` — **plain host
 gcc, no SDK**. So the host-executable group carries roughly 50 runtime cells,
 including three RTOS APIs, at host speed on a hosted runner. Today `just ci`
-runs `NROS_TEST_SCOPE=native` and gets none of it.
+runs `NROS_TEST_SCOPE=linux` and gets none of it.
 
 ### The lanes
 
@@ -617,7 +617,7 @@ The lanes are not new machinery so much as a re-cut of what exists.
 | --- | --- | --- |
 | `just check fast` (43 gates) | **L0** | none |
 | `just check build` (20 gates) | **L1** | narrow to affected crates |
-| `just ci` (`NROS_TEST_SCOPE=native`) | **L2** | widen scope from `native` to the four host-executable platforms; stop requiring a full fixture build |
+| `just ci` (`NROS_TEST_SCOPE=linux`) | **L2** | widen scope from `native` to the four host-executable platforms; stop requiring a full fixture build |
 | `just rust-rtos-link-check` | **L3** | join it with `mem-report --check` and `check-no-alloc-image` on the same cross ELFs |
 | `just ci-matrix` (1-wise) | **L4** | select by board tier + change footprint instead of 1-wise |
 | `just ci-matrix-nightly` (pairwise) | **L4 nightly** | unchanged in spirit |
@@ -1013,7 +1013,7 @@ so "can a stranger verify their own change?" has a mechanical answer.
 [`CONTRIBUTING.md`](../../CONTRIBUTING.md) now carries this (W9). Note it says
 `just ci-l1`, **not** `just ci`: W2's redefinition of `just ci` did not land, so
 `just ci` still calls `check-tier-preconditions` and still demands a
-`lane=native` fixture build. Pointing an outside contributor at it would hand
+`lane=linux` fixture build. Pointing an outside contributor at it would hand
 them the treadmill this design exists to remove. And the contract is L0–L1, not
 L0–L2 — `ci-l2` does not exist, which is consistent with W10's correction that
 L2 is unaffordable pre-merge until the cache lands, but not with the stage table

@@ -19,7 +19,7 @@
 //! `cmd/ws.rs` already had this function, private, with a doc comment saying it
 //! was "the write discipline every other sync-owned file here uses". It was not:
 //! the source-metadata sidecar had three plain `fs::write` writers and died in a
-//! `lane=native` sweep (issue 0498). A discipline that lives in one file's
+//! `lane=linux` sweep (issue 0498). A discipline that lives in one file's
 //! private helper is a habit, and habits are what the sibling site does not
 //! have. Hence one public helper, and a gate — `check-atomic-sync-writes` —
 //! naming the paths that must go through it.

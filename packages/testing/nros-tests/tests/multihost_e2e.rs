@@ -263,7 +263,7 @@ fn multihost() {
     );
 
     // issue 0571 — narrow by LANE before running anything: this test's NAME
-    // carries no platform token, so `scripts/test/lane-filter.sh native` cannot
+    // carries no platform token, so `scripts/test/lane-filter.sh linux` cannot
     // exclude its embedded cells the way it excludes a platform-named binary.
     // Without this a tier-1 host boots whatever QEMU images happen to exist.
     let out_of_lane: Vec<String> = cells

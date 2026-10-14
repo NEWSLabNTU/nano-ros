@@ -15,7 +15,7 @@
 # test run cannot disagree about what the lane covers" — but only the gate and
 # the run read the selection. The build fanned out over every platform
 # unconditionally, so tier 1 had to build all 337 manifest rows to prove the 180
-# native ones it runs (issue 0393).
+# linux ones it runs (issue 0393).
 #
 # The stamp had the matching hole: three separate copies of
 # `date -u > target/nextest/.fixtures-built` (justfile build-all, justfile
@@ -36,18 +36,18 @@ NROS_FIXTURE_STAMP="${NROS_FIXTURE_STAMP:-target/nextest/.fixtures-built}"
 #
 #   all            not a `CiLane` — the absence of one (build/require
 #                  everything). The default, and the pre-0393 behavior.
-#   native         every row of the `native` module, no coordinate filter. This
+#   linux         every row of the `linux` module, no coordinate filter. This
 #                  is what tier 1 needs: `just ci` scopes its RUN with
-#                  `NROS_TEST_SCOPE=native`, which selects every native test
+#                  `NROS_TEST_SCOPE=linux`, which selects every linux test
 #                  binary — a BROADER set than `coords(Tier1)` (10 of 47
 #                  coordinates). Building only the tier-1 coordinates would
-#                  leave the other native binaries absent and the run would
+#                  leave the other linux binaries absent and the run would
 #                  mass-fail "Binary not found", which is the failure this
 #                  preflight exists to prevent.
 #   tier1/tier2/   the computed `CiLane` covers — i.e. which fixtures the lane
 #   tier2-nightly  keeps FRESH. Correct for a BUILD only when the run is scoped
 #                  to match, which `nros_lane_build_lane` is the arbiter of:
-#                  tier 1 maps to `native` (its run is filtered by NAME, which
+#                  tier 1 maps to `linux` (its run is filtered by NAME, which
 #                  selects a broader set than its cover), while tier 2 and
 #                  nightly map to THEMSELVES since phase-340 W3 — their run is
 #                  narrowed at fixture-resolution time to the same coordinates.
@@ -59,7 +59,37 @@ NROS_FIXTURE_STAMP="${NROS_FIXTURE_STAMP:-target/nextest/.fixtures-built}"
 #                  34 unbuilt coordinates); they now have the same ANSWER for
 #                  tier 2, which is the point of W3 rather than a reason to
 #                  collapse them again.
-_NROS_LANES="all native tier1 tier2 tier2-nightly"
+_NROS_LANES="all linux tier1 tier2 tier2-nightly"
+
+# Retired spellings of a lane / scope / `just` module token, as `old=new`
+# pairs — phase-500 W2. `native` named the Linux host lane, scope and module
+# until the maintainer's 2026-10-14 ruling (native = any general-purpose host,
+# linux = Linux); the host build is Linux-only, so `linux` is the true word.
+#
+# ONE table, read by every entry point that accepts such a token (lane args,
+# scope tokens, `lane-filter.sh`, the build stamp; the root `native` recipe
+# in the justfile is its one `just`-side twin). DEPRECATED for one cycle:
+# phase-500 W5 deletes the `native=linux` row, after which the old spelling is
+# an unknown token. `check-host-platform-vocabulary` (check 7) refuses any
+# other use of the old spelling.
+_NROS_RETIRED_HOST_TOKENS="native=linux"
+
+# nros_retired_host_token <tok> [quiet] — echo the token's current spelling.
+# A retired token prints a deprecation notice to stderr (unless `quiet`, for a
+# value read back from a file the old spelling wrote, e.g. a build stamp).
+nros_retired_host_token() {
+    local tok="${1:-}" quiet="${2:-}" pair
+    for pair in $_NROS_RETIRED_HOST_TOKENS; do
+        if [ "$tok" = "${pair%%=*}" ]; then
+            if [ "$quiet" != "quiet" ]; then
+                echo "DEPRECATED: '${pair%%=*}' is now '${pair#*=}' (phase-500 W2; the old spelling is removed in W5)." >&2
+            fi
+            echo "${pair#*=}"
+            return 0
+        fi
+    done
+    echo "$tok"
+}
 
 # Normalize a lane argument as it arrives from `just`.
 #
@@ -72,7 +102,7 @@ _NROS_LANES="all native tier1 tier2 tier2-nightly"
 nros_lane_arg() {
     local lane="${1:-all}"
     lane="${lane#lane=}"
-    echo "${lane:-all}"
+    nros_retired_host_token "${lane:-all}" "${2:-}"
 }
 
 nros_lane_validate() {
@@ -139,11 +169,11 @@ _nros_lane_coords_bin() {
 nros_lane_coords_file() {
     local lane="$1"
     nros_lane_validate "$lane" || return 2
-    # `all` and `native` are MODULE-level selections, not coordinate ones: they
+    # `all` and `linux` are MODULE-level selections, not coordinate ones: they
     # build every row of what they select, so there is nothing to filter by.
     # An explicit `if`, not `[ … ] || [ … ] && return` — under `set -e` a failing
     # final test in an AND-OR list aborts the caller.
-    if [ "$lane" = "all" ] || [ "$lane" = "native" ]; then
+    if [ "$lane" = "all" ] || [ "$lane" = "linux" ]; then
         return 0
     fi
     local out="target/nextest/lane-coords-${lane}.txt"
@@ -216,7 +246,7 @@ nros_lane_unclaimed() {
         # interop tests belong to live-peer (`.config/interop-verdicts.toml`).
         tier1 | tier2 | tier2-nightly) echo "ros2" ;;
         # Module-level lanes claim everything they select.
-        all | native) echo "" ;;
+        all | linux) echo "" ;;
         *)
             echo "fixture-lane: no unclaimed set declared for '$lane' — add it to" >&2
             echo "              nros_lane_unclaimed AND CiLane::unclaimed" >&2
@@ -275,7 +305,7 @@ nros_scope_coords_file() {
 # This answers the other question, "which fixtures must EXIST", which is a
 # property of the RUN and not of the cell cover:
 #
-#   just ci             filters the run to host binaries -> a `native` build covers it
+#   just ci             filters the run to host binaries -> a `linux` build covers it
 #   just ci-matrix      runs the WHOLE suite             -> only an `all` build covers it
 #
 # Both were being answered from the one lane name. `_require-fixtures` was
@@ -301,21 +331,21 @@ nros_lane_build_lane() {
     nros_lane_validate "$lane" || return 2
     case "$lane" in
         # Module-level lanes are their own build lane.
-        all | native) echo "$lane" ;;
+        all | linux) echo "$lane" ;;
         # phase-395 W19 — tier 1 maps to ITSELF now, like tier 2.
         #
-        # It used to map to the `native` MODULE, and the reason was sound while
+        # It used to map to the `linux` MODULE, and the reason was sound while
         # it lasted: `just ci` narrowed its run by NAME
-        # (`NROS_TEST_SCOPE=native`), which selects every host test BINARY — a
+        # (`NROS_TEST_SCOPE=linux`), which selects every host test BINARY — a
         # broader set than `coords(Tier1)` — so a coordinate-scoped build would
         # have left the rest absent.
         #
         # That premise is gone. `just ci` now narrows by COORDINATE, so the run
         # and the build ask the same question again and the answer is the lane
-        # itself. The old mapping had also become actively wrong: the `native`
+        # itself. The old mapping had also become actively wrong: the `linux`
         # module does not build zephyr native_sim or threadx-linux fixtures, and
         # tier 1 covers both — `lane-coords tier1 --modules` returns
-        # `native threadx_linux zephyr`.
+        # `linux threadx_linux zephyr`.
         tier1) echo "$lane" ;;
         # phase-340 W3 — these narrow their run at fixture-RESOLUTION time
         # (`RunScope::LaneCoords`; `NROS_TEST_COORDS` -> `fixtures::lane`), to
@@ -346,8 +376,8 @@ nros_lane_modules() {
     if [ "$lane" = "all" ]; then
         return 0
     fi
-    if [ "$lane" = "native" ]; then
-        echo native
+    if [ "$lane" = "linux" ]; then
+        echo linux
         return 0
     fi
     cargo run -q -p nros-tests --bin lane-coords -- "$lane" --modules
@@ -527,12 +557,13 @@ nros_fixtures_stamp_lane() {
     [ -f "$NROS_FIXTURE_STAMP" ] || return 1
     local lane
     lane="$(sed -n 's/^lane=//p' "$NROS_FIXTURE_STAMP" | head -1)"
-    echo "${lane:-all}"
+    # A stamp written before phase-500 W2 names the retired `native` lane.
+    nros_retired_host_token "${lane:-all}" quiet
 }
 
 # nros_lane_run_is_narrowed <build-lane>
 #
-# For a MODULE-level build lane (`all`, `native`) there is nothing to check —
+# For a MODULE-level build lane (`all`, `linux`) there is nothing to check —
 # those cover any run. For a COORDINATE-scoped one, the run must be narrowed to
 # the same coordinates or the lane is back to issue 0482: a build that produced
 # 152 of 333 rows, accepted for a run that resolves all 333.
@@ -545,12 +576,12 @@ nros_fixtures_stamp_lane() {
 nros_lane_run_is_narrowed() {
     local want="$1"
     case "$want" in
-        all | native) return 0 ;;
+        all | linux) return 0 ;;
     esac
 
     local want_file
     want_file="$(nros_lane_coords_file "$want")" || return 1
-    # `all`/`native` returned above, so a coordinate lane always has a file;
+    # `all`/`linux` returned above, so a coordinate lane always has a file;
     # an empty name here would feed `comm` an empty filename and hang.
     [ -n "$want_file" ] || {
         echo "fixture-lane: no coordinate file for '$want' — refusing rather than" >&2
@@ -603,7 +634,7 @@ nros_lane_run_is_narrowed() {
 # Issue 0482 — note the argument is the lane the RUN is scoped by, and the
 # requirement is `nros_lane_build_lane "$lane"`, NOT the lane itself. Those are
 # the same thing only for lanes whose run is narrowed to match their cover
-# (`native`), and asking the wrong one is the whole defect: a `lane=tier2` build
+# (`linux`), and asking the wrong one is the whole defect: a `lane=tier2` build
 # satisfied a `ci-matrix` that then executed every test binary in the tree.
 nros_fixtures_stamp_require() {
     local lane="${1:-all}"
@@ -664,7 +695,7 @@ nros_fixtures_stamp_require() {
         echo "  green, which is why this is an error and not a warning." >&2
         echo "" >&2
         echo "  Either provision them and rebuild, or run only what you have:" >&2
-        echo "      just <module> test        # e.g. just native test" >&2
+        echo "      just <module> test        # e.g. just linux test" >&2
         echo "" >&2
         echo "  (deliberately accepting the gap?  NROS_SKIP_FIXTURE_CHECK=1 )" >&2
         return 1
@@ -711,7 +742,7 @@ nros_fixtures_stamp_require() {
     # Different lanes: the built set must be a superset of the wanted one.
     #
     # `want` is what a COVERING BUILD would have been given, so it is either
-    # module-level (`native`; `all` returned above) or — once some lane narrows
+    # module-level (`linux`; `all` returned above) or — once some lane narrows
     # its run and `run_scope` says so — coordinate-scoped. Both shapes are
     # handled: the coordinate diff below needs a coordinate file, and a
     # module-level requirement has none.
@@ -719,7 +750,7 @@ nros_fixtures_stamp_require() {
     want_file="$(nros_lane_coords_file "$want")" || return 1
 
     if [ -z "$want_file" ]; then
-        # want=native — a MODULE-level requirement: every row of the host
+        # want=linux — a MODULE-level requirement: every row of the host
         # module, which is a strict SUPERSET of any coordinate cover of the host
         # (tier 1 selects 10 of the 47 coordinates). A coordinate-scoped build
         # therefore cannot satisfy it and there is no diff to show. Without this
@@ -736,16 +767,13 @@ nros_fixtures_stamp_require() {
         return 1
     fi
 
-    if [ "$have" = "native" ]; then
-        # NOTE the two spellings here, which are NOT a typo (phase-337 W8.c).
-        # `native` is the LANE name — `lane=native`, `_NROS_LANES`, `just native
-        # …` — and it deliberately keeps that name. `linux` is the fixture TOKEN
-        # the coordinates are built from (`lane-coords` → `fixture_tokens()`),
-        # and W8.c moved it to match `PlatformId::Linux` and
-        # `nros-board-linux`. They are different vocabularies that used to share
-        # a spelling, so this line is where the seam is visible.
+    if [ "$have" = "linux" ]; then
+        # The LANE name and the fixture TOKEN are one word now. Phase-337 W8.c
+        # moved the token (`lane-coords` → `fixture_tokens()`) to `linux` to
+        # match `PlatformId::Linux`; phase-500 W2 moved the lane after it, so
+        # the seam this comment used to point at is closed.
         #
-        # A `native`-lane build covers every row of the host module, so it covers
+        # A `linux`-lane build covers every row of the host module, so it covers
         # any lane whose coordinates are ALL on the host — which is true of tier 1
         # by construction. Checked rather than assumed: if the tier-1 selection
         # ever grows a cross-platform cell this reports it instead of waving a

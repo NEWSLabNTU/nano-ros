@@ -453,7 +453,7 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
   the build stage (`build-test-fixtures` + `examples/fixtures.toml`); the test consumes the prebuilt
   fixture. "Does it compile?" intent → make it a build-step fixture and assert the artifact. "Must it FAIL to
   compile?" is the same rule: a `*-verdict` row records exit + stderr, the test asserts them (issue 1620). → AGENTS.md Testing.
-- **Fixture builds are LANE-SCOPED (#393):** `just build-test-fixtures lane=<all|native|tier1|tier2|tier2-nightly>`
+- **Fixture builds are LANE-SCOPED (#393):** `just build-test-fixtures lane=<all|linux|tier1|tier2|tier2-nightly>`
   narrows both the platform-family fan-out and the manifest rows; the `.fixtures-built` stamp
   records `lane=` + per-coordinate rows, and `_require-fixtures` checks COVERAGE against the run's
   lane. Build the lane you'll test — tier 1 doesn't need all 314 rows.
@@ -462,7 +462,7 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
   lane→required build and `CiLane::run_scope` declares it. **EVERY tier now narrows by
   COORDINATE in the fixture RESOLVER** (`NROS_TEST_COORDS` → `nros_tests::fixtures::lane`;
   tier 2 / nightly since phase-340 W3, tier 1 since phase-395 W19), so each is its own build
-  lane — `nros_lane_build_lane tier1` is `tier1`, not `native`. This line said tier 1 narrowed
+  lane — `nros_lane_build_lane tier1` is `tier1`, not `linux`. This line said tier 1 narrowed
   by NAME (`NROS_TEST_SCOPE`) and needed the broader `native` build long after W19 changed both,
   and it was not a harmless lag: the tier-1 case in `lane_build_covers_run` asserted the same
   retired premise and failed 10/11 on EVERY invocation, read as a flake because its target was in
@@ -491,7 +491,7 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
   cells there too), not new hand-coordinated files — the consolidation plan is phase-329.
 - **Fixture mtime treadmill:** any pull/rebase — and any `git stash push`/`pop`, which rewrites
   tracked files just the same — refreshes source mtimes → EVERY prebuilt fixture
-  reads STALE. **`just format` is one of these and does not look like one:** `native::format`
+  reads STALE. **`just format` is one of these and does not look like one:** `linux::format`
   runs `cargo fmt` per example leaf, which formats that leaf's `generated/` members too, so
   every native fixture re-stales at one timestamp. Format BEFORE building fixtures, never
   after or during — a `format` run overlapping a fixture build costs the whole build. **A refresh re-arms the in-tree CLI's source stamp too, not just fixtures
@@ -1382,7 +1382,7 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   than D9** (issue 1366, the 0196 shape): phase-383 W3.a's emitter is retired but the
   `<ws>/Cargo.toml` it wrote sits in every checkout that ran it, listing a `src/esp32_entry`
   phase-445 W5 deleted — and a member with no manifest makes cargo refuse to LOAD the
-  workspace at MANIFEST PARSE (0463's shape), which took `build-test-fixtures lane=native`
+  workspace at MANIFEST PARSE (0463's shape), which took `build-test-fixtures lane=linux`
   with it. `nros build` deletes it (`cargo_root::retire`), but only at stage 4 of the first
   cargo image; `check-example-workspace-members` reads the ON-DISK roots ahead of that.
   Never "drop the member line" — a generated entry is a cargo ROOT reaching `src/*` as path

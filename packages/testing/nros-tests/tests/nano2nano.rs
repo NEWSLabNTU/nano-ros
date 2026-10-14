@@ -4,7 +4,7 @@
 //!
 //! **Bucket (phase-329): KEEP — behavior one-offs, not matrix cells.** The plain
 //! router-based rust/zenoh DELIVERY case folded into the native-example pubsub
-//! matrix consumer (`native_example_pubsub_e2e.rs`); what remains here tests
+//! matrix consumer (`linux_example_pubsub_e2e.rs`); what remains here tests
 //! things no cell covers: talker/listener startup, peer-mode (no-router
 //! multicast discovery), MessageInfo sequence-number monotonicity + GID, and the
 //! TLS transport.
@@ -118,7 +118,7 @@ fn test_native_listener_starts(zenohd_unique: ZenohRouter, listener_binary: Path
 }
 
 // phase-329 W4 — the router-based rust/zenoh delivery test FOLDED into the
-// native-example pubsub matrix consumer (`tests/native_example_pubsub_e2e.rs`,
+// native-example pubsub matrix consumer (`tests/linux_example_pubsub_e2e.rs`,
 // the `(Linux, Rust, Zenoh, Pubsub)` cell, which asserts the stronger ≥3). The
 // tests kept below are genuine one-offs no cell covers: peer-mode (no-router
 // multicast discovery), MessageInfo sequence/GID, and the TLS transport.

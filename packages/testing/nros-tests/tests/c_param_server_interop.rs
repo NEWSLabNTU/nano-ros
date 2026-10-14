@@ -18,7 +18,7 @@
 //!    `ros2 topic echo` sees it (rclc's `notify_changed_over_dds`,
 //!    RFC-0105 D8).
 //!
-//! Build ahead of time with `just native build-fixtures`; nothing compiles at
+//! Build ahead of time with `just linux build-fixtures`; nothing compiles at
 //! run time.
 
 use nros_tests::{

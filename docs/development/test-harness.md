@@ -75,7 +75,7 @@ it needs is absent — it fails; the lane's SCOPE decides what runs.**
     `lane-coords --scope`.
 
   So `just ci tier1` and `just test tier1` deselect the same tests, and
-  `just test native` does not claim a NuttX coordinate.
+  `just test linux` does not claim a NuttX coordinate.
 
 `check-skip-budget` fails any skip that is not `lane`, any `lane` skip
 for a coordinate the run selected, and a run in which nothing ran. There
@@ -138,7 +138,7 @@ The post-processor runs at every test recipe's tail, **before** the
   `just threadx_linux test`, `just threadx_riscv64 test`)
 * `just/xrce.just::test` / `test-ros2` / `test-c`
 
-Other plat-specific recipes (`just zephyr test*`, `just native
+Other plat-specific recipes (`just zephyr test*`, `just linux
 test*`, `just qemu test*`, `just px4 test*`,
 `just cyclonedds test*`) currently invoke nextest directly without a
 skip-aware tail. When you add or refactor one, mirror the

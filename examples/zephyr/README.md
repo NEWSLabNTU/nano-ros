@@ -42,7 +42,7 @@ just zephyr build-one cpp/talker zenoh            # board default: native_sim/na
 just zephyr build-one rust/listener xrce
 just zephyr build-one c/talker cyclonedds
 
-# run a native_sim binary (zenoh: start `just native zenohd` first)
+# run a native_sim binary (zenoh: start `just linux zenohd` first)
 just zephyr talker            # = ./build-talker/zephyr/zephyr.exe --seed=$RANDOM
 ```
 

@@ -1135,7 +1135,7 @@ mod probe_ran_tests {
 /// `just setup-launch-resolve` builds it; `None` means it has not been built.
 ///
 /// Lives here so there is one spelling of "where is the resolver" — a second
-/// private copy would be a second answer. (`native_main_macro_misuse` was the
+/// private copy would be a second answer. (`linux_main_macro_misuse` was the
 /// other caller until issue 1620 moved its compiles, and the resolve that came
 /// with them, into the build stage.)
 ///

@@ -178,7 +178,7 @@ build-fixture-extras:
         # NanoRosConfig.cmake) so its host RTPS ports stay disjoint from every
         # other baked Cyclone fixture. Only the cyclonedds pass gets it; zenoh
         # keeps the config.toml default. The paired native listener spawns at
-        # domain 107 in native_api.rs's
+        # domain 107 in linux_api.rs's
         # test_threadx_linux_cyclonedds_talker_to_native_listener.
         NROS_CMAKE_EXTRA_DEFS="$NROS_CMAKE_EXTRA_DEFS -DNROS_DOMAIN_ID=107" \
             bash scripts/build/fixtures-build.sh threadx-linux c cyclonedds

@@ -551,7 +551,7 @@ fn interop_bindings_g1_every_runtime_cell_names_a_real_test() {
 /// G2 — build-coord match. Every interop cell's build channel can actually build
 /// its platform, and the channel's `just` module matches the platform's. A cell
 /// pointed at a channel that cannot produce its coordinate — e.g. the zephyr QoS
-/// cell mis-declared to build via `NativeFixtures` (the shape issue 0341 defect 2
+/// cell mis-declared to build via `LinuxFixtures` (the shape issue 0341 defect 2
 /// took) — fails here.
 #[test]
 fn interop_bindings_g2_build_channel_matches_platform() {

@@ -229,12 +229,12 @@ fn logging_smoke_threadx_riscv64_emits_every_severity() {
 /// tokenised on the strength of `mps2`, which is NOT a token — `FreertosMps2`
 /// contributes only `freertos`. It leaked into tier 1 for exactly the reason
 /// documented here, and is renamed above (issue 0422). Check a name against
-/// `scripts/test/lane-filter.sh native`, not against what looks platform-ish.
+/// `scripts/test/lane-filter.sh linux`, not against what looks platform-ish.
 ///
 /// This one lost its token
 /// to the phase-221 naming audit — reasonable then, since the token-based
 /// filter did not exist yet — and tier 1 has been selecting a threadx-linux
-/// test ever since, whose fixture `lane=native` never builds. Do not shorten it
+/// test ever since, whose fixture `lane=linux` never builds. Do not shorten it
 /// back.
 #[test]
 fn logging_smoke_threadx_linux_captures_stderr() {

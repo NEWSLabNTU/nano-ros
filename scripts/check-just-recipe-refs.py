@@ -4,7 +4,7 @@
 Issue 0660. `just` resolves a recipe reference only when the recipe RUNS, so a
 deleted recipe leaves its callers parsing fine and failing on invocation:
 
-    $ just native test-rmw
+    $ just linux test-rmw
     error: Justfile does not contain recipe `build-zenohd`
 
 phase-362 W4 retired the vendored zenoh router and deleted `build-zenohd`
@@ -17,7 +17,7 @@ arrival and nothing noticed, because:
 * `check-doc-refs` covers documents, not recipe references.
 
 So tier 1 was green with twelve broken recipes — and these are the ones a
-developer reaches for by hand (`just native test-c`), which is the worst place
+developer reaches for by hand (`just linux test-c`), which is the worst place
 for a silent break.
 
 ## What is checked
@@ -25,7 +25,7 @@ for a silent break.
 For every `just <token>` in a recipe body, `<token>` must be a root recipe or a
 `<module> <recipe>` pair defined in the justfiles. A recipe body shells out
 to `just`, which resolves against the ROOT justfile — that is why a call inside
-`just/native.just` to `build-zenohd` meant the ROOT recipe, not a sibling.
+`just/linux.just` to `build-zenohd` meant the ROOT recipe, not a sibling.
 
 ## What is deliberately NOT checked
 
@@ -137,7 +137,7 @@ def recipe_namespace(repo=None):
 # dangling recipe reference, and just as invisible until someone runs it.
 #
 # Found by fixing issue 0660: with the `build-zenohd` error gone,
-# `just native test-rmw` reached cargo and said "no test target named `rmw`".
+# `just linux test-rmw` reached cargo and said "no test target named `rmw`".
 # `tests/rmw.rs` was deleted in `6e56ce202` (phase-115.L.7/L.8, "collapse to
 # vtable-only public RMW surface") — so that recipe had been dead far longer
 # than the router calls were, behind an error that masked it.
@@ -223,7 +223,7 @@ def offenders(roots, mods, repo=None):
                 if first in mods:
                     # `just <mod>` alone runs/lists the module. `just <mod> <x>`
                     # must name a recipe OF that module: this arm used to
-                    # `continue` for any module, so `just native <bogus>` passed
+                    # `continue` for any module, so `just linux <bogus>` passed
                     # (phase-472 W2).
                     if second is None or second in mods[first] or f"{first}::{second}" in mods:
                         continue
@@ -237,7 +237,7 @@ SELF_TESTS = [
     ("just build-zenohd", "build-zenohd", True),
     ("    just build-fixtures", "build-fixtures", True),
     ("@just check", "check", True),
-    ("just native test-c", "native", False),
+    ("just linux test-c", "linux", False),
     ("cd x && just setup-cli", "setup-cli", True),
     ("# just build-zenohd", None, False),
     ("just {{recipe}}", None, False),
@@ -345,7 +345,7 @@ def selftest(verbose=False):
     chk("single-quoted import too",
         IMPORT_DEF.findall("import 'just/check.just'\n") == ["just/check.just"])
     chk("`mod` is NOT read as an import — it namespaces, it does not merge",
-        IMPORT_DEF.findall("mod native 'just/native.just'\n") == [])
+        IMPORT_DEF.findall("mod linux 'just/linux.just'\n") == [])
     chk("an indented `import` inside a body is not a declaration",
         IMPORT_DEF.findall("recipe:\n    import 'x'\n") == [])
 

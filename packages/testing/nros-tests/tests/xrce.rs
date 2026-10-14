@@ -12,7 +12,7 @@
 //! The plain pubsub/service/action DELIVERY tests
 //! (`talker_listener_communication`, `multiple_messages`, `service_request_response`,
 //! `action_fibonacci`) were DELETED: the native XRCE matrix cells — run-proven in
-//! `native_example_pubsub_e2e` (xrce pubsub) and `native_example_reqresp_e2e` (xrce
+//! `linux_example_pubsub_e2e` (xrce pubsub) and `linux_example_reqresp_e2e` (xrce
 //! service + action) — cover that same product path, so the dedicated-bin repeats
 //! were redundant. The dedicated bins survive (the `*_starts` probes here + the
 //! `xrce_ros2_interop` tests still use them), so nothing is orphaned.

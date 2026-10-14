@@ -543,7 +543,7 @@ def host_compile_checks_for(cells, ids, known=None, read=None, helpers=None) -> 
 
 
 # The workspace rows the host cells resolve — issue: live-peer's host job built
-# EVERY native workspace row (`just native build-workspace-fixtures`, 121 rows)
+# EVERY native workspace row (`just linux build-workspace-fixtures`, 121 rows)
 # for a membership that reaches a handful, and filled a 146 G disk with 111 G
 # free after the reclaim (run 37883358718, 2026-10-09).
 def host_workspace_fixtures_for(cells, ids, known=None, read=None, helpers=None) -> list[str]:
@@ -1461,17 +1461,17 @@ _MINI_RS = '''
 pub const CELLS: &[InteropCell] = &[
     ic("cell-alpha",
        c(Linux, Rust, Zenoh, Pubsub, Interop, Runtime),
-       NativeFixtures, RosEdition(Zenoh), NanoToRos, "alpha_e2e"),
+       LinuxFixtures, RosEdition(Zenoh), NanoToRos, "alpha_e2e"),
     ic("cell-beta",
        c(Linux, Rust, Zenoh, Service, Interop, Runtime),
-       NativeFixtures, RosEdition(Zenoh), BiDir, "beta_e2e"),
+       LinuxFixtures, RosEdition(Zenoh), BiDir, "beta_e2e"),
     // The shared binary — two cells, one file, which is issue 1191's shape.
     ic("cell-gamma-pubsub",
        c(Linux, Rust, Zenoh, Pubsub, Interop, Runtime),
-       NativeFixtures, RosEdition(Zenoh), NanoToRos, "gamma_e2e"),
+       LinuxFixtures, RosEdition(Zenoh), NanoToRos, "gamma_e2e"),
     ic("cell-gamma-service",
        c(Linux, Rust, Zenoh, Service, Interop, Runtime),
-       NativeFixtures, RosEdition(Zenoh), BiDir, "gamma_e2e"),
+       LinuxFixtures, RosEdition(Zenoh), BiDir, "gamma_e2e"),
 ];
 
 pub const CASE_CELLS: &[CaseOwner] = &[

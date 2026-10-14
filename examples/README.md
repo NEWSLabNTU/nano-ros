@@ -478,7 +478,7 @@ project's build system.
 
 ## Quick start
 
-Each block assumes a zenoh router running on `tcp/127.0.0.1:7447` — `ros2 run rmw_zenoh_cpp rmw_zenohd` (contributor shortcut inside a checkout: `just native zenohd`). C/C++ examples resolve the nano-ros root through the `-DNROS_REPO_DIR` / `NROS_REPO_DIR` guard described in the copy-out contract above; no install step required.
+Each block assumes a zenoh router running on `tcp/127.0.0.1:7447` — `ros2 run rmw_zenoh_cpp rmw_zenohd` (contributor shortcut inside a checkout: `just linux zenohd`). C/C++ examples resolve the nano-ros root through the `-DNROS_REPO_DIR` / `NROS_REPO_DIR` guard described in the copy-out contract above; no install step required.
 
 ### Native Rust + zenoh
 

@@ -1817,7 +1817,7 @@ fn test_zephyr_workspace_entry_native_sim_e2e() {
 /// **Not a reply-slot LEAK gate**, for the reason issue 1332 measured on the
 /// native lane: nothing on a loopback, multicast-off router sends the server
 /// the DECLINED queries that feed the leak, so the counter cannot move here
-/// either. `just native test-reply-slot-decline` is the control that can.
+/// either. `just linux test-reply-slot-decline` is the control that can.
 #[test]
 fn zephyr_rust_zenoh_action_goal_completion_rate() {
     use nros_tests::{

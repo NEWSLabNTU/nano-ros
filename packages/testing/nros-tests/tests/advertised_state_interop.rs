@@ -72,7 +72,7 @@
 //! sees the same entity we describe.
 //!
 //! Interop cell: `native-advertised-state-rust-cyclone-bidir` (`interop::CELLS`).
-//! Focused runner: `just native test-ros2-advertised-state`.
+//! Focused runner: `just linux test-ros2-advertised-state`.
 
 use nros_tests::fixtures::RequireFixture;
 use std::{path::Path, process::Command, time::Duration};
