@@ -98,6 +98,45 @@ your side — see [issue
 0827](https://github.com/nano-ros/nano-ros/blob/main/docs/issues/0827-unused-rmw-pools-dominate-static-ram.md).
 Turning the corresponding knobs down is the current remedy.
 
+### The three service inboxes (zenoh)
+
+Every service server is a zenoh queryable, and each queryable owns one inbox
+ring: requests wait there between the read task and the executor's spin. The
+rings sit in three tables, one per family, so a family is sized for its own
+requests rather than for the largest request any service could send:
+
+| symbol | holds | one ring is | knobs |
+| --- | --- | --- | --- |
+| `nros_rmw_zenoh::shim::service::USER_SERVICE_INBOX` | your services | depth × (slot + 12 B) | `NROS_SERVICE_INBOX_BYTES`, `NROS_SERVICE_INBOX_DEPTH` (4) |
+| `nros_rmw_zenoh::shim::service::ACTION_INBOX` | the four queryables of each action server | depth × (slot + 12 B) | `NROS_ACTION_INBOX_BYTES`, `NROS_ACTION_INBOX_DEPTH` (4) |
+| `nros_rmw_zenoh::shim::service::BUILTIN_INBOX` | the runtime's own parameter and lifecycle services | depth × (slot + 12 B) | `NROS_PARAM_SERVICE_INBOX_BYTES`, `NROS_PARAM_SERVICE_INBOX_DEPTH` (1) |
+
+The 12 B is a ring entry's length, sequence and overflow flag (on a 32-bit
+target). Each table holds one ring per queryable of its family, for every
+session: the image's queryable pool (`NROS_MAX_QUERYABLES`) is partitioned
+between the three. A per-queryable header, `SERVICE_BUFFERS`, is separate and
+paid whatever the ring is.
+
+Where a slot size comes from, in the order the build takes it:
+
+- a STATED knob (environment, Kconfig, or `[image.<id>.knobs.service|action|param]`)
+  wins;
+- otherwise it is DERIVED: the user and action slots from the largest request
+  type the image declares a server for, and the builtin slot from the largest
+  `set_parameters` request the contract's declared parameters can produce;
+- with nothing declared, the user and action slots keep 1,024 B, and the
+  builtin table is empty.
+
+Read the bytes off the image with `just mem-report`, not off this formula: the
+compiler sizes the table, so the report is exact. Two worked readings, from
+the Autoware safety island on an S32K344: `BUILTIN_INBOX` = 24 parameter
+queryables × 1 × (1,016 + 12) = 24,672 B, and `USER_SERVICE_INBOX` fell from
+3,744 B to 288 B when those 24 queryables left it.
+
+The parameter family costs nothing here at all when the bringup declares
+`params` instead of `param_services`: the store is built, no service is
+registered, and no queryable is claimed for it.
+
 ## Showing a saving
 
 Take a baseline, change something, and compare:
