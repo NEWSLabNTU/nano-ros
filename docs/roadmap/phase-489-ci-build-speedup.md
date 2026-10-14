@@ -519,7 +519,7 @@ supersede. `ci-ok` is unchanged: `warm-cache` runs on push/dispatch only.
 and `merge_group` (self-test mutations: dropping the `push` term, or `true`,
 are caught).
 
-**Gate CPU, not compile (measured 2026-10-15, PR #PRNUM).** `run-gates-parallel.sh`
+**Gate CPU, not compile (measured 2026-10-15, PR #2204).** `run-gates-parallel.sh`
 now records each gate's CPU (user+sys of its process tree) beside its wall,
 prints the top ten by CPU, and `NROS_GATE_TIMINGS_FILE=<path>` keeps the whole
 table. CI run 38516297631 (job 115695798632): 444 gates, busy 1751 s over wall
