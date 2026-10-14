@@ -646,12 +646,22 @@ pub fn run(args: BoardFactsArgs) -> Result<()> {
         .canonicalize()
         .map_err(|e| eyre!("{}: {e}", args.path.display()))?;
     // phase-447 A2 — the shared four-rung ladder (RFC-0099 D3).
-    let root = crate::orchestration::nano_ros_root::resolve(args.nano_ros_path, &ws)
+    let root = crate::orchestration::nano_ros_root::resolve(args.nano_ros_path.clone(), &ws)
         .ok_or_else(|| eyre!("{}", crate::orchestration::nano_ros_root::not_found_help()))?;
 
     let has_system = ws.join("system.toml").is_file()
         || std::fs::read_dir(ws.join("src"))
             .is_ok_and(|d| d.flatten().any(|e| e.path().join("system.toml").is_file()));
+    // Issue 0941 — "this configure has no board facts to carry" is an ANSWER,
+    // owned here and stated: exit 0, nothing on stdout, the reason on stderr.
+    // Every other way this verb can fail is a nonzero exit, and the cmake arm
+    // stops the configure on it. That is what lets the cmake side stop
+    // pattern-matching the error TEXT, which is how both earlier hardenings
+    // went wrong (`21be9c0684`, `5d9abbd376`).
+    if let Some(why) = nothing_to_carry(&ws, &root, has_system, &args)? {
+        eprintln!("board-facts: nothing to carry -- {why}");
+        return Ok(());
+    }
     let facts = if has_system {
         resolve(
             &ws,
@@ -668,7 +678,8 @@ pub fn run(args: BoardFactsArgs) -> Result<()> {
         // answer with the descriptor's facts alone (there is no site block).
         let board = match args.board.clone() {
             Some(b) => b,
-            None => board_of_cargo_leaf(&ws, &root)?,
+            None => board_of_cargo_leaf(&ws, &root)?
+                .expect("nothing_to_carry answered the no-board-crate case"),
         };
         resolve_one(
             &ws.join("Cargo.toml").display().to_string(),
@@ -685,16 +696,56 @@ pub fn run(args: BoardFactsArgs) -> Result<()> {
     Ok(())
 }
 
-/// The board a `system.toml`-less cargo leaf builds for: the one board
-/// descriptor whose `board_crate` the leaf's `Cargo.toml` depends on.
-fn board_of_cargo_leaf(ws: &Path, root: &Path) -> Result<String> {
-    let manifest = ws.join("Cargo.toml");
-    let raw = std::fs::read_to_string(&manifest).map_err(|e| {
-        eyre!(
-            "no system.toml at {} and no Cargo.toml either: {e}",
+/// Issue 0941 — the configures that LEGITIMATELY carry no board facts, as a
+/// stated reason; `None` means this one must resolve (and any failure to is a
+/// configure error). Enumerated from every caller of `nros_resolve_board_facts`
+/// (2026-10-14), and deliberately short:
+///
+/// * nothing names a board and nothing states a deployment — a guest project
+///   (`find_package(nano_ros)`, no `system.toml`, no `Cargo.toml`), or a cargo
+///   dir that depends on no board crate (a host tool, a bench);
+/// * a bringup that declares no `[image.*]` at all, asked for no image or
+///   board — it builds nothing for a board (the orchestration test fixtures).
+///
+/// Anything that names a board or an image and cannot resolve it is NOT here.
+fn nothing_to_carry(
+    ws: &Path,
+    root: &Path,
+    has_system: bool,
+    args: &BoardFactsArgs,
+) -> Result<Option<String>> {
+    if args.board.is_some() || args.deploy.is_some() {
+        return Ok(None);
+    }
+    if has_system {
+        let Ok(found) = load_system_tomls(ws) else {
+            return Ok(None);
+        };
+        return Ok(found.iter().all(|(_, sys)| sys.image.is_empty()).then(|| {
+            format!(
+                "{}: no system.toml in scope declares an [image.*]",
+                ws.display()
+            )
+        }));
+    }
+    if !ws.join("Cargo.toml").is_file() {
+        return Ok(Some(format!(
+            "{}: no system.toml and no Cargo.toml, so nothing names a board",
             ws.display()
-        )
-    })?;
+        )));
+    }
+    Ok(board_of_cargo_leaf(ws, root)?
+        .is_none()
+        .then(|| format!("{}: its Cargo.toml depends on no board crate", ws.display())))
+}
+
+/// The board a `system.toml`-less cargo leaf builds for: the one board
+/// descriptor whose `board_crate` the leaf's `Cargo.toml` depends on. `None`
+/// when it depends on none — a host build, which has no board facts.
+fn board_of_cargo_leaf(ws: &Path, root: &Path) -> Result<Option<String>> {
+    let manifest = ws.join("Cargo.toml");
+    let raw = std::fs::read_to_string(&manifest)
+        .map_err(|e| eyre!("reading {}: {e}", manifest.display()))?;
     let doc: toml::Table =
         toml::from_str(&raw).map_err(|e| eyre!("{}: {e}", manifest.display()))?;
     let mut deps: Vec<String> = ["dependencies", "build-dependencies"]
@@ -745,17 +796,14 @@ fn board_of_cargo_leaf(ws: &Path, root: &Path) -> Result<String> {
             .iter()
             .find(|n| resolve_board(&catalog, n).is_some_and(|d| same_board(d, one)))
             .cloned()
+            .map(Some)
             .ok_or_else(|| {
                 eyre!(
                     "no name of the board descriptor for `{:?}` resolves to it",
                     one.board_crate
                 )
             }),
-        [] => Err(eyre!(
-            "no system.toml at {} and its Cargo.toml depends on no board crate a \
-             descriptor claims — pass --board",
-            ws.display()
-        )),
+        [] => Ok(None),
         many => Err(eyre!(
             "{}: depends on {} board crates ({}) — pass --board",
             manifest.display(),
@@ -829,7 +877,9 @@ mod tests {
             "[package]\nname = \"x\"\n[dependencies]\nnros-board-mps2-an385-freertos = \"*\"\n",
         )
         .unwrap();
-        let board = board_of_cargo_leaf(leaf.path(), &root).expect("attributed");
+        let board = board_of_cargo_leaf(leaf.path(), &root)
+            .expect("attributed")
+            .expect("one board crate");
         let facts = resolve_one("t", &root, &board, &board, &BTreeMap::new(), &|_| None).unwrap();
         assert_eq!(
             facts.get("FREERTOS_PORT").map(String::as_str),
@@ -843,14 +893,58 @@ mod tests {
         );
     }
 
+    /// Issue 0941 — the configures with no board facts to carry are an
+    /// ANSWER (`Some(reason)`), never a guess and never an error; anything that
+    /// names a board or an image is not among them.
     #[test]
-    fn a_cargo_leaf_on_no_board_crate_is_refused_not_guessed() {
-        let leaf = tempfile::tempdir().unwrap();
-        std::fs::write(leaf.path().join("Cargo.toml"), "[package]\nname = \"x\"\n").unwrap();
-        let e = board_of_cargo_leaf(leaf.path(), &repo_root())
-            .unwrap_err()
-            .to_string();
-        assert!(e.contains("pass --board"), "{e}");
+    fn only_a_configure_that_names_no_board_has_nothing_to_carry() {
+        let root = repo_root();
+        let args = |board: Option<&str>| BoardFactsArgs {
+            path: PathBuf::new(),
+            nano_ros_path: None,
+            deploy: None,
+            board: board.map(str::to_string),
+        };
+        // A guest project: no system.toml, no Cargo.toml.
+        let guest = tempfile::tempdir().unwrap();
+        let why = nothing_to_carry(guest.path(), &root, false, &args(None)).unwrap();
+        assert!(why.is_some_and(|w| w.contains("nothing names a board")));
+        // A cargo dir on no board crate (a host tool): nothing, not an error.
+        let host = tempfile::tempdir().unwrap();
+        std::fs::write(host.path().join("Cargo.toml"), "[package]\nname = \"x\"\n").unwrap();
+        assert_eq!(board_of_cargo_leaf(host.path(), &root).unwrap(), None);
+        assert!(
+            nothing_to_carry(host.path(), &root, false, &args(None))
+                .unwrap()
+                .is_some()
+        );
+        // A bringup that declares no image builds nothing for a board.
+        let bringup = tempfile::tempdir().unwrap();
+        std::fs::write(
+            bringup.path().join("system.toml"),
+            "[system]\nname = \"b\"\nrmw = \"zenoh\"\ndomain_id = 0\n",
+        )
+        .unwrap();
+        assert!(
+            nothing_to_carry(bringup.path(), &root, true, &args(None))
+                .unwrap()
+                .is_some_and(|w| w.contains("[image.*]"))
+        );
+        // Naming a board is never "nothing": it must resolve or fail.
+        assert_eq!(
+            nothing_to_carry(guest.path(), &root, false, &args(Some("linux"))).unwrap(),
+            None
+        );
+        // An image that exists must resolve, too.
+        std::fs::write(
+            bringup.path().join("system.toml"),
+            "[system]\nname = \"b\"\nrmw = \"zenoh\"\ndomain_id = 0\n\n[image.x]\nboard = \"no-such-board\"\n",
+        )
+        .unwrap();
+        assert_eq!(
+            nothing_to_carry(bringup.path(), &root, true, &args(None)).unwrap(),
+            None
+        );
     }
 
     fn ws_with(system: &str) -> tempfile::TempDir {
