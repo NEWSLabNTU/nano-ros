@@ -7,10 +7,9 @@
 # Env (exported by the recipe): NIGHTLY, NROS_EXAMPLE_LINT_DIR,
 #   NROS_EXAMPLE_PROFILE_FLAGS, SSID/PASSWORD (esp32).
 #
-# Issue 1882: a board-image leaf (every non-`native` platform with a
-# `system.toml`) is not a standalone cargo project. Its manifest names the
-# `<leaf>_nros_selection` crate and the in-repo `[patch.crates-io]` rows, and
-# cargo gets its target, link set and build-std from
+# Issue 1882: a leaf with a `system.toml` is not a standalone cargo project.
+# Its manifest names the `<leaf>_nros_selection` crate and the in-repo
+# `[patch.crates-io]` rows, and cargo gets its target, link set and build-std from
 # `build/<image>/nros-cargo.toml` -- all RENDERED by `nros sync` (RFC-0098 D1,
 # phase-445 W6), none tracked. Linted bare, 27 leaves failed at manifest parse
 # (`no matching package named nros`, `failed to load manifest for dependency
@@ -42,8 +41,20 @@ pkg="$(sed -n 's/^name[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$dir/Cargo.t
 # never the leaf's own `target/` (issue 0624).
 lintdir="$NROS_EXAMPLE_LINT_DIR/$(echo "${dir#examples/}" | tr '/' '-')"
 
+# Issue 1887: EVERY leaf is rendered, native included (issue 1888 already
+# extended this to native leaves with a `system.toml`; 1887 adds the
+# `package.xml`-only ones). Since phase-445 W6 no
+# example tracks a `.cargo/` (gate `check-example-cargo-dirs`), so even a leaf
+# with no `system.toml` resolves `nros-log` only through the `[patch.crates-io]`
+# row sync writes (`examples/native/rust/logging`), and 21 native leaves name
+# their `<leaf>_nros_selection` crate. 1882 keyed rendering on the platform, so
+# on a checkout no fixture build had synced first those leaves failed at
+# manifest parse. A native leaf gets no `--config`: sync wires
+# `build/<image>/nros-cargo.toml` into the leaf's own `.cargo/config.toml` as an
+# `include` (issue 1381), and cargo joins `rustflags` across files, so reading
+# it twice is not free.
 cfg=()
-if [ -f "$dir/system.toml" ]; then
+if [ -f "$dir/system.toml" ] || [ -f "$dir/package.xml" ]; then
     # `nros sync` is idempotent; its chatter is not this gate's output, so it is
     # kept for the failure path only.
     log="$(mktemp "${TMPDIR:-/tmp}/nros_lint_sync.XXXXXX")"
@@ -55,9 +66,11 @@ if [ -f "$dir/system.toml" ]; then
     fi
     rm -f "$log"
     # `build/nros*` are sync's own dirs; every other `build/<id>/` is an image.
-    for f in "$dir"/build/*/nros-cargo.toml; do
-        [ -f "$f" ] && cfg+=(--config "${f#"$dir"/}")
-    done
+    if [ "$platform" != "native" ] && [ -f "$dir/system.toml" ]; then
+        for f in "$dir"/build/*/nros-cargo.toml; do
+            [ -f "$f" ] && cfg+=(--config "${f#"$dir"/}")
+        done
+    fi
 fi
 
 cd "$dir"
