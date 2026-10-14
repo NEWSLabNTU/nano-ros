@@ -40,22 +40,22 @@ fn read_toml(rel: &str) -> toml::Value {
     toml::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", path.display()))
 }
 
-/// `[knobs.log] dynamic_loggers` of the `native` board's descriptor.
+/// `[knobs.log] dynamic_loggers` of the `linux` board's descriptor.
 fn board_statement() -> usize {
     let v = read_toml("packages/boards/linux/nros-board.toml");
     let boards = v["board"]
         .as_array()
-        .expect("`[[board]]` in the native board file");
+        .expect("`[[board]]` in the linux board file");
     assert!(
         boards.iter().any(|b| b["names"]
             .as_array()
-            .is_some_and(|names| names.iter().any(|n| n.as_str() == Some("native")))),
-        "the `native` board"
+            .is_some_and(|names| names.iter().any(|n| n.as_str() == Some("linux")))),
+        "the `linux` board"
     );
     // RFC-0103 D6 — the board rung is the file's top-level `[knobs]`.
     let n = v["knobs"]["log"]["dynamic_loggers"]
         .as_integer()
-        .expect("the native board states `[knobs.log] dynamic_loggers`");
+        .expect("the linux board states `[knobs.log] dynamic_loggers`");
     usize::try_from(n).expect("a count")
 }
 
@@ -63,7 +63,7 @@ fn board_statement() -> usize {
 /// RFC-0103 D6; it reaches the build as `NROS_LOG_DYNAMIC_LOGGERS`).
 fn image_statement() -> usize {
     let v = read_toml("packages/testing/nros-tests/bins/log-arena-probe/system.toml");
-    let n = v["image"]["native"]["knobs"]["log"]["dynamic_loggers"]
+    let n = v["image"]["linux"]["knobs"]["log"]["dynamic_loggers"]
         .as_integer()
         .expect("the probe image states `[image.linux.knobs.log] dynamic_loggers`");
     usize::try_from(n).expect("a count")
@@ -234,7 +234,7 @@ fn every_log_knob_is_read_back_from_the_image_env() {
     let v = read_toml("packages/testing/nros-tests/bins/log-arena-probe/system.toml");
     // `[image.linux.knobs.log]`, each knob reaching the build as its
     // `NROS_LOG_<NAME>` env spelling (RFC-0103 D6).
-    let knobs = &v["image"]["native"]["knobs"]["log"];
+    let knobs = &v["image"]["linux"]["knobs"]["log"];
     let stated = |env: &str| -> String {
         let k = env
             .strip_prefix("NROS_LOG_")

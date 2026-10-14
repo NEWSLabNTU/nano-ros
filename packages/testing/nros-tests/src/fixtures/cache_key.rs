@@ -1145,11 +1145,11 @@ mod tests {
     fn obs(epoch: u64, key: u64, artifact_hash: u64, witness: u64) -> Observation {
         Observation {
             epoch,
-            authored: "examples/native/rust/talker/target/x/talker".into(),
+            authored: "examples/linux/rust/talker/target/x/talker".into(),
             artifact: "build/cargo-fixtures/linux/nros-relwithdebinfo/talker".into(),
             artifact_hash,
             coord: coord(),
-            row_label: "examples/native/rust/talker".into(),
+            row_label: "examples/linux/rust/talker".into(),
             provenance: Provenance::CargoDepInfo,
             key,
             covered_count: 3,

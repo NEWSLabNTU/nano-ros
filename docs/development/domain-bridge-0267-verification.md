@@ -47,7 +47,7 @@ plus the XCDR2 serdes stack (**W2/W3/W4**). To verify end-to-end, nano-ros is th
 domain-2 publisher and a Jazzy node is the downstream:
 
 1. Build a nano-ros talker with the **jazzy** edition + the **cyclone** RMW, e.g.
-   an example under `examples/native/{c,cpp,rust}/talker` configured with
+   an example under `examples/linux/{c,cpp,rust}/talker` configured with
    `[system].ros_edition = "jazzy"` and `rmw = "cyclonedds"` (RFC-0056 lowers the
    `ros-jazzy` feature → the appendable descriptor + the edition-gated writer).
    Publish `geometry_msgs/msg/PoseStamped` (or `autoware_control_msgs/msg/Control`)

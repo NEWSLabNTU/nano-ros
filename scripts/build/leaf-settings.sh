@@ -170,7 +170,7 @@ nros_leaf_lock() {
 # leaves gained `[image.<id>]` (issue 1305): 21 of them failed at manifest
 # parse on any checkout no fixture build had synced first (issues 1887/1888/
 # 1891/1892). A directory test also moves when the directory is renamed
-# (phase-500 W4, `examples/native/` → `examples/linux/`), silently. These are
+# (phase-500 W4, `examples/linux/` → `examples/linux/`), silently. These are
 # the ONE spelling; `check-host-platform-vocabulary` (item 9) proves the lint's
 # decisions are invariant under the platform directory.
 

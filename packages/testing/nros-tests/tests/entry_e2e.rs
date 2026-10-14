@@ -495,7 +495,7 @@ fn spawn_c_listener_observer(locator: &str, spin_ms: u32) -> ManagedProcess {
     obs
 }
 
-/// Spawn the native Rust String listener (`examples/native/rust/listener`)
+/// Spawn the native Rust String listener (`examples/linux/rust/listener`)
 /// and block until it is ready. `RUST_LOG=info` is required for its
 /// `info!("I heard: …")` line to surface.
 fn spawn_rust_listener_observer(locator: &str) -> ManagedProcess {

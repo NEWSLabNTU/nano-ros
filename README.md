@@ -104,12 +104,12 @@ dormant for now (issue 1525): its code is kept, nothing builds it.
 ros2 run rmw_zenoh_cpp rmw_zenohd      # contributor shortcut: just linux zenohd
 
 # Terminal 2: Talker
-cd examples/native/rust/talker
+cd examples/linux/rust/talker
 nros sync && nros build                # generated msg crates, then the image
 RUST_LOG=info ./build/linux/target/debug/talker
 
 # Terminal 3: Listener
-cd examples/native/rust/listener
+cd examples/linux/rust/listener
 nros sync && nros build
 RUST_LOG=info ./build/linux/target/debug/listener
 ```
@@ -134,7 +134,7 @@ copy the directory out and point it back at a nano-ros checkout:
 
 ```bash
 # In-tree:
-cd examples/native/c/talker
+cd examples/linux/c/talker
 cmake -B build -S .
 cmake --build build
 ./build/c_talker
@@ -197,7 +197,7 @@ nano-ros communicates with ROS 2 nodes via the rmw_zenoh protocol:
 ros2 run rmw_zenoh_cpp rmw_zenohd
 
 # Terminal 2: nano-ros talker
-cd examples/native/rust/talker && nros sync && nros build
+cd examples/linux/rust/talker && nros sync && nros build
 RUST_LOG=info ./build/linux/target/debug/talker
 
 # Terminal 3: ROS 2 listener

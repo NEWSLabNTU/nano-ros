@@ -208,7 +208,7 @@ def _transform_pkgxml(pkgxml: Path) -> bool:
 
 def leaves() -> list[Path]:
     out = subprocess.run(
-        ["git", "ls-files", "examples/native/**/CMakeLists.txt"],
+        ["git", "ls-files", "examples/linux/**/CMakeLists.txt"],
         cwd=REPO, capture_output=True, text=True, check=True,
     ).stdout.split()
     return [REPO / p for p in out if "/build" not in p]

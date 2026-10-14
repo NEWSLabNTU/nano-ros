@@ -29,7 +29,7 @@ fn nano_ros_node_register_emits_metadata() -> nros_tests::TestResult<()> {
         "metadata sources mismatch:\n{body}"
     );
     assert!(
-        body.contains("\"deploy\": [\"native\", \"zephyr\"]"),
+        body.contains("\"deploy\": [\"linux\", \"zephyr\"]"),
         "metadata deploy mismatch:\n{body}"
     );
     assert!(

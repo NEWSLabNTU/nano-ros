@@ -260,7 +260,7 @@ fi
 # real two-way QEMU e2e sat outside the staleness gate — the museum-binary class
 # (issues 0148/0164/0196). It now rides the toolchain-conditional path instead.
 # Only the cargo/cmake-lane workspace fixtures (freertos, threadx-linux, plus the
-# always-host native/c/cpp/mixed rows) reach this probe and write the
+# always-host linux/c/cpp/mixed rows) reach this probe and write the
 # `.nros-workspace-fixture.*.inputsig` stamp the stale check demands.
 # zephyr/nuttx remain `skip_probe = true` own-lane artifacts (west / nuttx
 # machinery, each with its own sig) and never appear here.

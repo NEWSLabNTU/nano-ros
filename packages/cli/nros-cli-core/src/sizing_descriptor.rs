@@ -998,7 +998,7 @@ fn buffered_region(depth: usize, slot: usize, pointer_bytes: usize) -> usize {
 /// draw from one ring (`nros-rmw-zenoh`'s `ACTION_INBOX`, selected by the
 /// `/_action/` infix), so the slot has to hold the largest of the three. Naming
 /// only `SendGoal_Request` was an UNDER-size and not a corner case: measured on
-/// `examples/native/rust/action-server`, `CancelGoal_Request` is 44 bytes rx
+/// `examples/linux/rust/action-server`, `CancelGoal_Request` is 44 bytes rx
 /// against SendGoal's 36, because `GoalInfo` is bigger than a small goal
 /// struct. `rosidl_codegen::action_received_types` names the three.
 fn received_types_of(kind: EndpointKind, ty: &str) -> Vec<String> {
@@ -3764,7 +3764,7 @@ mod tests {
     /// phase-457 W1 -- an ACTION row's shape covers the eleven types its
     /// registration puts a descriptor in the image for.
     ///
-    /// Measured on `examples/native/rust/action-server`, the DEEPEST of those is
+    /// Measured on `examples/linux/rust/action-server`, the DEEPEST of those is
     /// never one of the action's own: `action_msgs/srv/CancelGoal_Response` has
     /// 11 kinds and `GoalStatusArray` nests 6 deep, against 7 and 3 for the
     /// envelopes. So a maximum over the action's own members alone is an

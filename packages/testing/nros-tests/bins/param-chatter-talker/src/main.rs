@@ -1,6 +1,6 @@
 //! Parameterised talker (fixture for the parameter-services tests).
 //!
-//! Moved out of `examples/native/rust/talker` (it was the `param-services`
+//! Moved out of `examples/linux/rust/talker` (it was the `param-services`
 //! cfg-gated code) so the example stays cfg-free. Registers the REP-2002
 //! parameter services, declares an integer `start_value` parameter, reads it
 //! back to seed the counter, then publishes `std_msgs/Int32` on `/chatter`

@@ -67,7 +67,7 @@ const GROUPS: &[Group] = &[
                  reason names the dispatch model rather than the presence of an OS \
                  (corrected 2026-08-05, see the group-B note)",
         platforms: &[
-            "native",
+            "linux",
             "threadx-linux",
             "mps2-an385-freertos",
             "qemu-armv7a-nuttx",

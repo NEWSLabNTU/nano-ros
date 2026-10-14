@@ -20,7 +20,7 @@ use std::{path::PathBuf, process::Command, time::Duration};
 
 /// The native Rust service client's per-attempt FAILURE marker.
 ///
-/// `examples/native/rust/service-client/src/lib.rs` logs
+/// `examples/linux/rust/service-client/src/lib.rs` logs
 /// `Service call failed, retrying: {:?}` from the `Err` arm of
 /// `call_for_name` — the same wording every Rust group copy uses
 /// (`examples/{qemu-armv7a-nuttx,mps2-an385-freertos,threadx-linux}/rust/

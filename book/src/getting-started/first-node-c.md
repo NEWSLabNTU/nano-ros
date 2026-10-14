@@ -46,7 +46,7 @@ See [Install + first build (Linux)](./installation.md) for more.
 The talker is a **standalone CMake project**. Four files matter:
 
 ```text
-examples/native/c/talker/
+examples/linux/c/talker/
 ├── system.toml         # WHAT this deploys to — the one file you edit
 ├── CMakeLists.txt      # find_package + targets; no board facts
 ├── package.xml         # ROS-style manifest (drives codegen tooling)
@@ -88,7 +88,7 @@ them in its own `[image.<id>]` table (`locator`, `ip`, `gateway`,
 [Configuration](../user-guide/configuration.md)).
 
 The `CMakeLists.txt` is, verbatim from
-[`examples/native/c/talker/CMakeLists.txt`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/native/c/talker/CMakeLists.txt):
+[`examples/linux/c/talker/CMakeLists.txt`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/linux/c/talker/CMakeLists.txt):
 
 ```cmake
 cmake_minimum_required(VERSION 3.22)
@@ -160,7 +160,7 @@ On an embedded image the same knobs are compile-baked from that image's
 ## Build
 
 ```bash probe=40
-cd examples/native/c/talker
+cd examples/linux/c/talker
 cmake -B build -Dnano_ros_ROOT="$(nros sdk-root)"
 cmake --build build
 ```
@@ -198,7 +198,7 @@ source /opt/ros/humble/setup.bash
 ros2 run rmw_zenoh_cpp rmw_zenohd    # or: just zenohd
 
 # 2. Run the talker:
-cd examples/native/c/talker
+cd examples/linux/c/talker
 ./build/c_talker
 # Expected output:
 #   Publishing: 'Hello World: 1'
@@ -232,15 +232,15 @@ the count at 1, matching the official ROS 2 demo talker. If no
 ## GitHub source
 
 Canonical, copy-out:
-[`examples/native/c/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/native/c/talker)
+[`examples/linux/c/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/linux/c/talker)
 
 ## Next
 
 - Add a subscription:
-  [`examples/native/c/listener/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/native/c/listener)
+  [`examples/linux/c/listener/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/linux/c/listener)
 - Service / action shapes:
-  [`service-client/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/native/c/service-client),
-  [`action-client/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/native/c/action-client)
+  [`service-client/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/linux/c/service-client),
+  [`action-client/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/linux/c/action-client)
 - Custom `.msg` / `.srv` / `.action`:
   [Message Generation](../user-guide/message-generation.md)
 - Cross-compile for an RTOS: pick the right Embedded Starter from

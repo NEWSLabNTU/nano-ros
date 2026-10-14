@@ -1487,7 +1487,7 @@ mod tests {
     fn search_path_drops_a_workspace_nested_in_the_nano_ros_tree() {
         let tmp = tempfile::tempdir().unwrap();
         let nros = tmp.path().join("nano-ros");
-        let nested = nros.join("examples/native");
+        let nested = nros.join("examples/linux");
         let outside = tmp.path().join("my_ws");
 
         assert_eq!(

@@ -10,7 +10,7 @@
 //! ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd
 //!
 //! # 2. nros talker
-//! cd examples/native/rust/talker
+//! cd examples/linux/rust/talker
 //! RUST_LOG=info cargo run --features zenoh
 //!
 //! # 3. ROS 2 listener

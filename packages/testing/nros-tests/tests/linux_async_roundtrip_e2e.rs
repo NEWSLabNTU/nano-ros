@@ -1,6 +1,6 @@
 //! #102 H3 (phase-284 W2) — runtime e2e for the ASYNC native client examples.
 //!
-//! `native/rust/{service,action}-client-async` are the tokio-flavoured client
+//! `linux/rust/{service,action}-client-async` are the tokio-flavoured client
 //! variants: they move the executor into a background `spin_async()` task and
 //! `.await` the goal/response Promises directly (the action one also streams
 //! feedback with `futures::StreamExt`). Phase-275 gave them a compile-check

@@ -167,7 +167,7 @@ if(TARGET cargo-build_nros_cpp)
     # custom command that would have written the current bytes. A repair for
     # drift (issue 0268) that causes drift and then suppresses its own fix.
     #
-    # Measured 2026-09-02 in examples/native/c/listener/build-zenoh: the C copy
+    # Measured 2026-09-02 in examples/linux/c/listener/build-zenoh: the C copy
     # current at 03:12:42, the C++ copy STALE at 03:12:43 — one second later,
     # same build, same generated content — and `c_listener` failing to link on
     # issue 0369's size anchor.

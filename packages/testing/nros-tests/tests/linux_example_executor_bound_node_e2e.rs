@@ -1,6 +1,6 @@
 //! issue 1384 — the runtime consumer for the `ExecutorBoundNode` cell.
 //!
-//! `examples/native/c/custom-platform` is the one in-tree image that builds its
+//! `examples/linux/c/custom-platform` is the one in-tree image that builds its
 //! node with `rclc_executor_node_init` AND then creates an entity eagerly
 //! (`rclc_publisher_init_default`, three lines further down). PR #1064 moved it
 //! onto that entry point because `rclc_node_create_guard_condition` needs a node
@@ -90,7 +90,7 @@ fn an_executor_bound_node_creates_its_eager_publisher_and_publishes() {
     assert!(matches!(cell.rmw, MR::Zenoh));
 
     let binary = build_native_c_example_rmw("custom-platform", "baremetal_demo", FixtureRmw::Zenoh)
-        .require("examples/native/c/custom-platform (baremetal_demo, zenoh)");
+        .require("examples/linux/c/custom-platform (baremetal_demo, zenoh)");
 
     require_zenohd();
     let router = ZenohRouter::start_unique()

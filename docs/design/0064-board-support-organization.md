@@ -797,7 +797,7 @@ link-feature selection (`runner.rs:225,419-420,528-529`). Untangle first.
 
 | `platform =` token | now | target | note |
 |---|---|---|---|
-| `native` → **`linux`** | 188 | 188 | **DONE** (phase-337 W8.c) — rename only, no count change. 188, not 187: the RFC's figure was one low. Moved together with the two other token-derived vocabularies (the builder's platform argument, the lane-coordinate prefix); the LANE name, the `just` module and `examples/native/` deliberately keep `native` |
+| `native` → **`linux`** | 188 | 188 | **DONE** (phase-337 W8.c) — rename only, no count change. 188, not 187: the RFC's figure was one low. Moved together with the two other token-derived vocabularies (the builder's platform argument, the lane-coordinate prefix); the LANE name, the `just` module and `examples/linux/` deliberately keep `native` |
 | `threadx-linux` | 42 | 42 | — |
 | `nuttx` | 30 | 30 | one crate now builds it |
 | `freertos` | 25 | 25 | — |

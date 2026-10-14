@@ -52,7 +52,7 @@ nros setup linux --rmw zenoh
 #    `nros sync` generates the message bindings and the build settings
 #    the target implies; both live under gitignored directories, so a
 #    fresh clone cannot build without this step.
-cd examples/native/rust/talker
+cd examples/linux/rust/talker
 nros sync
 nros build
 ./build/linux/target/debug/talker

@@ -151,7 +151,7 @@ fn rclcpp_node_options_and_component_factory_compile() -> TestResult<()> {
 /// phase-277 W5 — the callback-style subscription-with-attachment path
 /// (`Node::create_subscription_with_info`) keeps compile coverage via a
 /// dedicated snippet; it used to live as an `if (false)` block inside the
-/// `examples/native/cpp/listener` example (examples stay demo-only).
+/// `examples/linux/cpp/listener` example (examples stay demo-only).
 #[test]
 fn create_subscription_with_info_compiles() -> TestResult<()> {
     assert_snippet_compiled("subscription_with_info")

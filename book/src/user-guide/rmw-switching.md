@@ -47,7 +47,7 @@ A standalone package that consumes nano-ros in source form — either
 `nano_rosConfig.cmake` at the checkout root, located via
 `-Dnano_ros_ROOT`, which `nros build` passes; RFC-0048) or a raw
 `add_subdirectory` — for
-example a copied-out leaf like `examples/native/c/talker/` — picks its
+example a copied-out leaf like `examples/linux/c/talker/` — picks its
 backend on the configure line:
 
 ```bash

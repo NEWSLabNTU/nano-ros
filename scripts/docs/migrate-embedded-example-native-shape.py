@@ -6,7 +6,7 @@ For each canonical role leaf (talker / listener / service-* / action-*) of an
 embedded platform dir, this makes the leaf a byte-identical copy of its native
 counterpart except for `package.xml`:
 
-  * CMakeLists.txt  <- examples/native/<lang>/<role>/CMakeLists.txt  (verbatim)
+  * CMakeLists.txt  <- examples/linux/<lang>/<role>/CMakeLists.txt  (verbatim)
   * src/            <- native src/ (the portable main.c / main.cpp — the
                        NROS_APP_MAIN_REGISTER() + NROS_ENTRY_LOCATOR /
                        NROS_ENTRY_DOMAIN_ID seam), replacing the old
@@ -76,7 +76,7 @@ def main() -> None:
             leaf = platform_dir / lang / role
             if not leaf.is_dir():
                 continue
-            native = Path("examples/native") / lang / role
+            native = Path("examples/linux") / lang / role
             if not (native / "CMakeLists.txt").is_file():
                 raise SystemExit(f"no native counterpart for {leaf}")
             migrate_leaf(native, leaf, deploy, board, rmw)

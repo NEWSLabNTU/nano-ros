@@ -1,6 +1,6 @@
 //! Concurrent Fibonacci action-server fixture.
 //!
-//! Extracted from the `examples/native/rust/action-server`
+//! Extracted from the `examples/linux/rust/action-server`
 //! `NROS_ACTION_CONCURRENT` escape hatch (phase-277 W5), when the example
 //! slimmed to the official single-goal `fibonacci_action_server` demo.
 //!

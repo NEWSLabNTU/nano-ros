@@ -85,7 +85,7 @@ function(nano_ros_link_rmw TARGET)
     # ORDER-ONLY (`||`) edge — "must exist before linking", never "relink when it
     # changes".
     #
-    # Consequence measured on examples/native/c/talker/build-cyclonedds: the
+    # Consequence measured on examples/linux/c/talker/build-cyclonedds: the
     # archive rebuilt at 14:15 while `c_talker` stayed at 12:28 and
     # `cmake --build` exited 0 doing nothing. The executable kept the OLD backend
     # indefinitely — museum binaries by construction — and only `rm -rf` on the

@@ -113,7 +113,7 @@ build-e2e-fixtures distro="jazzy" rmw="cyclone":
     # the real RIHS01 type-hash tail in the zenoh keyexpr so a jazzy node
     # matches a stock jazzy `rmw_zenoh_cpp` peer (#0291).
     ED="{{distro}}"
-    IMG="native"
+    IMG="linux"
     if [ "$RMW_ID" != zenoh ]; then IMG="${IMG}_${RMW_ID}"; fi
     if [ "$ED" != humble ]; then IMG="${IMG}_${ED}"; fi
     # shellcheck source=scripts/build/cargo.sh
@@ -134,7 +134,7 @@ build-e2e-fixtures distro="jazzy" rmw="cyclone":
     # shellcheck source=scripts/build/cargo.sh
     source "{{justfile_directory()}}/scripts/build/cargo.sh"
     for ex in talker listener service-server service-client action-server action-client; do
-        DIR="{{justfile_directory()}}/examples/native/rust/$ex"
+        DIR="{{justfile_directory()}}/examples/linux/rust/$ex"
         echo "== $ex (image $IMG) sync =="
         "$NROS" sync --no-provider-index --image "$IMG" "$DIR" >/dev/null
         echo "== $ex (image $IMG) → $ED_TARGET_DIR =="

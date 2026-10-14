@@ -547,10 +547,10 @@ int main(void)
 
 | Directory | Description |
 |-----------|-------------|
-| `examples/native/cpp/talker/` | Publish Int32 on `/chatter` (native Linux) |
-| `examples/native/cpp/listener/` | Subscribe to `/chatter` (native Linux) |
-| `examples/native/cpp/service-server/` | AddTwoInts server (native Linux) |
-| `examples/native/cpp/service-client/` | AddTwoInts client (native Linux) |
+| `examples/linux/cpp/talker/` | Publish Int32 on `/chatter` (native Linux) |
+| `examples/linux/cpp/listener/` | Subscribe to `/chatter` (native Linux) |
+| `examples/linux/cpp/service-server/` | AddTwoInts server (native Linux) |
+| `examples/linux/cpp/service-client/` | AddTwoInts client (native Linux) |
 | `examples/zephyr/cpp/talker/` | Publish Int32 on `/chatter` (Zephyr) |
 | `examples/zephyr/cpp/listener/` | Subscribe to `/chatter` (Zephyr) |
 

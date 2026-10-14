@@ -2105,7 +2105,7 @@ def main():
         # the group the fixture BUILD actually redirects it into.
         #
         # This is the join the Rust fixture resolver cannot make for itself.
-        # `build_example("native/rust/talker", …)` and
+        # `build_example("linux/rust/talker", …)` and
         # `build_example_rmw(…, Rmw::Zenoh)` distinguish variants ONLY by the
         # authored dir string (`target/` vs `target-zenoh/`) — which is exactly
         # the string a group strips — so the variant has to come from the

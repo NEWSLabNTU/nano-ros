@@ -174,7 +174,7 @@ add a second mechanism.
 These are not reconcilable. **Correction (2026-07-31): our formatter is not the
 cause.** I assumed `check-c-fmt` / `check-cpp-fmt` were reformatting PX4 modules;
 they are not. Both enumerate explicit paths — `nros-c/include`, `zpico-zephyr`,
-`examples/native/c/**`, `nros-cpp/include/nros/*.hpp` — and no PX4 module tree is
+`examples/linux/c/**`, `nros-cpp/include/nros/*.hpp` — and no PX4 module tree is
 among them. The 4-space style was simply how the file was written. Checking
 before acting is the difference between a guard and a no-op dressed as a fix.
 

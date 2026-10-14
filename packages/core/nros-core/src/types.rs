@@ -15,7 +15,7 @@ pub trait RosMessage: Sized + nros_serdes::Serialize + nros_serdes::Deserialize 
     /// line onto every hand-written message in every user crate, which is the
     /// decision phase-380 W4 already made and reverted once: tightening the
     /// message contract to serve a build assertion broke
-    /// `examples/native/rust/custom-msg`, the documented hand-written-message
+    /// `examples/linux/rust/custom-msg`, the documented hand-written-message
     /// pattern. A defaulted const costs existing implementors nothing and still
     /// answers at compile time, which is all the assertion needs.
     ///
@@ -66,7 +66,7 @@ pub trait RosMessage: Sized + nros_serdes::Serialize + nros_serdes::Deserialize 
     /// on zenoh and XRCE a registration site could not read the bound, and
     /// every default receive buffer there took the image-wide size whatever
     /// its type. Defaulted, so a hand-written message
-    /// (`examples/native/rust/custom-msg`) still compiles and keeps exactly
+    /// (`examples/linux/rust/custom-msg`) still compiles and keeps exactly
     /// that default; it may state its own bound by overriding this.
     const MAX_SERIALIZED_BOUND: Option<usize> = None;
 }

@@ -155,7 +155,7 @@ reason the check exists. `RosMessage` is universal. Rust has no stable
 associated-type defaults but does have const defaults, so a defaulted const also
 costs the 142 existing implementors nothing; phase-380 W4 had already tried
 tightening the message contract to serve a build assertion and reverted it when
-`examples/native/rust/custom-msg` stopped compiling.
+`examples/linux/rust/custom-msg` stopped compiling.
 
 *The raw path cannot carry a defaulted type parameter.* `create_publisher_raw<F
 = Cdr>` is rejected by rustc (`invalid_type_param_default`, deny-by-default), and

@@ -46,7 +46,7 @@ pub const TALKER_READY_MARKER: &str = TALKER_LOG_PREFIX;
 
 /// Readiness marker: the Rust chatter LISTENER is subscribed and ready.
 ///
-/// `examples/native/rust/listener` prints
+/// `examples/linux/rust/listener` prints
 /// `Subscriber created for topic: /chatter` once its subscription exists —
 /// the line its own source names as the readiness gate.
 ///
@@ -101,7 +101,7 @@ pub const INT32_TALKER_LOG_PREFIX: &str = "Published:";
 /// See [`INT32_TALKER_LOG_PREFIX`] — the listener/sink side (`"Received:"`).
 pub const INT32_LISTENER_LOG_PREFIX: &str = "Received:";
 
-/// issue 1384 — `examples/native/c/custom-platform` announcing the EAGER
+/// issue 1384 — `examples/linux/c/custom-platform` announcing the EAGER
 /// publisher it created on an executor-bound node.
 ///
 /// Its own constant because it is the only marker in the tree that proves an

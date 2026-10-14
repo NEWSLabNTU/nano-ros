@@ -61,7 +61,7 @@
 //!
 //! Note that the **executor lifecycle is deliberately owned by the
 //! `setup` callback** rather than by `run` itself. Every existing
-//! POSIX Entry pkg `main.rs` (see `examples/native/rust/talker`) opens
+//! POSIX Entry pkg `main.rs` (see `examples/linux/rust/talker`) opens
 //! its own `Executor`, registers timers / nodes, and calls
 //! `spin` from inside what becomes the `setup` closure once
 //! Phase 212.N.4 codegen lands. `run` would have nothing portable to

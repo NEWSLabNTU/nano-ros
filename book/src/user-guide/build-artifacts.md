@@ -81,7 +81,7 @@ For a single package the artifact is that package's own binary:
 <leaf>/build/<image-id>/target/[<triple>/]<profile-dir>/<bin>
 ```
 
-`examples/native/rust/talker` lands at `build/linux/target/debug/talker`;
+`examples/linux/rust/talker` lands at `build/linux/target/debug/talker`;
 its bare-metal sibling `examples/mps2-an385-baremetal/rust/talker` at
 `build/mps2-an385-baremetal/target/thumbv7m-none-eabi/debug/qemu-bsp-talker`.
 The triple level appears whenever the board pins one — which it does in the

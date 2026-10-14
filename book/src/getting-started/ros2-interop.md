@@ -27,7 +27,7 @@ ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicas
 
 ```bash
 # Terminal 2: Run the nano-ros talker
-cd examples/native/rust/talker
+cd examples/linux/rust/talker
 nros sync                            # generated/ bindings + build settings (once)
 nros build
 RUST_LOG=info ./build/linux/target/debug/talker
@@ -56,7 +56,7 @@ ROS 2 publishers also work with nano-ros subscribers:
 
 ```bash
 # Terminal 2: Run the nano-ros listener instead
-cd examples/native/rust/listener
+cd examples/linux/rust/listener
 nros sync && nros build
 RUST_LOG=info ./build/linux/target/debug/listener
 
@@ -151,7 +151,7 @@ something you pass. The native examples declare `linux_jazzy`,
 `linux_xrce_jazzy`, … for this:
 
 ```bash
-cd examples/native/rust/talker
+cd examples/linux/rust/talker
 nros sync --image linux_jazzy && nros build linux_jazzy
 ```
 

@@ -714,7 +714,7 @@ mod queryable_default_tests {
     /// phase-455 W5 / issue 1341 — **a transient-local publisher is a
     /// queryable, and the action-server fixture is the image that proved it.**
     ///
-    /// `examples/native/rust/action-server` declares three service servers and
+    /// `examples/linux/rust/action-server` declares three service servers and
     /// no infrastructure, so before this term it derived a table of 3 — exactly
     /// the three action services — and the `/status` publisher's cache
     /// queryable was the fourth. Measured on 2026-09-13: the image built clean

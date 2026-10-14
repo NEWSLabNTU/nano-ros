@@ -76,7 +76,7 @@ Two reasons are plausible and neither is confirmed:
 **Do not treat either as established.** The right first step is the one 0312
 took: a `ros2 topic info --verbose` / `ros2 node info` read against a live C
 image whose node came from `nros_executor_node_init` — which, since issue 1384,
-is an image that runs. `examples/native/c/custom-platform` is that image and now
+is an image that runs. `examples/linux/c/custom-platform` is that image and now
 has a runtime cell (`Workload::ExecutorBoundNode`).
 
 ## Acceptance

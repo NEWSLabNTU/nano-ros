@@ -276,9 +276,9 @@ no Fatal).
 
 ## Working examples
 
-- Rust: `examples/native/rust/logging/`
-- C: `examples/native/c/logging/`
-- C++: `examples/native/cpp/logging/`
+- Rust: `examples/linux/rust/logging/`
+- C: `examples/linux/c/logging/`
+- C++: `examples/linux/cpp/logging/`
 
 Each demonstrates per-severity macros + the runtime threshold
 filter.

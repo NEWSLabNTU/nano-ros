@@ -422,7 +422,7 @@ fn a_message_info_subscription_is_sized_from_its_type() {
 
 /// The other half: a hand-written type that states no bound keeps exactly
 /// the caller's default, on every backend (phase-380 W4's promise to
-/// `examples/native/rust/custom-msg`).
+/// `examples/linux/rust/custom-msg`).
 #[test]
 fn a_hand_written_type_without_a_bound_keeps_the_default() {
     let rx = crate::config::DEFAULT_RX_BUF_SIZE;

@@ -142,7 +142,7 @@ nothing observed is REFUSED
 Only a STATED `in_place` claims no region
 (`Endpoint::claims_no_receive_region`), so the one predicate whose `true` removes
 bytes is reachable only from a fact somebody measured. Measured on
-`examples/native/rust/listener` with a four-subscription `KEEP_LAST(10)`
+`examples/linux/rust/listener` with a four-subscription `KEEP_LAST(10)`
 contract: `ARENA_SIZE` 51,552 → 8,192 B, static RAM 195,402 → 152,042 B
 (**−10,840 B per subscription**), and byte-identical to the baseline when the
 rows are observed NOT capable or not observed at all.
@@ -265,7 +265,7 @@ because they come from one attribution and half an attribution describes no
 image; the payload class beside them survives, because it is a property of the
 TYPE. The row keeps counting toward `undeclared_endpoints`, so every consumer
 keeps its worst case — measured end to end: a mis-keyed contract takes
-`examples/native/rust/listener` back to 273,802 B with `LARGE_PAYLOADS` at
+`examples/linux/rust/listener` back to 273,802 B with `LARGE_PAYLOADS` at
 131,072, and `nros-rmw-zenoh`'s build prints the refusal verbatim.
 
 **No contract, no change.** `from_model` returns `None` when the model describes
@@ -275,7 +275,7 @@ against `origin/main`'s CLI on the same leaf: the descriptor, the generated
 forced recompile and relink). "Nobody said" (`Fact::Absent`) and "I looked and
 could not tell" (`Fact::Refused`) stay different statements.
 
-**Measured, on the ordinary flow.** `examples/native/rust/listener` — `nros
+**Measured, on the ordinary flow.** `examples/linux/rust/listener` — `nros
 sync`, then the retypable `cargo build --config build/linux/nros-cargo.toml`,
 nothing exported by hand — with one contract row declaring `KEEP_LAST(1)`:
 
@@ -1150,7 +1150,7 @@ own runtime evidence.
 no STATED entity fact ⇒ no file.** The model road states none for a model that
 describes no wiring and writes nothing; the cargo LEAF road's probe states the
 entities the image creates, so it writes a file with or without a contract.
-That is the file observed for `examples/native/rust/talker` after `nros sync`
+That is the file observed for `examples/linux/rust/talker` after `nros sync`
 with no contract — `basis = "contract"`, no QoS fields, `undeclared_endpoints =
 1`: neither stale nor a writer bug, and re-measured on a fresh sync.
 `Basis::Contract` means "the rows are THIS IMAGE's endpoint set, not the link

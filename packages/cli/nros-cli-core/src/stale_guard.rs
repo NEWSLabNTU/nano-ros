@@ -831,7 +831,7 @@ mod foreign_binary_tests {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path().join("checkout");
         fake_checkout(&root);
-        let deep = root.join("examples/native/rust/talker");
+        let deep = root.join("examples/linux/rust/talker");
         fs::create_dir_all(&deep).unwrap();
         assert!(refuse_if_foreign_to_workspace(&stray(tmp.path()), &deep).is_err());
     }

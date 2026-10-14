@@ -295,10 +295,10 @@ def prerequisite_rows():
             "kind": "preflight",
             "lang": "rust",
             "role": "ws-sync",
-            "dir": "examples/native/rust",
-            "build_root": "examples/native/rust/*/generated",
+            "dir": "examples/linux/rust",
+            "build_root": "examples/linux/rust/*/generated",
             "scheduler": "just linux build-fixture-rust",
-            "shared_mutation": "examples/native/rust/{talker,listener,service-*,action-*,custom-transport-*}/generated; examples/native/rust/*/.cargo/config.toml",
+            "shared_mutation": "examples/linux/rust/{talker,listener,service-*,action-*,custom-transport-*}/generated; examples/linux/rust/*/.cargo/config.toml",
             "notes": "serial nros sync plus codegen-stamp before native Rust fixture leaves",
         },
         {

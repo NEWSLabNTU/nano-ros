@@ -88,7 +88,7 @@ impl<T> MessageForRmw for T where T: RosMessage + nros_serdes::schema::Message {
 // I tightened it to match the descriptor arm so the subscription size assertion
 // could be universal, and it broke a documented user-facing pattern: a
 // hand-written message type that implements `RosMessage` + `Serialize` +
-// `Deserialize` and no schema. `examples/native/rust/custom-msg` exists to
+// `Deserialize` and no schema. `examples/linux/rust/custom-msg` exists to
 // demonstrate exactly that, and its `SensorReading` stopped compiling. Requiring
 // a schema here would make codegen mandatory for anyone subscribing to their own
 // type, which is a much larger decision than a build assertion is worth.

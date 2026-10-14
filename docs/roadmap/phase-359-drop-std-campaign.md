@@ -788,7 +788,7 @@ they were not obvious before the work:
 * **`from_env` is an extension trait, and ~26 of ~27 call sites did not change.**
   `ExecutorConfigEnvExt` is in `nros::prelude`, and every native example already
   writes `use nros::prelude::*`. Two sites needed an added import
-  (`examples/native/rust/lifecycle-node`, `nros-board-linux`) — against the 86
+  (`examples/linux/rust/lifecycle-node`, `nros-board-linux`) — against the 86
   the issue costed, because that count included `from_env` methods on unrelated
   types and `nros-node`'s own tests.
 * **`hosted_env: bool` was never a parameter.** It was `true` at exactly one

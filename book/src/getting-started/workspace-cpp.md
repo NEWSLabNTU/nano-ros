@@ -172,7 +172,7 @@ beside its `system.toml`. Its launch file is generated from the `[[component]]`
 rows, so there is no `launch/` directory to put a sidecar in; `nros sync` carries
 this one to where the resolver looks. That is how a standalone leaf states its
 QoS — and stating it is worth real memory: one `sub: { chatter: { qos: { history:
-keep_last, depth: 1 } } }` row takes `examples/native/rust/listener` from 273,802
+keep_last, depth: 1 } } }` row takes `examples/linux/rust/listener` from 273,802
 to 172,298 bytes of static RAM, because the zenoh backend then sizes its payload
 pools for the one sample the image keeps instead of the four it might have.
 

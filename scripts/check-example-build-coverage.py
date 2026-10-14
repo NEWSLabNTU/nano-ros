@@ -92,14 +92,14 @@ def self_test():
             print(f"check-example-build-coverage self-test FAILED: {what}", file=sys.stderr)
 
     paths = [
-        "examples/native/rust/talker/Cargo.toml",
+        "examples/linux/rust/talker/Cargo.toml",
         "examples/workspaces/launch/src/talker_pkg/Cargo.toml",
         "examples/templates/zephyr-byo/west.yml",
         "examples/workspaces/README.md",       # beside the roots, not a root
         "examples/fixtures.toml",
         "examples/README.md",
     ]
-    expect(roots_of(paths) == {"examples/native/rust/talker",
+    expect(roots_of(paths) == {"examples/linux/rust/talker",
                                "examples/workspaces/launch",
                                "examples/templates/zephyr-byo"},
            f"roots by shape, got {sorted(roots_of(paths))}")

@@ -367,7 +367,7 @@ fn logging_smoke_zephyr_native_sim_emits_every_severity() {
     );
 }
 
-/// #102 H3 — the `native/rust/logging` EXAMPLE (host process), covering behavior
+/// #102 H3 — the `linux/rust/logging` EXAMPLE (host process), covering behavior
 /// the `logging-smoke-*` bins do not: a runtime threshold RAISE. It fires every
 /// severity in round 1, raises the logger level to `Warn`, then fires them again
 /// in round 2 — so trace/debug/info must appear for round 1 but be SUPPRESSED for
@@ -376,13 +376,13 @@ fn logging_smoke_zephyr_native_sim_emits_every_severity() {
 #[test]
 fn native_rust_logging_example_threshold_raise_filters_round_two() {
     let binary =
-        build_native_logging().require("native/rust/logging — run `just build-test-fixtures`");
+        build_native_logging().require("linux/rust/logging — run `just build-test-fixtures`");
 
     let mut proc = ManagedProcess::spawn(binary, &[], "native-rs-logging")
-        .expect("failed to spawn native/rust/logging example");
+        .expect("failed to spawn linux/rust/logging example");
     let output = proc
         .wait_for_all_output(Duration::from_secs(15))
-        .expect("native/rust/logging timed out waiting for output");
+        .expect("linux/rust/logging timed out waiting for output");
 
     // Round 1 — every severity fires (level = Trace).
     assert_output_contains(

@@ -45,7 +45,7 @@ nano-ros raw path today:
 ```
 
 Result payloads have the same extra header. The typed path
-(`register_action_server`, used by `examples/native/rust/action-server` before
+(`register_action_server`, used by `examples/linux/rust/action-server` before
 phase-338) already emits the single-header form, which is why the two nano-ros
 paths cannot talk to each other.
 
@@ -180,7 +180,7 @@ format against a new producer. They now build header-less bodies.
 ## Acceptance
 
 - [x] One envelope: the raw path's payload no longer carries an inner header.
-- [x] **`examples/native/rust/action-server` runs Node-class against the existing
+- [x] **`examples/linux/rust/action-server` runs Node-class against the existing
       typed `action-client`, delivering feedback AND result** — phase-338 W3's
       blocked case, verified 2026-08-05 against a live router:
       `Next number in sequence received: [0, 1, 1]` and
@@ -188,7 +188,7 @@ format against a new producer. They now build header-less bodies.
       `DeserializationError` + `ServiceRequestFailed`.
 - [x] A real ROS 2 client drives a nano-ros raw action server end to end.
       Done 2026-08-05 — the "host lacks ROS" note was wrong, humble +
-      `rmw_zenoh_cpp` are installed. `examples/native/rust/action-server`
+      `rmw_zenoh_cpp` are installed. `examples/linux/rust/action-server`
       (Node-class, raw) on a private router; `ros2 action send_goal --feedback
       /fibonacci example_interfaces/action/Fibonacci "{order: 5}"` returns
       feedback `sequence: [0, 1, 1]`, the same result, and

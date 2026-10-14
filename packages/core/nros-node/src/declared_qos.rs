@@ -60,7 +60,7 @@
 //! A `(type, topic)` with no row is "nobody declared this endpoint". Nothing is
 //! checked for it, nothing is taken, and nothing is defaulted. An image with no
 //! contract sidecar has `DECLARED_QOS_ROWS == None` and behaves exactly as it
-//! did before — measured, not asserted: on `examples/native/rust/listener` with
+//! did before — measured, not asserted: on `examples/linux/rust/listener` with
 //! the sidecar removed, `.bss + .data` and every attributed symbol are
 //! identical to `origin/main`'s, and the image carries no `declared_qos` symbol
 //! at all.
@@ -94,7 +94,7 @@
 //! build reserved it, and every reader that matched the lower offer still
 //! matches); one asking MORE is REFUSED (lowering it could break a match, and
 //! keeping it rides storage the build did not count). The depth rule is shared.
-//! Measured on `examples/native/rust/talker` with a contract declaring
+//! Measured on `examples/linux/rust/talker` with a contract declaring
 //! `/chatter` `transient_local`, depth 1: the default publisher registers
 //! transient_local, depth 1, and reports both takes; declaring `best_effort`
 //! instead refuses the registration and the image exits naming the topic.

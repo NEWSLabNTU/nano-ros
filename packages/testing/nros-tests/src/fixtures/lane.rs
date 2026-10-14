@@ -992,7 +992,7 @@ mod tests {
         let multi: Vec<_> = per_dir.values().filter(|v| v.len() > 1).collect();
         assert!(
             !multi.is_empty(),
-            "expected leaves with several rows (examples/native/rust/talker has five)"
+            "expected leaves with several rows (examples/linux/rust/talker has five)"
         );
         for rows in multi {
             let roots: std::collections::BTreeSet<_> =
@@ -1109,15 +1109,15 @@ mod tests {
         let row = |root: &str, rmw: &str| Row {
             kind: "fixture".into(),
             coord: ("linux".into(), "rust".into(), rmw.into()),
-            dir: "examples/native/rust/talker".into(),
+            dir: "examples/linux/rust/talker".into(),
             id: String::new(),
             artifact_root: root.into(),
         };
-        let bin = Path::new("examples/native/rust/talker/target/x/talker");
+        let bin = Path::new("examples/linux/rust/talker/target/x/talker");
 
         let tie = vec![
-            row("examples/native/rust/talker/target", "zenoh"),
-            row("examples/native/rust/talker/target", "xrce"),
+            row("examples/linux/rust/talker/target", "zenoh"),
+            row("examples/linux/rust/talker/target", "xrce"),
         ];
         assert!(
             attribute_path_in(&tie, bin).is_none(),
@@ -1128,8 +1128,8 @@ mod tests {
         // Same root, SAME coordinate: not ambiguous. The coordinate IS the
         // answer, and both rows give it.
         let same = vec![
-            row("examples/native/rust/talker/target", "zenoh"),
-            row("examples/native/rust/talker/target", "zenoh"),
+            row("examples/linux/rust/talker/target", "zenoh"),
+            row("examples/linux/rust/talker/target", "zenoh"),
         ];
         assert_eq!(
             attribute_path_in(&same, bin).map(|r| r.coord_str()),
@@ -1138,7 +1138,7 @@ mod tests {
 
         // A longer match still wins outright, and clears an earlier tie.
         let mut deeper = tie.clone();
-        deeper.push(row("examples/native/rust/talker/target/x", "cyclonedds"));
+        deeper.push(row("examples/linux/rust/talker/target/x", "cyclonedds"));
         assert_eq!(
             attribute_path_in(&deeper, bin).map(|r| r.coord_str()),
             Some("linux,rust,cyclonedds".to_string()),
@@ -1149,10 +1149,10 @@ mod tests {
         // A workspace row sharing the root is not a tie: those are attributed by
         // `id` and skipped here. Three real rows do share a root today
         // (examples/workspaces/{mixed,features,safety}) and must stay harmless.
-        let mut ws = vec![row("examples/native/rust/talker/target", "zenoh")];
+        let mut ws = vec![row("examples/linux/rust/talker/target", "zenoh")];
         ws.push(Row {
             kind: "workspace_fixture".into(),
-            ..row("examples/native/rust/talker/target", "xrce")
+            ..row("examples/linux/rust/talker/target", "xrce")
         });
         assert_eq!(
             attribute_path_in(&ws, bin).map(|r| r.coord_str()),
@@ -1229,7 +1229,7 @@ mod tests {
         }
         assert!(run_coords().is_none());
         assert!(
-            require_in_lane(&project_root().join("examples/native/rust/talker/target/x/talker"))
+            require_in_lane(&project_root().join("examples/linux/rust/talker/target/x/talker"))
                 .is_ok()
         );
         assert!(require_workspace_in_lane("workspace-rust-native").is_ok());

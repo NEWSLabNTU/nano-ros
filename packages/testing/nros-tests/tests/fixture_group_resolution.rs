@@ -11,7 +11,7 @@
 //! include `linux`, which is exactly the one-line change B3 makes, and assert
 //! the properties that decide whether B3 is safe:
 //!
-//! * `examples/native/rust/talker`'s four rows resolve to FOUR DIFFERENT group
+//! * `examples/linux/rust/talker`'s four rows resolve to FOUR DIFFERENT group
 //!   dirs. Under the refuted platform-grained key they resolve to one, and
 //!   phase-340 W1 measured what that means: four distinct binaries (8616504 /
 //!   8616504 / 6514392 / 9034536 bytes, four distinct sha256) at one path, the
@@ -65,7 +65,7 @@ fn export_with(shared_platforms: &str) -> Vec<GroupRow> {
 /// test exists for is untouched by that: the variants must still land in
 /// DIFFERENT group dirs. Only the vocabulary moves, from the authored path to
 /// the selector the caller now names.
-const TALKER_LEAF: &str = "examples/native/rust/talker";
+const TALKER_LEAF: &str = "examples/linux/rust/talker";
 
 fn talker_variants() -> Vec<(&'static str, FixtureVariant)> {
     vec![

@@ -268,4 +268,4 @@ evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1109](../../issues/1109-board-native-vs-linux-naming-sweep.md) | 77 `board = "native"` selectors predate the native/linux split and some are true of neither. They are the remainder of this phase's own vocabulary audit, which fixed the crates and not the selectors — **re-homed to [phase-445](phase-445-board-choice-generates-leaf-config.md) 2026-10-12, then to [phase-500](../phase-500-linux-host-name.md) 2026-10-14** |
+| [#1109](../../issues/archived/1109-board-native-vs-linux-naming-sweep.md) | 77 `board = "native"` selectors predate the native/linux split and some are true of neither. They are the remainder of this phase's own vocabulary audit, which fixed the crates and not the selectors — **re-homed to [phase-445](phase-445-board-choice-generates-leaf-config.md) 2026-10-12, then to [phase-500](../phase-500-linux-host-name.md) 2026-10-14** |

@@ -1,7 +1,7 @@
 # Multi-Node Project Layout
 
 You built the single-file talker in
-[`examples/native/rust/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/native/rust/talker):
+[`examples/linux/rust/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/linux/rust/talker):
 one `main.rs`, one `Cargo.toml`, one package — open a terminal, run
 `cargo run`, done. That shape covers a lot of ground: demos, driver
 tests, single-purpose microcontroller apps.
@@ -147,7 +147,7 @@ nros build     # every [image.*]; or name one: nros build linux
 a `.msg` or move the checkout. A workspace that has never been synced makes
 `nros build` stop at preflight with one line naming it.
 
-The app-node shape you already know (`examples/native/rust/talker/`) is a
+The app-node shape you already know (`examples/linux/rust/talker/`) is a
 single package that is both the logic and the boot point — no bringup and
 no entry, but the same `system.toml` beside its `Cargo.toml`, stating its
 board in an `[image.*]` row (RFC-0098 D3). `nros::main!()` reads it. That

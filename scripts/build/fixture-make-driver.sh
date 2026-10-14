@@ -134,7 +134,7 @@ PY
         ;;
     linux-cyclonedds-rust)
         # issue 0488 residue 2 — this used to hand-roll
-        #   cd examples/native/rust/$role && cargo build … --target-dir target-cyclonedds
+        #   cd examples/linux/rust/$role && cargo build … --target-dir target-cyclonedds
         # which is a SECOND spelling of a build the manifest already describes:
         # `examples/fixtures.toml` carries a `linux`/`rust`/`cyclonedds` row for
         # each role, and `linux` is in `NROS_FIXTURE_SHARED_PLATFORMS`, so the

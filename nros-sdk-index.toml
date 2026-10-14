@@ -820,7 +820,7 @@ install = "cargo install --path src/ros-launch-resolve/parser/crates/play_launch
 
 # Corrosion — the CMake ↔ Rust/Cargo bridge that `corrosion_import_crate()`
 # in mixed-language workspaces (Phase 212 — `cmake/NanoRosThreadxSystemCodegen.cmake`,
-# `multi_pkg_workspace_mixed` fixture, examples/native/rust talker/listener
+# `multi_pkg_workspace_mixed` fixture, examples/linux/rust talker/listener
 # CycloneDDS path) depends on. Header/config-only at install time: a small
 # CMake superproject staged into `~/.nros/sdk/corrosion/share/corrosion/`
 # (well under the 500 MB / 5 min `default` tier policy in

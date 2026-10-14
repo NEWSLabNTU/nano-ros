@@ -48,12 +48,12 @@ lane never built (issue 1685).
 ## Cause (measured)
 
 Neither the `.await` path nor the `get_result` reply. The example client
-(`examples/native/rust/action-client-async/src/main.rs`) sent `get_result` only
+(`examples/linux/rust/action-client-async/src/main.rs`) sent `get_result` only
 after it had seen the LAST feedback sample: its `while let Some(..) =
 stream.next().await` loop broke only on `feedback.sequence.len() > order`.
 Feedback is lossy:
 
-- In its default unpaced mode the server (`examples/native/rust/action-server`)
+- In its default unpaced mode the server (`examples/linux/rust/action-server`)
   publishes all 11 feedback samples in one tick, then completes the goal.
 - The client's feedback subscriber ring holds 4
   (`SUBSCRIBER_RING_DEPTH_DEFAULT`), and when it is full the producer drops the

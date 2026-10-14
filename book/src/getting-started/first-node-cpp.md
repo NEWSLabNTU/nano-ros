@@ -47,7 +47,7 @@ See [Install + first build (Linux)](./installation.md) for more.
 The talker is a **standalone CMake project**. Three files matter:
 
 ```text
-examples/native/cpp/talker/
+examples/linux/cpp/talker/
 ├── system.toml         # WHAT this deploys to — the one file you edit
 ├── CMakeLists.txt      # find_package + targets; no board facts
 ├── package.xml         # ROS-style manifest
@@ -73,7 +73,7 @@ tuple is retired and refused.
 
 The CMakeLists is the **ament shape you already know** — this is the
 complete canonical file at
-[`examples/native/cpp/talker/CMakeLists.txt`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/native/cpp/talker/CMakeLists.txt),
+[`examples/linux/cpp/talker/CMakeLists.txt`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/linux/cpp/talker/CMakeLists.txt),
 verbatim (RFC-0048: `nano_rosConfig.cmake` at the checkout root makes
 `find_package(nano_ros)` resolve source-side, and the message-package
 Find-stubs make `find_package(std_msgs)` generate bindings on the fly):
@@ -184,7 +184,7 @@ same `rclcpp::init_in` call — see the GitHub source for the full pattern.
 ## Build
 
 ```bash
-cd examples/native/cpp/talker
+cd examples/linux/cpp/talker
 cmake -B build -Dnano_ros_ROOT="$(nros sdk-root)"
                         # raw cmake names the root; `nros build` (or the
                         # CMakePresets `nros init` writes) passes it for you
@@ -212,7 +212,7 @@ source /opt/ros/humble/setup.bash
 ros2 run rmw_zenoh_cpp rmw_zenohd    # or: just zenohd
 
 # 2. Run the talker:
-cd examples/native/cpp/talker
+cd examples/linux/cpp/talker
 ./build/cpp_talker
 # Expected:
 #   nros C++ Talker
@@ -250,17 +250,17 @@ line in 30 seconds:
 ## GitHub source
 
 Canonical, copy-out:
-[`examples/native/cpp/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/native/cpp/talker)
+[`examples/linux/cpp/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/linux/cpp/talker)
 
 ## Next
 
 - Add a subscription:
-  [`examples/native/cpp/listener/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/native/cpp/listener)
+  [`examples/linux/cpp/listener/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/linux/cpp/listener)
 - Services + actions:
-  [`service-client/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/native/cpp/service-client),
-  [`action-client/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/native/cpp/action-client)
+  [`service-client/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/linux/cpp/service-client),
+  [`action-client/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/linux/cpp/action-client)
 - Parameters:
-  [`parameters/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/native/cpp/parameters)
+  [`parameters/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/linux/cpp/parameters)
 - Custom `.msg` / `.srv` / `.action`:
   [Message Generation](../user-guide/message-generation.md)
 - Cross-compile for an RTOS: pick the right Embedded Starter from

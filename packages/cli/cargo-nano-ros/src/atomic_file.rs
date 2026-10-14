@@ -73,7 +73,7 @@ pub fn atomic_write_reporting(dst: &Path, body: &[u8]) -> Result<bool> {
     // charging a full reconfigure for no change at all.
     //
     // Measured on NO-OP syncs, where nothing had changed between runs:
-    //   examples/native/rust/talker      2 files re-stamped
+    //   examples/linux/rust/talker      2 files re-stamped
     //   examples/workspaces/features    27 files re-stamped
     //
     // The comparison costs one read of a file we are about to overwrite

@@ -247,7 +247,7 @@ pub const CELLS: &[InteropCell] = &[
        LinuxFixtures, RosEdition(Zenoh), BiDir, "interop_e2e"),
     // phase-433 W3 — the cyclone half is C, not Rust. `interop_e2e`'s three
     // cyclone cases spawn `nano_cyclone_c_binary(...)`: `c_talker`,
-    // `c_listener`, `c_service_server` out of `examples/native/c/`. These rows
+    // `c_listener`, `c_service_server` out of `examples/linux/c/`. These rows
     // said Rust, `scenario_coord` returned `Lang::Rust` unconditionally, and
     // the per-case tripwire compared the two — so the language axis was
     // inverted and agreed with itself. The vacated Rust/Cyclonedds shapes are
@@ -259,7 +259,7 @@ pub const CELLS: &[InteropCell] = &[
        c(Linux, C, Cyclonedds, Service, Interop, Runtime),
        LinuxFixtures, RosEdition(Cyclonedds), BiDir, "interop_e2e"),
     // The shapes the two rows above used to claim. Recorded rather than
-    // dropped because the artifacts EXIST — `examples/native/rust/{talker,
+    // dropped because the artifacts EXIST — `examples/linux/rust/{talker,
     // listener,service-server,service-client}` all have `linux/rust/cyclonedds`
     // rows in `examples/fixtures.toml` — so the absence is a missing lane, not
     // a missing build, and nothing else in the tree would say so. Rust ↔

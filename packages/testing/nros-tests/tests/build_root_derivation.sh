@@ -178,7 +178,7 @@ scenario '
     #
     # What actually breaks is <group>/<profile>/<bin>, which cargo does NOT
     # hash. Under a platform-grained key the four manifest rows of
-    # examples/native/rust/talker (default / rmw-zenoh / rmw-xrce / link-tls)
+    # examples/linux/rust/talker (default / rmw-zenoh / rmw-xrce / link-tls)
     # all write ONE path; measured on a provisioned tree they are four different
     # binaries (8616504 / 8616504 / 6514392 / 9034536 bytes, four distinct
     # sha256), and a second cargo invocation replaces the artifact with no

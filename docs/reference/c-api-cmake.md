@@ -286,7 +286,7 @@ The C parameter server, `<rclc_parameter/rclc_parameter.h>` (RFC-0105), is
 compiled into `nros-c` only when the image declares the `param_services`
 capability: `features = ["param_services"]` under `[system]` in `system.toml`,
 or `set(NROS_FEATURES "param_services")` before `add_subdirectory(<nano-ros>)`
-(see `examples/native/c/parameters/CMakeLists.txt`). Without it the header
+(see `examples/linux/c/parameters/CMakeLists.txt`). Without it the header
 stops the build with a message naming the capability. The generated config
 header states the answer as `NROS_HAS_PARAM_SERVICES` (0 or 1), so you do not
 find out from a linker error (issue 0865).

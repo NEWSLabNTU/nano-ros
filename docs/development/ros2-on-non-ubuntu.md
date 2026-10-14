@@ -190,6 +190,6 @@ so it counts among the skipped rather than the failed.)
 
 Arch host (glibc 2.44) + Ubuntu 22.04.5 box (glibc 2.35), 2026-08-01:
 `nros setup` for zenoh and cyclonedds, `nros sync`, a cyclone-backed
-`examples/native/rust/talker` build, and `ros2 topic echo /chatter` receiving
+`examples/linux/rust/talker` build, and `ros2 topic echo /chatter` receiving
 its messages over `rmw_cyclonedds_cpp` with `ros2 topic list` showing
 `/chatter`.

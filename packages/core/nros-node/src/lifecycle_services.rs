@@ -672,7 +672,7 @@ pub fn transition_event_qos() -> nros_rmw::QoSProfile {
 // that wants lifecycle to also carry the parameter services and their message
 // crate. Reading it from the gated module is what made this configuration --
 // `lifecycle-services` without `param-services`, which is what
-// `examples/native/rust/lifecycle-node` builds -- fail to compile at all.
+// `examples/linux/rust/lifecycle-node` builds -- fail to compile at all.
 pub use crate::param_sizing::{
     PARAM_INBOX_DEPTH as LIFECYCLE_INBOX_DEPTH,
     PARAM_INBOX_SLOT_BYTES as LIFECYCLE_INBOX_SLOT_BYTES,
