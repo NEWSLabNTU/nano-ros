@@ -752,6 +752,8 @@ std::thread_local! {
 
 #[cfg(all(test, feature = "std", feature = "param-store"))]
 impl RefuseParameterStore {
+    // Only `executor::tests` arms it, and that module is mock-session only.
+    #[cfg(not(feature = "rmw-cffi"))]
     pub(crate) fn arm() -> Self {
         REFUSE_PARAMETER_STORE.with(|c| c.set(true));
         Self
@@ -11644,7 +11646,9 @@ impl<'s> Executor<'s> {
     /// The `~/transition_event` publisher, for the tests that assert what
     /// reached the wire. Not a public capability: the executor announces, and
     /// a second publisher on the same topic would be a second source of truth.
-    #[cfg(test)]
+    /// Its only callers are the mock-session tests, which a `rmw-cffi` build
+    /// does not compile.
+    #[cfg(all(test, not(feature = "rmw-cffi")))]
     pub(crate) fn lifecycle_transition_event_publisher(&self) -> Option<&session::RmwPublisher> {
         self.lifecycle.as_ref().map(|lc| &lc.transition_event)
     }

@@ -797,3 +797,70 @@ impl Session for MockSession {
         Ok(())
     }
 }
+
+/// A lent slot: an owned record of `len` bytes that `commit_slot` publishes.
+///
+/// Without these two impls a `rmw-lending` build's TEST target did not
+/// compile — the lending path names `SlotLending` / `SlotBorrowing` on the
+/// concrete session's types, and under `cfg(test)` that session is this mock —
+/// so the path was reachable from no unit test, only through `rmw-cffi`.
+#[cfg(feature = "rmw-lending")]
+pub struct MockSlot {
+    buf: [u8; MOCK_PUBLISH_RECORD],
+    len: usize,
+}
+
+#[cfg(feature = "rmw-lending")]
+impl AsMut<[u8]> for MockSlot {
+    fn as_mut(&mut self) -> &mut [u8] {
+        &mut self.buf[..self.len]
+    }
+}
+
+#[cfg(feature = "rmw-lending")]
+impl nros_rmw::SlotLending for MockPublisher {
+    type Slot<'a> = MockSlot;
+
+    fn try_lend_slot(&self, len: usize) -> Result<Option<MockSlot>, TransportError> {
+        // A slot larger than the record can never be lent, so the answer is
+        // permanent and an error — `Ok(None)` would read as "retry" (issue 0814).
+        if len > MOCK_PUBLISH_RECORD {
+            return Err(TransportError::MessageTooLarge);
+        }
+        Ok(Some(MockSlot {
+            buf: [0u8; MOCK_PUBLISH_RECORD],
+            len,
+        }))
+    }
+
+    fn commit_slot(&self, slot: MockSlot) -> Result<(), TransportError> {
+        self.publish_raw(&slot.buf[..slot.len])
+    }
+}
+
+/// A borrowed view: the popped sample, owned, so nothing outlives the take.
+#[cfg(feature = "rmw-lending")]
+pub struct MockView {
+    data: [u8; 256],
+    len: usize,
+}
+
+#[cfg(feature = "rmw-lending")]
+impl AsRef<[u8]> for MockView {
+    fn as_ref(&self) -> &[u8] {
+        &self.data[..self.len]
+    }
+}
+
+#[cfg(feature = "rmw-lending")]
+impl nros_rmw::SlotBorrowing for MockSubscriber {
+    type View<'a> = MockView;
+
+    fn try_borrow(&mut self) -> Result<Option<MockView>, TransportError> {
+        match self.queue.borrow_mut().pop_front() {
+            Some(Ok((data, len))) => Ok(Some(MockView { data, len })),
+            Some(Err(err)) => Err(err),
+            None => Ok(None),
+        }
+    }
+}

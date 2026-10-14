@@ -45,10 +45,7 @@ pub const PROBE_SAMPLE_CAP: usize = 256;
 /// `(T1 - T0)` deltas in caller's cycle / ns units. Caller
 /// converts to ns via the same source the cycle reader uses
 /// (e.g. `nros_platform_mps2_an385::timing::cycles_to_ns`).
-static SAMPLES: [AtomicU64; PROBE_SAMPLE_CAP] = {
-    const ZERO: AtomicU64 = AtomicU64::new(0);
-    [ZERO; PROBE_SAMPLE_CAP]
-};
+static SAMPLES: [AtomicU64; PROBE_SAMPLE_CAP] = [const { AtomicU64::new(0) }; PROBE_SAMPLE_CAP];
 
 /// Monotonic write counter (not modulo). Index into `SAMPLES`
 /// is `WRITE_IDX % PROBE_SAMPLE_CAP`. Drained value lets the
@@ -289,7 +286,7 @@ impl Default for Histogram {
 ///
 /// `BUF_SAMPLES` should match [`PROBE_SAMPLE_CAP`] for a complete
 /// drain per call; smaller buffers are accepted (caller can loop
-/// + drain incrementally when memory pressure makes the full
+/// and drain incrementally when memory pressure makes the full
 /// cap infeasible, though the 256 * 8 = 2 KB requirement is
 /// trivial on the MPS2-AN385).
 pub fn drain_into<const BUF_SAMPLES: usize>(
@@ -345,6 +342,9 @@ pub fn write_csv<W: core::fmt::Write>(w: &mut W, hist: &Histogram) -> core::fmt:
 // Host-side parser (Phase 141.C.2) — std only.
 // ============================================================================
 
+/// One `(edge_ns, count)` row per histogram bucket, as [`parse_csv`] returns it.
+pub type HistogramEdges = [(u64, u32); HISTOGRAM_BUCKETS];
+
 /// Parse the CSV emitted by [`write_csv`]. Host-only (`std`
 /// feature) so the no_std embedded build doesn't pay any cost.
 ///
@@ -357,7 +357,7 @@ pub fn write_csv<W: core::fmt::Write>(w: &mut W, hist: &Histogram) -> core::fmt:
 // (a host-side analysis tool reading a probe dump) rather than what it needs,
 // and a target that wants to parse its own histogram back was refused for no
 // reason.
-pub fn parse_csv(input: &str) -> Result<([(u64, u32); HISTOGRAM_BUCKETS], u32), &'static str> {
+pub fn parse_csv(input: &str) -> Result<(HistogramEdges, u32), &'static str> {
     let mut lines = input.lines();
     let header = lines.next().ok_or("empty input")?;
     if header.trim() != "NROS-WAKE-HIST,v1" {
