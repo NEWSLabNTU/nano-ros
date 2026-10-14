@@ -28,6 +28,8 @@ static MONITORS: &[MonitorSpec] = &[MonitorSpec {
     fqn: "/cm/pub/cm_header",
     min_rate_hz_milli: MIN_RATE_HZ_MILLI,
     max_latency_ms: 0,
+    route_trigger: "",
+    route_max_latency_ms: 0,
     cell: &PUB_CELL,
 }];
 

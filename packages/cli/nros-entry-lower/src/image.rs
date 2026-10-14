@@ -331,6 +331,11 @@ pub struct MonitorRow {
     pub fqn: String,
     pub min_rate_hz_milli: u32,
     pub max_latency_ms: u32,
+    /// phase10-B3 -- the route's trigger topic (empty: no route) and budget.
+    #[serde(default)]
+    pub route_trigger: String,
+    #[serde(default)]
+    pub route_max_latency_ms: u32,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

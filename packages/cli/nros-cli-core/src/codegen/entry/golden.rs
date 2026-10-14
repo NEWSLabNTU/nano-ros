@@ -715,6 +715,8 @@ fn golden_monitor_rows() -> (
         fqn: fqn.into(),
         min_rate_hz_milli: hz_milli,
         max_latency_ms: lat,
+        route_trigger: String::new(),
+        route_max_latency_ms: 0,
     };
     let age = |topic: &str, fqn: &str, ms: u32| AgeRow {
         topic: topic.into(),
@@ -724,7 +726,13 @@ fn golden_monitor_rows() -> (
     (
         vec![
             rate("/chatter", "/talker/chatter", 10_000, 30),
-            rate("/cmd", "/ctrl/cmd", 100_000, 5),
+            // phase10-B3 -- a route row: `/cmd` answers a take of `/setpoint`
+            // within 8 ms.
+            MonitorRow {
+                route_trigger: "/setpoint".into(),
+                route_max_latency_ms: 8,
+                ..rate("/cmd", "/ctrl/cmd", 100_000, 5)
+            },
             rate("/telemetry", "/telem/telemetry", 1_000, 0),
             rate("/elsewhere", "/not_in_this_image/elsewhere", 1_000, 0),
         ],

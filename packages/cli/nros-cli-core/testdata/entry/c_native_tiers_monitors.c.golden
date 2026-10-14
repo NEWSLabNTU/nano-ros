@@ -32,7 +32,7 @@ static nros_cpp_node_t __nros_node_1;
  * (`nros_cpp_install_monitors`), so an image with no contract carries none of
  * this. The storage is `uint64_t` so it is 8-aligned without C11 `_Alignas`. */
 static const nros_cpp_monitor_row_t __nros_mon_rows_t0[1] = {
-    { "/cmd", "/ctrl/cmd", 100000u, 5u },
+    { "/cmd", "/ctrl/cmd", 100000u, 5u, "/setpoint", 8u },
 };
 static uint64_t __nros_mon_storage_t0[(1u * NROS_CPP_MONITOR_ROW_STORAGE + 7u) / 8u];
 
@@ -43,7 +43,7 @@ static uint64_t __nros_mon_storage_t0[(1u * NROS_CPP_MONITOR_ROW_STORAGE + 7u) /
  * (`nros_cpp_install_monitors`), so an image with no contract carries none of
  * this. The storage is `uint64_t` so it is 8-aligned without C11 `_Alignas`. */
 static const nros_cpp_monitor_row_t __nros_mon_rows_t1[1] = {
-    { "/telemetry", "/telem/telemetry", 1000u, 0u },
+    { "/telemetry", "/telem/telemetry", 1000u, 0u, NULL, 0u },
 };
 static uint64_t __nros_mon_storage_t1[(1u * NROS_CPP_MONITOR_ROW_STORAGE + 7u) / 8u];
 static const nros_cpp_age_row_t __nros_age_rows_t1[1] = {

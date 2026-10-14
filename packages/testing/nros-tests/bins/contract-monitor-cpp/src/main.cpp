@@ -42,7 +42,7 @@ constexpr uint32_t kMinRateHzMilli = 10000u;
 
 // The one row, in the C spelling the generated entry bakes.
 const nros_cpp_monitor_row_t kRows[1] = {
-    {kHeaderTopic, kPubFqn, kMinRateHzMilli, 0u},
+    {kHeaderTopic, kPubFqn, kMinRateHzMilli, 0u, nullptr, 0u},
 };
 alignas(8) unsigned char g_row_storage[1 * NROS_CPP_MONITOR_ROW_STORAGE];
 

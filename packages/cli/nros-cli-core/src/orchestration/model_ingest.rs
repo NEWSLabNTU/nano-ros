@@ -1578,6 +1578,64 @@ mod monitor_tests {
         assert!(rs.contains("max_latency_ms: 20u32"));
     }
 
+    /// phase10-B3 -- an input-triggered path is a route: its outputs' rows
+    /// carry the trigger's WIRING topic and the path's budget; the tightest
+    /// path naming an output wins; a timer path (no input) and a trigger the
+    /// wiring does not place give no route.
+    #[test]
+    fn an_input_triggered_path_is_a_route_on_its_outputs() {
+        use ros_launch_manifest_model::PathContract;
+        let mut m = model_with_contract();
+        m.structure.topics.insert(
+            "/sensing/scan".to_string(),
+            TopicWiring {
+                msg_type: "std_msgs/msg/String".to_string(),
+                publishers: vec![],
+                subscribers: vec!["/perception/detector/scan".to_string()],
+            },
+        );
+        let path = |input: &[&str], lat: f64| PathContract {
+            input: input.iter().map(|s| s.to_string()).collect(),
+            output: vec!["/perception/detector/objects".to_string()],
+            max_latency_ms: Some(lat),
+            ..Default::default()
+        };
+        m.contracts
+            .node_paths
+            .insert("/perception/detector/tick".to_string(), path(&[], 100.0));
+        m.contracts.node_paths.insert(
+            "/perception/detector/react".to_string(),
+            path(&["/perception/detector/scan"], 149.0),
+        );
+        m.contracts.node_paths.insert(
+            "/perception/detector/slow".to_string(),
+            path(&["/perception/detector/scan"], 300.0),
+        );
+        m.contracts.node_paths.insert(
+            "/perception/detector/unwired".to_string(),
+            path(&["/perception/detector/nowhere"], 50.0),
+        );
+        let rows = monitor_rows(&m).expect("rows");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(
+            rows[0].max_latency_ms, 300,
+            "the callback budget is unchanged"
+        );
+        assert_eq!(rows[0].route_trigger, "/sensing/scan");
+        assert_eq!(rows[0].route_max_latency_ms, 149, "the tightest route");
+        let rs = render_monitor_rs(&rows, &[]);
+        assert!(
+            rs.contains("route_trigger: \"/sensing/scan\", route_max_latency_ms: 149u32"),
+            "{rs}"
+        );
+
+        // A timer path alone is no route.
+        m.contracts.node_paths.retain(|k, _| k.ends_with("/tick"));
+        let rows = monitor_rows(&m).expect("rows");
+        assert_eq!(rows[0].route_trigger, "");
+        assert_eq!(rows[0].route_max_latency_ms, 0);
+    }
+
     /// phase-462 W2 -- a model whose subscription declares `on_violation` and
     /// whose reaction path declares `miss.action`.
     fn model_with_on_violation(
