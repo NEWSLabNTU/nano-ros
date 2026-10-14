@@ -364,3 +364,56 @@ fn condvar_signal_all_wakes_every_waiter() {
         let _ = Box::from_raw(m as *mut MaybeUninit<libc::pthread_mutex_t>);
     }
 }
+
+/// Issue 1907 -- both mutex kinds inherit priority.
+///
+/// glibc offers no getter for a mutex's protocol, but the protocol is visible
+/// in the futex word (`__data.__lock`, the first `int` of `pthread_mutex_t`).
+/// A priority-inheriting mutex is a PI futex, whose word holds the owner's
+/// thread id while locked. A `PTHREAD_PRIO_NONE` mutex holds `1` there. So
+/// locking the mutex and reading back our own tid proves the protocol.
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+#[test]
+fn both_mutex_kinds_inherit_priority() {
+    fn futex_word_while_locked(rec: bool) -> i32 {
+        let m =
+            Box::into_raw(Box::new(MaybeUninit::<libc::pthread_mutex_t>::zeroed())) as *mut c_void;
+        type MutexOp = fn(*mut c_void) -> i8;
+        let (init, lock, unlock, drop): (MutexOp, MutexOp, MutexOp, MutexOp) = if rec {
+            (
+                CffiPlatform::mutex_rec_init,
+                CffiPlatform::mutex_rec_lock,
+                CffiPlatform::mutex_rec_unlock,
+                CffiPlatform::mutex_rec_drop,
+            )
+        } else {
+            (
+                CffiPlatform::mutex_init,
+                CffiPlatform::mutex_lock,
+                CffiPlatform::mutex_unlock,
+                CffiPlatform::mutex_drop,
+            )
+        };
+        assert_eq!(init(m), 0);
+        assert_eq!(lock(m), 0);
+        let word = unsafe { core::ptr::read_volatile(m as *const i32) };
+        assert_eq!(unlock(m), 0);
+        assert_eq!(drop(m), 0);
+        unsafe {
+            let _ = Box::from_raw(m as *mut MaybeUninit<libc::pthread_mutex_t>);
+        }
+        word
+    }
+
+    let tid = unsafe { libc::gettid() };
+    assert_eq!(
+        futex_word_while_locked(false),
+        tid,
+        "mutex_init must create a PTHREAD_PRIO_INHERIT mutex (its futex word holds the owner tid)"
+    );
+    assert_eq!(
+        futex_word_while_locked(true),
+        tid,
+        "mutex_rec_init must create a PTHREAD_PRIO_INHERIT mutex (its futex word holds the owner tid)"
+    );
+}

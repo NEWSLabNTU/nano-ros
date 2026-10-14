@@ -508,11 +508,46 @@ void nros_platform_task_free(void **task) {
 
 /* ---- Non-recursive mutex ---- */
 
+/* Issue 1907 -- every mutex here inherits priority.
+ *
+ * The POSIX default protocol is PTHREAD_PRIO_NONE, on glibc and NuttX alike,
+ * so a low-priority thread holding one of these mutexes could be preempted
+ * indefinitely by a middle-priority one while a high-priority thread waited
+ * on it: an unbounded priority inversion. Issue 1196 exempts mutex waits
+ * from its "no unbounded wait" rule on the grounds that every port's mutex
+ * inherits priority, and on this port that was not true.
+ *
+ * NuttX supports the protocol only when its kernel is built with
+ * CONFIG_PRIORITY_INHERITANCE; without it `pthread_mutexattr_setprotocol`
+ * returns ENOTSUP at runtime. NuttX does not define
+ * `_POSIX_THREAD_PRIO_INHERIT`, so the kernel option is the only thing to
+ * test, and a kernel without it is refused here at compile time rather than
+ * at the first mutex. The in-tree NuttX defconfigs set it. */
+#if defined(__NuttX__) && !defined(CONFIG_PRIORITY_INHERITANCE)
+#  error "nros-platform-posix on NuttX needs CONFIG_PRIORITY_INHERITANCE=y (issue 1907)"
+#endif
+
+/* Initialise `m` as a priority-inheriting mutex of `type`. */
+static int8_t nros_posix_pi_mutex_init(pthread_mutex_t *m, int type) {
+    pthread_mutexattr_t attr;
+    if (pthread_mutexattr_init(&attr) != 0) {
+        return -1;
+    }
+    int8_t rc = -1;
+    if (pthread_mutexattr_settype(&attr, type) == 0
+        && pthread_mutexattr_setprotocol(&attr, PTHREAD_PRIO_INHERIT) == 0
+        && pthread_mutex_init(m, &attr) == 0) {
+        rc = 0;
+    }
+    pthread_mutexattr_destroy(&attr);
+    return rc;
+}
+
 int8_t nros_platform_mutex_init(void *m) {
     if (m == NULL) {
         return -1;
     }
-    return pthread_mutex_init((pthread_mutex_t *) m, NULL) == 0 ? 0 : -1;
+    return nros_posix_pi_mutex_init((pthread_mutex_t *) m, PTHREAD_MUTEX_DEFAULT);
 }
 
 int8_t nros_platform_mutex_drop(void *m) {
@@ -552,17 +587,7 @@ int8_t nros_platform_mutex_rec_init(void *m) {
     if (m == NULL) {
         return -1;
     }
-    pthread_mutexattr_t attr;
-    if (pthread_mutexattr_init(&attr) != 0) {
-        return -1;
-    }
-    int8_t rc = -1;
-    if (pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE) == 0
-        && pthread_mutex_init((pthread_mutex_t *) m, &attr) == 0) {
-        rc = 0;
-    }
-    pthread_mutexattr_destroy(&attr);
-    return rc;
+    return nros_posix_pi_mutex_init((pthread_mutex_t *) m, PTHREAD_MUTEX_RECURSIVE);
 }
 
 int8_t nros_platform_mutex_rec_drop(void *m) {

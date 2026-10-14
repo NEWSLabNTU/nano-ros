@@ -1040,11 +1040,21 @@ int8_t nros_platform_condvar_signal_all(void* cv) {
     return k_condvar_broadcast(c) >= 0 ? 0 : -1;
 }
 
+/* Issue 1907 -- a condvar wait requires the caller to hold `m` exactly once.
+ * `k_mutex` is recursive and `k_condvar_wait` unlocks it ONCE
+ * (kernel/condvar.c), so a caller holding it twice would keep it across the
+ * wait, and every signaller would block on it for good. Refused instead, so
+ * the caller gets an error rather than a deadlock. */
+static bool nros_zephyr_held_once(const struct k_mutex* mu) {
+    return mu->owner == k_current_get() && mu->lock_count == 1U;
+}
+
 int8_t nros_platform_condvar_wait(void* cv, void* m) {
     if (cv == NULL || m == NULL) return -1;
     struct k_condvar* c = NROS_Z_HANDLE(cv);
     struct k_mutex* mu = NROS_Z_HANDLE(m);
     if (c == NULL || mu == NULL) return -1;
+    if (!nros_zephyr_held_once(mu)) return -1;
     return k_condvar_wait(c, mu, K_FOREVER) == 0 ? 0 : -1;
 }
 
@@ -1053,6 +1063,7 @@ int8_t nros_platform_condvar_wait_until(void* cv, void* m, uint64_t abstime_ms) 
     struct k_condvar* c = NROS_Z_HANDLE(cv);
     struct k_mutex* mu = NROS_Z_HANDLE(m);
     if (c == NULL || mu == NULL) return -1;
+    if (!nros_zephyr_held_once(mu)) return -1;
     /* `abstime_ms` is on the same monotonic epoch as the platform clock;
      * k_condvar_wait takes a RELATIVE timeout. */
     uint64_t now_ms = nros_platform_clock_ns() / 1000000ULL;

@@ -128,7 +128,7 @@ Available: K_PRIO_COOP(n), K_PRIO_PREEMPT(n), deadline scheduling
 | SCHED_FIFO | `sched_setscheduler(SCHED_FIFO)` | Not used (runs at kernel default) |
 | SCHED_RR | `sched_setscheduler(SCHED_RR)` | Not used |
 | SCHED_SPORADIC | NuttX extension | Not used |
-| Priority inheritance mutexes | `PTHREAD_PRIO_INHERIT` | Not used |
+| Priority inheritance mutexes | `PTHREAD_PRIO_INHERIT` | Used: every `nros-platform-posix` mutex sets it, and the in-tree defconfigs enable `CONFIG_PRIORITY_INHERITANCE` (issue 1907) |
 | pthread priority | `pthread_attr_setschedparam()` | Not used |
 | CPU affinity (SMP) | `sched_setaffinity()` | Not used |
 | pthread barriers | `pthread_barrier_*()` | Not used |

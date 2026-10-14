@@ -135,6 +135,11 @@ CONFIG_NET_LL_GUARDSIZE=28
 CONFIG_DEVICE_TREE=y
 
 # --- POSIX threading (required by zenoh-pico + Rust std TLS) ---
+# Issue 1907: nano-ros mutexes inherit priority. With this set, the
+# pthread mutex protocol defaults to PTHREAD_PRIO_INHERIT, and
+# nros-platform-posix refuses to build without it. Counting semaphores
+# stay SEM_PRIO_NONE, so signalling semaphores are unaffected.
+CONFIG_PRIORITY_INHERITANCE=y
 CONFIG_PTHREAD_MUTEX_TYPES=y
 CONFIG_PTHREAD_MUTEX_BOTH=y
 CONFIG_PTHREAD_STACK_DEFAULT=65536

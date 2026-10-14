@@ -246,11 +246,9 @@ function(nros_board_link_app target)
     # `NROS_PKG_NAME` — without it the component registers as
     # `__nros_c_component_NROS_PKG_NAME_*` and the generated entry's
     # `__nros_c_component_<pkg>_*` references fail to link.
-    get_target_property(_cdefs ${target} COMPILE_DEFINITIONS)
-    set(_compile_defs "")
-    if(_cdefs)
-        set(_compile_defs ${_cdefs})
-    endif()
+    # Per-source definitions too: `main=nros_ported_main` lives on the
+    # program's sources, not the target (phase-499 W5).
+    nros_target_ferried_compile_definitions(${target} _compile_defs)
 
     nros_nuttx_build_example(
         NAME            "${target}"

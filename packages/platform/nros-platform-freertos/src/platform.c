@@ -853,6 +853,10 @@ int8_t nros_platform_condvar_wait(void *cv, void *m) {
     return 0;
 }
 
+/* Issue 1907 -- the caller must hold `m` exactly once (`nros/platform.h`).
+ * Every mutex here is recursive and the unlock below releases one level. The
+ * recursion count is private to the kernel's queue object, so unlike ThreadX
+ * and Zephyr this port cannot refuse a caller holding it twice. */
 int8_t nros_platform_condvar_wait_until(void *cv, void *m, uint64_t abstime_ms) {
     if (cv == NULL || m == NULL) return -1;
     nros_freertos_condvar_t *c = (nros_freertos_condvar_t *) cv;

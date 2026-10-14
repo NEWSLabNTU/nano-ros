@@ -1314,7 +1314,7 @@ version = "0.2-nuttx"
 dest = "third-party/nuttx/libc"
 submodule = "third-party/nuttx/libc"
 git = "https://github.com/jerry73204/libc.git"
-ref = "826c4ca918d870723a750b5f8adc863e0467ea0a"
+ref = "994735191a4bd3872cd61e6210dc65e584c2c161"
 
 # px4-rs Rust bindings fork. The px4 examples path-dep its crates, AND the root
 # workspace lists `packages/testing/nros-tests` which path-deps px4-sitl-tests

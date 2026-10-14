@@ -606,7 +606,14 @@ size_t nros_platform_condvar_storage_align(void);
 #endif
 
 
-/* ---- Threading: non-recursive mutex ---- */
+/* ---- Threading: non-recursive mutex ----
+ *
+ * Both mutex kinds INHERIT PRIORITY on every port (issue 1907): Zephyr's
+ * `k_mutex`, FreeRTOS's mutex semaphores and ThreadX's `TX_INHERIT` do it
+ * natively, and the POSIX port sets `PTHREAD_PRIO_INHERIT` (on NuttX that
+ * needs CONFIG_PRIORITY_INHERITANCE, which it refuses to build without). A
+ * new port must do the same: a mutex wait is exempt from the "no unbounded
+ * wait" rule (issue 1196) only because inheritance bounds it. */
 
 int8_t nros_platform_mutex_init(void *m);
 int8_t nros_platform_mutex_drop(void *m);
@@ -624,7 +631,16 @@ int8_t nros_platform_mutex_rec_lock(void *m);
 int8_t nros_platform_mutex_rec_try_lock(void *m);
 int8_t nros_platform_mutex_rec_unlock(void *m);
 
-/* ---- Threading: condition variables ---- */
+/* ---- Threading: condition variables ----
+ *
+ * The mutex a wait releases must be held by the caller EXACTLY ONCE (issue
+ * 1907). Several ports build every mutex as a recursive one, and the kernels'
+ * condition waits release one level: a caller holding `m` twice would keep it
+ * across the wait, and every signaller would block on it. POSIX gives the
+ * same advice for a recursive mutex. ThreadX and Zephyr's native arm refuse
+ * such a wait (-1). NuttX releases every level, which is not portable.
+ * FreeRTOS and Zephyr's POSIX arm cannot see the count, so there such a wait
+ * deadlocks. */
 
 int8_t nros_platform_condvar_init(void *cv);
 int8_t nros_platform_condvar_drop(void *cv);
