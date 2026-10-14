@@ -392,9 +392,6 @@ impl nros_platform_api::PlatformThreading for CffiPlatform {
     fn condvar_signal_from_isr(cv: *mut c_void) -> i8 {
         unsafe { nros_platform_condvar_signal_from_isr(cv) }
     }
-    fn condvar_wait(cv: *mut c_void, m: *mut c_void) -> i8 {
-        unsafe { nros_platform_condvar_wait(cv, m) }
-    }
     fn condvar_wait_until(cv: *mut c_void, m: *mut c_void, abstime: u64) -> i8 {
         unsafe { nros_platform_condvar_wait_until(cv, m, abstime) }
     }
@@ -876,13 +873,6 @@ macro_rules! nros_platform_export_threading {
             cv: *mut ::core::ffi::c_void,
         ) -> i8 {
             <$ty as ::nros_platform_api::PlatformThreading>::condvar_signal_from_isr(cv)
-        }
-        #[unsafe(no_mangle)]
-        pub extern "C" fn nros_platform_condvar_wait(
-            cv: *mut ::core::ffi::c_void,
-            m: *mut ::core::ffi::c_void,
-        ) -> i8 {
-            <$ty as ::nros_platform_api::PlatformThreading>::condvar_wait(cv, m)
         }
         #[unsafe(no_mangle)]
         pub extern "C" fn nros_platform_condvar_wait_until(
@@ -1567,9 +1557,6 @@ mod test_self_export {
             0
         }
         fn condvar_signal_all(_: *mut c_void) -> i8 {
-            0
-        }
-        fn condvar_wait(_: *mut c_void, _: *mut c_void) -> i8 {
             0
         }
         fn condvar_wait_until(_: *mut c_void, _: *mut c_void, _: u64) -> i8 {

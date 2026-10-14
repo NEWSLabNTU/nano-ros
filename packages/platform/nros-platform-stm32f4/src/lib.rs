@@ -302,9 +302,6 @@ impl Stm32f4Platform {
     pub fn condvar_signal_all(_: *mut core::ffi::c_void) -> i8 {
         0
     }
-    pub fn condvar_wait(_: *mut core::ffi::c_void, _: *mut core::ffi::c_void) -> i8 {
-        0
-    }
     pub fn condvar_wait_until(_: *mut core::ffi::c_void, _: *mut core::ffi::c_void, _: u64) -> i8 {
         0
     }
@@ -375,9 +372,6 @@ impl nros_platform_api::PlatformThreading for Stm32f4Platform {
     }
     fn condvar_signal_all(cv: *mut core::ffi::c_void) -> i8 {
         Self::condvar_signal_all(cv)
-    }
-    fn condvar_wait(cv: *mut core::ffi::c_void, m: *mut core::ffi::c_void) -> i8 {
-        Self::condvar_wait(cv, m)
     }
     fn condvar_wait_until(
         cv: *mut core::ffi::c_void,

@@ -375,9 +375,6 @@ impl Mps2An385Platform {
     pub fn condvar_signal_all(_cv: *mut core::ffi::c_void) -> i8 {
         0
     }
-    pub fn condvar_wait(_cv: *mut core::ffi::c_void, _m: *mut core::ffi::c_void) -> i8 {
-        0
-    }
     pub fn condvar_wait_until(
         _cv: *mut core::ffi::c_void,
         _m: *mut core::ffi::c_void,
@@ -452,9 +449,6 @@ impl nros_platform_api::PlatformThreading for Mps2An385Platform {
     }
     fn condvar_signal_all(cv: *mut core::ffi::c_void) -> i8 {
         Self::condvar_signal_all(cv)
-    }
-    fn condvar_wait(cv: *mut core::ffi::c_void, m: *mut core::ffi::c_void) -> i8 {
-        Self::condvar_wait(cv, m)
     }
     fn condvar_wait_until(
         cv: *mut core::ffi::c_void,

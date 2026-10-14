@@ -180,9 +180,6 @@ fn explicit_unsupported_path_returns_initerror() {
         fn condvar_signal_all(_: *mut std::ffi::c_void) -> i8 {
             -1
         }
-        fn condvar_wait(_: *mut std::ffi::c_void, _: *mut std::ffi::c_void) -> i8 {
-            -1
-        }
         fn condvar_wait_until(_: *mut std::ffi::c_void, _: *mut std::ffi::c_void, _: u64) -> i8 {
             -1
         }

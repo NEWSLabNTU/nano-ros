@@ -40,7 +40,7 @@ Bare-metal platforms back this with a bump allocator (`linked-list-allocator` or
 
 ### Threading -- `PlatformThreading`
 
-Three sub-areas: tasks (spawn/join/exit), mutexes (regular + recursive), and condition variables. Single-threaded targets (bare-metal) provide stub implementations: `task_init` returns -1 (so zenoh-pico's lease task spawn fails gracefully and the application drives lease-keepalive itself), and `mutex_lock`/`condvar_wait` are no-ops that always succeed.
+Three sub-areas: tasks (spawn/join/exit), mutexes (regular + recursive), and condition variables. Single-threaded targets (bare-metal) provide stub implementations: `task_init` returns -1 (so zenoh-pico's lease task spawn fails gracefully and the application drives lease-keepalive itself), and `mutex_lock`/`condvar_wait_until` are no-ops that always succeed. There is no unbounded `condvar_wait` in the ABI (removed by issue 1196): a caller whose contract is unbounded loops over `condvar_wait_until` and re-tests its predicate.
 
 The condvar API is the load-bearing one: zenoh-pico's blocking `z_get` and the C++ `Future::wait` both block on a condvar that the receive callback signals. On single-threaded platforms there is no thread to block, so the blocking C++ wait paths are not used (the [C++ action client status note](../reference/cpp-api.md) covers the migration to non-blocking polling).
 
@@ -161,7 +161,6 @@ Each trait below has a contract table. Columns:
 | `condvar_drop` | No | Yes | Return 0 | Same |
 | `condvar_signal` | No | Yes | Return 0 | No waiter to wake |
 | `condvar_signal_all` | No | Yes | Return 0 | Same |
-| `condvar_wait` | Yes | Yes | Return 0 | Single-threaded must use polling instead -- avoid this path |
 | `condvar_wait_until` | Yes | Yes (timeout) | Return 0 immediately | Same; blocking C++ `Future::wait` deadlocks on single-threaded (use non-blocking polling instead) |
 
 ### `PlatformTcp`

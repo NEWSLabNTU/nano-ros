@@ -174,3 +174,45 @@ Two gates replace `check-no-unbounded-condvar-wait.sh`:
 Steps 1–4 landed, and both gates green with the old one deleted. That is
 phase-sized work, and it should follow issue 1906, because a bounded wait
 leans on exactly the timeout codes and broadcast that 1906 fixes.
+
+## Progress (2026-10-15, phase-436 D2): the symbol is out of the ABI
+
+Steps 1 and 2 of the recommended design landed in a slightly different shape,
+and the retired-symbol half of the gate with them. Steps 3 and 4 and the class
+gate remain, so this stays open.
+
+**What landed.** `nros_platform_condvar_wait` is deleted rather than turned
+into a `static inline`: it is gone from `nros/platform.h`, from every C port
+(FreeRTOS, POSIX/NuttX, ThreadX, both Zephyr arms), from
+`examples/linux/c/custom-platform`, from the cffi export macro and
+`CffiPlatform`, and from the Rust `PlatformThreading` trait with its three
+bare-metal implementors (esp32-qemu, mps2-an385, stm32f4). The bounded
+"timeout is a spurious wake" period lives in the one remaining caller instead:
+`_z_condvar_wait` in `zpico-sys/c/zpico/platform_aliases.c` calls
+`nros_platform_condvar_wait_until(now + NROS_ZP_CONDVAR_SLICE_MS)` (1000 ms)
+once and returns 0 for a signal or an expired slice, -1 for an error, relying
+on issue 1906's uniform 0/1/-1 codes. It does not loop, so the rejected
+"looping inside the shim" shape is not what this is. Deleting instead of
+inlining was chosen because no in-tree caller is left to keep the name for,
+and an out-of-tree port that still defines it links harmlessly while one that
+calls it fails to compile, which is the point; the cost is that the
+`NROS_PLATFORM_LEGACY_CONDVAR_WAIT` escape is not needed.
+
+`scripts/check-no-unbounded-condvar-wait.sh` is now the retired-symbol gate:
+no exemption list, and any definition, declaration or call of
+`nros_platform_condvar_wait`, or a Rust `fn condvar_wait(`, fails it (verified
+by planting a call in the POSIX port). Checked on a native zenoh build: the
+linked `_z_condvar_wait` calls `nros_platform_clock_ns` and
+`nros_platform_condvar_wait_until` and nothing else, and a service pair round
+trips through it.
+
+**What still closes this issue:**
+
+- Step 3: Zephyr's own `_z_condvar_wait` (`zephyr/nros_zenoh_zephyr_system.c`,
+  `pthread_cond_wait`) and FreeRTOS's vendored one
+  (`zenoh-pico/src/system/freertos/system.c`, `portMAX_DELAY`) are untouched.
+  The FreeRTOS half needs a commit on the zenoh-pico fork.
+- Step 4: `zpico_get` (`zpico.c`) still waits on `_z_condvar_wait`; on the
+  alias-shim platforms that wait is now sliced, but its stack-owned reply
+  context is unchanged, and deleting it is still the plan.
+- The class gate for forever-waits on a condition or semaphore in code we own.

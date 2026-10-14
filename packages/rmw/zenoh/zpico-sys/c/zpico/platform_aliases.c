@@ -308,8 +308,34 @@ int8_t _z_condvar_signal_all(void *cv) {
     return nros_platform_condvar_signal_all(cv);
 }
 
+/* Issue 1196 / phase-436 D2 — zenoh-pico's `_z_condvar_wait` is unbounded by
+ * CONTRACT, and the platform ABI no longer has an unbounded wait to map it
+ * onto. It is bridged through a deadline THIS SHIM owns: each platform wait is
+ * bounded by `NROS_ZP_CONDVAR_SLICE_MS`, and a slice that expires returns
+ * 0 — a spurious wakeup.
+ *
+ * That is not a change to zenoh-pico's semantics. A condition variable may
+ * wake spuriously (POSIX says so, and zenoh-pico's own POSIX port is
+ * `pthread_cond_wait`), so every caller re-tests its predicate in a loop —
+ * checked for all five upstream sites (`scheduler.c`, `ring_mt.c`,
+ * `fifo_mt.c` x2, `sync_group.c`) and for `zpico.c`'s `while (!ctx.done)`.
+ * The unbounded part of the wait is now the CALLER's loop, where it was
+ * always decided, and no single platform wait can block forever.
+ *
+ * Every port returns 0 when signalled, 1 on timeout and -1 on error
+ * (`nros/platform.h`, issue 1906), so an expired slice is told apart from an
+ * error by the code alone. */
+#ifndef NROS_ZP_CONDVAR_SLICE_MS
+#define NROS_ZP_CONDVAR_SLICE_MS 1000u
+#endif
+
 int8_t _z_condvar_wait(void *cv, void *m) {
-    return nros_platform_condvar_wait(cv, m);
+    if (cv == NULL || m == NULL) {
+        return -1;
+    }
+    uint64_t deadline_ms = nros_platform_clock_ns() / 1000000u + NROS_ZP_CONDVAR_SLICE_MS;
+    int8_t rc = nros_platform_condvar_wait_until(cv, m, deadline_ms);
+    return rc < 0 ? -1 : 0; /* 1 (slice expired) is a spurious wakeup */
 }
 #endif /* !NROS_PLATFORM_ALIASES_SKIP_SYSTEM */
 

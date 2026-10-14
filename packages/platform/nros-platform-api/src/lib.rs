@@ -590,14 +590,15 @@ pub trait PlatformThreading {
     fn condvar_signal_from_isr(cv: *mut c_void) -> i8 {
         Self::condvar_signal(cv)
     }
-    /// Atomically release `m` and block on `cv`. The mutex is
-    /// re-acquired before this function returns.
-    fn condvar_wait(cv: *mut c_void, m: *mut c_void) -> i8;
-
-    /// Wait with absolute monotonic deadline (milliseconds since
-    /// the [`PlatformClock::clock_ns`] epoch). Returns 0 when
-    /// signalled, 1 on timeout and -1 on error (issue 1906). The
-    /// remaining time rounds UP to the port's tick.
+    /// Atomically release `m` and block on `cv` until signalled or until
+    /// the absolute monotonic deadline `abstime` (milliseconds since the
+    /// [`PlatformClock::clock_ns`] epoch); the mutex is re-acquired before
+    /// this returns. Returns 0 when signalled, 1 on timeout and -1 on error
+    /// (issue 1906). The remaining time rounds UP to the port's tick.
+    ///
+    /// The ONLY condvar wait: the unbounded `condvar_wait` was removed from
+    /// the platform ABI (issue 1196, phase-436 D2). A caller whose contract
+    /// is unbounded loops over bounded waits, re-testing its predicate.
     fn condvar_wait_until(cv: *mut c_void, m: *mut c_void, abstime: u64) -> i8;
 
     // -- Wake primitive (Phase 130) --

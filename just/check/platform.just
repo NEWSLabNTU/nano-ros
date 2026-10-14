@@ -784,10 +784,12 @@ retired-platform-clock-symbols:
 allocator-never-waits:
     @python3 scripts/check-allocator-never-waits.py
 
-# Issue 1196 / phase-436 W5 — the unbounded `nros_platform_condvar_wait` stays
-# confined to its sanctioned bridges. The script existed and self-tested, but
-# no recipe ran it, so no lane did (found while doing issue 1717, the same
-# "no unbounded wait" class one primitive over).
+# Issue 1196 / phase-436 D2 — the unbounded `nros_platform_condvar_wait` was
+# removed from the platform ABI; this keeps it from coming back in any form
+# (definition, declaration, call, or a Rust `fn condvar_wait(`). The script
+# once existed and self-tested while no recipe ran it, so no lane did (found
+# while doing issue 1717, the same "no unbounded wait" class one primitive
+# over).
 no-unbounded-condvar-wait:
     @bash scripts/check-no-unbounded-condvar-wait.sh
 

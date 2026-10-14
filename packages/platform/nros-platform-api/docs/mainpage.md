@@ -54,7 +54,7 @@ return-value / threading / blocking conventions. The capability split:
 - **Time** (`nros_platform_time_now_ns`) — wall clock
 - **Threading** (`nros_platform_task_*`) — spawn / join / detach / cancel / exit / free
 - **Mutexes** (`nros_platform_mutex_*` non-recursive, `..._mutex_rec_*` recursive)
-- **Condvars** (`nros_platform_condvar_*`, including `..._condvar_wait_until`)
+- **Condvars** (`nros_platform_condvar_*`; the only wait is the bounded `..._condvar_wait_until` — issue 1196)
 
 ## Stub strategy
 
@@ -65,7 +65,7 @@ threads) can still satisfy the ABI by stubbing out the missing ops:
 |-----------|----------------|
 | `task_*` | `task_init` returns `-1`; the rest unreachable. |
 | `mutex_*` / `mutex_rec_*` | All return `0`; storage is a no-op. Safe on single-core no-preempt systems. |
-| `condvar_*` | `signal`/`signal_all` return `0`; `wait`/`wait_until` return `-1` so callers fall back to polling. |
+| `condvar_*` | `signal`/`signal_all` return `0`; `wait_until` returns `-1` so callers fall back to polling. |
 | `random_*` | Seeded LCG is fine if the platform has no entropy source. **Must be deterministic** for reproducible tests. |
 
 ## Rust implementors

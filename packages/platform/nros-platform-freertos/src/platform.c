@@ -870,20 +870,6 @@ int8_t nros_platform_condvar_signal_from_isr(void *cv) {
     return 0;
 }
 
-int8_t nros_platform_condvar_wait(void *cv, void *m) {
-    if (cv == NULL || m == NULL) return -1;
-    nros_freertos_condvar_t *c = (nros_freertos_condvar_t *) cv;
-
-    xSemaphoreTake((SemaphoreHandle_t) c->mutex, portMAX_DELAY);
-    c->waiters++;
-    xSemaphoreGive((SemaphoreHandle_t) c->mutex);
-
-    nros_platform_mutex_unlock(m);
-    xSemaphoreTake((SemaphoreHandle_t) c->sem, portMAX_DELAY);
-    nros_platform_mutex_lock(m);
-    return 0;
-}
-
 /* Issue 1907 -- the caller must hold `m` exactly once (`nros/platform.h`).
  * Every mutex here is recursive and the unlock below releases one level. The
  * recursion count is private to the kernel's queue object, so unlike ThreadX

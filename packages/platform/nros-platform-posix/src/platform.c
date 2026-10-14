@@ -678,14 +678,6 @@ int8_t nros_platform_condvar_signal_from_isr(void *cv) {
     return pthread_cond_signal((pthread_cond_t *) cv) == 0 ? 0 : -1;
 }
 
-int8_t nros_platform_condvar_wait(void *cv, void *m) {
-    if (cv == NULL || m == NULL) {
-        return -1;
-    }
-    return pthread_cond_wait((pthread_cond_t *) cv, (pthread_mutex_t *) m) == 0
-        ? 0 : -1;
-}
-
 int8_t nros_platform_condvar_wait_until(void *cv, void *m, uint64_t abstime_ms) {
     if (cv == NULL || m == NULL) {
         return -1;

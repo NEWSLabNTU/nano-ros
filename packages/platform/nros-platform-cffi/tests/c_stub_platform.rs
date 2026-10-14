@@ -142,7 +142,6 @@ fn every_category_dispatches_through_cffi_platform() {
     let _ = CffiPlatform::condvar_init(cvp);
     let _ = CffiPlatform::condvar_signal(cvp);
     let _ = CffiPlatform::condvar_signal_all(cvp);
-    let _ = CffiPlatform::condvar_wait(cvp, m);
     let _ = CffiPlatform::condvar_wait_until(cvp, m, 0);
     let _ = CffiPlatform::condvar_drop(cvp);
 
@@ -162,12 +161,13 @@ fn every_category_dispatches_through_cffi_platform() {
     assert!(counter(StubCategory::Time) >= 1, "time dispatch");
     assert!(counter(StubCategory::Task) >= 6, "task dispatch");
     assert!(counter(StubCategory::Mutex) >= 10, "mutex dispatch");
-    assert!(counter(StubCategory::Condvar) >= 6, "condvar dispatch");
+    assert!(counter(StubCategory::Condvar) >= 5, "condvar dispatch");
     // clock 3 (ns, resolution, epoch) + alloc 3 + sleep 3 + yield 1 + random 5
-    // (4x random_u + random_fill) + time 1 + task 6 + mutex 10 + condvar 6 = 38.
+    // (4x random_u + random_fill) + time 1 + task 6 + mutex 10 + condvar 5 = 37.
+    // (Condvar was 6 until issue 1196 removed the unbounded `condvar_wait`.)
     // Each number is the count of DISTINCT calls in the body above; recount
     // there before changing one here.
-    assert_eq!(counter(StubCategory::Total), 38, "total = 38 fn calls");
+    assert_eq!(counter(StubCategory::Total), 37, "total = 37 fn calls");
 
     IN_USE.store(false, Ordering::SeqCst);
 }
