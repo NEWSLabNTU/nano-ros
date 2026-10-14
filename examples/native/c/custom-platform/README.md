@@ -17,7 +17,7 @@ embedded targets.
 ## How it is built (important)
 
 The executable `baremetal_demo` runs on the **Rust POSIX platform port** — the
-one `[image.native] board = "linux"` in `system.toml` selects — so it builds and
+one `[image.linux] board = "linux"` in `system.toml` selects — so it builds and
 runs on a desktop. `src/platform_impl.c`
 implements the **same** `nros_platform_*` symbols, so it cannot be linked into
 that binary too — two implementations of one ABI is a duplicate-definition
@@ -41,7 +41,7 @@ cmake --build build
 Nothing to build by hand first: `find_package(nano_ros)` builds the `nros-c`
 library the example links. No `nros sync` either — a single-package C leaf's
 message bindings are a CMake-time output. The board, the RMW and the domain come
-from `system.toml` beside `CMakeLists.txt` (`[image.native]` + `[system]`,
+from `system.toml` beside `CMakeLists.txt` (`[image.linux]` + `[system]`,
 RFC-0098 D3/D5), not from a `-D` flag.
 
 ## Running

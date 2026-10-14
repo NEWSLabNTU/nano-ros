@@ -3,7 +3,7 @@
      round-trip (issue 0096). Boots `add_client`, which calls `add_server` on
      /add_two_ints each tick and republishes the server-computed sum on /sum.
      Run in a separate process from `service_server.launch.xml`. Boot with the
-     `native_service_client_entry` pkg. -->
+     `linux_service_client_entry` pkg. -->
 <launch>
   <node pkg="service_client_pkg" exec="add_client" name="add_client"/>
 </launch>

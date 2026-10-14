@@ -10,7 +10,7 @@ The image is where you say it, beside the board it is built for:
 [image_defaults]
 profile = "nros-relwithdebinfo"   # the base every image folds over
 
-[image.native]
+[image.linux]
 board = "linux"
 
 [image.mps2]
@@ -22,7 +22,7 @@ profile = "nros-minsizerel"       # this one is going on a board
 cargo profile flag on the cargo driver, `CMAKE_BUILD_TYPE` on the cmake one.
 You do not repeat it on the command line, and you do not define the `nros-*`
 profiles anywhere: `nros sync` writes them into the image's generated cargo
-settings file under `build/` (`build/native/nros-cargo.toml` for a
+settings file under `build/` (`build/linux/nros-cargo.toml` for a
 single-package project), along with everything else the board choice
 implies.
 

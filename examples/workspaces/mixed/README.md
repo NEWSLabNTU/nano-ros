@@ -21,7 +21,7 @@ source ./activate.sh
 cd examples/workspaces/mixed
 nros setup linux
 nros sync            # once per workspace: generated message bindings
-nros build native
+nros build linux
 ```
 
 `nros build` walks the packages, resolves the image, checks the

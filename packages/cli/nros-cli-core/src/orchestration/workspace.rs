@@ -1991,7 +1991,7 @@ name = "demo"
         )
         .unwrap();
         let system = "[system]\nname = \"demo\"\nrmw = \"zenoh\"\ndomain_id = 0\n\n\
-                      [image.native]\nboard = \"linux\"\n";
+                      [image.linux]\nboard = \"linux\"\n";
         std::fs::write(bringup.join("system.toml"), system).unwrap();
         let bound = |ws: &Path| -> bool {
             let w = Workspace::discover(ws).unwrap();

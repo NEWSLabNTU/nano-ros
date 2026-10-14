@@ -969,7 +969,7 @@ mod tests {
         assert!(
             n(&FixtureVariant::image(
                 crate::fixtures::Rmw::Xrce,
-                "native_xrce"
+                "linux_xrce"
             )) > 0,
             "image-selected RMW rows exist"
         );

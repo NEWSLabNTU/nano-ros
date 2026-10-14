@@ -29,7 +29,7 @@ use crate::builder::{
 
 #[derive(Parser, Debug)]
 pub struct Args {
-    /// Image(s) to build — `native`, or `<bringup>:native` when two bringups
+    /// Image(s) to build — `linux`, or `<bringup>:linux` when two bringups
     /// declare the same id. Empty uses `[system] default_images`.
     pub images: Vec<String>,
 
@@ -90,8 +90,8 @@ pub struct Args {
     /// root's member list and the generated CMake root's subdirectories. It
     /// does not narrow which images exist: an image is declared by a bringup's
     /// `system.toml`, which is a property of the workspace, not of the
-    /// selection, so `nros build native --packages-select talker_pkg` still
-    /// means the `native` image, built from a narrowed workspace.
+    /// selection, so `nros build linux --packages-select talker_pkg` still
+    /// means the `linux` image, built from a narrowed workspace.
     #[arg(long, value_name = "PKG", num_args = 1..)]
     pub packages_select: Vec<String>,
 
@@ -225,7 +225,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
     // nano-ros checkout and the user's packages. `relative_or_err` needs two
     // absolute paths and correctly refuses otherwise, so a relative root
     // surfaced as "cannot express /abs/packages/api/nros relative to
-    // ./build/posix-zenoh/native_entry" — an error about the wrong thing.
+    // ./build/posix-zenoh/linux_entry" — an error about the wrong thing.
     //
     // `canonicalize` rather than `absolute`: symlinked checkouts are normal
     // here, and two spellings of one directory would produce two different
@@ -650,7 +650,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                 // It used to be inert here and the build REFUSED an image whose
                 // rmw differed from `[system] rmw`, because the backend came
                 // from the `<entry>_nros_selection` facade and nothing
-                // consulted the image — so `[image.native_cyclonedds]` produced
+                // consulted the image — so `[image.linux_cyclonedds]` produced
                 // `build/posix-cyclonedds/` holding a zenoh binary. The facade
                 // now reads the image (`facade::image_rmw`), so the refusal is
                 // gone and the coordinate directory names what it contains.
@@ -2866,7 +2866,7 @@ fn generate_entry(
             //   error[E0080]: evaluation panicked: this system declares
             //   `[param_services]` but this `nros` build does not carry the
             //   `param-services` feature
-            //     --> build/posix-zenoh/native_rust_qos_entry/src/main.rs:9:1
+            //     --> build/posix-zenoh/linux_rust_qos_entry/src/main.rs:9:1
             //
             // — a const-eval panic in a generated `main.rs`, six lines below
             // this very warning in the same log. The warning was right and
@@ -2882,7 +2882,7 @@ fn generate_entry(
             // so `builder::entry` now emits the board dep
             // `default-features = false` (cargo cannot subtract a default —
             // issue 0270 — so both declarations have to be silent about it).
-            // Measured on this tree, `[image.native_cyclonedds] rmw =
+            // Measured on this tree, `[image.linux_cyclonedds] rmw =
             // "cyclonedds"` with no facade:
             //
             //     nros-board-linux = { path = "…", default-features = false }
@@ -2910,7 +2910,7 @@ fn generate_entry(
                 // check shipped as an immediate `bail!` and `host-tests` went
                 // from a const-eval panic to
                 //
-                //   Error: nros build: `native_rust_qos` needs a selection
+                //   Error: nros build: `linux_rust_qos` needs a selection
                 //   facade and there is none at …
                 //
                 // which is this message — correct, and unescapable. `nros sync`
@@ -2981,7 +2981,7 @@ fn generate_entry(
     };
 
     // Most specific first: the image id IS the deploy key when an image is
-    // named after a board, but `[image.native_service_server]` is not, and
+    // named after a board, but `[image.linux_service_server]` is not, and
     // `[image.robot1]` is not — so the board and platform back it up. ONE list,
     // consumed by both the deploy token and the board crate, because the macro
     // resolves the crate FROM the token: two searches could disagree, and the
@@ -4073,7 +4073,7 @@ fn image_config_digest(image: &crate::orchestration::image::ImageBlock) -> Optio
 /// ONE spelling (issue 1582). Three sites computed it inline — the cargo
 /// root's manifest dir, the dependency-path base and the write — and none of
 /// them carries the BRINGUP. That is deliberate and is not the defect: the
-/// path is user-facing (`build/posix-zenoh/native_entry/target/debug/…` is in
+/// path is user-facing (`build/posix-zenoh/linux_entry/target/debug/…` is in
 /// the book) and an image id is what a user names. The defect was that
 /// nothing stopped two bringups from both generating `[image.zephyr]` into it:
 /// see [`generated_output_collisions`].
@@ -4910,7 +4910,7 @@ fn report_declared_depends(
 /// `nros plan` and `nros codegen-system` only.
 ///
 /// What that cost: `nros new --workspace --rmw cyclonedds` writes the choice to
-/// `[system] rmw` and NOWHERE else (its `[image.native]` names a board), so the
+/// `[system] rmw` and NOWHERE else (its `[image.linux]` names a board), so the
 /// scaffolded workspace the quick start builds selected the ZENOH backend —
 /// `BACKEND zenoh` in the generated cmake root, `rmw = ""` in `resolved.toml`.
 /// On a checkout that still compiles, because zenoh-pico is a submodule sitting
@@ -4970,7 +4970,7 @@ mod effective_images_tests {
     ) -> crate::orchestration::cargo_metadata_schema::SystemToml {
         let text = format!(
             "[system]\nname = \"demo\"\nrmw = \"{header_rmw}\"\ndomain_id = 0\n\n\
-             [image.native]\nboard = \"linux\"\n{image_extra}"
+             [image.linux]\nboard = \"linux\"\n{image_extra}"
         );
         toml::from_str(&text).unwrap_or_else(|e| panic!("parse: {e}\n{text}"))
     }
@@ -4981,14 +4981,14 @@ mod effective_images_tests {
     #[test]
     fn an_image_with_no_rmw_inherits_the_system_header() {
         let got = effective_images(&sys("cyclonedds", ""));
-        assert_eq!(got["native"].rmw.as_deref(), Some("cyclonedds"));
+        assert_eq!(got["linux"].rmw.as_deref(), Some("cyclonedds"));
     }
 
     /// An image's own `rmw` still wins over the header.
     #[test]
     fn an_images_own_rmw_beats_the_header() {
         let got = effective_images(&sys("cyclonedds", "rmw = \"xrce\"\n"));
-        assert_eq!(got["native"].rmw.as_deref(), Some("xrce"));
+        assert_eq!(got["linux"].rmw.as_deref(), Some("xrce"));
     }
 
     /// Nothing declared anywhere resolves to the tree's default, not to an
@@ -4996,7 +4996,7 @@ mod effective_images_tests {
     #[test]
     fn nothing_declared_resolves_to_the_default() {
         let got = effective_images(&sys("", ""));
-        assert_eq!(got["native"].rmw.as_deref(), Some("zenoh"));
+        assert_eq!(got["linux"].rmw.as_deref(), Some("zenoh"));
     }
 }
 
@@ -5475,9 +5475,9 @@ mod selection_wiring_tests {
         assert_eq!(a.packages_up_to, vec!["entry"]);
         assert_eq!(a.native_args, vec!["-j4"]);
 
-        let b = Args::try_parse_from(["build", "native", "--packages-select", "talker_pkg"])
+        let b = Args::try_parse_from(["build", "linux", "--packages-select", "talker_pkg"])
             .expect("parses");
-        assert_eq!(b.images, vec!["native"]);
+        assert_eq!(b.images, vec!["linux"]);
         assert_eq!(b.packages_select, vec!["talker_pkg"]);
     }
 
@@ -5776,7 +5776,7 @@ mod single_package_tests {
         std::fs::write(
             leaf.join("system.toml"),
             "[system]\nname = \"demo\"\nrmw = \"zenoh\"\ndomain_id = 0\n\n\
-             [image.native]\nboard = \"linux\"\n",
+             [image.linux]\nboard = \"linux\"\n",
         )
         .unwrap();
         leaf
@@ -5805,12 +5805,12 @@ mod single_package_tests {
         assert_eq!(plans.len(), 1);
         let p = &plans[0];
         assert_eq!(p.driver, Driver::Cargo);
-        assert_eq!(p.qualified, "demo_talker:native");
+        assert_eq!(p.qualified, "demo_talker:linux");
         let shown = p.handoff.as_ref().unwrap().display();
         assert!(
             shown.contains(
                 "cargo build --manifest-path talker/Cargo.toml --config \
-                 talker/build/native/nros-cargo.toml"
+                 talker/build/linux/nros-cargo.toml"
             ),
             "{shown}"
         );
@@ -5818,12 +5818,12 @@ mod single_package_tests {
         // file to retire (RFC-0098 D9 is about workspaces).
         assert!(leaf.join("Cargo.toml").is_file());
 
-        let settings = leaf.join("build/native/nros-cargo.toml");
+        let settings = leaf.join("build/linux/nros-cargo.toml");
         let v: toml::Value = std::fs::read_to_string(&settings)
             .unwrap()
             .parse()
             .expect("the settings file is TOML");
-        assert_eq!(v["build"]["target-dir"].as_str(), Some("native/target"));
+        assert_eq!(v["build"]["target-dir"].as_str(), Some("linux/target"));
         assert_eq!(v["env"]["NROS_BOARD"].as_str(), Some("linux"));
         assert!(
             v["profile"].get("nros-minsizerel").is_some(),
@@ -5838,7 +5838,7 @@ mod single_package_tests {
         let e = plan_builds(&args(&leaf, &["esp32"]))
             .expect_err("wrong image")
             .to_string();
-        assert!(e.contains("`native`"), "{e}");
+        assert!(e.contains("`linux`"), "{e}");
     }
 
     #[test]
@@ -5876,7 +5876,7 @@ mod single_package_tests {
             leaf.join("system.toml"),
             "[system]\nname = \"native_c_talker\"\nrmw = \"zenoh\"\ndomain_id = 0\n\n\
              [[component]]\npkg = \"native_c_talker\"\nname = \"talker\"\n\n\
-             [image.native]\nboard = \"linux\"\n",
+             [image.linux]\nboard = \"linux\"\n",
         )
         .unwrap();
         leaf
@@ -5890,11 +5890,11 @@ mod single_package_tests {
         assert_eq!(plans.len(), 1);
         let p = &plans[0];
         assert_eq!(p.driver, Driver::CMake);
-        assert_eq!(p.qualified, "native_c_talker:native");
-        assert_eq!(p.cmake_build_dir.as_deref(), Some("build/native/cmake"));
+        assert_eq!(p.qualified, "native_c_talker:linux");
+        assert_eq!(p.cmake_build_dir.as_deref(), Some("build/linux/cmake"));
         let cfg = p.configure.as_ref().expect("a configure").display();
         assert!(
-            cfg.contains("cmake -S . -B build/native/cmake -DNROS_IMAGE=native"),
+            cfg.contains("cmake -S . -B build/linux/cmake -DNROS_IMAGE=linux"),
             "the leaf's OWN CMakeLists, for the image it declares: {cfg}"
         );
         assert!(
@@ -5902,10 +5902,7 @@ mod single_package_tests {
             "a host board needs none: {cfg}"
         );
         let build = p.handoff.as_ref().unwrap().display();
-        assert!(
-            build.contains("cmake --build build/native/cmake"),
-            "{build}"
-        );
+        assert!(build.contains("cmake --build build/linux/cmake"), "{build}");
         // Nothing generated a workspace root beside the leaf.
         assert!(!leaf.join("build/posix-zenoh-linux").exists());
     }
@@ -5917,7 +5914,7 @@ mod single_package_tests {
         let e = plan_builds(&args(&leaf, &["esp32"]))
             .expect_err("wrong image")
             .to_string();
-        assert!(e.contains("[image.esp32]") && e.contains("native"), "{e}");
+        assert!(e.contains("[image.esp32]") && e.contains("linux"), "{e}");
     }
 }
 
@@ -6118,14 +6115,14 @@ mod generated_output_collision_tests {
         let same = vec![
             claim(
                 t.path(),
-                "demo_bringup:native",
+                "demo_bringup:linux",
                 &native,
                 "posix",
                 Driver::CMake,
             ),
             claim(
                 t.path(),
-                "smp_bringup:native",
+                "smp_bringup:linux",
                 &native,
                 "posix",
                 Driver::CMake,

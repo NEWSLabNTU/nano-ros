@@ -68,7 +68,7 @@ pub enum Origin {
 }
 
 /// The package name `nros build` gives the entry it generates for
-/// `[image.<id>]` — `native_robot1` → `native_robot1_entry`.
+/// `[image.<id>]` — `linux_robot1` → `linux_robot1_entry`.
 ///
 /// Lives here, not in the CLI's builder, because [`for_entry`] (and so
 /// `nros::main!`, which cannot depend on the CLI) must map a generated entry
@@ -929,8 +929,8 @@ mod tests {
             "qemu_bsp_talker_nros_selection"
         );
         assert_eq!(
-            selection_crate_name("native_entry"),
-            "native_entry_nros_selection"
+            selection_crate_name("linux_entry"),
+            "linux_entry_nros_selection"
         );
     }
 
@@ -1327,7 +1327,7 @@ domain_id = 4
 
     #[test]
     fn the_entry_name_rule_is_the_builders() {
-        assert_eq!(entry_package_name("native_robot1"), "native_robot1_entry");
+        assert_eq!(entry_package_name("linux_robot1"), "linux_robot1_entry");
         assert_eq!(entry_package_name("esp32-qemu"), "esp32_qemu_entry");
         assert_eq!(entry_package_name("a.b/c"), "a_b_c_entry");
     }
@@ -1366,16 +1366,16 @@ domain_id = 4
 
     #[test]
     fn several_images_need_a_default() {
-        let two = format!("{SYSTEM}\n[image.native]\nboard = \"linux\"\n");
+        let two = format!("{SYSTEM}\n[image.linux]\nboard = \"linux\"\n");
         let d = leaf(&[("Cargo.toml", CARGO), ("system.toml", &two)]);
         let e = read(d.path()).unwrap_err();
         assert!(e.contains("default_images"), "{e}");
 
-        let chosen = two.replace("[system]\n", "[system]\ndefault_images = [\"native\"]\n");
+        let chosen = two.replace("[system]\n", "[system]\ndefault_images = [\"linux\"]\n");
         let d = leaf(&[("Cargo.toml", CARGO), ("system.toml", &chosen)]);
         let l = read(d.path()).unwrap().unwrap();
         assert_eq!(l.board.as_deref(), Some("linux"));
-        // `native` sets no locator of its own: the system default applies.
+        // `linux` sets no locator of its own: the system default applies.
         assert_eq!(l.network.locator.as_deref(), Some("tcp/10.0.2.2:7447"));
     }
 

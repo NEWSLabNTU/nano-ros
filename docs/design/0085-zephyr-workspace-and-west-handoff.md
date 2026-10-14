@@ -26,7 +26,7 @@ A real user has two trees, and the build has no way to say so.
 ## D1 — The user's workspace lives OUTSIDE the west workspace, linked by path
 
 A nano-ros workspace is platform-agnostic by construction: one `system.toml`
-declares `[image.native]`, `[image.freertos]`, `[image.nuttx]` and
+declares `[image.linux]`, `[image.freertos]`, `[image.nuttx]` and
 `[image.zephyr]` side by side, and RFC-0065 D6 makes the image the buildable
 unit precisely so those coexist. A west workspace is Zephyr-specific: `west
 update` populates it with Zephyr, its modules and their revisions.

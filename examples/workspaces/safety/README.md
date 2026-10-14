@@ -55,7 +55,7 @@ the Zephyr west application around it since phase-470 W5.b2, issue 1288).
 ```sh
 nros sync
 nros build                              # every [image.*]
-nros build native_rust_safety_talker    # or just one
+nros build linux_rust_safety_talker    # or just one
 ```
 
 Each entry's model comes from its launch file; `nros sync` resolves one per

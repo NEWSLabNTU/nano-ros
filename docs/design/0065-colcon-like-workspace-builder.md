@@ -42,7 +42,7 @@ nros sync
 nros codegen-system --bringup demo_bringup
 nros check --bringup src/demo_bringup
 nros check --workspace .
-cargo build -p native_entry
+cargo build -p linux_entry
 ```
 
 `colcon build` is one command. The root file is what a *maintainer* feels; the
@@ -59,7 +59,7 @@ almost nothing:
 | native C/C++ entry source | **2 lines** |
 
 ```c
-/* examples/workspaces/c/src/native_entry/src/main.c — the whole file */
+/* examples/workspaces/c/src/linux_entry/src/main.c — the whole file */
 #include <nros/main.h>
 NROS_MAIN_C(nros_board_native, "demo_bringup:system.launch.xml");
 ```
@@ -182,9 +182,9 @@ error: this workspace declares 8 images and no default.
   native   zephyr    freertos    nuttx
   robot1   robot2    esp32-qemu  threadx-linux
 
-  build one:   nros build native
+  build one:   nros build linux
   build all:   nros build --all
-  or declare:  [system] default_images = ["native"]
+  or declare:  [system] default_images = ["linux"]
 ```
 
 PlatformIO's `default_envs` is the model, with one deliberate divergence: `pio
@@ -958,7 +958,7 @@ The six-command ritual becomes one, and there is no root manifest to understand
 before anything compiles. That is the whole win and it is real.
 
 **The loss is pedagogical, not technical.** Today a newcomer opens
-`src/native_entry/src/main.rs`, sees one line — `nros::main!(launch =
+`src/linux_entry/src/main.rs`, sees one line — `nros::main!(launch =
 "demo_bringup:system.launch.xml")` — and has the model. Under D4 that file is in
 `build/<coord>/` instead. Mitigation is documentation, not design: the generated
 entry is a readable file and the book should point at it by path.
@@ -967,7 +967,7 @@ entry is a readable file and the book should point at it by path.
 example a standalone copy-out template with "its own `Cargo.toml` +
 `.cargo/config.toml` + `CMakeLists.txt`, no workspace walk-up", and the contract
 is CI-checked (`just zephyr check-copy-out`). Under D4 a copied-out **workspace**
-has neither a root manifest nor entry packages, so `cargo build -p native_entry`
+has neither a root manifest nor entry packages, so `cargo build -p linux_entry`
 stops resolving and `nros build` becomes required. **Single-package leaves are
 unaffected** — they keep their own root per D3, and still build with plain
 cargo/cmake. RFC-0065 amends RFC-0026 to state that split explicitly, because a
@@ -1087,10 +1087,10 @@ not the bringup and not the board, is where a variant is named.**
 > `check-generated-output-collisions` holds the in-tree workspaces and the
 > west leaves to it. Keying the path on the bringup instead was rejected: it
 > moves every user-facing generated path (the book's
-> `build/posix-zenoh/native_entry/target/…`) for a case one distinct id solves.
+> `build/posix-zenoh/linux_entry/target/…`) for a case one distinct id solves.
 
 **F10 confirms D1's default.** `just build` in `nano-ros-rt-eval` is `cargo
-build -p native_entry -p peer_entry`, and its root manifest warns that a bare
+build -p linux_entry -p peer_entry`, and its root manifest warns that a bare
 workspace-wide build "would try [the cross-target member] for the host and
 fail". Both halves of D1 — name your images, and do not build everything by
 accident — are answering a problem that project already has.

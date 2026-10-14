@@ -98,11 +98,11 @@ ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicas
 
 # Terminal 2: Talker
 cd examples/native/rust/talker && nros sync && nros build
-RUST_LOG=info ./build/native/target/debug/talker
+RUST_LOG=info ./build/linux/target/debug/talker
 
 # Terminal 3: Listener
 cd examples/native/rust/listener && nros sync && nros build
-RUST_LOG=info ./build/native/target/debug/listener
+RUST_LOG=info ./build/linux/target/debug/listener
 ```
 
 Each leaf's RMW comes from its `system.toml` `[system] rmw`, and its
@@ -114,7 +114,7 @@ On the native (host) build, zenoh-pico has built-in UDP support via OS sockets:
 
 ```bash
 # Use UDP instead of TCP for the zenoh locator
-NROS_LOCATOR=udp/127.0.0.1:7447 ./build/native/target/debug/talker
+NROS_LOCATOR=udp/127.0.0.1:7447 ./build/linux/target/debug/talker
 ```
 
 On bare-metal, enable the `link-udp-unicast` feature to use UDP over smoltcp:
@@ -150,10 +150,10 @@ ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tls/localhost:7447"];scouting/multicas
 # Terminal 2: Talker with TLS
 cd examples/native/rust/talker && nros sync
 cd .. && cargo build --manifest-path talker/Cargo.toml \
-      --config talker/build/native/nros-cargo.toml --features link-tls
+      --config talker/build/linux/nros-cargo.toml --features link-tls
 NROS_LOCATOR=tls/localhost:7447 \
   ZENOH_TLS_ROOT_CA_CERTIFICATE=cert.pem \
-  ./talker/build/native/target/debug/talker
+  ./talker/build/linux/target/debug/talker
 ```
 
 `link-tls` is a transport feature of the leaf's own crate, so it stays a
@@ -183,7 +183,7 @@ ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicas
 
 # Terminal 2: nros talker
 cd examples/native/rust/talker && nros sync && nros build
-RUST_LOG=info ./build/native/target/debug/talker
+RUST_LOG=info ./build/linux/target/debug/talker
 
 # Terminal 3: ROS 2 listener
 source /opt/ros/humble/setup.bash
@@ -199,11 +199,11 @@ ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicas
 
 # Terminal 2: Action server (Fibonacci example)
 cd examples/native/rust/action-server && nros sync && nros build
-./build/native/target/debug/action-server
+./build/linux/target/debug/action-server
 
 # Terminal 3: Action client
 cd examples/native/rust/action-client && nros sync && nros build
-./build/native/target/debug/action-client
+./build/linux/target/debug/action-client
 ```
 
 **Zephyr action tests:**

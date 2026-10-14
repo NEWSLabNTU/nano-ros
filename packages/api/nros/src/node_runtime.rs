@@ -2762,7 +2762,7 @@ mod tests {
     ///
     /// The same quantity `nm -S` reads off a linked image, without the link
     /// step. Measured both ways on `examples/workspaces/rust`'s
-    /// `native_service_server_entry` (2026-09-06, one build dir, one file
+    /// `linux_service_server_entry` (2026-09-06, one build dir, one file
     /// changed): `__NROS_COMPONENT_service_server_pkg_SLOT_STORE` is 50,824 B
     /// of `.bss` when the class declares nothing and 568 B when it declares
     /// `EntityBounds::exact(0, 1, 0, 0, 0)`.

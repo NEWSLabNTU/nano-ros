@@ -104,7 +104,7 @@ WHAT IT CANNOT DECIDE, AND SAYS SO
 A C or C++ image links `nros-c` / `nros-cpp` with `--whole-archive` (the issue
 0475 shape). The whole staticlib is therefore in the image whether or not the
 app calls any of it, and `NodeHandle::create_action_client_raw` is present as a
-GLOBAL in every C entry — `native_entry` (a talker) and `native_action_client_entry`
+GLOBAL in every C entry — `linux_entry` (a talker) and `linux_action_client_entry`
 are byte-for-byte indistinguishable on this probe. Such an image is reported
 INDETERMINATE, never OK: presence proves nothing there. It is detected by the
 FFI surface itself (`nros_cpp_action_client_create` / `rcl_action_client_init`),

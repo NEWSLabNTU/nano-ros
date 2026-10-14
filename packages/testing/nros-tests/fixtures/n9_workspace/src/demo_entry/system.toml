@@ -15,5 +15,5 @@ name = "demo_entry"
 rmw = "zenoh"
 domain_id = 0
 
-[image.native]
+[image.linux]
 board = "linux"

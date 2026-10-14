@@ -43,5 +43,5 @@ name = "managed_talker"
 [image_defaults]
 rmw = "zenoh"
 
-[image.native_managed]
+[image.linux_managed]
 board = "linux"

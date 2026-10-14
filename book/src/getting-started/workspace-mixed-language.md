@@ -33,7 +33,7 @@ consumable from cmake, and nothing makes cmake consumable from cargo (RFC-0024
 ```console
 $ cd examples/workspaces/mixed
 $ nros sync
-$ nros build native
+$ nros build linux
 ```
 
 `nros build` writes a `CMakeLists.txt` — a `nano_ros_workspace(…)` call listing
@@ -116,7 +116,7 @@ program, in `src/demo_bringup/system.toml`:
 [image_defaults]
 rmw = "zenoh"
 
-[image.native]
+[image.linux]
 board = "linux"
 ```
 
@@ -136,7 +136,7 @@ is no `SOURCES`, because the verb generates the translation unit carrying
 `main`:
 
 ```cmake
-nano_ros_add_executable(native_entry
+nano_ros_add_executable(linux_entry
     BOARD   native
     BRINGUP "${CMAKE_CURRENT_SOURCE_DIR}/../../src/demo_bringup"
     LAUNCH  default

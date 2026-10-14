@@ -343,11 +343,11 @@ spin_period_us = <span class="lit">10000</span>
       <p class="sub">Codegen reads the manifest, resolves the tier table, and emits <code>run_tiers</code>. The author writes only the launch reference.</p>
       <div class="grid2 mt">
         <div class="panel">
-          <div class="cap"><span>native_entry/src/main.rs</span><span class="lang">rust</span></div>
+          <div class="cap"><span>linux_entry/src/main.rs</span><span class="lang">rust</span></div>
 <pre><span class="fn">nros::main!</span>(launch = <span class="lit">"demo_bringup"</span>);</pre>
         </div>
         <div class="panel">
-          <div class="cap"><span>native_entry/src/main.cpp</span><span class="lang">c++</span></div>
+          <div class="cap"><span>linux_entry/src/main.cpp</span><span class="lang">c++</span></div>
 <pre>#include &lt;nros/main.hpp&gt;
 
 <span class="fn">NROS_MAIN</span>(::nros::board::NativeBoard,
@@ -454,7 +454,7 @@ spin_period_us = <span class="lit">10000</span>
 ├─ <span class="d">demo_bringup/</span>  <span class="c"># deploy config</span>
 │   ├─ <span class="t">system.toml</span>   <span class="c"># tiers + group_tiers</span>
 │   └─ launch/
-├─ <span class="d">native_entry/</span> <span class="c"># nros::main!(launch=…)</span>
+├─ <span class="d">linux_entry/</span> <span class="c"># nros::main!(launch=…)</span>
 ├─ <span class="d">zephyr_entry/</span> <span class="c"># same 1-liner, west build</span>
 └─ <span class="d">nuttx_entry/</span>  <span class="c"># same 1-liner, QEMU arm</span></pre>
         </div>

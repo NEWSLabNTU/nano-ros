@@ -35,8 +35,8 @@ WHAT IT CHECKS
 
 WHY NOT JUST "DON'T EMIT IT"
 
-`LAUNCH_ARGS host=<h>` is the ONLY difference between the `native_robot1` and
-`native_robot2` images of `examples/workspaces/{c,mixed}`: it selects the
+`LAUNCH_ARGS host=<h>` is the ONLY difference between the `linux_robot1` and
+`linux_robot2` images of `examples/workspaces/{c,mixed}`: it selects the
 `[[model]]` variant, so without it both resolve the whole system and the two
 images are one program. Measured, on the tree that removed it::
 

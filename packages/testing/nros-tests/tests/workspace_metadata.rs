@@ -55,16 +55,16 @@ fn cmake_workspace_metadata_emits_components_cmake() -> nros_tests::TestResult<(
             && body.contains("\"class\": \"listener_pkg::Listener\""),
         "metadata missing listener component entry:\n{body}"
     );
-    // `native_entry` — the entry `nros build` GENERATES for the template's
-    // `[image.native]`. phase-383 W10.a moved this fixture onto the template
+    // `linux_entry` — the entry `nros build` GENERATES for the template's
+    // `[image.linux]`. phase-383 W10.a moved this fixture onto the template
     // because it kept a hand-written root; phase-445 W5 removed that root too
     // (RFC-0098 D9), and with it the hand-written `robot_entry`. The property is
     // unchanged: the metadata lists the APPLICATION entry alongside the node
     // components, and the two component assertions above hold verbatim because
     // the template uses the same talker/listener.
     assert!(
-        body.contains("\"name\": \"native_entry\""),
-        "metadata missing native_entry application entry:\n{body}"
+        body.contains("\"name\": \"linux_entry\""),
+        "metadata missing linux_entry application entry:\n{body}"
     );
     assert!(
         body.contains("\"native\""),
@@ -133,7 +133,7 @@ fn rust_workspace_entry_runs_prebuilt_pubsub_e2e() {
         .env("NROS_ENTRY_SPIN_MS", "8000")
         .env("NROS_ENTRY_EXPECT_MESSAGE_CALLBACKS", "1");
     let mut proc =
-        nros_tests::process::ManagedProcess::spawn_command(cmd, "rust workspace native_entry")
+        nros_tests::process::ManagedProcess::spawn_command(cmd, "rust workspace linux_entry")
             .expect("spawn Rust workspace Entry fixture");
 
     std::thread::sleep(Duration::from_millis(700));
@@ -173,7 +173,7 @@ fn cmake_cpp_workspace_entry_starts_prebuilt_runtime() {
     let entry = nros_tests::fixtures::build_native_workspace_cpp_entry()
         .require("native C++ workspace Entry");
     let mut proc =
-        nros_tests::process::ManagedProcess::spawn(entry, &[], "C++ workspace native_entry")
+        nros_tests::process::ManagedProcess::spawn(entry, &[], "C++ workspace linux_entry")
             .expect("spawn C++ workspace Entry fixture");
 
     std::thread::sleep(Duration::from_millis(300));
@@ -438,7 +438,7 @@ fn census_recorder_symbols(image: &std::path::Path) -> Vec<String> {
 }
 
 /// I3(b) on the ThreadX-Linux C++ workspace image (issue 1419 measured it by
-/// hand: `threadx_entry` linked none, `native_entry` 102).
+/// hand: `threadx_entry` linked none, `linux_entry` 102).
 #[test]
 fn a_threadx_cpp_image_links_no_census_recorder() {
     let image = nros_tests::fixtures::build_threadx_linux_workspace_cpp_entry()

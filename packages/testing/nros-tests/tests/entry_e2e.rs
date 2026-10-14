@@ -15,7 +15,7 @@
 //!   delivers `/chatter` CROSS-PROCESS (issue 0096 — an entry's own listener
 //!   can't observe its in-image talker) to a SEPARATE native listener
 //!   through a host zenohd on the baked port. The C-family cells observe via
-//!   the language-agnostic C `native_entry_robot2` listener entry
+//!   the language-agnostic C `linux_robot2_entry` listener entry
 //!   (`Received:`); the rust nuttx cell (#130) keeps its native Rust
 //!   String listener (`I heard:`).
 //! - **Params** (phase-276 W1 / #128): the zephyr `ws-params-rust` entry
@@ -108,7 +108,7 @@ enum Boot {
 /// pre-consolidation files.
 #[derive(Copy, Clone, Debug)]
 enum Proof {
-    /// EntryPubsub via the C `native_entry_robot2` listener entry: ≥3
+    /// EntryPubsub via the C `linux_robot2_entry` listener entry: ≥3
     /// `Received:` lines. `observer_spin_ms` / `window_secs` keep each
     /// lane's historical budgets (threadx 15 s/20 s; QEMU + native_sim
     /// 60 s/90 s cold-boot windows).
@@ -174,7 +174,7 @@ fn wl_str(w: MW) -> &'static str {
 /// `Entry` forces an arm here (phase-329 W1). The RTOS EntryPubsub cells the
 /// other consumers own never reach this (they are not claimed).
 fn exec_for(platform: MP, lang: ML, workload: MW) -> Exec {
-    // EntryPubsub via the C `native_entry_robot2` listener (60 s/90 s cold-boot
+    // EntryPubsub via the C `linux_robot2_entry` listener (60 s/90 s cold-boot
     // window for QEMU + native_sim; 15 s/20 s for the threadx host sim).
     let chatter_c = |observer_spin_ms: u32, window_secs: u64| Proof::ChatterToCListener {
         observer_spin_ms,
@@ -471,7 +471,7 @@ fn require_cell_env(cell: &Exec) {
     }
 }
 
-/// Spawn the C `native_entry_robot2` listener entry (a language-agnostic
+/// Spawn the C `linux_robot2_entry` listener entry (a language-agnostic
 /// `/chatter` subscriber on the wire) and block until its subscription is
 /// live.
 fn spawn_c_listener_observer(locator: &str, spin_ms: u32) -> ManagedProcess {

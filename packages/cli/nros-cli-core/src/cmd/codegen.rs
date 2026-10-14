@@ -161,9 +161,9 @@ pub struct EntryNodeArgs {
     #[arg(long, value_name = "LANG")]
     pub lang: String,
 
-    /// Board key: `native`, `zephyr`, `nuttx`, `threadx`, `freertos`.
+    /// Board key: `linux`, `zephyr`, `nuttx`, `threadx`, `freertos`.
     /// Selects the board class and the boot shape.
-    #[arg(long, value_name = "KEY", default_value = "native")]
+    #[arg(long, value_name = "KEY", default_value = "linux")]
     pub board: String,
 
     /// The node's own name — and therefore the SESSION name. Issue 1003

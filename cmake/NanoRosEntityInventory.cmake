@@ -564,7 +564,7 @@ function(nros_derive_entity_inventory_knobs)
     # runtime into all of them, while the fragment is one file per configure:
     # passing only this entry's model made each call overwrite the last, so the
     # runtime was sized for whichever entry cmake happened to process LAST.
-    # `examples/workspaces/cpp`'s `native_entry` (two callbacks) got the service
+    # `examples/workspaces/cpp`'s `linux_entry` (two callbacks) got the service
     # server's `MAX_CBS` of 1 and died `ExecutorFull` at boot. Accumulated
     # here, the final call composes over all of them -- the verb folds several
     # models into the union the shared runtime must hold -- and the fragment

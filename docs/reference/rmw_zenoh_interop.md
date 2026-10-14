@@ -30,9 +30,9 @@ ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicas
 # workspace to `-p` into) and its RMW comes from `system.toml`
 # (`[system] rmw = "zenoh"`), not from a cargo feature.
 cd examples/native/rust/talker
-nros sync          # generated/ msg crates + build/native/nros-cargo.toml
-nros build         # -> build/native/target/debug/talker
-NROS_LOCATOR=tcp/127.0.0.1:7447 RUST_LOG=info build/native/target/debug/talker
+nros sync          # generated/ msg crates + build/linux/nros-cargo.toml
+nros build         # -> build/linux/target/debug/talker
+NROS_LOCATOR=tcp/127.0.0.1:7447 RUST_LOG=info build/linux/target/debug/talker
 
 # Terminal 3: Run ROS 2 listener
 source /opt/ros/humble/setup.bash

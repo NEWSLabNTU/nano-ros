@@ -81,7 +81,7 @@ args   = { host = "robot2" }
 rmw = "zenoh"
 
 # `args` carries over from the entry each image was derived from. It is how an
-# image selects a MACHINE — `native_entry_robot1` and `_robot2` differ ONLY in
+# image selects a MACHINE — `linux_robot1_entry` and `_robot2` differ ONLY in
 # `LAUNCH_ARGS host=`, so an image without it resolves the whole system instead
 # of one host and the two would be the same program. The same gap phase-383
 # W9.a left in `workspaces/rust`.
@@ -97,43 +97,43 @@ board = "freertos-posix"
 # reason; the RMW is a property of the image, so it belongs here.
 rmw = "cyclonedds"
 
-[image.native]
+[image.linux]
 board = "linux"
 
-[image.native_action_client]
+[image.linux_action_client]
 board = "linux"
 launch = "action_client.launch.xml"
 
-[image.native_action_server]
+[image.linux_action_server]
 board = "linux"
 launch = "action_server.launch.xml"
 
 # RMW variants of the default topology. On the CMAKE driver an image's `rmw`
 # genuinely configures the build (it becomes `-DNROS_RMW`), unlike the cargo
 # driver where it only names a directory — issue 0831.
-[image.native_cyclonedds]
+[image.linux_cyclonedds]
 board = "linux"
 rmw = "cyclonedds"
 
-[image.native_xrce]
+[image.linux_xrce]
 board = "linux"
 rmw = "xrce"
 
-[image.native_robot1]
+[image.linux_robot1]
 board = "linux"
 launch = "multihost.launch.xml"
 args = { host = "robot1" }
 
-[image.native_robot2]
+[image.linux_robot2]
 board = "linux"
 launch = "multihost.launch.xml"
 args = { host = "robot2" }
 
-[image.native_service_client]
+[image.linux_service_client]
 board = "linux"
 launch = "service_client.launch.xml"
 
-[image.native_service_server]
+[image.linux_service_server]
 board = "linux"
 launch = "service_server.launch.xml"
 

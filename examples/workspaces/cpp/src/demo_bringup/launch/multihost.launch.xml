@@ -4,8 +4,8 @@
      survive the RESOLVE: robot1 runs the talker, robot2 the listener, `all`
      (the default) keeps both. Bake one model per host:
        nros-launch-resolve … multihost.launch.xml host:=robot1 -o config/multihost_robot1_model.yaml
-     `native_entry_robot1` consumes the robot1 model (talker-only),
-     `native_entry_robot2` the robot2 model (listener-only). Plain ROS 2 XML —
+     `linux_robot1_entry` consumes the robot1 model (talker-only),
+     `linux_robot2_entry` the robot2 model (listener-only). Plain ROS 2 XML —
      the retired `<node machine=…>` form was ROS 1 syntax ROS 2 rejects. -->
 <launch>
   <arg name="host" default="all"/>

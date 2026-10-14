@@ -9,8 +9,8 @@
 # has to claim in-place dispatch for the rows to price as entry structs.
 #
 # Measure (from this directory):
-#     nros sync && nros build native
-#     just mem-report build/native/target/debug/in-place-subscriptions
+#     nros sync && nros build linux
+#     just mem-report build/linux/target/debug/in-place-subscriptions
 # The before/after the issue records is that report with `--baseline` against
 # the same image built with the in-place rows priced as buffered.
 [package]

@@ -19,7 +19,7 @@ src/derived_bringup/ — Bringup for the SAME two nodes with NO authored tiers:
 ```
 
 **Every** image's entry is generated from its `[image.*]`, so `src/` holds no
-entry at all — not `native_entry`, and since phase-470 W5.b2 (issue 1288) not
+entry at all — not `linux_entry`, and since phase-470 W5.b2 (issue 1288) not
 `zephyr_entry` either: `nros build` writes the west application around the
 generated staticlib under `build/<coord>/`.
 
@@ -75,6 +75,6 @@ source ./activate.sh
 cd examples/workspaces/realtime-rust
 nros setup linux
 nros sync
-nros build native
-./build/posix-zenoh/native_entry/target/debug/native_entry
+nros build linux
+./build/posix-zenoh/linux_entry/target/debug/linux_entry
 ```

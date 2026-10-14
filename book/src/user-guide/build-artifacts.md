@@ -52,7 +52,7 @@ file, the cargo settings, the compiled output — lives in `build/`.
 One path the build *does* print is easy to mistake for the binary:
 
 ```text
-nros build:   entry → …/build/posix-zenoh/native_entry
+nros build:   entry → …/build/posix-zenoh/linux_entry
 ```
 
 That is the generated **entry package** — source that nano-ros wrote for you,
@@ -66,7 +66,7 @@ for a single package and `build/<coordinate>/<entry>/nros-cargo.toml` for a
 workspace, and `nros build` points cargo at it:
 
 ```text
-cargo build --manifest-path talker/Cargo.toml --config talker/build/native/nros-cargo.toml
+cargo build --manifest-path talker/Cargo.toml --config talker/build/linux/nros-cargo.toml
 ```
 
 That file states the image's `target-dir`, so each image compiles into its
@@ -81,15 +81,15 @@ For a single package the artifact is that package's own binary:
 <leaf>/build/<image-id>/target/[<triple>/]<profile-dir>/<bin>
 ```
 
-`examples/native/rust/talker` lands at `build/native/target/debug/talker`;
+`examples/native/rust/talker` lands at `build/linux/target/debug/talker`;
 its bare-metal sibling `examples/mps2-an385-baremetal/rust/talker` at
 `build/mps2-an385-baremetal/target/thumbv7m-none-eabi/debug/qemu-bsp-talker`.
 The triple level appears whenever the board pins one — which it does in the
 generated `[build] target`, not on your command line.
 
 For a workspace the binary is the generated entry, inside that entry's own
-target dir — the Rust scaffold's `native` image is
-`build/posix-cyclonedds/native_entry/target/debug/native_entry`.
+target dir — the Rust scaffold's `linux` image is
+`build/posix-cyclonedds/linux_entry/target/debug/linux_entry`.
 
 `<profile-dir>` is `debug` unless the image declares
 `[image.<id>] profile = …`, in which case it is that profile's directory
@@ -98,7 +98,7 @@ target dir — the Rust scaffold's `native` image is
 **Next step:** on a host board, run it. It is an ordinary executable.
 
 ```bash
-./build/native/target/debug/talker
+./build/linux/target/debug/talker
 ```
 
 For a QEMU board, the generated settings file also carries that board's
@@ -121,8 +121,8 @@ executable lands at the top of that directory:
 <ws>/build/<coordinate>/cmake/<image>_entry
 ```
 
-For example, `examples/workspaces/c` builds `[image.native]` to
-`build/posix-zenoh-linux/cmake/native_entry` and its FreeRTOS image to
+For example, `examples/workspaces/c` builds `[image.linux]` to
+`build/posix-zenoh-linux/cmake/linux_entry` and its FreeRTOS image to
 `build/freertos-zenoh-mps2-an385-freertos/cmake/freertos_entry`. (Node packages
 also build their own executables, under `cmake/pkg/<pkg>/<pkg>`; the *image* is
 the one at the top level.)

@@ -291,8 +291,8 @@ west yourself. With no image argument it builds `[system] default_images`;
 cd <leaf-or-workspace>
 nros sync
 nros build                       # every default image
-nros build native                # one image by id
-nros build native -- --release   # arguments after `--` go to the native tool
+nros build linux                # one image by id
+nros build linux -- --release   # arguments after `--` go to the native tool
 ```
 
 A build without a sync fails at the first preflight with one line naming

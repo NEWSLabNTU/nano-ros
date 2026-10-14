@@ -10,7 +10,7 @@
 /// as `examples/native/c/action-server` does.
 ///
 /// Cross-process only (issue 0096): an in-process (same-executor) server+client can't talk, so
-/// the server runs as its OWN entry (`native_action_server_entry`) and the client as another.
+/// the server runs as its OWN entry (`linux_action_server_entry`) and the client as another.
 
 #include <stddef.h>
 #include <stdint.h>

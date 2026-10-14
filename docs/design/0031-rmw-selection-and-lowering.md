@@ -134,11 +134,11 @@ build path (RFC-0005 / Phase 175), even for an otherwise-Rust binary. The
 > **Amended 2026-10-12 (issue 1305).** No example selects its RMW with a cargo
 > feature any more. A single-package example declares one `[image.<id>]` per
 > RMW (and per ROS edition) in its `system.toml` — `examples/native/rust/talker`
-> declares `native`, `native_xrce`, `native_cyclonedds` and the iron/jazzy
+> declares `linux`, `linux_xrce`, `linux_cyclonedds` and the iron/jazzy
 > images — and depends on its GENERATED `<pkg>_nros_selection` package, which
 > `nros sync --image <id>` / `nros build <id>` write with the board crate's
 > `rmw-<x>` and `ros-<ed>` features. Fixture rows name the image (`image =
-> "native_xrce"`), never `features = ["rmw-xrce"]`. `link-tls` and
+> "linux_xrce"`), never `features = ["rmw-xrce"]`. `link-tls` and
 > `unstable-zenoh-api` are NOT in the capability registry (§ Generalization
 > lists `link-tls` as a candidate axis; `capability_resolver::CAPABILITIES` has
 > no row for it), so they stay features of the example, forwarding to an

@@ -9,7 +9,7 @@ cpp/
     ├── talker_pkg/      # Node pkg: publishes std_msgs/Int32 on /chatter
     ├── listener_pkg/    # Node pkg: subscribes std_msgs/Int32 on /chatter
     ├── demo_bringup/    # Bringup pkg: package.xml + system.toml + launch/
-    └── native_entry/    # Entry pkg: native main()
+    └── linux_entry/    # Entry pkg: native main()
 ```
 
 From the repository root:
@@ -19,7 +19,7 @@ source ./activate.sh
 cd examples/workspaces/cpp
 nros setup linux
 nros sync            # once per workspace: generated message bindings
-nros build native
+nros build linux
 ```
 
 `nros build` walks the packages, resolves the image, checks the

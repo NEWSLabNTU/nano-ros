@@ -23,7 +23,7 @@ The built binary lands under `build/`.
 ## Config
 
 Board, RMW, domain and locator: `system.toml` beside `CMakeLists.txt`
-(`[image.native]` + `[system]`, RFC-0098 D3/D5). `find_package(nano_ros)`
+(`[image.linux]` + `[system]`, RFC-0098 D3/D5). `find_package(nano_ros)`
 reads it while CMake configures, so switching board is editing that one
 line and re-configuring (`cmake -B build`); no build command and no
 manifest names a board.

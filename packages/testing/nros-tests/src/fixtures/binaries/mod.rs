@@ -1249,7 +1249,7 @@ pub fn build_example_rmw(name: &str, binary_name: &str, rmw: Rmw) -> TestResult<
     //
     // Issue 1305 — `select_rmw_row`: a leaf picks its RMW by IMAGE
     // (`examples/native/rust/*`): the zenoh build is the plain row and the
-    // others are `image = "native_<rmw>"` rows. (The feature-selected shape,
+    // others are `image = "linux_<rmw>"` rows. (The feature-selected shape,
     // `--no-default-features --features rmw-<x>`, has no rows left since
     // phase F, and its selector is gone.)
     let leaf = format!("examples/{name}");
@@ -2379,7 +2379,7 @@ pub fn build_workspace_cmake_entry_in(
     // indistinguishable from an absent toolchain, so the cell SKIPS and the
     // lane stays green over a coordinate that never ran (issue 0411, the 0350
     // class). phase-331 W2b renamed entries to the platform vocabulary and this
-    // resolver kept `native_threadx_entry` for months.
+    // resolver kept the `native_`-prefixed `threadx_entry` for months.
     //
     // Checked here rather than at the one call site that drifted: the argument
     // exists in ~20 places and any of them can go stale the same way.
@@ -2467,14 +2467,14 @@ pub fn build_workspace_cmake_generated_entry(
 pub fn build_native_workspace_rust_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_RUST_ENTRY_BINARY
         .get_or_try_init(|| {
-            build_workspace_rust_entry("workspace-rust-native", "rust", "native_entry")
+            build_workspace_rust_entry("workspace-rust-native", "rust", "linux_entry")
         })
         .map(|p| p.as_path())
 }
 
 /// Issue 1269 — the SAME `examples/workspaces/rust` image as
 /// [`build_native_workspace_rust_entry`] (default launch, talker + listener),
-/// built on CycloneDDS: `[image.native_cyclonedds]`, row
+/// built on CycloneDDS: `[image.linux_cyclonedds]`, row
 /// `workspace-rust-native-cyclonedds`. The multi-node graph test runs both, so
 /// the node set `ros2 node list` shows is compared across RMWs on one image.
 pub fn build_native_workspace_rust_cyclonedds_entry() -> TestResult<&'static Path> {
@@ -2483,24 +2483,24 @@ pub fn build_native_workspace_rust_cyclonedds_entry() -> TestResult<&'static Pat
             build_workspace_rust_entry(
                 "workspace-rust-native-cyclonedds",
                 "rust",
-                "native_cyclonedds_entry",
+                "linux_cyclonedds_entry",
             )
         })
         .map(|p| p.as_path())
 }
 
-/// Issue 1292 — the SAME image again, on XRCE: `[image.native_xrce]`, row
+/// Issue 1292 — the SAME image again, on XRCE: `[image.linux_xrce]`, row
 /// `workspace-rust-native-xrce`. The third RMW of the multi-node graph test.
 pub fn build_native_workspace_rust_xrce_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_RUST_XRCE_ENTRY_BINARY
         .get_or_try_init(|| {
-            build_workspace_rust_entry("workspace-rust-native-xrce", "rust", "native_xrce_entry")
+            build_workspace_rust_entry("workspace-rust-native-xrce", "rust", "linux_xrce_entry")
         })
         .map(|p| p.as_path())
 }
 
 /// Issue 1722 — the `features` param_talker on XRCE, with 25 declared integer
-/// parameters (35-byte names): `[image.native_rust_params_xrce]`, row
+/// parameters (35-byte names): `[image.linux_rust_params_xrce]`, row
 /// `workspace-features-rust-params-xrce`.
 pub fn build_native_workspace_rust_params_xrce_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_RUST_PARAMS_XRCE_ENTRY_BINARY
@@ -2508,7 +2508,7 @@ pub fn build_native_workspace_rust_params_xrce_entry() -> TestResult<&'static Pa
             build_workspace_rust_entry(
                 "workspace-features-rust-params-xrce",
                 "features",
-                "native_rust_params_xrce_entry",
+                "linux_rust_params_xrce_entry",
             )
         })
         .map(|p| p.as_path())
@@ -2522,7 +2522,7 @@ pub fn build_native_workspace_rust_params_entry() -> TestResult<&'static Path> {
             build_workspace_rust_entry(
                 "workspace-features-rust-params",
                 "features",
-                "native_rust_params_entry",
+                "linux_rust_params_entry",
             )
         })
         .map(|p| p.as_path())
@@ -2537,7 +2537,7 @@ pub fn build_native_workspace_rust_qos_entry() -> TestResult<&'static Path> {
             build_workspace_rust_entry(
                 "workspace-features-rust-qos",
                 "features",
-                "native_rust_qos_entry",
+                "linux_rust_qos_entry",
             )
         })
         .map(|p| p.as_path())
@@ -2550,7 +2550,7 @@ pub fn build_native_workspace_rust_qos_entry() -> TestResult<&'static Path> {
 pub fn build_native_workspace_rust_sizing_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_RUST_SIZING_ENTRY_BINARY
         .get_or_try_init(|| {
-            build_workspace_rust_entry("workspace-rust-native-sizing", "sizing", "native_entry")
+            build_workspace_rust_entry("workspace-rust-native-sizing", "sizing", "linux_entry")
         })
         .map(|p| p.as_path())
 }
@@ -2566,7 +2566,7 @@ pub fn build_native_workspace_rust_bridge_entry() -> TestResult<&'static Path> {
             build_workspace_rust_entry(
                 "workspace-rust-native-bridge",
                 "bridge-cyclonedds",
-                "native_entry",
+                "linux_entry",
             )
         })
         .map(|p| p.as_path())
@@ -2582,7 +2582,7 @@ pub fn build_native_workspace_rust_bridge_xrce_entry() -> TestResult<&'static Pa
             build_workspace_rust_entry(
                 "workspace-rust-native-bridge-xrce",
                 "bridge-xrce",
-                "native_entry",
+                "linux_entry",
             )
         })
         .map(|p| p.as_path())
@@ -2596,7 +2596,7 @@ pub fn build_native_workspace_rust_service_server_entry() -> TestResult<&'static
             build_workspace_rust_entry(
                 "workspace-rust-native-service-server",
                 "rust",
-                "native_service_server_entry",
+                "linux_service_server_entry",
             )
         })
         .map(|p| p.as_path())
@@ -2611,7 +2611,7 @@ pub fn build_native_workspace_rust_service_client_entry() -> TestResult<&'static
             build_workspace_rust_entry(
                 "workspace-rust-native-service-client",
                 "rust",
-                "native_service_client_entry",
+                "linux_service_client_entry",
             )
         })
         .map(|p| p.as_path())
@@ -2628,7 +2628,7 @@ pub fn build_native_workspace_rust_service_inprocess_entry() -> TestResult<&'sta
             build_workspace_rust_entry(
                 "workspace-rust-native-service-inprocess",
                 "rust",
-                "native_service_inprocess_entry",
+                "linux_service_inprocess_entry",
             )
         })
         .map(|p| p.as_path())
@@ -2642,7 +2642,7 @@ pub fn build_native_workspace_rust_action_server_entry() -> TestResult<&'static 
             build_workspace_rust_entry(
                 "workspace-rust-native-action-server",
                 "rust",
-                "native_action_server_entry",
+                "linux_action_server_entry",
             )
         })
         .map(|p| p.as_path())
@@ -2657,7 +2657,7 @@ pub fn build_native_workspace_rust_action_client_entry() -> TestResult<&'static 
             build_workspace_rust_entry(
                 "workspace-rust-native-action-client",
                 "rust",
-                "native_action_client_entry",
+                "linux_action_client_entry",
             )
         })
         .map(|p| p.as_path())
@@ -2666,14 +2666,14 @@ pub fn build_native_workspace_rust_action_client_entry() -> TestResult<&'static 
 /// phase-263 A3 (Track D) — the managed (lifecycle) workspace Entry (cached). The
 /// entry bakes `lifecycle-services` + declares `[lifecycle] autostart = "active"`, so
 /// `nros::main!` registers the 5 REP-2002 services and drives Configure→Activate at
-/// boot; `workspace_features_e2e` (native_rust_lifecycle) asserts the node reaches `active` via `ros2 lifecycle`.
+/// boot; `workspace_features_e2e` (linux_rust_lifecycle) asserts the node reaches `active` via `ros2 lifecycle`.
 pub fn build_native_workspace_rust_lifecycle_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_RUST_LIFECYCLE_ENTRY_BINARY
         .get_or_try_init(|| {
             build_workspace_rust_entry(
                 "workspace-features-rust-lifecycle",
                 "features",
-                "native_rust_lifecycle_entry",
+                "linux_rust_lifecycle_entry",
             )
         })
         .map(|p| p.as_path())
@@ -2688,14 +2688,14 @@ pub fn build_native_workspace_rust_realtime_entry() -> TestResult<&'static Path>
             build_workspace_rust_entry(
                 "workspace-rust-native-realtime",
                 "realtime-rust",
-                "native_entry",
+                "linux_entry",
             )
         })
         .map(|p| p.as_path())
 }
 
 /// Issue 1733 — the native DERIVED-tier Rust realtime entry (cached):
-/// `realtime-rust`'s `derived_bringup`, `[image.native_derived]`, whose two
+/// `realtime-rust`'s `derived_bringup`, `[image.linux_derived]`, whose two
 /// tiers `nros::main!` derives from the contract rather than reads.
 pub fn build_native_workspace_rust_realtime_derived_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_RUST_REALTIME_DERIVED_ENTRY_BINARY
@@ -2703,7 +2703,7 @@ pub fn build_native_workspace_rust_realtime_derived_entry() -> TestResult<&'stat
             build_workspace_rust_entry(
                 "workspace-rust-native-realtime-derived",
                 "realtime-rust",
-                "native_derived_entry",
+                "linux_derived_entry",
             )
         })
         .map(|p| p.as_path())
@@ -2713,14 +2713,14 @@ pub fn build_native_workspace_rust_realtime_derived_entry() -> TestResult<&'stat
 /// Entry pkg fixture (`features`, cached; pure-cargo
 /// `nros::main!(model = …)`). The model namespaces the node under `/island`
 /// and remaps its PRIVATE `~/out` to `/remapped_out` — the wire-name proof
-/// lane consumed by `workspace_features_e2e` (native_rust_remap).
+/// lane consumed by `workspace_features_e2e` (linux_rust_remap).
 pub fn build_native_workspace_rust_remap_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_RUST_REMAP_ENTRY_BINARY
         .get_or_try_init(|| {
             build_workspace_rust_entry(
                 "workspace-features-rust-remap",
                 "features",
-                "native_rust_remap_entry",
+                "linux_rust_remap_entry",
             )
         })
         .map(|p| p.as_path())
@@ -2734,7 +2734,7 @@ pub fn build_native_workspace_rust_safety_talker_entry() -> TestResult<&'static 
             build_workspace_rust_entry(
                 "workspace-safety-rust-talker",
                 "safety",
-                "native_rust_safety_talker_entry",
+                "linux_rust_safety_talker_entry",
             )
         })
         .map(|p| p.as_path())
@@ -2749,7 +2749,7 @@ pub fn build_native_workspace_rust_safety_listener_entry() -> TestResult<&'stati
             build_workspace_rust_entry(
                 "workspace-safety-rust-listener",
                 "safety",
-                "native_rust_safety_listener_entry",
+                "linux_rust_safety_listener_entry",
             )
         })
         .map(|p| p.as_path())
@@ -2762,10 +2762,10 @@ pub fn build_native_workspace_rust_entry_robot1() -> TestResult<&'static Path> {
             build_workspace_rust_entry(
                 "workspace-rust-native-robot1",
                 "rust",
-                // phase-383 W9.b — GENERATED entry: the row names `[image.native_robot1]`
+                // phase-383 W9.b — GENERATED entry: the row names `[image.linux_robot1]`
                 // and the package name is derived (`<image>_entry`), so this is
-                // `native_robot1_entry`, not the pre-migration `native_entry_robot1`.
-                "native_robot1_entry",
+                // `linux_robot1_entry`, not the pre-migration `native_entry_robot1`.
+                "linux_robot1_entry",
             )
         })
         .map(|p| p.as_path())
@@ -2779,7 +2779,7 @@ pub fn build_native_workspace_rust_entry_robot2() -> TestResult<&'static Path> {
                 "workspace-rust-native-robot2",
                 "rust",
                 // phase-383 W9.b — see robot1 above.
-                "native_robot2_entry",
+                "linux_robot2_entry",
             )
         })
         .map(|p| p.as_path())
@@ -2788,7 +2788,7 @@ pub fn build_native_workspace_rust_entry_robot2() -> TestResult<&'static Path> {
 /// Native C workspace Entry pkg fixture.
 pub fn build_native_workspace_c_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_C_ENTRY_BINARY
-        .get_or_try_init(|| build_workspace_cmake_entry("workspace-c-native", "c", "native_entry"))
+        .get_or_try_init(|| build_workspace_cmake_entry("workspace-c-native", "c", "linux_entry"))
         .map(|p| p.as_path())
 }
 
@@ -2801,7 +2801,7 @@ pub fn build_native_workspace_c_params_entry() -> TestResult<&'static Path> {
             build_workspace_cmake_entry(
                 "workspace-features-c-params",
                 "features",
-                "native_c_params_entry",
+                "linux_c_params_entry",
             )
         })
         .map(|p| p.as_path())
@@ -2816,7 +2816,7 @@ pub fn build_native_workspace_c_lifecycle_entry() -> TestResult<&'static Path> {
             build_workspace_cmake_entry(
                 "workspace-features-c-lifecycle",
                 "features",
-                "native_c_lifecycle_entry",
+                "linux_c_lifecycle_entry",
             )
         })
         .map(|p| p.as_path())
@@ -2832,7 +2832,7 @@ pub fn build_native_workspace_c_safety_talker_entry() -> TestResult<&'static Pat
                 "workspace-safety-c-talker",
                 "safety",
                 "build/posix-zenoh-linux/cmake",
-                "native_c_safety_talker_entry",
+                "linux_c_safety_talker_entry",
             )
         })
         .map(|p| p.as_path())
@@ -2848,7 +2848,7 @@ pub fn build_native_workspace_c_safety_listener_entry() -> TestResult<&'static P
                 "workspace-safety-c-listener",
                 "safety",
                 "build/posix-zenoh-linux/cmake",
-                "native_c_safety_listener_entry",
+                "linux_c_safety_listener_entry",
             )
         })
         .map(|p| p.as_path())
@@ -2862,9 +2862,9 @@ pub fn build_native_workspace_c_entry_robot1() -> TestResult<&'static Path> {
                 "workspace-c-native-robot1",
                 "c",
                 // phase-383 W10.a — GENERATED entry: the row names
-                // `[image.native_robot1]` and the name is derived
+                // `[image.linux_robot1]` and the name is derived
                 // (`<image>_entry`), not the pre-migration `native_entry_robot1`.
-                "native_robot1_entry",
+                "linux_robot1_entry",
             )
         })
         .map(|p| p.as_path())
@@ -2878,7 +2878,7 @@ pub fn build_native_workspace_c_service_server_entry() -> TestResult<&'static Pa
             build_workspace_cmake_entry(
                 "workspace-c-native-service-server",
                 "c",
-                "native_service_server_entry",
+                "linux_service_server_entry",
             )
         })
         .map(|p| p.as_path())
@@ -2892,7 +2892,7 @@ pub fn build_native_workspace_c_service_client_entry() -> TestResult<&'static Pa
             build_workspace_cmake_entry(
                 "workspace-c-native-service-client",
                 "c",
-                "native_service_client_entry",
+                "linux_service_client_entry",
             )
         })
         .map(|p| p.as_path())
@@ -2906,7 +2906,7 @@ pub fn build_native_workspace_c_action_server_entry() -> TestResult<&'static Pat
             build_workspace_cmake_entry(
                 "workspace-c-native-action-server",
                 "c",
-                "native_action_server_entry",
+                "linux_action_server_entry",
             )
         })
         .map(|p| p.as_path())
@@ -2920,7 +2920,7 @@ pub fn build_native_workspace_c_action_client_entry() -> TestResult<&'static Pat
             build_workspace_cmake_entry(
                 "workspace-c-native-action-client",
                 "c",
-                "native_action_client_entry",
+                "linux_action_client_entry",
             )
         })
         .map(|p| p.as_path())
@@ -2934,7 +2934,7 @@ pub fn build_native_workspace_c_custom_msg_talker_entry() -> TestResult<&'static
             build_workspace_cmake_entry(
                 "workspace-features-c-custom-msg-talker",
                 "features",
-                "native_c_custom_msg_talker_entry",
+                "linux_c_custom_msg_talker_entry",
             )
         })
         .map(|p| p.as_path())
@@ -2948,7 +2948,7 @@ pub fn build_native_workspace_c_custom_msg_listener_entry() -> TestResult<&'stat
             build_workspace_cmake_entry(
                 "workspace-features-c-custom-msg-listener",
                 "features",
-                "native_c_custom_msg_listener_entry",
+                "linux_c_custom_msg_listener_entry",
             )
         })
         .map(|p| p.as_path())
@@ -2964,7 +2964,7 @@ pub fn build_native_workspace_c_qos_talker_entry() -> TestResult<&'static Path> 
             build_workspace_cmake_entry(
                 "workspace-features-c-qos-talker",
                 "features",
-                "native_c_qos_talker_entry",
+                "linux_c_qos_talker_entry",
             )
         })
         .map(|p| p.as_path())
@@ -2978,7 +2978,7 @@ pub fn build_native_workspace_c_qos_listener_entry() -> TestResult<&'static Path
             build_workspace_cmake_entry(
                 "workspace-features-c-qos-listener",
                 "features",
-                "native_c_qos_listener_entry",
+                "linux_c_qos_listener_entry",
             )
         })
         .map(|p| p.as_path())
@@ -2994,7 +2994,7 @@ pub fn build_native_workspace_cpp_qos_talker_entry() -> TestResult<&'static Path
             build_workspace_cmake_entry(
                 "workspace-features-cpp-qos-talker",
                 "features",
-                "native_cpp_qos_talker_entry",
+                "linux_cpp_qos_talker_entry",
             )
         })
         .map(|p| p.as_path())
@@ -3008,7 +3008,7 @@ pub fn build_native_workspace_cpp_qos_listener_entry() -> TestResult<&'static Pa
             build_workspace_cmake_entry(
                 "workspace-features-cpp-qos-listener",
                 "features",
-                "native_cpp_qos_listener_entry",
+                "linux_cpp_qos_listener_entry",
             )
         })
         .map(|p| p.as_path())
@@ -3023,7 +3023,7 @@ pub fn build_native_workspace_mixed_qos_talker_entry() -> TestResult<&'static Pa
             build_workspace_cmake_entry(
                 "workspace-features-mixed-qos-talker",
                 "features",
-                "native_mixed_qos_talker_entry",
+                "linux_mixed_qos_talker_entry",
             )
         })
         .map(|p| p.as_path())
@@ -3037,7 +3037,7 @@ pub fn build_native_workspace_mixed_qos_listener_entry() -> TestResult<&'static 
             build_workspace_cmake_entry(
                 "workspace-features-mixed-qos-listener",
                 "features",
-                "native_mixed_qos_listener_entry",
+                "linux_mixed_qos_listener_entry",
             )
         })
         .map(|p| p.as_path())
@@ -3052,7 +3052,7 @@ pub fn build_native_workspace_cpp_custom_msg_talker_entry() -> TestResult<&'stat
             build_workspace_cmake_entry(
                 "workspace-features-cpp-custom-msg-talker",
                 "features",
-                "native_cpp_custom_msg_talker_entry",
+                "linux_cpp_custom_msg_talker_entry",
             )
         })
         .map(|p| p.as_path())
@@ -3066,7 +3066,7 @@ pub fn build_native_workspace_cpp_custom_msg_listener_entry() -> TestResult<&'st
             build_workspace_cmake_entry(
                 "workspace-features-cpp-custom-msg-listener",
                 "features",
-                "native_cpp_custom_msg_listener_entry",
+                "linux_cpp_custom_msg_listener_entry",
             )
         })
         .map(|p| p.as_path())
@@ -3081,7 +3081,7 @@ pub fn build_native_workspace_mixed_custom_msg_talker_entry() -> TestResult<&'st
             build_workspace_cmake_entry(
                 "workspace-features-mixed-custom-msg-talker",
                 "features",
-                "native_mixed_custom_msg_talker_entry",
+                "linux_mixed_custom_msg_talker_entry",
             )
         })
         .map(|p| p.as_path())
@@ -3095,7 +3095,7 @@ pub fn build_native_workspace_mixed_custom_msg_listener_entry() -> TestResult<&'
             build_workspace_cmake_entry(
                 "workspace-features-mixed-custom-msg-listener",
                 "features",
-                "native_mixed_custom_msg_listener_entry",
+                "linux_mixed_custom_msg_listener_entry",
             )
         })
         .map(|p| p.as_path())
@@ -3108,7 +3108,7 @@ pub fn build_native_workspace_cpp_service_server_entry() -> TestResult<&'static 
             build_workspace_cmake_entry(
                 "workspace-cpp-native-service-server",
                 "cpp",
-                "native_service_server_entry",
+                "linux_service_server_entry",
             )
         })
         .map(|p| p.as_path())
@@ -3121,7 +3121,7 @@ pub fn build_native_workspace_cpp_service_client_entry() -> TestResult<&'static 
             build_workspace_cmake_entry(
                 "workspace-cpp-native-service-client",
                 "cpp",
-                "native_service_client_entry",
+                "linux_service_client_entry",
             )
         })
         .map(|p| p.as_path())
@@ -3135,7 +3135,7 @@ pub fn build_native_workspace_cpp_action_server_entry() -> TestResult<&'static P
             build_workspace_cmake_entry(
                 "workspace-cpp-native-action-server",
                 "cpp",
-                "native_action_server_entry",
+                "linux_action_server_entry",
             )
         })
         .map(|p| p.as_path())
@@ -3149,7 +3149,7 @@ pub fn build_native_workspace_cpp_action_client_entry() -> TestResult<&'static P
             build_workspace_cmake_entry(
                 "workspace-cpp-native-action-client",
                 "cpp",
-                "native_action_client_entry",
+                "linux_action_client_entry",
             )
         })
         .map(|p| p.as_path())
@@ -3164,7 +3164,7 @@ pub fn build_native_workspace_mixed_service_server_entry() -> TestResult<&'stati
             build_workspace_cmake_entry(
                 "workspace-mixed-native-service-server",
                 "mixed",
-                "native_service_server_entry",
+                "linux_service_server_entry",
             )
         })
         .map(|p| p.as_path())
@@ -3177,7 +3177,7 @@ pub fn build_native_workspace_mixed_service_client_entry() -> TestResult<&'stati
             build_workspace_cmake_entry(
                 "workspace-mixed-native-service-client",
                 "mixed",
-                "native_service_client_entry",
+                "linux_service_client_entry",
             )
         })
         .map(|p| p.as_path())
@@ -3192,7 +3192,7 @@ pub fn build_native_workspace_mixed_action_server_entry() -> TestResult<&'static
             build_workspace_cmake_entry(
                 "workspace-mixed-native-action-server",
                 "mixed",
-                "native_action_server_entry",
+                "linux_action_server_entry",
             )
         })
         .map(|p| p.as_path())
@@ -3205,7 +3205,7 @@ pub fn build_native_workspace_mixed_action_client_entry() -> TestResult<&'static
             build_workspace_cmake_entry(
                 "workspace-mixed-native-action-client",
                 "mixed",
-                "native_action_client_entry",
+                "linux_action_client_entry",
             )
         })
         .map(|p| p.as_path())
@@ -3219,7 +3219,7 @@ pub fn build_native_workspace_c_entry_robot2() -> TestResult<&'static Path> {
                 "workspace-c-native-robot2",
                 "c",
                 // phase-383 W10.a — see robot1 above.
-                "native_robot2_entry",
+                "linux_robot2_entry",
             )
         })
         .map(|p| p.as_path())
@@ -3236,7 +3236,7 @@ pub fn build_threadx_linux_workspace_c_entry() -> TestResult<&'static Path> {
                 "workspace-c-threadx-linux",
                 "c",
                 "build-workspace-fixtures-threadx",
-                // `threadx_entry`, not `native_threadx_entry` — the manifest row
+                // `threadx_entry`, not the `native_`-prefixed one — the manifest row
                 // and the workspace agree on the former (issue 0411). phase-331
                 // W2b unified entry names to the platform vocabulary and this
                 // resolver kept the old spelling, so the cell reported
@@ -3729,7 +3729,7 @@ pub fn build_freertos_workspace_mixed_entry() -> TestResult<&'static Path> {
 pub fn build_native_workspace_cpp_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_CPP_ENTRY_BINARY
         .get_or_try_init(|| {
-            build_workspace_cmake_entry("workspace-cpp-native", "cpp", "native_entry")
+            build_workspace_cmake_entry("workspace-cpp-native", "cpp", "linux_entry")
         })
         .map(|p| p.as_path())
 }
@@ -3744,14 +3744,14 @@ pub fn build_native_workspace_cpp_params_entry() -> TestResult<&'static Path> {
             build_workspace_cmake_entry(
                 "workspace-features-cpp-params",
                 "features",
-                "native_cpp_params_entry",
+                "linux_cpp_params_entry",
             )
         })
         .map(|p| p.as_path())
 }
 
 /// phase-426 W5 — the CROSS-LANGUAGE parameter entry (`features`,
-/// `native_mixed_params`). One node whose C++ half declares `publish_period_ms`
+/// `linux_mixed_params`). One node whose C++ half declares `publish_period_ms`
 /// and reads `scale`, and whose C half declares `scale` and reads
 /// `publish_period_ms` — the acceptance W5 stated and did not build, because
 /// `c_params` / `cpp_params` are single-language images that never cross.
@@ -3762,7 +3762,7 @@ pub fn build_native_workspace_mixed_params_entry() -> TestResult<&'static Path> 
             build_workspace_cmake_entry(
                 "workspace-features-mixed-params",
                 "features",
-                "native_mixed_params_entry",
+                "linux_mixed_params_entry",
             )
         })
         .map(|p| p.as_path())
@@ -3777,14 +3777,14 @@ pub fn build_native_workspace_cpp_lifecycle_entry() -> TestResult<&'static Path>
             build_workspace_cmake_entry(
                 "workspace-features-cpp-lifecycle",
                 "features",
-                "native_cpp_lifecycle_entry",
+                "linux_cpp_lifecycle_entry",
             )
         })
         .map(|p| p.as_path())
 }
 
 /// Phase 270 (#103) — the wrapper-managed C++ lifecycle entry (`managed`,
-/// `native_managed_entry`). Boots `ManagedTalker`, which drives REP-2002 itself via
+/// `linux_managed_entry`). Boots `ManagedTalker`, which drives REP-2002 itself via
 /// `nros::LifecycleNode` (register_services + autostart(Active)); consumed by
 /// tests/cpp_lifecycle_node_wrapper_e2e.rs.
 pub fn build_native_workspace_cpp_lifecycle_managed_entry() -> TestResult<&'static Path> {
@@ -3801,7 +3801,7 @@ pub fn build_native_workspace_cpp_lifecycle_managed_entry() -> TestResult<&'stat
                 "workspace-managed-cpp-native",
                 "managed",
                 "build-workspace-fixtures",
-                "native_managed_entry",
+                "linux_managed_entry",
             )
         })
         .map(|p| p.as_path())
@@ -3817,7 +3817,7 @@ pub fn build_native_workspace_cpp_safety_talker_entry() -> TestResult<&'static P
                 "workspace-safety-cpp-talker",
                 "safety",
                 "build/posix-zenoh-linux/cmake",
-                "native_cpp_safety_talker_entry",
+                "linux_cpp_safety_talker_entry",
             )
         })
         .map(|p| p.as_path())
@@ -3833,7 +3833,7 @@ pub fn build_native_workspace_cpp_safety_listener_entry() -> TestResult<&'static
                 "workspace-safety-cpp-listener",
                 "safety",
                 "build/posix-zenoh-linux/cmake",
-                "native_cpp_safety_listener_entry",
+                "linux_cpp_safety_listener_entry",
             )
         })
         .map(|p| p.as_path())
@@ -3846,7 +3846,7 @@ pub fn build_native_workspace_cpp_safety_listener_entry() -> TestResult<&'static
 pub fn build_native_workspace_c_realtime_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_C_REALTIME_ENTRY_BINARY
         .get_or_try_init(|| {
-            build_workspace_cmake_entry("workspace-c-native-realtime", "realtime-c", "native_entry")
+            build_workspace_cmake_entry("workspace-c-native-realtime", "realtime-c", "linux_entry")
         })
         .map(|p| p.as_path())
 }
@@ -3861,7 +3861,7 @@ pub fn build_native_workspace_cpp_realtime_entry() -> TestResult<&'static Path> 
             build_workspace_cmake_entry(
                 "workspace-cpp-native-realtime",
                 "realtime-cpp",
-                "native_entry",
+                "linux_entry",
             )
         })
         .map(|p| p.as_path())
@@ -3876,7 +3876,7 @@ pub fn build_native_workspace_cpp_derived_tiers_entry() -> TestResult<&'static P
             build_workspace_cmake_entry(
                 "workspace-cpp-native-derived-tiers",
                 "derived-tiers-cpp",
-                "native_entry",
+                "linux_entry",
             )
         })
         .map(|p| p.as_path())
@@ -3894,14 +3894,14 @@ pub fn build_native_workspace_cpp_rclcpp_realtime_entry() -> TestResult<&'static
             build_workspace_cmake_entry(
                 "workspace-cpp-native-realtime-rclcpp",
                 "realtime-cpp",
-                // The manifest row declares `native_rclcpp_entry` and the
+                // The manifest row declares `linux_rclcpp_entry` and the
                 // manifest is the SSoT (issue 0411). This named the sibling
-                // `native_entry` — a real package, but the CONFIGURE-shape one,
+                // `linux_entry` — a real package, but the CONFIGURE-shape one,
                 // not the rclcpp shape this fixture exists to cover. The
                 // mismatch makes the fixture read "not built" forever: the
                 // builder produces what the manifest says and the resolver
                 // looks for something else.
-                "native_rclcpp_entry",
+                "linux_rclcpp_entry",
             )
         })
         .map(|p| p.as_path())
@@ -3919,13 +3919,13 @@ pub fn build_native_workspace_cpp_subnode_realtime_entry() -> TestResult<&'stati
             build_workspace_cmake_entry(
                 "workspace-cpp-native-realtime-subnode",
                 "realtime-cpp",
-                // The manifest row declares `entry = "native_subnode_entry"`,
+                // The manifest row declares `entry = "linux_subnode_entry"`,
                 // and the workspace builds three entries side by side
-                // (`native_entry`, `native_rclcpp_entry`, `native_subnode_entry`)
+                // (`linux_entry`, `linux_rclcpp_entry`, `linux_subnode_entry`)
                 // — so naming the wrong one here resolves to a real binary's
                 // NEIGHBOUR and the cell skips forever. issue 0411's class,
                 // caught by the guard this call sits under.
-                "native_subnode_entry",
+                "linux_subnode_entry",
             )
         })
         .map(|p| p.as_path())
@@ -3943,7 +3943,7 @@ pub fn build_native_workspace_cpp_subnode_portable_entry() -> TestResult<&'stati
             build_workspace_cmake_entry(
                 "workspace-cpp-native-realtime-subnode-portable",
                 "realtime-cpp",
-                "native_entry",
+                "linux_entry",
             )
         })
         .map(|p| p.as_path())
@@ -3953,7 +3953,7 @@ pub fn build_native_workspace_cpp_subnode_portable_entry() -> TestResult<&'stati
 pub fn build_native_workspace_cpp_entry_robot1() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_CPP_ENTRY_ROBOT1_BINARY
         .get_or_try_init(|| {
-            build_workspace_cmake_entry("workspace-cpp-native-robot1", "cpp", "native_robot1_entry")
+            build_workspace_cmake_entry("workspace-cpp-native-robot1", "cpp", "linux_robot1_entry")
         })
         .map(|p| p.as_path())
 }
@@ -3962,7 +3962,7 @@ pub fn build_native_workspace_cpp_entry_robot1() -> TestResult<&'static Path> {
 pub fn build_native_workspace_cpp_entry_robot2() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_CPP_ENTRY_ROBOT2_BINARY
         .get_or_try_init(|| {
-            build_workspace_cmake_entry("workspace-cpp-native-robot2", "cpp", "native_robot2_entry")
+            build_workspace_cmake_entry("workspace-cpp-native-robot2", "cpp", "linux_robot2_entry")
         })
         .map(|p| p.as_path())
 }
@@ -3971,7 +3971,7 @@ pub fn build_native_workspace_cpp_entry_robot2() -> TestResult<&'static Path> {
 pub fn build_native_workspace_mixed_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_MIXED_ENTRY_BINARY
         .get_or_try_init(|| {
-            build_workspace_cmake_entry("workspace-mixed-native", "mixed", "native_entry")
+            build_workspace_cmake_entry("workspace-mixed-native", "mixed", "linux_entry")
         })
         .map(|p| p.as_path())
 }
@@ -3983,7 +3983,7 @@ pub fn build_native_workspace_mixed_entry_robot1() -> TestResult<&'static Path> 
             build_workspace_cmake_entry(
                 "workspace-mixed-native-robot1",
                 "mixed",
-                "native_robot1_entry",
+                "linux_robot1_entry",
             )
         })
         .map(|p| p.as_path())
@@ -3996,7 +3996,7 @@ pub fn build_native_workspace_mixed_entry_robot2() -> TestResult<&'static Path> 
             build_workspace_cmake_entry(
                 "workspace-mixed-native-robot2",
                 "mixed",
-                "native_robot2_entry",
+                "linux_robot2_entry",
             )
         })
         .map(|p| p.as_path())
@@ -4255,7 +4255,7 @@ pub fn build_native_param_two_node_talker() -> TestResult<&'static Path> {
             // multi-row leaf rather than guessing.
             //
             // issue 1620 — the two builders select by the same rule. Issue 1305:
-            // that rule is the IMAGE now (`native` / `native_cyclonedds` in the
+            // that rule is the IMAGE now (`linux` / `linux_cyclonedds` in the
             // leaf's `system.toml`), which `select_rmw_row` reaches from an RMW.
             let row = crate::fixtures::groups::select_rmw_row(
                 "packages/testing/nros-tests/bins/param-two-node-talker",
@@ -5726,10 +5726,10 @@ pub fn build_rosout_talker() -> TestResult<&'static Path> {
 /// phase-479 W5 (RFC-0102 D5) — resolve the prebuilt `log-arena-probe`
 /// fixture binary (`packages/testing/nros-tests/bins/log-arena-probe`). Built
 /// for the `native` board (which states `[knobs.log] dynamic_loggers`)
-/// with an `[image.native] env` that states `NROS_LOG_DYNAMIC_LOGGERS`, so the
+/// with an `[image.linux] env` that states `NROS_LOG_DYNAMIC_LOGGERS`, so the
 /// capacity it reports says which rung won. Consumed by
 /// `tests/log_arena_knob.rs`. Own Cargo workspace, built through its leaf's
-/// generated `build/native/nros-cargo.toml`.
+/// generated `build/linux/nros-cargo.toml`.
 pub fn build_log_arena_probe() -> TestResult<&'static Path> {
     NATIVE_LOG_ARENA_PROBE_BINARY
         .get_or_try_init(|| {

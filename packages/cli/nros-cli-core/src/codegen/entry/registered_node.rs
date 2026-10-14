@@ -56,7 +56,7 @@ use super::{Lang, Plan, PlanNode};
 /// struct side by side.
 #[derive(Debug, Clone)]
 pub struct RegisteredNode {
-    /// Board key — `native`, `zephyr`, `nuttx`, `threadx`, `freertos`. Selects
+    /// Board key — `linux`, `zephyr`, `nuttx`, `threadx`, `freertos`. Selects
     /// the board class and the boot shape.
     pub board: String,
     /// The node's own name (`@NROS_ENTRY_NODE_NAME@`), from cmake's

@@ -18,7 +18,7 @@
 #   another `rmw` at this bringup is what would change the answer. Protocol: RFC-0028.
 #
 # In-process delivery does not happen (same zenoh session; issue 0096), so the demo
-# is split into two entries: `native_safety_talker_entry` + `native_safety_listener_entry`.
+# is split into two entries: `linux_c_safety_talker_entry` + `linux_c_safety_listener_entry`.
 # Cross-process e2e: tests/workspace_features_e2e.rs.
 
 [system]
@@ -95,27 +95,27 @@ out    = "rust_safety_talker_model.yaml"
 [image_defaults]
 rmw = "zenoh"
 
-[image.native_c_safety_listener]
+[image.linux_c_safety_listener]
 board = "linux"
 launch = "c_safety_listener.launch.xml"
 
-[image.native_c_safety_talker]
+[image.linux_c_safety_talker]
 board = "linux"
 launch = "c_safety_talker.launch.xml"
 
-[image.native_cpp_safety_listener]
+[image.linux_cpp_safety_listener]
 board = "linux"
 launch = "cpp_safety_listener.launch.xml"
 
-[image.native_cpp_safety_talker]
+[image.linux_cpp_safety_talker]
 board = "linux"
 launch = "cpp_safety_talker.launch.xml"
 
-[image.native_rust_safety_listener]
+[image.linux_rust_safety_listener]
 board = "linux"
 launch = "rust_safety_listener.launch.xml"
 
-[image.native_rust_safety_talker]
+[image.linux_rust_safety_talker]
 board = "linux"
 launch = "rust_safety_talker.launch.xml"
 

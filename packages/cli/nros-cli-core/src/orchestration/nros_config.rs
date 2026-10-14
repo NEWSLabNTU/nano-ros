@@ -1097,7 +1097,7 @@ pkg = "listener_pkg"
 class = "listener_pkg::ListenerNode"
 name = "listener"
 
-[image.native]
+[image.linux]
 board = "linux"
 "#,
         )
@@ -1648,11 +1648,11 @@ name = "alpha"
         assert_eq!(bringup.system.components.len(), 2);
         assert_eq!(bringup.system.components[0].name, "talker");
         assert_eq!(bringup.system.components[1].name, "listener");
-        let native = bringup
+        let host = bringup
             .system
-            .image_for("native")
-            .expect("native image present");
-        assert_eq!(native.board.as_deref(), Some("linux"));
+            .image_for("linux")
+            .expect("linux image present");
+        assert_eq!(host.board.as_deref(), Some("linux"));
 
         // The bringup pkg's ament block is preserved.
         assert_eq!(

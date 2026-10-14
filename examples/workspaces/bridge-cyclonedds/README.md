@@ -42,7 +42,7 @@ publisher that only speaks zenoh. **No build.rs, no user bridge code** — plain
 
 ```sh
 git submodule update --init third-party/dds/cyclonedds   # vendored C++ CycloneDDS
-nros build native                              # links zenoh + cyclonedds
+nros build linux                              # links zenoh + cyclonedds
 ```
 
 ## Status

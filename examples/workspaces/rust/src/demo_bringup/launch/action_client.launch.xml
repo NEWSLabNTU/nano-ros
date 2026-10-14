@@ -3,7 +3,7 @@
      demo (issue 0096). Boots fibonacci_client, which sends one goal to the /fibonacci
      server and republishes the result's last sequence element on /fib_result. Run in a
      separate process from `action_server.launch.xml`. Boot with the
-     `native_action_client_entry` pkg. -->
+     `linux_action_client_entry` pkg. -->
 <launch>
   <node pkg="action_client_pkg" exec="fibonacci_client" name="fibonacci_client"/>
 </launch>

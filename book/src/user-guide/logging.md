@@ -137,7 +137,7 @@ State it per image or per board, like every other knob:
 
 ```toml
 # system.toml — this image only
-[image.native.knobs.log]
+[image.linux.knobs.log]
 max_level = "info"
 
 # nros-board.toml — every image on the board

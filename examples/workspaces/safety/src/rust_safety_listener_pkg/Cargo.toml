@@ -16,7 +16,7 @@ name = "safe_listener"
 # phase-277 W3.c — this pkg IS the safety-CRC listener (its whole purpose is
 # reading `CallbackCtx::integrity()`), so the E2E-safety axis is unconditional
 # on `nros` below. `safety-e2e` is kept as a no-op feature name so existing
-# consumers (native_entry, native_safety_listener_entry) that request
+# consumers (linux_entry, linux_rust_safety_listener_entry) that request
 # `features = ["safety-e2e"]` keep working.
 default = ["safety-e2e"]
 safety-e2e = []

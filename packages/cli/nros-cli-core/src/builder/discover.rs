@@ -666,16 +666,16 @@ mod tests {
         // root that re-listed them would build a Zephyr staticlib for the host.
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
-        std::fs::create_dir_all(root.join("src/native_entry")).unwrap();
+        std::fs::create_dir_all(root.join("src/linux_entry")).unwrap();
         std::fs::create_dir_all(root.join("src/zephyr_entry")).unwrap();
         write(
             &root.join("Cargo.toml"),
-            "[workspace]\nmembers = [\"src/native_entry\", \"src/zephyr_entry\"]\n\
+            "[workspace]\nmembers = [\"src/linux_entry\", \"src/zephyr_entry\"]\n\
              exclude = [\"src/zephyr_entry\"]\n",
         );
 
         let m = cargo_workspace_members(root);
-        assert_eq!(m, vec![root.join("src/native_entry")], "{m:?}");
+        assert_eq!(m, vec![root.join("src/linux_entry")], "{m:?}");
     }
 
     #[test]

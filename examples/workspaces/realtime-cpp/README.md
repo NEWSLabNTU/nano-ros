@@ -19,9 +19,9 @@ Tiers live in `src/demo_bringup/system.toml` (`[tiers.high]` / `[tiers.low]` +
 
 ```sh
 source ./activate.sh
-nros build native
+nros build linux
 ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd &   # or: just linux zenohd
-./build/src/native_entry/native_entry
+./build/src/linux_entry/linux_entry
 ```
 
 (Fixture lane: `just linux build-workspace-fixtures`; e2e

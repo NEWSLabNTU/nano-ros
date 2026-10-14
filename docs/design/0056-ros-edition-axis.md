@@ -128,8 +128,8 @@ typo guard `[system] ros_edition` always had). One resolver,
 selection writer (`facade::derive`, shared by a workspace entry's facade and a
 single-package leaf's `<pkg>_nros_selection`) and the leaf's message codegen
 (`nros sync --image <id>`). So one leaf can build a humble image and a jazzy
-image — `examples/native/rust/*` declare `native`, `native_jazzy`,
-`native_xrce_jazzy`, … for `just ros_editions build-e2e-fixtures`, which used
+image — `examples/native/rust/*` declare `linux`, `linux_jazzy`,
+`linux_xrce_jazzy`, … for `just ros_editions build-e2e-fixtures`, which used
 to pass `--features "rmw-<x> ros-<edition>"`.
 
 A leaf's `generated/` holds ONE edition's message crates at a time, so `nros

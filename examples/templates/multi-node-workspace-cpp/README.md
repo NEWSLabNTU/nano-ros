@@ -17,7 +17,7 @@ the same Node pkg / Bringup pkg shape with a generated entry, built with CMake.
   reliable reader, so the default CycloneDDS build would receive nothing.
 There is no root `CMakeLists.txt` and no entry package (RFC-0098 D9, RFC-0065
 D4): `nros build` generates the cmake root and the image's C++ entry
-(`native_entry`) under `build/`, resolving the bringup's launch file into a
+(`linux_entry`) under `build/`, resolving the bringup's launch file into a
 SystemModel there (SystemModels are build artifacts — never committed).
 
 ## Build
@@ -25,14 +25,14 @@ SystemModel there (SystemModels are build artifacts — never committed).
 ```sh
 export NROS_REPO_DIR=/path/to/nano-ros
 nros sync
-nros build native
+nros build linux
 ```
 
 ## Run
 
 ```sh
 ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd &
-./build/posix-zenoh-linux/cmake/native_entry
+./build/posix-zenoh-linux/cmake/linux_entry
 ```
 
 ## Expected output

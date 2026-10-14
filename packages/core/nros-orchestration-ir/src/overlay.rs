@@ -577,21 +577,21 @@ mod tests {
 
     #[test]
     fn a_switch_only_one_image_states_stays_off_the_others() {
-        let ov = o("[image.native]\nfeatures = [\"param_services\"]\n[image.mcu]\nboard = \"x\"\n");
+        let ov = o("[image.linux]\nfeatures = [\"param_services\"]\n[image.mcu]\nboard = \"x\"\n");
         assert!(ov.features.is_empty());
-        assert_eq!(ov.features_for_image("native"), vec!["param_services"]);
+        assert_eq!(ov.features_for_image("linux"), vec!["param_services"]);
         assert!(ov.features_for_image("mcu").is_empty());
     }
 
     #[test]
     fn an_unknown_image_switch_is_refused_naming_the_image() {
         let e = Overlay::from_system_toml_str(
-            "[image.native]\nfeatures = [\"param_servics\"]\n",
+            "[image.linux]\nfeatures = [\"param_servics\"]\n",
             Path::new("system.toml"),
         )
         .unwrap_err();
         assert!(
-            e.contains("[image.native]") && e.contains("param_servics"),
+            e.contains("[image.linux]") && e.contains("param_servics"),
             "{e}"
         );
     }

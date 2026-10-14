@@ -221,7 +221,7 @@ name = \"demo\"
 rmw = \"zenoh\"
 domain_id = 0
 
-[image.native]
+[image.linux]
 board = \"linux\"
 ";
 

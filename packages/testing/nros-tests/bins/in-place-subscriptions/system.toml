@@ -12,7 +12,7 @@ name = "eight_listener"
 
 # Host build; the locator and domain stay runtime env (`NROS_LOCATOR` /
 # `ROS_DOMAIN_ID`).
-[image.native]
+[image.linux]
 board = "linux"
 # Issue 1340 — this image's static memory is the measurement, so it builds
 # WITHOUT the host board's census + profile producers the selection package

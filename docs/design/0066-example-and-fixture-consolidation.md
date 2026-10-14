@@ -91,9 +91,9 @@ Two implementations, only one of which achieves it:
 The rust facade is the evidence — the same entry name, two systems:
 
 ```toml
-# ws-params-rust/generated/nros-selection/native_entry/Cargo.toml
+# ws-params-rust/generated/nros-selection/linux_entry/Cargo.toml
 nros = { …, features = ["param-services", "ros-humble"] }
-# workspaces/rust/generated/nros-selection/native_showcase_entry/Cargo.toml
+# workspaces/rust/generated/nros-selection/linux_showcase_entry/Cargo.toml
 nros = { …, features = ["ros-humble"] }
 ```
 

@@ -30,7 +30,7 @@ ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicas
 cd examples/native/rust/talker
 nros sync                            # generated/ bindings + build settings (once)
 nros build
-RUST_LOG=info ./build/native/target/debug/talker
+RUST_LOG=info ./build/linux/target/debug/talker
 ```
 
 ```bash
@@ -58,7 +58,7 @@ ROS 2 publishers also work with nano-ros subscribers:
 # Terminal 2: Run the nano-ros listener instead
 cd examples/native/rust/listener
 nros sync && nros build
-RUST_LOG=info ./build/native/target/debug/listener
+RUST_LOG=info ./build/linux/target/debug/listener
 
 # Terminal 3: ROS 2 talker
 source /opt/ros/humble/setup.bash
@@ -95,7 +95,7 @@ direct-mode app (see
 [Workflow](../user-guide/workflow.md)):
 
 ```bash
-ROS_DOMAIN_ID=42 ./build/native/target/debug/talker   # nano-ros side
+ROS_DOMAIN_ID=42 ./build/linux/target/debug/talker   # nano-ros side
 ROS_DOMAIN_ID=42 ros2 topic echo /chatter ...  # ROS 2 side
 ```
 
@@ -147,12 +147,12 @@ The edition is declared like the RMW, per image, in `system.toml`:
 `[system] ros_edition`). `nros sync --image <id>` generates the messages
 for that edition and `nros build <id>` builds the image; the
 `ros-<edition>` cargo features are what the build lowers it to, not
-something you pass. The native examples declare `native_jazzy`,
-`native_xrce_jazzy`, … for this:
+something you pass. The native examples declare `linux_jazzy`,
+`linux_xrce_jazzy`, … for this:
 
 ```bash
 cd examples/native/rust/talker
-nros sync --image native_jazzy && nros build native_jazzy
+nros sync --image linux_jazzy && nros build linux_jazzy
 ```
 
 ## Troubleshooting

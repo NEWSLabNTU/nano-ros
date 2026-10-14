@@ -1034,14 +1034,14 @@ pub const CELLS: &[Cell] = &[
     cell(Linux, Cpp,   Zenoh, CustomMsg, Workspace, Runtime),
     // Corrected during the phase-295 W3.b consolidation: the seed table
     // marked native rust CustomMsg/Qos `Runtime`, but no fixtures.toml row
-    // builds `ws-{custom-msg,qos}-rust`'s `native_entry` and no test
+    // builds `ws-{custom-msg,qos}-rust`'s `linux_entry` and no test
     // consumes it (the C files' "C projection of the Rust demo" prose
     // described the WORKSPACE, not a lane; ws-qos-rust's only runtime lane
     // is the zephyr image). Single-entry natives also hit issue 0096
     // (in-process pub→sub never delivers), so wiring them needs split
     // talker/listener entries first — issue #233.
     cell(Linux, Rust,  Zenoh, CustomMsg, Workspace,
-         BuildOnly("ws-custom-msg-rust native_entry has no fixture row or runtime lane \
+         BuildOnly("ws-custom-msg-rust linux_entry has no fixture row or runtime lane \
                     (needs an 0096 two-entry split) — phase-295 W3.b finding, W6 wires it")),
     cell(Linux, Mixed, Zenoh, CustomMsg, Workspace, Runtime),
     cell(Linux, C,     Zenoh, Logging,   Workspace, Runtime),
@@ -1055,7 +1055,7 @@ pub const CELLS: &[Cell] = &[
     cell(Linux, Cpp,   Zenoh, Qos,       Workspace, Runtime),
     // See the CustomMsg rust row above — same phase-295 W3.b correction.
     cell(Linux, Rust,  Zenoh, Qos,       Workspace,
-         BuildOnly("ws-qos-rust native_entry has no fixture row or runtime lane (only \
+         BuildOnly("ws-qos-rust linux_entry has no fixture row or runtime lane (only \
                     the zephyr image is consumed) — phase-295 W3.b finding, W6 wires it")),
     cell(Linux, Mixed, Zenoh, Qos,       Workspace, Runtime),
     cell(Linux, C,     Zenoh, Params,    Workspace, Runtime),

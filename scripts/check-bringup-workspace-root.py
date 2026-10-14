@@ -35,7 +35,7 @@ rather than at the workspace. With the marker, a forced re-expansion of
 `nros::main!` is clean; with the marker moved aside, the same command says::
 
     error: nros::main!: pkg `demo_bringup` not found in workspace
-    `…/build/posix-zenoh/native_entry`. Known pkgs: []
+    `…/build/posix-zenoh/linux_entry`. Known pkgs: []
 
 That is what rung 2 buys, and nothing else in the tree supplies it: `nros build`
 and `nros sync` take the workspace from the CWD and hand cargo a

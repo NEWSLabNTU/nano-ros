@@ -482,11 +482,11 @@ def self_test(verbose: bool, quiet: bool = False) -> int:
 
     # The declared-id harvest reads both TOML spellings of a key.
     ids = declared_block_ids(lambda: iter([
-        '[image.native]\nboard = "x"\n[deploy."qemu-armv7a-nuttx"]\n'
+        '[image.linux]\nboard = "x"\n[deploy."qemu-armv7a-nuttx"]\n'
         '[board_config."not-an-image"]\n'
     ]))
     chk("declared ids harvest bare and quoted keys",
-        ids == {"native", "qemu-armv7a-nuttx"})
+        ids == {"linux", "qemu-armv7a-nuttx"})
 
     # The excuse must name an issue that EXISTS, or it is not a tracked id.
     chk("issue 1396 is a tracked id in this tree", "1396" in tracked_issue_ids())

@@ -35,13 +35,13 @@ rm -rf "$ws"
 ( cd /tmp && nros new probe_quickstart --workspace )
 cd "$ws"
 # No root build file and no hand-written entry (RFC-0098 D9, phase-445 W5):
-# the entry is generated from the bringup's `[image.native]` by `nros build`.
+# the entry is generated from the bringup's `[image.linux]` by `nros build`.
 # No root is named: the in-tree `nros` knows the checkout it was built in
 # (RFC-0103 D6, amended 2026-10-12), exactly as the book's flow says.
 nros sync
 nros build
 
-bin=build/posix-cyclonedds-linux/cmake/native_entry
+bin=build/posix-cyclonedds-linux/cmake/linux_entry
 [ -x "$bin" ] || { echo "PROBE FAIL: entry binary missing at $bin"; exit 1; }
 
 # CycloneDDS: no router to start. The scaffold's talker prints `Published: N`
@@ -85,10 +85,10 @@ nros build
 # Without it the macro's hosted default is register-and-exit, and this
 # section failed as `nros: application complete` + "exited before
 # publishing" from 2026-09-21 to 2026-09-29. If it reads that way again, look
-# at the entry `nros build` wrote under build/<coord>/native_entry/src/ first.
+# at the entry `nros build` wrote under build/<coord>/linux_entry/src/ first.
 # The assertion stays — a probe that is green over a real bug is the thing
 # issue 0204 exists to prevent.
-"${NROS_DEADLINE[@]}" 60 ./build/posix-cyclonedds/native_entry/target/debug/native_entry >/tmp/quickstart_rs.log 2>&1 &
+"${NROS_DEADLINE[@]}" 60 ./build/posix-cyclonedds/linux_entry/target/debug/linux_entry >/tmp/quickstart_rs.log 2>&1 &
 rs_pid=$!
 deadline=$((SECONDS + 45))
 until grep -q "Publishing: 1" /tmp/quickstart_rs.log; do

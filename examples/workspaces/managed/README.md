@@ -23,7 +23,7 @@ src/
   cpp_lifecycle_talker_pkg/   the self-managing node
 ```
 
-There is no entry package to write: `[image.native_managed]` in the bringup
+There is no entry package to write: `[image.linux_managed]` in the bringup
 declares the image, and its entry — which boots and spins, with no lifecycle
 wiring — is generated (RFC-0098 D9).
 
@@ -31,7 +31,7 @@ wiring — is generated (RFC-0098 D9).
 
 ```sh
 nros sync
-nros build native_managed
+nros build linux_managed
 ```
 
 ## Why it stayed out of `features`

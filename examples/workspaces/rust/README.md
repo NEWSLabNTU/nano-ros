@@ -35,7 +35,7 @@ source ./activate.sh
 cd examples/workspaces/rust
 nros setup linux
 nros sync            # once per workspace: generated message bindings
-nros build native
+nros build linux
 ```
 
 `nros build` walks the packages, resolves the image, checks the
@@ -51,5 +51,5 @@ Run the native entry with a Zenoh router available:
 
 ```bash
 ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd
-nros build native && nros run native
+nros build linux && nros run linux
 ```

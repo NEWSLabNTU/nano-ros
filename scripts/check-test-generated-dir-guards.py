@@ -8,7 +8,7 @@ path, whole-test-corpus reach.
 
 `build_verb_pipeline.rs`, phase-383 W3.b to issue 1411::
 
-    let entry = tmp.path().join("build/posix-zenoh/native_entry");
+    let entry = tmp.path().join("build/posix-zenoh/linux_entry");
     if !entry.is_dir() {
         // the launch resolver is not built -- assert the weaker property
         return;
@@ -423,7 +423,7 @@ PRE_1411 = """
 #[test]
 fn a_cargo_image_generates_an_entry_from_the_launch_file() {
     let tmp = tempfile::tempdir().unwrap();
-    let entry = tmp.path().join("build/posix-zenoh/native_entry");
+    let entry = tmp.path().join("build/posix-zenoh/linux_entry");
     if !entry.is_dir() {
         eprintln!("the launch resolver is not built");
         assert!(plans[0].handoff.is_some());
@@ -438,7 +438,7 @@ POST_1411 = """
 #[test]
 fn a_cargo_image_generates_an_entry_from_the_launch_file() {
     let tmp = tempfile::tempdir().unwrap();
-    let entry = tmp.path().join("build/posix-zenoh/native_entry");
+    let entry = tmp.path().join("build/posix-zenoh/linux_entry");
     let manifest_path = entry.join("Cargo.toml");
     assert!(manifest_path.is_file(), "no entry package at {}", entry.display());
     let manifest = std::fs::read_to_string(&manifest_path).unwrap();
@@ -483,7 +483,7 @@ SELF_TESTS: list[tuple[str, str, int]] = [
         """
 #[test]
 fn t() {
-    let entry = tmp.path().join("build/posix-zenoh/native_entry");
+    let entry = tmp.path().join("build/posix-zenoh/linux_entry");
     if entry.is_dir() {
         assert!(entry.join("Cargo.toml").is_file());
     } else {
@@ -498,7 +498,7 @@ fn t() {
         """
 #[test]
 fn t() {
-    let entry = tmp.path().join("build/posix-zenoh/native_entry");
+    let entry = tmp.path().join("build/posix-zenoh/linux_entry");
     assert!(entry.is_dir(), "the entry directory must exist");
     let _ = entry.join("Cargo.toml");
 }
@@ -553,7 +553,7 @@ fn t() {
         """
 #[test]
 fn t() {
-    let entry = tmp.path().join("build/posix-zenoh/native_entry");
+    let entry = tmp.path().join("build/posix-zenoh/linux_entry");
     if !entry.exists() {
         return;
     }
@@ -567,7 +567,7 @@ fn t() {
         """
 #[test]
 fn t() {
-    let entry = tmp.path().join("build/posix-zenoh/native_entry");
+    let entry = tmp.path().join("build/posix-zenoh/linux_entry");
     if !entry.try_exists() {
         return;
     }
@@ -650,7 +650,7 @@ fn t() {
         """
 #[test]
 fn t() {
-    let entry = tmp.path().join("build/posix-zenoh/native_entry");
+    let entry = tmp.path().join("build/posix-zenoh/linux_entry");
     if ready && !entry.is_dir() {
         return;
     }
@@ -663,7 +663,7 @@ fn t() {
         "a `while` condition counts too",
         """
 fn wait() {
-    let entry = tmp.path().join("build/posix-zenoh/native_entry");
+    let entry = tmp.path().join("build/posix-zenoh/linux_entry");
     while !entry.is_dir() {
         sleep();
     }
@@ -677,7 +677,7 @@ fn wait() {
         """
 #[test]
 fn t() {
-    let entry = tmp.path().join("build/posix-zenoh/native_entry");
+    let entry = tmp.path().join("build/posix-zenoh/linux_entry");
     if let Some(x) = entry.join("Cargo.toml").to_str() {
         assert!(!x.is_empty());
     }
@@ -691,7 +691,7 @@ fn t() {
         """
 #[test]
 fn t() {
-    let entry = tmp.path().join("build/posix-zenoh/native_entry");
+    let entry = tmp.path().join("build/posix-zenoh/linux_entry");
     let generated = entry.is_dir();
     assert!(generated, "the entry was not generated");
     let _ = entry.join("Cargo.toml");

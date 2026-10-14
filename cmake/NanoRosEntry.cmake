@@ -1478,7 +1478,7 @@ function(_nros_entry_invoke_codegen)
         foreach(_dep IN LISTS _dep_list)
             if(_dep AND EXISTS "${_dep}")
                 # Canonicalize before appending: two entries that share one
-                # input (e.g. native_entry_robot1/robot2 both baking the same
+                # input (e.g. linux_robot1_entry/robot2 both baking the same
                 # multihost MODEL) reference it via different `../` spellings
                 # relative to their own CMAKE_CURRENT_SOURCE_DIR. Ninja
                 # aggregates every directory's CMAKE_CONFIGURE_DEPENDS into one

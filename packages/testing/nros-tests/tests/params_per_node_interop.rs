@@ -545,7 +545,7 @@ fn xrce_set_parameters_naming_25_declared_lands() -> nros_tests::TestResult<()> 
     require_xrce_agent();
     require_ros2_dds();
     let binary = build_native_workspace_rust_params_xrce_entry()
-        .require("workspace-features-rust-params-xrce native_rust_params_xrce_entry")
+        .require("workspace-features-rust-params-xrce linux_rust_params_xrce_entry")
         .to_path_buf();
     let agent = XrceAgent::start_unique().expect("failed to start the XRCE Agent");
     let addr = agent.addr();

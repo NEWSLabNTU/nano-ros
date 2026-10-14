@@ -3,7 +3,7 @@
      (issue 0096). Boots `safe_listener`: a safety subscription that validates the
      CRC on each /chatter message and republishes the running CRC-validated count on
      /safe_ok. Run in a separate process from `safety_talker.launch.xml`. Boot with
-     the `native_safety_listener_entry` pkg. -->
+     the `linux_rust_safety_listener_entry` pkg. -->
 <launch>
   <node pkg="rust_safety_listener_pkg" exec="safe_listener" name="safe_listener"/>
 </launch>

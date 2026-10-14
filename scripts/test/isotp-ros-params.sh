@@ -58,7 +58,7 @@ sleep 5
 # symptom is an empty graph -- which reads like a transport failure.
 NROS_ENTRY_SPIN_MS=forever \
 NROS_LOCATOR='isotp/vcan0#tx_id=0x200;rx_id=0x201' \
-  stdbuf -o0 "${NANO_ROS_PARAM_NODE:?set NANO_ROS_PARAM_NODE to the built native_rust_params_entry}" >"$OUT/node.log" 2>&1 &
+  stdbuf -o0 "${NANO_ROS_PARAM_NODE:?set NANO_ROS_PARAM_NODE to the built linux_rust_params_entry}" >"$OUT/node.log" 2>&1 &
 NODE=$!
 sleep 10
 

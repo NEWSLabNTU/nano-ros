@@ -15,9 +15,9 @@ generated entry emits `nros_cpp_create_sched_context` +
 
 ```sh
 source ./activate.sh
-nros build native
+nros build linux
 ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd &
-./build/src/native_entry/native_entry
+./build/src/linux_entry/linux_entry
 ```
 
 ## Expected output

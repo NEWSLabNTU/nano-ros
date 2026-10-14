@@ -40,7 +40,7 @@ is exercised inside a single workspace rather than across four copies of one.
 ```sh
 nros sync
 nros build                       # every [image.*]
-nros build native_rust_qos       # or one capability at a time
+nros build linux_rust_qos       # or one capability at a time
 ```
 
 Each image names its own board, so each is built into its own `build/<coord>/`;

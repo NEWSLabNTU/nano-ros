@@ -276,7 +276,7 @@ forced recompile and relink). "Nobody said" (`Fact::Absent`) and "I looked and
 could not tell" (`Fact::Refused`) stay different statements.
 
 **Measured, on the ordinary flow.** `examples/native/rust/listener` — `nros
-sync`, then the retypable `cargo build --config build/native/nros-cargo.toml`,
+sync`, then the retypable `cargo build --config build/linux/nros-cargo.toml`,
 nothing exported by hand — with one contract row declaring `KEEP_LAST(1)`:
 
 | | as `sync` wrote it before W12 | with the contract joined | delta |
@@ -1021,7 +1021,7 @@ must hold every node of every image.
 composition, with one addition: a component the entry starts that its own model
 leaves undescribed takes the statement another entry's contract made of that
 component. What a component creates is a property of its code, not of the launch
-file. Without that addition, `native_robot1`/`2` (`multihost.launch.xml`, no
+file. Without that addition, `linux_robot1`/`2` (`multihost.launch.xml`, no
 contract) refuse alone, and a refusal leaves every pool at its crate default.
 An entry whose model says nothing about which components it starts is sized as
 the union.

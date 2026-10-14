@@ -83,7 +83,7 @@ target once, as a board name in the package's `system.toml`, and
 name = "my_app"
 rmw  = "cyclonedds"
 
-[image.native]
+[image.linux]
 board = "linux"
 ```
 

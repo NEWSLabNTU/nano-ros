@@ -355,10 +355,10 @@ fn render_system_toml(pkg_name: &str, components: &[String]) -> Result<String> {
     let mut image: std::collections::BTreeMap<String, ImageBlock> =
         std::collections::BTreeMap::new();
     image.insert(
-        "native".to_string(),
+        "linux".to_string(),
         ImageBlock {
-            // phase-500 W1 — the host board's one name. The image ID stays
-            // `native` until phase-500 W3 renames image ids.
+            // phase-500 W1/W3 — the host board's one name, and the image
+            // id that names it.
             board: Some("linux".to_string()),
             ..Default::default()
         },
@@ -373,7 +373,7 @@ fn render_system_toml(pkg_name: &str, components: &[String]) -> Result<String> {
         system: SystemHeader {
             // The image `nros build` builds when given no argument — the
             // `[image.*]` counterpart of the `default_target` below.
-            default_images: vec!["native".to_string()],
+            default_images: vec!["linux".to_string()],
             name: system_name,
             rmw: "zenoh".to_string(),
             domain_id: 0,
@@ -620,9 +620,9 @@ mod tests {
         // than be deleted: what it was really checking is that the scaffold
         // declares SOMETHING to build, and that claim still needs a test.
         assert_eq!(sys.system.default_target, None);
-        assert_eq!(sys.system.default_images, vec!["native".to_string()]);
-        assert!(sys.image.contains_key("native"));
-        assert_eq!(sys.image["native"].board.as_deref(), Some("linux"));
+        assert_eq!(sys.system.default_images, vec!["linux".to_string()]);
+        assert!(sys.image.contains_key("linux"));
+        assert_eq!(sys.image["linux"].board.as_deref(), Some("linux"));
         assert_eq!(sys.components.len(), 2);
         assert_eq!(sys.components[0].pkg, "talker_pkg");
         assert_eq!(sys.components[1].pkg, "listener_pkg");
@@ -801,7 +801,7 @@ mod scaffold_vocabulary_tests {
         let out = render_system_toml("demo_bringup", &["talker_pkg".to_string()])
             .expect("render the scaffolded system.toml");
 
-        assert!(out.contains("[image.native]"), "{out}");
+        assert!(out.contains("[image.linux]"), "{out}");
         assert!(out.contains("default_images"), "{out}");
 
         // The two spellings the migration is retiring. `default_target` is
@@ -823,9 +823,9 @@ mod scaffold_vocabulary_tests {
     fn the_scaffolded_image_names_a_board() {
         let out = render_system_toml("demo_bringup", &["talker_pkg".to_string()]).expect("render");
         let image = out
-            .split("[image.native]")
+            .split("[image.linux]")
             .nth(1)
-            .expect("an [image.native] block");
+            .expect("an [image.linux] block");
         assert!(image.contains("board = \"linux\""), "{out}");
     }
 }

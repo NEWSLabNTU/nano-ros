@@ -442,7 +442,7 @@ RETIRED = {
     # (mps2-an385, zenoh); the Zephyr west road (TL); the CARGO LEAF
     # (`examples/native/rust/service-server`, 0 of 16 build-script outputs);
     # the cargo WORKSPACE image (`examples/workspaces/rust`
-    # native_action_server with a contracted action server: SERVICE_SERVERS=3
+    # linux_action_server with a contracted action server: SERVICE_SERVERS=3
     # and TL_PUBLISHERS=1 dropped, 0 of 16 outputs differ); and the standalone
     # cmake leaf (the six NuttX C leaves, every loadable image identical).
     # Each negative control -- the same drop with NO descriptor -- moved 3 of

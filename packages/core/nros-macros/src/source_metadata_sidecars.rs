@@ -116,9 +116,9 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("nros-sidecars-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("src/talker_pkg/metadata")).unwrap();
-        std::fs::create_dir_all(dir.join("src/native_entry/src")).unwrap();
+        std::fs::create_dir_all(dir.join("src/linux_entry/src")).unwrap();
         std::fs::write(dir.join("src/talker_pkg/package.xml"), "<package/>").unwrap();
-        std::fs::write(dir.join("src/native_entry/package.xml"), "<package/>").unwrap();
+        std::fs::write(dir.join("src/linux_entry/package.xml"), "<package/>").unwrap();
         dir
     }
 
@@ -142,7 +142,7 @@ mod tests {
             sidecar("talker_pkg", "talker", 1, 5),
         )
         .unwrap();
-        let found = collect(&dir.join("src/native_entry"));
+        let found = collect(&dir.join("src/linux_entry"));
         assert_eq!(found.paths.len(), 1, "the sidecar is tracked for rebuilds");
         assert_eq!(
             found
@@ -159,7 +159,7 @@ mod tests {
     #[test]
     fn absent_sidecars_are_not_an_error() {
         let dir = ws("absent");
-        assert!(collect(&dir.join("src/native_entry")).slots.is_empty());
+        assert!(collect(&dir.join("src/linux_entry")).slots.is_empty());
     }
 
     /// Malformed JSON is skipped, not fatal: a bake that died because a stale
@@ -168,7 +168,7 @@ mod tests {
     fn garbage_sidecar_is_skipped() {
         let dir = ws("garbage");
         std::fs::write(dir.join("src/talker_pkg/metadata/talker.json"), "not json").unwrap();
-        let found = collect(&dir.join("src/native_entry"));
+        let found = collect(&dir.join("src/linux_entry"));
         assert!(found.slots.is_empty() && found.paths.is_empty());
     }
 
@@ -182,8 +182,8 @@ mod tests {
             sidecar("talker_pkg", "talker", 2, 0),
         )
         .unwrap();
-        // Walk starts inside `<ws>/src/native_entry`, which HAS a `src/`.
-        let found = collect(&dir.join("src/native_entry"));
+        // Walk starts inside `<ws>/src/linux_entry`, which HAS a `src/`.
+        let found = collect(&dir.join("src/linux_entry"));
         assert_eq!(
             found.slots.len(),
             1,

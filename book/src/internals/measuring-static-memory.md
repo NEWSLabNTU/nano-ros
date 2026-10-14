@@ -74,7 +74,7 @@ story:
 ## top 5 RAM symbols
 
        131,072   25.3%  nros_rmw_zenoh::shim::subscriber::LARGE_PAYLOADS
-        88,560   17.1%  native_entry::__nros_entry_run::__NROS_TIER_EXECUTOR_BACKING
+        88,560   17.1%  linux_entry::__nros_entry_run::__NROS_TIER_EXECUTOR_BACKING
         88,552   17.1%  nros_node::executor::backing::EXECUTOR_BACKING
         87,072   16.8%  g_sessions
         33,536    6.5%  nros_rmw_zenoh::shim::service::USER_SERVICE_INBOX

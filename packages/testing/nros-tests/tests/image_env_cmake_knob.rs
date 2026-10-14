@@ -28,7 +28,7 @@ const LEAF: &str = "packages/testing/nros-tests/bins/image-env-probe-c";
 /// nros-node's builtin `NROS_EXECUTOR_MAX_CBS`.
 const BUILTIN_MAX_CBS: usize = 4;
 
-/// `[image.native.knobs]` of the probe, as authored (RFC-0103 D6: the APP
+/// `[image.linux.knobs]` of the probe, as authored (RFC-0103 D6: the APP
 /// rung, rendered into the same carrier an `[image.<id>] env` row rides).
 fn image_knobs() -> toml::Table {
     let path = project_root().join(LEAF).join("system.toml");
@@ -38,7 +38,7 @@ fn image_knobs() -> toml::Table {
         toml::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", path.display()));
     v["image"]["native"]["knobs"]
         .as_table()
-        .expect("the probe image states `[image.native.knobs]`")
+        .expect("the probe image states `[image.linux.knobs]`")
         .clone()
 }
 
@@ -48,7 +48,7 @@ fn a_c_leaf_image_env_reaches_the_cargo_builds_cmake_drives() {
     let max_cbs = usize::try_from(
         knobs["executor"]["max_cbs"]
             .as_integer()
-            .expect("the probe states `[image.native.knobs.executor] max_cbs`"),
+            .expect("the probe states `[image.linux.knobs.executor] max_cbs`"),
     )
     .expect("a count");
     assert_ne!(

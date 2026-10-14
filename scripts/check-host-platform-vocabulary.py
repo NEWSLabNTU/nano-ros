@@ -49,13 +49,23 @@ invisible to the old gate's `tests` exclusion):
      and `native` is in neither `_NROS_LANES` nor `_NROS_SCOPE_PLATFORMS`. The
      DEPRECATED alias (one cycle; phase-500 W5 removes it) is allowed only on a
      line carrying the pragma `retired-host-token: alias`.
+  8. (phase-500 W3) Host IMAGE IDS are `linux…`: no tracked file outside the
+     history series holds an `[image.native…]` header (TOML, or TOML inlined in
+     a test or a doc), no `examples/fixtures.toml` row names
+     `image = "native…"`, and nothing spells a name DERIVED from such an id —
+     the entry package `native…_entry`, or its generated
+     `…_entry_nros_main_generated.cpp` / `_link_libs.cmake` /
+     `_nros_selection`. No alias: an image id is a label the workspace
+     authors, not a CLI front door, so a user's own `[image.native]` still
+     builds; only this tree stops spelling it.
 
 WHAT IT DELIBERATELY DOES NOT CHECK
 
 Prose, and the deprecated CLI ALIASES (`nros new --platform native|posix`,
 `nros setup native`), which exist for released book pages and are retired by
-phase-500 W5. Image IDS (`[image.native]`) are labels, renamed by W3. The
-`examples/native/` directory is W4. `native` in its other senses (Zephyr
+phase-500 W5. The `examples/native/` directory is W4, and the fixture ROW
+ids (`workspace-rust-native-…`) are a coordinate vocabulary of their own, like
+the interop cell ids. `native` in its other senses (Zephyr
 `native_sim`, RTOS-native priorities, interop cell ids, prose) is not a lane.
 
 Usage:  check-host-platform-vocabulary.py
@@ -240,6 +250,60 @@ def check_lane_vocabulary():
     return problems
 
 
+# Check 8 — phase-500 W3. A host image id, and every name derived from one.
+# `<id>_entry` is the generated entry package (`leaf_system::entry_package_name`)
+# and its build products carry it as a prefix (`selection_crate_name`, the cmake
+# entry's generated TU and link-libs file).
+RETIRED_IMAGE_RE = re.compile(
+    r"\[image\.native(?=[\]._])"
+    r"|\bnative(?:_[a-z0-9]+)*_entry"
+    r"(?:_(?:nros_main_generated|link_libs|nros_selection))?\b")
+FIXTURES = "examples/fixtures.toml"
+
+
+def image_id_problems(text):
+    """(line number, matched spelling) for every retired host image id, or a
+    name derived from one, in `text` (alias-pragma lines excepted)."""
+    out = []
+    for n, line in enumerate(text.split("\n"), 1):
+        if ALIAS_PRAGMA in line:
+            continue
+        out += [(n, m.group(0)) for m in RETIRED_IMAGE_RE.finditer(line)]
+    return out
+
+
+def fixture_image_problems(doc):
+    """(row id, image) for every manifest row whose `image` is `native…`."""
+    out = []
+    for rows in doc.values():
+        if not isinstance(rows, list):
+            continue
+        for row in rows:
+            img = row.get("image") if isinstance(row, dict) else None
+            if isinstance(img, str) and img.startswith("native"):
+                out.append((row.get("id", "?"), img))
+    return out
+
+
+def check_image_ids():
+    problems = []
+    for rel in git_grep.lines(["-lIE", r"image\.native|native[a-z0-9_]*_entry", "--",
+                               ".", ":!third-party"], ROOT):
+        if rel.startswith(HISTORY) or rel == SELF or "/third-party/" in f"/{rel}":
+            continue
+        try:
+            with open(os.path.join(ROOT, rel), encoding="utf8", errors="replace") as fh:
+                text = fh.read()
+        except OSError:
+            continue
+        problems += [(f"{rel}:{n}", f"`{w}` — a host image id is `linux…` (phase-500 W3)")
+                     for n, w in image_id_problems(text)]
+    with open(os.path.join(ROOT, FIXTURES), "rb") as fh:
+        problems += [(FIXTURES, f"row `{i}` image = {img!r} (write `linux{img[6:]}`)")
+                     for i, img in fixture_image_problems(tomllib.load(fh))]
+    return problems
+
+
 def check_files():
     problems = []
     for rel in file_kinds.files_of_kind("system-toml", repo=ROOT) + tracked("*system.toml.case"):
@@ -283,7 +347,7 @@ def self_test():
             fails.append(f"descriptor {names}: expected {exp}, got {got}")
     for body, exp in [
         ('[image.n]\nboard = "linux"\n', []),
-        ('[image.native]\nboard = "linux"\n', []),  # an image ID is a label (W3)
+        ('[image.native]\nboard = "linux"\n', []),  # an image ID: check 8, not 3
         ('[image.n]\nboard = "native"\n', [("[image.n]", "native")]),
         ('[image_defaults]\nboard = "posix"\n', [("[image_defaults]", "posix")]),
         ('[image.z]\nboard = "zephyr"\n', []),
@@ -335,6 +399,37 @@ def self_test():
         if got != exp:
             fails.append(f"lane {body!r}: expected {exp}, got {got}")
     for body, exp in [
+        ("[image.linux]\nboard = \"linux\"\n", []),
+        ("[image.linux_xrce_jazzy]\n[image.linux.knobs.log]\n", []),
+        ("[image.native]\n", [(1, "[image.native")]),
+        ("x\n[image.native_xrce]\n", [(2, "[image.native")]),
+        ('s = "[image.native.knobs.log]\\n"\n', [(1, "[image.native")]),
+        ("[image.native_sim_thing]\n", [(1, "[image.native")]),
+        ("[image.nativeish]\n", []),  # not the retired id
+        ("[image.zephyr_native_sim]\n", []),  # a Zephyr image
+        ("./build/src/native_entry/native_entry\n",
+         [(1, "native_entry"), (1, "native_entry")]),
+        ("fn native_rust_entry()\n", [(1, "native_rust_entry")]),
+        ("x/native_entry_nros_main_generated.cpp\n", [(1, "native_entry_nros_main_generated")]),
+        ('"native_robot1_entry_nros_selection"\n', [(1, "native_robot1_entry_nros_selection")]),
+        ("build_native_workspace_rust_entry()\n", []),  # a helper's name, no id
+        ("linux_entry linux_robot1_entry\n", []),
+        ("[image.native]  # retired-host-token: alias\n", []),
+    ]:
+        got = image_id_problems(body)
+        if got != exp:
+            fails.append(f"image id {body!r}: expected {exp}, got {got}")
+    for body, exp in [
+        ('[[fixture]]\nid = "a"\nimage = "linux_xrce"\n', []),
+        ('[[workspace_fixture]]\nid = "w"\nimage = "native"\n', [("w", "native")]),
+        ('[[fixture]]\nid = "b"\nimage = "native_cyclonedds"\n[[fixture]]\nid = "c"\n',
+         [("b", "native_cyclonedds")]),
+        ('[[fixture]]\nid = "z"\nimage = "zephyr_native_sim"\n', []),
+    ]:
+        got = fixture_image_problems(tomllib.loads(body))
+        if got != exp:
+            fails.append(f"fixture image {body!r}: expected {exp}, got {got}")
+    for body, exp in [
         ('_NROS_LANES="all linux tier1"\n', []),
         ('_NROS_LANES="all native tier1"\n', ["_NROS_LANES lists `native` (write `linux`)"]),
         ("", ["_NROS_LANES not found (the gate would pass vacuously)"]),
@@ -352,10 +447,11 @@ def self_test():
 
 
 def main():
-    problems = check_descriptors() + check_files() + check_lane_vocabulary()
+    problems = (check_descriptors() + check_files() + check_lane_vocabulary()
+                + check_image_ids())
     if problems:
-        print("check-host-platform-vocabulary: the host board, lane, module or scope is "
-              "spelled by a word other than `linux` (phase-500 W1/W2):\n", file=sys.stderr)
+        print("check-host-platform-vocabulary: the host board, lane, module, scope or "
+              "image id is spelled by a word other than `linux` (phase-500 W1/W2/W3):\n", file=sys.stderr)
         for rel, what in problems:
             print(f"  {rel}: {what}", file=sys.stderr)
         print(
@@ -368,7 +464,7 @@ def main():
         return 1
     print("check-host-platform-vocabulary OK — the host board is `linux` in every "
           "descriptor, selector, deploy list, cmake DEPLOY and sdk-index key, and the "
-          "host lane / just module / scope / test binaries say `linux`.")
+          "host lane / just module / scope / test binaries / image ids say `linux`.")
     return 0
 
 

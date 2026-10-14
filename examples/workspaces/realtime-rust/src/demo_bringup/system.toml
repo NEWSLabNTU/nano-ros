@@ -176,7 +176,7 @@ locator = "tcp/10.0.2.2:7891"
 # `sched_setaffinity` — Linux's call, which no POSIX standard has. So the image
 # itself needs Linux, and says so here. Both words select the same board.
 # Gate: `check-host-platform-vocabulary`.
-[image.native]
+[image.linux]
 board = "linux"
 
 [image.nuttx]

@@ -9,10 +9,10 @@ name = "message_info_observer"
 rmw = "zenoh"
 domain_id = 0
 # The image a bare `nros sync` / `nros build` / `cargo build` builds.
-default_images = ["native"]
+default_images = ["linux"]
 
 # Host build. The locator and domain stay runtime env on native.
 [image_defaults]
 board = "linux"
 
-[image.native]
+[image.linux]

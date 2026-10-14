@@ -74,14 +74,14 @@ pkg   = "native_talker"
 class = "native_rs_talker::Talker"
 name  = "talker"
 
-[image.native]
+[image.linux]
 board = "linux"
 ```
 
 **You never hand-write a build setting.** No target triple, no linker
 flag, no `[patch.crates-io]` table, no `.cargo/config.toml`: `nros sync`
 derives every one of those from `board = "linux"` and writes them to
-`build/native/nros-cargo.toml`, which `nros build` hands cargo with
+`build/linux/nros-cargo.toml`, which `nros build` hands cargo with
 `--config`.
 
 Retargeting is therefore one line. This native talker names no board
@@ -144,12 +144,12 @@ Nothing in it names a board, an RMW or a ROS edition. Those are the
 image's (`system.toml`), and `nros sync` writes them into the generated
 `<pkg>_nros_selection` package the manifest depends on (RFC-0098 D6,
 RFC-0031). The talker declares one image per RMW and edition —
-`native` (zenoh, Humble, the default), `native_xrce`,
-`native_cyclonedds`, `native_jazzy`, … — so picking another backend is
+`linux` (zenoh, Humble, the default), `linux_xrce`,
+`linux_cyclonedds`, `linux_jazzy`, … — so picking another backend is
 a command, not an edit:
 
 ```bash
-nros sync --image native_xrce && nros build native_xrce
+nros sync --image linux_xrce && nros build linux_xrce
 ```
 
 **Copying this out of the workspace?** That is the intended workflow —
@@ -163,7 +163,7 @@ directory lives now:
 cp -r examples/native/rust/talker ~/my-talker && cd ~/my-talker
 nros sync
 nros build
-RUST_LOG=info ./build/native/target/debug/talker
+RUST_LOG=info ./build/linux/target/debug/talker
 ```
 
 Nothing in the copied directory names a path into the checkout, so the
@@ -185,7 +185,7 @@ Three runtime knobs, each an env override on a built-in default:
 | ROS domain ID | `0` | `ROS_DOMAIN_ID` |
 | Zenoh mode | client | `NROS_SESSION_MODE` |
 
-On native these stay environment variables — `[image.native]` declares
+On native these stay environment variables — `[image.linux]` declares
 no `locator`. An embedded image bakes them from its own `[image.<id>]`
 table instead; see the
 [Configuration Guide](../user-guide/configuration.md).
@@ -195,12 +195,12 @@ table instead; see the
 ```bash probe=30
 cd examples/native/rust/talker
 nros sync             # writes generated/ message bindings and
-                      # build/native/nros-cargo.toml from system.toml
-nros build            # builds the image `[image.native]` declares
+                      # build/linux/nros-cargo.toml from system.toml
+nros build            # builds the image `[image.linux]` declares
 ```
 
 First build pulls dependencies (~3 minutes). Re-builds finish in
-seconds. The binary lands at `build/native/target/debug/talker` —
+seconds. The binary lands at `build/linux/target/debug/talker` —
 under `build/`, never beside your sources.
 
 **Driving cargo yourself** (an IDE, a CI step, `--release`) is
@@ -213,7 +213,7 @@ mattering:
 ```bash
 cd examples/native/rust
 cargo build --manifest-path talker/Cargo.toml \
-            --config talker/build/native/nros-cargo.toml
+            --config talker/build/linux/nros-cargo.toml
 ```
 
 That file is regenerated on every `nros sync`; never edit it, and never
@@ -234,7 +234,7 @@ ros2 run rmw_zenoh_cpp rmw_zenohd    # or: just zenohd
 # RUST_LOG=info — without it `env_logger` only shows errors and the
 # `Publishing:` lines stay hidden.
 cd examples/native/rust/talker
-RUST_LOG=info ./build/native/target/debug/talker
+RUST_LOG=info ./build/linux/target/debug/talker
 # Expected output (on stderr):
 #   [INFO  talker] Publishing: 'Hello World: 1'
 #   [INFO  talker] Publishing: 'Hello World: 2'
@@ -280,7 +280,7 @@ Canonical, copy-out:
 [`examples/native/rust/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/native/rust/talker)
 
 Copy the directory, run `nros sync` inside it, rename the package, and your starter is ready to modify.
-To aim it at a board, change `[image.native] board` in `system.toml` to
+To aim it at a board, change `[image.linux] board` in `system.toml` to
 that board's name (`nros board list` prints them), swap the board crate
 in `[dependencies]` to match (issue 1305 — or start from a bare-metal,
 FreeRTOS, NuttX or ThreadX-Linux example, whose board crate is generated), and re-run `nros sync`.

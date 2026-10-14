@@ -60,7 +60,7 @@ RMW and domain, `[[component]]` for what runs, and one `[image.<id>]`
 per target naming its `board` (RFC-0098). `find_package(nano_ros)`
 reads it and derives the platform from the board, so no line of
 `CMakeLists.txt` names a platform, a board or an RMW. Switching this
-example to a board is editing `[image.native] board` and re-running
+example to a board is editing `[image.linux] board` and re-running
 cmake; see [First Node — C](first-node-c.md#project-layout) for the
 file in full.
 

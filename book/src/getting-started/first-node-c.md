@@ -68,7 +68,7 @@ pkg   = "native_c_talker"
 class = "native_c_talker::Talker"
 name  = "talker"
 
-[image.native]
+[image.linux]
 board = "linux"
 ```
 
@@ -77,7 +77,7 @@ and configures the build accordingly. Nothing in `CMakeLists.txt` names
 a platform, a board or an RMW — and the `package.xml`
 `<nano_ros deploy=… board=… rmw=…/>` export that used to carry that
 tuple is retired and refused. Switching this example to a board is
-editing `[image.native] board` and re-running cmake; a C or C++ leaf
+editing `[image.linux] board` and re-running cmake; a C or C++ leaf
 names no board crate, so that is the only edit to the project — a cross
 build still passes its `-DCMAKE_TOOLCHAIN_FILE` on the command line.
 

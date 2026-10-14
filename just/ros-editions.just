@@ -91,8 +91,8 @@ build-fixture distro="jazzy":
 #
 # Issue 1305 — each example DECLARES one image per RMW × edition in its
 # `system.toml` (RFC-0031 / RFC-0056: the selection is declared, the cargo
-# feature is only its lowering), so this builds an IMAGE: `native`, then `_<rmw>`
-# unless zenoh, then `_<edition>` unless humble (`native_xrce_jazzy`). `nros
+# feature is only its lowering), so this builds an IMAGE: `linux`, then `_<rmw>`
+# unless zenoh, then `_<edition>` unless humble (`linux_xrce_jazzy`). `nros
 # sync --image` regenerates the example's messages for that image's edition (the
 # baked TYPE_HASH is the edition's real RIHS01 — the placeholder on humble) and
 # writes its selection package and settings file; cargo then builds through that

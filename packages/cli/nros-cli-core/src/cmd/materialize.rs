@@ -18,7 +18,7 @@ use eyre::{Result, WrapErr};
 
 #[derive(Parser, Debug)]
 pub struct Args {
-    /// Image whose entry to materialise — `native`, or `<bringup>:native`.
+    /// Image whose entry to materialise — `linux`, or `<bringup>:linux`.
     pub image: String,
 
     /// Workspace root. Defaults to the current directory.

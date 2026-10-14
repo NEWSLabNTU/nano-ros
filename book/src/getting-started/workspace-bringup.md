@@ -102,7 +102,7 @@ pkg = "listener_pkg"
 class = "listener_pkg::Listener"
 name = "listener"
 
-[image.native]
+[image.linux]
 board = "linux"
 
 [host.native]
@@ -264,7 +264,7 @@ nros check --bringup src/demo_bringup
 nros check --workspace .
 
 # 4. Build an image. With no name, `nros build` lists what this workspace declares.
-nros build native
+nros build linux
 
 # 5. Run it. Zenoh needs a router first, in another shell:
 ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd &
@@ -312,7 +312,7 @@ this guide. Copy the whole directory out and rename the packages, then:
 ```bash
 nros setup linux
 nros sync            # once per workspace — message bindings + build settings
-nros build native
+nros build linux
 ```
 
 `nros build` walks the packages, resolves the image, checks the toolchain,

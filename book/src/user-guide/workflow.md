@@ -103,7 +103,7 @@ pkg   = "my_robot_node"
 class = "my_robot_node::Talker"
 name  = "talker"
 
-[image.native]               # one per program you want to build
+[image.linux]               # one per program you want to build
 board = "linux"
 
 [image.mps2]                 # an embedded image carries its network identity too

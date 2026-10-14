@@ -12,11 +12,11 @@ multi-node-workspace/
     ├── talker_pkg/         # Node pkg  — lib, nros::node!(Talker),   publishes /chatter
     ├── listener_pkg/       # Node pkg  — lib, nros::node!(Listener), subscribes /chatter
     └── demo_bringup/       # Bringup pkg — declarative (package.xml + system.toml + launch/);
-                            #               `[image.native]` names the image to build.
+                            #               `[image.linux]` names the image to build.
 ```
 
-The Entry pkg is GENERATED (RFC-0065 D4): `nros build native` writes it to
-`build/posix-zenoh/native_entry/`. `nros materialize native` copies it into
+The Entry pkg is GENERATED (RFC-0065 D4): `nros build linux` writes it to
+`build/posix-zenoh/linux_entry/`. `nros materialize linux` copies it into
 `src/` if you ever need to own it.
 
 ## The three roles
@@ -48,15 +48,15 @@ Just Works. (Python `.launch.py` is not supported yet.)
 ```bash
 nros sync            # generated bindings + resolves the bringup's
                      # SystemModel into build/nros/models/
-nros build native    # the `[image.native]` declared in demo_bringup/system.toml
+nros build linux    # the `[image.linux]` declared in demo_bringup/system.toml
 ```
 
 There is no workspace `Cargo.toml` (RFC-0098 D9): the workspace is a
-directory of packages, as in colcon. `nros build native` GENERATES the entry
-package `build/posix-zenoh/native_entry/` — a one-line
+directory of packages, as in colcon. `nros build linux` GENERATES the entry
+package `build/posix-zenoh/linux_entry/` — a one-line
 `nros::main!(launch = "demo_bringup")` over the node packages the launch file
 names — and writes every cargo setting that image needs to
-`build/posix-zenoh/native_entry/nros-cargo.toml`. The macro walks the package
+`build/posix-zenoh/linux_entry/nros-cargo.toml`. The macro walks the package
 index, reads the launch file, and emits one `<node_pkg>::register(runtime)?;`
 call per `<node>`, so the one binary boots both nodes. The Node pkgs use
 generated `std_msgs::msg::Int32`, so run `nros sync` before the first build and
@@ -65,8 +65,8 @@ after changing message dependencies.
 Driving cargo yourself is the same build, named explicitly:
 
 ```bash
-cargo build --manifest-path build/posix-zenoh/native_entry/Cargo.toml \
-            --config build/posix-zenoh/native_entry/nros-cargo.toml
+cargo build --manifest-path build/posix-zenoh/linux_entry/Cargo.toml \
+            --config build/posix-zenoh/linux_entry/nros-cargo.toml
 ```
 
 ## Validate the workspace
@@ -88,10 +88,10 @@ the whole topology):
 ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd &
 
 # boot the demo system
-./build/posix-zenoh/native_entry/target/debug/native_entry
+./build/posix-zenoh/linux_entry/target/debug/linux_entry
 ```
 
-`native_entry` opens the executor against the router, registers `talker`
+`linux_entry` opens the executor against the router, registers `talker`
 + `listener`, and runs the topology.
 
 ### Caveat on plan generation

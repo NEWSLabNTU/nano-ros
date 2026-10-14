@@ -482,7 +482,7 @@ pub const CELLS: &[InteropCell] = &[
        "pubsub_freertos_ros2_interop_e2e"),
 
     // ── Declarative cross-RMW bridges ───────────────────────────────────
-    // The nano bridge is a `ws-bridge-*-rust` native_entry; a ROS 2 peer sits on
+    // The nano bridge is a `ws-bridge-*-rust` linux_entry; a ROS 2 peer sits on
     // the egress side. cell.rmw = the INGRESS the nano side dials.
     ic("bridge-zenoh-to-cyclone",
        c(Linux, Rust, Zenoh, Pubsub, Bridge, Runtime),
@@ -553,7 +553,7 @@ pub const CELLS: &[InteropCell] = &[
     ic("native-multinode-rust-zenoh",
        c(Linux, Rust, Zenoh, EntryPubsub, Interop, Runtime),
        LinuxFixtures, RosEdition(Zenoh), NanoToRos, "rust_multi_node_per_node_graph"),
-    // Issue 1269 — the SAME image on Cyclone (`[image.native_cyclonedds]`,
+    // Issue 1269 — the SAME image on Cyclone (`[image.linux_cyclonedds]`,
     // row `workspace-rust-native-cyclonedds`), asserting the SAME node set.
     // Cyclone announces nodes through `ros_discovery_info`, not liveliness
     // tokens, and published one session-named node for the whole image until

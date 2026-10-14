@@ -385,7 +385,7 @@ net_stack  = "host"               # the OS has sockets; nothing to choose
 ```
 ```toml
 # <bringup>/system.toml                                     (B)
-[image.native]
+[image.linux]
 board = "linux"
 ```
 

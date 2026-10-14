@@ -89,14 +89,14 @@ table row in the Bringup pkg's `system.toml`:
 [image_defaults]           # base every block folds over (RFC-0065 D5.1)
 rmw = "zenoh"
 
-[image.native]
+[image.linux]
 board = "linux"
 
 [image.freertos]
 board = "mps2-an385-freertos"
 panic = "own"
 
-[image.native_robot1]
+[image.linux_robot1]
 board  = "linux"
 launch = "multihost.launch.xml"
 args   = { host = "robot1" }
@@ -124,9 +124,9 @@ lists the declared images and stops.
 Build one, all, or ask what would run:
 
 ```console
-$ nros build native
+$ nros build linux
 $ nros build --all
-$ nros build native --dry-run     # print the handoff, run nothing
+$ nros build linux --dry-run     # print the handoff, run nothing
 ```
 
 `[image.<id>]` says what is BUILT; `[host.<name>]` says where nodes RUN —
@@ -294,7 +294,7 @@ pkg = "native_talker"
 class = "native_rs_talker::Talker"
 name = "talker"
 
-[image.native]
+[image.linux]
 board = "linux"
 ```
 
@@ -367,7 +367,7 @@ more nodes means a workspace with a Bringup pkg.
 |---|---|
 | Reusable node logic, board-independent | Node pkg (`nros::node!()`) |
 | A runnable program: N nodes on one board | An `[image.<id>]` row + `nros build <id>` |
-| A single-node project with no workspace | One package with its own `system.toml` — `[image.native] board = "linux"` |
+| A single-node project with no workspace | One package with its own `system.toml` — `[image.linux] board = "linux"` |
 | Same nodes on multiple boards | One Node pkg set + one `[image.*]` row per board |
 | Launch topology + the image table | Bringup pkg (declarative — the one package a workspace must have) |
 | A Zephyr application directory | `nros new entry <name> --platform zephyr` |

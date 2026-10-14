@@ -3,7 +3,7 @@
 //! wrapper before it). The node runs Configure, Activate, Deactivate and
 //! Cleanup at boot and prints the state each leaves it in.
 //!
-//! `ws-lifecycle-cpp`'s `native_managed_entry` boots `ManagedTalker`, a managed node
+//! `ws-lifecycle-cpp`'s `linux_managed_entry` boots `ManagedTalker`, a managed node
 //! written with the wrapper (NOT the phase-269 entry-autostart codegen — its
 //! `managed_bringup` has no `[lifecycle]` block). In its install hook the node
 //! `bind()`s the executor, `register_services()` (binding the `on_*` trampolines), and

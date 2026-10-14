@@ -104,7 +104,7 @@ topology — and it is not a directory under `src/`. Each `[image.<id>]`
 in the bringup's `system.toml` is one Entry:
 
 ```toml
-[image.native]
+[image.linux]
 board = "linux"
 
 [image.esp32]

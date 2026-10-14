@@ -242,96 +242,96 @@ out    = "mixed_params_model.yaml"
 [image_defaults]
 rmw = "zenoh"
 
-[image.native_c_custom_msg_listener]
+[image.linux_c_custom_msg_listener]
 board = "linux"
 launch = "c_custom_msg_listener.launch.xml"
 
-[image.native_c_custom_msg_talker]
+[image.linux_c_custom_msg_talker]
 board = "linux"
 launch = "c_custom_msg_talker.launch.xml"
 
-[image.native_c_lifecycle]
+[image.linux_c_lifecycle]
 board = "linux"
 launch = "c_lifecycle.launch.xml"
 
-[image.native_c_params]
+[image.linux_c_params]
 board = "linux"
 
-[image.native_c_qos_listener]
+[image.linux_c_qos_listener]
 board = "linux"
 launch = "c_qos_listener.launch.xml"
 
-[image.native_c_qos_talker]
+[image.linux_c_qos_talker]
 board = "linux"
 launch = "c_qos_talker.launch.xml"
 
-[image.native_cpp_custom_msg_listener]
+[image.linux_cpp_custom_msg_listener]
 board = "linux"
 launch = "cpp_custom_msg_listener.launch.xml"
 
-[image.native_cpp_custom_msg_talker]
+[image.linux_cpp_custom_msg_talker]
 board = "linux"
 launch = "cpp_custom_msg_talker.launch.xml"
 
-[image.native_cpp_lifecycle]
+[image.linux_cpp_lifecycle]
 board = "linux"
 launch = "cpp_lifecycle.launch.xml"
 
-[image.native_cpp_params]
+[image.linux_cpp_params]
 board = "linux"
 launch = "cpp_params.launch.xml"
 
-[image.native_cpp_qos_listener]
+[image.linux_cpp_qos_listener]
 board = "linux"
 launch = "cpp_qos_listener.launch.xml"
 
-[image.native_cpp_qos_talker]
+[image.linux_cpp_qos_talker]
 board = "linux"
 launch = "cpp_qos_talker.launch.xml"
 
-[image.native_mixed_custom_msg_listener]
+[image.linux_mixed_custom_msg_listener]
 board = "linux"
 launch = "mixed_custom_msg_listener.launch.xml"
 
-[image.native_mixed_custom_msg_talker]
+[image.linux_mixed_custom_msg_talker]
 board = "linux"
 launch = "mixed_custom_msg_talker.launch.xml"
 
-[image.native_mixed_qos_listener]
+[image.linux_mixed_qos_listener]
 board = "linux"
 launch = "mixed_qos_listener.launch.xml"
 
-[image.native_mixed_qos_talker]
+[image.linux_mixed_qos_talker]
 board = "linux"
 launch = "mixed_qos_talker.launch.xml"
 
-[image.native_mixed_params]
+[image.linux_mixed_params]
 board = "linux"
 launch = "mixed_params.launch.xml"
 
-[image.native_rust_custom_msg]
+[image.linux_rust_custom_msg]
 board = "linux"
 launch = "rust_custom_msg.launch.xml"
 
-[image.native_rust_lifecycle]
+[image.linux_rust_lifecycle]
 board = "linux"
 launch = "rust_lifecycle.launch.xml"
 
-[image.native_rust_params]
+[image.linux_rust_params]
 board = "linux"
 launch = "rust_params.launch.xml"
 
 # issue 1722 — the params image on XRCE, with 25 declared parameters.
-[image.native_rust_params_xrce]
+[image.linux_rust_params_xrce]
 board = "linux"
 launch = "rust_params_xrce.launch.xml"
 rmw = "xrce"
 
-[image.native_rust_qos]
+[image.linux_rust_qos]
 board = "linux"
 launch = "rust_qos.launch.xml"
 
-[image.native_rust_remap]
+[image.linux_rust_remap]
 board = "linux"
 launch = "rust_remap.launch.xml"
 

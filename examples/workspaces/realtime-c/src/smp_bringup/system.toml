@@ -126,8 +126,8 @@ rmw = "zenoh"
 # repeat `demo_bringup`'s `freertos`, `native`, `nuttx` and `riscv_nuttx`
 # verbatim, and those four have no hand-written application, so each GENERATES
 # a cmake target keyed on its image id into the same `build/<coord>/` root as
-# its `demo_bringup` twin: building `smp_bringup:native` would have replaced the
-# `native_entry` every realtime-c native cell runs with one generated from THIS
+# its `demo_bringup` twin: building `smp_bringup:linux` would have replaced the
+# `linux_entry` every realtime-c native cell runs with one generated from THIS
 # bringup's launch and tiers. `nros build` now refuses the pair outright.
 #
 # Issue 1288 / phase-477 W1 — the Zephyr image has its OWN id and states the

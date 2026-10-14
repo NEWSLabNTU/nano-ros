@@ -57,7 +57,7 @@ pub(crate) const CENSUS_DIR: &str = "nros/census";
 ///
 /// Keyed by the MODEL, never by the entry or the build directory, because the
 /// two documents that have to meet here are written by two different builds:
-/// the census by the NATIVE entry (`native_entry`, in the native image's build
+/// the census by the NATIVE entry (`linux_entry`, in the native image's build
 /// directory), and the check by a CROSS configure (`threadx_entry`, in a
 /// different build directory). phase-463 W4 keyed both sides on
 /// `<their own build dir>/nros/census/<their own entry>.json`, so on the real
@@ -358,7 +358,7 @@ pub fn run(args: EntityCensusArgs) -> Result<()> {
 /// How many builds `take` allows the native image to reach its fixed point in.
 ///
 /// Measured on `examples/workspaces/cpp` (2026-10-03): from a CLEAN build
-/// directory the first `nros build demo_bringup:native` links a `native_entry`
+/// directory the first `nros build demo_bringup:linux` links a `linux_entry`
 /// whose bytes the second build changes -- the message-bound fragments are
 /// written by codegen DURING the first build, so its knobs are the
 /// placeholders and only the next configure reads the real ones (issue 1252,
@@ -372,10 +372,10 @@ const TAKE_MAX_BUILDS: usize = 3;
 /// the same bringup resolved from the same launch and arguments.
 ///
 /// "Host" is read off the board descriptor's platform, never off the image
-/// id or the board name -- an image is conventionally called `native`, and a
+/// id or the board name -- an image is conventionally called `linux`, and a
 /// convention is what issue 1397 found wrong when it was relied on. Several
-/// host images can share one model (`native`, `native_cyclonedds`,
-/// `native_xrce` all resolve the default launch); their census is the same
+/// host images can share one model (`linux`, `linux_cyclonedds`,
+/// `linux_xrce` all resolve the default launch); their census is the same
 /// statement about the same components, so the FIRST by id is taken and the
 /// choice is stable -- a second producer for one census file would make the
 /// file's recorded binary depend on which ran last.
@@ -507,8 +507,8 @@ fn take_census(args: TakeArgs) -> Result<()> {
         bail!(
             "`{asked_q}` is resolved from `{model_rel}`, whose contract its configure checks \
              against a census -- and bringup `{bringup}` declares no HOST image resolved from the \
-             same launch and arguments to take one. Declare one beside it (`[image.native] board \
-             = \"native\"`, with the same `launch`/`args`); the census binary IS a host build of \
+             same launch and arguments to take one. Declare one beside it (`[image.linux] board \
+             = \"linux\"`, with the same `launch`/`args`); the census binary IS a host build of \
              the same components (phase-463 W2)."
         );
     };
@@ -1431,8 +1431,8 @@ fn locate_entry_binary(build: &Path, entry: &str) -> Result<PathBuf> {
     }
     // Issue 1419 -- the layout `nros build` writes: one generated root per
     // image, `<build>/<root>/cmake/<entry>` (`build/posix-zenoh-linux/cmake/
-    // native_entry`). The three spellings above are a hand-configured
-    // workspace's; with only those, `run --entry native_entry` refused on every
+    // linux_entry`). The three spellings above are a hand-configured
+    // workspace's; with only those, `run --entry linux_entry` refused on every
     // workspace `nros build` had built. A SEARCH over the roots that exist, and
     // an ambiguity is a refusal naming each match rather than a pick.
     let mut roots: Vec<PathBuf> = std::fs::read_dir(build)
@@ -1706,11 +1706,11 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let bin = dir
             .path()
-            .join("posix-zenoh/native_entry/target/nros-relwithdebinfo/native_entry");
+            .join("posix-zenoh/linux_entry/target/nros-relwithdebinfo/linux_entry");
         std::fs::create_dir_all(bin.parent().unwrap()).unwrap();
         std::fs::write(&bin, b"elf").unwrap();
         assert_eq!(
-            locate_entry_binary(dir.path(), "native_entry").expect("found"),
+            locate_entry_binary(dir.path(), "linux_entry").expect("found"),
             bin
         );
     }
@@ -1881,17 +1881,17 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let native = dir.path().join("posix-zenoh-linux").join("cmake");
         std::fs::create_dir_all(&native).unwrap();
-        std::fs::write(native.join("native_entry"), b"").unwrap();
+        std::fs::write(native.join("linux_entry"), b"").unwrap();
         std::fs::create_dir_all(dir.path().join("threadx-linux-zenoh").join("cmake")).unwrap();
         assert_eq!(
-            locate_entry_binary(dir.path(), "native_entry").expect("found"),
-            native.join("native_entry")
+            locate_entry_binary(dir.path(), "linux_entry").expect("found"),
+            native.join("linux_entry")
         );
 
         let second = dir.path().join("posix-cyclonedds-linux").join("cmake");
         std::fs::create_dir_all(&second).unwrap();
-        std::fs::write(second.join("native_entry"), b"").unwrap();
-        let err = locate_entry_binary(dir.path(), "native_entry")
+        std::fs::write(second.join("linux_entry"), b"").unwrap();
+        let err = locate_entry_binary(dir.path(), "linux_entry")
             .expect_err("two roots, one name")
             .to_string();
         assert!(err.contains("2 image roots"), "{err}");
@@ -1911,7 +1911,7 @@ mod tests {
         .unwrap();
         let mut census = serde_json::json!({
             "schema": CENSUS_SCHEMA,
-            "entry": "native_entry",
+            "entry": "linux_entry",
             "provenance": { "tool": "test", "inputs": [] },
             "census": {
                 "version": 3,
@@ -2049,26 +2049,22 @@ mod tests {
         };
         // Sorted by id, as `plan::all_images` returns them.
         let images = vec![
-            row("native", img("native", None, &[])),
-            row("native_cyclonedds", img("native", None, &[])),
+            row("linux", img("linux", None, &[])),
+            row("linux_cyclonedds", img("linux", None, &[])),
             row(
-                "native_robot1",
-                img(
-                    "native",
-                    Some("multihost.launch.xml"),
-                    &[("host", "robot1")],
-                ),
+                "linux_robot1",
+                img("linux", Some("multihost.launch.xml"), &[("host", "robot1")]),
             ),
             row("zephyr", img("native_sim/native/64", None, &[])),
         ];
-        let is_host = |b: &ImageBlock| b.board.as_deref() == Some("native");
+        let is_host = |b: &ImageBlock| b.board.as_deref() == Some("linux");
 
         let pick = |model_rel: &str| {
             super::census_producer_for(&images, "demo_bringup", model_rel, &is_host)
                 .map(|(_, _, id, _)| id.as_str())
         };
-        assert_eq!(pick("config/system_model.yaml"), Some("native"));
-        assert_eq!(pick("config/robot1_model.yaml"), Some("native_robot1"));
+        assert_eq!(pick("config/system_model.yaml"), Some("linux"));
+        assert_eq!(pick("config/robot1_model.yaml"), Some("linux_robot1"));
         assert_eq!(pick("config/nobody_model.yaml"), None);
         assert_eq!(
             super::census_producer_for(

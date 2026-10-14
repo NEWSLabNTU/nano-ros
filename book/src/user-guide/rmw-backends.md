@@ -204,19 +204,19 @@ writes it:
 [system]
 name = "native_talker"
 rmw = "zenoh"
-default_images = ["native"]
+default_images = ["linux"]
 
 [image_defaults]
 board = "linux"
 
-[image.native]
+[image.linux]
 
-[image.native_cyclonedds]
+[image.linux_cyclonedds]
 rmw = "cyclonedds"
 ```
 
 ```bash
-nros sync --image native_cyclonedds && nros build native_cyclonedds
+nros sync --image linux_cyclonedds && nros build linux_cyclonedds
 ```
 
 The example's `Cargo.toml` names only `<pkg>_nros_selection = { path =
