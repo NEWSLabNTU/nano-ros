@@ -1324,7 +1324,7 @@ holds the evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#0736](../issues/0736-realtime-tiers-timer-overrun-red-on-main.md) | `realtime_tiers` nuttx-arm/rust: the fast tier outruns the slow one. Mentioned in passing here; making it a work item so it has an owner |
+| [#0736](../issues/archived/0736-realtime-tiers-timer-overrun-red-on-main.md) | `realtime_tiers` nuttx-arm/rust: the fast tier outruns the slow one. Mentioned in passing here; making it a work item so it has an owner |
 
 ## Issues homed here (survey 2026-09-11)
 

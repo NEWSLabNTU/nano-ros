@@ -63,7 +63,7 @@ named something else**:
 * Tier 2 produced **no verdict for eight consecutive scheduled runs**, and the
   same SHA failed two different ways on two different days, because the Zephyr
   workspace it built in belongs to a second checkout
-  ([#1253](../issues/1253-zephyr-workspace-manifest-binds-foreign-module.md)).
+  ([#1253](../issues/archived/1253-zephyr-workspace-manifest-binds-foreign-module.md)).
 
 That last one is the cost that orders this phase. A lane whose outcome depends
 on something outside the commit under test has no signal capacity at all, which
@@ -160,7 +160,7 @@ workspace comes from that one tree, measured in a downstream project's
 
 ### W2 — tier 2 builds the tree under test
 
-[Issue 1253](../issues/1253-zephyr-workspace-manifest-binds-foreign-module.md).
+[Issue 1253](../issues/archived/1253-zephyr-workspace-manifest-binds-foreign-module.md).
 W1's defect as the lane experiences it: the runner's workspace lives inside a
 second nano-ros checkout, so tier 2 compiled that tree's headers beside this
 tree's entries and judged images no run of this tree made.

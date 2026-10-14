@@ -2,10 +2,11 @@
 id: 1358
 title: "`check-api-parity` rewrites the tracked root `Cargo.lock`, because the
   `--locked` shim looks for the lock in the MANIFEST dir"
-status: open
+status: resolved
 type: bug
 area: ci
 related: [issue-0359, issue-0378, issue-0386, issue-1066, issue-0986]
+resolved: 2026-10-14
 ---
 
 ## The defect
@@ -88,3 +89,20 @@ around.
 
 Whichever lands, the sweep is "every cargo call site whose cwd is a workspace
 member", not this one call.
+
+## Resolution (2026-10-14)
+
+Obsolete. Its mechanism is gone: the `scripts/bin/cargo` `--locked` shim that
+looked for the lock in the manifest dir was retired in phase-485 W4
+(RFC-0104 D9), and `scripts/bin/cargo` no longer exists. Measured on `main`
+at `ab8376daa8`:
+
+- `just check api-parity` exits 0 ("every divergence carries a ledger
+  entry").
+- `git status --porcelain -- '*Cargo.lock'` stays empty afterwards.
+- The root `Cargo.lock` mtime stayed at 2026-10-13 09:48 through that run
+  and four `check fast` runs earlier the same day, each of which includes
+  `api-parity`.
+
+Every locked root is now held to the pin set by `check-cargo-registry-pins`,
+which no invocation path bypasses.

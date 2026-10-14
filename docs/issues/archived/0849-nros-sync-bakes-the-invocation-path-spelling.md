@@ -3,13 +3,14 @@ id: 849
 title: "`nros sync` bakes the invocation's path SPELLING into every leaf patch
   table, so working through a symlink to the checkout makes cargo see two copies
   of every core crate and refuse the build on `links`"
-status: open
+status: resolved
 type: bug
 area: cli
 related: [issue-0616, issue-0457, issue-0463, phase-484]
+resolved: 2026-10-14
 ---
 
-**Home: [phase-484](../roadmap/phase-484-one-owner-per-fact.md)** — re-homed 2026-10-12 from phase-383, which is archived.
+**Home: [phase-484](../../roadmap/phase-484-one-owner-per-fact.md)** — re-homed 2026-10-12 from phase-383, which is archived.
 
 ## Problem
 
@@ -96,3 +97,23 @@ Two things, and the first is the actual fix:
 Worth checking whether the same spelling reaches anything else derived from the
 invocation path — the `build/fixtures-build-make/*.mk` files and the codegen
 stamps both looked suspect while chasing this.
+
+## Resolution (2026-10-14)
+
+No longer reproduces. Measured on `main` at `ab8376daa8`:
+
+- I made a symlink to the checkout, entered
+  `<link>/examples/native/rust/lifecycle-node`, and sourced `activate.sh`
+  through the link. `NROS_REPO_DIR` came out as the realpath
+  (`/home/aeon/repos/nano-ros`).
+- `nros sync` reported every path it wrote as the realpath.
+- The leaf's `.cargo/config.toml` holds in-checkout relative paths only
+  (`path = "../../../../packages/core/nros-log"`, `include =
+  ["../../../../../nros-patch.toml", …]`). Nothing climbs to `/` and back
+  down, and the link spelling appears nowhere, including the central
+  `nros-patch.toml`.
+- `cargo metadata` from the symlinked CWD exits 0, with no `links` conflict.
+
+The tracked `examples/**/.cargo/` surface that made this bite is gone too
+(RFC-0098, `check-example-cargo-dirs`). A leaf's `.cargo/config.toml` is
+gitignored and sync-written.

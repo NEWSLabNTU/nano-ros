@@ -236,3 +236,30 @@ site a PROJECTION with a gate, or delete it:
 
 Related: [issue 0931](archived/0931-retire-model-and-default-launch.md) is the same
 question one layer up, for `nano_ros_entry`'s arguments.
+
+## Status (2026-10-14): most rows are gone; what is left
+
+Re-measured against the tree:
+
+| row | now |
+| --- | --- |
+| R1 `rmw`, R2 `board` | The `[deploy.<t>]` table is refused (`refuse_retired_deploy`, `cargo_metadata_schema.rs:1044`, phase-486 W8). A `package.xml` `<nano_ros deploy= …/>` element is refused too (`cmake/NanoRosPackageXml.cmake:19`); cmake reads the leaf's `system.toml` instead. That leaves `[system]` / `[image.<id>]` plus `-DNROS_RMW`. |
+| R12 | Gone with `[deploy.*]`. |
+| R13 | `[package.metadata.nros.entry] deploy` was retired by RFC-0098 D5 (`builder/entry.rs:784`). `nano_ros_entry(DEPLOY …)` and `[image.<id>].entry` remain. |
+| R10 `[wcet]` | It has a production reader now: `cmd/build.rs:482` calls `wcet_profile_for_image`. |
+| R3 `domain_id_override` | Still a field (`cargo_metadata_schema.rs:73`). Not re-ruled. |
+| R4, R5, R15 | As recorded above: partly migrated, or gated. |
+| R8, R9 | Not re-measured. |
+
+The headline, "five surfaces and no SSoT for rmw/board/domain", no longer
+holds for rmw and board. Each is authored in `system.toml` (`[system]` /
+`[image]`), which phase-484 / RFC-0103 owns. What remains:
+
+- R3;
+- R13's cmake `DEPLOY` vs `[image].entry`;
+- R4's `entry =` rows;
+- the gated R5 / R15;
+- the unsettled R8 / R9.
+
+Close this once phase-484 rules on those, or split them into their own
+issues.
