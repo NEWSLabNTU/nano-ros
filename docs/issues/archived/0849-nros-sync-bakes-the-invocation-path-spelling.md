@@ -117,3 +117,27 @@ No longer reproduces. Measured on `main` at `ab8376daa8`:
 The tracked `examples/**/.cargo/` surface that made this bite is gone too
 (RFC-0098, `check-example-cargo-dirs`). A leaf's `.cargo/config.toml` is
 gitignored and sync-written.
+
+## Addendum (2026-10-14): the explicit-path door
+
+The measurement above covers the DEFAULT road: a symlinked CWD with no
+`--nano-ros-path`. Every rung of that road is canonical. One door was still
+open. `resolve_explained_from` passed `--nano-ros-path` through VERBATIM, and
+two producers diffed it against canonical anchors:
+- `render_managed_entries`, which writes a leaf's `[patch.crates-io]`;
+- `registry_patches_from`, which writes `nros-cargo.toml`.
+
+So `nros sync|build --nano-ros-path <symlinked spelling>` still produced the
+two-copies rows. Closed by:
+
+- The explicit rung returns the physical path, like every other rung. A path
+  that does not exist is passed on as written, so the caller's own error
+  names what the user typed. Test:
+  `an_explicit_path_through_a_symlink_answers_the_real_checkout`.
+- Both producers canonicalise the root they spell rows from, so another
+  caller cannot reintroduce the second spelling. Test:
+  `a_symlinked_nano_ros_root_patches_by_the_real_checkout`. It fails with
+  the producer's canonicalisation removed (mutation-checked).
+
+The proposed tracked-file gate (Direction item 2) was not added. The rows
+that broke builds live in gitignored, sync-written files that it cannot see.
