@@ -752,6 +752,13 @@ fn absent_fixture_verdict_in(
     // and the junit rewrite counts it as the real failure it is. Ungated runs
     // (a bare `cargo nextest` on a developer box that built nothing) keep the
     // old `Err`, because there no one promised anything.
+    //
+    // Issue 1903 — `Build it:` prints the CALL SITE's `remedy`. It was a
+    // literal `just build-test-fixtures` whatever the site passed, so
+    // `require_prebuilt_artifact(.., "just cyclonedds build-rmw")` told a gated
+    // run to type a command that does not build its artifact; the site's own
+    // remedy reached only the ungated `Err` below. The row-keyed resolvers pass
+    // `just build-test-fixtures` themselves, so their message is unchanged.
     if env.gate_promised {
         panic!(
             "Test fixture binary MISSING for an in-lane coordinate: {}\n\
@@ -773,7 +780,7 @@ fn absent_fixture_verdict_in(
                 from a DIFFERENT builder reads like this one's.\n\
              3. the staleness gate does not cover this row.\n\
              \n\
-             Build it:   just build-test-fixtures\n\
+             Build it:   {remedy}\n\
              An absent fixture is a failure in every run (issue 1758); \n\
              narrow the lane instead if this coordinate is not meant to run.",
             binary_path.display()
@@ -6919,6 +6926,21 @@ mod fixture_absence_class_tests {
         assert!(
             matches!(&got, Err(crate::TestError::FixtureNotBuilt(_))),
             "ungated: expected a recoverable BuildFailed, got {got:?}"
+        );
+    }
+
+    /// Issue 1903 — the gated panic names the SITE's remedy, not a fixed
+    /// `just build-test-fixtures` that may not build the artifact at all.
+    #[test]
+    #[should_panic(expected = "Build it:   just some-module produce-this-artifact")]
+    fn gated_absence_names_the_sites_remedy() {
+        let missing = std::path::Path::new("/nonexistent/nros-fixture-absence-remedy-probe");
+        let _ = absent_fixture_verdict_in(
+            missing,
+            "just some-module produce-this-artifact",
+            AbsenceEnv {
+                gate_promised: true,
+            },
         );
     }
 

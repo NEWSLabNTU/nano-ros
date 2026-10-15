@@ -3809,6 +3809,18 @@ builder = "fixture-script"
 dir = "packages/testing/nros-tests/fixtures/borrowed-e2e"
 output = ".compile-ok"
 
+# issue 1903 — the Cyclone backend's `ros2_pub`, the slirp "guest"
+# `tests/cyclone_slirp_pair.rs` runs. It was resolved in place under
+# `nros-rmw-cyclonedds/build/` with the remedy `just cyclonedds build-rmw`, which
+# no fixture lane runs, so `just test linux` claimed the test and its build could
+# not satisfy it. `<dir>/build.sh` builds the one target in the row's own CMake
+# tree and copies the binary into the row dir.
+[[compile_check_fixture]]
+id = "cyclone_slirp_guest"
+builder = "fixture-script"
+dir = "packages/testing/nros-tests/fixtures/cyclone-slirp-guest"
+output = "nros_rmw_cyclonedds_ros2_pub"
+
 # --- cargo-build: the binary is the point; tests run it.
 [[compile_check_fixture]]
 id = "orch_tiers_multi"
