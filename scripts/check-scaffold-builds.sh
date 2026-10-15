@@ -111,6 +111,8 @@ cd "$repo_root" || exit 2
 
 # shellcheck source=scripts/build/cargo.sh
 . "$repo_root/scripts/build/cargo.sh"
+# shellcheck source=scripts/build/copy-out-cmake.sh
+. "$repo_root/scripts/build/copy-out-cmake.sh"
 # The one resolver (issue 1850): $NROS_CLI, this checkout's build, PATH, store.
 nros_bin() {
     local b
@@ -171,7 +173,9 @@ build_one() {
     rc=0
     case "$road" in
         cmake)
-            cmake -S "$dir" -B "$dir/build" -DCMAKE_BUILD_TYPE=Release > "$log" 2>&1 || rc=$?
+            # Issue 1925: a scaffold outside the checkout reaches nano_ros only
+            # through an explicit root; the helper names THIS checkout's.
+            nros_copy_out_cmake_configure -S "$dir" -B "$dir/build" -DCMAKE_BUILD_TYPE=Release > "$log" 2>&1 || rc=$?
             [ "$rc" -eq 0 ] || return 1
             cmake --build "$dir/build" -j"$(nproc 2>/dev/null || echo 4)" >> "$log" 2>&1 || rc=$?
             ;;
