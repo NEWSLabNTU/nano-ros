@@ -1309,7 +1309,7 @@ location = "store"
 dest = "packages/rmw/zenoh/zpico-sys/zenoh-pico"
 submodule = "packages/rmw/zenoh/zpico-sys/zenoh-pico"
 git = "https://github.com/jerry73204/zenoh-pico.git"
-ref = "0aadceea0c31a3db957fbe14abf8296327bcd96b"
+ref = "87ebc7c2714b109c699e4e02336dfb1ab78724cf"
 
 # NuttX Rust libc fork — the qemu-armv7a-nuttx examples path-dep it via their
 # .cargo/config (`libc = { path = third-party/nuttx/libc }`), so it must be
