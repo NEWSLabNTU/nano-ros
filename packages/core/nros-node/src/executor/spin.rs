@@ -1054,6 +1054,19 @@ pub(crate) unsafe extern "C" fn nros_rmw_runtime_wake_cb(ctx: *mut core::ffi::c_
     }
 }
 
+/// phase-436 — the callback a backend holds when several executors share its
+/// session: signal every member of the [`WakeFanout`](super::wake_fanout)
+/// whose address is `ctx`. The entry is a `static`, so `ctx` never dangles.
+#[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+pub(crate) unsafe extern "C" fn nros_rmw_fanout_wake_cb(ctx: *mut core::ffi::c_void) {
+    if ctx.is_null() {
+        return;
+    }
+    // SAFETY: `ctx` is `WakeFanout::as_ctx` of a `static` pool entry.
+    let fanout = unsafe { &*(ctx as *const super::wake_fanout::WakeFanout) };
+    fanout.fire(nros_rmw_runtime_wake_cb);
+}
+
 /// phase-467 Row 8 — the symbol a backend invokes when the ROS GRAPH changes.
 ///
 /// `rmw_event_callback_t`'s shape, so it fits the ABI slot unchanged:
@@ -1829,11 +1842,17 @@ pub struct Executor<'s> {
     ///
     /// Not `wake_ctx.is_some()`: the ctx is also allocated by `signal_fd()`
     /// and by every guard condition, neither of which installs anything on a
-    /// session, and a tier executor built over a BORROWED session installs
-    /// nothing at all. Clearing on those would clear a callback this executor
-    /// never owned.
+    /// session. Clearing on those would clear a callback this executor never
+    /// owned. (Since phase-436 a tier over a BORROWED session does install: it
+    /// joins the session's wake fan-out, and its teardown is leaving it.)
     #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
     pub(crate) wake_cb_installed: bool,
+    /// phase-436 — this executor's place in the wake fan-out of its PRIMARY
+    /// session, when it has one. Every executor over a session joins the same
+    /// entry, so an arrival wakes all of them, not only the one that happened
+    /// to install into the backend's single slot. See `wake_fanout`.
+    #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+    pub(crate) wake_membership: Option<super::wake_fanout::Membership>,
     /// phase-467 Row 8 — the graph-change target the BACKEND holds a pointer
     /// to, owned here.
     ///
@@ -2233,6 +2252,8 @@ impl<'s> Executor<'s> {
             #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
             wake_cb_installed: false,
             #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+            wake_membership: None,
+            #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
             graph_change_target: None,
             #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
             has_async_wake: false,
@@ -2554,7 +2575,13 @@ impl<'s> Executor<'s> {
     /// be mutated except through these executors' spin calls.
     #[cfg(feature = "alloc")]
     pub unsafe fn open_with_session(session: *mut session::ConcreteSession) -> Executor<'static> {
-        unsafe { Executor::<'static>::from_session_ptr(session) }
+        #[allow(unused_mut)]
+        let mut exec = unsafe { Executor::<'static>::from_session_ptr(session) };
+        // phase-436 — join the session's wake fan-out, so this tier is woken
+        // by its arrivals instead of sleeping out its whole bound.
+        #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+        exec.install_wake_signal_on_primary();
+        exec
     }
 
     /// phase-271 — per-tier borrowed-session constructor over caller-supplied,
@@ -2570,7 +2597,12 @@ impl<'s> Executor<'s> {
         backing: &'s mut [MaybeUninit<u64>],
         sizing: super::storage::ExecutorSizing,
     ) -> Self {
-        unsafe { Self::from_session_ptr_in(session, backing, sizing) }
+        #[allow(unused_mut)]
+        let mut exec = unsafe { Self::from_session_ptr_in(session, backing, sizing) };
+        // phase-436 — as `open_with_session`.
+        #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+        exec.install_wake_signal_on_primary();
+        exec
     }
 
     /// Raw pointer to this executor's RMW session, for the per-tier model:
@@ -2587,7 +2619,16 @@ impl<'s> Executor<'s> {
     /// pointer, and must only touch the session through executor spin calls
     /// (the RMW backend serializes concurrent access through its own locks).
     pub fn session_ptr(&mut self) -> *mut session::ConcreteSession {
-        &mut *self.session as *mut session::ConcreteSession
+        let ptr = &mut *self.session as *mut session::ConcreteSession;
+        // phase-436 — the owner of an OWNED session claimed its wake fan-out
+        // while this executor value could still move (inside `open*`). The
+        // address handed out here is the one every tier is opened over, so
+        // the entry is keyed by it from now on.
+        #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+        if let (SessionStore::Owned(_), Some(m)) = (&self.session, self.wake_membership) {
+            m.fanout().rekey(ptr as *mut core::ffi::c_void);
+        }
+        ptr
     }
 
     /// Opaque, `Send` form of [`session_ptr`](Self::session_ptr) — the per-tier
@@ -4698,26 +4739,70 @@ impl<'s> Executor<'s> {
     /// Pairs with `clear_wake_signal`, which the
     /// executor runs from `close()` and from `drop`. A caller that installs
     /// owes nothing further: the teardown is the executor's.
+    ///
+    /// phase-436 — the backend's slot holds a [`WakeFanout`](super::wake_fanout)
+    /// and this executor JOINS it, so every executor over one session is woken
+    /// by an arrival: the boot executor and each spawned tier
+    /// (`open_with_session*` now installs too), or several C executors over
+    /// one support context. Idempotent. If the fan-out pool is exhausted the
+    /// executor installs its own context directly, as before; if the entry's
+    /// member table is full it joins nothing and reads as having no async
+    /// wake, so it never parks on a wake nobody will signal.
     #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
     pub fn install_wake_signal_on_primary(&mut self) {
         use nros_rmw::Session as _;
+        if self.wake_membership.is_some() {
+            return;
+        }
         let ctx = self.wake_ctx_ptr();
-        // SAFETY: `ctx` points at executor-owned wake state that outlives
-        // the session callback installation and is cleared by
-        // `clear_wake_signal` on `close()`/drop.
-        unsafe {
-            self.session
-                .set_wake_callback(Some(nros_rmw_runtime_wake_cb), ctx);
+        let key = self.session_ptr() as *mut core::ffi::c_void;
+        let supports = self.session.supports_wake_callback();
+        let fanout = match super::wake_fanout::find(key) {
+            Some(f) => Some(f),
+            None => super::wake_fanout::claim(key).inspect(|f| {
+                f.set_live(supports);
+                // SAFETY: the context is a `static` pool entry, valid for the
+                // program's life; `clear_wake_signal` takes the callback off
+                // before returning the entry to the pool.
+                unsafe {
+                    self.session
+                        .set_wake_callback(Some(nros_rmw_fanout_wake_cb), f.as_ctx());
+                }
+            }),
+        };
+        match fanout {
+            Some(f) => {
+                if let Some(m) = f.join(ctx) {
+                    self.wake_membership = Some(m);
+                    // Issue 1385 — this executor now owes a teardown: leaving
+                    // the fan-out (and, for the session's owner or its last
+                    // member, taking the callback off the backend).
+                    self.wake_cb_installed = true;
+                }
+            }
+            None => {
+                // SAFETY: `ctx` points at executor-owned wake state that
+                // outlives the installation and is cleared by
+                // `clear_wake_signal` on `close()`/drop.
+                unsafe {
+                    self.session
+                        .set_wake_callback(Some(nros_rmw_runtime_wake_cb), ctx);
+                }
+                self.wake_cb_installed = true;
+                if supports {
+                    self.has_async_wake = true;
+                }
+            }
         }
-        // Issue 1385 — record that WE are the executor whose ctx the backend
-        // now holds. The clear reads this and nothing else: a tier executor
-        // over a BORROWED session (`open_with_session*`) installs nothing, so
-        // it must not clear the boot executor's callback out from under it
-        // when the tier task ends.
-        self.wake_cb_installed = true;
-        if self.session.supports_wake_callback() {
-            self.has_async_wake = true;
-        }
+    }
+
+    /// phase-436 — does an arrival on any of this executor's sessions signal
+    /// its wake object? Through the primary's fan-out (live until the
+    /// session's owner takes the callback down), or a direct install on the
+    /// primary or an extra session.
+    #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+    pub(crate) fn async_wake_live(&self) -> bool {
+        self.has_async_wake || self.wake_membership.is_some_and(|m| m.is_live())
     }
 
     /// Phase 124.B.1 — install the wake callback onto an extra
@@ -4760,12 +4845,11 @@ impl<'s> Executor<'s> {
     /// `close()` followed by drop clears once.
     ///
     /// Only fires when THIS executor installed (see
-    /// `install_wake_signal_on_primary`). Two executors sharing one session
-    /// is still last-writer-wins on the backend's single slot: the first to
-    /// tear down clears the second's wake and the second degrades to
-    /// `drive_io(full timeout)`. That is a lost optimisation where the
-    /// alternative is a freed pointer, which is the trade this direction of
-    /// the fix makes deliberately.
+    /// `install_wake_signal_on_primary`). Executors sharing one session were
+    /// last-writer-wins on the backend's single slot until phase-436: the first
+    /// to tear down cleared the other's wake. The slot now holds a wake
+    /// fan-out, so a member's teardown is leaving it, and the callback comes
+    /// off the backend only with the session's owner or its last member.
     #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
     pub(crate) fn clear_wake_signal(&mut self) {
         use nros_rmw::Session as _;
@@ -4773,11 +4857,34 @@ impl<'s> Executor<'s> {
             return;
         }
         self.wake_cb_installed = false;
+        // phase-436 — a fan-out member leaves first; the callback comes off
+        // the backend only when the session's OWNER leaves (the session dies
+        // with it) or the last member does. A membership from an entry the
+        // owner already released is a no-op, and must not touch the entry's
+        // next tenant.
+        let take_off_primary = match self.wake_membership.take() {
+            Some(m) => {
+                let fanout = m.fanout();
+                let current = m.is_current();
+                m.leave(nros_platform_api::yield_now);
+                let owned = matches!(self.session, SessionStore::Owned(_));
+                if current && (owned || fanout.member_count() == 0) {
+                    // SAFETY: as below; the entry is released only after the
+                    // backend can no longer start a callback on it.
+                    unsafe { self.session.set_wake_callback(None, core::ptr::null_mut()) };
+                    fanout.release(nros_platform_api::yield_now);
+                }
+                false
+            }
+            None => true,
+        };
         // SAFETY: clearing takes no context, and both sessions are still live
         // here — this runs BEFORE `Session::close` in `close()` and before the
         // session field is dropped in `Drop`.
         unsafe {
-            self.session.set_wake_callback(None, core::ptr::null_mut());
+            if take_off_primary {
+                self.session.set_wake_callback(None, core::ptr::null_mut());
+            }
             for s in self.extra_sessions.iter_mut() {
                 s.set_wake_callback(None, core::ptr::null_mut());
             }
@@ -9677,8 +9784,25 @@ impl<'s> Executor<'s> {
         //
         // Additive by construction: with no primitive installed this is a
         // no-op and every existing port keeps the behaviour it has.
+        // phase-436 — park only when something can END the park early. A
+        // park ends on the bound or on the wake object; with a poll-only
+        // backend (XRCE), or a session whose wake callback is gone, nothing
+        // signals that object, so the park would be a blind sleep and data
+        // arriving mid-park would wait out the whole bound — the Phase
+        // 127.C.4 stall (a reliable stream whose ACK lands in a session nobody
+        // drives). Those executors keep the receive-blocking wait below.
+        let park_can_be_woken = {
+            #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+            {
+                self.async_wake_live()
+            }
+            #[cfg(not(all(feature = "alloc", feature = "rmw-cffi")))]
+            {
+                true
+            }
+        };
         let parked = match self.park_primitive {
-            Some((park, ctx)) if park_achieved_us > 0 => {
+            Some((park, ctx)) if park_achieved_us > 0 && park_can_be_woken => {
                 // SAFETY: `park` and `ctx` were supplied together by the port
                 // through `set_park_primitive` and outlive the executor by its
                 // contract.
@@ -9835,7 +9959,7 @@ impl<'s> Executor<'s> {
                     let _ = wake.wait_ms(0);
                 }
                 0
-            } else if self.has_async_wake
+            } else if self.async_wake_live()
                 && let Some(wake) = self.node_wake.as_ref()
             {
                 let _ = wake.wait_ms(timeout_ms as u32);

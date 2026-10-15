@@ -265,6 +265,62 @@ int main(void) {
     CHECK_RET(rclc_executor_fini(&second), RCL_RET_OK, "second executor finalised");
     CHECK(!nros_stub_rmw_wake_cb_installed(), "and hands it back again");
 
+    /* ---- 5. Two LIVE executors over one session (phase-436) -------------
+     *
+     * The backend has ONE wake slot. Until phase-436 the second executor's
+     * install overwrote the first's, so an arrival woke only the executor
+     * initialised last, and the first one to finalise cleared the other's
+     * callback. The slot now holds a fan-out that wakes every executor over
+     * the session; it stays installed until the LAST of them leaves.
+     *
+     * `first` is the executor the old last-writer-wins rule left deaf, so it
+     * is the one measured first. */
+    struct rclc_executor_t first = rclc_executor_get_zero_initialized_executor();
+    struct rclc_executor_t other = rclc_executor_get_zero_initialized_executor();
+    CHECK_RET(rclc_executor_init(&first, &support.context, 8, NULL), RCL_RET_OK,
+              "first of two live executors initialised");
+    CHECK_RET(rclc_executor_init(&other, &support.context, 8, NULL), RCL_RET_OK,
+              "second of two live executors initialised");
+
+    s_arrival_fired = false;
+    CHECK(pthread_create(&th, NULL, arrival_thread, NULL) == 0, "shared arrival thread started");
+    const uint64_t first_start = now_ms();
+    (void)rclc_executor_spin_some(&first, 400000000ull);
+    const uint64_t first_ms = now_ms() - first_start;
+    CHECK(pthread_join(th, NULL) == 0, "shared arrival thread joined");
+    CHECK(s_arrival_fired, "the shared session had a callback to fire");
+    CHECK(first_ms >= ARRIVAL_AFTER_MS - 10, "LOWER BOUND: the first executor was waiting");
+    CHECK(first_ms * 2 < control_ms,
+          "the FIRST of two executors over one session is woken by an arrival -- with one "
+          "backend slot and last-writer-wins, the second executor's install left it deaf");
+    /* That arrival also woke `other`; take its pending signal so the next
+     * measurement starts from a quiet executor. */
+    (void)rclc_executor_spin_some(&other, 0);
+
+    CHECK_RET(rclc_executor_fini(&first), RCL_RET_OK, "first live executor finalised");
+    CHECK(nros_stub_rmw_wake_cb_installed(),
+          "finalising ONE executor leaves the session's callback for the other -- it used to "
+          "clear the slot out from under the executor still running");
+
+    s_arrival_fired = false;
+    CHECK(pthread_create(&th, NULL, arrival_thread, NULL) == 0, "survivor arrival thread started");
+    const uint64_t other_start = now_ms();
+    (void)rclc_executor_spin_some(&other, 400000000ull);
+    const uint64_t other_ms = now_ms() - other_start;
+    CHECK(pthread_join(th, NULL) == 0, "survivor arrival thread joined");
+    CHECK(s_arrival_fired, "the survivor's session still had a callback to fire");
+    CHECK(other_ms >= ARRIVAL_AFTER_MS - 10, "LOWER BOUND: the survivor was waiting");
+    CHECK(other_ms * 2 < control_ms, "the surviving executor is still woken by an arrival");
+    if (first_ms * 2 >= control_ms || other_ms * 2 >= control_ms) {
+        fprintf(stderr, "       idle %llu ms, first-of-two %llu ms, survivor %llu ms\n",
+                (unsigned long long)control_ms, (unsigned long long)first_ms,
+                (unsigned long long)other_ms);
+    }
+
+    CHECK_RET(rclc_executor_fini(&other), RCL_RET_OK, "last live executor finalised");
+    CHECK(!nros_stub_rmw_wake_cb_installed(),
+          "the LAST executor over the session takes the callback off the backend");
+
     (void)rclc_support_fini(&support);
 
     CHECK(nros_stub_rmw_drive_io_calls() > 0,

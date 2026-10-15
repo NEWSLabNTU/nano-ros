@@ -45,13 +45,13 @@ nros-core                            2   0     2       2      0
 nros-cpp                           834  27     0     339      0
 nros-log                            23   0     7       1      0
 nros-macros                         13   0     1       2      0
-nros-node                          550  168    25     116      0
+nros-node                          555  168    25     120      0
 nros-nuttx-ffi                       1   0     0       1      0
 nros-nuttx-riscv-ffi                 1   0     0       1      0
 nros-orchestration-ir                4   0     0       0      0
 nros-params                          3   1     0       0      0
 nros-platform                        8   2     1       4      0
-nros-platform-api                   21   5     1       7      0
+nros-platform-api                   22   5     1       8      0
 nros-platform-cffi                  96   0     4     112      0
 nros-platform-critical-section       2   2     1       1      0
 nros-platform-esp32-qemu            17   0     2      16      0
