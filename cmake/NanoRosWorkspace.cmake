@@ -58,35 +58,14 @@ set(_NROS_WORKSPACE_INCLUDED TRUE)
 set(_NROS_WORKSPACE_DIR "${CMAKE_CURRENT_LIST_DIR}"
     CACHE INTERNAL "dir of NanoRosWorkspace.cmake")
 
-# ---------------------------------------------------------------------------
-# Helper — walk up from <start> looking for the `nros-sdk-index.toml`
-# sentinel that marks every nano-ros checkout root. Writes the
-# discovered path to <out_var> (PARENT_SCOPE), or `_NROS_ROOT-NOTFOUND`
-# when nothing matches.
-# ---------------------------------------------------------------------------
+# `_nros_find_root` — the checkout-marker walk — lives in its own module so the
+# shared-cargo-dir key (issue 1904) can ask it without this file's side effects.
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCheckoutRoot.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRosEdition.cmake")
 # phase-484 W8 — refuse a retired `NANO_ROS_*` name the workspace set.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRetiredNames.cmake")
 nros_refuse_retired_names()
 
-function(_nros_find_root start out_var)
-    set(_dir "${start}")
-    set(_max_walk 16)            # bounded — never walk past `/`
-    while(_max_walk GREATER 0)
-        # The ONE root marker (RFC-0103 D6) — `nros_build_paths::CHECKOUT_MARKER`.
-        if(EXISTS "${_dir}/packages/core/nros-core/Cargo.toml")
-            set(${out_var} "${_dir}" PARENT_SCOPE)
-            return()
-        endif()
-        get_filename_component(_parent "${_dir}" DIRECTORY)
-        if(_parent STREQUAL _dir)
-            break()             # reached `/`
-        endif()
-        set(_dir "${_parent}")
-        math(EXPR _max_walk "${_max_walk} - 1")
-    endwhile()
-    set(${out_var} "_NROS_ROOT-NOTFOUND" PARENT_SCOPE)
-endfunction()
 
 # ---------------------------------------------------------------------------
 # Resolve the nano-ros root from (in priority order — RFC-0103 D3/D6, the

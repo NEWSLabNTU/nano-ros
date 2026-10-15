@@ -197,6 +197,46 @@ esac
 r_env="$(PROBE_RESOLVED=NROS_ZENOH_MAX_QUERYABLES=2 probe with-knobs DIR NROS_ZENOH_MAX_QUERYABLES=4)"
 expect_eq "road 1 must outrank the env road (resolved 2, exported 4)" "$r2" "$r_env"
 
+# issue 1904 — the key carries the CHECKOUT when the shared root is not this
+# checkout's. Two checkouts naming one `NROS_BUILD_ROOT` produced the same key
+# for the same configuration and shared one keyed directory; each wrote its own
+# Corrosion subdir there and the sizes-header mirror could take the other's
+# header. Three roots, all through the production `nros_shared_cargo_dir()`:
+#   - outside every checkout (the operator's fast volume) -> keyed
+#   - inside ANOTHER checkout (a sibling worktree's build/) -> keyed
+#   - inside THIS checkout (the default `<checkout>/build`) -> NOT keyed, so
+#     every key computed before this fix keeps its hash and no warm dir is lost.
+key_at() { # <root> -> the KEY= line the production code records there
+    local out
+    if ! out="$(cmake -DNROS_PROBE_ROOT="$1" -DNROS_PROBE_MODE=with-knobs \
+        -DNROS_PROBE_RESOLVED= -P "$PROBE" 2>&1)"; then
+        echo "[FAIL] probe at $1 did not run:" >&2
+        printf '%s\n' "$out" >&2
+        exit 1
+    fi
+    printf '%s\n' "$out" | sed -n 's/^KEY=//p'
+}
+here="$(pwd -P)"
+mkdir -p "$TMP/other/packages/core/nros-core"
+: >"$TMP/other/packages/core/nros-core/Cargo.toml"
+own_root="$(mktemp -d "$here/build/.cargo-dir-checkout-key.XXXXXX" 2>/dev/null)" \
+    || { mkdir -p "$here/build" && own_root="$(mktemp -d "$here/build/.cargo-dir-checkout-key.XXXXXX")"; }
+# Only the directory this run created; never `build/` itself.
+trap 'rm -rf "$TMP" "$own_root"' EXIT
+for case_ in "outside every checkout:$TMP/fast-volume" "inside another checkout:$TMP/other/build/corrosion-cargo"; do
+    k="$(key_at "${case_#*:}")"
+    case "$k" in
+        *"|checkout=$here") ;;
+        *) echo "[FAIL] a shared cargo root ${case_%%:*} must key on this checkout (issue 1904); key was: $k" >&2
+           fail=1 ;;
+    esac
+done
+k="$(key_at "$own_root/corrosion-cargo")"
+case "$k" in
+    *checkout=*) echo "[FAIL] a shared cargo root INSIDE this checkout must keep its key (no checkout field); key was: $k" >&2
+                 fail=1 ;;
+esac
+
 inventory="$(env cmake -DNROS_PROBE_MODE=inventory -P "$PROBE" 2>&1 | sed -n 's/^KNOB=//p')"
 for want in NROS_ZENOH_MAX_QUERYABLES NROS_EXECUTOR_MAX_CBS NROS_XRCE_MAX_SUBSCRIBERS; do
     nros_grep_q -x "$want" <<<"$inventory" && continue

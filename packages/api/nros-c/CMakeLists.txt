@@ -163,8 +163,9 @@ if(COMMAND nros_share_corrosion_cargo_dir)
     endif()
 endif()
 
+set(_nros_c_cargo_manifest "${PROJECT_SOURCE_DIR}/Cargo.toml")
 corrosion_import_crate(
-    MANIFEST_PATH "${PROJECT_SOURCE_DIR}/Cargo.toml"
+    MANIFEST_PATH "${_nros_c_cargo_manifest}"
     CRATES        nros-c
     CRATE_TYPES   staticlib
     NO_DEFAULT_FEATURES
@@ -172,6 +173,10 @@ corrosion_import_crate(
     PROFILE       ${NROS_CARGO_PROFILE}
     LOCKED
 )
+# issue 1904 — the mirror reads the cargo subdir THIS manifest gets, never a
+# sibling's (see `nros_config_header_cargo_manifest`).
+include("${CMAKE_CURRENT_LIST_DIR}/../../../cmake/NanoRosConfigHeaderMirror.cmake")
+nros_config_header_cargo_manifest("${_nros_c_cargo_manifest}")
 # Issue 0945 item 1 — witness that cargo actually built into the shared
 # directory. The redirect above works by symlinking over a path Corrosion
 # derives privately and offers no knob for, so a Corrosion upgrade that moves

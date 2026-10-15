@@ -187,7 +187,7 @@ def marker_of(path: Path, pattern: str) -> str | None:
     return m.group(1) if m else None
 
 
-CMAKE_WALK = ROOT / "cmake/NanoRosWorkspace.cmake"
+CMAKE_WALK = ROOT / "cmake/NanoRosCheckoutRoot.cmake"
 
 # Every site that SPELLS the one root marker (RFC-0103 D6). The launcher no
 # longer spells it — it aliases the Rust constant, which is checked below as an
