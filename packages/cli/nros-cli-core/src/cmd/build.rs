@@ -560,16 +560,12 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                 .map_err(|e| eyre::eyre!("`{qual}` cannot be built: {e}"))?;
         }
         let board = image.board.clone().unwrap_or_default();
-        check_image_net_on_board(
-            descriptor,
-            &board,
-            nano_ros_root.as_deref(),
-            &qual,
-            image
-                .net
-                .iter()
-                .map(|(n, i)| (n.clone(), i.address.is_some() || i.host.is_some())),
-        )?;
+        // RFC-0103 D10 (phase-497 W2) — this image's network, resolved by the
+        // one resolver over EVERY image of its bringup, so a duplicate address
+        // or MAC on a shared network is refused before anything is built.
+        let image_net =
+            workspace_image_net(&catalog, &bringup_dir, &image_id, nano_ros_root.as_deref())
+                .map_err(|e| eyre::eyre!("`{qual}` cannot be built: {e}"))?;
         // A refusal here is RFC-0065 D3's third outcome, not an internal error:
         // the board and the language mix together name a combination nano-ros
         // has no road for, and the message says which. Bailing beats answering
@@ -823,6 +819,13 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                     &mut env,
                     &mut path_env,
                 )?;
+                // RFC-0103 D10f (phase-497 W2) — the image's resolved network,
+                // as the one text its board and `nros::main!` read.
+                if let Some(n) = &image_net {
+                    crate::orchestration::image_net::write(&image_dir, &image_id, n)
+                        .map_err(|e| eyre::eyre!("{e}"))?;
+                    env.insert(nros_board_common::image_net::ENV.to_string(), n.text());
+                }
                 let image_for = |wiring| crate::sizing_descriptor::ModelImage {
                     build_dir: &image_dir,
                     entry: &image_id,
@@ -1272,6 +1275,19 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                 // the verb refuses, so FreeRTOS images there got no
                 // `FREERTOS_PORT` and `zpico-sys` panicked.
                 a.push(format!("-DNROS_BRINGUP_DIR={}", bringup_dir.display()));
+                // RFC-0103 D10f (phase-497 W2) — the image's resolved network.
+                // `nros_board_net_c` renders the C initializer from it.
+                if let Some(n) = &image_net {
+                    if let Some(d) = &resolved_dir {
+                        crate::orchestration::image_net::write(d, &image_id, n)
+                            .map_err(|e| eyre::eyre!("{e}"))?;
+                    }
+                    a.push(format!(
+                        "-D{}={}",
+                        nros_board_common::image_net::ENV,
+                        n.text()
+                    ));
+                }
                 // RFC-0094 D1 — where stage 3.5 put this image's answer. The
                 // configure READS it; it does not re-derive it.
                 //
@@ -1718,17 +1734,10 @@ fn plan_leaf_image(
     let Some(descriptor) = crate::cmd::board_facts::resolve_board(&catalog, &img.board) else {
         eyre::bail!("{}", crate::cmd::board_facts::unresolved_board(&img.board));
     };
-    check_image_net_on_board(
-        descriptor,
-        &img.board,
-        Some(&nros_root),
-        &qual,
-        img.decl
-            .network
-            .interface
-            .clone()
-            .map(|n| (n, img.decl.network.ip.is_some())),
-    )?;
+    // RFC-0103 D10 (phase-497 W2) — refused here, at preflight, with the
+    // image named; `leaf_settings` resolves the same answer into the build.
+    leaf_image_net(descriptor, &img.board, Some(&nros_root), &img.decl)
+        .map_err(|e| eyre::eyre!("`{qual}` cannot be built: {e}"))?;
     let mut missing = crate::builder::preflight::check(descriptor, root, Some(&nros_root));
     // The toolchain half only. preflight's sync probe is a WORKSPACE heuristic
     // (a `src/` with neither `generated/` nor `build/nros/`), and a leaf's
@@ -1950,16 +1959,8 @@ fn plan_single_package_cmake(
     let Some(descriptor) = crate::cmd::board_facts::resolve_board(&catalog, &board) else {
         eyre::bail!("{}", crate::cmd::board_facts::unresolved_board(&board));
     };
-    check_image_net_on_board(
-        descriptor,
-        &board,
-        Some(&nros_root),
-        &board,
-        decl.network
-            .interface
-            .clone()
-            .map(|n| (n, decl.network.ip.is_some())),
-    )?;
+    leaf_image_net(descriptor, &board, Some(&nros_root), &decl)
+        .map_err(|e| eyre::eyre!("`{board}` cannot be built: {e}"))?;
     let platform = descriptor.platform.kebab().to_string();
     if plan::driver_for_board(&platform, descriptor.entry_kind, true) != Ok(Driver::CMake) {
         return Ok(None);
@@ -3808,41 +3809,63 @@ fn board_heap_configure_arg(
     format!("-DNROS_BOARD_HEAP_BUDGET_BYTES={value}")
 }
 
-/// The file a descriptor was parsed from: its `source`, joined onto the
-/// nano-ros root when relative. `None` for an in-memory descriptor, or a
-/// relative source with no root to resolve it against.
-/// RFC-0103 D10c/D10e (phase-497 W1) — an image's interfaces against its
-/// board: a host-stack board takes none, a board that declares its interfaces
-/// takes only those, and only an `ethernet` / `wifi` one takes an address.
-///
-/// `ifs` is `(interface, addressed)`. Every road calls this — the workspace
-/// image, the single-package Rust leaf and the C/C++ leaf — with the board's
-/// own descriptor, read by the same `BoardKnobsFile` a build script reads.
-pub(crate) fn check_image_net_on_board(
+/// RFC-0103 D10 (phase-497 W2) — a board's `[board.net]`, from the
+/// descriptor the catalog recorded for it. A board with no descriptor file
+/// has no interfaces, so an image naming one is refused, never dropped.
+pub(crate) fn descriptor_board_net(
     descriptor: &crate::orchestration::board_descriptor::BoardDescriptor,
     board: &str,
     nano_ros_root: Option<&std::path::Path>,
-    qual: &str,
-    ifs: impl IntoIterator<Item = (String, bool)>,
-) -> Result<()> {
-    let ifs: Vec<(String, bool)> = ifs.into_iter().collect();
-    if ifs.is_empty() {
-        return Ok(());
+) -> Result<nros_board_common::platform_config::BoardNet> {
+    match board_descriptor_file(descriptor, nano_ros_root) {
+        Some(path) => {
+            crate::orchestration::image_net::board_net(&path, board).map_err(|e| eyre::eyre!("{e}"))
+        }
+        None => Ok(Default::default()),
     }
-    let Some(path) = board_descriptor_file(descriptor, nano_ros_root) else {
-        return Ok(());
+}
+
+/// A single-package leaf's resolved network (`None`: it states none).
+pub(crate) fn leaf_image_net(
+    descriptor: &crate::orchestration::board_descriptor::BoardDescriptor,
+    board: &str,
+    nano_ros_root: Option<&std::path::Path>,
+    decl: &nros_orchestration_ir::leaf_system::LeafSystem,
+) -> Result<Option<crate::orchestration::image_net::ImageNet>> {
+    if decl.network.net.is_empty() {
+        return Ok(None);
+    }
+    let net = descriptor_board_net(descriptor, board, nano_ros_root)?;
+    crate::orchestration::image_net::resolve_leaf(decl, &net)
+        .map_err(|e| eyre::eyre!("on board `{board}`: {e}"))
+}
+
+/// A workspace image's resolved network, from its bringup's `system.toml`,
+/// with every image of that bringup resolved alongside it so a collision on a
+/// shared network is refused naming both.
+pub(crate) fn workspace_image_net(
+    catalog: &crate::orchestration::board_descriptor::BoardCatalog,
+    bringup_dir: &std::path::Path,
+    image_id: &str,
+    nano_ros_root: Option<&std::path::Path>,
+) -> Result<Option<crate::orchestration::image_net::ImageNet>> {
+    let path = bringup_dir.join("system.toml");
+    let Ok(raw) = std::fs::read_to_string(&path) else {
+        return Ok(None);
     };
-    let file = nros_board_common::platform_config::BoardKnobsFile::load(&path)
+    let sys = toml::from_str::<crate::orchestration::cargo_metadata_schema::SystemToml>(&raw)
         .map_err(|e| eyre::eyre!("{}: {e}", path.display()))?;
-    let net = file
-        .board_net(Some(board))
-        .map_err(|e| eyre::eyre!("{}: {e}", path.display()))?
-        .unwrap_or_default();
-    for (name, addressed) in ifs {
-        net.check_image_interface(&name, addressed)
-            .map_err(|e| eyre::eyre!("`{qual}` on board `{board}`: {e}"))?;
-    }
-    Ok(())
+    let mut all = crate::orchestration::image_net::resolve_system(&sys, |id| {
+        let img = match &sys.image_defaults {
+            Some(base) => sys.image[id].with_base(base),
+            None => sys.image[id].clone(),
+        };
+        let board = img.board.clone().unwrap_or_default();
+        let d = crate::orchestration::image::resolve_image_board(catalog, id, &img)?;
+        descriptor_board_net(d, &board, nano_ros_root).map_err(|e| format!("{e}"))
+    })
+    .map_err(|e| eyre::eyre!("{}: {e}", path.display()))?;
+    Ok(all.remove(image_id))
 }
 
 fn board_descriptor_file(

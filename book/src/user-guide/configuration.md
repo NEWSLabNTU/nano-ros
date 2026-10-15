@@ -107,34 +107,62 @@ net   = { eth0 = { network = "qemu", host = 10 } }   # 10.0.2.10 on QEMU's netwo
 ```
 
 `qemu` is built in: QEMU's own user-mode (SLIRP) network, `10.0.2.0/24` with
-gateway and router host `10.0.2.2`. Any other network is the project's, stated
-once and named by every image on it:
+gateway and router host `10.0.2.2`. Every `-nic user` makes a private copy of
+it, so two images on `qemu` never meet. Any other network is the project's,
+stated once and named by every image on it:
 
 ```toml
 [network.lab]                  # e.g. a switch or a Linux bridge with boards on it
 subnet  = "192.168.50.0/24"
 gateway = "192.168.50.1"
+router  = "tcp/192.168.50.1:7447"    # the locator its images dial by default
 
 [image.sensor]
-board   = "qemu-mps2-an385"
-locator = "tcp/192.168.50.1:7447"
-net     = { eth0 = { network = "lab", address = "192.168.50.20" } }
+board = "qemu-mps2-an385"
+net   = { eth0 = { network = "lab", address = "192.168.50.20" } }
 ```
 
-`host` is the last octet within the network's subnet; `address` is the full
-IPv4. The gateway and netmask come from the network, so an image never states
-them. An address outside its subnet, equal to the gateway, or on a network that
-does not exist fails the build, naming the image.
+Per interface:
 
-On a board whose network belongs to the host operating system (`linux`,
-`freertos-posix`, threadx-linux), the kernel owns addresses, and `net` is
-refused. The old flat `ip` / `gateway` / `netmask` keys on `[image.<id>]` are
-refused too, naming this table.
+- `network` defaults to the board's (`qemu` on every QEMU board), so
+  `net = { eth0 = { host = 10 } }` is enough there.
+- `host` is the last octet within the network's subnet; `address` is the full
+  IPv4, or `"dhcp"` on a network with `dhcp = true` (and a board whose
+  interface runs a DHCP client). An interface on `qemu` that states no address
+  takes `10.0.2.15`, the address a plain `-nic user` guest picks.
+- `mac` is optional. Left out, it is derived from the board interface's
+  `mac_prefix` and the system, image, network and interface names, so two
+  images never share one by accident.
+- The gateway and netmask come from the network, so an image never states them.
+- An image dials its own `locator`, else its network's `router`, else
+  `[system] locator`. On a network other than `qemu` one of the three must be
+  stated.
 
-Not rendered yet, and refused with a message rather than ignored: a leased
-address (`address = "dhcp"` on a network with `dhcp = true`), a per-image
-`mac`, a network's default `router`, more than one interface, and a bridge or
-TAP `attach` for emulated images. They are phase-497 W2–W4.
+A board may have several interfaces. An image addresses each on its own
+network, `net = { eth0 = { … }, eth1 = { … } }`.
+
+These fail the build, naming the image (and, for a duplicate, both images):
+
+- an address outside its subnet, equal to the gateway, or on a network that
+  does not exist;
+- two images with the same static address, or the same MAC, on one network
+  other than `qemu`;
+- `net` on a board whose network belongs to the host operating system (`linux`,
+  `freertos-posix`, threadx-linux), or on a board that declares no interfaces
+  (Zephyr boards take their address from Kconfig);
+- the old flat `ip` / `gateway` / `netmask` keys on `[image.<id>]`.
+
+The board's half is `[board.net]` in its descriptor: `network` (its default
+network) and `interfaces`, each a kind (`eth0 = "ethernet"`) or a table
+(`eth0 = { kind = "ethernet", mac_prefix = "52:54:00", dhcp = true }`). A board
+states no address: `[board.net] ip` / `mac` are refused.
+
+The resolved answer for an image is written to
+`build/<image>/nros/net/<image>.toml` and reaches the firmware as
+`NROS_IMAGE_NET`.
+
+Not supported yet, and refused rather than ignored: a bridge or TAP `attach`
+for emulated images (phase-497 W3).
 
 ### Per-image build knobs
 

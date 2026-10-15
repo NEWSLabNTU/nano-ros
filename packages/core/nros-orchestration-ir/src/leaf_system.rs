@@ -137,16 +137,17 @@ pub const TRANSPORT_KINDS: &[&str] = &["serial", "tcp", "udp"];
 pub struct Network {
     pub domain_id: Option<u32>,
     pub locator: Option<String>,
-    /// The image's address, lowered from `[image.<id>.net.<if>]` on its
-    /// network (RFC-0103 D10, `crate::system_net::lower`).
-    pub ip: Option<String>,
-    /// The network's gateway.
-    pub gateway: Option<String>,
-    /// The network's netmask.
-    pub netmask: Option<String>,
-    /// The interface the address is on (`eth0`), when the image names one. The
-    /// CLI checks it against the board's `[board.net] interfaces`.
-    pub interface: Option<String>,
+    /// `[image.<id>.net.<if>]` over `[image_defaults.net.<if>]` (RFC-0103 D10),
+    /// checked against the networks without the board
+    /// (`crate::system_net::check_image_interfaces`). The CLI's resolver
+    /// combines it with the board and hands the answer to every build as
+    /// `NROS_IMAGE_NET`; `nros::main!` only needs to know whether there IS one.
+    pub net: BTreeMap<String, crate::system_net::ImageNetIf>,
+    /// `[network.<name>]`, the project's networks.
+    pub networks: BTreeMap<String, crate::system_net::NetworkDef>,
+    /// `[system] name` — part of the key a MAC the image does not state is
+    /// derived from (D10b), so two projects' images with the same id differ.
+    pub system: Option<String>,
     pub transport: Option<String>,
 }
 
@@ -726,23 +727,29 @@ fn image_system(
     crate::system_net::refuse_flat_image_net(image, &format!("image.{id}"))
         .and_then(|()| crate::system_net::refuse_flat_image_net(defaults, "image_defaults"))
         .map_err(|e| format!("{}: {e}", path.display()))?;
-    let lowered = {
-        let nets = crate::system_net::parse_networks(doc)
-            .map_err(|e| format!("{}: {e}", path.display()))?;
+    let networks =
+        crate::system_net::parse_networks(doc).map_err(|e| format!("{}: {e}", path.display()))?;
+    let net = {
         let base = crate::system_net::parse_image_net(defaults, "image_defaults")
             .map_err(|e| format!("{}: {e}", path.display()))?;
         let own = crate::system_net::parse_image_net(image, &format!("image.{id}"))
             .map_err(|e| format!("{}: {e}", path.display()))?;
-        crate::system_net::lower(id, &nets, &crate::system_net::overlay(&base, &own))
-            .map_err(|e| format!("{}: {e}", path.display()))?
+        crate::system_net::overlay(&base, &own)
     };
+    crate::system_net::check_image_interfaces(id, &networks, &net)
+        .map_err(|e| format!("{}: {e}", path.display()))?;
+    // D10d — the image's own `locator`, else the `router` of the network it
+    // sits on, else the project's `[system] locator`. A network more specific
+    // than the project outranks the project's default.
+    let locator = pick("locator")
+        .or_else(|| crate::system_net::network_router(&networks, &net))
+        .or_else(|| str_key(system, "locator"));
     let network = Network {
         domain_id,
-        locator: pick("locator").or_else(|| str_key(system, "locator")),
-        ip: lowered.ip,
-        gateway: lowered.gateway,
-        netmask: lowered.netmask,
-        interface: lowered.interface,
+        locator,
+        net,
+        networks,
+        system: str_key(system, "name"),
         transport,
     };
 
@@ -1109,11 +1116,11 @@ net = { eth0 = { network = "qemu", host = 50 } }
         // through to `[system]`.
         assert_eq!(l.network.locator.as_deref(), Some("tcp/10.0.2.2:9800"));
         assert_eq!(l.network.domain_id, Some(3));
-        // RFC-0103 D10 — `host = 50` on the built-in `qemu` network.
-        assert_eq!(l.network.ip.as_deref(), Some("10.0.2.50"));
-        assert_eq!(l.network.gateway.as_deref(), Some("10.0.2.2"));
-        assert_eq!(l.network.netmask.as_deref(), Some("255.255.255.0"));
-        assert_eq!(l.network.interface.as_deref(), Some("eth0"));
+        // RFC-0103 D10 — `host = 50` on the built-in `qemu` network, carried
+        // as stated: the CLI's resolver turns it into an address.
+        let eth0 = &l.network.net["eth0"];
+        assert_eq!(eth0.network.as_deref(), Some("qemu"));
+        assert_eq!(eth0.host, Some(50));
         assert_eq!(l.components.len(), 1);
         assert_eq!(l.components[0].pkg.as_deref(), Some("esp32_talker"));
         // Issue 1278 — the dispatch strategy has a home here too.
@@ -1442,6 +1449,29 @@ domain_id = 4
             let e = read(d.path()).unwrap_err();
             assert!(e.contains(&format!("`{at}`")) && e.contains("D10g"), "{e}");
         }
+    }
+
+    /// RFC-0103 D10d (phase-497 W2) — an image on a network that states a
+    /// `router` dials it, unless the image states its own `locator`; the
+    /// project's `[system] locator` is the fallback below both.
+    #[test]
+    fn the_networks_router_is_the_default_locator_below_the_images_own() {
+        let net = "[network.lab]\nsubnet = \"192.168.50.0/24\"\n\
+                   router = \"tcp/192.168.50.1:7447\"\n";
+        let base = format!(
+            "[system]\nname = \"t\"\nlocator = \"tcp/10.0.2.2:7447\"\n{net}\
+             [image.a]\nboard = \"x\"\n[image.a.net.eth0]\nnetwork = \"lab\"\nhost = 20\n"
+        );
+        let d = leaf(&[("Cargo.toml", CARGO), ("system.toml", &base)]);
+        let l = read(d.path()).unwrap().unwrap();
+        assert_eq!(l.network.locator.as_deref(), Some("tcp/192.168.50.1:7447"));
+        let own = base.replace(
+            "board = \"x\"\n",
+            "board = \"x\"\nlocator = \"tcp/192.168.50.9:7447\"\n",
+        );
+        let d = leaf(&[("Cargo.toml", CARGO), ("system.toml", &own)]);
+        let l = read(d.path()).unwrap().unwrap();
+        assert_eq!(l.network.locator.as_deref(), Some("tcp/192.168.50.9:7447"));
     }
 
     /// phase-445 W6 — the APP rung. `[image.<id>] env` is what replaced the

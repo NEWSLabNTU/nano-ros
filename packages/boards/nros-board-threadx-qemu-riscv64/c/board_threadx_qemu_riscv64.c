@@ -81,11 +81,16 @@ uint32_t nros_board_app_priority(void) { return 15; }
 static NX_PACKET_POOL packet_pool;
 static NX_IP          ip_instance;
 
-/* ---- Configuration (set from Rust before tx_kernel_enter) ---- */
-static uint8_t cfg_ip[4]      = {10, 0, 2, 40};
-static uint8_t cfg_netmask[4] = {255, 255, 255, 0};
-static uint8_t cfg_gateway[4] = {10, 0, 2, 2};
-static uint8_t cfg_mac[6]     = {0x52, 0x54, 0x00, 0x12, 0x34, 0x56};
+/* ---- Configuration (set from Rust before tx_kernel_enter) ----
+ * Zero until `nros_threadx_set_config` runs, which the board's startup always
+ * calls with the image's resolved network (`NROS_APP_CONFIG.network`, rendered
+ * from the board's `[board.net]` and the image's `[image.<id>.net]`, RFC-0103
+ * D10f). The defaults that used to sit here (10.0.2.40, :56) were a third copy
+ * of the board's address, which phase-497 W2 retired with the descriptor's. */
+static uint8_t cfg_ip[4];
+static uint8_t cfg_netmask[4];
+static uint8_t cfg_gateway[4];
+static uint8_t cfg_mac[6];
 
 /* VirtIO MMIO config: slot 0 = 0x10001000, IRQ 1 */
 static uint64_t cfg_mmio_base = 0x10001000;

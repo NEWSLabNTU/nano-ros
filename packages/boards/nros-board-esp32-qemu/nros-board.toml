@@ -46,10 +46,10 @@ network = "qemu"
 # RFC-0103 D10c (phase-497 W1) — the interface an image addresses as
 # `[image.<id>.net.eth0]`.
 interfaces = { eth0 = "ethernet" }
-# The board's established defaults on that network: talker `.50` (its
-# examples' listener states `.51`) and the open_eth MAC its images use.
-ip = "10.0.2.50"
-mac = "02:00:00:00:00:01"
+# No `ip` / `mac` here (RFC-0103 D10g, phase-497 W2): an address is the image's
+# (its examples state `host = 50` / `51`), and a MAC is the image's or derived
+# per image — `02:00:00` plus three bytes, which the open_eth driver programs
+# into the device.
 
 [board.entry]
 signature = "#[esp_hal::main]\nfn main() -> !"

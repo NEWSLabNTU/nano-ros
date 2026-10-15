@@ -1,6 +1,6 @@
 # Phase 497 -- networks have owners: board interfaces, project networks, image addresses
 
-**Status (2026-10-15). W1 landed; W2–W4 open.** Re-planned against D10 as
+**Status (2026-10-16). W1, W2 and W4 landed; W3 open.** Re-planned against D10 as
 amended 2026-10-15 (D10a–D10g). Implements
 [RFC-0103 D10](../design/0103-one-owner-per-fact.md). Follows phase-484 W4b-2,
 which moves every QEMU board onto one default network first.
@@ -119,6 +119,65 @@ nothing, are refused at ingest and gone from the plan schema.
 - The test pairs that used the last-octet override build from `host =`
   instead, and still deliver.
 
+**Status: landed 2026-10-16.**
+- **One resolver**, `nros_cli_core::orchestration::image_net`, takes the
+  image's interfaces, the project's networks and the board's `[board.net]`
+  and answers per interface `{ kind, network, address | dhcp, prefix,
+  gateway, mac }`. It runs on every road: the cargo leaf (`leaf_settings`),
+  the workspace cargo and cmake roads (`cmd::build`, over EVERY image of the
+  bringup), and the standalone cmake leaf (`nros ws leaf-system`).
+- **One output**, written to `<build>/nros/net/<image>.toml` and carried as
+  ONE text, `NROS_IMAGE_NET` (`nros_board_common::image_net`: a `no_std`
+  decoder and one encoder). Three carriers read it:
+  - `nros::main!`, which bakes it verbatim into `DeployOverlay::net`, which
+    replaced `ip` / `gateway` / `netmask`. The macro no longer resolves
+    anything, so it no longer needs a board catalog, and `network` is optional
+    again;
+  - `nros board net --image-net`, which renders the C
+    `nros_app_config_t.network` for `nros_board_net_c`. The cmake configure
+    takes it from `-DNROS_IMAGE_NET` (the workspace road) or the top-level
+    leaf's read;
+  - the riscv64 board's build script, because its `startup.c` hands NetX
+    the address its C TU bakes before the kernel runs. Measured while
+    wiring it: on the cargo road an image's address had NEVER reached NetX
+    there, W1 included, because the TU was the board default and the Rust
+    overlay is applied after.
+- **Refused at sync**, naming both images on a duplicate: two equal static
+  addresses or two equal MACs on one SHARED network, an address outside its
+  subnet or equal to the gateway, `dhcp` on a network without `dhcp = true`
+  or on a board interface with no DHCP client, and an image off `qemu` with no
+  locator (D10d). `qemu` is never shared: every `-nic user` is a private SLIRP
+  copy per VM.
+- **Defaults:** `network` is the board's; an interface on `qemu` with no
+  address takes `10.0.2.15` (QEMU's first guest); a MAC the image does not
+  state is derived from the interface's `mac_prefix` (default `02:00:00`) and
+  `(system, image, network, interface)`. The system name joined the key
+  because every single-package FreeRTOS leaf calls its image
+  `mps2-an385-freertos`, so a pair is two projects with one image id.
+- **Router (D10d):** the image's `locator`, else its first network's
+  `router`, else `[system] locator`.
+- **Retired:** `[board.net] ip` / `netmask` / `gateway` / `mac` (refused when a
+  descriptor is read); the riscv64 C board's `cfg_ip` / `cfg_mac` defaults
+  (zero until `nros_threadx_set_config`, gated by `check-board-net-one-home`);
+  `NROS_ENTRY_IP` / `_GATEWAY` / `_NETMASK`, `NROS_LEAF_IP` / `_GATEWAY` /
+  `_NETMASK`, `nros board net --ip-last` / `--mac-last`, and the
+  `NROS_ENTRY_IP_LAST` / `NROS_APP_NET_{IP,MAC}_LAST` overrides. The 23
+  fixture rows that passed them now state `host` in the leaf; the riscv64
+  Cyclone pair also states `mac`, because its test passes the same MAC to
+  QEMU's virtio device, which NetX reads back.
+- **Behaviour change** for an image that states no address: FreeRTOS C/C++
+  images move from `10.0.2.10` to `10.0.2.15`, esp32 and riscv64 from `.50` /
+  `.40`. All on `qemu`, where no two images meet.
+- **Zephyr boards** declare no interfaces (their address is Kconfig's), so
+  `[image.*.net]` on one is refused rather than dropped.
+
+Acceptance, as measured:
+- The two-image shared-network case and both duplicate refusals are unit
+  tests (`two_images_on_a_shared_network_resolve_and_a_duplicate_is_refused_naming_both`).
+  A two-image bridge FIXTURE needs a bridge `attach`, which W3 renders, so it
+  moved there.
+- The former override pairs build from `host =`; tier 2 below.
+
 ### W3 -- the launcher reads the network
 
 - The QEMU launchers (`nros_tests::qemu`, `nros_tests::esp32`, the `just` run
@@ -149,6 +208,13 @@ middleware half: the user's own Cyclone `<Interfaces>` or zenoh config
 reaches the backend verbatim, and nano-ros models no NIC there. Its open
 hosted lo-plus-NIC acceptance is the runtime counterpart of this item.
 Forwarding between two NICs inside one image is not in either phase (D10e).
+
+**Status: landed 2026-10-16, with W2.** The resolver addresses every
+interface the image states, each on its own network and with its own derived
+MAC, and the `NROS_IMAGE_NET` text carries all of them, primary first
+(`a_two_nic_image_resolves_and_renders_both_interfaces`). A single-NIC board
+applies the first. No in-tree board declares a second interface, so there is
+no runtime test, as the acceptance allows.
 
 ## Not in this phase
 

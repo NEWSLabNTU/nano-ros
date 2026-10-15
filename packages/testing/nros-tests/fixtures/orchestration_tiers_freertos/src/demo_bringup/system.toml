@@ -38,7 +38,11 @@ group_tiers = { telem = "low" }
 [image.freertos]
 board = "freertos"
 entry = "demo_entry"
-net = { eth0 = { network = "qemu", host = 15 } }
+# No `net`: the guest is QEMU's first guest, 10.0.2.15, which is what an image
+# on the board's `qemu` network that states no address gets (RFC-0103 D10,
+# phase-497 W2). This entry is cross-built by plain cargo, with no CLI to
+# resolve a stated address into NROS_IMAGE_NET, and `nros::main!` refuses one
+# it would have to drop.
 locator = "tcp/10.0.2.2:7891"
 
 # Two FreeRTOS priority tiers. Raw FreeRTOS priorities (0..configMAX-1, higher =

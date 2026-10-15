@@ -3025,56 +3025,56 @@ platform = "freertos"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/mps2-an385-freertos/c/talker"
-cmake_defs = { NROS_ENTRY_IP_LAST = "10", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7900" }
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7900" }
 
 [[fixture]]
 platform = "freertos"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/mps2-an385-freertos/c/listener"
-cmake_defs = { NROS_ENTRY_IP_LAST = "11", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7900" }
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7900" }
 
 [[fixture]]
 platform = "freertos"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/mps2-an385-freertos/c/service-server"
-cmake_defs = { NROS_ENTRY_IP_LAST = "10", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7910" }
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7910" }
 
 [[fixture]]
 platform = "freertos"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/mps2-an385-freertos/c/service-client"
-cmake_defs = { NROS_ENTRY_IP_LAST = "11", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7910" }
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7910" }
 
 [[fixture]]
 platform = "freertos"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/mps2-an385-freertos/c/action-server"
-cmake_defs = { NROS_ENTRY_IP_LAST = "10", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7920" }
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7920" }
 
 [[fixture]]
 platform = "freertos"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/mps2-an385-freertos/c/action-client"
-cmake_defs = { NROS_ENTRY_IP_LAST = "11", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7920" }
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7920" }
 
 [[fixture]]
 platform = "freertos"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/mps2-an385-freertos/cpp/talker"
-cmake_defs = { NROS_ENTRY_IP_LAST = "10", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8000" }
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8000" }
 
 [[fixture]]
 platform = "freertos"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/mps2-an385-freertos/cpp/listener"
-cmake_defs = { NROS_ENTRY_IP_LAST = "11", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8000" }
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8000" }
 
 # phase-482 W3 — the ported ROS 2 tutorial publisher (the template's unmodified
 # `src/minimal_publisher.cpp`) on FreeRTOS, the (FreertosMps2, Cpp, Port) cell.
@@ -3085,7 +3085,7 @@ platform = "freertos"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/templates/cpp-port-minimal-publisher/mps2-an385-freertos"
-cmake_defs = { NROS_ENTRY_IP_LAST = "10", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8098" }
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8098" }
 
 # phase-482 W3 — the other two port templates on FreeRTOS, each the template's
 # unmodified `src/` built by the sub-project beside it. Ports 8088 / 8089 =
@@ -3097,7 +3097,7 @@ platform = "freertos"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/templates/rclcpp-compat-smoke/mps2-an385-freertos"
-cmake_defs = { NROS_ENTRY_IP_LAST = "10", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8088" }
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8088" }
 
 [[fixture]]
 id = "freertos-cpp-port-topic-state-monitor"
@@ -3105,35 +3105,35 @@ platform = "freertos"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/templates/topic-state-monitor-port/mps2-an385-freertos"
-cmake_defs = { NROS_ENTRY_IP_LAST = "10", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8089" }
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8089" }
 
 [[fixture]]
 platform = "freertos"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/mps2-an385-freertos/cpp/service-server"
-cmake_defs = { NROS_ENTRY_IP_LAST = "10", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8010" }
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8010" }
 
 [[fixture]]
 platform = "freertos"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/mps2-an385-freertos/cpp/service-client"
-cmake_defs = { NROS_ENTRY_IP_LAST = "11", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8010" }
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8010" }
 
 [[fixture]]
 platform = "freertos"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/mps2-an385-freertos/cpp/action-server"
-cmake_defs = { NROS_ENTRY_IP_LAST = "10", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8020" }
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8020" }
 
 [[fixture]]
 platform = "freertos"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/mps2-an385-freertos/cpp/action-client"
-cmake_defs = { NROS_ENTRY_IP_LAST = "11", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8020" }
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8020" }
 
 # ===========================================================================
 # nuttx — C / C++ (cmake). Zenoh only (Cyclone gated on a hosted NuttX port).
@@ -3381,7 +3381,7 @@ platform = "threadx-riscv64"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/rv-virt-threadx/c/listener"
-cmake_defs = { NROS_APP_NET_IP_LAST = "41", NROS_APP_NET_MAC_LAST = "0x57", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:9500" }
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:9500" }
 
 [[fixture]]
 platform = "threadx-riscv64"
@@ -3395,7 +3395,7 @@ platform = "threadx-riscv64"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/rv-virt-threadx/c/service-client"
-cmake_defs = { NROS_APP_NET_IP_LAST = "41", NROS_APP_NET_MAC_LAST = "0x57", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:9510" }
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:9510" }
 
 [[fixture]]
 platform = "threadx-riscv64"
@@ -3409,7 +3409,7 @@ platform = "threadx-riscv64"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/rv-virt-threadx/c/action-client"
-cmake_defs = { NROS_APP_NET_IP_LAST = "41", NROS_APP_NET_MAC_LAST = "0x57", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:9520" }
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:9520" }
 
 [[fixture]]
 platform = "threadx-riscv64"
@@ -3423,7 +3423,7 @@ platform = "threadx-riscv64"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/rv-virt-threadx/cpp/listener"
-cmake_defs = { NROS_APP_NET_IP_LAST = "41", NROS_APP_NET_MAC_LAST = "0x57", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:9600" }
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:9600" }
 
 [[fixture]]
 platform = "threadx-riscv64"
@@ -3437,7 +3437,7 @@ platform = "threadx-riscv64"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/rv-virt-threadx/cpp/service-client"
-cmake_defs = { NROS_APP_NET_IP_LAST = "41", NROS_APP_NET_MAC_LAST = "0x57", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:9610" }
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:9610" }
 
 [[fixture]]
 platform = "threadx-riscv64"
@@ -3451,7 +3451,7 @@ platform = "threadx-riscv64"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/rv-virt-threadx/cpp/action-client"
-cmake_defs = { NROS_APP_NET_IP_LAST = "41", NROS_APP_NET_MAC_LAST = "0x57", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:9620" }
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:9620" }
 
 # ===========================================================================
 # threadx-linux — Cyclone C / C++ (gated on `just cyclonedds setup`).
@@ -3544,15 +3544,11 @@ platform = "threadx-riscv64"
 lang = "c"
 rmw = "cyclonedds"
 dir = "examples/rv-virt-threadx/c/listener"
-# Phase 214.P — distinct NetX L2/L3 identity (IP + MAC) so the two-QEMU
-# Cyclone pubsub e2e (`test_threadx_riscv64_cyclonedds_two_qemu_pubsub`)
-# can unicast SEDP / RTPS data between talker (board default
-# 10.0.2.40 / MAC :56) and listener. Pre-212.M.10 these came from the
-# per-example `nros.toml`; M.10 retired the toml and collapsed every
-# fixture onto the board's NROS_APP_CONFIG default, blocking RTPS
-# unicast. See cmake/board/nano-ros-board-rv-virt-threadx.cmake's Phase
-# 214.P override block for the cache-var wiring.
-cmake_defs = { NROS_APP_NET_IP_LAST = "41", NROS_APP_NET_MAC_LAST = "0x57" }
+# The two-QEMU Cyclone pubsub e2e (`test_threadx_riscv64_cyclonedds_two_qemu_pubsub`)
+# needs distinct NetX L2/L3 identities on its shared link. Each leaf states its
+# own (`[image.*] net`, RFC-0103 D10, phase-497 W2): talker 10.0.2.40 / MAC :56,
+# listener 10.0.2.41 / MAC :57. This row once passed them as
+# `NROS_APP_NET_{IP,MAC}_LAST` cmake defs.
 
 [[fixture]]
 platform = "threadx-riscv64"
@@ -3565,8 +3561,7 @@ platform = "threadx-riscv64"
 lang = "cpp"
 rmw = "cyclonedds"
 dir = "examples/rv-virt-threadx/cpp/listener"
-# Phase 214.P — same per-fixture L2/L3 carve-out as the C cell above.
-cmake_defs = { NROS_APP_NET_IP_LAST = "41", NROS_APP_NET_MAC_LAST = "0x57" }
+# Its distinct identity is the leaf's own `[image.*] net` (see the C cell above).
 
 # ===========================================================================
 # esp32 — Rust (ESP32-C3, riscv32imc-unknown-none-elf).

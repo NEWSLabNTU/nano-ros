@@ -1,31 +1,21 @@
-//! RFC-0103 D10 (phase-497 W1) — the network slice of a `system.toml`:
+//! RFC-0103 D10 (phase-497) — the network slice of a `system.toml`:
 //! `[network.<name>]` (the project's networks) and `[image.<id>.net.<if>]`
 //! (an image's address on one of them), parsed ONE way.
 //!
 //! D10 gives a network fact three owners: the board states its INTERFACES
 //! (`[board.net]` in `nros-board.toml`), the project states its NETWORKS, and
 //! the image states its ADDRESS on each. This module owns the project's and
-//! the image's halves, typed, and lowers an image's address to the
-//! `ip` / `gateway` / `netmask` triple the existing carriers already take
-//! ([`Lowered`]), so W1 moves where the fact is AUTHORED without moving what a
-//! board compiles.
+//! the image's halves, typed, and checks what can be checked without the
+//! board ([`check_image_interfaces`]).
 //!
-//! What W1 lowers and what it refuses:
+//! The board's half — which interfaces it has, the default network an
+//! unnamed interface lands on, the MAC an image does not state, and the
+//! duplicate-address refusal across images — needs the board catalog, so it is
+//! the CLI's resolver (`nros_cli_core::orchestration::image_net`, W2). Its
+//! answer reaches every build as one text (`nros_board_common::image_net`);
+//! `nros::main!` bakes that text and does not resolve anything itself.
 //!
-//! * a single interface with a static `address` or `host` on a named network
-//!   is lowered;
-//! * `network` is REQUIRED next to an address. The board's default network
-//!   (`[board.net] network`) is a board fact, and the `nros::main!` reader has
-//!   no board catalog, so a default taken here would resolve differently on
-//!   the macro road than on the CLI road. W2's one resolver, which every
-//!   carrier reads, is where that default lands;
-//! * a leased address (`address = "dhcp"`), a stated `mac`, a network's
-//!   `router`, a bridge/TAP `attach` and more than one interface are PARSED and
-//!   validated, then refused naming the wave that renders them (W2, W3, W4): no
-//!   carrier takes them yet, and a value accepted and then dropped is the
-//!   silent failure D10 exists to remove.
-//!
-//! The flat single-interface spellings this replaces (`[image.<id>] ip` /
+//! The flat single-interface spellings this replaced (`[image.<id>] ip` /
 //! `gateway` / `netmask`) are refused by [`refuse_flat_image_net`], naming
 //! the new home (D10g).
 
@@ -98,18 +88,21 @@ pub struct ImageNetIf {
     pub mac: Option<String>,
 }
 
-/// An image's address, lowered to what today's carriers take.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct Lowered {
-    /// The interface the address is on.
-    pub interface: Option<String>,
-    /// Dotted IPv4.
-    pub ip: Option<String>,
-    /// Dotted IPv4.
-    pub gateway: Option<String>,
-    /// Dotted IPv4 mask.
-    pub netmask: Option<String>,
+/// An interface's address as the image stated it, checked against its
+/// network: static, or a lease. `None` from [`stated_address`] means the image
+/// stated neither, and the resolver applies the network's default.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StatedAddress {
+    /// `address = "a.b.c.d"` or `host = N`.
+    Static([u8; 4]),
+    /// `address = "dhcp"`, on a network with `dhcp = true`.
+    Dhcp,
 }
+
+/// QEMU's own first guest address on its SLIRP network (`10.0.2.15`), which
+/// an image on [`QEMU_NETWORK`] that states no address takes — what a plain
+/// `-nic user` guest would pick for itself.
+pub const QEMU_FIRST_GUEST: [u8; 4] = [10, 0, 2, 15];
 
 /// The built-in network named `name`, if it is one.
 #[must_use]
@@ -228,6 +221,15 @@ impl NetworkDef {
                 ));
             }
         }
+        // D10d — the locator an image on this network dials by default.
+        if let Some(r) = &self.router
+            && (r.is_empty() || r.contains(char::is_whitespace) || !r.contains('/'))
+        {
+            return Err(format!(
+                "{at}: router = {r:?} is not a locator — write it the way an image's `locator` \
+                 is written, e.g. \"tcp/192.168.50.1:7447\""
+            ));
+        }
         Ok(())
     }
 }
@@ -304,63 +306,60 @@ pub fn overlay(
     out
 }
 
-/// Lower an image's interfaces to the triple today's carriers take. `id` is
-/// the image id, for messages.
-pub fn lower(
-    id: &str,
+/// The network named `name`: the built-in [`QEMU_NETWORK`] or one of the
+/// project's. `at` is the table that named it, for the message.
+pub fn network_def(
+    name: &str,
     networks: &BTreeMap<String, NetworkDef>,
-    ifs: &BTreeMap<String, ImageNetIf>,
-) -> Result<Lowered, String> {
-    let at = format!("[image.{id}.net]");
-    let mut it = ifs.iter();
-    let Some((ifname, i)) = it.next() else {
-        return Ok(Lowered::default());
-    };
-    if it.next().is_some() {
-        return Err(format!(
-            "{at}: {} interfaces ({}) — an image with more than one interface is phase-497 W4 \
-             (multi-NIC); state one",
-            ifs.len(),
-            ifs.keys().cloned().collect::<Vec<_>>().join(", ")
-        ));
-    }
-    let at = format!("[image.{id}.net.{ifname}]");
-    if i.mac.is_some() {
-        return Err(format!(
-            "{at}: `mac` is parsed but no carrier takes a per-image MAC yet — phase-497 W2 \
-             renders it (and derives one when it is absent); drop it for now"
-        ));
-    }
-    let addressed = i.address.is_some() || i.host.is_some();
-    let Some(net_name) = &i.network else {
-        if addressed {
-            return Err(format!(
-                "{at}: an address needs its network — add `network = \"qemu\"` (QEMU's SLIRP \
-                 network) or the name of a `[network.<name>]` you define"
-            ));
-        }
-        return Ok(Lowered {
-            interface: Some(ifname.clone()),
-            ..Lowered::default()
-        });
-    };
-    let net = match builtin(net_name) {
-        Some(b) => b,
-        None => networks.get(net_name).cloned().ok_or_else(|| {
+    at: &str,
+) -> Result<NetworkDef, String> {
+    match builtin(name) {
+        Some(b) => Ok(b),
+        None => networks.get(name).cloned().ok_or_else(|| {
             format!(
-                "{at}: network = {net_name:?} names no `[network.{net_name}]` and is not the \
-                 built-in \"{QEMU_NETWORK}\""
+                "{at}: network = {name:?} names no `[network.{name}]` and is not the built-in \
+                 \"{QEMU_NETWORK}\""
             )
-        })?,
-    };
-    if net.router.is_some() {
-        return Err(format!(
-            "[network.{net_name}]: `router` is parsed but its default is rendered by \
-             phase-497 W2 (RFC-0103 D10d); state the image's `locator` for now"
-        ));
+        }),
     }
-    let subnet = Subnet::parse(net.subnet.as_deref().unwrap_or_default())
-        .map_err(|e| format!("[network.{net_name}]: {e}"))?;
+}
+
+impl NetworkDef {
+    /// The subnet, parsed. Validated networks always have one.
+    pub fn subnet(&self, name: &str) -> Result<Subnet, String> {
+        Subnet::parse(self.subnet.as_deref().unwrap_or_default())
+            .map_err(|e| format!("[network.{name}]: {e}"))
+    }
+
+    /// The gateway, parsed.
+    pub fn gateway_octets(&self, name: &str) -> Result<Option<[u8; 4]>, String> {
+        self.gateway
+            .as_deref()
+            .map(|g| parse_ipv4(g).map_err(|e| format!("[network.{name}] gateway: {e}")))
+            .transpose()
+    }
+
+    /// Whether images on this network each get a PRIVATE instance of it, so two
+    /// of them never meet and cannot collide: QEMU's SLIRP, which every
+    /// `-nic user` creates per VM. A bridge, a TAP or a physical network is
+    /// shared, and the resolver refuses a duplicate address or MAC on it.
+    #[must_use]
+    pub fn is_per_image(&self) -> bool {
+        matches!(&self.attach, Some(Attach::Mode(m)) if m == "slirp")
+    }
+}
+
+/// The address `i` states on network `net_name` (`net`), checked: `address`
+/// and `host` are exclusive, a static address must be a host address in the
+/// subnet and not its gateway, and a lease needs `dhcp = true`. `Ok(None)`
+/// when the image states no address. `at` names the interface table.
+pub fn stated_address(
+    at: &str,
+    net_name: &str,
+    net: &NetworkDef,
+    i: &ImageNetIf,
+) -> Result<Option<StatedAddress>, String> {
+    let subnet = net.subnet(net_name)?;
     let ip = match (&i.address, i.host) {
         (Some(_), Some(_)) => {
             return Err(format!("{at}: state `address` or `host`, not both"));
@@ -372,16 +371,12 @@ pub fn lower(
                      `dhcp = true`"
                 ));
             }
-            return Err(format!(
-                "{at}: address = \"dhcp\" is valid here, but no carrier takes a leased \
-                 address yet — phase-497 W2 renders it; use a static `host` / `address` for now"
-            ));
+            return Ok(Some(StatedAddress::Dhcp));
         }
         (Some(a), None) => parse_ipv4(a).map_err(|e| format!("{at} address: {e}"))?,
         (None, Some(h)) => {
             let mut o = subnet.base;
-            let host_bits = 32 - u32::from(subnet.prefix);
-            if host_bits < 8 {
+            if 32 - u32::from(subnet.prefix) < 8 {
                 return Err(format!(
                     "{at}: `host` is the last octet, and network {net_name:?} ({}) is smaller \
                      than a /24 — write the full `address`",
@@ -391,12 +386,7 @@ pub fn lower(
             o[3] = h;
             o
         }
-        (None, None) => {
-            return Ok(Lowered {
-                interface: Some(ifname.clone()),
-                ..Lowered::default()
-            });
-        }
+        (None, None) => return Ok(None),
     };
     if !subnet.contains_host(ip) {
         return Err(format!(
@@ -405,20 +395,75 @@ pub fn lower(
             net.subnet.as_deref().unwrap_or_default()
         ));
     }
-    if let Some(gw) = &net.gateway
-        && parse_ipv4(gw).ok() == Some(ip)
-    {
+    if net.gateway_octets(net_name)? == Some(ip) {
         return Err(format!(
             "{at}: {} is network {net_name:?}'s gateway",
             dotted(ip)
         ));
     }
-    Ok(Lowered {
-        interface: Some(ifname.clone()),
-        ip: Some(dotted(ip)),
-        gateway: net.gateway.clone(),
-        netmask: Some(dotted(subnet.netmask())),
-    })
+    Ok(Some(StatedAddress::Static(ip)))
+}
+
+/// Parse a stated `mac` (`02:00:00:00:00:01`).
+pub fn parse_mac(at: &str, s: &str) -> Result<[u8; 6], String> {
+    let parts: Vec<&str> = s.split(':').collect();
+    let bad = || format!("{at}: mac = {s:?} is not six hex bytes (`02:00:00:00:00:01`)");
+    if parts.len() != 6 {
+        return Err(bad());
+    }
+    let mut out = [0u8; 6];
+    for (o, p) in out.iter_mut().zip(&parts) {
+        if p.len() != 2 {
+            return Err(bad());
+        }
+        *o = u8::from_str_radix(p, 16).map_err(|_| bad())?;
+    }
+    if out[0] & 1 == 1 {
+        return Err(format!(
+            "{at}: mac = {s:?} is a multicast address (the low bit of the first byte is set); \
+             an interface's MAC is unicast"
+        ));
+    }
+    Ok(out)
+}
+
+/// Check what an image's interfaces state WITHOUT its board (the
+/// `nros::main!` reader has no board catalog): each named network exists, and
+/// each stated address and MAC is well formed on it. The board's half — which
+/// interfaces exist, the default network, the derived MAC — is the CLI's
+/// resolver. `id` is the image id.
+pub fn check_image_interfaces(
+    id: &str,
+    networks: &BTreeMap<String, NetworkDef>,
+    ifs: &BTreeMap<String, ImageNetIf>,
+) -> Result<(), String> {
+    for (ifname, i) in ifs {
+        let at = format!("[image.{id}.net.{ifname}]");
+        if let Some(m) = &i.mac {
+            parse_mac(&at, m)?;
+        }
+        // No network: the board's default one, which the resolver takes. An
+        // address needs to know its subnet, so it cannot be checked here; the
+        // resolver does.
+        if let Some(n) = &i.network {
+            let net = network_def(n, networks, &at)?;
+            stated_address(&at, n, &net, i)?;
+        }
+    }
+    Ok(())
+}
+
+/// D10d — the locator an image dials by default, from its networks: the
+/// `router` of the network its FIRST interface sits on. `None` when that
+/// network states none (on [`QEMU_NETWORK`] the board's own default, the
+/// gateway, is right; elsewhere the caller refuses an image with no locator).
+#[must_use]
+pub fn network_router(
+    networks: &BTreeMap<String, NetworkDef>,
+    ifs: &BTreeMap<String, ImageNetIf>,
+) -> Option<String> {
+    let (_, first) = ifs.iter().next()?;
+    networks.get(first.network.as_deref()?)?.router.clone()
 }
 
 #[cfg(test)]
@@ -437,40 +482,63 @@ mod tests {
         parse_image_net(img, &format!("image.{id}")).expect("image net")
     }
 
-    #[test]
-    fn host_on_the_builtin_qemu_network_lowers_to_the_slirp_plan() {
-        let d = doc("[image.a.net.eth0]\nnetwork = \"qemu\"\nhost = 50\n");
-        let l = lower("a", &parse_networks(&d).unwrap(), &image_net(&d, "a")).unwrap();
-        assert_eq!(l.interface.as_deref(), Some("eth0"));
-        assert_eq!(l.ip.as_deref(), Some("10.0.2.50"));
-        assert_eq!(l.gateway.as_deref(), Some("10.0.2.2"));
-        assert_eq!(l.netmask.as_deref(), Some("255.255.255.0"));
+    fn check(src: &str) -> Result<(), String> {
+        let d = doc(src);
+        check_image_interfaces("a", &parse_networks(&d)?, &image_net(&d, "a"))
+    }
+
+    fn addr(src: &str) -> Result<Option<StatedAddress>, String> {
+        let d = doc(src);
+        let nets = parse_networks(&d)?;
+        let ifs = image_net(&d, "a");
+        let (_, i) = ifs.iter().next().expect("one interface");
+        let n = i.network.as_deref().expect("a network");
+        stated_address("at", n, &network_def(n, &nets, "at")?, i)
     }
 
     #[test]
-    fn an_explicit_physical_network_lowers_and_needs_no_attach() {
-        let d = doc(
-            "[network.lab]\nsubnet = \"192.168.50.0/24\"\ngateway = \"192.168.50.1\"\n\n\
-             [image.a.net.eth0]\nnetwork = \"lab\"\naddress = \"192.168.50.20\"\n",
+    fn host_on_the_builtin_qemu_network_is_an_address_in_its_subnet() {
+        assert_eq!(
+            addr("[image.a.net.eth0]\nnetwork = \"qemu\"\nhost = 50\n").unwrap(),
+            Some(StatedAddress::Static([10, 0, 2, 50]))
         );
-        let nets = parse_networks(&d).unwrap();
-        assert!(nets["lab"].attach.is_none());
-        let l = lower("a", &nets, &image_net(&d, "a")).unwrap();
-        assert_eq!(l.ip.as_deref(), Some("192.168.50.20"));
-        assert_eq!(l.gateway.as_deref(), Some("192.168.50.1"));
     }
 
     #[test]
-    fn an_image_that_states_nothing_keeps_the_board_default() {
-        let d = doc("[image.a]\nboard = \"x\"\n");
-        let l = lower("a", &parse_networks(&d).unwrap(), &image_net(&d, "a")).unwrap();
-        assert_eq!(l, Lowered::default());
+    fn an_explicit_physical_network_needs_no_attach() {
+        let src = "[network.lab]\nsubnet = \"192.168.50.0/24\"\ngateway = \"192.168.50.1\"\n\n\
+                   [image.a.net.eth0]\nnetwork = \"lab\"\naddress = \"192.168.50.20\"\n";
+        let nets = parse_networks(&doc(src)).unwrap();
+        assert!(nets["lab"].attach.is_none());
+        assert!(!nets["lab"].is_per_image(), "a physical network is shared");
+        assert!(builtin("qemu").unwrap().is_per_image(), "SLIRP is per VM");
+        assert_eq!(
+            addr(src).unwrap(),
+            Some(StatedAddress::Static([192, 168, 50, 20]))
+        );
+    }
+
+    #[test]
+    fn an_interface_that_states_nothing_is_left_to_the_resolver() {
+        assert_eq!(
+            addr("[image.a.net.eth0]\nnetwork = \"qemu\"\n").unwrap(),
+            None
+        );
+        // No network at all: the board's default network, which only the
+        // resolver knows — not checkable here, and not an error here.
+        check("[image.a.net.eth0]\nhost = 50\n").unwrap();
+    }
+
+    #[test]
+    fn a_lease_needs_a_network_that_leases() {
+        let src = "[network.lab]\nsubnet = \"192.168.50.0/24\"\ndhcp = true\n\n\
+                   [image.a.net.eth0]\nnetwork = \"lab\"\naddress = \"dhcp\"\n";
+        assert_eq!(addr(src).unwrap(), Some(StatedAddress::Dhcp));
     }
 
     #[test]
     fn refusals_name_what_to_write() {
         let cases = [
-            ("[image.a.net.eth0]\nhost = 50\n", "needs its network"),
             (
                 "[image.a.net.eth0]\nnetwork = \"lab\"\nhost = 5\n",
                 "names no `[network.lab]`",
@@ -492,29 +560,36 @@ mod tests {
                 "states no `dhcp = true`",
             ),
             (
-                "[image.a.net.eth0]\nnetwork = \"qemu\"\nhost = 5\nmac = \"02:00:00:00:00:01\"\n",
-                "W2",
+                "[image.a.net.eth0]\nnetwork = \"qemu\"\nmac = \"02:00:00:00:01\"\n",
+                "six hex bytes",
             ),
             (
-                "[image.a.net.eth0]\nnetwork = \"qemu\"\nhost = 5\n[image.a.net.eth1]\nnetwork = \"qemu\"\nhost = 6\n",
-                "W4",
+                "[image.a.net.eth0]\nnetwork = \"qemu\"\nmac = \"03:00:00:00:00:01\"\n",
+                "multicast",
             ),
         ];
         for (src, want) in cases {
-            let d = doc(src);
-            let e = lower("a", &parse_networks(&d).unwrap(), &image_net(&d, "a")).expect_err(src);
+            let e = check(src).expect_err(src);
             assert!(e.contains(want), "{src}\n-> {e}");
         }
     }
 
     #[test]
-    fn a_leased_address_is_validated_then_deferred_to_w2() {
+    fn the_router_of_the_first_interfaces_network_is_the_default_locator() {
         let d = doc(
-            "[network.lab]\nsubnet = \"192.168.50.0/24\"\ndhcp = true\n\n\
-             [image.a.net.eth0]\nnetwork = \"lab\"\naddress = \"dhcp\"\n",
+            "[network.lab]\nsubnet = \"192.168.50.0/24\"\nrouter = \"tcp/192.168.50.1:7447\"\n\n\
+             [image.a.net.eth0]\nnetwork = \"lab\"\nhost = 20\n",
         );
-        let e = lower("a", &parse_networks(&d).unwrap(), &image_net(&d, "a")).unwrap_err();
-        assert!(e.contains("W2") && e.contains("valid here"), "{e}");
+        let nets = parse_networks(&d).unwrap();
+        assert_eq!(
+            network_router(&nets, &image_net(&d, "a")).as_deref(),
+            Some("tcp/192.168.50.1:7447")
+        );
+        let e = parse_networks(&doc(
+            "[network.lab]\nsubnet = \"192.168.50.0/24\"\nrouter = \"192.168.50.1\"\n",
+        ))
+        .unwrap_err();
+        assert!(e.contains("not a locator"), "{e}");
     }
 
     #[test]

@@ -4,7 +4,7 @@
 # descriptor.
 #
 #   nros_board_net_c(<board> <out_var> [ROOT <nano-ros root>]
-#                    [IP_LAST <n>] [MAC_LAST <n>] [GATEWAY_VAR <var>] [OPTIONAL])
+#                    [GATEWAY_VAR <var>] [OPTIONAL])
 #
 # `GATEWAY_VAR` also returns the resolved gateway (dotted), which the
 # entry-locator resolver turns into the board's default router
@@ -12,11 +12,13 @@
 # failing when there is no CLI or the board has no descriptor.
 #
 # Sets <out_var> to the `.network = { … }` body of a C `nros_app_config_t`
-# initializer: `[board.net]` from the board's `nros-board.toml` over the
-# platform default (`nros board net <board> --format cmake`). `IP_LAST` /
-# `MAC_LAST` replace the last IP octet / MAC byte. Those are an IMAGE's
-# identity on the board's subnet (two QEMU nodes of a test pair must differ),
-# not a board fact.
+# initializer: the board's `[board.net]` default with the IMAGE's resolved
+# network over it (`nros board net <board> --image-net <text> --format cmake`,
+# RFC-0103 D10f). The image's network is the configure's: `-DNROS_IMAGE_NET=`
+# (the workspace road), else what `nano_ros_read_leaf_system` read from a
+# top-level leaf's `system.toml`. It replaced `IP_LAST` / `MAC_LAST`, a build
+# row restating one octet of an address the image now states itself
+# (`[image.<id>.net.<if>] host`, phase-497 W2).
 #
 # The descriptor goes on CMAKE_CONFIGURE_DEPENDS, so editing `[board.net]`
 # reconfigures. The CLI names that path, so this file does not model where a
@@ -34,7 +36,7 @@ include_guard(GLOBAL)
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCli.cmake")
 
 function(nros_board_net_c board out_var)
-    cmake_parse_arguments(_NBN "OPTIONAL" "ROOT;IP_LAST;MAC_LAST;GATEWAY_VAR" "" ${ARGN})
+    cmake_parse_arguments(_NBN "OPTIONAL" "ROOT;GATEWAY_VAR" "" ${ARGN})
     if(NOT _NBN_ROOT)
         get_filename_component(_NBN_ROOT "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/.." ABSOLUTE)
     endif()
@@ -51,11 +53,9 @@ function(nros_board_net_c board out_var)
         nros_codegen_tool_reconfigure("${_cli}")
     endif()
     set(_args board net "${board}" --workspace "${_NBN_ROOT}" --format cmake)
-    if(NOT "${_NBN_IP_LAST}" STREQUAL "")
-        list(APPEND _args --ip-last "${_NBN_IP_LAST}")
-    endif()
-    if(NOT "${_NBN_MAC_LAST}" STREQUAL "")
-        list(APPEND _args --mac-last "${_NBN_MAC_LAST}")
+    nros_image_net(_image_net)
+    if(NOT "${_image_net}" STREQUAL "")
+        list(APPEND _args "--image-net=${_image_net}")
     endif()
     execute_process(
         COMMAND "${_cli}" ${_args}
@@ -96,11 +96,23 @@ function(nros_board_net_c board out_var)
     endif()
 endfunction()
 
+# nros_image_net(<out_var>)
+#
+# This configure's image network (`NROS_IMAGE_NET`, RFC-0103 D10f): the
+# workspace road's `-DNROS_IMAGE_NET=`, else the top-level leaf's, else "".
+function(nros_image_net out_var)
+    if(DEFINED NROS_IMAGE_NET)
+        set(${out_var} "${NROS_IMAGE_NET}" PARENT_SCOPE)
+        return()
+    endif()
+    get_property(_n GLOBAL PROPERTY NROS_LEAF_IMAGE_NET)
+    set(${out_var} "${_n}" PARENT_SCOPE)
+endfunction()
+
 # The FreeRTOS carrier's `@NROS_ENTRY_NETWORK_C@` (`templates/
 # freertos_app_config.c.in`), for both of the template's callers
-# (`nano_ros_entry` and `nano_ros_node_register`): the image's board, with
-# `NROS_ENTRY_IP_LAST` as the last IP octet AND the last MAC byte — the pair
-# the template has always varied together.
+# (`nano_ros_entry` and `nano_ros_node_register`): the image's board, with the
+# image's own network over it (`nros_board_net_c`).
 function(_nros_freertos_entry_network out_var board_hint)
     set(_board "${NROS_BOARD}")
     if(_board STREQUAL "")
@@ -112,7 +124,6 @@ function(_nros_freertos_entry_network out_var board_hint)
             "network block has nothing to come from. Set NROS_BOARD (the leaf's "
             "`system.toml` [image.<id>] board).")
     endif()
-    nros_board_net_c("${_board}" _net
-        IP_LAST "${NROS_ENTRY_IP_LAST}" MAC_LAST "${NROS_ENTRY_IP_LAST}")
+    nros_board_net_c("${_board}" _net)
     set(${out_var} "${_net}" PARENT_SCOPE)
 endfunction()

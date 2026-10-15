@@ -1062,14 +1062,11 @@ function(nano_ros_entry)
                 # an assignment FROM the resolved value, not a second producer.
                 set(NROS_ENTRY_LOCATOR "${_nra_locator}")
                 set(NROS_ENTRY_APP_DOMAIN_ID 0)
-                # Per-image IP last octet (default .10). Test pairs bake a
-                # distinct value per member (`-DNROS_ENTRY_IP_LAST=11` via
-                # fixtures.toml) — identical IP+MAC seeds → identical ZIDs →
-                # the router sees one peer and delivery silently dies.
-                if(NOT DEFINED NROS_ENTRY_IP_LAST)
-                    set(NROS_ENTRY_IP_LAST 10)
-                endif()
-                # phase-484 W4b — the board's `[board.net]`, not a copy.
+                # phase-484 W4b / phase-497 W2 — the board's `[board.net]`
+                # with the image's own network over it. A test pair's members
+                # differ because each states its own `host` in system.toml
+                # (identical IP+MAC seeds → identical ZIDs → the router sees
+                # one peer and delivery silently dies).
                 _nros_freertos_entry_network(NROS_ENTRY_NETWORK_C "${_NRA_BOARD}")
                 set(_nra_appcfg "${CMAKE_CURRENT_BINARY_DIR}/${_NRA_NAME}_nros_app_config_def.c")
                 configure_file(

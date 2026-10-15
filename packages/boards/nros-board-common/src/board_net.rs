@@ -5,9 +5,10 @@
 //! board crate's `Config::default()`, its build script's C `NROS_APP_CONFIG`
 //! emitter, and a cmake board module — three copies of one fact. Each copy is
 //! now generated from `[board.net]` in the board's `nros-board.toml`
-//! (`nros_platform_config::BoardNet`), and a field the board does not state
-//! falls to the platform default, [`crate::BaseConfig::default`] (owner order:
-//! platform < board < image).
+//! (`nros_platform_config::BoardNet`): a board on the `qemu` network gets that
+//! network's plan, any other the platform default, [`crate::BaseConfig::default`].
+//! An image's own address is applied over it ([`ResolvedNet::with_interface`],
+//! phase-497 W2), never stated by the board.
 //!
 //! Build-script only: it reads files and writes `OUT_DIR`.
 
@@ -94,17 +95,31 @@ pub fn resolve(
         return Ok(fallback);
     };
     // RFC-0103 D10 — a board on the QEMU network starts from that network's
-    // plan, not the platform default; its own keys still override.
-    let fallback = match net.network()? {
+    // plan. Nothing else here is the board's: an address is the IMAGE's
+    // (`NROS_IMAGE_NET`, phase-497 W2), and the board-level `ip` / `mac` keys
+    // that used to override this are refused by `board_net` (D10g).
+    Ok(match net.network()? {
         Some(_) => ResolvedNet::qemu_network(),
         None => fallback,
-    };
-    Ok(ResolvedNet {
-        ip: net.ip()?.unwrap_or(fallback.ip),
-        netmask: net.netmask()?.unwrap_or(fallback.netmask),
-        gateway: net.gateway()?.unwrap_or(fallback.gateway),
-        mac: net.mac()?.unwrap_or(fallback.mac),
     })
+}
+
+impl ResolvedNet {
+    /// This default with an image's interface applied (RFC-0103 D10f): its
+    /// address, prefix, gateway and MAC. A lease keeps the default address —
+    /// the board's DHCP client replaces it at run time.
+    #[must_use]
+    pub fn with_interface(mut self, i: &crate::image_net::NetIf<'_>) -> Self {
+        if let Some(ip) = i.ip() {
+            self.ip = ip;
+        }
+        self.netmask = i.netmask();
+        if let Some(gw) = i.gateway {
+            self.gateway = gw;
+        }
+        self.mac = i.mac;
+        self
+    }
 }
 
 /// For a board crate's `build.rs`: resolve this crate's own descriptor
@@ -128,6 +143,28 @@ pub fn emit_for_named_board(fallback: ResolvedNet) -> ResolvedNet {
         .map(|p| crate::nros_build_paths::watch_path(&p))
         .unwrap_or_default();
     emit_from(&descriptor, fallback)
+}
+
+/// For a build script whose C half BAKES the address into a TU the board's
+/// own startup applies (riscv64's `NROS_APP_CONFIG`, read by `startup.c`
+/// before the kernel runs): `net` with the image's resolved network over it,
+/// from `NROS_IMAGE_NET` (RFC-0103 D10f). On every other board the image's
+/// address arrives through `nros::main!`'s deploy overlay instead, so their
+/// build scripts do not read the variable and stay one compile per board.
+///
+/// # Panics
+///
+/// On a text this crate cannot decode — a CLI/board version mismatch.
+pub fn with_image_env(net: ResolvedNet) -> ResolvedNet {
+    println!("cargo:rerun-if-env-changed={}", crate::image_net::ENV);
+    let Ok(text) = std::env::var(crate::image_net::ENV) else {
+        return net;
+    };
+    match crate::image_net::primary(&text) {
+        Ok(Some(i)) => net.with_interface(&i),
+        Ok(None) => net,
+        Err(e) => panic!("{e}"),
+    }
 }
 
 fn emit_from(descriptor: &Path, fallback: ResolvedNet) -> ResolvedNet {
@@ -178,42 +215,8 @@ fn emit_from(descriptor: &Path, fallback: ResolvedNet) -> ResolvedNet {
 mod tests {
     use super::*;
 
-    #[test]
-    fn a_board_overrides_only_what_it_states_and_a_typo_is_refused() {
-        let d = std::env::temp_dir().join(format!("nros-board-net-{}", std::process::id()));
-        std::fs::create_dir_all(&d).unwrap();
-        let f = d.join("nros-board.toml");
-        std::fs::write(
-            &f,
-            "[[board]]\nnames = [\"b\"]\n\n[board.net]\nip = \"10.0.2.40\"\nmac = \"52:54:00:12:34:56\"\n",
-        )
-        .unwrap();
-        let base = ResolvedNet::platform_default();
-        let got = resolve(&f, None, base).unwrap();
-        assert_eq!(got.ip, [10, 0, 2, 40]);
-        assert_eq!(got.mac, [0x52, 0x54, 0x00, 0x12, 0x34, 0x56]);
-        assert_eq!(
-            got.gateway, base.gateway,
-            "an unstated field keeps the platform default"
-        );
-
-        std::fs::write(
-            &f,
-            "[[board]]\nnames = [\"b\"]\n\n[board.net]\nipp = \"1.2.3.4\"\n",
-        )
-        .unwrap();
-        assert!(resolve(&f, None, base).unwrap_err().contains("ipp"));
-        std::fs::write(
-            &f,
-            "[[board]]\nnames = [\"b\"]\n\n[board.net]\nip = \"1.2.3\"\n",
-        )
-        .unwrap();
-        assert!(resolve(&f, None, base).unwrap_err().contains("expected 4"));
-        let _ = std::fs::remove_dir_all(&d);
-    }
-
-    /// RFC-0103 D10 — `network = "qemu"` starts from QEMU's SLIRP plan; the
-    /// board's own keys still override it, and an unknown network is refused.
+    /// RFC-0103 D10 — `network = "qemu"` starts from QEMU's SLIRP plan, an
+    /// unknown network is refused, and the board-level identity is retired.
     #[test]
     fn a_board_on_the_qemu_network_starts_from_its_plan() {
         let d = std::env::temp_dir().join(format!("nros-board-net-q-{}", std::process::id()));
@@ -221,21 +224,39 @@ mod tests {
         let f = d.join("nros-board.toml");
         std::fs::write(
             &f,
-            "[[board]]\nnames = [\"b\"]\n\n[board.net]\nnetwork = \"qemu\"\nmac = \"52:54:00:12:34:56\"\n",
+            "[[board]]\nnames = [\"b\"]\n\n[board.net]\nnetwork = \"qemu\"\n",
         )
         .unwrap();
         let got = resolve(&f, None, ResolvedNet::platform_default()).unwrap();
         assert_eq!(got.ip, [10, 0, 2, 15]);
         assert_eq!(got.gateway, [10, 0, 2, 2]);
-        assert_eq!(got.mac, [0x52, 0x54, 0x00, 0x12, 0x34, 0x56]);
-        std::fs::write(
-            &f,
-            "[[board]]\nnames = [\"b\"]\n\n[board.net]\nnetwork = \"lab\"\n",
-        )
-        .unwrap();
-        let e = resolve(&f, None, ResolvedNet::platform_default()).unwrap_err();
-        assert!(e.contains("phase-497"), "{e}");
+        assert_eq!(got.mac, ResolvedNet::platform_default().mac);
+        for (body, want) in [
+            ("network = \"lab\"\n", "phase-497"),
+            ("ip = \"10.0.2.40\"\n", "D10g"),
+            ("ipp = \"1.2.3.4\"\n", "ipp"),
+        ] {
+            std::fs::write(
+                &f,
+                format!("[[board]]\nnames = [\"b\"]\n\n[board.net]\n{body}"),
+            )
+            .unwrap();
+            let e = resolve(&f, None, ResolvedNet::platform_default()).unwrap_err();
+            assert!(e.contains(want), "{body}: {e}");
+        }
         let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn an_image_interface_replaces_the_board_default() {
+        let i =
+            crate::image_net::primary("eth0,ethernet,qemu,10.0.2.50,24,10.0.2.2,02:00:00:01:02:03")
+                .unwrap()
+                .unwrap();
+        let got = ResolvedNet::qemu_network().with_interface(&i);
+        assert_eq!(got.ip, [10, 0, 2, 50]);
+        assert_eq!(got.mac, [2, 0, 0, 1, 2, 3]);
+        assert_eq!(got.netmask, [255, 255, 255, 0]);
     }
 
     #[test]

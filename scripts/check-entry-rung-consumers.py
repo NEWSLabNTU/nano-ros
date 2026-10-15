@@ -16,8 +16,8 @@ failing `rclc_support_init` for eighteen days behind an absorbing stale verdict.
 
 Plain symmetry over every `NROS_ENTRY_*` is the wrong rule: `NROS_ENTRY_MAX_NODES`
 and `NROS_ENTRY_MAX_ENTITIES` are legitimately C++-only (they size C++ storage
-templates), and `NROS_ENTRY_IP_LAST` is a per-member network knob no language
-surface reads. A rule that fires on those needs an exemption list, which is only
+templates), and a network knob (the retired `NROS_ENTRY_IP_LAST`, now an image's
+`[image.<id>.net.<if>]`) is read by no language surface. A rule that fires on those needs an exemption list, which is only
 as complete as whoever wrote it — the problem this gate exists to answer, one
 level up.
 

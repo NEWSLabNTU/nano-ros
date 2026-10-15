@@ -1281,19 +1281,39 @@ impl SystemToml {
     /// `nros build` enforces.
     /// RFC-0103 D10b (phase-497 W1) — every image's address, lowered against
     /// its network: inside the subnet, not the gateway, a network that exists.
-    /// The same `nros_orchestration_ir::system_net::lower` the leaf road runs,
-    /// so a workspace image and a leaf cannot be held to two rules.
+    /// The board-free half: `nros_orchestration_ir::system_net::check_image_interfaces`,
+    /// the check the leaf road runs too, so a workspace image and a leaf cannot
+    /// be held to two rules. The board's half is
+    /// [`crate::orchestration::image_net::resolve_system`].
     pub fn validate_image_networks(&self) -> Result<(), String> {
+        for (id, ifs) in self.image_interfaces() {
+            nros_orchestration_ir::system_net::check_image_interfaces(&id, &self.network, &ifs)?;
+        }
+        Ok(())
+    }
+
+    /// Every image's `[image.<id>.net.<if>]` over `[image_defaults.net]`.
+    #[must_use]
+    pub fn image_interfaces(
+        &self,
+    ) -> Vec<(
+        String,
+        BTreeMap<String, nros_orchestration_ir::system_net::ImageNetIf>,
+    )> {
         let base = self
             .image_defaults
             .as_ref()
             .map(|d| d.net.clone())
             .unwrap_or_default();
-        for (id, img) in &self.image {
-            let ifs = nros_orchestration_ir::system_net::overlay(&base, &img.net);
-            nros_orchestration_ir::system_net::lower(id, &self.network, &ifs)?;
-        }
-        Ok(())
+        self.image
+            .iter()
+            .map(|(id, img)| {
+                (
+                    id.clone(),
+                    nros_orchestration_ir::system_net::overlay(&base, &img.net),
+                )
+            })
+            .collect()
     }
 
     pub fn validate_default_images(&self) -> Result<(), String> {

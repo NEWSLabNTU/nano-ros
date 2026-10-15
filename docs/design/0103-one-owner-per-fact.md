@@ -562,20 +562,28 @@ IPv4), `host` (last octet within `subnet`) or `address = "dhcp"`, and an
 optional `mac`. *Staged 2026-10-15:* until W2's resolver, `network` is
 required next to an address — the `nros::main!` reader has no board catalog,
 so a board-default network taken by the CLI alone would resolve one
-`system.toml` two ways. Rules, all refused at sync naming both images:
+`system.toml` two ways. *Landed 2026-10-16 (W2):* the macro stopped resolving
+— it bakes the CLI's answer (D10f) — so `network` defaults to the board's
+again, and an interface on `qemu` with no address takes `10.0.2.15`, QEMU's
+first guest. Rules, all refused at sync naming both images:
 
-- two STATIC addresses equal on one network, or one equal to its `gateway`,
-  or one outside its `subnet`;
+- two STATIC addresses equal on one SHARED network, or one equal to its
+  `gateway`, or one outside its `subnet`. `qemu` is never shared: every
+  `-nic user` makes a private SLIRP copy per VM, so two images on it do not
+  meet;
 - two MACs equal on one network — leased interfaces included, because a DHCP
   server keys its lease on the MAC, so two equal MACs collide whatever the
   address mode;
 - `address = "dhcp"` on a network without `dhcp = true`.
 
 An unstated `mac` is DERIVED, never copied from a board constant: the board's
-MAC prefix (`[board.net.<if>] mac_prefix`) plus a suffix from
-`(network, image id, interface)`. Today's trap was exactly a board constant
-shared by two images; deriving per image removes it rather than asking every
-author to remember.
+MAC prefix (`[board.net] interfaces.<if>.mac_prefix`, else `02:00:00`) plus a
+suffix from `(system name, image id, network, interface)`. Today's trap was
+exactly a board constant shared by two images; deriving per image removes it
+rather than asking every author to remember. *Amended 2026-10-16 (W2):* the
+key gained the system's name, because an image id is unique only within its
+project — every single-package FreeRTOS leaf calls its image
+`mps2-an385-freertos`, and a talker/listener pair is two projects.
 
 **D10c — An interface has a KIND, and only IP kinds take an address.**
 `[board.net.<if>] kind = "ethernet" | "wifi" | "serial" | "custom"`. Ethernet
@@ -593,7 +601,13 @@ On any other network the router is usually a host on the subnet that is NOT
 the gateway (the bridge box itself), so the default is that network's
 `router`, else the image's `locator`, else a sync error naming both keys.
 The platform fallback (`tcp/192.0.3.1:7447`, `BaseConfig::default()`) is no
-longer reached by an image that names a network.
+longer reached by an image that names a network. *Built 2026-10-16 (W2), as
+a precedence:* the image's own `locator` (`[image.<id>]` >
+`[image_defaults]`), else the `router` of the network its first interface
+sits on, else `[system] locator`; an image whose first network is not `qemu`
+and reaches none of the three is refused. A network is more specific than the
+project, so its router outranks `[system] locator`; an image's own statement
+outranks both.
 
 **D10e — Host-OS boards own no network facts.** On a board whose network
 stack is the host operating system — `linux`, `threadx-linux`,
@@ -620,7 +634,16 @@ carriers that exist today: the Rust `BOARD_NET_*` constants
 (`nros_board_common::board_net::emit_for_crate`, now per interface), the C
 `nros_app_config_t.network[]` initializer, and the cmake board module's
 variables. A custom driver reads one of those, by interface name; none of
-them is a place to state a value.
+them is a place to state a value. *Built 2026-10-16 (W2):* the carrier is ONE
+text, `NROS_IMAGE_NET` (`nros_board_common::image_net`, `no_std` decoder, one
+encoder): a cargo `[env]` row on both cargo roads, `-DNROS_IMAGE_NET` on the
+workspace cmake road, the top-level leaf's `nros ws leaf-system` row on the
+standalone cmake road. `nros::main!` bakes it verbatim into
+`DeployOverlay::net` (the macro resolves nothing, so it needs no board
+catalog); `nros board net --image-net` renders the C initializer from it; and
+the one board whose C startup bakes the address before the kernel runs
+(riscv64's `NROS_APP_CONFIG`) reads it in its build script. A second
+interface rides the same text (W4); a single-NIC board applies the first.
 
 **D10g — The single-interface spellings retire.** `[image.<id>] ip` /
 `gateway` / `netmask` (38 tracked `system.toml` files on 2026-10-15) and
@@ -632,6 +655,12 @@ derived). *Staged 2026-10-15:* W1 retired the IMAGE keys; the BOARD keys
 retire in W2 with `mac`, because the board default they hold has copies a
 descriptor edit cannot reach (the riscv64 board's C `cfg_ip`, its cmake
 `NROS_APP_NET_IP_LAST` default), and only W2's one resolver feeds those.
+*Landed 2026-10-16 (W2):* the board keys are refused when the descriptor is
+read, and the copies they fed are gone with them — the C statics are zero
+until `nros_threadx_set_config` runs, and the 23 fixture rows that passed
+`NROS_ENTRY_IP_LAST` / `NROS_APP_NET_{IP,MAC}_LAST` state `host` (and, for the
+riscv64 Cyclone pair whose launcher pins the virtio MAC, `mac`) in the leaf's
+own `system.toml`.
 `[board.net] network` stays: it is the board's DEFAULT network for
 an image that names none, which is how a QEMU board lands on `qemu` without
 a line of `system.toml`.

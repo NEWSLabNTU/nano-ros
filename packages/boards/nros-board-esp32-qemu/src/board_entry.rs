@@ -124,11 +124,15 @@ impl BoardEntry for Esp32QemuEntry {
         if let Some(loc) = deploy.locator {
             config.zenoh_locator = loc;
         }
-        if let Some(ip) = deploy.ip {
-            config.ip = ip;
-        }
-        if let Some(gw) = deploy.gateway {
-            config.gateway = gw;
+        if let Some(i) = nros_board_common::image_net::boot_interface(deploy.net) {
+            if let Some(ip) = i.ip() {
+                config.ip = ip;
+            }
+            config.prefix = i.prefix;
+            if let Some(gw) = i.gateway {
+                config.gateway = gw;
+            }
+            config.mac_addr = i.mac;
         }
         if let Some(d) = deploy.domain_id {
             config.domain_id = d;

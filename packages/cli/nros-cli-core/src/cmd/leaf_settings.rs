@@ -963,16 +963,27 @@ pub fn write_shared(
     if let Some(id) = img.decl.network.domain_id {
         env.insert("NROS_ENTRY_DOMAIN_ID".to_string(), id.to_string());
     }
-    // ...and the board's boot `Config` for the same image
-    // (`nros_board_mps2_an385::Config::from_image`), which a Rust leaf gets
-    // from `nros::main!`'s deploy overlay instead.
-    for (key, v) in [
-        ("NROS_ENTRY_IP", &img.decl.network.ip),
-        ("NROS_ENTRY_GATEWAY", &img.decl.network.gateway),
-        ("NROS_ENTRY_NETMASK", &img.decl.network.netmask),
-    ] {
-        if let Some(v) = v {
-            env.insert(key.to_string(), v.clone());
+    // RFC-0103 D10f (phase-497 W2) — the image's resolved network, the one
+    // text `nros::main!`'s deploy overlay bakes and a board that boots a C app
+    // from its own `main.rs` reads (`nros_board_mps2_an385::Config::from_image`).
+    // Resolved against the board descriptor the fact layer above just named.
+    // It replaced `NROS_ENTRY_IP` / `_GATEWAY` / `_NETMASK`.
+    if !img.decl.network.net.is_empty() {
+        let board_net = match path_env.get("NROS_BOARD_TOML") {
+            Some(p) => crate::orchestration::image_net::board_net(p, &img.board)
+                .map_err(|e| eyre!("{e}"))?,
+            None => Default::default(),
+        };
+        if let Some(n) = crate::orchestration::image_net::resolve_leaf(&img.decl, &board_net)
+            .map_err(|e| eyre!("{}: {e}", leaf.display()))?
+        {
+            crate::orchestration::image_net::write(
+                &leaf.join("build").join(&img.image_id),
+                &img.image_id,
+                &n,
+            )
+            .map_err(|e| eyre!("{e}"))?;
+            env.insert(nros_board_common::image_net::ENV.to_string(), n.text());
         }
     }
 

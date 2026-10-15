@@ -67,12 +67,11 @@ const nros_app_config_t NROS_APP_CONFIG = {
         .locator   = "@NROS_ENTRY_LOCATOR@",
         .domain_id = @NROS_ENTRY_APP_DOMAIN_ID@,
     },
-    /* The last IP octet and MAC byte are per-image (@NROS_ENTRY_IP_LAST@,
-     * default 10): two QEMU nodes of a test pair MUST differ — the board
-     * seeds its PRNG from IP+MAC, and identical seeds give identical zenoh
-     * ZIDs, which the router treats as ONE peer (max_links=1) → silent
-     * no-delivery (phase-287 W6; same lesson as the threadx-riscv64 .40/.41
-     * split). */
+    /* The image's resolved network (RFC-0103 D10f): its `system.toml`
+     * address and MAC over the board default. Two QEMU nodes of a test pair
+     * MUST differ — the board seeds its PRNG from IP+MAC, and identical seeds
+     * give identical zenoh ZIDs, which the router treats as ONE peer
+     * (max_links=1) → silent no-delivery (phase-287 W6). */
     .network = @NROS_ENTRY_NETWORK_C@,
     .scheduling = {
         /* RAW FreeRTOS priorities (issue 0623). These were the normalized 0-31

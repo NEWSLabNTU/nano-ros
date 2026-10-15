@@ -376,37 +376,17 @@ endif()
 # `#include`s `<rclc/detail/app_config.h>`, reachable through the platform
 # overlay's include set; the values mirror the Rust path verbatim, so
 # both paths bake byte-identical defaults into the running firmware.
-# Phase 214.P — per-fixture network identity overrides. Phase 212.M.10
-# (`55f36c6a9`) retired the per-example `nros.toml` files, which had let
-# `examples/rv-virt-threadx/c/listener` carry `ip = 10.0.2.41 / mac
-# `…:57` distinct from `talker`'s `…:40 / …:56`. With the toml gone every
-# fixture now collapses onto the board default below (10.0.2.40, MAC :56),
-# so the threadx-rv64 two-QEMU Cyclone e2e talker + listener boot on
-# IDENTICAL IPs over a shared L2 segment → unicast SEDP / data plane can't
-# disambiguate the peer → listener never receives. Phase 177.26's "21/21
-# received" verification 2026-05-26 predated the M.10 sweep on 2026-06-02
-# (3 weeks later), so the e2e regressed silently.
-#
-# Make the IP + MAC trailing octet overridable via cmake cache vars so each
-# fixture can carve its own L2 / L3 identity. Defaults match the pre-M.10
-# `rv-virt-threadx/c/talker/nros.toml` values, so a fixture that
-# omits the override keeps the historical talker identity. The threadx
-# riscv64 `test_threadx_riscv64_cyclonedds_two_qemu_pubsub` test passes
-# `NROS_APP_NET_IP_LAST=41` + `NROS_APP_NET_MAC_LAST=0x57` for the
-# listener via `examples/fixtures.toml`-driven cmake `-D` (Phase 181.5.e
-# pattern); the talker keeps the defaults. Wider host-byte / netmask
-# overrides aren't needed today — every fixture sits in 10.0.2.0/24.
-set(NROS_APP_NET_IP_LAST 40
-    CACHE STRING "Trailing octet of NROS_APP_CONFIG.network.ip (default 40 → 10.0.2.40)")
-set(NROS_APP_NET_MAC_LAST "0x56"
-    CACHE STRING "Trailing octet of NROS_APP_CONFIG.network.mac (default 0x56)")
-
-# phase-484 W4b (RFC-0103 D1) — the `.network` block is ASKED of the board's
-# descriptor (`nros board net`: `[board.net]` over the platform default), with
-# this image's last IP octet / MAC byte applied; this file carries no copy of
-# the subnet, gateway or MAC prefix. The CLI is required on this road anyway.
+# Network identity. Phase 214.P made the last IP octet and MAC byte cache
+# variables (`NROS_APP_NET_IP_LAST` / `NROS_APP_NET_MAC_LAST`, default
+# .40 / :56) so a fixture row could give the Cyclone pair's listener its own
+# L2/L3 identity (.41 / :57) — two QEMUs on one dgram link with IDENTICAL
+# addresses never disambiguate the peer. phase-497 W2 (RFC-0103 D10) moved
+# that identity to where it belongs: each leaf states it
+# (`[image.<id>.net.eth0] host` / `mac` in its system.toml), the CLI resolves
+# it, and `nros_board_net_c` applies it over the board default. This file
+# carries no copy of the subnet, gateway, address or MAC.
 include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosBoardNet.cmake")
-nros_board_net_c(rv-virt-threadx _nros_board_net_c ROOT "${_NROS_BOARD_ROOT}" IP_LAST "${NROS_APP_NET_IP_LAST}" MAC_LAST "${NROS_APP_NET_MAC_LAST}")
+nros_board_net_c(rv-virt-threadx _nros_board_net_c ROOT "${_NROS_BOARD_ROOT}")
 
 set(_NROS_APP_CONFIG_DEF_C
     "${CMAKE_CURRENT_BINARY_DIR}/nros_app_config_def.c")
@@ -417,9 +397,8 @@ file(WRITE "${_NROS_APP_CONFIG_DEF_C}"
 " * source-side emission for the cmake-driven consumer path. Mirrors\n"
 " * the rust-side body in packages/boards/nros-board-threadx-qemu-riscv64\n"
 " * /build.rs so a cmake / cargo build of the same board produce a\n"
-" * byte-identical `NROS_APP_CONFIG` symbol (modulo per-fixture\n"
-" * NROS_APP_NET_IP_LAST / NROS_APP_NET_MAC_LAST overrides — see the\n"
-" * Phase 214.P block in nano-ros-board-rv-virt-threadx.cmake).\n"
+" * byte-identical `NROS_APP_CONFIG` symbol (modulo the image's own\n"
+" * network, RFC-0103 D10f — see nano-ros-board-rv-virt-threadx.cmake).\n"
 " */\n"
 "\n"
 "#include <stdint.h>\n"

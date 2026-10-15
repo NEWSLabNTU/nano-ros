@@ -157,27 +157,15 @@ impl BoardExit for RticMps2An385 {
 
 /// Phase 244.D1 — overlay the leaf `system.toml`'s `[image.*]` deployment
 /// identity onto [`Config::qemu_slirp`], so each RTIC Entry pkg can pin its own
-/// ip / locator / gateway (required when the talker-rtic + listener-rtic
-/// pub/sub pair share this board on one QEMU network). `None` fields keep the
-/// baked default.
-///
-/// phase-337 W6.a — the netmask→prefix step was a hand-rolled popcount here
-/// AND in [`crate::entry`]; both now call
-/// [`nros_board_common::prefix_from_netmask`].
+/// address / locator (required when the talker-rtic + listener-rtic pub/sub
+/// pair share this board on one QEMU network). `None` fields keep the baked
+/// default; the address is the image's resolved network (phase-497 W2).
 fn config_with_overlay(deploy: &DeployOverlay) -> Config {
     let mut config = Config::qemu_slirp();
     if let Some(locator) = deploy.locator {
         config.zenoh_locator = locator;
     }
-    if let Some(ip) = deploy.ip {
-        config.ip = ip;
-    }
-    if let Some(gateway) = deploy.gateway {
-        config.gateway = gateway;
-    }
-    if let Some(netmask) = deploy.netmask {
-        config.prefix = nros_board_common::prefix_from_netmask(netmask);
-    }
+    config.apply_image_net(deploy.net);
     if let Some(domain_id) = deploy.domain_id {
         config.domain_id = domain_id;
     }
