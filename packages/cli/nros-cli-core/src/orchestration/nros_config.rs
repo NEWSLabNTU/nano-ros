@@ -907,6 +907,7 @@ fn synthesise_self_bringup(
         // host, and the board descriptor states the triple).
         image,
         image_defaults: None,
+        network: Default::default(),
         domains: Vec::new(),
         bridges: Vec::new(),
         models: Vec::new(),

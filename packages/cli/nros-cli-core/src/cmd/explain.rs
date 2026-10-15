@@ -383,9 +383,6 @@ fn transport_kind_str(k: TransportKind) -> &'static str {
 
 fn transport_detail(t: &crate::orchestration::plan::PlanTransport) -> String {
     let mut parts = Vec::new();
-    if let Some(ref ip) = t.ip {
-        parts.push(format!(" ip={ip}"));
-    }
     if let Some(ref dev) = t.device {
         parts.push(format!(" device={dev}"));
     }

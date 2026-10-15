@@ -813,6 +813,7 @@ fn schema_build_json(
     // it; this is the rung with an error channel.
     if let Some(s) = &sys {
         s.validate_default_images().map_err(|e| eyre!("{e}"))?;
+        s.validate_image_networks().map_err(|e| eyre!("{e}"))?;
     }
     // The selected image (phase-256 W3a): shared by RMW + build-tuning.
     let selected_image = sys.as_ref().and_then(|s| s.resolve_image(cli_image));

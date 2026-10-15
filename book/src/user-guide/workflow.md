@@ -109,9 +109,7 @@ board = "linux"
 [image.mps2]                 # an embedded image carries its network identity too
 board   = "qemu-mps2-an385"
 locator = "tcp/10.0.2.2:10500"
-ip      = "10.0.2.10"
-gateway = "10.0.2.2"
-netmask = "255.255.255.0"
+net     = { eth0 = { network = "qemu", host = 10 } }
 ```
 
 Switching board is editing `[image.<id>] board` and re-running `nros sync`.

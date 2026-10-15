@@ -559,7 +559,10 @@ address plan, one collision check and one router.
 **D10b — An address is static or leased, and a MAC is always unique.**
 `[image.<id>.net.<if>]` takes `network`, then exactly one of `address` (full
 IPv4), `host` (last octet within `subnet`) or `address = "dhcp"`, and an
-optional `mac`. Rules, all refused at sync naming both images:
+optional `mac`. *Staged 2026-10-15:* until W2's resolver, `network` is
+required next to an address — the `nros::main!` reader has no board catalog,
+so a board-default network taken by the CLI alone would resolve one
+`system.toml` two ways. Rules, all refused at sync naming both images:
 
 - two STATIC addresses equal on one network, or one equal to its `gateway`,
   or one outside its `subnet`;
@@ -598,12 +601,11 @@ stack is the host operating system — `linux`, `threadx-linux`,
 addresses and routes, and a nano-ros image only opens sockets
 (threadx-linux's NSOS shim forwards NetX's BSD calls to the host and ignores
 the IP fields it is handed). `[image.<id>.net.*]` on such a board is refused
-naming that reason. The predicate is read off the descriptor, not authored
-again: `supported_netstacks = []` already says it for `linux` and
-`freertos-posix` (phase-351 W4). threadx-linux lists `netxduo` because NetX's
-API is what it links, so its descriptor needs one statement that the stack
-underneath is the host's; phase-497 W1 adds it as a netstack value or a key,
-whichever the descriptor schema already makes room for. In particular a Linux box that BRIDGES
+naming that reason. The board says so: `[board.net] stack = "host"` (phase-497
+W1). *Corrected 2026-10-15:* this text first proposed reading the predicate off
+`supported_netstacks = []`, which is wrong — NuttX and Zephyr list `[]` too,
+because their OS brings its own stack — so the statement is explicit, on
+`linux`, `freertos-posix` and threadx-linux. In particular a Linux box that BRIDGES
 its ports is configured with Linux tools, not with `system.toml`; what
 `system.toml` describes is the network the box makes, for the boards on it.
 Forwarding between two NICs inside one image is likewise out of scope: W4's
@@ -626,7 +628,11 @@ them is a place to state a value.
 these facts. Phase-497 W1 migrates every tracked use and then refuses each,
 naming its home: an image's address goes to `[image.<id>.net.<if>]`, a
 gateway or netmask to `[network.<name>]`, a MAC to the image (or is
-derived). `[board.net] network` stays: it is the board's DEFAULT network for
+derived). *Staged 2026-10-15:* W1 retired the IMAGE keys; the BOARD keys
+retire in W2 with `mac`, because the board default they hold has copies a
+descriptor edit cannot reach (the riscv64 board's C `cfg_ip`, its cmake
+`NROS_APP_NET_IP_LAST` default), and only W2's one resolver feeds those.
+`[board.net] network` stays: it is the board's DEFAULT network for
 an image that names none, which is how a QEMU board lands on `qemu` without
 a line of `system.toml`.
 
@@ -739,6 +745,11 @@ Still open:
    hook does not read (board fragments, snippets).
 
 ## Changelog
+
+- 2026-10-15 — Phase-497 W1 landed D10's schema. Three corrections from
+  implementing it: the host-OS predicate is `[board.net] stack = "host"`, not
+  `supported_netstacks = []` (D10e); the board-level keys retire in W2, not W1
+  (D10g); and `network` is required next to an address until W2 (D10b).
 
 - 2026-10-15 — D10 amended (D10a–D10g) for physical networks and custom
   drivers: a network states what it is and, separately, how an emulator

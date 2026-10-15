@@ -47,6 +47,9 @@ THREADX_EXTRA_INCLUDES = { value = "ports/risc-v64/gnu/example_build/qemu_virt",
 # OUI and the default image address is `.40` (an image states its own).
 [board.net]
 network = "qemu"
+# RFC-0103 D10c (phase-497 W1) — the interface an image addresses as
+# `[image.<id>.net.eth0]`.
+interfaces = { eth0 = "ethernet" }
 ip = "10.0.2.40"
 mac = "52:54:00:12:34:56"
 

@@ -1853,14 +1853,20 @@ pub fn plan_transports(
                 crate::orchestration::plan::RETIRED_INTERFACES_REMEDY
             );
         }
+        // RFC-0103 D10 (phase-497 W1) — refused, not dropped: the address has
+        // one home now, and a value read by nothing is a silent no-op.
+        if t.ip.is_some() || t.mac.is_some() || t.gateway.is_some() {
+            bail!(
+                "SystemModel transport '{}': {}",
+                t.id.as_deref().unwrap_or(&t.kind),
+                crate::orchestration::plan::RETIRED_TRANSPORT_ADDRESS_REMEDY
+            );
+        }
         out.push(PlanTransport {
             kind,
             id: t.id.clone(),
-            ip: t.ip.clone(),
             ssid: t.ssid.clone(),
             password: t.password.clone(),
-            mac: t.mac.clone(),
-            gateway: t.gateway.clone(),
             device: t.device.clone(),
             baudrate: t.baudrate,
             rmw: t.rmw.clone(),
@@ -1882,18 +1888,41 @@ mod transport_tests {
         m.execution.transports.push(Transport {
             kind: "ethernet".to_string(),
             id: Some("eth0".to_string()),
-            ip: Some("10.0.2.50/24".to_string()),
-            mac: Some("02:00:00:00:00:01".to_string()),
             domain: Some(7),
             ..Default::default()
         });
         let pts = plan_transports(&m).expect("converts");
         assert_eq!(pts.len(), 1);
-        assert_eq!(pts[0].mac.as_deref(), Some("02:00:00:00:00:01"));
         assert_eq!(pts[0].domain, Some(7));
 
         m.execution.transports[0].kind = "carrier-pigeon".to_string();
         assert!(plan_transports(&m).is_err());
+    }
+
+    /// RFC-0103 D10 (phase-497 W1) — the upstream schema still has `ip` /
+    /// `mac` / `gateway` on a transport, so a model can still carry them; they
+    /// are refused naming the image's `net` table, never passed through to a
+    /// plan where nothing reads them.
+    #[test]
+    fn a_transport_address_is_refused_naming_the_image_net_table() {
+        for set in [
+            |t: &mut Transport| t.ip = Some("10.0.2.50/24".into()),
+            |t: &mut Transport| t.mac = Some("02:00:00:00:00:01".into()),
+            |t: &mut Transport| t.gateway = Some("10.0.2.2".into()),
+        ] {
+            let mut m = SystemModel::default();
+            let mut t = Transport {
+                kind: "ethernet".to_string(),
+                ..Default::default()
+            };
+            set(&mut t);
+            m.execution.transports.push(t);
+            let e = plan_transports(&m).unwrap_err().to_string();
+            assert!(
+                e.contains("[image.<id>.net.<if>]") && e.contains("D10"),
+                "{e}"
+            );
+        }
     }
 
     /// phase-206 W5 — the upstream schema still HAS `interfaces`, so the only

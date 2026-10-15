@@ -60,6 +60,8 @@ pub mod mapper_input;
 pub mod model_location;
 // issue 1895 — `[system] default_launch` + `[[model]]`, parsed one way.
 pub mod system_launch;
+// RFC-0103 D10 (phase-497 W1) — `[network.*]` + `[image.<id>.net.<if>]`, parsed one way.
+pub mod system_net;
 // phase-486 W1 (RFC-0060 amendment 2026-10-10) — the nano-ros facts that do
 // not belong in the SystemModel, written as `nros.toml` beside it.
 pub mod overlay;

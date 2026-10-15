@@ -174,8 +174,8 @@ Multi-RMW bridges (one binary, two or more backends) use
 - **Configuration is build-time on embedded.** Runtime env vars
   (`ROS_DOMAIN_ID`, `NROS_LOCATOR`,
   …) work on POSIX; embedded targets bake the same values from their
-  `[image.<id>]` row in `system.toml` (`locator`, `ip`, `gateway`,
-  `netmask`) and `[system]` (`rmw`, `domain_id`) — one file, and the
+  `[image.<id>]` row in `system.toml` (`locator`, and the address in
+  `net`) and `[system]` (`rmw`, `domain_id`) — one file, and the
   same one in every language — plus Kconfig on Zephyr.
 
 ## Next Step

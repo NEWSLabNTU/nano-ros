@@ -30,6 +30,12 @@ supported_netstacks = []
 # RFC-0042 D2 — declared capabilities (SSoT). Same three as the mps2 board: the
 # kernel supplies heap and threads, and the host supplies atomics natively
 # rather than through `portable-atomic`.
+# RFC-0103 D10e (phase-497 W1) — the host operating system owns this board's
+# network: the kernel's interfaces, addresses and routes. An image states none
+# (`[image.<id>.net.*]` is refused naming this).
+[board.net]
+stack = "host"
+
 [board.capabilities]
 heap = true
 atomics = true

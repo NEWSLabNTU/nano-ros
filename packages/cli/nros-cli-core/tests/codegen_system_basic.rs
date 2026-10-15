@@ -570,9 +570,6 @@ execution:
   transports:
     - kind: ethernet
       id: eth0
-      ip: 10.0.2.50/24
-      mac: "02:00:00:00:00:01"
-      gateway: 10.0.2.2
       domain: 7
 "#,
     )
@@ -587,9 +584,27 @@ execution:
     let tx = parsed["transports"].as_array().expect("transports section");
     assert_eq!(tx.len(), 1);
     assert_eq!(tx[0]["kind"], "ethernet");
-    assert_eq!(tx[0]["ip"], "10.0.2.50/24");
-    assert_eq!(tx[0]["mac"], "02:00:00:00:00:01");
     assert_eq!(tx[0]["domain"], 7);
+    // RFC-0103 D10 (phase-497 W1) — an address is the image's, never the
+    // transport's: the plan carries none.
+    assert!(tx[0].get("ip").is_none() && tx[0].get("mac").is_none());
+
+    // ...and a model that still states one is refused, naming the image's
+    // `net` table, rather than baked into a field nothing reads.
+    let addressed = ws.join("addressed.yaml");
+    fs::write(
+        &addressed,
+        "meta:\n  version: 1\nstructure: {}\nexecution:\n  transports:\n    - kind: ethernet\n      ip: 10.0.2.50/24\n",
+    )
+    .unwrap();
+    let out_a = temp_root("model-tx-addressed-out");
+    let mut aa = args(&ws, &out_a);
+    aa.model = Some(addressed);
+    let e = format!(
+        "{:#}",
+        codegen_system::run(aa).expect_err("an address on a transport")
+    );
+    assert!(e.contains("[image.<id>.net.<if>]"), "{e}");
 
     // Unknown kind: fail-loud, never a silent skip.
     let bad = ws.join("bad.yaml");

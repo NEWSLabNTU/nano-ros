@@ -18,8 +18,7 @@ name = "listener"
 # ESP32-C3 (QEMU, OpenETH) — the same board as the talker, one address up.
 [image.esp32-c3-baremetal]
 board = "esp32-c3-baremetal"
-ip = "10.0.2.51"
-gateway = "10.0.2.2"
+net = { eth0 = { network = "qemu", host = 51 } }
 locator = "tcp/10.0.2.2:9800"
 
 # The APP rung (RFC-0049, RFC-0098 D4), phase-445 W6 — and it belongs to THIS

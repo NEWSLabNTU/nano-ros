@@ -43,6 +43,9 @@ build-std = ["core", "alloc"]
 # address on top; a project-defined network is phase-497.
 [board.net]
 network = "qemu"
+# RFC-0103 D10c (phase-497 W1) — the interface an image addresses as
+# `[image.<id>.net.eth0]`.
+interfaces = { eth0 = "ethernet" }
 # The board's established defaults on that network: talker `.50` (its
 # examples' listener states `.51`) and the open_eth MAC its images use.
 ip = "10.0.2.50"

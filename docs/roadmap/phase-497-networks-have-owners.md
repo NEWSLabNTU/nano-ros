@@ -1,7 +1,7 @@
 # Phase 497 -- networks have owners: board interfaces, project networks, image addresses
 
-**Status (2026-10-15). Not started; re-planned against D10 as amended
-2026-10-15 (D10a–D10g).** Implements
+**Status (2026-10-15). W1 landed; W2–W4 open.** Re-planned against D10 as
+amended 2026-10-15 (D10a–D10g). Implements
 [RFC-0103 D10](../design/0103-one-owner-per-fact.md). Follows phase-484 W4b-2,
 which moves every QEMU board onto one default network first.
 
@@ -57,6 +57,39 @@ board-level subnet, a refused flat `[image] ip`, an address on a `serial`
 interface refused, `[image.*.net]` on `linux` refused. No tracked file uses a
 retired spelling.
 
+**Status: landed 2026-10-15.**
+- One reader, `nros_orchestration_ir::system_net`, parses `[network.*]` and
+  `[image.<id>.net.<if>]` and lowers an image's address. Every road takes its
+  answer: `leaf_system` (the cargo and cmake leaves and `nros::main!`) and the
+  CLI schema (`SystemToml.network`, `ImageBlock.net`,
+  `validate_image_networks`, run by `nros build` and the planner).
+- `[board.net] interfaces` and `stack = "host"` are checked against an image
+  on every road (`check_image_net_on_board`).
+- Migrated: all 38 `system.toml` files and the 8 book snippets. For all 37
+  cargo leaves among them, `nros sync` renders the same `NROS_ENTRY_IP` as
+  before; leaves that omitted `netmask` or `gateway` now carry the `qemu`
+  network's (`/24`, `.2`), which are those boards' own defaults.
+- `just build-test-fixtures lane=tier2` builds all 7 families.
+
+Three changes from the plan above (RFC-0103 changelog, 2026-10-15):
+- **Host-OS boards** are named by `[board.net] stack = "host"`, not by
+  `supported_netstacks = []`: NuttX and Zephyr list `[]` too.
+- **The board-level `ip` / `netmask` / `gateway`** retire in W2, with `mac`.
+  Their copies live outside the descriptor: the riscv64 board's C `cfg_ip` and
+  its cmake `NROS_APP_NET_IP_LAST` default.
+- **`network` is required next to an address** until W2, because the macro
+  reader has no board catalog to take a default from.
+
+Parsed and validated, but REFUSED until a later wave renders it, so nothing
+is accepted and then dropped:
+- a leased address and a per-image `mac` (W2);
+- a network's `router` (W2);
+- a bridge or TAP `attach` (W3);
+- more than one interface (W4).
+
+The SystemModel transport's `ip` / `mac` / `gateway`, a third home read by
+nothing, are refused at ingest and gone from the plan schema.
+
 ### W2 -- one resolver, one output, and the collision refusal
 
 - One resolver (`nros_board_common::board_net` grows into it) answers
@@ -71,6 +104,10 @@ retired spelling.
   interface)`.
 - Router default (D10d): derived on `qemu`; elsewhere the network's `router`,
   else the image's `locator`, else a sync error.
+- Retire the board-level `[board.net] ip` / `netmask` / `gateway` / `mac` (moved
+  from W1), together with their copies in the riscv64 board's C and cmake.
+- `network` defaults to the board's `[board.net] network`, now that one
+  resolver can tell every road.
 - The per-image last-octet override (`NROS_ENTRY_IP_LAST` /
   `NROS_APP_NET_IP_LAST`, 23 `fixtures.toml` rows) is replaced by `host =` and
   retired.

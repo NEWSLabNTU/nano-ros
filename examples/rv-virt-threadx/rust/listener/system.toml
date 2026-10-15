@@ -19,6 +19,4 @@ name = "listener"
 [image.rv-virt-threadx]
 board = "rv-virt-threadx"
 locator = "tcp/10.0.2.2:9400"
-ip = "10.0.2.16"
-gateway = "10.0.2.2"
-netmask = "255.255.255.0"
+net = { eth0 = { network = "qemu", host = 16 } }

@@ -97,21 +97,45 @@ pub struct ImageBlock {
     /// one address: the esp32 talker and listener are the same board at
     /// `10.0.2.50` and `10.0.2.51`.
     ///
-    /// `domain_id` / `locator` override `[system]`'s; `ip` / `gateway` /
-    /// `netmask` (dotted IPv4) and `transport` overlay the board's compiled-in
-    /// `Config::default()` and have no system-wide default. These replace the
-    /// retiring `[package.metadata.nros.deploy.<board>]` table; the ONE reader
-    /// is `nros_orchestration_ir::leaf_system`.
+    /// `domain_id` / `locator` override `[system]`'s; `transport` overlays the
+    /// board's compiled-in `Config::default()`. The address is
+    /// [`Self::net`]. These replace the retiring
+    /// `[package.metadata.nros.deploy.<board>]` table; the ONE reader is
+    /// `nros_orchestration_ir::leaf_system`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub domain_id: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub locator: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub ip: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub gateway: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub netmask: Option<String>,
+    /// RFC-0103 D10g (phase-497 W1) — `ip` / `gateway` / `netmask` are retired:
+    /// accepted by the schema only so they are refused BY NAME, pointing at
+    /// [`Self::net`], rather than as serde's generic "unknown field".
+    #[serde(
+        default,
+        rename = "ip",
+        deserialize_with = "refuse_flat_ip",
+        skip_serializing
+    )]
+    pub retired_ip: super::cargo_metadata_schema::RetiredTable,
+    #[serde(
+        default,
+        rename = "gateway",
+        deserialize_with = "refuse_flat_gateway",
+        skip_serializing
+    )]
+    pub retired_gateway: super::cargo_metadata_schema::RetiredTable,
+    #[serde(
+        default,
+        rename = "netmask",
+        deserialize_with = "refuse_flat_netmask",
+        skip_serializing
+    )]
+    pub retired_netmask: super::cargo_metadata_schema::RetiredTable,
+    /// `[image.<id>.net.<if>]` — this image's address on each interface
+    /// (RFC-0103 D10b): a `network` (`qemu`, or a `[network.<name>]`) and a
+    /// `host` octet or full `address`. Lowered by
+    /// `nros_orchestration_ir::system_net::lower`, the one reader.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub net: BTreeMap<String, nros_orchestration_ir::system_net::ImageNetIf>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transport: Option<String>,
 
@@ -271,6 +295,29 @@ impl<'de> Deserialize<'de> for ImageKnobs {
     }
 }
 
+fn refuse_flat<'de, D: serde::Deserializer<'de>>(
+    key: &str,
+) -> Result<super::cargo_metadata_schema::RetiredTable, D::Error> {
+    Err(serde::de::Error::custom(
+        nros_orchestration_ir::system_net::flat_key_refusal("image.<id>", key),
+    ))
+}
+fn refuse_flat_ip<'de, D: serde::Deserializer<'de>>(
+    _: D,
+) -> Result<super::cargo_metadata_schema::RetiredTable, D::Error> {
+    refuse_flat::<D>("ip")
+}
+fn refuse_flat_gateway<'de, D: serde::Deserializer<'de>>(
+    _: D,
+) -> Result<super::cargo_metadata_schema::RetiredTable, D::Error> {
+    refuse_flat::<D>("gateway")
+}
+fn refuse_flat_netmask<'de, D: serde::Deserializer<'de>>(
+    _: D,
+) -> Result<super::cargo_metadata_schema::RetiredTable, D::Error> {
+    refuse_flat::<D>("netmask")
+}
+
 impl ImageBlock {
     /// Overlay `self` (an `[image.<id>]`) onto `base` (the `[image]` table),
     /// per-field, with the specific block winning.
@@ -298,9 +345,11 @@ impl ImageBlock {
             rmw: pick(&self.rmw, &base.rmw),
             domain_id: self.domain_id.or(base.domain_id),
             locator: pick(&self.locator, &base.locator),
-            ip: pick(&self.ip, &base.ip),
-            gateway: pick(&self.gateway, &base.gateway),
-            netmask: pick(&self.netmask, &base.netmask),
+            retired_ip: Default::default(),
+            retired_gateway: Default::default(),
+            retired_netmask: Default::default(),
+            // Per interface: one the image states replaces the base's whole.
+            net: nros_orchestration_ir::system_net::overlay(&base.net, &self.net),
             transport: pick(&self.transport, &base.transport),
             serdes: pick(&self.serdes, &base.serdes),
             ros_edition: pick(&self.ros_edition, &base.ros_edition),

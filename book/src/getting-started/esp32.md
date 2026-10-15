@@ -104,8 +104,7 @@ entities = ["publisher:std_msgs/msg/String:/chatter", "timer"]
 
 [image.esp32-c3-baremetal]
 board = "esp32-c3-baremetal"
-ip = "10.0.2.50"
-gateway = "10.0.2.2"
+net = { eth0 = { network = "qemu", host = 50 } }
 locator = "tcp/10.0.2.2:9800"
 ```
 

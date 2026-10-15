@@ -177,9 +177,7 @@ adds the guest's network identity, because it boots behind QEMU Slirp:
 [image.rv-virt-threadx]
 board = "rv-virt-threadx"
 locator = "tcp/10.0.2.2:9400"
-ip = "10.0.2.15"
-netmask = "255.255.255.0"
-gateway = "10.0.2.2"
+net = { eth0 = { network = "qemu", host = 15 } }
 ```
 
 The C leaves carry the same file with the same keys; their `CMakeLists.txt`

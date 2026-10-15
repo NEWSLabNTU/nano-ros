@@ -88,8 +88,9 @@ Which network the defaults describe is stated by the board: its
 sits on QEMU's own user-mode network (`10.0.2.15/24`, gateway and router
 `10.0.2.2`) — the network every QEMU board shares. `Config::qemu_slirp()` is
 the same network at the RTIC entry's own address (`10.0.2.10`, router port
-`7450`). Either way, an image that sets `ip`/`gateway`/`locator` in its
-`[image.<id>]` table overrides the default — which every in-tree example
+`7450`). Either way, an image that sets its `locator` and its address
+(`net = { eth0 = { network = "qemu", host = N } }`) in its `[image.<id>]`
+table overrides the default — which every in-tree example
 does, and which you should too.
 
 ## Configure
@@ -115,9 +116,7 @@ dispatch = "deferred"
 [image.mps2-an385-baremetal]
 board = "qemu-mps2-an385"
 locator = "tcp/10.0.2.2:10500"
-ip = "10.0.2.10"
-gateway = "10.0.2.2"
-netmask = "255.255.255.0"
+net = { eth0 = { network = "qemu", host = 10 } }
 ```
 
 `board` picks the silicon and everything that follows from it; `rmw` picks the

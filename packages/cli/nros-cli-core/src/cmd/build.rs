@@ -555,8 +555,21 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
         {
             sys.wcet_profile_for_image(&image_id, &platform)
                 .map_err(|e| eyre::eyre!("`{qual}` cannot be built: {e}"))?;
+            // RFC-0103 D10b (phase-497 W1) — the address against its network.
+            sys.validate_image_networks()
+                .map_err(|e| eyre::eyre!("`{qual}` cannot be built: {e}"))?;
         }
         let board = image.board.clone().unwrap_or_default();
+        check_image_net_on_board(
+            descriptor,
+            &board,
+            nano_ros_root.as_deref(),
+            &qual,
+            image
+                .net
+                .iter()
+                .map(|(n, i)| (n.clone(), i.address.is_some() || i.host.is_some())),
+        )?;
         // A refusal here is RFC-0065 D3's third outcome, not an internal error:
         // the board and the language mix together name a combination nano-ros
         // has no road for, and the message says which. Bailing beats answering
@@ -1705,6 +1718,17 @@ fn plan_leaf_image(
     let Some(descriptor) = crate::cmd::board_facts::resolve_board(&catalog, &img.board) else {
         eyre::bail!("{}", crate::cmd::board_facts::unresolved_board(&img.board));
     };
+    check_image_net_on_board(
+        descriptor,
+        &img.board,
+        Some(&nros_root),
+        &qual,
+        img.decl
+            .network
+            .interface
+            .clone()
+            .map(|n| (n, img.decl.network.ip.is_some())),
+    )?;
     let mut missing = crate::builder::preflight::check(descriptor, root, Some(&nros_root));
     // The toolchain half only. preflight's sync probe is a WORKSPACE heuristic
     // (a `src/` with neither `generated/` nor `build/nros/`), and a leaf's
@@ -1926,6 +1950,16 @@ fn plan_single_package_cmake(
     let Some(descriptor) = crate::cmd::board_facts::resolve_board(&catalog, &board) else {
         eyre::bail!("{}", crate::cmd::board_facts::unresolved_board(&board));
     };
+    check_image_net_on_board(
+        descriptor,
+        &board,
+        Some(&nros_root),
+        &board,
+        decl.network
+            .interface
+            .clone()
+            .map(|n| (n, decl.network.ip.is_some())),
+    )?;
     let platform = descriptor.platform.kebab().to_string();
     if plan::driver_for_board(&platform, descriptor.entry_kind, true) != Ok(Driver::CMake) {
         return Ok(None);
@@ -3777,6 +3811,40 @@ fn board_heap_configure_arg(
 /// The file a descriptor was parsed from: its `source`, joined onto the
 /// nano-ros root when relative. `None` for an in-memory descriptor, or a
 /// relative source with no root to resolve it against.
+/// RFC-0103 D10c/D10e (phase-497 W1) — an image's interfaces against its
+/// board: a host-stack board takes none, a board that declares its interfaces
+/// takes only those, and only an `ethernet` / `wifi` one takes an address.
+///
+/// `ifs` is `(interface, addressed)`. Every road calls this — the workspace
+/// image, the single-package Rust leaf and the C/C++ leaf — with the board's
+/// own descriptor, read by the same `BoardKnobsFile` a build script reads.
+pub(crate) fn check_image_net_on_board(
+    descriptor: &crate::orchestration::board_descriptor::BoardDescriptor,
+    board: &str,
+    nano_ros_root: Option<&std::path::Path>,
+    qual: &str,
+    ifs: impl IntoIterator<Item = (String, bool)>,
+) -> Result<()> {
+    let ifs: Vec<(String, bool)> = ifs.into_iter().collect();
+    if ifs.is_empty() {
+        return Ok(());
+    }
+    let Some(path) = board_descriptor_file(descriptor, nano_ros_root) else {
+        return Ok(());
+    };
+    let file = nros_board_common::platform_config::BoardKnobsFile::load(&path)
+        .map_err(|e| eyre::eyre!("{}: {e}", path.display()))?;
+    let net = file
+        .board_net(Some(board))
+        .map_err(|e| eyre::eyre!("{}: {e}", path.display()))?
+        .unwrap_or_default();
+    for (name, addressed) in ifs {
+        net.check_image_interface(&name, addressed)
+            .map_err(|e| eyre::eyre!("`{qual}` on board `{board}`: {e}"))?;
+    }
+    Ok(())
+}
+
 fn board_descriptor_file(
     descriptor: &crate::orchestration::board_descriptor::BoardDescriptor,
     nano_ros_root: Option<&std::path::Path>,
