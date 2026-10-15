@@ -4740,7 +4740,7 @@ impl<'s> Executor<'s> {
     /// executor runs from `close()` and from `drop`. A caller that installs
     /// owes nothing further: the teardown is the executor's.
     ///
-    /// phase-436 — the backend's slot holds a [`WakeFanout`](super::wake_fanout)
+    /// phase-436 — the backend's slot holds a `WakeFanout`
     /// and this executor JOINS it, so every executor over one session is woken
     /// by an arrival: the boot executor and each spawned tier
     /// (`open_with_session*` now installs too), or several C executors over
