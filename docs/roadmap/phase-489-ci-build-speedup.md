@@ -6,7 +6,7 @@ measured, 93.7 %; main's warm job was being cancelled, fixed in PR #2200 --
 see W5); W2 landed and is switched OFF again after a three-hour trial starved
 the merge queue (PR #2177 since routed `check-cli-tests` and added its image
 row, still off); W6 met its acceptance locally (869 s / 875 s no-change re-runs, 9.2 % of
-9479 s cold; PRs #2170 and the leaf-row build-class PR), the CI second-run
+9479 s cold; PRs #2170 and #2248), the CI second-run
 number is still pending on free runners; W7 is
 handed to the runner operators.**
 Each item's own section has the post-merge numbers. The numbers below were measured from the GitHub Actions API over 2026-10-09 to 2026-10-10. They are
@@ -701,8 +701,8 @@ configure); end to end, `touch src/demo_bringup/system.toml` made `cmake
 --build` reconfigure once while `nros` skipped its own, and a changed `NROS_*`
 variable made `nros` configure.
 
-**The single-package leaf rows, fixed afterwards** (the leaf-row build-class
-PR, after #2158). Cause, measured with cargo's fingerprint log: a fixture
+**The single-package leaf rows, fixed afterwards** (PR #2248, after
+#2158). Cause, measured with cargo's fingerprint log: a fixture
 group's single-package leaves share ONE target dir, and each leaf's settings
 name its own `NROS_SIZING_DESCRIPTOR`. Cargo compares that variable as text,
 so every row after a different leaf recompiled `nros`, `nros-node`,
