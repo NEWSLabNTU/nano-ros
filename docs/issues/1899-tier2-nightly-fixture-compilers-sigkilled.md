@@ -94,3 +94,23 @@ of a `rustc` produces exactly this. It is **not** evidence of OOM on its own:
 the kernel log covering 18:25–18:39Z on `newslab-118-server` is what would
 separate memory from a network drop or a container restart. Item 1 of "What
 would close this" now has two windows to check.
+
+## Third sighting: tonight's nightly, same host, runner gone mid-build (2026-10-15 05:27Z)
+
+Nightly **38685461000** (schedule 05:11Z, main `b6909e6ed`), job
+**116259166114** `tier 2 nightly (pairwise cover)` on
+`nano-ros-runner-newslab-118-server`, ran from 05:11:43Z to 05:27:45Z. The other
+25 jobs passed and 5 were skipped. Step 6, `just build tier2-nightly`, was still
+`in_progress` when the job ended, so it died during the fixture build again. The
+log is `BlobNotFound`, and the only annotation is:
+
+```
+The self-hosted runner lost communication with the server. … Anything in your
+workflow that terminates the runner process, starves it for CPU/Memory, …
+```
+
+That makes three tier-2 deaths on this host in under 24 hours, all during the
+parallel fixture build, which is when memory peaks: 07:59–09:04Z (compilers
+SIGKILLed), 18:25–18:38Z, and now 05:12–05:28Z. The kernel log for those three
+windows is still the missing evidence (item 1 under "What would close this"),
+and it now has three places to look.
