@@ -2290,6 +2290,16 @@ impl ClientDispatch for RuntimeClientDispatch<'_> {
             .map_err(|_| NodeDeclError::Runtime)
     }
 
+    fn action_server_is_ready(&self, action_entity: &str) -> NodeResult<bool> {
+        let entry_index = self.action_entry(action_entity)?;
+        let executor = unsafe { &mut *self.executor };
+        let core = unsafe { executor.action_client_core_mut(entry_index) }
+            .ok_or(NodeDeclError::Runtime)?;
+        // As for `service_is_ready`: the backend's "cannot say" folds into the
+        // trait default's `Runtime`, one branch for "no answer".
+        core.server_readiness().map_err(|_| NodeDeclError::Runtime)
+    }
+
     fn send_goal_raw(&mut self, action_entity: &str, goal_cdr: &[u8]) -> NodeResult<GoalId> {
         let entry_index = self.action_entry(action_entity)?;
         let executor = unsafe { &mut *self.executor };

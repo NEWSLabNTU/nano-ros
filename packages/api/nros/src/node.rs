@@ -2245,6 +2245,17 @@ pub trait ClientDispatch {
         let _ = service_entity;
         Err(NodeDeclError::Runtime)
     }
+
+    /// Whether a server for the action client `action_entity` is CURRENTLY
+    /// discoverable — `rclcpp_action::Client::action_server_is_ready`, for a
+    /// tick. Same three answers as [`Self::service_is_ready`], read off the
+    /// action's `send_goal` service (issue 1918): a goal sent before the server
+    /// has declared it is answered by nobody, and the declarative client sends
+    /// ONCE.
+    fn action_server_is_ready(&self, action_entity: &str) -> NodeResult<bool> {
+        let _ = action_entity;
+        Err(NodeDeclError::Runtime)
+    }
 }
 
 /// Context handed to [`ExecutableNode::tick`] (W.5.6 + M-F.4): the per-spin
@@ -2488,6 +2499,22 @@ impl<'a> TickCtx<'a> {
     /// [`Self::service_is_ready`] through the entity synthesized from `name`.
     pub fn service_is_ready_for_name(&self, name: &str) -> NodeResult<bool> {
         self.service_is_ready(EntityId::new(name))
+    }
+
+    /// Whether a server for the action client `action` is CURRENTLY
+    /// discoverable (tick-only) — `rclcpp_action::Client::action_server_is_ready`.
+    /// Gate a goal on `Ok(true)` and treat `Err` ("the backend cannot say") as
+    /// "send anyway": a goal sent to a server nobody has declared yet is lost,
+    /// because the send is not retried (issue 1918). Check once per tick, the
+    /// way [`Self::service_is_ready`] documents.
+    #[doc(hidden)]
+    pub fn action_server_is_ready(&self, action: EntityId<'_>) -> NodeResult<bool> {
+        self.clients.action_server_is_ready(action.as_str())
+    }
+
+    /// [`Self::action_server_is_ready`] through the entity synthesized from `name`.
+    pub fn action_server_is_ready_for_name(&self, name: &str) -> NodeResult<bool> {
+        self.action_server_is_ready(EntityId::new(name))
     }
 
     /// Issue a raw service-client request through the entity synthesized
