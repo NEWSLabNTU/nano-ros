@@ -690,7 +690,7 @@ becomes the `callback` field. That is the only Rust-side work this design needs.
 **What `nros::Owned<T>` is for, then.** The entities with NO dispatch, where no
 arena slot exists and the C++ object genuinely is the entity: publishers, and
 the poll-style forms. It is a fallback for one kind, not the shape of the API,
-and `nros/owned.hpp` says so at the top. Whether publishers should get an arena
+and `rclcpp/owned.hpp` says so at the top. Whether publishers should get an arena
 slot too, for uniformity, is open and small.
 
 **What remains per entity kind.** `nros_cpp_service_server_register` already

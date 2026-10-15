@@ -209,7 +209,7 @@ probes for it.
   is the surface every nano-ros application in this repository is built
   against, `posix` host builds included.
 - **std (`NROS_CPP_STD`).** Defining it turns on the six `NROS_CPP_HAS_*`
-  capability macros in `nros/std_detect.hpp`, and with them the `std::string` /
+  capability macros in `rclcpp/detail/std_detect.hpp`, and with them the `std::string` /
   `std::function` / `std::chrono` / `std::vector` overloads in
   `nros/std_compat.hpp`, the `RCLCPP_*_STREAM` macros, and `rclcpp::Node`,
   whose factories return `std::shared_ptr` and whose name parameters are
@@ -276,7 +276,7 @@ toolchain stood at 26 pass / 20 fail. After the discovery arm was deleted it is
 exits 0 with six ARM ELF binaries where none built before.
 
 Rationale and the full measurement:
-`packages/api/nros-cpp/include/nros/std_detect.hpp`,
+`packages/api/nros-cpp/include/rclcpp/detail/std_detect.hpp`,
 [RFC-0089](../design/0089-ros2-api-adoption-and-the-compile-or-conform-rule.md),
 and `docs/roadmap/archived/phase-438-cpp-std-is-an-opt-in-porting-surface.md`.
 

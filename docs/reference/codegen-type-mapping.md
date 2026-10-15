@@ -164,7 +164,7 @@ the pointer+length fields.
 | `T[N]` (fixed)           | `T name[N]`                   |
 
 `rclcpp::Span<T>` and `rclcpp::StringView` are freestanding C++14 types
-defined in `nros/span.hpp`. They provide `data()`, `size()`, `begin()`,
+defined in `rclcpp/span.hpp`. They provide `data()`, `size()`, `begin()`,
 `end()`, and `operator[]` — same API as `std::span` / `std::string_view`.
 
 ## Service types
