@@ -49,18 +49,18 @@ cpp_inc="packages/api/nros-cpp/include"
 
 command -v "$CXX" >/dev/null 2>&1 || { echo "$tag: FAIL — no C++ compiler ($CXX)" >&2; exit 1; }
 [ -d "$compat" ] || { echo "$tag: FAIL — $compat is MISSING; the probe would test nothing" >&2; exit 1; }
-for snap in "$cpp_inc/nros/nros_cpp_config_generated_buildless.h" \
+for snap in "$cpp_inc/rclcpp/detail/nros_cpp_config_generated_buildless.h" \
             packages/api/nros-c/include/rclc/detail/nros_config_generated_buildless.h; do
     [ -f "$snap" ] || { echo "$tag: FAIL — $snap is MISSING" >&2; exit 1; }
 done
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
-mkdir -p "$tmp/nros" "$tmp/rclc/detail"
+mkdir -p "$tmp/rclcpp/detail" "$tmp/rclc/detail"
 printf '%s\n' \
     '/* PROBE-ONLY (scripts/check-cpp-hosted-minimal-libcpp.sh, issue 1432). */' \
-    '#include "nros/nros_cpp_config_generated_buildless.h"' \
-    > "$tmp/nros/nros_cpp_config_generated.h"
+    '#include "rclcpp/detail/nros_cpp_config_generated_buildless.h"' \
+    > "$tmp/rclcpp/detail/nros_cpp_config_generated.h"
 printf '%s\n' \
     '/* PROBE-ONLY (scripts/check-cpp-hosted-minimal-libcpp.sh, issue 1432). */' \
     '#include "rclc/detail/nros_config_generated_buildless.h"' \
@@ -133,7 +133,9 @@ selftest || exit 1
 
 n=0
 fails=0
-for hdr in "$cpp_inc"/nros/*.hpp; do
+# Recursive: since phase-503 the headers live in rclcpp/, rclcpp/detail/,
+# rclcpp_action/ and rclcpp_lifecycle/.
+for hdr in $(git ls-files -- "$cpp_inc/*.hpp"); do
     n=$((n + 1))
     rc=0
     out="$(probe_header "$hdr")" || rc=$?
@@ -145,7 +147,7 @@ for hdr in "$cpp_inc"/nros/*.hpp; do
 done
 
 if [ "$n" -eq 0 ]; then
-    echo "$tag: FAIL — no headers under $cpp_inc/nros; the probe would pass on absence" >&2
+    echo "$tag: FAIL — no headers under $cpp_inc; the probe would pass on absence" >&2
     exit 1
 fi
 if [ "$fails" -gt 0 ]; then

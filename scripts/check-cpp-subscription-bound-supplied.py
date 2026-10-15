@@ -64,6 +64,7 @@ from __future__ import annotations
 
 import os
 import re
+import subprocess
 import sys
 import sys as _w3_sys  # noqa: E402
 from pathlib import Path as _W3Path  # noqa: E402
@@ -109,11 +110,10 @@ def strip_comment(line):
 
 
 def header_files():
-    out = []
-    for dirpath, _dirs, names in os.walk(os.path.join(ROOT, HEADER_DIR)):
-        rel = os.path.relpath(dirpath, ROOT)
-        out.extend(os.path.join(rel, f) for f in names if f.endswith(".hpp"))
-    return sorted(out)
+    listed = subprocess.run(
+        ["git", "-C", ROOT, "ls-files", "--", HEADER_DIR + "/*.hpp"],
+        capture_output=True, text=True, check=True).stdout.split()
+    return sorted(listed)
 
 
 def function_window(lines, idx):

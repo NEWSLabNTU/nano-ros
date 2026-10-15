@@ -21,7 +21,7 @@
 # Measured on this repo 2026-09-04, in the shared checkout, with no build
 # running:
 #
-#     target/nros-cpp-generated/nros/nros_cpp_config_generated.h   PRESENT
+#     target/nros-cpp-generated/rclcpp/detail/nros_cpp_config_generated.h   PRESENT
 #         (declaring nros_cpp_config_variant_..._rmw_zenoh_cffi_...)
 #     target/release/libnros_cpp.a                                 ABSENT
 #

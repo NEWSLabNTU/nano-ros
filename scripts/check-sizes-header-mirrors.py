@@ -368,19 +368,19 @@ def self_test() -> None:
         b = root / "build" / "cmake-fixtures" / "cpp_leaf"
         crate = b / "nano_ros" / "packages" / "api" / "nros-cpp"
         tdir = crate / "CMakeFiles" / "nros_cpp_config_header.dir"
-        shared = b / "cargo" / "ws_1" / "nros-cpp-generated" / "nros"
-        for p in (crate / "include" / "nros", tdir, shared):
+        shared = b / "cargo" / "ws_1" / "nros-cpp-generated" / "rclcpp" / "detail"
+        for p in (crate / "include" / "rclcpp" / "detail", tdir, shared):
             p.mkdir(parents=True)
         (b / "CMakeCache.txt").write_text("CMAKE_GENERATOR:INTERNAL=Unix Makefiles\n")
         (b / "Makefile").write_text("all:\n")
         name = "nros_cpp_config_generated.h"
         (crate / name).write_text("#define Y_SIZE 1\n")
         (shared / name).write_text("#define Y_SIZE 2\n")
-        dest = crate / "include" / "nros" / name
+        dest = crate / "include" / "rclcpp" / "detail" / name
         (tdir / "build.make").write_text(
             f"{dest}: {crate}/libnros_cpp.a\n"
             f"\tcd {crate} && bash {MIRROR} {crate / name} {b} "
-            f"nros-cpp-generated/nros {name} {dest}\n")
+            f"nros-cpp-generated/rclcpp/detail {name} {dest}\n")
 
         empty = scan(root)
         assert empty[:2] == (1, 1) and empty[2] == 0, \

@@ -3,7 +3,7 @@
  *
  * `nros_cpp_config_generated.h` is produced per-build by
  * `nros-cpp/build.rs` and written to
- *   $CARGO_TARGET_DIR/nros-cpp-generated/nros/nros_cpp_config_generated.h
+ *   $CARGO_TARGET_DIR/nros-cpp-generated/rclcpp/detail/nros_cpp_config_generated.h
  * Issue 0360 — the `<variant_slug>/` level documented here was never
  * implemented; the path is FLAT, so two feature sets sharing a target dir
  * overwrite each other. The real header instead carries
@@ -57,7 +57,7 @@
  * build was given the per-build header, and a snapshot sized every NuttX image
  * from a hand-kept number that fell below the build four times. */
 #if defined(NROS_CONFIG_BUILDLESS)
-#include "nros/nros_cpp_config_generated_buildless.h"
+#include "rclcpp/detail/nros_cpp_config_generated_buildless.h"
 #else
 #error "nros_cpp_config_generated.h must be supplied per-build by the build system; see the comment in this stub for guidance."
 #endif

@@ -47,8 +47,8 @@
 #include <stddef.h>
 
 #if defined(__has_include)
-#if __has_include(<nros/nros_declared_params_generated.h>)
-#include <nros/nros_declared_params_generated.h>
+#if __has_include(<rclcpp/detail/nros_declared_params_generated.h>)
+#include <rclcpp/detail/nros_declared_params_generated.h>
 #endif
 #endif
 

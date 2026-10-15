@@ -456,7 +456,7 @@ file(WRITE "${_NROS_APP_CONFIG_DEF_C}"
 # It goes HERE, in the app target, and NOT into `threadx_glue` above with the
 # other board glue, for two measured reasons:
 #   - `threadx_glue` sees no nros-cpp include path, so the runner's
-#     `__has_include(<nros/nros_cpp_config_generated.h>)` finds nothing and it
+#     `__has_include(<rclcpp/detail/nros_cpp_config_generated.h>)` finds nothing and it
 #     silently takes its 81920-byte fallback where the per-build header says
 #     more. An undersized executor buffer is issue 0245's heap corruption. In
 #     the app target the per-build header is on the path, and without it the

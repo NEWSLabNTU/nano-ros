@@ -1483,13 +1483,12 @@ def refusal_macros(include_dir=CPP_INCLUDE_DIR):
         return found
     # The whole tree, recursively: since phase-503 the headers live in
     # rclcpp/, rclcpp/detail/, rclcpp_action/ and rclcpp_lifecycle/.
-    for dirpath, dirnames, names in os.walk(include_dir):
-        dirnames.sort()
-        for name in sorted(names):
-            if not name.endswith((".hpp", ".h")):
-                continue
-            with open(os.path.join(dirpath, name), encoding="utf-8") as fh:
-                found.update(REFUSAL_MACRO_RE.findall(fh.read()))
+    listed = subprocess.run(
+        ["git", "-C", include_dir, "ls-files", "--", "*.hpp", "*.h"],
+        capture_output=True, text=True, check=True).stdout.split()
+    for name in sorted(listed):
+        with open(os.path.join(include_dir, name), encoding="utf-8") as fh:
+            found.update(REFUSAL_MACRO_RE.findall(fh.read()))
     return found
 
 
@@ -2421,7 +2420,7 @@ def self_test():
     # old filename assertion worth having, kept after the filename went away.
     for label, source, _extra, _roots, _marks in CPP_TRANSLATION_UNITS:
         check("TU %r reads one of our headers" % label,
-              source.startswith('#include "nros/') and source.rstrip().endswith('"'),
+              source.startswith('#include "rclcpp/') and source.rstrip().endswith('"'),
               True)
 
     # ------------------------------------------------- phase-428: two

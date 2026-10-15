@@ -420,7 +420,7 @@ def self_test() -> None:
     assert not offenders('file(COPY "${X}/src" DESTINATION "${Y}")'), \
         "unrelated file(COPY) must not be flagged"
     # issue 1735 — the shell spellings.
-    assert shell_offenders('cp "$out/nros_cpp_config_generated.h" "$inc/nros/nros_cpp_config_generated.h"\n'), \
+    assert shell_offenders('cp "$out/nros_cpp_config_generated.h" "$inc/rclcpp/detail/nros_cpp_config_generated.h"\n'), \
         "a shell `cp` of the sizes header must be caught"
     assert shell_offenders('    install -m644 a.h include/rclc/detail/nros_config_generated.h\n', "just"), \
         "a recipe `install` of the sizes header must be caught"

@@ -15,7 +15,7 @@
 #
 # The mirror's SOURCE is a file cargo writes as a side effect of its build
 # script (`<cargo-target-dir>/nros-c-generated/rclc/detail/<name>`,
-# `<cargo-target-dir>/nros-cpp-generated/nros/<name>`). Neither
+# `<cargo-target-dir>/nros-cpp-generated/rclcpp/detail/<name>`). Neither
 # generator has an edge to it — cargo runs behind Corrosion's always-run
 # target, and the shared cargo dir is not a file any CMake rule produces. Issue
 # 0268 therefore keyed the mirror on a PROXY, `$<TARGET_FILE:nros_{c,cpp}-static>`,
@@ -119,7 +119,7 @@ endfunction()
 # nros_config_header_mirror(<target> <after-target> [<src> <gen-subdir> <name> <dest>]...)
 #
 # <src>        build.rs's leaf copy (the corrosion build dir) — the fallback
-# <gen-subdir> `nros-c-generated/rclc/detail` / `nros-cpp-generated/nros` under the
+# <gen-subdir> `nros-c-generated/rclc/detail` / `nros-cpp-generated/rclcpp/detail` under the
 #              cargo dir (`nros_generated_subpath`)
 # <name>       header file name
 # <dest>       the mirror path consumers include

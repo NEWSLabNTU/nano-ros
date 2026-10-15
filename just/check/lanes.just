@@ -1128,7 +1128,7 @@ cpp: cpp-fmt
     echo "  - freestanding syntax (c++14)"
     # The C++ headers include nros-c's `<rclc/types.h>`, so the syntax probe
     # needs nros-c on the include path too.
-    # The per-variant `<nros/nros_cpp_config_generated.h>` (defining
+    # The per-variant `<rclcpp/detail/nros_cpp_config_generated.h>` (defining
     # `NROS_CPP_EXECUTOR_STORAGE_SIZE` and friends, referenced by
     # `executor.hpp`'s `uint8_t storage_[NROS_CPP_EXECUTOR_STORAGE_SIZE]`)
     # is emitted by `nros-cpp`'s build.rs into
@@ -2138,7 +2138,7 @@ cpp: cpp-fmt
     # Checking the macro under a standard no component uses would test a
     # different preprocessor.
     #
-    # The fixture dir carries `nros/nros_declared_qos_generated.h` — what
+    # The fixture dir carries `rclc/detail/nros_declared_qos_generated.h` — what
     # `nros ws entity-inventory --output-header` renders, and the same bytes a
     # real component's configure puts on its own include path (issue 1084: the
     # register call claims the dir, a deferred render fills it from the
@@ -2402,7 +2402,7 @@ cpp: cpp-fmt
     # phase-446 W6 -- the DECLARED parameters: every lookup `Node`'s
     # boot check makes is constexpr, so the TU asserts each answer against the
     # fixture table (and that the table was found at all).
-    test -f packages/api/nros-cpp/tests/compile/declared-params-fixture/nros/nros_declared_params_generated.h || { \
+    test -f packages/api/nros-cpp/tests/compile/declared-params-fixture/rclcpp/detail/nros_declared_params_generated.h || { \
         echo "ERROR: the declared-params fixture header is MISSING -- declared_params.cpp" >&2; \
         echo "       would compile against an empty table and assert nothing real." >&2; \
         exit 1; \

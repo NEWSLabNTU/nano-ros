@@ -24,7 +24,7 @@
 /* Phase 159 (Path C) — NuttX fallback.
  *
  * #167 — this fallback is a snapshot and MUST be a safe UPPER BOUND: when the
- * per-build `<nros/nros_cpp_config_generated.h>` mirror does not reach a TU that
+ * per-build `<rclcpp/detail/nros_cpp_config_generated.h>` mirror does not reach a TU that
  * emits `Node::GlobalStorageHolder<>::storage` (ODR-picked across the nros-cpp
  * library + entry), the C++ side falls back to these sizes. The old 79304 was
  * STALE — current codegen needs 80712 (rv-virt) / 79952 (arm-virt), so

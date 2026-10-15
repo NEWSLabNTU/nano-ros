@@ -5,7 +5,7 @@
 #
 #   1. `$CORROSION_BUILD_DIR/<name>`  — this leaf's own cmake binary dir
 #   2. `$CARGO_TARGET_DIR/<gen-subdir>/<name>` — leaf-independent, where
-#      <gen-subdir> is `nros-c-generated/rclc/detail` or `nros-cpp-generated/nros`
+#      <gen-subdir> is `nros-c-generated/rclc/detail` or `nros-cpp-generated/rclcpp/detail`
 #      (`nros_build_paths::artifact`; phase-501 W2 put the C one under rclc/detail)
 #
 # (1) only exists if the build script RAN for this leaf. Once leaves share a
