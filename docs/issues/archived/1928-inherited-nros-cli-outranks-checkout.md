@@ -1,7 +1,7 @@
 ---
 id: 1928
 title: "An inherited `$NROS_CLI` naming ANOTHER checkout's build outranks this checkout's CLI in `nros_cli_bin`, `nros_resolve_cli` and `nros_cli_bin_path`"
-status: open
+status: resolved
 type: bug
 area: [build, cmake, testing, cli]
 severity: medium
@@ -80,3 +80,50 @@ every gate goes through.
 | `examples/mps2-an385-baremetal/*/build.rs` | copy-out projects (RFC-0026); fed by `fixtures-build.sh`'s export of `nros_cli_bin`'s answer — fixed with it |
 | `packages/cli/colcon-cargo-ros2/colcon_nano_ros/manifest.py` | installed colcon plugin, no checkout of its own — out of scope |
 | `packages/cli/nros-cli-core/.../metadata_probe_cmake.rs` | SETS it to the running binary — not a reader |
+
+## Resolution
+
+Rung 1 of each resolver now goes through issue 1280's rule, using the
+spelling that build system already has — no new one:
+
+- `nros_cli_bin` (shell): `nros_reroot_checkout_path` from
+  `scripts/lib/checkout-paths.sh`, applied only when the resolver's root IS
+  a checkout (an installed SDK has nothing to re-root onto). A re-rooted
+  value whose counterpart here is not built answers NOTHING under
+  `--checkout-only` and, without it, fails naming the re-root and
+  `just setup-cli` — never the other checkout's binary.
+- `nros_resolve_cli` (cmake): `_nros_find_root` from
+  `cmake/NanoRosCheckoutRoot.cmake` for both owners; a foreign value is
+  re-rooted, then must exist as before.
+- `nros_tests::nros_cli_bin_path` (Rust): `nros_build_paths::reroot_foreign`.
+
+The raw `${NROS_CLI:-…}` reads that ran ahead of the resolver now ask it:
+`nros_seed_leaf_lock` (`cargo.sh`), `nros_board_facts` (`board-facts.sh`),
+`check-entity-census.sh`, `rust-fixture-stale.sh`.
+
+Gate: `check-inherited-checkout-paths` (fast line) gains `probe_nros_cli`,
+driving the shell and cmake resolvers against synthetic checkouts in both
+shapes (side by side, and nested as an agent worktree is), for all three
+rows plus "foreign value, counterpart unbuilt → nothing". The stub is
+`tools/fake-nros`, not rung 2's path, so a resolver that merely ignored the
+variable reads differently from one that re-rooted it. The Rust twin cannot
+be driven without a compile, so its call is pinned.
+
+| Mutation | Gate |
+|---|---|
+| shell: keep `$NROS_CLI` un-rerooted | FAIL — 4 problems (re-root row, both shapes, plus the unbuilt row) |
+| cmake: `_nros_cli_reroot_foreign` returns the value unchanged | FAIL — re-root row, both shapes |
+| Rust: drop the `reroot_foreign` call | FAIL — pin |
+| shell: `--checkout-only` falls back to the raw foreign value | FAIL — unbuilt row, both shapes |
+
+Symptom, in the same worktree after the fix:
+
+```
+NROS_CLI=<main>/packages/cli/target/release/nros  -> <worktree>/packages/cli/target/release/nros  (shell, both modes; cmake)
+NROS_CLI=<scratch>/ppaths-out/nros (out of tree)  -> kept                                         (shell, both modes; cmake)
+NROS_CLI=<worktree>/packages/cli/target/release/nros -> kept
+```
+
+Not changed: the copy-out `examples/mps2-an385-baremetal/*/build.rs` (a
+stranger's project; in-tree it is fed `nros_cli_bin`'s answer by
+`fixtures-build.sh`), and the installed colcon plugin.
