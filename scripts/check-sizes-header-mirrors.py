@@ -59,8 +59,23 @@ drift only when that run is newer than the source, i.e. the build ran its copy
 and the copy still differs, which is the 0268 shape. A pair with no newer run
 is counted as "pending" and reported, never compared.
 
-`--fix` re-runs the mirror command for each drifted pair — exactly what the
-build does, out of band.
+A build dir last built BEFORE the marker existed has none, and "no marker"
+must not mean "pending forever" (issue 1901): a dir whose own build ran after
+the source moved and left the mirror behind is the 0268 shape whether or not
+the script that ran then knew how to say so. For such a dir the evidence is
+its own uplifted archive, the `.a` beside the command's leaf-copy argument:
+Corrosion copies it in with `copy_if_different` on THAT dir's build, so a
+sibling rebuilding the shared cargo store never moves it, and an archive
+newer than the source means this dir built after the source moved. The
+marker, when present, is the whole answer -- the archive is only the bridge
+for marker-less dirs, so 1911's sibling case stays pending on both paths.
+
+`--fix` re-runs the mirror command for each DRIFTED pair -- exactly what the
+build does, out of band. It never touches a pending pair (issue 1901): that
+dir's archive predates the new source, so copying the new header beside it
+would make its consumers compile against sizes the archive was not built
+with, i.e. CREATE the 0268 state. It names the dir instead; rebuilding it
+re-mirrors before any consumer compiles (issue 1783).
 """
 from __future__ import annotations
 
@@ -154,13 +169,28 @@ def marker(build: str, dest: str) -> Path:
     return Path(r.stdout.strip())
 
 
-def ran_after(build: str, dest: str, src: str) -> bool:
-    """Did the mirror command run for `dest` after `src` was last written?"""
-    m = marker(build, dest)
+def ran_after(build: str, dest: str, src: str, leaf: str) -> bool:
+    """Did this build dir build `dest`'s mirror after `src` was last written?
+
+    The mirror command's own run marker answers it (issue 1911). A dir built
+    before markers existed has none; its own uplifted archive -- the `.a`
+    Corrosion copies, copy-if-different, into the leaf copy's dir on that
+    dir's build only -- answers it instead (issue 1901). Without either, the
+    dir has not provably built since the source moved: pending."""
     try:
-        return os.path.getmtime(m) >= os.path.getmtime(src)
+        ts = os.path.getmtime(src)
     except OSError:
         return False
+    m = marker(build, dest)
+    if m.is_file():
+        return os.path.getmtime(m) >= ts
+    for a in Path(leaf).parent.glob("*.a"):
+        try:
+            if os.path.getmtime(a) >= ts:
+                return True
+        except OSError:
+            continue
+    return False
 
 
 def same(a: str, b: str) -> bool:
@@ -172,10 +202,11 @@ def same(a: str, b: str) -> bool:
 
 def scan(root: Path, fix: bool = False):
     """Returns (dirs, make_dirs, compared, drift[(dest, src)], fixed, gone,
-    pending). `dirs` counts every build dir scanned; `make_dirs` the Makefile
-    ones."""
-    dirs = make_dirs = compared = fixed = gone = pending = 0
+    pending[(dest, src, build)]). `dirs` counts every build dir scanned;
+    `make_dirs` the Makefile ones. `--fix` re-mirrors drift only."""
+    dirs = make_dirs = compared = fixed = gone = 0
     drift = []
+    pending = []
     seen = set()
     for d, gen in build_dirs(root):
         dirs += 1
@@ -194,8 +225,11 @@ def scan(root: Path, fix: bool = False):
             if src == leaf and os.path.getmtime(src) < os.path.getmtime(dest):
                 gone += 1  # the shared copy it was mirrored from no longer exists
                 continue
-            if not fix and not ran_after(build, dest, src):
-                pending += 1  # issue 1911: source moved since this dir last built
+            if not ran_after(build, dest, src, leaf):
+                # issue 1911: source moved since this dir last built. Never
+                # re-mirrored by --fix either (issue 1901): the dir's archive
+                # predates the source, so the copy would mismatch it.
+                pending.append((dest, src, build))
                 continue
             compared += 1
             if fix:
@@ -213,6 +247,58 @@ def _sizes(path: str) -> list[str]:
     except OSError:
         return []
     return [ln for ln in lines if re.match(r"#define \S*(_SIZE|_OPAQUE_U64S) ", ln)]
+
+
+def _pending_cases(root: Path, b: Path, archive: Path, src: Path, dest: Path,
+                   tag: str) -> None:
+    """Issues 1911 + 1901, shared by both generators. `dest` differs from
+    `src`; on return the marker records a run newer than `src` (drift)."""
+    stale = dest.read_text()
+    t = os.path.getmtime(src)
+    m = marker(str(b), str(dest))
+    assert not m.exists() and not archive.exists(), f"{tag}: clean start"
+
+    # 1911 -- no recorded run, no archive: the dir has not built since the
+    # source moved. Pending, not drift.
+    r = scan(root)
+    assert (r[2], r[3], len(r[6])) == (0, [], 1), \
+        f"{tag}: a source newer than the dir's last build is pending, got {r}"
+    # 1901 -- --fix must not copy the new header beside the dir's old archive.
+    r = scan(root, fix=True)
+    assert r[4] == 0 and dest.read_text() == stale and len(r[6]) == 1, \
+        f"{tag}: --fix re-mirrors a PENDING pair (issue 1901), got {r[4]} fixed"
+
+    # 1901 -- a marker-less dir (built before markers existed) is judged by its
+    # own uplifted archive: older than the source is pending, newer is drift.
+    archive.write_bytes(b"!<arch>\n")
+    os.utime(archive, (t - 100, t - 100))
+    r = scan(root)
+    assert (r[3], len(r[6])) == ([], 1), \
+        f"{tag}: a marker-less dir whose archive predates the source is pending, got {r}"
+    os.utime(archive, (t + 100, t + 100))
+    r = scan(root)
+    assert len(r[3]) == 1 and r[6] == [], \
+        f"{tag}: a marker-less dir that built after the source moved is drift, got {r}"
+    r = scan(root, fix=True)
+    assert r[4] == 1 and dest.read_text() == src.read_text(), \
+        f"{tag}: --fix re-mirrors drift, got {r[4]} fixed"
+    dest.write_text(stale)
+
+    # The marker, when present, is the whole answer: a run older than the
+    # source is pending even beside a newer archive (1911's partial build).
+    m.parent.mkdir(parents=True, exist_ok=True)
+    m.write_text("")
+    os.utime(m, (t - 100, t - 100))
+    r = scan(root)
+    assert (r[3], len(r[6])) == ([], 1), \
+        f"{tag}: a recorded run older than the source is pending, got {r}"
+    os.utime(archive, (t - 100, t - 100))
+    # The mirror command ran after the source was written and the copy
+    # still differs: that is the 0268 shape.
+    os.utime(m, (t + 100, t + 100))
+    r = scan(root)
+    assert r[2] == 1 and len(r[3]) == 1 and r[6] == [], \
+        f"{tag}: a recorded run newer than a differing source is drift, got {r}"
 
 
 def self_test() -> None:
@@ -245,16 +331,8 @@ def self_test() -> None:
             f"a mirror equal to the SHARED copy is current, got {(dirs, compared, drift)}"
 
         dest.write_text("#define X_SIZE 1\n")
-        # Issue 1911 -- the source was written after this dir last ran its
-        # mirror: pending its next build, not drift.
-        r = scan(root)
-        assert (r[2], r[3], r[6]) == (0, [], 1), \
-            f"a source newer than the last mirror run is pending, got {r}"
-        # The mirror command ran after the source was written and the copy
-        # still differs: that is the 0268 shape.
+        _pending_cases(root, b, crate / "libnros_c.a", shared / name, dest, "ninja")
         m = marker(str(b), str(dest))
-        m.parent.mkdir(parents=True, exist_ok=True)
-        m.write_text("")
         _, _, compared, drift, _, _, _ = scan(root)
         assert compared == 1 and len(drift) == 1, \
             "a mirror equal only to the stale LEAF copy is drift (0978's rule)"
@@ -313,10 +391,7 @@ def self_test() -> None:
             f"a Makefile dir's current mirror is COMPARED, got {(dirs, make_dirs, compared, drift)}"
 
         dest.write_text("#define Y_SIZE 1\n")
-        assert scan(root)[6] == 1, "with no recorded mirror run it is pending"
-        m = marker(str(b), str(dest))
-        m.parent.mkdir(parents=True, exist_ok=True)
-        m.write_text("")
+        _pending_cases(root, b, crate / "libnros_cpp.a", shared / name, dest, "make")
         _, _, compared, drift, _, _, _ = scan(root)
         assert compared == 1 and [d for d, _ in drift] == [str(dest)], \
             "a drifted mirror in a Makefile dir fails"
@@ -361,13 +436,24 @@ mirror command (what the build does). Then find the missing edge:
         return 1
     if fix and fixed:
         print(f"re-mirrored {fixed} stale pair(s) through mirror-generated-header.sh")
+    if fix and pending:
+        # issue 1901 -- refuse, by name, rather than copy beside an old archive.
+        for b in sorted({b for _, _, b in pending}):
+            n = sum(1 for _, _, pb in pending if pb == b)
+            print(f"NOT re-mirrored: {n} pending pair(s) in {b}\n"
+                  "  its source moved after this dir last built, so its archive "
+                  "predates the new header;\n"
+                  "  copying the header in would make its consumers compile "
+                  "against sizes the archive was\n"
+                  f"  not built with. Rebuild that build dir instead (`cmake --build {b}`): "
+                  "its build re-mirrors\n  before any consumer compiles (issues 1783, 1901).")
     note = (f" ({make_dirs} of them Makefile-generator)" if make_dirs else "")
     if gone:
         note += (f"; {gone} mirror(s) whose shared source is gone (older leaf "
                  "copy only) not compared")
     if pending:
-        note += (f"; {pending} mirror(s) whose source moved after their build dir "
-                 "last ran its mirror, pending that dir's next build (issue 1911), "
+        note += (f"; {len(pending)} mirror(s) whose source moved after their build dir "
+                 "last built, pending that dir's next build (issues 1911, 1901), "
                  "not compared")
     if compared == 0:
         # issue 1739 — comparing nothing is NOT VERIFIED, through the ledger.
