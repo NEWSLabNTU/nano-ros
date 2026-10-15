@@ -130,8 +130,8 @@ _resolve_tree() { # <manifest> -> the row's artifact root (repo-relative), or no
 # IMAGE dir under it that some manifest row of the SAME workspace builds into
 # (`<ws>/build/<image>`, from that row's `row_artifact_root()`). Anything else
 # under `<ws>/build` is a non-image root — the metadata probe's
-# `nros-metadata/`, today — and is charged to every image (see "the copy
-# ceiling across build roots" below).
+# `nros-metadata/`, today. Every root is its own subject for copies (see "the
+# copy ceiling in every build root" below).
 _resolve_ws_roots() { # <manifest> -> ws build dir, then image dirs (repo-relative)
     python3 scripts/build/fixtures-manifest.py --manifest "$1" coords \
         | awk -F '\037' -v id="$IDENTITY_BUDGET_ROW" '
@@ -310,7 +310,7 @@ if [ "${1:-}" = "--self-test" ]; then
 
     # (e) two images, each within budget: they do NOT add up.
     _st_rc=0; _st_out="$(_st_run_x)" || _st_rc=$?
-    if [ "$_st_rc" -eq 0 ] && nros_grep_q 'cross-root copies (issue 1922): worst identity 5/5' <<<"$_st_out"; then
+    if [ "$_st_rc" -eq 0 ] && nros_grep_q 'per-root copies (issue 1922): worst identity 5/5' <<<"$_st_out"; then
         echo "  ok   (e) two images each at the copy ceiling pass, across roots too"
     else
         echo "  FAIL (e) two images within budget read as a failure (rc=$_st_rc):" >&2
@@ -318,31 +318,47 @@ if [ "${1:-}" = "--self-test" ]; then
         _st_fails=$((_st_fails + 1))
     fi
 
-    # (f) issue 1919's shape: the metadata probe root writes the SAME identity
-    # the image already wrote five times — six copies for img-a.
-    _st_mk "nros-metadata/metadata-probe-cmake/build/nros-codegen/nano_ros_cpp_ffi_m1/target/x86_64-unknown-linux-gnu/p/deps" \
+    # (f) issue 1919's shape: the metadata probe root writes its own five
+    # copies of the identity the image wrote five times. Two cargo roots, by
+    # construction (issue 0616), so this PASSES — what a plain `nros sync` leaves.
+    for k in 1 2 3 4 5; do
+        _st_mk "nros-metadata/metadata-probe-cmake/build/nros-codegen/nano_ros_cpp_ffi_m$k/target/x86_64-unknown-linux-gnu/p/deps" \
+            "libbyteorder-$_st_shared.rlib" '2020-01-01 00:00:00'
+    done
+    _st_rc=0; _st_out="$(_st_run_x)" || _st_rc=$?
+    if [ "$_st_rc" -eq 0 ] && nros_grep_q 'non-image roots in window: nros-metadata' <<<"$_st_out"; then
+        echo "  ok   (f) the probe root at the ceiling beside an image at the ceiling passes"
+    else
+        echo "  FAIL (f) the probe's own five copies were charged to the image (rc=$_st_rc):" >&2
+        printf '%s\n' "$_st_out" | sed 's/^/        /' >&2
+        _st_fails=$((_st_fails + 1))
+    fi
+
+    # (h) and the probe root is still READ: a sixth copy inside it fails, and
+    # the failure names the probe root, not an image.
+    _st_mk "nros-metadata/metadata-probe-cmake/build/nros-codegen/nano_ros_cpp_ffi_m6/target/x86_64-unknown-linux-gnu/p/deps" \
         "libbyteorder-$_st_shared.rlib" '2020-01-01 00:00:00'
     _st_rc=0; _st_out="$(_st_run_x)" || _st_rc=$?
     if [ "$_st_rc" -ne 0 ] \
-        && nros_grep_q "byteorder $_st_shared: 6 copies" <<<"$_st_out" \
-        && nros_grep_q 'nros-metadata/metadata-probe-cmake' <<<"$_st_out"; then
-        echo "  ok   (f) one identity written by an image AND the probe root fails"
+        && nros_grep_q "byteorder $_st_shared: 6 copies in 'nros-metadata'" <<<"$_st_out"; then
+        echo "  ok   (h) six copies inside the probe root fail and name it"
     else
-        echo "  FAIL (f) a second build root writing the same identity passed (rc=$_st_rc):" >&2
+        echo "  FAIL (h) a sixth copy inside the probe root passed (rc=$_st_rc):" >&2
         printf '%s\n' "$_st_out" | sed 's/^/        /' >&2
         _st_fails=$((_st_fails + 1))
     fi
     rm -r "$_st_ws/build/nros-metadata"
 
     # (g) stale residue OUTSIDE the window — a pre-phase-500
-    # `posix-zenoh-native` configuration holding five more copies — is history,
-    # not this run, and must not fail the axis.
-    for k in 1 2 3 4 5; do
+    # `posix-zenoh-native` configuration holding SIX copies, over the per-root
+    # ceiling if it were counted — is history, not this run, and must not fail
+    # the axis.
+    for k in 1 2 3 4 5 6; do
         _st_mk "posix-zenoh-native/cmake/pkg/m$k/nano_ros_cpp_ffi_m$k/target/x86_64-unknown-linux-gnu/p/deps" \
             "libbyteorder-$_st_shared.rlib" '2000-01-01 00:00:00'
     done
     _st_rc=0; _st_out="$(_st_run_x)" || _st_rc=$?
-    if [ "$_st_rc" -eq 0 ] && nros_grep_q 'worst identity 5/5 over' <<<"$_st_out"; then
+    if [ "$_st_rc" -eq 0 ] && nros_grep_q 'worst identity 5/5 in any root' <<<"$_st_out"; then
         echo "  ok   (g) residue older than started_at is not counted"
     else
         echo "  FAIL (g) residue outside the window failed the axis (rc=$_st_rc):" >&2
@@ -354,7 +370,7 @@ if [ "${1:-}" = "--self-test" ]; then
         echo "check-artifact-identity-budget --self-test: $_st_fails case(s) FAILED" >&2
         exit 1
     fi
-    echo "check-artifact-identity-budget --self-test: 7 case(s) OK"
+    echo "check-artifact-identity-budget --self-test: 8 case(s) OK"
     exit 0
 fi
 
@@ -588,45 +604,43 @@ era_verdict() {
     fi
 }
 
-# --- axis 3: the copy ceiling across build roots (issue 1922) ---------------
+# --- axis 3: the copy ceiling in every build root (issues 1922, 1919) -------
 #
 # The two axes above read ONE image (`$TREE`). That is the right subject for
 # identities — two images of one workspace are two feature sets, so their
 # identities add up without anything being wrong (issue 1922: 4 + 4 read as 8
-# against a budget of 4). It is the WRONG subject for copies, because issue
-# 1919's regression lives between two build ROOTS of one workspace: the metadata
-# probe's cmake configure (`<ws>/build/nros-metadata/…`) and the image build
-# (`<ws>/build/<image>/…`) each wrote all five FFI crates' copies of ONE
-# identity — ten against a ceiling of five, and the per-image subject sees five.
+# against a budget of 4). It leaves the workspace's OTHER build roots unread,
+# and the metadata probe (`<ws>/build/nros-metadata/…`) is one: a cmake project
+# of its own, writing its own five FFI crate trees (phase-340 R1, the same
+# per-directory isolation the image has).
 #
-# So copies are ALSO counted over the whole `<ws>/build`, per identity, with
-# each root classified by the manifest: an IMAGE dir (`<ws>/build/<image>`, the
-# artifact root of some row of this workspace — `_resolve_ws_roots`) or not. A
-# non-image root serves every image (that is what the probe is), so its copies
-# are charged to EACH image: the reading for image I is
+# So copies are ALSO counted in every root under `<ws>/build`, each root its
+# own subject:
 #
-#     copies(I) + copies(every non-image root)  <=  CEILING_COPIES
+#     copies(R, identity)  <=  CEILING_COPIES      for every root R
 #
-# Two images do not add up — each builds its own tree by design, so two images
-# each at the ceiling pass. One identity written by an image AND the probe does.
+# Roots do NOT add up. This axis first charged a non-image root's copies to
+# every image, which read the probe's five plus the image's five as ten. That
+# is what a plain `nros sync` produces (measured 2026-10-16 on the mixed
+# workspace: `nros_serdes` and `heapless` at 10), because the probe and the
+# image are two cmake projects, so two cargo roots, and issue 0616 forbids one
+# target dir serving both. Fixture lanes do not keep the probe's tree
+# (`NROS_METADATA_PROBE_CACHE=0`), a developer's sync does. Issue 1919 has the
+# measurement and the resolution.
 #
 # ONLY rlibs written in the run window count (issue 0499's `started_at` rule),
 # and here that is not an optimisation but the definition: `<ws>/build` also
 # holds every configuration a rename left behind (`posix-zenoh-native`,
-# phase-500, and older `demo_bringup__*` trees), which are non-image roots by the
-# rule above and would be charged to every image if history counted. With no
-# window the axis is NOT VERIFIED, never a whole-tree count.
-#
-# Out of reach, stated: an image the manifest has no row for, built inside the
-# window, is a non-image root to this rule and is charged to the others.
+# phase-500, and older `demo_bringup__*` trees). With no window the axis is
+# NOT VERIFIED, never a whole-tree count.
 cross_root_axis() { # -> 0 ok / not verified, 1 over the ceiling
     [ -n "$WS_BUILD" ] || return 0
     if [ ! -d "$WS_BUILD" ]; then
-        echo "  cross-root copies: no $WS_BUILD — nothing to read."
+        echo "  per-root copies: no $WS_BUILD — nothing to read."
         return 0
     fi
     if [ -z "${_started:-}" ]; then
-        echo "  cross-root copies: NOT VERIFIED — no started_at, and $WS_BUILD holds"
+        echo "  per-root copies: NOT VERIFIED — no started_at, and $WS_BUILD holds"
         echo "    configurations of earlier builds that must not be counted (issue 1922)."
         return 0
     fi
@@ -634,7 +648,7 @@ cross_root_axis() { # -> 0 ok / not verified, 1 over the ceiling
     ref="$(mktemp)"
     if ! touch -d "$_started" "$ref" 2>/dev/null; then
         rm -f "$ref"
-        echo "  cross-root copies: NOT VERIFIED — started_at=$_started does not parse."
+        echo "  per-root copies: NOT VERIFIED — started_at=$_started does not parse."
         return 0
     fi
     # `<root> <crate> <hash> <path>`, one per rlib written since started_at.
@@ -646,26 +660,21 @@ cross_root_axis() { # -> 0 ok / not verified, 1 over the ceiling
         | sed -nE 's|^([^ ]+) (.*/lib([A-Za-z0-9_]+)-([0-9a-f]{8,})\.rlib)$|\1 \3 \4 \2|p')"
     rm -f "$ref"
     if [ -z "$rows" ]; then
-        echo "  cross-root copies: no rlib under $WS_BUILD written since started_at=$_started."
+        echo "  per-root copies: no rlib under $WS_BUILD written since started_at=$_started."
         return 0
     fi
     verdict="$(printf '%s\n' "$rows" | awk -v k="$CEILING_COPIES" -v imgs="$IMAGE_NAMES" '
         BEGIN { n = split(imgs, a, " "); for (i = 1; i <= n; i++) isimg[a[i]] = 1 }
         {
-            id = $2 " " $3; ids[id] = 1
-            if ($1 in isimg) per[$1 SUBSEP id]++
-            else { shared[id]++; sroot[$1] = 1 }
+            per[$1 SUBSEP $2 " " $3]++
+            if (!($1 in isimg)) sroot[$1] = 1
         }
         END {
             worst = 0
-            for (id in ids) {
-                s = shared[id] + 0; best = s; who = "-"
-                for (i = 1; i <= n; i++) {
-                    c = per[a[i] SUBSEP id] + s
-                    if (c > best) { best = c; who = a[i] }
-                }
-                if (best > worst) worst = best
-                if (best > k) print "OVER", id, best, who
+            for (key in per) {
+                split(key, p, SUBSEP)
+                if (per[key] > worst) worst = per[key]
+                if (per[key] > k) print "OVER", p[2], per[key], p[1]
             }
             r = ""; for (x in sroot) r = r (r == "" ? "" : ",") x
             print "WORST", worst, (r == "" ? "-" : r)
@@ -675,28 +684,21 @@ cross_root_axis() { # -> 0 ok / not verified, 1 over the ceiling
     read -r _ worst roots <<<"$(awk '$1 == "WORST"' <<<"$verdict")"
     over="$(awk '$1 == "OVER"' <<<"$verdict")"
     if [ -z "$over" ]; then
-        echo "  cross-root copies (issue 1922): worst identity $worst/$CEILING_COPIES over $WS_BUILD" \
+        echo "  per-root copies (issue 1922): worst identity $worst/$CEILING_COPIES in any root of $WS_BUILD" \
              "(images: ${IMAGE_NAMES% }; non-image roots in window: $roots)."
         return 0
     fi
     echo "artifact-identity budget: FAIL" >&2
     echo "  counted the rlibs written under $WS_BUILD since started_at=$_started$_started_src." >&2
-    echo "  identities whose copies in ONE image plus the workspace's non-image roots" >&2
-    echo "  exceed $CEILING_COPIES (issue 1922 — the copy ceiling across build roots):" >&2
+    echo "  identities written into more than $CEILING_COPIES target dirs inside ONE build" >&2
+    echo "  root of $WS_BUILD (issue 1922 — the copy ceiling in every build root):" >&2
     while read -r _ crate hash n who; do
-        if [ "$who" = "-" ]; then
-            echo "  $crate $hash: $n copies (non-image roots alone)" >&2
-        else
-            echo "  $crate $hash: $n copies (image '$who' + non-image roots)" >&2
-        fi
-        printf '%s\n' "$rows" | awk -v h="$hash" -v w="$who" -v imgs="$IMAGE_NAMES" '
-            BEGIN { n = split(imgs, a, " "); for (i = 1; i <= n; i++) isimg[a[i]] = 1 }
-            $3 == h && ($1 == w || !($1 in isimg)) { print "    " $4 }' >&2
+        echo "  $crate $hash: $n copies in '$who'" >&2
+        printf '%s\n' "$rows" | awk -v h="$hash" -v w="$who" '$3 == h && $1 == w { print "    " $4 }' >&2
     done <<<"$over"
-    echo "  Every path above is ONE compilation written again by another build root" >&2
-    echo "  of the same workspace — issue 1919's shape (the metadata probe and the" >&2
-    echo "  image each writing the FFI crates). These rlibs are all from THIS run's" >&2
-    echo "  window, so it is not history: do NOT delete the tree, find the root." >&2
+    echo "  Every path above is ONE compilation written again inside the same build" >&2
+    echo "  root (phase-340 R1). These rlibs are all from THIS run's window, so it is" >&2
+    echo "  not history: do NOT delete the tree, find the extra target dir." >&2
     return 1
 }
 
