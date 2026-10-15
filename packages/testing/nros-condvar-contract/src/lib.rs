@@ -17,7 +17,7 @@
 //!    refuse it, so the image says whether to run this check.
 //! 4. Feature `zenoh-condvar-wait`, phase-502 W2: zenoh-pico's own
 //!    `_z_condvar_wait`, with nobody signalling, returns `0` (a spurious wake)
-//!    after one slice instead of waiting forever. See [`run_zenoh_wait`].
+//!    after one slice instead of waiting forever. See `run_zenoh_wait`.
 
 #![no_std]
 
