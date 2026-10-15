@@ -325,9 +325,7 @@ int8_t _z_condvar_signal_all(void *cv) {
  * Every port returns 0 when signalled, 1 on timeout and -1 on error
  * (`nros/platform.h`, issue 1906), so an expired slice is told apart from an
  * error by the code alone. */
-#ifndef NROS_ZP_CONDVAR_SLICE_MS
-#define NROS_ZP_CONDVAR_SLICE_MS 1000u
-#endif
+#include "nros_zp_condvar_slice.h"
 
 int8_t _z_condvar_wait(void *cv, void *m) {
     if (cv == NULL || m == NULL) {

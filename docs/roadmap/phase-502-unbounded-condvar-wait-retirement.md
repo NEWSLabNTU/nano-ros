@@ -1,13 +1,28 @@
 # Phase 502 — No unbounded condition wait in code we own
 
-**Status (2026-10-15).** PROPOSED. The ABI half is already done: phase-436 D2
+**Status (2026-10-15).** W0–W5 DONE; issue 1196 is resolved. Only W6 (the
+non-blocking upstream-worthy zenoh-pico fixes) is open.
+
+**Measured (2026-10-15).** `just ci gate` green (6/6).
+
+- **FreeRTOS (QEMU MPS2-AN385):** `condvar-contract PASS zenoh-wait:
+  elapsed_ms=1000 bounds=[999,3000)` in 4 of 4 runs. With the guard off,
+  `FAIL … elapsed_ms=10006 … rescued=true`. The 9 `rtos_e2e` FreeRTOS zenoh
+  cells pass.
+- **Zephyr native_sim zenoh:** every cell whose images were built passes —
+  boot, Rust and C++ pub/sub, the Rust service, Zephyr↔native pub/sub and
+  service in both directions, and the action completion rate. The Cyclone,
+  XRCE and C images were not built, so their cells were not run.
+- **Native zenoh:** the `services`, `actions` and `action_multigoal` suites
+  pass.
+ The ABI half is already done: phase-436 D2
 (`77e5ddd628`) removed `nros_platform_condvar_wait` from the platform ABI, and
 issue 1906 fixed the timeout codes, broadcast and tick rounding that a bounded
 wait relies on. What this phase owns is the rest of issue 1196's closing
 condition: the two zenoh-pico paths that never went through that symbol,
 `zpico_get`, and a gate for the whole class.
 
-**Owns:** [issue 1196](../issues/1196-platform-condvar-wait-is-unbounded.md).
+**Owns:** [issue 1196](../issues/archived/1196-platform-condvar-wait-is-unbounded.md) (resolved 2026-10-15 by W0–W4).
 
 **Implements:** [RFC-0076](../design/0076-platform-abi-ask-do-not-assume.md)
 (the contract between the platform ABI and its callers), with the amendment in
@@ -56,26 +71,28 @@ that is true only once no waiter can wait forever.
 
 ### W0 — RFC-0076: no unbounded condition wait
 
-- [ ] Add a contract clause to RFC-0076. The ABI has no condition wait without
+- [x] Add a contract clause to RFC-0076 (C6). The ABI has no condition wait without
       a deadline (phase-436 D2 made that true). Code we own never waits on a
       condition or a signalling semaphore without a deadline; a caller whose
       own contract is unbounded loops over bounded waits. Mutex acquisition
       stays unbounded-but-inheriting, an exemption valid only because issue
       1907 made priority inheritance real on every port. Thread join is a
       separate contract, also exempt.
-- [ ] Give issue 1196 a `**Home:** phase-502` line.
+- [x] Give issue 1196 a `**Home:** phase-502` line.
 
 *Acceptance:* `check-roadmap-status` passes and the RFC records the clause.
 
 ### W1 — Zephyr's zenoh system file
 
-- [ ] `zephyr/nros_zenoh_zephyr_system.c` `_z_condvar_wait`: replace
+- [x] `zephyr/nros_zenoh_zephyr_system.c` `_z_condvar_wait`: replace
       `pthread_cond_wait` with one `pthread_cond_timedwait` whose deadline is
       the monotonic clock plus the same 1000 ms slice the alias shim uses
       (the condvar is already created monotonic in the same file), and return
       a timeout as 0, a spurious wake.
-- [ ] The slice has one spelling: the shim's constant moves to a header both
-      files include, rather than a second literal.
+- [x] The slice has one spelling: the shim's constant moves to a header both
+      files include, rather than a second literal
+      (`zpico-sys/c/zpico/nros_zp_condvar_slice.h`, reached from the Zephyr
+      library through a private include directory).
 
 *Acceptance:* the Zephyr `rtos_e2e` zenoh cells stay green, and W4's gate
 fails on the old line (negative control) and passes on the new one.
@@ -91,15 +108,15 @@ a generic alias layout breaks the by-value ABI; the runner's own comment
 FreeRTOS was excluded. Moving FreeRTOS's sync types onto the platform ABI is a
 far larger change than bounding one wait.
 
-- [ ] On the zenoh-pico fork's patch branch `nano-ros` (never `main`), guard
+- [x] On the zenoh-pico fork's patch branch `nano-ros` (never `main`), guard
       `_z_condvar_wait` in `src/system/freertos/system.c` with a new
       `Z_FEATURE_NROS_BOUNDED_CONDVAR_WAIT`. Under the guard the take waits a
       finite tick count for the slice, rounded UP and clamped below
       `portMAX_DELAY` (issue 1906's rule). On timeout it deregisters itself
       (`waiters--` under `cv->mutex`) and returns `_Z_RES_OK`.
-- [ ] `runner.rs` defines the guard beside
+- [x] `runner.rs` defines the guard beside
       `Z_FEATURE_NROS_PLATFORM_{ALLOC,SLEEP,RANDOM}`.
-- [ ] Fork workflow: commit in the submodule, rebase on `origin/nano-ros`,
+- [x] Fork workflow: commit in the submodule, rebase on `origin/nano-ros`,
       push the fork branch first (linear, fast-forward), then move the pin
       forward (`check-submodule-pins`).
 
@@ -118,7 +135,7 @@ nros-c and nros-cpp saying they never call it. Its wait cannot simply take a
 deadline, because its reply context lives on the stack and returning early
 would be a use-after-free. That is an ownership problem; deletion cures it.
 
-- [ ] Delete the function, the declaration and the stub, regenerate
+- [x] Delete the function, the declaration and the stub, regenerate
       `zpico.h`, and delete the reply dropper and the `mutex`/`cond` fields of
       `get_reply_ctx_t` that only `zpico_get` used. `get_reply_handler` stays:
       the pending-get path reuses it.
@@ -127,9 +144,24 @@ would be a use-after-free. That is an ownership problem; deletion cures it.
 mem-report` on one native and one embedded image shows the session shrinking
 by `ZPICO_MAX_PENDING_GETS` × (mutex + condvar storage), quoted in the commit.
 
+*Measured:* `g_sessions` shrank in both images (the before image was rebuilt from
+`HEAD`'s `zpico.c`):
+
+| Image | Before | After | Change |
+| --- | --- | --- | --- |
+| Zephyr native_sim `rust/talker` | 83,000 B | 82,968 B | −32 B |
+| FreeRTOS mps2 `service-server` | 83,792 B | 82,768 B | −1,024 B |
+
+Zephyr's pthread mutex and condvar are 4-byte handles, while FreeRTOS's are
+static semaphore objects, which is why the saving differs so much. No native
+image was measured.
+
+The Zephyr figure matches 4 pending-get slots × (4 + 4) B; that breakdown
+is inferred, not read from the build.
+
 ### W4 — A class gate for forever-waits
 
-- [ ] `check-no-unbounded-condvar-wait.sh` widens from one symbol to the
+- [x] `check-no-unbounded-condvar-wait.sh` widens from one symbol to the
       class, over every tracked Rust and C/C++ file we own (`third-party/` and
       the zenoh-pico submodule excluded): `pthread_cond_wait(`,
       `k_condvar_wait(…K_FOREVER)`, `k_sem_take(…K_FOREVER)`,
@@ -138,20 +170,30 @@ by `ZPICO_MAX_PENDING_GETS` × (mutex + condvar storage), quoted in the commit.
       portMAX_DELAY)` and a call of `_z_condvar_wait(`, reading the timeout
       argument across line breaks. It keeps refusing the retired
       `nros_platform_condvar_wait`.
-- [ ] Mutex acquisition and thread join are exempt by W0's rule, as named
+- [x] Mutex acquisition and thread join are exempt by W0's rule, as named
       categories with a reason each. Anything else sits in an exemption table
-      whose stale entries fail; the table is empty once W1 and W3 land.
-- [ ] Self-test: plant each pattern, including the `zpico_get` shape and a
+      whose stale entries fail. **Correction:** the table is NOT empty. The
+      widened reach found two sites this doc's survey missed, and the W2 test
+      adds a third:
+      - ThreadX zpico `_z_task_join` waits on `tx_event_flags_get(…,
+        TX_WAIT_FOREVER)`. It is a join, so the join rule covers it (a hit
+        inside a function whose name ends in `join`) and it needs no row.
+      - Three rows remain, each a test whose call IS its subject: the shim
+        slice test `condvar_shim_codes.rs`, the W2 check in
+        `nros-condvar-contract`, and the host harness gate in
+        `tests/zephyr/thread_slot_release_test.c`.
+- [x] Self-test: plant each pattern, including the `zpico_get` shape and a
       multi-line `xSemaphoreTake`, and check each is rejected while a mutex
       `portMAX_DELAY` and a definition are accepted.
-- [ ] Confirm it runs on a merge-gating lane (`check-default-gates-run-somewhere`).
+- [x] Confirm it runs on a merge-gating lane (`check-default-gates-run-somewhere`):
+      the fast line, on `pull_request`, `merge_group` and `push`.
 
 *Acceptance:* reverting W1's line makes the gate fail naming that file and
 line; with W1 in place it passes with an empty exemption table.
 
 ### W5 — Issue 1750's comment
 
-- [ ] `nros-platform-threadx/src/platform.c`'s note on refusing a foreign
+- [x] `nros-platform-threadx/src/platform.c`'s note on refusing a foreign
       thread's signal says every wait "takes a timeout or is woken by a ThreadX
       peer". After W1–W3 that is true of every condition wait; reword it to
       cite this phase and the slice that makes it true.

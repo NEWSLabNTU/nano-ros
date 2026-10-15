@@ -318,7 +318,9 @@ static uint32_t g_session_zid_counter;
 static atomic_uint g_session_zid_counter;
 #endif
 
-// Context struct for blocking z_get reply (stack-allocated per call)
+// Reply context of one pending get slot (`pending_gets[i].ctx`). Phase-502 W3
+// deleted the blocking `zpico_get`, the only user of a stack-allocated context
+// and of the mutex/condvar pair it carried.
 // ZPICO_GET_REPLY_BUF_SIZE is provided via -D compiler flag from build.rs
 
 typedef struct {
@@ -363,10 +365,6 @@ typedef struct {
      * failure this phase exists to avoid. */
     bool collect;
     uint32_t entry_count;
-#if Z_FEATURE_MULTI_THREAD == 1
-    _z_mutex_t mutex;
-    _z_condvar_t cond;
-#endif
 } get_reply_ctx_t;
 
 /* phase-381 / issue 0903 — the GRAPH CACHE.
@@ -3841,151 +3839,6 @@ static void get_reply_handler(z_loaned_reply_t* reply, void* ctx) {
     } else {
         g_diag_reply_to_slice_fail++;
     }
-}
-
-/**
- * Internal callback for z_get completion (dropper)
- */
-static void get_reply_dropper(void* ctx) {
-    get_reply_ctx_t* rctx = (get_reply_ctx_t*)ctx;
-#if Z_FEATURE_MULTI_THREAD == 1
-    _z_mutex_lock(&rctx->mutex);
-    rctx->done = true;
-    _z_condvar_signal(&rctx->cond);
-    _z_mutex_unlock(&rctx->mutex);
-#else
-    rctx->done = true;
-#endif
-}
-
-int32_t zpico_get(zpico_session_t* session, const char* keyexpr, const uint8_t* payload,
-                  size_t payload_len, uint8_t* reply_buf, size_t reply_buf_size,
-                  uint32_t timeout_ms) {
-    struct zpico_session* s = (struct zpico_session*)session;
-    if (!s->session_open) {
-        return ZPICO_ERR_SESSION;
-    }
-
-    // Stack-allocated reply context (safe for concurrent z_get calls)
-    get_reply_ctx_t ctx;
-    ctx.len = 0;
-    ctx.received = false;
-    ctx.done = false;
-    ctx.reply_count = 0;
-#if Z_FEATURE_MULTI_THREAD == 1
-    _z_mutex_init(&ctx.mutex);
-    _z_condvar_init(&ctx.cond);
-#endif
-
-    z_view_keyexpr_t ke;
-    if (z_view_keyexpr_from_str(&ke, keyexpr) < 0) {
-        return ZPICO_ERR_KEYEXPR;
-    }
-
-    // Set up get options
-    z_get_options_t opts;
-    z_get_options_default(&opts);
-#if defined(ZPICO_TX_BATCH) && ZPICO_TX_BATCH == 1
-    /* phase-279 (#145) — service/query latency guard: gets bypass the batch
-     * (express) so request RTT gains no spin-period latency under batching. */
-    opts.is_express = true;
-#endif
-    opts.target = Z_QUERY_TARGET_ALL;
-    opts.timeout_ms = timeout_ms;
-    // Use NONE consolidation so the reply callback fires immediately on each
-    // partial reply, rather than AUTO (which becomes LATEST and buffers replies
-    // until the ReplyFinal arrives). With LATEST, the dropper fires before the
-    // reply callback, leaving received=false when the condvar is signalled.
-    opts.consolidation.mode = Z_CONSOLIDATION_MODE_NONE;
-
-    // Set payload if provided
-    z_owned_bytes_t payload_bytes;
-    if (payload != NULL && payload_len > 0) {
-        if (z_bytes_copy_from_buf(&payload_bytes, payload, payload_len) < 0) {
-            return ZPICO_ERR_GENERIC;
-        }
-        opts.payload = z_bytes_move(&payload_bytes);
-    }
-
-    // Create closure for reply handling with stack context
-    z_owned_closure_reply_t callback;
-    z_closure(&callback, get_reply_handler, get_reply_dropper, &ctx);
-
-    // Send the query
-    zpico_declare_lock(s);
-    z_result_t get_ret =
-        z_get(z_session_loan(&s->session), z_view_keyexpr_loan(&ke), "", z_move(callback), &opts);
-    zpico_declare_unlock(s);
-    if (get_ret < 0) {
-        return ZPICO_ERR_GENERIC;
-    }
-
-    // For multi-threaded platforms, wait for reply via background threads
-    // For single-threaded platforms, poll until reply or timeout
-#if Z_FEATURE_MULTI_THREAD == 0
-    // Single-threaded: poll until reply received or timeout.
-    //
-    // We drive _z_pending_query_process_timeout() on every iteration so that
-    // zenoh-pico's own deadline fires the dropper (setting ctx.done = true)
-    // while ctx is still live on the stack.  Without this, the wall-clock
-    // check below would break out of the loop while a stale pending-query
-    // entry still points at ctx, and the dropper would later fire on a
-    // dangling pointer, silently corrupting the stack of the next caller.
-    //
-    // The wall-clock guard (timeout_ms + 2000 ms) is belt-and-suspenders:
-    // in normal operation _z_pending_query_process_timeout fires the dropper
-    // at opts.timeout_ms (== timeout_ms), so ctx.done becomes true before the
-    // guard triggers.
-    {
-        z_clock_t start = z_clock_now();
-        while (!ctx.done) {
-            zp_read(z_session_loan_mut(&s->session), NULL);
-            zp_send_keep_alive(z_session_loan_mut(&s->session), NULL);
-            // Drive zenoh-pico's query timeout so its dropper fires cleanly
-            // while ctx is still on the stack.
-            _z_pending_query_process_timeout(_Z_RC_IN_VAL(z_session_loan_mut(&s->session)));
-            if (ctx.received) {
-                break;
-            }
-            // Safety wall-clock guard (fires 2 s after the zenoh deadline).
-            if ((uint32_t)z_clock_elapsed_ms(&start) >= timeout_ms + 2000) {
-                break;
-            }
-        }
-    }
-#else
-    // Multi-threaded: wait for completion via condvar.
-    // The dropper callback signals ctx.cond when the reply channel closes.
-    //
-    // IMPORTANT: Do NOT use _z_condvar_wait_until with a deadline here.
-    // Zenoh fires the dropper at opts.timeout_ms — rely on that timeout
-    // instead of a parallel OS deadline. Using a separate deadline creates
-    // a use-after-free race: if the OS deadline expires first, we drop
-    // ctx.mutex/ctx.cond while the background thread's dropper is still
-    // pending, causing the dropper to lock/signal freed memory.
-    {
-        _z_mutex_lock(&ctx.mutex);
-        while (!ctx.done) {
-            _z_condvar_wait(&ctx.cond, &ctx.mutex);
-        }
-        _z_mutex_unlock(&ctx.mutex);
-    }
-    _z_condvar_drop(&ctx.cond);
-    _z_mutex_drop(&ctx.mutex);
-#endif
-
-    // Check if we got a reply
-    if (!ctx.received) {
-        return -9; // ZPICO_ERR_TIMEOUT (defined in Rust FFI)
-    }
-
-    // Copy reply to output buffer
-    if (ctx.len > reply_buf_size) {
-        return ZPICO_ERR_FULL; // Buffer too small
-    }
-
-    memcpy(reply_buf, ctx.buf, ctx.len);
-    return (int32_t)ctx.len;
 }
 
 // ============================================================================

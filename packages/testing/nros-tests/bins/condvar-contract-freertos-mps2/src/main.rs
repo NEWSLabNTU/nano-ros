@@ -3,7 +3,8 @@
 //! Boots FreeRTOS with no session and runs `nros_condvar_contract::run` from
 //! the app task, printing one line per check through `nros-log` (semihosting),
 //! then exits QEMU with the result. FreeRTOS keeps a mutex's recursion count
-//! private, so the issue-1907 "held twice" refusal is not checked here.
+//! private, so the issue-1907 "held twice" refusal is not checked here. It
+//! also checks zenoh-pico's vendored `_z_condvar_wait` (phase-502 W2).
 
 #![no_std]
 #![no_main]
@@ -34,7 +35,9 @@ extern "C" fn main() -> ! {
                 log_error!(&LOGGER, "{}{}: {}", FAIL_PREFIX, name, detail);
             }
         };
-        let passed = nros_condvar_contract::run(&mut report, false);
+        let mut passed = nros_condvar_contract::run(&mut report, false);
+        // Phase-502 W2: zenoh-pico's own `_z_condvar_wait` is bounded.
+        passed &= nros_condvar_contract::run_zenoh_wait(&mut report);
         if passed {
             log_info!(&LOGGER, "{}", ALL_PASSED);
         }

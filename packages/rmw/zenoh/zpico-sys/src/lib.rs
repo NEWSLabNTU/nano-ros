@@ -420,17 +420,6 @@ unsafe extern "C" {
         out_announce: *mut bool,
     ) -> i32;
 
-    // Service client (queries)
-    pub fn zpico_get(
-        session: *mut zpico_session_t,
-        keyexpr: *const core::ffi::c_char,
-        payload: *const u8,
-        payload_len: usize,
-        reply_buf: *mut u8,
-        reply_buf_size: usize,
-        timeout_ms: u32,
-    ) -> i32;
-
     // Non-blocking service client (async queries)
     pub fn zpico_get_start(
         session: *mut zpico_session_t,

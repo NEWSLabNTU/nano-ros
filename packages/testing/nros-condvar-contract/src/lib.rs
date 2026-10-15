@@ -15,6 +15,9 @@
 //! 3. Optional, issue 1907: a wait under a mutex held twice is refused (`-1`)
 //!    rather than kept across the wait. Only ports that can see the lock count
 //!    refuse it, so the image says whether to run this check.
+//! 4. Feature `zenoh-condvar-wait`, phase-502 W2: zenoh-pico's own
+//!    `_z_condvar_wait`, with nobody signalling, returns `0` (a spurious wake)
+//!    after one slice instead of waiting forever. See [`run_zenoh_wait`].
 
 #![no_std]
 
@@ -48,6 +51,8 @@ unsafe extern "C" {
     ) -> i8;
     fn nros_platform_task_join(task: *mut c_void) -> i8;
     fn nros_platform_task_attr_init(attr: *mut nros_platform_task_attr_t);
+    #[cfg(feature = "zenoh-condvar-wait")]
+    fn nros_platform_wake_park_granularity_us() -> u64;
 }
 
 /// `nros_platform_task_attr_t` (`nros/platform.h`), hand-mirrored and named as
@@ -251,4 +256,157 @@ pub fn run(report: &mut dyn FnMut(&str, bool, &str), check_held_twice: bool) -> 
         nros_platform_mutex_drop(M.ptr());
     }
     ok
+}
+
+#[cfg(feature = "zenoh-condvar-wait")]
+mod zenoh_wait {
+    use super::*;
+
+    // zenoh-pico's own sync layer (`zenoh-pico/system/common/platform.h`),
+    // `z_result_t` being `int8_t`. On FreeRTOS these are the vendored
+    // `system/freertos/system.c` primitives, whose structs this crate never
+    // reads: it hands them storage larger than either.
+    unsafe extern "C" {
+        pub(super) fn _z_mutex_init(m: *mut c_void) -> i8;
+        pub(super) fn _z_mutex_drop(m: *mut c_void) -> i8;
+        pub(super) fn _z_mutex_lock(m: *mut c_void) -> i8;
+        pub(super) fn _z_mutex_unlock(m: *mut c_void) -> i8;
+        pub(super) fn _z_condvar_init(cv: *mut c_void) -> i8;
+        pub(super) fn _z_condvar_drop(cv: *mut c_void) -> i8;
+        pub(super) fn _z_condvar_signal_all(cv: *mut c_void) -> i8;
+        pub(super) fn _z_condvar_wait(cv: *mut c_void, m: *mut c_void) -> i8;
+    }
+
+    /// The slice `Z_FEATURE_NROS_BOUNDED_CONDVAR_WAIT` bounds one wait to
+    /// (`Z_NROS_CONDVAR_WAIT_SLICE_MS`, the alias shim's
+    /// `NROS_ZP_CONDVAR_SLICE_MS`).
+    pub const SLICE_MS: u64 = 1_000;
+    /// A wait still blocked this long is rescued by a signal, so the check
+    /// FAILS on an unbounded wait instead of hanging the image.
+    pub const RESCUE_MS: u64 = 10 * SLICE_MS;
+    /// "Well under ten slices": a bounded wait returns after one.
+    pub const UPPER_MS: u64 = 3 * SLICE_MS;
+
+    pub(super) static ZCV: Storage<256> = Storage::new();
+    pub(super) static ZM: Storage<256> = Storage::new();
+    pub(super) static RESCUER: Storage<512> = Storage::new();
+    pub(super) static WAIT_DONE: AtomicBool = AtomicBool::new(false);
+    pub(super) static RESCUED: AtomicBool = AtomicBool::new(false);
+
+    pub(super) extern "C" fn rescuer(_arg: *mut c_void) -> *mut c_void {
+        let give_up = now_ms() + RESCUE_MS;
+        while !WAIT_DONE.load(Ordering::SeqCst) && now_ms() < give_up {
+            // SAFETY: plain call into the board's sleep.
+            unsafe { nros_platform_sleep_ms(10) };
+        }
+        if !WAIT_DONE.load(Ordering::SeqCst) {
+            RESCUED.store(true, Ordering::SeqCst);
+            // SAFETY: ZCV / ZM were initialised before this task spawned and
+            // are dropped only after it is joined.
+            unsafe {
+                _z_mutex_lock(ZM.ptr());
+                _z_condvar_signal_all(ZCV.ptr());
+                _z_mutex_unlock(ZM.ptr());
+            }
+        }
+        ptr::null_mut()
+    }
+}
+
+/// Phase-502 W2: zenoh-pico's `_z_condvar_wait` with no signaller returns `0`
+/// after one slice — not before (less the one tick the port declares as its
+/// wake granularity, since FreeRTOS counts the current partial tick), and well
+/// under ten. With the bound off the wait is forever; a rescuer task signals
+/// after ten slices, so that shape reports a FAIL rather than hanging.
+#[cfg(feature = "zenoh-condvar-wait")]
+pub fn run_zenoh_wait(report: &mut dyn FnMut(&str, bool, &str)) -> bool {
+    use zenoh_wait::*;
+    // SAFETY: each primitive is initialised before use and dropped after the
+    // only other user (the rescuer) is joined; the storage is static.
+    unsafe {
+        if _z_condvar_init(ZCV.ptr()) != 0 || _z_mutex_init(ZM.ptr()) != 0 {
+            report(
+                "zenoh-wait",
+                false,
+                "_z_condvar_init or _z_mutex_init failed",
+            );
+            return false;
+        }
+        let mut attr = core::mem::MaybeUninit::<nros_platform_task_attr_t>::uninit();
+        nros_platform_task_attr_init(attr.as_mut_ptr());
+        let mut attr = attr.assume_init();
+        attr.name = c"zcv-rescuer".as_ptr().cast();
+        attr.stack_bytes = WAITER_STACK_BYTES;
+        let a = (&mut attr as *mut nros_platform_task_attr_t).cast();
+        if nros_platform_task_init(RESCUER.ptr(), a, rescuer, ptr::null_mut()) != 0 {
+            report("zenoh-wait", false, "could not spawn the rescuer task");
+            return false;
+        }
+
+        _z_mutex_lock(ZM.ptr());
+        let start = now_ms();
+        let rc = _z_condvar_wait(ZCV.ptr(), ZM.ptr());
+        let elapsed = now_ms() - start;
+        _z_mutex_unlock(ZM.ptr());
+        WAIT_DONE.store(true, Ordering::SeqCst);
+        nros_platform_task_join(RESCUER.ptr());
+        _z_condvar_drop(ZCV.ptr());
+        _z_mutex_drop(ZM.ptr());
+
+        let tick_ms = nros_platform_wake_park_granularity_us().div_ceil(1_000);
+        let lower = SLICE_MS.saturating_sub(tick_ms);
+        let rescued = RESCUED.load(Ordering::SeqCst);
+        let ok = rc == 0 && !rescued && elapsed >= lower && elapsed < UPPER_MS;
+        let mut buf = Detail::new();
+        let _ = core::fmt::write(
+            &mut buf,
+            format_args!(
+                "rc={rc} elapsed_ms={elapsed} bounds=[{lower},{UPPER_MS}) rescued={rescued}: {}",
+                if ok {
+                    "returned after one slice"
+                } else if rescued {
+                    "the wait returned only when rescued: it is unbounded"
+                } else if rc != 0 {
+                    "returned something other than 0"
+                } else if elapsed < lower {
+                    "returned before one slice"
+                } else {
+                    "returned, but not within a few slices"
+                }
+            ),
+        );
+        report("zenoh-wait", ok, buf.as_str());
+        ok
+    }
+}
+
+/// A fixed buffer for one report detail, so the line can carry the measured
+/// numbers without an allocator.
+#[cfg(feature = "zenoh-condvar-wait")]
+struct Detail {
+    buf: [u8; 160],
+    len: usize,
+}
+
+#[cfg(feature = "zenoh-condvar-wait")]
+impl Detail {
+    fn new() -> Self {
+        Self {
+            buf: [0; 160],
+            len: 0,
+        }
+    }
+    fn as_str(&self) -> &str {
+        core::str::from_utf8(&self.buf[..self.len]).unwrap_or("<detail>")
+    }
+}
+
+#[cfg(feature = "zenoh-condvar-wait")]
+impl core::fmt::Write for Detail {
+    fn write_str(&mut self, s: &str) -> core::fmt::Result {
+        let n = s.len().min(self.buf.len() - self.len);
+        self.buf[self.len..self.len + n].copy_from_slice(&s.as_bytes()[..n]);
+        self.len += n;
+        Ok(())
+    }
 }

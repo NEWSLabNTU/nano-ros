@@ -24,7 +24,9 @@ bench = false
 condvar_contract_freertos_mps2_nros_selection = { path = "build/nros/selection" }
 # Phase 88 facade.
 nros-log = { path = "../../../../core/nros-log", default-features = false }
-nros-condvar-contract = { path = "../../../nros-condvar-contract" }
+# `zenoh-condvar-wait`: phase-502 W2, the zenoh layer's bounded `_z_condvar_wait`
+# (the board brings zpico-sys with `rmw = "zenoh"`).
+nros-condvar-contract = { path = "../../../nros-condvar-contract", features = ["zenoh-condvar-wait"] }
 # Pull `nros-platform-freertos` symbols into the link graph (the
 # board crate already does this transitively, but make it explicit
 # so the binary stays linkable if board-crate deps shift).

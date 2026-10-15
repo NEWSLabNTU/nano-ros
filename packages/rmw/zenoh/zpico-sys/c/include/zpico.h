@@ -915,28 +915,6 @@ int32_t zpico_reply_slot_pick(const bool *_valid,
                               bool *_out_announce);
 
 /**
- * Send a query and wait for reply (blocking, for service client).
- *
- * # Parameters
- * * `keyexpr` - Key expression string, null-terminated.
- * * `payload` - Request payload (may be NULL)
- * * `payload_len` - Length of payload in bytes
- * * `reply_buf` - Buffer to receive reply data
- * * `reply_buf_size` - Size of reply buffer
- * * `timeout_ms` - Timeout in milliseconds
- *
- * # Returns
- * Number of bytes in reply on success, negative error code on failure.
- */
-int32_t zpico_get(struct zpico_session_t *_session,
-                  const char *_keyexpr,
-                  const uint8_t *_payload,
-                  size_t _payload_len,
-                  uint8_t *_reply_buf,
-                  size_t _reply_buf_size,
-                  uint32_t _timeout_ms);
-
-/**
  * Start a non-blocking query (for async service client).
  *
  * Returns a non-negative slot handle on success, negative error code on failure.

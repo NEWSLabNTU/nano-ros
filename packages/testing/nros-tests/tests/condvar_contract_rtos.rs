@@ -9,7 +9,9 @@
 //!
 //! - a timed wait nobody signals returns `1`, never before its deadline;
 //! - a broadcast wakes all three waiters (ThreadX woke one);
-//! - ThreadX only: a wait under a mutex held twice is refused (issue 1907).
+//! - ThreadX only: a wait under a mutex held twice is refused (issue 1907);
+//! - FreeRTOS only: zenoh-pico's vendored `_z_condvar_wait`, unsignalled,
+//!   returns 0 after one slice rather than never (phase-502 W2).
 //!
 //! Fixtures must be prebuilt (`just build threadx-linux`, `just build freertos`).
 
@@ -82,5 +84,5 @@ fn condvar_contract_holds_on_freertos_mps2() {
         .wait_for_output(Duration::from_secs(60))
         .expect("the FreeRTOS condvar contract image produced no output in time");
 
-    assert_contract(&output, &["timed-wait", "broadcast"]);
+    assert_contract(&output, &["timed-wait", "broadcast", "zenoh-wait"]);
 }

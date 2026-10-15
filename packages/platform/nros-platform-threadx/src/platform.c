@@ -1000,9 +1000,13 @@ static int8_t nros_threadx_condvar_release(nros_threadx_condvar_t *c, ULONG max)
     return rc;
 }
 
-/* Issue 1750 -- a SIGNAL from a foreign thread is refused rather than fatal:
- * its waiter waits with a bound (every wait here takes a timeout or is woken
- * by a ThreadX peer), so a lost signal costs latency and nothing else. */
+/* Issue 1750 -- a SIGNAL from a foreign thread is refused rather than fatal,
+ * because every condition wait has a deadline. The only wait this port has is
+ * `nros_platform_condvar_wait_until` (phase-436 D2 deleted the unbounded
+ * one). zenoh-pico's `_z_condvar_wait` reaches it through the alias shim in
+ * slices of `NROS_ZP_CONDVAR_SLICE_MS` (phase-502; RFC-0076 C6, enforced by
+ * `check-no-unbounded-condvar-wait`). So a lost signal costs a waiter at most
+ * one slice of latency, and never the thread. */
 int8_t nros_platform_condvar_signal(void *cv) {
     NROS_THREADX_KERNEL_ONLY_OR_RETURN(-1);
     if (cv == NULL) return -1;

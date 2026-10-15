@@ -904,10 +904,23 @@ int8_t nros_platform_condvar_wait_until(void *cv, void *m, uint64_t abstime_ms) 
          * zenoh-pico caller would not read `+1` as success. The answer to
          * that is translating at the zenoh-pico seam, which
          * `platform_aliases.c` now does.) */
+        /* Phase-502 -- a signaller gives `sem` and decrements `waiters`
+         * together under `c->mutex`, and that can land between our timeout
+         * and this block. A bare `waiters--` would then count us out twice
+         * and leave a token that spuriously wakes the next waiter. Under
+         * `c->mutex` every registered waiter is counted either in `waiters`
+         * or by one token, so: if a token is there, take it (the signaller
+         * already counted us out) and report the signal; otherwise count
+         * ourselves out and report the timeout. */
         xSemaphoreTake((SemaphoreHandle_t) c->mutex, portMAX_DELAY);
-        c->waiters--;
+        int8_t rc = 1;
+        if (xSemaphoreTake((SemaphoreHandle_t) c->sem, 0) == pdTRUE) {
+            rc = 0;
+        } else {
+            c->waiters--;
+        }
         xSemaphoreGive((SemaphoreHandle_t) c->mutex);
-        return 1;
+        return rc;
     }
     return 0;
 }

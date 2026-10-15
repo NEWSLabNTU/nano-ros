@@ -16,3 +16,9 @@ bench = false
 # image's board links. It is a library of the test images that run it
 # (`nros-tests/bins/condvar-contract-*`), excluded from the root workspace.
 [dependencies]
+
+[features]
+# Phase-502 W2: also check the ZENOH layer's `_z_condvar_wait`, which an image
+# links only when its board brings zpico-sys (FreeRTOS: zenoh-pico's own
+# vendored condvar, bounded on the fork by `Z_FEATURE_NROS_BOUNDED_CONDVAR_WAIT`).
+zenoh-condvar-wait = []

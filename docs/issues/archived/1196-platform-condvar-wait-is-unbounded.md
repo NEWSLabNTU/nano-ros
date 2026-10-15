@@ -1,13 +1,13 @@
 ---
 id: 1196
 title: "`nros_platform_condvar_wait` blocks forever by construction, beside a bounded variant nothing forces you to prefer"
-status: open
+status: resolved
 type: tech-debt
 area: platform
 related: [issue-1192, phase-436, phase-502, issue-1906, issue-1907, issue-1750]
 ---
 
-**Home: [phase-502](../roadmap/phase-502-unbounded-condvar-wait-retirement.md)** — the remaining closing condition (Zephyr and FreeRTOS zenoh paths, `zpico_get`, the class gate) after phase-436 D2 took the ABI half.
+**Home: [phase-502](../../roadmap/phase-502-unbounded-condvar-wait-retirement.md)** — the remaining closing condition (Zephyr and FreeRTOS zenoh paths, `zpico_get`, the class gate) after phase-436 D2 took the ABI half.
 
 ## Problem
 
@@ -218,3 +218,26 @@ trips through it.
   alias-shim platforms that wait is now sliced, but its stack-owned reply
   context is unchanged, and deleting it is still the plan.
 - The class gate for forever-waits on a condition or semaphore in code we own.
+
+## Resolution (2026-10-15, phase-502)
+
+Every closing condition is met:
+
+- **Zephyr.** `_z_condvar_wait` is bounded to `NROS_ZP_CONDVAR_SLICE_MS`
+  through `pthread_cond_timedwait` on the monotonic clock.
+- **FreeRTOS.** The vendored wait is bounded on the zenoh-pico fork's
+  `nano-ros` branch (`469cbb7e`, behind `Z_FEATURE_NROS_BOUNDED_CONDVAR_WAIT`).
+  On timeout it deregisters itself without racing a signaller, and our own
+  FreeRTOS port's `condvar_wait_until` got the same fix.
+- **One spelling of the slice.** The value lives in
+  `zpico-sys/c/zpico/nros_zp_condvar_slice.h`. The build passes it to the fork,
+  which cannot include that header.
+- **`zpico_get` is deleted.**
+- **The class gate.** `check-no-unbounded-condvar-wait` refuses every
+  forever-wait form in code we own. Mutex acquisition and thread join are exempt
+  by rule. Three test call sites are exempt by row, each because the wait it
+  makes is the thing it measures.
+- **The rule.** It is written down as RFC-0076 C6.
+
+Measurements are in phase-502.
+
