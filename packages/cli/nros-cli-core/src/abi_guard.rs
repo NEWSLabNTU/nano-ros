@@ -210,7 +210,7 @@ pub fn accepted_range_in_tree(root: &Path) -> Result<Option<AcceptedRange>> {
 /// these names in the module's doc comments cannot be mistaken for the
 /// declaration — and `NROS_CODEGEN_VERSION` cannot match the `…_MIN` line,
 /// because the `:` has to follow the name immediately.
-fn const_u32_in(body: &str, name: &str) -> Option<u32> {
+pub(crate) fn const_u32_in(body: &str, name: &str) -> Option<u32> {
     let decl = format!("pub const {name}: u32 =");
     for line in body.lines() {
         let line = line.trim_start();

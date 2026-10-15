@@ -2257,34 +2257,93 @@ mod phase365_tool_dir_tests {
     }
 
     /// phase-431 W3 — the index's `nros` smoke check asserts the CODEGEN
-    /// VERSION, so it must be the version this binary actually emits.
+    /// VERSION, because what a CLI emits is what makes it safe to install, so
+    /// `smoke` runs `bin/nros --codegen-version` rather than `--version`.
     ///
-    /// The entry exists to make a released CLI safe to install, and the property
-    /// that makes it safe is what it emits — so `smoke` runs
-    /// `bin/nros --codegen-version` rather than `--version`. That number is
-    /// AUTHORED in two places once it is written into the index, and an
-    /// authored mirror in this tree has drifted every time nothing bound it
-    /// (`check-rmw-api-parity`'s map: 25 symbols, reading green). Bound here.
+    /// The number describes the PINNED release, not this tree. RFC-0097 D7
+    /// decoupled them: a release records its own `codegen`, and the runtime
+    /// accepts a range (`NROS_CODEGEN_VERSION_MIN..=NROS_CODEGEN_VERSION`). This
+    /// test used to bind the row to the codegen the TREE emits, so the tree's
+    /// 14 -> 15 bump (phase-498 W3) was answered by editing the row to 15 while
+    /// it still pinned `0.5.0-nros2`, which emits 14: `nros setup --tool nros`
+    /// then built that release and failed its own smoke check.
+    ///
+    /// Two bindings, both against the row:
+    /// 1. the pinned release's codegen is one this tree's runtime ACCEPTS — a
+    ///    release outside the range could not build against it at all;
+    /// 2. it equals the codegen declared at `[tool.nros.source] ref`, the commit
+    ///    the release was cut from, read with `git show`. A clone without that
+    ///    commit (a shallow CI checkout) cannot answer, and says so; (1) still
+    ///    holds there.
     #[test]
-    fn the_nros_smoke_check_expects_the_version_this_binary_emits() {
+    fn the_nros_smoke_check_expects_what_the_pinned_release_emits() {
+        const CODEGEN_RS: &str = "packages/core/nros-core/src/codegen_version.rs";
         let index = repo_index();
         let tool = index
             .tool
             .get("nros")
             .expect("`[tool.nros]` — phase-431 W3 added it; if it went away, so should this test");
-        let expected = crate::abi_guard::EMITTED_VERSION.to_string();
         let probe = tool
             .smoke
             .iter()
             .find(|p| p.run.contains("--codegen-version"))
             .expect("`[tool.nros].smoke` must probe `--codegen-version`");
+        let pinned: u32 = probe.expect.trim().parse().unwrap_or_else(|_| {
+            panic!(
+                "`{}` must expect a codegen NUMBER, got `{}`",
+                probe.run, probe.expect
+            )
+        });
+
+        let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+        let tree = std::fs::read_to_string(repo.join(CODEGEN_RS)).expect(CODEGEN_RS);
+        let min = crate::abi_guard::const_u32_in(&tree, "NROS_CODEGEN_VERSION_MIN")
+            .expect("the tree declares its accepted minimum");
+        let max = crate::abi_guard::const_u32_in(&tree, "NROS_CODEGEN_VERSION")
+            .expect("the tree declares its emitted version");
         assert_eq!(
-            probe.expect, expected,
-            "the index expects `{}` from `{}` while this binary emits `{expected}`",
-            probe.expect, probe.run
+            max,
+            crate::abi_guard::EMITTED_VERSION,
+            "{CODEGEN_RS} vs this binary"
         );
+        assert!(
+            (min..=max).contains(&pinned),
+            "the index pins `nros {}`, which emits codegen {pinned}; this tree's runtime \
+             accepts {min}..={max}",
+            tool.version
+        );
+
         // The other half of the promise: one command, newest version.
         assert_eq!(tool.front, vec!["bin/nros".to_string()]);
+
+        let git_ref = tool
+            .source
+            .as_ref()
+            .and_then(|s| s.git_ref.clone())
+            .expect("`[tool.nros.source] ref` — the commit the pinned release was cut from");
+        let shown = nros_build_paths::git_env::nros_git_command("git")
+            .arg("-C")
+            .arg(&repo)
+            .args(["show", &format!("{git_ref}:{CODEGEN_RS}")])
+            .output()
+            .expect("spawn git");
+        if !shown.status.success() {
+            eprintln!(
+                "NOT VERIFIED: `{git_ref}` is not in this clone (shallow?), so the pinned \
+                 release's codegen is checked against the accepted range only"
+            );
+            return;
+        }
+        let at_ref = crate::abi_guard::const_u32_in(
+            &String::from_utf8_lossy(&shown.stdout),
+            "NROS_CODEGEN_VERSION",
+        )
+        .expect("the pinned ref declares its emitted version");
+        assert_eq!(
+            pinned, at_ref,
+            "`[tool.nros].smoke` expects {pinned}, but `{git_ref}` (the pinned release's \
+             source) emits {at_ref}"
+        );
     }
 
     /// Issue 0628 — the candidate list is CONSTRUCTED, versioned first.
