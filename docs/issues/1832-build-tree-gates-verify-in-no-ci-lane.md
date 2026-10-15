@@ -59,7 +59,19 @@ that verifies them instead.
   `ci-check-fast-skips.txt` row stays: `check fast` is still buildless. What
   is left is confirming the fixture-building lane's log now reads `OK — N
   pair(s)` rather than NOT VERIFIED.
-- `artifact-identity-budget` — unchanged, still open.
+- **`artifact-identity-budget` — gate side fixed (2026-10-15).** The
+  tier-1 post-build step ran it for the first time in run 38663782341, after a
+  complete build, and it SKIPPED: "no build tree at
+  examples/workspaces/mixed/build-workspace-fixtures". Issue 0901's fix
+  resolved the newest `examples/workspaces/*/build-workspace-fixtures*` tree,
+  but `nros build` now builds a workspace into `<ws>/build/<image>/…`, so no
+  such dir is written. Discovery now also considers
+  `examples/workspaces/mixed/build`, newest tree with rlibs first, in a
+  `_resolve_tree` function the self-test exercises (case (d): the old layout
+  alone, an rlib-less dir never chosen, the newer current-layout tree wins).
+  Measured on a native-lane build of the mixed workspace, the gate reads
+  exactly the recorded budget: `nros_core` 4/4 identities, worst crate 5/5,
+  worst identity 5/5 copies. What is left is the lane reading `OK`.
 - **All three gates now run after the tier-1 build.** `run-matrix.yml`'s
   tier-1 job has a `Build-tree gates (issue 1832)` step right after
   `just build tier1`. It resets the skip ledger, runs `artifact-identity-budget`,
