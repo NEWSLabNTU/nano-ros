@@ -357,6 +357,8 @@ pub fn generate_nros_action_package(
         action_hash: &hashes.action,
         send_goal_service_hash: &hashes.send_goal_service,
         get_result_service_hash: &hashes.get_result_service,
+        cancel_goal_service_hash: &hashes.cancel_goal_service,
+        status_message_hash: &hashes.status_message,
         goal_fields,
         goal_constants,
         result_fields,
@@ -555,6 +557,8 @@ pub fn generate_nros_inline_action(
         action_hash: &hashes.action,
         send_goal_service_hash: &hashes.send_goal_service,
         get_result_service_hash: &hashes.get_result_service,
+        cancel_goal_service_hash: &hashes.cancel_goal_service,
+        status_message_hash: &hashes.status_message,
         goal_fields,
         goal_constants,
         result_fields,
@@ -615,9 +619,12 @@ pub fn generate_c_action_package(
     package_name: &str,
     action_name: &str,
     action: &Action,
-    type_hash: &str,
+    hashes: &crate::rihs::ActionTypeHashes,
     resolver: &CapacityResolver,
 ) -> Result<GeneratedCActionPackage, GeneratorError> {
+    // Issue 1913 — `type_hash` stays the ACTION's own hash (the C type support's
+    // `.type_hash`, which feeds `ActionInfo` only); the endpoints get theirs.
+    let type_hash = hashes.action.as_str();
     let c_pkg_name = to_c_package_name(package_name);
 
     // Every name derives from one stem — see `generator::naming`.
@@ -776,6 +783,16 @@ pub fn generate_c_action_package(
         package_name,
         action_name,
         type_hash,
+
+        send_goal_service_hash: &hashes.send_goal_service,
+
+        cancel_goal_service_hash: &hashes.cancel_goal_service,
+
+        get_result_service_hash: &hashes.get_result_service,
+
+        feedback_message_hash: &hashes.feedback_message,
+
+        status_message_hash: &hashes.status_message,
         guard_name,
         action_struct_name: action_struct_name.clone(),
         goal_struct_name: goal_struct_name.clone(),
@@ -806,6 +823,16 @@ pub fn generate_c_action_package(
         package_name,
         action_name,
         type_hash,
+
+        send_goal_service_hash: &hashes.send_goal_service,
+
+        cancel_goal_service_hash: &hashes.cancel_goal_service,
+
+        get_result_service_hash: &hashes.get_result_service,
+
+        feedback_message_hash: &hashes.feedback_message,
+
+        status_message_hash: &hashes.status_message,
         c_package_name: c_pkg_name.clone(),
         include_path,
         action_struct_name,

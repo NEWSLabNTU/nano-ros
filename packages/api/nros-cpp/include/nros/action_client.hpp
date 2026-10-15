@@ -621,8 +621,9 @@ Result Node::create_action_client(::rclcpp_action::Client<A>& out, const char* a
                                   const ::rclcpp::QoS& qos) {
     if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
     nros_cpp_qos_t ffi_qos = ::rclcpp::detail::qos_to_ffi(qos);
-    nros_cpp_ret_t ret = nros_cpp_action_client_create(&handle_, action_name, A::TYPE_NAME,
-                                                       A::Goal::TYPE_HASH, ffi_qos, out.storage_);
+    const nros_cpp_action_hashes_t hashes = ::rclcpp::detail::action_endpoint_hashes<A>();
+    nros_cpp_ret_t ret = nros_cpp_action_client_create(
+        &handle_, action_name, A::TYPE_NAME, A::Goal::TYPE_HASH, &hashes, ffi_qos, out.storage_);
     if (ret == 0) {
         out.executor_ = executor_handle_;
         // phase-417 W4.b — remember the name for `get_action_name()`, truncating

@@ -10228,6 +10228,7 @@ fn detaching_a_raw_action_server_rejects_a_late_goal_and_never_reads_its_context
             action_name: "/verb",
             type_name: "test_msgs/action/Fibonacci",
             type_hash: "RIHS01_0000",
+            hashes: nros_rmw::ActionEndpointHashes::uniform("RIHS01_0000"),
             qos: nros_rmw::QoSProfile::services_default(),
             goal_callback: accept_and_record_context,
             cancel_callback: refuse_every_cancel,
@@ -10336,6 +10337,7 @@ fn detaching_a_raw_action_client_clears_the_callbacks_that_read_its_context() {
             action_name: "/verb",
             type_name: "test_msgs/action/Fibonacci",
             type_hash: "RIHS01_0000",
+            hashes: nros_rmw::ActionEndpointHashes::uniform("RIHS01_0000"),
             goal_response_callback: Some(no_op_goal_response),
             feedback_callback: None,
             result_callback: None,
@@ -11754,6 +11756,7 @@ fn register_raw_server(
         action_name: "/verb",
         type_name: "test_msgs/action/Fibonacci",
         type_hash: "RIHS01_0000",
+        hashes: nros_rmw::ActionEndpointHashes::uniform("RIHS01_0000"),
         qos: nros_rmw::QoSProfile::services_default(),
         goal_callback: accept_and_record_context,
         cancel_callback: refuse_every_cancel,
@@ -11769,6 +11772,7 @@ fn register_raw_client(executor: &mut Executor<'_>) -> Result<usize, NodeError> 
             action_name: "/verb",
             type_name: "test_msgs/action/Fibonacci",
             type_hash: "RIHS01_0000",
+            hashes: nros_rmw::ActionEndpointHashes::uniform("RIHS01_0000"),
             goal_response_callback: Some(no_op_goal_response),
             feedback_callback: None,
             result_callback: None,
@@ -14788,4 +14792,71 @@ fn b3_a_late_tick_exceeds_the_route_while_every_callback_passes() {
         0,
         "answered, and the report-once state cleared by a clean route"
     );
+}
+
+/// Issue 1913 — a raw action server and client key each endpoint on its OWN
+/// hash. An Iron+ `rmw_zenoh_cpp` peer keys all five on different types, and
+/// every raw registration used to pass the one `type_hash` to all of them, so
+/// a C, C++ or `nros::main!` action matched no Jazzy peer.
+#[test]
+fn raw_action_endpoints_are_keyed_on_their_own_hashes() {
+    use super::action::{RawActionClientSpec, RawActionServerSpec};
+
+    let hashes = nros_rmw::ActionEndpointHashes {
+        send_goal: "SEND_GOAL",
+        cancel_goal: "CANCEL_GOAL",
+        get_result: "GET_RESULT",
+        feedback: "FEEDBACK",
+        status: "STATUS",
+    };
+    let mut executor = executor_with_clock(MockSession::new());
+    executor
+        .register_action_server_raw(RawActionServerSpec {
+            node_id: None,
+            action_name: "/srv_act",
+            type_name: "test_msgs/action/Fibonacci",
+            type_hash: "ACTION",
+            hashes,
+            qos: nros_rmw::QoSProfile::services_default(),
+            goal_callback: accept_and_record_context,
+            cancel_callback: refuse_every_cancel,
+            accepted_callback: None,
+            context: core::ptr::null_mut(),
+        })
+        .expect("the mock session registers a raw action server");
+    executor
+        .register_action_client_raw(RawActionClientSpec {
+            node_id: None,
+            action_name: "/cli_act",
+            type_name: "test_msgs/action/Fibonacci",
+            type_hash: "ACTION",
+            hashes,
+            goal_response_callback: None,
+            feedback_callback: None,
+            result_callback: None,
+            context: core::ptr::null_mut(),
+        })
+        .expect("the mock session registers a raw action client");
+
+    let session = executor.session();
+    let expect = [
+        ("/srv_act/_action/send_goal", "SEND_GOAL"),
+        ("/srv_act/_action/cancel_goal", "CANCEL_GOAL"),
+        ("/srv_act/_action/get_result", "GET_RESULT"),
+        ("/srv_act/_action/feedback", "FEEDBACK"),
+        ("/srv_act/_action/status", "STATUS"),
+        ("/cli_act/_action/send_goal", "SEND_GOAL"),
+        ("/cli_act/_action/cancel_goal", "CANCEL_GOAL"),
+        ("/cli_act/_action/get_result", "GET_RESULT"),
+        ("/cli_act/_action/feedback", "FEEDBACK"),
+    ];
+    for (name, want) in expect {
+        let got = session.created_hash(name);
+        assert_eq!(
+            got.as_ref().map(|h| h.as_str()),
+            Some(want),
+            "{name}: created {:?}",
+            session.created.borrow()
+        );
+    }
 }

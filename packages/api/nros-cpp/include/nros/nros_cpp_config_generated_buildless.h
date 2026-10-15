@@ -98,7 +98,7 @@
  *
  * EXACT values, not upper bounds — a version range has no bound to be safe on.
  * Gated by `check-config-fallback-macros`. */
-#define NROS_CODEGEN_VERSION 15
+#define NROS_CODEGEN_VERSION 16
 #define NROS_CODEGEN_VERSION_MIN 14
 
 /* Issue 0464 — the generator computes

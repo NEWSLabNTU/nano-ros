@@ -206,6 +206,26 @@ fn c_service_type_hash(
         .map_err(|e| eyre!("RIHS01 {package}/srv/{name} ({edition:?}): {e}"))
 }
 
+/// Issue 1913 — every hash an ACTION carries: the action's own, each part's, and
+/// the one each of its five endpoints is keyed on (`ResolvedAction`, the Rust
+/// generator's computation). Humble gets the sentinel everywhere.
+fn c_action_type_hashes(
+    edition: RosEdition,
+    package: &str,
+    name: &str,
+    action: &rosidl_parser::Action,
+    resolve: &dyn Fn(&str) -> Option<rosidl_parser::Message>,
+) -> Result<rosidl_codegen::rihs::ActionTypeHashes> {
+    if !edition.uses_type_hash() {
+        return Ok(rosidl_codegen::rihs::ActionTypeHashes::uniform(
+            edition.type_hash(),
+        ));
+    }
+    rosidl_codegen::ResolvedAction::resolve(package, name, action, |f| resolve(f))
+        .map(|r| r.hashes)
+        .map_err(|e| eyre!("RIHS01 {package}/action/{name} ({edition:?}): {e}"))
+}
+
 /// phase-403 W6 — write the derived-bound inventory beside the generated code.
 ///
 /// Two files, one model (`rosidl_codegen::bounds`): the JSON is the artifact,
@@ -1257,11 +1277,6 @@ pub fn generate_c_from_args_file(config: GenerateCConfig) -> Result<()> {
         .wrap_err_with(|| format!("Failed to parse args file: {}", config.args_file.display()))?;
 
     let edition = parse_ros_edition(&args.ros_edition)?;
-    // Issue 1913 — ACTIONS only. Messages and services compute their real hash
-    // (issue 1909); a C/C++ action still gets the edition placeholder because
-    // the raw action spec it reaches carries ONE hash for its five endpoints,
-    // so no single value here can be right for an iron/jazzy peer.
-    let action_type_hash = edition.type_hash();
 
     // Per-field capacity config (RFC-0033) — one spelling for both languages.
     let resolver = resolve_caps_for_args(&args)?;
@@ -1417,7 +1432,13 @@ pub fn generate_c_from_args_file(config: GenerateCConfig) -> Result<()> {
                     &args.package_name,
                     file_name,
                     &parsed,
-                    action_type_hash,
+                    &c_action_type_hashes(
+                        edition,
+                        &args.package_name,
+                        file_name,
+                        &parsed,
+                        &nested_lookup,
+                    )?,
                     &resolver,
                 )
                 .wrap_err_with(|| format!("Failed to generate C code for action: {}", file_name))?;
@@ -1500,11 +1521,6 @@ pub fn generate_c_from_args_file(config: GenerateCConfig) -> Result<()> {
 /// 4. Generates C code (headers + sources) in the output directory
 pub fn generate_c_from_package_xml(config: GenerateCStandaloneConfig) -> Result<()> {
     let edition = parse_ros_edition(&config.ros_edition)?;
-    // Issue 1913 — ACTIONS only. Messages and services compute their real hash
-    // (issue 1909); a C/C++ action still gets the edition placeholder because
-    // the raw action spec it reaches carries ONE hash for its five endpoints,
-    // so no single value here can be right for an iron/jazzy peer.
-    let action_type_hash = edition.type_hash();
 
     let resolver = standalone_capacity_resolver(&config)?;
     let interface_packages = standalone_interface_packages(&config)?;
@@ -1665,7 +1681,13 @@ pub fn generate_c_from_package_xml(config: GenerateCStandaloneConfig) -> Result<
                         pkg_name,
                         file_name,
                         &parsed,
-                        action_type_hash,
+                        &c_action_type_hashes(
+                            edition,
+                            pkg_name,
+                            file_name,
+                            &parsed,
+                            &nested_lookup,
+                        )?,
                         &resolver,
                     )?;
                     write_if_changed(action_dir.join(&generated.header_name), &generated.header)?;
@@ -2101,11 +2123,6 @@ fn generate_cpp_with(
     verbose: bool,
 ) -> Result<()> {
     let edition = parse_ros_edition(&args.ros_edition)?;
-    // Issue 1913 — ACTIONS only. Messages and services compute their real hash
-    // (issue 1909); a C/C++ action still gets the edition placeholder because
-    // the raw action spec it reaches carries ONE hash for its five endpoints,
-    // so no single value here can be right for an iron/jazzy peer.
-    let action_type_hash = edition.type_hash();
 
     if verbose {
         println!("Generating C++ bindings for package: {}", args.package_name);
@@ -2287,7 +2304,13 @@ fn generate_cpp_with(
                     &args.package_name,
                     file_name,
                     &parsed,
-                    action_type_hash,
+                    &c_action_type_hashes(
+                        edition,
+                        &args.package_name,
+                        file_name,
+                        &parsed,
+                        &nested_lookup,
+                    )?,
                     resolver,
                 )
                 .wrap_err_with(|| {

@@ -481,9 +481,31 @@ pub struct MockSession {
     /// the BACKEND, so a test picks it when it picks the session rather than
     /// reaching into a subscriber the executor owns.
     subscribers_dispatch_in_place: bool,
+    /// Issue 1913 — `(name, type_hash)` of every entity this session created,
+    /// in order, so a test can assert which hash each endpoint was keyed on.
+    /// Always recorded; the first 16 are kept.
+    pub(crate) created: RefCell<heapless::Vec<(heapless::String<96>, heapless::String<80>), 16>>,
 }
 
 impl MockSession {
+    /// Issue 1913 — record one created entity (see the `created` field).
+    fn record_created(&self, name: &str, type_hash: &str) {
+        let mut n = heapless::String::new();
+        let mut h = heapless::String::new();
+        let _ = n.push_str(name);
+        let _ = h.push_str(type_hash);
+        let _ = self.created.borrow_mut().push((n, h));
+    }
+
+    /// The type hash the entity named `name` was created with, if one was.
+    pub fn created_hash(&self, name: &str) -> Option<heapless::String<80>> {
+        self.created
+            .borrow()
+            .iter()
+            .find(|(n, _)| n.as_str() == name)
+            .map(|(_, h)| h.clone())
+    }
+
     pub fn new() -> Self {
         Self {
             close_observer: None,
@@ -491,6 +513,7 @@ impl MockSession {
             service_create_attempts: None,
             graph: false,
             subscribers_dispatch_in_place: false,
+            created: RefCell::new(heapless::Vec::new()),
         }
     }
 
@@ -515,6 +538,7 @@ impl MockSession {
             service_create_attempts: Some(attempts),
             graph: false,
             subscribers_dispatch_in_place: false,
+            created: RefCell::new(heapless::Vec::new()),
         }
     }
 
@@ -526,6 +550,7 @@ impl MockSession {
             service_create_attempts: None,
             graph: false,
             subscribers_dispatch_in_place: false,
+            created: RefCell::new(heapless::Vec::new()),
         }
     }
 
@@ -544,6 +569,7 @@ impl MockSession {
             service_create_attempts: None,
             graph: true,
             subscribers_dispatch_in_place: false,
+            created: RefCell::new(heapless::Vec::new()),
         }
     }
 }
@@ -622,6 +648,7 @@ impl Session for MockSession {
         topic: &TopicInfo,
         _qos: QoSProfile,
     ) -> Result<MockPublisher, TransportError> {
+        self.record_created(topic.name, topic.type_hash);
         Ok(MockPublisher::new_named(topic.name))
     }
 
@@ -630,6 +657,7 @@ impl Session for MockSession {
         topic: &TopicInfo,
         _qos: QoSProfile,
     ) -> Result<MockSubscriber, TransportError> {
+        self.record_created(topic.name, topic.type_hash);
         let sub = MockSubscriber::new_named(topic.name);
         sub.set_in_place(self.subscribers_dispatch_in_place);
         Ok(sub)
@@ -646,6 +674,7 @@ impl Session for MockSession {
         if let Some(e) = self.service_create_error.as_ref() {
             return Err(e.clone());
         }
+        self.record_created(service.name, service.type_hash);
         Ok(MockServiceServer::new_named(service.name))
     }
 
@@ -654,6 +683,7 @@ impl Session for MockSession {
         service: &ServiceInfo,
         _qos: QoSProfile,
     ) -> Result<MockServiceClient, TransportError> {
+        self.record_created(service.name, service.type_hash);
         Ok(MockServiceClient::new_named(service.name))
     }
 

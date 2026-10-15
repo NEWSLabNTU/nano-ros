@@ -346,9 +346,10 @@ template <typename A>
 Result Node::create_polling_action_server(::rclcpp::PollingActionServer<A>& out,
                                           const char* action_name) {
     if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
+    const nros_cpp_action_hashes_t hashes = ::rclcpp::detail::action_endpoint_hashes<A>();
     nros_cpp_ret_t ret =
         nros_cpp_action_server_init_polling(&handle_, action_name, A::TYPE_NAME, A::Goal::TYPE_HASH,
-                                            reinterpret_cast<void*>(out.storage_));
+                                            &hashes, reinterpret_cast<void*>(out.storage_));
     if (ret != 0) return Result(ret);
     ::rclcpp::detail::assign_entity_name(out.action_name_, action_name);
     out.initialized_ = true;

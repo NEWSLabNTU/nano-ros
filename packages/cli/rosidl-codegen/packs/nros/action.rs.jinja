@@ -735,6 +735,9 @@ impl RosAction for {{ action_name }} {
     // a nano-ros action server's queryables.
     const SEND_GOAL_SERVICE_HASH: &'static str = "{{ send_goal_service_hash }}";
     const GET_RESULT_SERVICE_HASH: &'static str = "{{ get_result_service_hash }}";
+    // Issue 1913 — the standard `action_msgs` endpoints, keyed on their own types.
+    const CANCEL_GOAL_SERVICE_HASH: &'static str = "{{ cancel_goal_service_hash }}";
+    const STATUS_MESSAGE_HASH: &'static str = "{{ status_message_hash }}";
 
     // phase-244 E3 (RFC-0044) / issue #234 — register the fixed `action_msgs`
     // protocol types the cancel service + status publisher serialize

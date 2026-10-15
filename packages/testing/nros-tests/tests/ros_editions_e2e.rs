@@ -239,10 +239,24 @@ fn ros_edition_interop(#[case] rmw: Rmw, #[case] workload: Workload, #[case] dir
         }
         // ── action (Fibonacci) ───────────────────────────────────────────────
         (Action, NanoToRos) => {
-            let _server = lane
+            let mut server = lane
                 .env
                 .spawn_fibonacci_server()
                 .expect("spawn rclpy action server");
+            // Issue 1913 — wait for the server's own READY line. The nano-ros
+            // client sends its goal ONCE with no wait_for_action_server, so a
+            // goal fired before rclpy has declared its entities is dropped and
+            // the client waits out 60 s for a result that cannot come. Measured
+            // by hand against a Jazzy server: no wait, no result; 6 s wait,
+            // result. The xrce interop test already waits the same way.
+            let ready = server.collect_until(
+                nros_tests::output::ROS2_ACTION_SERVER_READY,
+                Duration::from_secs(45),
+            );
+            assert!(
+                ready.contains(nros_tests::output::ROS2_ACTION_SERVER_READY),
+                "the rclpy action server never reported ready ({rmw:?}):\n{ready}"
+            );
             let mut client = ros_env::spawn_process(lane.nano_cmd(&[]), "nano-action-client")
                 .expect("spawn nano client");
             // issue 1026 — wait on the RESULT, not on 60 s of the client's

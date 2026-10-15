@@ -572,6 +572,9 @@ impl RosAction for Probe {
     // a nano-ros action server's queryables.
     const SEND_GOAL_SERVICE_HASH: &'static str = "fingerprint";
     const GET_RESULT_SERVICE_HASH: &'static str = "fingerprint";
+    // Issue 1913 — the standard `action_msgs` endpoints, keyed on their own types.
+    const CANCEL_GOAL_SERVICE_HASH: &'static str = "fingerprint";
+    const STATUS_MESSAGE_HASH: &'static str = "fingerprint";
 
     // phase-244 E3 (RFC-0044) / issue #234 — register the fixed `action_msgs`
     // protocol types the cancel service + status publisher serialize

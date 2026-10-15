@@ -110,8 +110,14 @@ mod tests {
 
     #[test]
     fn a_caller_supplied_allocator_is_refused() {
-        unsafe extern "C" fn mine(_s: usize, _st: *mut c_void) -> *mut c_void {
-            core::ptr::null_mut()
+        // A body that cannot be folded into `refuse_allocate`'s. The verdict is
+        // a function-POINTER comparison, and an optimised build may merge two
+        // identical functions into one address: this stand-in used to return
+        // NULL exactly as the default does, and the test failed whenever the
+        // linker folded the pair (seen in `just ci gate`'s test-unit, passing
+        // alone — the layout decides).
+        unsafe extern "C" fn mine(_s: usize, st: *mut c_void) -> *mut c_void {
+            st
         }
         let mut a = rcl_get_default_allocator();
         a.allocate = Some(mine);

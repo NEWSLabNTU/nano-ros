@@ -1185,7 +1185,7 @@ impl<'a> NodeHandle<'a> {
             &self.namespace,
             &cancel_goal_keyexpr,
             "action_msgs::srv::dds_::CancelGoal_",
-            A::ACTION_HASH,
+            A::CANCEL_GOAL_SERVICE_HASH,
         );
         let cancel_goal_server = self
             .session
@@ -1227,7 +1227,7 @@ impl<'a> NodeHandle<'a> {
             &self.namespace,
             &status_keyexpr,
             "action_msgs::msg::dds_::GoalStatusArray_",
-            A::ACTION_HASH,
+            A::STATUS_MESSAGE_HASH,
         );
         let status_publisher = self
             .session
@@ -1337,7 +1337,7 @@ impl<'a> NodeHandle<'a> {
             &self.namespace,
             &send_goal_keyexpr,
             send_goal_type,
-            A::ACTION_HASH,
+            A::SEND_GOAL_SERVICE_HASH,
         );
         let send_goal_client = self
             .session
@@ -1351,7 +1351,7 @@ impl<'a> NodeHandle<'a> {
             &self.namespace,
             &cancel_goal_keyexpr,
             "action_msgs::srv::dds_::CancelGoal_",
-            A::ACTION_HASH,
+            A::CANCEL_GOAL_SERVICE_HASH,
         );
         let cancel_goal_client = self
             .session
@@ -1365,7 +1365,7 @@ impl<'a> NodeHandle<'a> {
             &self.namespace,
             &get_result_keyexpr,
             get_result_type,
-            A::ACTION_HASH,
+            A::GET_RESULT_SERVICE_HASH,
         );
         let get_result_client = self
             .session
@@ -1379,7 +1379,7 @@ impl<'a> NodeHandle<'a> {
             &self.namespace,
             &feedback_keyexpr,
             feedback_type,
-            A::ACTION_HASH,
+            <A::FeedbackMessage as RosMessage>::TYPE_HASH,
         );
         let feedback_subscriber = self
             .session

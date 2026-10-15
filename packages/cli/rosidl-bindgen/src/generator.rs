@@ -183,20 +183,9 @@ fn compute_action_type_hashes(
     resolve: &MsgResolver<'_>,
 ) -> Result<rosidl_codegen::rihs::ActionTypeHashes> {
     if !edition.uses_type_hash() {
-        let p = edition.type_hash().to_string();
-        return Ok(rosidl_codegen::rihs::ActionTypeHashes {
-            goal: p.clone(),
-            result: p.clone(),
-            feedback: p.clone(),
-            send_goal_request: p.clone(),
-            send_goal_response: p.clone(),
-            get_result_request: p.clone(),
-            get_result_response: p.clone(),
-            feedback_message: p.clone(),
-            action: p.clone(),
-            send_goal_service: p.clone(),
-            get_result_service: p,
-        });
+        return Ok(rosidl_codegen::rihs::ActionTypeHashes::uniform(
+            edition.type_hash(),
+        ));
     }
     // RFC-0068 Stage 1: ResolvedAction carries the full §3b hash bundle
     // (phase-335 W1.c).

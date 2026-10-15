@@ -106,15 +106,6 @@ int main(int argc, char** argv) {
     // Zero-initialize all static state
     memset(&app, 0, sizeof(app));
 
-    // Build action type info using generated type name/hash
-    rclc_action_type_t fibonacci_type = {
-        .type_name = example_interfaces__action__Fibonacci__get_type_name(),
-        .type_hash = example_interfaces__action__Fibonacci__get_type_hash(),
-        .goal_serialized_size_max = 8,
-        .result_serialized_size_max = 264,
-        .feedback_serialized_size_max = 264,
-    };
-
     rcl_allocator_t allocator = rcl_get_default_allocator();
     RCLC_CHECK_RET(rclc_support_init(&app.support, argc, argv, &allocator), 1);
     printf("Support initialized\n");
@@ -122,9 +113,11 @@ int main(int argc, char** argv) {
                    1);
     printf("Node created: %s\n", rcl_node_get_name(&app.node));
 
-    RCLC_CHECK_RET(
-        rcl_action_client_init(&app.action_client, &app.node, &fibonacci_type, "/fibonacci", NULL),
-        1);
+    RCLC_CHECK_RET(rcl_action_client_init(
+                       &app.action_client, &app.node,
+                       ROSIDL_GET_ACTION_TYPE_SUPPORT(example_interfaces, action, Fibonacci),
+                       "/fibonacci", NULL),
+                   1);
     printf("Action client created: /fibonacci\n");
 
     RCLC_SOFTCHECK(

@@ -270,8 +270,10 @@ inline Result create_action_server_raw(::rclcpp::Node& node, void* storage, cons
     nros_cpp_ret_t ret =
         nros_cpp_action_server_create(h, action_name, type_name, "", ffi_qos, storage);
     if (ret != 0) return Result(ret);
+    // An untyped raw server has no hashes to give (issue 1913): NULL keeps the
+    // empty type hash on every endpoint, as before.
     ret = nros_cpp_action_server_register(storage, exec, action_name, type_name, "",
-                                          /*sched_context=*/0);
+                                          /*hashes=*/nullptr, /*sched_context=*/0);
     if (ret != 0) return Result(ret);
     return Result(nros_cpp_action_server_set_callbacks(storage, goal_cb, cancel_cb, ctx));
 }
@@ -332,7 +334,8 @@ inline Result create_action_client_raw(::rclcpp::Node& node, void* storage, cons
     const nros_cpp_node_t* h = node.ffi_handle();
     if (h == nullptr) return Result(ErrorCode::NotInitialized);
     nros_cpp_qos_t ffi_qos = detail::qos_to_ffi(qos);
-    return Result(nros_cpp_action_client_create(h, action_name, type_name, "", ffi_qos, storage));
+    return Result(nros_cpp_action_client_create(h, action_name, type_name, "", /*hashes=*/nullptr,
+                                                ffi_qos, storage));
 }
 
 /// Bind a component's action client to **member callbacks** (RFC-0041 — callback

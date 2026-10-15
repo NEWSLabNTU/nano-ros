@@ -119,20 +119,14 @@ int main(int argc, char** argv) {
 
     memset(&app, 0, sizeof(app));
 
-    rclc_action_type_t fibonacci_type = {
-        .type_name = example_interfaces__action__Fibonacci__get_type_name(),
-        .type_hash = example_interfaces__action__Fibonacci__get_type_hash(),
-        .goal_serialized_size_max = 8,
-        .result_serialized_size_max = 264,
-        .feedback_serialized_size_max = 264,
-    };
-
     RCLC_CHECK_RET(rclc_support_init_with_locator(&app.support, locator, domain_id), 1);
     RCLC_CHECK_RET(rclc_node_init_default(&app.node, "raw_goal_probe", "/", &app.support), 1);
     // The RAW arms live on the polling (L1) core — `polling_client_core()`
     // returns NULL for an executor-mode client, so this must be init_polling.
-    RCLC_CHECK_RET(rclc_polling_action_client_init(&app.action_client, &app.node, &fibonacci_type,
-                                                   "/fibonacci"),
+    RCLC_CHECK_RET(rclc_polling_action_client_init(
+                       &app.action_client, &app.node,
+                       ROSIDL_GET_ACTION_TYPE_SUPPORT(example_interfaces, action, Fibonacci),
+                       "/fibonacci"),
                    1);
     printf("raw-goal probe ready\n");
 

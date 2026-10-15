@@ -193,8 +193,9 @@ ci distro="jazzy":
         -- --nocapture --test-threads=1
     echo "== ros-editions harness lanes ({{distro}}) — Zenoh (rmw_zenohd + rmw_zenoh_cpp) =="
     # Serial: one host rmw_zenohd on tcp/7447 at a time. Skips loudly on editions
-    # without rmw_zenoh_cpp (iron/humble); jazzy runs 5/6 (ROS→nano action server
-    # is #0292, ignored). Interop key is the RIHS01 keyexpr, NOT a zenoh bump (#0291).
+    # without rmw_zenoh_cpp (iron/humble); jazzy runs 6/6 (measured 2026-10-15,
+    # issue 1913 — every action endpoint on its own hash). Interop key is the
+    # RIHS01 keyexpr, NOT a zenoh bump (#0291).
     NROS_RMW=zenoh cargo test -p nros-tests \
         --test ros_editions_e2e zenoh \
         -- --nocapture --test-threads=1

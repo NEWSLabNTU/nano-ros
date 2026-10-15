@@ -86,20 +86,7 @@ fn resolvers() -> Vec<(&'static str, CapacityResolver)> {
 }
 
 fn hashes() -> ActionTypeHashes {
-    let h = || "fingerprint".to_string();
-    ActionTypeHashes {
-        goal: h(),
-        result: h(),
-        feedback: h(),
-        send_goal_request: h(),
-        send_goal_response: h(),
-        get_result_request: h(),
-        get_result_response: h(),
-        feedback_message: h(),
-        action: h(),
-        send_goal_service: h(),
-        get_result_service: h(),
-    }
+    ActionTypeHashes::uniform("fingerprint")
 }
 
 /// Every artifact this build of the emitters produces for the corpus, keyed by a
@@ -218,15 +205,27 @@ pub fn emit_corpus() -> BTreeMap<String, String> {
                 );
                 put(
                     "fingerprint_corpus/action/probe.h",
-                    generate_c_action_package(CORPUS, "Probe", &ac, "h", &r)
-                        .map(|g| g.header)
-                        .map_err(|e| e.to_string()),
+                    generate_c_action_package(
+                        CORPUS,
+                        "Probe",
+                        &ac,
+                        &ActionTypeHashes::uniform("h"),
+                        &r,
+                    )
+                    .map(|g| g.header)
+                    .map_err(|e| e.to_string()),
                 );
                 put(
                     "fingerprint_corpus/action/probe.c",
-                    generate_c_action_package(CORPUS, "Probe", &ac, "h", &r)
-                        .map(|g| g.source)
-                        .map_err(|e| e.to_string()),
+                    generate_c_action_package(
+                        CORPUS,
+                        "Probe",
+                        &ac,
+                        &ActionTypeHashes::uniform("h"),
+                        &r,
+                    )
+                    .map(|g| g.source)
+                    .map_err(|e| e.to_string()),
                 );
             }
             Err(_) => put("Probe.action.parse", Err("parse-error".into())),

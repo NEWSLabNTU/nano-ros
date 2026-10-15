@@ -111,6 +111,9 @@ pub struct rcl_action_client_t {
     pub type_hash: [u8; MAX_TYPE_HASH_LEN],
     /// Type hash length
     pub type_hash_len: usize,
+    /// Issue 1913 — the per-endpoint hashes, copied from the type support at
+    /// init (static-storage pointers; NULL falls back to `type_hash`).
+    pub endpoint_hashes: crate::action::common::rclc_action_endpoint_hashes_t,
     /// Goal response callback (for async send_goal)
     pub goal_response_callback: rclc_goal_response_callback_t,
     /// Feedback callback
@@ -181,6 +184,7 @@ impl Default for rcl_action_client_t {
             type_name_len: 0,
             type_hash: [0u8; MAX_TYPE_HASH_LEN],
             type_hash_len: 0,
+            endpoint_hashes: crate::action::common::rclc_action_endpoint_hashes_t::NULL,
             goal_response_callback: None,
             feedback_callback: None,
             result_callback: None,
@@ -242,6 +246,7 @@ pub unsafe extern "C" fn rcl_action_client_init(
     // Copy type name + hash (both optional — null sources leave dst untouched)
     client.type_name_len = crate::util::copy_cstr_into(type_info.type_name, &mut client.type_name);
     client.type_hash_len = crate::util::copy_cstr_into(type_info.type_hash, &mut client.type_hash);
+    client.endpoint_hashes = type_info.endpoint_hashes;
 
     // Store node pointer
     client.node = unsafe { crate::node::node_ref_of(node) };
@@ -1147,6 +1152,8 @@ pub unsafe extern "C" fn rclc_polling_action_client_init(
         let action_str = _resolved_name.as_str();
         let type_str = core::str::from_utf8_unchecked(&type_buf[..type_len]);
         let type_hash_str = core::str::from_utf8_unchecked(&hash_buf[..hash_len]);
+        // Issue 1913 — each endpoint on its own hash.
+        let hashes = type_info_ref.endpoint_hashes.resolve(type_hash_str);
         let node_name_str = core::str::from_utf8_unchecked(&node_ref.name[..node_ref.name_len]);
         let namespace_str =
             core::str::from_utf8_unchecked(&node_ref.namespace[..node_ref.namespace_len]);
@@ -1166,10 +1173,11 @@ pub unsafe extern "C" fn rclc_polling_action_client_init(
         let send_goal_keyexpr: nros_core::heapless::String<256> = action_info.send_goal_key();
         let send_goal_type: nros_core::heapless::String<256> =
             nros_node::action_channel_type(type_str, "SendGoal");
-        let send_goal_info = ServiceInfo::new(&send_goal_keyexpr, &send_goal_type, type_hash_str)
-            .with_domain(domain_id)
-            .with_node_name(node_name_str)
-            .with_namespace(namespace_str);
+        let send_goal_info =
+            ServiceInfo::new(&send_goal_keyexpr, &send_goal_type, hashes.send_goal)
+                .with_domain(domain_id)
+                .with_node_name(node_name_str)
+                .with_namespace(namespace_str);
         let send_goal_client =
             match session.create_client(&send_goal_info, QoSProfile::services_default()) {
                 Ok(h) => h,
@@ -1180,7 +1188,7 @@ pub unsafe extern "C" fn rclc_polling_action_client_init(
         let cancel_goal_info = ServiceInfo::new(
             &cancel_goal_keyexpr,
             "action_msgs::srv::dds_::CancelGoal_",
-            type_hash_str,
+            hashes.cancel_goal,
         )
         .with_domain(domain_id)
         .with_node_name(node_name_str)
@@ -1195,7 +1203,7 @@ pub unsafe extern "C" fn rclc_polling_action_client_init(
         let get_result_type: nros_core::heapless::String<256> =
             nros_node::action_channel_type(type_str, "GetResult");
         let get_result_info =
-            ServiceInfo::new(&get_result_keyexpr, &get_result_type, type_hash_str)
+            ServiceInfo::new(&get_result_keyexpr, &get_result_type, hashes.get_result)
                 .with_domain(domain_id)
                 .with_node_name(node_name_str)
                 .with_namespace(namespace_str);
@@ -1208,7 +1216,7 @@ pub unsafe extern "C" fn rclc_polling_action_client_init(
         let feedback_keyexpr: nros_core::heapless::String<256> = action_info.feedback_key();
         let feedback_type: nros_core::heapless::String<256> =
             nros_node::action_channel_type(type_str, "FeedbackMessage");
-        let feedback_topic = TopicInfo::new(&feedback_keyexpr, &feedback_type, type_hash_str)
+        let feedback_topic = TopicInfo::new(&feedback_keyexpr, &feedback_type, hashes.feedback)
             .with_domain(domain_id)
             .with_node_name(node_name_str)
             .with_namespace(namespace_str);
@@ -1662,6 +1670,7 @@ mod verification {
             result_deserialize: None,
             feedback_serialize: None,
             feedback_deserialize: None,
+            endpoint_hashes: crate::action::common::rclc_action_endpoint_hashes_t::NULL,
         }
     }
 

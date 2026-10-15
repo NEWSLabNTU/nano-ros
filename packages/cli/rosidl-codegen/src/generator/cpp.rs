@@ -596,9 +596,11 @@ pub fn generate_cpp_action_package(
     package_name: &str,
     action_name: &str,
     action: &Action,
-    type_hash: &str,
+    hashes: &crate::rihs::ActionTypeHashes,
     resolver: &CapacityResolver,
 ) -> Result<GeneratedCppActionPackage, GeneratorError> {
+    // Issue 1913 — the action's own hash plus each endpoint's and each part's.
+    let type_hash = hashes.action.as_str();
     let c_pkg_name = to_c_package_name(package_name);
     let act_snake = to_snake_case(action_name);
 
@@ -720,6 +722,14 @@ pub fn generate_cpp_action_package(
         package_name,
         action_name,
         type_hash,
+        send_goal_service_hash: &hashes.send_goal_service,
+        cancel_goal_service_hash: &hashes.cancel_goal_service,
+        get_result_service_hash: &hashes.get_result_service,
+        feedback_message_hash: &hashes.feedback_message,
+        status_message_hash: &hashes.status_message,
+        goal_type_hash: &hashes.goal,
+        result_type_hash: &hashes.result,
+        feedback_type_hash: &hashes.feedback,
         guard_name,
         cpp_package: c_pkg_name.clone(),
         goal_ffi_publish_fn: goal.publish_fn.clone(),

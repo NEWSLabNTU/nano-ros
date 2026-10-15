@@ -169,8 +169,14 @@ fn heap_on_a_c_service_payload_generates_caller_owned() {
 #[test]
 fn heap_on_a_c_action_payload_generates_caller_owned() {
     let r = resolver(r#""test_msgs/Move_Goal.waypoints" = { cap = 8, mode = "heap" }"#);
-    let pkg = generate_c_action_package("test_msgs", "Move", &parse_action(ACT).unwrap(), "h", &r)
-        .expect("a heap entry is a storage hint for C");
+    let pkg = generate_c_action_package(
+        "test_msgs",
+        "Move",
+        &parse_action(ACT).unwrap(),
+        &rosidl_codegen::rihs::ActionTypeHashes::uniform("h"),
+        &r,
+    )
+    .expect("a heap entry is a storage hint for C");
     assert!(
         pkg.header
             .contains("test_msgs__action__Move_Goal__init_in("),

@@ -500,6 +500,57 @@ fn uuid_msg() -> Message {
     )])
 }
 
+/// Canonical `action_msgs/msg/GoalInfo` (`UUID goal_id`, `Time stamp`).
+fn goal_info_msg() -> Message {
+    synth_msg(vec![
+        nested_field("goal_id", "unique_identifier_msgs/msg/UUID"),
+        nested_field("stamp", "builtin_interfaces/msg/Time"),
+    ])
+}
+
+/// Canonical `action_msgs/msg/GoalStatus` (`GoalInfo goal_info`, `int8 status`);
+/// the `STATUS_*` constants are not part of the type description.
+fn goal_status_msg() -> Message {
+    synth_msg(vec![
+        nested_field("goal_info", "action_msgs/msg/GoalInfo"),
+        mk_field("status", AstFieldType::Primitive(PrimitiveType::Int8)),
+    ])
+}
+
+/// Canonical `action_msgs/msg/GoalStatusArray` (`GoalStatus[] status_list`).
+fn goal_status_array_msg() -> Message {
+    synth_msg(vec![mk_field(
+        "status_list",
+        AstFieldType::Sequence {
+            element_type: Box::new(AstFieldType::NamespacedType {
+                package: None,
+                name: "action_msgs/msg/GoalStatus".to_string(),
+            }),
+        },
+    )])
+}
+
+/// Canonical `action_msgs/srv/CancelGoal` request (`GoalInfo goal_info`) and
+/// response (`int8 return_code`, `GoalInfo[] goals_canceling`; `ERROR_*`
+/// constants are not part of the type description).
+fn cancel_goal_request_msg() -> Message {
+    synth_msg(vec![nested_field("goal_info", "action_msgs/msg/GoalInfo")])
+}
+fn cancel_goal_response_msg() -> Message {
+    synth_msg(vec![
+        mk_field("return_code", AstFieldType::Primitive(PrimitiveType::Int8)),
+        mk_field(
+            "goals_canceling",
+            AstFieldType::Sequence {
+                element_type: Box::new(AstFieldType::NamespacedType {
+                    package: None,
+                    name: "action_msgs/msg/GoalInfo".to_string(),
+                }),
+            },
+        ),
+    ])
+}
+
 /// A `resolve` that first serves the embedded service-event built-ins
 /// (ServiceEventInfo, Time, UUID), then falls back to the caller's resolver for
 /// everything nested inside the user request/response/goal/... messages.
@@ -510,6 +561,8 @@ fn with_builtins<'a>(
         "service_msgs/msg/ServiceEventInfo" => Some(service_event_info_msg()),
         "builtin_interfaces/msg/Time" => Some(builtin_time_msg()),
         "unique_identifier_msgs/msg/UUID" => Some(uuid_msg()),
+        "action_msgs/msg/GoalInfo" => Some(goal_info_msg()),
+        "action_msgs/msg/GoalStatus" => Some(goal_status_msg()),
         other => resolve(other),
     }
 }
@@ -698,6 +751,65 @@ pub struct ActionTypeHashes {
     pub send_goal_service: String,
     /// Hash of the `<Action>_GetResult` SERVICE (issue #0292).
     pub get_result_service: String,
+    /// Hash of the standard `action_msgs/srv/CancelGoal` SERVICE — the type
+    /// every action's `cancel_goal` endpoint is keyed on (issue 1913). The same
+    /// for every action; carried here so all five endpoint hashes come from
+    /// one place.
+    pub cancel_goal_service: String,
+    /// Hash of the standard `action_msgs/msg/GoalStatusArray` — the type every
+    /// action's `status` topic is keyed on (issue 1913).
+    pub status_message: String,
+}
+
+impl ActionTypeHashes {
+    /// Every member set to one value — the Humble `TypeHashNotSupported`
+    /// sentinel, or a test placeholder. One constructor, so a field added here
+    /// cannot be missed at a call site that spelled all of them out.
+    pub fn uniform(h: &str) -> Self {
+        let h = || h.to_string();
+        Self {
+            goal: h(),
+            result: h(),
+            feedback: h(),
+            send_goal_request: h(),
+            send_goal_response: h(),
+            get_result_request: h(),
+            get_result_response: h(),
+            feedback_message: h(),
+            action: h(),
+            send_goal_service: h(),
+            get_result_service: h(),
+            cancel_goal_service: h(),
+            status_message: h(),
+        }
+    }
+}
+
+/// Issue 1913 — the `action_msgs/srv/CancelGoal` service hash, from the
+/// embedded canonical definition (no ament dependency).
+pub fn cancel_goal_service_hash() -> Result<String, String> {
+    let none = |_: &str| None;
+    let desc = build_service_type_description(
+        "action_msgs",
+        "CancelGoal",
+        &cancel_goal_request_msg(),
+        &cancel_goal_response_msg(),
+        none,
+    )?;
+    Ok(rihs01(&desc))
+}
+
+/// Issue 1913 — the `action_msgs/msg/GoalStatusArray` hash, from the embedded
+/// canonical definition.
+pub fn goal_status_array_hash() -> Result<String, String> {
+    let none = |_: &str| None;
+    let builtins = with_builtins(&none);
+    let desc = build_type_description(
+        "action_msgs/msg/GoalStatusArray",
+        &goal_status_array_msg(),
+        builtins,
+    )?;
+    Ok(rihs01(&desc))
 }
 
 /// Compute all nine action hashes (§3b) from the parsed goal/result/feedback.
@@ -746,6 +858,8 @@ pub fn action_type_hashes(
         // (`action_members`), so hashing them yields the SERVICE hashes.
         send_goal_service: hash_member("_SendGoal")?,
         get_result_service: hash_member("_GetResult")?,
+        cancel_goal_service: cancel_goal_service_hash()?,
+        status_message: goal_status_array_hash()?,
     })
 }
 
@@ -1045,6 +1159,20 @@ mod tests {
         assert_eq!(
             rihs01(&header_desc),
             "RIHS01_f49fb3ae2cf070f793645ff749683ac6b06203e41c891e17701b1cb597ce6a01"
+        );
+    }
+
+    // Issue 1913 — the two standard action endpoints. Goldens are Jazzy's
+    // shipped `action_msgs/{srv/CancelGoal,msg/GoalStatusArray}.json`.
+    #[test]
+    fn action_msgs_cancel_and_status_match_jazzy() {
+        assert_eq!(
+            cancel_goal_service_hash().unwrap(),
+            "RIHS01_573d8b0a534451d7bc2ac8c5ffde8ac14b8593b7001175d0cd6516dcbeb8689a"
+        );
+        assert_eq!(
+            goal_status_array_hash().unwrap(),
+            "RIHS01_6c1684b00f177d37438febe6e709fc4e2b0d4248dca4854946f9ed8b30cda83e"
         );
     }
 

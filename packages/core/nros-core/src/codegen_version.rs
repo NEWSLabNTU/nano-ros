@@ -35,7 +35,7 @@
 ///
 /// Gated by `check-codegen-version-surface`, which fails when the surface
 /// generated code names changes and this constant does not.
-pub const NROS_CODEGEN_VERSION: u32 = 15;
+pub const NROS_CODEGEN_VERSION: u32 = 16;
 
 /// The oldest codegen version this runtime still accepts.
 ///
@@ -220,6 +220,18 @@ pub const NROS_CODEGEN_VERSION: u32 = 15;
 /// backend. The trait const is DEFAULTED (`None`), so a version-14 tree still
 /// compiles against this runtime and only keeps the image-wide receive size it
 /// had. Nothing it names is gone, so it is accepted.
+///
+/// Still 14 while [`NROS_CODEGEN_VERSION`] moved to 16 (issue 1913). Generated
+/// actions now carry the hash each of their five endpoints is keyed on: Rust
+/// impls state `RosAction::{CANCEL_GOAL_SERVICE,STATUS_MESSAGE}_HASH`, the C
+/// descriptor `rclc_action_type_t` gained a trailing `endpoint_hashes`, and C++
+/// action types gained five `<Endpoint>_HASH` members. All three are ADDITIVE
+/// on the runtime side: the Rust consts default to `ACTION_HASH`, an older C
+/// designated initializer leaves the trailing member NULL (read as "use
+/// `type_hash`"), and `rclcpp::detail::action_endpoint_hashes<A>()` detects the
+/// C++ members. So an older tree still compiles and runs with the single hash
+/// it always had, and is accepted; a NEW tree names a member an older runtime
+/// lacks, which is what the bump refuses.
 ///
 /// The range `[NROS_CODEGEN_VERSION_MIN, NROS_CODEGEN_VERSION]` is expressed to
 /// C and C++ as a SET OF DEFINED SYMBOLS rather than as a comparison — see

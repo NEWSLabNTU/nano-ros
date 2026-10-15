@@ -275,4 +275,13 @@ const struct rclc_action_type_t fingerprint_corpus__action__Probe__nros_type = {
     .result_deserialize = fingerprint_corpus__action__Probe_Result__nros_deserialize_erased,
     .feedback_serialize = fingerprint_corpus__action__Probe_Feedback__nros_serialize_erased,
     .feedback_deserialize = fingerprint_corpus__action__Probe_Feedback__nros_deserialize_erased,
+    // Issue 1913 — the hash each endpoint is keyed on; an Iron+ peer keys all
+    // five differently, and `.type_hash` (the action's own) matches none.
+    .endpoint_hashes = {
+        .send_goal = "h",
+        .cancel_goal = "h",
+        .get_result = "h",
+        .feedback = "h",
+        .status = "h",
+    },
 };
