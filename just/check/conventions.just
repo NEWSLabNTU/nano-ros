@@ -338,3 +338,13 @@ retired-cmake-names:
 [private]
 cmake-function-list-dir:
     @python3 scripts/check/check-cmake-function-list-dir.py
+
+# Issue 1908 — a target's COMPILE_DEFINITIONS are read in ONE place,
+# `nros_target_ferried_compile_definitions`, which adds every SOURCE's. The NuttX
+# boards rebuild a target's sources in cargo's cc-rs and read the target's
+# definitions alone, which dropped phase-499 W5's per-source
+# `main=nros_ported_main`: every NuttX C/C++ image failed to link, in a family no
+# merge lane builds. Buildless; self-tests its scanner.
+[private]
+cmake-ferried-compile-definitions:
+    @python3 scripts/check/check-cmake-ferried-compile-definitions.py
