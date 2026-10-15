@@ -147,7 +147,7 @@ them; bare metal does not. Two kinds of installer, two rules:
   plainly (`install_park` in each board, the Zephyr `zephyr_component_main!`).
 - Shared C and C++ entry code is linked beside ANY port, so it references them
   WEAKLY and installs only when both resolve and the granularity is non-zero
-  (`rclcpp::board::detail::install_platform_park` in `<nros/main.hpp>`, and the C runner's
+  (`rclcpp::board::detail::install_platform_park` in `<rclcpp/detail/main.hpp>`, and the C runner's
   copy in `nros_rtos_run_components.c`). Zero granularity is the trait default
   a Rust-implemented port exports with the symbol; it means "no park".
 

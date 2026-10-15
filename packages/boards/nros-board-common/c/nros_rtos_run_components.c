@@ -128,7 +128,7 @@ extern void nros_board_network_wait(void);
 
 /* phase-436 — the port's microsecond park, installed on this entry's executor
  * as the tier runners install it on theirs. The C runner's copy of
- * `rclcpp::board::detail::install_platform_park` in `<nros/main.hpp>`, which
+ * `rclcpp::board::detail::install_platform_park` in `<rclcpp/detail/main.hpp>`, which
  * states the rule (RFC-0106 D7); that header is C++ and not on this file's
  * include path.
  *
