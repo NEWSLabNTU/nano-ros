@@ -1281,7 +1281,7 @@ everything a user WRITES. The goal is migration: an rclc, micro-ROS or rclcpp
 program should port with no nano-ros vocabulary to learn.
 
 **1. Headers.** `<nros/*.h>` and `<nros/*.hpp>` are INTERNAL; they will be
-renamed into `rclc` / `rclcpp` later (C done 2026-10-15, below). User code includes the API only at
+renamed into `rclc` / `rclcpp` later (C done 2026-10-15, C++ 2026-10-16, below). User code includes the API only at
 upstream's paths: `<rcl/*.h>`, `<rclc/*.h>`, `<rcl_action/*.h>`,
 `<rcl_lifecycle/*.h>`, `<rclc_lifecycle/*.h>`, `<rclc_parameter/*.h>` for C;
 `<rclcpp/rclcpp.hpp>` (and its siblings as they are added) for C++. Each
@@ -1363,6 +1363,18 @@ ruling for C.
 - **C only.** nros-cpp's `<nros/*.hpp>` → `rclcpp/` is a follow-up.
 
 Implemented by [phase-501](../roadmap/archived/phase-501-c-api-headers-move-into-rclc.md).
+
+**C++ followed on 2026-10-16** (the maintainer asked for the follow-up),
+under the same two rulings with `rclcpp` for `rclc`: a header with an
+upstream counterpart takes upstream's path in the package whose namespace it
+declares (`<rclcpp/node.hpp>`, `<rclcpp/logging.hpp>`,
+`<rclcpp_action/client.hpp>`, `<rclcpp_lifecycle/lifecycle_node.hpp>`); a
+user-reachable header with none becomes `<rclcpp/<x>.hpp>`; entry glue,
+generated-code support and nros-cpp's generated headers go to
+`rclcpp/detail/`. The umbrella `<rclcpp/rclcpp.hpp>` holds the content
+itself. No identifier moved: there has been no `nros::` namespace since
+phase-483. Implemented by
+[phase-503](../roadmap/phase-503-cpp-headers-move-into-rclcpp.md).
 
 ## Settled: each language follows ITS OWN upstream (2026-09-04)
 

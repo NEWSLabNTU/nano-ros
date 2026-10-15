@@ -118,7 +118,7 @@ Requires `CONFIG_NROS=y` and `CONFIG_NROS_CPP_API=y` in `prj.conf`.
 ### Initialization
 
 ```cpp
-#include <nros/nros.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 // Global init (simple applications). `init_in` is the Result-returning form:
 // upstream's `rclcpp::init(argc, argv)` returns `void`, so the name differs
@@ -432,7 +432,7 @@ Linux build of a node written against `rclcpp::Node` stays on the freestanding
 surface, and a ported upstream node wants this flag on a Cortex-M3 build just
 as much as on a host. Nothing detects it for you: the headers do not probe the
 include path, because no probe answers correctly on both embedded lanes (the
-measurement is in `packages/api/nros-cpp/include/nros/std_detect.hpp`, and
+measurement is in `packages/api/nros-cpp/include/rclcpp/detail/std_detect.hpp`, and
 before phase-438 the probe that was there broke every embedded C++ FreeRTOS
 build — issue 1187).
 
@@ -442,7 +442,7 @@ Set it on the target, so every translation unit of an image agrees:
 target_compile_definitions(my_ported_node PRIVATE NROS_CPP_STD=1)
 ```
 
-A per-file `#define NROS_CPP_STD` ahead of `<nros/nros.hpp>` compiles, but it
+A per-file `#define NROS_CPP_STD` ahead of `<rclcpp/rclcpp.hpp>` compiles, but it
 changes the layout of `rclcpp::Node`, so mixing it within one image is an ODR
 break rather than a missing function.
 
@@ -520,7 +520,7 @@ target_sources(app PRIVATE src/main.cpp)
 
 #include <nros/platform_zephyr.h>
 
-#include <nros/nros.hpp>
+#include <rclcpp/rclcpp.hpp>
 #include "std_msgs.hpp"
 
 LOG_MODULE_REGISTER(my_app, LOG_LEVEL_INF);
