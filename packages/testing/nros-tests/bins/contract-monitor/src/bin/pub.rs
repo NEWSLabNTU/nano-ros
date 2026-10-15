@@ -30,6 +30,9 @@ static MONITORS: &[MonitorSpec] = &[MonitorSpec {
     max_latency_ms: 0,
     route_trigger: "",
     route_max_latency_ms: 0,
+    route_deadline_ms: 0,
+    reaction_id: 0,
+    mechanism: 0,
     cell: &PUB_CELL,
 }];
 

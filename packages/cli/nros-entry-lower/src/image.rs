@@ -336,6 +336,17 @@ pub struct MonitorRow {
     pub route_trigger: String,
     #[serde(default)]
     pub route_max_latency_ms: u32,
+    /// phase-503 -- the route's supervised deadline (ms, 0 = none), the
+    /// reaction it starts (the contract's path ref and the id the hook
+    /// receives, 0 = none) and the supervising mechanism (0 executor, 1 timer).
+    #[serde(default)]
+    pub route_deadline_ms: u32,
+    #[serde(default)]
+    pub reaction: String,
+    #[serde(default)]
+    pub reaction_id: u16,
+    #[serde(default)]
+    pub mechanism: u8,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

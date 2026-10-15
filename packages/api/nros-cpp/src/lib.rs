@@ -4682,6 +4682,16 @@ pub struct nros_cpp_monitor_row_t {
     /// phase10-B3 -- the route's budget (ms), take of the trigger to this
     /// output (`route-latency-runtime`). 0 = no route contract.
     pub route_max_latency_ms: u32,
+    /// phase-503 -- the route's supervised deadline (ms) from the take of the
+    /// trigger (`route-deadline-runtime`, which calls the reaction hook). 0 =
+    /// not supervised. A row baked before this field existed initialises it,
+    /// and the two below, to 0.
+    pub route_deadline_ms: u32,
+    /// phase-503 -- the reaction id handed to the hook (1-based, 0 = none).
+    pub reaction_id: u16,
+    /// phase-503 -- `NROS_CPP_MECHANISM_EXECUTOR` (0) or
+    /// `NROS_CPP_MECHANISM_TIMER` (1).
+    pub mechanism: u8,
 }
 
 /// One contracted subscriber age row (`sub_endpoints.max_age_ms`), the C
@@ -4902,6 +4912,9 @@ unsafe fn install_monitor_tables(
                         max_latency_ms: row.max_latency_ms,
                         route_trigger,
                         route_max_latency_ms: row.route_max_latency_ms,
+                        route_deadline_ms: row.route_deadline_ms,
+                        reaction_id: row.reaction_id,
+                        mechanism: row.mechanism,
                         cell: &*cell,
                     },
                 );
@@ -5561,6 +5574,118 @@ pub struct NativeTierSpecC {
     pub deadline_policy: *const c_char,
 }
 
+/// phase-503 — [`nros_cpp_monitor_row_t::mechanism`]: the route deadline is
+/// checked in the executor's spin loop (catches slowness, not a stuck
+/// callback).
+pub const NROS_CPP_MECHANISM_EXECUTOR: u8 = 0;
+/// phase-503 — [`nros_cpp_monitor_row_t::mechanism`]: the port also supervises
+/// the route with its own timer, armed from
+/// [`nros_cpp_executor_route_next_due_us`] (catches a stuck callback too).
+pub const NROS_CPP_MECHANISM_TIMER: u8 = 1;
+
+/// phase-503 — what the reaction hook receives: the C spelling of
+/// `nros_node::executor::monitor::ReactionEvent`, field for field (the layout
+/// is asserted equal below, which is what lets the hook be handed to the
+/// executor unchanged).
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct nros_cpp_reaction_event_t {
+    /// The row's `reaction_id` (1-based; 0 = none named).
+    pub reaction_id: u32,
+    /// Index of the row in the installed table (the sched-context slot for a
+    /// `fault` deadline action).
+    pub row: u32,
+    /// The verdict's rule code: 11 `route-deadline-runtime`, 4
+    /// `deadline-miss-runtime`.
+    pub rule_code: u32,
+    /// Time from the take to the check, ms.
+    pub measured_ms: u32,
+    /// The deadline, ms.
+    pub declared_ms: u32,
+    /// The row's `mechanism` (`NROS_CPP_MECHANISM_*`).
+    pub mechanism: u8,
+}
+
+#[cfg(feature = "rmw-cffi")]
+const _: () = {
+    use core::mem::{align_of, offset_of, size_of};
+    use nros_node::executor::monitor::ReactionEvent as R;
+    type C = nros_cpp_reaction_event_t;
+    assert!(size_of::<C>() == size_of::<R>() && align_of::<C>() == align_of::<R>());
+    assert!(offset_of!(C, reaction_id) == offset_of!(R, reaction_id));
+    assert!(offset_of!(C, row) == offset_of!(R, row));
+    assert!(offset_of!(C, rule_code) == offset_of!(R, rule_code));
+    assert!(offset_of!(C, measured_ms) == offset_of!(R, measured_ms));
+    assert!(offset_of!(C, declared_ms) == offset_of!(R, declared_ms));
+    assert!(offset_of!(C, mechanism) == offset_of!(R, mechanism));
+};
+
+/// phase-503 — the reaction hook: `hook(event, ctx)`, called on the spin
+/// thread inside `nros_cpp_spin_once` when a supervised route passes its
+/// deadline (`route-deadline-runtime`; `event->rule_code` is 11), and on a
+/// sched context's `fault` deadline action (`rule_code` 4, `reaction_id` 0,
+/// `row` = the sched-context slot). It must not block and must not call back
+/// into this executor.
+pub type nros_cpp_reaction_hook_t =
+    Option<unsafe extern "C" fn(event: *const nros_cpp_reaction_event_t, ctx: *mut c_void)>;
+
+/// phase-503 — install (or, with `hook == NULL`, remove) the executor's
+/// reaction hook. A supervised route row (`route_deadline_ms > 0`) whose take
+/// is still unanswered at `take + route_deadline_ms` is reported once and the
+/// hook is called with the row's `reaction_id`, its index and its `mechanism`.
+/// Call after `nros_cpp_install_monitors`, before the first spin.
+///
+/// # Safety
+/// `handle` must be a live executor handle from this ABI, or NULL. `hook` and
+/// `ctx` must outlive the executor.
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_executor_set_reaction_hook(
+    handle: *mut c_void,
+    hook: nros_cpp_reaction_hook_t,
+    ctx: *mut c_void,
+) -> nros_cpp_ret_t {
+    let Some(cpp) = (unsafe { cpp_ctx_checked(handle) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    // SAFETY: the two event structs have one layout (asserted above), so a
+    // function taking a pointer to one is ABI-identical to one taking the
+    // other.
+    let hook = hook.map(|f| unsafe {
+        core::mem::transmute::<
+            unsafe extern "C" fn(*const nros_cpp_reaction_event_t, *mut c_void),
+            nros_node::executor::monitor::ReactionHookFn,
+        >(f)
+    });
+    cpp.executor.set_reaction_hook(hook.map(|f| (f, ctx)));
+    NROS_CPP_RET_OK
+}
+
+/// phase-503 — microseconds from now to the earliest deadline of a pending
+/// supervised route (0 when one is due), written to `*out_us`;
+/// `UINT64_MAX` when no supervised route is waiting. A port supervising with
+/// its own timer (`NROS_CPP_MECHANISM_TIMER`) re-arms it from this after each
+/// spin.
+///
+/// # Safety
+/// `handle` must be a live executor handle from this ABI, or NULL; `out_us`
+/// must be writable.
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_executor_route_next_due_us(
+    handle: *mut c_void,
+    out_us: *mut u64,
+) -> nros_cpp_ret_t {
+    let Some(cpp) = (unsafe { cpp_ctx_checked(handle) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    if out_us.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    unsafe { *out_us = cpp.executor.route_next_due_us().unwrap_or(u64::MAX) };
+    NROS_CPP_RET_OK
+}
+
 /// phase-436 W7.a — register a platform deadline source on this executor.
 ///
 /// The seam existed only as a Rust method, so the board entries that go through
@@ -5765,6 +5890,8 @@ pub const NROS_CPP_WAKE_SOURCE_TIMER: u8 = 1;
 pub const NROS_CPP_WAKE_SOURCE_SESSION: u8 = 2;
 /// A platform-registered deadline source bounded the park.
 pub const NROS_CPP_WAKE_SOURCE_PLATFORM: u8 = 3;
+/// phase-503 — a supervised route's deadline bounded the park.
+pub const NROS_CPP_WAKE_SOURCE_ROUTE_DEADLINE: u8 = 4;
 
 /// The C encoding of a `WakeSourceId`: `(code, platform_index)`.
 ///
@@ -5778,6 +5905,7 @@ fn wake_source_code(src: nros_node::executor::WakeSourceId) -> (u8, u8) {
         W::Timer => (NROS_CPP_WAKE_SOURCE_TIMER, 0),
         W::Session => (NROS_CPP_WAKE_SOURCE_SESSION, 0),
         W::Platform(i) => (NROS_CPP_WAKE_SOURCE_PLATFORM, i),
+        W::RouteDeadline => (NROS_CPP_WAKE_SOURCE_ROUTE_DEADLINE, 0),
     }
 }
 
@@ -7051,6 +7179,9 @@ mod census_funnel_tests {
             max_latency_ms: 0,
             route_trigger: core::ptr::null(),
             route_max_latency_ms: 0,
+            route_deadline_ms: 0,
+            reaction_id: 0,
+            mechanism: 0,
         }];
         let tables = crate::nros_cpp_monitor_tables_t {
             rows: rows.as_ptr(),

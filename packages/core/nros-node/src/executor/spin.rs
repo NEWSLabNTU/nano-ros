@@ -2000,6 +2000,10 @@ pub struct Executor<'s> {
     pub(crate) age_states: [super::monitor::AgeState; super::monitor::MAX_AGE_MONITORS],
     /// W3b.5 — hook invoked on `DeadlineAction::Fault` (panic when unset).
     pub(crate) fault_fn: Option<fn(&super::monitor::Violation)>,
+    /// phase-503 — the reaction hook and its context: called when a
+    /// supervised route passes its deadline (`route-deadline-runtime`), and on
+    /// `DeadlineAction::Fault` when no `fault_fn` is set.
+    pub(crate) reaction_hook: Option<(super::monitor::ReactionHookFn, *mut core::ffi::c_void)>,
     /// Issue #515 — the spin cadence audit runs once, on the first spin
     /// that carries a non-zero timeout (which is where the tier's
     /// declared spin period becomes visible to the executor).
@@ -2314,6 +2318,7 @@ impl<'s> Executor<'s> {
             age_table: &[],
             age_states: [super::monitor::AgeState::default(); super::monitor::MAX_AGE_MONITORS],
             fault_fn: None,
+            reaction_hook: None,
             spin_quantization_checked: false,
             spin_quantization_us: 0,
             max_release_jitter_us: 0,
@@ -2521,6 +2526,9 @@ pub enum WakeSourceId {
     /// bare-metal device ISR. The core never names an RTOS; it only asks each
     /// registered source when it will next need the executor.
     Platform(u8),
+    /// phase-503 — the earliest deadline of a pending supervised route: the
+    /// park ends there so `route-deadline-runtime` judges it on time.
+    RouteDeadline,
 }
 
 /// How many platform sources one executor can carry. A plain const, not a
@@ -3395,6 +3403,36 @@ impl<'s> Executor<'s> {
         self.fault_fn = Some(f);
     }
 
+    /// phase-503 — install the REACTION hook: `f(event, ctx)` is called on the
+    /// spin thread when a supervised route passes its deadline
+    /// (`route-deadline-runtime`), with the row's reaction id, row index and
+    /// mechanism. It also stands in for [`Self::set_fault_handler`] on a
+    /// `DeadlineAction::Fault` when no fault handler is set (reaction id 0,
+    /// the sched-context slot as the row), so a C or C++ image has a fault
+    /// path that does not panic. Replaces any earlier hook; `None` removes it.
+    ///
+    /// The hook must not block and must not re-enter this executor: it starts
+    /// the fallback, or hands it to another thread, and returns.
+    pub fn set_reaction_hook(
+        &mut self,
+        hook: Option<(super::monitor::ReactionHookFn, *mut core::ffi::c_void)>,
+    ) {
+        self.reaction_hook = hook;
+    }
+
+    /// phase-503 — microseconds from now to the earliest deadline of a pending
+    /// supervised route (0 when one is due), or `None` when none is waiting or
+    /// the executor has no clock. A port that supervises with its own timer
+    /// (`MECHANISM_TIMER`) re-arms it from this after each spin.
+    pub fn route_next_due_us(&self) -> Option<u64> {
+        // No table, no clock read: this runs on every park.
+        if self.monitor_table.is_empty() {
+            return None;
+        }
+        let clock = self.clock_us_fn?;
+        super::monitor::route_next_due_us(self.monitor_table, clock())
+    }
+
     /// Issue #515 — warn about periods the spin cadence cannot express.
     ///
     /// A timer fires on the first spin at or after its period elapses, so
@@ -3528,6 +3566,15 @@ impl<'s> Executor<'s> {
             && timer_us < best.0
         {
             best = (timer_us, WakeSourceId::Timer);
+        }
+
+        // phase-503 — a supervised route's deadline is the executor's own, like
+        // a timer's: the park must end there, or a route whose output never
+        // comes is judged only when something else wakes the loop.
+        if let Some(due_us) = self.route_next_due_us()
+            && due_us < best.0
+        {
+            best = (due_us, WakeSourceId::RouteDeadline);
         }
 
         for (i, slot) in self.wake_sources.iter().enumerate() {
@@ -4076,6 +4123,48 @@ impl<'s> Executor<'s> {
                 }
             }
         }
+        self.check_route_deadlines();
+    }
+
+    /// phase-503 — `route-deadline-runtime`: every pending supervised route
+    /// past `take + route_deadline_ms` is reported (once until a route is
+    /// within budget again) and its reaction requested through the hook.
+    /// Runs right after the park, whose bound includes the earliest due time
+    /// ([`WakeSourceId::RouteDeadline`]), so a route whose output never comes
+    /// is judged within one park granule of its deadline. A callback that does
+    /// not return holds this check too: that is `MECHANISM_TIMER`'s case.
+    fn check_route_deadlines(&mut self) {
+        let table = self.monitor_table;
+        if table.is_empty() || !super::monitor::route_deadline_active(table) {
+            return;
+        }
+        let Some(now_us) = self.now_us() else {
+            return;
+        };
+        // Start-up is not RUN (phase-474 I2): before arming a verdict is only
+        // counted, and no reaction is requested for it either.
+        let hook = self.reaction_hook.filter(|_| self.violations.counts.armed);
+        let violations = &mut self.violations;
+        super::monitor::route_overdue(table, now_us, |row, v, first| {
+            if let Some((f, ctx)) = hook {
+                let spec = &table[row];
+                let ev = super::monitor::ReactionEvent {
+                    reaction_id: spec.reaction_id as u32,
+                    row: row as u32,
+                    rule_code: super::monitor::rule_code(v.rule),
+                    measured_ms: v.measured,
+                    declared_ms: v.declared,
+                    mechanism: spec.mechanism,
+                };
+                // SAFETY: `f` and `ctx` were registered together through
+                // `set_reaction_hook`, whose caller keeps `ctx` valid for the
+                // executor's life; the event lives across the call.
+                unsafe { f(&ev, ctx) };
+            }
+            if first {
+                violations.record(v);
+            }
+        });
     }
 
     /// Issue #505 — report activations dropped by
@@ -10830,6 +10919,7 @@ impl<'s> Executor<'s> {
                             &mut deadline_misses,
                             &mut skipped_scs,
                             self.fault_fn,
+                            self.reaction_hook,
                         );
                     }
                     self.finish_dispatch(i);
@@ -10888,6 +10978,7 @@ impl<'s> Executor<'s> {
                             &mut deadline_misses,
                             &mut skipped_scs,
                             self.fault_fn,
+                            self.reaction_hook,
                         );
                     }
                     self.finish_dispatch(i);
@@ -14280,6 +14371,7 @@ fn check_deadline_miss(
     misses: &mut heapless::Vec<super::monitor::Violation, { super::monitor::MAX_VIOLATIONS }>,
     skipped_scs: &mut u64,
     fault_fn: Option<fn(&super::monitor::Violation)>,
+    reaction_hook: Option<(super::monitor::ReactionHookFn, *mut core::ffi::c_void)>,
 ) {
     use super::sched_context::DeadlineAction;
     let Some(sc) = sc else { return };
@@ -14310,6 +14402,20 @@ fn check_deadline_miss(
         DeadlineAction::Fault => {
             if let Some(f) = fault_fn {
                 f(&v);
+                let _ = misses.push(v);
+            } else if let Some((f, ctx)) = reaction_hook {
+                // phase-503 — the reaction hook is the fault path a C or C++
+                // image can install; reaction id 0, the SC slot as the row.
+                let ev = super::monitor::ReactionEvent {
+                    reaction_id: super::monitor::REACTION_NONE as u32,
+                    row: sc_idx as u32,
+                    rule_code: super::monitor::rule_code(v.rule),
+                    measured_ms: elapsed_us / 1_000,
+                    declared_ms: deadline_us / 1_000,
+                    mechanism: super::monitor::MECHANISM_EXECUTOR,
+                };
+                // SAFETY: as in `check_route_deadlines`.
+                unsafe { f(&ev, ctx) };
                 let _ = misses.push(v);
             } else {
                 panic!(

@@ -5565,6 +5565,10 @@ mod contract_monitor_tests {
             max_latency_ms: 0,
             route_trigger: String::new(),
             route_max_latency_ms: 0,
+            route_deadline_ms: 0,
+            reaction: String::new(),
+            reaction_id: 0,
+            mechanism: 0,
         }
     }
 

@@ -12893,6 +12893,9 @@ fn a_raw_publisher_on_a_contracted_topic_bumps_its_cell() {
         max_latency_ms: 0,
         route_trigger: "",
         route_max_latency_ms: 0,
+        route_deadline_ms: 0,
+        reaction_id: 0,
+        mechanism: 0,
         cell: &CELL,
     }];
 
@@ -13570,6 +13573,9 @@ fn t4_an_overrun_after_arming_is_the_one_stored_violation() {
         max_latency_ms: 5,
         route_trigger: "",
         route_max_latency_ms: 0,
+        route_deadline_ms: 0,
+        reaction_id: 0,
+        mechanism: 0,
         cell: &CELL,
     }];
     // The lifecycle's knobs, set by the test, read by the callback.
@@ -13793,6 +13799,9 @@ fn t4_a_timer_overrun_beside_an_idle_subscription_is_judged() {
         max_latency_ms: 5,
         route_trigger: "",
         route_max_latency_ms: 0,
+        route_deadline_ms: 0,
+        reaction_id: 0,
+        mechanism: 0,
         cell: &CELL,
     }];
     static BUSY_MS: AtomicU32 = AtomicU32::new(0);
@@ -14123,6 +14132,9 @@ fn i7_a_slow_report_breeds_no_overrun_or_jitter_verdict() {
             max_latency_ms: 5,
             route_trigger: "",
             route_max_latency_ms: 0,
+            route_deadline_ms: 0,
+            reaction_id: 0,
+            mechanism: 0,
             cell: &CELL_A,
         },
         MonitorSpec {
@@ -14132,6 +14144,9 @@ fn i7_a_slow_report_breeds_no_overrun_or_jitter_verdict() {
             max_latency_ms: 5,
             route_trigger: "",
             route_max_latency_ms: 0,
+            route_deadline_ms: 0,
+            reaction_id: 0,
+            mechanism: 0,
             cell: &CELL_B,
         },
     ];
@@ -14669,6 +14684,9 @@ fn b3_a_late_tick_exceeds_the_route_while_every_callback_passes() {
         max_latency_ms: 150,
         route_trigger: "/b3/availability",
         route_max_latency_ms: 149,
+        route_deadline_ms: 0,
+        reaction_id: 0,
+        mechanism: 0,
         cell: &CELL,
     }];
     static TICKS: AtomicU32 = AtomicU32::new(0);
@@ -14792,6 +14810,142 @@ fn b3_a_late_tick_exceeds_the_route_while_every_callback_passes() {
         0,
         "answered, and the report-once state cleared by a clean route"
     );
+}
+
+private_test_clock!(route_deadline_clock);
+
+/// phase-503 -- `route-deadline-runtime` on the host executor, with a clock
+/// the test sets: the trigger is taken, the output NEVER comes.
+///
+/// Before this phase the route stayed pending forever and nothing was
+/// recorded, because `route-latency-runtime` judges only at the output. Now
+/// the executor offers the take's deadline as a wake source
+/// (`WakeSourceId::RouteDeadline`), judges nothing one microsecond before it,
+/// and at the deadline plus one 1 ms tick records one verdict and calls the
+/// reaction hook with the row's reaction id, index and mechanism. The
+/// verdict is recorded once; a second take that misses requests the reaction
+/// again.
+#[cfg(all(feature = "std", feature = "alloc"))]
+#[test]
+fn route_deadline_fires_when_the_output_never_comes() {
+    use super::monitor::{MECHANISM_TIMER, MonitorSpec, PubMonitorCell, ReactionEvent};
+    use core::sync::atomic::Ordering;
+    use std::sync::Mutex;
+    let _g = arming_lock();
+
+    static CELL: PubMonitorCell = PubMonitorCell::new();
+    static TABLE: [MonitorSpec; 1] = [MonitorSpec {
+        topic: "/s3/state",
+        fqn: "/s3/handler/state",
+        min_rate_hz_milli: 0,
+        max_latency_ms: 0,
+        route_trigger: "/s3/availability",
+        route_max_latency_ms: 149,
+        route_deadline_ms: 149,
+        reaction_id: 7,
+        mechanism: MECHANISM_TIMER,
+        cell: &CELL,
+    }];
+    static EVENTS: Mutex<alloc::vec::Vec<(ReactionEvent, usize)>> =
+        Mutex::new(alloc::vec::Vec::new());
+    unsafe extern "C" fn hook(ev: *const ReactionEvent, ctx: *mut core::ffi::c_void) {
+        let ev = unsafe { *ev };
+        EVENTS.lock().unwrap().push((ev, ctx as usize));
+    }
+
+    route_deadline_clock::claim_at_us(1_000_000);
+    let mut executor = executor_with_clock_fn(MockSession::new(), route_deadline_clock::now_us);
+    executor.set_monitor_table(&TABLE);
+    executor.set_reaction_hook(Some((hook, 0x5a as *mut core::ffi::c_void)));
+    let nid = executor.node_builder("handler").build().expect("node");
+    let _state = executor
+        .node_mut(nid)
+        .create_generic_publisher("/s3/state", "std_msgs::msg::dds_::Int32_", "")
+        .expect("contracted publisher");
+    executor
+        .node_mut(nid)
+        .create_subscription::<TestMsg, _>("/s3/availability", |_m: &TestMsg| {})
+        .expect("trigger subscription");
+    let sub_slot = executor
+        .entries
+        .iter()
+        .position(|e| {
+            e.as_ref()
+                .is_some_and(|m| m.kind == super::arena::EntryKind::Subscription)
+        })
+        .expect("the subscription's slot");
+    let off = executor.entries[sub_slot].as_ref().unwrap().offset;
+    let arena_ptr = executor.arena.as_ptr() as *const u8;
+    let load = |v: i32| {
+        let (d, n) = encode_test_msg(v);
+        unsafe { &*(arena_ptr.add(off) as *const MockSubscriber) }.load(d, n);
+    };
+    let deadline_verdicts = |ex: &mut Executor| {
+        let mut out = alloc::vec::Vec::new();
+        ex.drain_violations(|v| {
+            if v.rule == "route-deadline-runtime" {
+                assert_eq!(v.fqn, "/s3/handler/state");
+                out.push((v.measured, v.declared));
+            }
+        });
+        out
+    };
+
+    // Nothing pending: no wake source.
+    assert_eq!(executor.route_next_due_us(), None);
+    // The take, at 1 s.
+    load(1);
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    assert_ne!(
+        CELL.route.load(Ordering::Relaxed) & super::monitor::ROUTE_PENDING,
+        0,
+        "the take is waiting for the output"
+    );
+    // The park ends at the deadline, and says why.
+    assert_eq!(executor.route_next_due_us(), Some(149_000));
+    assert_eq!(
+        executor.next_wake_bound_attributed_us(1_000_000, None),
+        (149_000, super::spin::WakeSourceId::RouteDeadline)
+    );
+    // One microsecond before it: nothing.
+    route_deadline_clock::set_us(1_148_999);
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    assert!(EVENTS.lock().unwrap().is_empty());
+    assert!(deadline_verdicts(&mut executor).is_empty());
+    // The deadline plus one 1 ms tick: one verdict, one reaction.
+    route_deadline_clock::set_us(1_150_000);
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    {
+        let ev = EVENTS.lock().unwrap();
+        assert_eq!(ev.len(), 1, "{ev:?}");
+        let (e, ctx) = ev[0];
+        assert_eq!(e.reaction_id, 7);
+        assert_eq!(e.row, 0);
+        assert_eq!(
+            e.rule_code,
+            super::monitor::rule_code("route-deadline-runtime")
+        );
+        assert_eq!((e.measured_ms, e.declared_ms), (150, 149));
+        assert_eq!(e.mechanism, MECHANISM_TIMER);
+        assert_eq!(ctx, 0x5a, "the registered context");
+    }
+    assert_eq!(deadline_verdicts(&mut executor), [(150, 149)]);
+    assert_eq!(
+        executor.route_next_due_us(),
+        None,
+        "judged: no longer pending"
+    );
+    // A later spin judges the same take no more.
+    route_deadline_clock::set_us(2_000_000);
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    assert_eq!(EVENTS.lock().unwrap().len(), 1);
+    // A second take that also misses: the reaction again, the verdict not.
+    load(2);
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    route_deadline_clock::set_us(2_149_000);
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    assert_eq!(EVENTS.lock().unwrap().len(), 2);
+    assert!(deadline_verdicts(&mut executor).is_empty(), "reported once");
 }
 
 /// Issue 1913 — a raw action server and client key each endpoint on its OWN

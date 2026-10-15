@@ -59,6 +59,9 @@ static ROWS: [MonitorSpec; MAX_ROWS] = {
         max_latency_ms: 0,
         route_trigger: "",
         route_max_latency_ms: 0,
+        route_deadline_ms: 0,
+        reaction_id: 0,
+        mechanism: 0,
         cell: &CELLS[0],
     }; MAX_ROWS];
     while i < MAX_ROWS {
@@ -69,6 +72,9 @@ static ROWS: [MonitorSpec; MAX_ROWS] = {
             max_latency_ms: 0,
             route_trigger: "",
             route_max_latency_ms: 0,
+            route_deadline_ms: 0,
+            reaction_id: 0,
+            mechanism: 0,
             cell: &CELLS[i],
         };
         i += 1;

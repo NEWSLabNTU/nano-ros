@@ -105,10 +105,20 @@ static ::{{ s.class }} __nros_comp_{{ loop.index0 }};
 {%- if m.rows %}
 static const ::nros_cpp_monitor_row_t __nros_mon_rows{{ tag }}[{{ m.rows | length }}] = {
 {%- for r in m.rows %}
-    { "{{ r.topic | c_str }}", "{{ r.fqn | c_str }}", {{ r.min_rate_hz_milli }}u, {{ r.max_latency_ms }}u, {% if r.route_trigger %}"{{ r.route_trigger | c_str }}"{% else %}nullptr{% endif %}, {{ r.route_max_latency_ms }}u },
+    { "{{ r.topic | c_str }}", "{{ r.fqn | c_str }}", {{ r.min_rate_hz_milli }}u, {{ r.max_latency_ms }}u, {% if r.route_trigger %}"{{ r.route_trigger | c_str }}"{% else %}nullptr{% endif %}, {{ r.route_max_latency_ms }}u{% if r.route_deadline_ms %}, {{ r.route_deadline_ms }}u, {{ r.reaction_id }}u, {{ r.mechanism }}u{% endif %} },
 {%- endfor %}
 };
 alignas(8) static unsigned char __nros_mon_storage{{ tag }}[{{ m.rows | length }} * NROS_CPP_MONITOR_ROW_STORAGE];
+{%- if m.rows | selectattr("route_deadline_ms") | list %}
+/* phase-503 -- supervised routes: a take still unanswered at its deadline is
+ * reported (route-deadline-runtime) and nros_app_reaction_hook, when the
+ * application defines it, is called with the row's reaction id:
+{%- for r in m.rows %}{% if r.route_deadline_ms %}
+ *   row {{ loop.index0 }} {{ r.fqn | c_str }}: deadline {{ r.route_deadline_ms }} ms, reaction {{ r.reaction_id }}{% if r.reaction %} ({{ r.reaction | c_str }}){% endif %}, mechanism {% if r.mechanism == 1 %}timer{% else %}executor{% endif %}
+{%- endif %}{% endfor %}
+ */
+extern "C" void nros_app_reaction_hook(const ::nros_cpp_reaction_event_t* event, void* ctx) __attribute__((weak));
+{%- endif %}
 {%- endif %}
 {%- if m.ages %}
 static const ::nros_cpp_age_row_t __nros_age_rows{{ tag }}[{{ m.ages | length }}] = {

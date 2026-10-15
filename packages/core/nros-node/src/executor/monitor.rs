@@ -216,9 +216,61 @@ pub struct MonitorSpec {
     /// phase10-B3 -- that path's budget (ms), from the take of the trigger to
     /// this output (`route-latency-runtime`). 0 = no route contract.
     pub route_max_latency_ms: u32,
+    /// phase-503 -- the route's SUPERVISED deadline (ms) from the take of the
+    /// trigger: a take still unanswered at `take + route_deadline_ms` is
+    /// reported (`route-deadline-runtime`) and the executor's reaction hook is
+    /// called, without waiting for an output that may never come. 0 = the
+    /// route is not supervised (only the completion verdict above judges it).
+    /// Needs `route_trigger`; ignored without it.
+    pub route_deadline_ms: u32,
+    /// phase-503 -- the reaction the hook is asked to start when the deadline
+    /// passes: an id codegen assigns to the contract's `reaction` path
+    /// (1-based; [`REACTION_NONE`] = none named). Opaque to the executor.
+    pub reaction_id: u16,
+    /// phase-503 -- which mechanism the contract chose to supervise this
+    /// route: [`MECHANISM_EXECUTOR`] (this check, in the spin loop) or
+    /// [`MECHANISM_TIMER`] (an independent timer the port arms from
+    /// `Executor::route_next_due_us`). The executor checks the deadline either
+    /// way and passes the mechanism to the hook.
+    pub mechanism: u8,
     /// The endpoint's counter cell.
     pub cell: &'static PubMonitorCell,
 }
+
+/// phase-503 -- [`MonitorSpec::reaction_id`]: no reaction named.
+pub const REACTION_NONE: u16 = 0;
+/// phase-503 -- [`MonitorSpec::mechanism`]: checked in the executor's spin
+/// loop. Catches a slow route, not a callback that never returns.
+pub const MECHANISM_EXECUTOR: u8 = 0;
+/// phase-503 -- [`MonitorSpec::mechanism`]: an independent timer outside the
+/// executor (the port's), which also catches a stuck callback.
+pub const MECHANISM_TIMER: u8 = 1;
+
+/// phase-503 -- what the reaction hook receives when a supervised route
+/// passes its deadline. `repr(C)`: the C ABI hands the same struct through.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ReactionEvent {
+    /// [`MonitorSpec::reaction_id`] of the row.
+    pub reaction_id: u32,
+    /// Index of the row in the installed monitor table.
+    pub row: u32,
+    /// [`rule_code`] of the verdict (`route-deadline-runtime`).
+    pub rule_code: u32,
+    /// Time from the take to the check, ms.
+    pub measured_ms: u32,
+    /// The deadline, ms.
+    pub declared_ms: u32,
+    /// [`MonitorSpec::mechanism`] of the row.
+    pub mechanism: u8,
+}
+
+/// phase-503 -- the reaction hook: called on the spin thread, inside
+/// `spin_once`, once per missed route deadline. It must not block; it starts
+/// the fallback (or hands it to another thread) and returns. `ctx` is what
+/// was registered with the hook.
+pub type ReactionHookFn =
+    unsafe extern "C" fn(event: *const ReactionEvent, ctx: *mut core::ffi::c_void);
 
 /// One monitored subscriber endpoint (W3b.5 age contracts). Separate
 /// table from [`MonitorSpec`] — sub contracts key different endpoints
@@ -355,7 +407,7 @@ pub struct Violation {
     /// `"max-latency-runtime"` | `"deadline-miss-runtime"` |
     /// `"stack-headroom-runtime"` | `"alive-supervision-runtime"` |
     /// `"silence-runtime"` (phase-462 W2) | `"route-latency-runtime"`
-    /// (phase10-B3).
+    /// (phase10-B3) | `"route-deadline-runtime"` (phase-503).
     pub rule: &'static str,
     /// Violating endpoint ref (from the spec's `fqn`; the SC name for
     /// deadline misses).
@@ -376,7 +428,7 @@ pub struct Violation {
 /// can carry a string. Append only: a capture or a RAM dump taken before a
 /// reorder would silently decode as the wrong rule, which is the class the
 /// callback-trace marker ids are frozen against (`callback_trace.rs`).
-pub const RULE_IDS: [&str; 10] = [
+pub const RULE_IDS: [&str; 11] = [
     "rate-hierarchy-runtime",
     "max-age-runtime",
     "max-latency-runtime",
@@ -388,6 +440,8 @@ pub const RULE_IDS: [&str; 10] = [
     "release-jitter-runtime",
     // phase10-B3.
     "route-latency-runtime",
+    // phase-503.
+    "route-deadline-runtime",
 ];
 
 /// The wire code of `rule` ([`RULE_IDS`] index + 1), or 0 for a rule the
@@ -1143,6 +1197,94 @@ pub(crate) fn route_judge(
     }
 }
 
+/// phase-503 -- whether a pending route of `spec` has a supervised deadline.
+#[inline]
+fn route_supervised(spec: &MonitorSpec) -> bool {
+    spec.route_deadline_ms > 0 && spec.route_max_latency_ms > 0
+}
+
+/// phase-503 -- time from now to the earliest deadline of a pending supervised
+/// route, in microseconds (0 when one is already due), or `None` when no
+/// supervised route is waiting. This is the executor's wake source for the
+/// rule, and what a port's independent timer (`MECHANISM_TIMER`) arms on.
+///
+/// The due time is `take + route_deadline_ms`, derived from the stored take
+/// rather than kept in a second cell: both are the clock's low 32 bits, so the
+/// difference is exact across a wrap as long as a route waits less than ~71
+/// minutes, and a supervised one is reported long before that.
+pub fn route_next_due_us(table: &[MonitorSpec], now_us: u64) -> Option<u64> {
+    let mut best: Option<u64> = None;
+    for spec in table.iter().take(MAX_MONITORS) {
+        if !route_supervised(spec) {
+            continue;
+        }
+        let w = spec.cell.route.load(Ordering::Relaxed);
+        if w & ROUTE_PENDING == 0 {
+            continue;
+        }
+        let waited_us =
+            (now_us as u32).wrapping_sub(spec.cell.route_take_us.load(Ordering::Relaxed));
+        let deadline_us = spec.route_deadline_ms.saturating_mul(1_000);
+        let left = deadline_us.saturating_sub(waited_us) as u64;
+        best = Some(best.map_or(left, |b| b.min(left)));
+        if left == 0 {
+            break;
+        }
+    }
+    best
+}
+
+/// phase-503 -- judge every pending supervised route at `now_us`: a take still
+/// unanswered at or after `take + route_deadline_ms` is OVERDUE. Its waiting
+/// take is dropped (the route stops pending, so the next take starts a new
+/// one) and the route is marked [`ROUTE_VIOLATED`], as `route_judge` marks an
+/// over-budget route.
+///
+/// `react(row, violation, first)` is called for every overdue route: `first`
+/// is `false` while the route is still marked violated from an earlier verdict
+/// (report once until a route is within its budget again, the latency rule's
+/// rule), and the caller records the violation only when it is `true`. The
+/// reaction is requested every time, since each overdue take is a missed
+/// deadline the fallback has to cover.
+pub(crate) fn route_overdue(
+    table: &[MonitorSpec],
+    now_us: u64,
+    mut react: impl FnMut(usize, Violation, bool),
+) {
+    for (k, spec) in table.iter().take(MAX_MONITORS).enumerate() {
+        if !route_supervised(spec) {
+            continue;
+        }
+        let w = spec.cell.route.load(Ordering::Relaxed);
+        if w & ROUTE_PENDING == 0 {
+            continue;
+        }
+        let waited_us =
+            (now_us as u32).wrapping_sub(spec.cell.route_take_us.load(Ordering::Relaxed));
+        if waited_us < spec.route_deadline_ms.saturating_mul(1_000) {
+            continue;
+        }
+        spec.cell
+            .route
+            .store((w & !ROUTE_PENDING) | ROUTE_VIOLATED, Ordering::Relaxed);
+        react(
+            k,
+            Violation {
+                rule: "route-deadline-runtime",
+                fqn: spec.fqn,
+                measured: waited_us / 1_000,
+                declared: spec.route_deadline_ms,
+            },
+            w & ROUTE_VIOLATED == 0,
+        );
+    }
+}
+
+/// phase-503 -- whether any row carries a supervised route deadline.
+pub(crate) fn route_deadline_active(table: &[MonitorSpec]) -> bool {
+    table.iter().any(route_supervised)
+}
+
 /// phase10-B3 -- whether any row carries a route contract.
 pub(crate) fn route_active(table: &[MonitorSpec]) -> bool {
     table.iter().any(|m| m.route_max_latency_ms > 0)
@@ -1315,6 +1457,9 @@ mod tests {
             max_latency_ms: 0,
             route_trigger: "",
             route_max_latency_ms: 0,
+            route_deadline_ms: 0,
+            reaction_id: 0,
+            mechanism: 0,
             cell: &CELL,
         }
     }
@@ -1363,6 +1508,9 @@ mod tests {
             max_latency_ms: 0,
             route_trigger: "",
             route_max_latency_ms: 0,
+            route_deadline_ms: 0,
+            reaction_id: 0,
+            mechanism: 0,
             cell: &C8,
         };
         // Published at 0, 100 ms, ..., 50 s: 501 samples before arming.
@@ -1427,6 +1575,9 @@ mod tests {
             max_latency_ms: 0,
             route_trigger: "",
             route_max_latency_ms: 0,
+            route_deadline_ms: 0,
+            reaction_id: 0,
+            mechanism: 0,
             cell: &C11,
         };
         let mut st = MonitorState::default();
@@ -1468,6 +1619,9 @@ mod tests {
             max_latency_ms: 0,
             route_trigger: "",
             route_max_latency_ms: 0,
+            route_deadline_ms: 0,
+            reaction_id: 0,
+            mechanism: 0,
             cell: &C2,
         };
         let mut st = MonitorState::default();
@@ -1483,6 +1637,9 @@ mod tests {
             max_latency_ms: 0,
             route_trigger: "",
             route_max_latency_ms: 0,
+            route_deadline_ms: 0,
+            reaction_id: 0,
+            mechanism: 0,
             cell: &C2,
         };
         let mut st0 = MonitorState::default();
@@ -1614,6 +1771,9 @@ mod tests {
             max_latency_ms: 10,
             route_trigger: "",
             route_max_latency_ms: 0,
+            route_deadline_ms: 0,
+            reaction_id: 0,
+            mechanism: 0,
             cell: &C3,
         };
         let mut st = MonitorState::default();
@@ -2289,6 +2449,9 @@ mod route_tests {
             max_latency_ms: 0,
             route_trigger: "/in",
             route_max_latency_ms: 149,
+            route_deadline_ms: 0,
+            reaction_id: 0,
+            mechanism: 0,
             cell: &CELL,
         },
         MonitorSpec {
@@ -2298,6 +2461,9 @@ mod route_tests {
             max_latency_ms: 0,
             route_trigger: "",
             route_max_latency_ms: 0,
+            route_deadline_ms: 0,
+            reaction_id: 0,
+            mechanism: 0,
             cell: &OTHER,
         },
     ];
@@ -2406,5 +2572,105 @@ mod route_tests {
     fn route_rule_code_is_appended() {
         assert_eq!(rule_code("route-latency-runtime"), 10);
         assert_eq!(rule_code("release-jitter-runtime"), 9);
+        assert_eq!(rule_code("route-deadline-runtime"), 11);
+    }
+
+    static DL_CELL: PubMonitorCell = PubMonitorCell::new();
+    static DL_PLAIN: PubMonitorCell = PubMonitorCell::new();
+    static DL_TABLE: [MonitorSpec; 2] = [
+        // A route with the budget only: judged on completion, never overdue.
+        MonitorSpec {
+            topic: "/plain",
+            fqn: "/n/plain",
+            min_rate_hz_milli: 0,
+            max_latency_ms: 0,
+            route_trigger: "/in",
+            route_max_latency_ms: 149,
+            route_deadline_ms: 0,
+            reaction_id: 0,
+            mechanism: 0,
+            cell: &DL_PLAIN,
+        },
+        // phase-503 -- the same route, supervised.
+        MonitorSpec {
+            topic: "/out",
+            fqn: "/n/out",
+            min_rate_hz_milli: 0,
+            max_latency_ms: 0,
+            route_trigger: "/in",
+            route_max_latency_ms: 149,
+            route_deadline_ms: 149,
+            reaction_id: 3,
+            mechanism: MECHANISM_TIMER,
+            cell: &DL_CELL,
+        },
+    ];
+
+    fn overdue(now_us: u64) -> Vec<(usize, u32, u32, bool)> {
+        let mut out = Vec::new();
+        route_overdue(&DL_TABLE, now_us, |row, v, first| {
+            assert_eq!(v.rule, "route-deadline-runtime");
+            assert_eq!(v.fqn, "/n/out");
+            out.push((row, v.measured, v.declared, first));
+        });
+        out
+    }
+
+    /// phase-503 -- an output that never comes is judged at its deadline, not
+    /// never: the wake source names the due time, the check at due reports it
+    /// once with the row the hook is called for, and the next take starts a
+    /// fresh route.
+    #[test]
+    fn route_deadline_rule() {
+        assert!(route_deadline_active(&DL_TABLE));
+        assert!(
+            !route_deadline_active(&TABLE),
+            "phase10-B3 rows stay unsupervised"
+        );
+        assert_eq!(route_next_due_us(&DL_TABLE, 0), None, "nothing pending");
+        route_bind(&DL_TABLE, "/in", 2);
+        route_take(&DL_TABLE, 2, 1_000_000);
+        // The wake source: 149 ms after the take, then counting down.
+        assert_eq!(route_next_due_us(&DL_TABLE, 1_000_000), Some(149_000));
+        assert_eq!(route_next_due_us(&DL_TABLE, 1_100_000), Some(49_000));
+        // One microsecond early: not overdue, still pending.
+        assert!(overdue(1_148_999).is_empty());
+        assert_ne!(DL_CELL.route.load(Ordering::Relaxed) & ROUTE_PENDING, 0);
+        assert_eq!(route_next_due_us(&DL_TABLE, 1_148_999), Some(1));
+        // At the deadline plus one 1 ms tick: reported for row 1, first.
+        assert_eq!(overdue(1_150_000), [(1, 150, 149, true)]);
+        let w = DL_CELL.route.load(Ordering::Relaxed);
+        assert_eq!(w & ROUTE_PENDING, 0, "the take is dropped");
+        assert_ne!(w & ROUTE_VIOLATED, 0);
+        // The unsupervised row keeps its take for the completion verdict.
+        assert_ne!(DL_PLAIN.route.load(Ordering::Relaxed) & ROUTE_PENDING, 0);
+        assert_eq!(route_next_due_us(&DL_TABLE, 1_150_000), None);
+        assert!(overdue(5_000_000).is_empty(), "judged once per take");
+        // Still never answered: the next take misses too. The reaction is
+        // requested again, the violation is not recorded twice.
+        route_take(&DL_TABLE, 2, 6_000_000);
+        assert_eq!(overdue(6_200_000), [(1, 200, 149, false)]);
+        // A take answered in time clears the mark (route_judge's recovery).
+        route_take(&DL_TABLE, 2, 7_000_000);
+        let mut before = [0u32; MAX_MONITORS];
+        for (k, s) in DL_TABLE.iter().enumerate() {
+            before[k] = s.cell.count.load(Ordering::Relaxed);
+        }
+        DL_CELL.count.fetch_add(1, Ordering::Relaxed);
+        let mut judged = Vec::new();
+        route_judge(&DL_TABLE, &before, 7_010_000, |v| judged.push(v.measured));
+        assert!(judged.is_empty(), "10 ms: within");
+        assert_eq!(DL_CELL.route.load(Ordering::Relaxed) & ROUTE_VIOLATED, 0);
+        // Over again after recovery: first again.
+        route_take(&DL_TABLE, 2, 8_000_000);
+        assert_eq!(overdue(8_149_000), [(1, 149, 149, true)]);
+        // Across the clock's 32-bit wrap.
+        route_take(&DL_TABLE, 2, u32::MAX as u64 - 9_999);
+        assert_eq!(
+            route_next_due_us(&DL_TABLE, u32::MAX as u64 + 1),
+            Some(139_000)
+        );
+        assert!(overdue(u32::MAX as u64 + 139_000).is_empty());
+        assert_eq!(overdue(u32::MAX as u64 + 139_001).len(), 1);
     }
 }

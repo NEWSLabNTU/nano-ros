@@ -38,4 +38,12 @@
         };
         nros_cpp_ret_t mret = nros_cpp_install_monitors({{ mexec }}, &mtables);
         if (mret != NROS_CPP_RET_OK) return (int32_t)mret;
+{%- if m.rows | selectattr("route_deadline_ms") | list %}
+        /* phase-503 -- the supervised routes' reaction hook, when the
+         * application links one. */
+        if (&nros_app_reaction_hook != NULL) {
+            mret = nros_cpp_executor_set_reaction_hook({{ mexec }}, &nros_app_reaction_hook, NULL);
+            if (mret != NROS_CPP_RET_OK) return (int32_t)mret;
+        }
+{%- endif %}
     }

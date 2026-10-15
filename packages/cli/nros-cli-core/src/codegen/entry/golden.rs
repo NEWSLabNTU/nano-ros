@@ -717,6 +717,10 @@ fn golden_monitor_rows() -> (
         max_latency_ms: lat,
         route_trigger: String::new(),
         route_max_latency_ms: 0,
+        route_deadline_ms: 0,
+        reaction: String::new(),
+        reaction_id: 0,
+        mechanism: 0,
     };
     let age = |topic: &str, fqn: &str, ms: u32| AgeRow {
         topic: topic.into(),
@@ -731,6 +735,10 @@ fn golden_monitor_rows() -> (
             MonitorRow {
                 route_trigger: "/setpoint".into(),
                 route_max_latency_ms: 8,
+                route_deadline_ms: 0,
+                reaction: String::new(),
+                reaction_id: 0,
+                mechanism: 0,
                 ..rate("/cmd", "/ctrl/cmd", 100_000, 5)
             },
             rate("/telemetry", "/telem/telemetry", 1_000, 0),
