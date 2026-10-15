@@ -17,6 +17,10 @@ name = "contract-monitor-sub"
 path = "src/bin/sub.rs"
 
 [[bin]]
+name = "contract-monitor-route"
+path = "src/bin/route.rs"
+
+[[bin]]
 name = "contract-monitor-diagsink"
 path = "src/bin/diagsink.rs"
 

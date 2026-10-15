@@ -46,8 +46,8 @@ use nros_tests::{
     TestResult,
     fixtures::{
         ManagedProcess, RequireFixture, Rmw, ZenohRouter, build_cmake_leaf_rmw,
-        build_contract_monitor_diagsink, build_contract_monitor_pub, build_contract_monitor_sub,
-        build_monitor_capacity, require_zenohd, zenohd_unique,
+        build_contract_monitor_diagsink, build_contract_monitor_pub, build_contract_monitor_route,
+        build_contract_monitor_sub, build_monitor_capacity, require_zenohd, zenohd_unique,
     },
     output::{
         CONTRACT_MONITOR_DIAG_PREFIX, CONTRACT_MONITOR_DIAGSINK_READY_MARKER, RULE_MAX_AGE_RUNTIME,
@@ -364,4 +364,103 @@ fn a_fifteenth_monitor_row_is_refused_naming_the_knob(zenohd_unique: ZenohRouter
         !out.contains("mc: installed"),
         "a refused table must not be reported installed:\n{out}"
     );
+}
+
+/// phase-503 -- a supervised route whose output never comes calls the
+/// reaction hook, over a real zenoh graph.
+///
+/// `contract-monitor-pub` feeds the route's trigger (`/cm_header`) at 20 Hz;
+/// `contract-monitor-route` takes it and owns the route's output, which it
+/// never publishes. Its row supervises the route with a 150 ms deadline and
+/// reaction id 7 (mechanism timer), so every take misses: the hook prints
+/// `CM_REACTION id=7 row=0 rule=11 ... declared_ms=150 mechanism=1`, and the
+/// verdict `route-deadline-runtime` is drained once (report once until a
+/// route is within budget, which none is here). Before phase-503 the route
+/// stayed pending and nothing at all was reported.
+#[rstest]
+fn supervised_route_with_no_output_calls_the_reaction_hook(zenohd_unique: ZenohRouter) {
+    require_zenohd();
+    let pub_bin = build_contract_monitor_pub().require("contract-monitor-pub");
+    let route_bin = build_contract_monitor_route().require("contract-monitor-route");
+    let locator = zenohd_unique.locator();
+
+    let mut route = spawn(
+        route_bin,
+        "cm-route",
+        &locator,
+        &[("CM_RUN_MS", "12000"), ("CM_ROUTE_DEADLINE_MS", "150")],
+    );
+    route
+        .wait_for_output_pattern("subscribed", Duration::from_secs(8))
+        .expect("route handler did not become ready");
+    let mut publisher = spawn(
+        pub_bin,
+        "cm-pub-route",
+        &locator,
+        &[
+            ("CM_RUN_MS", "10000"),
+            ("CM_PERIOD_MS", "50"),
+            ("CM_STALE_MS", "0"),
+        ],
+    );
+
+    let (out, why) = route.collect_until_count("CM_REACTION", 3, Duration::from_secs(10));
+    publisher.kill();
+    route.kill();
+    let why = why.unwrap_or_default();
+
+    let reactions: Vec<&str> = out.lines().filter(|l| l.contains("CM_REACTION")).collect();
+    assert!(
+        reactions.len() >= 3,
+        "expected the hook on every missed take, got:\n{out}{why}"
+    );
+    for line in &reactions {
+        assert!(
+            line.contains("id=7 row=0 rule=11 ") && line.contains("declared_ms=150 mechanism=1"),
+            "reaction carries the row's id, index, rule and mechanism: {line}"
+        );
+    }
+    let verdicts = out
+        .lines()
+        .filter(|l| l.contains("CM_VIOLATION route-deadline-runtime /cm/route/out"))
+        .count();
+    assert_eq!(
+        verdicts, 1,
+        "the verdict is recorded once until recovery, got:\n{out}"
+    );
+}
+
+/// The unsupervised twin: the same route with no deadline (0) is judged only
+/// on completion, which never comes, so no reaction and no deadline verdict.
+#[rstest]
+fn unsupervised_route_with_no_output_stays_silent(zenohd_unique: ZenohRouter) {
+    require_zenohd();
+    let pub_bin = build_contract_monitor_pub().require("contract-monitor-pub");
+    let route_bin = build_contract_monitor_route().require("contract-monitor-route");
+    let locator = zenohd_unique.locator();
+
+    let mut route = spawn(
+        route_bin,
+        "cm-route-off",
+        &locator,
+        &[("CM_RUN_MS", "6000"), ("CM_ROUTE_DEADLINE_MS", "0")],
+    );
+    route
+        .wait_for_output_pattern("subscribed", Duration::from_secs(8))
+        .expect("route handler did not become ready");
+    let mut publisher = spawn(
+        pub_bin,
+        "cm-pub-route-off",
+        &locator,
+        &[
+            ("CM_RUN_MS", "5000"),
+            ("CM_PERIOD_MS", "50"),
+            ("CM_STALE_MS", "0"),
+        ],
+    );
+    let (out, _) = route.collect_until_count("cm_route: done", 1, Duration::from_secs(10));
+    publisher.kill();
+    route.kill();
+    assert!(!out.contains("CM_REACTION"), "{out}");
+    assert!(!out.contains("route-deadline-runtime"), "{out}");
 }

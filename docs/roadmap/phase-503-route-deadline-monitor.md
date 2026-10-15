@@ -1,8 +1,8 @@
 # Phase 503 -- Deadline-armed route monitor with a reaction hook
 
-**Status (2026-10-15).** W1-W4 implemented in one PR; W5 (reading the
-supervision from the model) waits for a ros-launch-manifest release whose
-model states it.
+**Status (2026-10-15).** W1-W5 done. W1-W4 landed in PR #2264; W5 (the
+model read, ros-launch-manifest pinned by rev 33577ff until its v0.1.61 tag)
+and the end-to-end test in the follow-up.
 
 **Continues:** phase10-B3, which added `route-latency-runtime` (a node path
 judged from the take of its trigger input to the dispatch that publishes its
@@ -128,15 +128,22 @@ executor; the comment in the generated entry maps it back to the path.
 | W2 | wake source, check after the park, reaction hook, fault fallback (`spin.rs`) | done |
 | W3 | `nros_cpp_executor_set_reaction_hook`, `nros_cpp_executor_route_next_due_us`, row fields, header | done |
 | W4 | IR / lowered rows, C and C++ entry templates, weak hook install, Rust render | done |
-| W5 | fill the rows from the model's supervision (`apply_route_supervision`) | waits on the model |
+| W5 | fill the rows from the model's supervision (`apply_route_supervision`) | done |
 
-W5: the model this repository reads (ros-launch-manifest v0.1.59) states no
-supervision. `apply_route_supervision` takes a map from output endpoint ref to
-`{ deadline_ms, reaction, mechanism }` and is tested, but `monitor_rows`
-passes nothing to it yet, so every row bakes `route_deadline_ms = 0` and an
-image behaves as before. When a model release carries the supervision of a
-path's `max_latency` (its reaction path and mechanism), `monitor_rows` reads it
-and feeds the map; the pin bump and that read are one change.
+W5: the model (ros-launch-manifest `33577ff`, play_launch phase 93's lowering)
+carries `contracts.node_paths.<key>.supervise: { route_deadline_ms, reaction,
+mechanism }` on an input-triggered node path. `monitor_rows` copies it onto
+the route row of each output the path routes (the tightest route per output,
+as before), and `apply_route_supervision` numbers the reactions. Refused: a
+supervised path whose trigger input is on no topic (no route could watch it),
+and a deadline that rounds to 0 ms (0 means "not supervised" on the row). A
+model without `supervise:` bakes the same rows as before.
+
+rlm is pinned by rev because the release carrying the key is not tagged yet;
+`just bump-manifest` takes tags only, so the v0.1.61 tag replaces the rev with
+it. `nros-launch-resolve` keeps following the play_launch submodule's own rlm
+tag, so a model it resolves states `supervise:` once that submodule moves to a
+play_launch that writes it.
 
 ## Gate
 
@@ -153,6 +160,16 @@ and feeds the map; the pin bump and that read are one change.
   `b3_a_late_tick_exceeds_the_route_while_every_callback_passes`) unchanged.
 - Codegen: a supervised row renders its three fields, the comment and the
   weak-hook install in both packs; an unsupervised table renders as before.
+- `a_supervised_path_bakes_its_deadline_reaction_and_mechanism`
+  (`model_ingest.rs`): `supervise:` in the model reaches the row and the
+  rendered Rust table; an unwired supervised path is refused.
+- End to end on posix over zenohd (`contract_monitor_parity.rs`):
+  `supervised_route_with_no_output_calls_the_reaction_hook` --
+  `contract-monitor-pub` feeds the trigger at 20 Hz, `contract-monitor-route`
+  takes it and never publishes its output; the hook is called on every missed
+  take with `id=7 row=0 rule=11 ... declared_ms=150 mechanism=1`, and
+  `route-deadline-runtime` is drained once. The unsupervised twin
+  (`CM_ROUTE_DEADLINE_MS=0`) prints neither.
 
 ## Not in this phase
 

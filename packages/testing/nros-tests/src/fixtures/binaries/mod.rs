@@ -81,6 +81,7 @@ static NATIVE_TALKER_HEADER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// the `/diagnostics` observer.
 static CONTRACT_MONITOR_PUB_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static CONTRACT_MONITOR_SUB_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static CONTRACT_MONITOR_ROUTE_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static CONTRACT_MONITOR_DIAGSINK_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// phase-496 W1 -- the monitor-capacity bin, built with
 /// `NROS_EXECUTOR_MAX_MONITORS=14` stated.
@@ -6206,6 +6207,11 @@ pub fn build_contract_monitor_pub() -> TestResult<&'static Path> {
 /// RFC-0052 / phase-296 W3b.5 — the age-contract subscriber bin.
 pub fn build_contract_monitor_sub() -> TestResult<&'static Path> {
     build_contract_monitor_bin(&CONTRACT_MONITOR_SUB_BINARY, "contract-monitor-sub")
+}
+
+/// phase-503 — the supervised-route handler bin (its output never comes).
+pub fn build_contract_monitor_route() -> TestResult<&'static Path> {
+    build_contract_monitor_bin(&CONTRACT_MONITOR_ROUTE_BINARY, "contract-monitor-route")
 }
 
 /// RFC-0052 / phase-296 W3b.4/.5 — the `/diagnostics` observer bin.

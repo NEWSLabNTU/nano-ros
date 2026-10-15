@@ -16,6 +16,13 @@ use nros_diagnostics::{DiagnosticArray, DiagnosticReporter};
 /// `std_msgs/Header` so the sub-side age monitor can peek `header.stamp`.
 pub const HEADER_TOPIC: &str = "/cm_header";
 
+/// phase-503 -- the supervised route's output, which `contract-monitor-route`
+/// owns and never publishes on.
+pub const ROUTE_OUT_TOPIC: &str = "/cm_route_out";
+
+/// phase-503 -- the reaction id the route row names.
+pub const ROUTE_REACTION_ID: u16 = 7;
+
 /// Where both monitor sides publish their violation reports.
 pub const DIAG_TOPIC: &str = "/diagnostics";
 
