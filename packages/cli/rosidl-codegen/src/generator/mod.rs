@@ -848,7 +848,10 @@ mod tests {
             "unexpected view:\n{}",
             pkg.header
         );
-        assert!(!pkg.header.contains("rclc/detail/view.h"), "unexpected include");
+        assert!(
+            !pkg.header.contains("rclc/detail/view.h"),
+            "unexpected include"
+        );
         assert!(
             !pkg.source.contains("_deserialize_view"),
             "unexpected borrowed deser"

@@ -93,7 +93,7 @@ TABLE_REF = re.compile(r"\bNROS_(?:CPP_)?SERIALIZATION_FORMAT_ID_[A-Z]+\b")
 
 BRIDGE_MARKERS = re.compile(
     r"(?:"
-    r"#\s*include\s*[<\"]nros/bridge\.h(?:pp)?[>\"]"
+    r"#\s*include\s*[<\"](?:rclc/bridge\.h|nros/bridge\.hpp)[>\"]"
     r"|\brclc_pubsub_bridge_create\b"
     r"|\brclc_bridge_endpoint_t\b"
     r"|\bnros::bridge::"
@@ -117,7 +117,7 @@ DEFINITION_SITES = [
 # macros, the compile probes that exist to prove the assertion has teeth, and
 # `bridge.{h,hpp}` itself (its prose explains why a bridge does not use them).
 EXEMPT_PREFIXES = (
-    "packages/api/nros-c/include/nros/",
+    "packages/api/nros-c/include/",
     "packages/api/nros-cpp/include/nros/",
     "packages/api/nros-c/tests/compile/",
     "packages/api/nros-cpp/tests/compile/",

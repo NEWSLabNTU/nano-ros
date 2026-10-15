@@ -37,7 +37,7 @@ Both halves are extracted, neither is authored:
   SUPPLY  — the matching declaration in
               packages/core/nros-core/src/**.rs
               packages/core/nros-serdes/src/**.rs
-              packages/api/nros-c/include/nros/**.h
+              packages/api/nros-c/include/**.h
               packages/api/nros-cpp/include/nros/**.hpp
 
 IN, precisely:
@@ -180,7 +180,10 @@ def rust_runtime(text=None, errors=None):
     return out
 
 
-C_RUNTIME = "packages/api/nros-c/include/nros"
+# The whole C include tree: since phase-501 the content lives under rclc/
+# (rclc/detail/ for what generated code includes), with nros/ holding only
+# the generated headers.
+C_RUNTIME = "packages/api/nros-c/include"
 CPP_RUNTIME = "packages/api/nros-cpp/include/nros"
 
 # Attributes that cannot change what generated code may name or how it calls it.
