@@ -2707,6 +2707,11 @@ test-all verbose="": _require-fixtures-ready test-zpico-multisession
     # it, and this lane reports its own verdict through its exit status.
     echo "=== Required-features fixture tests ==="
     just _nextest-platform custom_transport_loopback "{{verbose}}" "--features rmw" || failed=1
+    # phase-436 (RFC-0106 D5) — a guard condition on a POLL-ONLY backend. Its
+    # own invocation because `xrce-wake-test` registers XRCE and must not share
+    # a binary with `trigger-test`'s zenoh; here, not in the fixture-free
+    # `check::required-features-tests`, because it needs the XRCE Agent.
+    just _nextest-platform xrce_guard_wake "{{verbose}}" "--features xrce-wake-test" || failed=1
     args=(--workspace "${nextest_run_profile_args[@]}" "${nextest_fail_fast_args[@]}")
     if [ -z "{{verbose}}" ]; then
         # NROS_TEST_FAILURE_OUTPUT (default `never`) — see `_test-focused`.

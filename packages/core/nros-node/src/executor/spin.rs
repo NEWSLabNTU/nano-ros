@@ -1847,6 +1847,14 @@ pub struct Executor<'s> {
     /// joins the session's wake fan-out, and its teardown is leaving it.)
     #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
     pub(crate) wake_cb_installed: bool,
+    /// phase-436 (RFC-0106 D5) — something other than the backend can signal
+    /// this executor's wake object: a guard condition, triggered from another
+    /// thread. A poll-only backend waits inside its own `recv`, which that
+    /// signal cannot end, so the wait is driven in slices of
+    /// [`POLL_ONLY_WAKE_SLICE_MS`] while this is set. Never cleared: a guard
+    /// outliving its registration costs slicing, never a missed wake.
+    #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+    pub(crate) has_cross_thread_waker: bool,
     /// phase-436 — this executor's place in the wake fan-out of its PRIMARY
     /// session, when it has one. Every executor over a session joins the same
     /// entry, so an arrival wakes all of them, not only the one that happened
@@ -2256,6 +2264,8 @@ impl<'s> Executor<'s> {
             #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
             wake_cb_installed: false,
             #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+            has_cross_thread_waker: false,
+            #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
             wake_membership: None,
             #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
             graph_change_target: None,
@@ -2535,6 +2545,13 @@ pub enum WakeSourceId {
 /// sizing knob: the table is inline, so no allocator is required on the no_std
 /// targets this seam mainly exists for.
 pub const MAX_WAKE_SOURCES: usize = 8;
+
+/// phase-436 (RFC-0106 D5) — the slice a poll-only backend's transport wait is
+/// cut into while a guard condition can signal the executor from another
+/// thread: the worst-case latency of such a trigger, and the period at which
+/// an otherwise idle executor re-enters the backend's `recv`.
+#[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+pub(crate) const POLL_ONLY_WAKE_SLICE_MS: i32 = 10;
 
 /// When this source will next need the executor, in the executor's clock,
 /// as microseconds FROM NOW.
@@ -3693,6 +3710,47 @@ impl<'s> Executor<'s> {
         {
             true
         }
+    }
+
+    /// Drive the primary session for `timeout_ms`, the transport-side half of
+    /// the wait.
+    ///
+    /// phase-436 (RFC-0106 D5) — on a poll-only backend this wait IS the
+    /// executor's park, and it waits inside the backend's own `recv`, which a
+    /// guard condition triggered from another thread cannot end: the trigger
+    /// signals the wake object and nobody is waiting on it. Measured on XRCE
+    /// before this: a trigger 20 ms into a 100 / 500 / 1000 ms spin was
+    /// dispatched 79 / 480 / 979 ms later, i.e. it waited out the bound. So
+    /// when such a waker exists and nothing can wake the park, the drive is
+    /// cut into slices of [`POLL_ONLY_WAKE_SLICE_MS`] and stops at the first
+    /// slice that ends with the wake flag set. The latency becomes one slice;
+    /// an executor with no cross-thread waker keeps the single blocking drive.
+    fn drive_primary(&mut self, timeout_ms: i32) -> Result<(), ()> {
+        #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+        if self.has_cross_thread_waker
+            && !self.async_wake_live()
+            && timeout_ms > POLL_ONLY_WAKE_SLICE_MS
+        {
+            let mut remaining = timeout_ms;
+            while remaining > 0 {
+                let slice = remaining.min(POLL_ONLY_WAKE_SLICE_MS);
+                self.session.drive_io(slice).map_err(|_| ())?;
+                remaining -= slice;
+                if self
+                    .wake_flag
+                    .swap(false, portable_atomic::Ordering::SeqCst)
+                {
+                    // Issue 1385 — consume the primitive too, or the next
+                    // spin's wait returns at once on a signal already acted on.
+                    if let Some(wake) = self.node_wake.as_ref() {
+                        let _ = wake.wait_ms(0);
+                    }
+                    break;
+                }
+            }
+            return Ok(());
+        }
+        self.session.drive_io(timeout_ms).map_err(|_| ())
     }
 
     pub(crate) fn round_park_up_us(&self, requested_us: u64) -> u64 {
@@ -9329,6 +9387,7 @@ impl<'s> Executor<'s> {
             {
                 let ctx = self.wake_ctx_ptr();
                 guard_handle.set_wake_cb(nros_rmw_runtime_wake_cb, ctx);
+                self.has_cross_thread_waker = true;
             }
 
             let meta = CallbackMeta {
@@ -10107,7 +10166,7 @@ impl<'s> Executor<'s> {
         // issue 0324 — the primary session's I/O result is TRACKED, not
         // discarded. See `consecutive_io_failures` for why this is a counter
         // rather than an early return.
-        match self.session.drive_io(primary_drive_timeout_ms) {
+        match self.drive_primary(primary_drive_timeout_ms) {
             Ok(()) => self.consecutive_io_failures = 0,
             Err(_) => self.consecutive_io_failures = self.consecutive_io_failures.saturating_add(1),
         }
