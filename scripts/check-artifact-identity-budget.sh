@@ -111,6 +111,23 @@ cd "$(dirname "$0")/.."
 # shellcheck source=scripts/lib/grep-q.sh
 source scripts/lib/grep-q.sh
 
+# The tree this gate reads; see "issue 0901" and "Issue 1832" below.
+_resolve_tree() { # <root> -> the tree to read, relative to <root>
+    local _root="$1" _cand
+    for _cand in $(cd "$_root" && ls -1dt examples/workspaces/mixed/build \
+                       examples/workspaces/*/build-workspace-fixtures* 2>/dev/null); do
+        # A tree is usable when it holds cargo output; a bare cmake dir is not
+        # what this gate measures.
+        if [ -n "$(find "$_root/$_cand" -name '*.rlib' -print -quit 2>/dev/null)" ]; then
+            printf '%s\n' "$_cand"
+            return 0
+        fi
+    done
+    # Nothing found: keep the historical name so the SKIP message still points
+    # somewhere recognisable rather than at an empty string.
+    printf '%s\n' examples/workspaces/mixed/build-workspace-fixtures
+}
+
 # issue 0661 — `--self-test`: the two era verdicts must match their own note.
 #
 # The failure this guards is not a wrong COUNT but wrong ADVICE. When the
@@ -200,11 +217,38 @@ if [ "${1:-}" = "--self-test" ]; then
         echo "  ok   (c) a sidecar bound is used, and says the build did not finish"
     fi
 
+    # (d) issue 1832 — the tree is FOUND under the current layout
+    # (`<ws>/build/<image>/…`), and the old name still serves a checkout that
+    # only has it. An rlib-less dir is never chosen.
+    _st_root="$_st_tmp/discover"
+    mkdir -p "$_st_root/examples/workspaces/mixed/build-workspace-fixtures-freertos/deps"
+    : > "$_st_root/examples/workspaces/mixed/build-workspace-fixtures-freertos/deps/libnros_core-1.rlib"
+    _st_got="$(_resolve_tree "$_st_root")"
+    if [ "$_st_got" != "examples/workspaces/mixed/build-workspace-fixtures-freertos" ]; then
+        echo "  FAIL (d) a checkout with only the old layout reads it, got $_st_got" >&2
+        _st_fails=$((_st_fails + 1))
+    fi
+    mkdir -p "$_st_root/examples/workspaces/mixed/build/linux/cmake/cargo/deps"
+    _st_got="$(_resolve_tree "$_st_root")"
+    if [ "$_st_got" != "examples/workspaces/mixed/build-workspace-fixtures-freertos" ]; then
+        echo "  FAIL (d) a build dir with no rlib is not a tree, got $_st_got" >&2
+        _st_fails=$((_st_fails + 1))
+    fi
+    : > "$_st_root/examples/workspaces/mixed/build/linux/cmake/cargo/deps/libnros_core-2.rlib"
+    touch -d '2000-01-01 00:00:00' "$_st_root/examples/workspaces/mixed/build-workspace-fixtures-freertos"
+    _st_got="$(_resolve_tree "$_st_root")"
+    if [ "$_st_got" != "examples/workspaces/mixed/build" ]; then
+        echo "  FAIL (d) the newer current-layout tree wins, got $_st_got" >&2
+        _st_fails=$((_st_fails + 1))
+    else
+        echo "  ok   (d) the tree is found under the current layout and the old one"
+    fi
+
     if [ "$_st_fails" -ne 0 ]; then
         echo "check-artifact-identity-budget --self-test: $_st_fails case(s) FAILED" >&2
         exit 1
     fi
-    echo "check-artifact-identity-budget --self-test: 3 case(s) OK"
+    echo "check-artifact-identity-budget --self-test: 4 case(s) OK"
     exit 0
 fi
 
@@ -223,21 +267,20 @@ fi
 # Both failure modes come from naming a path instead of finding one. Take the
 # NEWEST tree that actually has cargo artifacts, so the gate reads what the last
 # build produced whatever the layout is called this month.
+#
+# Issue 1832 — and the layout moved AGAIN. `nros build` now builds a workspace
+# into `<ws>/build/<image>/…`, so no `build-workspace-fixtures*` dir is written
+# at all, and the tier-1 lane's post-build gate step SKIPPED after a complete
+# build (run 38663782341: "no build tree at …/build-workspace-fixtures"), which
+# that step treats as a lost input and fails on. `examples/workspaces/mixed/build`
+# is the same subject — the mixed workspace at one feature set — and measured
+# on a native-lane build it reads exactly the recorded budget (nros_core 4/4,
+# worst crate 5/5, worst identity 5/5 copies). It is a candidate beside the old
+# name, and the newest tree with rlibs still wins.
 if [ -n "${NROS_IDENTITY_BUDGET_TREE:-}" ]; then
     TREE="$NROS_IDENTITY_BUDGET_TREE"
 else
-    TREE=""
-    for _cand in $(ls -1dt examples/workspaces/*/build-workspace-fixtures* 2>/dev/null); do
-        # A tree is usable when it holds cargo output; a bare cmake dir is not
-        # what this gate measures.
-        if [ -n "$(find "$_cand" -name '*.rlib' -print -quit 2>/dev/null)" ]; then
-            TREE="$_cand"
-            break
-        fi
-    done
-    # Nothing found: keep the historical name so the SKIP message still points
-    # somewhere recognisable rather than at an empty string.
-    TREE="${TREE:-examples/workspaces/mixed/build-workspace-fixtures}"
+    TREE="$(_resolve_tree .)"
 fi
 
 # --- the budget -------------------------------------------------------------
