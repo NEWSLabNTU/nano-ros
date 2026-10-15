@@ -253,6 +253,15 @@ fixture-staleness-probes:
     export NROS_CLI="$_cli"
     ./tests/fixture-staleness-probe-tests.sh
 
+# phase-489 W6 — a fixture group's single-package leaves each get their sizing
+# class's own cargo build dir (`nros ws leaf-system --write-settings
+# --target-dir`), in BOTH the build and the staleness probe. Without it every
+# row after a different leaf recompiled the core crates (~12.7 s a row, ~50
+# rows, on a re-run with no change). Stub CLI; no build needed.
+[private]
+leaf-row-build-class:
+    @./tests/leaf-row-build-class-tests.sh
+
 # A fixture stamp may not claim what the build did not achieve. The stamp used
 # to record the lane's NOMINAL coordinates, so a module that skipped a missing
 # prerequisite still read as covered and the run skipped its tests to a green

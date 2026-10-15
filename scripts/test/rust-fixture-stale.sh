@@ -86,13 +86,14 @@ fi
 # The leaf-road probe build: settings for the row's image, then cargo. Exit 97
 # means no settings file could be written (reported as FAILED below).
 _probe_leaf_build() {
-    local settings
-    settings="$(nros_leaf_settings_path "$dir" "$image")" || return 97
+    local settings bargs
+    nros_leaf_settings_prepare "$dir" "$image" "$tdir_flag" || return 97
+    settings="$NROS_LEAF_SETTINGS_OUT" bargs="$NROS_LEAF_BUILD_ARGS"
     [ -n "$settings" ] || return 97
     # shellcheck disable=SC2086
     ( cd "$(nros_leaf_settings_cwd "$dir")"; [ -n "$envstr" ] && export $envstr; \
         cargo build $prof_args $(nros_leaf_settings_args "$dir" "$settings") \
-            $cargo_args $tdir_flag --message-format=json --quiet 2>&1 )
+            $bargs $cargo_args $tdir_flag --message-format=json --quiet 2>&1 )
 }
 
 # Decide from the ARTIFACT, not from cargo's `"fresh":false` — issue 0835.

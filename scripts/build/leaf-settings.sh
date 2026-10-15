@@ -38,16 +38,49 @@
 # `nros_cli_bin` itself: this runs in a make leaf, which has only the functions
 # `export -f` gave it (`check-export-f-closure`).
 nros_leaf_settings_path() {
-    local dir="$1" image="${2:-}" root="${NROS_REPO_ROOT:-$PWD}" out path
+    nros_leaf_settings_prepare "$1" "${2:-}" "" || return 1
+    printf '%s' "$NROS_LEAF_SETTINGS_OUT"
+}
+
+# nros_leaf_settings_prepare <leaf-dir> <image> <tdir-flag>
+# `nros_leaf_settings_path`, plus the row's sizing CLASS in its shared target
+# dir (phase-489 W6; issue 1885's road, which only `nros build` took until
+# now). Sets, for the caller's own shell (so call it directly, not in `$(...)`):
+#   NROS_LEAF_SETTINGS_OUT   the settings file (empty: not a leaf-road row)
+#   NROS_LEAF_BUILD_ARGS     `--config build.build-dir="<class dir>"` for the
+#                            cargo command, or empty (no shared target dir)
+#
+# Why: a fixture group's leaves share ONE target dir, and each leaf's settings
+# name a different `NROS_SIZING_DESCRIPTOR` file. Cargo compares that variable
+# as text, so on a shared build dir every row after a different leaf rebuilt
+# nros, nros-node, nros-params, nros-rmw-cffi and zpico-sys (measured 12.7 s a
+# row, ~50 rows, on a no-change re-run; the same alternation made the
+# staleness probe rebuild). The class gives equal configurations one build dir
+# and one descriptor path, and different ones separate dirs. Build and probe
+# both come through here, so they cannot build a row two ways.
+nros_leaf_settings_prepare() {
+    local dir="$1" image="${2:-}" tdir_flag="${3:-}" root="${NROS_REPO_ROOT:-$PWD}"
+    local out path bdir="" tdir="" prev="" tok
+    NROS_LEAF_SETTINGS_OUT=""
+    NROS_LEAF_BUILD_ARGS=""
     [ -f "$root/$dir/system.toml" ] && [ -f "$root/$dir/Cargo.toml" ] || return 0
     if [ -z "${NROS_CLI:-}" ]; then
         printf 'nros_leaf_settings_path: NROS_CLI is not set\n' >&2
         return 1
     fi
-    local image_args=()
+    local image_args=() tdir_args=()
     [ -z "$image" ] || image_args=(--image "$image")
+    # shellcheck disable=SC2086
+    for tok in $tdir_flag; do
+        case "$tok" in
+            --target-dir=*) tdir="${tok#--target-dir=}" ;;
+            *) [ "$prev" = "--target-dir" ] && tdir="$tok" ;;
+        esac
+        prev="$tok"
+    done
+    [ -z "$tdir" ] || tdir_args=(--target-dir "$tdir")
     out="$(NROS_REPO_DIR="$root" "$NROS_CLI" ws leaf-system --write-settings \
-        "${image_args[@]}" "$root/$dir" 2>&1)" || {
+        "${image_args[@]}" "${tdir_args[@]}" "$root/$dir" 2>&1)" || {
         printf 'nros_leaf_settings_path: "nros ws leaf-system --write-settings %s %s" failed:\n%s\n' \
             "${image_args[*]}" "$dir" "$out" >&2
         return 1
@@ -62,7 +95,10 @@ nros_leaf_settings_path() {
             "$path" "$dir" >&2
         return 1
     fi
-    printf '%s' "$path"
+    bdir="$(printf '%s\n' "$out" | sed -n 's/^NROS_LEAF_BUILD_DIR=//p')"
+    NROS_LEAF_SETTINGS_OUT="$path"
+    [ -z "$bdir" ] || NROS_LEAF_BUILD_ARGS="--config build.build-dir=\"$bdir\""   # a TOML string: cargo refuses it bare
+    return 0
 }
 
 # nros_leaf_settings_cwd <leaf-dir>
