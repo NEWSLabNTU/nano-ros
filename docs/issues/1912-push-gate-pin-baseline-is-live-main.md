@@ -68,3 +68,24 @@ serves a fetch by SHA) and set `NROS_SUBMODULE_PIN_BASELINE` to it. Keep
 `origin/$GITHUB_BASE_REF` for `pull_request`, and `main` for `merge_group`. The
 five copies should become one shared step, or a composite action, so the
 events cannot drift apart again.
+
+## Second sighting, two hours later, on a different submodule (2026-10-15)
+
+Push gate **38658728637** for main `87d46c3b2` (#1909, 23:55Z), created at
+00:12Z. `check / fast` (job **116174697368**) and the warm-cache job failed
+the same way:
+
+```
+submodule-pins: packages/cli/third-party/play_launch
+    REWIND — the new pin is an ANCESTOR of the old one
+      was: c0a6a2e6dd49  fix(ci): the census counts budget_book.rs as a consumer; rustfmt a test
+      now: 465dba4d4c1f  chore(phase-86): pin ros-launch-manifest v0.1.57
+```
+
+`87d46c3b2` moved no pin. The next commit on main, `f496a8b68` (00:01Z,
+"rlm v0.1.58 and play_launch c0a6a2e6"), moved `play_launch` **forward** from
+`465dba4` to `c0a6a2e6`, and this job compared against that newer main.
+
+Two in one evening, on two submodules, means any pin bump that merges within
+a push gate's queue time turns the previous commit's gate red. That happens
+whenever the queue is busy, so it is no longer a rare race.
