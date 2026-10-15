@@ -734,6 +734,20 @@ the helper; and, with a built CLI, two real leaves of one class carry
 byte-identical descriptor text (under the leaf lock, restoring the settings it
 rewrites).
 
+End to end, on the rebased branch: `service-client-async` (A) and
+`service-client-rtic` (B), one sizing class (`128e3bc3…`) in the
+`build/cargo-fixtures/linux` group, each built as its fixture row builds it
+(`nros_leaf_settings_prepare` + `cargo build -v`). Cargo's own words for
+`nros`, `nros-node`, `nros-params`, `nros-rmw-cffi`, `zpico-sys` and the leaf:
+
+| step | A | B |
+| --- | --- | --- |
+| (1) no change, A B A alternated | 0 compiled, all `Fresh`, 0.10 s | 0 compiled, all `Fresh`, 0.11 s |
+| (2) a line appended to A's `src/main.rs` | `Compiling` A's crate only, core `Fresh`, 0.43 s | 0 compiled |
+| (2b) reverted | `Fresh` | `Fresh` |
+| (3) A gains `[image.linux.knobs.executor] max_cbs = 9` | new class `5a7b2039…`, 107 units compiled (core included), 25.7 s | still `128e3bc3…`, 0 compiled |
+| (3b) restored | back in `128e3bc3…`, 0 compiled | 0 compiled |
+
 | measurement (4-core box, warm tree, no change, base `c68e520a36`) | before | after |
 | --- | --- | --- |
 | `just build linux`, whole | 1772 s (18.7 %); 2249 s (23.7 %) | **869 s (9.2 %); 875 s (9.2 %)** |
