@@ -9962,7 +9962,16 @@ impl<'s> Executor<'s> {
             } else if self.async_wake_live()
                 && let Some(wake) = self.node_wake.as_ref()
             {
-                let _ = wake.wait_ms(timeout_ms as u32);
+                // phase-436 — after a park this wait has a zero timeout and
+                // the park has already waited on this same object, so it is a
+                // second syscall that can only time out. Measured on a native
+                // tier: one extra futex wait per iteration, doubling the idle
+                // context switches. A signal that lands between the park's
+                // return and here stays posted and ends the next park at once,
+                // which costs one spin and loses nothing.
+                if !parked {
+                    let _ = wake.wait_ms(timeout_ms as u32);
+                }
                 // Drain any flag the cb set while we were waiting.
                 let _ = self
                     .wake_flag
