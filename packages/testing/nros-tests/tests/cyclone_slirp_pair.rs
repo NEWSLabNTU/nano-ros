@@ -26,12 +26,13 @@
 //! lists both). The guest here runs Linux's stack and the hosted backend.
 //!
 //! Preconditions, each an `unmet!` red naming what is missing: ROS 2 with `rmw_cyclonedds_cpp`, `unshare` and
-//! `slirp4netns` on PATH, unprivileged user namespaces, the Cyclone backend's
-//! test tree built (`just cyclonedds build-rmw`), and a default IPv4 route.
+//! `slirp4netns` on PATH, unprivileged user namespaces, the guest built (the
+//! `cyclone_slirp_guest` compile-check row, which every `build-test-fixtures`
+//! lane builds — issue 1903), and a default IPv4 route.
 
 use nros_tests::{
     dds_isolation::{CycloneSlirpPair, cyclone_config_uri, default_route_interface},
-    fixtures::{RequireFixture, require_prebuilt_artifact},
+    fixtures::{RequireFixture, require_compile_check_bin},
     process::ManagedProcess,
     ros2::{DEFAULT_ROS_DISTRO, require_ros2, ros2_env_setup_cyclonedds_with_profile},
     unmet,
@@ -53,13 +54,15 @@ fn on_path(tool: &str) -> bool {
         .is_ok_and(|o| o.status.success())
 }
 
-/// The Cyclone backend's own `ros2_pub` test binary, through the lane-aware
-/// fixture funnel (an absent one fails in a lane that promised it, issue 0584).
+/// The Cyclone backend's own `ros2_pub` test binary — the
+/// `cyclone_slirp_guest` row's artifact (issue 1903). It used to be resolved in
+/// place under `nros-rmw-cyclonedds/build/` with the remedy
+/// `just cyclonedds build-rmw`, which no fixture lane runs, so a gated
+/// `just test linux` claimed this test and failed it as a broken promise. The
+/// row resolver keeps every verdict (gated absence fails, `.build-failed` is a
+/// broken build, a moved `.inputsig` is STALE) and its producer is the lane.
 fn guest_binary() -> PathBuf {
-    let path = nros_tests::project_root().join(
-        "packages/rmw/cyclonedds/nros-rmw-cyclonedds/build/tests/nros_rmw_cyclonedds_ros2_pub",
-    );
-    require_prebuilt_artifact(&path, "just cyclonedds build-rmw")
+    require_compile_check_bin("cyclone_slirp_guest", "nros_rmw_cyclonedds_ros2_pub")
         .require("the Cyclone backend's ros2_pub (issue 1251's slirp guest)")
 }
 
@@ -184,6 +187,13 @@ fn run_pair(guest: &Path, pair: &CycloneSlirpPair, host_uri: &str, label: &str) 
 
 #[test]
 fn a_tag_isolated_host_profile_reaches_a_slirp_guest_and_nothing_else() {
+    // Issue 1685's ordering — scope FIRST. A Linux user + network namespace is
+    // the whole mechanism, so this is a `linux` coordinate's test; a lane that
+    // selects none deselects here instead of reporting a precondition.
+    nros_tests::fixtures::lane::require_platform_in_lane(
+        &[nros_tests::matrix::PlatformId::Linux],
+        "issue 1251's slirp guest pair",
+    );
     let iface = preconditions();
     let guest = guest_binary();
     let domain = u32::from(nros_tests::unique_ros_domain_id());

@@ -424,6 +424,17 @@ staleness-probe-exemptions:
 fixture-require:
     @python3 scripts/check-fixture-require.py
 
+# issue 1903 — a `require_prebuilt_artifact` path is in no manifest row, so the
+# lane resolver can never call it out of lane: every gated sweep that reaches the
+# call claims the artifact. Its `remedy` must therefore be a recipe the lane
+# build (`build-test-fixtures`) runs, unless every binary reaching the site is
+# one `test-all` excludes (an opt-in lane that builds before it runs).
+# `cyclone_slirp_pair` named `just cyclonedds build-rmw`, which only
+# `check rmw-cyclonedds` ran, so `just test linux` failed it as a broken promise.
+# Sites, forwarding helpers, exclusions and the closure are all DERIVED.
+prebuilt-artifact-producers:
+    @python3 scripts/check-prebuilt-artifact-producers.py
+
 # Issue 0580 — a test must ASSIGN its ROS domain, never name one: a literal is a
 # shared bus, and two concurrent runs colliding on it presents as WRONG DATA
 # rather than as a collision.
