@@ -72,6 +72,19 @@ that verifies them instead.
   Measured on a native-lane build of the mixed workspace, the gate reads
   exactly the recorded budget: `nros_core` 4/4 identities, worst crate 5/5,
   worst identity 5/5 copies. What is left is the lane reading `OK`.
+- **The tree is now DERIVED, not discovered (2026-10-15).** The widened glob
+  (`examples/workspaces/mixed/build`) read the wrong SCOPE. That dir also
+  holds the metadata probe's cmake tree, other boards' configurations, and any
+  configuration a rename left behind (`posix-zenoh-native` from before
+  phase-500). In the box tree it read `stable_deref_trait` at 7 copies against
+  a budget of 5, from residue alone. The row's own root,
+  `build/posix-zenoh-linux/cmake`, read exactly the budget: `nros_core` 4/4,
+  worst crate 5/5, worst identity 5/5. The gate now takes
+  `row_artifact_root()` of fixture row `workspace-mixed-native` from
+  `fixtures-manifest.py coords`. That is the same function the fixture build
+  writes through, so a layout move cannot strand the gate, and a missing row
+  is a FAIL. Self-test case (d) checks both: a synthetic manifest whose
+  `build_subdir` moved, and the real manifest still holding the row.
 - **All three gates now run after the tier-1 build.** `run-matrix.yml`'s
   tier-1 job has a `Build-tree gates (issue 1832)` step right after
   `just build tier1`. It resets the skip ledger, runs `artifact-identity-budget`,
