@@ -39,7 +39,7 @@ nros-bridge                         34   1     0       8      0
 nros-build                           1   0     0       0      0
 nros-build-helpers                   2   0     0       2      0
 nros-c                             397  76     5     432      0
-nros-cli-core                       23   0     0       0      0
+nros-cli-core                       22   0     0       0      0
 nros-condvar-contract                3   0     1       1      0
 nros-core                            2   0     2       2      0
 nros-cpp                           834  27     0     339      0

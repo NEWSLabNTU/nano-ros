@@ -6,7 +6,7 @@ type: bug
 area: [ci, build, examples]
 severity: medium
 found: 2026-10-15
-related: [1830, 1453, 1665, 1672]
+related: [1830, 1453, 1665, 1672, phase-466]
 ---
 
 ## Measured
