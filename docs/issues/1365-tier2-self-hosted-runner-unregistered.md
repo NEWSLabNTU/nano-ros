@@ -779,3 +779,52 @@ re-registered afterwards (an ephemeral or container restart would give it a
 new registration and reproduce the 10-09 mechanism). Runner ids would show
 that, and these were not recorded before 07:35Z. A restart of the runner
 containers is the known operator remedy.
+
+## Again on 2026-10-15, with runner ids recorded and a container restart that did not help
+
+Sampled at **08:00Z**. Runner ids from `actions/runners`:
+
+```
+1756  nano-ros-runner-newslab-118-server   offline
+1720  nano-ros-runner-newslab-133          online, busy=false
+1721  nano-ros-runner-newslab-server-241   online, busy=false
+```
+
+Both online runners have the labels `self-hosted, Linux, X64, nros-qemu,
+nros-sdk-zephyr, nros-big`. Two jobs asking for `[self-hosted, linux,
+nros-qemu, nros-sdk-zephyr, nros-big]` were `queued` with no `runner_name`:
+
+| run | job | created | waiting at 08:00Z |
+|---|---|---|---|
+| run-matrix **38692578536** (schedule 06:28), `tier 2 (1-wise matrix)` | **116281669942** | 06:28:07Z | 92 min |
+| nightly **38697534264** (schedule 07:15), `tier 2 nightly (pairwise cover)` | **116297545172** | 07:15:29Z | 45 min |
+
+What this run adds:
+
+- **The online pair has new ids since 2026-10-14** (1679 → 1720 and
+  1708 → 1721), so both re-registered at some point after 07:35Z that day.
+  An id does not carry a registration time, so this sample cannot say
+  whether either one re-registered during the wait. 118 (now 1756) is offline
+  after its tier-2 deaths
+  ([issue 1899](1899-tier2-nightly-fixture-compilers-sigkilled.md)).
+- **Restarting the container did not help.** At 07:02Z
+  `nano-ros-runner-newslab-server-241` was removed and its supervisor loop
+  started it again. Its `_diag/Runner_*.log` reads:
+
+  ```
+  [2026-10-15 07:02:05Z ERR  Terminal] WRITE ERROR: ... Runner connect error: Error: Conflict. Retrying until reconnected.
+  [2026-10-15 07:03:12Z INFO Terminal] WRITE LINE: ... Listening for Jobs
+  ```
+
+  The runner reconnected and listened, and the 06:28 job stayed unclaimed.
+  The 07:15 job was created after the runner was listening again, and it
+  was not claimed either.
+- Other in-progress nightly jobs (`nuttx`, `qemu`, `freertos`,
+  `threadx_riscv64`) carry no self-hosted runner name. No competing
+  self-hosted work explains the idle time.
+
+**Not established:** whether the `Conflict` means another session holds the
+same registration (two hosts sharing one `.runner` credential), or whether
+the runner version (`RUNNER_VERSION=2.329.0` in the image) matters.
+Re-registering 241 with a fresh token, or restarting 133's runner, would
+separate the two. Neither was tried here. Both need a human.
