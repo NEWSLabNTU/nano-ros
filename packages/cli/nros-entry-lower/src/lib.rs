@@ -193,7 +193,7 @@ impl BoardFamily {
                 // HardFaults at the first context switch); it moved here
                 // from the runner so the number sits where it is reserved.
                 tier_task_memory: Some(TierTaskMemory {
-                    header: "nros/tier_task_memory_freertos.h",
+                    header: "rclc/detail/tier_task_memory_freertos.h",
                     boot_tier: BootTier::Last,
                     default_stack_bytes: 262_144,
                 }),
@@ -210,7 +210,7 @@ impl BoardFamily {
                 // CONFIG_NROS_ZEPHYR_TIER_STACK_SIZE, which keeps that knob's
                 // meaning for a tier that declares nothing.
                 tier_task_memory: Some(TierTaskMemory {
-                    header: "nros/tier_task_memory_zephyr.h",
+                    header: "rclc/detail/tier_task_memory_zephyr.h",
                     boot_tier: BootTier::First,
                     default_stack_bytes: 0,
                 }),

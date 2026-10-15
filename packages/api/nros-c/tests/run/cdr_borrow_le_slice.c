@@ -36,8 +36,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <nros/cdr.h>
-#include <nros/view.h>
+#include <rclc/detail/cdr.h>
+#include <rclc/detail/view.h>
 
 static int failures = 0;
 

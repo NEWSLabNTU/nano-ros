@@ -73,7 +73,7 @@ extern uint64_t nros_tier_spin_gap_step(uint64_t state, uint64_t iter_start_ns, 
                                         uint32_t spin_period_us);
 extern uint64_t nros_platform_clock_ns(void);
 
-/* nros_board_network_wait: weak no-op in <nros/main.h> (phase-432 W3.1 moved
+/* nros_board_network_wait: weak no-op in <rclc/detail/main.h> (phase-432 W3.1 moved
  * it there from the C++ sibling main.hpp so a pure C entry links); strong
  * override on boards that must block for link-up. On the canonical NuttX path
  * the board FFI `main` already brought up eth0 before app_main (phase-280), so
@@ -114,7 +114,7 @@ extern int nros_cpp_executor_storage_check(const void* storage, size_t bytes);
 
 /* --- Local tier-spec type ---
  *
- * Mirror of nros_native_tier_spec_t (nros/main.h). Layout MUST match: same
+ * Mirror of nros_native_tier_spec_t (rclc/detail/main.h). Layout MUST match: same
  * field order, same types, same ABI (verified by the C++ caller casting
  * NativeTierSpec* → nros_native_tier_spec_t* → this type). Gated by
  * `check-ffi-struct-mirrors`, which compares this declaration to main.h's

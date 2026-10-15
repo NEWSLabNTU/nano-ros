@@ -1,22 +1,66 @@
 /**
  * @file executor.h
- * @brief `<rclc/executor.h>` at upstream's include path (phase-492 W2, RFC-0089).
+ * @ingroup grp_executor
+ * @brief Callback executor (polling) API.
  *
- * The C API carries rcl's and rclc's names, so a ported file's includes resolve
- * here too. Every upstream-path header brings in the whole nano-ros C API
- * (`<nros/nros.h>`) plus the rcl spellings of the return codes
- * (`<nros/rcl_compat.h>`): the declarations live in the nano-ros headers, and
- * one umbrella is what keeps two spellings of one declaration from existing.
- *
- * Deliberately NOT upstream's include guard. `<nros/rcl_compat.h>` refuses to
- * compile beside the real `<rcl/types.h>` by testing that guard, and one image
- * never mixes the two.
+ * The executor drives middleware I/O and dispatches ready callbacks for
+ * subscriptions, timers, services, guard conditions, and action servers.
  */
 
-#ifndef NROS_UPSTREAM_PATH_RCLC_EXECUTOR_H
-#define NROS_UPSTREAM_PATH_RCLC_EXECUTOR_H
+#ifndef NROS_EXECUTOR_H
+#define NROS_EXECUTOR_H
 
-#include "nros/nros.h"
-#include "nros/rcl_compat.h"
+/* Type and function definitions live in <nros/nros_generated.h>.
+ * This per-module header is kept as a thin shim so existing code that
+ * does `#include <rclc/executor.h>` continues to compile. */
+#include "rclc/types.h"
+#include "nros/nros_generated.h"
 
-#endif /* NROS_UPSTREAM_PATH_RCLC_EXECUTOR_H */
+/*
+ * Issue 0338 — the entity-registration family is spelled `nros_executor_add_*`,
+ * matching rclc (`rclc_executor_add_subscription` / `_add_timer` /
+ * `_add_client` / ...). It used to be `nros_executor_register_*` for every kind
+ * EXCEPT `add_client`, which kept the rclc spelling — so the family was not even
+ * internally consistent and a C user could not guess the verb.
+ *
+ * These macros keep the old spelling compiling for one release. They are macros
+ * rather than exported symbols on purpose: no new ABI surface, and a
+ * recompile is all a consumer needs. Code compiled against the old SYMBOLS must
+ * be rebuilt.
+ *
+ * phase-417 stage 6 step B — the `nros_executor_add_timer` forwarder this
+ * macro used to route through is DELETED, so `rclc_executor_register_timer`
+ * now names `rclc_executor_add_timer` directly. It is the only member of the
+ * family whose target moved: every other `nros_executor_add_*` here is a live
+ * exported symbol, not a stage-6 rename. Note what the retirement costs this
+ * one macro — it used to warn on the way through, and now resolves silently
+ * until the 0338 aliases are themselves retired.
+ *
+ * phase-487 W1 — `nros_executor_register_subscription` is gone with its target:
+ * the three-argument `nros_executor_add_subscription` dispatched a callback the
+ * subscription struct stored, and that struct no longer stores one. Its
+ * replacement takes the callback, `rclc_executor_add_subscription_raw`, so the
+ * alias could not forward without changing arity. `_in_group` kept its alias
+ * and gained the same two arguments. phase-487 W2 retired
+ * `nros_executor_register_service` the same way: its target, the two-argument
+ * `nros_executor_add_service`, is gone, and `rclc_executor_add_service_raw`
+ * takes the callback.
+ */
+#ifndef NROS_NO_DEPRECATED_EXECUTOR_REGISTER_ALIASES
+#define rclc_executor_register_subscription_raw_with_info                                          \
+    rclc_executor_add_subscription_raw_with_info
+#define rclc_executor_register_subscription_in_group rclc_executor_add_subscription_in_group
+#define rclc_executor_register_timer rclc_executor_add_timer
+#define rclc_executor_register_timer_in_group rclc_executor_add_timer_in_group
+#define rclc_executor_register_action_server rclc_executor_attach_action_server
+#define rclc_executor_register_action_client rclc_executor_attach_action_client
+#define rclc_executor_register_time_triggered_dispatcher rclc_executor_add_time_triggered_dispatcher
+#endif /* NROS_NO_DEPRECATED_EXECUTOR_REGISTER_ALIASES */
+
+#endif /* NROS_EXECUTOR_H */
+
+/* Every upstream-path header carries the whole C API, as `<rclc/rclc.h>` does
+ * (phase-492): a ported file that includes only `<rclc/executor.h>` still finds
+ * `RCLC_CHECK_RET`, `RCLC_LOG_*` and the rcl spellings. Outside the guard, so
+ * this header's own declarations are complete before the umbrella reads them. */
+#include "rclc/rclc.h"

@@ -153,7 +153,7 @@ set(_NROS_PX4_INCLUDES
 
 # The PER-BUILD generated headers (storage sizes, feature constants), emitted by
 # nros-c/nros-cpp build.rs into $CARGO_TARGET_DIR/nros-{c,cpp}-generated/nros/.
-# Without these, `#include <nros/init.h>` hits the checked-in STUB, whose whole
+# Without these, `#include <rclc/init.h>` hits the checked-in STUB, whose whole
 # body is:
 #
 #     #error "nros_config_generated.h must be supplied per-build by the build system"
@@ -231,7 +231,7 @@ nros_assert_archive_pairs_with_header(
 # stamps. Measured on a freshly built archive — `nros_config_variant_sz_*` 2
 # occurrences, `nros_cpp_config_variant_*` 3. Checking only the C++ one would be
 # the issue-0196 shape (coverage narrower than the rule): a PX4 module including
-# `<nros/init.h>` gets the C sizes from this header, and they can disagree on
+# `<rclc/init.h>` gets the C sizes from this header, and they can disagree on
 # their own — the C stamp is a SIZE HASH (`sz_<hash>`), not a feature slug, so it
 # moves for reasons the C++ slug does not see.
 nros_assert_archive_pairs_with_header(

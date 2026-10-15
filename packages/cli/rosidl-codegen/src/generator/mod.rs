@@ -596,7 +596,7 @@ mod tests {
     #[test]
     fn test_c_borrowed_view_generation() {
         // RFC-0033 `view` (Phase 235): a `mode = "view"` field emits a
-        // `{Msg}_View` (borrowed field as an `nros/view.h` view, copied
+        // `{Msg}_View` (borrowed field as an `rclc/detail/view.h` view, copied
         // fields owned) + `{Msg}_deserialize_view`, alongside the unchanged
         // owned struct.
         let msg = parse_message("uint32 width\nstring encoding\nuint8[] data\n").unwrap();
@@ -617,7 +617,7 @@ mod tests {
             "owned struct missing:\n{h}"
         );
         assert!(
-            h.contains("#include <nros/view.h>"),
+            h.contains("#include <rclc/detail/view.h>"),
             "borrowed include missing:\n{h}"
         );
         assert!(
@@ -848,7 +848,7 @@ mod tests {
             "unexpected view:\n{}",
             pkg.header
         );
-        assert!(!pkg.header.contains("nros/view.h"), "unexpected include");
+        assert!(!pkg.header.contains("rclc/detail/view.h"), "unexpected include");
         assert!(
             !pkg.source.contains("_deserialize_view"),
             "unexpected borrowed deser"

@@ -417,7 +417,7 @@ Bytes of the buffer one Rust log call formats into, and of the message
 held in each early-record and /rosout slot (nros-log build.rs, as
 NROS_LOG_BUFFER_SIZE; issue 1037). Longer messages are truncated with
 an ellipsis. The C/C++ NROS_LOG_* printf front-end keeps its own
-256-byte frame (<nros/log.h>), so a C record is bounded by the smaller
+256-byte frame (<rclc/log.h>), so a C record is bounded by the smaller
 of the two. Bigger costs stack on every logging task. Replaces the
 deprecated buffer-size-<N> cargo features.
 '''

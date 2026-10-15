@@ -54,7 +54,7 @@ nros new my_c_node --component --lang c
 ```
 
 A C node package is the declarative component shape — a `configure`
-function binding callbacks through `nros/nros.h` — built by the same
+function binding callbacks through `rclc/rclc.h` — built by the same
 per-package CMake as C++. There is no C workspace scaffold; start from
 the C++ workspace (`nros new --workspace`) and add C packages, which is
 also what the in-tree reference does.

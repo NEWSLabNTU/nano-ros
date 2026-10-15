@@ -182,10 +182,10 @@ fn typed_emit_rejects_non_c_node() {
 fn typed_emit_has_required_includes() {
     let plan = fixture_plan(&[("talker_pkg", "talker")]);
     let src = emit_typed(&plan).expect("typed C emit ok");
-    assert!(src.contains("#include <nros/boot_config.h>"));
-    assert!(src.contains("#include <nros/main.h>"));
+    assert!(src.contains("#include <rclc/detail/boot_config.h>"));
+    assert!(src.contains("#include <rclc/detail/main.h>"));
     assert!(src.contains("#include <nros/nros_cpp_ffi.h>"));
-    assert!(!src.contains("#include <nros/component.h>"));
+    assert!(!src.contains("#include <rclc/component.h>"));
     assert!(src.contains("int main(int argc, char** argv)"));
 }
 

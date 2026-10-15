@@ -895,7 +895,7 @@ function(nros_generate_interfaces target)
       endif()
     endforeach()
 
-    # Build-order: the generated message .c files #include <nros/types.h> which
+    # Build-order: the generated message .c files #include <rclc/types.h> which
     # pulls <nros/nros_generated.h>, the cbindgen header nros-c's build.rs writes
     # during its cargo build. Linking NanoRos::NanoRos orders the LINK, not the
     # COMPILE, so without an explicit dependency these objects can compile before

@@ -122,7 +122,7 @@ verdict).**
   language surfaces for the same concept; cmake verbs that require
   nano-ros-specific ceremony where the ament shape exists. Sample:
   `packages/api/nros-cpp/include/nros/*.hpp` vs rclcpp class list,
-  `nros-c/include/nros/*.h` vs rclc, `nros`/`nros-node` pub API vs rclrs,
+  `nros-c/include/{rclc,rcl,...}/*.h` vs rclc, `nros`/`nros-node` pub API vs rclrs,
   `cmake/NanoRosVerbs.cmake` vs ament verbs.
 - **C7 RMW vtable API mirrors rmw.h.** `nros-rmw` / `nros-rmw-cffi`'s vtable
   is our analogue of the official `rmw.h` entry-point set — same concept

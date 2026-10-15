@@ -1,22 +1,37 @@
 /**
  * @file types.h
- * @brief `<rclc/types.h>` at upstream's include path (phase-492 W2, RFC-0089).
+ * @ingroup grp_types
+ * @brief Shared types and constants for the nros C API.
  *
- * The C API carries rcl's and rclc's names, so a ported file's includes resolve
- * here too. Every upstream-path header brings in the whole nano-ros C API
- * (`<nros/nros.h>`) plus the rcl spellings of the return codes
- * (`<nros/rcl_compat.h>`): the declarations live in the nano-ros headers, and
- * one umbrella is what keeps two spellings of one declaration from existing.
+ * Type and constant definitions live in `nros_generated.h` (the
+ * single source of truth for field layout) and `nros_config_generated.h`
+ * (opaque-storage size macros). This file is a thin wrapper that
+ * pulls in both.
  *
- * Deliberately NOT upstream's include guard. `<nros/rcl_compat.h>` refuses to
- * compile beside the real `<rcl/types.h>` by testing that guard, and one image
- * never mixes the two.
+ * Keeping `types.h` preserves backward compatibility for downstream
+ * code that already includes it. New code can include
+ * `<nros/nros_generated.h>` (or any specific module header) directly.
+ *
+ * Copyright 2024 nros contributors
+ * Licensed under Apache-2.0
  */
 
-#ifndef NROS_UPSTREAM_PATH_RCLC_TYPES_H
-#define NROS_UPSTREAM_PATH_RCLC_TYPES_H
+#ifndef NROS_TYPES_H
+#define NROS_TYPES_H
 
-#include "nros/nros.h"
-#include "nros/rcl_compat.h"
+#include "rclc/visibility_control.h"
+#include "nros/nros_config_generated.h"
+#include "nros/nros_generated.h"
+/* RFC-0088 D5 — NROS_SERIALIZATION_FORMAT{,_ID} plus the per-message
+   compile-time assertion generated message headers emit. Included here so a
+   generated header reaches it through its single `<rclc/types.h>` include. */
+#include "rclc/detail/serialization_format.h"
+/* issue 1531 — LAST, and deliberately so: this header defines function-like
+   macros named after entry points `nros_generated.h` DECLARES, so it has to come
+   after that declaration or it would eat it. It is here rather than in
+   `<rclc/init.h>` because every consumer must get it — two TUs in one image
+   disagreeing about whether the baked RMW rung is passed is issue 1530's failure
+   with a narrower blast radius. */
+#include "rclc/detail/baked_rmw.h"
 
-#endif /* NROS_UPSTREAM_PATH_RCLC_TYPES_H */
+#endif /* NROS_TYPES_H */

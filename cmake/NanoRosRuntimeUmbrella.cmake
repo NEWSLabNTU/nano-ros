@@ -84,10 +84,10 @@ function(nros_declare_rust_runtime_carrier target)
     # its HEADERS, and until this line it did: an umbrella carries both, so the
     # one decision dropped both. A carrier still compiles C — the board's
     # startup TUs (`startup.c`, the generated `nros_app_config_def.c`) include
-    # `<nros/app_config.h>`, which lives only in nros-c's public include dir.
+    # `<rclc/detail/app_config.h>`, which lives only in nros-c's public include dir.
     # Before issue 1467 that dir arrived as a side effect of the very umbrella
     # 1467 correctly removed, so the fix for 228 duplicate symbols turned all
-    # twelve `threadx_riscv64` rust leaves into `nros/app_config.h: No such
+    # twelve `threadx_riscv64` rust leaves into `rclc/detail/app_config.h: No such
     # file or directory` — the second fault directly behind the first.
     #
     # Taken from `nros_c-static`'s own INTERFACE list, never spelled here:

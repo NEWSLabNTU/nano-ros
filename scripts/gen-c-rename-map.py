@@ -46,7 +46,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "docs" / "reference" / "c-api-rename-map.tsv"
-C_INCLUDE = ROOT / "packages" / "api" / "nros-c" / "include" / "nros"
+C_INCLUDE = ROOT / "packages" / "api" / "nros-c" / "include"
 SEAM_HEADERS = [
     ROOT / "packages" / "core" / "nros-rmw-abi" / "include",
     ROOT / "packages" / "platform" / "nros-platform-api" / "include",
@@ -106,7 +106,7 @@ ENTRY_HEADERS = {
     "tier_task_memory_freertos.h", "tier_task_memory_zephyr.h",
 }
 
-# phase-492 W1.b — reached only through a `<nros/baked_rmw.h>` macro, which
+# phase-492 W1.b — reached only through a `<rclc/detail/baked_rmw.h>` macro, which
 # forwards the build's baked RMW selector (`NROS_ENTRY_RMW`). A build fact's
 # carrier, not an API call.
 BAKED_SEAMS = {"nros_c_support_init_baked"}
@@ -187,7 +187,7 @@ def tokens_in(paths):
 def defined_upstream_names_in_nros_c():
     """Upstream-spelled names nros-c already DEFINES (the twins' targets)."""
     names = set()
-    for f in sorted(C_INCLUDE.glob("*.h")):
+    for f in tracked_headers(C_INCLUDE):
         text = code_of(f.read_text(errors="replace"))
         names |= set(re.findall(r"\b(rclc?_[a-z0-9_]+)\s*\(", text))
         names |= set(re.findall(r"\b(rcl(?:c|_action)?_[a-z0-9_]+_t)\b", text))
@@ -195,7 +195,7 @@ def defined_upstream_names_in_nros_c():
 
 
 def rcl_ret_names():
-    text = (C_INCLUDE / "rcl_compat.h").read_text()
+    text = (C_INCLUDE / "rclc" / "detail" / "rcl_compat.h").read_text()
     return set(re.findall(r"#define (RCL_RET_[A-Z_]+)\b", text))
 
 
@@ -205,7 +205,7 @@ def stem(name):
 
 def entry_only_tokens():
     entry, rest = set(), set()
-    for f in sorted(C_INCLUDE.glob("*.h")):
+    for f in tracked_headers(C_INCLUDE):
         toks = set(TOKEN.findall(code_of(f.read_text(errors="replace"))))
         (entry if f.name in ENTRY_HEADERS else rest).update(toks)
     return entry - rest

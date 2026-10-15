@@ -60,7 +60,7 @@
  */
 
 #include <stdint.h>
-#include <nros/app_config.h>
+#include <rclc/detail/app_config.h>
 
 const nros_app_config_t NROS_APP_CONFIG = {
     .zenoh = {

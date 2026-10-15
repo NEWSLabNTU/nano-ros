@@ -18,7 +18,7 @@ header = """/**
 #include <stdint.h>
 #include <stddef.h>
 
-#include "nros/visibility.h"
+#include "rclc/visibility_control.h"
 #include "nros/nros_config_generated.h"
 
 /* Forward declarations for callback typedefs that reference these
@@ -81,7 +81,7 @@ exclude = [
     "ACTION_SERVER_OPAQUE_U64S",
     "ACTION_CLIENT_OPAQUE_U64S",
     # Phase 88.12 — the log surface is hand-authored in
-    # `<nros/log.h>` so the macros + Doxygen comments survive.
+    # `<rclc/log.h>` so the macros + Doxygen comments survive.
     # Cbindgen would re-emit the enum + functions under their
     # mangled forms and collide with the hand-written header.
     "rcl_log_severity_t",
@@ -115,7 +115,7 @@ exclude = [
     "rclc_logger_get_level",
     "rclc_logger_is_enabled",
     # phase-467 — the process-wide default threshold, hand-authored in
-    # `<nros/log.h>` beside the rest of the level surface for the same reason.
+    # `<rclc/log.h>` beside the rest of the level surface for the same reason.
     "rclc_log_set_default_level",
     "rclc_log_get_default_level",
     "rclc_log_sink_fn",

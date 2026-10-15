@@ -60,7 +60,7 @@ almost nothing:
 
 ```c
 /* examples/workspaces/c/src/linux_entry/src/main.c — the whole file */
-#include <nros/main.h>
+#include <rclc/detail/main.h>
 NROS_MAIN_C(nros_board_native, "demo_bringup:system.launch.xml");
 ```
 

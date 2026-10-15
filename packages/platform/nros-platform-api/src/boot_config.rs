@@ -245,7 +245,7 @@ mod baked_boot_config_tests {
     // ── T-LAYOUT: layout-drift guard (mirrors C header static_asserts) ────────
     //
     // If `BakedBootConfig` ever changes size or field offsets, this test fails
-    // and forces the C header `include/nros/boot_config.h` to be updated in
+    // and forces the C header `include/rclc/detail/boot_config.h` to be updated in
     // lockstep.  The C header carries matching _Static_assert / static_assert
     // guards on the C/C++ side.
 
@@ -254,7 +254,7 @@ mod baked_boot_config_tests {
     ///
     /// 236 -> 268 with layout version 2 (issue 1050 defect (3), `rmw @ 236`).
     /// This test is the reason that append could not be a one-sided edit: the
-    /// blob has a C mirror (`nros-c/include/nros/boot_config.h`) whose own
+    /// blob has a C mirror (`nros-c/include/rclc/detail/boot_config.h`) whose own
     /// `static_assert`s carry the same numbers, so a change here fails until
     /// both sides move.
     #[test]

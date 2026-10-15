@@ -78,7 +78,7 @@ int talker_listener(void) {
 
 /* The take side of a subscription the caller drains: the `rcl_take` analog
  * (`rcl_take` itself takes an executor-owned `rcl_subscription_t` here, which
- * has no subscriber of its own to take from — see `<nros/subscription.h>`). */
+ * has no subscriber of its own to take from — see `<rclc/subscription.h>`). */
 int take_one(rclc_polling_subscription_t* sub);
 int take_one(rclc_polling_subscription_t* sub) {
     return rclc_polling_subscription_take(sub, &incoming, NULL) == RCL_RET_OK ? 0 : 1;

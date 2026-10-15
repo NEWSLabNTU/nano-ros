@@ -88,7 +88,7 @@ exclude = [
     # Phase 274.W2 — `NativeTierSpecC` has a fn-ptr field typed
     # `Option<unsafe extern "C" fn(*mut c_void) -> i32>` which cbindgen
     # renders as an opaque wrapper struct. The struct and EVERY runner that
-    # takes it are declared by hand instead, in `<nros/main.h>`, against the
+    # takes it are declared by hand instead, in `<rclc/detail/main.h>`, against the
     # canonical `nros_native_tier_spec_t`.
     #
     # Issue 1442 — that is why the `_ns` twin is here too, and it is not

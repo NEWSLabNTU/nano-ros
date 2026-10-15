@@ -10,7 +10,7 @@
  * nros-c staticlib alongside the Rust object files.
  */
 
-#include <nros/log.h>
+#include <rclc/log.h>
 
 #include <stdarg.h>
 #include <stddef.h>
@@ -40,7 +40,7 @@ static size_t render(char* buf, size_t cap, const char* fmt, va_list args) {
 }
 
 /* phase-417 W4.d — the located entry point every `RCLC_LOG_*` macro expands
- * to. It was `static inline` in <nros/log.h> until phase-492 moved it here so
+ * to. It was `static inline` in <rclc/log.h> until phase-492 moved it here so
  * that header needs no `<stdio.h>`. */
 void rclc_log_emit_fmt_at(rclc_logger_t logger, rcl_log_severity_t severity, const char* file,
                           uint32_t line, const char* fmt, ...) {

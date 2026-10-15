@@ -54,12 +54,12 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "nros/types.h" /* rcl_ret_t, rcl_node_t, rclc_executor_t */
+#include "rclc/types.h" /* rcl_ret_t, rcl_node_t, rclc_executor_t */
 /* phase-454 W10 — `NROS_ASSERT_DECLARED_DEPTH`, for a C component that states a
  * QoS depth at a call site. The header is self-guarding and C-only, so a C++ TU
  * that pulls this in (the cross-include syntax check does) sees nothing and
  * keeps `<nros/declared_qos.hpp>`. */
-#include "nros/declared_qos.h"
+#include "rclc/detail/declared_qos.h"
 
 #ifdef __cplusplus
 extern "C" {

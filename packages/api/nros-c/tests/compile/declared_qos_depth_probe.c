@@ -30,7 +30,7 @@
  * string literal and cannot interpolate an `int`. C++ gets the same two halves
  * out of a `static_assert` and a template instantiation.
  */
-#include <nros/nros.h>
+#include <rclc/rclc.h>
 
 void nros_c_declared_qos_probe(void);
 void nros_c_declared_qos_probe(void) {

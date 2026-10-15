@@ -289,7 +289,7 @@ nros-node.workspace = true
 nros-c = { version = "0.6.0", path = "../nros-c", default-features = false }
 # Issue 0436 — the C/C++ multi-RMW bridge ABI behind the `bridge` feature. `cffi`
 # is what emits the `rclc_init_multi` / `nros_pubsub_bridge_*` exports that
-# `<nros/bridge.h>` declares and `<nros/bridge.hpp>` wraps.
+# `<rclc/bridge.h>` declares and `<nros/bridge.hpp>` wraps.
 nros-bridge = { version = "0.6.0", path = "../../rmw/bridge", default-features = false, features = ["cffi", "alloc"], optional = true }
 # Phase 88.12 — `nros_cpp_node_get_logger` returns `&'static nros_log::Logger`.
 nros-log = { workspace = true }

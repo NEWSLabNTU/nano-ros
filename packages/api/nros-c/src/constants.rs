@@ -79,7 +79,7 @@ pub use crate::opaque_sizes::{
 // cross-image identity string. `cbindgen` lowers the DISCRIMINANT into
 // `nros_generated.h` as `#define NROS_SERIALIZATION_FORMAT_ID`; the string is
 // NOT lowered (cbindgen maps no Rust `&str` to a C constant), so
-// `nros/serialization_format.h` derives `NROS_SERIALIZATION_FORMAT` from the
+// `rclc/detail/serialization_format.h` derives `NROS_SERIALIZATION_FORMAT` from the
 // discriminant instead of carrying a second authored spelling. Those macros are
 // what the per-message `_Static_assert` codegen emits compares against, and what
 // `nros/serialization_format.hpp` lifts into `rclcpp::SerializationFormat`.

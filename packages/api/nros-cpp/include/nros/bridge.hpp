@@ -5,7 +5,7 @@
  * @file bridge.hpp
  * @brief C++ multi-RMW bridge surface (Phase 128.F.5).
  *
- * Wraps the C entry points from `<nros/bridge.h>` in RAII-friendly
+ * Wraps the C entry points from `<rclc/bridge.h>` in RAII-friendly
  * classes. Single-backend code does not need this header.
  *
  * Requires the binary to link `libnros_bridge.a` (Rust bridge crate)
@@ -25,7 +25,7 @@
 #include <vector>
 
 #include "nros/traits.hpp"
-#include "nros/bridge.h"
+#include "rclc/bridge.h"
 #include "nros/result.hpp"
 
 namespace rclcpp {

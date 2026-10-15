@@ -37,8 +37,8 @@
 
 #include "fingerprint_corpus/srv/probe.h"
 
-#include "nros/client.h"
-#include "nros/service.h"
+#include "rclc/client.h"
+#include "rclc/service.h"
 
 /* ===================================================================
  * 1. The handler body, in the shape a ported rclc service reads.

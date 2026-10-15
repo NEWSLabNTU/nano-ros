@@ -14,7 +14,7 @@
 #ifndef NROS_CDR_H
 #define NROS_CDR_H
 
-#include "nros/types.h"
+#include "rclc/types.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -384,7 +384,7 @@ int32_t rclc_cdr_read_string(const uint8_t** ptr, const uint8_t* end, const uint
  * whatever address the buffer happens to sit at. This is the Rust reader's
  * `CdrReader::align` behind the C ABI, so it carries the same edition rule
  * (XCDR2 caps 8-byte primitives at 4) and the header-only borrow readers in
- * `<nros/view.h>` cannot drift from it (issue 1148).
+ * `<rclc/detail/view.h>` cannot drift from it (issue 1148).
  *
  * @param ptr       Pointer to the cursor (advanced on success).
  * @param end       Pointer past the end of the buffer.

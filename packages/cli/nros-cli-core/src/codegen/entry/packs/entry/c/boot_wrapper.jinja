@@ -17,7 +17,7 @@
   and for the same reason: only the HOST board resolves its locator and domain
   at run time (from the environment), so it is the one runner that takes
   neither. An embedded image bakes both at compile time through
-  `<nros/entry_config.h>`, the single ladder both entry languages include.
+  `<rclc/detail/entry_config.h>`, the single ladder both entry languages include.
 
   The runner NAMES are carried rather than assembled from the board key: the C
   ABI does not name them uniformly (`native` has the `_named` suffix that its

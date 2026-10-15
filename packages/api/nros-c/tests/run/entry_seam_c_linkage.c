@@ -22,7 +22,7 @@
  * examples/, third-party/; the real consumers are out of tree).
  */
 
-#include <nros/main.h>
+#include <rclc/detail/main.h>
 
 #include <stdio.h>
 

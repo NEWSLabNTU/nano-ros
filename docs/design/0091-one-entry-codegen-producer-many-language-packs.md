@@ -319,7 +319,7 @@ extending the mirror gate makes it loud at the point of edit. Both — and both
 have LANDED (phase-432, branch `fix/nros-native-tier-spec-designated-init`).
 
 The eight, measured rather than counted from a comment: six DECLARATIONS —
-`nros-c/include/nros/main.h` (canonical), `nros-cpp/include/nros/main.hpp`
+`nros-c/include/rclc/detail/main.h` (canonical), `nros-cpp/include/nros/main.hpp`
 (`NativeTierSpec`), `nros-cpp/src/lib.rs` (`NativeTierSpecC`) and the THREE
 board `nros_tier_spec_t` mirrors (zephyr, nuttx-qemu, freertos) — plus the two
 entry templates that initialise it. main.h's own comment claimed FOUR board
@@ -376,12 +376,12 @@ pointer in generated code — while every primitive it calls is already C-ABI an
 already called from C by the sibling `run_tiers.c`. Two prerequisites gated it and **both are now closed**, ahead of W3.1 itself
 and independently of whether W3.1 proceeds — each was a live trap on its own.
 `nros_board_network_wait` existed only as a weak symbol in a C++ header, so a
-pure-C TU failed at link; its definition moved to `<nros/main.h>`, the C header
+pure-C TU failed at link; its definition moved to `<rclc/detail/main.h>`, the C header
 that already declares the runners it gates. And `NROS_ENTRY_LOCATOR` /
 `NROS_ENTRY_DOMAIN_ID` were derived in `main.hpp` while the C sibling defined
 them as `""` and `0` — a pure-C entry would compile, link, boot and dial
 nothing, which is issue #174 exactly; one ladder now lives in
-`<nros/entry_config.h>`, included by both languages. See phase-432 W3.1. That deletes the language-crossing branch from
+`<rclc/detail/entry_config.h>`, included by both languages. See phase-432 W3.1. That deletes the language-crossing branch from
 `cmd/codegen.rs` and lets the C pack serve every board the C++ one does.
 
 **ThreadX has a C entry too (issue 1286).** This section used to declare it
@@ -687,8 +687,8 @@ The procedure above is only worth what it survives. Walking a real third
 language through it finds three defects, all in **Stage 2**, and all of the same
 kind: facts that look neutral but are spelled for the C family.
 
-A Zig entry is a normal C-ABI consumer. It would `@cImport` `nros/main.h` and
-`nros/boot_config.h`, declare the component seams `extern`, and finish with
+A Zig entry is a normal C-ABI consumer. It would `@cImport` `rclc/detail/main.h` and
+`rclc/detail/boot_config.h`, declare the component seams `extern`, and finish with
 `c.nros_board_native_run_components_named(...)`. Nothing about that is exotic —
 which is exactly why it is a good probe.
 

@@ -269,7 +269,7 @@ pub fn run(linker_script: &[u8], port_dir: &Path) {
     // `const nros_app_config_t NROS_APP_CONFIG = { ... };` TU baked into
     // the board's staticlib. `startup.c` reads
     // `NROS_APP_CONFIG.network.{ip,mac,gateway,netmask}` via
-    // `<nros/app_config.h>` — the universal extern declaration from
+    // `<rclc/detail/app_config.h>` — the universal extern declaration from
     // the shipped header resolves at link time against this definition.
     //
     // Values transcribe the pre-M.10 `nros.toml` defaults for QEMU
@@ -505,7 +505,7 @@ fn add_netx_includes(build: &mut cc::Build, netx_dir: &Path, config_dir: &Path) 
 /// TU is compiled into `libnros_app_config_def.a` and linked alongside
 /// the other board staticlibs; the board's `startup.c` resolves its
 /// `extern const nros_app_config_t NROS_APP_CONFIG;` (from
-/// `<nros/app_config.h>`) against this definition at link time.
+/// `<rclc/detail/app_config.h>`) against this definition at link time.
 fn emit_nros_app_config(out_dir: &Path, net: &crate::board_net::ResolvedNet) {
     let src_path = out_dir.join("nros_app_config_def.c");
     // issue 1767 item 4 — through the one resolver, not a join of the root.
@@ -516,14 +516,14 @@ fn emit_nros_app_config(out_dir: &Path, net: &crate::board_net::ResolvedNet) {
  * Phase 212.M-F.10.3 Path C — `NROS_APP_CONFIG` source-side emission.
  *
  * Defines the universal `nros_app_config_t NROS_APP_CONFIG` symbol that
- * the shipped `<nros/app_config.h>` declares `extern` on non-Zephyr
+ * the shipped `<rclc/detail/app_config.h>` declares `extern` on non-Zephyr
  * platforms. Values mirror the board's pre-M.10 `nros.toml` defaults
  * for QEMU SLIRP networking (10.0.2.0/24, host gateway 10.0.2.2,
  * board NIC 10.0.2.40, zenohd at host:7553).
  */
 
 #include <stdint.h>
-#include <nros/app_config.h>
+#include <rclc/detail/app_config.h>
 
 const nros_app_config_t NROS_APP_CONFIG = {
     .zenoh = {
@@ -549,7 +549,7 @@ const nros_app_config_t NROS_APP_CONFIG = {
 
     let mut build = cc::Build::new();
     configure_riscv64(&mut build);
-    // Reach `<nros/app_config.h>` (the universal extern declaration).
+    // Reach `<rclc/detail/app_config.h>` (the universal extern declaration).
     build.include(&nros_c_include);
     build.file(&src_path);
     nros_cc_flags::header_deps::track_header_deps(&mut build);

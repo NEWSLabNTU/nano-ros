@@ -94,7 +94,7 @@ int main(int argc, char** argv) {
     (void)argv;
 
     // `rclc_support_init` takes the connect configuration from the build
-    // (`<nros/entry_config.h>`, issue 0946); on this leaf that is the empty
+    // (`<rclc/detail/entry_config.h>`, issue 0946); on this leaf that is the empty
     // bottom rung, and baking `system.toml`'s locator is issue 1512's.
     rcl_allocator_t allocator = rcl_get_default_allocator();
     RCLC_CHECK_RET(rclc_support_init(&app.support, argc, argv, &allocator), 1);

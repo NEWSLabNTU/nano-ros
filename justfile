@@ -5608,7 +5608,7 @@ doc-c-check:
     echo "Checking C headers for syntax errors..."
     cc -fsyntax-only \
         -Ipackages/api/nros-c/include \
-        -include packages/api/nros-c/include/nros/nros.h \
+        -include packages/api/nros-c/include/rclc/rclc.h \
         -x c /dev/null
     echo "All C headers are syntactically correct."
 

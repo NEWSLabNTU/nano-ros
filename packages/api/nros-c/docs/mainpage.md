@@ -56,9 +56,9 @@ The API is organised into the following module groups (see the
 
 Each per-module header above is the authoritative C API surface for its
 module, with hand-written Doxygen documentation.  Include individual
-headers for what you need, or use `<nros/nros.h>` for everything.
+headers for what you need, or use `<rclc/rclc.h>` for everything.
 
-Shared types (return codes, QoS, time) live in `<nros/types.h>`, which
+Shared types (return codes, QoS, time) live in `<rclc/types.h>`, which
 all module headers include automatically.
 
 An internal `nros_generated.h` (produced by cbindgen) is used for

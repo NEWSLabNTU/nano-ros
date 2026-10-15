@@ -6,7 +6,7 @@
 //! `<pkg>_nros_selection` package (issue 1305) — the leaf's manifest names no
 //! board crate.
 //!
-//! `<nros/app_main.h>` has always said what bare metal needs: on this platform
+//! `<rclc/detail/app_main.h>` has always said what bare metal needs: on this platform
 //! `NROS_APP_MAIN_REGISTER()` emits `void app_main(void)`, and "per-platform
 //! startup chains call this after platform init (network, executor arena, board
 //! hw)". On every RTOS that chain is C. Here it cannot be, and the reason is
@@ -77,7 +77,7 @@ fn main() -> ! {
     // Issue 1770 — the app's STATUS decides how QEMU exits. This used to call
     // the macro's `void app_main(void)`, which has nowhere to return a status,
     // and then return `Ok`, so a failed app exited QEMU with success. Calling
-    // `nros_app_main` is the `int main` shim's shape (`<nros/app_main.h>`): no
+    // `nros_app_main` is the `int main` shim's shape (`<rclc/detail/app_main.h>`): no
     // weak/strong recorder pair, so nothing depends on which archive member
     // the linker happens to load. `run_bare` maps `Err` to `exit_failure`.
     run_bare(Config::from_image(), |_cfg| {

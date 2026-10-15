@@ -27,7 +27,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "nros/cdr.h"
+#include "rclc/detail/cdr.h"
 
 #ifdef __cplusplus
 extern "C" {

@@ -373,7 +373,7 @@ endif()
 # per-configure file under the binary dir, and prepend it to
 # `THREADX_STARTUP_SOURCE` so `nros_platform_link_app` (via
 # `target_sources`) compiles it into every example target. The TU
-# `#include`s `<nros/app_config.h>`, reachable through the platform
+# `#include`s `<rclc/detail/app_config.h>`, reachable through the platform
 # overlay's include set; the values mirror the Rust path verbatim, so
 # both paths bake byte-identical defaults into the running firmware.
 # Phase 214.P — per-fixture network identity overrides. Phase 212.M.10
@@ -423,7 +423,7 @@ file(WRITE "${_NROS_APP_CONFIG_DEF_C}"
 " */\n"
 "\n"
 "#include <stdint.h>\n"
-"#include <nros/app_config.h>\n"
+"#include <rclc/detail/app_config.h>\n"
 "\n"
 "const nros_app_config_t NROS_APP_CONFIG = {\n"
 "    .zenoh = {\n"

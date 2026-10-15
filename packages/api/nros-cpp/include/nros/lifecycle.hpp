@@ -51,7 +51,7 @@
 // table. They are PURE functions over `nros_core::lifecycle`, so `Transition`
 // below stores an id and nothing else: the labels and the two states have ONE
 // home, in Rust, and a C++ table of them would be the fourth copy.
-#include "nros/lifecycle.h"
+#include "rclc/types.h"
 
 // phase-483 W1: the lifecycle vocabulary lives in `rclcpp_lifecycle::`, where
 // upstream keeps it. It was `nros::` until then, with `rclcpp_lifecycle::`

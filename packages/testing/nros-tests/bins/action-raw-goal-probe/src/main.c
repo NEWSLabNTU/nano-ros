@@ -48,12 +48,12 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <nros/action.h>
-#include <nros/check.h>
-#include <nros/init.h>
-#include <nros/node.h>
+#include <rclc/action.h>
+#include <rclc/check.h>
+#include <rclc/init.h>
+#include <rclc/node.h>
 /* Reads the baked connect ladder itself (test bin, not a user example). */
-#include <nros/entry_config.h>
+#include <rclc/detail/entry_config.h>
 
 #include "example_interfaces.h"
 

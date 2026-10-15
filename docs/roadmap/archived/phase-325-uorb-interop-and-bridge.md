@@ -317,7 +317,7 @@ worse than offering nothing. The old header even documented
       **DONE** — it now builds and runs.
 - [x] **W1.4** Export the generated headers alongside the archive (found by W1.3).
       **DONE** — the helper prepends `target/nros-{c,cpp}-generated`, and the
-      template now `#include <nros/init.h>` and builds. Filed **issue 0360** on the
+      template now `#include <rclc/init.h>` and builds. Filed **issue 0360** on the
       way: those headers are written to a FLAT path, not the `<variant_slug>/` the
       stub documents, so two feature sets overwrite one header carrying storage
       sizes.
@@ -372,7 +372,7 @@ nothing keeps correct.
 
 ##### W1.4 — the generated-config gap (CLOSED)
 
-Making the template `#include <nros/init.h>` fails:
+Making the template `#include <rclc/init.h>` fails:
 
 ```
 error: "nros_config_generated.h must be supplied per-build by the build system"
@@ -385,7 +385,7 @@ anywhere: it carries **storage sizes**, so it must come from the same build as
 
 **Resolved.** `build.rs` already emits them to
 `$CARGO_TARGET_DIR/nros-{c,cpp}-generated/nros/`; nothing pointed at them. The
-helper now adds both, and the template includes `<nros/init.h>` and builds.
+helper now adds both, and the template includes `<rclc/init.h>` and builds.
 
 Two things make it work, both easy to get wrong:
 
@@ -588,7 +588,7 @@ node.hpp:100: error: inline variables are only available with '-std=c++17' [-Wer
 
 PX4 sets `CMAKE_CXX_STANDARD 14` for everything. W1 could not surface this: the
 generated-header stub blocked including nano-ros headers at all until W1.4, and
-the template then only reached `<nros/init.h>`.
+the template then only reached `<rclc/init.h>`.
 
 It was **one** `inline constexpr` in the entire header set, and nano-ros already
 intends C++14 compatibility — `just check cpp` runs a `-std=c++14 -fsyntax-only`

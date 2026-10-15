@@ -164,7 +164,7 @@ endif()
 
 # ---------------------------------------------------------------------------
 # Per-app glue: the board's startup.c + app_define.c. Both compile in
-# the app target so `nros/app_config.h` (APP_IP / APP_MAC) and the
+# the app target so `rclc/detail/app_config.h` (APP_IP / APP_MAC) and the
 # undef refs to `nros_platform_threadx_*` resolve correctly on first
 # link pass — matching the legacy `threadx-support.cmake` shape.
 # ---------------------------------------------------------------------------
@@ -195,7 +195,7 @@ file(WRITE "${_NROS_APP_CONFIG_DEF_C}"
 " */\n"
 "\n"
 "#include <stdint.h>\n"
-"#include <nros/app_config.h>\n"
+"#include <rclc/detail/app_config.h>\n"
 "\n"
 "const nros_app_config_t NROS_APP_CONFIG = {\n"
 "    .zenoh = {\n"

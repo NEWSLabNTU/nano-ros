@@ -127,7 +127,7 @@ int main(int argc, char** argv) {
     (void)argv;
 
     // `rclc_support_init` takes the connect configuration from the build
-    // (`<nros/entry_config.h>`, issue 0946); on this leaf that is the empty
+    // (`<rclc/detail/entry_config.h>`, issue 0946); on this leaf that is the empty
     // bottom rung, and baking `system.toml`'s locator is issue 1512's.
     example_interfaces__action__Fibonacci_Feedback__init_in(&app.fb, &app.fb_storage);
     example_interfaces__action__Fibonacci_Result__init_in(&app.result, &app.result_storage);

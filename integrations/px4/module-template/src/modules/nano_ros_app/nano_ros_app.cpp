@@ -15,7 +15,7 @@
 // Development Team, not a style rule — reproducing it here would misattribute
 // copyright. nano-ros is MIT OR Apache-2.0.
 
-#include <nros/init.h>
+#include <rclc/init.h>
 
 #include <px4_platform_common/log.h>
 #include <px4_platform_common/module.h>

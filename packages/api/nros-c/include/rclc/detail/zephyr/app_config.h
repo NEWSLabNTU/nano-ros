@@ -114,7 +114,7 @@ static const nros_app_config_t NROS_APP_CONFIG = {
  *     `const nros_app_config_t NROS_APP_CONFIG = { ... };` translation
  *     unit (from the board's default Rust `Config`) baked into the
  *     board's staticlib. This header declares the symbol as `extern`
- *     so any TU that includes `<nros/app_config.h>` and references
+ *     so any TU that includes `<rclc/detail/app_config.h>` and references
  *     `NROS_APP_CONFIG.*` resolves it at link time against that
  *     board-emitted definition.
  *
@@ -125,7 +125,7 @@ static const nros_app_config_t NROS_APP_CONFIG = {
  * M-F.10.5 retires the codegen.
  *
  * Out-of-tree consumers that want their own population path can drop
- * a `<nros/app_config.h>` earlier on the include path (same escape
+ * a `<rclc/detail/app_config.h>` earlier on the include path (same escape
  * hatch as before). */
 extern const nros_app_config_t NROS_APP_CONFIG;
 #endif /* __ZEPHYR__ */

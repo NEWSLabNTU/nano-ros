@@ -43,7 +43,7 @@
 #pragma GCC diagnostic error "-Wincompatible-pointer-types"
 #endif
 
-#include "nros/nros.h"
+#include "rclc/rclc.h"
 
 rcl_ret_t nros_rcl_node_init_reorder_probe(struct rcl_node_t* node,
                                            const struct rclc_support_t* support);

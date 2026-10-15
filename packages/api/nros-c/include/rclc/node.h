@@ -1,22 +1,20 @@
 /**
  * @file node.h
- * @brief `<rclc/node.h>` at upstream's include path (phase-492 W2, RFC-0089).
+ * @brief `<rclc/node.h>` at upstream's include path (phase-492 W2, phase-501).
  *
- * The C API carries rcl's and rclc's names, so a ported file's includes resolve
- * here too. Every upstream-path header brings in the whole nano-ros C API
- * (`<nros/nros.h>`) plus the rcl spellings of the return codes
- * (`<nros/rcl_compat.h>`): the declarations live in the nano-ros headers, and
- * one umbrella is what keeps two spellings of one declaration from existing.
- *
- * Deliberately NOT upstream's include guard. `<nros/rcl_compat.h>` refuses to
- * compile beside the real `<rcl/types.h>` by testing that guard, and one image
- * never mixes the two.
+ * Every declaration this header names lives in the generated
+ * `<rclc/detail/nros_generated.h>`, reached through `<rclc/types.h>`.
  */
 
-#ifndef NROS_UPSTREAM_PATH_RCLC_NODE_H
-#define NROS_UPSTREAM_PATH_RCLC_NODE_H
+#ifndef RCLC__NODE_H_
+#define RCLC__NODE_H_
 
-#include "nros/nros.h"
-#include "nros/rcl_compat.h"
+#include "rclc/types.h"
 
-#endif /* NROS_UPSTREAM_PATH_RCLC_NODE_H */
+#endif /* RCLC__NODE_H_ */
+
+/* Every upstream-path header carries the whole C API, as `<rclc/rclc.h>` does
+ * (phase-492): a ported file that includes only `<rclc/node.h>` still finds
+ * `RCLC_CHECK_RET`, `RCLC_LOG_*` and the rcl spellings. Outside the guard, so
+ * this header's own declarations are complete before the umbrella reads them. */
+#include "rclc/rclc.h"

@@ -951,7 +951,7 @@ pub fn write_shared(
     );
 
     // Issue 1512 — the image's connect identity, for a C/C++ app compiled by
-    // `cc` inside a cargo-rooted image. `<nros/entry_config.h>` lets an entry
+    // `cc` inside a cargo-rooted image. `<rclc/detail/entry_config.h>` lets an entry
     // bake its locator/domain by defining the macro first; the cmake road does
     // that with `-DNROS_ENTRY_LOCATOR`, and these rows are the cargo road's
     // carrier (`nros_cc_flags::entry_config::bake` reads them). A Rust leaf

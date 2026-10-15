@@ -38,7 +38,7 @@
 
 #include "stub_rmw_backend.h"
 
-#include <nros/nros.h>
+#include <rclc/rclc.h>
 
 #include <pthread.h>
 #include <stdbool.h>

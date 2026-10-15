@@ -114,13 +114,14 @@ RCLCPP_TRY(fut.wait(executor.handle(), 5000, resp));
 **C** uses paired `_async` and blocking entry points:
 
 ```c
-// Blocking: drives the executor internally, returns reply or timeout.
-nros_call_service(client, &req, sizeof(req), &reply, sizeof(reply), 5000);
+// Blocking: drives the executor internally, returns the reply or an error.
+size_t reply_len = 0;
+rclc_client_call(&client, req_buf, req_len, reply_buf, sizeof(reply_buf), &reply_len);
 
 // Async: returns immediately, result via callback registered ahead of time.
 rclc_action_send_goal_async(client, &goal, sizeof(goal));
 rclc_action_client_set_result_callback(client, on_result);
-// User keeps calling nros_spin_once() to drive callbacks.
+// User keeps calling rclc_executor_spin_some() to drive callbacks.
 ```
 
 The C API has no Future/Promise type because C lacks generics, but the *pattern* is the same: an `_async` send-without-wait paired with a callback (or polled status), and a blocking call that drives the executor for you.

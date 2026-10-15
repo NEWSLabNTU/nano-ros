@@ -30,7 +30,7 @@
  * here takes a lock.
  *
  * Types are spelled with nano-ros's names (`rcl_ret_t`, `struct rcl_node_t`,
- * `struct rclc_executor_t`); `<nros/rcl_compat.h>` makes `rcl_ret_t`,
+ * `struct rclc_executor_t`); `<rclc/detail/rcl_compat.h>` makes `rcl_ret_t`,
  * `rcl_node_t`, `rclc_executor_t` and the `RCL_RET_*` codes the same types, so
  * a ported file that includes it compiles unchanged. phase-492 makes the rcl
  * spellings primary across the C API.
@@ -43,7 +43,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "nros/types.h"
+#include "rclc/types.h"
 
 /* Issue 0865 — this surface exists only in an image built with the
  * `param-services` capability. Say so here rather than in `ld`'s output. */

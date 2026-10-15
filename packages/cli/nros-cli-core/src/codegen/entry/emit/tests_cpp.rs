@@ -186,7 +186,7 @@ fn typed_emit_includes_headers_constructs_and_runs_components() {
     ]);
     let src = emit_typed(&plan).expect("typed emit ok");
     // headers included (including boot_config.h for the node-name blob)
-    assert!(src.contains("#include <nros/boot_config.h>"));
+    assert!(src.contains("#include <rclc/detail/boot_config.h>"));
     assert!(src.contains("#include \"talker_pkg/Talker.hpp\""));
     assert!(src.contains("#include \"listener_pkg/Listener.hpp\""));
     assert!(src.contains("#include <nros/component.hpp>"));
@@ -759,7 +759,7 @@ fn typed_emit_native_single_node_bakes_name_in_boot_config() {
         "talker_pkg/Talker.hpp",
     )]);
     let src = emit_typed(&plan).expect("typed emit ok");
-    assert!(src.contains("#include <nros/boot_config.h>"));
+    assert!(src.contains("#include <rclc/detail/boot_config.h>"));
     assert!(src.contains("NROS_BOOT_SET_NODE_NAME"));
     assert!(src.contains(".node_name  = \"talker\""));
     assert!(src.contains(

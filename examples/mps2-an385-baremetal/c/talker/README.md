@@ -105,7 +105,7 @@ reaches the C TU as `NROS_ENTRY_LOCATOR` and the boot config as
 
 How it got there: the image used to dial `NROS_ENTRY_LOCATOR`'s empty bottom
 rung, so the backend substituted its own default (the guest's loopback). The
-leaf still derives nothing — `<nros/entry_config.h>` stays the one producer of
+leaf still derives nothing — `<rclc/detail/entry_config.h>` stays the one producer of
 that ladder (issue 0946); `nros sync` writes the image's declared values into
 `build/<image>/nros-cargo.toml` as `NROS_ENTRY_*` rows, and
 `nros_cc_flags::entry_config::bake` defines the macro from them.

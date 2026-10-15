@@ -220,7 +220,7 @@ for tag in QOS_ENUM_TAGS:
 # codegen initialisers.
 # ---------------------------------------------------------------------------
 
-TIER_CANONICAL = "packages/api/nros-c/include/nros/main.h"
+TIER_CANONICAL = "packages/api/nros-c/include/rclc/detail/main.h"
 
 # The C family is compared by full DECLARATION (types included): these four are
 # cast to one another at runtime, so a type change is an ABI change. The only

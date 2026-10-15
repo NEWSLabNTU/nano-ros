@@ -21,10 +21,10 @@
  * generated message headers.
  */
 
-#include "nros/executor.h"
-#include "nros/publisher.h"
-#include "nros/rcl_compat.h"
-#include "nros/subscription.h"
+#include "rclc/executor.h"
+#include "rclc/publisher.h"
+#include "rclc/detail/rcl_compat.h"
+#include "rclc/subscription.h"
 
 /* ------------------------------------------------------------------ *
  * 1. The entry points exist with the documented signatures.
