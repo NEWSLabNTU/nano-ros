@@ -99,14 +99,15 @@ impl BaseConfig {
         if let Some(locator) = overlay.locator {
             self.zenoh_locator = locator;
         }
-        if let Some(ip) = overlay.ip {
-            self.ip = ip;
-        }
-        if let Some(gateway) = overlay.gateway {
-            self.gateway = gateway;
-        }
-        if let Some(netmask) = overlay.netmask {
-            self.netmask = netmask;
+        if let Some(i) = crate::image_net::boot_interface(overlay.net) {
+            if let Some(ip) = i.ip() {
+                self.ip = ip;
+            }
+            self.netmask = i.netmask();
+            if let Some(gateway) = i.gateway {
+                self.gateway = gateway;
+            }
+            self.mac = i.mac;
         }
         if let Some(domain_id) = overlay.domain_id {
             self.domain_id = domain_id;

@@ -3163,7 +3163,7 @@ pub struct BoardNet {
     /// or `wifi` one takes an address. Empty ⇒ the board has not declared its
     /// interfaces, and an image's interface name is not checked.
     #[serde(default)]
-    pub interfaces: BTreeMap<String, String>,
+    pub interfaces: BTreeMap<String, InterfaceDecl>,
     /// RFC-0103 D10e — `"host"` when the host operating system owns the
     /// network stack (`linux`, `freertos-posix`, threadx-linux's NSOS):
     /// interfaces, addresses and routes are the kernel's, and an image states
@@ -3172,14 +3172,95 @@ pub struct BoardNet {
     /// brings its own stack.
     #[serde(default)]
     pub stack: Option<String>,
+    /// RFC-0103 D10g (phase-497 W2) — the board-level single-interface
+    /// identity, RETIRED: an address is the image's, a gateway and netmask the
+    /// network's, and a MAC the image's (or derived per image from the
+    /// interface's `mac_prefix`). Held RAW only so [`BoardNet::refuse_retired`]
+    /// can name where each went. `true` when the key is present, whatever
+    /// its value.
+    #[serde(default, deserialize_with = "key_present")]
+    pub ip: bool,
+    #[serde(default, deserialize_with = "key_present")]
+    pub netmask: bool,
+    #[serde(default, deserialize_with = "key_present")]
+    pub gateway: bool,
+    #[serde(default, deserialize_with = "key_present")]
+    pub mac: bool,
+}
+
+fn key_present<'de, D: serde::Deserializer<'de>>(d: D) -> Result<bool, D::Error> {
+    serde::de::IgnoredAny::deserialize(d).map(|_| true)
+}
+
+/// `[board.net] interfaces.<if>` (RFC-0103 D10c): the kind alone
+/// (`eth0 = "ethernet"`), or a table that also states what the resolver needs
+/// from the hardware.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(untagged)]
+pub enum InterfaceDecl {
+    /// `eth0 = "ethernet"`.
+    Kind(String),
+    /// `eth0 = { kind = "ethernet", mac_prefix = "52:54:00", dhcp = true }`.
+    Full(InterfaceTable),
+}
+
+/// The table form of [`InterfaceDecl`].
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct InterfaceTable {
+    /// `ethernet`, `wifi`, `serial` or `custom`.
+    pub kind: String,
+    /// The first three bytes of every MAC the resolver derives for an image on
+    /// this interface (D10b). Absent ⇒ [`DEFAULT_MAC_PREFIX`], a locally
+    /// administered unicast prefix.
     #[serde(default)]
-    pub ip: Option<String>,
+    pub mac_prefix: Option<String>,
+    /// The board's network stack runs a DHCP client on this interface, so an
+    /// image may take `address = "dhcp"` on it. No in-tree board does yet.
     #[serde(default)]
-    pub netmask: Option<String>,
-    #[serde(default)]
-    pub gateway: Option<String>,
-    #[serde(default)]
-    pub mac: Option<String>,
+    pub dhcp: bool,
+}
+
+/// The MAC prefix an interface that states none derives from: `02:00:00`,
+/// locally administered and unicast (the same prefix the platform default
+/// MAC `02:00:00:00:00:00` has always had).
+pub const DEFAULT_MAC_PREFIX: [u8; 3] = [0x02, 0x00, 0x00];
+
+impl InterfaceDecl {
+    /// The kind.
+    #[must_use]
+    pub fn kind(&self) -> &str {
+        match self {
+            Self::Kind(k) => k,
+            Self::Full(t) => &t.kind,
+        }
+    }
+
+    /// Whether the board runs a DHCP client on it.
+    #[must_use]
+    pub fn dhcp(&self) -> bool {
+        matches!(self, Self::Full(t) if t.dhcp)
+    }
+
+    /// The MAC prefix, parsed; [`DEFAULT_MAC_PREFIX`] when unstated. `name`
+    /// is the interface, for the message.
+    pub fn mac_prefix(&self, name: &str) -> Result<[u8; 3], String> {
+        let Self::Full(InterfaceTable {
+            mac_prefix: Some(p),
+            ..
+        }) = self
+        else {
+            return Ok(DEFAULT_MAC_PREFIX);
+        };
+        let o = BoardNet::octets::<3>(&format!("interfaces.{name}.mac_prefix"), p, ':', 16)?;
+        if o[0] & 1 == 1 {
+            return Err(format!(
+                "[board.net] interfaces.{name}.mac_prefix = {p:?} is a multicast prefix (the \
+                 low bit of the first byte is set)"
+            ));
+        }
+        Ok(o)
+    }
 }
 
 /// The built-in network every QEMU board defaults onto (RFC-0103 D10): QEMU's
@@ -3219,9 +3300,15 @@ impl BoardNet {
             ));
         }
         if self.interfaces.is_empty() {
-            return Ok(());
+            return Err(format!(
+                "this board declares no network interfaces (`[board.net] interfaces`), so \
+                 nothing on it would take `[image.<id>.net.{name}]` — the address would be \
+                 dropped. A board that brings its own stack states its interfaces \
+                 (RFC-0103 D10c); a board configured another way (Zephyr's Kconfig) is not \
+                 addressed through system.toml yet"
+            ));
         }
-        let Some(kind) = self.interfaces.get(name) else {
+        let Some(decl) = self.interfaces.get(name) else {
             return Err(format!(
                 "interface `{name}` is not one of this board's ({}) — `[board.net] interfaces`",
                 self.interfaces
@@ -3231,13 +3318,14 @@ impl BoardNet {
                     .join(", ")
             ));
         };
-        if !INTERFACE_KINDS.contains(&kind.as_str()) {
+        let kind = decl.kind();
+        if !INTERFACE_KINDS.contains(&kind) {
             return Err(format!(
                 "[board.net] interfaces.{name} = {kind:?}: a kind is one of {}",
                 INTERFACE_KINDS.join(", ")
             ));
         }
-        if addressed && !matches!(kind.as_str(), "ethernet" | "wifi") {
+        if addressed && !matches!(kind, "ethernet" | "wifi") {
             return Err(format!(
                 "interface `{name}` is `{kind}`, which takes no IP address — its endpoint is \
                  the image's `locator` (RFC-0103 D10c)"
@@ -3278,33 +3366,38 @@ impl BoardNet {
         }
         Ok(out)
     }
-    /// `ip` as octets, when stated.
-    pub fn ip(&self) -> Result<Option<[u8; 4]>, String> {
-        self.ip
-            .as_deref()
-            .map(|v| Self::octets("ip", v, '.', 10))
-            .transpose()
-    }
-    /// `netmask` as octets, when stated.
-    pub fn netmask(&self) -> Result<Option<[u8; 4]>, String> {
-        self.netmask
-            .as_deref()
-            .map(|v| Self::octets("netmask", v, '.', 10))
-            .transpose()
-    }
-    /// `gateway` as octets, when stated.
-    pub fn gateway(&self) -> Result<Option<[u8; 4]>, String> {
-        self.gateway
-            .as_deref()
-            .map(|v| Self::octets("gateway", v, '.', 10))
-            .transpose()
-    }
-    /// `mac` as bytes, when stated.
-    pub fn mac(&self) -> Result<Option<[u8; 6]>, String> {
-        self.mac
-            .as_deref()
-            .map(|v| Self::octets("mac", v, ':', 16))
-            .transpose()
+    /// D10g — refuse the retired board-level `ip` / `netmask` / `gateway` /
+    /// `mac`, naming where each fact lives now.
+    pub fn refuse_retired(&self) -> Result<(), String> {
+        let stated = [
+            (
+                "ip",
+                self.ip,
+                "an image's address: `[image.<id>.net.<if>] host` / `address` in its system.toml",
+            ),
+            (
+                "netmask",
+                self.netmask,
+                "the network's: `[network.<name>] subnet` (the built-in `qemu` is 10.0.2.0/24)",
+            ),
+            (
+                "gateway",
+                self.gateway,
+                "the network's: `[network.<name>] gateway`",
+            ),
+            (
+                "mac",
+                self.mac,
+                "the image's (`[image.<id>.net.<if>] mac`), else derived per image from `interfaces.<if>.mac_prefix` here",
+            ),
+        ];
+        if let Some((key, _, home)) = stated.iter().find(|(_, s, _)| *s) {
+            return Err(format!(
+                "[board.net] {key} is retired (RFC-0103 D10g, phase-497 W2): a board states its \
+                 interfaces, not one image's identity on one network. It is now {home}"
+            ));
+        }
+        Ok(())
     }
 }
 
@@ -3313,6 +3406,14 @@ impl BoardKnobsFile {
     /// the knobs: a named board wins; one entry needs no name; several must
     /// agree. `Ok(None)` when the entry states none.
     pub fn board_net(&self, board: Option<&str>) -> Result<Option<BoardNet>, String> {
+        let net = self.select_board_net(board)?;
+        if let Some(n) = &net {
+            n.refuse_retired()?;
+        }
+        Ok(net)
+    }
+
+    fn select_board_net(&self, board: Option<&str>) -> Result<Option<BoardNet>, String> {
         if let Some(want) = board
             && let Some(entry) = self
                 .boards
@@ -3606,8 +3707,14 @@ mod tests {
 
         let qemu = BoardNet {
             interfaces: [
-                ("eth0".to_string(), "ethernet".to_string()),
-                ("uart0".to_string(), "serial".to_string()),
+                (
+                    "eth0".to_string(),
+                    InterfaceDecl::Kind("ethernet".to_string()),
+                ),
+                (
+                    "uart0".to_string(),
+                    InterfaceDecl::Kind("serial".to_string()),
+                ),
             ]
             .into(),
             ..BoardNet::default()
@@ -3621,9 +3728,11 @@ mod tests {
         let e = qemu.check_image_interface("wlan0", true).unwrap_err();
         assert!(e.contains("not one of this board's (eth0, uart0)"), "{e}");
 
+        // phase-497 W2 — a board that declares no interfaces has nothing that
+        // would take the address, so naming one is refused, not dropped.
         let open = BoardNet::default();
-        open.check_image_interface("anything", true)
-            .expect("a board that declares no interfaces is not checked");
+        let e = open.check_image_interface("anything", true).unwrap_err();
+        assert!(e.contains("declares no network interfaces"), "{e}");
 
         let bad = BoardNet {
             stack: Some("kernel".into()),
@@ -3634,6 +3743,45 @@ mod tests {
                 .unwrap_err()
                 .contains("\"host\"")
         );
+    }
+
+    /// RFC-0103 D10b/D10g (phase-497 W2) — an interface's table form states
+    /// its MAC prefix and DHCP client; the board-level single-interface
+    /// identity is refused, naming where each fact went.
+    #[test]
+    fn interface_tables_and_retired_board_identity() {
+        let f = BoardKnobsFile::parse_for_board(
+            "[[board]]\nnames = [\"b\"]\n[board.net]\nnetwork = \"qemu\"\n\
+             interfaces = { eth0 = { kind = \"ethernet\", mac_prefix = \"52:54:00\" }, \
+             eth1 = \"ethernet\" }\n",
+            None,
+            "t",
+        )
+        .unwrap();
+        let n = f.board_net(None).unwrap().unwrap();
+        assert_eq!(
+            n.interfaces["eth0"].mac_prefix("eth0").unwrap(),
+            [0x52, 0x54, 0x00]
+        );
+        assert_eq!(
+            n.interfaces["eth1"].mac_prefix("eth1").unwrap(),
+            DEFAULT_MAC_PREFIX
+        );
+        assert!(!n.interfaces["eth0"].dhcp());
+        for key in [
+            "ip = \"10.0.2.40\"",
+            "mac = \"52:54:00:12:34:56\"",
+            "netmask = \"255.255.255.0\"",
+        ] {
+            let f = BoardKnobsFile::parse_for_board(
+                &format!("[[board]]\nnames = [\"b\"]\n[board.net]\n{key}\n"),
+                None,
+                "t",
+            )
+            .unwrap();
+            let e = f.board_net(None).unwrap_err();
+            assert!(e.contains("retired") && e.contains("D10g"), "{key}: {e}");
+        }
     }
 
     /// Issue 1401 — a build that resolves NO rung (no `NROS_PLATFORM_NAME`)

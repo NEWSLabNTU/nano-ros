@@ -25,6 +25,8 @@ pub use nros_launcher::dispatch;
 pub mod facade;
 /// phase-383 W1 — `[image.<id>]`, the buildable unit (RFC-0065 D6).
 pub mod image;
+// phase-497 W2 (RFC-0103 D10) — the one resolver of an image's network.
+pub mod image_net;
 pub mod image_priority_plan;
 pub mod launch_synth;
 pub mod manifest;

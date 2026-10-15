@@ -570,14 +570,15 @@ impl Config {
     /// The board default overlaid with the IMAGE's declared network identity —
     /// issue 1512, for a cargo-rooted C/C++ leaf.
     ///
-    /// A Rust leaf gets `[image.<id>] locator/ip/gateway/netmask/domain_id`
-    /// from `nros::main!`'s deploy overlay (`entry.rs::config_with_overlay`). A
+    /// A Rust leaf gets `[image.<id>] locator/domain_id` and its resolved
+    /// network from `nros::main!`'s deploy overlay (`entry.rs::config_with_overlay`). A
     /// C or C++ leaf whose link root is Rust (`run_bare` from its own
     /// `main.rs`) has no such macro, so it booted `Config::default()` whatever
     /// its `system.toml` said. `nros sync` renders the same declared values
     /// into the image's `build/<image>/nros-cargo.toml` as `NROS_ENTRY_*`
-    /// `[env]` rows; this reads them at compile time. An absent row keeps the
-    /// board default — nothing here is derived.
+    /// `[env]` rows, and its resolved network as `NROS_IMAGE_NET` (RFC-0103
+    /// D10f); this reads them at compile time. An absent row keeps the board
+    /// default — nothing here is derived.
     ///
     /// `NROS_ENTRY_LOCATOR` also reaches the C/C++ TU as the macro the app
     /// dials (`nros_cc_flags::entry_config`); the copy here keeps the board's
@@ -589,22 +590,31 @@ impl Config {
             cfg.zenoh_locator = loc;
         }
         #[cfg(feature = "ethernet")]
-        {
-            use nros_board_common::{base_config::parse_ipv4, prefix_from_netmask};
-            if let Some(ip) = option_env!("NROS_ENTRY_IP").and_then(parse_ipv4) {
-                cfg.ip = ip;
-            }
-            if let Some(gw) = option_env!("NROS_ENTRY_GATEWAY").and_then(parse_ipv4) {
-                cfg.gateway = gw;
-            }
-            if let Some(mask) = option_env!("NROS_ENTRY_NETMASK").and_then(parse_ipv4) {
-                cfg.prefix = prefix_from_netmask(mask);
-            }
-        }
+        cfg.apply_image_net(option_env!("NROS_IMAGE_NET"));
         if let Some(id) = option_env!("NROS_ENTRY_DOMAIN_ID").and_then(|s| s.parse().ok()) {
             cfg.domain_id = id;
         }
         cfg
+    }
+}
+
+#[cfg(feature = "ethernet")]
+impl Config {
+    /// Apply an image's resolved network (`NROS_IMAGE_NET`, RFC-0103 D10f) —
+    /// its primary interface's address, prefix, gateway and MAC. `None` keeps
+    /// the board default. The one place this board reads the text, for the
+    /// macro road (`DeployOverlay::net`) and the C road (`from_image`) alike.
+    pub(crate) fn apply_image_net(&mut self, text: Option<&'static str>) {
+        if let Some(i) = nros_board_common::image_net::boot_interface(text) {
+            if let Some(ip) = i.ip() {
+                self.ip = ip;
+            }
+            self.prefix = i.prefix;
+            if let Some(gw) = i.gateway {
+                self.gateway = gw;
+            }
+            self.mac = i.mac;
+        }
     }
 }
 

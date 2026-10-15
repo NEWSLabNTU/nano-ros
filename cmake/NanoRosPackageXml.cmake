@@ -401,6 +401,13 @@ function(nano_ros_read_leaf_system)
         message(FATAL_ERROR
             "nano-ros: `nros ws leaf-system ${_NRL_DIR}` printed no deploy token:\n${_out}")
     endif()
+    # RFC-0103 D10f (phase-497 W2) — the top-level leaf's resolved network,
+    # for `nros_board_net_c` (NanoRosBoardNet.cmake). A GLOBAL property because
+    # this function also runs from nano-ros's own subdirectory scope (the
+    # add_subdirectory road), which the leaf's scope cannot see.
+    if(_NRL_DIR STREQUAL CMAKE_SOURCE_DIR)
+        set_property(GLOBAL PROPERTY NROS_LEAF_IMAGE_NET "${_NROS_LEAF_IMAGE_NET}")
+    endif()
 
     # A board that IS its deploy token (`linux`, `zephyr`) names no separate
     # provider — exactly the tuple shape `<nano_ros deploy="native"/>` had.

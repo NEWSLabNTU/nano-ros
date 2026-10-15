@@ -423,6 +423,10 @@ KNOB_CLASS = {
     "NROS_ENTRY_SPIN_MS": ("sizing", "entry spin period; a duration, same ladder shape"),
     # --- infra: pointers, flags and orchestration inputs ---
     "NROS_BOARD_TOML": ("infra", "the ladder's own board rung pointer"),
+    # phase-497 W2 (RFC-0103 D10f) -- an image's resolved network, the text the
+    # CLI writes and riscv64's build script bakes into its C NROS_APP_CONFIG.
+    # Not a knob: an address the image states in system.toml, never a size.
+    "NROS_IMAGE_NET": ("infra", "the image's resolved network (RFC-0103 D10f), not a knob"),
     # issue 1143 -- names WHICH `[[board]]` entry of a multi-entry file the
     # rung comes from (`nros-board-nuttx` declares two that differ in ISA).
     # A selector, never a size.

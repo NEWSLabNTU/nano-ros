@@ -16,6 +16,9 @@ pub fn run(linker_script: &[u8], port_dir: &Path) {
     // `src/config.rs` before ANY early return (the host-build skip below
     // included): that file `include!`s it on every target.
     let net = crate::board_net::emit_for_crate(crate::board_net::ResolvedNet::platform_default());
+    // phase-497 W2 — `startup.c` hands NetX the address this TU bakes, so the
+    // image's own network belongs here, not only in the Rust overlay.
+    let net = crate::board_net::with_image_env(net);
     // issue 0288 — do nothing unless we are building FOR riscv64.
     //
     // Everything below cross-compiles ThreadX / NetX / virtio sources with

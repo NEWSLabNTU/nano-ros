@@ -50,6 +50,11 @@ pub use threadx_config::ThreadxConfig;
 pub mod base_config;
 pub use base_config::{BaseConfig, netmask_from_prefix, prefix_from_netmask};
 
+// phase-497 W2 (RFC-0103 D10f) — an image's resolved network as the one text
+// every carrier reads (`NROS_IMAGE_NET`). The decoder is `no_std` and
+// dep-free, because a board decodes at boot.
+pub mod image_net;
+
 // phase-337 W5.d — the FreeRTOS family's scheduling defaults, shared by the
 // runtime `Config` and the `build.rs` `NROS_APP_CONFIG` emitter so the two
 // cannot drift (they had, by 128 KiB of app stack). `no_std`, dep-free.

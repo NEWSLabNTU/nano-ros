@@ -51,12 +51,18 @@ pub struct DeployOverlay {
     /// `locator = "tcp/10.0.2.2:7451"` — the zenoh/RMW endpoint the firmware
     /// dials. `None` → keep the board default.
     pub locator: Option<&'static str>,
-    /// `ip = "10.0.2.15"` — static guest IP. `None` → keep the board default.
-    pub ip: Option<[u8; 4]>,
-    /// `gateway = "10.0.2.2"` — default route. `None` → keep the board default.
-    pub gateway: Option<[u8; 4]>,
-    /// `netmask = "255.255.255.0"`. `None` → keep the board default.
-    pub netmask: Option<[u8; 4]>,
+    /// The image's resolved network (RFC-0103 D10f, phase-497 W2): the
+    /// `NROS_IMAGE_NET` text `nros sync` rendered from `[image.<id>.net.<if>]`,
+    /// `[network.<name>]` and the board's `[board.net]`, baked verbatim.
+    /// `None` → the image states no interface; keep the board default. Decoded
+    /// by `nros_board_common::image_net` — this crate carries it, it does not
+    /// read it.
+    ///
+    /// It replaced three fields (`ip`, `gateway`, `netmask`) that `nros::main!`
+    /// lowered from `system.toml` itself: the macro has no board catalog, so it
+    /// could not take a board's default network or derive a MAC, and one fact
+    /// would have resolved two ways.
+    pub net: Option<&'static str>,
     /// `domain_id = 0` — ROS 2 domain. `None` → keep the board default.
     pub domain_id: Option<u32>,
     /// `[image.<id>] transport = "serial"` — the LINK kind the image rides

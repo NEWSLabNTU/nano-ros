@@ -227,6 +227,7 @@ pub fn rows(
     deploy: &str,
     settings: Option<&std::path::Path>,
     image_env: Option<&std::path::Path>,
+    image_net: Option<&str>,
 ) -> Vec<(&'static str, String)> {
     let s = |v: &Option<String>| v.clone().unwrap_or_default();
     let net = &leaf.network;
@@ -253,9 +254,14 @@ pub fn rows(
             net.domain_id.map(|d| d.to_string()).unwrap_or_default(),
         ),
         ("NROS_LEAF_LOCATOR", s(&net.locator)),
-        ("NROS_LEAF_IP", s(&net.ip)),
-        ("NROS_LEAF_GATEWAY", s(&net.gateway)),
-        ("NROS_LEAF_NETMASK", s(&net.netmask)),
+        // RFC-0103 D10f (phase-497 W2) — the image's resolved network, the
+        // text `nros_board_net_c` renders the C initializer from. Empty when
+        // the image states no interface. It replaced `NROS_LEAF_IP` /
+        // `_GATEWAY` / `_NETMASK`, which nothing on the cmake road read.
+        (
+            "NROS_LEAF_IMAGE_NET",
+            image_net.unwrap_or_default().to_string(),
+        ),
         ("NROS_LEAF_TRANSPORT", s(&net.transport)),
     ]
 }
@@ -396,7 +402,29 @@ pub fn run(args: LeafSystemArgs) -> Result<()> {
         None => None,
     };
     let conf = leaf_conf_paths(&leaf).map_err(|e| eyre!(e))?;
-    for (k, v) in rows(&leaf, &deploy, settings.as_deref(), image_env.as_deref()) {
+    let image_net = if leaf.network.net.is_empty() {
+        None
+    } else {
+        let catalog = catalog.as_ref().ok_or_else(|| {
+            eyre!(
+                "{}: states `[image.<id>.net]`, and resolving it needs the board catalog — no \
+                 nano-ros checkout found (pass --nano-ros-path)",
+                leaf.origin_path().display()
+            )
+        })?;
+        let descriptor = crate::cmd::board_facts::resolve_board(catalog, &board)
+            .ok_or_else(|| eyre!("{}", crate::cmd::board_facts::unresolved_board(&board)))?;
+        crate::cmd::build::leaf_image_net(descriptor, &board, root.as_deref(), &leaf)
+            .map_err(|e| eyre!("{}: {e}", leaf.origin_path().display()))?
+            .map(|n| n.text())
+    };
+    for (k, v) in rows(
+        &leaf,
+        &deploy,
+        settings.as_deref(),
+        image_env.as_deref(),
+        image_net.as_deref(),
+    ) {
         println!("{k}={v}");
     }
     if let Some(b) = &build_dir {
@@ -441,8 +469,9 @@ mod tests {
              [image.freertos]\nboard = \"mps2-an385-freertos\"\n",
         );
         let leaf = leaf_system::read(td.path()).unwrap().unwrap();
-        let rows: std::collections::BTreeMap<_, _> =
-            rows(&leaf, "freertos", None, None).into_iter().collect();
+        let rows: std::collections::BTreeMap<_, _> = rows(&leaf, "freertos", None, None, None)
+            .into_iter()
+            .collect();
         assert_eq!(
             rows["NROS_LEAF_SETTINGS"], "",
             "no settings road for a C leaf"
@@ -456,7 +485,7 @@ mod tests {
         // (phase-445 W5), so it could only ever print `0`.
         assert!(!rows.contains_key("NROS_LEAF_FALLBACK"));
         // Absent keys are printed empty, never omitted.
-        assert_eq!(rows["NROS_LEAF_IP"], "");
+        assert_eq!(rows["NROS_LEAF_IMAGE_NET"], "");
         assert_eq!(rows["NROS_LEAF_IMAGE_ENV"], "", "nothing asked for");
     }
 

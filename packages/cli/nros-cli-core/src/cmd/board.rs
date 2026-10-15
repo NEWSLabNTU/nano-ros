@@ -55,20 +55,13 @@ pub struct NetArgs {
     /// board key's directory is.
     #[arg(long, default_value = "toml")]
     pub format: String,
-    /// Replace the IP's LAST octet — an IMAGE's identity on the board's subnet
-    /// (a talker/listener pair on one bridge), not a board fact.
-    #[arg(long)]
-    pub ip_last: Option<u8>,
-    /// Replace the MAC's LAST byte (decimal or `0x..`), for the same reason.
-    #[arg(long, value_parser = parse_byte)]
-    pub mac_last: Option<u8>,
-}
-
-fn parse_byte(s: &str) -> std::result::Result<u8, String> {
-    match s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")) {
-        Some(h) => u8::from_str_radix(h, 16).map_err(|e| e.to_string()),
-        None => s.parse::<u8>().map_err(|e| e.to_string()),
-    }
+    /// An image's resolved network (`NROS_IMAGE_NET`, RFC-0103 D10f): its
+    /// primary interface replaces the board default. Empty or absent keeps the
+    /// board default. It replaced `--ip-last` / `--mac-last`, which let a build
+    /// row restate one octet of an address the image's `system.toml` now owns
+    /// (phase-497 W2).
+    #[arg(long, allow_hyphen_values = true)]
+    pub image_net: Option<String>,
 }
 
 #[derive(Debug, ClapArgs)]
@@ -271,13 +264,14 @@ fn net(args: NetArgs) -> Result<()> {
         ResolvedNet::platform_default(),
     )
     .map_err(|e| eyre!("{}: {e}", dir.join("nros-board.toml").display()))?;
-    let mut n = n;
-    if let Some(last) = args.ip_last {
-        n.ip[3] = last;
-    }
-    if let Some(last) = args.mac_last {
-        n.mac[5] = last;
-    }
+    let n = match args.image_net.as_deref().filter(|t| !t.is_empty()) {
+        Some(t) => match nros_board_common::image_net::primary(t) {
+            Ok(Some(i)) => n.with_interface(&i),
+            Ok(None) => n,
+            Err(e) => eyre::bail!("--image-net: {e}"),
+        },
+        None => n,
+    };
     match args.format.as_str() {
         "c-network" => println!("{}", n.c_network_initializer()),
         "cmake" => {

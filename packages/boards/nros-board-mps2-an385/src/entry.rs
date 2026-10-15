@@ -78,17 +78,7 @@ fn config_with_overlay(deploy: &DeployOverlay) -> Config {
     }
     #[cfg(feature = "ethernet")]
     {
-        if let Some(ip) = deploy.ip {
-            cfg.ip = ip;
-        }
-        if let Some(gateway) = deploy.gateway {
-            cfg.gateway = gateway;
-        }
-        if let Some(netmask) = deploy.netmask {
-            // phase-337 W6.a — was a local popcount `mask_to_prefix`, one of
-            // two copies (the other in the folded RTIC crate). One spelling.
-            cfg.prefix = nros_board_common::prefix_from_netmask(netmask);
-        }
+        cfg.apply_image_net(deploy.net);
     }
     if let Some(domain_id) = deploy.domain_id {
         cfg.domain_id = domain_id;

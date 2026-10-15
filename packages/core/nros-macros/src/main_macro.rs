@@ -3385,9 +3385,12 @@ fn executor_capacity_assert(
 #[derive(Default)]
 struct DeployOverlayLit {
     locator: Option<String>,
-    ip: Option<[u8; 4]>,
-    gateway: Option<[u8; 4]>,
-    netmask: Option<[u8; 4]>,
+    /// RFC-0103 D10f (phase-497 W2) — whether the image states an interface.
+    /// The ADDRESS is not resolved here: it needs the board's default network,
+    /// its interfaces and a derived MAC, which only the CLI's board catalog
+    /// has, so the CLI hands the answer to the build as `NROS_IMAGE_NET` and
+    /// the overlay bakes that text verbatim (`DeployOverlay::net`).
+    net: bool,
     domain_id: Option<u32>,
     /// `[image.<id>] transport` — a LINK kind (`leaf_system::TRANSPORT_KINDS`),
     /// baked as `nros_platform::LinkKind` (issue 1601).
@@ -3402,22 +3405,6 @@ struct DeployOverlayLit {
     node_name: Option<String>,
 }
 
-/// Parse a dotted IPv4 string (`"10.0.2.15"`) into 4 octets. Returns `None`
-/// on any malformed input so a bad deploy value silently keeps the board
-/// default rather than baking garbage.
-fn parse_ipv4_lit(s: &str) -> Option<[u8; 4]> {
-    let mut out = [0u8; 4];
-    let mut n = 0usize;
-    for part in s.split('.') {
-        if n >= 4 {
-            return None;
-        }
-        out[n] = part.parse::<u8>().ok()?;
-        n += 1;
-    }
-    if n == 4 { Some(out) } else { None }
-}
-
 /// The leaf's deployment identity (RFC-0098 D5), as the overlay the board's
 /// compiled-in `Config::default()` is patched with. Absent keys stay `None`,
 /// so the firmware keeps its default for them. The values come from
@@ -3428,9 +3415,7 @@ fn overlay_from_leaf(leaf: &nros_orchestration_ir::leaf_system::LeafSystem) -> D
     let net = &leaf.network;
     DeployOverlayLit {
         locator: net.locator.clone(),
-        ip: net.ip.as_deref().and_then(parse_ipv4_lit),
-        gateway: net.gateway.as_deref().and_then(parse_ipv4_lit),
-        netmask: net.netmask.as_deref().and_then(parse_ipv4_lit),
+        net: !net.net.is_empty(),
         domain_id: net.domain_id,
         transport: net.transport.clone(),
         rmw: leaf.rmw.clone(),
@@ -3517,19 +3502,26 @@ mod link_kind_tests {
 /// Bake a [`DeployOverlayLit`] into a `nros_platform::DeployOverlay` struct
 /// literal (all fields `Option`, so the board overlays only the present ones).
 fn deploy_overlay_tokens(lit: &DeployOverlayLit) -> proc_macro2::TokenStream {
-    fn opt_ipv4(v: &Option<[u8; 4]>) -> proc_macro2::TokenStream {
-        match v {
-            Some([a, b, c, d]) => quote! { ::core::option::Option::Some([#a, #b, #c, #d]) },
-            None => quote! { ::core::option::Option::None },
-        }
-    }
     let locator = match &lit.locator {
         Some(s) => quote! { ::core::option::Option::Some(#s) },
         None => quote! { ::core::option::Option::None },
     };
-    let ip = opt_ipv4(&lit.ip);
-    let gateway = opt_ipv4(&lit.gateway);
-    let netmask = opt_ipv4(&lit.netmask);
+    // `env!`, not `option_env!`: an image that states an interface and was
+    // built without the CLI (a bare `cargo build` with no generated settings)
+    // must not boot the board default address silently. `env!` also records
+    // the variable in the crate's dep-info, so a changed address rebuilds.
+    let net = if lit.net {
+        quote! {
+            ::core::option::Option::Some(::core::env!(
+                "NROS_IMAGE_NET",
+                "this image states `[image.<id>.net.<if>]`, which the nano-ros CLI resolves \
+                 into NROS_IMAGE_NET (RFC-0103 D10f) — build it with `nros build` (or run \
+                 `nros sync` first so cargo reads the generated settings)"
+            ))
+        }
+    } else {
+        quote! { ::core::option::Option::None }
+    };
     let domain_id = match lit.domain_id {
         Some(d) => quote! { ::core::option::Option::Some(#d) },
         None => quote! { ::core::option::Option::None },
@@ -3555,9 +3547,7 @@ fn deploy_overlay_tokens(lit: &DeployOverlayLit) -> proc_macro2::TokenStream {
     quote! {
         ::nros::__macro_support::nros_platform::DeployOverlay {
             locator: #locator,
-            ip: #ip,
-            gateway: #gateway,
-            netmask: #netmask,
+            net: #net,
             domain_id: #domain_id,
             transport: #transport,
             rmw: #rmw,

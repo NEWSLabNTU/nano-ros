@@ -49,9 +49,13 @@ THREADX_EXTRA_INCLUDES = { value = "ports/risc-v64/gnu/example_build/qemu_virt",
 network = "qemu"
 # RFC-0103 D10c (phase-497 W1) — the interface an image addresses as
 # `[image.<id>.net.eth0]`.
-interfaces = { eth0 = "ethernet" }
-ip = "10.0.2.40"
-mac = "52:54:00:12:34:56"
+# QEMU's own MAC prefix, for a MAC derived per image (D10b). The virtio
+# device's MAC is the one QEMU's `-device` names, which NetX reads back, so a
+# leaf whose launcher pins one states the same `mac` (`threadx_riscv64_qemu.rs`).
+interfaces = { eth0 = { kind = "ethernet", mac_prefix = "52:54:00" } }
+# No `ip` / `mac` here (RFC-0103 D10g, phase-497 W2): an address is the
+# image's, stated in its system.toml; an image that states none gets QEMU's
+# first guest address, 10.0.2.15.
 
 [board.entry]
 

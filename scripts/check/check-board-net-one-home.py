@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """check-board-net-one-home — a migrated board's network identity has one home.
 
-RFC-0103 D1/D9 / phase-484 W4b. A board's fallback IP / netmask / gateway /
-MAC is stated once, in its descriptor's `[board.net]` (or inherited from the
-platform default), and every copy is generated from it: the crate's
+RFC-0103 D1/D9/D10 / phase-484 W4b, phase-497 W2. A board's fallback IP /
+netmask / gateway / MAC is its network's plan (`[board.net] network`), or the
+platform default, and every copy is generated from it: the crate's
 `Config::default()` (`BOARD_NET_*`), its cargo-road C `NROS_APP_CONFIG`, and
-its cmake-road one (`nros board net`). This is a RATCHET over the boards
+its cmake-road one (`nros board net`). An IMAGE's address is the image's
+(`[image.<id>.net.<if>]`, applied over that default through `NROS_IMAGE_NET`),
+and the board-level `ip` / `mac` keys that used to restate one image's identity
+are refused when the descriptor is read (D10g). This is a RATCHET over the boards
 already migrated (MIGRATED below): in their files, a literal IP / MAC octet
 array — `ip: [192, 0, 3, 10]`, `.ip = {10, 0, 2, 40}`, `.mac = {0x52, …}` —
 is a second home coming back. A board joins MIGRATED when its copies go.
@@ -32,6 +35,9 @@ MIGRATED = {
         "packages/boards/nros-board-threadx-qemu-riscv64/src/config.rs",
         "packages/boards/nros-board-common/src/threadx_qemu_riscv64_build.rs",
         "cmake/board/nano-ros-board-rv-virt-threadx.cmake",
+        # phase-497 W2 — the C board's `cfg_ip` / `cfg_mac` statics held a
+        # third copy (10.0.2.40, :56) until `nros_threadx_set_config` ran.
+        "packages/boards/nros-board-threadx-qemu-riscv64/c/board_threadx_qemu_riscv64.c",
     ],
     # The FreeRTOS family (mps2-an385, mps3-an536, s32z270, freertos-posix
     # state no `[board.net]`: they ARE the platform default). The generic
@@ -60,7 +66,7 @@ MIGRATED = {
 
 # A literal 4-octet IP or 6-byte MAC array assigned to an identity field.
 LITERAL = re.compile(
-    r"""\.?(?:ip|mac|gateway|netmask)\s*[:=]\s*[\[{]\s*(?:0x[0-9a-fA-F]+|\d+)\s*,\s*(?:0x[0-9a-fA-F]+|\d+)\s*,"""
+    r"""\.?(?:cfg_)?(?:ip|mac|gateway|netmask)(?:\[\d+\])?\s*[:=]\s*[\[{]\s*(?:0x[0-9a-fA-F]+|\d+)\s*,\s*(?:0x[0-9a-fA-F]+|\d+)\s*,"""
 )
 
 
@@ -70,6 +76,7 @@ def self_test() -> None:
         ".ip      = { 10, 0, 2, 40 },",
         ".mac = {0x52, 0x54, 0x00",
         '"        .gateway = {192, 0, 3, 1},"',
+        "static uint8_t cfg_ip[4]      = {10, 0, 2, 40};",
     ]:
         assert LITERAL.search(hit), hit
     for miss in ["ip: BOARD_NET_IP,", ".network = ${_nros_board_net_c},", "// ip: [ ... ] used to be here"]:
