@@ -1045,6 +1045,18 @@ slow-timeout = { period = "60s", terminate-after = 2 }
 filter = "binary(zero_copy)"
 slow-timeout = { period = "60s", terminate-after = 2 }
 
+# Issue 1900 — `scripts/test/check-out-of-lane-deselected.py` runs the
+# platform-token tests under the `linux` scope with the emulators hidden. Its
+# own profile so its junit never overwrites the one `test-unit` /
+# `_check-skip-budget` read (`target/nextest/default/junit.xml`).
+[profile.out-of-lane]
+fail-fast = false
+
+[profile.out-of-lane.junit]
+path = "junit.xml"
+store-success-output = false
+store-failure-output = true
+
 [profile.ci]
 # CI profile with stricter timeouts
 slow-timeout = { period = "30s", terminate-after = 2 }

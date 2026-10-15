@@ -32,6 +32,14 @@ use std::path::PathBuf;
 /// setup-qemu`" hint. Callers can then proceed unconditionally — every
 /// test body below assumes the returned path is a real file.
 fn require_patched_qemu() -> PathBuf {
+    // Issue 1900 — the patched binary is what `just setup qemu` provisions, so
+    // a lane that selects nothing that scope owns deselects these tests BEFORE
+    // the resolver probes the host. Without this the verdict tracked the host:
+    // PASS where a qemu happened to exist, UNMET where it did not.
+    nros_tests::fixtures::lane::require_setup_scope_in_lane(
+        "qemu",
+        "the patched qemu-system-arm `just qemu setup-qemu` builds",
+    );
     let path: PathBuf = nros_tests::qemu::qemu_system_arm_path().into();
     if !path.is_absolute() {
         nros_tests::unmet!(

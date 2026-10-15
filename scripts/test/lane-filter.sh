@@ -1,10 +1,21 @@
 #!/usr/bin/env bash
-# Print the nextest filter expressions that scope a run to a CI lane.
-# RFC-0061 / phase-318 W4.
+# Print the platform-token nextest filter expressions. RFC-0061 / phase-318 W4.
 #
-# Usage: lane-filter.sh <linux|all>
-#   linux   -> exclusion expressions that drop every NON-host test binary
-#   all     -> nothing (tier 2/3 run the whole matrix)
+# Usage: lane-filter.sh <linux|nostd|all>
+#   linux   -> exclusion expressions that drop every test whose BINARY or TEST
+#              name carries a NON-host platform token
+#   nostd   -> the no_std flavour selection (below)
+#   all     -> nothing
+#
+# Issue 1900 — `linux` NO LONGER SCOPES ANY RUN. `just test-all` used to AND
+# these lines into its filter when `NROS_TEST_SCOPE=linux`, but no runner had
+# set that variable since phase-395 W19 moved every lane to coordinate scoping
+# (`NROS_TEST_COORDS`), so the filter narrowed nothing; its reader is retired.
+# What a run attempts is decided inside each test, by the lane's coordinates,
+# before any probe (issue 1758). The output's one consumer is
+# `scripts/test/check-out-of-lane-deselected.py`, which NEGATES it to select
+# every platform-token test and asserts each one deselects as `[SKIPPED:lane]`
+# under the `linux` scope on a host with none of its tools.
 #
 # Why derive instead of list: a hand-written exclusion list is the failure mode
 # this phase exists to remove — it rots the moment a platform is added, and the

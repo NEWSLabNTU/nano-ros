@@ -323,6 +323,18 @@ fixtures-manifest:
 lane-scope-consumers:
     @python3 scripts/check-lane-scope-consumers.py
 
+# Issue 1900 — a test of a platform the lane did not select DESELECTS
+# (`[SKIPPED:lane]`) whatever the host has: the scope check comes before any
+# probe (issue 1758). Runs every platform-token `nros-tests` test under the
+# `linux` scope with the emulators and RTOS trees hidden, and fails any that
+# read the host first (`[UNMET PRECONDITION]`, a hand-written `[SKIPPED]`).
+# Needs no fixture: an out-of-lane test stops at its first statement, and the
+# two the scope admits that need a fixture are listed, not failed. ~30 s of
+# run on top of the `nros-tests` test-binary build. Step of `just ci gate`.
+[group("ci")]
+out-of-lane-deselected:
+    @python3 scripts/test/check-out-of-lane-deselected.py
+
 # phase-433 W4 / issue 1127 — `matrix_fixture_coverage.rs` G1 promises "a Runtime
 # cell nothing runs ... fails here" and asserts that `tests/<test>.rs` EXISTS.
 # This is the other half: every `Tier::Runtime` cell in `interop::CELLS` names a

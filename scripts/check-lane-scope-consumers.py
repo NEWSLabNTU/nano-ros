@@ -1,19 +1,13 @@
 #!/usr/bin/env python3
-"""issue 0571 — a matrix consumer the lane filter cannot reach must narrow itself.
+"""issue 0571 — a matrix consumer must narrow its own cell list by lane.
 
-`scripts/test/lane-filter.sh linux` scopes a tier-1 run by EXCLUDING names: a
-test binary whose name carries a platform family token (`freertos_qemu`,
-`zephyr_cortex_m_qemu`, …) and a test whose own name carries one
-(`case_05_zephyr_rust`, `Platform__Freertos`). Issue 0357 added the second half
-after the first proved insufficient.
-
-Consolidation (phase-329 W1) defeats BOTH halves for four consumers: they are
-ONE test each, generically named, iterating every platform's cell in a single
-process. No name filter can reach inside a test, so on a tier-1 host those
-cells boot whatever images exist — and the cells whose images do NOT exist
-vanish into a green verdict. That is issue 0571: `realtime_tiers` reported a
-12-second PASS having run 1 of its 16 rows, and a genuinely broken NuttX cell
-(issue 0572) sat behind it.
+Consolidation (phase-329 W1) made some consumers ONE test each, generically
+named, iterating every platform's cell in a single process. Nothing outside the
+test can deselect a cell inside it, so on a host lane those cells boot whatever
+images exist — and the cells whose images do NOT exist vanish into a green
+verdict. That is issue 0571: `realtime_tiers` reported a 12-second PASS having
+run 1 of its 16 rows, and a genuinely broken NuttX cell (issue 0572) sat behind
+it.
 
 The fix those consumers carry is `nros_tests::lane_scope::admits`, applied to
 their cell list. This gate keeps it there, and requires it of the NEXT one.
@@ -21,15 +15,19 @@ their cell list. This gate keeps it there, and requires it of the NEXT one.
 Rule
 ----
 A file under `packages/testing/nros-tests/tests/` that iterates `matrix::CELLS`
-by PLATFORM must either
+by PLATFORM must either select the host platform only, or NARROW its cells with
+`lane_scope::admits` (a positive `filter(|c| admits(…))`, or `if !admits(…)
+{ … continue | return }`).
 
-  (a) be reachable by the lane filter — its FILE name contains a platform
-      family token, so `binary(~<token>)` excludes it; or
-  (b) call `lane_scope::admits`.
+Issue 1900 — this rule used to have a third arm: "(a) be reachable by the lane
+filter — its FILE name carries a platform token, so `binary(~<token>)`
+excludes it". That arm assumed `scripts/test/lane-filter.sh linux` narrowed the
+run, through `NROS_TEST_SCOPE`. No runner has set that variable since phase-395
+W19 moved every lane to coordinate scoping, so the arm exempted consumers on
+the strength of a filter that never ran. The coordinates are the ONE mechanism
+now, and a consumer is narrowed by them or not at all.
 
-Buildless: reads sources, plus `PlatformId::just_module` in matrix.rs for the
-token list — the same derivation `lane-filter.sh` uses, so a new platform
-extends both with no third edit.
+Buildless: reads sources only.
 """
 
 import os
@@ -38,7 +36,6 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TESTS = os.path.join(ROOT, "packages/testing/nros-tests/tests")
-MATRIX = os.path.join(ROOT, "packages/testing/nros-tests/src/matrix.rs")
 
 # Consumers that read CELLS purely as DATA — they assert about the table, never
 # boot a fixture, so no lane can narrow them and none should. Kept explicit
@@ -48,20 +45,6 @@ DATA_ONLY = {
     "matrix_fixture_coverage.rs",  # G1–G4 coverage gates over the table itself
     "no_local_axis_tables.rs",  # asserts no consumer re-declares the axes
 }
-
-
-def platform_tokens():
-    """Family tokens from `PlatformId::just_module`, as lane-filter.sh derives them."""
-    with open(MATRIX, encoding="utf-8") as fh:
-        src = fh.read()
-    body = re.search(
-        r"pub const fn just_module\(self\) -> &'static str \{(.*?)\n    \}",
-        src,
-        re.S,
-    )
-    if not body:
-        sys.exit("check-lane-scope-consumers: cannot find PlatformId::just_module")
-    return {m for m in re.findall(r'"([a-z0-9_]+)"', body.group(1))}
 
 
 _PLATFORM_USE = re.compile(r"\.platform\b")
@@ -104,34 +87,13 @@ def narrows(src):
     return False
 
 
-def lane_excluded_tokens():
-    """The binary-name tokens `lane-filter.sh linux` ACTUALLY excludes.
-
-    phase-472 W8 — rule (a) is "the lane filter excludes this binary by name",
-    so its exemption must be keyed on the filter's own output, not on
-    `just_module`'s tokens: those include `linux`, which the host lane RUNS,
-    so every `linux_*` consumer was exempt from narrowing its cells while being
-    exactly the binary the tier-1 lane executes.
-    """
-    import subprocess
-
-    out = subprocess.run(["bash", os.path.join(ROOT, "scripts/test/lane-filter.sh"), "linux"],
-                         capture_output=True, text=True, check=True).stdout
-    return set(re.findall(r"not binary\(~([a-z0-9_]+)\)", out))
-
-
 def main():
-    tokens = lane_excluded_tokens()
-    if not tokens:
-        sys.exit("check-lane-scope-consumers: lane-filter.sh linux excluded no binary token")
     # Controls on the normal path (phase-472 W8): the host-only shape is exempt,
     # its neighbours — another platform, or a mix — are not.
     assert host_only("fn f(c: &Cell) -> bool { matches!(c.platform, PlatformId::Linux) }")
     assert not host_only("fn f(c: &Cell) -> bool { matches!(c.platform, PlatformId::Linux) "
                          "|| matches!(c.platform, PlatformId::Zephyr) }")
     assert not host_only("fn f(c: &Cell) -> bool { c.platform == PlatformId::Nuttx }")
-    # The neighbour the name exemption must not cover: the host lane's own
-    # family is run, never excluded.
     report_only = ("let skipped: Vec<_> = CELLS.iter().filter(|c| !lane_scope::admits(c.platform)).collect();\n"
                    "for c in CELLS.iter() { run(c); }\n")
     assert not narrows(report_only), "a REPORT-only admits call read as narrowing"
@@ -139,11 +101,8 @@ def main():
     assert narrows("for c in CELLS { if !nros_tests::lane_scope::admits(c.platform) { note(c); continue; } go(c); }\n")
     assert not narrows("for c in CELLS { if !lane_scope::admits(c.platform) { note(c); } go(c); }\n")
     assert not narrows("// .filter(|c| lane_scope::admits(c.platform))\n")
-    if "native" in tokens or "linux" in tokens:
-        sys.exit("check-lane-scope-consumers: the host family is in the exclusion set — "
-                 "rule (a) would exempt the binaries the host lane runs")
 
-    offenders, checked, exempt, host = [], 0, 0, 0
+    offenders, checked, host = [], 0, 0
     for name in sorted(os.listdir(TESTS)):
         if not name.endswith(".rs") or name in DATA_ONLY:
             continue
@@ -162,10 +121,6 @@ def main():
         if host_only(src):
             host += 1
             continue
-        stem = name[:-3]
-        if any(tok in stem for tok in tokens):
-            exempt += 1  # (a) the lane filter excludes this binary by name
-            continue
         if narrows(src):
             continue
         offenders.append(name)
@@ -177,10 +132,9 @@ def main():
         for o in offenders:
             sys.stderr.write(f"  packages/testing/nros-tests/tests/{o}\n")
         sys.stderr.write(
-            "\n  This test iterates matrix::CELLS across platforms, and neither its\n"
-            "  binary name nor its test name carries a platform token — so\n"
-            "  `scripts/test/lane-filter.sh linux` cannot exclude its embedded\n"
-            "  cells (issues 0357, 0571). Narrow the cell list itself:\n\n"
+            "\n  This test iterates matrix::CELLS across platforms in one test, so\n"
+            "  nothing outside it can deselect a cell (issues 0571, 1900 — a name\n"
+            "  filter narrows no run). Narrow the cell list itself:\n\n"
             "      if !nros_tests::lane_scope::admits(c.platform) { /* record + skip */ }\n\n"
             "  and REPORT what did not run — a silently absent cell is a green\n"
             "  that ran nothing (issue 0445).\n"
@@ -189,8 +143,7 @@ def main():
 
     print(
         f"lane-scope consumers: OK ({checked} platform-iterating consumer(s); "
-        f"{exempt} excluded by binary name, {host} select the host platform only, "
-        f"the rest narrow their own cells)"
+        f"{host} select the host platform only, the rest narrow their own cells)"
     )
     return 0
 

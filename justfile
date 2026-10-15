@@ -2713,13 +2713,16 @@ test-all verbose="": _require-fixtures-ready test-zpico-multisession
         args+=(--success-output never --failure-output "${NROS_TEST_FAILURE_OUTPUT:-never}")
     fi
     env_exclude=()
-    # RFC-0061 / phase-318 W4 — scope the RUN to the lane. `NROS_TEST_SCOPE=linux`
-    # (tier 1) drops every non-host binary; the exclusions are DERIVED from
-    # `PlatformId`, so adding a platform extends them with no second edit
-    # (ci_lane::tests::lane_filter_tokens_cover_every_non_native_platform gates it).
-    while IFS= read -r _lane_expr; do
-        [ -n "$_lane_expr" ] && env_exclude+=("$_lane_expr")
-    done < <(bash scripts/test/lane-filter.sh "${NROS_TEST_SCOPE:-all}")
+    # Issue 1900 — the run is scoped by COORDINATE only (`NROS_TEST_COORDS`,
+    # `NROS_TEST_UNCLAIMED`), inside each test, before any probe. This used to
+    # read `NROS_TEST_SCOPE` and add `scripts/test/lane-filter.sh`'s
+    # platform-token NAME exclusions — but no runner had set that variable
+    # since phase-395 W19, so the filter narrowed nothing while a gate
+    # (`check-lane-scope-consumers`) still credited it. One mechanism now; the
+    # token derivation survives as the SELECTION of
+    # `scripts/test/check-out-of-lane-deselected.py`, which proves every
+    # platform-token test deselects under the `linux` scope on a host with
+    # none of its tools.
     # Issue 1758 — what this sweep does NOT claim is DECLARED here, never probed.
     # These filters used to read the host (no `arm-none-eabi` ⇒ drop the
     # FreeRTOS Cyclone tests; no `west` ⇒ drop the west-fixture suites; no FVP,
@@ -3025,12 +3028,10 @@ rust-rtos-link-check: _codegen
 # and — the other half — REJECT it for an unscoped `test-all`, so a tier-1 stamp
 # can no longer vouch for a tier-3 run.
 #
-# Why `linux` and not `tier1`: this lane scopes its run with
-# `NROS_TEST_SCOPE=linux`, which selects every native test BINARY. That is a
-# broader set than `coords(Tier1)` (10 of 50 coordinates), so building only the
-# tier-1 coordinates would leave the remaining native binaries absent and the
-# run would mass-fail "Binary not found". The build set has to cover the run
-# set, not the gate set.
+# (This paragraph used to explain `linux` over `tier1` by the run being scoped
+# with `NROS_TEST_SCOPE=linux`, a NAME filter. phase-395 W19 moved every lane to
+# coordinate scoping and issue 1900 retired the name filter's reader, so the
+# build set and the run set are one coordinate file per lane now.)
 # Phase-395 W2 — the lanes, named. See
 # docs/development/multi-agent-ci-workflow.md for why they are cut by EXECUTION
 # COST rather than by combinatorial coverage.

@@ -125,6 +125,11 @@ fn assert_ported_publish(platform: &str, out: &str) {
 /// `NROS_ENTRY_LOCATOR`.
 #[test]
 fn cpp_port_minimal_publisher_publishes_on_freertos() {
+    // Issue 1900 — the lane before the emulator probe.
+    nros_tests::fixtures::lane::require_platform_in_lane(
+        &[PlatformId::FreertosMps2],
+        "the FreeRTOS port of the minimal publisher",
+    );
     if !is_qemu_available() {
         nros_tests::unmet!("qemu-system-arm not found");
     }
@@ -153,6 +158,11 @@ fn cpp_port_minimal_publisher_publishes_on_freertos() {
 /// dials 10.0.2.2.
 #[test]
 fn cpp_port_minimal_publisher_publishes_on_zephyr() {
+    // Issue 1900 — the lane before the emulator probe.
+    nros_tests::fixtures::lane::require_platform_in_lane(
+        &[PlatformId::ZephyrQemuCortexM],
+        "the Zephyr port of the minimal publisher",
+    );
     if !is_qemu_available() {
         nros_tests::unmet!("qemu-system-arm not found");
     }
@@ -310,8 +320,14 @@ impl PortPlatform {
         }
     }
 
-    /// The host preconditions, checked AFTER fixture resolution so an
-    /// out-of-lane cell lane-skips instead of failing on a missing emulator.
+    /// Issue 1900 — the lane, asked before anything reads the host. This
+    /// used to rest on the fixture RESOLVER's lane check, reached first only
+    /// because `binary()` happened to precede `require_host()`.
+    fn require_in_lane(self, what: &str) {
+        nros_tests::fixtures::lane::require_platform_in_lane(&[self.id()], what);
+    }
+
+    /// The host preconditions — after [`Self::require_in_lane`].
     fn require_host(self) {
         if !matches!(self, PortPlatform::Linux) && !is_qemu_available() {
             nros_tests::unmet!("qemu-system-arm not found");
@@ -354,6 +370,7 @@ fn read_until_all(peer: &mut ManagedProcess, patterns: &[String], budget: Durati
 /// `rclcpp-compat-smoke` on `platform`: its Int32 topic reaches a host
 /// `int32-sink`, and its `diagnostic_updater` task reaches the diagsink.
 fn run_port_smoke(platform: PortPlatform) {
+    platform.require_in_lane("the rclcpp-compat port smoke");
     let bin = platform.binary(
         SMOKE,
         "cpp_port_rclcpp_compat_smoke",
@@ -439,6 +456,7 @@ fn run_port_smoke(platform: PortPlatform) {
 /// alone proves nothing; "stale, then live after the peer starts" proves both
 /// the clock and the capturing-lambda subscriptions.
 fn run_port_monitor(platform: PortPlatform) {
+    platform.require_in_lane("the topic-state monitor port");
     let bin = platform.binary(
         MONITOR,
         "cpp_port_topic_state_monitor",

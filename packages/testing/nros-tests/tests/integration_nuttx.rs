@@ -18,6 +18,9 @@ fn have(cmd: &str) -> bool {
 
 #[test]
 fn nuttx_integration_shell_smoke() {
+    // Issue 1900 — the lane first: a lane selecting nothing `just setup nuttx`
+    // provisions deselects this before the toolchain and kernel-tree probes.
+    nros_tests::fixtures::lane::require_setup_scope_in_lane("nuttx", "the NuttX integration shell");
     // NuttX builds normally use `arm-none-eabi-gcc` for ARM
     // configurations. Use that as the toolchain discriminator.
     if !have("arm-none-eabi-gcc") {

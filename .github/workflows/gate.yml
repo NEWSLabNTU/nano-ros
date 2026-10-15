@@ -2205,6 +2205,16 @@ jobs:
         run: |
           source ./activate.sh
           just test-lane-contracts
+      # Issue 1900 — the last step of `just ci gate`: every platform-token
+      # test, under the `linux` scope with the emulators and RTOS trees hidden,
+      # must deselect as `[SKIPPED:lane]` before it probes the host. No
+      # fixture (an out-of-lane test stops at its first statement); the cost
+      # is the `nros-tests` test-binary build, ~30 s of run on top.
+      - name: just check out-of-lane-deselected (completes the gate lane)
+        if: ${{ contains(fromJSON('["merge_group","schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
+        run: |
+          source ./activate.sh
+          just check out-of-lane-deselected
       - name: sccache stats (compile tier)
         if: ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name) && always() }}
         run: |

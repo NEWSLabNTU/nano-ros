@@ -808,6 +808,13 @@ fn test_xrce_throughput_burst(xrce_stress_test_binary: PathBuf) {
 fn test_qemu_zenoh_large_publish(qemu_large_msg_test_binary: PathBuf) {
     // This test uses QEMU slirp (user-mode) networking with port forwarding.
     // No TAP devices, bridge interfaces, or sudo required.
+    // Issue 1900 — the lane before the emulator probe. (The rstest fixture
+    // above already resolved through the lane-aware resolver; this states it
+    // where the probe is, rather than leaning on argument order.)
+    nros_tests::fixtures::lane::require_platform_in_lane(
+        &[nros_tests::matrix::PlatformId::QemuBaremetal],
+        "the bare-metal large-message image",
+    );
     // An unmet precondition if QEMU is not available.
     let qemu_available = nros_tests::qemu::qemu_system_arm_cmd()
         .arg("--version")
