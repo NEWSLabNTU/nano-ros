@@ -918,6 +918,27 @@ wiring that came before it, and both worth a decision rather than a drift:
   the last `fini` clears it). On `main`'s executor that part fails 4 checks:
   the first of the two executors waits its full 400 ms.
 
+  **Measured (native Linux aarch64, zenoh, 2026-10-15).** A copy of
+  `examples/workspaces/realtime-rust` with an Int64 subscriber on the spawned
+  tier `high` and another on the boot tier `low`, both `spin_period = 100 ms`.
+  220 messages at uniform 150-350 ms gaps, each carrying its CLOCK_MONOTONIC
+  publish time:
+
+  | build | n | median | p90 | max |
+  |---|---|---|---|---|
+  | before (`9e9f24392c`) | 220 | 48.88 ms | 93.22 ms | 100.20 ms |
+  | after | 220 | 0.51 ms | 0.58 ms | 9.79 ms |
+
+  Before is a blind park, confirmed by strace: the tier thread made exactly
+  one futex wait per 100 ms, every one ending `ETIMEDOUT`, whatever the
+  traffic. The cost is as stated: each of 100 messages for the boot tier woke
+  the spawned tier once (1.0 spurious wake per foreign arrival). The run also
+  found a second, zero-timeout wait on the same object after every park, a
+  syscall that could only time out; it is skipped now. Native cells of
+  `realtime_tiers_e2e`, `sched_dims_applied_e2e`, `linux_orchestration_tiers`
+  (6/6) and both `realtime_subnode_cpp*` tests pass on this build; their RTOS
+  cells were `[UNMET PRECONDITION] fixture not built`.
+
 ### Path D — Waits that still bypass the waker.
 
 * **D1 — issue 1195's first consequence: MEASURE, then fix or close. DONE
