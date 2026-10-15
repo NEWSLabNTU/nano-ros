@@ -77,6 +77,18 @@ pub struct LeafSystemArgs {
     #[arg(long)]
     pub write_settings: bool,
 
+    /// phase-489 W6 (issue 1885's road, for the fixture lanes) -- with
+    /// `--write-settings`, the shared cargo target dir the caller will build
+    /// this image into. The image gets its sizing CLASS in it (the same
+    /// `shared_target::apply` `nros build` runs for a caller `--target-dir`):
+    /// the settings name the class copy of the descriptor, and the class's
+    /// cargo `build.build-dir` is printed as `NROS_LEAF_BUILD_DIR`, for the
+    /// caller to hand cargo as `--config build.build-dir=<it>`. Without it the
+    /// leaves of one group alternate one build dir's `NROS_SIZING_DESCRIPTOR`
+    /// and recompile the core crates on every row, whatever changed.
+    #[arg(long, value_name = "DIR", requires = "write_settings")]
+    pub target_dir: Option<PathBuf>,
+
     /// phase-481 W1 (RFC-0098 D11) -- write the image as a Zephyr Kconfig
     /// fragment to PATH: the RMW choice, the package's language API, the
     /// deploy endpoint from `locator`, and every `[image.<id>] env` row whose
@@ -317,10 +329,24 @@ pub fn run(args: LeafSystemArgs) -> Result<()> {
     let catalog = root.as_deref().and_then(|r| BoardCatalog::load(r).ok());
     let deploy = deploy_token(catalog.as_ref(), &board);
     let cmake_board = cmake_board_module(catalog.as_ref(), &board);
+    let mut build_dir: Option<PathBuf> = None;
     let settings = match root.as_deref() {
         Some(r) if leaf_system::is_package_dir(&dir) && args.write_settings => {
-            crate::cmd::leaf_settings::write(&dir, r, "nros ws leaf-system", args.image.as_deref())?
-                .map(|i| i.config_path)
+            let native_args: Vec<String> = match &args.target_dir {
+                Some(t) => vec!["--target-dir".to_string(), t.display().to_string()],
+                None => Vec::new(),
+            };
+            crate::cmd::leaf_settings::write_shared(
+                &dir,
+                r,
+                "nros ws leaf-system",
+                args.image.as_deref(),
+                &native_args,
+            )?
+            .map(|(i, class)| {
+                build_dir = class.map(|c| c.build_dir());
+                i.config_path
+            })
         }
         Some(r) if leaf_system::is_package_dir(&dir) => {
             crate::cmd::leaf_settings::resolve_image(&dir, r, args.image.as_deref())?
@@ -372,6 +398,9 @@ pub fn run(args: LeafSystemArgs) -> Result<()> {
     let conf = leaf_conf_paths(&leaf).map_err(|e| eyre!(e))?;
     for (k, v) in rows(&leaf, &deploy, settings.as_deref(), image_env.as_deref()) {
         println!("{k}={v}");
+    }
+    if let Some(b) = &build_dir {
+        println!("NROS_LEAF_BUILD_DIR={}", b.display());
     }
     println!("NROS_LEAF_CMAKE_BOARD={cmake_board}");
     println!(

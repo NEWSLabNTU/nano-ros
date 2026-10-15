@@ -5,7 +5,9 @@ cut the miss path by half; W5 landed, CI acceptance NOT met (PR hit rate now
 measured, 93.7 %; main's warm job was being cancelled, fixed in PR #2200 --
 see W5); W2 landed and is switched OFF again after a three-hour trial starved
 the merge queue (PR #2177 since routed `check-cli-tests` and added its image
-row, still off); W6 landed in part (PR #2170), acceptance not met; W7 is
+row, still off); W6 met its acceptance locally (869 s / 875 s no-change re-runs, 9.2 % of
+9479 s cold; PRs #2170 and the leaf-row build-class PR), the CI second-run
+number is still pending on free runners; W7 is
 handed to the runner operators.**
 Each item's own section has the post-merge numbers. The numbers below were measured from the GitHub Actions API over 2026-10-09 to 2026-10-10. They are
 the baseline every work item is judged against. Implements no new RFC
@@ -699,12 +701,62 @@ configure); end to end, `touch src/demo_bringup/system.toml` made `cmake
 --build` reconfigure once while `nros` skipped its own, and a changed `NROS_*`
 variable made `nros` configure.
 
-**Still to do.** Acceptance (under 10 % of cold) is not met: 18.7 % locally.
-What the 1772 s is made of: `check fast` and `_codegen` ~300 s, the native
-module 1186 s of which about 100 single-package cargo leaf rows cost ~14 s each
-(the single-package leaf road; PR #2158 extends the shared target dir to it), and the post-build checks ~260 s. The CI second-run time per
-lane (two runs of each lane on the same self-hosted runner) is blocked on free
-runners and still unmeasured.
+**The single-package leaf rows, fixed afterwards** (the leaf-row build-class
+PR, after #2158). Cause, measured with cargo's fingerprint log: a fixture
+group's single-package leaves share ONE target dir, and each leaf's settings
+name its own `NROS_SIZING_DESCRIPTOR`. Cargo compares that variable as text,
+so every row after a different leaf recompiled `nros`, `nros-node`,
+`nros-params`, `nros-rmw-cffi` and `zpico-sys` — 12.7 s a row, ~50 rows, on a
+re-run with no change, and the staleness probe did the same. Two halves, both
+needed:
+
+- the fixture road now takes the same sizing CLASS `nros build` takes for a
+  caller `--target-dir` (issue 1885): `nros ws leaf-system --write-settings
+  --target-dir <group dir>` keys the class and prints its cargo build dir
+  (`NROS_LEAF_BUILD_DIR`), and the row builds with `--config
+  build.build-dir=<it>`. Equal configurations share one build dir, different
+  ones get separate dirs. Build (`fixtures-build.sh`) and staleness probe
+  (`rust-fixture-stale.sh`) both go through the one helper,
+  `nros_leaf_settings_prepare`, so they cannot build a row two ways;
+- the class copy of the descriptor is written into the settings as an
+  ABSOLUTE path. As a `relative = true` row it kept each leaf's own name in its
+  text (`…/<leaf>/build/<image>/../../…`), so two leaves of one class still
+  differed to cargo and recompiled against each other in the shared build dir.
+
+No stamp skips a cargo row: cargo still decides every row, so an input change
+rebuilds exactly as before; the fix only stops configurations that are equal
+from looking different. Gate `check-leaf-row-build-class`
+(`tests/leaf-row-build-class-tests.sh`): the target dir reaches the CLI and the
+build dir reaches cargo, in both `--target-dir` spellings; no shared dir passes
+nothing; two classes get two build dirs (the negative control — a real
+configuration change is never folded into another's units); both callers use
+the helper; and, with a built CLI, two real leaves of one class carry
+byte-identical descriptor text (under the leaf lock, restoring the settings it
+rewrites).
+
+| measurement (4-core box, warm tree, no change, base `c68e520a36`) | before | after |
+| --- | --- | --- |
+| `just build linux`, whole | 1772 s (18.7 %); 2249 s (23.7 %) | **869 s (9.2 %); 875 s (9.2 %)** |
+| `check fast` (dependency of `build-test-fixtures`) | | 269 s; 273 s |
+| `_codegen` + preflights | | 11 s |
+| the linux module | 1186 s | 364 s; 366 s |
+| compile-check + cxx-syntax + post-build checks | ~260 s | 226 s |
+
+The first run after the warm-up build took 1909 s: its `check fast` ran
+1016 s, the gates rebuilding their own caches against the new tree, and its
+linux module 549 s; the two numbers above are the runs after it. Those two
+runs are under the 10 % acceptance locally.
+
+**Not keyed on a stamp, deliberately.** `check fast` (~270 s) is a dependency
+of `build-test-fixtures` and the post-build checks (~226 s) read the artifacts
+the build just produced. Neither is a function of the tracked tree alone: the
+gates read build dirs, caches, the provisioned store, `origin/main` (the
+submodule-pin baseline) and the environment, so a stamp over the sources
+would let a gate report a verdict about a tree it never looked at — the
+"a gate may only assert on what it examined" rule. They stay.
+
+The CI second-run time per lane (two runs of each lane on the same
+self-hosted runner) is blocked on free runners and still unmeasured.
 
 ### W7 — find out why `newslab-server-241` is 2–5× slower
 

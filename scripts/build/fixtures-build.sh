@@ -401,7 +401,7 @@ if [ "${#cargo_records[@]}" -gt 0 ]; then
     # shellcheck source=scripts/build/board-facts.sh
     source scripts/build/board-facts.sh
     export -f nros_board_facts
-    export -f nros_leaf_settings_path nros_leaf_settings_cwd nros_leaf_settings_args \
+    export -f nros_leaf_settings_path nros_leaf_settings_prepare nros_leaf_settings_cwd nros_leaf_settings_args \
               nros_leaf_settings_target_dir_flag nros_leaf_row_image \
               nros_leaf_strip_row_image nros_leaf_lock
     # Phase 214.I.2 — fail-loud prereq guard: `nros_fixture_build_one`
@@ -534,15 +534,16 @@ if [ "${#cargo_records[@]}" -gt 0 ]; then
     # Issue 1305 — one single-package leaf row, run under `nros_leaf_lock`:
     # write the row's image's selection + settings, then build against them.
     nros_fixture_build_leaf_row() {
-        local dir="$1" image="$2" envstr="$3" args="$4" tdir_flag="$5" settings=""
-        if ! settings="$(nros_leaf_settings_path "$dir" "$image")"; then
-            return 1
-        fi
+        local dir="$1" image="$2" envstr="$3" args="$4" tdir_flag="$5"
+        # phase-489 W6 — NROS_LEAF_BUILD_ARGS puts this row's sizing class in
+        # its own cargo build dir (see nros_leaf_settings_prepare).
+        nros_leaf_settings_prepare "$dir" "$image" "$tdir_flag" || return 1
+        local settings="$NROS_LEAF_SETTINGS_OUT" bargs="$NROS_LEAF_BUILD_ARGS"
         # shellcheck disable=SC2086
         ( cd "$(nros_leaf_settings_cwd "$dir")"
           if [ -n "$envstr" ]; then export $envstr; fi
           cargo build $cargo_profile_args $(nros_leaf_settings_args "$dir" "$settings") \
-              $args $tdir_flag --quiet )
+              $bargs $args $tdir_flag --quiet )
     }
     # Locate every ELF the row just produced and put it through the floor
     # check. A row that resolves no artifact directory, or whose directory
