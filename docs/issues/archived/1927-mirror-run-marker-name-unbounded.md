@@ -1,7 +1,7 @@
 ---
 id: 1927
 title: "`mirror-generated-header.sh` names its run marker after the whole output path: a long `TMPDIR` makes a copy-out build fail with `File name too long`"
-status: open
+status: resolved
 type: bug
 area: [build, cmake, testing]
 severity: medium
@@ -80,3 +80,31 @@ marker reads as "no marker" to the gate, which then takes issue 1901's
 archive bridge — the state every pre-1911 dir was already in — and the next
 build of that dir writes the new name. No absorbing state (issue 0834's
 class) is created.
+
+## Resolution
+
+The marker is named by a new shared helper, `nros_path_key` in
+`scripts/lib/path-key.sh`: the last 48 bytes of the path flattened with
+`/` → `_` (so a listing still says which header a marker is for) plus the
+first 16 hex digits of `sha256(<path>)` (so it stays unique per dest). At
+most 65 bytes, whatever the build dir. `mirror_ran_marker` is its only
+caller; the gate keeps asking `--marker`, so the name is still spelled once.
+
+The mirror self-test (`mirror-header-precedence`, on the fast line) gains
+two cases: a dest whose flattened path is past NAME_MAX records its run
+under a name of at most 100 bytes, and two dests that share a long tail get
+two markers. Mutation proof (each reverted, `cmp`-restored, green again):
+
+| Mutation | Self-test |
+|---|---|
+| marker back to `tr '/' '_'` | FAIL — "a dest deeper than NAME_MAX records its run under a bounded name" |
+| `nros_path_key` drops the hash (tail only) | FAIL — "two dests sharing a long tail get two markers" |
+| `nros_path_key` keeps the whole flattened path | FAIL — "a dest deeper than NAME_MAX …" |
+
+Symptom: the same long-`TMPDIR` copy-out run that failed above now reports
+`cpp-port-minimal-publisher/mps2-an385-freertos: OK — 1 artifact(s)` and
+`check-template-copy-out: OK` (the Zephyr leaf stays NOT VERIFIED, issue
+1782, unchanged).
+
+Every other flattening site in the sweep handles a repo-relative path or an
+identifier and stays as it is; the table above is the classification.
