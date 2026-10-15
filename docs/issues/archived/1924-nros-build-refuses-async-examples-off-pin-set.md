@@ -1,7 +1,7 @@
 ---
 id: 1924
 title: "`nros build` refuses both async Linux examples on a fresh checkout: `futures`, `futures-channel`, `futures-io` and `tokio-macros` are in no pinned range"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [cli, build, examples]
@@ -51,3 +51,53 @@ The pin set covers what these two leaves resolve. That means `nros update
 leaves on a fresh checkout. If a leaf with an untracked lock can resolve crates
 no locked root does, `check-cargo-registry-pins` should also see them (the
 same gap issue 1873 closed for retired ranges, in the other direction).
+
+## Resolution
+
+Two parts: the pins, and a tool defect that pinning them uncovered.
+
+**The tool could not do what the refusal told the user to do.** The `futures`
+crates are released in lockstep, and each one requires the others at its own
+version: `futures-util` 0.3.34 requires `futures-core`, `futures-channel` and
+`futures-io` at `^0.3.34`. Two loops moved such crates one at a time, in lock
+order:
+
+- `realign_leaf`, called by `nros update`;
+- `enforce_cargo_root`, the realignment step of the drift check in
+  `nros build`.
+
+In lock order, `futures-core` comes before `futures-util`, so `futures-core`
+is refused while `futures-util` still requires 0.3.34. Neither loop came back
+to retry it. `nros update --crate futures --precise 0.3.32` had the same
+problem one step earlier: it moved only `futures` and left `futures-channel`
+at 0.3.34. Every follow-up `--crate futures-channel` was then refused by
+`futures-util`.
+
+The fix:
+
+- One shared helper, `orchestration::drift::realign`, retries refused moves
+  until a round moves nothing. Both loops use it.
+- With `--precise`, `nros update --crate` moves the named crate together with
+  every crate of the leaf that is off its pin.
+- Unit tests cover a family listed in the order that blocks a single pass, and
+  a crate that never moves.
+
+**The pins.** Taken from `examples/linux/rust/action-client-async` with
+`nros update --crate futures|futures-channel|futures-io --precise 0.3.32`.
+`tokio-macros` 2.7.2 was folded in by the first run. All four are new ranges,
+pinned to match the `futures-*` 0.3.32 already in the set, so no tracked root
+lock moved. Because no locked root resolves them, they are also named in
+`locks/leaf-only-pins.toml`.
+
+**Measured after the fix:**
+
+- From a fresh seed (leaf lock removed, then `nros sync` and `nros build`),
+  both async leaves build with no drift and no realignment, at `futures*`
+  0.3.32 and `tokio-macros` 2.7.2.
+- From the old all-0.3.34 leaf lock, `nros build` prints `realigned 7
+  crate(s)` and succeeds. The single pass would have left `futures-core` off
+  its pin and refused.
+- `check-cargo-registry-pins`: 497 pins, one per range.
+
+The last paragraph of "What would close it" (the gate seeing leaf-only crates
+from untracked locks) is not done. The keep list is still hand-written.

@@ -26,6 +26,7 @@ use clap::{ArgGroup, Args as ClapArgs};
 use eyre::{Result, WrapErr, bail, eyre};
 
 use crate::orchestration::{
+    drift::{self, Realign},
     registry_pins::{RegistryPkg, compat_range, parse_registry, regenerate, render, version_key},
     sdk_index::SdkIndex,
 };
@@ -425,8 +426,42 @@ fn update_crate(
         if have.is_empty() {
             bail!("{} does not use `{name}`", project.display());
         }
-        for v in have {
-            cargo_update(project, &format!("{name}@{v}"), precise)?;
+        match precise {
+            // A crate released in lockstep with others (`futures`,
+            // `futures-util`, ...) cannot move alone: each sibling requires the
+            // others at its own version. So it moves together with every
+            // crate of the leaf that is off its pin, to a fixed point
+            // (issue 1924).
+            Some(want) => {
+                let mut moves: Vec<Realign> = have
+                    .into_iter()
+                    .map(|v| Realign {
+                        name: name.to_string(),
+                        have: v,
+                        want: want.to_string(),
+                    })
+                    .collect();
+                moves.extend(
+                    off_pin_moves(project, &previous)?
+                        .into_iter()
+                        .filter(|m| m.name != name),
+                );
+                let (_, stuck) = drift::realign(moves, drift::cargo_precise(project));
+                if let Some((m, why)) = stuck.iter().find(|(m, _)| m.name == name) {
+                    bail!(
+                        "`cargo update -p {name}@{} --precise {want}` in {} failed:\n{why}\n  \
+                         A crate the pin set does not hold may require `{name}` at its \
+                         own version: move that crate with it.",
+                        m.have,
+                        project.display()
+                    );
+                }
+            }
+            None => {
+                for v in have {
+                    cargo_update(project, &format!("{name}@{v}"), None)?;
+                }
+            }
         }
         leaf_pkgs = Some(read_lock(project)?);
     }
@@ -562,9 +597,9 @@ fn report_moves(previous: &[RegistryPkg], next: &[RegistryPkg], pins_rel: &str) 
     println!("nros update: {n} pin(s) moved in {pins_rel}");
 }
 
-/// Move every registry entry of a (seeded, untracked) leaf lock that is off the
-/// pin set back onto it. Used after a pin moves, and named by the drift check.
-pub fn realign_leaf(dir: &Path, pins: &[RegistryPkg]) -> Result<()> {
+/// Every registry entry of `dir`'s lock that is in a pinned range at another
+/// version, as the move back onto its pin.
+fn off_pin_moves(dir: &Path, pins: &[RegistryPkg]) -> Result<Vec<Realign>> {
     let pinned: BTreeMap<(String, String), String> = pins
         .iter()
         .map(|p| {
@@ -574,14 +609,37 @@ pub fn realign_leaf(dir: &Path, pins: &[RegistryPkg]) -> Result<()> {
             )
         })
         .collect();
-    for p in read_lock(dir)? {
-        if let Some(want) = pinned.get(&(p.name.clone(), compat_range(&p.version)))
-            && *want != p.version
-        {
-            cargo_update(dir, &format!("{}@{}", p.name, p.version), Some(want))?;
-        }
+    Ok(read_lock(dir)?
+        .into_iter()
+        .filter_map(|p| {
+            let want = pinned.get(&(p.name.clone(), compat_range(&p.version)))?;
+            (*want != p.version).then(|| Realign {
+                name: p.name,
+                have: p.version,
+                want: want.clone(),
+            })
+        })
+        .collect())
+}
+
+/// Move every registry entry of a (seeded, untracked) leaf lock that is off the
+/// pin set back onto it. Used after a pin moves, and named by the drift check.
+pub fn realign_leaf(dir: &Path, pins: &[RegistryPkg]) -> Result<()> {
+    let (_, stuck) = drift::realign(off_pin_moves(dir, pins)?, drift::cargo_precise(dir));
+    if stuck.is_empty() {
+        return Ok(());
     }
-    Ok(())
+    bail!(
+        "{} could not be moved back onto the pin set:\n{}\n  A crate the pin set does not \
+         hold is usually what keeps one off it: pin that crate too (`nros update --crate \
+         <name> --precise <version>` from this leaf), then run this again.",
+        dir.display(),
+        stuck
+            .iter()
+            .map(|(m, why)| format!("  `{}` {} -> {}: {why}", m.name, m.have, m.want))
+            .collect::<Vec<_>>()
+            .join("\n")
+    )
 }
 
 // ---- --source ---------------------------------------------------------------
