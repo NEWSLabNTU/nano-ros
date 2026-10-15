@@ -63,6 +63,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
 import comments  # noqa: E402  the one comment stripper
 import check_skip  # noqa: E402  NOT VERIFIED ledger (issue 1043)
+from build_root import build_root as nros_build_root  # noqa: E402  issue 1921 — the one derivation
 from tracked import tracked  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -374,7 +375,8 @@ def derived_roots(coords_file: str | None) -> dict[str, set[Path]]:
     and `build-xrce/` for two different rows, and only the in-lane one counts.
     """
     want = lane_coords(coords_file)
-    build_root = Path(os.environ.get("NROS_BUILD_ROOT") or ROOT / "build")
+    # issue 1921 — the one derivation, never a raw read of NROS_BUILD_ROOT.
+    build_root = nros_build_root(ROOT)
     zephyr_root = subprocess.run(
         ["bash", str(ROOT / "scripts/lib/zephyr-workspace.sh"), "--root", str(ROOT), "build-root"],
         capture_output=True, text=True).stdout.strip() or str(build_root / "zephyr-workspace-builds")

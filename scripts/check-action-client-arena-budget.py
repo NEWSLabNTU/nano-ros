@@ -160,6 +160,8 @@ import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
+from build_root import build_root as _nros_build_root  # noqa: E402  issue 1921 — the one derivation
 
 # The creation paths. Deliberately the whole `create_action_client` /
 # `create_action_server` families (`_raw`, `_sized`, `_with_callbacks`,
@@ -373,7 +375,10 @@ def derived_roots():
     two inputs already resolved, so this is not a second derivation of the
     group key — it is the same one, read.
     """
-    build_root = os.environ.get("NROS_BUILD_ROOT") or os.path.join(ROOT, "build")
+    # issue 1921 — the one derivation (checkout-scoped under NROS_BUILD_ROOT),
+    # never a raw read of the variable: that named a tree the builder no
+    # longer writes once the root is scoped.
+    build_root = str(_nros_build_root(ROOT))
     # issue 1596 — the one derivation, never a literal: this read the in-tree
     # `zephyr-workspace/` long after builds stopped landing there.
     zephyr_root = subprocess.run(
@@ -598,7 +603,7 @@ def main(argv=None, _self_test=True):
         action="append",
         default=[],
         help="extra tree to examine (repeatable). Default: the repo and "
-        "$NROS_BUILD_ROOT.",
+        "the build root (nros_build_root).",
     )
     ap.add_argument("-v", "--verbose", action="store_true",
                     help="print every image, not only the findings")

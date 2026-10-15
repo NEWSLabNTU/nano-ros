@@ -1013,11 +1013,14 @@ pub mod kind {
 /// With `NROS_BUILD_ROOT` unset this is `<repo>/build`, i.e. byte-identical to
 /// the `project_root().join("build/…")` literals it replaces (phase-334 W2.b
 /// step 2: derivation and callers first, paths later).
+///
+/// Issue 1921 — a set `NROS_BUILD_ROOT` is CHECKOUT-SCOPED by
+/// `nros_build_paths::build_root`, the one Rust spelling of the rule the shell
+/// spells in `nros_checkout_scoped_root`: a root this checkout does not own
+/// becomes `<root>/checkouts/<name>-<hash>`. Delegated rather than re-read
+/// here, so the resolver and the builder cannot disagree about it.
 pub fn build_root() -> std::path::PathBuf {
-    match std::env::var("NROS_BUILD_ROOT") {
-        Ok(v) if !v.is_empty() => std::path::PathBuf::from(v.trim_end_matches('/')),
-        _ => project_root().join("build"),
-    }
+    nros_build_paths::build_root(&project_root())
 }
 
 /// RFC-0070 R2 — `<root>/<kind>/<coordinate>…`, the ONE naming shape.
@@ -1605,10 +1608,13 @@ mod tests {
     /// `NROS_BUILD_ROOT`) when the root has been relocated.
     #[test]
     fn build_dirs_match_pre_migration_literals() {
-        if std::env::var_os("NROS_BUILD_ROOT").is_some_and(|v| !v.is_empty()) {
+        let root = project_root();
+        // Relocated? Asked of the one derivation rather than by re-reading
+        // `NROS_BUILD_ROOT` here (issue 1921: a second read is a second
+        // derivation, which `build_root_derivation.sh` refuses).
+        if nros_build_paths::build_root(&root) != nros_build_paths::build_root_in(&root, None) {
             return;
         }
-        let root = project_root();
         assert_eq!(build_root(), root.join("build"));
 
         // scripts/build/compile-check-fixtures.sh + scripts/test/compile-check-stale.sh

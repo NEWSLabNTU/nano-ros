@@ -59,6 +59,7 @@ nobody runs decays into a comment.
 
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import shutil
@@ -312,25 +313,36 @@ def probe_build_root(tmp: Path) -> list[str]:
             f"build-root.sh: NROS_REPO_ROOT naming another checkout still won — got {got!r}"
         )
     # The reason the variable exists: a build root on another volume, outside
-    # any checkout, must keep working.
+    # any checkout, must keep working — scoped to THIS checkout (issue 1921),
+    # because every checkout that names one root used to share every kind under
+    # it. The expected scope is computed here from first principles.
+    real = os.path.realpath(ROOT)
+    scope = f"checkouts/{os.path.basename(real)}-{hashlib.sha256(real.encode()).hexdigest()[:12]}"
     scratch = str(tmp / "mnt/fast/nros-build")
     got = run({"NROS_BUILD_ROOT": scratch})
-    if got != scratch:
+    if got != f"{scratch}/{scope}":
         problems.append(
-            f"build-root.sh: an out-of-tree NROS_BUILD_ROOT was rewritten — got {got!r}"
+            f"build-root.sh: an out-of-tree NROS_BUILD_ROOT was not scoped to this "
+            f"checkout — got {got!r}, expected {scratch}/{scope!r} (issue 1921)"
         )
-    # And `NROS_BUILD_ROOT` is passed through VERBATIM even when it names
-    # another checkout — see the comment on `nros_build_root`. Its Rust mirror
-    # `nros_tests::build_root` reads the same variable with no re-root and
-    # cannot be taught one here, so re-rooting this rung would split the writer
-    # from the reader: the bug, not the fix. Asserted so a later "finish the
-    # job" edit has to read that argument first.
+    # A root inside ANOTHER checkout is scoped too, never RE-ROOTED like the
+    # two REPO rungs above: `NROS_BUILD_ROOT` is not inherited from an
+    # activated shell, so naming a sibling's tree is an operator choice. The
+    # Rust mirror (`nros_build_paths::build_root`) applies the same rule, which
+    # its `checkout_scope_tests` assert by running this function.
     inside = f"{other}/build"
     got = run({"NROS_BUILD_ROOT": inside})
-    if got != inside:
+    if got != f"{inside}/{scope}":
         problems.append(
-            "build-root.sh: NROS_BUILD_ROOT was re-rooted, which splits it from the "
-            f"un-re-rooted Rust mirror `nros_tests::build_root` — got {got!r}"
+            "build-root.sh: an NROS_BUILD_ROOT inside another checkout was not "
+            f"scoped under it — got {got!r}, expected {inside}/{scope!r} (issue 1921)"
+        )
+    # And one inside THIS checkout is unchanged — the default's warm caches.
+    own = f"{ROOT}/build-relocated"
+    got = run({"NROS_BUILD_ROOT": own})
+    if got != own:
+        problems.append(
+            f"build-root.sh: an NROS_BUILD_ROOT inside this checkout moved — got {got!r}"
         )
     return problems
 

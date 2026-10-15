@@ -218,11 +218,106 @@ nros_reroot_checkout_pathlist() {
     return 0
 }
 
+# nros_checkout_scope_name <here>
+#
+# Issues 1904/1921 — the name a checkout's own subtree carries under a build
+# root it shares with other checkouts: `<basename>-<sha256(realpath)[:12]>`.
+# The basename is for a human reading the directory listing; the hash is what
+# separates two checkouts that share a basename. Hashed over the RESOLVED path
+# (`pwd -P`), so a checkout reached through a symlinked parent is one tree, not
+# two. Prints nothing and fails when `<here>` is not a directory.
+#
+# Mirrored by `nros_build_paths::checkout_scope_name` (Rust) and
+# `_nros_checkout_scope_name` in `cmake/NanoRosCheckoutRoot.cmake`. The cross
+# pins: `nros_build_paths`'s `checkout_scope_tests` RUN this function against
+# the Rust one, and `check-cargo-dir-knob-key.sh` compares the cmake answer to
+# `nros_checkout_scoped_root` below.
+nros_checkout_scope_name() {
+    _nros_cs_real="$(cd "${1:-}" 2>/dev/null && pwd -P)" || _nros_cs_real=""
+    if [ -z "$_nros_cs_real" ]; then
+        unset _nros_cs_real
+        return 1
+    fi
+    if command -v sha256sum >/dev/null 2>&1; then
+        _nros_cs_hash="$(printf '%s' "$_nros_cs_real" | sha256sum)"
+    else
+        _nros_cs_hash="$(printf '%s' "$_nros_cs_real" | shasum -a 256)"
+    fi
+    printf '%s-%.12s' "${_nros_cs_real##*/}" "${_nros_cs_hash%% *}"
+    unset _nros_cs_real _nros_cs_hash
+    return 0
+}
+
+# nros_checkout_scoped_root <root> <here>
+#
+# Issue 1921 — the ONE checkout-ownership rule for a BUILD ROOT. A build root
+# holds one checkout's build cache (RFC-0070 R1). `NROS_BUILD_ROOT` lets an
+# operator move it to a faster volume, and a linked worktree inherits its parent
+# shell's value, so without this every checkout that sets it shares every kind
+# under it: fixture trees and stamps, the sizes probe, the lane-skip ledgers.
+# Sharing there buys nothing — each checkout reaches its crates by its own path,
+# so a cargo dir holds two units of every crate (issue 0616) — and a ledger or
+# stamp then answers for the wrong tree.
+#
+#   <root> owned by <here>    -> <root>, unchanged
+#   anything else             -> <root>/checkouts/<nros_checkout_scope_name>
+#
+# "Owned" means either:
+#   - the DEEPEST checkout above <root> is <here>, compared after resolving
+#     symlinks (the issue-1280/1391 rule, never a lexical prefix: a worktree
+#     nested under `<main>/.claude/worktrees/` is not part of `<main>`). This is
+#     the default `<checkout>/build`, so no warm cache moves; or
+#   - <root> already lies inside <here>'s own `checkouts/<name>` scope. That is
+#     what makes the rule IDEMPOTENT: a consumer handed an already-scoped path
+#     (the corrosion-cargo kind dir, passed to cmake as
+#     `NROS_SHARED_CARGO_ROOT`) asks the same question and gets the same path
+#     back, never `…/checkouts/x/…/checkouts/x`.
+#
+# Unlike `nros_reroot_checkout_path`, a root inside ANOTHER checkout is scoped,
+# not re-rooted: `NROS_BUILD_ROOT` is never inherited from an activated shell
+# (nothing exports it), so naming a sibling's tree is an operator choice and is
+# honoured — inside this checkout's own subtree of it.
+# Always prints a path; a `<here>` that cannot be resolved keeps `<root>`.
+nros_checkout_scoped_root() {
+    _nros_sr_root="${1:-}"
+    _nros_sr_here="${2:-}"
+    if [ -z "$_nros_sr_root" ] || [ -z "$_nros_sr_here" ]; then
+        printf '%s' "$_nros_sr_root"
+        unset _nros_sr_root _nros_sr_here
+        return 0
+    fi
+    _nros_sr_here_real="$(cd "$_nros_sr_here" 2>/dev/null && pwd -P)" || _nros_sr_here_real=""
+    _nros_sr_name="$(nros_checkout_scope_name "$_nros_sr_here")" || _nros_sr_name=""
+    if [ -z "$_nros_sr_here_real" ] || [ -z "$_nros_sr_name" ]; then
+        printf '%s' "$_nros_sr_root"
+        unset _nros_sr_root _nros_sr_here _nros_sr_here_real _nros_sr_name
+        return 0
+    fi
+    _nros_sr_owned=0
+    _nros_sr_owner="$(nros_checkout_root "$_nros_sr_root")"
+    if [ -n "$_nros_sr_owner" ]; then
+        _nros_sr_owner_real="$(cd "$_nros_sr_owner" 2>/dev/null && pwd -P)" || _nros_sr_owner_real=""
+        [ "$_nros_sr_owner_real" = "$_nros_sr_here_real" ] && _nros_sr_owned=1
+    fi
+    case "$_nros_sr_root/" in
+        */checkouts/"$_nros_sr_name"/*) _nros_sr_owned=1 ;;
+    esac
+    if [ "$_nros_sr_owned" = 1 ]; then
+        printf '%s' "$_nros_sr_root"
+    else
+        printf '%s/checkouts/%s' "$_nros_sr_root" "$_nros_sr_name"
+    fi
+    unset _nros_sr_root _nros_sr_here _nros_sr_here_real _nros_sr_name \
+        _nros_sr_owned _nros_sr_owner _nros_sr_owner_real
+    return 0
+}
+
 # `build-root.sh` ships `nros_build_root` to its `make` leaves with `export -f`,
-# and a leaf gets the function but never sources this file — so the two helpers
-# it now calls have to travel with it. bash-only; every other shell sources
+# and a leaf gets the function but never sources this file — so the helpers
+# it calls have to travel with it. bash-only; every other shell sources
 # this file directly.
 if [ -n "${BASH_VERSION:-}" ]; then
-    export -f nros_checkout_root nros_reroot_checkout_path 2>/dev/null || true
+    export -f nros_checkout_root nros_reroot_checkout_path \
+        nros_checkout_scope_name nros_checkout_scoped_root 2>/dev/null || true
     export NROS_CHECKOUT_MARKER
 fi

@@ -84,6 +84,27 @@ honoured alone via `NROS_ZEPHYR_BUILD_ROOT`; since issue 1596 the Zephyr west
 dirs are the `zephyr-workspace-builds/<version>` kind under this root, with
 `NROS_ZEPHYR_BUILD_ROOT` kept as their own override).
 
+**The root is ONE checkout's cache** (issue 1921, amended 2026-10-15). A root
+the checkout does not own — outside every checkout, or inside ANOTHER checkout —
+is scoped to `<root>/checkouts/<basename>-<sha256(realpath)[:12]>`, so two
+checkouts that export one `NROS_BUILD_ROOT` (a linked worktree inherits its
+parent shell's) share no kind under it: not the fixture trees and stamps, not
+the sizes probe, not the skip ledgers. A root the checkout owns — its deepest
+marker-walk owner is this checkout after resolving symlinks (the issue
+1280/1391 rule, never a lexical prefix), or it already lies inside this
+checkout's own `checkouts/<name>` scope — is unchanged, so the default
+`<checkout>/build` keeps every warm cache and the rule is idempotent. The rule
+is spelled once per build system (`nros_checkout_scoped_root` in
+`scripts/lib/checkout-paths.sh`, `nros_build_paths::checkout_scoped_root`,
+`nros_checkout_scoped_root()` in `cmake/NanoRosCheckoutRoot.cmake`), pinned to
+each other by `build_root_derivation.sh`, `nros_build_paths`'s
+`checkout_scope_tests` and `check-cargo-dir-knob-key`; every reader of the
+variable goes through `nros_build_root` / `nros_build_paths::build_root` (python:
+`scripts/lib/build_root.py`), and `build_root_derivation.sh` refuses a direct
+read anywhere else. It replaces issue 1904's two per-site spellings (the
+metadata probe's private scoping and the `checkout=` key field in
+`nros_shared_cargo_dir`).
+
 **Nothing writes build output inside a source directory.** Not
 `examples/**/target-*`, not `examples/**/build-*`, not a workspace dir.
 

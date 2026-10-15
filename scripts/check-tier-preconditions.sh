@@ -224,7 +224,7 @@ probe "test fixtures not ready for this lane (missing, or stale under the stamp)
 #
 #    Buildless and source-free, like every probe above it.
 probe "build output beside workspace source (long-lived-tree residue)" \
-    "rm -rf the named dir(s) — build output belongs under \$NROS_BUILD_ROOT (RFC-0070 R1)" \
+    "rm -rf the named dir(s) — build output belongs under the build root, nros_build_root (RFC-0070 R1)" \
     bash scripts/check-workspace-build-output.sh
 
 # 6b. Corrosion's pin, because a stale one builds SUCCESSFULLY and wrong.

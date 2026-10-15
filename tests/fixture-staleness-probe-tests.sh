@@ -199,6 +199,11 @@ esac
 # NROS_BUILD_ROOT at the scratch tree keeps every byte this test writes inside
 # it — the repo's own build/ is untouched.
 export NROS_BUILD_ROOT="$work/build-root"
+# Issue 1921 — the root is checkout-scoped (`$work` is outside every checkout),
+# so the group dir is ASKED of the one derivation, never joined onto the
+# variable by hand: a hand join named a tree the probes no longer write.
+linux_group_dir="$(. "$repo_root/scripts/build/build-root.sh" \
+    && nros_build_dir "$NROS_KIND_CARGO_FIXTURES" linux)"
 
 cmake_record="$(printf '%s\x1fbuild-probe\x1f\x1f' "$work/cell")"
 rust_record="$(printf 'linux\x1f%s\x1f\x1f' "$work/leaf")"
@@ -259,10 +264,10 @@ check_eq "the freshly built leaf is silent" "" "$(rust_probe)"
 # `touch` is the smallest thing that makes cargo re-run a unit without changing
 # what it produces. In the tree it is group eviction; the probe cannot tell the
 # two apart and must not need to.
-before="$(md5sum "$NROS_BUILD_ROOT"/cargo-fixtures/linux/*/nros_staleness_probe_leaf 2>/dev/null | awk '{print $1}' | head -1)"
+before="$(md5sum "$linux_group_dir"/*/nros_staleness_probe_leaf 2>/dev/null | awk '{print $1}' | head -1)"
 touch "$work/leaf/src/main.rs"
 check_eq "a touched source (unit re-runs, bytes identical) is silent" "" "$(rust_probe)"
-after="$(md5sum "$NROS_BUILD_ROOT"/cargo-fixtures/linux/*/nros_staleness_probe_leaf 2>/dev/null | awk '{print $1}' | head -1)"
+after="$(md5sum "$linux_group_dir"/*/nros_staleness_probe_leaf 2>/dev/null | awk '{print $1}' | head -1)"
 check_eq "premise: the rebuilt binary is byte-identical" "$before" "$after"
 
 printf 'fn main() { println!("probe changed"); }\n' > "$work/leaf/src/main.rs"
@@ -385,7 +390,7 @@ checks=$((checks + 1))
 
 touch "$work/leaf/src/main.rs"
 out="$(cd "$work/leaf" && cargo build --profile "$probe_profile" \
-    --target-dir "$NROS_BUILD_ROOT/cargo-fixtures/linux" \
+    --target-dir "$linux_group_dir" \
     --message-format=json --quiet 2>"$work/negative-control-cargo.stderr")"; rc=$?
 if [ "$rc" -ne 0 ]; then
     fail "the old cargo rule could not be evaluated: the probe BUILD failed (exit $rc). This says nothing about the fixture."
