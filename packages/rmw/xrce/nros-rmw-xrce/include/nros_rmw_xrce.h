@@ -48,7 +48,7 @@ rmw_ret_t nros_rmw_xrce_register(void);
  * Phase 115.K.2.4 — runtime transport vtable for the XRCE-DDS
  * custom-transport bridge.
  *
- * Same shape as `nros_transport_ops_t` in `<nros/nros_generated.h>`
+ * Same shape as `nros_transport_ops_t` in `<rclc/detail/nros_generated.h>`
  * and `nros_rmw::NrosTransportOps` (Phase 115.A). The two surfaces
  * are deliberately layout-identical so a single struct can be
  * used at every layer; defining a copy here avoids pulling in

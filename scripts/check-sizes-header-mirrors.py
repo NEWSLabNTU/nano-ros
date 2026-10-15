@@ -312,16 +312,16 @@ def self_test() -> None:
         root = Path(t)
         b = root / "examples" / "plat" / "c" / "talker" / "build-zenoh"
         crate = b / "nano_ros" / "packages" / "api" / "nros-c"
-        shared = b / "cargo" / "ws_1" / "nros-c-generated" / "nros"
-        for p in (crate / "include" / "nros", shared):
+        shared = b / "cargo" / "ws_1" / "nros-c-generated" / "rclc" / "detail"
+        for p in (crate / "include" / "rclc" / "detail", shared):
             p.mkdir(parents=True)
         name = "nros_config_generated.h"
         (crate / name).write_text("#define X_SIZE 1\n")      # stale leaf copy
         (shared / name).write_text("#define X_SIZE 2\n")     # what the build mirrors
-        dest = crate / "include" / "nros" / name
+        dest = crate / "include" / "rclc" / "detail" / name
         (b / "build.ninja").write_text(
             f"  COMMAND = cd {b} && bash {MIRROR} {crate / name} {b} "
-            f"nros-c-generated {name} {dest}\n")
+            f"nros-c-generated/rclc/detail {name} {dest}\n")
         # a CMakeFiles subtree is pruned; its own build.ninja must not count twice
         (b / "CMakeFiles").mkdir()
         (b / "CMakeFiles" / "build.ninja").write_text("")
@@ -380,7 +380,7 @@ def self_test() -> None:
         (tdir / "build.make").write_text(
             f"{dest}: {crate}/libnros_cpp.a\n"
             f"\tcd {crate} && bash {MIRROR} {crate / name} {b} "
-            f"nros-cpp-generated {name} {dest}\n")
+            f"nros-cpp-generated/nros {name} {dest}\n")
 
         empty = scan(root)
         assert empty[:2] == (1, 1) and empty[2] == 0, \
@@ -431,7 +431,7 @@ against the wrong storage sizes (silent `_opaque` overflow at runtime).
 
 Fix: `python3 scripts/check-sizes-header-mirrors.py --fix` re-runs each drifted
 mirror command (what the build does). Then find the missing edge:
-  ninja -C <build-dir> -t query <...>/include/nros/nros_config_generated.h
+  ninja -C <build-dir> -t query <...>/include/rclc/detail/nros_config_generated.h
 (Makefile dir: the rule for that path in CMakeFiles/<target>.dir/build.make)
 — issues 0268, 1783.""")
         return 1

@@ -432,8 +432,8 @@ nros_armv8r_cflags_env(nros_ws_runtime-static)
     endif()
 
     # phase-263 A1 (mixed) — the SAME for the nros-C per-build header. A C Node pkg in a MIXED
-    # workspace compiles a C component that `#include <nros/nros_generated.h>` →
-    # `<nros/nros_config_generated.h>` (the *_OPAQUE_U64S / *_SIZE macros). Unlike nros-cpp's
+    # workspace compiles a C component that `#include <rclc/detail/nros_generated.h>` →
+    # `<rclc/detail/nros_config_generated.h>` (the *_OPAQUE_U64S / *_SIZE macros). Unlike nros-cpp's
     # POST_BUILD mirror, nros-c mirrors via a SEPARATE custom target `nros_c_config_header`
     # (Issue 0088 — a real Ninja edge, not a POST_BUILD side effect). With the umbrella archive
     # swap nothing links `nros_c-static`, so that mirror target is never pulled into the build and

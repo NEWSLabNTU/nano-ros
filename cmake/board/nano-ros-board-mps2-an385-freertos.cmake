@@ -209,7 +209,7 @@ set(FREERTOS_STARTUP_INCLUDES
     # header shadows this one on the include path when the carrier emits it".
     # It does not: this entry landed at position 9 of the consumer's include
     # list while the generated headers are at 10 and 13, so the SOURCE tree won
-    # and every C++ example TU resolved <nros/nros_config_generated.h> to the
+    # and every C++ example TU resolved <rclc/detail/nros_config_generated.h> to the
     # in-tree `#error` stub. Deterministic, not a race — two consecutive builds
     # with the headers already present failed identically.
     #

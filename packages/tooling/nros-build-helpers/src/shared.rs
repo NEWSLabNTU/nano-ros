@@ -938,7 +938,7 @@ pub fn write_header_to_corrosion(filename: &str, contents: &str) {
 ///
 /// `fs::write` truncates and then fills, so two writers targeting one path tear
 /// it. These headers have TWO writers by design: `nros-c`'s build script emits
-/// `nros-c-generated/nros/nros_config_generated.h`, and `nros-cpp`'s emits the
+/// `nros-c-generated/rclc/detail/nros_config_generated.h`, and `nros-cpp`'s emits the
 /// same file so Zephyr CPP-only builds (where nros-c never compiles) still find
 /// it. Add parallel fixture lanes sharing a workspace build dir and the window
 /// widens further.

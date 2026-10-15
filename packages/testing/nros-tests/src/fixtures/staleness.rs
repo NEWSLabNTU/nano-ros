@@ -46,7 +46,7 @@ use crate::{TestError, project_root};
 /// binary" therefore says nothing about this fixture's inputs — issue #222's
 /// cross-family false-stale.
 const REGENERATED_INPLACE_HEADERS: &[&str] = &[
-    "packages/api/nros-c/include/nros/nros_generated.h",
+    "packages/api/nros-c/include/rclc/detail/nros_generated.h",
     "packages/api/nros-cpp/include/nros/nros_cpp_ffi.h",
     "packages/rmw/zenoh/zpico-sys/c/include/zpico.h",
 ];

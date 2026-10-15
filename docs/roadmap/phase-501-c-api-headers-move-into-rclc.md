@@ -1,6 +1,6 @@
 # Phase 501 — The C API's headers move into `rclc`
 
-**Status (2026-10-15). In progress — W1, W3–W6 in the first pull request; W2 (generated headers) follows.** Implements the
+**Status (2026-10-15). In progress — W1–W6 in one pull request, under verification.** Implements the
 [RFC-0089](../design/0089-ros2-api-adoption-and-the-compile-or-conform-rule.md)
 amendment "the C headers live under `rclc/`" (2026-10-15). Follows
 [phase-499](archived/phase-499-user-surface-entry-and-cpp.md), which left
@@ -86,7 +86,8 @@ and renaming them would move every mirror gate for no reader.
   `NanoRosConfigHeaderMirror.cmake`, the `links` channel, the buildless
   snapshot), and the declared-QoS / declared-params headers that
   `NanoRosNodeRegister.cmake` writes. nros-cpp's own `nros_cpp_config_generated.h`
-  stays under `nros/` with the C++ follow-up. Acceptance: `just ci gate`,
+  stays under `nros/` with the C++ follow-up. (As landed: the declared-QoS and
+  declared-params headers stay under `nros/` too — see Progress.) Acceptance: `just ci gate`,
   `check-sizes-header-mirrors`, one NuttX and one Zephyr C image build.
 - **W3 — the emitters follow.** `rosidl-codegen`'s C templates and the
   `nros-cli-core` entry generator emit `rclc/...` includes. Bump
@@ -120,8 +121,9 @@ and renaming them would move every mirror gate for no reader.
   excluded). The `<rclc/rclc.h>` umbrella now also includes
   `<rclc/detail/rcl_compat.h>`, which every shim used to include beside it.
 - W3: `check-codegen-version-surface` keys the surface on the header path,
-  and a version-15 C tree includes `<nros/types.h>`, which no longer exists.
-  So `NROS_CODEGEN_VERSION` and `NROS_CODEGEN_VERSION_MIN` are both 16 (the
+  and a version-16 C tree includes `<nros/types.h>`, which no longer exists.
+  So `NROS_CODEGEN_VERSION` and `NROS_CODEGEN_VERSION_MIN` are both 17 (16
+  went to issue 1913 on `main` while this was in review; the
   13 → 14 precedent: a C-only change moves the minimum for all three
   languages). Regenerated: the surface baseline, the golden corpus, both
   buildless snapshots' anchors, the committed interface crates.
@@ -136,3 +138,39 @@ and renaming them would move every mirror gate for no reader.
   API-parity ledger, `c-api-cmake.md` and the audit checklist.
   `docs/reference/c-api-rename-map.tsv` is left as it is: it is a frozen
   record, and its generator does not reproduce it on `origin/main` either.
+
+### 2026-10-15 — W2, folded into the same pull request
+
+W1's pull request was not pushed yet when W2 was ready, and shipping them
+apart would have cost a second codegen bump: a C message header from W1's
+bump includes `<nros/nros_config_generated.h>`, which W2 moves. One pull request,
+one bump.
+
+- `nros_build_paths::artifact` gains `C_HEADER_SUBDIR` (`rclc/detail`) and
+  `CPP_HEADER_SUBDIR` (`nros`) beside the two directory names. Every writer
+  already went through `Artifact::relative`, so the cargo copies moved with the
+  constant. The cmake reader (`nros_generated_header_subdir`,
+  `nros_generated_subpath`) and the Python one (`scripts/lib/artifact_layout.py`)
+  read it from `artifact.rs`, like the directory names; the NuttX FFI build
+  takes it from the crate.
+- `mirror-generated-header.sh` takes `<dir>/<subdir>` as its `<gen-subdir>`
+  instead of appending `nros` itself. Its callers, its self-test, the
+  sizes-mirror gate's self-test and the resolved-seed test pass the full path.
+- The stamp in `NanoRosConfigHeaderMirror.cmake` named its crate by walking
+  three parents up from the header, which is one short under `rclc/detail/`;
+  it matches the `<crate>/include/` component now.
+- The committed `nros_generated.h`, sizes stub and buildless snapshot moved to
+  `rclc/detail/`; nros-c has no `nros/` directory left.
+- Not moved: `nros_declared_qos_generated.h` (one generated file both C and C++
+  include) and `nros_declared_params_generated.h` (C++ only). Both are
+  CLI-written build artifacts, not nros-c source, and they move with the C++
+  follow-up rather than splitting one file's include spelling across languages.
+- Three more scans keyed to the old directory, found by the second check run:
+  `check-c-api-nros-names` read `include/nros/*.h` and, with that directory
+  gone, passed over nothing; it walks every tracked nros-c header now (47
+  include guards and build facts of the upstream-path shims entered its scope
+  and were classified `build` in `c-api-rename-map.tsv`). `api-parity`'s
+  ledger-arrow check globbed `include/*/*.h`, one level, and missed
+  `rclc/detail/nros_generated.h`. Three synthetic stub include dirs
+  (`check-cpp-hosted-minimal-libcpp`, `check-repr-memory-agreement`,
+  `codegen-version-refusal-tests`) wrote their sizes stub under `nros/`.

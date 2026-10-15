@@ -130,7 +130,7 @@ fn main() {
     // moves a size or the codegen version re-run this script, instead of leaving
     // a museum `generated/` tree in OUT_DIR — the 1018/1360 class, whose
     // fail-closed backstop is the `#error` in every generated header.
-    println!("cargo:rerun-if-changed={config_include}/nros/nros_config_generated.h");
+    println!("cargo:rerun-if-changed={config_include}/rclc/detail/nros_config_generated.h");
 
     // TWO compiles, and the split is about ownership rather than flags: the
     // authored TU is linted, the GENERATED bindings are not. cc-rs turns on
@@ -142,7 +142,7 @@ fn main() {
     let mut build = cc::Build::new();
     build
         // BEFORE the crate's own `include/`, and the order is load-bearing:
-        // `nros-c/include/nros/nros_config_generated.h` is a COMMITTED STUB that
+        // `nros-c/include/rclc/detail/nros_config_generated.h` is a COMMITTED STUB that
         // deliberately defines nothing, so whichever directory comes first wins.
         // With the stub first, every generated message header hits its own
         // fail-closed `#ifndef NROS_CODEGEN_VERSION / #error` — a clear message

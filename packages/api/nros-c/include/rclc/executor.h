@@ -10,11 +10,11 @@
 #ifndef NROS_EXECUTOR_H
 #define NROS_EXECUTOR_H
 
-/* Type and function definitions live in <nros/nros_generated.h>.
+/* Type and function definitions live in <rclc/detail/nros_generated.h>.
  * This per-module header is kept as a thin shim so existing code that
  * does `#include <rclc/executor.h>` continues to compile. */
 #include "rclc/types.h"
-#include "nros/nros_generated.h"
+#include "rclc/detail/nros_generated.h"
 
 /*
  * Issue 0338 — the entity-registration family is spelled `nros_executor_add_*`,

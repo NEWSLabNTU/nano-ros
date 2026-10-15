@@ -3,7 +3,7 @@
 # → 0122 → 0123 → 0268 → 0740 → 0990 → 1783 kept re-opening one site at a time.
 #
 #   nros_config_header_mirror(<target> <after-target> <src> <gen-subdir> <name> <dest> ...)
-#       the PRODUCER: mirror build.rs's header(s) into an in-tree `include/nros/`
+#       the PRODUCER: mirror build.rs's header(s) into an in-tree `include/<subdir>/`
 #   nros_config_header_files(<out-var>)
 #       every mirrored header the build defines (BOTH crates)
 #   nros_config_header_object_depends(<owner-target> <source>...)
@@ -14,7 +14,8 @@
 # ## Why both the mirror and the stamp RE-RUN on every build (issue 1783)
 #
 # The mirror's SOURCE is a file cargo writes as a side effect of its build
-# script (`<cargo-target-dir>/nros-{c,cpp}-generated/nros/<name>`). Neither
+# script (`<cargo-target-dir>/nros-c-generated/rclc/detail/<name>`,
+# `<cargo-target-dir>/nros-cpp-generated/nros/<name>`). Neither
 # generator has an edge to it — cargo runs behind Corrosion's always-run
 # target, and the shared cargo dir is not a file any CMake rule produces. Issue
 # 0268 therefore keyed the mirror on a PROXY, `$<TARGET_FILE:nros_{c,cpp}-static>`,
@@ -118,7 +119,8 @@ endfunction()
 # nros_config_header_mirror(<target> <after-target> [<src> <gen-subdir> <name> <dest>]...)
 #
 # <src>        build.rs's leaf copy (the corrosion build dir) — the fallback
-# <gen-subdir> `nros-c-generated` / `nros-cpp-generated` under the cargo dir
+# <gen-subdir> `nros-c-generated/rclc/detail` / `nros-cpp-generated/nros` under the
+#              cargo dir (`nros_generated_subpath`)
 # <name>       header file name
 # <dest>       the mirror path consumers include
 #
@@ -170,7 +172,7 @@ endfunction()
 # defines, from BOTH crates. A consumer stamps all of them, because which one a
 # TU actually reads is decided by the INCLUDE PATH, not by the consumer's
 # language: a generated C message library linked through `NanoRosCpp` resolves
-# `<nros/nros_config_generated.h>` to the nros-CPP mirror (its dir is prepended
+# `<rclc/detail/nros_config_generated.h>` to the nros-CPP mirror (its dir is prepended
 # `BEFORE`), and before issue 1783 that library named only the nros-c one.
 function(nros_config_header_files _out)
     get_property(_c   GLOBAL PROPERTY NROS_C_CONFIG_HEADER_FILE)
@@ -214,7 +216,7 @@ endfunction()
 # command's OUTPUT rule exists only in the makefile of the directory that
 # declared it, so a consumer elsewhere names a prerequisite nothing can build —
 #
-#     No rule to make target '.../nros-c/include/nros/nros_config_generated.h',
+#     No rule to make target '.../nros-c/include/rclc/detail/nros_config_generated.h',
 #     needed by '.../<entry>_nros_main_generated.cpp.o'.
 #
 # `add_dependencies` does NOT fix this, and that is the trap: it was already
@@ -263,10 +265,16 @@ function(_nros_config_header_stamp _out_var _owner)
         # nros-cpp each mirror a `nros_config_generated.h`, and both are stamped
         # since issue 1783.
         get_filename_component(_stem "${_hdr}" NAME_WE)
-        get_filename_component(_crate "${_hdr}" DIRECTORY)        # …/include/nros
-        get_filename_component(_crate "${_crate}" DIRECTORY)      # …/include
-        get_filename_component(_crate "${_crate}" DIRECTORY)      # …/nros-c
-        get_filename_component(_crate "${_crate}" NAME)
+        # The crate is the directory above `include/`, however deep the header
+        # sits under it: `include/nros/` for C++, `include/rclc/detail/` for C
+        # (phase-501 W2), so counting parents would name a different dir per
+        # language.
+        if(_hdr MATCHES "/([^/]+)/include/[^ ]+$")
+            set(_crate "${CMAKE_MATCH_1}")
+        else()
+            message(FATAL_ERROR
+                "_nros_config_header_stamp: ${_hdr} is not under a `<crate>/include/` dir")
+        endif()
         # Per CONSUMING TARGET, not per directory — issue 0990.
         #
         # A custom command whose OUTPUT is reached through `OBJECT_DEPENDS` has

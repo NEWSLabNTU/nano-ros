@@ -186,7 +186,7 @@ def main() -> int:
             keep(tok, dep_file.parent)
 
     # Drop anything git ignores. A depfile lists BUILD OUTPUT as readily as
-    # source — `target/nros-c-generated/nros/nros_config_generated.h` is emitted
+    # source — `target/nros-c-generated/rclc/detail/nros_config_generated.h` is emitted
     # by another crate's build.rs and rewritten on every run — and hashing that
     # arms a rebuild on what the build just produced. Excluding only the row's
     # own build dir was not enough: the tree has other output roots, and the

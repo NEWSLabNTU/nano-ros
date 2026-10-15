@@ -114,7 +114,7 @@
     "verdict": "rename",
     "disposition": "adopt-bounded",
     "envelope": {
-      "file": "packages/api/nros-c/include/nros/nros_generated.h",
+      "file": "packages/api/nros-c/include/rclc/detail/nros_generated.h",
       "text": "`-1` if the backend cannot answer (e.g. XRCE without participant"
     },
     "provides": [

@@ -100,8 +100,8 @@ c: c-fmt
     cppgen="$(nros_locate_artifact cpp-include)"
     echo "Checking C code (build + syntax)..."
     echo "  - syntax (nros-c umbrella header)"
-    # The per-variant `<nros/nros_config_generated.h>` (defining the
-    # OPAQUE_U64S macros referenced by `<nros/nros_generated.h>`) is
+    # The per-variant `<rclc/detail/nros_config_generated.h>` (defining the
+    # OPAQUE_U64S macros referenced by `<rclc/detail/nros_generated.h>`) is
     # emitted by `nros-c`'s build.rs into `target/nros-c-generated/`.
     # Build first so the syntax check has those macros; otherwise
     # the source-tree stub fires its `#error`.
@@ -1030,7 +1030,7 @@ compile-smoke:
     # keys its PROBE directory by (rustc, target, features) — correctly, so the
     # two shapes above probe two different executor layouts, 40 bytes apart. But
     # the header they emit was one shared path,
-    # `target/nros-c-generated/nros/nros_config_generated.h`, so whichever shape
+    # `target/nros-c-generated/rclc/detail/nros_config_generated.h`, so whichever shape
     # ran second hit `shared.rs`'s guard and aborted. Deleting the header did not
     # help: re-running only swapped which shape got there first and which lost.
     #

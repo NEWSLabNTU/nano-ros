@@ -336,7 +336,7 @@ infra-queryable-counts:
 # Issue 1461 — the C and C++ roads must resolve `nros-c` to ONE feature set.
 #
 # Every mixed-image road runs cargo twice into one `--target-dir`, and both
-# `nros-c` units write `nros-c-generated/nros/nros_config_generated.h`. Whether
+# `nros-c` units write `nros-c-generated/rclc/detail/nros_config_generated.h`. Whether
 # that is fatal depends on WHICH features differ, and the cheap-looking case is
 # the one nobody sees: a back-compat alias spelling on one side gives two
 # headers that differ in one informational line, so every probed size agrees,

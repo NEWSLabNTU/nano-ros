@@ -16,9 +16,8 @@ Subject: what a user reads and copies —
     which is written for port implementers.
 
 Rules:
-  1. No include of a header that lives in `packages/api/nros-c/include/rclc/detail/`,
-     `packages/api/nros-c/include/nros/` (the generated headers, until
-     phase-501 W2) or `packages/api/nros-cpp/include/nros/`. The set is DERIVED
+  1. No include of a header that lives in `packages/api/nros-c/include/rclc/detail/`
+     or `packages/api/nros-cpp/include/nros/`. The set is DERIVED
      from those directories, so a port-seam header (`<nros/platform.h>`,
      `<nros/rmw_vtable.h>`, `<nros/transport.h>`, owned by other packages) is
      outside the rule by construction, not by an allowlist.
@@ -42,7 +41,6 @@ ROOT = Path(__file__).resolve().parents[1]
 # (directory, the include spelling its headers are reached by)
 INTERNAL_DIRS = (
     ("packages/api/nros-c/include/rclc/detail/", "rclc/detail/"),
-    ("packages/api/nros-c/include/nros/", "nros/"),
     ("packages/api/nros-cpp/include/nros/", "nros/"),
 )
 INCLUDE = re.compile(r'^\s*#\s*include\s*[<"]((?:nros|rclc)/[A-Za-z0-9_./-]+\.hp?p?)[>"]', re.M)
@@ -81,10 +79,10 @@ def violations(texts: dict[str, str], internal: set[str]) -> list[str]:
 
 
 def self_test() -> bool:
-    internal = {"rclc/detail/app_main.h", "nros/nros_generated.h", "nros/nros.hpp"}
+    internal = {"rclc/detail/app_main.h", "rclc/detail/nros_generated.h", "nros/nros.hpp"}
     texts = {
         "examples/a.c": "#include <rclc/rclc.h>\n#include <nros/platform.h>\n// nros_app_main is internal\n",
-        "examples/b.c": "#include <rclc/component.h>\n#include <nros/nros_generated.h>\n"
+        "examples/b.c": "#include <rclc/component.h>\n#include <rclc/detail/nros_generated.h>\n"
                         "int nros_app_main(int c, char** v);\n",
         "book/src/x.md": "text <rclc/detail/app_main.h>\n```c\n#include <rclc/detail/app_main.h>\n```\n",
         "book/src/y.md": "```cpp\n#include <nros/nros.hpp>\nNROS_APP_MAIN_REGISTER()\n```\n",
@@ -94,7 +92,7 @@ def self_test() -> bool:
         "book/src/x.md: #include <rclc/detail/app_main.h>",
         "book/src/y.md: #include <nros/nros.hpp>",
         "book/src/y.md: names NROS_APP_MAIN_REGISTER (write `main`)",
-        "examples/b.c: #include <nros/nros_generated.h>",
+        "examples/b.c: #include <rclc/detail/nros_generated.h>",
         "examples/b.c: names nros_app_main (write `main`)",
     ]
     if got != want:

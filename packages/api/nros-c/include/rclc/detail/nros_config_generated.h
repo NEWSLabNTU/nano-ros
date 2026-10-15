@@ -3,7 +3,7 @@
  *
  * `nros_config_generated.h` is produced per-build by `nros-c/build.rs`
  * and written to
- *   $CARGO_TARGET_DIR/nros-c-generated/nros/nros_config_generated.h
+ *   $CARGO_TARGET_DIR/nros-c-generated/rclc/detail/nros_config_generated.h
  *
  * Issue 0360 — this used to document a `<variant_slug>/` directory level that
  * NOTHING EVER IMPLEMENTED. The path is flat, so two feature sets sharing a
@@ -18,10 +18,10 @@
  * in `nros-cpp/include/nros/nros_cpp_config_generated.h` for the full
  * dispatch model. Short form (Phase 140):
  *   - CMake `add_subdirectory(nano-ros)`: nros-c's CMakeLists mirrors
- *     the per-build header into ${CMAKE_CURRENT_BINARY_DIR}/include/nros/
+ *     the per-build header into ${CMAKE_CURRENT_BINARY_DIR}/include/rclc/detail/
  *     and adds it to nros_c-static's INTERFACE include path.
  *   - Zephyr: zephyr/CMakeLists.txt prepends the cargo target dir.
- *   - Direct `cargo build`: add `-I$CARGO_TARGET_DIR/nros-c-generated/<slug>`.
+ *   - Direct `cargo build`: add `-I$CARGO_TARGET_DIR/nros-c-generated`.
  *
  * If this stub's `#error` fires, your build system has NOT been
  * configured to supply the real header.
@@ -37,7 +37,7 @@
  * and a NuttX TU that reaches this stub is a build-system bug that must fail
  * here, not compile against a guess. */
 #if defined(NROS_CONFIG_BUILDLESS)
-#include "nros/nros_config_generated_buildless.h"
+#include "rclc/detail/nros_config_generated_buildless.h"
 #else
 // clang-format off
 #error "nros_config_generated.h must be supplied per-build by the build system; see this stub for guidance."

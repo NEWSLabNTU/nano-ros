@@ -1681,7 +1681,7 @@ if _cc_px4_selected; then
                 # spelling `api_parity/extract_cxx.py` uses). It used to probe
                 # `$repo_root/target/nros-{c,cpp}-generated`, a location only some
                 # EARLIER build happens to write: absent there, every generated
-                # header failed `nros/nros_config_generated.h: No such file`, a
+                # header failed `rclc/detail/nros_config_generated.h: No such file`, a
                 # defect the builder's PX4-absent skip had hidden until issue
                 # 1651 provisioned the tree. The cargo check below compiles the
                 # real per-build headers.

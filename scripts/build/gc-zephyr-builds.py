@@ -16,7 +16,7 @@ did for the Corrosion lanes and for NuttX — is WRONG here, and the evidence is
 specific:
 
 * The per-image generated headers live INSIDE that directory
-  (`<target>/nros-c-generated/nros/nros_config_generated.h`) and differ by
+  (`<target>/nros-c-generated/rclc/detail/nros_config_generated.h`) and differ by
   image: a zenoh leaf carries `NROS_EXECUTOR_STORAGE_SIZE 308976`, a cyclonedds
   leaf `89512`. Sharing hands one image the other's sizes — the mirror class
   this repo has been burned by six times (0088, 0114, 0122, 0123, 0245, 0268).

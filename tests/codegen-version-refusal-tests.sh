@@ -56,7 +56,7 @@ import sys
 # failure with a useless message. Write what was found and let the assertions
 # below name what is missing.
 src = open(sys.argv[1]).read()
-head = '#include <nros/nros_config_generated.h>'
+head = '#include <rclc/detail/nros_config_generated.h>'
 start = src.find(head)
 if start < 0:
     open(sys.argv[2], 'w').write('/* no codegen-version block in the golden */\n')
@@ -83,14 +83,14 @@ emitted="$(sed -n 's/^#define NROS_EMITTED_CODEGEN_VERSION \([0-9]*\)$/\1/p' "$w
 
 mkconfig() {  # $1=dir $2=min $3=max ; empty min/max = define neither
     local d="$1"
-    mkdir -p "$d/nros"
+    mkdir -p "$d/nros" "$d/rclc/detail"
     { echo '#ifndef NROS_CONFIG_GENERATED_H'
       echo '#define NROS_CONFIG_GENERATED_H'
       [ -n "$2" ] && echo "#define NROS_CODEGEN_VERSION_MIN $2"
       [ -n "$3" ] && echo "#define NROS_CODEGEN_VERSION $3"
-      echo '#endif'; } > "$d/nros/nros_config_generated.h"
+      echo '#endif'; } > "$d/rclc/detail/nros_config_generated.h"
     sed 's/NROS_CONFIG_GENERATED_H/NROS_CPP_CONFIG_GENERATED_H/g' \
-        "$d/nros/nros_config_generated.h" > "$d/nros/nros_cpp_config_generated.h"
+        "$d/rclc/detail/nros_config_generated.h" > "$d/nros/nros_cpp_config_generated.h"
 }
 
 printf '#include "stamp.h"\nint main(void){return 0;}\n' > "$work/tu.c"
