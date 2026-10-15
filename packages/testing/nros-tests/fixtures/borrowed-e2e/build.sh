@@ -68,7 +68,9 @@ echo "borrowed-e2e: building nros-c (platform-posix)…"
 # for the host; where that lands is `nros locate artifact` (phase-484 W6b).
 lib="$(nros_locate_artifact c-archive --profile dev)"
 cfg_hdr="$(nros_locate_artifact c-config-header)"
-cfg_dir="${cfg_hdr%/nros/*}"
+# `<root>/nros-c-generated/<subdir>/<file>.h` -> `<root>/nros-c-generated`; the
+# subdir is per language (`rclc/detail` here), so cut at the generated root.
+cfg_dir="${cfg_hdr%-generated/*}-generated"
 # The dep-info cargo writes beside the archive.
 cp "${lib%.a}.d" "$out_dir/nros_c.d" 2>/dev/null || true
 [ -f "$cfg_hdr" ] || { echo "FAIL: nros-c config header missing at $cfg_hdr" >&2; exit 1; }

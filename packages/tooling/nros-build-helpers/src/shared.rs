@@ -549,8 +549,8 @@ fn write_header_to_out_dir(relative: &Path, contents: &str) {
     let Ok(out_dir) = env::var("OUT_DIR") else {
         return;
     };
-    // The FULL relative path is preserved — `nros-c-generated/nros/<name>.h`,
-    // not just the `nros/` tail. `nros-cpp`'s build script writes BOTH its own
+    // The FULL relative path is preserved — `nros-c-generated/rclc/detail/<name>.h`,
+    // not just the subdir tail. `nros-cpp`'s build script writes BOTH its own
     // header and the c-format companion (nros-c owns that file; this is a
     // gap-filler plus an equality check), so a flattened layout would put two
     // different headers in one directory and leave the consumer's include path
