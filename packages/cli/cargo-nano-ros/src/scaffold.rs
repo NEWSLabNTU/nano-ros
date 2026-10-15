@@ -51,7 +51,7 @@ fn maintainer_xml() -> String {
 /// is not one template. Each variant is modeled on a tracked, compiling example.
 enum PlatformKind {
     /// Hosted std binary: explicit `register_linked_rmw()` +
-    /// `nros::init_with_launch_auto()` + `Executor::open` + `spin`.
+    /// `nros::init()` + `Executor::open` + `spin`.
     /// Models `examples/linux/rust/talker`. (linux)
     Hosted,
     /// `#![no_std]` `nros::main!()` Form-1 self-bringup — `main.rs` is the
@@ -1050,9 +1050,9 @@ fn main() {{
     nros_board_linux::register_linked_rmw();
     env_logger::init();
 
-    // Launch-aware init: picks up ROS_DOMAIN_ID / NROS_LOCATOR / RMW_IMPLEMENTATION
+    // Init: picks up ROS_DOMAIN_ID / NROS_LOCATOR / RMW_IMPLEMENTATION
     // from the environment, else the standard defaults.
-    let ctx = nros::init_with_launch_auto().expect("nros init failed");
+    let ctx = nros::init().expect("nros init failed");
     let cfg = ctx.config("{name}");
     let mut executor: Executor = Executor::open(&cfg).expect("failed to open session");
 

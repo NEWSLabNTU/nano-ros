@@ -105,7 +105,7 @@ fn main() -> ! {
     action_client_multigoal_nros_selection::nros_board_linux::register_linked_rmw();
     env_logger::init();
 
-    let ctx = nros::init_with_launch_auto().expect("nros init failed");
+    let ctx = nros::init().expect("nros init failed");
     let cfg = ctx.config("fibonacci_multigoal_client");
     let mut executor = Executor::open(&cfg).expect("Failed to open session");
     let mut node = executor

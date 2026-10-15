@@ -21,7 +21,7 @@ fn main() {
 
     info!("nros Native Talker (nested /header variant)");
 
-    let ctx = nros::init_with_launch_auto().expect("nros init failed");
+    let ctx = nros::init().expect("nros init failed");
     let cfg = ctx.config("talker");
     let mut executor: Executor = Executor::open(&cfg).expect("Failed to open session");
 

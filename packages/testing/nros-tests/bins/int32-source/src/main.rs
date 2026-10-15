@@ -35,7 +35,7 @@ fn main() {
 
     info!("nros Int32 Source Talker (test fixture)");
 
-    let ctx = nros::init_with_launch_auto().expect("nros init failed");
+    let ctx = nros::init().expect("nros init failed");
     let cfg = ctx.config("int32_source");
     let mut executor: Executor = Executor::open(&cfg).expect("Failed to open session");
 

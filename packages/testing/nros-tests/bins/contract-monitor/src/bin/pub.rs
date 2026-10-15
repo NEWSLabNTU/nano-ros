@@ -55,7 +55,7 @@ fn main() {
     nros_rmw_zenoh::register().expect("register zenoh backend");
     info!("contract-monitor pub (rate contract on {HEADER_TOPIC})");
 
-    let ctx = nros::init_with_launch_auto().expect("nros init failed");
+    let ctx = nros::init().expect("nros init failed");
     let cfg = ctx.config("cm_pub");
     let mut executor: Executor = Executor::open(&cfg).expect("open session");
     // Install the baked rate-monitor table BEFORE entity creation so the
