@@ -1,8 +1,9 @@
 # Phase 503 -- Deadline-armed route monitor with a reaction hook
 
-**Status (2026-10-15).** W1-W5 done. W1-W4 landed in PR #2264; W5 (the
+**Status (2026-10-16).** W1-W6 done. W1-W4 landed in PR #2264; W5 (the
 model read, ros-launch-manifest pinned by rev 33577ff until its v0.1.61 tag)
-and the end-to-end test in the follow-up.
+and the end-to-end test in the follow-up; W6 (a late completion is a
+deadline miss) after a board run.
 
 **Continues:** phase10-B3, which added `route-latency-runtime` (a node path
 judged from the take of its trigger input to the dispatch that publishes its
@@ -66,6 +67,15 @@ unsupervised image's generated source is unchanged.
 4. Before the monitors are armed (phase-474 I2) the verdict is only counted
    and no reaction is requested.
 
+5. A supervised route ANSWERED at or after its deadline, with no deadline
+   verdict for that take yet, is overdue too, judged at completion
+   (`route_judge`): `route-deadline-runtime` is recorded beside the latency
+   verdict (same report-once rule) and the reaction hook is called with the
+   completion's measured time. Exactly once per take: a deadline already
+   caught by the check after the park (or by the port's timer, through the
+   same check) dropped the take, so the late output that follows judges
+   nothing. Both mechanisms.
+
 `route-latency-runtime` is unchanged: a route answered after its budget but
 before its deadline is still judged on completion, and an unsupervised route
 is judged only that way.
@@ -75,6 +85,17 @@ deadline (one tick on Zephyr), plus whatever dispatch is running when the
 deadline passes. A callback that never returns holds the check too; that is
 what `mechanism: timer` is for, and the executor exposes the due time for it
 (`route_next_due_us`).
+
+A single long callback that takes the trigger and publishes the output late
+(rule 5) is the case the check after the park never sees: the callback holds
+the spin thread past the deadline and has answered the route by the time the
+check runs. Under `mechanism: executor` the completion verdict is the only
+detection it gets, and it is late by the callback's overrun: the hook runs at
+take + the callback's run time, not at the deadline (measured on a board: 327
+ms against a 149 ms deadline, where before W6 only `route-latency-runtime`
+was recorded and the hook never ran). A route whose fallback must start at the
+deadline even then needs `mechanism: timer`; requiring it where the overrun
+case does not fit is the checker's job, not the executor's.
 
 ### The reaction hook
 
@@ -129,6 +150,7 @@ executor; the comment in the generated entry maps it back to the path.
 | W3 | `nros_cpp_executor_set_reaction_hook`, `nros_cpp_executor_route_next_due_us`, row fields, header | done |
 | W4 | IR / lowered rows, C and C++ entry templates, weak hook install, Rust render | done |
 | W5 | fill the rows from the model's supervision (`apply_route_supervision`) | done |
+| W6 | a late completion of a supervised route is a deadline miss: verdict + hook at completion, once per take (`route_judge`, `spin.rs`) | done |
 
 W5: the model (ros-launch-manifest `33577ff`, play_launch phase 93's lowering)
 carries `contracts.node_paths.<key>.supervise: { route_deadline_ms, reaction,
@@ -156,6 +178,16 @@ play_launch that writes it.
   `route-deadline-runtime` verdict and one hook call with reaction id 7,
   row 0, mechanism timer and the registered context; a second missed take
   calls the hook again and records nothing.
+- `a_late_completion_is_a_deadline_miss_once` (`monitor.rs`): a take
+  answered at 327 ms against 149 gives the latency verdict and one deadline
+  verdict that asks for the reaction; late again while marked: the reaction,
+  no record; on time: nothing; a deadline already caught by `route_overdue`:
+  nothing at the completion that follows; exactly at the deadline counts.
+- `a_late_completion_of_a_supervised_route_calls_the_reaction_hook`
+  (`executor/tests.rs`): `mechanism: executor`, one subscription callback that
+  runs 327 ms and publishes; one hook call (reaction id 4, rule 11, measured
+  327, declared 149, mechanism 0), both verdicts, no second call from the
+  check after the park, none for an on-time callback.
 - The existing route tests (`route_rule`,
   `b3_a_late_tick_exceeds_the_route_while_every_callback_passes`) unchanged.
 - Codegen: a supervised row renders its three fields, the comment and the
@@ -170,6 +202,11 @@ play_launch that writes it.
   take with `id=7 row=0 rule=11 ... declared_ms=150 mechanism=1`, and
   `route-deadline-runtime` is drained once. The unsupervised twin
   (`CM_ROUTE_DEADLINE_MS=0`) prints neither.
+  `supervised_route_answered_late_by_one_callback_calls_the_reaction_hook`:
+  `CM_ROUTE_LATE_MS=300 CM_MECHANISM=0`, the trigger every 500 ms, the
+  callback sleeps 300 ms and publishes; every hook call carries `rule=11
+  declared_ms=150 mechanism=0` and `measured_ms >= 300` (caught at
+  completion), each verdict drained once.
 
 ## Not in this phase
 

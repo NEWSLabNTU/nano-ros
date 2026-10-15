@@ -1163,11 +1163,27 @@ pub(crate) fn route_take(table: &[MonitorSpec], slot: usize, take_us: u64) {
 /// and that has a take waiting is judged: take to dispatch end, an upper bound
 /// on take to that publish, against the path's budget. Over budget is
 /// reported once until a route is within it again.
+///
+/// phase-503 -- a SUPERVISED route ([`MonitorSpec::route_deadline_ms`])
+/// answered at or after its deadline is also overdue: it is reported as
+/// `route-deadline-runtime` and its reaction requested, as `route_overdue`
+/// would have done had it run in time. Under `MECHANISM_EXECUTOR` this is the
+/// only detection a single long callback gets: the callback that holds the
+/// spin thread past the deadline publishes the output before the executor's
+/// overdue check can run, so the miss is caught here, at completion -- late
+/// by the callback's overrun. A route whose deadline was already caught
+/// (`route_overdue` dropped its take) is not pending any more and is not
+/// judged again, so each take gets at most one deadline verdict.
+///
+/// `report(row, violation, record, react)`: `record` is `false` while the
+/// route is still marked violated from an earlier verdict (report once until
+/// a route is within its budget again); `react` asks the caller to call the
+/// reaction hook, on every late supervised take as `route_overdue` does.
 pub(crate) fn route_judge(
     table: &[MonitorSpec],
     counts_before: &[u32; MAX_MONITORS],
     end_us: u64,
-    mut report: impl FnMut(Violation),
+    mut report: impl FnMut(usize, Violation, bool, bool),
 ) {
     for (k, spec) in table.iter().take(MAX_MONITORS).enumerate() {
         if spec.route_max_latency_ms == 0 {
@@ -1179,16 +1195,38 @@ pub(crate) fn route_judge(
         }
         let took_us = (end_us as u32).wrapping_sub(spec.cell.route_take_us.load(Ordering::Relaxed));
         let measured_ms = took_us / 1_000;
+        let first = w & ROUTE_VIOLATED == 0;
+        let late = measured_ms > spec.route_max_latency_ms;
+        let overdue =
+            route_supervised(spec) && took_us >= spec.route_deadline_ms.saturating_mul(1_000);
         let mut next = w & !ROUTE_PENDING;
-        if measured_ms > spec.route_max_latency_ms {
-            if w & ROUTE_VIOLATED == 0 {
-                report(Violation {
+        if late && first {
+            report(
+                k,
+                Violation {
                     rule: "route-latency-runtime",
                     fqn: spec.fqn,
                     measured: measured_ms,
                     declared: spec.route_max_latency_ms,
-                });
-            }
+                },
+                true,
+                false,
+            );
+        }
+        if overdue {
+            report(
+                k,
+                Violation {
+                    rule: "route-deadline-runtime",
+                    fqn: spec.fqn,
+                    measured: measured_ms,
+                    declared: spec.route_deadline_ms,
+                },
+                first,
+                true,
+            );
+        }
+        if late || overdue {
             next |= ROUTE_VIOLATED;
         } else {
             next &= !ROUTE_VIOLATED;
@@ -2478,7 +2516,8 @@ mod route_tests {
 
     fn judge(end_us: u64, before: &[u32; MAX_MONITORS]) -> Vec<(u32, u32)> {
         let mut out = Vec::new();
-        route_judge(&TABLE, before, end_us, |v| {
+        route_judge(&TABLE, before, end_us, |_, v, record, react| {
+            assert!(record && !react, "an unsupervised route only records");
             assert_eq!(v.rule, "route-latency-runtime");
             assert_eq!(v.fqn, "/n/out");
             out.push((v.measured, v.declared));
@@ -2658,7 +2697,9 @@ mod route_tests {
         }
         DL_CELL.count.fetch_add(1, Ordering::Relaxed);
         let mut judged = Vec::new();
-        route_judge(&DL_TABLE, &before, 7_010_000, |v| judged.push(v.measured));
+        route_judge(&DL_TABLE, &before, 7_010_000, |_, v, _, _| {
+            judged.push(v.measured)
+        });
         assert!(judged.is_empty(), "10 ms: within");
         assert_eq!(DL_CELL.route.load(Ordering::Relaxed) & ROUTE_VIOLATED, 0);
         // Over again after recovery: first again.
@@ -2672,5 +2713,91 @@ mod route_tests {
         );
         assert!(overdue(u32::MAX as u64 + 139_000).is_empty());
         assert_eq!(overdue(u32::MAX as u64 + 139_001).len(), 1);
+    }
+
+    static LC_CELL: PubMonitorCell = PubMonitorCell::new();
+    static LC_TABLE: [MonitorSpec; 1] = [MonitorSpec {
+        topic: "/out",
+        fqn: "/n/late",
+        min_rate_hz_milli: 0,
+        max_latency_ms: 0,
+        route_trigger: "/in",
+        route_max_latency_ms: 149,
+        route_deadline_ms: 149,
+        reaction_id: 5,
+        mechanism: MECHANISM_EXECUTOR,
+        cell: &LC_CELL,
+    }];
+
+    /// `(row, rule, measured, declared, record, react)` of one `route_judge`
+    /// call after the output was published once.
+    #[allow(clippy::type_complexity)]
+    fn complete(end_us: u64) -> Vec<(usize, &'static str, u32, u32, bool, bool)> {
+        let mut before = [0u32; MAX_MONITORS];
+        before[0] = LC_CELL.count.load(Ordering::Relaxed);
+        LC_CELL.count.fetch_add(1, Ordering::Relaxed);
+        let mut out = Vec::new();
+        route_judge(&LC_TABLE, &before, end_us, |row, v, record, react| {
+            assert_eq!(v.fqn, "/n/late");
+            out.push((row, v.rule, v.measured, v.declared, record, react));
+        });
+        out
+    }
+
+    fn lc_overdue(now_us: u64) -> usize {
+        let mut n = 0;
+        route_overdue(&LC_TABLE, now_us, |_, _, _| n += 1);
+        n
+    }
+
+    /// phase-503 -- a supervised route whose one long callback publishes the
+    /// output after the deadline, before the executor's overdue check could
+    /// run: the completion reports the deadline miss and requests the
+    /// reaction, once per take; a deadline already caught by the check is not
+    /// reported again at completion; an on-time completion reports nothing.
+    #[test]
+    fn a_late_completion_is_a_deadline_miss_once() {
+        route_bind(&LC_TABLE, "/in", 0);
+        // Late completion, no overdue check in between (the callback held the
+        // spin thread): the latency verdict, plus one deadline verdict that
+        // asks for the reaction.
+        route_take(&LC_TABLE, 0, 1_000_000);
+        assert_eq!(
+            complete(1_327_000),
+            [
+                (0, "route-latency-runtime", 327, 149, true, false),
+                (0, "route-deadline-runtime", 327, 149, true, true),
+            ]
+        );
+        assert_eq!(LC_CELL.route.load(Ordering::Relaxed) & ROUTE_PENDING, 0);
+        assert_ne!(LC_CELL.route.load(Ordering::Relaxed) & ROUTE_VIOLATED, 0);
+        // The take was answered: the overdue check has nothing left.
+        assert_eq!(lc_overdue(1_400_000), 0, "no second verdict");
+        // Late again while still marked: the reaction again, no record.
+        route_take(&LC_TABLE, 0, 2_000_000);
+        assert_eq!(
+            complete(2_200_000),
+            [(0, "route-deadline-runtime", 200, 149, false, true)]
+        );
+        // On time: nothing, and the mark clears.
+        route_take(&LC_TABLE, 0, 3_000_000);
+        assert!(complete(3_100_000).is_empty());
+        assert_eq!(LC_CELL.route.load(Ordering::Relaxed) & ROUTE_VIOLATED, 0);
+        // The deadline already fired (the check ran in time, or the timer
+        // mechanism's): the late output that follows judges nothing.
+        route_take(&LC_TABLE, 0, 4_000_000);
+        assert_eq!(lc_overdue(4_150_000), 1);
+        assert!(
+            complete(4_327_000).is_empty(),
+            "no second call at completion"
+        );
+        // Exactly at the deadline counts as overdue, as in route_overdue;
+        // within the budget and before it does not.
+        route_take(&LC_TABLE, 0, 5_000_000);
+        let at = complete(5_149_000);
+        assert_eq!(at.len(), 1);
+        assert_eq!(at[0].1, "route-deadline-runtime");
+        route_take(&LC_TABLE, 0, 6_000_000);
+        assert!(complete(6_148_999).is_empty());
     }
 }
