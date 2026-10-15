@@ -38,13 +38,18 @@ impl Component for FibonacciClient {
 pub struct State {
     /// Set once the goal has been sent — keeps `tick` idempotent.
     sent: bool,
+    /// Issue 1918 — set once "waiting for the action server" has been logged.
+    waiting_logged: bool,
 }
 
 impl ExecutableNode for FibonacciClient {
     type State = State;
 
     fn init() -> Self::State {
-        State { sent: false }
+        State {
+            sent: false,
+            waiting_logged: false,
+        }
     }
 
     fn on_callback(_state: &mut Self::State, callback: Callback<'_>, ctx: &mut CallbackCtx<'_>) {
@@ -67,6 +72,17 @@ impl ExecutableNode for FibonacciClient {
         if state.sent {
             return;
         }
+        // Issue 1918 — wait for the server before the ONE send. A goal sent
+        // before the server has declared its send_goal service is answered by
+        // nobody, and nothing re-sends it. `Err` means the backend cannot say
+        // (no discovery channel), so send anyway.
+        if let Ok(false) = ctx.action_server_is_ready_for_name("/fibonacci") {
+            if !state.waiting_logged {
+                log::info!("Waiting for action server...");
+                state.waiting_logged = true;
+            }
+            return;
+        }
         let goal = FibonacciGoal { order: 10 };
         log::info!("Sending goal");
         // 32 B is more than enough for one `i32` + CDR header.
@@ -75,7 +91,9 @@ impl ExecutableNode for FibonacciClient {
             .is_ok()
         {
             state.sent = true;
-            log::info!("Goal accepted by server, waiting for result");
+            // Issue 1918 — SENT, not accepted: `send_goal_for_name` does not
+            // wait for the server's answer, so this cannot claim one.
+            log::info!("Goal sent, waiting for result");
         }
         // On send failure `sent` stays false — the next tick retries.
     }
