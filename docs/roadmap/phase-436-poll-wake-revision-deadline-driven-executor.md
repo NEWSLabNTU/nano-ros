@@ -901,7 +901,7 @@ wiring that came before it, and both worth a decision rather than a drift:
   * Shared C and C++ entry code is linked beside every port, bare metal
     included, and the park symbols are OPTIONAL, which is why the C runner was
     not simply extended before. It references them WEAKLY:
-    `detail::install_platform_park` in `<nros/main.hpp>`, called by
+    `detail::install_platform_park` in `<rclcpp/detail/main.hpp>`, called by
     `detail::component_spin_loop`, and the C runner's copy in
     `nros_rtos_run_components.c` (its include path lacks the header). Both
     install only when the symbols resolve AND the granularity is non-zero,
