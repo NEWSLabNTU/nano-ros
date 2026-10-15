@@ -26,7 +26,7 @@
  *   2. `if (ret == RCL_RET_TIMEOUT)` is true exactly when a REAL nano-ros call
  *      timed out. `rclc_executor_ping` is the call: its own header documents
  *      `RCL_RET_TIMEOUT` as the no-reply-within-budget code
- *      (`nros/nros_generated.h:4292`). This is the property RFC-0089 says must
+ *      (`rclc/detail/nros_generated.h:4292`). This is the property RFC-0089 says must
  *      survive the spelling change, and the only one a porting user can
  *      observe. (`ping` has no rcl name — micro-ROS spells it
  *      `rmw_uros_ping_agent` — so it is called under ours.)

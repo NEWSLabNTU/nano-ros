@@ -105,7 +105,7 @@
  * rationale says "neither side is authored and neither can drift", on the
  * premise that both numbers reach a TU through a header `nros-build-helpers`
  * writes from `nros_core::codegen_version`. On NuttX that premise is false:
- * `<nros/nros_config_generated.h>` dispatches to THIS file under
+ * `<rclc/detail/nros_config_generated.h>` dispatches to THIS file under
  * `NROS_PLATFORM_NUTTX`, the per-build header is on no include path (measured:
  * `nros-c-generated` appears nowhere in a NuttX leaf's `build.ninja`), and
  * phase-429 W1 added the macros to the template and to the artifacts without

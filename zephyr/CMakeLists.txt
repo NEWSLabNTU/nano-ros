@@ -544,7 +544,7 @@ if(CONFIG_NROS_C_API)
     # `param_services IN_LIST NROS_FEATURES`). This string set neither. In a
     # mixed C + C++ image cargo therefore built nros-c twice, with different
     # `EXECUTOR_SIZE`, and both build scripts write the SAME shared
-    # `nros-c-generated/nros/nros_config_generated.h`. The first build wins; the
+    # `nros-c-generated/rclc/detail/nros_config_generated.h`. The first build wins; the
     # second aborts with "written by another crate with DIFFERENT probed sizes"
     # — so a mixed image builds exactly once and every rebuild fails, including
     # the one `west build --target run` performs.
@@ -631,7 +631,7 @@ endif()
 if(CONFIG_NROS_CPP_API)
     # Phase 119.3: prepend per-build variant header dirs (cpp + c) to
     # include path before source-tree dirs. C++ user code transitively
-    # pulls `<nros/nros_config_generated.h>` (C-side) via parameter.hpp,
+    # pulls `<rclc/detail/nros_config_generated.h>` (C-side) via parameter.hpp,
     # so both variants must resolve to the per-build versions.
     nros_generated_dir(_nros_cpp_gen_dir cpp)
     nros_generated_dir(_nros_c_gen_dir c)

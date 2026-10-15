@@ -50,21 +50,21 @@ cpp_inc="packages/api/nros-cpp/include"
 command -v "$CXX" >/dev/null 2>&1 || { echo "$tag: FAIL — no C++ compiler ($CXX)" >&2; exit 1; }
 [ -d "$compat" ] || { echo "$tag: FAIL — $compat is MISSING; the probe would test nothing" >&2; exit 1; }
 for snap in "$cpp_inc/nros/nros_cpp_config_generated_buildless.h" \
-            packages/api/nros-c/include/nros/nros_config_generated_buildless.h; do
+            packages/api/nros-c/include/rclc/detail/nros_config_generated_buildless.h; do
     [ -f "$snap" ] || { echo "$tag: FAIL — $snap is MISSING" >&2; exit 1; }
 done
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
-mkdir -p "$tmp/nros"
+mkdir -p "$tmp/nros" "$tmp/rclc/detail"
 printf '%s\n' \
     '/* PROBE-ONLY (scripts/check-cpp-hosted-minimal-libcpp.sh, issue 1432). */' \
     '#include "nros/nros_cpp_config_generated_buildless.h"' \
     > "$tmp/nros/nros_cpp_config_generated.h"
 printf '%s\n' \
     '/* PROBE-ONLY (scripts/check-cpp-hosted-minimal-libcpp.sh, issue 1432). */' \
-    '#include "nros/nros_config_generated_buildless.h"' \
-    > "$tmp/nros/nros_config_generated.h"
+    '#include "rclc/detail/nros_config_generated_buildless.h"' \
+    > "$tmp/rclc/detail/nros_config_generated.h"
 
 # `-Wcomment -Werror=comment` (phase-325 W3.4): PX4 compiles every module
 # `-Wall -Werror`, and a `/*` inside a `/** ... */` block -- a glob like

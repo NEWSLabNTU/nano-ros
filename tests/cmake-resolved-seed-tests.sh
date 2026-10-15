@@ -394,7 +394,7 @@ function(_nros_entity_facts_rekey_shared_cargo_dir)
 endfunction()
 # nros-cpp's scope: queue the heal, exactly as its CMakeLists does.
 nros_config_header_heal("$MIRROR_SH" "\${CMAKE_BINARY_DIR}/leaf/h.h"
-    "\${CMAKE_BINARY_DIR}" gen h.h "\${CMAKE_BINARY_DIR}/include/nros/h.h")
+    "\${CMAKE_BINARY_DIR}" gen/nros h.h "\${CMAKE_BINARY_DIR}/include/nros/h.h")
 
 # An entry registers LAST in a real configure, so the facts flush is scheduled
 # AFTER the heal was queued: its deferred call runs first and must wait.
@@ -402,7 +402,7 @@ nros_entity_facts_env_deferred(nros_heal_probe_target)
 
 # The pre-fix shape, for contrast: run it NOW.
 execute_process(COMMAND bash "$MIRROR_SH" "\${CMAKE_BINARY_DIR}/leaf/h.h"
-    "\${CMAKE_BINARY_DIR}" gen h.h "\${CMAKE_BINARY_DIR}/immediate/h.h")
+    "\${CMAKE_BINARY_DIR}" gen/nros h.h "\${CMAKE_BINARY_DIR}/immediate/h.h")
 EOF
 CONFIGURE_OUT="$(cmake -G Ninja -S "$HEAL_ROOT/src" -B "$HEAL_ROOT/build" 2>&1)"
 check

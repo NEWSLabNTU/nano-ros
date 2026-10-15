@@ -34,7 +34,7 @@
  *
  * Placement is load-bearing in two directions:
  *
- *  * it must come AFTER `<nros/nros_generated.h>`, because that header
+ *  * it must come AFTER `<rclc/detail/nros_generated.h>`, because that header
  *    DECLARES `rclc_support_init(...)` and a function-like macro of the same
  *    name would eat the declaration. `<rclc/types.h>` includes this file last
  *    for that reason;

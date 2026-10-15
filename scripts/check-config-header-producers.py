@@ -3,7 +3,7 @@
 
 phase-413 W2. RFC-0090 makes every generated C/C++ header open with
 
-    #include <nros/nros_config_generated.h>
+    #include <rclc/detail/nros_config_generated.h>
     #ifndef NROS_CODEGEN_VERSION
     #error "nros: the generated config header did not define NROS_CODEGEN_VERSION..."
 

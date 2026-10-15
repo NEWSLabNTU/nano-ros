@@ -79,7 +79,7 @@ clean::
 # NEVER the `cffi-*` back-compat aliases. They resolve to the same feature, but
 # cargo keys a unit by its feature SET — and NROS_CPP_FEATURES below forwards
 # `nros-c/rmw-<name>` — so an alias here gives this build TWO `nros-c` units
-# sharing one `target/nros-c-generated/nros/nros_config_generated.h`.
+# sharing one `target/nros-c-generated/rclc/detail/nros_config_generated.h`.
 # Issues 1461, 1100.
 # issue 0947 — derived, so a new edition needs no edit here. The Kconfig choice
 # guarantees the value is one of the three; `patsubst "%",%` strips the quotes

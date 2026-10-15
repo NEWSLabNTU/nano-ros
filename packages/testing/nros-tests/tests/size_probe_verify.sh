@@ -26,7 +26,7 @@ cd "$(git rev-parse --show-toplevel)"
 . "$(git rev-parse --show-toplevel)/scripts/lib/grep-q.sh"
 
 # The REAL generated header, not the tracked stub. `packages/api/nros-c/include/
-# nros/nros_config_generated.h` is a Phase-119.3 placeholder that documents where
+# rclc/detail/nros_config_generated.h` is a Phase-119.3 placeholder that documents where
 # the real one goes and contains ZERO `#define NROS_*_SIZE` lines — so this
 # script's `extract_sizes` matched nothing and, under `pipefail`, exited 1 before
 # asserting anything. It had been dead that way since the header moved; found

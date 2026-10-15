@@ -611,9 +611,18 @@ fn is_cxx_ext(p: &Path) -> bool {
 /// less legible `#error` inside a component.
 fn per_build_sizes_includes() -> Vec<PathBuf> {
     let mut dirs = Vec::new();
-    for (key, header) in [
-        ("DEP_NROS_C_CONFIG_INCLUDE", "nros_config_generated.h"),
-        ("DEP_NROS_CPP_CONFIG_INCLUDE", "nros_cpp_config_generated.h"),
+    use nros_build_paths::artifact::{C_HEADER_SUBDIR, CPP_HEADER_SUBDIR};
+    for (key, subdir, header) in [
+        (
+            "DEP_NROS_C_CONFIG_INCLUDE",
+            C_HEADER_SUBDIR,
+            "nros_config_generated.h",
+        ),
+        (
+            "DEP_NROS_CPP_CONFIG_INCLUDE",
+            CPP_HEADER_SUBDIR,
+            "nros_cpp_config_generated.h",
+        ),
     ] {
         let dir = env::var(key).map(PathBuf::from).unwrap_or_else(|_| {
             panic!(
@@ -623,7 +632,7 @@ fn per_build_sizes_includes() -> Vec<PathBuf> {
                  (issue 1569)."
             )
         });
-        let file = dir.join("nros").join(header);
+        let file = dir.join(subdir).join(header);
         if !file.is_file() {
             panic!(
                 "the per-build sizes header {} does not exist. Its writer ran (cargo \

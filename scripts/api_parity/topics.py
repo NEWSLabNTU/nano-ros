@@ -584,7 +584,7 @@ def self_test():
     check("SerError", "serde")
     # An override beats even a header, because the header here is one generated
     # file shared by the entire C surface.
-    check2("wake_state_t", "/x/nros/nros_generated.h", "exec")
+    check2("wake_state_t", "/x/rclc/detail/nros_generated.h", "exec")
 
     # Totality: anything at all lands somewhere.
     if topic_of("zzz_no_pattern_matches_this") != "other":

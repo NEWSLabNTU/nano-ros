@@ -233,16 +233,17 @@ nros_board_facts_env_deferred(nros_c-static)
 # ---- In-tree variant header (Phase 137) ----
 # `nros-c`'s build.rs writes the per-build `nros_config_generated.h` to
 # `${CORROSION_BUILD_DIR}/nros_config_generated.h` (== this file's
-# `CMAKE_CURRENT_BINARY_DIR`). Consumers `#include <nros/nros_config_generated.h>`
-# — i.e. through a `nros/` subdir. The install-time path materialises that
-# layout under `<prefix>/include/nros_c/nros/`; for in-tree consumers
+# `CMAKE_CURRENT_BINARY_DIR`). Consumers `#include <rclc/detail/nros_config_generated.h>`
+# — i.e. through a `rclc/detail/` subdir (phase-501 W2). For in-tree consumers
 # (Phase 137 `add_subdirectory(...)`) we mirror the header into a sibling
-# `include/nros/` dir and add it to `nros_c-static`'s INTERFACE so any
+# `include/rclc/detail/` dir and add it to `nros_c-static`'s INTERFACE so any
 # target linking against `nros_c-static` (or the `NanoRos::NanoRos`
 # umbrella declared at the root) gets the per-build sizes without an
 # install step.
 set(_nros_c_intree_include_dir "${CMAKE_CURRENT_BINARY_DIR}/include")
-file(MAKE_DIRECTORY "${_nros_c_intree_include_dir}/nros")
+include("${CMAKE_CURRENT_LIST_DIR}/../../../cmake/NanoRosArtifactLayout.cmake")
+nros_generated_header_subdir(_nros_c_hdr_sub c)
+file(MAKE_DIRECTORY "${_nros_c_intree_include_dir}/${_nros_c_hdr_sub}")
 # Issue 0088 — mirror as a first-class OUTPUT + custom target, NOT a POST_BUILD
 # side effect. A `POST_BUILD` on `cargo-build_nros_c` with only `BYPRODUCTS`
 # gives consumers no real Ninja edge to the mirrored file: `add_dependencies(
@@ -251,7 +252,7 @@ file(MAKE_DIRECTORY "${_nros_c_intree_include_dir}/nros")
 # stub header (intermittent by build order). An `OUTPUT` command + a custom target
 # (`nros_c_config_header`) that consumers `add_dependencies` on is the proper
 # producer→consumer edge.
-set(_nros_c_gen_config_header "${_nros_c_intree_include_dir}/nros/nros_config_generated.h")
+set(_nros_c_gen_config_header "${_nros_c_intree_include_dir}/${_nros_c_hdr_sub}/nros_config_generated.h")
 # Issue 0268 — `DEPENDS <target-name>` alone is ORDER-ONLY in the generated Ninja
 # graph (`|| cargo-build_nros_c`): it guarantees the cargo build runs FIRST, but a
 # rebuilt crate never makes this copy out of date, so an incremental build that
@@ -269,7 +270,7 @@ set(_nros_c_gen_config_header "${_nros_c_intree_include_dir}/nros/nros_config_ge
 # after the first. The script falls back to the leaf-independent
 # `nros-c-generated/` copy, which is the same bytes.
 include("${CMAKE_CURRENT_LIST_DIR}/../../../cmake/NanoRosConfigHeaderMirror.cmake")
-nros_generated_dir(_nros_c_gendir c)
+nros_generated_subpath(_nros_c_gendir c)
 nros_config_header_mirror(nros_c_config_header cargo-build_nros_c
     "${CMAKE_CURRENT_BINARY_DIR}/nros_config_generated.h"
     "${_nros_c_gendir}" "nros_config_generated.h"

@@ -3,7 +3,7 @@
 //! 1. Reads nros-c-specific env vars and `DEP_NROS_NODE_*` metadata (from
 //!    nros-node's `links = "nros_node"`) to generate `nros_c_config.rs`.
 //! 2. Generates a C config header with the opaque executor storage size.
-//! 3. Runs cbindgen to generate `include/nros/nros_generated.h`.
+//! 3. Runs cbindgen to generate `include/rclc/detail/nros_generated.h`.
 //!
 //! The opaque storage size is an upper bound computed from the executor's
 //! arena, entries, and overhead. A compile-time assertion in executor.rs
@@ -550,7 +550,7 @@ fn read_template(manifest_dir: &Path, name: &str) -> String {
         .unwrap_or_else(|err| panic!("nros-c: read template {}: {err}", path.display()))
 }
 
-/// Generate `include/nros/nros_generated.h` using cbindgen.
+/// Generate `include/rclc/detail/nros_generated.h` using cbindgen.
 ///
 /// cbindgen reads Rust source files and generates C header declarations
 /// for all `#[repr(C)]` structs, enums, type aliases, constants, and
@@ -560,7 +560,7 @@ fn generate_header(manifest_dir: &Path) {
     generate_cbindgen_header(
         manifest_dir,
         "cbindgen.toml",
-        "include/nros/nros_generated.h",
+        "include/rclc/detail/nros_generated.h",
     );
 }
 

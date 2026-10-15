@@ -78,10 +78,10 @@ EXTRA_LIBPATHS+= -L$(NROS_CARGO_LIB_DIR)
 endif
 
 # Phase 157.C.8 — per-build `nros_config_generated.h` lands at
-# `$CARGO_TARGET_DIR/nros-c-generated/nros/` after `cargo build
-# -p nros-c`. Add the parent dir to the include path FIRST (gcc
-# resolves `-I` left-to-right) so user code's `#include <nros/
-# nros_generated.h>` picks up the per-build variant header
+# `$CARGO_TARGET_DIR/nros-c-generated/rclc/detail/` after `cargo build
+# -p nros-c` (phase-501 W2). Add `nros-c-generated` to the include path
+# FIRST (gcc resolves `-I` left-to-right) so `#include
+# <rclc/detail/nros_config_generated.h>` picks up the per-build variant header
 # instead of the source-tree stub (which deliberately errors via
 # `#error` to flag mis-configured builds).
 # Where that directory is, is `nros locate artifact c-include` (above).
@@ -89,7 +89,7 @@ NROS_C_GENERATED_INCLUDE := $(call nros_artifact,c-include)
 CFLAGS += ${INCDIR_PREFIX}$(NROS_C_GENERATED_INCLUDE)
 
 # CFLAGS — surface the nano-ros C headers to user code that
-# `#include <nros/...>`. Same symlink-resolution applies; route
+# `#include <rclc/...>` (and `<rcl/...>`, ...). Same symlink-resolution applies; route
 # through the repo-root realpath.
 CFLAGS += ${INCDIR_PREFIX}$(NANO_ROS_ROOT_DEFS)/packages/api/nros-c/include
 

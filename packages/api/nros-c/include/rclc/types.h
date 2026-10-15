@@ -10,7 +10,7 @@
  *
  * Keeping `types.h` preserves backward compatibility for downstream
  * code that already includes it. New code can include
- * `<nros/nros_generated.h>` (or any specific module header) directly.
+ * `<rclc/detail/nros_generated.h>` (or any specific module header) directly.
  *
  * Copyright 2024 nros contributors
  * Licensed under Apache-2.0
@@ -20,8 +20,8 @@
 #define NROS_TYPES_H
 
 #include "rclc/visibility_control.h"
-#include "nros/nros_config_generated.h"
-#include "nros/nros_generated.h"
+#include "rclc/detail/nros_config_generated.h"
+#include "rclc/detail/nros_generated.h"
 /* RFC-0088 D5 — NROS_SERIALIZATION_FORMAT{,_ID} plus the per-message
    compile-time assertion generated message headers emit. Included here so a
    generated header reaches it through its single `<rclc/types.h>` include. */

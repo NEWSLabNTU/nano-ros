@@ -1091,7 +1091,7 @@ function(nano_ros_entry)
     # Issue 0114 — the header-mirror race (issues 0088/0090) ALSO hits the NATIVE
     # (posix) C/C++ cmake fixtures, which the embedded-only block above skips. An
     # example like cpp `safety-listener` compiles `main.cpp` (→ <nros/nros.hpp> →
-    # <nros/nros_generated.h> → the `*_OPAQUE_U64S` sizes) BEFORE Corrosion's
+    # <rclc/detail/nros_generated.h> → the `*_OPAQUE_U64S` sizes) BEFORE Corrosion's
     # `nros_{c,cpp}_config_header` mirror custom command runs. The mirror dir is on
     # the include path AHEAD of the in-tree stub, but the mirrored file does not
     # exist yet, so the compile falls through to the stub (`#error` /

@@ -1,7 +1,7 @@
 # NanoRosArtifactLayout.cmake — the names of the per-build header directories
 # (issue 1852, RFC-0103 D7).
 #
-# The `nros-c` / `nros-cpp` build scripts write `<dir>/nros/<header>` where
+# The `nros-c` / `nros-cpp` build scripts write `<dir>/<subdir>/<header>` where
 # `<dir>` is `nros-c-generated` / `nros-cpp-generated`. The ONE definition is
 # `nros_build_paths::artifact::{C,CPP}_GENERATED_DIR` (Rust). A cargo target
 # dir is asked through `nros_locate_artifact()`; this module serves the cmake
@@ -44,10 +44,43 @@ function(nros_generated_dir _out _lang)
     set(${_out} "${CMAKE_MATCH_1}" PARENT_SCOPE)
 endfunction()
 
+# nros_generated_header_subdir(<out> <c|cpp>)
+#   Where under an include root that language's generated headers sit:
+#   `rclc/detail` for C (phase-501 W2), `nros` for C++. Read from
+#   `artifact.rs` (`C_HEADER_SUBDIR` / `CPP_HEADER_SUBDIR`), like the dir names.
+function(nros_generated_header_subdir _out _lang)
+    if(_lang MATCHES "^c$")
+        set(_const C_HEADER_SUBDIR)
+    elseif(_lang MATCHES "^cpp$")
+        set(_const CPP_HEADER_SUBDIR)
+    else()
+        message(FATAL_ERROR "nros_generated_header_subdir: language must be `c` or `cpp`, got `${_lang}`")
+    endif()
+    file(STRINGS "${_NROS_ARTIFACT_RS}" _line
+        REGEX "^pub const ${_const}: &str = \"[^\"]+\";")
+    if(NOT _line MATCHES "\"([^\"]+)\"")
+        message(FATAL_ERROR
+            "nros_generated_header_subdir: no `pub const ${_const}: &str = \"…\";` in "
+            "${_NROS_ARTIFACT_RS} — update this reader with the constant.")
+    endif()
+    set(${_out} "${CMAKE_MATCH_1}" PARENT_SCOPE)
+endfunction()
+
 # nros_generated_header(<out> <root> <c|cpp> <file>)
-#   `<root>/<dir>/nros/<file>` — a per-build header under a mirror or include
-#   root, e.g. `nros_generated_header(_h "${_gen_dir}" c nros_config_generated.h)`.
+#   `<root>/<dir>/<subdir>/<file>` — a per-build header under a mirror or
+#   include root, e.g. `nros_generated_header(_h "${_gen_dir}" c
+#   nros_config_generated.h)` → `…/nros-c-generated/rclc/detail/…`.
 function(nros_generated_header _out _root _lang _file)
     nros_generated_dir(_dir "${_lang}")
-    set(${_out} "${_root}/${_dir}/nros/${_file}" PARENT_SCOPE)
+    nros_generated_header_subdir(_sub "${_lang}")
+    set(${_out} "${_root}/${_dir}/${_sub}/${_file}" PARENT_SCOPE)
+endfunction()
+
+# nros_generated_subpath(<out> <c|cpp>)
+#   `<dir>/<subdir>` — what `mirror-generated-header.sh` takes as <gen-subdir>,
+#   e.g. `nros-c-generated/rclc/detail`.
+function(nros_generated_subpath _out _lang)
+    nros_generated_dir(_dir "${_lang}")
+    nros_generated_header_subdir(_sub "${_lang}")
+    set(${_out} "${_dir}/${_sub}" PARENT_SCOPE)
 endfunction()

@@ -24,13 +24,16 @@ Run: python3 scripts/check-c-api-nros-names.py [--write-baseline]
 from __future__ import annotations
 
 import re
+import subprocess
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MAP = ROOT / "docs" / "reference" / "c-api-rename-map.tsv"
 BASELINE = ROOT / ".config" / "c-api-nros-names-baseline.txt"
-C_INCLUDE = ROOT / "packages" / "api" / "nros-c" / "include" / "nros"
+# The whole nros-c include tree. It read `include/nros/` until phase-501 moved
+# the headers into `rclc/`, which left it scanning an empty directory.
+C_INCLUDE = ROOT / "packages" / "api" / "nros-c" / "include"
 TOKEN = re.compile(r"\b(nros_[a-z0-9_]+|NROS_[A-Z0-9_]+)\b")
 COMMENT = re.compile(r"/\*.*?\*/|//[^\n]*", re.S)
 STRING = re.compile(r'"(?:\\.|[^"\\])*"')
@@ -56,8 +59,16 @@ def tokens_of(text, name, out):
 
 def header_tokens():
     out = {}
-    for f in sorted(C_INCLUDE.glob("*.h")):
-        tokens_of(f.read_text(errors="replace"), f.name, out)
+    rel = C_INCLUDE.relative_to(ROOT)
+    listed = subprocess.run(["git", "-C", str(ROOT), "ls-files", "--", f"{rel}/*.h"],
+                            capture_output=True, text=True, check=True).stdout.split()
+    headers = sorted(ROOT / p for p in listed)
+    if len(headers) < 40:
+        print(f"check-c-api-nros-names: only {len(headers)} header(s) under {C_INCLUDE} — "
+              "the listing broke; refusing a vacuous pass", file=sys.stderr)
+        sys.exit(1)
+    for f in headers:
+        tokens_of(f.read_text(errors="replace"), str(f.relative_to(C_INCLUDE)), out)
     return out
 
 

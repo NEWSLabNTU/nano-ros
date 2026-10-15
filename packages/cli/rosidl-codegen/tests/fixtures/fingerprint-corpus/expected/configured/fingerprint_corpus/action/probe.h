@@ -23,7 +23,7 @@
 // Issue 0346 — borrowed views use rclc_view_str_t / the LE slice views.
 #include <rclc/detail/view.h>
 
-#include <nros/nros_config_generated.h>
+#include <rclc/detail/nros_config_generated.h>
 
 /* RFC-0090 — emitted by nano-ros codegen version 17. */
 #define NROS_EMITTED_CODEGEN_VERSION 17
