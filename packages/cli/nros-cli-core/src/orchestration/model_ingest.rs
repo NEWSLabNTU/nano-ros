@@ -1636,6 +1636,60 @@ mod monitor_tests {
         assert_eq!(rows[0].route_max_latency_ms, 0);
     }
 
+    /// phase-503 W5 -- `supervise:` on an input-triggered node path (play_launch
+    /// phase 93's lowering) reaches the route row: the deadline, the reaction
+    /// path id numbered from 1, the mechanism code; the generated Rust table
+    /// carries them. A supervised path with no wired trigger is refused.
+    #[test]
+    fn a_supervised_path_bakes_its_deadline_reaction_and_mechanism() {
+        use ros_launch_manifest_model::{PathContract, SuperviseContract, SuperviseMechanism};
+        let mut m = model_with_contract();
+        m.structure.topics.insert(
+            "/sensing/scan".to_string(),
+            TopicWiring {
+                msg_type: "std_msgs/msg/String".to_string(),
+                publishers: vec![],
+                subscribers: vec!["/perception/detector/scan".to_string()],
+            },
+        );
+        let supervised = |input: &str| PathContract {
+            input: vec![input.to_string()],
+            output: vec!["/perception/detector/objects".to_string()],
+            max_latency_ms: Some(149.0),
+            supervise: Some(SuperviseContract {
+                route_deadline_ms: 149.0,
+                reaction: "/perception/detector/brake_now".to_string(),
+                mechanism: SuperviseMechanism::Timer,
+            }),
+            ..Default::default()
+        };
+        m.contracts.node_paths.insert(
+            "/perception/detector/react".to_string(),
+            supervised("/perception/detector/scan"),
+        );
+        let rows = monitor_rows(&m).expect("rows");
+        assert_eq!(rows.len(), 1);
+        let r = &rows[0];
+        assert_eq!(r.route_max_latency_ms, 149);
+        assert_eq!(r.route_deadline_ms, 149);
+        assert_eq!(r.reaction, "/perception/detector/brake_now");
+        assert_eq!(r.reaction_id, 1);
+        assert_eq!(r.mechanism, 1, "timer");
+        let rs = render_monitor_rs(&rows, &[]);
+        assert!(
+            rs.contains("route_deadline_ms: 149u32, reaction_id: 1u16, mechanism: 1u8"),
+            "{rs}"
+        );
+
+        // A supervised path whose trigger is on no topic: nothing could watch it.
+        m.contracts.node_paths.insert(
+            "/perception/detector/unwired".to_string(),
+            supervised("/perception/detector/nowhere"),
+        );
+        let err = monitor_rows(&m).unwrap_err().to_string();
+        assert!(err.contains("/perception/detector/unwired"), "{err}");
+    }
+
     /// phase-462 W2 -- a model whose subscription declares `on_violation` and
     /// whose reaction path declares `miss.action`.
     fn model_with_on_violation(
