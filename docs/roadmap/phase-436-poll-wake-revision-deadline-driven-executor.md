@@ -888,18 +888,35 @@ wiring that came before it, and both worth a decision rather than a drift:
   path still parks on `wake_wait_ms`. `nros_rtos_run_components.c` is shared
   by every RTOS board and cannot assume the OPTIONAL park symbols exist, which
   is why it was not simply extended here.
-* **A park nobody signals is not broken by data.** The park waits on the
-  executor's own wake object, which the backend signals only when the backend
-  installed a wake callback on that executor. A spawned tier over a BORROWED
-  session installs none (`install_wake_signal_on_primary` runs for the owner
-  only), and a poll-only backend (XRCE) has none to install; on those the park
-  sleeps its bound and the transport is then drained non-blockingly. Before a
-  park was installed the same executors blocked in the transport's own recv
-  for the same bound, and on multi-threaded zenoh-pico that is itself a
-  `z_sleep_ms`, so for zenoh tiers the trade is even. For XRCE it is not, and
-  gating the park on `has_async_wake` would lose the declared granularity on
-  exactly the spawned tiers that need it — so it is left as a recorded open
-  question rather than fixed in passing.
+* **A park nobody signals is not broken by data. RESOLVED (2026-10-15).**
+  The park waits on the executor's own wake object, which the backend
+  signalled only for the executor that installed into its single wake slot.
+  Every board's spawned tiers open over the boot executor's session, so their
+  wake objects were never signalled and a tier park slept out its bound before
+  seeing data; a poll-only backend (XRCE) has no callback at all. Two changes,
+  both in `nros-node`'s executor:
+  * **The park is gated on a live wake.** `spin_once` parks only when
+    `async_wake_live()`; otherwise it keeps the receive-blocking wait, so a
+    poll-only backend never sleeps blind (the Phase 127.C.4 stall). Builds
+    without `alloc` + `rmw-cffi` have no wake callback and park as before.
+  * **One session wakes every executor over it.** The backend's slot now
+    holds a wake fan-out (`executor/wake_fanout.rs`): a `static` pool entry
+    keyed by the session, whose callback signals every member. Each executor
+    joins on install, which `open_with_session*` now does too, so spawned
+    tiers and several C executors over one `rclc_support_t` are all woken. A
+    member's teardown is leaving; the callback comes off the backend with the
+    session's owner or its last member, after waiting out any callback in
+    flight. The cost: every arrival wakes every member, since the callback
+    does not say whose data arrived. Waking only the owning tier needs
+    per-entity routing through each backend.
+
+  Tested: five unit tests on the fan-out (every member woken, a left member
+  not woken, release makes memberships dead and their late `leave` harmless to
+  the entry's next tenant, a full table refuses, `leave` waits out a callback
+  in flight), and part 5 of `nros-c`'s `executor_backend_wake.c` (two live C
+  executors over one session: both woken, the slot survives the first `fini`,
+  the last `fini` clears it). On `main`'s executor that part fails 4 checks:
+  the first of the two executors waits its full 400 ms.
 
 ### Path D — Waits that still bypass the waker.
 

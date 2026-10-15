@@ -84,6 +84,9 @@ mod node;
 pub mod node_record;
 #[cfg(any(has_rmw, test))]
 mod node_wake;
+// phase-436 -- one backend wake slot shared by every executor over a session.
+#[cfg(any(all(feature = "alloc", feature = "rmw-cffi"), test))]
+pub(crate) mod wake_fanout;
 // phase-359 W10 — the per-OS-priority worker pool, ported off `std::thread`
 // onto the platform task ABI so it is reachable on every platform.
 //

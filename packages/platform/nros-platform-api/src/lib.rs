@@ -1158,6 +1158,19 @@ pub fn stack_unused_bytes() -> usize {
     unsafe { nros_platform_task_stack_unused_bytes() }
 }
 
+/// Give up the processor to another ready task, through the port's
+/// `nros_platform_yield_now`. For a thread that must wait for another to
+/// finish a short critical step (phase-436's wake fan-out waits out a backend
+/// callback this way) without spinning a single core it shares with that
+/// thread.
+pub fn yield_now() {
+    unsafe extern "C" {
+        fn nros_platform_yield_now();
+    }
+    // SAFETY: no arguments, no return value; every port defines it.
+    unsafe { nros_platform_yield_now() }
+}
+
 /// [`stack_unused_bytes`], capped at `limit`: `min(unused, limit)`, reading at
 /// most `limit` bytes of the calling task's stack (phase-436 E5).
 ///
