@@ -70,6 +70,7 @@ RULES = (
     "timer-overrun-runtime",
     "release-jitter-runtime",
     "route-latency-runtime",
+    "route-deadline-runtime",
 )
 
 
