@@ -1385,7 +1385,7 @@ fn test_rtos_service_e2e(
 
 /// End-to-end action (goal / feedback / result). First node is the
 /// action server; second is the action client. We assert the client
-/// saw "Goal accepted" plus the terminal `Result received: [...]` line
+/// got its goal accepted (`output::action_goal_accepted`) plus the terminal `Result received: [...]` line
 /// (phase-277 W5 demo wording).
 // Phase 182.5 — action is the wall-clock critical path (90–270 s/cell ×
 // retries). Keep **all three language bindings** (each exercises distinct
@@ -1490,7 +1490,7 @@ fn test_rtos_action_e2e(
     eprintln!("Server post-boot:\n{}", server_post);
     eprintln!("Client output:\n{}", client_out);
 
-    let goal_accepted = client_out.contains("Goal accepted");
+    let goal_accepted = nros_tests::output::action_goal_accepted(&client_out);
     let completed = client_out.contains(nros_tests::output::ACTION_RESULT_PREFIX);
 
     // Issue 0870 — a failure here is now ANSWERABLE from the output above, and
