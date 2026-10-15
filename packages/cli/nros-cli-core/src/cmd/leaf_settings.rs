@@ -1071,6 +1071,19 @@ fn settings_include_rel(image_id: &str) -> String {
     format!("../build/{image_id}/{}", cargo_config::FILE_NAME)
 }
 
+/// Is this `include` entry of a leaf's `.cargo/config.toml` the generated
+/// settings file ([`settings_include_rel`], for any image)?
+///
+/// ONE spelling for both readers of the family: the writer below, which
+/// re-decides the whole family on every sync, and the metadata probe, which
+/// must never read it (issue 1920 — the file is written AFTER the probe, by the
+/// stage that consumes the probe's output, so reading it made a missing one
+/// absorbing).
+#[must_use]
+pub fn is_settings_include(entry: &str) -> bool {
+    entry.starts_with("../build/") && entry.ends_with(cargo_config::FILE_NAME)
+}
+
 /// Issue 1381 — make the leaf STANDALONE: `nros sync` + `cargo build` inside it.
 ///
 /// The generated settings file is a `--config` file, and cargo does not
@@ -1133,7 +1146,7 @@ fn wire_settings_into_leaf_config(leaf: &Path, image_id: &str, who: &str) -> Res
     // missing `include` target is a HARD cargo error during manifest parse, not
     // a silent drop (issue 0463). So the whole family is re-decided, never just
     // appended to.
-    let is_ours = |s: &str| s.starts_with("../build/") && s.ends_with(cargo_config::FILE_NAME);
+    let is_ours = is_settings_include;
     let mut desired: Vec<String> = current.iter().filter(|s| !is_ours(s)).cloned().collect();
     desired.push(want);
     if current == desired {

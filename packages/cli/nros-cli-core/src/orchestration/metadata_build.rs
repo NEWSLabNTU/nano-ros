@@ -567,15 +567,15 @@ fn patch_rows_of(file: &Path) -> Result<toml::Table> {
     let mut merged = toml::Table::new();
     // `include` — a string, or an array of strings / `{ path, optional }`
     // tables, each relative to the including file.
-    let includes: Vec<(PathBuf, bool)> = match doc.get("include") {
-        Some(toml::Value::String(s)) => vec![(here.join(s), false)],
+    let includes: Vec<(&str, bool)> = match doc.get("include") {
+        Some(toml::Value::String(s)) => vec![(s.as_str(), false)],
         Some(toml::Value::Array(a)) => a
             .iter()
             .filter_map(|v| match v {
-                toml::Value::String(s) => Some((here.join(s), false)),
+                toml::Value::String(s) => Some((s.as_str(), false)),
                 toml::Value::Table(t) => t.get("path").and_then(|p| p.as_str()).map(|p| {
                     (
-                        here.join(p),
+                        p,
                         t.get("optional").and_then(|o| o.as_bool()).unwrap_or(false),
                     )
                 }),
@@ -584,13 +584,30 @@ fn patch_rows_of(file: &Path) -> Result<toml::Table> {
             .collect(),
         _ => Vec::new(),
     };
-    for (inc, optional) in includes {
+    for (entry, optional) in includes {
+        // Issue 1920 — the leaf's generated settings file
+        // (`build/<image>/nros-cargo.toml`) is written by the stage AFTER the
+        // probe, from the probe's output, so the probe never reads it: present,
+        // it is the previous sync's copy; absent (a removed `build/`), reading
+        // it failed the probe, which failed sync before the stage that would
+        // have recreated it — every later sync the same. Its `[patch]` rows are
+        // not lost: sync writes the same rows into this config's own managed
+        // block and the central patch include BEFORE the probe runs
+        // (`write_patch_block`).
+        if crate::cmd::leaf_settings::is_settings_include(entry) {
+            continue;
+        }
+        let inc = here.join(entry);
         if !inc.is_file() {
             if optional {
                 continue;
             }
+            // Never "run `nros sync`": this runs INSIDE sync (issue 1920).
             bail!(
-                "{} includes {}, which does not exist — run `nros sync`",
+                "{} includes {}, which does not exist. cargo refuses to read a config \
+                 whose `include` target is missing (issue 0463), so nothing can resolve \
+                 this package until that file is restored or the entry is removed from \
+                 `include`.",
                 file.display(),
                 inc.display()
             );
@@ -1241,6 +1258,85 @@ mod tests {
             .unwrap();
         let text = std::fs::read_to_string(&only_ws).unwrap();
         assert!(!text.contains("packages/api/nros"), "{text}");
+    }
+
+    /// Issue 1920 — the leaf's generated settings include is the output of the
+    /// stage AFTER the probe, so the probe never reads it. Absent (a removed
+    /// `build/`), reading it failed the probe, which failed `nros sync` before
+    /// the stage that would have written it: every later sync the same.
+    /// Present, its rows are the previous sync's copy of rows the leaf's own
+    /// managed block already carries.
+    #[test]
+    fn the_probe_never_reads_the_generated_settings_include() {
+        let root = tempfile::tempdir().unwrap();
+        let cwd = root.path().join("checkout");
+        let leaf = root.path().join("leaf");
+        let harness = leaf.join("build/nros-metadata/metadata-probe/c");
+        std::fs::create_dir_all(&cwd).unwrap();
+        std::fs::create_dir_all(leaf.join(".cargo")).unwrap();
+        std::fs::create_dir_all(&harness).unwrap();
+        std::fs::write(
+            root.path().join("nros-patch.toml"),
+            "[patch.crates-io]\nnros = { path = \"/checkout/packages/api/nros\" }\n",
+        )
+        .unwrap();
+        std::fs::write(
+            leaf.join(".cargo/config.toml"),
+            "include = [\"../../nros-patch.toml\", \"../build/linux/nros-cargo.toml\"]\n\
+             [patch.crates-io]\nnros-rmw-zenoh = { path = \"../rmw\" }\n",
+        )
+        .unwrap();
+
+        // The absorbing state: the include names a settings file nothing wrote.
+        let out = probe_patch_config(&harness, &leaf, &cwd)
+            .expect("a missing generated settings include must not fail the probe")
+            .expect("the leaf's own rows remain");
+        let text = std::fs::read_to_string(&out).unwrap();
+        let doc: toml::Table = text.parse().unwrap();
+        let crates = doc["patch"]["crates-io"].as_table().unwrap();
+        assert!(crates.contains_key("nros"), "{text}");
+        assert!(crates.contains_key("nros-rmw-zenoh"), "{text}");
+
+        // Present: still not read, so the probe's rows do not depend on
+        // whether a later stage has run.
+        std::fs::create_dir_all(leaf.join("build/linux")).unwrap();
+        std::fs::write(
+            leaf.join("build/linux/nros-cargo.toml"),
+            "[patch.crates-io]\nfrom-a-later-stage = { path = \"x\" }\n",
+        )
+        .unwrap();
+        let out = probe_patch_config(&harness, &leaf, &cwd).unwrap().unwrap();
+        let again = std::fs::read_to_string(&out).unwrap();
+        assert!(!again.contains("from-a-later-stage"), "{again}");
+        assert_eq!(
+            text, again,
+            "the probe's rows changed with a later stage's file"
+        );
+    }
+
+    /// Issue 1920 — a missing `include` that is NOT the generated settings file
+    /// is still the leaf's error, and its text names what to do about it. It is
+    /// raised inside `nros sync`, so naming `nros sync` as the remedy would send
+    /// the operator round the same loop.
+    #[test]
+    fn a_missing_include_names_a_remedy_other_than_the_failing_command() {
+        let root = tempfile::tempdir().unwrap();
+        let leaf = root.path().join("leaf");
+        std::fs::create_dir_all(leaf.join(".cargo")).unwrap();
+        std::fs::write(
+            leaf.join(".cargo/config.toml"),
+            "include = [\"gone.toml\"]\n",
+        )
+        .unwrap();
+        let err = patch_rows_of(&leaf.join(".cargo/config.toml"))
+            .expect_err("a missing hand-written include is an error");
+        let msg = format!("{err:#}");
+        assert!(msg.contains("gone.toml"), "{msg}");
+        assert!(msg.contains("restored") && msg.contains("removed"), "{msg}");
+        assert!(
+            !msg.contains("nros sync"),
+            "names the failing command: {msg}"
+        );
     }
 
     /// issue 0699 — a RUNTIME failure in the harness must reach the operator.

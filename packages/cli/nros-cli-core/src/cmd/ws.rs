@@ -4713,10 +4713,14 @@ fn write_patch_block(
                 "sync: central patch file `{}` is not readable from `{}` — \
                  cargo raises a missing `include` as a hard error while parsing \
                  the manifest, so every leaf reaching it becomes unreadable (not \
-                 merely unbuildable). Re-run `nros sync` from the nano-ros \
-                 checkout (the file is gitignored + regenerated).",
+                 merely unbuildable). This sync wrote that file a moment ago, so \
+                 re-running it cannot help (issue 1920): the relative `include` \
+                 computed from `{}` does not lead back to it, which is a defect \
+                 in that computation (a symlinked spelling of either path is the \
+                 known way in), not stale state.",
                 resolved.display(),
                 authority_dir.display(),
+                authority_dir.join(".cargo").display(),
             );
         }
     }
