@@ -93,10 +93,12 @@ fail() { echo "check-entity-census: FAIL -- $*" >&2; exit 1; }
 # report a refusal. The helper's own header says this; it is repeated here
 # because the wrong spelling is the natural one.
 nros=""
+# `$NROS_CLI` is asked of `nros_cli_bin`, never read raw: the resolver
+# re-roots an inherited value naming ANOTHER checkout (issue 1928).
 resolve_nros() {
     local c help
     for c in \
-        "${NROS_CLI:-}" \
+        "$(if [ -n "${NROS_CLI:-}" ]; then nros_cli_bin 2>/dev/null; fi || true)" \
         "${CARGO_TARGET_DIR:-}/release/nros" \
         "${CARGO_TARGET_DIR:-}/debug/nros" \
         "$(nros_cli_bin --checkout-only 2>/dev/null || true)" \

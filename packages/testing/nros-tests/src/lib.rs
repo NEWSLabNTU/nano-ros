@@ -1265,9 +1265,15 @@ fn assert_store_bin_loadable(tool: &str, bin: &std::path::Path) {
 /// there names the PARENT checkout's binary (issue 1280's class). Until the
 /// issue-1850 follow-up this function still had the pre-W2d order and no
 /// checkout rung at all, while its doc claimed to mirror the shell.
+///
+/// `$NROS_CLI` goes through issue 1280's rule first
+/// ([`nros_build_paths::reroot_foreign`], issue 1928): a linked worktree
+/// inherits its parent shell's environment, so a value naming ANOTHER
+/// checkout's build is re-rooted onto this one, while one outside any checkout
+/// (a deliberate out-of-tree CLI) or inside this one is kept.
 pub fn nros_cli_bin_path() -> Option<std::path::PathBuf> {
     if let Some(p) = std::env::var_os("NROS_CLI") {
-        let pb = std::path::PathBuf::from(p);
+        let pb = nros_build_paths::reroot_foreign(&std::path::PathBuf::from(p), &project_root());
         return pb.is_file().then_some(pb);
     }
     let own = nros_build_paths::nros_cli_in_checkout(&project_root());

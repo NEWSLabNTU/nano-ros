@@ -661,6 +661,109 @@ def probe_activation_unexported(tmp: Path) -> list[str]:
     return problems
 
 
+# Issue 1928 -- `$NROS_CLI` is a path-valued variable every resolver reads FIRST
+# (shell `nros_cli_bin`, cmake `nros_resolve_cli`, Rust `nros_cli_bin_path`),
+# and none of the three applied the rule: an inherited value naming the PARENT
+# checkout's build ran that checkout's CLI in every worktree gate. The probe
+# uses a stub path that is NOT rung 2 (`tools/fake-nros`), so a resolver that
+# merely ignored the variable and fell through to this checkout's own build
+# reads differently from one that re-rooted it.
+CARGO_SH = ROOT / "scripts/build/cargo.sh"
+CLI_CMAKE_MODULES = ("NanoRosCli.cmake", "NanoRosStoreRoot.cmake", "NanoRosCheckoutRoot.cmake")
+NROS_TESTS_LIB = ROOT / "packages/testing/nros-tests/src/lib.rs"
+
+
+def _stub(path: Path) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("#!/bin/sh\nexit 0\n")
+    path.chmod(0o755)
+    return path
+
+
+def probe_nros_cli(tmp: Path) -> list[str]:
+    """The CLI override obeys the rule in shell and cmake, both shapes."""
+    problems: list[str] = []
+    outside = _stub(tmp / "opt/cli/nros")
+    have_cmake = shutil.which("cmake") is not None
+    for shape in ("side-by-side", "nested"):
+        base = tmp / f"cli-{shape}"
+        other = make_checkout(base / "main")
+        here = make_checkout(
+            other / ".claude/worktrees/w" if shape == "nested" else base / "worktree"
+        )
+        _stub(other / "tools/fake-nros")
+        _stub(here / "tools/fake-nros")
+        _stub(here / "packages/cli/target/release/nros")
+        cmake_dir = here / "cmake"
+        cmake_dir.mkdir(exist_ok=True)
+        for m in CLI_CMAKE_MODULES:
+            shutil.copy(ROOT / "cmake" / m, cmake_dir / m)
+        cases = [
+            (f"{other}/tools/fake-nros", f"{here}/tools/fake-nros",
+             "a value inside ANOTHER checkout is re-rooted onto this one"),
+            (str(outside), str(outside), "an out-of-tree CLI is KEPT"),
+            (f"{here}/tools/fake-nros", f"{here}/tools/fake-nros",
+             "a value inside THIS checkout is kept"),
+        ]
+        for value, expect, what in cases:
+            rc, got = sh(
+                f'. "{CARGO_SH}"; nros_cli_bin --root "{here}" --checkout-only',
+                env=_clean_env({"NROS_CLI": value}),
+            )
+            if rc != 0 or got != expect:
+                problems.append(
+                    f"nros_cli_bin ({shape}): {what} — NROS_CLI={value!r} -> {got!r} "
+                    f"(rc {rc}), expected {expect!r} (issue 1928)"
+                )
+            if not have_cmake:
+                continue
+            script = tmp / f"cli-probe-{shape}.cmake"
+            script.write_text(
+                f'include("{cmake_dir}/NanoRosCli.cmake")\n'
+                "nros_resolve_cli(_c OPTIONAL)\n"
+                'message("R=${_c}")\n'
+            )
+            p = subprocess.run(
+                ["cmake", "-P", str(script)], capture_output=True, text=True,
+                env=_clean_env({"NROS_CLI": value}),
+            )
+            got = next((l[2:] for l in p.stderr.splitlines() if l.startswith("R=")), None)
+            if got != expect:
+                problems.append(
+                    f"nros_resolve_cli ({shape}): {what} — NROS_CLI={value!r} -> {got!r}, "
+                    f"expected {expect!r} (issue 1928)"
+                )
+        # This checkout's counterpart is NOT built: `--checkout-only` must
+        # answer nothing rather than fall back to the other checkout's binary.
+        (here / "tools/fake-nros").unlink()
+        rc, got = sh(
+            f'. "{CARGO_SH}"; nros_cli_bin --root "{here}" --checkout-only',
+            env=_clean_env({"NROS_CLI": f"{other}/tools/fake-nros"}),
+        )
+        if rc == 0 or got:
+            problems.append(
+                f"nros_cli_bin ({shape}): a foreign NROS_CLI whose counterpart here is "
+                f"unbuilt must resolve to NOTHING under --checkout-only, got {got!r} "
+                f"(rc {rc}) (issue 1928)"
+            )
+    if not have_cmake:
+        sys.path.insert(0, str(ROOT / "scripts/lib"))
+        import check_skip  # noqa: E402  the NOT VERIFIED ledger (issue 1043)
+        check_skip.unverified(
+            "inherited-checkout-paths",
+            "no cmake on PATH: the nros_resolve_cli half of issue 1928 was not probed")
+    # Rust twin: it cannot be driven from here without a compile, so the call
+    # to the one Rust spelling of the rule is pinned instead.
+    body = NROS_TESTS_LIB.read_text()
+    m = re.search(r"pub fn nros_cli_bin_path\(\)[^{]*\{(.*?)\n\}", body, re.S)
+    if not m or "nros_build_paths::reroot_foreign" not in m.group(1):
+        problems.append(
+            f"{NROS_TESTS_LIB.relative_to(ROOT)}: nros_cli_bin_path must put $NROS_CLI "
+            "through nros_build_paths::reroot_foreign (issue 1928)"
+        )
+    return problems
+
+
 def probe_cmake_incremental_root(tmp: Path) -> list[str]:
     """cmake-incremental.sh must not trust a SET foreign root."""
     other = make_checkout(tmp / "other-ci")
@@ -877,6 +980,7 @@ def main() -> int:
         problems += probe_just_nested(tmp)
         problems += probe_activation_unexported(tmp)
         problems += probe_cmake_incremental_root(tmp)
+        problems += probe_nros_cli(tmp)
 
     if problems:
         print("check-inherited-checkout-paths: FAILED (issue 1280)", file=sys.stderr)
@@ -890,7 +994,8 @@ def main() -> int:
         f"{len(NOT_A_PATH)} declared non-path, one checkout marker across "
         f"{len(MARKER_SITES)} spellings, behaviour proven for shell / build-root / just, "
         "in both checkout shapes (side-by-side and nested); unexported names dropped by "
-        "activation and re-rooted by cmake-incremental, foreign caches dropped (issue 1840)"
+        "activation and re-rooted by cmake-incremental, foreign caches dropped (issue 1840); "
+        "$NROS_CLI re-rooted by the shell and cmake resolvers (issue 1928)"
     )
     return 0
 

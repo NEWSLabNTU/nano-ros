@@ -27,7 +27,14 @@
 # did before RFC-0104, and this says so once.
 nros_seed_leaf_lock() {
     local dir="$1"
-    local cli="${NROS_CLI:-${NROS_CLI_BIN:-${nros_cli:-$(nros_cli_bin 2>/dev/null || true)}}}"
+    # `$NROS_CLI` through the resolver, never raw: it re-roots an inherited
+    # value naming ANOTHER checkout (issue 1928).
+    local cli
+    if [ -n "${NROS_CLI:-}" ]; then
+        cli="$(nros_cli_bin 2>/dev/null || true)"
+    else
+        cli="${NROS_CLI_BIN:-${nros_cli:-$(nros_cli_bin 2>/dev/null || true)}}"
+    fi
     if [ -z "$cli" ]; then
         echo "   (no nros CLI: $dir resolves without the registry pin set)" >&2
         return 0
@@ -478,7 +485,10 @@ nros_cli_bin() {
     # nros_cli_bin [--checkout-only]
     #
     # Phase 218.D.3, reordered by phase-484 W2d (RFC-0103 D6) — resolution order:
-    #   1. $NROS_CLI                                — explicit override
+    #   1. $NROS_CLI                                — explicit override,
+    #                                                 re-rooted onto this
+    #                                                 checkout when it names
+    #                                                 ANOTHER one (issue 1928)
     #   2. <this checkout>/packages/cli/target/release/nros
     #                                               — the checkout these scripts
     #                                                 are in, found from this
@@ -512,15 +522,6 @@ nros_cli_bin() {
         esac
         shift
     done
-    if [ -n "${NROS_CLI:-}" ]; then
-        if [ -x "$NROS_CLI" ]; then
-            printf '%s\n' "$NROS_CLI"
-            return 0
-        fi
-        [ "$_checkout_only" = 1 ] && return 1
-        echo "NROS_CLI points to a non-executable path: $NROS_CLI" >&2
-        return 2
-    fi
     # This file lives at <repo>/scripts/build/cargo.sh.
     local repo_root="$_root" _self
     _self="${BASH_SOURCE[0]:-}"
@@ -532,6 +533,40 @@ nros_cli_bin() {
     else
         # An imported (`export -f`) copy — see `_NROS_CLI_BIN_ROOT` above.
         repo_root="${_NROS_CLI_BIN_ROOT:-}"
+    fi
+    if [ -n "${NROS_CLI:-}" ]; then
+        # Issue 1928 — rung 1 is an INHERITED value as often as an explicit
+        # one: a linked worktree inherits its parent shell's environment, and
+        # an `NROS_CLI` naming the parent checkout's build made every gate here
+        # run that checkout's (older) binary, `--checkout-only` included. So
+        # the value goes through issue 1280's rule, `nros_reroot_checkout_path`:
+        # outside any checkout -> kept (a deliberate out-of-tree CLI); inside
+        # THIS checkout -> kept; inside ANOTHER -> re-rooted here, so it names
+        # this checkout's build. Only when <repo_root> IS a checkout: an
+        # installed SDK root has nothing to re-root onto.
+        local _cli="$NROS_CLI"
+        if [ -n "$repo_root" ] && ! command -v nros_reroot_checkout_path >/dev/null 2>&1; then
+            local _lib="${_NROS_CLI_BIN_ROOT:-$repo_root}/scripts/lib/checkout-paths.sh"
+            # shellcheck source=scripts/lib/checkout-paths.sh
+            if [ -f "$_lib" ]; then . "$_lib"; fi
+        fi
+        if [ -n "$repo_root" ] && [ -n "${NROS_CHECKOUT_MARKER:-}" ] \
+            && [ -f "$repo_root/$NROS_CHECKOUT_MARKER" ] \
+            && command -v nros_reroot_checkout_path >/dev/null 2>&1; then
+            _cli="$(nros_reroot_checkout_path "$NROS_CLI" "$repo_root")"
+        fi
+        if [ -x "$_cli" ]; then
+            printf '%s\n' "$_cli"
+            return 0
+        fi
+        [ "$_checkout_only" = 1 ] && return 1
+        if [ "$_cli" != "$NROS_CLI" ]; then
+            echo "NROS_CLI names another checkout's CLI ($NROS_CLI); re-rooted onto this" >&2
+            echo "checkout as $_cli, which is not built (issue 1928). Run: just setup-cli" >&2
+        else
+            echo "NROS_CLI points to a non-executable path: $NROS_CLI" >&2
+        fi
+        return 2
     fi
     # host-tool-path-ok: rung 2 IS the definition (`setup-cli` writes here).
     if [ -n "$repo_root" ] && [ -x "$repo_root/packages/cli/target/release/nros" ]; then
