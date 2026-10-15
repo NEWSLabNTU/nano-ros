@@ -972,6 +972,29 @@ mod tests {
         }
     }
 
+    /// RFC-0047 — workspace discovery (the reader `nros sync`, `nros check`
+    /// and `codegen-system` share) refuses the retired manifest
+    /// `callback_groups` binding in every component shape, through the same
+    /// message the schema gives.
+    #[test]
+    fn a_retired_manifest_callback_groups_binding_is_refused_by_name() {
+        let groups = serde_json::json!([{"id": "ctrl", "tier": "high"}]);
+        for body in [
+            serde_json::json!({"nros": {"component": {"callback_groups": groups}}}),
+            serde_json::json!({"nros": {"node": {"callback_groups": groups}}}),
+            serde_json::json!({"nros": {"components": {"A": {"callback_groups": groups}}}}),
+            serde_json::json!({"nros": {"nodes": {"A": {"callback_groups": groups}}}}),
+        ] {
+            let err = parse_package_metadata_nros(&body)
+                .expect_err("a retired binding must not parse silently");
+            assert!(err.contains("RETIRED"), "{err}");
+            assert!(
+                err.contains("group_tiers = { ctrl = \"high\" }"),
+                "the refusal must spell the replacement: {err}"
+            );
+        }
+    }
+
     /// And the refusal must not fire on a component that carries none — the
     /// arm that would make every workspace in the tree unreadable.
     #[test]

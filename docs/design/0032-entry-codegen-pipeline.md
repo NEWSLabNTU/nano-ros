@@ -273,8 +273,10 @@ serde + thiserror only) owns the tier schema (`TierDef`, `TierRtosSpec`,
 - `nros-cli-core` path-deps it (re-exports the types; `codegen-system` calls it).
 - `nros-macros` path-deps it (same workspace) and calls the *same* function at
   expansion. The archived GitHub `nros-build` git-dep is untouched — the macro
-  reads `system.toml` + node `[package.metadata.nros.node].callback_groups`
-  itself and feeds the shared resolver.
+  reads `system.toml` (`[[component]] group_tiers`, RFC-0047) itself and feeds
+  the shared resolver. (The node manifest's `[package.metadata.nros.node]
+  callback_groups`, the binding's original home, is retired and refused at
+  parse.)
 
 `resolve_tiers` takes the **decomposed** inputs `(tiers, node_overrides,
 component_names, callback_groups, target_rtos)` rather than a whole `SystemToml`,
@@ -283,7 +285,7 @@ so the leaf crate stays free of the full CLI config type. The macro derives
 `freertos`, …).
 
 ```
-launch tree + system.toml + node callback_groups
+launch tree + system.toml (tiers + group_tiers)
         │
         ├── nros codegen-system ──► resolve_tiers ──► nros-plan.json (bake / RFC-0003)
         └── nros::main! (expand) ──► resolve_tiers ──► run / run_tiers emit
@@ -306,13 +308,14 @@ launch tree + system.toml + node callback_groups
   (RFC-0015 §8). v2 relaxes with multi-task state-sync.
 - **Raw per-RTOS priority.** Authored in `[tiers.<name>.<rtos>].priority`, emitted
   verbatim into the spawn call; codegen does not auto-flip direction.
-- **Instance identity.** `callback_groups` are per-*package* metadata
-  (`[package.metadata.nros.node].callback_groups`); tiers + `[[node_overrides]]`
-  key by node *instance* name. The emitter keys groups by the node pkg, applies
-  instance overrides by name, and **requires the launch `<node name=…>` to equal
-  the `system.toml [[component]].name`** — mismatch is a hard error at emit
-  (matches `codegen-system`). Two instances of one pkg share the pkg's groups but
-  can be reassigned independently via overrides.
+- **Instance identity.** Group → tier bindings are per-*instance*
+  (`system.toml [[component]] group_tiers`, RFC-0047 — they were per-*package*
+  manifest metadata until phase-273, a form now refused at parse); tiers +
+  `[[node_overrides]]` key by node *instance* name too. The emitter applies
+  bindings and overrides by name, and **requires the launch `<node name=…>` to
+  equal the `system.toml [[component]].name`** — mismatch is a hard error at emit
+  (matches `codegen-system`). Two instances of one pkg each carry their own
+  `[[component]]` row, so they can be bound independently.
 
 ---
 

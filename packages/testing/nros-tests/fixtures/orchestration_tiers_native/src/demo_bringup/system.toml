@@ -9,8 +9,8 @@ domain_id = 0
 # unreferenced: `resolve_tiers` builds membership only from bindings, finds
 # none, and returns the degenerate single synthesized `default` tier — so the
 # macro emits the SINGLE-tier path and the two authored tiers vanish without a
-# word. This fixture still carried the pre-273 form (`callback_groups` in each
-# node package's `Cargo.toml`), which nothing reads any more.
+# word. This fixture once carried the pre-273 form (`callback_groups` in each
+# node package's `Cargo.toml`), which nothing read; that form is now refused.
 [[component]]
 pkg = "ctrl_pkg"
 class = "ctrl_pkg::Control"

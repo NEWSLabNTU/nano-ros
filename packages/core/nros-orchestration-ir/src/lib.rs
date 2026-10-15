@@ -556,7 +556,12 @@ pub struct TierRtosSpec {
     pub period_us: Option<u64>,
 }
 
-/// `[[node.callback_groups]]` row (Phase 228.A, RFC-0015 §4.1).
+/// One callback group and the tier it runs on (Phase 228.A, RFC-0015 §4.1).
+///
+/// Authored as `[[component]] group_tiers = { <id> = "<tier>" }` in
+/// `system.toml` (RFC-0047) or, at the default tier, by the cmake
+/// `CALLBACK_GROUPS` keyword. Its original spelling — a node manifest's
+/// `callback_groups = [{ id, tier }]` — is retired and refused at parse.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CallbackGroupDecl {
@@ -790,7 +795,7 @@ fn rtos_spec<'a>(def: &'a TierDef, rtos: &str) -> Option<&'a TierRtosSpec> {
 /// - `component_names` — the system's component *instance* names, used to
 ///   validate override targets.
 /// - `callback_groups` — component-instance-name → its declared groups
-///   (`[package.metadata.nros.node].callback_groups`).
+///   (`[[component]] group_tiers`, or the cmake `CALLBACK_GROUPS` keyword).
 pub fn resolve_tiers(
     tiers: &BTreeMap<String, TierDef>,
     node_overrides: &[NodeOverride],

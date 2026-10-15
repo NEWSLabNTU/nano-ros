@@ -30,16 +30,15 @@ use std::{
 /// (the instance name `ResolvedTier.members` use).
 /// Shared by the C bake (`codegen_system`) and the Rust codegen (`generate`).
 ///
-/// Phase 273 (RFC-0047 W2): `[[component]].group_tiers` is the new source of
-/// truth for the group → tier binding. When present it takes priority over the
-/// package manifest's `callback_groups` tier field. When absent the manifest is
-/// honoured for one release (deprecated path — emit a warning so workspaces can
-/// migrate to `system.toml group_tiers`).
+/// Phase 273 (RFC-0047 W2): `[[component]].group_tiers` is the source of truth
+/// for the group → tier binding. The package manifest's `callback_groups` tier
+/// field it replaced was honoured for one release and is now RETIRED — refused
+/// at parse (`ComponentMetadata::retired_callback_groups`), so it is no rung.
 ///
-/// phase-459 W1 (issue 1426): a THIRD source below those two - the cmake
+/// phase-459 W1 (issue 1426): a second source below `group_tiers` - the cmake
 /// keyword `CALLBACK_GROUPS`, read from the `nros-metadata.json` a configure
-/// wrote. See [`metadata_callback_groups`] for why a cmake workspace reached
-/// neither of the first two, and what that cost.
+/// wrote. See [`metadata_callback_groups`] for why a cmake workspace never
+/// reached the manifest rung, and what that cost.
 pub fn collect_callback_groups(
     cfg: &NrosConfig,
     components: &[SystemComponentEntry],
@@ -62,52 +61,15 @@ pub fn collect_callback_groups(
             continue;
         }
 
-        // Fallback: package-manifest `callback_groups` tier (deprecated — move to
-        // [[component]].group_tiers in system.toml).
+        // The package manifest's `callback_groups` used to be the rung here
+        // (deprecated by phase-273, honoured with a `[WARN]` for one release).
+        // It is refused at parse now (`ComponentMetadata::retired_callback_groups`),
+        // so a manifest can never reach this point carrying one.
         //
-        // A cmake workspace has no root `Cargo.toml`, so `NrosConfig` gives it
-        // `component_packages: BTreeMap::new()` and this rung answers for
-        // nothing. That is why the third source below is reached by an `else`
-        // and not by an `if`: it is the ONLY rung a C/C++ component has.
-        let groups = cfg
-            .component_packages
-            .get(&c.pkg)
-            .map(|pkg| {
-                // Single-node pkg -> node_or_component; multi-node pkg -> match by name/class.
-                pkg.nros
-                    .node_or_component()
-                    .filter(|m| !m.callback_groups.is_empty())
-                    .map(|m| m.callback_groups.clone())
-                    .or_else(|| {
-                        pkg.nros
-                            .nodes_or_components()
-                            .values()
-                            .find(|m| {
-                                m.name.as_deref() == Some(c.name.as_str())
-                                    || m.class.as_deref() == Some(c.class.as_str())
-                            })
-                            .map(|m| m.callback_groups.clone())
-                    })
-                    .unwrap_or_default()
-            })
-            .unwrap_or_default();
-        let has_pkg_tiers = groups.iter().any(|g| g.tier != DEFAULT_TIER);
-        if has_pkg_tiers {
-            eprintln!(
-                "[WARN] nros: package `{}` (component `{}`) has `callback_groups` with a tier \
-                 assignment in Cargo.toml. Move it to `system.toml [[component]].group_tiers` \
-                 (Phase 273 / RFC-0047). Package-level tier binding is deprecated.",
-                c.pkg, c.name
-            );
-        }
-        if !groups.is_empty() {
-            map.insert(c.name.clone(), groups);
-            continue;
-        }
-
-        // phase-459 W1 (issue 1426) - the cmake keyword, the third and last
-        // source. Every group binds to `DEFAULT_TIER`: the keyword states WHICH
-        // groups the code has, never where they run. That is exactly the input
+        // phase-459 W1 (issue 1426) - the cmake keyword, the second and last
+        // source, and the ONLY one a C/C++ component has. Every group binds
+        // to `DEFAULT_TIER`: the keyword states WHICH groups the code has,
+        // never where they run. That is exactly the input
         // shape `derive_tiers_from_contracts` keys on - a node with groups and
         // no authored binding is the one route on which the rate-monotonic
         // derivation runs (RFC-0052), and a bound group would instead have to
@@ -128,10 +90,11 @@ pub fn collect_callback_groups(
 /// `nano_ros_add_node(... CALLBACK_GROUPS ...)` write the group ids into
 /// `${CMAKE_BINARY_DIR}/nros-metadata.json` (`NanoRosNodeRegister.cmake`,
 /// `_nros_metadata_emit`). Until this wave that file had exactly one consumer,
-/// `codegen entry`'s `metadata::enrich_plan`, and `codegen-system` knew only the
-/// two sources above - `[[component]].group_tiers`, which a workspace deriving
-/// its schedule deliberately does not write, and `cfg.component_packages`, which
-/// is empty for every workspace without a root `Cargo.toml`. So a C++ image
+/// `codegen entry`'s `metadata::enrich_plan`, and `codegen-system` knew only two
+/// sources - `[[component]].group_tiers`, which a workspace deriving its
+/// schedule deliberately does not write, and the package manifest's (since
+/// retired) `callback_groups`, read through `cfg.component_packages`, which is
+/// empty for every workspace without a root `Cargo.toml`. So a C++ image
 /// authored the keyword and every one of its nodes still arrived at
 /// `derive_tiers_from_contracts` groupless, went onto the default tier, and the
 /// derived schedule was empty. Issue 1426 measured that on the Autoware Safety
@@ -565,12 +528,12 @@ mod tests {
         nros_config::NrosConfig,
     };
 
-    /// Phase 273 (W2) — `collect_callback_groups` prefers `[[component]].group_tiers`
-    /// over the package-manifest `callback_groups` tier. An empty `NrosConfig`
-    /// (no component packages) is sufficient because the `group_tiers` path never
-    /// touches `cfg.component_packages`.
+    /// Phase 273 (W2) — `collect_callback_groups` reads the binding from
+    /// `[[component]].group_tiers`. An empty `NrosConfig` (no component
+    /// packages) is sufficient: the manifest's `callback_groups` is refused at
+    /// parse, so no rung consults `cfg.component_packages`.
     #[test]
-    fn collect_prefers_group_tiers_over_pkg_manifest() {
+    fn collect_reads_group_tiers_from_the_system_toml() {
         let cfg = NrosConfig::default();
         let mut gt = BTreeMap::new();
         gt.insert("ctrl".to_string(), "high".to_string());
@@ -702,7 +665,7 @@ priority = 10
         );
     }
 
-    /// phase-459 W1 (issue 1426) - the cmake keyword as the third source.
+    /// phase-459 W1 (issue 1426) - the cmake keyword as the second source.
     mod cmake_metadata {
         use super::*;
 

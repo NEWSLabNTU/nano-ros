@@ -235,6 +235,12 @@ Codegen requires exactly **one system manifest** per build target. Node manifest
 
 ### 4.1 Node manifest example
 
+> **Superseded binding (RFC-0047).** The symbolic `tier` on a node manifest's callback group,
+> shown below, is the original design. phase-273 moved the group → tier binding to the
+> deployment — `system.toml` `[[component]] group_tiers = { <id> = "<tier>" }` — so a node package
+> names no tier. The Cargo spelling of this field (`[package.metadata.nros.node] callback_groups`)
+> was honoured for one release with a warning and is now refused at parse.
+
 ```toml
 # packages/my_robot_control/nros.toml
 schema = "nano-ros/orchestration/v1"
