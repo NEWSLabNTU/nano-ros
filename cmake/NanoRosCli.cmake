@@ -16,7 +16,8 @@ include_guard(GLOBAL)
 # zephyr nros_system_generate, and the find half of
 # `_nros_resolve_codegen_tool` in NanoRosCodegenCore.cmake). One documented precedence order:
 #
-#   1. `$ENV{NROS_CLI}` — explicit per-invocation override (must EXIST).
+#   1. `$ENV{NROS_CLI}` — explicit per-invocation override (must EXIST),
+#      re-rooted onto this checkout when it names ANOTHER one (issue 1928).
 #   2. The CLI built by the checkout these modules live in
 #      (`<checkout>/packages/cli/target/release/nros`) — issue 1880. A linked
 #      worktree inherits its parent shell's PATH, so the PATH rung found the
@@ -42,6 +43,7 @@ include_guard(GLOBAL)
 # longer exists is dropped and re-detected.
 
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosStoreRoot.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCheckoutRoot.cmake")
 
 # Issue 1880 — the checkout these modules belong to, captured at include time
 # (a function's CMAKE_CURRENT_LIST_DIR is its caller's).
@@ -49,14 +51,52 @@ get_filename_component(_NROS_CLI_MODULE_CHECKOUT "${CMAKE_CURRENT_LIST_DIR}/.." 
 set(_NROS_CLI_MODULE_CHECKOUT "${_NROS_CLI_MODULE_CHECKOUT}" CACHE INTERNAL
     "issue 1880 - the checkout NanoRosCli.cmake lives in")
 
+# Issue 1928 — rung 1 through issue 1280's rule. A linked worktree inherits its
+# parent shell's environment, so `$ENV{NROS_CLI}` naming the PARENT checkout's
+# build made this checkout's configure run that checkout's (older) CLI. A value
+# owned by ANOTHER checkout (deepest marker walk, `_nros_find_root` — the cmake
+# spelling of the walk) is re-rooted onto the checkout these modules live in;
+# one outside any checkout, or inside this one, is kept. Only when the module
+# dir IS a checkout: an installed SDK has nothing to re-root onto. The shell
+# twin is `nros_cli_bin` (scripts/build/cargo.sh), the Rust one
+# `nros_tests::nros_cli_bin_path`; the rule is `scripts/lib/checkout-paths.sh`.
+function(_nros_cli_reroot_foreign _value _out)
+    set(${_out} "${_value}" PARENT_SCOPE)
+    if(NOT IS_ABSOLUTE "${_value}")
+        return()
+    endif()
+    get_filename_component(_here "${_NROS_CLI_MODULE_CHECKOUT}" REALPATH)
+    _nros_find_root("${_here}" _here_root)
+    if(NOT _here_root)
+        return()
+    endif()
+    get_filename_component(_here_root "${_here_root}" REALPATH)
+    if(NOT _here_root STREQUAL _here)
+        return()
+    endif()
+    _nros_find_root("${_value}" _owner)
+    if(NOT _owner)
+        return()
+    endif()
+    get_filename_component(_owner_real "${_owner}" REALPATH)
+    if(_owner_real STREQUAL _here)
+        return()
+    endif()
+    file(RELATIVE_PATH _rel "${_owner}" "${_value}")
+    set(${_out} "${_here}/${_rel}" PARENT_SCOPE)
+endfunction()
+
 function(nros_resolve_cli _out)
     cmake_parse_arguments(_RC "OPTIONAL" "CONTEXT" "" ${ARGN})
     if(NOT _RC_CONTEXT)
         set(_RC_CONTEXT "nano-ros")
     endif()
-    if(DEFINED ENV{NROS_CLI} AND EXISTS "$ENV{NROS_CLI}")
-        set(${_out} "$ENV{NROS_CLI}" PARENT_SCOPE)
-        return()
+    if(DEFINED ENV{NROS_CLI} AND NOT "$ENV{NROS_CLI}" STREQUAL "")
+        _nros_cli_reroot_foreign("$ENV{NROS_CLI}" _env_cli)
+        if(EXISTS "${_env_cli}")
+            set(${_out} "${_env_cli}" PARENT_SCOPE)
+            return()
+        endif()
     endif()
     # host-tool-path-ok: rung 2, the checkout's own CLI (issue 1880).
     set(_own "${_NROS_CLI_MODULE_CHECKOUT}/packages/cli/target/release/nros")

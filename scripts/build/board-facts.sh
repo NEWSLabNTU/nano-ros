@@ -33,7 +33,17 @@
 # a make leaf.
 nros_board_facts() {
     local dir="$1" mode="${2:-required}"
-    local cli="${NROS_CLI:-${NROS_CLI_BIN:-}}"
+    # Issue 1928 — `$NROS_CLI` through `nros_cli_bin` when it is defined
+    # (cargo.sh, exported into a make leaf beside this function), which
+    # re-roots an inherited value naming ANOTHER checkout.
+    local cli="${NROS_CLI_BIN:-}"
+    if [ -n "${NROS_CLI:-}" ]; then
+        if command -v nros_cli_bin >/dev/null 2>&1; then
+            cli="$(nros_cli_bin 2>/dev/null)" || cli=""
+        else
+            cli="$NROS_CLI"
+        fi
+    fi
     local root="${NROS_REPO_ROOT:-${repo_root:-$PWD}}"
     local out rc=0
     case "$mode" in

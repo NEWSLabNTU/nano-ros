@@ -72,7 +72,9 @@ source scripts/build/leaf-settings.sh 2>/dev/null || exit 0
 leaf_road=""
 image=""
 if [ -f "$dir/system.toml" ] && [ -f "$dir/Cargo.toml" ]; then
-    NROS_CLI="${NROS_CLI:-$(nros_cli_bin 2>/dev/null)}"
+    # Issue 1928 — always through the resolver: `${NROS_CLI:-…}` took an
+    # inherited value as-is, past the re-root `nros_cli_bin` applies to it.
+    NROS_CLI="$(nros_cli_bin 2>/dev/null)"
     export NROS_CLI
     leaf_road=1
     image="$(nros_leaf_row_image "$cargo_args")"
