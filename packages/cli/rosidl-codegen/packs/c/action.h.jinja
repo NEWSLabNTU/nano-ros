@@ -19,10 +19,10 @@
 #include <rosidl_runtime_c/string.h>
 #include <rosidl_runtime_c/primitives_sequence.h>
 #include <rosidl_runtime_c/action_type_support_struct.h>
-#include <nros/types.h>
+#include <rclc/types.h>
 {%- if has_view_goal or has_view_result or has_view_feedback %}
 // Issue 0346 — borrowed views use rclc_view_str_t / the LE slice views.
-#include <nros/view.h>
+#include <rclc/detail/view.h>
 {%- endif %}
 
 {% include "_codegen_version.jinja" %}

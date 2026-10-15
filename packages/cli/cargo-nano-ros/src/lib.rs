@@ -2556,7 +2556,7 @@ fn generate_umbrella_header(
     content.push_str(&format!("#define {}\n\n", guard_name));
 
     // Include nros core types (modular header)
-    content.push_str("#include <nros/types.h>\n\n");
+    content.push_str("#include <rclc/types.h>\n\n");
 
     // Include dependency headers. Each dependency's umbrella header lives at
     // `<pkg>/<pkg>.h` (sibling directory to this one), so emit the full

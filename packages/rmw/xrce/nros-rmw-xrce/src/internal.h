@@ -725,7 +725,7 @@ rmw_ret_t xrce_supported_qos_policies(const rmw_session_t* session, uint32_t* ou
 
 /* Severity for `nros_platform_log_write`, which takes `nros_log::Severity`'s
  * `as_u8()`: 0 Trace, 1 Debug, 2 Info, 3 Warn, 4 Error, 5 Fatal. Spelled here
- * rather than included from `nros/log.h`: that header belongs to `nros-c`, the
+ * rather than included from `rclc/log.h`: that header belongs to `nros-c`, the
  * layer ABOVE this one, and an RMW backend must not depend upward. */
 #define XRCE_LOG_ERROR 4
 

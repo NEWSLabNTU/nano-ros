@@ -36,15 +36,15 @@
  *
  *  * it must come AFTER `<nros/nros_generated.h>`, because that header
  *    DECLARES `rclc_support_init(...)` and a function-like macro of the same
- *    name would eat the declaration. `<nros/types.h>` includes this file last
+ *    name would eat the declaration. `<rclc/types.h>` includes this file last
  *    for that reason;
  *  * it must be reached by EVERY consumer, not just those including
- *    `<nros/init.h>`. Partial coverage would be worse than none: two TUs in one
+ *    `<rclc/init.h>`. Partial coverage would be worse than none: two TUs in one
  *    image would disagree about whether the bake is passed, and the one that
- *    missed it would fail exactly the way 1530 failed. `<nros/types.h>` is the
+ *    missed it would fail exactly the way 1530 failed. `<rclc/types.h>` is the
  *    single include every module header already goes through.
  *
- * It is NOT in `<nros/entry_config.h>`, which owns the rest of the
+ * It is NOT in `<rclc/detail/entry_config.h>`, which owns the rest of the
  * `NROS_ENTRY_*` ladder: that header is included by `app_main.h` / `main.h`
  * BEFORE any declaration exists, and its documented contract is "preprocessor
  * only — no types, no includes, no linkage".
@@ -64,7 +64,7 @@
  * ## The locator and domain (phase-499 W2)
  *
  * `rclc_support_init` also forwards `NROS_ENTRY_LOCATOR` / `NROS_ENTRY_DOMAIN_ID`
- * (`<nros/entry_config.h>`'s ladder), for the same reason as the selector: they
+ * (`<rclc/detail/entry_config.h>`'s ladder), for the same reason as the selector: they
  * are macros in the CALLER's translation unit, which the Rust init cannot see.
  * An empty locator (the ladder's bottom rung) is passed as NULL, "absent", so
  * the backend applies its own default exactly as before. This is still the
@@ -74,7 +74,7 @@
 #ifndef NROS_BAKED_RMW_H
 #define NROS_BAKED_RMW_H
 
-#include "nros/entry_config.h"
+#include "rclc/detail/entry_config.h"
 
 #ifdef NROS_ENTRY_RMW
 

@@ -409,7 +409,7 @@ static const unsigned char *const nros__cpp_config_variant_anchor =
     // Phase 119.3: also emit a nros-c-format header to
     // `$CARGO_TARGET_DIR/nros-c-generated/nros/...`. nros-cpp's user code
     // transitively includes the C-side
-    // `<nros/types.h>` → `<nros/nros_config_generated.h>`, and without this
+    // `<rclc/types.h>` → `<nros/nros_config_generated.h>`, and without this
     // the C header would resolve to the source-tree `#error` stub.
     //
     // phase-308 follow-up — the original rationale ("in Zephyr CPP-only builds

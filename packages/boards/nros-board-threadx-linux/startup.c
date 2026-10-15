@@ -10,7 +10,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "tx_api.h"
-#include <nros/app_config.h>
+#include <rclc/detail/app_config.h>
 
 /* APP_INTERFACE remains a per-example compile define — bridge name is
  * test-harness-specific and not present in the typed config.toml. */

@@ -307,7 +307,7 @@ def cmake_files():
 #
 #   * `<nros/main.hpp>` derived both from Kconfig (zenoh locator, else a
 #     synthesised XRCE `host:port`, else `""`);
-#   * `<nros/app_main.h>` — the C sibling — defined both as `""` and `0` with
+#   * `<rclc/detail/app_main.h>` — the C sibling — defined both as `""` and `0` with
 #     no derivation at all, so a TU that saw only the C header dialled nothing
 #     on a board whose locator comes from `CONFIG_NROS_ZENOH_LOCATOR`;
 #   * a third `#ifndef` further down `main.hpp` for the locator-less NuttX
@@ -323,7 +323,7 @@ def cmake_files():
 # board should dial is a per-board question, and this file is not the place it
 # gets answered.
 
-HEADER_SSOT = "packages/api/nros-c/include/nros/entry_config.h"
+HEADER_SSOT = "packages/api/nros-c/include/rclc/detail/entry_config.h"
 HEADER_MACROS = ("NROS_ENTRY_LOCATOR", "NROS_ENTRY_DOMAIN_ID")
 _DEFINE = re.compile(r"^\s*#\s*define\s+(NROS_ENTRY_LOCATOR|NROS_ENTRY_DOMAIN_ID)\b")
 

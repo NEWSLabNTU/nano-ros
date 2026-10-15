@@ -161,7 +161,7 @@ have two readers. `system.toml`'s `domain_id` (resolved through the
 `[deploy.<target>]` / `[system]` ladder) is baked by `nros codegen-system` as
 `#define NROS_SYSTEM_DOMAIN_ID <n>u` in `system_config.h`, a define app source
 may read; the image's session takes `CONFIG_NROS_DOMAIN_ID`, this RFC's Kconfig
-front-end, through `nros/zephyr/app_config.h`, and Cyclone takes
+front-end, through `rclc/detail/zephyr/app_config.h`, and Cyclone takes
 `CONFIG_NROS_CYCLONE_DOMAIN_ID`, which defaults to it. Issue 1423 measured the
 two apart on the Autoware Safety Island (`system.toml` said 2, every image
 built on 10), and the check that caught it was a person reading a brief.

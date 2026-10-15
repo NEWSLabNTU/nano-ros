@@ -473,7 +473,7 @@ def ours_c(tmpdir):
     return extract_cxx.extract(
         # phase-491 -- the parameter server lives at rclc's own include path,
         # outside the `nros/` umbrella, so it is named here.
-        '#include "nros/nros.h"\n#include "rclc_parameter/rclc_parameter.h"\n',
+        '#include "rclc/rclc.h"\n#include "rclc_parameter/rclc_parameter.h"\n',
         "c",
         extract_cxx.nros_c_include_args(),
         {""},

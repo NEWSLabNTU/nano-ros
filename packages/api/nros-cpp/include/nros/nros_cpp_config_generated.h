@@ -30,7 +30,7 @@
 
 #if defined(NROS_CPP_CONFIG_OPTIONAL) && !defined(NROS_CONFIG_BUILDLESS) && !defined(__cplusplus)
 
-/* Issue 0282 — OPTIONAL probe (see nros-c/include/nros/component.h): the
+/* Issue 0282 — OPTIONAL probe (see nros-c/include/rclc/component.h): the
  * includer only wants the generated `NROS_CPP_*_STORAGE_SIZE` values when
  * this build produces them and falls back to its own static defaults
  * otherwise. `__has_include` cannot tell this stub from the real header, so

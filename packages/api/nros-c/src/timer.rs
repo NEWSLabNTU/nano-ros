@@ -112,7 +112,7 @@ pub extern "C" fn rcl_get_zero_initialized_timer() -> rcl_timer_t {
 /// Initialize a WALL timer — the clock-less case (phase-430 W1).
 ///
 /// phase-492 W1.b: this was spelled `rcl_timer_init`, which is rcl's name for
-/// a different contract (`<nros/rcl_compat.h>` §4), and took the support as a
+/// a different contract (`<rclc/detail/rcl_compat.h>` §4), and took the support as a
 /// validity witness it never otherwise read. It takes rclc's `_with_context`
 /// spelling — the callback gets the caller's context — and no witness: the
 /// timer belongs to no node and no session until `rclc_executor_add_timer`,
@@ -156,7 +156,7 @@ pub unsafe extern "C" fn rclc_timer_init_with_context(
 /// clock is the second parameter. That is RFC-0089's "C
 /// takes rcl's spellings" applied to the ARGUMENT LIST, which is the half of
 /// the spelling that survives our different callback contract —
-/// `<nros/rcl_compat.h>` §4 records why the NAME `rcl_timer_init` stays
+/// `<rclc/detail/rcl_compat.h>` §4 records why the NAME `rcl_timer_init` stays
 /// refused (rcl hands the callback the time since its last call, we hand it
 /// the user's context, so a ported timer callback is a different FUNCTION and
 /// taking the name would be a compile-and-differ).
@@ -445,7 +445,7 @@ pub unsafe extern "C" fn rclc_timer_get_period(timer: *const rcl_timer_t) -> u64
 /// is ours.
 ///
 /// `RCL_RET_TIMER_INVALID` and `RCL_RET_TIMER_CANCELED` have no counterpart in
-/// `rcl_ret_t` and `<nros/rcl_compat.h>` deliberately does not map them, so
+/// `rcl_ret_t` and `<rclc/detail/rcl_compat.h>` deliberately does not map them, so
 /// the four rcl outcomes reach a caller as three: those two and "not
 /// registered" all arrive as `RCL_RET_NOT_INIT`.
 ///
@@ -830,7 +830,7 @@ pub unsafe extern "C" fn rcl_timer_exchange_period(
 /// this sum has microsecond resolution. The clock read does not.
 ///
 /// `RCL_RET_TIMER_INVALID` and `RCL_RET_TIMER_CANCELED` have no counterpart in
-/// `rcl_ret_t` (`<nros/rcl_compat.h>` declines to map them), so those and "not
+/// `rcl_ret_t` (`<rclc/detail/rcl_compat.h>` declines to map them), so those and "not
 /// registered with an executor" all arrive as `RCL_RET_NOT_INIT`.
 ///
 /// # Returns
@@ -1194,7 +1194,7 @@ mod tests {
 
     // ========================================================================
     // `rcl_difference_times` — the arithmetic behind the `static inline` in
-    // <nros/timer.h>.
+    // <rclc/timer.h>.
     //
     // The function itself is header-only (no state, so no exported symbol),
     // and the C probe `tests/compile/node_timer_accessors.c` runs its BODY.

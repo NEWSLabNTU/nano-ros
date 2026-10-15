@@ -30,7 +30,7 @@
 #include "FreeRTOS.h"
 #include "task.h"
 
-#include <nros/app_config.h>
+#include <rclc/detail/app_config.h>
 
 /* ---- Semihosting trap instruction ----
  *
@@ -70,7 +70,7 @@ extern void nros_platform_register_log_writer(void (*writer)(uint8_t, const uint
 /* the user application (nros-c's NROS_APP_MAIN macro emits it) */
 extern void app_main(void);
 
-/* Issue 1770 — the strong recorder for `<nros/app_main.h>`'s VOID shim, which
+/* Issue 1770 — the strong recorder for `<rclc/detail/app_main.h>`'s VOID shim, which
  * hands it `nros_app_main`'s status (as an exit code, 0 iff success) just
  * before its `app_main` returns. It must live in THIS object, beside the call
  * to `app_main` below: the shim carries a weak no-op of its own, and a linker

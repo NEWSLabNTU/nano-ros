@@ -31,7 +31,7 @@
 #include <stdio.h>
 #include <unistd.h>
 
-#include <nros/log.h>
+#include <rclc/log.h>
 #include <nros/log.hpp>
 
 extern "C" {
@@ -54,7 +54,7 @@ void rclc_log_emit_at(rclc_logger_t, rcl_log_severity_t, const char* message, si
 
 // The located printf-style entry point every `RCLC_LOG_*` / refusal macro
 // expands to. The library defines it in `c-stubs/log_fmt.c` (phase-492 moved it
-// out of `<nros/log.h>` so that header is freestanding); this probe links no
+// out of `<rclc/log.h>` so that header is freestanding); this probe links no
 // nano-ros archive, so it supplies the same shape: render, then the sink above.
 void rclc_log_emit_fmt_at(rclc_logger_t logger, rcl_log_severity_t severity, const char* file,
                           uint32_t line, const char* fmt, ...) {

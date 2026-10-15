@@ -74,7 +74,7 @@ pub extern "C" fn main(_argc: i32, _argv: *const *const core::ffi::c_char) -> i3
     configure_entry_eth0(ip, prefix, gateway);
 
     // Issue 1770 — return the APP's status, the `int main` shim's contract
-    // (`<nros/app_main.h>`). This called the VOID shim's `app_main` and
+    // (`<rclc/detail/app_main.h>`). This called the VOID shim's `app_main` and
     // returned 0, so nsh saw success for an app that failed.
     // SAFETY: `nros_app_main` is the C entry every app defines; `argc = 0` with
     // a null `argv` is what the header's own VOID shim passes.

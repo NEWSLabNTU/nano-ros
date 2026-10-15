@@ -74,7 +74,7 @@
 //! (which `rclc_log_emit_at` and `rclc_logger_is_enabled` call), the arenas and
 //! rings because they ARE this crate's. The one thing that does not follow is
 //! the C printf front-ends' own stack frame (`NROS_LOG_FMT_BUFFER_SIZE` in
-//! `<nros/log.h>`, 256): it is compiled in the CALLER's translation unit from a
+//! `<rclc/log.h>`, 256): it is compiled in the CALLER's translation unit from a
 //! header that has no per-build value to read. A C record is therefore bounded
 //! by `min(255, NROS_LOG_BUFFER_SIZE)` — the Rust side clips it where it is
 //! stored or rendered.

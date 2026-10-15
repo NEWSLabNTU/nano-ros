@@ -148,10 +148,10 @@ fn nros_view_for_field(
     }
 }
 
-/// Resolve the borrowed-view **C** field type + the `nros/view.h` reader
+/// Resolve the borrowed-view **C** field type + the `rclc/detail/view.h` reader
 /// function for a `borrowed`-mode field (RFC-0033, Phase 235, issue 0021).
 ///
-/// Returns `(view_c_type, borrow_fn)` — both `nros/view.h` symbols. All
+/// Returns `(view_c_type, borrow_fn)` — both `rclc/detail/view.h` symbols. All
 /// three readers share the signature
 /// `int32_t fn(const uint8_t** ptr, const uint8_t* end, const uint8_t* origin, T* out)`,
 /// so the C template calls them uniformly:

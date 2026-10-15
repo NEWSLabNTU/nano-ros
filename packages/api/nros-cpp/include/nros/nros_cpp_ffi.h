@@ -335,7 +335,7 @@ typedef struct nros_cpp_node_t {
 
 /**
  * Issue 0436 — C mirror of `nros_node::executor::SessionSpec`, matching
- * `rclc_session_spec_t` in `<nros/bridge.h>` field for field so a caller can use
+ * `rclc_session_spec_t` in `<rclc/bridge.h>` field for field so a caller can use
  * either entry point with one struct.
  */
 typedef struct NrosCppSessionSpec {

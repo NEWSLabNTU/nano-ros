@@ -9,8 +9,8 @@
 * owns init/spin/shutdown.
 */
 
-#include <nros/boot_config.h>  /* nros_baked_boot_config + the nros_boot_config_* readers */
-#include <nros/main.h>         /* the board's C-ABI run_components / run_tiers */
+#include <rclc/detail/boot_config.h>  /* nros_baked_boot_config + the nros_boot_config_* readers */
+#include <rclc/detail/main.h>         /* the board's C-ABI run_components / run_tiers */
 #include <nros/nros_cpp_ffi.h> /* nros_cpp_node_t + nros_cpp_node_create + ret codes */
 
 /* C component factory + configure seam (RCLC_C_COMPONENT). The node's
@@ -125,7 +125,7 @@ static uint64_t __nros_tier_executor_storage[2][(NROS_CPP_EXECUTOR_STORAGE_SIZE 
  * fails at LINK, not at boot as a heap allocation failure. Sized from each
  * tier's `stack_bytes` (or the stated default) and raised to the port's floor
  * by the header's macro. The boot tier runs on the caller's task and has none. */
-#include <nros/tier_task_memory_zephyr.h>
+#include <rclc/detail/tier_task_memory_zephyr.h>
 NROS_TIER_TASK_MEMORY_DEFINE(1, 0u);
 static const nros_tier_task_memory_t __nros_tier_task_memory[2] = {
     NROS_TIER_TASK_MEMORY_NONE,

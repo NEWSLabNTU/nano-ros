@@ -40,7 +40,7 @@
 #include "nros/nros.hpp"
 /* Phase 274.W2 — nros_native_tier_spec_t + nros_board_native_run_tiers
  * (C ABI board runner for multi-tier native entries). */
-#include "nros/main.h"
+#include "rclc/detail/main.h"
 
 #if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0) // hosted-family: hosted-console
 #include <cstdio>  // printf — Phase 238.B listener readiness / received-sample lines
@@ -132,11 +132,11 @@ inline int32_t component_spin_loop() {
 } // namespace detail
 
 // Phase 235.B — the weak `nros_board_network_wait()` network-readiness hook
-// used below is DEFINED in `<nros/main.h>`, included above. It moved there
+// used below is DEFINED in `<rclc/detail/main.h>`, included above. It moved there
 // as the phase-432 W3.1 prerequisite: the three RTOS `run_tiers.c` files call
 // it `extern` and linked only because the generated entry is a `.cpp` that
 // includes THIS header, so a pure C entry failed at link. One definition, in
-// the C header both entry languages reach. See `<nros/main.h>` for the
+// the C header both entry languages reach. See `<rclc/detail/main.h>` for the
 // override contract.
 
 /// Phase 274.W2 (RFC-0015 Model 1) — per-tier spec for
@@ -319,7 +319,7 @@ class LinuxBoard {
     /// `NROS_CPP_EXECUTOR_STORAGE_SIZE` and its own tier count, so every
     /// tier's executor is linker-placed `.bss` rather than a stack object. A
     /// short stride is refused. See `nros_board_native_run_tiers_in` in
-    /// `<nros/main.h>`.
+    /// `<rclc/detail/main.h>`.
     static int32_t run_tiers(const char* session_name, const char* node_namespace,
                              const NativeTierSpec* tiers, size_t n_tiers, void* executor_storage,
                              size_t storage_stride) {
@@ -355,13 +355,13 @@ class LinuxBoard {
 ///   * the spin loop yields cooperatively each tick (`entry_tick_yield`
 ///     → `k_yield()`).
 // phase-432 (W3.1 prerequisite) — `NROS_ENTRY_LOCATOR` and
-// `NROS_ENTRY_DOMAIN_ID` are derived in ONE place, `<nros/entry_config.h>`,
+// `NROS_ENTRY_DOMAIN_ID` are derived in ONE place, `<rclc/detail/entry_config.h>`,
 // which is a C header so the C entry sees the same ladder. This used to be
-// two: the ladder below, and `<nros/app_main.h>` defining both as `""` and `0`
+// two: the ladder below, and `<rclc/detail/app_main.h>` defining both as `""` and `0`
 // with no derivation — so a pure-C entry would have compiled, linked, booted
 // and dialled nothing. The `#ifndef` guards inside still let a typed carrier
 // bake a literal by defining either macro BEFORE this header.
-#include "nros/entry_config.h"
+#include "rclc/detail/entry_config.h"
 
 // #166 / phase-286 W1 — runtime locator override (see nros/platform.h). Declared
 // here (not via a platform-header include) to keep main.hpp's include surface
@@ -381,7 +381,7 @@ extern "C" void nros_zephyr_epoch_acquire_configured(void);
 class ZephyrBoard {
   public:
     /// Compile-time domain id (CLAUDE.md embedded rule — NOT a runtime env).
-    /// Derived in `<nros/entry_config.h>`, included above; override by
+    /// Derived in `<rclc/detail/entry_config.h>`, included above; override by
     /// defining `NROS_ENTRY_DOMAIN_ID` before this header.
 
     /// Issue 1434 — 4-arg overload: the primary session's NAMESPACE too.
@@ -508,7 +508,7 @@ class ZephyrBoard {
     /// passes a file-scope static sized from `NROS_CPP_EXECUTOR_STORAGE_SIZE`
     /// and its own tier count, so the storage is linker-placed `.bss` rather
     /// than `n_tiers` heap blocks out of `CONFIG_NROS_ZEPHYR_HEAP_SIZE`. See
-    /// `nros_board_zephyr_run_tiers_in` in `<nros/main.h>`.
+    /// `nros_board_zephyr_run_tiers_in` in `<rclc/detail/main.h>`.
     static int32_t run_tiers(const char* session_name, const char* node_namespace,
                              const NativeTierSpec* tiers, size_t n_tiers, void* executor_storage,
                              size_t storage_stride) {
@@ -521,7 +521,7 @@ class ZephyrBoard {
     /// Issue 1232 — [`run_tiers`] over CALLER-SUPPLIED executor storage AND
     /// each tier task's memory (`task_memory[i]` is `tiers[i]`'s thread +
     /// stack, sized from its declared `stack_bytes`; the boot tier's is
-    /// empty). See `nros_board_zephyr_run_tiers_tasks_in` in `<nros/main.h>`.
+    /// empty). See `nros_board_zephyr_run_tiers_tasks_in` in `<rclc/detail/main.h>`.
     static int32_t run_tiers(const char* session_name, const char* node_namespace,
                              const NativeTierSpec* tiers, size_t n_tiers, void* executor_storage,
                              size_t storage_stride, const ::nros_tier_task_memory_t* task_memory) {
@@ -686,7 +686,7 @@ class NuttxBoard {
     /// and its own tier count, so the storage is linker-placed `.bss` rather
     /// than `n_tiers` blocks out of the NuttX heap. The linked library refuses a block
     /// smaller than this build's executor. See
-    /// `nros_board_nuttx_run_tiers_in` in `<nros/main.h>`.
+    /// `nros_board_nuttx_run_tiers_in` in `<rclc/detail/main.h>`.
     static int32_t run_tiers(const char* session_name, const char* node_namespace,
                              const NativeTierSpec* tiers, size_t n_tiers, void* executor_storage,
                              size_t storage_stride) {
@@ -902,7 +902,7 @@ class FreertosBoard {
     /// and its own tier count, so the storage is linker-placed `.bss` rather
     /// than `n_tiers` blocks out of heap_4. The linked library refuses a block
     /// smaller than this build's executor. See
-    /// `nros_board_freertos_run_tiers_in` in `<nros/main.h>`.
+    /// `nros_board_freertos_run_tiers_in` in `<rclc/detail/main.h>`.
     static int32_t run_tiers(const char* session_name, const char* node_namespace,
                              const NativeTierSpec* tiers, size_t n_tiers, void* executor_storage,
                              size_t storage_stride) {
@@ -916,7 +916,7 @@ class FreertosBoard {
     /// each tier task's memory (`task_memory[i]` is `tiers[i]`'s stack + TCB;
     /// the boot tier's is empty). Every spawned tier is `xTaskCreateStatic`d
     /// over the entry's statics, so no tier stack comes out of heap_4. See
-    /// `nros_board_freertos_run_tiers_tasks_in` in `<nros/main.h>`.
+    /// `nros_board_freertos_run_tiers_tasks_in` in `<rclc/detail/main.h>`.
     static int32_t run_tiers(const char* session_name, const char* node_namespace,
                              const NativeTierSpec* tiers, size_t n_tiers, void* executor_storage,
                              size_t storage_stride, const ::nros_tier_task_memory_t* task_memory) {

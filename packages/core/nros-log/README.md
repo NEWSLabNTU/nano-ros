@@ -132,7 +132,7 @@ each logger's threshold above it. rcutils keeps the same pair
 (`RCUTILS_LOG_MIN_SEVERITY_*` and `rcutils_logging_set_logger_level`).
 
 The C/C++ `NROS_LOG_*` printf front-end formats into its own 256-byte frame
-(`NROS_LOG_FMT_BUFFER_SIZE` in `<nros/log.h>`, compiled in the caller's
+(`NROS_LOG_FMT_BUFFER_SIZE` in `<rclc/log.h>`, compiled in the caller's
 translation unit), so a C record is bounded by the smaller of the two.
 
 Overflow truncates + appends `…`; `log()` never fails.

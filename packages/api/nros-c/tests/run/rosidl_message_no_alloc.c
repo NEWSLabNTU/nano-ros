@@ -28,7 +28,7 @@
 #endif
 #include "stub_rmw_backend.h"
 
-#include <nros/nros.h>
+#include <rclc/rclc.h>
 #include <rosidl_runtime_c/message_type_support_struct.h>
 #include <sensor_msgs/msg/laser_scan.h>
 #include <std_msgs/msg/string.h>

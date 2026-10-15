@@ -5,7 +5,7 @@
  * The entry declares each SPAWNED tier's thread object and stack, the stack
  * with `K_THREAD_STACK_DEFINE` at the tier's own declared `stack_bytes`, and
  * hands them to `nros_board_zephyr_run_tiers_tasks_in` as
- * `nros_tier_task_memory_t` rows (see <nros/main.h>). Before this every tier
+ * `nros_tier_task_memory_t` rows (see <rclc/detail/main.h>). Before this every tier
  * thread got the shim's fixed `NROS_ZEPHYR_TIER_STACK_SIZE` pool slot, whatever
  * it declared: a tier declaring more ran undersized behind a printk.
  *
@@ -24,7 +24,7 @@
 
 #include <zephyr/kernel.h>
 
-#include <nros/main.h>
+#include <rclc/detail/main.h>
 
 #ifdef CONFIG_NROS_ZEPHYR_TIER_STACK_SIZE
 #define NROS_TIER_TASK_STACK_DEFAULT_ CONFIG_NROS_ZEPHYR_TIER_STACK_SIZE

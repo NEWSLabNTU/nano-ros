@@ -61,7 +61,7 @@ extern uint64_t nros_tier_spin_gap_step(uint64_t state, uint64_t iter_start_ns, 
                                         uint32_t spin_period_us);
 extern uint64_t nros_platform_clock_ns(void);
 
-/* nros_board_network_wait: weak no-op in <nros/main.h> (phase-432 W3.1 moved
+/* nros_board_network_wait: weak no-op in <rclc/detail/main.h> (phase-432 W3.1 moved
  * it there from the C++ sibling main.hpp so a pure C entry links); strong
  * override on boards that need an extra poll-wait after network bring-up. On
  * MPS2-AN385 the startup.c already waits 2 s and polls lwIP, so this is
@@ -136,7 +136,7 @@ static void freertos_install_park(void* executor, const char* tier_name) {
 
 /* --- Local tier-spec type ---
  *
- * Mirror of nros_native_tier_spec_t (nros/main.h). Layout MUST match: same
+ * Mirror of nros_native_tier_spec_t (rclc/detail/main.h). Layout MUST match: same
  * field order, same types, same ABI (verified by the C++ caller casting
  * NativeTierSpec* → nros_native_tier_spec_t* → this type). Gated by
  * `check-ffi-struct-mirrors`, which compares this declaration to main.h's
@@ -188,7 +188,7 @@ typedef struct {
 } nros_tier_spec_t;
 
 /* Issue 1598 — one tier task's memory, owned by the generated entry. Mirror of
- * `nros_tier_task_memory_t` in <nros/main.h> (this TU is compiled where no
+ * `nros_tier_task_memory_t` in <rclc/detail/main.h> (this TU is compiled where no
  * nros header is in reach — the cargo lane's `build.rs` glue). Three pointer-
  * sized fields, so the layout cannot drift by padding; the assert pins it.
  *
@@ -202,7 +202,7 @@ typedef struct {
     void* tcb;
 } nros_tier_task_memory_t;
 _Static_assert(sizeof(nros_tier_task_memory_t) == 3u * sizeof(void*),
-               "nros_tier_task_memory_t mirrors <nros/main.h>: three pointer-sized fields");
+               "nros_tier_task_memory_t mirrors <rclc/detail/main.h>: three pointer-sized fields");
 
 /* --- Per-tier task context ---
  *

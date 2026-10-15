@@ -881,7 +881,7 @@ int nros_zephyr_tier_task_create(void* (*entry)(void*), void* arg, int32_t prior
 /**
  * Issue 1232 — spawn one tier task over the CALLER's thread object and stack:
  * the generated entry's `K_THREAD_STACK_DEFINE` sized from the tier's declared
- * `stack_bytes` (`<nros/tier_task_memory_zephyr.h>`), so the declared size is
+ * `stack_bytes` (`<rclc/detail/tier_task_memory_zephyr.h>`), so the declared size is
  * the size the thread GETS, rather than the fixed pool slot above whatever the
  * tier declared. `stack_size` is the usable size (`K_THREAD_STACK_SIZEOF`).
  * Same priority / name / pin behaviour as the pool path.

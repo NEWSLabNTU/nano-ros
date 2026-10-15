@@ -7,11 +7,11 @@
 // to the real executor via its component object (no synthesizing
 // interpreter); `Board::run_components` owns init/spin/shutdown.
 
-#include <nros/boot_config.h>
+#include <rclc/detail/boot_config.h>
 #include <nros/component.hpp>
 #include <nros/main.hpp>
 #include <rclcpp/rclcpp.hpp>
-#include <nros/app_main.h>
+#include <rclc/detail/app_main.h>
 
 
 // C component factory + configure seam (RCLC_C_COMPONENT); the

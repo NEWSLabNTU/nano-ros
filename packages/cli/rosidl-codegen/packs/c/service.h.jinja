@@ -14,10 +14,10 @@
 #include <rosidl_runtime_c/string.h>
 #include <rosidl_runtime_c/primitives_sequence.h>
 #include <rosidl_runtime_c/service_type_support_struct.h>
-#include <nros/types.h>
+#include <rclc/types.h>
 {%- if has_view_request or has_view_response %}
 // Issue 0346 — borrowed views use rclc_view_str_t / the LE slice views.
-#include <nros/view.h>
+#include <rclc/detail/view.h>
 {%- endif %}
 
 {% include "_codegen_version.jinja" %}
@@ -94,7 +94,7 @@ extern const struct rclc_service_type_t {{ service_struct_name }}__nros_type;
 // `last_error` / `error_count` on the handler for a caller that would rather
 // poll than log.
 //
-// Freestanding: this section names nothing beyond `<nros/types.h>`, which is
+// Freestanding: this section names nothing beyond `<rclc/types.h>`, which is
 // already included at the top of this header.
 
 /// Typed request handler for {{ service_name }}.

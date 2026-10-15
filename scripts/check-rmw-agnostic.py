@@ -86,7 +86,7 @@ EXEMPT = {
     # uses are all inside `#[cfg(test)]`, which is already not code here. It
     # HAD one until the "an exemption that matches nothing is a failure" rule
     # deleted it, which is the rule earning its place on its first run.)
-    ("packages/api/nros-c/include/nros/serialization_format.h", "uorb"):
+    ("packages/api/nros-c/include/rclc/detail/serialization_format.h", "uorb"):
         "serialization-format axis (RFC-0088), not the RMW axis",
     ("packages/api/nros-cpp/include/nros/serialization_format.hpp", "uorb"):
         "serialization-format axis (RFC-0088), not the RMW axis",
@@ -135,9 +135,9 @@ BASELINE: dict[str, tuple[int, str, str]] = {
     "packages/core/nros-orchestration-ir/src/lib.rs":
         (1, "1298", "`pub mod cyclonedds_type_sizing;`"),
     # Issue 1299 — backend-named configuration inside the API crates (D8).
-    "packages/api/nros-c/include/nros/entry_config.h":
+    "packages/api/nros-c/include/rclc/detail/entry_config.h":
         (6, "1299", "locator/domain from CONFIG_NROS_{ZENOH,XRCE,CYCLONE}_*"),
-    "packages/api/nros-c/include/nros/zephyr/app_config.h":
+    "packages/api/nros-c/include/rclc/detail/zephyr/app_config.h":
         (9, "1299", "a `.zenoh` struct member and its task knobs"),
     # phase-484 W8c retired the aliases env.rs (3) and host_env.rs (2) honoured;
     # what is left is the REFUSAL table, which must spell the name it refuses.

@@ -7,7 +7,7 @@
  * `nros/declared_qos.hpp` expands this into a `constexpr` table and
  * `NROS_SUBSCRIBE` static_asserts the QoS it is handed against it, so a
  * declaration and an implementation that disagree fail the BUILD naming
- * the topic and both values. `nros/declared_qos.h` does the same for C.
+ * the topic and both values. `rclc/detail/declared_qos.h` does the same for C.
  *
  * An ABSENT row is not depth 0 and not depth 10: it is "nobody declared
  * this endpoint", and nothing asserts against it. An undeclared COLUMN
@@ -34,7 +34,7 @@
 
 /* X-macro, QUERY form (phase-454 W10) -- the same rows, with the
  * row macro AND the queried (type, topic) passed in, so
- * `nros/declared_qos.h` can expand the table into ONE constant
+ * `rclc/detail/declared_qos.h` can expand the table into ONE constant
  * expression a C11 `_Static_assert` accepts. C++ reads the form
  * above; C reads this one. */
 #define NROS_DECLARED_QOS_ROWS_Q(NROS_DECLARED_QOS_ROW_Q, \

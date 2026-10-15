@@ -2,7 +2,7 @@
   Phase 266 (RFC-0045) — the baked boot config blob.
 
   ONE partial, included by both entry packs. The blob is a C struct literal
-  against `<nros/boot_config.h>`, and a C++ entry compiles the identical bytes,
+  against `<rclc/detail/boot_config.h>`, and a C++ entry compiles the identical bytes,
   so a second copy here would be two authored spellings of one ABI — the defect
   phase-432 exists to remove. If a language ever needs a different spelling of
   this blob, it gets its own partial then; today none does.

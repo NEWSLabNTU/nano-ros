@@ -188,7 +188,7 @@ heapless = "0.8"
 }
 
 /// phase-303 W4 — the generated C (with the DHEADER FFI wrap +
-/// `rclc_cdr_write_encaps_header`) is syntactically valid against `nros/cdr.h`.
+/// `rclc_cdr_write_encaps_header`) is syntactically valid against `rclc/detail/cdr.h`.
 /// `cc -fsyntax-only`, no link. Skips if `cc` is absent.
 #[test]
 #[ignore = "spawns cc -fsyntax-only against generated C"]

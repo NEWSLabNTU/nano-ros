@@ -12,7 +12,7 @@
  * the question is whether the declarations exist with the right shapes.
  */
 
-#include <nros/nros.h>
+#include <rclc/rclc.h>
 #include <stddef.h>
 
 /* The two visitor typedefs are part of the surface — a caller cannot write a

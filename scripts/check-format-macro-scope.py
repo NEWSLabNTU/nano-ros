@@ -28,7 +28,7 @@ is a documented approximation, deliberately conservative in the direction that
 matters:
 
   * a translation unit is **bridge-linked** when it names the bridge API
-    (`<nros/bridge.h>`, `<nros/bridge.hpp>`, `rclc_pubsub_bridge_create`,
+    (`<rclc/bridge.h>`, `<nros/bridge.hpp>`, `rclc_pubsub_bridge_create`,
     `nros::bridge::`, `nros::MultiExecutor`), or when any sibling source under
     the same *entry root* does — an entry root being the nearest ancestor
     directory holding a `CMakeLists.txt`, `package.xml` or `Cargo.toml`, i.e.
@@ -107,7 +107,7 @@ BRIDGE_MARKERS = re.compile(
 # vacuity guard: if a rename moves the macro and nobody updates this file, the
 # gate fails loudly instead of scanning for a string that no longer exists.
 DEFINITION_SITES = [
-    ("packages/api/nros-c/include/nros/serialization_format.h", "NROS_SERIALIZATION_FORMAT_ID"),
+    ("packages/api/nros-c/include/rclc/detail/serialization_format.h", "NROS_SERIALIZATION_FORMAT_ID"),
     ("packages/api/nros-c/include/nros/nros_generated.h", "NROS_SERIALIZATION_FORMAT_ID"),
     ("packages/api/nros-cpp/include/nros/serialization_format.hpp", "linked_format"),
     ("packages/api/nros-cpp/include/nros/nros_cpp_ffi.h", "NROS_CPP_SERIALIZATION_FORMAT_ID"),
@@ -208,7 +208,7 @@ def self_test(quiet: bool = False) -> None:
 
     # 5. Bridge detection fires on each marker the API actually presents.
     for marker in (
-        "#include <nros/bridge.h>",
+        "#include <rclc/bridge.h>",
         '#include "nros/bridge.hpp"',
         "    rclc_pubsub_bridge_create(exec, &src, &dst);",
         "    rclc_bridge_endpoint_t src;",
@@ -220,7 +220,7 @@ def self_test(quiet: bool = False) -> None:
     #    treated as a bridge and the gate would fail the whole tree.
     case(
         "a plain TU is not a bridge",
-        not BRIDGE_MARKERS.search("#include <nros/nros.h>\n    nros_init();"),
+        not BRIDGE_MARKERS.search("#include <rclc/rclc.h>\n    nros_init();"),
     )
 
     failed = [n for n, ok in cases if not ok]

@@ -117,7 +117,7 @@ c: c-fmt
     cc -fsyntax-only \
         -I"$cgen" \
         -Ipackages/api/nros-c/include \
-        -include packages/api/nros-c/include/nros/nros.h \
+        -include packages/api/nros-c/include/rclc/rclc.h \
         -x c /dev/null
     echo "  - RFC-0033 borrow views: stream alignment + checked count (issues 1148/1149)"
     # The one COMPILE+LINK+RUN TU in this lane. The defects it pins are
@@ -145,7 +145,7 @@ c: c-fmt
     ./tmp/cdr_borrow_le_slice
     echo "  - issue 1531: the C surface forwards the BAKED RMW rung, and only when baked"
     # Three properties, with a NEGATIVE CONTROL, because "it compiles" is what
-    # the pre-fix tree also did. `<nros/baked_rmw.h>` rewrites the two nameless
+    # the pre-fix tree also did. `<rclc/detail/baked_rmw.h>` rewrites the two nameless
     # `rclc_support_init` spellings to `rclc_support_init_rmw(... NROS_ENTRY_RMW)`
     # when an entry baked one; the runtime half (does the selector reach the
     # backend) is measured on a two-backend image and cannot be a compile check.
@@ -450,7 +450,7 @@ c: c-fmt
     nros_grep_q 'STRONG-OVERRIDE-RAN' tmp/entry_seam_c_override.log && _rc=0 || _rc=$?
     if [ "$_rc" -ne 0 ]; then \
         echo "ERROR: the strong nros_board_network_wait override did NOT win over" >&2; \
-        echo "       the weak default in <nros/main.h>. A board can no longer take" >&2; \
+        echo "       the weak default in <rclc/detail/main.h>. A board can no longer take" >&2; \
         echo "       the hook. See tmp/entry_seam_c_override.log" >&2; \
         exit 1; \
     fi
@@ -790,7 +790,7 @@ c: c-fmt
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
         packages/api/nros-c/tests/compile/rcl_compat_collision_probe.c 2>/dev/null; then \
-        echo "ERROR: rcl_compat_collision_probe.c compiled clean. <nros/rcl_compat.h>'s" >&2; \
+        echo "ERROR: rcl_compat_collision_probe.c compiled clean. <rclc/detail/rcl_compat.h>'s" >&2; \
         echo "       guard against the real <rcl/types.h> is gone; a TU with both now" >&2; \
         echo "       silently takes one of two DIFFERENT numberings." >&2; exit 1; \
     fi
@@ -815,7 +815,7 @@ c: c-fmt
         -Ipackages/api/nros-c/include \
         -Ipackages/api/nros-cpp/include \
         -include packages/api/nros-cpp/include/nros/nros_cpp_ffi.h \
-        -include packages/api/nros-c/include/nros/component.h \
+        -include packages/api/nros-c/include/rclc/component.h \
         -x c /dev/null
     # Issue 1535's negative control (a short `NROS_C_PUBLISHER_STORAGE_SIZE`
     # must not compile) is retired with the buffer: phase-492 W4 moved C
@@ -1126,7 +1126,7 @@ cpp: cpp-fmt
     cppgen="$(nros_locate_artifact cpp-include)"
     echo "Checking C++ headers (build + syntax + clippy)..."
     echo "  - freestanding syntax (c++14)"
-    # The C++ headers include nros-c's `<nros/types.h>`, so the syntax probe
+    # The C++ headers include nros-c's `<rclc/types.h>`, so the syntax probe
     # needs nros-c on the include path too.
     # The per-variant `<nros/nros_cpp_config_generated.h>` (defining
     # `NROS_CPP_EXECUTOR_STORAGE_SIZE` and friends, referenced by
@@ -1925,7 +1925,7 @@ cpp: cpp-fmt
     # message LENGTH is `failed_create_aborts`'s assertion, above. A COMPILE plus
     # a symbol-table read, once per refusal: the object must call
     # `rclc_log_emit_fmt_at` (nros_log's C entry point, defined in nros-c's
-    # `c-stubs/log_fmt.c` since phase-492 made `<nros/log.h>` freestanding; it
+    # `c-stubs/log_fmt.c` since phase-492 made `<rclc/log.h>` freestanding; it
     # forwards to `rclc_log_emit_at`). `test -f` first, so a missing TU cannot read as a pass
     # (issue 0196).
     test -f packages/api/nros-cpp/tests/compile/refusal_reaches_nros_log.cpp || { \
@@ -2245,7 +2245,7 @@ cpp: cpp-fmt
     # see half of that. Hosted (with and without `NROS_CPP_STD`, for the
     # `std::vector<T>` forms), `-nostdinc++` against the ThreadX shim, and
     # ILP32 through the newlib cross, which is the one compiler here with a
-    # 32-bit `long` AND a libc for `nros/log.h`'s `<stdio.h>`.
+    # 32-bit `long` AND a libc for `rclc/log.h`'s `<stdio.h>`.
     _w1678_probe=packages/api/nros-cpp/tests/compile/param_integer_widths.cpp
     test -f "$_w1678_probe" || { echo "ERROR: $_w1678_probe is MISSING -- this check would pass on absence." >&2; exit 1; }
     echo "  - issue 1678: every integer / floating parameter type binds (LP64 hosted + -nostdinc++, ILP32)"

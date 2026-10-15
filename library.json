@@ -13,7 +13,7 @@
   "_frameworks_comment": "Arduino was advertised here with no implementation behind it (no library.properties, no glue) — removed (#171). espidf removed on the same precedent (no PIO/IDF test lane). Re-add only alongside a real integration.",
   "frameworks": ["zephyr"],
   "platforms": "*",
-  "headers": ["nros/init.h", "nros/node.h"],
+  "headers": ["rclc/init.h", "rclc/node.h"],
   "build": {
     "extraScript": "integrations/platformio/nros_codegen.py",
     "includeDir": "packages/api/nros-c/include",

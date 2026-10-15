@@ -18,10 +18,10 @@
  * Reconstructed 2026-08-27: commit 23dcdafdc added the `just check c` lane that
  * compiles this file, but the file was not committed — so the lane referenced a
  * path that did not exist and `check-c` failed with "No such file or directory"
- * for everyone. Content follows `nros/service.h`'s own documented contract.
+ * for everyone. Content follows `rclc/service.h`'s own documented contract.
  */
 
-#include "nros/service.h"
+#include "rclc/service.h"
 
 /* The live entry point, under the name the ROS client libraries use. */
 /* phase-487 W2: on the polled type, the only one with a server to reply from. */

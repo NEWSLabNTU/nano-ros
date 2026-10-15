@@ -125,7 +125,7 @@ int main(int argc, char** argv) {
     TalkerContext ctx = {};
 
     // `init_in()` takes the connect configuration from the build
-    // (`<nros/entry_config.h>`, issue 0946); on this leaf that is the empty
+    // (`<rclc/detail/entry_config.h>`, issue 0946); on this leaf that is the empty
     // bottom rung, and baking `system.toml`'s locator is issue 1512's.
     if (!rclcpp::init_in().ok()) {
         emit(rclc_log_default_logger(), RCLC_LOG_SEVERITY_ERROR, "rclcpp::init failed", __FILE__,

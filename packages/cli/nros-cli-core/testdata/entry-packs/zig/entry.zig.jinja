@@ -22,10 +22,10 @@
 //   board   = {{ board }}
 
 const c = @cImport({
-    @cInclude("nros/boot_config.h");
-    @cInclude("nros/main.h");
+    @cInclude("rclc/detail/boot_config.h");
+    @cInclude("rclc/detail/main.h");
 {%- if boot_shape == "app" %}
-    @cInclude("nros/app_main.h");
+    @cInclude("rclc/detail/app_main.h");
 {%- endif %}
     @cInclude("nros/nros_cpp_ffi.h");
 {%- if boot.tier_storage or boot.component_storage %}

@@ -289,7 +289,7 @@ filter.
 - `packages/platform/nros-platform-cffi/include/nros/platform.h` —
   `nros_platform_log_write` / `nros_platform_log_flush` /
   `nros_platform_register_log_writer` ABI.
-- `packages/api/nros-c/include/nros/log.h` — C API surface
+- `packages/api/nros-c/include/rclc/log.h` — C API surface
   (`NROS_LOG_*` macros + `rclc_log_emit_fmt`).
 - `packages/api/nros-cpp/include/nros/log.hpp` — C++ macros (the
   legacy `NROS_INFO` / etc. file:line printf surface stays
@@ -320,7 +320,7 @@ loop {
 }
 ```
 
-C (`<nros/rosout.h>`):
+C (`<rclc/rosout.h>`):
 
 ```c
 rcl_publisher_t rosout = rcl_get_zero_initialized_publisher();

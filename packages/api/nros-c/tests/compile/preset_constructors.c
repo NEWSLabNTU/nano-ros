@@ -6,9 +6,9 @@
  * argument ORDER and rclc's MEANING.
  *
  * All five are `static inline` forwarders in the per-module headers
- * (`<nros/publisher.h>`, `<nros/subscription.h>`, `<nros/service.h>`,
- * `<nros/client.h>`, `<nros/action.h>`), which is the shape
- * `rcl_difference_times` in `<nros/timer.h>` already has: no exported symbol,
+ * (`<rclc/publisher.h>`, `<rclc/subscription.h>`, `<rclc/service.h>`,
+ * `<rclc/client.h>`, `<rclc/action.h>`), which is the shape
+ * `rcl_difference_times` in `<rclc/timer.h>` already has: no exported symbol,
  * no writable data. That is also why this probe compiles rather than links —
  * there is no symbol to resolve, and a link would need a registered RMW
  * backend, which is a fixture rather than a syntax check.
@@ -38,7 +38,7 @@
 #pragma GCC diagnostic error "-Wincompatible-pointer-types"
 #endif
 
-#include <nros/nros.h>
+#include <rclc/rclc.h>
 
 #include <stddef.h>
 

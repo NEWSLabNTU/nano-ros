@@ -35,7 +35,7 @@
 ///
 /// Gated by `check-codegen-version-surface`, which fails when the surface
 /// generated code names changes and this constant does not.
-pub const NROS_CODEGEN_VERSION: u32 = 16;
+pub const NROS_CODEGEN_VERSION: u32 = 17;
 
 /// The oldest codegen version this runtime still accepts.
 ///
@@ -50,9 +50,9 @@ pub const NROS_CODEGEN_VERSION: u32 = 16;
 /// points, the two C++ changes add `size()`/`empty()` and `std::string` interop
 /// to `FixedString`/`HeapString`, and the four `rcl_ret_t` declarations that
 /// left `action.h` / `client.h` / `parameter.h` / `service.h` were CONSOLIDATED
-/// into `nros_generated.h`, which all four still reach through `nros/types.h`
+/// into `nros_generated.h`, which all four still reach through `rclc/types.h`
 /// — the headers say so in a comment, and keeping that include is what makes
-/// `#include <nros/action.h>` continue to compile. Nothing a version-1 tree
+/// `#include <rclc/action.h>` continue to compile. Nothing a version-1 tree
 /// names was withdrawn, so this is the window the doc above describes rather
 /// than a migration.
 ///
@@ -60,7 +60,7 @@ pub const NROS_CODEGEN_VERSION: u32 = 16;
 /// move is one ADDED runtime entry point, `rclc_cdr_align`, which the
 /// header-only `rclc_cdr_borrow_le_slice_*` now call so an 8-byte borrowed
 /// sequence starts on its stream boundary. A version-2 tree names nothing that
-/// was withdrawn: it compiles against the corrected `nros/view.h` and picks the
+/// was withdrawn: it compiles against the corrected `rclc/detail/view.h` and picks the
 /// fix up for free, because the view helpers are `static inline` in the header
 /// rather than symbols the generated code defines.
 ///
@@ -90,7 +90,7 @@ pub const NROS_CODEGEN_VERSION: u32 = 16;
 /// `nros_generated.h` and still are, reached the same way. The one genuinely
 /// new declaration a demanded name resolves to is
 /// `rclc_service_init_with_qos`, which is an entry point that already existed
-/// and is now also visible from `<nros/service.h>`. Nothing a version-4 tree
+/// and is now also visible from `<rclc/service.h>`. Nothing a version-4 tree
 /// names was withdrawn, so this is the window the doc above describes rather
 /// than a migration.
 ///
@@ -221,7 +221,7 @@ pub const NROS_CODEGEN_VERSION: u32 = 16;
 /// compiles against this runtime and only keeps the image-wide receive size it
 /// had. Nothing it names is gone, so it is accepted.
 ///
-/// Still 14 while [`NROS_CODEGEN_VERSION`] moved to 16 (issue 1913). Generated
+/// Was 14 while [`NROS_CODEGEN_VERSION`] moved to 16 (issue 1913). Generated
 /// actions now carry the hash each of their five endpoints is keyed on: Rust
 /// impls state `RosAction::{CANCEL_GOAL_SERVICE,STATUS_MESSAGE}_HASH`, the C
 /// descriptor `rclc_action_type_t` gained a trailing `endpoint_hashes`, and C++
@@ -233,11 +233,18 @@ pub const NROS_CODEGEN_VERSION: u32 = 16;
 /// it always had, and is accepted; a NEW tree names a member an older runtime
 /// lacks, which is what the bump refuses.
 ///
+/// 17 with [`NROS_CODEGEN_VERSION`] (phase-501 W1): the C API's headers moved
+/// from `nros/` into `rclc/` (`<rclc/types.h>`, `<rclc/detail/cdr.h>`,
+/// `<rclc/detail/view.h>`, ...), with no forwarding headers left behind. A
+/// version-16 C tree includes `<nros/types.h>`, which this runtime no longer
+/// ships, so it cannot compile and is refused by version instead. Rust and C++
+/// trees are unaffected, but the version is one number for all three.
+///
 /// The range `[NROS_CODEGEN_VERSION_MIN, NROS_CODEGEN_VERSION]` is expressed to
 /// C and C++ as a SET OF DEFINED SYMBOLS rather than as a comparison — see
 /// `nros-build-helpers`' codegen-version anchor — so there is no range check on
 /// that side that could itself be wrong.
-pub const NROS_CODEGEN_VERSION_MIN: u32 = 14;
+pub const NROS_CODEGEN_VERSION_MIN: u32 = 17;
 
 /// Does `emitted` fall in the range this runtime accepts?
 ///

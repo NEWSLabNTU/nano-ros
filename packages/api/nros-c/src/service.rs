@@ -808,7 +808,7 @@ pub unsafe extern "C" fn rclc_polling_service_send_response_raw(
 // The generated `<Srv>_service_handle_request` / `<Srv>_client_handle_response`
 // trampolines in `packs/c/service.h.jinja` are `static inline` glue over the
 // per-type `_deserialize` / `_serialize` the same pack emits. Everything a
-// trampoline needs is in `<nros/types.h>` EXCEPT one thing: a way to be LOUD.
+// trampoline needs is in `<rclc/types.h>` EXCEPT one thing: a way to be LOUD.
 //
 // RFC-0089 requires a deserialise failure or an oversized payload to be loud
 // rather than a silent truncation, and the executor's own dispatch cannot
@@ -821,7 +821,7 @@ pub unsafe extern "C" fn rclc_polling_service_send_response_raw(
 // So the diagnostic lands HERE, in Rust, for the reason RFC-0089 §"Who
 // implements an adopted name" gives: the logger is Rust's, and a second
 // formatting path in a generated header would be a second implementation.
-// Pulling `<nros/log.h>` into every generated service header is not an option
+// Pulling `<rclc/log.h>` into every generated service header is not an option
 // either — it includes `<stdio.h>`, and these headers are freestanding.
 //
 // The generated glue therefore calls ONE exported symbol with an error code

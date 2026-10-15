@@ -315,7 +315,7 @@ but differ in **who walks the CDR**, following the project rule that **C++ wraps
 Rust API and never re-implements serdes**:
 
 - **C — native, pointer-setting deserialize.** C already has its own CDR readers
-  (`nros-c/include/nros/cdr.h`). Codegen emits `{Msg}__View` (`view` fields as
+  (`nros-c/include/rclc/detail/cdr.h`). Codegen emits `{Msg}__View` (`view` fields as
   `{const char* data; size_t size;}` / `{const uint8_t* data; size_t size;}` / the
   numeric LE-view) and `int32_t {Msg}__deserialize_view({Msg}__View*, const uint8_t*
   buf, size_t len)` that walks CDR, bounds-checks against `end`, and **sets pointers

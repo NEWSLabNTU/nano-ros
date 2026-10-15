@@ -404,7 +404,7 @@ nros_armv8r_cflags_env(nros_ws_runtime-static)
         get_target_property(_clinks NanoRos INTERFACE_LINK_LIBRARIES)
         if(_clinks AND ("nros_c-static" IN_LIST _clinks))
             # Preserve nros_c-static's INTERFACE include dirs (the per-build variant
-            # header path + public `include/`, carrying `nros/types.h` etc.) directly
+            # header path + public `include/`, carrying `rclc/types.h` etc.) directly
             # on NanoRos BEFORE dropping it from the link list — the runtime staticlib
             # does not re-export them, and the C Node interface headers `#include` them.
             if(TARGET nros_c-static)

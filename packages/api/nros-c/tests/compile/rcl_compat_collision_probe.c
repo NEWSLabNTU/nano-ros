@@ -29,7 +29,7 @@
 /* Stand-in for `#include <rcl/types.h>` having already been processed. */
 #define RCL__TYPES_H_
 
-#include "nros/rcl_compat.h"
+#include "rclc/detail/rcl_compat.h"
 
 int nros_rcl_compat_collision_probe(void);
 int nros_rcl_compat_collision_probe(void) {

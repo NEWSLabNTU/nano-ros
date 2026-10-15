@@ -111,7 +111,7 @@ pub const CAPABILITIES: &[Capability] = &[
         c_define: Some("NROS_SYSTEM_LIFECYCLE"),
         cmake_token: None,
     },
-    // Issue 1589 — the `/rosout` log bridge (`nros::rosout`, `<nros/rosout.h>`,
+    // Issue 1589 — the `/rosout` log bridge (`nros::rosout`, `<rclc/rosout.h>`,
     // `<nros/rosout.hpp>`). Entry-umbrella-only: it publishes through whatever
     // backend the image has, so there is no backend wire feature. It only PULLS
     // CODE IN — without it the C/C++ entry points still link and answer

@@ -11,8 +11,8 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#include <nros/component.h>
-#include <nros/nros.h>
+#include <rclc/component.h>
+#include <rclc/rclc.h>
 
 typedef struct {
     int32_t unused;

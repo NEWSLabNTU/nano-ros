@@ -215,7 +215,7 @@ Claim: phase-460-W3. Depends on: none. Owns: zephyr/Kconfig (NROS_FRAG_MAX_SIZE)
 `resolved_domain_id`; no file under `zephyr/`, `cmake/`, `packages/api` or
 `packages/boards` reads it. The Zephyr image takes
 `CONFIG_NROS_DOMAIN_ID` (`zephyr/Kconfig:1652`, default 0) through
-`packages/api/nros-c/include/nros/zephyr/app_config.h:90`, and Cyclone takes
+`packages/api/nros-c/include/rclc/detail/zephyr/app_config.h:90`, and Cyclone takes
 `CONFIG_NROS_CYCLONE_DOMAIN_ID` (`Kconfig:209-212`, default
 `NROS_DOMAIN_ID`). The island's authored files currently agree on 10 by hand
 (`system.toml` in both packages, `prj-cyclonedds.conf:102`); the brief that

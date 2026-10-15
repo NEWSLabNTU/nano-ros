@@ -256,7 +256,7 @@ void nros_threadx_linux_install_termination_guard(void)
  * atexit handler or destructor re-entering them (or the ThreadX port) from a
  * process already tearing down is not a shutdown anyone has tested. Every
  * stream is flushed first, so nothing the app printed is lost. The status is
- * the app's own (issue 1752): `<nros/app_main.h>`'s VOID shim hands
+ * the app's own (issue 1752): `<rclc/detail/app_main.h>`'s VOID shim hands
  * `nros_app_main`'s return value, already an exit code, to `threadx_hooks.c`,
  * which passes it here — so a failed app no longer reads as success. */
 void nros_board_app_returned(int exit_code)

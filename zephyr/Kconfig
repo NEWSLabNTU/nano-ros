@@ -23,7 +23,7 @@ config NROS_C_API
     bool "C API (nros-c)"
     help
       Build and link the nros C API library (libnros_c.a).
-      Uses nros_* functions from nros/init.h, nros/node.h, etc.
+      Uses nros_* functions from rclc/init.h, rclc/node.h, etc.
 
 config NROS_CPP_API
     bool "C++ API (nros-cpp)"
@@ -1349,7 +1349,7 @@ config NROS_LOG_BUFFER_SIZE
       held in each early-record and /rosout slot (nros-log build.rs, as
       NROS_LOG_BUFFER_SIZE; issue 1037). Longer messages are truncated with
       an ellipsis. The C/C++ NROS_LOG_* printf front-end keeps its own
-      256-byte frame (<nros/log.h>), so a C record is bounded by the smaller
+      256-byte frame (<rclc/log.h>), so a C record is bounded by the smaller
       of the two. Bigger costs stack on every logging task. Replaces the
       deprecated buffer-size-<N> cargo features.
 

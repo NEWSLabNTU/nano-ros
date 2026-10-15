@@ -24,7 +24,7 @@
  * real signature match.
  */
 
-#include "nros/action.h"
+#include "rclc/action.h"
 
 /* The merged entry point, in rcl's two-channel shape. */
 static rcl_ret_t (*const k_get_active_goal_count)(struct rcl_action_server_t*, size_t*) =

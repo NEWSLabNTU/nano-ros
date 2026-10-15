@@ -21,7 +21,7 @@
 
 // The `nros_clock_*` entry points. `nros_generated.h` carries its own
 // `extern "C"` guard.
-#include "nros/clock.h"
+#include "rclc/types.h"
 
 // ============================================================================
 // `rclcpp::Clock` — DEFINED here (RFC-0089: rclcpp:: is the home)

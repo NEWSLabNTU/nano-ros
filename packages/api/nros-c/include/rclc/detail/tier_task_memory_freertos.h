@@ -4,7 +4,7 @@
  *
  * The entry declares each SPAWNED tier's stack and TCB as statics and hands
  * them to `nros_board_freertos_run_tiers_tasks_in` as an
- * `nros_tier_task_memory_t` row (see <nros/main.h>), which `xTaskCreateStatic`s
+ * `nros_tier_task_memory_t` row (see <rclc/detail/main.h>), which `xTaskCreateStatic`s
  * the tier over them. Before this every tier stack was an `xTaskCreate` block
  * of heap_4 — 256 KiB per tier by default, invisible to the link and to
  * `mem-report`, and an image that could not hold them failed at BOOT as
@@ -28,7 +28,7 @@
 #include "FreeRTOS.h"
 #include "task.h"
 
-#include <nros/main.h>
+#include <rclc/detail/main.h>
 
 #if !defined(configSUPPORT_STATIC_ALLOCATION) || (configSUPPORT_STATIC_ALLOCATION != 1)
 #error                                                                                             \

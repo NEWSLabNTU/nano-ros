@@ -1,6 +1,6 @@
 # Phase 501 — The C API's headers move into `rclc`
 
-**Status (2026-10-15). Planned — W1–W6 open.** Implements the
+**Status (2026-10-15). In progress — W1, W3–W6 in the first pull request; W2 (generated headers) follows.** Implements the
 [RFC-0089](../design/0089-ros2-api-adoption-and-the-compile-or-conform-rule.md)
 amendment "the C headers live under `rclc/`" (2026-10-15). Follows
 [phase-499](archived/phase-499-user-surface-entry-and-cpp.md), which left
@@ -60,6 +60,17 @@ Measured on `origin/main` (`a39b85c5de`, 2026-10-15):
 | `nros_generated.h` (cbindgen, committed) | `rclc/detail/nros_generated.h` | generated |
 | `nros_config_generated.h`, `nros_config_generated_buildless.h` (per-build sizes header and its snapshot) | `rclc/detail/<same>.h` | generated; basenames kept because the sizes-header mirror gates, the NuttX `DEP_NROS_C_CONFIG_INCLUDE` channel and nros-cpp all name them |
 
+Headers with no content of their own (`init.h`, `node.h`, `lifecycle.h`,
+`clock.h`, `guard_condition.h`, `sched_context.h` held only an include of
+`types.h`) were deleted; their includers now name `<rclc/types.h>`, or the
+upstream path where one exists.
+
+Every upstream-named content header (`<rclc/publisher.h>`, `<rclc/node.h>`,
+...) still brings the whole API: its own declarations sit inside its guard,
+and an include of `<rclc/rclc.h>` follows the guard, so the declarations are
+complete before the umbrella reads them. `<rclc/types.h>` is the exception,
+because every other header includes it first.
+
 Generated basenames keep `nros_`: they are build artifacts no user types,
 and renaming them would move every mirror gate for no reader.
 
@@ -99,3 +110,29 @@ and renaming them would move every mirror gate for no reader.
 - Port-seam headers other packages own (`<nros/platform.h>`,
   `<nros/rmw_vtable.h>`, `<nros/transport.h>`): written by porters, they stay.
 - Renaming `nros_*` C symbols the library exports (ruling 2).
+
+## Progress
+
+### 2026-10-15 — W1, W3–W6
+
+- W1: 39 headers moved or deleted by one script; 349 tracked files had an
+  include or path rewritten (`docs/`, `CHANGELOG.md` and archived records
+  excluded). The `<rclc/rclc.h>` umbrella now also includes
+  `<rclc/detail/rcl_compat.h>`, which every shim used to include beside it.
+- W3: `check-codegen-version-surface` keys the surface on the header path,
+  and a version-15 C tree includes `<nros/types.h>`, which no longer exists.
+  So `NROS_CODEGEN_VERSION` and `NROS_CODEGEN_VERSION_MIN` are both 16 (the
+  13 → 14 precedent: a C-only change moves the minimum for all three
+  languages). Regenerated: the surface baseline, the golden corpus, both
+  buildless snapshots' anchors, the committed interface crates.
+- W4: book snippets now use `rclc_client_call` and `rclc_support_init`, and
+  four header comments that named retired forwarders now name the live ones.
+- W5: `check-user-surface` derives the internal set from `rclc/detail/` too,
+  and its self-test proves it refuses `<rclc/detail/app_main.h>`.
+  `check-c-api-freestanding-headers` skips `rclc/detail/`: 64 public headers
+  compile freestanding (57 before; the seven that became public, among them
+  `rclc/log.h` and `rclc/check.h`, already passed through the umbrella).
+- W6: the book's C API page, the Doxyfile inputs, the living RFCs, the
+  API-parity ledger, `c-api-cmake.md` and the audit checklist.
+  `docs/reference/c-api-rename-map.tsv` is left as it is: it is a frozen
+  record, and its generator does not reproduce it on `origin/main` either.

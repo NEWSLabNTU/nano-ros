@@ -4375,7 +4375,7 @@ impl EntityInventory {
     ///
     /// TWO X-macro lists, the same rows in both (phase-454 W10):
     /// `NROS_DECLARED_QOS_ROWS`, read by `nros/declared_qos.hpp`, and
-    /// `NROS_DECLARED_QOS_ROWS_Q`, read by `nros/declared_qos.h`. The second
+    /// `NROS_DECLARED_QOS_ROWS_Q`, read by `rclc/detail/declared_qos.h`. The second
     /// exists because C has no `constexpr`, so a C lookup is built by the
     /// PREPROCESSOR and the queried `(type, topic)` has to travel through the
     /// list to reach each row -- see the comment beside its emission below.
@@ -5593,7 +5593,7 @@ fn render_declared_pub_qos_rows(s: &mut String, pub_rows: &[DeclaredQosHeaderRow
          * keyed (type, topic), and a publisher and a subscription on one pair are\n \
          * two endpoints with one key. Same columns and the same two forms as the\n \
          * subscription lists above: `nros/declared_qos.hpp` expands\n \
-         * NROS_DECLARED_PUB_QOS_ROWS, `nros/declared_qos.h` the _Q form. */\n",
+         * NROS_DECLARED_PUB_QOS_ROWS, `rclc/detail/declared_qos.h` the _Q form. */\n",
     );
     s.push_str("#define NROS_DECLARED_PUB_QOS_ROWS \\\n");
     for r in pub_rows {
@@ -5649,7 +5649,7 @@ pub fn render_declared_qos_header(source: &str, table: &DeclaredQosHeaderTable) 
         " * `nros/declared_qos.hpp` expands this into a `constexpr` table and",
         " * `NROS_SUBSCRIBE` static_asserts the QoS it is handed against it, so a",
         " * declaration and an implementation that disagree fail the BUILD naming",
-        " * the topic and both values. `nros/declared_qos.h` does the same for C.",
+        " * the topic and both values. `rclc/detail/declared_qos.h` does the same for C.",
         " *",
         " * An ABSENT row is not depth 0 and not depth 10: it is \"nobody declared",
         " * this endpoint\", and nothing asserts against it. An undeclared COLUMN",
@@ -5748,7 +5748,7 @@ pub fn render_declared_qos_header(source: &str, table: &DeclaredQosHeaderTable) 
                 s.push_str(
                     "\n/* X-macro, QUERY form (phase-454 W10) -- the same rows, with the\n \
                      * row macro AND the queried (type, topic) passed in, so\n \
-                     * `nros/declared_qos.h` can expand the table into ONE constant\n \
+                     * `rclc/detail/declared_qos.h` can expand the table into ONE constant\n \
                      * expression a C11 `_Static_assert` accepts. C++ reads the form\n \
                      * above; C reads this one. */\n",
                 );

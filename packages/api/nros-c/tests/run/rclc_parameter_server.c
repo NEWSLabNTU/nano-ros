@@ -29,9 +29,9 @@
  * created.
  */
 
-#include <nros/nros.h>
+#include <rclc/rclc.h>
 #include <nros/rmw_vtable.h>
-#include <nros/rcl_compat.h>
+#include <rclc/detail/rcl_compat.h>
 #include <rclc_parameter/rclc_parameter.h>
 
 #include <stdio.h>

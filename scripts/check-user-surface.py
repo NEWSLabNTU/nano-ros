@@ -2,8 +2,8 @@
 """phase-492 / phase-499 — user-facing C and C++ use only upstream's surface.
 
 Maintainer ruling (2026-10-13, RFC-0089 amendment "the user surface is
-upstream's"): `<nros/*.h>` and `<nros/*.hpp>` are INTERNAL (to be renamed into
-`rclc` / `rclcpp` later). A C user includes `<rclc/rclc.h>`, `<rcl/rcl.h>`,
+upstream's"): `<nros/*.hpp>` is INTERNAL (to be renamed into `rclcpp` later),
+and since phase-501 the C API's internal headers are `<rclc/detail/*.h>`. A C user includes `<rclc/rclc.h>`, `<rcl/rcl.h>`,
 `<rclc/executor.h>` ...; a C++ user `<rclcpp/rclcpp.hpp>`. Each umbrella
 carries the nano-ros-only parts too. And the program writes `main`: the build
 renames it and reaches it from the platform's entry, so no user file names
@@ -16,9 +16,10 @@ Subject: what a user reads and copies —
     which is written for port implementers.
 
 Rules:
-  1. No include of a header that lives in `packages/api/nros-c/include/nros/`
-     or `packages/api/nros-cpp/include/nros/`. The set is DERIVED from those
-     directories, so a port-seam header (`<nros/platform.h>`,
+  1. No include of a header that lives in `packages/api/nros-c/include/rclc/detail/`,
+     `packages/api/nros-c/include/nros/` (the generated headers, until
+     phase-501 W2) or `packages/api/nros-cpp/include/nros/`. The set is DERIVED
+     from those directories, so a port-seam header (`<nros/platform.h>`,
      `<nros/rmw_vtable.h>`, `<nros/transport.h>`, owned by other packages) is
      outside the rule by construction, not by an allowlist.
   2. No `nros_app_main` / `NROS_APP_MAIN_REGISTER*` in CODE (comments are
@@ -38,8 +39,13 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-INTERNAL_DIRS = ("packages/api/nros-c/include/nros/", "packages/api/nros-cpp/include/nros/")
-INCLUDE = re.compile(r'^\s*#\s*include\s*[<"]nros/([A-Za-z0-9_./-]+\.hp?p?)[>"]', re.M)
+# (directory, the include spelling its headers are reached by)
+INTERNAL_DIRS = (
+    ("packages/api/nros-c/include/rclc/detail/", "rclc/detail/"),
+    ("packages/api/nros-c/include/nros/", "nros/"),
+    ("packages/api/nros-cpp/include/nros/", "nros/"),
+)
+INCLUDE = re.compile(r'^\s*#\s*include\s*[<"]((?:nros|rclc)/[A-Za-z0-9_./-]+\.hp?p?)[>"]', re.M)
 ENTRY = re.compile(r"\b(nros_app_main|NROS_APP_MAIN_REGISTER\w*)\b")
 FENCE = re.compile(r"^```(?:c|cpp|c\+\+)\s*$(.*?)^```\s*$", re.M | re.S)
 COMMENT = re.compile(r"/\*.*?\*/|//[^\n]*", re.S)
@@ -56,8 +62,8 @@ def git_ls(*specs: str) -> list[str]:
 
 def internal_headers() -> set[str]:
     found: set[str] = set()
-    for d in INTERNAL_DIRS:
-        found |= {p[len(d):] for p in git_ls(d + "*.h", d + "*.hpp")}
+    for d, spelling in INTERNAL_DIRS:
+        found |= {spelling + p[len(d):] for p in git_ls(d + "*.h", d + "*.hpp")}
     return found
 
 
@@ -68,26 +74,27 @@ def violations(texts: dict[str, str], internal: set[str]) -> list[str]:
         for body in bodies:
             for m in INCLUDE.finditer(body):
                 if m.group(1) in internal:
-                    found.append(f"{path}: #include <nros/{m.group(1)}>")
+                    found.append(f"{path}: #include <{m.group(1)}>")
             for name in sorted(set(ENTRY.findall(COMMENT.sub(" ", body)))):
                 found.append(f"{path}: names {name} (write `main`)")
     return found
 
 
 def self_test() -> bool:
-    internal = {"app_main.h", "component.h", "nros.hpp"}
+    internal = {"rclc/detail/app_main.h", "nros/nros_generated.h", "nros/nros.hpp"}
     texts = {
         "examples/a.c": "#include <rclc/rclc.h>\n#include <nros/platform.h>\n// nros_app_main is internal\n",
-        "examples/b.c": "#include <nros/component.h>\nint nros_app_main(int c, char** v);\n",
-        "book/src/x.md": "text <nros/app_main.h>\n```c\n#include <nros/app_main.h>\n```\n",
+        "examples/b.c": "#include <rclc/component.h>\n#include <nros/nros_generated.h>\n"
+                        "int nros_app_main(int c, char** v);\n",
+        "book/src/x.md": "text <rclc/detail/app_main.h>\n```c\n#include <rclc/detail/app_main.h>\n```\n",
         "book/src/y.md": "```cpp\n#include <nros/nros.hpp>\nNROS_APP_MAIN_REGISTER()\n```\n",
     }
     got = violations(texts, internal)
     want = [
-        "book/src/x.md: #include <nros/app_main.h>",
+        "book/src/x.md: #include <rclc/detail/app_main.h>",
         "book/src/y.md: #include <nros/nros.hpp>",
         "book/src/y.md: names NROS_APP_MAIN_REGISTER (write `main`)",
-        "examples/b.c: #include <nros/component.h>",
+        "examples/b.c: #include <nros/nros_generated.h>",
         "examples/b.c: names nros_app_main (write `main`)",
     ]
     if got != want:

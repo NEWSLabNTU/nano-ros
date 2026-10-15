@@ -307,7 +307,7 @@ pub unsafe extern "C" fn snprintf(buf: *mut c_char, size: usize, _fmt: *const c_
 /// ```
 ///
 /// The gap was latent before that: the only other `vsnprintf` call sites are in
-/// `nros/log.h` and its C stub, neither of which enters a pure-Rust bare-metal
+/// `rclc/log.h` and its C stub, neither of which enters a pure-Rust bare-metal
 /// link closure.
 ///
 /// It copies `fmt` VERBATIM instead of writing `""` like `snprintf` above,
