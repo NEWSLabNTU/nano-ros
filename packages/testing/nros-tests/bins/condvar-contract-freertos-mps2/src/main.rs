@@ -38,6 +38,7 @@ extern "C" fn main() -> ! {
         let mut passed = nros_condvar_contract::run(&mut report, false);
         // Phase-502 W2: zenoh-pico's own `_z_condvar_wait` is bounded.
         passed &= nros_condvar_contract::run_zenoh_wait(&mut report);
+        passed &= nros_condvar_contract::run_zenoh_wait_until_wrapped(&mut report);
         if passed {
             log_info!(&LOGGER, "{}", ALL_PASSED);
         }

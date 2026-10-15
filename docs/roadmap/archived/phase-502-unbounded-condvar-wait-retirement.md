@@ -1,7 +1,8 @@
 # Phase 502 — No unbounded condition wait in code we own
 
-**Status (2026-10-15).** W0–W5 DONE; issue 1196 is resolved. Only W6 (the
-non-blocking upstream-worthy zenoh-pico fixes) is open.
+**Status (2026-10-15).** W0–W6 DONE; issue 1196 is resolved. W6's two
+zenoh-pico fixes are on the fork's `nano-ros` branch and still to be offered
+upstream.
 
 **Measured (2026-10-15).** `just ci gate` green (6/6).
 
@@ -22,11 +23,11 @@ wait relies on. What this phase owns is the rest of issue 1196's closing
 condition: the two zenoh-pico paths that never went through that symbol,
 `zpico_get`, and a gate for the whole class.
 
-**Owns:** [issue 1196](../issues/archived/1196-platform-condvar-wait-is-unbounded.md) (resolved 2026-10-15 by W0–W4).
+**Owns:** [issue 1196](../../issues/archived/1196-platform-condvar-wait-is-unbounded.md) (resolved 2026-10-15 by W0–W4).
 
-**Implements:** [RFC-0076](../design/0076-platform-abi-ask-do-not-assume.md)
+**Implements:** [RFC-0076](../../design/0076-platform-abi-ask-do-not-assume.md)
 (the contract between the platform ABI and its callers), with the amendment in
-W0. [RFC-0034](../design/0034-platform-layer-split.md) D2 is why FreeRTOS is
+W0. [RFC-0034](../../design/0034-platform-layer-split.md) D2 is why FreeRTOS is
 patched rather than routed through the alias shim (W2).
 
 **Continues:** phase-436 Path D2, which did the ABI half and handed this
@@ -202,18 +203,42 @@ line; with W1 in place it passes with an empty exemption table.
 
 ### W6 — Upstream-worthy zenoh-pico fixes (non-blocking)
 
-On a wait error four sites return with the mutex HELD:
-`_Z_RETURN_IF_ERR(_z_condvar_wait(...))` in `fifo_mt.c:81,116` and
-`ring_mt.c:106`, and the early `return ret` in `sync_group.c:103`. Issue
-1907's refusal of a wait under a mutex held twice (-1 on ThreadX and Zephyr's
-native arm) is a real way to reach them.
+On a condvar error the collections returned with the mutex HELD. This doc
+named four sites (the waits at `fifo_mt.c:81,116` and `ring_mt.c:106`, and the
+early `return ret` at `sync_group.c:103`). A grep for the class found eleven:
+every `_Z_RETURN_IF_ERR` around `_z_condvar_wait`, `_z_condvar_signal` or
+`_z_condvar_signal_all` inside a locked region (fifo push, pull, try_pull and
+close; ring push, pull and close; sync_group wait), plus `sync_group.c:103`.
+Issue 1907's refusal of a wait under a mutex held twice (-1 on ThreadX and
+Zephyr's native arm) is a real way to reach them.
 
-- [ ] A fix on the fork's `nano-ros` branch that unlocks before returning, as
+- [x] A fix on the fork's `nano-ros` branch that unlocks before returning, as
       a commit of its own, offered upstream separately. Our branch does not
-      wait on the upstream merge.
+      wait on the upstream merge. Each site now uses zenoh-pico's own
+      `_Z_CLEAN_RETURN_IF_ERR(..., _z_mutex_unlock(...))`.
+- [x] The vendored FreeRTOS `_z_condvar_wait_until` (this doc's former
+      non-goal) compared raw tick counts: `(target > now) ? target - now : 0`.
+      Confirmed wrap-unsafe. A deadline set just before the 32-bit tick count
+      wraps (49.7 days at 1 kHz) and waited on after it read as about 2^32
+      ticks ahead. The fix computes `abstime - now` in `TickType_t` arithmetic,
+      and treats a value over half the range as already past. Its own commit on
+      the fork. `rpi_pico` and `threadx/stm32` compare the same way; nano-ros
+      builds neither, so they are left to the upstream change.
 
-*Acceptance:* a host test drives `_z_fifo_mt_pull` into a wait error and
-asserts the mutex is free afterwards. This item does not gate closing 1196.
+*Acceptance:*
+
+- **Collections:** `tests/z_collections_mt_unlock_test.c` (zenoh-pico,
+  ctest) drives every one of the eleven sites into a failure with the linker's
+  `--wrap`. It then checks from another thread that the mutex is free. It
+  passes 11/11. Against the old sources it fails at the first site.
+- **FreeRTOS wrap:** the condvar contract image's
+  `zenoh-wait-until-wrapped` check waits with a deadline of "1000 ticks
+  before tick 0". It must get `Z_ETIMEDOUT` at once. Measured on QEMU MPS2-AN385:
+  `PASS zenoh-wait-until-wrapped: rc=-71 now_ticks=3061
+  deadline_ticks=4294966296 elapsed_ms=0`, and the host test
+  `condvar_contract_holds_on_freertos_mps2` passes 3 of 3 runs. With the old
+  comparison restored, `FAIL … rc=0 … elapsed_ms=10000 rescued=true`: the
+  wait returned only when the rescuer signalled it.
 
 ## Test strategy by platform
 
@@ -246,12 +271,9 @@ returned at once would pass an upper-bound-only test while busy-spinning.
 - Bounding mutex acquisition, which rests on priority inheritance (issue 1907).
 - Routing FreeRTOS sync through the platform ABI (see W2's decision).
 - Making the slice a knob.
-- The vendored FreeRTOS `_z_condvar_wait_until`'s `target_time > now`
-  comparison on `TickType_t`, which looks wrap-unsafe (inferred). A separate
-  issue if confirmed.
 
 ## What closes issue 1196
 
 W0–W4 landed: no code we own makes an unbounded condition wait outside the
 named mutex and join categories, and the widened gate enforces it with an
-empty exemption table. W5 and W6 may follow.
+empty exemption table. W5 and W6 followed the same day.

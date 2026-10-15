@@ -84,5 +84,13 @@ fn condvar_contract_holds_on_freertos_mps2() {
         .wait_for_output(Duration::from_secs(60))
         .expect("the FreeRTOS condvar contract image produced no output in time");
 
-    assert_contract(&output, &["timed-wait", "broadcast", "zenoh-wait"]);
+    assert_contract(
+        &output,
+        &[
+            "timed-wait",
+            "broadcast",
+            "zenoh-wait",
+            "zenoh-wait-until-wrapped",
+        ],
+    );
 }
