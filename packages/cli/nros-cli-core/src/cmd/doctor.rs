@@ -276,7 +276,11 @@ pub fn run(args: Args) -> Result<()> {
     // fetched, only instructed. Read before `args.workspace` is moved below.
     // Phase 217.B.2 — when `--board <name>` is set, filter to that board's
     // `packages` so unrelated gates don't show up.
-    let gate_problems = check_license_gates(args.workspace.as_deref(), args.board.as_deref())?;
+    let gate_problems = check_license_gates(
+        args.workspace.as_deref(),
+        args.board.as_deref(),
+        &crate::orchestration::store::root(),
+    )?;
 
     // The nano-ros workspace health (`just doctor`). When a bringup
     // `system.toml` was checked, missing the nano-ros workspace is non-fatal
@@ -367,7 +371,15 @@ fn resolve_config(explicit: Option<&Path>) -> Option<PathBuf> {
 /// a WARN with a one-liner pointing at `scripts/installers/arm-fvp-installer.sh`
 /// + the Arm EULA URL — NOT counted as a problem (gated tool, never
 ///   hard-fails the doctor run).
-fn check_license_gates(workspace: Option<&Path>, board: Option<&str>) -> Result<usize> {
+/// `store` is the store root the FVP installer landing is probed under, a
+/// PARAMETER for the reason `install_report` gives: a test that moved `$HOME`
+/// to point it elsewhere raced every other test in the binary that resolves
+/// the store (issue 1915).
+fn check_license_gates(
+    workspace: Option<&Path>,
+    board: Option<&str>,
+    store: &Path,
+) -> Result<usize> {
     let Some(index_path) = crate::cmd::setup::locate_index(workspace) else {
         return Ok(0);
     };
@@ -402,7 +414,7 @@ fn check_license_gates(workspace: Option<&Path>, board: Option<&str>) -> Result<
             .as_ref()
             .is_none_or(|allow| allow.iter().any(|p| p == "arm-fvp"))
     {
-        check_arm_fvp(&index.tool["arm-fvp"].version);
+        check_arm_fvp(&index.tool["arm-fvp"].version, store);
     }
     for (name, g) in &index.gated {
         if let Some(allow) = &board_filter
@@ -449,11 +461,11 @@ fn check_license_gates(workspace: Option<&Path>, board: Option<&str>) -> Result<
 /// `~/.nros/sdks/arm-fvp/current/<bin>` (installer landing). Prints PASS /
 /// WARN to stderr but never increments the problem counter — gated tool, so
 /// a missing FVP must not fail an unrelated `nros doctor` run.
-fn check_arm_fvp(version: &str) {
+fn check_arm_fvp(version: &str, store: &Path) {
     const BIN: &str = "FVP_BaseR_AEMv8R";
     // Under the store root, so a `$NROS_HOME` store (a distrobox) is the one
     // probed — the literal `$HOME/.nros` here ignored it (RFC-0103 D6).
-    let landing = crate::orchestration::store::root().join("sdks/arm-fvp/current");
+    let landing = store.join("sdks/arm-fvp/current");
 
     // 1. ARMFVP_BIN_PATH (Zephyr canonical).
     if let Some(v) = std::env::var_os("ARMFVP_BIN_PATH") {
@@ -960,13 +972,22 @@ mod tests {
 
         // Unset ⇒ informational, not a problem.
         unsafe { std::env::remove_var(env) };
-        assert_eq!(check_license_gates(Some(&ws), None).unwrap(), 0);
+        assert_eq!(
+            check_license_gates(Some(&ws), None, &ws.join("store")).unwrap(),
+            0
+        );
         // Set to a non-existent dir ⇒ misconfigured ⇒ 1 problem.
         unsafe { std::env::set_var(env, ws.join("nope")) };
-        assert_eq!(check_license_gates(Some(&ws), None).unwrap(), 1);
+        assert_eq!(
+            check_license_gates(Some(&ws), None, &ws.join("store")).unwrap(),
+            1
+        );
         // Set to an existing dir ⇒ OK.
         unsafe { std::env::set_var(env, &ws) };
-        assert_eq!(check_license_gates(Some(&ws), None).unwrap(), 0);
+        assert_eq!(
+            check_license_gates(Some(&ws), None, &ws.join("store")).unwrap(),
+            0
+        );
 
         unsafe { std::env::remove_var(env) };
         std::fs::remove_dir_all(&ws).ok();
@@ -994,25 +1015,27 @@ mod tests {
         )
         .unwrap();
 
+        // Issue 1915 — NOT `HOME`. This test used to point `$HOME` at a temp
+        // dir so the FVP probe would find no installer landing. `$HOME` is
+        // process-global and the store root derives from it, so every test in
+        // this binary that resolves the store raced it — measured on the tier-2
+        // runner, where `board_facts`' two `locate` calls straddled the change
+        // and resolved one FreeRTOS kernel two ways. The landing is now probed
+        // under a store root the test passes in.
         let envs = [
             "NROS_TEST_ARMFVP_DIR",
             "NROS_TEST_NVSPE_DIR",
             "ARMFVP_BIN_PATH",
-            "HOME",
         ];
         let saved: Vec<_> = envs.iter().map(|e| (*e, std::env::var_os(e))).collect();
         for e in &envs {
             unsafe { std::env::remove_var(e) };
         }
-        // Point HOME at a temp dir with no installer landing.
-        let home = ws.join("home");
-        std::fs::create_dir_all(&home).unwrap();
-        unsafe { std::env::set_var("HOME", &home) };
 
         // Misconfigured NVSPE env ⇒ would be 1 problem WITHOUT the filter —
         // with `--board fvp-test`, only arm-fvp is checked, so it must be 0.
         unsafe { std::env::set_var("NROS_TEST_NVSPE_DIR", ws.join("nope")) };
-        let problems = check_license_gates(Some(&ws), Some("fvp-test")).unwrap();
+        let problems = check_license_gates(Some(&ws), Some("fvp-test"), &ws.join("store")).unwrap();
         assert_eq!(
             problems, 0,
             "board filter must skip non-arm-fvp gates and WARN (not FAIL) on missing FVP"
