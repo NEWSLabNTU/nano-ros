@@ -96,3 +96,37 @@ is named.
 same test failed after 40.354 s, the lane's ONLY real failure of 2767 (181
 others were `[SKIPPED:lane]` rewrites). With issues 1684/1685 resolved on that
 run, this is what stands between the tier-1 job and a green verdict.
+
+## 2026-10-16 — the fix holds locally; no tier-1 run since it has reached the cells
+
+The fix (`c0d34e3bf6`, PR #1947) is on `main`, but the acceptance above has not
+been met because no self-hosted tier-1 run has run this test since it landed.
+All nine completed `run-matrix` tier-1 jobs from 2026-10-12 to 2026-10-15
+(38213993313 through 38663782341) report `NO VERDICT: stopped in the build`. The latest, 38663782341, stopped at
+`artifact-identity-budget did not verify… no build tree at
+examples/workspaces/mixed/build-workspace-fixtures`, which has nothing to do
+with this test.
+
+Measured by hand instead, at `d10d92ee8d`. The harness runs the test's
+scenario: Jazzy `rmw_zenohd` on a private port, `action-server`, then the async
+client under a 40 s timeout, built with the same bare `cargo build` the fixture
+build uses. Its contended mode pins server, client and two busy loops onto one
+CPU, which is the "spin task does not drain the ring during the burst" timing
+from the cause above, reproduced deterministically:
+
+| Client | Mode | Result | Feedback samples received |
+| --- | --- | --- | --- |
+| fixed (`main`) | plain | 20 / 20 pass | 11 |
+| fixed (`main`) | one CPU, contended | 20 / 20 pass | 4 in every round |
+| pre-fix (the fix's diff reverse-applied) | one CPU, contended | 0 / 6 pass, all hang to the timeout | 4 in every round |
+
+Under contention every round drops the final feedback sample, since only 4 of
+11 fit the ring, so every contended round exercises the dropped-sample path.
+The pre-fix client hangs on all of them, and the fixed client completes all of
+them via `get_result`. That confirms both the cause and the fix. The issue
+stays open on its stated acceptance until the tier-1 lane reaches its cells
+again.
+
+Found on the way: `nros build` refuses this leaf on a fresh checkout because
+four of its crates are in no pinned range. That is issue 1924. It does not
+affect the fixture build, which uses bare `cargo build`.
