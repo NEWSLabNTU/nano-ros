@@ -89,3 +89,28 @@ submodule-pins: packages/cli/third-party/play_launch
 Two in one evening, on two submodules, means any pin bump that merges within
 a push gate's queue time turns the previous commit's gate red. That happens
 whenever the queue is busy, so it is no longer a rare race.
+
+## Third sighting, a different verdict from the same baseline (2026-10-15)
+
+Push gate **38774904187** for main `5065beb8a` (created 17:09Z) failed in
+`check / fast` (job **116560014147**, 17:09:16Z to 17:20:55Z). The pin gate
+did not say REWIND this time. It reported NOT VERIFIED, and the skip
+allowlist turned that into the failure:
+
+```
+check-fast-skip-allowlist: FAIL -- these gates did not verify in CI:
+  submodule-pins: PARTIAL — 1 of 1 moved pin(s) NOT VERIFIED (not checked out here): packages/cli/third-party/play_launch
+```
+
+`5065beb8a` moved no pin; it pins `play_launch` at `351f88097c`. The next
+commit on main, `573490978` (#2271, "play-launch-68aa242d"), moved it
+forward to `68aa242d6c` and merged while this job was running. The job's
+`NROS_SUBMODULE_PIN_BASELINE` was `origin/main`, so it compared `351f880`
+against `68aa242`. The job checks out `play_launch` with `--depth 1`, so the
+older pin's ancestry is not in the clone. That gives the gate's third outcome
+(issue 1043) instead of the REWIND of the first two sightings.
+
+Same cause, a second symptom: whether a commit superseded by a pin bump
+reads as REWIND or NOT VERIFIED depends on how much submodule history the
+job happened to fetch. Either way the gate for a commit that moved no pin
+goes red. The fix under "What would close this" covers both.
