@@ -124,6 +124,13 @@ right wait for a poll-only backend, not a degraded one.
   granularity, which D3 now reports honestly.
 - A park on such a backend would be a blind sleep, and a reliable stream whose
   ACK lands in a session nobody drives stalls (Phase 127.C.4).
+- **A guard condition cannot end that wait.** A trigger from another thread
+  signals the wake object, and nobody waits on it while the executor sits in
+  the backend's `recv`. So while a guard condition exists, the transport wait
+  is driven in slices of `POLL_ONLY_WAKE_SLICE_MS` (10 ms) and stops at the
+  first slice that ends with the wake flag set. Measured on XRCE: 979 ms from
+  trigger to dispatch in a 1 s spin before, about 5 ms after. An executor
+  with no guard condition keeps the single blocking drive.
 
 ### D6 — One session wakes every executor over it
 
@@ -187,22 +194,26 @@ budget is a floor on the wait, not a bound on the call.
 |---|---|---|
 | zenoh | subscription, query and reply arrival | park |
 | Cyclone DDS | data-available listener | park |
-| XRCE | no callback (poll-only) | receive-blocking, same bound, 1 ms (D5) |
+| XRCE | no callback (poll-only) | receive-blocking, same bound, 1 ms; 10 ms slices while a guard condition exists (D5) |
 | uORB | no callback through this slot | receive-blocking, same bound |
 
 ## Open questions
 
-- **Bare metal (phase-436 C3).** Needs a per-board one-shot compare armed
-  before `wfi`; no board has one.
+- **Bare metal (phase-436 C3).** Not a park: every bare-metal backend is
+  poll-only, so D5 never parks there. What remains is a tickless `wfi` inside
+  the transport's wait, armed on its deadline, and it needs a NIC receive
+  interrupt first; without one it is D5's blind sleep one layer down.
 - **Per-entity wake routing.** Removes D6's spurious wakes; needs each backend
   to say whose data arrived.
-- **Deadline sources on targets.** smoltcp's is the only port source, and it
-  has not run on hardware (phase-436 Path B's exit).
-- **A cross-thread guard condition on a poll-only backend** signals the wake
-  object while the executor blocks in the transport, so it waits out the
-  bound. Unmeasured.
+- **Deadline sources on hardware.** smoltcp's is the only port source. It
+  wins a park on QEMU when the budget leaves it room (phase-436 Path B's
+  exit); no hardware run yet.
 
 ## Changelog
+
+- 2026-10-16 — D5 gains the sliced drive for a guard condition on a poll-only
+  backend (measured, fixed, tested). Bare metal's open question is reframed:
+  it is a transport idle, not a park. Path B's exit met on QEMU.
 
 - 2026-10-16 — Filed from phase-436's design text, with D5's poll-only
   reading, D7's weak-reference rule and D8 (single-executor entries) added in

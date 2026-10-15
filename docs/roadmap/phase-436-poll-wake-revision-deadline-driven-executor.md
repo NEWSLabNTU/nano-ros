@@ -26,15 +26,26 @@ remains, in the order I would take it:
    has to port to the one node type before it can pin past `af14492fe`; the
    readout waits on ASI branch `wip/a3-rt-probe-readout`, and ASI's
    `docs/roadmap/phase-11-executor-evidence.md` carries the ASI side.
-4. **Path B's target run.** smoltcp's `poll_delay` is the only port deadline
-   source and has not run on hardware.
+4. **Path B's target run — MET on QEMU 2026-10-16.** With a live zenoh
+   session and a 50 ms budget, mps2-an385 printed
+   `park bounded by Platform(0) at 27000 us`; with the shipped 10 ms budget
+   the source never wins. No hardware run: no board is on this bench. See
+   Path B's exit.
 5. **Per-entity wake routing (optional).** Removes the fan-out's one spurious
    wake per foreign arrival; needs each backend to say whose data arrived.
-6. **C3, bare metal — deferred.** Needs a per-board one-shot compare armed
-   before `wfi`; no board has one.
-7. **A guard condition on a poll-only backend** signals the wake object while
-   the executor blocks in the transport, so it waits out the bound.
-   Unmeasured; filed as an RFC-0106 open question, not yet an issue.
+6. **C3, bare metal — REFRAMED 2026-10-16, still deferred.** It is not an
+   executor park: bare-metal zenoh and XRCE are poll-only, so RFC-0106 D5
+   keeps the receive-blocking wait there whatever park is installed. What C3
+   can buy is a tickless idle INSIDE the transport's wait, and that needs a
+   NIC receive interrupt before a one-shot compare is worth arming. See C3
+   under Path C.
+7. **A guard condition on a poll-only backend — FIXED 2026-10-16.** Measured
+   on XRCE: a trigger 20 ms into a 100 / 500 / 1000 ms spin was dispatched
+   79 / 480 / 979 ms later, the whole bound. The executor now drives a
+   poll-only transport in 10 ms slices while a guard condition exists, and
+   stops at the first slice that ends with the wake flag set: about 5 ms,
+   bounded by one slice. `tests/xrce_guard_wake.rs` pins it (and fails at
+   974 ms with the slicing disabled).
 
 Two process lessons that cost time here:
 - **When a parent PR merges, rebase its child before anyone queues it.** A
@@ -755,6 +766,23 @@ outside tests. Every wired port waits; none says WHEN.
 * **Exit for the path:** `register_wake_source` has a non-test caller, and a
   target run shows `last_park()` attributing a park to `Platform(n)`.
 
+  **MET on QEMU (2026-10-16).** Two runs of
+  `examples/mps2-an385-baremetal/rust/talker` against a live `rmw_zenohd`
+  (slirp, `tcp/10.0.2.2:10500`), both publishing:
+
+  * the shipped 10 ms budget: `no Platform park in 1000 spins; last was
+    CallerBudget at 9031 us`. A live session does not change the reading
+    below: smoltcp's nearest deadline is a 10 ms delayed ACK, which ties the
+    budget and never beats it.
+  * the budget raised to 50 ms (a local edit, not committed):
+    `park bounded by Platform(0) at 27000 us` after about 30 messages.
+
+  So the source works and wins where the budget leaves it room, which is
+  where it was always going to pay. The shipped budget stays 10 ms: on this
+  board nothing parks (D5), so a longer budget would only lengthen the
+  transport's blocking drive. No hardware run; no board is on this bench.
+  The original reading, from a sandbox with no router, follows.
+
   **Half met, and the other half MEASURED rather than left silent.** The
   non-test caller exists (two of them), and a QEMU mps2-an385 run of
   `examples/mps2-an385-baremetal/rust/talker` prints, verbatim:
@@ -877,8 +905,21 @@ wired, so every other port parked on the millisecond `wake_wait_ms` floor.
   (the image links `sem_clockwait` and the park) and passed its
   `realtime_tiers_e2e` cell under QEMU (qemu-armv7a).
 
-* **C3 — bare metal. DEFERRED.** Needs a per-board one-shot compare armed
-  before `wfi`, which exists nowhere today.
+* **C3 — bare metal. DEFERRED, and REFRAMED (2026-10-16).** As written this
+  was a park primitive: arm a one-shot compare, `wfi`, let the interrupt end
+  the park. RFC-0106 D5 rules that out on its own. Every bare-metal backend
+  is poll-only (zenoh-pico over smoltcp and XRCE both read the transport only
+  inside `drive_io`), so the executor never parks there, and a park installed
+  on mps2-an385 would never be called. The wait that does run is the
+  transport's: `nros_smoltcp`'s poll loop, which already idles on `wfi`
+  through `set_idle_callback` when an interrupt source is armed (the RTIC
+  entry; `enable_wfi_idle`), and busy-polls otherwise.
+  So the work, if it is ever wanted, is a TICKLESS idle in that loop: arm a
+  one-shot compare at the wait's deadline and `wfi` until it or a packet.
+  The precondition is a receive interrupt in `lan9118-smoltcp`, which has
+  none (the FreeRTOS lwIP driver's `lan9118_lwip_rx_irq_enable` is the
+  model); without one, a `wfi` armed only on the deadline is the blind sleep D5
+  exists to prevent, moved down a layer. The gain is power, not latency.
 * **Exit:** every port declares a granularity that matches its tick, so no
   port's jitter report claims resolution it lacks (issue 1242's rule,
   applied everywhere). **Met for every port with a park** — Zephyr, ThreadX,
