@@ -25,7 +25,7 @@ fn run() -> i32 {
     let a: i64 = args.next().unwrap_or(2);
     let b: i64 = args.next().unwrap_or(3);
 
-    let ctx = nros::init_with_launch_auto().expect("nros init failed");
+    let ctx = nros::init().expect("nros init failed");
     let cfg = ctx.config("add_two_ints_client_cb");
     let mut executor: Executor = Executor::open(&cfg).expect("Failed to open session");
 

@@ -1,15 +1,13 @@
 //! Phase 212.L.5 — top-level init API tests.
 //!
-//! Exercises Pattern 2 / Pattern 3 of the canonical init surface:
+//! Exercises the application-pkg pattern of the canonical init surface:
 //!
-//! - Pattern 3 `nros::init()` — raw, launch-ignoring init. Reads
-//!   `ROS_DOMAIN_ID` / `NROS_LOCATOR` etc. into a [`Context`].
-//! - Pattern 2 `nros::init_with_launch_auto()` — launch-aware init.
-//!   Today the env vars are the active overlay channel (the launcher
-//!   projects them into the child env before exec). Real launch XML
-//!   parsing lands with the runtime-overlay follow-up wave.
-//! - Pattern 2 `nros::init_with_launch(path)` — explicit-path variant.
-//!   Verifies path existence; XML parse is the same follow-up.
+//! - `nros::init()` — reads `ROS_DOMAIN_ID` / `NROS_LOCATOR` etc. into a
+//!   [`Context`].
+//! - The deprecated `nros::init_with_launch_auto()` /
+//!   `nros::init_with_launch(path)` — the same environment read (and, for the
+//!   path form, an existence check), kept working until they are removed.
+//!   They read no launch file and report `ContextSource::Env` (issue 1917).
 //!
 //! Pattern 1 (`nros::node!`) is covered by the existing component
 //! macro tests in Phase 172.W.3 (`nros-macros` unit tests +
@@ -97,6 +95,7 @@ fn nros_init_returns_context() {
 }
 
 #[test]
+#[allow(deprecated)] // the deprecated spelling must keep working until removed
 fn nros_init_with_launch_auto_applies_env_defaults() {
     let _g = env_lock().lock().unwrap();
     let _g1 = EnvGuard::set("ROS_DOMAIN_ID", "42");
@@ -107,14 +106,14 @@ fn nros_init_with_launch_auto_applies_env_defaults() {
     let ctx = nros::init_with_launch_auto().expect("init_with_launch_auto failed");
     assert_eq!(
         ctx.domain_id, 42,
-        "ROS_DOMAIN_ID=42 must propagate through the launch overlay path"
+        "ROS_DOMAIN_ID=42 must propagate through the deprecated spelling too"
     );
     assert_eq!(ctx.locator, "tcp/10.0.0.1:7777");
     assert_eq!(ctx.rmw, "rmw_zenoh_cpp");
     assert_eq!(
         ctx.source,
-        nros::ContextSource::Launch,
-        "init_with_launch_auto must tag the context as Launch-sourced"
+        nros::ContextSource::Env,
+        "init_with_launch_auto reads the environment, so the context says Env"
     );
 }
 
@@ -140,14 +139,14 @@ fn nros_init_refuses_retired_locator_alias() {
 }
 
 #[test]
+#[allow(deprecated)] // the deprecated spelling must keep working until removed
 fn nros_init_with_launch_path_resolves_relative() {
     let _g = env_lock().lock().unwrap();
     let _g1 = EnvGuard::set("ROS_DOMAIN_ID", "7");
     let _g2 = EnvGuard::unset("NROS_LOCATOR");
 
-    // Stage a placeholder launch file (XML parsing isn't wired this
-    // wave — see module docs; the runtime only verifies the path
-    // exists today).
+    // Stage a launch file. Its contents are not read; only its existence
+    // is checked.
     let tmp = tempfile::tempdir().expect("tempdir");
     let path = tmp.path().join("system.launch.xml");
     std::fs::write(
@@ -158,7 +157,7 @@ fn nros_init_with_launch_path_resolves_relative() {
 
     let ctx = nros::init_with_launch(&path).expect("init_with_launch w/ valid path");
     assert_eq!(ctx.domain_id, 7);
-    assert_eq!(ctx.source, nros::ContextSource::Launch);
+    assert_eq!(ctx.source, nros::ContextSource::Env);
 
     // Missing path → LaunchFileNotFound (so misspelled paths fail fast).
     let missing = tmp.path().join("does-not-exist.launch.xml");

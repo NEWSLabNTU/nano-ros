@@ -46,7 +46,7 @@ fn main() {
 
     info!("nros Sim Clock Listener (test fixture)");
 
-    let ctx = nros::init_with_launch_auto().expect("nros init failed");
+    let ctx = nros::init().expect("nros init failed");
     let cfg = ctx.config("sim_listener");
     let mut executor: Executor = Executor::open(&cfg).expect("Failed to open session");
 

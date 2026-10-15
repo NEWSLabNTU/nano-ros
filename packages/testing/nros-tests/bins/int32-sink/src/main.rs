@@ -26,7 +26,7 @@ fn main() {
     // "nros Native Listener" banner).
     info!("nros Int32 Sink Listener (test fixture)");
 
-    let ctx = nros::init_with_launch_auto().expect("nros init failed");
+    let ctx = nros::init().expect("nros init failed");
     let cfg = ctx.config("listener");
     let mut executor: Executor = Executor::open(&cfg).expect("Failed to open session");
 

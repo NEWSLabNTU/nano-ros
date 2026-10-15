@@ -89,7 +89,7 @@ fn main() {
         .unwrap_or(14)
         .min(MAX_ROWS);
     nros_rmw_zenoh::register().expect("register zenoh backend");
-    let ctx = nros::init_with_launch_auto().expect("nros init failed");
+    let ctx = nros::init().expect("nros init failed");
     let cfg = ctx.config("mc");
     let mut executor: Executor = Executor::open(&cfg).expect("open session");
     match executor.try_set_monitor_tables(&ROWS[..n], &[]) {

@@ -47,7 +47,7 @@ fn main() {
     info!("nros Sim Clock Publisher (test fixture)");
     info!("SIMCLOCK_PUB_CONFIG rate={rate} step_ms={step_ms} run_ms={run_ms}");
 
-    let ctx = nros::init_with_launch_auto().expect("nros init failed");
+    let ctx = nros::init().expect("nros init failed");
     let cfg = ctx.config("sim_clock");
     let mut executor: Executor = Executor::open(&cfg).expect("Failed to open session");
     let nid = executor

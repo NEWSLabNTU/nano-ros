@@ -30,7 +30,7 @@ fn main() {
     // keys off it, like the other sink fixtures.
     info!("contract-monitor diagsink Listener (observing {DIAG_TOPIC})");
 
-    let ctx = nros::init_with_launch_auto().expect("nros init failed");
+    let ctx = nros::init().expect("nros init failed");
     let cfg = ctx.config("cm_diagsink");
     let mut executor: Executor = Executor::open(&cfg).expect("open session");
 

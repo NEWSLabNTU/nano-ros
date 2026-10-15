@@ -50,7 +50,7 @@ fn main() {
     let period_ms = env_usize("ROSOUT_PROBE_PERIOD_MS", 250) as u64;
     let upstream_qos = std::env::var("ROSOUT_PROBE_UPSTREAM_QOS").as_deref() == Ok("1");
 
-    let ctx = nros::init_with_launch_auto().expect("nros init failed");
+    let ctx = nros::init().expect("nros init failed");
     let cfg = ctx.config("rosout_talker");
     let mut executor: Executor = Executor::open(&cfg).expect("Failed to open session");
 

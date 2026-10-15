@@ -43,7 +43,7 @@ fn main() -> ! {
 
     env_logger::init();
 
-    let ctx = nros::init_with_launch_auto().expect("nros init failed");
+    let ctx = nros::init().expect("nros init failed");
     let cfg = ctx.config("fibonacci_action_server");
     let mut executor = Executor::open(&cfg).expect("Failed to open session");
 

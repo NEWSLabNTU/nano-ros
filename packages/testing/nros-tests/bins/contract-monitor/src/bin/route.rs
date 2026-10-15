@@ -68,7 +68,7 @@ fn main() {
         "contract-monitor route (deadline {deadline_ms} ms on {HEADER_TOPIC} -> {ROUTE_OUT_TOPIC})"
     );
 
-    let ctx = nros::init_with_launch_auto().expect("nros init failed");
+    let ctx = nros::init().expect("nros init failed");
     let cfg = ctx.config("cm_route");
     let mut executor: Executor = Executor::open(&cfg).expect("open session");
     executor.set_monitor_table(table);

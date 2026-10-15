@@ -36,20 +36,19 @@
 //! names; [`InitOptions`] is rclrs's, with the one option it has. [`init()`] is
 //! the C++-symmetric anchor (`rclcpp::init`) and equals `default_from_env()`.
 //!
-//! Three patterns are supported (per the Phase 212.L canonical pkg shape):
+//! Two patterns are supported:
 //!
 //! 1. **Node pkg** — register via the [`nros::node!`](crate::node!)
 //!    macro (Phase 172 W.3); the generated runtime owns the spin loop and
 //!    builds its `Context` through [`Context::default_from_env`].
-//! 2. **Application pkg + launch-aware** — call [`init_with_launch_auto`] (or
-//!    [`init_with_launch`] for an explicit path). The returned [`Context`]
-//!    carries the domain id, locator and RMW choice from the environment —
-//!    see "Where launch content comes from" below. User code drives its own
-//!    spin via `Executor::open` + `Executor::spin`.
-//! 3. **Application pkg + custom spin** — call [`init()`] /
-//!    [`Context::default_from_env`] (or [`init_with_args`] / [`Context::new`]
-//!    for argv-style entry). Launch file is ignored; env vars +
-//!    `ExecutorConfig::from_env()` semantics still apply.
+//! 2. **Application pkg** — call [`init()`] / [`Context::default_from_env`]
+//!    (or [`init_with_args`] / [`Context::new`] for argv-style entry) and
+//!    drive your own spin. The returned [`Context`] carries the domain id,
+//!    locator and RMW choice from the environment — see "Where launch content
+//!    comes from" below.
+//!
+//! `init_with_launch_auto` / `init_with_launch` are deprecated spellings of
+//! [`init()`]: they read the same environment and no launch file.
 //!
 //! To actually open a session, call [`Context::create_executor`] (`alloc`) or
 //! [`Context::create_executor_in`] (caller-supplied backing, nothing leaked),
@@ -67,11 +66,9 @@
 //! parameters. What is left for init to read is the environment
 //! (`ROS_DOMAIN_ID`, `NROS_LOCATOR`, `NROS_SESSION_MODE`,
 //! `RMW_IMPLEMENTATION`) and, through [`init_with_args`] / [`Context::new`],
-//! per-process `--ros-args`. [`init_with_launch_auto`] and
-//! [`init_with_launch`] read the same environment as [`init()`]; the explicit
-//! path is checked for existence only, so a misspelled path fails at init.
-//! (Issue 1917 retired the runtime-overlay placeholder these functions used
-//! to describe.)
+//! per-process `--ros-args`. (Issue 1917 retired the runtime-overlay
+//! placeholder the deprecated `init_with_launch*` functions used to
+//! describe.)
 
 #[cfg(feature = "env")]
 // phase-359 W10 — kept, and it is not a spelling that can be unwound.
@@ -264,11 +261,6 @@ pub enum ContextSource {
     /// [`Context::new`], or by [`Context::default_from_env`] /
     /// [`Context::from_env`] on a hosted build.
     Env,
-    /// Built by [`init_with_launch`] / [`init_with_launch_auto`]. It records
-    /// which entry point was CALLED, not that a launch file was read: both
-    /// read the environment, as [`Env`](Self::Env) does (see the module docs,
-    /// "Where launch content comes from").
-    Launch,
     /// phase-427 W9 — built from the constants baked into this crate at
     /// compile time (`NROS_LOCATOR`, `NROS_DOMAIN_ID`) by [`Context::baked`],
     /// which is what [`Context::default_from_env`] / [`Context::from_env`]
@@ -1484,28 +1476,36 @@ mod baked_tests {
     }
 }
 
-/// Pattern 2 — launch-aware init.
+/// Deprecated: identical to [`init()`].
 ///
-/// Reads the environment exactly as [`init()`] does and returns a
-/// [`Context`] whose `source` is [`ContextSource::Launch`]. It reads no
-/// launch file: the launch tree was resolved at build time, and the generated
-/// entry installs what it says (see the module docs, "Where launch content
-/// comes from").
+/// Reads the environment exactly as [`init()`] does and reads no launch file:
+/// the launch tree was resolved at build time, and the generated entry
+/// installs what it says (see the module docs, "Where launch content comes
+/// from"). The name promised more than that, so it is deprecated in favour of
+/// the one that does not.
 #[cfg(feature = "env")]
+#[deprecated(
+    since = "0.7.0",
+    note = "reads the environment and no launch file — identical to `nros::init()`; call that"
+)]
 pub fn init_with_launch_auto() -> Result<Context, InitError> {
-    read_env_context(ContextSource::Launch)
+    read_env_context(ContextSource::Env)
 }
 
-/// Pattern 2 — explicit-path variant of [`init_with_launch_auto`].
+/// Deprecated: [`init()`] behind a check that `path` exists.
 ///
-/// Returns [`InitError::LaunchFileNotFound`] when `path` does not exist, so a
-/// misspelled path fails at init; otherwise reads the environment as
-/// [`init_with_launch_auto`] does. The file's contents are not read.
+/// Returns [`InitError::LaunchFileNotFound`] when `path` does not exist;
+/// otherwise reads the environment as [`init()`] does. The file's contents
+/// are not read.
 #[cfg(feature = "env")]
+#[deprecated(
+    since = "0.7.0",
+    note = "reads the environment and not the file — call `nros::init()` (check the path yourself if you relied on that)"
+)]
 pub fn init_with_launch(path: impl AsRef<Path>) -> Result<Context, InitError> {
     let p = path.as_ref();
     if !p.exists() {
         return Err(InitError::LaunchFileNotFound);
     }
-    read_env_context(ContextSource::Launch)
+    read_env_context(ContextSource::Env)
 }

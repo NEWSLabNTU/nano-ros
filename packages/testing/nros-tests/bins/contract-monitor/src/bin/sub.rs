@@ -39,7 +39,7 @@ fn main() {
     nros_rmw_zenoh::register().expect("register zenoh backend");
     info!("contract-monitor sub (max_age contract on {HEADER_TOPIC})");
 
-    let ctx = nros::init_with_launch_auto().expect("nros init failed");
+    let ctx = nros::init().expect("nros init failed");
     let cfg = ctx.config("cm_sub");
     let mut executor: Executor = Executor::open(&cfg).expect("open session");
     // Install the baked age-monitor table BEFORE entity creation. The hosted
