@@ -164,6 +164,13 @@ no-vacuous-tests:
     @python3 scripts/check-no-vacuous-tests.py --self-test
     @python3 scripts/check-no-vacuous-tests.py
 
+# An `#[ignore]` in nros-tests names the issue that decides its fate. Nothing
+# runs those tests (`test-ignored` leaves nros-tests out: fixtures), so the
+# reason string is the only tracker. Four had none and could no longer pass.
+[group("ci")]
+nros-tests-ignore-reasons:
+    @python3 scripts/check-nros-tests-ignore-reasons.py
+
 # Issue 1135 — the sibling of `no-vacuous-tests`, one level up. That gate reads a
 # test BODY ("it only prints"); this one reads a test-local GUARD's SIGNATURE. A
 # `require_*`/`ensure_*`/`need_*`/`maybe_*` helper that hands back a `bool` (or an

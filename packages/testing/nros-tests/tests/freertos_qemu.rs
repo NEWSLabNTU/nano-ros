@@ -2,10 +2,11 @@
 //!
 //! **Bucket (phase-329 W4): KEEP — not matrix cells.** The standard FreeRTOS
 //! pubsub/service/action DELIVERY e2e is the `rtos_e2e.rs` matrix consumer
-//! (platform × lang × variant). What remains here is one-offs: the toolchain
-//! detection probe and the (currently `#[ignore]`d, retired-fixture) FreeRTOS
-//! rust CycloneDDS boot / local-pubsub tests — a distinct RMW path, not a
-//! rtos_e2e duplicate.
+//! (platform × lang × variant). What remains here is one-offs. The FreeRTOS
+//! rust CycloneDDS boot / local-pubsub tests that lived here were `#[ignore]`d
+//! from phase-220.C, when their fixture was retired, until they were deleted;
+//! that coordinate is a `CarveOut` in `matrix::CELLS` now, which says how to
+//! revive it.
 //!
 //! Tests that verify FreeRTOS examples build and run on QEMU MPS2-AN385 (Cortex-M3).
 //! FreeRTOS examples use `thumbv7m-none-eabi` target with `no_std` + lwIP networking.
@@ -25,8 +26,7 @@
 //! Or: `cargo nextest run -p nros-tests --test freertos_qemu`
 
 use nros_tests::fixtures::{
-    QemuProcess, RequireFixture, Rmw, build_freertos_rust_example_rmw,
-    build_freertos_workspace_cpp_an536_entry,
+    QemuProcess, RequireFixture, build_freertos_workspace_cpp_an536_entry,
     freertos::{is_arm_gcc_available, is_freertos_available, is_lwip_available},
     is_qemu_available,
 };
@@ -77,120 +77,6 @@ fn require_freertos() {
 // before `test-all` (the `_require-fixtures` preflight gates on it). The
 // per-role binaries are consumed by the `rtos_e2e` Platform__Freertos tests.
 // =============================================================================
-
-#[test]
-#[ignore = "Phase 220.C path B: FreeRTOS rust cyclonedds fixture retired (cmake-bridge removed; pure-cargo path blocked on Phase 214.S.5.b BSP gate). Sibling `test_freertos_rust_cyclonedds_local_pubsub_e2e` carries the same gate."]
-fn test_freertos_rust_talker_cyclonedds_boot() {
-    require_freertos();
-    if !is_qemu_available() {
-        nros_tests::unmet!("qemu-system-arm not found");
-    }
-
-    let path = build_freertos_rust_example_rmw(
-        "talker",
-        "freertos_rust_talker_cyclonedds",
-        Rmw::Cyclonedds,
-    )
-    .unwrap_or_else(|e| {
-        nros_tests::unmet!(
-            "mps2-an385-freertos/rust/talker cyclonedds not prebuilt; run \
-             `just freertos build-fixtures` first: {:?}",
-            e
-        )
-    });
-
-    let mut qemu = QemuProcess::start_mps2_an385_networked(&path)
-        .expect("spawn FreeRTOS Rust CycloneDDS talker");
-    let output = qemu.collect_until(
-        nros_tests::output::TALKER_LOG_PREFIX,
-        Duration::from_secs(90),
-    );
-    qemu.kill();
-
-    eprintln!("FreeRTOS Rust CycloneDDS talker output:\n{}", output);
-
-    assert!(
-        output.contains("Publisher declared")
-            || output.contains(nros_tests::output::TALKER_READY_MARKER),
-        "CycloneDDS talker did not reach publisher startup.\nOutput:\n{}",
-        output
-    );
-    nros_tests::output::assert_talker(&output, 1);
-}
-
-/// Phase 214.P — FreeRTOS rust cyclonedds local-pubsub e2e is ignored
-/// pending a follow-up that restores the cyclonedds fixture
-/// infrastructure removed by Phase 212.M.5.b (`8bd016d66`).
-///
-/// What changed under 212.M.5.b: the FreeRTOS QEMU examples migrated
-/// to the Phase 212.L Component-pkg shape. The mechanical sweep
-/// dropped the pre-refactor `CMakeLists.txt` + `src/cyclonedds_app.c`
-/// from every rust example, because the cyclonedds backend needs a
-/// CMake-driven build (Cyclone is a C++ backend with idlc descriptors
-/// linked via corrosion). Without those files,
-/// `just freertos build-fixtures` skips the rust cyclonedds branch
-/// (the loop tries `cmake -S examples/mps2-an385-freertos/rust/<case>`
-/// and fails for lack of `CMakeLists.txt`), so the
-/// `freertos_rust_talker_cyclonedds` binary is never produced. The
-/// test then panicked via `nros_tests::skip!`, which nextest junit
-/// recorded as `<failure>` (Track R); it is an `unmet!` red now.
-///
-/// Empirically reproduced 2026-06-04: `cargo nextest run …
-/// test_freertos_rust_cyclonedds_local_pubsub_e2e` panics at
-/// `[SKIPPED] mps2-an385-freertos/rust/talker cyclonedds not prebuilt`,
-/// NOT at the assertion the Track P audit row originally reported
-/// ("Listener: expected at least 1 received messages, got 0"). The
-/// audit row was stale — the listener-loss symptom required the
-/// fixture to boot, which it cannot since 212.M.5.b.
-///
-/// Two paths to re-enable:
-///   1. Restore the pre-212.M.5.b cyclonedds entry shape under the
-///      Component pkg (new `CMakeLists.txt` + `src/cyclonedds_app.c`
-///      that calls into the codegen-emitted register hooks). Then
-///      add a sibling cyclonedds fixture that bundles a local
-///      subscriber so the "local pubsub" semantic this test asserts
-///      is meaningful in a single-QEMU instance.
-///   2. Convert this test to a dual-QEMU pattern like
-///      `threadx_riscv64_qemu::test_threadx_riscv64_cyclonedds_two_qemu_pubsub`
-///      once the cyclonedds rust fixture build is restored.
-///
-/// Either way, the runtime hypothesis ("embedded cyclonedds e2e
-/// listener loses messages") in the Phase 214 Track P doc was never
-/// exercised on FreeRTOS in the current source state — there is no
-/// listener-loss bug to chase here today.
-#[test]
-#[ignore = "Phase 214.P: FreeRTOS rust cyclonedds fixture infrastructure missing post-212.M.5.b refactor (8bd016d66) — see comment above"]
-fn test_freertos_rust_cyclonedds_local_pubsub_e2e() {
-    require_freertos();
-    if !is_qemu_available() {
-        nros_tests::unmet!("qemu-system-arm not found");
-    }
-
-    let talker_path = build_freertos_rust_example_rmw(
-        "talker",
-        "freertos_rust_talker_cyclonedds",
-        Rmw::Cyclonedds,
-    )
-    .unwrap_or_else(|e| {
-        nros_tests::unmet!(
-            "mps2-an385-freertos/rust/talker cyclonedds not prebuilt; run \
-             `just freertos build-fixtures` first: {:?}",
-            e
-        )
-    });
-
-    let mut qemu = QemuProcess::start_mps2_an385_networked(&talker_path)
-        .expect("spawn FreeRTOS Rust CycloneDDS local pubsub fixture");
-    let output = qemu.collect_until(
-        nros_tests::output::LISTENER_LOG_PREFIX,
-        Duration::from_secs(90),
-    );
-    qemu.kill();
-
-    eprintln!("FreeRTOS Rust CycloneDDS local pubsub output:\n{}", output);
-    nros_tests::output::assert_talker(&output, 1);
-    nros_tests::output::assert_listener(&output, 1);
-}
 
 // =============================================================================
 // Issue 1624 — the non-zenoh FreeRTOS heap default, kept MEASURED

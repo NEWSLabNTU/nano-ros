@@ -48,8 +48,7 @@ A shim is a build file, so the scope is every tracked build file: the four build
 file NAMES plus the build-language suffixes. Rust is in scope through `build.rs`
 ALONE — a build script is a shim, an ordinary `.rs` is not, and the CLI's own
 sources and tests spell whole invocations inside string literals as prose
-(`packages/cli/nros-cli-core/src/cmd/codegen_system.rs`,
-`packages/testing/nros-tests/tests/cli_bringup_px4.rs`). `Kconfig` is excluded
+(`packages/cli/nros-cli-core/src/cmd/codegen_system.rs`). `Kconfig` is excluded
 for the same reason from the other side: it runs nothing, and its `help` blocks
 quote invocations (`integrations/px4/module-template/component-skeleton/
 Kconfig`). `docs/` and `book/` are prose throughout.

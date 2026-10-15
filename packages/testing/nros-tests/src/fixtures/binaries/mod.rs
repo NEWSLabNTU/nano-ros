@@ -5554,48 +5554,6 @@ pub fn build_freertos_cmake_example_rmw(
     )
 }
 
-/// Phase 118.D — collapsed-shape FreeRTOS Rust example resolver.
-///
-/// Phase 220.C path B — the CycloneDDS Rust fixture is retired from the
-/// cmake/corrosion bridge (`build-cyclonedds/`); a pure-cargo FreeRTOS
-/// cyclonedds path is deferred behind Phase 214.S.5.b's BSP gate
-/// (cyclonedds-sys vendored build against the ARM cross toolchain +
-/// FreeRTOS POSIX shim). Until that lands the cyclonedds branch returns
-/// a `BuildFailed` error so callers (`freertos_qemu.rs`) emit the
-/// proper `nros_tests::unmet!` rather than silently passing.
-///
-/// phase-340 P2 — the ZENOH arm used to spell
-/// `target-zenoh/thumbv7m-none-eabi/<ambient profile>/<binary>`, an output the
-/// manifest stopped producing when the six FreeRTOS rust rows were repointed at
-/// the build the tests actually consume (the `target-zenoh` half had no live
-/// reader: this function's only two callers are the `#[ignore]`d cyclonedds
-/// tests, which never reach here). Leaving a resolver pointing at a directory
-/// nothing writes is how issue 0475 and phase-340 item 7 both started, so the
-/// arm now delegates to the one FreeRTOS entry resolver.
-pub fn build_freertos_rust_example_rmw(
-    case: &str,
-    binary_name: &str,
-    rmw: Rmw,
-) -> TestResult<PathBuf> {
-    let root = project_root();
-    let example_dir = root.join(format!("examples/mps2-an385-freertos/rust/{}", case));
-    if !example_dir.exists() {
-        return Err(TestError::BuildFailed(format!(
-            "Example directory not found: {}",
-            example_dir.display()
-        )));
-    }
-    if rmw != Rmw::Zenoh {
-        return Err(TestError::BuildFailed(format!(
-            "Phase 220.C path B: FreeRTOS rust {:?} fixture retired \
-             (cmake-bridge removed; pure-cargo path blocked on Phase \
-             214.S.5.b BSP gate). Requested: {}/{}",
-            rmw, case, binary_name
-        )));
-    }
-    freertos::require_entry_binary(case)
-}
-
 /// Build native-rs-listener (cached)
 pub fn build_native_listener() -> TestResult<&'static Path> {
     NATIVE_LISTENER_BINARY

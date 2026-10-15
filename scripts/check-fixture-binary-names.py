@@ -77,7 +77,6 @@ NOT_CMAKE = {
     "build_example": "a CARGO example: `binary_name` is a cargo bin, not a CMake target",
     "build_example_rmw": "a CARGO example: `binary_name` is a cargo bin, not a CMake target",
     "build_native_rust_example_rmw": "forwards to the cargo `build_example_rmw`",
-    "build_freertos_rust_example_rmw": "a cargo leaf: its `binary_name` is the crate's bin",
     "build_workspace_rust_entry": "a workspace ENTRY resolved by its own locator, not a leaf target",
     "build_workspace_cmake_entry": "a workspace ENTRY resolved by its own locator, not a leaf target",
     "build_workspace_cmake_entry_in": "a workspace ENTRY resolved by its own locator, not a leaf target",
