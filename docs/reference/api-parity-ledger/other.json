@@ -1621,6 +1621,30 @@
     "verdict": "extension",
     "why": "phase-474 I1 -- a rule id's wire code. See `rust:RULE_IDS`."
   },
+  "rust:ReactionEvent": {
+    "verdict": "extension",
+    "why": "phase-503 -- the supervised route deadline (`route-deadline-runtime`): what the reaction hook receives (reaction id, row, rule code, measured, declared, mechanism); `repr(C)`, mirrored by nros-cpp's `nros_cpp_reaction_event_t`. See `rust:Executor::set_reaction_hook`."
+  },
+  "rust:ReactionHookFn": {
+    "verdict": "extension",
+    "why": "phase-503 -- the supervised route deadline (`route-deadline-runtime`): the reaction hook's type. See `rust:ReactionEvent`."
+  },
+  "rust:REACTION_NONE": {
+    "verdict": "extension",
+    "why": "phase-503 -- the supervised route deadline (`route-deadline-runtime`): a monitor row's `reaction_id` when the contract names no reaction. See `rust:ReactionEvent`."
+  },
+  "rust:MECHANISM_EXECUTOR": {
+    "verdict": "extension",
+    "why": "phase-503 -- the supervised route deadline (`route-deadline-runtime`): a monitor row's `mechanism`: checked in the spin loop. See `rust:ReactionEvent`."
+  },
+  "rust:MECHANISM_TIMER": {
+    "verdict": "extension",
+    "why": "phase-503 -- the supervised route deadline (`route-deadline-runtime`): a monitor row's `mechanism`: also supervised by the port's own timer. See `rust:ReactionEvent`."
+  },
+  "rust:route_next_due_us": {
+    "verdict": "extension",
+    "why": "phase-503 -- the supervised route deadline (`route-deadline-runtime`): the table-level spelling of `rust:Executor::route_next_due_us`."
+  },
   "rust:rule_name": {
     "verdict": "extension",
     "why": "phase-474 I1 -- the rule id a wire code names. See `rust:RULE_IDS`."

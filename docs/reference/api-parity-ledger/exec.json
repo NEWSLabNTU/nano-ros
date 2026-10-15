@@ -931,6 +931,11 @@
     "why": "one process-wide `fn(&Violation)` called when a contract monitor fires -- the hook an image parks an actuator or trips a watchdog from. It is a bare `fn` pointer, not a closure, because there is no allocator to box one. See `rust:Executor::*violation*` and `cpp:on_shutdown` for the shutdown-side gap.",
     "bucket": "ours-only"
   },
+  "rust:Executor::route_next_due_us": {
+    "verdict": "extension",
+    "why": "phase-503 -- the supervised route deadline (`route-deadline-runtime`): microseconds to the earliest pending supervised route deadline, the value the executor parks on and a port's independent timer re-arms from. No rclrs counterpart. See `rust:Executor::set_reaction_hook`.",
+    "bucket": "ours-only"
+  },
   "rust:Executor::set_invocation": {
     "verdict": "extension",
     "why": "switches one registered callback between ON_NEW_DATA and ALWAYS at runtime -- rclc's invocation mode, which rclrs has no counterpart for. See `c:executor_handle_invocation_t`.",
