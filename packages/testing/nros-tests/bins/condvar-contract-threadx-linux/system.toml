@@ -1,0 +1,17 @@
+# Issue 1906 — runs the platform condvar contract (`nros-condvar-contract`)
+# inside a ThreadX Linux image. It keeps its own `main`, opens no session and
+# declares no component table; `rmw` is the image's backend all the same, as
+# for every image (the board crate is built with it).
+
+[system]
+name = "condvar_contract_threadx_linux"
+rmw = "zenoh"
+domain_id = 0
+
+[image.threadx-linux]
+board = "threadx-linux"
+# `main.rs` declares its own `#[panic_handler]` (RFC-0077).
+panic = "platform"
+
+[board_config."threadx-linux"]
+netstack = "netxduo"

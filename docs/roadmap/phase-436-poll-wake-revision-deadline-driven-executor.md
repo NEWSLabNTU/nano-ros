@@ -931,7 +931,8 @@ wiring that came before it, and both worth a decision rather than a drift:
   1906) moved its closing condition to cover the two zenoh-pico paths that
   never went through this symbol — Zephyr's own system layer and FreeRTOS's
   vendored one — plus deleting `zpico_get` and a class gate for forever-waits;
-  those remain, listed in the issue.
+  those remain, and [phase-502](phase-502-unbounded-condvar-wait-retirement.md)
+  owns them.
 
 ### Path E — Stack headroom: wired, and on ASI blind.
 

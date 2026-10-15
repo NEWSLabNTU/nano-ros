@@ -1,0 +1,18 @@
+[package]
+name = "nros-condvar-contract"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Issue 1906: the platform condvar contract, run on an RTOS image"
+
+[lib]
+name = "nros_condvar_contract"
+test = false
+doctest = false
+bench = false
+
+# No dependencies: it calls the `nros_platform_*` C ABI directly, which the
+# image's board links. It is a library of the test images that run it
+# (`nros-tests/bins/condvar-contract-*`), excluded from the root workspace.
+[dependencies]

@@ -2324,6 +2324,15 @@ platform = "freertos"
 lang = "rust"
 dir = "packages/testing/nros-tests/bins/logging-smoke-freertos-mps2"
 
+# issue 1906 — the platform condvar contract (`nros-condvar-contract`) run on
+# FreeRTOS: a timed wait returns 1 and not early, and a broadcast wakes every
+# waiter. Opens no session.
+[[fixture]]
+id = "freertos-condvar-contract-mps2"
+platform = "freertos"
+lang = "rust"
+dir = "packages/testing/nros-tests/bins/condvar-contract-freertos-mps2"
+
 # ===========================================================================
 # nuttx (qemu ARM virt) — Rust role examples. Plain cargo (nightly pinned by
 # the example's rust-toolchain.toml). Codegen runs in the recipe.
@@ -2498,6 +2507,14 @@ id = "threadx-linux-logging-smoke"
 platform = "threadx-linux"
 lang = "rust"
 dir = "packages/testing/nros-tests/bins/logging-smoke-threadx-linux"
+
+# issue 1906 — the platform condvar contract on ThreadX Linux, plus issue
+# 1907's refusal of a wait under a mutex held twice. Opens no session.
+[[fixture]]
+id = "threadx-linux-condvar-contract"
+platform = "threadx-linux"
+lang = "rust"
+dir = "packages/testing/nros-tests/bins/condvar-contract-threadx-linux"
 
 # issue 0697 — the zenoh session-pool exhaustion arm, executed on a `no_std`
 # target. Needs no router: the pool is exhausted by a raw slot acquire, so the

@@ -4,8 +4,10 @@ title: "`nros_platform_condvar_wait` blocks forever by construction, beside a bo
 status: open
 type: tech-debt
 area: platform
-related: [issue-1192, phase-436, issue-1906, issue-1907, issue-1750]
+related: [issue-1192, phase-436, phase-502, issue-1906, issue-1907, issue-1750]
 ---
+
+**Home: [phase-502](../roadmap/phase-502-unbounded-condvar-wait-retirement.md)** — the remaining closing condition (Zephyr and FreeRTOS zenoh paths, `zpico_get`, the class gate) after phase-436 D2 took the ABI half.
 
 ## Problem
 
