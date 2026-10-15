@@ -55,3 +55,19 @@ copy ceiling counted across the whole workspace tree, because issue 1919's
 regression is two build ROOTS of ONE workspace writing the same identity
 (`build/nros-metadata/…` and `build/<image>/…`), and a per-image split would
 hide it. Add a self-test case with two images, each within budget.
+
+## Progress
+
+- **2026-10-15, the identity half: the gate reads one image.** It no longer
+  globs `examples/workspaces/mixed/build`. It reads `row_artifact_root()` of
+  fixture row `workspace-mixed-native` (`build/posix-zenoh-linux/cmake`),
+  which is issue 1832's derived-tree fix. A FreeRTOS image beside it, the
+  metadata probe tree, and pre-phase-500 `posix-zenoh-native` residue are no
+  longer counted. Measured in the box tree on that root: nros_core 4/4, worst
+  crate 5/5, worst identity 5/5.
+- **Still open: the copy ceiling across build roots.** Issue 1919's shape is
+  `build/nros-metadata/…` against `build/<image>/…` writing one identity
+  twice, and a per-image subject does not see it. That needs the second
+  reading the Direction above describes: copies counted over `<ws>/build`, or
+  over the two roots by name. A self-test case with two images, each within
+  budget, should come with it.
