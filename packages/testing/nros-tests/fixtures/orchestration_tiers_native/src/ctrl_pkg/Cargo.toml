@@ -7,12 +7,11 @@ publish = false
 [lib]
 path = "src/lib.rs"
 
-# Phase 228.G — the control node declares its callback group + tier. The
-# `nros::main!()` macro reads this to resolve the per-tier table.
+# Phase 228.G — the control node's group → tier binding lives in the
+# bringup's `system.toml` (`[[component]] group_tiers`, RFC-0047).
 [package.metadata.nros.node]
 class = "ctrl_pkg::Control"
 name = "control_node"
-callback_groups = [{ id = "ctrl", tier = "high" }]
 
 [dependencies]
 nros = { path = "@NROS_REPO_DIR@/packages/api/nros", default-features = false, features = [

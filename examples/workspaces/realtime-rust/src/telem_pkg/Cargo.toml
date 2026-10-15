@@ -8,12 +8,12 @@ description = "Node pkg — telemetry on the low-priority tier (100 ms)."
 [lib]
 path = "src/lib.rs"
 
-# phase-263 B2 — telemetry runs on the `low` tier. Same group→tier metadata
-# pattern as ctrl_pkg; the two nodes resolve to two POSIX-priority tasks.
+# phase-263 B2 — telemetry runs on the `low` tier, bound like ctrl_pkg's group
+# in the bringup's `system.toml` (`group_tiers`); the two nodes resolve to two
+# POSIX-priority tasks.
 [package.metadata.nros.node]
 class = "telem_pkg::Telem"
 name = "telem_node"
-callback_groups = [{ id = "telem", tier = "low" }]
 
 [dependencies]
 nros = { path = "../../../../../packages/api/nros", default-features = false, features = [

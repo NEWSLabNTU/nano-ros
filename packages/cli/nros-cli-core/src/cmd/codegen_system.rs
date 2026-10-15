@@ -1801,7 +1801,8 @@ structure:
     }
 
     /// Phase 228.B — two pinned nodes (control_node → high, telem_node → low)
-    /// the system maps to `[tiers.*]` (v1 node-pinned-to-tier).
+    /// the system maps to `[tiers.*]` (v1 node-pinned-to-tier). The binding is
+    /// `[[component]] group_tiers` (RFC-0047), never the node manifest.
     fn write_tiered_workspace(dir: &Path) {
         fs::write(
             dir.join("Cargo.toml"),
@@ -1822,7 +1823,6 @@ path = "src/lib.rs"
 [package.metadata.nros.node]
 class = "ctrl_pkg::Control"
 name = "control_node"
-callback_groups = [ { id = "ctrl", tier = "high" } ]
 "#,
         )
         .unwrap();
@@ -1841,7 +1841,6 @@ path = "src/lib.rs"
 [package.metadata.nros.node]
 class = "telem_pkg::Telem"
 name = "telem_node"
-callback_groups = [ { id = "telem", tier = "low" } ]
 "#,
         )
         .unwrap();
@@ -1870,11 +1869,13 @@ domain_id = 0
 pkg = "ctrl_pkg"
 class = "ctrl_pkg::Control"
 name = "control_node"
+group_tiers = { ctrl = "high" }
 
 [[component]]
 pkg = "telem_pkg"
 class = "telem_pkg::Telem"
 name = "telem_node"
+group_tiers = { telem = "low" }
 
 [tiers.high]
 spin_period = "1000us"
@@ -1890,7 +1891,9 @@ launch = "system.launch.xml"
 "#,
         )
         .unwrap();
-        // R-code.1 — tiers now ride the committed model (discovery consumes it).
+        // R-code.1 — tiers now ride the committed model (discovery consumes it),
+        // and so do the bindings: the resolver projects `group_tiers` into
+        // `execution.bindings` (`<node FQN>/<group>: <tier>`).
         fs::create_dir_all(dir.join("demo_bringup/config")).unwrap();
         fs::write(
             dir.join("demo_bringup/config/system_model.yaml"),
@@ -1919,6 +1922,9 @@ execution:
     low:
       posix:
         priority: 10
+  bindings:
+    /control_node/ctrl: high
+    /telem_node/telem: low
 "#,
         )
         .unwrap();
@@ -1958,6 +1964,46 @@ execution:
         assert!(hi < lo, "high tier must precede low (priority order)");
     }
 
+    /// RFC-0047 — a node manifest still carrying the retired `callback_groups`
+    /// tier binding stops `codegen-system` with an error that names the package
+    /// and spells the `group_tiers` line to write. Its one reader (a `[WARN]`ing
+    /// fallback rung in `collect_callback_groups`) is gone, so accepting the key
+    /// would drop the binding and run every group on the default tier.
+    #[test]
+    fn codegen_system_refuses_a_manifest_callback_groups_binding() {
+        crate::test_support::isolate_model_discovery();
+        let dir = scratch_dir("refuses_manifest_callback_groups");
+        write_tiered_workspace(&dir);
+        let manifest = dir.join("ctrl_pkg/Cargo.toml");
+        let body = fs::read_to_string(&manifest).unwrap().replace(
+            "name = \"control_node\"\n",
+            "name = \"control_node\"\ncallback_groups = [ { id = \"ctrl\", tier = \"high\" } ]\n",
+        );
+        fs::write(&manifest, body).unwrap();
+        let err = run(Args {
+            workspace: Some(dir.clone()),
+            bringup: None,
+            target: Some("linux".into()),
+            out: Some(dir.join("build/demo_bringup")),
+            ahead_of_vendor: None,
+            file: None,
+            exec: None,
+            rmw: None,
+            dotconfig: None,
+            model: None,
+            for_entry: None,
+            nano_ros_path: None,
+        })
+        .expect_err("a retired manifest binding must not be accepted");
+        let msg = format!("{err:#}");
+        assert!(msg.contains("ctrl_pkg"), "must name the package: {msg}");
+        assert!(msg.contains("RETIRED"), "{msg}");
+        assert!(
+            msg.contains("group_tiers = { ctrl = \"high\" }"),
+            "must spell the replacement binding: {msg}"
+        );
+    }
+
     /// `write_tiered_workspace`, re-pointed at a ZEPHYR image (issue 1312).
     ///
     /// The bringup gains an `[image.*]` whose board the catalog resolves to
@@ -1988,11 +2034,13 @@ domain_id = 0
 pkg = "ctrl_pkg"
 class = "ctrl_pkg::Control"
 name = "control_node"
+group_tiers = { ctrl = "high" }
 
 [[component]]
 pkg = "telem_pkg"
 class = "telem_pkg::Telem"
 name = "telem_node"
+group_tiers = { telem = "low" }
 
 [tiers.high]
 spin_period = "1000us"
@@ -2042,6 +2090,9 @@ execution:
         priority: 10
       zephyr:
         priority: 9
+  bindings:
+    /control_node/ctrl: high
+    /telem_node/telem: low
 "#,
         )
         .unwrap();
@@ -2140,11 +2191,13 @@ domain_id = 0
 pkg = "ctrl_pkg"
 class = "ctrl_pkg::Control"
 name = "control_node"
+group_tiers = { ctrl = "high" }
 
 [[component]]
 pkg = "telem_pkg"
 class = "telem_pkg::Telem"
 name = "telem_node"
+group_tiers = { telem = "low" }
 
 [tiers.high]
 spin_period = "1000us"
@@ -2230,6 +2283,9 @@ execution:
         priority: 10
       zephyr:
         priority: 9
+  bindings:
+    /control_node/ctrl: high
+    /telem_node/telem: low
 "#,
         )
         .unwrap();
@@ -2324,6 +2380,29 @@ name = "telem_node"
 [image.linux]
 board = "linux"
 launch = "system.launch.xml"
+"#,
+        )
+        .unwrap();
+        // The nodes' callback groups, with no tier: the shape the derivation
+        // keys on. A workspace that derives its schedule states its groups
+        // without binding them - here through the cmake `CALLBACK_GROUPS`
+        // keyword's `nros-metadata.json` (`metadata_callback_groups`), since
+        // `group_tiers` would bind them and the node manifest's
+        // `callback_groups` is retired.
+        fs::create_dir_all(dir.join("build")).unwrap();
+        fs::write(
+            dir.join("build/nros-metadata.json"),
+            r#"{
+  "components": [
+    {"name": "control_node", "pkg": "ctrl_pkg", "class": "ctrl_pkg::Control",
+     "class_header": "h.hpp", "shape": "rclcpp", "sources": [], "deploy": [],
+     "pkg_dir": "/nowhere", "lang": "cpp", "callback_groups": ["ctrl"]},
+    {"name": "telem_node", "pkg": "telem_pkg", "class": "telem_pkg::Telem",
+     "class_header": "h.hpp", "shape": "rclcpp", "sources": [], "deploy": [],
+     "pkg_dir": "/nowhere", "lang": "cpp", "callback_groups": ["telem"]}
+  ],
+  "applications": []
+}
 "#,
         )
         .unwrap();

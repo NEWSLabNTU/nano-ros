@@ -335,12 +335,22 @@ pub struct ComponentMetadata {
     /// remaining input.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub remaps: Vec<RemapRule>,
-    /// Phase 228.A (RFC-0015) — callback groups the node declares (it owns its
-    /// callbacks). Each names a symbolic `tier` the system's `[tiers.*]` maps to
-    /// an RTOS task/priority. Empty → all callbacks default to the `"default"`
-    /// tier (the single-task degenerate case).
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub callback_groups: Vec<CallbackGroupDecl>,
+    /// `callback_groups = [{ id, tier }]` — RETIRED. Phase 228.A put the
+    /// group → tier binding here; phase-273 W2 (RFC-0047) moved it to
+    /// `system.toml`'s `[[component]] group_tiers`, and the manifest form was
+    /// honoured with a `[WARN]` for one release by a fallback rung in
+    /// `tier_resolver::collect_callback_groups`. That rung is gone, so the key
+    /// is accepted by the schema only so the reader can REFUSE it by name
+    /// (`refuse_retired_callback_groups`) — on every typed reader of this
+    /// table, since each reaches it through this struct — rather than serde's
+    /// generic "unknown field". Never holds a value.
+    #[serde(
+        default,
+        rename = "callback_groups",
+        deserialize_with = "refuse_retired_callback_groups",
+        skip_serializing
+    )]
+    pub retired_callback_groups: RetiredTable,
     /// phase-267 W1c/C3a — topics this node PUBLISHES, declared by the node
     /// author (`[[package.metadata.nros.node.publishes]] topic=… type=…`). Read
     /// as SYNTHETIC metadata (pre-build, no sidecar) so the planner can resolve a
@@ -1042,6 +1052,37 @@ fn refuse_retired_param_services<'de, D: serde::Deserializer<'de>>(
     refuse_retired::<D>("param_services")
 }
 
+/// The refusal message for a manifest `callback_groups` (see
+/// [`ComponentMetadata::retired_callback_groups`]). `decls` is what the key
+/// held, when it parsed as `{ id, tier }` rows: the message then spells the
+/// exact `group_tiers` line to write instead of a template.
+pub fn retired_callback_groups_message(decls: Option<&[CallbackGroupDecl]>) -> String {
+    let binding = match decls {
+        Some(d) if !d.is_empty() => d
+            .iter()
+            .map(|g| format!("{} = \"{}\"", g.id, g.tier))
+            .collect::<Vec<_>>()
+            .join(", "),
+        _ => "<id> = \"<tier>\"".to_string(),
+    };
+    format!(
+        "`callback_groups` in a node package's `[package.metadata.nros]` is RETIRED \
+         (RFC-0047, phase-273 W2): nothing reads it any more, so the tier binding it states \
+         would be dropped. Move each `{{ id, tier }}` to the component's entry in the \
+         bringup's `system.toml`:\n\n    [[component]]\n    group_tiers = {{ {binding} }}\n\n\
+         and delete the manifest key."
+    )
+}
+
+fn refuse_retired_callback_groups<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> Result<RetiredTable, D::Error> {
+    let decls = Vec::<CallbackGroupDecl>::deserialize(d).ok();
+    Err(serde::de::Error::custom(retired_callback_groups_message(
+        decls.as_deref(),
+    )))
+}
+
 fn default_true_cap() -> bool {
     true
 }
@@ -1539,9 +1580,10 @@ pub struct SystemComponentEntry {
     pub name: String,
     /// Phase 273 (RFC-0047 W2) — callback-group → tier assignment for this component,
     /// keyed by the code-declared group name. Deployment policy (workspace-owned),
-    /// replacing the package manifest's `callback_groups` tier binding. A group with
-    /// no entry runs on the default tier. Empty ⇒ fall back to the package manifest
-    /// `callback_groups` tier (deprecated path — move to `group_tiers`).
+    /// replacing the package manifest's `callback_groups` tier binding (now
+    /// refused at parse). A group with no entry runs on the default tier. Empty ⇒
+    /// a cmake component's `CALLBACK_GROUPS` keyword, if any, at the default tier
+    /// (`tier_resolver::collect_callback_groups`).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub group_tiers: BTreeMap<String, String>,
     /// phase-330 W4 — deployment-time parameter values for this component's
@@ -2797,6 +2839,48 @@ bogus = true
             toml::from_str::<PackageMetadataNros>(raw).expect_err("unknown field must reject");
         let s = err.to_string();
         assert!(s.contains("bogus") || s.contains("unknown field"), "{s}");
+    }
+
+    /// RFC-0047 — the retired manifest `callback_groups` tier binding is
+    /// refused BY NAME in every shape a node table can take, and the refusal
+    /// spells the `group_tiers` line that replaces it. Removing the
+    /// `deserialize_with` makes this fail twice over: the key would either
+    /// parse silently (field kept) or reach serde's generic "unknown field".
+    #[test]
+    fn a_manifest_callback_groups_binding_is_refused_naming_group_tiers() {
+        for table in ["node", "component", "nodes.A", "components.A"] {
+            let raw = format!(
+                "[{table}]\nclass = \"ctrl_pkg::Control\"\n\
+                 callback_groups = [{{ id = \"ctrl\", tier = \"high\" }}, \
+                 {{ id = \"telem\", tier = \"low\" }}]\n"
+            );
+            let err = toml::from_str::<PackageMetadataNros>(&raw)
+                .expect_err("a retired binding must not parse");
+            let s = err.to_string();
+            assert!(
+                s.contains("RETIRED") && s.contains("RFC-0047"),
+                "{table}: {s}"
+            );
+            assert!(
+                s.contains("[[component]]")
+                    && s.contains("group_tiers = { ctrl = \"high\", telem = \"low\" }"),
+                "{table}: the refusal must spell the replacement: {s}"
+            );
+            assert!(!s.contains("unknown field"), "{table}: {s}");
+        }
+    }
+
+    /// A value that is not `{ id, tier }` rows is refused all the same, with
+    /// a template in place of the binding it could not read.
+    #[test]
+    fn a_malformed_manifest_callback_groups_is_still_refused_by_name() {
+        let raw = "[node]\ncallback_groups = \"ctrl\"\n";
+        let err = toml::from_str::<PackageMetadataNros>(raw).expect_err("must not parse");
+        let s = err.to_string();
+        assert!(
+            s.contains("RETIRED") && s.contains("group_tiers = { <id> = \"<tier>\" }"),
+            "{s}"
+        );
     }
 
     /// `deny_unknown_fields` on `[application]`.

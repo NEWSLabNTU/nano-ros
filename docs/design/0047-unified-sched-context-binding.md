@@ -3,7 +3,7 @@ rfc: 0047
 title: "Unified sched-context binding via callback groups — code-declared groups, config-assigned tiers"
 status: Draft
 since: 2026-07
-last-reviewed: 2026-07
+last-reviewed: 2026-10
 implements-tracked-by: [phase-272, phase-273]
 supersedes: []
 superseded-by: null
@@ -92,7 +92,10 @@ group_tiers = { ctrl = "high", telem = "low" }   # a group with no entry → the
 ```
 
 A group named in code but absent from `group_tiers` runs on the default tier — harmless, exactly like
-a topic with no QoS override. A typo'd name in `system.toml` simply never matches — same failure mode
+a topic with no QoS override. The manifest form this replaced (`callback_groups = [{ id, tier }]` in a
+node's `[package.metadata.nros.node]`) was honoured for one release with a `[WARN]`; it is now refused
+at parse, naming the package and the `group_tiers` line to write, because nothing reads it and a
+binding accepted-then-dropped would silently run every group on the default tier. A typo'd name in `system.toml` simply never matches — same failure mode
 (and same discipline) as topic-name overrides.
 
 **A tier may state its NAME and leave its priority to be allocated** (issue 1426; RFC-0079 is the
@@ -201,3 +204,6 @@ Unchanged from phase-272: this RFC governs **binding** (which sched-context a ca
   like topic QoS overrides), removing the portability coupling; the executor gains a `group →
   sched_context` table bound at registration; the phase-272 node-name table becomes the degenerate
   default-group case. Concurrency type deferred (OQ1). Tracked by phase-273.
+- 2026-10 — the manifest `callback_groups` tier binding, honoured for one release after phase-273,
+  is retired: its fallback rung in `collect_callback_groups` is deleted and the key is refused at
+  parse (`ComponentMetadata::retired_callback_groups`).

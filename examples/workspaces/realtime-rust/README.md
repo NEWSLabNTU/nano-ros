@@ -47,10 +47,9 @@ there is nothing to keep in step.
    ```
 
    …and the node labels its entities at runtime: `node.callback_group("ctrl")?`.
-   (`ctrl_pkg/Cargo.toml` still carries the same binding as
-   `[package.metadata.nros.node] callback_groups`, which the `nros::main!`
-   proc-macro reads today. The `[[component]]` row is the source of truth; the
-   manifest copy is deprecated — RFC-0047 / phase-273 W2.)
+   (The `[[component]]` row is the only place the binding lives — RFC-0047 /
+   phase-273 W2. The older `[package.metadata.nros.node] callback_groups` form
+   in a node's `Cargo.toml` is retired and refused at parse.)
 
 2. The bringup gives each tier its per-RTOS knobs:
 
