@@ -211,6 +211,67 @@ pub fn tool_drift(
     out
 }
 
+/// One crate to move in a lock: `name` from `have` onto `want`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Realign {
+    pub name: String,
+    pub have: String,
+    pub want: String,
+}
+
+/// Move every crate in `moves` with `try_move`, repeating rounds until one
+/// moves nothing (issue 1924). One pass in lock order is not enough: crates
+/// released in lockstep (`futures-core`, `futures-util`, ...) require each
+/// other at their own version, so `futures-core` 0.3.34 cannot go back to
+/// 0.3.32 while `futures-util` 0.3.34 still needs it, and `futures-util` sorts
+/// after it. Returns how many moved, and each crate that never did with the
+/// last refusal.
+pub fn realign<F>(moves: Vec<Realign>, mut try_move: F) -> (usize, Vec<(Realign, String)>)
+where
+    F: FnMut(&Realign) -> Result<(), String>,
+{
+    let mut pending: Vec<(Realign, String)> =
+        moves.into_iter().map(|m| (m, String::new())).collect();
+    let mut moved = 0usize;
+    loop {
+        let before = moved;
+        let mut next = Vec::new();
+        for (m, _) in pending {
+            match try_move(&m) {
+                Ok(()) => moved += 1,
+                Err(why) => next.push((m, why)),
+            }
+        }
+        pending = next;
+        if pending.is_empty() || moved == before {
+            return (moved, pending);
+        }
+    }
+}
+
+/// `cargo update -p <name>@<have> --precise <want>` in `dir`, for [`realign`].
+pub fn cargo_precise(dir: &Path) -> impl FnMut(&Realign) -> Result<(), String> + '_ {
+    move |m| {
+        let out = std::process::Command::new("cargo")
+            .current_dir(dir)
+            .args([
+                "update",
+                "-q",
+                "-p",
+                &format!("{}@{}", m.name, m.have),
+                "--precise",
+                &m.want,
+            ])
+            .output()
+            .map_err(|e| format!("run `cargo update`: {e}"))?;
+        if out.status.success() {
+            Ok(())
+        } else {
+            Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+        }
+    }
+}
+
 /// The cargo kind for one root, made to hold: in a CHECKOUT a leaf lock is
 /// seeded build output rather than a promise, so a crate merely off its pin is
 /// moved back onto it (`cargo update --precise`) and said so. What cannot be
@@ -227,36 +288,23 @@ pub fn enforce_cargo_root(
         return Ok(drifts);
     }
     let mut left = Vec::new();
-    let mut moved = 0usize;
+    let mut moves = Vec::new();
     for d in drifts {
-        let Drift::Crate {
-            name,
-            have,
-            pinned: Some(p),
-            ..
-        } = &d
-        else {
-            left.push(d);
-            continue;
-        };
-        let ok = std::process::Command::new("cargo")
-            .current_dir(dir)
-            .args([
-                "update",
-                "-q",
-                "-p",
-                &format!("{name}@{have}"),
-                "--precise",
-                p,
-            ])
-            .status()
-            .is_ok_and(|s| s.success());
-        if ok {
-            moved += 1;
-        } else {
-            left.push(d);
+        match &d {
+            Drift::Crate {
+                name,
+                have,
+                pinned: Some(p),
+                ..
+            } => moves.push(Realign {
+                name: name.clone(),
+                have: have.clone(),
+                want: p.clone(),
+            }),
+            _ => left.push(d),
         }
     }
+    let (moved, _stuck) = realign(moves, cargo_precise(dir));
     if moved > 0 {
         eprintln!("nros build:   realigned {moved} crate(s) in {label} to the pin set");
     }
@@ -274,6 +322,38 @@ pub fn enforce_cargo_root(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_lockstep_family_realigns_whatever_order_the_lock_lists_it_in() {
+        // futures-core can move only once futures-util has: the shape of the
+        // async leaves in issue 1924.
+        let m = |n: &str| Realign {
+            name: n.into(),
+            have: "0.3.34".into(),
+            want: "0.3.32".into(),
+        };
+        let mut done = std::collections::BTreeSet::new();
+        let (moved, stuck) = realign(vec![m("futures-core"), m("futures-util")], |r| {
+            if r.name == "futures-core" && !done.contains("futures-util") {
+                return Err("required by futures-util 0.3.34".into());
+            }
+            done.insert(r.name.clone());
+            Ok(())
+        });
+        assert_eq!((moved, stuck.len()), (2, 0));
+    }
+
+    #[test]
+    fn a_crate_nothing_lets_move_is_returned_with_its_refusal() {
+        let m = Realign {
+            name: "futures-core".into(),
+            have: "0.3.34".into(),
+            want: "0.3.32".into(),
+        };
+        let (moved, stuck) = realign(vec![m.clone()], |_| Err("no".into()));
+        assert_eq!(moved, 0);
+        assert_eq!(stuck, vec![(m, "no".to_string())]);
+    }
 
     fn pkg(name: &str, version: &str) -> RegistryPkg {
         RegistryPkg {
