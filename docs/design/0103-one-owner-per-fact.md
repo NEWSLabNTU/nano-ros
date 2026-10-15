@@ -4,7 +4,7 @@ title: "One owner per fact: every configuration fact and every resource location
   has one authored home, and every road reads the resolved answer"
 status: Stable
 since: 2026-10
-last-reviewed: 2026-10-13
+last-reviewed: 2026-10-15
 implements-tracked-by: [phase-484, phase-497]
 supersedes: []
 superseded-by: null
@@ -528,6 +528,111 @@ and keeps the existing per-image last-octet override. The `[network.*]` table,
 bridge/TAP launch, multi-NIC and the collision refusal are
 [phase-497](../roadmap/phase-497-networks-have-owners.md).
 
+#### D10 amended 2026-10-15 — physical networks, DHCP, interface kinds, host-OS boards
+
+The text above was written from the QEMU lanes, and read against two
+deployments it does not cover, it leaves six questions open: a multi-port box
+running a Linux bridge with real boards plugged into it, and a board whose
+network driver (or whole transport) is the user's own. The amendment answers
+them without moving any owner.
+
+**D10a — A network says what it IS; how an emulator ATTACHES is separate.**
+`mode = slirp | bridge | tap | none` mixed the two: for a physical board on a
+lab switch, nano-ros neither creates the network nor attaches anything to it.
+`[network.<name>]` states the network's own facts —
+
+| key | meaning |
+| --- | --- |
+| `subnet` | CIDR, e.g. `192.168.50.0/24` (required, except on the built-in `qemu`) |
+| `gateway` | the subnet's default route, if any |
+| `router` | the zenoh/XRCE locator an image on this network uses by default (D10d) |
+| `dhcp` | `true` when the network hands out leases (dnsmasq on the box, a lab DHCP server) |
+| `attach` | how an EMULATED image joins it: `"slirp"`, `{ bridge = "<host dev>" }` or `{ tap = "<host dev>" }`. Absent ⇒ physical boards only, and an emulated image naming the network is refused at sync |
+
+— and the built-in `qemu` network is `subnet = 10.0.2.0/24`, `gateway =
+router-host = 10.0.2.2`, `attach = "slirp"`, `dhcp = false`. A lab bridge is
+`[network.lab] subnet = …, gateway = …, router = "tcp/192.168.50.1:7447"` with
+no `attach`; QEMU guests can join the same bridge by adding
+`attach = { bridge = "br0" }`, and then real boards and guests share one
+address plan, one collision check and one router.
+
+**D10b — An address is static or leased, and a MAC is always unique.**
+`[image.<id>.net.<if>]` takes `network`, then exactly one of `address` (full
+IPv4), `host` (last octet within `subnet`) or `address = "dhcp"`, and an
+optional `mac`. Rules, all refused at sync naming both images:
+
+- two STATIC addresses equal on one network, or one equal to its `gateway`,
+  or one outside its `subnet`;
+- two MACs equal on one network — leased interfaces included, because a DHCP
+  server keys its lease on the MAC, so two equal MACs collide whatever the
+  address mode;
+- `address = "dhcp"` on a network without `dhcp = true`.
+
+An unstated `mac` is DERIVED, never copied from a board constant: the board's
+MAC prefix (`[board.net.<if>] mac_prefix`) plus a suffix from
+`(network, image id, interface)`. Today's trap was exactly a board constant
+shared by two images; deriving per image removes it rather than asking every
+author to remember.
+
+**D10c — An interface has a KIND, and only IP kinds take an address.**
+`[board.net.<if>] kind = "ethernet" | "wifi" | "serial" | "custom"`. Ethernet
+and Wi-Fi interfaces get addresses. A `serial` interface (`zpico-serial`, IVC)
+or a `custom` one (the `nros_transport_ops_t` vtable a user installs, a link
+nano-ros does not model) gets none: `[image.<id>.net.<if>]` on it is refused,
+and its endpoint is the image's `locator` (`serial/…`, `custom://…`), which is
+already where it lives. A board crate with its OWN Ethernet or Wi-Fi driver —
+in-tree or out-of-tree — states the interface like any other and reads the
+resolved answer through D10f; it never re-derives an address.
+
+**D10d — The router default is derived on `qemu` only.** There the guest's
+gateway is QEMU's host alias, so `tcp/10.0.2.2:<port>` is right on every road.
+On any other network the router is usually a host on the subnet that is NOT
+the gateway (the bridge box itself), so the default is that network's
+`router`, else the image's `locator`, else a sync error naming both keys.
+The platform fallback (`tcp/192.0.3.1:7447`, `BaseConfig::default()`) is no
+longer reached by an image that names a network.
+
+**D10e — Host-OS boards own no network facts.** On a board whose network
+stack is the host operating system — `linux`, `threadx-linux`,
+`freertos-posix`, Zephyr `native_sim` (NSOS) — the kernel owns interfaces,
+addresses and routes, and a nano-ros image only opens sockets
+(threadx-linux's NSOS shim forwards NetX's BSD calls to the host and ignores
+the IP fields it is handed). `[image.<id>.net.*]` on such a board is refused
+naming that reason. The predicate is read off the descriptor, not authored
+again: `supported_netstacks = []` already says it for `linux` and
+`freertos-posix` (phase-351 W4). threadx-linux lists `netxduo` because NetX's
+API is what it links, so its descriptor needs one statement that the stack
+underneath is the host's; phase-497 W1 adds it as a netstack value or a key,
+whichever the descriptor schema already makes room for. In particular a Linux box that BRIDGES
+its ports is configured with Linux tools, not with `system.toml`; what
+`system.toml` describes is the network the box makes, for the boards on it.
+Forwarding between two NICs inside one image is likewise out of scope: W4's
+multi-NIC is about which interface each address lives on, and which
+interface a session binds is the middleware's (phase-206).
+
+**D10f — One output, per interface, that every consumer reads.** The
+resolver's answer for an image is
+`(interface) -> { kind, ip | dhcp, netmask, gateway, mac }`, rendered once
+into `<build>/nros/net/<image>.toml` (D7) and from there into the three
+carriers that exist today: the Rust `BOARD_NET_*` constants
+(`nros_board_common::board_net::emit_for_crate`, now per interface), the C
+`nros_app_config_t.network[]` initializer, and the cmake board module's
+variables. A custom driver reads one of those, by interface name; none of
+them is a place to state a value.
+
+**D10g — The single-interface spellings retire.** `[image.<id>] ip` /
+`gateway` / `netmask` (38 tracked `system.toml` files on 2026-10-15) and
+`[board.net] ip` / `netmask` / `gateway` / `mac` were the one-NIC form of
+these facts. Phase-497 W1 migrates every tracked use and then refuses each,
+naming its home: an image's address goes to `[image.<id>.net.<if>]`, a
+gateway or netmask to `[network.<name>]`, a MAC to the image (or is
+derived). `[board.net] network` stays: it is the board's DEFAULT network for
+an image that names none, which is how a QEMU board lands on `qemu` without
+a line of `system.toml`.
+
+IPv4 only. IPv6 and Wi-Fi credentials are not network-address facts and are
+not in D10.
+
 ## 3. Where each fact lives
 
 | fact | home | rendered into | retired |
@@ -634,6 +739,15 @@ Still open:
    hook does not read (board fragments, snippets).
 
 ## Changelog
+
+- 2026-10-15 — D10 amended (D10a–D10g) for physical networks and custom
+  drivers: a network states what it is and, separately, how an emulator
+  attaches (`attach`, absent for a physical-only network); addresses may be
+  leased (`dhcp`) and MACs are derived per image and checked unique; an
+  interface has a `kind`, and serial/custom ones take no address; the router
+  default is derived only on `qemu`; host-OS boards own no network facts; one
+  per-interface output feeds every carrier; the single-NIC `ip`/`gateway`/
+  `netmask` spellings retire in phase-497 W1.
 
 - 2026-10-14 — An `[image.<id>] env` row naming a registry knob is refused
   (phase-484 W8), after release 0.6.0 shipped its deprecation.
