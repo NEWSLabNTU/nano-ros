@@ -1,11 +1,12 @@
 ---
 id: 1904
 title: "The metadata probe's shared build dirs are keyed by configuration, not by workspace or checkout: nine `probe_talker` binaries share one uplifted `probe-talker`, and `NROS_BUILD_ROOT` widens both shared dirs across checkouts"
-status: open
+status: resolved
 type: bug
 area: [build, tooling]
 severity: medium
 found: 2026-10-15
+resolved: 2026-10-15
 related: [1901, 0522, 0616, 0805, 0987, 1593, 1869]
 ---
 
@@ -134,3 +135,66 @@ Gates for the class:
   `NROS_BUILD_ROOT`, the same workspace synced in each with a header-changing
   edit in one. Then compare each probe dir's mirror with its own checkout's
   `nros-c-generated` header.
+
+## Resolution
+
+Fixed 2026-10-15. Re-measured first, then one fix per site, each gated with a
+mutation proof.
+
+**Re-measured.** Fact 1 held on worktree `p1900`: 13 `probe_talker-<hash>`
+binaries in `deps/`, one `debug/probe-talker`. Fact 3 held, and the subdir name
+is exactly Corrosion's formula, `<folder>_<sha1(<checkout>/Cargo.toml)[0:5]>`
+(`p1900_6ff40`, `p1901_88392`, `p1904_fc9d1` all computed and matched).
+
+**Sharing across workspaces is kept.** Issue 0522's shared target dir and
+phase-489 W4's shared Corrosion dir save real builds, and the defect was the
+identity inside them, not the sharing. Sharing across CHECKOUTS is dropped:
+each checkout reaches `nros` by its own path, so it bought nothing (issue 0616).
+
+1. **Uplift slot.** The harness `[[bin]]` is `probe-<slug>-<hash(harness dir)>`
+   (`metadata_build::probe_bin_name`). The harness dir is one per (checkout,
+   workspace, component), so the name is unique among every harness that can
+   reach one target dir. Measured after: `nros sync` in
+   `examples/linux/rust/talker` and `examples/mps2-an385-freertos/rust/talker`
+   left `debug/probe-talker-290631762a4b` and `debug/probe-talker-12df8136eb3a`.
+   Gate: unit test `probe_bin_name_is_unique_per_harness_not_per_component`.
+2. **Checkout identity under `NROS_BUILD_ROOT`.** One question, "does this
+   checkout own the root?" (the deepest marker-walk owner with symlinks
+   resolved, the 1280/1391 rule), asked in both build systems. Rust
+   `shared_probe_dir` scopes a root it does not own to
+   `<root>/checkouts/<name>-<hash>/<kind>` (measured:
+   `<scratch>/checkouts/p1904-c007413e7828/metadata-probe`). CMake
+   `nros_shared_cargo_dir` appends `checkout=<realpath>` to the key, so the fix
+   covers every Corrosion lane, not just the probe. An owned root (the default
+   `<checkout>/build`) keeps its key byte for byte, so no warm dir is orphaned
+   (the C probe still keys `09ef4fb87278`). The marker walk moved to
+   `cmake/NanoRosCheckoutRoot.cmake` so this module can ask it.
+   Gates: unit test `shared_probe_dir_is_checkout_scoped_under_a_foreign_build_root`,
+   and `just check cargo-dir-knob-key`, which now asserts all three roots
+   (outside every checkout, inside another checkout, inside this one) through
+   the production cmake.
+3. **Mirror source.** The configure records the Corrosion subdir its import
+   writes (`nros_config_header_cargo_manifest`, beside each
+   `corrosion_import_crate`, in `CMakeFiles/nros-cargo-subdirs.txt`), and
+   `mirror-generated-header.sh` reads only those. It refuses a header found only
+   in a foreign subdir, which also turns a Corrosion layout change into a loud
+   failure. A build dir with no record keeps issue 0987's newest rule.
+   `--resolve` reads the same record, so `check-sizes-header-mirrors` agrees
+   without being edited. Measured on a real C probe build dir with a newer
+   sibling subdir planted beside the own one: origin/main's script resolved the
+   sibling, the fixed one resolves `cargo/p1904_fc9d1`. Gates: two self-test
+   cases (own subdir OLDER than a sibling; only a foreign subdir has the header).
+
+**Not measured / not fixed here.**
+- The two-checkout run with one shared `NROS_BUILD_ROOT` was not run. The fix
+  separates them by construction, which the gates show on synthetic roots.
+- The `cargo run` lock-then-exec race was not checked against cargo's source.
+  With per-harness names it no longer matters.
+- Outside the probe, a shared `NROS_BUILD_ROOT` still spans checkouts for the
+  fixture families and `sizes-probe` (`scripts/build/cargo.sh` exports
+  `NROS_SIZES_PROBE_TARGET_DIR=$(nros_build_dir sizes-probe)`, keyed by
+  (rustc, target, features), with an mtime-newest rlib fallback). RFC-0070 R1
+  defines the root as one checkout's cache. Scoping it as a whole means
+  changing `nros_build_root` and its Rust mirror `nros_tests::build_root`
+  together, which is a separate change.
+
