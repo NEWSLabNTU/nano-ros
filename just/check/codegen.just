@@ -20,8 +20,14 @@
 # A reader who believed the second one went looking for a regression that was
 # not there, which is how 0661 spent its length on two ordinary host
 # build-dependency artifacts.
+#
+# The self-test runs FIRST, on every invocation. Until issue 1922's follow-up
+# this recipe ran only the reading, so every case above (0661's era verdicts,
+# 1832's derived tree, 1922's cross-root copies) was a negative control that
+# nothing ran.
 [private]
 artifact-identity-budget:
+    @bash scripts/check-artifact-identity-budget.sh --self-test >/dev/null
     @bash scripts/check-artifact-identity-budget.sh
 
 # phase-412 -- the boot self-report is decoded POSITIONALLY out of a memory
