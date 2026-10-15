@@ -1,6 +1,6 @@
 # RFC-0089 — ROS 2 API adoption, and the compile-or-conform rule
 
-**Status:** Stable (2026-10-07). Drafted 2026-09-04. Amended 2026-10-12 (the C API drops `nros_`) and 2026-10-13 (the user surface: upstream include paths only, the app writes `main`).
+**Status:** Stable (2026-10-07). Drafted 2026-09-04. Amended 2026-10-12 (the C API drops `nros_`) 2026-10-13 (the user surface: upstream include paths only, the app writes `main`) and 2026-10-15 (the C headers live under `rclc/`).
 **Amends / refines:** RFC-0036 (divergence catalog) — adds the DISPOSITION half:
 a divergence must say what a porting user gets, not only why we differ.
 RFC-0018 (C++ surface mirroring rclcpp) — states the condition under which the
@@ -1281,7 +1281,7 @@ everything a user WRITES. The goal is migration: an rclc, micro-ROS or rclcpp
 program should port with no nano-ros vocabulary to learn.
 
 **1. Headers.** `<nros/*.h>` and `<nros/*.hpp>` are INTERNAL; they will be
-renamed into `rclc` / `rclcpp` later. User code includes the API only at
+renamed into `rclc` / `rclcpp` later (C done 2026-10-15, below). User code includes the API only at
 upstream's paths: `<rcl/*.h>`, `<rclc/*.h>`, `<rcl_action/*.h>`,
 `<rcl_lifecycle/*.h>`, `<rclc_lifecycle/*.h>`, `<rclc_parameter/*.h>` for C;
 `<rclcpp/rclcpp.hpp>` (and its siblings as they are added) for C++. Each
@@ -1344,6 +1344,25 @@ operator's `NROS_LOCATOR` environment variable (configuration, like an RMW's
 own variables), the port seams, and `nros_cpp_init_multi` (a PX4 integration
 seam with no rclcpp shape). Implemented by
 [phase-499](../roadmap/archived/phase-499-user-surface-entry-and-cpp.md).
+
+## Settled: the C headers live under `rclc/` (2026-10-15)
+
+Decided by the maintainer on 2026-10-15, completing point 1 of the 2026-10-13
+ruling for C.
+
+- **`rclc/` owns the content.** Each `nros/<x>.h` merges into `rclc/<x>.h`
+  where rclc has that header, and a header with no upstream counterpart
+  becomes `rclc/<x>.h` too (`rclc/log.h`, `rclc/component.h`, ...). The
+  umbrella is `<rclc/rclc.h>`. Generated, configuration and entry or port
+  glue goes to `rclc/detail/`, which user code never includes. nros-c keeps no
+  `nros/` directory and no forwarding headers.
+- **Identifiers: only what a user writes moves.** It had already moved: the
+  user-callable C API is `rclc_*` / `rcl_*` (2026-10-12) and the entry names
+  became internal (2026-10-13). Sizing, configuration, entry and port-seam
+  names keep `nros_`, and so do the basenames of generated headers.
+- **C only.** nros-cpp's `<nros/*.hpp>` → `rclcpp/` is a follow-up.
+
+Implemented by [phase-501](../roadmap/phase-501-c-api-headers-move-into-rclc.md).
 
 ## Settled: each language follows ITS OWN upstream (2026-09-04)
 
