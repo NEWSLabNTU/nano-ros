@@ -1,13 +1,78 @@
 ---
 id: 1900
 title: "In a `linux`-scoped run, 28 tests of other platforms probe the host before their lane check, so they go red or bare-skip instead of `lane_skip!`; 12 hand-written `[SKIPPED]` panics survive in `logging_smoke.rs`"
-status: open
+status: resolved
 type: bug
 area: [testing, ci]
 severity: medium
 found: 2026-10-15
+resolved: 2026-10-15
 related: [1758, 1685, 0584, 0571, 0357, 0196, 1525]
 ---
+
+## Resolution (2026-10-15)
+
+Fixed the class, not the 28 sites, and gated it both ways.
+
+**Scope first, everywhere the sweep reached.** Each test of a non-host
+platform now asks the lane (`fixtures::lane::require_platform_in_lane`, or
+`require_setup_scope_in_lane` for a probe owned by a whole `just setup`
+scope) before its first probe, in the test or in the helper it reaches first:
+`emulator.rs` (`require_qemu`, `require_arm_toolchain`, and a local lane-first
+`qemu_binary` rstest fixture, because a fixture runs before the body),
+`zephyr_cortex_m_qemu.rs`, `freertos_posix.rs`, `freertos_qemu.rs`,
+`entry_build.rs` (`Platform::require`), `qemu_patched_binary.rs`,
+`platform.rs`, `port_templates_e2e.rs`, `integration_nuttx.rs`,
+`logging_smoke.rs`. The new runtime check found two more:
+`freertos_firmware_entry.rs`, which resolved a `[[compile_check_fixture]]` no
+manifest row attributes, so the resolver never asked the lane; and
+`large_msg.rs`. The 11 non-ESP32 `panic!("[SKIPPED] …")` sites are
+`nros_tests::unmet!` after the lane check. The ESP32 test (dormant, issue
+1525) is unchanged.
+
+**One mechanism.** `NROS_TEST_SCOPE`'s reader in `test-all` is gone, with
+`RunScope::Linux`, `RunScope::test_scope` and `lane-coords --run-scope`.
+Coordinates are the only scope. `check-lane-scope-consumers` lost its "reachable
+by the lane filter" arm, which exempted 0 consumers and credited a filter that
+ran nowhere. `lane-filter.sh linux` stays as the token derivation that selects
+the tests the runtime check runs.
+
+**Gates.**
+
+- `just check out-of-lane-deselected` (`scripts/test/check-out-of-lane-deselected.py`)
+  is this issue's measurement as a check. It runs every platform-token
+  `nros-tests` test under the `linux` scope, with `QEMU_SYSTEM_*` and the RTOS
+  tree variables pointed at `/nonexistent`, and fails any verdict that is not
+  PASS, `[SKIPPED:lane]`, or the resolver's in-lane "fixture MISSING" (the scope
+  admitted the test). It is a step of `just ci gate` and of gate.yml's
+  merge-group job, and it has its own nextest profile so it never overwrites
+  `test-unit`'s junit. Measured on the fixed tree with no fixtures: 182
+  selected, 174 `[SKIPPED:lane]`, 6 pass, 2 admitted (`px4_bridge_compile`
+  states a `linux` coordinate, and `cmake_platform_threadx_requires_board` is a
+  host configure verdict), 0 offenders. The issue's run had 24 UNMET and 4 bare
+  SKIPPED.
+- `check-skip-marker-matching` now refuses PRODUCING the marker too. A
+  `[SKIPPED` literal in Rust code outside `nros-tests/src/lib.rs` fails. The
+  exemption is derived, not listed: an `#[ignore]`d test whose lane check names
+  only platforms with no non-`CarveOut` `matrix::CELLS` row. Today that is the
+  ESP32 test. The self-test that blessed `panic!("[SKIPPED] {msg}")` now asserts
+  the opposite.
+
+Mutation proofs: moving a probe above the lane check (`emulator.rs`
+`require_qemu`, the `logging_smoke` FreeRTOS test) turns the runtime check
+red. A reintroduced `panic!("[SKIPPED] …")`, or the ESP32 test losing its
+`#[ignore]`, turns the static check red. A gate.yml step that no longer runs
+the check turns `check-default-gates-run-somewhere` red. Each was restored
+byte-identical and is green again.
+
+**Not covered.** A test that resolves an unattributable fixture with no lane
+check before it reads as "admitted" to the runtime check whenever the fixture
+is missing, and as PASS when the fixture is present. The runtime check runs
+only tests whose NAME carries a platform token, so a token-less test of a
+non-host platform escapes it. The static probe-before-scope rule the issue
+floated was not written: it cannot tell a lane-first helper from a probe
+without a hand list.
+
 
 ## The rule this breaks
 
