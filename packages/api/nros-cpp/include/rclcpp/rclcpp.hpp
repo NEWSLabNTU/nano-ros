@@ -82,7 +82,7 @@ namespace rclcpp {
 /// @return Executor handle, or nullptr if not initialized.
 ///
 /// DEFINED in `<rclcpp/node.hpp>`, beside the free functions `Node` befriends:
-/// `rclcpp::init_with_launch*` (node.hpp) call it, and an inline function used
+/// `rclcpp::init_in(argc, argv)` (node.hpp) calls it, and an inline function used
 /// in a TU that never sees its definition is a link error waiting for the
 /// first caller (issue 1682's branch, found by `-Wall`).
 inline void* global_handle();
@@ -378,7 +378,7 @@ inline void require_created(::rclcpp::Result r, const char* verb, const char* na
 /// `void` and a ported `main` does not check it, so this call site has nowhere
 /// to put a failure, and continuing is the one outcome RFC-0089 forbids: a
 /// `-p` that compiles and is silently dropped. The vector is validated BEFORE
-/// the session opens. `rclcpp::init_with_launch_auto(argc, argv)` honours the
+/// the session opens. `rclcpp::init_in(argc, argv)` honours the
 /// same arguments and RETURNS the refusal as a `Result`, for a caller that
 /// wants to handle it.
 inline void init(int argc, char const* const* argv) {

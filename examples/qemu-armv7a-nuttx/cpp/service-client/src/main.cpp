@@ -28,9 +28,9 @@ int main(int argc, char** argv) {
     printf("nros C++ Service Client (AddTwoInts)\n");
     printf("=====================================\n");
 
-    // Launch-aware init: reads `$NROS_LOCATOR` / `$ROS_DOMAIN_ID` /
-    // `$RMW_IMPLEMENTATION`; launch content arrives through the build.
-    RCLCPP_TRY_RET(rclcpp::init_with_launch_auto(argc, argv), 1);
+    // Reads `$NROS_LOCATOR` / `$ROS_DOMAIN_ID` / `$RMW_IMPLEMENTATION` and
+    // honours `--ros-args`; launch content arrives through the build.
+    RCLCPP_TRY_RET(rclcpp::init_in(argc, argv), 1);
 
     // Operands from the first two positional args (default: 2 3).
     int64_t a = 2;
