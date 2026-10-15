@@ -134,7 +134,7 @@ packages = ["cmake", "clang"]
 # phase-431 W5's job, not C2's. Every other entry there is a standing decision;
 # this one is a placeholder that the ratchet must shed the day W5 lands.
 [tool.nros]
-version = "0.6.0-nros2"
+version = "0.6.0-nros3"
 front = ["bin/nros"]
 # The codegen version the PINNED release emits (its `share/nros/manifest.toml`
 # `codegen`), which may trail the tree's: a release records its own, and the
@@ -142,15 +142,15 @@ front = ["bin/nros"]
 # and to this tree's accepted range, by sdk_store's
 # `the_nros_smoke_check_expects_what_the_pinned_release_emits`.
 smoke = [
-    { run = "bin/nros --codegen-version", expect = "17" },
+    { run = "bin/nros --codegen-version", expect = "18" },
 ]
-upstream = "26cd2642da4d602ca5ea0cf1dcafc6f3570412d6" # = source.ref
+upstream = "447f0cc9fdc2fa4d40499a92ed926723678f5830" # = source.ref
 [tool.nros.source]
 git = "https://github.com/NEWSLabNTU/nano-ros"
 # A COMMIT, not a branch or a tag — issue 1060. A ref on a server we do not
 # control moves what we build with no local diff and no review; releases here
 # are cut deliberately (phase-431: tag only when asked), so the pin is a sha.
-ref = "26cd2642da4d602ca5ea0cf1dcafc6f3570412d6"
+ref = "447f0cc9fdc2fa4d40499a92ed926723678f5830"
 install = "cargo install --path packages/cli/nros-cli --root {prefix} --locked"
 
 # nros2: rebuilt with --enable-slirp (nano-ros QEMU tests use -netdev user;
