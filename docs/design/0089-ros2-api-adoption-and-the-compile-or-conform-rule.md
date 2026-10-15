@@ -1362,7 +1362,7 @@ ruling for C.
   names keep `nros_`, and so do the basenames of generated headers.
 - **C only.** nros-cpp's `<nros/*.hpp>` → `rclcpp/` is a follow-up.
 
-Implemented by [phase-501](../roadmap/phase-501-c-api-headers-move-into-rclc.md).
+Implemented by [phase-501](../roadmap/archived/phase-501-c-api-headers-move-into-rclc.md).
 
 ## Settled: each language follows ITS OWN upstream (2026-09-04)
 

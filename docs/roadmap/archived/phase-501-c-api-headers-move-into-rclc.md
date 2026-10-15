@@ -1,9 +1,9 @@
 # Phase 501 — The C API's headers move into `rclc`
 
-**Status (2026-10-15). In progress — W1–W6 in one pull request, queued; the index pins release 0.6.0-nros2.** Implements the
-[RFC-0089](../design/0089-ros2-api-adoption-and-the-compile-or-conform-rule.md)
+**Status (2026-10-16). Complete — W1–W6 landed in #2270; the index pins release 0.6.0-nros2.** Implements the
+[RFC-0089](../../design/0089-ros2-api-adoption-and-the-compile-or-conform-rule.md)
 amendment "the C headers live under `rclc/`" (2026-10-15). Follows
-[phase-499](archived/phase-499-user-surface-entry-and-cpp.md), which left
+[phase-499](phase-499-user-surface-entry-and-cpp.md), which left
 `<nros/*.h>` internal "to be renamed into `rclc` later".
 
 ## Why
