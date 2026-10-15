@@ -341,6 +341,9 @@ pub struct ActionNrosTemplate<'a> {
     /// `rmw_zenoh_cpp` peer.
     pub send_goal_service_hash: &'a str,
     pub get_result_service_hash: &'a str,
+    /// Issue 1913 — `action_msgs/srv/CancelGoal` and `action_msgs/msg/GoalStatusArray`.
+    pub cancel_goal_service_hash: &'a str,
+    pub status_message_hash: &'a str,
     pub goal_fields: Vec<NrosField>,
     pub goal_constants: Vec<MessageConstant>,
     pub result_fields: Vec<NrosField>,
@@ -625,6 +628,12 @@ pub struct ActionCHeaderTemplate<'a> {
     pub package_name: &'a str,
     pub action_name: &'a str,
     pub type_hash: &'a str,
+    /// Issue 1913 — the five endpoint hashes (`rclc_action_type_t.endpoint_hashes`).
+    pub send_goal_service_hash: &'a str,
+    pub cancel_goal_service_hash: &'a str,
+    pub get_result_service_hash: &'a str,
+    pub feedback_message_hash: &'a str,
+    pub status_message_hash: &'a str,
     /// See [`MessageCHeaderTemplate::c_package_name`].
     pub c_package_name: String,
     pub guard_name: String,
@@ -657,6 +666,12 @@ pub struct ActionCSourceTemplate<'a> {
     pub package_name: &'a str,
     pub action_name: &'a str,
     pub type_hash: &'a str,
+    /// Issue 1913 — the five endpoint hashes (`rclc_action_type_t.endpoint_hashes`).
+    pub send_goal_service_hash: &'a str,
+    pub cancel_goal_service_hash: &'a str,
+    pub get_result_service_hash: &'a str,
+    pub feedback_message_hash: &'a str,
+    pub status_message_hash: &'a str,
     /// See [`MessageCHeaderTemplate::c_package_name`].
     pub c_package_name: String,
     /// `example_interfaces/action/fibonacci.h`.
@@ -922,6 +937,15 @@ pub struct ActionCppHeaderTemplate<'a> {
     pub package_name: &'a str,
     pub action_name: &'a str,
     pub type_hash: &'a str,
+    /// Issue 1913 — the five endpoint hashes (`rclc_action_type_t.endpoint_hashes`).
+    pub send_goal_service_hash: &'a str,
+    pub cancel_goal_service_hash: &'a str,
+    pub get_result_service_hash: &'a str,
+    pub feedback_message_hash: &'a str,
+    pub status_message_hash: &'a str,
+    pub goal_type_hash: &'a str,
+    pub result_type_hash: &'a str,
+    pub feedback_type_hash: &'a str,
     pub guard_name: String,
     pub cpp_package: String,
     pub goal_ffi_publish_fn: String,

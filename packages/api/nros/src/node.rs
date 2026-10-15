@@ -1352,6 +1352,7 @@ pub trait DeclarativeNode {
             type_hash: A::ACTION_HASH,
             qos: QoSProfile::default(),
         })?;
+        metadata.action_hashes = Some(nros_node::ActionEndpointHashes::of::<A>());
         metadata.callback_id = Some(copy_str(goal_callback_id.as_str())?);
         metadata.callback_source = SourceLocationMetadata::caller()?;
         metadata.action_cancel_callback_id = Some(copy_str(cancel_callback_id.as_str())?);
@@ -1481,6 +1482,7 @@ pub trait DeclarativeNode {
             type_hash: A::ACTION_HASH,
             qos: QoSProfile::default(),
         })?;
+        metadata.action_hashes = Some(nros_node::ActionEndpointHashes::of::<A>());
         metadata.source = SourceLocationMetadata::caller()?;
         self.__declare_entity(metadata)?;
         Ok(NodeActionClient::new(id))
@@ -1548,6 +1550,7 @@ pub trait DeclarativeNode {
             type_hash: A::ACTION_HASH,
             qos: QoSProfile::default(),
         })?;
+        metadata.action_hashes = Some(nros_node::ActionEndpointHashes::of::<A>());
         metadata.callback_id = Some(copy_str(result_callback_name)?);
         metadata.action_accepted_callback_id = Some(copy_str(feedback_callback_name)?);
         metadata.callback_source = SourceLocationMetadata::caller()?;

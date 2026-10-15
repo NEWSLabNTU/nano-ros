@@ -233,8 +233,9 @@ pub use subscriber::SubscriptionHandle;
 
 // Re-export transport types for convenience
 pub use nros_rmw::{
-    ActionInfo, QoSDurabilityPolicy, QoSHistoryPolicy, QoSLivelinessPolicy, QoSPolicyMask,
-    QoSProfile, QoSReliabilityPolicy, ServiceInfo, TopicInfo, TransportConfig, TransportError,
+    ActionEndpointHashes, ActionInfo, QoSDurabilityPolicy, QoSHistoryPolicy, QoSLivelinessPolicy,
+    QoSPolicyMask, QoSProfile, QoSReliabilityPolicy, ServiceInfo, TopicInfo, TransportConfig,
+    TransportError,
 };
 
 // Re-export RMW protocol traits so thin wrappers (nros-c, nros-cpp) can

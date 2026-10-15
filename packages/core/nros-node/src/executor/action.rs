@@ -3,7 +3,7 @@
 use core::marker::PhantomData;
 
 use nros_core::RosAction;
-use nros_rmw::{ActionInfo, QoSProfile, ServiceInfo, Session, TopicInfo};
+use nros_rmw::{ActionEndpointHashes, ActionInfo, QoSProfile, ServiceInfo, Session, TopicInfo};
 
 #[allow(unused_imports)]
 use crate::rmw_type_registry::{MessageForRmw, register_type};
@@ -95,7 +95,11 @@ pub struct RawActionServerSpec<'a> {
     pub node_id: Option<super::node_record::NodeId>,
     pub action_name: &'a str,
     pub type_name: &'a str,
+    /// The ACTION's own hash; feeds `ActionInfo` only. The endpoints are keyed
+    /// on [`hashes`](Self::hashes).
     pub type_hash: &'a str,
+    /// Issue 1913 — the hash each of the five endpoints is keyed on.
+    pub hashes: ActionEndpointHashes<'a>,
     /// QoS for the action's three underlying service servers (send_goal
     /// / cancel_goal / get_result; Phase 193.4b). The feedback + status
     /// publishers keep their own profiles. Use
@@ -120,7 +124,11 @@ pub struct RawActionClientSpec<'a> {
     pub node_id: Option<super::node_record::NodeId>,
     pub action_name: &'a str,
     pub type_name: &'a str,
+    /// The ACTION's own hash; feeds `ActionInfo` only. The endpoints are keyed
+    /// on [`hashes`](Self::hashes).
     pub type_hash: &'a str,
+    /// Issue 1913 — the hash each endpoint a client uses is keyed on.
+    pub hashes: ActionEndpointHashes<'a>,
     pub goal_response_callback: Option<RawGoalResponseCallback>,
     pub feedback_callback: Option<RawFeedbackCallback>,
     pub result_callback: Option<RawResultCallback>,
@@ -263,7 +271,7 @@ impl<'s> Executor<'s> {
         let cancel_goal_info = ServiceInfo::new(
             &cancel_goal_keyexpr,
             "action_msgs::srv::dds_::CancelGoal_",
-            A::ACTION_HASH,
+            A::CANCEL_GOAL_SERVICE_HASH,
         )
         .with_domain(self.domain_id);
         let cancel_goal_server = self
@@ -299,7 +307,7 @@ impl<'s> Executor<'s> {
         let status_topic = TopicInfo::new(
             &status_keyexpr,
             "action_msgs::msg::dds_::GoalStatusArray_",
-            A::ACTION_HASH,
+            A::STATUS_MESSAGE_HASH,
         )
         .with_domain(self.domain_id);
         let status_publisher = self
@@ -725,6 +733,7 @@ impl<'s> Executor<'s> {
             action_name,
             type_name,
             type_hash,
+            hashes,
             qos,
             goal_callback,
             cancel_callback,
@@ -782,7 +791,7 @@ impl<'s> Executor<'s> {
 
             let send_goal_keyexpr: heapless::String<256> = action_info.send_goal_key();
             let mut send_goal_info =
-                ServiceInfo::new(&send_goal_keyexpr, &send_goal_type, type_hash)
+                ServiceInfo::new(&send_goal_keyexpr, &send_goal_type, hashes.send_goal)
                     .with_namespace(&ns)
                     .with_domain(domain_id);
             if !node_name.is_empty() {
@@ -793,7 +802,7 @@ impl<'s> Executor<'s> {
             let mut cancel_goal_info = ServiceInfo::new(
                 &cancel_goal_keyexpr,
                 "action_msgs::srv::dds_::CancelGoal_",
-                type_hash,
+                hashes.cancel_goal,
             )
             .with_namespace(&ns)
             .with_domain(domain_id);
@@ -803,7 +812,7 @@ impl<'s> Executor<'s> {
 
             let get_result_keyexpr: heapless::String<256> = action_info.get_result_key();
             let mut get_result_info =
-                ServiceInfo::new(&get_result_keyexpr, &get_result_type, type_hash)
+                ServiceInfo::new(&get_result_keyexpr, &get_result_type, hashes.get_result)
                     .with_namespace(&ns)
                     .with_domain(domain_id);
             if !node_name.is_empty() {
@@ -811,9 +820,10 @@ impl<'s> Executor<'s> {
             }
 
             let feedback_keyexpr: heapless::String<256> = action_info.feedback_key();
-            let mut feedback_topic = TopicInfo::new(&feedback_keyexpr, &feedback_type, type_hash)
-                .with_namespace(&ns)
-                .with_domain(domain_id);
+            let mut feedback_topic =
+                TopicInfo::new(&feedback_keyexpr, &feedback_type, hashes.feedback)
+                    .with_namespace(&ns)
+                    .with_domain(domain_id);
             if !node_name.is_empty() {
                 feedback_topic = feedback_topic.with_node_name(&node_name);
             }
@@ -822,7 +832,7 @@ impl<'s> Executor<'s> {
             let mut status_topic = TopicInfo::new(
                 &status_keyexpr,
                 "action_msgs::msg::dds_::GoalStatusArray_",
-                type_hash,
+                hashes.status,
             )
             .with_namespace(&ns)
             .with_domain(domain_id);
@@ -1566,6 +1576,7 @@ impl<'s> Executor<'s> {
             action_name,
             type_name,
             type_hash,
+            hashes,
             goal_response_callback,
             feedback_callback,
             result_callback,
@@ -1607,7 +1618,7 @@ impl<'s> Executor<'s> {
 
             let send_goal_keyexpr: heapless::String<256> = action_info.send_goal_key();
             let mut send_goal_info =
-                ServiceInfo::new(&send_goal_keyexpr, &send_goal_type, type_hash)
+                ServiceInfo::new(&send_goal_keyexpr, &send_goal_type, hashes.send_goal)
                     .with_namespace(&ns)
                     .with_domain(domain_id);
             if !node_name.is_empty() {
@@ -1618,7 +1629,7 @@ impl<'s> Executor<'s> {
             let mut cancel_goal_info = ServiceInfo::new(
                 &cancel_goal_keyexpr,
                 "action_msgs::srv::dds_::CancelGoal_",
-                type_hash,
+                hashes.cancel_goal,
             )
             .with_namespace(&ns)
             .with_domain(domain_id);
@@ -1628,7 +1639,7 @@ impl<'s> Executor<'s> {
 
             let get_result_keyexpr: heapless::String<256> = action_info.get_result_key();
             let mut get_result_info =
-                ServiceInfo::new(&get_result_keyexpr, &get_result_type, type_hash)
+                ServiceInfo::new(&get_result_keyexpr, &get_result_type, hashes.get_result)
                     .with_namespace(&ns)
                     .with_domain(domain_id);
             if !node_name.is_empty() {
@@ -1636,9 +1647,10 @@ impl<'s> Executor<'s> {
             }
 
             let feedback_keyexpr: heapless::String<256> = action_info.feedback_key();
-            let mut feedback_topic = TopicInfo::new(&feedback_keyexpr, &feedback_type, type_hash)
-                .with_namespace(&ns)
-                .with_domain(domain_id);
+            let mut feedback_topic =
+                TopicInfo::new(&feedback_keyexpr, &feedback_type, hashes.feedback)
+                    .with_namespace(&ns)
+                    .with_domain(domain_id);
             if !node_name.is_empty() {
                 feedback_topic = feedback_topic.with_node_name(&node_name);
             }
@@ -1782,6 +1794,8 @@ impl<'s> Executor<'s> {
 
         let slot = self.next_entry_slot()?;
         let action_info = ActionInfo::new(action_name, type_name, type_hash);
+        // Issue 1913 — each endpoint on its own type's hash.
+        let hashes = ActionEndpointHashes::of::<A>();
         // Phase 244 E3 (RFC-0044) — register the `action_msgs` protocol types
         // (CancelGoal_{Request,Response}, GoalStatusArray) the client's cancel
         // service + status subscription serialize, before creating those
@@ -1817,7 +1831,7 @@ impl<'s> Executor<'s> {
 
             let send_goal_keyexpr: heapless::String<256> = action_info.send_goal_key();
             let mut send_goal_info =
-                ServiceInfo::new(&send_goal_keyexpr, &send_goal_type, type_hash)
+                ServiceInfo::new(&send_goal_keyexpr, &send_goal_type, hashes.send_goal)
                     .with_namespace(&ns)
                     .with_domain(domain_id);
             if !node_name.is_empty() {
@@ -1827,7 +1841,7 @@ impl<'s> Executor<'s> {
             let mut cancel_goal_info = ServiceInfo::new(
                 &cancel_goal_keyexpr,
                 "action_msgs::srv::dds_::CancelGoal_",
-                type_hash,
+                hashes.cancel_goal,
             )
             .with_namespace(&ns)
             .with_domain(domain_id);
@@ -1836,16 +1850,17 @@ impl<'s> Executor<'s> {
             }
             let get_result_keyexpr: heapless::String<256> = action_info.get_result_key();
             let mut get_result_info =
-                ServiceInfo::new(&get_result_keyexpr, &get_result_type, type_hash)
+                ServiceInfo::new(&get_result_keyexpr, &get_result_type, hashes.get_result)
                     .with_namespace(&ns)
                     .with_domain(domain_id);
             if !node_name.is_empty() {
                 get_result_info = get_result_info.with_node_name(&node_name);
             }
             let feedback_keyexpr: heapless::String<256> = action_info.feedback_key();
-            let mut feedback_topic = TopicInfo::new(&feedback_keyexpr, &feedback_type, type_hash)
-                .with_namespace(&ns)
-                .with_domain(domain_id);
+            let mut feedback_topic =
+                TopicInfo::new(&feedback_keyexpr, &feedback_type, hashes.feedback)
+                    .with_namespace(&ns)
+                    .with_domain(domain_id);
             if !node_name.is_empty() {
                 feedback_topic = feedback_topic.with_node_name(&node_name);
             }

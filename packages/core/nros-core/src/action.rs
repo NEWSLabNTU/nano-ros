@@ -95,6 +95,17 @@ pub trait RosAction: Sized {
     /// [`SEND_GOAL_SERVICE_HASH`](Self::SEND_GOAL_SERVICE_HASH)).
     const GET_RESULT_SERVICE_HASH: &'static str = Self::ACTION_HASH;
 
+    /// RIHS hash of the standard `action_msgs/srv/CancelGoal` SERVICE, which
+    /// every action's `cancel_goal` endpoint is keyed on (issue 1913). The same
+    /// value for every action, but `nros-core` cannot name `action_msgs`, so the
+    /// generated impl carries it. Default as for
+    /// [`SEND_GOAL_SERVICE_HASH`](Self::SEND_GOAL_SERVICE_HASH).
+    const CANCEL_GOAL_SERVICE_HASH: &'static str = Self::ACTION_HASH;
+
+    /// RIHS hash of the standard `action_msgs/msg/GoalStatusArray`, which every
+    /// action's `status` topic is keyed on (issue 1913).
+    const STATUS_MESSAGE_HASH: &'static str = Self::ACTION_HASH;
+
     /// Register the fixed ROS 2 action-protocol message types this action needs
     /// at runtime beyond its own 8 envelopes — the `action_msgs` types the
     /// cancel/status plumbing serializes (`CancelGoal_{Request,Response}`,

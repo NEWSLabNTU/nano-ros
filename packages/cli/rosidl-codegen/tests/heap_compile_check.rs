@@ -311,7 +311,7 @@ fn generated_c_action_with_dheader_wrap_syntax_checks() {
         "my_acts",
         "Fibonacci",
         &action,
-        RosEdition::Humble.type_hash(),
+        &rosidl_codegen::rihs::ActionTypeHashes::uniform(RosEdition::Humble.type_hash()),
         &CapacityResolver::empty(),
     )
     .expect("generate C action");

@@ -434,6 +434,11 @@ pub struct EntityMetadata {
     pub source_name_kind: SourceNameKind,
     pub type_name: &'static str,
     pub type_hash: &'static str,
+    /// Issue 1913 — the hash each endpoint of an ACTION entity is keyed on
+    /// (`None` for every other kind). Set by the typed declarations in
+    /// `node.rs`, which know `A`; the runtime replays it into the raw spec.
+    /// Not emitted in the metadata JSON.
+    pub action_hashes: Option<nros_node::ActionEndpointHashes<'static>>,
     pub qos: QoSProfile,
     pub callback_slot: Option<CallbackSlot>,
     pub callback_id: Option<MetadataString>,
@@ -1311,6 +1316,7 @@ pub fn entity_metadata(spec: EntityMetadataSpec<'_>) -> Result<EntityMetadata, N
         source_name_kind: SourceNameKind::from_source_name(source_name),
         type_name,
         type_hash,
+        action_hashes: None,
         qos,
         callback_slot: None,
         callback_id: None,

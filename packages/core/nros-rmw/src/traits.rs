@@ -111,6 +111,48 @@ pub struct ServiceInfo<'a> {
     pub namespace: &'a str,
 }
 
+/// Issue 1913 — the REP-2011 hash each of an action's five endpoints is keyed
+/// on. An Iron+ `rmw_zenoh_cpp` peer keys every endpoint on its OWN type: the
+/// `<Action>_SendGoal` / `<Action>_GetResult` services, the standard
+/// `action_msgs/srv/CancelGoal`, `<Action>_FeedbackMessage`, and the standard
+/// `action_msgs/msg/GoalStatusArray`. One hash for all five matched none of
+/// them, which is what every registration path carried until 1913.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ActionEndpointHashes<'a> {
+    pub send_goal: &'a str,
+    pub cancel_goal: &'a str,
+    pub get_result: &'a str,
+    pub feedback: &'a str,
+    pub status: &'a str,
+}
+
+impl<'a> ActionEndpointHashes<'a> {
+    /// Every endpoint on one value — Humble's `TypeHashNotSupported`, or a
+    /// caller that has nothing better (it will not match an Iron+ peer).
+    pub const fn uniform(hash: &'a str) -> Self {
+        Self {
+            send_goal: hash,
+            cancel_goal: hash,
+            get_result: hash,
+            feedback: hash,
+            status: hash,
+        }
+    }
+}
+
+impl ActionEndpointHashes<'static> {
+    /// The five hashes a typed action carries.
+    pub const fn of<A: nros_core::RosAction>() -> Self {
+        Self {
+            send_goal: A::SEND_GOAL_SERVICE_HASH,
+            cancel_goal: A::CANCEL_GOAL_SERVICE_HASH,
+            get_result: A::GET_RESULT_SERVICE_HASH,
+            feedback: <A::FeedbackMessage as nros_core::RosMessage>::TYPE_HASH,
+            status: A::STATUS_MESSAGE_HASH,
+        }
+    }
+}
+
 /// Action information for action client/server
 ///
 /// Actions in ROS 2 use 5 communication channels:

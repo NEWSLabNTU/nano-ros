@@ -287,20 +287,7 @@ mod tests {
                 .unwrap();
         let deps = BTreeSet::new();
 
-        let ph = RosEdition::Humble.type_hash().to_string();
-        let hashes = crate::rihs::ActionTypeHashes {
-            goal: ph.clone(),
-            result: ph.clone(),
-            feedback: ph.clone(),
-            send_goal_request: ph.clone(),
-            send_goal_response: ph.clone(),
-            get_result_request: ph.clone(),
-            get_result_response: ph.clone(),
-            feedback_message: ph.clone(),
-            action: ph.clone(),
-            send_goal_service: ph.clone(),
-            get_result_service: ph,
-        };
+        let hashes = crate::rihs::ActionTypeHashes::uniform(RosEdition::Humble.type_hash());
         let result = generate_nros_action_package(
             "example_interfaces",
             "Fibonacci",
@@ -1209,7 +1196,7 @@ mod tests {
             "test_actions",
             "Fibonacci",
             &action,
-            "act456",
+            &crate::rihs::ActionTypeHashes::uniform("act456"),
             &crate::config::CapacityResolver::empty(),
         )
         .unwrap();
@@ -1680,7 +1667,7 @@ mod tests {
             "example_interfaces",
             "Fibonacci",
             &action,
-            type_hash,
+            &crate::rihs::ActionTypeHashes::uniform(type_hash),
             &crate::config::CapacityResolver::empty(),
         );
         assert!(result.is_ok());

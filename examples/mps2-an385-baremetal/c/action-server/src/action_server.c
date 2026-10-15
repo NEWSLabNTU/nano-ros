@@ -186,14 +186,6 @@ int main(int argc, char** argv) {
     (void)argc;
     (void)argv;
 
-    rclc_action_type_t fibonacci_type = {
-        .type_name = example_interfaces__action__Fibonacci__get_type_name(),
-        .type_hash = example_interfaces__action__Fibonacci__get_type_hash(),
-        .goal_serialized_size_max = 8,
-        .result_serialized_size_max = 264,
-        .feedback_serialized_size_max = 264,
-    };
-
     // `rclc_support_init` takes the connect configuration from the build
     // (`<nros/entry_config.h>`, issue 0946); on this leaf that is the empty
     // bottom rung, and baking `system.toml`'s locator is issue 1512's.
@@ -204,8 +196,9 @@ int main(int argc, char** argv) {
     g_logger = rclc_node_get_logger(&app.node);
 
     RCLC_CHECK_RET(rclc_action_server_init_with_callbacks(
-                       &app.action_server, &app.node, "/fibonacci", &fibonacci_type, goal_callback,
-                       cancel_callback, accepted_callback, &app.ctx),
+                       &app.action_server, &app.node, "/fibonacci",
+                       ROSIDL_GET_ACTION_TYPE_SUPPORT(example_interfaces, action, Fibonacci),
+                       goal_callback, cancel_callback, accepted_callback, &app.ctx),
                    1);
     RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support.context, 8, NULL), 1);
     RCLC_CHECK_RET(rclc_executor_attach_action_server(&app.executor, &app.action_server), 1);

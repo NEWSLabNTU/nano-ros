@@ -23,4 +23,13 @@ const struct rclc_action_type_t {{ action_struct_name }}__nros_type = {
     .result_deserialize = {{ result_struct_name }}__nros_deserialize_erased,
     .feedback_serialize = {{ feedback_struct_name }}__nros_serialize_erased,
     .feedback_deserialize = {{ feedback_struct_name }}__nros_deserialize_erased,
+    // Issue 1913 — the hash each endpoint is keyed on; an Iron+ peer keys all
+    // five differently, and `.type_hash` (the action's own) matches none.
+    .endpoint_hashes = {
+        .send_goal = "{{ send_goal_service_hash }}",
+        .cancel_goal = "{{ cancel_goal_service_hash }}",
+        .get_result = "{{ get_result_service_hash }}",
+        .feedback = "{{ feedback_message_hash }}",
+        .status = "{{ status_message_hash }}",
+    },
 };
