@@ -196,6 +196,6 @@ each checkout reaches `nros` by its own path, so it bought nothing (issue 0616).
   (rustc, target, features)). RFC-0070 R1 defines the root as one checkout's
   cache. Scoping it as a whole means changing `nros_build_root` and its Rust
   mirror `nros_tests::build_root` together, which is a separate change: filed
-  as [issue 1921](../1921-shared-build-root-spans-checkouts-for-sizes-probe-and-fixtures.md).
+  as [issue 1921](1921-shared-build-root-spans-checkouts-for-sizes-probe-and-fixtures.md).
   (The sizes probe's mtime-newest rlib fallback is already gone — issue 0464.)
 
