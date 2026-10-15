@@ -119,14 +119,44 @@ pub fn assign_reaction_ids(rows: &mut [MonitorRow]) {
     }
 }
 
+/// phase-503 W5 -- the supervision a node path's `max_latency` states
+/// (`contracts.node_paths.<key>.supervise`, play_launch phase 93), as the row
+/// carries it. `None` when the path states none. A deadline that rounds to 0 ms
+/// is refused: 0 is the row's "not supervised", so it would silently drop the
+/// supervision the contract asked for.
+fn route_supervision_of(
+    path_ref: &str,
+    p: &ros_launch_manifest_model::PathContract,
+) -> Result<Option<RouteSupervision>, ContractRowError> {
+    use ros_launch_manifest_model::SuperviseMechanism;
+    let Some(s) = &p.supervise else {
+        return Ok(None);
+    };
+    let deadline_ms = s.route_deadline_ms.round().max(0.0).min(u32::MAX as f64) as u32;
+    if deadline_ms == 0 {
+        return Err(ContractRowError(format!(
+            "SystemModel: node path '{path_ref}' is supervised with a route_deadline_ms of \
+             {} -- a deadline under 0.5 ms cannot be supervised",
+            s.route_deadline_ms
+        )));
+    }
+    Ok(Some(RouteSupervision {
+        deadline_ms,
+        reaction: s.reaction.clone(),
+        mechanism: match s.mechanism {
+            SuperviseMechanism::Executor => MECHANISM_EXECUTOR,
+            SuperviseMechanism::Timer => MECHANISM_TIMER,
+        },
+    }))
+}
+
 /// phase-503 -- attach supervision to the rows by output endpoint ref. A row
 /// whose route is not stated in `sup` is left unsupervised; a supervision for
 /// an output with no route row is refused, since nothing would watch it.
 /// Reaction ids are (re)assigned over the whole table.
 ///
-/// The model this crate reads (ros-launch-manifest v0.1.59) states no
-/// supervision yet, so [`monitor_rows`] passes nothing here; a model that
-/// carries `supervise:` on a path's `max_latency` feeds this map.
+/// [`monitor_rows`] feeds it from the model's `supervise:` on each
+/// input-triggered node path (phase-503 W5).
 pub fn apply_route_supervision(
     rows: &mut [MonitorRow],
     sup: &std::collections::BTreeMap<String, RouteSupervision>,
@@ -203,7 +233,8 @@ pub fn monitor_rows(model: &SystemModel) -> Result<Vec<MonitorRow>, ContractRowE
         .collect();
     // phase10-B3 -- output fqn -> (route budget, trigger topic): the
     // tightest input-triggered path that names the output.
-    let mut routes: BTreeMap<String, (u32, String)> = BTreeMap::new();
+    // phase-503 W5 -- plus that path's supervision, when it states one.
+    let mut routes: BTreeMap<String, (u32, String, Option<RouteSupervision>)> = BTreeMap::new();
     // W3b.5 — node-path budgets attach to the path's OUTPUT endpoints.
     for (path_ref, p) in &model.contracts.node_paths {
         let Some(lat) = p.max_latency_ms else {
@@ -230,6 +261,10 @@ pub fn monitor_rows(model: &SystemModel) -> Result<Vec<MonitorRow>, ContractRowE
                 .find(|(_, w)| w.subscribers.iter().any(|s| s == input))
                 .map(|(t, _)| t.clone())
         });
+        // phase-503 W5 -- `supervise:` on the path's `max_latency` (phase 93):
+        // the deadline, the reaction path id and the mechanism the route row
+        // carries to the executor.
+        let supervision = route_supervision_of(path_ref, p)?;
         for out in &p.output {
             if service_clients.contains(out) {
                 continue;
@@ -237,14 +272,23 @@ pub fn monitor_rows(model: &SystemModel) -> Result<Vec<MonitorRow>, ContractRowE
             let e = by_fqn.entry(out.clone()).or_insert((0, 0));
             e.1 = e.1.max(lat);
             if let Some(topic) = &trigger_topic {
-                let r = routes.entry(out.clone()).or_insert((lat, topic.clone()));
+                let r =
+                    routes
+                        .entry(out.clone())
+                        .or_insert((lat, topic.clone(), supervision.clone()));
                 if lat < r.0 {
-                    *r = (lat, topic.clone());
+                    *r = (lat, topic.clone(), supervision.clone());
                 }
+            } else if supervision.is_some() {
+                return Err(ContractRowError(format!(
+                    "SystemModel: node path '{path_ref}' is supervised but its trigger \
+                     input is on no topic in structure.topics -- no route to supervise"
+                )));
             }
         }
     }
     let mut rows = Vec::new();
+    let mut sup: BTreeMap<String, RouteSupervision> = BTreeMap::new();
     for (ep_ref, (min_milli, lat_ms)) in by_fqn {
         let topic = model
             .structure
@@ -258,7 +302,11 @@ pub fn monitor_rows(model: &SystemModel) -> Result<Vec<MonitorRow>, ContractRowE
                  owning topic in structure.topics — inconsistent model"
             )));
         };
-        let (route_max_latency_ms, route_trigger) = routes.remove(&ep_ref).unwrap_or_default();
+        let (route_max_latency_ms, route_trigger, supervision) =
+            routes.remove(&ep_ref).unwrap_or_default();
+        if let Some(s) = supervision {
+            sup.insert(ep_ref.clone(), s);
+        }
         rows.push(MonitorRow {
             topic,
             fqn: ep_ref,
@@ -272,6 +320,7 @@ pub fn monitor_rows(model: &SystemModel) -> Result<Vec<MonitorRow>, ContractRowE
             mechanism: 0,
         });
     }
+    apply_route_supervision(&mut rows, &sup)?;
     Ok(rows)
 }
 

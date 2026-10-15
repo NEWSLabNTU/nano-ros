@@ -584,8 +584,8 @@ dependencies = [
 
 [[package]]
 name = "ros-launch-manifest-derive"
-version = "0.1.12"
-source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.1.59#442744d3bc82091097fa753955dd7113ee18d464"
+version = "0.1.13"
+source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?rev=33577ff7642c3a073e35df9aebbc97936dafceda#33577ff7642c3a073e35df9aebbc97936dafceda"
 dependencies = [
  "ros-launch-manifest-model",
  "ros-launch-manifest-sched",
@@ -593,8 +593,8 @@ dependencies = [
 
 [[package]]
 name = "ros-launch-manifest-model"
-version = "0.1.12"
-source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.1.59#442744d3bc82091097fa753955dd7113ee18d464"
+version = "0.1.13"
+source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?rev=33577ff7642c3a073e35df9aebbc97936dafceda#33577ff7642c3a073e35df9aebbc97936dafceda"
 dependencies = [
  "indexmap",
  "ros-launch-manifest-sched",
@@ -606,8 +606,8 @@ dependencies = [
 
 [[package]]
 name = "ros-launch-manifest-sched"
-version = "0.1.12"
-source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.1.59#442744d3bc82091097fa753955dd7113ee18d464"
+version = "0.1.13"
+source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?rev=33577ff7642c3a073e35df9aebbc97936dafceda#33577ff7642c3a073e35df9aebbc97936dafceda"
 dependencies = [
  "ros-launch-manifest-types",
  "serde",
@@ -618,8 +618,8 @@ dependencies = [
 
 [[package]]
 name = "ros-launch-manifest-types"
-version = "0.1.12"
-source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.1.59#442744d3bc82091097fa753955dd7113ee18d464"
+version = "0.1.13"
+source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?rev=33577ff7642c3a073e35df9aebbc97936dafceda#33577ff7642c3a073e35df9aebbc97936dafceda"
 dependencies = [
  "serde",
  "serde_json",
