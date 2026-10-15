@@ -10,18 +10,18 @@
 #include <cstdint>
 #include <cstddef>
 
-#include "nros/fixed_string.hpp"
-#include "nros/fixed_sequence.hpp"
-#include "nros/heap_sequence.hpp"
-#include "nros/heap_string.hpp"
-#include "nros/size_bound.hpp"
-#include "nros/serialization_format.hpp"
-#include "nros/span.hpp"
+#include "rclcpp/fixed_string.hpp"
+#include "rclcpp/fixed_sequence.hpp"
+#include "rclcpp/heap_sequence.hpp"
+#include "rclcpp/heap_string.hpp"
+#include "rclcpp/size_bound.hpp"
+#include "rclcpp/detail/serialization_format.hpp"
+#include "rclcpp/span.hpp"
 
 #include <rclc/detail/nros_config_generated.h>
 
-/* RFC-0090 — emitted by nano-ros codegen version 17. */
-#define NROS_EMITTED_CODEGEN_VERSION 17
+/* RFC-0090 — emitted by nano-ros codegen version 18. */
+#define NROS_EMITTED_CODEGEN_VERSION 18
 
 #ifndef NROS_CODEGEN_VERSION
 #error "nros: the generated config header did not define NROS_CODEGEN_VERSION. This generated artifact cannot tell whether the runtime accepts it; rebuild the nano-ros runtime so its config header is regenerated."

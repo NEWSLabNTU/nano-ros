@@ -770,7 +770,7 @@ int32_t nros_board_freertos_run_tiers_tasks_in(const char* locator, uint8_t doma
     /* --- Choose the boot tier: the LEAST urgent one (issue 0636) --- */
     /*
      * This was `&tiers[0]`, which the emitter documents as the MOST urgent
-     * tier ("sorted highest-priority-first", nros/main.hpp), and FreeRTOS is a
+     * tier ("sorted highest-priority-first", rclcpp/detail/main.hpp), and FreeRTOS is a
      * bigger-number-wins kernel. The boot task owns the session and spins
      * forever, so making it outrank the tiers it spawned starves them: FreeRTOS
      * runs the highest-priority READY task and a spin loop does not reliably

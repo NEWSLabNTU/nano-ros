@@ -642,7 +642,7 @@ if(CONFIG_NROS_CPP_API)
     # minimal. `zephyr/lib/cpp/minimal/include` only carries
     # `<cstddef>`, `<cstdint>`, `<new>` — `<cstdio>` is missing on
     # `native_sim` too (Phase 160.A surfaced this for the XRCE C++
-    # examples that `#include <nros/log.hpp>` → `<cstdio>`). The
+    # examples that `#include <rclcpp/logging.hpp>` → `<cstdio>`). The
     # original PICOLIBC gate was over-conservative: every Zephyr cpp
     # path needs these shims when the SDK's libstdc++ headers aren't
     # in the include set. Newlib targets that DO ship full libstdc++

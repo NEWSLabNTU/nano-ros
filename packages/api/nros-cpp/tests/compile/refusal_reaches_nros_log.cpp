@@ -20,7 +20,7 @@
 // what makes the question per refusal: a single object holding both would
 // answer yes if either one still reached `nros_log`.
 
-#include <nros/nros.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 #if REFUSAL == 1
 extern "C" void refusal_failed_create(void) {

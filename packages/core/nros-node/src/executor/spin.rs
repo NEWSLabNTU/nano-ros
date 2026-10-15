@@ -204,7 +204,7 @@ impl<'s> Executor<'s> {
     ///
     /// Phase 115.M.4 — auto-registers the cffi vtable for whichever
     /// backend the build was configured for, mirroring the C++ side's
-    /// `#ifdef NROS_RMW_<NAME>` fan-out in `<nros/node.hpp>`. The
+    /// `#ifdef NROS_RMW_<NAME>` fan-out in `<rclcpp/node.hpp>`. The
     /// runtime's atomic vtable slot is idempotent: a re-call of any
     /// backend's `register()` is a no-op, so the fan-out below is safe
     /// to invoke on every `Executor::open` (cheaper than a `Once` and

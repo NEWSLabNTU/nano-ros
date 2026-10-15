@@ -23,7 +23,7 @@
 // This file is compiled with `-Wno-deprecated-declarations`, because it names
 // the deprecated spellings on purpose.
 
-#include "nros/qos.hpp"
+#include "rclcpp/qos.hpp"
 
 #include <type_traits>
 

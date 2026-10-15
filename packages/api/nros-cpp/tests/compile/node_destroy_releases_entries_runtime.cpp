@@ -11,9 +11,9 @@
 // as the live count falling. Node B's subscription is the control — a release
 // keyed on anything wider than the node would take it too.
 
-#include "nros/executor.hpp"
-#include "nros/node.hpp"
-#include "nros/subscription.hpp"
+#include "rclcpp/executor.hpp"
+#include "rclcpp/node.hpp"
+#include "rclcpp/subscription.hpp"
 
 extern "C" {
 #include "stub_rmw_backend.h"

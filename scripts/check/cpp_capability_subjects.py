@@ -123,7 +123,7 @@ def _our_roots():
     return roots
 
 
-UMBRELLA = '#include "nros/nros.hpp"\n'
+UMBRELLA = '#include "rclcpp/rclcpp.hpp"\n'
 
 # The gate's compile flags, in ONE place, so the parse that DERIVES the subjects
 # and the probe that MEASURES them cannot drift apart. `nros_cpp_include_args`

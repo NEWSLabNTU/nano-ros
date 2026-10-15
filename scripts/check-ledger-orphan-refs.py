@@ -213,7 +213,7 @@ def self_test(basenames, crates):
     (d / "planted.json").write_text(
         json.dumps(
             {
-                "cpp:real": {"why": "see packages/api/nros-cpp/include/nros/qos.hpp for the table"},
+                "cpp:real": {"why": "see packages/api/nros-cpp/include/rclcpp/qos.hpp for the table"},
                 "cpp:orphan": {"why": "see packages/api/nros-cpp/include/nros/%s:428" % dead},
                 "cpp:upstream": {"why": "upstream rclcpp/qos.hpp says otherwise"},
                 "cpp:bare-orphan": {"why": "`%s:117` ships `ParametersQoS()` at `QoS(10)`." % dead},

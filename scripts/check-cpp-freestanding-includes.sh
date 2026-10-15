@@ -46,7 +46,7 @@ cd "$(dirname "$0")/.."
 # compile runs — a source-level check is a substitute for a build, not a
 # duplicate of one. Measured 2026-09-05 by grepping `-nostdinc++` across
 # `packages/` and `cmake/`; the only other hits are prose.
-SCAN_DIRS="packages/api/nros-cpp/include/nros packages/rmw/cyclonedds/nros-rmw-cyclonedds/src"
+SCAN_DIRS="packages/api/nros-cpp/include packages/rmw/cyclonedds/nros-rmw-cyclonedds/src"
 
 # THE BASELINE IS A CONSTANT NOW, NOT A RATCHET (phase-456 W6).
 #
@@ -307,7 +307,7 @@ selftest() {
   #     gate's case 3 gives: if the gate already fires on a faithful copy, the
   #     mutated run proves nothing.
   local real mutated
-  real="packages/api/nros-cpp/include/nros/publisher.hpp"
+  real="packages/api/nros-cpp/include/rclcpp/publisher.hpp"
   if [ ! -f "$real" ]; then
     echo "check-cpp-freestanding-includes SELFTEST FAIL: $real is missing, so the real-header control could not run" >&2
     rc=1
@@ -390,14 +390,16 @@ fi
 violations=0
 unlisted=""
 
-for entry in "packages/api/nros-cpp/include/nros:1" \
+for entry in "packages/api/nros-cpp/include:1" \
              "packages/rmw/cyclonedds/nros-rmw-cyclonedds/src:0"; do
   dir="${entry%:*}"
   strict="${entry##*:}"
   # `.cpp` too, not only headers: the 1014 break was in a TRANSLATION UNIT, and
   # a TU that cannot compile is exactly as broken as a header that cannot be
   # included.
-  for hdr in $(ls "$dir"/*.hpp "$dir"/*.cpp 2>/dev/null); do
+  # Recursive: since phase-503 the nros-cpp headers live in rclcpp/,
+  # rclcpp/detail/, rclcpp_action/ and rclcpp_lifecycle/.
+  for hdr in $(git ls-files -- ":(glob)$dir/**/*.hpp" ":(glob)$dir/**/*.cpp"); do
     base="$(basename "$hdr")"
     hits="$(walk_file "$hdr" "$strict")"
     [ -n "$hits" ] || continue
@@ -430,7 +432,7 @@ fi
 # gone with the ratchet. It cannot arise: the file holds no rows, asserted
 # above before any scanning happens.
 
-count="$(for d in $SCAN_DIRS; do ls "$d"/*.hpp "$d"/*.cpp 2>/dev/null; done | wc -l)"
+count="$(for d in $SCAN_DIRS; do git ls-files -- ":(glob)$d/**/*.hpp" ":(glob)$d/**/*.cpp"; done | wc -l)"
 echo "check-cpp-freestanding-includes: OK ($count file(s) across nros-cpp headers and the Cyclone backend;" \
      "zero ungated hosted STL includes, and $BASELINE holds no rows — phase-456 W6" \
      "made that a CONSTANT rather than a ratchet)"

@@ -33,8 +33,8 @@
 // and a second stub would be a second thing to keep in step with
 // `first_missing_vtable_slot`'s seventeen slots.
 
-#include "nros/executor.hpp"
-#include "nros/node.hpp"
+#include "rclcpp/executor.hpp"
+#include "rclcpp/node.hpp"
 
 extern "C" {
 #include "stub_rmw_backend.h"

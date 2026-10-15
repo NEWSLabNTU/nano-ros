@@ -12,7 +12,7 @@
 // from the image's. Every in-tree pack emits CDR today, so stating the
 // discriminant here is what makes the refusal testable before a second pack
 // exists (RFC-0088 W5 ships one).
-#include <nros/nros.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 namespace nros_cpp_serialization_format_mismatch_probe {
 

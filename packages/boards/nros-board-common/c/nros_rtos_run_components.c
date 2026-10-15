@@ -3,7 +3,7 @@
  * EVERY RTOS board.
  *
  * phase-432 W3.1. This is the C twin of `nros::board::<Rtos>Board::
- * run_components` in `<nros/main.hpp>`, and it exists so a C-only consumer —
+ * run_components` in `<rclcpp/detail/main.hpp>`, and it exists so a C-only consumer —
  * a certified C compiler, MISRA-style, no C++ runtime — can boot a nano-ros
  * image without a C++ toolchain in the build.
  *
@@ -186,7 +186,7 @@ static uint32_t nros_freertos_entry_spin_bound_ms(void) {
 #endif
 
 /* The per-tick cooperative yield, mirroring `detail::entry_tick_yield` in
- * `<nros/main.hpp>` one for one — same condition, same body, same emptiness
+ * `<rclcpp/detail/main.hpp>` one for one — same condition, same body, same emptiness
  * elsewhere. Zephyr is cooperatively scheduled, so each tick must release the
  * CPU to the network stack and the peer threads; the preemptive kernels do not
  * need it and the C++ path does not do it there either. */

@@ -35,7 +35,7 @@
 ///
 /// Gated by `check-codegen-version-surface`, which fails when the surface
 /// generated code names changes and this constant does not.
-pub const NROS_CODEGEN_VERSION: u32 = 17;
+pub const NROS_CODEGEN_VERSION: u32 = 18;
 
 /// The oldest codegen version this runtime still accepts.
 ///
@@ -240,11 +240,17 @@ pub const NROS_CODEGEN_VERSION: u32 = 17;
 /// ships, so it cannot compile and is refused by version instead. Rust and C++
 /// trees are unaffected, but the version is one number for all three.
 ///
+/// 18 with [`NROS_CODEGEN_VERSION`] (phase-503 W1): the same move for C++. The
+/// nros-cpp headers left `nros/` for `rclcpp/`, `rclcpp/detail/`,
+/// `rclcpp_action/` and `rclcpp_lifecycle/`, again with no forwarding headers.
+/// A version-17 C++ tree includes `<nros/heap_string.hpp>`, which this runtime
+/// no longer ships, so it is refused by version rather than failing to compile.
+///
 /// The range `[NROS_CODEGEN_VERSION_MIN, NROS_CODEGEN_VERSION]` is expressed to
 /// C and C++ as a SET OF DEFINED SYMBOLS rather than as a comparison — see
 /// `nros-build-helpers`' codegen-version anchor — so there is no range check on
 /// that side that could itself be wrong.
-pub const NROS_CODEGEN_VERSION_MIN: u32 = 17;
+pub const NROS_CODEGEN_VERSION_MIN: u32 = 18;
 
 /// Does `emitted` fall in the range this runtime accepts?
 ///

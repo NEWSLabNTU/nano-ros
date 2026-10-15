@@ -9,7 +9,7 @@
 // (`drain`, `take_data`, `take_new_data`, `take`, `peek`) is type-checked and
 // the `Node::create_polling_subscription` factory path is exercised.
 // `just check cpp` compiles this with `-fsyntax-only -std=c++14`.
-#include <nros/nros.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 #include <type_traits>
 

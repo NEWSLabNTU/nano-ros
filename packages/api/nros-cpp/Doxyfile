@@ -8,26 +8,26 @@ PROJECT_BRIEF          = "Lightweight ROS 2 client for embedded real-time system
 
 # Input: hand-written per-module headers + groups + Markdown guides.
 # Exclude nros_cpp_config_generated.h (internal storage-size probe artifact).
-INPUT                  = include/nros/nros.hpp \
-                         include/nros/node.hpp \
-                         include/nros/publisher.hpp \
-                         include/nros/subscription.hpp \
-                         include/nros/service.hpp \
-                         include/nros/client.hpp \
-                         include/nros/action_server.hpp \
-                         include/nros/action_client.hpp \
-                         include/nros/executor.hpp \
-                         include/nros/timer.hpp \
-                         include/nros/guard_condition.hpp \
-                         include/nros/future.hpp \
-                         include/nros/stream.hpp \
-                         include/nros/qos.hpp \
-                         include/nros/result.hpp \
-                         include/nros/config.hpp \
-                         include/nros/serialization_format.hpp \
-                         include/nros/span.hpp \
-                         include/nros/fixed_string.hpp \
-                         include/nros/fixed_sequence.hpp \
+INPUT                  = include/rclcpp/rclcpp.hpp \
+                         include/rclcpp/node.hpp \
+                         include/rclcpp/publisher.hpp \
+                         include/rclcpp/subscription.hpp \
+                         include/rclcpp/service.hpp \
+                         include/rclcpp/client.hpp \
+                         include/rclcpp_action/server.hpp \
+                         include/rclcpp_action/client.hpp \
+                         include/rclcpp/executor.hpp \
+                         include/rclcpp/timer.hpp \
+                         include/rclcpp/guard_condition.hpp \
+                         include/rclcpp/future.hpp \
+                         include/rclcpp/stream.hpp \
+                         include/rclcpp/qos.hpp \
+                         include/rclcpp/result.hpp \
+                         include/rclcpp/detail/config.hpp \
+                         include/rclcpp/detail/serialization_format.hpp \
+                         include/rclcpp/span.hpp \
+                         include/rclcpp/fixed_string.hpp \
+                         include/rclcpp/fixed_sequence.hpp \
                          include/nros/std_compat.hpp \
                          docs/groups.dox \
                          docs/mainpage.md \

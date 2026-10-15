@@ -28,9 +28,9 @@
 // linked in: a node needs an executor, an executor needs a session, and nothing
 // here touches the wire.
 
-#include "nros/executor.hpp"
-#include "nros/log.hpp"
-#include "nros/node.hpp"
+#include "rclcpp/executor.hpp"
+#include "rclcpp/logging.hpp"
+#include "rclcpp/node.hpp"
 
 extern "C" {
 #include "stub_rmw_backend.h"

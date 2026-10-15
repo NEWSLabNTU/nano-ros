@@ -15,7 +15,7 @@
 // `__has_include` pickup.
 //
 // `just check cpp` compiles this with `-fsyntax-only -std=c++17`.
-#include <nros/nros.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 namespace nros_cpp_declared_params_compile_test {
 

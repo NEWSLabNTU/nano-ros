@@ -18,7 +18,7 @@
 // PARSES templates, so a nested alias inside a class template is never
 // checked there; this TU instantiates them.
 //
-// phase-417 stage 6 step A — this reaches the surface through `<nros/nros.hpp>`
+// phase-417 stage 6 step A — this reaches the surface through `<rclcpp/rclcpp.hpp>`
 // and no longer through `nros/rclcpp_compat.hpp`, which now declares nothing.
 // The include is the POINT of the probe as much as the body is: the `rclcpp::`
 // names are declared by the API headers themselves, so a probe that still went
@@ -30,13 +30,13 @@
 // `<memory>` is absent — is covered by the header loop itself, which parses
 // every header including `nros.hpp` with `-ffreestanding`.
 
-#include <nros/nros.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 // The string containers codegen emits for a message field. Neither is reachable
 // from the `nros.hpp` umbrella today (a separate stage-2 gap: 15 of 46 headers
 // are not), so name them directly.
-#include <nros/fixed_string.hpp>
-#include <nros/heap_string.hpp>
+#include <rclcpp/fixed_string.hpp>
+#include <rclcpp/heap_string.hpp>
 
 #include <memory>
 #include <string>

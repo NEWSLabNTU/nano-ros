@@ -2,8 +2,8 @@
 // cell (#42 root-cause #5). Heap-capable by default → heap containers MUST compile.
 // See tests/platform_header_compile.rs.
 #define NROS_PLATFORM_ESP
-#include <nros/heap_string.hpp>
-#include <nros/heap_sequence.hpp>
+#include <rclcpp/heap_string.hpp>
+#include <rclcpp/heap_sequence.hpp>
 namespace {
 void use_it() {
     rclcpp::HeapString s;

@@ -1,4 +1,4 @@
-//! `/rosout` from C++ — issue 1589. The runtime half of `<nros/rosout.hpp>`.
+//! `/rosout` from C++ — issue 1589. The runtime half of `<rclcpp/rosout.hpp>`.
 //!
 //! The publisher is an ordinary C++ publisher (`CppPublisher` in caller
 //! storage, created through `nros_cpp_publisher_create`), named by

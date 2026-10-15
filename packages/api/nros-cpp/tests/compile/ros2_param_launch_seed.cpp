@@ -28,14 +28,14 @@
 
 #define NROS_SYSTEM_PARAM_SERVICES 1
 
-#include <nros/nros.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 #include <string>
 
 namespace nros_cpp_ros2_param_launch_seed_test {
 
 // A representative set of parameter types. Since issue 1678 the forwarders
-// (`nros/node_parameters.hpp`) take every scalar `node_param_type` classifies
+// (`rclcpp/node_parameters.hpp`) take every scalar `node_param_type` classifies
 // -- any integer width, `float` and `long double` included -- on both data
 // models; `param_integer_widths.cpp` is the probe that pins that. One gap is
 // unchanged and still measured:

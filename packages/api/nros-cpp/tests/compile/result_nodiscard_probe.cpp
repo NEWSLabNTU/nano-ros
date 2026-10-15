@@ -20,7 +20,7 @@
 // exit code: a typo or a missing include path also exits non-zero, and would
 // read as "the attribute fired".
 
-#include <nros/nros.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 static rclcpp::Result value_less() {
     return rclcpp::Result::success();

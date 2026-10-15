@@ -34,7 +34,7 @@
 // `one_node_type_freestanding.cpp`, which covers the rest of the freestanding
 // node surface.
 
-#include <nros/nros.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 #include <cstddef>
 #include <cstdint>

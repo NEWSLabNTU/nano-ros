@@ -109,7 +109,7 @@ static _KEEP_C_SURFACE: &[unsafe extern "C" fn()] = &nros_c::c_surface_anchor::C
 // Issue 0436 — same DCE class, for the multi-RMW bridge ABI. `nros-bridge` is an
 // rlib dep whose `rclc_init_multi` / `nros_pubsub_bridge_*` exports nothing in
 // this crate calls, so rustc drops them from `libnros_cpp.a` and a C++ binary that
-// includes `<nros/bridge.hpp>` fails to link. Reference them from the staticlib
+// includes `<rclcpp/bridge.hpp>` fails to link. Reference them from the staticlib
 // ROOT to keep them (the FORCE_LINK pattern `rmw_backend` uses for backends).
 // Must be a RUST path into the crate (not an `extern "C"` redeclaration): the
 // dependency edge is what pulls the rlib's objects into this staticlib. Declaring
@@ -269,7 +269,7 @@ pub const NROS_CPP_RET_TRANSPORT_ERROR: nros_cpp_ret_t = -100;
 /// when its RELIABILITY or DURABILITY does; the log line names which.
 ///
 /// The same number `rclcpp::detail::DECLARED_DEPTH_MISMATCH` carries in
-/// `nros/node.hpp`, which is the C++ BOOT-time half of the same check, and for
+/// `rclcpp/node.hpp`, which is the C++ BOOT-time half of the same check, and for
 /// the reason recorded there: this is not a backend failure, it is the image
 /// contradicting its own manifest, and a code that also means "the RMW said no"
 /// would send the reader to the wrong half of the tree.
@@ -335,7 +335,7 @@ const fn u64s_for<T>() -> usize {
 // Appended, never renumbered.
 //
 // Values are IDENTICAL to `rclcpp::ReliabilityPolicy` and its three siblings in
-// `<nros/qos.hpp>`, which is what lets `detail::qos_to_ffi` /
+// `<rclcpp/qos.hpp>`, which is what lets `detail::qos_to_ffi` /
 // `detail::qos_from_ffi` `static_cast` between them. That is a deliberate
 // value-for-value mirror between two C++-side vocabularies — NOT the RMW
 // ABI's numbering, which is skewed against both in all four enums (see
@@ -988,7 +988,7 @@ pub unsafe extern "C" fn nros_cpp_init(
 ///
 /// Additive rather than a sixth parameter on `nros_cpp_init`: that symbol is
 /// called by every generated C++ entry and by user code, and widening it is an
-/// ABI break for all of them. `<nros/node.hpp>`'s `rclcpp::init` reaches this
+/// ABI break for all of them. `<rclcpp/node.hpp>`'s `rclcpp::init` reaches this
 /// through the `NROS_ENTRY_RMW` bake macro.
 ///
 /// # Safety
@@ -1480,7 +1480,7 @@ pub(crate) fn node_error_to_cpp_ret(err: nros_node::NodeError) -> nros_cpp_ret_t
         E::NodeTableFull | E::ExecutorFull | E::ShutdownCallbacksFull => NROS_CPP_RET_FULL,
         E::BackendMismatch => NROS_CPP_RET_UNSUPPORTED,
         // phase-454 W10 — its OWN code, for the reason `rclcpp::detail::
-        // DECLARED_DEPTH_MISMATCH` gives in `nros/node.hpp`: this is not a
+        // DECLARED_DEPTH_MISMATCH` gives in `rclcpp/node.hpp`: this is not a
         // backend failure, it is the image contradicting its own manifest, and
         // a code that also means "the RMW said no" would send the reader to the
         // wrong half of the tree. Same number both C++ halves already use.
@@ -1501,7 +1501,7 @@ pub(crate) fn node_error_to_cpp_ret(err: nros_node::NodeError) -> nros_cpp_ret_t
 ///
 /// # Why this exists next to `rclc_init_multi`
 ///
-/// `rclc_init_multi` (the `nros-bridge` C ABI behind `<nros/bridge.hpp>`'s
+/// `rclc_init_multi` (the `nros-bridge` C ABI behind `<rclcpp/bridge.hpp>`'s
 /// `MultiExecutor`) returns a heap `ExecutorBox { executor, _spec_strings }`. The
 /// C++ Node surface casts its handle to `*mut CppContext`
 /// (`{ executor, domain_id, in_dispatch, backing }`). Both begin with the SAME
@@ -2096,7 +2096,7 @@ fn census_write(_session: &core::ffi::CStr, out_path: &str) -> i32 {
 }
 
 /// Issue 1419 -- the census switch, for the HOSTED runner that is not this
-/// file's: `rclcpp::board::LinuxBoard::run_components` in `<nros/main.hpp>`.
+/// file's: `rclcpp::board::LinuxBoard::run_components` in `<rclcpp/detail/main.hpp>`.
 ///
 /// That runner is header-only C++ (`rclcpp::init` into the C++ global context,
 /// `setup()`, `component_spin_loop()`), and it is what every generated typed
@@ -2156,7 +2156,7 @@ pub unsafe extern "C" fn nros_cpp_census_finish(session_name: *const c_char) -> 
 
 /// Issue 1732 — install the hosted termination guard for a C++ runner whose
 /// loop lives in a header (`rclcpp::board::LinuxBoard::run_components` in
-/// `<nros/main.hpp>`). The Rust runners in this file call
+/// `<rclcpp/detail/main.hpp>`). The Rust runners in this file call
 /// `nros_platform::termination` directly; this is the same call, under a C
 /// name a header can reach — not a second guard.
 ///
@@ -2670,7 +2670,7 @@ pub const NROS_CPP_DOMAIN_ID_INHERIT: u32 = u32::MAX;
 /// Mirrors `rcl_node_options_t` in nros-c (Phase 104.C.8) — same field
 /// shape, separate FFI surface so the two language wrappers can evolve
 /// independently. Used by `nros_cpp_node_create_ex` and the C++
-/// `NodeBuilder` wrapper in `nros/node.hpp`.
+/// `NodeBuilder` wrapper in `rclcpp/node.hpp`.
 #[repr(C)]
 pub struct nros_cpp_node_options_t {
     /// Namespace storage (UTF-8, NUL-terminated within `namespace_len`).
@@ -7398,7 +7398,7 @@ fn entry_spin_ms() -> u64 {
 //
 // The discriminant of the format the linked backend speaks, lowered by
 // `cbindgen` into `nros_cpp_ffi.h` as
-// `#define NROS_CPP_SERIALIZATION_FORMAT_ID`. `nros/serialization_format.hpp`
+// `#define NROS_CPP_SERIALIZATION_FORMAT_ID`. `rclcpp/detail/serialization_format.hpp`
 // lifts it into `rclcpp::SerializationFormat` and asserts every typed entity's
 // message type against it.
 //

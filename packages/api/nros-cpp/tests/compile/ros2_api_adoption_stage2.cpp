@@ -12,7 +12,7 @@
 // Compiled HOSTED (no `-ffreestanding`) for the same reason
 // `ros2_api_adoption.cpp` is: `rclcpp::Node` hands out std::shared_ptr in
 // public signatures, so it is declared only where <memory>/<string>/<vector>/
-// <functional> are. Reached through `<nros/nros.hpp>` since phase-417 stage 6
+// <functional> are. Reached through `<rclcpp/rclcpp.hpp>` since phase-417 stage 6
 // step A.
 //
 // W2.b  parameters on the node — declare / get / set / has, both `const char*`
@@ -26,11 +26,11 @@
 //       embedded lane runs.
 // W3.a  RCLCPP_*_STREAM carries its message.
 
-#include <nros/nros.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 // Not reachable from the `nros.hpp` umbrella (a separate stage-2 gap: 15 of 46
 // headers are not), so name it directly.
-#include <nros/fixed_string.hpp>
+#include <rclcpp/fixed_string.hpp>
 
 #include <chrono>
 #include <memory>

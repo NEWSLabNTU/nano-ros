@@ -15,7 +15,7 @@
 #include <cstring>
 #include <new>
 
-#include <nros/main.hpp> // LinuxBoard::run_components (real executor)
+#include <rclcpp/detail/main.hpp> // LinuxBoard::run_components (real executor)
 #include <rclcpp/rclcpp.hpp>
 
 #include "std_msgs.hpp"

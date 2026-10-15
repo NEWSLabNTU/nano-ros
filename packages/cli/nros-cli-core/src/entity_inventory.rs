@@ -4374,7 +4374,7 @@ impl EntityInventory {
     /// The C and C++ compile-time table: `nros_declared_qos_generated.h`.
     ///
     /// TWO X-macro lists, the same rows in both (phase-454 W10):
-    /// `NROS_DECLARED_QOS_ROWS`, read by `nros/declared_qos.hpp`, and
+    /// `NROS_DECLARED_QOS_ROWS`, read by `rclcpp/detail/declared_qos.hpp`, and
     /// `NROS_DECLARED_QOS_ROWS_Q`, read by `rclc/detail/declared_qos.h`. The second
     /// exists because C has no `constexpr`, so a C lookup is built by the
     /// PREPROCESSOR and the queried `(type, topic)` has to travel through the
@@ -4389,7 +4389,7 @@ impl EntityInventory {
     ///
     /// Emitted as an X-MACRO rather than a C++ array so the file is pure
     /// preprocessor: it can then be included in any order, from any language
-    /// mode, and `nros/declared_qos.hpp` owns the one definition of the table's
+    /// mode, and `rclcpp/detail/declared_qos.hpp` owns the one definition of the table's
     /// TYPE. A generated header that also declared the struct would have to be
     /// included at exactly one point of exactly one header.
     ///
@@ -5592,7 +5592,7 @@ fn render_declared_pub_qos_rows(s: &mut String, pub_rows: &[DeclaredQosHeaderRow
         "\n/* Issue 1608 -- the PUBLISHER rows, in lists of their own: the table is\n \
          * keyed (type, topic), and a publisher and a subscription on one pair are\n \
          * two endpoints with one key. Same columns and the same two forms as the\n \
-         * subscription lists above: `nros/declared_qos.hpp` expands\n \
+         * subscription lists above: `rclcpp/detail/declared_qos.hpp` expands\n \
          * NROS_DECLARED_PUB_QOS_ROWS, `rclc/detail/declared_qos.h` the _Q form. */\n",
     );
     s.push_str("#define NROS_DECLARED_PUB_QOS_ROWS \\\n");
@@ -5646,7 +5646,7 @@ pub fn render_declared_qos_header(source: &str, table: &DeclaredQosHeaderTable) 
         " * beside the launch file that runs it (`sub: { <topic>: { qos: { ... } } }`),",
         " * or in an `EntityDecl` declaration's `@depth=N` attribute: its history",
         " * DEPTH, and (issue 1256) its RELIABILITY and DURABILITY.",
-        " * `nros/declared_qos.hpp` expands this into a `constexpr` table and",
+        " * `rclcpp/detail/declared_qos.hpp` expands this into a `constexpr` table and",
         " * `NROS_SUBSCRIBE` static_asserts the QoS it is handed against it, so a",
         " * declaration and an implementation that disagree fail the BUILD naming",
         " * the topic and both values. `rclc/detail/declared_qos.h` does the same for C.",
@@ -5710,7 +5710,7 @@ pub fn render_declared_qos_header(source: &str, table: &DeclaredQosHeaderTable) 
                 );
             } else {
                 s.push_str(
-                    "/* X-macro. `nros/declared_qos.hpp` defines NROS_DECLARED_QOS_ROW\n \
+                    "/* X-macro. `rclcpp/detail/declared_qos.hpp` defines NROS_DECLARED_QOS_ROW\n \
                      * and expands this; nothing else may. Columns: type, topic, depth\n \
                      * (-1 = undeclared), reliability, durability. The two policy\n \
                      * columns are bare TOKENS each consumer pastes onto a prefix of\n \

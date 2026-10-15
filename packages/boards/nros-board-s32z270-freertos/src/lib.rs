@@ -5,7 +5,7 @@
 //! `c/board_s32z270.c`; the generic FreeRTOS family glue comes from
 //! `nros-board-freertos`. This Rust side is deliberately minimal: the
 //! consumer this board exists for (ASI) drives the C/C++ workspace lane
-//! (`FreertosBoard::run_tiers` from `nros/main.hpp`), not a Rust entry.
+//! (`FreertosBoard::run_tiers` from `rclcpp/detail/main.hpp`), not a Rust entry.
 //! A Rust entry lane (console writer, panic behaviour) lands with
 //! phase-372 W5 when hardware answers what the console is (LinFlexD via
 //! RTD — licensed, so likely another weak-hook seam).

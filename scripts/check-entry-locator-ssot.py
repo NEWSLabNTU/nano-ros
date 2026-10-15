@@ -305,7 +305,7 @@ def cmake_files():
 # `NROS_ENTRY_LOCATOR` / `NROS_ENTRY_DOMAIN_ID` inside the headers, and that
 # had THREE spellings:
 #
-#   * `<nros/main.hpp>` derived both from Kconfig (zenoh locator, else a
+#   * `<rclcpp/detail/main.hpp>` derived both from Kconfig (zenoh locator, else a
 #     synthesised XRCE `host:port`, else `""`);
 #   * `<rclc/detail/app_main.h>` — the C sibling — defined both as `""` and `0` with
 #     no derivation at all, so a TU that saw only the C header dialled nothing

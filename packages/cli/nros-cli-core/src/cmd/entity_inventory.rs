@@ -135,7 +135,7 @@ pub struct EntityInventoryArgs {
 
     /// Write the C++ compile-time depth table here (phase-403 step 2).
     ///
-    /// `nros/declared_qos.hpp` expands it and `NROS_SUBSCRIBE` static_asserts
+    /// `rclcpp/detail/declared_qos.hpp` expands it and `NROS_SUBSCRIBE` static_asserts
     /// against it, so this is the transport that carries a declared `@depth=`
     /// all the way to the compiler.
     #[arg(long = "output-header", value_name = "PATH")]
@@ -144,7 +144,7 @@ pub struct EntityInventoryArgs {
     /// Write the C++ table of each node's DECLARED parameters here (phase-446
     /// W6), read from `--model`'s `contracts.node_params`.
     ///
-    /// `nros/declared_params.hpp` expands it and
+    /// `rclcpp/detail/declared_params.hpp` expands it and
     /// `Node::declare_parameter` refuses a name the node's contract
     /// does not declare, or a type that differs. Written even with no model or
     /// no declaration -- then it defines no table and nothing is checked -- so

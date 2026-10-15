@@ -1151,7 +1151,7 @@ pub unsafe extern "C" fn nros_cpp_subscription_relocate(
 // ============================================================================
 //
 // User-facing C++ event-setter shims. Match the typedefs in
-// `<nros/subscription.hpp>`. Backend wiring lands per phase (109+);
+// `<rclcpp/subscription.hpp>`. Backend wiring lands per phase (109+);
 // for now the runtime returns NROS_CPP_RET_UNSUPPORTED so the C++
 // API compiles and is callable.
 

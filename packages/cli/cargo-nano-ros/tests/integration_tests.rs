@@ -906,7 +906,6 @@ mod component_scaffold {
             "internal header in user code:\n{hpp}"
         );
         assert!(hpp.contains("#include <rclcpp/rclcpp.hpp>"));
-        assert!(!hpp.contains("<nros/nros.hpp>"));
         assert!(
             !hpp.contains("register_node") && !hpp.contains("NodeContext"),
             "typed C++ scaffold header must not carry the declarative seam:\n{hpp}"

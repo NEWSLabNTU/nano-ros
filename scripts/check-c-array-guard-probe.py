@@ -114,7 +114,7 @@ PROBE_CONTEXT = {
     # DISCOVERS, so a key naming a deleted file is dead config that no
     # direction of this gate reports (see the stale-key check in `main`, added
     # by the same change for exactly that reason).
-    "packages/api/nros-cpp/include/nros/node.hpp": {
+    "packages/api/nros-cpp/include/rclcpp/node.hpp": {
         "mode": "preprocess",
         "cc": "c++",
         "std": "c++14",
@@ -124,9 +124,9 @@ PROBE_CONTEXT = {
     },
     # Unlike `component_node.hpp` above, this header pulls in only the
     # COMMITTED `nros_cpp_ffi.h` (cbindgen output, checked in) and
-    # `nros/result.hpp` — no per-build generated config — so the real TU
+    # `rclcpp/result.hpp` — no per-build generated config — so the real TU
     # compiles from this checkout with one include path.
-    "packages/api/nros-cpp/include/nros/node_parameters.hpp": {
+    "packages/api/nros-cpp/include/rclcpp/node_parameters.hpp": {
         "mode": "compile",
         "cc": "c++",
         "std": "c++14",

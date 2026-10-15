@@ -23,7 +23,7 @@
 // Forked, because a test that asserts a process dies cannot be that process.
 //
 // Why abort and not a null `shared_ptr` or an `ok()` flag: see the doc comment
-// on `require_created` in `nros/nros.hpp`, which weighs all three against
+// on `require_created` in `rclcpp/rclcpp.hpp`, which weighs all three against
 // RFC-0089 Part I. Short version: upstream throws, we have no exceptions, and
 // of the options that remain only this one is loud for `create_wall_timer`,
 // whose returned pointer a ported node stores and never dereferences.
@@ -35,7 +35,7 @@
 #include <cstdlib>
 #include <cstring>
 
-#include <nros/nros.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 #include "nros_log_stderr_sink.hpp"
 

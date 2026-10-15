@@ -40,7 +40,7 @@
 //   runtime cells live in `nros_tests`. The structural half is what a compile
 //   lane can hold, and it is the half that regresses silently.
 
-#include <nros/nros.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 #include <chrono>
 #include <cstddef>

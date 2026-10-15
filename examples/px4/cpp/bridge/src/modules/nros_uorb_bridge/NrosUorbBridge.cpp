@@ -19,7 +19,7 @@
  *   binds a node to a session that ALREADY exists — so the single-session shape
  *   (what the phase-325 W3 note suggested) can never give a bridge its outward
  *   session. The supported shape is `rclcpp::MultiExecutor` + `SessionSpec`
- *   (`nros/bridge.hpp`, phase-128 F.5): every backend session is named in one spec
+ *   (`rclcpp/bridge.hpp`, phase-128 F.5): every backend session is named in one spec
  *   list, `specs[0]` becomes primary, and each Node is created on that handle.
  *
  * WHY THE TRANSLATION IS FIELD-BY-FIELD AND NOT A memcpy

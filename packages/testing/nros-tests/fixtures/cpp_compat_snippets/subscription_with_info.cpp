@@ -13,11 +13,11 @@
 // headers. `SERIALIZED_SIZE_MAX` became part of that surface when phase-456 W7
 // made every C++ subscription registration state its receive bound
 // (`rx_buffer_capacity<M>`): an unmarked stand-in is the `legacy` arm of
-// `nros/size_bound.hpp`, which reads it. Without it this snippet stopped
+// `rclcpp/size_bound.hpp`, which reads it. Without it this snippet stopped
 // compiling and its consuming test reported a MISSING in-lane fixture
 // (issue 1684's tier-1 run, measured 2026-10-06).
 
-#include <nros/nros.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 #include <cstddef>
 #include <cstdint>

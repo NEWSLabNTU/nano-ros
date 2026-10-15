@@ -511,7 +511,7 @@ fn stamp_offset_for(message: &rosidl_parser::ast::Message) -> Option<usize> {
 /// `Time` because it answers a question about a WIRE LAYOUT that only that type
 /// produces. This one answers the question the C++
 /// `template <typename TimeMsgT> Time::to_msg(TimeMsgT&)`
-/// (`packages/api/nros-cpp/include/nros/time.hpp`) answers, and that template
+/// (`packages/api/nros-cpp/include/rclcpp/time.hpp`) answers, and that template
 /// binds to anything with `sec` / `nanosec`. Keying on the shape gives the Rust
 /// substitute the same binding set as the template it stands in for, and keeps a
 /// hard-coded upstream package name out of the pack.

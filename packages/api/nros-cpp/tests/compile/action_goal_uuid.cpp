@@ -26,7 +26,7 @@
 // regressed — their callbacks receive `const uint8_t[16]` from the FFI.
 //
 // `just check cpp` compiles this with `-fsyntax-only -std=c++14`.
-#include <nros/nros.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 #include <map>
 #include <type_traits>

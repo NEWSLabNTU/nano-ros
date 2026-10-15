@@ -29,7 +29,7 @@
 #      (`<dir>/nros/nros_declared_qos_generated.h`), keyed on the TOPIC a call
 #      site writes and on BOTH type spellings;
 #   B. `<dir>` is on the target's include path, so `__has_include` in
-#      `nros/declared_qos.hpp` finds it;
+#      `rclcpp/detail/declared_qos.hpp` finds it;
 #   C. the dir is PRIVATE -- a consumer that links the component must not
 #      inherit a table describing somebody else's call sites;
 #   D. an image with NO contract gets NO table and NO error. Absence is not zero
@@ -355,7 +355,7 @@ probe_src() {
     # building. `NROS_ASSERT_DECLARED_DEPTH` is the real macro; `NROS_SUBSCRIBE`
     # forwards to it, and `just check cpp` compiles that whole path.
     cat <<EOF
-#include <nros/declared_qos.hpp>
+#include <rclcpp/detail/declared_qos.hpp>
 namespace {
 struct Q {
     int d;
@@ -487,7 +487,7 @@ fi
 log_info "F3. a call site whose reliability or durability DISAGREES fails to compile"
 policy_probe_src() {
     cat <<EOF
-#include <nros/declared_qos.hpp>
+#include <rclcpp/detail/declared_qos.hpp>
 namespace {
 struct Q {
     int r;
@@ -628,7 +628,7 @@ pub_probe_compile() {
 }
 pub_probe_src() {
     cat <<EOF
-#include <nros/declared_qos.hpp>
+#include <rclcpp/detail/declared_qos.hpp>
 namespace {
 struct Q {
     int d;

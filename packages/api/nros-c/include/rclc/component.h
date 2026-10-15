@@ -3,7 +3,7 @@
  * @ingroup grp_node
  * @brief Phase 240.4 (RFC-0043) — C stateful-component binding.
  *
- * The C analog of the C++ `nros/component.hpp`. A C component is a plain
+ * The C analog of the C++ `rclcpp/detail/component.hpp`. A C component is a plain
  * `struct` (state) + a `configure` function that creates its entities with the
  * C API and binds its callbacks **by identity** (function pointer + `self`
  * context) — no string callback names, no synthesizing interpreter.
@@ -58,7 +58,7 @@
 /* phase-454 W10 — `NROS_ASSERT_DECLARED_DEPTH`, for a C component that states a
  * QoS depth at a call site. The header is self-guarding and C-only, so a C++ TU
  * that pulls this in (the cross-include syntax check does) sees nothing and
- * keeps `<nros/declared_qos.hpp>`. */
+ * keeps `<rclcpp/detail/declared_qos.hpp>`. */
 #include "rclc/detail/declared_qos.h"
 
 #ifdef __cplusplus

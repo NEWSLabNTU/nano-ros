@@ -147,7 +147,7 @@ typedef struct nros_transport_ops_s {
  * The fn pointer is exported from the nano-ros C staticlib
  * (`packages/api/nros-c/`), where it forwards to the
  * `nros-rmw-cffi` registry. C++ consumers should include
- * `<nros/transport.hpp>` (from `nros-cpp`) which calls this
+ * `<rclcpp/transport.hpp>` (from `nros-cpp`) which calls this
  * function under the hood.
  *
  * @retval NROS_RMW_RET_OK on success (transport installed or

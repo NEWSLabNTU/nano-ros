@@ -6,8 +6,8 @@
 // The positive twin is `platform_hdr_baremetal_has_malloc.cpp`, identical but
 // for NROS_PLATFORM_HAS_MALLOC. See tests/platform_header_compile.rs.
 #define NROS_PLATFORM_BAREMETAL
-#include <nros/heap_string.hpp>
-#include <nros/heap_sequence.hpp>
+#include <rclcpp/heap_string.hpp>
+#include <rclcpp/heap_sequence.hpp>
 namespace {
 void use_it() {
     rclcpp::HeapString s;
