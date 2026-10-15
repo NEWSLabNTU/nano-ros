@@ -199,16 +199,17 @@ jobs:
           source ./activate.sh
           just test-doc
 
-  # ----- per-feature clippy of the API/core crates -----
+  # ----- per-feature clippy, host and cross -----
   #
   # `just check feature-sweep`: each crate's features one at a time over its
-  # base set, ~200 clippy runs. Its own job because it is ~15-25 min and the
-  # unit job's ceiling is sized for the tests; scheduled because no merge
-  # lane can afford it. See the recipe and `scripts/check-feature-sweep.py`.
+  # base set (~310 host runs), plus the embedded-only platform features built
+  # for the board that ships them (~20 cross runs). Its own job because it is
+  # well past the unit job's ceiling; scheduled because no merge lane can
+  # afford it. See the recipe and `scripts/check-feature-sweep.py`.
   feature-sweep:
-    name: per-feature clippy (API + core crates)
+    name: per-feature clippy (host + cross)
     runs-on: ubuntu-22.04
-    timeout-minutes: 75
+    timeout-minutes: 120
     concurrency:
       group: host-tests-feature-sweep-${{ github.ref }}-${{ github.event_name }}
       cancel-in-progress: false
@@ -232,6 +233,10 @@ jobs:
           git submodule update --init --depth 1 packages/cli/third-party/play_launch
           source ./activate.sh
           just setup linux
+          # The CROSS half builds zpico-sys for a FreeRTOS and a ThreadX board,
+          # which compile those kernels' sources; the board env names the port,
+          # the store holds the tree.
+          nros setup --source freertos-kernel --source lwip --source threadx --source threadx-netxduo
 
       - name: just check feature-sweep
         run: |

@@ -197,13 +197,21 @@ pub mod zephyr {
         fn nros_platform_zephyr_wait_network(timeout_ms: i32) -> i32;
     }
 
+    /// The default network interface did not come up within the timeout.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct NetworkTimeout;
+
     /// Block until the default Zephyr network interface is operational, or the
-    /// timeout expires. `Ok(())` on link-up, `Err(())` on timeout.
-    pub fn wait_network(timeout_ms: i32) -> Result<(), ()> {
+    /// timeout expires. `Ok(())` on link-up, `Err(NetworkTimeout)` on timeout.
+    pub fn wait_network(timeout_ms: i32) -> Result<(), NetworkTimeout> {
         // SAFETY: `nros_platform_zephyr_wait_network` has no preconditions beyond
         // being called from a Zephyr thread context — always true in a Zephyr app.
         let ret = unsafe { nros_platform_zephyr_wait_network(timeout_ms) };
-        if ret == 0 { Ok(()) } else { Err(()) }
+        if ret == 0 {
+            Ok(())
+        } else {
+            Err(NetworkTimeout)
+        }
     }
 }
 
