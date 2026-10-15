@@ -91,6 +91,10 @@ ENABLE_ALLOWED = {
     "scripts/check-feature-contract.py",
     # This gate.
     "scripts/check-size-markers-unlinked.py",
+    # The per-feature clippy sweep names it only as an EXPECTED refusal: it
+    # asserts `nros`'s build script still refuses it outside the probe, and
+    # it links nothing.
+    "scripts/check-feature-sweep.py",
 }
 
 # The variable that marks the probe's build; both spellings must agree.

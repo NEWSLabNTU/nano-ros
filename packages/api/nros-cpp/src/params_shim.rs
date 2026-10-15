@@ -2094,8 +2094,13 @@ mod tests {
     /// Null-pointer guard: every shim fn returns INVALID_ARGUMENT for a null executor.
     #[test]
     fn null_executor_returns_invalid_argument() {
-        let ret = unsafe { nros_cpp_register_parameter_services(ptr::null_mut()) };
-        assert_eq!(ret, NROS_CPP_RET_INVALID_ARGUMENT);
+        // Gated like the function itself: `param-store` alone builds this
+        // module and has no service surface to register.
+        #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+        {
+            let ret = unsafe { nros_cpp_register_parameter_services(ptr::null_mut()) };
+            assert_eq!(ret, NROS_CPP_RET_INVALID_ARGUMENT);
+        }
         let name = c"p";
         let val = c"v";
         let ret =
@@ -2119,7 +2124,7 @@ mod tests {
 
     #[test]
     fn infer_param_value_double() {
-        assert_value_eq!(infer_param_value("3.14"), ParameterValue::from_double(3.14));
+        assert_value_eq!(infer_param_value("2.5"), ParameterValue::from_double(2.5));
     }
 
     #[test]
@@ -2297,6 +2302,9 @@ mod tests {
     /// test that spelled a number would be asserting this build's knob rather
     /// than the property.
     #[test]
+    // 4096 elements so the probe outruns any configured `NROS_MAX_ARRAY_LEN`;
+    // a test thread's stack holds the 32 KiB arrays comfortably.
+    #[allow(clippy::large_stack_arrays)]
     fn an_array_longer_than_the_store_is_refused() {
         let buf = [0.0f64; 4096];
         let mut cap = 0usize;

@@ -160,7 +160,10 @@ pub fn on_node_create(_name: &str, _namespace: &str, _domain_id: u32) {
 /// recorded as the code passed it.
 #[inline]
 pub fn on_timer_create(_kind: crate::node_metadata::TimerKind, _period_ms: u64) {
-    #[cfg(any(feature = "metadata-mode", feature = "profile-mode"))]
+    #[cfg(any(
+        feature = "metadata-mode",
+        all(feature = "profile-mode", feature = "rmw-cffi")
+    ))]
     {
         let id = synthetic_id("timer");
         #[cfg(feature = "metadata-mode")]
@@ -184,7 +187,10 @@ pub fn on_timer_create(_kind: crate::node_metadata::TimerKind, _period_ms: u64) 
 /// period 0.
 #[inline]
 pub fn on_guard_condition_create() {
-    #[cfg(any(feature = "metadata-mode", feature = "profile-mode"))]
+    #[cfg(any(
+        feature = "metadata-mode",
+        all(feature = "profile-mode", feature = "rmw-cffi")
+    ))]
     {
         let id = synthetic_id("guard");
         #[cfg(feature = "metadata-mode")]
@@ -238,7 +244,10 @@ fn ensure_scope() {
 /// The synthetic id of an executor-side entity (`timer<n>`, `guard<n>`): ONE
 /// sequence shared by the census and the profile, so a profile run and a census
 /// run of the same image name every timer identically (phase-463 W7).
-#[cfg(any(feature = "metadata-mode", feature = "profile-mode"))]
+#[cfg(any(
+    feature = "metadata-mode",
+    all(feature = "profile-mode", feature = "rmw-cffi")
+))]
 fn synthetic_id(prefix: &str) -> alloc::string::String {
     use core::sync::atomic::{AtomicUsize, Ordering};
     static SEQ: AtomicUsize = AtomicUsize::new(0);

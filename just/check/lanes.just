@@ -3510,6 +3510,20 @@ test-targets:
     just check cli-clippy
     echo "clippy + test targets clean (root + cli)."
 
+# Clippy every feature of the API and core crates, one feature at a time over
+# each crate's base set (`scripts/check-feature-sweep.py` has the table, the
+# reasoned SKIP list and the EXPECTED refusals). `test-targets` above lints each
+# crate under its own defaults and the workspace under unified features; a
+# feature neither names is linted nowhere, and the first sweeps found 20 such
+# combinations red across nros-node, nros, nros-log, nros-c and nros-cpp — two
+# of them did not compile. ~200 clippy runs, ~15 min warm, so it is SCHEDULED
+# (host-tests.yml `feature-sweep`), never merge-gating, and not in `build`.
+feature-sweep *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    NROS_C_API_SHIPPED_FEATURES="{{C_API_SHIPPED_FEATURES}}" \
+        python3 scripts/check-feature-sweep.py {{args}}
+
 # Check workspace: formatting and clippy (no_std, native)
 # nros-c/nros-cpp/standalone RMW staticlib wrappers excluded from no_std
 # check: staticlib/cdylib requires a platform-specific panic/runtime setup.

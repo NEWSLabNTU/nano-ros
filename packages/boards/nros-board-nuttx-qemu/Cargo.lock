@@ -185,6 +185,7 @@ name = "nros"
 version = "0.6.0"
 dependencies = [
  "log",
+ "nros-bridge",
  "nros-core",
  "nros-diagnostics",
  "nros-log",
@@ -238,6 +239,15 @@ dependencies = [
  "nros-log",
  "nros-platform",
  "nros-platform-cffi",
+]
+
+[[package]]
+name = "nros-bridge"
+version = "0.6.0"
+dependencies = [
+ "nros-log",
+ "nros-node",
+ "nros-serdes",
 ]
 
 [[package]]

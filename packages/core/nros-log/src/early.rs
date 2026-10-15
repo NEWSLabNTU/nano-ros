@@ -156,6 +156,9 @@ pub fn overflowed() -> usize {
 ///
 /// Returns `false` when it did not fit — the caller has nothing further to do,
 /// but [`overflowed`] will report it.
+// `early-records-0` makes the capacity 0, a legal size: the comparison is then
+// always true, which is the right answer for a pool with no slots.
+#[allow(clippy::absurd_extreme_comparisons)]
 pub(crate) fn hold(record: &Record<'_>) -> bool {
     let idx = CLAIMED.fetch_add(1, Ordering::AcqRel);
     if idx >= DEPTH {

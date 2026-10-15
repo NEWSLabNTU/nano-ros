@@ -264,7 +264,6 @@ pub unsafe extern "C" fn rclc_pubsub_bridge_create(
         Ok(s) => s,
         Err(_) => return NROS_RMW_RET_ERROR,
     };
-    drop(src);
 
     // Destination side.
     let mut dst = match eb.executor.create_node_on(dst_node, dst_rmw) {
@@ -283,7 +282,6 @@ pub unsafe extern "C" fn rclc_pubsub_bridge_create(
         Ok(p) => p,
         Err(_) => return NROS_RMW_RET_ERROR,
     };
-    drop(dst);
 
     let origin_static: &'static str = if origin.is_empty() {
         ""

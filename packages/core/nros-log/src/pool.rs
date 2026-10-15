@@ -137,6 +137,9 @@ pub(crate) fn intern_name(name: &str) -> Option<&'static str> {
 
 /// Move `logger` into the static logger arena and return a `&'static` to it.
 /// `None` when the arena is exhausted.
+// `dynamic-loggers-0` makes the capacity 0, a legal size: the comparison is then
+// always true, which is the right answer for a pool with no slots.
+#[allow(clippy::absurd_extreme_comparisons)]
 pub(crate) fn place(logger: Logger) -> Option<&'static Logger> {
     loop {
         let used = POOL.loggers_used.load(Ordering::Acquire);

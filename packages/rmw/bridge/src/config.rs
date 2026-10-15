@@ -377,7 +377,6 @@ fn run_from_config_source(
                 b.type_hash.as_str(),
             )
             .map_err(|e| ConfigError::BuildEntity(format!("sub on {}: {e:?}", b.from.node)))?;
-        drop(src_node);
 
         // Stage the dest descriptor BEFORE the raw publisher — `publisher_create`
         // resolves it via `find_descriptor` and fails `PublisherCreationFailed`
@@ -394,7 +393,6 @@ fn run_from_config_source(
                 b.type_hash.as_str(),
             )
             .map_err(|e| ConfigError::BuildEntity(format!("pub on {}: {e:?}", b.to.node)))?;
-        drop(dst_node);
 
         // `'static` origin needed by `PubSubBridge::new` — leak the
         // backend name string. Config-driven entrypoint is one-shot

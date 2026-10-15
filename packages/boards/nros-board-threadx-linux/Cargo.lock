@@ -185,6 +185,7 @@ name = "nros"
 version = "0.6.0"
 dependencies = [
  "log",
+ "nros-bridge",
  "nros-core",
  "nros-diagnostics",
  "nros-log",
@@ -249,6 +250,15 @@ dependencies = [
 [[package]]
 name = "nros-board-threadx-port-riscv64"
 version = "0.6.0"
+
+[[package]]
+name = "nros-bridge"
+version = "0.6.0"
+dependencies = [
+ "nros-log",
+ "nros-node",
+ "nros-serdes",
+]
 
 [[package]]
 name = "nros-build-paths"
