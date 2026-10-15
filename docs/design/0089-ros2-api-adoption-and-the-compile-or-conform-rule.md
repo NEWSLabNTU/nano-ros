@@ -1339,7 +1339,7 @@ types (2026-09-05). A raw FFI type a user touches
 (`nros_cpp_integrity_status_t`) gets an `rclcpp::` type instead.
 
 **What does NOT move:** build and test facts (`NROS_CPP_STD`,
-`NROS_BRIDGE_RMW`, `NROS_RUNTIME_OVERLAY`, the `NROS_TEST_*` knobs), the
+`NROS_BRIDGE_RMW`, the `NROS_TEST_*` knobs), the
 operator's `NROS_LOCATOR` environment variable (configuration, like an RMW's
 own variables), the port seams, and `nros_cpp_init_multi` (a PX4 integration
 seam with no rclcpp shape). Implemented by

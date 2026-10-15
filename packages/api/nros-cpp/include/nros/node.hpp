@@ -598,17 +598,14 @@ inline Result init_in(const char* locator, uint8_t domain_id, const char* sessio
 inline Result init_with_rmw(const char* rmw, const char* locator = nullptr, uint8_t domain_id = 0,
                             const char* session_name = "node");
 
-/// Phase 212.L.5 Pattern 2 — launch-aware init.
+/// Launch-aware init.
 ///
-/// Resolves runtime knobs (domain id, locator, RMW choice) in this order:
-/// 1. `$NROS_RUNTIME_OVERLAY` (JSON sidecar emitted by
-///    `nros launch --emit-runtime-overlay`). NOT yet consumed —
-///    placeholder for the follow-up wave.
-/// 2. Launch XML at `<CARGO_MANIFEST_DIR>/launch/*.xml`. NOT yet parsed —
-///    the runtime trusts the launcher to project params/remaps into the
-///    child env before exec().
-/// 3. Env vars: `ROS_DOMAIN_ID`, `NROS_LOCATOR`, `RMW_IMPLEMENTATION` /
-///    `NROS_RMW`. This is the active overlay channel today.
+/// Reads the domain id, locator and RMW choice from the environment
+/// (`ROS_DOMAIN_ID`, `NROS_LOCATOR`, `RMW_IMPLEMENTATION` / `NROS_RMW`), as
+/// the 2-arg `init` does. It reads no launch file: a launch tree reaches an
+/// image at BUILD time — `nros sync` resolves it into the SystemModel and the
+/// generated entry (`nano_ros_entry(... LAUNCH ...)`) installs its node
+/// identities, remaps and parameters.
 ///
 /// `argc` / `argv` are parsed as `--ros-args` with rcl's grammar, exactly as
 /// Rust's `nros::Context::new` does: `-r`/`--remap` rules are installed as the
@@ -624,12 +621,12 @@ inline Result init_with_rmw(const char* rmw, const char* locator = nullptr, uint
 inline Result init_with_launch_auto(int argc = 0, char** argv = nullptr,
                                     const char* session_name = nullptr);
 
-/// Phase 212.L.5 Pattern 2 — explicit-path variant of
-/// [`init_with_launch_auto`].
+/// Explicit-path variant of [`init_with_launch_auto`].
 ///
-/// Verifies `path` exists (so misspelled paths fail fast) but does NOT
-/// yet parse the XML — the env overlay is the active source today.
-/// `argc` / `argv` are honoured exactly as in the auto variant.
+/// On a hosted build, returns `ErrorCode::NotInitialized` when `path` cannot
+/// be opened, so a misspelled path fails at init; the file's contents are not
+/// read. Otherwise behaves exactly as the auto variant, `argc` / `argv`
+/// included.
 inline Result init_with_launch(const char* path, int argc = 0, char** argv = nullptr,
                                const char* session_name = nullptr);
 
@@ -3025,21 +3022,13 @@ inline Result init_honouring_ros_args(int argc, char const* const* argv, const c
 }
 } // namespace detail
 
-// -- Phase 212.L.5 launch-aware init --
+// -- launch-aware init --
 //
 // Both `init_with_launch_auto` and `init_with_launch(path)` delegate to
-// the existing 3-arg `init` after resolving the launch overlay (today:
-// env vars only — see header docs for the follow-up plan). The session
+// the existing 3-arg `init`, which reads the environment. The session
 // name falls back to `"nros_cpp"` so existing callsites keep working.
 
 inline Result init_with_launch_auto(int argc, char** argv, const char* session_name) {
-    // TODO (Phase 212.L.5 follow-up):
-    //   1. If $NROS_RUNTIME_OVERLAY is set, read the JSON sidecar and
-    //      fold its params/remaps/env into the init call.
-    //   2. Else walk <CARGO_MANIFEST_DIR>/launch/* and parse the XML
-    //      in-process.
-    // For now the env overlay (NROS_LOCATOR / ROS_DOMAIN_ID consumed by
-    // the 2-arg `init`) is the only channel.
     const char* name = (session_name != nullptr) ? session_name : "nros_cpp";
     return detail::init_honouring_ros_args(argc, argv, name);
 }

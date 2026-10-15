@@ -43,9 +43,9 @@
 //!    builds its `Context` through [`Context::default_from_env`].
 //! 2. **Application pkg + launch-aware** — call [`init_with_launch_auto`] (or
 //!    [`init_with_launch`] for an explicit path). The returned [`Context`]
-//!    carries launch-resolved fields (domain id, locator, RMW choice). User
-//!    code drives its own spin via `Executor::open` +
-//!    `Executor::spin`.
+//!    carries the domain id, locator and RMW choice from the environment —
+//!    see "Where launch content comes from" below. User code drives its own
+//!    spin via `Executor::open` + `Executor::spin`.
 //! 3. **Application pkg + custom spin** — call [`init()`] /
 //!    [`Context::default_from_env`] (or [`init_with_args`] / [`Context::new`]
 //!    for argv-style entry). Launch file is ignored; env vars +
@@ -58,17 +58,20 @@
 //! to `Executor::open` — still works and is what a single-node entry wants;
 //! phase-427 W10 added the pair because it cannot express the second node.
 //!
-//! ## Launch overlay (current limitation)
+//! ## Where launch content comes from
 //!
-//! `init_with_launch_auto` / `init_with_launch` currently consume the
-//! launch-resolved knobs the parent `nros launch` process exports via env
-//! vars (`ROS_DOMAIN_ID`, `NROS_LOCATOR`, `NROS_SESSION_MODE`,
-//! `RMW_IMPLEMENTATION`, plus the placeholder `NROS_RUNTIME_OVERLAY` for
-//! the future structured overlay path). The launch XML is NOT parsed
-//! in-process; the runtime trusts the launcher to project the relevant
-//! params / remaps / env into the child environment. A follow-up wave wires
-//! the structured overlay (Option A — `nros launch --emit-runtime-overlay`
-//! → JSON sidecar consumed here). See Phase 212.L.5 notes.
+//! Nothing here reads a launch file at run time. A launch tree reaches an
+//! image at BUILD time: `nros sync` resolves it into the image's SystemModel,
+//! and the generated entry (`nros::main!(launch = …)`,
+//! `nano_ros_entry(… LAUNCH …)`) installs its node identities, remaps and
+//! parameters. What is left for init to read is the environment
+//! (`ROS_DOMAIN_ID`, `NROS_LOCATOR`, `NROS_SESSION_MODE`,
+//! `RMW_IMPLEMENTATION`) and, through [`init_with_args`] / [`Context::new`],
+//! per-process `--ros-args`. [`init_with_launch_auto`] and
+//! [`init_with_launch`] read the same environment as [`init()`]; the explicit
+//! path is checked for existence only, so a misspelled path fails at init.
+//! (Issue 1917 retired the runtime-overlay placeholder these functions used
+//! to describe.)
 
 #[cfg(feature = "env")]
 // phase-359 W10 — kept, and it is not a spelling that can be unwound.
@@ -102,11 +105,6 @@ pub enum InitError {
     /// `init_with_launch(path)` was passed a path that does not exist or
     /// could not be read.
     LaunchFileNotFound,
-    /// The launch file existed but could not be parsed.
-    ///
-    /// Phase 212.L.5 ships a stub — actual XML parsing arrives with the
-    /// runtime-overlay wave. Until then this variant is unused.
-    LaunchParseFailed,
     /// A launch-derived env var (`ROS_DOMAIN_ID`, etc.) failed to parse —
     /// or, freestanding, the baked `NROS_DOMAIN_ID` is not a decimal integer.
     EnvParseFailed,
@@ -156,7 +154,6 @@ impl core::fmt::Display for InitError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             InitError::LaunchFileNotFound => f.write_str("launch file not found"),
-            InitError::LaunchParseFailed => f.write_str("launch file parse failed"),
             InitError::EnvParseFailed => f.write_str("env var parse failed"),
             InitError::DomainIdOutOfRange => f.write_str("domain id out of range"),
             InitError::RetiredEnvVar { name, replacement } => write!(
@@ -267,10 +264,10 @@ pub enum ContextSource {
     /// [`Context::new`], or by [`Context::default_from_env`] /
     /// [`Context::from_env`] on a hosted build.
     Env,
-    /// Built from a launch file (path supplied to [`init_with_launch`]) or
-    /// auto-discovered via [`init_with_launch_auto`]. The launch XML itself
-    /// is NOT yet parsed (see module docs); the launcher's projected env
-    /// is the source of truth for now.
+    /// Built by [`init_with_launch`] / [`init_with_launch_auto`]. It records
+    /// which entry point was CALLED, not that a launch file was read: both
+    /// read the environment, as [`Env`](Self::Env) does (see the module docs,
+    /// "Where launch content comes from").
     Launch,
     /// phase-427 W9 — built from the constants baked into this crate at
     /// compile time (`NROS_LOCATOR`, `NROS_DOMAIN_ID`) by [`Context::baked`],
@@ -1489,44 +1486,26 @@ mod baked_tests {
 
 /// Pattern 2 — launch-aware init.
 ///
-/// Resolves the launch file via:
-///
-/// 1. `$NROS_RUNTIME_OVERLAY` — when set, the path points at a JSON sidecar
-///    written by `nros launch --emit-runtime-overlay`. (NOT yet consumed;
-///    placeholder for the follow-up wave.)
-/// 2. `<CARGO_MANIFEST_DIR>/launch/<pkg>.launch.xml` or
-///    `<CARGO_MANIFEST_DIR>/launch/system.launch.xml`. (NOT yet parsed;
-///    placeholder.)
-/// 3. The env vars described in [`init()`] — the launcher projects launch
-///    params into the child env before `exec()`, so the env path is the
-///    de-facto launch overlay today.
-///
-/// Returns a [`Context`] whose `source = ContextSource::Launch` so callers
-/// can introspect whether the run is launch-driven.
+/// Reads the environment exactly as [`init()`] does and returns a
+/// [`Context`] whose `source` is [`ContextSource::Launch`]. It reads no
+/// launch file: the launch tree was resolved at build time, and the generated
+/// entry installs what it says (see the module docs, "Where launch content
+/// comes from").
 #[cfg(feature = "env")]
 pub fn init_with_launch_auto() -> Result<Context, InitError> {
-    // TODO (Phase 212.L.5 follow-up):
-    //   1. If $NROS_RUNTIME_OVERLAY is set, read the JSON sidecar and fold
-    //      its params/remaps/env into the Context.
-    //   2. Else walk <CARGO_MANIFEST_DIR>/launch/* and parse the XML
-    //      in-process (Option B — only if Option A overhead is rejected).
-    // For now the env path is the only overlay channel.
     read_env_context(ContextSource::Launch)
 }
 
 /// Pattern 2 — explicit-path variant of [`init_with_launch_auto`].
 ///
-/// Verifies the file exists (so misspelled paths fail fast at init time)
-/// but does NOT yet parse the XML; the launcher's projected env is the
-/// active overlay. See the module-level notes for the follow-up plan.
+/// Returns [`InitError::LaunchFileNotFound`] when `path` does not exist, so a
+/// misspelled path fails at init; otherwise reads the environment as
+/// [`init_with_launch_auto`] does. The file's contents are not read.
 #[cfg(feature = "env")]
 pub fn init_with_launch(path: impl AsRef<Path>) -> Result<Context, InitError> {
     let p = path.as_ref();
     if !p.exists() {
         return Err(InitError::LaunchFileNotFound);
     }
-    // TODO (Phase 212.L.5 follow-up): parse the launch XML and fold params
-    // / remaps / env into the returned Context. Today we only verify the
-    // file exists and fall through to the env overlay path.
     read_env_context(ContextSource::Launch)
 }
