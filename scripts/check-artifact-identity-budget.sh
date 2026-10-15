@@ -112,20 +112,15 @@ cd "$(dirname "$0")/.."
 source scripts/lib/grep-q.sh
 
 # The tree this gate reads; see "issue 0901" and "Issue 1832" below.
-_resolve_tree() { # <root> -> the tree to read, relative to <root>
-    local _root="$1" _cand
-    for _cand in $(cd "$_root" && ls -1dt examples/workspaces/mixed/build \
-                       examples/workspaces/*/build-workspace-fixtures* 2>/dev/null); do
-        # A tree is usable when it holds cargo output; a bare cmake dir is not
-        # what this gate measures.
-        if [ -n "$(find "$_root/$_cand" -name '*.rlib' -print -quit 2>/dev/null)" ]; then
-            printf '%s\n' "$_cand"
-            return 0
-        fi
-    done
-    # Nothing found: keep the historical name so the SKIP message still points
-    # somewhere recognisable rather than at an empty string.
-    printf '%s\n' examples/workspaces/mixed/build-workspace-fixtures
+#
+# The subject is ONE fixture row, the native mixed workspace, and its artifact
+# root comes from `row_artifact_root()` in the manifest — the same function the
+# fixture BUILD writes through (`cmake -B <build_subdir>`) and the test resolver
+# reads through. No path is spelled here, so a layout move cannot strand it.
+IDENTITY_BUDGET_ROW="workspace-mixed-native"
+_resolve_tree() { # <manifest> -> the row's artifact root (repo-relative), or nothing
+    python3 scripts/build/fixtures-manifest.py --manifest "$1" coords \
+        | awk -F '\037' -v id="$IDENTITY_BUDGET_ROW" '$6 == id { print $7; exit }'
 }
 
 # issue 0661 — `--self-test`: the two era verdicts must match their own note.
@@ -217,31 +212,32 @@ if [ "${1:-}" = "--self-test" ]; then
         echo "  ok   (c) a sidecar bound is used, and says the build did not finish"
     fi
 
-    # (d) issue 1832 — the tree is FOUND under the current layout
-    # (`<ws>/build/<image>/…`), and the old name still serves a checkout that
-    # only has it. An rlib-less dir is never chosen.
-    _st_root="$_st_tmp/discover"
-    mkdir -p "$_st_root/examples/workspaces/mixed/build-workspace-fixtures-freertos/deps"
-    : > "$_st_root/examples/workspaces/mixed/build-workspace-fixtures-freertos/deps/libnros_core-1.rlib"
-    _st_got="$(_resolve_tree "$_st_root")"
-    if [ "$_st_got" != "examples/workspaces/mixed/build-workspace-fixtures-freertos" ]; then
-        echo "  FAIL (d) a checkout with only the old layout reads it, got $_st_got" >&2
-        _st_fails=$((_st_fails + 1))
-    fi
-    mkdir -p "$_st_root/examples/workspaces/mixed/build/linux/cmake/cargo/deps"
-    _st_got="$(_resolve_tree "$_st_root")"
-    if [ "$_st_got" != "examples/workspaces/mixed/build-workspace-fixtures-freertos" ]; then
-        echo "  FAIL (d) a build dir with no rlib is not a tree, got $_st_got" >&2
-        _st_fails=$((_st_fails + 1))
-    fi
-    : > "$_st_root/examples/workspaces/mixed/build/linux/cmake/cargo/deps/libnros_core-2.rlib"
-    touch -d '2000-01-01 00:00:00' "$_st_root/examples/workspaces/mixed/build-workspace-fixtures-freertos"
-    _st_got="$(_resolve_tree "$_st_root")"
-    if [ "$_st_got" != "examples/workspaces/mixed/build" ]; then
-        echo "  FAIL (d) the newer current-layout tree wins, got $_st_got" >&2
+    # (d) issue 1832 — the tree is the budget row's artifact root, read from
+    # the manifest: it moves when the row's `build_subdir` moves, and a sibling
+    # configuration under the same `<ws>/build/` (another board, the metadata
+    # probe, a pre-rename `posix-zenoh-native`) is never part of it.
+    _st_man="$_st_tmp/fixtures.toml"
+    printf '%s\n' '[[workspace_fixture]]' "id = \"$IDENTITY_BUDGET_ROW\"" \
+        'platform = "linux"' 'lang = "mixed"' 'builder = "cmake"' 'rmw = "zenoh"' \
+        'dir = "examples/workspaces/mixed"' 'bringup = "src/demo_bringup"' \
+        'image = "linux"' 'build_subdir = "build/moved-here/cmake"' \
+        '' '[[workspace_fixture]]' 'id = "workspace-mixed-other-board"' \
+        'platform = "threadx-linux"' 'lang = "mixed"' 'builder = "cmake"' \
+        'rmw = "zenoh"' 'dir = "examples/workspaces/mixed"' \
+        'bringup = "src/demo_bringup"' 'image = "threadx"' \
+        'build_subdir = "build/other/cmake"' > "$_st_man"
+    _st_got="$(_resolve_tree "$_st_man")"
+    if [ "$_st_got" != "examples/workspaces/mixed/build/moved-here/cmake" ]; then
+        echo "  FAIL (d) the tree is the row's artifact root, got '$_st_got'" >&2
         _st_fails=$((_st_fails + 1))
     else
-        echo "  ok   (d) the tree is found under the current layout and the old one"
+        echo "  ok   (d) the tree is the budget row's artifact root, from the manifest"
+    fi
+    # And the real manifest still has the row: a rename must fail here, not
+    # turn every run into a SKIP.
+    if [ -z "$(_resolve_tree examples/fixtures.toml)" ]; then
+        echo "  FAIL (d) examples/fixtures.toml has no row '$IDENTITY_BUDGET_ROW'" >&2
+        _st_fails=$((_st_fails + 1))
     fi
 
     if [ "$_st_fails" -ne 0 ]; then
@@ -268,19 +264,27 @@ fi
 # NEWEST tree that actually has cargo artifacts, so the gate reads what the last
 # build produced whatever the layout is called this month.
 #
-# Issue 1832 — and the layout moved AGAIN. `nros build` now builds a workspace
-# into `<ws>/build/<image>/…`, so no `build-workspace-fixtures*` dir is written
-# at all, and the tier-1 lane's post-build gate step SKIPPED after a complete
-# build (run 38663782341: "no build tree at …/build-workspace-fixtures"), which
-# that step treats as a lost input and fails on. `examples/workspaces/mixed/build`
-# is the same subject — the mixed workspace at one feature set — and measured
-# on a native-lane build it reads exactly the recorded budget (nros_core 4/4,
-# worst crate 5/5, worst identity 5/5 copies). It is a candidate beside the old
-# name, and the newest tree with rlibs still wins.
+# Issue 1832 — and the layout moved AGAIN. `nros build` builds a workspace
+# into `<ws>/build/<config>/cmake`, so no `build-workspace-fixtures*` dir is
+# written at all, and the tier-1 lane's post-build gate step SKIPPED after a
+# complete build (run 38663782341), which that step treats as a lost input.
+# "Newest dir matching a glob" was the second guess at a path, and widening the
+# glob to `<ws>/build` was a third that read the wrong SCOPE: that dir also
+# holds the metadata probe's cmake tree, other boards' configurations, and any
+# configuration a rename left behind (`posix-zenoh-native`, phase-500) —
+# measured on such a tree, `stable_deref_trait` 7 copies against a budget of 5,
+# while the row's own root read exactly the budget (nros_core 4/4, worst crate
+# 5/5, worst identity 5/5). So the tree is now DERIVED from the one row this
+# budget measures (`_resolve_tree`, above).
 if [ -n "${NROS_IDENTITY_BUDGET_TREE:-}" ]; then
     TREE="$NROS_IDENTITY_BUDGET_TREE"
 else
-    TREE="$(_resolve_tree .)"
+    TREE="$(_resolve_tree examples/fixtures.toml)"
+    if [ -z "$TREE" ]; then
+        echo "FAIL: artifact-identity budget: examples/fixtures.toml has no row '$IDENTITY_BUDGET_ROW'" >&2
+        echo "      (the row this budget measures; rename IDENTITY_BUDGET_ROW with it)" >&2
+        exit 1
+    fi
 fi
 
 # --- the budget -------------------------------------------------------------
