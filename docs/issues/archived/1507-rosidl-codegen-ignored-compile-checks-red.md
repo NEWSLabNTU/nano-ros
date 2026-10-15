@@ -2,11 +2,12 @@
 id: 1507
 title: "Four of the six `#[ignore]`d compile-check tests in `rosidl-codegen` fail,
   and no recipe or workflow runs them by name — so nothing has ever asked"
-status: open
+status: resolved
 type: bug
 area: testing, tooling
 severity: medium
 found: 2026-09-27
+resolved: 2026-10-15
 related: [issue-0652, issue-0612, issue-0667, issue-0693, issue-1392]
 ---
 
@@ -107,3 +108,56 @@ does not model.
 * and whether an `#[ignore]`d test that no recipe names is a gateable shape.
   `check-required-features-reachable` answers the `required-features` half of
   this question; the `#[ignore]` half has no answer, and six tests sat behind it.
+
+## Resolution (2026-10-15)
+
+Run once more over the WHOLE ignored set (`just test-ignored`, both cargo
+workspaces): 27 of the tests ran and 4 failed. The C syntax checks named above
+had been repaired in the meantime; the other two causes had not, and two more
+reds turned up that were the recipe's fault, not the tests'.
+
+**Cause 1, `nros_core::heap`.** Answered in the TEST manifest. A heap-mode
+message genuinely needs an allocator, and the generated crate already says so:
+it emits `alloc = ["nros-core/alloc", "nros-serdes/alloc"]`, which a consumer
+of heap types turns on. The throwaway crate stands in for that consumer, so it
+now asks for `features = ["alloc"]` on both path deps, as a real one must.
+
+**Cause 2, `nros/nros_config_generated.h`.** The g++ half is a header-only
+check with no build behind it, which is exactly the case
+`check-config-fallback-macros` rule 5 reserves `NROS_CONFIG_BUILDLESS` for. It
+now compiles with that define and `-I packages/api/nros-c/include`, i.e. the
+committed buildless snapshot, as every header-only check under `scripts/`
+does. The gate's allowlist gains `packages/cli/rosidl-codegen/tests/` with
+that reason, rather than a hand stub that would restate the codegen-version
+macros and drift.
+
+**Two false reds: tests a BUILD-VARIANT lane owns.**
+`the_scaling_this_replaced_was_short_of_the_declared_model` needs
+`NROS_ENTITY_COUNT_*` (owner: `just check node-std-tests`), and
+`two_sessions_deliver_cross_session_through_router` needs
+`NROS_ZENOH_MAX_SESSIONS=2` (owner: `just test-zpico-multisession`). Under
+`--run-ignored` in a default build each fails by construction. They are
+excluded through a nextest profile, `[profile.ignored]`, whose comment names
+each test's owner; `check-nextest-test-filters` now reads `default-filter`
+lines too, so a renamed test cannot silently fall out of that list.
+
+**One stale ignore.** `cffi_smoke::cffi_pubsub_round_trip` was "permanently
+ignored, architecturally broken", citing `test_pubsub_loopback` as the same
+failure. That sibling was un-ignored long ago, and this one passed 5 of 5. It
+is no longer ignored.
+
+**One file no workspace run compiles.** `nros-rmw-cyclonedds`'s
+`bare_metal_link.rs` is `#![cfg(feature = "std")]` and wants `bridge-stub`,
+which feature unification never selects, so its two tests were absent rather
+than skipped. `test-ignored` runs that crate with those features as a third
+step. Both pass.
+
+**The gate question, "is an ignored test with no recipe a gateable shape?"**
+Answered by making the question moot rather than by a gate: `test-ignored`
+runs EVERY ignored test in both workspaces, and it now runs nightly in
+`host-tests.yml`'s unit job. Its earlier lanes never reached it: tier 3 runs in
+no workflow, and the tier-2 nightly has been red at `just build tier2-nightly`
+before that step. Result: 26 of 26 pass (3 root, 21 cli, 2 cyclone).
+
+Not covered: `nros-tests`' own ignored tests, which need fixtures and are out of
+the recipe for the reason `test-unit` excludes that crate.

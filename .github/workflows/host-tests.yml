@@ -3,7 +3,8 @@
 # Folds the two host suites into one tier file (separate jobs, separate
 # concurrency, and neither cancels — both must complete):
 #   - unit        : `just test-unit` — workspace unit tests
-#                   (`cargo nextest --workspace --exclude nros-tests`).
+#                   (`cargo nextest --workspace --exclude nros-tests`),
+#                   then `just test-ignored` (issue 1507).
 #   - gates       : `just ci tier1 gates` — tier 1's `just check` half.
 #
 # Tier 1's OTHER half — `just build-test-fixtures lane=tier1` + `just ci tier1
@@ -173,6 +174,19 @@ jobs:
         run: |
           source ./activate.sh
           just test-unit
+
+      # Issue 1507 — the `#[ignore]`d tests, both cargo workspaces. They need
+      # no fixture, so they ride the job that already has the toolchain and the
+      # CLI, ~1 min on top. Before this, the only lanes naming `test-ignored`
+      # were tier 3 (no workflow runs it) and the tier-2 nightly, which has not
+      # reached that step since it went red at `just build tier2-nightly` — so
+      # an ignored test rotted unseen, and four had. Runs after a red
+      # `test-unit` too: the two answer different questions.
+      - name: just test-ignored
+        if: success() || failure()
+        run: |
+          source ./activate.sh
+          just test-ignored
 
   # ----- tier-1 gates: `just ci tier1 gates` (= `just check`) -----
   #

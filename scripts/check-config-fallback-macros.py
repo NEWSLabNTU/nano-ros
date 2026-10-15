@@ -111,9 +111,17 @@ CODEGEN_VERSION_RS = REPO / "packages/core/nros-core/src/codegen_version.rs"
 
 # issue 1569 -- the ONE define that may select a committed fallback, and the
 # only places allowed to state it outside a comment: the buildless checks
-# (`scripts/`), the stubs that test it, the snapshots, and prose.
+# (`scripts/`), the stubs that test it, the snapshots, and prose. Plus ONE
+# test directory: rosidl-codegen's C++ compile checks hand a freshly generated
+# header to `g++ -fsyntax-only` with no build behind it, which is the
+# header-only case rule 5 exempts, only living in a crate's `tests/` instead.
 BUILDLESS = "NROS_CONFIG_BUILDLESS"
-BUILDLESS_ALLOWED_PREFIXES = ("scripts/", "docs/", "book/")
+BUILDLESS_ALLOWED_PREFIXES = (
+    "scripts/",
+    "docs/",
+    "book/",
+    "packages/cli/rosidl-codegen/tests/",
+)
 BUILDLESS_ALLOWED_SUFFIXES = (".md",)
 
 # The pair that must match EXACTLY rather than merely be present.

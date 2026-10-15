@@ -51,7 +51,13 @@ def predicates(text):
         s = line.lstrip()
         if s.startswith("#"):
             continue
-        m = re.match(r"filter\s*=\s*'''(.*)|filter\s*=\s*\"(.*)\"", line)
+        # `default-filter` too: `[profile.ignored]` EXCLUDES by name, and an
+        # exclusion that matches nothing rots in the dangerous direction —
+        # the owned test lands back in `test-ignored` red, or a renamed one
+        # silently leaves.
+        m = re.match(
+            r"(?:default-)?filter\s*=\s*'''(.*)|(?:default-)?filter\s*=\s*\"(.*)\"", line
+        )
         if not m:
             continue
         expr = m.group(1) or m.group(2) or ""
