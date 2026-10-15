@@ -8,7 +8,6 @@
 1 packages/testing/nros-tests/src/fixtures/mod.rs
 1 packages/testing/nros-tests/tests/c_xrce_api.rs
 2 packages/testing/nros-tests/tests/freertos_posix.rs
-2 packages/testing/nros-tests/tests/freertos_qemu.rs
 1 packages/testing/nros-tests/tests/interop_e2e.rs
 1 packages/testing/nros-tests/tests/linux_async_roundtrip_e2e.rs
 1 packages/testing/nros-tests/tests/pubsub_zephyr_cortex_m_ros2_interop_e2e.rs

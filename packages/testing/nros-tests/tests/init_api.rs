@@ -165,14 +165,3 @@ fn nros_init_with_launch_path_resolves_relative() {
     let err = nros::init_with_launch(&missing).expect_err("missing path should error");
     assert_eq!(err, nros::InitError::LaunchFileNotFound);
 }
-
-/// Follow-up — real launch.xml param/remap overlay (Option A — JSON
-/// sidecar emitted by `nros launch --emit-runtime-overlay`). Not yet
-/// wired; see `init_with_launch_auto` doc comment.
-#[test]
-#[ignore = "Phase 212.L.5 follow-up: structured launch overlay (NROS_RUNTIME_OVERLAY JSON sidecar)"]
-fn nros_init_with_launch_auto_applies_xml_params() {
-    // Placeholder: will assert that `<param name=\"start_value\"
-    // value=\"99\"/>` from the launch XML lands in the Context's
-    // parameter overlay once Option A wires up.
-}

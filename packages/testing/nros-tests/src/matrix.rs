@@ -796,9 +796,11 @@ pub const CELLS: &[Cell] = &[
     cell(FreertosMps2, C,    Zenoh, Action,  Example, Runtime),
     cell(FreertosMps2, Cpp,  Zenoh, Action,  Example, Runtime),
     cell(FreertosMps2, Rust, Cyclonedds, Pubsub, Example,
-         BuildOnly("fixture retired in phase-220.C (cmake-bridge removed); \
-                    freertos_qemu.rs lanes #[ignore]d pending the 214.S.5.b \
-                    pure-cargo BSP gate — issue #233 tracks restore-vs-carve")),
+         CarveOut("no fixture builds it: the cmake-bridge entry was retired in \
+                   phase-220.C and issue #233 closed without restoring it. \
+                   Reviving it is a Cyclone cmake entry for the rust example, a \
+                   fixtures.toml row and a runtime test (the two retired \
+                   freertos_qemu.rs tests are in git history)")),
     cell(FreertosMps2, Rust, Xrce,       Pubsub, Example, CarveOut(XRCE_RTOS_CARVE)),
 
     cell(NuttxArm, Rust, Zenoh, Pubsub,  Example, Runtime),

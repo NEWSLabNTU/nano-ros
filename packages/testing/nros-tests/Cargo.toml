@@ -477,15 +477,11 @@ name = "freertos_firmware_entry"
 path = "tests/freertos_firmware_entry.rs"
 
 # (The Phase 212.H.5 `cli_bringup_esp_idf` target was here. Its test binary went
-# with the ESP-IDF port in phase-468 W2; this comment is all that outlived it,
-# and it had drifted into reading as a preamble to the PX4 target below.)
-# Phase 212.H.7 — PX4 hookless-vendor 2-component module-build gate.
-# Skips cleanly when `$PX4_AUTOPILOT_DIR` / nros CLI / `make` are missing
-# (or when `nros codegen-system --ahead-of-vendor --target px4` is not
-# yet implemented in the installed CLI).
-[[test]]
-name = "cli_bringup_px4"
-path = "tests/cli_bringup_px4.rs"
+# with the ESP-IDF port in phase-468 W2. The PX4 sibling `cli_bringup_px4`
+# followed: `#[ignore]`d since phase-212 M.10 on a `demo_bringup/system.toml`
+# its fixture no longer had, so it could not pass; the dir-shape emit it was
+# scoped to is `codegen_system_ahead_of_vendor_emits_px4_module_dirs` in the
+# CLI's own tests.)
 
 # Phase 212.M.12 — examples/ canonical-shape regression. Walks every
 # package.xml-bearing leaf under examples/ and asserts the post-M

@@ -2240,7 +2240,8 @@ dir = "examples/mps2-an385-baremetal/cpp/action-client"
 #   * the `target-zenoh/` output had no live reader: its only resolver is
 #     `build_freertos_rust_example_rmw`, whose two callers are the `#[ignore]`d
 #     cyclonedds tests in `tests/freertos_qemu.rs` (they take the Cyclonedds
-#     arm and error before the path is built).
+#     arm and error before the path is built). The resolver and both tests
+#     were later deleted; the coordinate is a `CarveOut` in `matrix::CELLS`.
 #   * the bare build's `target/` output has TWO live readers —
 #     `fixtures::binaries::freertos` (rtos_e2e's freertos rust lanes) and
 #     `tests/freertos_run_plan_runtime.rs`.
