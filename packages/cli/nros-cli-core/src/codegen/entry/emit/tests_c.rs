@@ -670,6 +670,10 @@ fn c_monitor_fixture_rows() -> (Vec<MonitorRow>, Vec<AgeRow>) {
             // phase10-B3 -- a route row: the trigger topic and its budget.
             route_trigger: "/trigger".into(),
             route_max_latency_ms: 25,
+            route_deadline_ms: 0,
+            reaction: String::new(),
+            reaction_id: 0,
+            mechanism: 0,
         }],
         vec![AgeRow {
             topic: "/chatter".into(),
@@ -783,6 +787,44 @@ fn typed_emit_no_monitor_rows_is_byte_identical() {
     );
 }
 
+/// phase-503 -- a supervised route row bakes its deadline, reaction id and
+/// mechanism after the route budget, names them in a comment, declares the
+/// application's reaction hook weak and installs it after the table when the
+/// application defines it. An unsupervised row renders as before (the
+/// fixture's own row, checked by the test above).
+#[test]
+fn typed_emit_bakes_supervised_route_and_reaction_hook() {
+    let plan = fixture_plan(&[("talker_pkg", "talker")]);
+    let (mut rows, ages) = c_monitor_fixture_rows();
+    let plain = emit_typed_monitored(&plan, &rows, &ages).expect("emit ok");
+    assert!(!plain.contains("nros_app_reaction_hook"), "{plain}");
+    assert!(!plain.contains("route-deadline-runtime"), "{plain}");
+    rows[0].route_deadline_ms = 25;
+    rows[0].reaction = "/talker/brake_now".into();
+    rows[0].reaction_id = 1;
+    rows[0].mechanism = 1;
+    let src = emit_typed_monitored(&plan, &rows, &ages).expect("emit ok");
+    assert!(src.contains("\"/trigger\", 25u, 25u, 1u, 1u },"), "{src}");
+    assert!(
+        src.contains(
+            "row 0 /talker/chatter: deadline 25 ms, reaction 1 (/talker/brake_now), mechanism timer"
+        ),
+        "{src}"
+    );
+    assert_eq!(src.matches("__attribute__((weak));").count(), 1, "{src}");
+    let install_at = src.find("nros_cpp_install_monitors(").expect("install");
+    let hook_at = src
+        .find("nros_cpp_executor_set_reaction_hook(executor, &nros_app_reaction_hook, NULL)")
+        .expect("hook install");
+    assert!(install_at < hook_at, "{src}");
+    // The Rust road renders the same three fields.
+    let rust = render_monitor_rs(&rows, &ages);
+    assert!(
+        rust.contains("route_deadline_ms: 25u32, reaction_id: 1u16, mechanism: 1u8"),
+        "{rust}"
+    );
+}
+
 /// run_tiers shape: each tier installs ITS nodes' rows on ITS executor.
 #[test]
 fn typed_emit_tiers_slice_monitor_rows_per_tier() {
@@ -795,6 +837,10 @@ fn typed_emit_tiers_slice_monitor_rows_per_tier() {
             max_latency_ms: 5,
             route_trigger: String::new(),
             route_max_latency_ms: 0,
+            route_deadline_ms: 0,
+            reaction: String::new(),
+            reaction_id: 0,
+            mechanism: 0,
         },
         MonitorRow {
             topic: "/telemetry".into(),
@@ -803,6 +849,10 @@ fn typed_emit_tiers_slice_monitor_rows_per_tier() {
             max_latency_ms: 0,
             route_trigger: String::new(),
             route_max_latency_ms: 0,
+            route_deadline_ms: 0,
+            reaction: String::new(),
+            reaction_id: 0,
+            mechanism: 0,
         },
     ];
     let src = emit_typed_monitored(&plan, &rows, &[]).expect("tiered C emit ok");

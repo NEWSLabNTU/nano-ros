@@ -79,6 +79,20 @@
 #define NROS_CPP_AGE_ROW_STORAGE 64
 
 /**
+ * phase-503 — [`nros_cpp_monitor_row_t::mechanism`]: the route deadline is
+ * checked in the executor's spin loop (catches slowness, not a stuck
+ * callback).
+ */
+#define NROS_CPP_MECHANISM_EXECUTOR 0
+
+/**
+ * phase-503 — [`nros_cpp_monitor_row_t::mechanism`]: the port also supervises
+ * the route with its own timer, armed from
+ * [`nros_cpp_executor_route_next_due_us`] (catches a stuck callback too).
+ */
+#define NROS_CPP_MECHANISM_TIMER 1
+
+/**
  * phase-436 A2 — which deadline source bounded a park, as
  * [`nros_cpp_executor_last_park`] reports it. `PLATFORM` also carries the
  * index the platform source was registered at.
@@ -99,6 +113,11 @@
  * A platform-registered deadline source bounded the park.
  */
 #define NROS_CPP_WAKE_SOURCE_PLATFORM 3
+
+/**
+ * phase-503 — a supervised route's deadline bounded the park.
+ */
+#define NROS_CPP_WAKE_SOURCE_ROUTE_DEADLINE 4
 
 /**
  * Image-local discriminant of the linked backend's serialization format
@@ -511,6 +530,22 @@ typedef struct nros_cpp_monitor_row_t {
    * output (`route-latency-runtime`). 0 = no route contract.
    */
   uint32_t route_max_latency_ms;
+  /**
+   * phase-503 -- the route's supervised deadline (ms) from the take of the
+   * trigger (`route-deadline-runtime`, which calls the reaction hook). 0 =
+   * not supervised. A row baked before this field existed initialises it,
+   * and the two below, to 0.
+   */
+  uint32_t route_deadline_ms;
+  /**
+   * phase-503 -- the reaction id handed to the hook (1-based, 0 = none).
+   */
+  uint16_t reaction_id;
+  /**
+   * phase-503 -- `NROS_CPP_MECHANISM_EXECUTOR` (0) or
+   * `NROS_CPP_MECHANISM_TIMER` (1).
+   */
+  uint8_t mechanism;
 } nros_cpp_monitor_row_t;
 
 /**
@@ -616,6 +651,51 @@ typedef struct nros_cpp_violation_counts_t {
    */
   bool armed;
 } nros_cpp_violation_counts_t;
+
+/**
+ * phase-503 — what the reaction hook receives: the C spelling of
+ * `nros_node::executor::monitor::ReactionEvent`, field for field (the layout
+ * is asserted equal below, which is what lets the hook be handed to the
+ * executor unchanged).
+ */
+typedef struct nros_cpp_reaction_event_t {
+  /**
+   * The row's `reaction_id` (1-based; 0 = none named).
+   */
+  uint32_t reaction_id;
+  /**
+   * Index of the row in the installed table (the sched-context slot for a
+   * `fault` deadline action).
+   */
+  uint32_t row;
+  /**
+   * The verdict's rule code: 11 `route-deadline-runtime`, 4
+   * `deadline-miss-runtime`.
+   */
+  uint32_t rule_code;
+  /**
+   * Time from the take to the check, ms.
+   */
+  uint32_t measured_ms;
+  /**
+   * The deadline, ms.
+   */
+  uint32_t declared_ms;
+  /**
+   * The row's `mechanism` (`NROS_CPP_MECHANISM_*`).
+   */
+  uint8_t mechanism;
+} nros_cpp_reaction_event_t;
+
+/**
+ * phase-503 — the reaction hook: `hook(event, ctx)`, called on the spin
+ * thread inside `nros_cpp_spin_once` when a supervised route passes its
+ * deadline (`route-deadline-runtime`; `event->rule_code` is 11), and on a
+ * sched context's `fault` deadline action (`rule_code` 4, `reaction_id` 0,
+ * `row` = the sched-context slot). It must not block and must not call back
+ * into this executor.
+ */
+typedef void (*nros_cpp_reaction_hook_t)(const struct nros_cpp_reaction_event_t *event, void *ctx);
 
 /**
  * C callback type for guard conditions: `void callback(void* context)`.
@@ -2153,6 +2233,34 @@ nros_cpp_ret_t nros_cpp_executor_open_over_session(void *session_handle,
 nros_cpp_ret_t nros_cpp_executor_set_active_groups(void *executor,
                                                    const char *const *groups,
                                                    size_t n);
+
+/**
+ * phase-503 — install (or, with `hook == NULL`, remove) the executor's
+ * reaction hook. A supervised route row (`route_deadline_ms > 0`) whose take
+ * is still unanswered at `take + route_deadline_ms` is reported once and the
+ * hook is called with the row's `reaction_id`, its index and its `mechanism`.
+ * Call after `nros_cpp_install_monitors`, before the first spin.
+ *
+ * # Safety
+ * `handle` must be a live executor handle from this ABI, or NULL. `hook` and
+ * `ctx` must outlive the executor.
+ */
+nros_cpp_ret_t nros_cpp_executor_set_reaction_hook(void *handle,
+                                                   nros_cpp_reaction_hook_t hook,
+                                                   void *ctx);
+
+/**
+ * phase-503 — microseconds from now to the earliest deadline of a pending
+ * supervised route (0 when one is due), written to `*out_us`;
+ * `UINT64_MAX` when no supervised route is waiting. A port supervising with
+ * its own timer (`NROS_CPP_MECHANISM_TIMER`) re-arms it from this after each
+ * spin.
+ *
+ * # Safety
+ * `handle` must be a live executor handle from this ABI, or NULL; `out_us`
+ * must be writable.
+ */
+nros_cpp_ret_t nros_cpp_executor_route_next_due_us(void *handle, uint64_t *out_us);
 
 /**
  * phase-436 W7.a — register a platform deadline source on this executor.

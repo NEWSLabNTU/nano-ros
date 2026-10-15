@@ -584,6 +584,10 @@ fn monitor_table(
                 max_latency_ms: r.max_latency_ms,
                 route_trigger: r.route_trigger.clone(),
                 route_max_latency_ms: r.route_max_latency_ms,
+                route_deadline_ms: r.route_deadline_ms,
+                reaction: r.reaction.clone(),
+                reaction_id: r.reaction_id,
+                mechanism: r.mechanism,
             })
             .collect(),
         ages: opts

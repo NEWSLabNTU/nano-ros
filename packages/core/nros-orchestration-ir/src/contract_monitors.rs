@@ -42,9 +42,122 @@ pub struct MonitorRow {
     /// the trigger to this output (`route-latency-runtime`). 0 = none.
     #[serde(skip_serializing_if = "is_zero", default)]
     pub route_max_latency_ms: u32,
+    /// phase-503 -- the route's SUPERVISED deadline (ms) from the take of the
+    /// trigger (`route-deadline-runtime`: the executor reports a take still
+    /// unanswered at `take + route_deadline_ms` and calls its reaction hook).
+    /// 0 = not supervised, the default: a model that states no supervision
+    /// bakes exactly the row it baked before.
+    #[serde(skip_serializing_if = "is_zero", default)]
+    pub route_deadline_ms: u32,
+    /// phase-503 -- the reaction the deadline starts: the contract's path
+    /// ref, or empty for none.
+    #[serde(skip_serializing_if = "String::is_empty", default)]
+    pub reaction: String,
+    /// phase-503 -- the id the reaction hook receives for [`Self::reaction`]:
+    /// 1-based over the model's distinct reaction refs in sorted order
+    /// ([`reaction_ids`]); 0 = none.
+    #[serde(skip_serializing_if = "is_zero_u16", default)]
+    pub reaction_id: u16,
+    /// phase-503 -- [`MECHANISM_EXECUTOR`] or [`MECHANISM_TIMER`].
+    #[serde(skip_serializing_if = "is_zero_u8", default)]
+    pub mechanism: u8,
+}
+
+/// phase-503 -- [`MonitorRow::mechanism`]: checked in the executor's spin loop.
+pub const MECHANISM_EXECUTOR: u8 = 0;
+/// phase-503 -- [`MonitorRow::mechanism`]: an independent timer outside the
+/// executor.
+pub const MECHANISM_TIMER: u8 = 1;
+
+/// phase-503 -- the mechanism a contract names (`executor` | `timer`), as the
+/// row's code. Anything else is refused by the caller.
+#[must_use]
+pub fn mechanism_code(name: &str) -> Option<u8> {
+    match name {
+        "executor" => Some(MECHANISM_EXECUTOR),
+        "timer" => Some(MECHANISM_TIMER),
+        _ => None,
+    }
+}
+
+/// phase-503 -- the route supervision one output carries: its deadline (ms),
+/// the reaction path ref, and the mechanism code.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RouteSupervision {
+    pub deadline_ms: u32,
+    pub reaction: String,
+    pub mechanism: u8,
+}
+
+/// phase-503 -- the reaction table: every distinct reaction ref the rows name,
+/// sorted, with the id the hook receives for it (1-based). The generated
+/// entries print it beside the rows, so a hook can map an id back to the
+/// path the contract named.
+#[must_use]
+pub fn reaction_ids(rows: &[MonitorRow]) -> Vec<(u16, String)> {
+    let mut refs: Vec<&str> = rows
+        .iter()
+        .filter(|r| !r.reaction.is_empty())
+        .map(|r| r.reaction.as_str())
+        .collect();
+    refs.sort_unstable();
+    refs.dedup();
+    refs.into_iter()
+        .enumerate()
+        .map(|(i, r)| ((i + 1).min(u16::MAX as usize) as u16, r.to_string()))
+        .collect()
+}
+
+/// phase-503 -- number every row's reaction by [`reaction_ids`].
+pub fn assign_reaction_ids(rows: &mut [MonitorRow]) {
+    let ids = reaction_ids(rows);
+    for r in rows.iter_mut() {
+        r.reaction_id = ids
+            .iter()
+            .find(|(_, name)| *name == r.reaction)
+            .map_or(0, |(id, _)| *id);
+    }
+}
+
+/// phase-503 -- attach supervision to the rows by output endpoint ref. A row
+/// whose route is not stated in `sup` is left unsupervised; a supervision for
+/// an output with no route row is refused, since nothing would watch it.
+/// Reaction ids are (re)assigned over the whole table.
+///
+/// The model this crate reads (ros-launch-manifest v0.1.59) states no
+/// supervision yet, so [`monitor_rows`] passes nothing here; a model that
+/// carries `supervise:` on a path's `max_latency` feeds this map.
+pub fn apply_route_supervision(
+    rows: &mut [MonitorRow],
+    sup: &std::collections::BTreeMap<String, RouteSupervision>,
+) -> Result<(), ContractRowError> {
+    for (out, s) in sup {
+        let Some(row) = rows
+            .iter_mut()
+            .find(|r| &r.fqn == out && r.route_max_latency_ms > 0)
+        else {
+            return Err(ContractRowError(format!(
+                "SystemModel: supervised route output '{out}' has no input-triggered \
+                 node path with max_latency_ms -- nothing to supervise"
+            )));
+        };
+        row.route_deadline_ms = s.deadline_ms;
+        row.reaction = s.reaction.clone();
+        row.mechanism = s.mechanism;
+    }
+    assign_reaction_ids(rows);
+    Ok(())
 }
 
 fn is_zero(v: &u32) -> bool {
+    *v == 0
+}
+
+fn is_zero_u16(v: &u16) -> bool {
+    *v == 0
+}
+
+fn is_zero_u8(v: &u8) -> bool {
     *v == 0
 }
 
@@ -153,6 +266,10 @@ pub fn monitor_rows(model: &SystemModel) -> Result<Vec<MonitorRow>, ContractRowE
             max_latency_ms: lat_ms,
             route_trigger,
             route_max_latency_ms,
+            route_deadline_ms: 0,
+            reaction: String::new(),
+            reaction_id: 0,
+            mechanism: 0,
         });
     }
     Ok(rows)
@@ -225,6 +342,7 @@ pub fn render_monitor_rs_at(rows: &[MonitorRow], ages: &[AgeRow], paths: RenderP
         out.push_str(&format!(
             "    MonitorSpec {{ topic: {t:?}, fqn: {f:?}, min_rate_hz_milli: {m}u32, \
              max_latency_ms: {l}u32, route_trigger: {rt:?}, route_max_latency_ms: {rl}u32, \
+             route_deadline_ms: {rd}u32, reaction_id: {ri}u16, mechanism: {mc}u8, \
              cell: &NROS_MONITOR_CELL_{i} }},\n",
             t = r.topic,
             f = r.fqn,
@@ -232,6 +350,9 @@ pub fn render_monitor_rs_at(rows: &[MonitorRow], ages: &[AgeRow], paths: RenderP
             l = r.max_latency_ms,
             rt = r.route_trigger,
             rl = r.route_max_latency_ms,
+            rd = r.route_deadline_ms,
+            ri = r.reaction_id,
+            mc = r.mechanism,
         ));
     }
     out.push_str("];\n\n");
@@ -324,4 +445,95 @@ pub fn row_node_fqn(endpoint_ref: &str) -> &str {
         .rsplit_once('/')
         .map(|(node, _)| node)
         .unwrap_or("")
+}
+
+#[cfg(test)]
+mod route_supervision_tests {
+    use super::*;
+    use std::collections::BTreeMap;
+
+    fn row(fqn: &str, route_ms: u32) -> MonitorRow {
+        MonitorRow {
+            topic: format!("{fqn}_topic"),
+            fqn: fqn.into(),
+            min_rate_hz_milli: 0,
+            max_latency_ms: 0,
+            route_trigger: if route_ms > 0 {
+                "/in".into()
+            } else {
+                String::new()
+            },
+            route_max_latency_ms: route_ms,
+            route_deadline_ms: 0,
+            reaction: String::new(),
+            reaction_id: 0,
+            mechanism: 0,
+        }
+    }
+
+    fn sup(deadline_ms: u32, reaction: &str, mechanism: &str) -> RouteSupervision {
+        RouteSupervision {
+            deadline_ms,
+            reaction: reaction.into(),
+            mechanism: mechanism_code(mechanism).expect("a mechanism"),
+        }
+    }
+
+    /// phase-503 -- supervision lands on the route rows by output, reaction
+    /// ids number the distinct reactions in sorted order from 1, and a row
+    /// with no supervision stays as it was.
+    #[test]
+    fn supervision_attaches_and_numbers_reactions() {
+        let mut rows = vec![row("/h/a", 149), row("/h/b", 149), row("/h/c", 149)];
+        let mut s = BTreeMap::new();
+        s.insert("/h/a".to_string(), sup(149, "/h/stop_now", "timer"));
+        s.insert("/h/b".to_string(), sup(200, "/h/comfortable", "executor"));
+        apply_route_supervision(&mut rows, &s).expect("applied");
+        assert_eq!(
+            reaction_ids(&rows),
+            [
+                (1, "/h/comfortable".to_string()),
+                (2, "/h/stop_now".to_string())
+            ]
+        );
+        assert_eq!(
+            (
+                rows[0].route_deadline_ms,
+                rows[0].reaction_id,
+                rows[0].mechanism
+            ),
+            (149, 2, MECHANISM_TIMER)
+        );
+        assert_eq!(
+            (
+                rows[1].route_deadline_ms,
+                rows[1].reaction_id,
+                rows[1].mechanism
+            ),
+            (200, 1, MECHANISM_EXECUTOR)
+        );
+        assert_eq!(rows[2], row("/h/c", 149), "unsupervised: unchanged");
+        assert_eq!(mechanism_code("watchdog"), None);
+    }
+
+    /// A supervision for an output with no route row has nothing to watch.
+    #[test]
+    fn supervision_without_a_route_is_refused() {
+        let mut rows = vec![row("/h/a", 0)];
+        let mut s = BTreeMap::new();
+        s.insert("/h/a".to_string(), sup(149, "/h/stop_now", "timer"));
+        let err = apply_route_supervision(&mut rows, &s)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("/h/a"), "{err}");
+    }
+
+    /// An unsupervised row serialises exactly as it did before the fields.
+    #[test]
+    fn unsupervised_row_serialises_unchanged() {
+        let json = serde_json::to_string(&row("/h/a", 149)).expect("json");
+        assert!(!json.contains("route_deadline_ms"), "{json}");
+        assert!(!json.contains("reaction"), "{json}");
+        assert!(!json.contains("mechanism"), "{json}");
+    }
 }
