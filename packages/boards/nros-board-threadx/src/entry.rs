@@ -1111,6 +1111,8 @@ where
     B::println(format_args!("nros entry ready"));
 
     let mut crt = ::nros::node_runtime::ExecutorNodeRuntime::from_executor(executor);
+    // phase-436 — the single-executor entry parks like the tier runners do.
+    install_park(&mut crt);
     let mut runtime = RuntimeCtx::with_runtime(&mut crt);
 
     match setup(&mut runtime) {

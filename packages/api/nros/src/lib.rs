@@ -849,6 +849,26 @@ macro_rules! zephyr_component_main {
                 }
             };
             let mut runtime = $crate::ExecutorNodeRuntime::from_executor(executor);
+            // phase-436 — Zephyr's microsecond park, which the tier runners
+            // install on every tier and this single-executor entry did not.
+            // Zephyr's `platform.c` always defines both symbols, and this macro
+            // only expands in a Zephyr image, so they are plain references.
+            {
+                unsafe extern "C" {
+                    fn nros_platform_wake_park_until_us(
+                        w: *mut ::core::ffi::c_void,
+                        deadline_us: u64,
+                    ) -> i8;
+                    fn nros_platform_wake_park_granularity_us() -> u64;
+                }
+                // SAFETY: a pure query of the linked port, no arguments.
+                let granularity = unsafe { nros_platform_wake_park_granularity_us() };
+                let _ = $crate::port_park::install_port_park(
+                    runtime.executor_mut(),
+                    nros_platform_wake_park_until_us,
+                    granularity,
+                );
+            }
             if let Err(e) = runtime.register_node::<$node>() {
                 panic!("nros zephyr entry: register_node failed: {e:?}");
             }

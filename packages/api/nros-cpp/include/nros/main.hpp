@@ -93,6 +93,58 @@ inline void entry_tick_yield() {
 #endif
 }
 
+} // namespace detail
+} // namespace board
+} // namespace rclcpp
+
+// phase-436 (RFC-0106 D7) — the port's park symbols are OPTIONAL in
+// `platform.h`: Zephyr, ThreadX, FreeRTOS and POSIX (so Linux and NuttX)
+// define them, bare metal does not. This header is compiled beside any port,
+// so they are WEAK references, resolved when the port defines them. Both sit
+// in the port's `platform.c` beside the required `nros_platform_wake_init`, so
+// the reference never depends on archive extraction.
+#if defined(__GNUC__) || defined(__clang__)
+extern "C" {
+int8_t nros_platform_wake_park_until_us(void* w, uint64_t deadline_us) __attribute__((weak));
+uint64_t nros_platform_wake_park_granularity_us(void) __attribute__((weak));
+}
+#endif
+
+namespace rclcpp {
+namespace board {
+namespace detail {
+
+/// phase-436 (RFC-0106 D8) — install the port's microsecond park on the
+/// single-executor entry, as every tier runner installs it on its tiers.
+/// Before this the C++ `run_components` parked on the millisecond
+/// `wake_wait_ms` floor and claimed that floor as its jitter granularity,
+/// whatever the port's tick was (issue 1242).
+///
+/// Installs nothing, and keeps the millisecond path, when the port lacks the
+/// symbols, when its granularity is 0 (the trait default a Rust-implemented
+/// port exports with them, whose park answers "cannot park"), or when the
+/// executor has no wake object. The ctx is the executor's OWN wake object: the
+/// backend signals that one, and a park on any other cannot be ended by data
+/// (RFC-0106 D4). The C runner, `nros_rtos_run_components.c`, carries the same
+/// lines for the C entry.
+inline void install_platform_park(void* executor) {
+#if defined(__GNUC__) || defined(__clang__)
+    if (executor == nullptr || !nros_platform_wake_park_until_us ||
+        !nros_platform_wake_park_granularity_us) {
+        return;
+    }
+    const uint64_t granularity_us = nros_platform_wake_park_granularity_us();
+    void* wake = nros_cpp_executor_wake_handle(executor);
+    if (granularity_us == 0 || wake == nullptr) {
+        return;
+    }
+    (void)nros_cpp_executor_set_park_primitive(executor, nros_platform_wake_park_until_us, wake,
+                                               granularity_us);
+#else
+    (void)executor;
+#endif
+}
+
 /// Phase 240.2 (RFC-0043) — the **real-executor** spin loop, shared by every
 /// Board's `run_components`. Unlike `EntryNodeRuntime::spin`, it runs NO
 /// synthesizing interpreter: the user's components already registered their real
@@ -101,6 +153,7 @@ inline void entry_tick_yield() {
 /// `$NROS_ENTRY_SPIN_MS` ms when set (the bounded external-observer test path).
 /// Returns the first non-zero `spin_once` code, else 0.
 inline int32_t component_spin_loop() {
+    install_platform_park(::rclcpp::global_handle());
     uint32_t bound_ms = 0;
 #if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0) // hosted-family: hosted-console
     const char* env = ::std::getenv("NROS_ENTRY_SPIN_MS");

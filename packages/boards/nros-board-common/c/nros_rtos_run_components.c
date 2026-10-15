@@ -125,6 +125,41 @@ extern void nros_board_network_wait(void) __attribute__((weak));
 extern void nros_board_network_wait(void);
 #define NROS_RUN_NETWORK_WAIT() nros_board_network_wait()
 #endif
+
+/* phase-436 — the port's microsecond park, installed on this entry's executor
+ * as the tier runners install it on theirs. The C runner's copy of
+ * `rclcpp::board::detail::install_platform_park` in `<nros/main.hpp>`, which
+ * states the rule (RFC-0106 D7); that header is C++ and not on this file's
+ * include path.
+ *
+ * Both platform symbols are OPTIONAL in `platform.h` and this file is linked
+ * beside every RTOS port, bare metal included, so they are WEAK references:
+ * a port without them keeps the millisecond `wake_wait_ms` path it had. */
+extern void* nros_cpp_executor_wake_handle(void* handle);
+extern int nros_cpp_executor_set_park_primitive(void* handle, int8_t (*park)(void*, uint64_t),
+                                                void* ctx, uint64_t granularity_us);
+#if defined(__GNUC__) || defined(__clang__)
+extern int8_t nros_platform_wake_park_until_us(void* w, uint64_t deadline_us) __attribute__((weak));
+extern uint64_t nros_platform_wake_park_granularity_us(void) __attribute__((weak));
+#endif
+static void nros_rtos_entry_install_park(void* executor) {
+#if defined(__GNUC__) || defined(__clang__)
+    if (!nros_platform_wake_park_until_us || !nros_platform_wake_park_granularity_us) {
+        return;
+    }
+    /* Granularity 0 is the trait default a Rust-implemented port exports with
+     * the symbol: "no finer park offered", and its park answers -1. */
+    const uint64_t granularity_us = nros_platform_wake_park_granularity_us();
+    void* wake = nros_cpp_executor_wake_handle(executor);
+    if (granularity_us == 0 || wake == NULL) {
+        return;
+    }
+    (void)nros_cpp_executor_set_park_primitive(executor, nros_platform_wake_park_until_us, wake,
+                                               granularity_us);
+#else
+    (void)executor;
+#endif
+}
 #ifdef __ZEPHYR__
 extern void nros_zephyr_epoch_acquire_configured(void);
 #endif
@@ -326,6 +361,8 @@ int32_t nros_board_rtos_run_components_in(const char* locator, uint8_t domain_id
     if (rc != 0) {
         return (int32_t)rc;
     }
+
+    nros_rtos_entry_install_park(storage);
 
     int32_t out = 0;
     int32_t setup_rc = setup(storage);

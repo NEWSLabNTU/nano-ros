@@ -3655,11 +3655,43 @@ impl<'s> Executor<'s> {
     ///
     /// With nothing installed the fallback is 1 ms, which IS the honest floor
     /// of the `wake_wait_ms` ABI every port exports today.
+    ///
+    /// The declared granularity counts only while the park is USABLE. An
+    /// executor whose backend has no live wake (XRCE, or a session whose
+    /// callback is gone) never parks: `spin_once` waits in the transport's
+    /// own receive instead, whose timeout is whole milliseconds. Claiming a
+    /// POSIX park's 1 us there over-claimed the jitter report, and worse,
+    /// rounded the bound to microseconds that the millisecond wait then
+    /// truncated, so a sub-millisecond deadline became a non-blocking receive
+    /// and the loop spun hot until it passed.
     pub fn park_granularity_us(&self) -> u64 {
-        if self.park_granularity_declared_us != 0 {
+        if self.park_granularity_declared_us != 0
+            && self.park_primitive.is_some()
+            && self.park_can_be_woken()
+        {
             self.park_granularity_declared_us
         } else {
             1_000
+        }
+    }
+
+    /// phase-436 — whether a park could be ended early by data arriving.
+    ///
+    /// A park ends on its bound or on the wake object. With a poll-only
+    /// backend (XRCE), or a session whose wake callback is gone, nothing
+    /// signals that object, so a park would be a blind sleep and data
+    /// arriving mid-park would wait out the whole bound — the Phase 127.C.4
+    /// stall (a reliable stream whose ACK lands in a session nobody drives).
+    /// Builds without `alloc` + `rmw-cffi` have no wake callback at all and
+    /// park as they always did.
+    pub(crate) fn park_can_be_woken(&self) -> bool {
+        #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+        {
+            self.async_wake_live()
+        }
+        #[cfg(not(all(feature = "alloc", feature = "rmw-cffi")))]
+        {
+            true
         }
     }
 
@@ -9880,23 +9912,19 @@ impl<'s> Executor<'s> {
         // arriving mid-park would wait out the whole bound — the Phase
         // 127.C.4 stall (a reliable stream whose ACK lands in a session nobody
         // drives). Those executors keep the receive-blocking wait below.
-        let park_can_be_woken = {
-            #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
-            {
-                self.async_wake_live()
-            }
-            #[cfg(not(all(feature = "alloc", feature = "rmw-cffi")))]
-            {
-                true
-            }
-        };
+        let park_can_be_woken = self.park_can_be_woken();
         let parked = match self.park_primitive {
             Some((park, ctx)) if park_achieved_us > 0 && park_can_be_woken => {
                 // SAFETY: `park` and `ctx` were supplied together by the port
                 // through `set_park_primitive` and outlive the executor by its
                 // contract.
-                let _ = unsafe { park(ctx, park_achieved_us) };
-                true
+                //
+                // phase-436 — a negative answer is "cannot park": the ABI's
+                // own contract, and what a Rust-implemented port's trait
+                // default returns at once. Counting that as a park would
+                // drop the drain below to non-blocking and spin hot, so the
+                // spin falls back to the wait it would have had uninstalled.
+                (unsafe { park(ctx, park_achieved_us) }) >= 0
             }
             _ => false,
         };
