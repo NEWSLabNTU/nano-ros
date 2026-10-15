@@ -209,6 +209,40 @@ fn probe_slug(component_id: &str) -> String {
         .collect()
 }
 
+/// The harness's `[[bin]]` name — issue 1904.
+///
+/// Issue 0522 made it `probe-<slug>` so two components in ONE workspace stop
+/// writing the same uplifted `<target>/<host>/<profile>/probe`. But the target
+/// dir is shared by EVERY harness that reaches [`probe_target_dir`]'s rung (2)
+/// — every workspace in the checkout — and a component id is unique only
+/// within a workspace. Measured: nine `probe_talker-<hash>` binaries in `deps/`
+/// and one `debug/probe-talker`, holding whichever harness linked last. cargo
+/// hashes the `deps/` name and NOT the uplifted one, and `cargo run` executes
+/// the uplifted one, so two syncs naming the same component could run each
+/// other's harness and write a sidecar describing the wrong component.
+///
+/// So the name carries the harness's own identity: the slug (to stay readable
+/// in a `ls`) plus a hash of the harness DIRECTORY, which is one per
+/// (checkout, workspace, component) by construction — two harnesses at one
+/// directory are the same harness. Injective on that directory, so no two
+/// harnesses sharing a target dir can share an uplift slot; the unit test
+/// `probe_bin_name_is_unique_per_harness_not_per_component` holds it.
+fn probe_bin_name(o: &MetadataBuildOptions) -> String {
+    format!(
+        "probe-{}-{}",
+        probe_slug(&o.component_id),
+        path_tag(&o.harness_dir)
+    )
+}
+
+/// A short, stable hex tag for a path — its spelling, hashed. Used where a
+/// directory's identity has to appear in a NAME (a `[[bin]]`, a path segment).
+fn path_tag(p: &Path) -> String {
+    use sha2::Digest as _;
+    let digest = sha2::Sha256::digest(p.as_os_str().as_encoded_bytes());
+    format!("{digest:x}")[..12].to_string()
+}
+
 /// Where the probe harness compiles — issue 0522.
 ///
 /// The harness SOURCE stays per component (it is generated, and each one deps a
@@ -254,13 +288,63 @@ fn probe_target_dir(o: &MetadataBuildOptions) -> PathBuf {
 /// W4) so the two producers cannot disagree about where "this checkout's build
 /// root" is. `None` when (2) cannot be created (a read-only installed SDK); each
 /// caller then falls back to its own per-workspace directory.
+///
+/// Issue 1904 — rung (1) is CHECKOUT-scoped. `NROS_BUILD_ROOT` is an operator
+/// path, and nothing stops two checkouts (a main checkout and its worktrees,
+/// which inherit the shell) from naming the same one. A cargo target dir
+/// serves exactly one workspace root (issue 0616): each checkout reaches
+/// `nros` by its own absolute path, so sharing across checkouts buys no reuse
+/// — only duplicate units, and a shared `probe-<component>` uplift slot. So a
+/// root this checkout does not own gets this checkout's identity appended
+/// ([`checkout_scoped_root`]); a root inside this checkout is unchanged, and
+/// rung (2) is checkout-scoped by construction. Sharing ACROSS WORKSPACES
+/// within one checkout stays — that is issue 0522's and phase-489 W4's reuse,
+/// and it is correct once the uplift slot is per harness ([`probe_bin_name`]).
 pub(crate) fn shared_probe_dir(nano_ros: &Path, kind: &str) -> Option<PathBuf> {
-    if let Some(root) = std::env::var_os("NROS_BUILD_ROOT").filter(|v| !v.is_empty()) {
-        return Some(PathBuf::from(root).join(kind));
+    shared_probe_dir_in(
+        nano_ros,
+        kind,
+        std::env::var_os("NROS_BUILD_ROOT").filter(|v| !v.is_empty()),
+    )
+}
+
+/// [`shared_probe_dir`] with `NROS_BUILD_ROOT` passed in, so the rule is
+/// testable without mutating the process environment.
+fn shared_probe_dir_in(
+    nano_ros: &Path,
+    kind: &str,
+    build_root: Option<std::ffi::OsString>,
+) -> Option<PathBuf> {
+    if let Some(root) = build_root {
+        return Some(checkout_scoped_root(Path::new(&root), nano_ros).join(kind));
     }
     let shared = nano_ros.join("build").join(kind);
     std::fs::create_dir_all(&shared).ok()?;
     Some(shared)
+}
+
+/// Issue 1904 — `root` if checkout `nano_ros` owns it, else
+/// `<root>/checkouts/<name>-<tag>`.
+///
+/// "Owns" is the issue-1280 question asked the issue-1391 way: the DEEPEST
+/// checkout above `root` (`nros_build_paths::checkout_root_of`, the marker
+/// walk), compared after resolving symlinks — never a lexical prefix test, which
+/// calls a worktree nested under `<main>/.claude/worktrees/` part of `<main>`.
+/// A root outside every checkout (the "move the cache to a faster volume" case)
+/// is not owned by anyone, so it is scoped too.
+fn checkout_scoped_root(root: &Path, nano_ros: &Path) -> PathBuf {
+    let canon = |p: &Path| p.canonicalize().unwrap_or_else(|_| p.to_path_buf());
+    let here = canon(nano_ros);
+    let owned = nros_build_paths::checkout_root_of(root).is_some_and(|o| canon(&o) == here);
+    if owned {
+        return root.to_path_buf();
+    }
+    let name = here
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "checkout".to_string());
+    root.join("checkouts")
+        .join(format!("{name}-{}", path_tag(&here)))
 }
 
 pub fn render_harness_cargo_toml(o: &MetadataBuildOptions) -> Result<String> {
@@ -290,7 +374,7 @@ pub fn render_harness_cargo_toml(o: &MetadataBuildOptions) -> Result<String> {
          [profile.release]\n\
          panic = \"abort\"\n\n\
          [[bin]]\n\
-         name = \"probe-{slug}\"\n\
+         name = \"{bin}\"\n\
          path = \"src/main.rs\"\n\n\
          [dependencies]\n\
          nros = {{ path = {nros:?}, features = [\"std\", \"alloc\", \"rmw-cffi\"] }}\n\
@@ -311,6 +395,7 @@ pub fn render_harness_cargo_toml(o: &MetadataBuildOptions) -> Result<String> {
          nros-platform-cffi = {{ path = {platform_cffi:?}, features = [\"posix-c-port\"] }}\n\
          {krate} = {{ path = {comp:?}, package = {pkg:?} }}\n",
         slug = probe_slug(&o.component_id),
+        bin = probe_bin_name(o),
         nros = o
             .nano_ros_workspace
             .join("packages/api/nros")
@@ -1426,6 +1511,81 @@ some later noise
             toml.contains("[profile.dev]") && toml.contains("panic = \"abort\""),
             "harness must set panic=abort or a no_std component cannot be \
              host-probed:\n{toml}"
+        );
+    }
+
+    /// The `[[bin]]` name a rendered harness manifest declares.
+    fn bin_name(o: &MetadataBuildOptions) -> String {
+        let toml: toml::Value = render_harness_cargo_toml(o).unwrap().parse().unwrap();
+        toml["bin"][0]["name"].as_str().unwrap().to_string()
+    }
+
+    /// Issue 1904 — every harness that reaches one target dir shares one
+    /// `<profile>/` uplift slot per `[[bin]]` name, and `cargo run` executes
+    /// THAT path. Two workspaces both declaring a `talker` component shared
+    /// `debug/probe-talker` (measured: nine `probe_talker-<hash>` binaries, one
+    /// slot). The name must therefore be a function of the HARNESS, not of the
+    /// component id — and stable, or every sync relinks.
+    #[test]
+    fn probe_bin_name_is_unique_per_harness_not_per_component() {
+        let ws = |dir: &str| MetadataBuildOptions {
+            harness_dir: PathBuf::from(dir),
+            ..opts()
+        };
+        let a = ws("/ck/examples/workspaces/rust/build/nros-metadata/metadata-probe/talker");
+        let b = ws("/ck/examples/workspaces/mixed/build/nros-metadata/metadata-probe/talker");
+        assert_eq!(
+            a.component_id, b.component_id,
+            "same component id in two workspaces"
+        );
+        assert_ne!(
+            bin_name(&a),
+            bin_name(&b),
+            "two harnesses sharing a target dir must not share an uplift slot"
+        );
+        assert_eq!(bin_name(&a), bin_name(&a.clone()), "stable for one harness");
+        assert!(
+            bin_name(&a).starts_with("probe-demo_pkg__talker-"),
+            "{}",
+            bin_name(&a)
+        );
+    }
+
+    /// Issue 1904 — under an `NROS_BUILD_ROOT` two checkouts would otherwise
+    /// share both probe dirs (the Rust target dir and the Corrosion root). A
+    /// root no checkout owns, or one a DIFFERENT checkout owns, is scoped to
+    /// this checkout; a root inside this checkout, and the default (no
+    /// `NROS_BUILD_ROOT`), are unchanged.
+    #[test]
+    fn shared_probe_dir_is_checkout_scoped_under_a_foreign_build_root() {
+        let tmp = tempfile::tempdir().unwrap();
+        let checkout = |name: &str| {
+            let root = tmp.path().join(name);
+            let marker = root.join(nros_build_paths::CHECKOUT_MARKER);
+            std::fs::create_dir_all(marker.parent().unwrap()).unwrap();
+            std::fs::write(&marker, "").unwrap();
+            root.canonicalize().unwrap()
+        };
+        let (a, b) = (checkout("a"), checkout("b"));
+        let dir = |ck: &Path, root: &Path| {
+            shared_probe_dir_in(ck, "metadata-probe", Some(root.as_os_str().to_owned())).unwrap()
+        };
+
+        // A root outside every checkout: one dir per checkout, both under it.
+        let outside = tmp.path().canonicalize().unwrap().join("fast-volume");
+        let (da, db) = (dir(&a, &outside), dir(&b, &outside));
+        assert_ne!(da, db, "two checkouts must not share a probe dir");
+        assert!(da.starts_with(&outside) && db.starts_with(&outside));
+
+        // A root inside checkout `a`: unchanged for `a`, scoped for `b`.
+        let in_a = a.join("build");
+        assert_eq!(dir(&a, &in_a), in_a.join("metadata-probe"));
+        assert_ne!(dir(&b, &in_a), in_a.join("metadata-probe"));
+
+        // No NROS_BUILD_ROOT: rung (2), `<checkout>/build/<kind>`, as before.
+        assert_eq!(
+            shared_probe_dir_in(&a, "metadata-probe", None).unwrap(),
+            a.join("build/metadata-probe")
         );
     }
 

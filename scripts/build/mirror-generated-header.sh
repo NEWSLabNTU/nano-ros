@@ -89,6 +89,40 @@ if [ "${1:-}" = "--self-test" ]; then
         && ok "the newest shared copy wins, not the first by name" \
         || bad "the newest shared copy wins, not the first by name" "got $(cat "$d/dest.h")"
 
+    # Issue 1904 — the build's OWN subdir (recorded by the configure) is the
+    # OLDER one and a sibling checkout's subdir is newer. Newest-wins took the
+    # sibling's header; the recorded subdir must win.
+    _st_stage_own_older() {
+        d="$tmp/own$RANDOM$RANDOM"
+        mkdir -p "$d/cargo/mine_abcde/gen/nros" "$d/cargo/sibling_12345/gen/nros" \
+            "$d/leaf" "$d/CMakeFiles"
+        printf 'MINE\n' > "$d/cargo/mine_abcde/gen/nros/h.h"
+        printf 'SIBLING\n' > "$d/cargo/sibling_12345/gen/nros/h.h"
+        touch -d '2020-01-01 00:00:00' "$d/cargo/mine_abcde/gen/nros/h.h"
+        printf 'mine_abcde\n' > "$d/CMakeFiles/nros-cargo-subdirs.txt"
+        echo "$d"
+    }
+    d="$(_st_stage_own_older)"
+    bash "$self" "$d/leaf/h.h" "$d" gen h.h "$d/dest.h" >/dev/null
+    [ "$(cat "$d/dest.h")" = "MINE" ] \
+        && ok "the build's own subdir wins over a newer sibling's" \
+        || bad "the build's own subdir wins over a newer sibling's" "got $(cat "$d/dest.h")"
+    [ "$(bash "$self" --resolve "$d/leaf/h.h" "$d" gen h.h)" = "$d/cargo/mine_abcde/gen/nros/h.h" ] \
+        && ok "--resolve names the build's own subdir too" \
+        || bad "--resolve names the build's own subdir too" "got $(bash "$self" --resolve "$d/leaf/h.h" "$d" gen h.h)"
+
+    # Issue 1904 — the own subdir has NO header and a sibling's does: refuse,
+    # never copy the sibling's.
+    d="$(_st_stage_own_older)"
+    rm "$d/cargo/mine_abcde/gen/nros/h.h"
+    if bash "$self" "$d/leaf/h.h" "$d" gen h.h "$d/dest.h" >/dev/null 2>"$d/err"; then
+        bad "only a foreign subdir has the header: refuse" "exited 0, copied $(cat "$d/dest.h" 2>/dev/null)"
+    elif grep -q 1904 "$d/err"; then
+        ok "only a foreign subdir has the header: refuse, naming the issue"
+    else
+        bad "only a foreign subdir has the header: refuse" "message did not name the issue"
+    fi
+
     # Issue 0805's original case, still handled: a leaf whose build script never
     # ran has no copy at all.
     d="$(stage NEW -)"
@@ -198,13 +232,32 @@ leaf_src="$1"; build_dir="$2"; gen_subdir="$3"; name="${4:-}"; dest="${5:-}"
 # ACCUMULATES needs an ordering. There the SDK prefixes are enumerated
 # newest-VERSION-first because `find_package` takes the first that resolves;
 # here the residue is not distinguishable by name, so the order is by MTIME.
+#
+# Issue 1904 — and "newest" is only a safe order among copies THIS build could
+# have written. With a shared cargo dir, `cargo` is a symlink every sharer
+# writes through, and a second checkout sharing the keyed dir puts its own
+# Corrosion subdir beside this one: newest-wins then copied the OTHER checkout's
+# header against this build's archive. So when the configure recorded which
+# subdir(s) its cargo writes (`nros_config_header_cargo_manifest`, one name per
+# line), only those are candidates. Newest-across-all survives only for a build
+# dir with no record (not a Corrosion import of ours) — 0987's rule, unchanged
+# there.
 src=""
+own_record="$build_dir/CMakeFiles/nros-cargo-subdirs.txt"
+cands=()
+if [ -f "$own_record" ]; then
+    while IFS= read -r _sub || [ -n "$_sub" ]; do
+        [ -n "$_sub" ] && cands+=("$build_dir/cargo/$_sub/$gen_subdir/nros/$name")
+    done <"$own_record"
+else
+    cands=("$build_dir"/cargo/*/"$gen_subdir"/nros/"$name")
+fi
 # -1, not 0: a candidate whose mtime cannot be read scores 0, and it must still
 # beat "no candidate at all" — otherwise an unreadable stat would silently
 # demote a real shared copy to the leaf fallback, which is the staleness this
 # whole family is about.
 _newest=-1
-for cand in "$build_dir"/cargo/*/"$gen_subdir"/nros/"$name"; do
+for cand in "${cands[@]}"; do
     [ -f "$cand" ] || continue
     # GNU first, BSD/macOS second, and 0 if neither answers — an unreadable
     # mtime must not silently win over a candidate whose mtime we know.
@@ -214,6 +267,22 @@ for cand in "$build_dir"/cargo/*/"$gen_subdir"/nros/"$name"; do
         src="$cand"
     fi
 done
+
+# Issue 1904 — the recorded subdir has no header but another one does. Never
+# take the foreign copy: either the record is wrong or Corrosion moved its
+# target dir (the formula `nros_config_header_cargo_manifest` re-derives), and
+# both mean this build cannot tell which header matches its archive.
+if [ -z "$src" ] && [ -f "$own_record" ]; then
+    for cand in "$build_dir"/cargo/*/"$gen_subdir"/nros/"$name"; do
+        [ -f "$cand" ] || continue
+        echo "nros: no generated $name in this build's own cargo subdir(s)" >&2
+        echo "      ($(tr '\n' ' ' <"$own_record")recorded in $own_record)," >&2
+        echo "      but $cand has one. Refusing to mirror another build's header" >&2
+        echo "      (issue 1904): re-configure, and if Corrosion was upgraded check" >&2
+        echo "      that nros_config_header_cargo_manifest still matches its layout." >&2
+        exit 1
+    done
+fi
 
 if [ -z "$src" ]; then
     src="$leaf_src"

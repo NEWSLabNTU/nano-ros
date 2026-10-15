@@ -53,8 +53,9 @@ include("${CMAKE_CURRENT_LIST_DIR}/../../../cmake/NanoRosCargoProfile.cmake")
 # phase-347 W3 — `nros_rmw_dispatch()` / `nros_rmw_is_known()` (RFC-0071).
 include("${CMAKE_CURRENT_LIST_DIR}/../../../cmake/NanoRosRmwDispatch.cmake")
 nros_resolve_cargo_profile()
+set(_nros_cpp_cargo_manifest "${PROJECT_SOURCE_DIR}/Cargo.toml")
 corrosion_import_crate(
-    MANIFEST_PATH "${PROJECT_SOURCE_DIR}/Cargo.toml"
+    MANIFEST_PATH "${_nros_cpp_cargo_manifest}"
     CRATES        nros-cpp
     CRATE_TYPES   staticlib
     NO_DEFAULT_FEATURES
@@ -62,6 +63,10 @@ corrosion_import_crate(
     PROFILE       ${NROS_CARGO_PROFILE}
     LOCKED
 )
+# issue 1904 — the mirror reads the cargo subdir THIS manifest gets, never a
+# sibling's (see `nros_config_header_cargo_manifest`).
+include("${CMAKE_CURRENT_LIST_DIR}/../../../cmake/NanoRosConfigHeaderMirror.cmake")
+nros_config_header_cargo_manifest("${_nros_cpp_cargo_manifest}")
 # The preset's definition, so the crate resolves `--profile nros-…` without a
 # `[profile.*]` block of its own. No-op for a user-owned profile.
 nros_cargo_profile_env(nros_cpp-static)
