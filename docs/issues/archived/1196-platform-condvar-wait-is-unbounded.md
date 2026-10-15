@@ -7,7 +7,7 @@ area: platform
 related: [issue-1192, phase-436, phase-502, issue-1906, issue-1907, issue-1750]
 ---
 
-**Home: [phase-502](../../roadmap/phase-502-unbounded-condvar-wait-retirement.md)** — the remaining closing condition (Zephyr and FreeRTOS zenoh paths, `zpico_get`, the class gate) after phase-436 D2 took the ABI half.
+**Home: [phase-502](../../roadmap/archived/phase-502-unbounded-condvar-wait-retirement.md)** — the remaining closing condition (Zephyr and FreeRTOS zenoh paths, `zpico_get`, the class gate) after phase-436 D2 took the ABI half.
 
 ## Problem
 

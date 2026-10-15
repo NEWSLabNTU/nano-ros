@@ -18,6 +18,10 @@
 //! 4. Feature `zenoh-condvar-wait`, phase-502 W2: zenoh-pico's own
 //!    `_z_condvar_wait`, with nobody signalling, returns `0` (a spurious wake)
 //!    after one slice instead of waiting forever. See `run_zenoh_wait`.
+//! 5. Same feature, phase-502 W6: zenoh-pico's `_z_condvar_wait_until` with a
+//!    deadline set before the tick count wrapped times out at once. Comparing
+//!    raw tick values read it as about one full tick range in the future. See
+//!    `run_zenoh_wait_until_wrapped`.
 
 #![no_std]
 
@@ -275,7 +279,16 @@ mod zenoh_wait {
         pub(super) fn _z_condvar_drop(cv: *mut c_void) -> i8;
         pub(super) fn _z_condvar_signal_all(cv: *mut c_void) -> i8;
         pub(super) fn _z_condvar_wait(cv: *mut c_void, m: *mut c_void) -> i8;
+        pub(super) fn _z_condvar_wait_until(
+            cv: *mut c_void,
+            m: *mut c_void,
+            abstime: *const u32,
+        ) -> i8;
+        pub(super) fn z_clock_now() -> u32;
     }
+
+    /// `Z_ETIMEDOUT` (`zenoh-pico/utils/result.h`).
+    pub const Z_ETIMEDOUT: i8 = -71;
 
     /// The slice `Z_FEATURE_NROS_BOUNDED_CONDVAR_WAIT` bounds one wait to
     /// (`Z_NROS_CONDVAR_WAIT_SLICE_MS`, the alias shim's
@@ -313,24 +326,21 @@ mod zenoh_wait {
     }
 }
 
-/// Phase-502 W2: zenoh-pico's `_z_condvar_wait` with no signaller returns `0`
-/// after one slice — not before (less the one tick the port declares as its
-/// wake granularity, since FreeRTOS counts the current partial tick), and well
-/// under ten. With the bound off the wait is forever; a rescuer task signals
-/// after ten slices, so that shape reports a FAIL rather than hanging.
+/// One zenoh-pico wait, guarded by a rescuer task that signals after
+/// `RESCUE_MS` so an unbounded wait reports a FAIL instead of hanging the
+/// image. Returns `(rc, elapsed_ms, rescued)`, or the setup failure.
 #[cfg(feature = "zenoh-condvar-wait")]
-pub fn run_zenoh_wait(report: &mut dyn FnMut(&str, bool, &str)) -> bool {
+fn rescued_zenoh_wait(
+    wait: &mut dyn FnMut(*mut c_void, *mut c_void) -> i8,
+) -> Result<(i8, u64, bool), &'static str> {
     use zenoh_wait::*;
+    WAIT_DONE.store(false, Ordering::SeqCst);
+    RESCUED.store(false, Ordering::SeqCst);
     // SAFETY: each primitive is initialised before use and dropped after the
     // only other user (the rescuer) is joined; the storage is static.
     unsafe {
         if _z_condvar_init(ZCV.ptr()) != 0 || _z_mutex_init(ZM.ptr()) != 0 {
-            report(
-                "zenoh-wait",
-                false,
-                "_z_condvar_init or _z_mutex_init failed",
-            );
-            return false;
+            return Err("_z_condvar_init or _z_mutex_init failed");
         }
         let mut attr = core::mem::MaybeUninit::<nros_platform_task_attr_t>::uninit();
         nros_platform_task_attr_init(attr.as_mut_ptr());
@@ -339,45 +349,111 @@ pub fn run_zenoh_wait(report: &mut dyn FnMut(&str, bool, &str)) -> bool {
         attr.stack_bytes = WAITER_STACK_BYTES;
         let a = (&mut attr as *mut nros_platform_task_attr_t).cast();
         if nros_platform_task_init(RESCUER.ptr(), a, rescuer, ptr::null_mut()) != 0 {
-            report("zenoh-wait", false, "could not spawn the rescuer task");
-            return false;
+            return Err("could not spawn the rescuer task");
         }
 
         _z_mutex_lock(ZM.ptr());
         let start = now_ms();
-        let rc = _z_condvar_wait(ZCV.ptr(), ZM.ptr());
+        let rc = wait(ZCV.ptr(), ZM.ptr());
         let elapsed = now_ms() - start;
         _z_mutex_unlock(ZM.ptr());
         WAIT_DONE.store(true, Ordering::SeqCst);
         nros_platform_task_join(RESCUER.ptr());
         _z_condvar_drop(ZCV.ptr());
         _z_mutex_drop(ZM.ptr());
-
-        let tick_ms = nros_platform_wake_park_granularity_us().div_ceil(1_000);
-        let lower = SLICE_MS.saturating_sub(tick_ms);
-        let rescued = RESCUED.load(Ordering::SeqCst);
-        let ok = rc == 0 && !rescued && elapsed >= lower && elapsed < UPPER_MS;
-        let mut buf = Detail::new();
-        let _ = core::fmt::write(
-            &mut buf,
-            format_args!(
-                "rc={rc} elapsed_ms={elapsed} bounds=[{lower},{UPPER_MS}) rescued={rescued}: {}",
-                if ok {
-                    "returned after one slice"
-                } else if rescued {
-                    "the wait returned only when rescued: it is unbounded"
-                } else if rc != 0 {
-                    "returned something other than 0"
-                } else if elapsed < lower {
-                    "returned before one slice"
-                } else {
-                    "returned, but not within a few slices"
-                }
-            ),
-        );
-        report("zenoh-wait", ok, buf.as_str());
-        ok
+        Ok((rc, elapsed, RESCUED.load(Ordering::SeqCst)))
     }
+}
+
+/// Phase-502 W2: zenoh-pico's `_z_condvar_wait` with no signaller returns `0`
+/// after one slice — not before (less the one tick the port declares as its
+/// wake granularity, since FreeRTOS counts the current partial tick), and well
+/// under ten. With the bound off the wait is forever; a rescuer task signals
+/// after ten slices, so that shape reports a FAIL rather than hanging.
+#[cfg(feature = "zenoh-condvar-wait")]
+pub fn run_zenoh_wait(report: &mut dyn FnMut(&str, bool, &str)) -> bool {
+    use zenoh_wait::*;
+    // SAFETY: both pointers are the initialised primitives the harness passes.
+    let (rc, elapsed, rescued) =
+        match rescued_zenoh_wait(&mut |cv, m| unsafe { _z_condvar_wait(cv, m) }) {
+            Ok(r) => r,
+            Err(e) => {
+                report("zenoh-wait", false, e);
+                return false;
+            }
+        };
+    // SAFETY: plain query of the port's declared wake granularity.
+    let tick_ms = unsafe { nros_platform_wake_park_granularity_us() }.div_ceil(1_000);
+    let lower = SLICE_MS.saturating_sub(tick_ms);
+    let ok = rc == 0 && !rescued && elapsed >= lower && elapsed < UPPER_MS;
+    let mut buf = Detail::new();
+    let _ = core::fmt::write(
+        &mut buf,
+        format_args!(
+            "rc={rc} elapsed_ms={elapsed} bounds=[{lower},{UPPER_MS}) rescued={rescued}: {}",
+            if ok {
+                "returned after one slice"
+            } else if rescued {
+                "the wait returned only when rescued: it is unbounded"
+            } else if rc != 0 {
+                "returned something other than 0"
+            } else if elapsed < lower {
+                "returned before one slice"
+            } else {
+                "returned, but not within a few slices"
+            }
+        ),
+    );
+    report("zenoh-wait", ok, buf.as_str());
+    ok
+}
+
+/// Phase-502 W6: `_z_condvar_wait_until` with a deadline set before the tick
+/// count wrapped returns `Z_ETIMEDOUT` at once.
+///
+/// The deadline is "1000 ticks before tick 0", so it has passed by the
+/// image's whole uptime plus 1000 ticks; numerically it is near the top of the
+/// tick range, above any tick count this image reaches. The vendored FreeRTOS
+/// wait compared the raw values, read it as about 2^32 ticks ahead and
+/// blocked until rescued. Ticks are 32-bit on every FreeRTOS board here
+/// (`configUSE_16_BIT_TICKS 0`), which is what `z_clock_t` is.
+#[cfg(feature = "zenoh-condvar-wait")]
+pub fn run_zenoh_wait_until_wrapped(report: &mut dyn FnMut(&str, bool, &str)) -> bool {
+    use zenoh_wait::*;
+    const NAME: &str = "zenoh-wait-until-wrapped";
+    let deadline: u32 = 0u32.wrapping_sub(1_000);
+    // SAFETY: plain query of the zenoh-pico clock.
+    let now = unsafe { z_clock_now() };
+    // SAFETY: both pointers are the initialised primitives the harness passes,
+    // and `deadline` outlives the call.
+    let (rc, elapsed, rescued) =
+        match rescued_zenoh_wait(&mut |cv, m| unsafe { _z_condvar_wait_until(cv, m, &deadline) }) {
+            Ok(r) => r,
+            Err(e) => {
+                report(NAME, false, e);
+                return false;
+            }
+        };
+    let ok = rc == Z_ETIMEDOUT && !rescued && elapsed < SLICE_MS;
+    let mut buf = Detail::new();
+    let _ = core::fmt::write(
+        &mut buf,
+        format_args!(
+            "rc={rc} now_ticks={now} deadline_ticks={deadline} elapsed_ms={elapsed} \
+             rescued={rescued}: {}",
+            if ok {
+                "a deadline from before the wrap timed out at once"
+            } else if rescued {
+                "the wait read a past deadline as far in the future"
+            } else if rc != Z_ETIMEDOUT {
+                "returned something other than Z_ETIMEDOUT"
+            } else {
+                "timed out, but not at once"
+            }
+        ),
+    );
+    report(NAME, ok, buf.as_str());
+    ok
 }
 
 /// A fixed buffer for one report detail, so the line can carry the measured
