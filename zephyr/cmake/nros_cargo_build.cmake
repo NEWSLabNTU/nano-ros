@@ -2194,7 +2194,7 @@ function(nros_cargo_build)
         # nros-cpp's Cargo dep on nros-c transitively runs nros-c's
         # build.rs, which writes both nros-c headers via cbindgen.
         # Declare them as byproducts so Ninja can order user TUs
-        # that include them (`<nros/parameter.hpp>` →
+        # that include them (`<rclcpp/parameter.hpp>` →
         # `<rclc/types.h>` → `<rclc/detail/nros_generated.h>`) after this
         # target instead of failing with "No such file or directory"
         # when only CONFIG_NROS_CPP_API=y (no separate nros-c build).

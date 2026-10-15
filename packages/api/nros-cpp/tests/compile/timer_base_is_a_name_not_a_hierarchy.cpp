@@ -27,7 +27,7 @@
 // `Timer` under it, `is_same` here fails immediately, and the diagnostic points
 // at the paragraph above rather than at a link error three lanes later.
 
-#include <nros/nros.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 #include <memory>
 #include <type_traits>

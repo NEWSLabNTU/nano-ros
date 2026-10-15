@@ -30,7 +30,7 @@
 #     HOSTED and still has no `<string>`.
 #
 # phase-438 W1 then moved that one predicate to its single definition site,
-# `packages/api/nros-cpp/include/nros/std_detect.hpp`, and W2 DELETED the
+# `packages/api/nros-cpp/include/rclcpp/detail/std_detect.hpp`, and W2 DELETED the
 # discovery disjunct there. 1240's objection to deleting it — "nothing that
 # ships defines `NROS_CPP_STD`, so the arm is what gives the hosted build
 # `std::string`-taking `get_logger`, the `SharedPtr` aliases and the `<vector>`

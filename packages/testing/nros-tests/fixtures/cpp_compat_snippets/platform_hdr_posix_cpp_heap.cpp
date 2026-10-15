@@ -6,8 +6,8 @@
 #define NROS_PLATFORM_POSIX
 #define _POSIX_C_SOURCE 200809L
 #define _DEFAULT_SOURCE
-#include <nros/heap_string.hpp>
-#include <nros/heap_sequence.hpp>
+#include <rclcpp/heap_string.hpp>
+#include <rclcpp/heap_sequence.hpp>
 namespace {
 void use_it() {
     rclcpp::HeapString s;

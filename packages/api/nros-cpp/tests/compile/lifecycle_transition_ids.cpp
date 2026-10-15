@@ -18,7 +18,7 @@
 
 #include <cstdint>
 
-#include "nros/lifecycle.hpp"
+#include "rclcpp_lifecycle/lifecycle_node.hpp"
 #include "rclc/detail/nros_generated.h" // NROS_LIFECYCLE_TRANSITION_*
 
 namespace {

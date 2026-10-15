@@ -4011,7 +4011,7 @@ format-cpp:
     source scripts/dev/clang-format.sh
     CF="$(nros_clang_format)"
     echo "Formatting C++ headers... ($CF)"
-    "$CF" -i packages/api/nros-cpp/include/nros/*.hpp
+    git ls-files -z 'packages/api/nros-cpp/include/*.hpp' | xargs -0 "$CF" -i
     # phase-338 — the C++ EXAMPLES were never formatted by anything. Same reason
     # as the C side: the portability gate compares line breaking across copies.
     git ls-files -z 'examples/*/cpp/**/*.cpp' 'examples/*/cpp/**/*.hpp' ':!examples/px4/**' | xargs -0 "$CF" -i

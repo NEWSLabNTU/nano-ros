@@ -27,9 +27,9 @@
 //
 // `just check cpp` compiles this with `-fsyntax-only -std=c++14 -DNROS_CPP_STD=1`.
 
-#include <nros/nros.hpp>
-#include <nros/polling_action_client.hpp>
-#include <nros/polling_action_server.hpp>
+#include <rclcpp/rclcpp.hpp>
+#include <rclcpp/polling_action_client.hpp>
+#include <rclcpp/polling_action_server.hpp>
 
 #include <stddef.h>
 #include <stdint.h>

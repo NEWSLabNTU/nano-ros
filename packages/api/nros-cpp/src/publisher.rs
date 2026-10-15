@@ -29,7 +29,7 @@ use crate::{
 /// has no row in the installed monitor table).
 ///
 /// `#[repr(C)]` so the size is the handle plus exactly one pointer, which is
-/// what `nros/publisher.hpp` reserves; the assert below is the contract.
+/// what `rclcpp/publisher.hpp` reserves; the assert below is the contract.
 #[repr(C)]
 pub(crate) struct CppPublisher {
     pub(crate) handle: nros::internals::RmwPublisher,
@@ -42,7 +42,7 @@ const _: () = {
         size_of::<CppPublisher>()
             == size_of::<nros::internals::RmwPublisher>() + size_of::<*const c_void>()
     );
-    // `nros/publisher.hpp` declares the storage `alignas(8)`.
+    // `rclcpp/publisher.hpp` declares the storage `alignas(8)`.
     assert!(align_of::<CppPublisher>() <= 8);
 };
 
@@ -297,7 +297,7 @@ pub unsafe extern "C" fn nros_cpp_publisher_publish_streamed(
 /// Its presence in this header is therefore **not evidence that it can
 /// be linked.** cbindgen emits every declaration unconditionally here,
 /// by deliberate repo-wide policy, so a `#[cfg]`-gated Rust symbol still
-/// appears. `nros/publisher.hpp`'s `Publisher::loan()` calls it with no
+/// appears. `rclcpp/publisher.hpp`'s `Publisher::loan()` calls it with no
 /// guard of its own, so against a default build the failure surfaces at
 /// LINK as an undefined symbol, not at the call site.
 ///

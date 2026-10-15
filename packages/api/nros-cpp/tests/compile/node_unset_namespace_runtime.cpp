@@ -51,8 +51,8 @@
 //     stays green. That is the divergence as filed, and this is the shape it
 //     takes once the handle stops hiding it.
 
-#include "nros/executor.hpp"
-#include "nros/node.hpp"
+#include "rclcpp/executor.hpp"
+#include "rclcpp/node.hpp"
 
 extern "C" {
 #include "stub_rmw_backend.h"

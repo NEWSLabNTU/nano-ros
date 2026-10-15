@@ -17,7 +17,7 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "nros/size_bound.hpp"
+#include "rclcpp/size_bound.hpp"
 
 namespace {
 

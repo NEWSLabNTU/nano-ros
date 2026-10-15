@@ -1,7 +1,7 @@
 # `component-node-poc` — test bin / cpp
 
 **Not a user example** (phase-499 W7, RFC-0089 amendment 2026-10-13). It drives
-`rclcpp::board::LinuxBoard::run_components` from `<nros/main.hpp>`, the entry
+`rclcpp::board::LinuxBoard::run_components` from `<rclcpp/detail/main.hpp>`, the entry
 machinery the generated entry owns, so it lives with the test bins; a user
 image declares its nodes in `system.toml` + a launch file instead (see
 `examples/workspaces/features`). Kept as a build fixture.

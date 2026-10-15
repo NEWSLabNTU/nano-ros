@@ -11,9 +11,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include <nros/log.hpp>
-#include <nros/nros.hpp>
-#include <nros/rosout.hpp>
+#include <rclcpp/logging.hpp>
+#include <rclcpp/rclcpp.hpp>
+#include <rclcpp/rosout.hpp>
 
 static int env_int(const char* key, int fallback) {
     const char* v = getenv(key);

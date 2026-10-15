@@ -35,8 +35,8 @@
 #include <cstdio>
 #include <cstdlib>
 
-#include <nros/nros.hpp>
-#include <nros/publisher.hpp>
+#include <rclcpp/rclcpp.hpp>
+#include <rclcpp/publisher.hpp>
 
 namespace {
 

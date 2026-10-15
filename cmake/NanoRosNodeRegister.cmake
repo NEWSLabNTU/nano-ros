@@ -406,7 +406,7 @@ endfunction()
 #
 # The retired templates SUBSTITUTED it (`"@NROS_ENTRY_LOCATOR@"` became a
 # string literal in the TU); the shared emitter writes the MACRO, which is what
-# `nano_ros_entry`'s lane has always done and what `<nros/main.hpp>` documents
+# `nano_ros_entry`'s lane has always done and what `<rclcpp/detail/main.hpp>` documents
 # (it carries the per-transport defaults behind `#ifndef NROS_ENTRY_LOCATOR`).
 # So the value moves from a configure-time substitution to a compile
 # definition, and the resolved string is unchanged — `_nros_resolve_entry_locator`
@@ -1483,7 +1483,7 @@ endfunction()
 # -----------------------------------------------------------------------------
 #
 # No contract, no CLI, a RUST or INTERFACE target, a component whose endpoints
-# state no depth: no header is written, `nros/declared_qos.hpp` finds none, the
+# state no depth: no header is written, `rclcpp/detail/declared_qos.hpp` finds none, the
 # table is empty and every call site compiles exactly as it did before. A
 # missing table means "nobody declared", never "declared zero" -- which is why
 # every one of those paths is silent rather than a warning.

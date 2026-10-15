@@ -3,7 +3,7 @@
  * @ingroup grp_node
  * @brief Phase 219.E — `<rclc/detail/main.h>` Entry-pkg header (C variant).
  *
- * Symmetric to `<nros/main.hpp>`: the cmake fn `nano_ros_entry(LAUNCH
+ * Symmetric to `<rclcpp/detail/main.hpp>`: the cmake fn `nano_ros_entry(LAUNCH
  * "<bringup>:<file>.launch.xml")` drives per-Entry-pkg codegen via
  * `nros codegen entry --lang c`, then appends the generated TU to the
  * executable target's sources.
@@ -232,7 +232,7 @@ NROS_PUBLIC int32_t nros_board_native_run_tiers_in(const char* session_name,
  * weak-default discipline already used for `nros_app_register_backends`.
  *
  * WHY THE DEFINITION LIVES IN THIS C HEADER (phase-432 W3.1 prerequisite).
- * It used to sit in `<nros/main.hpp>`, the C++ sibling, while the three RTOS
+ * It used to sit in `<rclcpp/detail/main.hpp>`, the C++ sibling, while the three RTOS
  * `run_tiers.c` files below call it `extern`. That linked only because every
  * generated embedded entry is a `.cpp` including `main.hpp`, so the weak body
  * arrived through the C++ TU. A pure C entry — the whole point of W3.1 —
@@ -357,7 +357,7 @@ NROS_PUBLIC int32_t nros_board_freertos_run_tiers_tasks_in(
  * This is the DOMINANT embedded path — `run_tiers` above is reached only when
  * a plan declares tiers — and it is new code rather than a re-declaration: the
  * tiers path is C beneath a four-line C++ veneer, while `run_components` was
- * fully implemented in `<nros/main.hpp>` with no C function under it.
+ * fully implemented in `<rclcpp/detail/main.hpp>` with no C function under it.
  *
  * Sequence: `nros_board_network_wait()`, init, `setup(executor)`, spin until
  * the context stops being live (or for `$NROS_ENTRY_SPIN_MS` where there is an

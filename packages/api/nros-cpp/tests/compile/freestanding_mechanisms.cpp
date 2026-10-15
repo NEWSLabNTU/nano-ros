@@ -10,10 +10,10 @@
 // Its negative half is `freestanding_mechanisms_overbudget_probe.cpp`, which
 // must FAIL with a `static_assert` naming the capacity knob.
 
-#include "nros/traits.hpp"
-#include "nros/handle.hpp"
-#include "nros/inplace_fn.hpp"
-#include "nros/owned.hpp"
+#include "rclcpp/detail/traits.hpp"
+#include "rclcpp/handle.hpp"
+#include "rclcpp/inplace_fn.hpp"
+#include "rclcpp/owned.hpp"
 
 namespace tr = rclcpp::tr;
 static_assert(tr::is_same<tr::decay<const int&>::type, int>::value, "decay cv-ref");

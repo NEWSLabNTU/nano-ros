@@ -55,7 +55,7 @@
 # pointee is a block whose head is `detail::HostedBlockBase`, carrying its own
 # destroyer so that `~Timer()` -- compiled in both configurations -- frees it
 # without naming a hosted type. `rclcpp::Node::hosted_` already had that shape;
-# `nros/hosted_block.hpp` is now the one place it is written.
+# `rclcpp/detail/hosted_block.hpp` is now the one place it is written.
 #
 # Measured after the fix, all three arms: Timer 32, GuardCondition 40,
 # NodeWithTimers<4> 360.

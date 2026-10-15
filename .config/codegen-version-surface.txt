@@ -12,16 +12,16 @@
 #
 # Regenerate after a DELIBERATE surface move (bump the constant first):
 #     python3 scripts/check-codegen-version-surface.py --write-baseline
-version 17
-9a40c1a1fadbae06 cpp|fn|component.hpp|bind_subscription_sized
-4e2616f1497bc854 cpp|struct|fixed_sequence.hpp|FixedSequence
-05b2ecfd67796b30 cpp|struct|fixed_string.hpp|FixedString
-c2bd21803d713aa0 cpp|struct|heap_sequence.hpp|HeapSequence
-4ce650fb152a9df1 cpp|struct|heap_string.hpp|HeapString
-5feab3fc0e37c2db cpp|struct|size_bound.hpp|size_bound_dependent_false
-c3a4962bef9b0e39 cpp|struct|span.hpp|LeSpan
-3ac972908fe3dcf7 cpp|struct|span.hpp|Span
-bdb092b497ccb841 cpp|struct|span.hpp|StringView
+version 18
+9a40c1a1fadbae06 cpp|fn|rclcpp/detail/component.hpp|bind_subscription_sized
+4e2616f1497bc854 cpp|struct|rclcpp/fixed_sequence.hpp|FixedSequence
+05b2ecfd67796b30 cpp|struct|rclcpp/fixed_string.hpp|FixedString
+c2bd21803d713aa0 cpp|struct|rclcpp/heap_sequence.hpp|HeapSequence
+4ce650fb152a9df1 cpp|struct|rclcpp/heap_string.hpp|HeapString
+5feab3fc0e37c2db cpp|struct|rclcpp/size_bound.hpp|size_bound_dependent_false
+c3a4962bef9b0e39 cpp|struct|rclcpp/span.hpp|LeSpan
+3ac972908fe3dcf7 cpp|struct|rclcpp/span.hpp|Span
+bdb092b497ccb841 cpp|struct|rclcpp/span.hpp|StringView
 66e35b9b677dd385 c|fn|rclc/detail/cdr.h|rclc_cdr_align
 77ab80a26e1fc8f1 c|fn|rclc/detail/cdr.h|rclc_cdr_begin_dheader
 f83f01275694600d c|fn|rclc/detail/cdr.h|rclc_cdr_begin_dheader_read

@@ -23,7 +23,7 @@ one-node plan and renders the SAME templates as `nros build`. The six
 So the "compare two spellings" half is retired, because there is one spelling.
 Three things survive, and none of them is subsumed by having one producer:
 
- 1. THE OVERLOAD IS STILL REACHABLE. `<nros/main.hpp>` still declares the
+ 1. THE OVERLOAD IS STILL REACHABLE. `<rclcpp/detail/main.hpp>` still declares the
     one-argument delegating overload that supplies `"node"` — it must, the
     header is a public API — and `cpp_boot_wrapper.cpp.jinja` still writes the
     call by hand. One producer means one place to get it wrong, not zero. The

@@ -4,7 +4,7 @@
  * beside the launch file that runs it (`sub: { <topic>: { qos: { ... } } }`),
  * or in an `EntityDecl` declaration's `@depth=N` attribute: its history
  * DEPTH, and (issue 1256) its RELIABILITY and DURABILITY.
- * `nros/declared_qos.hpp` expands this into a `constexpr` table and
+ * `rclcpp/detail/declared_qos.hpp` expands this into a `constexpr` table and
  * `NROS_SUBSCRIBE` static_asserts the QoS it is handed against it, so a
  * declaration and an implementation that disagree fail the BUILD naming
  * the topic and both values. `rclc/detail/declared_qos.h` does the same for C.
@@ -22,7 +22,7 @@
 /* 1 of this image's depth-carrying endpoints declared no depth. */
 #define NROS_DECLARED_QOS_UNDECLARED_COUNT 1
 
-/* X-macro. `nros/declared_qos.hpp` defines NROS_DECLARED_QOS_ROW
+/* X-macro. `rclcpp/detail/declared_qos.hpp` defines NROS_DECLARED_QOS_ROW
  * and expands this; nothing else may. Columns: type, topic, depth
  * (-1 = undeclared), reliability, durability. The two policy
  * columns are bare TOKENS each consumer pastes onto a prefix of

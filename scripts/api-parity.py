@@ -343,7 +343,7 @@ OUR_CPP_ROOTS = {"nros", "rclcpp", "rclcpp_action", "rclcpp_lifecycle"}
 
 CPP_TRANSLATION_UNITS = (
     # label, source, extra clang args, namespace roots, marks on every record
-    ("base", '#include "nros/nros.hpp"\n', (), OUR_CPP_ROOTS, {}),
+    ("base", '#include "rclcpp/rclcpp.hpp"\n', (), OUR_CPP_ROOTS, {}),
     # MEASURED 2026-09-07 (phase-427) to contribute ZERO records: since
     # phase-417 W2.b put the component header in the umbrella, all 84 of this
     # TU's unique records are byte-identical to ones the `base` TU already
@@ -370,8 +370,8 @@ CPP_TRANSLATION_UNITS = (
     # clang error, so a row naming a missing header is a hard red rather than a
     # vacuous pass, which is why this had to move in the same commit as the
     # deletion.
-    ("component", '#include "nros/component.hpp"\n', (), OUR_CPP_ROOTS, {}),
-    ("std", '#include "nros/nros.hpp"\n', ("-DNROS_CPP_STD=1",), OUR_CPP_ROOTS,
+    ("component", '#include "rclcpp/detail/component.hpp"\n', (), OUR_CPP_ROOTS, {}),
+    ("std", '#include "rclcpp/rclcpp.hpp"\n', ("-DNROS_CPP_STD=1",), OUR_CPP_ROOTS,
      {"std_only": True}),
     # There WAS a fourth TU here, labelled `compat`, and it is GONE — read this
     # before adding one back.
@@ -1473,7 +1473,7 @@ def envelope_findings(ledger, baseline, root=ROOT):
 # overload of a working verb, or a variadic template a macro expands to, and
 # tying it to a ledger key needs a C++ parse -- see `unreferenced_refusals`).
 REFUSAL_MACRO_RE = re.compile(r"^\s*#\s*define\s+(NROS_RCLCPP_REFUSE_[A-Z0-9_]+)\b", re.M)
-CPP_INCLUDE_DIR = os.path.join(ROOT, "packages", "api", "nros-cpp", "include", "nros")
+CPP_INCLUDE_DIR = os.path.join(ROOT, "packages", "api", "nros-cpp", "include")
 
 
 def refusal_macros(include_dir=CPP_INCLUDE_DIR):
@@ -1481,11 +1481,15 @@ def refusal_macros(include_dir=CPP_INCLUDE_DIR):
     found = set()
     if not os.path.isdir(include_dir):
         return found
-    for name in sorted(os.listdir(include_dir)):
-        if not name.endswith((".hpp", ".h")):
-            continue
-        with open(os.path.join(include_dir, name), encoding="utf-8") as fh:
-            found.update(REFUSAL_MACRO_RE.findall(fh.read()))
+    # The whole tree, recursively: since phase-503 the headers live in
+    # rclcpp/, rclcpp/detail/, rclcpp_action/ and rclcpp_lifecycle/.
+    for dirpath, dirnames, names in os.walk(include_dir):
+        dirnames.sort()
+        for name in sorted(names):
+            if not name.endswith((".hpp", ".h")):
+                continue
+            with open(os.path.join(dirpath, name), encoding="utf-8") as fh:
+                found.update(REFUSAL_MACRO_RE.findall(fh.read()))
     return found
 
 

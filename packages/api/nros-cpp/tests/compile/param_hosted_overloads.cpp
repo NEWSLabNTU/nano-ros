@@ -32,7 +32,7 @@
 #define NROS_CPP_STD 1
 #define NROS_SYSTEM_PARAM_SERVICES 1
 
-#include <nros/nros.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 #include <string>
 #include <vector>

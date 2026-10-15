@@ -38,8 +38,8 @@
 //     component does not come up at all. An empty `name=` in a launch file
 //     would take the image down.
 
-#include "nros/executor.hpp"
-#include "nros/node.hpp"
+#include "rclcpp/executor.hpp"
+#include "rclcpp/node.hpp"
 
 extern "C" {
 #include "stub_rmw_backend.h"

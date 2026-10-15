@@ -15,7 +15,7 @@
 //! the executor type into [`TickCtx`].
 //!
 //! This module exposes the symmetric FFI to the C++ wrapper in
-//! `<nros/tick_ctx.hpp>`. The two `extern "C"` entry points,
+//! `<rclcpp/tick_ctx.hpp>`. The two `extern "C"` entry points,
 //! `nros_cpp_tick_ctx_call_raw` and `nros_cpp_tick_ctx_send_goal_raw`,
 //! follow the action-server pattern from `src/action.rs`: the C++ side
 //! passes an opaque per-tick context pointer (provided by the future

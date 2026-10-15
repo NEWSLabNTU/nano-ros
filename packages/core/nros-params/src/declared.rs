@@ -13,7 +13,7 @@
 //! in it. A node with no row has no `params:` in its contract and is NOT
 //! checked, which is the behaviour before the contract could say anything.
 //!
-//! The C++ `ComponentNode` does the same lookup in `nros/declared_params.hpp`,
+//! The C++ `ComponentNode` does the same lookup in `rclcpp/detail/declared_params.hpp`,
 //! over a header rendered from the same model by the same function.
 
 use crate::ParameterType;

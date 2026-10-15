@@ -45,7 +45,7 @@ ANALYSIS = re.compile(r"metadata|profile[_-]?mode|census", re.IGNORECASE)
 # as well when the declarations are deleted outright, and then the native entry
 # no longer compiles the switch at all.
 REQUIRED_DECLS = {
-    "packages/api/nros-cpp/include/nros/nros_cpp_ffi.h": (
+    "packages/api/nros-cpp/include/rclcpp/detail/nros_cpp_ffi.h": (
         "nros_cpp_census_begin",
         "nros_cpp_census_finish",
     ),

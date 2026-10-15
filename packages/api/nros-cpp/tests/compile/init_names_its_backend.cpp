@@ -21,7 +21,7 @@
 // fall back — is the Rust `open_with_rmw_in` contract and is exercised where a
 // backend exists.
 
-#include <nros/node.hpp>
+#include <rclcpp/node.hpp>
 #include <stdint.h>
 
 namespace {

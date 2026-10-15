@@ -28,8 +28,8 @@
 //   9. (issue 1667) a destroyed `GuardCondition` gives its callback slot back:
 //      100 create/destroy cycles, far past `NROS_EXECUTOR_MAX_CBS`, all succeed.
 
-#include "nros/executor.hpp"
-#include "nros/nros.hpp"
+#include "rclcpp/executor.hpp"
+#include "rclcpp/rclcpp.hpp"
 
 extern "C" {
 #include "stub_rmw_backend.h"

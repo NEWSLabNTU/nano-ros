@@ -45,7 +45,7 @@
 # every Zephyr image built against a workspace provisioned by ANOTHER checkout
 # compiles that checkout's `zephyr/`, platform sources and nros-cpp headers,
 # whatever commit it is at, beside this tree's generated entry code. Run
-# 34319241943 compiled `<other>/packages/api/nros-cpp/include/nros/main.hpp`
+# 34319241943 compiled `<other>/packages/api/nros-cpp/include/rclcpp/detail/main.hpp`
 # into a leaf of this tree and failed; the next night, same SHA, it built.
 # A mixed tree is not a result about either tree. That question does not
 # depend on the CLI guard, so `NROS_SKIP_STALE_CHECK=1` does NOT silence it.

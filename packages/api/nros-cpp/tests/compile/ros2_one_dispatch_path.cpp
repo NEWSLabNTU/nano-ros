@@ -43,9 +43,9 @@
 // Compiled HOSTED (no -ffreestanding), like its `ros2_api_adoption*` siblings:
 // `rclcpp::Node` hands out `std::shared_ptr` in public signatures, so it is
 // declared only where <memory>/<string>/<vector>/<functional> are. Reached
-// through `<nros/nros.hpp>` since phase-417 stage 6 step A.
+// through `<rclcpp/rclcpp.hpp>` since phase-417 stage 6 step A.
 
-#include <nros/nros.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 #include <chrono>
 #include <cstddef>

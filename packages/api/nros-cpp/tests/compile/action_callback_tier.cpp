@@ -17,7 +17,7 @@
 // the trampoline whose address is taken.
 //
 // `just check cpp` compiles this with `-fsyntax-only -std=c++14`.
-#include <nros/nros.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 #include <type_traits>
 

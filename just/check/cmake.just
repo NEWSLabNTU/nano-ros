@@ -172,7 +172,7 @@ cpp-fmt:
     CF="$(nros_clang_format)"
     echo "Checking C++ formatting... ($CF)"
     echo "  - clang-format (nros-cpp headers)"
-    "$CF" --dry-run --Werror packages/api/nros-cpp/include/nros/*.hpp
+    git ls-files -z 'packages/api/nros-cpp/include/*.hpp' | xargs -0 "$CF" --dry-run --Werror
     echo "  - clang-format (C++ examples, ALL platforms)"
     git ls-files -z 'examples/*/cpp/**/*.cpp' 'examples/*/cpp/**/*.hpp' ':!examples/px4/**' | xargs -0 "$CF" --dry-run --Werror
     echo "C++ formatting OK."

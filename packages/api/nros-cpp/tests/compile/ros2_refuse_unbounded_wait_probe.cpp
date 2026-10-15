@@ -26,7 +26,7 @@
  * sweep, which keep the BUDGETED forms compiling.
  */
 
-#include <nros/nros.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 // phase-456 W9 REPOINTED this probe here, because at the time `wait_for_service`
 // lived only on the FUTURE-style client — the half that owns the
@@ -39,7 +39,7 @@
 // handle_id)` now), so that second TU exists and asserts its own refusal. This
 // one stays pointed at `rclcpp::PollClient<S>`: the refusal is per DECLARING type,
 // and each type's needs its own file.
-#include <nros/polling_client.hpp>
+#include <rclcpp/polling_client.hpp>
 
 namespace {
 

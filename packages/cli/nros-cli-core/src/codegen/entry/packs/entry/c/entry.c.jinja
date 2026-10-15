@@ -68,7 +68,7 @@
 {%- if boot_shape == "app" %}
 #include <rclc/detail/app_main.h>    /* NROS_APP_MAIN_REGISTER_VOID (app boot shape) */
 {%- endif %}
-#include <nros/nros_cpp_ffi.h> /* nros_cpp_node_t + nros_cpp_node_create + ret codes */
+#include <rclcpp/detail/nros_cpp_ffi.h> /* nros_cpp_node_t + nros_cpp_node_create + ret codes */
 
 /* C component factory + configure seam (RCLC_C_COMPONENT). The node's
  * `nros_cpp_node_t*` + executor handle are handed to `configure`, which

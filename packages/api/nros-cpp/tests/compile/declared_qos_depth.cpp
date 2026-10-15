@@ -16,7 +16,7 @@
 // on the include path, which exercises the same `__has_include` pickup.
 //
 // `just check cpp` compiles this with `-fsyntax-only -std=c++17`.
-#include <nros/nros.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 namespace nros_cpp_declared_qos_compile_test {
 

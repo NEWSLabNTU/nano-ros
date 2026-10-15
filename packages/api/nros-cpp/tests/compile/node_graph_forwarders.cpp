@@ -22,8 +22,8 @@
 // which is why the visitors are plain function pointers plus `void *ctx` and
 // `TopicEndpointInfo` carries no `std::string`.
 
-#include <nros/lifecycle.hpp>
-#include <nros/node.hpp>
+#include <rclcpp_lifecycle/lifecycle_node.hpp>
+#include <rclcpp/node.hpp>
 
 #include <stddef.h>
 #include <stdint.h>

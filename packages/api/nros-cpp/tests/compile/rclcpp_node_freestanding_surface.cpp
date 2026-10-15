@@ -38,7 +38,7 @@
 // file uses `ok()`, which is the unconditional answer to the same question as
 // `initialized()`, and does not name the parameter forwarders at all. Adding
 // one here would be asserting a contract the class does not offer.
-#include <nros/nros.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 namespace nros_cpp_rclcpp_node_freestanding_compile_test {
 

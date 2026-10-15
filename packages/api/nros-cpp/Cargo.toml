@@ -76,7 +76,7 @@ env = ["nros/env", "nros-c/env"]
 rmw-cffi = ["nros/rmw-cffi", "nros-c/rmw-cffi"]
 
 # Issue 0436 — the multi-RMW bridge ABI (`rclc_init_multi` / `rclc_fini_multi` /
-# `nros_pubsub_bridge_*`) that `<nros/bridge.hpp>`'s `MultiExecutor` calls.
+# `nros_pubsub_bridge_*`) that `<rclcpp/bridge.hpp>`'s `MultiExecutor` calls.
 #
 # The header shipped without any archive carrying its symbols: `nros-bridge` was
 # reachable only from the RUST façade's `bridge` feature, so a C++ consumer could
@@ -150,7 +150,7 @@ trace-callbacks = ["nros/trace-callbacks", "nros-c/trace-callbacks"]
 param-store = ["rmw-cffi", "nros/param-store", "nros-c/param-store"]
 param-services = ["param-store", "nros/param-services", "nros-c/param-services"]
 lifecycle-services = ["rmw-cffi", "nros-c/lifecycle-services"]
-# issue 1589 — `/rosout` from C++ (`<nros/rosout.hpp>`); forwards the C bridge.
+# issue 1589 — `/rosout` from C++ (`<rclcpp/rosout.hpp>`); forwards the C bridge.
 rosout = ["rmw-cffi", "nros-c/rosout"]
 
 # Zenoh transport refinements (require rmw-zenoh-cffi)
@@ -289,7 +289,7 @@ nros-node.workspace = true
 nros-c = { version = "0.6.0", path = "../nros-c", default-features = false }
 # Issue 0436 — the C/C++ multi-RMW bridge ABI behind the `bridge` feature. `cffi`
 # is what emits the `rclc_init_multi` / `nros_pubsub_bridge_*` exports that
-# `<rclc/bridge.h>` declares and `<nros/bridge.hpp>` wraps.
+# `<rclc/bridge.h>` declares and `<rclcpp/bridge.hpp>` wraps.
 nros-bridge = { version = "0.6.0", path = "../../rmw/bridge", default-features = false, features = ["cffi", "alloc"], optional = true }
 # Phase 88.12 — `nros_cpp_node_get_logger` returns `&'static nros_log::Logger`.
 nros-log = { workspace = true }

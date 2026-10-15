@@ -2,7 +2,7 @@
  * Do not edit.
  *
  * The parameters each node's launch contract DECLARES (`nodes.<n>.params`),
- * keyed by node FQN. `nros/declared_params.hpp` expands this and
+ * keyed by node FQN. `rclcpp/detail/declared_params.hpp` expands this and
  * `Node::declare_parameter` refuses a name the contract does not
  * declare, or a type that differs, naming the node, the parameter and the
  * contract.
@@ -17,7 +17,7 @@
 
 #define NROS_DECLARED_PARAMS_STATUS "declared"
 
-/* X-macros. `nros/declared_params.hpp` defines NROS_DECLARED_PARAM_NODE and
+/* X-macros. `rclcpp/detail/declared_params.hpp` defines NROS_DECLARED_PARAM_NODE and
  * NROS_DECLARED_PARAM_ROW and expands these; nothing else may. A ROW's type
  * is the rcl_interfaces/msg/ParameterType code. */
 #define NROS_DECLARED_PARAM_NODES \

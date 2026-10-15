@@ -966,7 +966,7 @@ impl QoSProfile {
 /// The ONE authoring site for every named [`QoSProfile`] preset — phase-428 W10.
 ///
 /// Upstream's profiles were hand-transcribed here and in three other places
-/// (`nros::qos`, `nros/qos.hpp`, `rmw_entity.h`) with nothing binding them, and
+/// (`nros::qos`, `rclcpp/qos.hpp`, `rmw_entity.h`) with nothing binding them, and
 /// they drifted exactly as every other hand-mirror in this tree has: issue 0793
 /// caught `PARAMETERS` claiming TRANSIENT_LOCAL, fixed that one profile, and
 /// left `PARAMETER_EVENTS` sitting at `KeepAll, depth 0` under a comment saying

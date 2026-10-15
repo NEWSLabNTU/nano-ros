@@ -1,7 +1,7 @@
 //! phase-446 W6 -- the C++ table of the parameters each node's contract
 //! DECLARES, `<nros/nros_declared_params_generated.h>`.
 //!
-//! `nros/declared_params.hpp` expands it and `Node::declare_parameter`
+//! `rclcpp/detail/declared_params.hpp` expands it and `Node::declare_parameter`
 //! refuses a name the node's contract does not declare, or a type that differs.
 //! The rows come from `nros_orchestration_ir::declared_params`, the same
 //! function the `nros::main!` expansion reads for a Rust image, so the two
@@ -77,7 +77,7 @@ fn render_nodes(
         " * Do not edit.",
         " *",
         " * The parameters each node's launch contract DECLARES (`nodes.<n>.params`),",
-        " * keyed by node FQN. `nros/declared_params.hpp` expands this and",
+        " * keyed by node FQN. `rclcpp/detail/declared_params.hpp` expands this and",
         " * `Node::declare_parameter` refuses a name the contract does not",
         " * declare, or a type that differs, naming the node, the parameter and the",
         " * contract.",
@@ -117,7 +117,7 @@ fn render_nodes(
     } else {
         s.push_str("#define NROS_DECLARED_PARAMS_STATUS \"declared\"\n\n");
         s.push_str(
-            "/* X-macros. `nros/declared_params.hpp` defines NROS_DECLARED_PARAM_NODE and\n \
+            "/* X-macros. `rclcpp/detail/declared_params.hpp` defines NROS_DECLARED_PARAM_NODE and\n \
              * NROS_DECLARED_PARAM_ROW and expands these; nothing else may. A ROW's type\n \
              * is the rcl_interfaces/msg/ParameterType code. */\n",
         );

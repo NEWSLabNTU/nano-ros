@@ -26,7 +26,7 @@
 // and in `executor_param_descriptors.c`. What can only be checked here is that
 // the DECLARATIONS instantiate at all, and on a target with no STL.
 
-#include <nros/nros.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 namespace nros_cpp_param_descriptor_surface_test {
 

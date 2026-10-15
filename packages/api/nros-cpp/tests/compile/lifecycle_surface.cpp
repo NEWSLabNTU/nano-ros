@@ -31,8 +31,8 @@
 // with no allocator, and a TU that needed `<functional>` or `<vector>` to
 // express them would not be evidence of that.
 
-#include <nros/lifecycle.hpp>
-#include <nros/nros.hpp>
+#include <rclcpp_lifecycle/lifecycle_node.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 namespace {
 

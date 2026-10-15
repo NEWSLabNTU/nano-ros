@@ -10,7 +10,7 @@
  *
  * # What this is
  *
- * `nros/declared_qos.hpp` gives C++ a `static_assert` that fails the BUILD when
+ * `rclcpp/detail/declared_qos.hpp` gives C++ a `static_assert` that fails the BUILD when
  * the QoS depth a `NROS_SUBSCRIBE` passes disagrees with the depth the system
  * DECLARED for that topic in the contract sidecar beside the launch file. The
  * descriptor that carries those depths -- `nros_declared_qos_generated.h`, put
@@ -78,7 +78,7 @@
  * # C only
  *
  * The body is `#ifndef __cplusplus`. `_Static_assert` is C11's spelling, and
- * more importantly both this header and `nros/declared_qos.hpp` would otherwise
+ * more importantly both this header and `rclcpp/detail/declared_qos.hpp` would otherwise
  * define a row macro over the same list in one translation unit -- `component.h`
  * is included from C++ TUs too (`just check c` compiles it beside
  * `nros_cpp_ffi.h`). C++ has the stronger mechanism; it keeps it.

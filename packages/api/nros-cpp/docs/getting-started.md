@@ -69,7 +69,7 @@ You never hand-write CDR serialisation. The generator handles it.
 ```cpp
 #include <cstdio>
 #include <csignal>
-#include <nros/nros.hpp>
+#include <rclcpp/rclcpp.hpp>
 #include "std_msgs.hpp"
 
 static volatile sig_atomic_t g_running = 1;
@@ -172,7 +172,7 @@ For host platforms where the STL is available:
 
 ```cpp
 #define NROS_CPP_STD
-#include <nros/nros.hpp>
+#include <rclcpp/rclcpp.hpp>
 #include <chrono>
 
 using namespace std::chrono_literals;

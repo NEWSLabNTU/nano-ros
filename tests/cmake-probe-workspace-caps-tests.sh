@@ -183,8 +183,8 @@ EOF
 
 #include <cstdint>
 
-#include <nros/component.hpp>
-#include <nros/nros.hpp>
+#include <rclcpp/detail/component.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 #include "island_msgs.hpp"
 

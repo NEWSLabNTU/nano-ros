@@ -42,7 +42,7 @@ pub static NROS_CPP_TRANSPORT_OPS_ABI_VERSION_V1: u32 = nros_rmw::NROS_TRANSPORT
 ///
 /// `ops`, when non-NULL, must point to a valid `nros_cpp_transport_ops_t`.
 /// The four function pointers must follow the threading contract
-/// documented in `<nros/transport.hpp>`.
+/// documented in `<rclcpp/transport.hpp>`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_set_custom_transport(
     ops: *const nros_cpp_transport_ops_t,
