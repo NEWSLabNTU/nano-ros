@@ -128,7 +128,7 @@ code written for nano-ros**, not hosted versus embedded: the std surface exists
 to let an upstream ROS 2 source file compile unmodified (RFC-0089's
 compile-or-conform rule), so a native host build of a nano-ros-native node stays
 on the freestanding surface. Detection sits in one place,
-`packages/api/nros-cpp/include/nros/std_detect.hpp`, which carries the
+`packages/api/nros-cpp/include/rclcpp/detail/std_detect.hpp`, which carries the
 measurement.
 
 ## Error Handling
@@ -821,7 +821,7 @@ directory.
 ## Usage Example
 
 ```cpp
-#include <nros/nros.hpp>
+#include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/int32.hpp>
 
 struct TalkerApp {

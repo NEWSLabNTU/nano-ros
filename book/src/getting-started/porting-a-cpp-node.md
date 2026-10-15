@@ -3,8 +3,8 @@
 Goal: take a normal ROS 2 C++ node (one that compiles + runs under
 `colcon build` against `ros-humble-*`) and run it under nano-ros — without
 rewriting the source. The `rclcpp::` names are declared by nano-ros's own C++
-headers — `<rclcpp/rclcpp.hpp>` is an nros-cpp header that includes
-`<nros/nros.hpp>`, and there is no compat layer between them (RFC-0096 D4). The
+headers — `<rclcpp/rclcpp.hpp>` is nros-cpp's own umbrella, not a layer over
+another API (RFC-0096 D4). The
 CMake side is part of nano-ros's own package: `cmake/NanoRosAmentSurface.cmake`
 defines the `ament_*` verbs, `cmake/find/` holds the `Find<pkg>.cmake` modules,
 and `diagnostic_updater` is `packages/api/nros-diagnostic-updater`. So the only

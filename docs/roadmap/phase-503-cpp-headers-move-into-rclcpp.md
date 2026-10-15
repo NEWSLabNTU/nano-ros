@@ -3,7 +3,7 @@
 **Status (2026-10-16). In progress — W1–W5 in one pull request, after
 phase-501's lands.** The C++ half of the RFC-0089 amendment "the C headers
 live under `rclc/`" (2026-10-15), which
-[phase-501](phase-501-c-api-headers-move-into-rclc.md) left as a follow-up
+[phase-501](archived/phase-501-c-api-headers-move-into-rclc.md) left as a follow-up
 (its ruling 3).
 
 ## Why
@@ -91,3 +91,28 @@ The two CLI-written headers phase-501 left under `nros/` move too:
   here includes it today.
 
 ## Progress
+
+### 2026-10-16 — W1–W5
+
+- **W1** moved the 59 C++ headers and `nros_cpp_ffi.h` per the map, with one
+  regex over every tracked file outside `docs/`, `book/`, the changelogs,
+  `tmp/` and `third-party/`. The emitters' templates are inside that set,
+  so W3's include change landed here too, with the codegen bump to 18 / 18.
+- **W2** changed `CPP_HEADER_SUBDIR` to `rclcpp/detail` and moved the sizes
+  stub, the buildless snapshot and the two CLI-written declared headers.
+- **W4, gates.** The text sweep cannot see a path a gate assembles, and
+  most of the misses were exactly that: path joins
+  (`check-qos-profile-ssot`, the mirror gate's self-test), shell globs
+  (`check-cpp-hosted-minimal-libcpp`, three loops in `check-cpp`, two
+  clang-format globs), one-level `listdir`s (api-parity's refusal macros,
+  `check-cpp-subscription-bound-supplied`) and a prefix test (api-parity's
+  "every TU reads one of our headers"). Each would have scanned an empty
+  directory and, where it had no vacuity floor, passed. The sweep also
+  rewrote three self-test samples into nonsense, fixed by hand. One gate
+  had been narrower than its rule since phase-501:
+  `check-config-fallback-macros` globbed `include/nros/`, so it checked
+  nros-cpp's buildless snapshot and never nros-c's. It reads both now.
+- **W5, docs.** `book/src/`, `docs/guides/`, `docs/reference/` (the
+  api-parity ledger shards included), RFC-0089 (its C++ follow-up note),
+  RFC-0018 and RFC-0096. Audit findings, issues, research notes and other
+  phases are history and keep their paths.

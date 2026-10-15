@@ -153,7 +153,7 @@ int main(void) {
 ### C++
 
 ```cpp
-#include <nros/transport.hpp>
+#include <rclcpp/transport.hpp>
 
 rclcpp::TransportOps ops;
 ops.user_data = &g_uart;
@@ -226,7 +226,7 @@ cargo test -p nros-rmw-xrce --features platform-posix \
 ## See also
 
 - [`<nros/transport.h>`](https://github.com/NEWSLabNTU/nano-ros/blob/main/packages/api/nros-c/include/rclc/detail/nros_generated.h) — C header
-- [`<nros/transport.hpp>`](https://github.com/NEWSLabNTU/nano-ros/blob/main/packages/api/nros-cpp/include/nros/transport.hpp) — C++ header
+- [`<rclcpp/transport.hpp>`](https://github.com/NEWSLabNTU/nano-ros/blob/main/packages/api/nros-cpp/include/rclcpp/transport.hpp) — C++ header
 - [`nros_rmw::custom_transport`](https://github.com/NEWSLabNTU/nano-ros/blob/main/packages/core/nros-rmw/src/custom_transport.rs) — Rust source
 - [`docs/roadmap/phase-115-runtime-transport-vtable.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/roadmap/archived/phase-115-runtime-transport-vtable.md) — phase doc
 - [Custom platform](custom-platform.md) — when you need more than just transport

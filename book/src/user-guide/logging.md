@@ -291,7 +291,7 @@ filter.
   `nros_platform_register_log_writer` ABI.
 - `packages/api/nros-c/include/rclc/log.h` — C API surface
   (`NROS_LOG_*` macros + `rclc_log_emit_fmt`).
-- `packages/api/nros-cpp/include/nros/log.hpp` — C++ macros (the
+- `packages/api/nros-cpp/include/rclcpp/logging.hpp` — C++ macros (the
   legacy `NROS_INFO` / etc. file:line printf surface stays
   alongside the new `NROS_LOG_*` macros).
 
@@ -332,7 +332,7 @@ for (;;) {
 }
 ```
 
-C++ (`<nros/rosout.hpp>`):
+C++ (`<rclcpp/rosout.hpp>`):
 
 ```cpp
 rclcpp::rosout::Publisher rosout;
