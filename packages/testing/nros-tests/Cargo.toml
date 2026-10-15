@@ -217,8 +217,13 @@ component-runtime-test = [
 # without dragging in the heavier `component-runtime-test` chain
 # (which would pull `nros-rmw-zenoh` + zenohd just to assert a
 # `panic!` message).
+# `nros/rmw-cffi`: the test imports `nros::Component` / `NodeContext`, which
+# `nros` builds only where the executor does (phase-483 W3). The lane that runs
+# it also enables `component-runtime-test`, which supplied the feature, so this
+# compiled there and nowhere else (found by `check feature-sweep`).
 phase216-substrate = [
     "dep:nros-platform",
+    "nros/rmw-cffi",
 ]
 
 # Phase 124.A.8.b — zero-copy loan E2E via real zenoh-pico backend.

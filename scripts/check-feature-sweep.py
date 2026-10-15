@@ -16,10 +16,17 @@ shape, without the dependency). A feature in a one-of GROUP (`platform-*`,
 `ros-*`, ...) REPLACES the base's member of that group instead of joining it,
 because two members of one group are refused by design.
 
-Scheduled, never merge-gating: it is ~150 clippy runs, each a partial rebuild
+A feature that only builds for an embedded target (`platform-freertos`,
+`platform-zephyr`, ...) is linted by the CROSS half: `cargo clippy --lib
+--no-default-features --target <triple>` with the environment the board that
+ships it states in its `nros-board.toml` (port, config dir, C compiler). The
+board descriptor is read, never restated here, so a run builds the crate the
+way that board's images do.
+
+Scheduled, never merge-gating: it is ~330 clippy runs, each a partial rebuild
 of the crate's dependency graph under a new feature set.
 
-Two lists keep it honest:
+Three lists keep it honest:
 
   SKIP      a feature this sweep does not lint, each with the reason and where
             it IS covered. A crate's feature that is in neither the run nor this
@@ -27,13 +34,17 @@ Two lists keep it honest:
   EXPECTED  a combination that is refused on purpose (a `compile_error!`).
             It must still FAIL, and with the named text, so an entry cannot
             outlive the refusal it records.
+  CROSS     the cross runs. A host SKIP that says "cross" must name one here
+            and every run here must be such a SKIP — both directions, so a
+            `_CROSS` reason cannot claim coverage that does not exist.
 
-Run: python3 scripts/check-feature-sweep.py [--crate NAME] [--list]
+Run: python3 scripts/check-feature-sweep.py [--crate NAME] [--half host|cross] [--list]
 """
 
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -59,9 +70,25 @@ ONE_OF_PREFIXES = (
     "sync-",
 )
 
-# Platforms that need a cross toolchain or an SDK the host does not have.
-# Their compile is covered by the embedded clippy and the fixture builds.
-_CROSS = "needs a cross toolchain or SDK; covered by the embedded clippy and fixture builds"
+# A platform that only builds for an embedded target: linted by the CROSS half
+# below, which must hold a run for every SKIP carrying this exact reason.
+_CROSS = "an embedded target; linted by this sweep's CROSS half"
+# nros-c / nros-cpp on an embedded target need a no_std C-API feature set of
+# their own; their per-platform shape is what the example clippy builds.
+_CROSS_ELSEWHERE = (
+    "an embedded target with a no_std C-API feature set; covered by the per-example "
+    "embedded clippy (`check build`) and the fixture builds"
+)
+# NuttX builds against its board's own target spec with build-std, which a
+# plain `--target` cannot reproduce.
+_NUTTX = "NuttX builds with its board's target spec and build-std; covered by the NuttX fixture builds"
+# A staticlib whose platform leaves the panic handler and allocator to the
+# image that links it (Zephyr's Rust runtime, a bare-metal board crate), so the
+# archive alone cannot link. Its code is nros-rmw-zenoh's, which IS cross-swept.
+_IMAGE_COMPLETES = (
+    "the linking image supplies the panic handler and allocator; the code is "
+    "nros-rmw-zenoh's, whose CROSS run lints it"
+)
 _RMW_C = "builds a C RMW backend from SDK sources; covered by `check c` and the RMW lanes"
 # A default feature every run already has. Swept on its own it would also
 # match the `platform-` one-of prefix and REPLACE the base's platform, which
@@ -109,13 +136,13 @@ CRATES = {
             ("panic-halt", ""): "duplicate lang item",
         },
         "skip": {
-            "platform-esp32-qemu": _CROSS,
-            "platform-freertos": _CROSS,
-            "platform-mps2-an385": _CROSS,
-            "platform-nuttx": _CROSS,
-            "platform-stm32f4": _CROSS,
-            "platform-threadx": _CROSS,
-            "platform-zephyr": _CROSS,
+            "platform-esp32-qemu": _CROSS_ELSEWHERE,
+            "platform-freertos": _CROSS_ELSEWHERE,
+            "platform-mps2-an385": _CROSS_ELSEWHERE,
+            "platform-nuttx": _CROSS_ELSEWHERE,
+            "platform-stm32f4": _CROSS_ELSEWHERE,
+            "platform-threadx": _CROSS_ELSEWHERE,
+            "platform-zephyr": _CROSS_ELSEWHERE,
             "rmw-cyclonedds": _RMW_C,
             "rmw-xrce": _RMW_C,
             "rmw-zenoh": _RMW_C,
@@ -131,13 +158,13 @@ CRATES = {
             ("panic-halt", ""): "duplicate lang item",
         },
         "skip": {
-            "platform-esp32-qemu": _CROSS,
-            "platform-freertos": _CROSS,
-            "platform-mps2-an385": _CROSS,
-            "platform-nuttx": _CROSS,
-            "platform-stm32f4": _CROSS,
-            "platform-threadx": _CROSS,
-            "platform-zephyr": _CROSS,
+            "platform-esp32-qemu": _CROSS_ELSEWHERE,
+            "platform-freertos": _CROSS_ELSEWHERE,
+            "platform-mps2-an385": _CROSS_ELSEWHERE,
+            "platform-nuttx": _CROSS_ELSEWHERE,
+            "platform-stm32f4": _CROSS_ELSEWHERE,
+            "platform-threadx": _CROSS_ELSEWHERE,
+            "platform-zephyr": _CROSS_ELSEWHERE,
         },
     },
     # -- RMW backends ---------------------------------------------------------
@@ -158,6 +185,7 @@ CRATES = {
         "expected": {},
         "skip": {
             **{p: _CROSS for p in _ZPICO_PLATFORMS},
+            "platform-nuttx": _NUTTX,
             "platform-aliases": _DEFAULT_ON,
         },
     },
@@ -170,7 +198,7 @@ CRATES = {
             # cross target, so none is swept and no one-of group is needed.
             "bare-metal": _CROSS,
             "freertos": _CROSS,
-            "nuttx": _CROSS,
+            "nuttx": _NUTTX,
             "threadx": _CROSS,
             "zephyr": _CROSS,
             "platform-aliases": _DEFAULT_ON,
@@ -191,16 +219,18 @@ CRATES = {
         "axes": [""],
         "expected": {},
         "skip": {
-            p: _CROSS
-            for p in (
-                "platform-esp32-qemu",
-                "platform-freertos",
-                "platform-mps2-an385",
-                "platform-nuttx",
-                "platform-stm32f4",
-                "platform-threadx",
-                "platform-zephyr",
-            )
+            **{
+                p: _CROSS
+                for p in (
+                    "platform-esp32-qemu",
+                    "platform-freertos",
+                    "platform-mps2-an385",
+                    "platform-stm32f4",
+                    "platform-threadx",
+                    "platform-zephyr",
+                )
+            },
+            "platform-nuttx": _NUTTX,
         },
     },
     "nros-platform-api": {"base": "", "axes": [""], "expected": {}, "skip": {}},
@@ -216,10 +246,117 @@ CRATES = {
         "expected": {("unix-mock", ""): "`unix-mock` uses OS sockets: add \"std\""},
         "skip": {"fsp": "needs the NVIDIA SPE FSP tree (`NV_SPE_FSP_DIR`); covered by `check ivc-fsp`"},
     },
+    # The two staticlibs are what an RTOS image links; on the host they build
+    # as `std` (+ POSIX for zenoh), which is the shape their host tests use.
+    "nros-rmw-zenoh-staticlib": {
+        "base": "std,platform-posix",
+        "axes": [""],
+        "expected": {},
+        "skip": {
+            **{
+                p: _CROSS
+                for p in (
+                    "platform-freertos",
+                    "platform-threadx",
+                    "platform-threadx-std",
+                    "platform-zephyr-baremetal",
+                )
+            },
+            "platform-bare-metal": _IMAGE_COMPLETES,
+            "platform-zephyr": _IMAGE_COMPLETES,
+            "platform-nuttx": _NUTTX,
+        },
+    },
+    "nros-rmw-xrce-cffi-staticlib": {
+        "base": "std",
+        "axes": [""],
+        "expected": {
+            # A bare-metal panic handler; `std` (and the test harness) bring
+            # their own, so the pair is refused by the compiler.
+            ("panic-halt", ""): "duplicate lang item",
+        },
+        "skip": {},
+    },
     # -- testing support -----------------------------------------------------
+    # nros-tests' features gate its test TARGETS (`required-features`).
+    # Compiling one needs no fixture; only running it does.
+    "nros-tests": {"base": "", "axes": [""], "expected": {}, "skip": {}},
     "zpico-alloc": {"base": "", "axes": [""], "expected": {}, "skip": {}},
     "nros-condvar-contract": {"base": "", "axes": [""], "expected": {}, "skip": {}},
 }
+
+# The cross runs: (crate, feature it covers, extra features, board or triple).
+# A BOARD names `packages/boards/<board>/nros-board.toml`, whose `cargo_config`
+# supplies the triple and the environment (FreeRTOS port, ThreadX config dir,
+# the C compiler) — read, never restated. A bare TRIPLE is for a platform whose
+# build needs no board environment. Every run is `--no-default-features`.
+CROSS = [
+    ("nros-platform", "platform-freertos", "alloc", "nros-board-mps2-an385-freertos"),
+    ("nros-platform", "platform-mps2-an385", "alloc", "thumbv7m-none-eabi"),
+    ("nros-platform", "platform-stm32f4", "alloc", "thumbv7em-none-eabihf"),
+    ("nros-platform", "platform-esp32-qemu", "alloc", "riscv32imc-unknown-none-elf"),
+    ("nros-platform", "platform-threadx", "alloc", "nros-board-threadx-qemu-riscv64"),
+    ("nros-platform", "platform-zephyr", "alloc", "thumbv7m-none-eabi"),
+    ("nros-rmw-zenoh", "platform-freertos", "alloc", "nros-board-mps2-an385-freertos"),
+    ("nros-rmw-zenoh", "platform-threadx", "alloc", "nros-board-threadx-qemu-riscv64"),
+    ("nros-rmw-zenoh", "platform-zephyr", "alloc", "thumbv7m-none-eabi"),
+    ("nros-rmw-zenoh", "platform-bare-metal", "alloc", "thumbv7m-none-eabi"),
+    ("zpico-sys", "freertos", "link-ip", "nros-board-mps2-an385-freertos"),
+    ("zpico-sys", "threadx", "link-ip", "nros-board-threadx-qemu-riscv64"),
+    ("zpico-sys", "zephyr", "link-ip", "thumbv7m-none-eabi"),
+    ("zpico-sys", "bare-metal", "link-ip", "thumbv7m-none-eabi"),
+    ("nros-rmw-zenoh-staticlib", "platform-freertos", "", "nros-board-mps2-an385-freertos"),
+    ("nros-rmw-zenoh-staticlib", "platform-threadx", "", "nros-board-threadx-qemu-riscv64"),
+    ("nros-rmw-zenoh-staticlib", "platform-threadx-std", "std", "nros-board-threadx-linux"),
+    ("nros-rmw-zenoh-staticlib", "platform-zephyr-baremetal", "", "thumbv7m-none-eabi"),
+]
+
+
+def check_cross_coverage(crates, cross):
+    """Both directions: a `_CROSS` skip has a run, and a run is a `_CROSS` skip."""
+    runs = {(c, f) for c, f, _, _ in cross}
+    claimed = {
+        (c, f) for c, cfg in crates.items() for f, why in cfg["skip"].items() if why == _CROSS
+    }
+    for c, f in sorted(claimed - runs):
+        raise SystemExit(
+            f"check-feature-sweep: {c} skips `{f}` as linted by the CROSS half, "
+            "and CROSS has no run for it — add one, or give the skip its real reason"
+        )
+    for c, f in sorted(runs - claimed):
+        raise SystemExit(
+            f"check-feature-sweep: CROSS lints {c} `{f}`, which {c}'s host SKIP "
+            "does not mark `_CROSS` — the two lists disagree"
+        )
+
+
+def board_cargo_config(board):
+    """The `cargo_config` a board descriptor carries, parsed."""
+    try:
+        import tomllib
+    except ModuleNotFoundError:  # 3.10 backport, same spelling as the sibling gates
+        import tomli as tomllib
+    path = ROOT / "packages" / "boards" / board / "nros-board.toml"
+    doc = tomllib.loads(path.read_text(encoding="utf8"))
+    entry = doc["board"][0] if isinstance(doc["board"], list) else doc["board"]
+    return tomllib.loads(entry.get("cargo_config", ""))
+
+
+def board_env(cargo_config, root):
+    """The board's `[env]`, with `${workspace}` resolved to this checkout."""
+    out = {}
+    for k, v in cargo_config.get("env", {}).items():
+        value = v["value"] if isinstance(v, dict) else v
+        out[k] = str(value).replace("${workspace}", str(root))
+    return out
+
+
+def cross_shape(where):
+    """(triple or None for the host, env) for a CROSS run's board-or-triple."""
+    if (ROOT / "packages" / "boards" / where / "nros-board.toml").is_file():
+        cfg = board_cargo_config(where)
+        return cfg.get("build", {}).get("target"), board_env(cfg, ROOT)
+    return where, {}
 
 
 def group_of(feature):
@@ -279,6 +416,21 @@ def plan(name, cfg, features):
     return runs
 
 
+# The per-build sizes headers nros-c / nros-cpp write at a FLAT path in the
+# target dir (`write_header_to_target_dir`). Issue 1354's rule is that a build
+# probing its own feature set must not share that path with another feature
+# set, and this sweep runs dozens of sets through one dir: in a WARM dir a
+# cached nros-c unit does not rerun, so its header is the last run's, and
+# nros-cpp's verifier refuses it ("DIFFERENT probed sizes") — correctly. So
+# every run starts without them, which is a per-run path without per-run dirs.
+SIZES_HEADER_DIRS = ("nros-c-generated", "nros-cpp-generated")
+
+
+def drop_shared_sizes_headers(target_dir):
+    for d in SIZES_HEADER_DIRS:
+        shutil.rmtree(Path(target_dir) / d, ignore_errors=True)
+
+
 def clippy(name, cfg, feats, target_dir):
     cmd = ["cargo", "clippy", "--quiet", "-p", name, "--lib", "--tests", "--locked"]
     if cfg.get("no_default"):
@@ -287,6 +439,20 @@ def clippy(name, cfg, feats, target_dir):
         cmd += ["--features", feats]
     cmd += ["--", "-D", "warnings"]
     env = dict(os.environ, CARGO_TARGET_DIR=str(target_dir))
+    drop_shared_sizes_headers(target_dir)
+    p = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, env=env)
+    return p.returncode, p.stderr
+
+
+def cross_clippy(name, feats, triple, board_env_vars, target_dir):
+    """A CROSS run: the library only (tests are a host build), no defaults."""
+    cmd = ["cargo", "clippy", "--quiet", "-p", name, "--lib", "--locked"]
+    cmd += ["--no-default-features", "--features", feats]
+    if triple:
+        cmd += ["--target", triple]
+    cmd += ["--", "-D", "warnings"]
+    env = dict(os.environ, CARGO_TARGET_DIR=str(target_dir), **board_env_vars)
+    drop_shared_sizes_headers(target_dir)
     p = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, env=env)
     return p.returncode, p.stderr
 
@@ -324,17 +490,32 @@ def self_test():
     assert not verdict("boom", 0, "")[0], "a refusal that built clean must fail"
     assert not verdict("boom", 1, "error: other")[0], "other text must fail"
     assert verdict(None, 0, "") == (True, "") and not verdict(None, 1, "x")[0]
+    # A `_CROSS` skip needs a CROSS run, and a CROSS run needs that skip.
+    crates = {"x": {"base": "", "axes": [""], "expected": {}, "skip": {"p": _CROSS}}}
+    check_cross_coverage(crates, [("x", "p", "", "t")])
+    for bad_crates, bad_cross in ((crates, []), ({"x": {**crates["x"], "skip": {}}}, [("x", "p", "", "t")])):
+        try:
+            check_cross_coverage(bad_crates, bad_cross)
+        except SystemExit:
+            pass
+        else:
+            raise AssertionError("a one-sided cross claim was accepted")
+    # A board's env resolves `${workspace}` and unwraps `{ value = ... }`.
+    env = board_env({"env": {"A": "x", "B": {"value": "${workspace}/c", "force": True}}}, "/r")
+    assert env == {"A": "x", "B": "/r/c"}, env
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--crate", action="append", help="sweep only this crate (repeatable)")
     ap.add_argument("--list", action="store_true", help="print the plan, run nothing")
+    ap.add_argument("--half", choices=("host", "cross"), help="run one half only")
     ap.add_argument("--self-test", action="store_true", help="run the controls only")
     args = ap.parse_args()
     # Always, not only behind the flag: a negative control nobody runs decays
     # into a comment.
     self_test()
+    check_cross_coverage(CRATES, CROSS)
     if args.self_test:
         print("check-feature-sweep --self-test: OK")
         return 0
@@ -343,32 +524,57 @@ def main():
         Path(os.environ.get("CARGO_TARGET_DIR", ROOT / "target")).name + "-feature-sweep"
     )
     names = args.crate or list(CRATES)
-    failures = []
-    total = 0
     for name in names:
         if name not in CRATES:
             raise SystemExit(f"check-feature-sweep: {name} is not in CRATES")
-        cfg = CRATES[name]
-        runs = plan(name, cfg, crate_features(name))
-        for axis, f, feats in runs:
-            total += 1
-            expect = cfg["expected"].get((f, axis))
-            label = f"{name} [{feats or '<none>'}]"
-            if args.list:
-                print(("EXPECT-FAIL " if expect else "") + label)
+    # (label, expected refusal, thunk) for every run this invocation owns.
+    jobs = []
+    if args.half != "cross":
+        for name in names:
+            cfg = CRATES[name]
+            for axis, f, feats in plan(name, cfg, crate_features(name)):
+                jobs.append(
+                    (
+                        f"{name} [{feats or '<none>'}]",
+                        cfg["expected"].get((f, axis)),
+                        lambda n=name, c=cfg, s=feats: clippy(n, c, s, target_dir),
+                    )
+                )
+    if args.half != "host":
+        for name, feature, extra, where in CROSS:
+            if name not in names:
                 continue
-            rc, err = clippy(name, cfg, feats, target_dir)
-            ok, why = verdict(expect, rc, err)
-            if ok:
-                print(f"  ok  {label}{' refused as expected' if expect else ''}")
-            else:
-                print(f"  FAIL {label}{': ' + why if why else ''}")
-                if not expect:
-                    for line in err.splitlines():
-                        if line.startswith(("error", "  -->")):
-                            print(f"        {line}")
-                failures.append(label)
-            sys.stdout.flush()
+            feats = ",".join(x for x in (extra, feature) if x)
+            triple, env = cross_shape(where)
+            label = f"{name} [{feats}] --target {triple or '<host>'}"
+            if where != triple:
+                label += f" (board {where})"
+            jobs.append(
+                (
+                    label,
+                    None,
+                    lambda n=name, s=feats, tr=triple, e=env: cross_clippy(n, s, tr, e, target_dir),
+                )
+            )
+    failures = []
+    total = 0
+    for label, expect, run in jobs:
+        total += 1
+        if args.list:
+            print(("EXPECT-FAIL " if expect else "") + label)
+            continue
+        rc, err = run()
+        ok, why = verdict(expect, rc, err)
+        if ok:
+            print(f"  ok  {label}{' refused as expected' if expect else ''}")
+        else:
+            print(f"  FAIL {label}{': ' + why if why else ''}")
+            if not expect:
+                for line in err.splitlines():
+                    if line.startswith(("error", "  -->")):
+                        print(f"        {line}")
+            failures.append(label)
+        sys.stdout.flush()
     if args.list:
         print(f"{total} run(s)")
         return 0

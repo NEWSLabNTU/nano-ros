@@ -79,6 +79,9 @@ const TYPE_NAME: &str = "std_msgs/msg/dds_/String_";
 const TYPE_HASH: &str = "RIHS01_loan_e2e_test_42424242424242424242424242424242";
 
 #[rstest]
+// The session-pool assert below checks a build-time constant on purpose: the
+// assert IS the message a wrong build gets (issue 0652).
+#[allow(clippy::assertions_on_constants)]
 fn loan_commit_delivers_to_subscriber(zenohd_unique: ZenohRouter) {
     require_zenohd();
 
@@ -158,7 +161,6 @@ fn loan_commit_delivers_to_subscriber(zenohd_unique: ZenohRouter) {
     let raw_pub: EmbeddedRawPublisher = pub_exec
         .with_node_try(node_id, |n| {
             n.create_publisher_raw("/loan_e2e", TYPE_NAME, TYPE_HASH)
-                .map_err(|e| e.into())
         })
         .expect("create raw publisher");
 
@@ -235,7 +237,6 @@ fn loan_path_is_alloc_free_on_native_zenoh(zenohd_unique: ZenohRouter) {
     let raw_pub: EmbeddedRawPublisher = pub_exec
         .with_node_try(node_id, |n| {
             n.create_publisher_raw("/loan_alloc", TYPE_NAME, TYPE_HASH)
-                .map_err(|e| e.into())
         })
         .expect("create raw publisher");
 

@@ -1316,11 +1316,7 @@ impl ZenohSubscriber {
     /// counting needs a long-lived `z_liveliness_declare_subscriber`
     /// shim, which is the next sub-phase if requested.
     fn check_liveliness_and_fire(&self) {
-        #[cfg(feature = "platform-bare-metal")]
-        {
-            return;
-        }
-
+        // Bare metal polls no liveliness: the function body is empty there.
         #[cfg(not(feature = "platform-bare-metal"))]
         {
             if self.liveliness_cb.get().is_none() {
