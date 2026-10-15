@@ -26,7 +26,7 @@
 #include "rclcpp/detail/config.hpp"
 #include "rclcpp/detail/entity_name.hpp" // phase-444 — the one entity-name copy
 #include "rclcpp/node.hpp"
-#include "nros/nros_cpp_config_generated.h"
+#include "rclcpp/detail/nros_cpp_config_generated.h"
 #include "rclcpp/result.hpp"
 #include "rclcpp/size_bound.hpp" // rclcpp::rx_buffer_capacity<M> — the receive-buffer size
 

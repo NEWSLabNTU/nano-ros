@@ -160,7 +160,9 @@ fn main() {
     // Watch the CONTENT of the per-build config headers (issue 0491), so a
     // runtime rebuild that moves a size re-runs this script.
     println!("cargo:rerun-if-changed={c_config_include}/rclc/detail/nros_config_generated.h");
-    println!("cargo:rerun-if-changed={cpp_config_include}/nros/nros_cpp_config_generated.h");
+    println!(
+        "cargo:rerun-if-changed={cpp_config_include}/rclcpp/detail/nros_cpp_config_generated.h"
+    );
 
     let mut build = cc::Build::new();
     build

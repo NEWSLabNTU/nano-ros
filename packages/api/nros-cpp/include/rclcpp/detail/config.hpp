@@ -15,6 +15,6 @@
 #ifndef NROS_RCLCPP_DETAIL_CONFIG_HPP
 #define NROS_RCLCPP_DETAIL_CONFIG_HPP
 
-#include "nros/nros_cpp_config_generated.h"
+#include "rclcpp/detail/nros_cpp_config_generated.h"
 
 #endif // NROS_RCLCPP_DETAIL_CONFIG_HPP

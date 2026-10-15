@@ -15,7 +15,7 @@
  * silent `_opaque` overflow at runtime.
  *
  * Build systems pick the right variant header — see the matching stub
- * in `nros-cpp/include/nros/nros_cpp_config_generated.h` for the full
+ * in `nros-cpp/include/rclcpp/detail/nros_cpp_config_generated.h` for the full
  * dispatch model. Short form (Phase 140):
  *   - CMake `add_subdirectory(nano-ros)`: nros-c's CMakeLists mirrors
  *     the per-build header into ${CMAKE_CURRENT_BINARY_DIR}/include/rclc/detail/

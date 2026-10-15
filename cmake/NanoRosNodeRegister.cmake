@@ -852,7 +852,7 @@ function(nano_ros_node_register)
             if(TARGET zephyr_interface)
                 target_link_libraries(${_lib} PRIVATE zephyr_interface)
             endif()
-            # Phase 242 — the per-build `<nros/nros_cpp_config_generated.h>` /
+            # Phase 242 — the per-build `<rclcpp/detail/nros_cpp_config_generated.h>` /
             # `<rclc/detail/nros_config_generated.h>` (storage sizes, etc.) are emitted
             # as byproducts of the nros-cpp / nros-c cargo builds into
             # the cargo target dir's `nros-{cpp,c}-generated` (prepended
@@ -1501,11 +1501,12 @@ function(_nros_declared_qos_arm _component _target _lang)
         return()
     endif()
 
-    # One dir per component, and the `nros/` level is what makes the include
-    # spelling `<nros/nros_declared_qos_generated.h>` -- the same shape the
-    # per-build sizes headers use, so nothing here needs a new convention.
+    # One dir per component, and the `rclc/detail/` and `rclcpp/detail/` levels
+    # are what make the include spellings `<rclc/detail/nros_declared_qos_generated.h>`
+    # and `<rclcpp/detail/nros_declared_params_generated.h>` -- the same shape
+    # the per-build sizes headers use, so nothing here needs a new convention.
     set(_nrq_dir "${CMAKE_CURRENT_BINARY_DIR}/nros-declared-qos/${_component}")
-    file(MAKE_DIRECTORY "${_nrq_dir}/nros")
+    file(MAKE_DIRECTORY "${_nrq_dir}/rclc/detail" "${_nrq_dir}/rclcpp/detail")
 
     # PRIVATE: this table describes THIS component's call sites. A consumer that
     # links the component must not inherit it, or its own NROS_SUBSCRIBE calls
@@ -1627,8 +1628,8 @@ function(_nros_emit_declared_qos_header _pkg _component _dir)
         return()
     endif()
 
-    set(_nrq_hdr "${_dir}/nros/nros_declared_qos_generated.h")
-    file(MAKE_DIRECTORY "${_dir}/nros")
+    set(_nrq_hdr "${_dir}/rclc/detail/nros_declared_qos_generated.h")
+    file(MAKE_DIRECTORY "${_dir}/rclc/detail" "${_dir}/rclcpp/detail")
     execute_process(
         COMMAND "${_nrq_cli}" ws entity-inventory
                 --metadata "${_nrq_metadata}"
@@ -1638,7 +1639,7 @@ function(_nros_emit_declared_qos_header _pkg _component _dir)
                 # phase-446 W6 -- each node's DECLARED parameters, from the
                 # same model, into the same PRIVATE dir; `Node::
                 # declare_parameter` checks against it at boot.
-                --output-params-header "${_dir}/nros/nros_declared_params_generated.h"
+                --output-params-header "${_dir}/rclcpp/detail/nros_declared_params_generated.h"
         OUTPUT_VARIABLE _nrq_out
         ERROR_VARIABLE _nrq_err
         RESULT_VARIABLE _nrq_rc

@@ -19,7 +19,7 @@
 // `NROS_LOG_*` family both live here. `log.hpp` includes nothing of ours but
 // `std_detect.hpp`, so this cannot cycle.
 #include "rclcpp/logging.hpp"
-#include "nros/nros_cpp_config_generated.h"
+#include "rclcpp/detail/nros_cpp_config_generated.h"
 
 #include "rclcpp/detail/nros_cpp_ffi.h"
 

@@ -144,10 +144,10 @@ self_test() {
     #     does not. This is what `IS_DIRECTORY` could not see, and it is not
     #     hypothetical — measured in the shared checkout on 2026-09-04, where
     #     target/nros-cpp-generated/ existed with the archive long gone.
-    mkdir -p "$TMP/dironly/nros-cpp-generated/nros"
+    mkdir -p "$TMP/dironly/nros-cpp-generated/rclcpp/detail"
     write_archive "$TMP/dironly/lib.a" "alloc_env_platform_posix_rmw_cffi_std"
     if run_case "$TMP/dironly/lib.a" \
-                "$TMP/dironly/nros-cpp-generated/nros/nros_cpp_config_generated.h" "$P"; then
+                "$TMP/dironly/nros-cpp-generated/rclcpp/detail/nros_cpp_config_generated.h" "$P"; then
         bad "a SURVIVING generated DIRECTORY with no header was ACCEPTED — this is issue 1046 verbatim"
         rc=1
     else
@@ -292,7 +292,7 @@ self_test_wiring() {
     local good='include(NanoRosArchivePairing.cmake)
 nros_assert_archive_pairs_with_header(
     ARCHIVE "${_NROS_PX4_CPP_A}"
-    HEADER  "${NROS_REPO_DIR}/target/nros-cpp-generated/nros/nros_cpp_config_generated.h")
+    HEADER  "${NROS_REPO_DIR}/target/nros-cpp-generated/rclcpp/detail/nros_cpp_config_generated.h")
 nros_assert_archive_pairs_with_header(
     ARCHIVE "${_NROS_PX4_CPP_A}"
     HEADER  "${NROS_REPO_DIR}/target/nros-c-generated/rclc/detail/nros_config_generated.h")
@@ -306,7 +306,7 @@ set(_nros_px4_link_archives "${_NROS_PX4_CPP_A}" "${_NROS_PX4_PLATFORM_A}")'
 include(NanoRosArchivePairing.cmake)
 nros_assert_archive_pairs_with_header(
     ARCHIVE "${NROS_REPO_DIR}/target/debug/libnros_cpp.a"
-    HEADER  "${NROS_REPO_DIR}/target/nros-cpp-generated/nros/nros_cpp_config_generated.h")
+    HEADER  "${NROS_REPO_DIR}/target/nros-cpp-generated/rclcpp/detail/nros_cpp_config_generated.h")
 nros_assert_archive_pairs_with_header(
     ARCHIVE "${NROS_REPO_DIR}/target/debug/libnros_cpp.a"
     HEADER  "${NROS_REPO_DIR}/target/nros-c-generated/rclc/detail/nros_config_generated.h")
@@ -359,7 +359,7 @@ EOF
     cat >"$d/half.cmake" <<'EOF'
 nros_assert_archive_pairs_with_header(
     ARCHIVE "${_NROS_PX4_CPP_A}"
-    HEADER  "${NROS_REPO_DIR}/target/nros-cpp-generated/nros/nros_cpp_config_generated.h")
+    HEADER  "${NROS_REPO_DIR}/target/nros-cpp-generated/rclcpp/detail/nros_cpp_config_generated.h")
 set(_nros_px4_link_archives "${_NROS_PX4_CPP_A}" "${_NROS_PX4_PLATFORM_A}")
 EOF
     found="$(scan_consumer "$d/half.cmake")"

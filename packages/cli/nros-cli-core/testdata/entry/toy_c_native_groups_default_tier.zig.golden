@@ -7,7 +7,7 @@ const c = @cImport({
     @cInclude("rclc/detail/boot_config.h");
     @cInclude("rclc/detail/main.h");
     @cInclude("rclcpp/detail/nros_cpp_ffi.h");
-    @cInclude("nros/nros_cpp_config_generated.h");
+    @cInclude("rclcpp/detail/nros_cpp_config_generated.h");
 });
 
 /// A fixed `char[N]` from a literal, as the boot blob's fields are.
