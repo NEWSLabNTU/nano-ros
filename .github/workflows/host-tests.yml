@@ -4,7 +4,8 @@
 # concurrency, and neither cancels — both must complete):
 #   - unit        : `just test-unit` — workspace unit tests
 #                   (`cargo nextest --workspace --exclude nros-tests`),
-#                   then `just test-ignored` (issue 1507).
+#                   then `just test-ignored` (issue 1507) and
+#                   `just test-doc` (doctests, both workspaces).
 #   - gates       : `just ci tier1 gates` — tier 1's `just check` half.
 #
 # Tier 1's OTHER half — `just build-test-fixtures lane=tier1` + `just ci tier1
@@ -187,6 +188,15 @@ jobs:
         run: |
           source ./activate.sh
           just test-ignored
+
+      # nextest never runs doctests, and `test-doc`'s only other caller is
+      # `test-all`, which sits behind a fixture build. Needs no fixture, so it
+      # rides here. Runs after a red `test-unit` too: a different question.
+      - name: just test-doc
+        if: success() || failure()
+        run: |
+          source ./activate.sh
+          just test-doc
 
   # ----- tier-1 gates: `just ci tier1 gates` (= `just check`) -----
   #

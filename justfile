@@ -1092,7 +1092,8 @@ zenohd locator="tcp/127.0.0.1:7447":
 #                     Zephyr / ROS-2-interop groups. ~30s, needs zenohd.
 #   test              = test-unit + test-integration. Default dev tier.
 #                     No miri, no heavy QEMU/Zephyr.
-#   test-doc          rustdoc doctests for the `nros` umbrella crate.
+#   test-doc          rustdoc doctests, both cargo workspaces (`nros` with
+#                     `std`, then every other member).
 #   test-miri         Miri UB scan on embedded-safe crates. Standalone, ~min.
 #   test-all          = test + heavy QEMU / Zephyr / threadx-linux /
 #                     ros2-interop groups + test-doc + test-miri + C codegen.
@@ -1554,7 +1555,7 @@ _nextest-platform test_name verbose="" feature_args="" filter="":
     fi
     just _nextest-tolerant "${args[@]}"
 
-# Run rustdoc doctests for the `nros` umbrella crate.
+# Run rustdoc doctests, both cargo workspaces.
 # Nextest does not execute doctests, so we run them separately.
 # This catches drift between rustdoc examples and the real API.
 [group("main")]
@@ -1566,6 +1567,15 @@ test-doc:
     # phase-361 W3 — `std` explicit: `nros` no longer defaults to it, and the
     # doc examples are hosted.
     cargo test $cargo_profile_args --doc -p nros --features std
+    # Every OTHER crate's doctests, in both cargo workspaces. nextest never
+    # runs doctests, so before this the `nros` line above was the only
+    # doctest run anywhere, and ~20 runnable examples in nros-core,
+    # nros-params, nros-serdes, nros-node, nros-rmw, nros-bridge and the
+    # build-tool crates compiled under nothing. All passed when first run, so
+    # this adds a lane, not fixes. `nros-tests` is out for the reason
+    # `test-unit` leaves it out.
+    cargo test $cargo_profile_args --locked --doc --workspace --exclude nros-tests
+    cargo test --manifest-path packages/cli/Cargo.toml --locked --doc --workspace
 
 # Rewrite [SKIPPED]-marker <failure> entries in the junit.xml to <skipped>
 # so downstream consumers (CI dashboards, _count-real-failures, _test-summary,
