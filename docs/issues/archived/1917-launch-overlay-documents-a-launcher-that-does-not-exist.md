@@ -1,7 +1,7 @@
 ---
 id: 1917
 title: "`init_with_launch_auto` documents a `NROS_RUNTIME_OVERLAY` sidecar written by `nros launch --emit-runtime-overlay`, and neither the verb, the flag, nor any reader of the variable exists"
-status: open
+status: resolved
 type: tech-debt
 area: [api, docs]
 severity: low
@@ -66,3 +66,35 @@ or it is retired, which is one change:
   enum variant: note it in the changelog);
 - drop `NROS_RUNTIME_OVERLAY` from RFC-0089's kept-knob list and from the
   five examples' comments.
+
+## Resolution (2026-10-15)
+
+Retired. A runtime overlay would need a runtime launcher, and nano-ros
+delivers launch content at build time instead; nobody owns a design for the
+other road.
+
+- `packages/api/nros/src/init.rs`: the "Launch overlay" module section is now
+  "Where launch content comes from" (the build-time SystemModel road, plus
+  the environment and `--ros-args`); `init_with_launch_auto` /
+  `init_with_launch` say what they do; both TODO blocks are gone;
+  `ContextSource::Launch` says it records the entry point called, not a file
+  read; `InitError::LaunchParseFailed` is deleted (`changelog.d/1917.breaking.md`).
+- `packages/api/nros-cpp/include/nros/node.hpp`: the same for the C++ twins
+  and the implementation's TODO.
+- The five C++ `service-client` examples' comments, RFC-0089's kept-fact list,
+  and the API-parity ledger rows (`rust:InitError`, `rust:init_with_launch`,
+  `rust:init_with_launch_auto`).
+- `nros-cli-core`'s `libc` dependency comment named a Phase 212.J
+  `nros launch` that `kill(2)` was for; it now names the two calls that use
+  it.
+
+Not changed: `ContextSource::Launch` is still what both functions report.
+The ledger's `rust:init_with_launch` finding (introspection says `Launch`
+when nothing launch-specific happened) is now documented rather than
+removed; changing the value is an API decision, not part of retiring the
+placeholder. RFC-0024's OPEN question on an `nros launch` verb is a design
+question and stays where it is.
+
+Sweep: `git grep -n -e NROS_RUNTIME_OVERLAY -e LaunchParseFailed -e emit-runtime-overlay -- ':!docs/issues/archived' ':!docs/roadmap/archived' ':!CHANGELOG.md' ':!changelog.d'`
+(two hits, both dated history paragraphs in the ledger, which stay as
+written).
