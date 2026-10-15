@@ -167,6 +167,8 @@ NOT_EMITTING = {
     "sdk-path riscv-none-elf-gcc": "a STORE path query; the answer is the store's layout, not generated code",
     "model-path": "locates the SystemModel artifact path (`model_location`); no content",
     "locate-project": "cargo's own verb (the tool is cargo there), not the `nros` CLI",
+    "show": "rustup's own verb (`rustup show active-toolchain`, issue 1914 — the tool is rustup there), not the `nros` CLI",
+    "toolchain": "rustup's own verb (`rustup toolchain list`, issue 1914 — the tool is rustup there); `nros toolchain` removes an install and emits no code either",
     "ws order": "the workspace's package ORDER, read back to drive the same configure's loop",
     "ws providers": "the provider index path, read back inside its own configure",
     "plan": "a workspace metadata plan read back by the same configure",

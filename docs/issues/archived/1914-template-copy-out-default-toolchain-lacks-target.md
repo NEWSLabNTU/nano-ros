@@ -1,11 +1,12 @@
 ---
 id: 1914
 title: "`template-copy-out` builds a copied C++ template's message crates with the runner's default stable toolchain, which has no `thumbv7m-none-eabi`: E0463 can't find `core`"
-status: open
+status: resolved
 type: bug
 area: [ci, build, examples]
 severity: medium
 found: 2026-10-15
+resolved: 2026-10-15
 related: [1830, 1453, 1665, 1672, phase-466]
 ---
 
@@ -67,3 +68,32 @@ Pick one, deliberately. The two sites are both defensible:
 
 Acceptance is a build: `just check template-copy-out` green on a runner where
 `stable` has no `thumbv7m-none-eabi`.
+
+## Fix (option 1 — the cmake road pins the toolchain)
+
+Reproduced in the distrobox tree with a private `RUSTUP_HOME` whose default
+toolchain is `1.98.1` (no `thumbv7m-none-eabi`): `check-template-copy-out.sh
+cpp-port-minimal-publisher` failed with the same two `E0463`s, on
+`nano_ros_cpp_ffi_builtin_interfaces` and `nano_ros_cpp_ffi_std_msgs`.
+
+The reading above was right about the FFI glue and wrong about one detail:
+Corrosion still printed `Rust Toolchain: 1.99.0` there, because FindRust asks
+rustup from the configure's CWD and the gate runs cmake from the repo root.
+A user configuring from their own project gets the default for Corrosion too.
+The FFI glue runs a rustup PROXY with `WORKING_DIRECTORY` in the copy's build
+dir, so rustup answered with the default.
+
+`nros_pin_default_rust_toolchain()` (`cmake/NanoRosRustTool.cmake`, called
+first in `nros_resolve_corrosion()`) sets `Rust_TOOLCHAIN` to the root
+`rust-toolchain.toml` channel, before FindRust runs. It does this only when
+nothing else chose a toolchain. An explicit `-DRust_TOOLCHAIN`, a set
+`RUSTUP_TOOLCHAIN`, or any rustup override for the source dir are all kept;
+the test is `rustup show active-toolchain` reporting `(default)`. NuttX and
+Zephyr pin their own nightly first, and in-tree a configure is overridden by
+the root file, so neither changes. The FFI glue command carries the same pin
+as `RUSTUP_TOOLCHAIN=` on its `cmake -E env` (`nros_rust_toolchain_env()`),
+because a build-time command does not inherit the configure's environment.
+
+Acceptance, same private default: `check-template-copy-out.sh
+cpp-port-minimal-publisher rclcpp-compat-smoke topic-state-monitor-port` →
+`OK — 3 project(s) built`.
