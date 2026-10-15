@@ -916,7 +916,7 @@ fn test_qemu_rtic_action_e2e() {
 
     // Verify action communication
     assert!(
-        client_output.contains("Goal accepted"),
+        nros_tests::output::action_goal_accepted(&client_output),
         "RTIC QEMU action client: goal was not accepted"
     );
     assert!(

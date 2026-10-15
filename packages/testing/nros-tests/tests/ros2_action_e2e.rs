@@ -329,7 +329,7 @@ fn the_nano_ros_action_client_drives_a_stock_ros2_server() {
          format.\n{text}"
     );
     assert!(
-        text.contains("Goal accepted"),
+        nros_tests::output::action_goal_accepted(&text),
         "a real ROS 2 server must ACCEPT the goal nano-ros wrote — this is the \
          side `strip_goal_id_len_at` and `strip_nested_cdr_at` reshape.\n{text}"
     );
@@ -630,7 +630,7 @@ fn the_nano_ros_action_client_drives_a_stock_ros2_server_over_zenoh() {
          format.\n{text}"
     );
     assert!(
-        text.contains("Goal accepted"),
+        nros_tests::output::action_goal_accepted(&text),
         "a real `rmw_zenoh_cpp` server must ACCEPT the goal nano-ros wrote.\n{text}"
     );
     assert!(

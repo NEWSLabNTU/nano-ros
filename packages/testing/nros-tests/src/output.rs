@@ -765,6 +765,27 @@ pub const ACTION_GOAL_ACCEPTED_PREFIX: &str = "Goal accepted by server";
 /// [`ACTION_GOAL_ACCEPTED_PREFIX`] plus `", waiting for result"`.
 pub const ACTION_GOAL_ACCEPTED_MARKER: &str = "Goal accepted by server, waiting for result";
 
+/// Action client log line once a declarative (`nros::node!`) client has SENT
+/// its goal (`"Goal sent, waiting for result"`).
+///
+/// Issue 1918: those clients used to print [`ACTION_GOAL_ACCEPTED_MARKER`] when
+/// `send_goal_for_name` returned `Ok`, which means sent, not accepted. They now
+/// print this line instead. The C and C++ clients keep the accepted line,
+/// because their `send_goal` waits for the server's answer.
+pub const ACTION_GOAL_SENT_MARKER: &str = "Goal sent, waiting for result";
+
+/// Did the server accept the client's goal, judged from the client's output?
+///
+/// A client that waits for the goal response says so
+/// ([`ACTION_GOAL_ACCEPTED_PREFIX`]). A declarative client only says it sent
+/// the goal ([`ACTION_GOAL_SENT_MARKER`]), so for it acceptance is proven by
+/// the result: a server only completes a goal it accepted. A sent goal with
+/// no result is therefore NOT accepted.
+pub fn action_goal_accepted(output: &str) -> bool {
+    output.contains(ACTION_GOAL_ACCEPTED_PREFIX)
+        || (output.contains(ACTION_GOAL_SENT_MARKER) && output.contains(ACTION_RESULT_PREFIX))
+}
+
 /// Action client log prefix when the server RECEIVED the goal and DECLINED it
 /// (`"Goal was rejected by server"`).
 ///
@@ -887,9 +908,7 @@ pub fn parse_listener(output: &str) -> ListenerOutput {
 
 /// Parse action client output (the W5 fibonacci demo wording).
 pub fn parse_action_client(output: &str) -> ActionClientOutput {
-    // `"Goal accepted"` also matches the official rclpy/rclcpp client's
-    // `"Goal accepted by server, waiting for result"` line.
-    let goal_accepted = output.contains("Goal accepted");
+    let goal_accepted = action_goal_accepted(output);
     let feedback_count = output.matches(ACTION_FEEDBACK_PREFIX).count();
     let completed = output.contains(ACTION_RESULT_PREFIX);
     ActionClientOutput {
@@ -1551,6 +1570,19 @@ mod tests {
         assert!(result.goal_accepted);
         assert_eq!(result.feedback_count, 2);
         assert!(result.completed);
+    }
+
+    #[test]
+    fn a_sent_goal_is_accepted_only_once_its_result_arrives() {
+        let sent = "Goal sent, waiting for result\n";
+        assert!(!action_goal_accepted(sent));
+        let done = "Goal sent, waiting for result\n\
+                    Result received: [0, 1]\n";
+        assert!(action_goal_accepted(done));
+        assert!(action_goal_accepted(
+            "Goal accepted by server, waiting for result\n"
+        ));
+        assert!(!action_goal_accepted("Waiting for action server...\n"));
     }
 
     #[test]
