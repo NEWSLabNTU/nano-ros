@@ -62,7 +62,7 @@
 #include "rclcpp/result.hpp"
 #include "rclcpp/owned.hpp" // phase-456 W5 — the return type of the poll `create_service`
 #include "rclcpp/detail/hosted_block.hpp"
-#include "nros/nros_cpp_config_generated.h"
+#include "rclcpp/detail/nros_cpp_config_generated.h"
 // phase-482 W3 — `rclcpp::init` below reads `NROS_ENTRY_LOCATOR` /
 // `NROS_ENTRY_DOMAIN_ID`, so the ladder that derives them from Kconfig must be
 // visible in EVERY TU that calls it, not only in one that also includes

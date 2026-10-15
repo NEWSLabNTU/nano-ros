@@ -1,5 +1,5 @@
 //! phase-446 W6 -- the C++ table of the parameters each node's contract
-//! DECLARES, `<nros/nros_declared_params_generated.h>`.
+//! DECLARES, `<rclcpp/detail/nros_declared_params_generated.h>`.
 //!
 //! `rclcpp/detail/declared_params.hpp` expands it and `Node::declare_parameter`
 //! refuses a name the node's contract does not declare, or a type that differs.
@@ -221,8 +221,9 @@ contracts:
         let dir = root.join(REL);
         let yaml = std::fs::read_to_string(dir.join("declared_params.yaml"))
             .unwrap_or_else(|e| panic!("read {}/declared_params.yaml: {e}", dir.display()));
-        let want = std::fs::read_to_string(dir.join("nros/nros_declared_params_generated.h"))
-            .expect("the committed fixture header exists");
+        let want =
+            std::fs::read_to_string(dir.join("rclcpp/detail/nros_declared_params_generated.h"))
+                .expect("the committed fixture header exists");
         assert_eq!(
             render(Some(&model(&yaml)), &format!("{REL}/declared_params.yaml")),
             want,

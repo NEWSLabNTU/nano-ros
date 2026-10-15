@@ -26,7 +26,7 @@
 # at entry time, and the deferred render between them -- and asserts:
 #
 #   A. a contract's declared depth lands at the path the include spelling needs
-#      (`<dir>/nros/nros_declared_qos_generated.h`), keyed on the TOPIC a call
+#      (`<dir>/rclc/detail/nros_declared_qos_generated.h`), keyed on the TOPIC a call
 #      site writes and on BOTH type spellings;
 #   B. `<dir>` is on the target's include path, so `__has_include` in
 #      `rclcpp/detail/declared_qos.hpp` finds it;
@@ -215,7 +215,7 @@ OUT="$(configure declared "$DECLARED_MODEL")"
 # phase-446 W6 -- the same render writes each node's DECLARED parameters
 # beside the depth table, into the same PRIVATE dir. Without it
 # `ComponentNode::declare_parameter` checks nothing, silently.
-PHDR="$TEST_TMPDIR/declared/build/nros-declared-qos/listener/nros/nros_declared_params_generated.h"
+PHDR="$TEST_TMPDIR/declared/build/nros-declared-qos/listener/rclcpp/detail/nros_declared_params_generated.h"
 check
 if [ ! -f "$PHDR" ]; then
     fail "A: no declared-parameters header at $PHDR -- the contract's \`params:\`
@@ -224,7 +224,7 @@ boots unchecked. Configure said: $OUT"
 elif ! nros_grep_q 'NROS_DECLARED_PARAM_ROW("/listener", "rate", 2)' "$PHDR"; then
     fail "A: the declared-parameters header carries no row for /listener's \`rate\` -- $(cat "$PHDR")"
 fi
-HDR="$TEST_TMPDIR/declared/build/nros-declared-qos/listener/nros/nros_declared_qos_generated.h"
+HDR="$TEST_TMPDIR/declared/build/nros-declared-qos/listener/rclc/detail/nros_declared_qos_generated.h"
 check
 if [ ! -f "$HDR" ]; then
     fail "A: no header at $HDR -- the contract never reaches a compiler.
@@ -266,7 +266,7 @@ fi
 check
 if ! nros_grep_q "PRIVATE_INCLUDES=\[.*nros-declared-qos/listener\]" <<<"$OUT"; then
     fail "B: the generated dir is not on the target's include path, so
-\`__has_include(<nros/nros_declared_qos_generated.h>)\` finds nothing and every
+\`__has_include(<rclc/detail/nros_declared_qos_generated.h>)\` finds nothing and every
 call site in the component compiles unchecked -- $OUT"
 fi
 check
@@ -287,9 +287,9 @@ if nros_grep_q "CMake Error" <<<"$OUT"; then
 without a contract sidecar is in exactly that state -- $OUT"
 fi
 check
-if [ -f "$TEST_TMPDIR/undeclared/build/nros-declared-qos/listener/nros/nros_declared_qos_generated.h" ] && \
+if [ -f "$TEST_TMPDIR/undeclared/build/nros-declared-qos/listener/rclc/detail/nros_declared_qos_generated.h" ] && \
    nros_grep_q "NROS_DECLARED_QOS_ROWS" \
-        "$TEST_TMPDIR/undeclared/build/nros-declared-qos/listener/nros/nros_declared_qos_generated.h"; then
+        "$TEST_TMPDIR/undeclared/build/nros-declared-qos/listener/rclc/detail/nros_declared_qos_generated.h"; then
     fail "D: an image that declared nothing got a table of rows"
 fi
 check
@@ -614,7 +614,7 @@ contracts:
 EOF
 OUT="$(configure pubdeclared "$PUB_MODEL")"
 PUB_GEN_DIR="$TEST_TMPDIR/pubdeclared/build/nros-declared-qos/listener"
-PUB_HDR="$PUB_GEN_DIR/nros/nros_declared_qos_generated.h"
+PUB_HDR="$PUB_GEN_DIR/rclc/detail/nros_declared_qos_generated.h"
 check
 if [ ! -f "$PUB_HDR" ] || ! nros_grep_q 'NROS_DECLARED_PUB_QOS_ROW("std_msgs::msg::dds_::Int32_", "/chatter", 7, NROS_DQ_BEST_EFFORT, NROS_DQ_TRANSIENT_LOCAL)' "$PUB_HDR"; then
     fail "F5: the publisher's declared QoS did not reach the rendered header --
@@ -761,7 +761,7 @@ CONFLICT_MODEL="$TEST_TMPDIR/conflict_model.yaml"
 sed 's/qos: { depth: 1 }/qos: { depth: 2 }/' "$DECLARED_MODEL" > "$CONFLICT_MODEL"
 OUT="$(configure union "$DECLARED_MODEL" "_nros_declared_qos_record_model(\"$SILENT_MODEL\")
 _nros_declared_qos_record_model(\"$BARE_MODEL\")")"
-UHDR="$TEST_TMPDIR/union/build/nros-declared-qos/listener/nros/nros_declared_qos_generated.h"
+UHDR="$TEST_TMPDIR/union/build/nros-declared-qos/listener/rclc/detail/nros_declared_qos_generated.h"
 check
 if nros_grep_q "not rendering the declared QoS" <<<"$OUT"; then
     fail "H: a configure with several models still ABSTAINS -- every component of every
@@ -773,7 +773,7 @@ if [ ! -f "$UHDR" ] || ! nros_grep_q 'NROS_DECLARED_QOS_ROW("std_msgs::msg::dds_
 $( [ -f "$UHDR" ] && cat "$UHDR" ) -- configure said: $OUT"
 fi
 OUT="$(configure conflict "$DECLARED_MODEL" "_nros_declared_qos_record_model(\"$CONFLICT_MODEL\")" | tr '\n' ' ' | tr -s ' ')"
-CHDR="$TEST_TMPDIR/conflict/build/nros-declared-qos/listener/nros/nros_declared_qos_generated.h"
+CHDR="$TEST_TMPDIR/conflict/build/nros-declared-qos/listener/rclc/detail/nros_declared_qos_generated.h"
 check
 if [ ! -f "$CHDR" ] || ! nros_grep_q 'NROS_DECLARED_QOS_STATUS "refused"' "$CHDR" || \
    nros_grep_q "#define NROS_DECLARED_QOS_ROWS" "$CHDR"; then

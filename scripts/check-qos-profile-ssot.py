@@ -770,7 +770,7 @@ MIRRORS = [
     ),
     Mirror(
         "qos.hpp",
-        ROOT / "packages" / "api" / "nros-cpp" / "include" / "nros" / "qos.hpp",
+        ROOT / "packages" / "api" / "nros-cpp" / "include" / "rclcpp" / "qos.hpp",
         _cpp_qos_table,
         {
             "default_profile": "QOS_PROFILE_DEFAULT",

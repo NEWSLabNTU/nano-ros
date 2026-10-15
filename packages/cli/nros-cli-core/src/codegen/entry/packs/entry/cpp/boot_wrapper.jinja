@@ -39,7 +39,7 @@
  * NROS_CPP_EXECUTOR_STORAGE_SIZE, so the include is mandatory: without it there
  * is no honest size to write. The runner asks the linked library whether the
  * block is big enough and refuses it if not. */
-#include <nros/nros_cpp_config_generated.h>
+#include <rclcpp/detail/nros_cpp_config_generated.h>
 static uint64_t __nros_tier_executor_storage[{{ boot.n_tiers }}][(NROS_CPP_EXECUTOR_STORAGE_SIZE + 7u) / 8u];
 
 {% if boot.task_memory -%}

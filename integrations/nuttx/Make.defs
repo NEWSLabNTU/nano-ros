@@ -97,7 +97,7 @@ CFLAGS += ${INCDIR_PREFIX}$(NANO_ROS_ROOT_DEFS)/packages/api/nros-c/include
 # precedence + add the cbindgen-emitted `nros_cpp_ffi.h` parent
 # (in `packages/api/nros-cpp/include/`). nros-cpp's per-build
 # `nros_cpp_config_generated.h` lands at
-# `$CARGO_TARGET_DIR/nros-cpp-generated/nros/` analogous to nros-c.
+# `$CARGO_TARGET_DIR/nros-cpp-generated/rclcpp/detail/` analogous to nros-c.
 ifneq ($(CONFIG_NROS_CPP_API),)
 CXXFLAGS += ${INCDIR_PREFIX}$(call nros_artifact,cpp-include)
 CXXFLAGS += ${INCDIR_PREFIX}$(NANO_ROS_ROOT_DEFS)/packages/api/nros-cpp/include

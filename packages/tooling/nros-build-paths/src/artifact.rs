@@ -28,9 +28,10 @@ pub const CPP_GENERATED_DIR: &str = "nros-cpp-generated";
 /// `nros_generated.h`. Phase-501 W2: the C API's internal headers live under
 /// `rclc/detail/`, and C code includes `<rclc/detail/nros_config_generated.h>`.
 pub const C_HEADER_SUBDIR: &str = "rclc/detail";
-/// Where under an include root a C++ header nros-cpp generates sits. The C++
-/// headers stay under `nros/` until the C++ side moves to `rclcpp/`.
-pub const CPP_HEADER_SUBDIR: &str = "nros";
+/// Where under an include root a C++ header nros-cpp generates sits.
+/// Phase-503 W2: nros-cpp's internal headers live under `rclcpp/detail/`, and
+/// C++ code includes `<rclcpp/detail/nros_cpp_config_generated.h>`.
+pub const CPP_HEADER_SUBDIR: &str = "rclcpp/detail";
 
 /// One artifact a non-cargo consumer locates.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -41,11 +42,11 @@ pub enum Artifact {
     CppArchive,
     /// The include directory holding `rclc/detail/nros_config_generated.h`.
     CInclude,
-    /// The include directory holding `nros/nros_cpp_config_generated.h`.
+    /// The include directory holding `rclcpp/detail/nros_cpp_config_generated.h`.
     CppInclude,
     /// `rclc/detail/nros_config_generated.h` itself.
     CConfigHeader,
-    /// `nros/nros_cpp_config_generated.h` itself.
+    /// `rclcpp/detail/nros_cpp_config_generated.h` itself.
     CppConfigHeader,
 }
 

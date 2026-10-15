@@ -98,10 +98,14 @@ REPO = Path(__file__).resolve().parent.parent
 # The dispatching stubs, and the include-dir roots their fallbacks live in.
 STUB_GLOBS = (
     "packages/api/nros-c/include/rclc/detail/nros_config_generated.h",
-    "packages/api/nros-cpp/include/nros/nros_cpp_config_generated.h",
+    "packages/api/nros-cpp/include/rclcpp/detail/nros_cpp_config_generated.h",
 )
 STUB_NAMES = tuple(p.rsplit("/", 1)[-1] for p in STUB_GLOBS)
-FALLBACK_GLOB = "packages/api/nros-*/include/nros/*_config_generated_*.h"
+# Both snapshots, wherever under include/ they sit: `rclc/detail/` (nros-c,
+# phase-501) and `rclcpp/detail/` (nros-cpp, phase-503). This read
+# `include/nros/` until phase-503, so from phase-501 on it saw nros-cpp's
+# snapshot alone.
+FALLBACK_GLOB = "packages/api/nros-*/include/*/detail/*_config_generated_*.h"
 # The CRATE root, not `packs/`. A second template directory beside it — the
 # version-surface gate already scans `{packs,templates}`, and only the first
 # exists today — would otherwise be a silent blind spot while `packs/` kept

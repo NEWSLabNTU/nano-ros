@@ -215,7 +215,7 @@ set(THREADX_STARTUP_SOURCE
 # (`nros_board_rtos_run_components`). A `--lang c` ThreadX entry calls it, so
 # the entry is a pure C image with no C++ runtime. It compiles IN the app
 # target, like the rest of this list, because only there is the per-build
-# `<nros/nros_cpp_config_generated.h>` on the include path: the runner sizes
+# `<rclcpp/detail/nros_cpp_config_generated.h>` on the include path: the runner sizes
 # its executor storage from it, and the fallback size is issue 0245's heap
 # corruption. The TU references `nros_cpp_*`, which every threadx-linux C/C++
 # image links (`libnros_cpp.a`, issue 0425). The CARGO lane deliberately does

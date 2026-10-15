@@ -250,7 +250,7 @@ fn generate_config(
     let _ = (manifest_dir, action_client_fallback);
 
     // Phase 119.3: source-tree header is a committed STUB that errors
-    // out (see `include/nros/nros_cpp_config_generated.h`). Real header
+    // out (see `include/rclcpp/detail/nros_cpp_config_generated.h`). Real header
     // gets written PER-BUILD to a variant-slug subdir under the cargo
     // target directory; `nros_cpp_setup()` CMake function finds it.
     if exact_executor == 0 {
@@ -385,7 +385,7 @@ static const unsigned char *const nros__cpp_config_variant_anchor =
     );
 
     // Phase 119.3: write the per-build header to two stable locations.
-    // 1. `$CARGO_TARGET_DIR/nros-cpp-generated/nros/...` — Zephyr (and
+    // 1. `$CARGO_TARGET_DIR/nros-cpp-generated/rclcpp/detail/...` — Zephyr (and
     //    any in-tree caller that explicitly sets CARGO_TARGET_DIR)
     //    prepends `$CARGO_TARGET_DIR/nros-cpp-generated` to its
     //    include path.
@@ -591,5 +591,9 @@ typedef struct ActionServerRawHandle {{
 
 /// Generate `include/rclcpp/detail/nros_cpp_ffi.h` using cbindgen.
 fn generate_header(manifest_dir: &std::path::Path) {
-    generate_cbindgen_header(manifest_dir, "cbindgen.toml", "include/rclcpp/detail/nros_cpp_ffi.h");
+    generate_cbindgen_header(
+        manifest_dir,
+        "cbindgen.toml",
+        "include/rclcpp/detail/nros_cpp_ffi.h",
+    );
 }

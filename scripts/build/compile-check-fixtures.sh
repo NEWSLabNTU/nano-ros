@@ -1163,9 +1163,9 @@ cxx_syntax_check() {
     rm -f "$staged/.compile-ok" "$staged/.verdict" "$staged"/verdict.*
     local cxx="${CXX:-c++}"
     # Issue #34 — the per-build generated config headers MUST precede the
-    # source include dir: `packages/api/nros-cpp/include/nros/nros_cpp_config_generated.h`
+    # source include dir: `packages/api/nros-cpp/include/rclcpp/detail/nros_cpp_config_generated.h`
     # is a stub that `#error`s, so if it is searched first the real header
-    # (`target/nros-cpp-generated/nros/...`, emitted by nros-cpp's build.rs) is
+    # (`target/nros-cpp-generated/rclcpp/detail/...`, emitted by nros-cpp's build.rs) is
     # never reached. Prepend the generated dirs.
     # Where they are is `nros locate artifact` (phase-484 W6b), never a spelled
     # `<root>/target/...`.

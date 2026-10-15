@@ -86,7 +86,7 @@ SELF_TESTS = [
     ('cargo build --target-dir target-xrce', "sh", False),
     # issue 1852 — the bare name under a variable root
     ('        -I"$gen/nros-c-generated" \\', "just", True),
-    ('    "${_gen}/nros-cpp-generated/nros/nros_cpp_config_generated.h"', "cmake", True),
+    ('    "${_gen}/nros-cpp-generated/rclcpp/detail/nros_cpp_config_generated.h"', "cmake", True),
     ('zephyr_include_directories(${ROOT}/nros-c-generated)', "cmake", True),
     ('println!("cargo:config_include={out_dir}/nros-c-generated");', "rust", True),
     ('    cgen="$(nros_locate_artifact c-include)"', "sh", False),

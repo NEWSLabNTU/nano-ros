@@ -4,8 +4,8 @@
 `nros-c` / `nros-cpp` write a per-build sizes header into the cargo target dir
 together with a `<name>.h.stamp` sidecar:
 
-    <target>/nros-cpp-generated/nros/nros_cpp_config_generated.h
-    <target>/nros-cpp-generated/nros/nros_cpp_config_generated.h.stamp
+    <target>/nros-cpp-generated/rclcpp/detail/nros_cpp_config_generated.h
+    <target>/nros-cpp-generated/rclcpp/detail/nros_cpp_config_generated.h.stamp
 
 The pair is written by ONE function, header first, stamp second
 (`write_header_to_target_dir`). So a stamp with no header beside it is a state

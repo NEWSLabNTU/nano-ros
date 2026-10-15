@@ -153,7 +153,7 @@ set(_NROS_PX4_INCLUDES
 
 # The PER-BUILD generated headers (storage sizes, feature constants), emitted by
 # nros-c/nros-cpp build.rs into $CARGO_TARGET_DIR/nros-c-generated/rclc/detail/ and
-# $CARGO_TARGET_DIR/nros-cpp-generated/nros/.
+# $CARGO_TARGET_DIR/nros-cpp-generated/rclcpp/detail/.
 # Without these, `#include <rclc/init.h>` hits the checked-in STUB, whose whole
 # body is:
 #
@@ -188,7 +188,7 @@ endforeach()
 # for the two generated dirs. Issue 1046: `IS_DIRECTORY` cannot tell *present*
 # from *current*, and a generated dir outlives every build that wrote into it.
 # Measured in the shared checkout on 2026-09-04, with no build running:
-# `target/nros-cpp-generated/nros/nros_cpp_config_generated.h` present and
+# `target/nros-cpp-generated/rclcpp/detail/nros_cpp_config_generated.h` present and
 # naming a zenoh variant, `target/release/libnros_cpp.a` absent. Both include
 # dirs passed the loop above.
 #

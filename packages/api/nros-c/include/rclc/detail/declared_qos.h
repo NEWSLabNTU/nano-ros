@@ -101,8 +101,8 @@
  * component whose endpoints state no `qos: { depth: }`, and every out-of-tree
  * consumer of this header has no such file and gets an empty table. */
 #if defined(__has_include)
-#if __has_include(<nros/nros_declared_qos_generated.h>)
-#include <nros/nros_declared_qos_generated.h>
+#if __has_include(<rclc/detail/nros_declared_qos_generated.h>)
+#include <rclc/detail/nros_declared_qos_generated.h>
 #endif
 #endif
 
