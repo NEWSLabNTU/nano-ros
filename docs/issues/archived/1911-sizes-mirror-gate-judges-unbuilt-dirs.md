@@ -75,7 +75,9 @@ not when the command last ran.
 
 **Note.** A build dir built before this change has no marker, so a differing
 pair there reads as pending until its next build, not as drift. Its next
-build writes the marker.
+build writes the marker. ([Issue 1901](1901-metadata-probe-sizes-mirror-stale.md)
+later judged such a dir by its own archive, and made `--fix` refuse
+pending pairs.)
 
 **Acceptance.** A scheduled `run-matrix` run after this merges gets past
 `check fast` at the head of `just build` in both tiers.
