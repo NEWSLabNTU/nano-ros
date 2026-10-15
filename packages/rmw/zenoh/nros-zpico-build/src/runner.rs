@@ -2696,6 +2696,38 @@ fn zenoh_pico_dir(manifest_dir: &Path) -> PathBuf {
         .unwrap_or_else(|_| manifest_dir.join("zenoh-pico"))
 }
 
+/// `zpico-sys/c/zpico/nros_zp_condvar_slice.h` — the one spelling of the
+/// FreeRTOS condvar wait slice (phase-502 W2).
+///
+/// issue 1923 — the header is OUR source, so it is joined onto
+/// `CARGO_MANIFEST_DIR` of `zpico-sys` (`interp.nros`), the same base
+/// `zenoh-sources.txt` and `platform_aliases.c` are read from. It used to be
+/// `zenoh_pico_src.parent()`, which assumes zenoh-pico is the submodule
+/// INSIDE `zpico-sys`; `zenoh_pico_dir` answers the SDK store
+/// (`~/.nros/sources/zenoh-pico/<pin>`) ahead of an unedited submodule, so
+/// every FreeRTOS build on a host whose store holds the pin panicked reading
+/// `<store>/c/zpico/...`. Where zenoh-pico came from says nothing about where
+/// nano-ros's own C lives.
+fn condvar_slice_header(interp: &manifest::InterpContext<'_>) -> PathBuf {
+    interp.nros.join("c/zpico/nros_zp_condvar_slice.h")
+}
+
+/// The `NROS_ZP_CONDVAR_SLICE_MS` value in `slice_h`, without its `u` suffix.
+fn condvar_slice_ms(slice_h: &Path) -> String {
+    let text = std::fs::read_to_string(slice_h)
+        .unwrap_or_else(|e| panic!("read {}: {e}", slice_h.display()));
+    text.lines()
+        .find_map(|l| l.trim().strip_prefix("#define NROS_ZP_CONDVAR_SLICE_MS"))
+        .map(|v| v.trim().trim_end_matches('u').to_string())
+        .filter(|v| !v.is_empty() && v.bytes().all(|b| b.is_ascii_digit()))
+        .unwrap_or_else(|| {
+            panic!(
+                "{}: no `#define NROS_ZP_CONDVAR_SLICE_MS <ms>u`",
+                slice_h.display()
+            )
+        })
+}
+
 /// Compare the committed `zpico.h` against a fresh cbindgen render and warn on
 /// drift.
 ///
@@ -3229,24 +3261,9 @@ fn build_zenoh_pico_unified(
         // `zpico-sys/c/zpico/nros_zp_condvar_slice.h`, which the alias shim and
         // Zephyr's system file include. The fork cannot include our header, so
         // its `Z_NROS_CONDVAR_WAIT_SLICE_MS` is handed the value read from it.
-        let slice_h = zenoh_pico_src
-            .parent()
-            .expect("zenoh-pico sits inside zpico-sys")
-            .join("c/zpico/nros_zp_condvar_slice.h");
+        let slice_h = condvar_slice_header(interp);
         println!("cargo:rerun-if-changed={}", slice_h.display());
-        let text = std::fs::read_to_string(&slice_h)
-            .unwrap_or_else(|e| panic!("read {}: {e}", slice_h.display()));
-        let ms = text
-            .lines()
-            .find_map(|l| l.trim().strip_prefix("#define NROS_ZP_CONDVAR_SLICE_MS"))
-            .map(|v| v.trim().trim_end_matches('u').to_string())
-            .filter(|v| !v.is_empty() && v.bytes().all(|b| b.is_ascii_digit()))
-            .unwrap_or_else(|| {
-                panic!(
-                    "{}: no `#define NROS_ZP_CONDVAR_SLICE_MS <ms>u`",
-                    slice_h.display()
-                )
-            });
+        let ms = condvar_slice_ms(&slice_h);
         build.define(
             "Z_NROS_CONDVAR_WAIT_SLICE_MS",
             Some(format!("{ms}u").as_str()),
@@ -3549,5 +3566,75 @@ mod graph_cache_capability_tests {
     #[test]
     fn an_absurd_count_saturates_instead_of_wrapping() {
         assert_eq!(graph_cache_bytes_for(usize::MAX), usize::MAX);
+    }
+}
+
+#[cfg(test)]
+mod condvar_slice_header_tests {
+    use super::{condvar_slice_header, condvar_slice_ms, manifest};
+    use std::path::{Path, PathBuf};
+
+    /// `zpico-sys`'s manifest dir, which is what `interp.nros` is at build time.
+    fn zpico_sys() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../zpico-sys")
+            .canonicalize()
+            .expect("zpico-sys sits beside nros-zpico-build")
+    }
+
+    /// The shape issue 1923 broke on: zenoh-pico resolved from the SDK store,
+    /// OUTSIDE `zpico-sys`. The store dir is a scratch path that holds no
+    /// `c/zpico`, exactly like `~/.nros/sources/zenoh-pico` — so any
+    /// derivation from the zenoh-pico location finds nothing.
+    #[test]
+    fn the_slice_header_is_found_when_zenoh_pico_comes_from_the_store() {
+        let nros = zpico_sys();
+        let store = std::env::temp_dir().join(format!(
+            "nros-condvar-slice-store-{}/zenoh-pico",
+            std::process::id()
+        ));
+        let src = store.join("src");
+        let out = store.join("out");
+        let interp = manifest::InterpContext {
+            nros: &nros,
+            out: &out,
+            src: &src,
+        };
+        let h = condvar_slice_header(&interp);
+        assert!(
+            h.is_file(),
+            "the slice header must resolve under zpico-sys whatever zenoh-pico's \
+             location; got {}",
+            h.display()
+        );
+        assert!(
+            h.starts_with(&nros),
+            "{} not under {}",
+            h.display(),
+            nros.display()
+        );
+        let ms = condvar_slice_ms(&h);
+        assert!(ms.parse::<u32>().unwrap() > 0, "slice {ms}");
+    }
+
+    /// The in-tree submodule shape answers the SAME file — the fix moved the
+    /// base, it did not trade one layout for the other.
+    #[test]
+    fn the_submodule_shape_answers_the_same_header() {
+        let nros = zpico_sys();
+        let src = nros.join("zenoh-pico/src");
+        let store_src = std::env::temp_dir().join("nros-condvar-slice-elsewhere/src");
+        let out = std::env::temp_dir();
+        let a = condvar_slice_header(&manifest::InterpContext {
+            nros: &nros,
+            out: &out,
+            src: &src,
+        });
+        let b = condvar_slice_header(&manifest::InterpContext {
+            nros: &nros,
+            out: &out,
+            src: &store_src,
+        });
+        assert_eq!(a, b);
     }
 }
