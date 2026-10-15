@@ -1523,7 +1523,7 @@ fn concurrent_opens_never_share_a_session_slot() {
             .map(|w| w.join().expect("an opening thread panicked"))
             .filter(|&h| h)
             .count();
-        let max = nros_rmw_zenoh::zpico::ZPICO_MAX_SESSIONS as usize;
+        let max = nros_rmw_zenoh::zpico::ZPICO_MAX_SESSIONS;
         assert!(held >= 1, "round {round}: no open succeeded");
         assert!(
             held <= max,

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Clippy every feature of the API and core crates, one at a time.
+"""Clippy every feature of the host-buildable crates, one at a time.
 
 Every merge-gating lint runs a FEW feature sets: `--workspace` (features
 unified across members, which hides a crate that compiles only because a
@@ -9,7 +9,8 @@ names is linted nowhere. The first sweep of nros-node alone (PR #2215) found
 five such combinations red, one of which did not COMPILE: under `rmw-lending`
 without `rmw-cffi`, the test target's mock implemented neither lending trait.
 
-So this asks, for each crate below, `cargo clippy --lib --tests -D warnings`
+So this asks, for each crate below (the API and core crates, the RMW
+backends, the platform layer and the host board), `cargo clippy --lib --tests -D warnings`
 over its BASE set plus each other feature alone (`cargo hack --each-feature`'s
 shape, without the dependency). A feature in a one-of GROUP (`platform-*`,
 `ros-*`, ...) REPLACES the base's member of that group instead of joining it,
@@ -62,6 +63,17 @@ ONE_OF_PREFIXES = (
 # Their compile is covered by the embedded clippy and the fixture builds.
 _CROSS = "needs a cross toolchain or SDK; covered by the embedded clippy and fixture builds"
 _RMW_C = "builds a C RMW backend from SDK sources; covered by `check c` and the RMW lanes"
+# A default feature every run already has. Swept on its own it would also
+# match the `platform-` one-of prefix and REPLACE the base's platform, which
+# it is not: it compiles zenoh-pico's `z_*` clock alias TU (issue 0270).
+_DEFAULT_ON = "a default feature, so every run of this crate already has it"
+_ZPICO_PLATFORMS = (
+    "platform-bare-metal",
+    "platform-freertos",
+    "platform-nuttx",
+    "platform-threadx",
+    "platform-zephyr",
+)
 
 CRATES = {
     "nros-node": {
@@ -128,6 +140,85 @@ CRATES = {
             "platform-zephyr": _CROSS,
         },
     },
+    # -- RMW backends ---------------------------------------------------------
+    "nros-rmw-cffi": {"base": "", "axes": [""], "expected": {}, "skip": {}},
+    "nros-bridge": {
+        # `alloc` is what every consumer reaches it with (nros forwards
+        # `nros-bridge?/alloc`); the `std` axis is the hosted shape.
+        "base": "alloc",
+        "axes": ["", "std"],
+        "expected": {
+            ("config", ""): "`config` parses TOML via serde: add \"std\"",
+        },
+        "skip": {},
+    },
+    "nros-rmw-zenoh": {
+        "base": "std,alloc,platform-posix",
+        "axes": [""],
+        "expected": {},
+        "skip": {
+            **{p: _CROSS for p in _ZPICO_PLATFORMS},
+            "platform-aliases": _DEFAULT_ON,
+        },
+    },
+    "zpico-sys": {
+        "base": "posix,std",
+        "axes": [""],
+        "expected": {},
+        "skip": {
+            # zpico-sys names its platforms without a prefix; each one is a
+            # cross target, so none is swept and no one-of group is needed.
+            "bare-metal": _CROSS,
+            "freertos": _CROSS,
+            "nuttx": _CROSS,
+            "threadx": _CROSS,
+            "zephyr": _CROSS,
+            "platform-aliases": _DEFAULT_ON,
+            "system-zenohpico": "links a system-installed zenoh-pico this host does not "
+            "provide; the vendored build is what every lane ships",
+        },
+    },
+    "nros-rmw-cyclonedds": {"base": "", "axes": [""], "expected": {}, "skip": {}},
+    "nros-rmw-cyclonedds-sys": {
+        "base": "platform-posix",
+        "axes": [""],
+        "expected": {},
+        "skip": {},
+    },
+    # -- platform layer ------------------------------------------------------
+    "nros-platform": {
+        "base": "std,alloc,platform-posix",
+        "axes": [""],
+        "expected": {},
+        "skip": {
+            p: _CROSS
+            for p in (
+                "platform-esp32-qemu",
+                "platform-freertos",
+                "platform-mps2-an385",
+                "platform-nuttx",
+                "platform-stm32f4",
+                "platform-threadx",
+                "platform-zephyr",
+            )
+        },
+    },
+    "nros-platform-api": {"base": "", "axes": [""], "expected": {}, "skip": {}},
+    "nros-platform-cffi": {"base": "", "axes": [""], "expected": {}, "skip": {}},
+    "nros-baremetal-common": {"base": "", "axes": [""], "expected": {}, "skip": {}},
+    # -- boards and drivers --------------------------------------------------
+    "nros-board-linux": {"base": "", "axes": [""], "expected": {}, "skip": {}},
+    "nros-board-common": {"base": "", "axes": [""], "expected": {}, "skip": {}},
+    "lan9118-smoltcp": {"base": "", "axes": [""], "expected": {}, "skip": {}},
+    "nvidia-ivc": {
+        "base": "",
+        "axes": ["", "std"],
+        "expected": {("unix-mock", ""): "`unix-mock` uses OS sockets: add \"std\""},
+        "skip": {"fsp": "needs the NVIDIA SPE FSP tree (`NV_SPE_FSP_DIR`); covered by `check ivc-fsp`"},
+    },
+    # -- testing support -----------------------------------------------------
+    "zpico-alloc": {"base": "", "axes": [""], "expected": {}, "skip": {}},
+    "nros-condvar-contract": {"base": "", "axes": [""], "expected": {}, "skip": {}},
 }
 
 

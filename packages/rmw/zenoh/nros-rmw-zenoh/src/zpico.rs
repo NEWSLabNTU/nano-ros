@@ -21,10 +21,12 @@ use core::{ffi::c_void, marker::PhantomData};
 pub(crate) fn ffi_guard<R>(f: impl FnOnce() -> R) -> R {
     #[cfg(feature = "ffi-sync")]
     {
-        return critical_section::with(|_cs| f());
+        critical_section::with(|_cs| f())
     }
     #[cfg(not(feature = "ffi-sync"))]
-    f()
+    {
+        f()
+    }
 }
 
 // Re-export FFI types and constants from sys crate
