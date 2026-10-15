@@ -1,7 +1,8 @@
 ---
 id: 1903
 title: "`just test linux` claims `cyclone_slirp_pair`, but no fixture lane builds its guest (`nros_rmw_cyclonedds_ros2_pub`), so the test fails as a broken fixture promise"
-status: open
+status: resolved
+resolved: 2026-10-15
 type: bug
 area: [testing, ci]
 severity: low
@@ -93,3 +94,50 @@ that some lane's build produces. A static check can harvest the literal paths
 and remedies and refuse any remedy that is not a fixture-build verb. Stronger:
 fold these paths into `lane_build_covers_run`, which today checks only manifest
 rows and so cannot see an unattributable artifact.
+
+## Resolution (2026-10-15)
+
+Both halves of the fix direction, plus the class gate.
+
+1. **The guest has a row.** `cyclone_slirp_guest` is a
+   `[[compile_check_fixture]]` with builder `fixture-script`
+   (`packages/testing/nros-tests/fixtures/cyclone-slirp-guest/build.sh`). It
+   configures the backend in the row's own CMake tree with the flags
+   `just cyclonedds build-rmw` passes, builds only
+   `nros_rmw_cyclonedds_ros2_pub`, copies it into the row dir, and writes
+   ninja's recorded compile inputs as dep-info, so `.inputsig` covers the
+   backend and Cyclone sources it read (25,552 recorded inputs). Every lane
+   builds it through `build-compile-check-fixtures`. The cold build took about
+   22 s on this host, and later runs reuse it. The test resolves it with
+   `require_compile_check_bin`, and it checks the `linux` coordinate first, as
+   `borrowed_e2e` does (issue 1685's ordering).
+2. **The gated message names the site's remedy.** `Build it:` prints the
+   `remedy` the call passed. The row-keyed resolvers already pass
+   `just build-test-fixtures`, so their message is unchanged. The unit test
+   `gated_absence_names_the_sites_remedy` pins this.
+3. **Gate: `just check prebuilt-artifact-producers`** (fast lane). It harvests
+   every `require_prebuilt_artifact` call. It follows helpers that forward
+   their `remedy` parameter (`ros_env::require_edition_example`). It maps each
+   site to the test binaries that reach it, and exempts only binaries that
+   `test-all` declares out of scope (`not binary(..)`: the ros_editions docker
+   harness and the FVP). Every other site's remedy must be a recipe in the
+   closure of `build-test-fixtures`, read from `just --dump`. The row half
+   requires every id passed to `require_compile_check{,_bin}` or
+   `require_compile_verdict` to be a row that `compile-check-fixtures.sh`
+   builds.
+
+Sweep result: 8 sites after the fix. 2 are lane-built
+(`freertos::build-examples`, `freertos::build-fixture-extras`; both are
+lane-scoped). 6 are opt-in (2 FVP, 4 ros_editions). `cyclone_slirp_pair` was
+the only violation. That answers the "other call sites" question under
+"Not measured" above.
+
+Measured after the fix: `just build-test-fixtures lane=linux` rc=0. With the
+row dir deleted, `just build-compile-check-fixtures` (the line the lane runs)
+rebuilt the binary. The test passed SOLO under the scope `just test linux`
+exports (`NROS_FIXTURE_LANE=linux`, 10-row `NROS_TEST_COORDS`), in 36.6 s.
+
+Still open: issue 1800 (no scheduled lane runs this test). The gate checks
+that a producer exists in SOME lane. Per-lane scoping of the two lane-built
+FreeRTOS sites is checked by attribution at run time (a manifest row, or
+`require_platform_in_lane`), not statically.
