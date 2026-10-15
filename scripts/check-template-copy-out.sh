@@ -105,6 +105,8 @@ cd "$repo_root" || exit 2
 . "$repo_root/scripts/build/check-skip.sh"
 # shellcheck source=scripts/build/cmake-cache-guard.sh
 . "$repo_root/scripts/build/cmake-cache-guard.sh"
+# shellcheck source=scripts/build/copy-out-cmake.sh
+. "$repo_root/scripts/build/copy-out-cmake.sh"
 
 templates_dir="examples/templates"
 gate="template-copy-out"
@@ -294,7 +296,10 @@ build_cross() {
         local -a gen=()
         command -v ninja >/dev/null 2>&1 && gen=(-G Ninja)
         rc=0
-        cmake "${gen[@]}" -S "$proj" -B "$proj/build" -DCMAKE_TOOLCHAIN_FILE="$tc" >> "$log" 2>&1 || rc=$?
+        # Issue 1925: the copy sits outside the checkout, so nothing but an
+        # explicit root reaches `find_package(nano_ros)` — and an inherited one
+        # names whichever checkout spawned this shell. The helper names THIS one.
+        nros_copy_out_cmake_configure "${gen[@]}" -S "$proj" -B "$proj/build" -DCMAKE_TOOLCHAIN_FILE="$tc" >> "$log" 2>&1 || rc=$?
         [ "$rc" -eq 0 ] || return 1
         cmake --build "$proj/build" >> "$log" 2>&1 || return 1
         return 0

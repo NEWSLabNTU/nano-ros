@@ -147,6 +147,19 @@ template-copy-out:
     @bash scripts/check-template-copy-out.sh --self-test
     @bash scripts/check-template-copy-out.sh
 
+# Issue 1925 — the two gates above copy a project OUT of the checkout, where
+# `find_package(nano_ros)` has no walk-up and a bare `cmake` takes its root from
+# the caller's environment: none in a clean shell (configure fails), the PARENT
+# checkout in a linked worktree (the gate measures the wrong tree, 1280's
+# class). `just` hid it by exporting this checkout's root to every recipe. Every
+# gate-script configure goes through `nros_copy_out_cmake_configure`, which
+# names THIS checkout; this runs the helper against a stub `cmake` under a
+# foreign inherited root, and refuses a bare configure in a gate script.
+# FAST lane: no build, no SDK — a stub and a grep.
+[private]
+copy-out-cmake-root:
+    @bash scripts/check-copy-out-cmake-root.sh
+
 # Issue 1025 -- a packer must not invent the row's cargo args or env. The shared
 # cargo group key is a function of (platform, args, env); a consumer supplying
 # two of the three gets a directory the build never wrote to, and only once that
