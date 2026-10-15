@@ -17,9 +17,9 @@
  * stub action type and must keep compiling.
  */
 
-#include <nros/nros.hpp>
+#include <rclcpp/rclcpp.hpp>
 
-#include <nros/action_client.hpp>
+#include <rclcpp_action/client.hpp>
 
 namespace {
 

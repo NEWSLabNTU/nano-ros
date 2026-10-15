@@ -12,7 +12,7 @@
 #include <rclc/detail/boot_config.h>  /* nros_baked_boot_config + the nros_boot_config_* readers */
 #include <rclc/detail/main.h>         /* the board's C-ABI run_components / run_tiers */
 #include <rclc/detail/app_main.h>    /* NROS_APP_MAIN_REGISTER_VOID (app boot shape) */
-#include <nros/nros_cpp_ffi.h> /* nros_cpp_node_t + nros_cpp_node_create + ret codes */
+#include <rclcpp/detail/nros_cpp_ffi.h> /* nros_cpp_node_t + nros_cpp_node_create + ret codes */
 
 /* C component factory + configure seam (RCLC_C_COMPONENT). The node's
  * `nros_cpp_node_t*` + executor handle are handed to `configure`, which

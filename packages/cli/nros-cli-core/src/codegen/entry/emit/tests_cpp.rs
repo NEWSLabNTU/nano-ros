@@ -189,7 +189,7 @@ fn typed_emit_includes_headers_constructs_and_runs_components() {
     assert!(src.contains("#include <rclc/detail/boot_config.h>"));
     assert!(src.contains("#include \"talker_pkg/Talker.hpp\""));
     assert!(src.contains("#include \"listener_pkg/Listener.hpp\""));
-    assert!(src.contains("#include <nros/component.hpp>"));
+    assert!(src.contains("#include <rclcpp/detail/component.hpp>"));
     // static component + node storage
     assert!(src.contains("static ::rclcpp::Node __nros_node_0;"));
     assert!(src.contains("static ::talker_pkg::Talker __nros_comp_0;"));
@@ -441,7 +441,7 @@ fn typed_emit_rclcpp_shape_constructs_with_handle() {
     // compile. Both directions are pinned here.
     assert!(src.contains("#include <new> // placement-new into the component arena slot"));
     assert!(src.contains("#include <rclcpp/rclcpp.hpp>"));
-    assert!(!src.contains("<nros/nros.hpp>"));
+    assert!(!src.contains("#include <nros/"));
     assert!(
         !src.contains("component_node.hpp"),
         "the rclcpp entry must not include the DELETED component_node.hpp"

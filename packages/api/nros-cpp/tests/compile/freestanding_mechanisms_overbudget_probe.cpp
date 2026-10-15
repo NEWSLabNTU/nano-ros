@@ -11,7 +11,7 @@
 // is a comment; a probe whose failure text is not checked passes on the wrong
 // error.
 
-#include "nros/inplace_fn.hpp"
+#include "rclcpp/inplace_fn.hpp"
 
 struct Msg {
     int data;

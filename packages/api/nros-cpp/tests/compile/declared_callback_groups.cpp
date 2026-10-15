@@ -25,7 +25,7 @@
 #include <cstdlib>
 #include <cstring>
 
-#include <nros/nros.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 #include "nros_log_stderr_sink.hpp"
 

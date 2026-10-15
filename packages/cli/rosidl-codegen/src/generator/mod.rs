@@ -719,7 +719,7 @@ mod tests {
 
         // Header: span include, view struct, view field types, wrapper + extern.
         assert!(
-            h.contains("#include \"nros/span.hpp\""),
+            h.contains("#include \"rclcpp/span.hpp\""),
             "span include missing:\n{h}"
         );
         assert!(
@@ -822,7 +822,7 @@ mod tests {
             pkg.header
         );
         assert!(
-            !pkg.header.contains("nros/span.hpp"),
+            !pkg.header.contains("rclcpp/span.hpp"),
             "unexpected span include"
         );
         assert!(

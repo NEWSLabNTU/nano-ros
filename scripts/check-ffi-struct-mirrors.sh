@@ -75,8 +75,8 @@ def decls(body):
 # `qos.hpp`'s `#ifndef NROS_CPP_FFI_H` block, which keeps that header
 # self-contained. Its struct had never been compared — only its enums (family
 # 1b) — so moving the harvest here closes that gap rather than dropping one.
-MIRROR = "packages/api/nros-cpp/include/nros/qos.hpp"
-CANONICAL = "packages/api/nros-cpp/include/nros/nros_cpp_ffi.h"
+MIRROR = "packages/api/nros-cpp/include/rclcpp/qos.hpp"
+CANONICAL = "packages/api/nros-cpp/include/rclcpp/detail/nros_cpp_ffi.h"
 
 # (struct tag, {mirror-prefix: canonical-prefix} applied to the mirror's text)
 # phase-472 W7 — the mirrored structs are HARVESTED: every `struct nros_cpp_*`
@@ -172,7 +172,7 @@ QOS_ENUM_TAGS = [
 
 QOS_ENUM_MIRRORS = [
     # (path, tag spelling in that file, enumerator prefix map)
-    ("packages/api/nros-cpp/include/nros/qos.hpp", lambda tag: tag, {}),
+    ("packages/api/nros-cpp/include/rclcpp/qos.hpp", lambda tag: tag, {}),
 ]
 
 
@@ -236,7 +236,7 @@ TIER_C_MIRRORS = [
 # where C has `const char* const*`, and Rust spells everything differently. Name
 # order is what the initialisers key on and what an insertion breaks.
 TIER_NAME_ONLY = [
-    ("packages/api/nros-cpp/include/nros/main.hpp", "cpp", "NativeTierSpec"),
+    ("packages/api/nros-cpp/include/rclcpp/detail/main.hpp", "cpp", "NativeTierSpec"),
     ("packages/api/nros-cpp/src/lib.rs", "rust", "NativeTierSpecC"),
 ]
 

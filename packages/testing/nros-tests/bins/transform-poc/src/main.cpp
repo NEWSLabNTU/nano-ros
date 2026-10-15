@@ -14,7 +14,7 @@
 #include <cstdlib>
 #include <cstring>
 
-#include <nros/main.hpp>
+#include <rclcpp/detail/main.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include "std_msgs.hpp"

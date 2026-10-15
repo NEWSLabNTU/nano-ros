@@ -136,7 +136,7 @@ pub const TX_BUF: usize = 4          // CDR encapsulation header
 /// `rcl_qos_profile_rosout_default` — KEEP_LAST(1000), RELIABLE,
 /// TRANSIENT_LOCAL, 10 s lifespan. **Upstream's, exactly**, and the same four
 /// policies `rclcpp::RosoutQoS` transcribes on our C++ surface
-/// (`packages/api/nros-cpp/include/nros/qos.hpp`, ledger row `cpp:RosoutQoS`).
+/// (`packages/api/nros-cpp/include/rclcpp/qos.hpp`, ledger row `cpp:RosoutQoS`).
 ///
 /// # What it costs here, measured
 ///

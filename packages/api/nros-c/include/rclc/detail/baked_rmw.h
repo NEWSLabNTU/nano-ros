@@ -9,7 +9,7 @@
  * `nano_ros_entry()` bakes `NROS_ENTRY_RMW="<name>"` onto every entry target,
  * whatever its language — it is on the C compile line exactly as it is on the
  * C++ one. Until issue 1531 it had only C++ consumers
- * (`nros-cpp/include/nros/executor.hpp`, `node.hpp`), so a C image held its own
+ * (`nros-cpp/include/rclcpp/executor.hpp`, `node.hpp`), so a C image held its own
  * answer in its own preprocessor and never passed it: every C main called a
  * support init whose `rmw` is `NULL`.
  *

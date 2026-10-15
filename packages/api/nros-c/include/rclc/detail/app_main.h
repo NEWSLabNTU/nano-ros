@@ -70,7 +70,7 @@ void nros_app_main_returned(int exit_code);
  * QEMU slirp), so the `#ifndef` defaults below never fire there.
  *
  * phase-432 (W3.1 prerequisite) — this used to define both macros HERE, as
- * `""` and `0`, with no derivation, while `<nros/main.hpp>` derived them from
+ * `""` and `0`, with no derivation, while `<rclcpp/detail/main.hpp>` derived them from
  * Kconfig. Same two names, two answers: a TU that saw only this header dialled
  * nothing on a board whose locator comes from `CONFIG_NROS_ZENOH_LOCATOR`.
  * That is free today only because an embedded C entry is routed to the C++

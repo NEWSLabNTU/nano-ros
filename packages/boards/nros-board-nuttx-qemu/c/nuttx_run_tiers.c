@@ -784,7 +784,7 @@ int32_t nros_board_nuttx_run_tiers_in(const char* locator, uint8_t domain_id,
     /* --- Choose the boot tier: the LEAST urgent one (issue 0636) --- */
     /*
      * This used to be `&tiers[0]`, which the emitter documents as the MOST
-     * urgent tier ("sorted highest-priority-first", nros/main.hpp). The boot
+     * urgent tier ("sorted highest-priority-first", rclcpp/detail/main.hpp). The boot
      * thread owns the session and spins forever, so making it outrank every
      * tier it spawned starves them: under SCHED_FIFO on a uniprocessor guest a
      * lower-priority peer runs only when the holder BLOCKS, and a spin loop

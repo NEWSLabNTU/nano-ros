@@ -88,7 +88,7 @@ EXEMPT = {
     # deleted it, which is the rule earning its place on its first run.)
     ("packages/api/nros-c/include/rclc/detail/serialization_format.h", "uorb"):
         "serialization-format axis (RFC-0088), not the RMW axis",
-    ("packages/api/nros-cpp/include/nros/serialization_format.hpp", "uorb"):
+    ("packages/api/nros-cpp/include/rclcpp/detail/serialization_format.hpp", "uorb"):
         "serialization-format axis (RFC-0088), not the RMW axis",
 }
 
@@ -125,7 +125,7 @@ BASELINE: dict[str, tuple[int, str, str]] = {
         (1, "1297", "`cfg(any(feature = \"rmw-zenoh\", feature = \"rmw-xrce\"))`"),
     "packages/api/nros-cpp/src/lib.rs":
         (4, "1297", "the same cfg(any(...)) four times"),
-    "packages/api/nros-cpp/include/nros/node.hpp":
+    "packages/api/nros-cpp/include/rclcpp/node.hpp":
         (8, "1297", "`#ifdef NROS_RMW_<X>` + `extern \"C\" nros_rmw_<x>_register()`, all four"),
     "packages/api/nros/Cargo.toml":
         (1, "1297", "`rmw-cyclonedds` naming a capability forward"),

@@ -22,8 +22,8 @@
 // constructor removed -> 2 failures (the table and its length, both observed
 // from the constructor body as null / 0).
 
-#include "nros/executor.hpp"
-#include "nros/node.hpp"
+#include "rclcpp/executor.hpp"
+#include "rclcpp/node.hpp"
 
 extern "C" {
 #include "stub_rmw_backend.h"

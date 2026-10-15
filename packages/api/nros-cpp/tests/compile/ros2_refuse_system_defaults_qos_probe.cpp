@@ -16,7 +16,7 @@
  * against upstream in the POSITIVE probe — compile that one first.
  */
 
-#include <nros/nros.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 int ros2_refuse_system_defaults_qos_probe();
 int ros2_refuse_system_defaults_qos_probe() {

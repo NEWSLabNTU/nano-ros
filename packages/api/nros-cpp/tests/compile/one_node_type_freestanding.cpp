@@ -18,7 +18,7 @@
 // Its sibling `ported_create_publisher_freestanding_probe.cpp` is the NEGATIVE
 // half: the ported `create_publisher<M>("chatter", 10)` must FAIL here.
 
-#include <nros/nros.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 #include <cstddef>
 #include <cstdint>

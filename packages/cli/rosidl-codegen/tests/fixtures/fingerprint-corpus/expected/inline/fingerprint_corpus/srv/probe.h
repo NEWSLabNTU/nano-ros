@@ -18,8 +18,8 @@
 
 #include <rclc/detail/nros_config_generated.h>
 
-/* RFC-0090 — emitted by nano-ros codegen version 17. */
-#define NROS_EMITTED_CODEGEN_VERSION 17
+/* RFC-0090 — emitted by nano-ros codegen version 18. */
+#define NROS_EMITTED_CODEGEN_VERSION 18
 
 #ifndef NROS_CODEGEN_VERSION
 #error "nros: the generated config header did not define NROS_CODEGEN_VERSION. This generated artifact cannot tell whether the runtime accepts it; rebuild the nano-ros runtime so its config header is regenerated."

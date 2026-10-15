@@ -8,7 +8,7 @@
 //
 // Syntax-only fixture, compiled by `tests/cpp_api_drift.rs`.
 
-#include <nros/nros.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 #include <memory>
 

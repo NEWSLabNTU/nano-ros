@@ -3,7 +3,7 @@
  *
  * `nros_board_network_wait()` is the network-readiness hook the three RTOS
  * `run_tiers.c` files call `extern`. Its weak default used to live in
- * `<nros/main.hpp>`, a C++ header, so it reached an image only through the
+ * `<rclcpp/detail/main.hpp>`, a C++ header, so it reached an image only through the
  * generated `.cpp` entry. A pure C entry COMPILED and then failed at LINK
  * with `undefined reference to nros_board_network_wait` — which is why this
  * probe LINKS rather than only compiling. `-fsyntax-only` is green either way,

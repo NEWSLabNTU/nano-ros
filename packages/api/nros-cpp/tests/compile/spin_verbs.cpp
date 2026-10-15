@@ -10,7 +10,7 @@
 // Running a forever-spin in a unit test would need a second thread to shut the
 // executor down and would prove less.
 
-#include "nros/executor.hpp"
+#include "rclcpp/executor.hpp"
 #include <type_traits>
 
 namespace {

@@ -814,7 +814,7 @@ pub struct MessageCppHeaderTemplate<'a> {
     pub has_fields: bool,
     pub serialized_size_max: usize,
     /// RFC-0033 borrowed (Phase 235): emit `{Msg}View` + `deserialize_view`
-    /// + `<nros/span.hpp>` when any field is `mode = "view"`.
+    /// + `<rclcpp/span.hpp>` when any field is `mode = "view"`.
     pub has_view: bool,
     /// FFI symbol for the borrowed deserializer (`{Msg}_ffi_deserialize_view`).
     pub ffi_deserialize_view_fn: String,

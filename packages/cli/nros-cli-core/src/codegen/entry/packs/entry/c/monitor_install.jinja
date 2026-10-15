@@ -6,7 +6,7 @@
   table (its rows and its symbol tag), `mexec` the executor expression the
   caller hands in — the setup's own `executor` parameter on both C bodies,
   which each setup has already NULL-checked. The install is C ABI
-  (`nros/nros_cpp_ffi.h`), so the C pack calls it exactly as the C++ one does;
+  (`rclcpp/detail/nros_cpp_ffi.h`), so the C pack calls it exactly as the C++ one does;
   only the spellings differ (`NULL`, C casts, C99 designated initialisers).
 
   Whitespace: this comment closes WITHOUT the dash so the newline after it

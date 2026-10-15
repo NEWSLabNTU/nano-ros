@@ -34,7 +34,7 @@ fn split_secs_f64(secs: f64) -> (i32, u32) {
 /// **This is the Rust substitute for a C++ template parameter.** `nros-cpp`
 /// spells the same conversion as
 /// `template <typename TimeMsgT> void Time::to_msg(TimeMsgT&)`
-/// (`packages/api/nros-cpp/include/nros/time.hpp`), which binds structurally to
+/// (`packages/api/nros-cpp/include/rclcpp/time.hpp`), which binds structurally to
 /// anything carrying `sec` / `nanosec`. Rust has no structural bound, so the same
 /// trick needs an AUTHORED trait that `rosidl-codegen` implements for every
 /// generated message with that exact field set — the same binding set the C++

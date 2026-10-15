@@ -241,7 +241,7 @@ def compile_flags():
 
 def probe_source(subjects):
     """One TU declaring an incomplete template per subject and a variable of it."""
-    lines = ['#include <nros/nros.hpp>']
+    lines = ['#include <rclcpp/rclcpp.hpp>']
     for i in range(len(subjects)):
         lines.append(f"template <int N> struct nros_size_{i};")
     for i, ty in enumerate(subjects):
@@ -649,7 +649,7 @@ def selftest():
                 f"    it would be measuring the copy. First problem: {before[0]}"
             )
         else:
-            node = os.path.join(mut, "nros", "node.hpp")
+            node = os.path.join(mut, "rclcpp", "node.hpp")
             with open(node, encoding="utf8") as fh:
                 text = fh.read()
             if ANCHOR not in text:

@@ -82,7 +82,7 @@ pub use crate::opaque_sizes::{
 // `rclc/detail/serialization_format.h` derives `NROS_SERIALIZATION_FORMAT` from the
 // discriminant instead of carrying a second authored spelling. Those macros are
 // what the per-message `_Static_assert` codegen emits compares against, and what
-// `nros/serialization_format.hpp` lifts into `rclcpp::SerializationFormat`.
+// `rclcpp/detail/serialization_format.hpp` lifts into `rclcpp::SerializationFormat`.
 //
 // **Only meaningful in a single-backend image.** A bridge image links two
 // backends and has no single answer; it asks each session instead

@@ -213,7 +213,7 @@ STORAGE_ROLES = [
     (
         "executor storage",
         r"(?:[A-Za-z_][A-Za-z0-9_]*::)*Node::GlobalStorageHolder<\d+>::storage",
-        "packages/api/nros-cpp/include/nros/node.hpp",
+        "packages/api/nros-cpp/include/rclcpp/node.hpp",
         "Node::GlobalStorageHolder<N>::storage[NROS_CPP_EXECUTOR_STORAGE_SIZE]",
     ),
     (

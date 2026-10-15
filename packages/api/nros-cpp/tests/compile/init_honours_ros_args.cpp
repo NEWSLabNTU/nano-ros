@@ -27,7 +27,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-#include <nros/nros.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 // The refusal is said through `nros_log` (issue 1303); this defines the two entry
 // points that reaches, for the same reason the FFI stubs below exist.

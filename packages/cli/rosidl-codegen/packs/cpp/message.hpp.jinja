@@ -9,14 +9,14 @@
 #include <cstdint>
 #include <cstddef>
 
-#include "nros/fixed_string.hpp"
-#include "nros/fixed_sequence.hpp"
-#include "nros/heap_sequence.hpp"
-#include "nros/heap_string.hpp"
-#include "nros/size_bound.hpp"
-#include "nros/serialization_format.hpp"
+#include "rclcpp/fixed_string.hpp"
+#include "rclcpp/fixed_sequence.hpp"
+#include "rclcpp/heap_sequence.hpp"
+#include "rclcpp/heap_string.hpp"
+#include "rclcpp/size_bound.hpp"
+#include "rclcpp/detail/serialization_format.hpp"
 {%- if has_view %}
-#include "nros/span.hpp"
+#include "rclcpp/span.hpp"
 {%- endif %}
 
 {%- for dep in dependencies %}

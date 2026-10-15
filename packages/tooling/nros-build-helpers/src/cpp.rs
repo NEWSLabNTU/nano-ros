@@ -589,7 +589,7 @@ typedef struct ActionServerRawHandle {{
     );
 }
 
-/// Generate `include/nros/nros_cpp_ffi.h` using cbindgen.
+/// Generate `include/rclcpp/detail/nros_cpp_ffi.h` using cbindgen.
 fn generate_header(manifest_dir: &std::path::Path) {
-    generate_cbindgen_header(manifest_dir, "cbindgen.toml", "include/nros/nros_cpp_ffi.h");
+    generate_cbindgen_header(manifest_dir, "cbindgen.toml", "include/rclcpp/detail/nros_cpp_ffi.h");
 }

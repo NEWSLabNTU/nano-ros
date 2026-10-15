@@ -88,7 +88,7 @@ mod cffi;
 ///
 /// When this crate is bundled as an rlib DEPENDENCY of a staticlib root (that is
 /// how `libnros_cpp.a` ships it), rustc drops every `#[no_mangle]` export the root
-/// never references — so `<nros/bridge.hpp>`'s `MultiExecutor` compiled but failed
+/// never references — so `<rclcpp/bridge.hpp>`'s `MultiExecutor` compiled but failed
 /// to link, and a PX4 module could not reach the bridge API at all. The root
 /// references THIS from a `#[used]` static, which keeps the objects (and with them
 /// the whole `rclc_init_multi` / `nros_pubsub_bridge_*` surface) in the archive.

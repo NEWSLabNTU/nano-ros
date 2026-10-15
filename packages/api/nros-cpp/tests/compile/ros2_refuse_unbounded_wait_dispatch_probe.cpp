@@ -19,9 +19,9 @@
  * `rclcpp_node_freestanding_surface.cpp`, which is compiled first.
  */
 
-#include <nros/nros.hpp>
+#include <rclcpp/rclcpp.hpp>
 
-#include <nros/client.hpp>
+#include <rclcpp/client.hpp>
 
 namespace {
 

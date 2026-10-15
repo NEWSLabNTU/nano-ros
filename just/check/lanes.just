@@ -411,7 +411,7 @@ c: c-fmt
     echo "  - entry seam links from C alone + the strong override wins (phase-432 W3.1)"
     # `nros_board_network_wait()` is the board hook the three RTOS
     # `run_tiers.c` call `extern`. Its weak default used to live in
-    # `<nros/main.hpp>`, so it reached an image only through the generated
+    # `<rclcpp/detail/main.hpp>`, so it reached an image only through the generated
     # `.cpp` entry: a pure C entry compiled and then failed at LINK. This is a
     # LINK probe because that is the only stage where the bug is visible —
     # `-fsyntax-only` is green either way, and so is `check-weak-symbols`,
@@ -814,7 +814,7 @@ c: c-fmt
         -I"$cppgen" \
         -Ipackages/api/nros-c/include \
         -Ipackages/api/nros-cpp/include \
-        -include packages/api/nros-cpp/include/nros/nros_cpp_ffi.h \
+        -include packages/api/nros-cpp/include/rclcpp/detail/nros_cpp_ffi.h \
         -include packages/api/nros-c/include/rclc/component.h \
         -x c /dev/null
     # Issue 1535's negative control (a short `NROS_C_PUBLISHER_STORAGE_SIZE`
@@ -1507,7 +1507,7 @@ cpp: cpp-fmt
     else
         echo "  - embedded cyclone coordinate (issue 0730): SKIP — aarch64-unknown-none not installed"
     fi
-    for hdr in packages/api/nros-cpp/include/nros/*.hpp; do
+    for hdr in $(git ls-files 'packages/api/nros-cpp/include/*.hpp'); do
         # issue #52 — `main.hpp` is the HOSTED entry runtime (LinuxBoard / NuttX):
         # its rtos_e2e readiness/sample banners call `::std::printf`, which
         # `-ffreestanding` is not required to expose from `<cstdio>` (only the global
@@ -1791,7 +1791,7 @@ cpp: cpp-fmt
     # RFC-0089 W3.b's refusal path calls `::std::abort()` (`nros.hpp:369`), the
     # ThreadX shim's `cstdlib` re-exported malloc/calloc/free/getenv/realloc and
     # NOT abort, and `examples/rv-virt-threadx/cpp/talker` includes
-    # `<nros/nros.hpp>` — so every ThreadX C++ image stopped compiling the
+    # `<rclcpp/rclcpp.hpp>` — so every ThreadX C++ image stopped compiling the
     # moment `rclcpp::init` entered the umbrella header, and no gate could see
     # it.
     #
@@ -1810,11 +1810,11 @@ cpp: cpp-fmt
     _nostd_tu="$(mktemp -d)/nostdincxx_probe.cpp"
     _threadx_shim=packages/boards/nros-board-threadx-qemu-riscv64/cxx-compat
     test -d "$_threadx_shim" || { echo "check-cpp: $_threadx_shim is MISSING — this lane would pass on absence" >&2; exit 1; }
-    for hdr in packages/api/nros-cpp/include/nros/*.hpp; do
+    for hdr in $(git ls-files 'packages/api/nros-cpp/include/*.hpp'); do
         # `main.hpp` is the HOSTED entry runtime, excluded for the same reason
         # it is excluded above.
         case "$hdr" in *main.hpp) continue ;; esac
-        printf '#include <nros/%s>\n' "$(basename "$hdr")" > "$_nostd_tu"
+        printf '#include <%s>\n' "${hdr#packages/api/nros-cpp/include/}" > "$_nostd_tu"
         c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti -ffreestanding \
             -nostdinc++ -isystem "$_threadx_shim" \
             -I"$cppgen" \
@@ -1863,9 +1863,9 @@ cpp: cpp-fmt
     _zephyr_min=zephyr-workspace/zephyr/lib/cpp/minimal/include
     if [ -d "$_zephyr_min" ]; then
         echo "  - -nostdinc++ header parse (Zephyr minimal libcpp + cxx-compat)"
-        for hdr in packages/api/nros-cpp/include/nros/*.hpp; do
+        for hdr in $(git ls-files 'packages/api/nros-cpp/include/*.hpp'); do
             case "$hdr" in *main.hpp) continue ;; esac
-            printf '#include <nros/%s>\n' "$(basename "$hdr")" > "$_nostd_tu"
+            printf '#include <%s>\n' "${hdr#packages/api/nros-cpp/include/}" > "$_nostd_tu"
             c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti -ffreestanding \
                 -nostdinc++ -isystem zephyr/cxx-compat -isystem "$_zephyr_min" \
                 -I"$cppgen" \

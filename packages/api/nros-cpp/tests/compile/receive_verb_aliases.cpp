@@ -15,7 +15,7 @@
 // against a message / service type matching the generated shape, so the method
 // BODIES are type-checked.
 
-#include <nros/nros.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 #include <type_traits>
 

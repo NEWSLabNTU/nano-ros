@@ -52,7 +52,7 @@
 //      — and section (4) below asserts both directions, with its own negative
 //      control reconstructing the pre-split shape.
 
-#include <nros/nros.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 #include <cstddef>
 #include <cstdint>

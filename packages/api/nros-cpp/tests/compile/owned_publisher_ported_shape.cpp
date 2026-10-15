@@ -26,9 +26,9 @@
 //
 // `just check cpp` compiles this with `-fsyntax-only -std=c++14`; the sweep
 // also runs it at `-std=c++17` and with `NROS_CPP_STD`.
-#include <nros/nros.hpp>
-#include <nros/owned.hpp>
-#include <nros/publisher.hpp>
+#include <rclcpp/rclcpp.hpp>
+#include <rclcpp/owned.hpp>
+#include <rclcpp/publisher.hpp>
 
 namespace nros_cpp_owned_publisher_ported_shape_compile_test {
 

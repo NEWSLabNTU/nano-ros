@@ -31,7 +31,7 @@
 // disposition change, and a disposition change belongs in the ledger before it
 // belongs in a header.
 
-#include <nros/nros.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 namespace nros_cpp_guard_condition_surface_test {
 

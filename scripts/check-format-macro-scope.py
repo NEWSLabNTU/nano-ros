@@ -28,7 +28,7 @@ is a documented approximation, deliberately conservative in the direction that
 matters:
 
   * a translation unit is **bridge-linked** when it names the bridge API
-    (`<rclc/bridge.h>`, `<nros/bridge.hpp>`, `rclc_pubsub_bridge_create`,
+    (`<rclc/bridge.h>`, `<rclcpp/bridge.hpp>`, `rclc_pubsub_bridge_create`,
     `nros::bridge::`, `nros::MultiExecutor`), or when any sibling source under
     the same *entry root* does — an entry root being the nearest ancestor
     directory holding a `CMakeLists.txt`, `package.xml` or `Cargo.toml`, i.e.
@@ -93,7 +93,7 @@ TABLE_REF = re.compile(r"\bNROS_(?:CPP_)?SERIALIZATION_FORMAT_ID_[A-Z]+\b")
 
 BRIDGE_MARKERS = re.compile(
     r"(?:"
-    r"#\s*include\s*[<\"](?:rclc/bridge\.h|nros/bridge\.hpp)[>\"]"
+    r"#\s*include\s*[<\"](?:rclc/bridge\.h|rclcpp/bridge\.hpp)[>\"]"
     r"|\brclc_pubsub_bridge_create\b"
     r"|\brclc_bridge_endpoint_t\b"
     r"|\bnros::bridge::"
@@ -109,8 +109,8 @@ BRIDGE_MARKERS = re.compile(
 DEFINITION_SITES = [
     ("packages/api/nros-c/include/rclc/detail/serialization_format.h", "NROS_SERIALIZATION_FORMAT_ID"),
     ("packages/api/nros-c/include/rclc/detail/nros_generated.h", "NROS_SERIALIZATION_FORMAT_ID"),
-    ("packages/api/nros-cpp/include/nros/serialization_format.hpp", "linked_format"),
-    ("packages/api/nros-cpp/include/nros/nros_cpp_ffi.h", "NROS_CPP_SERIALIZATION_FORMAT_ID"),
+    ("packages/api/nros-cpp/include/rclcpp/detail/serialization_format.hpp", "linked_format"),
+    ("packages/api/nros-cpp/include/rclcpp/detail/nros_cpp_ffi.h", "NROS_CPP_SERIALIZATION_FORMAT_ID"),
 ]
 
 # Files exempt from the "must not reference" rule: the API that defines the
@@ -118,7 +118,7 @@ DEFINITION_SITES = [
 # `bridge.{h,hpp}` itself (its prose explains why a bridge does not use them).
 EXEMPT_PREFIXES = (
     "packages/api/nros-c/include/",
-    "packages/api/nros-cpp/include/nros/",
+    "packages/api/nros-cpp/include/",
     "packages/api/nros-c/tests/compile/",
     "packages/api/nros-cpp/tests/compile/",
 )
@@ -209,7 +209,7 @@ def self_test(quiet: bool = False) -> None:
     # 5. Bridge detection fires on each marker the API actually presents.
     for marker in (
         "#include <rclc/bridge.h>",
-        '#include "nros/bridge.hpp"',
+        '#include "rclcpp/bridge.hpp"',
         "    rclc_pubsub_bridge_create(exec, &src, &dst);",
         "    rclc_bridge_endpoint_t src;",
         "    nros::MultiExecutor exec;",

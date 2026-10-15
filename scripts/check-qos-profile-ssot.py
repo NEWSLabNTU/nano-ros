@@ -5,7 +5,7 @@ WHAT WENT WRONG
 
 Upstream's seven `rmw_qos_profile_*` constants (plus `rcl_action`'s status
 profile) are hand-transcribed in FOUR places in this tree — `nros-rmw`'s
-`traits.rs`, `nros::qos`, `nros/qos.hpp` and `rmw_entity.h`'s
+`traits.rs`, `nros::qos`, `rclcpp/qos.hpp` and `rmw_entity.h`'s
 `NROS_RMW_QOS_PROFILE_*` macros — and until phase-428 nothing bound them to
 each other or to upstream. Comments claimed parity; nothing measured it.
 

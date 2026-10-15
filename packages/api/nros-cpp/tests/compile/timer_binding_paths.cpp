@@ -3,7 +3,7 @@
 // `create_wall_timer<C, &C::method>(out, ms, self)` is the overload that
 // RETIRED the free `nros::bind_timer`, and every path that used to reach
 // `bind_timer` now reaches it instead. Each of those is a TEMPLATE BODY, which
-// the header parse loop never type-checks — `-include <nros/node.hpp>`
+// the header parse loop never type-checks — `-include <rclcpp/node.hpp>`
 // instantiates nothing. That is exactly how a retirement rots: the free
 // function keeps compiling because it is still parsed, and the member the call
 // sites were moved to is never built.
@@ -28,7 +28,7 @@
 // `if constexpr` user (`adopt_launch_seed_`), which is the C++17 floor
 // `check-cxx-standard-floor` records.
 
-#include <nros/nros.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 namespace nros_cpp_timer_binding_paths_test {
 

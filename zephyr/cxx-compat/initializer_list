@@ -7,7 +7,7 @@
 //
 // Needed since nros-cpp's `parameter.hpp` (`#include <initializer_list>`, phase
 // 242.3 fixed-capacity sequence params) is reached by every cpp example via
-// `<nros/nros.hpp>`. Zephyr's minimal libcpp ships only cstddef/cstdint/new, so
+// `<rclcpp/rclcpp.hpp>`. Zephyr's minimal libcpp ships only cstddef/cstdint/new, so
 // without this shim the cpp examples fail `initializer_list: No such file`
 // (issue #58). Pulling full libstdc++ (CONFIG_REQUIRES_FULL_LIBCPP) instead
 // bleeds host glibc into the C platform compile (#42 class) — this freestanding

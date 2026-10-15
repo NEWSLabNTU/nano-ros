@@ -12,7 +12,7 @@
 //! `c/board_an536.c`; the generic FreeRTOS family glue — including the
 //! semihosting console — comes from `nros-board-freertos`. This Rust side is
 //! deliberately minimal: the consumer this board exists for (ASI) drives the
-//! C/C++ workspace lane (`FreertosBoard::run_tiers` from `nros/main.hpp`).
+//! C/C++ workspace lane (`FreertosBoard::run_tiers` from `rclcpp/detail/main.hpp`).
 
 #![no_std]
 

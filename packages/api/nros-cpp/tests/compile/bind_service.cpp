@@ -5,8 +5,8 @@
 // service type matching the generated shape (`struct Svc { Request; Response;
 // TYPE_NAME }` with `ffi_{,de}serialize`), so the template BODY is type-checked.
 // `just check cpp` compiles this with `-fsyntax-only -std=c++14`.
-#include <nros/component.hpp>
-#include <nros/nros.hpp>
+#include <rclcpp/detail/component.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 namespace nros_cpp_bind_service_compile_test {
 

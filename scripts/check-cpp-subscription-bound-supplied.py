@@ -71,7 +71,10 @@ _w3_sys.path.insert(0, str(_W3Path(__file__).resolve().parent / "lib"))
 import comments  # noqa: E402  phase-472 W3 — the one comment stripper
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-HEADER_DIR = os.path.join("packages", "api", "nros-cpp", "include", "nros")
+HEADER_DIR = os.path.join("packages", "api", "nros-cpp", "include")
+# The two headers the self-test mutates (phase-503 moved them out of nros/).
+SUBSCRIPTION_HPP = HEADER_DIR + "/rclcpp/subscription.hpp"
+COMPONENT_HPP = HEADER_DIR + "/rclcpp/detail/component.hpp"
 
 # The arena registration entry points. A poll-style `nros_cpp_subscription_create`
 # takes caller storage and no arena slot, so it has no row to take and is not here.
@@ -98,7 +101,7 @@ TEMPLATE_M = re.compile(r"\btemplate\s*<[^>]*\b(?:typename|class)\s+M\b")
 def strip_comment(line):
     """One line with its comments blanked (shared stripper, phase-472 W3). The
     one thing this must not do is mistake a doc line naming a function for a
-    call to it — `#include "nros/subscription.hpp" // nros_cpp_subscription_register`
+    call to it — `#include "rclcpp/subscription.hpp" // nros_cpp_subscription_register`
     reported as an unbounded registration on the gate's first run. Per LINE, so
     a `/*` opened on an earlier line is not seen."""
     # phase-472 W3 — the shared stripper (scripts/lib/comments.py).
@@ -106,10 +109,11 @@ def strip_comment(line):
 
 
 def header_files():
-    d = os.path.join(ROOT, HEADER_DIR)
-    return sorted(
-        os.path.join(HEADER_DIR, f) for f in os.listdir(d) if f.endswith(".hpp")
-    )
+    out = []
+    for dirpath, _dirs, names in os.walk(os.path.join(ROOT, HEADER_DIR)):
+        rel = os.path.relpath(dirpath, ROOT)
+        out.extend(os.path.join(rel, f) for f in names if f.endswith(".hpp"))
+    return sorted(out)
 
 
 def function_window(lines, idx):
@@ -227,8 +231,8 @@ def count_calls(text):
 def selftest():
     """Four mutations of the real headers, each the shape this gate exists for."""
     failures = []
-    sub = os.path.join(ROOT, HEADER_DIR, "subscription.hpp")
-    comp = os.path.join(ROOT, HEADER_DIR, "component.hpp")
+    sub = os.path.join(ROOT, SUBSCRIPTION_HPP)
+    comp = os.path.join(ROOT, COMPONENT_HPP)
     sub_text = open(sub, encoding="utf8").read()
     comp_text = open(comp, encoding="utf8").read()
 
@@ -288,7 +292,7 @@ def selftest():
 
     # Negative control: the tree as it stands must be clean, or the mutations
     # above prove nothing.
-    for rel in (HEADER_DIR + "/subscription.hpp", HEADER_DIR + "/component.hpp"):
+    for rel in (SUBSCRIPTION_HPP, COMPONENT_HPP):
         text = open(os.path.join(ROOT, rel), encoding="utf8").read()
         clean = audit_text(rel, text)
         if clean:

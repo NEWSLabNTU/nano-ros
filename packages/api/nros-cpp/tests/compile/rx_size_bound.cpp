@@ -9,8 +9,8 @@
 // three shapes `rx_size_bound` has to distinguish.
 //
 // `just check cpp` compiles this with `-fsyntax-only -std=c++14`.
-#include <nros/component.hpp>
-#include <nros/nros.hpp>
+#include <rclcpp/detail/component.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 #include <type_traits>
 
@@ -194,7 +194,7 @@ template <class M>
 inline ::rclcpp::Result recv_paths(::rclcpp::PollSubscription<M>& sub, ::rclcpp::Stream<M>& stream,
                                    M& msg) {
     // phase-456 W2b — the taking API is `PollSubscription<M>`'s; see
-    // `nros/polling_subscription.hpp`.
+    // `rclcpp/polling_subscription.hpp`.
     (void)sub.take(msg); // polling_subscription.hpp -- derived where one exists
     (void)sub.template take_sized<4096>(msg); // ... and the escape hatch
     nros_cpp_integrity_status_t status{};

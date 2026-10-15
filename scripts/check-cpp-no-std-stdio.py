@@ -156,9 +156,9 @@ def self_test(quiet: bool = False) -> int:
            in_library_tree("examples/linux/cpp/parameters/src/main.cpp"), False)
     # phase-472 W5 — a PUBLIC header is library code, and the population has it.
     expect("public header matches",
-           in_library_tree("packages/api/nros-cpp/include/nros/log.hpp"), True)
+           in_library_tree("packages/api/nros-cpp/include/rclcpp/logging.hpp"), True)
     expect("public header is in the population",
-           "packages/api/nros-cpp/include/nros/log.hpp" in tracked_sources(), True)
+           "packages/api/nros-cpp/include/rclcpp/logging.hpp" in tracked_sources(), True)
     expect("the test harness is not", in_library_tree("packages/testing/x/src/a.cpp"), False)
 
     if not quiet or not ok:

@@ -9,12 +9,12 @@
 #include <cstdint>
 #include <cstddef>
 
-#include "nros/fixed_string.hpp"
-#include "nros/fixed_sequence.hpp"
+#include "rclcpp/fixed_string.hpp"
+#include "rclcpp/fixed_sequence.hpp"
 // RFC-0033 `heap` payload fields (phase-492: the first compile of a service
 // or action header on its own, by `repr-memory-agreement`, found these missing).
-#include "nros/heap_sequence.hpp"
-#include "nros/heap_string.hpp"
+#include "rclcpp/heap_sequence.hpp"
+#include "rclcpp/heap_string.hpp"
 
 {%- for dep in dependencies %}
 #include "{{ dep }}.hpp"

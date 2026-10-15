@@ -21,7 +21,7 @@
  * the call and measured by `ros2_loudness_runtime.cpp` instead.
  */
 
-#include <nros/nros.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 int ros2_refuse_unbounded_spin_probe();
 int ros2_refuse_unbounded_spin_probe() {

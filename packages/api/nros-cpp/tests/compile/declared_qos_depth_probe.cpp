@@ -18,7 +18,7 @@
 // The positive TU beside this one is asserted to compile clean FIRST, for the
 // same reason `qos_deprecation_probe.cpp` is: an expected-failure compile
 // cannot tell "the assertion fired" from "the file is not there".
-#include <nros/nros.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 namespace nros_cpp_declared_qos_probe {
 

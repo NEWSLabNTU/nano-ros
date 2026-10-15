@@ -11,7 +11,7 @@
 // expected-failure compile cannot tell "the attribute fired" from "the file is
 // not there" — both are a non-zero c++, and the second reads as a pass.
 
-#include <nros/nros.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 static rclcpp::Result value_less() {
     return rclcpp::Result::success();

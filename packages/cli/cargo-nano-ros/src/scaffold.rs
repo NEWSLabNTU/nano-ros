@@ -1605,7 +1605,7 @@ mod tests {
             cpp_src.contains("#include <rclcpp/rclcpp.hpp>"),
             "{cpp_src}"
         );
-        assert!(!cpp_src.contains("<nros/nros.hpp>"), "{cpp_src}");
+        assert!(!cpp_src.contains("#include <nros/"), "{cpp_src}");
     }
 
     #[test]

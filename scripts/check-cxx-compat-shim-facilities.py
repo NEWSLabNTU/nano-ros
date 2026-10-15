@@ -126,7 +126,7 @@ extern "C" int nros_shim_facilities_probe() {
 # one this compiles.
 CONSUMER_PROBE = """
 #define __ZEPHYR__ 1
-#include <nros/component.hpp>
+#include <rclcpp/detail/component.hpp>
 """
 
 # (label, compiler, extra include dirs beyond the shim). The ThreadX board is
@@ -270,13 +270,13 @@ def main():
             rc, out = compile_probe(zcc, zshim, [zephyr_min], workdir,
                                     source=CONSUMER_PROBE, name="consumer_probe")
             if rc != 0:
-                failures.append("Zephyr shim over the minimal libcpp: `nros/component.hpp` -- "
+                failures.append("Zephyr shim over the minimal libcpp: `rclcpp/detail/component.hpp` -- "
                                 "the header whose factory USES placement new -- does NOT "
                                 "compile against it. A shim that supplies a facility our own "
                                 "header also supplies is a REDEFINITION, not a fix.\n%s"
                                 % out.strip())
             else:
-                notes.append("Zephyr shim + minimal libcpp: nros/component.hpp compiles")
+                notes.append("Zephyr shim + minimal libcpp: rclcpp/detail/component.hpp compiles")
         else:
             notes.append("Zephyr arm SKIPPED: %s absent (west workspace not checked out)"
                          % ZEPHYR_MINIMAL)

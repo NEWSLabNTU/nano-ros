@@ -12,8 +12,8 @@
 #include <cstdio>
 #include <cstdlib>
 
-#include <nros/heap_sequence.hpp>
-#include <nros/heap_string.hpp>
+#include <rclcpp/heap_sequence.hpp>
+#include <rclcpp/heap_string.hpp>
 
 // `nros_platform_malloc`/`free` are static-inline forwards to the
 // `nros_platform_alloc`/`dealloc` funnel (RFC-0034 D6), which platform.h only

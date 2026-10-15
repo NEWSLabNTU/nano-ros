@@ -2,8 +2,8 @@
 """phase-492 / phase-499 — user-facing C and C++ use only upstream's surface.
 
 Maintainer ruling (2026-10-13, RFC-0089 amendment "the user surface is
-upstream's"): `<nros/*.hpp>` is INTERNAL (to be renamed into `rclcpp` later),
-and since phase-501 the C API's internal headers are `<rclc/detail/*.h>`. A C user includes `<rclc/rclc.h>`, `<rcl/rcl.h>`,
+upstream's"): the internal headers are `<rclc/detail/*.h>` (phase-501) and
+`<rclcpp/detail/*>` (phase-503). A C user includes `<rclc/rclc.h>`, `<rcl/rcl.h>`,
 `<rclc/executor.h>` ...; a C++ user `<rclcpp/rclcpp.hpp>`. Each umbrella
 carries the nano-ros-only parts too. And the program writes `main`: the build
 renames it and reaches it from the platform's entry, so no user file names
@@ -17,7 +17,7 @@ Subject: what a user reads and copies —
 
 Rules:
   1. No include of a header that lives in `packages/api/nros-c/include/rclc/detail/`
-     or `packages/api/nros-cpp/include/nros/`. The set is DERIVED
+     or `packages/api/nros-cpp/include/rclcpp/detail/`. The set is DERIVED
      from those directories, so a port-seam header (`<nros/platform.h>`,
      `<nros/rmw_vtable.h>`, `<nros/transport.h>`, owned by other packages) is
      outside the rule by construction, not by an allowlist.
@@ -41,9 +41,9 @@ ROOT = Path(__file__).resolve().parents[1]
 # (directory, the include spelling its headers are reached by)
 INTERNAL_DIRS = (
     ("packages/api/nros-c/include/rclc/detail/", "rclc/detail/"),
-    ("packages/api/nros-cpp/include/nros/", "nros/"),
+    ("packages/api/nros-cpp/include/rclcpp/detail/", "rclcpp/detail/"),
 )
-INCLUDE = re.compile(r'^\s*#\s*include\s*[<"]((?:nros|rclc)/[A-Za-z0-9_./-]+\.hp?p?)[>"]', re.M)
+INCLUDE = re.compile(r'^\s*#\s*include\s*[<"]((?:nros|rclc|rclcpp)/[A-Za-z0-9_./-]+\.hp?p?)[>"]', re.M)
 ENTRY = re.compile(r"\b(nros_app_main|NROS_APP_MAIN_REGISTER\w*)\b")
 FENCE = re.compile(r"^```(?:c|cpp|c\+\+)\s*$(.*?)^```\s*$", re.M | re.S)
 COMMENT = re.compile(r"/\*.*?\*/|//[^\n]*", re.S)
@@ -79,18 +79,19 @@ def violations(texts: dict[str, str], internal: set[str]) -> list[str]:
 
 
 def self_test() -> bool:
-    internal = {"rclc/detail/app_main.h", "rclc/detail/nros_generated.h", "nros/nros.hpp"}
+    internal = {"rclc/detail/app_main.h", "rclc/detail/nros_generated.h", "rclcpp/detail/main.hpp"}
     texts = {
         "examples/a.c": "#include <rclc/rclc.h>\n#include <nros/platform.h>\n// nros_app_main is internal\n",
         "examples/b.c": "#include <rclc/component.h>\n#include <rclc/detail/nros_generated.h>\n"
                         "int nros_app_main(int c, char** v);\n",
         "book/src/x.md": "text <rclc/detail/app_main.h>\n```c\n#include <rclc/detail/app_main.h>\n```\n",
-        "book/src/y.md": "```cpp\n#include <nros/nros.hpp>\nNROS_APP_MAIN_REGISTER()\n```\n",
+        "book/src/y.md": "```cpp\n#include <rclcpp/rclcpp.hpp>\n#include <rclcpp/detail/main.hpp>\n"
+                        "NROS_APP_MAIN_REGISTER()\n```\n",
     }
     got = violations(texts, internal)
     want = [
         "book/src/x.md: #include <rclc/detail/app_main.h>",
-        "book/src/y.md: #include <nros/nros.hpp>",
+        "book/src/y.md: #include <rclcpp/detail/main.hpp>",
         "book/src/y.md: names NROS_APP_MAIN_REGISTER (write `main`)",
         "examples/b.c: #include <rclc/detail/nros_generated.h>",
         "examples/b.c: names nros_app_main (write `main`)",
@@ -105,7 +106,9 @@ def main() -> int:
     if not self_test():
         return 1
     internal = internal_headers()
-    if len(internal) < 60:
+    # 30 at phase-503 (rclc/detail/ + rclcpp/detail/); it was ~80 while all of
+    # nros-cpp's include/nros/ counted as internal.
+    if len(internal) < 25:
         print(f"check-user-surface: only {len(internal)} internal header(s) — the listing "
               f"broke; refusing a vacuous pass", file=sys.stderr)
         return 1

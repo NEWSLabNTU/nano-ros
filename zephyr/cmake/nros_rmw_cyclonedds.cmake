@@ -457,7 +457,7 @@ zephyr_include_directories(
     ${_nros_graph_types_dir}
 )
 
-# Flips the auto-register hook in packages/api/nros-cpp/include/nros/node.hpp
+# Flips the auto-register hook in packages/api/nros-cpp/include/rclcpp/node.hpp
 # which calls nros_rmw_cyclonedds_register() inside nros::init().
 #
 # phase-484 W4 — no `NROS_CYCLONE_DOMAIN_ID=` define: nothing compiled reads it

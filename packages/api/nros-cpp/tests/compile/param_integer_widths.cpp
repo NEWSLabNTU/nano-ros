@@ -22,7 +22,7 @@
 // integer reads back into a narrower `T` only if it fits, and an unsigned
 // declaration above INT64_MAX is refused rather than wrapped negative.
 
-#include <nros/nros.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 namespace nros_cpp_param_integer_widths_test {
 

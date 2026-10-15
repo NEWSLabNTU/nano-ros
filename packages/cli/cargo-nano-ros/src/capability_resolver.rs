@@ -112,7 +112,7 @@ pub const CAPABILITIES: &[Capability] = &[
         cmake_token: None,
     },
     // Issue 1589 — the `/rosout` log bridge (`nros::rosout`, `<rclc/rosout.h>`,
-    // `<nros/rosout.hpp>`). Entry-umbrella-only: it publishes through whatever
+    // `<rclcpp/rosout.hpp>`). Entry-umbrella-only: it publishes through whatever
     // backend the image has, so there is no backend wire feature. It only PULLS
     // CODE IN — without it the C/C++ entry points still link and answer
     // UNSUPPORTED — so the cargo feature is the whole lowering (no cmake knob).

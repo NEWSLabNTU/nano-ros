@@ -900,7 +900,7 @@ function(nano_ros_entry)
     # phase-263 C2b — bake the connect locator BEFORE the embedded link pass. On NuttX the
     # board overlay's `nros_platform_link_app` FERRIES the target's COMPILE_DEFINITIONS into the
     # cargo cc-rs kernel build AT CONFIGURE TIME, so `NROS_ENTRY_LOCATOR` must already be on the
-    # target when the link pass runs — otherwise the entry TU bakes the `<nros/main.hpp>` default
+    # target when the link pass runs — otherwise the entry TU bakes the `<rclcpp/detail/main.hpp>` default
     # (tcp/127.0.0.1:7447) and never connects to the host router. (FreeRTOS/ThreadX link at BUILD
     # time, so their order is immaterial — but setting it here is correct for them too; the later
     # block then only does the FreeRTOS app-config TU + header-mirror ordering.) Zephyr is exempt
@@ -1090,7 +1090,7 @@ function(nano_ros_entry)
 
     # Issue 0114 — the header-mirror race (issues 0088/0090) ALSO hits the NATIVE
     # (posix) C/C++ cmake fixtures, which the embedded-only block above skips. An
-    # example like cpp `safety-listener` compiles `main.cpp` (→ <nros/nros.hpp> →
+    # example like cpp `safety-listener` compiles `main.cpp` (→ <rclcpp/rclcpp.hpp> →
     # <rclc/detail/nros_generated.h> → the `*_OPAQUE_U64S` sizes) BEFORE Corrosion's
     # `nros_{c,cpp}_config_header` mirror custom command runs. The mirror dir is on
     # the include path AHEAD of the in-tree stub, but the mirrored file does not

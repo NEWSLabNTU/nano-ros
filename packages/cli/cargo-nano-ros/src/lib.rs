@@ -2469,8 +2469,8 @@ fn generate_cpp_umbrella_header(
     content.push_str(&format!("#ifndef {}\n", guard_name));
     content.push_str(&format!("#define {}\n\n", guard_name));
 
-    content.push_str("#include \"nros/fixed_string.hpp\"\n");
-    content.push_str("#include \"nros/fixed_sequence.hpp\"\n\n");
+    content.push_str("#include \"rclcpp/fixed_string.hpp\"\n");
+    content.push_str("#include \"rclcpp/fixed_sequence.hpp\"\n\n");
 
     if !dependencies.is_empty() {
         content.push_str("// Dependencies\n");
