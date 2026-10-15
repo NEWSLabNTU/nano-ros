@@ -4178,21 +4178,7 @@ impl<'s> Executor<'s> {
         let hook = self.reaction_hook.filter(|_| self.violations.counts.armed);
         let violations = &mut self.violations;
         super::monitor::route_overdue(table, now_us, |row, v, first| {
-            if let Some((f, ctx)) = hook {
-                let spec = &table[row];
-                let ev = super::monitor::ReactionEvent {
-                    reaction_id: spec.reaction_id as u32,
-                    row: row as u32,
-                    rule_code: super::monitor::rule_code(v.rule),
-                    measured_ms: v.measured,
-                    declared_ms: v.declared,
-                    mechanism: spec.mechanism,
-                };
-                // SAFETY: `f` and `ctx` were registered together through
-                // `set_reaction_hook`, whose caller keeps `ctx` valid for the
-                // executor's life; the event lives across the call.
-                unsafe { f(&ev, ctx) };
-            }
+            call_route_reaction(hook, table, row, &v);
             if first {
                 violations.record(v);
             }
@@ -10303,10 +10289,21 @@ impl<'s> Executor<'s> {
                         let end_us = clock();
                         let elapsed_us = end_us.saturating_sub(t0).min(u32::MAX as u64) as u32;
                         attribute_latency(mon_table, true, &counts_before, elapsed_us);
+                        let hook = self.reaction_hook.filter(|_| self.violations.counts.armed);
                         let violations = &mut self.violations;
-                        super::monitor::route_judge(mon_table, &counts_before, end_us, |v| {
-                            violations.record(v)
-                        });
+                        super::monitor::route_judge(
+                            mon_table,
+                            &counts_before,
+                            end_us,
+                            |row, v, record, react| {
+                                if react {
+                                    call_route_reaction(hook, mon_table, row, &v);
+                                }
+                                if record {
+                                    violations.record(v)
+                                }
+                            },
+                        );
                     }
                     self.finish_dispatch(i);
                 }
@@ -10863,6 +10860,9 @@ impl<'s> Executor<'s> {
         // phase10-B3 -- the route rule needs the clock and the publish-count
         // snapshot, and nothing else; without a clock it judges nothing.
         let route_on = mon_clock.is_some() && super::monitor::route_active(mon_table);
+        // phase-503 -- a late supervised route reacts at completion too; not
+        // before the monitors are armed (phase-474 I2), as after the park.
+        let route_hook = self.reaction_hook.filter(|_| self.violations.counts.armed);
         let counts_on = lat_active || route_on;
         // phase-359 W4 — one predicate, no cfg block. `cfg!` is an expression,
         // so the flavour difference stays a value instead of a branch: std
@@ -10922,9 +10922,19 @@ impl<'s> Executor<'s> {
                         if result.subscriptions_processed != took_before {
                             super::monitor::route_take(mon_table, i, t0);
                         }
-                        super::monitor::route_judge(mon_table, &counts_before, t1, |v| {
-                            let _ = deadline_misses.push(v);
-                        });
+                        super::monitor::route_judge(
+                            mon_table,
+                            &counts_before,
+                            t1,
+                            |row, v, record, react| {
+                                if react {
+                                    call_route_reaction(route_hook, mon_table, row, &v);
+                                }
+                                if record {
+                                    let _ = deadline_misses.push(v);
+                                }
+                            },
+                        );
                     }
                     if let Some(elapsed_us) = elapsed_us {
                         consume_dispatch_runtime_us(
@@ -10981,9 +10991,19 @@ impl<'s> Executor<'s> {
                         if result.subscriptions_processed != took_before {
                             super::monitor::route_take(mon_table, i, t0);
                         }
-                        super::monitor::route_judge(mon_table, &counts_before, t1, |v| {
-                            let _ = deadline_misses.push(v);
-                        });
+                        super::monitor::route_judge(
+                            mon_table,
+                            &counts_before,
+                            t1,
+                            |row, v, record, react| {
+                                if react {
+                                    call_route_reaction(route_hook, mon_table, row, &v);
+                                }
+                                if record {
+                                    let _ = deadline_misses.push(v);
+                                }
+                            },
+                        );
                     }
                     if let Some(elapsed_us) = elapsed_us {
                         consume_dispatch_runtime_us(
@@ -14392,6 +14412,32 @@ fn attribute_latency(
 /// `Warn`/`Skip`/`Fault` all report; `Skip` additionally masks the SC's
 /// remaining callbacks for this cycle; `Fault` invokes the fault hook
 /// (panic when none is registered).
+/// phase-503 -- hand a route deadline verdict of `table[row]` to the reaction
+/// hook, if one is installed (and the monitors are armed: the caller passes
+/// `None` otherwise). Shared by the overdue check after the park and the
+/// completion verdict of a late supervised route (`route_judge`).
+fn call_route_reaction(
+    hook: Option<(super::monitor::ReactionHookFn, *mut core::ffi::c_void)>,
+    table: &[super::monitor::MonitorSpec],
+    row: usize,
+    v: &super::monitor::Violation,
+) {
+    let Some((f, ctx)) = hook else { return };
+    let spec = &table[row];
+    let ev = super::monitor::ReactionEvent {
+        reaction_id: spec.reaction_id as u32,
+        row: row as u32,
+        rule_code: super::monitor::rule_code(v.rule),
+        measured_ms: v.measured,
+        declared_ms: v.declared,
+        mechanism: spec.mechanism,
+    };
+    // SAFETY: `f` and `ctx` were registered together through
+    // `set_reaction_hook`, whose caller keeps `ctx` valid for the executor's
+    // life; the event lives across the call.
+    unsafe { f(&ev, ctx) };
+}
+
 fn check_deadline_miss(
     sc: Option<&super::sched_context::SchedContext>,
     sc_idx: usize,

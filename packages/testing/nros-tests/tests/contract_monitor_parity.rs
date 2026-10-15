@@ -430,6 +430,92 @@ fn supervised_route_with_no_output_calls_the_reaction_hook(zenohd_unique: ZenohR
     );
 }
 
+/// phase-503 -- a supervised route under `mechanism: executor` answered late
+/// by ONE long callback: the trigger's callback sleeps 300 ms and then
+/// publishes the output. The trigger comes every 500 ms, so each dispatch
+/// takes one sample (a faster feed keeps the subscription's queue non-empty
+/// and one dispatch drains it for seconds). The executor's overdue check cannot run while the
+/// callback holds the spin thread, and the route is answered by the time it
+/// could, so the miss is caught at completion: every reaction carries the
+/// completion's measured time (>= 300 ms, not the ~150 ms an overdue check
+/// would report), mechanism 0, and `route-deadline-runtime` is drained once
+/// beside `route-latency-runtime`.
+#[rstest]
+fn supervised_route_answered_late_by_one_callback_calls_the_reaction_hook(
+    zenohd_unique: ZenohRouter,
+) {
+    require_zenohd();
+    let pub_bin = build_contract_monitor_pub().require("contract-monitor-pub");
+    let route_bin = build_contract_monitor_route().require("contract-monitor-route");
+    let locator = zenohd_unique.locator();
+
+    let mut route = spawn(
+        route_bin,
+        "cm-route-late",
+        &locator,
+        &[
+            ("CM_RUN_MS", "12000"),
+            ("CM_ROUTE_DEADLINE_MS", "150"),
+            ("CM_ROUTE_LATE_MS", "300"),
+            ("CM_MECHANISM", "0"),
+        ],
+    );
+    route
+        .wait_for_output_pattern("subscribed", Duration::from_secs(8))
+        .expect("route handler did not become ready");
+    let mut publisher = spawn(
+        pub_bin,
+        "cm-pub-route-late",
+        &locator,
+        &[
+            ("CM_RUN_MS", "10000"),
+            ("CM_PERIOD_MS", "500"),
+            ("CM_STALE_MS", "0"),
+        ],
+    );
+
+    let (out, why) = route.collect_until_count("CM_REACTION", 3, Duration::from_secs(10));
+    publisher.kill();
+    route.kill();
+    let why = why.unwrap_or_default();
+
+    let reactions: Vec<&str> = out.lines().filter(|l| l.contains("CM_REACTION")).collect();
+    assert!(
+        reactions.len() >= 3,
+        "expected the hook on every late take, got:\n{out}{why}"
+    );
+    for line in &reactions {
+        assert!(
+            line.contains("id=7 row=0 rule=11 ") && line.contains("declared_ms=150 mechanism=0"),
+            "reaction carries the row's id, index, rule and mechanism: {line}"
+        );
+        let measured: u32 = line
+            .split_whitespace()
+            .find_map(|f| f.strip_prefix("measured_ms="))
+            .and_then(|v| v.parse().ok())
+            .unwrap_or_else(|| panic!("no measured_ms in {line}"));
+        assert!(
+            measured >= 300,
+            "caught at completion, after the callback's 300 ms: {line}"
+        );
+    }
+    let count = |rule: &str| {
+        out.lines()
+            .filter(|l| l.contains(&format!("CM_VIOLATION {rule} /cm/route/out")))
+            .count()
+    };
+    assert_eq!(
+        count("route-deadline-runtime"),
+        1,
+        "the deadline verdict is recorded once until recovery, got:\n{out}"
+    );
+    assert_eq!(
+        count("route-latency-runtime"),
+        1,
+        "the completion verdict stays, got:\n{out}"
+    );
+}
+
 /// The unsupervised twin: the same route with no deadline (0) is judged only
 /// on completion, which never comes, so no reaction and no deadline verdict.
 #[rstest]

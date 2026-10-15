@@ -14948,6 +14948,116 @@ fn route_deadline_fires_when_the_output_never_comes() {
     assert!(deadline_verdicts(&mut executor).is_empty(), "reported once");
 }
 
+private_test_clock!(route_late_clock);
+
+/// phase-503 -- the board finding: a supervised route under
+/// `mechanism: executor` whose ONE long callback takes the trigger and
+/// publishes the output after the deadline. The executor's overdue check
+/// cannot run while that callback holds the spin thread, and once it returns
+/// the route is answered, so before the fix only `route-latency-runtime` was
+/// recorded and the hook never ran. The completion now reports the deadline
+/// miss and calls the hook, once; the overdue check that follows does not.
+#[cfg(all(feature = "std", feature = "alloc"))]
+#[test]
+fn a_late_completion_of_a_supervised_route_calls_the_reaction_hook() {
+    use super::monitor::{MECHANISM_EXECUTOR, MonitorSpec, PubMonitorCell, ReactionEvent};
+    use std::sync::Mutex;
+    let _g = arming_lock();
+
+    static CELL: PubMonitorCell = PubMonitorCell::new();
+    static TABLE: [MonitorSpec; 1] = [MonitorSpec {
+        topic: "/late/state",
+        fqn: "/late/handler/state",
+        min_rate_hz_milli: 0,
+        max_latency_ms: 0,
+        route_trigger: "/late/availability",
+        route_max_latency_ms: 149,
+        route_deadline_ms: 149,
+        reaction_id: 4,
+        mechanism: MECHANISM_EXECUTOR,
+        cell: &CELL,
+    }];
+    static EVENTS: Mutex<alloc::vec::Vec<ReactionEvent>> = Mutex::new(alloc::vec::Vec::new());
+    unsafe extern "C" fn hook(ev: *const ReactionEvent, _ctx: *mut core::ffi::c_void) {
+        EVENTS.lock().unwrap().push(unsafe { *ev });
+    }
+
+    route_late_clock::claim_at_us(1_000_000);
+    let mut executor = executor_with_clock_fn(MockSession::new(), route_late_clock::now_us);
+    executor.set_monitor_table(&TABLE);
+    executor.set_reaction_hook(Some((hook, core::ptr::null_mut())));
+    let nid = executor.node_builder("handler").build().expect("node");
+    let _state = executor
+        .node_mut(nid)
+        .create_generic_publisher("/late/state", "std_msgs::msg::dds_::Int32_", "")
+        .expect("contracted publisher");
+    // The callback: runs `v` ms, then "publishes" the output (the counter the
+    // publish path bumps).
+    executor
+        .node_mut(nid)
+        .create_subscription::<TestMsg, _>("/late/availability", |m: &TestMsg| {
+            route_late_clock::set_us(route_late_clock::now_us() + m.data as u64 * 1_000);
+            CELL.count
+                .fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+        })
+        .expect("trigger subscription");
+    let sub_slot = executor
+        .entries
+        .iter()
+        .position(|e| {
+            e.as_ref()
+                .is_some_and(|m| m.kind == super::arena::EntryKind::Subscription)
+        })
+        .expect("the subscription's slot");
+    let off = executor.entries[sub_slot].as_ref().unwrap().offset;
+    let arena_ptr = executor.arena.as_ptr() as *const u8;
+    let load = |v: i32| {
+        let (d, n) = encode_test_msg(v);
+        unsafe { &*(arena_ptr.add(off) as *const MockSubscriber) }.load(d, n);
+    };
+    let verdicts = |ex: &mut Executor| {
+        let mut out = alloc::vec::Vec::new();
+        ex.drain_violations(|v| {
+            if v.rule.starts_with("route-") {
+                out.push((v.rule, v.measured, v.declared));
+            }
+        });
+        out
+    };
+
+    // A callback of 327 ms against a 149 ms deadline.
+    load(327);
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    {
+        let ev = EVENTS.lock().unwrap();
+        assert_eq!(ev.len(), 1, "{ev:?}");
+        let e = ev[0];
+        assert_eq!((e.reaction_id, e.row), (4, 0));
+        assert_eq!(
+            e.rule_code,
+            super::monitor::rule_code("route-deadline-runtime")
+        );
+        assert_eq!((e.measured_ms, e.declared_ms), (327, 149));
+        assert_eq!(e.mechanism, MECHANISM_EXECUTOR);
+    }
+    assert_eq!(
+        verdicts(&mut executor),
+        [
+            ("route-latency-runtime", 327, 149),
+            ("route-deadline-runtime", 327, 149),
+        ]
+    );
+    // The overdue check after it has nothing left: no second call.
+    route_late_clock::set_us(2_000_000);
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    assert_eq!(EVENTS.lock().unwrap().len(), 1, "exactly once per take");
+    // On time: no call, no verdict.
+    load(10);
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    assert_eq!(EVENTS.lock().unwrap().len(), 1);
+    assert!(verdicts(&mut executor).is_empty());
+}
+
 /// Issue 1913 — a raw action server and client key each endpoint on its OWN
 /// hash. An Iron+ `rmw_zenoh_cpp` peer keys all five on different types, and
 /// every raw registration used to pass the one `type_hash` to all of them, so
