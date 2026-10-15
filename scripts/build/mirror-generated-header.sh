@@ -179,6 +179,24 @@ if [ "${1:-}" = "--self-test" ]; then
     [ -f "$m" ] && case "$m" in "$d"/CMakeFiles/*) true ;; *) false ;; esac \
         && ok "a run records that it ran, inside its build dir" \
         || bad "a run records that it ran, inside its build dir" "no marker at $m"
+    # Issue 1927 -- the marker name is BOUNDED. A dest whose path, flattened
+    # into one component, is past NAME_MAX (255) must still record its run, and
+    # two dests that share a long tail must still get two markers.
+    deep="$d/$(printf 'a%.0s' $(seq 1 120))/$(printf 'b%.0s' $(seq 1 120))"
+    if bash "$self" "$d/leaf/h.h" "$d" gen/nros h.h "$deep/x/dest.h" >/dev/null 2>"$d/err"; then
+        m="$(bash "$self" --marker "$d" "$deep/x/dest.h")"
+        n="$(basename "$m")"
+        [ -f "$m" ] && [ "${#n}" -le 100 ] \
+            && ok "a dest deeper than NAME_MAX records its run under a bounded name" \
+            || bad "a dest deeper than NAME_MAX records its run under a bounded name" "marker $n (${#n} bytes)"
+    else
+        bad "a dest deeper than NAME_MAX records its run under a bounded name" "$(tail -1 "$d/err")"
+    fi
+    m1="$(bash "$self" --marker "$d" "$deep/x/dest.h")"
+    m2="$(bash "$self" --marker "$d" "$d/other/$(printf 'a%.0s' $(seq 1 120))/$(printf 'b%.0s' $(seq 1 120))/x/dest.h")"
+    [ "$m1" != "$m2" ] \
+        && ok "two dests sharing a long tail get two markers" \
+        || bad "two dests sharing a long tail get two markers" "both $m1"
     [ "$fails" -eq 0 ] || exit 1
     echo "mirror-generated-header self-test OK"
     exit 0
@@ -190,8 +208,17 @@ fi
 # not when the command last ran. The drift gate needs the second: a mirror that
 # differs from its source is a defect only if the command ran AFTER the source
 # was written. Spelled once, here; the gate asks `--marker`.
+#
+# Issue 1927 -- the name is `nros_path_key <dest>`, a BOUNDED key (readable
+# tail + hash of the whole path), never the dest flattened with `/` -> `_`:
+# that was as long as the dest, so a build dir deep enough (a long TMPDIR) put
+# it past NAME_MAX and the run failed with `File name too long`. A dir holding
+# only an old-style marker reads as "no marker" and takes issue 1901's archive
+# bridge until its next build writes the new one.
+# shellcheck source=scripts/lib/path-key.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)/path-key.sh"
 mirror_ran_marker() { # <build_dir> <dest>
-    printf '%s/CMakeFiles/nros-mirror-ran/%s\n' "$1" "$(printf '%s' "$2" | tr '/' '_')"
+    printf '%s/CMakeFiles/nros-mirror-ran/%s\n' "$1" "$(nros_path_key "$2")"
 }
 if [ "${1:-}" = "--marker" ]; then
     mirror_ran_marker "$2" "$3"
