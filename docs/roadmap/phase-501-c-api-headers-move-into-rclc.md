@@ -1,6 +1,6 @@
 # Phase 501 — The C API's headers move into `rclc`
 
-**Status (2026-10-15). In progress — W1–W6 in one pull request, under verification.** Implements the
+**Status (2026-10-15). In progress — W1–W6 in one pull request, queued; the index pins release 0.6.0-nros2.** Implements the
 [RFC-0089](../design/0089-ros2-api-adoption-and-the-compile-or-conform-rule.md)
 amendment "the C headers live under `rclc/`" (2026-10-15). Follows
 [phase-499](archived/phase-499-user-surface-entry-and-cpp.md), which left
@@ -174,3 +174,26 @@ one bump.
   `rclc/detail/nros_generated.h`. Three synthetic stub include dirs
   (`check-cpp-hosted-minimal-libcpp`, `check-repr-memory-agreement`,
   `codegen-version-refusal-tests`) wrote their sizes stub under `nros/`.
+
+### 2026-10-15 — release 0.6.0-nros2, and what the gate measured
+
+The codegen bump (16 went to issue 1913 on `main` while this was in review, so
+this is 17, minimum 17) put the index's `[tool.nros]` pin, release
+`0.6.0-nros1` (codegen 14), outside the range this tree accepts:
+`the_nros_smoke_check_expects_what_the_pinned_release_emits` refused it.
+Ruling (maintainer): hold the pull request for a release. `release-nros.yml`
+cut `nros-0.6.0-nros2` from this branch's pre-pin head (the tag names it), and the tag
+keeps that commit reachable after the queue rebase-merges. The asset was
+downloaded and its sha256 checked, and `bin/nros --codegen-version` prints 17.
+The index now pins it, with `upstream` and `source.ref` at that commit.
+
+Verification, after `play_launch` and `zenoh-pico` were checked out at their
+pins (earlier runs had used wrong checkouts of both):
+
+- `just ci gate`: the only reds in `check::build` were the smoke test above,
+  green once the pin moved, and `zephyr_prjconf_requirements`, a 60 s timeout
+  at load ~70 that passes alone in 1 s. `test-unit`, `test-lane-contracts` and
+  `out-of-lane-deselected` were run after it stopped, and passed.
+- `just test linux`, before the rebase: 2,758 passed. Of 14 reds, 4 are
+  provisioning this host lacks (a NuttX tree, a patched QEMU). The other 10
+  passed alone, 11 of 11.
