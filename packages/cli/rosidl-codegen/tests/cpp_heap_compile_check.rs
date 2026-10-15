@@ -126,7 +126,7 @@ include!("ffi_gen.rs");
             "-fsyntax-only",
             "-Wall",
             // The generated header includes the per-build
-            // `nros/nros_config_generated.h`. There is no build here, so take
+            // `rclc/detail/nros_config_generated.h`. There is no build here, so take
             // the committed buildless snapshot, as every header-only check
             // under `scripts/` does (issue 1569).
             "-DNROS_CONFIG_BUILDLESS",

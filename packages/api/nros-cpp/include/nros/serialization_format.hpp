@@ -26,7 +26,7 @@
 // `NROS_CPP_SERIALIZATION_FORMAT_ID` — cbindgen output, lowered from
 // `nros_cpp`'s own mirror, which a `const _` proves equal to
 // `nros_node::session::IMAGE_SERIALIZATION_FORMAT_ID`. Taken from the C++ FFI
-// header rather than from `<nros/nros_generated.h>` so that a generated message
+// header rather than from `<rclc/detail/nros_generated.h>` so that a generated message
 // header never pulls a C API header ahead of this one (issue 0160 — the FFI
 // struct mirrors make that include order one-way).
 #include "nros_cpp_ffi.h"

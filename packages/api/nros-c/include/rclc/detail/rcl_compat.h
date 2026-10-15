@@ -13,7 +13,7 @@
  * That is RFC-0089's "dissolves by construction": a shim exists to bridge two
  * spellings, and when there is one spelling it has nothing to bridge. The
  * deletion is not a judgement call either — an identity `static inline` beside
- * the non-static declaration in `<nros/nros_generated.h>` is a hard
+ * the non-static declaration in `<rclc/detail/nros_generated.h>` is a hard
  * `error: static declaration of '...' follows non-static declaration`.
  *
  * ## What does NOT dissolve, and why that is fine
@@ -76,7 +76,7 @@ RMW_RET_* and the VALUES differ. Include one."
  * well as adding the mapping below — a doc comment is the only thing a caller
  * can read at the call site, so leaving it while shipping a header that
  * contradicts it would have kept the defect and added a second copy of it.
- * `<nros/nros_generated.h>`'s `rcl_ret_t` now leads with "NOT value-compatible
+ * `<rclc/detail/nros_generated.h>`'s `rcl_ret_t` now leads with "NOT value-compatible
  * with `rcl_ret_t` — only `OK` (0) agrees" and carries this same table. (No
  * line number: the generated header moves, and a stale `:840` is how a citation
  * stops being checkable.) Only OK agrees:
@@ -236,7 +236,7 @@ NROS_RCL_COMPAT_ASSERT(sizeof(rcl_ret_t) == 4, "rcl_ret_t must be 32-bit, as ups
  * carries `typesupport_identifier`, `data` and the `func` dispatcher that
  * resolves a nested typesupport; ours is a flat descriptor of `type_name`,
  * `type_hash` and `serialized_size_max` (`rclc_message_type_t` in
- * `<nros/nros_generated.h>` — by NAME: that header is cbindgen output and the
+ * `<rclc/detail/nros_generated.h>` — by NAME: that header is cbindgen output and the
  * line number this cited had moved on by 105 lines). Same
  * ROLE, different substance, so the name is not taken. The `init` forwarders
  * below therefore spell this parameter `const struct rclc_message_type_t *`,
@@ -254,7 +254,7 @@ NROS_RCL_COMPAT_ASSERT(sizeof(rcl_ret_t) == 4, "rcl_ret_t must be 32-bit, as ups
  * both sides. An identity `static inline` is not a shim, it is infinite
  * recursion waiting for `-O0`, and the compiler says so first: a
  * `static inline rcl_get_zero_initialized_node` beside the non-static
- * declaration in `<nros/nros_generated.h>` is
+ * declaration in `<rclc/detail/nros_generated.h>` is
  * `error: static declaration of 'rcl_get_zero_initialized_node' follows
  * non-static declaration`. They are deleted rather than argued away — RFC-0089
  * calls this "dissolving by construction", and it is the property that keeps a
@@ -465,7 +465,7 @@ NROS_RCL_COMPAT_ASSERT(sizeof(rcl_ret_t) == 4, "rcl_ret_t must be 32-bit, as ups
  * campaign exists to remove. Everything below is read off the header rather
  * than predicted from it.
  *
- * Citations here name IDENTIFIERS, never line numbers. `<nros/nros_generated.h>`
+ * Citations here name IDENTIFIERS, never line numbers. `<rclc/detail/nros_generated.h>`
  * is cbindgen output, so every regeneration moves it: all four line numbers
  * this section used to carry pointed at unrelated code by the time anyone
  * looked (the same rot W5.d found one section up).

@@ -106,7 +106,7 @@ namespace rclcpp_action {
 /// a map key in most real action servers, so the array-decay spelling is a
 /// drop-in BLOCKER rather than a style difference.
 ///
-/// C has had `rclc_goal_uuid_t` (`nros/nros_generated.h`) and Rust
+/// C has had `rclc_goal_uuid_t` (`rclc/detail/nros_generated.h`) and Rust
 /// `nros_core::GoalId` all along; C++ was the odd one out. This is a value
 /// type over the SAME 16 bytes, not a second identity scheme: standard
 /// layout, trivially copyable, `sizeof == 16`, no allocator, no call into

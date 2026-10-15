@@ -48,7 +48,7 @@ const HEADERS: &[Header] = &[
     Header {
         crate_rel: "packages/api/nros-c",
         config: "cbindgen.toml",
-        header_rel: "include/nros/nros_generated.h",
+        header_rel: "include/rclc/detail/nros_generated.h",
         post: None,
         plausible: None,
     },

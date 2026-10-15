@@ -21,7 +21,7 @@
 #include <rosidl_runtime_c/action_type_support_struct.h>
 #include <rclc/types.h>
 
-#include <nros/nros_config_generated.h>
+#include <rclc/detail/nros_config_generated.h>
 
 /* RFC-0090 — emitted by nano-ros codegen version 17. */
 #define NROS_EMITTED_CODEGEN_VERSION 17

@@ -5589,7 +5589,7 @@ doc-c:
         echo "Install with: nros setup --system   (composes the install command; [system.doxygen])"
         exit 0
     fi
-    header="packages/api/nros-c/include/nros/nros_generated.h"
+    header="packages/api/nros-c/include/rclc/detail/nros_generated.h"
     if [ ! -f "$header" ]; then
         echo "Generated header not found, building nros-c first..."
         # phase-361 W3 — `std` explicit (host build; nros-c `default = []` now).

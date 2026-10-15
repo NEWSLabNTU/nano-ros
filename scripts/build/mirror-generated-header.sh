@@ -4,7 +4,9 @@
 # nros-c / nros-cpp's build script writes each generated header TWICE:
 #
 #   1. `$CORROSION_BUILD_DIR/<name>`  — this leaf's own cmake binary dir
-#   2. `$CARGO_TARGET_DIR/nros-{c,cpp}-generated/nros/<name>` — leaf-independent
+#   2. `$CARGO_TARGET_DIR/<gen-subdir>/<name>` — leaf-independent, where
+#      <gen-subdir> is `nros-c-generated/rclc/detail` or `nros-cpp-generated/nros`
+#      (`nros_build_paths::artifact`; phase-501 W2 put the C one under rclc/detail)
 #
 # (1) only exists if the build script RAN for this leaf. Once leaves share a
 # cargo target dir, cargo skips the script for every leaf after the first, so a
@@ -75,7 +77,7 @@ if [ "${1:-}" = "--self-test" ]; then
     # script run; the shared copy has since moved. "Present" must not beat
     # "current".
     d="$(stage NEW STALE)"
-    bash "$self" "$d/leaf/h.h" "$d" gen h.h "$d/dest.h" >/dev/null
+    bash "$self" "$d/leaf/h.h" "$d" gen/nros h.h "$d/dest.h" >/dev/null
     [ "$(cat "$d/dest.h")" = "NEW" ] \
         && ok "a stale leaf copy loses to the shared one" \
         || bad "a stale leaf copy loses to the shared one" "got $(cat "$d/dest.h")"
@@ -84,7 +86,7 @@ if [ "${1:-}" = "--self-test" ]; then
     # sorts FIRST by name here, exactly as `cargo/build/` sorts before
     # `cargo/nano-ros_1147c/` in the tree. Name order must not decide it.
     d="$(_st_stage_two)"
-    bash "$self" "$d/leaf/h.h" "$d" gen h.h "$d/dest.h" >/dev/null
+    bash "$self" "$d/leaf/h.h" "$d" gen/nros h.h "$d/dest.h" >/dev/null
     [ "$(cat "$d/dest.h")" = "NEW" ] \
         && ok "the newest shared copy wins, not the first by name" \
         || bad "the newest shared copy wins, not the first by name" "got $(cat "$d/dest.h")"
@@ -103,19 +105,19 @@ if [ "${1:-}" = "--self-test" ]; then
         echo "$d"
     }
     d="$(_st_stage_own_older)"
-    bash "$self" "$d/leaf/h.h" "$d" gen h.h "$d/dest.h" >/dev/null
+    bash "$self" "$d/leaf/h.h" "$d" gen/nros h.h "$d/dest.h" >/dev/null
     [ "$(cat "$d/dest.h")" = "MINE" ] \
         && ok "the build's own subdir wins over a newer sibling's" \
         || bad "the build's own subdir wins over a newer sibling's" "got $(cat "$d/dest.h")"
-    [ "$(bash "$self" --resolve "$d/leaf/h.h" "$d" gen h.h)" = "$d/cargo/mine_abcde/gen/nros/h.h" ] \
+    [ "$(bash "$self" --resolve "$d/leaf/h.h" "$d" gen/nros h.h)" = "$d/cargo/mine_abcde/gen/nros/h.h" ] \
         && ok "--resolve names the build's own subdir too" \
-        || bad "--resolve names the build's own subdir too" "got $(bash "$self" --resolve "$d/leaf/h.h" "$d" gen h.h)"
+        || bad "--resolve names the build's own subdir too" "got $(bash "$self" --resolve "$d/leaf/h.h" "$d" gen/nros h.h)"
 
     # Issue 1904 — the own subdir has NO header and a sibling's does: refuse,
     # never copy the sibling's.
     d="$(_st_stage_own_older)"
     rm "$d/cargo/mine_abcde/gen/nros/h.h"
-    if bash "$self" "$d/leaf/h.h" "$d" gen h.h "$d/dest.h" >/dev/null 2>"$d/err"; then
+    if bash "$self" "$d/leaf/h.h" "$d" gen/nros h.h "$d/dest.h" >/dev/null 2>"$d/err"; then
         bad "only a foreign subdir has the header: refuse" "exited 0, copied $(cat "$d/dest.h" 2>/dev/null)"
     elif grep -q 1904 "$d/err"; then
         ok "only a foreign subdir has the header: refuse, naming the issue"
@@ -126,7 +128,7 @@ if [ "${1:-}" = "--self-test" ]; then
     # Issue 0805's original case, still handled: a leaf whose build script never
     # ran has no copy at all.
     d="$(stage NEW -)"
-    bash "$self" "$d/leaf/h.h" "$d" gen h.h "$d/dest.h" >/dev/null
+    bash "$self" "$d/leaf/h.h" "$d" gen/nros h.h "$d/dest.h" >/dev/null
     [ "$(cat "$d/dest.h")" = "NEW" ] \
         && ok "a leaf with no copy uses the shared one" \
         || bad "a leaf with no copy uses the shared one" "got $(cat "$d/dest.h")"
@@ -134,7 +136,7 @@ if [ "${1:-}" = "--self-test" ]; then
     # No resolvable shared target dir (the header is never written there): the
     # leaf copy is the only source, and must still work.
     d="$(stage - ONLY)"
-    bash "$self" "$d/leaf/h.h" "$d" gen h.h "$d/dest.h" >/dev/null
+    bash "$self" "$d/leaf/h.h" "$d" gen/nros h.h "$d/dest.h" >/dev/null
     [ "$(cat "$d/dest.h")" = "ONLY" ] \
         && ok "with no shared copy the leaf copy is used" \
         || bad "with no shared copy the leaf copy is used" "got $(cat "$d/dest.h")"
@@ -142,7 +144,7 @@ if [ "${1:-}" = "--self-test" ]; then
     # Neither: fail loudly rather than mirror nothing and let a consumer reach
     # the committed stub (issue 0088's latent-for-a-phase failure).
     d="$(stage - -)"
-    if bash "$self" "$d/leaf/h.h" "$d" gen h.h "$d/dest.h" >/dev/null 2>"$d/err"; then
+    if bash "$self" "$d/leaf/h.h" "$d" gen/nros h.h "$d/dest.h" >/dev/null 2>"$d/err"; then
         bad "no header anywhere is an error" "exited 0"
     elif grep -q 0978 "$d/err"; then
         ok "no header anywhere is an error naming both paths"
@@ -155,24 +157,24 @@ if [ "${1:-}" = "--self-test" ]; then
     d="$(stage SAME SAME)"
     printf 'SAME\n' > "$d/dest.h"
     touch -d '2020-01-01 00:00:00' "$d/dest.h"
-    bash "$self" "$d/leaf/h.h" "$d" gen h.h "$d/dest.h" >/dev/null
+    bash "$self" "$d/leaf/h.h" "$d" gen/nros h.h "$d/dest.h" >/dev/null
     [ "$(date -r "$d/dest.h" +%Y)" = "2020" ] \
         && ok "an unchanged header does not re-stamp the dest" \
         || bad "an unchanged header does not re-stamp the dest" "mtime moved"
 
     d="$(stage NEW STALE)"
-    [ "$(bash "$self" --resolve "$d/leaf/h.h" "$d" gen h.h)" = "$d/cargo/ws_abc/gen/nros/h.h" ] \
+    [ "$(bash "$self" --resolve "$d/leaf/h.h" "$d" gen/nros h.h)" = "$d/cargo/ws_abc/gen/nros/h.h" ] \
         && ok "--resolve names the source the copy uses" \
-        || bad "--resolve names the source the copy uses" "got $(bash "$self" --resolve "$d/leaf/h.h" "$d" gen h.h)"
+        || bad "--resolve names the source the copy uses" "got $(bash "$self" --resolve "$d/leaf/h.h" "$d" gen/nros h.h)"
     d="$(stage - -)"
-    if bash "$self" --resolve "$d/leaf/h.h" "$d" gen h.h >/dev/null 2>&1; then
+    if bash "$self" --resolve "$d/leaf/h.h" "$d" gen/nros h.h >/dev/null 2>&1; then
         bad "--resolve with no header anywhere fails" "exited 0"
     else
         ok "--resolve with no header anywhere fails"
     fi
     # Issue 1911 -- every run records that it ran, at the path `--marker` names.
     d="$(stage NEW -)"
-    bash "$self" "$d/leaf/h.h" "$d" gen h.h "$d/dest.h" >/dev/null
+    bash "$self" "$d/leaf/h.h" "$d" gen/nros h.h "$d/dest.h" >/dev/null
     m="$(bash "$self" --marker "$d" "$d/dest.h")"
     [ -f "$m" ] && case "$m" in "$d"/CMakeFiles/*) true ;; *) false ;; esac \
         && ok "a run records that it ran, inside its build dir" \
@@ -247,10 +249,10 @@ own_record="$build_dir/CMakeFiles/nros-cargo-subdirs.txt"
 cands=()
 if [ -f "$own_record" ]; then
     while IFS= read -r _sub || [ -n "$_sub" ]; do
-        [ -n "$_sub" ] && cands+=("$build_dir/cargo/$_sub/$gen_subdir/nros/$name")
+        [ -n "$_sub" ] && cands+=("$build_dir/cargo/$_sub/$gen_subdir/$name")
     done <"$own_record"
 else
-    cands=("$build_dir"/cargo/*/"$gen_subdir"/nros/"$name")
+    cands=("$build_dir"/cargo/*/"$gen_subdir"/"$name")
 fi
 # -1, not 0: a candidate whose mtime cannot be read scores 0, and it must still
 # beat "no candidate at all" — otherwise an unreadable stat would silently
@@ -273,7 +275,7 @@ done
 # target dir (the formula `nros_config_header_cargo_manifest` re-derives), and
 # both mean this build cannot tell which header matches its archive.
 if [ -z "$src" ] && [ -f "$own_record" ]; then
-    for cand in "$build_dir"/cargo/*/"$gen_subdir"/nros/"$name"; do
+    for cand in "$build_dir"/cargo/*/"$gen_subdir"/"$name"; do
         [ -f "$cand" ] || continue
         echo "nros: no generated $name in this build's own cargo subdir(s)" >&2
         echo "      ($(tr '\n' ' ' <"$own_record")recorded in $own_record)," >&2
@@ -289,7 +291,7 @@ if [ -z "$src" ]; then
 fi
 
 if [ ! -f "$src" ]; then
-    echo "nros: no generated $name to mirror (looked in $build_dir/cargo/*/$gen_subdir/nros/" >&2
+    echo "nros: no generated $name to mirror (looked in $build_dir/cargo/*/$gen_subdir/" >&2
     echo "      and the leaf's corrosion dir $leaf_src) — issues 0805, 0978" >&2
     exit 1
 fi

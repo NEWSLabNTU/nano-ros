@@ -18,7 +18,7 @@
 #include "nros/serialization_format.hpp"
 #include "msg/fingerprint_corpus_msg_shapes.hpp"
 
-#include <nros/nros_config_generated.h>
+#include <rclc/detail/nros_config_generated.h>
 
 /* RFC-0090 — emitted by nano-ros codegen version 17. */
 #define NROS_EMITTED_CODEGEN_VERSION 17

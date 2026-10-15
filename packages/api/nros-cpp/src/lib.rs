@@ -7271,7 +7271,7 @@ fn entry_spin_ms() -> u64 {
 //
 // It is emitted HERE, into the C++ crate's own FFI header, rather than reused
 // from `nros-c`'s `NROS_SERIALIZATION_FORMAT_ID`, so that no C++ header has to
-// include a C API header to get it. Reaching `nros/nros_generated.h` from a
+// include a C API header to get it. Reaching `rclc/detail/nros_generated.h` from a
 // generated message header would put it BEFORE `nros_cpp_ffi.h` in include
 // order, and that order is one-way (issue 0160: the FFI struct mirrors).
 //

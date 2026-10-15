@@ -412,7 +412,7 @@ def self_test() -> None:
     assert not offenders('# file(COPY_FILE) of nros_config_generated.h, retired'), \
         "a comment is not a writer"
     assert offenders('add_custom_command(OUTPUT h COMMAND ${CMAKE_COMMAND} -E '
-                     'copy_if_different s.h ${B}/nros/nros_config_generated.h)'), \
+                     'copy_if_different s.h ${B}/rclc/detail/nros_config_generated.h)'), \
         "a `cmake -E copy_if_different` of the header must be flagged (issue 1615)"
     assert not offenders('add_custom_command(OUTPUT h COMMAND gen nros_config_generated.h)'), \
         "a custom command that does not COPY is not this rule"
@@ -422,19 +422,19 @@ def self_test() -> None:
     # issue 1735 — the shell spellings.
     assert shell_offenders('cp "$out/nros_cpp_config_generated.h" "$inc/nros/nros_cpp_config_generated.h"\n'), \
         "a shell `cp` of the sizes header must be caught"
-    assert shell_offenders('    install -m644 a.h include/nros/nros_config_generated.h\n', "just"), \
+    assert shell_offenders('    install -m644 a.h include/rclc/detail/nros_config_generated.h\n', "just"), \
         "a recipe `install` of the sizes header must be caught"
-    assert shell_offenders('gen > "$inc/nros/nros_config_generated.h"\n'), \
+    assert shell_offenders('gen > "$inc/rclc/detail/nros_config_generated.h"\n'), \
         "a redirection into the sizes header must be caught"
-    assert not shell_offenders('printf x > "$tmp/nros/nros_config_generated.h"\n'), \
+    assert not shell_offenders('printf x > "$tmp/rclc/detail/nros_config_generated.h"\n'), \
         "a selftest's synthetic header under $tmp is not a writer"
     assert not shell_offenders('bash scripts/build/mirror-generated-header.sh a nros_config_generated.h b\n'), \
         "the mirror script itself must be allowed"
     assert not shell_offenders('# cp x nros_config_generated.h — retired\n'), \
         "a comment is not a writer"
-    assert not shell_offenders('ninja -C b -t query include/nros/nros_config_generated.h\n'), \
+    assert not shell_offenders('ninja -C b -t query include/rclc/detail/nros_config_generated.h\n'), \
         "a READ of the header is not a write"
-    assert not shell_offenders("cat <<EOF\n  ninja -t query <…>/include/nros/nros_config_generated.h\nEOF\n"), \
+    assert not shell_offenders("cat <<EOF\n  ninja -t query <…>/include/rclc/detail/nros_config_generated.h\nEOF\n"), \
         "a heredoc body that SHOWS a path is not a write"
     # issue 1746 -- the pre-fix nros-cpp heal, verbatim in shape: an immediate
     # configure-time run at the package's own scope.

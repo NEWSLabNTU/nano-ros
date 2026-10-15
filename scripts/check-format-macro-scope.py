@@ -108,7 +108,7 @@ BRIDGE_MARKERS = re.compile(
 # gate fails loudly instead of scanning for a string that no longer exists.
 DEFINITION_SITES = [
     ("packages/api/nros-c/include/rclc/detail/serialization_format.h", "NROS_SERIALIZATION_FORMAT_ID"),
-    ("packages/api/nros-c/include/nros/nros_generated.h", "NROS_SERIALIZATION_FORMAT_ID"),
+    ("packages/api/nros-c/include/rclc/detail/nros_generated.h", "NROS_SERIALIZATION_FORMAT_ID"),
     ("packages/api/nros-cpp/include/nros/serialization_format.hpp", "linked_format"),
     ("packages/api/nros-cpp/include/nros/nros_cpp_ffi.h", "NROS_CPP_SERIALIZATION_FORMAT_ID"),
 ]

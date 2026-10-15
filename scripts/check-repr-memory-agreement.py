@@ -503,7 +503,7 @@ def check_arm(
             break
     if version is None:
         raise SystemExit(f"{PROBE}: the {arm} arm's headers carry no codegen-version stamp")
-    stub = work / f"{arm}-stub" / "nros"
+    stub = work / f"{arm}-stub" / "rclc" / "detail"  # phase-501 W2
     stub.mkdir(parents=True, exist_ok=True)
     (stub / "nros_config_generated.h").write_text(CONFIG_STUB.format(v=version))
 

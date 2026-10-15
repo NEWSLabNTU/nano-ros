@@ -10,7 +10,7 @@
 #ifndef NROS_PUBLISHER_H
 #define NROS_PUBLISHER_H
 
-/* Type and function definitions live in <nros/nros_generated.h>.
+/* Type and function definitions live in <rclc/detail/nros_generated.h>.
  * This per-module header is kept as a thin shim so existing code that
  * does `#include <rclc/publisher.h>` continues to compile. */
 #include "rclc/types.h"

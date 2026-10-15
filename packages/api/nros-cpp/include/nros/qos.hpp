@@ -492,7 +492,7 @@ constexpr bool operator!=(const QoS& left, const QoS& right) {
 ///
 /// The bytes are `rclc_qos_policy_kind_to_cstr`'s, which are
 /// `nros_rmw::QoSPolicyMask::NAMED`'s. This header declares the C entry point
-/// rather than including `<nros/nros_generated.h>` — `qos.hpp` is deliberately
+/// rather than including `<rclc/detail/nros_generated.h>` — `qos.hpp` is deliberately
 /// self-contained (see issue 0112 at the top of this file) — and a signature
 /// drift cannot hide: `nros.hpp` pulls both this header and `rclc/types.h`,
 /// which reaches the generated declarations, so every C++ example is a

@@ -820,7 +820,7 @@ function(nros_generate_interfaces target)
       if(COMMAND _nros_node_register_config_header_deps)
         _nros_node_register_config_header_deps(${_lib_target})
       endif()
-      # Issue 0114 — the generated message `.c` TUs include <nros/nros_generated.h>
+      # Issue 0114 — the generated message `.c` TUs include <rclc/detail/nros_generated.h>
       # (→ the `*_OPAQUE_U64S` sizes), so on a parallel/fresh NATIVE build they can
       # compile BEFORE Corrosion's `nros_c_config_header` mirror custom command runs
       # and read the in-tree `#error` stub (`*_OPAQUE_U64S undeclared`). The mirror
@@ -837,7 +837,7 @@ function(nros_generate_interfaces target)
       # Issue 1783 — BOTH crates' mirrors, not the nros-c one alone: this
       # library links the runtime umbrella below, which is `NanoRosCpp` in any
       # build that has it, and that prepends the nros-CPP mirror dir to the
-      # include path. So `<nros/nros_config_generated.h>` resolves THERE, and a
+      # include path. So `<rclc/detail/nros_config_generated.h>` resolves THERE, and a
       # stamp of the nros-c copy named a file this TU never read.
       # `nros_config_header_object_depends` stamps every mirror the build
       # defines (a no-op where it defines none).
@@ -890,12 +890,12 @@ function(nros_generate_interfaces target)
     endforeach()
 
     # Build-order: the generated message .c files #include <rclc/types.h> which
-    # pulls <nros/nros_generated.h>, the cbindgen header nros-c's build.rs writes
+    # pulls <rclc/detail/nros_generated.h>, the cbindgen header nros-c's build.rs writes
     # during its cargo build. Linking NanoRos::NanoRos orders the LINK, not the
     # COMPILE, so without an explicit dependency these objects can compile before
     # the header exists — a race only masked when some other target happened to
     # build nros-c first (e.g. freertos' cyclone fixture step; nuttx, building
-    # c/cpp first, hit `fatal error: nros/nros_generated.h: No such file`). Make
+    # c/cpp first, hit `fatal error: rclc/detail/nros_generated.h: No such file`). Make
     # the message lib wait for the nros-c cargo build (corrosion's build target).
     if(_generated_sources AND TARGET cargo-build_nros_c)
       add_dependencies(${_lib_target} cargo-build_nros_c)

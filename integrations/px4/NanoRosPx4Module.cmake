@@ -152,7 +152,8 @@ set(_NROS_PX4_INCLUDES
     "${NROS_REPO_DIR}/packages/platform/nros-platform-api/include")
 
 # The PER-BUILD generated headers (storage sizes, feature constants), emitted by
-# nros-c/nros-cpp build.rs into $CARGO_TARGET_DIR/nros-{c,cpp}-generated/nros/.
+# nros-c/nros-cpp build.rs into $CARGO_TARGET_DIR/nros-c-generated/rclc/detail/ and
+# $CARGO_TARGET_DIR/nros-cpp-generated/nros/.
 # Without these, `#include <rclc/init.h>` hits the checked-in STUB, whose whole
 # body is:
 #
@@ -162,7 +163,7 @@ set(_NROS_PX4_INCLUDES
 # they carry storage sizes, and a header describing different sizes than the
 # archive was compiled with is the issue-0268 silent-overflow class, which fails
 # at runtime rather than at build.
-# PREPENDED, not appended. `packages/api/nros-c/include/nros/` ships a checked-in
+# PREPENDED, not appended. `packages/api/nros-c/include/rclc/detail/` ships a checked-in
 # STUB of the same name whose body is the #error above; if that directory is
 # searched first, the stub wins and the real header is never seen. Include order
 # is the whole mechanism here.

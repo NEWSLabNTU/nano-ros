@@ -2,8 +2,8 @@
 # phase-492 — the C API's PUBLIC headers are freestanding.
 #
 # A user includes the C API at upstream's paths (`<rclc/rclc.h>`,
-# `<rcl/rcl.h>`, `<rcl_action/*.h>`, ...); `<rclc/detail/*.h>` and the
-# generated `<nros/*.h>` are internal (phase-501). Those
+# `<rcl/rcl.h>`, `<rcl_action/*.h>`, ...); `<rclc/detail/*.h>` is internal
+# (phase-501). Those
 # headers must compile with no libc at all, because the parts they target
 # (bare metal, an RTOS with a minimal C library) may have none, and a ported
 # rclc file includes them first. Freestanding here is the ISO C list a
@@ -16,7 +16,7 @@
 # a bit-cast `memcpy`), so all 51 of them failed.
 #
 # Each public header (every tracked `.h` under `packages/api/nros-c/include/`
-# outside the internal `rclc/detail/` and `nros/`) is compiled on its own with `-ffreestanding
+# outside the internal `rclc/detail/`) is compiled on its own with `-ffreestanding
 # -nostdinc` and only the compiler's own include dir. The size header is the
 # committed buildless snapshot (`-DNROS_CONFIG_BUILDLESS`): this is a
 # header-only check and builds nothing.
@@ -70,7 +70,7 @@ headers=()
 while IFS= read -r path; do
     rel="${path#"$include"/}"
     case "$rel" in
-        nros/* | rclc/detail/*) continue ;;
+        rclc/detail/*) continue ;;
     esac
     headers+=("$rel")
 done < <(git -C "$repo" ls-files -- "$include/*.h")

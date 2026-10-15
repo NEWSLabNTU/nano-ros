@@ -19,7 +19,7 @@
 #include <cstdint>
 
 #include "nros/lifecycle.hpp"
-#include "nros/nros_generated.h" // NROS_LIFECYCLE_TRANSITION_*
+#include "rclc/detail/nros_generated.h" // NROS_LIFECYCLE_TRANSITION_*
 
 namespace {
 

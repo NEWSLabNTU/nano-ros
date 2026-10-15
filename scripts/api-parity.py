@@ -861,7 +861,12 @@ def _validate_provides_targets(entries, surfaces):
     # name our own C headers declare is ours; read them as text (no clang), so
     # this stays the cheap structural check it was.
     ours_c = set()
-    for header in sorted(glob.glob(os.path.join(ROOT, "packages", "api", "nros-c", "include", "*", "*.h"))):
+    # Every tracked header at any depth: since phase-501 the cbindgen aggregate
+    # sits at `rclc/detail/nros_generated.h`, which a one-level glob never read.
+    tracked = subprocess.run(
+        ["git", "-C", ROOT, "ls-files", "--", "packages/api/nros-c/include/*.h"],
+        capture_output=True, text=True, check=True).stdout.split()
+    for header in sorted(os.path.join(ROOT, p) for p in tracked):
         with open(header, encoding="utf-8", errors="replace") as fh:
             ours_c |= set(re.findall(r"\b(rcl[a-z_]*_[a-z0-9_]+)\b", fh.read()))
     complaints = []

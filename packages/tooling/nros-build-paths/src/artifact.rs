@@ -23,6 +23,15 @@ pub const C_GENERATED_DIR: &str = "nros-c-generated";
 /// The flat per-build header directory `nros-cpp`'s build script writes.
 pub const CPP_GENERATED_DIR: &str = "nros-cpp-generated";
 
+/// Where under an include root a C header nros-c GENERATES sits — the per-build
+/// sizes header, its committed stub and buildless snapshot, and the cbindgen
+/// `nros_generated.h`. Phase-501 W2: the C API's internal headers live under
+/// `rclc/detail/`, and C code includes `<rclc/detail/nros_config_generated.h>`.
+pub const C_HEADER_SUBDIR: &str = "rclc/detail";
+/// Where under an include root a C++ header nros-cpp generates sits. The C++
+/// headers stay under `nros/` until the C++ side moves to `rclcpp/`.
+pub const CPP_HEADER_SUBDIR: &str = "nros";
+
 /// One artifact a non-cargo consumer locates.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Artifact {
@@ -30,11 +39,11 @@ pub enum Artifact {
     CArchive,
     /// `libnros_cpp.a` — the C++ API staticlib (bundles `nros-c`).
     CppArchive,
-    /// The include directory holding `nros/nros_config_generated.h`.
+    /// The include directory holding `rclc/detail/nros_config_generated.h`.
     CInclude,
     /// The include directory holding `nros/nros_cpp_config_generated.h`.
     CppInclude,
-    /// `nros/nros_config_generated.h` itself.
+    /// `rclc/detail/nros_config_generated.h` itself.
     CConfigHeader,
     /// `nros/nros_cpp_config_generated.h` itself.
     CppConfigHeader,
@@ -77,12 +86,18 @@ impl Artifact {
     /// PROFILE name (`dev`, `release`, a custom one), mapped to its directory
     /// by [`profile_dir`].
     pub fn relative(self, triple: Option<&str>, profile: &str) -> PathBuf {
-        let header = |dir: &str, file: &str| PathBuf::from(dir).join("nros").join(file);
+        let header = |dir: &str, sub: &str, file: &str| PathBuf::from(dir).join(sub).join(file);
         match self {
             Artifact::CInclude => PathBuf::from(C_GENERATED_DIR),
             Artifact::CppInclude => PathBuf::from(CPP_GENERATED_DIR),
-            Artifact::CConfigHeader => header(C_GENERATED_DIR, "nros_config_generated.h"),
-            Artifact::CppConfigHeader => header(CPP_GENERATED_DIR, "nros_cpp_config_generated.h"),
+            Artifact::CConfigHeader => {
+                header(C_GENERATED_DIR, C_HEADER_SUBDIR, "nros_config_generated.h")
+            }
+            Artifact::CppConfigHeader => header(
+                CPP_GENERATED_DIR,
+                CPP_HEADER_SUBDIR,
+                "nros_cpp_config_generated.h",
+            ),
             Artifact::CArchive | Artifact::CppArchive => {
                 let lib = if self == Artifact::CArchive {
                     "libnros_c.a"
@@ -146,7 +161,7 @@ mod tests {
         );
         assert_eq!(
             Artifact::CConfigHeader.path(t, Some("x"), "release"),
-            PathBuf::from("/t/nros-c-generated/nros/nros_config_generated.h")
+            PathBuf::from("/t/nros-c-generated/rclc/detail/nros_config_generated.h")
         );
         assert_eq!(
             Artifact::CppInclude.path(t, None, "dev"),

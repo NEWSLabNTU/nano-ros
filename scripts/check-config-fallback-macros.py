@@ -13,7 +13,7 @@ rationale says of those two numbers:
      writes from `nros_core::codegen_version` — so neither side is authored and
      neither can drift from the Rust constant."
 
-On NuttX neither half of that holds. `<nros/nros_config_generated.h>` is a
+On NuttX neither half of that holds. `<rclc/detail/nros_config_generated.h>` is a
 DISPATCHING STUB: under `NROS_PLATFORM_NUTTX` it includes the committed
 snapshot `nros_config_generated_nuttx.h`, and the per-build header the sentence
 describes is on no include path at all (measured on a NuttX leaf: the string
@@ -97,7 +97,7 @@ REPO = Path(__file__).resolve().parent.parent
 
 # The dispatching stubs, and the include-dir roots their fallbacks live in.
 STUB_GLOBS = (
-    "packages/api/nros-c/include/nros/nros_config_generated.h",
+    "packages/api/nros-c/include/rclc/detail/nros_config_generated.h",
     "packages/api/nros-cpp/include/nros/nros_cpp_config_generated.h",
 )
 STUB_NAMES = tuple(p.rsplit("/", 1)[-1] for p in STUB_GLOBS)

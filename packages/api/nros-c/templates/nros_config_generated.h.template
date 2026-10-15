@@ -70,7 +70,7 @@ NROS_STACK_MIN_ACKNOWLEDGE if this image builds its executor off the main thread
 #define NROS_ACTION_SERVER_INTERNAL_SIZE @PROBE_ACTION_SERVER_INTERNAL@
 
 /* ── *_OPAQUE_U64S macros — sized opaque storage for the
- *    handle structs declared in <nros/nros_generated.h>.
+ *    handle structs declared in <rclc/detail/nros_generated.h>.
  *    Each value is `ceil(size_of_type / 8)` u64 slots so the
  *    handle's storage is u64-aligned.
  */

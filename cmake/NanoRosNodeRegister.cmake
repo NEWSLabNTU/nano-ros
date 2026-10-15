@@ -124,7 +124,7 @@ set(_NROS_NODE_REGISTER_INCLUDED TRUE)
 set(_NROS_NODE_REGISTER_DIR "${CMAKE_CURRENT_LIST_DIR}" CACHE INTERNAL
     "nano_ros_node_register module dir")
 
-# Issue 0088 — order any target whose TUs `#include <nros/nros_config_generated.h>`
+# Issue 0088 — order any target whose TUs `#include <rclc/detail/nros_config_generated.h>`
 # (or the C++ variant) AFTER the per-build header generators. The headers are
 # produced by the nros-c / nros-cpp corrosion builds and mirrored into the in-tree
 # `include/nros/` dir by the `nros_{c,cpp}_config_header` custom targets (OUTPUT
@@ -853,7 +853,7 @@ function(nano_ros_node_register)
                 target_link_libraries(${_lib} PRIVATE zephyr_interface)
             endif()
             # Phase 242 — the per-build `<nros/nros_cpp_config_generated.h>` /
-            # `<nros/nros_config_generated.h>` (storage sizes, etc.) are emitted
+            # `<rclc/detail/nros_config_generated.h>` (storage sizes, etc.) are emitted
             # as byproducts of the nros-cpp / nros-c cargo builds into
             # the cargo target dir's `nros-{cpp,c}-generated` (prepended
             # to the include path by zephyr/CMakeLists.txt). `app` already
@@ -1072,7 +1072,7 @@ function(nano_ros_node_register)
         _nros_node_register_carrier_image(${PROJECT_NAME} "${_pkg_sym}" "${_NRC_PANIC}" "${_entry_src}" ${_NRC_SOURCES})
         _nros_node_register_bake_locator(${PROJECT_NAME})
         # Issue 0088 — the carrier executable compiles ${_NRC_SOURCES} (C/C++ TUs
-        # that include <nros/nros_config_generated.h>); order them after the header
+        # that include <rclc/detail/nros_config_generated.h>); order them after the header
         # mirror targets so they never pick up the in-tree stub.
         _nros_node_register_config_header_deps(${PROJECT_NAME})
         nros_platform_link_app(${PROJECT_NAME})
@@ -1128,7 +1128,7 @@ function(nano_ros_node_register)
         _nros_node_register_carrier_image(${PROJECT_NAME} "${_pkg_sym}" "${_NRC_PANIC}" "${_entry_src}" ${_NRC_SOURCES})
         _nros_node_register_bake_locator(${PROJECT_NAME})
         # Issue 0088 — the carrier executable compiles ${_NRC_SOURCES} (C/C++ TUs
-        # that include <nros/nros_config_generated.h>); order them after the header
+        # that include <rclc/detail/nros_config_generated.h>); order them after the header
         # mirror targets so they never pick up the in-tree stub.
         _nros_node_register_config_header_deps(${PROJECT_NAME})
         # Issue 0090 — `add_dependencies` (above) orders the TARGET but does not stop
@@ -1225,7 +1225,7 @@ function(nano_ros_node_register)
         _nros_node_register_carrier_image(${PROJECT_NAME} "${_pkg_sym}" "${_NRC_PANIC}" "${_entry_src}" "${_appcfg_src}" ${_NRC_SOURCES})
         _nros_node_register_bake_locator(${PROJECT_NAME})
         # Issue 0088 — the carrier executable compiles ${_NRC_SOURCES} (C/C++ TUs
-        # that include <nros/nros_config_generated.h>); order them after the header
+        # that include <rclc/detail/nros_config_generated.h>); order them after the header
         # mirror targets so they never pick up the in-tree stub.
         _nros_node_register_config_header_deps(${PROJECT_NAME})
         # Issue 0090 — `add_dependencies` (above) orders the TARGET but does not stop
@@ -1235,7 +1235,7 @@ function(nano_ros_node_register)
         # file-level OBJECT_DEPENDS on the Corrosion mirror header(s) so each TU waits
         # for the generated header to exist. Apply to the WHOLE carrier source set: the
         # generated C++ entry (`${_entry_src}`) drives the full nros-cpp surface and the
-        # C node source(s) (`${_NRC_SOURCES}`) include <nros/nros_config_generated.h>.
+        # C node source(s) (`${_NRC_SOURCES}`) include <rclc/detail/nros_config_generated.h>.
         # The source-file property is directory-scoped, so listing `${_NRC_SOURCES}`
         # ALSO covers the SEPARATE build-coverage component lib (`${_lib}`) that
         # compiles the same file. C carrier reads the C header; C++ reads both — list
@@ -1284,7 +1284,7 @@ function(nano_ros_node_register)
 
         _nros_node_register_carrier_image(${PROJECT_NAME} "${_pkg_sym}" "${_NRC_PANIC}" "${_entry_src}" ${_NRC_SOURCES})
         # Issue 0088 — the carrier executable compiles ${_NRC_SOURCES} (C/C++ TUs
-        # that include <nros/nros_config_generated.h>); order them after the header
+        # that include <rclc/detail/nros_config_generated.h>); order them after the header
         # mirror targets so they never pick up the in-tree stub.
         _nros_node_register_config_header_deps(${PROJECT_NAME})
         nros_platform_link_app(${PROJECT_NAME})

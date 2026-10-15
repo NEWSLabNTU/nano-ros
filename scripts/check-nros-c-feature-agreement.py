@@ -11,7 +11,7 @@ manifest forwards `nros-c/<feature>`). Cargo keys a unit by its feature SET, so
 if the two invocations ask for different sets, the directory gets two `nros-c`
 units — and both write the same build-script byproduct:
 
-    <target-dir>/nros-c-generated/nros/nros_config_generated.h
+    <target-dir>/nros-c-generated/rclc/detail/nros_config_generated.h
 
 Nothing in cargo arbitrates that path. What it costs has been measured three
 times, and the three costs look nothing alike:
@@ -228,7 +228,7 @@ def check_descriptors(c_features, cpp_features):
                 f"    only on the C side: {only_c}\n"
                 f"    only via nros-cpp:  {only_cpp}\n"
                 f"    Both build into ONE --target-dir, so this is two nros-c units\n"
-                f"    writing one nros-c-generated/nros/nros_config_generated.h\n"
+                f"    writing one nros-c-generated/rclc/detail/nros_config_generated.h\n"
                 f"    (issues 1461, 1100). Name the feature nros-cpp forwards."
             )
     if checked == 0:

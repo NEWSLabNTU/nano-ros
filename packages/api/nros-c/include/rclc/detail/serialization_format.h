@@ -10,7 +10,7 @@
  * one backend speaks exactly one encoding.
  *
  * `NROS_SERIALIZATION_FORMAT_ID` is generated — it is `cbindgen` output in
- * `nros/nros_generated.h`, lowered from `nros_c::constants`, whose value is
+ * `rclc/detail/nros_generated.h`, lowered from `nros_c::constants`, whose value is
  * proven equal to `nros_node::session::IMAGE_SERIALIZATION_FORMAT_ID` by a
  * `const _` in that module. So the macro cannot silently disagree with the
  * backend this image links: a backend whose format is not the one mirrored
@@ -37,7 +37,7 @@
 #ifndef NROS_SERIALIZATION_FORMAT_H
 #define NROS_SERIALIZATION_FORMAT_H
 
-#include "nros/nros_generated.h"
+#include "rclc/detail/nros_generated.h"
 
 /**
  * Portable compile-time assertion.
@@ -82,7 +82,7 @@
 
 #ifndef NROS_SERIALIZATION_FORMAT_ID
 #error                                                                                             \
-    "NROS_SERIALIZATION_FORMAT_ID is missing — <nros/nros_generated.h> did not supply it. Regenerate the committed cbindgen headers (`cargo run -p nros-cbindgen-headers`)."
+    "NROS_SERIALIZATION_FORMAT_ID is missing — <rclc/detail/nros_generated.h> did not supply it. Regenerate the committed cbindgen headers (`cargo run -p nros-cbindgen-headers`)."
 #endif
 
 /**

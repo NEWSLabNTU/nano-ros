@@ -120,7 +120,13 @@ target_include_directories(nros-cpp-headers INTERFACE
 # BEFORE the source-tree stub, so per-variant storage sizes take effect
 # under add_subdirectory(<repo-root>) consumption.
 set(_nros_cpp_intree_include_dir "${CMAKE_CURRENT_BINARY_DIR}/include")
-file(MAKE_DIRECTORY "${_nros_cpp_intree_include_dir}/nros")
+# The C++ header sits under `nros/`, the C one this crate also mirrors under
+# `rclc/detail/` (phase-501 W2) — each language's subdir, from artifact.rs.
+include("${CMAKE_CURRENT_LIST_DIR}/../../../cmake/NanoRosArtifactLayout.cmake")
+nros_generated_header_subdir(_nros_cpp_hdr_sub_cpp cpp)
+nros_generated_header_subdir(_nros_cpp_hdr_sub_c c)
+file(MAKE_DIRECTORY "${_nros_cpp_intree_include_dir}/${_nros_cpp_hdr_sub_cpp}")
+file(MAKE_DIRECTORY "${_nros_cpp_intree_include_dir}/${_nros_cpp_hdr_sub_c}")
 if(TARGET cargo-build_nros_cpp)
     # Issue 0088 — first-class OUTPUT + custom target instead of a POST_BUILD side
     # effect (see the matching comment in packages/api/nros-c/CMakeLists.txt). The
@@ -128,8 +134,8 @@ if(TARGET cargo-build_nros_cpp)
     # a consumer TU could compile before the copy ran and pick up the in-tree stub.
     # `cargo-build_nros_cpp` emits BOTH the C++ variant header AND (since the C++
     # umbrella bundles nros-c, Phase 241.D3-rev) the C variant header into this dir.
-    set(_nros_cpp_gen_cpp_header "${_nros_cpp_intree_include_dir}/nros/nros_cpp_config_generated.h")
-    set(_nros_cpp_gen_c_header "${_nros_cpp_intree_include_dir}/nros/nros_config_generated.h")
+    set(_nros_cpp_gen_cpp_header "${_nros_cpp_intree_include_dir}/${_nros_cpp_hdr_sub_cpp}/nros_cpp_config_generated.h")
+    set(_nros_cpp_gen_c_header "${_nros_cpp_intree_include_dir}/${_nros_cpp_hdr_sub_c}/nros_config_generated.h")
     # Issues 0268 / 1783 — see the matching comment block in
     # packages/api/nros-c/CMakeLists.txt. One spelling for both crates: the
     # mirror re-runs every build (write-if-changed + restat), because the
@@ -139,8 +145,8 @@ if(TARGET cargo-build_nros_cpp)
     # leaf, which a shared cargo target dir makes untrue after the first.
     set(_NROS_CPP_MIRROR_SH "${CMAKE_CURRENT_LIST_DIR}/../../../scripts/build/mirror-generated-header.sh")
     include("${CMAKE_CURRENT_LIST_DIR}/../../../cmake/NanoRosConfigHeaderMirror.cmake")
-    nros_generated_dir(_nros_cpp_gendir_cpp cpp)
-    nros_generated_dir(_nros_cpp_gendir_c c)
+    nros_generated_subpath(_nros_cpp_gendir_cpp cpp)
+    nros_generated_subpath(_nros_cpp_gendir_c c)
     nros_config_header_mirror(nros_cpp_config_header cargo-build_nros_cpp
         "${CMAKE_CURRENT_BINARY_DIR}/nros_cpp_config_generated.h"
         "${_nros_cpp_gendir_cpp}" "nros_cpp_config_generated.h"
@@ -183,17 +189,18 @@ if(TARGET cargo-build_nros_cpp)
     # only a repair for a tree that is already drifted — so the result is
     # ignored, exactly as the old `if(EXISTS ...)` guard made it best-effort.
     foreach(_nros_cpp_heal
-            "nros_cpp_config_generated.h;${_nros_cpp_gendir_cpp}"
-            "nros_config_generated.h;${_nros_cpp_gendir_c}")
+            "nros_cpp_config_generated.h;${_nros_cpp_gendir_cpp};${_nros_cpp_hdr_sub_cpp}"
+            "nros_config_generated.h;${_nros_cpp_gendir_c};${_nros_cpp_hdr_sub_c}")
         list(GET _nros_cpp_heal 0 _nros_cpp_hdr)
         list(GET _nros_cpp_heal 1 _nros_cpp_gendir)
+        list(GET _nros_cpp_heal 2 _nros_cpp_sub)
         # Issue 1746 -- QUEUED, not run here: at this scope the shared cargo
         # link may still point at a provisional key (see
         # `nros_config_header_heal` in NanoRosEntityFacts.cmake).
         nros_config_header_heal("${_NROS_CPP_MIRROR_SH}"
             "${CMAKE_CURRENT_BINARY_DIR}/${_nros_cpp_hdr}"
             "${CMAKE_BINARY_DIR}" "${_nros_cpp_gendir}" "${_nros_cpp_hdr}"
-            "${_nros_cpp_intree_include_dir}/nros/${_nros_cpp_hdr}")
+            "${_nros_cpp_intree_include_dir}/${_nros_cpp_sub}/${_nros_cpp_hdr}")
     endforeach()
     target_include_directories(nros-cpp-headers BEFORE INTERFACE
         $<BUILD_INTERFACE:${_nros_cpp_intree_include_dir}>)

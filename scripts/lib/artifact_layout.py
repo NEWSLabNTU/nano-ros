@@ -34,3 +34,7 @@ def _const(name: str) -> str:
 C_GENERATED_DIR = _const("C_GENERATED_DIR")
 CPP_GENERATED_DIR = _const("CPP_GENERATED_DIR")
 GEN_DIRS = (C_GENERATED_DIR, CPP_GENERATED_DIR)
+# Where under an include root each language's generated headers sit (phase-501
+# W2): `rclc/detail` for C, `nros` for C++.
+C_HEADER_SUBDIR = _const("C_HEADER_SUBDIR")
+CPP_HEADER_SUBDIR = _const("CPP_HEADER_SUBDIR")

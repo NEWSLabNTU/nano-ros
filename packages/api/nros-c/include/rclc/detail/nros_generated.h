@@ -16,7 +16,7 @@
 #include <stddef.h>
 
 #include "rclc/visibility_control.h"
-#include "nros/nros_config_generated.h"
+#include "rclc/detail/nros_config_generated.h"
 
 /* Forward declarations for callback typedefs that reference these
  * structs before they appear in source-order output. Without these,

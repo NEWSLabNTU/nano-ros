@@ -14,7 +14,7 @@ PROJECT_BRIEF          = "Lightweight ROS 2 client for embedded real-time system
 # and public functions; the per-module shim headers carry @file briefs
 # and `@addtogroup` blocks that pull related symbols into named groups.
 INPUT                  = include/rclc/rclc.h \
-                         include/nros/nros_generated.h \
+                         include/rclc/detail/nros_generated.h \
                          include/rclc/types.h \
                          include/rclc/detail/serialization_format.h \
                          include/rclc/init.h \
