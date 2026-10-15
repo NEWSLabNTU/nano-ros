@@ -6,6 +6,7 @@
 #                   (`cargo nextest --workspace --exclude nros-tests`),
 #                   then `just test-ignored` (issue 1507) and
 #                   `just test-doc` (doctests, both workspaces).
+#   - feature-sweep : `just check feature-sweep` — per-feature clippy.
 #   - gates       : `just ci tier1 gates` — tier 1's `just check` half.
 #
 # Tier 1's OTHER half — `just build-test-fixtures lane=tier1` + `just ci tier1
@@ -197,6 +198,45 @@ jobs:
         run: |
           source ./activate.sh
           just test-doc
+
+  # ----- per-feature clippy of the API/core crates -----
+  #
+  # `just check feature-sweep`: each crate's features one at a time over its
+  # base set, ~200 clippy runs. Its own job because it is ~15-25 min and the
+  # unit job's ceiling is sized for the tests; scheduled because no merge
+  # lane can afford it. See the recipe and `scripts/check-feature-sweep.py`.
+  feature-sweep:
+    name: per-feature clippy (API + core crates)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 75
+    concurrency:
+      group: host-tests-feature-sweep-${{ github.ref }}-${{ github.event_name }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: read
+    container:
+      image: ghcr.io/newslabntu/nano-ros-ci:humble
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout nano-ros
+        uses: actions/checkout@v4
+
+      - name: just setup linux
+        run: |
+          git submodule update --init --depth 1 packages/cli/third-party/play_launch
+          source ./activate.sh
+          just setup linux
+
+      - name: just check feature-sweep
+        run: |
+          source ./activate.sh
+          just check feature-sweep
 
   # ----- tier-1 gates: `just ci tier1 gates` (= `just check`) -----
   #

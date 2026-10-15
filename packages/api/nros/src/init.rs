@@ -404,6 +404,7 @@ impl Context {
     /// `Executor::open` builds from it would never see them — the silent drop
     /// `init_with_args` exists to prevent. Such a context PANICS here,
     /// naming `Context::create_executor`, which installs them.
+    #[allow(deprecated)] // the deliberate use named above (phase-427 W10)
     pub fn config<'a>(&'a self, node_name: &'a str) -> ExecutorConfig<'a> {
         #[cfg(feature = "env")]
         if !self.ros_args.is_empty() || !self.ros_params.is_empty() {

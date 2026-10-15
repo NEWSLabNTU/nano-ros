@@ -114,6 +114,7 @@ nros-sdk.lock
 # untracked at the repo root; `check-scoped-target-dirs-ignored` now derives
 # the required entries from the call sites instead of trusting this list.
 /target-excluded-tests/
+/target-feature-sweep/
 
 # Issue 1354's five scoped dirs, added the same way: `check-c`, `check-cpp` and
 # the two cpp clippy/embedded probes each build with their own feature set, and

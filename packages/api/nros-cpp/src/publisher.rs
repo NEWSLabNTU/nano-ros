@@ -342,7 +342,7 @@ pub unsafe extern "C" fn nros_cpp_publisher_loan(
             unsafe {
                 *out_buf = buf_ptr;
                 *out_cap = cap;
-                *out_token = token;
+                *out_token = token.cast();
             }
             NROS_CPP_RET_OK
         }
@@ -375,7 +375,7 @@ pub unsafe extern "C" fn nros_cpp_publisher_commit(
     // SAFETY: `token` is the backend token a prior `nros_cpp_publisher_loan`
     // handed out on this publisher; the caller's contract is that it is
     // still outstanding and is consumed here exactly once.
-    match unsafe { publisher.handle.commit_raw(token, actual_len) } {
+    match unsafe { publisher.handle.commit_raw(token.cast(), actual_len) } {
         Ok(()) => NROS_CPP_RET_OK,
         Err(e) => crate::transport_error_to_cpp_ret(e),
     }
@@ -404,7 +404,7 @@ pub unsafe extern "C" fn nros_cpp_publisher_discard(
     // handed out on this publisher. `discard_raw` fires the backend's
     // pub_discard (or reclaims the arena staging buffer) — issue 0812
     // retired the per-loan Box this used to reconstitute.
-    match unsafe { publisher.handle.discard_raw(token) } {
+    match unsafe { publisher.handle.discard_raw(token.cast()) } {
         Ok(()) => NROS_CPP_RET_OK,
         Err(e) => crate::transport_error_to_cpp_ret(e),
     }
