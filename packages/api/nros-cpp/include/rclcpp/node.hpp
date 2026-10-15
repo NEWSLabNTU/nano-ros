@@ -16,7 +16,7 @@
 #if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0) // hosted-family: hosted-console
 #include <cstdlib>                                 // getenv — Phase 123.B.3 env-aware init
 #if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0) // hosted-family: hosted-console
-#include <cstdio> // fopen — Phase 212.L.5 init_with_launch path-exists check
+#include <cstdio> // fopen — the deprecated init_with_launch(path) existence check
 // <stdio.h> + unqualified `::fprintf` (issue 0942 / phase-472 W5): `<cstdio>` need not put
 // the C names in `std` on a freestanding libstdc++, and `std::fprintf` then fails.
 #include <stdio.h>
@@ -598,14 +598,16 @@ inline Result init_in(const char* locator, uint8_t domain_id, const char* sessio
 inline Result init_with_rmw(const char* rmw, const char* locator = nullptr, uint8_t domain_id = 0,
                             const char* session_name = "node");
 
-/// Launch-aware init.
+/// Initialize an nros session, honouring `--ros-args` — the `Result`-returning
+/// twin of `rclcpp::init(argc, argv)`, which has nowhere to put a refusal and
+/// aborts instead.
 ///
 /// Reads the domain id, locator and RMW choice from the environment
 /// (`ROS_DOMAIN_ID`, `NROS_LOCATOR`, `RMW_IMPLEMENTATION` / `NROS_RMW`), as
-/// the 2-arg `init` does. It reads no launch file: a launch tree reaches an
-/// image at BUILD time — `nros sync` resolves it into the SystemModel and the
-/// generated entry (`nano_ros_entry(... LAUNCH ...)`) installs its node
-/// identities, remaps and parameters.
+/// the 2-arg `init_in` does. No launch file is read here: a launch tree
+/// reaches an image at BUILD time — `nros sync` resolves it into the
+/// SystemModel and the generated entry (`nano_ros_entry(... LAUNCH ...)`)
+/// installs its node identities, remaps and parameters.
 ///
 /// `argc` / `argv` are parsed as `--ros-args` with rcl's grammar, exactly as
 /// Rust's `nros::Context::new` does: `-r`/`--remap` rules are installed as the
@@ -617,16 +619,21 @@ inline Result init_with_rmw(const char* rmw, const char* locator = nullptr, uint
 /// every RTOS board passes — is a no-op.
 ///
 /// `session_name` falls back to `"nros_cpp"` when null (matches the
-/// 2-arg `init` overload).
+/// 2-arg `init_in` overload).
+inline Result init_in(int argc, char const* const* argv, const char* session_name = nullptr);
+
+/// Deprecated: [`init_in`]`(argc, argv, session_name)` under a name that
+/// promised a launch file it never read (issue 1917).
+NROS_CPP_DEPRECATED_MSG("reads the environment and --ros-args, and no launch file: call "
+                        "rclcpp::init_in(argc, argv) (issue 1917)")
 inline Result init_with_launch_auto(int argc = 0, char** argv = nullptr,
                                     const char* session_name = nullptr);
 
-/// Explicit-path variant of [`init_with_launch_auto`].
-///
-/// On a hosted build, returns `ErrorCode::NotInitialized` when `path` cannot
-/// be opened, so a misspelled path fails at init; the file's contents are not
-/// read. Otherwise behaves exactly as the auto variant, `argc` / `argv`
-/// included.
+/// Deprecated: [`init_in`]`(argc, argv, session_name)` behind a check that
+/// `path` can be opened (hosted builds only); the file's contents are not read.
+NROS_CPP_DEPRECATED_MSG("reads the environment and --ros-args, not the file: call "
+                        "rclcpp::init_in(argc, argv), checking the path yourself if you "
+                        "relied on that (issue 1917)")
 inline Result init_with_launch(const char* path, int argc = 0, char** argv = nullptr,
                                const char* session_name = nullptr);
 
@@ -2821,7 +2828,7 @@ inline Result init_in(const char* locator, uint8_t domain_id, const char* sessio
 #if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0) // hosted-family: hosted-console
     // Issue #39 — apply the same `$NROS_LOCATOR` / `$ROS_DOMAIN_ID` env
     // fallback as the 2-arg `init()` when `locator` is null / `domain_id` is
-    // 0. This makes `init_with_launch_auto()` (which delegates here with a
+    // 0. This makes `init_in(argc, argv)` (which delegates here with a
     // null locator) honor the env overlay instead of passing a null locator
     // to the backend → TransportError / degraded session.
     // Issue 0330 — the hard local default is GONE entirely (it was a zenoh
@@ -2967,7 +2974,7 @@ inline void* global_handle() {
 
 namespace detail {
 /// Honour `--ros-args` through `nros_cpp_install_argv_remaps` — the ONE C++
-/// spelling, used by `rclcpp::init(argc, argv)` and both `init_with_launch*`.
+/// spelling, used by `rclcpp::init(argc, argv)` and `rclcpp::init_in(argc, argv)`.
 /// `executor == nullptr` validates only. Logs the refusal, naming the token,
 /// and returns the FFI's code (0 on success).
 inline int32_t apply_ros_args(void* executor, int argc, char const* const* argv) {
@@ -3022,15 +3029,19 @@ inline Result init_honouring_ros_args(int argc, char const* const* argv, const c
 }
 } // namespace detail
 
-// -- launch-aware init --
+// -- init honouring --ros-args --
 //
-// Both `init_with_launch_auto` and `init_with_launch(path)` delegate to
-// the existing 3-arg `init`, which reads the environment. The session
-// name falls back to `"nros_cpp"` so existing callsites keep working.
+// `init_in(argc, argv)` delegates to the 3-arg `init_in`, which reads the
+// environment. The session name falls back to `"nros_cpp"`. The deprecated
+// `init_with_launch*` forward here.
 
-inline Result init_with_launch_auto(int argc, char** argv, const char* session_name) {
+inline Result init_in(int argc, char const* const* argv, const char* session_name) {
     const char* name = (session_name != nullptr) ? session_name : "nros_cpp";
     return detail::init_honouring_ros_args(argc, argv, name);
+}
+
+inline Result init_with_launch_auto(int argc, char** argv, const char* session_name) {
+    return init_in(argc, argv, session_name);
 }
 
 inline Result init_with_launch(const char* path, int argc, char** argv, const char* session_name) {
@@ -3039,19 +3050,15 @@ inline Result init_with_launch(const char* path, int argc, char** argv, const ch
         return Result(-3);
     }
 #if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0) // hosted-family: hosted-console
-    // Verify the file exists so misspelled paths fail fast at init time
-    // instead of surfacing as a silently-empty overlay later.
+    // The one thing this adds to `init_in`: a path that cannot be opened
+    // fails here. Its contents are not read.
     if (FILE* f = ::fopen(path, "rb")) {
         ::fclose(f);
     } else {
         return Result(ErrorCode::NotInitialized);
     }
 #endif
-    // TODO (Phase 212.L.5 follow-up): parse `path` as launch XML and
-    // fold params/remaps/env into the init call. Today the env overlay
-    // is the only channel.
-    const char* name = (session_name != nullptr) ? session_name : "nros_cpp";
-    return detail::init_honouring_ros_args(argc, argv, name);
+    return init_in(argc, argv, session_name);
 }
 
 /// Check if the nros session is initialized — and, like `rclcpp::ok()`, not

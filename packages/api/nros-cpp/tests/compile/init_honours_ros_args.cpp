@@ -1,4 +1,4 @@
-// `rclcpp::init(argc, argv)` and `rclcpp::init_with_launch*(argc, argv)` HONOUR
+// `rclcpp::init(argc, argv)` and `rclcpp::init_in(argc, argv)` HONOUR
 // `--ros-args` — the C++ half of phase-467 Row 11.
 //
 // RUNTIME probe, because every property here is an ORDER or a side effect, and
@@ -12,8 +12,11 @@
 //   4. a rule that does not fit closes the session it opened, rather than
 //      leaving it running without the remap;
 //   5. `rclcpp::init(argc, argv)` ABORTS on a refusal (its upstream shape
-//      returns `void`, so there is nowhere else to put it), and
-//      `init_with_launch_auto` RETURNS it.
+//      returns `void`, so there is nowhere else to put it), and `init_in`
+//      RETURNS it.
+//
+// The deprecated `init_with_launch_auto` is checked once, to prove it still
+// forwards to `init_in` until it is removed (issue 1917).
 //
 // The parse itself is `nros_node::ros_args`'s, tested in Rust; here the five
 // FFI entry points the headers reach are DEFINED BELOW as recording stubs, so
@@ -124,31 +127,43 @@ int main() {
     std::printf("init_honours_ros_args:\n");
 
     reset();
-    rclcpp::Result res = rclcpp::init_with_launch_auto(4, remap_argv);
-    check(res.ok(), "init_with_launch_auto accepts `-r a:=b`");
+    rclcpp::Result res = rclcpp::init_in(4, remap_argv);
+    check(res.ok(), "init_in accepts `-r a:=b`");
     check(events_are({Ev::Validate, Ev::Init, Ev::Install}),
           "  ...validated BEFORE init, installed into the open executor AFTER it");
 
     reset();
-    res = rclcpp::init_with_launch_auto(4, param_argv);
-    check(!res.ok() && res.raw() == -3, "init_with_launch_auto RETURNS the `-p` refusal");
+    res = rclcpp::init_in(4, param_argv);
+    check(!res.ok() && res.raw() == -3, "init_in RETURNS the `-p` refusal");
     check(events_are({Ev::Validate}), "  ...and never opened a session");
 
     reset();
-    res = rclcpp::init_with_launch_auto(1, plain_argv);
+    res = rclcpp::init_in(1, plain_argv);
     check(res.ok() && events_are({Ev::Init}),
           "no `--ros-args`: the parser is never reached, init proceeds");
 
     reset();
-    res = rclcpp::init_with_launch_auto(0, nullptr);
+    res = rclcpp::init_in(0, nullptr);
     check(res.ok() && events_are({Ev::Init}), "(0, NULL) — what RTOS boards pass — is a no-op");
 
     reset();
     g_install_full = true;
-    res = rclcpp::init_with_launch_auto(4, remap_argv);
+    res = rclcpp::init_in(4, remap_argv);
     check(!res.ok() && res.raw() == -6, "a rule that does not fit is RETURNED");
     check(events_are({Ev::Validate, Ev::Init, Ev::Install, Ev::Fini}) && !g_live,
           "  ...and the session it opened is closed again");
+
+    reset();
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
+    res = rclcpp::init_with_launch_auto(4, param_argv);
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
+    check(!res.ok() && res.raw() == -3 && events_are({Ev::Validate}),
+          "the deprecated init_with_launch_auto still forwards to init_in");
 
     reset();
     rclcpp::init(4, remap_argv);

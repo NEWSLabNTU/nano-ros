@@ -1226,11 +1226,11 @@ cpp: cpp-fmt
         packages/api/nros-cpp/tests/compile/publisher_publish_guards_initialized.cpp
     "$gen/nros-cpp-tests"/publisher_publish_guards_initialized
     # phase-467 Row 11, C++ half — `rclcpp::init(argc, argv)` and
-    # `nros::init_with_launch*(argc, argv)` honour `--ros-args`. RUNTIME, and
+    # `rclcpp::init_in(argc, argv)` honour `--ros-args`. RUNTIME, and
     # with the five FFI entry points stubbed in the TU (same reason as the probe
     # above): what is under test is ORDER — validate before a session opens,
     # install after it, close it again on a rule that does not fit — and that a
-    # refusal ABORTS `rclcpp::init` but is RETURNED by `init_with_launch_auto`.
+    # refusal ABORTS `rclcpp::init` but is RETURNED by `init_in`.
     test -f packages/api/nros-cpp/tests/compile/init_honours_ros_args.cpp || { \
         echo "ERROR: init_honours_ros_args.cpp is MISSING -- this check" >&2; \
         echo "       would pass on absence." >&2; \

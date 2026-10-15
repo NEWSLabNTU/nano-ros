@@ -41,9 +41,9 @@ int main(int argc, char** argv) {
     printf("nros C++ Service Server (AddTwoInts)\n");
     printf("=====================================\n");
 
-    // Launch-aware init. Env overlay is the active source today
-    // (`$NROS_LOCATOR` / `$ROS_DOMAIN_ID`).
-    RCLCPP_TRY_RET(rclcpp::init_with_launch_auto(argc, argv), 1);
+    // Reads `$NROS_LOCATOR` / `$ROS_DOMAIN_ID` / `$RMW_IMPLEMENTATION` and
+    // honours `--ros-args`; launch content arrives through the build.
+    RCLCPP_TRY_RET(rclcpp::init_in(argc, argv), 1);
 
     rclcpp::Node node;
     RCLCPP_TRY_RET(rclcpp::create_node(node, "add_two_ints_server"), 1);
