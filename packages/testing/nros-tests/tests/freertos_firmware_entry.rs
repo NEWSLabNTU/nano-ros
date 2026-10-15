@@ -32,6 +32,14 @@ fn find_run_plan(build_dir: &std::path::Path) -> Option<PathBuf> {
 
 #[test]
 fn freertos_qemu_mps2_an385_entry_pkg_firmware_builds() -> nros_tests::TestResult<()> {
+    // Issue 1900 — the lane first. A `[[compile_check_fixture]]` row has no
+    // coordinate, so the resolver cannot place it and treats "cannot attribute"
+    // as "run it": without this a lane selecting no FreeRTOS coordinate
+    // resolved (and failed on) a FreeRTOS cross-build it never built.
+    nros_tests::fixtures::lane::require_platform_in_lane(
+        &[nros_tests::matrix::PlatformId::FreertosMps2],
+        "the FreeRTOS MPS2 Entry-pkg firmware",
+    );
     let stamp = nros_tests::fixtures::require_compile_check("freertos_firmware")?;
     let staged = stamp.parent().expect("fixture dir");
     let build_dir = staged.join("src/firmware/target/thumbv7m-none-eabi/debug/build");

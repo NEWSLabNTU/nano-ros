@@ -98,11 +98,17 @@ fn strip_clock(output: &str) -> String {
 /// it on a fixture only `just qemu build-fixtures` produces.
 #[test]
 fn logging_smoke_qemu_baremetal_mps2_emits_every_severity() {
+    // Issue 1900 — the scope check comes BEFORE any host probe, so a lane
+    // that does not select this platform deselects it on every host.
+    nros_tests::fixtures::lane::require_platform_in_lane(
+        &[nros_tests::matrix::PlatformId::QemuBaremetal],
+        "the bare-metal MPS2 logging image",
+    );
     if !is_qemu_available() {
-        panic!("[SKIPPED] qemu-system-arm not available");
+        nros_tests::unmet!("qemu-system-arm not available");
     }
     if !is_arm_toolchain_available() {
-        panic!("[SKIPPED] thumbv7m-none-eabi target not installed");
+        nros_tests::unmet!("thumbv7m-none-eabi target not installed");
     }
 
     let binary = build_logging_smoke_mps2_baremetal()
@@ -124,11 +130,17 @@ fn logging_smoke_qemu_baremetal_mps2_emits_every_severity() {
 /// severity through `nros-log`.
 #[test]
 fn logging_smoke_freertos_mps2_emits_every_severity() {
+    // Issue 1900 — the scope check comes BEFORE any host probe, so a lane
+    // that does not select this platform deselects it on every host.
+    nros_tests::fixtures::lane::require_platform_in_lane(
+        &[nros_tests::matrix::PlatformId::FreertosMps2],
+        "the FreeRTOS MPS2 logging image",
+    );
     if !is_qemu_available() {
-        panic!("[SKIPPED] qemu-system-arm not available");
+        nros_tests::unmet!("qemu-system-arm not available");
     }
     if !is_arm_toolchain_available() {
-        panic!("[SKIPPED] thumbv7m-none-eabi target not installed");
+        nros_tests::unmet!("thumbv7m-none-eabi target not installed");
     }
 
     let binary = build_logging_smoke_freertos_mps2()
@@ -152,19 +164,25 @@ fn logging_smoke_freertos_mps2_emits_every_severity() {
 /// the log path.
 #[test]
 fn logging_smoke_nuttx_qemu_arm_emits_every_severity() {
+    // Issue 1900 — the scope check comes BEFORE any host probe, so a lane
+    // that does not select this platform deselects it on every host.
+    nros_tests::fixtures::lane::require_platform_in_lane(
+        &[nros_tests::matrix::PlatformId::NuttxArm],
+        "the NuttX ARM logging image",
+    );
     if !nuttx::is_nuttx_available() {
-        panic!("[SKIPPED] NuttX source tree not found");
+        nros_tests::unmet!("NuttX source tree not found");
     }
     if !nuttx::is_nuttx_configured() {
-        panic!("[SKIPPED] NuttX not configured");
+        nros_tests::unmet!("NuttX not configured");
     }
     if !nuttx::is_arm_gcc_available() {
-        panic!("[SKIPPED] arm-none-eabi-gcc not on PATH");
+        nros_tests::unmet!("arm-none-eabi-gcc not on PATH");
     }
     // Issue 0743 — this is the `_nuttx_qemu_arm` lane, so ask for the ARM
     // kernel. The old `.is_none()` check was satisfied by a riscv image.
     if let Err(why) = nuttx::nuttx_kernel_path_for(nuttx::NuttxArch::Arm) {
-        panic!("[SKIPPED] {why}");
+        nros_tests::unmet!("{why}");
     }
 
     let binary = build_logging_smoke_nuttx_qemu_arm()
@@ -196,7 +214,7 @@ fn logging_smoke_threadx_riscv64_emits_every_severity() {
         "the ThreadX riscv64 logging image",
     );
     if !is_qemu_riscv64_available() {
-        panic!("[SKIPPED] qemu-system-riscv64 not available");
+        nros_tests::unmet!("qemu-system-riscv64 not available");
     }
 
     let binary = build_logging_smoke_threadx_riscv64()
@@ -236,13 +254,25 @@ fn logging_smoke_threadx_riscv64_emits_every_severity() {
 /// filter did not exist yet — and tier 1 has been selecting a threadx-linux
 /// test ever since, whose fixture `lane=linux` never builds. Do not shorten it
 /// back.
+///
+/// Issue 1900 — the name no longer SCOPES anything: no run is narrowed by
+/// `lane-filter.sh` any more, and every test here asks the lane
+/// (`require_platform_in_lane`) before it probes. The token still matters, one
+/// level down: `check-out-of-lane-deselected.py` selects the tests it checks by
+/// it, so a token-less name escapes that check.
 #[test]
 fn logging_smoke_threadx_linux_captures_stderr() {
+    // Issue 1900 — the scope check comes BEFORE any host probe, so a lane
+    // that does not select this platform deselects it on every host.
+    nros_tests::fixtures::lane::require_platform_in_lane(
+        &[nros_tests::matrix::PlatformId::ThreadxLinux],
+        "the ThreadX Linux logging image",
+    );
     if !threadx_linux::is_threadx_available() {
-        panic!("[SKIPPED] no ThreadX kernel tree provisioned");
+        nros_tests::unmet!("no ThreadX kernel tree provisioned");
     }
     if !threadx_linux::is_nsos_netx_available() {
-        panic!("[SKIPPED] nsos-netx not found at packages/drivers/net/nsos-netx/");
+        nros_tests::unmet!("nsos-netx not found at packages/drivers/net/nsos-netx/");
     }
 
     let binary = build_logging_smoke_threadx_linux()

@@ -6,7 +6,6 @@
 //! $ lane-coords tier2-nightly --module nuttx     # …every token that module owns
 //! $ lane-coords tier2-nightly --modules          # the `just <mod>` set, deduped
 //! $ lane-coords tier2 --cells                    # full cells, for inspection
-//! $ lane-coords tier2 --run-scope                # NROS_TEST_SCOPE for this lane
 //! $ lane-coords tier2 --build-lane               # build-test-fixtures lane= it needs
 //! $ lane-coords tier2 --unclaimed                # NROS_TEST_UNCLAIMED for this lane
 //! $ lane-coords --scope nuttx                    # every row a `just nuttx` run owns
@@ -44,20 +43,19 @@
 //!   yml is computed from `matrix::CELLS` instead of hand-written (it was
 //!   hand-written in `nightly.yml`, where nothing notices it going stale).
 //!
-//! # `--run-scope` / `--build-lane` answer a DIFFERENT question (issue 0482)
+//! # `--build-lane` answers a DIFFERENT question (issue 0482)
 //!
-//! The coordinate modes above say which fixtures a lane must have FRESH. These
-//! two say which fixtures must EXIST, which is a property of the RUN, not of the
-//! cell selection. Answering both from the lane name alone is what let `just
-//! build-test-fixtures lane=tier2` satisfy the preflight for a run that then
-//! failed on 34 unbuilt coordinates. Both are consumed by
-//! `scripts/build/fixture-lane.sh`.
+//! The coordinate modes above say which fixtures a lane must have FRESH. This
+//! one says which fixtures must EXIST, which is a property of the RUN, not of
+//! the cell selection. Answering both from the lane name alone is what let
+//! `just build-test-fixtures lane=tier2` satisfy the preflight for a run that
+//! then failed on 34 unbuilt coordinates.
 //!
-//! They still differ for tier 1, whose run is filtered by NAME
-//! (`NROS_TEST_SCOPE=linux`) and so needs the broader `linux` build. Since
-//! phase-340 W3 tier 2 and the nightly lane narrow their run at fixture
-//! RESOLUTION time instead, to exactly `coords(lane)` — so for those two the
-//! answers coincide, and `--build-lane` prints the lane itself.
+//! Every lane narrows its run at fixture RESOLUTION time now, to exactly
+//! `coords(lane)`, so the answers coincide and `--build-lane` prints the lane
+//! itself. (`--run-scope` printed the `NROS_TEST_SCOPE` NAME filter for a lane;
+//! it printed `all` for every lane since phase-395 W19, and issue 1900 retired
+//! it with that filter's reader.)
 
 use nros_tests::{
     ci_lane::{CiLane, cells, coords},
@@ -69,7 +67,7 @@ use std::collections::BTreeSet;
 fn usage(got: Option<&str>) -> ! {
     eprintln!(
         "usage: lane-coords <tier1|tier2|tier2-nightly> \
-[--cells | --modules | --platform <token> | --module <name> | --run-scope | \
+[--cells | --modules | --platform <token> | --module <name> | \
 --build-lane | --unclaimed]\n       lane-coords --scope <just module>   (got {got:?})\n\
          \n\
          Prints `platform,lang,rmw` triples — the FIXTURE coordinates a lane\n\
@@ -107,7 +105,6 @@ fn main() {
             }
         }
         // Issue 0482 — one line, no trailing anything, so a shell can `$( )` it.
-        Some("--run-scope") => println!("{}", lane.run_scope().test_scope()),
         Some("--build-lane") => println!("{}", lane.build_lane()),
         // Issue 1758 — may be EMPTY (a lane that claims everything), so the
         // line is printed either way and a shell `$( )` reads "".

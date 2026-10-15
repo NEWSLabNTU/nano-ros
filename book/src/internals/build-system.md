@@ -172,15 +172,17 @@ wrong binary. The discipline:
   mapping between them (`CiLane::run_scope` is the declaration;
   `lane-coords <lane> --build-lane` prints it).
 
-  Each lane narrows its run in the way its cost actually lives:
+  Every lane narrows its run by fixture COORDINATE (`NROS_TEST_COORDS`), and
+  each is its own build lane. Tier 1 used to narrow by test/binary NAME
+  (`NROS_TEST_SCOPE=linux`); phase-395 W19 moved it to coordinates, and issue
+  1900 retired the name filter's reader, which no runner had set since. Each
+  test asks the lane BEFORE it probes the host, so a test of a platform the lane
+  did not select reports `[SKIPPED:lane]` on every host;
+  `scripts/test/check-out-of-lane-deselected.py` proves it on the `just ci gate`
+  lane.
 
-  | lane | run narrowed by | build lane |
-  | --- | --- | --- |
-  | tier 1 | test/binary NAME (`NROS_TEST_SCOPE=linux`) | `linux` |
-  | tier 2, nightly | fixture COORDINATE (`NROS_TEST_COORDS`) | itself |
-
-  Tier 2 needs the second kind because it is 1-wise over platform: every
-  platform is in the lane, so a platform-token filter excludes nothing, and the
+  A name filter could never have expressed tier 2 anyway: it is 1-wise over
+  platform, every platform is in the lane, so a platform-token filter excludes nothing, and the
   saving is in lang × rmw *within* a platform, which test names do not encode
   (issues 0357, 0482). So the narrowing happens in the fixture **resolver**
   (phase-340 W3, `nros_tests::fixtures::lane`): a resolved artifact is

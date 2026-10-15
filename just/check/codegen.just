@@ -548,12 +548,13 @@ generated-leaf-regenerable:
 # one re-opens the issue-0380 hand-edit/regeneration conflict. Supersedes
 # check-model-dims (W5.b: the dim baseline protected committed files that no
 # longer exist; `nros ws model-dims` remains for inspection).
-# issue 0571 — a matrix consumer the lane filter cannot reach by NAME must
-# narrow its own cell list (`nros_tests::lane_scope::admits`). Four consumers
-# are ONE generically-named test each over every platform's cells, so
-# `scripts/test/lane-filter.sh linux` excludes nothing of theirs: tier 1 boots
-# whatever images exist, and the cells whose images do not exist vanish into a
-# green. Buildless.
+# issue 0571 — a matrix consumer must narrow its own cell list
+# (`nros_tests::lane_scope::admits`). Several consumers are ONE generically-named
+# test each over every platform's cells, so nothing outside the test can
+# deselect a cell: a host lane boots whatever images exist, and the cells whose
+# images do not exist vanish into a green. Issue 1900 retired the gate's other
+# arm ("a platform token in the FILE name lets the lane filter exclude it") —
+# no run is narrowed by name any more. Buildless.
 # phase-351 W5 — every cargo target cmake creates must receive the resolved
 # board facts + site config. The failure this guards is NOT a wrong value but no
 # value, defaulted, with no diagnostic (issue 0529's shape) — which is how the

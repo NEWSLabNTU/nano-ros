@@ -179,9 +179,11 @@ pub const ALL: [CiLane; 3] = [CiLane::Tier1, CiLane::Tier2, CiLane::Tier2Nightly
 /// question. See [`CiLane::run_scope`].
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum RunScope {
-    /// The recipe filters the run to host binaries by NAME
-    /// (`scripts/test/lane-filter.sh linux`, via `NROS_TEST_SCOPE=linux`).
-    Linux,
+    // Issue 1900 — a `Linux` variant stood here: "the recipe filters the run
+    // to host binaries by NAME (`lane-filter.sh linux`, via
+    // `NROS_TEST_SCOPE=linux`)". No lane had declared it since phase-395 W19,
+    // and the recipe-side reader of `NROS_TEST_SCOPE` is gone, so a name scope
+    // is no longer expressible. Coordinates are the one mechanism.
     /// The recipe runs the whole suite — no filtering of any kind.
     All,
     /// The recipe runs every test binary, but the fixture RESOLVER skips any
@@ -195,18 +197,6 @@ pub enum RunScope {
     /// exists — see `crate::fixtures::lane`, which derives it from the same
     /// `row_coord` the BUILD filters on.
     LaneCoords,
-}
-
-impl RunScope {
-    /// The `NROS_TEST_SCOPE` token. `lane-filter.sh` takes exactly two values;
-    /// [`RunScope::LaneCoords`] does not filter by NAME at all, so it maps to
-    /// `all` here and does its narrowing at resolution time instead.
-    pub fn test_scope(self) -> &'static str {
-        match self {
-            RunScope::Linux => "linux",
-            RunScope::All | RunScope::LaneCoords => "all",
-        }
-    }
 }
 
 impl CiLane {
@@ -226,8 +216,6 @@ impl CiLane {
     ///
     /// Derived from [`CiLane::run_scope`], never declared twice:
     ///
-    /// * [`RunScope::Linux`] — a module-level build of every host row, which is
-    ///   a strict superset of any coordinate cover of the host.
     /// * [`RunScope::All`] — every coordinate is resolved, so nothing short of
     ///   `all` covers it.
     /// * [`RunScope::LaneCoords`] — the run resolves exactly this lane's
@@ -239,7 +227,6 @@ impl CiLane {
     /// for every lane.
     pub fn build_lane(self) -> &'static str {
         match self.run_scope() {
-            RunScope::Linux => "linux",
             RunScope::All => "all",
             RunScope::LaneCoords => self.lane_token(),
         }
@@ -841,12 +828,6 @@ _tier-build:
 
             let scope = lane.run_scope();
             match scope {
-                RunScope::Linux => assert!(
-                    body.contains("NROS_TEST_SCOPE=linux"),
-                    "{lane:?} declares RunScope::Linux but `just {recipe}` does not set \
-                     NROS_TEST_SCOPE=linux — the run would execute every platform's tests \
-                     on fixtures the lane never built:\n{body}"
-                ),
                 RunScope::All => assert!(
                     !body.contains("NROS_TEST_SCOPE="),
                     "{lane:?} declares RunScope::All but `just {recipe}` narrows the run with \
@@ -1074,8 +1055,10 @@ _tier-build:
 
     /// `scripts/test/lane-filter.sh` derives its exclusion tokens from
     /// `PlatformId`. If a platform is added whose family name the script cannot
-    /// produce, the native lane would silently RUN that platform's binaries — the
-    /// rot this whole module exists to prevent (audit E5 / issue 0341).
+    /// produce, `check-out-of-lane-deselected.py` (which selects the negation)
+    /// would silently stop checking that platform's tests deselect under the
+    /// `linux` scope — the rot this whole module exists to prevent (audit E5 /
+    /// issue 0341; issue 1900 moved the filter from scoping runs to that check).
     #[test]
     fn lane_filter_tokens_cover_every_non_native_platform() {
         let out = std::process::Command::new("bash")

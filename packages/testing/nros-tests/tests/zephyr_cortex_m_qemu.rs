@@ -77,6 +77,13 @@ const PUBLISH_BUDGET: Duration = Duration::from_secs(15);
 /// sockets never do.
 const NET_STACK_READY_MARKER: &str = "IPv4 address: 10.0.2.15";
 
+/// Issue 1900 — every test here boots the Zephyr Cortex-M QEMU image, so the
+/// lane is asked FIRST: a lane that selects no such coordinate deselects the
+/// test before the emulator and router probes, whatever the host has.
+fn require_cortex_m_in_lane(what: &str) {
+    nros_tests::fixtures::lane::require_platform_in_lane(&[PlatformId::ZephyrQemuCortexM], what);
+}
+
 /// One cell's body. `lang` selects the example tree AND the router port — the
 /// port comes from the matrix allocator rather than a literal, so a future
 /// platform-index change moves the bake and the test together instead of
@@ -96,6 +103,7 @@ const NET_STACK_READY_MARKER: &str = "IPv4 address: 10.0.2.15";
 /// issue 0531's dead-clock symptom and is not it. That cell waits on the TALKER
 /// line, so its accumulated output is the superset instead.
 fn run_pubsub_cell(lang: &str, matrix_lang: Lang, wait_marker: &str, budget: Duration) {
+    require_cortex_m_in_lane("a Zephyr Cortex-M pubsub cell");
     if !is_qemu_available() {
         nros_tests::unmet!("qemu-system-arm not found");
     }
@@ -225,6 +233,7 @@ const BOOT_REPORT_BUDGET: Duration = Duration::from_secs(40);
 /// half, which is what keeps the record from being overwritten on a board.
 #[test]
 fn zephyr_cortex_m_c_boot_report_names_arena_exhaustion() {
+    require_cortex_m_in_lane("the Zephyr Cortex-M boot-report image");
     if !is_qemu_available() {
         nros_tests::unmet!("qemu-system-arm not found");
     }

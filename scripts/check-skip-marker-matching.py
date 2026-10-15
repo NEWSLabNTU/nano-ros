@@ -30,6 +30,23 @@ This literal was ALREADY fixed once, in the junit rewriter's `_is_skipped_failur
 helper to reach for and no check to notice — the exact "fix the CLASS, not the
 reported site" failure CLAUDE.md describes. A sixth aggregator is one copy-paste
 away.
+
+THE SECOND RULE — PRODUCING the marker (issue 1900)
+
+Since issue 1758 a test never skips because something is absent: it fails
+with `nros_tests::unmet!`. The one legitimate skip is `lane_skip!`
+(`[SKIPPED:lane]`), reached from the lane's scope before any probe. So
+nothing in Rust outside the macro's home may SPELL a `[SKIPPED…]` literal in
+code: a hand-written `panic!("[SKIPPED] …")` is a skip-on-absence the
+retirement of `skip!` never reached — twelve survived in `logging_smoke.rs`,
+and this gate's own self-test used to assert that producing the marker was
+fine. It is not.
+
+One exemption, DERIVED rather than listed: a test that is `#[ignore]`d and
+whose lane check names only platforms no `matrix::CELLS` row builds
+(`platform_is_built` — every cell a `CarveOut`). Such a test runs in no lane,
+so its marker reaches no verdict; today that is the dormant ESP32 test (issue
+1525), which is kept unchanged by decision.
 """
 
 import re
@@ -50,6 +67,85 @@ HAND_MATCH = re.compile(
          ["']\[SKIPPED[^"']*["']\s+(?:not\s+)?in\b)""",
     re.X,
 )
+
+# Issue 1900 — a `[SKIPPED…]` string literal in Rust CODE, i.e. a test
+# producing the marker by hand. `lane_skip!` is the only producer.
+PRODUCE = re.compile(r"""["']\[SKIPPED""")
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+MATRIX = os.path.join(ROOT, "packages/testing/nros-tests/src/matrix.rs")
+
+
+def unbuilt_platforms(matrix_src: str) -> set[str]:
+    """`PlatformId`s with no `matrix::CELLS` row that is not a `CarveOut`.
+
+    The Python reading of `matrix::platform_is_built`, from the same table, so
+    the exemption is a PROPERTY of the matrix and never a name written here.
+    """
+    start = matrix_src.find("pub const CELLS: &[Cell] = &[")
+    if start < 0:
+        raise SystemExit("check-skip-marker-matching: cannot find matrix::CELLS")
+    built, seen = set(), set()
+    i = start
+    while True:
+        i = matrix_src.find("cell(", i)
+        if i < 0:
+            break
+        if i > 0 and (matrix_src[i - 1].isalnum() or matrix_src[i - 1] == "_"):
+            i += 5
+            continue
+        depth, j = 0, i + 4
+        while j < len(matrix_src):
+            ch = matrix_src[j]
+            if ch == "(":
+                depth += 1
+            elif ch == ")":
+                depth -= 1
+                if depth == 0:
+                    break
+            j += 1
+        body = matrix_src[i + 5:j]
+        platform = body.split(",", 1)[0].strip().split("::")[-1]
+        if platform and platform[0].isupper():
+            seen.add(platform)
+            if "CarveOut(" not in body:
+                built.add(platform)
+        i = j
+    if not seen:
+        raise SystemExit("check-skip-marker-matching: matrix::CELLS yielded no cell")
+    return seen - built
+
+
+_FN = re.compile(r"^\s*(?:pub\s+)?fn\s+\w+")
+_LANE_PLATFORMS = re.compile(r"require_platform_in_lane\(\s*&\[([^\]]*)\]")
+
+
+def produce_exempt(lines: list[str], idx: int, unbuilt: set[str]) -> bool:
+    """Is the literal on `lines[idx]` inside an `#[ignore]`d test whose lane
+    check names only unbuilt platforms?"""
+    fn_at = next((k for k in range(idx, -1, -1) if _FN.match(lines[k])), None)
+    if fn_at is None:
+        return False
+    attrs = []
+    k = fn_at - 1
+    while k >= 0 and (lines[k].strip().startswith("#[") or lines[k].strip().startswith("///")
+                      or lines[k].strip().startswith("//")):
+        attrs.append(lines[k].strip())
+        k -= 1
+    if not any(a.startswith("#[ignore") for a in attrs):
+        return False
+    body = "\n".join(lines[fn_at:idx + 1])
+    m = _LANE_PLATFORMS.search(body)
+    if not m:
+        return False
+    named = set(re.findall(r"PlatformId::(\w+)", m.group(1)))
+    return bool(named) and named <= unbuilt
+
+
+def line_produces(line: str) -> bool:
+    """The PRODUCE predicate, comment-stripped like `line_offends`."""
+    return bool(PRODUCE.search(line.split("//", 1)[0]))
+
 
 # The helper itself, and the macros that PRODUCE the marker, must be free to
 # spell it out. Everything else consumes it through the helper.
@@ -94,6 +190,25 @@ def offenders() -> list[str]:
     return bad
 
 
+def producers(unbuilt: set[str]) -> list[str]:
+    """Issue 1900 — Rust code spelling a `[SKIPPED…]` literal by hand."""
+    bad = []
+    for path in file_kinds.files_of_kind("rust"):
+        if path in EXEMPT_FILES:
+            continue
+        try:
+            src = open(path, encoding="utf-8").read()
+        except OSError:
+            continue
+        if "[SKIPPED" not in src:
+            continue
+        lines = src.splitlines()
+        for n, line in enumerate(lines):
+            if line_produces(line) and not produce_exempt(lines, n, unbuilt):
+                bad.append(f"{path}:{n + 1}: {line.strip()}")
+    return bad
+
+
 def self_test() -> None:
     """The gate must reject the code it was written for, and accept the fix.
 
@@ -107,8 +222,16 @@ def self_test() -> None:
     assert not line_offends(post_fix), "the gate rejects its own fix"
     # The classed spelling is just as wrong — it misses the BARE marker.
     assert line_offends('x.contains("[SKIPPED:lane]")')
-    # Producing the marker is not matching on it.
+    # Producing the marker is not MATCHING on it — but since issue 1900 it is
+    # its own offence: `lane_skip!` is the only producer, and an absent tool
+    # is `unmet!`. This line used to be asserted harmless, which is how twelve
+    # `panic!("[SKIPPED] …")` sites outlived the retirement of `skip!`.
     assert not line_offends('panic!("[SKIPPED] {msg}")')
+    assert line_produces('        panic!("[SKIPPED] qemu-system-arm not available");')
+    assert line_produces('    panic!("[SKIPPED:lane] {why}")')
+    assert not line_produces('        nros_tests::unmet!("qemu-system-arm not available");')
+    assert not line_produces('    // was: panic!("[SKIPPED] qemu-system-arm not available");')
+    produce_exemption_self_test()
     # A comment mentioning the old code must not trip the gate (the
     # check-goal-cdr-stripped lesson: gates that pass on prose about themselves).
     assert not line_offends('    // was: msg.contains("[SKIPPED]")')
@@ -120,6 +243,47 @@ def self_test() -> None:
     assert not line_offends('    # was: "[SKIPPED]" in msg', "python")
     assert not line_offends('    return skip_marker.is_skip(msg)', "python")
     nested_marker_self_test()
+
+
+def produce_exemption_self_test() -> None:
+    """The derived exemption, both directions, on synthetic sources."""
+    matrix = (
+        "pub const CELLS: &[Cell] = &[\n"
+        "    cell(Linux, Rust, Zenoh, Pubsub, Example, Runtime),\n"
+        "    cell(Dormant, Rust, Zenoh, Pubsub, Example, CarveOut(PARKED)),\n"
+        "    cell(Mixed, Rust, Zenoh, Pubsub, Example, CarveOut(\"x\")),\n"
+        "    cell(Mixed, C, Zenoh, Pubsub, Example,\n"
+        "         Runtime),\n"
+        "];\n"
+    )
+    assert unbuilt_platforms(matrix) == {"Dormant"}, unbuilt_platforms(matrix)
+
+    def src(ignore: bool, platform: str) -> list[str]:
+        return ([
+            "#[test]",
+        ] + (['#[ignore = "parked"]'] if ignore else []) + [
+            "fn t() {",
+            "    nros_tests::fixtures::lane::require_platform_in_lane(",
+            f"        &[nros_tests::matrix::PlatformId::{platform}],",
+            '        "x",',
+            "    );",
+            "    if !probe() {",
+            '        panic!("[SKIPPED] tool not available");',
+            "    }",
+            "}",
+        ])
+
+    def at(lines: list[str]) -> int:
+        return next(i for i, l in enumerate(lines) if "[SKIPPED" in l)
+
+    s1 = src(True, "Dormant")
+    assert produce_exempt(s1, at(s1), {"Dormant"}), "ignored + unbuilt must be exempt"
+    s2 = src(False, "Dormant")
+    assert not produce_exempt(s2, at(s2), {"Dormant"}), "a RUNNABLE test is never exempt"
+    s3 = src(True, "Mixed")
+    assert not produce_exempt(s3, at(s3), {"Dormant"}), "a BUILT platform is never exempt"
+    s4 = ["#[test]", '#[ignore = "x"]', "fn t() {", '    panic!("[SKIPPED] y");', "}"]
+    assert not produce_exempt(s4, at(s4), {"Dormant"}), "no lane check, no exemption"
 
 
 def nested_marker_self_test() -> None:
@@ -169,6 +333,24 @@ def nested_marker_self_test() -> None:
 
 def main() -> int:
     self_test()
+    with open(MATRIX, encoding="utf-8") as fh:
+        unbuilt = unbuilt_platforms(fh.read())
+    made = producers(unbuilt)
+    if made:
+        print(
+            "ERROR: a skip marker is PRODUCED by hand (issue 1900):",
+            file=sys.stderr,
+        )
+        for b in made:
+            print(f"  {b}", file=sys.stderr)
+        print(
+            "\n  A test never skips because something is absent — it fails\n"
+            "  (issue 1758). Put the lane check FIRST\n"
+            "  (`nros_tests::fixtures::lane::require_platform_in_lane`), and turn\n"
+            "  the absence after it into `nros_tests::unmet!(…)`. `lane_skip!` is\n"
+            "  the only producer of `[SKIPPED:lane]`.",
+            file=sys.stderr,
+        )
     bad = offenders()
     if bad:
         print(
@@ -187,7 +369,12 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
-    print("skip-marker matching: OK (no hand-rolled marker matches)")
+    if made:
+        return 1
+    print(
+        "skip-marker matching: OK (no hand-rolled marker matches; no hand-produced "
+        f"marker outside an ignored test of an unbuilt platform {sorted(unbuilt)})"
+    )
     return 0
 
 

@@ -2,7 +2,10 @@
 //!
 //! Tests for Zephyr, embedded targets, and platform-specific functionality.
 
-use nros_tests::fixtures::{is_arm_toolchain_available, is_qemu_available};
+use nros_tests::{
+    fixtures::{is_arm_toolchain_available, is_qemu_available, lane::require_platform_in_lane},
+    matrix::PlatformId,
+};
 use std::process::Command;
 
 // (Phase 182.3) `test_zephyr_{talker,listener}_build` removed — they only
@@ -28,6 +31,13 @@ use std::process::Command;
 
 #[test]
 fn test_qemu_cortex_m3_available() {
+    // Issue 1900 — the lane first: this checks the QEMU the bare-metal images
+    // boot on, so a lane selecting none of them deselects it before the probe.
+    // It used to PASS or go UNMET by what the host had, never by scope.
+    require_platform_in_lane(
+        &[PlatformId::QemuBaremetal],
+        "the Cortex-M3 QEMU machine check",
+    );
     if !is_qemu_available() {
         nros_tests::unmet!("QEMU not available");
     }
@@ -53,6 +63,10 @@ fn test_qemu_cortex_m3_available() {
 
 #[test]
 fn test_qemu_semihosting_support() {
+    // Issue 1900 — the lane first: this checks the QEMU the bare-metal images
+    // boot on, so a lane selecting none of them deselects it before the probe.
+    // It used to PASS or go UNMET by what the host had, never by scope.
+    require_platform_in_lane(&[PlatformId::QemuBaremetal], "the QEMU semihosting check");
     if !is_qemu_available() {
         nros_tests::unmet!("QEMU not available");
     }
@@ -81,6 +95,12 @@ fn test_qemu_semihosting_support() {
 
 #[test]
 fn test_embedded_target_available() {
+    // Issue 1900 — `thumbv7m-none-eabi` is the target of the bare-metal and
+    // FreeRTOS-MPS2 Rust images; a lane selecting neither does not claim it.
+    require_platform_in_lane(
+        &[PlatformId::QemuBaremetal, PlatformId::FreertosMps2],
+        "the thumbv7m-none-eabi target check",
+    );
     if !is_arm_toolchain_available() {
         nros_tests::unmet!("ARM toolchain not available");
     }

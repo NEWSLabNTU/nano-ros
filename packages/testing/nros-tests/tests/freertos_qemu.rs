@@ -36,7 +36,8 @@ use std::time::Duration;
 // Prerequisite checks
 // =============================================================================
 
-/// Require the FreeRTOS prerequisites; skip loudly (naming which one) otherwise.
+/// Require the FreeRTOS prerequisites; fail (unmet) loudly, naming which one,
+/// otherwise — after the lane check.
 ///
 /// Issue 1135 — this returned `bool` and every caller wrote
 /// `if !require_freertos() { nros_tests::unmet!("require_freertos check failed"); }`. That is the
@@ -46,6 +47,13 @@ use std::time::Duration;
 /// that skips where it KNOWS the reason names the reason, and cannot be
 /// misused by a caller who writes a bare `return` instead.
 fn require_freertos() {
+    // Issue 1900 — the lane FIRST. Every test here boots a `freertos`-row
+    // image (mps2-an385 / mps3-an536), so a lane that selects no such
+    // coordinate deselects it before the kernel/lwIP/gcc probes below.
+    nros_tests::fixtures::lane::require_platform_in_lane(
+        &[nros_tests::matrix::PlatformId::FreertosMps2],
+        "a FreeRTOS QEMU image",
+    );
     if !is_freertos_available() {
         nros_tests::unmet!(
             "no FreeRTOS kernel tree provisioned — run `just freertos setup`, or set FREERTOS_DIR"

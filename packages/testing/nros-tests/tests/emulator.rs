@@ -39,7 +39,7 @@ use nros_tests::{
         build_qemu_rtic_service_client, build_qemu_rtic_service_server, build_qemu_rtic_talker,
         build_qemu_serial_listener, build_qemu_serial_talker, build_qemu_talker_xrce,
         build_qemu_wcet_bench, is_arm_toolchain_available, is_qemu_available, is_socat_available,
-        or_unmet, parse_test_results, qemu_baremetal_capi_binary, qemu_binary, require_xrce_agent,
+        or_unmet, parse_test_results, qemu_baremetal_capi_binary, require_xrce_agent,
         require_zenoh_pico_arm,
     },
     matrix::{Lang, PlatformId, Workload},
@@ -48,21 +48,39 @@ use nros_tests::{
 use rstest::rstest;
 use std::{path::PathBuf, time::Duration};
 
-/// Skip test if QEMU is not available
+/// Issue 1900 — every test here is a bare-metal QEMU image, so the lane is
+/// asked FIRST: a lane that selects no such coordinate deselects the test
+/// before any host probe, whatever the host has. Every helper below calls it,
+/// so the first helper a test reaches is lane-first whichever it is.
+fn require_baremetal_in_lane() {
+    nros_tests::fixtures::lane::require_platform_in_lane(
+        &[PlatformId::QemuBaremetal],
+        "a bare-metal QEMU image",
+    );
+}
+
+/// The `qemu-test` image, resolved only after the lane check. An rstest
+/// fixture runs BEFORE the test body, so the body's own `require_*` cannot
+/// order it.
+#[rstest::fixture]
+fn qemu_binary() -> PathBuf {
+    require_baremetal_in_lane();
+    nros_tests::fixtures::build_qemu_test()
+        .require("qemu-test")
+        .to_path_buf()
+}
+
+/// Fail (unmet) if QEMU is not available — after the lane check.
 fn require_qemu() {
+    require_baremetal_in_lane();
     if !is_qemu_available() {
         nros_tests::unmet!("qemu-system-arm not found");
     }
 }
 
-/// Skip test if ARM toolchain is not available
+/// Fail (unmet) if the ARM toolchain is not available — after the lane check.
 fn require_arm_toolchain() {
-    // Issue 1685 — every test here is a bare-metal QEMU image; a lane that
-    // selects no such coordinate deselects before the toolchain probes.
-    nros_tests::fixtures::lane::require_platform_in_lane(
-        &[nros_tests::matrix::PlatformId::QemuBaremetal],
-        "a bare-metal QEMU image",
-    );
+    require_baremetal_in_lane();
     if !is_arm_toolchain_available() {
         nros_tests::unmet!("thumbv7m-none-eabi target not installed");
     }
@@ -192,9 +210,8 @@ fn test_qemu_output_format(qemu_binary: PathBuf) {
 
 #[test]
 fn test_qemu_wcet_benchmark() {
-    if !is_qemu_available() || !is_arm_toolchain_available() {
-        nros_tests::unmet!("qemu-system-arm or ARM toolchain not available");
-    }
+    require_qemu();
+    require_arm_toolchain();
 
     let binary = build_qemu_wcet_bench().require("qemu-wcet-bench");
 
@@ -239,9 +256,8 @@ fn test_qemu_wcet_benchmark() {
 
 #[test]
 fn test_qemu_lan9118_driver() {
-    if !is_qemu_available() || !is_arm_toolchain_available() {
-        nros_tests::unmet!("qemu-system-arm or ARM toolchain not available");
-    }
+    require_qemu();
+    require_arm_toolchain();
 
     let binary = build_qemu_lan9118().require("qemu-lan9118");
 

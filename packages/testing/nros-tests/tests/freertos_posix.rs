@@ -47,6 +47,12 @@ const SPIN_MS: &str = "8000";
 const WINDOW: Duration = Duration::from_secs(30);
 
 fn require_freertos() {
+    // Issue 1900 — the lane first: a lane selecting no FreeRTOS POSIX
+    // coordinate deselects these tests before the kernel-tree probe.
+    nros_tests::fixtures::lane::require_platform_in_lane(
+        &[PlatformId::FreertosPosix],
+        "a FreeRTOS POSIX workspace entry",
+    );
     if !freertos::is_freertos_available() {
         nros_tests::unmet!(
             "no FreeRTOS kernel tree provisioned — run `just freertos setup`, or set FREERTOS_DIR"

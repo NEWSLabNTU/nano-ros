@@ -33,6 +33,7 @@
 use nros_tests::{
     TestError, TestResult,
     fixtures::{nuttx, threadx_linux},
+    matrix::PlatformId,
 };
 use rstest::rstest;
 use std::path::PathBuf;
@@ -54,12 +55,21 @@ enum Platform {
 }
 
 impl Platform {
-    /// Skip with the platform's own remedy when its toolchain is absent.
+    /// Fail (unmet) with the platform's own remedy when its toolchain is absent
+    /// — after the lane check.
     ///
     /// Each probe keeps the message the pre-fold file had: they name different
     /// setup commands, and a merged "toolchain missing" would be less useful
     /// than either.
     fn require(self) {
+        // Issue 1900 — the lane FIRST. The probes below read the host, so a
+        // lane that selects no coordinate on this platform must deselect the
+        // case before reaching them; the resolver's own lane check, later in
+        // `entry_binary`, came too late to matter.
+        nros_tests::fixtures::lane::require_platform_in_lane(
+            &[self.platform_id()],
+            "the per-role Entry demos",
+        );
         match self {
             Platform::Nuttx => {
                 if !nuttx::is_nuttx_available() {
@@ -85,6 +95,14 @@ impl Platform {
                     );
                 }
             }
+        }
+    }
+
+    /// The matrix platform whose coordinates the lane is asked about.
+    fn platform_id(self) -> PlatformId {
+        match self {
+            Platform::Nuttx => PlatformId::NuttxArm,
+            Platform::ThreadxLinux => PlatformId::ThreadxLinux,
         }
     }
 
