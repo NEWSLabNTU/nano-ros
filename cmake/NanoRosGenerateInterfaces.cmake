@@ -694,9 +694,15 @@ function(nros_generate_interfaces target)
       # board rung is the judgment call that leaves one lane silently without
       # it, which is how the Zephyr arm shipped inert.
       nros_resolve_board_facts()
+      # Issue 1914 — the toolchain nano-ros pinned for a project outside the
+      # checkout. This command runs a rustup PROXY from a build-dir cwd, so
+      # without it rustup answers with the host default, which has no board
+      # targets. Empty when nothing was pinned (in-tree, or the user chose).
+      nros_rust_toolchain_env(_ffi_toolchain_env)
       set(_ffi_env "")
-      if(NOT _NROS_FFI_ENV STREQUAL "")
-        set(_ffi_env ${CMAKE_COMMAND} -E env ${_NROS_FFI_ENV} ${NROS_BOARD_FACTS_ENV})
+      if(NOT _NROS_FFI_ENV STREQUAL "" OR NOT _ffi_toolchain_env STREQUAL "")
+        set(_ffi_env ${CMAKE_COMMAND} -E env ${_NROS_FFI_ENV} ${NROS_BOARD_FACTS_ENV}
+            ${_ffi_toolchain_env})
       endif()
       # Issue 1712 — the image's own `[image.<id>] env`, as a `--config` flag
       # (below an exported variable, unlike a `cmake -E env` row) plus a

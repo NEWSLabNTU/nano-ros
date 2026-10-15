@@ -574,6 +574,8 @@ endfunction()
 # commands and targets that must land in the CALLER's scope.
 # --------------------------------------------------------------------------
 macro(nros_resolve_corrosion)
+    # Issue 1914 — before FindRust picks a toolchain (NanoRosRustTool.cmake).
+    nros_pin_default_rust_toolchain()
     if(COMMAND corrosion_import_crate)
         if(NOT NROS_CORROSION_REPORTED)
             # `Corrosion_VERSION` is a NORMAL variable, so it does not reach a

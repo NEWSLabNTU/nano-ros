@@ -29,6 +29,12 @@
 
 include_guard(GLOBAL)
 
+# CACHE INTERNAL: this file is include()d from inside functions, and a plain
+# file-scope `set` is dropped when that frame pops (the `_NROS_ENTRY_DIR`
+# pattern).
+set(_NROS_RUST_TOOL_DIR "${CMAKE_CURRENT_LIST_DIR}"
+    CACHE INTERNAL "directory holding NanoRosRustTool.cmake")
+
 function(nros_rust_tool out name)
     # NO_CACHE and an unset first: `find_program` is a no-op on a variable
     # that is already defined (issue 0726), and a cached hit would outlive the
@@ -67,4 +73,104 @@ function(nros_rust_tool out name)
         return()
     endif()
     set(${out} "${name}" PARENT_SCOPE)
+endfunction()
+
+# --------------------------------------------------------------------------
+# nros_pin_default_rust_toolchain()
+#
+# Issue 1914 — a project OUTSIDE this checkout (a copied-out template, a user's
+# own project) has no `rust-toolchain.toml` above it, so rustup answers with the
+# host's DEFAULT toolchain. That is not the toolchain `nros setup` provisions
+# board targets on — it adds them to the PINNED one, `rust-toolchain.toml`'s
+# `channel` — so every cross crate died with `E0463: can't find crate for
+# core` / "the `thumbv7m-none-eabi` target may not be installed" (run-matrix
+# 38658400956, `template-copy-out`). In-tree the root file governs and nothing
+# differs, which is why only a copy saw it.
+#
+# Two consumers pick a toolchain, and both have to be told:
+#   * Corrosion's FindRust, at configure time: it takes `Rust_TOOLCHAIN` when
+#     defined, else the toolchain rustup reports as active from the configure's
+#     cwd. Setting it here, before `find_package(Corrosion)`, is the seam.
+#   * the cargo commands nano-ros emits itself (`nros_rust_tool`), which run a
+#     rustup PROXY with a build-dir cwd. They read `nros_rust_toolchain_env()`.
+#
+# Pins ONLY when nothing else chose: an explicit `-DRust_TOOLCHAIN`, a set
+# `RUSTUP_TOOLCHAIN`, or any rustup override for the source dir (a project's own
+# `rust-toolchain.toml`, `rustup override`) is a decision and is kept. The test
+# is rustup's own: `rustup show active-toolchain` says `(default)` exactly when
+# no override applies. NuttX and Zephyr pin their own nightly before this runs.
+#
+# Idempotent across re-configures: the pinned value is cached, and the
+# configure-time environment (lost when cmake exits) is re-exported from it.
+function(nros_pin_default_rust_toolchain)
+    if(DEFINED CACHE{NROS_PINNED_RUST_TOOLCHAIN})
+        if("$ENV{RUSTUP_TOOLCHAIN}" STREQUAL "")
+            set(ENV{RUSTUP_TOOLCHAIN} "${NROS_PINNED_RUST_TOOLCHAIN}")
+        endif()
+        return()
+    endif()
+    if(DEFINED Rust_TOOLCHAIN OR NOT "$ENV{RUSTUP_TOOLCHAIN}" STREQUAL "")
+        return()
+    endif()
+    set(_pin_file "${_NROS_RUST_TOOL_DIR}/../rust-toolchain.toml")
+    if(NOT EXISTS "${_pin_file}")
+        return()
+    endif()
+    file(READ "${_pin_file}" _pin_text)
+    if(NOT _pin_text MATCHES "\n[ \t]*channel[ \t]*=[ \t]*\"([^\"]+)\"")
+        return()
+    endif()
+    set(_pin "${CMAKE_MATCH_1}")
+
+    unset(_pin_rustup)
+    find_program(_pin_rustup NAMES rustup NO_CACHE
+        PATHS "$ENV{CARGO_HOME}/bin" "$ENV{HOME}/.cargo/bin")
+    if(NOT _pin_rustup)
+        return()
+    endif()
+    execute_process(
+        COMMAND "${_pin_rustup}" show active-toolchain
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        RESULT_VARIABLE _pin_rc
+        OUTPUT_VARIABLE _pin_active
+        ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE)
+    # A non-zero exit is rustup failing to name ANY toolchain (no default set):
+    # the pin is then the only answer there is.
+    if(_pin_rc EQUAL 0 AND NOT _pin_active MATCHES "\\(default\\)")
+        return()
+    endif()
+    # Not installed: keep rustup's default rather than make FindRust refuse a
+    # host build that the default could still do. Say what a cross build needs.
+    execute_process(
+        COMMAND "${_pin_rustup}" toolchain list
+        OUTPUT_VARIABLE _pin_list ERROR_QUIET)
+    string(REPLACE "." "\\." _pin_re "${_pin}")
+    if(NOT _pin_list MATCHES "(^|\n)${_pin_re}(-[^ \n]+)?( |\n|$)")
+        message(STATUS "nano-ros: Rust toolchain ${_pin} (rust-toolchain.toml) is not "
+            "installed; using rustup's default, which may lack board targets "
+            "(nros setup <board> installs ${_pin} with them — issue 1914)")
+        return()
+    endif()
+
+    set(NROS_PINNED_RUST_TOOLCHAIN "${_pin}" CACHE INTERNAL
+        "issue 1914 — the toolchain nano-ros pinned for a project rustup had no override for")
+    set(Rust_TOOLCHAIN "${_pin}" CACHE STRING
+        "Rust toolchain (nano-ros pin from rust-toolchain.toml — issue 1914)")
+    set(ENV{RUSTUP_TOOLCHAIN} "${_pin}")
+    message(STATUS "nano-ros: Rust toolchain ${_pin} (rust-toolchain.toml pin; "
+        "rustup had no override for ${CMAKE_SOURCE_DIR} — issue 1914). "
+        "Pass -DRust_TOOLCHAIN=<tc> to choose another.")
+endfunction()
+
+# nros_rust_toolchain_env(<out>) — `RUSTUP_TOOLCHAIN=<pin>` for a BUILD-time
+# command's `cmake -E env`, or empty when nothing was pinned. A build-time
+# command does not inherit the configure's environment (issue 0460's lesson),
+# so the pin has to ride on the command. Harmless for a non-rustup cargo, which
+# ignores the variable — unlike a `+<toolchain>` argument.
+function(nros_rust_toolchain_env out)
+    if(DEFINED CACHE{NROS_PINNED_RUST_TOOLCHAIN})
+        set(${out} "RUSTUP_TOOLCHAIN=${NROS_PINNED_RUST_TOOLCHAIN}" PARENT_SCOPE)
+    else()
+        set(${out} "" PARENT_SCOPE)
+    endif()
 endfunction()

@@ -1,12 +1,13 @@
 ---
 id: 1916
 title: "`duplicate_deploys_that_agree_are_not_ambiguous` passes on a host with no FreeRTOS in its SDK store and fails on a provisioned runner: the two deploys resolve `NROS_SDK_FREERTOS_KERNEL` differently"
-status: open
+status: resolved
 type: bug
 area: [cli, testing]
 severity: medium
 found: 2026-10-15
-related: [0755, 0934, 1788]
+resolved: 2026-10-15
+related: [0755, 0934, 1788, 1915]
 ---
 
 ## Measured
@@ -71,3 +72,25 @@ which:
    run with a populated temp store must still see agreement.
 3. Acceptance: the test passes on a host whose store has the FreeRTOS kernel
    provisioned.
+
+## Resolution — the same failure as issue 1915, fixed there
+
+Issue 1915 was filed for this exact failure, at the same time and from the
+same run (38663782341). It was closed by `3f563f9ae8`. The answer to "which
+of the two readings" is **neither**: the test is hermetic enough, and the
+product resolves both spellings the same way.
+
+`doctor::tests::license_gate_board_filter_arm_fvp_warns_only` set the
+process-wide `$HOME` on a parallel test thread. The store rung derives from
+`$HOME`. So a `resolve()` that ran across that change saw the runner's
+FreeRTOS kernel in the store for one deploy and the checkout for the other.
+After `3f563f9ae8`, `nros-cli-core`'s lib tests set no `HOME`/`NROS_HOME`.
+Sweep: `git grep -nE 'set_var\("(HOME|NROS_HOME)"' -- packages/cli/nros-cli-core`
+finds no hit.
+
+Measured in the box tree, current main: with a store that holds
+`sources/freertos-kernel/10.6.2+0adc196d` (via `NROS_HOME`) and
+`NROS_SDK_FREERTOS_KERNEL` set in the environment, `board_facts` + `doctor`
+pass 3/3. The race itself did not reproduce on demand. Old `doctor.rs` with
+a `$HOME` store went 0/200 on the two tests alone. The window is narrow, and
+the runner hit it under the full 1690-test parallel run.
