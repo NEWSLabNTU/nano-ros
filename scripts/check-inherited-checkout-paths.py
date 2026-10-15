@@ -693,6 +693,7 @@ def probe_nros_cli(tmp: Path) -> list[str]:
         )
         _stub(other / "tools/fake-nros")
         _stub(here / "tools/fake-nros")
+        # host-tool-path-ok: synthetic checkout under test (rung 2 present, issue 1928)
         _stub(here / "packages/cli/target/release/nros")
         cmake_dir = here / "cmake"
         cmake_dir.mkdir(exist_ok=True)
