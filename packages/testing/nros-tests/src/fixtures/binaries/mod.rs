@@ -5833,6 +5833,41 @@ pub fn build_logging_smoke_freertos_mps2() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
+/// Issue 1906 — the condvar contract image for FreeRTOS + MPS2-AN385.
+static CONDVAR_CONTRACT_FREERTOS_MPS2_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Resolve the prebuilt `condvar-contract-freertos-mps2` image. Built in the
+/// `freertos rust` fixture lane at the `freertos-qemu` profile, like the
+/// logging smoke beside it.
+pub fn build_condvar_contract_freertos_mps2() -> TestResult<&'static Path> {
+    CONDVAR_CONTRACT_FREERTOS_MPS2_BINARY
+        .get_or_try_init(|| {
+            build_test_fixture_at_profile(
+                "nros-tests/bins/condvar-contract-freertos-mps2",
+                "condvar-contract-freertos-mps2",
+                Some("thumbv7m-none-eabi"),
+                Some(nros_cargo_profile::FREERTOS_QEMU_PROFILE),
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// Issue 1906 — the condvar contract image for ThreadX Linux.
+static CONDVAR_CONTRACT_THREADX_LINUX_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Resolve the prebuilt `condvar-contract-threadx-linux` image.
+pub fn build_condvar_contract_threadx_linux() -> TestResult<&'static Path> {
+    CONDVAR_CONTRACT_THREADX_LINUX_BINARY
+        .get_or_try_init(|| {
+            build_test_fixture(
+                "nros-tests/bins/condvar-contract-threadx-linux",
+                "condvar-contract-threadx-linux",
+                None,
+            )
+        })
+        .map(|p| p.as_path())
+}
+
 /// Cached path to the Phase 88.15.d `logging-smoke-threadx-riscv64`
 /// fixture binary (ThreadX + NetX Duo on QEMU `virt` RV64).
 static LOGGING_SMOKE_THREADX_RISCV64_BINARY: OnceCell<PathBuf> = OnceCell::new();

@@ -3,11 +3,12 @@ id: 1906
 title: "Four condvar defects in the platform ports and the zenoh-pico shim: the
   wrong timeout code, a broadcast that wakes one waiter, a wall-clock timed wait
   and timeouts rounded down"
-status: open
+status: resolved
 type: bug
 area: [platform, rmw]
 severity: high
 found: 2026-10-15
+resolved: 2026-10-15
 related: [issue-1196, issue-1907, issue-1750]
 ---
 
@@ -128,3 +129,39 @@ fixture images exercise a broadcast only on a close with several waiters. What
 would close this issue: a ThreadX-linux test that parks three waiters and
 broadcasts, plus a timed wait asserting `1` and a lower bound, as the POSIX
 tests do.
+
+## Resolution (2026-10-15)
+
+The open item, a runtime test on ThreadX and FreeRTOS, is done. Both ports now
+run the contract on a real kernel.
+
+`packages/testing/nros-condvar-contract` is a `no_std` crate that drives the
+`nros_platform_*` C ABI directly. Two test images run it,
+`bins/condvar-contract-threadx-linux` and `bins/condvar-contract-freertos-mps2`.
+Each prints one line per check, and `tests/condvar_contract_rtos.rs` reads
+them. The marker strings come from the crate, re-exported through
+`nros_tests::output`, so the image and the test share one spelling. The
+checks:
+
+- a timed wait nobody signals returns `1`, and not before its deadline;
+- a broadcast releases all three waiters within 1 s;
+- ThreadX only: a wait under a mutex held twice is refused (issue 1907).
+
+Measured:
+
+| Port | Result | Negative control |
+| --- | --- | --- |
+| ThreadX Linux | all three pass | single-waiter `signal_all` put back: `FAIL broadcast: a waiter missed the broadcast` |
+| FreeRTOS (QEMU MPS2-AN385) | both pass | `-1` timeout code put back: `FAIL timed-wait`, QEMU exit 1 |
+
+**The first version of the broadcast check could not fail, and its negative
+control is what showed it.** With the one-waiter broadcast put back, two
+waiters ran out their 5 s deadline, then saw the release flag, and were
+counted as woken. The check passed at the 5.06 s mark. A waiter now counts
+only if a wake released it, and the broadcast must finish within 1 s. The
+POSIX twin of this test in `c_port_posix.rs` had the same hole and has the
+same fix.
+
+Not covered: FreeRTOS's tick rounding. Every shipped FreeRTOS config ticks at
+1000 Hz, so a 50 ms wait is a whole number of ticks either way, and rounding
+down could not be told apart from rounding up there.

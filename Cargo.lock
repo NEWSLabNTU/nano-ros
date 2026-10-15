@@ -1812,6 +1812,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "nros-condvar-contract"
+version = "0.1.0"
+
+[[package]]
 name = "nros-core"
 version = "0.6.0"
 dependencies = [
@@ -2277,6 +2281,7 @@ dependencies = [
  "nros-build-paths",
  "nros-builtin-interfaces",
  "nros-cargo-profile",
+ "nros-condvar-contract",
  "nros-core",
  "nros-diagnostic-msgs",
  "nros-lifecycle-msgs",

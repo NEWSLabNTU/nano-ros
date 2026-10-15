@@ -164,6 +164,13 @@ NO_ROUTER = {
     "packages/testing/nros-tests/bins/logging-smoke-threadx-riscv64": (
         "no-session `run_bare` smoke — opens no Executor and dials nothing"
     ),
+    # Issue 1906 — the condvar contract images call the platform ABI only.
+    "packages/testing/nros-tests/bins/condvar-contract-freertos-mps2": (
+        "no-session `run_bare` contract check — opens no Executor and dials nothing"
+    ),
+    "packages/testing/nros-tests/bins/condvar-contract-threadx-linux": (
+        "no-session `run_bare` contract check — opens no Executor and dials nothing"
+    ),
     "packages/testing/nros-tests/bins/pool-exhaustion-threadx-linux": (
         "takes the one pool slot raw, then asserts the second `Context::new` is "
         "refused `Full` before it dials — no router by design"

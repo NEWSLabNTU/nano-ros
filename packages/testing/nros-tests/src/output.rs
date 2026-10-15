@@ -470,6 +470,14 @@ pub const WS_CPP_LOGGING_MARKER: &str = "cpp_talker logging";
 /// `<name>: <message>` text to `LOG_INF`, which prints its own `<inf>` tag.
 pub const LOGGING_SMOKE_CHILD_RECORD: &str = "smoke.child: child payload";
 
+/// Issue 1906 — the lines the `condvar-contract-*` RTOS images print, one per
+/// check, and the one they print when every check passed. Re-exported from the
+/// crate the images run, so the test and the image share one spelling.
+pub use nros_condvar_contract::{
+    ALL_PASSED as CONDVAR_CONTRACT_ALL_PASSED, FAIL_PREFIX as CONDVAR_CONTRACT_FAIL,
+    PASS_PREFIX as CONDVAR_CONTRACT_PASS,
+};
+
 // ---------------------------------------------------------------------------
 // Service (AddTwoInts) demo wording — phase-277 W5.
 //

@@ -333,12 +333,18 @@ fn condvar_signal_all_wakes_every_waiter() {
                 // Bounded, so a missed broadcast fails the test rather than
                 // hanging it: 5 s is far past any scheduling delay.
                 let deadline_ms = CffiPlatform::clock_ns() / 1_000_000 + 5_000;
+                // Count a waiter only if a WAKE released it: one that ran out
+                // its deadline and then saw `released` missed the broadcast.
+                // Counting it let a one-waiter broadcast pass the ThreadX twin
+                // of this test (`nros-condvar-contract`).
+                let mut timed_out = false;
                 while !released.load(Ordering::SeqCst) {
                     if CffiPlatform::condvar_wait_until(cv, m, deadline_ms) == 1 {
+                        timed_out = true;
                         break;
                     }
                 }
-                if released.load(Ordering::SeqCst) {
+                if released.load(Ordering::SeqCst) && !timed_out {
                     woken.fetch_add(1, Ordering::SeqCst);
                 }
                 assert_eq!(CffiPlatform::mutex_unlock(m), 0);

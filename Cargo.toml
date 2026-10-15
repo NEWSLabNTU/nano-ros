@@ -115,6 +115,10 @@ members = [
     # Phase 169.4 — retired Rust DDS crates deleted.
     # Integration tests
     "packages/testing/nros-tests",
+    # issue 1906 — the condvar contract the RTOS test images run (and whose
+    # markers nros-tests re-exports). `no_std`; it declares the platform C ABI
+    # and only an image's board links it.
+    "packages/testing/nros-condvar-contract",
     # C API for embedded systems
     "packages/api/nros-c",
     # C++ API (header-only C++14 library + Rust FFI staticlib)
