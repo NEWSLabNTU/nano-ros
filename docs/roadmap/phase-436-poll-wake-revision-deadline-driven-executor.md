@@ -1,32 +1,40 @@
 # Phase 436 — The poll/wake revision: a deadline-driven, platform-agnostic executor
 
-**Checkpoint (2026-09-11), for whoever picks this up next.** Everything
-through A3's clear accessor is on `main`: W1-W7 (#849), A2 (#871), E3 + E4
-(#881), A3 (#899). What remains, in the order I would take it:
+**The design now lives in [RFC-0106](../design/0106-executor-park.md).**
+This doc keeps the work breakdown and the evidence; the sections below that
+argue the design are the record of how it was reached.
 
-1. **E5: make the stack-headroom query cheap when the stack has not grown.**
-   (Amended 2026-10-13 to a threshold scan, and LANDED the same day; ASI's
-   re-measure is what is left. See E5 under Path E.)
-   E4's once-a-second scan still costs ~33 ms on ASI's FVP image. The Zephyr
-   port's `k_thread_stack_space_get` walks every unused byte, and FreeRTOS's
-   `uxTaskGetStackHighWaterMark` does the same. ThreadX is already O(1)
-   (`tx_thread_stack_highest_ptr`). ASI reverted `CONFIG_INIT_STACKS` in its
-   default image because of this (ASI ff12002), and turns it back on once E5
-   lands. Design and evidence are under Path E below.
-2. **A2c: make `late_wakes` respect the granularity the executor reports.**
-   (LANDED 2026-10-15 with A2b. See A2b and A2c under Path A.)
-3. **A3, the loaded run on ASI, is blocked on ASI's side.** Every nano-ros
-   commit with the A3 accessor also carries phase-427 W4's `ComponentNode`
-   deletion (`1f3b88aec`, ~40 commits before `64a350ce4`), and ASI's
-   controller derives from `ComponentNode`. So ASI has to port to the one node
-   type before it can pin past `af14492fe`. The readout itself is written and
-   verified; it waits on ASI branch `wip/a3-rt-probe-readout`. ASI's
+**Checkpoint (2026-10-16), for whoever picks this up next.** On `main`: W1-W7
+(#849), A2 (#871), E3 + E4 (#881), A3's accessor (#899), B2 (2026-09-25), E5
+(2026-10-13), and on 2026-10-15 A2b, A2c, C1, C2, D1, D2's ABI half and the
+wake fan-out. Issue 1196 is resolved by
+[phase-502](archived/phase-502-unbounded-condvar-wait-retirement.md). What
+remains, in the order I would take it:
+
+1. **Single-executor entries park too — LANDED 2026-10-16.** The tier runners
+   installed the park and the single-executor entries did not, so the most
+   common embedded path kept the millisecond `wake_wait_ms` floor. See
+   "Only the TIER runners install a park" under Path C.
+2. **A poll-only backend reports the wait it has — LANDED 2026-10-16.** XRCE
+   needs no wake callback: the executor's own `drive_io` reads its transport,
+   so a receive bounded by the park's deadline IS its park (RFC-0106 D5). What
+   was wrong was the granularity: an installed microsecond park still counted
+   on an executor that could not use it. See Path C.
+3. **ASI items, blocked on ASI's side.** E5's re-measure on the FVP image,
+   then `CONFIG_INIT_STACKS` back on (E5 under Path E). A3's loaded run: ASI's
+   controller derives from `ComponentNode`, which phase-427 W4 deleted, so ASI
+   has to port to the one node type before it can pin past `af14492fe`; the
+   readout waits on ASI branch `wip/a3-rt-probe-readout`, and ASI's
    `docs/roadmap/phase-11-executor-evidence.md` carries the ASI side.
-4. Path B's B2 LANDED 2026-09-25 (smoltcp `poll_delay` is the first real
-   deadline source; the target-run half of the exit is still open — see Path
-   B). Path C's C1 (FreeRTOS) and C2 (POSIX/NuttX) LANDED 2026-10-15; C3
-   (bare metal) stays deferred. Then Path D (D1 DONE 2026-10-15; D2's ABI half DONE, its zenoh-pico paths open in 1196), E1
-   (issue 1232, resolved and archived since), and A2b (LANDED 2026-10-15).
+4. **Path B's target run.** smoltcp's `poll_delay` is the only port deadline
+   source and has not run on hardware.
+5. **Per-entity wake routing (optional).** Removes the fan-out's one spurious
+   wake per foreign arrival; needs each backend to say whose data arrived.
+6. **C3, bare metal — deferred.** Needs a per-board one-shot compare armed
+   before `wfi`; no board has one.
+7. **A guard condition on a poll-only backend** signals the wake object while
+   the executor blocks in the transport, so it waits out the bound.
+   Unmeasured; filed as an RFC-0106 open question, not yet an issue.
 
 Two process lessons that cost time here:
 - **When a parent PR merges, rebase its child before anyone queues it.** A
@@ -82,7 +90,7 @@ Five things the work changed about the phase as written:
 Issues 1192, 1193, 1194 and 1242 are resolved and archived (W1-W3 landed via #849; 1242 via
 W7.b). 1195 and 1196 stayed open after that stack, which delivered only part of each. Path
 D1 closed 1195 on 2026-10-15; D2 took the unbounded symbol out of the ABI the same day, and
-1196 stays open for the zenoh-pico paths its 2026-10-15 design study found.
+phase-502 closed 1196 over the zenoh-pico paths its 2026-10-15 design study found.
 
 Deferred deliberately: the `wake_wait_ns` platform slot (the rounding contract
 fixes issue 1193's harm without making five ports grow a required symbol) and
@@ -881,13 +889,37 @@ wired, so every other port parked on the millisecond `wake_wait_ms` floor.
 Two things Path C did not change, both shared with the Zephyr and ThreadX
 wiring that came before it, and both worth a decision rather than a drift:
 
-* **Only the TIER runners install a park.** The single-executor entries
-  (`nros_rtos_run_components.c`, the Linux board's `boot_hosted`, NuttX's
-  `run_entry`, the C++ `run_components`) install nothing on any port, so the
-  dominant embedded
-  path still parks on `wake_wait_ms`. `nros_rtos_run_components.c` is shared
-  by every RTOS board and cannot assume the OPTIONAL park symbols exist, which
-  is why it was not simply extended here.
+* **Only the TIER runners install a park. RESOLVED (2026-10-16).** The
+  single-executor entries (`nros_rtos_run_components.c`, the Linux board's
+  `boot_hosted`, NuttX's `run_entry`, the C++ `run_components`) installed
+  nothing on any port, so the dominant embedded path still parked on
+  `wake_wait_ms`. Now every entry installs it:
+  * Rust board entries call the board's own `install_park`, as their tier
+    runners do: FreeRTOS's and ThreadX's single entries, Linux `boot_hosted`,
+    NuttX `run_entry`. `zephyr_component_main!` declares Zephyr's two symbols
+    itself, since it expands only in a Zephyr image.
+  * Shared C and C++ entry code is linked beside every port, bare metal
+    included, and the park symbols are OPTIONAL, which is why the C runner was
+    not simply extended before. It references them WEAKLY:
+    `detail::install_platform_park` in `<nros/main.hpp>`, called by
+    `detail::component_spin_loop`, and the C runner's copy in
+    `nros_rtos_run_components.c` (its include path lacks the header). Both
+    install only when the symbols resolve AND the granularity is non-zero,
+    because a Rust-implemented port exports the symbols with the trait
+    defaults (`-1`, `0`). Both platform symbols sit in the port's `platform.c`
+    beside the required `nros_platform_wake_init`, so a weak reference never
+    depends on archive extraction.
+  * The executor stopped counting a negative park answer ("cannot park") as a
+    park. It used to ignore the return, which with the trait default would
+    have dropped the drain to non-blocking and looped hot.
+
+  The same change found the poll-only half: `park_granularity_us()` returned
+  the installed park's granularity on an executor that never parks (no live
+  wake: XRCE). On POSIX that is 1 us, so the bound kept microseconds that the
+  millisecond receive then truncated, and a sub-millisecond deadline became a
+  non-blocking receive in a hot loop until it passed. The declared
+  granularity now counts only while `park_can_be_woken()`; otherwise it is the
+  1 ms of the wait actually performed. RFC-0106 D3/D5.
 * **A park nobody signals is not broken by data. RESOLVED (2026-10-15).**
   The park waits on the executor's own wake object, which the backend
   signalled only for the executor that installed into its single wake slot.
@@ -954,7 +986,7 @@ wiring that came before it, and both worth a decision rather than a drift:
   `fire_runtime_wake()` too: p50 0.19 ms, 0 of 280. Pinned by
   `nros-rmw-zenoh` `shim::service::tests::reply_arrival_fires_the_runtime_wake`.
   Numbers and method in the archived issue.
-* **D2 — issue 1196. ABI half DONE (2026-10-15); 1196 stays open.**
+* **D2 — issue 1196. ABI half DONE (2026-10-15); the rest DONE in phase-502, which resolved 1196.**
   The last caller, `zpico-sys/c/zpico/platform_aliases.c`'s
   `_z_condvar_wait`, waits once on `condvar_wait_until` with a deadline the
   shim owns (1000 ms) and returns an expired slice as a spurious wakeup —

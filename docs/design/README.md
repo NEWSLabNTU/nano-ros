@@ -26,6 +26,7 @@ Each RFC carries frontmatter: `rfc`, `title`, `status`, `since`, `last-reviewed`
 | 0002 | [rt-execution-model](0002-rt-execution-model.md) | Draft | real-time executor model (RTOS subsections pending) |
 | 0003 | [rtos-integration-pattern](0003-rtos-integration-pattern.md) | Draft | universal embedded RTOS adapter pattern |
 | 0004 | [configuration-and-transports](0004-configuration-and-transports.md) | Stable | unified config across single-node/workspace; `system.toml` + metadata; transports |
+| 0106 | [executor-park](0106-executor-park.md) | Draft | **Implemented by phase-436 + phase-502.** The executor waits until the minimum of its declared deadlines (caller budget, timers, backend, routes, port sources) on ONE platform park on its own wake object, rounded UP to the granularity the port declares; parks only when a live wake can end it (poll-only XRCE keeps the receive-blocking wait over the same bound); one session's wake fans out to every executor over it; optional park symbols are reached weakly from shared entry code; every entry, tiered or single, installs it |
 
 ### RMW & data plane
 

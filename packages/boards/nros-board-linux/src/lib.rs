@@ -600,7 +600,13 @@ impl LinuxBoard {
             }
         };
         let mut crt_real: Option<::nros::node_runtime::ExecutorNodeRuntime> = match opened {
-            Ok(e) => Some(::nros::node_runtime::ExecutorNodeRuntime::from_executor(e)),
+            Ok(e) => {
+                let mut crt = ::nros::node_runtime::ExecutorNodeRuntime::from_executor(e);
+                // phase-436 — the single-executor entry parks like the tier
+                // runners do.
+                install_park(&mut crt);
+                Some(crt)
+            }
             Err(err) => {
                 <Self as BoardPrint>::println(format_args!(
                     "nros: Executor::open failed ({err:?}); proceeding with NullNodeRuntime — \
