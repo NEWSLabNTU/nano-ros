@@ -407,7 +407,7 @@ static const unsigned char *const nros__cpp_config_variant_anchor =
     write_header_to_corrosion("nros_cpp_config_generated.h", &exact_header);
 
     // Phase 119.3: also emit a nros-c-format header to
-    // `$CARGO_TARGET_DIR/nros-c-generated/nros/...`. nros-cpp's user code
+    // `$CARGO_TARGET_DIR/nros-c-generated/rclc/detail/...`. nros-cpp's user code
     // transitively includes the C-side
     // `<rclc/types.h>` → `<rclc/detail/nros_config_generated.h>`, and without this
     // the C header would resolve to the source-tree `#error` stub.

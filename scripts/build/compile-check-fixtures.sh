@@ -1172,8 +1172,9 @@ cxx_syntax_check() {
     local inc=() hdr
     for hdr in cpp-config-header c-config-header; do
         hdr="$(nros_locate_artifact "$hdr")" || hdr=""
-        # `<include>/nros/<file>.h` -> `<include>`
-        [ -n "$hdr" ] && [ -f "$hdr" ] && inc+=(-I "${hdr%/nros/*}")
+        # `<root>/nros-<lang>-generated/<subdir>/<file>.h` -> the `-generated` dir.
+        # The subdir differs per language (`rclc/detail` for C, `nros` for C++).
+        [ -n "$hdr" ] && [ -f "$hdr" ] && inc+=(-I "${hdr%-generated/*}-generated")
     done
     # phase-329 W5 — the platform-header snippets `#include <nros/platform.h>`,
     # which lives ONLY in nros-platform-api (the RFC-0042 D1 canonical header).

@@ -163,7 +163,7 @@ fn generate_config(
     // overflow at runtime.
     // Phase 119.3: merge is gone. Each cargo invocation writes its
     // per-build header to
-    // `$CARGO_TARGET_DIR/nros-c-generated/nros/...` (FLAT; issue 0360)
+    // `$CARGO_TARGET_DIR/nros-c-generated/rclc/detail/...` (FLAT; issue 0360)
     // and `nros_c_setup()` CMake function finds it.
     let probe_executor = probed.get("EXECUTOR_SIZE").copied().unwrap_or(0) as usize;
     if probe_executor == 0 {
@@ -360,7 +360,7 @@ fn generate_config(
         .replace("@HAS_PARAM_SERVICES@", has_param_services());
     // Phase 119.3: source-tree header is now a committed STUB that
     // `#error`s. Real header gets written PER-BUILD to
-    // `$CARGO_TARGET_DIR/nros-c-generated/nros/` (FLAT; issue 0360).
+    // `$CARGO_TARGET_DIR/nros-c-generated/rclc/detail/` (FLAT; issue 0360).
     // `nros_c_setup()` CMake function finds it.
     let _ = (manifest_dir, c_header);
     if probe_executor == 0 {
