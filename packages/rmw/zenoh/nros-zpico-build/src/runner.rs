@@ -3217,6 +3217,41 @@ fn build_zenoh_pico_unified(
         build.define("Z_FEATURE_NROS_PLATFORM_SLEEP", None);
         build.define("Z_FEATURE_NROS_PLATFORM_RANDOM", None);
     }
+    // phase-502 W2 (issue 1196): bound the vendored FreeRTOS `_z_condvar_wait`
+    // to one slice, reported as a spurious wake. Every other platform reaches
+    // the alias shim's bounded wait; FreeRTOS keeps zenoh-pico's own condvar
+    // (an opaque-struct service, RFC-0034 D2), so the bound is a patch on the
+    // fork's `nano-ros` branch behind this guard. Not coupled to
+    // `platform-aliases`: it changes no symbol, only how long one wait blocks.
+    if env::var_os("CARGO_FEATURE_FREERTOS").is_some() {
+        build.define("Z_FEATURE_NROS_BOUNDED_CONDVAR_WAIT", None);
+        // The slice has ONE spelling, `NROS_ZP_CONDVAR_SLICE_MS` in
+        // `zpico-sys/c/zpico/nros_zp_condvar_slice.h`, which the alias shim and
+        // Zephyr's system file include. The fork cannot include our header, so
+        // its `Z_NROS_CONDVAR_WAIT_SLICE_MS` is handed the value read from it.
+        let slice_h = zenoh_pico_src
+            .parent()
+            .expect("zenoh-pico sits inside zpico-sys")
+            .join("c/zpico/nros_zp_condvar_slice.h");
+        println!("cargo:rerun-if-changed={}", slice_h.display());
+        let text = std::fs::read_to_string(&slice_h)
+            .unwrap_or_else(|e| panic!("read {}: {e}", slice_h.display()));
+        let ms = text
+            .lines()
+            .find_map(|l| l.trim().strip_prefix("#define NROS_ZP_CONDVAR_SLICE_MS"))
+            .map(|v| v.trim().trim_end_matches('u').to_string())
+            .filter(|v| !v.is_empty() && v.bytes().all(|b| b.is_ascii_digit()))
+            .unwrap_or_else(|| {
+                panic!(
+                    "{}: no `#define NROS_ZP_CONDVAR_SLICE_MS <ms>u`",
+                    slice_h.display()
+                )
+            });
+        build.define(
+            "Z_NROS_CONDVAR_WAIT_SLICE_MS",
+            Some(format!("{ms}u").as_str()),
+        );
+    }
 
     // Step 7 — TLS / mbedtls. Manifest sets `mbedtls` to
     // `pkg-config` / `vendored` / `none`; bare-metal vendored path

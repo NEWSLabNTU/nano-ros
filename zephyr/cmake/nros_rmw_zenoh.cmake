@@ -311,6 +311,12 @@ zephyr_library_sources(
     ${NROS_REPO_DIR}/packages/rmw/zenoh/zpico-sys/c/zpico/zpico.c
 )
 zephyr_library_sources(${NROS_ZEPHYR_DIR}/nros_zenoh_zephyr_system.c)
+# nros_zp_condvar_slice.h — the wait slice this file shares with the alias
+# shim (phase-502 W1). Private to this library, so no other Zephyr library
+# gains the shim directory on its include path.
+zephyr_library_include_directories(
+    ${NROS_REPO_DIR}/packages/rmw/zenoh/zpico-sys/c/zpico
+)
 
 # zpico_zephyr.c — Zephyr platform support (network wait, session init)
 zephyr_library_sources(

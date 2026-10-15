@@ -14,6 +14,8 @@
 
 #include <nros/platform.h>
 
+#include "nros_zp_condvar_slice.h"
+
 #include <zephyr/kernel.h>
 #include <zephyr/posix/pthread.h>
 
@@ -273,8 +275,24 @@ z_result_t _z_condvar_signal_all(_z_condvar_t *cv) {
     return pthread_cond_broadcast(cv) == 0 ? 0 : -1;
 }
 
+/* Issue 1196 / phase-502 W1 — zenoh-pico's `_z_condvar_wait` has no deadline
+ * in its contract, and no wait in code we own may block forever. Each wait is
+ * bounded by `NROS_ZP_CONDVAR_SLICE_MS` (the same slice the alias shim uses on
+ * the other ports), and an expired slice returns 0: a spurious wakeup. Every
+ * caller re-tests its predicate in a loop, so behaviour is unchanged, and a
+ * lost signal costs one slice instead of the thread. The condvar was created
+ * on CLOCK_MONOTONIC in `_z_condvar_init`, so the deadline is read from it. */
 z_result_t _z_condvar_wait(_z_condvar_t *cv, _z_mutex_t *m) {
-    return pthread_cond_wait(cv, m) == 0 ? 0 : -1;
+    struct timespec deadline;
+    if (clock_gettime(CLOCK_MONOTONIC, &deadline) != 0) return -1;
+    deadline.tv_sec += (time_t)(NROS_ZP_CONDVAR_SLICE_MS / 1000u);
+    deadline.tv_nsec += (long)(NROS_ZP_CONDVAR_SLICE_MS % 1000u) * 1000000L;
+    if (deadline.tv_nsec >= 1000000000L) {
+        deadline.tv_sec += 1;
+        deadline.tv_nsec -= 1000000000L;
+    }
+    int rc = pthread_cond_timedwait(cv, m, &deadline);
+    return (rc == 0 || rc == ETIMEDOUT) ? 0 : -1;
 }
 
 z_result_t _z_condvar_wait_until(_z_condvar_t *cv,

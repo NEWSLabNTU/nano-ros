@@ -807,31 +807,6 @@ mod cbindgen_stubs {
         -1 // stub: not available
     }
 
-    /// Send a query and wait for reply (blocking, for service client).
-    ///
-    /// # Parameters
-    /// * `keyexpr` - Key expression string, null-terminated.
-    /// * `payload` - Request payload (may be NULL)
-    /// * `payload_len` - Length of payload in bytes
-    /// * `reply_buf` - Buffer to receive reply data
-    /// * `reply_buf_size` - Size of reply buffer
-    /// * `timeout_ms` - Timeout in milliseconds
-    ///
-    /// # Returns
-    /// Number of bytes in reply on success, negative error code on failure.
-    #[unsafe(no_mangle)]
-    pub extern "C" fn zpico_get(
-        _session: *mut zpico_session_t,
-        _keyexpr: *const c_char,
-        _payload: *const u8,
-        _payload_len: usize,
-        _reply_buf: *mut u8,
-        _reply_buf_size: usize,
-        _timeout_ms: u32,
-    ) -> i32 {
-        0
-    }
-
     /// Start a non-blocking query (for async service client).
     ///
     /// Returns a non-negative slot handle on success, negative error code on failure.

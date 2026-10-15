@@ -3,7 +3,7 @@ rfc: 0076
 title: "The platform ABI: a caller asks, and never assumes"
 status: Draft
 since: 2026-08
-last-reviewed: 2026-08
+last-reviewed: 2026-10
 implements-tracked-by: []
 supersedes: []
 superseded-by: null
@@ -274,6 +274,57 @@ Extend the same treatment: generate the `nros_platform_export!` symbol list from
 the header, and gate that the exported set equals the declared set. Then a symbol
 added to the header cannot be missing from the Rust ports — the W10 gap becomes
 unrepresentable rather than merely fixed.
+
+### C6 — No unbounded condition wait (amendment 2026-10-15, phase-502)
+
+**The rule.** Code we own never waits on a condition variable, or on a
+semaphore, event group, queue or notification used as a signal, without a
+deadline. A caller whose own contract is unbounded loops over bounded waits
+and re-tests its predicate each time round. An expired bounded wait inside
+such a loop is reported as a spurious wakeup, which every condition-variable
+caller already has to absorb.
+
+**Why.** A condition wait without a deadline turns one lost signal into a
+thread lost for good, and a lost signal is a real possibility here, not a
+theoretical one: issue 1750's ThreadX rule refuses a signal from a foreign host
+thread on the grounds that "a lost signal costs latency and nothing else". That
+is only true once no waiter can wait forever. With a bounded wait, a lost signal
+costs one slice.
+
+**Where it holds.**
+
+- **The ABI.** It has no condition wait without a deadline: phase-436 D2
+  deleted `nros_platform_condvar_wait`, and `nros_platform_condvar_wait_until`
+  is the only wait.
+- **zenoh-pico's `_z_condvar_wait`.** Its contract has no deadline, so we bound
+  each wait to one slice, `NROS_ZP_CONDVAR_SLICE_MS` (1000 ms). The slice is
+  spelled once, in `zpico-sys/c/zpico/nros_zp_condvar_slice.h`, and three
+  implementations use it:
+  - the alias shim on POSIX, NuttX and ThreadX;
+  - `zephyr/nros_zenoh_zephyr_system.c` on Zephyr;
+  - our patch to zenoh-pico's FreeRTOS system file, on the fork's `nano-ros`
+    branch.
+
+**Two exempt categories.** Each is exempt for a stated reason:
+
+- **Mutex acquisition** (`k_mutex_lock`, `tx_mutex_get`,
+  `pthread_mutex_lock`, `xSemaphoreTake` on a mutex handle,
+  `xSemaphoreTakeRecursive`). A mutex is held for a bounded critical section
+  by a thread that is running, so the wait is bounded by that section, not by
+  a signal that may never come. The exemption rests on priority inheritance,
+  which issue 1907 made real on every port. Without it, a low-priority holder
+  could be starved indefinitely.
+- **Thread join.** A join waits for a thread to finish, which a lost signal
+  cannot cause and a deadline cannot cure. Timing out a join would leave the
+  thread's storage owned by a thread still running.
+
+**Enforced by** `scripts/check-no-unbounded-condvar-wait.sh`:
+
+- It refuses a forever-timeout on every signalling wait it names, and any
+  call of `_z_condvar_wait` from C we own.
+- The two categories above are named rules in the gate, not table rows.
+- Anything else must sit in its exemption table with a reason. A stale row
+  fails the gate.
 
 ## What this RFC deliberately does not propose
 

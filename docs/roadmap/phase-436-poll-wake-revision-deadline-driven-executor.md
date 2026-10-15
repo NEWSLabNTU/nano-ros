@@ -432,7 +432,7 @@ Each is a filed issue; the issue holds the evidence.
 * **W4 — [issue 1195](../issues/archived/1195-promise-wait-polls-instead-of-using-the-waker.md):
   `Promise::wait` polls a 10 ms grid and overshoots shorter timeouts.** The one
   place the waker exists and is bypassed.
-* **W5 — [issue 1196](../issues/1196-platform-condvar-wait-is-unbounded.md):
+* **W5 — [issue 1196](../issues/archived/1196-platform-condvar-wait-is-unbounded.md):
   the unbounded `condvar_wait` in the platform API.** Latent — no callers on
   the executor path — but "no unbounded wait" is only a system property if it
   is an API property.
