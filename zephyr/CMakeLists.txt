@@ -743,10 +743,10 @@ if(CONFIG_NROS_CPP_API)
     zephyr_library_compile_options("${_nros_libc_shim}")
     # Add nros-cpp include directories for user code
     zephyr_include_directories(${NROS_REPO_DIR}/packages/api/nros-cpp/include)
-    # Phase 112.C — nros-c also exposes `<nros/app_main.h>` (the
+    # Phase 112.C — nros-c also exposes `<rclc/detail/app_main.h>` (the
     # unified user-entry contract used by both C and C++ examples).
     # Cpp Zephyr builds need the nros-c include dir for that header
-    # plus the Zephyr Kconfig synthesis variant of `<nros/app_config.h>`
+    # plus the Zephyr Kconfig synthesis variant of `<rclc/detail/app_config.h>`
     # under `nros/zephyr/`.
     zephyr_include_directories(${NROS_REPO_DIR}/packages/api/nros-c/include)
     zephyr_include_directories(${NROS_REPO_DIR}/packages/api/nros-c/include/nros/zephyr)
@@ -848,7 +848,7 @@ if(CONFIG_NROS_CPP_API)
 
     # Phase 168.X gap 1 — `rclc_log_emit` + `rclc_log_emit_fmt`
     # symbols (the C-side log glue every `NROS_LOG_*` macro from
-    # `<nros/log.h>` expands to) ship only with `libnros_c.a`.
+    # `<rclc/log.h>` expands to) ship only with `libnros_c.a`.
     # `libnros_cpp.a` doesn't carry them, so C++-only Zephyr builds
     # (`CONFIG_NROS_C_API=n + CONFIG_NROS_CPP_API=y`) fail to link
     # the moment a cpp example uses `RCLC_LOG_INFO`. Build nros-c

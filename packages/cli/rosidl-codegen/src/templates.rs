@@ -466,11 +466,11 @@ pub struct CField {
     /// [`view_c_type`](Self::view_c_type) /
     /// [`view_read_fn`](Self::view_read_fn).
     pub is_view: bool,
-    /// Borrowed-view C type from `nros/view.h` (e.g. `rclc_view_str_t`,
+    /// Borrowed-view C type from `rclc/detail/view.h` (e.g. `rclc_view_str_t`,
     /// `rclc_view_bytes_t`, `rclc_le_slice_view_f32_t`). Empty unless
     /// [`is_view`](Self::is_view).
     pub view_c_type: String,
-    /// `nros/view.h` reader for the borrowed view (e.g.
+    /// `rclc/detail/view.h` reader for the borrowed view (e.g.
     /// `rclc_cdr_borrow_string`); all share one signature. Empty unless
     /// [`is_view`](Self::is_view).
     pub view_read_fn: String,
@@ -516,7 +516,7 @@ pub struct MessageCHeaderTemplate<'a> {
     pub type_includes: Vec<String>,
     pub has_fields: bool,
     /// RFC-0033 borrowed (Phase 235): any field is `mode = "view"`, so the
-    /// `{Msg}_View` + `{Msg}_deserialize_view` + `<nros/view.h>` include
+    /// `{Msg}_View` + `{Msg}_deserialize_view` + `<rclc/detail/view.h>` include
     /// are emitted.
     pub has_view: bool,
     /// issue 0896 — the largest payload this image can TRANSMIT for the type.

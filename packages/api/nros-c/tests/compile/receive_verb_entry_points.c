@@ -20,9 +20,9 @@
  * call site.
  */
 
-#include "nros/client.h"
-#include "nros/service.h"
-#include "nros/subscription.h"
+#include "rclc/client.h"
+#include "rclc/service.h"
+#include "rclc/subscription.h"
 
 /* The live entry points, with the documented signatures. The subscription
  * drains and the `_raw` service/client drains take the POLLED types: since

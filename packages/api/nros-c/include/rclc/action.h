@@ -12,8 +12,8 @@
 
 /* Type and function definitions live in <nros/nros_generated.h>.
  * This per-module header is kept as a thin shim so existing code that
- * does `#include <nros/action.h>` continues to compile. */
-#include "nros/types.h"
+ * does `#include <rclc/action.h>` continues to compile. */
+#include "rclc/types.h"
 
 /**
  * @brief rclc's default preset constructor for an action client.

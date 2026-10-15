@@ -9,7 +9,7 @@
  * ## Why this file exists
  *
  * The ladder used to live in `<nros/main.hpp>` — a C++ header — while the C
- * sibling `<nros/app_main.h>` defined the same two macros as `""` and `0` with
+ * sibling `<rclc/detail/app_main.h>` defined the same two macros as `""` and `0` with
  * no derivation at all. Both are consumed as VALUES by `run_components` /
  * `run_tiers` and by the CLI entry codegen, so the two spellings never
  * conflicted at link time; they simply disagreed about what the image dials.

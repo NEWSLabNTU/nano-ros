@@ -15,7 +15,7 @@
 
 LOG_MODULE_REGISTER(nros_log_smoke, LOG_LEVEL_INF);
 
-#include <nros/log.h>
+#include <rclc/log.h>
 
 #include <stdlib.h>
 

@@ -1,7 +1,7 @@
 /*
  * Phase-417 stage 6 — the C entry points ARE rcl's spellings now.
  *
- * This file began at W5.b as a probe over `<nros/rcl_compat.h>`'s twelve
+ * This file began at W5.b as a probe over `<rclc/detail/rcl_compat.h>`'s twelve
  * `static inline` forwarders. Stage 6 renamed the entry points themselves, so
  * the forwarders became IDENTITY and were deleted; every name below now
  * resolves to the exported symbol directly, and the header contributes only
@@ -68,7 +68,7 @@
 #pragma GCC diagnostic error "-Wincompatible-pointer-types"
 #endif
 
-#include "nros/rcl_compat.h"
+#include "rclc/detail/rcl_compat.h"
 
 /* ── 1. Every alias resolves, with the documented signature ─────────────── */
 

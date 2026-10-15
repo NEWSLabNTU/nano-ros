@@ -1,6 +1,6 @@
 //! C FFI surface for the bridge (Phase 128.F.5).
 //!
-//! Mirrors the public types/headers in `packages/api/nros-c/include/nros/bridge.h`
+//! Mirrors the public types/headers in `packages/api/nros-c/include/rclc/bridge.h`
 //! and `packages/api/nros-cpp/include/nros/bridge.hpp`. The C symbols
 //! are emitted with `#[unsafe(no_mangle)] pub extern "C"` so a binary
 //! that links `libnros_bridge.a` picks them up at static-link time.
@@ -23,7 +23,7 @@ use crate::PubSubBridge;
 
 /// C-side spec mirroring `nros_node::executor::SessionSpec`. Fields
 /// must stay in lockstep with `rclc_session_spec_t` in
-/// `<nros/bridge.h>`.
+/// `<rclc/bridge.h>`.
 #[repr(C)]
 pub struct NrosSessionSpec {
     pub rmw: *const c_char,
@@ -61,7 +61,7 @@ unsafe fn cstr_or_empty(p: *const c_char) -> &'static str {
     }
 }
 
-/// Open an executor against the given specs. See `<nros/bridge.h>`
+/// Open an executor against the given specs. See `<rclc/bridge.h>`
 /// for the documented contract.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rclc_init_multi(
@@ -201,7 +201,7 @@ pub struct NrosPumpStats {
 
 /// One side (source or destination) of a pubsub bridge: the Node to
 /// open, the RMW backend to route through, and the topic. See
-/// `<nros/bridge.h>` for the documented contract.
+/// `<rclc/bridge.h>` for the documented contract.
 #[repr(C)]
 pub struct NrosBridgeEndpoint {
     pub node: *const c_char,
@@ -209,7 +209,7 @@ pub struct NrosBridgeEndpoint {
     pub topic: *const c_char,
 }
 
-/// Create a raw pubsub bridge. See `<nros/bridge.h>` for the
+/// Create a raw pubsub bridge. See `<rclc/bridge.h>` for the
 /// documented contract.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rclc_pubsub_bridge_create(

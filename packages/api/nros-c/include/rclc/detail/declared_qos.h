@@ -127,7 +127,7 @@
  * `nros_generated.h`, where RELIABLE is 1 and BEST_EFFORT is 0. C++ numbers the
  * same enums the other way round, which is why the header carries tokens and
  * each language pastes them onto a prefix of its own. This header stays
- * freestanding, so the values are literals here and `<nros/subscription.h>`,
+ * freestanding, so the values are literals here and `<rclc/subscription.h>`,
  * which sees both, `_Static_assert`s them equal to the enumerators.
  *
  * The compile-time policy macros below take `rclc_qos_t` values, which is what

@@ -15,7 +15,7 @@
 // DO NOT hand-edit this file inside an emitted module dir — re-running
 // `nros codegen-system` overwrites it. Edit the component crate / pkg.
 
-#include <nros/init.h>
+#include <rclc/init.h>
 #include <px4_platform_common/log.h>
 
 extern "C" {

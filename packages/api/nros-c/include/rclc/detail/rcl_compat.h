@@ -31,11 +31,11 @@
  *    rather than the name itself. These retire with the TYPE rename, which is
  *    a separate step from the entry-point rename this file records.
  *
- *     #include <nros/rcl_compat.h>   // opt-in; nothing force-includes it
+ *     #include <rclc/detail/rcl_compat.h>   // opt-in; nothing force-includes it
  *
  * ## Scope
  *
- * Freestanding C: no allocator, no libc beyond what `<nros/types.h>` already
+ * Freestanding C: no allocator, no libc beyond what `<rclc/types.h>` already
  * uses. This header adds no symbol to the link — every remaining item is a
  * typedef or a macro.
  */
@@ -56,16 +56,16 @@
  * cascade of "RCL_RET_OK redefined" warnings, which is the shape of an error
  * a reader skims past. */
 #if defined(RCL__TYPES_H_)
-#error "<nros/rcl_compat.h> collides with the real <rcl/types.h>: both define \
+#error "<rclc/detail/rcl_compat.h> collides with the real <rcl/types.h>: both define \
 RCL_RET_* and the VALUES differ (nano-ros ERROR/TIMEOUT/INVALID_ARGUMENT/NOT_INIT \
 are -1/-2/-3/-7, rcl's are 1/2/11/101). Include one. If you are building against \
 a real ROS 2 rcl, drop this header."
 #elif defined(RMW_RET_OK) || defined(RMW__RET_TYPES_H_)
-#error "<nros/rcl_compat.h> collides with the real <rmw/ret_types.h>: both define \
+#error "<rclc/detail/rcl_compat.h> collides with the real <rmw/ret_types.h>: both define \
 RMW_RET_* and the VALUES differ. Include one."
 #else
 
-#include "nros/types.h"
+#include "rclc/types.h"
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * 1. Return codes — the SPELLING is adopted, the VALUES are NOT
@@ -217,7 +217,7 @@ NROS_RCL_COMPAT_ASSERT(sizeof(rcl_ret_t) == 4, "rcl_ret_t must be 32-bit, as ups
  * any other upstream member fails to compile, which is correct — RFC-0035 puts
  * the entity internals behind the API on purpose.
  *
- * C has no portable way to deprecate a typedef (see `nros/visibility.h`), so
+ * C has no portable way to deprecate a typedef (see `rclc/visibility_control.h`), so
  * these carry a comment and no attribute, as the repo's convention requires.
  */
 /* Since phase-492 the entity types carry these names themselves

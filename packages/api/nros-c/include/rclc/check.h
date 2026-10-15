@@ -30,7 +30,7 @@
 #ifndef NROS_CHECK_H
 #define NROS_CHECK_H
 
-#include "nros/types.h"
+#include "rclc/types.h"
 
 #ifndef RCLC_CHECK_LOG
 #if defined(RCLC_CHECK_STDIO) || (defined(__STDC_HOSTED__) && __STDC_HOSTED__)

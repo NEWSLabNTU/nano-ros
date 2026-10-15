@@ -508,7 +508,7 @@ pub struct PumpStats {
     /// which therefore never reached the destination. Always `0` on a bridge
     /// built with [`PubSubBridge::new`], which has no converter. Not mirrored
     /// into the C `rclc_pump_stats_t` — that struct's layout is a published
-    /// ABI (`<nros/bridge.h>`) and appending to it is exactly the drift class
+    /// ABI (`<rclc/bridge.h>`) and appending to it is exactly the drift class
     /// `check-ffi-struct-mirrors` exists for.
     pub dropped_convert: usize,
 }

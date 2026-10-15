@@ -30,8 +30,8 @@
 
 #include "fingerprint_corpus/srv/probe.h"
 
-#include "nros/client.h"
-#include "nros/service.h"
+#include "rclc/client.h"
+#include "rclc/service.h"
 
 /* ── Mistake 1: the two payloads swapped ──────────────────────────────────
  *

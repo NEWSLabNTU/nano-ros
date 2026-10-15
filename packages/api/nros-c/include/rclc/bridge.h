@@ -52,8 +52,8 @@ typedef struct {
 /**
  * @brief Opaque executor handle returned by `rclc_init_multi`.
  *
- * Owned by the runtime; pass to `nros_create_node_on`,
- * `rclc_pubsub_bridge_create`, and `rclc_fini_multi`.
+ * Owned by the runtime; pass to `rclc_pubsub_bridge_create` and
+ * `rclc_fini_multi`.
  */
 typedef void* rclc_executor_handle_t;
 

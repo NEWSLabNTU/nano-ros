@@ -72,7 +72,7 @@
 // (`ConnectionFailed`, then `create_publisher`'s abort). Where nothing bakes a
 // locator the header yields `""`, which `nros_cpp_init` reads as absent — the
 // same answer a null gave.
-#include "nros/entry_config.h"
+#include "rclc/detail/entry_config.h"
 #include "nros/qos.hpp"
 // Phase 189.M3.1 — rclcpp-style named-options structs
 // (`SubscriptionOptions` / `PublisherOptions`) used by the 4-arg

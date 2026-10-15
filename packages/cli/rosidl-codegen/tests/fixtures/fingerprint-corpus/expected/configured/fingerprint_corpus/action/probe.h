@@ -19,14 +19,14 @@
 #include <rosidl_runtime_c/string.h>
 #include <rosidl_runtime_c/primitives_sequence.h>
 #include <rosidl_runtime_c/action_type_support_struct.h>
-#include <nros/types.h>
+#include <rclc/types.h>
 // Issue 0346 — borrowed views use rclc_view_str_t / the LE slice views.
-#include <nros/view.h>
+#include <rclc/detail/view.h>
 
 #include <nros/nros_config_generated.h>
 
-/* RFC-0090 — emitted by nano-ros codegen version 16. */
-#define NROS_EMITTED_CODEGEN_VERSION 16
+/* RFC-0090 — emitted by nano-ros codegen version 17. */
+#define NROS_EMITTED_CODEGEN_VERSION 17
 
 #ifndef NROS_CODEGEN_VERSION
 #error "nros: the generated config header did not define NROS_CODEGEN_VERSION. This generated artifact cannot tell whether the runtime accepts it; rebuild the nano-ros runtime so its config header is regenerated."

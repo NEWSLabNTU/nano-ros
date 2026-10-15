@@ -424,12 +424,12 @@ fi
 # ---------------------------------------------------------------------------
 log_info "F2. the same disagreement fails to compile in C"
 c_probe_src() {
-    # `<nros/declared_qos.h>` alone, for the reason case F gives for the C++
+    # `<rclc/detail/declared_qos.h>` alone, for the reason case F gives for the C++
     # probe: pulling the whole nros-c surface in here would make this gate
     # depend on per-build generated config headers it has no business building.
-    # `just check c` compiles the same macro through `<nros/nros.h>`.
+    # `just check c` compiles the same macro through `<rclc/rclc.h>`.
     cat <<EOF
-#include <nros/declared_qos.h>
+#include <rclc/detail/declared_qos.h>
 void nros_dq_case_f2(void) {
     NROS_ASSERT_DECLARED_DEPTH("std_msgs::msg::dds_::Int32_", "/chatter", $1, "\"/chatter\"");
 }
@@ -546,7 +546,7 @@ fi
 log_info "F4. the same policy disagreement fails to compile in C"
 c_policy_probe_src() {
     cat <<EOF
-#include <nros/declared_qos.h>
+#include <rclc/detail/declared_qos.h>
 void nros_dq_case_f4(void) {
     NROS_ASSERT_DECLARED_RELIABILITY("std_msgs::msg::dds_::Float32_", "/sensor", $1, "\"/sensor\"");
     NROS_ASSERT_DECLARED_DURABILITY("std_msgs::msg::dds_::Float32_", "/sensor", $2, "\"/sensor\"");
@@ -682,7 +682,7 @@ fi
 # C: `rclc_qos_t` values (best_effort 0, reliable 1; volatile 0, transient_local 1).
 c_pub_probe_src() {
     cat <<EOF
-#include <nros/declared_qos.h>
+#include <rclc/detail/declared_qos.h>
 void nros_dq_case_f6(void) {
     NROS_ASSERT_DECLARED_PUB_DEPTH("std_msgs::msg::dds_::Int32_", "/chatter", $1, "\"/chatter\"");
     NROS_ASSERT_DECLARED_PUB_RELIABILITY("std_msgs::msg::dds_::Int32_", "/chatter", $2, "\"/chatter\"");

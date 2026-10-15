@@ -29,7 +29,7 @@
 
 // `rclc_duration_from_nanoseconds` — the C entry point `to_msg` decomposes
 // through. `nros_generated.h` carries its own `extern "C"` guard.
-#include "nros/clock.h"
+#include "rclc/types.h"
 
 namespace rclcpp {
 

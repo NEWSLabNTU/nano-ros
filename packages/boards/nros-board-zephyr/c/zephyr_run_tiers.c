@@ -67,7 +67,7 @@ extern int nros_zephyr_tier_task_create(void* (*entry)(void*), void* arg, int32_
                                         const char* name, size_t stack_bytes, uint32_t core_plus1,
                                         int* pin_rc);
 /* Issue 1232 — the same spawn over the ENTRY's thread object and stack
- * (`<nros/tier_task_memory_zephyr.h>`), so a tier's declared `stack_bytes` is
+ * (`<rclc/detail/tier_task_memory_zephyr.h>`), so a tier's declared `stack_bytes` is
  * the stack its thread gets. */
 extern int nros_zephyr_tier_task_create_static(void* (*entry)(void*), void* arg, int32_t priority,
                                                const char* name, void* stack, size_t stack_size,
@@ -232,7 +232,7 @@ extern uint64_t nros_tier_spin_gap_step(uint64_t state, uint64_t iter_start_ns, 
                                         uint32_t spin_period_us);
 extern uint64_t nros_platform_clock_ns(void);
 
-/* nros_board_network_wait: weak no-op in <nros/main.h> (phase-432 W3.1 moved
+/* nros_board_network_wait: weak no-op in <rclc/detail/main.h> (phase-432 W3.1 moved
  * it there from the C++ sibling main.hpp so a pure C entry links); strong
  * override on boards that must block for DHCP / link-up. On the canonical
  * Zephyr path (CONFIG_NET_CONFIG_AUTO_INIT) this is a no-op — the kernel
@@ -261,7 +261,7 @@ extern int nros_cpp_executor_storage_check(const void* storage, size_t bytes);
 
 /* --- Local tier-spec type ---
  *
- * Mirror of nros_native_tier_spec_t (nros/main.h). Layout MUST match: same
+ * Mirror of nros_native_tier_spec_t (rclc/detail/main.h). Layout MUST match: same
  * field order, same types, same ABI (verified by the C++ caller casting
  * NativeTierSpec* → nros_native_tier_spec_t* → this type). Gated by
  * `check-ffi-struct-mirrors`, which compares this declaration to main.h's
@@ -294,7 +294,7 @@ typedef struct {
 } nros_tier_spec_t;
 
 /* Issue 1232 — one tier task's memory, owned by the generated entry. Mirror of
- * `nros_tier_task_memory_t` in <nros/main.h> (gated by check-ffi-struct-mirrors,
+ * `nros_tier_task_memory_t` in <rclc/detail/main.h> (gated by check-ffi-struct-mirrors,
  * family 3). On Zephyr: `stack` is the entry's `K_THREAD_STACK_DEFINE`,
  * `stack_bytes` its `K_THREAD_STACK_SIZEOF`, `tcb` its `struct k_thread`. */
 typedef struct {
@@ -303,7 +303,7 @@ typedef struct {
     void* tcb;
 } nros_tier_task_memory_t;
 _Static_assert(sizeof(nros_tier_task_memory_t) == 3u * sizeof(void*),
-               "nros_tier_task_memory_t mirrors <nros/main.h>: three pointer-sized fields");
+               "nros_tier_task_memory_t mirrors <rclc/detail/main.h>: three pointer-sized fields");
 
 /* --- Per-tier task context ---
  *

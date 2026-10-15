@@ -216,7 +216,7 @@ endif()
 
 # ---------------------------------------------------------------------------
 # Startup sources + include dirs, compiled IN the app target so the
-# per-build `nros/app_config.h` is visible to the entry TU (the same reason
+# per-build `rclc/detail/app_config.h` is visible to the entry TU (the same reason
 # the mps2 overlay does it, and the reason issue 0434's note there matters:
 # do NOT add the nros-c SOURCE include dir here — nros-c exports it as an
 # INTERFACE include and adding it early shadows the generated headers).

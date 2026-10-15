@@ -5,7 +5,7 @@
  * `NROS_ENTRY_RMW` is on every entry target's compile line whatever the
  * language, and until this probe existed only the C++ headers read it: a C image
  * held its own answer in its own preprocessor and passed `NULL`. This TU pins
- * the three properties that make `<nros/baked_rmw.h>` a fix rather than a
+ * the three properties that make `<rclc/detail/baked_rmw.h>` a fix rather than a
  * rewrite of twenty call sites.
  *
  * It is COMPILE-only on purpose. Whether the selector reaches the backend is a
@@ -14,12 +14,12 @@
  * and that the macro does not damage the function it is named after.
  */
 
-#include <nros/nros.h>
+#include <rclc/rclc.h>
 
 /* (1) The macro must not eat the FUNCTION. A function-like macro expands only
  * when followed by `(`, so the address of the real symbol is still available —
  * which is what any C consumer holding a table of init functions depends on. If
- * `<nros/baked_rmw.h>` were ever written as an object-like macro this stops
+ * `<rclc/detail/baked_rmw.h>` were ever written as an object-like macro this stops
  * compiling, which is the point. */
 typedef rcl_ret_t (*nros_support_init_fn)(rclc_support_t*, int, const char* const*,
                                           const rcl_allocator_t*);
@@ -28,7 +28,7 @@ typedef rcl_ret_t (*nros_support_init_locator_fn)(rclc_support_t*, const char*, 
 static nros_support_init_locator_fn taken_address_locator = &rclc_support_init_with_locator;
 
 /* (2) The nameless spellings must still COMPILE at a call site, with the bake
- * present or absent. Both arities, because `<nros/baked_rmw.h>` wraps both and a
+ * present or absent. Both arities, because `<rclc/detail/baked_rmw.h>` wraps both and a
  * wrapper with the wrong parameter count is a compile error only where it is
  * actually called. */
 rcl_ret_t nros_probe_baked_rmw_rung(rclc_support_t* support);

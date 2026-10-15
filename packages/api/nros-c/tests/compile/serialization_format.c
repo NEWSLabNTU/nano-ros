@@ -5,7 +5,7 @@
  * generated message header asserts its own format against them. This TU proves
  * three things a header edit could silently take away:
  *
- *   1. both macros arrive through the ordinary `<nros/nros.h>` include, with no
+ *   1. both macros arrive through the ordinary `<rclc/rclc.h>` include, with no
  *      extra header a user has to know about;
  *   2. `NROS_ASSERT_MESSAGE_FORMAT` compiles — and is a real assertion, not a
  *      no-op — for a message whose format matches the image;
@@ -18,15 +18,15 @@
  * Licensed under Apache-2.0
  */
 
-#include <nros/nros.h>
+#include <rclc/rclc.h>
 
 /* (1) Both macros exist. `#error` rather than a runtime check: their absence is
    a build-system fault, and the diagnostic should name it here. */
 #ifndef NROS_SERIALIZATION_FORMAT_ID
-#error "NROS_SERIALIZATION_FORMAT_ID did not arrive via <nros/nros.h> (RFC-0088 D5)"
+#error "NROS_SERIALIZATION_FORMAT_ID did not arrive via <rclc/rclc.h> (RFC-0088 D5)"
 #endif
 #ifndef NROS_SERIALIZATION_FORMAT
-#error "NROS_SERIALIZATION_FORMAT did not arrive via <nros/nros.h> (RFC-0088 D5)"
+#error "NROS_SERIALIZATION_FORMAT did not arrive via <rclc/rclc.h> (RFC-0088 D5)"
 #endif
 
 /* (2) A message type shaped exactly like codegen's output: its own format id,

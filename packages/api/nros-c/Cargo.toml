@@ -369,7 +369,7 @@ param-store = ["nros/param-store", "nros-node/param-store"]
 lifecycle-services = ["nros/lifecycle-services", "nros-node/lifecycle-services"]
 
 # issue 1589 — the `/rosout` bridge from C (`nros_rosout_*`, declared in
-# `<nros/log.h>`). Pulls code in and nothing else: without it every symbol
+# `<rclc/log.h>`). Pulls code in and nothing else: without it every symbol
 # still links and answers `RCL_RET_UNSUPPORTED` / `false`. Chosen per image by
 # the `rosout` capability axis (`[system].features`), not named by hand.
 rosout = ["nros/rosout", "nros-node/rosout"]

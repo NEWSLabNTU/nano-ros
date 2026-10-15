@@ -7,7 +7,7 @@
  * every case below read the SENTINEL — the probe's negative control is that
  * old header, which fails here on the first case.
  *
- * Deliberately does NOT include `<nros/app_main.h>`: the board files that take
+ * Deliberately does NOT include `<rclc/detail/app_main.h>`: the board files that take
  * the hook (`threadx_hooks.c` is also built on the Rust lane, with no nros-c
  * include path) declare the prototype themselves, so this one does too. */
 

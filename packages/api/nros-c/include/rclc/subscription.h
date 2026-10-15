@@ -1,22 +1,92 @@
 /**
  * @file subscription.h
- * @brief `<rclc/subscription.h>` at upstream's include path (phase-492 W2, RFC-0089).
+ * @ingroup grp_pubsub
+ * @brief Topic subscription API.
  *
- * The C API carries rcl's and rclc's names, so a ported file's includes resolve
- * here too. Every upstream-path header brings in the whole nano-ros C API
- * (`<nros/nros.h>`) plus the rcl spellings of the return codes
- * (`<nros/rcl_compat.h>`): the declarations live in the nano-ros headers, and
- * one umbrella is what keeps two spellings of one declaration from existing.
+ * Create a subscription with rclc_subscription_init_default() (or
+ * rclc_subscription_init_with_qos()) and add it to an executor, which owns
+ * its subscriber and its callback:
+ * rclc_executor_add_subscription_with_context() delivers deserialised
+ * messages (rclc's own six arguments), rclc_executor_add_subscription_raw()
+ * CDR bytes.
  *
- * Deliberately NOT upstream's include guard. `<nros/rcl_compat.h>` refuses to
- * compile beside the real `<rcl/types.h>` by testing that guard, and one image
- * never mixes the two.
+ * For manual polling with no executor, use the separate type
+ * ::rclc_polling_subscription_t: create it with
+ * rclc_polling_subscription_init() and drain it with
+ * rclc_polling_subscription_take() (deserialised, the `rcl_take` analog) or
+ * rclc_polling_subscription_take_serialized() — or
+ * rclc_polling_subscription_take_sequence() for a batch and
+ * rclc_polling_subscription_take_validated() for the E2E-safety variant.
+ * The two types are separate since phase-487: a dispatched subscription's
+ * storage is in the executor arena, a polled one's is in the struct.
  */
 
-#ifndef NROS_UPSTREAM_PATH_RCLC_SUBSCRIPTION_H
-#define NROS_UPSTREAM_PATH_RCLC_SUBSCRIPTION_H
+#ifndef NROS_SUBSCRIPTION_H
+#define NROS_SUBSCRIPTION_H
 
-#include "nros/nros.h"
-#include "nros/rcl_compat.h"
+/* Type and function definitions live in <nros/nros_generated.h>.
+ * This per-module header is kept as a thin shim so existing code that
+ * does `#include <rclc/subscription.h>` continues to compile. */
+#include "rclc/types.h"
+/* phase-454 W10 — the DECLARED QoS depth of this component's subscriptions,
+ * and `NROS_ASSERT_DECLARED_DEPTH` over it. Included HERE, from the subscribe
+ * surface, so a C call site that spells a depth reaches the check without
+ * naming a second header — and so `<rclc/rclc.h>` carries it, which is what
+ * `just check c`'s umbrella syntax check compiles. Costs nothing when no
+ * contract declared anything: the table is then absent and every assertion is
+ * a comparison of a number with itself. */
+#include "rclc/detail/declared_qos.h"
 
-#endif /* NROS_UPSTREAM_PATH_RCLC_SUBSCRIPTION_H */
+#ifndef __cplusplus
+/* issue 1256 -- `rclc/detail/declared_qos.h` is freestanding, so the policy values its
+ * table answers in are literals there. This is the first header that sees both
+ * them and the enums they stand for, so the two are held equal HERE: a drift
+ * fails every C build that includes the subscribe surface, rather than checking
+ * every call site against the wrong enumerator. */
+_Static_assert(_NROS_DQ_C_NROS_DQ_RELIABLE == RCLC_QOS_RELIABILITY_RELIABLE,
+               "declared_qos.h's reliable value drifted from RCLC_QOS_RELIABILITY_RELIABLE");
+_Static_assert(_NROS_DQ_C_NROS_DQ_BEST_EFFORT == RCLC_QOS_RELIABILITY_BEST_EFFORT,
+               "declared_qos.h's best_effort value drifted from RCLC_QOS_RELIABILITY_BEST_EFFORT");
+_Static_assert(_NROS_DQ_C_NROS_DQ_VOLATILE == RCLC_QOS_DURABILITY_VOLATILE,
+               "declared_qos.h's volatile value drifted from RCLC_QOS_DURABILITY_VOLATILE");
+_Static_assert(_NROS_DQ_C_NROS_DQ_TRANSIENT_LOCAL == RCLC_QOS_DURABILITY_TRANSIENT_LOCAL,
+               "declared_qos.h's transient_local value drifted from "
+               "RCLC_QOS_DURABILITY_TRANSIENT_LOCAL");
+#endif
+
+/**
+ * @brief rclc's best-effort preset constructor for a subscription.
+ *
+ * phase-417 W5.d; the sibling of rclc_publisher_init_best_effort() and the
+ * same argument. rclc's body (`rclc/src/rclc/subscription.c` @ `10eadcc`) is
+ * `rclc_subscription_init(..., &rmw_qos_profile_sensor_data)` — best-effort,
+ * volatile, KEEP_LAST(5) — which ::RCLC_QOS_SENSOR_DATA mirrors.
+ *
+ * Takes no callback, at rclc's arity: the callback is supplied at registration
+ * by rclc_executor_add_subscription_raw(), exactly where rclc supplies it
+ * (`rclc_executor_add_subscription`). That is the same split
+ * `rclc_subscription_init_default` already makes, so the two presets differ
+ * only in the profile they pass.
+ *
+ * `static inline`: no symbol, no writable data.
+ *
+ * @param[out] subscription Zero-initialised subscription to fill in.
+ * @param[in]  node         An initialised node.
+ * @param[in]  type_info    Generated message type descriptor.
+ * @param[in]  topic_name   Topic name, null-terminated.
+ * @return Whatever rclc_subscription_init_with_qos() returns.
+ */
+static inline rcl_ret_t rclc_subscription_init_best_effort(
+    struct rcl_subscription_t* subscription, const struct rcl_node_t* node,
+    const struct rclc_message_type_t* type_info, const char* topic_name) {
+    return rclc_subscription_init_with_qos(subscription, node, type_info, topic_name,
+                                           &RCLC_QOS_SENSOR_DATA);
+}
+
+#endif /* NROS_SUBSCRIPTION_H */
+
+/* Every upstream-path header carries the whole C API, as `<rclc/rclc.h>` does
+ * (phase-492): a ported file that includes only `<rclc/subscription.h>` still finds
+ * `RCLC_CHECK_RET`, `RCLC_LOG_*` and the rcl spellings. Outside the guard, so
+ * this header's own declarations are complete before the umbrella reads them. */
+#include "rclc/rclc.h"

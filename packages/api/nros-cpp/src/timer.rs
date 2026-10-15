@@ -110,7 +110,7 @@ pub unsafe extern "C" fn nros_cpp_timer_create_on_clock(
     // `u8` and not `rcl_clock_type_t`, deliberately: `nros_cpp_ffi.h` is
     // generated with `no_includes`, so a parameter typed with nros-c's enum
     // would name a type the header does not declare and every TU that includes
-    // it without `nros/clock.h` fails to compile (action_client.hpp did). C++
+    // it without `rclc/types.h` fails to compile (action_client.hpp did). C++
     // converts the unscoped enum implicitly, so `clock.get_clock_type()` still
     // passes without a cast at the call site.
     //

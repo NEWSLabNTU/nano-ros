@@ -22,7 +22,7 @@
 // declares (`qos_policy_kind_to_cstr`, below). Macros only; the file includes
 // nothing and compiles freestanding, so it costs this header's
 // self-containment nothing.
-#include "nros/visibility.h"
+#include "rclc/visibility_control.h"
 // phase-417 stage 6 step A — `rclcpp::detail::refuse` and the
 // `NROS_RCLCPP_REFUSE_*` diagnostics, used by `SystemDefaultsQoS` below.
 // `log.hpp` includes nothing of ours, so this adds no cycle.
@@ -48,7 +48,7 @@
 //
 // The FIELD names below are ABI. `deadline_ms` / `lifespan_ms` /
 // `liveliness_lease_ms` are `uint32_t` milliseconds and are mirrored again in
-// `nros/component.h` (issue 0160, gated by `check-ffi-struct-mirrors`). The
+// `rclc/component.h` (issue 0160, gated by `check-ffi-struct-mirrors`). The
 // `_ms` suffix on a `QoS` METHOD was renamed in phase-379 W5; the suffix on a
 // STRUCT FIELD was not, and must not be — the C ABI carries milliseconds.
 #ifndef NROS_CPP_FFI_H
@@ -494,7 +494,7 @@ constexpr bool operator!=(const QoS& left, const QoS& right) {
 /// `nros_rmw::QoSPolicyMask::NAMED`'s. This header declares the C entry point
 /// rather than including `<nros/nros_generated.h>` — `qos.hpp` is deliberately
 /// self-contained (see issue 0112 at the top of this file) — and a signature
-/// drift cannot hide: `nros.hpp` pulls both this header and `nros/lifecycle.h`,
+/// drift cannot hide: `nros.hpp` pulls both this header and `rclc/types.h`,
 /// which reaches the generated declarations, so every C++ example is a
 /// translation unit holding both spellings and the compiler compares them.
 /// The declaration is spelled EXACTLY as `nros_generated.h` spells it,

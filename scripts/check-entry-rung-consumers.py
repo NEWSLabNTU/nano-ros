@@ -115,8 +115,8 @@ def compare(scope: set[str], used: dict[str, set[str]]) -> list[str]:
                 f"its own preprocessor. That is issue 1531: it cost every native "
                 f"C example its session open for eighteen days (issue 1530).\n"
                 f"      Give the missing surface a consumer — for C that is a "
-                f"header-side spelling reached by <nros/types.h>, AFTER the "
-                f"generated declarations (see <nros/baked_rmw.h>), so every "
+                f"header-side spelling reached by <rclc/types.h>, AFTER the "
+                f"generated declarations (see <rclc/detail/baked_rmw.h>), so every "
                 f"consumer gets it rather than only those including one module."
             )
     return errors

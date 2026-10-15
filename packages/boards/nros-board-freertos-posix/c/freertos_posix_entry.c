@@ -32,8 +32,8 @@
 #include "FreeRTOS.h"
 #include "task.h"
 
-#include <nros/app_config.h>
-#include <nros/app_main.h> /* nros_app_main_returned's prototype (issue 1752) */
+#include <rclc/detail/app_config.h>
+#include <rclc/detail/app_main.h> /* nros_app_main_returned's prototype (issue 1752) */
 
 /* ---- Provided elsewhere ---- */
 /* nros-board-freertos/c/freertos_task_glue.c */
@@ -52,7 +52,7 @@ extern void app_main(void);
 extern size_t nros_platform_heap_used_bytes(void);
 extern size_t nros_platform_heap_total_bytes(void);
 
-/* Issue 1752 — the strong recorder for `<nros/app_main.h>`'s VOID shim, which
+/* Issue 1752 — the strong recorder for `<rclc/detail/app_main.h>`'s VOID shim, which
  * calls it with `nros_app_main`'s status (as an exit code) just before its
  * `app_main` returns. It must live in THIS object, beside the call to
  * `app_main`: the shim carries a weak no-op of its own, and a linker never

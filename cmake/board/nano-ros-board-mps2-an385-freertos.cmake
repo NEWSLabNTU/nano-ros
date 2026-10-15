@@ -189,7 +189,7 @@ endif()
 
 # ---------------------------------------------------------------------------
 # Startup sources + include dirs. Compiled IN the app target so the
-# example's per-build `nros/app_config.h` (APP_IP / APP_MAC, etc.) is
+# example's per-build `rclc/detail/app_config.h` (APP_IP / APP_MAC, etc.) is
 # visible to net.c.
 # ---------------------------------------------------------------------------
 set(FREERTOS_STARTUP_SOURCE
@@ -205,7 +205,7 @@ set(FREERTOS_STARTUP_INCLUDES
     # listed here.
     #
     # phase-337 W5.b added it so `freertos_c_entry.c` could read `NROS_APP_CONFIG`
-    # from <nros/app_config.h>, on the assumption that "the per-app generated
+    # from <rclc/detail/app_config.h>, on the assumption that "the per-app generated
     # header shadows this one on the include path when the carrier emits it".
     # It does not: this entry landed at position 9 of the consumer's include
     # list while the generated headers are at 10 and 13, so the SOURCE tree won

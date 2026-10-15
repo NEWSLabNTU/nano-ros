@@ -76,7 +76,7 @@ Resolution order for each file:
 3. `<install_prefix>/share/nano-ros/interfaces/<target>/<file>` (bundled)
 
 Generated type info structs (`rclc_message_type_t`, `rclc_service_type_t`,
-`rclc_action_type_t`) are defined in `<nros/types.h>`.
+`rclc_action_type_t`) are defined in `<rclc/types.h>`.
 
 ## 3. RMW Backend Selection
 

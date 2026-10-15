@@ -187,7 +187,7 @@ pub unsafe extern "C" fn rclc_support_init(
 }
 
 /// [`rclc_support_init`] with the image's BAKED connect rungs — the seam
-/// `<nros/baked_rmw.h>`'s `rclc_support_init` macro forwards to: the RMW
+/// `<rclc/detail/baked_rmw.h>`'s `rclc_support_init` macro forwards to: the RMW
 /// selector (`NROS_ENTRY_RMW`, issue 1531) and, since phase-499 W2, the
 /// locator and domain (`NROS_ENTRY_LOCATOR` / `NROS_ENTRY_DOMAIN_ID`). Those
 /// are macros defined in the CALLER's translation unit — a cargo-rooted C

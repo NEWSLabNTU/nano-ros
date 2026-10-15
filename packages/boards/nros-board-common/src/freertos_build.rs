@@ -189,7 +189,7 @@ pub fn board_base_config(manifest_dir: &Path) -> BaseConfig {
 /// path, for `cc::Build::file`.
 ///
 /// The symbol is what the C/C++ application entry reads for network bring-up
-/// and task sizing (`<nros/app_config.h>` declares the type). Before phase-337
+/// and task sizing (`<rclc/detail/app_config.h>` declares the type). Before phase-337
 /// W5.d this was a 57-line C string literal in the MPS2 overlay's `build.rs`,
 /// maintained by eye against `nros_board_freertos::Config::default()` — and it
 /// had drifted by 128 KiB on `app_stack_bytes`.
@@ -209,12 +209,12 @@ pub fn emit_app_config_tu(
  * `FreertosScheduling`, so this file cannot drift from the Rust defaults the
  * way the hand-written mirror it replaces did (phase-337 W5.d).
  *
- * `<nros/app_config.h>` is the canonical-path wrapper for the shipped
+ * `<rclc/detail/app_config.h>` is the canonical-path wrapper for the shipped
  * `nros_app_config_t` type, so there is no inlined-typedef sync obligation.
  */
 
 #include <stdint.h>
-#include <nros/app_config.h>
+#include <rclc/detail/app_config.h>
 
 const nros_app_config_t NROS_APP_CONFIG = {{
     .zenoh = {{
@@ -349,7 +349,7 @@ pub struct OverlayEnv {
     /// wrong default for every other board.
     pub freertos_config_dir: PathBuf,
     /// `packages/api/nros-c/include`, already asserted to hold
-    /// `nros/app_config.h` (issue 0365).
+    /// `rclc/detail/app_config.h` (issue 0365).
     pub nros_c_include: PathBuf,
 }
 
@@ -568,7 +568,7 @@ fn resolve_overlay_env(default_port: &str) -> OverlayEnv {
 
     // Issue 0365 — nros-c moved to `packages/api/nros-c` in phase-321 W2.e and
     // this join was left at the old `core/nros-c`, so the emitted TU could not
-    // find `<nros/app_config.h>`. Assert existence so a future move fails loud
+    // find `<rclc/detail/app_config.h>`. Assert existence so a future move fails loud
     // here rather than deep inside `cc`.
     //
     // issue 1558 — the hop count is gone; only nros-c's own location is
@@ -580,7 +580,7 @@ fn resolve_overlay_env(default_port: &str) -> OverlayEnv {
     // else this checkout), the same answer nuttx_ffi_build.rs gets.
     let nros_c_include = nros_build_paths::nros_c_include();
     assert!(
-        nros_c_include.join("nros/app_config.h").exists(),
+        nros_c_include.join("rclc/detail/app_config.h").exists(),
         "nros-c header not at {} — did nros-c move again? (issue 0365)",
         nros_c_include.display()
     );

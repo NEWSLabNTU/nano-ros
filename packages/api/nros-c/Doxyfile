@@ -13,25 +13,25 @@ PROJECT_BRIEF          = "Lightweight ROS 2 client for embedded real-time system
 # cbindgen-emitted decls are the real source of truth for entity types
 # and public functions; the per-module shim headers carry @file briefs
 # and `@addtogroup` blocks that pull related symbols into named groups.
-INPUT                  = include/nros/nros.h \
+INPUT                  = include/rclc/rclc.h \
                          include/nros/nros_generated.h \
-                         include/nros/types.h \
-                         include/nros/serialization_format.h \
-                         include/nros/init.h \
-                         include/nros/node.h \
-                         include/nros/publisher.h \
-                         include/nros/subscription.h \
-                         include/nros/service.h \
-                         include/nros/client.h \
-                         include/nros/executor.h \
-                         include/nros/timer.h \
-                         include/nros/guard_condition.h \
-                         include/nros/lifecycle.h \
-                         include/nros/action.h \
+                         include/rclc/types.h \
+                         include/rclc/detail/serialization_format.h \
+                         include/rclc/init.h \
+                         include/rclc/node.h \
+                         include/rclc/publisher.h \
+                         include/rclc/subscription.h \
+                         include/rclc/service.h \
+                         include/rclc/client.h \
+                         include/rclc/executor.h \
+                         include/rclc/timer.h \
+                         include/rclc/action.h \
                          include/rclc_parameter/rclc_parameter.h \
-                         include/nros/cdr.h \
-                         include/nros/clock.h \
-                         include/nros/visibility.h \
+                         include/rclc/detail/cdr.h \
+                         include/rclc/visibility_control.h \
+                         include/rclc/log.h \
+                         include/rclc/check.h \
+                         include/rclc_lifecycle/rclc_lifecycle.h \
                          include/nros/platform.h \
                          docs/groups.dox \
                          docs/mainpage.md \

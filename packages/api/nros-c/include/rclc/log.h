@@ -238,7 +238,7 @@ void rclc_log_emit_fmt_at(rclc_logger_t logger, rcl_log_severity_t severity, con
  * Cross-language `no_std` builds (FreeRTOS / NuttX / ThreadX C and
  * C++ examples) must call this once after the board crate's
  * platform-log writer is registered (typically right after
- * `nros_node_init` returns). Pins `nros_log::init` as a linker root
+ * `rclc_node_init_default` returns). Pins `nros_log::init` as a linker root
  * so `--gc-sections` keeps it; without this, the lazy guard inside
  * `rclc_log_emit` can be unreachable and every record silently
  * drops.

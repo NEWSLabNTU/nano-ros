@@ -22,7 +22,7 @@
 //! ported program compiles and says why at runtime, the way the C++
 //! parameter forwarders do (phase-426 W4).
 //!
-//! The declarations are hand-authored in `<nros/log.h>` beside the rest of
+//! The declarations are hand-authored in `<rclc/log.h>` beside the rest of
 //! the log surface, so cbindgen skips these names (`cbindgen.toml`).
 
 use crate::{error::*, node::rcl_node_t, publisher::rcl_publisher_t, qos::rclc_qos_t};

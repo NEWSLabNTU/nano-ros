@@ -71,7 +71,7 @@ Bringup, and Entry packages.
 Choose API language first:
 
 - **Rust** — use `nros`, generated message crates, and `Executor`.
-- **C** — include `nros/nros.h` and generate interfaces with
+- **C** — include `rclc/rclc.h` and generate interfaces with
   `nros_find_interfaces(LANGUAGE C)` in CMake (one of five codegen
   entry points — [which to use](message-generation.md#which-cmake-spelling-one-table)).
 - **C++** — include `nros/nros.hpp` and use typed wrappers.

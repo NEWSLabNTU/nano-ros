@@ -1,6 +1,6 @@
 //! The connect configuration a CARGO-ROOTED C/C++ image bakes — issue 1512.
 //!
-//! `<nros/entry_config.h>` is the one producer of the `NROS_ENTRY_LOCATOR` /
+//! `<rclc/detail/entry_config.h>` is the one producer of the `NROS_ENTRY_LOCATOR` /
 //! `NROS_ENTRY_DOMAIN_ID` ladder (issue 0946). Its rungs are Kconfig values
 //! and then the empty "absent" bottom rung; it lets an entry bake a literal by
 //! defining either macro before the include (`#ifndef`). The cmake road does

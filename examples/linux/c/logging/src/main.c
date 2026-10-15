@@ -2,7 +2,7 @@
  * Phase 88.13 — minimal C logging demo.
  *
  * Brings up a Node, fetches its Logger via `rclc_node_get_logger`,
- * and exercises every severity macro from <nros/log.h>. Threshold
+ * and exercises every severity macro from <rclc/log.h>. Threshold
  * adjustment uses the same `rclc_logger_t` handle through a small
  * helper that calls into the Rust facade via the executor handle.
  *

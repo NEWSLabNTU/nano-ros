@@ -21,7 +21,7 @@
 
 // `rcl_clock_type_t` and `rclc_time_from_nanoseconds` — the C surface this
 // wraps. `nros_generated.h` carries its own `extern "C"` guard.
-#include "nros/clock.h"
+#include "rclc/types.h"
 
 // ============================================================================
 // `rclcpp::Time` — DEFINED here (RFC-0089: rclcpp:: is the home)

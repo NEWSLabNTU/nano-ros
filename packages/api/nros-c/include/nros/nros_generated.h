@@ -15,7 +15,7 @@
 #include <stdint.h>
 #include <stddef.h>
 
-#include "nros/visibility.h"
+#include "rclc/visibility_control.h"
 #include "nros/nros_config_generated.h"
 
 /* Forward declarations for callback typedefs that reference these
@@ -896,7 +896,7 @@ typedef struct rcl_clock_t {
  * never matched — the "compiles and differs" shape RFC-0089 forbids, arriving
  * through a doc comment rather than a signature.
  *
- * `<nros/rcl_compat.h>` maps rcl's constant SPELLINGS onto these values. The
+ * `<rclc/detail/rcl_compat.h>` maps rcl's constant SPELLINGS onto these values. The
  * values are deliberately NOT renumbered: doing so would silently flip the
  * meaning of every stored return code across the C, C++ and Rust FFI seams.
  */
@@ -3455,7 +3455,7 @@ int32_t rclc_cdr_read_string(const uint8_t **ptr,
  * (relative to `origin`, never to the buffer pointer), consuming the padding
  * the writer emitted. This is [`CdrReader::align`] behind the C ABI, so it
  * carries the same edition rule (XCDR2 caps 8-byte primitives at 4) and the
- * header-only readers in `<nros/view.h>` agree with the Rust reader byte for
+ * header-only readers in `<rclc/detail/view.h>` agree with the Rust reader byte for
  * byte instead of re-deriving the arithmetic (issue 1148).
  *
  * Returns 0 on success, -1 if `alignment` is 0 or the padding would run past
@@ -5832,7 +5832,7 @@ rcl_ret_t rclc_executor_spin_one_period(struct rclc_executor_t *executor,
  * `rcl`'s context shutdown, phase-417 W4.c.
  *
  * Renamed from `nros_executor_stop`, whose deprecated `static inline`
- * forwarder in `<nros/executor.h>` was retired by phase-417 stage 6 step B.
+ * forwarder in `<rclc/executor.h>` was retired by phase-417 stage 6 step B.
  * Three of our own languages had three answers to "stop spinning"; `cancel`
  * is ROS 2's.
  *
@@ -6791,7 +6791,7 @@ NROS_PUBLIC const char *rclc_node_get_serialization_format(const struct rcl_node
  *
  * The returned handle is opaque from the C side; pass it to
  * `nros_log_info(...)` / `nros_log_warn(...)` / etc. (declared in
- * `<nros/log.h>`). The lifetime is `'static` — loggers live for the
+ * `<rclc/log.h>`). The lifetime is `'static` — loggers live for the
  * process; callers must NOT free the returned pointer.
  *
  * # Parameters
@@ -8817,7 +8817,7 @@ rcl_ret_t rclc_support_init(struct rclc_support_t *support,
 
 /**
  * [`rclc_support_init`] with the image's BAKED connect rungs — the seam
- * `<nros/baked_rmw.h>`'s `rclc_support_init` macro forwards to: the RMW
+ * `<rclc/detail/baked_rmw.h>`'s `rclc_support_init` macro forwards to: the RMW
  * selector (`NROS_ENTRY_RMW`, issue 1531) and, since phase-499 W2, the
  * locator and domain (`NROS_ENTRY_LOCATOR` / `NROS_ENTRY_DOMAIN_ID`). Those
  * are macros defined in the CALLER's translation unit — a cargo-rooted C
@@ -8949,7 +8949,7 @@ NROS_PUBLIC struct rcl_timer_t rcl_get_zero_initialized_timer(void);
  * Initialize a WALL timer — the clock-less case (phase-430 W1).
  *
  * phase-492 W1.b: this was spelled `rcl_timer_init`, which is rcl's name for
- * a different contract (`<nros/rcl_compat.h>` §4), and took the support as a
+ * a different contract (`<rclc/detail/rcl_compat.h>` §4), and took the support as a
  * validity witness it never otherwise read. It takes rclc's `_with_context`
  * spelling — the callback gets the caller's context — and no witness: the
  * timer belongs to no node and no session until `rclc_executor_add_timer`,
@@ -8991,7 +8991,7 @@ rcl_ret_t rclc_timer_init_with_context(struct rcl_timer_t *timer,
  * clock is the second parameter. That is RFC-0089's "C
  * takes rcl's spellings" applied to the ARGUMENT LIST, which is the half of
  * the spelling that survives our different callback contract —
- * `<nros/rcl_compat.h>` §4 records why the NAME `rcl_timer_init` stays
+ * `<rclc/detail/rcl_compat.h>` §4 records why the NAME `rcl_timer_init` stays
  * refused (rcl hands the callback the time since its last call, we hand it
  * the user's context, so a ported timer callback is a different FUNCTION and
  * taking the name would be a compile-and-differ).
@@ -9146,7 +9146,7 @@ NROS_PUBLIC uint64_t rclc_timer_get_period(const struct rcl_timer_t *timer);
  * is ours.
  *
  * `RCL_RET_TIMER_INVALID` and `RCL_RET_TIMER_CANCELED` have no counterpart in
- * `rcl_ret_t` and `<nros/rcl_compat.h>` deliberately does not map them, so
+ * `rcl_ret_t` and `<rclc/detail/rcl_compat.h>` deliberately does not map them, so
  * the four rcl outcomes reach a caller as three: those two and "not
  * registered" all arrive as `RCL_RET_NOT_INIT`.
  *
@@ -9339,7 +9339,7 @@ rcl_ret_t rcl_timer_exchange_period(const struct rcl_timer_t *timer,
  * this sum has microsecond resolution. The clock read does not.
  *
  * `RCL_RET_TIMER_INVALID` and `RCL_RET_TIMER_CANCELED` have no counterpart in
- * `rcl_ret_t` (`<nros/rcl_compat.h>` declines to map them), so those and "not
+ * `rcl_ret_t` (`<rclc/detail/rcl_compat.h>` declines to map them), so those and "not
  * registered with an executor" all arrive as `RCL_RET_NOT_INIT`.
  *
  * # Returns

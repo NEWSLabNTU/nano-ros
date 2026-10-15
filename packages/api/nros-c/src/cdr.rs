@@ -701,7 +701,7 @@ pub unsafe extern "C" fn rclc_cdr_read_string(
 /// (relative to `origin`, never to the buffer pointer), consuming the padding
 /// the writer emitted. This is [`CdrReader::align`] behind the C ABI, so it
 /// carries the same edition rule (XCDR2 caps 8-byte primitives at 4) and the
-/// header-only readers in `<nros/view.h>` agree with the Rust reader byte for
+/// header-only readers in `<rclc/detail/view.h>` agree with the Rust reader byte for
 /// byte instead of re-deriving the arithmetic (issue 1148).
 ///
 /// Returns 0 on success, -1 if `alignment` is 0 or the padding would run past

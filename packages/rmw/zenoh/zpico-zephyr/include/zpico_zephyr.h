@@ -5,7 +5,7 @@
  * Platform-level functions for initializing zenoh-pico on Zephyr.
  * Handles network readiness and zenoh session lifecycle.
  *
- * For the full nros API, use nros-c headers (nros/init.h, nros/node.h, etc.)
+ * For the full nros API, use nros-c headers (rclc/init.h, rclc/node.h, etc.)
  * or the nros Rust crate.
  *
  * @copyright Copyright (c) 2024 nros contributors

@@ -23,7 +23,7 @@ use core::ffi::c_int;
 /// never matched — the "compiles and differs" shape RFC-0089 forbids, arriving
 /// through a doc comment rather than a signature.
 ///
-/// `<nros/rcl_compat.h>` maps rcl's constant SPELLINGS onto these values. The
+/// `<rclc/detail/rcl_compat.h>` maps rcl's constant SPELLINGS onto these values. The
 /// values are deliberately NOT renumbered: doing so would silently flip the
 /// meaning of every stored return code across the C, C++ and Rust FFI seams.
 pub type rcl_ret_t = c_int;

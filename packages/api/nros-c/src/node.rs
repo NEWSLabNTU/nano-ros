@@ -830,7 +830,7 @@ pub unsafe extern "C" fn rclc_node_get_serialization_format(
 ///
 /// The returned handle is opaque from the C side; pass it to
 /// `nros_log_info(...)` / `nros_log_warn(...)` / etc. (declared in
-/// `<nros/log.h>`). The lifetime is `'static` — loggers live for the
+/// `<rclc/log.h>`). The lifetime is `'static` — loggers live for the
 /// process; callers must NOT free the returned pointer.
 ///
 /// # Parameters

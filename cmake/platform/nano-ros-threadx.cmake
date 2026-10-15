@@ -315,7 +315,7 @@ endif()
 # THREADX_STARTUP_SOURCE / THREADX_STARTUP_INCLUDES / THREADX_APP_DEFINE_SOURCE
 # cache vars; we apply them to <target> here. Compiling startup.c +
 # app_define.c IN the app target (rather than baking them into a library)
-# keeps the example's per-build `nros/app_config.h` (APP_IP / APP_MAC,
+# keeps the example's per-build `rclc/detail/app_config.h` (APP_IP / APP_MAC,
 # etc.) visible to startup.c and avoids the static-lib-extraction
 # ordering problem from Phase 112.E.fix where `app_define.c`'s
 # undef refs to `nros_platform_threadx_*` couldn't be resolved once

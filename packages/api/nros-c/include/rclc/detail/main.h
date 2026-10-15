@@ -1,7 +1,7 @@
 /**
  * @file main.h
  * @ingroup grp_node
- * @brief Phase 219.E — `<nros/main.h>` Entry-pkg header (C variant).
+ * @brief Phase 219.E — `<rclc/detail/main.h>` Entry-pkg header (C variant).
  *
  * Symmetric to `<nros/main.hpp>`: the cmake fn `nano_ros_entry(LAUNCH
  * "<bringup>:<file>.launch.xml")` drives per-Entry-pkg codegen via
@@ -26,8 +26,8 @@
 #ifndef NROS_MAIN_H
 #define NROS_MAIN_H
 
-#include "nros/node_pkg.h"
-#include "nros/visibility.h"
+#include "rclc/detail/node_pkg.h"
+#include "rclc/visibility_control.h"
 
 /* phase-432 W3.1 — the compile-time connect configuration, one ladder, in the
  * header that DECLARES the entry points whose contract names it.
@@ -35,12 +35,12 @@
  * `nros_board_rtos_run_components` and every `nros_board_<rtos>_run_tiers`
  * below take a locator and a domain id, and a generated C entry passes
  * `NROS_ENTRY_LOCATOR` / `NROS_ENTRY_DOMAIN_ID`. Those come from
- * `<nros/entry_config.h>`, which `main.hpp` and `app_main.h` both include —
+ * `<rclc/detail/entry_config.h>`, which `main.hpp` and `app_main.h` both include —
  * and this header, the one a C entry always includes, did not.
  *
  * That gap was invisible until a C entry existed for a KERNEL boot shape.
  * FreeRTOS and NuttX are the `app` shape, so their entries include
- * `<nros/app_main.h>` for `NROS_APP_MAIN_REGISTER_VOID()` and got the ladder
+ * `<rclc/detail/app_main.h>` for `NROS_APP_MAIN_REGISTER_VOID()` and got the ladder
  * along the way; Zephyr's entry is a bare `int main(void)` that includes no
  * such header, so every Zephyr C entry failed to compile:
  *
@@ -50,7 +50,7 @@
  * property of the DECLARATION instead of something each pack must remember:
  * the macros are part of how these functions are called. Preprocessor-only and
  * guarded, so the other two includers are unaffected. */
-#include "nros/entry_config.h"
+#include "rclc/detail/entry_config.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -276,7 +276,7 @@ NROS_PUBLIC int32_t nros_board_freertos_run_tiers(const char* locator, uint8_t d
  * empty means the image declares none, which resolves to the ROOT — never to
  * the empty namespace. There is no environment rung on an RTOS, so on these
  * boards the bake IS the answer; the locator and the domain stay the board's,
- * baked by cmake through `<nros/entry_config.h>`.
+ * baked by cmake through `<rclc/detail/entry_config.h>`.
  *
  * Additive rather than a fifth parameter above: an entry TU generated before
  * this existed still calls the four-parameter spelling (issue 1050's rule).
@@ -454,7 +454,7 @@ NROS_PUBLIC int32_t nros_board_zephyr_run_tiers_in(const char* locator, uint8_t 
 /* Issue 1232 — the same runner, plus each tier task's memory from the entry,
  * and the one a generated tiered Zephyr entry calls. `task_memory[i]` is
  * `tiers[i]`'s thread object + `K_THREAD_STACK_DEFINE` stack, sized from the
- * tier's declared `stack_bytes` (`<nros/tier_task_memory_zephyr.h>`), so the
+ * tier's declared `stack_bytes` (`<rclc/detail/tier_task_memory_zephyr.h>`), so the
  * declared size is the size the thread gets — the shim's fixed pool slot
  * ignored it. The boot tier (`tiers[0]`, on `main()`) must have none and every
  * spawned tier must have one, else refused before the session opens. NULL is
@@ -519,7 +519,7 @@ NROS_PUBLIC int32_t nros_board_nuttx_run_tiers_in(const char* locator, uint8_t d
  *
  * Usage:
  *
- *   #include <nros/main.h>
+ *   #include <rclc/detail/main.h>
  *   NROS_MAIN_C(nros_board_native, "demo_bringup:system.launch.xml")
  */
 #define NROS_MAIN_C(BoardId, LaunchSpec)                                                           \

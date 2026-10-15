@@ -1,11 +1,11 @@
 //! Phase 88.12 — C-API surface for the `nros_log` facade.
 //!
-//! Mirrors `<nros/log.h>`. The `rclc_log_emit` /
+//! Mirrors `<rclc/log.h>`. The `rclc_log_emit` /
 //! `rclc_log_emit_fmt` symbols dispatch through the same per-platform
 //! sink chain the Rust call sites use (Phase 88.5 onwards).
 //!
 //! cbindgen is told to skip every item in this module — the
-//! hand-written `<nros/log.h>` is authoritative for the C ABI
+//! hand-written `<rclc/log.h>` is authoritative for the C ABI
 //! (cbindgen would re-emit the enum + functions under their
 //! mangled names, colliding with the hand-written header).
 
@@ -28,7 +28,7 @@ use core::ffi::{c_char, c_void};
 /// `TRACE` (rcutils has none) takes `5`, a value inside rcutils's own gap
 /// between `UNSET` and `DEBUG`, which is what that gap is for.
 ///
-/// **The WIDTH.** The hand-written `<nros/log.h>` declares a plain C `enum` —
+/// **The WIDTH.** The hand-written `<rclc/log.h>` declares a plain C `enum` —
 /// implementation-defined underlying type, `int`-sized on every ABI we target —
 /// and this was `#[repr(u8)]`, so one side passed a byte where the other passed
 /// four. That is the hand-mirrored-FFI class one layer over from
@@ -130,7 +130,7 @@ pub unsafe extern "C" fn rclc_log_emit(
 /// phase-417 W4.d — emit WITH the call site.
 ///
 /// The record `rclc_log_emit` built was hardcoded: `file: "<nros-c>", line: 0,
-/// timestamp_ns: 0`, while `<nros/log.h>`'s own header comment promised the
+/// timestamp_ns: 0`, while `<rclc/log.h>`'s own header comment promised the
 /// macros "attach severity + line info". Every C and C++ record in the tree
 /// therefore reached the sinks stripped of the two fields the sinks render.
 ///
@@ -412,7 +412,7 @@ pub unsafe extern "C" fn rclc_logger_get_child(
 /// in the severity map, `rcutils_logging_get_logger_leveln` maps it back to
 /// `RCUTILS_LOG_SEVERITY_UNSET`, and `..._get_logger_effective_level` treats
 /// that exactly as it treats an absent entry — it keeps walking, and falls to
-/// `g_rcutils_logging_default_logger_level`. See `<nros/log.h>`'s
+/// `g_rcutils_logging_default_logger_level`. See `<rclc/log.h>`'s
 /// `rcl_log_severity_t` comment for the one thing we do NOT do: the ancestry
 /// walk itself.
 ///
@@ -521,7 +521,7 @@ impl rcl_log_severity_t {
     /// A facade severity on rcutils's number line.
     ///
     /// ONE DERIVATION (issue 1025's class). This used to be a six-arm match
-    /// re-stating the numbers a third time — after `<nros/log.h>`'s `enum` and
+    /// re-stating the numbers a third time — after `<rclc/log.h>`'s `enum` and
     /// the constants above — and a third statement of a number is a third
     /// thing to forget. `rcl_interfaces/msg/Log.level` needed the same mapping
     /// for the `/rosout` bridge (phase-467 Q4), so the rule moved down to
@@ -796,7 +796,7 @@ static _ANCHOR_THROTTLE: unsafe extern "C" fn(*mut u64, u64) -> bool = rclc_log_
 // phase-417 stage 3 — ledger row `c:log_severity_t`.
 //
 // Two claims, both measured: the NUMBER LINE is rcutils's, and the Rust mirror
-// is the size the hand-written C `enum` in <nros/log.h> is. The header carries
+// is the size the hand-written C `enum` in <rclc/log.h> is. The header carries
 // the C half of the second claim as a `static_assert`.
 // ============================================================================
 
@@ -946,7 +946,7 @@ mod severity_tests {
     /// `nros_log::Severity::rcutils_level` are two statements of one number
     /// line, and this is what makes them one fact.
     ///
-    /// It has to be a test. This crate cannot see `<nros/log.h>` (RFC-0054
+    /// It has to be a test. This crate cannot see `<rclc/log.h>` (RFC-0054
     /// makes the header the ABI SSoT and `nros-log` sits below it), so there
     /// is no `const` assertion available — the constants above are the Rust
     /// mirror, the header static_asserts itself, and this closes the triangle.
@@ -965,7 +965,7 @@ mod severity_tests {
                 Sev::from_facade(severity),
                 spelled,
                 "{severity:?}: `nros_log::Severity::rcutils_level` and this \
-                 crate's mirror of <nros/log.h> disagree"
+                 crate's mirror of <rclc/log.h> disagree"
             );
             assert_eq!(
                 i64::from(spelled.value()),

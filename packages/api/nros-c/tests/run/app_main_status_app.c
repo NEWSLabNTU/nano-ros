@@ -9,7 +9,7 @@
  * satisfy the link). Built as C AND as C++ by the `check-c` lane, because the
  * C++ examples expand the same macro with `extern "C"` linkage. */
 
-#include <nros/app_main.h>
+#include <rclc/detail/app_main.h>
 
 #ifdef __cplusplus
 extern "C" {

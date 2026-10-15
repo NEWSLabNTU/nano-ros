@@ -16,7 +16,7 @@
  * Licensed under Apache-2.0
  */
 
-#include <nros/nros.h>
+#include <rclc/rclc.h>
 
 /* Belt and braces: if the image itself were ever uORB, this probe would be
    asserting a TRUE condition and would compile — reporting a broken check that

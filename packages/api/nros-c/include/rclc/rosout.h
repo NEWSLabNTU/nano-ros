@@ -40,7 +40,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-#include "nros/types.h"
+#include "rclc/types.h"
 
 #ifdef __cplusplus
 extern "C" {

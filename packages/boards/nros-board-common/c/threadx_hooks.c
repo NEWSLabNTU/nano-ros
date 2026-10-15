@@ -247,7 +247,7 @@ void nros_threadx_set_app_main(void (*entry)(void))
     c_app_main = entry;
 }
 
-/* Issue 1752 — the strong recorder for `<nros/app_main.h>`'s VOID shim, which
+/* Issue 1752 — the strong recorder for `<rclc/detail/app_main.h>`'s VOID shim, which
  * calls this with `nros_app_main`'s status (as an exit code) just before its
  * `app_main` returns. It must live in THIS object, beside the call to
  * `app_main` below: the shim carries a weak no-op of its own, and a linker

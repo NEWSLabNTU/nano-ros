@@ -19,8 +19,8 @@
 # `nros_system_generate(<bringup-pkg>)` for free — the parent
 # zephyr/CMakeLists.txt includes this file unconditionally.
 #
-# Retires the per-example `<nros/app_config.h>` Kconfig-synthesis path
-# (packages/api/nros-c/include/nros/zephyr/app_config.h) for any app
+# Retires the per-example `<rclc/detail/app_config.h>` Kconfig-synthesis path
+# (packages/api/nros-c/include/rclc/detail/zephyr/app_config.h) for any app
 # that opts into Phase 212. That header stays in tree as a fallback for
 # pre-212 examples; once every example migrates, it's deletable. See
 # `docs/roadmap/phase-212-ux-cargo-native-and-file-consolidation.md`
@@ -126,7 +126,7 @@ endfunction()
 # `#define NROS_SYSTEM_DOMAIN_ID <n>u` -- a define app source may read and no
 # file under `zephyr/`, `cmake/` or `packages/api` does. The image's session
 # takes `CONFIG_NROS_DOMAIN_ID` (Kconfig, the RFC-0049 front-end) through
-# `nros/zephyr/app_config.h`, and Cyclone takes `CONFIG_NROS_CYCLONE_DOMAIN_ID`,
+# `rclc/detail/zephyr/app_config.h`, and Cyclone takes `CONFIG_NROS_CYCLONE_DOMAIN_ID`,
 # which defaults to it. Issue 1423 measured the two apart on the Autoware
 # Safety Island -- `system.toml` said 2, every image built on 10 -- and the
 # check that caught it was a person reading a brief.

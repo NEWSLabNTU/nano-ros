@@ -342,7 +342,7 @@ items are tracked in phase-491 § Progress.
 
 - **Spellings.** The header declares with `nros_ret_t`, `struct nros_node_t *`
   and `struct nros_executor_t *`. These are the same types as `rcl_ret_t`,
-  `rcl_node_t` and `rclc_executor_t` from `<nros/rcl_compat.h>`, which a ported
+  `rcl_node_t` and `rclc_executor_t` from `<rclc/detail/rcl_compat.h>`, which a ported
   file includes. The header does not pull `rcl_compat.h` in itself. D1's
   primary spelling of the TYPES arrives with phase-492.
 - **Server handle.** `rclc_parameter_server_t` is a plain struct whose members

@@ -28,8 +28,8 @@
  * here touches the wire.
  */
 
-#include <nros/log.h>
-#include <nros/nros.h>
+#include <rclc/log.h>
+#include <rclc/rclc.h>
 
 #include <stdio.h>
 #include <string.h>

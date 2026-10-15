@@ -6,7 +6,7 @@
 //! fixture lane builds it and its `.inputsig` can call it stale);
 //! this test only RUNS them (no compilation at test time — the E1 rule). Each
 //! driver owned-serializes a message, `deserialize_view`s it, and asserts every
-//! borrowed view (C `nros/view.h` helpers; C++ `nros::Span`/`StringView`/`LeSpan`)
+//! borrowed view (C `rclc/detail/view.h` helpers; C++ `nros::Span`/`StringView`/`LeSpan`)
 //! ALIASES the CDR buffer with correct values — printing `all views alias the CDR
 //! buffer` on success and returning non-zero on any failed assertion.
 //!

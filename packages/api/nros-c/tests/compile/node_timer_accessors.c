@@ -19,8 +19,8 @@
  * a wrong answer.
  */
 
-#include <nros/nros.h>
-#include <nros/timer.h>
+#include <rclc/rclc.h>
+#include <rclc/timer.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -32,7 +32,7 @@ int main(void) {
     /* `bool`, not `rcl_ret_t`: rcl's `rcl_node_is_valid` is a predicate, and
      * a predicate over a handle we hold cannot fail to answer. phase-417
      * stage 6 gave it rcl's NAME too — the old `nros_node_is_valid` is a
-     * deprecated forwarder in `<nros/node.h>`. */
+     * deprecated forwarder in `<rclc/node.h>`. */
     bool (*p_is_valid)(const struct rcl_node_t*) = rcl_node_is_valid;
 
     /* Out-param + status, NOT a bare `uint32_t` return. 0 is a legal ROS
@@ -87,7 +87,7 @@ int main(void) {
 
     /* --- rcl_difference_times: Time - Time -> Duration ------------------ */
 
-    /* A `static inline` in <nros/timer.h>, so there is no exported symbol and
+    /* A `static inline` in <rclc/timer.h>, so there is no exported symbol and
      * cbindgen has nothing to emit — but its SHAPE can still drift, and this
      * is the shape that matters. rcl's is
      * `(const rcl_time_point_t *, const rcl_time_point_t *, rcl_duration_t *)`:

@@ -10,7 +10,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "tx_api.h"
-#include <nros/app_config.h>
+#include <rclc/detail/app_config.h>
 
 /* ---- Override memset/memcpy from compiler_builtins ---- */
 /* Rust's compiler_builtins provides weak memset/memcpy that can crash on

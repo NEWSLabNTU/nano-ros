@@ -81,7 +81,7 @@ void nros_app_main_returned(int exit_code);
  * rule still holds and lives there: the bottom rung is the EMPTY STRING, not a
  * router endpoint, and the macro must keep expanding to a string literal
  * because callers pass it by VALUE rather than as a nullable pointer. */
-#include "nros/entry_config.h"
+#include "rclc/detail/entry_config.h"
 
 /* ---- Platform-specific entry shims ---- */
 

@@ -86,7 +86,7 @@ string sensor_id
     assert!(source.contains("test_msgs__msg__Temperature__init_in"));
     assert!(source.contains("test_msgs__msg__Temperature__serialize"));
     assert!(source.contains("test_msgs__msg__Temperature__deserialize"));
-    assert!(source.contains("#include <nros/types.h>"));
+    assert!(source.contains("#include <rclc/types.h>"));
 
     // Verify umbrella header
     let umbrella = fs::read_to_string(output_dir.join("test_msgs.h")).unwrap();

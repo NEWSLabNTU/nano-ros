@@ -19,12 +19,12 @@
 #include <rosidl_runtime_c/string.h>
 #include <rosidl_runtime_c/primitives_sequence.h>
 #include <rosidl_runtime_c/message_type_support_struct.h>
-#include <nros/types.h>
+#include <rclc/types.h>
 
 #include <nros/nros_config_generated.h>
 
-/* RFC-0090 — emitted by nano-ros codegen version 16. */
-#define NROS_EMITTED_CODEGEN_VERSION 16
+/* RFC-0090 — emitted by nano-ros codegen version 17. */
+#define NROS_EMITTED_CODEGEN_VERSION 17
 
 #ifndef NROS_CODEGEN_VERSION
 #error "nros: the generated config header did not define NROS_CODEGEN_VERSION. This generated artifact cannot tell whether the runtime accepts it; rebuild the nano-ros runtime so its config header is regenerated."
@@ -120,7 +120,7 @@ int32_t fingerprint_corpus__msg__Nested__deserialize_inline(fingerprint_corpus__
 /* One image links one backend and one backend speaks one encoding (RFC-0088),
    so a message this image cannot encode is a build error rather than a runtime
    surprise on the wire. NROS_SERIALIZATION_FORMAT_ID comes in via
-   <nros/types.h> above; a bridge image, which links two backends and has no
+   <rclc/types.h> above; a bridge image, which links two backends and has no
    single answer, must not reach it at all (check-format-macro-scope). */
 NROS_ASSERT_MESSAGE_FORMAT(NROS_MSG_FORMAT_ID_fingerprint_corpus__msg__Nested, "fingerprint-corpus/Nested");
 

@@ -56,7 +56,7 @@
  *
  * `nros_board_network_wait()` is the other thing that had to move: it was a
  * weak symbol in the C++ header, so a pure C entry failed at link. It lives in
- * `<nros/main.h>` now — one definition, both languages reach it.
+ * `<rclc/detail/main.h>` now — one definition, both languages reach it.
  *
  * ## Why the spin loop is written again here rather than called
  *
@@ -95,12 +95,12 @@ extern int nros_cpp_spin_for(void* handle, uint32_t duration_ms, int32_t poll_ms
  * exist. `true` while the context at `storage` holds a live executor. */
 extern _Bool nros_cpp_context_is_live(const void* storage);
 
-/* Weak no-op in <nros/main.h>; a board with a slower link overrides it.
+/* Weak no-op in <rclc/detail/main.h>; a board with a slower link overrides it.
  *
  * Declared as a WEAK REFERENCE here, and called only when something defines
  * it. This TU is compiled into EVERY ThreadX image through the board's
  * `THREADX_STARTUP_SOURCE` (issue 1286), including plain C examples that have
- * no entry and never include `<nros/main.h>` — so nothing in them emits the
+ * no entry and never include `<rclc/detail/main.h>` — so nothing in them emits the
  * weak default, and a plain `extern` is an undefined reference. That was
  * survivable only where the board links with `--gc-sections` and discards
  * this unreferenced function whole: `rv-virt-threadx` does, `threadx-linux`
@@ -109,7 +109,7 @@ extern _Bool nros_cpp_context_is_live(const void* storage);
  *
  * A weak reference resolves to the header's weak default, or to a board's
  * strong override, whenever either is linked — which is every image that
- * actually calls this runner, since its entry includes `<nros/main.h>`. When
+ * actually calls this runner, since its entry includes `<rclc/detail/main.h>`. When
  * neither is, the default would have been a no-op anyway, so skipping the
  * call is the same behaviour. It is a reference, not a definition: `main.h`
  * keeps the one body, which is the rule its comment argues for. */
@@ -146,7 +146,7 @@ extern void nros_platform_dealloc(void* ptr);
 extern size_t nros_cpp_executor_storage_size(void);
 extern int nros_cpp_executor_storage_check(const void* storage, size_t bytes);
 
-/* Mirrors `nros_c_entry_setup_fn` in <nros/main.h>. Declared locally for the
+/* Mirrors `nros_c_entry_setup_fn` in <rclc/detail/main.h>. Declared locally for the
  * same reason the CFFI externs are. */
 typedef int32_t (*nros_c_component_setup_fn)(void* executor);
 
@@ -201,7 +201,7 @@ static void nros_rtos_entry_tick_yield(void) {
 
 /* Prototypes for the two exported entry points.
  *
- * Declared here rather than by including `<nros/main.h>`, for the same reason
+ * Declared here rather than by including `<rclc/detail/main.h>`, for the same reason
  * the CFFI externs above are: this file is compiled by `build.rs` before cmake
  * runs, so the generated headers are not on the include path. The RTOS builds
  * turn on `-Wmissing-prototypes`, so a definition with no visible prototype is
@@ -222,7 +222,7 @@ int32_t nros_board_rtos_run_components_in(const char* locator, uint8_t domain_id
  *
  * `locator` and `domain_id` are the compile-time `NROS_ENTRY_LOCATOR` /
  * `NROS_ENTRY_DOMAIN_ID` the generated entry bakes (one ladder, in
- * `<nros/entry_config.h>`, shared with the C++ entry). `session_name` sets the
+ * `<rclc/detail/entry_config.h>`, shared with the C++ entry). `session_name` sets the
  * primary session / node name visible to `ros2 node list`; NULL or empty falls
  * back to `"node"`, the same default the C++ overloads apply.
  *

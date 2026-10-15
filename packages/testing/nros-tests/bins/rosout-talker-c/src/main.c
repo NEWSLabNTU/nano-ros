@@ -10,7 +10,7 @@
  *   ROSOUT_PROBE_PERIOD_MS  spin period per record (default 250)
  */
 
-#include <nros/nros.h>
+#include <rclc/rclc.h>
 
 #include <stdint.h>
 #include <stdio.h>

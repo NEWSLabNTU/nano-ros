@@ -25,7 +25,7 @@
  * ENTITY here — it counts against the image's pools and sizing descriptor — so
  * the runtime never conjures one below the declaration (issue 1341's shape).
  * This class is the explicit spelling; the Rust bridge (`nros::rosout`) and
- * the C one (`<nros/rosout.h>`) have the same three steps.
+ * the C one (`<rclc/rosout.h>`) have the same three steps.
  *
  * **Which records** follow the image's ROS release (RFC-0102 D4): on Humble,
  * and with no release named, node loggers only (`node.get_logger()`); on

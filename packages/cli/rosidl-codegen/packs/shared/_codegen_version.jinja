@@ -36,7 +36,7 @@
   borrowed-e2e fixture emitted both before this was `#elif`.
 
   CARRIER. Every generated header of both languages. C has a single guaranteed
-  carrier (`<nros/types.h>`, which pulls the config header) but C++ has none —
+  carrier (`<rclc/types.h>`, which pulls the config header) but C++ has none —
   `message.hpp` includes six `nros/*.hpp`, `service.hpp` and `action.hpp` only
   two — so the config header is included here explicitly. The per-package
   umbrella was the other candidate and is weaker: a consumer that includes only
