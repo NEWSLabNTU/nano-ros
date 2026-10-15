@@ -73,8 +73,8 @@ version = "0.0.0"
 edition = "2021"
 
 [dependencies]
-nros-core = {{ path = "{core}/nros-core" }}
-nros-serdes = {{ path = "{core}/nros-serdes" }}
+nros-core = {{ path = "{core}/nros-core", features = ["alloc"] }}
+nros-serdes = {{ path = "{core}/nros-serdes", features = ["alloc"] }}
 heapless = "0.8"
 
 [workspace]
@@ -150,8 +150,8 @@ version = "0.0.0"
 edition = "2021"
 
 [dependencies]
-nros-core = {{ path = "{core}/nros-core" }}
-nros-serdes = {{ path = "{core}/nros-serdes" }}
+nros-core = {{ path = "{core}/nros-core", features = ["alloc"] }}
+nros-serdes = {{ path = "{core}/nros-serdes", features = ["alloc"] }}
 heapless = "0.8"
 
 [workspace]

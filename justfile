@@ -1113,6 +1113,13 @@ zenohd locator="tcp/127.0.0.1:7447":
 # is knowable — an ignored test with no lane that runs it should fail review
 # the same way `#[allow(dead_code)]` without a reason does.
 #
+# Issue 1507 — and REACHABLE is not RUN. Its lanes were tier 3, which no
+# workflow runs, and the tier-2 nightly, which stopped before this step; four
+# of the tests had rotted when it was finally run. It runs nightly in
+# `host-tests.yml`'s unit job now. A test a BUILD-VARIANT lane owns is
+# excluded through `[profile.ignored]` in `.config/nextest.toml`, which names
+# each one's owner. `nros-tests` stays out (its ignored tests need fixtures).
+#
 #   just test-ignored                  # every ignored test
 #   just test-ignored rosidl-codegen   # one crate
 [group("main")]
@@ -1126,7 +1133,7 @@ test-ignored package="":
     if [ -n "{{package}}" ]; then
         # A named package may live in EITHER workspace; try the root first,
         # then the cli sub-workspace.
-        cargo nextest run "${cargo_nextest_args[@]}" -p "{{package}}" \
+        NEXTEST_PROFILE=ignored cargo nextest run "${cargo_nextest_args[@]}" -p "{{package}}" \
             --run-ignored ignored-only \
         || cargo nextest run --manifest-path packages/cli/Cargo.toml \
             -p "{{package}}" --run-ignored ignored-only \
@@ -1139,10 +1146,23 @@ test-ignored package="":
         #
         # nros-tests is excluded for the same reason test-unit excludes it: its
         # fixtures need `just build-test-fixtures` staging first.
-        cargo nextest run "${cargo_nextest_args[@]}" --workspace --exclude nros-tests \
-            --run-ignored ignored-only || rc=$?
+        # NEXTEST_PROFILE=ignored drops the tests a build-variant lane owns —
+        # see `[profile.ignored]` in `.config/nextest.toml` for each and its
+        # owner. Set per command, never exported: the cli sub-workspace below
+        # reads its own nextest config, which has no such profile.
+        NEXTEST_PROFILE=ignored cargo nextest run "${cargo_nextest_args[@]}" \
+            --workspace --exclude nros-tests --run-ignored ignored-only || rc=$?
         echo "--- packages/cli sub-workspace ---"
         cargo nextest run --manifest-path packages/cli/Cargo.toml --workspace \
+            --run-ignored ignored-only || rc=$?
+        # issue 1507 — a test FILE behind `#![cfg(feature = …)]` that workspace
+        # feature unification never enables compiles to nothing, so the run
+        # above reports it as absent rather than skipped. `bare_metal_link`'s two
+        # tests (the bare-metal `no_std` link and its no-alloc `nm` audit) are
+        # behind `std` with `bridge-stub`, which no workspace build selects.
+        echo "--- nros-rmw-cyclonedds bare-metal link (bridge-stub,std) ---"
+        NEXTEST_PROFILE=ignored cargo nextest run "${cargo_nextest_args[@]}" \
+            -p nros-rmw-cyclonedds --no-default-features --features bridge-stub,std \
             --run-ignored ignored-only || rc=$?
     fi
     exit "$rc"

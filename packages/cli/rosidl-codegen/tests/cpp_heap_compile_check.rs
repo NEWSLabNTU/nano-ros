@@ -125,9 +125,16 @@ include!("ffi_gen.rs");
             "-fno-rtti",
             "-fsyntax-only",
             "-Wall",
+            // The generated header includes the per-build
+            // `nros/nros_config_generated.h`. There is no build here, so take
+            // the committed buildless snapshot, as every header-only check
+            // under `scripts/` does (issue 1569).
+            "-DNROS_CONFIG_BUILDLESS",
         ])
         .arg("-I")
         .arg(&inc)
+        .arg("-I")
+        .arg(root.join("packages/api/nros-c/include"))
         .arg("-I")
         .arg(htmp.path())
         .arg(htmp.path().join("probe.cpp"))

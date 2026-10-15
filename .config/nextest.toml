@@ -1188,3 +1188,19 @@ slow-timeout = { period = "180s", terminate-after = 3 }
 # See [test-groups.domain-probe-host-ports].
 filter = "binary_id(nros-tests) and (test(a_bound_daemon_port_makes_the_domain_busy) or test(the_probe_sees_a_real_bound_discovery_port))"
 test-group = "domain-probe-host-ports"
+
+# `just test-ignored` — every `#[ignore]`d test, MINUS the ones a BUILD-VARIANT
+# lane owns. Those are ignored because the default build cannot answer them,
+# not because they need infrastructure: each needs a build input set at compile
+# time, so `--run-ignored` in the default build runs them where they are
+# guaranteed to fail, and a lane that is red by construction says nothing.
+# Each line names its owner, which runs it with the input set:
+#   the_scaling_this_replaced_was_short_of_the_declared_model
+#       needs NROS_ENTITY_COUNT_* — `just check node-std-tests` (issue 1290)
+#   two_sessions_deliver_cross_session_through_router
+#       needs NROS_ZENOH_MAX_SESSIONS=2 — `just test-zpico-multisession`
+#       (issues 0393, 1704)
+# A test belongs here only if an owning recipe exists; an ignore with no owner
+# runs in `test-ignored`, which is what keeps it from rotting unseen.
+[profile.ignored]
+default-filter = "not (test(the_scaling_this_replaced_was_short_of_the_declared_model) or test(two_sessions_deliver_cross_session_through_router))"

@@ -64,7 +64,7 @@ fn router_locator() -> Option<String> {
             Err(e) => {
                 eprintln!(
                     "[zenoh-cffi] could not start zenohd ({e:?}) — run \
-                     `nros setup <board> --rmw zenoh`; test skipped"
+                     `nros setup <board> --rmw zenoh`"
                 );
                 None
             }
@@ -76,29 +76,15 @@ fn router_locator() -> Option<String> {
 
 /// In-process pub→sub round-trip via the C vtable.
 ///
-/// **Permanently `#[ignore]`d (architectural).** Investigation
-/// (2026-05-11) confirmed that `nros-rmw-zenoh`'s in-process
-/// `Subscriber::take_serialized` does not surface data on a
-/// single-session pub+sub pair, regardless of whether the call
-/// goes through the cffi adapter (this crate) or the Rust trait
-/// directly (`packages/rmw/zenoh/nros-rmw-zenoh/tests/zenoh_integration.rs::test_pubsub_loopback`,
-/// also `#[ignore]`). The `zpico-sys` C shim keeps entity slots
-/// in `static` arrays and the in-process topology fails to flow
-/// data from publisher → router → subscriber inside the same
-/// zenoh-pico session.
-///
-/// **Cffi-path data flow IS verified end-to-end** by the
-/// two-process talker/listener tests in
-/// `packages/testing/nros-tests/tests/linux_api.rs` +
-/// `tests/nano2nano.rs`. Once 115.L.3's `NROS_RMW=zenoh`
-/// default-flip propagates through the example Cargo.toml files,
-/// those tests exercise the same `RustBackendAdapter<ZenohRmw>`
-/// vtable this crate registers.
+/// This was `#[ignore]`d as "architecturally broken" on 2026-05-11, citing
+/// `zenoh_integration.rs::test_pubsub_loopback` as the same failure through
+/// the Rust trait. That sibling has since been un-ignored and runs against a
+/// router like this one; run again, this test passed 5 of 5. An ignore whose
+/// stated reason no longer holds hides a live test, so it runs now.
 ///
 /// Requires ROS's `rmw_zenohd` — nano-ros ships no router (RFC-0075). Start
 /// one with `just zenohd`; the harness resolves it via `ros_zenohd_path`.
 #[test]
-#[ignore = "in-process zenoh-pico pubsub is architecturally broken (zpico-sys static-slot limitation); cffi data flow verified by the two-process linux_api/nano2nano tests once L.3 default-flip reaches the example Cargo.toml files"]
 fn cffi_pubsub_round_trip() {
     let locator =
         router_locator().expect("zenohd unavailable — run `nros setup <board> --rmw zenoh`");
