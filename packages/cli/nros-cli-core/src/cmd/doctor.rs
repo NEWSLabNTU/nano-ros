@@ -369,8 +369,9 @@ fn resolve_config(explicit: Option<&Path>) -> Option<PathBuf> {
 /// binary (via `ARMFVP_BIN_PATH`, `ARM_FVP_DIR`, PATH, or the
 /// `~/.nros/sdks/arm-fvp/current/` symlink the installer drops). A miss is
 /// a WARN with a one-liner pointing at `scripts/installers/arm-fvp-installer.sh`
-/// + the Arm EULA URL — NOT counted as a problem (gated tool, never
-///   hard-fails the doctor run).
+/// plus the Arm EULA URL — NOT counted as a problem (gated tool, never
+/// hard-fails the doctor run).
+///
 /// `store` is the store root the FVP installer landing is probed under, a
 /// PARAMETER for the reason `install_report` gives: a test that moved `$HOME`
 /// to point it elsewhere raced every other test in the binary that resolves
