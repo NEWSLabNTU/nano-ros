@@ -137,9 +137,16 @@ pub const TRANSPORT_KINDS: &[&str] = &["serial", "tcp", "udp"];
 pub struct Network {
     pub domain_id: Option<u32>,
     pub locator: Option<String>,
+    /// The image's address, lowered from `[image.<id>.net.<if>]` on its
+    /// network (RFC-0103 D10, `crate::system_net::lower`).
     pub ip: Option<String>,
+    /// The network's gateway.
     pub gateway: Option<String>,
+    /// The network's netmask.
     pub netmask: Option<String>,
+    /// The interface the address is on (`eth0`), when the image names one. The
+    /// CLI checks it against the board's `[board.net] interfaces`.
+    pub interface: Option<String>,
     pub transport: Option<String>,
 }
 
@@ -713,12 +720,29 @@ fn image_system(
             TRANSPORT_KINDS.join(", ")
         ));
     }
+    // RFC-0103 D10 (phase-497 W1) — the address is `[image.<id>.net.<if>]` on a
+    // `[network.<name>]`, lowered here to the triple every carrier still takes.
+    // The flat `ip` / `gateway` / `netmask` it replaces are refused by name.
+    crate::system_net::refuse_flat_image_net(image, &format!("image.{id}"))
+        .and_then(|()| crate::system_net::refuse_flat_image_net(defaults, "image_defaults"))
+        .map_err(|e| format!("{}: {e}", path.display()))?;
+    let lowered = {
+        let nets = crate::system_net::parse_networks(doc)
+            .map_err(|e| format!("{}: {e}", path.display()))?;
+        let base = crate::system_net::parse_image_net(defaults, "image_defaults")
+            .map_err(|e| format!("{}: {e}", path.display()))?;
+        let own = crate::system_net::parse_image_net(image, &format!("image.{id}"))
+            .map_err(|e| format!("{}: {e}", path.display()))?;
+        crate::system_net::lower(id, &nets, &crate::system_net::overlay(&base, &own))
+            .map_err(|e| format!("{}: {e}", path.display()))?
+    };
     let network = Network {
         domain_id,
         locator: pick("locator").or_else(|| str_key(system, "locator")),
-        ip: pick("ip"),
-        gateway: pick("gateway"),
-        netmask: pick("netmask"),
+        ip: lowered.ip,
+        gateway: lowered.gateway,
+        netmask: lowered.netmask,
+        interface: lowered.interface,
         transport,
     };
 
@@ -988,9 +1012,8 @@ dispatch = "deferred"
 
 [image.esp32]
 board = "esp32-c3-baremetal"
-ip = "10.0.2.50"
-gateway = "10.0.2.2"
 locator = "tcp/10.0.2.2:9800"
+net = { eth0 = { network = "qemu", host = 50 } }
 "#;
 
     /// phase-481 W1 — an image named explicitly is resolved from a leaf with
@@ -1086,8 +1109,11 @@ locator = "tcp/10.0.2.2:9800"
         // through to `[system]`.
         assert_eq!(l.network.locator.as_deref(), Some("tcp/10.0.2.2:9800"));
         assert_eq!(l.network.domain_id, Some(3));
+        // RFC-0103 D10 — `host = 50` on the built-in `qemu` network.
         assert_eq!(l.network.ip.as_deref(), Some("10.0.2.50"));
-        assert_eq!(l.network.netmask, None);
+        assert_eq!(l.network.gateway.as_deref(), Some("10.0.2.2"));
+        assert_eq!(l.network.netmask.as_deref(), Some("255.255.255.0"));
+        assert_eq!(l.network.interface.as_deref(), Some("eth0"));
         assert_eq!(l.components.len(), 1);
         assert_eq!(l.components[0].pkg.as_deref(), Some("esp32_talker"));
         // Issue 1278 — the dispatch strategy has a home here too.
@@ -1389,13 +1415,33 @@ domain_id = 4
     #[test]
     fn image_defaults_fill_what_the_image_leaves_out() {
         let with_defaults = format!(
-            "{}\n[image_defaults]\nrmw = \"xrce\"\nnetmask = \"255.255.255.0\"\n",
+            "{}\n[image_defaults]\nrmw = \"xrce\"\nlocator = \"tcp/10.0.2.2:1\"\n",
             SYSTEM
         );
         let d = leaf(&[("Cargo.toml", CARGO), ("system.toml", &with_defaults)]);
         let l = read(d.path()).unwrap().unwrap();
         assert_eq!(l.rmw.as_deref(), Some("xrce"));
-        assert_eq!(l.network.netmask.as_deref(), Some("255.255.255.0"));
+        // The image states its own locator, so the default does not reach it.
+        assert_eq!(l.network.locator.as_deref(), Some("tcp/10.0.2.2:9800"));
+    }
+
+    /// RFC-0103 D10g (phase-497 W1) — the single-interface spellings are
+    /// refused by name on the image and on the defaults, and the refusal names
+    /// the `[image.<id>.net.<if>]` that replaces them.
+    #[test]
+    fn a_flat_ip_gateway_or_netmask_is_refused_naming_the_net_table() {
+        for (extra, at) in [
+            ("[image.a]\nboard = \"x\"\nip = \"10.0.2.50\"\n", "image.a"),
+            (
+                "[image.a]\nboard = \"x\"\n[image_defaults]\ngateway = \"10.0.2.2\"\n",
+                "image_defaults",
+            ),
+        ] {
+            let t = format!("[system]\nname = \"t\"\n{extra}");
+            let d = leaf(&[("Cargo.toml", CARGO), ("system.toml", &t)]);
+            let e = read(d.path()).unwrap_err();
+            assert!(e.contains(&format!("`{at}`")) && e.contains("D10g"), "{e}");
+        }
     }
 
     /// phase-445 W6 — the APP rung. `[image.<id>] env` is what replaced the

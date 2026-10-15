@@ -129,9 +129,7 @@ name  = "talker"
 [image.mps2]                 # an embedded image also carries its identity
 board   = "qemu-mps2-an385"
 locator = "tcp/10.0.2.2:10500"
-ip      = "10.0.2.10"
-gateway = "10.0.2.2"
-netmask = "255.255.255.0"
+net     = { eth0 = { network = "qemu", host = 10 } }
 ```
 
 The same schema serves a workspace bringup (`src/<name>_bringup/system.toml`),
@@ -287,7 +285,7 @@ full reference + `package.xml` schema.
    `nano_ros_add_executable(...)` targets (CMake).
 4. **Point `system.toml` at your board.** `[system] name`, the `[[component]]`
    rows (`pkg`, `class`, `name`), and `[image.<id>] board` plus any network
-   identity the board needs (`locator`, `ip`, `gateway`, `netmask`). A Rust
+   identity the board needs (`locator`, and the address in `net`). A Rust
    leaf also needs its `[dependencies]` board crate changed to match — see the
    exception above. If the board cannot be host-probed (a foreign `[build]
    target`, `build-std`, or a board crate with no host build), declare the

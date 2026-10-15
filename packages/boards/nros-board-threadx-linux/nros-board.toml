@@ -34,6 +34,12 @@ NETX_CONFIG_DIR = { value = "${workspace}/packages/boards/nros-board-threadx-lin
 # needs. A board feature rather than a default: see the crate's `image-runtime`.
 board_features = ["image-runtime"]
 
+# RFC-0103 D10e (phase-497 W1) — the host operating system owns this board's
+# network: the kernel's interfaces, addresses and routes. An image states none
+# (`[image.<id>.net.*]` is refused naming this).
+[board.net]
+stack = "host"
+
 [board.entry]
 signature = "#[unsafe(no_mangle)]\nextern \"C\" fn main(argc: i32, argv: *const *const c_char) -> i32"
 

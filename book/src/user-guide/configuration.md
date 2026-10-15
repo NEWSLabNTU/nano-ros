@@ -22,7 +22,7 @@ standalone `config.toml` for hand-written `no_std` apps.
 
 | File | Owns | Per |
 |------|------|-----|
-| **`system.toml`** | **Everything about the deployment** — `[system]` (RMW, domain, capability axes like `features = ["param_services"]` and the `[safety]` block, tiers), `[[component]]` (what runs, and its entities), and one `[image.<id>]` per target (`board`, plus the network identity `locator` / `ip` / `gateway` / `netmask`). One schema for Rust, C and C++, and the same file whether the project is one package or a workspace. | package, or bringup pkg |
+| **`system.toml`** | **Everything about the deployment** — `[system]` (RMW, domain, capability axes like `features = ["param_services"]` and the `[safety]` block, tiers), `[[component]]` (what runs, and its entities), and one `[image.<id>]` per target (`board`, `locator`, and the image's address on a network, `net = { eth0 = { network = "qemu", host = 10 } }`; a project's own networks are `[network.<name>]`). One schema for Rust, C and C++, and the same file whether the project is one package or a workspace. | package, or bringup pkg |
 | `Cargo.toml` | Rust toolchain facts only: crate, language deps, the RMW **feature menu** (`rmw-zenoh`/`rmw-cyclonedds`/`rmw-xrce`) the generated entry selects from. No board, no target triple, no deploy block. | Rust project |
 | `CMakeLists.txt` | C/C++ toolchain facts only: targets and language deps, via `find_package(nano_ros)` + `nano_ros_add_executable` / `nano_ros_auto_add_library` + `nros_components_register_node` (RFC-0057; `nano_ros_node_register` remains as the compat spelling) / `nano_ros_entry`. No platform, board or RMW `set()`. | C/C++ project |
 | `build/<image>/nros-cargo.toml` | **GENERATED, never edited** — every cargo setting the board choice implies: `[build] target`, `[target.*]` runner and rustflags, the cross compiler, the derived pool sizes as `[env]`, the nano-ros profiles, and the `[patch.crates-io]` rows that resolve nano-ros's registry-style names into your checkout. Written by `nros sync`, passed to cargo with `--config`. | image |
@@ -83,9 +83,7 @@ dispatch = "deferred"          # optional: callbacks hand off to a ring
 [image.mps2-an385-baremetal]
 board   = "qemu-mps2-an385"
 locator = "tcp/10.0.2.2:10500"
-ip      = "10.0.2.10"
-gateway = "10.0.2.2"
-netmask = "255.255.255.0"
+net     = { eth0 = { network = "qemu", host = 10 } }
 ```
 
 The `[image.<id>]` key is the image's name — what you pass to
@@ -95,6 +93,48 @@ retarget it. `nros::main!()` bakes the image's network fields into a
 boot `Config`; the C/C++ entry codegen bakes the same values into its
 generated glue. Nothing is written in `Cargo.toml`, in `package.xml` or on a
 `cmake` command line.
+
+### Networks and addresses
+
+A network fact has three owners (RFC-0103 D10): the **board** states its
+interfaces, the **project** states its networks, and the **image** states its
+address on one. The image's half is `net`, one entry per interface:
+
+```toml
+[image.talker]
+board = "qemu-mps2-an385"
+net   = { eth0 = { network = "qemu", host = 10 } }   # 10.0.2.10 on QEMU's network
+```
+
+`qemu` is built in: QEMU's own user-mode (SLIRP) network, `10.0.2.0/24` with
+gateway and router host `10.0.2.2`. Any other network is the project's, stated
+once and named by every image on it:
+
+```toml
+[network.lab]                  # e.g. a switch or a Linux bridge with boards on it
+subnet  = "192.168.50.0/24"
+gateway = "192.168.50.1"
+
+[image.sensor]
+board   = "qemu-mps2-an385"
+locator = "tcp/192.168.50.1:7447"
+net     = { eth0 = { network = "lab", address = "192.168.50.20" } }
+```
+
+`host` is the last octet within the network's subnet; `address` is the full
+IPv4. The gateway and netmask come from the network, so an image never states
+them. An address outside its subnet, equal to the gateway, or on a network that
+does not exist fails the build, naming the image.
+
+On a board whose network belongs to the host operating system (`linux`,
+`freertos-posix`, threadx-linux), the kernel owns addresses, and `net` is
+refused. The old flat `ip` / `gateway` / `netmask` keys on `[image.<id>]` are
+refused too, naming this table.
+
+Not rendered yet, and refused with a message rather than ignored: a leased
+address (`address = "dhcp"` on a network with `dhcp = true`), a per-image
+`mac`, a network's default `router`, more than one interface, and a bridge or
+TAP `attach` for emulated images. They are phase-497 W2–W4.
 
 ### Per-image build knobs
 

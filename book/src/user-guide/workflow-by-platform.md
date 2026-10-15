@@ -26,7 +26,7 @@ domain_id = 0
 [image.mps2]
 board   = "qemu-mps2-an385"
 locator = "tcp/10.0.2.2:10500"
-ip      = "10.0.2.10"
+net     = { eth0 = { network = "qemu", host = 10 } }
 ```
 
 Everything that choice implies — the target triple, the linker flags,

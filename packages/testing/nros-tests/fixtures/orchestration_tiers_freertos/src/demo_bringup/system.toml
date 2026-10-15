@@ -38,8 +38,7 @@ group_tiers = { telem = "low" }
 [image.freertos]
 board = "freertos"
 entry = "demo_entry"
-ip = "10.0.2.15"
-gateway = "10.0.2.2"
+net = { eth0 = { network = "qemu", host = 15 } }
 locator = "tcp/10.0.2.2:7891"
 
 # Two FreeRTOS priority tiers. Raw FreeRTOS priorities (0..configMAX-1, higher =

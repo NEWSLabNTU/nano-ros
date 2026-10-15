@@ -97,7 +97,7 @@ so there the board really is one line.
 Native (host) images read the locator / domain from environment
 variables (`NROS_LOCATOR` — the retired `ZENOH_LOCATOR` is refused at startup — and
 `ROS_DOMAIN_ID`). Embedded images bake theirs from the same
-`[image.<id>]` table (`locator`, `ip`, `gateway`, `netmask`) — the shape
+`[image.<id>]` table (`locator`, and the address in `net`) — the shape
 shows up under the Embedded Starters section.
 
 The `Cargo.toml` is the contract that wires nano-ros into your

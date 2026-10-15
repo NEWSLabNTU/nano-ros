@@ -620,6 +620,18 @@ pub struct SystemToml {
     /// [`Self::image_ros_edition`] for the edition, issue 1305).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub image_defaults: Option<ImageBlock>,
+    /// `[network.<name>]` — the project's networks (RFC-0103 D10a, phase-497
+    /// W1): `subnet`, `gateway`, `router`, `dhcp`, `attach`. Typed and
+    /// validated by `nros_orchestration_ir::system_net` (the one reader), so
+    /// every loader of this file refuses a malformed network the same way;
+    /// redefining the built-in `qemu` is refused. An image's address on one is
+    /// checked against it by [`Self::validate_image_networks`].
+    #[serde(
+        default,
+        deserialize_with = "deserialize_networks",
+        skip_serializing_if = "BTreeMap::is_empty"
+    )]
+    pub network: BTreeMap<String, nros_orchestration_ir::system_net::NetworkDef>,
     /// `[board_config.<board>]` — the SITE half of a board (RFC-0072 §5,
     /// issue 0951).
     ///
@@ -1042,6 +1054,15 @@ fn refuse_retired<'de, D: serde::Deserializer<'de>>(key: &str) -> Result<Retired
     ))
 }
 
+fn deserialize_networks<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> Result<BTreeMap<String, nros_orchestration_ir::system_net::NetworkDef>, D::Error> {
+    let raw = toml::Value::deserialize(d)?;
+    let mut doc = toml::Table::new();
+    doc.insert("network".into(), raw);
+    nros_orchestration_ir::system_net::parse_networks(&doc).map_err(serde::de::Error::custom)
+}
+
 fn refuse_retired_deploy<'de, D: serde::Deserializer<'de>>(_: D) -> Result<RetiredTable, D::Error> {
     refuse_retired::<D>("deploy")
 }
@@ -1258,6 +1279,23 @@ impl SystemToml {
     /// error channel call this first; `select_default_images` is the one
     /// implementation of the rule, so this cannot drift from what
     /// `nros build` enforces.
+    /// RFC-0103 D10b (phase-497 W1) — every image's address, lowered against
+    /// its network: inside the subnet, not the gateway, a network that exists.
+    /// The same `nros_orchestration_ir::system_net::lower` the leaf road runs,
+    /// so a workspace image and a leaf cannot be held to two rules.
+    pub fn validate_image_networks(&self) -> Result<(), String> {
+        let base = self
+            .image_defaults
+            .as_ref()
+            .map(|d| d.net.clone())
+            .unwrap_or_default();
+        for (id, img) in &self.image {
+            let ifs = nros_orchestration_ir::system_net::overlay(&base, &img.net);
+            nros_orchestration_ir::system_net::lower(id, &self.network, &ifs)?;
+        }
+        Ok(())
+    }
+
     pub fn validate_default_images(&self) -> Result<(), String> {
         super::image::select_default_images(&self.image, &self.system.default_images).map(|_| ())
     }
@@ -3023,6 +3061,50 @@ class = "listener_pkg::Listener"
 
     /// `deny_unknown_fields` on `[system]` catches typos at the bringup
     /// surface.
+    /// RFC-0103 D10 (phase-497 W1) — the workspace road reads `system.toml`
+    /// through this schema, so it must hold the same network rules the leaf
+    /// road's `leaf_system` holds: a malformed or redefined network fails at
+    /// parse, a flat image address is refused naming `net`, and an address is
+    /// checked against its network.
+    #[test]
+    fn system_toml_networks_and_image_addresses_follow_d10() {
+        let head = "[system]\nname = \"d\"\nrmw = \"zenoh\"\ndomain_id = 0\n";
+        let ok = toml::from_str::<SystemToml>(&format!(
+            "{head}[network.lab]\nsubnet = \"192.168.50.0/24\"\ngateway = \"192.168.50.1\"\n\
+             [image.a]\nboard = \"qemu-mps2-an385\"\n\
+             net = {{ eth0 = {{ network = \"lab\", host = 20 }} }}\n"
+        ))
+        .expect("a lab network and an address on it parse");
+        assert_eq!(ok.network["lab"].gateway.as_deref(), Some("192.168.50.1"));
+        ok.validate_image_networks()
+            .expect("the address is in the lab subnet");
+
+        let off = toml::from_str::<SystemToml>(&format!(
+            "{head}[image.a]\nboard = \"b\"\nnet = {{ eth0 = {{ network = \"qemu\", host = 2 }} }}\n"
+        ))
+        .unwrap();
+        assert!(
+            off.validate_image_networks()
+                .unwrap_err()
+                .contains("gateway")
+        );
+
+        for (body, want) in [
+            ("[network.qemu]\nsubnet = \"10.0.2.0/24\"\n", "built in"),
+            (
+                "[network.lab]\ngateway = \"192.168.1.1\"\n",
+                "`subnet` is required",
+            ),
+            ("[image.a]\nboard = \"b\"\nip = \"10.0.2.50\"\n", "D10g"),
+            ("[image_defaults]\nnetmask = \"255.255.255.0\"\n", "D10g"),
+        ] {
+            let e = toml::from_str::<SystemToml>(&format!("{head}{body}"))
+                .expect_err(body)
+                .to_string();
+            assert!(e.contains(want), "{body}\n-> {e}");
+        }
+    }
+
     #[test]
     fn system_toml_rejects_unknown_field() {
         let raw = r#"

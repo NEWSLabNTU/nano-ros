@@ -99,8 +99,7 @@ name = "talker"
 [image.mps2-an385-freertos]
 board = "freertos"
 locator = "tcp/10.0.2.2:7800"
-ip = "10.0.2.15"
-gateway = "10.0.2.2"
+net = { eth0 = { network = "qemu", host = 15 } }
 ```
 
 The C and C++ leaves carry the *same* file, in the same schema — only the

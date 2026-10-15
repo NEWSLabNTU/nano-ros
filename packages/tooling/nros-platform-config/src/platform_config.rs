@@ -3157,6 +3157,21 @@ pub struct BoardEntryFacts {
 pub struct BoardNet {
     #[serde(default)]
     pub network: Option<String>,
+    /// RFC-0103 D10c (phase-497 W1) — the board's network interfaces, by name,
+    /// each with its kind: `ethernet`, `wifi`, `serial` or `custom`. An image's
+    /// `[image.<id>.net.<if>]` must name one of them, and only an `ethernet`
+    /// or `wifi` one takes an address. Empty ⇒ the board has not declared its
+    /// interfaces, and an image's interface name is not checked.
+    #[serde(default)]
+    pub interfaces: BTreeMap<String, String>,
+    /// RFC-0103 D10e — `"host"` when the host operating system owns the
+    /// network stack (`linux`, `freertos-posix`, threadx-linux's NSOS):
+    /// interfaces, addresses and routes are the kernel's, and an image states
+    /// none (`[image.<id>.net.*]` is refused). `supported_netstacks = []`
+    /// cannot say this — NuttX and Zephyr list `[]` too, because their OS
+    /// brings its own stack.
+    #[serde(default)]
+    pub stack: Option<String>,
     #[serde(default)]
     pub ip: Option<String>,
     #[serde(default)]
@@ -3174,7 +3189,63 @@ pub struct BoardNet {
 /// which is also what someone running an image by hand gets.
 pub const QEMU_NETWORK: &str = "qemu";
 
+/// The interface kinds `[board.net] interfaces` may name (RFC-0103 D10c).
+pub const INTERFACE_KINDS: &[&str] = &["ethernet", "wifi", "serial", "custom"];
+
 impl BoardNet {
+    /// Whether the host operating system owns this board's network
+    /// (`stack = "host"`), checked: any other value is refused.
+    pub fn host_stack(&self) -> Result<bool, String> {
+        match self.stack.as_deref() {
+            None => Ok(false),
+            Some("host") => Ok(true),
+            Some(other) => Err(format!(
+                "[board.net] stack = {other:?}: the one value is \"host\" (the host OS owns \
+                 the network); omit it for a board that brings its own stack"
+            )),
+        }
+    }
+
+    /// Check an image's interface `name` against this board (RFC-0103 D10c/e):
+    /// a host-stack board takes none; a board that declares its interfaces
+    /// takes only those, and only an `ethernet` / `wifi` one may be
+    /// `addressed`.
+    pub fn check_image_interface(&self, name: &str, addressed: bool) -> Result<(), String> {
+        if self.host_stack()? {
+            return Err(format!(
+                "this board's network is the host operating system's (`[board.net] stack = \
+                 \"host\"`): the kernel owns interfaces and addresses, so an image states \
+                 none — drop `[image.<id>.net.{name}]` (RFC-0103 D10e)"
+            ));
+        }
+        if self.interfaces.is_empty() {
+            return Ok(());
+        }
+        let Some(kind) = self.interfaces.get(name) else {
+            return Err(format!(
+                "interface `{name}` is not one of this board's ({}) — `[board.net] interfaces`",
+                self.interfaces
+                    .keys()
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        };
+        if !INTERFACE_KINDS.contains(&kind.as_str()) {
+            return Err(format!(
+                "[board.net] interfaces.{name} = {kind:?}: a kind is one of {}",
+                INTERFACE_KINDS.join(", ")
+            ));
+        }
+        if addressed && !matches!(kind.as_str(), "ethernet" | "wifi") {
+            return Err(format!(
+                "interface `{name}` is `{kind}`, which takes no IP address — its endpoint is \
+                 the image's `locator` (RFC-0103 D10c)"
+            ));
+        }
+        Ok(())
+    }
+
     /// The network this board's defaults sit on, checked: `None` for the
     /// platform default, `Some(QEMU_NETWORK)` for the QEMU network.
     pub fn network(&self) -> Result<Option<&str>, String> {
@@ -3518,6 +3589,53 @@ mod board_capability_tests {
 
 #[cfg(test)]
 mod tests {
+    /// RFC-0103 D10c/D10e (phase-497 W1) — an image's interface against its
+    /// board: none on a host-stack board, only a declared one where the board
+    /// declares them, and an address only on an IP kind.
+    #[test]
+    fn an_image_interface_is_checked_against_the_board() {
+        let host = BoardNet {
+            stack: Some("host".into()),
+            ..BoardNet::default()
+        };
+        let e = host.check_image_interface("eth0", true).unwrap_err();
+        assert!(
+            e.contains("host operating system") && e.contains("D10e"),
+            "{e}"
+        );
+
+        let qemu = BoardNet {
+            interfaces: [
+                ("eth0".to_string(), "ethernet".to_string()),
+                ("uart0".to_string(), "serial".to_string()),
+            ]
+            .into(),
+            ..BoardNet::default()
+        };
+        qemu.check_image_interface("eth0", true)
+            .expect("declared ethernet takes an address");
+        qemu.check_image_interface("uart0", false)
+            .expect("a serial interface may be named");
+        let e = qemu.check_image_interface("uart0", true).unwrap_err();
+        assert!(e.contains("takes no IP address"), "{e}");
+        let e = qemu.check_image_interface("wlan0", true).unwrap_err();
+        assert!(e.contains("not one of this board's (eth0, uart0)"), "{e}");
+
+        let open = BoardNet::default();
+        open.check_image_interface("anything", true)
+            .expect("a board that declares no interfaces is not checked");
+
+        let bad = BoardNet {
+            stack: Some("kernel".into()),
+            ..BoardNet::default()
+        };
+        assert!(
+            bad.check_image_interface("eth0", false)
+                .unwrap_err()
+                .contains("\"host\"")
+        );
+    }
+
     /// Issue 1401 — a build that resolves NO rung (no `NROS_PLATFORM_NAME`)
     /// still declares its edges: to the board descriptor's CONTENT and to the
     /// platform name. That is the case that was broken — the watches sat after

@@ -56,6 +56,9 @@ FREERTOS_CONFIG_DIR = { value = "${workspace}/packages/boards/nros-board-mps2-an
 # address on top; a project-defined network is phase-497.
 [board.net]
 network = "qemu"
+# RFC-0103 D10c (phase-497 W1) — the interface an image addresses as
+# `[image.<id>.net.eth0]`.
+interfaces = { eth0 = "ethernet" }
 
 [board.entry]
 crate_root_extra = "use panic_semihosting as _;"

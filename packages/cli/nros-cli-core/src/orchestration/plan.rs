@@ -655,6 +655,16 @@ impl TransportKind {
 ///
 /// Shared so the ingest path and any future reader say the same thing —
 /// a second spelling of this remedy is how the class comes back.
+/// RFC-0103 D10 (phase-497 W1) — a SystemModel transport's `ip` / `mac` /
+/// `gateway` were a third home for an image's address, carried into the plan
+/// and read by nothing. The address is the image's (`[image.<id>.net.<if>]`)
+/// and the gateway the network's (`[network.<name>]`).
+pub const RETIRED_TRANSPORT_ADDRESS_REMEDY: &str = "`ip` / `mac` / `gateway` on a \
+     transport are retired (RFC-0103 D10, phase-497 W1): an image's address is \
+     `[image.<id>.net.<if>] network = \"…\", host = N` in `system.toml`, and the \
+     gateway is the network's (`[network.<name>] gateway`). Remove the keys from the \
+     transport.";
+
 pub const RETIRED_INTERFACES_REMEDY: &str = "`interfaces` is not a nano-ros \
      setting (retired phase-206 W5): nano-ros does not model NICs. Bind the \
      middleware to an interface in the middleware's own config — CycloneDDS \
@@ -680,24 +690,12 @@ pub struct PlanTransport {
     /// each transport has a distinct rmw). Phase 172.K.
     #[serde(default)]
     pub id: Option<String>,
-    /// IPv4 CIDR (`"10.0.2.50/24"`) or `"dhcp"` — ethernet/wifi only.
-    pub ip: Option<String>,
     /// WiFi SSID — wifi only. Phase 172.K.
     #[serde(default)]
     pub ssid: Option<String>,
     /// WiFi password — wifi only. Phase 172.K.
     #[serde(default)]
     pub password: Option<String>,
-    /// Ethernet MAC (`"02:00:00:00:00:01"`) — ethernet only. `None` ⇒
-    /// the board's fixed/fused MAC. (Phase 172.J — replaces
-    /// `config.toml`'s `[network].mac`.)
-    #[serde(default)]
-    pub mac: Option<String>,
-    /// Default IPv4 gateway (`"10.0.2.2"`) — ethernet only. `None` ⇒ a
-    /// flat link with no gateway. (Phase 172.J — replaces
-    /// `config.toml`'s `[network].gateway`.)
-    #[serde(default)]
-    pub gateway: Option<String>,
     // phase-206 W5 — there is deliberately no `interfaces` field. nano-ros does
     // not model NICs: see `RETIRED_INTERFACES_REMEDY`.
     /// Device handle (`"UART0"`, `"CAN0"`) — serial / can only.
@@ -850,25 +848,13 @@ impl PlanBuildOptions {
                     }
                 }
                 TransportKind::Wifi => {
-                    // wifi carries ssid/password (+ optional static ip/gateway);
-                    // mac is ethernet-only, device/baudrate are serial/can-only.
+                    // wifi carries ssid/password; device/baudrate are
+                    // serial/can-only. (An address is the image's, RFC-0103 D10.)
                     if t.device.is_some() || t.baudrate.is_some() {
                         problems.push(format!("{at}: `device`/`baudrate` are serial/can-only"));
                     }
-                    if t.mac.is_some() {
-                        problems.push(format!("{at}: `mac` is ethernet-only"));
-                    }
                 }
                 TransportKind::Serial | TransportKind::Can => {
-                    if t.ip.is_some() {
-                        problems.push(format!("{at}: `ip` is ethernet/wifi-only"));
-                    }
-                    if t.mac.is_some() {
-                        problems.push(format!("{at}: `mac` is ethernet-only"));
-                    }
-                    if t.gateway.is_some() {
-                        problems.push(format!("{at}: `gateway` is ethernet/wifi-only"));
-                    }
                     if t.ssid.is_some() || t.password.is_some() {
                         problems.push(format!("{at}: `ssid`/`password` are wifi-only"));
                     }
@@ -926,14 +912,13 @@ mod transport_tests {
         let build = build_with(
             r#",
             "transports": [
-                { "kind": "ethernet", "ip": "10.0.2.50/24", "rmw": "zenoh", "locator": "tcp/10.0.2.2:7447" }
+                { "kind": "ethernet", "rmw": "zenoh", "locator": "tcp/10.0.2.2:7447" }
             ]"#,
         );
         assert_eq!(build.transports.len(), 1);
         assert!(!build.is_bridge());
         assert_eq!(build.transports[0].kind, TransportKind::Ethernet);
         assert_eq!(build.transports[0].kind.cargo_feature(), "ethernet");
-        assert_eq!(build.transports[0].ip.as_deref(), Some("10.0.2.50/24"));
         assert!(build.validate_transports().is_empty());
     }
 
@@ -942,7 +927,7 @@ mod transport_tests {
         let build = build_with(
             r#",
             "transports": [
-                { "kind": "ethernet", "ip": "dhcp", "rmw": "zenoh" },
+                { "kind": "ethernet", "rmw": "zenoh" },
                 { "kind": "serial", "device": "UART0", "baudrate": 115200, "rmw": "cyclonedds" }
             ]"#,
         );
@@ -954,52 +939,41 @@ mod transport_tests {
 
     #[test]
     fn mismatched_transport_fields_are_reported() {
-        // ethernet with a baudrate, serial with an ip — both wrong.
+        // ethernet with a baudrate, serial with an ssid — both wrong.
         let build = build_with(
             r#",
             "transports": [
                 { "kind": "ethernet", "baudrate": 9600 },
-                { "kind": "serial", "ip": "10.0.0.1/24", "device": "UART0" }
+                { "kind": "serial", "ssid": "Net", "device": "UART0" }
             ]"#,
         );
         let problems = build.validate_transports();
         assert_eq!(problems.len(), 2, "both mismatches reported: {problems:?}");
     }
 
+    /// RFC-0103 D10 (phase-497 W1) — an address on a plan transport is gone
+    /// with the third home it was (the image owns its address, the network its
+    /// gateway). `deny_unknown_fields` makes a plan still carrying one fail
+    /// loudly, the same way `interfaces` does below.
     #[test]
-    fn ethernet_mac_and_gateway_parse_and_validate() {
-        // Phase 172.J — mac + gateway on an ethernet transport.
-        let build = build_with(
-            r#",
-            "transports": [
-                { "kind": "ethernet", "ip": "10.0.2.50/24",
-                  "mac": "02:00:00:00:00:01", "gateway": "10.0.2.2" }
-            ]"#,
-        );
-        assert_eq!(
-            build.transports[0].mac.as_deref(),
-            Some("02:00:00:00:00:01")
-        );
-        assert_eq!(build.transports[0].gateway.as_deref(), Some("10.0.2.2"));
-        assert!(build.validate_transports().is_empty());
-    }
-
-    #[test]
-    fn mac_and_gateway_are_ethernet_only() {
-        // Phase 172.J — serial transport rejects mac + gateway.
-        let build = build_with(
-            r#",
-            "transports": [
-                { "kind": "serial", "device": "UART0", "baudrate": 115200,
-                  "mac": "02:00:00:00:00:01", "gateway": "10.0.2.2" }
-            ]"#,
-        );
-        let problems = build.validate_transports();
-        assert_eq!(
-            problems.len(),
-            2,
-            "mac + gateway both rejected: {problems:?}"
-        );
+    fn a_transport_naming_an_address_is_rejected() {
+        for key in [
+            r#""ip": "10.0.2.50/24""#,
+            r#""mac": "02:00:00:00:00:01""#,
+            r#""gateway": "10.0.2.2""#,
+        ] {
+            let json = format!(
+                r#"{{
+                "target": "x", "board": "linux", "rmw": "zenoh",
+                "profile": "release", "features": [], "cfg": {{}},
+                "transports": [ {{ "kind": "ethernet", {key} }} ]
+            }}"#
+            );
+            let err = serde_json::from_str::<PlanBuildOptions>(&json)
+                .expect_err("a plan transport naming an address must not parse")
+                .to_string();
+            assert!(err.contains("unknown field"), "{key}: {err}");
+        }
     }
 
     #[test]
@@ -1009,7 +983,7 @@ mod transport_tests {
             r#",
             "transports": [
                 { "kind": "wifi", "id": "wlan", "ssid": "Net", "password": "pw",
-                  "ip": "10.0.0.50/24", "rmw": "zenoh" }
+                  "rmw": "zenoh" }
             ]"#,
         );
         assert_eq!(build.transports[0].kind, TransportKind::Wifi);
@@ -1046,7 +1020,7 @@ mod transport_tests {
             "target": "x", "board": "linux", "rmw": "zenoh",
             "profile": "release", "features": [], "cfg": {},
             "transports": [
-                { "kind": "ethernet", "ip": "10.0.2.50/24",
+                { "kind": "ethernet",
                   "interfaces": ["eth0", "eth1"] }
             ]
         }"#;
