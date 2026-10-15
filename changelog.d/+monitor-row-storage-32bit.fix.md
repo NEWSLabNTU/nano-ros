@@ -1,0 +1,1 @@
+`NROS_CPP_MONITOR_ROW_STORAGE` is 72 bytes on a 32-bit target (was 64). The supervised-route fields added to a monitor row (`route_deadline_ms`, `reaction_id`, `mechanism`) made a row need 68 bytes there, and `nros-cpp` stopped compiling for Cortex-M targets on its own size assertion. 64-bit hosts keep 128.

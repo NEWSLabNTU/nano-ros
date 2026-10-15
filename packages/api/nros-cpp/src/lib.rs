@@ -4715,15 +4715,17 @@ pub struct nros_cpp_age_row_t {
 /// ask. `nros_cpp_install_monitors` checks the real requirement against the
 /// buffer it is handed and refuses a short one.
 ///
-/// phase10-B3 -- 64 on a 32-bit target (the row needs 60 there), 128 on a
+/// phase10-B3 -- 64 on a 32-bit target (the row needed 60 there), 128 on a
 /// 64-bit host, where the route's trigger topic made the spec three fat
-/// pointers. Not exported by cbindgen (it cannot spell the `if`): the header
+/// pointers. phase-503 added the supervised deadline, reaction id and
+/// mechanism (7 B and padding): the row needs 68 on a 32-bit target, so 72
+/// (8-aligned). Not exported by cbindgen (it cannot spell the `if`): the header
 /// states the same expression with `sizeof(void *)`, see `cbindgen.toml`.
 #[cfg(feature = "rmw-cffi")]
 pub const NROS_CPP_MONITOR_ROW_STORAGE: usize = if core::mem::size_of::<usize>() == 8 {
     128
 } else {
-    64
+    72
 };
 
 /// Bytes of caller storage ONE age row needs (`SubMonitorCell` +

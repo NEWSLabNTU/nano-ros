@@ -41,7 +41,7 @@ after_includes = """
  * short one. 64 on a 32-bit target, 128 on a 64-bit host (phase10-B3: the
  * route's trigger topic is a third string in the spec).
  */
-#define NROS_CPP_MONITOR_ROW_STORAGE (sizeof(void *) == 8 ? 128 : 64)
+#define NROS_CPP_MONITOR_ROW_STORAGE (sizeof(void *) == 8 ? 128 : 72)
 """
 
 [export]
