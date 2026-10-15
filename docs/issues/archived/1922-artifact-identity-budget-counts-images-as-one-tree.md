@@ -99,3 +99,24 @@ That is the expected verdict for a window that includes them.
 Issue 1919's defect (the probe and the image writing the same FFI crates) is
 untouched. This gate now catches it whenever both build roots write inside
 one run window.
+
+## Amended 2026-10-16: roots do not add up
+
+The summed rule above made the gate fail after a plain `nros sync`. Measured
+on the mixed workspace: with the C/C++ sidecars moved aside, `nros sync`
+re-probed 6 components and kept the probe's build tree (the default; only
+the fixture lanes set `NROS_METADATA_PROBE_CACHE=0`). The gate then read
+`nros_serdes` and `heapless` at 10 copies: the image's five FFI crate trees
+plus the probe's five. The probe and the image are two cmake projects, so two
+cargo roots, and issue 0616 forbids one target dir serving both. So the
+"defect" this axis existed to catch is the expected state, and issue 1919 is
+resolved on that basis.
+
+The axis now gives every root under `<ws>/build` its own ceiling:
+`copies(R, identity) <= CEILING_COPIES` for each root R, image or not. The
+probe root is still read, so a sixth copy inside it fails. Self-test (f)
+became "the probe at 5 beside an image at 5 passes", (h) is new ("a sixth
+copy inside the probe root fails and names it"), and (g)'s residue holds 6
+copies so it fails if counted (checked by re-dating it into the window). On
+the re-probed tree: nros_core 4/4, worst crate 4/5, worst identity 5/5 in
+the image and 5/5 in any root.
