@@ -44,10 +44,16 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
+sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+from build_root import build_dir  # noqa: E402  issue 1921 — the one derivation
 
 
 def shared_root() -> Path:
-    return ROOT / "build" / "corrosion-cargo"
+    # issue 1921 — the corrosion-cargo kind under THE build root, where every
+    # producer writes (one dir per platform). This was a `<repo>/build`
+    # literal, so under a relocated NROS_BUILD_ROOT it swept a tree no
+    # producer used.
+    return build_dir(ROOT, "corrosion-cargo")
 
 
 def live_targets(root: Path) -> set[Path]:

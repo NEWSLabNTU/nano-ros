@@ -58,7 +58,7 @@ if [ "${#hits[@]}" -gt 0 ]; then
     cat >&2 <<'EOF'
 
 The nano-ros workspace follows the colcon shape: build output under
-$NROS_BUILD_ROOT (default <repo>/build/), not beside the source.
+the build root (nros_build_root; default <repo>/build/), not beside the source.
 
   derive the path:  scripts/build/build-root.sh -> nros_build_dir <kind> <coord>
   NOT a literal, and NOT a new suffix (R2: "a new ad-hoc suffix is a bug")

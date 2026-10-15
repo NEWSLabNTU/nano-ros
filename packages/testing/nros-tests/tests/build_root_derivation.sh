@@ -84,6 +84,13 @@ source scripts/build/build-root.sh
 # shellcheck source=scripts/lib/grep-q.sh
 source scripts/lib/grep-q.sh
 
+# Issue 1921 — a relocated root is CHECKOUT-SCOPED. `S` is this checkout's
+# scope, computed HERE from first principles (basename + sha256 of the resolved
+# path) rather than by calling `nros_checkout_scope_name`, so the expected side
+# of every relocated-root check below is not the function under test.
+repo_real="$(cd "$repo_root" && pwd -P)"
+S="checkouts/${repo_real##*/}-$(printf '%s' "$repo_real" | sha256sum | cut -c1-12)"
+
 echo "build-root derivation:"
 
 # R1 — default is <repo>/build, so an unset environment behaves as before.
@@ -96,20 +103,65 @@ scenario '
 # R1 — NROS_BUILD_ROOT relocates the whole tree, trailing slash tolerated.
 scenario '
     export NROS_BUILD_ROOT=/scratch/nros
-    check "NROS_BUILD_ROOT relocates" "/scratch/nros" "$(nros_build_root)"
+    check "NROS_BUILD_ROOT relocates" "/scratch/nros/$S" "$(nros_build_root)"
 '
 scenario '
     export NROS_BUILD_ROOT=/scratch/nros/
-    check "trailing slash stripped" "/scratch/nros" "$(nros_build_root)"
+    check "trailing slash stripped" "/scratch/nros/$S" "$(nros_build_root)"
+'
+
+# Issue 1921 — the ownership rule, on REAL directories: a root outside every
+# checkout, a root another checkout owns, a root this checkout owns, and a root
+# already inside this checkout's scope. Before 1921 the first two were returned
+# verbatim, so every checkout that set one `NROS_BUILD_ROOT` shared every kind
+# under it (fixture trees and stamps, the sizes probe, the skip ledgers).
+#
+# The Rust half (`nros_build_paths::checkout_scoped_root`, which
+# `nros_tests::build_root` and the metadata probe call) cannot run from this
+# buildless gate; its own `checkout_scope_tests` RUN `nros_checkout_scoped_root`
+# against it on the same four cases, and the delegation greps further down
+# keep every Rust reader on that one function.
+echo "issue 1921 — a build root this checkout does not own is scoped to it:"
+scenario '
+    scratch="$(mktemp -d)"
+    scratch="$(cd "$scratch" && pwd -P)"
+    mkdir -p "$scratch/other/packages/core/nros-core"
+    : >"$scratch/other/packages/core/nros-core/Cargo.toml"
+    export NROS_BUILD_ROOT="$scratch/fast"
+    check "outside every checkout -> <root>/checkouts/<name>-<hash>" \
+        "$scratch/fast/$S" "$(nros_build_root)"
+    export NROS_BUILD_ROOT="$scratch/other/build"
+    check "inside ANOTHER checkout -> scoped under it, not shared" \
+        "$scratch/other/build/$S" "$(nros_build_root)"
+    export NROS_BUILD_ROOT="$repo_root/build-relocated"
+    check "inside THIS checkout -> unchanged" \
+        "$repo_root/build-relocated" "$(nros_build_root)"
+    export NROS_BUILD_ROOT="$scratch/fast/$S"
+    check "already this checkout s scope -> unchanged, never scoped twice" \
+        "$scratch/fast/$S" "$(nros_build_root)"
+    check "a kind under a relocated root carries the scope" \
+        "$scratch/fast/$S/$NROS_KIND_SIZES_PROBE" \
+        "$(NROS_BUILD_ROOT="$scratch/fast" nros_build_dir "$NROS_KIND_SIZES_PROBE")"
+    # The make-leaf path: a leaf gets `nros_build_root` by the SAME `export -f`
+    # list fixtures-build.sh ships (read out of it) and never sources
+    # build-root.sh, so the scoping helpers must travel with it.
+    export NROS_BUILD_ROOT="$scratch/fast"
+    source scripts/build/fixtures-target-dir.sh
+    # shellcheck disable=SC2046
+    export -f $(leaf_exported_fns)
+    leaf="$(cd examples && env bash -c nros_build_root 2>/dev/null)"
+    check "a make leaf scopes the root exactly as the parent does" \
+        "$scratch/fast/$S" "$leaf"
+    rm -rf "$scratch"
 '
 
 # R2 — <root>/<kind>/<coordinate>, empty coordinate parts skipped.
 scenario '
     export NROS_BUILD_ROOT=/r
-    check "kind only"        "/r/cargo"            "$(nros_build_dir cargo)"
-    check "kind + coord"     "/r/cargo/linux-zenoh" "$(nros_build_dir cargo linux-zenoh)"
-    check "multi-part coord" "/r/cmake/workspace/c" "$(nros_build_dir cmake workspace c)"
-    check "empty part skipped" "/r/cargo/x"        "$(nros_build_dir cargo "" x)"
+    check "kind only"        "/r/$S/cargo"            "$(nros_build_dir cargo)"
+    check "kind + coord"     "/r/$S/cargo/linux-zenoh" "$(nros_build_dir cargo linux-zenoh)"
+    check "multi-part coord" "/r/$S/cmake/workspace/c" "$(nros_build_dir cmake workspace c)"
+    check "empty part skipped" "/r/$S/cargo/x"        "$(nros_build_dir cargo "" x)"
 '
 
 # A kind is mandatory: a rootless cache dir is the bug R2 exists to prevent.
@@ -278,7 +330,7 @@ scenario '
     export NROS_REPO_ROOT="$repo_root" NROS_BUILD_ROOT=/scratch/nros
     source scripts/build/fixtures-target-dir.sh
     check "shared platform follows NROS_BUILD_ROOT" \
-        " --target-dir /scratch/nros/cargo-fixtures/baremetal" \
+        " --target-dir /scratch/nros/$S/cargo-fixtures/baremetal" \
         "$(nros_fixture_target_dir_flag baremetal "" "")"
 '
 
@@ -317,9 +369,9 @@ scenario '
 scenario '
     export NROS_REPO_ROOT="$repo_root" NROS_BUILD_ROOT=/scratch/nros
     check "compile-check follows NROS_BUILD_ROOT" \
-        "/scratch/nros/compile-check-fixtures/main_macro_form1" "$(nros_build_dir "$NROS_KIND_COMPILE_CHECK" main_macro_form1)"
+        "/scratch/nros/$S/compile-check-fixtures/main_macro_form1" "$(nros_build_dir "$NROS_KIND_COMPILE_CHECK" main_macro_form1)"
     check "west-fixtures follows NROS_BUILD_ROOT" \
-        "/scratch/nros/west-fixtures" "$(nros_build_dir "$NROS_KIND_WEST_FIXTURES")"
+        "/scratch/nros/$S/west-fixtures" "$(nros_build_dir "$NROS_KIND_WEST_FIXTURES")"
 '
 
 # The migrated writers pin NROS_REPO_ROOT to their OWN repo root, so the last
@@ -442,19 +494,54 @@ scenario '
 
 # The Rust mirror cannot source this file, so the one thing that CAN silently
 # diverge is the relocation knob: a mirror that ignores NROS_BUILD_ROOT would
-# leave the resolver looking in a tree the build no longer writes.
-# It must match the READ, not a doc comment that names the variable: the first
-# version of this check grepped the bare name and stayed green when the mirror
-# was pointed at a different env var entirely.
+# leave the resolver looking in a tree the build no longer writes. Since issue
+# 1921 the mirror reads it through `nros_build_paths::build_root`, the one Rust
+# spelling of the checkout-scoping rule, and must not read it itself — a second
+# read is a second derivation that the rule does not reach.
 scenario '
     f=packages/testing/nros-tests/src/lib.rs
-    if nros_grep_q "env::var(\"NROS_BUILD_ROOT\")" "$f" \
+    if nros_grep_q "nros_build_paths::build_root(&project_root())" "$f" \
        && nros_grep_q "pub fn build_root" "$f" \
        && nros_grep_q "pub fn build_dir" "$f"; then
-        echo "  ok   nros_tests mirror reads NROS_BUILD_ROOT"
+        echo "  ok   nros_tests mirror delegates to nros_build_paths::build_root"
     else
-        echo "  FAIL nros_tests::build_root/build_dir mirror missing or ignores NROS_BUILD_ROOT"
+        echo "  FAIL nros_tests::build_root/build_dir mirror missing or not on nros_build_paths::build_root"
         rc=1
+    fi
+    g=packages/tooling/nros-build-paths/src/lib.rs
+    if nros_grep_q "var_os(\"NROS_BUILD_ROOT\")" "$g" \
+       && nros_grep_q "checkout_scoped_root(std::path::Path::new(s.trim_end_matches" "$g"; then
+        echo "  ok   nros_build_paths::build_root reads NROS_BUILD_ROOT through the scoping rule"
+    else
+        echo "  FAIL nros_build_paths::build_root_in no longer scopes NROS_BUILD_ROOT"
+        rc=1
+    fi
+'
+
+# Issue 1921 — every reader of `NROS_BUILD_ROOT` goes through ONE derivation:
+# `nros_build_root` (shell; python through `scripts/lib/build_root.py`, which
+# runs it) or `nros_build_paths::build_root` (Rust). A direct read anywhere
+# else is a SECOND derivation, and a second derivation is what the scoping rule
+# cannot reach: before 1921 two python gates, a GC script and a test read the
+# variable raw and would have looked in a different tree from the builder the
+# moment the rule changed. Comments are not reads; writes (`export X=`, `X=…`
+# before a command) are not reads. A justified exception carries the marker
+# `build-root-read-ok` on its line, with the reason.
+scenario '
+    nros_git_grep hits -nE "environ(\.get)?[[(]\"NROS_BUILD_ROOT|getenv\(\"NROS_BUILD_ROOT|var(_os)?\(\"NROS_BUILD_ROOT|ENV\{NROS_BUILD_ROOT|[$][{]?NROS_BUILD_ROOT" \
+        -- "*.sh" "*.py" "*.rs" "*.just" "justfile" "*.cmake" "CMakeLists.txt" "*.toml" ":!docs"
+    hits="$(printf "%s\n" "$hits" \
+        | grep -vE "^(scripts/build/build-root\.sh|packages/tooling/nros-build-paths/src/lib\.rs|packages/testing/nros-tests/tests/build_root_derivation\.sh):" \
+        | grep -vE "^[^:]+:[0-9]+:[[:space:]]*(#|//)" \
+        | grep -v "build-root-read-ok" | grep -v "^$" || true)"
+    if [ -n "$hits" ]; then
+        echo "  FAIL NROS_BUILD_ROOT read outside the one derivation (issue 1921):"
+        echo "$hits" | sed "s/^/        /"
+        echo "       Ask nros_build_root / nros_build_dir (shell),"
+        echo "       scripts/lib/build_root.py (python) or nros_build_paths::build_root (Rust)."
+        rc=1
+    else
+        echo "  ok   no second derivation of the build root reads NROS_BUILD_ROOT"
     fi
 '
 
@@ -594,7 +681,7 @@ scenario '
         "$repo_root/build/zephyr-workspace-builds/4.4" \
         "$(bash scripts/lib/zephyr-workspace.sh --version 4.4 --root "$repo_root" build-root)"
     check "NROS_BUILD_ROOT relocates it with the rest of the cache" \
-        "/scratch/nros/zephyr-workspace-builds/3.7" \
+        "/scratch/nros/$S/zephyr-workspace-builds/3.7" \
         "$(NROS_BUILD_ROOT=/scratch/nros bash scripts/lib/zephyr-workspace.sh build-root)"
     check "NROS_ZEPHYR_BUILD_ROOT wins, trailing slash stripped" \
         "/z/builds" \

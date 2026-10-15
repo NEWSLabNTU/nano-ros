@@ -171,6 +171,10 @@ Set it to move the whole cache tree to a faster or larger volume — the
 generalisation of what `NROS_ZEPHYR_BUILD_ROOT` already does for one family.
 This matters more than it sounds: the native fixture lane alone holds ~115 GiB
 of target dirs, and phase-340 measured the checkout's volume at 96 % full.
+A root this checkout does not own is CHECKOUT-SCOPED to
+`<root>/checkouts/<name>-<hash>` (issue 1921), so two checkouts naming one root
+share nothing under it; read it through the helpers below, never as the raw
+variable (`build_root_derivation.sh` refuses a direct read).
 
 Scripts must derive cache paths through `scripts/build/build-root.sh`
 (`nros_build_root`, `nros_build_dir <kind> [<coordinate>...]`) rather than

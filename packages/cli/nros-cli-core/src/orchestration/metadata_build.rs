@@ -254,7 +254,8 @@ fn path_tag(p: &Path) -> String {
 ///
 /// Resolution, widest sharing first:
 ///
-/// 1. `$NROS_BUILD_ROOT/metadata-probe` — RFC-0070 R2's `<root>/<kind>` shape.
+/// 1. `<build root>/metadata-probe` — RFC-0070 R2's `<root>/<kind>` shape, the root
+///    being `nros_build_paths::build_root` (`$NROS_BUILD_ROOT`, checkout-scoped).
 /// 2. `<nano-ros workspace>/build/metadata-probe` — the same default the shell's
 ///    `nros_build_root` uses (`<repo>/build`), reached through the checkout the
 ///    harness ALREADY points its `nros` path dep at, so this needs no new input.
@@ -296,55 +297,25 @@ fn probe_target_dir(o: &MetadataBuildOptions) -> PathBuf {
 /// `nros` by its own absolute path, so sharing across checkouts buys no reuse
 /// — only duplicate units, and a shared `probe-<component>` uplift slot. So a
 /// root this checkout does not own gets this checkout's identity appended
-/// ([`checkout_scoped_root`]); a root inside this checkout is unchanged, and
+/// (`nros_build_paths::checkout_scoped_root` — issue 1921 made that the ONE
+/// rule for every build-cache kind, shell and Rust); a root inside this
+/// checkout is unchanged, and
 /// rung (2) is checkout-scoped by construction. Sharing ACROSS WORKSPACES
 /// within one checkout stays — that is issue 0522's and phase-489 W4's reuse,
 /// and it is correct once the uplift slot is per harness ([`probe_bin_name`]).
 pub(crate) fn shared_probe_dir(nano_ros: &Path, kind: &str) -> Option<PathBuf> {
-    shared_probe_dir_in(
-        nano_ros,
-        kind,
-        std::env::var_os("NROS_BUILD_ROOT").filter(|v| !v.is_empty()),
-    )
+    shared_probe_dir_at(&nros_build_paths::build_root(nano_ros), kind)
 }
 
-/// [`shared_probe_dir`] with `NROS_BUILD_ROOT` passed in, so the rule is
-/// testable without mutating the process environment.
-fn shared_probe_dir_in(
-    nano_ros: &Path,
-    kind: &str,
-    build_root: Option<std::ffi::OsString>,
-) -> Option<PathBuf> {
-    if let Some(root) = build_root {
-        return Some(checkout_scoped_root(Path::new(&root), nano_ros).join(kind));
-    }
-    let shared = nano_ros.join("build").join(kind);
+/// [`shared_probe_dir`] under an already-derived build root, so the rule is
+/// testable without mutating the process environment. The root comes from
+/// `nros_build_paths::build_root{,_in}` and from nowhere else: this used to
+/// read `NROS_BUILD_ROOT` itself and scope it with a private copy of the rule
+/// (issue 1904), which issue 1921 folded into the one derivation.
+fn shared_probe_dir_at(root: &Path, kind: &str) -> Option<PathBuf> {
+    let shared = root.join(kind);
     std::fs::create_dir_all(&shared).ok()?;
     Some(shared)
-}
-
-/// Issue 1904 — `root` if checkout `nano_ros` owns it, else
-/// `<root>/checkouts/<name>-<tag>`.
-///
-/// "Owns" is the issue-1280 question asked the issue-1391 way: the DEEPEST
-/// checkout above `root` (`nros_build_paths::checkout_root_of`, the marker
-/// walk), compared after resolving symlinks — never a lexical prefix test, which
-/// calls a worktree nested under `<main>/.claude/worktrees/` part of `<main>`.
-/// A root outside every checkout (the "move the cache to a faster volume" case)
-/// is not owned by anyone, so it is scoped too.
-fn checkout_scoped_root(root: &Path, nano_ros: &Path) -> PathBuf {
-    let canon = |p: &Path| p.canonicalize().unwrap_or_else(|_| p.to_path_buf());
-    let here = canon(nano_ros);
-    let owned = nros_build_paths::checkout_root_of(root).is_some_and(|o| canon(&o) == here);
-    if owned {
-        return root.to_path_buf();
-    }
-    let name = here
-        .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_else(|| "checkout".to_string());
-    root.join("checkouts")
-        .join(format!("{name}-{}", path_tag(&here)))
 }
 
 pub fn render_harness_cargo_toml(o: &MetadataBuildOptions) -> Result<String> {
@@ -1568,7 +1539,8 @@ some later noise
         };
         let (a, b) = (checkout("a"), checkout("b"));
         let dir = |ck: &Path, root: &Path| {
-            shared_probe_dir_in(ck, "metadata-probe", Some(root.as_os_str().to_owned())).unwrap()
+            let root = nros_build_paths::build_root_in(ck, Some(root.as_os_str()));
+            shared_probe_dir_at(&root, "metadata-probe").unwrap()
         };
 
         // A root outside every checkout: one dir per checkout, both under it.
@@ -1576,6 +1548,14 @@ some later noise
         let (da, db) = (dir(&a, &outside), dir(&b, &outside));
         assert_ne!(da, db, "two checkouts must not share a probe dir");
         assert!(da.starts_with(&outside) && db.starts_with(&outside));
+        assert_eq!(
+            da,
+            outside
+                .join("checkouts")
+                .join(nros_build_paths::checkout_scope_name(&a))
+                .join("metadata-probe"),
+            "the probe dir is the ONE build root's kind dir (issue 1921)"
+        );
 
         // A root inside checkout `a`: unchanged for `a`, scoped for `b`.
         let in_a = a.join("build");
@@ -1583,8 +1563,9 @@ some later noise
         assert_ne!(dir(&b, &in_a), in_a.join("metadata-probe"));
 
         // No NROS_BUILD_ROOT: rung (2), `<checkout>/build/<kind>`, as before.
+        let default = nros_build_paths::build_root_in(&a, None);
         assert_eq!(
-            shared_probe_dir_in(&a, "metadata-probe", None).unwrap(),
+            shared_probe_dir_at(&default, "metadata-probe").unwrap(),
             a.join("build/metadata-probe")
         );
     }

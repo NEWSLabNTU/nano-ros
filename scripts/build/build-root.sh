@@ -40,9 +40,9 @@ _NROS_BUILD_ROOT_REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 # Issue 1280 — the rule for an inherited absolute path naming ANOTHER nano-ros
 # checkout. Sourced (not respelled) so `nros_build_root` below can apply it;
-# `checkout-paths.sh` `export -f`s its two functions for the same reason this
+# `checkout-paths.sh` `export -f`s its functions for the same reason this
 # file exports `nros_build_root`, so a `make` leaf that never sources either
-# still gets all three.
+# still gets them all.
 # shellcheck source=scripts/lib/checkout-paths.sh
 . "$_NROS_BUILD_ROOT_REPO/scripts/lib/checkout-paths.sh"
 
@@ -68,22 +68,26 @@ _NROS_BUILD_ROOT_REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # note that hazard and leave it standing; the two REPO rungs are re-rooted now,
 # so an inherited root belonging to another nano-ros checkout lands back here.
 #
-# `NROS_BUILD_ROOT` is deliberately NOT re-rooted, and the reason is the MIRROR
-# rather than the rule. `nros_tests::build_root` is the Rust half (a resolver
-# cannot source a bash function), it is pinned byte-for-byte to this one by
-# `build_root_derivation.sh`, and it reads `NROS_BUILD_ROOT` with no re-root —
-# it cannot have the 1280 bug on its OTHER rung, because that one is
-# `project_root()`, a compile-time `CARGO_MANIFEST_DIR`. Re-rooting only here
-# would make the writer and the reader disagree about where a fixture lives,
-# which is the split R3 forbids and a fresh instance of the bug being fixed.
-# `NROS_BUILD_ROOT` is also not in the INHERITED set — nothing exports it, not
-# `activate.sh` and not `sdk-env.just` — so it is always an explicit operator
-# choice (the "move the whole cache to a faster volume" knob), never an
-# ancestor checkout's leftover. The two REPO rungs are the opposite on both
-# counts, which is why they are the ones that move.
+# ISSUE 1921 — `NROS_BUILD_ROOT` is CHECKOUT-SCOPED, never passed verbatim.
+# It is an operator choice (the "move the whole cache to a faster volume" knob;
+# nothing exports it, not `activate.sh` and not `sdk-env.just`), but a linked
+# worktree inherits its parent shell's environment, so every checkout that sets
+# it used to share every kind under it — fixture trees and stamps, the sizes
+# probe, the lane-skip ledgers. A root this checkout does not own becomes
+# `<root>/checkouts/<name>-<hash>` through `nros_checkout_scoped_root`
+# (`scripts/lib/checkout-paths.sh`), the ONE spelling of the rule. A root it
+# owns — inside this checkout, or already inside this checkout's own scope — is
+# unchanged, so the default `<checkout>/build` keeps every warm cache.
+#
+# It is scoped, not RE-ROOTED like the two REPO rungs: a root inside another
+# checkout is an explicit choice, honoured inside this checkout's own subtree.
+# The Rust mirror `nros_tests::build_root` applies the same rule through
+# `nros_build_paths::build_root`, and `build_root_derivation.sh` plus that
+# crate's `checkout_scope_tests` pin the two halves to each other — so the
+# writer and the reader still name one directory (R3).
 nros_build_root() {
     if [ -n "${NROS_BUILD_ROOT:-}" ]; then
-        printf '%s' "${NROS_BUILD_ROOT%/}"
+        nros_checkout_scoped_root "${NROS_BUILD_ROOT%/}" "$_NROS_BUILD_ROOT_REPO"
         return 0
     fi
     local _repo="${NROS_REPO_ROOT:-${NROS_REPO_DIR:-}}"

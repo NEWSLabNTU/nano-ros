@@ -197,16 +197,21 @@ esac
 r_env="$(PROBE_RESOLVED=NROS_ZENOH_MAX_QUERYABLES=2 probe with-knobs DIR NROS_ZENOH_MAX_QUERYABLES=4)"
 expect_eq "road 1 must outrank the env road (resolved 2, exported 4)" "$r2" "$r_env"
 
-# issue 1904 — the key carries the CHECKOUT when the shared root is not this
-# checkout's. Two checkouts naming one `NROS_BUILD_ROOT` produced the same key
-# for the same configuration and shared one keyed directory; each wrote its own
-# Corrosion subdir there and the sizes-header mirror could take the other's
-# header. Three roots, all through the production `nros_shared_cargo_dir()`:
-#   - outside every checkout (the operator's fast volume) -> keyed
-#   - inside ANOTHER checkout (a sibling worktree's build/) -> keyed
-#   - inside THIS checkout (the default `<checkout>/build`) -> NOT keyed, so
-#     every key computed before this fix keeps its hash and no warm dir is lost.
-key_at() { # <root> -> the KEY= line the production code records there
+# issues 1904/1921 — a shared root this checkout does not own is SCOPED to it.
+# Two checkouts naming one `NROS_BUILD_ROOT` produced the same key for the same
+# configuration and shared one keyed directory; each wrote its own Corrosion
+# subdir there and the sizes-header mirror could take the other's header. 1904
+# carried the checkout in the KEY; 1921 made it the one build-root ownership
+# rule (`nros_checkout_scoped_root`, spelled once per build system), so the key
+# is configuration-only again and the ROOT moves. Four roots, all through the
+# production `nros_shared_cargo_dir()`, each compared to the SHELL spelling of
+# the rule so the cmake one cannot drift from it:
+#   - outside every checkout (the operator's fast volume) -> scoped
+#   - inside ANOTHER checkout (a sibling worktree's build/) -> scoped
+#   - inside THIS checkout (the default `<checkout>/build`) -> unchanged
+#   - already inside this checkout's scope (what `nros_build_dir` hands every
+#     in-repo caller under a relocated root) -> unchanged, never scoped twice
+probe_at() { # <root> <field> -> that line as the production code prints it
     local out
     if ! out="$(cmake -DNROS_PROBE_ROOT="$1" -DNROS_PROBE_MODE=with-knobs \
         -DNROS_PROBE_RESOLVED= -P "$PROBE" 2>&1)"; then
@@ -214,28 +219,39 @@ key_at() { # <root> -> the KEY= line the production code records there
         printf '%s\n' "$out" >&2
         exit 1
     fi
-    printf '%s\n' "$out" | sed -n 's/^KEY=//p'
+    printf '%s\n' "$out" | sed -n "s/^$2=//p"
 }
 here="$(pwd -P)"
+# shellcheck source=scripts/lib/checkout-paths.sh
+. scripts/lib/checkout-paths.sh
+scope="$(nros_checkout_scope_name "$here")"
 mkdir -p "$TMP/other/packages/core/nros-core"
 : >"$TMP/other/packages/core/nros-core/Cargo.toml"
 own_root="$(mktemp -d "$here/build/.cargo-dir-checkout-key.XXXXXX" 2>/dev/null)" \
     || { mkdir -p "$here/build" && own_root="$(mktemp -d "$here/build/.cargo-dir-checkout-key.XXXXXX")"; }
 # Only the directory this run created; never `build/` itself.
 trap 'rm -rf "$TMP" "$own_root"' EXIT
-for case_ in "outside every checkout:$TMP/fast-volume" "inside another checkout:$TMP/other/build/corrosion-cargo"; do
-    k="$(key_at "${case_#*:}")"
+tmp_real="$(cd "$TMP" && pwd -P)"
+first_key=""
+for case_ in "outside every checkout:$tmp_real/fast-volume:$tmp_real/fast-volume/checkouts/$scope" \
+             "inside another checkout:$tmp_real/other/build/corrosion-cargo:$tmp_real/other/build/corrosion-cargo/checkouts/$scope" \
+             "inside this checkout:$own_root/corrosion-cargo:$own_root/corrosion-cargo" \
+             "already in this checkout's scope:$tmp_real/fast-volume/checkouts/$scope/corrosion-cargo:$tmp_real/fast-volume/checkouts/$scope/corrosion-cargo"; do
+    what="${case_%%:*}"; rest="${case_#*:}"; root="${rest%%:*}"; want="${rest#*:}"
+    d="$(probe_at "$root" DIR)"
+    k="$(probe_at "$root" KEY)"
+    sh_scoped="$(nros_checkout_scoped_root "$root" "$here")"
+    expect_eq "cmake and shell scope a shared cargo root $what identically (issue 1921)" \
+        "$sh_scoped" "${d%/*}"
+    expect_eq "a shared cargo root $what lands where the rule says (issue 1921)" \
+        "$want" "${d%/*}"
     case "$k" in
-        *"|checkout=$here") ;;
-        *) echo "[FAIL] a shared cargo root ${case_%%:*} must key on this checkout (issue 1904); key was: $k" >&2
-           fail=1 ;;
+        *checkout=*) echo "[FAIL] the key carries the checkout again ($what); the ROOT is scoped now, not the key: $k" >&2
+                     fail=1 ;;
     esac
+    [ -n "$first_key" ] || first_key="${d##*/}"
+    expect_eq "the key hash is configuration-only ($what)" "$first_key" "${d##*/}"
 done
-k="$(key_at "$own_root/corrosion-cargo")"
-case "$k" in
-    *checkout=*) echo "[FAIL] a shared cargo root INSIDE this checkout must keep its key (no checkout field); key was: $k" >&2
-                 fail=1 ;;
-esac
 
 inventory="$(env cmake -DNROS_PROBE_MODE=inventory -P "$PROBE" 2>&1 | sed -n 's/^KNOB=//p')"
 for want in NROS_ZENOH_MAX_QUERYABLES NROS_EXECUTOR_MAX_CBS NROS_XRCE_MAX_SUBSCRIBERS; do

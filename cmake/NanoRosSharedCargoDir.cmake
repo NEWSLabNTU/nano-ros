@@ -18,44 +18,9 @@ include_guard(GLOBAL)
 
 # issue 1712 — `nros_image_env_key_fields`, the third road below.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosImageEnv.cmake")
-# issue 1904 — the checkout-marker walk, for `_nros_shared_cargo_checkout_field`.
+# issues 1904/1921 — `nros_checkout_scoped_root`, the one build-root ownership
+# rule, applied to `NROS_SHARED_CARGO_ROOT` in `nros_shared_cargo_dir` below.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCheckoutRoot.cmake")
-
-# _nros_shared_cargo_checkout_field(<out_var> <root>)
-#
-# Issue 1904 — `checkout=<this checkout>` when <root> is NOT owned by the
-# checkout this module belongs to, else empty.
-#
-# The key below is a function of the cargo CONFIGURATION, and two checkouts with
-# the same configuration produce the same key. Under the default root
-# (`<checkout>/build/...`) that never matters: the root itself is per checkout.
-# Under an operator-chosen `NROS_BUILD_ROOT` it is one path for every checkout
-# that sets it, and a worktree inherits its parent shell's — so two checkouts
-# shared one keyed directory, each writing its own Corrosion subdir beside the
-# other's, and the sizes-header mirror could copy the OTHER checkout's header
-# against this checkout's archive. Sharing there buys nothing: a cargo target
-# dir serves exactly one workspace root (issue 0616), and each checkout's is its
-# own path.
-#
-# Empty for an owned root ON PURPOSE, so every key computed today keeps its hash
-# and no warm directory is orphaned. "Owned" is the DEEPEST checkout above
-# <root> (the issue-1391 rule, never a lexical prefix), compared after resolving
-# symlinks; a root outside every checkout is owned by none, so it is keyed.
-# `CMAKE_CURRENT_FUNCTION_LIST_DIR`, not a file-scope capture: this module is
-# reached from inside functions, whose frames drop file-scope normal vars.
-function(_nros_shared_cargo_checkout_field out_var root)
-    set(${out_var} "" PARENT_SCOPE)
-    get_filename_component(_here "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/.." REALPATH)
-    get_filename_component(_root "${root}" ABSOLUTE)
-    _nros_find_root("${_root}" _owner)
-    if(_owner)
-        get_filename_component(_owner "${_owner}" REALPATH)
-        if(_owner STREQUAL _here)
-            return()
-        endif()
-    endif()
-    set(${out_var} "checkout=${_here}" PARENT_SCOPE)
-endfunction()
 
 # =============================================================================
 # The KNOB half of every cargo-directory key — RFC-0094 D4, phase-439 W1.
@@ -257,16 +222,21 @@ function(nros_shared_cargo_dir out_var)
             list(APPEND _key_norm "${_field}")
         endif()
     endforeach()
-    # Issue 1904 — after the normalise, so a checkout PATH (which may contain
-    # commas) is recorded verbatim; empty for a root this checkout owns.
-    _nros_shared_cargo_checkout_field(_checkout_field "${NROS_SHARED_CARGO_ROOT}")
-    if(_checkout_field)
-        list(APPEND _key_norm "${_checkout_field}")
-    endif()
     string(REPLACE ";" "|" _key_text "${_key_norm}")
     string(SHA1 _key_hash "${_key_text}")
     string(SUBSTRING "${_key_hash}" 0 12 _key_hash)
-    set(_dir "${NROS_SHARED_CARGO_ROOT}/${_key_hash}")
+    # Issues 1904/1921 — the key is a function of the cargo CONFIGURATION, so
+    # two checkouts with one configuration compute one key, and under a shared
+    # root they would share one keyed directory: each writing its own Corrosion
+    # subdir beside the other's, the sizes-header mirror able to copy the OTHER
+    # checkout's header. A cargo dir serves exactly one workspace root (issue
+    # 0616), so that sharing bought nothing. The root goes through the ONE
+    # build-root ownership rule instead of carrying the checkout in the key
+    # (1904's first spelling): every in-repo producer already hands an owned or
+    # already-scoped root, which comes back unchanged, and a raw foreign root
+    # passed by hand lands in `<root>/checkouts/<name>-<hash>/`.
+    nros_checkout_scoped_root(_shared_root "${NROS_SHARED_CARGO_ROOT}")
+    set(_dir "${_shared_root}/${_key_hash}")
     file(MAKE_DIRECTORY "${_dir}")
     file(WRITE "${_dir}.key" "${_key_text}\n")
     set(${out_var} "${_dir}" PARENT_SCOPE)
