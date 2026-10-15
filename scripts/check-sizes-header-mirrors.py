@@ -21,8 +21,9 @@ The shell version found its pairs by GUESSING both halves:
   including the ones holding hundreds of built mirrors.
 * WHAT it mirrors — the leaf copy beside the crate's binary dir. Issue 0978 made
   that copy the FALLBACK: the mirror script prefers the leaf-independent
-  `cargo/*/<gen>/nros/<name>` (newest), because a leaf copy can outlive the run
-  that wrote it. So even with the right globs the gate checked a rule the build
+  `cargo/<subdir>/<gen>/nros/<name>` — the build dir's OWN Corrosion subdir as
+  recorded at configure (issue 1904), newest only when no record exists —
+  because a leaf copy can outlive the run that wrote it. So even with the right globs the gate checked a rule the build
   no longer follows.
 
 Both halves are now DERIVED from the subject. A CMake build dir states every

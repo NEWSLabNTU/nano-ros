@@ -7,7 +7,7 @@ area: [build, tooling]
 severity: medium
 found: 2026-10-15
 resolved: 2026-10-15
-related: [1901, 0522, 0616, 0805, 0987, 1593, 1869]
+related: [1901, 0522, 0616, 0805, 0987, 1593, 1869, 1921]
 ---
 
 ## Where the dirs come from
@@ -193,8 +193,9 @@ each checkout reaches `nros` by its own path, so it bought nothing (issue 0616).
 - Outside the probe, a shared `NROS_BUILD_ROOT` still spans checkouts for the
   fixture families and `sizes-probe` (`scripts/build/cargo.sh` exports
   `NROS_SIZES_PROBE_TARGET_DIR=$(nros_build_dir sizes-probe)`, keyed by
-  (rustc, target, features), with an mtime-newest rlib fallback). RFC-0070 R1
-  defines the root as one checkout's cache. Scoping it as a whole means
-  changing `nros_build_root` and its Rust mirror `nros_tests::build_root`
-  together, which is a separate change.
+  (rustc, target, features)). RFC-0070 R1 defines the root as one checkout's
+  cache. Scoping it as a whole means changing `nros_build_root` and its Rust
+  mirror `nros_tests::build_root` together, which is a separate change: filed
+  as [issue 1921](../1921-shared-build-root-spans-checkouts-for-sizes-probe-and-fixtures.md).
+  (The sizes probe's mtime-newest rlib fallback is already gone — issue 0464.)
 
