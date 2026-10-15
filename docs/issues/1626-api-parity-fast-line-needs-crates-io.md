@@ -125,3 +125,26 @@ names is unrelated to the diff, the same as before. Two things are new:
   occurrences, twelve days apart, on two different events. That is still not a
   rate, but the case for remedy 1 (retry) has grown. Remedy 1 is cheap and does
   not hide a real parity mismatch.
+
+## Third sighting, 2026-10-14: a different site, and on main's push gate
+
+Push gate **38654300841** for main `67e29e9fa`, job **116165031036**
+`check / fast (every event)`, on a GitHub-hosted runner, failed in step
+`Build the in-tree nros CLI (every event)`, before any gate ran:
+
+```
+error: failed to download from `https://static.crates.io/crates/minijinja/2.21.0/download`
+Caused by:
+  [7] Could not connect to server (Failed to connect to static.crates.io:443 after 0 ms: Could not connect to server)
+error: recipe `setup-cli` failed with exit code 101
+```
+
+So the dependency on a reachable crates.io is not specific to `api-parity`:
+`setup-cli` has it too, and it runs in every lane before `check fast`. The
+same day also had a DNS failure for `github.com` in
+`submodule-commits-reachable` (merge-group run 38641874951, ejecting #2218).
+That makes three network-only reds in one day across three sites.
+`after 0 ms` is a connection refused outright, which is the case
+`CARGO_NET_RETRY` (remedy 1) handles. The case for setting it once, at the
+job level so every cargo invocation inherits it, is now stronger than the
+case for fixing `api-parity` alone.
