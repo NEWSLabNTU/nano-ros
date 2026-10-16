@@ -42,7 +42,7 @@ pub fn emit_typed_monitored(
     monitors: &[MonitorRow],
     ages: &[AgeRow],
 ) -> Result<String, String> {
-    emit_typed_monitored_lowered(language, plan, monitors, ages).map(|(src, _)| src)
+    emit_typed_monitored_lowered(language, plan, monitors, ages, None).map(|(src, _)| src)
 }
 
 /// [`emit_typed_monitored`], also handing back the [`LoweredEntry`] the TU was
@@ -54,6 +54,7 @@ pub fn emit_typed_monitored_lowered(
     plan: &Plan,
     monitors: &[MonitorRow],
     ages: &[AgeRow],
+    hazard_model: Option<&ros_launch_manifest_model::SystemModel>,
 ) -> Result<(String, LoweredEntry), String> {
     emit_lowered(
         language,
@@ -61,6 +62,7 @@ pub fn emit_typed_monitored_lowered(
         &LowerOptions {
             monitors,
             ages,
+            hazard_model,
             probe: None,
         },
     )
@@ -273,6 +275,26 @@ fn refuse_component(
         n.lang.map_or("<unset>", Lang::as_str),
         kind.as_str(),
     )
+}
+
+/// phase-462 W3b -- a model consistent with the two packs' monitor fixture
+/// rows (`/talker/chatter` at 10 Hz, `/listener/chatter` age 150 ms, both on
+/// `/chatter`) plus one hazard guarding `/chatter`. Shared by `tests_c` and
+/// `tests_cpp` so both packs are asked about ONE model.
+#[cfg(test)]
+pub(crate) fn hazard_fixture_model() -> ros_launch_manifest_model::SystemModel {
+    let yaml = "meta:\n  version: 1\nstructure:\n  scopes:\n    d.launch.xml:\n      \
+                file: d.launch.xml\n  nodes:\n    /talker:\n      scope: d.launch.xml\n      \
+                pkg: talker_pkg\n      exec: talker\n      node_name: talker\n      \
+                namespace: /\n    /listener:\n      scope: d.launch.xml\n      \
+                pkg: listener_pkg\n      exec: listener\n      node_name: listener\n      \
+                namespace: /\n  topics:\n    /chatter:\n      type: std_msgs/msg/String\n      \
+                pub: [/talker/chatter]\n      sub: [/listener/chatter]\n\
+                contracts:\n  pub_endpoints:\n    /talker/chatter:\n      min_rate_hz: 10.0\n  \
+                sub_endpoints:\n    /listener/chatter:\n      max_age_ms: 150.0\n  \
+                hazards:\n    d.launch.xml/chatter_lost:\n      guards:\n        \
+                - members: [/chatter]\n      ftti_ms: 400.0\n";
+    ros_launch_manifest_model::SystemModel::from_yaml_str(yaml).expect("hazard fixture parses")
 }
 
 #[cfg(test)]

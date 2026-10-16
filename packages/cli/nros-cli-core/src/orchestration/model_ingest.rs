@@ -1373,8 +1373,8 @@ mod tests {
 // (which cannot dep this crate) derives the SAME rows the C/C++ emitters and
 // this bake read. Re-exported so every CLI call site keeps its path.
 pub use nros_orchestration_ir::contract_monitors::{
-    AgeRow, HazardRow, MonitorRow, age_rows, hazard_rows, monitor_rows, render_monitor_rs,
-    render_monitor_rs_full,
+    AgeRow, GuardMemberRow, HazardRow, MonitorRow, age_rows, hazard_rows, monitor_rows,
+    render_monitor_rs, render_monitor_rs_full,
 };
 
 /// phase-462 W2 -- one `on_violation` row: a contracted subscription whose

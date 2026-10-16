@@ -128,6 +128,32 @@ static const ::nros_cpp_age_row_t __nros_age_rows{{ tag }}[{{ m.ages | length }}
 };
 alignas(8) static unsigned char __nros_age_storage{{ tag }}[{{ m.ages | length }} * NROS_CPP_AGE_ROW_STORAGE];
 {%- endif %}
+{%- if m.hazards %}
+/* phase-462 W3b -- the contract's hazards this executor observes over the rows
+ * above: each guard member names an age (0) or rate (1) row, and the observer
+ * reports hazard-detected / hazard-reaction / hazard-recovered on the same
+ * drain (`nros_cpp_install_hazards`). */
+{%- for h in m.hazards %}{% set hi = loop.index0 %}
+{%- for g in h.guards %}
+static const ::nros_cpp_hazard_member_t __nros_hz_members{{ tag }}_{{ hi }}_{{ loop.index0 }}[{{ g.members | length }}] = {
+{%- for mm in g.members %}
+    { {{ mm.kind }}u, {{ mm.row }}u },
+{%- endfor %}
+};
+{%- endfor %}
+static const ::nros_cpp_hazard_guard_t __nros_hz_guards{{ tag }}_{{ hi }}[{{ h.guards | length }}] = {
+{%- for g in h.guards %}
+    { {% if g.all_of %}1{% else %}0{% endif %}u, __nros_hz_members{{ tag }}_{{ hi }}_{{ loop.index0 }}, {{ g.members | length }}u },
+{%- endfor %}
+};
+{%- endfor %}
+static const ::nros_cpp_hazard_row_t __nros_hz_rows{{ tag }}[{{ m.hazards | length }}] = {
+{%- for h in m.hazards %}
+    { "{{ h.key | c_str }}", {{ h.ftti_ms }}u, {{ h.settle_ms }}u, __nros_hz_guards{{ tag }}_{{ loop.index0 }}, {{ h.guards | length }}u, {{ h.sink }}u },
+{%- endfor %}
+};
+alignas(8) static unsigned char __nros_hz_storage{{ tag }}[{{ m.hazards | length }} * NROS_CPP_HAZARD_ROW_STORAGE + {{ m.hazard_guards }} * NROS_CPP_HAZARD_GUARD_STORAGE + {{ m.hazard_members }} * NROS_CPP_HAZARD_MEMBER_STORAGE];
+{%- endif %}
 {%- endfor %}
 
 {% if tiers -%}

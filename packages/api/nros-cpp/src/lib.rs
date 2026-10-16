@@ -4965,6 +4965,268 @@ unsafe fn install_monitor_tables(
     NROS_CPP_RET_OK
 }
 
+// ---------------------------------------------------------------------------
+// phase-462 W3b -- the hazard observer's table, the C/C++ spelling of the Rust
+// entry's `set_hazard_table`. The generated entry bakes one row per hazard its
+// monitor tables observe, the guards and their members as plain arrays, and
+// one storage buffer the install carves the runtime's `HazardCell`s,
+// `HazardSpec`s, `GuardSpec`s and `GuardRef`s out of -- the same shape as the
+// monitor rows above, for the same reason (the entry is a C/C++ TU and cannot
+// declare a Rust `static`).
+// ---------------------------------------------------------------------------
+
+/// A guard member that names an AGE row (`nros_cpp_hazard_member_t::kind`).
+#[cfg(feature = "rmw-cffi")]
+pub const NROS_CPP_HAZARD_MEMBER_AGE: u8 = 0;
+/// A guard member that names a RATE row.
+#[cfg(feature = "rmw-cffi")]
+pub const NROS_CPP_HAZARD_MEMBER_RATE: u8 = 1;
+/// `nros_cpp_hazard_row_t::sink` when the hazard's reaction states no
+/// `safe_state` publisher this image monitors.
+#[cfg(feature = "rmw-cffi")]
+pub const NROS_CPP_HAZARD_NO_SINK: u16 = u16::MAX;
+
+/// One guard member: an index into the age or the rate table the same
+/// executor's `nros_cpp_install_monitors` installed.
+#[cfg(feature = "rmw-cffi")]
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct nros_cpp_hazard_member_t {
+    /// `NROS_CPP_HAZARD_MEMBER_AGE` or `NROS_CPP_HAZARD_MEMBER_RATE`.
+    pub kind: u8,
+    /// The row's index in that table.
+    pub row: u16,
+}
+
+/// One guard: a topic, or a redundant set that faults only when every member
+/// has (`all_of` non-zero).
+#[cfg(feature = "rmw-cffi")]
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct nros_cpp_hazard_guard_t {
+    pub all_of: u8,
+    /// `n_members` members, static.
+    pub members: *const nros_cpp_hazard_member_t,
+    pub n_members: usize,
+}
+
+/// One contracted hazard, the C spelling of `HazardSpec` minus its cell.
+#[cfg(feature = "rmw-cffi")]
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct nros_cpp_hazard_row_t {
+    /// The hazard's contract key, the report key; NUL-terminated UTF-8 with
+    /// static lifetime (a literal in the entry).
+    pub key: *const c_char,
+    /// Declared `ftti_ms`; 0 = none.
+    pub ftti_ms: u32,
+    /// The reacting path's `safe_state.settle_ms`; 0 = none.
+    pub settle_ms: u32,
+    /// `n_guards` guards, static.
+    pub guards: *const nros_cpp_hazard_guard_t,
+    pub n_guards: usize,
+    /// Rate-table row of the `safe_state` publisher, or
+    /// `NROS_CPP_HAZARD_NO_SINK`.
+    pub sink: u16,
+}
+
+/// One install: the rows, and one static 8-aligned buffer of at least
+/// `n_rows * NROS_CPP_HAZARD_ROW_STORAGE + n_guards_total *
+/// NROS_CPP_HAZARD_GUARD_STORAGE + n_members_total *
+/// NROS_CPP_HAZARD_MEMBER_STORAGE` bytes.
+#[cfg(feature = "rmw-cffi")]
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct nros_cpp_hazard_table_t {
+    pub rows: *const nros_cpp_hazard_row_t,
+    pub n_rows: usize,
+    pub storage: *mut c_void,
+    pub storage_len: usize,
+}
+
+/// Bytes of caller storage ONE hazard row needs (`HazardCell` + `HazardSpec`),
+/// a bound for the reason [`NROS_CPP_MONITOR_ROW_STORAGE`] is one: 80 on a
+/// 64-bit host, 48 on a 32-bit target. Stated in the header with
+/// `sizeof(void *)`, see `cbindgen.toml`.
+#[cfg(feature = "rmw-cffi")]
+pub const NROS_CPP_HAZARD_ROW_STORAGE: usize = if core::mem::size_of::<usize>() == 8 {
+    80
+} else {
+    48
+};
+/// Bytes of caller storage ONE guard needs (`GuardSpec`).
+#[cfg(feature = "rmw-cffi")]
+pub const NROS_CPP_HAZARD_GUARD_STORAGE: usize = 24;
+/// Bytes of caller storage ONE guard member needs (`GuardRef`).
+#[cfg(feature = "rmw-cffi")]
+pub const NROS_CPP_HAZARD_MEMBER_STORAGE: usize = 4;
+
+#[cfg(feature = "rmw-cffi")]
+const _: () = {
+    use core::mem::{align_of, size_of};
+    use nros::monitor::{GuardRef, GuardSpec, HazardCell, HazardSpec};
+    // Cells, then specs, then guards, then members: each region starts at its
+    // type's alignment, and the bounds below leave room for every step.
+    assert!(
+        size_of::<HazardCell>().next_multiple_of(align_of::<HazardSpec>())
+            + size_of::<HazardSpec>()
+            <= NROS_CPP_HAZARD_ROW_STORAGE
+    );
+    assert!(size_of::<GuardSpec>() <= NROS_CPP_HAZARD_GUARD_STORAGE);
+    assert!(size_of::<GuardRef>() <= NROS_CPP_HAZARD_MEMBER_STORAGE);
+    assert!(size_of::<HazardSpec>().is_multiple_of(align_of::<GuardSpec>()));
+    assert!(size_of::<GuardSpec>().is_multiple_of(align_of::<GuardRef>()));
+    assert!(align_of::<HazardSpec>() <= 8 && align_of::<HazardCell>() <= 8);
+    assert!(align_of::<GuardSpec>() <= 8 && align_of::<GuardRef>() <= 8);
+};
+
+/// Install the baked hazard table on this executor, after
+/// `nros_cpp_install_monitors` (each guard member indexes one of the two
+/// tables that call installed). The observer then reports `hazard-detected`,
+/// `hazard-reaction` and `hazard-recovered` on the violation drain and
+/// through the `/diagnostics` reporter the monitor install armed.
+///
+/// A short or misaligned buffer is refused (`NROS_CPP_RET_FULL`), as is a
+/// member whose `kind` is neither table (`NROS_CPP_RET_INVALID_ARGUMENT`).
+/// `n_rows == 0` installs an empty table.
+///
+/// # Safety
+/// `handle` must be a live executor handle from this ABI, or NULL. `table`
+/// must point at a valid `nros_cpp_hazard_table_t` whose rows, guard and
+/// member arrays, key strings and storage all outlive the executor (statics
+/// in the generated entry). Each `key` must be NUL-terminated UTF-8.
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_install_hazards(
+    handle: *mut c_void,
+    table: *const nros_cpp_hazard_table_t,
+) -> nros_cpp_ret_t {
+    use nros::monitor::{GuardRef, GuardSpec, HazardCell, HazardSpec, NO_SINK};
+    let Some(ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    let Some(t) = (unsafe { table.as_ref() }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    if t.n_rows == 0 {
+        ctx.executor.set_hazard_table(&[]);
+        return NROS_CPP_RET_OK;
+    }
+    if t.rows.is_null() || t.storage.is_null() || !(t.storage as usize).is_multiple_of(8) {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let rows = unsafe { core::slice::from_raw_parts(t.rows, t.n_rows) };
+    let mut n_guards = 0usize;
+    let mut n_members = 0usize;
+    for r in rows {
+        if r.n_guards > 0 && r.guards.is_null() {
+            return NROS_CPP_RET_INVALID_ARGUMENT;
+        }
+        let guards = if r.n_guards == 0 {
+            &[][..]
+        } else {
+            unsafe { core::slice::from_raw_parts(r.guards, r.n_guards) }
+        };
+        n_guards += guards.len();
+        for g in guards {
+            if g.n_members > 0 && g.members.is_null() {
+                return NROS_CPP_RET_INVALID_ARGUMENT;
+            }
+            n_members += g.n_members;
+        }
+    }
+    // The four regions, each at its own alignment.
+    use core::mem::{align_of, size_of};
+    let n = t.n_rows;
+    let specs_at = (size_of::<HazardCell>() * n).next_multiple_of(align_of::<HazardSpec>());
+    let guards_at =
+        (specs_at + size_of::<HazardSpec>() * n).next_multiple_of(align_of::<GuardSpec>());
+    let members_at =
+        (guards_at + size_of::<GuardSpec>() * n_guards).next_multiple_of(align_of::<GuardRef>());
+    let needed = members_at + size_of::<GuardRef>() * n_members;
+    if needed > t.storage_len {
+        cpp_diag!(
+            "install_hazards: storage holds {} bytes, the table needs {}",
+            t.storage_len,
+            needed
+        );
+        return NROS_CPP_RET_FULL;
+    }
+    let base = t.storage as *mut u8;
+    let cells = base as *mut HazardCell;
+    let specs = unsafe { base.add(specs_at) } as *mut HazardSpec;
+    let guard_slots = unsafe { base.add(guards_at) } as *mut GuardSpec;
+    let member_slots = unsafe { base.add(members_at) } as *mut GuardRef;
+
+    let mut g_next = 0usize;
+    let mut m_next = 0usize;
+    for (i, r) in rows.iter().enumerate() {
+        // `'static` is the caller's contract (see Safety).
+        let Some(key) = (unsafe { cstr_to_str(r.key) }) else {
+            return NROS_CPP_RET_INVALID_ARGUMENT;
+        };
+        let guards = if r.n_guards == 0 {
+            &[][..]
+        } else {
+            unsafe { core::slice::from_raw_parts(r.guards, r.n_guards) }
+        };
+        let g_first = g_next;
+        for g in guards {
+            let members = if g.n_members == 0 {
+                &[][..]
+            } else {
+                unsafe { core::slice::from_raw_parts(g.members, g.n_members) }
+            };
+            let m_first = m_next;
+            for m in members {
+                let member = match m.kind {
+                    NROS_CPP_HAZARD_MEMBER_AGE => GuardRef::Age(m.row),
+                    NROS_CPP_HAZARD_MEMBER_RATE => GuardRef::Rate(m.row),
+                    _ => return NROS_CPP_RET_INVALID_ARGUMENT,
+                };
+                unsafe { core::ptr::write(member_slots.add(m_next), member) };
+                m_next += 1;
+            }
+            let members: &'static [GuardRef] =
+                unsafe { core::slice::from_raw_parts(member_slots.add(m_first), members.len()) };
+            unsafe {
+                core::ptr::write(
+                    guard_slots.add(g_next),
+                    GuardSpec {
+                        all_of: g.all_of != 0,
+                        members,
+                    },
+                )
+            };
+            g_next += 1;
+        }
+        let guard_table: &'static [GuardSpec] =
+            unsafe { core::slice::from_raw_parts(guard_slots.add(g_first), guards.len()) };
+        unsafe {
+            let cell = cells.add(i);
+            core::ptr::write(cell, HazardCell::new());
+            core::ptr::write(
+                specs.add(i),
+                HazardSpec {
+                    key,
+                    ftti_ms: r.ftti_ms,
+                    settle_ms: r.settle_ms,
+                    guards: guard_table,
+                    sink: if r.sink == NROS_CPP_HAZARD_NO_SINK {
+                        NO_SINK
+                    } else {
+                        r.sink
+                    },
+                    cell: &*cell,
+                },
+            );
+        }
+    }
+    let table: &'static [HazardSpec] = unsafe { core::slice::from_raw_parts(specs, n) };
+    ctx.executor.set_hazard_table(table);
+    NROS_CPP_RET_OK
+}
+
 /// One drained contract violation, the C spelling of
 /// `nros_node::executor::monitor::Violation`. `rule` and `fqn` are NOT
 /// NUL-terminated (they are the runtime's own `&'static str`s), hence the

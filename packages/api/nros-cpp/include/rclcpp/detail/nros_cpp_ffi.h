@@ -33,6 +33,14 @@
  */
 #define NROS_CPP_MONITOR_ROW_STORAGE (sizeof(void *) == 8 ? 128 : 72)
 
+/**
+ * phase-462 W3b -- bytes of caller storage ONE hazard row needs (its
+ * `HazardCell` plus its `HazardSpec`), the same kind of bound: 80 on a 64-bit
+ * host, 48 on a 32-bit target. `nros_cpp_install_hazards` checks the real
+ * requirement and refuses a short buffer.
+ */
+#define NROS_CPP_HAZARD_ROW_STORAGE (sizeof(void *) == 8 ? 80 : 48)
+
 
 /**
  * Maximum RMW backend name length for `nros_cpp_node_options_t`.
@@ -77,6 +85,32 @@
  * `AgeMonitorSpec`); same rule as [`NROS_CPP_MONITOR_ROW_STORAGE`].
  */
 #define NROS_CPP_AGE_ROW_STORAGE 64
+
+/**
+ * A guard member that names an AGE row (`nros_cpp_hazard_member_t::kind`).
+ */
+#define NROS_CPP_HAZARD_MEMBER_AGE 0
+
+/**
+ * A guard member that names a RATE row.
+ */
+#define NROS_CPP_HAZARD_MEMBER_RATE 1
+
+/**
+ * `nros_cpp_hazard_row_t::sink` when the hazard's reaction states no
+ * `safe_state` publisher this image monitors.
+ */
+#define NROS_CPP_HAZARD_NO_SINK UINT16_MAX
+
+/**
+ * Bytes of caller storage ONE guard needs (`GuardSpec`).
+ */
+#define NROS_CPP_HAZARD_GUARD_STORAGE 24
+
+/**
+ * Bytes of caller storage ONE guard member needs (`GuardRef`).
+ */
+#define NROS_CPP_HAZARD_MEMBER_STORAGE 4
 
 /**
  * phase-503 — [`nros_cpp_monitor_row_t::mechanism`]: the route deadline is
@@ -594,6 +628,76 @@ typedef struct nros_cpp_monitor_tables_t {
   void *age_storage;
   size_t age_storage_len;
 } nros_cpp_monitor_tables_t;
+
+/**
+ * One guard member: an index into the age or the rate table the same
+ * executor's `nros_cpp_install_monitors` installed.
+ */
+typedef struct nros_cpp_hazard_member_t {
+  /**
+   * `NROS_CPP_HAZARD_MEMBER_AGE` or `NROS_CPP_HAZARD_MEMBER_RATE`.
+   */
+  uint8_t kind;
+  /**
+   * The row's index in that table.
+   */
+  uint16_t row;
+} nros_cpp_hazard_member_t;
+
+/**
+ * One guard: a topic, or a redundant set that faults only when every member
+ * has (`all_of` non-zero).
+ */
+typedef struct nros_cpp_hazard_guard_t {
+  uint8_t all_of;
+  /**
+   * `n_members` members, static.
+   */
+  const struct nros_cpp_hazard_member_t *members;
+  size_t n_members;
+} nros_cpp_hazard_guard_t;
+
+/**
+ * One contracted hazard, the C spelling of `HazardSpec` minus its cell.
+ */
+typedef struct nros_cpp_hazard_row_t {
+  /**
+   * The hazard's contract key, the report key; NUL-terminated UTF-8 with
+   * static lifetime (a literal in the entry).
+   */
+  const char *key;
+  /**
+   * Declared `ftti_ms`; 0 = none.
+   */
+  uint32_t ftti_ms;
+  /**
+   * The reacting path's `safe_state.settle_ms`; 0 = none.
+   */
+  uint32_t settle_ms;
+  /**
+   * `n_guards` guards, static.
+   */
+  const struct nros_cpp_hazard_guard_t *guards;
+  size_t n_guards;
+  /**
+   * Rate-table row of the `safe_state` publisher, or
+   * `NROS_CPP_HAZARD_NO_SINK`.
+   */
+  uint16_t sink;
+} nros_cpp_hazard_row_t;
+
+/**
+ * One install: the rows, and one static 8-aligned buffer of at least
+ * `n_rows * NROS_CPP_HAZARD_ROW_STORAGE + n_guards_total *
+ * NROS_CPP_HAZARD_GUARD_STORAGE + n_members_total *
+ * NROS_CPP_HAZARD_MEMBER_STORAGE` bytes.
+ */
+typedef struct nros_cpp_hazard_table_t {
+  const struct nros_cpp_hazard_row_t *rows;
+  size_t n_rows;
+  void *storage;
+  size_t storage_len;
+} nros_cpp_hazard_table_t;
 
 /**
  * One drained contract violation, the C spelling of
@@ -2059,6 +2163,25 @@ nros_cpp_ret_t nros_cpp_executor_set_min_stack_headroom(void *handle, size_t byt
  */
 nros_cpp_ret_t nros_cpp_install_monitors(void *handle,
                                          const struct nros_cpp_monitor_tables_t *tables);
+
+/**
+ * Install the baked hazard table on this executor, after
+ * `nros_cpp_install_monitors` (each guard member indexes one of the two
+ * tables that call installed). The observer then reports `hazard-detected`,
+ * `hazard-reaction` and `hazard-recovered` on the violation drain and
+ * through the `/diagnostics` reporter the monitor install armed.
+ *
+ * A short or misaligned buffer is refused (`NROS_CPP_RET_FULL`), as is a
+ * member whose `kind` is neither table (`NROS_CPP_RET_INVALID_ARGUMENT`).
+ * `n_rows == 0` installs an empty table.
+ *
+ * # Safety
+ * `handle` must be a live executor handle from this ABI, or NULL. `table`
+ * must point at a valid `nros_cpp_hazard_table_t` whose rows, guard and
+ * member arrays, key strings and storage all outlive the executor (statics
+ * in the generated entry). Each `key` must be NUL-terminated UTF-8.
+ */
+nros_cpp_ret_t nros_cpp_install_hazards(void *handle, const struct nros_cpp_hazard_table_t *table);
 
 /**
  * Drain every pending contract violation from this executor's ring, the C++

@@ -1,7 +1,7 @@
 # phase-462 -- the contract's safety vocabulary reaches the target
 
-**Status (2026-10-16). IN PROGRESS: W1, W2, W3a and W3b's Rust roads landed;
-W3b's C/C++ road, W3c, W4 and W6a are open; W5 and W6b wait on rlm.** (Planned 2026-09-21.) Numbered highest + 7 (phase-461 took +6;
+**Status (2026-10-16). IN PROGRESS: W1, W2, W3a and W3b landed; W3c, W4 and
+W6a are open; W5 and W6b wait on rlm.** (Planned 2026-09-21.) Numbered highest + 7 (phase-461 took +6;
 456-460 belong to concurrent sessions). Depends on two pieces of work outside
 this document: the shared MapperInput derivation phase (a play_launch / rlm
 phase being designed in parallel, referred to here by that name and not by a
@@ -283,12 +283,23 @@ image never observes one hazard twice. Both Rust roads bake it: the CLI's
 `nros-orchestration-ir` `hazard_row_tests` (4), `nros-macros`
 `a_hazard_the_table_observes_is_baked_and_installed`.
 
-W3b (C/C++ road) and W3c: not started. The C/C++ road needs the hazard table in
-`nros-entry-lower`'s `MonitorTable`, the two `monitor_install.jinja` packs and an
-`nros-cpp` install export; the island is C++, so this is the unit that reaches
-it.
+W3b status (C/C++ road): landed in this change. `nros-cpp` exports
+`nros_cpp_install_hazards` over C rows (`nros_cpp_hazard_row_t`, its guards
+and members) and one caller-provided static buffer it carves the runtime's
+cells, specs, guards and members out of -- the monitor install's shape, sized
+by `NROS_CPP_HAZARD_{ROW,GUARD,MEMBER}_STORAGE` (the row bound is
+pointer-width dependent and stated in the header with `sizeof(void *)`; const
+asserts hold each bound to the real layout). `nros-entry-lower`'s
+`MonitorTable` carries the hazards each executor's SLICE observes (the Rust
+roads' `hazard_rows`), and both packs bake the arrays and install them after
+`nros_cpp_install_monitors`. Tests: one per pack
+(`typed_emit_bakes_the_hazard_table_after_the_monitors`, over one shared
+model), and the rendered C and C++ were syntax-checked against the regenerated
+header with `gcc`/`g++` (C also with `arm-none-eabi-gcc`, a 32-bit target).
 
-Claim: phase-462-W3. Depends on: phase-462-W1, phase-462-W2, phase-459-W2, phase-495-W2. Owns: hazard consts in packages/core/nros-diagnostics/src/lib.rs; a hazard-row fn in packages/cli/nros-cli-core/src/orchestration/model_ingest.rs; the hazard table region in packages/cli/nros-cli-core/src/codegen/entry/emit_cpp.rs and emit_rust.rs; the Fault hook target in packages/core/nros-node/src/executor/sched_context.rs; packages/core/nros-orchestration-ir/src/ftti_budget.rs (new); packages/testing/nros-tests/tests/hazard_rows_and_ftti.rs (new). Gate: cargo test -p nros-orchestration-ir ftti_budget (W3a); cargo test -p nros-tests --test hazard_rows_and_ftti (W3b/W3c). Status: W3a landed; W3b's Rust roads landed; W3b's C/C++ road and W3c not started.
+W3c: not started.
+
+Claim: phase-462-W3. Depends on: phase-462-W1, phase-462-W2, phase-459-W2, phase-495-W2. Owns: hazard consts in packages/core/nros-diagnostics/src/lib.rs; a hazard-row fn in packages/cli/nros-cli-core/src/orchestration/model_ingest.rs; the hazard table region in packages/cli/nros-cli-core/src/codegen/entry/emit_cpp.rs and emit_rust.rs; the Fault hook target in packages/core/nros-node/src/executor/sched_context.rs; packages/core/nros-orchestration-ir/src/ftti_budget.rs (new); packages/testing/nros-tests/tests/hazard_rows_and_ftti.rs (new). Gate: cargo test -p nros-orchestration-ir ftti_budget (W3a); cargo test -p nros-tests --test hazard_rows_and_ftti (W3b/W3c). Status: W3a and W3b landed; W3c not started.
 
 ### W4 [cli] -- `modes` as tier-table variants
 

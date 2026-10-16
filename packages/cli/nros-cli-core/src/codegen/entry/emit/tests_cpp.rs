@@ -2145,3 +2145,52 @@ fn rust_node_install_on_a_tier_receives_the_unwrapped_executor() {
         "the Rust install must receive the unwrapped tier executor;\n{src}"
     );
 }
+
+/// phase-462 W3b -- a hazard whose guard topic both rows watch is baked as
+/// rows, guards and members over THOSE rows (age 0, rate 0), with storage
+/// sized by all three counts, and installed after the monitor tables.
+#[test]
+fn typed_emit_bakes_the_hazard_table_after_the_monitors() {
+    let plan = fixture_plan_typed(&[
+        (
+            "talker_pkg",
+            "talker",
+            "talker",
+            "talker_pkg::Talker",
+            "talker_pkg/Talker.hpp",
+        ),
+        (
+            "listener_pkg",
+            "listener",
+            "listener",
+            "listener_pkg::Listener",
+            "listener_pkg/Listener.hpp",
+        ),
+    ]);
+    let (rows, ages) = monitor_fixture_rows();
+    let model = super::hazard_fixture_model();
+    let (src, _) =
+        super::emit_typed_monitored_lowered(Lang::Cpp, &plan, &rows, &ages, Some(&model))
+            .expect("hazard emit ok");
+    assert!(
+        src.contains("{ 0u, 0u },") && src.contains("{ 1u, 0u },"),
+        "members: age row 0 and rate row 0; src:\n{src}"
+    );
+    assert!(
+        src.contains(
+            "{ \"d.launch.xml/chatter_lost\", 400u, 0u, __nros_hz_guards_0, 1u, 65535u },"
+        ),
+        "hazard row (no safe_state: no sink); src:\n{src}"
+    );
+    assert!(src.contains("alignas(8) static unsigned char __nros_hz_storage[1 * NROS_CPP_HAZARD_ROW_STORAGE + 1 * NROS_CPP_HAZARD_GUARD_STORAGE + 2 * NROS_CPP_HAZARD_MEMBER_STORAGE];"), "{src}");
+    let monitors = src
+        .find("nros_cpp_install_monitors(")
+        .expect("monitor install");
+    let hazards = src
+        .find("nros_cpp_install_hazards(")
+        .expect("hazard install");
+    assert!(hazards > monitors, "{src}");
+    // The same rows without the model bake no hazard.
+    let plain = emit_typed_monitored(&plan, &rows, &ages).expect("plain emit ok");
+    assert!(!plain.contains("nros_cpp_install_hazards"), "{plain}");
+}
