@@ -73,3 +73,27 @@ container.
    (CLAUDE.md: "a missing dependency is an IMAGE fix"), or stop exporting the
    variable where ROS is absent.
 3. Then a tier-2 run on current `main` shows `cli-tests` green on this runner.
+
+## Progress (2026-10-16): the current image passes
+
+phase-489 W2 (`38a4458d52`, 2026-10-14) put the four interface packages into
+the runner image (`[prereq.ros-interface-packages]` in
+`scripts/ci/runner-container.sh`). Measured on the image `newslab-118` runs,
+`nano-ros-runner:local` `8cc334f03e58`, built 2026-10-15:
+
+- In a fresh container, `AMENT_PREFIX_PATH` is unset until
+  `/opt/ros/humble/setup.bash` is sourced, which sets it to `/opt/ros/humble`.
+  That prefix indexes 58 packages, among them `std_msgs`, `geometry_msgs`,
+  `sensor_msgs` and `example_interfaces`.
+- `cargo test --locked --manifest-path packages/cli/Cargo.toml -p
+  cargo-nano-ros --test integration_tests with_ros` in that container (the
+  image's own toolchain volumes, repo mounted read-only, `--cap-drop ALL`):
+  3 of 3 pass, including `test_discover_ament_packages`, the one that failed
+  here.
+
+So the failure fits an image from before W2: a ROS prefix that sourcing
+exported, with nothing but the router in it. Not measured: which image
+`newslab-133` runs now. It is on another host.
+
+Closes when `newslab-133` runs an image built after `38a4458d52` and a tier-2
+run on main shows `cli-tests` green there (step 3 above).
