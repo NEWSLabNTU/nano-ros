@@ -33,10 +33,10 @@ mod node;
 pub mod zephyr_image;
 
 pub use image::{
-    AgeRow, ComponentKind, ComponentSeam, GroupBind, LoweredBoot, LoweredBootConfig, LoweredProbe,
-    LoweredRunners, LoweredSched, LoweredServices, LoweredTaskMemory, LoweredTiers, MonitorRow,
-    MonitorTable, NodeBind, SchedContext, SetupNode, TaskStackRow, TierRow, TierSetup,
-    family_from_str,
+    AgeRow, ComponentKind, ComponentSeam, GroupBind, HazardGuard, HazardMember, HazardRow,
+    LoweredBoot, LoweredBootConfig, LoweredProbe, LoweredRunners, LoweredSched, LoweredServices,
+    LoweredTaskMemory, LoweredTiers, MonitorRow, MonitorTable, NodeBind, SchedContext, SetupNode,
+    TaskStackRow, TierRow, TierSetup, family_from_str,
 };
 pub use node::{LoweredEntry, LoweredNode, NodeIdentity, QosOverride, sanitize_pkg};
 

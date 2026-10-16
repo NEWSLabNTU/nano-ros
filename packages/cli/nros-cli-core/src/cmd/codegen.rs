@@ -421,15 +421,18 @@ fn run_entry(args: EntryArgs) -> Result<()> {
     // `system_monitors.rs`. Read from the model here rather than carried on
     // the `Plan`: the plan is built in ~40 struct literals across the tree,
     // and the emitter (not the plan) is what this wave owns.
-    let (monitor_rows, age_rows) = match &args.model {
+    // phase-462 W3b -- and the model itself when it declares hazards, which
+    // the lowering lands on whichever executor's slice observes each one.
+    let (monitor_rows, age_rows, hazard_model) = match &args.model {
         Some(model_path) => {
             let model = crate::orchestration::model_ingest::load_model(model_path)?;
             (
                 crate::orchestration::model_ingest::monitor_rows(&model)?,
                 crate::orchestration::model_ingest::age_rows(&model)?,
+                (!model.contracts.hazards.is_empty()).then_some(model.model),
             )
         }
-        None => (Vec::new(), Vec::new()),
+        None => (Vec::new(), Vec::new(), None),
     };
 
     let (src, lowered) = if args.typed {
@@ -515,8 +518,14 @@ fn run_entry(args: EntryArgs) -> Result<()> {
         // phase-462 W1 — the contract monitor rows go to every pack; a pack
         // that renders no install block (the C pack today, issue 1604)
         // ignores them.
-        entry_codegen::emit::emit_typed_monitored_lowered(lang, &plan, &monitor_rows, &age_rows)
-            .map_err(|e| eyre!("{e}"))?
+        entry_codegen::emit::emit_typed_monitored_lowered(
+            lang,
+            &plan,
+            &monitor_rows,
+            &age_rows,
+            hazard_model.as_ref(),
+        )
+        .map_err(|e| eyre!("{e}"))?
     } else {
         match lang {
             // phase-432 W2.4 (RFC-0091 §7) — the Rust entry VERB is retired.

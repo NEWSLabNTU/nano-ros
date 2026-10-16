@@ -46,4 +46,15 @@
             if (__mret != NROS_CPP_RET_OK) return static_cast<int32_t>(__mret);
         }
 {%- endif %}
+{%- if m.hazards %}
+        /* phase-462 W3b -- the hazard observer, over the rows just installed. */
+        ::nros_cpp_hazard_table_t __htable = {
+            .rows = __nros_hz_rows{{ tag }},
+            .n_rows = {{ m.hazards | length }}u,
+            .storage = __nros_hz_storage{{ tag }},
+            .storage_len = sizeof(__nros_hz_storage{{ tag }}),
+        };
+        __mret = nros_cpp_install_hazards(__mexec, &__htable);
+        if (__mret != NROS_CPP_RET_OK) return static_cast<int32_t>(__mret);
+{%- endif %}
     }

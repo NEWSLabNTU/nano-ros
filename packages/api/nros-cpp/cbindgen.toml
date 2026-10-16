@@ -42,6 +42,14 @@ after_includes = """
  * route's trigger topic is a third string in the spec).
  */
 #define NROS_CPP_MONITOR_ROW_STORAGE (sizeof(void *) == 8 ? 128 : 72)
+
+/**
+ * phase-462 W3b -- bytes of caller storage ONE hazard row needs (its
+ * `HazardCell` plus its `HazardSpec`), the same kind of bound: 80 on a 64-bit
+ * host, 48 on a 32-bit target. `nros_cpp_install_hazards` checks the real
+ * requirement and refuses a short buffer.
+ */
+#define NROS_CPP_HAZARD_ROW_STORAGE (sizeof(void *) == 8 ? 80 : 48)
 """
 
 [export]
@@ -55,6 +63,8 @@ after_includes = """
 exclude = [
     # phase10-B3 -- stated in `after_includes` (pointer-width dependent).
     "NROS_CPP_MONITOR_ROW_STORAGE",
+    # phase-462 W3b -- same reason.
+    "NROS_CPP_HAZARD_ROW_STORAGE",
     "nros_cpp_action_server_set_callbacks",
     # issue 0796 — same reason (`Option<CppAcceptedCallback>`); declared in
     # action_server.hpp and mirrored in nros-c's component.h.

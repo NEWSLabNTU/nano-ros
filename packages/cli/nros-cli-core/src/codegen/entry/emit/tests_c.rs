@@ -880,3 +880,36 @@ fn typed_emit_tiers_slice_monitor_rows_per_tier() {
             .contains("nros_cpp_install_monitors")
     );
 }
+
+/// phase-462 W3b -- a hazard whose guard topic both rows watch is baked as
+/// rows, guards and members over THOSE rows (age 0, rate 0), with storage
+/// sized by all three counts, and installed after the monitor tables.
+#[test]
+fn typed_emit_bakes_the_hazard_table_after_the_monitors() {
+    let plan = fixture_plan(&[("talker_pkg", "talker"), ("listener_pkg", "listener")]);
+    let (rows, ages) = c_monitor_fixture_rows();
+    let model = super::hazard_fixture_model();
+    let (src, _) = super::emit_typed_monitored_lowered(Lang::C, &plan, &rows, &ages, Some(&model))
+        .expect("hazard emit ok");
+    assert!(
+        src.contains("{ 0u, 0u },") && src.contains("{ 1u, 0u },"),
+        "members: age row 0 and rate row 0; src:\n{src}"
+    );
+    assert!(
+        src.contains(
+            "{ \"d.launch.xml/chatter_lost\", 400u, 0u, __nros_hz_guards_0, 1u, 65535u },"
+        ),
+        "hazard row (no safe_state: no sink); src:\n{src}"
+    );
+    assert!(src.contains("static uint64_t __nros_hz_storage[(1u * NROS_CPP_HAZARD_ROW_STORAGE + 1u * NROS_CPP_HAZARD_GUARD_STORAGE + 2u * NROS_CPP_HAZARD_MEMBER_STORAGE + 7u) / 8u];"), "{src}");
+    let monitors = src
+        .find("nros_cpp_install_monitors(")
+        .expect("monitor install");
+    let hazards = src
+        .find("nros_cpp_install_hazards(")
+        .expect("hazard install");
+    assert!(hazards > monitors, "{src}");
+    // The same rows without the model bake no hazard.
+    let plain = emit_typed_monitored(&plan, &rows, &ages).expect("plain emit ok");
+    assert!(!plain.contains("nros_cpp_install_hazards"), "{plain}");
+}

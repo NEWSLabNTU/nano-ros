@@ -27,10 +27,10 @@
 use std::collections::HashMap;
 
 use nros_entry_lower::{
-    AgeRow, ComponentKind, ComponentSeam, GroupBind, LoweredBoot, LoweredBootConfig, LoweredEntry,
-    LoweredNode, LoweredProbe, LoweredRunners, LoweredSched, LoweredServices, LoweredTaskMemory,
-    LoweredTiers, MonitorRow, MonitorTable, NodeBind, NodeIdentity, QosOverride, SchedContext,
-    SetupNode, TierRow, TierSetup,
+    AgeRow, ComponentKind, ComponentSeam, GroupBind, HazardGuard, HazardMember, HazardRow,
+    LoweredBoot, LoweredBootConfig, LoweredEntry, LoweredNode, LoweredProbe, LoweredRunners,
+    LoweredSched, LoweredServices, LoweredTaskMemory, LoweredTiers, MonitorRow, MonitorTable,
+    NodeBind, NodeIdentity, QosOverride, SchedContext, SetupNode, TierRow, TierSetup,
 };
 use nros_orchestration_ir::ResolvedTierTable;
 
@@ -60,6 +60,10 @@ pub struct LowerOptions<'a> {
     /// `Plan`, which is built in ~40 struct literals across the tree.
     pub monitors: &'a [model_ingest::MonitorRow],
     pub ages: &'a [model_ingest::AgeRow],
+    /// phase-462 W3b -- the model, when it declares hazards: each executor's
+    /// table gets the hazards its sliced rows observe
+    /// (`contract_monitors::hazard_rows`, the rule the Rust roads use).
+    pub hazard_model: Option<&'a ros_launch_manifest_model::SystemModel>,
     /// `Some` for a metadata probe.
     pub probe: Option<&'a ProbeExport>,
 }
@@ -570,13 +574,67 @@ fn monitor_table(
     opts: &LowerOptions<'_>,
     keep: impl Fn(&str) -> bool,
 ) -> Option<MonitorTable> {
+    let ir_rows: Vec<model_ingest::MonitorRow> = opts
+        .monitors
+        .iter()
+        .filter(|r| keep(row_node_fqn(&r.fqn)))
+        .cloned()
+        .collect();
+    let ir_ages: Vec<model_ingest::AgeRow> = opts
+        .ages
+        .iter()
+        .filter(|r| keep(row_node_fqn(&r.fqn)))
+        .cloned()
+        .collect();
+    // phase-462 W3b -- over THIS executor's slice, so a hazard lands on the
+    // one executor that holds all of its guards' monitors.
+    let hazards = opts
+        .hazard_model
+        .map(|m| model_ingest::hazard_rows(m, &ir_rows, &ir_ages))
+        .unwrap_or_default()
+        .into_iter()
+        .map(|h| HazardRow {
+            key: h.key,
+            ftti_ms: h.ftti_ms,
+            settle_ms: h.settle_ms,
+            guards: h
+                .guards
+                .into_iter()
+                .map(|g| HazardGuard {
+                    all_of: g.all_of,
+                    members: g
+                        .members
+                        .into_iter()
+                        .map(|m| match m {
+                            model_ingest::GuardMemberRow::Age(r) => HazardMember {
+                                kind: 0,
+                                row: r as u16,
+                            },
+                            model_ingest::GuardMemberRow::Rate(r) => HazardMember {
+                                kind: 1,
+                                row: r as u16,
+                            },
+                        })
+                        .collect(),
+                })
+                .collect(),
+            sink: h.sink.map_or(u16::MAX, |r| r as u16),
+        })
+        .collect::<Vec<HazardRow>>();
+    let hazard_guards = hazards.iter().map(|h| h.guards.len()).sum();
+    let hazard_members = hazards
+        .iter()
+        .flat_map(|h| &h.guards)
+        .map(|g| g.members.len())
+        .sum();
     let t = MonitorTable {
         tier: tier.map(|(i, _)| i),
         tier_name: tier.map(|(_, n)| n.to_string()),
-        rows: opts
-            .monitors
+        hazards,
+        hazard_guards,
+        hazard_members,
+        rows: ir_rows
             .iter()
-            .filter(|r| keep(row_node_fqn(&r.fqn)))
             .map(|r| MonitorRow {
                 topic: r.topic.clone(),
                 fqn: r.fqn.clone(),
@@ -590,10 +648,8 @@ fn monitor_table(
                 mechanism: r.mechanism,
             })
             .collect(),
-        ages: opts
-            .ages
+        ages: ir_ages
             .iter()
-            .filter(|r| keep(row_node_fqn(&r.fqn)))
             .map(|r| AgeRow {
                 topic: r.topic.clone(),
                 fqn: r.fqn.clone(),

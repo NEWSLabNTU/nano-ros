@@ -317,6 +317,44 @@ pub struct MonitorTable {
     pub tier_name: Option<String>,
     pub rows: Vec<MonitorRow>,
     pub ages: Vec<AgeRow>,
+    /// phase-462 W3b -- the hazards this executor observes over `rows` /
+    /// `ages` (each guard member indexes one of them).
+    #[serde(default)]
+    pub hazards: Vec<HazardRow>,
+    /// Guards and guard members across `hazards`: the counts the packs size
+    /// the install's storage buffer by.
+    #[serde(default)]
+    pub hazard_guards: usize,
+    #[serde(default)]
+    pub hazard_members: usize,
+}
+
+/// phase-462 W3b -- one hazard of a [`MonitorTable`], in the shape the C/C++
+/// packs render: `nros_cpp_hazard_row_t` and its arrays.
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct HazardRow {
+    pub key: String,
+    pub ftti_ms: u32,
+    pub settle_ms: u32,
+    pub guards: Vec<HazardGuard>,
+    /// Rate-row index of the `safe_state` publisher; `0xFFFF` = none
+    /// (`NROS_CPP_HAZARD_NO_SINK`).
+    pub sink: u16,
+}
+
+/// phase-462 W3b -- one guard of a [`HazardRow`].
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct HazardGuard {
+    pub all_of: bool,
+    pub members: Vec<HazardMember>,
+}
+
+/// phase-462 W3b -- one guard member: `kind` 0 = an age row, 1 = a rate row
+/// (`NROS_CPP_HAZARD_MEMBER_AGE` / `_RATE`), and its index in that table.
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct HazardMember {
+    pub kind: u8,
+    pub row: u16,
 }
 
 impl MonitorTable {
