@@ -61,7 +61,7 @@ extern void nros_zephyr_epoch_acquire_configured(void);
  * configuration and costs a single stored null pointer when either half is
  * absent — which is what lets the call below stay unguarded. */
 extern void nros_zephyr_trace_marker(uint32_t marker_id, uint32_t arg);
-extern void rclc_set_trace_sink(void (*sink)(uint32_t, uint32_t));
+extern int rclc_set_default_trace_sink(void (*sink)(uint32_t, uint32_t));
 
 extern int nros_zephyr_tier_task_create(void* (*entry)(void*), void* arg, int32_t priority,
                                         const char* name, size_t stack_bytes, uint32_t core_plus1,
@@ -787,8 +787,14 @@ int32_t nros_board_zephyr_run_tiers_tasks_in(const char* locator, uint8_t domain
     /* phase-8 W4 — install the CTF sink BEFORE the executor is opened, so the
      * registration events emitted as callbacks are added are not lost. A sink
      * installed later is not an error, but every callback registered before it
-     * decodes as a bare `handle N` with no name. */
-    rclc_set_trace_sink(nros_zephyr_trace_marker);
+     * decodes as a bare `handle N` with no name.
+     *
+     * The DEFAULT sink only: an application that installed its own before
+     * main() (a SYS_INIT, as the Autoware safety island's tracing does) keeps
+     * it. `ZephyrBoard::run_components` installs none, so a sink set before
+     * main() reached the executor there and was replaced here, the moment an
+     * image moved to tiers. */
+    (void)rclc_set_default_trace_sink(nros_zephyr_trace_marker);
 
     /* --- Open the primary (owning) executor on the boot thread --- */
     const char* sn = (session_name != NULL && session_name[0] != '\0') ? session_name : "node";

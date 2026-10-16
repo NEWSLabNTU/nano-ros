@@ -3715,6 +3715,22 @@ NROS_PUBLIC const char *rclc_qos_policy_kind_to_cstr(uint32_t policy);
 NROS_PUBLIC void rclc_set_trace_sink(void (*sink)(uint32_t, uint32_t));
 
 /**
+ * Install `sink` as the callback trace sink only if none is installed yet.
+ *
+ * Returns 1 when `sink` was installed, 0 when a sink was already installed
+ * (it is kept) or the crate was built without `trace-callbacks`.
+ *
+ * For an entry path's DEFAULT sink: the Zephyr tier runner installs its
+ * platform shim this way, so a sink the application installed earlier (from
+ * a `SYS_INIT`, before `main()`) is not replaced.
+ *
+ * # Safety
+ * As [`rclc_set_trace_sink`]: `sink` must be a valid function pointer with
+ * that C ABI, re-entrant, and must not unwind.
+ */
+NROS_PUBLIC int32_t rclc_set_default_trace_sink(void (*sink)(uint32_t, uint32_t));
+
+/**
  * phase-474 I2 -- the application's start-up is over: arm the contract
  * monitors of every executor that waits for this
  * (`CONFIG_NROS_MONITOR_ARM_ON_CALL`). Call it where the application enters

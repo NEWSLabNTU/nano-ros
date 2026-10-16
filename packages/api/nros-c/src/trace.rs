@@ -65,6 +65,36 @@ pub unsafe extern "C" fn rclc_set_trace_sink(sink: Option<unsafe extern "C" fn(u
     let _ = sink;
 }
 
+/// Install `sink` as the callback trace sink only if none is installed yet.
+///
+/// Returns 1 when `sink` was installed, 0 when a sink was already installed
+/// (it is kept) or the crate was built without `trace-callbacks`.
+///
+/// For an entry path's DEFAULT sink: the Zephyr tier runner installs its
+/// platform shim this way, so a sink the application installed earlier (from
+/// a `SYS_INIT`, before `main()`) is not replaced.
+///
+/// # Safety
+/// As [`rclc_set_trace_sink`]: `sink` must be a valid function pointer with
+/// that C ABI, re-entrant, and must not unwind.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rclc_set_default_trace_sink(
+    sink: Option<unsafe extern "C" fn(u32, u32)>,
+) -> i32 {
+    #[cfg(all(feature = "trace-callbacks", feature = "rmw-cffi"))]
+    {
+        match sink {
+            Some(f) => i32::from(nros_node::executor::callback_trace::set_trace_sink_if_unset(f)),
+            None => 0,
+        }
+    }
+    #[cfg(not(all(feature = "trace-callbacks", feature = "rmw-cffi")))]
+    {
+        let _ = sink;
+        0
+    }
+}
+
 /// phase-474 I2 -- the application's start-up is over: arm the contract
 /// monitors of every executor that waits for this
 /// (`CONFIG_NROS_MONITOR_ARM_ON_CALL`). Call it where the application enters
