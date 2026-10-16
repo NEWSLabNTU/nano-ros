@@ -2278,6 +2278,7 @@ dependencies = [
  "json5",
  "libc",
  "nros",
+ "nros-board-common",
  "nros-build-paths",
  "nros-builtin-interfaces",
  "nros-cargo-profile",

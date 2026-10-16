@@ -319,6 +319,36 @@ codegen_out = "build-fixtures/demo_bringup"
 target_dir = "target-fixtures/freertos"
 target = "thumbv7m-none-eabi"
 
+# phase-497 W3 (RFC-0103 D10a) — the multihost pair on the host bridge
+# `qemu-br` (`[network.br]`, `attach = { bridge = "qemu-br" }`): robot1 the
+# talker, robot2 the listener, each with its own address on 192.0.3.0/24.
+# `freertos_bridge_pair_delivers_over_the_host_bridge` launches them with the
+# `-nic` their resolved network renders. One target dir per row: each image is
+# its own cargo root (issue 0616).
+[[workspace_fixture]]
+id = "workspace-rust-freertos-br-robot1"
+platform = "freertos"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/demo_bringup"
+image = "freertos_br_robot1"
+codegen_out = "build-fixtures/demo_bringup"
+target_dir = "target-fixtures/freertos-br-robot1"
+target = "thumbv7m-none-eabi"
+
+[[workspace_fixture]]
+id = "workspace-rust-freertos-br-robot2"
+platform = "freertos"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/demo_bringup"
+image = "freertos_br_robot2"
+codegen_out = "build-fixtures/demo_bringup"
+target_dir = "target-fixtures/freertos-br-robot2"
+target = "thumbv7m-none-eabi"
+
 [[workspace_fixture]]
 id = "workspace-rust-threadx-linux"
 platform = "threadx-linux"

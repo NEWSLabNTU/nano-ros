@@ -192,8 +192,15 @@ void nros_zephyr_epoch_acquire_configured(void) {
  * no meaning on either field. */
 void nros_zephyr_trace_marker(uint32_t marker_id, uint32_t arg) {
 #ifdef CONFIG_TRACING_CTF
-    extern void sys_trace_app_marker(uint32_t, uint32_t);
-    sys_trace_app_marker(marker_id, arg);
+    /* WEAK: an image with CTF tracing but without the out-of-tree patch (one
+     * that records its own events, as the safety island's RAM backend does)
+     * links, and the forward is skipped. A strong reference failed that
+     * image's link the first time it took the tier runner, which is the only
+     * caller that installs this shim. */
+    extern void sys_trace_app_marker(uint32_t, uint32_t) __attribute__((weak));
+    if (sys_trace_app_marker != NULL) {
+        sys_trace_app_marker(marker_id, arg);
+    }
 #else
     (void)marker_id;
     (void)arg;

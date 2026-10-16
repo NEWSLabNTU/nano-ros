@@ -20,15 +20,18 @@
 //! decodes at boot; the encoder needs `alloc`, so it is behind
 //! `build-helpers`, which the CLI enables.
 //!
-//! Format — interfaces separated by `|`, each seven `,`-separated fields:
+//! Format — interfaces separated by `|`, each eight `,`-separated fields:
 //!
 //! ```text
-//! <if>,<kind>,<network>,<address>,<prefix>,<gateway>,<mac>
-//! eth0,ethernet,qemu,10.0.2.50,24,10.0.2.2,02:00:00:4f:1c:a2
+//! <if>,<kind>,<network>,<address>,<prefix>,<gateway>,<mac>,<attach>
+//! eth0,ethernet,qemu,10.0.2.50,24,10.0.2.2,02:00:00:4f:1c:a2,slirp
 //! ```
 //!
 //! `<address>` is dotted IPv4 or `dhcp`; `<gateway>` is dotted IPv4 or `-`
-//! (the network states none); `<mac>` is six hex bytes. A board that cannot
+//! (the network states none); `<mac>` is six hex bytes; `<attach>` is how an
+//! EMULATED image joins the network (D10a, phase-497 W3) — `slirp`,
+//! `bridge=<dev>`, `tap=<dev>`, or `-` for a physical-only network. Firmware
+//! ignores `<attach>`; a QEMU launcher renders it with [`qemu_nic`]. A board that cannot
 //! take a leased address never sees `dhcp`: the resolver refuses it for a
 //! board whose interface does not declare a DHCP client.
 
@@ -61,6 +64,21 @@ pub struct NetIf<'a> {
     pub gateway: Option<[u8; 4]>,
     /// The interface's MAC: stated by the image, else derived.
     pub mac: [u8; 6],
+    /// How an emulated image joins the network.
+    pub attach: Attach<'a>,
+}
+
+/// `[network.<name>] attach` (D10a): how an EMULATED image joins a network.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Attach<'a> {
+    /// QEMU's user-mode network, private to the VM.
+    Slirp,
+    /// A host bridge device (`-nic bridge,br=<dev>`).
+    Bridge(&'a str),
+    /// A host TAP device (`-nic tap,ifname=<dev>`).
+    Tap(&'a str),
+    /// None: a physical-only network, which no emulated image can join.
+    None,
 }
 
 impl NetIf<'_> {
@@ -139,8 +157,21 @@ fn decode_one(s: &str) -> Result<NetIf<'_>, DecodeError> {
     };
     let mac = parse_mac(next("an interface has no MAC")?)
         .ok_or(DecodeError("a MAC is not six hex bytes"))?;
+    let attach = match next("an interface has no attach field")? {
+        "slirp" => Attach::Slirp,
+        "-" => Attach::None,
+        a => match a.split_once('=') {
+            Some(("bridge", d)) if !d.is_empty() => Attach::Bridge(d),
+            Some(("tap", d)) if !d.is_empty() => Attach::Tap(d),
+            _ => {
+                return Err(DecodeError(
+                    "an attach is not slirp, bridge=<dev>, tap=<dev> or -",
+                ));
+            }
+        },
+    };
     if f.next().is_some() {
-        return Err(DecodeError("an interface has more than seven fields"));
+        return Err(DecodeError("an interface has more than eight fields"));
     }
     if name.is_empty() || kind.is_empty() || network.is_empty() {
         return Err(DecodeError(
@@ -155,6 +186,7 @@ fn decode_one(s: &str) -> Result<NetIf<'_>, DecodeError> {
         prefix,
         gateway,
         mac,
+        attach,
     })
 }
 
@@ -209,8 +241,14 @@ pub fn encode(ifs: &[NetIf<'_>]) -> String {
                 Address::Dhcp => "dhcp".to_string(),
             };
             let gw = i.gateway.map_or_else(|| "-".to_string(), dotted);
+            let attach = match i.attach {
+                Attach::Slirp => "slirp".to_string(),
+                Attach::Bridge(d) => format!("bridge={d}"),
+                Attach::Tap(d) => format!("tap={d}"),
+                Attach::None => "-".to_string(),
+            };
             format!(
-                "{},{},{},{addr},{},{gw},{}",
+                "{},{},{},{addr},{},{gw},{},{attach}",
                 i.name,
                 i.kind,
                 i.network,
@@ -220,6 +258,64 @@ pub fn encode(ifs: &[NetIf<'_>]) -> String {
         })
         .collect::<Vec<_>>()
         .join("|")
+}
+
+/// QEMU's `-nic` value for a guest with no image network: its own user-mode
+/// (SLIRP) network, which is the built-in `qemu` network (RFC-0103 D10).
+/// `model` is the board's NIC model (`lan9118`, `open_eth`,
+/// `virtio-net-device`). One spelling for every launcher.
+#[cfg(feature = "build-helpers")]
+#[must_use]
+pub fn slirp_nic(model: &str) -> String {
+    format!("user,model={model}")
+}
+
+/// QEMU's `-nic` value for interface `i` of an emulated image (D10a,
+/// phase-497 W3): its network's `attach`, the board's NIC `model`, and the
+/// image's MAC. A user-mode network off QEMU's own `10.0.2.0/24` passes its
+/// subnet and gateway (`net=` / `host=`), so the guest's static address is
+/// on the network QEMU makes.
+///
+/// # Errors
+///
+/// A network with no `attach` is physical-only: an emulated image cannot
+/// join it, and launching one anyway would put the guest on no network.
+#[cfg(feature = "build-helpers")]
+pub fn qemu_nic(i: &NetIf<'_>, model: &str) -> Result<String, String> {
+    let mac = format_mac(i.mac);
+    let dotted = |o: [u8; 4]| format!("{}.{}.{}.{}", o[0], o[1], o[2], o[3]);
+    match i.attach {
+        Attach::Slirp => {
+            let mut v = format!("user,model={model},mac={mac}");
+            let base = match i.address {
+                Address::Static(ip) => {
+                    let m = u32::from_be_bytes(i.netmask());
+                    Some((u32::from_be_bytes(ip) & m).to_be_bytes())
+                }
+                Address::Dhcp => None,
+            };
+            if i.network != "qemu"
+                && let Some(base) = base
+            {
+                v.push_str(&format!(",net={}/{}", dotted(base), i.prefix));
+                if let Some(g) = i.gateway {
+                    v.push_str(&format!(",host={}", dotted(g)));
+                }
+            }
+            Ok(v)
+        }
+        Attach::Bridge(dev) => Ok(format!("bridge,br={dev},model={model},mac={mac}")),
+        Attach::Tap(dev) => Ok(format!(
+            "tap,ifname={dev},script=no,downscript=no,model={model},mac={mac}"
+        )),
+        Attach::None => Err(format!(
+            "interface `{}` sits on network `{}`, which states no `attach` — it is a \
+             physical-only network, and an emulated image cannot join it (RFC-0103 D10a). \
+             Add `attach = \"slirp\"`, `{{ bridge = \"<dev>\" }}` or `{{ tap = \"<dev>\" }}` to \
+             `[network.{}]`",
+            i.name, i.network, i.network
+        )),
+    }
 }
 
 /// `02:00:00:4f:1c:a2`.
@@ -245,6 +341,7 @@ mod tests {
         prefix: 24,
         gateway: Some([10, 0, 2, 2]),
         mac: [0x02, 0x00, 0x00, 0x4f, 0x1c, 0xa2],
+        attach: Attach::Slirp,
     };
 
     #[cfg(feature = "build-helpers")]
@@ -257,13 +354,14 @@ mod tests {
             prefix: 16,
             gateway: None,
             mac: [0x52, 0x54, 0, 0, 0, 1],
+            attach: Attach::Bridge("br0"),
             ..ETH0
         };
         let text = encode(&[ETH0, eth1]);
         assert_eq!(
             text,
-            "eth0,ethernet,qemu,10.0.2.50,24,10.0.2.2,02:00:00:4f:1c:a2|\
-             eth1,ethernet,lab,dhcp,16,-,52:54:00:00:00:01"
+            "eth0,ethernet,qemu,10.0.2.50,24,10.0.2.2,02:00:00:4f:1c:a2,slirp|\
+             eth1,ethernet,lab,dhcp,16,-,52:54:00:00:00:01,bridge=br0"
         );
         let back: Vec<_> = interfaces(&text).collect::<Result<_, _>>().unwrap();
         assert_eq!(back, [ETH0, eth1]);
@@ -271,6 +369,50 @@ mod tests {
         assert_eq!(interface(&text, "eth1").unwrap(), Some(eth1));
         assert_eq!(back[0].netmask(), [255, 255, 255, 0]);
         assert_eq!(back[1].ip(), None);
+    }
+
+    /// phase-497 W3 — the launcher's `-nic` comes from the network's
+    /// `attach`, and a physical-only network refuses an emulated image.
+    #[cfg(feature = "build-helpers")]
+    #[test]
+    fn qemu_nic_renders_the_attach_and_refuses_a_physical_network() {
+        assert_eq!(
+            qemu_nic(&ETH0, "lan9118").unwrap(),
+            "user,model=lan9118,mac=02:00:00:4f:1c:a2"
+        );
+        let lan = NetIf {
+            network: "lan",
+            address: Address::Static([192, 168, 1, 20]),
+            gateway: Some([192, 168, 1, 1]),
+            ..ETH0
+        };
+        assert_eq!(
+            qemu_nic(&lan, "lan9118").unwrap(),
+            "user,model=lan9118,mac=02:00:00:4f:1c:a2,net=192.168.1.0/24,host=192.168.1.1"
+        );
+        let br = NetIf {
+            attach: Attach::Bridge("qemu-br"),
+            ..lan
+        };
+        assert_eq!(
+            qemu_nic(&br, "open_eth").unwrap(),
+            "bridge,br=qemu-br,model=open_eth,mac=02:00:00:4f:1c:a2"
+        );
+        let tap = NetIf {
+            attach: Attach::Tap("tap0"),
+            ..lan
+        };
+        assert!(
+            qemu_nic(&tap, "lan9118")
+                .unwrap()
+                .starts_with("tap,ifname=tap0,script=no,downscript=no,")
+        );
+        let phys = NetIf {
+            attach: Attach::None,
+            ..lan
+        };
+        assert!(qemu_nic(&phys, "lan9118").unwrap_err().contains("D10a"));
+        assert_eq!(slirp_nic("lan9118"), "user,model=lan9118");
     }
 
     #[test]
@@ -281,12 +423,14 @@ mod tests {
     #[test]
     fn a_malformed_text_is_an_error_not_a_default() {
         for bad in [
-            "eth0,ethernet,qemu,10.0.2,24,-,02:00:00:00:00:01",
-            "eth0,ethernet,qemu,10.0.2.5,33,-,02:00:00:00:00:01",
-            "eth0,ethernet,qemu,10.0.2.5,24,-,02:00:00:00:01",
-            "eth0,ethernet,qemu,10.0.2.5,24,-",
-            "eth0,ethernet,qemu,10.0.2.5,24,-,02:00:00:00:00:01,x",
-            ",ethernet,qemu,10.0.2.5,24,-,02:00:00:00:00:01",
+            "eth0,ethernet,qemu,10.0.2,24,-,02:00:00:00:00:01,slirp",
+            "eth0,ethernet,qemu,10.0.2.5,33,-,02:00:00:00:00:01,slirp",
+            "eth0,ethernet,qemu,10.0.2.5,24,-,02:00:00:00:01,slirp",
+            "eth0,ethernet,qemu,10.0.2.5,24,-,02:00:00:00:00:01",
+            "eth0,ethernet,qemu,10.0.2.5,24,-,02:00:00:00:00:01,wifi",
+            "eth0,ethernet,qemu,10.0.2.5,24,-,02:00:00:00:00:01,bridge=",
+            "eth0,ethernet,qemu,10.0.2.5,24,-,02:00:00:00:00:01,slirp,x",
+            ",ethernet,qemu,10.0.2.5,24,-,02:00:00:00:00:01,slirp",
         ] {
             assert!(primary(bad).is_err(), "{bad}");
         }

@@ -21,9 +21,6 @@ deploy = ["mps2-an385-baremetal"]
 
 [features]
 default = []
-# The board crate's `docker` network config, through the selection package,
-# which passes the board's own features through (issue 1305).
-docker = ["qemu_bsp_large_msg_test_nros_selection/docker"]
 
 [dependencies]
 # The image's board crate (hardware + network init), its RMW backend, the

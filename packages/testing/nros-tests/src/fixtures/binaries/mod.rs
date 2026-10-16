@@ -3645,6 +3645,31 @@ pub fn build_freertos_workspace_rust_realtime_entry() -> TestResult<&'static Pat
         .map(|p| p.as_path())
 }
 
+/// phase-497 W3 (RFC-0103 D10a) — one image of the FreeRTOS multihost pair on
+/// the host bridge (`workspaces/rust`'s `[network.br]`): its binary, and the
+/// network file `nros build` wrote for it (`build/nros/net/<image>.toml`),
+/// which the launcher renders into `-nic`. `which` is `robot1` (talker) or
+/// `robot2` (listener).
+pub fn freertos_bridge_pair_image(which: &str) -> TestResult<(PathBuf, PathBuf)> {
+    let image = format!("freertos_br_{which}");
+    let fixture_id = format!("workspace-rust-freertos-br-{which}");
+    let ws = workspace_example_dir("rust")?;
+    let target_dir = crate::fixtures::groups::workspace_artifact_dir(&fixture_id)?;
+    let binary_path = target_dir.join(format!(
+        "thumbv7m-none-eabi/{}/{image}_entry",
+        cargo_target_profile_dir()
+    ));
+    let binary = require_prebuilt_workspace_binary(
+        &fixture_id,
+        &binary_path,
+        &target_dir.join(workspace_fixture_stamp_name(&fixture_id)),
+    )?;
+    Ok((
+        binary,
+        ws.join("build/nros/net").join(format!("{image}.toml")),
+    ))
+}
+
 pub fn build_freertos_workspace_cpp_realtime_entry() -> TestResult<&'static Path> {
     FREERTOS_WORKSPACE_CPP_REALTIME_ENTRY_BINARY
         .get_or_try_init(|| {

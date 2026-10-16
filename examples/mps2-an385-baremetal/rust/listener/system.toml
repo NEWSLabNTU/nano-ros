@@ -4,6 +4,9 @@
 
 
 [system]
+# The image a plain build (and every fixture row) takes; `docker` below is
+# the compose test's (`tests/qemu-baremetal`), built with `--image docker`.
+default_images = ["mps2-an385-baremetal"]
 name = "qemu_bsp_listener"
 rmw = "zenoh"
 domain_id = 0
@@ -22,3 +25,17 @@ dispatch = "deferred"
 board = "qemu-mps2-an385"
 locator = "tcp/10.0.2.2:10500"
 net = { eth0 = { network = "qemu", host = 11 } }
+
+# phase-497 W3 (RFC-0103 D10) — the network `tests/qemu-baremetal` runs this
+# image on: each container's own bridge `br0` (192.168.100.1/24, NAT'd onto the
+# compose network where zenohd is 172.20.0.2), joined through TAP `tap0`. It
+# replaced the board crate's `docker` feature, which hard-coded the same plan.
+[network.docker]
+subnet = "192.168.100.0/24"
+gateway = "192.168.100.1"
+router = "tcp/172.20.0.2:7447"
+attach = { tap = "tap0" }
+
+[image.docker]
+board = "qemu-mps2-an385"
+net = { eth0 = { network = "docker", host = 11, mac = "02:00:00:00:00:01" } }

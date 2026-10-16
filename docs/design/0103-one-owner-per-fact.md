@@ -554,7 +554,11 @@ router-host = 10.0.2.2`, `attach = "slirp"`, `dhcp = false`. A lab bridge is
 `[network.lab] subnet = …, gateway = …, router = "tcp/192.168.50.1:7447"` with
 no `attach`; QEMU guests can join the same bridge by adding
 `attach = { bridge = "br0" }`, and then real boards and guests share one
-address plan, one collision check and one router.
+address plan, one collision check and one router. *Built 2026-10-16
+(phase-497 W3):* `attach` reaches the launcher through the resolved network,
+and ONE renderer (`nros_board_common::image_net::qemu_nic`, also behind
+`nros ws qemu-nic`) turns it into QEMU's `-nic`; a network with no `attach`
+refuses an emulated image there.
 
 **D10b — An address is static or leased, and a MAC is always unique.**
 `[image.<id>.net.<if>]` takes `network`, then exactly one of `address` (full

@@ -20,10 +20,10 @@
 ///   project-defined network (phase-497); until then an image states its own
 ///   address.
 ///
-/// - **Docker mode** (`docker` feature): Container with NAT networking
-///   - IP: 192.168.100.10/24
-///   - Gateway: 192.168.100.1
-///   - Zenoh: tcp/172.20.0.2:7447
+/// - **Docker** (`tests/qemu-baremetal`): not a board mode. The container's
+///   network is a project network, `[network.docker]` in the leaves the
+///   compose test runs, and their `[image.docker]` addresses on it (RFC-0103
+///   D10, phase-497 W3 — this was a `docker` cargo feature).
 ///
 /// - **QEMU user-mode / slirp** ([`Config::qemu_slirp`], NOT the default):
 ///   - IP: 10.0.2.10/24
@@ -78,36 +78,17 @@ const fn ip_last(last: u8) -> [u8; 4] {
 #[cfg(feature = "ethernet")]
 impl Default for Config {
     fn default() -> Self {
-        #[cfg(feature = "docker")]
-        {
-            Self {
-                mac: [0x02, 0x00, 0x00, 0x00, 0x00, 0x00],
-                ip: [192, 168, 100, 10],
-                prefix: 24,
-                gateway: [192, 168, 100, 1],
-                #[cfg(feature = "serial")]
-                uart_base: cmsdk_uart::UART0_BASE,
-                #[cfg(feature = "serial")]
-                baudrate: 115200,
-                zenoh_locator: "tcp/172.20.0.2:7447",
-                domain_id: 0,
-            }
-        }
-
-        #[cfg(not(feature = "docker"))]
-        {
-            Self {
-                mac: BOARD_NET_MAC,
-                ip: BOARD_NET_IP,
-                prefix: nros_board_common::prefix_from_netmask(BOARD_NET_NETMASK),
-                gateway: BOARD_NET_GATEWAY,
-                #[cfg(feature = "serial")]
-                uart_base: cmsdk_uart::UART0_BASE,
-                #[cfg(feature = "serial")]
-                baudrate: 115200,
-                zenoh_locator: BOARD_NET_LOCATOR,
-                domain_id: 0,
-            }
+        Self {
+            mac: BOARD_NET_MAC,
+            ip: BOARD_NET_IP,
+            prefix: nros_board_common::prefix_from_netmask(BOARD_NET_NETMASK),
+            gateway: BOARD_NET_GATEWAY,
+            #[cfg(feature = "serial")]
+            uart_base: cmsdk_uart::UART0_BASE,
+            #[cfg(feature = "serial")]
+            baudrate: 115200,
+            zenoh_locator: BOARD_NET_LOCATOR,
+            domain_id: 0,
         }
     }
 }
@@ -161,31 +142,12 @@ impl Config {
     /// Configuration preset for a listener/subscriber node
     #[cfg(feature = "ethernet")]
     pub fn listener() -> Self {
-        #[cfg(feature = "docker")]
-        {
-            Self {
-                mac: [0x02, 0x00, 0x00, 0x00, 0x00, 0x01],
-                ip: [192, 168, 100, 11],
-                prefix: 24,
-                gateway: [192, 168, 100, 1],
-                #[cfg(feature = "serial")]
-                uart_base: cmsdk_uart::UART0_BASE,
-                #[cfg(feature = "serial")]
-                baudrate: 115200,
-                zenoh_locator: "tcp/172.20.0.2:7447",
-                domain_id: 0,
-            }
-        }
-
-        #[cfg(not(feature = "docker"))]
-        {
-            // The default's identity with the last IP octet and MAC byte
-            // advanced by one — derived, so the pair cannot drift apart.
-            let mut c = Self::default();
-            c.ip[3] = c.ip[3].wrapping_add(1);
-            c.mac[5] = c.mac[5].wrapping_add(1);
-            c
-        }
+        // The default's identity with the last IP octet and MAC byte
+        // advanced by one — derived, so the pair cannot drift apart.
+        let mut c = Self::default();
+        c.ip[3] = c.ip[3].wrapping_add(1);
+        c.mac[5] = c.mac[5].wrapping_add(1);
+        c
     }
 
     /// Alias for `Config::default()`
@@ -306,10 +268,6 @@ impl Config {
         let ip = Self::mac_to_link_local(&mac);
         let gateway = [0, 0, 0, 0];
 
-        #[cfg(feature = "docker")]
-        let zenoh_locator: &'static str = "tcp/172.20.0.2:7447";
-
-        #[cfg(not(feature = "docker"))]
         let zenoh_locator: &'static str = "tcp/192.0.3.1:7447";
 
         Self {

@@ -24,6 +24,10 @@ host-only-reason = "the host test harness"
 nros-condvar-contract = { path = "../nros-condvar-contract" }
 # RFC-0103 D6 — the store root has one Rust spelling (`store_root()`).
 nros-build-paths = { path = "../../tooling/nros-build-paths" }
+# phase-497 W3 (RFC-0103 D10a) — a QEMU guest's `-nic` is rendered from its
+# image's network by the ONE function the CLI's `nros ws qemu-nic` uses
+# (`nros_board_common::image_net::qemu_nic`), never spelled per launcher.
+nros-board-common = { path = "../../boards/nros-board-common", features = ["build-helpers"] }
 # Test framework
 rstest = "0.24"
 duct = "0.13"

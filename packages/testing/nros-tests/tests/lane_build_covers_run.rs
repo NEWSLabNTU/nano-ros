@@ -269,11 +269,16 @@ fn shell_unclaimed_matches_the_rust_declaration() {
              does not claim. They are two spellings of ONE fact; fix both."
         );
     }
-    // The module-level lanes claim everything they select.
+    // The module-level lanes claim everything they select but a host bridge,
+    // which no lane claims (phase-497 W3: it needs root to provision).
     for token in ["all", "linux"] {
         let (code, out) = lane_sh(&format!("nros_lane_unclaimed {token}"), None);
         assert_eq!(code, 0, "nros_lane_unclaimed {token} failed:\n{out}");
-        assert_eq!(out.trim(), "", "{token} must claim every capability");
+        assert_eq!(
+            out.trim(),
+            "host-bridge",
+            "{token} must claim every capability but the host bridge"
+        );
     }
     let (code, out) = lane_sh("nros_lane_unclaimed not-a-lane", None);
     assert_ne!(code, 0, "an unknown lane must fail, got:\n{out}");

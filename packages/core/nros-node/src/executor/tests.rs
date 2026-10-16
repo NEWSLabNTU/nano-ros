@@ -15124,3 +15124,28 @@ fn raw_action_endpoints_are_keyed_on_their_own_hashes() {
         );
     }
 }
+
+/// A default sink (the Zephyr tier runner's) installs only into an empty
+/// slot: a sink the application installed first is kept.
+#[cfg(all(feature = "std", feature = "trace-callbacks"))]
+#[test]
+fn a_default_trace_sink_keeps_the_applications_sink() {
+    use super::callback_trace::{set_trace_sink, set_trace_sink_if_unset};
+    unsafe extern "C" fn app_sink(_: u32, _: u32) {}
+    unsafe extern "C" fn default_sink(_: u32, _: u32) {}
+    let _g = trace_sink_lock();
+
+    set_trace_sink(None);
+    assert!(
+        set_trace_sink_if_unset(default_sink),
+        "an empty slot takes the default"
+    );
+    set_trace_sink(None);
+
+    set_trace_sink(Some(app_sink));
+    assert!(
+        !set_trace_sink_if_unset(default_sink),
+        "the application's sink is kept"
+    );
+    set_trace_sink(None);
+}

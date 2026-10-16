@@ -51,6 +51,36 @@ fn manifest_row(manifest: &toml::Value, fixture_id: &str) -> Option<toml::Value>
     })
 }
 
+/// `[image.<id>] locator` over `[image_defaults]`, then the `router` of the
+/// network the image's FIRST interface names (RFC-0103 D10d, phase-497 W2),
+/// then `[system]` — `nros_orchestration_ir::leaf_system`'s precedence, the
+/// same reading `scripts/lib/image_locator.py` gives.
+fn stated_locator<'a>(doc: &'a toml::Value, id: &str) -> Option<&'a str> {
+    if let Some(l) = str_at(doc, &["image", id, "locator"])
+        .or_else(|| str_at(doc, &["image_defaults", "locator"]))
+    {
+        return Some(l);
+    }
+    let mut ifs: std::collections::BTreeMap<&str, &toml::Value> = Default::default();
+    for t in [
+        doc.get("image_defaults"),
+        doc.get("image").and_then(|i| i.get(id)),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        if let Some(net) = t.get("net").and_then(|n| n.as_table()) {
+            ifs.extend(net.iter().map(|(k, v)| (k.as_str(), v)));
+        }
+    }
+    let router = ifs
+        .values()
+        .next()
+        .and_then(|first| first.get("network")?.as_str())
+        .and_then(|name| str_at(doc, &["network", name, "router"]));
+    router.or_else(|| str_at(doc, &["system", "locator"]))
+}
+
 /// The locator `fixture_id`'s image bakes, resolved against the checkout at
 /// `root`. `Err` names what was missing.
 pub fn baked_locator_in(root: &Path, fixture_id: &str) -> Result<String, String> {
@@ -64,10 +94,7 @@ pub fn baked_locator_in(root: &Path, fixture_id: &str) -> Result<String, String>
         let path = root.join(dir).join(bringup).join("system.toml");
         let doc = read_doc(&path)?;
         let id = image.rsplit(':').next().unwrap_or(image);
-        let stated = str_at(&doc, &["image", id, "locator"])
-            .or_else(|| str_at(&doc, &["image_defaults", "locator"]))
-            .or_else(|| str_at(&doc, &["system", "locator"]));
-        if let Some(l) = stated {
+        if let Some(l) = stated_locator(&doc, id) {
             return Ok(l.to_owned());
         }
     } else if let (Some(dir), None) = (str_at(&row, &["dir"]), str_at(&row, &["image"])) {
@@ -84,11 +111,23 @@ pub fn baked_locator_in(root: &Path, fixture_id: &str) -> Result<String, String>
                 .and_then(|v| v.as_table())
                 .map(|t| t.keys().collect())
                 .unwrap_or_default();
-            if let [id] = images.as_slice() {
-                let stated = str_at(&doc, &["image", id, "locator"])
-                    .or_else(|| str_at(&doc, &["image_defaults", "locator"]))
-                    .or_else(|| str_at(&doc, &["system", "locator"]));
-                if let Some(l) = stated {
+            // The leaf reader's rule: its one image, else the one
+            // `[system] default_images` names.
+            let default = doc
+                .get("system")
+                .and_then(|s| s.get("default_images"))
+                .and_then(|d| d.as_array())
+                .and_then(|d| match d.as_slice() {
+                    [one] => one.as_str(),
+                    _ => None,
+                })
+                .and_then(|one| images.iter().copied().find(|i| i.as_str() == one));
+            let chosen = match images.as_slice() {
+                [id] => Some(*id),
+                _ => default,
+            };
+            if let Some(id) = chosen {
+                if let Some(l) = stated_locator(&doc, id) {
                     return Ok(l.to_owned());
                 }
             }

@@ -64,6 +64,41 @@ pub struct Interface {
     pub mac_derived: bool,
     /// Whether every image on this network gets a private instance of it.
     pub per_image: bool,
+    /// How an emulated image joins the network (D10a), for the launcher.
+    pub attach: NetAttach,
+}
+
+/// `[network.<name>] attach`, owned.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum NetAttach {
+    /// `"slirp"`.
+    Slirp,
+    /// `{ bridge = "<dev>" }`.
+    Bridge(String),
+    /// `{ tap = "<dev>" }`.
+    Tap(String),
+    /// Absent: a physical-only network.
+    None,
+}
+
+impl NetAttach {
+    fn of(net: &NetworkDef) -> Self {
+        match &net.attach {
+            Some(system_net::Attach::Mode(_)) => Self::Slirp,
+            Some(system_net::Attach::Bridge { bridge }) => Self::Bridge(bridge.clone()),
+            Some(system_net::Attach::Tap { tap }) => Self::Tap(tap.clone()),
+            None => Self::None,
+        }
+    }
+
+    fn text(&self) -> text::Attach<'_> {
+        match self {
+            Self::Slirp => text::Attach::Slirp,
+            Self::Bridge(d) => text::Attach::Bridge(d),
+            Self::Tap(d) => text::Attach::Tap(d),
+            Self::None => text::Attach::None,
+        }
+    }
 }
 
 /// An image's resolved network: its interfaces, by name.
@@ -88,6 +123,7 @@ impl ImageNet {
                 prefix: i.prefix,
                 gateway: i.gateway,
                 mac: i.mac,
+                attach: i.attach.text(),
             })
             .collect();
         text::encode(&ifs)
@@ -123,12 +159,20 @@ impl ImageNet {
                 text::format_mac(i.mac),
                 if i.mac_derived { "  # derived" } else { "" }
             ));
+            match &i.attach {
+                NetAttach::Slirp => out.push_str("attach = \"slirp\"\n"),
+                NetAttach::Bridge(d) => out.push_str(&format!("attach = {{ bridge = {d:?} }}\n")),
+                NetAttach::Tap(d) => out.push_str(&format!("attach = {{ tap = {d:?} }}\n")),
+                NetAttach::None => out.push_str("# attach: none — a physical-only network\n"),
+            }
         }
         out
     }
 }
 
-/// Where an image's resolved network is written, under a build dir.
+/// Where an image's resolved network is written: `<build>/nros/net/<image>.toml`,
+/// under the workspace's or the leaf's own `build/` — one path per image id,
+/// not per coordinate, so a launcher finds it from the id alone (phase-497 W3).
 #[must_use]
 pub fn file_path(build_dir: &Path, image: &str) -> PathBuf {
     build_dir
@@ -247,6 +291,7 @@ pub fn resolve(d: &ImageDecl<'_>, board: &BoardNet) -> Result<Option<ImageNet>, 
             prefix: net.subnet(&network)?.prefix,
             gateway: net.gateway_octets(&network)?,
             per_image: net.is_per_image(),
+            attach: NetAttach::of(&net),
             network,
             address,
             mac,
@@ -504,6 +549,38 @@ mod tests {
             "a physical/bridge network is shared"
         );
         check_collisions(&[("talker", &t), ("listener", &l)]).unwrap();
+        // A physical-only network: the launcher refuses an emulated image.
+        let t_text = t.text();
+        let ti = nros_board_common::image_net::primary(&t_text)
+            .unwrap()
+            .unwrap();
+        assert!(
+            nros_board_common::image_net::qemu_nic(&ti, "lan9118")
+                .unwrap_err()
+                .contains("physical-only")
+        );
+        // W3 — the same network with a bridge attach reaches the launcher.
+        let bridged = src.replace(
+            "router = \"tcp/192.0.3.1:7447\"\n",
+            "router = \"tcp/192.0.3.1:7447\"\nattach = { bridge = \"qemu-br\" }\n",
+        );
+        let tb = run(&bridged, "talker", &board, router.as_deref())
+            .unwrap()
+            .unwrap();
+        assert!(tb.text().ends_with(",bridge=qemu-br"), "{}", tb.text());
+        let tb_text = tb.text();
+        let bi = nros_board_common::image_net::primary(&tb_text)
+            .unwrap()
+            .unwrap();
+        assert!(
+            nros_board_common::image_net::qemu_nic(&bi, "lan9118")
+                .unwrap()
+                .starts_with("bridge,br=qemu-br,model=lan9118,mac=")
+        );
+        assert!(
+            tb.to_toml("talker")
+                .contains("attach = { bridge = \"qemu-br\" }")
+        );
 
         let dup = src.replace("host = 11", "host = 10");
         let l2 = run(&dup, "listener", &board, router.as_deref())

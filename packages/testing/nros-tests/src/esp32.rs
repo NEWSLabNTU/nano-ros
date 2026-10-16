@@ -333,7 +333,7 @@ pub fn start_esp32_qemu(flash_image: &Path, networking: bool) -> TestResult<Mana
     ]);
 
     if networking {
-        cmd.args(["-nic", "user,model=open_eth"]);
+        cmd.args(["-nic", &nros_board_common::image_net::slirp_nic("open_eth")]);
     } else {
         cmd.args(["-nic", "none"]);
     }
