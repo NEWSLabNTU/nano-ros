@@ -1,7 +1,7 @@
 ---
 id: 1935
 title: "`nros setup --tool X --source Y` installs the tool, never provisions the sources, and exits 0"
-status: open
+status: resolved
 type: bug
 area: [cli, setup, sdk]
 severity: medium
@@ -64,3 +64,35 @@ Sibling verbs with more than one selector flag were read the same way
 `entity_census.rs`). None drops requested work: `locate` unions `<names>` with
 `--all`, `ws sync --check` returns before `--dry-run` (both are read-only), and
 `build --check` retargets the plan rather than returning.
+
+## Resolution (2026-10-17)
+
+`run` no longer decides by return order. `route()` (`cmd/setup.rs`) picks
+the ONE arm from every selector on the line before the index is read, and
+refuses — naming the flag — any selector that arm does not consume, so no
+combination exits 0 over work it skipped. `--tool` + `--source` is one
+request: `run_install` installs the tools, then provisions the sources; a
+failed tool install stops before the sources with a non-zero exit.
+
+Proof, same scratch-store measurement as above on the fixed CLI:
+
+```
+$ NROS_HOME=<scratch>/psetup-home-after \
+    nros setup --tool arm-none-eabi-gcc --source freertos-kernel --source lwip
+nros setup --tool arm-none-eabi-gcc: prebuilt 13.2-nros5 (dist linux-x86_64) → <scratch>/sdk/arm-none-eabi-gcc/13.2-nros5
+nros setup --source freertos-kernel: source 10.6.2 — submodule third-party/freertos/kernel → <scratch>/sources/freertos-kernel/10.6.2+0adc196d [provisioned]
+nros setup --source lwip: source 2.2.0 — submodule third-party/freertos/lwip → <scratch>/sources/lwip/2.2.0+6233eb61 [provisioned]
+rc=0
+$ nros setup linux --tool ninja
+Error: nros setup: <board> 'linux' cannot be combined with `--tool`/`--source` (install the named packages) — …
+```
+
+Tests in `nros-cli-core` (the cli-tests lane), each made red by a mutation
+and green again on restore: the Install arm runs both halves in order (red
+under "return after the tools", the reported shape); 14 dropping
+combinations are refused by name (red with the refusal disabled, with
+Install consuming `<board>`, with the `--check` arm consuming `--source`);
+14 consumed combinations still route.
+
+The `check-template-copy-out` job in `.github/workflows/gate.yml` still runs
+two commands; one would do now, and it is left as is.
