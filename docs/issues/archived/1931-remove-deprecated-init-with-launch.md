@@ -1,7 +1,7 @@
 ---
 id: 1931
 title: "Remove the deprecated `init_with_launch*` entry points (Rust and C++) at the next breaking release"
-status: open
+status: resolved
 type: tech-debt
 area: [api]
 severity: low
@@ -57,3 +57,33 @@ At the first breaking release after the deprecation has shipped in one:
 - delete the two `init_api.rs` tests and the deprecated-forward case in
   `init_honours_ros_args.cpp`, and the `#[allow(deprecated)]` on the re-export;
 - mark the four ledger rows removed.
+
+## Resolution (2026-10-16)
+
+Removed now rather than after a release. The premise of "Why not now" was
+that the deprecation had shipped and deserved one release of warning; it had
+not — 0.6.0 was cut on 2026-10-14, before either deprecating PR, and both
+changelog fragments were still unreleased. So no released version ever
+carried the deprecation, and removing in the same release cycle costs a
+downstream user nothing a deprecation would have saved them. The maintainer
+asked for it on that basis.
+
+- Rust: `init_with_launch_auto`, `init_with_launch`,
+  `InitError::LaunchFileNotFound` and the `std::path::Path` import only the
+  path form used, deleted; the re-export drops them.
+- C++: both `rclcpp::init_with_launch*` declarations and definitions, and
+  `node.hpp`'s `<cstdio>` include (its one user was the `fopen` check; the
+  `::fprintf` sites come from `<stdio.h>`, and every other header that needs
+  `<cstdio>` includes it itself).
+- Tests: `init_api.rs`'s env-override case now calls `nros::init()` (the
+  coverage it gave — `ROS_DOMAIN_ID`/`NROS_LOCATOR`/`RMW_IMPLEMENTATION`
+  reaching the `Context` — is kept); the path-existence case and the C++
+  deprecated-forward case are deleted with what they tested.
+- The four ledger rows are deleted; `rust:InitError` notes the variant.
+- `changelog.d/1917.breaking.md` says REMOVED, with the replacements and the
+  one-line fix a pre-release `nros new` project needs; `1917.feat.md` keeps
+  only `init_in`.
+
+Sweep: `git grep -n 'init_with_launch\|LaunchFileNotFound' -- ':!docs/issues/archived' ':!docs/roadmap/archived' ':!CHANGELOG.md'`
+— only `changelog.d/1917.breaking.md`, the ledger's dated history, the
+2026-07-28 audit findings, and the module doc that records the removal.

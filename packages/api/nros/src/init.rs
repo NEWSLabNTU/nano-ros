@@ -47,9 +47,6 @@
 //!    locator and RMW choice from the environment — see "Where launch content
 //!    comes from" below.
 //!
-//! `init_with_launch_auto` / `init_with_launch` are deprecated spellings of
-//! [`init()`]: they read the same environment and no launch file.
-//!
 //! To actually open a session, call [`Context::create_executor`] (`alloc`) or
 //! [`Context::create_executor_in`] (caller-supplied backing, nothing leaked),
 //! then name each node with `Executor::create_node`. The older spelling —
@@ -67,18 +64,8 @@
 //! (`ROS_DOMAIN_ID`, `NROS_LOCATOR`, `NROS_SESSION_MODE`,
 //! `RMW_IMPLEMENTATION`) and, through [`init_with_args`] / [`Context::new`],
 //! per-process `--ros-args`. (Issue 1917 retired the runtime-overlay
-//! placeholder the deprecated `init_with_launch*` functions used to
-//! describe.)
-
-#[cfg(feature = "env")]
-// phase-359 W10 — kept, and it is not a spelling that can be unwound.
-// `init_with_launch` verifies a launch file EXISTS, which is a filesystem
-// question; `AsRef<Path>` is also what a Rust caller expects to pass a
-// `PathBuf`, a `&str` or a `Path` to. Narrowing the signature to `&str` would
-// trade a real ergonomic for one census point, which is moving the number
-// rather than the build. `init_with_launch` is behind `env`, which requires
-// `std`, so nothing here is reachable without one.
-use std::path::Path;
+//! placeholder and, with issue 1931, the `init_with_launch*` entry points
+//! named after it.)
 
 #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
 use core::mem::MaybeUninit;
@@ -99,9 +86,6 @@ use nros_rmw::SessionMode;
 /// Errors returned by the init API.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InitError {
-    /// `init_with_launch(path)` was passed a path that does not exist or
-    /// could not be read.
-    LaunchFileNotFound,
     /// A launch-derived env var (`ROS_DOMAIN_ID`, etc.) failed to parse —
     /// or, freestanding, the baked `NROS_DOMAIN_ID` is not a decimal integer.
     EnvParseFailed,
@@ -150,7 +134,6 @@ pub enum InitError {
 impl core::fmt::Display for InitError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            InitError::LaunchFileNotFound => f.write_str("launch file not found"),
             InitError::EnvParseFailed => f.write_str("env var parse failed"),
             InitError::DomainIdOutOfRange => f.write_str("domain id out of range"),
             InitError::RetiredEnvVar { name, replacement } => write!(
@@ -1474,38 +1457,4 @@ mod baked_tests {
         assert_eq!(ctx.domain_id, 11);
         assert_eq!(ctx.source, ContextSource::Baked);
     }
-}
-
-/// Deprecated: identical to [`init()`].
-///
-/// Reads the environment exactly as [`init()`] does and reads no launch file:
-/// the launch tree was resolved at build time, and the generated entry
-/// installs what it says (see the module docs, "Where launch content comes
-/// from"). The name promised more than that, so it is deprecated in favour of
-/// the one that does not.
-#[cfg(feature = "env")]
-#[deprecated(
-    since = "0.7.0",
-    note = "reads the environment and no launch file — identical to `nros::init()`; call that"
-)]
-pub fn init_with_launch_auto() -> Result<Context, InitError> {
-    read_env_context(ContextSource::Env)
-}
-
-/// Deprecated: [`init()`] behind a check that `path` exists.
-///
-/// Returns [`InitError::LaunchFileNotFound`] when `path` does not exist;
-/// otherwise reads the environment as [`init()`] does. The file's contents
-/// are not read.
-#[cfg(feature = "env")]
-#[deprecated(
-    since = "0.7.0",
-    note = "reads the environment and not the file — call `nros::init()` (check the path yourself if you relied on that)"
-)]
-pub fn init_with_launch(path: impl AsRef<Path>) -> Result<Context, InitError> {
-    let p = path.as_ref();
-    if !p.exists() {
-        return Err(InitError::LaunchFileNotFound);
-    }
-    read_env_context(ContextSource::Env)
 }

@@ -3,11 +3,7 @@
 //! Exercises the application-pkg pattern of the canonical init surface:
 //!
 //! - `nros::init()` — reads `ROS_DOMAIN_ID` / `NROS_LOCATOR` etc. into a
-//!   [`Context`].
-//! - The deprecated `nros::init_with_launch_auto()` /
-//!   `nros::init_with_launch(path)` — the same environment read (and, for the
-//!   path form, an existence check), kept working until they are removed.
-//!   They read no launch file and report `ContextSource::Env` (issue 1917).
+//!   [`Context`], defaults and overrides both.
 //!
 //! Pattern 1 (`nros::node!`) is covered by the existing component
 //! macro tests in Phase 172.W.3 (`nros-macros` unit tests +
@@ -95,25 +91,21 @@ fn nros_init_returns_context() {
 }
 
 #[test]
-#[allow(deprecated)] // the deprecated spelling must keep working until removed
-fn nros_init_with_launch_auto_applies_env_defaults() {
+fn nros_init_applies_env_overrides() {
     let _g = env_lock().lock().unwrap();
     let _g1 = EnvGuard::set("ROS_DOMAIN_ID", "42");
     let _g2 = EnvGuard::set("NROS_LOCATOR", "tcp/10.0.0.1:7777");
     let _g3 = EnvGuard::set("RMW_IMPLEMENTATION", "rmw_zenoh_cpp");
     let _g5 = EnvGuard::unset("NROS_RMW");
 
-    let ctx = nros::init_with_launch_auto().expect("init_with_launch_auto failed");
-    assert_eq!(
-        ctx.domain_id, 42,
-        "ROS_DOMAIN_ID=42 must propagate through the deprecated spelling too"
-    );
+    let ctx = nros::init().expect("nros::init failed");
+    assert_eq!(ctx.domain_id, 42, "ROS_DOMAIN_ID=42 must propagate");
     assert_eq!(ctx.locator, "tcp/10.0.0.1:7777");
     assert_eq!(ctx.rmw, "rmw_zenoh_cpp");
     assert_eq!(
         ctx.source,
         nros::ContextSource::Env,
-        "init_with_launch_auto reads the environment, so the context says Env"
+        "init() reads the environment, so the context says Env"
     );
 }
 
@@ -136,31 +128,4 @@ fn nros_init_refuses_retired_locator_alias() {
         }
     );
     assert!(err.to_string().contains("NROS_LOCATOR"), "{err}");
-}
-
-#[test]
-#[allow(deprecated)] // the deprecated spelling must keep working until removed
-fn nros_init_with_launch_path_resolves_relative() {
-    let _g = env_lock().lock().unwrap();
-    let _g1 = EnvGuard::set("ROS_DOMAIN_ID", "7");
-    let _g2 = EnvGuard::unset("NROS_LOCATOR");
-
-    // Stage a launch file. Its contents are not read; only its existence
-    // is checked.
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let path = tmp.path().join("system.launch.xml");
-    std::fs::write(
-        &path,
-        r#"<launch><node pkg="phase212_l5_pkg" exec="phase212_l5_exec"/></launch>"#,
-    )
-    .expect("write launch file");
-
-    let ctx = nros::init_with_launch(&path).expect("init_with_launch w/ valid path");
-    assert_eq!(ctx.domain_id, 7);
-    assert_eq!(ctx.source, nros::ContextSource::Env);
-
-    // Missing path → LaunchFileNotFound (so misspelled paths fail fast).
-    let missing = tmp.path().join("does-not-exist.launch.xml");
-    let err = nros::init_with_launch(&missing).expect_err("missing path should error");
-    assert_eq!(err, nros::InitError::LaunchFileNotFound);
 }
