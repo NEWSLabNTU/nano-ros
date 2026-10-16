@@ -78,3 +78,38 @@ nros_cli_usable() {
     esac
     return 1
 }
+
+# Issue 1926 — the CLI's SELF-REFUSALS, the text `stale_guard.rs` prints before
+# it dispatches any command. Output carrying one says nothing about the command
+# that was asked for: the binary declined to run it. A verdict builder records a
+# tool's output as an artifact, so it must never record one of these as a
+# verdict — the refusal is about the environment at the moment of the build,
+# and a later `just setup-cli` changes nothing the row's signature watches, so
+# the recorded refusal would be reused forever (issue 0445's absorbing shape).
+#
+# ONE list, matched with whitespace collapsed (cmake re-indents a FATAL_ERROR
+# message, cargo prefixes a build-script line). `check-verdict-cli-refusal`
+# requires every entry to occur verbatim in `stale_guard.rs`, so rewording the
+# refusal there turns that gate red instead of silently disarming this.
+NROS_CLI_REFUSAL_MARKERS=(
+    "in-tree nros CLI is STALE"
+    "does not belong to the checkout it is being run against"
+)
+
+# nros_cli_refusal_in <file>...
+#
+# 0 = some file carries a CLI self-refusal; the matched marker is printed.
+# 1 = none does (missing files count as none).
+nros_cli_refusal_in() {
+    local f flat m
+    for f in "$@"; do
+        [ -f "$f" ] || continue
+        flat="$(tr -s ' \t\r\n' '    ' < "$f")"
+        for m in "${NROS_CLI_REFUSAL_MARKERS[@]}"; do
+            case "$flat" in
+                *"$m"*) printf '%s\n' "$m"; return 0 ;;
+            esac
+        done
+    done
+    return 1
+}

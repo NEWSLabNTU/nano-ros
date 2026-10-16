@@ -160,6 +160,18 @@ template-copy-out:
 copy-out-cmake-root:
     @bash scripts/check-copy-out-cmake-root.sh
 
+# Issue 1926 — a verdict row records a tool's output whatever it says, and a
+# stale in-tree `nros` refusing to run was recorded as a configure's verdict,
+# then reused after `just setup-cli` (the signature watches the CLI's codegen
+# fingerprint, not its source stamp). `_cc_write_verdict_stamp` refuses to
+# record a CLI self-refusal and `cc_row_reusable` refuses to reuse one; this
+# checks the refusal markers still occur in `stale_guard.rs`, that the stamp
+# has one writer, and runs the real bodies against staged dirs.
+# FAST lane: no build — a grep and three staged dirs.
+[private]
+verdict-cli-refusal:
+    @bash scripts/check-verdict-cli-refusal.sh
+
 # Issue 1025 -- a packer must not invent the row's cargo args or env. The shared
 # cargo group key is a function of (platform, args, env); a consumer supplying
 # two of the three gets a directory the build never wrote to, and only once that

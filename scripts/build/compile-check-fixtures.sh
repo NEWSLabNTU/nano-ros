@@ -47,6 +47,9 @@ source "$repo_root/scripts/build/launch-resolver-identity.sh"
 source "$repo_root/scripts/build/board-facts.sh"
 # shellcheck source=scripts/lib/grep-q.sh
 source "$repo_root/scripts/lib/grep-q.sh"
+# issue 1926 — `nros_cli_refusal_in`: a verdict is never the CLI declining to run.
+# shellcheck source=cli-usable.sh
+source "$repo_root/scripts/build/cli-usable.sh"
 
 out_root="$(nros_build_dir "$NROS_KIND_COMPILE_CHECK")"
 mkdir -p "$out_root"
@@ -415,7 +418,21 @@ stage_and_build() {
 # Write the `.verdict` stamp. $1 staged dir, $2 the recorded compile's exit
 # status; `_cc_capture` has already put its stdout/stderr/exit in place.
 _cc_write_verdict_stamp() {
-    local staged="$1" status="$2"
+    local staged="$1" status="$2" refusal
+    # Issue 1926 — the ONE door every verdict builder records through, so the
+    # one place to ask whether what it captured IS a verdict. Output carrying
+    # the CLI's own self-refusal (stale, or foreign to this checkout) is about
+    # the environment, not the row: recording it made the refusal absorbing,
+    # because `just setup-cli` moves nothing the row's signature watches.
+    # Fail the BUILD instead (an infrastructure failure, like an absent cmake):
+    # no `.verdict` is written, the ERR trap marks `.build-failed`, and the
+    # next build re-runs the row.
+    if refusal="$(_cc_verdict_cli_refusal "$staged")"; then
+        echo "compile-check: $(basename "$staged"): the recorded output is the nros CLI refusing to run" >&2
+        echo "  (\"$refusal\"), not a verdict about this row — refusing to record it." >&2
+        echo "  Rebuild the CLI (just setup-cli) and rebuild the fixtures." >&2
+        return 1
+    fi
     {
         date -u +%Y-%m-%dT%H:%M:%SZ
         if [ "$_cc_resolver_arg" = "--resolver" ]; then
@@ -424,6 +441,14 @@ _cc_write_verdict_stamp() {
         fi
         printf 'exit=%s\n' "$status"
     } > "$staged/.verdict"
+}
+
+# Issue 1926 — print the CLI self-refusal any captured output in <staged>
+# carries (the recorded compile's and a prelude's), or return 1.
+_cc_verdict_cli_refusal() {
+    local staged="$1"
+    nros_cli_refusal_in "$staged"/verdict.stdout "$staged"/verdict.stderr \
+        "$staged"/verdict.prelude.stdout "$staged"/verdict.prelude.stderr
 }
 
 # Run one compile, capturing its verdict under $2 (a file prefix). Never fails on
@@ -1060,6 +1085,14 @@ cc_row_reusable() {
             # a missing artifact must build, never be skipped.
             [ -e "$stamp_dir/$output" ] || [ -e "$stamp_dir/${mdir:-.}/$output" ] || return 1 ;;
     esac
+    # Issue 1926 — a verdict recorded before `_cc_write_verdict_stamp` refused
+    # CLI self-refusals may still be on disk, and its signature still matches:
+    # never reuse one. Asked of every row that holds a `.verdict`, whatever its
+    # declared `output` (the verdict rows declare `.verdict` itself).
+    if [ -f "$stamp_dir/.verdict" ] && _cc_verdict_cli_refusal "$stamp_dir" >/dev/null; then
+        echo "   not reusing $stamp_dir — its recorded verdict is the nros CLI refusing to run (issue 1926)"
+        return 1
+    fi
     want="$(bash "$repo_root/scripts/build/compile-check-signature.sh" "$record" 2>/dev/null || true)"
     have="$(cat "$stamp_dir/.inputsig" 2>/dev/null || true)"
     [ -n "$want" ] && [ "$want" = "$have" ] || return 1
