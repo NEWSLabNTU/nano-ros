@@ -276,7 +276,7 @@ FROM ubuntu:22.04
 # The runner refuses to run as root, and running as root would also defeat the
 # isolation this image exists for.
 ARG RUNNER_UID=1001
-ARG RUNNER_VERSION=2.329.0
+ARG RUNNER_VERSION=2.337.0
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -347,6 +347,15 @@ WORKDIR /home/runner
 # v2.329.0 or later is REQUIRED to configure or re-register since GitHub's
 # 2026-06-12 change, and job execution needs staying inside a moving 30-day
 # window. Pinned so the image is reproducible; bump it deliberately.
+#
+# Bump it to what GitHub PUSHES, not merely to a version it still registers
+# (issue 1365, measured 2026-10-15/16 in runner-loop.log): a 2.329.0
+# container registers and reads `Listening for Jobs`, and claims a job only
+# after GitHub sends it a self-update to 2.337.0. Every job this loop ran
+# that day started within 3 s of the updated listener coming up. A container
+# that got no update message (05:20Z, and from 02:44Z the next day)
+# never claimed one, while matching jobs sat queued. An update in flight
+# is also a window where stopping the container loses the registration.
 RUN curl -fsSL -o actions-runner.tar.gz \
       "https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz" \
     && tar xzf actions-runner.tar.gz && rm actions-runner.tar.gz \
