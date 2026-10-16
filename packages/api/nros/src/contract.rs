@@ -241,6 +241,29 @@ pub unsafe fn install_contract_monitors(
     Ok(())
 }
 
+/// phase-462 W3b -- install a contracted Rust image's hazard table on one
+/// executor, after [`install_contract_monitors`] (each hazard's guards index
+/// the two tables that call installs). `nros::main!` emits this only for an
+/// executor whose tables observe a hazard; the observer then reports
+/// `hazard-detected`, `hazard-reaction` and `hazard-recovered` through the
+/// reporter that call armed.
+///
+/// A NULL or non-executor handle installs nothing: the monitor install it
+/// follows has already refused that handle, and said so.
+///
+/// # Safety
+/// As for [`install_contract_monitors`].
+pub unsafe fn install_contract_hazards(
+    executor: *mut c_void,
+    hazards: &'static [nros_node::executor::monitor::HazardSpec],
+) {
+    if let Ok(executor) = unsafe {
+        crate::executor_handle::executor_from_handle(executor, "install_contract_hazards")
+    } {
+        executor.set_hazard_table(hazards);
+    }
+}
+
 /// Arm one executor's `/diagnostics` reporter in `slot`, and point the
 /// executor's violation sink at it — THE arming step, shared by
 /// [`install_contract_monitors`] (Rust) and `nros-cpp`'s

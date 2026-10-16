@@ -31,6 +31,18 @@ pub const RULE_MAX_LATENCY: &str = "max-latency-runtime";
 /// made against. A declared bound on how old data may be is also a bound on
 /// how long there may be none.
 pub const RULE_SILENCE: &str = "silence-runtime";
+/// phase-462 W3b -- a contracted hazard's guard faulted (`contracts.hazards`):
+/// an input the safety mechanism depends on is gone. play_launch's own
+/// spelling, with no `-runtime` suffix, so one log reader serves the RTOS and
+/// the Linux side of a bridge. Measured: ms since the fault began; declared:
+/// the hazard's `ftti_ms` (0 when none).
+pub const RULE_HAZARD_DETECTED: &str = "hazard-detected";
+/// phase-462 W3b -- the hazard's `safe_state` publisher published after the
+/// fault. Measured: fault to reaction plus `settle_ms`; declared: `ftti_ms`.
+pub const RULE_HAZARD_REACTION: &str = "hazard-reaction";
+/// phase-462 W3b -- no guard of the hazard is faulted any more. Measured: how
+/// long the hazard lasted, ms.
+pub const RULE_HAZARD_RECOVERED: &str = "hazard-recovered";
 
 /// Which side of the contract the violated field belongs to — drives the
 /// 4-quadrant diagnosis (RFC-0050 §contracts): a violated GUARANTEE with
@@ -132,14 +144,17 @@ impl DiagnosticReporter {
 
 /// Issue 1635 — which side of the contract a runtime rule judges.
 ///
-/// The two rules about what ARRIVES (`max-age-runtime`, `silence-runtime`) are
-/// subscriber ASSUMPTIONS; every other rule judges what this image itself does
+/// The rules about what ARRIVES (`max-age-runtime`, `silence-runtime`, and a
+/// hazard's guard faulting or recovering) are ASSUMPTIONS; every other rule --
+/// a hazard's reaction among them -- judges what this image itself does
 /// (its publish rate, its path latency, its deadlines, its own stack) and is a
 /// GUARANTEE. One table, so the fixture, the C/C++ entries and a Rust entry
 /// cannot classify the same rule two ways.
 pub fn kind_for_rule(rule: &str) -> ContractKind {
     match rule {
-        RULE_MAX_AGE | RULE_SILENCE => ContractKind::Assumption,
+        RULE_MAX_AGE | RULE_SILENCE | RULE_HAZARD_DETECTED | RULE_HAZARD_RECOVERED => {
+            ContractKind::Assumption
+        }
         _ => ContractKind::Guarantee,
     }
 }

@@ -345,37 +345,50 @@ fn release(model: &SystemModel, path: &PathContract) -> Option<(f64, String)> {
     ))
 }
 
-fn path<'m>(model: &'m SystemModel, key: &str) -> Option<&'m PathContract> {
-    model
-        .contracts
-        .scope_paths
-        .get(key)
-        .or_else(|| model.contracts.node_paths.get(key))
+/// A hazard's resolved reaction: the path's key and contract, and the mode
+/// it is reached through when the hazard enters one.
+#[derive(Debug, Clone, Copy)]
+pub struct ResolvedReaction<'m> {
+    /// The `scope_paths` / `node_paths` key.
+    pub key: &'m str,
+    /// That path's contract.
+    pub path: &'m PathContract,
+    /// The mode the hazard enters, when it reacts through one.
+    pub via_mode: Option<&'m str>,
 }
 
-fn reaction(
-    model: &SystemModel,
+/// The path a hazard's `reaction` resolves to, and the mode it is reached
+/// through when the hazard enters one -- `None` when the hazard names no
+/// reaction, or enters a mode that names no path (entering it IS the
+/// reaction). One resolver, read by this check and by the observer rows
+/// (`contract_monitors::hazard_rows`), so the two cannot follow different
+/// reactions.
+pub fn reaction_path<'m>(
+    model: &'m SystemModel,
     hazard: &str,
-    h: &HazardContract,
-) -> Result<Option<Reaction>, FttiBudgetError> {
+    h: &'m HazardContract,
+) -> Result<Option<ResolvedReaction<'m>>, FttiBudgetError> {
     let Some(r) = h.reaction.as_deref() else {
         return Ok(None);
     };
     // A mode first, the way the checker resolves it (the model's own rule).
-    let (key, via_mode) = match model.contracts.modes.get(r) {
+    let (key, via_mode): (&str, Option<&'m str>) = match model.contracts.modes.get(r) {
         Some(mode) => match mode.reaction.as_deref() {
-            Some(k) => (k, Some(r.to_string())),
-            // A mode with no reaction path: entering it is the reaction, and
-            // there is no latency to add.
+            Some(k) => (k, Some(r)),
             None => return Ok(None),
         },
         None => (r, None),
     };
-    let Some(p) = path(model, key) else {
+    let found = model
+        .contracts
+        .scope_paths
+        .get_key_value(key)
+        .or_else(|| model.contracts.node_paths.get_key_value(key));
+    let Some((k, p)) = found else {
         return Err(match via_mode {
             Some(mode) => FttiBudgetError::UnknownModeReaction {
                 hazard: hazard.to_string(),
-                mode,
+                mode: mode.to_string(),
                 reaction: key.to_string(),
             },
             None => FttiBudgetError::UnknownReaction {
@@ -384,11 +397,23 @@ fn reaction(
             },
         });
     };
-    Ok(Some(Reaction {
-        path: key.to_string(),
+    Ok(Some(ResolvedReaction {
+        key: k.as_str(),
+        path: p,
         via_mode,
-        max_latency_ms: p.max_latency_ms,
-        release: release(model, p),
+    }))
+}
+
+fn reaction(
+    model: &SystemModel,
+    hazard: &str,
+    h: &HazardContract,
+) -> Result<Option<Reaction>, FttiBudgetError> {
+    Ok(reaction_path(model, hazard, h)?.map(|r| Reaction {
+        path: r.key.to_string(),
+        via_mode: r.via_mode.map(str::to_string),
+        max_latency_ms: r.path.max_latency_ms,
+        release: release(model, r.path),
     }))
 }
 
@@ -449,14 +474,14 @@ pub fn budgets_by_hazard(budgets: &[HazardBudget]) -> BTreeMap<&str, &HazardBudg
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     /// A sensor publishing `/scan`, a handler subscribing it, and a hazard on
     /// `/scan` whose reaction is the handler's stop path. `extra` lands under
     /// `contracts:`; `hazard` is the hazard body; `tiers` goes under
     /// `execution:`.
-    fn model_yaml(sub_age: &str, path_extra: &str, hazard: &str, tiers: &str) -> String {
+    pub(crate) fn model_yaml(sub_age: &str, path_extra: &str, hazard: &str, tiers: &str) -> String {
         format!(
             "meta:\n  version: 1\n\
              structure:\n  scopes:\n    demo.launch.xml:\n      file: demo.launch.xml\n  \
@@ -476,12 +501,12 @@ mod tests {
         )
     }
 
-    fn parse(yaml: &str) -> SystemModel {
+    pub(crate) fn parse(yaml: &str) -> SystemModel {
         SystemModel::from_yaml_str(yaml).expect("fixture parses")
     }
 
-    const AGE_100: &str = "      max_age_ms: 100.0\n";
-    const HAZARD: &str = "      guards:\n        - members: [/scan]\n      on: omission\n      \
+    pub(crate) const AGE_100: &str = "      max_age_ms: 100.0\n";
+    pub(crate) const HAZARD: &str = "      guards:\n        - members: [/scan]\n      on: omission\n      \
                           reaction: /handler/stop_path\n";
 
     fn hazard_with_ftti(ftti: &str) -> String {

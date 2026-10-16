@@ -2006,6 +2006,10 @@ pub struct Executor<'s> {
     /// W3b.5 — baked subscriber age-contract table (empty = none).
     pub(crate) age_table: &'static [super::monitor::AgeMonitorSpec],
     pub(crate) age_states: [super::monitor::AgeState; super::monitor::MAX_AGE_MONITORS],
+    /// phase-462 W3b — baked hazard table (empty = no contracted hazard). Its
+    /// state lives in the rows' own `static` cells, so a hazard costs this
+    /// value nothing.
+    pub(crate) hazard_table: &'static [super::monitor::HazardSpec],
     /// W3b.5 — hook invoked on `DeadlineAction::Fault` (panic when unset).
     pub(crate) fault_fn: Option<fn(&super::monitor::Violation)>,
     /// phase-503 — the reaction hook and its context: called when a
@@ -2327,6 +2331,7 @@ impl<'s> Executor<'s> {
             monitor_states: [super::monitor::MonitorState::default(); super::monitor::MAX_MONITORS],
             age_table: &[],
             age_states: [super::monitor::AgeState::default(); super::monitor::MAX_AGE_MONITORS],
+            hazard_table: &[],
             fault_fn: None,
             reaction_hook: None,
             spin_quantization_checked: false,
@@ -3184,6 +3189,22 @@ impl<'s> Executor<'s> {
     #[must_use]
     pub fn age_table(&self) -> &'static [super::monitor::AgeMonitorSpec] {
         self.age_table
+    }
+
+    /// phase-462 W3b — install the baked hazard table. Each row's guards name
+    /// rows of the tables [`Self::set_monitor_table`] and
+    /// [`Self::set_age_table`] install, so install those first; a guard whose
+    /// row is absent never faults. The observer runs after the monitor rows on
+    /// every monitor tick and reports `hazard-detected`, `hazard-reaction` and
+    /// `hazard-recovered` on the same drain.
+    pub fn set_hazard_table(&mut self, table: &'static [super::monitor::HazardSpec]) {
+        self.hazard_table = table;
+    }
+
+    /// The installed hazard table (empty unless the entry set one).
+    #[must_use]
+    pub fn hazard_table(&self) -> &'static [super::monitor::HazardSpec] {
+        self.hazard_table
     }
 
     /// W3b.5 — override the wall-clock (epoch µs) source age monitors take
@@ -4211,6 +4232,24 @@ impl<'s> Executor<'s> {
                 if let Some(v) = super::monitor::check_age(spec, &mut self.age_states[i], now_us) {
                     self.violations.record(v);
                 }
+            }
+        }
+        // phase-462 W3b -- the hazard observer reads the verdict STATE the rows
+        // above just updated, so it runs after them and on the same tick.
+        if !self.hazard_table.is_empty()
+            && let Some(now_us) = self.now_us()
+        {
+            let now_ms = (now_us / 1_000) as u32;
+            let violations = &mut self.violations;
+            for spec in self.hazard_table {
+                super::monitor::check_hazard(
+                    spec,
+                    self.monitor_table,
+                    &self.monitor_states,
+                    &self.age_states,
+                    now_ms,
+                    |v| violations.record(v),
+                );
             }
         }
         self.check_route_deadlines();

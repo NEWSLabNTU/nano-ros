@@ -71,6 +71,9 @@ RULES = (
     "release-jitter-runtime",
     "route-latency-runtime",
     "route-deadline-runtime",
+    "hazard-detected",
+    "hazard-reaction",
+    "hazard-recovered",
 )
 
 

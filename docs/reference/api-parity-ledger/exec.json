@@ -1486,5 +1486,15 @@
   "c:executor_add_action_server": {
     "verdict": "divergence",
     "why": "rclc's `rclc_executor_add_action_server(executor, server, handles, goal_request, size, goal_cb, cancel_cb, context)` binds the callbacks at registration; ours binds them at `rclc_action_server_init_with_callbacks`, so ours is `rclc_executor_attach_action_server(executor, server)`. Constraint as `c:executor_add_client`. phase-492 W1.b."
+  },
+  "rust:Executor::set_hazard_table": {
+    "verdict": "extension",
+    "why": "phase-462 W3b -- the on-target hazard observer (`contracts.hazards`): installs the baked hazard table, whose guards index the rate and age tables `set_monitor_table` / `set_age_table` install; the observer reports `hazard-detected`, `hazard-reaction` and `hazard-recovered` on the violation drain. No rclrs counterpart -- ROS 2 has no contract monitors. See `rust:HazardSpec`.",
+    "bucket": "ours-only"
+  },
+  "rust:Executor::hazard_table": {
+    "verdict": "extension",
+    "why": "phase-462 W3b -- the on-target hazard observer (`contracts.hazards`): the installed hazard table. See `rust:Executor::set_hazard_table`.",
+    "bucket": "ours-only"
   }
 }

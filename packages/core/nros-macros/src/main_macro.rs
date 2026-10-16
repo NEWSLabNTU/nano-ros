@@ -732,6 +732,9 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         Vec<nros_orchestration_ir::contract_monitors::MonitorRow>,
         Vec<nros_orchestration_ir::contract_monitors::AgeRow>,
     ) = (Vec::new(), Vec::new());
+    // phase-462 W3b -- kept only when the model declares hazards, which the
+    // monitor-table emitter lowers onto the rows above.
+    let mut hazard_model: Option<ros_launch_manifest_model::SystemModel> = None;
     let mut resolved_tiers: Option<ResolvedTierTable> = None;
     // issue 0438 — the tier names the SYSTEM declared, as opposed to the ones
     // that survived membership resolution. Empty when the schedule is derived.
@@ -1094,6 +1097,9 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 .into_iter()
                 .filter(|r| kept.contains(row_node_fqn(&r.fqn)))
                 .collect();
+            if !model.contracts.hazards.is_empty() {
+                hazard_model = Some(model.model.clone());
+            }
         }
         // Issue 0257 — count the callback slots the SLICED node set needs. Same
         // `keep` predicate as the walk above, so a per-board/per-host entry
@@ -1745,8 +1751,12 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // issue 1676 — install the contract's monitor tables (and arm the
     // `/diagnostics` reporter) on every executor this entry builds, BEFORE any
     // node exists: a publisher attaches its counter cell at create time.
-    let (contract_items_ts, contract_monitors_call) =
-        contract_monitor_tokens(&contract_rows, multi_tier, &node_namespaces);
+    let (contract_items_ts, contract_monitors_call) = contract_monitor_tokens(
+        &contract_rows,
+        multi_tier,
+        &node_namespaces,
+        hazard_model.as_ref(),
+    );
     // phase-302 W4 (issue 0265) — reject multi-tier systems on targets with
     // no `run_tiers` EARLY with a real diagnostic. Previously the deploy fell
     // back to the posix tier rules and died later with a misleading
@@ -4252,9 +4262,12 @@ fn contract_monitor_tokens(
     ),
     multi_tier: Option<&ResolvedTierTable>,
     node_namespaces: &BTreeMap<String, String>,
+    // phase-462 W3b -- the model whose hazards the tables may observe; `None`
+    // on a road that resolved no model (no hazards, as before).
+    model: Option<&ros_launch_manifest_model::SystemModel>,
 ) -> (proc_macro2::TokenStream, proc_macro2::TokenStream) {
     use nros_orchestration_ir::contract_monitors::{
-        RenderPaths, render_monitor_rs_at, row_node_fqn,
+        RenderPaths, hazard_rows, render_monitor_rs_full, row_node_fqn,
     };
     let (mons, ages) = rows;
     if mons.is_empty() && ages.is_empty() {
@@ -4311,7 +4324,10 @@ fn contract_monitor_tokens(
     let mut installs = Vec::new();
     for (k, (member, t_mons, t_ages)) in tables.iter().enumerate() {
         let module = Ident::new(&format!("__nros_contract_monitors_{k}"), Span::call_site());
-        let rendered = render_monitor_rs_at(t_mons, t_ages, RenderPaths::NROS);
+        let hazards = model
+            .map(|m| hazard_rows(m, t_mons, t_ages))
+            .unwrap_or_default();
+        let rendered = render_monitor_rs_full(t_mons, t_ages, &hazards, RenderPaths::NROS);
         let body: proc_macro2::TokenStream = match rendered.parse() {
             Ok(ts) => ts,
             Err(e) => {
@@ -4329,14 +4345,31 @@ fn contract_monitor_tokens(
                     ::nros::contract::ContractReporter::new();
             }
         });
-        let install = quote! {
-            unsafe {
-                ::nros::contract::install_contract_monitors(
-                    __nros_exec,
-                    #module::NROS_MONITORS,
-                    #module::NROS_AGE_MONITORS,
-                    &#module::NROS_CONTRACT_REPORTER,
-                )
+        let install = if hazards.is_empty() {
+            quote! {
+                unsafe {
+                    ::nros::contract::install_contract_monitors(
+                        __nros_exec,
+                        #module::NROS_MONITORS,
+                        #module::NROS_AGE_MONITORS,
+                        &#module::NROS_CONTRACT_REPORTER,
+                    )
+                }
+            }
+        } else {
+            // phase-462 W3b -- the hazard table indexes the two above, so it
+            // is installed after them, on the same executor.
+            quote! {
+                unsafe {
+                    let __nros_installed = ::nros::contract::install_contract_monitors(
+                        __nros_exec,
+                        #module::NROS_MONITORS,
+                        #module::NROS_AGE_MONITORS,
+                        &#module::NROS_CONTRACT_REPORTER,
+                    );
+                    ::nros::contract::install_contract_hazards(__nros_exec, #module::NROS_HAZARDS);
+                    __nros_installed
+                }
             }
         };
         installs.push((member.clone(), install));
@@ -5597,9 +5630,40 @@ mod contract_monitor_tests {
     /// empty, so its expansion is byte-identical to before.
     #[test]
     fn an_uncontracted_entry_emits_nothing() {
-        let (items, call) =
-            contract_monitor_tokens(&(Vec::new(), Vec::<AgeRow>::new()), None, &BTreeMap::new());
+        let (items, call) = contract_monitor_tokens(
+            &(Vec::new(), Vec::<AgeRow>::new()),
+            None,
+            &BTreeMap::new(),
+            None,
+        );
         assert!(items.is_empty() && call.is_empty());
+    }
+
+    /// phase-462 W3b -- a model with a hazard its table observes bakes the
+    /// hazard table and installs it after the monitor tables, on the same
+    /// executor.
+    #[test]
+    fn a_hazard_the_table_observes_is_baked_and_installed() {
+        let yaml = "meta:\n  version: 1\nstructure:\n  scopes:\n    d.launch.xml:\n      \
+                    file: d.launch.xml\n  nodes:\n    /h:\n      scope: d.launch.xml\n      \
+                    pkg: d\n      exec: h\n      node_name: h\n      namespace: /\n  \
+                    topics:\n    /scan:\n      type: std_msgs/msg/Empty\n      sub: [/h/scan]\n\
+                    contracts:\n  sub_endpoints:\n    /h/scan:\n      max_age_ms: 100.0\n  \
+                    hazards:\n    d.launch.xml/lost:\n      guards:\n        - members: [/scan]\n";
+        let model = ros_launch_manifest_model::SystemModel::from_yaml_str(yaml).expect("parses");
+        let ages = nros_orchestration_ir::contract_monitors::age_rows(&model).expect("ages");
+        let rows = (Vec::new(), ages);
+        let (items, call) = contract_monitor_tokens(&rows, None, &BTreeMap::new(), Some(&model));
+        let items = items.to_string();
+        let call = call.to_string();
+        assert!(items.contains("NROS_HAZARDS"), "{items}");
+        assert!(items.contains("\"d.launch.xml/lost\""), "{items}");
+        let mons = call.find("install_contract_monitors").expect("monitors");
+        let hz = call.find("install_contract_hazards").expect("hazards");
+        assert!(hz > mons, "{call}");
+        // Without the model the same rows bake no hazard and no install.
+        let (_, plain) = contract_monitor_tokens(&rows, None, &BTreeMap::new(), None);
+        assert!(!plain.to_string().contains("install_contract_hazards"));
     }
 
     /// Issue 1676 — a contracted single-executor entry bakes ONE table, rooted
@@ -5611,7 +5675,7 @@ mod contract_monitor_tests {
             vec![row("/talker/chatter", "/chatter")],
             Vec::<AgeRow>::new(),
         );
-        let (items, call) = contract_monitor_tokens(&rows, None, &BTreeMap::new());
+        let (items, call) = contract_monitor_tokens(&rows, None, &BTreeMap::new(), None);
         let items = items.to_string();
         let call = call.to_string();
         assert!(items.contains("mod __nros_contract_monitors_0"), "{items}");
@@ -5653,7 +5717,7 @@ mod contract_monitor_tests {
             .iter()
             .map(|n| (n.to_string(), "/".to_string()))
             .collect();
-        let (items, call) = contract_monitor_tokens(&rows, Some(&table), &ns);
+        let (items, call) = contract_monitor_tokens(&rows, Some(&table), &ns, None);
         let items = items.to_string();
         let call = call.to_string();
         assert!(items.contains("__nros_contract_monitors_0"), "{items}");

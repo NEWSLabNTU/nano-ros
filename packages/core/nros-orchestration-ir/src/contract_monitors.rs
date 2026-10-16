@@ -221,6 +221,13 @@ pub fn monitor_rows(model: &SystemModel) -> Result<Vec<MonitorRow>, ContractRowE
             ),
         );
     }
+    // phase-462 W3b -- a hazard's reaction is observed when its `safe_state`
+    // publisher publishes, so that publisher needs a counter cell even when it
+    // promises no rate: a count-only row (no rate, no latency) judges nothing
+    // and gives the observer the count it reads.
+    for (sink, _) in hazard_sinks(model) {
+        by_fqn.entry(sink).or_insert((0, 0));
+    }
     // phase-82 follow-up: a path may name a service CLIENT in its output
     // (the reaction walk follows that edge across the service). A call is
     // not a publisher: it has no rate promise and no owning topic, so it
@@ -353,6 +360,236 @@ pub fn age_rows(model: &SystemModel) -> Result<Vec<AgeRow>, ContractRowError> {
     Ok(rows)
 }
 
+/// phase-462 W3b -- every hazard's `safe_state` publisher in this model, with
+/// the reacting path's `settle_ms` (0 when none), keyed by endpoint ref. A
+/// hazard whose reaction does not resolve is skipped here: that refusal is
+/// [`crate::ftti_budget`]'s, raised on both bake roads before anything bakes.
+fn hazard_sinks(model: &SystemModel) -> std::collections::BTreeMap<String, u32> {
+    let mut out = std::collections::BTreeMap::new();
+    for (key, h) in &model.contracts.hazards {
+        let Ok(Some(crate::ftti_budget::ResolvedReaction { path, .. })) =
+            crate::ftti_budget::reaction_path(model, key, h)
+        else {
+            continue;
+        };
+        if let Some(ss) = &path.safe_state {
+            let settle = ss
+                .settle_ms
+                .unwrap_or(0.0)
+                .round()
+                .max(0.0)
+                .min(u32::MAX as f64) as u32;
+            out.insert(ss.emits.clone(), settle);
+        }
+    }
+    out
+}
+
+/// phase-462 W3b -- one guard member, as a row of THIS table set.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+pub enum GuardMemberRow {
+    /// Index into the age rows.
+    Age(usize),
+    /// Index into the rate/latency rows.
+    Rate(usize),
+}
+
+/// phase-462 W3b -- one guard of a [`HazardRow`].
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct HazardGuardRow {
+    /// Faults only when every member has.
+    pub all_of: bool,
+    /// The members, each a row of this table set.
+    pub members: Vec<GuardMemberRow>,
+}
+
+/// phase-462 W3b -- one contracted hazard, lowered onto one executor's
+/// monitor tables (the observer reads those rows' verdicts).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct HazardRow {
+    /// `contracts.hazards` key.
+    pub key: String,
+    /// `ftti_ms`, rounded; 0 = none declared.
+    pub ftti_ms: u32,
+    /// The reacting path's `safe_state.settle_ms`; 0 = none.
+    pub settle_ms: u32,
+    /// The guards, members resolved to rows.
+    pub guards: Vec<HazardGuardRow>,
+    /// Rate-row index of the `safe_state` publisher, when this table set has it.
+    pub sink: Option<usize>,
+}
+
+/// The rows of `rows`/`ages` that detect a fault on `topic`: every age row on
+/// it (`silence-runtime`) and every rate row with a rate promise
+/// (`min-rate-runtime`).
+fn topic_members(topic: &str, rows: &[MonitorRow], ages: &[AgeRow]) -> Vec<GuardMemberRow> {
+    let mut out: Vec<GuardMemberRow> = ages
+        .iter()
+        .enumerate()
+        .filter(|(_, a)| a.topic == topic)
+        .map(|(i, _)| GuardMemberRow::Age(i))
+        .collect();
+    out.extend(
+        rows.iter()
+            .enumerate()
+            .filter(|(_, r)| r.topic == topic && r.min_rate_hz_milli > 0)
+            .map(|(i, _)| GuardMemberRow::Rate(i)),
+    );
+    out
+}
+
+/// The endpoints the MODEL contracts a detector on for `topic`, on whichever
+/// board or tier: subscribers with `max_age_ms`, publishers with
+/// `min_rate_hz`.
+fn topic_detectors_in_model(model: &SystemModel, topic: &str) -> Vec<String> {
+    let Some(w) = model.structure.topics.get(topic) else {
+        return Vec::new();
+    };
+    let subs = w.subscribers.iter().filter(|s| {
+        model
+            .contracts
+            .sub_endpoints
+            .get(*s)
+            .is_some_and(|c| c.max_age_ms.is_some())
+    });
+    let pubs = w.publishers.iter().filter(|p| {
+        model
+            .contracts
+            .pub_endpoints
+            .get(*p)
+            .is_some_and(|c| c.min_rate_hz.is_some())
+    });
+    subs.chain(pubs).cloned().collect()
+}
+
+/// phase-462 W3b -- the hazards this table set observes, as rows indexing it.
+///
+/// `rows` / `ages` are the tables ONE executor installs (already sliced to the
+/// nodes it runs). A hazard is lowered here only when every guard topic the
+/// model monitors at all is monitored by THIS set, so one executor sees the
+/// whole hazard and no hazard is observed twice by two executors that each see
+/// part of it. A guard topic nothing monitors anywhere is left out (no
+/// executor could see it, which `ftti_budget` reports as unobserved); for an
+/// `all_of` guard that leaves the guard unable to fault, so it is dropped.
+/// A hazard left with no guard is not lowered.
+pub fn hazard_rows(model: &SystemModel, rows: &[MonitorRow], ages: &[AgeRow]) -> Vec<HazardRow> {
+    let sinks = hazard_sinks(model);
+    let mut out = Vec::new();
+    'hazard: for (key, h) in &model.contracts.hazards {
+        let mut guards = Vec::new();
+        for g in &h.guards {
+            let mut members = Vec::new();
+            let mut whole = true;
+            for topic in &g.members {
+                let in_model = topic_detectors_in_model(model, topic);
+                let held = |fqn: &String| {
+                    ages.iter().any(|a| &a.fqn == fqn) || rows.iter().any(|r| &r.fqn == fqn)
+                };
+                if !in_model.iter().all(held) {
+                    // Monitored, at least in part, by another executor's table.
+                    continue 'hazard;
+                }
+                let here = topic_members(topic, rows, ages);
+                if here.is_empty() {
+                    // Nothing anywhere watches this topic.
+                    whole = false;
+                    continue;
+                }
+                if g.all_of {
+                    // One detector per member keeps "every member faulted"
+                    // meaning every TOPIC; the age row is the faster one.
+                    members.push(here[0]);
+                } else {
+                    members.extend(here);
+                }
+            }
+            if members.is_empty() || (g.all_of && !whole) {
+                continue;
+            }
+            guards.push(HazardGuardRow {
+                all_of: g.all_of,
+                members,
+            });
+        }
+        if guards.is_empty() {
+            continue;
+        }
+        let reaction = crate::ftti_budget::reaction_path(model, key, h)
+            .ok()
+            .flatten();
+        let emits = reaction.and_then(|r| r.path.safe_state.as_ref().map(|s| s.emits.as_str()));
+        out.push(HazardRow {
+            key: key.clone(),
+            ftti_ms: h
+                .ftti_ms
+                .map_or(0, |v| v.round().max(0.0).min(u32::MAX as f64) as u32),
+            settle_ms: emits.and_then(|e| sinks.get(e).copied()).unwrap_or(0),
+            guards,
+            sink: emits.and_then(|e| rows.iter().position(|r| r.fqn == e)),
+        });
+    }
+    out
+}
+
+/// phase-462 W3b -- the baked hazard table, as Rust: one `HazardCell` static
+/// per row, the guard member slices, `NROS_HAZARDS`, and nothing when there
+/// are no rows. Appended to the monitor include by
+/// [`render_monitor_rs_full`].
+fn render_hazards_rs(hazards: &[HazardRow], paths: RenderPaths) -> String {
+    let mut out = String::new();
+    if hazards.is_empty() {
+        out.push_str(&format!(
+            "pub static NROS_HAZARDS: &[{m}::HazardSpec] = &[];\n",
+            m = paths.monitor
+        ));
+        return out;
+    }
+    out.push_str(&format!(
+        "use {m}::{{GuardRef, GuardSpec, HazardCell, HazardSpec}};\n\n",
+        m = paths.monitor
+    ));
+    for (i, h) in hazards.iter().enumerate() {
+        out.push_str(&format!(
+            "static NROS_HAZARD_CELL_{i}: HazardCell = HazardCell::new();\n"
+        ));
+        out.push_str(&format!(
+            "const NROS_HAZARD_GUARDS_{i}: &[GuardSpec] = &[\n"
+        ));
+        for g in &h.guards {
+            let members: Vec<String> = g
+                .members
+                .iter()
+                .map(|m| match m {
+                    GuardMemberRow::Age(r) => format!("GuardRef::Age({r}u16)"),
+                    GuardMemberRow::Rate(r) => format!("GuardRef::Rate({r}u16)"),
+                })
+                .collect();
+            out.push_str(&format!(
+                "    GuardSpec {{ all_of: {a}, members: &[{m}] }},\n",
+                a = g.all_of,
+                m = members.join(", ")
+            ));
+        }
+        out.push_str("];\n");
+    }
+    out.push_str("\npub static NROS_HAZARDS: &[HazardSpec] = &[\n");
+    for (i, h) in hazards.iter().enumerate() {
+        let sink = match h.sink {
+            Some(r) => format!("{r}u16"),
+            None => format!("{m}::NO_SINK", m = paths.monitor),
+        };
+        out.push_str(&format!(
+            "    HazardSpec {{ key: {k:?}, ftti_ms: {f}u32, settle_ms: {st}u32, \
+             guards: NROS_HAZARD_GUARDS_{i}, sink: {sink}, cell: &NROS_HAZARD_CELL_{i} }},\n",
+            k = h.key,
+            f = h.ftti_ms,
+            st = h.settle_ms,
+        ));
+    }
+    out.push_str("];\n");
+    out
+}
+
 /// R1-N1 — render the baked Rust monitor-table include
 /// (`nros-system/system_monitors.rs`): one `PubMonitorCell` static per
 /// contracted publisher + the `MONITORS` spec table + an installer the
@@ -364,6 +601,18 @@ pub fn render_monitor_rs(rows: &[MonitorRow], ages: &[AgeRow]) -> String {
 
 /// [`render_monitor_rs`] with the type paths stated — issue 1676.
 pub fn render_monitor_rs_at(rows: &[MonitorRow], ages: &[AgeRow], paths: RenderPaths) -> String {
+    render_monitor_rs_full(rows, ages, &[], paths)
+}
+
+/// [`render_monitor_rs_at`] plus phase-462 W3b's hazard table: the installer
+/// also calls `set_hazard_table(NROS_HAZARDS)`, after the two monitor tables
+/// whose rows the hazards index.
+pub fn render_monitor_rs_full(
+    rows: &[MonitorRow],
+    ages: &[AgeRow],
+    hazards: &[HazardRow],
+    paths: RenderPaths,
+) -> String {
     let mut out = String::new();
     out.push_str(
         "// GENERATED by `nros codegen-system --model` (RFC-0052 W3b.4/.5 / phase-296 N1).\n\
@@ -448,9 +697,20 @@ pub fn render_monitor_rs_at(rows: &[MonitorRow], ages: &[AgeRow], paths: RenderP
         ));
     }
     out.push('\n');
+    if hazards.is_empty() {
+        out.push_str(
+            &format!(
+                "pub fn nros_install_monitors(executor: &mut {e}<'_>) {{\n    executor.set_monitor_table(NROS_MONITORS);\n    executor.set_age_table(NROS_AGE_MONITORS);\n}}\n",
+                e = paths.executor
+            ),
+        );
+        return out;
+    }
+    out.push_str(&render_hazards_rs(hazards, paths));
+    out.push('\n');
     out.push_str(
         &format!(
-            "pub fn nros_install_monitors(executor: &mut {e}<'_>) {{\n    executor.set_monitor_table(NROS_MONITORS);\n    executor.set_age_table(NROS_AGE_MONITORS);\n}}\n",
+            "pub fn nros_install_monitors(executor: &mut {e}<'_>) {{\n    executor.set_monitor_table(NROS_MONITORS);\n    executor.set_age_table(NROS_AGE_MONITORS);\n    executor.set_hazard_table(NROS_HAZARDS);\n}}\n",
             e = paths.executor
         ),
     );
@@ -584,5 +844,87 @@ mod route_supervision_tests {
         assert!(!json.contains("route_deadline_ms"), "{json}");
         assert!(!json.contains("reaction"), "{json}");
         assert!(!json.contains("mechanism"), "{json}");
+    }
+}
+
+#[cfg(test)]
+mod hazard_row_tests {
+    use super::*;
+    use crate::ftti_budget::tests::{AGE_100, HAZARD, model_yaml, parse};
+
+    /// The handler's stop path states a `safe_state` on `/handler/stop`.
+    const SAFE_STATE: &str = "      safe_state:\n        emits: /handler/stop\n        \
+                              settle_ms: 30.0\n";
+
+    fn lowered(age: &str, hazard: &str) -> (Vec<MonitorRow>, Vec<AgeRow>, Vec<HazardRow>) {
+        let m = parse(&model_yaml(age, SAFE_STATE, hazard, ""));
+        let rows = monitor_rows(&m).expect("rows");
+        let ages = age_rows(&m).expect("ages");
+        let hz = hazard_rows(&m, &rows, &ages);
+        (rows, ages, hz)
+    }
+
+    /// A guard topic with both an age and a rate contract is watched by both
+    /// rows; the safe-state publisher gets a count-only row and is the sink.
+    #[test]
+    fn a_hazard_lowers_onto_the_rows_that_watch_its_guard() {
+        let (rows, ages, hz) = lowered(AGE_100, &format!("{HAZARD}      ftti_ms: 500.0\n"));
+        assert_eq!(hz.len(), 1);
+        let h = &hz[0];
+        assert_eq!(
+            (h.key.as_str(), h.ftti_ms, h.settle_ms),
+            ("demo.launch.xml/scan_lost", 500, 30)
+        );
+        let scan_rate = rows.iter().position(|r| r.fqn == "/sensor/scan").unwrap();
+        assert_eq!(
+            h.guards[0].members,
+            vec![GuardMemberRow::Age(0), GuardMemberRow::Rate(scan_rate)]
+        );
+        assert_eq!(ages[0].fqn, "/handler/scan");
+        let sink = h.sink.expect("sink row");
+        assert_eq!(rows[sink].fqn, "/handler/stop");
+        assert_eq!(
+            (rows[sink].min_rate_hz_milli, rows[sink].max_latency_ms),
+            (0, 20),
+            "the sink row carries no rate promise (its latency is the path's own)"
+        );
+    }
+
+    /// A table set holding only part of a hazard's monitors does not lower
+    /// it: another executor sees the rest, and two partial observers would
+    /// report one hazard twice.
+    #[test]
+    fn a_hazard_split_across_tables_is_not_lowered_here() {
+        let m = parse(&model_yaml(AGE_100, SAFE_STATE, HAZARD, ""));
+        let rows = monitor_rows(&m).expect("rows");
+        // This executor runs only the sensor: the age row is elsewhere.
+        assert!(hazard_rows(&m, &rows, &[]).is_empty());
+    }
+
+    /// A model with no hazard renders exactly what it rendered before W3b.
+    #[test]
+    fn no_hazard_renders_the_old_include() {
+        let rows = Vec::new();
+        let ages = Vec::new();
+        assert_eq!(
+            render_monitor_rs(&rows, &ages),
+            render_monitor_rs_full(&rows, &ages, &[], RenderPaths::NROS_NODE)
+        );
+        assert!(!render_monitor_rs(&rows, &ages).contains("set_hazard_table"));
+    }
+
+    /// The rendered include installs the hazard table after the rows it reads.
+    #[test]
+    fn the_installer_sets_the_hazard_table_last() {
+        let (rows, ages, hz) = lowered(AGE_100, HAZARD);
+        let text = render_monitor_rs_full(&rows, &ages, &hz, RenderPaths::NROS_NODE);
+        assert!(
+            text.contains("static NROS_HAZARD_CELL_0: HazardCell = HazardCell::new();"),
+            "{text}"
+        );
+        assert!(text.contains("GuardRef::Age(0u16)"), "{text}");
+        let age = text.find("set_age_table").unwrap();
+        let hzd = text.find("set_hazard_table(NROS_HAZARDS)").unwrap();
+        assert!(hzd > age, "{text}");
     }
 }
