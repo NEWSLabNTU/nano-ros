@@ -122,9 +122,17 @@ example-matrix:
 # path-depping five levels up into this checkout, so it built in place and
 # nowhere else.
 #
-# On the BUILD lane, not the fast one, because it really does build: ~10 min
-# per template. It resolves nothing it did not build itself, so it satisfies
-# `check-lane-contracts` on any lane that can afford it.
+# On the BUILD lane, not the fast one, because it really does build: the whole
+# set measured ~8-9 min locally, one copy at a time, ~4 GB peak in $TMPDIR
+# (issue 1453). It reads no fixture stamp and no generated binding; what it
+# DOES resolve — the in-tree CLI, `nros-launch-resolve`, the `-sys` sources,
+# Corrosion, a ROS `std_msgs`, and for the FreeRTOS sub-projects the pinned
+# compiler + kernel + lwIP — is what a job running it must provision, and it
+# checks the two tools FRESH before building anything. So it satisfies
+# `check-lane-contracts` on a lane that pays for those: since issue 1453 that
+# includes the merge queue, via gate.yml's `check-template-copy-out` job
+# (`merge_group` + `workflow_dispatch`; `check merge-group-gates` holds the
+# placement).
 # issue 1058 / 1412 / phase-452 W2 — COMPILE what `nros new` emits.
 #
 # The scaffold tests verify every variant by substring match (~30 of them) and

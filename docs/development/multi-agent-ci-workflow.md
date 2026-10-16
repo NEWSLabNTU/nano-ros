@@ -100,8 +100,9 @@ Rules, all of them:
    never on `pull_request` from a fork. Fork PRs get hosted runners only.
    A job in a workflow that ALSO triggers on `pull_request` may reach the pool
    only through an event-routed `runs-on` whose condition admits no
-   pull-request event (phase-489 W2: `gate.yml`'s `check-workspace-all` and
-   `check-test-unit`, self-hosted on `merge_group` / `workflow_dispatch`,
+   pull-request event (phase-489 W2: `gate.yml`'s `check-workspace-all`,
+   `check-test-unit` and — issue 1453 — `check-template-copy-out`,
+   self-hosted on `merge_group` / `workflow_dispatch`,
    hosted otherwise). The repo requires approval only for FIRST-TIME
    contributors, so a returning contributor's fork PR runs without one — the
    route, not the approval setting, is what keeps it off the pool.

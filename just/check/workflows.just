@@ -745,6 +745,16 @@ cli-submodule-sync:
 workflow-runner-isolation:
     @python3 scripts/check-workflow-runner-isolation.py
 
+# Issue 1453 — a gate the maintainers DECIDED must gate the merge queue
+# (`template-copy-out`, 2026-10-17) still runs on `merge_group`, still feeds the
+# required `CI` through a `sibling` line, and is not on `pull_request`.
+# `default-gates-run-somewhere` is satisfied by a nightly placement, so moving
+# the job back to `schedule` would undo the decision with every gate green —
+# issue 1226's shape. The selftest mutates a synthetic workflow each way.
+[private]
+merge-group-gates:
+    @python3 scripts/check-merge-group-gates.py
+
 # phase-489 W6 — the self-hosted fixture lanes build in a persistent tree
 # beside the checkout (`scripts/ci/fixture-tree.sh`). Holds the workflow half
 # (self-hosted only, never a merge-gating job, every step and upload in the

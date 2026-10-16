@@ -2,12 +2,14 @@
 id: 1453
 title: "`check-template-copy-out` sat red on `main` unseen because it runs on
   `schedule` only — the defect's class is gated cheaply now, the lane's
-  reachability is an open cost decision"
-status: open
+  reachability was a cost decision (taken 2026-10-17: the full set on
+  `merge_group`)"
+status: resolved
 type: tech-debt
 area: testing, build
 severity: medium
 found: 2026-09-22
+resolved: 2026-10-17
 related: [issue-1108, issue-1429, issue-1226, issue-0319, issue-1040, issue-1412, phase-452]
 ---
 
@@ -316,3 +318,83 @@ entirely, `workspace-features` — two different first failures under the same
 disk pressure, which is what 1353 does to a lane.
 
 A clean measurement of this issue needs a run with disk headroom.
+
+## Resolution — the full set on `merge_group` (maintainer decision, 2026-10-17)
+
+**The decision.** The maintainer took the first road this issue left uncosted:
+run the **whole** `template-copy-out` set on the `merge_group` event, once per
+queue batch — not the `pure-c-workspace` subset (a reach narrower than the rule,
+issue 0196), and not on `pull_request` ("PR cheap, batch thorough", the split
+`test-unit` already follows).
+
+**What landed.**
+
+* `.github/workflows/gate.yml` gains the job **`check-template-copy-out`**
+  ("check / template-copy-out (merge group + manual)"), on `merge_group` and
+  `workflow_dispatch`. It is in the required aggregator `CI`'s `needs:` and has
+  a `sibling` line excusing every other event, so its red ejects a batch and a
+  skip on its own events is a FAIL, never a green. Nothing was added to the
+  required-check set and the workflow gained no path filter. `workflow_dispatch`
+  is there so the lane can be run on a branch before it can eject anything.
+* It is ROUTED like `check-test-unit`: self-hosted (`nros-big`) on
+  `merge_group` / `workflow_dispatch` when `vars.NROS_GATE_SELF_HOSTED` is
+  `true`, otherwise the hosted `ubuntu-22.04` runner in the CI image.
+* It provisions exactly what the gate resolves, by the siblings' own spellings:
+  the in-tree CLI (`just setup-cli`, with the shared binary cache), Corrosion,
+  the compile-tier sources (`nros setup --source …`), `nros-launch-resolve`
+  (`just setup-launch-resolve`), and — so the three `mps2-an385-freertos`
+  sub-projects are BUILT rather than recorded NOT VERIFIED — the board's pinned
+  `arm-none-eabi-gcc` plus the FreeRTOS kernel and lwIP trees. `std_msgs` comes
+  from the image's ament install, as for every sibling. `TMPDIR` is the job's
+  `$RUNNER_TEMP`; issue 1353's `disk-report.sh` / `reclaim-disk.sh` bracket the
+  step, and a red uploads every failed copy's full build log.
+* **The gate checks its tools first** (`preflight_judge` in
+  `scripts/check-template-copy-out.sh`): no CLI, a STALE in-tree CLI, no
+  resolver, or a STALE resolver each stops the run before any copy is built,
+  names its remedy, and says no template was examined — the "thorough half"
+  the 2026-09-28 section left open. Every arm is driven by the self-test on
+  synthetic facts, and the real-tree mutations were measured red (resolver
+  moved aside; resolver stamp corrupted; a CLI source edited), each restored
+  byte-identical. The host negative control now also requires the failure to
+  be the one it injected (`nano-ros — declared by`), as the cross control
+  already did: without that it passed vacuously on a host with no resolver.
+* **`check merge-group-gates`** (fast line, `scripts/check-merge-group-gates.py`)
+  holds the decision: the gate must run on `merge_group`, feed `CI` through
+  `needs:` and a `sibling` line that lists `merge_group`, not be
+  `continue-on-error`, and not run on `pull_request`. Issue 1226's shape is why:
+  `check-default-gates-run-somewhere` is satisfied by the nightly placement, so
+  moving the job back to `schedule` would undo this with every gate green.
+  Mutation-tested on the real `gate.yml` (step removed; job narrowed to
+  `schedule`; dropped from `needs:`; `sibling` line removed; job widened to
+  `pull_request`) — each red, then restored with `cmp` identical and green.
+
+**Measured (2026-10-17, local, 20-core host, Ubuntu 22.04 like the CI image).**
+The job's steps were run in order under `env -i` + `source ./activate.sh` with
+a FRESH store (`NROS_HOME` empty), so nothing provisioned earlier was inherited:
+
+| run | store | gate wall | `$TMPDIR` peak | result |
+| --- | --- | --- | --- | --- |
+| warm `~/.nros` | shared | 562 s | 4.04 GB | 9 built, 4 Zephyr NOT VERIFIED |
+| fresh store, apt `arm-none-eabi-gcc` | 0.1 GB | 488 s | 4.08 GB | **2 FreeRTOS ports FAIL** |
+| fresh store + pinned compiler | 1.25 GB | 472 s | 4.05 GB | 9 built, 4 Zephyr NOT VERIFIED |
+
+The pinned compiler is a 201.6 MB download (3 m 14 s on this link, once per
+cold store) and 1.2 GB unpacked. The peak is ONE template's build, because the
+gate builds one copy at a time and deletes it on success; so the job needs
+roughly 4 GB of `$TMPDIR` plus ~1.3 GB of store on top of the CLI build, well
+inside the ~22 GB issue 1353 measured free on a hosted CI-image job.
+
+Two findings from the measurement, both recorded where they belong:
+
+1. With the image's apt `arm-none-eabi-gcc` (10.3), `rclcpp-compat-smoke` and
+   `topic-state-monitor-port` fail on `'std::this_thread' has not been
+   declared`; with the board's pinned 13.2 they build. So the job installs the
+   pin, and a user on the distro compiler meets that error.
+2. `nros setup --tool X --source Y` installs X and provisions none of the
+   sources, exit 0 (`setup.rs` returns after `install_tools`). The job uses two
+   commands; the CLI behaviour is a separate defect.
+
+**Not measured here:** the job on a real runner (hosted or self-hosted) —
+the pre-arm `workflow_dispatch` run is what prices that; a cold sccache; and
+the hosted runner's actual free disk at that step, which the job's own disk
+reports now print.

@@ -2183,6 +2183,259 @@ jobs:
             { sort /tmp/sccache-server.log | uniq -c | sort -rn | head -25; } || true
           fi
 
+  # Issue 1453 — every copy-out template, built the way a stranger gets it,
+  # once per merge-queue BATCH. Maintainer decision 2026-10-17: the FULL set,
+  # on `merge_group` — not a subset (a subset is a reach narrower than the rule,
+  # issue 0196), and not on `pull_request` ("PR cheap, batch thorough", the same
+  # split as `test-unit` above).
+  #
+  # WHY IT GATES AT ALL. `examples/templates/` is the one part of the tree a
+  # stranger COPIES, so a defect there is replicated rather than observed, and
+  # the class this gate finds — an unresolvable `<depend>`, a path dep reaching
+  # back into the checkout, a template on a retired API — is invisible to every
+  # source-reading gate (issue 1108's first run, #1412). Until this job, the
+  # gate ran inside `check build` on `schedule` / `workflow_dispatch` only, and
+  # three templates sat unbuildable on `main` while every merge lane stayed
+  # green (issue 1429).
+  #
+  # LANE CONTRACT. `check-lane-contracts` admits a gate on a merge-gating event
+  # only if THIS job builds what it resolves. The gate resolves: the in-tree
+  # `nros` CLI and `nros-launch-resolve` (built below, and checked FRESH by the
+  # gate's own preflight before any template is touched, so a provisioning slip
+  # reads as a named precondition and never as "the copy does not build"), the
+  # `-sys` sources `nros build` compiles (`nros setup --source …`), Corrosion
+  # for the C/C++ workspaces, and the ROS `std_msgs` from the image's ament
+  # install. It reads no fixture stamp and no generated binding. The FreeRTOS
+  # cross sub-projects are built too (pinned compiler + kernel + lwIP are
+  # provisioned below); the Zephyr ones have no copy-out road the gate can
+  # derive (issue 1782), so it records each as NOT VERIFIED in the skip
+  # ledger, by name, never as a pass.
+  #
+  # ROUTED like `check-test-unit` (the expression is spelled ONCE and
+  # `check-workflow-runner-isolation` parses it): self-hosted on
+  # `merge_group` / `workflow_dispatch` when `vars.NROS_GATE_SELF_HOSTED` is
+  # `true`, the hosted runner in the CI image otherwise. Never a pull request,
+  # so never a fork's.
+  #
+  # DISK (issue 1353 hit this gate inside `host-tests`). The gate builds ONE
+  # copy at a time in `$TMPDIR` and deletes it on success, so its peak is one
+  # template's build, not the set's — measured locally in issue 1453. TMPDIR is
+  # the job's `$RUNNER_TEMP`, which the runner empties per job, and the disk is
+  # reported before and after.
+  #
+  # `workflow_dispatch` is on the list so the lane can be dispatched on a branch
+  # BEFORE it can eject anything: `gh workflow run gate.yml --ref <branch>`.
+  check-template-copy-out:
+    name: check / template-copy-out (merge group + manual)
+    needs: changes
+    if: >-
+      ${{ always() && contains(fromJSON('["merge_group","workflow_dispatch"]'), github.event_name)
+          && (github.event_name != 'pull_request' || needs.changes.outputs.code == 'true') }}
+    # phase-489 W2 — ROUTED: self-hosted on merge_group / workflow_dispatch,
+    # hosted (in the CI image) otherwise. Why each half, the fork-PR rule, the
+    # interlock variable and the clean-tree step: see the `check-workspace-all`
+    # comment block. The expression is spelled ONCE, and
+    # `check-workflow-runner-isolation` parses it (scripts/lib/runner_route.py).
+    runs-on: ${{ vars.NROS_GATE_SELF_HOSTED == 'true' && contains(fromJSON('["merge_group","workflow_dispatch"]'), github.event_name) && fromJSON('["self-hosted","linux","nros-sdk-zephyr","nros-big"]') || 'ubuntu-22.04' }}
+    permissions:
+      contents: read
+      packages: read
+    # The self-hosted runner IS a container (unprivileged, no Docker), so it
+    # cannot start a job container: the image is empty there and the steps run
+    # in the runner's own image. An EMPTY image means "no container".
+    container:
+      image: ${{ !(vars.NROS_GATE_SELF_HOSTED == 'true' && contains(fromJSON('["merge_group","workflow_dispatch"]'), github.event_name)) && 'ghcr.io/newslabntu/nano-ros-ci:humble' || '' }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout nano-ros
+        uses: actions/checkout@v4
+
+      # phase-489 W2 — see `check-test-unit`'s copy of this step.
+      - name: Start from a clean tree (self-hosted only)
+        if: ${{ runner.environment == 'self-hosted' }}
+        run: scripts/ci/self-hosted-clean-tree.sh
+
+      # Setup below is the same as `check-test-unit`'s, whose comments (and
+      # `check-fast`'s before them) explain each step. Only what the gate
+      # resolves is kept: no clang-format, and no submodule-HISTORY fetch
+      # (that serves `check-submodule-pins`, which this job does not run).
+      - name: Cache sccache directory (compiling events)
+        if: ${{ contains(fromJSON('["merge_group","workflow_dispatch"]'), github.event_name) && runner.environment == 'github-hosted' }}
+        uses: actions/cache/restore@v4
+        with:
+          path: /tmp/sccache
+          key: sccache-${{ runner.os }}-check-${{ github.sha }}
+          restore-keys: |
+            sccache-${{ runner.os }}-check-
+
+      - name: Report runner hardware
+        run: scripts/ci/report-runner-hardware.sh
+
+      - name: Configure sccache (compiling events)
+        if: ${{ contains(fromJSON('["merge_group","workflow_dispatch"]'), github.event_name) }}
+        run: |
+          if ! command -v sccache >/dev/null 2>&1; then
+            echo "::warning::sccache absent from the image — the compile tier runs UNCACHED."
+            exit 0
+          fi
+          sccache --version
+          if [ "${RUNNER_ENVIRONMENT:-}" = self-hosted ]; then
+            echo "self-hosted: sccache uses its own volume (${SCCACHE_DIR:-$HOME/.cache/sccache})"
+            exit 0
+          fi
+          export SCCACHE_DIR=/tmp/sccache
+          export SCCACHE_CACHE_SIZE=2G
+          export SCCACHE_ERROR_LOG=/tmp/sccache-server.log
+          export SCCACHE_LOG=warn
+          if sccache --start-server >/tmp/sccache-start.log 2>&1; then
+            {
+              echo "SCCACHE_DIR=/tmp/sccache"
+              echo "SCCACHE_ERROR_LOG=/tmp/sccache-server.log"
+              echo "SCCACHE_LOG=warn"
+              echo "SCCACHE_CACHE_SIZE=2G"
+            } >> "$GITHUB_ENV"
+          else
+            echo "::warning::sccache unavailable — the compile tier runs UNCACHED (issue 0874)."
+            sed 's/^/  /' /tmp/sccache-start.log || true
+          fi
+
+      - name: Key the CLI binary cache on source_stamp.rs's whole watch set
+        id: cli-key
+        run: |
+          key="$(scripts/ci/cli-bin-cache-key.sh)"
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the nros + nros-launch-resolve binaries (every event)
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            packages/cli/target/release/nros
+            packages/cli/nros-launch-resolve/target/release/nros-launch-resolve
+            packages/cli/nros-launch-resolve/target/release/nros-launch-resolve.nros-source-stamp
+            packages/cli/nros-launch-resolve/target/release/libplay_launch_parser_pyexec.so
+          key: nros-cli-bin-${{ runner.os }}-${{ steps.cli-key.outputs.key }}
+
+      - name: Build the in-tree nros CLI (every event)
+        run: |
+          git submodule update --init --depth 1 packages/cli/third-party/play_launch
+          source ./activate.sh
+          just setup-cli
+          "$GITHUB_WORKSPACE/packages/cli/target/release/nros" source-stamp >/dev/null
+          echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
+
+      - name: Provision Corrosion (pinned by [tool.corrosion])
+        run: |
+          source ./activate.sh
+          just workspace install-corrosion
+
+      - name: Provision compile-tier sources
+        if: ${{ contains(fromJSON('["merge_group","workflow_dispatch"]'), github.event_name) }}
+        run: |
+          source ./activate.sh
+          nros setup \
+            --source px4-rs --source zenoh-pico --source mbedtls --source micro-cdr \
+            --source micro-xrce-dds-client --source cyclonedds-src
+
+      # The `mps2-an385-freertos` sub-projects, so they are BUILT here rather
+      # than recorded NOT VERIFIED: the kernel + lwIP trees (27 MB) and the
+      # board's PINNED compiler (`[board.mps2-an385-freertos] packages`; a
+      # 200 MB download, 1.2 GB unpacked). Not the image's apt
+      # `arm-none-eabi-gcc` (10.3): measured in issue 1453, two of the three
+      # ports fail there on `std::this_thread`, which the pinned 13.2 provides.
+      # QEMU, the board's fourth package, is a runtime tool nothing here runs.
+      # The Zephyr sub-projects stay NOT VERIFIED by the gate's own rule (no
+      # derivable copy-out road, issue 1782).
+      - name: Provision the FreeRTOS cross sub-projects' toolchain + sources
+        if: ${{ contains(fromJSON('["merge_group","workflow_dispatch"]'), github.event_name) }}
+        run: |
+          source ./activate.sh
+          # Two commands, not one: measured, `nros setup --tool X --source Y`
+          # installs X and silently provisions none of the sources (rc 0).
+          nros setup --tool arm-none-eabi-gcc
+          nros setup --source freertos-kernel --source lwip
+
+      - name: Fetch the pin baseline (to find submodules whose pin moved)
+        run: |
+          base="${GITHUB_BASE_REF:-main}"
+          git fetch --no-tags --quiet --depth=1 origin \
+            "+refs/heads/$base:refs/remotes/origin/$base"
+
+      - name: Init submodules whose pin moved (commits only)
+        run: |
+          base="${GITHUB_BASE_REF:-main}"
+          git ls-tree -r "origin/$base" \
+            | awk '$2 == "commit" { print $4 "\t" $3 }' \
+            | while IFS=$'\t' read -r path base_sha; do
+                [ -n "$path" ] || continue
+                head_sha="$(git ls-tree -r HEAD -- "$path" \
+                            | awk '$2 == "commit" { print $3 }')"
+                [ -n "$head_sha" ] || continue
+                [ "$head_sha" != "$base_sha" ] || continue
+                [ ! -e "$path/.git" ] || continue
+                echo "  pin moved in $path (${base_sha:0:12} -> ${head_sha:0:12}); initialising"
+                git submodule update --init --filter=tree:0 "$path" \
+                  || git submodule update --init "$path" \
+                  || true
+              done
+
+      - name: Build nros-launch-resolve (nros sync shells out to it)
+        if: ${{ contains(fromJSON('["merge_group","workflow_dispatch"]'), github.event_name) && !cancelled() }}
+        run: |
+          source ./activate.sh
+          just setup-launch-resolve
+
+      # Issue 1353's instruments, reused rather than re-spelled: the same two
+      # scripts `check-build` brackets its compile tier with. Neither can fail
+      # the job.
+      - name: Disk report (before template-copy-out) — issue 1353
+        if: ${{ contains(fromJSON('["merge_group","workflow_dispatch"]'), github.event_name) && !cancelled() }}
+        run: scripts/ci/disk-report.sh "before just check template-copy-out"
+
+      - name: Reclaim disk before the template builds — issue 1353
+        if: ${{ contains(fromJSON('["merge_group","workflow_dispatch"]'), github.event_name) && !cancelled() }}
+        run: scripts/ci/reclaim-disk.sh "before just check template-copy-out"
+
+      - name: just check template-copy-out (every copy-out template, copied out)
+        if: ${{ contains(fromJSON('["merge_group","workflow_dispatch"]'), github.event_name) && !cancelled() }}
+        run: |
+          # Published to $GITHUB_ENV so the log upload below names the SAME
+          # directory from inside or outside the job container.
+          echo "NROS_TEMPLATE_COPY_OUT_TMP=$RUNNER_TEMP/template-copy-out" >> "$GITHUB_ENV"
+          export TMPDIR="$RUNNER_TEMP/template-copy-out"
+          mkdir -p "$TMPDIR"
+          source ./activate.sh
+          just check template-copy-out
+
+      - name: Disk report (after template-copy-out) — issue 1353
+        if: ${{ contains(fromJSON('["merge_group","workflow_dispatch"]'), github.event_name) && always() }}
+        run: scripts/ci/disk-report.sh "after just check template-copy-out"
+
+      # A FAILED copy keeps its work dir (the gate deletes only on success), so
+      # the whole build log of every red template is here — the gate prints its
+      # last 40 lines, and this is the rest.
+      - name: Upload the failed templates' build logs
+        if: ${{ contains(fromJSON('["merge_group","workflow_dispatch"]'), github.event_name) && failure() && env.NROS_TEMPLATE_COPY_OUT_TMP != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: template-copy-out-build-logs
+          path: ${{ env.NROS_TEMPLATE_COPY_OUT_TMP }}/nros-template-copy-out.*/build.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: sccache stats (compile tier)
+        if: ${{ contains(fromJSON('["merge_group","workflow_dispatch"]'), github.event_name) && always() }}
+        run: |
+          command -v sccache >/dev/null 2>&1 && sccache --show-stats || true
+          if [ -s /tmp/sccache-server.log ]; then
+            echo "--- sccache server log (deduped) ---"
+            { sort /tmp/sccache-server.log | uniq -c | sort -rn | head -25; } || true
+          fi
+
   check-lane-contracts:
     name: check / test-lane-contracts (merge group + nightly/manual)
     needs: changes
@@ -3410,6 +3663,7 @@ jobs:
       - check-cli-tests
       - check-workspace-all
       - check-test-unit
+      - check-template-copy-out
       - check-lane-contracts
       - check-build
       - warm-cache
@@ -3470,6 +3724,7 @@ jobs:
           sibling check-cli-tests      "${{ needs.check-cli-tests.result }}"      "pull_request merge_group schedule workflow_dispatch"
           sibling check-workspace-all  "${{ needs.check-workspace-all.result }}"  "pull_request merge_group schedule workflow_dispatch"
           sibling check-test-unit      "${{ needs.check-test-unit.result }}"      "merge_group schedule workflow_dispatch"
+          sibling check-template-copy-out "${{ needs.check-template-copy-out.result }}" "merge_group workflow_dispatch"
           sibling check-lane-contracts "${{ needs.check-lane-contracts.result }}" "merge_group schedule workflow_dispatch"
           sibling check-build          "${{ needs.check-build.result }}"          "schedule workflow_dispatch"
           sibling warm-cache           "${{ needs.warm-cache.result }}"           "push workflow_dispatch"
