@@ -462,10 +462,20 @@ fn a_rows_rmw_is_the_backend_its_artifact_linked() {
 /// [`par_map`] the worst case is now one budget plus the rest of the pool.
 const RUN_BUDGET: std::time::Duration = std::time::Duration::from_secs(20);
 
-/// Run one entry to completion, or kill it at [`RUN_BUDGET`].
+/// The budget for an image that cannot be told to stop (`baked_row_locator`):
+/// it is judged on its setup line and then killed, so its budget is how long
+/// it may take to get there. The threadx-linux Rust entry prints it within a
+/// second here.
+const BAKED_RUN_BUDGET: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// Run one entry to completion, or kill it at `budget`.
 ///
 /// Returns `(exit status if it exited on its own, combined output)`.
-fn run_entry(bin: &Path, env: &[(String, String)]) -> (Option<std::process::ExitStatus>, String) {
+fn run_entry(
+    bin: &Path,
+    env: &[(String, String)],
+    budget: std::time::Duration,
+) -> (Option<std::process::ExitStatus>, String) {
     let mut cmd = Command::new(bin);
     // Issue 1819 — the row's peer, started by THIS test, named to the entry.
     for (k, v) in env {
@@ -492,7 +502,7 @@ fn run_entry(bin: &Path, env: &[(String, String)]) -> (Option<std::process::Exit
     let Ok(mut child) = cmd.spawn() else {
         return (None, String::new());
     };
-    let deadline = std::time::Instant::now() + RUN_BUDGET;
+    let deadline = std::time::Instant::now() + budget;
     let status = loop {
         match child.try_wait() {
             Ok(Some(st)) => break Some(st),
@@ -576,6 +586,34 @@ fn bridge_nodes(row_dir: &Path) -> Vec<(String, String)> {
     out
 }
 
+/// The locator a row's image BAKES, when the row is not a `linux` image.
+///
+/// Only the `linux` board reads `NROS_LOCATOR` at RUN time. Every other image
+/// that runs as a host process (threadx-linux; freertos-posix) dials what its
+/// build compiled in: the bringup's `[image.<id>] locator`, or a row env that
+/// `option_env!` read at BUILD time. So the environment this test hands such a
+/// process reaches nothing, and a router on a fresh port is one the image
+/// never dials. tier 2 caught exactly that on 2026-10-16:
+/// `workspace-rust-threadx-linux{,-realtime}` bake `tcp/127.0.0.1:9030` and
+/// `:9091`, and both read as "the backend refused the session although its
+/// peer was started for it". Same rule as `check-image-locator-bake`'s rule 5
+/// (issue 1865) for a `just` recipe: the router's port comes from the image.
+fn baked_row_locator(row: &nros_tests::fixtures::lane::Row) -> Option<String> {
+    if row.coord.0 == "linux" {
+        return None;
+    }
+    match nros_tests::fixtures::baked_locator::baked_locator_in(
+        &nros_tests::project_root(),
+        &row.id,
+    ) {
+        Ok(locator) => Some(locator),
+        Err(why) => nros_tests::unmet!(
+            "{}: a non-linux image dials its BAKED locator, and this test cannot read it: {why}",
+            row.id
+        ),
+    }
+}
+
 /// Which peer a backend needs, or `None` for one that needs none (DDS).
 fn peer_locator(peers: &Peers, rmw: &str) -> Option<String> {
     match rmw {
@@ -590,7 +628,16 @@ fn peer_locator(peers: &Peers, rmw: &str) -> Option<String> {
 /// override, `nros_rmw_bridge` config.rs) for each bridge endpoint.
 fn row_peer_env(row: &nros_tests::fixtures::lane::Row, peers: &Peers) -> Vec<(String, String)> {
     let mut env = Vec::new();
-    if let Some(loc) = peer_locator(peers, &row.coord.2) {
+    // A baked image ignores this; it is set so the run's command line still
+    // says which router the row was given (`baked_row_locator`).
+    let own = if row.coord.2 == "zenoh"
+        && let Some(baked) = baked_row_locator(row)
+    {
+        Some(baked)
+    } else {
+        peer_locator(peers, &row.coord.2)
+    };
+    if let Some(loc) = own {
         env.push(("NROS_LOCATOR".to_string(), loc));
     }
     let dir = nros_tests::project_root().join(&row.dir);
@@ -657,12 +704,36 @@ fn a_rows_entry_registers_its_nodes_at_runtime() {
     // never a reason to under-test.
     let needs = |want: &str| {
         targets.iter().any(|(row, _)| {
-            row.coord.2 == want
+            (row.coord.2 == want && !(want == "zenoh" && baked_row_locator(row).is_some()))
                 || bridge_nodes(&nros_tests::project_root().join(&row.dir))
                     .iter()
                     .any(|(_, rmw)| rmw == want)
         })
     };
+    // One router per port a zenoh row BAKES, held until the test ends (keyed
+    // by port, so two rows baking one port share it). These ports are the allocator's
+    // (`alloc::port_of`), shared with the cell that owns the image, which is
+    // why this test sits in nextest's `matrix-consumers-serial` group.
+    let mut baked = std::collections::BTreeMap::new();
+    for (row, _) in &targets {
+        if row.coord.2 != "zenoh" {
+            continue;
+        }
+        let Some(locator) = baked_row_locator(row) else {
+            continue;
+        };
+        let Some(port) = nros_tests::fixtures::baked_locator::locator_port(&locator) else {
+            nros_tests::unmet!("{}: baked locator `{locator}` names no TCP port", row.id)
+        };
+        baked.entry(port).or_insert_with(|| {
+            nros_tests::fixtures::ZenohRouter::start(port).unwrap_or_else(|e| {
+                nros_tests::unmet!(
+                    "{}: no zenoh router could start on its baked port {port}: {e}",
+                    row.id
+                )
+            })
+        });
+    }
     let peers = Peers {
         zenoh: needs("zenoh").then(|| {
             nros_tests::fixtures::ZenohRouter::start_unique().unwrap_or_else(|e| {
@@ -695,7 +766,12 @@ fn a_rows_entry_registers_its_nodes_at_runtime() {
     let runs = par_map(&indexed, |&i| {
         let bin = &targets[i].1;
         let t0 = std::time::Instant::now();
-        let (status, text) = run_entry(bin, &envs[i]);
+        let budget = if baked_row_locator(targets[i].0).is_some() {
+            BAKED_RUN_BUDGET
+        } else {
+            RUN_BUDGET
+        };
+        let (status, text) = run_entry(bin, &envs[i], budget);
         (status, text, t0.elapsed())
     });
     let wall = started.elapsed();
@@ -735,7 +811,18 @@ fn a_rows_entry_registers_its_nodes_at_runtime() {
         // staticlib, so it never prints the Rust board's line either.
         let completed = text.contains(nros_tests::output::ENTRY_COMPLETE_MARKER)
             || matches!(row.coord.1.as_str(), "c" | "cpp" | "mixed");
-        let registered_ok = status.map(|s| s.success()).unwrap_or(false) && completed;
+        // An image with a BAKED locator reads no runtime env either, so
+        // `NROS_ENTRY_SPIN_MS` cannot end it: its board spins forever after
+        // setup. Its verdict is the setup line, which a Rust board prints only
+        // once `setup` -- where the nodes register -- returned Ok, and the
+        // kill at its budget is expected. (A C/C++ image has no such line and
+        // still reads as HUNG here; none is in a lane that runs this today.)
+        let baked_setup_ok = baked_row_locator(row).is_some()
+            && row.coord.1 == "rust"
+            && text.contains(nros_tests::output::ENTRY_SETUP_COMPLETE_MARKER)
+            && !text.contains(nros_tests::output::ENTRY_NODE_REGISTER_ERROR);
+        let registered_ok =
+            baked_setup_ok || (status.map(|s| s.success()).unwrap_or(false) && completed);
         if registered_ok {
             ran += 1;
             continue;
@@ -769,7 +856,7 @@ fn a_rows_entry_registers_its_nodes_at_runtime() {
             // Issue 1690 — a hang names itself: the row, the binary and the
             // budget it outlived, instead of a suite-level TIMEOUT.
             format!(
-                "HUNG: no exit within the {RUN_BUDGET:?} budget (killed after {took:.1?}): {}",
+                "HUNG: no verdict within its budget (killed after {took:.1?}): {}",
                 bin.display()
             )
         } else if text.contains(nros_tests::output::SESSION_OPEN_FAILED_MARKER) {

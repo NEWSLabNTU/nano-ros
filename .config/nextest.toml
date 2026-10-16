@@ -1205,6 +1205,14 @@ test-group = "matrix-consumers-serial"
 slow-timeout = { period = "180s", terminate-after = 3 }
 
 [[profile.default.overrides]]
+# 2026-10-16 — the registration audit boots baked host images (threadx-linux)
+# against a router on THEIR baked port, which is the allocator port the
+# RealtimeTiers / EntryPubsub cells above also start a router on, and a router
+# start kills whatever listens on its port. So it joins their serial group.
+filter = "binary(rmw_coordinate_truth) and test(a_rows_entry_registers_its_nodes_at_runtime)"
+test-group = "matrix-consumers-serial"
+
+[[profile.default.overrides]]
 # See [test-groups.domain-probe-host-ports].
 filter = "binary_id(nros-tests) and (test(a_bound_daemon_port_makes_the_domain_busy) or test(the_probe_sees_a_real_bound_discovery_port))"
 test-group = "domain-probe-host-ports"
