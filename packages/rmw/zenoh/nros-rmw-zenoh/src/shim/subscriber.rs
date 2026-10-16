@@ -68,6 +68,10 @@ pub(super) struct SubscriberBuffer {
     /// notify callback when data arrives. Enables event-driven
     /// async without busy-polling.
     pub(super) waker: AtomicWaker,
+    /// Pool index of the session this subscriber was declared on, so its
+    /// arrivals wake that session's executor and no other (issue 1929).
+    /// Stored before the C subscribe, so the first arrival already sees it.
+    pub(super) session_index: portable_atomic::AtomicI32,
 }
 
 impl SubscriberBuffer {
@@ -90,6 +94,7 @@ impl SubscriberBuffer {
                 tail: core::ptr::null_mut(),
             },
             waker: AtomicWaker::new(),
+            session_index: portable_atomic::AtomicI32::new(-1),
         }
     }
 
@@ -891,7 +896,7 @@ extern "C" fn subscriber_notify_callback(
     // so it is the only place the transport-arrival wake can be timestamped
     // (`drive_io`'s poll path returns 0 and never fires it). no_std-safe; a no-op
     // when no executor installed a wake callback.
-    super::fire_runtime_wake();
+    super::fire_runtime_wake(buffer.session_index.load(Ordering::Acquire));
 
     // Wake the (std BasicExecutor) spin loop's own cvar, if waiting.
     #[cfg(feature = "std")]
@@ -1201,6 +1206,10 @@ impl ZenohSubscriber {
         };
 
         let mut buf = SubscriberBufferRef::new(buffer_index);
+        buf.get().session_index.store(
+            super::session_wake_index(context.handle()),
+            Ordering::Release,
+        );
 
         // Generate the topic key with wildcard for type hash
         let key: heapless::String<KEYEXPR_STRING_SIZE> = topic.to_key_wildcard();

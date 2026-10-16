@@ -70,8 +70,10 @@ host: 7-9 us of CPU per spurious wake, about 0.8 % of a core per idle member at
 1 kHz. When the entity's registration names its executor's wake context, the
 arrival wakes that executor alone, and the fan-out stays only as the fallback
 for a backend that reports UNKNOWN. Fixing
-[issue 1929](../issues/1929-zenoh-async-wake-is-one-process-global-slot.md)
-(zenoh's arrival wake is one process-global slot) falls out of the same change.
+[issue 1929](../issues/archived/1929-zenoh-async-wake-is-one-process-global-slot.md)
+(zenoh's arrival wake was one process-global slot) was fixed ahead of this at
+session grain (2026-10-16): a per-session wake table, so a second session's
+executor no longer takes the first's arrivals. Entity grain is still this item.
 
 ### W3 — `spin_once` reads bits instead of scanning
 

@@ -1,12 +1,13 @@
 ---
 id: 1929
 title: "zenoh's async arrival wake is ONE process-global slot, so with two zenoh sessions in a process the first session's arrivals wake the second's executor"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [rmw, executor]
 related: [issue-0317, phase-436, phase-397]
 found: 2026-10-16
+resolved: 2026-10-16
 ---
 
 ## Measured
@@ -56,3 +57,32 @@ already holds its subscriber's buffer, so it can reach the owning session's
 `wake_cb`/`wake_ctx` instead of the global. RFC-0084's entity-scoped wake
 registration (phase-397) would make this structural: the arrival names the
 entity, and the entity names its executor.
+
+## Resolution (2026-10-16)
+
+The wake table is per session now. `RUNTIME_WAKE` in `shim/mod.rs` holds one
+`(callback, ctx)` row per session pool slot, keyed by `zpico_session_index`:
+
+- `Session::set_wake_callback` writes its own session's row.
+- A subscriber records its session's index in its `SubscriberBuffer` before the
+  C subscribe, and `subscriber_notify_callback` fires that row.
+- The queryable hook fires the row of the session its buffer already stores.
+- The reply waker fires the row of the `session_index` the C side passes it.
+
+An index outside the pool (the no-C stub answers -1) falls back to row 0, which
+is the old single-slot behaviour and exact for a single-session process.
+
+This is the narrow fix, at session grain. Routing at ENTITY grain, so that one
+session's arrival wakes only the executor that owns that entity, is still
+phase-397's RFC-0084 registration. Several executors over one session still
+share one fan-out context (phase-436), which this does not change.
+
+Tests:
+
+- `shim::tests::runtime_wake_reaches_only_the_arrivals_session` (unit): two
+  rows, each fire reaches only its own; clearing one leaves the other. With the
+  slot forced to 0 it fails `(0, 1)` — B's callback got A's wake.
+- `two_sessions_arrival_wakes_only_its_own_session` (`zenoh_integration`, run
+  by `just test-zpico-multisession`, real router): A installs first, B second,
+  B publishes to A's subscriber. On main's shim it fails with "woke A's
+  executor 0 times (B's: 1)"; with this fix it passes.

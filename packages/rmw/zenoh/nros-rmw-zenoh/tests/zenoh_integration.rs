@@ -346,6 +346,108 @@ fn two_sessions_deliver_cross_session_through_router() {
     session_b.close().expect("Failed to close session B");
 }
 
+/// Issue 1929 — with two sessions in one process, an arrival wakes the
+/// executor of the session it arrived on, and no other.
+///
+/// The runtime wake each executor installs (`Session::set_wake_callback`) was
+/// mirrored into ONE process-global slot, which the read-task arrival hook
+/// fires. So the session that installed LAST received every wake: A's
+/// executor was never woken by its own data, slept out each `spin_once` bound
+/// and took one sample per spin (measured in phase-436's probe: 5 of 4999
+/// samples in 5 s at 1 kHz). Here A installs first and B second, which is the
+/// order that starved A.
+///
+/// Same build requirement as the test above (issue 1704).
+#[test]
+#[cfg_attr(
+    not(zpico_multi_session),
+    ignore = "needs a shim built with ZPICO_MAX_SESSIONS>=2 — `just test-zpico-multisession` (issue 1704)"
+)]
+fn two_sessions_arrival_wakes_only_its_own_session() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static WAKES_A: AtomicUsize = AtomicUsize::new(0);
+    static WAKES_B: AtomicUsize = AtomicUsize::new(0);
+    extern "C" fn wake_a(_ctx: *mut core::ffi::c_void) {
+        WAKES_A.fetch_add(1, Ordering::SeqCst);
+    }
+    extern "C" fn wake_b(_ctx: *mut core::ffi::c_void) {
+        WAKES_B.fetch_add(1, Ordering::SeqCst);
+    }
+
+    let _router = router();
+    let router_locator = _router.locator();
+    let config = TransportConfig {
+        locator: Some(router_locator.as_str()),
+        mode: SessionMode::Client,
+        properties: &[],
+        node_name: "",
+        namespace: "",
+        domain_id: 0,
+    };
+    let mut session_a = ZenohTransport::open(&config).expect("first session should open");
+    let mut session_b = ZenohTransport::open(&config).unwrap_or_else(|e| {
+        panic!(
+            "second session refused ({e:?}) in a build compiled with \
+             ZPICO_MAX_SESSIONS={} — the pool should hold two",
+            nros_rmw_zenoh::zpico::ZPICO_MAX_SESSIONS
+        )
+    });
+    // SAFETY: the callbacks take no context; both are cleared before the
+    // sessions close.
+    unsafe {
+        session_a.set_wake_callback(Some(wake_a), core::ptr::null_mut());
+        session_b.set_wake_callback(Some(wake_b), core::ptr::null_mut());
+    }
+
+    let topic = TopicInfo::new("test/wake_per_session", "Int32", "hash1929");
+    let mut subscriber = session_a
+        .create_subscription(&topic, QoSProfile::BEST_EFFORT)
+        .expect("Failed to create subscriber on session A");
+    thread::sleep(Duration::from_secs(2));
+    let publisher = session_b
+        .create_publisher(&topic, QoSProfile::BEST_EFFORT)
+        .expect("Failed to create publisher on session B");
+
+    let cdr_msg: [u8; 8] = [0x00, 0x01, 0x00, 0x00, 0x29, 0x19, 0x00, 0x00];
+    let mut recv_buf = [0u8; 64];
+    let mut delivered = false;
+    for _ in 0..20 {
+        publisher
+            .publish_raw(&cdr_msg)
+            .expect("Failed to publish from session B");
+        thread::sleep(Duration::from_millis(500));
+        if let Ok(Some(_)) = subscriber.take_serialized(&mut recv_buf) {
+            delivered = true;
+            break;
+        }
+    }
+    let (a, b) = (
+        WAKES_A.load(Ordering::SeqCst),
+        WAKES_B.load(Ordering::SeqCst),
+    );
+    unsafe {
+        session_a.set_wake_callback(None, core::ptr::null_mut());
+        session_b.set_wake_callback(None, core::ptr::null_mut());
+    }
+    assert!(
+        delivered,
+        "session A received nothing from session B — see the test above"
+    );
+    assert!(
+        a > 0,
+        "an arrival on session A woke A's executor {a} times (B's: {b}) — the \
+         arrival's wake went to the session that installed its callback last"
+    );
+    assert_eq!(
+        b, 0,
+        "session B has no subscription, yet its executor was woken {b} times by \
+         session A's arrivals"
+    );
+
+    session_a.close().expect("Failed to close session A");
+    session_b.close().expect("Failed to close session B");
+}
+
 /// Test multiple publishers on same session
 #[test]
 fn test_multiple_publishers() {

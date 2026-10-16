@@ -949,7 +949,7 @@ extern "C" fn queryable_callback(
     // arrival; without this a parked server slept out its whole `spin_once`
     // slice before dispatching the request. Measured on native zenoh: every
     // service round trip took one 10 ms slice (p50 10.1 ms).
-    super::fire_runtime_wake();
+    super::fire_runtime_wake(super::session_wake_index(session));
 
     // Wake the executor spin loop (if waiting)
     #[cfg(feature = "std")]
@@ -1505,7 +1505,7 @@ unsafe extern "C" fn reply_waker_callback(session_index: i32, slot: i32) {
     // `REPLY_WAKERS`. Same reason as in `queryable_callback`: the reply lands
     // on the read task, where `drive_io` never sees it. Fired for the
     // channel-close edge too — a timeout is something a waiter must also see.
-    super::fire_runtime_wake();
+    super::fire_runtime_wake(session_index);
 }
 
 /// Register the reply waker callback with the C shim.
@@ -2050,11 +2050,11 @@ pub(super) mod tests {
         extern "C" fn count(_ctx: *mut core::ffi::c_void) {
             FIRED.fetch_add(1, Ordering::SeqCst);
         }
-        crate::shim::set_runtime_wake_cb(Some(count), core::ptr::null_mut());
+        crate::shim::set_runtime_wake_cb(0, Some(count), core::ptr::null_mut());
         let before = FIRED.load(Ordering::SeqCst);
         unsafe { reply_waker_callback(0, 0) };
         let after = FIRED.load(Ordering::SeqCst);
-        crate::shim::set_runtime_wake_cb(None, core::ptr::null_mut());
+        crate::shim::set_runtime_wake_cb(0, None, core::ptr::null_mut());
         assert_eq!(
             after,
             before + 1,

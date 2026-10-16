@@ -49,9 +49,10 @@ remains, in the order I would take it:
    becomes the fallback for a backend that reports UNKNOWN. Doing it here
    first would add a second per-entity wake path that phase-397 then replaces.
    The probe also found
-   [issue 1929](../issues/1929-zenoh-async-wake-is-one-process-global-slot.md):
+   [issue 1929](../issues/archived/1929-zenoh-async-wake-is-one-process-global-slot.md):
    zenoh's arrival wake is one process-global slot, so with two zenoh sessions
-   in one process the first executor is never woken by its own data.
+   in one process the first executor is never woken by its own data
+   (resolved 2026-10-16: the wake table is per session).
 6. **C3, bare metal — REFRAMED 2026-10-16, still deferred.** It is not an
    executor park: bare-metal zenoh and XRCE are poll-only, so RFC-0106 D5
    keeps the receive-blocking wait there whatever park is installed. What C3
