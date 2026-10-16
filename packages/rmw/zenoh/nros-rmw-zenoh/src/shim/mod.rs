@@ -180,6 +180,8 @@ pub use crate::config::{
 // Runtime wake callback — async transport-arrival signal (no_std-safe)
 // ============================================================================
 //
+use crate::zpico::ZPICO_MAX_SESSIONS;
+
 // Issue #0317 — the nros-node executor installs a runtime wake callback on the
 // session via `Session::set_wake_callback` (→ `nros_rmw_runtime_wake_cb`, which
 // fires the wake-latency probe's `on_wake` T0 + signals the executor cv). The
@@ -187,43 +189,102 @@ pub use crate::config::{
 // (`if spin_once() saw work`). On the MULTI-THREADED backend the sample is
 // received by the async read task, so `drive_io`'s `spin_once` returns 0 and the
 // wake-cb never fires — even though the sample is enqueued + later dispatched.
-// Mirror the runtime wake-cb into a process-global here so the read-task arrival
-// hook (`subscriber_notify_callback` / service notify) can fire it at the real
-// arrival instant, regardless of `std`. One executor/session per embedded image,
-// so a single global slot is sufficient.
+// Mirror the runtime wake-cb into a table here so the read-task arrival hook
+// (`subscriber_notify_callback` / service notify) can fire it at the real
+// arrival instant, regardless of `std`.
+//
+// The table is PER SESSION, indexed by the session's pool index
+// (`zpico_session_index`), because an arrival belongs to one session and
+// that session's executor is the one to wake (issue 1929). It was one
+// process-global slot, on the assumption of one executor/session per image;
+// with two sessions under two executors in one process, the LAST session to
+// install a callback owned every arrival, and the first session's executor
+// slept out each `spin_once` bound and took one sample per spin (5 of 4999
+// at 1 kHz, measured). An index outside the pool (a handle the C pool does
+// not own, or the no-C stub, which answers -1) maps to slot 0 — the old
+// single-slot behaviour, which is exact for a single-session process.
 
-pub(crate) static RUNTIME_WAKE_CB: portable_atomic::AtomicPtr<()> =
-    portable_atomic::AtomicPtr::new(core::ptr::null_mut());
-pub(crate) static RUNTIME_WAKE_CTX: portable_atomic::AtomicPtr<core::ffi::c_void> =
-    portable_atomic::AtomicPtr::new(core::ptr::null_mut());
+/// One `(callback, ctx)` row per session pool slot. Generic over the row count
+/// so a test can exercise two sessions whatever `ZPICO_MAX_SESSIONS` this build
+/// resolved to.
+pub(crate) struct RuntimeWakeTable<const N: usize> {
+    cb: [portable_atomic::AtomicPtr<()>; N],
+    ctx: [portable_atomic::AtomicPtr<core::ffi::c_void>; N],
+}
 
-/// Record the runtime wake callback so the async arrival path can fire it.
-/// Called from `Session::set_wake_callback`.
+impl<const N: usize> RuntimeWakeTable<N> {
+    pub(crate) const fn new() -> Self {
+        Self {
+            cb: [const { portable_atomic::AtomicPtr::new(core::ptr::null_mut()) }; N],
+            ctx: [const { portable_atomic::AtomicPtr::new(core::ptr::null_mut()) }; N],
+        }
+    }
+
+    /// The row for a session pool index; see the table's comment.
+    fn slot(session_index: i32) -> usize {
+        if session_index >= 0 && (session_index as usize) < N {
+            session_index as usize
+        } else {
+            0
+        }
+    }
+
+    pub(crate) fn set(
+        &self,
+        session_index: i32,
+        cb: Option<unsafe extern "C" fn(ctx: *mut core::ffi::c_void)>,
+        ctx: *mut core::ffi::c_void,
+    ) {
+        use portable_atomic::Ordering;
+        let i = Self::slot(session_index);
+        let cb_ptr = cb.map(|f| f as *mut ()).unwrap_or(core::ptr::null_mut());
+        self.cb[i].store(cb_ptr, Ordering::Release);
+        self.ctx[i].store(ctx, Ordering::Release);
+    }
+
+    pub(crate) fn fire(&self, session_index: i32) {
+        use portable_atomic::Ordering;
+        let i = Self::slot(session_index);
+        let cb = self.cb[i].load(Ordering::Acquire);
+        if !cb.is_null() {
+            let ctx = self.ctx[i].load(Ordering::Acquire);
+            // SAFETY: `cb` was installed from `set_wake_callback` as an
+            // `unsafe extern "C" fn(*mut c_void)`; `ctx` is the executor-owned
+            // wake state that outlives the session (cleared to null on executor
+            // drop).
+            let f: unsafe extern "C" fn(*mut core::ffi::c_void) =
+                unsafe { core::mem::transmute(cb) };
+            unsafe { f(ctx) };
+        }
+    }
+}
+
+static RUNTIME_WAKE: RuntimeWakeTable<ZPICO_MAX_SESSIONS> = RuntimeWakeTable::new();
+
+/// The pool index of `session`, for keying the wake table.
+pub(crate) fn session_wake_index(session: *mut zpico_sys::zpico_session_t) -> i32 {
+    // SAFETY: `zpico_session_index` only compares the pointer against the
+    // session pool's bounds; it never dereferences it.
+    unsafe { zpico_sys::zpico_session_index(session) }
+}
+
+/// Record the runtime wake callback of the session at `session_index` so the
+/// async arrival path can fire it. Called from `Session::set_wake_callback`.
 pub(crate) fn set_runtime_wake_cb(
+    session_index: i32,
     cb: Option<unsafe extern "C" fn(ctx: *mut core::ffi::c_void)>,
     ctx: *mut core::ffi::c_void,
 ) {
-    use portable_atomic::Ordering;
-    let cb_ptr = cb.map(|f| f as *mut ()).unwrap_or(core::ptr::null_mut());
-    RUNTIME_WAKE_CB.store(cb_ptr, Ordering::Release);
-    RUNTIME_WAKE_CTX.store(ctx, Ordering::Release);
+    RUNTIME_WAKE.set(session_index, cb, ctx);
 }
 
-/// Fire the runtime wake callback (→ probe `on_wake` T0 + executor cv-signal) if
-/// one is installed. Invoked from the read-task arrival hooks so a blocked
-/// executor is woken and the probe timestamps a real transport arrival on the
-/// multi-threaded backend. no_std-safe; a no-op when no callback is installed.
-pub(crate) fn fire_runtime_wake() {
-    use portable_atomic::Ordering;
-    let cb = RUNTIME_WAKE_CB.load(Ordering::Acquire);
-    if !cb.is_null() {
-        let ctx = RUNTIME_WAKE_CTX.load(Ordering::Acquire);
-        // SAFETY: `cb` was installed from `set_wake_callback` as an
-        // `unsafe extern "C" fn(*mut c_void)`; `ctx` is the executor-owned wake
-        // state that outlives the session (cleared to null on executor drop).
-        let f: unsafe extern "C" fn(*mut core::ffi::c_void) = unsafe { core::mem::transmute(cb) };
-        unsafe { f(ctx) };
-    }
+/// Fire the runtime wake callback (→ probe `on_wake` T0 + executor cv-signal)
+/// of the session at `session_index`, if one is installed. Invoked from the
+/// read-task arrival hooks so a blocked executor is woken and the probe
+/// timestamps a real transport arrival on the multi-threaded backend.
+/// no_std-safe; a no-op when that session has no callback installed.
+pub(crate) fn fire_runtime_wake(session_index: i32) {
+    RUNTIME_WAKE.fire(session_index);
 }
 
 // ============================================================================
@@ -973,6 +1034,42 @@ mod tests {
     // ========================================================================
     // Error Conversion Tests
     // ========================================================================
+
+    /// Issue 1929 — an arrival on one session wakes that session's executor
+    /// and no other. With the old single process-global slot, the session that
+    /// installed its callback LAST received every wake, so `fire(0)` reached
+    /// B's executor and A's was never woken.
+    #[test]
+    fn runtime_wake_reaches_only_the_arrivals_session() {
+        use core::sync::atomic::{AtomicUsize, Ordering};
+        static A: AtomicUsize = AtomicUsize::new(0);
+        static B: AtomicUsize = AtomicUsize::new(0);
+        extern "C" fn wake_a(_ctx: *mut core::ffi::c_void) {
+            A.fetch_add(1, Ordering::SeqCst);
+        }
+        extern "C" fn wake_b(_ctx: *mut core::ffi::c_void) {
+            B.fetch_add(1, Ordering::SeqCst);
+        }
+        let table: RuntimeWakeTable<2> = RuntimeWakeTable::new();
+        table.set(0, Some(wake_a), core::ptr::null_mut());
+        table.set(1, Some(wake_b), core::ptr::null_mut());
+
+        table.fire(0);
+        assert_eq!((A.load(Ordering::SeqCst), B.load(Ordering::SeqCst)), (1, 0));
+        table.fire(1);
+        assert_eq!((A.load(Ordering::SeqCst), B.load(Ordering::SeqCst)), (1, 1));
+
+        // An index outside the pool is the single-slot fallback: row 0.
+        table.fire(-1);
+        table.fire(2);
+        assert_eq!((A.load(Ordering::SeqCst), B.load(Ordering::SeqCst)), (3, 1));
+
+        // Clearing one session leaves the other's wake in place.
+        table.set(0, None, core::ptr::null_mut());
+        table.fire(0);
+        table.fire(1);
+        assert_eq!((A.load(Ordering::SeqCst), B.load(Ordering::SeqCst)), (3, 2));
+    }
 
     #[test]
     fn test_error_conversion() {

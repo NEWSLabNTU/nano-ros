@@ -243,10 +243,11 @@ pub struct ZenohSession {
 // `(rmw_event_callback_t, user_data)` pair the runtime installs lives HERE,
 // in a table the trampoline indexes.
 //
-// Not a single process-global: `RUNTIME_WAKE_CB` gets away with that because
-// a wake is idempotent and any executor's wake serves any other, whereas a
-// graph-change edge belongs to ONE executor's guard condition and delivering
-// it to another session's would be a false positive nobody could attribute.
+// Not a single process-global, for the reason `RUNTIME_WAKE` is not one
+// either (issue 1929): an edge belongs to ONE session's executor. Delivering a
+// graph-change edge to another session's guard condition is a false positive
+// nobody could attribute; a single wake slot was worse, since the session that
+// did not own it was never woken by its own arrivals at all.
 
 /// The `rmw_event_callback_t` installed for session index `i`, or NULL.
 static GRAPH_CHANGE_CB: [portable_atomic::AtomicPtr<()>; ZPICO_MAX_SESSIONS] =
@@ -1490,10 +1491,11 @@ impl Session for ZenohSession {
             .store(cb_ptr, core::sync::atomic::Ordering::Release);
         self.wake_ctx
             .store(ctx, core::sync::atomic::Ordering::Release);
-        // Issue #0317 — also mirror into the process-global so the async read-task
-        // arrival hook (`subscriber_notify_callback`) can fire the wake-cb on the
-        // multi-threaded backend, where `drive_io`'s poll path never sees the work.
-        super::set_runtime_wake_cb(cb, ctx);
+        // Issue #0317 — also mirror into this session's row of the wake table so
+        // the async read-task arrival hook (`subscriber_notify_callback`) can fire
+        // the wake-cb on the multi-threaded backend, where `drive_io`'s poll path
+        // never sees the work. Keyed by session, not process-global (issue 1929).
+        super::set_runtime_wake_cb(super::session_wake_index(self.context.handle()), cb, ctx);
     }
 
     /// phase-467 Row 8 — the graph-CHANGE edge.
