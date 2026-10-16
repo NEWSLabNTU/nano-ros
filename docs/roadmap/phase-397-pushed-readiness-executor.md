@@ -63,6 +63,16 @@ The entity-scoped wake registration already exists in the C API
 **Done when** each registered entity's arrivals set that entity's bit and no
 other, under a test with three subscriptions on distinct topics.
 
+**The registration also carries the OWNING executor** (phase-436 step 5,
+2026-10-16). Several executors share one session through the wake fan-out
+(RFC-0106 D6), and today every arrival wakes all of them. Measured on a native
+host: 7-9 us of CPU per spurious wake, about 0.8 % of a core per idle member at
+1 kHz. When the entity's registration names its executor's wake context, the
+arrival wakes that executor alone, and the fan-out stays only as the fallback
+for a backend that reports UNKNOWN. Fixing
+[issue 1929](../issues/1929-zenoh-async-wake-is-one-process-global-slot.md)
+(zenoh's arrival wake is one process-global slot) falls out of the same change.
+
 ### W3 — `spin_once` reads bits instead of scanning
 
 ```

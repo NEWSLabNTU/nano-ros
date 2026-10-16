@@ -203,14 +203,18 @@ budget is a floor on the wait, not a bound on the call.
   poll-only, so D5 never parks there. What remains is a tickless `wfi` inside
   the transport's wait, armed on its deadline, and it needs a NIC receive
   interrupt first; without one it is D5's blind sleep one layer down.
-- **Per-entity wake routing.** Removes D6's spurious wakes; needs each backend
-  to say whose data arrived.
+- **Per-entity wake routing.** Removes D6's spurious wakes. Measured on a
+  native host: 7-9 us of CPU per spurious wake, so about 0.8 % of a core per
+  idle member at 1 kHz of arrivals. It needs the arrival to name its entity,
+  which is RFC-0084's token; it lands with that (phase-397), not before.
 - **Deadline sources on hardware.** smoltcp's is the only port source. It
   wins a park on QEMU when the budget leaves it room (phase-436 Path B's
   exit); no hardware run yet.
 
 ## Changelog
 
+- 2026-10-16 — Per-entity routing measured and deferred to RFC-0084's token
+  (phase-397); issue 1929 filed from the same probe.
 - 2026-10-16 — D5 gains the sliced drive for a guard condition on a poll-only
   backend (measured, fixed, tested). Bare metal's open question is reframed:
   it is a transport idle, not a park. Path B's exit met on QEMU.
