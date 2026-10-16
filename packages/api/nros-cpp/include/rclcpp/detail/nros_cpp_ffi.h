@@ -684,6 +684,12 @@ typedef struct nros_cpp_hazard_row_t {
    * `NROS_CPP_HAZARD_NO_SINK`.
    */
   uint16_t sink;
+  /**
+   * phase-462 W3c -- the id `nros_app_reaction_hook` receives when the
+   * hazard is detected (the reacting path's, in the model's one reaction id
+   * space); 0 = no safe-state entry to start.
+   */
+  uint16_t reaction_id;
 } nros_cpp_hazard_row_t;
 
 /**

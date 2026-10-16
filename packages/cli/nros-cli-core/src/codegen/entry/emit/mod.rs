@@ -283,6 +283,16 @@ fn refuse_component(
 /// `tests_cpp` so both packs are asked about ONE model.
 #[cfg(test)]
 pub(crate) fn hazard_fixture_model() -> ros_launch_manifest_model::SystemModel {
+    hazard_fixture_model_reacting(false)
+}
+
+/// [`hazard_fixture_model`], optionally with the hazard reacting through
+/// `/listener/react`, a path whose `safe_state` emits `/talker/chatter`
+/// (phase-462 W3c: the reaction gets id 1, the sink is rate row 0).
+#[cfg(test)]
+pub(crate) fn hazard_fixture_model_reacting(
+    reacting: bool,
+) -> ros_launch_manifest_model::SystemModel {
     let yaml = "meta:\n  version: 1\nstructure:\n  scopes:\n    d.launch.xml:\n      \
                 file: d.launch.xml\n  nodes:\n    /talker:\n      scope: d.launch.xml\n      \
                 pkg: talker_pkg\n      exec: talker\n      node_name: talker\n      \
@@ -294,7 +304,21 @@ pub(crate) fn hazard_fixture_model() -> ros_launch_manifest_model::SystemModel {
                 sub_endpoints:\n    /listener/chatter:\n      max_age_ms: 150.0\n  \
                 hazards:\n    d.launch.xml/chatter_lost:\n      guards:\n        \
                 - members: [/chatter]\n      ftti_ms: 400.0\n";
-    ros_launch_manifest_model::SystemModel::from_yaml_str(yaml).expect("hazard fixture parses")
+    let yaml = if reacting {
+        yaml.replace(
+            "      ftti_ms: 400.0\n",
+            "      ftti_ms: 400.0\n      reaction: /listener/react\n",
+        )
+        .replace(
+            "\n  hazards:",
+            "\n  node_paths:\n    /listener/react:\n      input: [/listener/chatter]\n      \
+             output: [/talker/chatter]\n      safe_state:\n        emits: /talker/chatter\n  \
+             hazards:",
+        )
+    } else {
+        yaml.to_string()
+    };
+    ros_launch_manifest_model::SystemModel::from_yaml_str(&yaml).expect("hazard fixture parses")
 }
 
 #[cfg(test)]

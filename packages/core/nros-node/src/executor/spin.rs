@@ -4240,15 +4240,25 @@ impl<'s> Executor<'s> {
             && let Some(now_us) = self.now_us()
         {
             let now_ms = (now_us / 1_000) as u32;
+            // phase-462 W3c -- a detected hazard whose reacting path states a
+            // `safe_state` asks the reaction hook to start it, once per
+            // detection. Not before arming: a start-up verdict is only
+            // counted (phase-474 I2), and it starts nothing either.
+            let hook = self.reaction_hook.filter(|_| self.violations.counts.armed);
             let violations = &mut self.violations;
-            for spec in self.hazard_table {
+            for (row, spec) in self.hazard_table.iter().enumerate() {
                 super::monitor::check_hazard(
                     spec,
                     self.monitor_table,
                     &self.monitor_states,
                     &self.age_states,
                     now_ms,
-                    |v| violations.record(v),
+                    |v| {
+                        if v.rule == "hazard-detected" && spec.reaction_id != 0 {
+                            call_hazard_reaction(hook, spec, row, &v);
+                        }
+                        violations.record(v);
+                    },
                 );
             }
         }
@@ -14533,6 +14543,28 @@ fn call_route_reaction(
     // SAFETY: `f` and `ctx` were registered together through
     // `set_reaction_hook`, whose caller keeps `ctx` valid for the executor's
     // life; the event lives across the call.
+    unsafe { f(&ev, ctx) };
+}
+
+/// phase-462 W3c -- [`call_route_reaction`] for a detected hazard: the event
+/// names the hazard's reaction id and its index in the hazard table.
+fn call_hazard_reaction(
+    hook: Option<(super::monitor::ReactionHookFn, *mut core::ffi::c_void)>,
+    spec: &super::monitor::HazardSpec,
+    row: usize,
+    v: &super::monitor::Violation,
+) {
+    let Some((f, ctx)) = hook else { return };
+    let ev = super::monitor::ReactionEvent {
+        reaction_id: spec.reaction_id as u32,
+        row: row as u32,
+        rule_code: super::monitor::rule_code(v.rule),
+        measured_ms: v.measured,
+        declared_ms: v.declared,
+        mechanism: super::monitor::MECHANISM_EXECUTOR,
+    };
+    // SAFETY: as `call_route_reaction` -- `f` and `ctx` were registered
+    // together through `set_reaction_hook`.
     unsafe { f(&ev, ctx) };
 }
 

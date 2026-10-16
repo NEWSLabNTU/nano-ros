@@ -2178,7 +2178,7 @@ fn typed_emit_bakes_the_hazard_table_after_the_monitors() {
     );
     assert!(
         src.contains(
-            "{ \"d.launch.xml/chatter_lost\", 400u, 0u, __nros_hz_guards_0, 1u, 65535u },"
+            "{ \"d.launch.xml/chatter_lost\", 400u, 0u, __nros_hz_guards_0, 1u, 65535u, 0u },"
         ),
         "hazard row (no safe_state: no sink); src:\n{src}"
     );
@@ -2193,4 +2193,50 @@ fn typed_emit_bakes_the_hazard_table_after_the_monitors() {
     // The same rows without the model bake no hazard.
     let plain = emit_typed_monitored(&plan, &rows, &ages).expect("plain emit ok");
     assert!(!plain.contains("nros_cpp_install_hazards"), "{plain}");
+}
+
+/// phase-462 W3c -- a hazard reacting through a path that states a
+/// `safe_state` carries that path's reaction id, and the entry declares the
+/// weak `nros_app_reaction_hook` and installs it so the detection can start
+/// the safe state.
+#[test]
+fn typed_emit_wires_a_hazards_safe_state_reaction_to_the_hook() {
+    let plan = fixture_plan_typed(&[
+        (
+            "talker_pkg",
+            "talker",
+            "talker",
+            "talker_pkg::Talker",
+            "talker_pkg/Talker.hpp",
+        ),
+        (
+            "listener_pkg",
+            "listener",
+            "listener",
+            "listener_pkg::Listener",
+            "listener_pkg/Listener.hpp",
+        ),
+    ]);
+    let (rows, ages) = monitor_fixture_rows();
+    let model = super::hazard_fixture_model_reacting(true);
+    let (src, _) =
+        super::emit_typed_monitored_lowered(Lang::Cpp, &plan, &rows, &ages, Some(&model))
+            .expect("hazard emit ok");
+    assert!(
+        src.contains("__nros_hz_guards_0, 1u, 0u, 1u },"),
+        "sink rate row 0, reaction id 1; src:\n{src}"
+    );
+    assert!(
+        src.contains("extern \"C\" void nros_app_reaction_hook"),
+        "{src}"
+    );
+    assert!(
+        src.contains("reaction 1"),
+        "the reaction table comment; src:\n{src}"
+    );
+    assert!(src.contains("nros_cpp_install_hazards("), "{src}");
+    assert!(
+        src.contains("nros_cpp_executor_set_reaction_hook("),
+        "{src}"
+    );
 }

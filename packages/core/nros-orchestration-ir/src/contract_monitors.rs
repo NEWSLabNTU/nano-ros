@@ -108,6 +108,40 @@ pub fn reaction_ids(rows: &[MonitorRow]) -> Vec<(u16, String)> {
         .collect()
 }
 
+/// phase-462 W3c -- the reaction table for a whole MODEL: every route's
+/// supervised `reaction` and every hazard reaction path that states a
+/// `safe_state`, sorted, numbered as [`reaction_ids`] numbers them.
+///
+/// One id space for routes and hazards, and one per model rather than per
+/// executor table, so the id a hook receives names the same path whichever
+/// executor reports it and whichever rule (`route-deadline-runtime` or
+/// `hazard-detected`) asks for it. A model with no hazard numbers exactly
+/// the refs it numbered before: the supervised rows' reactions.
+#[must_use]
+pub fn model_reaction_ids(model: &SystemModel) -> Vec<(u16, String)> {
+    let mut refs: Vec<&str> = model
+        .contracts
+        .node_paths
+        .values()
+        .filter_map(|p| p.supervise.as_ref())
+        .map(|s| s.reaction.as_str())
+        .filter(|r| !r.is_empty())
+        .collect();
+    for (key, h) in &model.contracts.hazards {
+        if let Ok(Some(r)) = crate::ftti_budget::reaction_path(model, key, h)
+            && r.path.safe_state.is_some()
+        {
+            refs.push(r.key);
+        }
+    }
+    refs.sort_unstable();
+    refs.dedup();
+    refs.into_iter()
+        .enumerate()
+        .map(|(i, r)| ((i + 1).min(u16::MAX as usize) as u16, r.to_string()))
+        .collect()
+}
+
 /// phase-503 -- number every row's reaction by [`reaction_ids`].
 pub fn assign_reaction_ids(rows: &mut [MonitorRow]) {
     let ids = reaction_ids(rows);
@@ -328,6 +362,14 @@ pub fn monitor_rows(model: &SystemModel) -> Result<Vec<MonitorRow>, ContractRowE
         });
     }
     apply_route_supervision(&mut rows, &sup)?;
+    // phase-462 W3c -- renumber in the MODEL's id space, which hazards share.
+    let ids = model_reaction_ids(model);
+    for r in rows.iter_mut() {
+        r.reaction_id = ids
+            .iter()
+            .find(|(_, name)| *name == r.reaction)
+            .map_or(0, |(id, _)| *id);
+    }
     Ok(rows)
 }
 
@@ -417,6 +459,10 @@ pub struct HazardRow {
     pub guards: Vec<HazardGuardRow>,
     /// Rate-row index of the `safe_state` publisher, when this table set has it.
     pub sink: Option<usize>,
+    /// phase-462 W3c -- the id the reaction hook receives on `hazard-detected`
+    /// ([`model_reaction_ids`]), or 0 when the reacting path states no
+    /// `safe_state`: then there is no safe-state entry to start.
+    pub reaction_id: u16,
 }
 
 /// The rows of `rows`/`ages` that detect a fault on `topic`: every age row on
@@ -474,6 +520,7 @@ fn topic_detectors_in_model(model: &SystemModel, topic: &str) -> Vec<String> {
 /// A hazard left with no guard is not lowered.
 pub fn hazard_rows(model: &SystemModel, rows: &[MonitorRow], ages: &[AgeRow]) -> Vec<HazardRow> {
     let sinks = hazard_sinks(model);
+    let ids = model_reaction_ids(model);
     let mut out = Vec::new();
     'hazard: for (key, h) in &model.contracts.hazards {
         let mut guards = Vec::new();
@@ -518,6 +565,10 @@ pub fn hazard_rows(model: &SystemModel, rows: &[MonitorRow], ages: &[AgeRow]) ->
             .ok()
             .flatten();
         let emits = reaction.and_then(|r| r.path.safe_state.as_ref().map(|s| s.emits.as_str()));
+        let reaction_id = reaction
+            .filter(|r| r.path.safe_state.is_some())
+            .and_then(|r| ids.iter().find(|(_, name)| name == r.key))
+            .map_or(0, |(id, _)| *id);
         out.push(HazardRow {
             key: key.clone(),
             ftti_ms: h
@@ -526,6 +577,7 @@ pub fn hazard_rows(model: &SystemModel, rows: &[MonitorRow], ages: &[AgeRow]) ->
             settle_ms: emits.and_then(|e| sinks.get(e).copied()).unwrap_or(0),
             guards,
             sink: emits.and_then(|e| rows.iter().position(|r| r.fqn == e)),
+            reaction_id,
         });
     }
     out
@@ -580,10 +632,12 @@ fn render_hazards_rs(hazards: &[HazardRow], paths: RenderPaths) -> String {
         };
         out.push_str(&format!(
             "    HazardSpec {{ key: {k:?}, ftti_ms: {f}u32, settle_ms: {st}u32, \
-             guards: NROS_HAZARD_GUARDS_{i}, sink: {sink}, cell: &NROS_HAZARD_CELL_{i} }},\n",
+             guards: NROS_HAZARD_GUARDS_{i}, sink: {sink}, reaction_id: {ri}u16, \
+             cell: &NROS_HAZARD_CELL_{i} }},\n",
             k = h.key,
             f = h.ftti_ms,
             st = h.settle_ms,
+            ri = h.reaction_id,
         ));
     }
     out.push_str("];\n");
@@ -881,6 +935,14 @@ mod hazard_row_tests {
             vec![GuardMemberRow::Age(0), GuardMemberRow::Rate(scan_rate)]
         );
         assert_eq!(ages[0].fqn, "/handler/scan");
+        // phase-462 W3c -- the stop path states a safe_state, so the hazard
+        // carries its reaction id, in the model's one id space (no supervised
+        // route here, so it is the only reaction: id 1).
+        assert_eq!(h.reaction_id, 1);
+        assert_eq!(
+            model_reaction_ids(&parse(&model_yaml(AGE_100, SAFE_STATE, HAZARD, ""))).len(),
+            1
+        );
         let sink = h.sink.expect("sink row");
         assert_eq!(rows[sink].fqn, "/handler/stop");
         assert_eq!(
