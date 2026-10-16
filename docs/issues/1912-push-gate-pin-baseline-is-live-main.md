@@ -113,3 +113,19 @@ Same cause, a second symptom: whether a commit superseded by a pin bump
 reads as REWIND or NOT VERIFIED depends on how much submodule history the
 job happened to fetch. Either way the gate for a commit that moved no pin
 goes red. The fix under "What would close this" covers both.
+
+## Fourth sighting, in the main-only cache-warming job (2026-10-16)
+
+Push gate **38829571901** for main `ba348cc20` (00:27Z) failed in
+`warm the compile-tier cache (main only)` (job **116745434424**). That job runs
+`check fast` too, so it has the same pin gate:
+
+```
+submodule-pins: packages/rmw/zenoh/zpico-sys/zenoh-pico
+    REWIND — the new pin is an ANCESTOR of the old one
+```
+
+`ba348cc20` moved no pin. #2286 and #2288 both bumped `zenoh-pico` forward and
+merged while this job was queued. The job compared against that newer main.
+Any job that runs `check fast` on a push to main has this exposure, not only
+`check / fast`.
