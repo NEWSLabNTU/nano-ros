@@ -206,6 +206,113 @@ nros_bin() {
     printf '%s' "$b"
 }
 
+# shellcheck source=scripts/build/launch-resolve-stale.sh
+. "$repo_root/scripts/build/launch-resolve-stale.sh"
+# shellcheck source=scripts/build/launch-resolver-identity.sh
+. "$repo_root/scripts/build/launch-resolver-identity.sh"
+
+# ## Preconditions are asked ONCE, up front, and never read as a template defect
+#
+# Issue 1453 (2026-09-28): getting to the real `multi-package-workspace` error
+# took three local runs, each stopped by a different missing tool — no
+# `nros-launch-resolve`, then a stale in-tree CLI (a `play_launch` pin move is
+# a CLI build input, issues 0409/1018) — and each was reported identically as
+# "the copy does not build". On the merge queue that is worse than slow: a
+# provisioning slip in the job would eject a batch with a verdict that blames
+# the templates. So the tools every HOST project needs are checked before any
+# copy is built, each with its own remedy, and a failure here says plainly that
+# no template was examined.
+#
+# `preflight_judge` is the verdict, over facts gathered by
+# `preflight_host_tools`; split so the self-test can drive every arm without
+# un-building anything.
+#
+# preflight_judge <nros> <own-cli> <cli-stale-msg> <resolver> <built-resolver> <resolver-stale 0|1>
+#   <nros>            the CLI the builds will run (empty: none)
+#   <own-cli>         this checkout's own build of it (empty: none) — staleness
+#                     is a question only about THAT binary; a store CLI has no
+#                     source stamp to compare
+#   <cli-stale-msg>   `nros source-stamp`'s refusal (empty: fresh)
+#   <resolver>        the resolver `nros sync` will spawn (empty: none)
+#   <built-resolver>  where this checkout's `setup-launch-resolve` writes it
+#   <resolver-stale>  0 when `nros_launch_resolve_stale` says stale
+preflight_judge() {
+    local nros="$1" own="$2" cli_stale="$3" resolver="$4" built="$5" r_stale="$6"
+    if [ -z "$nros" ]; then
+        echo "check-template-copy-out: PRECONDITION — no \`nros\` CLI to build with." >&2
+        echo "  Looked where nros_cli_bin looks: \$NROS_CLI, this checkout's build," >&2
+        echo "  PATH, the store. Build it:  just setup-cli" >&2
+        echo "  No template was built; this is not a finding about any of them." >&2
+        return 1
+    fi
+    if [ -n "$own" ] && [ "$own" = "$nros" ] && [ -n "$cli_stale" ]; then
+        echo "check-template-copy-out: PRECONDITION — the in-tree \`nros\` CLI is STALE:" >&2
+        printf '%s\n' "$cli_stale" | sed 's/^/    /' >&2
+        echo "  Rebuild it:  just setup-cli   (then just setup-launch-resolve — issue 1487)" >&2
+        echo "  No template was built; this is not a finding about any of them." >&2
+        return 1
+    fi
+    if [ -z "$resolver" ]; then
+        echo "check-template-copy-out: PRECONDITION — no \`nros-launch-resolve\`." >&2
+        echo "  \`nros sync\` spawns it to resolve every workspace template's bringup," >&2
+        echo "  so without it every host copy fails at sync. Build it:" >&2
+        echo "    just setup-launch-resolve" >&2
+        echo "  No template was built; this is not a finding about any of them." >&2
+        return 1
+    fi
+    if [ "$resolver" = "$built" ] && [ "$r_stale" = 0 ]; then
+        echo "check-template-copy-out: PRECONDITION — \`nros-launch-resolve\` is STALE" >&2
+        echo "  ($resolver no longer matches its sources; \`nros sync\` refuses a" >&2
+        echo "   resolver from another layer-2 checkout — issue 0409). Rebuild it:" >&2
+        echo "    just setup-launch-resolve" >&2
+        echo "  No template was built; this is not a finding about any of them." >&2
+        return 1
+    fi
+    return 0
+}
+
+# Gather the facts `preflight_judge` rules on, for THIS checkout.
+preflight_host_tools() {
+    local nros own cli_stale="" resolver built r_stale=1 out
+    nros="$(nros_bin)" || nros=""
+    own="$(NROS_CLI= nros_cli_bin --checkout-only 2>/dev/null)" || own=""
+    if [ -n "$own" ] && [ "$own" = "$nros" ]; then
+        if ! out="$("$nros" source-stamp 2>&1)"; then
+            cli_stale="${out:-source-stamp refused with no message}"
+        fi
+    fi
+    resolver="$(nros_launch_resolve_bin "$repo_root" 2>/dev/null)" || resolver=""
+    built="$(nros_launch_resolve_built_bin "$repo_root")"
+    if nros_launch_resolve_stale "$repo_root"; then r_stale=0; fi
+    preflight_judge "$nros" "$own" "$cli_stale" "$resolver" "$built" "$r_stale"
+}
+
+# Every arm of `preflight_judge`, on synthetic facts — including the all-good
+# row, so a judge that refuses everything fails here too.
+preflight_self_test() {
+    local bad=0 rc desc want
+    _pf_case() {
+        desc="$1"; want="$2"; shift 2
+        rc=0
+        preflight_judge "$@" 2>/dev/null || rc=$?
+        if { [ "$want" = ok ] && [ "$rc" -ne 0 ]; } || { [ "$want" = refuse ] && [ "$rc" -eq 0 ]; }; then
+            echo "self-test FAILED: preflight — $desc (expected $want, rc=$rc)." >&2
+            bad=1
+        fi
+    }
+    _pf_case "all tools present and fresh"    ok     /c/nros /c/nros ""      /c/lr /c/lr 1
+    _pf_case "no CLI"                         refuse ""      ""      ""      /c/lr /c/lr 1
+    _pf_case "stale in-tree CLI"              refuse /c/nros /c/nros "STALE" /c/lr /c/lr 1
+    _pf_case "store CLI is not stamp-checked" ok     /s/nros /c/nros "STALE" /c/lr /c/lr 1
+    _pf_case "no launch resolver"             refuse /c/nros /c/nros ""      ""    /c/lr 1
+    _pf_case "stale launch resolver"          refuse /c/nros /c/nros ""      /c/lr /c/lr 0
+    _pf_case "an explicit resolver elsewhere" ok     /c/nros /c/nros ""      /x/lr /c/lr 0
+    unset -f _pf_case
+    [ "$bad" -eq 0 ] || return 1
+    echo "self-test OK: every preflight arm refuses a missing or stale tool, and passes fresh ones."
+    return 0
+}
+
 
 # Build one copied-out HOST project with `nros sync` + `nros build`. Returns 0
 # on success, 1 on a build failure, 3 when there is no `nros` to build with.
@@ -511,6 +618,19 @@ self_test() {
 
     rc=0
     build_copy "$ws" "$work/build.log" || rc=$?
+    # A failure only counts when it is the one we caused (the cross control's
+    # rule, below). Without this the control passed VACUOUSLY on a host with no
+    # launch resolver: `nros sync` died on the missing tool before it ever read
+    # the broken <depend> (issue 1453).
+    local ours_rc=0
+    nros_grep_q -E '^ +nano-ros — declared by' "$work/build.log" || ours_rc=$?
+    if [ "$rc" -ne 0 ] && [ "$ours_rc" -ne 0 ]; then
+        echo "self-test FAILED: the broken copy of $tmpl failed, but not on the injected <depend>." >&2
+        echo "  The control cannot tell this arm's verdict from an unrelated breakage. Log tail:" >&2
+        tail -n 20 "$work/build.log" | sed 's/^/      /' >&2
+        rm -rf "$work"
+        return 1
+    fi
     rm -rf "$work"
     if [ "$rc" -eq 0 ]; then
         echo "self-test FAILED: a template with an unresolvable <depend> BUILT." >&2
@@ -582,7 +702,14 @@ if [ "$mode" = "self-test" ]; then
     rc=0
     classifier_self_test || rc=1
     projects_self_test || rc=1
-    self_test || rc=1
+    preflight_self_test || rc=1
+    # The host control BUILDS a copy, so it needs the host tools too: a missing
+    # one is a precondition, never a pass or a fail of the control.
+    if preflight_host_tools; then
+        self_test || rc=1
+    else
+        rc=1
+    fi
     cross_self_test || rc=1
     exit "$rc"
 fi
@@ -634,6 +761,17 @@ if [ "${#buildable[@]}" -eq 0 ]; then
     echo "check-template-copy-out: no template declares an [image.*]." >&2
     echo "  That is not a pass — every copy-out template used to declare one," >&2
     echo "  so an empty set means discovery broke, not that the work is done." >&2
+    exit 1
+fi
+
+# Every HOST project runs `nros sync` + `nros build`; ask for their tools once,
+# before any copy is made (see `preflight_judge`).
+has_host=0
+for entry in "${buildable[@]}"; do
+    hb="$(project_boards "${entry%%$'\t'*}" "${entry#*$'\t'}")" || hb=""
+    case $'\n'"$hb"$'\n' in *$'\n'linux$'\n'*) has_host=1; break ;; esac
+done
+if [ "$has_host" -eq 1 ] && ! preflight_host_tools; then
     exit 1
 fi
 

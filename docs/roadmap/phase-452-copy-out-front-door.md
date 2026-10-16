@@ -303,4 +303,4 @@ Open issues whose `related:` names this phase (listed 2026-10-12, so the
 link runs both ways). Listing one here records the link, not a claim that
 this phase will fix it.
 
-- [issue 1453](../issues/1453-template-copy-out-not-merge-gating.md) — `check-template-copy-out` sat red on `main` unseen because it runs on `schedule` only — the defect's class is gated c …
+- [issue 1453](../issues/archived/1453-template-copy-out-not-merge-gating.md) — resolved 2026-10-17: `check-template-copy-out` now runs the full set on `merge_group`.

@@ -108,7 +108,8 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
     `check-compile-smoke` + `check-cli-tests` + `check-workspace-all`.
     **`test-unit` is NOT in it** — it runs on `merge_group` (and
     schedule/dispatch), where it costs a measured ~3.5 min per batch instead of
-    per PR push. **`workspace-all` moved the other way on 2026-09-10**, out of
+    per PR push; so does `check template-copy-out` (merge_group + dispatch,
+    issue 1453). **`workspace-all` moved the other way on 2026-09-10**, out of
     the batch lane and onto the PR: it is 28 s against `test-unit`'s 3.5 min, so
     it never belonged under the same cost argument, and a feature-combination
     break there costs a batch rather than a PR — `grouping_strategy` is ALLGREEN
