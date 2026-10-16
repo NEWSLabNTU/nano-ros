@@ -619,6 +619,7 @@ fn monitor_table(
                 })
                 .collect(),
             sink: h.sink.map_or(u16::MAX, |r| r as u16),
+            reaction_id: h.reaction_id,
         })
         .collect::<Vec<HazardRow>>();
     let hazard_guards = hazards.iter().map(|h| h.guards.len()).sum();

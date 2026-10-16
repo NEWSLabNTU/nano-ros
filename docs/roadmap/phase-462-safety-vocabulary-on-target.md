@@ -1,7 +1,7 @@
 # phase-462 -- the contract's safety vocabulary reaches the target
 
-**Status (2026-10-16). IN PROGRESS: W1, W2, W3a and W3b landed; W3c, W4 and
-W6a are open; W5 and W6b wait on rlm.** (Planned 2026-09-21.) Numbered highest + 7 (phase-461 took +6;
+**Status (2026-10-16). IN PROGRESS: W1, W2 and W3 landed; W4 and W6a are open;
+W5 and W6b wait on rlm.** (Planned 2026-09-21.) Numbered highest + 7 (phase-461 took +6;
 456-460 belong to concurrent sessions). Depends on two pieces of work outside
 this document: the shared MapperInput derivation phase (a play_launch / rlm
 phase being designed in parallel, referred to here by that name and not by a
@@ -297,9 +297,28 @@ roads' `hazard_rows`), and both packs bake the arrays and install them after
 model), and the rendered C and C++ were syntax-checked against the regenerated
 header with `gcc`/`g++` (C also with `arm-none-eabi-gcc`, a 32-bit target).
 
-W3c: not started.
+W3c status: landed in this change. A hazard whose reacting path states a
+`safe_state` carries that path's reaction id, and on `hazard-detected` the
+executor calls phase-503's reaction hook with it (`rule_code` hazard-detected,
+`row` the hazard's index), once per detection and not before arming -- the
+application's `nros_app_reaction_hook` starts the safe-state path, rather than
+a new `Fault` hook target. Reaction ids are numbered once per MODEL
+(`contract_monitors::model_reaction_ids`: every supervised route's reaction and
+every hazard path with a `safe_state`), so an id names one path whichever
+executor reports it and whichever rule asks; a model with no hazard numbers
+what it numbered before. The C row gains `reaction_id`; both packs declare the
+weak hook and install it when any hazard has one, listing each hazard's id in
+a comment. Tests: `a_detected_hazard_starts_its_safe_state_reaction` (the
+executor, with a clock the test drives), the packs'
+`typed_emit_wires_a_hazards_safe_state_reaction_to_the_hook`, and the rendered
+C and C++ syntax-checked with the hook declared and installed.
 
-Claim: phase-462-W3. Depends on: phase-462-W1, phase-462-W2, phase-459-W2, phase-495-W2. Owns: hazard consts in packages/core/nros-diagnostics/src/lib.rs; a hazard-row fn in packages/cli/nros-cli-core/src/orchestration/model_ingest.rs; the hazard table region in packages/cli/nros-cli-core/src/codegen/entry/emit_cpp.rs and emit_rust.rs; the Fault hook target in packages/core/nros-node/src/executor/sched_context.rs; packages/core/nros-orchestration-ir/src/ftti_budget.rs (new); packages/testing/nros-tests/tests/hazard_rows_and_ftti.rs (new). Gate: cargo test -p nros-orchestration-ir ftti_budget (W3a); cargo test -p nros-tests --test hazard_rows_and_ftti (W3b/W3c). Status: W3a and W3b landed; W3c not started.
+What W3 leaves to the image, deliberately: what the safe-state path DOES (it
+is the application's callback, started through the hook), and a guard on a
+fault class the executor cannot observe (`reported`, `overrun`), which W3a
+lists as unobserved and W3b does not watch.
+
+Claim: phase-462-W3. Depends on: phase-462-W1, phase-462-W2, phase-459-W2, phase-495-W2. Owns: hazard consts in packages/core/nros-diagnostics/src/lib.rs; a hazard-row fn in packages/cli/nros-cli-core/src/orchestration/model_ingest.rs; the hazard table region in packages/cli/nros-cli-core/src/codegen/entry/emit_cpp.rs and emit_rust.rs; the Fault hook target in packages/core/nros-node/src/executor/sched_context.rs; packages/core/nros-orchestration-ir/src/ftti_budget.rs (new); packages/testing/nros-tests/tests/hazard_rows_and_ftti.rs (new). Gate: cargo test -p nros-orchestration-ir ftti_budget (W3a); cargo test -p nros-tests --test hazard_rows_and_ftti (W3b/W3c). Status: landed (W3a, W3b, W3c).
 
 ### W4 [cli] -- `modes` as tier-table variants
 

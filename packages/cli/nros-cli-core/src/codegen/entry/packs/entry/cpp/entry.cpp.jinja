@@ -149,9 +149,19 @@ static const ::nros_cpp_hazard_guard_t __nros_hz_guards{{ tag }}_{{ hi }}[{{ h.g
 {%- endfor %}
 static const ::nros_cpp_hazard_row_t __nros_hz_rows{{ tag }}[{{ m.hazards | length }}] = {
 {%- for h in m.hazards %}
-    { "{{ h.key | c_str }}", {{ h.ftti_ms }}u, {{ h.settle_ms }}u, __nros_hz_guards{{ tag }}_{{ loop.index0 }}, {{ h.guards | length }}u, {{ h.sink }}u },
+    { "{{ h.key | c_str }}", {{ h.ftti_ms }}u, {{ h.settle_ms }}u, __nros_hz_guards{{ tag }}_{{ loop.index0 }}, {{ h.guards | length }}u, {{ h.sink }}u, {{ h.reaction_id }}u },
 {%- endfor %}
 };
+{%- if m.hazards | selectattr("reaction_id") | list %}
+/* phase-462 W3c -- a detected hazard whose reacting path states a safe_state
+ * calls nros_app_reaction_hook, when the application defines it, with the
+ * hazard's reaction id (rule_code hazard-detected, row = the hazard's index):
+{%- for h in m.hazards %}{% if h.reaction_id %}
+ *   hazard {{ loop.index0 }} {{ h.key | c_str }}: reaction {{ h.reaction_id }}
+{%- endif %}{% endfor %}
+ */
+extern "C" void nros_app_reaction_hook(const ::nros_cpp_reaction_event_t* event, void* ctx) __attribute__((weak));
+{%- endif %}
 alignas(8) static unsigned char __nros_hz_storage{{ tag }}[{{ m.hazards | length }} * NROS_CPP_HAZARD_ROW_STORAGE + {{ m.hazard_guards }} * NROS_CPP_HAZARD_GUARD_STORAGE + {{ m.hazard_members }} * NROS_CPP_HAZARD_MEMBER_STORAGE];
 {%- endif %}
 {%- endfor %}

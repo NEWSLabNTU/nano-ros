@@ -15163,3 +15163,84 @@ fn a_default_trace_sink_keeps_the_applications_sink() {
     );
     set_trace_sink(None);
 }
+
+private_test_clock!(hazard_reaction_clock);
+
+/// phase-462 W3c -- a hazard whose reacting path states a `safe_state` asks
+/// the reaction hook to start it when the hazard is DETECTED, once per
+/// detection, with the hazard's reaction id and its index in the hazard table.
+/// The verdicts land on the drain beside it: the guard's `silence-runtime`
+/// and the observer's `hazard-detected`.
+#[cfg(all(feature = "std", feature = "alloc"))]
+#[test]
+fn a_detected_hazard_starts_its_safe_state_reaction() {
+    use super::monitor::{
+        AgeMonitorSpec, GuardRef, GuardSpec, HazardCell, HazardSpec, NO_SINK, ReactionEvent,
+        SubMonitorCell, rule_code,
+    };
+    use std::sync::Mutex;
+    let _g = arming_lock();
+
+    static SUB: SubMonitorCell = SubMonitorCell::new();
+    static AGES: [AgeMonitorSpec; 1] = [AgeMonitorSpec {
+        topic: "/h3/scan",
+        fqn: "/h3/handler/scan",
+        max_age_ms: 100,
+        cell: &SUB,
+    }];
+    static CELL: HazardCell = HazardCell::new();
+    static GUARDS: [GuardSpec; 1] = [GuardSpec {
+        all_of: false,
+        members: &[GuardRef::Age(0)],
+    }];
+    static HAZARDS: [HazardSpec; 1] = [HazardSpec {
+        key: "d.launch.xml/scan_lost",
+        ftti_ms: 500,
+        settle_ms: 0,
+        guards: &GUARDS,
+        sink: NO_SINK,
+        reaction_id: 3,
+        cell: &CELL,
+    }];
+    static EVENTS: Mutex<alloc::vec::Vec<ReactionEvent>> = Mutex::new(alloc::vec::Vec::new());
+    unsafe extern "C" fn hook(ev: *const ReactionEvent, _ctx: *mut core::ffi::c_void) {
+        EVENTS.lock().unwrap().push(unsafe { *ev });
+    }
+
+    hazard_reaction_clock::claim_at_us(1_000_000);
+    let mut executor = executor_with_clock_fn(MockSession::new(), hazard_reaction_clock::now_us);
+    executor.set_age_table(&AGES);
+    executor.set_hazard_table(&HAZARDS);
+    executor.set_reaction_hook(Some((hook, core::ptr::null_mut())));
+
+    // Opens the guard's lease; nothing is silent yet.
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    assert!(EVENTS.lock().unwrap().is_empty());
+
+    // 150 ms with nothing taken: the guard is silent, the hazard is detected
+    // and its reaction requested.
+    hazard_reaction_clock::set_us(1_150_000);
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    let events = EVENTS.lock().unwrap().clone();
+    assert_eq!(events.len(), 1, "{events:?}");
+    assert_eq!(events[0].reaction_id, 3);
+    assert_eq!(events[0].row, 0);
+    assert_eq!(events[0].rule_code, rule_code("hazard-detected"));
+    assert_eq!((events[0].measured_ms, events[0].declared_ms), (150, 500));
+
+    // Still silent: detected once, so no second request.
+    hazard_reaction_clock::set_us(1_300_000);
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    assert_eq!(EVENTS.lock().unwrap().len(), 1);
+
+    let mut rules = alloc::vec::Vec::new();
+    executor.drain_violations(|v| rules.push((v.rule, v.fqn)));
+    assert!(
+        rules.contains(&("silence-runtime", "/h3/handler/scan")),
+        "{rules:?}"
+    );
+    assert!(
+        rules.contains(&("hazard-detected", "d.launch.xml/scan_lost")),
+        "{rules:?}"
+    );
+}

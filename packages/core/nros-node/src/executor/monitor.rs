@@ -251,9 +251,11 @@ pub const MECHANISM_TIMER: u8 = 1;
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ReactionEvent {
-    /// [`MonitorSpec::reaction_id`] of the row.
+    /// [`MonitorSpec::reaction_id`] of the row (or, for `hazard-detected`,
+    /// [`HazardSpec::reaction_id`] of the hazard).
     pub reaction_id: u32,
-    /// Index of the row in the installed monitor table.
+    /// Index of the row in the installed monitor table (for
+    /// `hazard-detected`, of the hazard in the installed hazard table).
     pub row: u32,
     /// [`rule_code`] of the verdict (`route-deadline-runtime`).
     pub rule_code: u32,
@@ -1529,6 +1531,10 @@ pub struct HazardSpec {
     pub guards: &'static [GuardSpec],
     /// Rate-table row of the `safe_state.emits` publisher, or [`NO_SINK`].
     pub sink: u16,
+    /// phase-462 W3c -- the id the reaction hook receives when this hazard is
+    /// DETECTED (the reacting path's, in the model's one reaction id space
+    /// shared with supervised routes); 0 = no safe-state entry to start.
+    pub reaction_id: u16,
     /// The observer's state.
     pub cell: &'static HazardCell,
 }
@@ -1717,6 +1723,7 @@ mod hazard_tests {
             settle_ms: 30,
             guards: &GUARDS,
             sink: 1,
+            reaction_id: 0,
             cell: &CELL,
         };
         let mon = [MonitorState::default(); 2];
@@ -1760,6 +1767,7 @@ mod hazard_tests {
             settle_ms: 0,
             guards: &GUARDS,
             sink: NO_SINK,
+            reaction_id: 0,
             cell: &CELL,
         };
         let mut mon = [MonitorState::default(); 2];
@@ -1838,6 +1846,7 @@ mod hazard_tests {
             settle_ms: 30u32,
             guards: NROS_HAZARD_GUARDS_0,
             sink: 0u16,
+            reaction_id: 1u16,
             cell: &NROS_HAZARD_CELL_0,
         }];
     }
@@ -1876,6 +1885,7 @@ mod hazard_tests {
             settle_ms: 0,
             guards: &GUARDS,
             sink: NO_SINK,
+            reaction_id: 0,
             cell: &CELL,
         };
         let mut mon = [MonitorState::default(); 2];

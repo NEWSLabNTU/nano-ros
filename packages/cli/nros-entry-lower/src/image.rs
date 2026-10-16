@@ -340,6 +340,10 @@ pub struct HazardRow {
     /// Rate-row index of the `safe_state` publisher; `0xFFFF` = none
     /// (`NROS_CPP_HAZARD_NO_SINK`).
     pub sink: u16,
+    /// phase-462 W3c -- the reaction id the hook receives on detection; 0 =
+    /// none.
+    #[serde(default)]
+    pub reaction_id: u16,
 }
 
 /// phase-462 W3b -- one guard of a [`HazardRow`].

@@ -5028,6 +5028,10 @@ pub struct nros_cpp_hazard_row_t {
     /// Rate-table row of the `safe_state` publisher, or
     /// `NROS_CPP_HAZARD_NO_SINK`.
     pub sink: u16,
+    /// phase-462 W3c -- the id `nros_app_reaction_hook` receives when the
+    /// hazard is detected (the reacting path's, in the model's one reaction id
+    /// space); 0 = no safe-state entry to start.
+    pub reaction_id: u16,
 }
 
 /// One install: the rows, and one static 8-aligned buffer of at least
@@ -5217,6 +5221,7 @@ pub unsafe extern "C" fn nros_cpp_install_hazards(
                     } else {
                         r.sink
                     },
+                    reaction_id: r.reaction_id,
                     cell: &*cell,
                 },
             );
