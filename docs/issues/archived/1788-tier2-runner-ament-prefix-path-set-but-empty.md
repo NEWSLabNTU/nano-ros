@@ -1,11 +1,12 @@
 ---
 id: 1788
 title: "On the new self-hosted runner, `AMENT_PREFIX_PATH` is set but indexes no packages, so `cli-tests`' `with_ros` cases fail with \"No ROS packages found\""
-status: open
+status: resolved
 type: bug
 area: [ci, runner]
 severity: medium
 found: 2026-10-10
+resolved: 2026-10-17
 related: [1365, 1779, 1764]
 ---
 
@@ -97,3 +98,12 @@ exported, with nothing but the router in it. Not measured: which image
 
 Closes when `newslab-133` runs an image built after `38a4458d52` and a tier-2
 run on main shows `cli-tests` green there (step 3 above).
+
+## Closed (2026-10-17)
+
+Step 3 happened. run-matrix **38861323075** (schedule, 2026-10-16), job
+`tier 2 (1-wise matrix)` on **`nano-ros-runner-newslab-133`**: `ci tier2
+[1/5] check::default — ok after 17m53s`, and `cli-tests` ran inside it for
+535 s and is not among that run's skipped gates. The lane went on to pass
+`test-all` and the run's verdict reads "cells ran and passed". 133 runs an
+image with the phase-489 W2 interface packages.
