@@ -57,7 +57,12 @@ if [ -z "$URL" ]; then
     exit 1
 fi
 
-CURRENT="$(grep -hoE 'tag = "[^"]*"' "${MANIFESTS[@]}" | sort -u | sed 's/tag = //;s/"//g' | tr '\n' ' ')"
+# A pin is a `tag = ` or, between releases, a `rev = ` (phase-503 pinned a
+# commit until its tag existed). Both are read, both are rewritten to the tag;
+# a pin that is neither is left alone and the lock check below catches it. The
+# `|| true` is the issue-1249 rule: no match is grep's 1, which under pipefail
+# would end the script here with no message.
+CURRENT="$({ grep -hoE '(tag|rev) = "[^"]*"' "${MANIFESTS[@]}" || true; } | sort -u | sed -E 's/(tag|rev) = //;s/"//g' | tr '\n' ' ')"
 echo "ros-launch-manifest: $URL"
 echo "  manifests : ${#MANIFESTS[@]}"
 for m in "${MANIFESTS[@]}"; do echo "      $m"; done
@@ -122,7 +127,7 @@ done
 # Only on lines that are a ros-launch-manifest dependency, so a `tag = ` for any
 # other git dep in the same file is untouched.
 for m in "${MANIFESTS[@]}"; do
-    sed -i -E '/^ros-launch-manifest[a-z-]* *=/ s/tag = "[^"]*"/tag = "'"$TAG"'"/' "$m"
+    sed -i -E '/^ros-launch-manifest[a-z-]* *=/ s/(tag|rev) = "[^"]*"/tag = "'"$TAG"'"/' "$m"
 done
 echo "  rewrote ${#MANIFESTS[@]} manifest(s)"
 
@@ -165,22 +170,42 @@ for ws in "${!WORKSPACES[@]}"; do
 done
 [ "$fail" -eq 0 ] || exit 1
 
-# --- advisory: locks that hold an rlm revision but pin no manifest ----------
-# `nros-launch-resolve` reaches rlm TRANSITIVELY through play_launch's layer 2
-# and keeps its own lock, deliberately ("stays robust if the two ever diverge on
-# a pin"). So it is out of scope for a rewrite — but staying SILENT about it
-# would let this script report a clean single-revision bump while another lock
-# in the tree names a different one. Report, do not fail: divergence there is a
-# design choice, and an unreported cap reads as coverage.
+# --- every OTHER lock that holds rlm: refresh its rlm entries ---------------
+# A leaf crate (a board, its FFI shims, `nros-launch-resolve`) keeps its own
+# lock and reaches rlm through a path dep into one of the manifests above, so
+# moving the pin makes that lock stale too -- and `check-leaf-lockfiles`
+# refuses it. This used to be an ADVISORY that matched only `?tag=` sources,
+# so with the old pins all `rev = ` it reported nothing, and seven board locks
+# and both NuttX FFI locks shipped stale from one bump. It refreshes them now,
+# by the same `-p <crate>` rule (only the rlm entries move), and fails --
+# restoring every file -- when a lock cannot be refreshed, naming why.
 for lock in $(git ls-files '*Cargo.lock'); do
     case " ${CHECKED_LOCKS[*]} " in *" $lock "*) continue ;; esac
-    other="$(grep -oE 'ros-launch-manifest[a-z-]*\.git\?tag=[^#"]*' "$lock" 2>/dev/null | sed 's/.*tag=//' | sort -u || true)"
-    # A plain `[ ] && [ ] && echo` here would be the LAST command in the loop
-    # body, so its false case would fail the whole script under `set -e`.
-    if [ -n "$other" ] && [ "$other" != "$TAG" ]; then
-        echo "  note: $lock holds rlm $other (transitive; not rewritten by this tool)"
+    other="$(grep -oE 'ros-launch-manifest[a-z-]*\.git\?(tag|rev)=[^#"]*' "$lock" 2>/dev/null | sed -E 's/.*(tag|rev)=//' | sort -u || true)"
+    if [ -z "$other" ] || [ "$other" = "$TAG" ]; then
+        continue
+    fi
+    dir="$(dirname "$lock")"
+    backup_file "$lock"
+    crates="$(grep -B1 -E '^version' "$lock" | grep -oE 'name = "ros-launch-manifest[a-z-]*"' | sed 's/name = "//; s/"//' | sort -u)"
+    echo "  refreshing lock in $dir ($other -> $TAG)"
+    args=()
+    for crate in $crates; do args+=(-p "$crate"); done
+    if ! out="$(cd "$dir" && cargo update "${args[@]}" 2>&1)"; then
+        echo "ERROR: could not refresh $lock:" >&2
+        printf '%s\n' "$out" | tail -5 | sed 's/^/      /' >&2
+        echo "      (a path dep into an uninitialised submodule is the usual cause:" >&2
+        echo "       \`git submodule update --init --depth 1 <path>\`, then re-run)" >&2
+        fail=1
+        continue
+    fi
+    left="$(grep -oE 'ros-launch-manifest[a-z-]*\.git\?(tag|rev)=[^#"]*' "$lock" | sed -E 's/.*(tag|rev)=//' | sort -u)"
+    if [ "$left" != "$TAG" ]; then
+        echo "ERROR: $lock still names rlm '$left' after the refresh, not '$TAG'." >&2
+        fail=1
     fi
 done
+[ "$fail" -eq 0 ] || exit 1
 
 cleanup_ok=1
 echo ""
