@@ -410,6 +410,16 @@ else
     fi
 fi
 
+# issue 1937 — a Rust leaf is its own cargo root, and zephyr-lang-rust runs a
+# plain `cargo` in it, so its lock starts from the pin set (and is held to it
+# after the build) like every other lane's. A RETARGETED row goes through
+# `nros build`, which seeds and checks its own roots.
+if [ -z "$nros_image" ] && [ -f "$src_dir/Cargo.toml" ]; then
+    # shellcheck source=scripts/build/cargo.sh
+    source "$nros_root/scripts/build/cargo.sh"
+    nros_seed_leaf_lock "$src_dir"
+fi
+
 mkdir -p "$(dirname "$log")" "$(dirname "$sig_file")" "$ccache_dir" "$ccache_tmpdir"
 
 set +e

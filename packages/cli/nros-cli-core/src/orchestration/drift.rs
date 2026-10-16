@@ -306,7 +306,7 @@ pub fn enforce_cargo_root(
     }
     let (moved, _stuck) = realign(moves, cargo_precise(dir));
     if moved > 0 {
-        eprintln!("nros build:   realigned {moved} crate(s) in {label} to the pin set");
+        eprintln!("nros:   realigned {moved} crate(s) in {label} to the pin set");
     }
     // A realignment can move a dependency in turn; what is still off is drift.
     let again = check_cargo_root(dir, label, pins_file)?;
