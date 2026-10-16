@@ -86,7 +86,8 @@ endfunction()
 #     CRATE        <c|cpp>               which crate's feature vocabulary
 #     EDITION      <humble|iron|jazzy>   default: NROS_ROS_EDITION, else humble
 #     RMW          <zenoh|xrce|cyclonedds|uorb|none>
-#     PLATFORM     <posix|freertos|nuttx|threadx|baremetal|…>
+#     PLATFORM     <posix|freertos|threadx|baremetal|…>  (nuttx REFUSES:
+#                                        its runtime is the FFI crate's, not Corrosion's)
 #                                        (the threadx tier now derives from
 #                                        CMAKE_CROSSCOMPILING, not board identity);
 #                                        kept so callers need not change
@@ -223,7 +224,22 @@ function(nros_feature_set out_var)
         # `nros_platform_panic`, and `PANIC halt` was refused (E0152, issue 1742).
         list(APPEND _feats alloc platform-freertos)
     elseif(_FS_PLATFORM STREQUAL "nuttx" OR _FS_PLATFORM STREQUAL "nuttx_armv7a")
-        list(APPEND _feats std platform-nuttx)
+        # REFUSED: NuttX has no Corrosion build of nros-c / nros-cpp. The target
+        # has no prebuilt std, so the root CMakeLists.txt skips both crates on
+        # `^nuttx` ("redundant + impossible there"), and the image's runtime is
+        # built by the board's FFI crate (`nros-nuttx-ffi`, through
+        # `nros_nuttx_build_example`) with `-Z build-std`. This arm used to answer
+        # `std platform-nuttx`, written by phase-314 before phase-359 W7 took NuttX
+        # off `std`; nothing in-tree reached it (measured: a traced NuttX C
+        # configure calls this function zero times), and the one path that could
+        # — a mixed Rust + C/C++ workspace on NuttX — would have handed Corrosion
+        # a `std` for a target that cannot build one, failing deep in cargo.
+        message(FATAL_ERROR
+            "nros_feature_set: PLATFORM '${_FS_PLATFORM}' has no Corrosion build of "
+            "nros-${_FS_CRATE}. A NuttX image's Rust runtime is built by the board's FFI "
+            "crate (packages/boards/nros-board-nuttx-qemu/nros-nuttx-ffi, via "
+            "nros_nuttx_build_example) with -Z build-std; nothing should ask for this "
+            "feature set.")
     elseif(_FS_PLATFORM STREQUAL "threadx"
            OR _FS_PLATFORM STREQUAL "threadx_linux"
            OR _FS_PLATFORM STREQUAL "threadx_riscv64")
@@ -279,7 +295,7 @@ function(nros_feature_set out_var)
     else()
         message(FATAL_ERROR
             "nros_feature_set: unknown PLATFORM '${_FS_PLATFORM}' (expected: posix, "
-            "freertos, freertos_armcm3, nuttx, nuttx_armv7a, threadx, threadx_linux, "
+            "freertos, freertos_armcm3, threadx, threadx_linux, "
             "threadx_riscv64, baremetal/bare-metal)")
     endif()
 
