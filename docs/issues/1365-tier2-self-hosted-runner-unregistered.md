@@ -828,3 +828,38 @@ same registration (two hosts sharing one `.runner` credential), or whether
 the runner version (`RUNNER_VERSION=2.329.0` in the image) matters.
 Re-registering 241 with a fresh token, or restarting 133's runner, would
 separate the two. Neither was tried here. Both need a human.
+
+## The runner version matters: 2.329.0 claims nothing until GitHub updates it (2026-10-16)
+
+`newslab-118-server`'s supervisor log (`runner-loop.log`, one container per
+job) records the version each container came up on and every job it took.
+On 2026-10-15 the pattern holds for every job:
+
+| container listening on | update message | job claimed |
+|---|---|---|
+| 2.329.0, 02:32:38Z | 2.337.0, up 02:39:48Z | `tier 1 (cells)` 02:39:50Z |
+| 2.329.0, 02:56:06Z | 2.337.0, up 03:04:26Z | `L3` 03:04:29Z |
+| 2.329.0, 03:14:40Z | 2.337.0, up 03:28:45Z | `L3` 03:28:48Z |
+| 2.329.0, 03:38:14Z | 2.337.0, up 03:49:31Z | `tier 2 nightly` 05:11:43Z |
+| 2.329.0, 05:20:46Z | none | none |
+| 2.329.0, 05:28:02Z | started, container stopped mid-download | none |
+| 2.329.0, 2026-10-16 02:44:25Z | none in 2 h | none, two matching jobs queued |
+
+So a 2.329.0 registration is `online`, says `Listening for Jobs`, and is
+offered work only by way of a self-update. When GitHub does not send one, or
+the update is cut short, the runner sits idle beside a matching queued job —
+the "third shape" above. That fits every sighting in this issue, since the
+image has pinned 2.329.0 throughout, and it explains why a FRESH registration
+sometimes claimed work at once (it got the update) while another did not.
+
+**Fix applied:** the image now pins `RUNNER_VERSION=2.337.0`, the version
+GitHub pushes (`scripts/ci/runner-container.sh`). Rebuilt on newslab-118
+(`nano-ros-runner:local` `d4cb359909a4`, `config.sh --version` = 2.337.0)
+and the loop restarted. The new container read `Current runner version:
+'2.337.0'`, listened at 04:46:21Z and claimed `L3 (cross build + link)` at
+04:46:24Z, with no update step.
+
+**Still to do:** `newslab-133` and `newslab-server-241` run their own images
+on other hosts. Each needs `runner-container.sh <labels> --build` from a
+checkout with this pin, then a restart. Closes when all three take queued
+work without an update step.
