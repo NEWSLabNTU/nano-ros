@@ -316,6 +316,17 @@ pub const HOSTED_SPIN_COMPLETE_MARKER: &str = "hosted spin complete";
 /// greps a constant, never a literal, because banners get slimmed).
 pub const ENTRY_COMPLETE_MARKER: &str = "nros: application complete";
 
+/// What an EMBEDDED Rust board entry prints once `setup` returned `Ok`, just
+/// before it enters a spin loop it never leaves.
+///
+/// The embedded counterpart of [`ENTRY_COMPLETE_MARKER`]: a board image that
+/// runs as a host process (threadx-linux) cannot be asked to stop, because it
+/// reads no runtime environment, so "setup completed" is the verdict a
+/// registration check can have. A SUBSTRING of both spellings: the single
+/// entry's `Application setup complete — entering spin loop.` and the tier
+/// runner's `Multi-tier setup complete — entering boot-tier spin loop.`.
+pub const ENTRY_SETUP_COMPLETE_MARKER: &str = "setup complete — entering";
+
 /// What a hosted entry prints when `main` returned `Err`.
 pub const ENTRY_ERROR_MARKER: &str = "nros: application error:";
 
