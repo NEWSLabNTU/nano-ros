@@ -14,10 +14,9 @@
 //!     symbol `extern`; we emit the matching `const` definition into
 //!     this board's staticlib so any TU (notably the board's
 //!     `startup.c`) that pulls the header resolves it at link time.
-//!     Values transcribed from the board's pre-M.10 default
-//!     `nros.toml` (matches `src/config.rs`'s `Config::default()` for
-//!     IP/MAC/gateway/interface/domain_id; locator stays at the
-//!     retired toml's `tcp/127.0.0.1:7555`).
+//!     Same values as `src/config.rs`'s `Config::default()`: the
+//!     resolved `[board.net]` and `THREADX_LINUX_DEFAULT_LOCATOR`
+//!     (issue 1793).
 //!
 //! The ThreadX and NetX Duo trees are LOCATED (`nros_build_paths::locate`,
 //! RFC-0103 D4/D5: `THREADX_DIR` / `NETX_DIR` override, a local edit, the
@@ -61,7 +60,9 @@ fn main() {
     // issue 1767 item 4 — through the one resolver, not a join of the root.
     let nros_c_include = nros_build_paths::nros_c_include();
     assert!(
-        nros_c_include.join("rclc/detail/zephyr/app_config.h").exists(),
+        nros_c_include
+            .join("rclc/detail/zephyr/app_config.h")
+            .exists(),
         "nros-c shipped header not found at {} — expected the M-F.10.1 \
          `extern const` declaration. Is NROS_C_INCLUDE pointing elsewhere?",
         nros_c_include.display()
@@ -200,17 +201,13 @@ fn env_path_or(name: &str, default: PathBuf) -> PathBuf {
 /// `<rclc/detail/zephyr/app_config.h>`'s non-Zephyr branch (the canonical
 /// `nros_app_config_t` storage path on threadx-linux).
 ///
-/// Field values come from the board's pre-M.10 default `nros.toml`
-/// (`tcp/127.0.0.1:7555` locator, `02:00:00:00:00:00` MAC,
-/// `192.0.3.10/24` IP, `192.0.3.1` gateway, `veth-tx0` interface,
-/// domain `0`); they cross-check against `src/config.rs`'s
-/// `Config::default()` for everything except the locator (the Rust
-/// default points at the bridge gateway `192.0.3.1:7447` — the
-/// nros.toml-era examples ran zenohd on the loopback host instead, so
-/// we transcribe `127.0.0.1:7555` to keep the prior C/C++ E2E
-/// fixture's locator stable). Scheduling fields stay zero — the board
-/// has its own ThreadX-thread plumbing and doesn't expose scheduler
-/// knobs through `NROS_APP_CONFIG`.
+/// The `.network` block is the board's resolved `[board.net]` and the
+/// locator is `THREADX_LINUX_DEFAULT_LOCATOR`, the same two values
+/// `src/config.rs`'s `Config::default()` reads, so the Rust and C roads
+/// on this board fall back to one router (issue 1793; the C copy said
+/// `tcp/127.0.0.1:7555` while Rust said `tcp/192.0.3.1:7447`). Scheduling
+/// fields stay zero — the board has its own ThreadX-thread plumbing and
+/// doesn't expose scheduler knobs through `NROS_APP_CONFIG`.
 ///
 /// Returns the absolute path of the emitted .c, ready to feed into a
 /// `cc::Build`.
@@ -225,8 +222,8 @@ fn emit_app_config_def(net: &nros_board_common::board_net::ResolvedNet) -> PathB
  * <rclc/detail/app_config.h> non-Zephyr branch).
  *
  * The `.network` block is the board's resolved `[board.net]` (phase-484
- * W4b) — the same value `Config::default()` reads. The locator still differs
- * from the Rust default (issue 1793). Do NOT edit by hand.
+ * W4b) — the same value `Config::default()` reads, and so is the locator
+ * (`THREADX_LINUX_DEFAULT_LOCATOR`, issue 1793). Do NOT edit by hand.
  */
 
 #include <stdint.h>
@@ -237,7 +234,7 @@ fn emit_app_config_def(net: &nros_board_common::board_net::ResolvedNet) -> PathB
 const nros_app_config_t NROS_APP_CONFIG = {{
     .zenoh =
         {{
-            .locator = "tcp/127.0.0.1:7555",
+            .locator = "{locator}",
             .domain_id = 0,
         }},
     .network =
@@ -245,7 +242,8 @@ const nros_app_config_t NROS_APP_CONFIG = {{
     .scheduling = {{0, 0, 0, 0, 0, 0, 0, 0}},
 }};
 "#,
-        network = net.c_network_initializer()
+        network = net.c_network_initializer(),
+        locator = nros_board_common::threadx_config::THREADX_LINUX_DEFAULT_LOCATOR,
     );
 
     fs::write(&dst, body).expect("failed to write nros_app_config_def.c into OUT_DIR");

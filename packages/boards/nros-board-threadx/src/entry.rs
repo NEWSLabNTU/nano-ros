@@ -640,6 +640,7 @@ where
     let config = unsafe { core::ptr::read(&ctx.config) };
     let boot_config = ctx.boot_config;
     let tiers = ctx.tiers;
+    let spin_ms = config.entry_spin_ms();
     // issue 1571 — MOVED out, so exactly one owner of the slots ever exists.
     let tier_backing = core::mem::take(&mut ctx.tier_backing);
     let setup = ctx.setup;
@@ -763,6 +764,9 @@ where
     // that never blocks never lets a lower-priority tier run. Costs nothing
     // while the spins do block.
     let mut gap = ::nros_platform::TierSpinGap::new(boot_tier.spin_period_us);
+    // A bounded run ends here, on the boot tier: exiting the process ends the
+    // spawned tiers with it.
+    let deadline = SpinDeadline::from_ms(spin_ms);
     loop {
         let iter = gap.mark();
         if let Err(err) = ::nros_platform::NodeDispatchRuntime::spin_once(&mut crt, period_ms) {
@@ -770,6 +774,37 @@ where
             B::exit_failure();
         }
         gap.after_spin(iter);
+        deadline.finish_if_passed::<B>();
+    }
+}
+
+/// The end of a bounded run (`ThreadxConfig::entry_spin_ms`), on the platform's
+/// monotonic clock. `None` never ends.
+struct SpinDeadline(Option<u64>);
+
+impl SpinDeadline {
+    fn from_ms(ms: Option<u64>) -> Self {
+        Self(
+            ms.filter(|&ms| ms > 0)
+                .map(|ms| Self::now_ns().saturating_add(ms.saturating_mul(1_000_000))),
+        )
+    }
+
+    fn now_ns() -> u64 {
+        // SAFETY: a plain clock read with no preconditions once the platform
+        // is up, which it is by the time any entry spins.
+        unsafe { ::nros_platform_cffi::nros_platform_clock_ns() }
+    }
+
+    /// Print the completion marker and exit 0 once the deadline has passed —
+    /// the linux board's bounded-run ending, so an observer reads the same
+    /// line from either board.
+    fn finish_if_passed<B: BoardPrint + BoardExit>(&self) {
+        let Some(end) = self.0 else { return };
+        if Self::now_ns() >= end {
+            B::println(format_args!("nros: application complete"));
+            B::exit_success();
+        }
     }
 }
 
@@ -989,6 +1024,7 @@ where
     F: FnOnce(&mut RuntimeCtx<'_>) -> core::result::Result<(), E>,
     E: core::fmt::Debug,
 {
+    let spin_ms = config.entry_spin_ms();
     // issue 0708 — publish the nros_log sink list at the boot funnel.
     //
     // The board also installs a `log`-crate logger below, and that is a
@@ -1122,14 +1158,17 @@ where
                 "Application setup complete — entering spin loop."
             ));
             // Embedded spin: the ThreadX scheduler never returns from
-            // this thread, so we loop forever. `spin_once` errors trip
+            // this thread, so we loop forever — unless the overlay states a
+            // bounded run (`entry_spin_ms`). `spin_once` errors trip
             // exit_failure (a working bring-up never gets here).
+            let deadline = SpinDeadline::from_ms(spin_ms);
             loop {
                 if let Err(err) = ::nros_platform::NodeDispatchRuntime::spin_once(&mut crt, 10) {
                     B::println(format_args!(""));
                     B::println(format_args!("spin_once error: {:?}", err));
                     B::exit_failure();
                 }
+                deadline.finish_if_passed::<B>();
             }
         }
         Err(e) => {

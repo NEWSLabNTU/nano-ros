@@ -62,8 +62,9 @@ impl Default for Config {
                 ip: BOARD_NET_IP,
                 netmask: BOARD_NET_NETMASK,
                 gateway: BOARD_NET_GATEWAY,
-                // issue 1793 — the C fallback names another router (:7553).
-                zenoh_locator: "tcp/10.0.2.2:7447",
+                // issue 1793 — the one fallback, shared with the C emitters.
+                zenoh_locator:
+                    nros_board_common::threadx_config::THREADX_QEMU_RISCV64_DEFAULT_LOCATOR,
                 domain_id,
             },
         }

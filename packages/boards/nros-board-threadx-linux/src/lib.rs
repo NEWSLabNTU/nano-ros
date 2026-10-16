@@ -61,6 +61,11 @@ impl ThreadxConfig for Config {
     fn domain_id(&self) -> u32 {
         self.base.domain_id
     }
+    /// `$NROS_ENTRY_SPIN_MS`, read at run time: this board is a host process,
+    /// so a bounded observer can end a run the way it ends a linux one.
+    fn entry_spin_ms(&self) -> Option<u64> {
+        env_str(c"NROS_ENTRY_SPIN_MS")?.trim().parse().ok()
+    }
 }
 
 // ── `nros_platform::board` trait impls + `BoardEntry` — the LIVE path ────
@@ -159,7 +164,8 @@ impl nros_platform::BoardEntry for ThreadxLinux {
         // the slot for any pre-kernel logging.
         pre_kernel_host_setup();
         crate::node::register_log_writer_public();
-        let cfg = Config::default();
+        let mut cfg = Config::default();
+        apply_runtime_locator(&mut cfg);
         nros_board_threadx::run_entry::<ThreadxLinux, Config, F, E>(cfg, None, setup)
     }
 
@@ -244,7 +250,46 @@ impl ThreadxLinux {
 fn config_with_overlay(deploy: &nros_platform::DeployOverlay) -> Config {
     let mut config = Config::default();
     config.base.apply_overlay(deploy);
+    apply_runtime_locator(&mut config);
     config
+}
+
+/// A non-empty `$NROS_LOCATOR` in the process environment wins over the baked
+/// locator (the deploy overlay, else the board default).
+///
+/// threadx-linux is an ordinary Linux process, and the C and C++ images on
+/// this same board already apply `$NROS_LOCATOR` at run time (the C API's
+/// env overlay). The Rust image read only its baked locator, so one board
+/// answered the same question two ways: `rmw_coordinate_truth` starts its
+/// router on a free port and names it in `NROS_LOCATOR`, and the two Rust
+/// threadx-linux images dialled `127.0.0.1:9030` / `:9091` instead and failed
+/// `ConnectionFailed` while the C/C++ ones registered. With nothing set, the
+/// baked locator still decides, so every test that starts its router on the
+/// baked port is unaffected. This is a RUNTIME read; the build-time carriers
+/// `check-image-locator-bake` polices are unchanged.
+fn apply_runtime_locator(config: &mut Config) {
+    if let Some(locator) = env_str(c"NROS_LOCATOR") {
+        config.base.zenoh_locator = locator;
+    }
+}
+
+/// `getenv(name)` as a `&'static str`, or `None` when unset, empty or not
+/// UTF-8. The pointer is into the process environment, which nothing in this
+/// image modifies after start, so it lives for the rest of the process.
+fn env_str(name: &core::ffi::CStr) -> Option<&'static str> {
+    unsafe extern "C" {
+        fn getenv(name: *const core::ffi::c_char) -> *const core::ffi::c_char;
+    }
+    // SAFETY: `name` is NUL-terminated. A non-null result points at a
+    // NUL-terminated string in the environment block (see above).
+    let value = unsafe {
+        let p = getenv(name.as_ptr());
+        if p.is_null() {
+            return None;
+        }
+        core::ffi::CStr::from_ptr(p)
+    };
+    value.to_str().ok().filter(|s| !s.is_empty())
 }
 
 unsafe fn libc_exit(code: i32) -> ! {

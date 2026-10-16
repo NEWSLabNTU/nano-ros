@@ -522,7 +522,8 @@ fn emit_nros_app_config(out_dir: &Path, net: &crate::board_net::ResolvedNet) {
  * the shipped `<rclc/detail/app_config.h>` declares `extern` on non-Zephyr
  * platforms. Values mirror the board's pre-M.10 `nros.toml` defaults
  * for QEMU SLIRP networking (10.0.2.0/24, host gateway 10.0.2.2,
- * board NIC 10.0.2.40, zenohd at host:7553).
+ * board NIC 10.0.2.40). The locator is THREADX_QEMU_RISCV64_DEFAULT_LOCATOR,
+ * the same fallback the Rust `Config::default()` reads (issue 1793).
  */
 
 #include <stdint.h>
@@ -530,7 +531,7 @@ fn emit_nros_app_config(out_dir: &Path, net: &crate::board_net::ResolvedNet) {
 
 const nros_app_config_t NROS_APP_CONFIG = {
     .zenoh = {
-        .locator   = "tcp/10.0.2.2:7553",
+        .locator   = "@NROS_BOARD_LOCATOR@",
         .domain_id = 0,
     },
     .network = @NROS_BOARD_NET@,
@@ -547,7 +548,12 @@ const nros_app_config_t NROS_APP_CONFIG = {
 };
 "#;
     // phase-484 W4b — the `.network` block is the resolved `[board.net]`.
-    let body = body.replace("@NROS_BOARD_NET@", &net.c_network_initializer());
+    let body = body
+        .replace("@NROS_BOARD_NET@", &net.c_network_initializer())
+        .replace(
+            "@NROS_BOARD_LOCATOR@",
+            crate::threadx_config::THREADX_QEMU_RISCV64_DEFAULT_LOCATOR,
+        );
     std::fs::write(&src_path, body).expect("write nros_app_config_def.c");
 
     let mut build = cc::Build::new();
