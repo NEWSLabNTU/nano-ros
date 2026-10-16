@@ -501,7 +501,7 @@ This wave does the part every board needs now:
 - the per-image last-octet override stays.
 
 The `[network.*]` table, bridge/TAP launch, multi-NIC and the collision
-refusal are [phase-497](../phase-497-networks-have-owners.md).
+refusal are [phase-497](phase-497-networks-have-owners.md).
 
 Landed:
 

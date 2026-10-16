@@ -526,7 +526,7 @@ three owners:
 Staged: phase-484 W4b-2 moves every QEMU board onto the one default network
 and keeps the existing per-image last-octet override. The `[network.*]` table,
 bridge/TAP launch, multi-NIC and the collision refusal are
-[phase-497](../roadmap/phase-497-networks-have-owners.md).
+[phase-497](../roadmap/archived/phase-497-networks-have-owners.md).
 
 #### D10 amended 2026-10-15 — physical networks, DHCP, interface kinds, host-OS boards
 

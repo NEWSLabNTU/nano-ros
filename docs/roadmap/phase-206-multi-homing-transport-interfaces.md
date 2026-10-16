@@ -32,7 +32,7 @@ predates that. The two open items:
   interface.
 
 A board that STATES several NICs (interface facts, a network per interface)
-is [phase-497](phase-497-networks-have-owners.md) W4 (RFC-0103 D10), not this
+is [phase-497](archived/phase-497-networks-have-owners.md) W4 (RFC-0103 D10), not this
 phase. This phase stays "nano-ros models no NICs" for the middleware config.
 
 **Earlier status (2026-09-05). W1, W2, W3 and W5 LANDED; W4 landed

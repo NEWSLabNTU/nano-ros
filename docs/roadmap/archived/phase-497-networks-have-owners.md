@@ -1,8 +1,8 @@
 # Phase 497 -- networks have owners: board interfaces, project networks, image addresses
 
-**Status (2026-10-16). W1–W4 landed.** Re-planned against D10 as
-amended 2026-10-15 (D10a–D10g). Implements
-[RFC-0103 D10](../design/0103-one-owner-per-fact.md). Follows phase-484 W4b-2,
+**Status (2026-10-16). Complete — W1–W4 landed (W1 #2256, W2+W4 #2295, W3 #2305); archived.**
+Re-planned against D10 as amended 2026-10-15 (D10a–D10g). Implements
+[RFC-0103 D10](../../design/0103-one-owner-per-fact.md). Follows phase-484 W4b-2,
 which moves every QEMU board onto one default network first.
 
 ## Why
@@ -249,7 +249,7 @@ and the per-interface output (W2) carries both.
 test. A runtime test only where a two-NIC board exists.
 
 This is the board half of multi-homing.
-[Phase-206](phase-206-multi-homing-transport-interfaces.md) owns the
+[Phase-206](../phase-206-multi-homing-transport-interfaces.md) owns the
 middleware half: the user's own Cyclone `<Interfaces>` or zenoh config
 reaches the backend verbatim, and nano-ros models no NIC there. Its open
 hosted lo-plus-NIC acceptance is the runtime counterpart of this item.
@@ -274,6 +274,6 @@ no runtime test, as the acceptance allows.
 - IPv6, and Wi-Fi credentials, which are not network-address facts.
 
 The router default moved INTO this phase with the 2026-10-15 amendment (D10d,
-W2). [Issue 1793](../issues/1793-board-default-locator-differs-by-road.md)'s
+W2). [Issue 1793](../../issues/1793-board-default-locator-differs-by-road.md)'s
 two-roads disagreement is what W2's single output removes; close it there
 only once the ThreadX boards it names are measured on both roads.
