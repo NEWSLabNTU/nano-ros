@@ -237,6 +237,10 @@ jobs:
           # which compile those kernels' sources; the board env names the port,
           # the store holds the tree.
           nros setup --source freertos-kernel --source lwip --source threadx --source threadx-netxduo
+          # ...and for the NuttX board, whose zpico build reads the CONFIGURED
+          # kernel's generated `include/nuttx/config.h` (~2 min + ~30 s).
+          nros setup qemu-armv7a-nuttx
+          bash scripts/nuttx/build-nuttx.sh
 
       - name: just check feature-sweep
         run: |

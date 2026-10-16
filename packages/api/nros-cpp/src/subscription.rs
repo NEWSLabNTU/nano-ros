@@ -247,6 +247,10 @@ pub struct nros_cpp_subscription_options_t {
     pub callback_group: *const c_char,
 }
 
+// Not derived: that needs `Default` for a raw pointer, which is Rust 1.88, and
+// this crate's clippy MSRV is 1.87 (`clippy.toml`). The pinned stable clippy
+// honours that; the nightly one the NuttX build-std lint uses does not.
+#[allow(clippy::derivable_impls)]
 impl Default for nros_cpp_subscription_options_t {
     fn default() -> Self {
         Self {

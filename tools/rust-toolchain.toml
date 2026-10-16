@@ -16,4 +16,6 @@
 # the same channel but may diverge if a platform's build-std breaks.
 [toolchain]
 channel = "nightly-2026-04-11"
-components = ["rustfmt", "miri", "rust-src", "llvm-tools"]
+# `clippy`: `check feature-sweep`'s NuttX runs lint with `-Z build-std`, which
+# needs this toolchain (NuttX has no prebuilt std).
+components = ["rustfmt", "miri", "rust-src", "llvm-tools", "clippy"]

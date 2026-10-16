@@ -270,12 +270,12 @@ RUN set -eux; \
     sccache --version
 
 # Pinned nightly (tools/rust-toolchain.toml `nightly-2026-04-11`) baked WITH its
-# declared components (rustfmt/miri/rust-src/llvm-tools) + the cross targets. The
+# declared components (rustfmt/miri/rust-src/llvm-tools/clippy) + the cross targets. The
 # fixture builds need it (esp32 `-Z build-std` for riscv32imc, `-Z emit-stack-
 # sizes`, nightly-only target adds). Same anti-race rationale as stable. Bump in
 # lockstep with the pin.
 RUN rustup toolchain install nightly-2026-04-11 --profile minimal \
-        -c rustfmt -c miri -c rust-src -c llvm-tools \
+        -c rustfmt -c miri -c rust-src -c llvm-tools -c clippy \
     && rustup +nightly-2026-04-11 target add \
         x86_64-unknown-none armv7a-none-eabi armv7r-none-eabihf aarch64-unknown-none \
         thumbv7m-none-eabi thumbv7em-none-eabi thumbv7em-none-eabihf \
