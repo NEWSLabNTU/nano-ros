@@ -1,11 +1,11 @@
 ---
 id: 1830
 title: "`check-template-copy-out` fails on two templates: a copied Rust package cannot resolve `nros`, which `nros sync` now refuses (issue 1817)"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [templates, cli]
-related: [1817, 1453]
+related: [1817, 1453, 1829]
 found: 2026-10-12
 ---
 
@@ -47,3 +47,38 @@ the central patch include `nros sync` writes for a leaf, or a path pin the
 copy recipe rewrites. Then the copy builds and the 1817 refusal never fires.
 Not "make sync tolerant again": 1817's point is that a leaf cargo cannot
 resolve fails the image's own build too.
+
+## Resolution
+
+Already fixed on main by `d6d6c7af2c` (issue 1829), before this issue was
+filed. The measurement above was taken on a branch based on `380648444d`, and
+1829's fix landed on main after that base but before this issue's filing
+commit `0d35db7264`. No code change here.
+
+The cause was not missing `nros` resolution in the copy. `nros sync` DID
+write the copied leaf's `[patch.crates-io]`, with absolute rows for the
+`nros`/`nros-core`/`nros-serdes` trio, because the leaf sits outside the
+checkout. #1817's resolution check reused the metadata probe's
+`probe_patch_config`, and that function gathered patch rows only from the
+harness's ancestor chain. Both templates are colcon workspaces whose Rust
+package is its own cargo workspace under `src/`, so the leaf's
+`.cargo/config.toml` is a sibling of that chain, never an ancestor. The probe
+therefore resolved without the patch. 1829 walks the component's own chain too
+(unit test `the_probe_takes_a_sibling_leafs_patch_rows`, run by
+`check-cli-tests`).
+
+Measured with `scripts/check-template-copy-out.sh local-msg-package
+multi-package-workspace` (in-tree CLI and launch resolver rebuilt at each
+commit, `nano_ros_ROOT` set to that checkout as `just` does):
+
+| commit | local-msg-package | multi-package-workspace |
+| --- | --- | --- |
+| `380648444d` (the issue's base) | FAIL: `no matching package named nros` | FAIL: same |
+| `d6d6c7af2c~1` | FAIL | FAIL |
+| `d6d6c7af2c` (fix 1829) | OK, 2 artifacts | OK, 3 artifacts |
+| `0d35db7264` (this issue filed) | OK | OK |
+| origin/main `474f0ea977`, `nano_ros_ROOT` unset | OK, 2 artifacts | OK, 3 artifacts |
+
+Coverage: `check-template-copy-out.sh --list` names both templates as `[linux]`
+projects, and the gate's own run builds them (the table's last row), so
+neither template is silently skipped.
