@@ -75,6 +75,17 @@ impl PriorityRecord<'_> {
         }
     }
 
+    /// Does the tier host a node allocated above the transport?
+    fn above_transport(&self, members: &[(String, String)]) -> bool {
+        self.derivation.is_some_and(|d| {
+            members.iter().any(|(n, _)| {
+                d.above_transport
+                    .iter()
+                    .any(|f| f.rsplit('/').next() == Some(n.as_str()))
+            })
+        })
+    }
+
     /// The tiers that run, `(name, priority)`, skipping the synthesised
     /// single `default` tier (an entry with it runs no tier at all).
     fn running_tiers(&self) -> Vec<(&str, i64)> {
@@ -115,6 +126,7 @@ impl PriorityRecord<'_> {
                         "name": r.name,
                         "priority": r.priority,
                         "origin": self.origin(&r.name),
+                        "above_transport": self.above_transport(&r.members),
                         "spin_period_us": r.spin_period_us,
                         "members": r.members.iter()
                             .map(|(n, g)| json!([n, g]))
@@ -154,6 +166,8 @@ impl PriorityRecord<'_> {
             },
             "tiers": tiers,
             "most_urgent_tier": self.most_urgent_tier(),
+            "above_transport": self.derivation.map(|d| d.above_transport.clone()).unwrap_or_default(),
+            "supervisor_priority": self.derivation.and_then(|d| d.supervisor_priority),
             "ranks": ranks,
             "degradations": self.derivation.map(|d| d.degradations.clone()).unwrap_or_default(),
             "shadowed": self.derivation.map(|d| d.shadowed.clone()).unwrap_or_default(),
@@ -196,6 +210,11 @@ impl PriorityRecord<'_> {
         if let Some(p) = self.most_urgent_tier() {
             define("NROS_ENTRY_TIERS_MOST_URGENT_PRIORITY", p);
         }
+        // RFC-0079 section 6: the priority for the supervisor of the
+        // deadlines allocated above the transport.
+        if let Some(p) = self.derivation.and_then(|d| d.supervisor_priority) {
+            define("NROS_PRIORITY_PLAN_SUPERVISOR_PRIORITY", p);
+        }
         h.push_str("\n#endif /* NROS_PRIORITY_PLAN_H */\n");
         h
     }
@@ -213,10 +232,24 @@ impl PriorityRecord<'_> {
                 "the tier key's projection"
             }
         )];
-        for (name, p) in self.running_tiers() {
+        if let Some(t) = self.tiers.filter(|t| !t.is_single_tier()) {
+            for r in &t.tiers {
+                out.push(format!(
+                    "  tier {}: priority {} ({}{})",
+                    r.name,
+                    r.priority,
+                    self.origin(&r.name),
+                    if self.above_transport(&r.members) {
+                        ", above the transport: a member's contract supervises a deadline"
+                    } else {
+                        ""
+                    }
+                ));
+            }
+        }
+        if let Some(p) = self.derivation.and_then(|d| d.supervisor_priority) {
             out.push(format!(
-                "  tier {name}: priority {p} ({})",
-                self.origin(name)
+                "  supervisor of the supervised deadlines: priority {p}"
             ));
         }
         if let Some(d) = self.derivation {
@@ -336,6 +369,8 @@ mod tests {
         };
         let derivation = EntryDerivation {
             allocated_tiers: vec!["mrm".to_string()],
+            above_transport: vec!["/mrm_handler".to_string()],
+            supervisor_priority: Some(4),
             realized: vec![
                 node("/mrm_handler", 5, 100_000),
                 node("/mrm_emergency_stop_operator", 7, 33_333),
@@ -369,6 +404,12 @@ mod tests {
         );
         assert!(
             h.contains("#define NROS_ENTRY_TIERS_MOST_URGENT_PRIORITY (5)"),
+            "{h}"
+        );
+        assert_eq!(j["tiers"][0]["above_transport"], true);
+        assert_eq!(j["supervisor_priority"], 4);
+        assert!(
+            h.contains("#define NROS_PRIORITY_PLAN_SUPERVISOR_PRIORITY (4)"),
             "{h}"
         );
     }
