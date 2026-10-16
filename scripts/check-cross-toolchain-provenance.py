@@ -27,6 +27,13 @@ For every toolchain file under `cmake/toolchain/`:
   R4  resolve() and report() in one file agree — same TOOL, same OVERRIDE_VAR,
       and report()'s PREFIX/ORIGIN read the variables resolve() wrote
 
+  R5  (issue 1936) the module RECORDS a below-floor compiler for the C++
+      refusal: run under `cmake -P` against a stub gcc, a 10.x sets the
+      `_NROS_CT_BELOW_FLOOR` global property — one string naming
+      `std::this_thread` and `nros setup --tool <tool>` — and a 13.x sets none
+  R6  (issue 1936) `nano_ros_entry` turns that record into a FATAL_ERROR for a
+      C++ entry: the read sits inside `if(_NRA_LANG STREQUAL "cpp")`
+
 R4 is the one that is not obvious, and it is the reason this gate is worth
 having rather than a grep for the helper name. A file can call both helpers,
 pass every argument, look entirely correct — and report a DIFFERENT tool than
@@ -234,6 +241,76 @@ def tracked_toolchain_files():
     return out
 
 
+ENTRY = "cmake/NanoRosEntry.cmake"
+FLOOR_PROPERTY = "_NROS_CT_BELOW_FLOOR"
+
+
+def probe_floor_record(version, workdir):
+    """R5 — what the module records for a cross gcc reporting `version`.
+
+    Behavioural, not a grep: the report function runs under `cmake -P` with a
+    stub compiler, so a refusal text that is built but never stored, or stored
+    as a cmake LIST (one `;` per argument — the first draft did exactly that),
+    is caught here. Returns the property's value, or None if cmake is absent.
+    """
+    import shutil
+    import tempfile
+    if not shutil.which("cmake"):
+        return None
+    with tempfile.TemporaryDirectory(dir=workdir) as tmp:
+        stub = os.path.join(tmp, "stub-gcc")
+        with open(stub, "w") as fh:
+            fh.write(f"#!/bin/sh\necho {version}\n")
+        os.chmod(stub, 0o755)
+        script = os.path.join(tmp, "probe.cmake")
+        with open(script, "w") as fh:
+            fh.write(
+                f'set(CMAKE_BINARY_DIR "{tmp}")\n'
+                f'include("{ROOT}/{TOOLCHAIN_DIR}/{MODULE}")\n'
+                f'nros_cross_toolchain_report(TOOL arm-none-eabi-gcc PREFIX "{tmp}/stub" '
+                f'ORIGIN "override NROS_ARM_NONE_EABI_PREFIX" '
+                f'OVERRIDE_VAR NROS_ARM_NONE_EABI_PREFIX)\n'
+                f'get_property(_p GLOBAL PROPERTY {FLOOR_PROPERTY})\n'
+                f'message(STATUS "@@FLOOR@@${{_p}}@@END@@")\n')
+        out = subprocess.run(["cmake", "-P", script], capture_output=True, text=True,
+                             cwd=tmp, check=False)
+        m = re.search(r"@@FLOOR@@(.*?)@@END@@", out.stdout + out.stderr, re.S)
+        if not m:
+            return f"<probe printed no record; rc {out.returncode}: {out.stderr[-400:]}>"
+        return m.group(1)
+
+
+def floor_record_offenders(probe):
+    """R5 over the two sides of the floor."""
+    bad = []
+    below = probe("10.3.1")
+    if below is None:
+        return [(MODULE, "R5 not measured: no `cmake` on PATH")]
+    if "this_thread" not in below or "nros setup --tool arm-none-eabi-gcc" not in below:
+        bad.append((MODULE, f"R5 a GCC 10.3.1 cross compiler records no C++ refusal naming "
+                            f"`std::this_thread` and `nros setup --tool` (got {below!r})"))
+    if ";" in below:
+        bad.append((MODULE, "R5 the recorded refusal is a cmake LIST (contains `;`): "
+                            "build it with string(CONCAT) before set_property"))
+    at_pin = probe("13.2.1")
+    if at_pin:
+        bad.append((MODULE, f"R5 a GCC 13.2.1 cross compiler records a refusal: {at_pin!r}"))
+    return bad
+
+
+def entry_refusal_offenders(entry_text):
+    """R6 — the entry refuses a C++ image on the record (comments stripped)."""
+    text = strip_comments(entry_text)
+    m = re.search(r'if\(\s*_NRA_LANG\s+STREQUAL\s+"cpp"\s*\)(.*?)\n\s*endif\(\)\s*\n\s*endif\(\)',
+                  text, re.S)
+    if not m or FLOOR_PROPERTY not in m.group(1) or "FATAL_ERROR" not in m.group(1):
+        return [(ENTRY, f"R6 nano_ros_entry does not refuse a C++ entry on "
+                        f"`{FLOOR_PROPERTY}` (a `get_property(... GLOBAL PROPERTY "
+                        f"{FLOOR_PROPERTY})` + FATAL_ERROR inside "
+                        f"`if(_NRA_LANG STREQUAL \"cpp\")`) — issue 1936")]
+    return []
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--selftest", action="store_true")
@@ -265,6 +342,8 @@ def main():
 
     bad = offenders(files, read, tools) + exempt_still_needed(
         read, lambda rel: os.path.exists(os.path.join(ROOT, rel)))
+    bad += floor_record_offenders(lambda v: probe_floor_record(v, None))
+    bad += entry_refusal_offenders(read(ENTRY))
     if bad:
         print("check-cross-toolchain-provenance: FAILED", file=sys.stderr)
         for rel, msg in bad:
@@ -367,6 +446,35 @@ def selftest(verbose=False):
     chk("R4 report's ORIGIN reads the PREFIX variable",
         any("does not read resolve(OUT_ORIGIN" in m for _, m in run(
             GOOD.replace('ORIGIN "${_O}"', 'ORIGIN "${_P}"'))))
+
+    # R6 — the wiring, both ways.
+    entry_ok = ('if(_NRA_LANG STREQUAL "cpp")\n'
+                '    get_property(_b GLOBAL PROPERTY _NROS_CT_BELOW_FLOOR)\n'
+                '    if(NOT "${_b}" STREQUAL "")\n'
+                '        message(FATAL_ERROR "x")\n'
+                '    endif()\n'
+                'endif()\n')
+    chk("R6 the C++ refusal passes", entry_refusal_offenders(entry_ok) == [])
+    chk("R6 a WARNING instead of a refusal is reported",
+        entry_refusal_offenders(entry_ok.replace("FATAL_ERROR", "WARNING")) != [])
+    chk("R6 a refusal on the C entry instead is reported",
+        entry_refusal_offenders(entry_ok.replace('"cpp"', '"c"')) != [])
+    chk("R6 a commented-out read is reported",
+        entry_refusal_offenders(entry_ok.replace("    get_property", "    # get_property"))
+        != [])
+
+    # R5's judge, over canned probe answers (the probe itself runs on the
+    # normal path).
+    good_rec = "x 10.3.1 std::this_thread ... nros setup --tool arm-none-eabi-gcc"
+    chk("R5 a correct record passes",
+        floor_record_offenders(lambda v: good_rec if v.startswith("10") else "") == [])
+    chk("R5 no record below the floor is reported",
+        floor_record_offenders(lambda v: "") != [])
+    chk("R5 a LIST-valued record is reported",
+        floor_record_offenders(lambda v: good_rec.replace(" ...", ";") if v.startswith("10")
+                               else "") != [])
+    chk("R5 a record AT the pin is reported",
+        floor_record_offenders(lambda v: good_rec) != [])
 
     # The EXEMPT ratchet: an entry that stops being needed must be removed.
     chk("exempt path that vanished is reported",

@@ -500,6 +500,20 @@ function(nano_ros_entry)
             "nano-ros: nano_ros_entry(${_NRA_NAME}): entry language ${_NRA_LANG}")
     endif()
 
+    # Issue 1936 — a C++ image on a cross GCC below the floor is refused HERE,
+    # the first point that knows the image is C++. The cross-toolchain module
+    # records the fact (and words it) when it resolves the compiler; a C entry
+    # keeps that module's warning only. `_NRA_LANG` is always settled by now
+    # (a sourceless LAUNCH entry defaults to cpp above).
+    if(_NRA_LANG STREQUAL "cpp")
+        get_property(_nra_below_floor GLOBAL PROPERTY _NROS_CT_BELOW_FLOOR)
+        if(NOT "${_nra_below_floor}" STREQUAL "")
+            message(FATAL_ERROR
+                "nano_ros_entry(${_NRA_NAME}): a C++ image cannot build here.\n"
+                "  ${_nra_below_floor}")
+        endif()
+    endif()
+
     # Phase 219.D — LAUNCH-aware fast path: shell `nros codegen entry`
     # at configure time, append the generated TU + auto-link sidecar.
     set(_sources_for_exe ${_NRA_SOURCES})
