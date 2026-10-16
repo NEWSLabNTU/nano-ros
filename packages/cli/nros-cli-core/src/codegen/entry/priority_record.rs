@@ -213,7 +213,7 @@ impl PriorityRecord<'_> {
         // RFC-0079 section 6: the priority for the supervisor of the
         // deadlines allocated above the transport.
         if let Some(p) = self.derivation.and_then(|d| d.supervisor_priority) {
-            def("NROS_PRIORITY_PLAN_SUPERVISOR_PRIORITY", p);
+            define("NROS_PRIORITY_PLAN_SUPERVISOR_PRIORITY", p);
         }
         h.push_str("\n#endif /* NROS_PRIORITY_PLAN_H */\n");
         h
