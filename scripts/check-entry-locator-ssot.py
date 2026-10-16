@@ -80,10 +80,12 @@ SYNC_NOTE = re.compile(r"keep\s+(?:it\s+|them\s+)?in\s+sync", re.IGNORECASE)
 # board produce a byte-identical symbol. They are NOT the entry locator and must
 # not be folded into it: measured on a real configure (issue 0946), a
 # threadx-linux entry bakes `NROS_ENTRY_LOCATOR=tcp/127.0.0.1:7447` while this
-# board file's app-config says `tcp/127.0.0.1:7555`, and the generated template
-# states `.zenoh.locator` is cosmetic on the typed path. Folding them would
-# change one or the other on a reading rather than a measurement. If that
-# pairing is ever shown to matter it is its own issue, not this gate's business.
+# board file's app-config said `tcp/127.0.0.1:7555`, and the generated template
+# states `.zenoh.locator` is cosmetic on the typed path. (Issue 1793 has since
+# made the app-config the board's one fallback, `THREADX_*_DEFAULT_LOCATOR` in
+# nros-board-common, held equal to these literals by that crate's test.) If the
+# pairing with the entry locator is ever shown to matter it is its own issue,
+# not this gate's business.
 ALLOWED_LITERALS = {
     "cmake/board/nano-ros-board-threadx-linux.cmake",
     "cmake/board/nano-ros-board-rv-virt-threadx.cmake",
@@ -269,7 +271,7 @@ def selftest():
     expect(
         "app-config allowlist respected",
         {"cmake/board/nano-ros-board-threadx-linux.cmake":
-            '"        .locator = \\"tcp/127.0.0.1:7555\\",\\n"\n'},
+            '"        .locator = \\"tcp/127.0.0.1:7447\\",\\n"\n'},
         False,
     )
 

@@ -274,6 +274,9 @@ no runtime test, as the acceptance allows.
 - IPv6, and Wi-Fi credentials, which are not network-address facts.
 
 The router default moved INTO this phase with the 2026-10-15 amendment (D10d,
-W2). [Issue 1793](../../issues/1793-board-default-locator-differs-by-road.md)'s
+W2). [Issue 1793](../../issues/archived/1793-board-default-locator-differs-by-road.md)'s
 two-roads disagreement is what W2's single output removes; close it there
-only once the ThreadX boards it names are measured on both roads.
+only once the ThreadX boards it names are measured on both roads. (Resolved
+2026-10-16: no in-tree image reaches the board fallback, which D10d makes a
+sync error off `qemu` anyway; both ThreadX boards now fall back to one
+constant per board, read by both roads.)
