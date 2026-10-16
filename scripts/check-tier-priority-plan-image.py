@@ -37,6 +37,15 @@ Usage:
     python3 scripts/check-tier-priority-plan-image.py --images-from <list> [tier_key]
     python3 scripts/check-tier-priority-plan-image.py            # discovery
     python3 scripts/check-tier-priority-plan-image.py --selftest
+    python3 scripts/check-tier-priority-plan-image.py --derived-plan \
+        <nros_priority_plan.json> <path/to/zephyr/.config> [<generated entry TU>]
+
+`--derived-plan` holds the record `nros codegen entry` writes beside a
+generated entry (RFC-0079 section 5) to the image it was built for: the
+record's bands must be the ones this checker resolves from the `.config`,
+every derived or allocated tier must sit in `pool.app` and on no reserved
+band, and, given the generated TU, the tier priorities it runs at must be the
+record's.
 """
 
 import importlib.util
@@ -274,9 +283,85 @@ def check_many(configs, tier_key, plans, origin, listed):
     return rc
 
 
+TIER_SPEC_RE = re.compile(r'\.name\s*=\s*"([^"]*)",[^}]*?\.priority\s*=\s*(-?\d+)LL', re.S)
+
+
+def entry_tier_priorities(tu_text):
+    """`{tier name: priority}` from a generated entry's tier spec table."""
+    m = re.search(r"TierSpec\s+__nros_tiers\[\d+\]\s*=\s*\{(.*?)\n\};", tu_text, re.S)
+    if m is None:
+        return {}
+    return {name: int(prio) for name, prio in TIER_SPEC_RE.findall(m.group(1))}
+
+
+def check_derived_plan(record, resolved, tu_text=None):
+    """The findings of holding one priority record to one resolved image plan
+    (and, given, to the generated entry's tier table). Empty means it holds."""
+    errs = []
+    if "error" in resolved:
+        return [f"cannot resolve the image's plan: {resolved['error']}"]
+    if "unapplied" in resolved:
+        if record["plan"].get("from_image"):
+            errs.append("the record says its plan came from the image, but the "
+                        f"image applies no transport priority: {resolved['unapplied']}")
+        return errs
+    plan = record["plan"]
+    if not plan.get("from_image"):
+        errs.append("the record's plan is the tier key's projection, not the image's "
+                    "(the entry was generated without --dotconfig)")
+    lo, hi = resolved["reserved"]["transport"]
+    rec_t = plan.get("reserved", {}).get("transport")
+    if rec_t is None or tuple(rec_t) != (lo, hi):
+        errs.append(f"transport band: record {rec_t}, image [{lo}, {hi}]")
+    plo, phi = resolved["pool"]["app"]
+    if tuple(plan["app"]) != (plo, phi):
+        errs.append(f"pool.app: record {plan['app']}, image [{plo}, {phi}]")
+    for t in record.get("tiers", []):
+        if t["origin"] not in ("derived", "allocated"):
+            continue
+        p = t["priority"]
+        if not plo <= p <= phi:
+            errs.append(f"tier {t['name']} ({t['origin']}) at {p} is outside "
+                        f"pool.app [{plo}, {phi}]")
+        if lo <= p <= hi:
+            errs.append(f"tier {t['name']} ({t['origin']}) at {p} is ON the "
+                        f"transport band [{lo}, {hi}]")
+    if tu_text is not None:
+        ran = entry_tier_priorities(tu_text)
+        want = {t["name"]: t["priority"] for t in record.get("tiers", [])}
+        if ran != want:
+            errs.append(f"the generated entry runs {ran}, the record says {want}")
+    return errs
+
+
+def derived_plan_main(record_path, dotconfig, tu_path=None):
+    import json
+    record = json.loads(Path(record_path).read_text(encoding="utf-8"))
+    resolved = resolve_zephyr_plan(dotconfig)
+    tu_text = Path(tu_path).read_text(encoding="utf-8") if tu_path else None
+    errs = check_derived_plan(record, resolved, tu_text)
+    tiers = ", ".join(f"{t['name']} {t['priority']} ({t['origin']})"
+                      for t in record.get("tiers", [])) or "no tier"
+    band = (f"transport {list(resolved['reserved']['transport'])}, pool.app "
+            f"{list(resolved['pool']['app'])}" if "reserved" in resolved else "no band")
+    if errs:
+        print(f"  [FAIL] {record_path}: {band}; {tiers}")
+        for e in errs:
+            print(f"        {e}")
+        return 1
+    print(f"  [ok]   {record_path}: {band}; {tiers}"
+          + ("; the generated entry agrees" if tu_text is not None else ""))
+    return 0
+
+
 def main(argv):
     if len(argv) > 1 and argv[1] == "--selftest":
         return 0 if selftest() else 1
+    if len(argv) > 1 and argv[1] == "--derived-plan":
+        if len(argv) not in (4, 5):
+            print("usage: --derived-plan <nros_priority_plan.json> <.config> [<entry TU>]")
+            return 2
+        return derived_plan_main(argv[2], Path(argv[3]), argv[4] if len(argv) == 5 else None)
     plans = load_plans()
     tier_key = "zephyr"
     if len(argv) >= 3 and argv[1] == "--images-from":
@@ -507,6 +592,34 @@ def selftest():
                stale["reserved"]["transport"], (0, 14))
         expect("the pre-0852 pool is empty", stale["pool"]["app"], (15, 14))
 
+        # RFC-0079 section 5 - `--derived-plan`: a record of one allocated
+        # tier at 5 on an image whose transport is [4, 4] holds; the same
+        # record against the stale band, a tier on the band, a projection,
+        # and a generated entry that runs another number do not.
+        CUR = ISLAND.replace("LEASE_PRIORITY=255", "LEASE_PRIORITY=200")
+        cur = resolve_zephyr_plan(image("island-cur", CUR, {"prj.conf": ""}))
+        rec = {"plan": {"reserved": {"transport": [4, 4]}, "app": [5, 14],
+                        "from_image": True},
+               "tiers": [{"name": "mrm", "priority": 5, "origin": "allocated"}]}
+        tu = ('static const ::rclcpp::board::NativeTierSpec __nros_tiers[1] = {\n'
+              '    {\n        .name = "mrm",\n        .groups = g,\n'
+              '        .n_groups = 3u,\n        .priority = 5LL,\n    },\n};\n')
+        expect("a record that matches its image holds",
+               check_derived_plan(rec, cur, tu), [])
+        expect("the generated entry's table is read",
+               entry_tier_priorities(tu), {"mrm": 5})
+        expect("a record against another image's band does not",
+               len(check_derived_plan(rec, stale)) > 0, True)
+        on_band = {**rec, "tiers": [{"name": "mrm", "priority": 4,
+                                     "origin": "allocated"}]}
+        expect("an allocated tier on the transport band does not",
+               len(check_derived_plan(on_band, cur)), 2)
+        proj = {**rec, "plan": {**rec["plan"], "from_image": False}}
+        expect("a projection is not the image's plan",
+               len(check_derived_plan(proj, cur)), 1)
+        expect("a generated entry running another number does not",
+               len(check_derived_plan(rec, cur, tu.replace("5LL", "3LL"))), 1)
+
     # RFC-0071 D2 - the Rust twin is a CORE crate, so it may not read the
     # transport's Kconfig symbols by name: it is handed the normalised bands,
     # and carries ONE number of its own for the case where no image is in hand
@@ -573,7 +686,7 @@ def selftest():
             print(f"  {f}")
         return False
     print("check-tier-priority-plan-image --selftest: OK "
-          "(real zephyr/Kconfig parses; 14 synthetic cases, the\n  RFC-0079 section 4.1 band the Rust realizer allocates from, and that\n  realizer's own default band against this Kconfig; every zephyr pin's\n"
+          "(real zephyr/Kconfig parses; 20 synthetic cases, the\n  RFC-0079 section 4.1 band the Rust realizer allocates from, and that\n  realizer's own default band against this Kconfig; every zephyr pin's\n"
           "  bringup is built by a manifest row, the derived-tier image by its own)")
     return True
 
