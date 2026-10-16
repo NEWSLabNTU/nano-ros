@@ -1,12 +1,13 @@
 ---
 id: 1832
 title: "`artifact-identity-budget` and `sizes-header-mirrors` give a verdict in no CI lane, not even the ones that build fixtures"
-status: open
+status: resolved
 type: test-gap
 severity: low
 area: [ci, testing]
 related: [0650, 1226]
 found: 2026-10-12
+resolved: 2026-10-16
 ---
 
 ## Measured
@@ -103,3 +104,20 @@ that verifies them instead.
 The tier-1 lane's `Build-tree gates` step has run green once. Until then the
 step is in place but unproven: on 2026-10-11 the tier-1 lane stopped in
 provisioning and never reached its build (phase-466).
+
+## Closed (2026-10-16)
+
+The step has run green once, on a real build. run-matrix **38818350050**
+(workflow_dispatch on `main`), job **116843072656** `tier 1 (cells)` on
+`nano-ros-runner-newslab-server-241`, started 07:56:10Z: `just build tier1`
+succeeded, then all three steps after it succeeded —
+
+- `Build-tree gate: artifact-identity-budget (issue 1832)`
+- `Build-tree gate: sizes-header-mirrors (issue 1832)`
+- `Build-tree gate: zephyr-workspace-foreign-checkout (issue 1832)`
+
+Each step resets the skip ledger and fails if its gate recorded a skip, so
+success there is a verdict over a present input, not NOT VERIFIED. This lane
+had not reached its build since 2026-10-11 because no self-hosted runner was
+claiming work (issue 1365: the image's runner 2.329.0 is offered jobs only
+through a self-update).
