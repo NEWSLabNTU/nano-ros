@@ -30,8 +30,9 @@ cmake_minimum_required(VERSION 3.22)
 get_filename_component(_root "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
 include("${_root}/cmake/NanoRosFeatureSet.cmake")
 
-set(_platforms posix freertos freertos_armcm3 nuttx nuttx_armv7a threadx threadx_linux
-    threadx_riscv64)
+# NuttX is not here: `nros_feature_set` REFUSES it (no Corrosion build exists
+# there; the FFI crate builds the runtime). The control below holds that.
+set(_platforms posix freertos freertos_armcm3 threadx threadx_linux threadx_riscv64)
 
 # Returns, in `out`, an error line or "" for one evaluated feature list.
 function(_analysis_violation out crate platform cross feats)
@@ -94,6 +95,24 @@ if(_planted STREQUAL "")
     message(FATAL_ERROR "rtos-feature-set-excludes-analysis: self-test -- a native C++ set "
         "WITHOUT `profile-mode` was not refused")
 endif()
+
+# NuttX must REFUSE, naming the FFI crate. A FATAL_ERROR cannot be caught in
+# this process, so ask a child `cmake -P` and read its exit and its text.
+foreach(_nx nuttx nuttx_armv7a)
+    set(_probe "${CMAKE_CURRENT_BINARY_DIR}/_nros_fs_nuttx_probe.cmake")
+    file(WRITE "${_probe}"
+        "cmake_minimum_required(VERSION 3.22)\n"
+        "include(\"${_root}/cmake/NanoRosFeatureSet.cmake\")\n"
+        "nros_feature_set(_f CRATE c RMW none PLATFORM ${_nx})\n")
+    execute_process(COMMAND "${CMAKE_COMMAND}" -P "${_probe}"
+        RESULT_VARIABLE _rc OUTPUT_VARIABLE _out ERROR_VARIABLE _err)
+    file(REMOVE "${_probe}")
+    if(_rc EQUAL 0 OR NOT _err MATCHES "nros-nuttx-ffi")
+        message(FATAL_ERROR "rtos-feature-set-excludes-analysis: PLATFORM ${_nx} did not "
+            "refuse naming the FFI crate (rc=${_rc}): a NuttX feature set from this function "
+            "is one no build can use.\n${_err}")
+    endif()
+endforeach()
 
 # ---- the real ladder --------------------------------------------------------
 set(_failures "")
