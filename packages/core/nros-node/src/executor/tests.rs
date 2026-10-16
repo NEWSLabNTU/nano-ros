@@ -4953,6 +4953,8 @@ fn test_timer_repeats() {
     assert_eq!(count.load(portable_atomic::Ordering::SeqCst), 3);
 }
 
+private_test_clock!(timer_readiness_clock);
+
 /// phase-417 W5.c — `timer_is_ready` / `timer_elapsed_us` must report what the
 /// DISPATCHER is about to do, not a second opinion about it.
 ///
@@ -4965,14 +4967,21 @@ fn test_timer_repeats() {
 /// `false` there would report a live timer as merely not ready.
 #[test]
 fn timer_readiness_and_elapsed_agree_with_the_dispatcher() {
-    let session = MockSession::new();
-    let mut executor: Executor = executor_with_clock(session);
+    // A PRIVATE clock the test moves by hand, so each step is exactly the
+    // delta it names. This used to sleep for real against the shared
+    // free-running clock and bound the readings above as well as below; under
+    // a 32-way parallel gate one 40 ms sleep measured 52.9 ms and the upper
+    // bound failed, though nothing about the dispatcher had changed.
+    timer_readiness_clock::claim_at_us(1_000_000);
+    let mut executor: Executor =
+        executor_with_clock_fn(MockSession::new(), timer_readiness_clock::now_us);
+    let mut now_us = 1_000_000;
+    let mut step = |executor: &mut Executor, ms: u64| {
+        now_us += ms * 1_000;
+        timer_readiness_clock::set_us(now_us);
+        executor.spin_once(core::time::Duration::from_millis(0))
+    };
 
-    // Bounds, not equalities, on the elapsed readings: `spin_once` credits the
-    // REAL wall-clock cost of the spin on top of the injected delta (see its
-    // note on the timer delta), so a driven timer runs a little ahead of the
-    // nominal schedule. The lower bound is the assertion — an upper-bound-only
-    // check passes a counter that never advanced.
     let id = executor
         .register_timer(TimerDuration::from_millis(100), || {})
         .unwrap();
@@ -4981,39 +4990,35 @@ fn timer_readiness_and_elapsed_agree_with_the_dispatcher() {
     assert_eq!(executor.timer_is_ready(id), Some(false));
 
     // Short of the period: elapsed advances, readiness does not.
-    let result = elapse_then_spin_once(&mut executor, 40);
+    let result = step(&mut executor, 40);
     assert_eq!(result.timers_fired, 0);
-    let elapsed = executor.timer_elapsed_us(id).unwrap();
-    assert!(
-        (40_000..50_000).contains(&elapsed),
-        "one 40ms step: {elapsed}us"
-    );
+    assert_eq!(executor.timer_elapsed_us(id), Some(40_000), "one 40ms step");
     assert_eq!(executor.timer_is_ready(id), Some(false));
 
-    let result = elapse_then_spin_once(&mut executor, 40);
+    let result = step(&mut executor, 40);
     assert_eq!(result.timers_fired, 0, "80ms is short of the 100ms period");
-    let elapsed = executor.timer_elapsed_us(id).unwrap();
-    assert!(
-        (80_000..95_000).contains(&elapsed),
-        "two 40ms steps: {elapsed}us"
+    assert_eq!(
+        executor.timer_elapsed_us(id),
+        Some(80_000),
+        "two 40ms steps"
     );
     assert_eq!(executor.timer_is_ready(id), Some(false));
 
-    let result = elapse_then_spin_once(&mut executor, 40);
+    let result = step(&mut executor, 40);
     assert_eq!(result.timers_fired, 1, "120ms >= 100ms period");
     // The activation rewound `elapsed_us` by one period, and that rewind is
     // exactly what "time since last call" means: the reading must drop below
     // the period rather than keep climbing.
-    let elapsed = executor.timer_elapsed_us(id).unwrap();
-    assert!(
-        (20_000..40_000).contains(&elapsed),
-        "the fire must rewind by one period: {elapsed}us"
+    assert_eq!(
+        executor.timer_elapsed_us(id),
+        Some(20_000),
+        "the fire must rewind by one period"
     );
     assert_eq!(executor.timer_is_ready(id), Some(false));
 
     // A cancelled timer is never ready, however much time has passed.
     executor.cancel_timer(id).unwrap();
-    let _ = elapse_then_spin_once(&mut executor, 500);
+    let _ = step(&mut executor, 500);
     assert_eq!(executor.timer_is_ready(id), Some(false));
     assert!(executor.timer_is_canceled(id));
 
@@ -5120,6 +5125,8 @@ fn time_until_next_call_goes_negative_once_a_timer_is_overdue() {
     );
 }
 
+private_test_clock!(exchange_period_clock);
+
 /// phase-417 W5.c — `exchange_timer_period_us` must change what the DISPATCHER
 /// does, and must not touch the elapsed count while doing it.
 ///
@@ -5137,21 +5144,28 @@ fn time_until_next_call_goes_negative_once_a_timer_is_overdue() {
 ///   depends on.
 #[test]
 fn exchanging_a_timers_period_changes_the_cadence_without_rewinding_it() {
-    let session = MockSession::new();
-    let mut executor: Executor = executor_with_clock(session);
+    // A private clock moved by hand (see
+    // `timer_readiness_and_elapsed_agree_with_the_dispatcher`): a real sleep
+    // bounded above is a load test, not a dispatcher test.
+    exchange_period_clock::claim_at_us(1_000_000);
+    let mut executor: Executor =
+        executor_with_clock_fn(MockSession::new(), exchange_period_clock::now_us);
+    let mut now_us = 1_000_000;
+    let mut step = |executor: &mut Executor, ms: u64| {
+        now_us += ms * 1_000;
+        exchange_period_clock::set_us(now_us);
+        executor.spin_once(core::time::Duration::from_millis(0))
+    };
 
     let id = executor
         .register_timer(TimerDuration::from_millis(100), || {})
         .unwrap();
 
     // 40 ms in: not due under the 100 ms period.
-    let result = elapse_then_spin_once(&mut executor, 40);
+    let result = step(&mut executor, 40);
     assert_eq!(result.timers_fired, 0);
     let before = executor.timer_elapsed_us(id).unwrap();
-    assert!(
-        (40_000..50_000).contains(&before),
-        "one 40ms step: {before}us"
-    );
+    assert_eq!(before, 40_000, "one 40ms step");
 
     // Shorten the period to 20 ms. The old value comes back, in the arena's own
     // microseconds.
@@ -5173,7 +5187,7 @@ fn exchanging_a_timers_period_changes_the_cadence_without_rewinding_it() {
     // And the DISPATCHER agrees: 40ms already elapsed is past a 20ms period, so
     // the timer is ready now rather than in another 60ms.
     assert_eq!(executor.timer_is_ready(id), Some(true));
-    let result = elapse_then_spin_once(&mut executor, 1);
+    let result = step(&mut executor, 1);
     assert_eq!(
         result.timers_fired, 1,
         "a period shortened below the elapsed count fires immediately"
@@ -5183,7 +5197,7 @@ fn exchanging_a_timers_period_changes_the_cadence_without_rewinding_it() {
     // period is what readiness is measured against.
     assert_eq!(executor.exchange_timer_period_us(id, 500_000), Some(20_000));
     assert_eq!(executor.timer_is_ready(id), Some(false));
-    let result = elapse_then_spin_once(&mut executor, 100);
+    let result = step(&mut executor, 100);
     assert_eq!(result.timers_fired, 0, "100ms is short of the new 500ms");
 
     // A handle that is not a timer has no period to exchange, and reports that

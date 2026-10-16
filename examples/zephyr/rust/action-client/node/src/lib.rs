@@ -34,9 +34,20 @@ impl Component for FibonacciClient {
     }
 }
 
+/// How long a goal sent BLIND (the backend cannot see servers) may go without
+/// a result before it is sent again. The demo server finishes order 10 in a
+/// few milliseconds, so five seconds is far past any real answer.
+const BLIND_RESEND: core::time::Duration = core::time::Duration::from_secs(5);
+
 pub struct State {
-    /// Set once the goal has been sent — keeps `tick` idempotent.
-    sent: bool,
+    /// When the goal was last sent; `None` until the first send.
+    sent_at: Option<core::time::Duration>,
+    /// Whether that send was BLIND — the backend could not say whether a
+    /// server exists (`action_server_is_ready` → `Err`, XRCE: the Agent owns
+    /// the DDS graph, issue 1686). Only a blind send is ever repeated.
+    blind: bool,
+    /// Set once a result has arrived.
+    done: bool,
     /// Issue 1918 — set once "waiting for the action server" has been logged.
     waiting_logged: bool,
 }
@@ -46,12 +57,14 @@ impl ExecutableNode for FibonacciClient {
 
     fn init() -> Self::State {
         State {
-            sent: false,
+            sent_at: None,
+            blind: false,
+            done: false,
             waiting_logged: false,
         }
     }
 
-    fn on_callback(_state: &mut Self::State, callback: Callback<'_>, ctx: &mut CallbackCtx<'_>) {
+    fn on_callback(state: &mut Self::State, callback: Callback<'_>, ctx: &mut CallbackCtx<'_>) {
         match callback.as_str() {
             "on_feedback" => {
                 if let Ok(f) = ctx.message::<FibonacciFeedback>() {
@@ -60,6 +73,7 @@ impl ExecutableNode for FibonacciClient {
             }
             "on_result" => {
                 if let Ok(r) = ctx.message::<FibonacciResult>() {
+                    state.done = true;
                     log::info!("Result received: {:?}", r.sequence);
                 }
             }
@@ -68,31 +82,53 @@ impl ExecutableNode for FibonacciClient {
     }
 
     fn tick(state: &mut Self::State, ctx: &mut TickCtx<'_>) {
-        if state.sent {
+        if state.done {
             return;
         }
-        // Issue 1918 — wait for the server before the ONE send. A goal sent
-        // before the server has declared its send_goal service is answered by
-        // nobody, and nothing re-sends it. `Err` means the backend cannot say
-        // (no discovery channel), so send anyway.
-        if let Ok(false) = ctx.action_server_is_ready_for_name("/fibonacci") {
-            if !state.waiting_logged {
-                log::info!("Waiting for action server...");
-                state.waiting_logged = true;
+        let now = nros::time::now();
+        if let Some(at) = state.sent_at {
+            // A send the backend could CONFIRM a server for is never repeated.
+            // A blind one is: XRCE's Agent matches the client's request writer
+            // with the server's reader asynchronously, a goal written before
+            // that match is dropped, and with no answer coming back this client
+            // would wait forever (the `rust_xrce_action` cell failed ~1 run in
+            // 3 exactly so: "Goal sent", then nothing). A goal that did arrive
+            // gets its result long before `BLIND_RESEND`, so a repeat is only
+            // ever a goal that was lost.
+            if !state.blind || now.saturating_sub(at) < BLIND_RESEND {
+                return;
             }
-            return;
+            log::info!("No result yet; sending the goal again");
         }
+        // Issue 1918 — wait for the server before sending. A goal sent before
+        // the server has declared its send_goal service is answered by nobody.
+        // `Err` means the backend cannot say (no discovery channel): send
+        // blind, and repeat on silence (above).
+        let blind = match ctx.action_server_is_ready_for_name("/fibonacci") {
+            Ok(false) => {
+                if !state.waiting_logged {
+                    log::info!("Waiting for action server...");
+                    state.waiting_logged = true;
+                }
+                return;
+            }
+            Ok(true) => false,
+            Err(_) => true,
+        };
         let goal = FibonacciGoal { order: 10 };
         log::info!("Sending goal");
+        // 32 B is more than enough for one `i32` + CDR header.
         if ctx
             .send_goal_for_name::<FibonacciGoal, 32>("/fibonacci", &goal)
             .is_ok()
         {
-            state.sent = true;
+            state.sent_at = Some(now);
+            state.blind = blind;
             // Issue 1918 — SENT, not accepted: `send_goal_for_name` does not
             // wait for the server's answer, so this cannot claim one.
             log::info!("Goal sent, waiting for result");
         }
+        // On send failure `sent_at` is unchanged — the next tick retries.
     }
 }
 

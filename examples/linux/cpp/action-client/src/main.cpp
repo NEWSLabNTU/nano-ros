@@ -67,6 +67,11 @@ int main(int argc, char** argv) {
     // issue 1686 — Unsupported: this backend cannot see servers at all
     // (XRCE: the Agent owns the DDS graph), so the wait answered at once.
     // Send anyway; the request's own timeout is then the probe.
+    // A BLIND send (Unsupported: nothing can confirm a server) is retried on a
+    // goal-response timeout: XRCE's Agent matches the client's request writer
+    // with the server's reader asynchronously, and a goal written before that
+    // is dropped. A send the wait CONFIRMED is never repeated.
+    const bool blind = ret.code() == rclcpp::ErrorCode::Unsupported;
     if (!ret.ok() && ret.code() != rclcpp::ErrorCode::Unsupported) {
         fprintf(stderr, "Action server did not appear within 10s (ret=%d)\n", ret.raw());
         rclcpp::shutdown();
@@ -79,7 +84,13 @@ int main(int argc, char** argv) {
     goal.order = order;
 
     uint8_t goal_id[16];
-    ret = client.send_goal(goal, goal_id);
+    for (int attempt = 0;; ++attempt) {
+        ret = client.send_goal(goal, goal_id);
+        if (ret.code() != rclcpp::ErrorCode::Timeout || !blind || attempt >= 2) {
+            break;
+        }
+        printf("No goal response; sending the goal again\n");
+    }
     if (!ret.ok()) {
         // Issue 0868 — say WHICH of the three outcomes this was.
         //
