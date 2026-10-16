@@ -3143,7 +3143,7 @@ required-features-tests:
     just _nextest-tolerant \
         -p nros-tests --no-fail-fast \
         --features trigger-test,component-runtime-test,phase216-substrate,signal-fd-wake-test \
-        --test trigger_conditions --test wake_latency \
+        --test trigger_conditions --test wake_latency --test ftti_detection_bounds \
         --test component_runtime --test tier_filter \
         --test component_dispatch --test component_param \
         --test dispatch_strategy --test signal_fd_wake

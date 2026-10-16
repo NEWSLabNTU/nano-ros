@@ -448,6 +448,12 @@ pub fn plan_from_model(model_path: &Path, board: Option<String>) -> Result<Plan>
     // can make true.
     nros_orchestration_ir::qos_agreement::check_model(&model)
         .map_err(|e| eyre::eyre!("model `{}`: {e}", model_path.display()))?;
+    // phase-462 W3a -- every hazard's FTTI against what this image runs:
+    // detection by the monitor rows it bakes, plus the reaction path's
+    // latency and release. A provable overrun refuses here, before the bake,
+    // for the reason the QoS check above gives.
+    nros_orchestration_ir::ftti_budget::check_model(&model)
+        .map_err(|e| eyre::eyre!("model `{}`: {e}", model_path.display()))?;
     // phase-462 W2 -- the same ruling for `on_violation`: the contract's word
     // and the tier table's `deadline_policy` are two statements about one
     // fact. The map is applied to the tier defs below; the error is raised
