@@ -263,7 +263,9 @@ else
         exit 1
     fi
     echo "pre-push: fast gates green. NOTE this is the FAST tier only — it does" >&2
-    echo "          not compile, so a broken test target still gets through." >&2
+    echo "          not compile, so a broken test target still gets through, and" >&2
+    echo "          the two compile gates beside it (api-parity," >&2
+    echo "          probe-workspace-caps; CI's check-fast-compile) did not run." >&2
     echo "          Run the tier your change earns (RFC-0061): just ci / ci-matrix." >&2
 fi
 

@@ -552,6 +552,27 @@ projected, still above the 6-minute target; what is left is compile
 CPU-s of 1004) and `hook-repo-side-effects` (37), whose cost is building
 throwaway repositories, which is its subject.
 
+**The two compile gates moved beside the fast line (2026-10-16).** CI logs
+of jobs 116599757094, 116593139468, 116602802877 and 116611582849 put
+`probe-workspace-caps` at 66-117 s and `api-parity` at 45-89 s; solo on the
+4-core box they cost 221 and 109 CPU-s of a lane that is CPU-bound (busy/wall
+4.0x), so together about a third of the step's CPU. They left the fast lane
+(`.config/gate-lane-exempt.txt`) for a new `check-fast-compile` job in
+`gate.yml` that runs both by name, one per `run:` block, on exactly
+`check-fast`'s events (same job-level `if:`), on its own 4 vCPUs in parallel
+with `check-fast`. `ci-ok` needs it and inspects it with `check-fast`'s event
+list; a recorded skip fails the job (neither gate is allowlisted). `default:`
+and `just ci gate` name both, so `just check`, `just ci tier1 gates` and the
+local gate lane still run them once each; `pre-push` (`just check fast`) no
+longer does, and says so in its closing note. `warm-cache` runs both after
+`just check fast`, and `check-gate-cache-keys-agree` now requires every
+`just check <gate>` in `check-fast-compile` to run in `warm-cache` between
+configure and save (self-test: missing, and warmed only after the save).
+
+Locally at -P4 (box2, warm): `just check fast` **185 s wall, busy 726 s**
+(452 gates), against 272 s / 1075 s for the W5 tree above; the new job's two
+gates cost about 80 + 39 s solo.
+
 ### W6 — a persistent build cache for the fixture lanes
 
 Live-peer (84.5 + 33.7 min of fixture build), run-matrix (about 30 min a

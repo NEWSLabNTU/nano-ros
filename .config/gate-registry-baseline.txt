@@ -9,7 +9,6 @@
 abi-bindings
 absolute-paths
 activate-shells
-api-parity
 api-parity-ledger
 arch-profile-resolution
 archived-issue-status
