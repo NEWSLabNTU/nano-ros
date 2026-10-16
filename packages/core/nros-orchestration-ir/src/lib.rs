@@ -47,6 +47,8 @@ pub mod derive;
 // proc-macro entry bake and the CLI's codegen-system so the two agree on the
 // count, the derivation and the over-capacity diagnostic.
 pub mod executor_sizing;
+/// phase-462 W3a -- a hazard's FTTI checked against what the image runs.
+pub mod ftti_budget;
 // phase-445 W3 (RFC-0098 D3/D5/D8) — the ONE reader of what a single-package
 // leaf deploys to (`<leaf>/system.toml`, with the retiring manifest keys as a
 // deletable fallback), shared by the proc-macro and the CLI.

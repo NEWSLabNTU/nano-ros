@@ -1,7 +1,7 @@
 # phase-462 -- the contract's safety vocabulary reaches the target
 
-**Status (2026-09-21). NOT STARTED. Future work, planned only; no wave has an
-owner and nothing here is in flight.** Numbered highest + 7 (phase-461 took +6;
+**Status (2026-10-16). IN PROGRESS: W1, W2 and W3a landed; W3b, W3c, W4 and
+W6a are open; W5 and W6b wait on rlm.** (Planned 2026-09-21.) Numbered highest + 7 (phase-461 took +6;
 456-460 belong to concurrent sessions). Depends on two pieces of work outside
 this document: the shared MapperInput derivation phase (a play_launch / rlm
 phase being designed in parallel, referred to here by that name and not by a
@@ -184,7 +184,7 @@ SchedContext for the deadline half to land on (`derive.rs:93-100` today notes
 it and moves on). Until it lands, W2's deadline half applies only to declared
 tiers, and this doc must say so at that point rather than count it done.
 
-Claim: phase-462-W2. Depends on: phase-462-W1, phase-459-W2. Owns: DeadlineAction in packages/core/nros-node/src/executor/sched_context.rs; silence-runtime in packages/core/nros-node/src/executor/monitor.rs; one const in packages/core/nros-diagnostics/src/lib.rs; on_violation rows beside monitor_rows in packages/cli/nros-cli-core/src/orchestration/model_ingest.rs; deadline_policy in packages/cli/nros-cli-core/src/codegen/entry/mod.rs; packages/core/nros-orchestration-ir/src/violation_agreement.rs (new); packages/testing/nros-tests/tests/on_violation_lowering.rs (new). Gate: cargo test -p nros-tests --test on_violation_lowering. Status: not started.
+Claim: phase-462-W2. Depends on: phase-462-W1, phase-459-W2. Owns: DeadlineAction in packages/core/nros-node/src/executor/sched_context.rs; silence-runtime in packages/core/nros-node/src/executor/monitor.rs; one const in packages/core/nros-diagnostics/src/lib.rs; on_violation rows beside monitor_rows in packages/cli/nros-cli-core/src/orchestration/model_ingest.rs; deadline_policy in packages/cli/nros-cli-core/src/codegen/entry/mod.rs; packages/core/nros-orchestration-ir/src/violation_agreement.rs (new); packages/testing/nros-tests/tests/on_violation_lowering.rs (new). Gate: cargo test -p nros-tests --test on_violation_lowering. Status: landed 2026-09-24 (d2adf4b7c1, with 65db78ecd1 for the age-state byte budget); on_violation_lowering 4 passed, violation_agreement 9 passed. Scope as landed: rlm carries no warn|skip|fault word, so the action is the reacting path's `miss.action` (`continue | skip_next | abort`), reached directly or through an endpoint's `on_violation.reaction` pointer. The deadline half reached declared tiers only when it landed; phase-459 W2 has since given a groupless node a derived tier.
 
 ### W3 [nros-node, cli] -- `safe_state`, `hazards`, and the FTTI budget
 
@@ -230,7 +230,41 @@ shared MapperInput derivation phase for the chain that `fault-reaction-budget`
 walks, so that nano-ros and rlm agree on which callbacks form the reaction
 chain rather than each walking the graph its own way.
 
-Claim: phase-462-W3. Depends on: phase-462-W1, phase-462-W2, phase-459-W2, phase-495-W2. Owns: hazard consts in packages/core/nros-diagnostics/src/lib.rs; a hazard-row fn in packages/cli/nros-cli-core/src/orchestration/model_ingest.rs; the hazard table region in packages/cli/nros-cli-core/src/codegen/entry/emit_cpp.rs and emit_rust.rs; the Fault hook target in packages/core/nros-node/src/executor/sched_context.rs; packages/core/nros-orchestration-ir/src/ftti_budget.rs (new); packages/testing/nros-tests/tests/hazard_rows_and_ftti.rs (new). Gate: cargo test -p nros-tests --test hazard_rows_and_ftti. Status: not started.
+**Re-planned 2026-10-16 against the model this tree pins.** The sketch above
+predates `contracts.hazards`' present shape (ros-launch-manifest model, rev
+33577ff): a hazard carries `guards` (topic FQNs, one fault each, `all_of` for a
+redundant set), `on` (fault classes; empty means all), `ftti_ms`, and a
+`reaction` that is a key into `contracts.modes` (whose own `reaction` is a path)
+or a path key directly; `safe_state` sits on the reacting PATH (`emits`,
+`settle_ms`). No reaction-chain walker exists in either tree, and phase-503
+already carries a route's supervised reaction to a hook (`reaction_id`,
+`ReactionEvent`, `set_reaction_hook`). So W3 lands in three units:
+
+- **W3a -- the FTTI budget at build time.** `nros-orchestration-ir::ftti_budget`.
+  Detection is what the executor itself observes on a guard topic, from the
+  rows this image bakes: `silence-runtime` / `max-age-runtime` at the
+  subscriber's `max_age_ms`, `min-rate-runtime` at two rate windows (10 s); a
+  class with no detector here (`reported`, `overrun`) is listed as unobserved
+  and never counted. Reaction is the resolved path's `max_latency_ms`; release
+  is its timer period plus stated jitter, else the period of the tier that runs
+  its first input's node. A budget provably over `ftti_ms` refuses on both bake
+  roads (the CLI entry emitter and `nros::main!`), naming each term; an unknown
+  term abstains.
+- **W3b -- the observer.** `hazard-detected` / `hazard-reaction` /
+  `hazard-recovered` rows grouping the drain's violations by the hazard whose
+  guard they fall on, with the three names play_launch uses.
+- **W3c -- the reaction.** A hazard whose reacting path states `safe_state` and
+  runs in this image is wired to that path through phase-503's reaction hook,
+  rather than a new `Fault` hook target.
+
+W3a status: landed in this change. `cargo test -p nros-orchestration-ir
+ftti_budget`: 9 passed, among them the refusal naming every term and its
+negative control (the same image under a looser FTTI). The rate window the
+check restates is pinned to the executor's by `nros-tests`'
+`ftti_detection_bounds` (`trigger-test`, in `check required-features-tests`).
+W3b and W3c: not started.
+
+Claim: phase-462-W3. Depends on: phase-462-W1, phase-462-W2, phase-459-W2, phase-495-W2. Owns: hazard consts in packages/core/nros-diagnostics/src/lib.rs; a hazard-row fn in packages/cli/nros-cli-core/src/orchestration/model_ingest.rs; the hazard table region in packages/cli/nros-cli-core/src/codegen/entry/emit_cpp.rs and emit_rust.rs; the Fault hook target in packages/core/nros-node/src/executor/sched_context.rs; packages/core/nros-orchestration-ir/src/ftti_budget.rs (new); packages/testing/nros-tests/tests/hazard_rows_and_ftti.rs (new). Gate: cargo test -p nros-orchestration-ir ftti_budget (W3a); cargo test -p nros-tests --test hazard_rows_and_ftti (W3b/W3c). Status: W3a landed; W3b, W3c not started.
 
 ### W4 [cli] -- `modes` as tier-table variants
 

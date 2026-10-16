@@ -885,6 +885,15 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 format!("nros::main!: model `{}`: {e}", model_path.display()),
             )
         })?;
+        // phase-462 W3a -- the hazard FTTI budget, the same check the CLI's
+        // entry emitter runs, for the same reason: a rule on one of two bake
+        // roads is not a rule.
+        nros_orchestration_ir::ftti_budget::check_model(&model).map_err(|e| {
+            syn::Error::new(
+                model_lit.span(),
+                format!("nros::main!: model `{}`: {e}", model_path.display()),
+            )
+        })?;
 
         // Bridge entry (phase-267 / R-code.1): the model's `execution.bridges`
         // is the SSoT for "this bringup relays between two RMW sessions". When

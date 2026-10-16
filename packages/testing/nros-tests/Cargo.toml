@@ -303,6 +303,11 @@ path = "tests/wake_latency.rs"
 required-features = ["trigger-test"]
 
 [[test]]
+name = "ftti_detection_bounds"
+path = "tests/ftti_detection_bounds.rs"
+required-features = ["trigger-test"]
+
+[[test]]
 name = "signal_fd_wake"
 path = "tests/signal_fd_wake.rs"
 required-features = ["signal-fd-wake-test"]
