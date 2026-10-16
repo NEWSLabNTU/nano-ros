@@ -171,6 +171,11 @@ int main(int argc, char** argv) {
     // issue 1686 — RCL_RET_UNSUPPORTED: this backend cannot see servers at
     // all (XRCE: the Agent owns the DDS graph), so the wait answered at once.
     // Send anyway; the request's own timeout is then the probe.
+    // A BLIND send (UNSUPPORTED: nothing can confirm a server) is retried on a
+    // goal-response timeout: XRCE's Agent matches the client's request writer
+    // with the server's reader asynchronously, and a goal written before that
+    // is dropped. A send the wait CONFIRMED is never repeated.
+    const int blind = (ret == RCL_RET_UNSUPPORTED);
     if (ret != RCL_RET_OK && ret != RCL_RET_UNSUPPORTED) {
         emit_num(RCLC_LOG_SEVERITY_ERROR, "Action server did not appear within 10s: ", ret,
                  __FILE__, __LINE__);
@@ -179,7 +184,15 @@ int main(int argc, char** argv) {
 
     emit(RCLC_LOG_SEVERITY_INFO, "Sending goal", __FILE__, __LINE__);
     rclc_goal_uuid_t goal_uuid;
-    ret = rclc_action_send_goal(&app.action_client, &app.executor, goal_buf, goal_len, &goal_uuid);
+    for (int attempt = 0;; attempt++) {
+        ret = rclc_action_send_goal(&app.action_client, &app.executor, goal_buf, goal_len,
+                                    &goal_uuid);
+        if (ret != RCL_RET_TIMEOUT || !blind || attempt >= 2) {
+            break;
+        }
+        emit(RCLC_LOG_SEVERITY_WARN, "No goal response; sending the goal again", __FILE__,
+             __LINE__);
+    }
     if (ret != RCL_RET_OK) {
         emit_num(RCLC_LOG_SEVERITY_ERROR,
                  ret == RCLC_RET_REJECTED ? "Goal was rejected by server: "

@@ -165,6 +165,11 @@ int main(int argc, char** argv) {
     // issue 1686 — RCL_RET_UNSUPPORTED: this backend cannot see servers at
     // all (XRCE: the Agent owns the DDS graph), so the wait answered at once.
     // Send anyway; the request's own timeout is then the probe.
+    // A BLIND send (UNSUPPORTED: nothing can confirm a server) is retried on a
+    // goal-response timeout: XRCE's Agent matches the client's request writer
+    // with the server's reader asynchronously, and a goal written before that
+    // is dropped. A send the wait CONFIRMED is never repeated.
+    const int blind = (ret == RCL_RET_UNSUPPORTED);
     if (ret != RCL_RET_OK && ret != RCL_RET_UNSUPPORTED) {
         fprintf(stderr, "Action server did not appear within 10s: %d\n", ret);
         fprintf(stderr, "(Is the action server running?)\n");
@@ -174,7 +179,14 @@ int main(int argc, char** argv) {
     printf("\nSending goal\n");
 
     rclc_goal_uuid_t goal_uuid;
-    ret = rclc_action_send_goal(&app.action_client, &app.executor, goal_buf, goal_len, &goal_uuid);
+    for (int attempt = 0;; attempt++) {
+        ret = rclc_action_send_goal(&app.action_client, &app.executor, goal_buf, goal_len,
+                                    &goal_uuid);
+        if (ret != RCL_RET_TIMEOUT || !blind || attempt >= 2) {
+            break;
+        }
+        printf("No goal response; sending the goal again\n");
+    }
 
     if (ret != RCL_RET_OK) {
         // Issue 0868 — the C++ sibling printed "Goal was rejected by server"
