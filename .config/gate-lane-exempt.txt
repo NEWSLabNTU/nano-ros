@@ -37,12 +37,13 @@
 
 _gate-list-end  # the `build-serial:` terminator, a no-op, not a gate
 action-client-arena-budget  # reads BUILT IMAGES; `build-test-fixtures` runs it (phase-413 W7, issue 1001)
+api-parity  # compiles (rustdoc JSON of `nros` + deps, clang AST): gate.yml's `check-fast-compile` job runs it by name on every event `check-fast` runs on, beside it; `default:` and `just ci gate` name it (phase-489 W5)
 archive-lang-items  # needs a built CMake image link line; `build-test-fixtures` (justfile) runs it after the build, so every fixture lane reaches it (issue 1739: "no caller found" was stale)
 build  # lane verb: fans `build-serial` out through run-gates-parallel.sh
 build-serial  # the build-tier registry, still an authored dependency list
 cli-clippy  # called by `check-cli-fmt`'s body, not run standalone
 compile-smoke  # gate.yml runs it by name on pull_request; needs a compile
-default  # lane verb: `cli-fresh` + `fast` + `build` + `api-parity`
+default  # lane verb: `cli-fresh` + `fast` + `build` + `api-parity` + `probe-workspace-caps`
 deny  # developer lane (phase-485 W9, RFC-0104 D8): needs cargo-deny and the network (RustSec); run by hand, never merge-gating
 dep-chain  # post-submit.yml runs it by name; needs codegen output
 fast  # lane verb: fans this lane out through run-gates-parallel.sh
@@ -52,6 +53,7 @@ launch-resolve-fresh  # needs the resolver BUILT: a step of `ci gate`, and gate.
 nextest-test-filters  # needs the test binaries (listing IS building, issue 1500); `test-all` (justfile) runs it first, which `just ci tier1 run` / `just ci matrix` (run-matrix.yml) reach (issue 1739)
 no-std  # gate.yml + `just ci` run it by name; cross-compiles riscv32
 out-of-lane-deselected  # builds every nros-tests test binary (listing IS building, issue 1500); a step of `just ci gate` and of gate.yml's merge-group `check-lane-contracts` job (issue 1900)
+probe-workspace-caps  # compiles (CMake probe + cold cargo build of the C++ runtime): gate.yml's `check-fast-compile` job runs it by name on every event `check-fast` runs on, beside it; `default:` and `just ci gate` name it (phase-489 W5)
 rustdoc-links  # `cargo doc` over the deployed crate set; compiles `zpico-sys`, whose build script needs the zenoh-pico source. Its own pull-request step in gate.yml runs it AFTER provisioning
 rustdoc-workspace  # `cargo doc` over every workspace crate; runs the cyclonedds/xrce/zenoh-pico build scripts too. Its own pull-request step in gate.yml runs it AFTER provisioning (issue 1116)
 sdk-index  # NETWORK — downloads and sha256-checks SDK release assets

@@ -75,14 +75,15 @@ gate:
         echo "ci gate: NOT RUN — provisioning first (issue 1513)." >&2
         exit 1
     fi
-    # `check::api-parity` LEFT this list (issue 1500): it joined the FAST lane
-    # (issue 1066), so `check::fast` already runs it and naming it again here
-    # ran the whole three-language extraction twice per lane — 163 s on the
-    # 4-vCPU runner, and 4 000 lines of identical diff output in the log.
+    # `check::api-parity` left this list once (issue 1500) because it was in
+    # the FAST lane too and ran twice. phase-489 W5 moved it and
+    # `check::probe-workspace-caps` OUT of the fast lane (both compile; CI runs
+    # them in `check-fast-compile`, beside `check-fast`), so they are named here
+    # again, once each (`check-lane-step-duplicates`).
     # `check::cli-fresh` stays although fast also derives it: it is 0.02 s, and
     # its POSITION is the point (issue 1320) — a stale CLI fails here, first,
     # instead of as a confusing CMake error inside the fast fan-out.
-    steps=(check::cli-fresh check::launch-resolve-fresh check::fast check::build test-unit test-lane-contracts check::out-of-lane-deselected)
+    steps=(check::cli-fresh check::launch-resolve-fresh check::fast check::api-parity check::probe-workspace-caps check::build test-unit test-lane-contracts check::out-of-lane-deselected)
     if bash scripts/ci/run-lane-steps.sh gate "${steps[@]}"; then
         echo "CI gate passed (compile + unit; no fixtures were built or needed)."
         exit 0

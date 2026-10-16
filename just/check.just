@@ -115,8 +115,15 @@ import 'check/workflows.just'
 # time on every `just check`: 163 s on the 4-vCPU `host-tests` runner and
 # 4 000 lines of repeated diff in its log (issue 1500). Gate:
 # `check-lane-step-duplicates`.
+#
+# phase-489 W5 — `api-parity` and `probe-workspace-caps` are back on this line,
+# and this time they are NOT also in `fast`: both compile, so they left the
+# buildless fast lane (`.config/gate-lane-exempt.txt`) for gate.yml's
+# `check-fast-compile` job, which runs beside `check-fast` on every event it
+# runs on. Named here so `just check` (and `just ci tier1 gates`) still runs
+# them exactly once.
 [group("main")]
-default: cli-fresh fast build
+default: cli-fresh fast api-parity probe-workspace-caps build
     #!/usr/bin/env bash
     set -e
     # issue 0650 — same reason as `fast`'s closing line: "All checks

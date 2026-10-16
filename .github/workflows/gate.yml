@@ -867,6 +867,174 @@ jobs:
             { sort /tmp/sccache-server.log | uniq -c | sort -rn | head -25; } || true
           fi
 
+  # phase-489 W5 — the fast line's two COMPILE gates, beside it rather than in it.
+  #
+  # `probe-workspace-caps` (CMake probe of a two-package workspace, a cold cargo
+  # build of the C++ runtime) and `api-parity` (rustdoc JSON + clang AST of the
+  # three surfaces) were ~1/3 of `check-fast`'s CPU on a 4-vCPU runner that the
+  # lane saturates (busy/wall 4.0x), so they set its wall: 465-482 s on EPYC
+  # 7763. In their own job they run on their own 4 vCPUs, in parallel with the
+  # fast line, and `check-fast` keeps its buildless contract.
+  #
+  # Coverage is unchanged: the job-level `if:` is `check-fast`'s, so every event
+  # that ran them inside `just check fast` still runs them, and `ci-ok` hears
+  # this job with `check-fast`'s event list (`check-default-gates-run-somewhere`
+  # R3). Locally they left `just check fast` (and so `pre-push`) for
+  # `.config/gate-lane-exempt.txt`, and `just check` (`default:`) plus
+  # `just ci gate` (its `steps=(…)`) name them, so every tier that claimed them
+  # still runs them. `warm-cache` warms their compiles too
+  # (`check-gate-cache-keys-agree`). Setup below is the subset of `check-fast`'s
+  # steps these two gates read, whose comments explain each.
+  check-fast-compile:
+    name: check / fast compile gates (every event)
+    needs: changes
+    if: >-
+      ${{ always() && (github.event_name != 'pull_request' || needs.changes.outputs.code == 'true') }}
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      packages: read
+    container:
+      image: ghcr.io/newslabntu/nano-ros-ci:humble
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout nano-ros
+        uses: actions/checkout@v4
+
+      - name: Cache sccache directory (compiling events)
+        if: ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name) }}
+        uses: actions/cache/restore@v4
+        with:
+          path: /tmp/sccache
+          key: sccache-${{ runner.os }}-check-${{ github.sha }}
+          restore-keys: |
+            sccache-${{ runner.os }}-check-
+
+      - name: Report runner hardware
+        run: scripts/ci/report-runner-hardware.sh
+
+      - name: Configure sccache (compiling events)
+        if: ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name) }}
+        run: |
+          if ! command -v sccache >/dev/null 2>&1; then
+            echo "::warning::sccache absent from the image — the compile tier runs UNCACHED."
+            exit 0
+          fi
+          sccache --version
+
+          export SCCACHE_DIR=/tmp/sccache
+          export SCCACHE_CACHE_SIZE=2G
+          export SCCACHE_ERROR_LOG=/tmp/sccache-server.log
+          export SCCACHE_LOG=warn
+          if sccache --start-server >/tmp/sccache-start.log 2>&1; then
+            {
+              echo "SCCACHE_DIR=/tmp/sccache"
+              echo "SCCACHE_ERROR_LOG=/tmp/sccache-server.log"
+              echo "SCCACHE_LOG=warn"
+              echo "SCCACHE_CACHE_SIZE=2G"
+            } >> "$GITHUB_ENV"
+          else
+            echo "::warning::sccache unavailable — the compile tier runs UNCACHED (issue 0874)."
+            sed 's/^/  /' /tmp/sccache-start.log || true
+          fi
+
+      - name: Key the CLI binary cache on source_stamp.rs's whole watch set
+        id: cli-key
+        run: |
+          key="$(scripts/ci/cli-bin-cache-key.sh)"
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the nros + nros-launch-resolve binaries (every event)
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            packages/cli/target/release/nros
+            packages/cli/nros-launch-resolve/target/release/nros-launch-resolve
+            packages/cli/nros-launch-resolve/target/release/nros-launch-resolve.nros-source-stamp
+            packages/cli/nros-launch-resolve/target/release/libplay_launch_parser_pyexec.so
+          key: nros-cli-bin-${{ runner.os }}-${{ steps.cli-key.outputs.key }}
+
+      - name: Build the in-tree nros CLI (every event)
+        run: |
+          git submodule update --init --depth 1 packages/cli/third-party/play_launch
+          source ./activate.sh
+          just setup-cli
+          "$GITHUB_WORKSPACE/packages/cli/target/release/nros" source-stamp >/dev/null
+          echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
+
+      - name: Provision Corrosion (pinned by [tool.corrosion])
+        run: |
+          source ./activate.sh
+          just workspace install-corrosion
+
+      - name: Provision compile-tier sources
+        if: ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name) }}
+        run: |
+          source ./activate.sh
+          nros setup \
+            --source px4-rs --source zenoh-pico --source mbedtls --source micro-cdr \
+            --source micro-xrce-dds-client --source cyclonedds-src
+
+      - name: Provision the sources the fast-line source gates read
+        timeout-minutes: 8
+        run: |
+          git submodule update --init --depth 1 \
+            packages/rmw/zenoh/zpico-sys/zenoh-pico \
+            packages/rmw/xrce/xrce-sys/micro-cdr \
+            packages/rmw/xrce/xrce-sys/micro-xrce-dds-client \
+            third-party/nuttx/libc
+
+      # The skip ledger is shared with `check-fast`'s reader; this job starts
+      # it empty so the closing step below reads only these two gates.
+      - name: Reset the skip ledger
+        run: |
+          source ./activate.sh
+          just _check-skip-reset
+
+      # One gate per `run:` block (`check-default-gates-run-somewhere` R2), and
+      # `!cancelled()` so a red first gate still leaves the second its verdict.
+      - name: just check probe-workspace-caps
+        if: ${{ !cancelled() }}
+        run: |
+          source ./activate.sh
+          just check probe-workspace-caps
+
+      - name: just check api-parity
+        if: ${{ !cancelled() }}
+        run: |
+          source ./activate.sh
+          just check api-parity
+
+      # Neither gate is in `.config/ci-check-fast-skips.txt`, so neither may
+      # skip here: a recorded skip (no CLI, no cmake, no store Corrosion) is a
+      # missing input this job must provide, never a pass.
+      - name: These gates may not skip
+        if: ${{ !cancelled() }}
+        run: |
+          source ./activate.sh
+          . scripts/build/check-skip.sh
+          ledger="$(_nros_check_skip_file)"
+          if [ -s "$ledger" ]; then
+            echo "check-fast-compile: FAIL -- these gates did not verify:" >&2
+            sed 's/^/  /' "$ledger" >&2
+            exit 1
+          fi
+          echo "check-fast-compile: no gate skipped"
+
+      - name: sccache stats (compile tier)
+        if: ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name) && always() }}
+        run: |
+          command -v sccache >/dev/null 2>&1 && sccache --show-stats || true
+          if [ -s /tmp/sccache-server.log ]; then
+            echo "--- sccache server log (deduped) ---"
+            { sort /tmp/sccache-server.log | uniq -c | sort -rn | head -25; } || true
+          fi
+
   check-compile-smoke:
     name: check / compile-smoke + rustdoc (pull request only)
     needs: changes
@@ -2381,6 +2549,10 @@ jobs:
       # `check-api-parity` has NO step of its own here, and that is now the
       # finished answer rather than a deferral — issue 1066, closed.
       #
+      # (phase-489 W5: it has since left the fast LANE for the
+      # `check-fast-compile` sibling, which runs it by name on every event
+      # `check-fast` runs on. The history below is why it gates at all.)
+      #
       # IT RUNS. `api-parity` came off `.config/gate-lane-exempt.txt` in
       # `565f8c74f`, so it is an ordinary fast-lane gate and `just check fast`
       # (the `check-fast` sibling) runs it on `pull_request`, `merge_group`, `push` and the
@@ -2999,6 +3171,21 @@ jobs:
           echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
           PATH="$GITHUB_WORKSPACE/packages/cli/target/release:$PATH" just check fast
 
+      # phase-489 W5 — `check-fast-compile`'s two gates left the fast line, and
+      # they are most of its compiles, so they are warmed by name here
+      # (`check-gate-cache-keys-agree`). One per block, like any gate placement.
+      - name: just check probe-workspace-caps (warms `check-fast-compile`)
+        if: ${{ !cancelled() }}
+        run: |
+          source ./activate.sh
+          just check probe-workspace-caps
+
+      - name: just check api-parity (warms `check-fast-compile`)
+        if: ${{ !cancelled() }}
+        run: |
+          source ./activate.sh
+          just check api-parity
+
       - name: Save sccache directory
         if: ${{ !cancelled() && steps.sccache-cache.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v4
@@ -3218,6 +3405,7 @@ jobs:
     needs:
       - changes
       - check-fast
+      - check-fast-compile
       - check-compile-smoke
       - check-cli-tests
       - check-workspace-all
@@ -3277,6 +3465,7 @@ jobs:
           }
 
           sibling check-fast           "${{ needs.check-fast.result }}"           "push pull_request merge_group schedule workflow_dispatch"
+          sibling check-fast-compile   "${{ needs.check-fast-compile.result }}"   "push pull_request merge_group schedule workflow_dispatch"
           sibling check-compile-smoke  "${{ needs.check-compile-smoke.result }}"  "pull_request"
           sibling check-cli-tests      "${{ needs.check-cli-tests.result }}"      "pull_request merge_group schedule workflow_dispatch"
           sibling check-workspace-all  "${{ needs.check-workspace-all.result }}"  "pull_request merge_group schedule workflow_dispatch"

@@ -36,7 +36,9 @@ compile requests, almost all in its own gates) restored a cache that answered 30
 of them (3.7 %). The rule: `warm-cache` runs `just check fast` AFTER it
 configures sccache and BEFORE it saves the directory, and every job names the
 SAME `SCCACHE_CACHE_SIZE` (a smaller warmer silently evicts what a larger
-consumer expects to find).
+consumer expects to find). And since `probe-workspace-caps` and `api-parity` left
+the fast lane for the `check-fast-compile` job, every `just check <gate>` that job
+runs must ALSO run in `warm-cache` in the same window (`WARMED_GATE_JOBS`).
 
 Run:  python3 scripts/check-gate-cache-keys-agree.py [--self-test]
 """
@@ -235,6 +237,14 @@ def all_bindings_problems():
 FAST_VERB = re.compile(r"^\s*(?:PATH=\S+\s+)?just check fast\s*$", re.M)
 
 
+# phase-489 W5 (lever 1) — jobs that run fast-line COMPILE gates by name beside
+# `check-fast` (they left its lane, so `just check fast` no longer warms them).
+# Every `just check <gate>` such a job runs must also run in `warm-cache`,
+# between `Configure sccache` and `Save sccache directory`.
+WARMED_GATE_JOBS = ("check-fast-compile",)
+CHECK_GATE_VERB = re.compile(r"^\s*(?:PATH=\S+\s+)?just check ([a-z][a-z0-9-]*)\s*$", re.M)
+
+
 def sccache_warm_problems(warm_body, all_bodies):
     """Problems with how `warm-cache` fills the sccache directory, and with the
     cache size the jobs name. `all_bodies` is {job: body}."""
@@ -264,6 +274,19 @@ def sccache_warm_problems(warm_body, all_bodies):
             "`warm-cache` must run `just check fast` AFTER `Configure sccache` (or the compiles "
             "bypass the cache) and BEFORE `Save sccache directory` (or they are never saved)"
         )
+    if cfg and save:
+        warmed = {m.group(1) for m in CHECK_GATE_VERB.finditer(warm_body)
+                  if cfg.start() < m.start() < save.start()}
+        for job in WARMED_GATE_JOBS:
+            if job not in all_bodies:
+                continue
+            for m in CHECK_GATE_VERB.finditer(all_bodies[job]):
+                if m.group(1) not in warmed:
+                    out.append(
+                        "`%s` runs `just check %s`, which `warm-cache` does not run between "
+                        "`Configure sccache` and `Save sccache directory`, so its compiles are "
+                        "never in the cache it restores (phase-489 W5)" % (job, m.group(1))
+                    )
     return out
 
 
@@ -435,6 +458,17 @@ def self_test():
     ):
         got = sccache_warm_problems(wbody, bodies or {"w": wbody, "c": consumer})
         assert got, "warm-cache rule missed: " + what
+    # A compile gate run by name beside `check-fast` must be warmed by name.
+    side = "    steps:\n      - name: g\n        run: |\n          just check api-parity\n"
+    assert sccache_warm_problems(warm_good, {"w": warm_good, "check-fast-compile": side}), (
+        "warm-cache rule missed: a check-fast-compile gate the warm job never runs")
+    warm_side = warm_good.replace(
+        "      - name: Save", "      - name: g\n        run: |\n          just check api-parity\n"
+        "      - name: Save")
+    assert sccache_warm_problems(warm_side, {"w": warm_side, "check-fast-compile": side}) == []
+    late = warm_good + "      - name: g\n        run: |\n          just check api-parity\n"
+    assert sccache_warm_problems(late, {"w": late, "check-fast-compile": side}), (
+        "warm-cache rule missed: a check-fast-compile gate warmed only AFTER the save")
 
     sys.stdout.write("check-gate-cache-keys-agree self-test: OK\n")
 
