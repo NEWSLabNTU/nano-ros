@@ -57,6 +57,7 @@ pub mod registered_node;
 
 /// phase-432 W3.2 — the entry pack manifests and the one routing decision.
 pub mod pack;
+pub mod priority_record;
 mod render;
 
 /// The entry emitters' target language.
@@ -722,9 +723,9 @@ fn derive_entry_tiers(
     target_rtos: &str,
     callback_groups: &BTreeMap<String, Vec<CallbackGroupDecl>>,
     priority_plan: Option<&nros_orchestration_ir::priority_plan::PriorityPlan>,
-) -> Result<usize> {
+) -> Result<Option<EntryDerivation>> {
     if callback_groups.is_empty() {
-        return Ok(0);
+        return Ok(None);
     }
     // `plan_from_model` records the model path as the plan's `launch_file` and
     // marks the bringup `system-model`; every other producer (the cmake
@@ -738,7 +739,7 @@ fn derive_entry_tiers(
     // then silently derived from none. The same `load_model` answers here, so
     // the tiers come from the model the nodes came from, or the error is loud.
     if plan.bringup != "system-model" {
-        return Ok(0);
+        return Ok(None);
     }
     let model = crate::orchestration::model_ingest::load_model(&plan.launch_file)?;
     // issue 1426 — the guard was `!model.execution.tiers.is_empty()`, i.e. a
@@ -747,7 +748,7 @@ fn derive_entry_tiers(
     // are never overwritten below.
     if !nros_orchestration_ir::derive::placement_is_unauthored(&model, target_rtos, callback_groups)
     {
-        return Ok(0);
+        return Ok(None);
     }
 
     // Issue 1508 - the image's own plan when the caller read its `.config`
@@ -791,7 +792,26 @@ fn derive_entry_tiers(
             s.node, s.tier, s.authored, s.allocated
         );
     }
-    let n = derived.tiers.len() + derived.placements.len();
+    let record = EntryDerivation {
+        derived_tiers: derived.tiers.keys().cloned().collect(),
+        allocated_tiers: derived.placements.keys().cloned().collect(),
+        realized: derived.realized.clone(),
+        degradations: derived
+            .degradations
+            .iter()
+            .map(|d| format!("{} [{}]: {}", d.node, d.dim, d.reason))
+            .collect(),
+        shadowed: derived
+            .shadowed
+            .iter()
+            .map(|s| {
+                format!(
+                    "{} [tiers.{}]: authored {} wins over allocated {}",
+                    s.node, s.tier, s.authored, s.allocated
+                )
+            })
+            .collect(),
+    };
     // MERGE, never assign: a `derived-<node>` name is one no author writes, and
     // a placement lands on the authored tier that asked for one, so neither can
     // clobber an authored row.
@@ -802,7 +822,25 @@ fn derive_entry_tiers(
         }
     }
     plan.node_overrides.extend(derived.overrides);
-    Ok(n)
+    Ok(Some(record))
+}
+
+/// What the entry's derivation did, for the record `codegen entry` writes
+/// beside the generated TU ([`priority_record`]). `None` from
+/// [`resolve_plan_sched_recorded`] means nothing was derived: no groups, no
+/// model, or every placement authored.
+#[derive(Clone, Debug, Default)]
+pub struct EntryDerivation {
+    /// `derived-<node>` tiers (rule 4).
+    pub derived_tiers: Vec<String>,
+    /// Authored, unplaced tiers whose priority was allocated (rule 2).
+    pub allocated_tiers: Vec<String>,
+    /// Every ranked node as the realizer placed it.
+    pub realized: Vec<nros_orchestration_ir::rtos_realizer::RealizedNode>,
+    /// The degradations, one line each, as printed.
+    pub degradations: Vec<String>,
+    /// Authored priorities that won over an allocated one, one line each.
+    pub shadowed: Vec<String>,
 }
 
 /// Phase 269 (W4) — resolve `[tiers.*]` + `[[node_overrides]]` + per-node
@@ -834,12 +872,22 @@ pub fn resolve_plan_sched_in(
     target_rtos: &str,
     priority_plan: Option<&nros_orchestration_ir::priority_plan::PriorityPlan>,
 ) -> Result<()> {
+    resolve_plan_sched_recorded(plan, target_rtos, priority_plan).map(|_| ())
+}
+
+/// [`resolve_plan_sched_in`], returning what the derivation did (if anything)
+/// for the priority record.
+pub fn resolve_plan_sched_recorded(
+    plan: &mut Plan,
+    target_rtos: &str,
+    priority_plan: Option<&nros_orchestration_ir::priority_plan::PriorityPlan>,
+) -> Result<Option<EntryDerivation>> {
     let has_groups = plan
         .nodes
         .iter()
         .any(|n| !n.callback_groups.is_empty() || !n.group_tiers.is_empty());
     if plan.tiers.is_empty() && plan.node_overrides.is_empty() && !has_groups {
-        return Ok(());
+        return Ok(None);
     }
 
     // Per-node callback group declarations. Phase 273 (W2): when the node carries
@@ -883,7 +931,7 @@ pub fn resolve_plan_sched_in(
         }
     }
 
-    derive_entry_tiers(plan, target_rtos, &callback_groups_map, priority_plan)?;
+    let record = derive_entry_tiers(plan, target_rtos, &callback_groups_map, priority_plan)?;
 
     // Component instance names from the launch (match [[node_overrides]].name).
     // AFTER the derivation, which takes `plan` mutably.
@@ -918,7 +966,7 @@ pub fn resolve_plan_sched_in(
     }
 
     plan.resolved_tiers = Some(table);
-    Ok(())
+    Ok(record)
 }
 
 /// Write the depfile in GNU-make `target: dep1 dep2 …` form so cmake's

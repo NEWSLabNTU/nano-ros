@@ -453,11 +453,42 @@ fn run_entry(args: EntryArgs) -> Result<()> {
             args.dotconfig.as_deref(),
             "codegen entry",
         )?;
-        entry_codegen::resolve_plan_sched_in(
+        let derivation = entry_codegen::resolve_plan_sched_recorded(
             &mut plan,
             family.tier_rtos_key(),
             image_plan.as_ref(),
         )?;
+        // RFC-0079 section 5 - the plan and the priorities this entry runs at,
+        // recorded beside the TU (JSON + a C header) and printed, so the image
+        // can be held to them and an application thread placed from them.
+        {
+            let projection;
+            let plan_ref = match image_plan.as_ref() {
+                Some(p) => p,
+                None => {
+                    projection = nros_orchestration_ir::priority_plan::PriorityPlan::for_target(
+                        family.tier_rtos_key(),
+                    );
+                    &projection
+                }
+            };
+            let record = entry_codegen::priority_record::PriorityRecord {
+                tier_key: family.tier_rtos_key(),
+                plan: plan_ref,
+                from_image: image_plan.is_some(),
+                tiers: plan.resolved_tiers.as_ref(),
+                derivation: derivation.as_ref(),
+            };
+            for line in record.summary_lines() {
+                eprintln!("codegen entry: {line}");
+            }
+            let dir = args
+                .out
+                .parent()
+                .filter(|d| !d.as_os_str().is_empty())
+                .unwrap_or_else(|| std::path::Path::new("."));
+            record.write(dir)?;
+        }
         // phase-494 — ONE renderer, whatever the language: the pack that
         // renders `lang` on this board is found by its manifest
         // (`pack::entry_pack_for`), and everything a language contributes is

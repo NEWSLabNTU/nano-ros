@@ -316,6 +316,24 @@ actually gave it (`nros_zephyr_report_tier_vs_transport`, the twin of
 FreeRTOS's `report_tiers_above_transport`) — the one check that sees authored
 pins on the image.
 
+**Implemented 2026-10-16 - the record.** "The result lands in a build
+artifact" was a stderr line. `nros codegen entry` now writes two files beside
+the generated TU (`codegen/entry/priority_record.rs`):
+`nros_priority_plan.json` (the plan - direction, range, reserved bands,
+`pool.app`, its source and whether it is the image's own; each tier's
+priority and whether it was authored, allocated or derived; each ranked
+node's priority, period and deadline; the degradations) and
+`nros_priority_plan.h` (the same plan and the tier priorities as macros, so a
+thread the application creates outside the tier table is placed from the
+plan instead of from a second hand-written number). The build prints the
+plan, one line per tier and per rank. `check-tier-priority-plan-image.py
+--derived-plan <json> <.config> [<entry TU>]` holds a record to its image:
+the bands this checker resolves, every allocated or derived tier in
+`pool.app` and on no reserved band, and the generated entry running the
+record's numbers. Measured on the Autoware safety island (one allocated tier,
+three nodes): ranks 5 / 7 / 8, tier 5, transport `[4, 4]`; its supervisor
+thread is placed one above the transport from the header.
+
 ### 6. Crossing into a reserved band requires naming it
 
 The legitimate rare case — a hard safety loop that must preempt networking:

@@ -52,6 +52,10 @@ pub struct DerivedSchedule {
     /// issue 1426 — every authored placement that WON over one the contract
     /// implied. Authored wins, and it may not win silently.
     pub shadowed: Vec<ShadowedPlacement>,
+    /// Every node the contract ranked, as the realizer placed it in the plan
+    /// (priority, period, deadline). What a record of the derivation shows
+    /// for "why this number": the tiers above are built from these.
+    pub realized: Vec<crate::rtos_realizer::RealizedNode>,
 }
 
 /// issue 1426 — an authored priority that took precedence over an allocated one.
@@ -224,6 +228,7 @@ pub fn derive_tiers_in_plan(
     let plan = realize_rtos(&ranked, &input, &caps, priority_plan);
     let mut out = DerivedSchedule {
         degradations: plan.degradations.clone(),
+        realized: plan.nodes.clone(),
         ..Default::default()
     };
 
