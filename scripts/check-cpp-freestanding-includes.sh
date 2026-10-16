@@ -397,7 +397,7 @@ for entry in "packages/api/nros-cpp/include:1" \
   # `.cpp` too, not only headers: the 1014 break was in a TRANSLATION UNIT, and
   # a TU that cannot compile is exactly as broken as a header that cannot be
   # included.
-  # Recursive: since phase-503 the nros-cpp headers live in rclcpp/,
+  # Recursive: since phase-504 the nros-cpp headers live in rclcpp/,
   # rclcpp/detail/, rclcpp_action/ and rclcpp_lifecycle/.
   for hdr in $(git ls-files -- ":(glob)$dir/**/*.hpp" ":(glob)$dir/**/*.cpp"); do
     base="$(basename "$hdr")"

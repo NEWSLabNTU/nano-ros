@@ -1,9 +1,12 @@
-# Phase 503 — the C++ API's headers move into `rclcpp/`
+# Phase 504 — the C++ API's headers move into `rclcpp/`
 
-**Status (2026-10-16). In progress — W1–W5 in one pull request, after
-phase-501's lands.** The C++ half of the RFC-0089 amendment "the C headers
+**Status (2026-10-17). Complete — W1–W5 landed in #2278; the index pins
+release 0.6.0-nros3.** Landed as phase-503, which
+[phase-503](../phase-503-route-deadline-monitor.md) (the route deadline monitor)
+had already taken; renumbered to 504 at archive time, so commits on main still
+say phase-503. The C++ half of the RFC-0089 amendment "the C headers
 live under `rclc/`" (2026-10-15), which
-[phase-501](archived/phase-501-c-api-headers-move-into-rclc.md) left as a follow-up
+[phase-501](phase-501-c-api-headers-move-into-rclc.md) left as a follow-up
 (its ruling 3).
 
 ## Why

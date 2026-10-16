@@ -1,4 +1,4 @@
-C++ API: the headers moved from `nros/` into `rclcpp/` (phase-503, the C++
+C++ API: the headers moved from `nros/` into `rclcpp/` (phase-504, the C++
 half of phase-501). `<rclcpp/rclcpp.hpp>` is now the umbrella itself rather
 than a forwarder. Headers with an upstream counterpart take upstream's path
 (`<rclcpp/node.hpp>`, `<rclcpp/logging.hpp>`, `<rclcpp_action/client.hpp>`,
