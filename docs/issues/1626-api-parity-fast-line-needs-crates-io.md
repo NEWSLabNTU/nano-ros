@@ -148,3 +148,25 @@ That makes three network-only reds in one day across three sites.
 `CARGO_NET_RETRY` (remedy 1) handles. The case for setting it once, at the
 job level so every cargo invocation inherits it, is now stronger than the
 case for fixing `api-parity` alone.
+
+## Fourth sighting, 2026-10-16: post-submit `dep-chain`, an HTTP/2 framing error
+
+Post-submit run **38830050185** for main `25847c111` (#2288), job
+**116747973225** `dep-chain (7 board×rmw cells)`. Six cells passed. The
+`qemu-armv7a-nuttx:zenoh` cell failed because `cargo tree` could not reach
+crates.io:
+
+```
+[FAIL] cargo tree did not resolve (default features), exit 101
+  error: failed to get `memchr` as a dependency of package `quick-xml v0.41.0`
+  ...
+  unable to update registry `crates-io`
+  download of me/mc/memchr failed
+  curl failed
+  [16] Error in the HTTP2 framing layer
+```
+
+That is a fourth site (after `api-parity`, `setup-cli` and
+`submodule-commits-reachable`) and a third failure shape (after a refused
+connection and a DNS failure). `CARGO_NET_RETRY` covers this one too: cargo
+retries a failed HTTP transfer, and an HTTP/2 framing error is one.
