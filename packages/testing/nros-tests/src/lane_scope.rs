@@ -154,6 +154,13 @@ pub enum Capability {
     /// The zenoh router (`rmw_zenohd`) is NOT this: every lane that runs a
     /// zenoh cell provisions it (issue 1695), so its absence always fails.
     Ros2,
+    /// A host network BRIDGE an emulated guest can join (RFC-0103 D10a,
+    /// phase-497 W3): the `qemu-br` device `scripts/qemu/setup-network.sh`
+    /// creates, and a `qemu-bridge-helper` allowed to attach to it. Both need
+    /// root to provision, so no unprivileged lane (and no self-hosted runner,
+    /// which is `--cap-drop ALL`) has one, and no lane claims it; a run that
+    /// does claim it reaches the probe and fails when it is absent.
+    HostBridge,
 }
 
 impl Capability {
@@ -161,10 +168,11 @@ impl Capability {
     pub const fn token(self) -> &'static str {
         match self {
             Capability::Ros2 => "ros2",
+            Capability::HostBridge => "host-bridge",
         }
     }
 
-    const ALL: &[Capability] = &[Capability::Ros2];
+    const ALL: &[Capability] = &[Capability::Ros2, Capability::HostBridge];
 }
 
 /// Parse an [`UNCLAIMED_ENV`] value. An unknown token is a HARD error: a typo
@@ -210,6 +218,17 @@ pub fn require_ros2_claimed() {
     }
 }
 
+/// Lane-skip unless this run claims a host bridge (phase-497 W3) — the
+/// counterpart of [`require_ros2_claimed`], called before any probe.
+pub fn require_host_bridge_claimed() {
+    if !claims(Capability::HostBridge) {
+        crate::lane_skip!(
+            "NOT VERIFIED: needs a host bridge (`qemu-br`, root-provisioned); this lane does \
+             not claim it ({UNCLAIMED_ENV} contains `host-bridge`)"
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -218,6 +237,10 @@ mod tests {
     fn unclaimed_parses_tokens_and_tolerates_spacing() {
         assert_eq!(parse_unclaimed(""), vec![]);
         assert_eq!(parse_unclaimed(" ros2 ,"), vec![Capability::Ros2]);
+        assert_eq!(
+            parse_unclaimed("ros2,host-bridge"),
+            vec![Capability::Ros2, Capability::HostBridge]
+        );
     }
 
     #[test]

@@ -714,9 +714,9 @@ pub(crate) fn crate_declares_feature(dir: &Path, feature: &str) -> bool {
 ///
 /// A leaf on the selection names no board crate, so cargo gives it no way to
 /// turn on a board feature that no image fact implies — the RTIC run-plan
-/// fixture's `e2e-synthetic-callback`, a bench's `docker`. Those are choices
+/// fixture's `e2e-synthetic-callback`. Those are choices
 /// of a board-SPECIFIC program, and the leaf states them on its selection
-/// dependency (`<pkg>_nros_selection = { path = …, features = ["docker"] }`).
+/// dependency (`<pkg>_nros_selection = { path = …, features = ["e2e-synthetic-callback"] }`).
 /// After a board switch to a crate without that feature cargo refuses the
 /// manifest naming it, which is the honest answer: the program was written for
 /// that board. A name that is also one of the selection's dependency keys is

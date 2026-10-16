@@ -623,12 +623,18 @@ _run-qemu example binary:
     fr_artifacts="$(nros_fixture_row_artifact_dir "$FR_LEAF" freertos "" "")"
     cd "{{justfile_directory()}}/$FR_LEAF" && \
         cargo build $(nros_cargo_profile_args_for "$FR_PROFILE") $fr_tdir_flag
+    # phase-497 W3 (RFC-0103 D10a) — the NIC is the image's network's: its
+    # `attach` and its MAC, asked of the CLI, never spelled here.
+    if ! nic="$(nros ws qemu-nic "{{justfile_directory()}}/$FR_LEAF" --model lan9118)"; then
+        echo "error: no QEMU NIC for $FR_LEAF (see above)" >&2
+        exit 1
+    fi
     trap 'kill $PID 2>/dev/null; wait $PID 2>/dev/null; exit 130' INT TERM
     "{{QEMU_BIN}}" -cpu cortex-m3 -machine mps2-an385 -nographic \
         -icount shift=auto \
         -semihosting-config enable=on,target=native \
         -kernel "$fr_artifacts/thumbv7m-none-eabi/$FR_DIR/{{binary}}" \
-        -nic user,model=lan9118 &
+        -nic "$nic" &
     PID=$!
     wait $PID
 

@@ -6,7 +6,7 @@ type: tech-debt
 area: [testing, ci, build]
 severity: high
 found: 2026-10-09
-related: [584, 1161, 1685, 1718, 1454, 650, 1802]
+related: [584, 1161, 1685, 1718, 1454, 650, 1802, phase-497]
 ---
 
 ## The rule

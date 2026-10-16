@@ -158,11 +158,23 @@ network) and `interfaces`, each a kind (`eth0 = "ethernet"`) or a table
 states no address: `[board.net] ip` / `mac` are refused.
 
 The resolved answer for an image is written to
-`build/<image>/nros/net/<image>.toml` and reaches the firmware as
+`build/nros/net/<image>.toml` (beside the workspace or leaf) and reaches the firmware as
 `NROS_IMAGE_NET`.
 
-Not supported yet, and refused rather than ignored: a bridge or TAP `attach`
-for emulated images (phase-497 W3).
+An emulated image joins its network through the network's `attach`:
+`"slirp"` (QEMU's own user-mode network, what `qemu` is), `{ bridge = "<dev>" }`
+or `{ tap = "<dev>" }` on the host. A network with no `attach` is physical only,
+and an emulated image on it is refused at launch. `nros ws qemu-nic <leaf>
+--model <nic-model>` prints the `-nic` value for a leaf's image, for a script
+that starts QEMU itself:
+
+```toml
+[network.br]
+subnet = "192.0.3.0/24"
+gateway = "192.0.3.1"
+router = "tcp/192.0.3.1:7447"
+attach = { bridge = "qemu-br" }   # QEMU: -nic bridge,br=qemu-br,…
+```
 
 ### Per-image build knobs
 

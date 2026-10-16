@@ -10,7 +10,6 @@
 # Environment variables:
 #   ZENOH_ROUTER_IP - IP of zenohd container (default: 172.20.0.2)
 #   QEMU_ROLE       - "talker" or "listener"
-#   QEMU_MAC        - MAC address for QEMU NIC
 #   QEMU_EXAMPLE    - Example type: "rs" (default), "bsp"
 #   HOST_UID        - Host user UID for file ownership (default: 0 = root)
 #   HOST_GID        - Host group GID for file ownership (default: 0 = root)
@@ -25,7 +24,6 @@ TAP_NAME="tap0"
 
 ZENOH_ROUTER_IP="${ZENOH_ROUTER_IP:-172.20.0.2}"
 QEMU_ROLE="${QEMU_ROLE:-talker}"
-QEMU_MAC="${QEMU_MAC:-02:00:00:00:00:00}"
 QEMU_EXAMPLE="${QEMU_EXAMPLE:-rs}"
 HOST_UID="${HOST_UID:-0}"
 HOST_GID="${HOST_GID:-0}"
@@ -46,11 +44,15 @@ if [ "$HOST_UID" != "0" ]; then
     echo "Running builds as UID=$HOST_UID GID=$HOST_GID"
 fi
 
-# Determine binary path
+# Determine binary path. The leaf's `[image.docker]` (phase-497 W3, RFC-0103
+# D10) is the image this container runs: its address and MAC on
+# `[network.docker]` — the bridge below — and its router, 172.20.0.2. It
+# replaced the board crate's `docker` feature.
 BINARY_NAME="qemu-bsp-${QEMU_ROLE}"
 EXAMPLE_DIR="examples/mps2-an385-baremetal/rust/${QEMU_ROLE}"
+IMAGE="docker"
 
-BINARY="/work/${EXAMPLE_DIR}/target/thumbv7m-none-eabi/release/${BINARY_NAME}"
+BINARY="/work/${EXAMPLE_DIR}/build/${IMAGE}/target/thumbv7m-none-eabi/release/${BINARY_NAME}"
 
 echo "============================================"
 echo "  QEMU Container: ${QEMU_ROLE} (${QEMU_EXAMPLE})"
@@ -58,7 +60,6 @@ echo "============================================"
 echo ""
 echo "Configuration:"
 echo "  Zenoh router: ${ZENOH_ROUTER_IP}:7447"
-echo "  QEMU MAC: ${QEMU_MAC}"
 echo "  Example: ${QEMU_EXAMPLE}-${QEMU_ROLE}"
 echo "  Binary: ${BINARY}"
 echo ""
@@ -69,9 +70,9 @@ if [ ! -f "$BINARY" ]; then
     echo ""
     echo "Building example with Docker network configuration..."
 
-    # Build with docker feature (as host user to avoid root-owned artifacts)
+    # Build the `docker` image (as host user to avoid root-owned artifacts).
     cd "/work/${EXAMPLE_DIR}"
-    $RUNAS cargo build --release --features docker
+    $RUNAS bash -c "source /work/activate.sh && nros build ${IMAGE} -- --release"
 
     if [ ! -f "$BINARY" ]; then
         echo "Error: Build failed"
@@ -157,13 +158,16 @@ echo ""
 echo "Step 3: Starting QEMU ${QEMU_ROLE}..."
 echo ""
 
+# The NIC comes from the image's network (`attach = { tap = "tap0" }`), with the
+# image's MAC: one answer, `nros ws qemu-nic`, the test harness's too.
+NIC="$($RUNAS bash -c "source /work/activate.sh && nros ws qemu-nic /work/${EXAMPLE_DIR} --image ${IMAGE} --model lan9118")"
+echo "  -nic ${NIC}"
+
 # Run QEMU (as host user if non-root)
-# Note: mps2-an385 uses legacy -net syntax for lan9118, not -device
 exec $RUNAS qemu-system-arm \
     -cpu cortex-m3 \
     -machine mps2-an385 \
     -nographic \
     -semihosting-config "enable=on,target=native" \
-    -net "nic,model=lan9118,macaddr=${QEMU_MAC}" \
-    -net "tap,ifname=${TAP_NAME},script=no,downscript=no" \
+    -nic "$NIC" \
     -kernel "$BINARY"

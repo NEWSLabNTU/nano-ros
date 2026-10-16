@@ -249,10 +249,11 @@ mod tests {
 
     #[test]
     fn an_image_interface_replaces_the_board_default() {
-        let i =
-            crate::image_net::primary("eth0,ethernet,qemu,10.0.2.50,24,10.0.2.2,02:00:00:01:02:03")
-                .unwrap()
-                .unwrap();
+        let i = crate::image_net::primary(
+            "eth0,ethernet,qemu,10.0.2.50,24,10.0.2.2,02:00:00:01:02:03,slirp",
+        )
+        .unwrap()
+        .unwrap();
         let got = ResolvedNet::qemu_network().with_interface(&i);
         assert_eq!(got.ip, [10, 0, 2, 50]);
         assert_eq!(got.mac, [2, 0, 0, 1, 2, 3]);

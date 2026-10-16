@@ -2,8 +2,9 @@
 """The locator an image STATES in its `system.toml` — issue 1865.
 
 An embedded image dials the locator `nros::main!` bakes from its `system.toml`
-(`[image.<id>] locator` over `[image_defaults]` over `[system]`, the overlay
-`nros_orchestration_ir::leaf_system` resolves). Whoever starts the router that
+(`[image.<id>] locator` over `[image_defaults]`, then the `router` of the
+network its first interface sits on (RFC-0103 D10d, phase-497 W2), then
+`[system]` — the overlay `nros_orchestration_ir::leaf_system` resolves). Whoever starts the router that
 image dials must listen on THAT port. When a recipe spelled the port itself,
 the two parted: `just qemu test-rtic-main-e2e` listened on 10200 while its
 image baked the board default `tcp/10.0.2.2:7450`, and nothing compared them.
@@ -39,9 +40,15 @@ def load(path):
 
 
 def leaf_image_id(doc):
-    """The ONE image a leaf declares, or None when it declares 0 or several."""
+    """The image a leaf builds when none is named: its ONE image, else the one
+    `[system] default_images` names (the leaf reader's rule), else None."""
     images = sorted(doc.get("image", {}))
-    return images[0] if len(images) == 1 else None
+    if len(images) == 1:
+        return images[0]
+    defaults = doc.get("system", {}).get("default_images", [])
+    if len(defaults) == 1 and defaults[0] in images:
+        return defaults[0]
+    return None
 
 
 def stated_locator(doc, image_id):
@@ -49,10 +56,30 @@ def stated_locator(doc, image_id):
     image = doc.get("image", {}).get(image_id)
     if image is None:
         return None, f"`[image.{image_id}]` is not declared"
-    for table in (image, doc.get("image_defaults", {}), doc.get("system", {})):
+    for table in (image, doc.get("image_defaults", {})):
         if isinstance(table.get("locator"), str):
             return table["locator"], None
+    router = network_router(doc, image)
+    if router is not None:
+        return router, None
+    system = doc.get("system", {})
+    if isinstance(system.get("locator"), str):
+        return system["locator"], None
     return None, None
+
+
+def network_router(doc, image):
+    """D10d — the `router` of the network the image's FIRST interface (by name,
+    `[image.<id>.net]` over `[image_defaults.net]`) names, or None. Mirrors
+    `nros_orchestration_ir::system_net::network_router`."""
+    ifs = dict(doc.get("image_defaults", {}).get("net", {}) or {})
+    ifs.update(image.get("net", {}) or {})
+    if not ifs:
+        return None
+    first = ifs[sorted(ifs)[0]]
+    name = first.get("network") if isinstance(first, dict) else None
+    router = doc.get("network", {}).get(name, {}).get("router") if name else None
+    return router if isinstance(router, str) else None
 
 
 def locator_port(locator):

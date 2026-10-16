@@ -134,6 +134,18 @@ pub enum Sub {
     #[command(name = "leaf-system")]
     LeafSystem(crate::cmd::leaf_system::LeafSystemArgs),
 
+    /// phase-497 W3 (RFC-0103 D10a) — the QEMU `-nic` value for a leaf's
+    /// image: its network's `attach` (SLIRP, bridge or TAP), the board's NIC
+    /// `--model`, the image's MAC. An image that states no network gets QEMU's
+    /// own user-mode network; one on a physical-only network (no `attach`) is
+    /// refused, because no emulated image can join it.
+    ///
+    /// For a launcher that cannot link the resolver (a `just` recipe, a
+    /// container entrypoint). `nros_tests` renders the same value from the
+    /// resolved file with the same function.
+    #[command(name = "qemu-nic")]
+    QemuNic(crate::cmd::leaf_system::QemuNicArgs),
+
     /// phase-403 W9 (issue 0965) — compose this image's
     /// `nano_ros_node_register(... ENTITIES …)` declarations into the ENTITY
     /// inventory, and derive `NROS_EXECUTOR_MAX_CBS` from it.
@@ -578,6 +590,7 @@ pub fn run(args: Args) -> Result<()> {
         Sub::BoardFacts(a) => crate::cmd::board_facts::run(a),
         Sub::SeedLock(a) => run_seed_lock(a),
         Sub::LeafSystem(a) => crate::cmd::leaf_system::run(a),
+        Sub::QemuNic(a) => crate::cmd::leaf_system::qemu_nic(a),
         Sub::EntityInventory(a) => crate::cmd::entity_inventory::run(a),
         Sub::EntityCensus(a) => crate::cmd::entity_census::run(a),
         Sub::SizingDescriptor(a) => crate::cmd::sizing_descriptor::run(a),

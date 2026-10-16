@@ -396,6 +396,14 @@ impl QemuProcess {
         Self::spawn(mps2_an385_networked_cmd(binary)?)
     }
 
+    /// [`Self::start_mps2_an385_networked`] on the network the IMAGE states
+    /// (RFC-0103 D10a, phase-497 W3): `nic` is the `-nic` value of its
+    /// interface, from [`image_nic`] — QEMU's own user-mode network, a host
+    /// bridge, or a TAP.
+    pub fn start_mps2_an385_on(binary: &Path, nic: &str) -> TestResult<Self> {
+        Self::spawn(mps2_an385_cmd_with_nic(binary, nic)?)
+    }
+
     /// [`Self::start_mps2_an385_networked`] plus a QEMU human monitor on a
     /// unix socket, for a guest whose verdict is in its MEMORY rather than on
     /// its console (issue 1036: the boot report of an image with no console).
@@ -1483,6 +1491,34 @@ impl Drop for SocatPtyPair {
 /// The command [`QemuProcess::start_mps2_an385_networked`] runs: MPS2-AN385,
 /// LAN9118 on slirp, `-icount shift=auto`.
 fn mps2_an385_networked_cmd(binary: &Path) -> TestResult<Command> {
+    mps2_an385_cmd_with_nic(binary, &nros_board_common::image_net::slirp_nic("lan9118"))
+}
+
+/// The `-nic` value of an image's interface (phase-497 W3), from the network
+/// file `nros build` wrote for it (`<build>/nros/net/<image>.toml`):
+/// `model` is the board's QEMU NIC model. A missing file is an error, not the
+/// default network — the caller asked for an image that states one.
+pub fn image_nic(net_file: &Path, model: &str) -> TestResult<String> {
+    let raw = std::fs::read_to_string(net_file).map_err(|e| {
+        TestError::BuildFailed(format!(
+            "{}: {e} — the image's resolved network, written by `nros build`",
+            net_file.display()
+        ))
+    })?;
+    let doc: toml::Table = raw
+        .parse()
+        .map_err(|e| TestError::BuildFailed(format!("{}: {e}", net_file.display())))?;
+    let text = doc
+        .get("text")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| TestError::BuildFailed(format!("{}: no `text`", net_file.display())))?;
+    let i = nros_board_common::image_net::primary(text)
+        .map_err(|e| TestError::BuildFailed(format!("{}: {e}", net_file.display())))?
+        .ok_or_else(|| TestError::BuildFailed(format!("{}: no interface", net_file.display())))?;
+    nros_board_common::image_net::qemu_nic(&i, model).map_err(TestError::BuildFailed)
+}
+
+fn mps2_an385_cmd_with_nic(binary: &Path, nic: &str) -> TestResult<Command> {
     if !binary.exists() {
         return Err(TestError::BuildFailed(format!(
             "Binary not found: {}",
@@ -1509,7 +1545,7 @@ fn mps2_an385_networked_cmd(binary: &Path) -> TestResult<Command> {
         "-kernel",
     ])
     .arg(binary)
-    .args(["-nic", "user,model=lan9118"])
+    .args(["-nic", nic])
     .stdout(Stdio::piped())
     .stderr(Stdio::piped());
     #[cfg(unix)]

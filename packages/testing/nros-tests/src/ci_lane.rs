@@ -244,7 +244,9 @@ impl CiLane {
     /// `tests/lane_build_covers_run.rs` binds to this declaration.
     pub fn unclaimed(self) -> &'static [Capability] {
         match self {
-            CiLane::Tier1 | CiLane::Tier2 | CiLane::Tier2Nightly => &[Capability::Ros2],
+            CiLane::Tier1 | CiLane::Tier2 | CiLane::Tier2Nightly => {
+                &[Capability::Ros2, Capability::HostBridge]
+            }
         }
     }
 
