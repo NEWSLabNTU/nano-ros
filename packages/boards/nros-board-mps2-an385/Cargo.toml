@@ -160,8 +160,6 @@ serial = ["dep:zpico-serial", "dep:cmsdk-uart", "dep:mps2-an385-pac"]
 # `UART_DEVICE` with the zenoh-pico serial path) + a depender on
 # `nros-rmw-xrce-cffi` (the XRCE example).
 xrce-transport = ["serial", "dep:nros-rmw-xrce-cffi"]
-# Docker networking mode (container with NAT, ethernet only)
-docker = []
 # TLS support (requires mbedTLS, increases heap, ethernet only)
 link-tls = ["nros-platform-mps2-an385/link-tls"]
 # Phase 97.3.mps2-an385 — DDS / DDS heap budget (2 MB). Off by

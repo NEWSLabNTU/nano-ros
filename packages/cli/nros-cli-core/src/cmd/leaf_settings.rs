@@ -736,7 +736,14 @@ fn named_board_crates(doc: &toml::Table) -> Vec<String> {
                         .and_then(|p| p.as_str())
                         .unwrap_or(k.as_str())
                         .replace('_', "-");
-                    if krate.starts_with("nros-board-") && !out.contains(&krate) {
+                    // `nros-board-common` is the boards' shared support
+                    // crate (build helpers, the `NROS_IMAGE_NET` codec), not a
+                    // board: a host tool may use it with no image at all
+                    // (`nros-tests` renders a QEMU `-nic` with it, phase-497 W3).
+                    if krate.starts_with("nros-board-")
+                        && krate != "nros-board-common"
+                        && !out.contains(&krate)
+                    {
                         out.push(krate);
                     }
                 }
@@ -977,12 +984,8 @@ pub fn write_shared(
         if let Some(n) = crate::orchestration::image_net::resolve_leaf(&img.decl, &board_net)
             .map_err(|e| eyre!("{}: {e}", leaf.display()))?
         {
-            crate::orchestration::image_net::write(
-                &leaf.join("build").join(&img.image_id),
-                &img.image_id,
-                &n,
-            )
-            .map_err(|e| eyre!("{e}"))?;
+            crate::orchestration::image_net::write(&leaf.join("build"), &img.image_id, &n)
+                .map_err(|e| eyre!("{e}"))?;
             env.insert(nros_board_common::image_net::ENV.to_string(), n.text());
         }
     }

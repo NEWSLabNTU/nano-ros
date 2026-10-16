@@ -895,7 +895,18 @@ def build_env_sources():
     out += [p for p in tracked("packages/*/*-build/src/*.rs", "packages/*/*/*-build/src/*.rs")]
     out += list(tracked("packages/tooling/*/src/*.rs"))
     for manifest in tracked("packages/*/*/Cargo.toml", "packages/*/Cargo.toml"):
-        if "build-helpers" not in read(manifest):
+        # A crate that DECLARES the feature, not one that merely enables it on a
+        # dependency (`nros-tests` turns on `nros-board-common/build-helpers`
+        # to render a QEMU `-nic`, phase-497 W3, and is no build script).
+        try:
+            import tomllib
+        except ModuleNotFoundError:  # Python < 3.11 — the repo's interpreter is 3.10
+            import tomli as tomllib
+        try:
+            features = tomllib.loads(read(manifest)).get("features", {})
+        except tomllib.TOMLDecodeError:
+            features = {}
+        if "build-helpers" not in features:
             continue
         crate = os.path.dirname(manifest)
         rel = os.path.relpath(crate, ROOT)

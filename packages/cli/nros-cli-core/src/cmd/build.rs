@@ -822,7 +822,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                 // RFC-0103 D10f (phase-497 W2) — the image's resolved network,
                 // as the one text its board and `nros::main!` read.
                 if let Some(n) = &image_net {
-                    crate::orchestration::image_net::write(&image_dir, &image_id, n)
+                    crate::orchestration::image_net::write(&root.join("build"), &image_id, n)
                         .map_err(|e| eyre::eyre!("{e}"))?;
                     env.insert(nros_board_common::image_net::ENV.to_string(), n.text());
                 }
@@ -1278,10 +1278,8 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                 // RFC-0103 D10f (phase-497 W2) — the image's resolved network.
                 // `nros_board_net_c` renders the C initializer from it.
                 if let Some(n) = &image_net {
-                    if let Some(d) = &resolved_dir {
-                        crate::orchestration::image_net::write(d, &image_id, n)
-                            .map_err(|e| eyre::eyre!("{e}"))?;
-                    }
+                    crate::orchestration::image_net::write(&root.join("build"), &image_id, n)
+                        .map_err(|e| eyre::eyre!("{e}"))?;
                     a.push(format!(
                         "-D{}={}",
                         nros_board_common::image_net::ENV,

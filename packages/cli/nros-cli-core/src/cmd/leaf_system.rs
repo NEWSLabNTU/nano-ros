@@ -302,6 +302,70 @@ pub fn leaf_conf_paths(leaf: &LeafSystem) -> Result<Vec<PathBuf>, String> {
         .collect()
 }
 
+/// `nros ws qemu-nic`.
+#[derive(Debug, clap::Args)]
+pub struct QemuNicArgs {
+    /// The leaf package directory.
+    pub path: PathBuf,
+    /// Which `[image.<id>]` (default: the leaf's default image).
+    #[arg(long)]
+    pub image: Option<String>,
+    /// The board's QEMU NIC model (`lan9118`, `open_eth`, …).
+    #[arg(long)]
+    pub model: String,
+    /// The interface (default: the image's first).
+    #[arg(long)]
+    pub interface: Option<String>,
+    /// nano-ros checkout holding the board catalog.
+    #[arg(long)]
+    pub nano_ros_path: Option<PathBuf>,
+}
+
+/// Print the QEMU `-nic` value for a leaf's image (phase-497 W3).
+pub fn qemu_nic(args: QemuNicArgs) -> Result<()> {
+    let dir = args
+        .path
+        .canonicalize()
+        .map_err(|e| eyre!("{}: {e}", args.path.display()))?;
+    let leaf = match &args.image {
+        Some(id) => leaf_system::read_image(&dir, id),
+        None => leaf_system::read(&dir),
+    }
+    .map_err(|e| eyre!(e))?
+    .ok_or_else(|| eyre!("{}: declares no deployment", dir.display()))?;
+    if leaf.network.net.is_empty() {
+        println!("{}", nros_board_common::image_net::slirp_nic(&args.model));
+        return Ok(());
+    }
+    let board = leaf
+        .board
+        .clone()
+        .ok_or_else(|| eyre!("{}: names no board", leaf.origin_path().display()))?;
+    let root = crate::orchestration::nano_ros_root::resolve(args.nano_ros_path, &dir);
+    let catalog = root
+        .as_deref()
+        .and_then(|r| BoardCatalog::load(r).ok())
+        .ok_or_else(|| eyre!("no nano-ros checkout to read the board catalog from"))?;
+    let descriptor = crate::cmd::board_facts::resolve_board(&catalog, &board)
+        .ok_or_else(|| eyre!("{}", crate::cmd::board_facts::unresolved_board(&board)))?;
+    let net = crate::cmd::build::leaf_image_net(descriptor, &board, root.as_deref(), &leaf)
+        .map_err(|e| eyre!("{}: {e}", leaf.origin_path().display()))?
+        .ok_or_else(|| eyre!("{}: resolved no interface", leaf.origin_path().display()))?;
+    let text = net.text();
+    let i = match &args.interface {
+        Some(name) => nros_board_common::image_net::interface(&text, name)
+            .map_err(|e| eyre!("{e}"))?
+            .ok_or_else(|| eyre!("the image has no interface `{name}`"))?,
+        None => nros_board_common::image_net::primary(&text)
+            .map_err(|e| eyre!("{e}"))?
+            .ok_or_else(|| eyre!("the image resolved no interface"))?,
+    };
+    let nic = nros_board_common::image_net::qemu_nic(&i, &args.model)
+        .map_err(|e| eyre!("{}: {e}", leaf.origin_path().display()))?;
+    println!("{nic}");
+    Ok(())
+}
+
 pub fn run(args: LeafSystemArgs) -> Result<()> {
     let dir = args
         .path
@@ -414,9 +478,15 @@ pub fn run(args: LeafSystemArgs) -> Result<()> {
         })?;
         let descriptor = crate::cmd::board_facts::resolve_board(catalog, &board)
             .ok_or_else(|| eyre!("{}", crate::cmd::board_facts::unresolved_board(&board)))?;
-        crate::cmd::build::leaf_image_net(descriptor, &board, root.as_deref(), &leaf)
-            .map_err(|e| eyre!("{}: {e}", leaf.origin_path().display()))?
-            .map(|n| n.text())
+        let net = crate::cmd::build::leaf_image_net(descriptor, &board, root.as_deref(), &leaf)
+            .map_err(|e| eyre!("{}: {e}", leaf.origin_path().display()))?;
+        // The same file the cargo road writes, so a launcher finds a C/C++
+        // leaf's network where it finds a Rust one's (phase-497 W3).
+        if let (Some(n), Some(id)) = (&net, leaf.image.as_deref()) {
+            crate::orchestration::image_net::write(&dir.join("build"), id, n)
+                .map_err(|e| eyre!("{e}"))?;
+        }
+        net.map(|n| n.text())
     };
     for (k, v) in rows(
         &leaf,

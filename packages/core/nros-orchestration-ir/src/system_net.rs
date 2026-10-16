@@ -47,7 +47,8 @@ pub struct NetworkDef {
     /// The network hands out DHCP leases.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub dhcp: bool,
-    /// How an EMULATED image joins it (W3). Absent ⇒ physical boards only.
+    /// How an EMULATED image joins it (rendered by the QEMU launchers,
+    /// phase-497 W3). Absent ⇒ physical boards only.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub attach: Option<Attach>,
 }
@@ -204,15 +205,14 @@ impl NetworkDef {
         match &self.attach {
             None => {}
             Some(Attach::Mode(m)) if m == "slirp" => {}
-            // Parsed, validated, and refused: the QEMU launchers still pick
-            // their NIC per board until phase-497 W3, so a bridge or TAP named
-            // here would be ignored at launch — the silent no-op D10 removes.
-            Some(Attach::Bridge { .. } | Attach::Tap { .. }) => {
-                return Err(format!(
-                    "{at}: a bridge or TAP `attach` is valid, but the QEMU launchers do not \
-                     read it yet — phase-497 W3 does; omit `attach` (a physical-only network) \
-                     or use \"slirp\" for now"
-                ));
+            // phase-497 W3 — the QEMU launchers render these (`-nic bridge` /
+            // `-nic tap`, `nros_board_common::image_net::qemu_nic`).
+            Some(Attach::Bridge { bridge: d } | Attach::Tap { tap: d }) => {
+                if d.is_empty() || d.contains(char::is_whitespace) || d.contains(',') {
+                    return Err(format!(
+                        "{at}: attach names host device {d:?}, which is not a device name"
+                    ));
+                }
             }
             Some(Attach::Mode(m)) => {
                 return Err(format!(
@@ -617,11 +617,22 @@ mod tests {
             let e = parse_networks(&doc(src)).expect_err(src);
             assert!(e.contains(want), "{src}\n-> {e}");
         }
-        let e = parse_networks(&doc(
+        let br = parse_networks(&doc(
             "[network.br]\nsubnet = \"192.168.1.0/24\"\nattach = { bridge = \"br0\" }\n",
         ))
+        .unwrap();
+        assert_eq!(
+            br["br"].attach,
+            Some(Attach::Bridge {
+                bridge: "br0".into()
+            })
+        );
+        assert!(!br["br"].is_per_image(), "a bridge is shared");
+        let e = parse_networks(&doc(
+            "[network.br]\nsubnet = \"192.168.1.0/24\"\nattach = { tap = \"tap 0\" }\n",
+        ))
         .unwrap_err();
-        assert!(e.contains("W3"), "{e}");
+        assert!(e.contains("not a device name"), "{e}");
         let ok = parse_networks(&doc(
             "[network.lan]\nsubnet = \"192.168.1.0/24\"\nattach = \"slirp\"\n",
         ))

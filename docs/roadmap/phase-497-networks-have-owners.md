@@ -1,6 +1,6 @@
 # Phase 497 -- networks have owners: board interfaces, project networks, image addresses
 
-**Status (2026-10-16). W1, W2 and W4 landed; W3 open.** Re-planned against D10 as
+**Status (2026-10-16). W1–W4 landed.** Re-planned against D10 as
 amended 2026-10-15 (D10a–D10g). Implements
 [RFC-0103 D10](../design/0103-one-owner-per-fact.md). Follows phase-484 W4b-2,
 which moves every QEMU board onto one default network first.
@@ -193,6 +193,52 @@ Acceptance, as measured:
 **Acceptance:** the QEMU tier-2 cells run unchanged on the default network.
 One bridge pair runs on a host with the bridge provisioned, or is reported NOT
 VERIFIED when no bridge exists.
+
+**Status: landed 2026-10-16.**
+- `[network.<name>] attach` is accepted in all three forms, and the resolved
+  network carries it (an eighth field of `NROS_IMAGE_NET`, an `attach` line in
+  `<build>/nros/net/<image>.toml`). That file now sits at ONE path per image
+  id, `build/nros/net/<image>.toml` beside the workspace or leaf, on every road
+  (the standalone cmake leaf writes it too), so a launcher finds it from the id.
+- One renderer, `nros_board_common::image_net::qemu_nic`, turns an interface
+  and the board's NIC model into QEMU's `-nic`: `user` (plus `net=` / `host=`
+  off QEMU's own subnet), `bridge,br=<dev>`, `tap,ifname=<dev>`, each with the
+  image's MAC. A network with no `attach` is refused there — an emulated image
+  cannot join a physical-only network. Its callers:
+  - `nros ws qemu-nic <leaf> --model <m>` for a launcher that cannot link it
+    (the `just freertos` run recipe, the docker entrypoint);
+  - `nros_tests::qemu::image_nic` + `QemuProcess::start_mps2_an385_on`.
+  The mps2 and esp32 launchers' own SLIRP NIC goes through
+  `image_net::slirp_nic`, so no launcher spells `user,model=…` itself.
+- The bridge pair: `workspaces/rust` gained `[network.br]` (`qemu-br`,
+  192.0.3.0/24, `router = "tcp/192.0.3.1:7870"`) and two FreeRTOS images on it,
+  `freertos_br_robot1` / `freertos_br_robot2` (the multihost launch, one node
+  each), with fixture rows; `bridge_network_e2e` boots both with the `-nic`
+  their network renders. A host bridge needs root, so no lane claims one: a new
+  lane capability, `host-bridge` (`lane_scope::Capability::HostBridge`), is
+  unclaimed by every lane, which makes the test a deselection reading
+  NOT VERIFIED there; a run that claims it fails when the bridge is absent
+  (issue 1758's rule — never a skip on a probe).
+- `mps2-an385`'s `docker` feature is gone (and the bench feature that forwarded
+  it). Its plan is `[network.docker]` (`attach = { tap = "tap0" }`, router
+  `tcp/172.20.0.2:7447`) plus `[image.docker]` in the two leaves
+  `tests/qemu-baremetal` runs; the entrypoint builds that image and asks
+  `nros ws qemu-nic` for its NIC.
+- The locator readers learned W2's rungs: `scripts/lib/image_locator.py` and
+  `nros_tests::fixtures::baked_locator` take a network's `router`, and a leaf's
+  `[system] default_images` when it declares several images.
+
+Not done, deliberately:
+- The riscv64 and NuttX virt launchers (`-netdev user` + an explicit
+  `virtio-net-device` on a fixed MMIO bus), the Zephyr ones (Kconfig-addressed,
+  outside D10), and the `just` recipes that run a bare binary with no leaf to
+  ask keep QEMU's default network. None of their images names another network.
+- `tests/qemu-baremetal` was not run (it needs docker with `NET_ADMIN`). Its old
+  build step, a bare `cargo build --features docker` in the leaf, could not have
+  worked since RFC-0098 made a leaf's build settings generated.
+
+Acceptance, as measured: the tier-2 QEMU cells run on the default network
+(below); the bridge pair is NOT VERIFIED here — this host has no bridge.
 
 ### W4 -- multi-NIC
 

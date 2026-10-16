@@ -559,6 +559,14 @@ slow-timeout = { period = "180s", terminate-after = 4 }
 retries = 1
 
 # FreeRTOS QEMU (MPS2-AN385 + FreeRTOS kernel) — allocator window 7800+.
+# phase-497 W3 — the FreeRTOS multihost pair on the host bridge: two MPS2
+# guests and a zenohd, like any qemu-freertos lane (deselected in every lane
+# that does not claim `host-bridge`, which is all of them).
+[[profile.default.overrides]]
+filter = "binary(bridge_network_e2e)"
+test-group = "qemu-freertos"
+slow-timeout = { period = "120s", terminate-after = 2 }
+
 [[profile.default.overrides]]
 filter = "binary(freertos_qemu) or (binary(rtos_e2e) and test(Platform__Freertos))"
 test-group = "qemu-freertos"
