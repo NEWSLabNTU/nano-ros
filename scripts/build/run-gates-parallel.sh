@@ -163,6 +163,15 @@ unset GITHUB_ENV GITHUB_OUTPUT GITHUB_PATH GITHUB_STATE GITHUB_STEP_SUMMARY
 # The skip log is shared, so reset it once, before the fan-out.
 just _check-skip-reset >/dev/null 2>&1 || true
 
+# Issue 1868: complete the pinned toolchain ONCE, before the fan-out. The first
+# `cargo` each gate runs goes through the rustup proxy, which installs whatever
+# the root `rust-toolchain.toml` names and the toolchain lacks. Two gates doing
+# that at once race on rustup's download and component directories ("could not
+# rename 'downloaded' file", "detected conflict: 'bin/cargo-clippy'"), which
+# failed `check / fast` on main twice on 2026-10-16. `workspace-all` got the
+# same line for the same race.
+cargo --version >/dev/null
+
 # The skip ledger's reader. Sourced here rather than at the bottom because
 # BOTH paths close on it now. Derive the path, do NOT spell it (RFC-0070):
 # `nros_check_skip` writes through `nros_build_dir`, which honours

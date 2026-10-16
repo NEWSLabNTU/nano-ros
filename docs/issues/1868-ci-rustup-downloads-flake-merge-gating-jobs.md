@@ -73,3 +73,23 @@ forking, so the toolchain is complete before either half starts.
 The OTHER shape, `could not download file from 'https://static.rust-lang.org/…'`
 (#2094 at 01:07 and #2111), is a real fetch failure. The image or cache
 remedy above still applies to it.
+
+## The same race in `check fast`'s own fan-out (2026-10-16)
+
+Two of four push gates on main failed in `check / fast (every event)`, in
+the `cbindgen-headers` gate, while rustup installed missing components of the
+pinned 1.99.0:
+
+- Gate run **38866908749** (`9338261f4`), job **116861795238**:
+  `error: component download failed for rust-std-riscv32imc-unknown-none-elf: could not rename 'downloaded' file`
+- Gate run **38871191298** (`d49b65dbf`), job **116875496284**:
+  `error: failed to install component: 'clippy-preview-x86_64-unknown-linux-gnu', detected conflict: 'bin/cargo-clippy'`
+
+The runs between them passed. `check fast` runs its gates through
+`scripts/build/run-gates-parallel.sh`, which forks them with `xargs -P`. The
+2026-10-13 sweep looked for `&`-forked cargo and `just` calls, so it missed
+this fan-out. `xargs -P` in that script is the only one in `scripts/`,
+`just/` and `.github/`.
+
+Fix, in the same change: the runner runs `cargo --version` once before the
+fan-out, the same line `workspace-all` got.
