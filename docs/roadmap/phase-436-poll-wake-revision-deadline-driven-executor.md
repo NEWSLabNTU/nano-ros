@@ -31,8 +31,27 @@ remains, in the order I would take it:
    `park bounded by Platform(0) at 27000 us`; with the shipped 10 ms budget
    the source never wins. No hardware run: no board is on this bench. See
    Path B's exit.
-5. **Per-entity wake routing (optional).** Removes the fan-out's one spurious
-   wake per foreign arrival; needs each backend to say whose data arrived.
+5. **Per-entity wake routing — MEASURED 2026-10-16, folded into
+   [phase-397](phase-397-pushed-readiness-executor.md).** One zenoh session,
+   an owner executor with a subscription and N tier executors over the same
+   session with nothing registered, a publisher in another process at 1 kHz
+   (native Linux, aarch64). Every idle tier spun 999-1000 times a second, at
+   6.8-9.4 us of thread CPU per spurious wake, which is 0.7-0.9 % of a core
+   per idle tier at 1 kHz. It is linear in arrival rate times idle members, so
+   7 idle tiers cost about 5.6 % of a core; idle, every member spins once per
+   second. A host number only: an MCU tier pays the same count at its own
+   per-wake cost, unmeasured, and a woken higher-priority tier preempts the
+   owner for that long.
+   **Decision: no standalone ABI change here.** Routing needs the arrival to
+   name its entity, and the entity its executor. That is RFC-0084's token,
+   minted at entity-scoped wake registration, which phase-397 plans; the
+   owning executor's context rides on the same registration, so the fan-out
+   becomes the fallback for a backend that reports UNKNOWN. Doing it here
+   first would add a second per-entity wake path that phase-397 then replaces.
+   The probe also found
+   [issue 1929](../issues/1929-zenoh-async-wake-is-one-process-global-slot.md):
+   zenoh's arrival wake is one process-global slot, so with two zenoh sessions
+   in one process the first executor is never woken by its own data.
 6. **C3, bare metal — REFRAMED 2026-10-16, still deferred.** It is not an
    executor park: bare-metal zenoh and XRCE are poll-only, so RFC-0106 D5
    keeps the receive-blocking wait there whatever park is installed. What C3
