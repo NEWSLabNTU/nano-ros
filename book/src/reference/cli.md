@@ -84,6 +84,13 @@ nros setup zephyr                        # Zephyr west workspace + SDK bits
 | `--licenses` | show license-gated packages + how to install them |
 | `--dry-run` | resolve + print the plan without fetching anything |
 
+`--tool` and `--source` combine: `nros setup --tool arm-none-eabi-gcc
+--source freertos-kernel --source lwip` installs the tool, then the
+sources, in one command. Selectors that do not combine — a `<board>`
+beside `--tool`/`--source`, anything beside `--list`/`--licenses`/
+`--system`, `--source` with `--check`, `--rmw` without a `<board>` — are
+**refused**, naming the flag, never silently ignored (issue 1935).
+
 Board names (the full set — RFC-0093 names each board for the reach of
 its build): `native`, `posix`, `mps2-an385-baremetal`,
 `mps2-an385-freertos`, `mps3-an536-freertos`, `s32z270-freertos`,
