@@ -14,9 +14,7 @@
 //   5. `rclcpp::init(argc, argv)` ABORTS on a refusal (its upstream shape
 //      returns `void`, so there is nowhere else to put it), and `init_in`
 //      RETURNS it.
-//
-// The deprecated `init_with_launch_auto` is checked once, to prove it still
-// forwards to `init_in` until it is removed (issue 1917).
+
 //
 // The parse itself is `nros_node::ros_args`'s, tested in Rust; here the five
 // FFI entry points the headers reach are DEFINED BELOW as recording stubs, so
@@ -152,18 +150,6 @@ int main() {
     check(!res.ok() && res.raw() == -6, "a rule that does not fit is RETURNED");
     check(events_are({Ev::Validate, Ev::Init, Ev::Install, Ev::Fini}) && !g_live,
           "  ...and the session it opened is closed again");
-
-    reset();
-#if defined(__GNUC__) || defined(__clang__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#endif
-    res = rclcpp::init_with_launch_auto(4, param_argv);
-#if defined(__GNUC__) || defined(__clang__)
-#pragma GCC diagnostic pop
-#endif
-    check(!res.ok() && res.raw() == -3 && events_are({Ev::Validate}),
-          "the deprecated init_with_launch_auto still forwards to init_in");
 
     reset();
     rclcpp::init(4, remap_argv);

@@ -192,11 +192,9 @@ pub mod executor_handle;
 ///
 /// Re-exported flat at the crate root: `nros::Context` (`alloc`),
 /// `nros::ContextSource`, `nros::InitError`, `nros::InitOptions` (every
-/// target); `nros::init()`, `nros::init_with_args(args)` (`env`; the
-/// deprecated `init_with_launch_auto()` / `init_with_launch(path)` are
-/// `init()` under another name).
+/// target); `nros::init()`, `nros::init_with_args(args)` (`env`).
 /// The `env` feature gates only the process-environment reader and the
-/// argv/launch entries; freestanding, `Context::default_from_env()` is the
+/// argv entry; freestanding, `Context::default_from_env()` is the
 /// bake (`Context::baked()`).
 pub mod init;
 
@@ -228,8 +226,7 @@ pub use init::{ContextSource, InitError, InitOptions};
 pub use init::Context;
 
 #[cfg(feature = "env")]
-#[allow(deprecated)]
-pub use init::{init, init_with_args, init_with_launch, init_with_launch_auto};
+pub use init::{init, init_with_args};
 
 /// Compile-time opaque storage sizes for FFI consumers.
 ///

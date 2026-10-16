@@ -16,7 +16,6 @@
 #if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0) // hosted-family: hosted-console
 #include <cstdlib>                                 // getenv — Phase 123.B.3 env-aware init
 #if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0) // hosted-family: hosted-console
-#include <cstdio> // fopen — the deprecated init_with_launch(path) existence check
 // <stdio.h> + unqualified `::fprintf` (issue 0942 / phase-472 W5): `<cstdio>` need not put
 // the C names in `std` on a freestanding libstdc++, and `std::fprintf` then fails.
 #include <stdio.h>
@@ -621,21 +620,6 @@ inline Result init_with_rmw(const char* rmw, const char* locator = nullptr, uint
 /// `session_name` falls back to `"nros_cpp"` when null (matches the
 /// 2-arg `init_in` overload).
 inline Result init_in(int argc, char const* const* argv, const char* session_name = nullptr);
-
-/// Deprecated: [`init_in`]`(argc, argv, session_name)` under a name that
-/// promised a launch file it never read (issue 1917).
-NROS_CPP_DEPRECATED_MSG("reads the environment and --ros-args, and no launch file: call "
-                        "rclcpp::init_in(argc, argv) (issue 1917)")
-inline Result init_with_launch_auto(int argc = 0, char** argv = nullptr,
-                                    const char* session_name = nullptr);
-
-/// Deprecated: [`init_in`]`(argc, argv, session_name)` behind a check that
-/// `path` can be opened (hosted builds only); the file's contents are not read.
-NROS_CPP_DEPRECATED_MSG("reads the environment and --ros-args, not the file: call "
-                        "rclcpp::init_in(argc, argv), checking the path yourself if you "
-                        "relied on that (issue 1917)")
-inline Result init_with_launch(const char* path, int argc = 0, char** argv = nullptr,
-                               const char* session_name = nullptr);
 
 /// Shut down the nros session.
 ///
@@ -3032,33 +3016,11 @@ inline Result init_honouring_ros_args(int argc, char const* const* argv, const c
 // -- init honouring --ros-args --
 //
 // `init_in(argc, argv)` delegates to the 3-arg `init_in`, which reads the
-// environment. The session name falls back to `"nros_cpp"`. The deprecated
-// `init_with_launch*` forward here.
+// environment. The session name falls back to `"nros_cpp"`.
 
 inline Result init_in(int argc, char const* const* argv, const char* session_name) {
     const char* name = (session_name != nullptr) ? session_name : "nros_cpp";
     return detail::init_honouring_ros_args(argc, argv, name);
-}
-
-inline Result init_with_launch_auto(int argc, char** argv, const char* session_name) {
-    return init_in(argc, argv, session_name);
-}
-
-inline Result init_with_launch(const char* path, int argc, char** argv, const char* session_name) {
-    // NROS_CPP_RET_INVALID_ARGUMENT = -3 (mirrors the 3-arg init guard).
-    if (path == nullptr) {
-        return Result(-3);
-    }
-#if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0) // hosted-family: hosted-console
-    // The one thing this adds to `init_in`: a path that cannot be opened
-    // fails here. Its contents are not read.
-    if (FILE* f = ::fopen(path, "rb")) {
-        ::fclose(f);
-    } else {
-        return Result(ErrorCode::NotInitialized);
-    }
-#endif
-    return init_in(argc, argv, session_name);
 }
 
 /// Check if the nros session is initialized — and, like `rclcpp::ok()`, not
