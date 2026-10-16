@@ -1173,6 +1173,9 @@ mod tests {
         //     `bool`) and the count of late wakes beyond the granule (a `u32`).
         //     Two scalars that scale with nothing, named so the next field added
         //     beside them shows up here.
+        //   * phase-462 W3b's `hazard_table`: one `&'static` slice reference to
+        //     the baked hazard table, whose per-hazard state lives in the
+        //     table's own `static` cells. Scales with nothing.
         #[allow(unused_mut)]
         let mut ceiling =
             1280 + size_of::<super::super::spin::SessionStore>()
@@ -1184,6 +1187,7 @@ mod tests {
                 + size_of::<super::super::spin::ReleaseGrid>()
                 + size_of::<bool>()
                 + size_of::<u32>()
+                + size_of::<&'static [super::super::monitor::HazardSpec]>()
                 + size_of::<
                     [Option<super::super::spin::WakeSourceSlot>;
                         super::super::spin::MAX_WAKE_SOURCES],

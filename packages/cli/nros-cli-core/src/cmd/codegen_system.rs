@@ -466,6 +466,7 @@ pub fn run(args: Args) -> Result<()> {
     let bringup_owned;
     let mut model_monitors: Vec<crate::orchestration::model_ingest::MonitorRow> = Vec::new();
     let mut model_ages: Vec<crate::orchestration::model_ingest::AgeRow> = Vec::new();
+    let mut model_hazards: Vec<crate::orchestration::model_ingest::HazardRow> = Vec::new();
     let mut model_transports: Vec<crate::orchestration::plan::PlanTransport> = Vec::new();
     // R-code.2 — convention discovery: with no explicit `--model`, a committed
     // `<bringup>/config/system_model.yaml` IS the model. Users (and every
@@ -510,6 +511,10 @@ pub fn run(args: Args) -> Result<()> {
         model_monitors = crate::orchestration::model_ingest::monitor_rows(&model)?;
         // W3b.5 — subscriber age contracts ride alongside.
         model_ages = crate::orchestration::model_ingest::age_rows(&model)?;
+        // phase-462 W3b -- the hazards this image observes, as rows of the two
+        // tables above.
+        model_hazards =
+            crate::orchestration::model_ingest::hazard_rows(&model, &model_monitors, &model_ages);
         // R1-N3 — transports ride the bake plan.
         model_transports = crate::orchestration::model_ingest::plan_transports(&model)?;
         // Issue 0257 — refuse a bake whose modelled entity count cannot fit the
@@ -707,6 +712,7 @@ pub fn run(args: Args) -> Result<()> {
         &tier_table,
         model_monitors,
         model_ages,
+        model_hazards,
         model_transports,
     )?;
 
@@ -938,6 +944,7 @@ fn emit_bake_tree(
     tier_table: &ResolvedTierTable,
     monitors: Vec<crate::orchestration::model_ingest::MonitorRow>,
     ages: Vec<crate::orchestration::model_ingest::AgeRow>,
+    hazards: Vec<crate::orchestration::model_ingest::HazardRow>,
     transports: Vec<crate::orchestration::plan::PlanTransport>,
 ) -> Result<()> {
     fs::create_dir_all(bake_dir)
@@ -987,7 +994,12 @@ fn emit_bake_tree(
     if !monitors.is_empty() || !ages.is_empty() {
         write_if_changed(
             &bake_dir.join("system_monitors.rs"),
-            &crate::orchestration::model_ingest::render_monitor_rs(&monitors, &ages),
+            &crate::orchestration::model_ingest::render_monitor_rs_full(
+                &monitors,
+                &ages,
+                &hazards,
+                nros_orchestration_ir::contract_monitors::RenderPaths::NROS_NODE,
+            ),
         )?;
     }
 

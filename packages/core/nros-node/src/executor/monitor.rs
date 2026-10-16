@@ -428,7 +428,7 @@ pub struct Violation {
 /// can carry a string. Append only: a capture or a RAM dump taken before a
 /// reorder would silently decode as the wrong rule, which is the class the
 /// callback-trace marker ids are frozen against (`callback_trace.rs`).
-pub const RULE_IDS: [&str; 11] = [
+pub const RULE_IDS: [&str; 14] = [
     "rate-hierarchy-runtime",
     "max-age-runtime",
     "max-latency-runtime",
@@ -442,6 +442,11 @@ pub const RULE_IDS: [&str; 11] = [
     "route-latency-runtime",
     // phase-503.
     "route-deadline-runtime",
+    // phase-462 W3b -- the hazard observer, in play_launch's spelling (no
+    // `-runtime` suffix) so one log reader serves both sides of a bridge.
+    "hazard-detected",
+    "hazard-reaction",
+    "hazard-recovered",
 ];
 
 /// The wire code of `rule` ([`RULE_IDS`] index + 1), or 0 for a rule the
@@ -1447,6 +1452,438 @@ pub(crate) fn check_age(
     } else {
         state.violated_last_window = false;
         None
+    }
+}
+
+// ---------------------------------------------------------------------------
+// phase-462 W3b -- the hazard observer.
+// ---------------------------------------------------------------------------
+
+/// One guard member: which monitor row's verdict says this topic has faulted.
+///
+/// The observer adds no detector of its own. A guard topic has faulted when
+/// the row the image already bakes for it says so: an age row whose
+/// `silence-runtime` lease is reported, or a rate row whose last window was
+/// short (`min-rate-runtime`). Reading the rows' state rather than their
+/// violations keeps the two in step by construction -- a hazard cannot be
+/// detected by a rule that did not fire, nor stay detected after it recovered.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GuardRef {
+    /// Row index into the executor's age table.
+    Age(u16),
+    /// Row index into the executor's rate/latency table.
+    Rate(u16),
+}
+
+/// One fault a hazard covers: a topic, or a redundant set of topics.
+#[derive(Debug, Clone, Copy)]
+pub struct GuardSpec {
+    /// `true`: the guard faults only when EVERY member has (a redundant
+    /// set). `false`: when any member has.
+    pub all_of: bool,
+    /// The guard's members.
+    pub members: &'static [GuardRef],
+}
+
+/// [`HazardSpec::sink`] when the hazard's reaction states no `safe_state`
+/// publisher this image monitors: the observer reports detection and
+/// recovery, and no reaction.
+pub const NO_SINK: u16 = u16::MAX;
+
+/// One hazard's observer state. Baked as a `static` beside the spec, the way
+/// [`PubMonitorCell`] is, so the observer adds a slice to the `Executor`
+/// value and nothing per hazard (issue 0961).
+#[derive(Debug, Default)]
+pub struct HazardCell {
+    /// 0 clear, 1 detected, 2 detected and reacted.
+    state: AtomicU32,
+    /// Monotonic ms the fault began: the faulting age row's last take, or the
+    /// tick that first saw a rate guard short.
+    fault_ms: AtomicU32,
+    /// The sink publisher's count when the fault was detected.
+    sink_count: AtomicU32,
+}
+
+impl HazardCell {
+    /// A cleared cell, for a `static`.
+    pub const fn new() -> Self {
+        Self {
+            state: AtomicU32::new(0),
+            fault_ms: AtomicU32::new(0),
+            sink_count: AtomicU32::new(0),
+        }
+    }
+}
+
+/// One contracted hazard (`contracts.hazards`), lowered by the bake.
+#[derive(Debug, Clone, Copy)]
+pub struct HazardSpec {
+    /// The hazard's contract key (`<scope>/<name>`), the report key.
+    pub key: &'static str,
+    /// Declared `ftti_ms`; 0 = none declared.
+    pub ftti_ms: u32,
+    /// The reacting path's `safe_state.settle_ms`, added to the reaction
+    /// time as play_launch adds it; 0 = none.
+    pub settle_ms: u32,
+    /// The faults the hazard covers; any one of them is the hazard.
+    pub guards: &'static [GuardSpec],
+    /// Rate-table row of the `safe_state.emits` publisher, or [`NO_SINK`].
+    pub sink: u16,
+    /// The observer's state.
+    pub cell: &'static HazardCell,
+}
+
+const HAZARD_CLEAR: u32 = 0;
+const HAZARD_DETECTED: u32 = 1;
+const HAZARD_REACTED: u32 = 2;
+
+/// Whether `member` has faulted, and since when (ms) when the row knows.
+fn member_fault(
+    member: GuardRef,
+    monitor_states: &[MonitorState],
+    age_states: &[AgeState],
+) -> Option<Option<u32>> {
+    match member {
+        GuardRef::Age(i) => {
+            let s = age_states.get(i as usize)?;
+            s.silence_reported.then_some(Some(s.last_take_ms))
+        }
+        GuardRef::Rate(i) => {
+            let s = monitor_states.get(i as usize)?;
+            s.violated_last_window.then_some(None)
+        }
+    }
+}
+
+/// Whether any guard of `spec` has faulted, and the earliest fault start the
+/// faulting rows know.
+fn hazard_fault(
+    spec: &HazardSpec,
+    monitor_states: &[MonitorState],
+    age_states: &[AgeState],
+) -> Option<Option<u32>> {
+    let mut faulted = false;
+    let mut since: Option<u32> = None;
+    for g in spec.guards {
+        let mut seen = 0usize;
+        let mut g_since: Option<u32> = None;
+        for m in g.members {
+            if let Some(at) = member_fault(*m, monitor_states, age_states) {
+                seen += 1;
+                if let Some(at) = at {
+                    g_since = Some(g_since.map_or(at, |s: u32| s.min(at)));
+                }
+            }
+        }
+        let guard_faulted = if g.all_of {
+            !g.members.is_empty() && seen == g.members.len()
+        } else {
+            seen > 0
+        };
+        if guard_faulted {
+            faulted = true;
+            if let Some(at) = g_since {
+                since = Some(since.map_or(at, |s| s.min(at)));
+            }
+        }
+    }
+    faulted.then_some(since)
+}
+
+/// phase-462 W3b -- one tick of a hazard's observer, after the monitor rows
+/// have run. Emits, in play_launch's vocabulary so one log reader serves both
+/// sides of a bridge:
+///
+/// - `hazard-detected` when a guard first faults: measured is the ms since
+///   the fault began, declared the FTTI;
+/// - `hazard-reaction` when the `safe_state` publisher publishes after that:
+///   measured is fault-to-reaction plus `settle_ms`, declared the FTTI;
+/// - `hazard-recovered` when no guard is faulted any more: measured is the
+///   ms the hazard lasted.
+///
+/// `fqn` is the hazard's key on all three.
+pub(crate) fn check_hazard(
+    spec: &HazardSpec,
+    monitor_table: &[MonitorSpec],
+    monitor_states: &[MonitorState],
+    age_states: &[AgeState],
+    now_ms: u32,
+    mut emit: impl FnMut(Violation),
+) {
+    let cell = spec.cell;
+    let state = cell.state.load(Ordering::Relaxed);
+    let sink_count = monitor_table
+        .get(spec.sink as usize)
+        .map(|m| m.cell.count.load(Ordering::Relaxed));
+    let fault = hazard_fault(spec, monitor_states, age_states);
+    let v = |rule, measured: u32| Violation {
+        rule,
+        fqn: spec.key,
+        measured,
+        declared: spec.ftti_ms,
+    };
+    match (state, fault) {
+        (HAZARD_CLEAR, Some(since)) => {
+            let at = since.unwrap_or(now_ms);
+            cell.fault_ms.store(at, Ordering::Relaxed);
+            cell.sink_count
+                .store(sink_count.unwrap_or(0), Ordering::Relaxed);
+            cell.state.store(HAZARD_DETECTED, Ordering::Relaxed);
+            emit(v("hazard-detected", now_ms.wrapping_sub(at)));
+        }
+        (HAZARD_DETECTED, Some(_)) => {
+            if let Some(count) = sink_count
+                && count != cell.sink_count.load(Ordering::Relaxed)
+            {
+                cell.state.store(HAZARD_REACTED, Ordering::Relaxed);
+                let since = now_ms.wrapping_sub(cell.fault_ms.load(Ordering::Relaxed));
+                emit(v("hazard-reaction", since.saturating_add(spec.settle_ms)));
+            }
+        }
+        (HAZARD_DETECTED | HAZARD_REACTED, None) => {
+            cell.state.store(HAZARD_CLEAR, Ordering::Relaxed);
+            let lasted = now_ms.wrapping_sub(cell.fault_ms.load(Ordering::Relaxed));
+            emit(v("hazard-recovered", lasted));
+        }
+        _ => {}
+    }
+}
+
+#[cfg(test)]
+mod hazard_tests {
+    use super::*;
+
+    static PUB_CELL: PubMonitorCell = PubMonitorCell::new();
+    static SUB_CELL: SubMonitorCell = SubMonitorCell::new();
+    static SINK_CELL: PubMonitorCell = PubMonitorCell::new();
+
+    static RATE_ROWS: [MonitorSpec; 2] = [
+        MonitorSpec {
+            topic: "/scan",
+            fqn: "/sensor/scan",
+            min_rate_hz_milli: 10_000,
+            max_latency_ms: 0,
+            route_trigger: "",
+            route_max_latency_ms: 0,
+            route_deadline_ms: 0,
+            reaction_id: 0,
+            mechanism: 0,
+            cell: &PUB_CELL,
+        },
+        MonitorSpec {
+            topic: "/stop",
+            fqn: "/handler/stop",
+            min_rate_hz_milli: 0,
+            max_latency_ms: 0,
+            route_trigger: "",
+            route_max_latency_ms: 0,
+            route_deadline_ms: 0,
+            reaction_id: 0,
+            mechanism: 0,
+            cell: &SINK_CELL,
+        },
+    ];
+    #[allow(dead_code)]
+    static AGE_ROW: AgeMonitorSpec = AgeMonitorSpec {
+        topic: "/scan",
+        fqn: "/handler/scan",
+        max_age_ms: 100,
+        cell: &SUB_CELL,
+    };
+
+    fn run(
+        spec: &HazardSpec,
+        mon: &[MonitorState],
+        age: &[AgeState],
+        now: u32,
+    ) -> std::vec::Vec<Violation> {
+        let mut out = std::vec::Vec::new();
+        check_hazard(spec, &RATE_ROWS, mon, age, now, |v| out.push(v));
+        out
+    }
+
+    /// detected -> reaction -> recovered, each once, on a silence guard, with
+    /// times measured from the guard's last take.
+    #[test]
+    fn a_silence_guard_detects_reacts_and_recovers_once_each() {
+        static CELL: HazardCell = HazardCell::new();
+        static GUARDS: [GuardSpec; 1] = [GuardSpec {
+            all_of: false,
+            members: &[GuardRef::Age(0)],
+        }];
+        let spec = HazardSpec {
+            key: "demo.launch.xml/scan_lost",
+            ftti_ms: 500,
+            settle_ms: 30,
+            guards: &GUARDS,
+            sink: 1,
+            cell: &CELL,
+        };
+        let mon = [MonitorState::default(); 2];
+        let mut age = [AgeState::default(); 1];
+        assert!(run(&spec, &mon, &age, 1_000).is_empty(), "clear: nothing");
+
+        age[0].silence_reported = true;
+        age[0].last_take_ms = 900;
+        let v = run(&spec, &mon, &age, 1_000);
+        assert_eq!(v.len(), 1);
+        assert_eq!((v[0].rule, v[0].fqn), ("hazard-detected", spec.key));
+        assert_eq!((v[0].measured, v[0].declared), (100, 500));
+        assert!(run(&spec, &mon, &age, 1_010).is_empty(), "detected once");
+
+        SINK_CELL.count.fetch_add(1, Ordering::Relaxed);
+        let v = run(&spec, &mon, &age, 1_050);
+        assert_eq!(v.len(), 1);
+        assert_eq!(v[0].rule, "hazard-reaction");
+        assert_eq!(v[0].measured, 150 + 30, "fault-to-reaction plus settle");
+        SINK_CELL.count.fetch_add(1, Ordering::Relaxed);
+        assert!(run(&spec, &mon, &age, 1_060).is_empty(), "reacted once");
+
+        age[0].silence_reported = false;
+        let v = run(&spec, &mon, &age, 1_200);
+        assert_eq!(v.len(), 1);
+        assert_eq!((v[0].rule, v[0].measured), ("hazard-recovered", 300));
+        assert!(run(&spec, &mon, &age, 1_210).is_empty(), "recovered once");
+    }
+
+    /// A redundant set faults only when every member has.
+    #[test]
+    fn an_all_of_guard_waits_for_every_member() {
+        static CELL: HazardCell = HazardCell::new();
+        static GUARDS: [GuardSpec; 1] = [GuardSpec {
+            all_of: true,
+            members: &[GuardRef::Age(0), GuardRef::Rate(0)],
+        }];
+        let spec = HazardSpec {
+            key: "demo.launch.xml/both_lost",
+            ftti_ms: 0,
+            settle_ms: 0,
+            guards: &GUARDS,
+            sink: NO_SINK,
+            cell: &CELL,
+        };
+        let mut mon = [MonitorState::default(); 2];
+        let mut age = [AgeState::default(); 1];
+        age[0].silence_reported = true;
+        assert!(
+            run(&spec, &mon, &age, 10).is_empty(),
+            "one of two: no hazard"
+        );
+        mon[0].violated_last_window = true;
+        let v = run(&spec, &mon, &age, 20);
+        assert_eq!(v[0].rule, "hazard-detected");
+        assert_eq!(v[0].declared, 0, "no FTTI declared");
+    }
+
+    /// The text `contract_monitors::render_monitor_rs_full` emits for the
+    /// W3a/W3b fixture (one sensor, one handler, one hazard), verbatim but for
+    /// the crate root. It is here so the GENERATED shape is compiled against
+    /// the real types: a renderer change that stops compiling has to change
+    /// this copy too, in plain sight.
+    #[allow(dead_code, non_upper_case_globals)]
+    mod rendered {
+        use crate::executor::monitor::{
+            AgeMonitorSpec, MonitorSpec, PubMonitorCell, SubMonitorCell,
+        };
+
+        static NROS_MONITOR_CELL_0: PubMonitorCell = PubMonitorCell::new();
+        static NROS_MONITOR_CELL_1: PubMonitorCell = PubMonitorCell::new();
+        static NROS_AGE_CELL_0: SubMonitorCell = SubMonitorCell::new();
+
+        pub static NROS_MONITORS: &[MonitorSpec] = &[
+            MonitorSpec {
+                topic: "/stop",
+                fqn: "/handler/stop",
+                min_rate_hz_milli: 0u32,
+                max_latency_ms: 20u32,
+                route_trigger: "/scan",
+                route_max_latency_ms: 20u32,
+                route_deadline_ms: 0u32,
+                reaction_id: 0u16,
+                mechanism: 0u8,
+                cell: &NROS_MONITOR_CELL_0,
+            },
+            MonitorSpec {
+                topic: "/scan",
+                fqn: "/sensor/scan",
+                min_rate_hz_milli: 10000u32,
+                max_latency_ms: 0u32,
+                route_trigger: "",
+                route_max_latency_ms: 0u32,
+                route_deadline_ms: 0u32,
+                reaction_id: 0u16,
+                mechanism: 0u8,
+                cell: &NROS_MONITOR_CELL_1,
+            },
+        ];
+
+        pub static NROS_AGE_MONITORS: &[AgeMonitorSpec] = &[AgeMonitorSpec {
+            topic: "/scan",
+            fqn: "/handler/scan",
+            max_age_ms: 100u32,
+            cell: &NROS_AGE_CELL_0,
+        }];
+
+        use crate::executor::monitor::{GuardRef, GuardSpec, HazardCell, HazardSpec};
+
+        static NROS_HAZARD_CELL_0: HazardCell = HazardCell::new();
+        const NROS_HAZARD_GUARDS_0: &[GuardSpec] = &[GuardSpec {
+            all_of: false,
+            members: &[GuardRef::Age(0u16), GuardRef::Rate(1u16)],
+        }];
+
+        pub static NROS_HAZARDS: &[HazardSpec] = &[HazardSpec {
+            key: "demo.launch.xml/scan_lost",
+            ftti_ms: 0u32,
+            settle_ms: 30u32,
+            guards: NROS_HAZARD_GUARDS_0,
+            sink: 0u16,
+            cell: &NROS_HAZARD_CELL_0,
+        }];
+    }
+
+    /// The rendered tables drive the observer: the age row's silence is the
+    /// hazard, and the sink row the renderer chose is the one it watches.
+    #[test]
+    fn the_rendered_include_drives_the_observer() {
+        let spec = &rendered::NROS_HAZARDS[0];
+        let mon = [MonitorState::default(); 2];
+        let mut age = [AgeState::default(); 1];
+        age[0].silence_reported = true;
+        age[0].last_take_ms = 40;
+        let mut out = std::vec::Vec::new();
+        check_hazard(spec, rendered::NROS_MONITORS, &mon, &age, 100, |v| {
+            out.push(v)
+        });
+        assert_eq!((out[0].rule, out[0].measured), ("hazard-detected", 60));
+        assert_eq!(
+            rendered::NROS_MONITORS[spec.sink as usize].fqn,
+            "/handler/stop"
+        );
+    }
+
+    /// With no sink the observer never claims a reaction it cannot see.
+    #[test]
+    fn no_sink_no_reaction() {
+        static CELL: HazardCell = HazardCell::new();
+        static GUARDS: [GuardSpec; 1] = [GuardSpec {
+            all_of: false,
+            members: &[GuardRef::Rate(0)],
+        }];
+        let spec = HazardSpec {
+            key: "k",
+            ftti_ms: 100,
+            settle_ms: 0,
+            guards: &GUARDS,
+            sink: NO_SINK,
+            cell: &CELL,
+        };
+        let mut mon = [MonitorState::default(); 2];
+        mon[0].violated_last_window = true;
+        let v = run(&spec, &mon, &[], 50);
+        assert_eq!((v[0].rule, v[0].measured), ("hazard-detected", 0));
+        PUB_CELL.count.fetch_add(5, Ordering::Relaxed);
+        assert!(run(&spec, &mon, &[], 60).is_empty());
     }
 }
 

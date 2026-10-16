@@ -1,7 +1,7 @@
 # phase-462 -- the contract's safety vocabulary reaches the target
 
-**Status (2026-10-16). IN PROGRESS: W1, W2 and W3a landed; W3b, W3c, W4 and
-W6a are open; W5 and W6b wait on rlm.** (Planned 2026-09-21.) Numbered highest + 7 (phase-461 took +6;
+**Status (2026-10-16). IN PROGRESS: W1, W2, W3a and W3b's Rust roads landed;
+W3b's C/C++ road, W3c, W4 and W6a are open; W5 and W6b wait on rlm.** (Planned 2026-09-21.) Numbered highest + 7 (phase-461 took +6;
 456-460 belong to concurrent sessions). Depends on two pieces of work outside
 this document: the shared MapperInput derivation phase (a play_launch / rlm
 phase being designed in parallel, referred to here by that name and not by a
@@ -262,9 +262,33 @@ ftti_budget`: 9 passed, among them the refusal naming every term and its
 negative control (the same image under a looser FTTI). The rate window the
 check restates is pinned to the executor's by `nros-tests`'
 `ftti_detection_bounds` (`trigger-test`, in `check required-features-tests`).
-W3b and W3c: not started.
+W3b status (Rust roads): landed in this change. The observer is
+`nros-node`'s `check_hazard` over a baked `HazardSpec` table
+(`Executor::set_hazard_table`), run on every monitor tick after the rows. It
+adds no detector: a guard member is an age row (faulted while its
+`silence-runtime` lease is reported) or a rate row (faulted while its last
+window was short), so detection and recovery follow the rows by construction.
+`hazard-reaction` fires when the `safe_state.emits` publisher's counter moves
+after detection, which is why `monitor_rows` now gives that publisher a
+count-only row. State lives in a `static HazardCell` per hazard, so the
+`Executor` value grows by one slice (the issue-0961 byte budget holds).
+A hazard lowers onto an executor's tables only when they hold EVERY monitor
+its guard topics have anywhere in the model, so a multi-tier or multi-board
+image never observes one hazard twice. Both Rust roads bake it: the CLI's
+`system_monitors.rs` (`render_monitor_rs_full`) and `nros::main!`
+(`install_contract_hazards` after `install_contract_monitors`). Rules
+`hazard-detected` / `hazard-reaction` / `hazard-recovered` are appended to
+`RULE_IDS` (codes 12-14), `nros-diagnostics` and the SWD decoder. Tests:
+`nros-node` `hazard_tests` (4, one compiling the renderer's own output),
+`nros-orchestration-ir` `hazard_row_tests` (4), `nros-macros`
+`a_hazard_the_table_observes_is_baked_and_installed`.
 
-Claim: phase-462-W3. Depends on: phase-462-W1, phase-462-W2, phase-459-W2, phase-495-W2. Owns: hazard consts in packages/core/nros-diagnostics/src/lib.rs; a hazard-row fn in packages/cli/nros-cli-core/src/orchestration/model_ingest.rs; the hazard table region in packages/cli/nros-cli-core/src/codegen/entry/emit_cpp.rs and emit_rust.rs; the Fault hook target in packages/core/nros-node/src/executor/sched_context.rs; packages/core/nros-orchestration-ir/src/ftti_budget.rs (new); packages/testing/nros-tests/tests/hazard_rows_and_ftti.rs (new). Gate: cargo test -p nros-orchestration-ir ftti_budget (W3a); cargo test -p nros-tests --test hazard_rows_and_ftti (W3b/W3c). Status: W3a landed; W3b, W3c not started.
+W3b (C/C++ road) and W3c: not started. The C/C++ road needs the hazard table in
+`nros-entry-lower`'s `MonitorTable`, the two `monitor_install.jinja` packs and an
+`nros-cpp` install export; the island is C++, so this is the unit that reaches
+it.
+
+Claim: phase-462-W3. Depends on: phase-462-W1, phase-462-W2, phase-459-W2, phase-495-W2. Owns: hazard consts in packages/core/nros-diagnostics/src/lib.rs; a hazard-row fn in packages/cli/nros-cli-core/src/orchestration/model_ingest.rs; the hazard table region in packages/cli/nros-cli-core/src/codegen/entry/emit_cpp.rs and emit_rust.rs; the Fault hook target in packages/core/nros-node/src/executor/sched_context.rs; packages/core/nros-orchestration-ir/src/ftti_budget.rs (new); packages/testing/nros-tests/tests/hazard_rows_and_ftti.rs (new). Gate: cargo test -p nros-orchestration-ir ftti_budget (W3a); cargo test -p nros-tests --test hazard_rows_and_ftti (W3b/W3c). Status: W3a landed; W3b's Rust roads landed; W3b's C/C++ road and W3c not started.
 
 ### W4 [cli] -- `modes` as tier-table variants
 

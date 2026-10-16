@@ -1688,5 +1688,40 @@
   "c:get_default_allocator": {
     "verdict": "divergence",
     "why": "rcl's `rcl_get_default_allocator()` (a macro over `rcutils_get_default_allocator`, which the extractor cannot see). Ours returns an allocator whose functions allocate nothing: every object lives in caller storage or the executor's carved backing (RFC-0105 D10). Platform constraint: no allocator. Inits that take one (`rclc_support_init`, `rclc_executor_init`, `rcl_clock_init`) accept NULL or this one and refuse any other, so a caller-supplied allocator is never silently ignored. phase-492 W1.b."
+  },
+  "rust:HazardSpec": {
+    "verdict": "extension",
+    "why": "phase-462 W3b -- the on-target hazard observer (`contracts.hazards`): one contracted hazard lowered by the bake: its key, `ftti_ms`, the reacting path's `settle_ms`, its guards and the rate row of its `safe_state` publisher. rclrs has no on-target contract monitor.",
+    "bucket": "ours-only"
+  },
+  "rust:HazardCell": {
+    "verdict": "extension",
+    "why": "phase-462 W3b -- the on-target hazard observer (`contracts.hazards`): one hazard's observer state, baked as a `static` beside its spec so the observer adds nothing per hazard to the `Executor` value (issue 0961). See `rust:HazardSpec`.",
+    "bucket": "ours-only"
+  },
+  "rust:HazardCell::new": {
+    "verdict": "extension",
+    "why": "phase-462 W3b -- the on-target hazard observer (`contracts.hazards`): a cleared cell, for a `static`. See `rust:HazardCell`.",
+    "bucket": "ours-only"
+  },
+  "rust:GuardSpec": {
+    "verdict": "extension",
+    "why": "phase-462 W3b -- the on-target hazard observer (`contracts.hazards`): one fault a hazard covers: a topic, or a redundant set (`all_of`) that faults only when every member has. See `rust:HazardSpec`.",
+    "bucket": "ours-only"
+  },
+  "rust:GuardRef": {
+    "verdict": "extension",
+    "why": "phase-462 W3b -- the on-target hazard observer (`contracts.hazards`): one guard member: the age or rate row whose verdict state says that topic has faulted. See `rust:GuardSpec`.",
+    "bucket": "ours-only"
+  },
+  "rust:NO_SINK": {
+    "verdict": "extension",
+    "why": "phase-462 W3b -- the on-target hazard observer (`contracts.hazards`): a hazard's sink when its reaction states no `safe_state` publisher this image monitors (detection and recovery only). See `rust:HazardSpec`.",
+    "bucket": "ours-only"
+  },
+  "rust:install_contract_hazards": {
+    "verdict": "extension",
+    "why": "phase-462 W3b -- the on-target hazard observer (`contracts.hazards`): the Rust entry's install of the hazard table, after `install_contract_monitors` on the same executor handle. No rclrs counterpart. See `rust:install_contract_monitors`.",
+    "bucket": "ours-only"
   }
 }
