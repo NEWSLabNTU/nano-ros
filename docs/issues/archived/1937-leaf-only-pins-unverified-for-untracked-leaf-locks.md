@@ -1,7 +1,7 @@
 ---
 id: 1937
 title: "Nothing holds an untracked leaf lock to the pin set: 13 of 165 fixture leaves resolve off it, and the keep list is taken on trust"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [build, ci, examples]
@@ -98,3 +98,70 @@ All of it goes through one helper, never a per-site spelling. There are 14
 Order matters. Step 2 on today's tree would turn tier 1 red on 13 leaves, so
 steps 1 and 3 go first, and the remaining drift is pinned with `nros update`
 before step 2 is made fatal.
+
+## Resolution
+
+Steps 1 to 4 landed together. There was no red tier-1 run in between, because
+the pins and the keep list were corrected in the same change.
+
+1. **Existing locks are realigned before the build.** `nros ws seed-lock`
+   now runs the drift check's realignment (`drift::enforce_cargo_root`) on a
+   lock that already exists, in a checkout, just as `nros build` does. What it
+   cannot move is printed and left for the post-build check. Measured: the
+   runner's stale `linux/rust/action-client-async` lock went from 7 drifts to 0
+   (`realigned 7 crate(s)`).
+2. **The build checks the locks after cargo resolves them.** Each call to
+   `nros_seed_leaf_lock` appends its root to `$NROS_LEAF_LOCK_LEDGER`. The
+   variable is set (and the file truncated) by `build-test-fixtures-leaves`,
+   whose per-platform builds all run as child processes. Then
+   `build-test-fixtures` runs the new `nros ws check-lock --ledger` once,
+   before it writes the fixture stamp, so drift fails the fixture build.
+3. **The Zephyr lane seeds.** `zephyr-fixture-run-one.sh` calls
+   `nros_seed_leaf_lock` on a Rust leaf before `west build`. A retargeted row
+   is skipped, because it goes through `nros build`, which checks its own
+   roots. A fresh resolve of `zephyr/rust/talker`, done with the store's
+   `modules/lang/rust` crates patched in, showed exactly the 9 unpinned crates
+   the runner measured. They were pinned with `nros update --crate bindgen
+   --precise 0.72.1` from that leaf, at the versions it resolved, and are named
+   in `locks/leaf-only-pins.toml`.
+4. **The keep list is checked.** On `lane=all`, the build calls `check-lock`
+   with `--complete`, which also fails on a keep entry that none of the
+   checked leaves resolves.
+
+Working the keep list against fresh resolves corrected it in two places:
+
+- `include_dir` and `include_dir_macros`: no Cargo manifest in the tree names
+  them, and none of the 165 measured locks resolves them. Retired.
+- `core_detect`, `multiversion_no_op` and `simdutf8` were kept for "encoding_rs
+  in the embedded Rust leaves". They are dependencies of `encoding_rs` 0.8.42,
+  which is unpinned. The pin is 0.8.35, which needs none of them. The leaves
+  that resolved them were exactly the drifted ones (`cortex-m-macros` in the
+  FreeRTOS talker was the same stale artifact). Retired.
+
+Measured on four fresh leaves: `linux/rust/action-client-async`,
+`linux/rust/talker`, `zephyr/rust/talker` and `mps2-an385-freertos/rust/talker`.
+`check-lock --complete` reports 0 drifts and 0 unused keep entries.
+`check-cargo-registry-pins` reports 501 pins, one per range, and no tracked
+root lock moved.
+
+**In a real fixture build.** `just linux build-fixture-rust` was run with the
+ledger set, then `check-lock --ledger` was run on the result. It built 51 leaves
+and wrote 51 ledger entries, and `check-lock` reported 0 drifts. It also showed
+that step 1 matters more than the persistent-tree case suggested. The build's
+codegen step resolves each leaf's lock BEFORE `nros_seed_leaf_lock` runs, so
+on main the seed found a lock already present and did nothing, even in a fresh
+checkout. 20 of the 51 Linux leaves came in 7 to 23 crates off the pins, and
+`seed-lock` now realigns them before cargo builds. The full
+`build-test-fixtures` recipe was not run here: its preflight requires 4
+`[source.*]` trees this host's store lacks, including px4-autopilot.
+
+**What this does not cover:**
+
+- `check-lock` reads a lock as it stands. A leaf whose cargo never resolved
+  still holds the seeded copy of the whole pin set, and that copy satisfies
+  `--complete` trivially. A failed build stops the fixture build before the
+  check, so this cannot happen there, but it can happen to a hand-run
+  `check-lock`.
+- The PX4, NuttX and ThreadX leaves were not resolved here. Their runner drift
+  was off-pin only, which is what step 1 realigns, and the next tier-1
+  `lane=all` build is the first full measurement.

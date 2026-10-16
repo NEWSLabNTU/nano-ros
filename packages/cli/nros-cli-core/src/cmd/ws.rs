@@ -119,9 +119,20 @@ pub enum Sub {
     ///
     /// For an invoker that runs cargo in a leaf itself (the fixture builder),
     /// so its first resolve starts from the pins exactly as `nros build`'s
-    /// does. An existing lock is never touched. Prints what it did.
+    /// does. An existing lock in a checkout is moved back onto the pins, as
+    /// `nros build` moves it (issue 1937): a persistent tree otherwise never
+    /// sees a pin move. Prints what it did.
     #[command(name = "seed-lock")]
     SeedLock(SeedLockArgs),
+
+    /// issue 1937 — hold the locks a plain `cargo` resolved to the pin set,
+    /// AFTER the build: the check `nros build` makes on its own roots.
+    ///
+    /// Every registry entry must be pinned at its version. With `--complete`,
+    /// every `locks/leaf-only-pins.toml` entry must also be resolved by one of
+    /// the roots, which is only a fair question when they are every leaf.
+    #[command(name = "check-lock")]
+    CheckLock(CheckLockArgs),
 
     /// phase-445 W3 (RFC-0098 D3/D5) — print a single-package leaf's
     /// deployment (board, RMW, domain, network identity, and the C/C++ deploy
@@ -560,7 +571,10 @@ fn run_seed_lock(a: SeedLockArgs) -> Result<()> {
     }
     let root = crate::orchestration::nano_ros_root::resolve(a.nano_ros_path, &a.dir);
     match seed(&a.dir, root.as_deref())? {
-        Seed::Present => println!("present {}", a.dir.join("Cargo.lock").display()),
+        Seed::Present => {
+            println!("present {}", a.dir.join("Cargo.lock").display());
+            realign_present(&a.dir, root.as_deref())?;
+        }
         Seed::Seeded { pins } => println!(
             "seeded {} from {}",
             a.dir.join("Cargo.lock").display(),
@@ -569,6 +583,127 @@ fn run_seed_lock(a: SeedLockArgs) -> Result<()> {
         Seed::NoPinSet => println!("no-pin-set {}", a.dir.display()),
     }
     Ok(())
+}
+
+/// An existing lock in a checkout, moved onto the pins. What cannot be moved
+/// (a crate in no pinned range) is left for the build to resolve and for
+/// `ws check-lock` to report afterwards, so it is said here and never fatal.
+fn realign_present(dir: &Path, root: Option<&Path>) -> Result<()> {
+    use crate::orchestration::{drift, nano_ros_root, registry_pins::pin_file};
+    let Some(root) = root.filter(|r| nano_ros_root::is_checkout(r)) else {
+        return Ok(());
+    };
+    let Some(pins) = pin_file(root)? else {
+        return Ok(());
+    };
+    let label = dir.display().to_string();
+    let left = drift::enforce_cargo_root(dir, &label, &pins, true)?;
+    if !left.is_empty() {
+        eprintln!(
+            "seed-lock: {} entr(ies) of {} stay off the pin set until it holds them:",
+            left.len(),
+            dir.join("Cargo.lock").display()
+        );
+        for d in &left {
+            eprintln!("  {d}");
+        }
+    }
+    Ok(())
+}
+
+#[derive(Debug, ClapArgs)]
+pub struct CheckLockArgs {
+    /// Cargo roots whose `Cargo.lock` to check.
+    pub dirs: Vec<PathBuf>,
+    /// A file naming one cargo root per line (the fixture build's ledger).
+    /// Repeats are checked once.
+    #[arg(long)]
+    pub ledger: Option<PathBuf>,
+    /// The roots are EVERY leaf, so a keep entry none of them resolves is
+    /// stale and fails too.
+    #[arg(long)]
+    pub complete: bool,
+    /// The nano-ros root whose index names the pin set.
+    #[arg(long)]
+    pub nano_ros_path: Option<PathBuf>,
+}
+
+fn run_check_lock(a: CheckLockArgs) -> Result<()> {
+    use crate::orchestration::{
+        drift,
+        registry_pins::{LEAF_ONLY_PINS, compat_range, parse_keep, parse_registry, pin_file},
+    };
+    let mut dirs: std::collections::BTreeSet<PathBuf> = a.dirs.into_iter().collect();
+    if let Some(ledger) = &a.ledger {
+        let text = std::fs::read_to_string(ledger)
+            .wrap_err_with(|| format!("read {}", ledger.display()))?;
+        dirs.extend(
+            text.lines()
+                .map(str::trim)
+                .filter(|l| !l.is_empty())
+                .map(PathBuf::from),
+        );
+    }
+    let cwd = std::env::current_dir()?;
+    let Some(root) = crate::orchestration::nano_ros_root::resolve(a.nano_ros_path, &cwd) else {
+        eyre::bail!("check-lock: no nano-ros root to read a pin set from");
+    };
+    let Some(pins) = pin_file(&root)? else {
+        eyre::bail!("check-lock: {} names no registry pin set", root.display());
+    };
+    let mut drifts = Vec::new();
+    let mut used = std::collections::BTreeSet::new();
+    let mut checked = 0usize;
+    for dir in &dirs {
+        let lock = dir.join("Cargo.lock");
+        let Ok(text) = std::fs::read_to_string(&lock) else {
+            // A workspace member, or a root whose build never resolved.
+            continue;
+        };
+        checked += 1;
+        for p in parse_registry(&text)? {
+            used.insert((p.name.clone(), compat_range(&p.version)));
+        }
+        let label = dir.strip_prefix(&root).unwrap_or(dir).display().to_string();
+        drifts.extend(drift::check_cargo_root(dir, &label, &pins)?);
+    }
+    let mut stale = Vec::new();
+    if a.complete {
+        let keep_path = root.join(LEAF_ONLY_PINS);
+        if let Ok(t) = std::fs::read_to_string(&keep_path) {
+            stale = parse_keep(&t)?
+                .into_iter()
+                .filter(|k| !used.contains(k))
+                .collect();
+        }
+    }
+    println!(
+        "check-lock: {checked} lock(s), {} drift(s){}",
+        drifts.len(),
+        if a.complete {
+            format!(", {} unused keep entr(ies)", stale.len())
+        } else {
+            String::new()
+        }
+    );
+    if drifts.is_empty() && stale.is_empty() {
+        return Ok(());
+    }
+    let mut msg = String::new();
+    if !drifts.is_empty() {
+        msg.push_str(&drift::report(&drifts));
+    }
+    if !stale.is_empty() {
+        msg.push_str(&format!(
+            "\n{} keeps a range none of these {checked} leaves resolves; retire it with \
+             `nros update --pins --prune` after deleting the entry:\n",
+            LEAF_ONLY_PINS
+        ));
+        for (n, r) in &stale {
+            msg.push_str(&format!("  {n} {r}\n"));
+        }
+    }
+    eyre::bail!("{msg}")
 }
 
 #[derive(Debug, ClapArgs)]
@@ -589,6 +724,7 @@ pub fn run(args: Args) -> Result<()> {
         Sub::CentralPatch(a) => run_central_patch(a),
         Sub::BoardFacts(a) => crate::cmd::board_facts::run(a),
         Sub::SeedLock(a) => run_seed_lock(a),
+        Sub::CheckLock(a) => run_check_lock(a),
         Sub::LeafSystem(a) => crate::cmd::leaf_system::run(a),
         Sub::QemuNic(a) => crate::cmd::leaf_system::qemu_nic(a),
         Sub::EntityInventory(a) => crate::cmd::entity_inventory::run(a),

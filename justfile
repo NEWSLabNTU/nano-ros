@@ -2025,6 +2025,18 @@ build-test-fixtures lane="all": _require-owned-provisioned-roots check::fast _re
     if [ "$want_host_proofs" = 1 ]; then
         bash scripts/build/link-determinism-fixture.sh
     fi
+    # Issue 1937 — the leaves were built by plain `cargo`, which no drift check
+    # reaches, so a crate no pin holds shipped green (issue 1924). Hold every
+    # seeded leaf's lock to the pin set, as `nros build` holds its own roots.
+    # Only a lane=all build saw every leaf, so only it may call a keep entry
+    # unused.
+    source scripts/build/cargo.sh
+    leaf_ledger="$(pwd)/build/nros/leaf-locks.ledger"
+    if [ -s "$leaf_ledger" ]; then
+        complete=()
+        if [ "$lane" = "all" ]; then complete=(--complete); fi
+        "$(nros_cli_bin)" ws check-lock --ledger "$leaf_ledger" "${complete[@]}"
+    fi
     # Drop a stamp so `_require-fixtures` (the test-all/test preflight) can
     # fast-fail with a build hint instead of letting the suite run and
     # surface dozens of "Binary not found" failures. The body only runs
@@ -2108,6 +2120,11 @@ build-test-fixtures-leaves lane="all": _require-owned-provisioned-roots _require
     # Both derive from `lane-coords`, so they cannot select different sets.
     source scripts/build/fixture-lane.sh
     lane="$(nros_lane_arg "{{lane}}")"
+    # issue 1937 — every leaf `nros_seed_leaf_lock` seeds below names itself
+    # here; `build-test-fixtures` then holds what cargo resolved to the pin set.
+    export NROS_LEAF_LOCK_LEDGER="$(pwd)/build/nros/leaf-locks.ledger"
+    mkdir -p "$(dirname "$NROS_LEAF_LOCK_LEDGER")"
+    : > "$NROS_LEAF_LOCK_LEDGER"
     lane_modules=""
     if [ "$lane" != "all" ]; then
         lane_modules="$(nros_lane_modules "$lane")"
