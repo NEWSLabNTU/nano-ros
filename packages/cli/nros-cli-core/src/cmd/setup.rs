@@ -211,6 +211,155 @@ pub struct BoardSetupArgs {
     pub dry_run: bool,
 }
 
+/// Which ONE arm of `nros setup` an invocation runs (issue 1935).
+///
+/// `run` used to decide this implicitly, by the order of its early `return`s:
+/// whichever selector's arm came first won and every other selector on the
+/// line was dropped without a word. `--tool X --source Y` was the reported
+/// case (the tool installed, the sources never did, exit 0); the same shape
+/// dropped `<board>` behind `--tool`/`--source`, `--source` behind `--check`,
+/// and anything at all behind `--list`/`--licenses`/`--workspace`/`--system`/
+/// `--build-sources`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Route {
+    List,
+    Licenses,
+    Workspace,
+    System,
+    BuildSources,
+    CheckTools,
+    CheckAll,
+    /// `--tool` and/or `--source` — both halves run.
+    Install,
+    Board,
+}
+
+impl Route {
+    /// What the arm does, for the refusal text.
+    fn describe(self) -> &'static str {
+        match self {
+            Route::List => "`--list` (print the index)",
+            Route::Licenses => "`--licenses` (print the license-gated packages)",
+            Route::Workspace => "`--workspace` (plan from a workspace's package.xml files)",
+            Route::System => "`--system` (the [system.*] OS-package closure)",
+            Route::BuildSources => "`--build-sources` (the build-stage source union)",
+            Route::CheckTools => "`--tool <name> --check` (is each named tool at its pin?)",
+            Route::CheckAll => "`--check` (the whole-index doctor walk)",
+            Route::Install => "`--tool`/`--source` (install the named packages)",
+            Route::Board => "`<board>` (the board's package set)",
+        }
+    }
+}
+
+/// Decide the [`Route`] from EVERY selector given, and refuse any selector the
+/// chosen arm would not consume (issue 1935). Pure over `args`, so it runs
+/// before the index is read and the whole selector table is unit-testable.
+///
+/// Precedence is the historical one — the arms are unchanged; what is new is
+/// that a selector they would have ignored is an error naming it, never an
+/// exit 0 over work that did not happen.
+fn route(args: &Args) -> Result<Route> {
+    // (flag as the user typed it, given?)
+    let given: [(&str, bool); 12] = [
+        ("<board>", args.board.is_some()),
+        ("--list", args.list),
+        ("--licenses", args.licenses),
+        ("--workspace", args.workspace_scan.is_some()),
+        ("--system", args.system),
+        ("--build-sources", args.build_sources),
+        ("--tool", !args.tools.is_empty()),
+        ("--source", !args.sources.is_empty()),
+        ("--check", args.check),
+        ("--rmw", args.rmw.is_some()),
+        ("--prefix", args.prefix.is_some()),
+        ("--role", !args.roles.is_empty()),
+    ];
+    let route = if args.list {
+        Route::List
+    } else if args.licenses {
+        Route::Licenses
+    } else if args.workspace_scan.is_some() {
+        Route::Workspace
+    } else if args.system {
+        Route::System
+    } else if args.build_sources {
+        Route::BuildSources
+    } else if args.check && !args.tools.is_empty() {
+        Route::CheckTools
+    } else if args.check {
+        Route::CheckAll
+    } else if !args.tools.is_empty() || !args.sources.is_empty() {
+        Route::Install
+    } else {
+        Route::Board
+    };
+    // What each arm reads. `--sudo` is validated in `run` (issue 1038's
+    // message names its two targets); `--dry-run`/`--full`/`--shallow`/`-j`
+    // shape HOW an arm runs and never name work of their own.
+    let consumes: &[&str] = match route {
+        Route::List => &["--list"],
+        Route::Licenses => &["--licenses"],
+        Route::Workspace => &["--workspace"],
+        Route::System => &["--system", "--check", "--role"],
+        Route::BuildSources => &["--build-sources", "--check"],
+        Route::CheckTools => &["--check", "--tool"],
+        // The board is RESOLVED there (phase-422 W7), not dropped.
+        Route::CheckAll => &["--check", "<board>"],
+        // `--prefix` places a TOOL; with no `--tool` it has nothing to place.
+        Route::Install if args.tools.is_empty() => &["--source"],
+        Route::Install => &["--tool", "--source", "--prefix"],
+        Route::Board => &["<board>", "--rmw"],
+    };
+    let dropped: Vec<String> = given
+        .iter()
+        .filter(|(flag, on)| *on && !consumes.contains(flag))
+        .map(|(flag, _)| match (*flag, args.board.as_deref()) {
+            ("<board>", Some(b)) => format!("<board> '{b}'"),
+            (f, _) => f.to_string(),
+        })
+        .collect();
+    if !dropped.is_empty() {
+        bail!(
+            "nros setup: {} cannot be combined with {} — that arm does not use {}, and \
+             ignoring it would exit 0 over work that never happened (issue 1935). \
+             Run them as separate `nros setup` commands.",
+            dropped.join(", "),
+            route.describe(),
+            if dropped.len() == 1 { "it" } else { "them" },
+        );
+    }
+    Ok(route)
+}
+
+/// The [`Route::Install`] arm: BOTH halves of `--tool`/`--source`, tools
+/// first (a source step may need a tool the same line asked for). The two
+/// actions are parameters so the "both run" property is unit-testable without
+/// a download (issue 1935).
+fn run_install(
+    args: &Args,
+    tools: impl FnOnce(&[&str]) -> Result<()>,
+    sources: impl FnOnce(&[String]) -> Result<()>,
+) -> Result<()> {
+    if !args.tools.is_empty() {
+        // `--prefix` names ONE place; two tools unpacked into it would
+        // overwrite each other's `bin/` and provenance marker.
+        if args.prefix.is_some() && args.tools.len() > 1 {
+            bail!(
+                "nros setup: `--prefix` places ONE tool outside the store; got {} `--tool`s \
+                 ({}). Give each its own invocation.",
+                args.tools.len(),
+                args.tools.join(", ")
+            );
+        }
+        let names: Vec<&str> = args.tools.iter().map(String::as_str).collect();
+        tools(&names)?;
+    }
+    if !args.sources.is_empty() {
+        sources(&args.sources)?;
+    }
+    Ok(())
+}
+
 /// Per-invocation shallow override from `--full` / `--shallow`: `None` = use the
 /// per-source index default, `Some(false)` = full history, `Some(true)` = force
 /// shallow.
@@ -231,19 +380,25 @@ pub fn run(args: Args) -> Result<()> {
         };
     }
 
+    // Issue 1935 — decided ONCE, from every selector on the line, before
+    // anything is read or fetched. Each arm below is keyed on this answer, so
+    // a selector the chosen arm does not consume is refused here rather than
+    // dropped by whichever `return` happens to come first.
+    let route = route(&args)?;
+
     let index_path = resolve_index(&args.index)?;
     let index = SdkIndex::load(&index_path)?;
     let host = host_key();
 
-    if args.list {
+    if route == Route::List {
         print_list(&index);
         return Ok(());
     }
-    if args.licenses {
+    if route == Route::Licenses {
         print_licenses(&index);
         return Ok(());
     }
-    if let Some(ws) = args.workspace_scan.clone() {
+    if let (Route::Workspace, Some(ws)) = (route, args.workspace_scan.clone()) {
         let root = index_path.parent().map(std::path::Path::to_path_buf);
         return run_workspace_scan(&index, &ws, root.as_deref());
     }
@@ -257,7 +412,7 @@ pub fn run(args: Args) -> Result<()> {
             "`--sudo` executes an install and needs to know WHAT to install.\n               --system --sudo   the `[system.*]` OS-package closure\n               --tool <name> --sudo   that tool's own `[tool.<name>] system = [..]` build deps"
         );
     }
-    if args.system {
+    if route == Route::System {
         // The index lives AT the repo root, so its parent is the base a
         // `path` probe resolves against (phase-398 W2). Derived rather than
         // re-discovered, so the probe and the provisioner cannot disagree
@@ -267,7 +422,7 @@ pub fn run(args: Args) -> Result<()> {
     }
     // #0390 — must precede the generic `--check` below: `--build-sources --check`
     // is its own preflight, not the all-deps doctor pass.
-    if args.build_sources {
+    if route == Route::BuildSources {
         return run_build_sources(
             &index,
             &index_path,
@@ -283,7 +438,7 @@ pub fn run(args: Args) -> Result<()> {
     //
     // Repeatable since phase-447 E1: each named tool is asked, every answer is
     // printed, and the run fails if any one is off its pin.
-    if args.check && !args.tools.is_empty() {
+    if route == Route::CheckTools {
         if let [one] = args.tools.as_slice() {
             return run_check_tool(&index, one);
         }
@@ -309,7 +464,7 @@ pub fn run(args: Args) -> Result<()> {
         }
         return Ok(());
     }
-    if args.check {
+    if route == Route::CheckAll {
         // phase-422 W7 — a BOARD given here must still resolve, even though the
         // walk below is class-wide and the board does not narrow it.
         //
@@ -333,35 +488,31 @@ pub fn run(args: Args) -> Result<()> {
         return run_check_all(&index, &index_workspace(&index_path));
     }
 
-    if !args.tools.is_empty() {
-        // `--prefix` names ONE place; two tools unpacked into it would overwrite
-        // each other's `bin/` and provenance marker.
-        if args.prefix.is_some() && args.tools.len() > 1 {
-            bail!(
-                "nros setup: `--prefix` places ONE tool outside the store; got {} `--tool`s \
-                 ({}). Give each its own invocation.",
-                args.tools.len(),
-                args.tools.join(", ")
-            );
-        }
-        let names: Vec<&str> = args.tools.iter().map(String::as_str).collect();
-        return install_tools(
-            &index,
-            &names,
-            args.prefix.as_deref(),
-            args.dry_run,
-            args.sudo,
-            Jobs::from_env(args.jobs)?,
-        );
-    }
-
-    if !args.sources.is_empty() {
-        return provision_named_sources(
-            &index,
-            &index_path,
-            &args.sources,
-            args.dry_run,
-            shallow_override(&args),
+    if route == Route::Install {
+        // Issue 1935 — `--tool` and `--source` are ONE request. This arm
+        // used to `return install_tools(..)`, so `--tool X --source Y` installed
+        // X, never looked at Y, and exited 0.
+        return run_install(
+            &args,
+            |names| {
+                install_tools(
+                    &index,
+                    names,
+                    args.prefix.as_deref(),
+                    args.dry_run,
+                    args.sudo,
+                    Jobs::from_env(args.jobs)?,
+                )
+            },
+            |sources| {
+                provision_named_sources(
+                    &index,
+                    &index_path,
+                    sources,
+                    args.dry_run,
+                    shallow_override(&args),
+                )
+            },
         );
     }
 
@@ -5414,6 +5565,156 @@ mod workspace_scan_tests {
         assert_eq!(one.args.tools, ["ninja"]);
         let none = Cli::try_parse_from(["nros", "--system"]).unwrap();
         assert!(none.args.tools.is_empty());
+    }
+
+    fn routed(argv: &[&str]) -> Result<Route> {
+        use clap::Parser;
+
+        #[derive(Parser)]
+        struct Cli {
+            #[command(flatten)]
+            args: Args,
+        }
+        let mut full = vec!["nros"];
+        full.extend_from_slice(argv);
+        route(&Cli::try_parse_from(full).expect("parses").args)
+    }
+
+    /// Issue 1935 — the reported case. `--tool X --source Y` is ONE install
+    /// that runs both halves; it used to return after the tools.
+    #[test]
+    fn tool_and_source_together_route_to_one_install_of_both() {
+        let argv = [
+            "--tool",
+            "arm-none-eabi-gcc",
+            "--source",
+            "freertos-kernel",
+            "--source",
+            "lwip",
+        ];
+        assert_eq!(routed(&argv).unwrap(), Route::Install);
+        assert_eq!(routed(&["--source", "lwip"]).unwrap(), Route::Install);
+        assert_eq!(
+            routed(&["--tool", "ninja", "--tool", "make"]).unwrap(),
+            Route::Install
+        );
+    }
+
+    /// Issue 1935 — the Install arm RUNS both halves, in order. Routing alone
+    /// is not the fix: the reported arm routed correctly and then returned
+    /// after the tools.
+    #[test]
+    fn the_install_arm_runs_the_tools_and_then_the_sources() {
+        use clap::Parser;
+
+        #[derive(Parser)]
+        struct Cli {
+            #[command(flatten)]
+            args: Args,
+        }
+        let cli = Cli::try_parse_from([
+            "nros",
+            "--tool",
+            "arm-none-eabi-gcc",
+            "--source",
+            "freertos-kernel",
+            "--source",
+            "lwip",
+        ])
+        .unwrap();
+        let log = std::cell::RefCell::new(Vec::<String>::new());
+        run_install(
+            &cli.args,
+            |t| {
+                log.borrow_mut().push(format!("tools {}", t.join(",")));
+                Ok(())
+            },
+            |s| {
+                log.borrow_mut().push(format!("sources {}", s.join(",")));
+                Ok(())
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            log.into_inner(),
+            ["tools arm-none-eabi-gcc", "sources freertos-kernel,lwip"]
+        );
+
+        // A failed tool install stops before the sources, and says so (rc != 0).
+        let ran_sources = std::cell::Cell::new(false);
+        let err = run_install(
+            &cli.args,
+            |_| bail!("download failed"),
+            |_| {
+                ran_sources.set(true);
+                Ok(())
+            },
+        );
+        assert!(err.is_err() && !ran_sources.get());
+    }
+
+    /// Issue 1935 — every combination the arms used to drop silently is
+    /// now refused, and the refusal names the flag that would have been lost.
+    #[test]
+    fn a_selector_its_arm_would_drop_is_refused_by_name() {
+        let cases: &[(&[&str], &str)] = &[
+            (&["linux", "--tool", "ninja"], "<board>"),
+            (&["linux", "--source", "lwip"], "<board>"),
+            (&["--check", "--source", "lwip"], "--source"),
+            (
+                &["--check", "--tool", "ninja", "--source", "lwip"],
+                "--source",
+            ),
+            (&["--list", "--tool", "ninja"], "--tool"),
+            (&["--licenses", "--source", "lwip"], "--source"),
+            (&["--workspace", ".", "--tool", "ninja"], "--tool"),
+            (&["--system", "--tool", "ninja"], "--tool"),
+            (&["--system", "linux"], "<board>"),
+            (&["--build-sources", "--source", "lwip"], "--source"),
+            (&["--tool", "ninja", "--rmw", "xrce"], "--rmw"),
+            (&["--check", "linux", "--rmw", "xrce"], "--rmw"),
+            (&["--source", "lwip", "--prefix", "/x"], "--prefix"),
+            (&["--tool", "ninja", "--role", "package"], "--role"),
+        ];
+        for (argv, flag) in cases {
+            let err = routed(argv).expect_err(&format!("{argv:?} must be refused"));
+            let msg = format!("{err:#}");
+            assert!(
+                msg.contains(&format!("nros setup: {flag}")) && msg.contains("cannot be combined"),
+                "{argv:?}: refusal does not name {flag}: {msg}"
+            );
+        }
+    }
+
+    /// The combinations that already worked keep working — the table refuses
+    /// only what an arm does not read.
+    #[test]
+    fn combinations_an_arm_consumes_still_route() {
+        let cases: &[(&[&str], Route)] = &[
+            (&["linux", "--rmw", "cyclonedds"], Route::Board),
+            (&["linux"], Route::Board),
+            (&[], Route::Board),
+            (&["--check", "linux"], Route::CheckAll),
+            (&["--check"], Route::CheckAll),
+            (
+                &["--check", "--tool", "ninja", "--tool", "make"],
+                Route::CheckTools,
+            ),
+            (&["--system", "--check", "--role", "package"], Route::System),
+            (&["--system", "--sudo"], Route::System),
+            (&["--build-sources", "--check"], Route::BuildSources),
+            (
+                &["--tool", "qemu", "--prefix", "build/qemu"],
+                Route::Install,
+            ),
+            (&["--tool", "qemu", "--sudo"], Route::Install),
+            (&["--list"], Route::List),
+            (&["--licenses"], Route::Licenses),
+            (&["--workspace"], Route::Workspace),
+        ];
+        for (argv, want) in cases {
+            assert_eq!(routed(argv).unwrap(), *want, "{argv:?}");
+        }
     }
 }
 
