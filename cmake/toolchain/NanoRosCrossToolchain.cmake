@@ -104,6 +104,34 @@
 # Promoting this to FATAL_ERROR is a one-constant change, and the evidence that
 # would justify it is specific: a measurement showing that every nano-ros cross
 # image — C-only included — feeds a generated C++ TU to this compiler.
+#
+# A C++ IMAGE BELOW THE FLOOR IS REFUSED (issue 1936) — the warning stays for C.
+#
+# Measured 2026-10-17, the FreeRTOS copy-out templates on /usr/bin
+# arm-none-eabi-g++ 10.3.1 (Ubuntu 22.04's `gcc-arm-none-eabi`):
+#
+#   rclcpp-compat-smoke      error: 'std::this_thread' has not been declared
+#   topic-state-monitor-port   (both in the ported program's own main loop)
+#   cpp-port-minimal-publisher builds
+#   all three on the pinned 13.2.1: build
+#
+# This one is the LIBRARY, not the frontend. GCC 10's newlib `<thread>` wraps
+# the whole of `std::this_thread` in `#if defined(_GLIBCXX_HAS_GTHREADS)`, and
+# a bare-metal newlib build has no gthreads; 13.2.1's `<thread>` declares
+# `sleep_for` in `<bits/this_thread_sleep.h>`, outside that guard (both headers
+# read). GCC 11 and 12 are NOT measured here; the floor stays the existing 11,
+# which already answers issue 1117's frontend defect. `std::this_thread::sleep_for` is the
+# spin-loop idiom of an ordinary ROS 2 `main`, which the rclcpp-compat surface
+# exists to compile unchanged, so there is no nano-ros header to fix: the
+# template is right and the compiler cannot provide it.
+#
+# The refusal is made where the image's language is KNOWN — `nano_ros_entry`,
+# once the entry resolves to `cpp` — because a toolchain file is read before
+# any target exists. This module only records the fact (`_NROS_CT_BELOW_FLOOR`,
+# a global property holding the refusal text) so the floor and its wording have
+# one home. Cost, stated: a C++ image that happens to avoid every below-floor
+# gap (cpp-port-minimal-publisher, above) is refused too; on GCC 10 it builds
+# by luck rather than by support.
 set(NROS_CROSS_GCC_FLOOR_MAJOR 11)
 
 # ---------------------------------------------------------------------------
@@ -376,6 +404,22 @@ function(nros_cross_toolchain_report)
     if(_ver MATCHES "^([0-9]+)")
         set(_major "${CMAKE_MATCH_1}")
         if(_major LESS NROS_CROSS_GCC_FLOOR_MAJOR)
+            # Issue 1936 — the C++ refusal, raised by `nano_ros_entry` when the
+            # image turns out to be C++. Worded HERE so the floor, the pin and
+            # the knob are named by the module that resolved them.
+            string(CONCAT _below_floor
+                "${_A_TOOL} ${_ver} (via ${_A_ORIGIN}) is below the C++ floor of "
+                "GCC ${NROS_CROSS_GCC_FLOOR_MAJOR}.\n"
+                "  Its newlib libstdc++ declares no `std::this_thread` (GCC 10 guards it on\n"
+                "  gthreads, which a bare-metal build lacks), so ordinary ROS 2 C++ — the\n"
+                "  rclcpp-compat surface — fails to compile with\n"
+                "      error: 'std::this_thread' has not been declared\n"
+                "  (issue 1936). Refused at configure instead of mid-build.\n"
+                "  Fix:  nros setup --tool ${_A_TOOL}      (installs the pinned ${_pin_text})\n"
+                "  Or:   -D${_A_OVERRIDE_VAR}=/path/to/bin/<prefix>   (any GCC >= "
+                "${NROS_CROSS_GCC_FLOOR_MAJOR}, also honoured as an env var)\n"
+                "  A C-only image is not refused (it gets the warning above).")
+            set_property(GLOBAL PROPERTY _NROS_CT_BELOW_FLOOR "${_below_floor}")
             # WARNING and not FATAL_ERROR — see the floor's own comment above.
             # The text quotes the error the user is ABOUT to get, because the
             # whole cost of issue 1117 was that the error, when it arrived, did

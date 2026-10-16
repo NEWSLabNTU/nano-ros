@@ -434,6 +434,16 @@ nros setup --source freertos-kernel   # one source package by name
 
 Each board's exact package set lives in the index; run
 `nros setup <board> --dry-run` to see precisely what a board pulls.
+
+> **A distro cross compiler is a fallback with a floor.** When the store
+> has no pinned `arm-none-eabi-gcc` (or `riscv-none-elf-gcc`), the CMake
+> configure uses one from `PATH` and says so. Below **GCC 11** a **C++**
+> image is refused at configure: GCC 10's newlib libstdc++ has no
+> `std::this_thread`, which ordinary ROS 2 C++ uses — Ubuntu 22.04's apt
+> `gcc-arm-none-eabi` is 10.3. Install the pin with
+> `nros setup --tool arm-none-eabi-gcc`, or point
+> `-DNROS_ARM_NONE_EABI_PREFIX=<dir>/bin/arm-none-eabi` at a GCC ≥ 11. A
+> C-only image is not refused; it gets a warning (issue 1936).
 See [Supported Boards](../reference/supported-boards.md) for the full
 board list and [`nros` CLI](../reference/cli.md) for every subcommand.
 
