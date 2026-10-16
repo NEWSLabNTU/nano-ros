@@ -33,8 +33,7 @@ status=0
 # as a non-zero exit that pipefail promotes. Without it this gate would die at
 # the assignment with no message of its own (issue 1249).
 design_dups="$(
-    find docs/design -maxdepth 1 -name '[0-9][0-9][0-9][0-9]-*.md' -print0 2>/dev/null |
-        xargs -0 -r -n1 basename |
+    find docs/design -maxdepth 1 -name '[0-9][0-9][0-9][0-9]-*.md' -printf '%f\n' 2>/dev/null |
         grep -oE '^[0-9]{4}' |
         sort | uniq -d || true
 )"
@@ -55,8 +54,7 @@ fi
 # --- 1. duplicate ids ------------------------------------------------------
 # `|| true`, same reason as above (issue 1249).
 dups="$(
-    find "$issues_dir" -maxdepth 2 -name '[0-9][0-9][0-9][0-9]-*.md' -print0 |
-        xargs -0 -r -n1 basename |
+    find "$issues_dir" -maxdepth 2 -name '[0-9][0-9][0-9][0-9]-*.md' -printf '%f\n' |
         grep -oE '^[0-9]{4}' |
         sort | uniq -d || true
 )"
@@ -74,17 +72,30 @@ if [ -n "$dups" ]; then
 fi
 
 # --- 2. frontmatter id matches the filename --------------------------------
-while IFS= read -r -d '' f; do
-    base="$(basename "$f")"
-    fname_id="$(echo "$base" | grep -oE '^[0-9]{4}')"
-    front_id="$(grep -m1 '^id:' "$f" 2>/dev/null | awk '{print $2}' || true)"
+# ONE awk over every file prints `<path><TAB><first ^id: line's 2nd field>`,
+# the same answer `grep -m1 '^id:' | awk '{print $2}'` gave per file. That
+# per-file pipeline (plus `basename` and an `echo | grep` for the filename id)
+# was ~5 processes per issue, ~10 000 forks over 1 900 issues: 10-17 s solo,
+# most of it system time, paid in `check-issue-ids` AND again inside the
+# `pre-push` run `check-hook-repo-side-effects` makes. Now 0.1 s (phase-489
+# W5). A file with no `id:` line prints nothing, which the old
+# empty-`front_id` `continue` skipped too.
+# Read whole before the loop, so a loop that dies (a non-numeric `id:` is an
+# arithmetic error, as before) does not leave awk writing into a closed pipe.
+mapfile -t id_rows < <(find "$issues_dir" -maxdepth 2 -name '[0-9][0-9][0-9][0-9]-*.md' \
+    -exec awk 'FNR == 1 { seen = 0 } !seen && /^id:/ { print FILENAME "\t" $2; seen = 1 }' {} +)
+for row in ${id_rows[@]+"${id_rows[@]}"}; do
+    f="${row%%$'\t'*}"
+    front_id="${row#*$'\t'}"
+    base="${f##*/}"
+    fname_id="${base:0:4}"  # the find glob makes these four characters digits
     [ -z "$front_id" ] && continue
     # Compare numerically so `id: 48` and `0048-` agree.
     if [ "$((10#$fname_id))" -ne "$((10#$front_id))" ] 2>/dev/null; then
         status=1
         echo "[FAIL] $base: filename id $fname_id != frontmatter id $front_id" >&2
     fi
-done < <(find "$issues_dir" -maxdepth 2 -name '[0-9][0-9][0-9][0-9]-*.md' -print0)
+done
 
 if [ "$status" -eq 0 ]; then
     count="$(find "$issues_dir" -maxdepth 2 -name '[0-9][0-9][0-9][0-9]-*.md' | wc -l)"

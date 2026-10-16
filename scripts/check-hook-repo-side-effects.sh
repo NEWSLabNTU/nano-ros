@@ -157,9 +157,9 @@ ok()  { echo "  ok    $1"; }
 # on all 106 would be a gate nobody could keep green.
 #
 # needs_clear: 0 = builds a throwaway repo, 1 = does not.
+NEEDS_CLEAR_ERE='(^|[^-[:alnum:]])git[[:space:]]+init([[:space:]]|$)|git.*['"'"'"]init['"'"'"]'
 needs_clear() {
-    nros_grep_q -E -- \
-        '(^|[^-[:alnum:]])git[[:space:]]+init([[:space:]]|$)|git.*['"'"'"]init['"'"'"]'
+    nros_grep_q -E -- "$NEEDS_CLEAR_ERE"
 }
 # has_clear: 0 = calls the shared clearing helper.
 has_clear() { nros_grep_q -- "$CLEAR_FN"; }
@@ -181,13 +181,46 @@ how_to_clear() {
     esac
 }
 
+# files_matching <ERE> <file>... — the files whose text matches, in argument
+# order, from ONE `grep -l` (phase-489 W5). Asking per file cost a fork per
+# file — 746 scripts here and 345 CLI sources below, four or five greps each
+# for the latter — which was most of this gate's static half. A grep error
+# (rc >= 2) is fatal, as it is in `nros_grep_q`: no conclusion from a grep that
+# did not run (issue 0726). No files => no output, never a grep on stdin.
+files_matching() {
+    local pat="$1" rc=0 out
+    shift
+    [ "$#" -gt 0 ] || return 0
+    out="$(grep -lE -- "$pat" "$@")" || rc=$?
+    if [ "$rc" -ge 2 ]; then
+        echo "FATAL: grep failed (rc=$rc) searching for: $pat" >&2
+        echo "       This is a TOOL failure, not a finding (issue 0726)." >&2
+        exit 2
+    fi
+    [ -z "$out" ] || printf '%s\n' "$out"
+}
+
+# The candidates `needs_clear` would accept, from one grep over the listed
+# scripts that exist (the per-file loop skipped a missing one the same way).
+scan_existing() {
+    local f
+    local -a have=()
+    while IFS= read -r f; do
+        [ -f "$f" ] && have+=("$f")
+    done
+    files_matching "$1" ${have[@]+"${have[@]}"}
+}
+
 echo "check-hook-repo-side-effects: every throwaway-repo builder clears first"
+# Taken before the loop so a grep error stops the gate here (`|| exit`), as
+# `nros_grep_q` did, rather than inside a process substitution.
+candidates="$(git ls-files 'scripts/*.sh' 'scripts/**/*.sh' 'scripts/*.py' 'scripts/**/*.py' '.githooks/*' \
+    | scan_existing "$NEEDS_CLEAR_ERE")" || exit 2
 hazardous=()
 while IFS= read -r f; do
-    [ -f "$f" ] || continue
+    [ -n "$f" ] || continue
     [ "$f" = "$LIB" ] && continue
     [ "$f" = "$LIB_PY" ] && continue
-    needs_clear < "$f" || continue
     hazardous+=("$f")
     if has_clear < "$f"; then
         ok "$f clears the inherited git environment"
@@ -197,7 +230,7 @@ while IFS= read -r f; do
         repository instead of building a temp one (issue 0986). Add:
 $(how_to_clear "$f")"
     fi
-done < <(git ls-files 'scripts/*.sh' 'scripts/**/*.sh' 'scripts/*.py' 'scripts/**/*.py' '.githooks/*')
+done <<< "$candidates"
 
 if [ "${#hazardous[@]}" -eq 0 ]; then
     bad "no script matched \`git init\` at all — the enumeration is broken,
@@ -245,20 +278,25 @@ if [ -z "$(printf 'let o = Command::new("git").output();\n' | cli_git_offences)"
     bad "cli_git_offences failed its own negative control — the CLI sweep below proves nothing."
 fi
 echo "check-hook-repo-side-effects: every git the CLI spawns clears the inherited environment"
+# Only a file naming `"git"` or `git_program()` can hold an offence — every
+# shape `cli_git_offences` matches contains one of the two — and those files are
+# exactly what `cli_git_files` counts, so one grep picks the files to examine.
+cli_candidates="$(git ls-files 'packages/cli/*.rs' 'packages/cli/**/*.rs' ':!packages/cli/third-party' ':!packages/cli/testing_workspaces' \
+    | scan_existing '"git"|git_program\(\)')" || exit 2
 cli_git_files=0
 cli_git_bad=0
 while IFS= read -r f; do
-    [ -f "$f" ] || continue
+    [ -n "$f" ] || continue
     [ "$f" = "$CLI_GIT_HELPER" ] && continue
+    cli_git_files=$((cli_git_files + 1))
     hits="$(cli_git_offences < "$f")"
-    nros_grep_q -E '"git"|git_program\(\)' < "$f" && cli_git_files=$((cli_git_files + 1))
     [ -z "$hits" ] && continue
     cli_git_bad=$((cli_git_bad + 1))
     bad "$f spawns git without the shared helper (issue 1659):
 $(printf '%s\n' "$hits" | sed 's/^/            /')
         Spawn it as \`nros_git_command(\"git\")\` (from $CLI_GIT_HELPER), or route
         an argv runner through \`$CLEAR_FN\`."
-done < <(git ls-files 'packages/cli/*.rs' 'packages/cli/**/*.rs' ':!packages/cli/third-party' ':!packages/cli/testing_workspaces')
+done <<< "$cli_candidates"
 if [ "$cli_git_files" -eq 0 ]; then
     bad "no CLI Rust file names git at all — the CLI enumeration is broken."
 elif [ "$cli_git_bad" -eq 0 ]; then
@@ -451,6 +489,18 @@ self_test() {
         echo "  selftest: flagged \`git submodule update --init\` in prose" >&2; errs=1; }
     has_clear   < "$t/dirty.py" && { echo "  selftest: saw a clear that is not there" >&2; errs=1; }
     has_clear   < "$t/clean.py" || { echo "  selftest: missed the Python clearing call" >&2; errs=1; }
+    # The batch path the scan actually takes (phase-489 W5): the same answers,
+    # in argument order, and a grep error is fatal rather than "no match".
+    case "$(files_matching "$NEEDS_CLEAR_ERE" "$t/dirty.sh" "$t/none.sh" "$t/clean.sh" \
+                "$t/prose.py" "$t/dirty.py")" in
+        "$t/dirty.sh"$'\n'"$t/clean.sh"$'\n'"$t/dirty.py") ;;
+        *) echo "  selftest: files_matching disagrees with needs_clear" >&2; errs=1 ;;
+    esac
+    [ -z "$(files_matching "$NEEDS_CLEAR_ERE")" ] || {
+        echo "  selftest: files_matching with no files read something" >&2; errs=1; }
+    if ( files_matching "$NEEDS_CLEAR_ERE" "$t/does-not-exist" ) >/dev/null 2>&1; then
+        echo "  selftest: files_matching passed a grep that could not read its file" >&2; errs=1
+    fi
 
     # The Python helper the credit above is granted for. It has its own
     # negative control (does its fallback list still cover what this git calls

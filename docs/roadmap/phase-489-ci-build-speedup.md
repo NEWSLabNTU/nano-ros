@@ -521,6 +521,42 @@ supersede. `ci-ok` is unchanged: `warm-cache` runs on push/dispatch only.
 and `merge_group` (self-test mutations: dropping the `push` term, or `true`,
 are caught).
 
+**The two kernel-heavy gates (2026-10-16).** `issue-ids` (17 s solo, 14 s
+of it system time) and `hook-repo-side-effects` (41 s, 20 s system) both
+doubled on the EPYC 7763. Both were process spawns, and most of the second
+gate's cost was the first one. `issue-ids-check.sh` ran `basename`, an
+`echo | grep` and a `grep | awk` for every one of ~1 900 issue files: about
+10 000 forks. `hook-repo-side-effects` runs `.githooks/pre-push` end to end,
+and the hook runs that same script, which took 17 of the gate's ~45 s under a
+bash trace. The 21 hazardous scripts it probes, twice each, are its subject
+and are untouched. Fixes, each output-identical:
+
+- `issue-ids-check.sh`: `find -printf '%f'` replaces `xargs -n1 basename`.
+  One `awk` over every file prints `<path><TAB><first ^id: line's 2nd field>`,
+  which is exactly what `grep -m1 '^id:' | awk '{print $2}'` printed per
+  file. The filename id comes from parameter expansion. The output was
+  compared with the old script's, byte for byte, on the real tree and on a
+  mutated copy (duplicate issue and RFC ids, mismatched, empty, tab-separated
+  and two-line `id:`s, files with no `id:` line, an empty file, and a
+  non-numeric id, which still aborts at the same arithmetic error).
+- `check-hook-repo-side-effects.sh`: its two static scans now pick candidates
+  with ONE `grep -l` each, where they used to run a grep per file (746
+  scripts, plus four or five greps for each of 345 CLI sources). A file can
+  hold an offence only if it matches the prefilter: the `git init` pattern
+  itself, or `"git"|git_program()`, which every CLI offence shape contains and
+  which is exactly what the file count counted. A grep error stays fatal. The
+  self-test now also runs the batch helper against the per-file one. stdout
+  is identical to the old gate's (74 lines). A planted `git init` script and
+  a planted `Command::new("git")` are both still caught, statically and, for
+  the script, in both env shapes.
+
+| solo, box2 (4-core) | wall | user | sys | voluntary ctx sw |
+|---|---|---|---|---|
+| `issue-ids` before | 9.7-12.7 s | 4.9-5.4 s | 6.8-10.6 s | 40 457 |
+| `issue-ids` after | **0.11 s** | 0.09 s | 0.04 s | 80 |
+| `hook-repo-side-effects` before | 43.9-49.1 s | 24.9-26.3 s | 24.7-29.8 s | 118 384 |
+| `hook-repo-side-effects` after | **24.7 s** | 17.0 s | 9.1 s | 70 017 |
+
 **Gate CPU, not compile (measured 2026-10-15, PR #2204).** `run-gates-parallel.sh`
 now records each gate's CPU (user+sys of its process tree) beside its wall,
 prints the top ten by CPU, and `NROS_GATE_TIMINGS_FILE=<path>` keeps the whole
