@@ -185,6 +185,23 @@ pub fn set_trace_sink(sink: Option<TraceSink>) {
     SINK.store(ptr, Ordering::Release);
 }
 
+/// Install `sink` only when no sink is installed yet; returns whether it was.
+///
+/// For an entry path that installs a platform DEFAULT sink (the Zephyr tier
+/// runner's `nros_zephyr_trace_marker`): an application that installed its own
+/// sink earlier, for example from a `SYS_INIT` before `main()`, keeps it.
+/// `set_trace_sink` would replace it, and every event after that would go to
+/// a sink the application never chose.
+pub fn set_trace_sink_if_unset(sink: TraceSink) -> bool {
+    SINK.compare_exchange(
+        core::ptr::null_mut(),
+        sink as *mut (),
+        Ordering::AcqRel,
+        Ordering::Acquire,
+    )
+    .is_ok()
+}
+
 #[inline]
 fn sink() -> Option<TraceSink> {
     let ptr = SINK.load(Ordering::Acquire);
