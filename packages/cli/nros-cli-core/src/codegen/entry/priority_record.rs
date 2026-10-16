@@ -184,31 +184,31 @@ impl PriorityRecord<'_> {
         );
         h.push_str(RECORD_JSON);
         h.push_str(" */\n#ifndef NROS_PRIORITY_PLAN_H\n#define NROS_PRIORITY_PLAN_H\n\n");
-        let mut def = |k: &str, v: i64| h.push_str(&format!("#define {k} ({v})\n"));
-        def(
+        let mut define = |k: &str, v: i64| h.push_str(&format!("#define {k} ({v})\n"));
+        define(
             "NROS_PRIORITY_PLAN_SMALLER_IS_URGENT",
             i64::from(self.plan.direction == Direction::SmallerIsUrgent),
         );
-        def("NROS_PRIORITY_PLAN_FROM_IMAGE", i64::from(self.from_image));
-        def("NROS_PRIORITY_PLAN_RANGE_LO", self.plan.range.lo);
-        def("NROS_PRIORITY_PLAN_RANGE_HI", self.plan.range.hi);
-        def("NROS_PRIORITY_PLAN_APP_LO", self.plan.app.lo);
-        def("NROS_PRIORITY_PLAN_APP_HI", self.plan.app.hi);
+        define("NROS_PRIORITY_PLAN_FROM_IMAGE", i64::from(self.from_image));
+        define("NROS_PRIORITY_PLAN_RANGE_LO", self.plan.range.lo);
+        define("NROS_PRIORITY_PLAN_RANGE_HI", self.plan.range.hi);
+        define("NROS_PRIORITY_PLAN_APP_LO", self.plan.app.lo);
+        define("NROS_PRIORITY_PLAN_APP_HI", self.plan.app.hi);
         for (name, b) in &self.plan.reserved {
             let n = macro_name(name);
-            def(&format!("NROS_PRIORITY_PLAN_RESERVED_{n}_LO"), b.lo);
-            def(&format!("NROS_PRIORITY_PLAN_RESERVED_{n}_HI"), b.hi);
+            define(&format!("NROS_PRIORITY_PLAN_RESERVED_{n}_LO"), b.lo);
+            define(&format!("NROS_PRIORITY_PLAN_RESERVED_{n}_HI"), b.hi);
         }
         let tiers = self.running_tiers();
-        def("NROS_ENTRY_TIER_COUNT", tiers.len() as i64);
+        define("NROS_ENTRY_TIER_COUNT", tiers.len() as i64);
         for (name, p) in &tiers {
-            def(
+            define(
                 &format!("NROS_ENTRY_TIER_{}_PRIORITY", macro_name(name)),
                 *p,
             );
         }
         if let Some(p) = self.most_urgent_tier() {
-            def("NROS_ENTRY_TIERS_MOST_URGENT_PRIORITY", p);
+            define("NROS_ENTRY_TIERS_MOST_URGENT_PRIORITY", p);
         }
         // RFC-0079 section 6: the priority for the supervisor of the
         // deadlines allocated above the transport.
