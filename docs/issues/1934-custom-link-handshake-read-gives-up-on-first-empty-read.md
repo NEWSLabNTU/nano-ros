@@ -67,10 +67,9 @@ message and comes back.
 
 ## Fix
 
-Fork commit `3248995b` on zenoh-pico, branch `nano-ros-custom-read-exact-wait`
-(based on `origin/nano-ros` = the current pin `492c74f0`), **local only — it
-needs the maintainer to push it to the fork's `nano-ros` branch, then a
-forward pin bump here.** `_z_f_link_read_exact_custom` now waits for the rest of
+Fork commit `3248995b` on zenoh-pico's `nano-ros` branch, pushed
+2026-10-17 as a fast-forward of the old pin `492c74f0`; the superproject pin
+moves to it in the same change as this section. `_z_f_link_read_exact_custom` now waits for the rest of
 the message, passing the user `read` the remaining budget and bounding each
 gap by `Z_CONFIG_SOCKET_TIMEOUT` — the bound `SO_RCVTIMEO` gives a TCP link's
 `read_exact`, which also loops per recv. A negative return stays fatal. The
@@ -92,6 +91,6 @@ TCP link fails, and no earlier.
 
 ## What would close it
 
-The fork commit pushed and the pin moved past it, then
+Done: the fork commit is pushed and the pin is past it. Still to see:
 `custom_transport_loopback` passes through the 5 ms delay proxy and under
 load, and in tier 1 on main.
