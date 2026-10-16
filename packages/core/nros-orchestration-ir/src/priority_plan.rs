@@ -429,6 +429,48 @@ impl PriorityPlan {
         })
     }
 
+    /// The priorities MORE urgent than the reserved `transport` band, the
+    /// one adjacent to it first, skipping every reserved band (a driver, a
+    /// foreign task), up to the kernel's range. Empty when the plan reserves
+    /// no transport band (there is nothing to cross) or the transport already
+    /// sits at the urgent end.
+    ///
+    /// Preemptive priorities only: on a smaller-is-urgent kernel the walk
+    /// stops at 0, because Zephyr's negative priorities are COOPERATIVE, and
+    /// a thread there is never preempted, which no derived placement may
+    /// impose.
+    ///
+    /// RFC-0079 section 6 - the band a tier enters when its contract names
+    /// the crossing (`derive::lift_supervised_above_transport`).
+    pub fn slots_above_transport(&self) -> Vec<i64> {
+        let Some(t) = self.reserved.get("transport").copied() else {
+            return Vec::new();
+        };
+        let mut out = Vec::new();
+        match self.direction {
+            Direction::SmallerIsUrgent => {
+                let floor = self.range.lo.max(0);
+                let mut p = t.lo - 1;
+                while p >= floor {
+                    if self.reserved_band_of(p).is_none() {
+                        out.push(p);
+                    }
+                    p -= 1;
+                }
+            }
+            Direction::BiggerIsUrgent => {
+                let mut p = t.hi + 1;
+                while p <= self.range.hi {
+                    if self.reserved_band_of(p).is_none() {
+                        out.push(p);
+                    }
+                    p += 1;
+                }
+            }
+        }
+        out
+    }
+
     /// The reserved band a priority lands on, if any - for a diagnostic that
     /// names what a tier collided with.
     pub fn reserved_band_of(&self, priority: i64) -> Option<(&str, Band)> {
