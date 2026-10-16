@@ -598,8 +598,18 @@ fn bridge_nodes(row_dir: &Path) -> Vec<(String, String)> {
 /// `:9091`, and both read as "the backend refused the session although its
 /// peer was started for it". Same rule as `check-image-locator-bake`'s rule 5
 /// (issue 1865) for a `just` recipe: the router's port comes from the image.
+///
+/// Issue 1933 — a locator is a property of a backend that DIALS a peer. A DDS
+/// image (`workspace-{c,cpp}-freertos-posix`, cyclonedds) discovers its peers
+/// and bakes no locator because it has none to bake, so asking it for one made
+/// `unmet!` refuse both rows on tier 2. Same predicate as [`peer_locator`]:
+/// [`dials_a_peer`].
+///
+/// Called once per row, BEFORE the peers start and before the row pool
+/// (`a_rows_entry_registers_its_nodes_at_runtime`): an `unmet!` here is the
+/// test's verdict naming the row, never a panic in a scoped worker thread.
 fn baked_row_locator(row: &nros_tests::fixtures::lane::Row) -> Option<String> {
-    if row.coord.0 == "linux" {
+    if row.coord.0 == "linux" || !dials_a_peer(&row.coord.2) {
         return None;
     }
     match nros_tests::fixtures::baked_locator::baked_locator_in(
@@ -614,28 +624,39 @@ fn baked_row_locator(row: &nros_tests::fixtures::lane::Row) -> Option<String> {
     }
 }
 
+/// Does this backend dial a peer (a router or an Agent) at a locator? DDS
+/// does not: it discovers. The ONE answer [`peer_locator`] and
+/// [`baked_row_locator`] both ask.
+fn dials_a_peer(rmw: &str) -> bool {
+    matches!(rmw, "zenoh" | "xrce")
+}
+
 /// Which peer a backend needs, or `None` for one that needs none (DDS).
 fn peer_locator(peers: &Peers, rmw: &str) -> Option<String> {
     match rmw {
         "zenoh" => peers.zenoh_locator(),
         "xrce" => peers.xrce_locator(),
-        _ => None,
+        _ => {
+            debug_assert!(!dials_a_peer(rmw));
+            None
+        }
     }
 }
 
 /// The env that points `row`'s entry at the peers: `NROS_LOCATOR` for its own
 /// backend, and `NROS_BRIDGE_<NODE>_LOCATOR` (the bridge's per-endpoint
 /// override, `nros_rmw_bridge` config.rs) for each bridge endpoint.
-fn row_peer_env(row: &nros_tests::fixtures::lane::Row, peers: &Peers) -> Vec<(String, String)> {
+fn row_peer_env(
+    row: &nros_tests::fixtures::lane::Row,
+    baked: Option<&str>,
+    peers: &Peers,
+) -> Vec<(String, String)> {
     let mut env = Vec::new();
     // A baked image ignores this; it is set so the run's command line still
-    // says which router the row was given (`baked_row_locator`).
-    let own = if row.coord.2 == "zenoh"
-        && let Some(baked) = baked_row_locator(row)
-    {
-        Some(baked)
-    } else {
-        peer_locator(peers, &row.coord.2)
+    // says which peer the row was given (`baked_row_locator`).
+    let own = match baked {
+        Some(b) => Some(b.to_owned()),
+        None => peer_locator(peers, &row.coord.2),
     };
     if let Some(loc) = own {
         env.push(("NROS_LOCATOR".to_string(), loc));
@@ -696,6 +717,12 @@ fn a_rows_entry_registers_its_nodes_at_runtime() {
         }
     }
     let located = targets.len();
+    // Issue 1933 — every row's baked locator, read once, here, on the test
+    // thread: an `unmet!` names its row instead of failing a pool worker.
+    let baked_locs: Vec<Option<String>> = targets
+        .iter()
+        .map(|(row, _)| baked_row_locator(row))
+        .collect();
 
     // Issue 1819 — start the peers the located rows need, here, rather than
     // relying on whatever this host happens to run. Measured before: on a host
@@ -703,36 +730,50 @@ fn a_rows_entry_registers_its_nodes_at_runtime() {
     // passed. A peer that cannot start is an unmet precondition (issue 1758),
     // never a reason to under-test.
     let needs = |want: &str| {
-        targets.iter().any(|(row, _)| {
-            (row.coord.2 == want && !(want == "zenoh" && baked_row_locator(row).is_some()))
+        targets.iter().zip(&baked_locs).any(|((row, _), baked)| {
+            (row.coord.2 == want && baked.is_none())
                 || bridge_nodes(&nros_tests::project_root().join(&row.dir))
                     .iter()
                     .any(|(_, rmw)| rmw == want)
         })
     };
-    // One router per port a zenoh row BAKES, held until the test ends (keyed
-    // by port, so two rows baking one port share it). These ports are the allocator's
-    // (`alloc::port_of`), shared with the cell that owns the image, which is
-    // why this test sits in nextest's `matrix-consumers-serial` group.
-    let mut baked = std::collections::BTreeMap::new();
-    for (row, _) in &targets {
-        if row.coord.2 != "zenoh" {
+    // One peer per port a row BAKES, held until the test ends (keyed by
+    // backend and port, so two rows baking one port share it). These ports are
+    // the allocator's (`alloc::port_of`), shared with the cell that owns the
+    // image, which is why this test sits in nextest's `matrix-consumers-serial`
+    // group.
+    let mut baked_routers = std::collections::BTreeMap::new();
+    let mut baked_agents = std::collections::BTreeMap::new();
+    for ((row, _), locator) in targets.iter().zip(&baked_locs) {
+        let Some(locator) = locator else {
             continue;
+        };
+        let Some(port) = nros_tests::fixtures::baked_locator::locator_port(locator) else {
+            nros_tests::unmet!("{}: baked locator `{locator}` names no port", row.id)
+        };
+        match row.coord.2.as_str() {
+            "zenoh" => {
+                baked_routers.entry(port).or_insert_with(|| {
+                    nros_tests::fixtures::ZenohRouter::start(port).unwrap_or_else(|e| {
+                        nros_tests::unmet!(
+                            "{}: no zenoh router could start on its baked port {port}: {e}",
+                            row.id
+                        )
+                    })
+                });
+            }
+            "xrce" => {
+                baked_agents.entry(port).or_insert_with(|| {
+                    nros_tests::fixtures::XrceAgent::start(port).unwrap_or_else(|e| {
+                        nros_tests::unmet!(
+                            "{}: no XRCE Agent could start on its baked port {port}: {e}",
+                            row.id
+                        )
+                    })
+                });
+            }
+            other => unreachable!("baked_row_locator answered for `{other}`, which dials no peer"),
         }
-        let Some(locator) = baked_row_locator(row) else {
-            continue;
-        };
-        let Some(port) = nros_tests::fixtures::baked_locator::locator_port(&locator) else {
-            nros_tests::unmet!("{}: baked locator `{locator}` names no TCP port", row.id)
-        };
-        baked.entry(port).or_insert_with(|| {
-            nros_tests::fixtures::ZenohRouter::start(port).unwrap_or_else(|e| {
-                nros_tests::unmet!(
-                    "{}: no zenoh router could start on its baked port {port}: {e}",
-                    row.id
-                )
-            })
-        });
     }
     let peers = Peers {
         zenoh: needs("zenoh").then(|| {
@@ -746,14 +787,15 @@ fn a_rows_entry_registers_its_nodes_at_runtime() {
             })
         }),
     };
-    if peers.xrce.is_some() {
+    if peers.xrce.is_some() || !baked_agents.is_empty() {
         // The Agent's accept loop needs a moment before a client's session
         // opens (the same settle `bridge_mixed_rmw` measured).
         std::thread::sleep(std::time::Duration::from_secs(1));
     }
     let envs: Vec<Vec<(String, String)>> = targets
         .iter()
-        .map(|(row, _)| row_peer_env(row, &peers))
+        .zip(&baked_locs)
+        .map(|((row, _), baked)| row_peer_env(row, baked.as_deref(), &peers))
         .collect();
 
     // Issue 1690 — each row on the pool, each bounded by RUN_BUDGET, each
@@ -766,7 +808,7 @@ fn a_rows_entry_registers_its_nodes_at_runtime() {
     let runs = par_map(&indexed, |&i| {
         let bin = &targets[i].1;
         let t0 = std::time::Instant::now();
-        let budget = if baked_row_locator(targets[i].0).is_some() {
+        let budget = if baked_locs[i].is_some() {
             BAKED_RUN_BUDGET
         } else {
             RUN_BUDGET
@@ -798,7 +840,7 @@ fn a_rows_entry_registers_its_nodes_at_runtime() {
             .join(", ")
     );
 
-    for ((row, bin), (status, text, took)) in targets.iter().zip(runs) {
+    for (((row, bin), (status, text, took)), baked) in targets.iter().zip(runs).zip(&baked_locs) {
         // Issue 1875 -- what "completed" looks like is per LANGUAGE. A Rust
         // board prints `ENTRY_COMPLETE_MARKER` before it exits 0, always. A C or
         // C++ entry returns its funnel's code from `main`, and every funnel
@@ -817,7 +859,7 @@ fn a_rows_entry_registers_its_nodes_at_runtime() {
         // once `setup` -- where the nodes register -- returned Ok, and the
         // kill at its budget is expected. (A C/C++ image has no such line and
         // still reads as HUNG here; none is in a lane that runs this today.)
-        let baked_setup_ok = baked_row_locator(row).is_some()
+        let baked_setup_ok = baked.is_some()
             && row.coord.1 == "rust"
             && text.contains(nros_tests::output::ENTRY_SETUP_COMPLETE_MARKER)
             && !text.contains(nros_tests::output::ENTRY_NODE_REGISTER_ERROR);

@@ -61,3 +61,26 @@ thread's verdict is collected per row.
 
 Acceptance: `a_rows_entry_registers_its_nodes_at_runtime` passes in a tier-2
 run on main.
+
+## Fix (2026-10-17)
+
+Checked, not assumed: of the 46 non-`linux` `workspace_fixture` rows, every
+row whose backend DIALS a peer (all zenoh ones) states a baked locator in its
+`system.toml` or its row. The ones that state none are exactly the DDS rows —
+`workspace-{c,cpp}-freertos-posix`, `workspace-cpp-{s32z270,mps3-an536}-freertos`
+and `workspace-zephyr-cpp-cyclonedds`, all cyclonedds. A DDS image discovers its
+peers and has no locator to bake, so the audit was asking a question that has no
+answer for them; the board's compiled-in default is not involved, and the two
+freertos-posix rows passed before `d49b65dbf` through the exit-status path.
+
+- `baked_row_locator` answers `None` for a backend that dials no peer, through
+  one predicate (`dials_a_peer`) that `peer_locator` shares, so a DDS row runs
+  as it did before `d49b65dbf`.
+- Every row's baked locator is read ONCE, on the test thread, before any peer
+  starts and before the row pool, so an `unmet!` names its row instead of
+  surfacing as `a scoped thread panicked`.
+- A baked XRCE row now gets an Agent on its baked port, the same as a baked
+  zenoh row gets a router (none exists in a lane today; before, it would have
+  been handed an Agent on a fresh port its image never dials).
+
+Acceptance is unchanged: a tier-2 run on main.
