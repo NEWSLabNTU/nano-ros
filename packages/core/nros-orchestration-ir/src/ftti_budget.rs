@@ -32,7 +32,7 @@
 //! | fault class        | rule                  | bound                       |
 //! | ---                | ---                   | ---                         |
 //! | omission, loss     | `silence-runtime`     | the subscriber's `max_age_ms` |
-//! | omission, loss     | `min-rate-runtime`    | two rate windows ([`RATE_DETECTION_MS`]) |
+//! | omission, loss     | `min-rate-runtime`    | two rate windows ([`RATE_DETECTION_MS`](crate::ftti_budget::RATE_DETECTION_MS)) |
 //! | late               | `max-age-runtime`     | the subscriber's `max_age_ms` |
 //!
 //! The fastest applicable row wins for each member. `overrun` and `reported`
