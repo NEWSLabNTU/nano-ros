@@ -240,7 +240,7 @@ pub const NROS_CODEGEN_VERSION: u32 = 18;
 /// ships, so it cannot compile and is refused by version instead. Rust and C++
 /// trees are unaffected, but the version is one number for all three.
 ///
-/// 18 with [`NROS_CODEGEN_VERSION`] (phase-503 W1): the same move for C++. The
+/// 18 with [`NROS_CODEGEN_VERSION`] (phase-504 W1): the same move for C++. The
 /// nros-cpp headers left `nros/` for `rclcpp/`, `rclcpp/detail/`,
 /// `rclcpp_action/` and `rclcpp_lifecycle/`, again with no forwarding headers.
 /// A version-17 C++ tree includes `<nros/heap_string.hpp>`, which this runtime

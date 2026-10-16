@@ -11,7 +11,7 @@ found: 2026-10-16
 
 ## Measured
 
-Phase-503 branch (`refactor/cpp-headers-rclcpp`), 2026-10-16:
+Phase-504 branch (`refactor/cpp-headers-rclcpp`), 2026-10-16:
 
 1. Uncommitted edits to three CLI test files (`scaffold.rs`,
    `integration_tests.rs`, `tests_cpp.rs`) made the in-tree `nros` STALE.

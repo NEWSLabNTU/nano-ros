@@ -1481,7 +1481,7 @@ def refusal_macros(include_dir=CPP_INCLUDE_DIR):
     found = set()
     if not os.path.isdir(include_dir):
         return found
-    # The whole tree, recursively: since phase-503 the headers live in
+    # The whole tree, recursively: since phase-504 the headers live in
     # rclcpp/, rclcpp/detail/, rclcpp_action/ and rclcpp_lifecycle/.
     listed = subprocess.run(
         ["git", "-C", include_dir, "ls-files", "--", "*.hpp", "*.h"],

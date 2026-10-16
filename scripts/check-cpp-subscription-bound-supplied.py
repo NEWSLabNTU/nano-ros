@@ -73,7 +73,7 @@ import comments  # noqa: E402  phase-472 W3 — the one comment stripper
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HEADER_DIR = os.path.join("packages", "api", "nros-cpp", "include")
-# The two headers the self-test mutates (phase-503 moved them out of nros/).
+# The two headers the self-test mutates (phase-504 moved them out of nros/).
 SUBSCRIPTION_HPP = HEADER_DIR + "/rclcpp/subscription.hpp"
 COMPONENT_HPP = HEADER_DIR + "/rclcpp/detail/component.hpp"
 

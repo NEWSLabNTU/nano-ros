@@ -3,7 +3,7 @@
 
 Maintainer ruling (2026-10-13, RFC-0089 amendment "the user surface is
 upstream's"): the internal headers are `<rclc/detail/*.h>` (phase-501) and
-`<rclcpp/detail/*>` (phase-503). A C user includes `<rclc/rclc.h>`, `<rcl/rcl.h>`,
+`<rclcpp/detail/*>` (phase-504). A C user includes `<rclc/rclc.h>`, `<rcl/rcl.h>`,
 `<rclc/executor.h>` ...; a C++ user `<rclcpp/rclcpp.hpp>`. Each umbrella
 carries the nano-ros-only parts too. And the program writes `main`: the build
 renames it and reaches it from the platform's entry, so no user file names
@@ -106,7 +106,7 @@ def main() -> int:
     if not self_test():
         return 1
     internal = internal_headers()
-    # 30 at phase-503 (rclc/detail/ + rclcpp/detail/); it was ~80 while all of
+    # 30 at phase-504 (rclc/detail/ + rclcpp/detail/); it was ~80 while all of
     # nros-cpp's include/nros/ counted as internal.
     if len(internal) < 25:
         print(f"check-user-surface: only {len(internal)} internal header(s) — the listing "

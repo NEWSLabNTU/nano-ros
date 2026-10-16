@@ -133,7 +133,7 @@ selftest || exit 1
 
 n=0
 fails=0
-# Recursive: since phase-503 the headers live in rclcpp/, rclcpp/detail/,
+# Recursive: since phase-504 the headers live in rclcpp/, rclcpp/detail/,
 # rclcpp_action/ and rclcpp_lifecycle/.
 for hdr in $(git ls-files -- "$cpp_inc/*.hpp"); do
     n=$((n + 1))

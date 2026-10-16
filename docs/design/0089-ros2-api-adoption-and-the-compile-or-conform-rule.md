@@ -1374,7 +1374,7 @@ generated-code support and nros-cpp's generated headers go to
 `rclcpp/detail/`. The umbrella `<rclcpp/rclcpp.hpp>` holds the content
 itself. No identifier moved: there has been no `nros::` namespace since
 phase-483. Implemented by
-[phase-503](../roadmap/phase-503-cpp-headers-move-into-rclcpp.md).
+[phase-504](../roadmap/archived/phase-504-cpp-headers-move-into-rclcpp.md).
 
 ## Settled: each language follows ITS OWN upstream (2026-09-04)
 

@@ -102,8 +102,8 @@ STUB_GLOBS = (
 )
 STUB_NAMES = tuple(p.rsplit("/", 1)[-1] for p in STUB_GLOBS)
 # Both snapshots, wherever under include/ they sit: `rclc/detail/` (nros-c,
-# phase-501) and `rclcpp/detail/` (nros-cpp, phase-503). This read
-# `include/nros/` until phase-503, so from phase-501 on it saw nros-cpp's
+# phase-501) and `rclcpp/detail/` (nros-cpp, phase-504). This read
+# `include/nros/` until phase-504, so from phase-501 on it saw nros-cpp's
 # snapshot alone.
 FALLBACK_GLOB = "packages/api/nros-*/include/*/detail/*_config_generated_*.h"
 # The CRATE root, not `packs/`. A second template directory beside it — the

@@ -181,7 +181,7 @@ def rust_runtime(text=None, errors=None):
 
 
 # The whole C and C++ include trees: since phase-501 the C content lives under
-# rclc/ (rclc/detail/ for what generated code includes), and since phase-503
+# rclc/ (rclc/detail/ for what generated code includes), and since phase-504
 # the C++ content under rclcpp/, rclcpp_action/ and rclcpp_lifecycle/.
 C_RUNTIME = "packages/api/nros-c/include"
 CPP_RUNTIME = "packages/api/nros-cpp/include"

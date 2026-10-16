@@ -29,7 +29,7 @@ pub const CPP_GENERATED_DIR: &str = "nros-cpp-generated";
 /// `rclc/detail/`, and C code includes `<rclc/detail/nros_config_generated.h>`.
 pub const C_HEADER_SUBDIR: &str = "rclc/detail";
 /// Where under an include root a C++ header nros-cpp generates sits.
-/// Phase-503 W2: nros-cpp's internal headers live under `rclcpp/detail/`, and
+/// Phase-504 W2: nros-cpp's internal headers live under `rclcpp/detail/`, and
 /// C++ code includes `<rclcpp/detail/nros_cpp_config_generated.h>`.
 pub const CPP_HEADER_SUBDIR: &str = "rclcpp/detail";
 
