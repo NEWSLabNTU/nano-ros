@@ -316,16 +316,37 @@ def check_derived_plan(record, resolved, tu_text=None):
     plo, phi = resolved["pool"]["app"]
     if tuple(plan["app"]) != (plo, phi):
         errs.append(f"pool.app: record {plan['app']}, image [{plo}, {phi}]")
+    smaller = plan.get("direction", "smaller-is-urgent") == "smaller-is-urgent"
+    above = (lambda a, b: a < b) if smaller else (lambda a, b: a > b)
+    edge = lo if smaller else hi
     for t in record.get("tiers", []):
         if t["origin"] not in ("derived", "allocated"):
             continue
         p = t["priority"]
+        if t.get("above_transport"):
+            # RFC-0079 section 6: a member's contract supervises a deadline,
+            # so the tier is allocated above the transport, never on it and
+            # never cooperative.
+            if not above(p, edge):
+                errs.append(f"tier {t['name']} hosts a supervised deadline but runs at {p}, "
+                            f"not above the transport band [{lo}, {hi}]")
+            if smaller and p < 0:
+                errs.append(f"tier {t['name']} at {p} is cooperative")
+            continue
         if not plo <= p <= phi:
             errs.append(f"tier {t['name']} ({t['origin']}) at {p} is outside "
                         f"pool.app [{plo}, {phi}]")
         if lo <= p <= hi:
             errs.append(f"tier {t['name']} ({t['origin']}) at {p} is ON the "
                         f"transport band [{lo}, {hi}]")
+    sup = record.get("supervisor_priority")
+    if sup is not None:
+        for t in record.get("tiers", []):
+            if not above(sup, t["priority"]):
+                errs.append(f"the supervisor's priority {sup} is not above tier "
+                            f"{t['name']} ({t['priority']})")
+        if not above(sup, edge):
+            errs.append(f"the supervisor's priority {sup} is not above the transport [{lo}, {hi}]")
     if tu_text is not None:
         ran = entry_tier_priorities(tu_text)
         want = {t["name"]: t["priority"] for t in record.get("tiers", [])}
@@ -340,8 +361,11 @@ def derived_plan_main(record_path, dotconfig, tu_path=None):
     resolved = resolve_zephyr_plan(dotconfig)
     tu_text = Path(tu_path).read_text(encoding="utf-8") if tu_path else None
     errs = check_derived_plan(record, resolved, tu_text)
-    tiers = ", ".join(f"{t['name']} {t['priority']} ({t['origin']})"
+    tiers = ", ".join(f"{t['name']} {t['priority']} ({t['origin']}"
+                      + (", above the transport" if t.get("above_transport") else "") + ")"
                       for t in record.get("tiers", [])) or "no tier"
+    if record.get("supervisor_priority") is not None:
+        tiers += f"; supervisor {record['supervisor_priority']}"
     band = (f"transport {list(resolved['reserved']['transport'])}, pool.app "
             f"{list(resolved['pool']['app'])}" if "reserved" in resolved else "no band")
     if errs:
@@ -619,6 +643,20 @@ def selftest():
                len(check_derived_plan(proj, cur)), 1)
         expect("a generated entry running another number does not",
                len(check_derived_plan(rec, cur, tu.replace("5LL", "3LL"))), 1)
+        # RFC-0079 section 6: a tier hosting a supervised deadline runs above
+        # the transport, the supervisor above it; the same tier below the
+        # transport, or a supervisor under the tier, does not hold.
+        lifted = {**rec, "tiers": [{"name": "mrm", "priority": 3, "origin": "allocated",
+                                    "above_transport": True}],
+                  "supervisor_priority": 2}
+        expect("a supervised tier above the transport holds",
+               check_derived_plan(lifted, cur, tu.replace("5LL", "3LL")), [])
+        sunk = {**lifted, "tiers": [{**lifted["tiers"][0], "priority": 5}]}
+        expect("a supervised tier below the transport does not",
+               len(check_derived_plan(sunk, cur)) > 0, True)
+        low_sup = {**lifted, "supervisor_priority": 3}
+        expect("a supervisor not above its tier does not",
+               len(check_derived_plan(low_sup, cur)), 1)
 
     # RFC-0071 D2 - the Rust twin is a CORE crate, so it may not read the
     # transport's Kconfig symbols by name: it is handed the normalised bands,
@@ -686,7 +724,7 @@ def selftest():
             print(f"  {f}")
         return False
     print("check-tier-priority-plan-image --selftest: OK "
-          "(real zephyr/Kconfig parses; 20 synthetic cases, the\n  RFC-0079 section 4.1 band the Rust realizer allocates from, and that\n  realizer's own default band against this Kconfig; every zephyr pin's\n"
+          "(real zephyr/Kconfig parses; 23 synthetic cases, the\n  RFC-0079 section 4.1 band the Rust realizer allocates from, and that\n  realizer's own default band against this Kconfig; every zephyr pin's\n"
           "  bringup is built by a manifest row, the derived-tier image by its own)")
     return True
 

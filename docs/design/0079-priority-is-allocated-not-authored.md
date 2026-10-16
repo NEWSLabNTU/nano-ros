@@ -349,7 +349,45 @@ The realizer honours it and reports the consequence, or refuses. This makes
 0623's rule structural: **both orderings stay legitimate, and neither can be
 chosen by accident**, because the only way to get one is to name it.
 
-## The primitive reduction
+**Implemented 2026-10-16 (in part) - the contract names the crossing.** The
+`above = "transport"` key is not implemented: `[tiers.*]` is rlm's `TierDef`
+(`deny_unknown_fields`), so the key needs the schema in rlm and a resolver
+release before any bringup can write it. What IS implemented reaches the same
+rule from a fact the contract already states: a node path with `supervise:`
+(play_launch phase 93) declares a safety deadline that a runtime monitor holds
+and whose miss starts a fallback. Such a path's executor may not wait behind
+the transport for its turn: the supervised budget would grow by whatever the
+transport ran meanwhile, and the overrun case the checker proves would not be
+the one the image runs. So `derive::lift_supervised_above_transport` allocates
+every node with a supervised path ABOVE the reserved transport band
+(`PriorityPlan::slots_above_transport`: the priority adjacent to the band
+first, skipping reserved bands, preemptive priorities only):
+
+* the lifted nodes keep their relative rank (the least urgent adjacent to the
+  transport, each more urgent rank one further out; equal ranks share, ties
+  keep the ranker's declaration order);
+* one more priority beyond the most urgent lifted node is required and
+  recorded as `supervisor_priority` (`NROS_PRIORITY_PLAN_SUPERVISOR_PRIORITY`
+  in the header): the supervisor reacting to a miss must outrank the executor
+  it supervises;
+* no room for the ranks: nothing is lifted, a degradation says so, the nodes
+  stay in `pool.app`; room for the ranks but not the supervisor: lifted, and a
+  degradation says the supervisor has no priority above them;
+* an authored, unplaced tier takes its most urgent member, so one supervised
+  member lifts the tier; an authored priority still wins (rule 1).
+
+It is still "named, never by accident": the name is `supervise:`, and a
+contract with no supervised path keeps every derived tier below the
+transport, as before. The boot report
+(`nros_zephyr_report_tier_vs_transport`) prints such a tier as one that
+preempts transport I/O, which is now intended. Measured on the Autoware
+safety island (transport `[4, 4]`; `mrm_handler/call_mrm` supervised): the
+handler's rank moves from 5 to 3, its tier with it, the supervisor at 2, the
+same numbers the island had set by hand. `check-tier-priority-plan-image.py
+--derived-plan` holds a lifted tier above the transport and the supervisor
+above every tier.
+
+## The primitive reduction## The primitive reduction
 
 Real-time scheduling has a canonical triple — (C, T, D): execution time,
 period, deadline. Every tier field today is one of those, derived from them, or

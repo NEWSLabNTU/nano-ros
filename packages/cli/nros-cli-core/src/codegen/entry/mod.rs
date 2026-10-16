@@ -802,6 +802,8 @@ fn derive_entry_tiers(
         derived_tiers: derived.tiers.keys().cloned().collect(),
         allocated_tiers: derived.placements.keys().cloned().collect(),
         realized: derived.realized.clone(),
+        above_transport: derived.above_transport.clone(),
+        supervisor_priority: derived.supervisor_priority,
         degradations: derived
             .degradations
             .iter()
@@ -843,6 +845,12 @@ pub struct EntryDerivation {
     pub allocated_tiers: Vec<String>,
     /// Every ranked node as the realizer placed it.
     pub realized: Vec<nros_orchestration_ir::rtos_realizer::RealizedNode>,
+    /// RFC-0079 section 6 - the nodes allocated above the transport band
+    /// because their contract supervises a deadline (FQNs).
+    pub above_transport: Vec<String>,
+    /// Where the supervisor of those deadlines runs: one more urgent than
+    /// the most urgent of them.
+    pub supervisor_priority: Option<i64>,
     /// The degradations, one line each, as printed.
     pub degradations: Vec<String>,
     /// Authored priorities that won over an allocated one, one line each.
