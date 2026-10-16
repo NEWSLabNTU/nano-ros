@@ -1484,9 +1484,7 @@ impl Session for ZenohSession {
         cb: Option<unsafe extern "C" fn(ctx: *mut core::ffi::c_void)>,
         ctx: *mut core::ffi::c_void,
     ) {
-        let cb_ptr = cb
-            .map(|f| f as *mut core::ffi::c_void)
-            .unwrap_or(core::ptr::null_mut());
+        let cb_ptr = cb.map_or(core::ptr::null_mut(), |f| f as *mut core::ffi::c_void);
         self.wake_cb
             .store(cb_ptr, core::sync::atomic::Ordering::Release);
         self.wake_ctx

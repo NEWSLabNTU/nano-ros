@@ -21,7 +21,10 @@ A feature that only builds for an embedded target (`platform-freertos`,
 --no-default-features --target <triple>` with the environment the board that
 ships it states in its `nros-board.toml` (port, config dir, C compiler). The
 board descriptor is read, never restated here, so a run builds the crate the
-way that board's images do.
+way that board's images do. A board whose `[unstable]` asks for build-std
+(NuttX: no prebuilt std) runs on the pinned nightly with those `-Z` flags, and
+a platform whose C build reads a configured OS tree (NuttX's `config.h`)
+FAILS, naming the setup step, when that tree is missing.
 
 Scheduled, never merge-gating: it is ~330 clippy runs, each a partial rebuild
 of the crate's dependency graph under a new feature set.
@@ -73,15 +76,17 @@ ONE_OF_PREFIXES = (
 # A platform that only builds for an embedded target: linted by the CROSS half
 # below, which must hold a run for every SKIP carrying this exact reason.
 _CROSS = "an embedded target; linted by this sweep's CROSS half"
-# nros-c / nros-cpp on an embedded target need a no_std C-API feature set of
-# their own; their per-platform shape is what the example clippy builds.
-_CROSS_ELSEWHERE = (
-    "an embedded target with a no_std C-API feature set; covered by the per-example "
-    "embedded clippy (`check build`) and the fixture builds"
+# ESP32 is dormant (issue 1525): its board descriptor states no C compiler, so
+# the C shims nros-c compiles fall back to a riscv64 gcc that has no rv32
+# libraries. The pure-Rust `nros-platform` arm is still cross-swept.
+_ESP32_DORMANT = (
+    "ESP32 is dormant (issue 1525) and its board states no C compiler for the "
+    "C shims; nros-platform's esp32 arm is cross-swept"
 )
-# NuttX builds against its board's own target spec with build-std, which a
-# plain `--target` cannot reproduce.
-_NUTTX = "NuttX builds with its board's target spec and build-std; covered by the NuttX fixture builds"
+# The feature set nros-c / nros-cpp ship in on an embedded target: what
+# `nros_feature_set()` (cmake/NanoRosFeatureSet.cmake) assembles for RMW none,
+# plus the default panic handler a staticlib needs to build at all.
+C_EMBEDDED = "ros-humble,rmw-cffi,alloc,panic-platform"
 # A staticlib whose platform leaves the panic handler and allocator to the
 # image that links it (Zephyr's Rust runtime, a bare-metal board crate), so the
 # archive alone cannot link. Its code is nros-rmw-zenoh's, which IS cross-swept.
@@ -136,13 +141,13 @@ CRATES = {
             ("panic-halt", ""): "duplicate lang item",
         },
         "skip": {
-            "platform-esp32-qemu": _CROSS_ELSEWHERE,
-            "platform-freertos": _CROSS_ELSEWHERE,
-            "platform-mps2-an385": _CROSS_ELSEWHERE,
-            "platform-nuttx": _CROSS_ELSEWHERE,
-            "platform-stm32f4": _CROSS_ELSEWHERE,
-            "platform-threadx": _CROSS_ELSEWHERE,
-            "platform-zephyr": _CROSS_ELSEWHERE,
+            "platform-esp32-qemu": _ESP32_DORMANT,
+            "platform-freertos": _CROSS,
+            "platform-mps2-an385": _CROSS,
+            "platform-nuttx": _CROSS,
+            "platform-stm32f4": _CROSS,
+            "platform-threadx": _CROSS,
+            "platform-zephyr": _CROSS,
             "rmw-cyclonedds": _RMW_C,
             "rmw-xrce": _RMW_C,
             "rmw-zenoh": _RMW_C,
@@ -158,13 +163,13 @@ CRATES = {
             ("panic-halt", ""): "duplicate lang item",
         },
         "skip": {
-            "platform-esp32-qemu": _CROSS_ELSEWHERE,
-            "platform-freertos": _CROSS_ELSEWHERE,
-            "platform-mps2-an385": _CROSS_ELSEWHERE,
-            "platform-nuttx": _CROSS_ELSEWHERE,
-            "platform-stm32f4": _CROSS_ELSEWHERE,
-            "platform-threadx": _CROSS_ELSEWHERE,
-            "platform-zephyr": _CROSS_ELSEWHERE,
+            "platform-esp32-qemu": _ESP32_DORMANT,
+            "platform-freertos": _CROSS,
+            "platform-mps2-an385": _CROSS,
+            "platform-nuttx": _CROSS,
+            "platform-stm32f4": _CROSS,
+            "platform-threadx": _CROSS,
+            "platform-zephyr": _CROSS,
         },
     },
     # -- RMW backends ---------------------------------------------------------
@@ -185,7 +190,7 @@ CRATES = {
         "expected": {},
         "skip": {
             **{p: _CROSS for p in _ZPICO_PLATFORMS},
-            "platform-nuttx": _NUTTX,
+            "platform-nuttx": _CROSS,
             "platform-aliases": _DEFAULT_ON,
         },
     },
@@ -198,7 +203,7 @@ CRATES = {
             # cross target, so none is swept and no one-of group is needed.
             "bare-metal": _CROSS,
             "freertos": _CROSS,
-            "nuttx": _NUTTX,
+            "nuttx": _CROSS,
             "threadx": _CROSS,
             "zephyr": _CROSS,
             "platform-aliases": _DEFAULT_ON,
@@ -230,7 +235,7 @@ CRATES = {
                     "platform-zephyr",
                 )
             },
-            "platform-nuttx": _NUTTX,
+            "platform-nuttx": _CROSS,
         },
     },
     "nros-platform-api": {"base": "", "axes": [""], "expected": {}, "skip": {}},
@@ -264,7 +269,7 @@ CRATES = {
             },
             "platform-bare-metal": _IMAGE_COMPLETES,
             "platform-zephyr": _IMAGE_COMPLETES,
-            "platform-nuttx": _NUTTX,
+            "platform-nuttx": _CROSS,
         },
     },
     "nros-rmw-xrce-cffi-staticlib": {
@@ -305,6 +310,26 @@ CROSS = [
     ("zpico-sys", "threadx", "link-ip", "nros-board-threadx-qemu-riscv64"),
     ("zpico-sys", "zephyr", "link-ip", "thumbv7m-none-eabi"),
     ("zpico-sys", "bare-metal", "link-ip", "thumbv7m-none-eabi"),
+    *(
+        (crate, plat, C_EMBEDDED, where)
+        for crate in ("nros-c", "nros-cpp")
+        for plat, where in (
+            ("platform-freertos", "nros-board-mps2-an385-freertos"),
+            ("platform-threadx", "nros-board-threadx-qemu-riscv64"),
+            ("platform-zephyr", "thumbv7m-none-eabi"),
+            ("platform-mps2-an385", "thumbv7m-none-eabi"),
+            ("platform-stm32f4", "thumbv7em-none-eabihf"),
+        )
+    ),
+    # NuttX: the board's own build-std (pinned nightly) and a configured tree.
+    # These lint with the NIGHTLY clippy, whose lint set runs ahead of the
+    # pinned stable's — the price of a target with no prebuilt std.
+    ("nros-platform", "platform-nuttx", "alloc", "nros-board-nuttx-qemu"),
+    ("zpico-sys", "nuttx", "link-ip", "nros-board-nuttx-qemu"),
+    ("nros-rmw-zenoh", "platform-nuttx", "alloc", "nros-board-nuttx-qemu"),
+    ("nros-rmw-zenoh-staticlib", "platform-nuttx", "", "nros-board-nuttx-qemu"),
+    ("nros-c", "platform-nuttx", C_EMBEDDED, "nros-board-nuttx-qemu"),
+    ("nros-cpp", "platform-nuttx", C_EMBEDDED, "nros-board-nuttx-qemu"),
     ("nros-rmw-zenoh-staticlib", "platform-freertos", "", "nros-board-mps2-an385-freertos"),
     ("nros-rmw-zenoh-staticlib", "platform-threadx", "", "nros-board-threadx-qemu-riscv64"),
     ("nros-rmw-zenoh-staticlib", "platform-threadx-std", "std", "nros-board-threadx-linux"),
@@ -330,16 +355,64 @@ def check_cross_coverage(crates, cross):
         )
 
 
-def board_cargo_config(board):
-    """The `cargo_config` a board descriptor carries, parsed."""
+def _toml():
     try:
         import tomllib
     except ModuleNotFoundError:  # 3.10 backport, same spelling as the sibling gates
         import tomli as tomllib
+    return tomllib
+
+
+def board_entry(board):
+    """The first `[[board]]` entry of a board descriptor."""
     path = ROOT / "packages" / "boards" / board / "nros-board.toml"
-    doc = tomllib.loads(path.read_text(encoding="utf8"))
-    entry = doc["board"][0] if isinstance(doc["board"], list) else doc["board"]
-    return tomllib.loads(entry.get("cargo_config", ""))
+    doc = _toml().loads(path.read_text(encoding="utf8"))
+    return doc["board"][0] if isinstance(doc["board"], list) else doc["board"]
+
+
+def board_cargo_config(board):
+    """The `cargo_config` a board descriptor carries, parsed."""
+    return _toml().loads(board_entry(board).get("cargo_config", ""))
+
+
+def pinned_nightly():
+    """The repo's pinned nightly (`tools/rust-toolchain.toml`), which every
+    `-Z build-std` build here uses — read, never restated."""
+    doc = _toml().loads((ROOT / "tools" / "rust-toolchain.toml").read_text(encoding="utf8"))
+    return doc["toolchain"]["channel"]
+
+
+def build_std_args(cargo_config):
+    """`+<nightly> -Z build-std=...` for a board whose `[unstable]` asks for
+    build-std (a target with no prebuilt std, e.g. NuttX), else nothing."""
+    unstable = cargo_config.get("unstable", {})
+    if not unstable.get("build-std"):
+        return []
+    args = [f"+{pinned_nightly()}", "-Z", "build-std=" + ",".join(unstable["build-std"])]
+    if unstable.get("build-std-features"):
+        args += ["-Z", "build-std-features=" + ",".join(unstable["build-std-features"])]
+    return args
+
+
+def platform_tree(platform):
+    """(env, error) for a platform whose C build needs a configured OS tree.
+
+    NuttX: zpico-sys's platform manifest requires `NUTTX_DIR`, and its headers
+    include the GENERATED `include/nuttx/config.h`, which only exists after the
+    kernel is configured. Located through the one ladder (`source_locate`),
+    never joined by hand."""
+    if platform != "nuttx":
+        return {}, None
+    sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+    from source_locate import source_dir
+
+    tree = source_dir("nuttx-kernel")
+    if tree is None or not (Path(tree) / "include" / "nuttx" / "config.h").is_file():
+        return {}, (
+            "no configured NuttX tree (nuttx-kernel, include/nuttx/config.h): run "
+            "`nros setup qemu-armv7a-nuttx` then `scripts/nuttx/build-nuttx.sh`"
+        )
+    return {"NUTTX_DIR": str(tree)}, None
 
 
 def board_env(cargo_config, root):
@@ -352,11 +425,15 @@ def board_env(cargo_config, root):
 
 
 def cross_shape(where):
-    """(triple or None for the host, env) for a CROSS run's board-or-triple."""
+    """(triple or None for the host, env, cargo prefix args, unmet precondition)
+    for a CROSS run's board-or-triple."""
     if (ROOT / "packages" / "boards" / where / "nros-board.toml").is_file():
         cfg = board_cargo_config(where)
-        return cfg.get("build", {}).get("target"), board_env(cfg, ROOT)
-    return where, {}
+        env = board_env(cfg, ROOT)
+        tree_env, unmet = platform_tree(board_entry(where).get("platform"))
+        env.update(tree_env)
+        return cfg.get("build", {}).get("target"), env, build_std_args(cfg), unmet
+    return where, {}, [], None
 
 
 def group_of(feature):
@@ -444,9 +521,12 @@ def clippy(name, cfg, feats, target_dir):
     return p.returncode, p.stderr
 
 
-def cross_clippy(name, feats, triple, board_env_vars, target_dir):
-    """A CROSS run: the library only (tests are a host build), no defaults."""
-    cmd = ["cargo", "clippy", "--quiet", "-p", name, "--lib", "--locked"]
+def cross_clippy(name, feats, triple, board_env_vars, target_dir, prefix=(), unmet=None):
+    """A CROSS run: the library only (tests are a host build), no defaults.
+    An unmet precondition FAILS the run, naming the remedy — never a skip."""
+    if unmet:
+        return 1, f"error: {unmet}"
+    cmd = ["cargo", *prefix[:1], "clippy", *prefix[1:], "--quiet", "-p", name, "--lib", "--locked"]
     cmd += ["--no-default-features", "--features", feats]
     if triple:
         cmd += ["--target", triple]
@@ -500,6 +580,16 @@ def self_test():
             pass
         else:
             raise AssertionError("a one-sided cross claim was accepted")
+    # A board asking for build-std gets the pinned nightly and the -Z flags;
+    # one that does not gets plain cargo.
+    args = build_std_args({"unstable": {"build-std": ["core", "alloc"]}})
+    assert args[0].startswith("+") and "build-std=core,alloc" in args, args
+    assert build_std_args({}) == []
+    # An unmet precondition FAILS the run with its remedy; it is never a skip.
+    assert cross_clippy("x", "f", None, {}, "/nonexistent", (), "do the thing") == (
+        1,
+        "error: do the thing",
+    )
     # A board's env resolves `${workspace}` and unwraps `{ value = ... }`.
     env = board_env({"env": {"A": "x", "B": {"value": "${workspace}/c", "force": True}}}, "/r")
     assert env == {"A": "x", "B": "/r/c"}, env
@@ -545,7 +635,7 @@ def main():
             if name not in names:
                 continue
             feats = ",".join(x for x in (extra, feature) if x)
-            triple, env = cross_shape(where)
+            triple, env, prefix, unmet = cross_shape(where)
             label = f"{name} [{feats}] --target {triple or '<host>'}"
             if where != triple:
                 label += f" (board {where})"
@@ -553,7 +643,9 @@ def main():
                 (
                     label,
                     None,
-                    lambda n=name, s=feats, tr=triple, e=env: cross_clippy(n, s, tr, e, target_dir),
+                    lambda n=name, s=feats, tr=triple, e=env, px=prefix, u=unmet: cross_clippy(
+                        n, s, tr, e, target_dir, px, u
+                    ),
                 )
             )
     failures = []

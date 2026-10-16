@@ -813,6 +813,10 @@ pub(crate) struct CppActionClientCallbacks {
     pub context: *mut c_void,
 }
 
+// Not derived: that needs `Default` for a raw pointer, which is Rust 1.88, and
+// this crate's clippy MSRV is 1.87 (`clippy.toml`). The pinned stable clippy
+// honours that; the nightly one the NuttX build-std lint uses does not.
+#[allow(clippy::derivable_impls)]
 impl Default for CppActionClientCallbacks {
     fn default() -> Self {
         Self {

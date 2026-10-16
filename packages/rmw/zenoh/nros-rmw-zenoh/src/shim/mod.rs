@@ -237,7 +237,7 @@ impl<const N: usize> RuntimeWakeTable<N> {
     ) {
         use portable_atomic::Ordering;
         let i = Self::slot(session_index);
-        let cb_ptr = cb.map(|f| f as *mut ()).unwrap_or(core::ptr::null_mut());
+        let cb_ptr = cb.map_or(core::ptr::null_mut(), |f| f as *mut ());
         self.cb[i].store(cb_ptr, Ordering::Release);
         self.ctx[i].store(ctx, Ordering::Release);
     }
