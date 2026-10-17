@@ -93,3 +93,19 @@ That points to cause 3, or to cause 1 on that runner's tree only. A
 `west build` that is up to date never rebuilds the leaf, so 241's older locks
 were never realigned. The next nightly that lands on 241 shows whether the
 drift persists there. The check on 241's tree described above settles it.
+
+## Third sighting: newslab-server-241 again (2026-10-17)
+
+- Run: run-matrix 39009801514 (schedule, head `86394e250`).
+- Job: 117366348665, `tier 1 (cells)`, on `nano-ros-runner-newslab-server-241`.
+- Result: `check-lock: 57 lock(s), 234 drift(s)`, then `build-test-fixtures` failed. That job's
+  verdict job reads `tier 1 — NO VERDICT: stopped in the build`.
+
+These are the same 234 drifts in the same six Zephyr Rust leaves, and the
+crates and versions match this issue's first run. In the same run, tier 2 ran
+on another runner and passed (`VERDICT: cells ran and passed`).
+
+So far it is 2 of 2 on 241 and 0 of 1 elsewhere. The drift follows that runner's
+persistent `nros-fixture-tree`. Until it is fixed, every lane that lands on 241
+and builds fixtures stops before its cells, which makes that lane a
+no-verdict lane on that runner.
