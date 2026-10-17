@@ -8,8 +8,10 @@ type: bug
 area: [zephyr, rmw-zenoh, build]
 severity: high
 found: 2026-09-17
-related: [issue-0902, issue-1332, issue-1365, issue-0056, issue-0475]
+related: [issue-0902, issue-1332, issue-1365, issue-0056, issue-0475, phase-466]
 ---
+
+**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## What happens
 

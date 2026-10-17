@@ -8,8 +8,10 @@ status: open
 type: bug
 area: ci, examples, cli
 severity: high
-related: [1158, 1357, 0662, 0967, rfc-0033]
+related: [1158, 1357, 0662, 0967, rfc-0033, phase-466]
 ---
+
+**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## What happens
 

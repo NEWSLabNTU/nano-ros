@@ -6,8 +6,10 @@ type: enhancement
 area: [rmw, zenoh]
 severity: low
 found: 2026-10-12
-related: [phase-378, phase-377, rfc-0080, rfc-0081]
+related: [phase-378, phase-377, rfc-0080, rfc-0081, phase-474]
 ---
+
+**Home: [phase-474](../roadmap/phase-474-safety-island-board-findings.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## What is left
 

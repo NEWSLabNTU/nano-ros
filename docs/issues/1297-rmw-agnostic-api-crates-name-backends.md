@@ -6,8 +6,10 @@ type: tech-debt
 area: api, rmw
 severity: medium
 found: 2026-09-11
-related: [1219, RFC-0071, RFC-0031, phase-444]
+related: [1219, RFC-0071, RFC-0031, phase-444, phase-506]
 ---
+
+**Home: [phase-506](../roadmap/phase-506-api-crates-carry-only-the-api.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## What
 

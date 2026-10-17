@@ -5,9 +5,11 @@ status: open
 type: bug
 severity: medium
 area: [ci, zephyr]
-related: [1253, 1583, 1158]
+related: [1253, 1583, 1158, phase-466]
 found: 2026-10-12
 ---
+
+**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## Measured
 

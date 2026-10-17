@@ -6,8 +6,10 @@ type: bug
 area: [rmw-xrce, tiers]
 severity: medium
 found: 2026-10-07
-related: [1711]
+related: [1711, phase-507]
 ---
+
+**Home: [phase-507](../roadmap/phase-507-xrce-and-action-client-robustness.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## Summary
 

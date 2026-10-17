@@ -5,10 +5,10 @@ title: "migrating to zenoh-pico 1.10: the serial layer moved, `config.h` is no
 status: open
 type: task
 area: rmw, build
-related: [phase-415, issue-0852, issue-0882]
+related: [phase-415, issue-0852, issue-0882, phase-508]
 ---
 
-**Home: none** — unhomed after phase-355 was archived 2026-10-12; no active phase fits.
+**Home: [phase-508](../roadmap/phase-508-zenoh-pico-1-10-migration.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)". It had no home after phase-355 was archived on 2026-10-12, because no active phase fit.
 
 ## Why
 

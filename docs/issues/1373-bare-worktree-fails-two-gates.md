@@ -10,6 +10,8 @@ found: 2026-09-18
 related: [issue-0650, issue-0702, issue-0840, issue-1068, phase-478]
 ---
 
+**Home: [phase-478](../roadmap/phase-478-island-developer-experience-findings.md)** — homed 2026-10-17; the phase doc already tracks it in its body.
+
 ## What happens
 
 `git worktree add` does not populate submodules. Nothing else in the fast gate

@@ -6,8 +6,10 @@ type: test-gap
 area: core, boards, testing
 severity: medium
 found: 2026-10-11
-related: [issue-1036, issue-1640, phase-412]
+related: [issue-1036, issue-1640, phase-412, phase-474]
 ---
+
+**Home: [phase-474](../roadmap/phase-474-safety-island-board-findings.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## What is missing
 

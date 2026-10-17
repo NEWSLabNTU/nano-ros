@@ -515,3 +515,12 @@ evidence, the item is *close it*.
 | [#1228](../issues/1228-resolve-phase-does-not-yet-delete-the-fixed-point.md) | W2 landed the resolve phase and its own text says 'Remainder is issue 1228'. That is a hand-off, and the remainder is this phase's unmet A3 |
 | [#1252](../issues/1252-message-bound-knobs-have-no-pre-configure-twin.md) | the message-bound half of the same chain has no pre-configure producer. Without it RFC-0094 A3 cannot be met, which makes it a work item here rather than a note |
 | [#1121](../issues/1121-contract-sidecar-has-no-model-freshness-edge.md) | a new `<stem>.contract.yaml` is a resolver input that `nros sync` does not record, so the model it feeds stays stale. Recording every resolve input is this phase's digest question. Re-homed 2026-10-14 from phase-330, archived; phase-460 rules it out of scope |
+
+## Issues homed here (2026-10-17)
+
+Homed when every open issue was given a phase. Each issue has a `**Home:**` line pointing here.
+
+| issue | why it belongs here |
+| --- | --- |
+| [#1413](../issues/1413-play-launch-parser-ref-lags-submodule-pin.md) | `[tool.play_launch_parser].source.ref` lags the `play_launch` submodule pin, and that pin is the resolver this phase runs before configure. |
+| [#1460](../issues/1460-sync-staged-model-vanishes-before-commit.md) | `nros sync` fails on its own `.resolving` staging file. Sync is the resolve step. |

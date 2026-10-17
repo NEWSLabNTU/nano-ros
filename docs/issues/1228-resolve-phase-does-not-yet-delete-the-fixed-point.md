@@ -8,6 +8,8 @@ found: 2026-09-08
 related: [0940, 0965, 0991, 1002, 1119, 1061, 1125, 1252, phase-439, phase-403, phase-412]
 ---
 
+**Home: [phase-439](../roadmap/phase-439-resolve-before-configure.md)** — homed 2026-10-17; the phase doc already tracks it in its body.
+
 # UPDATE 2026-09-10 — item (3) is landed and MEASURED, on a real Zephyr image
 
 The entity link is closed and the numbers below are from a real build, not from

@@ -8,8 +8,10 @@ type: bug
 area: ci, process
 severity: high
 found: 2026-10-02
-related: [phase-396, issue-1347, issue-1365, issue-1500]
+related: [phase-396, issue-1347, issue-1365, issue-1500, phase-505]
 ---
+
+**Home: [phase-505](../roadmap/phase-505-ci-lanes-reach-and-infra-robustness.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## Measured
 

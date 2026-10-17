@@ -11,6 +11,8 @@ related: [419, 1226, 0196, phase-417, phase-444, phase-478]
 found: 2026-09-25
 ---
 
+**Home: [phase-478](../roadmap/phase-478-island-developer-experience-findings.md)** — homed 2026-10-17; the phase doc already tracks it in its body.
+
 ## What happens
 
 A roadmap phase states work items with counts and sizes. Another phase does

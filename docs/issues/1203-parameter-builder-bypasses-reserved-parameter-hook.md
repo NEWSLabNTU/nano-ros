@@ -6,9 +6,11 @@ status: open
 type: bug
 area: core
 severity: low
-related: [1202, phase-425, phase-426, phase-430]
+related: [1202, phase-425, phase-426, phase-430, phase-461]
 found: 2026-09-07
 ---
+
+**Home: [phase-461](../roadmap/phase-461-service-inbox-per-family.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## What
 

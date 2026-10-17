@@ -476,3 +476,12 @@ link runs both ways). Listing one here records the link, not a claim that
 this phase will fix it.
 
 - [issue 1158](../issues/1158-tier2-lane-has-produced-no-verdict-for-six-days.md) — The tier-2 lane has produced no runtime verdict in six consecutive scheduled runs, and no pre-merge event can produce …
+
+## Issues homed here (2026-10-17)
+
+Homed when every open issue was given a phase. Each issue has a `**Home:**` line pointing here.
+
+| issue | why it belongs here |
+| --- | --- |
+| [#1824](../issues/1824-generated-header-side-channel-consumers-unmigrated.md) | The per-build config headers still go through `$CARGO_TARGET_DIR/nros-{c,cpp}-generated/`. That is state keyed by a tree, not a name. Carried from phase-424. |
+| [#1825](../issues/1825-store-pin-bump-restale-unmeasured.md) | A per-project toolchain pin bump is argued, not measured, to re-stale generated code. This is phase-440 W7's open acceptance clause. |

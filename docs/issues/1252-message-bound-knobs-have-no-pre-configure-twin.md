@@ -8,6 +8,8 @@ found: 2026-09-10
 related: [1228, 0940, 0965, 0991, 1002, 1119, 1061, 1125, phase-439, phase-403, phase-478]
 ---
 
+**Home: [phase-439](../roadmap/phase-439-resolve-before-configure.md)** — homed 2026-10-17; the phase doc already tracks it in its body.
+
 # What is left of the fixed point, MEASURED on a real image
 
 Issue 1228 closed the ENTITY link: `nros build`'s stage 3.5 seed and the

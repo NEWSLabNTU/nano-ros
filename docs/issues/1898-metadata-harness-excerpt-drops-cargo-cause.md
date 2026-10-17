@@ -6,8 +6,10 @@ type: bug
 area: [ci, tooling, testing]
 severity: medium
 found: 2026-10-14
-related: [1626, 1158, 0699]
+related: [1626, 1158, 0699, phase-466]
 ---
+
+**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## Measured
 

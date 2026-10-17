@@ -7,9 +7,11 @@ status: open
 type: bug
 area: ci, testing
 severity: medium
-related: [0540, 0538, 1040, 1158, 0952, phase-350, phase-391, phase-468]
+related: [0540, 0538, 1040, 1158, 0952, phase-350, phase-391, phase-468, phase-466]
 found: 2026-09-25
 ---
+
+**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 # The red
 

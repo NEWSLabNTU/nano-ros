@@ -8,8 +8,10 @@ type: bug
 area: testing, nros-node, ci
 severity: medium
 found: 2026-09-29
-related: [1353, 1139, 0355]
+related: [1353, 1139, 0355, phase-466]
 ---
+
+**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## What happened
 

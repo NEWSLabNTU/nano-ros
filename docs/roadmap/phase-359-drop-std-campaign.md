@@ -1350,3 +1350,11 @@ evidence, the item is *close it*.
 | --- | --- |
 | [#1209](../issues/1209-std-census-ratchet-blind-to-multiline-cfg-attributes.md) | the `std` census counts `feature = "std"` only on lines containing the token, so a rustfmt-wrapped `cfg` hides a site from the instrument this phase depends on |
 | [#1210](../issues/1210-architecture-std-contract-cites-a-grants-example-that-no-longer-grants.md) | ARCHITECTURE §2's normative `std`/`alloc` contract is this phase's artifact, and its worked example stopped granting `std` — the document teaches the opposite of the rule it states |
+
+## Issues homed here (2026-10-17)
+
+Homed when every open issue was given a phase. Each issue has a `**Home:**` line pointing here.
+
+| issue | why it belongs here |
+| --- | --- |
+| [#1210](../issues/1210-architecture-std-contract-cites-a-grants-example-that-no-longer-grants.md) | ARCHITECTURE §2's `std`/`alloc` contract has to say what the campaign's terminal state is. |

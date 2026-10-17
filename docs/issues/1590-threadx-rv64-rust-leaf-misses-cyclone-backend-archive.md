@@ -8,8 +8,10 @@ type: bug
 area: build, cmake, rmw, boards, threadx
 severity: high
 found: 2026-09-30
-related: [1355, 1467, 0425, 1557, 1158]
+related: [1355, 1467, 0425, 1557, 1158, phase-466]
 ---
+
+**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## What happens
 

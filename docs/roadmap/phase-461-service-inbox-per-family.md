@@ -657,3 +657,11 @@ Claim: phase-461-W6. Depends on: phase-461-W1, phase-461-W2, phase-459-W2, phase
   shim's feature gate, not the store's existence; after W6 it names the
   `params` axis as the alternative.
 - `zephyr/Kconfig`: `NROS_SERVICE_BUFFER_SIZE` help text and the new symbols.
+
+## Issues homed here (2026-10-17)
+
+Homed when every open issue was given a phase. Each issue has a `**Home:**` line pointing here.
+
+| issue | why it belongs here |
+| --- | --- |
+| [#1203](../issues/1203-parameter-builder-bypasses-reserved-parameter-hook.md) | `Executor::parameter`'s builder declares straight into the store, so `use_sim_time` attaches no clock. This is the parameter family's own surface. |

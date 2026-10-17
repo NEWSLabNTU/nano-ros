@@ -763,3 +763,11 @@ evidence, the item is *close it*.
 | issue | why it belongs here |
 | --- | --- |
 | [#1037](../issues/archived/1037-nros-log-cargo-features-violate-d5.md) | RESOLVED 2026-10-06: `nros-log` carried four (in fact five) pick-one Cargo-feature families in `packages/core/`; they are the `[knobs.log]` tenant now. RFC-0086 D5 is this phase's design, which makes nros-log a W6 tenant and not a separate campaign |
+
+## Issues homed here (2026-10-17)
+
+Homed when every open issue was given a phase. Each issue has a `**Home:**` line pointing here.
+
+| issue | why it belongs here |
+| --- | --- |
+| [#1494](../issues/1494-platform-descriptor-unwatched-by-build-rungs.md) | `BuildRungs` reads every platform descriptor and watches none of them. It is the ladder's own freshness. |

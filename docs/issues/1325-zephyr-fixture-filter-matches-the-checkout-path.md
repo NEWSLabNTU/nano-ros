@@ -7,8 +7,10 @@ type: bug
 area: [build, testing]
 severity: low
 found: 2026-09-11
-related: [1010, phase-448]
+related: [1010, phase-448, phase-466]
 ---
+
+**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## What
 

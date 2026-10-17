@@ -11,6 +11,8 @@ found: 2026-09-22
 related: [1389, 1360, 1158, 1387, 1482, 1481, phase-466]
 ---
 
+**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-17; the phase doc already tracks it in its body.
+
 ## What happens
 
 Nightly run **35689793993** (schedule, 2026-09-22T05:12), job **106624135886**

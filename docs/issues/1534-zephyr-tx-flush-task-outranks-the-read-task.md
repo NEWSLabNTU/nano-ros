@@ -9,6 +9,8 @@ rfcs: []
 related: [0626, 0623, 0852, 1533, phase-474, phase-478]
 ---
 
+**Home: [phase-478](../roadmap/phase-478-island-developer-experience-findings.md)** — homed 2026-10-17; the phase doc already tracks it in its body.
+
 # On Zephyr the tx-flush task runs above the read task
 
 Issue 0626 gave the zenoh-pico READ and LEASE tasks a stated priority on Zephyr

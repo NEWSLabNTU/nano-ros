@@ -6,8 +6,10 @@ type: tech-debt
 area: [build, cmake, testing, threadx, nuttx]
 severity: low
 found: 2026-10-11
-related: [issue-1753, issue-1742, rfc-0043]
+related: [issue-1753, issue-1742, rfc-0043, phase-505]
 ---
+
+**Home: [phase-505](../roadmap/phase-505-ci-lanes-reach-and-infra-robustness.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## What was measured
 

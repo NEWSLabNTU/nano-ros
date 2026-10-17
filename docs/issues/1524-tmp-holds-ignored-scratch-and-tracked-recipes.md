@@ -8,8 +8,10 @@ type: bug
 area: [tooling, docs]
 severity: medium
 found: 2026-09-28
-related: [1513, 0196]
+related: [1513, 0196, phase-395]
 ---
+
+**Home: [phase-395](../roadmap/phase-395-dev-workflow-migration.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## What is wrong
 

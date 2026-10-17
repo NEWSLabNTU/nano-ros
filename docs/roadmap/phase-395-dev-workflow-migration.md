@@ -933,3 +933,11 @@ link runs both ways). Listing one here records the link, not a claim that
 this phase will fix it.
 
 - [issue 1177](../issues/1177-no-alloc-nros-c-lane-runs-only-on-schedule.md) — `check::workspace-features` gates no merge, so its reds are found by embedded consumers -- two so far, and the tier i …
+
+## Issues homed here (2026-10-17)
+
+Homed when every open issue was given a phase. Each issue has a `**Home:**` line pointing here.
+
+| issue | why it belongs here |
+| --- | --- |
+| [#1524](../issues/1524-tmp-holds-ignored-scratch-and-tracked-recipes.md) | `tmp/` is both ignored scratch and tracked recipes, which is a hazard in the workflow instructions every session follows. |

@@ -11,6 +11,8 @@ found: 2026-09-12
 related: [1350, 0996, 1177, 1158, phase-466, phase-489]
 ---
 
+**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-17; the phase doc already tracks it in its body.
+
 ## What happens
 
 `gate.yml` runs on `schedule` at 02:0x UTC, and that event is the only one that

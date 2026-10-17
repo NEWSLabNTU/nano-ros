@@ -9,6 +9,8 @@ found: 2026-09-06
 related: [0385, phase-418]
 ---
 
+**Home: [phase-418](../roadmap/phase-418-orin-safety-island-and-spe.md)** — homed 2026-10-17; the phase doc already tracks it in its body.
+
 # phase-385 W1's defect, twice more, in a file that phase did not look at
 
 `config/bare-metal/nros-platform.toml`:
