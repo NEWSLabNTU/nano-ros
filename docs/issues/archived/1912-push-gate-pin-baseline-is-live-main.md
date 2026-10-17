@@ -1,15 +1,16 @@
 ---
 id: 1912
 title: "A push-event gate compares submodule pins against the LIVE `origin/main`, so a commit superseded by a later pin bump reads as a REWIND"
-status: open
+status: resolved
 type: bug
 area: [ci]
 severity: low
 found: 2026-10-14
 related: [1043, phase-505]
+resolved_in: "branch fix/1373-1912"
 ---
 
-**Home: [phase-505](../roadmap/phase-505-ci-lanes-reach-and-infra-robustness.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+**Home: [phase-505](../../roadmap/phase-505-ci-lanes-reach-and-infra-robustness.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## Measured
 
@@ -131,3 +132,74 @@ submodule-pins: packages/rmw/zenoh/zpico-sys/zenoh-pico
 merged while this job was queued. The job compared against that newer main.
 Any job that runs `check fast` on a push to main has this exposure, not only
 `check / fast`.
+
+## Resolution (2026-10-18)
+
+The baseline is now a property of the COMMIT UNDER TEST, decided in one place:
+`scripts/ci/pin-baseline.sh`.
+
+| event | baseline |
+| --- | --- |
+| `push` | `github.event.before`, the commit the push replaced (all-zero: the tested commit's first parent) |
+| `merge_group` | `merge_group.base_sha` |
+| `pull_request` | `pull_request.base.sha`, fixed in the payload |
+| `schedule`, `workflow_dispatch` | the tested commit's first parent, read from the raw commit object so a depth-1 clone can name it |
+| local (`just check fast`) | `git merge-base HEAD origin/main`, the branch point |
+
+An older baseline cannot produce a false rewind: a forward move it has not
+seen yet still reads as a forward move. Only a newer baseline can, and the live
+tip is the newest there is. The local default had the same defect as the push
+lane: a branch that main had moved past inherited every later pin bump on main
+as a REWIND of its own. The pre-push hook was already correct, because git hands
+it the remote ref's sha, which is the push's `before`.
+
+**One spelling.** Nine copies of the three steps (eight jobs in `gate.yml`, one
+in `host-tests.yml`) each spelled `origin/${GITHUB_BASE_REF:-main}` inline. They
+now call `pin-baseline.sh provide` (resolve, fetch that commit with depth 1,
+export `NROS_SUBMODULE_PIN_BASELINE`), `init-moved` and `deepen`. The second and
+third used to diff against the live tip too, so they could initialise and
+deepen against the wrong pins. `submodule-pins-check.sh` sources the same
+`nros_pin_baseline_resolve` when it is given no baseline, so the workflow and
+the gate cannot disagree about the rule. If no baseline can be named, the gate
+does not fall back to `origin/main`. It reports an unresolvable baseline:
+FATAL in CI, NOT CHECKED locally. Issue 1043's three outcomes and issue 1476's
+shallow rule are unchanged, because both apply after the baseline is chosen.
+
+**Gate.** The script's normal-path selftest builds its own superproject (issue
+1465): `S0` pins `sub@old`, `S1` moves no pin, `S2` bumps to `sub@new` and is
+`origin/main`, and `S3` pins `sub@old` again. Checking `S1` against the live tip
+is the control and must say REWIND, which proves the fixture reproduces the
+race. Every arm (local, push, merge_group, pull_request, dispatch) must then
+call `S1` clean, and every arm must still FAIL `S3`. A payload with no base
+must fail as unresolved, not as a REWIND. The selftest adds about 0.1 s.
+
+Mutation proof (each mutation reverted, restored with `cmp`, back to rc 0):
+
+| mutation | gate |
+| --- | --- |
+| local arm returns `origin/main` instead of the merge-base | rc 1, "local default (merge-base) must not call S1 a REWIND" |
+| push arm ignores `before` | rc 1, "push event (before=S0) ..." |
+| merge_group reads `head_sha` | rc 1, "merge_group (base_sha=S0) ..." |
+| pull_request reads `head.sha` | rc 1, "pull_request (base.sha=S0) ..." |
+| dispatch arm returns the tested commit, not its parent | rc 1, "dispatch (first parent) ..." |
+| an unresolvable baseline falls back to `origin/main` | rc 1, "merge_group with no base_sha must fail as UNRESOLVED, not REWIND" |
+| the gate ignores the resolver (the old default) | rc 1, "local default ..." |
+| `pin-baseline.sh` is absent | rc 2, "cannot load scripts/ci/pin-baseline.sh" |
+
+A "clean" case must print `submodule-pins: OK`. An unresolvable baseline also
+exits 0 locally (NOT CHECKED), and the selftest must not count that as clean.
+The first draft of the selftest did count it, and the hook-side-effects gate's
+checkout, which lacked the then-untracked script, showed the hole.
+
+**Symptom, on the first sighting's real history** (`d4ed5af76`, superseded by
+`eadf501a4c`'s forward `third-party/nuttx/libc` bump):
+
+- old baseline, live main `eadf501a4c`: `REWIND`, rc 1, which is the CI failure above
+- push arm, `before` = `d4ed5af76^`: `OK (0 pin(s) moved)`, rc 0
+- a real rewind (a push whose `before` is `eadf501a4c` landing the older libc pin): `REWIND`, rc 1
+
+Not measured: a live CI run of the new step. `workflow_dispatch` reaches it
+through the first-parent arm (`gh workflow run gate.yml --ref <branch>`). The
+push, merge_group and pull_request arms are covered only by the selftest's
+synthetic payloads.
+
