@@ -76,37 +76,44 @@ It also demotes the "~750 msg/s drain envelope" recorded in earlier work:
 paced, the same island sustains 740-752 msg/s with zero stalls. That
 figure describes bursty traffic and cannot validate a msg/s budget.
 
-## The declaration — PROPOSED, and not nano-ros's to settle alone (issue 0760)
+## The declaration — settled in ros-launch-manifest (issue 0760)
 
-**Status of this section: a proposal awaiting a cross-repo discussion.** The
-rest of the RFC — both enforcement points, the occupancy model and the compile
-relation — is measured and stands on its own; this half does not.
+**Status of this section: settled upstream (2026-10-17).** ros-launch-manifest
+v0.1.64 added `sub.<e>.ingress: { rate_hz, burst }`, both keys required, and
+play_launch carries it into the model's `SubContract.ingress`; issue 0760
+(archived) records how its five points were settled. The text below is kept as
+the position this RFC took into that discussion, with the declaration updated to
+the spelling that shipped.
 
 `[[subscription]]` and its field set are defined by **`ros-launch-manifest`**, a
 separate repository consumed here as a TAG-pinned dependency
-(`ros-launch-manifest-model` / `-sched`, currently `v0.1.8`). nano-ros reads
+(`ros-launch-manifest-model` / `-sched`). nano-ros reads
 `SystemModel` from it and does not own the schema. Adding `ingress` is therefore
 a decision for that repo, and settling it unilaterally here would mint a field
 nano-ros writes and nothing else understands — the shape RFC-0060's
 two-repository amendment exists to avoid.
 
-Issue 0760 carries the topic and the five points the discussion has to settle.
-What follows is this RFC's *position* going into it, not a decided schema.
+Issue 0760 carried the topic and the five points the discussion had to settle.
 
-On a subscription, alongside the existing QoS and contract fields:
+On a subscriber endpoint of the contract (`system.contract.yaml` or a node's
+contract), alongside the existing rate and age fields — top level on the
+endpoint, NOT under `qos`:
 
-```toml
-[[subscription]]
-topic = "/control/command/control_cmd"
-ingress = { rate_hz = 200, burst = 4 }
+```yaml
+nodes:
+  controller:
+    sub:
+      control_cmd:
+        ingress: { rate_hz: 200, burst: 4 }
 ```
 
 - `rate_hz` — sustained inbound messages per second the device
   undertakes to absorb for this endpoint.
 - `burst` — messages that may arrive back-to-back before pacing applies.
-  The load-bearing half, per the measurement above. Absent, it defaults
-  to a small constant (1-4), NOT to "unbounded" — an unstated burst is
-  the failure mode this RFC exists to close.
+  The load-bearing half, per the measurement above. This RFC asked for an
+  absent burst to default to a small constant rather than "unbounded"; the
+  shipped schema goes further and makes it REQUIRED (both keys or neither),
+  so an unstated burst cannot be written at all.
 
 Both are properties of what the device can *absorb*, so they belong with
 the subscription rather than in the tier table: two subscriptions on one
@@ -167,6 +174,20 @@ TOML), lowered to zenoh-pico's `Z_RX_TASK_BUDGET_FRAMES` / `_REST_US` in
 `_zp_unicast_read_task`. Unset or -1 bakes no define, so an image that states
 nothing is byte-identical to before; a stated 0 is refused on every road. The
 derivation from a declared `(rate_hz, burst)` is phase-462 W6b.
+
+**Derived (phase-462 W6b):** the entity inventory takes the subscriber with the
+largest declared `rate_hz x burst` and states `FRAMES = burst`,
+`REST = round(burst x 10^6 / rate_hz)` — this section's relation with `c = 0`,
+because no per-board frame cost exists in the tree yet. The admitted rate is
+`FRAMES x 10^6 / (REST + FRAMES x c)`, so with `c = 0` the budget's nominal rate
+(the declared one) is an UPPER bound of what the board actually admits: the task
+UNDER-admits by the per-frame cost, and the excess waits in the socket. REST is clamped into the knob's range
+(`1..=1000000` us). The pair reaches the Zephyr resolver as
+`NROS_DERIVED_ZENOH_RX_TASK_BUDGET_*` (a rung below Kconfig and the environment)
+and every cargo road as the sizing descriptor's `[image] rx_task_budget_*`
+(a rung below every stated one in `nros-zpico-build`). No ingress declared: no
+derivation, an unbounded task, a byte-identical image. The per-board `c` and the
+`c x burst + floor <= tier slack` check are follow-up work (phase-462).
 
 Two structural properties make this a budget rather than a drop policy,
 and both were checked against the source before it was built:

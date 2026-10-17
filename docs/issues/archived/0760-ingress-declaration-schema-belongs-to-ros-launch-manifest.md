@@ -1,10 +1,11 @@
 ---
 id: 760
 title: "RFC-0074's `ingress` declaration is a ros-launch-manifest schema change, not a nano-ros one — park it until that discussion happens"
-status: open
+status: resolved
 type: enhancement
 area: orchestration, rmw
 related: [issue-0506, rfc-0074, rfc-0060, phase-462]
+resolved_in: phase-462 W6b
 ---
 
 **Home: [phase-462](../roadmap/phase-462-safety-vocabulary-on-target.md)** — re-homed 2026-10-12 from phase-296, which is archived.
@@ -76,3 +77,28 @@ RFC-0074 keeps the declaration as a PROPOSAL and says so at the point of use,
 rather than reading as settled design. The enforcement half stands on its own
 evidence and can be implemented against an out-of-band source of the two
 numbers if that is ever wanted before the schema lands.
+
+## Resolution (2026-10-17)
+
+Settled upstream, as this issue asked. ros-launch-manifest v0.1.64 adds
+`sub.<e>.ingress: { rate_hz, burst }` on a subscriber endpoint, and play_launch
+(32e64554) carries it into the model's `SubContract.ingress`. Against the five
+points:
+
+1. **Where:** on the subscriber endpoint, top level -- NOT under `qos`, since it
+   is a statement about what the device absorbs, not a DDS/zenoh QoS policy.
+2. **Token bucket:** yes, `(rate_hz, burst)`.
+3. **Default:** none. Both keys are REQUIRED (`rate_hz` finite and > 0,
+   `burst` >= 1), so an unstated burst cannot be written -- stricter than
+   RFC-0074's "absent means a small constant".
+4. **Interaction:** none; it sits beside `min_rate_hz` / `max_age_ms`.
+5. **Validation:** nano-ros owns the per-board check. rlm validates the shape
+   only; the `rate_hz <= 1/c` and `c x burst + floor <= tier slack` checks need
+   a per-board frame cost `c`, which is a nano-ros board fact.
+
+phase-462 W6b derives the read-task budget from it
+(`NROS_ZENOH_RX_TASK_BUDGET_FRAMES = burst`,
+`_REST_US = round(burst x 10^6 / rate_hz)`, from the subscriber with the
+largest `rate_hz x burst`). It takes `c = 0` because no board states `c` yet;
+the board cost and the slack check are phase-462 follow-up work. RFC-0074's
+declaration section now shows the shipped YAML spelling.

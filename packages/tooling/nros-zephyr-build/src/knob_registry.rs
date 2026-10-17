@@ -1014,7 +1014,7 @@ pub const KNOBS: &[KnobRow] = &[
         toml: Some("zenoh.wire.rx_task_budget_rest_us"),
         image_key: "zenoh.wire.rx_task_budget_rest_us",
         ty: Some("int"),
-        range: Some((1, 1000000)),
+        range: Some((-1, 1000000)),
         names: &[],
     },
     KnobRow {

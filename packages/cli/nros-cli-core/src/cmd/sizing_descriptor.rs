@@ -840,6 +840,12 @@ fn summary(desc: &nros_sizing_descriptor::SizingDescriptor) -> String {
         ("sched_context_count", desc.image.sched_context_count()),
         ("monitor_rows", desc.image.monitor_rows()),
         ("age_monitor_rows", desc.image.age_monitor_rows()),
+        // phase-462 W6b -- the zenoh read-task budget.
+        ("rx_task_budget_frames", desc.image.rx_task_budget_frames()),
+        (
+            "rx_task_budget_rest_us",
+            desc.image.rx_task_budget_rest_us(),
+        ),
         ("cell_entities", desc.image.cell_entities()),
         (
             "service_server_queryables",

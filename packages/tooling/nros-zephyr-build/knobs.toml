@@ -1689,7 +1689,7 @@ modes with real cost — see issues 0506 and 0623 before changing it.
 id = "ZENOH_RX_TASK_BUDGET_FRAMES"
 toml = "zenoh.wire.rx_task_budget_frames"
 type = "int"
-prompt = "zenoh read task frame budget (-1 = unbounded)"
+prompt = "zenoh read task frame budget (-1 = derive, else unbounded)"
 kconfig_if = "NROS_RMW_ZENOH"
 kconfig_attrs = [
     "default -1",
@@ -1703,7 +1703,10 @@ Bounds the task's contiguous CPU occupancy at FRAMES x per-frame cost
 stall the tiers below the transport band. It defers rather than drops:
 unread bytes stay in the socket and TCP backpressures the sender.
 
--1 (and unset) states nothing: the read task is unbounded, as before.
+-1 (and unset) states nothing: the budget derived from the contract's
+declared subscriber ingress applies (phase-462 W6b: FRAMES = burst of
+the subscriber with the largest rate_hz x burst), and with no ingress
+declared the read task is unbounded, as before.
 0 is REFUSED -- a budget of zero frames is not "unlimited". Too large a
 budget is worse than none on stall COUNT (128 frames: 12.5 stalls/run
 against 9.1 unbounded), so size it so FRAMES x cost fits the tightest
@@ -1714,17 +1717,21 @@ tier's slack. Maps to Z_RX_TASK_BUDGET_FRAMES.
 id = "ZENOH_RX_TASK_BUDGET_REST_US"
 toml = "zenoh.wire.rx_task_budget_rest_us"
 type = "int"
-prompt = "zenoh read task rest after a full budget (us)"
+prompt = "zenoh read task rest after a full budget (us, -1 = derive)"
 kconfig_if = "NROS_RMW_ZENOH"
 kconfig_attrs = [
-    "default 1000",
-    "range 1 1000000",
+    "default -1",
+    "range -1 1000000",
 ]
 help = '''
 RFC-0074 / phase-462 W6a. How long the zenoh-pico read task sleeps after
 NROS_ZENOH_RX_TASK_BUDGET_FRAMES frames. Read only when the frame budget
-is stated. RFC-0074's measured cells use 1000. Maps to
-Z_RX_TASK_BUDGET_REST_US.
+is in force. RFC-0074's measured cells use 1000.
+
+-1 (phase-462 W6b) states nothing: the value derived from the contract's
+declared subscriber ingress applies (burst x 10^6 / rate_hz of the
+subscriber with the largest rate_hz x burst), else the builtin 1000.
+Maps to Z_RX_TASK_BUDGET_REST_US.
 '''
 
 [[knob]]

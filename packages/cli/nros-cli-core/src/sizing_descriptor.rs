@@ -1344,6 +1344,22 @@ fn image_facts(inputs: &DescriptorInputs<'_>) -> nros_sizing_descriptor::Image {
                     // `publisher_count` and refused with it on the leaf
                     // declaration road: no carrier ever delivered it there.
                     .set_entity_liveliness_tokens(Some(k.entity_liveliness_tokens));
+                // phase-462 W6b -- the zenoh read-task budget, from the
+                // contract's declared subscriber ingress. Refused (never a
+                // guessed number) when none declares one; every consumer reads
+                // that as "no budget", the unbounded task.
+                match k.rx_task_budget {
+                    Some(b) => {
+                        img.set_rx_task_budget(b.frames, b.rest_us);
+                    }
+                    None => {
+                        let why = "no subscriber in this image's contract declares `ingress` \
+                                   (or no model was seen), so no read-task budget is derived \
+                                   and the zenoh read task stays unbounded";
+                        img.refuse("rx_task_budget_frames", why)
+                            .refuse("rx_task_budget_rest_us", why);
+                    }
+                }
                 match (k.max_monitors, k.max_age_monitors) {
                     (Some(m), Some(a)) => {
                         img.set_monitor_rows(Some(m)).set_age_monitor_rows(Some(a));
@@ -1428,13 +1444,15 @@ fn image_facts(inputs: &DescriptorInputs<'_>) -> nros_sizing_descriptor::Image {
 
 /// Issue 1655 — the `[image]` fields stated from `DerivedEntityKnobs`, refused
 /// together with the derivation.
-const IMAGE_KNOB_FIELDS: [&str; 8] = [
+const IMAGE_KNOB_FIELDS: [&str; 10] = [
     "callback_slots",
     "action_client_slots",
     "publisher_count",
     "sched_context_count",
     "monitor_rows",
     "age_monitor_rows",
+    "rx_task_budget_frames",
+    "rx_task_budget_rest_us",
     "cell_entities",
     "entity_liveliness_tokens",
 ];
@@ -4029,6 +4047,33 @@ mod tests {
         // STATED too, so a consumer can tell "none" from "not counted".
         assert_eq!(d.image.service_client_entities().stated(), Some(&0));
         assert_eq!(d.image.guard_condition_entities().stated(), Some(&0));
+    }
+
+    /// phase-462 W6b -- the zenoh read-task budget is stated from the SAME
+    /// derivation the Zephyr resolver reads, and refused when no subscriber
+    /// declares ingress: `nros-zpico-build` reads a refusal as no budget.
+    #[test]
+    fn the_read_task_budget_is_stated_only_when_ingress_is_declared() {
+        let mut inv = inventory(vec![sub("std_msgs/msg/String", "/chatter", Some(10))]);
+        let d = build(&base(&inv));
+        assert!(matches!(
+            d.image.rx_task_budget_frames(),
+            nros_sizing_descriptor::Fact::Refused(_)
+        ));
+        assert!(matches!(
+            d.image.rx_task_budget_rest_us(),
+            nros_sizing_descriptor::Fact::Refused(_)
+        ));
+        inv.set_rx_task_budget(Some(crate::entity_inventory::RxTaskBudget {
+            frames: 4,
+            rest_us: 20_000,
+        }));
+        let d = build(&base(&inv));
+        assert_eq!(d.image.rx_task_budget_frames().stated(), Some(&4));
+        assert_eq!(d.image.rx_task_budget_rest_us().stated(), Some(&20_000));
+        let text = nros_sizing_descriptor::render(&d);
+        let back = nros_sizing_descriptor::parse(&text, std::path::Path::new("t.toml")).unwrap();
+        assert_eq!(back, d);
     }
 
     #[test]

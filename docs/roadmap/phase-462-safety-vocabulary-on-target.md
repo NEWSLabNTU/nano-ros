@@ -35,7 +35,7 @@ wave after which a grouped node has a SchedContext on target).
 | `phase-462-W4` | `phase-462-W1`, `phase-462-W2`, `phase-495-W2` | `packages/core/nros-orchestration-ir/src/mode_variants.rs` (new) and its `mod` line; the `Plan` variant tables in `packages/cli/nros-cli-core/src/codegen/entry/mod.rs`; the variant emission in `emit_cpp.rs` and `emit_rust.rs`; `packages/testing/nros-tests/tests/mode_variants.rs` (new) | `cargo test -p nros-tests --test mode_variants`; `just mem-report` prices the second table at the delta of its overrides | no |
 | `phase-462-W5` | `phase-462-W2`; an rlm release carrying `deadline` and `liveliness` on endpoints (after R4; no rlm wave id exists for it yet) | `packages/core/nros-orchestration-ir/src/qos_override.rs` (:108-:135) and `qos_agreement.rs` (`MODELLED_POLICIES` widened); `packages/rmw/cyclonedds/nros-rmw-cyclonedds/` (the DDS deadline policy); `packages/rmw/zenoh/nros-rmw-zenoh/src/shim/subscriber.rs` and `packages/rmw/xrce/nros-rmw-xrce/` (the `deadline: not served` const); a `deadline` case in `packages/cli/nros-cli-core/tests/contract_qos_override_agreement.rs` | `cargo test -p nros-orchestration-ir qos_agreement`; `cargo test -p nros-cli-core --test contract_qos_override_agreement` | no |
 | `phase-462-W6a` | none | `zephyr/Kconfig` (`NROS_RX_TASK_BUDGET_FRAMES` and its burst twin); the zenoh read task in `zephyr/nros_zenoh_zephyr_system.c`; the knob's ladder entries as `scripts/check-knob-delivery.py` and `scripts/check-kconfig-knob-forwarding.sh` require them; `docs/design/0074-ingress-budget-rate-and-burst.md` (`implements-tracked-by`) | the RFC-0074 flood cell rerun with the budget stated records 0 stalls; a budget of 0 refuses | yes |
-| `phase-462-W6b` | `phase-462-W6a`; rlm issue 0760 (the `{ rate_hz, burst }` schema) | the knob derivation in `packages/cli/nros-cli-core/src/cmd/entity_inventory.rs` (the two numbers from the largest declared `rate_hz x burst`) and a test beside it | `cargo test -p nros-cli-core entity_inventory` (the derived pair equals the hand-stated pair on the flood cell's contract) | no |
+| `phase-462-W6b` | `phase-462-W6a`; rlm issue 0760 (the `{ rate_hz, burst }` schema) | the knob derivation in `packages/cli/nros-cli-core/src/entity_inventory.rs` (the two numbers from the largest declared `rate_hz x burst`) and a test beside it | `cargo test -p nros-cli-core entity_inventory` (the derived pair equals the hand-stated pair on the flood cell's contract) | no |
 
 Two claims can start today: W1 and W6a. W6 is split because its two halves
 have different dependencies - the stated knob needs nothing, the derived knob
@@ -98,7 +98,7 @@ Measured on this tree (`origin/main` @ `783cdfa14`):
 | `srv_endpoints.max_response_ms`, `tolerance_ms` | carried | -- | nothing (phase-434 "still open") |
 | `pub.min_rate_hz`, `node_paths[].max_latency_ms`, `sub.max_age_ms` | rlm | -- | RUST entries only: `model_ingest.rs:1336 monitor_rows`, `:1429 render_monitor_rs` bake `MonitorSpec` / `AgeMonitorSpec` rows; `codegen/entry/emit_cpp.rs` bakes none |
 | `deadline`, `liveliness` QoS | rlm model carries reliability, durability, history, depth, lifespan | -- | only as launch `qos_overrides.*` (`nros-orchestration-ir/src/qos_override.rs:108-135`), never from the contract |
-| ingress budget `{ rate_hz, burst }` (RFC-0074) | no schema (rlm issue 0760) | -- | no knob: `NROS_RX_TASK_BUDGET_FRAMES` appears only in the RFC (`0074:160`) |
+| ingress budget `{ rate_hz, burst }` (RFC-0074) | at planning no schema (rlm issue 0760); since rlm v0.1.64 `sub.<e>.ingress` | -- | at planning no knob; since W6a/W6b `NROS_ZENOH_RX_TASK_BUDGET_*`, derived by the entity inventory |
 
 The "nothing" cells were established by grep over `packages/cli/nros-cli-core/src`
 and `packages/core/nros-orchestration-ir/src` for `hazards`, `on_violation`,
@@ -448,7 +448,39 @@ measured: 12/12 budgeted runs with 0 stalls.
 
 Claim: phase-462-W6a. Depends on: none. Owns: zephyr/Kconfig; zephyr/nros_zenoh_zephyr_system.c; the knob's ladder entries as scripts/check-knob-delivery.py and scripts/check-kconfig-knob-forwarding.sh require them; docs/design/0074-ingress-budget-rate-and-burst.md. Gate: the RFC-0074 flood cell rerun with the budget stated records 0 stalls. Status: knob landed; flood-cell rerun pending.
 
-Claim: phase-462-W6b. Depends on: phase-462-W6a; rlm issue 0760. Owns: the knob derivation in packages/cli/nros-cli-core/src/cmd/entity_inventory.rs and a test beside it. Gate: cargo test -p nros-cli-core entity_inventory. Status: not started.
+W6b status: the derivation landed. rlm v0.1.64 settled issue 0760
+(`sub.<e>.ingress: { rate_hz, burst }`, both required, top level on the
+endpoint), and the entity inventory reads it (`RxTaskBudget::from_model`): the
+subscriber with the largest `rate_hz x burst` gives `FRAMES = burst` and
+`REST_US = round(burst x 10^6 / rate_hz)`, clamped into the Kconfig range
+`1..=1000000`. A multi-image merge keeps the heavier PAIR. Roads:
+- Zephyr: `NROS_DERIVED_ZENOH_RX_TASK_BUDGET_FRAMES` / `_REST_US` in the
+  inventory fragment, resolved by `_nros_resolve_derivable_knob`. Both Kconfig
+  defaults are now the `-1` DERIVE sentinel (REST_US was 1000; the C lane and
+  `nros-zpico-build` keep 1000 as the builtin), so -1 is "not stated".
+- cargo (leaf, workspace, cmake): the sizing descriptor's
+  `[image] rx_task_budget_frames` / `_rest_us`, which `nros-zpico-build` reads
+  as a rung below every stated one. Deliberately NOT a leaf-sidecar `[env]`
+  key: the wire tenant resolves env-first, so a sidecar row would outrank a
+  board's `[knobs.zenoh.wire]` value.
+No ingress declared: nothing derived, the descriptor fields refused, the task
+unbounded and the image byte-identical. Tests: `entity_inventory`
+`the_read_task_budget_follows_the_declared_ingress` and
+`the_read_task_budget_rounds_clamps_and_merges_as_a_pair`, `resolve`
+`resolved_toml_and_cmake_agree_on_the_read_task_budget`, `sizing_descriptor`
+`the_read_task_budget_is_stated_only_when_ingress_is_declared`.
+
+Follow-up, not in W6b:
+- `c = 0`. RFC-0074's relation is `REST = burst x (10^6/rate_hz - c_us)`, and
+  no per-board frame cost `c` exists in the tree, so the derivation takes 0.
+  The declared rate is then an UPPER bound of the admitted one: the task
+  under-admits by the per-frame cost (the excess waits in the socket). A board
+  fact for `c`, and the resolve-time checks `rate_hz <= 1/c` and
+  `c x burst + floor <= tier slack`, are owed.
+- The gate's "derived pair equals the hand-stated pair on the flood cell's
+  contract" needs the flood cell, which lives outside this tree (see W6a).
+
+Claim: phase-462-W6b. Depends on: phase-462-W6a; rlm issue 0760. Owns: the knob derivation in packages/cli/nros-cli-core/src/entity_inventory.rs and a test beside it. Gate: cargo test -p nros-cli-core entity_inventory. Status: derivation landed (c = 0); the per-board cost and the slack check are follow-up.
 
 ## Order and dependencies, in one place
 

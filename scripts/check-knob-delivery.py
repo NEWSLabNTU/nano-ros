@@ -111,6 +111,15 @@ DERIVED_PAIRS = {
     "NROS_DERIVED_EXECUTOR_MAX_AGE_MONITORS": (
         "NROS_RESOLVED_NROS_EXECUTOR_MAX_AGE_MONITORS",
     ),
+    # phase-462 W6b (RFC-0074) -- the zenoh read task's frame budget, derived
+    # from the contract's declared subscriber ingress. W6a stated it on a
+    # plain `_nros_resolve_knob`; a derivation reaching it needs this rung.
+    "NROS_DERIVED_ZENOH_RX_TASK_BUDGET_FRAMES": (
+        "NROS_RESOLVED_NROS_ZENOH_RX_TASK_BUDGET_FRAMES",
+    ),
+    "NROS_DERIVED_ZENOH_RX_TASK_BUDGET_REST_US": (
+        "NROS_RESOLVED_NROS_ZENOH_RX_TASK_BUDGET_REST_US",
+    ),
     # phase-412 #7 -- carried by the resolver AND by the leaf sidecar
     # (`DERIVED_ENV_KEYS`), and named in no registry until now. Issue 0900's
     # arena budget reads it beside MAX_CBS and the two are only meaningful

@@ -633,6 +633,14 @@ pub const DERIVED_MONITOR_ENV_KEYS: &[&str] = &[
     "NROS_EXECUTOR_MAX_MONITORS",
 ];
 
+// phase-462 W6b (RFC-0074) -- the zenoh read task's frame budget is NOT a
+// sidecar key. It is a WIRE knob, and `nros-zpico-build` resolves the wire
+// tenant env-first: a cargo `[env]` row here would be the ENVIRONMENT rung and
+// outrank a board's `[knobs.zenoh.wire]` value, so a derived default would
+// beat a stated one. The read-task budget rides the sizing descriptor instead
+// (`[image] rx_task_budget_*`), which `nros-zpico-build` reads as a rung below
+// every stated one, on the leaf road and the cmake road alike.
+
 /// Issue 1125 — the PAYLOAD-CLASS keys, which come from a second inventory.
 ///
 /// Kept apart from [`DERIVED_ENV_KEYS`] because they empty independently and

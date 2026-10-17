@@ -501,6 +501,18 @@ fn infra_queryables(infra: Option<&str>, nodes: Option<&str>) -> usize {
     nros_sizing_descriptor::infra::infra_service_servers(infra, nodes)
 }
 
+/// phase-462 W6b -- the read-task budget the sizing descriptor states,
+/// `(frames, rest_us)`: derived from the contract's declared subscriber
+/// ingress. `None` -- no descriptor, or a refused field (no subscriber declares
+/// ingress) -- is no budget. `from_build_env` emits the descriptor's own rerun
+/// edge.
+fn described_rx_task_budget() -> Option<(usize, usize)> {
+    let desc = nros_sizing_descriptor::from_build_env().unwrap_or_else(|e| panic!("{e}"))?;
+    let frames = *desc.image.rx_task_budget_frames().stated()?;
+    let rest_us = *desc.image.rx_task_budget_rest_us().stated()?;
+    Some((frames, rest_us))
+}
+
 /// Issue 1713 -- the liveliness pool, completed from the declared facts the
 /// way [`resolve_queryable_default`] completes the queryable table.
 ///
@@ -1901,6 +1913,7 @@ pub fn run() {
         };
         let mut rx_budget_frames: Option<usize> = None;
         let mut rx_budget_rest_us = RX_TASK_BUDGET_REST_US_BUILTIN;
+        let mut rx_budget_rest_us_stated = false;
         for (name, r) in resolved {
             match name {
                 "rx_task_budget_frames" => {
@@ -1908,13 +1921,30 @@ pub fn run() {
                         rx_budget_frames = Some(r.value);
                     }
                 }
-                "rx_task_budget_rest_us" => rx_budget_rest_us = r.value,
+                "rx_task_budget_rest_us" => {
+                    rx_budget_rest_us_stated = r.source != platform_config::KnobSource::Builtin;
+                    rx_budget_rest_us = r.value;
+                }
                 "batch_unicast_size" => buf_config.batch_unicast_size = r.value,
                 "batch_multicast_size" => buf_config.batch_multicast_size = r.value,
                 "frag_max_size" => buf_config.frag_max_size = r.value,
                 "get_reply_buf_size" => shim_config.get_reply_buf_size = r.value,
                 "get_poll_interval_ms" => shim_config.get_poll_interval_ms = r.value,
                 other => unreachable!("unknown wire knob `{other}`"),
+            }
+        }
+        // phase-462 W6b -- the budget DERIVED from the contract's declared
+        // subscriber ingress, from the sizing descriptor (`[image]
+        // rx_task_budget_*`). Per knob, a rung BELOW every stated one -- an
+        // env, board or platform value still wins -- the same ladder the
+        // Zephyr resolver applies (`_nros_resolve_derivable_knob`, once per
+        // knob). A refused or absent field is no budget: the unbounded task.
+        if let Some((frames, rest_us)) = described_rx_task_budget() {
+            if rx_budget_frames.is_none() {
+                rx_budget_frames = Some(frames);
+            }
+            if !rx_budget_rest_us_stated {
+                rx_budget_rest_us = rest_us;
             }
         }
         buf_config.rx_task_budget =
