@@ -31,6 +31,22 @@
  *  overwrites a same-name slot). Returns the `rmw_ret_t` the registry gave. */
 int32_t nros_stub_rmw_register(void);
 
+/** Issue 1405 — register the SAME stub under another name. A node whose
+ *  options name it gets a SECOND session (the executor opens one per distinct
+ *  backend), which is how a probe gets two sessions without a second backend. */
+int32_t nros_stub_rmw_register_as(const char* name);
+
+/** Issue 1405 — sessions this stub has opened since process start. Session N
+ *  (0-based, in open order) is the one `nros_stub_rmw_last_entity_session`
+ *  reports as N. */
+uint32_t nros_stub_rmw_sessions_opened(void);
+
+/** Issue 1405 — which session (0-based, in open order) the LAST `create_*`
+ *  slot was handed, or -1 if none has been. Recorded before the slot refuses,
+ *  like the entity name. This is the only place a probe can see the session an
+ *  entity REGISTERED on, as opposed to the one its node was bound to. */
+int32_t nros_stub_rmw_last_entity_session(void);
+
 /** How many times the executor drove the stub's I/O. A spin that never reached
  *  the backend is a probe that measured nothing. */
 uint32_t nros_stub_rmw_drive_io_calls(void);

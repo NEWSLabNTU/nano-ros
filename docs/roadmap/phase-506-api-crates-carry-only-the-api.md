@@ -42,8 +42,12 @@ machinery beside the user API (issue 1789), and nros-c still decodes node slot
 
 - [ ] [#1789](../issues/1789-nros-facade-exports-runtime-machinery.md): the 64
       ledger rows are settled as hidden, moved or kept with a reason.
-- [ ] [#1405](../issues/1405-c-executor-node-id-zero-reads-as-no-node.md):
+- [x] [#1405](../issues/archived/1405-c-executor-node-id-zero-reads-as-no-node.md):
       nros-c's nine registration sites keep "no node" distinct from slot 0.
+      **Done 2026-10-18:** measured as a real defect (a primary node on an
+      extra session registered its executor entities on session 0); one
+      decode helper, an `executor_bound` flag in `rclc_node_ref_t`'s padding,
+      and `executor_primary_node_session.c` in `just check c`.
 
 ## Acceptance
 
@@ -58,5 +62,5 @@ ledger has no row whose decision is not yet applied.
 | [#1298](../issues/1298-rmw-agnostic-core-names-backends.md) | `nros-macros` and one other core crate name backends in code, inside RFC-0071's reach. |
 | [#1299](../issues/1299-rmw-agnostic-backend-named-config-in-api.md) | Backend-named configuration (`CONFIG_NROS_ZENOH_*`, `ZENOH_LOCATOR`) in the API crates is RFC-0071 D8's class. |
 | [#1300](../issues/1300-closed-backend-lists-outside-core-api.md) | Closed backend lists outside core/api (the CLI scaffold, colcon's `RMW_BACKENDS`, `board.knobs.zenoh`) are beyond the gate's reach. |
-| [#1405](../issues/1405-c-executor-node-id-zero-reads-as-no-node.md) | `node_raw_id != 0` decodes the primary node slot as "no node" at nine nros-c registration sites, the same conflation issue 1384 fixed one layer up. |
+| [#1405](../issues/archived/1405-c-executor-node-id-zero-reads-as-no-node.md) | `node_raw_id != 0` decodes the primary node slot as "no node" at nine nros-c registration sites, the same conflation issue 1384 fixed one layer up. |
 | [#1789](../issues/1789-nros-facade-exports-runtime-machinery.md) | `nros::` still exports runtime machinery beside the user API: 64 ledger rows say a name should be hidden or moved. |

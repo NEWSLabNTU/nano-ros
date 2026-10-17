@@ -3,15 +3,16 @@ id: 1405
 title: "`node_raw_id != 0` decodes the PRIMARY slot as \"no node\" at nine
   `nros-c` registration sites — the same conflation issue 1384 fixed one layer
   up, and the one `nros-cpp` closed with a node-id bias in issue 0312"
-status: open
+status: resolved
 type: bug
 area: [api]
 severity: medium
 found: 2026-09-21
+resolved: 2026-10-18
 related: [issue-1384, issue-0312, phase-156, phase-189, phase-506]
 ---
 
-**Home: [phase-506](../roadmap/phase-506-api-crates-carry-only-the-api.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+**Home: [phase-506](../../roadmap/phase-506-api-crates-carry-only-the-api.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## What is true
 
@@ -89,3 +90,44 @@ registering the same entity, or a written finding that the two are identical on
 the wire and the `None` is inert — in which case the sites should still be
 collapsed onto ONE decode helper with that finding as its comment, because nine
 copies of a predicate that is right by accident is how 1384 happened.
+
+## Measured (2026-10-18)
+
+The difference is real, and it is not on the wire identity 0312 saw — it is the
+SESSION. `register_*_inner(None, …)` registers under the executor's own name on
+session 0; `Some(NodeId::PRIMARY)` registers under the node record's name on the
+record's `session_idx`. For a primary node on session 0 the two agree, which is
+why nothing surfaced. They disagree when the first node's options name another
+backend: `NodeBuilder::resolve_session_slot` puts the node on an EXTRA session,
+the eager publisher (`resolve_session_and_domain` → `node_session_mut`) follows
+it, and every executor-registered entity went to session 0.
+
+`packages/api/nros-c/tests/run/executor_primary_node_session.c` measures it
+with the stub backend registered under two names (two sessions, no second
+backend) and a per-session marker the stub reads back from each `create_*`.
+Before the fix: publisher on session 1, and subscription, subscription-with-info,
+service and client all on session 0 — 4 failures, every call `RCL_RET_OK`.
+
+## Cause
+
+The slot cannot answer "is there a `NodeRecord` to register under": a legacy
+node (`rclc_node_init_default`) carries slot 0 too, and registering it as
+`NodeId::PRIMARY` fails the record lookup. That is what `!= 0` was for. The
+entity's stored `rclc_node_ref_t` (phase-379 W4) held only slot + generation, so
+the registration path had no way to ask how the node was bound.
+
+## Fix
+
+* `rclc_node_ref_t` gains `executor_bound: bool`, set by `node_ref_of` from
+  `rcl_node_t::is_executor_bound`. It sits in what was padding after
+  `node_id`, so the struct stays 8 bytes with 4-byte alignment and a zeroed
+  struct reads "not executor-bound". So the ABI concern this issue raised does
+  not apply: no size or offset of an existing field moved, and no bias was
+  needed.
+* ONE decode, `registration_node_id` (and `registration_node_id_of` for the one
+  site holding a live pointer), replaces all nine copies in `executor.rs`.
+* The probe runs in `just check c`, beside `executor_bound_node.c`. Its legacy
+  half is the negative control for the reason `!= 0` existed.
+
+Sweep: `git grep -n "node_raw_id\|node_id != 0" -- packages/api/nros-c/src`
+is empty; the one `nros-cpp` hit is 0312's biased decode, which is correct.
