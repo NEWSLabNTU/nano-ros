@@ -362,6 +362,29 @@ c: c-fmt
         "$nros_c_lib" -lpthread -ldl -lm \
         -o tmp/executor_bound_node
     ./tmp/executor_bound_node
+    echo "  - issue 1405: an executor-registered entity lands on its NODE's session, from slot 0 too"
+    # The sibling of 1384 one decision over: nine registration sites decoded
+    # the node's slot as `node_id != 0`, so the PRIMARY node registered as a
+    # legacy node — on session 0, even when its options named another backend
+    # and the node lived on an extra session. Every call returned RCL_RET_OK.
+    # The stub is registered under two names to get two sessions, and reports
+    # which session each `create_*` was handed. The legacy half is the negative
+    # control: a slot-0 node with no executor record must keep the executor's
+    # own identity. `test -f` first (issue 0196).
+    test -f packages/api/nros-c/tests/run/executor_primary_node_session.c || { \
+        echo "ERROR: executor_primary_node_session.c is MISSING -- this check passes on absence." >&2; \
+        exit 1; }
+    cc -std=c11 -Wall -Wextra -Wmissing-prototypes -D_GNU_SOURCE \
+        -I"$cgen" \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/core/nros-rmw-abi/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -Ipackages/api/nros-c/tests/run \
+        packages/api/nros-c/tests/run/executor_primary_node_session.c \
+        packages/api/nros-c/tests/run/stub_rmw_backend.c \
+        "$nros_c_lib" -lpthread -ldl -lm \
+        -o tmp/executor_primary_node_session
+    ./tmp/executor_primary_node_session
     echo "  - issue 1609: a C action server/client is REMOVED from its executor, and a"
     echo "    create/remove loop runs past the handle table and the arena"
     # Compile+link+run, same reason as every probe above: `fini` returning

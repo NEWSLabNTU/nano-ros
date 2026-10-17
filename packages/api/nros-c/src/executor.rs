@@ -173,6 +173,35 @@ fn set_executor_node_identity_for_slot(rust_exec: &mut CExecutor, node_id: u8) {
     rust_exec.set_node_identity(name.as_str(), namespace.as_str());
 }
 
+/// The executor slot an entity REGISTERS under: `Some` for a node bound with
+/// `rclc_executor_node_init`, whichever slot it took, and `None` for a legacy
+/// node, which has no `NodeRecord` and registers under the executor's own
+/// identity on session 0.
+///
+/// issue 1405 — nine registration sites each decoded this as
+/// `node_id != 0`. The first node an executor builds takes slot 0
+/// (`NodeId::PRIMARY`), so the primary node took the legacy arm: harmless when
+/// it lives on session 0, and wrong when its options name another backend and
+/// it lives on an extra session — its executor-registered entities went to
+/// session 0 while its eager publisher went to its own (measured by
+/// `tests/run/executor_primary_node_session.c`). The slot cannot answer the
+/// question, because a legacy node carries slot 0 too; the reference says how
+/// the node was bound. ONE decode, because nine copies of a predicate that is
+/// right by accident is how issue 1384 happened.
+fn registration_node_id(node: crate::node::rclc_node_ref_t) -> Option<nros_node::executor::NodeId> {
+    (node.is_bound() && node.executor_bound)
+        .then(|| nros_node::executor::NodeId::from_raw(node.node_id))
+}
+
+/// [`registration_node_id`] for a caller holding a live node (`None` = the
+/// legacy single-node path, a NULL `node`).
+fn registration_node_id_of(
+    node: Option<&crate::node::rcl_node_t>,
+) -> Option<nros_node::executor::NodeId> {
+    node.filter(|n| n.is_executor_bound())
+        .map(|n| nros_node::executor::NodeId::from_raw(n.node_id))
+}
+
 // ============================================================================
 // C types (kept for API compatibility)
 // ============================================================================
@@ -1980,14 +2009,8 @@ unsafe fn register_subscription_entry(
 
     // Phase 104.C.8.b — a Node created via `rclc_executor_node_init` routes
     // through `_on(NodeId, ...)` so multi-RMW bridges land on the right
-    // session; a legacy Node carries `node_id == 0` and takes the single-Node
-    // entry point.
-    let node_raw_id = if !subscription_ref.node.is_bound() {
-        0
-    } else {
-        subscription_ref.node.node_id
-    };
-    let node_id = (node_raw_id != 0).then(|| nros_node::executor::NodeId::from_raw(node_raw_id));
+    // session; a legacy Node takes the single-Node entry point (issue 1405).
+    let node_id = registration_node_id(subscription_ref.node);
 
     let handle_id = match register(rust_exec, node_id, topic_str, type_str, type_hash_str, qos) {
         Ok(handle_id) => handle_id,
@@ -2314,9 +2337,7 @@ pub unsafe extern "C" fn rclc_executor_add_subscription_raw_with_info(
             Err(()) => return RCL_RET_INVALID_ARGUMENT,
         };
         let topic_str = __resolved_name.as_str();
-        let node_raw_id = if node.is_null() { 0 } else { (*node).node_id };
-        let node_id =
-            (node_raw_id != 0).then(|| nros_node::executor::NodeId::from_raw(node_raw_id));
+        let node_id = registration_node_id_of(node.as_ref());
         let result = rust_exec.add_arena_subscription_c_info_callback::<MESSAGE_BUFFER_SIZE>(
             node_id,
             topic_str,
@@ -2597,13 +2618,7 @@ pub unsafe extern "C" fn rclc_executor_add_subscription_in_group(
         };
         let topic_str = __resolved_name.as_str();
 
-        let node_raw_id = if !subscription_ref.node.is_bound() {
-            0
-        } else {
-            subscription_ref.node.node_id
-        };
-        let node_id =
-            (node_raw_id != 0).then(|| nros_node::executor::NodeId::from_raw(node_raw_id));
+        let node_id = registration_node_id(subscription_ref.node);
 
         // Extract the group name from the C string (NULL or empty ⇒ None).
         let group_str = if callback_group.is_null() {
@@ -2828,20 +2843,16 @@ pub unsafe extern "C" fn rclc_executor_add_service_raw(
         // Phase 104.C.8.b — route multi-Node services through the
         // `_on(NodeId, ...)` variant when the Node was created via
         // `rclc_executor_node_init`.
-        let node_raw_id = if !service_ref.node.is_bound() {
-            0
-        } else {
-            service_ref.node.node_id
-        };
+        let node_id = registration_node_id(service_ref.node);
         // Phase 193.4 — the service's QoS (set via rclc_service_init_with_qos;
         // defaults to services_default via nros_service_init).
         let svc_qos = service_ref.get_qos_settings();
         // Phase 189.M3.3.a — capture the requested sched-context slot before the
         // `&mut *service` reborrow in the Ok arm (avoids an aliasing borrow).
         let requested_sc = service_ref.sched_context_id;
-        let result = if node_raw_id != 0 {
+        let result = if let Some(node_id) = node_id {
             rust_exec.register_service_raw_sized_on::<MESSAGE_BUFFER_SIZE, MESSAGE_BUFFER_SIZE>(
-                nros_node::executor::NodeId::from_raw(node_raw_id),
+                node_id,
                 service_name,
                 type_str,
                 type_hash_str,
@@ -2964,20 +2975,16 @@ pub unsafe extern "C" fn rclc_executor_attach_client(
         let service_name = __resolved_name.as_str();
 
         // Phase 104.C.8.b — service-client multi-Node dispatch.
-        let node_raw_id = if !client_ref.node.is_bound() {
-            0
-        } else {
-            client_ref.node.node_id
-        };
+        let node_id = registration_node_id(client_ref.node);
         // Phase 193.4b — the client's QoS (set via rclc_client_init_with_qos;
         // defaults to services_default via rclc_client_init_default).
         let client_qos = client_ref.get_qos_settings();
         // Phase 189.M3.3.a — capture the requested sched-context slot before the
         // `&mut *client` reborrow in the Ok arm (avoids an aliasing borrow).
         let requested_sc = client_ref.sched_context_id;
-        let result = if node_raw_id != 0 {
+        let result = if let Some(node_id) = node_id {
             rust_exec.register_service_client_raw_sized_on::<MESSAGE_BUFFER_SIZE>(
-                nros_node::executor::NodeId::from_raw(node_raw_id),
+                node_id,
                 service_name,
                 type_str,
                 type_hash_str,
@@ -3120,11 +3127,6 @@ pub unsafe extern "C" fn rclc_executor_attach_action_server(
         let action_name = __resolved_name.as_str();
 
         // Phase 104.C.8.b — action-server multi-Node dispatch.
-        let node_raw_id = if !server_ref.node.is_bound() {
-            0
-        } else {
-            server_ref.node.node_id
-        };
 
         // Register with the nros-node executor using trampolines. The
         // accepted_callback_trampoline is invoked by the arena *after* the
@@ -3138,11 +3140,7 @@ pub unsafe extern "C" fn rclc_executor_attach_action_server(
         // Phase 189.M3.3.b — requested sched-context slot (bind applied at the
         // Ok arm using the action server's goal-service handle).
         let requested_sc = server_ref.sched_context_id;
-        let node_id = if node_raw_id != 0 {
-            Some(nros_node::executor::NodeId::from_raw(node_raw_id))
-        } else {
-            None
-        };
+        let node_id = registration_node_id(server_ref.node);
         let result = rust_exec
             .register_action_server_raw_sized::<MESSAGE_BUFFER_SIZE, MESSAGE_BUFFER_SIZE, MESSAGE_BUFFER_SIZE, NROS_MAX_CONCURRENT_GOALS>(
                 nros_node::RawActionServerSpec {
@@ -3271,16 +3269,7 @@ pub unsafe extern "C" fn rclc_executor_attach_action_client(
         // Phase 104.C.8.b — action-client multi-Node dispatch.
         // `spec.node_id` selects the target Node's session (or the
         // executor's own node when `None`).
-        let node_raw_id = if !client_ref.node.is_bound() {
-            0
-        } else {
-            client_ref.node.node_id
-        };
-        let node_id = if node_raw_id != 0 {
-            Some(nros_node::executor::NodeId::from_raw(node_raw_id))
-        } else {
-            None
-        };
+        let node_id = registration_node_id(client_ref.node);
         // Phase 189.M3.3.b — requested sched-context slot (bind applied at the
         // Ok arm; the client handle's entry_index is its callback slot).
         let requested_sc = client_ref.sched_context_id;

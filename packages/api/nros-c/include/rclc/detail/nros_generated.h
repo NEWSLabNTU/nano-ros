@@ -994,6 +994,19 @@ typedef struct rclc_node_ref_t {
    */
   uint8_t node_id;
   /**
+   * Was the node bound to an EXECUTOR (`rclc_executor_node_init`) rather
+   * than initialised on the legacy support path? (issue 1405)
+   *
+   * Both carry slot 0 when they are the first node, so `node_id` alone
+   * cannot say whether there is a `NodeRecord` to register under. The
+   * registration paths used `node_id != 0` for that, which sent an
+   * executor's PRIMARY node down the legacy arm: its entities registered on
+   * session 0 even when the node itself lives on another session. This
+   * field occupies what was padding, so the struct's size and alignment are
+   * unchanged, and a zeroed struct reads as "not executor-bound".
+   */
+  bool executor_bound;
+  /**
    * Slot generation when the entity was created. 0 = no node bound.
    */
   uint32_t generation;

@@ -9,7 +9,15 @@
 #include <string.h>
 #include <time.h>
 
-static int s_backend_data = 0;
+/* Issue 1405 — one marker PER SESSION, handed out in open order, so an entity
+ * create can say which session it landed on. A single shared marker made every
+ * session look like every other one, and a registration that picked the wrong
+ * session was invisible. Wraps, so a long-lived process never runs off the end;
+ * the index is only meaningful within one probe. */
+#define STUB_MAX_SESSIONS 16
+static int s_sessions[STUB_MAX_SESSIONS];
+static uint32_t s_sessions_opened = 0;
+static int32_t s_last_entity_session = -1;
 static uint32_t s_drive_io_calls = 0;
 
 /* The last name an entity slot was asked to create under. Recorded even though
@@ -17,6 +25,23 @@ static uint32_t s_drive_io_calls = 0;
  * resolved: this is the only place a test can read the wire name the runtime
  * computed, rather than the source name it passed in. */
 static char s_last_entity_name[256] = {0};
+
+static void record_entity_session(const rmw_node_t* node) {
+    s_last_entity_session = -1;
+    if (node == NULL || node->session == NULL) return;
+    const int* marker = (const int*)node->session->backend_data;
+    if (marker >= &s_sessions[0] && marker < &s_sessions[STUB_MAX_SESSIONS]) {
+        s_last_entity_session = (int32_t)(marker - &s_sessions[0]);
+    }
+}
+
+int32_t nros_stub_rmw_last_entity_session(void) {
+    return s_last_entity_session;
+}
+
+uint32_t nros_stub_rmw_sessions_opened(void) {
+    return s_sessions_opened;
+}
 
 static void record_entity_name(const char* name) {
     if (name == NULL) {
@@ -83,7 +108,8 @@ static rmw_ret_t stub_create_session(const char* locator, uint8_t mode, uint32_t
     (void)options;
     /* The runtime treats a NULL `backend_data` as "no session"; anything
      * non-NULL and stable will do, and nothing dereferences it here. */
-    out->backend_data = &s_backend_data;
+    out->backend_data = &s_sessions[s_sessions_opened % STUB_MAX_SESSIONS];
+    s_sessions_opened++;
     return NROS_RMW_RET_OK;
 }
 
@@ -117,6 +143,7 @@ stub_create_publisher(const rmw_node_t* node, const rmw_message_type_support_t* 
                       const char* topic_name, uint32_t domain_id, const rmw_qos_profile_t* qos,
                       const rmw_publisher_options_t* options, rmw_publisher_t* out) {
     record_entity_name(topic_name);
+    record_entity_session(node);
     (void)node;
     (void)type_support;
     (void)domain_id;
@@ -164,6 +191,7 @@ stub_create_subscription(const rmw_node_t* node, const rmw_message_type_support_
                          const char* topic_name, uint32_t domain_id, const rmw_qos_profile_t* qos,
                          const rmw_subscription_options_t* options, rmw_subscription_t* out) {
     record_entity_name(topic_name);
+    record_entity_session(node);
     (void)node;
     (void)type_support;
     (void)domain_id;
@@ -203,6 +231,7 @@ static rmw_ret_t stub_create_service(const rmw_node_t* node,
                                      const char* service_name, uint32_t domain_id,
                                      const rmw_qos_profile_t* qos, rmw_service_t* out) {
     record_entity_name(service_name);
+    record_entity_session(node);
     (void)node;
     (void)type_support;
     (void)domain_id;
@@ -250,6 +279,7 @@ static rmw_ret_t stub_create_client(const rmw_node_t* node,
                                     const char* service_name, uint32_t domain_id,
                                     const rmw_qos_profile_t* qos, rmw_client_t* out) {
     record_entity_name(service_name);
+    record_entity_session(node);
     (void)node;
     (void)type_support;
     (void)domain_id;
@@ -332,6 +362,10 @@ static const nros_rmw_vtable_t STUB_VTABLE = {
 
 int32_t nros_stub_rmw_register(void) {
     return (int32_t)nros_rmw_cffi_register_named(NROS_STUB_RMW_NAME, &STUB_VTABLE);
+}
+
+int32_t nros_stub_rmw_register_as(const char* name) {
+    return (int32_t)nros_rmw_cffi_register_named(name, &STUB_VTABLE);
 }
 
 uint32_t nros_stub_rmw_drive_io_calls(void) {

@@ -98,6 +98,17 @@ pub enum rclc_node_state_t {
 pub struct rclc_node_ref_t {
     /// Executor node slot (`rcl_node_t::node_id`). 0 = the primary node.
     pub node_id: u8,
+    /// Was the node bound to an EXECUTOR (`rclc_executor_node_init`) rather
+    /// than initialised on the legacy support path? (issue 1405)
+    ///
+    /// Both carry slot 0 when they are the first node, so `node_id` alone
+    /// cannot say whether there is a `NodeRecord` to register under. The
+    /// registration paths used `node_id != 0` for that, which sent an
+    /// executor's PRIMARY node down the legacy arm: its entities registered on
+    /// session 0 even when the node itself lives on another session. This
+    /// field occupies what was padding, so the struct's size and alignment are
+    /// unchanged, and a zeroed struct reads as "not executor-bound".
+    pub executor_bound: bool,
     /// Slot generation when the entity was created. 0 = no node bound.
     pub generation: u32,
 }
@@ -107,6 +118,7 @@ impl rclc_node_ref_t {
     pub const fn none() -> Self {
         Self {
             node_id: 0,
+            executor_bound: false,
             generation: 0,
         }
     }
@@ -134,10 +146,11 @@ pub(crate) unsafe fn node_ref_of(node: *const rcl_node_t) -> rclc_node_ref_t {
     if node.is_null() {
         return rclc_node_ref_t::none();
     }
-    let id = unsafe { (*node).node_id };
+    let node = unsafe { &*node };
     rclc_node_ref_t {
-        node_id: id,
-        generation: current_generation(id),
+        node_id: node.node_id,
+        executor_bound: node.is_executor_bound(),
+        generation: current_generation(node.node_id),
     }
 }
 
@@ -1589,6 +1602,7 @@ mod node_ref_tests {
         let id = 3u8;
         let before = rclc_node_ref_t {
             node_id: id,
+            executor_bound: true,
             generation: current_generation(id),
         };
         assert!(node_ref_is_live(before), "a fresh reference must resolve");
@@ -1601,6 +1615,7 @@ mod node_ref_tests {
 
         let after = rclc_node_ref_t {
             node_id: id,
+            executor_bound: true,
             generation: current_generation(id),
         };
         assert!(node_ref_is_live(after), "the rebound slot issues live refs");
@@ -1618,6 +1633,7 @@ mod node_ref_tests {
     fn a_zeroed_reference_is_never_live() {
         let zeroed = rclc_node_ref_t {
             node_id: 0,
+            executor_bound: false,
             generation: 0,
         };
         assert!(!zeroed.is_bound());
