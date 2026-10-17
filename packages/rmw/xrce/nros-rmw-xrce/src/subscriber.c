@@ -66,10 +66,12 @@ void xrce_topic_callback(uxrSession* session, uxrObjectId object_id, uint16_t re
      * for diagnostics when the slot pool is full. */
 }
 
-rmw_ret_t
-xrce_subscription_create(const rmw_node_t* node, const rmw_message_type_support_t* type_support,
-                         const char* topic_name, uint32_t domain_id, const rmw_qos_profile_t* qos,
-                         const rmw_subscription_options_t* options, rmw_subscription_t* out) {
+static rmw_ret_t xrce_subscription_create_locked(const rmw_node_t* node,
+                                                 const rmw_message_type_support_t* type_support,
+                                                 const char* topic_name, uint32_t domain_id,
+                                                 const rmw_qos_profile_t* qos,
+                                                 const rmw_subscription_options_t* options,
+                                                 rmw_subscription_t* out) {
     /* phase-406 W1 — one argument in, two locals out, so the body below is
        unchanged. A NULL type support is INVALID_ARGUMENT rather than an
        empty type: the identity is what the entity is keyed on, and one
@@ -194,7 +196,7 @@ xrce_subscription_create(const rmw_node_t* node, const rmw_message_type_support_
     return NROS_RMW_RET_OK;
 }
 
-rmw_ret_t xrce_subscription_destroy(rmw_subscription_t* subscriber) {
+static rmw_ret_t xrce_subscription_destroy_locked(rmw_subscription_t* subscriber) {
     if (subscriber == NULL || subscriber->backend_data == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
@@ -239,8 +241,8 @@ rmw_ret_t xrce_subscription_destroy(rmw_subscription_t* subscriber) {
     return ret;
 }
 
-rmw_ret_t xrce_subscription_take(const rmw_subscription_t* subscriber, rmw_mut_byte_span_t* out,
-                                 bool* taken) {
+static rmw_ret_t xrce_subscription_take_locked(const rmw_subscription_t* subscriber,
+                                               rmw_mut_byte_span_t* out, bool* taken) {
     /* phase-406 W2 — by pointer: `capacity` in, `len` out. */
     if (out == NULL) return NROS_RMW_RET_INVALID_ARGUMENT;
     uint8_t* buf = out->data;
@@ -288,7 +290,8 @@ rmw_ret_t xrce_subscription_take(const rmw_subscription_t* subscriber, rmw_mut_b
     return ret;
 }
 
-rmw_ret_t xrce_subscription_has_data(rmw_subscription_t* subscriber, bool* out_has_data) {
+static rmw_ret_t xrce_subscription_has_data_locked(rmw_subscription_t* subscriber,
+                                                   bool* out_has_data) {
     /* Phase 376 W3.d step A — flag out, status returned. */
     if (out_has_data == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
@@ -319,9 +322,10 @@ rmw_ret_t xrce_subscription_supports_in_place(rmw_subscription_t* subscriber, bo
     return NROS_RMW_RET_OK;
 }
 
-rmw_ret_t xrce_subscription_process_raw_in_place(rmw_subscription_t* subscriber, void* ctx,
-                                                 void (*cb)(void* ctx, rmw_byte_span_t message),
-                                                 bool* out_processed) {
+static rmw_ret_t
+xrce_subscription_process_raw_in_place_locked(rmw_subscription_t* subscriber, void* ctx,
+                                              void (*cb)(void* ctx, rmw_byte_span_t message),
+                                              bool* out_processed) {
     /* Phase 376 W3.d step A — "processed one" out, status returned. An empty
      * subscription is OK with false rather than the NO_DATA sentinel. */
     if (out_processed == NULL) {
@@ -358,5 +362,60 @@ rmw_ret_t xrce_subscription_process_raw_in_place(rmw_subscription_t* subscriber,
     entry->overflow = false;
     slot->read_idx = (uint16_t)((slot->read_idx + 1) % XRCE_SUBSCRIBER_RING_DEPTH);
     slot->count--;
+    return ret;
+}
+
+/* ---- Issue 1734: locked entry points ---------------------------------
+ *
+ * Each public entry point takes its session's API lock around the body (see
+ * `api_lock` in `internal.h`). `st` is read BEFORE the body, which may free
+ * the entity that leads to it; a destroy that leaves a closed session empty
+ * has its free deferred to the unlock below. */
+
+rmw_ret_t
+xrce_subscription_create(const rmw_node_t* node, const rmw_message_type_support_t* type_support,
+                         const char* topic_name, uint32_t domain_id, const rmw_qos_profile_t* qos,
+                         const rmw_subscription_options_t* options, rmw_subscription_t* out) {
+    xrce_session_state_t* st = XRCE_ST_OF_NODE(node);
+    xrce_session_lock(st);
+    rmw_ret_t ret = xrce_subscription_create_locked(node, type_support, topic_name, domain_id, qos,
+                                                    options, out);
+    xrce_session_unlock(st);
+    return ret;
+}
+
+rmw_ret_t xrce_subscription_destroy(rmw_subscription_t* subscriber) {
+    xrce_session_state_t* st = XRCE_ST_OF(xrce_subscriber_state, subscriber);
+    xrce_session_lock(st);
+    rmw_ret_t ret = xrce_subscription_destroy_locked(subscriber);
+    xrce_session_unlock(st);
+    return ret;
+}
+
+rmw_ret_t xrce_subscription_take(const rmw_subscription_t* subscriber, rmw_mut_byte_span_t* out,
+                                 bool* taken) {
+    xrce_session_state_t* st = XRCE_ST_OF(xrce_subscriber_state, subscriber);
+    xrce_session_lock(st);
+    rmw_ret_t ret = xrce_subscription_take_locked(subscriber, out, taken);
+    xrce_session_unlock(st);
+    return ret;
+}
+
+rmw_ret_t xrce_subscription_has_data(rmw_subscription_t* subscriber, bool* out_has_data) {
+    xrce_session_state_t* st = XRCE_ST_OF(xrce_subscriber_state, subscriber);
+    xrce_session_lock(st);
+    rmw_ret_t ret = xrce_subscription_has_data_locked(subscriber, out_has_data);
+    xrce_session_unlock(st);
+    return ret;
+}
+
+rmw_ret_t xrce_subscription_process_raw_in_place(rmw_subscription_t* subscriber, void* ctx,
+                                                 void (*cb)(void* ctx, rmw_byte_span_t message),
+                                                 bool* out_processed) {
+    xrce_session_state_t* st = XRCE_ST_OF(xrce_subscriber_state, subscriber);
+    xrce_session_lock(st);
+    rmw_ret_t ret =
+        xrce_subscription_process_raw_in_place_locked(subscriber, ctx, cb, out_processed);
+    xrce_session_unlock(st);
     return ret;
 }

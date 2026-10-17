@@ -110,6 +110,9 @@ nros-rmw-zenoh = { path = "../../rmw/zenoh/nros-rmw-zenoh", features = ["lending
 # beside `trigger-test`: two registered backends in one binary would leave which
 # one `Executor::open` takes to the registry walk.
 nros-rmw-xrce-cffi = { path = "../../rmw/xrce/nros-rmw-xrce-cffi", default-features = false, features = ["std"], optional = true }
+# Issue 1734 — `xrce_concurrent_entities` calls the XRCE shim's entry points
+# directly and needs the C ABI's struct definitions to do it.
+nros-rmw-cffi = { path = "../../rmw/cffi", default-features = false, optional = true }
 # Phase 169.2 — the retired Rust DDS backend and multi-RMW bridge test
 # were deleted alongside the Rust DDS examples.
 # Phase 124.A.8.b — posix C symbols (nros_platform_*) for the loan E2E
@@ -190,6 +193,7 @@ xrce-wake-test = [
     "nros-core",
     "nros-serdes",
     "dep:nros-rmw-xrce-cffi",
+    "dep:nros-rmw-cffi",
     "dep:nros-platform-cffi",
     "nros-node/rmw-cffi",
 ]
@@ -295,6 +299,11 @@ required-features = ["trigger-test"]
 [[test]]
 name = "xrce_guard_wake"
 path = "tests/xrce_guard_wake.rs"
+required-features = ["xrce-wake-test"]
+
+[[test]]
+name = "xrce_concurrent_entities"
+path = "tests/xrce_concurrent_entities.rs"
 required-features = ["xrce-wake-test"]
 
 [[test]]

@@ -381,8 +381,8 @@ static xrce_graph_node* graph_node_of(xrce_graph* g, const rmw_node_t* node) {
     return graph_add_node(g, node->name, node->namespace_, true);
 }
 
-rmw_ret_t xrce_node_create(rmw_session_t* session, const char* name, const char* namespace_,
-                           rmw_node_t* out) {
+static rmw_ret_t xrce_node_create_locked(rmw_session_t* session, const char* name,
+                                         const char* namespace_, rmw_node_t* out) {
     if (session == NULL || out == NULL || name == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
@@ -403,7 +403,7 @@ rmw_ret_t xrce_node_create(rmw_session_t* session, const char* name, const char*
     return NROS_RMW_RET_OK;
 }
 
-rmw_ret_t xrce_node_destroy(rmw_node_t* node) {
+static rmw_ret_t xrce_node_destroy_locked(rmw_node_t* node) {
     if (node == NULL || node->backend_data == NULL || node->session == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
@@ -566,4 +566,28 @@ void xrce_graph_flush(xrce_session_state_t* st) {
         g->warned_too_large = true;
     }
     g->dirty = false;
+}
+
+/* ---- Issue 1734: locked entry points ---------------------------------
+ *
+ * Each public entry point takes its session's API lock around the body (see
+ * `api_lock` in `internal.h`). `st` is read BEFORE the body, which may free
+ * the entity that leads to it; a destroy that leaves a closed session empty
+ * has its free deferred to the unlock below. */
+
+rmw_ret_t xrce_node_create(rmw_session_t* session, const char* name, const char* namespace_,
+                           rmw_node_t* out) {
+    xrce_session_state_t* st = XRCE_ST_OF_SESSION(session);
+    xrce_session_lock(st);
+    rmw_ret_t ret = xrce_node_create_locked(session, name, namespace_, out);
+    xrce_session_unlock(st);
+    return ret;
+}
+
+rmw_ret_t xrce_node_destroy(rmw_node_t* node) {
+    xrce_session_state_t* st = XRCE_ST_OF_NODE(node);
+    xrce_session_lock(st);
+    rmw_ret_t ret = xrce_node_destroy_locked(node);
+    xrce_session_unlock(st);
+    return ret;
 }
