@@ -2865,6 +2865,20 @@ jobs:
         run: |
           source ./activate.sh
           just check no-std
+
+      # Issue 1373 — the fast tier must be green in a checkout with NO
+      # submodules (what `git worktree add` produces). Behavioural, because a
+      # census of "which gates read a submodule" measurably misses the gates
+      # that build the path from parts. It builds a submodule-free clone, runs
+      # `check fast` there as a person in a fresh worktree would (no CI
+      # identity), and removes the clone on exit. `just ci gate` runs it locally
+      # on every pre-push; here it is the nightly / manual signal that
+      # `check-default-gates-run-somewhere` requires.
+      - name: just check pristine-checkout (nightly / manual only)
+        if: ${{ contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
+        run: |
+          source ./activate.sh
+          just check pristine-checkout
       - name: sccache stats (compile tier)
         if: ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name) && always() }}
         run: |

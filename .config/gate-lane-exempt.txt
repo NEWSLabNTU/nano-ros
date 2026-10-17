@@ -53,6 +53,7 @@ launch-resolve-fresh  # needs the resolver BUILT: a step of `ci gate`, and gate.
 nextest-test-filters  # needs the test binaries (listing IS building, issue 1500); `test-all` (justfile) runs it first, which `just ci tier1 run` / `just ci matrix` (run-matrix.yml) reach (issue 1739)
 no-std  # gate.yml + `just ci` run it by name; cross-compiles riscv32
 out-of-lane-deselected  # builds every nros-tests test binary (listing IS building, issue 1500); a step of `just ci gate` and of gate.yml's merge-group `check-lane-contracts` job (issue 1900)
+pristine-checkout  # RUNS `check fast` in a submodule-free clone, so as a fast gate the tier would recurse; `just ci gate` runs it after `check::fast` (issue 1373)
 probe-workspace-caps  # compiles (CMake probe + cold cargo build of the C++ runtime): gate.yml's `check-fast-compile` job runs it by name on every event `check-fast` runs on, beside it; `default:` and `just ci gate` name it (phase-489 W5)
 rustdoc-links  # `cargo doc` over the deployed crate set; compiles `zpico-sys`, whose build script needs the zenoh-pico source. Its own pull-request step in gate.yml runs it AFTER provisioning
 rustdoc-workspace  # `cargo doc` over every workspace crate; runs the cyclonedds/xrce/zenoh-pico build scripts too. Its own pull-request step in gate.yml runs it AFTER provisioning (issue 1116)

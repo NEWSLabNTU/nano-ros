@@ -2,7 +2,7 @@
 id: 1373
 title: "A fresh `git worktree add` fails two fast gates, and one of them advises a
   recovery command that cannot run in a worktree"
-status: open
+status: resolved
 type: bug
 area: [tooling, testing]
 severity: medium
@@ -10,7 +10,7 @@ found: 2026-09-18
 related: [issue-0650, issue-0702, issue-0840, issue-1068, phase-478]
 ---
 
-**Home: [phase-478](../roadmap/phase-478-island-developer-experience-findings.md)** — homed 2026-10-17; the phase doc already tracks it in its body.
+**Home: [phase-478](../../roadmap/phase-478-island-developer-experience-findings.md)** — homed 2026-10-17; the phase doc already tracks it in its body.
 
 ## What happens
 
@@ -158,3 +158,83 @@ expensive one: run the fast tier in a genuinely pristine worktree in CI and requ
 green. That is a lane, not a gate, and it is not proposed here. Until then the
 recipe names the two gates it exists for, so the next gate to grow a submodule
 dependency has somewhere obvious to add itself.
+
+## Resolution (2026-10-18)
+
+**Measured first: nothing is red any more.** `just check fast` in a fresh
+`git worktree add --detach` of `origin/main` (`6486216ab7`), with no submodule
+initialised (`git submodule status`: 0 of 20 without a leading `-`), activated
+and otherwise unprovisioned (no in-tree CLI): rc 0, 436 gates ran, 20 SKIPPED,
+62 s wall. Both gates this issue names now take issue 1043's middle outcome.
+Issue 1345 turned their hard FAILs into NOT VERIFIED through the skip ledger,
+and the "a verb" half above gave them a remedy a worktree can run:
+
+    [SKIPPED] capability-conditionals: NOT VERIFIED — rules 4/7/8 (socket ABI) need …/platform.h — `just setup-worktree`, or `git submodule update --init packages/rmw/zenoh/zpico-sys/zenoh-pico`
+    [SKIPPED] xrce-vendored-versions: NOT VERIFIED — micro-xrce-dds-client, micro-cdr not checked out … — `just setup-worktree`, or `git submodule update --init …`
+
+The remaining skips in that run belong to two groups. The first group needs a
+submodule: `zenoh-feature-off-compile`, `zpico-config-keys` and `leaf-lockfiles`.
+The second needs the in-tree CLI, a build tree, a west workspace or the FSP
+tree, and each of those names `just setup-cli` or the tree it lacks. None
+advises a command a worktree cannot run. None of them was fixed here, because
+none of them fails.
+
+**What closed the class.** The section above says nothing proved the list
+complete, and that the check which would prove it is a lane:
+
+> run the fast tier in a genuinely pristine worktree in CI and require green.
+
+That check is now `just check pristine-checkout`
+(`scripts/ci/pristine-checkout-fast.sh`). It builds a
+`git clone --local --shared` of HEAD. That clone has the same tracked tree as a
+fresh worktree, with every submodule uninitialised, and it registers nothing in
+this repository's admin dir (issue 1465). The script overlays tracked edits and
+untracked, non-ignored files, then runs `check fast` there as a person in a new
+worktree would: no CI identity and no strict-skip knob. It requires rc 0 and
+prints the `[SKIPPED]` block. It costs about 55 s here. It runs in `just ci gate`
+after `check::fast`, and nightly / on dispatch in `gate.yml`'s `check-build` job,
+which `check-default-gates-run-somewhere` requires. It is lane-exempt, because
+inside the fast tier it would recurse.
+
+It runs the tier rather than a census, and that choice is measured. Matching
+the 20 submodule PATHS against each fast gate's recipe and scripts selects 17 of
+456 gates, and misses BOTH gates this issue was filed about, because they build
+the path from parts. Matching basenames selects 226 of 456, which is half the
+tier on a heuristic.
+
+Its normal-path selftest plants a recipe in the clone that requires content in
+the first submodule `.gitmodules` names, and runs that one-gate list through the same runner. The selftest
+requires that gate's own `===== FAIL` record. That proves the clone lacks
+submodule content and that the runner's status reaches the verdict. The planted
+recipe is then restored byte for byte.
+
+Mutation proof (each reverted and restored with `cmp`):
+
+| mutation | result |
+| --- | --- |
+| `capability-conditionals` back to the pre-1345 hard fail (`sys.exit(2)` on a missing header) | `pristine-checkout` rc 1, `===== FAIL (capability-conditionals, rc=2)`; the same mutation in a PROVISIONED worktree: `just check capability-conditionals` rc 0, which is why the ordinary fast lane cannot see this class |
+| selftest probe looks for content in a directory that has some (`.`, not the submodule) | rc 1, `pristine-checkout SELFTEST FAILED` |
+| runner cannot run the probe list (`--bogus` flag, exits 2) | rc 1, `pristine-checkout SELFTEST FAILED`, because a non-zero exit without the planted gate's FAIL record does not count |
+| an UNTRACKED new script with a bare `grep -q` conditional | rc 1, `===== FAIL (grep-q-error-conflation)` |
+| the same, with the overlay's intent-to-add (`git add -N` in the clone) removed | rc 0, so the offender is invisible |
+| all restored | rc 0, `433 gate(s) ran … 23 SKIPPED`, `OK` |
+
+The intent-to-add row is there because a real bare worktree caught what the
+clone first missed. The first version of `pristine-checkout-fast.sh` was green
+in its own clone while UNTRACKED. Then, in a fresh worktree at the commit, it
+was red on two gates of its own: `grep-q-error-conflation` and
+`store-source-readers` (the probe spelled a store-first submodule's checkout
+path). Both gates ask `git ls-files` / `git grep`, which do not see an untracked
+file. The overlay now marks overlaid files intent-to-add in the clone's own
+index, so those gates see a new file as they will once it is committed. The
+probe now reads its submodule from `.gitmodules` instead of spelling one.
+
+On its first run the lane caught this change's own two reds,
+`default-gates-run-somewhere` (no workflow yet) and `gate-selftests`, before
+either was fixed. That shows it reports a red rather than swallowing one.
+
+Not measured: the `gate.yml` step on a real runner. Dispatch it with
+`gh workflow run gate.yml --ref <branch>`. A cold CI clone builds the fast
+tier's compiling gates from an empty target dir, so expect minutes there, not
+the 55 s measured on this host.
+
