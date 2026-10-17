@@ -116,11 +116,13 @@ const POLICY_NAMES: &str = "reliability, durability, history, depth, deadline, l
 /// reserve, and the launch CONTRACT states the same four per endpoint
 /// (`QosDecl`, read since W3). Those two statements have to agree.
 /// `deadline`, `lifespan` and the two liveliness policies bound OCCUPANCY or
-/// LIVENESS of a queue whose size is already decided, so they stay
-/// runtime-only and the contract has no key for them.
+/// LIVENESS of a queue whose size is already decided, so they size nothing --
+/// but the contract states them too (`deadline`, `lifespan`, `lease_duration`,
+/// `liveliness`), and since phase-462 W5 [`contract_statement`] reads all
+/// eight, so a parameter that disagrees with its contract is refused either way.
 ///
 /// A table and not a `match` because it is read by three things that must not
-/// drift: [`sizing_statement`] classifies a policy against it, `POLICY_NAMES`
+/// drift: [`contract_statement`] classifies a policy against it, `POLICY_NAMES`
 /// enumerates it for the diagnostic, and the tests assert that what [`lower`]
 /// accepts is exactly what this lists — a new policy that reaches `lower` and
 /// not this table is a policy nobody decided the sizing question for.
@@ -264,7 +266,7 @@ pub fn role_spelling(role: u8) -> &'static str {
 /// Split `qos_overrides.<topic>.<role>.<policy>` into its three segments.
 ///
 /// `Ok(None)` when `name` carries no prefix. THE one parser of the key shape:
-/// [`lower`] and [`sizing_statement`] are two readers of the same parameter and
+/// [`lower`] and [`contract_statement`] are two readers of the same parameter and
 /// this module's own header says what a second spelling costs. The VALUE
 /// vocabulary is shared the same way, through `parse_reliability` and its
 /// siblings.
@@ -306,6 +308,44 @@ const DURATION_NS: &str = "a duration in NANOSECONDS, rclcpp's unit (500 ms is 5
                            0 for none, at least 1000000 (1 ms, the wire's resolution), \
                            below 4294967295 ms, or 9223372036854775807 for infinite";
 
+/// A duration policy's parameter value (NANOSECONDS, issue 1855) in the wire's
+/// milliseconds, by the runtime's own boundary rule; `None` for a value
+/// [`lower`] refuses. ONE conversion, shared with the contract comparison, so
+/// "the same duration" means the same thing on both sides.
+fn duration_ns_to_wire_ms(v: &str) -> Option<u32> {
+    let n = v.parse::<u64>().ok()?;
+    if n == i64::MAX as u64 {
+        return Some(nros_rmw::DURATION_INFINITE_MS);
+    }
+    if n > 0 && n < NS_PER_MS {
+        return None;
+    }
+    nros_rmw::duration_to_qos_ms(core::time::Duration::from_nanos(n)).ok()
+}
+
+/// A contract duration (milliseconds, as the model carries it) in the wire's
+/// milliseconds: the same rule [`duration_ns_to_wire_ms`] applies to a
+/// parameter, so a contract `deadline: 100ms` and a parameter `100000000`
+/// compare equal. `None` for a value the wire cannot carry.
+#[must_use]
+pub fn contract_ms_to_wire_ms(ms: f64) -> Option<u32> {
+    if !ms.is_finite() || ms < 0.0 {
+        return None;
+    }
+    nros_rmw::duration_to_qos_ms(core::time::Duration::from_secs_f64(ms / 1_000.0)).ok()
+}
+
+/// The liveliness kinds, as both the parameter and the contract spell them.
+pub const LIVELINESS_VALUES: &str = "`none`, `automatic`, `manual_by_topic` or `manual_by_node`";
+
+/// Parse a liveliness kind; the one reader of the spelling, for both surfaces.
+#[must_use]
+pub fn parse_liveliness(value: &str) -> Option<&'static str> {
+    ["none", "automatic", "manual_by_topic", "manual_by_node"]
+        .into_iter()
+        .find(|k| *k == value.trim())
+}
+
 /// Lower one `qos_overrides.<topic>.<role>.<policy>` parameter.
 ///
 /// Returns `Ok(None)` when `name` is not a QoS override at all — the caller is
@@ -336,16 +376,7 @@ pub fn lower(name: &str, value: &str) -> Result<Option<LoweredOverride>, QoSOver
     // the sentinel. A NONZERO value under one millisecond is refused rather
     // than rounded up: it is below the wire's resolution, and it is exactly
     // what a millisecond spelling from before this issue looks like.
-    let ns = |expected| -> Result<u32, QoSOverrideError> {
-        let n = v.parse::<u64>().map_err(|_| bad(expected))?;
-        if n == i64::MAX as u64 {
-            return Ok(nros_rmw::DURATION_INFINITE_MS);
-        }
-        if n > 0 && n < NS_PER_MS {
-            return Err(bad(expected));
-        }
-        nros_rmw::duration_to_qos_ms(core::time::Duration::from_nanos(n)).map_err(|_| bad(expected))
-    };
+    let ns = |expected| duration_ns_to_wire_ms(v).ok_or_else(|| bad(expected));
 
     let (policy, value) = match policy_s {
         // phase-454 W3 -- the SPELLINGS come from `parse_*` above, which the
@@ -409,9 +440,7 @@ pub fn lower(name: &str, value: &str) -> Result<Option<LoweredOverride>, QoSOver
                 "manual_by_topic" => nros_rmw::QoSLivelinessPolicy::ManualByTopic as u32,
                 "manual_by_node" => nros_rmw::QoSLivelinessPolicy::ManualByNode as u32,
                 _ => {
-                    return Err(bad(
-                        "`none`, `automatic`, `manual_by_topic` or `manual_by_node`",
-                    ));
+                    return Err(bad(LIVELINESS_VALUES));
                 }
             },
         ),
@@ -441,44 +470,82 @@ pub fn lower(name: &str, value: &str) -> Result<Option<LoweredOverride>, QoSOver
 /// the wire's `0`/`1` are an ABI that says nothing about what either author
 /// wrote. `reliability_spelling` and its siblings render these back out.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SizingStatement {
+pub enum QosStatement {
     Reliability(QoSReliabilityPolicy),
     Durability(QoSDurabilityPolicy),
     History(QoSHistoryPolicy),
     Depth(u32),
+    /// phase-462 W5 -- the four liveness policies, in the wire's
+    /// milliseconds (converted by [`duration_ns_to_wire_ms`]).
+    Deadline(u32),
+    Lifespan(u32),
+    LivelinessLease(u32),
+    /// A kind from [`parse_liveliness`].
+    Liveliness(&'static str),
 }
 
-impl SizingStatement {
+impl QosStatement {
     /// The policy's spelling in a parameter key and in a contract `qos:` block
     /// — one name, because it is one fact stated twice.
     pub fn policy(&self) -> &'static str {
         match self {
-            SizingStatement::Reliability(_) => "reliability",
-            SizingStatement::Durability(_) => "durability",
-            SizingStatement::History(_) => "history",
-            SizingStatement::Depth(_) => "depth",
+            QosStatement::Reliability(_) => "reliability",
+            QosStatement::Durability(_) => "durability",
+            QosStatement::History(_) => "history",
+            QosStatement::Depth(_) => "depth",
+            QosStatement::Deadline(_) => "deadline",
+            QosStatement::Lifespan(_) => "lifespan",
+            QosStatement::LivelinessLease(_) => "liveliness_lease_duration",
+            QosStatement::Liveliness(_) => "liveliness",
         }
+    }
+
+    /// The same policy's key in a contract `qos:` block. One word differs:
+    /// the parameter's `liveliness_lease_duration` is the contract's
+    /// `lease_duration`.
+    pub fn contract_key(&self) -> &'static str {
+        match self {
+            QosStatement::LivelinessLease(_) => "lease_duration",
+            other => other.policy(),
+        }
+    }
+
+    /// Whether the policy bounds CAPACITY ([`MODELLED_POLICIES`]' second
+    /// column): what sizes an arena, as opposed to the liveness of a queue
+    /// whose size is decided.
+    pub fn is_capacity(&self) -> bool {
+        matches!(
+            self,
+            QosStatement::Reliability(_)
+                | QosStatement::Durability(_)
+                | QosStatement::History(_)
+                | QosStatement::Depth(_)
+        )
     }
 
     /// The VALUE, spelled as an author would write it on either surface.
     pub fn value(&self) -> String {
         match self {
-            SizingStatement::Reliability(p) => reliability_spelling(*p).to_string(),
-            SizingStatement::Durability(p) => durability_spelling(*p).to_string(),
-            SizingStatement::History(p) => history_spelling(*p).to_string(),
-            SizingStatement::Depth(d) => d.to_string(),
+            QosStatement::Reliability(p) => reliability_spelling(*p).to_string(),
+            QosStatement::Durability(p) => durability_spelling(*p).to_string(),
+            QosStatement::History(p) => history_spelling(*p).to_string(),
+            QosStatement::Depth(d) => d.to_string(),
+            QosStatement::Deadline(ms)
+            | QosStatement::Lifespan(ms)
+            | QosStatement::LivelinessLease(ms) => format!("{ms}ms"),
+            QosStatement::Liveliness(k) => (*k).to_string(),
         }
     }
 }
 
 /// One override's statement about sizing: `(topic, role, statement)`.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SizingOverride {
+pub struct QosStatementOverride {
     /// Resolved topic, e.g. `"/chatter"`.
     pub topic: String,
     /// [`qos_override_role`] code.
     pub role: u8,
-    pub statement: SizingStatement,
+    pub statement: QosStatement,
 }
 
 /// Read one parameter as a statement about SIZING.
@@ -492,10 +559,10 @@ pub struct SizingOverride {
 /// * `Err(_)` — the same refusals [`lower`] makes, from the same parser and the
 ///   same value vocabulary. A caller that reached this before the bake must not
 ///   get a second opinion about whether the key is usable.
-pub fn sizing_statement(
+pub fn contract_statement(
     name: &str,
     value: &str,
-) -> Result<Option<SizingOverride>, QoSOverrideError> {
+) -> Result<Option<QosStatementOverride>, QoSOverrideError> {
     let Some((topic, role, policy_s)) = split_key(name)? else {
         return Ok(None);
     };
@@ -507,21 +574,32 @@ pub fn sizing_statement(
         expected,
     };
     let statement = match policy_s {
-        "reliability" => SizingStatement::Reliability(
-            parse_reliability(v).ok_or_else(|| bad(RELIABILITY_VALUES))?,
-        ),
-        "durability" => {
-            SizingStatement::Durability(parse_durability(v).ok_or_else(|| bad(DURABILITY_VALUES))?)
+        "reliability" => {
+            QosStatement::Reliability(parse_reliability(v).ok_or_else(|| bad(RELIABILITY_VALUES))?)
         }
-        "history" => SizingStatement::History(parse_history(v).ok_or_else(|| bad(HISTORY_VALUES))?),
-        "depth" => SizingStatement::Depth(
+        "durability" => {
+            QosStatement::Durability(parse_durability(v).ok_or_else(|| bad(DURABILITY_VALUES))?)
+        }
+        "history" => QosStatement::History(parse_history(v).ok_or_else(|| bad(HISTORY_VALUES))?),
+        "depth" => QosStatement::Depth(
             v.parse::<u32>()
                 .map_err(|_| bad("a non-negative integer"))?,
         ),
-        // Modelled, and not a capacity: `deadline`, `lifespan` and the two
-        // liveliness policies. `None` rather than an error — they are perfectly
-        // legal overrides that this comparison has nothing to say about.
-        other if MODELLED_POLICIES.iter().any(|(n, _)| *n == other) => return Ok(None),
+        // phase-462 W5 -- the liveness policies the contract states too
+        // (`deadline`, `lifespan`, `lease_duration`, `liveliness`). Same
+        // refusals as `lower`: the same conversion, the same spellings.
+        "deadline" => {
+            QosStatement::Deadline(duration_ns_to_wire_ms(v).ok_or_else(|| bad(DURATION_NS))?)
+        }
+        "lifespan" => {
+            QosStatement::Lifespan(duration_ns_to_wire_ms(v).ok_or_else(|| bad(DURATION_NS))?)
+        }
+        "liveliness_lease_duration" => QosStatement::LivelinessLease(
+            duration_ns_to_wire_ms(v).ok_or_else(|| bad(DURATION_NS))?,
+        ),
+        "liveliness" => {
+            QosStatement::Liveliness(parse_liveliness(v).ok_or_else(|| bad(LIVELINESS_VALUES))?)
+        }
         _ => {
             return Err(QoSOverrideError::UnknownPolicy {
                 key: name.to_string(),
@@ -529,7 +607,7 @@ pub fn sizing_statement(
             });
         }
     };
-    Ok(Some(SizingOverride {
+    Ok(Some(QosStatementOverride {
         topic: topic.to_string(),
         role,
         statement,
@@ -822,7 +900,7 @@ mod tests {
         assert_eq!(got[1].topic, "/z");
     }
 
-    /// phase-454 W7 -- `lower` and `sizing_statement` accept exactly the same
+    /// phase-454 W7 -- `lower` and `contract_statement` accept exactly the same
     /// policy names, and [`MODELLED_POLICIES`] lists exactly those.
     ///
     /// Three readers of one vocabulary: the bake, the sizing comparison, and
@@ -849,18 +927,19 @@ mod tests {
             lower(&key, v)
                 .unwrap_or_else(|e| panic!("{policy} must lower: {e}"))
                 .unwrap_or_else(|| panic!("{policy} must be recognised as an override"));
-            let sized =
-                sizing_statement(&key, v).unwrap_or_else(|e| panic!("{policy} must classify: {e}"));
+            // phase-462 W5 -- every modelled policy is a contract statement
+            // now; the capacity column decides only how a disagreement reads.
+            let sized = contract_statement(&key, v)
+                .unwrap_or_else(|e| panic!("{policy} must classify: {e}"))
+                .unwrap_or_else(|| panic!("{policy} must be a contract statement"));
+            assert_eq!(sized.statement.policy(), policy);
             assert_eq!(
-                sized.is_some(),
+                sized.statement.is_capacity(),
                 is_capacity,
                 "`{policy}` is classified {} by MODELLED_POLICIES and the other way by \
-                 sizing_statement",
+                 QosStatement::is_capacity",
                 if is_capacity { "capacity" } else { "occupancy" }
             );
-            if let Some(s) = sized {
-                assert_eq!(s.statement.policy(), policy);
-            }
             assert!(
                 POLICY_NAMES.contains(policy),
                 "`{policy}` is modelled but the diagnostic does not list it"
@@ -877,55 +956,55 @@ mod tests {
     /// phase-454 W7 -- the two readers agree about the VALUE, not just the
     /// name.
     ///
-    /// `lower` produces the wire's `0`/`1` and `sizing_statement` produces the
+    /// `lower` produces the wire's `0`/`1` and `contract_statement` produces the
     /// variant; they are two encodings of one authored value, so this asserts
     /// the pairing rather than either half. A renumbered wire code or a
     /// mis-mapped spelling shows up here as a mismatched pair.
     #[test]
-    fn the_bake_and_the_sizing_statement_read_one_value() {
-        let cases: &[(&str, &str, SizingStatement, u32)] = &[
+    fn the_bake_and_the_contract_statement_read_one_value() {
+        let cases: &[(&str, &str, QosStatement, u32)] = &[
             (
                 "reliability",
                 "best_effort",
-                SizingStatement::Reliability(QoSReliabilityPolicy::BestEffort),
+                QosStatement::Reliability(QoSReliabilityPolicy::BestEffort),
                 0,
             ),
             (
                 "reliability",
                 "reliable",
-                SizingStatement::Reliability(QoSReliabilityPolicy::Reliable),
+                QosStatement::Reliability(QoSReliabilityPolicy::Reliable),
                 1,
             ),
             (
                 "durability",
                 "volatile",
-                SizingStatement::Durability(QoSDurabilityPolicy::Volatile),
+                QosStatement::Durability(QoSDurabilityPolicy::Volatile),
                 0,
             ),
             (
                 "durability",
                 "transient_local",
-                SizingStatement::Durability(QoSDurabilityPolicy::TransientLocal),
+                QosStatement::Durability(QoSDurabilityPolicy::TransientLocal),
                 1,
             ),
             (
                 "history",
                 "keep_last",
-                SizingStatement::History(QoSHistoryPolicy::KeepLast),
+                QosStatement::History(QoSHistoryPolicy::KeepLast),
                 0,
             ),
             (
                 "history",
                 "keep_all",
-                SizingStatement::History(QoSHistoryPolicy::KeepAll),
+                QosStatement::History(QoSHistoryPolicy::KeepAll),
                 1,
             ),
-            ("depth", "64", SizingStatement::Depth(64), 64),
+            ("depth", "64", QosStatement::Depth(64), 64),
         ];
         for (policy, written, statement, wire) in cases {
             let key = format!("qos_overrides./chatter.subscription.{policy}");
             let lowered = lower(&key, written).unwrap().unwrap();
-            let sized = sizing_statement(&key, written).unwrap().unwrap();
+            let sized = contract_statement(&key, written).unwrap().unwrap();
             assert_eq!(lowered.value, *wire, "{policy}={written} wire code");
             assert_eq!(sized.statement, *statement, "{policy}={written} statement");
             assert_eq!(sized.topic, lowered.topic);
@@ -936,6 +1015,46 @@ mod tests {
                 "the statement must render back to what the author wrote"
             );
         }
+    }
+
+    /// phase-462 W5 -- the liveness policies: the statement carries the wire's
+    /// milliseconds by the SAME conversion `lower` bakes, a contract
+    /// millisecond value converts to the same number, and the contract key
+    /// for the lease is `lease_duration`.
+    #[test]
+    fn a_liveness_statement_is_the_baked_value() {
+        for (policy, written, ms) in [
+            ("deadline", "100000000", 100u32),
+            ("lifespan", "2500000000", 2_500),
+            ("liveliness_lease_duration", "500000000", 500),
+        ] {
+            let key = format!("qos_overrides./t.subscription.{policy}");
+            let lowered = lower(&key, written).unwrap().unwrap();
+            let st = contract_statement(&key, written)
+                .unwrap()
+                .unwrap()
+                .statement;
+            assert_eq!(lowered.value, ms, "{policy}");
+            assert_eq!(st.value(), format!("{ms}ms"), "{policy}");
+            assert!(!st.is_capacity());
+            assert_eq!(contract_ms_to_wire_ms(f64::from(ms)), Some(ms), "{policy}");
+        }
+        let lease = contract_statement(
+            "qos_overrides./t.subscription.liveliness_lease_duration",
+            "1000000",
+        )
+        .unwrap()
+        .unwrap()
+        .statement;
+        assert_eq!(lease.contract_key(), "lease_duration");
+        let kind = contract_statement("qos_overrides./t.publisher.liveliness", "manual_by_topic")
+            .unwrap()
+            .unwrap()
+            .statement;
+        assert_eq!(kind, QosStatement::Liveliness("manual_by_topic"));
+        assert!(contract_statement("qos_overrides./t.publisher.liveliness", "auto").is_err());
+        assert!(contract_statement("qos_overrides./t.publisher.deadline", "100").is_err());
+        assert_eq!(contract_ms_to_wire_ms(-1.0), None);
     }
 
     /// phase-454 W7 -- the shared key parser refuses the same keys on both
@@ -952,11 +1071,11 @@ mod tests {
         ] {
             assert!(lower(key, "1").is_err(), "{key} must not lower");
             assert!(
-                sizing_statement(key, "1").is_err(),
+                contract_statement(key, "1").is_err(),
                 "{key} must not classify"
             );
         }
-        assert_eq!(sizing_statement("use_sim_time", "true").unwrap(), None);
+        assert_eq!(contract_statement("use_sim_time", "true").unwrap(), None);
     }
 
     /// One bad override fails the whole list — a half-applied QoS table is

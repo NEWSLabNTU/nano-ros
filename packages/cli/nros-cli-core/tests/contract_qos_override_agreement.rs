@@ -38,9 +38,9 @@ use ros_launch_manifest_model::SystemModel;
 
 /// ACCEPTANCE 2 -- an agreeing pair builds.
 ///
-/// Also the guard on scope: the talker carries a `deadline` override, which is
-/// modelled, is not a capacity, and has no contract key. A comparison that
-/// widened past the four capacity policies would refuse this file.
+/// The talker also carries a `deadline` override, which the contract states
+/// too since phase-462 W5 (`deadline: 100ms` against `100000000` ns): one
+/// value, so it builds.
 #[test]
 fn an_agreeing_pair_builds() {
     let m = resolve("agrees");
@@ -65,6 +65,29 @@ fn an_agreeing_pair_builds() {
         "the contract `qos:` must reach the model"
     );
     assert_eq!(check_model(&m), Ok(()), "an agreeing pair must build");
+}
+
+/// phase-462 W5 -- a contract `deadline` and a launch override that disagrees
+/// refuse at resolve, naming both and the contract's spelling of each value.
+#[test]
+fn a_disagreeing_deadline_refuses_at_resolve() {
+    let m = resolve("deadline_diverges");
+    assert_eq!(
+        m.contracts.pub_endpoints["/talker/chatter"]
+            .qos
+            .as_ref()
+            .and_then(|q| q.deadline_ms),
+        Some(100.0),
+        "the contract's deadline must reach the model"
+    );
+    let err = check_model(&m).expect_err("a disagreeing deadline must refuse");
+    let QosAgreementError::Divergent(d) = &err else {
+        panic!("expected a divergence, got: {err}");
+    };
+    assert_eq!(d.len(), 1, "{d:?}");
+    assert_eq!(d[0].policy, "deadline");
+    assert_eq!(d[0].param_value, "250000000");
+    assert_eq!(d[0].contract_value.as_deref(), Some("100ms"));
 }
 
 /// ACCEPTANCE 1 -- a divergent pair fails, naming BOTH sites and BOTH values.
