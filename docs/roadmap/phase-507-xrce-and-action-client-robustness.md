@@ -24,6 +24,8 @@ is in the same code an XRCE action client runs.
       action goal is confirmed or re-sent.
 - [x] [#1756](../issues/archived/1756-native-async-action-result-never-resolves.md): the
       async action client resolves its result, or times out with an error.
+      **Done 2026-10-18:** the fix (`c0d34e3bf6`) passed four consecutive
+      self-hosted tier-1 runs (38818350050 through 38980380118).
 - [ ] [#1932](../issues/1932-xrce-session-open-fails-under-full-sweep-load.md):
       an XRCE session open retries within its budget, and the failure under load
       is explained.
