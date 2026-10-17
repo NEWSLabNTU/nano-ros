@@ -1184,6 +1184,8 @@ fn zenoh_buffer_config_from_env(posix: bool) -> ZenohBufferConfig {
         frag_max_size: default_frag,
         batch_unicast_size: default_batch_uni,
         batch_multicast_size: default_batch_multi,
+        // Resolved by the wire ladder below, where a stated rung is visible.
+        rx_task_budget: None,
     }
 }
 
@@ -1846,12 +1848,18 @@ pub fn run() {
     // transport, so a board that says nothing keeps the transport-appropriate
     // number and a board that speaks outranks it.
     {
-        let wire_defaults: [(&'static str, usize); 5] = [
+        // RFC-0074 / phase-462 W6a — the read-task budget's frame builtin states
+        // NOTHING (0 here is never baked: only a rung whose source is not
+        // `Builtin` reaches `RxTaskBudget::from_knobs`).
+        const RX_TASK_BUDGET_REST_US_BUILTIN: usize = 1000;
+        let wire_defaults: [(&'static str, usize); 7] = [
             ("batch_unicast_size", buf_config.batch_unicast_size),
             ("batch_multicast_size", buf_config.batch_multicast_size),
             ("frag_max_size", buf_config.frag_max_size),
             ("get_reply_buf_size", shim_config.get_reply_buf_size),
             ("get_poll_interval_ms", shim_config.get_poll_interval_ms),
+            ("rx_task_budget_frames", 0),
+            ("rx_task_budget_rest_us", RX_TASK_BUDGET_REST_US_BUILTIN),
         ];
         for key in platform_config::WIRE_KNOBS {
             platform_config::watch_knob_env(platform_config::wire_env_key(key));
@@ -1872,25 +1880,35 @@ pub fn run() {
                 .iter()
                 .map(|(name, builtin)| {
                     let key = platform_config::wire_env_key(name);
-                    let value = platform_config::knob_env(&env_get, key)
+                    // The source is reported as it is, not as `Builtin`: the
+                    // read-task budget bakes only what a rung STATED.
+                    let (value, source) = match platform_config::knob_env(&env_get, key)
                         .and_then(|v| v.trim().parse::<usize>().ok())
-                        .unwrap_or(*builtin);
-                    (*name, value)
-                })
-                .map(|(name, value)| {
+                    {
+                        Some(v) => (v, platform_config::KnobSource::Env),
+                        None => (*builtin, platform_config::KnobSource::Builtin),
+                    };
                     (
-                        name,
+                        *name,
                         platform_config::ResolvedUsize {
                             value,
-                            source: platform_config::KnobSource::Builtin,
-                            env_key: platform_config::wire_env_key(name),
+                            source,
+                            env_key: key,
                         },
                     )
                 })
                 .collect(),
         };
+        let mut rx_budget_frames: Option<usize> = None;
+        let mut rx_budget_rest_us = RX_TASK_BUDGET_REST_US_BUILTIN;
         for (name, r) in resolved {
             match name {
+                "rx_task_budget_frames" => {
+                    if r.source != platform_config::KnobSource::Builtin {
+                        rx_budget_frames = Some(r.value);
+                    }
+                }
+                "rx_task_budget_rest_us" => rx_budget_rest_us = r.value,
                 "batch_unicast_size" => buf_config.batch_unicast_size = r.value,
                 "batch_multicast_size" => buf_config.batch_multicast_size = r.value,
                 "frag_max_size" => buf_config.frag_max_size = r.value,
@@ -1899,6 +1917,9 @@ pub fn run() {
                 other => unreachable!("unknown wire knob `{other}`"),
             }
         }
+        buf_config.rx_task_budget =
+            crate::RxTaskBudget::from_knobs(rx_budget_frames, rx_budget_rest_us)
+                .unwrap_or_else(|e| panic!("{e}"));
     }
     std::fs::write(out_dir.join("shim_constants.rs"), shim_config.rust_consts()).unwrap();
 

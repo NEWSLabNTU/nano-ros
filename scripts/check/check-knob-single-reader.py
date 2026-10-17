@@ -164,6 +164,8 @@ OWNERS: dict[str, str] = {
     "NROS_ZENOH_FRAG_MAX_SIZE": "packages/rmw/zenoh/nros-zpico-build/src/runner.rs",
     "NROS_ZENOH_GET_REPLY_BUF_SIZE": "packages/rmw/zenoh/nros-zpico-build/src/runner.rs",
     "NROS_ZENOH_GET_POLL_INTERVAL_MS": "packages/rmw/zenoh/nros-zpico-build/src/runner.rs",
+    "NROS_ZENOH_RX_TASK_BUDGET_FRAMES": "packages/rmw/zenoh/nros-zpico-build/src/runner.rs",
+    "NROS_ZENOH_RX_TASK_BUDGET_REST_US": "packages/rmw/zenoh/nros-zpico-build/src/runner.rs",
     # The zenoh limits + xrce tenants, and the LET buffer (phase-400 W6).
     # `NROS_SERVICE_TIMEOUT_MS` is NOT here: it has two readers by design (a
     # Rust const and a C define), and this gate's one-reader rule is what keeps

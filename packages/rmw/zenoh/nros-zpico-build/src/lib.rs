@@ -278,6 +278,43 @@ pub struct ZenohBufferConfig {
     pub frag_max_size: usize,
     pub batch_unicast_size: usize,
     pub batch_multicast_size: usize,
+    /// RFC-0074 / phase-462 W6a — the read task's frame budget, `None` when
+    /// nothing stated one (the task stays unbounded, byte-identical to before).
+    pub rx_task_budget: Option<RxTaskBudget>,
+}
+
+/// A stated budget on zenoh-pico's unicast read task (RFC-0074 enforcement
+/// point 2): at most `frames` frames back to back, then a `rest_us` sleep.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct RxTaskBudget {
+    pub frames: usize,
+    pub rest_us: usize,
+}
+
+impl RxTaskBudget {
+    /// The budget a build bakes, from the two resolved knobs.
+    ///
+    /// `frames` is `None` when no rung STATED it — its builtin states nothing,
+    /// so the read task stays unbounded and `rest_us` is not read. A stated 0
+    /// is refused: zero frames is not "unlimited", and reading it as either
+    /// would be a silent guess (RFC-0074). zenoh-pico's own `#error` refuses
+    /// it too; this says which knob to change.
+    pub fn from_knobs(frames: Option<usize>, rest_us: usize) -> Result<Option<Self>, String> {
+        match frames {
+            None => Ok(None),
+            Some(0) => Err(
+                "NROS_ZENOH_RX_TASK_BUDGET_FRAMES = 0 is refused: a budget of zero frames is \
+                 not \"unbounded\". Leave the knob unset (or -1) for an unbounded read task, \
+                 or state at least 1 frame (RFC-0074)."
+                    .to_string(),
+            ),
+            Some(frames) if rest_us == 0 => Err(format!(
+                "NROS_ZENOH_RX_TASK_BUDGET_REST_US = 0 with a budget of {frames} frames is \
+                 refused: a budget that never rests bounds nothing (RFC-0074)."
+            )),
+            Some(frames) => Ok(Some(Self { frames, rest_us })),
+        }
+    }
 }
 
 /// Generate a zenoh-pico config header body from already-resolved build inputs.
@@ -358,6 +395,13 @@ pub fn config_header(
     };
     writeln!(header, "#define Z_CONFIG_SOCKET_TIMEOUT {}", socket_timeout).unwrap();
     writeln!(header, "#define Z_TRANSPORT_LEASE {}", Z_TRANSPORT_LEASE_MS).unwrap();
+    // RFC-0074 / phase-462 W6a — written ONLY when stated: zenoh-pico reads
+    // "undefined" as an unbounded read task, which is what an image that
+    // states nothing gets.
+    if let Some(b) = buf.rx_task_budget {
+        writeln!(header, "#define Z_RX_TASK_BUDGET_FRAMES {}", b.frames).unwrap();
+        writeln!(header, "#define Z_RX_TASK_BUDGET_REST_US {}", b.rest_us).unwrap();
+    }
     writeln!(header, "#define Z_TRANSPORT_LEASE_EXPIRE_FACTOR 3").unwrap();
     // issue 0959 — the lease task sleeps in chunks of this many ms rather than
     // for a whole keep-alive interval, so `stop_lease_task`'s join does not have
@@ -1346,6 +1390,7 @@ int32_t zpico_init(void);\n";
             frag_max_size: 4096,
             batch_unicast_size: 2048,
             batch_multicast_size: 1024,
+            rx_task_budget: None,
         };
 
         let header = config_header(&link, &buf, "armv7a-nuttx-eabihf", true, false, false);
@@ -1397,12 +1442,62 @@ int32_t zpico_init(void);\n";
             frag_max_size: 4096,
             batch_unicast_size: 2048,
             batch_multicast_size: 1024,
+            rx_task_budget: None,
         };
 
         let header = config_header(&link, &buf, "x86_64-unknown-linux-gnu", false, false, false);
 
         assert!(header.contains("#define Z_FEATURE_LOCAL_SUBSCRIBER 1"));
         assert!(header.contains("#define Z_FEATURE_LOCAL_QUERYABLE 1"));
+    }
+
+    /// RFC-0074 / phase-462 W6a — the read-task budget reaches zenoh-pico only
+    /// when stated, and the two refusals hold.
+    #[test]
+    fn the_read_task_budget_is_baked_only_when_stated() {
+        let link = LinkFeatures {
+            tcp: true,
+            udp_unicast: false,
+            udp_multicast: false,
+            serial: false,
+            raweth: false,
+            tls: false,
+            ivc: false,
+            can: false,
+            isotp: false,
+            custom: false,
+        };
+        let mut buf = ZenohBufferConfig {
+            frag_max_size: 2048,
+            batch_unicast_size: 1024,
+            batch_multicast_size: 1024,
+            rx_task_budget: None,
+        };
+        let unstated = config_header(&link, &buf, "thumbv7m-none-eabi", false, false, false);
+        assert!(!unstated.contains("Z_RX_TASK_BUDGET"), "{unstated}");
+
+        buf.rx_task_budget = RxTaskBudget::from_knobs(Some(8), 1000).unwrap();
+        let stated = config_header(&link, &buf, "thumbv7m-none-eabi", false, false, false);
+        assert!(
+            stated.contains("#define Z_RX_TASK_BUDGET_FRAMES 8"),
+            "{stated}"
+        );
+        assert!(
+            stated.contains("#define Z_RX_TASK_BUDGET_REST_US 1000"),
+            "{stated}"
+        );
+
+        assert_eq!(RxTaskBudget::from_knobs(None, 0), Ok(None));
+        let zero = RxTaskBudget::from_knobs(Some(0), 1000).unwrap_err();
+        assert!(
+            zero.contains("NROS_ZENOH_RX_TASK_BUDGET_FRAMES = 0 is refused"),
+            "{zero}"
+        );
+        let no_rest = RxTaskBudget::from_knobs(Some(8), 0).unwrap_err();
+        assert!(
+            no_rest.contains("NROS_ZENOH_RX_TASK_BUDGET_REST_US = 0"),
+            "{no_rest}"
+        );
     }
 
     #[test]
