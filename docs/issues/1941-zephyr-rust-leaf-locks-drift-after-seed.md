@@ -109,3 +109,42 @@ So far it is 2 of 2 on 241 and 0 of 1 elsewhere. The drift follows that runner's
 persistent `nros-fixture-tree`. Until it is fixed, every lane that lands on 241
 and builds fixtures stops before its cells, which makes that lane a
 no-verdict lane on that runner.
+
+## Cause (measured on 241, 2026-10-18)
+
+Cause 1 above, in a form none of the three named: the seed DID run, and its
+realign could move nothing. Read-only on 241's tree (head `86394e250`):
+
+- Each of the six `build-rust-*-zenoh.log` files of the failing build prints
+  `seed-lock: 39 entr(ies) of …/<leaf>/Cargo.lock stay off the pin set`.
+  No log prints a `realigned N crate(s)` line, so not one move succeeded.
+- `cargo locate-project --workspace` names the leaf itself, so the seed
+  reached the right lock. The talker lock is rewritten on every build (mtime
+  05:42Z, one minute before the build's head), because zephyr-lang-rust
+  always runs cargo.
+
+`seed-lock` moves an existing lock with one `cargo update -p X@have
+--precise want` per crate, run in the leaf ALONE. A Zephyr Rust leaf
+registry-names `zephyr` and `zephyr-build`, and only the west build's patch
+table (from the store's `modules/lang/rust`) supplies them. So every move
+fails with `no matching package named zephyr-build`, and
+`enforce_cargo_root` discarded that error. The lock that 241's persistent
+tree had resolved before #1937, unseeded, therefore stayed. 133 passes
+because its leaves had no lock: `seed` copied the pin set in and never had
+to realign. That makes it a defect of any persistent tree that predates
+#1937, not of one runner.
+
+## Fix
+
+- `drift::enforce_cargo_root` prints the moves it could not make, with
+  cargo's first error line, for both `seed-lock` and `nros build`.
+- `seed-lock` in a checkout calls `drift::realign_or_reseed`. Drift the
+  realign leaves is replaced by a fresh seed from the pin set
+  (`registry_pins::write_seed`). In a checkout a leaf lock is seeded build
+  output, so this is what a leaf with no lock gets, and the build then
+  resolves from the pins.
+- `nros build` keeps refusing leftover drift as before. That refusal was
+  already loud, and it now names cargo's reason.
+
+What closes this issue is unchanged: a tier-2 nightly on 241 that passes
+`check-lock` with the six leaves checked.
