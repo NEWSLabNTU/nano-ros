@@ -1,7 +1,7 @@
 ---
 id: 1939
 title: "Two nros-node monitor tests judge a 5 ms latency budget against the wall clock, so they fail when the gate's parallel build preempts them"
-status: open
+status: resolved
 type: bug
 area: [testing, node, monitors]
 severity: low
@@ -45,3 +45,30 @@ of spinning, so the measured latency is a constant of the test. Then sweep the
 other tests in `executor/tests.rs` that pair a millisecond `max_latency_ms`
 with real elapsed time (16 tables declare one) and move each that asserts an
 exact verdict set.
+
+## Resolution (2026-10-17)
+
+The two tests, and the two siblings a sweep found (`max_latency_ms` declared,
+real elapsed time, no private clock), run on a `private_test_clock!` now:
+`t4_an_overrun_after_arming_is_the_one_stored_violation`,
+`i7_a_slow_report_breeds_no_overrun_or_jitter_verdict`,
+`t4_a_timer_overrun_beside_an_idle_subscription_is_judged` and
+`b3_a_late_tick_exceeds_the_route_while_every_callback_passes`. A
+callback's "work" and each spin's elapsed time advance the clock by exactly
+what they name, so every measured latency is a constant of the test.
+
+Running them under load found a SECOND cause in t4, the one whose message was
+not kept. Its log sink is process-global and stays installed after it returns,
+and libtest reuses worker threads, so a test that ran earlier on the same
+thread had logged into t4's thread-local buffer through it. Measured:
+`nothing reported: ["contract violation: route-latency-runtime /b3/handler/state
+measured=260 declared=149", ...]`, b3's verdict. t4 now clears its buffers
+after installing the sink.
+
+Sweep: a scan of `executor/tests.rs` for a test body with a nonzero
+`max_latency_ms`, real elapsed time (`elapse_then_spin_once`, `Instant::now`
+or `thread::sleep`) and no `executor_with_clock_fn`. It returns nothing now.
+
+Measured: the four tests, 15 of 15 runs green with 32 busy loops on the host
+(3 of 10 before the buffer fix, all t4); the full `nros-node` lib suite under
+`std,sim-time,param-services` is 667 passed and takes 1.5 s instead of ~5 s.

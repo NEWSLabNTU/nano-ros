@@ -2840,6 +2840,15 @@ node-std-tests:
     # whole store-only build runs (the full run above is the served branch).
     ran_tests "the store-only parameter build" \
         cargo test -p nros-node --lib --features std,sim-time,param-store --quiet
+    # Issue 1938 -- the executor's byte budget is a ceiling plus NAMED
+    # allowances, one per feature-gated header field. A field added under a
+    # feature no lane enables went over it with nothing reporting it
+    # (`signal-fd-wake`, the declared-parameter table), because every build
+    # above enables a subset. `--all-features` is the build that holds every
+    # such field at once, so it is the one this test must pass in.
+    ran_tests "the executor byte budget under every feature" \
+        cargo test -p nros-node --lib --all-features --quiet -- \
+        --exact executor::storage::tests::the_executor_value_does_not_scale_with_the_knobs
     # Issue 1036 -- the same failure, taken all the way to the tool an operator
     # runs: the record resolved by SYMBOL out of the ELF, its bytes decoded by
     # the boot-report reader under `scripts/`, and the verdict asserted to name

@@ -1,7 +1,7 @@
 ---
 id: 1938
 title: "The executor's byte-budget test is red under --all-features: signal-fd-wake and param-store add header fields with no named allowance"
-status: open
+status: resolved
 type: bug
 area: [node, executor, testing]
 severity: low
@@ -59,3 +59,22 @@ Name each field's allowance under its own `cfg`, as the test's comment asks
 ("named rather than folded into the base"), after checking that none of them
 scales with a knob. Then run the test under `--all-features` in a lane, so
 the next field added under a feature nobody's lane enables gets reported.
+
+## Resolution (2026-10-17)
+
+Named allowances in `executor/storage.rs` for every field the measurement
+found unnamed, each checked to scale with no knob:
+
+- `signal-fd-wake`'s `Option<WakeSignalFd>` (an fd, one `Arc`, a task handle);
+- `param-store`'s `param_store_refused` flag and `DeclaredParams` (two
+  `&'static` slices into the entry's baked tables);
+- `scheduler-os-priority`'s policy hook (one optional fn pointer), which the
+  pool's allowance did not cover.
+
+The test now passes under `--all-features`, `std,alloc,rmw-cffi,signal-fd-wake`,
+`std,alloc,param-services` and `std,alloc`. What remains un-named is padding
+(`sim-time`'s 6 B), which the base absorbs.
+
+`node-std-tests` now runs this one test under `--all-features`, through its
+`ran_tests` guard, so a field added under a feature no other build enables is
+reported by the lane rather than by whoever next runs `--all-features`.

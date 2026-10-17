@@ -13550,6 +13550,9 @@ fn a_grace_period_arms_after_the_first_spin() {
     assert_eq!(executor.violations_total(), 0);
 }
 
+#[cfg(all(feature = "std", feature = "alloc"))]
+private_test_clock!(t4_overrun_clock);
+
 /// phase-474 T4 -- the end-to-end violation test, on the host executor (the
 /// `MockSession` harness every rule test here uses), driving the REAL rules
 /// rather than injecting verdicts.
@@ -13617,6 +13620,12 @@ fn t4_an_overrun_after_arming_is_the_one_stored_violation() {
     static CAPTURE: Capture = Capture;
     static SINKS: &[&dyn nros_log::LogSink] = &[&CAPTURE];
     nros_log::init(SINKS);
+    // Issue 1939 -- the sink stays installed after this test returns, and
+    // libtest REUSES its worker threads, so an earlier test on this thread
+    // (b3's route verdict was the one measured) can have logged into this
+    // thread's buffers through it. Start from empty.
+    LINES.with(|l| l.borrow_mut().clear());
+    MARKS.with(|m| m.borrow_mut().clear());
     #[cfg(feature = "trace-callbacks")]
     let _trace_guard = trace_sink_lock();
     #[cfg(feature = "trace-callbacks")]
@@ -13629,7 +13638,21 @@ fn t4_an_overrun_after_arming_is_the_one_stored_violation() {
         super::callback_trace::set_trace_sink(Some(mark));
     }
 
-    let mut executor: Executor = executor_with_clock(MockSession::new());
+    // A PRIVATE clock the test moves by hand (issue 1939): the latency rule
+    // judges 5 ms, and on the shared real-time clock a quiet tick preempted
+    // for 5 ms under a parallel gate was a second, spurious violation. Here a
+    // callback's "work" advances the clock by exactly its duration, so every
+    // measured latency is a constant of the test.
+    t4_overrun_clock::claim_at_us(1_000_000);
+    fn work_ms(ms: u64) {
+        t4_overrun_clock::set_us(t4_overrun_clock::now_us() + ms * 1_000);
+    }
+    fn step(executor: &mut Executor, ms: u64) {
+        work_ms(ms);
+        let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    }
+    let mut executor: Executor =
+        executor_with_clock_fn(MockSession::new(), t4_overrun_clock::now_us);
     executor.set_monitor_table(&TABLE);
     executor.set_monitor_arming(true, 0);
     executor.set_violation_drain_report(true);
@@ -13645,11 +13668,7 @@ fn t4_an_overrun_after_arming_is_the_one_stored_violation() {
             let tick = TICKS.fetch_add(1, Ordering::SeqCst) + 1;
             let busy = BUSY_MS.swap(0, Ordering::SeqCst);
             if busy > 0 {
-                let until =
-                    std::time::Instant::now() + std::time::Duration::from_millis(busy as u64);
-                while std::time::Instant::now() < until {
-                    core::hint::spin_loop();
-                }
+                work_ms(busy as u64);
             }
             let _ = status.publish_raw(&[0, 1, 0, 0, tick as u8, 0, 0, 0]);
             if tick == RUN_AT_TICK {
@@ -13664,7 +13683,7 @@ fn t4_an_overrun_after_arming_is_the_one_stored_violation() {
     // third arms.
     let mut spins = 0;
     while TICKS.load(Ordering::SeqCst) < RUN_AT_TICK && spins < 40 {
-        let _ = elapse_then_spin_once(&mut executor, 102);
+        step(&mut executor, 102);
         spins += 1;
     }
     assert!(
@@ -13687,14 +13706,14 @@ fn t4_an_overrun_after_arming_is_the_one_stored_violation() {
         LINES.with(|l| l.borrow().clone())
     );
 
-    let _ = elapse_then_spin_once(&mut executor, 102);
+    step(&mut executor, 102);
     assert!(executor.monitors_armed(), "RUN armed the monitors");
     assert_eq!(executor.violations_total(), 0);
 
     // RUN: one deliberate overrun, then quiet ticks until it is judged.
     BUSY_MS.store(20, Ordering::SeqCst);
     for _ in 0..4 {
-        let _ = elapse_then_spin_once(&mut executor, 102);
+        step(&mut executor, 102);
     }
     assert_eq!(
         executor.violations_total(),
@@ -13747,16 +13766,16 @@ fn t4_an_overrun_after_arming_is_the_one_stored_violation() {
     let burst = MAX_VIOLATIONS as u32 + 2;
     for _ in 0..burst {
         BUSY_MS.store(8, Ordering::SeqCst);
-        let _ = elapse_then_spin_once(&mut executor, 102);
-        let _ = elapse_then_spin_once(&mut executor, 102);
+        step(&mut executor, 102);
+        step(&mut executor, 102);
     }
-    let _ = elapse_then_spin_once(&mut executor, 102);
+    step(&mut executor, 102);
     let total = executor.violations_total();
-    // Every overrun is stored. The host timer can also drop an activation over
-    // a long run (each spin lands a little past the period, and the drift
-    // adds up), which `timer-overrun-runtime` then reports as well; that is a
-    // real verdict, so the count is a floor and the ring's arithmetic is
-    // checked against the total.
+    // Every overrun is stored. The timer can also drop an activation over a
+    // long run (each spin lands 2 ms past the period, and the drift adds up),
+    // which `timer-overrun-runtime` then reports as well; that is a real
+    // verdict, so the count is a floor and the ring's arithmetic is checked
+    // against the total.
     assert!(total > burst, "every overrun stored: total={total}");
     let dropped = executor.violations_dropped();
     assert_eq!(
@@ -13784,6 +13803,9 @@ fn t4_an_overrun_after_arming_is_the_one_stored_violation() {
     #[cfg(feature = "trace-callbacks")]
     super::callback_trace::set_trace_sink(None);
 }
+
+#[cfg(all(feature = "std", feature = "alloc"))]
+private_test_clock!(t4_idle_sub_clock);
 
 /// phase-474 I6 -- T4's overrun again, on the shape the safety island actually
 /// has: the timer's node ALSO subscribes. With a subscription registered and
@@ -13822,7 +13844,18 @@ fn t4_a_timer_overrun_beside_an_idle_subscription_is_judged() {
     static TICKS: AtomicU32 = AtomicU32::new(0);
     static TAKES: AtomicU32 = AtomicU32::new(0);
 
-    let mut executor: Executor = executor_with_clock(MockSession::new());
+    // A PRIVATE clock the test moves by hand (issue 1939): a quiet tick preempted for 5 ms under a
+    // parallel gate would be a spurious verdict against the 5 ms budget.
+    t4_idle_sub_clock::claim_at_us(1_000_000);
+    fn work_ms(ms: u64) {
+        t4_idle_sub_clock::set_us(t4_idle_sub_clock::now_us() + ms * 1_000);
+    }
+    fn step(executor: &mut Executor, ms: u64) {
+        work_ms(ms);
+        let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    }
+    let mut executor: Executor =
+        executor_with_clock_fn(MockSession::new(), t4_idle_sub_clock::now_us);
     executor.set_monitor_table(&TABLE);
     executor.set_report_violations(false);
     let nid = executor.node_builder("handler").build().expect("node");
@@ -13846,11 +13879,7 @@ fn t4_a_timer_overrun_beside_an_idle_subscription_is_judged() {
             // The island's debug overrun busy-waits AFTER its publishes.
             let busy = BUSY_MS.swap(0, Ordering::SeqCst);
             if busy > 0 {
-                let until =
-                    std::time::Instant::now() + std::time::Duration::from_millis(busy as u64);
-                while std::time::Instant::now() < until {
-                    core::hint::spin_loop();
-                }
+                work_ms(busy as u64);
             }
         })
         .expect("timer");
@@ -13858,7 +13887,7 @@ fn t4_a_timer_overrun_beside_an_idle_subscription_is_judged() {
     // Armed at the first spin (the default); two quiet ticks first.
     let mut spins = 0;
     while TICKS.load(Ordering::SeqCst) < 2 && spins < 40 {
-        let _ = elapse_then_spin_once(&mut executor, 102);
+        step(&mut executor, 102);
         spins += 1;
     }
     assert!(executor.monitors_armed());
@@ -13868,7 +13897,7 @@ fn t4_a_timer_overrun_beside_an_idle_subscription_is_judged() {
     BUSY_MS.store(20, Ordering::SeqCst);
     let fired_before = TICKS.load(Ordering::SeqCst);
     for _ in 0..4 {
-        let _ = elapse_then_spin_once(&mut executor, 102);
+        step(&mut executor, 102);
     }
     assert!(
         TICKS.load(Ordering::SeqCst) > fired_before,
@@ -14114,6 +14143,9 @@ fn params_file_overrides_reach_their_nodes_with_dotted_names() {
         "`/robot/talker:` does not reach the listener"
     );
 }
+#[cfg(all(feature = "std", feature = "alloc"))]
+private_test_clock!(i7_report_clock);
+
 /// phase-474 I7 -- the `/diagnostics` report leaves OFF the judged tick, and
 /// what it costs is not judged as the spin's lateness.
 ///
@@ -14169,12 +14201,20 @@ fn i7_a_slow_report_breeds_no_overrun_or_jitter_verdict() {
     static SINK_CALLS: AtomicU32 = AtomicU32::new(0);
     static SINK_SEEN: AtomicU32 = AtomicU32::new(0);
 
+    // A PRIVATE clock the test moves by hand (issue 1939). "Work" -- the
+    // handler's overrun, the slow link -- advances it by exactly its duration,
+    // so no verdict here depends on how the host scheduled the test thread:
+    // on the shared real-time clock a 2 ms sleep preempted past 40 ms under a
+    // parallel gate dropped an activation and bred the overrun this test
+    // asserts the report does NOT breed.
     fn busy_ms(ms: u64) {
-        let until = std::time::Instant::now() + std::time::Duration::from_millis(ms);
-        while std::time::Instant::now() < until {
-            core::hint::spin_loop();
-        }
+        i7_report_clock::set_us(i7_report_clock::now_us() + ms * 1_000);
     }
+    fn step(executor: &mut Executor, ms: u64) {
+        busy_ms(ms);
+        let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    }
+    i7_report_clock::claim_at_us(1_000_000);
     unsafe fn slow_sink(_ctx: *mut core::ffi::c_void, pending: &[Violation]) -> usize {
         SINK_CALLS.fetch_add(1, Ordering::SeqCst);
         SINK_SEEN.fetch_add(pending.len() as u32, Ordering::SeqCst);
@@ -14183,7 +14223,8 @@ fn i7_a_slow_report_breeds_no_overrun_or_jitter_verdict() {
         pending.len()
     }
 
-    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let mut executor: Executor =
+        executor_with_clock_fn(MockSession::new(), i7_report_clock::now_us);
     executor.set_monitor_table(&TABLE);
     executor.set_report_violations(false);
     // The cadence the release-jitter rule judges: 30 ms.
@@ -14224,16 +14265,15 @@ fn i7_a_slow_report_breeds_no_overrun_or_jitter_verdict() {
     // Two quiet handler ticks: nothing to report.
     let mut spins = 0;
     while HANDLER_TICKS.load(Ordering::SeqCst) < 2 && spins < 400 {
-        let _ = elapse_then_spin_once(&mut executor, 2);
+        step(&mut executor, 2);
         spins += 1;
     }
     assert_eq!(executor.violations_total(), 0, "quiet ticks are clean");
 
     // One overrun of the handler's tick, then ~400 ms of ordinary spins.
     BUSY_MS.store(10, Ordering::SeqCst);
-    let t0 = std::time::Instant::now();
-    while t0.elapsed() < std::time::Duration::from_millis(400) {
-        let _ = elapse_then_spin_once(&mut executor, 2);
+    for _ in 0..200 {
+        step(&mut executor, 2);
     }
 
     let mut kept = alloc::vec::Vec::new();
@@ -14665,6 +14705,9 @@ fn rounding_to_the_park_tick_is_late_but_not_beyond_the_granule() {
     );
 }
 
+#[cfg(all(feature = "std", feature = "alloc"))]
+private_test_clock!(b3_route_clock);
+
 /// phase10-B3 -- `route-latency-runtime`, the route rule, on the host
 /// executor with real time.
 ///
@@ -14706,7 +14749,18 @@ fn b3_a_late_tick_exceeds_the_route_while_every_callback_passes() {
     static TICKS: AtomicU32 = AtomicU32::new(0);
     static TAKES: AtomicU32 = AtomicU32::new(0);
 
-    let mut executor: Executor = executor_with_clock(MockSession::new());
+    // A PRIVATE clock the test moves by hand (issue 1939): the on-time route has 49 ms of margin, and
+    // a 10 ms real sleep preempted past it under a parallel gate would be a
+    // spurious route verdict.
+    b3_route_clock::claim_at_us(1_000_000);
+    fn work_ms(ms: u64) {
+        b3_route_clock::set_us(b3_route_clock::now_us() + ms * 1_000);
+    }
+    fn step(executor: &mut Executor, ms: u64) {
+        work_ms(ms);
+        let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    }
+    let mut executor: Executor = executor_with_clock_fn(MockSession::new(), b3_route_clock::now_us);
     executor.set_monitor_table(&TABLE);
     let nid = executor.node_builder("handler").build().expect("node");
     let state = executor
@@ -14760,7 +14814,7 @@ fn b3_a_late_tick_exceeds_the_route_while_every_callback_passes() {
         let t = TICKS.load(Ordering::SeqCst);
         let mut spins = 0;
         while TICKS.load(Ordering::SeqCst) == t && spins < 100 {
-            let _ = elapse_then_spin_once(ex, 10);
+            step(ex, 10);
             spins += 1;
         }
         assert!(TICKS.load(Ordering::SeqCst) > t, "the timer ticked");
@@ -14790,7 +14844,7 @@ fn b3_a_late_tick_exceeds_the_route_while_every_callback_passes() {
     load(10);
     let _ = executor.spin_once(core::time::Duration::from_millis(0));
     let ticks = TICKS.load(Ordering::SeqCst);
-    let _ = elapse_then_spin_once(&mut executor, 260);
+    step(&mut executor, 260);
     assert!(TICKS.load(Ordering::SeqCst) > ticks, "the late tick ran");
     drain(&mut executor, &mut route_verdicts);
     assert_eq!(
