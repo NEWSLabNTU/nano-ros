@@ -56,3 +56,35 @@ SOLO"), here on the host XRCE path.
 Watch tier-1 runs for a repeat. If one appears, keep the Agent's own log for
 that test (the fixture captures it), and compare the client's session-open
 timeline with when the Agent printed its bind line.
+
+## 2026-10-18 — load alone does not reproduce it; the two failures now say which they are
+
+Measured on newslab-118 with a scratch probe calling `xrce_session_create`
+against a fresh `MicroXRCEAgent` per run (the shape every XRCE test has):
+
+| condition | runs | result | open time |
+| --- | --- | --- | --- |
+| idle | 5 | 5 OK | 105–106 ms |
+| 32 busy loops on 32 cores | 8 | 8 OK | 112–134 ms |
+
+So CPU contention by itself adds ~30 ms against a budget of seconds. That
+fits the issue's reading (the sweep, or that host) and rules out the simplest
+explanation.
+
+The open path has two waits, and both returned the same
+`NROS_RMW_RET_ERROR`, which is why this issue could not say which one ran out:
+
+* the session open: `XRCE_SESSION_CREATION_RETRIES` (3) attempts of
+  `UXR_CONFIG_MIN_SESSION_CONNECTION_INTERVAL` (1000 ms);
+* the participant create: one `XRCE_ENTITY_CREATION_TIMEOUT_MS` (1000 ms) wait.
+
+Each now logs at the failure site, naming the step, its budget and, for the
+participant, whether the Agent answered at all:
+
+```
+[ERROR] nros_rmw_xrce: XRCE session open: the Agent sent no CREATE_CLIENT status in 3 attempt(s) x 1000 ms (issue 1932)
+```
+
+The next sighting's test log therefore names the step. If it is the
+participant with "no answer", raise that one wait; if it is the session, the
+Agent was not answering at all, and its own log is the next thing to read.

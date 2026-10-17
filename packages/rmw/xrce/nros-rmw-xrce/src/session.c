@@ -635,6 +635,14 @@ rmw_ret_t xrce_session_create(const char* locator, uint8_t mode, uint32_t domain
     uxr_set_reply_callback(&st->session, xrce_reply_callback, st);
 
     if (!uxr_create_session_retries(&st->session, XRCE_SESSION_CREATION_RETRIES)) {
+        /* Issue 1932 — this and the participant confirm below both return
+         * NROS_RMW_RET_ERROR, and two clients that failed one of them in a
+         * tier-1 sweep could not be told apart afterwards. Name the step and
+         * its budget, so the next sighting says which wait ran out. */
+        xrce_log_error("XRCE session open: the Agent sent no CREATE_CLIENT status in %d attempt(s) "
+                       "x %d ms (issue 1932)",
+                       (int)XRCE_SESSION_CREATION_RETRIES,
+                       (int)UXR_CONFIG_MIN_SESSION_CONNECTION_INTERVAL);
         /* Both UDP and `custom://` paths now go through
          * uxrCustomTransport — close via custom_transport. */
         uxr_close_custom_transport(&st->custom);
@@ -664,6 +672,13 @@ rmw_ret_t xrce_session_create(const char* locator, uint8_t mode, uint32_t domain
     rmw_ret_t cret = xrce_confirm_entities(st, requests, statuses, 1);
     (void)status;
     if (cret != NROS_RMW_RET_OK) {
+        /* Issue 1932 — status 0 (UXR_STATUS_NONE) is a timeout: the Agent
+         * answered the session but not the participant within the budget. */
+        xrce_log_error("XRCE session open: participant create on domain %u got status %u "
+                       "within %d ms (%s; issue 1932)",
+                       (unsigned)domain_id, (unsigned)statuses[0],
+                       (int)XRCE_ENTITY_CREATION_TIMEOUT_MS,
+                       statuses[0] == UXR_STATUS_NONE ? "no answer" : "refused by the Agent");
         (void)uxr_delete_session(&st->session);
         uxr_close_custom_transport(&st->custom);
         xrce_session_free(st);
