@@ -1207,6 +1207,23 @@ mod tests {
         {
             ceiling += size_of::<super::super::os_priority::OsPriorityPool>();
         }
+        // Issue 1938 -- the policy hook beside the pool: one optional fn
+        // pointer, which scales with nothing.
+        #[cfg(all(feature = "alloc", feature = "scheduler-os-priority"))]
+        {
+            ceiling += size_of::<
+                Option<
+                    fn(nros_platform_api::SchedPolicy) -> Result<(), nros_platform_api::SchedError>,
+                >,
+            >();
+        }
+        // Issue 1938 -- `signal-fd-wake`'s worker: an fd, one `Arc` to its
+        // context and the task handle. Scales with nothing; it sat unnamed and
+        // alone took the `rmw-cffi` build 31 B over.
+        #[cfg(all(feature = "signal-fd-wake", target_os = "linux"))]
+        {
+            ceiling += size_of::<Option<super::super::spin::WakeSignalFd>>();
+        }
         // phase-382 W3' -- the parameter store's TABLE is carved (it scales
         // with `MAX_PARAMETERS` and lives in the backing); this value holds one
         // slice reference to it, which scales with nothing.
@@ -1224,6 +1241,10 @@ mod tests {
                 >,
             >()
             .saturating_sub(size_of::<usize>());
+            // issue 1938 -- the refused-allocation flag (issue 1706) and the
+            // contract's declared parameters (phase-446 W6), two `&'static`
+            // slices into the entry's baked tables. Neither scales with a knob.
+            ceiling += size_of::<bool>() + size_of::<nros_params::DeclaredParams>();
         }
         // phase-425 W3b / phase-430 W1 -- `use_sim_time`'s state: the `/clock`
         // handle, the requested and stated flags, and the silence watch. None
