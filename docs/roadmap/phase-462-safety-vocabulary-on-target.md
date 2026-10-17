@@ -387,7 +387,25 @@ Depends on: rlm issue 0760 for derivation; nothing for the stated knob.
 Two claims, because the two halves wait on different things (see the
 Parallel plan): W6a is the stated knob, W6b its derivation.
 
-Claim: phase-462-W6a. Depends on: none. Owns: zephyr/Kconfig; zephyr/nros_zenoh_zephyr_system.c; the knob's ladder entries as scripts/check-knob-delivery.py and scripts/check-kconfig-knob-forwarding.sh require them; docs/design/0074-ingress-budget-rate-and-burst.md. Gate: the RFC-0074 flood cell rerun with the budget stated records 0 stalls. Status: not started.
+W6a status: the knob landed. zenoh-pico's `_zp_unicast_read_task` takes
+`Z_RX_TASK_BUDGET_FRAMES` / `Z_RX_TASK_BUDGET_REST_US` (fork `nano-ros` branch),
+and nano-ros states them as `NROS_ZENOH_RX_TASK_BUDGET_FRAMES` / `_REST_US`, two
+wire knobs on the RFC-0049 ladder. The phase's earlier spelling,
+`NROS_RX_TASK_BUDGET_FRAMES`, became `NROS_ZENOH_*` like every other zenoh knob,
+and the burst twin is the rest interval, RFC-0074's `REST`. Roads:
+- cargo: `nros-zpico-build` writes the defines into `zenoh_generic_config.h`,
+  and only when a rung STATED the frame budget;
+- Zephyr: `nros_rmw_zenoh.cmake` writes them from the resolved value.
+-1 or unset bakes nothing; 0 is refused by the build and by zenoh-pico's own
+`#error`. The unit test is
+`nros-zpico-build` `the_read_task_budget_is_baked_only_when_stated`.
+
+Not yet run: the gate's flood cell. It lives in the evaluation workspace RFC-0074
+measured in (`results/issue506_task_budget.md`), not in this tree, so the
+0-stall rerun is still owed. The fork commit is the same shape as the one RFC-0074
+measured: 12/12 budgeted runs with 0 stalls.
+
+Claim: phase-462-W6a. Depends on: none. Owns: zephyr/Kconfig; zephyr/nros_zenoh_zephyr_system.c; the knob's ladder entries as scripts/check-knob-delivery.py and scripts/check-kconfig-knob-forwarding.sh require them; docs/design/0074-ingress-budget-rate-and-burst.md. Gate: the RFC-0074 flood cell rerun with the budget stated records 0 stalls. Status: knob landed; flood-cell rerun pending.
 
 Claim: phase-462-W6b. Depends on: phase-462-W6a; rlm issue 0760. Owns: the knob derivation in packages/cli/nros-cli-core/src/cmd/entity_inventory.rs and a test beside it. Gate: cargo test -p nros-cli-core entity_inventory. Status: not started.
 

@@ -2457,6 +2457,38 @@ config NROS_ZENOH_READ_PRIORITY
       modes with real cost — see issues 0506 and 0623 before changing it.
 
 
+# prompt: zenoh read task frame budget (-1 = unbounded)
+config NROS_ZENOH_RX_TASK_BUDGET_FRAMES
+    int
+    default -1
+    range -1 65535
+    help
+      RFC-0074 / phase-462 W6a. The most frames the zenoh-pico read task
+      processes back to back before it sleeps NROS_ZENOH_RX_TASK_BUDGET_REST_US.
+      Bounds the task's contiguous CPU occupancy at FRAMES x per-frame cost
+      (~0.94 ms a frame measured on FreeRTOS mps2-an385), so a flood cannot
+      stall the tiers below the transport band. It defers rather than drops:
+      unread bytes stay in the socket and TCP backpressures the sender.
+
+      -1 (and unset) states nothing: the read task is unbounded, as before.
+      0 is REFUSED -- a budget of zero frames is not "unlimited". Too large a
+      budget is worse than none on stall COUNT (128 frames: 12.5 stalls/run
+      against 9.1 unbounded), so size it so FRAMES x cost fits the tightest
+      tier's slack. Maps to Z_RX_TASK_BUDGET_FRAMES.
+
+
+# prompt: zenoh read task rest after a full budget (us)
+config NROS_ZENOH_RX_TASK_BUDGET_REST_US
+    int
+    default 1000
+    range 1 1000000
+    help
+      RFC-0074 / phase-462 W6a. How long the zenoh-pico read task sleeps after
+      NROS_ZENOH_RX_TASK_BUDGET_FRAMES frames. Read only when the frame budget
+      is stated. RFC-0074's measured cells use 1000. Maps to
+      Z_RX_TASK_BUDGET_REST_US.
+
+
 # prompt: Per-service static buffer size (alias of NROS_SERVICE_INBOX_BYTES)
 config NROS_SERVICE_BUFFER_SIZE
     int

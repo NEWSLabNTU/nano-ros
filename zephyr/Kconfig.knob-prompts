@@ -199,6 +199,12 @@ config NROS_MAX_SUBSCRIBERS
 config NROS_ZENOH_READ_PRIORITY
     int "zenoh-pico read task priority (normalised band, 0-255)"
 
+config NROS_ZENOH_RX_TASK_BUDGET_FRAMES
+    int "zenoh read task frame budget (-1 = unbounded)"
+
+config NROS_ZENOH_RX_TASK_BUDGET_REST_US
+    int "zenoh read task rest after a full budget (us)"
+
 config NROS_SERVICE_BUFFER_SIZE
     int "Per-service static buffer size (alias of NROS_SERVICE_INBOX_BYTES)"
 

@@ -3,8 +3,8 @@ rfc: 0074
 title: "Ingress budget: the contract bounds what a device is made to receive"
 status: Draft
 since: 2026-08
-last-reviewed: 2026-08-23
-implements-tracked-by: []
+last-reviewed: 2026-10-17
+implements-tracked-by: [phase-462]
 supersedes: []
 superseded-by: null
 ---
@@ -159,6 +159,14 @@ the tiers regain the CPU at a known granularity.
 ```c
 if (++frames >= NROS_RX_TASK_BUDGET_FRAMES) { frames = 0; z_sleep_us(rest); }
 ```
+
+**Shipped (phase-462 W6a) as a stated knob:** `NROS_ZENOH_RX_TASK_BUDGET_FRAMES`
+and `NROS_ZENOH_RX_TASK_BUDGET_REST_US` on the plain ladder (env, Kconfig
+`CONFIG_NROS_ZENOH_RX_TASK_BUDGET_*`, `[knobs.zenoh.wire]` in a board or platform
+TOML), lowered to zenoh-pico's `Z_RX_TASK_BUDGET_FRAMES` / `_REST_US` in
+`_zp_unicast_read_task`. Unset or -1 bakes no define, so an image that states
+nothing is byte-identical to before; a stated 0 is refused on every road. The
+derivation from a declared `(rate_hz, burst)` is phase-462 W6b.
 
 Two structural properties make this a budget rather than a drop policy,
 and both were checked against the source before it was built:

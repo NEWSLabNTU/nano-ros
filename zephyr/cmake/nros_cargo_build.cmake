@@ -1083,6 +1083,12 @@ function(nros_resolve_knobs)
         _nros_resolve_knob(NROS_ZENOH_MAX_PENDING_GETS "${CONFIG_NROS_MAX_PENDING_GETS}")
         _nros_resolve_knob(NROS_ZENOH_GET_REPLY_BUF_SIZE "${CONFIG_NROS_GET_REPLY_BUF_SIZE}")
         _nros_resolve_knob(NROS_ZENOH_GET_POLL_INTERVAL_MS "${CONFIG_NROS_GET_POLL_INTERVAL_MS}")
+        # RFC-0074 / phase-462 W6a -- the read task's frame budget. -1 (the
+        # Kconfig default) states nothing: the cargo ladder parses it as no
+        # value and the C lane below bakes no define, so the task stays
+        # unbounded on both halves.
+        _nros_resolve_knob(NROS_ZENOH_RX_TASK_BUDGET_FRAMES "${CONFIG_NROS_ZENOH_RX_TASK_BUDGET_FRAMES}")
+        _nros_resolve_knob(NROS_ZENOH_RX_TASK_BUDGET_REST_US "${CONFIG_NROS_ZENOH_RX_TASK_BUDGET_REST_US}")
         _nros_resolve_knob(NROS_ZENOH_FRAG_MAX_SIZE "${CONFIG_NROS_FRAG_MAX_SIZE}")
         _nros_resolve_knob(NROS_ZENOH_BATCH_UNICAST_SIZE "${CONFIG_NROS_BATCH_UNICAST_SIZE}")
 

@@ -401,6 +401,25 @@ zephyr_compile_definitions(
     ZPICO_BATCH_UNICAST_SIZE=${NROS_RESOLVED_NROS_ZENOH_BATCH_UNICAST_SIZE}
 )
 
+# RFC-0074 / phase-462 W6a -- a budget on zenoh-pico's unicast read task,
+# RESOLVED so the environment rung outranks Kconfig exactly as it does for the
+# cargo lane. Negative or empty states nothing (an unbounded task, no define);
+# 0 is refused here rather than at zenoh-pico's own `#error`, so the message
+# names the knob.
+if(DEFINED NROS_RESOLVED_NROS_ZENOH_RX_TASK_BUDGET_FRAMES AND
+   NOT "${NROS_RESOLVED_NROS_ZENOH_RX_TASK_BUDGET_FRAMES}" STREQUAL "" AND
+   NROS_RESOLVED_NROS_ZENOH_RX_TASK_BUDGET_FRAMES GREATER_EQUAL 0)
+    if(NROS_RESOLVED_NROS_ZENOH_RX_TASK_BUDGET_FRAMES EQUAL 0)
+        message(FATAL_ERROR
+            "nros: NROS_ZENOH_RX_TASK_BUDGET_FRAMES = 0 is refused: a budget of zero "
+            "frames is not \"unbounded\". Use -1 (the default) for an unbounded read "
+            "task, or state at least 1 frame (RFC-0074).")
+    endif()
+    zephyr_compile_definitions(
+        Z_RX_TASK_BUDGET_FRAMES=${NROS_RESOLVED_NROS_ZENOH_RX_TASK_BUDGET_FRAMES}
+        Z_RX_TASK_BUDGET_REST_US=${NROS_RESOLVED_NROS_ZENOH_RX_TASK_BUDGET_REST_US})
+endif()
+
 # Issue 0626 — the read/lease task priority, normalized 0-31.
 #
 # Read from CONFIG_* directly, NOT through `_nros_resolve_knob`, and that is

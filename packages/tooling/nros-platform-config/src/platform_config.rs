@@ -690,6 +690,8 @@ impl BuildRungs {
             frag_max_size: b.frag_max_size.or(plat.frag_max_size),
             get_reply_buf_size: b.get_reply_buf_size.or(plat.get_reply_buf_size),
             get_poll_interval_ms: b.get_poll_interval_ms.or(plat.get_poll_interval_ms),
+            rx_task_budget_frames: b.rx_task_budget_frames.or(plat.rx_task_budget_frames),
+            rx_task_budget_rest_us: b.rx_task_budget_rest_us.or(plat.rx_task_budget_rest_us),
         }
     }
 
@@ -1523,6 +1525,14 @@ pub struct WireKnobs {
     pub get_reply_buf_size: Option<usize>,
     #[serde(default)]
     pub get_poll_interval_ms: Option<usize>,
+    /// RFC-0074 / phase-462 W6a — the read task's frame budget. Unlike the
+    /// sizes above, its BUILTIN states nothing (an unbounded task); only a
+    /// stated rung bakes `Z_RX_TASK_BUDGET_FRAMES`, and a stated 0 is refused.
+    #[serde(default)]
+    pub rx_task_budget_frames: Option<usize>,
+    /// The rest after a full frame budget, in microseconds.
+    #[serde(default)]
+    pub rx_task_budget_rest_us: Option<usize>,
 }
 
 /// phase-400 W6 — the XRCE transport tenant, read by `nros-rmw-xrce-cffi`.
@@ -1583,6 +1593,8 @@ pub const WIRE_KNOBS: &[&str] = &[
     "frag_max_size",
     "get_reply_buf_size",
     "get_poll_interval_ms",
+    "rx_task_budget_frames",
+    "rx_task_budget_rest_us",
 ];
 
 /// The canonical env spelling of a wire knob (`NROS_ZENOH_*`), from the knob
@@ -2325,6 +2337,8 @@ impl PlatformsTree {
                 (&mut out.frag_max_size, w.frag_max_size),
                 (&mut out.get_reply_buf_size, w.get_reply_buf_size),
                 (&mut out.get_poll_interval_ms, w.get_poll_interval_ms),
+                (&mut out.rx_task_budget_frames, w.rx_task_budget_frames),
+                (&mut out.rx_task_budget_rest_us, w.rx_task_budget_rest_us),
             ] {
                 if src.is_some() {
                     *dst = src;
@@ -2354,6 +2368,8 @@ impl PlatformsTree {
             "frag_max_size" => k.frag_max_size,
             "get_reply_buf_size" => k.get_reply_buf_size,
             "get_poll_interval_ms" => k.get_poll_interval_ms,
+            "rx_task_budget_frames" => k.rx_task_budget_frames,
+            "rx_task_budget_rest_us" => k.rx_task_budget_rest_us,
             _ => None,
         };
         let mut out = Vec::new();
