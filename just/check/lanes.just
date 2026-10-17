@@ -3808,3 +3808,13 @@ cpp-ffi-tests:
     export CARGO_TARGET_DIR="$(nros_scoped_target_dir check-cpp-ffi-tests)"
     cargo test -p nros-cpp --lib --no-default-features --features std,rmw-cffi --quiet \
         -- install_argv_remaps_tests
+
+# Issue 1373 — the fast tier, run in a checkout with NO submodules (the shape
+# `git worktree add` produces), must be green. A gate whose subject lives in a
+# submodule reports NOT VERIFIED through the skip ledger there; it never fails.
+# Behavioural, not a census: matching submodule paths in gate sources finds 17
+# of 456 gates and misses both of the gates the issue was filed about.
+# ~55 s (it IS the fast tier, in a `--local --shared` clone). Not a fast gate,
+# because the tier would recurse; `just ci gate` runs it after `check::fast`.
+pristine-checkout:
+    @bash scripts/ci/pristine-checkout-fast.sh
