@@ -654,13 +654,19 @@ jobs:
       # gives it one.
       #
       # depth=1 is enough: the gate reads TREES (`git ls-tree <ref>`), never
-      # history. On merge_group GITHUB_BASE_REF is empty, so default to main.
+      # history.
+      #
+      # WHICH commit is the baseline is decided in ONE place,
+      # `scripts/ci/pin-baseline.sh` (issue 1912), which every copy of these
+      # three steps calls. It used to be `origin/${GITHUB_BASE_REF:-main}` here,
+      # nine times over — right for a pull request, and wrong on a PUSH, where
+      # it is main's tip when the queued job finally RUNS: a later commit's
+      # forward pin bump then read as a REWIND of the commit under test. The
+      # baseline is now the commit under test's own: `event.before` on push,
+      # `merge_group.base_sha`, `pull_request.base.sha`, and the first parent
+      # on schedule / dispatch.
       - name: Fetch the pin baseline for check-submodule-pins
-        run: |
-          base="${GITHUB_BASE_REF:-main}"
-          git fetch --no-tags --quiet --depth=1 origin \
-            "+refs/heads/$base:refs/remotes/origin/$base"
-          echo "NROS_SUBMODULE_PIN_BASELINE=origin/$base" >> "$GITHUB_ENV"
+        run: bash scripts/ci/pin-baseline.sh provide
 
       # The step above says "depth=1 is enough: the gate reads TREES, never
       # history". True of the SUPERPROJECT, and not of the submodules. To prove
@@ -705,37 +711,10 @@ jobs:
       # is about. Only submodules whose pin actually MOVED are touched, so a
       # PR that moves none pays nothing.
       - name: Init submodules whose pin moved (commits only)
-        run: |
-          base="${GITHUB_BASE_REF:-main}"
-          git ls-tree -r "origin/$base" \
-            | awk '$2 == "commit" { print $4 "\t" $3 }' \
-            | while IFS=$'\t' read -r path base_sha; do
-                [ -n "$path" ] || continue
-                head_sha="$(git ls-tree -r HEAD -- "$path" \
-                            | awk '$2 == "commit" { print $3 }')"
-                [ -n "$head_sha" ] || continue
-                [ "$head_sha" != "$base_sha" ] || continue
-                [ ! -e "$path/.git" ] || continue
-                echo "  pin moved in $path (${base_sha:0:12} -> ${head_sha:0:12}); initialising"
-                git submodule update --init --filter=tree:0 "$path" \
-                  || git submodule update --init "$path" \
-                  || true
-              done
+        run: bash scripts/ci/pin-baseline.sh init-moved
 
       - name: Fetch submodule history for check-submodule-pins
-        run: |
-          base="${GITHUB_BASE_REF:-main}"
-          git ls-tree -r "origin/$base" \
-            | awk '$2 == "commit" { print $4 "\t" $3 }' \
-            | while IFS=$'\t' read -r path sha; do
-                [ -n "$path" ] || continue
-                [ -e "$path/.git" ] || continue
-                git -C "$path" cat-file -e "${sha}^{commit}" 2>/dev/null && continue
-                echo "  deepening $path for $sha"
-                git -C "$path" fetch --no-tags --quiet --unshallow 2>/dev/null \
-                  || git -C "$path" fetch --no-tags --quiet origin "$sha" 2>/dev/null \
-                  || true
-              done
+        run: bash scripts/ci/pin-baseline.sh deepen
 
       # Two fast-line gates ask a question about the COMMIT GRAPH:
       # `doc-commit-citations` (does every cited hash name a reachable commit?)
@@ -1142,44 +1121,13 @@ jobs:
             --source micro-xrce-dds-client --source cyclonedds-src
 
       - name: Fetch the pin baseline for check-submodule-pins
-        run: |
-          base="${GITHUB_BASE_REF:-main}"
-          git fetch --no-tags --quiet --depth=1 origin \
-            "+refs/heads/$base:refs/remotes/origin/$base"
-          echo "NROS_SUBMODULE_PIN_BASELINE=origin/$base" >> "$GITHUB_ENV"
+        run: bash scripts/ci/pin-baseline.sh provide
 
       - name: Init submodules whose pin moved (commits only)
-        run: |
-          base="${GITHUB_BASE_REF:-main}"
-          git ls-tree -r "origin/$base" \
-            | awk '$2 == "commit" { print $4 "\t" $3 }' \
-            | while IFS=$'\t' read -r path base_sha; do
-                [ -n "$path" ] || continue
-                head_sha="$(git ls-tree -r HEAD -- "$path" \
-                            | awk '$2 == "commit" { print $3 }')"
-                [ -n "$head_sha" ] || continue
-                [ "$head_sha" != "$base_sha" ] || continue
-                [ ! -e "$path/.git" ] || continue
-                echo "  pin moved in $path (${base_sha:0:12} -> ${head_sha:0:12}); initialising"
-                git submodule update --init --filter=tree:0 "$path" \
-                  || git submodule update --init "$path" \
-                  || true
-              done
+        run: bash scripts/ci/pin-baseline.sh init-moved
 
       - name: Fetch submodule history for check-submodule-pins
-        run: |
-          base="${GITHUB_BASE_REF:-main}"
-          git ls-tree -r "origin/$base" \
-            | awk '$2 == "commit" { print $4 "\t" $3 }' \
-            | while IFS=$'\t' read -r path sha; do
-                [ -n "$path" ] || continue
-                [ -e "$path/.git" ] || continue
-                git -C "$path" cat-file -e "${sha}^{commit}" 2>/dev/null && continue
-                echo "  deepening $path for $sha"
-                git -C "$path" fetch --no-tags --quiet --unshallow 2>/dev/null \
-                  || git -C "$path" fetch --no-tags --quiet origin "$sha" 2>/dev/null \
-                  || true
-              done
+        run: bash scripts/ci/pin-baseline.sh deepen
 
       # THE ARRANGEMENT, phase-395 — now spread across the `check-*` siblings
       # (phase-489 W1) and still ONE required status context, `CI`, which does
@@ -1453,44 +1401,13 @@ jobs:
             --source micro-xrce-dds-client --source cyclonedds-src
 
       - name: Fetch the pin baseline for check-submodule-pins
-        run: |
-          base="${GITHUB_BASE_REF:-main}"
-          git fetch --no-tags --quiet --depth=1 origin \
-            "+refs/heads/$base:refs/remotes/origin/$base"
-          echo "NROS_SUBMODULE_PIN_BASELINE=origin/$base" >> "$GITHUB_ENV"
+        run: bash scripts/ci/pin-baseline.sh provide
 
       - name: Init submodules whose pin moved (commits only)
-        run: |
-          base="${GITHUB_BASE_REF:-main}"
-          git ls-tree -r "origin/$base" \
-            | awk '$2 == "commit" { print $4 "\t" $3 }' \
-            | while IFS=$'\t' read -r path base_sha; do
-                [ -n "$path" ] || continue
-                head_sha="$(git ls-tree -r HEAD -- "$path" \
-                            | awk '$2 == "commit" { print $3 }')"
-                [ -n "$head_sha" ] || continue
-                [ "$head_sha" != "$base_sha" ] || continue
-                [ ! -e "$path/.git" ] || continue
-                echo "  pin moved in $path (${base_sha:0:12} -> ${head_sha:0:12}); initialising"
-                git submodule update --init --filter=tree:0 "$path" \
-                  || git submodule update --init "$path" \
-                  || true
-              done
+        run: bash scripts/ci/pin-baseline.sh init-moved
 
       - name: Fetch submodule history for check-submodule-pins
-        run: |
-          base="${GITHUB_BASE_REF:-main}"
-          git ls-tree -r "origin/$base" \
-            | awk '$2 == "commit" { print $4 "\t" $3 }' \
-            | while IFS=$'\t' read -r path sha; do
-                [ -n "$path" ] || continue
-                [ -e "$path/.git" ] || continue
-                git -C "$path" cat-file -e "${sha}^{commit}" 2>/dev/null && continue
-                echo "  deepening $path for $sha"
-                git -C "$path" fetch --no-tags --quiet --unshallow 2>/dev/null \
-                  || git -C "$path" fetch --no-tags --quiet origin "$sha" 2>/dev/null \
-                  || true
-              done
+        run: bash scripts/ci/pin-baseline.sh deepen
 
       # The CLI sub-workspace's own tests, on BOTH merge-gating events.
       #
@@ -1823,44 +1740,13 @@ jobs:
             --source micro-xrce-dds-client --source cyclonedds-src
 
       - name: Fetch the pin baseline for check-submodule-pins
-        run: |
-          base="${GITHUB_BASE_REF:-main}"
-          git fetch --no-tags --quiet --depth=1 origin \
-            "+refs/heads/$base:refs/remotes/origin/$base"
-          echo "NROS_SUBMODULE_PIN_BASELINE=origin/$base" >> "$GITHUB_ENV"
+        run: bash scripts/ci/pin-baseline.sh provide
 
       - name: Init submodules whose pin moved (commits only)
-        run: |
-          base="${GITHUB_BASE_REF:-main}"
-          git ls-tree -r "origin/$base" \
-            | awk '$2 == "commit" { print $4 "\t" $3 }' \
-            | while IFS=$'\t' read -r path base_sha; do
-                [ -n "$path" ] || continue
-                head_sha="$(git ls-tree -r HEAD -- "$path" \
-                            | awk '$2 == "commit" { print $3 }')"
-                [ -n "$head_sha" ] || continue
-                [ "$head_sha" != "$base_sha" ] || continue
-                [ ! -e "$path/.git" ] || continue
-                echo "  pin moved in $path (${base_sha:0:12} -> ${head_sha:0:12}); initialising"
-                git submodule update --init --filter=tree:0 "$path" \
-                  || git submodule update --init "$path" \
-                  || true
-              done
+        run: bash scripts/ci/pin-baseline.sh init-moved
 
       - name: Fetch submodule history for check-submodule-pins
-        run: |
-          base="${GITHUB_BASE_REF:-main}"
-          git ls-tree -r "origin/$base" \
-            | awk '$2 == "commit" { print $4 "\t" $3 }' \
-            | while IFS=$'\t' read -r path sha; do
-                [ -n "$path" ] || continue
-                [ -e "$path/.git" ] || continue
-                git -C "$path" cat-file -e "${sha}^{commit}" 2>/dev/null && continue
-                echo "  deepening $path for $sha"
-                git -C "$path" fetch --no-tags --quiet --unshallow 2>/dev/null \
-                  || git -C "$path" fetch --no-tags --quiet origin "$sha" 2>/dev/null \
-                  || true
-              done
+        run: bash scripts/ci/pin-baseline.sh deepen
 
       - name: Build nros-launch-resolve (cli-tests and generate-bindings both shell out to it)
         if: >-
@@ -2088,44 +1974,13 @@ jobs:
             --source micro-xrce-dds-client --source cyclonedds-src
 
       - name: Fetch the pin baseline for check-submodule-pins
-        run: |
-          base="${GITHUB_BASE_REF:-main}"
-          git fetch --no-tags --quiet --depth=1 origin \
-            "+refs/heads/$base:refs/remotes/origin/$base"
-          echo "NROS_SUBMODULE_PIN_BASELINE=origin/$base" >> "$GITHUB_ENV"
+        run: bash scripts/ci/pin-baseline.sh provide
 
       - name: Init submodules whose pin moved (commits only)
-        run: |
-          base="${GITHUB_BASE_REF:-main}"
-          git ls-tree -r "origin/$base" \
-            | awk '$2 == "commit" { print $4 "\t" $3 }' \
-            | while IFS=$'\t' read -r path base_sha; do
-                [ -n "$path" ] || continue
-                head_sha="$(git ls-tree -r HEAD -- "$path" \
-                            | awk '$2 == "commit" { print $3 }')"
-                [ -n "$head_sha" ] || continue
-                [ "$head_sha" != "$base_sha" ] || continue
-                [ ! -e "$path/.git" ] || continue
-                echo "  pin moved in $path (${base_sha:0:12} -> ${head_sha:0:12}); initialising"
-                git submodule update --init --filter=tree:0 "$path" \
-                  || git submodule update --init "$path" \
-                  || true
-              done
+        run: bash scripts/ci/pin-baseline.sh init-moved
 
       - name: Fetch submodule history for check-submodule-pins
-        run: |
-          base="${GITHUB_BASE_REF:-main}"
-          git ls-tree -r "origin/$base" \
-            | awk '$2 == "commit" { print $4 "\t" $3 }' \
-            | while IFS=$'\t' read -r path sha; do
-                [ -n "$path" ] || continue
-                [ -e "$path/.git" ] || continue
-                git -C "$path" cat-file -e "${sha}^{commit}" 2>/dev/null && continue
-                echo "  deepening $path for $sha"
-                git -C "$path" fetch --no-tags --quiet --unshallow 2>/dev/null \
-                  || git -C "$path" fetch --no-tags --quiet origin "$sha" 2>/dev/null \
-                  || true
-              done
+        run: bash scripts/ci/pin-baseline.sh deepen
 
       - name: Build nros-launch-resolve (cli-tests and generate-bindings both shell out to it)
         if: >-
@@ -2360,28 +2215,10 @@ jobs:
           nros setup --source freertos-kernel --source lwip
 
       - name: Fetch the pin baseline (to find submodules whose pin moved)
-        run: |
-          base="${GITHUB_BASE_REF:-main}"
-          git fetch --no-tags --quiet --depth=1 origin \
-            "+refs/heads/$base:refs/remotes/origin/$base"
+        run: bash scripts/ci/pin-baseline.sh provide
 
       - name: Init submodules whose pin moved (commits only)
-        run: |
-          base="${GITHUB_BASE_REF:-main}"
-          git ls-tree -r "origin/$base" \
-            | awk '$2 == "commit" { print $4 "\t" $3 }' \
-            | while IFS=$'\t' read -r path base_sha; do
-                [ -n "$path" ] || continue
-                head_sha="$(git ls-tree -r HEAD -- "$path" \
-                            | awk '$2 == "commit" { print $3 }')"
-                [ -n "$head_sha" ] || continue
-                [ "$head_sha" != "$base_sha" ] || continue
-                [ ! -e "$path/.git" ] || continue
-                echo "  pin moved in $path (${base_sha:0:12} -> ${head_sha:0:12}); initialising"
-                git submodule update --init --filter=tree:0 "$path" \
-                  || git submodule update --init "$path" \
-                  || true
-              done
+        run: bash scripts/ci/pin-baseline.sh init-moved
 
       - name: Build nros-launch-resolve (nros sync shells out to it)
         if: ${{ contains(fromJSON('["merge_group","workflow_dispatch"]'), github.event_name) && !cancelled() }}
@@ -2543,44 +2380,13 @@ jobs:
             --source micro-xrce-dds-client --source cyclonedds-src
 
       - name: Fetch the pin baseline for check-submodule-pins
-        run: |
-          base="${GITHUB_BASE_REF:-main}"
-          git fetch --no-tags --quiet --depth=1 origin \
-            "+refs/heads/$base:refs/remotes/origin/$base"
-          echo "NROS_SUBMODULE_PIN_BASELINE=origin/$base" >> "$GITHUB_ENV"
+        run: bash scripts/ci/pin-baseline.sh provide
 
       - name: Init submodules whose pin moved (commits only)
-        run: |
-          base="${GITHUB_BASE_REF:-main}"
-          git ls-tree -r "origin/$base" \
-            | awk '$2 == "commit" { print $4 "\t" $3 }' \
-            | while IFS=$'\t' read -r path base_sha; do
-                [ -n "$path" ] || continue
-                head_sha="$(git ls-tree -r HEAD -- "$path" \
-                            | awk '$2 == "commit" { print $3 }')"
-                [ -n "$head_sha" ] || continue
-                [ "$head_sha" != "$base_sha" ] || continue
-                [ ! -e "$path/.git" ] || continue
-                echo "  pin moved in $path (${base_sha:0:12} -> ${head_sha:0:12}); initialising"
-                git submodule update --init --filter=tree:0 "$path" \
-                  || git submodule update --init "$path" \
-                  || true
-              done
+        run: bash scripts/ci/pin-baseline.sh init-moved
 
       - name: Fetch submodule history for check-submodule-pins
-        run: |
-          base="${GITHUB_BASE_REF:-main}"
-          git ls-tree -r "origin/$base" \
-            | awk '$2 == "commit" { print $4 "\t" $3 }' \
-            | while IFS=$'\t' read -r path sha; do
-                [ -n "$path" ] || continue
-                [ -e "$path/.git" ] || continue
-                git -C "$path" cat-file -e "${sha}^{commit}" 2>/dev/null && continue
-                echo "  deepening $path for $sha"
-                git -C "$path" fetch --no-tags --quiet --unshallow 2>/dev/null \
-                  || git -C "$path" fetch --no-tags --quiet origin "$sha" 2>/dev/null \
-                  || true
-              done
+        run: bash scripts/ci/pin-baseline.sh deepen
 
       - name: Build nros-launch-resolve (cli-tests and generate-bindings both shell out to it)
         if: >-
@@ -2752,44 +2558,13 @@ jobs:
             --source micro-xrce-dds-client --source cyclonedds-src
 
       - name: Fetch the pin baseline for check-submodule-pins
-        run: |
-          base="${GITHUB_BASE_REF:-main}"
-          git fetch --no-tags --quiet --depth=1 origin \
-            "+refs/heads/$base:refs/remotes/origin/$base"
-          echo "NROS_SUBMODULE_PIN_BASELINE=origin/$base" >> "$GITHUB_ENV"
+        run: bash scripts/ci/pin-baseline.sh provide
 
       - name: Init submodules whose pin moved (commits only)
-        run: |
-          base="${GITHUB_BASE_REF:-main}"
-          git ls-tree -r "origin/$base" \
-            | awk '$2 == "commit" { print $4 "\t" $3 }' \
-            | while IFS=$'\t' read -r path base_sha; do
-                [ -n "$path" ] || continue
-                head_sha="$(git ls-tree -r HEAD -- "$path" \
-                            | awk '$2 == "commit" { print $3 }')"
-                [ -n "$head_sha" ] || continue
-                [ "$head_sha" != "$base_sha" ] || continue
-                [ ! -e "$path/.git" ] || continue
-                echo "  pin moved in $path (${base_sha:0:12} -> ${head_sha:0:12}); initialising"
-                git submodule update --init --filter=tree:0 "$path" \
-                  || git submodule update --init "$path" \
-                  || true
-              done
+        run: bash scripts/ci/pin-baseline.sh init-moved
 
       - name: Fetch submodule history for check-submodule-pins
-        run: |
-          base="${GITHUB_BASE_REF:-main}"
-          git ls-tree -r "origin/$base" \
-            | awk '$2 == "commit" { print $4 "\t" $3 }' \
-            | while IFS=$'\t' read -r path sha; do
-                [ -n "$path" ] || continue
-                [ -e "$path/.git" ] || continue
-                git -C "$path" cat-file -e "${sha}^{commit}" 2>/dev/null && continue
-                echo "  deepening $path for $sha"
-                git -C "$path" fetch --no-tags --quiet --unshallow 2>/dev/null \
-                  || git -C "$path" fetch --no-tags --quiet origin "$sha" 2>/dev/null \
-                  || true
-              done
+        run: bash scripts/ci/pin-baseline.sh deepen
 
       - name: Build nros-launch-resolve (cli-tests and generate-bindings both shell out to it)
         if: >-
@@ -3345,44 +3120,13 @@ jobs:
             --source micro-xrce-dds-client --source cyclonedds-src
 
       - name: Fetch the pin baseline for check-submodule-pins
-        run: |
-          base="${GITHUB_BASE_REF:-main}"
-          git fetch --no-tags --quiet --depth=1 origin \
-            "+refs/heads/$base:refs/remotes/origin/$base"
-          echo "NROS_SUBMODULE_PIN_BASELINE=origin/$base" >> "$GITHUB_ENV"
+        run: bash scripts/ci/pin-baseline.sh provide
 
       - name: Init submodules whose pin moved (commits only)
-        run: |
-          base="${GITHUB_BASE_REF:-main}"
-          git ls-tree -r "origin/$base" \
-            | awk '$2 == "commit" { print $4 "\t" $3 }' \
-            | while IFS=$'\t' read -r path base_sha; do
-                [ -n "$path" ] || continue
-                head_sha="$(git ls-tree -r HEAD -- "$path" \
-                            | awk '$2 == "commit" { print $3 }')"
-                [ -n "$head_sha" ] || continue
-                [ "$head_sha" != "$base_sha" ] || continue
-                [ ! -e "$path/.git" ] || continue
-                echo "  pin moved in $path (${base_sha:0:12} -> ${head_sha:0:12}); initialising"
-                git submodule update --init --filter=tree:0 "$path" \
-                  || git submodule update --init "$path" \
-                  || true
-              done
+        run: bash scripts/ci/pin-baseline.sh init-moved
 
       - name: Fetch submodule history for check-submodule-pins
-        run: |
-          base="${GITHUB_BASE_REF:-main}"
-          git ls-tree -r "origin/$base" \
-            | awk '$2 == "commit" { print $4 "\t" $3 }' \
-            | while IFS=$'\t' read -r path sha; do
-                [ -n "$path" ] || continue
-                [ -e "$path/.git" ] || continue
-                git -C "$path" cat-file -e "${sha}^{commit}" 2>/dev/null && continue
-                echo "  deepening $path for $sha"
-                git -C "$path" fetch --no-tags --quiet --unshallow 2>/dev/null \
-                  || git -C "$path" fetch --no-tags --quiet origin "$sha" 2>/dev/null \
-                  || true
-              done
+        run: bash scripts/ci/pin-baseline.sh deepen
 
       - name: Fetch commit history for the citation gates (commits only)
         timeout-minutes: 6

@@ -310,11 +310,7 @@ jobs:
       # it; a dispatch on any other branch does not, and failed here
       # (run 37252649866).
       - name: Fetch the pin baseline for check-submodule-pins
-        run: |
-          base="${GITHUB_BASE_REF:-main}"
-          git fetch --no-tags --quiet --depth=1 origin \
-            "+refs/heads/$base:refs/remotes/origin/$base"
-          echo "NROS_SUBMODULE_PIN_BASELINE=origin/$base" >> "$GITHUB_ENV"
+        run: bash scripts/ci/pin-baseline.sh provide
 
       # Restore only — the `unit` job owns the SAVE for this key, and two
       # jobs saving one key race for nothing.

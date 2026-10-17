@@ -23,7 +23,8 @@
 #
 # Usage:
 #   scripts/ci/submodule-pins-check.sh [<baseline-ref> [<local-ref>]]
-#     baseline defaults to origin/main, local to HEAD.
+#     baseline defaults to `pin-baseline.sh resolve` (issue 1912: the commit
+#     under test's own baseline, never main's live tip), local to HEAD.
 #   The pre-push hook passes the REMOTE's actual sha as the baseline, which is
 #   more precise than origin/main (that ref can be stale).
 #
@@ -80,10 +81,26 @@ set -uo pipefail
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)/git-history.sh"
 nros_clear_inherited_git_env
 
-baseline="${1:-${NROS_SUBMODULE_PIN_BASELINE:-origin/main}}"
+# shellcheck source=scripts/ci/pin-baseline.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/pin-baseline.sh" || {
+    echo "submodule-pins: cannot load scripts/ci/pin-baseline.sh — no baseline rule" >&2
+    exit 2
+}
+
+# Explicit argument (the pre-push hook passes the remote's sha), then the
+# workflow's export, then the ONE rule in pin-baseline.sh — the commit under
+# test's own baseline, never the moving tip of main (issue 1912). When that
+# cannot be named, the unresolvable-baseline arm below reports it (FATAL in CI,
+# NOT CHECKED locally) — never a silent fall-back to `origin/main`, which is
+# the live tip this rule exists to stop comparing against.
+local_ref="${2:-HEAD}"
+baseline="${1:-${NROS_SUBMODULE_PIN_BASELINE:-}}"
+if [ -z "$baseline" ]; then
+    baseline="$(nros_pin_baseline_resolve "$local_ref")" \
+        || baseline="<no pin baseline for ${GITHUB_EVENT_NAME:-a local checkout}>"
+fi
 exceptions_file="${NROS_SUBMODULE_PIN_EXCEPTIONS:-docs/reference/submodule-pin-exceptions.txt}"
 allowed=0
-local_ref="${2:-HEAD}"
 
 # --- selftest, on the NORMAL path (phase-395) -------------------------------
 #
@@ -122,6 +139,132 @@ nros_submodule_pins_selftest() {
     fi
 
     nros_submodule_pins_mutation_selftest
+    nros_submodule_pins_baseline_selftest
+}
+
+# Issue 1912, on a CONSTRUCTED repo (issue 1465: a gate asserts only on a
+# repository it built). The superseded-commit race, both directions:
+#
+#   S0 pins sub@old · S1 moves NO pin (the commit under test) · S2 bumps
+#   sub@old -> sub@new and is `origin/main` (main moved on while S1's gate
+#   was queued) · S3 pins sub@old again on top of S2 (a REAL rewind).
+#
+# Checking S1 against the live tip S2 is the bug: REWIND for a commit that
+# touched nothing. That arm is kept as the fixture's own control — if it stops
+# saying REWIND the fixture no longer reproduces the race and the two "no
+# REWIND" assertions below would be vacuous.
+nros_submodule_pins_baseline_selftest() {
+    local tmp super sub self ev s0 s1 s2 s3 out rc
+    command -v mktemp >/dev/null 2>&1 || return 0
+    self="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
+    tmp="$(mktemp -d 2>/dev/null)" || return 0
+    super="$tmp/super"
+    sub="$super/sub"
+    (
+        set -e
+        export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null
+        export GIT_AUTHOR_NAME=nros GIT_AUTHOR_EMAIL=nros@invalid
+        export GIT_COMMITTER_NAME=nros GIT_COMMITTER_EMAIL=nros@invalid
+        git init -q "$super"
+        git init -q "$sub"
+        git -C "$sub" commit -q --allow-empty -m "sub: older"
+        git -C "$sub" rev-parse HEAD > "$tmp/old"
+        git -C "$sub" commit -q --allow-empty -m "sub: newer"
+        git -C "$sub" rev-parse HEAD > "$tmp/new"
+        git -C "$super" update-index --add --cacheinfo "160000,$(cat "$tmp/old"),sub"
+        git -C "$super" commit -q -m "S0 pin older"
+        git -C "$super" rev-parse HEAD > "$tmp/s0"
+        git -C "$super" commit -q --allow-empty -m "S1 moves no pin"
+        git -C "$super" rev-parse HEAD > "$tmp/s1"
+        git -C "$super" update-index --add --cacheinfo "160000,$(cat "$tmp/new"),sub"
+        git -C "$super" commit -q -m "S2 pin newer"
+        git -C "$super" rev-parse HEAD > "$tmp/s2"
+        git -C "$super" update-index --add --cacheinfo "160000,$(cat "$tmp/old"),sub"
+        git -C "$super" commit -q -m "S3 pin older again (rewind)"
+        git -C "$super" rev-parse HEAD > "$tmp/s3"
+        git -C "$super" update-ref refs/remotes/origin/main "$(cat "$tmp/s2")"
+        git -C "$super" checkout -q --detach "$(cat "$tmp/s1")"
+    ) >"$tmp/build.log" 2>&1 || {
+        echo "submodule-pins SELFTEST FAILED: could not build the issue-1912 fixture" >&2
+        sed 's/^/    /' "$tmp/build.log" >&2
+        rm -rf "$tmp"
+        exit 1
+    }
+    s0="$(cat "$tmp/s0")"; s1="$(cat "$tmp/s1")"
+    s2="$(cat "$tmp/s2")"; s3="$(cat "$tmp/s3")"
+    ev="$tmp/event.json"
+
+    # $1 = label, $2 = expected "rc:REWIND|rc:clean", $3.. = env for the run
+    _pins_baseline_case() {
+        local label="$1" want="$2" got; shift 2
+        out="$(cd "$super" && env -u NROS_SUBMODULE_PIN_BASELINE -u GITHUB_EVENT_NAME \
+               -u GITHUB_EVENT_PATH -u GITHUB_ACTIONS -u CI \
+               NROS_SUBMODULE_PINS_REENTRY=1 NROS_ALLOW_SUBMODULE_REWIND=0 \
+               NROS_SUBMODULE_PINS_STRICT= NROS_SUBMODULE_PIN_EXCEPTIONS=/dev/null \
+               "$@" bash "$self" 2>&1)"
+        rc=$?
+        # `clean` means COMPARED and found nothing: an unresolvable baseline
+        # also exits 0 locally (NOT CHECKED), and must not pass for clean.
+        case "$out" in
+            *REWIND*) got="$rc:REWIND" ;;
+            *"does not resolve"*) got="$rc:unresolved" ;;
+            *"submodule-pins: OK"*) got="$rc:clean" ;;
+            *) got="$rc:other" ;;
+        esac
+        [ "$got" = "$want" ] && return 0
+        echo "submodule-pins SELFTEST FAILED (issue 1912): $label" >&2
+        echo "  got $got, want $want" >&2
+        echo "$out" | sed 's/^/    /' >&2
+        rm -rf "$tmp"
+        exit 1
+    }
+
+    # Control: the live tip as baseline reproduces the race.
+    _pins_baseline_case "control: live origin/main must read S1 as REWIND" \
+        "1:REWIND" NROS_SUBMODULE_PIN_BASELINE=origin/main
+    # Local default: the branch point, so S1 moved nothing.
+    _pins_baseline_case "local default (merge-base) must not call S1 a REWIND" \
+        "0:clean"
+    # Push event: `before` is S0, the commit S1's push replaced.
+    printf '{"before":"%s","after":"%s"}\n' "$s0" "$s1" > "$ev"
+    _pins_baseline_case "push event (before=S0) must not call S1 a REWIND" \
+        "0:clean" GITHUB_ACTIONS=true GITHUB_EVENT_NAME=push GITHUB_EVENT_PATH="$ev"
+    # merge_group / pull_request: the base named in the payload (S0 here).
+    # The payload carries a NEWER sha in the fields a wrong arm would read,
+    # so reading the wrong one is a REWIND, not a coincidental pass.
+    printf '{"before":"%s","after":"%s","merge_group":{"base_sha":"%s","head_sha":"%s"},"pull_request":{"base":{"sha":"%s"},"head":{"sha":"%s"}}}\n' \
+        "$s2" "$s1" "$s0" "$s2" "$s0" "$s2" > "$ev"
+    _pins_baseline_case "merge_group (base_sha=S0) must not call S1 a REWIND" \
+        "0:clean" GITHUB_ACTIONS=true GITHUB_EVENT_NAME=merge_group GITHUB_EVENT_PATH="$ev"
+    _pins_baseline_case "pull_request (base.sha=S0) must not call S1 a REWIND" \
+        "0:clean" GITHUB_ACTIONS=true GITHUB_EVENT_NAME=pull_request GITHUB_EVENT_PATH="$ev"
+    # A payload that names no base must be FATAL in CI as an unresolvable
+    # baseline (rc 1, no REWIND) — never a quiet fall-back to the live tip,
+    # which would turn it back into the false REWIND above.
+    printf '{}\n' > "$tmp/empty.json"
+    _pins_baseline_case "merge_group with no base_sha must fail as UNRESOLVED, not REWIND" \
+        "1:unresolved" GITHUB_ACTIONS=true GITHUB_EVENT_NAME=merge_group GITHUB_EVENT_PATH="$tmp/empty.json"
+    # schedule / dispatch: the tested commit's first parent.
+    _pins_baseline_case "dispatch (first parent) must not call S1 a REWIND" \
+        "0:clean" GITHUB_ACTIONS=true GITHUB_EVENT_NAME=workflow_dispatch GITHUB_EVENT_PATH="$ev"
+
+    # The REAL rewind still fails, down every arm.
+    git -C "$super" checkout -q --detach "$s3" 2>/dev/null
+    printf '{"before":"%s","after":"%s","merge_group":{"base_sha":"%s"},"pull_request":{"base":{"sha":"%s"}}}\n' \
+        "$s2" "$s3" "$s2" "$s2" > "$ev"
+    _pins_baseline_case "push event: a real rewind must still FAIL" \
+        "1:REWIND" GITHUB_ACTIONS=true GITHUB_EVENT_NAME=push GITHUB_EVENT_PATH="$ev"
+    _pins_baseline_case "merge_group: a real rewind must still FAIL" \
+        "1:REWIND" GITHUB_ACTIONS=true GITHUB_EVENT_NAME=merge_group GITHUB_EVENT_PATH="$ev"
+    _pins_baseline_case "pull_request: a real rewind must still FAIL" \
+        "1:REWIND" GITHUB_ACTIONS=true GITHUB_EVENT_NAME=pull_request GITHUB_EVENT_PATH="$ev"
+    _pins_baseline_case "dispatch (first parent): a real rewind must still FAIL" \
+        "1:REWIND" GITHUB_ACTIONS=true GITHUB_EVENT_NAME=workflow_dispatch GITHUB_EVENT_PATH="$ev"
+    # S3 is built ON origin/main (S2), so the branch point is S2 itself.
+    _pins_baseline_case "local default: a real rewind on top of main must still FAIL" \
+        "1:REWIND"
+
+    rm -rf "$tmp"
 }
 
 # The two directions of issue 1043, on a CONSTRUCTED repo.
@@ -281,10 +424,9 @@ if ! git rev-parse --verify --quiet "$baseline^{commit}" >/dev/null; then
         echo "" >&2
         echo "  This gate is NETWORK-FREE by the check-fast contract, so it cannot" >&2
         echo "  fetch the base itself. The workflow must provide it before" >&2
-        echo "  \`just check fast\`, e.g.:" >&2
+        echo "  \`just check fast\`, with the step every gate.yml job uses:" >&2
         echo "" >&2
-        echo "    git fetch --no-tags --depth=1 origin \\" >&2
-        echo "      +refs/heads/\${GITHUB_BASE_REF:-main}:refs/remotes/origin/\${GITHUB_BASE_REF:-main}" >&2
+        echo "    bash scripts/ci/pin-baseline.sh provide" >&2
         echo "" >&2
         echo "  or pass one via \$NROS_SUBMODULE_PIN_BASELINE. Failing instead of" >&2
         echo "  skipping is deliberate: a silent skip here is indistinguishable" >&2

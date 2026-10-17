@@ -52,7 +52,7 @@ phase's. Build speed is phase-489's.
       pinned and retried.
 - [ ] [#1629](../issues/1629-queue-check-timeout-outgrown-by-gate-lane.md): the
       queue's check timeout and the gate lane's duration are kept in agreement.
-- [ ] [#1912](../issues/1912-push-gate-pin-baseline-is-live-main.md): the
+- [x] [#1912](../issues/archived/1912-push-gate-pin-baseline-is-live-main.md): the
       push-event pin gate compares against the pushed commit's parent, not the
       live `origin/main`.
 - [ ] [#1745](../issues/1745-probe-gates-race-mbedtls-submodule-fetch.md):
@@ -96,4 +96,4 @@ ejection from a cause listed here.
 | [#1795](../issues/1795-rtos-carrier-route-no-fixture.md) | No lane builds an RTOS TYPED carrier image, so the link of `nano_ros_node_register`'s ThreadX and NuttX arms has no coverage. |
 | [#1800](../issues/1800-ros2-tests-no-scheduled-lane-claims.md) | `workspace_shadowing` and `cyclone_slirp_pair` claim ROS 2 and are not interop cells, so no scheduled lane runs them. |
 | [#1868](../issues/1868-ci-rustup-downloads-flake-merge-gating-jobs.md) | Merge-gating jobs download Rust toolchains at run time, and a failed download ejects the whole batch. |
-| [#1912](../issues/1912-push-gate-pin-baseline-is-live-main.md) | The push-event submodule-pin gate compares against the live `origin/main`, so a superseded commit reads as a REWIND. |
+| [#1912](../issues/archived/1912-push-gate-pin-baseline-is-live-main.md) | The push-event submodule-pin gate compares against the live `origin/main`, so a superseded commit reads as a REWIND. |
