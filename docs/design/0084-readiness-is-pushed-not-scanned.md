@@ -3,7 +3,7 @@ rfc: 0084
 title: "Readiness is PUSHED by the arrival path, not scanned by the executor — the wake says who, not just that"
 status: Draft
 since: 2026-08
-last-reviewed: 2026-08-28
+last-reviewed: 2026-10-17
 implements-tracked-by: [phase-397]
 amends: [rfc-0052]
 supersedes: []
@@ -11,6 +11,15 @@ superseded-by: null
 ---
 
 # RFC-0084 — Readiness is pushed, not scanned
+
+> **Amendment 2026-10-17.** §4.2's premise does not hold on `main`: the
+> entity-scoped wake functions end in `register_waker`, which no
+> `nros-rmw-cffi` handle implements and no vtable slot carries, so they are
+> no-ops ([issue 1940](../issues/1940-entity-wake-callback-is-inert-through-cffi.md)).
+> The token therefore needs a new per-entity vtable slot, specified in §4.2
+> below. Two further changes: Cyclone can supply tokens as well as zenoh
+> (§8), and the registration also names the OWNING executor, which retires
+> RFC-0106 D6's spurious wakes (§4.5).
 
 > The executor is already woken *precisely* — a k_sem signalled from the
 > backend's arrival path, sub-millisecond, ISR-capable. It then throws that
@@ -126,11 +135,26 @@ arrival, and it keeps the token optional rather than mandatory.
 
 ### 4.2 Registration hands the token out
 
-`set_wake_callback` is session-scoped today. Entity-scoped wake registration
-already exists in the public C API — `nros_subscription_set_wake_callback`,
-`nros_service_set_wake_callback`, `nros_client_set_wake_callback` — so the
-token is passed there, at the point where the executor already knows the
-descriptor index.
+`set_wake_callback` is session-scoped, and it is the only wake slot in
+`rmw_vtable.h`. The public entity-scoped functions
+(`rclc_polling_{subscription,service,client}_set_wake_callback`, their C++
+twins, and `recv().await`'s waker) end in `register_waker`, which reaches no
+backend through cffi (issue 1940). So the vtable gains one NULL-able slot per
+entity kind:
+
+```c
+rmw_ret_t (*subscription_set_wake)(rmw_subscription_t *sub,
+                                   void (*cb)(void *ctx, uint32_t token),
+                                   void *ctx, uint32_t token);
+/* + service_set_wake, client_set_wake */
+```
+
+The executor calls it at registration with its own wake context and the
+entity's `DescIdx`. The cffi handles forward `register_waker` through the same
+slot with `NROS_RMW_WAKE_TOKEN_UNKNOWN`, so issue 1940's callers reach a
+backend too. A NULL slot means the backend cannot attribute arrivals: the
+executor keeps the session callback for it, and the user-facing calls report
+"unsupported" instead of `OK`.
 
 ### 4.3 The scan becomes the fallback
 
@@ -146,7 +170,7 @@ spin_once:
   dispatch
 ```
 
-Poll-only backends (XRCE-DDS-Client, bare-metal smoltcp, current Cyclone) never
+Poll-only backends (XRCE-DDS-Client, bare-metal smoltcp, uORB) never
 supply a token, always report UNKNOWN, and get **exactly today's behaviour**.
 This is the same graceful-degradation contract `supports_wake_callback` already
 states, one level finer.
@@ -166,6 +190,16 @@ callback is dispatched, not when the queue is drained**, and a spurious
 dispatch to an empty queue is permitted — callbacks already tolerate this,
 because the idempotent-insert contract has always allowed one ready bit to
 stand for any number of queued messages.
+
+### 4.5 The token also names the owner
+
+Several executors can share one session (a tiered image's spawned tiers; C
+executors over one support context). RFC-0106 D6 wakes them all through a
+fan-out, because the session callback cannot say whose data arrived. The
+per-entity slot's `ctx` is the REGISTERING executor's, so an arrival wakes
+that executor alone. The fan-out stays only for backends whose slot is NULL.
+Measured on a native host (phase-436 step 5): 6.8-9.4 us of CPU per spurious
+wake, about 0.8 % of a core per idle executor at 1 kHz.
 
 ## 5. This is the vehicle for the dead 110.A traits
 
@@ -231,11 +265,11 @@ already wrong in principle on an image whose whole purpose is bounded latency.
 
 | | |
 | --- | --- |
-| ABI | one new callback symbol; old one kept, forwards with UNKNOWN |
+| ABI | one new callback symbol and three NULL-able vtable slots (§4.2); old symbol kept, forwards with UNKNOWN |
 | executor state | one `AtomicU64` in `WakeCtx` (8 B) |
 | hot path added | one `fetch_or` per arrival |
 | hot path removed | up to 64 indirect calls per spin |
-| backends touched | zenoh only; every other backend unchanged by construction |
+| backends touched | zenoh (arrival hooks) and Cyclone (`on_data_available` receives the reader); XRCE, uORB and bare metal leave the slots NULL and keep today's behaviour |
 | risk | the arrived-vs-present semantics of §4.4 |
 
 ## 9. Open questions

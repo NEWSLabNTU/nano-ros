@@ -1,7 +1,28 @@
 # Phase 397 — Pushed readiness: the wake says WHO, and the executor stops scanning
 
-**Status (2026-08-28). Not started.** Implements
+**Status (2026-10-17). Not started; REVISED.** Implements
 [RFC-0084](../design/0084-readiness-is-pushed-not-scanned.md).
+
+**Revision 2026-10-17, read against `main`.**
+- **Still true:** the scan, the one-argument wake callback, the `u64`
+  `FifoReadySet` and the dead phase-110.A traits are all as §1 describes. The
+  phase also gained a second payoff: the token's registration names the OWNING
+  executor, which ends the wake fan-out's spurious wakes (phase-436 step 5).
+- **What changed is W1/W2's premise.** The old W2 said entity-scoped wake
+  registration "already exists in the C API", so the executor only had to
+  pass its `DescIdx` through. The functions exist, renamed
+  `rclc_polling_*_set_wake_callback`, but they end in `register_waker`. No
+  `nros-rmw-cffi` handle implements that, and `rmw_vtable.h` has no
+  per-entity slot to forward it to. So in every `rmw-cffi` build they are
+  no-ops:
+  [issue 1940](../issues/1940-entity-wake-callback-is-inert-through-cffi.md).
+  The token therefore needs a NEW vtable slot, which is now W1. Fixing 1940
+  is that slot's first consumer, and it is what this phase stands on.
+- **The backend set is two, not one.** Cyclone's `on_data_available(reader,
+  arg)` receives the reader, so it can name the entity as zenoh's arrival
+  hook can. XRCE and bare-metal smoltcp stay poll-only and report nothing.
+- **W6's target image no longer exists** in tree (no CANHUBK344 action
+  example), so W6 names images that do.
 
 The executor is already woken precisely — a `k_sem` signalled from the backend's
 arrival path, sub-millisecond, ISR-capable. It then discards that precision and
@@ -35,35 +56,78 @@ spin_once(timeout)
 | wake latency | one `k_sem_give`, sub-ms, ISR-safe |
 | wake precision | **binary** — "something happened" |
 | finding out what | **O(N) indirect calls**, every spin |
-| N | `MAX_CALLBACK_SLOTS = 64` (`spin.rs:1000`) |
+| N | `MAX_CALLBACK_SLOTS = 64` (`executor/spin.rs`) |
 
-`nros_rmw_runtime_wake_cb` (`spin.rs:673`) takes one argument, `ctx`, which
-identifies the **executor**. The zenoh shim mirrors it into a process global
-(`shim/mod.rs:184`) precisely so the real arrival hook can fire it "at the real
-arrival point" — that hook stands where the entity identity is known and the ABI
-it must call through has nowhere to put it.
+`nros_rmw_runtime_wake_cb` (`executor/spin.rs`) takes one argument, `ctx`,
+which identifies the **executor**. The backends' arrival hooks stand where the
+entity is known: zenoh's `subscriber_notify_callback` and its service twins,
+and Cyclone's `on_data_available(reader, …)`. They fire the session's wake
+through the vtable's one session-scoped slot, `set_wake_callback`, so the
+entity is dropped at the ABI. (zenoh's process-global mirror of that callback
+became a per-session table with issue 1929, on 2026-10-16. That fixed which
+EXECUTOR is woken, not which ENTITY.)
+
+Wake sources the executor has today, and who can name an entity:
+
+| backend | async wake | can name the entity |
+| --- | --- | --- |
+| zenoh | read task, `set_wake_callback` | yes: the arrival hook holds its subscriber, queryable or reply buffer |
+| Cyclone DDS | data-available listener | yes: the listener receives the reader |
+| XRCE | none (poll-only; RFC-0106 D5) | no; drive_io is the wait |
+| uORB, bare-metal smoltcp | none | no |
 
 ## 2. Waves
 
-### W1 — the token reaches the executor
+### W1 — a per-entity wake slot in the RMW vtable (and issue 1940)
 
-Add `nros_rmw_runtime_wake_cb_tok(void *ctx, uint32_t token)`. Keep the existing
-symbol; it forwards with `NROS_RMW_WAKE_TOKEN_UNKNOWN`. Add an `AtomicU64`
-`ready_bits` to `WakeCtx`; the callback does one `fetch_or`.
+Today there is nowhere for an entity's wake to go: `rmw_vtable.h` carries
+`set_wake_callback` per SESSION only, and `CffiSubscription` / `CffiService` /
+`CffiClient` inherit `register_waker`'s no-op default. Add one slot per entity
+kind, of the session slot's shape plus a token:
 
-**Done when** a zenoh subscription arrival sets a known bit, provable from a
-unit test on the host with a mock session, and every other backend still links.
+```c
+/* NULL = this backend cannot attribute an arrival to the entity. */
+rmw_ret_t (*subscription_set_wake)(rmw_subscription_t *sub,
+                                   void (*cb)(void *ctx, uint32_t token),
+                                   void *ctx, uint32_t token);
+/* + service_set_wake, client_set_wake */
+```
 
-### W2 — registration mints the token
+Then:
+- the cffi handles forward `register_waker` through it, with
+  `NROS_RMW_WAKE_TOKEN_UNKNOWN`, so issue 1940's C/C++ calls and
+  `recv().await` reach a backend;
+- a NULL slot makes those calls REPORT "unsupported", not `OK`;
+- zenoh implements it in its arrival hooks, and Cyclone in
+  `on_data_available`, from the reader.
 
-The entity-scoped wake registration already exists in the C API
-(`nros_subscription_set_wake_callback` and the service/client twins). Hand the
-`DescIdx` through at that point — the executor already assigns it.
+The header is the SSoT (RFC-0054): regenerate with
+`scripts/gen-abi-bindings.sh` and extend `check-rmw-abi-shape`'s map in the
+same change.
 
-**Done when** each registered entity's arrivals set that entity's bit and no
-other, under a test with three subscriptions on distinct topics.
+**Done when** issue 1940's acceptance holds: a C test's
+`rclc_polling_subscription_set_wake_callback` fires on a zenoh arrival, and an
+XRCE build reports the call unsupported. Every other backend still links.
 
-**The registration also carries the OWNING executor** (phase-436 step 5,
+### W2 — the executor registers each entity with its token AND its owner
+
+At registration the executor calls the new slot with its OWN wake context and
+the entity's `DescIdx` as the token. `nros_rmw_runtime_wake_cb_tok(ctx,
+token)` sets `ready_bits |= 1 << token` (one `fetch_or` on an `AtomicU64` in
+`WakeCtx`), sets the flag and signals the primitive. The session-scoped
+callback stays, forwarding `UNKNOWN`.
+
+Because the context named is the owning executor's, an arrival wakes that
+executor alone. The wake fan-out (RFC-0106 D6) stays only as the fallback for
+a backend whose entity slot is NULL.
+
+**Done when**:
+- each registered entity's arrivals set that entity's bit and no other, under
+  a test with three subscriptions on distinct topics;
+- two executors over one session, a subscription on one: the other is not
+  woken by its arrivals (phase-436 step 5's probe, inverted).
+
+**Why the owner rides on the token** (phase-436 step 5,
 2026-10-16). Several executors share one session through the wake fan-out
 (RFC-0106 D6), and today every arrival wakes all of them. Measured on a native
 host: 7-9 us of CPU per spurious wake, about 0.8 % of a core per idle member at
@@ -120,8 +184,16 @@ left undispatched (a spurious extra dispatch is a pass, a lost message is not).
 
 ### W6 — measure
 
-Report, on the CANHUBK344 action image: `has_data` calls per spin before and
-after, and wake-to-callback latency from the existing `wake-latency-probe`.
+Report, before and after:
+- `has_data` calls per spin;
+- wake-to-callback latency from the existing `wake-latency-probe`;
+- CPU per idle executor at 1 kHz over a shared session (phase-436 step 5's
+  probe: 6.8-9.4 us per spurious wake, about 0.8 % of a core, on a native
+  host).
+
+Run them on images that exist today: `workspace-rust-native` (host, zenoh),
+`workspace-rust-native-cyclonedds` (host, Cyclone), and `workspace-rust-zephyr`
+(Zephyr). The original target, a CANHUBK344 action image, is not in tree.
 
 **Done when** the numbers are in this document. A phase that changes a hot path
 and does not measure it has not finished.
@@ -145,4 +217,5 @@ and does not measure it has not finished.
 | --- | --- |
 | a backend that needs poking to progress | W3 keeps the scan whenever any session reports UNKNOWN; RFC-0084 §9.2 is the open question and W1 must answer it before W3 lands |
 | arrived-vs-present | W5, with the dispatch-clears rule stated above |
-| ABI churn for out-of-tree backends | old callback symbol kept and forwards; a backend that does nothing still works |
+| ABI churn for out-of-tree backends | new slots are NULL-able and old symbols are kept; a backend that does nothing still works, and the entity calls now SAY it does nothing (issue 1940) |
+| the slot lands and the executor half does not | W1 is useful alone: it fixes issue 1940. Ship it first, then W2-W3 |
