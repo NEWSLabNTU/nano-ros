@@ -197,6 +197,11 @@ pub struct LoweredEntry {
     /// Every non-empty monitor table, for the file-scope statics.
     #[serde(default)]
     pub monitor_tables: Vec<crate::MonitorTable>,
+    /// phase-462 W4b -- the contract's mode names in mode-id order: mode
+    /// `i + 1` is `modes[i]` (0 is the base). The packs name each id
+    /// `NROS_MODE_<NAME>` for `nros_cpp_request_mode`.
+    #[serde(default)]
+    pub modes: Vec<crate::ModeName>,
     /// `None` on a metadata probe, which returns before the blob.
     #[serde(default)]
     pub boot_config: Option<crate::LoweredBootConfig>,

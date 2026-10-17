@@ -5232,6 +5232,230 @@ pub unsafe extern "C" fn nros_cpp_install_hazards(
     NROS_CPP_RET_OK
 }
 
+/// phase-462 W4b -- one rate/latency row of a contract MODE: the numbers that
+/// differ from the base row at the same index. Every other field (topic,
+/// endpoint, route trigger, reaction, mechanism, cell) is the base row's.
+#[cfg(feature = "rmw-cffi")]
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct nros_cpp_mode_row_t {
+    pub min_rate_hz_milli: u32,
+    pub max_latency_ms: u32,
+    pub route_max_latency_ms: u32,
+    pub route_deadline_ms: u32,
+}
+
+/// phase-462 W4b -- one age row of a contract mode: its `max_age_ms`.
+#[cfg(feature = "rmw-cffi")]
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct nros_cpp_mode_age_row_t {
+    pub max_age_ms: u32,
+}
+
+/// phase-462 W4b -- one contract mode: exactly as many rows (and ages) as the
+/// base tables `nros_cpp_install_monitors` installed, in the same order.
+#[cfg(feature = "rmw-cffi")]
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct nros_cpp_mode_t {
+    pub rows: *const nros_cpp_mode_row_t,
+    pub n_rows: usize,
+    pub ages: *const nros_cpp_mode_age_row_t,
+    pub n_ages: usize,
+}
+
+/// phase-462 W4b -- the modes `nros_cpp_install_modes` installs: mode id `i`
+/// is `modes[i - 1]` (0 is the base). `storage` is static, 8-aligned, and at
+/// least `(n_modes + 1) * NROS_CPP_MODE_TABLE_STORAGE + n_modes * (n_rows *
+/// NROS_CPP_MODE_ROW_STORAGE + n_ages * NROS_CPP_MODE_AGE_STORAGE)` bytes.
+#[cfg(feature = "rmw-cffi")]
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct nros_cpp_mode_tables_t {
+    pub modes: *const nros_cpp_mode_t,
+    pub n_modes: usize,
+    pub storage: *mut c_void,
+    pub storage_len: usize,
+}
+
+/// Bytes of caller storage one mode's table pair needs (`ModeTables`): 32 on
+/// a 64-bit host, 16 on a 32-bit target. Stated in the header with
+/// `sizeof(void *)`, see `cbindgen.toml`.
+#[cfg(feature = "rmw-cffi")]
+pub const NROS_CPP_MODE_TABLE_STORAGE: usize = if core::mem::size_of::<usize>() == 8 {
+    32
+} else {
+    16
+};
+/// Bytes of caller storage one mode's rate/latency row needs (`MonitorSpec`).
+#[cfg(feature = "rmw-cffi")]
+pub const NROS_CPP_MODE_ROW_STORAGE: usize = if core::mem::size_of::<usize>() == 8 {
+    80
+} else {
+    48
+};
+/// Bytes of caller storage one mode's age row needs (`AgeMonitorSpec`).
+#[cfg(feature = "rmw-cffi")]
+pub const NROS_CPP_MODE_AGE_STORAGE: usize = if core::mem::size_of::<usize>() == 8 {
+    48
+} else {
+    24
+};
+
+#[cfg(feature = "rmw-cffi")]
+const _: () = {
+    use core::mem::{align_of, size_of};
+    use nros::monitor::{AgeMonitorSpec, ModeTables, MonitorSpec};
+    // The table pairs, then each mode's rate specs, then its age specs: every
+    // region is pointer-aligned and every size a multiple of that alignment,
+    // so the regions abut.
+    assert!(size_of::<ModeTables>() <= NROS_CPP_MODE_TABLE_STORAGE);
+    assert!(size_of::<MonitorSpec>() <= NROS_CPP_MODE_ROW_STORAGE);
+    assert!(size_of::<AgeMonitorSpec>() <= NROS_CPP_MODE_AGE_STORAGE);
+    assert!(size_of::<ModeTables>().is_multiple_of(align_of::<MonitorSpec>()));
+    assert!(size_of::<MonitorSpec>().is_multiple_of(align_of::<AgeMonitorSpec>()));
+    assert!(size_of::<AgeMonitorSpec>().is_multiple_of(align_of::<MonitorSpec>()));
+    assert!(align_of::<ModeTables>() <= 8 && align_of::<MonitorSpec>() <= 8);
+    assert!(align_of::<AgeMonitorSpec>() <= 8);
+};
+
+/// phase-462 W4b -- install the contract's MODE variants of the two monitor
+/// tables on this executor, after `nros_cpp_install_monitors`. Each mode's
+/// specs are the base specs with the mode's numbers: the same topics,
+/// endpoints and cells, so every binding and hazard row index survives a
+/// switch. `nros_cpp_request_mode` then switches every executor at its next
+/// spin.
+///
+/// Refused: a mode whose row counts are not the base's
+/// (`NROS_CPP_RET_INVALID_ARGUMENT`), and a short or misaligned buffer
+/// (`NROS_CPP_RET_FULL`). `n_modes == 0` installs nothing.
+///
+/// # Safety
+/// `handle` must be a live executor handle from this ABI, or NULL. `tables`
+/// must point at a valid `nros_cpp_mode_tables_t` whose arrays and storage
+/// outlive the executor (statics in the generated entry).
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_install_modes(
+    handle: *mut c_void,
+    tables: *const nros_cpp_mode_tables_t,
+) -> nros_cpp_ret_t {
+    use core::mem::size_of;
+    use nros::monitor::{AgeMonitorSpec, ModeTables, MonitorSpec};
+    let Some(ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    let Some(t) = (unsafe { tables.as_ref() }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    if t.n_modes == 0 {
+        return NROS_CPP_RET_OK;
+    }
+    if t.modes.is_null() || t.storage.is_null() || !(t.storage as usize).is_multiple_of(8) {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let base_rows = ctx.executor.monitor_table();
+    let base_ages = ctx.executor.age_table();
+    let modes = unsafe { core::slice::from_raw_parts(t.modes, t.n_modes) };
+    for m in modes {
+        if m.n_rows != base_rows.len()
+            || m.n_ages != base_ages.len()
+            || (m.n_rows > 0 && m.rows.is_null())
+            || (m.n_ages > 0 && m.ages.is_null())
+        {
+            cpp_diag!(
+                "install_modes: a mode has {} rate and {} age rows, the base {} and {}",
+                m.n_rows,
+                m.n_ages,
+                base_rows.len(),
+                base_ages.len()
+            );
+            return NROS_CPP_RET_INVALID_ARGUMENT;
+        }
+    }
+    let n = t.n_modes;
+    let per_mode = core::mem::size_of_val(base_rows) + core::mem::size_of_val(base_ages);
+    let needed = (n + 1) * size_of::<ModeTables>() + n * per_mode;
+    if needed > t.storage_len {
+        cpp_diag!(
+            "install_modes: storage holds {} bytes, the modes need {}",
+            t.storage_len,
+            needed
+        );
+        return NROS_CPP_RET_FULL;
+    }
+    let base = t.storage as *mut u8;
+    let pairs = base as *mut ModeTables;
+    let mut at = (n + 1) * size_of::<ModeTables>();
+    unsafe {
+        core::ptr::write(
+            pairs,
+            ModeTables {
+                monitors: base_rows,
+                ages: base_ages,
+            },
+        )
+    };
+    for (k, m) in modes.iter().enumerate() {
+        let specs = unsafe { base.add(at) } as *mut MonitorSpec;
+        let rows = if m.n_rows == 0 {
+            &[][..]
+        } else {
+            unsafe { core::slice::from_raw_parts(m.rows, m.n_rows) }
+        };
+        for (i, (b, r)) in base_rows.iter().zip(rows).enumerate() {
+            let spec = MonitorSpec {
+                min_rate_hz_milli: r.min_rate_hz_milli,
+                max_latency_ms: r.max_latency_ms,
+                route_max_latency_ms: r.route_max_latency_ms,
+                route_deadline_ms: r.route_deadline_ms,
+                ..*b
+            };
+            unsafe { core::ptr::write(specs.add(i), spec) };
+        }
+        at += core::mem::size_of_val(base_rows);
+        let age_specs = unsafe { base.add(at) } as *mut AgeMonitorSpec;
+        let ages = if m.n_ages == 0 {
+            &[][..]
+        } else {
+            unsafe { core::slice::from_raw_parts(m.ages, m.n_ages) }
+        };
+        for (i, (b, r)) in base_ages.iter().zip(ages).enumerate() {
+            let spec = AgeMonitorSpec {
+                max_age_ms: r.max_age_ms,
+                ..*b
+            };
+            unsafe { core::ptr::write(age_specs.add(i), spec) };
+        }
+        at += core::mem::size_of_val(base_ages);
+        // `'static`: the storage outlives the executor (see Safety).
+        let monitors: &'static [MonitorSpec] =
+            unsafe { core::slice::from_raw_parts(specs, base_rows.len()) };
+        let ages: &'static [AgeMonitorSpec] =
+            unsafe { core::slice::from_raw_parts(age_specs, base_ages.len()) };
+        unsafe { core::ptr::write(pairs.add(k + 1), ModeTables { monitors, ages }) };
+    }
+    let all: &'static [ModeTables] = unsafe { core::slice::from_raw_parts(pairs, n + 1) };
+    match ctx.executor.set_mode_tables(all) {
+        Ok(()) => NROS_CPP_RET_OK,
+        Err(e) => {
+            cpp_diag!("install_modes: {}", e);
+            NROS_CPP_RET_INVALID_ARGUMENT
+        }
+    }
+}
+
+/// phase-462 W4b -- ask every executor to judge by mode `id`'s tables (0 =
+/// the base contract), applied at each executor's next spin. The C spelling
+/// of `nros::monitor::request_mode`; the entry names each id as
+/// `NROS_MODE_<NAME>`.
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub extern "C" fn nros_cpp_request_mode(id: u16) {
+    nros::monitor::request_mode(id);
+}
+
 /// One drained contract violation, the C spelling of
 /// `nros_node::executor::monitor::Violation`. `rule` and `fqn` are NOT
 /// NUL-terminated (they are the runtime's own `&'static str`s), hence the

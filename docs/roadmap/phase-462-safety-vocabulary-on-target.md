@@ -378,9 +378,24 @@ different things.
     - `nros-node` `a_requested_mode_judges_by_its_variant_table`, plus the
       rendered text compiled in `monitor::tests::rendered_modes`;
     - `nros-macros` `a_contract_mode_bakes_a_variant_table_and_an_id`.
-- **W4b, the C/C++ road: not started.** `nros-entry-lower`'s `MonitorTable`
-  carries the variants, both packs bake them, and `nros-cpp` exports an
-  install and `nros_request_mode`. It is the same shape as W3b-2.
+- **W4b, the C/C++ road: landed in this change.**
+  - `nros-cpp` exports `nros_cpp_install_modes` over
+    `nros_cpp_mode_tables_t`. A mode's rows carry ONLY its numbers
+    (`nros_cpp_mode_row_t`: rate, latency, route budget, route deadline;
+    `nros_cpp_mode_age_row_t`: age). The install copies the installed base
+    specs, cells included, so a C entry states no topic or cell twice.
+  - It refuses a mode whose row counts are not the base's, and a short or
+    misaligned buffer. The buffer is sized by `NROS_CPP_MODE_{TABLE,ROW,AGE}_STORAGE`,
+    whose bounds depend on pointer width; const asserts hold them.
+  - `nros_cpp_request_mode(id)` is the C spelling of `request_mode`.
+  - `nros-entry-lower`: each `MonitorTable` carries its sliced `modes`, and
+    `LoweredEntry::modes` names each id. Both packs bake the arrays, install
+    them after the monitors (and hazards), and `#define NROS_MODE_<NAME>`.
+  - `nros codegen entry` prints the `not_lowered` list.
+  - Tests: `typed_emit_bakes_a_modes_numbers_after_the_monitors` in tests_c
+    and tests_cpp. The rendered C and C++ compile against the regenerated
+    header with `gcc -std=c11`, `g++ -std=c++17` and `arm-none-eabi-gcc` (a
+    32-bit target).
 - **W4c, the tier-table half: not started.** It covers:
   - SchedContext deadlines per mode;
   - the mode switch as a contracted transition with its own
@@ -391,7 +406,7 @@ different things.
   The tier table is built from the plan, not from the monitor rows, so this
   half needs the plan to carry per-mode deadlines first.
 
-Claim: phase-462-W4. Depends on: phase-462-W1, phase-462-W2, phase-495-W2. Owns: packages/core/nros-orchestration-ir/src/mode_variants.rs (new); the Plan variant tables in packages/cli/nros-cli-core/src/codegen/entry/mod.rs; the variant emission in emit_cpp.rs and emit_rust.rs; packages/testing/nros-tests/tests/mode_variants.rs (new). Gate: cargo test -p nros-tests --test mode_variants; just mem-report. Status: W4a landed; W4b and W4c not started.
+Claim: phase-462-W4. Depends on: phase-462-W1, phase-462-W2, phase-495-W2. Owns: packages/core/nros-orchestration-ir/src/mode_variants.rs (new); the Plan variant tables in packages/cli/nros-cli-core/src/codegen/entry/mod.rs; the variant emission in emit_cpp.rs and emit_rust.rs; packages/testing/nros-tests/tests/mode_variants.rs (new). Gate: cargo test -p nros-tests --test mode_variants; just mem-report. Status: W4a and W4b landed; W4c not started.
 
 ### W5 [cli, rmw] -- deadline and liveliness QoS from the contract
 

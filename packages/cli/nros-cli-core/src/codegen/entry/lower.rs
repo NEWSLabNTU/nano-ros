@@ -29,8 +29,9 @@ use std::collections::HashMap;
 use nros_entry_lower::{
     AgeRow, ComponentKind, ComponentSeam, GroupBind, HazardGuard, HazardMember, HazardRow,
     LoweredBoot, LoweredBootConfig, LoweredEntry, LoweredNode, LoweredProbe, LoweredRunners,
-    LoweredSched, LoweredServices, LoweredTaskMemory, LoweredTiers, MonitorRow, MonitorTable,
-    NodeBind, NodeIdentity, QosOverride, SchedContext, SetupNode, TierRow, TierSetup,
+    LoweredSched, LoweredServices, LoweredTaskMemory, LoweredTiers, ModeName, ModeRow,
+    ModeVariantRows, MonitorRow, MonitorTable, NodeBind, NodeIdentity, QosOverride, SchedContext,
+    SetupNode, TierRow, TierSetup,
 };
 use nros_orchestration_ir::ResolvedTierTable;
 
@@ -64,6 +65,14 @@ pub struct LowerOptions<'a> {
     /// table gets the hazards its sliced rows observe
     /// (`contract_monitors::hazard_rows`, the rule the Rust roads use).
     pub hazard_model: Option<&'a ros_launch_manifest_model::SystemModel>,
+    /// phase-462 W4b -- `(mode, rows, ages)` per contract mode, in mode-id
+    /// order (`mode_variants::all_variants`), unsliced: each executor's table
+    /// slices them exactly as it slices `monitors` / `ages`.
+    pub modes: &'a [(
+        String,
+        Vec<model_ingest::MonitorRow>,
+        Vec<model_ingest::AgeRow>,
+    )],
     /// `Some` for a metadata probe.
     pub probe: Option<&'a ProbeExport>,
 }
@@ -305,6 +314,19 @@ pub fn lower_image(plan: &Plan, opts: &LowerOptions<'_>) -> Result<LoweredEntry,
         let nodes: Vec<String> = plan.nodes.iter().map(plan_node_fqn).collect();
         e.monitors = monitor_table(None, opts, |node| nodes.iter().any(|n| n == node));
         e.monitor_tables.extend(e.monitors.iter().cloned());
+    }
+
+    if !e.monitor_tables.is_empty() {
+        e.modes = opts
+            .modes
+            .iter()
+            .enumerate()
+            .map(|(i, (n, _, _))| ModeName {
+                name: n.clone(),
+                ident: nros_orchestration_ir::mode_variants::mode_const_name(n),
+                id: (i + 1) as u16,
+            })
+            .collect();
     }
 
     e.services = LoweredServices {
@@ -622,6 +644,29 @@ fn monitor_table(
             reaction_id: h.reaction_id,
         })
         .collect::<Vec<HazardRow>>();
+    // phase-462 W4b -- each mode's numbers for the rows kept above, by the
+    // same predicate, so a variant is row for row this table.
+    let modes = opts
+        .modes
+        .iter()
+        .map(|(_, rows, ages)| ModeVariantRows {
+            rows: rows
+                .iter()
+                .filter(|r| keep(row_node_fqn(&r.fqn)))
+                .map(|r| ModeRow {
+                    min_rate_hz_milli: r.min_rate_hz_milli,
+                    max_latency_ms: r.max_latency_ms,
+                    route_max_latency_ms: r.route_max_latency_ms,
+                    route_deadline_ms: r.route_deadline_ms,
+                })
+                .collect(),
+            ages: ages
+                .iter()
+                .filter(|r| keep(row_node_fqn(&r.fqn)))
+                .map(|r| r.max_age_ms)
+                .collect(),
+        })
+        .collect::<Vec<_>>();
     let hazard_guards = hazards.iter().map(|h| h.guards.len()).sum();
     let hazard_members = hazards
         .iter()
@@ -631,6 +676,7 @@ fn monitor_table(
     let t = MonitorTable {
         tier: tier.map(|(i, _)| i),
         tier_name: tier.map(|(_, n)| n.to_string()),
+        modes,
         hazards,
         hazard_guards,
         hazard_members,

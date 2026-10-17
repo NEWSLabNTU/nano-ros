@@ -41,6 +41,16 @@
  */
 #define NROS_CPP_HAZARD_ROW_STORAGE (sizeof(void *) == 8 ? 80 : 48)
 
+/**
+ * phase-462 W4b -- bytes of caller storage `nros_cpp_install_modes` needs per
+ * mode table pair, per mode rate/latency row and per mode age row: the
+ * `ModeTables`, `MonitorSpec` and `AgeMonitorSpec` it writes. The install
+ * checks the real requirement and refuses a short buffer.
+ */
+#define NROS_CPP_MODE_TABLE_STORAGE (sizeof(void *) == 8 ? 32 : 16)
+#define NROS_CPP_MODE_ROW_STORAGE (sizeof(void *) == 8 ? 80 : 48)
+#define NROS_CPP_MODE_AGE_STORAGE (sizeof(void *) == 8 ? 48 : 24)
+
 
 /**
  * Maximum RMW backend name length for `nros_cpp_node_options_t`.
@@ -704,6 +714,49 @@ typedef struct nros_cpp_hazard_table_t {
   void *storage;
   size_t storage_len;
 } nros_cpp_hazard_table_t;
+
+/**
+ * phase-462 W4b -- one rate/latency row of a contract MODE: the numbers that
+ * differ from the base row at the same index. Every other field (topic,
+ * endpoint, route trigger, reaction, mechanism, cell) is the base row's.
+ */
+typedef struct nros_cpp_mode_row_t {
+  uint32_t min_rate_hz_milli;
+  uint32_t max_latency_ms;
+  uint32_t route_max_latency_ms;
+  uint32_t route_deadline_ms;
+} nros_cpp_mode_row_t;
+
+/**
+ * phase-462 W4b -- one age row of a contract mode: its `max_age_ms`.
+ */
+typedef struct nros_cpp_mode_age_row_t {
+  uint32_t max_age_ms;
+} nros_cpp_mode_age_row_t;
+
+/**
+ * phase-462 W4b -- one contract mode: exactly as many rows (and ages) as the
+ * base tables `nros_cpp_install_monitors` installed, in the same order.
+ */
+typedef struct nros_cpp_mode_t {
+  const struct nros_cpp_mode_row_t *rows;
+  size_t n_rows;
+  const struct nros_cpp_mode_age_row_t *ages;
+  size_t n_ages;
+} nros_cpp_mode_t;
+
+/**
+ * phase-462 W4b -- the modes `nros_cpp_install_modes` installs: mode id `i`
+ * is `modes[i - 1]` (0 is the base). `storage` is static, 8-aligned, and at
+ * least `(n_modes + 1) * NROS_CPP_MODE_TABLE_STORAGE + n_modes * (n_rows *
+ * NROS_CPP_MODE_ROW_STORAGE + n_ages * NROS_CPP_MODE_AGE_STORAGE)` bytes.
+ */
+typedef struct nros_cpp_mode_tables_t {
+  const struct nros_cpp_mode_t *modes;
+  size_t n_modes;
+  void *storage;
+  size_t storage_len;
+} nros_cpp_mode_tables_t;
 
 /**
  * One drained contract violation, the C spelling of
@@ -2188,6 +2241,33 @@ nros_cpp_ret_t nros_cpp_install_monitors(void *handle,
  * in the generated entry). Each `key` must be NUL-terminated UTF-8.
  */
 nros_cpp_ret_t nros_cpp_install_hazards(void *handle, const struct nros_cpp_hazard_table_t *table);
+
+/**
+ * phase-462 W4b -- install the contract's MODE variants of the two monitor
+ * tables on this executor, after `nros_cpp_install_monitors`. Each mode's
+ * specs are the base specs with the mode's numbers: the same topics,
+ * endpoints and cells, so every binding and hazard row index survives a
+ * switch. `nros_cpp_request_mode` then switches every executor at its next
+ * spin.
+ *
+ * Refused: a mode whose row counts are not the base's
+ * (`NROS_CPP_RET_INVALID_ARGUMENT`), and a short or misaligned buffer
+ * (`NROS_CPP_RET_FULL`). `n_modes == 0` installs nothing.
+ *
+ * # Safety
+ * `handle` must be a live executor handle from this ABI, or NULL. `tables`
+ * must point at a valid `nros_cpp_mode_tables_t` whose arrays and storage
+ * outlive the executor (statics in the generated entry).
+ */
+nros_cpp_ret_t nros_cpp_install_modes(void *handle, const struct nros_cpp_mode_tables_t *tables);
+
+/**
+ * phase-462 W4b -- ask every executor to judge by mode `id`'s tables (0 =
+ * the base contract), applied at each executor's next spin. The C spelling
+ * of `nros::monitor::request_mode`; the entry names each id as
+ * `NROS_MODE_<NAME>`.
+ */
+void nros_cpp_request_mode(uint16_t id);
 
 /**
  * Drain every pending contract violation from this executor's ring, the C++
