@@ -9,7 +9,7 @@ found: 2026-10-08
 related: [1013, 1026, phase-507]
 ---
 
-**Home: [phase-507](../roadmap/phase-507-xrce-and-action-client-robustness.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+**Home: [phase-507](../../roadmap/phase-507-xrce-and-action-client-robustness.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## Measured
 
