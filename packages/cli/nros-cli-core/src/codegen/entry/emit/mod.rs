@@ -42,7 +42,7 @@ pub fn emit_typed_monitored(
     monitors: &[MonitorRow],
     ages: &[AgeRow],
 ) -> Result<String, String> {
-    emit_typed_monitored_lowered(language, plan, monitors, ages, None).map(|(src, _)| src)
+    emit_typed_monitored_lowered(language, plan, monitors, ages, None, &[]).map(|(src, _)| src)
 }
 
 /// [`emit_typed_monitored`], also handing back the [`LoweredEntry`] the TU was
@@ -55,6 +55,7 @@ pub fn emit_typed_monitored_lowered(
     monitors: &[MonitorRow],
     ages: &[AgeRow],
     hazard_model: Option<&ros_launch_manifest_model::SystemModel>,
+    modes: &[(String, Vec<MonitorRow>, Vec<AgeRow>)],
 ) -> Result<(String, LoweredEntry), String> {
     emit_lowered(
         language,
@@ -63,6 +64,7 @@ pub fn emit_typed_monitored_lowered(
             monitors,
             ages,
             hazard_model,
+            modes,
             probe: None,
         },
     )

@@ -423,16 +423,29 @@ fn run_entry(args: EntryArgs) -> Result<()> {
     // and the emitter (not the plan) is what this wave owns.
     // phase-462 W3b -- and the model itself when it declares hazards, which
     // the lowering lands on whichever executor's slice observes each one.
-    let (monitor_rows, age_rows, hazard_model) = match &args.model {
+    // phase-462 W4b -- and each contract mode's variant of those rows, refused
+    // when a mode would change which endpoints they watch.
+    let (monitor_rows, age_rows, hazard_model, mode_rows) = match &args.model {
         Some(model_path) => {
             let model = crate::orchestration::model_ingest::load_model(model_path)?;
+            let modes = nros_orchestration_ir::mode_variants::all_variants(&model)
+                .map_err(|e| eyre!("codegen entry: model `{}`: {e}", model_path.display()))?
+                .into_iter()
+                .map(|(v, rows, ages)| {
+                    for n in &v.not_lowered {
+                        eprintln!("nros codegen entry: mode `{}`: not lowered: {n}", v.name);
+                    }
+                    (v.name, rows, ages)
+                })
+                .collect::<Vec<_>>();
             (
                 crate::orchestration::model_ingest::monitor_rows(&model)?,
                 crate::orchestration::model_ingest::age_rows(&model)?,
                 (!model.contracts.hazards.is_empty()).then_some(model.model),
+                modes,
             )
         }
-        None => (Vec::new(), Vec::new(), None),
+        None => (Vec::new(), Vec::new(), None, Vec::new()),
     };
 
     let (src, lowered) = if args.typed {
@@ -524,6 +537,7 @@ fn run_entry(args: EntryArgs) -> Result<()> {
             &monitor_rows,
             &age_rows,
             hazard_model.as_ref(),
+            &mode_rows,
         )
         .map_err(|e| eyre!("{e}"))?
     } else {

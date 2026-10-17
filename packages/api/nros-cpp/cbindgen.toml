@@ -50,6 +50,16 @@ after_includes = """
  * requirement and refuses a short buffer.
  */
 #define NROS_CPP_HAZARD_ROW_STORAGE (sizeof(void *) == 8 ? 80 : 48)
+
+/**
+ * phase-462 W4b -- bytes of caller storage `nros_cpp_install_modes` needs per
+ * mode table pair, per mode rate/latency row and per mode age row: the
+ * `ModeTables`, `MonitorSpec` and `AgeMonitorSpec` it writes. The install
+ * checks the real requirement and refuses a short buffer.
+ */
+#define NROS_CPP_MODE_TABLE_STORAGE (sizeof(void *) == 8 ? 32 : 16)
+#define NROS_CPP_MODE_ROW_STORAGE (sizeof(void *) == 8 ? 80 : 48)
+#define NROS_CPP_MODE_AGE_STORAGE (sizeof(void *) == 8 ? 48 : 24)
 """
 
 [export]
@@ -65,6 +75,10 @@ exclude = [
     "NROS_CPP_MONITOR_ROW_STORAGE",
     # phase-462 W3b -- same reason.
     "NROS_CPP_HAZARD_ROW_STORAGE",
+    # phase-462 W4b -- same reason.
+    "NROS_CPP_MODE_TABLE_STORAGE",
+    "NROS_CPP_MODE_ROW_STORAGE",
+    "NROS_CPP_MODE_AGE_STORAGE",
     "nros_cpp_action_server_set_callbacks",
     # issue 0796 — same reason (`Option<CppAcceptedCallback>`); declared in
     # action_server.hpp and mirrored in nros-c's component.h.

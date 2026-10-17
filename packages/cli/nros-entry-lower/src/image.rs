@@ -327,6 +327,39 @@ pub struct MonitorTable {
     pub hazard_guards: usize,
     #[serde(default)]
     pub hazard_members: usize,
+    /// phase-462 W4b -- each contract mode's numbers for `rows` / `ages`,
+    /// row for row, in mode-id order (mode `i + 1` is `modes[i]`).
+    #[serde(default)]
+    pub modes: Vec<ModeVariantRows>,
+}
+
+/// phase-462 W4b -- one contract mode's numbers for a [`MonitorTable`], in the
+/// shape the C/C++ packs render (`nros_cpp_mode_row_t` /
+/// `nros_cpp_mode_age_row_t`). Every other field of a row is the base row's.
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ModeVariantRows {
+    pub rows: Vec<ModeRow>,
+    /// Each age row's `max_age_ms`.
+    pub ages: Vec<u32>,
+}
+
+/// phase-462 W4b -- one contract mode's name and the suffix of its id
+/// constant (`NROS_MODE_<ident>`), computed once by
+/// `nros_orchestration_ir::mode_variants::mode_const_name`.
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ModeName {
+    pub name: String,
+    pub ident: String,
+    pub id: u16,
+}
+
+/// phase-462 W4b -- the numbers one mode gives one rate/latency row.
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ModeRow {
+    pub min_rate_hz_milli: u32,
+    pub max_latency_ms: u32,
+    pub route_max_latency_ms: u32,
+    pub route_deadline_ms: u32,
 }
 
 /// phase-462 W3b -- one hazard of a [`MonitorTable`], in the shape the C/C++

@@ -95,6 +95,15 @@ static ::{{ s.class }} __nros_comp_{{ loop.index0 }};
 {%- endif %}
 {%- endif %}
 {%- endfor %}
+{%- if modes %}
+
+/* phase-462 W4b -- the contract's operational modes. Pass an id to
+ * nros_cpp_request_mode() to switch every executor's monitor tables at its
+ * next spin; 0 is the base contract. */
+{%- for md in modes %}
+#define NROS_MODE_{{ md.ident }} {{ md.id }}u /* {{ md.name | c_str }} */
+{%- endfor %}
+{%- endif %}
 {%- for m in monitor_tables %}{% set tag %}{% if m.tier is not none %}_t{{ m.tier }}{% endif %}{% endset %}
 
 /* phase-462 W1 (RFC-0052) -- contract monitor rows{% if m.tier is not none %} (tier[{{ m.tier }}] {{ m.tier_name }}){% endif %}: one per contracted
@@ -163,6 +172,33 @@ static const ::nros_cpp_hazard_row_t __nros_hz_rows{{ tag }}[{{ m.hazards | leng
 extern "C" void nros_app_reaction_hook(const ::nros_cpp_reaction_event_t* event, void* ctx) __attribute__((weak));
 {%- endif %}
 alignas(8) static unsigned char __nros_hz_storage{{ tag }}[{{ m.hazards | length }} * NROS_CPP_HAZARD_ROW_STORAGE + {{ m.hazard_guards }} * NROS_CPP_HAZARD_GUARD_STORAGE + {{ m.hazard_members }} * NROS_CPP_HAZARD_MEMBER_STORAGE];
+{%- endif %}
+{%- if m.modes %}
+/* phase-462 W4b -- the contract's modes: each mode's numbers for the rows
+ * above, row for row (`nros_cpp_install_modes` copies the base specs and their
+ * cells, so only the numbers are stated). */
+{%- for md in m.modes %}{% set mi = loop.index %}
+{%- if md.rows %}
+static const ::nros_cpp_mode_row_t __nros_mode_rows{{ tag }}_{{ mi }}[{{ md.rows | length }}] = {
+{%- for r in md.rows %}
+    { {{ r.min_rate_hz_milli }}u, {{ r.max_latency_ms }}u, {{ r.route_max_latency_ms }}u, {{ r.route_deadline_ms }}u },
+{%- endfor %}
+};
+{%- endif %}
+{%- if md.ages %}
+static const ::nros_cpp_mode_age_row_t __nros_mode_ages{{ tag }}_{{ mi }}[{{ md.ages | length }}] = {
+{%- for a in md.ages %}
+    { {{ a }}u },
+{%- endfor %}
+};
+{%- endif %}
+{%- endfor %}
+static const ::nros_cpp_mode_t __nros_modes{{ tag }}[{{ m.modes | length }}] = {
+{%- for md in m.modes %}{% set mi = loop.index %}
+    { {% if md.rows %}__nros_mode_rows{{ tag }}_{{ mi }}{% else %}nullptr{% endif %}, {{ md.rows | length }}u, {% if md.ages %}__nros_mode_ages{{ tag }}_{{ mi }}{% else %}nullptr{% endif %}, {{ md.ages | length }}u },
+{%- endfor %}
+};
+alignas(8) static unsigned char __nros_mode_storage{{ tag }}[({{ m.modes | length }} + 1) * NROS_CPP_MODE_TABLE_STORAGE + {{ m.modes | length }} * ({{ m.rows | length }} * NROS_CPP_MODE_ROW_STORAGE + {{ m.ages | length }} * NROS_CPP_MODE_AGE_STORAGE)];
 {%- endif %}
 {%- endfor %}
 

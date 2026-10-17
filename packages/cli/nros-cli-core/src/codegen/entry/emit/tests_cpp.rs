@@ -2170,7 +2170,7 @@ fn typed_emit_bakes_the_hazard_table_after_the_monitors() {
     let (rows, ages) = monitor_fixture_rows();
     let model = super::hazard_fixture_model();
     let (src, _) =
-        super::emit_typed_monitored_lowered(Lang::Cpp, &plan, &rows, &ages, Some(&model))
+        super::emit_typed_monitored_lowered(Lang::Cpp, &plan, &rows, &ages, Some(&model), &[])
             .expect("hazard emit ok");
     assert!(
         src.contains("{ 0u, 0u },") && src.contains("{ 1u, 0u },"),
@@ -2220,7 +2220,7 @@ fn typed_emit_wires_a_hazards_safe_state_reaction_to_the_hook() {
     let (rows, ages) = monitor_fixture_rows();
     let model = super::hazard_fixture_model_reacting(true);
     let (src, _) =
-        super::emit_typed_monitored_lowered(Lang::Cpp, &plan, &rows, &ages, Some(&model))
+        super::emit_typed_monitored_lowered(Lang::Cpp, &plan, &rows, &ages, Some(&model), &[])
             .expect("hazard emit ok");
     assert!(
         src.contains("__nros_hz_guards_0, 1u, 0u, 1u },"),
@@ -2238,5 +2238,60 @@ fn typed_emit_wires_a_hazards_safe_state_reaction_to_the_hook() {
     assert!(
         src.contains("nros_cpp_executor_set_reaction_hook("),
         "{src}"
+    );
+}
+
+/// phase-462 W4b -- a contract mode bakes its numbers for the table's rows,
+/// row for row, installs them after the monitor tables, and names its id.
+#[test]
+fn typed_emit_bakes_a_modes_numbers_after_the_monitors() {
+    let plan = fixture_plan_typed(&[
+        (
+            "talker_pkg",
+            "talker",
+            "talker",
+            "talker_pkg::Talker",
+            "talker_pkg/Talker.hpp",
+        ),
+        (
+            "listener_pkg",
+            "listener",
+            "listener",
+            "listener_pkg::Listener",
+            "listener_pkg/Listener.hpp",
+        ),
+    ]);
+    let (rows, ages) = monitor_fixture_rows();
+    let mut relaxed = rows.clone();
+    for r in &mut relaxed {
+        r.max_latency_ms = 77;
+    }
+    let mut slow = ages.clone();
+    for a in &mut slow {
+        a.max_age_ms = 999;
+    }
+    let modes = vec![("degraded-safe".to_string(), relaxed, slow)];
+    let (src, _) =
+        super::emit_typed_monitored_lowered(Lang::Cpp, &plan, &rows, &ages, None, &modes)
+            .expect("mode emit ok");
+    assert!(src.contains("#define NROS_MODE_DEGRADED_SAFE 1u"), "{src}");
+    assert!(
+        src.contains("static const ::nros_cpp_mode_row_t __nros_mode_rows_1["),
+        "{src}"
+    );
+    assert!(src.contains(", 77u, "), "the mode's latency; src:\n{src}");
+    assert!(src.contains("{ 999u },"), "the mode's age; src:\n{src}");
+    assert!(src.contains("alignas(8) static unsigned char __nros_mode_storage[(1 + 1) * NROS_CPP_MODE_TABLE_STORAGE + 1 * ("), "{src}");
+    let monitors = src
+        .find("nros_cpp_install_monitors(")
+        .expect("monitor install");
+    let modes_at = src.find("nros_cpp_install_modes(").expect("mode install");
+    assert!(modes_at > monitors, "{src}");
+    // No modes: nothing of this.
+    let (plain, _) = super::emit_typed_monitored_lowered(Lang::Cpp, &plan, &rows, &ages, None, &[])
+        .expect("plain emit ok");
+    assert!(
+        !plain.contains("NROS_MODE_") && !plain.contains("nros_cpp_install_modes"),
+        "{plain}"
     );
 }

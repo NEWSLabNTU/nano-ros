@@ -57,4 +57,15 @@
         __mret = nros_cpp_install_hazards(__mexec, &__htable);
         if (__mret != NROS_CPP_RET_OK) return static_cast<int32_t>(__mret);
 {%- endif %}
+{%- if m.modes %}
+        /* phase-462 W4b -- the contract's modes, over the base rows just installed. */
+        ::nros_cpp_mode_tables_t __mdtab = {
+            .modes = __nros_modes{{ tag }},
+            .n_modes = {{ m.modes | length }}u,
+            .storage = __nros_mode_storage{{ tag }},
+            .storage_len = sizeof(__nros_mode_storage{{ tag }}),
+        };
+        __mret = nros_cpp_install_modes(__mexec, &__mdtab);
+        if (__mret != NROS_CPP_RET_OK) return static_cast<int32_t>(__mret);
+{%- endif %}
     }
