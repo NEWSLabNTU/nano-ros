@@ -103,16 +103,24 @@ pub fn seed(manifest_dir: &Path, nano_ros_root: Option<&Path>) -> Result<Seed> {
     let Some(pins) = pin_file(root)? else {
         return Ok(Seed::NoPinSet);
     };
+    write_seed(manifest_dir, &pins)?;
+    Ok(Seed::Seeded { pins })
+}
+
+/// Write `<manifest_dir>/Cargo.lock` from `pins`, with the project's own
+/// overrides laid over it, replacing whatever lock is there.
+pub fn write_seed(manifest_dir: &Path, pins: &Path) -> Result<()> {
+    let lock = manifest_dir.join("Cargo.lock");
     let overrides = project_overrides(manifest_dir)?;
     if overrides.is_empty() {
-        std::fs::copy(&pins, &lock)
+        std::fs::copy(pins, &lock)
             .wrap_err_with(|| format!("seed {} from {}", lock.display(), pins.display()))?;
     } else {
-        let base = parse_registry(&std::fs::read_to_string(&pins)?)?;
+        let base = parse_registry(&std::fs::read_to_string(pins)?)?;
         std::fs::write(&lock, render(&effective(&base, &overrides)))
             .wrap_err_with(|| format!("seed {}", lock.display()))?;
     }
-    Ok(Seed::Seeded { pins })
+    Ok(())
 }
 
 /// One registry entry of a `Cargo.lock`, as the pin set holds it.

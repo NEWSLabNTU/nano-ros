@@ -304,9 +304,23 @@ pub fn enforce_cargo_root(
             _ => left.push(d),
         }
     }
-    let (moved, _stuck) = realign(moves, cargo_precise(dir));
+    let (moved, stuck) = realign(moves, cargo_precise(dir));
     if moved > 0 {
         eprintln!("nros:   realigned {moved} crate(s) in {label} to the pin set");
+    }
+    // Issue 1941 — say WHY a move failed. A root cargo cannot resolve on its
+    // own (a Zephyr leaf names `zephyr` and `zephyr-build`, which only the
+    // west build's patch table supplies) fails every move, and with the error
+    // dropped that read as "these crates are off the pin set" and nothing else.
+    if let Some((first, why)) = stuck.first() {
+        let why = why.lines().find(|l| !l.trim().is_empty()).unwrap_or("");
+        eprintln!(
+            "nros:   could not realign {} crate(s) in {label}; first, `{}` {} -> {}: {why}",
+            stuck.len(),
+            first.name,
+            first.have,
+            first.want
+        );
     }
     // A realignment can move a dependency in turn; what is still off is drift.
     let again = check_cargo_root(dir, label, pins_file)?;
@@ -319,9 +333,88 @@ pub fn enforce_cargo_root(
     Ok(left)
 }
 
+/// A CHECKOUT leaf lock, made to hold before its build: realign it, and replace
+/// what the realign could not fix with a fresh seed from `pins_file`.
+///
+/// Issue 1941 — a move is `cargo update` run in the leaf ALONE, which a root
+/// whose build supplies part of its graph cannot survive: a Zephyr leaf
+/// registry-names `zephyr` and `zephyr-build`, which only the west build's
+/// patch table supplies, so every move failed and a persistent tree kept an
+/// unseeded lock for good. In a checkout the leaf lock is seeded build output,
+/// not a promise, so the fallback is what a leaf with NO lock gets: the pin
+/// set, from which the build then resolves. What is returned is the drift left
+/// after that, which a fresh seed normally leaves empty.
+pub fn realign_or_reseed(dir: &Path, label: &str, pins_file: &Path) -> eyre::Result<Vec<Drift>> {
+    let left = enforce_cargo_root(dir, label, pins_file, true)?;
+    if left.is_empty() {
+        return Ok(left);
+    }
+    crate::orchestration::registry_pins::write_seed(dir, pins_file)?;
+    eprintln!(
+        "nros:   {} drift(s) in {label} the realign could not fix; re-seeded its Cargo.lock from {}",
+        left.len(),
+        pins_file.display()
+    );
+    check_cargo_root(dir, label, pins_file)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A one-crate lock in cargo's format.
+    fn lock_with(name: &str, version: &str) -> String {
+        format!(
+            "version = 4\n\n[[package]]\nname = \"{name}\"\nversion = \"{version}\"\n\
+             source = \"registry+https://github.com/rust-lang/crates.io-index\"\n"
+        )
+    }
+
+    #[test]
+    fn a_leaf_cargo_cannot_resolve_alone_is_reseeded_instead_of_left_drifting() {
+        // Issue 1941: the Zephyr leaves name a crate only the west build
+        // patches in, so `cargo update --precise` fails for every move. Here
+        // the leaf names a path dependency that does not exist, which fails
+        // cargo the same way and offline.
+        let dir = tempfile::tempdir().unwrap();
+        let leaf = dir.path();
+        std::fs::write(
+            leaf.join("Cargo.toml"),
+            "[package]\nname = \"leaf\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n\
+             [dependencies]\nmissing = { path = \"does-not-exist\" }\n",
+        )
+        .unwrap();
+        std::fs::create_dir(leaf.join("src")).unwrap();
+        std::fs::write(leaf.join("src/lib.rs"), "").unwrap();
+        std::fs::write(leaf.join("Cargo.lock"), lock_with("serde", "1.0.229")).unwrap();
+        let pins = leaf.join("pins.lock");
+        std::fs::write(&pins, lock_with("serde", "1.0.228")).unwrap();
+
+        assert_eq!(check_cargo_root(leaf, "leaf", &pins).unwrap().len(), 1);
+        let left = realign_or_reseed(leaf, "leaf", &pins).unwrap();
+        assert!(left.is_empty(), "drift left after the re-seed: {left:?}");
+        assert_eq!(
+            std::fs::read_to_string(leaf.join("Cargo.lock")).unwrap(),
+            lock_with("serde", "1.0.228"),
+            "the lock is the pin set, not the drifted one"
+        );
+    }
+
+    #[test]
+    fn a_lock_on_the_pins_is_left_alone() {
+        let dir = tempfile::tempdir().unwrap();
+        let leaf = dir.path();
+        let on_pins = format!("# kept\n{}", lock_with("serde", "1.0.228"));
+        std::fs::write(leaf.join("Cargo.lock"), &on_pins).unwrap();
+        let pins = leaf.join("pins.lock");
+        std::fs::write(&pins, lock_with("serde", "1.0.228")).unwrap();
+
+        assert!(realign_or_reseed(leaf, "leaf", &pins).unwrap().is_empty());
+        assert_eq!(
+            std::fs::read_to_string(leaf.join("Cargo.lock")).unwrap(),
+            on_pins
+        );
+    }
 
     #[test]
     fn a_lockstep_family_realigns_whatever_order_the_lock_lists_it_in() {

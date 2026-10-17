@@ -597,7 +597,7 @@ fn realign_present(dir: &Path, root: Option<&Path>) -> Result<()> {
         return Ok(());
     };
     let label = dir.display().to_string();
-    let left = drift::enforce_cargo_root(dir, &label, &pins, true)?;
+    let left = drift::realign_or_reseed(dir, &label, &pins)?;
     if !left.is_empty() {
         eprintln!(
             "seed-lock: {} entr(ies) of {} stay off the pin set until it holds them:",
