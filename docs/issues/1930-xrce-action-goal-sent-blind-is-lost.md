@@ -65,3 +65,19 @@ endpoints never matched for the whole run. The bundled Agent prints nothing at
 runs did not apply the harness's loopback-only Fast-DDS profile
 (`nros_tests::dds_isolation`), so the next step is to reproduce under it, and
 then to get Agent logs from a build that has them.
+
+## 2026-10-18 — five tier-2 runs since the fix, all green on this cell
+
+`native_example_reqresp::case_16_rust_xrce_action` passed in every tier-2
+(1-wise matrix) job of the last five `run-matrix` runs: 38818350050 (1.505 s),
+38861323075 (1.413 s), 38933437082 (1.483 s), 38980380118 (1.567 s) and
+39009801514 (3.386 s), against 3 of 3 failing in the run that filed this. The
+C and C++ XRCE action cells print `FAIL` in ~0.1 s in the same logs; those are
+`lane_skip!` panics outside tier 2's cover, which the junit rewrite counts as
+skips (`Real failures: 0 / 0` on 39009801514), not results.
+
+What stays open is unchanged: the one hand-run failure in 35, where the two
+endpoints never matched in 30 s, was reproduced WITHOUT the harness's
+loopback-only Fast-DDS profile, and no harness run has shown it. Next step as
+before: reproduce under `nros_tests::dds_isolation`'s profile, with an Agent
+built with its logger profile so `-v6` prints something.
