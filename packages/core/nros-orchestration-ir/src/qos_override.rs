@@ -324,7 +324,7 @@ fn duration_ns_to_wire_ms(v: &str) -> Option<u32> {
 }
 
 /// A contract duration (milliseconds, as the model carries it) in the wire's
-/// milliseconds: the same rule [`duration_ns_to_wire_ms`] applies to a
+/// milliseconds: the same rule `duration_ns_to_wire_ms` applies to a
 /// parameter, so a contract `deadline: 100ms` and a parameter `100000000`
 /// compare equal. `None` for a value the wire cannot carry.
 #[must_use]
@@ -476,7 +476,7 @@ pub enum QosStatement {
     History(QoSHistoryPolicy),
     Depth(u32),
     /// phase-462 W5 -- the four liveness policies, in the wire's
-    /// milliseconds (converted by [`duration_ns_to_wire_ms`]).
+    /// milliseconds (converted by `duration_ns_to_wire_ms`).
     Deadline(u32),
     Lifespan(u32),
     LivelinessLease(u32),
