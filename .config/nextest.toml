@@ -1226,9 +1226,10 @@ test-group = "domain-probe-host-ports"
 #   the_scaling_this_replaced_was_short_of_the_declared_model
 #       needs NROS_ENTITY_COUNT_* — `just check node-std-tests` (issue 1290)
 #   two_sessions_deliver_cross_session_through_router
-#       needs NROS_ZENOH_MAX_SESSIONS=2 — `just test-zpico-multisession`
-#       (issues 0393, 1704)
+#   two_sessions_arrival_wakes_only_its_own_session
+#       need NROS_ZENOH_MAX_SESSIONS=2 — `just test-zpico-multisession`, whose
+#       `two_sessions` name filter selects both (issues 0393, 1704, 1929)
 # A test belongs here only if an owning recipe exists; an ignore with no owner
 # runs in `test-ignored`, which is what keeps it from rotting unseen.
 [profile.ignored]
-default-filter = "not (test(the_scaling_this_replaced_was_short_of_the_declared_model) or test(two_sessions_deliver_cross_session_through_router))"
+default-filter = "not (test(the_scaling_this_replaced_was_short_of_the_declared_model) or test(two_sessions_deliver_cross_session_through_router) or test(two_sessions_arrival_wakes_only_its_own_session))"

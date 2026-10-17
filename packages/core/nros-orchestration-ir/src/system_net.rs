@@ -132,6 +132,18 @@ pub fn parse_ipv4(s: &str) -> Result<[u8; 4], String> {
     Ok(out)
 }
 
+/// A bridge or TAP `attach` names a host network device, which the QEMU
+/// launcher splices into a `-nic` argument: empty, whitespace or a comma
+/// would not survive that.
+fn check_host_device(at: &str, d: &str) -> Result<(), String> {
+    if d.is_empty() || d.contains(char::is_whitespace) || d.contains(',') {
+        return Err(format!(
+            "{at}: attach names host device {d:?}, which is not a device name"
+        ));
+    }
+    Ok(())
+}
+
 fn dotted(o: [u8; 4]) -> String {
     format!("{}.{}.{}.{}", o[0], o[1], o[2], o[3])
 }
@@ -208,11 +220,7 @@ impl NetworkDef {
             // phase-497 W3 — the QEMU launchers render these (`-nic bridge` /
             // `-nic tap`, `nros_board_common::image_net::qemu_nic`).
             Some(Attach::Bridge { bridge: d } | Attach::Tap { tap: d }) => {
-                if d.is_empty() || d.contains(char::is_whitespace) || d.contains(',') {
-                    return Err(format!(
-                        "{at}: attach names host device {d:?}, which is not a device name"
-                    ));
-                }
+                check_host_device(&at, d)?;
             }
             Some(Attach::Mode(m)) => {
                 return Err(format!(
