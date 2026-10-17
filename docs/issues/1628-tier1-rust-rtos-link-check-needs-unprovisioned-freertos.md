@@ -8,8 +8,10 @@ type: bug
 area: ci, freertos
 severity: medium
 found: 2026-10-02
-related: [issue-1147, issue-1345, issue-1353, issue-1043]
+related: [issue-1147, issue-1345, issue-1353, issue-1043, phase-466]
 ---
+
+**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## Measured
 

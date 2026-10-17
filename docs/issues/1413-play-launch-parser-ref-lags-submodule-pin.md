@@ -7,8 +7,10 @@ status: open
 type: tech-debt
 area: cli, build
 found: 2026-09-21
-related: [issue-1273, issue-0897, issue-0609, issue-0507, issue-0500, rfc-0060, rfc-0099]
+related: [issue-1273, issue-0897, issue-0609, issue-0507, issue-0500, rfc-0060, rfc-0099, phase-439]
 ---
+
+**Home: [phase-439](../roadmap/phase-439-resolve-before-configure.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## The drift
 

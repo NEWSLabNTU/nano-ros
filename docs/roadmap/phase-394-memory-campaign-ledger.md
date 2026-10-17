@@ -256,3 +256,13 @@ Homes, for the record: 0814 → phase-433 (the loans row; phase-391 disowns it; 
 0816 → phase-391; 0880 → phase-392; 1228 and 1252 → phase-439 (W2's named
 remainder).
 
+## Issues homed here (2026-10-17)
+
+Homed when every open issue was given a phase. Each issue has a `**Home:**` line pointing here.
+
+| issue | why it belongs here |
+| --- | --- |
+| [#1376](../issues/1376-c-example-listeners-register-with-null-options.md) | Seven C listeners pass `options = NULL`, so the sizing descriptor credits a hint the image does not supply. That is a sizing-accuracy item on the ledger. |
+| [#1630](../issues/1630-freertos-entry-bss-overflows-ram-after-arena-pricing.md) | `freertos_entry`'s `.bss` overflows `RAM` by 151,016 bytes after the per-kind arena pricing landed. That is a memory regression. |
+| [#1808](../issues/1808-sizing-knobs-with-no-static-derivation.md) | Five sizing knobs are still set by hand because nothing in the image can derive them. This is phase-412's remainder. |
+| [#1823](../issues/1823-esp32-qemu-heap-used-bytes-reports-zero.md) | `nros-platform-esp32-qemu` reports 0 for `heap_{used,total}_bytes`. This is phase-230's heap-ABI remainder (ESP32 is dormant, issue 1525). |

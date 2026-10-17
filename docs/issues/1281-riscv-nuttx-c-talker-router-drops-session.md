@@ -4,10 +4,10 @@ title: "`c_riscv_nuttx_talker_delivers_cross_process` fails again: the guest con
 status: open
 type: bug
 area: [testing, rmw, nuttx]
-related: [0820, 0801, 1280, phase-445, phase-414]
+related: [0820, 0801, 1280, phase-445, phase-414, phase-441]
 ---
 
-**Home: none** — unhomed after phase-414 was archived 2026-10-12; no active phase fits.
+**Home: [phase-441](../roadmap/phase-441-rmw-on-target-verification.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)". It had no home after phase-414 was archived on 2026-10-12.
 
 ## Symptom (as reported, not yet reproduced by the filer)
 

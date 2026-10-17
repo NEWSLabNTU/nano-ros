@@ -8,8 +8,10 @@ type: bug
 area: ci, build, cli, testing
 severity: high
 found: 2026-09-25
-related: [1158, 1457, 0533, 1501]
+related: [1158, 1457, 0533, 1501, phase-466]
 ---
+
+**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 > **Root cause found and fixed — issue 1501 (2026-09-25).** None of the three
 > candidates below was the answer, and the first one was already implemented:

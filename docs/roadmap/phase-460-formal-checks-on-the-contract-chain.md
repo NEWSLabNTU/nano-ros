@@ -360,3 +360,12 @@ All but W5's board run and W7's native_sim half run in the fast tier
   removes one way its inputs grow silently and does not size the slot.
 * Any change to what the C++ emitter monitors on target (the Rust-only
   `MonitorSpec` table): a phase of its own.
+
+## Issues homed here (2026-10-17)
+
+Homed when every open issue was given a phase. Each issue has a `**Home:**` line pointing here.
+
+| issue | why it belongs here |
+| --- | --- |
+| [#0259](../issues/0259-realizer-placement-nonpreempt-not-derived.md) | WCET, blocking and feasibility as declared data is phase-357 W2's remainder. It is a check over the contract chain. |
+| [#1140](../issues/1140-describes-wiring-misses-timer-only-contract.md) | Two predicates ask whether a contract was authored, and they disagree on a timer-only contract. Their agreement is a contract-chain check. |

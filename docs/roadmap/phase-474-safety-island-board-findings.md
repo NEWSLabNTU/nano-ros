@@ -1190,3 +1190,13 @@ this phase will fix it.
 
 - [issue 0902](../issues/0902-action-goal-completion-is-variable.md) — action goals complete between 20 % and 90 % of the time on the same build, with no session expiry and no fault to exp … (homed here 2026-10-13, from the archived phase-433)
 - [issue 0880](../issues/0880-tcm-unused-while-sram-exhausted.md) — 192 KiB of tightly-coupled memory sits at 0 % while SRAM is exhausted — the Zephyr images place nothing in ITCM or DTCM
+
+## Issues homed here (2026-10-17)
+
+Homed when every open issue was given a phase. Each issue has a `**Home:**` line pointing here.
+
+| issue | why it belongs here |
+| --- | --- |
+| [#1799](../issues/1799-boot-report-arena-exhaustion-on-mr-canhubk344.md) | The boot report's arena-exhaustion record has never been dumped from the MR-CANHUBK344. |
+| [#1806](../issues/1806-zenoh-constrained-link-unvalidated-on-full-autoware-graph.md) | The constrained-link zenoh changes from phase-473 have never run against the full Autoware graph on the island. |
+| [#1822](../issues/1822-can-link-priority-mapping-blocked-by-join-size.md) | The zenoh-rs CAN link's priority mapping cannot be switched on because a QoS `Join` exceeds the CAN FD MTU. It waits on upstream. |

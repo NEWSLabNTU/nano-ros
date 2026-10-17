@@ -12,6 +12,8 @@ found: 2026-09-18
 related: [issue-0259, issue-1283, issue-1286, phase-296, rfc-0047, rfc-0052, phase-459, phase-478]
 ---
 
+**Home: [phase-478](../roadmap/phase-478-island-developer-experience-findings.md)** — homed 2026-10-17; the phase doc already tracks it in its body.
+
 ## The gate
 
 `packages/core/nros-orchestration-ir/src/derive.rs:92-99`:

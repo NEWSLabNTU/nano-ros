@@ -11,6 +11,8 @@ found: 2026-09-29
 related: [phase-474, issue-1574]
 ---
 
+**Home: [phase-474](../roadmap/phase-474-safety-island-board-findings.md)** — homed 2026-10-17; the phase doc already tracks it in its body.
+
 ## What zenoh-pico does
 
 `_z_unicast_handshake_open` (client) and `_z_unicast_handshake_listen`

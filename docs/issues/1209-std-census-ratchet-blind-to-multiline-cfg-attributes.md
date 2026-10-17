@@ -8,6 +8,8 @@ area: [tooling, ci, core]
 related: [0597, 0196, phase-359, phase-361]
 ---
 
+**Home: [phase-359](../roadmap/phase-359-drop-std-campaign.md)** — homed 2026-10-17; the phase doc already tracks it in its body.
+
 ## What
 
 `scripts/check-std-census.py` is the one-way ratchet for phase-359: it fails

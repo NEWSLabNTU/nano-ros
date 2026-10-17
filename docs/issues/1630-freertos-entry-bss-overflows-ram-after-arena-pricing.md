@@ -8,8 +8,10 @@ type: bug
 area: [freertos, executor, build]
 severity: high
 found: 2026-10-02
-related: [issue-1145, issue-0810, issue-1340, issue-1171]
+related: [issue-1145, issue-0810, issue-1340, issue-1171, phase-394]
 ---
+
+**Home: [phase-394](../roadmap/phase-394-memory-campaign-ledger.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## Measured
 

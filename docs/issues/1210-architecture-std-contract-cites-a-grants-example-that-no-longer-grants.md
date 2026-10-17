@@ -8,6 +8,8 @@ area: [docs, core, api]
 related: [0669, 0687, 0598, phase-359, phase-361]
 ---
 
+**Home: [phase-359](../roadmap/phase-359-drop-std-campaign.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+
 ## What
 
 `docs/design/ARCHITECTURE.md:52-99` is the normative `std`/`alloc` contract —

@@ -6,8 +6,10 @@ type: bug
 area: build, cli, testing
 severity: high
 found: 2026-09-06
-related: [1127, 0433, phase-433]
+related: [1127, 0433, phase-433, phase-466]
 ---
+
+**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 # The one lane that could produce a live-peer verdict has not finished in 30 runs
 

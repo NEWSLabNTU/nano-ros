@@ -6,8 +6,10 @@ title: "Seven C example listeners register with `options = NULL`, so they take
 status: open
 type: bug
 area: [api, examples, sizing]
-related: [1319, 0896, 0964, phase-456, phase-454]
+related: [1319, 0896, 0964, phase-456, phase-454, phase-394]
 ---
+
+**Home: [phase-394](../roadmap/phase-394-memory-campaign-ledger.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## Symptom
 

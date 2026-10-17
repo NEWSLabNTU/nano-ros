@@ -304,3 +304,11 @@ link runs both ways). Listing one here records the link, not a claim that
 this phase will fix it.
 
 - [issue 1453](../issues/archived/1453-template-copy-out-not-merge-gating.md) — resolved 2026-10-17: `check-template-copy-out` now runs the full set on `merge_group`.
+
+## Issues homed here (2026-10-17)
+
+Homed when every open issue was given a phase. Each issue has a `**Home:**` line pointing here.
+
+| issue | why it belongs here |
+| --- | --- |
+| [#1782](../issues/1782-port-template-zephyr-leaf-board-not-in-data.md) | A copy-out template names the generic `zephyr` board, so `check-template-copy-out` cannot derive its build. |

@@ -11,6 +11,8 @@ found: 2026-09-28
 related: [0745, 1260, 1100, 1272, phase-426, phase-461]
 ---
 
+**Home: [phase-461](../roadmap/phase-461-service-inbox-per-family.md)** — homed 2026-10-17; the phase doc already tracks it in its body.
+
 ## What this is
 
 The C++ node facades (`rclcpp::Node::declare_parameter`, the node-scoped

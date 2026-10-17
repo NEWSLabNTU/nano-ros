@@ -519,3 +519,11 @@ link runs both ways). Listing one here records the link, not a claim that
 this phase will fix it.
 
 - [issue 0506](../issues/0506-transport-band-unbounded-preemption.md) — Transport tasks above application tiers is the right default but has no budget — inbound overload preempts every tier …
+
+## Issues homed here (2026-10-17)
+
+Homed when every open issue was given a phase. Each issue has a `**Home:**` line pointing here.
+
+| issue | why it belongs here |
+| --- | --- |
+| [#1374](../issues/1374-contract-cannot-express-qos-durability.md) | A contract's `qos:` carries only depth, so durability the code depends on is invisible to the contract, which is the vocabulary this phase brings on target. |

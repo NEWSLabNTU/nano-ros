@@ -9,6 +9,8 @@ rfcs: [0049]
 related: [0460, 0751, 1233, phase-478]
 ---
 
+**Home: [phase-478](../roadmap/phase-478-island-developer-experience-findings.md)** — homed 2026-10-17; the phase doc already tracks it in its body.
+
 # `check-kconfig-knob-forwarding` proves a knob is MENTIONED, not that it is a table row
 
 ## The measurement

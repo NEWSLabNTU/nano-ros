@@ -7,8 +7,10 @@ type: bug
 area: [ci, build, cli]
 severity: low
 found: 2026-10-07
-related: [1553, 1621]
+related: [1553, 1621, phase-505]
 ---
+
+**Home: [phase-505](../roadmap/phase-505-ci-lanes-reach-and-infra-robustness.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## Measured
 

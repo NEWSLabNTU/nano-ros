@@ -9,6 +9,8 @@ related: [phase-188, phase-452]
 found: 2026-09-06
 ---
 
+**Home: [phase-452](../roadmap/phase-452-copy-out-front-door.md)** — homed 2026-09-25; listed in that phase's table of the five issues it was opened for.
+
 # What is left of phase-188, rehomed
 
 Phase 188 ("Book front-door presentation") is **closed and archived**: 188.A

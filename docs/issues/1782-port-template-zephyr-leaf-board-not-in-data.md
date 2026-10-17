@@ -6,8 +6,10 @@ type: bug
 area: [examples, tooling]
 severity: low
 found: 2026-10-10
-related: [issue-1764, phase-482, issue-1296, issue-1308]
+related: [issue-1764, phase-482, issue-1296, issue-1308, phase-452]
 ---
+
+**Home: [phase-452](../roadmap/phase-452-copy-out-front-door.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## What was measured
 

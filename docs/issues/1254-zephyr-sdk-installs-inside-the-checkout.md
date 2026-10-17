@@ -9,6 +9,8 @@ severity: medium
 related: [issue-1248, phase-449, phase-478]
 ---
 
+**Home: [phase-449](../roadmap/phase-449-state-keyed-by-name-not-by-tree.md)** — homed 2026-10-17; the phase doc already tracks it in its body.
+
 ## Symptom
 
 A downstream project (Autoware Safety Island) whose Zephyr 4.4 workspace was

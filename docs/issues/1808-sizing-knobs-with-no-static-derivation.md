@@ -6,8 +6,10 @@ type: limitation
 area: [sizing, zephyr, memory]
 severity: low
 found: 2026-10-11
-related: [1036, 1120, 1140, 1010, 1702, 1728]
+related: [1036, 1120, 1140, 1010, 1702, 1728, phase-394]
 ---
+
+**Home: [phase-394](../roadmap/phase-394-memory-campaign-ledger.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## Measured
 

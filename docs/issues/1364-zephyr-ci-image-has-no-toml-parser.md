@@ -10,6 +10,8 @@ severity: medium
 related: [issue-0878, issue-1353, issue-1019, issue-1226, phase-466]
 ---
 
+**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-17; the phase doc already tracks it in its body.
+
 ## What happens
 
 `live-peer regression`, run **34737486682** (schedule, 2026-09-13T04:16), job

@@ -8,8 +8,10 @@ type: bug
 area: [build, ci, testing]
 severity: medium
 found: 2026-09-11
-related: [1217, 1155, 0287, 0957, 1146, 1315, phase-450, phase-451]
+related: [1217, 1155, 0287, 0957, 1146, 1315, phase-450, phase-451, phase-505]
 ---
+
+**Home: [phase-505](../roadmap/phase-505-ci-lanes-reach-and-infra-robustness.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## What
 

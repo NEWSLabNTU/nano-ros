@@ -6,8 +6,10 @@ type: tech-debt
 area: [testing, ci, build]
 severity: high
 found: 2026-10-09
-related: [584, 1161, 1685, 1718, 1454, 650, 1802, phase-497]
+related: [584, 1161, 1685, 1718, 1454, 650, 1802, phase-497, phase-466]
 ---
+
+**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## The rule
 

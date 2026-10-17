@@ -6,8 +6,10 @@ type: tech-debt
 area: [cli, testing]
 severity: low
 found: 2026-10-12
-related: [phase-440, rfc-0095, phase-447, 0182]
+related: [phase-440, rfc-0095, phase-447, 0182, phase-449]
 ---
+
+**Home: [phase-449](../roadmap/phase-449-state-keyed-by-name-not-by-tree.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## What is left
 

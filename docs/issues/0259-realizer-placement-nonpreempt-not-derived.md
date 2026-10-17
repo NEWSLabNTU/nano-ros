@@ -4,10 +4,10 @@ title: "Derived scheduling is quantitatively inert — no WCET in the model, so 
 status: open
 type: limitation
 area: orchestration
-related: [phase-296, rfc-0052, 0403, 0404, phase-357]
+related: [phase-296, rfc-0052, 0403, 0404, phase-357, phase-460]
 ---
 
-**Home: this issue, since 2026-10-14.** It owns what is left of
+**Home: [phase-460](../roadmap/phase-460-formal-checks-on-the-contract-chain.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)". From 2026-10-14 to then, this issue was its own home. It owns what is left of
 [phase-357](../roadmap/archived/phase-357-wcet-as-declared-data.md) W2. That
 phase is archived with W1 (RFC-0078, `wcet.rs`) and W3 (issue 0519) done. Of
 W2, `budget`/`B_i`, feasibility, utilisation and the performance half of

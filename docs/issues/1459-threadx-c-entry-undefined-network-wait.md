@@ -8,8 +8,10 @@ type: bug
 area: [boards, threadx, testing]
 severity: high
 found: 2026-09-22
-related: [1355]
+related: [1355, phase-466]
 ---
+
+**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## What happens
 
