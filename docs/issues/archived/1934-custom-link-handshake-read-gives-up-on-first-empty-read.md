@@ -1,13 +1,17 @@
 ---
 id: 1934
 title: "The zenoh-pico custom link's handshake read gives up at the first empty read, so a custom-transport session fails to open whenever the router answers late"
-status: open
+status: resolved
 type: bug
 area: [rmw, zenoh, transport, testing]
 severity: medium
 found: 2026-10-17
 related: [1932]
 ---
+
+## Resolution (2026-10-17)
+
+Fork commit `3248995b` pushed to zenoh-pico's `nano-ros` branch and pinned by PR #2324. Verified on main: run-matrix 38980380118 (`workflow_dispatch`, main `be26a55b`), `tier 1 (cells)` on newslab-server-241 — the busy runner it failed on — passed, including `custom_transport_loopback`.
 
 ## Measured
 

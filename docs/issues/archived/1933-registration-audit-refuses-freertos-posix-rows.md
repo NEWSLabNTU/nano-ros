@@ -1,13 +1,17 @@
 ---
 id: 1933
 title: "The registration audit now asks every non-linux row for a baked locator, and the two freertos-posix workspace rows bake none, so tier 2 fails on main"
-status: open
+status: resolved
 type: bug
 area: [testing, ci]
 severity: medium
 found: 2026-10-16
 related: [1793, 1819, 1581, 1865]
 ---
+
+## Resolution (2026-10-17)
+
+Fixed by PR #2323. Verified on main: run-matrix 38980380118 (`workflow_dispatch`, main `be26a55b`), `tier 2 (1-wise matrix)` on newslab-118-server passed its cells, including `rmw_coordinate_truth a_rows_entry_registers_its_nodes_at_runtime`.
 
 ## Measured
 

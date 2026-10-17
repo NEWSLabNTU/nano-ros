@@ -827,7 +827,20 @@ would let a gate report a verdict about a tree it never looked at — the
 "a gate may only assert on what it examined" rule. They stay.
 
 The CI second-run time per lane (two runs of each lane on the same
-self-hosted runner) is blocked on free runners and still unmeasured.
+self-hosted runner) is still not measured as a NO-CHANGE re-run: the runners
+took jobs again on 2026-10-16, but `run-matrix` cannot pick its runner and
+main moved between every pair of runs, so each later build is incremental
+over real source changes. What the persistent tree gives on CI so far (all
+runs on main, each lane on the runner it landed on):
+
+| lane / runner | 2026-10-16 05:35Z | 16:37Z | 2026-10-17 (38980380118) |
+| --- | --- | --- | --- |
+| `just build tier2`, newslab-118-server | 1526 s | 1170 s | 723 s |
+| `just build tier1`, newslab-server-241 | 4611 s | 4790 s | 3396 s |
+
+38980380118 is the first run-matrix run green on both tiers since
+2026-10-14 (issues 1933, 1934 fixed on the way). tier 1 stays on 241, which
+is W7's slow runner.
 
 ### W7 — find out why `newslab-server-241` is 2–5× slower
 
