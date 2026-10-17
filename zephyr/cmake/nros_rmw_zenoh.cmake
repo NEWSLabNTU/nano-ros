@@ -415,9 +415,22 @@ if(DEFINED NROS_RESOLVED_NROS_ZENOH_RX_TASK_BUDGET_FRAMES AND
             "frames is not \"unbounded\". Use -1 (the default) for an unbounded read "
             "task, or state at least 1 frame (RFC-0074).")
     endif()
+    # phase-462 W6b -- REST_US defaults to the `-1` DERIVE sentinel, so a
+    # frame budget stated with no rest (and none derived) leaves it
+    # unresolved; 1000 us is the same builtin `nros-zpico-build` uses.
+    set(_nros_rx_rest_us 1000)
+    if("${NROS_RESOLVED_NROS_ZENOH_RX_TASK_BUDGET_REST_US}" STREQUAL "0")
+        message(FATAL_ERROR
+            "nros: NROS_ZENOH_RX_TASK_BUDGET_REST_US = 0 with a frame budget is "
+            "refused: a budget that never rests bounds nothing (RFC-0074).")
+    endif()
+    if(DEFINED NROS_RESOLVED_NROS_ZENOH_RX_TASK_BUDGET_REST_US AND
+       NROS_RESOLVED_NROS_ZENOH_RX_TASK_BUDGET_REST_US GREATER 0)
+        set(_nros_rx_rest_us "${NROS_RESOLVED_NROS_ZENOH_RX_TASK_BUDGET_REST_US}")
+    endif()
     zephyr_compile_definitions(
         Z_RX_TASK_BUDGET_FRAMES=${NROS_RESOLVED_NROS_ZENOH_RX_TASK_BUDGET_FRAMES}
-        Z_RX_TASK_BUDGET_REST_US=${NROS_RESOLVED_NROS_ZENOH_RX_TASK_BUDGET_REST_US})
+        Z_RX_TASK_BUDGET_REST_US=${_nros_rx_rest_us})
 endif()
 
 # Issue 0626 — the read/lease task priority, normalized 0-31.

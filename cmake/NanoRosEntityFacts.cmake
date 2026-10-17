@@ -304,6 +304,13 @@ function(_nros_entity_budget_env _out_var)
     # 1024. So this list is EMPTY: every entity count this function carried is
     # a descriptor field now. The function stays as the one place a future
     # carrier would be produced, and returns nothing.
+    #
+    # The zenoh read-task budget (phase-462 W6b) is not carried on this road
+    # either, and was never added to it: the sizing descriptor states it
+    # (`[image] rx_task_budget_frames` / `_rest_us`, from the SAME `derive`)
+    # and `nros-zpico-build` reads it there, below every stated rung. A
+    # carrier delivering it beside the descriptor would be the 0460/0491 shape
+    # this list was emptied to end.
     set(${_out_var} "${_out}" PARENT_SCOPE)
 endfunction()
 

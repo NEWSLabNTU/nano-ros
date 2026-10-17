@@ -254,6 +254,23 @@ _RETIRED_INBOX = NotCarried(
     "retired onto the sizing descriptor (issue 1649): `nros-rmw-zenoh` reads "
     "`declared_service_request_bytes` first, and only")
 
+# phase-462 W6b -- the zenoh read-task budget rides the sizing descriptor
+# (`[image] rx_task_budget_*`), not a cargo `[env]` key: it is a wire knob, and
+# an env row would outrank a board's stated value. Quoted from the leaf, where
+# that decision is written.
+_RX_BUDGET_SIDECAR = NotCarried(
+    _LEAF,
+    "the zenoh read task's frame budget is NOT a",
+    "a wire knob resolves env-first, so a sidecar row would outrank a "
+    "board's `[knobs.zenoh.wire]` value; the leaf names its sizing "
+    "descriptor, whose `[image] rx_task_budget_*` `nros-zpico-build` reads "
+    "below every stated rung")
+_RX_BUDGET_DECLARED = NotCarried(
+    _FACTS,
+    "The zenoh read-task budget (phase-462 W6b) is not carried on this road",
+    "the sizing descriptor's `[image] rx_task_budget_frames` / "
+    "`rx_task_budget_rest_us` carry it, read by `nros-zpico-build`")
+
 FACT_DISPOSITION = {
     # ---- the entity inventory's counts -----------------------------------
     "NROS_DERIVED_EXECUTOR_MAX_CBS": {
@@ -363,6 +380,20 @@ FACT_DISPOSITION = {
         "resolver": ("NROS_RESOLVED_NROS_EXECUTOR_MAX_AGE_MONITORS",),
         "sidecar": ("NROS_EXECUTOR_MAX_AGE_MONITORS",),
         "declared": _RETIRED_ONTO_DESCRIPTOR,
+    },
+    # phase-462 W6b (RFC-0074) -- the zenoh read task's frame budget, from
+    # the subscriber with the largest declared `ingress`. The Zephyr resolver
+    # carries it; every cargo road reads it off the sizing descriptor. Absent
+    # leaves the task unbounded.
+    "NROS_DERIVED_ZENOH_RX_TASK_BUDGET_FRAMES": {
+        "resolver": ("NROS_RESOLVED_NROS_ZENOH_RX_TASK_BUDGET_FRAMES",),
+        "sidecar": _RX_BUDGET_SIDECAR,
+        "declared": _RX_BUDGET_DECLARED,
+    },
+    "NROS_DERIVED_ZENOH_RX_TASK_BUDGET_REST_US": {
+        "resolver": ("NROS_RESOLVED_NROS_ZENOH_RX_TASK_BUDGET_REST_US",),
+        "sidecar": _RX_BUDGET_SIDECAR,
+        "declared": _RX_BUDGET_DECLARED,
     },
     # ---- the message-bound inventory's sizes -----------------------------
     "NROS_DERIVED_SUBSCRIBER_BUFFER_SIZE": {

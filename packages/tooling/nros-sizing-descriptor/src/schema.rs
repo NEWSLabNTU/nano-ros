@@ -616,6 +616,8 @@ pub struct Image {
     sched_context_count: Option<usize>,
     monitor_rows: Option<usize>,
     age_monitor_rows: Option<usize>,
+    rx_task_budget_frames: Option<usize>,
+    rx_task_budget_rest_us: Option<usize>,
     cell_entities: Option<usize>,
     service_server_queryables: Option<usize>,
     entity_liveliness_tokens: Option<usize>,
@@ -643,6 +645,8 @@ impl Image {
         "sched_context_count",
         "monitor_rows",
         "age_monitor_rows",
+        "rx_task_budget_frames",
+        "rx_task_budget_rest_us",
         "cell_entities",
         "service_server_queryables",
         "entity_liveliness_tokens",
@@ -806,6 +810,32 @@ impl Image {
         fact(&self.age_monitor_rows, "age_monitor_rows", &self.refused)
     }
 
+    /// phase-462 W6b (RFC-0074) — the zenoh read task's frame budget,
+    /// `NROS_ZENOH_RX_TASK_BUDGET_FRAMES`: the `burst` of the subscriber whose
+    /// declared `ingress` has the largest `rate_hz x burst`. Stated only with
+    /// [`Self::rx_task_budget_rest_us`]; refused when no subscriber declares
+    /// ingress, which every consumer reads as "no budget" -- an unbounded read
+    /// task, the same answer as no descriptor at all.
+    pub fn rx_task_budget_frames(&self) -> Fact<usize> {
+        fact(
+            &self.rx_task_budget_frames,
+            "rx_task_budget_frames",
+            &self.refused,
+        )
+    }
+
+    /// phase-462 W6b — the rest after a full frame budget, in us,
+    /// `NROS_ZENOH_RX_TASK_BUDGET_REST_US`: `burst x 10^6 / rate_hz` of the
+    /// same subscriber (RFC-0074 with the per-frame board cost taken as 0),
+    /// clamped to `1..=1_000_000`. Meaningful only beside its frame count.
+    pub fn rx_task_budget_rest_us(&self) -> Fact<usize> {
+        fact(
+            &self.rx_task_budget_rest_us,
+            "rx_task_budget_rest_us",
+            &self.refused,
+        )
+    }
+
     /// Issue 1655 — The largest per-component entity count — `max_cell_entities`. A max
     /// over COMPONENTS, and `[[endpoint]]` rows carry no component, so no
     /// consumer can recompute it from the table.
@@ -964,6 +994,11 @@ impl Image {
         self.age_monitor_rows = v;
         self
     }
+    pub fn set_rx_task_budget(&mut self, frames: usize, rest_us: usize) -> &mut Self {
+        self.rx_task_budget_frames = Some(frames);
+        self.rx_task_budget_rest_us = Some(rest_us);
+        self
+    }
     pub fn set_cell_entities(&mut self, v: Option<usize>) -> &mut Self {
         self.cell_entities = v;
         self
@@ -1016,6 +1051,8 @@ impl Image {
             "sched_context_count" => self.sched_context_count?.to_string(),
             "monitor_rows" => self.monitor_rows?.to_string(),
             "age_monitor_rows" => self.age_monitor_rows?.to_string(),
+            "rx_task_budget_frames" => self.rx_task_budget_frames?.to_string(),
+            "rx_task_budget_rest_us" => self.rx_task_budget_rest_us?.to_string(),
             "cell_entities" => self.cell_entities?.to_string(),
             "service_server_queryables" => self.service_server_queryables?.to_string(),
             "entity_liveliness_tokens" => self.entity_liveliness_tokens?.to_string(),
@@ -1065,6 +1102,14 @@ impl Image {
                 ("sched_context_count", self.sched_context_count.is_some()),
                 ("monitor_rows", self.monitor_rows.is_some()),
                 ("age_monitor_rows", self.age_monitor_rows.is_some()),
+                (
+                    "rx_task_budget_frames",
+                    self.rx_task_budget_frames.is_some(),
+                ),
+                (
+                    "rx_task_budget_rest_us",
+                    self.rx_task_budget_rest_us.is_some(),
+                ),
                 ("cell_entities", self.cell_entities.is_some()),
                 (
                     "service_server_queryables",

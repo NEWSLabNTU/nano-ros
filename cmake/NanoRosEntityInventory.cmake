@@ -474,6 +474,8 @@ function(nros_derive_entity_inventory_knobs)
                NROS_DERIVED_MAX_PUBLISHERS NROS_DERIVED_MAX_QUERYABLES
                NROS_DERIVED_EXECUTOR_MAX_NODES NROS_DERIVED_EXECUTOR_MAX_SC
                NROS_DERIVED_EXECUTOR_MAX_MONITORS NROS_DERIVED_EXECUTOR_MAX_AGE_MONITORS
+               NROS_DERIVED_ZENOH_RX_TASK_BUDGET_FRAMES
+               NROS_DERIVED_ZENOH_RX_TASK_BUDGET_REST_US
                NROS_DERIVED_MAX_LIVELINESS NROS_DERIVED_RUNTIME_MAX_CELL_ENTITIES
                NROS_DERIVED_RMW_LOCAL_QUERYABLE
                NROS_ENTITY_APP_QUERYABLES NROS_DERIVED_TL_PUBLISHERS
@@ -729,6 +731,10 @@ function(nros_derive_entity_inventory_knobs)
                   # phase-496 W1 -- the contract-monitor tables, present only
                   # when the fragment was composed with a model.
                   NROS_DERIVED_EXECUTOR_MAX_MONITORS NROS_DERIVED_EXECUTOR_MAX_AGE_MONITORS
+                  # phase-462 W6b -- the zenoh read-task budget, present only
+                  # when a subscriber in the model declared ingress.
+                  NROS_DERIVED_ZENOH_RX_TASK_BUDGET_FRAMES
+                  NROS_DERIVED_ZENOH_RX_TASK_BUDGET_REST_US
                   NROS_DERIVED_MAX_LIVELINESS NROS_DERIVED_RUNTIME_MAX_CELL_ENTITIES
                   # Issue 1549 -- same-session queries, a 0/1 over the same
                   # declaration: on when a client and a server share the image.
@@ -910,6 +916,8 @@ if(CMAKE_SCRIPT_MODE_FILE AND
         NROS_DERIVED_EXECUTOR_MAX_SC
         NROS_DERIVED_EXECUTOR_MAX_MONITORS
         NROS_DERIVED_EXECUTOR_MAX_AGE_MONITORS
+        NROS_DERIVED_ZENOH_RX_TASK_BUDGET_FRAMES
+        NROS_DERIVED_ZENOH_RX_TASK_BUDGET_REST_US
         # phase-412 W2 / issue 1130 -- the liveliness pool and the cell
         # registry bound. Listed here because this dump IS the module's own
         # diagnostic surface and the one `tests/cmake-entity-inventory-tests.sh`

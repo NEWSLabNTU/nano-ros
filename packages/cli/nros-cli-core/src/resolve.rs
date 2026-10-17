@@ -365,6 +365,12 @@ impl Resolved {
                     rows.push(("max_monitors", r));
                     rows.push(("max_age_monitors", a));
                 }
+                // phase-462 W6b -- the read-task budget, only when a
+                // subscriber declared ingress; absent keeps the task unbounded.
+                if let Some(b) = k.rx_task_budget {
+                    rows.push(("rx_task_budget_frames", b.frames));
+                    rows.push(("rx_task_budget_rest_us", b.rest_us));
+                }
                 rows
             }
         }
@@ -474,6 +480,20 @@ impl Resolved {
                 s.push_str("[runtime]\n");
                 let _ = writeln!(s, "max_cell_entities = {}", k.max_cell_entities);
                 s.push('\n');
+
+                // phase-462 W6b -- the zenoh read task's frame budget, only
+                // when a subscriber declared ingress (RFC-0074).
+                if let Some(b) = k.rx_task_budget {
+                    s.push_str(
+                        "# The zenoh read task's frame budget (RFC-0074): FRAMES = burst,\n\
+                         # REST_US = burst x 10^6 / rate_hz of the subscriber with the\n\
+                         # largest declared rate_hz x burst (per-frame board cost taken as 0).\n",
+                    );
+                    s.push_str("[zenoh]\n");
+                    let _ = writeln!(s, "rx_task_budget_frames = {}", b.frames);
+                    let _ = writeln!(s, "rx_task_budget_rest_us = {}", b.rest_us);
+                    s.push('\n');
+                }
 
                 s.push_str("[entities]\n");
                 for (kind, n) in &self.per_kind {
@@ -865,6 +885,35 @@ mod tests {
         assert!(toml.contains("max_age_monitors = 0\n"), "{toml}");
     }
 
+    /// phase-462 W6b -- the read-task budget, which only a declared ingress
+    /// states, travels on both transports with the same numbers.
+    #[test]
+    fn resolved_toml_and_cmake_agree_on_the_read_task_budget() {
+        let mut inv = inventory(&["sub:std_msgs/msg/String", "timer"]);
+        let r = Resolved::compose(ident(), &inv);
+        assert!(!r.to_toml().contains("rx_task_budget"));
+        inv.set_rx_task_budget(Some(crate::entity_inventory::RxTaskBudget {
+            frames: 4,
+            rest_us: 20_000,
+        }));
+        let r = Resolved::compose(ident(), &inv);
+        let rows: BTreeMap<&str, usize> = r.value_rows().into_iter().collect();
+        assert_eq!(rows.get("rx_task_budget_frames"), Some(&4));
+        assert_eq!(rows.get("rx_task_budget_rest_us"), Some(&20_000));
+        let cmake = inv.to_cmake();
+        assert!(
+            cmake.contains("set(NROS_DERIVED_ZENOH_RX_TASK_BUDGET_FRAMES 4)\n"),
+            "{cmake}"
+        );
+        assert!(
+            cmake.contains("set(NROS_DERIVED_ZENOH_RX_TASK_BUDGET_REST_US 20000)\n"),
+            "{cmake}"
+        );
+        let toml = r.to_toml();
+        assert!(toml.contains("rx_task_budget_frames = 4\n"), "{toml}");
+        assert!(toml.contains("rx_task_budget_rest_us = 20000\n"), "{toml}");
+    }
+
     #[test]
     fn resolved_toml_and_cmake_agree() {
         let inv = inventory(&[
@@ -883,6 +932,14 @@ mod tests {
             ("max_sc", "NROS_DERIVED_EXECUTOR_MAX_SC"),
             ("max_monitors", "NROS_DERIVED_EXECUTOR_MAX_MONITORS"),
             ("max_age_monitors", "NROS_DERIVED_EXECUTOR_MAX_AGE_MONITORS"),
+            (
+                "rx_task_budget_frames",
+                "NROS_DERIVED_ZENOH_RX_TASK_BUDGET_FRAMES",
+            ),
+            (
+                "rx_task_budget_rest_us",
+                "NROS_DERIVED_ZENOH_RX_TASK_BUDGET_REST_US",
+            ),
             ("max_subscribers", "NROS_DERIVED_MAX_SUBSCRIBERS"),
             ("rmw_subscriber_slots", "NROS_DERIVED_RMW_SUBSCRIBER_SLOTS"),
             ("max_publishers", "NROS_DERIVED_MAX_PUBLISHERS"),
@@ -896,10 +953,12 @@ mod tests {
         let rows: BTreeMap<&str, usize> = r.value_rows().into_iter().collect();
         for (toml_key, cmake_var) in pairs {
             // phase-496 W1 -- the monitor rows are stated only with a model;
-            // `resolved_toml_and_cmake_agree_on_monitor_rows` covers them.
+            // `resolved_toml_and_cmake_agree_on_monitor_rows` covers them,
+            // and phase-462 W6b's budget, stated only with a declared ingress,
+            // `resolved_toml_and_cmake_agree_on_the_read_task_budget`.
             let Some(&v) = rows.get(toml_key) else {
                 assert!(
-                    toml_key.contains("monitors"),
+                    toml_key.contains("monitors") || toml_key.starts_with("rx_task_budget"),
                     "`{toml_key}` is missing from value_rows"
                 );
                 assert!(

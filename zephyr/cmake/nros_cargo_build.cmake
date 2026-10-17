@@ -1083,12 +1083,20 @@ function(nros_resolve_knobs)
         _nros_resolve_knob(NROS_ZENOH_MAX_PENDING_GETS "${CONFIG_NROS_MAX_PENDING_GETS}")
         _nros_resolve_knob(NROS_ZENOH_GET_REPLY_BUF_SIZE "${CONFIG_NROS_GET_REPLY_BUF_SIZE}")
         _nros_resolve_knob(NROS_ZENOH_GET_POLL_INTERVAL_MS "${CONFIG_NROS_GET_POLL_INTERVAL_MS}")
-        # RFC-0074 / phase-462 W6a -- the read task's frame budget. -1 (the
-        # Kconfig default) states nothing: the cargo ladder parses it as no
-        # value and the C lane below bakes no define, so the task stays
-        # unbounded on both halves.
-        _nros_resolve_knob(NROS_ZENOH_RX_TASK_BUDGET_FRAMES "${CONFIG_NROS_ZENOH_RX_TASK_BUDGET_FRAMES}")
-        _nros_resolve_knob(NROS_ZENOH_RX_TASK_BUDGET_REST_US "${CONFIG_NROS_ZENOH_RX_TASK_BUDGET_REST_US}")
+        # RFC-0074 / phase-462 W6a/W6b -- the read task's frame budget, on the
+        # derivable ladder: a stated env / Kconfig value wins, else the pair
+        # the entity inventory derived from the contract's declared subscriber
+        # `ingress` (W6b), else NOTHING is resolved (rung 4). Both Kconfig
+        # defaults are the `-1` DERIVE sentinel, so -1 means "not stated":
+        # with no ingress declared neither knob reaches cargo, the C lane in
+        # nros_rmw_zenoh.cmake bakes no define, and the task stays unbounded on
+        # both halves -- byte-identical to an image that never heard of it.
+        _nros_resolve_derivable_knob(NROS_ZENOH_RX_TASK_BUDGET_FRAMES
+            "${CONFIG_NROS_ZENOH_RX_TASK_BUDGET_FRAMES}" NROS_DERIVED_ZENOH_RX_TASK_BUDGET_FRAMES
+            "entity inventory" "${CMAKE_BINARY_DIR}/nros/entity_inventory.cmake")
+        _nros_resolve_derivable_knob(NROS_ZENOH_RX_TASK_BUDGET_REST_US
+            "${CONFIG_NROS_ZENOH_RX_TASK_BUDGET_REST_US}" NROS_DERIVED_ZENOH_RX_TASK_BUDGET_REST_US
+            "entity inventory" "${CMAKE_BINARY_DIR}/nros/entity_inventory.cmake")
         _nros_resolve_knob(NROS_ZENOH_FRAG_MAX_SIZE "${CONFIG_NROS_FRAG_MAX_SIZE}")
         _nros_resolve_knob(NROS_ZENOH_BATCH_UNICAST_SIZE "${CONFIG_NROS_BATCH_UNICAST_SIZE}")
 

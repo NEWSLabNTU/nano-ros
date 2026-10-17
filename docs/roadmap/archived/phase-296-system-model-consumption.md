@@ -1146,5 +1146,5 @@ holds the evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#0760](../../issues/0760-ingress-declaration-schema-belongs-to-ros-launch-manifest.md) | RFC-0074's `ingress` declaration is a ros-launch-manifest schema change, not a nano-ros one — it gates what the model can carry — **re-homed to [phase-462](../phase-462-safety-vocabulary-on-target.md) 2026-10-12** |
+| [#0760](../../issues/archived/0760-ingress-declaration-schema-belongs-to-ros-launch-manifest.md) | RFC-0074's `ingress` declaration is a ros-launch-manifest schema change, not a nano-ros one — it gates what the model can carry — **re-homed to [phase-462](../phase-462-safety-vocabulary-on-target.md) 2026-10-12** |
 

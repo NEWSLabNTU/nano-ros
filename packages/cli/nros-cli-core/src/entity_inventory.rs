@@ -810,6 +810,12 @@ pub struct EntityInventory {
     /// that saw no model (a probe): no model means no count, never zero, and
     /// the crate default then stands.
     monitor_rows: Option<(usize, usize)>,
+    /// phase-462 W6b -- the zenoh read-task budget the contract's declared
+    /// subscriber INGRESS implies ([`RxTaskBudget::from_model`]). `None` when
+    /// no subscriber declares one, or for an inventory that saw no model: no
+    /// declaration means no budget, never a guessed one, and the read task
+    /// stays unbounded.
+    rx_task_budget: Option<RxTaskBudget>,
     /// Issue 1694 -- the components the model's LAUNCH TREE starts
     /// (`structure.nodes`, by node name and by `exec`), whether or not its
     /// contract describes them. `None` for an inventory that saw no model.
@@ -847,7 +853,107 @@ pub struct ImageFrame {
     infra: InfraServices,
     tiers: usize,
     monitor_rows: Option<(usize, usize)>,
+    rx_task_budget: Option<RxTaskBudget>,
     launched: std::collections::BTreeSet<String>,
+}
+
+/// phase-462 W6b (RFC-0074) -- a frame budget on zenoh-pico's unicast read
+/// task, DERIVED from a subscriber's declared ingress: at most `frames` frames
+/// back to back, then a `rest_us` sleep. The two numbers the W6a knobs
+/// `NROS_ZENOH_RX_TASK_BUDGET_FRAMES` / `_REST_US` carry.
+///
+/// RFC-0074's rule is `FRAMES = burst` and `REST = burst x (10^6/rate_hz -
+/// c_us)`, where `c` is the per-frame processing cost on the board. No board
+/// states `c` yet, so this takes `c = 0`: `REST = burst x 10^6 / rate_hz`.
+/// The admitted rate is `frames x 10^6 / (rest + frames x c)`, so at `c = 0`
+/// the budget's nominal rate (the declared one) is an UPPER bound of what a
+/// real board admits: each burst also costs `frames x c`, the task
+/// under-admits by the per-frame cost, and the excess waits in the socket
+/// (TCP backpressure), never dropped. The per-board `c` and the slack check
+/// against the tightest tier are phase-462 follow-up work.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RxTaskBudget {
+    pub frames: usize,
+    pub rest_us: usize,
+}
+
+impl RxTaskBudget {
+    /// `CONFIG_NROS_ZENOH_RX_TASK_BUDGET_FRAMES`'s Kconfig ceiling.
+    pub const FRAMES_MAX: usize = 65_535;
+    /// `CONFIG_NROS_ZENOH_RX_TASK_BUDGET_REST_US`'s Kconfig range.
+    pub const REST_US_MIN: usize = 1;
+    pub const REST_US_MAX: usize = 1_000_000;
+
+    /// The budget one declared `ingress: { rate_hz, burst }` implies.
+    ///
+    /// `None` for an ingress no budget can express (a non-finite or
+    /// non-positive rate, a zero burst -- the contract crate refuses both, so
+    /// this is defence, not a second rule). Both numbers are CLAMPED into the
+    /// knobs' Kconfig ranges rather than refused: a rest past 1 s
+    /// (`burst x 10^6 / rate_hz > 10^6`, i.e. a rate below `burst` Hz) rests
+    /// 1 s and admits MORE than declared, which a slow declared source cannot
+    /// exploit; a rest below 1 us rests 1 us.
+    pub fn from_ingress(rate_hz: f64, burst: u32) -> Option<Self> {
+        if !rate_hz.is_finite() || rate_hz <= 0.0 || burst == 0 {
+            return None;
+        }
+        let rest = (f64::from(burst) * 1e6 / rate_hz).round();
+        let rest_us = if rest >= Self::REST_US_MAX as f64 {
+            Self::REST_US_MAX
+        } else {
+            (rest as usize).max(Self::REST_US_MIN)
+        };
+        Some(Self {
+            frames: (burst as usize).min(Self::FRAMES_MAX),
+            rest_us,
+        })
+    }
+
+    /// The budget a model's contract implies: from the subscriber whose
+    /// declared `rate_hz x burst` is LARGEST (ties keep the first endpoint in
+    /// key order). One read task drains every subscriber, so it is sized for
+    /// the heaviest declared source. `None` when no subscriber declares
+    /// ingress -- the image then states nothing and is byte-identical.
+    pub fn from_model(model: &ros_launch_manifest_model::SystemModel) -> Option<Self> {
+        model
+            .contracts
+            .sub_endpoints
+            .values()
+            .filter_map(|c| c.ingress)
+            .filter(|i| i.rate_hz.is_finite() && i.rate_hz > 0.0 && i.burst > 0)
+            .fold(
+                None::<ros_launch_manifest_model::IngressContract>,
+                |best, i| match best {
+                    Some(b) if b.rate_hz * f64::from(b.burst) >= i.rate_hz * f64::from(i.burst) => {
+                        Some(b)
+                    }
+                    _ => Some(i),
+                },
+            )
+            .and_then(|i| Self::from_ingress(i.rate_hz, i.burst))
+    }
+
+    /// The `rate x burst` this budget implies, with the admitted rate read
+    /// back as `frames x 10^6 / rest_us` -- the merge key, since a merged
+    /// budget no longer carries the declaration it came from.
+    fn implied_load(&self) -> f64 {
+        let frames = self.frames as f64;
+        frames * frames * 1e6 / self.rest_us as f64
+    }
+
+    /// The larger of two budgets by [`Self::implied_load`]; either side's
+    /// when only one states one. Keeps the PAIR whole: mixing one image's
+    /// frames with another's rest would be a budget nobody declared.
+    pub fn larger(a: Option<Self>, b: Option<Self>) -> Option<Self> {
+        match (a, b) {
+            (Some(x), Some(y)) => Some(if y.implied_load() > x.implied_load() {
+                y
+            } else {
+                x
+            }),
+            (one, other) => one.or(other),
+        }
+    }
 }
 
 impl ImageFrame {
@@ -874,6 +980,9 @@ impl ImageFrame {
                 (Ok(rows), Ok(ages)) => Some((rows.len(), ages.len())),
                 _ => None,
             },
+            // phase-462 W6b -- the read-task budget, from the subscribers'
+            // declared ingress; `None` when none declares one.
+            rx_task_budget: RxTaskBudget::from_model(model),
             // Issue 1694 -- what the launch tree STARTS, described or not. Both
             // spellings of a node, because the two declaration-side producers
             // key differently: `from_model` and the probe road key by node
@@ -1413,6 +1522,13 @@ pub struct DerivedEntityKnobs {
     /// it is a separate table: the Autoware Safety Island carries 14 rate rows
     /// and 0 age rows.
     pub max_age_monitors: Option<usize>,
+    /// `NROS_ZENOH_RX_TASK_BUDGET_FRAMES` / `NROS_ZENOH_RX_TASK_BUDGET_REST_US`
+    /// -- the zenoh read task's frame budget (phase-462 W6b, RFC-0074), from
+    /// the subscriber with the largest declared `rate_hz x burst`. `None` when
+    /// no subscriber declares ingress: neither knob is derived and the task
+    /// stays unbounded. A DEFAULT like every other derived value -- a stated
+    /// knob wins. See [`RxTaskBudget`] for the `c = 0` caveat.
+    pub rx_task_budget: Option<RxTaskBudget>,
     /// The TRANSIENT_LOCAL publishers this image declares -- the size of
     /// `nros-rmw-zenoh`'s retention pool (`MAX_TL_PUBLISHERS`), and the same
     /// count [`Self::max_queryables`] already adds one cache queryable per.
@@ -1524,6 +1640,13 @@ impl DerivedEntityKnobs {
             max_sc: m(|k| k.max_sc),
             max_monitors: opt_max(|k| k.max_monitors),
             max_age_monitors: opt_max(|k| k.max_age_monitors),
+            // phase-462 W6b -- the heaviest declared budget of any image, kept
+            // as a PAIR. Not `None`-if-any like the monitor tables: a shared
+            // runtime links ONE zenoh-pico, so the image that declares an
+            // ingress decides its read task for the images that declare none.
+            rx_task_budget: per_image
+                .iter()
+                .fold(None, |acc, k| RxTaskBudget::larger(acc, k.rx_task_budget)),
             tl_publishers: tl,
             tl_slots: m(|k| k.tl_slots),
             per_kind,
@@ -2568,6 +2691,7 @@ impl EntityInventory {
             params: ParamDeclarations::Absent,
             tiers: 0,
             monitor_rows: None,
+            rx_task_budget: None,
             launched: None,
             image_views: Vec::new(),
         }
@@ -2637,6 +2761,18 @@ impl EntityInventory {
     /// given, `None` when it saw no model.
     pub fn monitor_rows(&self) -> Option<(usize, usize)> {
         self.monitor_rows
+    }
+
+    /// phase-462 W6b -- state the read-task budget for an inventory whose
+    /// model arrives by some road other than [`Self::from_model`].
+    pub fn set_rx_task_budget(&mut self, budget: Option<RxTaskBudget>) {
+        self.rx_task_budget = budget;
+    }
+
+    /// phase-462 W6b -- the read-task budget the model's declared ingress
+    /// implies, `None` when nothing declared one (or no model was seen).
+    pub fn rx_task_budget(&self) -> Option<RxTaskBudget> {
+        self.rx_task_budget
     }
 
     /// Issue 1676 -- the `/diagnostics` publishers a contracted image's
@@ -3301,6 +3437,7 @@ impl EntityInventory {
         self.infra = f.infra;
         self.tiers = f.tiers;
         self.monitor_rows = f.monitor_rows;
+        self.rx_task_budget = f.rx_task_budget;
         self.launched = Some(f.launched.clone());
     }
 
@@ -3412,6 +3549,9 @@ impl EntityInventory {
             (Some((r0, a0)), Some((r1, a1))) => Some((r0.max(r1), a0.max(a1))),
             (one, other) => one.or(other),
         };
+        // phase-462 W6b -- the model's alone as well; the heavier of the two
+        // when both sides saw one.
+        out.rx_task_budget = RxTaskBudget::larger(self.rx_task_budget, model.rx_task_budget);
         // Issue 1694 -- the launch tree's own answer, from whichever side saw a
         // model (both, in a several-image fold).
         let launched: Option<std::collections::BTreeSet<String>> =
@@ -3811,6 +3951,8 @@ impl EntityInventory {
         // phase-496 W1 -- the two monitor tables, straight from the counts.
         let max_monitors = self.monitor_rows.map(|(rows, _)| rows);
         let max_age_monitors = self.monitor_rows.map(|(_, ages)| ages);
+        // phase-462 W6b -- the read-task budget, straight from the contract.
+        let rx_task_budget = self.rx_task_budget;
 
         // phase-412 W2 -- the liveliness pool. Terms and their call sites are
         // on the field; every one is a count this derivation already made.
@@ -3876,6 +4018,7 @@ impl EntityInventory {
             max_sc,
             max_monitors,
             max_age_monitors,
+            rx_task_budget,
             tl_publishers,
             tl_slots: tl_queryables,
             per_kind,
@@ -5073,6 +5216,25 @@ impl EntityInventory {
                         "set(NROS_DERIVED_EXECUTOR_MAX_AGE_MONITORS {ages})\n"
                     ));
                 }
+                // phase-462 W6b -- the read-task budget, only when a subscriber
+                // declared ingress: absent keeps the task unbounded.
+                if let Some(b) = k.rx_task_budget {
+                    s.push_str(
+                        "# zenoh read-task budget (RFC-0074): FRAMES = burst and\n\
+                         # REST_US = burst x 10^6 / rate_hz of the subscriber with the\n\
+                         # largest declared rate_hz x burst. The per-frame board cost c\n\
+                         # is taken as 0 (no board states it yet), so the task admits\n\
+                         # slightly LESS than declared. Clamped to the Kconfig ranges.\n",
+                    );
+                    s.push_str(&format!(
+                        "set(NROS_DERIVED_ZENOH_RX_TASK_BUDGET_FRAMES {})\n",
+                        b.frames
+                    ));
+                    s.push_str(&format!(
+                        "set(NROS_DERIVED_ZENOH_RX_TASK_BUDGET_REST_US {})\n",
+                        b.rest_us
+                    ));
+                }
             }
         }
 
@@ -6080,6 +6242,124 @@ mod tests {
             sidecar.contains("NROS_EXECUTOR_MAX_AGE_MONITORS = \"0\""),
             "{sidecar}"
         );
+    }
+
+    /// phase-462 W6b -- the zenoh read-task budget is derived from the
+    /// subscriber with the largest declared `rate_hz x burst`, and only when
+    /// one declares ingress.
+    #[test]
+    fn the_read_task_budget_follows_the_declared_ingress() {
+        let m: ros_launch_manifest_model::SystemModel = serde_yaml_ng::from_str(
+            r#"
+meta: { version: 1 }
+structure:
+  nodes:
+    /listener:
+      { scope: s.launch.xml, pkg: listener_pkg, exec: listener,
+        node_name: listener }
+  topics:
+    /fast:
+      type: std_msgs/msg/Int32
+      sub: [/listener/fast]
+    /bursty:
+      type: std_msgs/msg/Int32
+      sub: [/listener/bursty]
+    /plain:
+      type: std_msgs/msg/Int32
+      sub: [/listener/plain]
+contracts:
+  sub_endpoints:
+    /listener/fast:
+      ingress: { rate_hz: 200, burst: 4 }
+    /listener/bursty:
+      ingress: { rate_hz: 50, burst: 20 }
+"#,
+        )
+        .expect("model fixture parses");
+        let inv = EntityInventory::from_model(
+            "img",
+            &nros_orchestration_ir::overlay::LoadedModel::bare(m.clone()),
+        )
+        .expect("wiring described");
+        // 200 x 4 = 800 < 50 x 20 = 1000, so the bursty one sizes the task:
+        // FRAMES = 20, REST = 20 x 10^6 / 50 = 400000 us.
+        let want = RxTaskBudget {
+            frames: 20,
+            rest_us: 400_000,
+        };
+        assert_eq!(inv.rx_task_budget(), Some(want));
+        let d = inv.derive();
+        let k = d.knobs().expect("derived");
+        assert_eq!(k.rx_task_budget, Some(want));
+        let c = inv.to_cmake();
+        assert!(
+            c.contains("set(NROS_DERIVED_ZENOH_RX_TASK_BUDGET_FRAMES 20)\n"),
+            "{c}"
+        );
+        assert!(
+            c.contains("set(NROS_DERIVED_ZENOH_RX_TASK_BUDGET_REST_US 400000)\n"),
+            "{c}"
+        );
+        let sidecar = crate::leaf_entity_env::render_env_sidecar(
+            k,
+            &crate::leaf_payload_classes::PayloadClasses::Refused {
+                reason: "test".into(),
+            },
+            &crate::leaf_take_buffer::TakeBuffer::Refused {
+                reason: "test".into(),
+            },
+            "test",
+        );
+        // NOT a sidecar key: a wire knob's cargo `[env]` row would be the
+        // environment rung and outrank a board's stated value. The cargo roads
+        // read it off the sizing descriptor instead.
+        assert!(!sidecar.contains("RX_TASK_BUDGET"), "{sidecar}");
+
+        // A probe saw no contract; merged with the model, the model's wins.
+        let mut probe = EntityInventory::new("probe");
+        probe.insert(stated("a", "listener", &["timer"]));
+        assert_eq!(probe.rx_task_budget(), None);
+        assert_eq!(probe.merged_per_kind_max(&inv).rx_task_budget(), Some(want));
+
+        // No ingress declared: nothing derived, nothing rendered.
+        let mut bare = m.clone();
+        for c in bare.contracts.sub_endpoints.values_mut() {
+            c.ingress = None;
+        }
+        let inv = EntityInventory::from_model(
+            "img",
+            &nros_orchestration_ir::overlay::LoadedModel::bare(bare),
+        )
+        .expect("wiring described");
+        assert_eq!(inv.rx_task_budget(), None);
+        let d = inv.derive();
+        assert_eq!(d.knobs().expect("derived").rx_task_budget, None);
+        let c = inv.to_cmake();
+        assert!(!c.contains("RX_TASK_BUDGET"), "{c}");
+    }
+
+    /// phase-462 W6b -- the arithmetic: `REST = burst x 10^6 / rate_hz`,
+    /// rounded and clamped into the Kconfig range, and the merge keeps the
+    /// heavier PAIR.
+    #[test]
+    fn the_read_task_budget_rounds_clamps_and_merges_as_a_pair() {
+        let b = |frames, rest_us| RxTaskBudget { frames, rest_us };
+        assert_eq!(RxTaskBudget::from_ingress(200.0, 4), Some(b(4, 20_000)));
+        assert_eq!(RxTaskBudget::from_ingress(3.0, 1), Some(b(1, 333_333)));
+        // A rest past 1 s clamps to the Kconfig ceiling.
+        assert_eq!(RxTaskBudget::from_ingress(0.5, 4), Some(b(4, 1_000_000)));
+        // A rest under 1 us clamps to its floor.
+        assert_eq!(RxTaskBudget::from_ingress(1e9, 1), Some(b(1, 1)));
+        assert_eq!(RxTaskBudget::from_ingress(0.0, 4), None);
+        assert_eq!(RxTaskBudget::from_ingress(f64::NAN, 4), None);
+        assert_eq!(RxTaskBudget::from_ingress(10.0, 0), None);
+        // 200 Hz x 4 (load 800) against 50 Hz x 20 (load 1000).
+        let light = b(4, 20_000);
+        let heavy = b(20, 400_000);
+        assert_eq!(RxTaskBudget::larger(Some(light), Some(heavy)), Some(heavy));
+        assert_eq!(RxTaskBudget::larger(Some(heavy), Some(light)), Some(heavy));
+        assert_eq!(RxTaskBudget::larger(None, Some(light)), Some(light));
+        assert_eq!(RxTaskBudget::larger(None, None), None);
     }
 
     /// Issue 1198 — the executor's two FIXED TABLES follow the declaration.
@@ -10714,6 +10994,7 @@ mod shared_runtime_tests {
             max_sc: 0,
             max_monitors: monitors,
             max_age_monitors: monitors,
+            rx_task_budget: None,
             tl_publishers: nros_sizing_descriptor::Fact::Stated(1),
             tl_slots: 1,
             per_kind: BTreeMap::new(),
