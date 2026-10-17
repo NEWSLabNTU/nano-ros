@@ -2324,3 +2324,19 @@ falls to a fraction of the ~38 G free after the reclaim.
 Not changed: the C/C++ CMake builds under `build/` still compile with `-g`,
 and this does not touch them (7.6 G cold here). The acceptance is still a
 scheduled `gate` night that reaches a verdict.
+
+## Sighting 2026-10-17: tier-2 nightly on newslab-133
+
+- Run: nightly 39012587878 (07:09 UTC, head `d06f951f3`).
+- Job: 117338072093, `tier 2 nightly (pairwise cover)`, on `nano-ros-runner-newslab-133`.
+- Timing: the fixture build passed. The matrix build stage then ran out of disk at 09:00:
+
+```
+error: failed to build archive at `.../nros-fixture-tree/target/nros-relwithdebinfo/deps/libnros_platform_config-d87d07ba2606719b.rlib`: No space left on device
+rustc-LLVM ERROR: IO failure on output stream: No space left on device
+```
+
+- Failed steps: `required-features-tests`, `workspace-features` and the
+  `example-lint` mps2 RTIC leaves, all inside the one `matrix-nightly` build.
+- Disk: the box's `/home` showed 1.7T free when checked. The space that ran
+  out was the runner container's own.

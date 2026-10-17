@@ -76,3 +76,20 @@ Before changing code, find which of 1–3 above is true. Run
 `nros ws check-lock` on one of the leaves on the runner's persistent tree,
 before and after a single `zephyr-fixture-run-one.sh` row, and compare the
 lock's mtime and content with the seed's output.
+
+## Second night: clean on another runner (2026-10-17)
+
+The next tier-2 nightly passed the same check:
+
+- Run: nightly 39012587878 (07:09 UTC, head `d06f951f3`).
+- Job: 117338072093, on `nano-ros-runner-newslab-133`.
+- Result: `check-lock: 112 lock(s), 0 drift(s)`.
+
+The failing run's job (117316394504) ran on `nano-ros-runner-newslab-server-241`.
+So the six drifted locks belong to one runner's persistent fixture tree, not to
+the code on `main`. Both heads carry #1937.
+
+That points to cause 3, or to cause 1 on that runner's tree only. A
+`west build` that is up to date never rebuilds the leaf, so 241's older locks
+were never realigned. The next nightly that lands on 241 shows whether the
+drift persists there. The check on 241's tree described above settles it.
