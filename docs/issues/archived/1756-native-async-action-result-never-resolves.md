@@ -1,7 +1,7 @@
 ---
 id: 1756
 title: "The native async action client gets its goal accepted and then never resolves the awaited result"
-status: open
+status: resolved
 type: bug
 area: [rmw, testing]
 severity: medium
@@ -132,3 +132,25 @@ again.
 Found on the way: `nros build` refuses this leaf on a fresh checkout because
 four of its crates are in no pinned range. That is issue 1924. It does not
 affect the fixture build, which uses bare `cargo build`.
+
+## Resolution (2026-10-18)
+
+The acceptance is met. The tier-1 lane reaches its cells again, and the test
+passed on four consecutive self-hosted tier-1 runs, each with the fix
+(`c0d34e3bf6`) in its head:
+
+| `run-matrix` run | tier-1 job | runner | result |
+| --- | --- | --- | --- |
+| 38818350050 | 116843072656 | newslab-server-241 | PASS, 5.760 s |
+| 38861323075 | 116936720826 | newslab-118-server | PASS, 1.419 s |
+| 38933437082 | 117100086153 | newslab-server-241 | PASS, 4.129 s |
+| 38980380118 | 117248584061 | newslab-server-241 | PASS, 1.224 s |
+
+Each is a real run, not a `[SKIPPED:lane]` rewrite: the durations are those
+of a client completing its goal, against 40 s for every failure above. The
+two runs that failed tier 1 overall failed on other cells. The next run,
+39009801514, stopped in the build and has no verdict on this test.
+
+The cause is the one named above. The library-side question (latest-wins
+feedback ring, or an API that awaits feedback and result together) is still
+not filed, as stated in the fix section.
