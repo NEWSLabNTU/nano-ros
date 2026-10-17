@@ -2728,7 +2728,11 @@ test-all verbose="": _require-fixtures-ready test-zpico-multisession
     # own invocation because `xrce-wake-test` registers XRCE and must not share
     # a binary with `trigger-test`'s zenoh; here, not in the fixture-free
     # `check::required-features-tests`, because it needs the XRCE Agent.
-    just _nextest-platform xrce_guard_wake "{{verbose}}" "--features xrce-wake-test" || failed=1
+    #
+    # Issue 1734 — `xrce_concurrent_entities`, concurrent entity creation on one
+    # XRCE session while another thread drives it, rides the same invocation:
+    # same feature, same Agent need, and one invocation keeps one junit.
+    just _nextest-platform "xrce_guard_wake xrce_concurrent_entities" "{{verbose}}" "--features xrce-wake-test" || failed=1
     args=(--workspace "${nextest_run_profile_args[@]}" "${nextest_fail_fast_args[@]}")
     if [ -z "{{verbose}}" ]; then
         # NROS_TEST_FAILURE_OUTPUT (default `never`) — see `_test-focused`.

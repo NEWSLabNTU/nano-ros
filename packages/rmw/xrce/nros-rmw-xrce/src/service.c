@@ -91,10 +91,10 @@ void xrce_reply_callback(uxrSession* session, uxrObjectId object_id, uint16_t re
 
 /* ---- Service server -------------------------------------------------- */
 
-rmw_ret_t xrce_service_create(const rmw_node_t* node,
-                              const rmw_service_type_support_t* type_support,
-                              const char* service_name, uint32_t domain_id,
-                              const rmw_qos_profile_t* qos, rmw_service_t* out) {
+static rmw_ret_t xrce_service_create_locked(const rmw_node_t* node,
+                                            const rmw_service_type_support_t* type_support,
+                                            const char* service_name, uint32_t domain_id,
+                                            const rmw_qos_profile_t* qos, rmw_service_t* out) {
     /* phase-406 W1 — one argument in, two locals out, so the body below is
        unchanged. A NULL type support is INVALID_ARGUMENT rather than an
        empty type: the identity is what the entity is keyed on, and one
@@ -231,7 +231,7 @@ rmw_ret_t xrce_service_create(const rmw_node_t* node,
     return NROS_RMW_RET_OK;
 }
 
-rmw_ret_t xrce_service_destroy(rmw_service_t* server) {
+static rmw_ret_t xrce_service_destroy_locked(rmw_service_t* server) {
     if (server == NULL || server->backend_data == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
@@ -347,8 +347,9 @@ static rmw_ret_t xrce_service_take_request_len(const rmw_service_t* server, uint
  * not "nothing to take"), so it is preserved verbatim and only the reporting
  * convention is translated. NO_DATA is the one code that becomes
  * `taken = false` with OK. */
-rmw_ret_t xrce_service_take_request(const rmw_service_t* server, rmw_mut_byte_span_t* request,
-                                    int64_t* seq_out, bool* taken) {
+static rmw_ret_t xrce_service_take_request_locked(const rmw_service_t* server,
+                                                  rmw_mut_byte_span_t* request, int64_t* seq_out,
+                                                  bool* taken) {
     /* phase-406 W2 — one span in, the old three names out, so the body below
        is unchanged. `len` lives IN the span now, which is what removes the
        "who writes the count" question the flat triple kept raising. */
@@ -379,7 +380,7 @@ rmw_ret_t xrce_service_take_request(const rmw_service_t* server, rmw_mut_byte_sp
     return NROS_RMW_RET_OK;
 }
 
-rmw_ret_t xrce_service_has_request(rmw_service_t* server, bool* out_has_request) {
+static rmw_ret_t xrce_service_has_request_locked(rmw_service_t* server, bool* out_has_request) {
     /* Phase 376 W3.d step A — flag out, status returned. */
     if (out_has_request == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
@@ -396,8 +397,8 @@ rmw_ret_t xrce_service_has_request(rmw_service_t* server, bool* out_has_request)
     return NROS_RMW_RET_OK;
 }
 
-rmw_ret_t xrce_service_send_response(const rmw_service_t* server, int64_t seq,
-                                     rmw_byte_span_t response) {
+static rmw_ret_t xrce_service_send_response_locked(const rmw_service_t* server, int64_t seq,
+                                                   rmw_byte_span_t response) {
     const uint8_t* data = response.data;
     size_t len = response.len;
     if (server == NULL || server->backend_data == NULL) {
@@ -449,8 +450,9 @@ rmw_ret_t xrce_service_send_response(const rmw_service_t* server, int64_t seq,
  * re-sending the request or sleeping in a never-signaled
  * wake-primitive wait (Phase 127.C.4 root cause for the C++
  * action send_goal trampoline). */
-rmw_ret_t xrce_service_send_request_raw(const rmw_client_t* client, rmw_byte_span_t request_span,
-                                        int64_t* sequence_id) {
+static rmw_ret_t xrce_service_send_request_raw_locked(const rmw_client_t* client,
+                                                      rmw_byte_span_t request_span,
+                                                      int64_t* sequence_id) {
     const uint8_t* request = request_span.data;
     size_t req_len = request_span.len;
     if (client == NULL || client->backend_data == NULL) {
@@ -543,8 +545,9 @@ static rmw_ret_t xrce_service_take_response_raw_len(const rmw_client_t* client, 
  * not "nothing to take"), so it is preserved verbatim and only the reporting
  * convention is translated. NO_DATA is the one code that becomes
  * `taken = false` with OK. */
-rmw_ret_t xrce_service_take_response(const rmw_client_t* client, rmw_mut_byte_span_t* reply,
-                                     int64_t* seq_out, bool* taken) {
+static rmw_ret_t xrce_service_take_response_locked(const rmw_client_t* client,
+                                                   rmw_mut_byte_span_t* reply, int64_t* seq_out,
+                                                   bool* taken) {
     if (reply == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
@@ -575,9 +578,10 @@ rmw_ret_t xrce_service_take_response(const rmw_client_t* client, rmw_mut_byte_sp
 
 /* ---- Service client -------------------------------------------------- */
 
-rmw_ret_t xrce_client_create(const rmw_node_t* node, const rmw_service_type_support_t* type_support,
-                             const char* service_name, uint32_t domain_id,
-                             const rmw_qos_profile_t* qos, rmw_client_t* out) {
+static rmw_ret_t xrce_client_create_locked(const rmw_node_t* node,
+                                           const rmw_service_type_support_t* type_support,
+                                           const char* service_name, uint32_t domain_id,
+                                           const rmw_qos_profile_t* qos, rmw_client_t* out) {
     /* phase-406 W1 — one argument in, two locals out, so the body below is
        unchanged. A NULL type support is INVALID_ARGUMENT rather than an
        empty type: the identity is what the entity is keyed on, and one
@@ -701,7 +705,7 @@ rmw_ret_t xrce_client_create(const rmw_node_t* node, const rmw_service_type_supp
     return NROS_RMW_RET_OK;
 }
 
-rmw_ret_t xrce_client_destroy(rmw_client_t* client) {
+static rmw_ret_t xrce_client_destroy_locked(rmw_client_t* client) {
     if (client == NULL || client->backend_data == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
@@ -732,5 +736,95 @@ rmw_ret_t xrce_client_destroy(rmw_client_t* client) {
     client->backend_data = NULL;
     /* LAST — this may free `st`. Nothing may touch it afterwards. */
     xrce_session_entity_detach(st);
+    return ret;
+}
+
+/* ---- Issue 1734: locked entry points ---------------------------------
+ *
+ * Each public entry point takes its session's API lock around the body (see
+ * `api_lock` in `internal.h`). `st` is read BEFORE the body, which may free
+ * the entity that leads to it; a destroy that leaves a closed session empty
+ * has its free deferred to the unlock below. */
+
+rmw_ret_t xrce_service_create(const rmw_node_t* node,
+                              const rmw_service_type_support_t* type_support,
+                              const char* service_name, uint32_t domain_id,
+                              const rmw_qos_profile_t* qos, rmw_service_t* out) {
+    xrce_session_state_t* st = XRCE_ST_OF_NODE(node);
+    xrce_session_lock(st);
+    rmw_ret_t ret =
+        xrce_service_create_locked(node, type_support, service_name, domain_id, qos, out);
+    xrce_session_unlock(st);
+    return ret;
+}
+
+rmw_ret_t xrce_service_destroy(rmw_service_t* server) {
+    xrce_session_state_t* st = XRCE_ST_OF(xrce_service_server_state, server);
+    xrce_session_lock(st);
+    rmw_ret_t ret = xrce_service_destroy_locked(server);
+    xrce_session_unlock(st);
+    return ret;
+}
+
+rmw_ret_t xrce_service_take_request(const rmw_service_t* server, rmw_mut_byte_span_t* request,
+                                    int64_t* seq_out, bool* taken) {
+    xrce_session_state_t* st = XRCE_ST_OF(xrce_service_server_state, server);
+    xrce_session_lock(st);
+    rmw_ret_t ret = xrce_service_take_request_locked(server, request, seq_out, taken);
+    xrce_session_unlock(st);
+    return ret;
+}
+
+rmw_ret_t xrce_service_has_request(rmw_service_t* server, bool* out_has_request) {
+    xrce_session_state_t* st = XRCE_ST_OF(xrce_service_server_state, server);
+    xrce_session_lock(st);
+    rmw_ret_t ret = xrce_service_has_request_locked(server, out_has_request);
+    xrce_session_unlock(st);
+    return ret;
+}
+
+rmw_ret_t xrce_service_send_response(const rmw_service_t* server, int64_t seq,
+                                     rmw_byte_span_t response) {
+    xrce_session_state_t* st = XRCE_ST_OF(xrce_service_server_state, server);
+    xrce_session_lock(st);
+    rmw_ret_t ret = xrce_service_send_response_locked(server, seq, response);
+    xrce_session_unlock(st);
+    return ret;
+}
+
+rmw_ret_t xrce_service_send_request_raw(const rmw_client_t* client, rmw_byte_span_t request_span,
+                                        int64_t* sequence_id) {
+    xrce_session_state_t* st = XRCE_ST_OF(xrce_service_client_state, client);
+    xrce_session_lock(st);
+    rmw_ret_t ret = xrce_service_send_request_raw_locked(client, request_span, sequence_id);
+    xrce_session_unlock(st);
+    return ret;
+}
+
+rmw_ret_t xrce_service_take_response(const rmw_client_t* client, rmw_mut_byte_span_t* reply,
+                                     int64_t* seq_out, bool* taken) {
+    xrce_session_state_t* st = XRCE_ST_OF(xrce_service_client_state, client);
+    xrce_session_lock(st);
+    rmw_ret_t ret = xrce_service_take_response_locked(client, reply, seq_out, taken);
+    xrce_session_unlock(st);
+    return ret;
+}
+
+rmw_ret_t xrce_client_create(const rmw_node_t* node, const rmw_service_type_support_t* type_support,
+                             const char* service_name, uint32_t domain_id,
+                             const rmw_qos_profile_t* qos, rmw_client_t* out) {
+    xrce_session_state_t* st = XRCE_ST_OF_NODE(node);
+    xrce_session_lock(st);
+    rmw_ret_t ret =
+        xrce_client_create_locked(node, type_support, service_name, domain_id, qos, out);
+    xrce_session_unlock(st);
+    return ret;
+}
+
+rmw_ret_t xrce_client_destroy(rmw_client_t* client) {
+    xrce_session_state_t* st = XRCE_ST_OF(xrce_service_client_state, client);
+    xrce_session_lock(st);
+    rmw_ret_t ret = xrce_client_destroy_locked(client);
+    xrce_session_unlock(st);
     return ret;
 }

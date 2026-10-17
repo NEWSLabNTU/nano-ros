@@ -590,13 +590,42 @@ struct xrce_session_state {
      * raw pointer cannot be validated once freed, so the memory has to outlive
      * the pointer instead.
      *
-     * NOT thread-safe, deliberately and consistently with the rest of this
-     * struct: XRCE is poll-based and single-threaded per session -- the
-     * executor drives it. If that ever changes, this counter needs the same
-     * protection as `next_entity_id` and the slot pools, which have none
-     * either. */
+     * Guarded by `api_lock` below, like every other field here (issue 1734). */
     size_t live_entities;
     bool session_closed;
+
+    /* Issue 1734 — ONE recursive lock per session, held across every entry
+     * point that touches the uxr session or the slot pools.
+     *
+     * A session is shared: a multi-tier image's tiers each create entities on
+     * it and each drive it, on their own threads. Two things were unguarded.
+     * The slot claims (`subscriber_slots[i].active`, the two service pools,
+     * `reply_tokens[i].in_use`) are the find-then-mark issue 1711 fixed in the
+     * zenoh shim, and `next_entity_id++` beside them. And every one of those
+     * paths, plus publish, take and drive_io, drives Micro XRCE-DDS-Client on
+     * `session`, which is not thread-safe (its own MULTITHREAD profile exists
+     * for exactly this, on three of our six platforms). So the lock covers the
+     * uxr calls, not only the claims — a claim-only lock, 1711's scope, would
+     * leave two threads inside `uxr_run_session_*` at once.
+     *
+     * RECURSIVE because the uxr callbacks (`xrce_topic_callback` and its two
+     * siblings) run inside `uxr_run_session_*` on the thread that holds it,
+     * and an entry point calls helpers that are entry points themselves.
+     *
+     * Storage is by value at the platform's compile-time upper bound
+     * (`NROS_PLATFORM_MUTEX_REC_STORAGE_SIZE`), `uint64_t` for 8-byte
+     * alignment in C99. `api_lock_ready` is false on a state that never went
+     * through `xrce_session_create` — the transport-free lifetime test
+     * allocates one — and the lock then degrades to the depth bookkeeping
+     * alone, which is all a single-threaded caller needs.
+     *
+     * `lock_depth` and `free_pending` let a destructor free the state from
+     * INSIDE a locked region: the free waits for the outermost unlock, so no
+     * thread ever unlocks a mutex inside freed memory. */
+    uint64_t api_lock[(NROS_PLATFORM_MUTEX_REC_STORAGE_SIZE + 7u) / 8u];
+    bool api_lock_ready;
+    unsigned lock_depth;
+    bool free_pending;
 
     /* Issue 1292 — the nodes and endpoint GIDs `ros_discovery_info` reports. */
     xrce_graph graph;
@@ -668,6 +697,34 @@ void xrce_session_mark_closed(xrce_session_state_t* st);
  * without the session needing to know who they are. Never touch `st` after
  * this returns. */
 void xrce_session_entity_detach(xrce_session_state_t* st);
+
+/* Issue 1734 — take / release the session's API lock (see `api_lock` in the
+ * struct). Recursive. NULL is a no-op, so an entry point may call these before
+ * it has checked `st`.
+ *
+ * `xrce_session_unlock` is also where a deferred free happens: when the last
+ * entity leaves a closed session inside a locked region, the state is freed by
+ * the OUTERMOST unlock. So after `xrce_session_unlock(st)` returns, `st` may be
+ * gone if a destroy ran inside the region; callers never read it again. */
+/* The session an entry point's argument leads to, or NULL when it leads to
+ * none (the body then refuses it as before). For the lock only: these read no
+ * further than the first pointer, so a bad argument still gets the body's own
+ * answer. */
+#define XRCE_ST_OF_SESSION(session)                                                                \
+    ((session) != NULL ? (xrce_session_state_t*)(session)->backend_data : NULL)
+#define XRCE_ST_OF_NODE(node) ((node) != NULL ? XRCE_ST_OF_SESSION((node)->session) : NULL)
+#define XRCE_ST_OF(state_type, entity)                                                             \
+    (((entity) != NULL && (entity)->backend_data != NULL)                                          \
+         ? ((const state_type*)(entity)->backend_data)->session_state                              \
+         : NULL)
+
+void xrce_session_lock(xrce_session_state_t* st);
+void xrce_session_unlock(xrce_session_state_t* st);
+
+/* Issue 1734 — release a session state that is NOT shared yet (a failed
+ * `xrce_session_create`) or that the lifetime rules say is unreachable: drops
+ * the lock, releases the graph, frees. */
+void xrce_session_free(xrce_session_state_t* st);
 
 /* Allocate the next entity id of the given type. Mirrors the Rust
  * impl's `alloc_entity_id`. */

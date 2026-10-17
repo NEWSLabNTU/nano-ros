@@ -89,6 +89,51 @@ void xrce_report_session_alloc_failed(size_t bytes) {
                    (unsigned long)bytes);
 }
 
+/* ---- Issue 1734: the session API lock ---------------------------------
+ *
+ * See `api_lock` in `internal.h`. */
+
+void xrce_session_lock(xrce_session_state_t* st) {
+    if (st == NULL) {
+        return;
+    }
+    if (st->api_lock_ready) {
+        (void)nros_platform_mutex_rec_lock(st->api_lock);
+    }
+    st->lock_depth++;
+}
+
+void xrce_session_unlock(xrce_session_state_t* st) {
+    if (st == NULL) {
+        return;
+    }
+    /* Read under the lock: only the outermost release of a region in which
+     * the last entity left a closed session frees it. */
+    bool free_now = false;
+    if (st->lock_depth > 0) {
+        st->lock_depth--;
+        free_now = st->lock_depth == 0 && st->free_pending;
+    }
+    if (st->api_lock_ready) {
+        (void)nros_platform_mutex_rec_unlock(st->api_lock);
+    }
+    if (free_now) {
+        xrce_session_free(st);
+    }
+}
+
+void xrce_session_free(xrce_session_state_t* st) {
+    if (st == NULL) {
+        return;
+    }
+    xrce_graph_release(st);
+    if (st->api_lock_ready) {
+        st->api_lock_ready = false;
+        (void)nros_platform_mutex_rec_drop(st->api_lock);
+    }
+    nros_xrce_free(st);
+}
+
 uxrObjectId xrce_alloc_entity_id(xrce_session_state_t* st, uint8_t type) {
     uint16_t id = st->next_entity_id++;
     return uxr_object_id(id, type);
@@ -489,6 +534,10 @@ rmw_ret_t xrce_session_create(const char* locator, uint8_t mode, uint32_t domain
         return NROS_RMW_RET_BAD_ALLOC;
     }
     st->next_entity_id = 2; /* id 1 reserved for the participant */
+    /* Issue 1734 — before the state is reachable from anywhere. A port whose
+     * recursive mutex cannot be created leaves the lock unready, which is the
+     * single-threaded behaviour every image had before this lock existed. */
+    st->api_lock_ready = nros_platform_mutex_rec_init(st->api_lock) == 0;
 
     /* Phase 115.K.2.4 — `custom://...` routes through
      * `xrce_custom_transport_install`. UDP path mirrors K.2.1.
@@ -526,7 +575,7 @@ rmw_ret_t xrce_session_create(const char* locator, uint8_t mode, uint32_t domain
         st->use_custom_transport = true;
         rmw_ret_t ret = xrce_custom_transport_install(st, /*framing=*/false);
         if (ret != NROS_RMW_RET_OK) {
-            nros_xrce_free(st);
+            xrce_session_free(st);
             return ret;
         }
         uxr_init_session(&st->session, &st->custom.comm, hash_session_key(node_name));
@@ -535,7 +584,7 @@ rmw_ret_t xrce_session_create(const char* locator, uint8_t mode, uint32_t domain
         st->use_custom_transport = true;
         rmw_ret_t sret = xrce_posix_serial_init(st, serial_path);
         if (sret != NROS_RMW_RET_OK) {
-            nros_xrce_free(st);
+            xrce_session_free(st);
             return sret;
         }
         uxr_init_session(&st->session, &st->custom.comm, hash_session_key(node_name));
@@ -557,7 +606,7 @@ rmw_ret_t xrce_session_create(const char* locator, uint8_t mode, uint32_t domain
         if (parse_host_port(addr_locator, host, sizeof(host), &port) == 0) {
             size_t hlen = strlen(addr_locator);
             if (hlen == 0 || hlen + 1 > sizeof(host)) {
-                nros_xrce_free(st);
+                xrce_session_free(st);
                 return NROS_RMW_RET_INVALID_ARGUMENT;
             }
             memcpy(host, addr_locator, hlen + 1);
@@ -571,7 +620,7 @@ rmw_ret_t xrce_session_create(const char* locator, uint8_t mode, uint32_t domain
         st->use_custom_transport = true;
         rmw_ret_t udp_ret = xrce_nros_udp_init(st, host, port_str);
         if (udp_ret != NROS_RMW_RET_OK) {
-            nros_xrce_free(st);
+            xrce_session_free(st);
             return udp_ret;
         }
         uxr_init_session(&st->session, &st->custom.comm, hash_session_key(node_name));
@@ -589,7 +638,7 @@ rmw_ret_t xrce_session_create(const char* locator, uint8_t mode, uint32_t domain
         /* Both UDP and `custom://` paths now go through
          * uxrCustomTransport — close via custom_transport. */
         uxr_close_custom_transport(&st->custom);
-        nros_xrce_free(st);
+        xrce_session_free(st);
         return NROS_RMW_RET_ERROR;
     }
 
@@ -617,7 +666,7 @@ rmw_ret_t xrce_session_create(const char* locator, uint8_t mode, uint32_t domain
     if (cret != NROS_RMW_RET_OK) {
         (void)uxr_delete_session(&st->session);
         uxr_close_custom_transport(&st->custom);
-        nros_xrce_free(st);
+        xrce_session_free(st);
         return cret;
     }
 
@@ -640,7 +689,9 @@ void xrce_session_entity_attach(xrce_session_state_t* st) {
     if (st == NULL) {
         return;
     }
+    xrce_session_lock(st);
     st->live_entities++;
+    xrce_session_unlock(st);
 }
 
 bool xrce_session_is_closed(const xrce_session_state_t* st) {
@@ -651,15 +702,18 @@ void xrce_session_entity_detach(xrce_session_state_t* st) {
     if (st == NULL) {
         return;
     }
+    xrce_session_lock(st);
     if (st->live_entities > 0) {
         st->live_entities--;
     }
     /* The last entity out of a CLOSED session turns off the lights. An open
-     * session keeps its state: entities come and go while it runs. */
+     * session keeps its state: entities come and go while it runs. The free
+     * itself is the outermost unlock's (issue 1734), so a destroy that detaches
+     * inside its own locked region never unlocks freed memory. */
     if (st->session_closed && st->live_entities == 0) {
-        xrce_graph_release(st);
-        nros_xrce_free(st);
+        st->free_pending = true;
     }
+    xrce_session_unlock(st);
 }
 
 rmw_ret_t xrce_session_destroy(rmw_session_t* session) {
@@ -670,6 +724,7 @@ rmw_ret_t xrce_session_destroy(rmw_session_t* session) {
     if (st == NULL) {
         return NROS_RMW_RET_ERROR;
     }
+    xrce_session_lock(st);
     (void)uxr_delete_session(&st->session);
     /* All three transport paths (custom://, serial://, udp://) now
      * sit on top of uxrCustomTransport — the K.2.5.1.2.a fix routed
@@ -685,6 +740,8 @@ rmw_ret_t xrce_session_destroy(rmw_session_t* session) {
      * and it is the one `tests/entity_lifetime.c` drives. */
     session->backend_data = NULL;
     xrce_session_mark_closed(st);
+    /* May free `st` (issue 1734): the mark above deferred it to here. */
+    xrce_session_unlock(st);
     return NROS_RMW_RET_OK;
 }
 
@@ -703,11 +760,12 @@ void xrce_session_mark_closed(xrce_session_state_t* st) {
      *
      * A deferred free is NOT an error: it is the supported ordering, not a
      * mistake by the caller. */
+    xrce_session_lock(st);
     st->session_closed = true;
     if (st->live_entities == 0) {
-        xrce_graph_release(st);
-        nros_xrce_free(st);
+        st->free_pending = true;
     }
+    xrce_session_unlock(st);
 }
 
 rmw_ret_t xrce_session_drive_io(rmw_session_t* session, int32_t timeout_ms) {
@@ -723,7 +781,9 @@ rmw_ret_t xrce_session_drive_io(rmw_session_t* session, int32_t timeout_ms) {
     /* Issue 1292 — a burst of creates marks the graph dirty many times; the
      * sample goes out once per tick, here, so a node with N endpoints costs
      * one `ros_discovery_info` write rather than N. */
+    xrce_session_lock(st);
     xrce_graph_flush(st);
+    xrce_session_unlock(st);
 
     /* `uxr_run_session_time` returns as soon as the reliable output streams
      * are confirmed — so when the session holds a publisher with unconfirmed
@@ -741,7 +801,9 @@ rmw_ret_t xrce_session_drive_io(rmw_session_t* session, int32_t timeout_ms) {
      * expects, without busy-spinning. (Mirrors the zpico_spin_once
      * `z_sleep_ms` fix for multi-threaded platforms.) */
     if (t == 0) {
+        xrce_session_lock(st);
         (void)uxr_run_session_time(&st->session, 0);
+        xrce_session_unlock(st);
         return NROS_RMW_RET_OK;
     }
     /* Issue 0029 — use the platform clock/sleep, NOT POSIX
@@ -772,7 +834,13 @@ rmw_ret_t xrce_session_drive_io(rmw_session_t* session, int32_t timeout_ms) {
         if (remaining <= 0) {
             break;
         }
+        /* Issue 1734 — the lock is held for ONE pass, never across the yield
+         * below, so a create or publish on another thread gets in between
+         * passes. A pass is bounded by `remaining`, and a poll-only executor
+         * already slices its drive (`POLL_ONLY_WAKE_SLICE_MS`). */
+        xrce_session_lock(st);
         (void)uxr_run_session_time(&st->session, remaining);
+        xrce_session_unlock(st);
         /* If the run returned well before `remaining`, yield ~1 ms so the next
          * pass picks up freshly-arrived inbound without busy-spinning. */
         uint64_t after_ms = nros_platform_clock_ns() / 1000000u;
@@ -798,6 +866,8 @@ rmw_ret_t xrce_session_ping(rmw_session_t* session, int32_t timeout_ms) {
         return NROS_RMW_RET_ERROR;
     }
     int t = timeout_ms < 0 ? 0 : (int)timeout_ms;
+    xrce_session_lock(st);
     bool ok = uxr_ping_agent_session(&st->session, t, 1);
+    xrce_session_unlock(st);
     return ok ? NROS_RMW_RET_OK : NROS_RMW_RET_TIMEOUT;
 }

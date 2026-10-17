@@ -27,9 +27,12 @@ is in the same code an XRCE action client runs.
 - [ ] [#1932](../issues/1932-xrce-session-open-fails-under-full-sweep-load.md):
       an XRCE session open retries within its budget, and the failure under load
       is explained.
-- [ ] [#1734](../issues/1734-xrce-concurrent-entity-creation-unguarded.md): the
+- [x] [#1734](../issues/archived/1734-xrce-concurrent-entity-creation-unguarded.md): the
       XRCE shim serialises entity creation per session, as the zenoh shim does
-      since issue 1711.
+      since issue 1711. **Done 2026-10-18:** a recursive lock per session over
+      every entry point, drive_io included (one pass per hold);
+      `xrce_concurrent_entities` failed 5 of 5 before and passed 20 of 20
+      after.
 
 ## Acceptance
 
@@ -41,7 +44,7 @@ session.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1734](../issues/1734-xrce-concurrent-entity-creation-unguarded.md) | The XRCE shim has no guard for entity creation from more than one thread, the check-then-act that issue 1711 fixed for zenoh. |
+| [#1734](../issues/archived/1734-xrce-concurrent-entity-creation-unguarded.md) | The XRCE shim has no guard for entity creation from more than one thread, the check-then-act that issue 1711 fixed for zenoh. |
 | [#1756](../issues/archived/1756-native-async-action-result-never-resolves.md) | The native async action client gets its goal accepted and never resolves the awaited result. |
 | [#1930](../issues/1930-xrce-action-goal-sent-blind-is-lost.md) | An XRCE action client sends its goal blind, and a goal the Agent drops is never sent again. |
 | [#1932](../issues/1932-xrce-session-open-fails-under-full-sweep-load.md) | Two XRCE clients failed to open their Agent session under full-sweep load, and both pass 20 of 20 solo. |

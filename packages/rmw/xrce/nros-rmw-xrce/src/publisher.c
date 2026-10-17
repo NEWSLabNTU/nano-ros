@@ -19,7 +19,7 @@
 #include <uxr/client/core/session/write_access.h>
 #include <ucdr/microcdr.h>
 
-rmw_ret_t xrce_publisher_create(const rmw_node_t* node,
+static rmw_ret_t xrce_publisher_create_locked(const rmw_node_t* node,
                                      const rmw_message_type_support_t* type_support,
                                 const char* topic_name,
                                      uint32_t domain_id,
@@ -118,7 +118,7 @@ rmw_ret_t xrce_publisher_create(const rmw_node_t* node,
     return NROS_RMW_RET_OK;
 }
 
-rmw_ret_t xrce_publisher_destroy(rmw_publisher_t *publisher) {
+static rmw_ret_t xrce_publisher_destroy_locked(rmw_publisher_t *publisher) {
     if (publisher == NULL || publisher->backend_data == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
@@ -156,7 +156,7 @@ rmw_ret_t xrce_publisher_destroy(rmw_publisher_t *publisher) {
     return ret;
 }
 
-rmw_ret_t xrce_publisher_publish_raw(const rmw_publisher_t *publisher,
+static rmw_ret_t xrce_publisher_publish_raw_locked(const rmw_publisher_t *publisher,
                                           rmw_byte_span_t payload) {
     /* phase-406 W2 — by value; unpacked so the body is unchanged. */
     const uint8_t *data = payload.data;
@@ -257,7 +257,7 @@ size_t xrce_drive_streamed_body(uint8_t *body, size_t body_len, size_t total,
     return consumed;
 }
 
-rmw_ret_t xrce_publisher_publish_streamed(
+static rmw_ret_t xrce_publisher_publish_streamed_locked(
         rmw_publisher_t *publisher,
         void (*size_cb)(size_t *out_total_len, void *user_ctx),
         void (*chunk_cb)(uint8_t *out_buf, size_t cap,
@@ -341,4 +341,52 @@ rmw_ret_t xrce_publisher_publish_streamed(
 
     (void)uxr_run_session_time(&st->session, 0);
     return NROS_RMW_RET_OK;
+}
+
+/* ---- Issue 1734: locked entry points ---------------------------------
+ *
+ * Each public entry point takes its session's API lock around the body (see
+ * `api_lock` in `internal.h`). `st` is read BEFORE the body, which may free
+ * the entity that leads to it; a destroy that leaves a closed session empty
+ * has its free deferred to the unlock below. */
+
+rmw_ret_t xrce_publisher_create(const rmw_node_t* node,
+                                const rmw_message_type_support_t* type_support,
+                                const char* topic_name, uint32_t domain_id,
+                                const rmw_qos_profile_t* qos,
+                                const rmw_publisher_options_t* options, rmw_publisher_t* out) {
+    xrce_session_state_t* st = XRCE_ST_OF_NODE(node);
+    xrce_session_lock(st);
+    rmw_ret_t ret =
+        xrce_publisher_create_locked(node, type_support, topic_name, domain_id, qos, options, out);
+    xrce_session_unlock(st);
+    return ret;
+}
+
+rmw_ret_t xrce_publisher_destroy(rmw_publisher_t* publisher) {
+    xrce_session_state_t* st = XRCE_ST_OF(xrce_publisher_state, publisher);
+    xrce_session_lock(st);
+    rmw_ret_t ret = xrce_publisher_destroy_locked(publisher);
+    xrce_session_unlock(st);
+    return ret;
+}
+
+rmw_ret_t xrce_publisher_publish_raw(const rmw_publisher_t* publisher, rmw_byte_span_t payload) {
+    xrce_session_state_t* st = XRCE_ST_OF(xrce_publisher_state, publisher);
+    xrce_session_lock(st);
+    rmw_ret_t ret = xrce_publisher_publish_raw_locked(publisher, payload);
+    xrce_session_unlock(st);
+    return ret;
+}
+
+rmw_ret_t xrce_publisher_publish_streamed(rmw_publisher_t* publisher,
+                                          void (*size_cb)(size_t* out_total_len, void* user_ctx),
+                                          void (*chunk_cb)(uint8_t* out_buf, size_t cap,
+                                                           size_t* out_written, void* user_ctx),
+                                          void* user_ctx) {
+    xrce_session_state_t* st = XRCE_ST_OF(xrce_publisher_state, publisher);
+    xrce_session_lock(st);
+    rmw_ret_t ret = xrce_publisher_publish_streamed_locked(publisher, size_cb, chunk_cb, user_ctx);
+    xrce_session_unlock(st);
+    return ret;
 }

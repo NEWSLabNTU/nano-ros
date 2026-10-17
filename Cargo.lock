@@ -2293,6 +2293,7 @@ dependencies = [
  "nros-platform-cffi",
  "nros-rcl-interfaces",
  "nros-rmw",
+ "nros-rmw-cffi",
  "nros-rmw-xrce-cffi",
  "nros-rmw-zenoh",
  "nros-rosgraph-msgs",
