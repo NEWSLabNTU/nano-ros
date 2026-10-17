@@ -1496,5 +1496,15 @@
     "verdict": "extension",
     "why": "phase-462 W3b -- the on-target hazard observer (`contracts.hazards`): the installed hazard table. See `rust:Executor::set_hazard_table`.",
     "bucket": "ours-only"
+  },
+  "rust:Executor::set_mode_tables": {
+    "verdict": "extension",
+    "why": "phase-462 W4a -- a contract mode lowered to a variant of the monitor tables (`contracts.modes`, `nros_orchestration_ir::mode_variants`). Installs the baked variants (entry 0 the base), refusing one of another length because rows and per-row state are matched by index. No rclrs counterpart: rclrs has no on-target contract monitor. See `rust:request_mode`.",
+    "bucket": "ours-only"
+  },
+  "rust:Executor::current_mode": {
+    "verdict": "extension",
+    "why": "phase-462 W4a -- a contract mode lowered to a variant of the monitor tables (`contracts.modes`, `nros_orchestration_ir::mode_variants`). The mode whose tables this executor judges by. See `rust:Executor::set_mode_tables`.",
+    "bucket": "ours-only"
   }
 }

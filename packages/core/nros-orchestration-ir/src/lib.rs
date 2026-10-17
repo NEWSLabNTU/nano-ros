@@ -57,6 +57,8 @@ pub mod ftti_budget;
 pub mod leaf_capabilities;
 pub mod leaf_system;
 pub mod mapper_input;
+// phase-462 W4 -- a contract mode lowered to a variant of the monitor tables.
+pub mod mode_variants;
 // phase-330 W3.b — the ONE place that decides where a SystemModel is read
 // from, shared by the proc-macro, `nros-build` and (via its default) cmake.
 pub mod model_location;

@@ -1723,5 +1723,30 @@
     "verdict": "extension",
     "why": "phase-462 W3b -- the on-target hazard observer (`contracts.hazards`): the Rust entry's install of the hazard table, after `install_contract_monitors` on the same executor handle. No rclrs counterpart. See `rust:install_contract_monitors`.",
     "bucket": "ours-only"
+  },
+  "rust:ModeTables": {
+    "verdict": "extension",
+    "why": "phase-462 W4a -- a contract mode lowered to a variant of the monitor tables (`contracts.modes`, `nros_orchestration_ir::mode_variants`). One mode's pair of tables: the base rows and cells with the mode's numbers. See `rust:Executor::set_mode_tables`.",
+    "bucket": "ours-only"
+  },
+  "rust:ModeTablesMismatch": {
+    "verdict": "extension",
+    "why": "phase-462 W4a -- a contract mode lowered to a variant of the monitor tables (`contracts.modes`, `nros_orchestration_ir::mode_variants`). The refusal `rust:Executor::set_mode_tables` returns for a variant of another length.",
+    "bucket": "ours-only"
+  },
+  "rust:request_mode": {
+    "verdict": "extension",
+    "why": "phase-462 W4a -- a contract mode lowered to a variant of the monitor tables (`contracts.modes`, `nros_orchestration_ir::mode_variants`). Asks every executor to judge by a mode's tables from its next spin (an atomic state, like `rust:request_monitor_arming`). The C spelling is `nros_cpp_request_mode`.",
+    "bucket": "ours-only"
+  },
+  "rust:requested_mode": {
+    "verdict": "extension",
+    "why": "phase-462 W4a -- a contract mode lowered to a variant of the monitor tables (`contracts.modes`, `nros_orchestration_ir::mode_variants`). The mode last asked for with `rust:request_mode`.",
+    "bucket": "ours-only"
+  },
+  "rust:install_contract_modes": {
+    "verdict": "extension",
+    "why": "phase-462 W4a -- a contract mode lowered to a variant of the monitor tables (`contracts.modes`, `nros_orchestration_ir::mode_variants`). The Rust entry's install of the mode variants, after `install_contract_monitors` on the same executor handle. See `rust:install_contract_monitors`.",
+    "bucket": "ours-only"
   }
 }

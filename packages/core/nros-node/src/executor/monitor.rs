@@ -363,6 +363,29 @@ impl core::fmt::Display for MonitorTableFull {
     }
 }
 
+/// phase-462 W4 -- a mode's variant table is not the base table's length,
+/// refused by [`super::Executor::set_mode_tables`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ModeTablesMismatch {
+    /// The mode id whose tables differ.
+    pub mode: u16,
+    /// `(the mode's, the base's)` rate/latency row count.
+    pub monitors: (usize, usize),
+    /// `(the mode's, the base's)` age row count.
+    pub ages: (usize, usize),
+}
+
+impl core::fmt::Display for ModeTablesMismatch {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(
+            f,
+            "mode {} bakes {} rate/latency and {} age rows where the base has {} and {}: a \
+             mode is a variant of the base tables, row for row (re-run the bake)",
+            self.mode, self.monitors.0, self.ages.0, self.monitors.1, self.ages.1
+        )
+    }
+}
+
 /// Whether a table of `n_rows` rate/latency rows and `n_ages` age rows fits
 /// this build's executor. The rate table is judged first.
 pub fn check_table_capacity(n_rows: usize, n_ages: usize) -> Result<(), MonitorTableFull> {
@@ -714,6 +737,46 @@ static ARM_REQUESTS: AtomicU32 = AtomicU32::new(0);
 /// [`Executor::set_monitor_arming`]: super::Executor::set_monitor_arming
 pub fn request_monitor_arming() {
     ARM_REQUESTS.fetch_add(1, Ordering::AcqRel);
+}
+
+/// phase-462 W4 -- one contract MODE's variant of an executor's two monitor
+/// tables: the base tables' rows in the base's order, sharing the base's
+/// cells, with the mode's numbers.
+///
+/// Because the rows and cells are the base's, a publisher or subscription
+/// keeps the cell it bound at creation, and a hazard's guard keeps the row
+/// index it names; only the requirement each row is judged against changes.
+/// The bake guarantees that shape (`nros_orchestration_ir::mode_variants`);
+/// [`super::Executor::set_mode_tables`] refuses a table of another length.
+#[derive(Debug, Clone, Copy)]
+pub struct ModeTables {
+    /// The rate/latency table in this mode.
+    pub monitors: &'static [MonitorSpec],
+    /// The age table in this mode.
+    pub ages: &'static [AgeMonitorSpec],
+}
+
+/// phase-462 W4 -- the mode the application asked for. A STATE, not an
+/// event: an executor opened after the request enters it at its first spin.
+static MODE_REQUEST: AtomicU32 = AtomicU32::new(0);
+
+/// phase-462 W4 -- ask every executor to judge by mode `id`'s tables.
+///
+/// `id` is the baked mode id (`0` = the base contract, `1..` the contract's
+/// modes in key order; the entry names each as a constant). Like
+/// [`request_monitor_arming`] this only stores an atomic: each executor
+/// swaps its own tables at its next spin, so the switch is bounded by the
+/// slowest executor's spin period and never races a rule mid-judgement. An
+/// id an executor has no table for leaves it on the tables it has, and it
+/// says so once.
+pub fn request_mode(id: u16) {
+    MODE_REQUEST.store(u32::from(id), Ordering::Release);
+}
+
+/// The mode last asked for with [`request_mode`] (0 when never asked).
+#[must_use]
+pub fn requested_mode() -> u16 {
+    MODE_REQUEST.load(Ordering::Acquire) as u16
 }
 
 /// The current arm-request count (for an executor to remember at open).
@@ -1781,6 +1844,65 @@ mod hazard_tests {
         let v = run(&spec, &mon, &age, 20);
         assert_eq!(v[0].rule, "hazard-detected");
         assert_eq!(v[0].declared, 0, "no FTTI declared");
+    }
+
+    /// phase-462 W4 -- the text `mode_variants::render_mode_tables_rs` emits
+    /// after the base tables for a one-row model with one mode (its
+    /// `the_variant_tables_render_over_the_base_cells` fixture), verbatim but
+    /// for the crate root, so the generated shape compiles against the real
+    /// types.
+    #[allow(dead_code, non_upper_case_globals)]
+    mod rendered_modes {
+        use crate::executor::monitor::{AgeMonitorSpec, MonitorSpec, PubMonitorCell};
+
+        static NROS_MONITOR_CELL_0: PubMonitorCell = PubMonitorCell::new();
+        pub static NROS_MONITORS: &[MonitorSpec] = &[MonitorSpec {
+            topic: "/cmd",
+            fqn: "/talker/cmd",
+            min_rate_hz_milli: 10000u32,
+            max_latency_ms: 20u32,
+            route_trigger: "",
+            route_max_latency_ms: 0u32,
+            route_deadline_ms: 0u32,
+            reaction_id: 0u16,
+            mechanism: 0u8,
+            cell: &NROS_MONITOR_CELL_0,
+        }];
+        pub static NROS_AGE_MONITORS: &[AgeMonitorSpec] = &[];
+
+        // phase-462 W4 -- the contract's modes: the base rows, the base cells, the
+        // mode's numbers.
+        pub static NROS_MODE_MONITORS_1: &[MonitorSpec] = &[MonitorSpec {
+            topic: "/cmd",
+            fqn: "/talker/cmd",
+            min_rate_hz_milli: 5000u32,
+            max_latency_ms: 20u32,
+            route_trigger: "",
+            route_max_latency_ms: 0u32,
+            route_deadline_ms: 0u32,
+            reaction_id: 0u16,
+            mechanism: 0u8,
+            cell: &NROS_MONITOR_CELL_0,
+        }];
+        pub static NROS_MODE_AGE_MONITORS_1: &[AgeMonitorSpec] = &[];
+        pub static NROS_MODE_TABLES: &[crate::executor::monitor::ModeTables] = &[
+            crate::executor::monitor::ModeTables {
+                monitors: NROS_MONITORS,
+                ages: NROS_AGE_MONITORS,
+            },
+            crate::executor::monitor::ModeTables {
+                monitors: NROS_MODE_MONITORS_1,
+                ages: NROS_MODE_AGE_MONITORS_1,
+            },
+        ];
+
+        /// Install the mode variants AFTER `nros_install_monitors`; then
+        /// `request_mode(id)` switches this executor at its next spin.
+        pub fn nros_install_mode_tables(
+            executor: &mut crate::executor::Executor<'_>,
+        ) -> ::core::result::Result<(), crate::executor::monitor::ModeTablesMismatch> {
+            executor.set_mode_tables(NROS_MODE_TABLES)
+        }
     }
 
     /// The text `contract_monitors::render_monitor_rs_full` emits for the

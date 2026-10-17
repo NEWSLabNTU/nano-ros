@@ -467,6 +467,11 @@ pub fn run(args: Args) -> Result<()> {
     let mut model_monitors: Vec<crate::orchestration::model_ingest::MonitorRow> = Vec::new();
     let mut model_ages: Vec<crate::orchestration::model_ingest::AgeRow> = Vec::new();
     let mut model_hazards: Vec<crate::orchestration::model_ingest::HazardRow> = Vec::new();
+    // phase-462 W4 -- each contract mode's variant of the two tables above.
+    let mut model_modes: Vec<(
+        Vec<crate::orchestration::model_ingest::MonitorRow>,
+        Vec<crate::orchestration::model_ingest::AgeRow>,
+    )> = Vec::new();
     let mut model_transports: Vec<crate::orchestration::plan::PlanTransport> = Vec::new();
     // R-code.2 — convention discovery: with no explicit `--model`, a committed
     // `<bringup>/config/system_model.yaml` IS the model. Users (and every
@@ -525,6 +530,18 @@ pub fn run(args: Args) -> Result<()> {
         // tables above.
         model_hazards =
             crate::orchestration::model_ingest::hazard_rows(&model, &model_monitors, &model_ages);
+        // phase-462 W4 -- a mode is a variant of those tables, refused when it
+        // would change which endpoints they watch.
+        model_modes = nros_orchestration_ir::mode_variants::all_variants(&model)
+            .map_err(|e| eyre::eyre!("codegen-system: {e}"))?
+            .into_iter()
+            .map(|(v, rows, ages)| {
+                for n in &v.not_lowered {
+                    eprintln!("codegen-system: mode `{}`: not lowered: {n}", v.name);
+                }
+                (rows, ages)
+            })
+            .collect();
         // R1-N3 — transports ride the bake plan.
         model_transports = crate::orchestration::model_ingest::plan_transports(&model)?;
         // Issue 0257 — refuse a bake whose modelled entity count cannot fit the
@@ -723,6 +740,7 @@ pub fn run(args: Args) -> Result<()> {
         model_monitors,
         model_ages,
         model_hazards,
+        model_modes,
         model_transports,
     )?;
 
@@ -955,6 +973,10 @@ fn emit_bake_tree(
     monitors: Vec<crate::orchestration::model_ingest::MonitorRow>,
     ages: Vec<crate::orchestration::model_ingest::AgeRow>,
     hazards: Vec<crate::orchestration::model_ingest::HazardRow>,
+    modes: Vec<(
+        Vec<crate::orchestration::model_ingest::MonitorRow>,
+        Vec<crate::orchestration::model_ingest::AgeRow>,
+    )>,
     transports: Vec<crate::orchestration::plan::PlanTransport>,
 ) -> Result<()> {
     fs::create_dir_all(bake_dir)
@@ -1004,12 +1026,18 @@ fn emit_bake_tree(
     if !monitors.is_empty() || !ages.is_empty() {
         write_if_changed(
             &bake_dir.join("system_monitors.rs"),
-            &crate::orchestration::model_ingest::render_monitor_rs_full(
+            &(crate::orchestration::model_ingest::render_monitor_rs_full(
                 &monitors,
                 &ages,
                 &hazards,
                 nros_orchestration_ir::contract_monitors::RenderPaths::NROS_NODE,
-            ),
+            ) + &nros_orchestration_ir::mode_variants::render_mode_tables_rs(
+                &modes
+                    .iter()
+                    .map(|(r, a)| (r.as_slice(), a.as_slice()))
+                    .collect::<Vec<_>>(),
+                nros_orchestration_ir::contract_monitors::RenderPaths::NROS_NODE,
+            )),
         )?;
     }
 

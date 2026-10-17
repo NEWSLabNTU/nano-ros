@@ -1231,10 +1231,11 @@ pub use nros_rmw::TransportError;
 pub mod monitor {
     pub use nros_node::executor::monitor::{
         AgeMonitorSpec, GuardRef, GuardSpec, HazardCell, HazardSpec, MAX_AGE_MONITORS,
-        MAX_MONITORS, MAX_VIOLATIONS, MECHANISM_EXECUTOR, MECHANISM_TIMER, MonitorArming,
-        MonitorSpec, MonitorTableFull, NO_SINK, PubMonitorCell, REACTION_NONE, RULE_IDS,
-        ReactionEvent, ReactionHookFn, SubMonitorCell, Violation, check_table_capacity, fqn_hash,
-        request_monitor_arming, route_next_due_us, rule_code, rule_name,
+        MAX_MONITORS, MAX_VIOLATIONS, MECHANISM_EXECUTOR, MECHANISM_TIMER, ModeTables,
+        ModeTablesMismatch, MonitorArming, MonitorSpec, MonitorTableFull, NO_SINK, PubMonitorCell,
+        REACTION_NONE, RULE_IDS, ReactionEvent, ReactionHookFn, SubMonitorCell, Violation,
+        check_table_capacity, fqn_hash, request_mode, request_monitor_arming, requested_mode,
+        route_next_due_us, rule_code, rule_name,
     };
 }
 

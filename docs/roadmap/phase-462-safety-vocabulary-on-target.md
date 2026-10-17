@@ -340,7 +340,58 @@ mode override on an entity the base mode does not have refuses at resolve.
 Depends on: W1, W2; the shared MapperInput derivation phase for what a mode
 override means to the mapper (which is where play_launch phase 75 put it).
 
-Claim: phase-462-W4. Depends on: phase-462-W1, phase-462-W2, phase-495-W2. Owns: packages/core/nros-orchestration-ir/src/mode_variants.rs (new); the Plan variant tables in packages/cli/nros-cli-core/src/codegen/entry/mod.rs; the variant emission in emit_cpp.rs and emit_rust.rs; packages/testing/nros-tests/tests/mode_variants.rs (new). Gate: cargo test -p nros-tests --test mode_variants; just mem-report. Status: not started.
+W4 re-plan (2026-10-17). Like W3, W4 lands in three units. They depend on
+different things.
+
+- **W4a, the lowering, the runtime switch and the Rust roads: landed in this
+  change.**
+  - The input: each mode override's target in the MODEL's keys. That is
+    `ModeOverrideContract.resolved` (ros-launch-manifest v0.1.63, filled by
+    play_launch 24a962a1).
+  - `nros-orchestration-ir::mode_variants`:
+    - `apply_mode` applies a mode to a copy of the model;
+    - `variant_rows` derives that copy's monitor and age rows. It refuses a
+      mode whose rows are not the base's rows, row for row: a mode can change
+      a requirement's value but not whether it exists. A rate taken to 0
+      counts as a removed row, because 0 means "unjudged" to the executor.
+    - An override no on-target row observes (a scope path's budget, a
+      topic's rate, a ceiling) is listed in `not_lowered`, which
+      `nros codegen-system` prints. It is never applied silently and never
+      refused. `nros::main!` cannot warn on stable Rust, so it does not print
+      the list.
+  - Runtime (`nros-node`):
+    - `ModeTables` is one variant of an executor's two tables. It shares the
+      base's cells, so every binding and hazard row index survives a switch.
+    - `Executor::set_mode_tables` refuses a variant of another length.
+    - `monitor::request_mode(id)` is an atomic STATE. Each executor applies
+      it at its next spin, before any rule judges, so a tiered image switches
+      without one thread touching another's executor.
+  - Both Rust roads bake it:
+    - `nros::main!` gives each tier's table its sliced variants,
+      `install_contract_modes`, and one `NROS_MODE_<NAME>` id constant per
+      mode;
+    - `nros codegen-system` writes `system_monitors.rs` with
+      `nros_install_mode_tables`.
+  - A model without modes bakes byte-identically.
+  - Tests:
+    - `nros-orchestration-ir` `mode_variants` (5);
+    - `nros-node` `a_requested_mode_judges_by_its_variant_table`, plus the
+      rendered text compiled in `monitor::tests::rendered_modes`;
+    - `nros-macros` `a_contract_mode_bakes_a_variant_table_and_an_id`.
+- **W4b, the C/C++ road: not started.** `nros-entry-lower`'s `MonitorTable`
+  carries the variants, both packs bake them, and `nros-cpp` exports an
+  install and `nros_request_mode`. It is the same shape as W3b-2.
+- **W4c, the tier-table half: not started.** It covers:
+  - SchedContext deadlines per mode;
+  - the mode switch as a contracted transition with its own
+    `max_latency_ms`;
+  - the gate's `mem-report` pricing of a second table;
+  - `nros-tests` `mode_variants`.
+
+  The tier table is built from the plan, not from the monitor rows, so this
+  half needs the plan to carry per-mode deadlines first.
+
+Claim: phase-462-W4. Depends on: phase-462-W1, phase-462-W2, phase-495-W2. Owns: packages/core/nros-orchestration-ir/src/mode_variants.rs (new); the Plan variant tables in packages/cli/nros-cli-core/src/codegen/entry/mod.rs; the variant emission in emit_cpp.rs and emit_rust.rs; packages/testing/nros-tests/tests/mode_variants.rs (new). Gate: cargo test -p nros-tests --test mode_variants; just mem-report. Status: W4a landed; W4b and W4c not started.
 
 ### W5 [cli, rmw] -- deadline and liveliness QoS from the contract
 

@@ -689,36 +689,13 @@ pub fn render_monitor_rs_full(
             "static NROS_AGE_CELL_{i}: SubMonitorCell = SubMonitorCell::new();\n"
         ));
     }
-    out.push_str("\npub static NROS_MONITORS: &[MonitorSpec] = &[\n");
-    for (i, r) in rows.iter().enumerate() {
-        out.push_str(&format!(
-            "    MonitorSpec {{ topic: {t:?}, fqn: {f:?}, min_rate_hz_milli: {m}u32, \
-             max_latency_ms: {l}u32, route_trigger: {rt:?}, route_max_latency_ms: {rl}u32, \
-             route_deadline_ms: {rd}u32, reaction_id: {ri}u16, mechanism: {mc}u8, \
-             cell: &NROS_MONITOR_CELL_{i} }},\n",
-            t = r.topic,
-            f = r.fqn,
-            m = r.min_rate_hz_milli,
-            l = r.max_latency_ms,
-            rt = r.route_trigger,
-            rl = r.route_max_latency_ms,
-            rd = r.route_deadline_ms,
-            ri = r.reaction_id,
-            mc = r.mechanism,
-        ));
-    }
-    out.push_str("];\n\n");
-    out.push_str("pub static NROS_AGE_MONITORS: &[AgeMonitorSpec] = &[\n");
-    for (i, r) in ages.iter().enumerate() {
-        out.push_str(&format!(
-            "    AgeMonitorSpec {{ topic: {t:?}, fqn: {f:?}, max_age_ms: {a}u32, \
-             cell: &NROS_AGE_CELL_{i} }},\n",
-            t = r.topic,
-            f = r.fqn,
-            a = r.max_age_ms,
-        ));
-    }
-    out.push_str("];\n\n");
+    out.push('\n');
+    out.push_str(&render_spec_tables(
+        rows,
+        ages,
+        "NROS_MONITORS",
+        "NROS_AGE_MONITORS",
+    ));
     // phase-496 W1 (issue 1471) -- the executor watches at most
     // `MAX_MONITORS` / `MAX_AGE_MONITORS` rows, and the spin loop inspects only
     // that many. A table past either is a COMPILE error here that names the
@@ -768,6 +745,49 @@ pub fn render_monitor_rs_full(
             e = paths.executor
         ),
     );
+    out
+}
+
+/// The two `pub static` spec tables over `rows` / `ages`, naming the cells
+/// [`render_monitor_rs_full`] declares (`NROS_MONITOR_CELL_<i>` /
+/// `NROS_AGE_CELL_<i>`, by row index). One spelling, so a phase-462 W4 mode
+/// variant ([`crate::mode_variants`]) is the base's text with its numbers.
+pub(crate) fn render_spec_tables(
+    rows: &[MonitorRow],
+    ages: &[AgeRow],
+    monitors_name: &str,
+    ages_name: &str,
+) -> String {
+    let mut out = format!("pub static {monitors_name}: &[MonitorSpec] = &[\n");
+    for (i, r) in rows.iter().enumerate() {
+        out.push_str(&format!(
+            "    MonitorSpec {{ topic: {t:?}, fqn: {f:?}, min_rate_hz_milli: {m}u32, \
+             max_latency_ms: {l}u32, route_trigger: {rt:?}, route_max_latency_ms: {rl}u32, \
+             route_deadline_ms: {rd}u32, reaction_id: {ri}u16, mechanism: {mc}u8, \
+             cell: &NROS_MONITOR_CELL_{i} }},\n",
+            t = r.topic,
+            f = r.fqn,
+            m = r.min_rate_hz_milli,
+            l = r.max_latency_ms,
+            rt = r.route_trigger,
+            rl = r.route_max_latency_ms,
+            rd = r.route_deadline_ms,
+            ri = r.reaction_id,
+            mc = r.mechanism,
+        ));
+    }
+    out.push_str("];\n\n");
+    out.push_str(&format!("pub static {ages_name}: &[AgeMonitorSpec] = &[\n"));
+    for (i, r) in ages.iter().enumerate() {
+        out.push_str(&format!(
+            "    AgeMonitorSpec {{ topic: {t:?}, fqn: {f:?}, max_age_ms: {a}u32, \
+             cell: &NROS_AGE_CELL_{i} }},\n",
+            t = r.topic,
+            f = r.fqn,
+            a = r.max_age_ms,
+        ));
+    }
+    out.push_str("];\n\n");
     out
 }
 

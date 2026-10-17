@@ -264,6 +264,32 @@ pub unsafe fn install_contract_hazards(
     }
 }
 
+/// phase-462 W4 -- install a contracted Rust image's MODE variants of the two
+/// monitor tables on one executor, after [`install_contract_monitors`] (entry
+/// 0 of `modes` is that call's base tables). `nros::main!` emits this only
+/// for a model that declares modes; `nros::monitor::request_mode` then
+/// switches every executor at its next spin.
+///
+/// # Errors
+///
+/// A variant whose tables are not the base's length, which the bake already
+/// refuses, so this is a corrupted image; a NULL or non-executor handle, as
+/// [`install_contract_monitors`] reports it.
+///
+/// # Safety
+/// As for [`install_contract_monitors`].
+pub unsafe fn install_contract_modes(
+    executor: *mut c_void,
+    modes: &'static [nros_node::executor::monitor::ModeTables],
+) -> Result<(), &'static str> {
+    let executor =
+        unsafe { crate::executor_handle::executor_from_handle(executor, "install_contract_modes") }
+            .map_err(|_| "install_contract_modes: not an executor handle")?;
+    executor
+        .set_mode_tables(modes)
+        .map_err(|_| "a contract mode's tables are not the base tables' shape (re-run the bake)")
+}
+
 /// Arm one executor's `/diagnostics` reporter in `slot`, and point the
 /// executor's violation sink at it — THE arming step, shared by
 /// [`install_contract_monitors`] (Rust) and `nros-cpp`'s
