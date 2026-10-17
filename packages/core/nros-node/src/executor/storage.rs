@@ -1176,6 +1176,11 @@ mod tests {
         //   * phase-462 W3b's `hazard_table`: one `&'static` slice reference to
         //     the baked hazard table, whose per-hazard state lives in the
         //     table's own `static` cells. Scales with nothing.
+        //   * phase-462 W4's mode tables: one `&'static` slice reference to the
+        //     baked mode variants (each a pair of `&'static` table references,
+        //     in the entry's statics, not here) and two `u16` mode ids. Scales
+        //     with nothing -- a mode adds a table to the image, not to this
+        //     value.
         #[allow(unused_mut)]
         let mut ceiling =
             1280 + size_of::<super::super::spin::SessionStore>()
@@ -1188,6 +1193,8 @@ mod tests {
                 + size_of::<bool>()
                 + size_of::<u32>()
                 + size_of::<&'static [super::super::monitor::HazardSpec]>()
+                + size_of::<&'static [super::super::monitor::ModeTables]>()
+                + 2 * size_of::<u16>()
                 + size_of::<
                     [Option<super::super::spin::WakeSourceSlot>;
                         super::super::spin::MAX_WAKE_SOURCES],

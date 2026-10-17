@@ -2010,6 +2010,14 @@ pub struct Executor<'s> {
     /// state lives in the rows' own `static` cells, so a hazard costs this
     /// value nothing.
     pub(crate) hazard_table: &'static [super::monitor::HazardSpec],
+    /// phase-462 W4 -- the baked mode variants of the two monitor tables,
+    /// index = mode id (0 = the base). Empty for an image with no modes.
+    pub(crate) mode_tables: &'static [super::monitor::ModeTables],
+    /// phase-462 W4 -- the last mode request this executor saw, and the mode
+    /// whose tables it judges by. They differ only after a request for a mode
+    /// this executor has no table for.
+    pub(crate) mode_seen: u16,
+    pub(crate) mode_applied: u16,
     /// W3b.5 — hook invoked on `DeadlineAction::Fault` (panic when unset).
     pub(crate) fault_fn: Option<fn(&super::monitor::Violation)>,
     /// phase-503 — the reaction hook and its context: called when a
@@ -2332,6 +2340,9 @@ impl<'s> Executor<'s> {
             age_table: &[],
             age_states: [super::monitor::AgeState::default(); super::monitor::MAX_AGE_MONITORS],
             hazard_table: &[],
+            mode_tables: &[],
+            mode_seen: 0,
+            mode_applied: 0,
             fault_fn: None,
             reaction_hook: None,
             spin_quantization_checked: false,
@@ -3199,6 +3210,74 @@ impl<'s> Executor<'s> {
     /// `hazard-recovered` on the same drain.
     pub fn set_hazard_table(&mut self, table: &'static [super::monitor::HazardSpec]) {
         self.hazard_table = table;
+    }
+
+    /// phase-462 W4 -- install the contract's mode variants of the two monitor
+    /// tables; entry `i` is mode `i`, and entry 0 must be the base tables
+    /// already installed. A switch is asked for with
+    /// [`super::monitor::request_mode`] and applied at the next spin.
+    ///
+    /// # Errors
+    ///
+    /// [`super::monitor::ModeTablesMismatch`] when an entry's tables are not the base's
+    /// length: a variant shares the base's cells and the per-row monitor
+    /// state by index, so a variant of another length would judge one row
+    /// by another's requirement. Nothing is installed.
+    pub fn set_mode_tables(
+        &mut self,
+        modes: &'static [super::monitor::ModeTables],
+    ) -> Result<(), super::monitor::ModeTablesMismatch> {
+        for (id, m) in modes.iter().enumerate() {
+            if m.monitors.len() != self.monitor_table.len() || m.ages.len() != self.age_table.len()
+            {
+                return Err(super::monitor::ModeTablesMismatch {
+                    mode: id as u16,
+                    monitors: (m.monitors.len(), self.monitor_table.len()),
+                    ages: (m.ages.len(), self.age_table.len()),
+                });
+            }
+        }
+        self.mode_tables = modes;
+        Ok(())
+    }
+
+    /// The mode whose tables this executor judges by (0 = the base).
+    #[must_use]
+    pub fn current_mode(&self) -> u16 {
+        self.mode_applied
+    }
+
+    /// phase-462 W4 -- once per spin, before any rule runs: enter the mode the
+    /// application asked for, if this executor has tables for it.
+    fn update_mode(&mut self) {
+        if self.mode_tables.is_empty() {
+            return;
+        }
+        let want = super::monitor::requested_mode();
+        if want == self.mode_seen {
+            return;
+        }
+        self.mode_seen = want;
+        match self.mode_tables.get(usize::from(want)) {
+            Some(t) => {
+                self.monitor_table = t.monitors;
+                self.age_table = t.ages;
+                self.mode_applied = want;
+                nros_log::log_info!(
+                    nros_log::get_logger("nros"),
+                    "contract mode {} entered",
+                    want
+                );
+            }
+            None => nros_log::log_warn!(
+                nros_log::get_logger("nros"),
+                "contract mode {} requested, but this executor bakes {} mode table(s); \
+                 staying in mode {}",
+                want,
+                self.mode_tables.len(),
+                self.mode_applied
+            ),
+        }
     }
 
     /// The installed hazard table (empty unless the entry set one).
@@ -10054,6 +10133,9 @@ impl<'s> Executor<'s> {
         // phase-474 I2 -- arm the monitors when the policy says start-up is over,
         // before any rule of this spin can judge.
         self.update_monitor_arming(spin_start_us);
+        // phase-462 W4 -- and switch to the requested mode's tables, before
+        // any rule of this spin judges by them.
+        self.update_mode();
 
         // RFC-0052 W3b.4 — contract monitors tick once per spin (window
         // logic inside; single branch when the baked table is empty).

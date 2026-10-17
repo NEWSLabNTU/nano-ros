@@ -15298,3 +15298,118 @@ fn a_detected_hazard_starts_its_safe_state_reaction() {
         "{rules:?}"
     );
 }
+
+#[cfg(all(feature = "std", feature = "alloc"))]
+private_test_clock!(mode_switch_clock);
+
+/// phase-462 W4 -- a contract mode is a variant of the base monitor table,
+/// sharing its cells, and the executor judges by the requested mode's
+/// numbers from its next spin.
+///
+/// One 100 ms timer publishes on a contracted topic and takes 20 ms. The base
+/// budget is 5 ms, mode 1's is 50 ms. In the base the overrun is judged;
+/// after `request_mode(1)` the same 20 ms is inside the budget and nothing
+/// more is stored; a request for a mode the executor has no table for keeps
+/// it in mode 1.
+#[cfg(all(feature = "std", feature = "alloc"))]
+#[test]
+fn a_requested_mode_judges_by_its_variant_table() {
+    use super::monitor::{ModeTables, MonitorSpec, PubMonitorCell, request_mode};
+    let _g = arming_lock();
+
+    static CELL: PubMonitorCell = PubMonitorCell::new();
+    const fn spec(max_latency_ms: u32) -> MonitorSpec {
+        MonitorSpec {
+            topic: "/mode/status",
+            fqn: "/mode/handler/status",
+            min_rate_hz_milli: 0,
+            max_latency_ms,
+            route_trigger: "",
+            route_max_latency_ms: 0,
+            route_deadline_ms: 0,
+            reaction_id: 0,
+            mechanism: 0,
+            cell: &CELL,
+        }
+    }
+    static BASE: [MonitorSpec; 1] = [spec(5)];
+    static RELAXED: [MonitorSpec; 1] = [spec(50)];
+    static MODES: [ModeTables; 2] = [
+        ModeTables {
+            monitors: &BASE,
+            ages: &[],
+        },
+        ModeTables {
+            monitors: &RELAXED,
+            ages: &[],
+        },
+    ];
+    static SHORT: [ModeTables; 1] = [ModeTables {
+        monitors: &[],
+        ages: &[],
+    }];
+
+    mode_switch_clock::claim_at_us(1_000_000);
+    fn step(executor: &mut Executor, ms: u64) {
+        mode_switch_clock::set_us(mode_switch_clock::now_us() + ms * 1_000);
+        let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    }
+    request_mode(0);
+    let mut executor: Executor =
+        executor_with_clock_fn(MockSession::new(), mode_switch_clock::now_us);
+    executor.set_monitor_table(&BASE);
+    executor.set_report_violations(false);
+    assert!(
+        executor.set_mode_tables(&SHORT).is_err(),
+        "a variant of another length is refused"
+    );
+    executor
+        .set_mode_tables(&MODES)
+        .expect("same-shape variants");
+    let nid = executor.node_builder("handler").build().expect("node");
+    let status = executor
+        .node_mut(nid)
+        .create_generic_publisher("/mode/status", "std_msgs::msg::dds_::Int32_", "")
+        .expect("contracted publisher");
+    executor
+        .register_timer(TimerDuration::from_millis(100), move || {
+            let _ = status.publish_raw(&[0, 1, 0, 0, 1, 0, 0, 0]);
+            mode_switch_clock::set_us(mode_switch_clock::now_us() + 20_000);
+        })
+        .expect("timer");
+
+    for _ in 0..3 {
+        step(&mut executor, 80);
+    }
+    let latency = |ex: &mut Executor| {
+        let mut n = 0;
+        ex.drain_violations(|v| {
+            assert_eq!(
+                v.rule, "max-latency-runtime",
+                "only the latency rule speaks: {v:?}"
+            );
+            n += 1;
+        });
+        n
+    };
+    assert!(
+        latency(&mut executor) >= 1,
+        "the base judges 20 ms against 5 ms"
+    );
+    assert_eq!(executor.current_mode(), 0);
+
+    request_mode(1);
+    step(&mut executor, 80);
+    assert_eq!(executor.current_mode(), 1, "entered at the next spin");
+    assert_eq!(executor.monitor_table()[0].max_latency_ms, 50);
+    let _ = latency(&mut executor);
+    for _ in 0..4 {
+        step(&mut executor, 80);
+    }
+    assert_eq!(latency(&mut executor), 0, "20 ms is inside mode 1's 50 ms");
+
+    request_mode(7);
+    step(&mut executor, 80);
+    assert_eq!(executor.current_mode(), 1, "no table for mode 7: stays");
+    request_mode(0);
+}

@@ -732,6 +732,13 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         Vec<nros_orchestration_ir::contract_monitors::MonitorRow>,
         Vec<nros_orchestration_ir::contract_monitors::AgeRow>,
     ) = (Vec::new(), Vec::new());
+    // phase-462 W4 -- each contract mode's variant of the rows above, in mode-id
+    // order and sliced the same way (empty for a model with no modes).
+    let mut mode_rows: Vec<(
+        String,
+        Vec<nros_orchestration_ir::contract_monitors::MonitorRow>,
+        Vec<nros_orchestration_ir::contract_monitors::AgeRow>,
+    )> = Vec::new();
     // phase-462 W3b -- kept only when the model declares hazards, which the
     // monitor-table emitter lowers onto the rows above.
     let mut hazard_model: Option<ros_launch_manifest_model::SystemModel> = None;
@@ -1099,6 +1106,26 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 .collect();
             if !model.contracts.hazards.is_empty() {
                 hazard_model = Some(model.model.clone());
+            }
+            // phase-462 W4 -- a mode is a variant of these rows, refused here
+            // when it would change which endpoints are watched.
+            let variants =
+                nros_orchestration_ir::mode_variants::all_variants(&model).map_err(|e| {
+                    syn::Error::new(
+                        model_lit.span(),
+                        format!("nros::main!: model `{}`: {e}", model_path.display()),
+                    )
+                })?;
+            for (v, rows, ages) in variants {
+                mode_rows.push((
+                    v.name,
+                    rows.into_iter()
+                        .filter(|r| kept.contains(row_node_fqn(&r.fqn)))
+                        .collect(),
+                    ages.into_iter()
+                        .filter(|r| kept.contains(row_node_fqn(&r.fqn)))
+                        .collect(),
+                ));
             }
         }
         // Issue 0257 — count the callback slots the SLICED node set needs. Same
@@ -1753,6 +1780,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // node exists: a publisher attaches its counter cell at create time.
     let (contract_items_ts, contract_monitors_call) = contract_monitor_tokens(
         &contract_rows,
+        &mode_rows,
         multi_tier,
         &node_namespaces,
         hazard_model.as_ref(),
@@ -4260,6 +4288,13 @@ fn contract_monitor_tokens(
         Vec<nros_orchestration_ir::contract_monitors::MonitorRow>,
         Vec<nros_orchestration_ir::contract_monitors::AgeRow>,
     ),
+    // phase-462 W4 -- `(mode, rows, ages)` per contract mode, in mode-id order,
+    // sliced to the deployed nodes like `rows`.
+    modes: &[(
+        String,
+        Vec<nros_orchestration_ir::contract_monitors::MonitorRow>,
+        Vec<nros_orchestration_ir::contract_monitors::AgeRow>,
+    )],
     multi_tier: Option<&ResolvedTierTable>,
     node_namespaces: &BTreeMap<String, String>,
     // phase-462 W3b -- the model whose hazards the tables may observe; `None`
@@ -4273,11 +4308,23 @@ fn contract_monitor_tokens(
     if mons.is_empty() && ages.is_empty() {
         return (quote! {}, quote! {});
     }
-    // (selector member, rows, ages) per executor table.
+    // (selector member, rows, ages, per-mode (rows, ages)) per executor table.
     type Member = Option<(String, String, String)>;
-    let mut tables: Vec<(Member, Vec<_>, Vec<_>)> = Vec::new();
+    type ModeSlice = Vec<(
+        Vec<nros_orchestration_ir::contract_monitors::MonitorRow>,
+        Vec<nros_orchestration_ir::contract_monitors::AgeRow>,
+    )>;
+    let mut tables: Vec<(Member, Vec<_>, Vec<_>, ModeSlice)> = Vec::new();
     match multi_tier {
-        None => tables.push((None, mons.clone(), ages.clone())),
+        None => tables.push((
+            None,
+            mons.clone(),
+            ages.clone(),
+            modes
+                .iter()
+                .map(|(_, r, a)| (r.clone(), a.clone()))
+                .collect(),
+        )),
         Some(table) => {
             for t in &table.tiers {
                 let mut members: Vec<(String, String, String)> = t
@@ -4313,21 +4360,48 @@ fn contract_monitor_tokens(
                 if t_mons.is_empty() && t_ages.is_empty() {
                     continue;
                 }
+                // phase-462 W4 -- each mode's rows, sliced by the same FQNs, so
+                // a variant is row for row the tier's base table.
+                let t_modes: ModeSlice = modes
+                    .iter()
+                    .map(|(_, r, a)| {
+                        (
+                            r.iter()
+                                .filter(|r| fqns.contains(row_node_fqn(&r.fqn)))
+                                .cloned()
+                                .collect(),
+                            a.iter()
+                                .filter(|r| fqns.contains(row_node_fqn(&r.fqn)))
+                                .cloned()
+                                .collect(),
+                        )
+                    })
+                    .collect();
                 // A tier with no members admits every group (the wildcard), so
                 // it cannot be told apart by asking; it has no nodes, so no
                 // rows either, and was skipped above.
-                tables.push((members.into_iter().next(), t_mons, t_ages));
+                tables.push((members.into_iter().next(), t_mons, t_ages, t_modes));
             }
         }
     }
     let mut items = Vec::new();
     let mut installs = Vec::new();
-    for (k, (member, t_mons, t_ages)) in tables.iter().enumerate() {
+    for (k, (member, t_mons, t_ages, t_modes)) in tables.iter().enumerate() {
         let module = Ident::new(&format!("__nros_contract_monitors_{k}"), Span::call_site());
         let hazards = model
             .map(|m| hazard_rows(m, t_mons, t_ages))
             .unwrap_or_default();
-        let rendered = render_monitor_rs_full(t_mons, t_ages, &hazards, RenderPaths::NROS);
+        let mut rendered = render_monitor_rs_full(t_mons, t_ages, &hazards, RenderPaths::NROS);
+        let slices: Vec<(&[_], &[_])> = t_modes
+            .iter()
+            .map(|(r, a)| (r.as_slice(), a.as_slice()))
+            .collect();
+        rendered.push_str(
+            &nros_orchestration_ir::mode_variants::render_mode_tables_rs(
+                &slices,
+                RenderPaths::NROS,
+            ),
+        );
         let body: proc_macro2::TokenStream = match rendered.parse() {
             Ok(ts) => ts,
             Err(e) => {
@@ -4372,6 +4446,16 @@ fn contract_monitor_tokens(
                 }
             }
         };
+        // phase-462 W4 -- the mode variants of the two tables just installed.
+        let install = if t_modes.is_empty() {
+            install
+        } else {
+            quote! {
+                (#install).and_then(|()| unsafe {
+                    ::nros::contract::install_contract_modes(__nros_exec, #module::NROS_MODE_TABLES)
+                })
+            }
+        };
         installs.push((member.clone(), install));
     }
     let dispatch = match multi_tier {
@@ -4406,7 +4490,25 @@ fn contract_monitor_tokens(
             })?;
         }
     };
-    (quote! { #( #items )* }, call)
+    // phase-462 W4 -- one id per mode, the same on every executor and road:
+    // `::nros::monitor::request_mode(NROS_MODE_<NAME>)` asks for it.
+    let mode_consts = modes.iter().enumerate().map(|(i, (name, _, _))| {
+        let id = (i + 1) as u16;
+        let ident = Ident::new(
+            &format!(
+                "NROS_MODE_{}",
+                nros_orchestration_ir::mode_variants::mode_const_name(name)
+            ),
+            Span::call_site(),
+        );
+        let doc = format!("The contract's mode `{name}`: pass to `nros::monitor::request_mode`.");
+        quote! {
+            #[doc = #doc]
+            #[allow(dead_code)]
+            pub const #ident: u16 = #id;
+        }
+    });
+    (quote! { #( #items )* #( #mode_consts )* }, call)
 }
 
 fn tier_specs_tokens(
@@ -5632,6 +5734,7 @@ mod contract_monitor_tests {
     fn an_uncontracted_entry_emits_nothing() {
         let (items, call) = contract_monitor_tokens(
             &(Vec::new(), Vec::<AgeRow>::new()),
+            &[],
             None,
             &BTreeMap::new(),
             None,
@@ -5653,7 +5756,8 @@ mod contract_monitor_tests {
         let model = ros_launch_manifest_model::SystemModel::from_yaml_str(yaml).expect("parses");
         let ages = nros_orchestration_ir::contract_monitors::age_rows(&model).expect("ages");
         let rows = (Vec::new(), ages);
-        let (items, call) = contract_monitor_tokens(&rows, None, &BTreeMap::new(), Some(&model));
+        let (items, call) =
+            contract_monitor_tokens(&rows, &[], None, &BTreeMap::new(), Some(&model));
         let items = items.to_string();
         let call = call.to_string();
         assert!(items.contains("NROS_HAZARDS"), "{items}");
@@ -5662,8 +5766,35 @@ mod contract_monitor_tests {
         let hz = call.find("install_contract_hazards").expect("hazards");
         assert!(hz > mons, "{call}");
         // Without the model the same rows bake no hazard and no install.
-        let (_, plain) = contract_monitor_tokens(&rows, None, &BTreeMap::new(), None);
+        let (_, plain) = contract_monitor_tokens(&rows, &[], None, &BTreeMap::new(), None);
         assert!(!plain.to_string().contains("install_contract_hazards"));
+    }
+
+    /// phase-462 W4 -- a model with a mode bakes one variant per mode beside
+    /// the base table (the base's cells, the mode's numbers), installs them
+    /// after the base, and names the mode's id as a constant.
+    #[test]
+    fn a_contract_mode_bakes_a_variant_table_and_an_id() {
+        let base = vec![row("/talker/chatter", "/chatter")];
+        let mut relaxed = base.clone();
+        relaxed[0].min_rate_hz_milli = 1_000;
+        let rows = (base, Vec::<AgeRow>::new());
+        let modes = vec![("degraded-safe".to_string(), relaxed, Vec::<AgeRow>::new())];
+        let (items, call) = contract_monitor_tokens(&rows, &modes, None, &BTreeMap::new(), None);
+        let items = items.to_string();
+        let call = call.to_string();
+        assert!(items.contains("NROS_MODE_MONITORS_1"), "{items}");
+        assert!(items.contains("NROS_MODE_TABLES"), "{items}");
+        assert!(items.contains("min_rate_hz_milli : 1000u32"), "{items}");
+        assert!(items.contains("NROS_MODE_DEGRADED_SAFE"), "{items}");
+        let mons = call.find("install_contract_monitors").expect("monitors");
+        let md = call.find("install_contract_modes").expect("modes");
+        assert!(md > mons, "{call}");
+        // No modes: byte-identical to before -- no variant, no install.
+        let (plain_items, plain) =
+            contract_monitor_tokens(&rows, &[], None, &BTreeMap::new(), None);
+        assert!(!plain_items.to_string().contains("NROS_MODE"));
+        assert!(!plain.to_string().contains("install_contract_modes"));
     }
 
     /// Issue 1676 — a contracted single-executor entry bakes ONE table, rooted
@@ -5675,7 +5806,7 @@ mod contract_monitor_tests {
             vec![row("/talker/chatter", "/chatter")],
             Vec::<AgeRow>::new(),
         );
-        let (items, call) = contract_monitor_tokens(&rows, None, &BTreeMap::new(), None);
+        let (items, call) = contract_monitor_tokens(&rows, &[], None, &BTreeMap::new(), None);
         let items = items.to_string();
         let call = call.to_string();
         assert!(items.contains("mod __nros_contract_monitors_0"), "{items}");
@@ -5717,7 +5848,7 @@ mod contract_monitor_tests {
             .iter()
             .map(|n| (n.to_string(), "/".to_string()))
             .collect();
-        let (items, call) = contract_monitor_tokens(&rows, Some(&table), &ns, None);
+        let (items, call) = contract_monitor_tokens(&rows, &[], Some(&table), &ns, None);
         let items = items.to_string();
         let call = call.to_string();
         assert!(items.contains("__nros_contract_monitors_0"), "{items}");
