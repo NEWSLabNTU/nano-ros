@@ -19,6 +19,7 @@ nodes:
         qos:
           depth: 8
           durability: transient_local
+          deadline: 100ms
       quiet: {}
 
   listener:

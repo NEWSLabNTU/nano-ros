@@ -1,0 +1,24 @@
+# phase-462 W5 -- the contract states the talker's `deadline`, and
+# `deadline_diverges.launch.xml` overrides it with a different value. The
+# resolver writes a contract's deadline into `qos_overrides.*` only where the
+# launch file states none, so the authored parameter wins there -- and the
+# agreement check is what stops the image running a deadline the contract
+# does not describe.
+
+version: 1
+
+nodes:
+  talker:
+    pub:
+      chatter:
+        qos:
+          deadline: 100ms
+  listener:
+    sub:
+      chatter: {}
+
+topics:
+  /chatter:
+    type: std_msgs/msg/Int32
+    pub: [talker/chatter]
+    sub: [listener/chatter]

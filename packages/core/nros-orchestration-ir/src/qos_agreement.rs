@@ -29,13 +29,20 @@
 //! contract line to add. The contract stays the single authoritative producer;
 //! the override must not quietly become a second one.
 //!
-//! # Scope: capacity, not occupancy
+//! # Scope: all eight modelled policies
 //!
-//! Only the four policies [`crate::qos_override::MODELLED_POLICIES`] marks as
-//! capacity — `reliability`, `durability`, `history`, `depth`. `deadline`,
-//! `lifespan` and the two liveliness policies bound occupancy or liveness of a
-//! queue whose size is already decided, the contract has no key for them, and
-//! they stay runtime-only.
+//! phase-454 W7 compared the four [`crate::qos_override::MODELLED_POLICIES`]
+//! marks as capacity — `reliability`, `durability`, `history`, `depth` — the
+//! ones the contract SIZES from. phase-462 W5 adds the four that bound a
+//! queue's liveness instead: `deadline`, `lifespan`, `liveliness` and
+//! `liveliness_lease_duration` (the contract's `lease_duration`). They size
+//! nothing, but the contract states them and the resolve-time checks reason
+//! about them (a hazard's detection time is a deadline), so an override that
+//! disagrees is the same two-statements defect. Durations compare in the
+//! wire's milliseconds, each side converted by the runtime's own rule
+//! ([`crate::qos_override::contract_ms_to_wire_ms`]); the resolver writes a
+//! contract's liveness into `qos_overrides.*` itself, so a disagreement is
+//! always an AUTHORED parameter the resolver let win.
 //!
 //! # When this abstains
 //!
@@ -52,8 +59,8 @@ use std::{collections::BTreeMap, fmt};
 use ros_launch_manifest_model::SystemModel;
 
 use crate::qos_override::{
-    self, QoSOverrideError, SizingStatement, parse_durability, parse_history, parse_reliability,
-    role_spelling,
+    self, QoSOverrideError, QosStatement, contract_ms_to_wire_ms, parse_durability, parse_history,
+    parse_liveliness, parse_reliability, role_spelling,
 };
 
 /// What the contract says for one endpoint, in the four capacity policies.
@@ -64,12 +71,17 @@ use crate::qos_override::{
 /// drop the whole W3/W7 pair exists to refuse. (`nros ws entity-inventory`'s
 /// `reject_unknown_qos_values` gives that case its own better message on the
 /// CLI road; this road must not depend on having been there first.)
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 struct ContractQos<'a> {
     reliability: Option<&'a str>,
     durability: Option<&'a str>,
     history: Option<&'a str>,
     depth: Option<u32>,
+    // phase-462 W5 -- the liveness policies, in the model's milliseconds.
+    deadline_ms: Option<f64>,
+    lifespan_ms: Option<f64>,
+    lease_ms: Option<f64>,
+    liveliness: Option<&'a str>,
 }
 
 impl<'a> ContractQos<'a> {
@@ -81,18 +93,50 @@ impl<'a> ContractQos<'a> {
                 durability: q.durability.as_deref(),
                 history: q.history.as_deref(),
                 depth: q.depth,
+                deadline_ms: q.deadline_ms,
+                lifespan_ms: q.lifespan_ms.map(|v| v as f64),
+                lease_ms: q.lease_duration_ms,
+                liveliness: q.liveliness.as_deref(),
             },
+        }
+    }
+
+    /// The contract's duration, as the contract would spell it.
+    fn ms_spelling(ms: f64) -> String {
+        if ms.fract() == 0.0 {
+            format!("{ms:.0}ms")
+        } else {
+            format!("{ms}ms")
+        }
+    }
+
+    /// Every statement of `self`, falling back to `topic`'s per policy -- the
+    /// same fact one level up.
+    fn or(self, topic: &ContractQos<'a>) -> ContractQos<'a> {
+        ContractQos {
+            reliability: self.reliability.or(topic.reliability),
+            durability: self.durability.or(topic.durability),
+            history: self.history.or(topic.history),
+            depth: self.depth.or(topic.depth),
+            deadline_ms: self.deadline_ms.or(topic.deadline_ms),
+            lifespan_ms: self.lifespan_ms.or(topic.lifespan_ms),
+            lease_ms: self.lease_ms.or(topic.lease_ms),
+            liveliness: self.liveliness.or(topic.liveliness),
         }
     }
 
     /// The contract's answer for ONE policy: `None` = it states nothing,
     /// `Some(raw)` = what it wrote.
-    fn stated(&self, statement: &SizingStatement) -> Option<String> {
+    fn stated(&self, statement: &QosStatement) -> Option<String> {
         match statement {
-            SizingStatement::Reliability(_) => self.reliability.map(str::to_string),
-            SizingStatement::Durability(_) => self.durability.map(str::to_string),
-            SizingStatement::History(_) => self.history.map(str::to_string),
-            SizingStatement::Depth(_) => self.depth.map(|d| d.to_string()),
+            QosStatement::Reliability(_) => self.reliability.map(str::to_string),
+            QosStatement::Durability(_) => self.durability.map(str::to_string),
+            QosStatement::History(_) => self.history.map(str::to_string),
+            QosStatement::Depth(_) => self.depth.map(|d| d.to_string()),
+            QosStatement::Deadline(_) => self.deadline_ms.map(Self::ms_spelling),
+            QosStatement::Lifespan(_) => self.lifespan_ms.map(Self::ms_spelling),
+            QosStatement::LivelinessLease(_) => self.lease_ms.map(Self::ms_spelling),
+            QosStatement::Liveliness(_) => self.liveliness.map(str::to_string),
         }
     }
 
@@ -103,16 +147,28 @@ impl<'a> ContractQos<'a> {
     /// value rather than two strings that happen to match. A contract spelling
     /// that does not parse can equal nothing, which is correct: it does not
     /// state the override's value, and saying so loudly is the point.
-    fn agrees_with(&self, statement: &SizingStatement) -> bool {
+    fn agrees_with(&self, statement: &QosStatement) -> bool {
         match statement {
-            SizingStatement::Reliability(p) => {
+            QosStatement::Reliability(p) => {
                 self.reliability.and_then(parse_reliability) == Some(*p)
             }
-            SizingStatement::Durability(p) => {
-                self.durability.and_then(parse_durability) == Some(*p)
+            QosStatement::Durability(p) => self.durability.and_then(parse_durability) == Some(*p),
+            QosStatement::History(p) => self.history.and_then(parse_history) == Some(*p),
+            QosStatement::Depth(d) => self.depth == Some(*d),
+            // phase-462 W5 -- compared in the wire's milliseconds, each side
+            // converted by the rule the runtime uses, so `deadline: 100ms` and
+            // `100000000` ns are one value and a sub-millisecond difference
+            // that the wire cannot carry is not a disagreement.
+            QosStatement::Deadline(ms) => {
+                self.deadline_ms.and_then(contract_ms_to_wire_ms) == Some(*ms)
             }
-            SizingStatement::History(p) => self.history.and_then(parse_history) == Some(*p),
-            SizingStatement::Depth(d) => self.depth == Some(*d),
+            QosStatement::Lifespan(ms) => {
+                self.lifespan_ms.and_then(contract_ms_to_wire_ms) == Some(*ms)
+            }
+            QosStatement::LivelinessLease(ms) => {
+                self.lease_ms.and_then(contract_ms_to_wire_ms) == Some(*ms)
+            }
+            QosStatement::Liveliness(k) => self.liveliness.and_then(parse_liveliness) == Some(*k),
         }
     }
 }
@@ -139,6 +195,15 @@ pub struct Disagreement {
     pub role: &'static str,
     /// The policy in dispute.
     pub policy: &'static str,
+    /// phase-462 W5 -- the same policy's key in a contract `qos:` block
+    /// (`lease_duration` for `liveliness_lease_duration`).
+    pub contract_key: &'static str,
+    /// The override's value as a contract would spell it (`100ms` for
+    /// `100000000` ns).
+    pub contract_spelling: String,
+    /// Whether the policy bounds CAPACITY (what the contract sizes) or a
+    /// queue's liveness.
+    pub capacity: bool,
 }
 
 impl Disagreement {
@@ -155,7 +220,7 @@ impl Disagreement {
             return format!(
                 "    Declare the endpoint under the node's `{side}:` block, wire it into \
                  `topics:` beneath `{}:`, and give it:\n            qos:\n              {}: {}",
-                self.topic, self.policy, self.param_value
+                self.topic, self.contract_key, self.contract_spelling
             );
         };
         // `/talker/chatter` → node `talker`, endpoint `chatter`. The contract
@@ -173,7 +238,7 @@ impl Disagreement {
         format!(
             "    nodes:\n      {node}:\n        {side}:\n          {local}:\n            qos:\n\
              \x20             {}: {}",
-            self.policy, self.param_value
+            self.contract_key, self.contract_spelling
         )
     }
 }
@@ -195,25 +260,36 @@ impl fmt::Display for Disagreement {
                 writeln!(
                     f,
                     "  contract : endpoint `{ep}` states `{}: {v}`{}",
-                    self.policy,
+                    self.contract_key,
                     self.contract_file
                         .as_deref()
                         .map(|p| format!("  ({p})"))
                         .unwrap_or_default()
                 )?;
-                write!(
-                    f,
-                    "  They are two statements about one fact and they differ. Narrowing is a \
-                     disagreement too: the contract is what sizes the arena, the XRCE reliable \
-                     buffers and the zenoh ring, so honouring the parameter silently would run \
-                     QoS the contract does not describe. Change one of them."
-                )
+                if self.capacity {
+                    write!(
+                        f,
+                        "  They are two statements about one fact and they differ. Narrowing is \
+                         a disagreement too: the contract is what sizes the arena, the XRCE \
+                         reliable buffers and the zenoh ring, so honouring the parameter \
+                         silently would run QoS the contract does not describe. Change one of \
+                         them."
+                    )
+                } else {
+                    write!(
+                        f,
+                        "  They are two statements about one fact and they differ. The contract \
+                         is what the resolve-time checks reason about (a hazard's detection \
+                         time, a route's budget), so honouring the parameter silently would run \
+                         a liveness the contract does not describe. Change one of them."
+                    )
+                }
             }
             (Some(v), None) => write!(
                 f,
                 "  contract : states `{}: {v}` for this topic{}, but declares no {} endpoint on \
                  it for node `{}`.",
-                self.policy,
+                self.contract_key,
                 self.contract_file
                     .as_deref()
                     .map(|p| format!(" ({p})"))
@@ -226,7 +302,7 @@ impl fmt::Display for Disagreement {
                     Some(ep) => writeln!(
                         f,
                         "  contract : endpoint `{ep}` states no `{}`{}",
-                        self.policy,
+                        self.contract_key,
                         self.contract_file
                             .as_deref()
                             .map(|p| format!("  ({p})"))
@@ -243,13 +319,23 @@ impl fmt::Display for Disagreement {
                             .unwrap_or_default()
                     )?,
                 }
-                writeln!(
-                    f,
-                    "  The parameter reaches the runtime table and the contract sizes the \
-                     buffers, so a policy stated on only one side is an image sized for QoS it \
-                     does not run. The contract is the authoritative producer -- state it there \
-                     too:"
-                )?;
+                if self.capacity {
+                    writeln!(
+                        f,
+                        "  The parameter reaches the runtime table and the contract sizes the \
+                         buffers, so a policy stated on only one side is an image sized for QoS \
+                         it does not run. The contract is the authoritative producer -- state it \
+                         there too:"
+                    )?;
+                } else {
+                    writeln!(
+                        f,
+                        "  The parameter reaches the runtime table and the contract is what the \
+                         resolve-time checks reason about, so a policy stated on only one side \
+                         is an image checked for a liveness it does not run. The contract is the \
+                         authoritative producer -- state it there too:"
+                    )?;
+                }
                 write!(f, "{}", self.contract_line())
             }
         }
@@ -334,7 +420,7 @@ pub fn check_model(model: &SystemModel) -> Result<(), QosAgreementError> {
         let contract_file = manifest_of.get(inst.scope.as_str()).map(|m| m.to_string());
         for (name, value) in inst.resolved_params(fqn) {
             let value = value.to_bake_string();
-            let stated = qos_override::sizing_statement(name.as_str(), &value).map_err(|e| {
+            let stated = qos_override::contract_statement(name.as_str(), &value).map_err(|e| {
                 QosAgreementError::Unreadable {
                     node: fqn.clone(),
                     source: e,
@@ -377,13 +463,16 @@ pub fn check_model(model: &SystemModel) -> Result<(), QosAgreementError> {
                 out.push(Disagreement {
                     node: fqn.clone(),
                     param_key: name.clone(),
-                    param_value: ovr.statement.value(),
+                    param_value: value.clone(),
                     contract_file: contract_file.clone(),
                     endpoint: None,
                     contract_value: topic_qos.stated(&ovr.statement),
                     topic: ovr.topic.clone(),
                     role,
                     policy: ovr.statement.policy(),
+                    contract_key: ovr.statement.contract_key(),
+                    contract_spelling: ovr.statement.value(),
+                    capacity: ovr.statement.is_capacity(),
                 });
                 continue;
             }
@@ -409,12 +498,7 @@ pub fn check_model(model: &SystemModel) -> Result<(), QosAgreementError> {
                 // An endpoint that states nothing for this policy inherits the
                 // topic-level statement, if the contract made one.
                 let q = if q.stated(&ovr.statement).is_none() {
-                    ContractQos {
-                        reliability: q.reliability.or(topic_qos.reliability),
-                        durability: q.durability.or(topic_qos.durability),
-                        history: q.history.or(topic_qos.history),
-                        depth: q.depth.or(topic_qos.depth),
-                    }
+                    q.or(&topic_qos)
                 } else {
                     q
                 };
@@ -424,13 +508,16 @@ pub fn check_model(model: &SystemModel) -> Result<(), QosAgreementError> {
                 out.push(Disagreement {
                     node: fqn.clone(),
                     param_key: name.clone(),
-                    param_value: ovr.statement.value(),
+                    param_value: value.clone(),
                     contract_file: contract_file.clone(),
                     endpoint: Some(ep.clone()),
                     contract_value: q.stated(&ovr.statement),
                     topic: ovr.topic.clone(),
                     role,
                     policy: ovr.statement.policy(),
+                    contract_key: ovr.statement.contract_key(),
+                    contract_spelling: ovr.statement.value(),
+                    capacity: ovr.statement.is_capacity(),
                 });
             }
         }
@@ -738,21 +825,74 @@ mod tests {
         }
     }
 
-    /// The three occupancy policies are OUT of scope and must stay silent --
-    /// the contract has no key for them, so comparing them would refuse every
-    /// legal `deadline` override in the tree.
+    /// phase-462 W5 -- the liveness policies are compared too: the contract's
+    /// millisecond `deadline` and the parameter's nanoseconds are one value
+    /// when they convert to the same wire milliseconds, and differ otherwise.
     #[test]
-    fn occupancy_policies_are_not_compared() {
+    fn a_liveness_policy_agrees_in_wire_milliseconds() {
+        let live = Qos {
+            deadline_ms: Some(100.0),
+            lifespan_ms: Some(250),
+            lease_duration_ms: Some(500.0),
+            liveliness: Some("automatic".to_string()),
+            ..Qos::default()
+        };
         for (policy, value) in [
-            ("deadline", "100"),
-            ("lifespan", "250"),
+            ("deadline", "100000000"),
+            ("lifespan", "250000000"),
             ("liveliness", "automatic"),
-            ("liveliness_lease_duration", "500"),
+            ("liveliness_lease_duration", "500000000"),
         ] {
             let key = format!("qos_overrides./chatter.publisher.{policy}");
-            let m = model(Some(qos(None, Some(8))), None, &[(key.as_str(), value)]);
-            assert_eq!(check_model(&m), Ok(()), "{policy} must not be compared");
+            let m = model(Some(live.clone()), None, &[(key.as_str(), value)]);
+            assert_eq!(check_model(&m), Ok(()), "{policy}={value} agrees");
         }
+    }
+
+    /// The gate of W5: a contract `deadline` and an override that disagrees
+    /// refuse, naming both and the contract's own spelling of the value.
+    #[test]
+    fn a_disagreeing_deadline_refuses() {
+        let live = Qos {
+            deadline_ms: Some(100.0),
+            ..Qos::default()
+        };
+        let m = model(
+            Some(live),
+            None,
+            &[("qos_overrides./chatter.publisher.deadline", "250000000")],
+        );
+        let d = divergences(check_model(&m));
+        assert_eq!(d.len(), 1, "{d:?}");
+        assert_eq!(d[0].policy, "deadline");
+        assert_eq!(d[0].param_value, "250000000");
+        assert_eq!(d[0].contract_value.as_deref(), Some("100ms"));
+        assert!(!d[0].capacity);
+        let text = d[0].to_string();
+        assert!(text.contains("states `deadline: 100ms`"), "{text}");
+        assert!(
+            text.contains("liveness the contract does not describe"),
+            "{text}"
+        );
+    }
+
+    /// A lease the parameter states and the contract does not names the
+    /// contract line to add, under the contract's key `lease_duration`.
+    #[test]
+    fn a_params_only_lease_names_the_contracts_key() {
+        let m = model(
+            Some(qos(None, Some(8))),
+            None,
+            &[(
+                "qos_overrides./chatter.publisher.liveliness_lease_duration",
+                "500000000",
+            )],
+        );
+        let d = divergences(check_model(&m));
+        assert_eq!(d.len(), 1, "{d:?}");
+        let text = d[0].to_string();
+        assert!(text.contains("lease_duration: 500ms"), "{text}");
+        assert!(text.contains("states no `lease_duration`"), "{text}");
     }
 
     /// An override this build cannot read is an ERROR here too. The comparison

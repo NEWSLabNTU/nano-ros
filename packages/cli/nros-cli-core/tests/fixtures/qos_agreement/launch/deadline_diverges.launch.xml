@@ -1,0 +1,7 @@
+<launch>
+  <!-- phase-462 W5: 250 ms in NANOSECONDS against the contract's 100 ms. -->
+  <node pkg="demo_pkg" exec="talker" name="talker">
+    <param name="qos_overrides./chatter.publisher.deadline" value="250000000"/>
+  </node>
+  <node pkg="demo_pkg" exec="listener" name="listener"/>
+</launch>

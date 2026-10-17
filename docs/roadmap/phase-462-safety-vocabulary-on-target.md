@@ -362,7 +362,48 @@ the graph token says `deadline: not served`, never a silent downgrade.
 
 Depends on: rlm carrying the two policies; W2's silence monitor.
 
-Claim: phase-462-W5. Depends on: phase-462-W2; an rlm release carrying deadline and liveliness on endpoints (after R4, no wave id yet). Owns: packages/core/nros-orchestration-ir/src/qos_override.rs; packages/core/nros-orchestration-ir/src/qos_agreement.rs; packages/rmw/cyclonedds/nros-rmw-cyclonedds/; packages/rmw/zenoh/nros-rmw-zenoh/src/shim/subscriber.rs; packages/rmw/xrce/nros-rmw-xrce/; a case in packages/cli/nros-cli-core/tests/contract_qos_override_agreement.rs. Gate: cargo test -p nros-orchestration-ir qos_agreement. Status: not started.
+W5 re-plan (2026-10-17). Three facts were stale when this section was written:
+- rlm carries the two policies already. `Qos.deadline_ms`,
+  `lease_duration_ms`, `liveliness` and `lifespan_ms` exist since rlm
+  v0.1.32, and play_launch writes them into `qos_overrides.*` itself, in
+  nanoseconds, so the contract already reaches the runtime table on every
+  road through `lower_all`.
+- zenoh SERVES `deadline`. Its subscriber fires `RequestedDeadlineMissed`.
+  It does not serve a subscriber-side lease, and xrce serves neither: a
+  contract deadline on xrce is refused at entity creation, at boot.
+- The zenoh graph token cannot carry a `deadline: not served` string. Its
+  format is upstream rmw_zenoh's (issue 1495).
+
+So W5 is two units.
+
+- **W5a: landed in this change.** `qos_agreement` compares all eight
+  modelled policies. It used to compare only the four capacity ones, which
+  meant a launch `qos_overrides.*.deadline` silently outranked the contract's
+  `deadline` (the resolver lets an authored parameter win).
+  - Durations compare in the wire's milliseconds, each side converted by the
+    runtime's own rule.
+  - A disagreement names the contract's own key: `lease_duration` for
+    `liveliness_lease_duration`.
+  - `nros codegen-system`, the Zephyr road, now makes the same model refusals
+    as the entry road and `nros::main!` (QoS agreement and FTTI). It made
+    neither before.
+  - Tests: `nros-orchestration-ir` `qos_agreement` (3 new cases) and
+    `qos_override` (`a_liveness_statement_is_the_baked_value`).
+    `contract_qos_override_agreement`'s
+    `a_disagreeing_deadline_refuses_at_resolve` is the gate's first half.
+    `agrees` gains its contract `deadline`.
+- **W5b: not started.** A per-backend statement of which liveness policies
+  each backend serves:
+  - a const on `nros_rmw::Session`, plus `nros-rmw.toml` for the C backends,
+    which share `CffiSession`;
+  - a contract `deadline` the backend does not serve lowers to W2's silence
+    row (`AgeMonitorSpec` gains a `silence_ms`, so the deadline does not also
+    arm max-age), and its override code is stripped from that endpoint's
+    baked table;
+  - the build states the substitution through the image facts, not the graph
+    token.
+
+Claim: phase-462-W5. Depends on: phase-462-W2; an rlm release carrying deadline and liveliness on endpoints (after R4, no wave id yet). Owns: packages/core/nros-orchestration-ir/src/qos_override.rs; packages/core/nros-orchestration-ir/src/qos_agreement.rs; packages/rmw/cyclonedds/nros-rmw-cyclonedds/; packages/rmw/zenoh/nros-rmw-zenoh/src/shim/subscriber.rs; packages/rmw/xrce/nros-rmw-xrce/; a case in packages/cli/nros-cli-core/tests/contract_qos_override_agreement.rs. Gate: cargo test -p nros-orchestration-ir qos_agreement. Status: W5a landed; W5b not started.
 
 ### W6 [rmw-zenoh, zephyr] -- the ingress budget knob
 

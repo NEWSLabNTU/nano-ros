@@ -507,6 +507,16 @@ pub fn run(args: Args) -> Result<()> {
         crate::model_gate::verify(model_path, bringup.manifest_path.parent())
             .map_err(|e| eyre::eyre!("codegen-system: {e}"))?;
         let model = crate::orchestration::model_ingest::load_model(model_path)?;
+        // phase-462 W5 -- the model refusals the `nros codegen entry` road and
+        // `nros::main!` make before anything is baked, made here too: this is
+        // the Zephyr road (`nros_system_generate.cmake`), and it baked the
+        // monitor tables without asking either. A divergence between the
+        // contract and `qos_overrides.*`, and a hazard whose FTTI the image
+        // provably overruns, are properties of the model, not of the road.
+        nros_orchestration_ir::qos_agreement::check_model(&model)
+            .map_err(|e| eyre::eyre!("codegen-system: model `{}`: {e}", model_path.display()))?;
+        nros_orchestration_ir::ftti_budget::check_model(&model)
+            .map_err(|e| eyre::eyre!("codegen-system: model `{}`: {e}", model_path.display()))?;
         // R1-N1 — contracted-publisher monitors ride the bake.
         model_monitors = crate::orchestration::model_ingest::monitor_rows(&model)?;
         // W3b.5 — subscriber age contracts ride alongside.
