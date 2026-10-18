@@ -232,8 +232,13 @@ pub struct AgeRow {
     pub topic: String,
     /// Endpoint ref, the violation report key.
     pub fqn: String,
-    /// Declared max take-age, ms.
+    /// Declared max take-age, ms. 0 = the row exists for its `deadline_ms`
+    /// alone.
     pub max_age_ms: u32,
+    /// phase-462 W5b -- the contract's `deadline` for this endpoint (its own
+    /// `qos:` block, else the topic's), in the wire's milliseconds. 0 = none.
+    /// The executor judges it only where the subscription's backend cannot.
+    pub deadline_ms: u32,
 }
 
 /// Extract the publisher rate-monitor rows: every `pub_endpoints` entry
@@ -376,10 +381,22 @@ pub fn monitor_rows(model: &SystemModel) -> Result<Vec<MonitorRow>, ContractRowE
 /// W3b.5 — extract the subscriber age rows: every `sub_endpoints` entry
 /// with `max_age_ms`, joined to the topic whose wiring lists it as a
 /// subscriber. Orphans fail loud (same rule as the publisher join).
+///
+/// phase-462 W5b -- and every one whose contract states a `deadline`, so a
+/// backend that cannot judge it hands it to the silence rule rather than
+/// refusing it at boot.
 pub fn age_rows(model: &SystemModel) -> Result<Vec<AgeRow>, ContractRowError> {
     let mut rows = Vec::new();
     for (ep_ref, c) in &model.contracts.sub_endpoints {
-        let Some(age) = c.max_age_ms else { continue };
+        let deadline = contract_deadline_ms(model, ep_ref, c);
+        if c.max_age_ms.is_none() && deadline == 0 {
+            continue;
+        }
+        let what = if c.max_age_ms.is_some() {
+            "max_age_ms"
+        } else {
+            "deadline"
+        };
         let topic = model
             .structure
             .topics
@@ -388,18 +405,46 @@ pub fn age_rows(model: &SystemModel) -> Result<Vec<AgeRow>, ContractRowError> {
             .map(|(t, _)| t.clone());
         let Some(topic) = topic else {
             return Err(ContractRowError(format!(
-                "SystemModel: contracted subscriber '{ep_ref}' (max_age_ms) has no \
+                "SystemModel: contracted subscriber '{ep_ref}' ({what}) has no \
                  owning topic in structure.topics — inconsistent model"
             )));
         };
         rows.push(AgeRow {
             topic,
             fqn: ep_ref.clone(),
-            max_age_ms: age.round().max(1.0).min(u32::MAX as f64) as u32,
+            max_age_ms: c
+                .max_age_ms
+                .map_or(0, |age| age.round().max(1.0).min(u32::MAX as f64) as u32),
+            deadline_ms: deadline,
         });
     }
     rows.sort_by(|a, b| a.fqn.cmp(&b.fqn));
     Ok(rows)
+}
+
+/// phase-462 W5b -- a subscriber's contract `deadline` in the wire's
+/// milliseconds: the endpoint's own `qos:` statement, else its topic's (the
+/// same fact one level up, as `qos_agreement` reads it), converted by the
+/// rule the runtime uses. 0 when neither states one.
+fn contract_deadline_ms(
+    model: &SystemModel,
+    ep_ref: &str,
+    c: &ros_launch_manifest_model::SubContract,
+) -> u32 {
+    let own = c.qos.as_ref().and_then(|q| q.deadline_ms);
+    let topic = || {
+        model
+            .structure
+            .topics
+            .iter()
+            .find(|(_, w)| w.subscribers.iter().any(|p| p == ep_ref))
+            .and_then(|(t, _)| model.contracts.topics.get(t))
+            .and_then(|t| t.qos.as_ref())
+            .and_then(|q| q.deadline_ms)
+    };
+    own.or_else(topic)
+        .and_then(crate::qos_override::contract_ms_to_wire_ms)
+        .unwrap_or(0)
 }
 
 /// phase-462 W3b -- every hazard's `safe_state` publisher in this model, with
@@ -472,7 +517,9 @@ fn topic_members(topic: &str, rows: &[MonitorRow], ages: &[AgeRow]) -> Vec<Guard
     let mut out: Vec<GuardMemberRow> = ages
         .iter()
         .enumerate()
-        .filter(|(_, a)| a.topic == topic)
+        // A deadline-only row detects nothing the build can count on: it
+        // judges only where the backend cannot, which is a run-time fact.
+        .filter(|(_, a)| a.topic == topic && a.max_age_ms > 0)
         .map(|(i, _)| GuardMemberRow::Age(i))
         .collect();
     out.extend(
@@ -781,10 +828,11 @@ pub(crate) fn render_spec_tables(
     for (i, r) in ages.iter().enumerate() {
         out.push_str(&format!(
             "    AgeMonitorSpec {{ topic: {t:?}, fqn: {f:?}, max_age_ms: {a}u32, \
-             cell: &NROS_AGE_CELL_{i} }},\n",
+             deadline_ms: {d}u32, cell: &NROS_AGE_CELL_{i} }},\n",
             t = r.topic,
             f = r.fqn,
             a = r.max_age_ms,
+            d = r.deadline_ms,
         ));
     }
     out.push_str("];\n\n");
@@ -936,6 +984,41 @@ mod hazard_row_tests {
         let ages = age_rows(&m).expect("ages");
         let hz = hazard_rows(&m, &rows, &ages);
         (rows, ages, hz)
+    }
+
+    /// phase-462 W5b -- a contract `deadline` with no age bound still gets a
+    /// row, carrying the deadline in wire milliseconds and no age bound, and it
+    /// is NOT a hazard guard member: whether it judges anything depends on the
+    /// backend, which the build does not know.
+    #[test]
+    fn a_contract_deadline_alone_gets_an_age_row_that_guards_nothing() {
+        let (_, ages, hz) = lowered(
+            "      qos:\n        deadline_ms: 50.0\n",
+            &format!("{HAZARD}      ftti_ms: 500.0\n"),
+        );
+        assert_eq!(ages.len(), 1);
+        assert_eq!((ages[0].max_age_ms, ages[0].deadline_ms), (0, 50));
+        assert!(
+            hz.iter()
+                .flat_map(|h| &h.guards)
+                .flat_map(|g| &g.members)
+                .all(|m| !matches!(m, GuardMemberRow::Age(_))),
+            "{hz:?}"
+        );
+    }
+
+    /// The negative control: an age bound and a deadline share one row, and a
+    /// contract that states neither gets none.
+    #[test]
+    fn a_deadline_rides_the_age_row_and_no_contract_means_no_row() {
+        let (_, ages, _) = lowered(
+            "      max_age_ms: 100.0\n      qos:\n        deadline_ms: 40.0\n",
+            HAZARD,
+        );
+        assert_eq!(ages.len(), 1);
+        assert_eq!((ages[0].max_age_ms, ages[0].deadline_ms), (100, 40));
+        let (_, none, _) = lowered("      qos:\n        depth: 1\n", HAZARD);
+        assert!(none.is_empty(), "{none:?}");
     }
 
     /// A guard topic with both an age and a rate contract is watched by both

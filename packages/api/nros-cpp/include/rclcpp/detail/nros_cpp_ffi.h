@@ -49,7 +49,7 @@
  */
 #define NROS_CPP_MODE_TABLE_STORAGE (sizeof(void *) == 8 ? 32 : 16)
 #define NROS_CPP_MODE_ROW_STORAGE (sizeof(void *) == 8 ? 80 : 48)
-#define NROS_CPP_MODE_AGE_STORAGE (sizeof(void *) == 8 ? 48 : 24)
+#define NROS_CPP_MODE_AGE_STORAGE (sizeof(void *) == 8 ? 48 : 32)
 
 
 /**
@@ -606,9 +606,14 @@ typedef struct nros_cpp_age_row_t {
    */
   const char *fqn;
   /**
-   * Declared max take-age, ms.
+   * Declared max take-age, ms. 0 = the row carries only a deadline.
    */
   uint32_t max_age_ms;
+  /**
+   * phase-462 W5b -- the contract's `deadline`, ms (0 = none). The executor
+   * judges it with the silence rule only where the backend cannot.
+   */
+  uint32_t deadline_ms;
 } nros_cpp_age_row_t;
 
 /**

@@ -4071,6 +4071,9 @@ impl<'s> Executor<'s> {
             spec.cell
                 .takes
                 .store(0, core::sync::atomic::Ordering::Relaxed);
+            spec.cell
+                .arrivals
+                .store(0, core::sync::atomic::Ordering::Relaxed);
         }
         self.clear_release_jitter_stats();
         self.stack_headroom_reported = usize::MAX;
@@ -6876,6 +6879,7 @@ impl<'s> Executor<'s> {
         // phase10-B3 -- a released trigger subscription stops starting routes.
         if matches!(kind, EntryKind::Subscription) {
             super::monitor::route_unbind(self.monitor_table, index);
+            super::monitor::deadline_unbind(self.age_table, index);
         }
         if let Some(len) = meta.arena_len.get() {
             self.arena_release(meta.offset, len);
@@ -7264,14 +7268,37 @@ impl<'s> Executor<'s> {
         // site is the point of this function, and it has to be the honouring
         // one.
         let qos = crate::declared_qos::honour(topic.type_name, topic.name, req.qos)?;
-        let handle = {
+        let age_table = self.age_table;
+        let (handle, deadline_row) = {
             let session = self
                 .session_at_mut(session_idx)
                 .ok_or(NodeError::BackendMismatch)?;
-            session
+            // phase-462 W5b — a contract `deadline` the backend cannot judge
+            // is judged by the silence rule instead, never dropped silently and
+            // never a boot refusal (`monitor::admit_contract_deadline`).
+            let (qos, deadline_row) = super::monitor::admit_contract_deadline(
+                qos,
+                nros_rmw::Session::supported_qos_policies(session),
+                age_table,
+                req.topic_name,
+            );
+            let handle = session
                 .create_subscription(&topic, qos)
-                .map_err(NodeError::Transport)?
+                .map_err(NodeError::Transport)?;
+            (handle, deadline_row)
         };
+        if let Some(row) = deadline_row {
+            row.cell
+                .deadline_slot
+                .store(slot as u32 + 1, core::sync::atomic::Ordering::Relaxed);
+            nros_log::log_info!(
+                nros_log::get_logger("nros_node"),
+                "qos: subscription '{}' deadline {} ms is judged by silence-runtime \
+                 (the backend does not judge it)",
+                req.topic_name,
+                row.deadline_ms
+            );
+        }
         // Phase 231 Wave 0.2 (RFC-0038), phase-456 W8 — THE consulting site.
         // Deliberately `&&`-guarded by the delivery shape rather than by the
         // language: a shape that must hand the callback more than borrowed
@@ -10391,6 +10418,11 @@ impl<'s> Executor<'s> {
                 }
                 count += 1;
             }
+        }
+
+        // phase-462 W5b — an armed deadline row's arrival evidence.
+        if bits != 0 && !self.age_table.is_empty() {
+            super::monitor::credit_arrivals(self.age_table, bits);
         }
 
         let snapshot = ReadinessSnapshot { bits, count };

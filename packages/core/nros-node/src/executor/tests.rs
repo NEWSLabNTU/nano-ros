@@ -15240,6 +15240,7 @@ fn a_detected_hazard_starts_its_safe_state_reaction() {
         topic: "/h3/scan",
         fqn: "/h3/handler/scan",
         max_age_ms: 100,
+        deadline_ms: 0,
         cell: &SUB,
     }];
     static CELL: HazardCell = HazardCell::new();
@@ -15412,4 +15413,91 @@ fn a_requested_mode_judges_by_its_variant_table() {
     step(&mut executor, 80);
     assert_eq!(executor.current_mode(), 1, "no table for mode 7: stays");
     request_mode(0);
+}
+
+private_test_clock!(unserved_deadline_clock);
+
+/// phase-462 W5b -- a contract `deadline` the backend is never asked to judge
+/// (this registration path hands the backend the caller's profile, which
+/// carries none) is armed on its age row at create and judged by the silence
+/// rule over the deadline's window. A subscription whose profile DOES carry the
+/// deadline, on a backend that honours it, is left to the backend; a released
+/// subscription stops being evidence for its row.
+#[cfg(all(feature = "std", feature = "alloc"))]
+#[test]
+fn a_contract_deadline_the_backend_does_not_judge_is_judged_by_silence() {
+    use super::monitor::{AgeMonitorSpec, SubMonitorCell};
+    use core::sync::atomic::Ordering;
+    let _g = arming_lock();
+
+    static UNJUDGED: SubMonitorCell = SubMonitorCell::new();
+    static JUDGED: SubMonitorCell = SubMonitorCell::new();
+    static AGES: [AgeMonitorSpec; 2] = [
+        AgeMonitorSpec {
+            topic: "/w5b/unjudged",
+            fqn: "/w5b/node/unjudged",
+            max_age_ms: 0,
+            deadline_ms: 50,
+            cell: &UNJUDGED,
+        },
+        AgeMonitorSpec {
+            topic: "/w5b/judged",
+            fqn: "/w5b/node/judged",
+            max_age_ms: 0,
+            deadline_ms: 50,
+            cell: &JUDGED,
+        },
+    ];
+    fn register(
+        executor: &mut Executor<'_>,
+        topic: &str,
+        qos: QoSProfile,
+    ) -> Result<HandleId, NodeError> {
+        executor.add_arena_subscription_c_callback::<{ crate::config::DEFAULT_RX_BUF_SIZE }>(
+            None,
+            topic,
+            "test/msg/TestMsg",
+            "test_hash",
+            qos,
+            release_probe_sub,
+            core::ptr::null_mut(),
+            None,
+            96,
+        )
+    }
+
+    unserved_deadline_clock::claim_at_us(1_000_000);
+    let mut executor = executor_with_clock_fn(MockSession::new(), unserved_deadline_clock::now_us);
+    executor.set_age_table(&AGES);
+    let unjudged = register(&mut executor, "/w5b/unjudged", QoSProfile::default()).unwrap();
+    let judged = QoSProfile {
+        deadline_ms: 50,
+        ..QoSProfile::default()
+    };
+    register(&mut executor, "/w5b/judged", judged).unwrap();
+    assert_ne!(UNJUDGED.deadline_slot.load(Ordering::Relaxed), 0, "armed");
+    assert_eq!(
+        JUDGED.deadline_slot.load(Ordering::Relaxed),
+        0,
+        "the backend judges a deadline it honours and was given"
+    );
+
+    // Opens the window; then 60 ms with nothing ready is past the deadline.
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    unserved_deadline_clock::set_us(1_060_000);
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    let mut got = alloc::vec::Vec::new();
+    executor.drain_violations(|v| got.push((v.rule, v.fqn, v.declared)));
+    assert_eq!(
+        got,
+        [("silence-runtime", "/w5b/node/unjudged", 50)],
+        "only the armed row judges, over the deadline's window"
+    );
+
+    assert!(unsafe { executor.release_subscription(unjudged) });
+    assert_eq!(
+        UNJUDGED.deadline_slot.load(Ordering::Relaxed),
+        0,
+        "disarmed"
+    );
 }

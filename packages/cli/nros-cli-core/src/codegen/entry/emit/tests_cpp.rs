@@ -1800,6 +1800,7 @@ fn monitor_fixture_rows() -> (Vec<MonitorRow>, Vec<AgeRow>) {
             topic: "/chatter".into(),
             fqn: "/listener/chatter".into(),
             max_age_ms: 150,
+            deadline_ms: 0,
         }],
     )
 }
@@ -1861,7 +1862,10 @@ fn typed_emit_bakes_monitor_table_before_nodes() {
         );
     }
     for a in &ages {
-        let cpp_row = format!("{{ \"{}\", \"{}\", {}u }},", a.topic, a.fqn, a.max_age_ms);
+        let cpp_row = format!(
+            "{{ \"{}\", \"{}\", {}u, {}u }},",
+            a.topic, a.fqn, a.max_age_ms, a.deadline_ms
+        );
         let rust_row = format!(
             "topic: {:?}, fqn: {:?}, max_age_ms: {}u32",
             a.topic, a.fqn, a.max_age_ms

@@ -679,6 +679,7 @@ fn c_monitor_fixture_rows() -> (Vec<MonitorRow>, Vec<AgeRow>) {
             topic: "/chatter".into(),
             fqn: "/listener/chatter".into(),
             max_age_ms: 150,
+            deadline_ms: 0,
         }],
     )
 }
@@ -717,7 +718,10 @@ fn typed_emit_bakes_monitor_table_before_nodes() {
         assert!(rust.contains(&rust_row), "Rust row `{rust_row}` missing");
     }
     for a in &ages {
-        let c_row = format!("{{ \"{}\", \"{}\", {}u }},", a.topic, a.fqn, a.max_age_ms);
+        let c_row = format!(
+            "{{ \"{}\", \"{}\", {}u, {}u }},",
+            a.topic, a.fqn, a.max_age_ms, a.deadline_ms
+        );
         assert!(
             src.contains(&c_row),
             "C age row `{c_row}` missing; src:\n{src}"

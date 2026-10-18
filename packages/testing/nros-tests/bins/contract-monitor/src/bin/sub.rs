@@ -24,6 +24,7 @@ static AGE_MONITORS: &[AgeMonitorSpec] = &[AgeMonitorSpec {
     topic: HEADER_TOPIC,
     fqn: "/cm/sub/cm_header",
     max_age_ms: MAX_AGE_MS,
+    deadline_ms: 0,
     cell: &AGE_CELL,
 }];
 

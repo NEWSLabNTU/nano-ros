@@ -701,6 +701,7 @@ fn monitor_table(
                 topic: r.topic.clone(),
                 fqn: r.fqn.clone(),
                 max_age_ms: r.max_age_ms,
+                deadline_ms: r.deadline_ms,
             })
             .collect(),
     };

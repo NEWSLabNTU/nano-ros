@@ -1,7 +1,8 @@
 # phase-462 -- the contract's safety vocabulary reaches the target
 
-**Status (2026-10-16). IN PROGRESS: W1, W2 and W3 landed; W4 and W6a are open;
-W5 and W6b wait on rlm.** (Planned 2026-09-21.) Numbered highest + 7 (phase-461 took +6;
+**Status (2026-10-18). IN PROGRESS: W1, W2, W3 and W5 landed; W4a/W4b and
+W6a/W6b landed; W4c and the W6 follow-ups (the per-board frame cost, the
+flood-cell rerun) are open.** (Planned 2026-09-21.) Numbered highest + 7 (phase-461 took +6;
 456-460 belong to concurrent sessions). Depends on two pieces of work outside
 this document: the shared MapperInput derivation phase (a play_launch / rlm
 phase being designed in parallel, referred to here by that name and not by a
@@ -458,18 +459,45 @@ So W5 is two units.
     `contract_qos_override_agreement`'s
     `a_disagreeing_deadline_refuses_at_resolve` is the gate's first half.
     `agrees` gains its contract `deadline`.
-- **W5b: not started.** A per-backend statement of which liveness policies
-  each backend serves:
-  - a const on `nros_rmw::Session`, plus `nros-rmw.toml` for the C backends,
-    which share `CffiSession`;
-  - a contract `deadline` the backend does not serve lowers to W2's silence
-    row (`AgeMonitorSpec` gains a `silence_ms`, so the deadline does not also
-    arm max-age), and its override code is stripped from that endpoint's
-    baked table;
-  - the build states the substitution through the image facts, not the graph
-    token.
+- **W5b: landed in this change.** A contract `deadline` the subscription's
+  backend cannot judge is judged on target by W2's silence rule, never
+  refused at boot and never dropped.
+  - Rows: every subscriber whose contract states a `deadline` (its own
+    `qos:`, else its topic's) gets an age row carrying `deadline_ms` in wire
+    milliseconds; a row with no age bound has `max_age_ms = 0`. Such a row is
+    not a hazard guard member, because whether it judges anything is a
+    run-time fact. All three roads bake it (`render_spec_tables`, both packs,
+    `nros_cpp_age_row_t.deadline_ms`).
+  - Admission (`monitor::admit_contract_deadline`, in `open_subscription`,
+    the one site every executor registration passes): the backend's OWN mask
+    decides. It honours `DEADLINE` and the profile carries it: the backend
+    judges. It does not honour it: a profile deadline equal to the
+    contract's is stripped (so create does not refuse it) and the row is
+    armed. The profile never carried it (a registration that does not fold
+    the launch overrides): armed too. A caller's own different deadline is
+    left for the backend to refuse by name.
+  - Judging: the readiness scan credits an armed row's `arrivals` (any
+    message type, stamped or not), and `silence-runtime` judges the window
+    `min(max_age_ms, deadline_ms)`. A row with an age bound keeps W2's
+    stamped-take evidence. A released subscription disarms its row.
+  - Stated at boot (`qos: subscription '<t>' deadline <n> ms is judged by
+    silence-runtime`), not in a build table. Re-planned from "a const on
+    `Session` plus `nros-rmw.toml`": the served set is already stated per
+    backend by `supported_qos_policies` and gated by
+    `check-qos-mask-derivation`, and for `CffiSession` it is a run-time
+    answer from the vtable (issue 1329), so a second, build-time copy would
+    be a second answer to one question.
+  - Not covered: `NodeHandle::create_subscription*` (a manually polled
+    subscription the executor never scans) keeps the create-time refusal;
+    an unserved publisher deadline or liveliness lease is still refused at
+    create, naming the policy.
+  - Tests: `nros-node` `monitor::unserved_deadline_tests` (6) and
+    `a_contract_deadline_the_backend_does_not_judge_is_judged_by_silence`;
+    `nros-orchestration-ir` `contract_monitors`
+    `a_contract_deadline_alone_gets_an_age_row_that_guards_nothing` and
+    `a_deadline_rides_the_age_row_and_no_contract_means_no_row`.
 
-Claim: phase-462-W5. Depends on: phase-462-W2; an rlm release carrying deadline and liveliness on endpoints (after R4, no wave id yet). Owns: packages/core/nros-orchestration-ir/src/qos_override.rs; packages/core/nros-orchestration-ir/src/qos_agreement.rs; packages/rmw/cyclonedds/nros-rmw-cyclonedds/; packages/rmw/zenoh/nros-rmw-zenoh/src/shim/subscriber.rs; packages/rmw/xrce/nros-rmw-xrce/; a case in packages/cli/nros-cli-core/tests/contract_qos_override_agreement.rs. Gate: cargo test -p nros-orchestration-ir qos_agreement. Status: W5a landed; W5b not started.
+Claim: phase-462-W5. Depends on: phase-462-W2; an rlm release carrying deadline and liveliness on endpoints (after R4, no wave id yet). Owns: packages/core/nros-orchestration-ir/src/qos_override.rs; packages/core/nros-orchestration-ir/src/qos_agreement.rs; packages/rmw/cyclonedds/nros-rmw-cyclonedds/; packages/rmw/zenoh/nros-rmw-zenoh/src/shim/subscriber.rs; packages/rmw/xrce/nros-rmw-xrce/; a case in packages/cli/nros-cli-core/tests/contract_qos_override_agreement.rs. Gate: cargo test -p nros-orchestration-ir qos_agreement. Status: W5a and W5b landed.
 
 ### W6 [rmw-zenoh, zephyr] -- the ingress budget knob
 
@@ -624,4 +652,4 @@ Homed when every open issue was given a phase. Each issue has a `**Home:**` line
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1374](../issues/1374-contract-cannot-express-qos-durability.md) | A contract's `qos:` carries only depth, so durability the code depends on is invisible to the contract, which is the vocabulary this phase brings on target. |
+| [#1374](../issues/archived/1374-contract-cannot-express-qos-durability.md) (resolved 2026-10-18: issues 1256 and 1608 plus W5) | A contract's `qos:` carries only depth, so durability the code depends on is invisible to the contract, which is the vocabulary this phase brings on target. |

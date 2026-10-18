@@ -132,7 +132,7 @@ extern "C" void nros_app_reaction_hook(const ::nros_cpp_reaction_event_t* event,
 {%- if m.ages %}
 static const ::nros_cpp_age_row_t __nros_age_rows{{ tag }}[{{ m.ages | length }}] = {
 {%- for r in m.ages %}
-    { "{{ r.topic | c_str }}", "{{ r.fqn | c_str }}", {{ r.max_age_ms }}u },
+    { "{{ r.topic | c_str }}", "{{ r.fqn | c_str }}", {{ r.max_age_ms }}u, {{ r.deadline_ms }}u },
 {%- endfor %}
 };
 alignas(8) static unsigned char __nros_age_storage{{ tag }}[{{ m.ages | length }} * NROS_CPP_AGE_ROW_STORAGE];

@@ -2,14 +2,15 @@
 id: 1374
 title: "A contract's `qos:` carries depth and nothing else, so a durability the
   code depends on is invisible to the declaration that is otherwise the truth"
-status: open
+status: resolved
+resolved_in: 2026-10-18
 type: bug
 area: contract, qos, orchestration-ir
 severity: medium
 related: [issue-1352, issue-1372, phase-462]
 ---
 
-**Home: [phase-462](../roadmap/phase-462-safety-vocabulary-on-target.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+**Home: [phase-462](../../roadmap/phase-462-safety-vocabulary-on-target.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## What happens
 
@@ -105,3 +106,36 @@ Not a pure addition. Three questions the design has to answer:
 Autoware Safety Island, 4 nodes, 11 subscriptions and 14 publishers, all 11
 subscriptions declaring `qos: { depth: 1 }` and none declaring durability,
 against five `transient_local` sites and one depth-5 publisher in the source.
+
+## Resolution (2026-10-18)
+
+Each of the three questions has been answered in the tree, mostly by work that
+landed after this issue was filed and did not cite it:
+
+1. **Publishers have a `qos:` block.** rlm carries `qos` on `pub:` endpoints,
+   and issue 1608 (resolved 2026-10-05) gave the declaration a reader: the
+   descriptor's publisher rows become `DECLARED_PUBLISHER_QOS_ROWS`, and every
+   publisher registration, the Rust seams and the C/C++ FFI seams alike, goes
+   through `declared_qos::honour_publisher`. A depth-5 publisher is
+   expressible, and a declaration that disagrees with the code refuses at
+   registration, naming the topic.
+2. **The line between contract fact and deployment policy** is the one
+   `qos_override::is_capacity` draws. The CAPACITY policies (depth,
+   durability, reliability, history) are contract facts the build reserves
+   storage for and the declared-QoS check enforces. The LIVENESS policies
+   (deadline, lifespan, liveliness, lease) are stated in the same `qos:` block,
+   reach the runtime as `qos_overrides.*`, and phase-462 W5a refuses a launch
+   override that disagrees with them. W5b makes an unserved contract deadline
+   a `silence-runtime` row instead of a boot refusal.
+3. **A declared durability is enforced the way depth is.** Issue 1256
+   (resolved 2026-10-01) added the `reliability` and `durability` columns to
+   `nros_declared_qos_generated.h`, `NROS_ASSERT_DECLARED_DURABILITY` beside
+   the depth assertion (`rclc/detail/declared_qos.h`, used from C and C++),
+   and the Rust `honour` rule. A contract `transient_local` and a code `volatile` are now
+   a compile error in C/C++ and a refused registration in Rust.
+
+What remains is authoring, outside this tree: the Safety Island contract
+still declares only `depth: 1` on its subscriptions and nothing on its
+publishers. It can now state the five `transient_local` sites and the depth-5
+publisher, and once it does, the build checks them.
+

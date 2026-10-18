@@ -59,7 +59,7 @@ after_includes = """
  */
 #define NROS_CPP_MODE_TABLE_STORAGE (sizeof(void *) == 8 ? 32 : 16)
 #define NROS_CPP_MODE_ROW_STORAGE (sizeof(void *) == 8 ? 80 : 48)
-#define NROS_CPP_MODE_AGE_STORAGE (sizeof(void *) == 8 ? 48 : 24)
+#define NROS_CPP_MODE_AGE_STORAGE (sizeof(void *) == 8 ? 48 : 32)
 """
 
 [export]
