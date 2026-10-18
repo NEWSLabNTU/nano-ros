@@ -1,13 +1,15 @@
 # Phase 349 — RTOS integration: make FreeRTOS an imported library like the rest
 
-**Status (2026-10-18). Rewritten after a relevance review; W1 LANDED, W2
-ABSORBED (W2b LANDED), W3 LANDED, W4 LANDED; W5/W6 parked.** The review measured each wave against
+**Status (2026-10-19): ARCHIVED. W1 LANDED, W2 ABSORBED (W2b LANDED), W3
+LANDED, W4 LANDED; W5/W6 parked — no user has asked for either, and W5 would
+be a fourth build road.** Rewritten 2026-10-18 after a relevance review, which
+measured each wave against
 `main` at
 `6486216ab7`, two months after the phase was written. The principle still holds
 and the remaining work is narrower. See "Relevance review (2026-10-18)" below
 for what changed and why.
 
-**Implements:** [RFC-0072](../design/0072-rtos-integration-nano-ros-is-a-guest.md).
+**Implements:** [RFC-0072](../../design/0072-rtos-integration-nano-ros-is-a-guest.md).
 
 **The principle.** nano-ros is a library the user's project imports; the RTOS
 owns its own build. Zephyr ships as a west module (`zephyr/`) and NuttX as an
@@ -35,7 +37,7 @@ both upstream projects now ship a build system.
 
 The original W2 investigation (the carrier measurements, the `[env]` discovery
 table, the corrosion lanes) is kept in git history at `6486216ab7` and in
-[phase-351](archived/phase-351-board-facts-and-site-config.md), which acted on
+[phase-351](phase-351-board-facts-and-site-config.md), which acted on
 it.
 
 ---
@@ -297,7 +299,7 @@ W3 first: it is the concrete defect, and W4's shell consumes what W3 produces.
 ## Prerequisites — RESOLVED 2026-08-13
 
 * **`FREERTOS_PORT`'s two vocabularies** —
-  [#530](../issues/archived/0530-freertos-port-two-vocabularies.md). The
+  [#530](../../issues/archived/0530-freertos-port-two-vocabularies.md). The
   builder accepts upstream's enum as well as our path fragment.
 * **Zephyr unselectable by the zpico resolver** —
-  [#529](../issues/archived/0529-zephyr-platform-knobs-never-resolve.md).
+  [#529](../../issues/archived/0529-zephyr-platform-knobs-never-resolve.md).

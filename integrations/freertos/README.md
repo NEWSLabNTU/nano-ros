@@ -5,7 +5,7 @@ defines and adds nano-ros on top. It does not supply a board, a kernel or a
 network stack, and the integration adds no files to the nano-ros tree.
 
 Design of record: [RFC-0072](../../docs/design/0072-rtos-integration-nano-ros-is-a-guest.md)
-("nano-ros is a guest"). Work item: [phase-349 W4](../../docs/roadmap/phase-349-rtos-integration-shells.md).
+("nano-ros is a guest"). Work item: [phase-349 W4](../../docs/roadmap/archived/phase-349-rtos-integration-shells.md).
 
 ## What you provide
 

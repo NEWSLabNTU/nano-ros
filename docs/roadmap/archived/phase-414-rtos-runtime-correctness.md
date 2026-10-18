@@ -32,7 +32,7 @@ costs more than an open one because it is read as current.
 They are RUNTIME failures on a real RTOS: the image builds, links and boots, and
 then does the wrong thing. That is a different activity from either neighbour:
 
-* **[phase-349](../phase-349-rtos-integration-shells.md)** is BUILD integration —
+* **[phase-349](phase-349-rtos-integration-shells.md)** is BUILD integration —
   "make FreeRTOS an imported library like the rest". It is about how the RTOS
   enters the build, not about what the image does afterwards.
 * **[phase-358](phase-358-embedded-runtime-under-load.md)** is footprint,
