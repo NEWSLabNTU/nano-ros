@@ -68,7 +68,6 @@ fn wake_latency_cross_thread_trigger(zenohd_unique: ZenohRouter) {
     let mut executor = Executor::open(&config).expect("Executor::open failed");
 
     static GUARD_FIRED: AtomicBool = AtomicBool::new(false);
-    GUARD_FIRED.store(false, Ordering::SeqCst);
 
     let (_guard_id, guard_handle) = executor
         .register_guard_condition(|| {
@@ -76,59 +75,69 @@ fn wake_latency_cross_thread_trigger(zenohd_unique: ZenohRouter) {
         })
         .expect("register_guard_condition failed");
 
-    // Spawn trigger thread: sleep 50ms, then trigger. The 50ms
-    // delay is long enough that the main thread is firmly inside
+    // The bound is judged on the BEST of several trials (issue 1947). A
+    // wake that does not fire misses EVERY trial, at the spin timeout; a
+    // gate's parallel build preempting the main thread inflates SOME of
+    // them (one measured 22.8 ms). So the minimum keeps the claim about
+    // the condvar and drops the claim about the host's scheduler.
+    const TRIALS: usize = 5;
+    // The 50ms delay is long enough that the main thread is firmly inside
     // its blocking cv-wait when trigger fires.
     const TRIGGER_DELAY_MS: u64 = 50;
-    let trigger_time = std::sync::Arc::new(std::sync::Mutex::new(None::<Instant>));
-    let trigger_time_thread = std::sync::Arc::clone(&trigger_time);
+    let mut latencies = Vec::with_capacity(TRIALS);
+    for _ in 0..TRIALS {
+        GUARD_FIRED.store(false, Ordering::SeqCst);
+        let trigger_time = std::sync::Arc::new(std::sync::Mutex::new(None::<Instant>));
+        let trigger_time_thread = std::sync::Arc::clone(&trigger_time);
+        let trigger = guard_handle.clone();
 
-    let handle = std::thread::spawn(move || {
-        std::thread::sleep(Duration::from_millis(TRIGGER_DELAY_MS));
-        let fire = Instant::now();
-        *trigger_time_thread.lock().unwrap() = Some(fire);
-        guard_handle.trigger();
-    });
+        // Worker thread: sleep, then trigger.
+        let handle = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(TRIGGER_DELAY_MS));
+            let fire = Instant::now();
+            *trigger_time_thread.lock().unwrap() = Some(fire);
+            trigger.trigger();
+        });
 
-    // Main thread: spin_once with 1000ms timeout. Without 124.B
-    // this would deadline at 1000ms (or whichever next-deadline
-    // capping shows). Post-124.B, the trigger from the worker
-    // thread should unblock us in TRIGGER_DELAY_MS + epsilon.
-    let spin_start = Instant::now();
-    executor.spin_once(Duration::from_millis(1000));
-    let spin_elapsed = spin_start.elapsed();
+        // Main thread: spin_once with 1000ms timeout. Without 124.B this
+        // would deadline at 1000ms (or whichever next-deadline capping
+        // shows). Post-124.B, the trigger from the worker thread should
+        // unblock us in TRIGGER_DELAY_MS + epsilon.
+        let spin_start = Instant::now();
+        executor.spin_once(Duration::from_millis(1000));
+        let spin_end = Instant::now();
+        let spin_elapsed = spin_end - spin_start;
 
-    handle.join().unwrap();
+        handle.join().unwrap();
 
-    let fire = trigger_time
-        .lock()
-        .unwrap()
-        .expect("trigger thread did not record fire time");
-    let latency = fire.elapsed();
+        let fire = trigger_time
+            .lock()
+            .unwrap()
+            .expect("trigger thread did not record fire time");
 
+        assert!(
+            GUARD_FIRED.load(Ordering::SeqCst),
+            "Guard callback never ran"
+        );
+        // A spin that ran to its 1000 ms timeout is the defect, on any trial.
+        assert!(
+            spin_elapsed < Duration::from_millis(500),
+            "spin_once took {spin_elapsed:?} — it waited for its timeout, not the trigger"
+        );
+        latencies.push(spin_end.saturating_duration_since(fire));
+    }
+
+    let best = *latencies.iter().min().expect("at least one trial");
     assert!(
-        GUARD_FIRED.load(Ordering::SeqCst),
-        "Guard callback never ran"
-    );
-    assert!(
-        spin_elapsed < Duration::from_millis(TRIGGER_DELAY_MS + WAKE_LATENCY_BOUND_MS + 50),
-        "spin_once took {:?} — expected ≤ {}+{}+50 ms (worker delay + wake bound + slack)",
-        spin_elapsed,
-        TRIGGER_DELAY_MS,
-        WAKE_LATENCY_BOUND_MS,
-    );
-    assert!(
-        latency < Duration::from_millis(WAKE_LATENCY_BOUND_MS),
-        "Trigger-to-spin-exit latency {:?} exceeds {}ms bound — cv wake not firing",
-        latency,
+        best < Duration::from_millis(WAKE_LATENCY_BOUND_MS),
+        "Trigger-to-spin-exit latency {best:?} (best of {TRIALS}: {latencies:?}) exceeds {}ms \
+         bound — cv wake not firing",
         WAKE_LATENCY_BOUND_MS,
     );
 
     println!(
-        "SUCCESS: spin_once unblocked {} ms after trigger (≤ {} ms bound); total spin {:?}",
-        latency.as_millis(),
-        WAKE_LATENCY_BOUND_MS,
-        spin_elapsed,
+        "SUCCESS: spin_once unblocked {:?} after trigger at best (≤ {} ms bound); trials {:?}",
+        best, WAKE_LATENCY_BOUND_MS, latencies,
     );
 }
 
