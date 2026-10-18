@@ -270,7 +270,7 @@ pub enum Sub {
 #[derive(Debug, ClapArgs)]
 pub struct RmwDispatchArgs {
     /// The declared RMW name — canonical (`zenoh`) or any announced alias
-    /// (`rmw-zenoh`, `rmw-zenoh-cffi`). Omit it with `--known`.
+    /// (`rmw-zenoh`). Omit it with `--known`.
     pub name: Option<String>,
 
     /// Workspace to scan as the second search root. Defaults to the cwd.
@@ -848,8 +848,6 @@ fn run_rmw_dispatch(args: RmwDispatchArgs) -> Result<()> {
         ("NROS_RMW_PACKAGE_DIR", r.package_dir.display().to_string()),
         ("NROS_RMW_CMAKE_DIR", r.cmake_dir.display().to_string()),
         ("NROS_RMW_LINK_STRATEGY", d.link_strategy.clone()),
-        ("NROS_RMW_UMBRELLA_CFFI_FEATURE", r.cffi_feature.clone()),
-        ("NROS_RMW_C_CFFI_FEATURE", d.c_cffi_feature.clone()),
         ("NROS_RMW_RLIB_DEP", d.rlib_dep.clone()),
         ("NROS_RMW_EDITION_FEATURE", d.edition_feature.clone()),
         ("NROS_RMW_CARGO_FEATURE", r.cargo_feature.clone()),

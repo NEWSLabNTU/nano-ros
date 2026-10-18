@@ -24,6 +24,5 @@
     -->
     <nano_ros_provides kind="rmw" name="xrce"/>
     <nano_ros_provides kind="rmw" name="rmw-xrce"/>
-    <nano_ros_provides kind="rmw" name="rmw-xrce-cffi"/>
   </export>
 </package>

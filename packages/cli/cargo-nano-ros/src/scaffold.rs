@@ -1016,7 +1016,7 @@ deploy = ["{deploy}"]
 default = ["{rmw_feature}"]
 rmw-zenoh = ["dep:nros-rmw-zenoh", "nros-board-linux/rmw-zenoh"]
 rmw-xrce = ["dep:nros-rmw-xrce-cffi", "nros-board-linux/rmw-xrce"]
-rmw-cyclonedds = ["nros/rmw-cyclonedds", "dep:nros-rmw-cyclonedds-sys", "nros-board-linux/rmw-cyclonedds"]
+rmw-cyclonedds = ["nros/needs-type-descriptors", "dep:nros-rmw-cyclonedds-sys", "nros-board-linux/rmw-cyclonedds"]
 
 [dependencies]
 nros = {{ version = "*", default-features = false, features = ["std", "rmw-cffi", "{edition_feature}"] }}

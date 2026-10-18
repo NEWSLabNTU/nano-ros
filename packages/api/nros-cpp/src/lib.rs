@@ -91,11 +91,11 @@ use nros_platform_cffi as _;
 
 use core::ffi::{c_char, c_int, c_void};
 
-// Phase 241.D3-rev — force-link the selected backend into `libnros_cpp.a` (the C++
-// umbrella's staticlib root) + auto-register it before `main`. nros-c's twin anchor
-// is DCE'd as a dependency, so the root carries its own. See `rmw_backend`.
-#[cfg(any(feature = "rmw-zenoh-cffi", feature = "rmw-xrce-cffi"))]
-mod rmw_backend;
+// phase-313 — force-link the recording backend under `metadata-mode`. The
+// transport backend is the image crate's to bundle (RFC-0071 D9); see
+// `metadata_backend`.
+#[cfg(feature = "metadata-mode")]
+mod metadata_backend;
 
 // Phase 241.D3-rev — pull nros-c's FULL `#[no_mangle]` C surface into libnros_cpp.a.
 // nros-cpp bundles nros-c as an rlib and links only libnros_cpp.a, so rustc DCEs any
@@ -110,7 +110,7 @@ static _KEEP_C_SURFACE: &[unsafe extern "C" fn()] = &nros_c::c_surface_anchor::C
 // rlib dep whose `rclc_init_multi` / `nros_pubsub_bridge_*` exports nothing in
 // this crate calls, so rustc drops them from `libnros_cpp.a` and a C++ binary that
 // includes `<rclcpp/bridge.hpp>` fails to link. Reference them from the staticlib
-// ROOT to keep them (the FORCE_LINK pattern `rmw_backend` uses for backends).
+// ROOT to keep them (the FORCE_LINK pattern `metadata_backend` uses too).
 // Must be a RUST path into the crate (not an `extern "C"` redeclaration): the
 // dependency edge is what pulls the rlib's objects into this staticlib. Declaring
 // the symbols `extern "C"` only creates UNDEFINED references — verified: the
@@ -127,33 +127,25 @@ include!(concat!(env!("OUT_DIR"), "/cpp_surface_anchor.rs"));
 // Issue 0360 — archive half of the variant stamp; see nros-c/src/lib.rs.
 include!(concat!(env!("OUT_DIR"), "/variant_symbol.rs"));
 
-// W11 backend anchor — the selected cffi backend's auto-register fn, so a downstream
-// staticlib root pulls its register closure into the archive. Empty with no cffi backend.
-#[cfg(any(feature = "rmw-zenoh-cffi", feature = "rmw-xrce-cffi"))]
-const _BACKEND_ANCHOR: &[unsafe extern "C" fn()] = &[rmw_backend::auto_register];
-#[cfg(all(
-    feature = "rmw-cffi",
-    not(any(feature = "rmw-zenoh-cffi", feature = "rmw-xrce-cffi"))
-))]
+// The recording backend's anchor under `metadata-mode`, else nothing. The
+// transport backend is anchored by the image crate that depends on it
+// (RFC-0071 D9), never from here.
+#[cfg(feature = "metadata-mode")]
+const _BACKEND_ANCHOR: &[unsafe extern "C" fn()] = &[metadata_backend::auto_register];
+#[cfg(all(feature = "rmw-cffi", not(feature = "metadata-mode")))]
 const _BACKEND_ANCHOR: &[unsafe extern "C" fn()] = &[];
 
 /// Phase 241 W11 (Option D) — combined force-link anchor for a downstream staticlib root
 /// (the per-entry `<entry>_runtime` crate). When nros-cpp is bundled as a dependency
 /// rlib, its own `#[used]` anchors are DCE'd before the runtime staticlib is emitted; the
 /// runtime root references THIS with its own `#[used]` to re-pull the full ABI surface —
-/// nros-c's C API + nros-cpp's C++ FFI + the selected backend's register closure.
+/// nros-c's C API + nros-cpp's C++ FFI (+ the recording backend under `metadata-mode`).
 #[cfg(feature = "rmw-cffi")]
 pub static FORCE_LINK_ANCHOR: &[&[unsafe extern "C" fn()]] = &[
     &nros_c::c_surface_anchor::C_SURFACE_ANCHOR,
     &cpp_surface_anchor::CPP_SURFACE_ANCHOR,
     _BACKEND_ANCHOR,
 ];
-
-// W11 — re-export the backend auto-register so the runtime root can install its OWN
-// `.init_array` ctor (this crate's ctor, in a dep rlib, is DCE'd). Pull `register()`
-// before `main` on hosted targets that honor `.init_array`.
-#[cfg(any(feature = "rmw-zenoh-cffi", feature = "rmw-xrce-cffi"))]
-pub use rmw_backend::auto_register as nros_cpp_auto_register_backend;
 
 // ── Core entity modules (alloc-free — caller provides inline storage) ──
 // phase-308 — the three executor-side recording hooks the metadata RMW backend
@@ -1149,12 +1141,9 @@ unsafe fn init_rmw_over(
     unsafe {
         nros_app_register_backends();
     }
-    // Phase 241.D3-rev — the selected backend is auto-registered before `main` by
-    // the `nros-c` umbrella's `rmw_backend` `.init_array` ctor (bundled into
-    // `libnros_cpp.a`). `nros_app_register_backends()` above stays as the weak
-    // board-override hook; the explicit per-backend `register()` calls are gone
-    // (idempotent re-register, and they referenced backend crates nros-cpp no
-    // longer deps directly).
+    // The backend registers through `nros_app_register_backends()` above —
+    // generated per image, naming the backend the image bundles (RFC-0071 D11).
+    // This crate names none (D9), so it makes no per-backend call of its own.
     let node_name_str = match unsafe { cstr_to_str(node_name) } {
         Some(s) => s,
         None => {
@@ -2084,7 +2073,7 @@ use profile_edge::arm as profile_arm;
 /// Point this run at the RECORDING backend, by name.
 ///
 /// Two halves, because the registry needs both: the backend's closure has to
-/// be linked (the `#[used]` anchor in `rmw_backend` keeps it, and calling
+/// be linked (the `#[used]` anchor in `metadata_backend` keeps it, and calling
 /// `nros_rmw_metadata_register` here is what makes the call site exist on a
 /// path the generated `nros_app_register_backends()` stub does not cover --
 /// that stub names the SHIPPING backend), and `$NROS_RMW` has to select it,

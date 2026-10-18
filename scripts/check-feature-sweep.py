@@ -100,7 +100,6 @@ _IMAGE_COMPLETES = (
     "the linking image supplies the panic handler and allocator; the code is "
     "nros-rmw-zenoh's, whose CROSS run lints it"
 )
-_RMW_C = "builds a C RMW backend from SDK sources; covered by `check c` and the RMW lanes"
 # A default feature every run already has. Swept on its own it would also
 # match the `platform-` one-of prefix and REPLACE the base's platform, which
 # it is not: it compiles zenoh-pico's `z_*` clock alias TU (issue 0270).
@@ -154,9 +153,6 @@ CRATES = {
             "platform-stm32f4": _CROSS,
             "platform-threadx": _CROSS,
             "platform-zephyr": _CROSS,
-            "rmw-cyclonedds": _RMW_C,
-            "rmw-xrce": _RMW_C,
-            "rmw-zenoh": _RMW_C,
         },
     },
     "nros-cpp": {

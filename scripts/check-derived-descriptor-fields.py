@@ -12,6 +12,10 @@ convention written longhand:
     cffi_feature   `<cargo_feature>-cffi`
     crate          the package's own `Cargo.toml`
 
+(`cffi_feature` named an `nros-c`/`nros-cpp` feature; phase-506 W4d deleted
+those features, so the field is gone rather than derived, and the descriptor
+parser refuses it — RFC-0071 D9.)
+
 W5 deleted the first five from the rmw descriptors and made
 `cargo-nano-ros/src/derived_descriptor.rs` produce them. This gate is what
 keeps them from coming back WRONG: a descriptor may still state one — an
@@ -105,10 +109,6 @@ def conv_cmake_value(_kind, name):
 
 def conv_c_define_token(_kind, name):
     return "".join(c.upper() if c.isascii() and c.isalnum() else "_" for c in name)
-
-
-def conv_cffi_feature(kind, name):
-    return conv_cargo_feature(kind, name) + "-cffi"
 
 
 def announced_names(pkg_dir, kind):
@@ -256,7 +256,6 @@ FAMILIES = {
             "cargo_feature": conv_cargo_feature,
             "cmake_value": conv_cmake_value,
             "c_define_token": conv_c_define_token,
-            "cffi_feature": conv_cffi_feature,
             # RFC-0087 D4 lists `crate` as derivable "from the package's own
             # Cargo.toml". phase-420 W5 measured that and it is NOT true here:
             # `nros-rmw-xrce` ships no Cargo.toml and names a SIBLING package.

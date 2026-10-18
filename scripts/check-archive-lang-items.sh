@@ -206,8 +206,8 @@ if [ "$rc" -ne 0 ]; then
         echo "  wrong in the dependency graph, because the duplication is in the LINK."
         echo
         echo "  Fix at the link, not in the source: one Rust staticlib per image"
-        echo "  (phase-241 W11). A backend reaches the umbrella as an rlib —"
-        echo "  \`nros-c\`'s \`rmw-zenoh = [\"rmw-cffi\", \"dep:nros-rmw-zenoh\"]\` — so a"
+        echo "  (phase-241 W11). A backend reaches the umbrella as an rlib — the"
+        echo "  generated image crate depends on it (RFC-0071 D9) — so a"
         echo "  standalone backend archive beside it is redundant AND a second set of"
         echo "  lang items. See issue 0616, and issue 0436 for the same class on px4."
     } >&2

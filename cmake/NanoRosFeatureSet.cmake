@@ -133,8 +133,9 @@ function(nros_feature_set out_var)
     set(_feats "ros-${_edition}")
 
     # ---- rmw ---------------------------------------------------------------
-    # Selection happens at link time (`NanoRos::Rmw::<name>`); the feature only
-    # decides which backend the umbrella bundles into the one Rust staticlib.
+    # Selection happens at link time (`NanoRos::Rmw::<name>`); WHICH backend the
+    # one Rust staticlib bundles is the image crate's dependency (RFC-0071 D9),
+    # so the API crate's own features only say `rmw-cffi`.
     # phase-347 W3 — validity comes from the DESCRIPTORS, not a list kept here.
     # This used to enumerate zenoh/xrce/cyclonedds/uorb/none while
     # `nros_rmw_dispatch` accepted only the first three and FATAL_ERROR'd on
@@ -143,7 +144,7 @@ function(nros_feature_set out_var)
     if(NOT _FS_CRATE STREQUAL "c" AND NOT _FS_CRATE STREQUAL "cpp")
         message(FATAL_ERROR
             "nros_feature_set: CRATE must be 'c' or 'cpp' (got '${_FS_CRATE}') — "
-            "the two crates spell the rmw feature differently.")
+            "the two crates' feature tables differ.")
     endif()
     # `none` is not a backend and has no descriptor; it is the absence of one.
     if(_FS_RMW STREQUAL "none" OR _FS_RMW STREQUAL "")
@@ -158,44 +159,24 @@ function(nros_feature_set out_var)
                 "The provider scan says:\n${_fs_rmw_known_WHY}")
         endif()
         nros_rmw_dispatch("${_FS_RMW}")
-        # phase-439 W4 — the two crates spell the same selection differently
-        # (nros-cpp has `rmw-zenoh-cffi`, nros-c has `cffi-zenoh-cffi` and, for
-        # xrce, `cffi-xrce-c`), and that is a real vocabulary difference rather
-        # than an alias. It used to be an `if(_FS_RMW STREQUAL "zenoh")` chain
-        # here — the closed list issue 1219 counted as one of five, and the one
-        # that would silently hand a fifth backend the wrong feature. The
-        # spellings are DECLARED now: `[rmw.link] c_cffi_feature` (authored,
-        # because `cffi-xrce-c` follows no convention) and the derived
-        # `<cargo_feature>-cffi` for nros-cpp.
-        #
-        # An EMPTY feature is the correct answer, not a missing one: a backend
-        # that is not a Rust rlib (cyclonedds, uorb) is bundled into neither
-        # umbrella, so both fall back to the RMW-agnostic `rmw-cffi` — which is
-        # exactly what the old `else()` arm did for them.
-        if(_FS_CRATE STREQUAL "c")
-            set(_fs_rmw_feature "${NROS_RMW_C_CFFI_FEATURE}")
-        else()
-            set(_fs_rmw_feature "${NROS_RMW_UMBRELLA_CFFI_FEATURE}")
-        endif()
-        # `rlib_dep` is what says "this backend is bundled into the umbrella".
-        # Without it the cffi feature names a feature the umbrella crate does
-        # not have, and cargo fails on an unknown feature rather than falling
-        # back — so the DECLARATION gates the use of the name.
-        if(NROS_RMW_RLIB_DEP AND _fs_rmw_feature)
-            list(APPEND _feats "${_fs_rmw_feature}")
-            # issue 1893 — the edition's THIRD destination. `ros-<edition>`
-            # above reaches `nros` and stops at `nros-node`, inert since phase
-            # 104.A, while a backend may key its WIRE on the edition (zenoh's
-            # data key). The backend declares its own feature for it, and this
-            # names it as a dependency feature of the bundled rlib, so neither
-            # umbrella crate has to name a backend to forward it (RFC-0071).
-            if(NROS_RMW_EDITION_FEATURE)
-                string(REPLACE "{edition}" "${_edition}" _fs_ed_feat
-                    "${NROS_RMW_EDITION_FEATURE}")
-                list(APPEND _feats "${NROS_RMW_RLIB_DEP}/${_fs_ed_feat}")
-            endif()
-        else()
-            list(APPEND _feats rmw-cffi)
+        # RFC-0071 D9 (phase-506 W4d) — neither API crate names a backend, so
+        # both take the RMW-agnostic `rmw-cffi` whatever the RMW is. Selecting
+        # the backend used to be a feature here (`nros-c/rmw-zenoh`,
+        # `nros-cpp/rmw-zenoh-cffi`, from the descriptor's `c_cffi_feature`);
+        # it is now the image crate's DEPENDENCY on the backend
+        # (`cmake/NanoRosImageCrate.cmake`), which every road that links a
+        # bundled backend builds through.
+        list(APPEND _feats rmw-cffi)
+        # issue 1893 — the edition's THIRD destination. `ros-<edition>` above
+        # reaches `nros` and stops at `nros-node`, while a backend may key its
+        # WIRE on the edition (zenoh's data key). The backend declares its own
+        # feature for it, and this names it as a `<rlib>/<feature>` row, which
+        # the image crate turns into a feature of its backend dependency — so
+        # neither API crate has to name a backend to forward it (RFC-0071).
+        if(NROS_RMW_RLIB_DEP AND NROS_RMW_EDITION_FEATURE)
+            string(REPLACE "{edition}" "${_edition}" _fs_ed_feat
+                "${NROS_RMW_EDITION_FEATURE}")
+            list(APPEND _feats "${NROS_RMW_RLIB_DEP}/${_fs_ed_feat}")
         endif()
     endif()
 

@@ -11,7 +11,10 @@
 //! | cargo feature | `<kind>-<name>` |
 //! | cmake value | the canonical name |
 //! | C define token | `UPPER(name)` |
-//! | cffi feature | `<cargo_feature>-cffi` |
+//!
+//! (A fifth, the `nros-c`/`nros-cpp` cffi feature `<cargo_feature>-cffi`, went
+//! with those features in phase-506 W4d — RFC-0071 D9: the API crates name no
+//! backend.)
 //!
 //! (`crate` is the sixth in the RFC's table. It is NOT here, and phase-420 W5
 //! measured why: `nros-rmw-xrce` ships no `Cargo.toml` at all and its
@@ -66,12 +69,6 @@ pub fn c_define_token(name: &str) -> String {
             }
         })
         .collect()
-}
-
-/// The `nros-c` / `nros-cpp` umbrella feature that bundles and force-links a
-/// backend: the cargo feature plus `-cffi`.
-pub fn cffi_feature(cargo_feature: &str) -> String {
-    format!("{cargo_feature}-cffi")
 }
 
 /// The `<nano_ros_provides kind="..." name="..."/>` names a `package.xml`
@@ -145,7 +142,6 @@ mod tests {
         assert_eq!(cargo_feature("serdes", "flatbuf"), "serdes-flatbuf");
         assert_eq!(cmake_value("cyclonedds"), "cyclonedds");
         assert_eq!(c_define_token("cyclonedds"), "CYCLONEDDS");
-        assert_eq!(cffi_feature("rmw-xrce"), "rmw-xrce-cffi");
     }
 
     #[test]
@@ -167,12 +163,12 @@ mod tests {
     <nano_ros_provides kind="rmw" name="zenoh"/>
     <nano_ros_provides kind="rmw" name="rmw-zenoh"/>
     <nano_ros_provides kind="board" name="not-an-rmw"/>
-    <nano_ros_provides kind="rmw" name="rmw-zenoh-cffi"/>
+    <nano_ros_provides kind="rmw" name="zenoh-pico"/>
   </export>
 </package>"#;
         assert_eq!(
             announced_names(xml, "rmw"),
-            ["zenoh", "rmw-zenoh", "rmw-zenoh-cffi"]
+            ["zenoh", "rmw-zenoh", "zenoh-pico"]
         );
         assert_eq!(announced_names(xml, "board"), ["not-an-rmw"]);
         assert!(announced_names(xml, "serdes").is_empty());

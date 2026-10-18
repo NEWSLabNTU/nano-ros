@@ -1440,9 +1440,9 @@ elif command -v "${CXX:-c++}" >/dev/null 2>&1; then
     # not supported without std". It failed into the `|| echo` below, which
     # loses the headers silently — the exact shape issue 0464 is about.
     #
-    # The RMW backend is load-bearing, not decoration. Both build scripts get
+    # `rmw-cffi` is load-bearing, not decoration. Both build scripts get
     # their sizes from `probe_nros_sizes`, which builds `nros` with the features
-    # this command resolves; with no backend selected the probe returns
+    # this command resolves; without the cffi runtime the probe returns
     # `EXECUTOR_SIZE = 0` and BOTH scripts then decline to write the header at
     # all ("no RMW backend means no executor sizes to ship"). The build still
     # exits 0, so the `|| echo` below never fires, and the three snippets that
@@ -1455,9 +1455,11 @@ elif command -v "${CXX:-c++}" >/dev/null 2>&1; then
     # `subscription_with_info` and `spin_until_future_complete`. It read as a
     # CI-only fault and was not: on a developer machine the headers are left
     # over from some other build that DID select a backend, so the lane passes
-    # on residue. Issue 1031.
+    # on residue. Issue 1031. (This named `nros-cpp/rmw-zenoh-cffi` until
+    # phase-506 W4d removed it — the API crates name no backend, RFC-0071 D9 —
+    # and `rmw-cffi`, which it implied, is what the executor sizes need.)
     ( cd "$repo_root" && cargo build -q -p nros-cpp -p nros-c \
-        --features nros-cpp/std,nros-c/std,nros-cpp/ros-humble,nros-cpp/rmw-zenoh-cffi ) \
+        --features nros-cpp/std,nros-c/std,nros-cpp/ros-humble,nros-cpp/rmw-cffi ) \
         || echo "cxx-syntax: config-header generation build failed (snippets needing them will skip)" >&2
     # A build that exits 0 having written nothing is the case the `||` above
     # cannot see. Say so — the snippets fail either way, but their error is

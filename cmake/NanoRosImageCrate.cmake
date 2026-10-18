@@ -5,6 +5,8 @@
 # that themselves, through a feature per backend (`nros-c/rmw-zenoh`,
 # `nros-cpp/rmw-zenoh-cffi`, …), which is why `nros-c` and `nros-cpp` named
 # backends and a third-party backend needed an edit to both (issue 1297).
+# W4d deleted those features, so this crate is now the ONLY way a C/C++ image's
+# staticlib carries a bundled (rlib) backend.
 #
 # This generates, per configure, the crate that does it instead: an "image
 # crate" that depends on the API crate WITHOUT a backend feature, and on the
@@ -95,15 +97,13 @@ function(nros_image_backend prefix)
     endif()
 
     # Split what nros_feature_set() derived: the API crate's own features stay
-    # on the API crate, minus the backend selection (`rmw-zenoh`, …) and minus
-    # `<backend>/<feature>` rows, which become features of the backend dep.
+    # on the API crate, minus `<backend>/<feature>` rows (the edition's backend
+    # destination, issue 1893), which become features of the backend dep.
     set(_api_feats "")
     set(_backend_feats "")
     foreach(_f IN LISTS _IB_API_FEATURES)
         if(_f MATCHES "^([^/]+)/(.+)$")
             list(APPEND _backend_feats "${CMAKE_MATCH_2}")
-        elseif(_f STREQUAL NROS_RMW_C_CFFI_FEATURE OR _f STREQUAL NROS_RMW_UMBRELLA_CFFI_FEATURE)
-            # the backend selection itself: replaced by the dependency below
         else()
             list(APPEND _api_feats "${_f}")
         endif()

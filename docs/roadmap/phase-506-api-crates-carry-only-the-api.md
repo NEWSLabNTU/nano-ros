@@ -129,10 +129,23 @@ them. Design notes measured 2026-10-18:
       maintainer ruled (2026-10-18) to treat it as covered by the FreeRTOS
       cmake-road verification, with the IDE build tracked as
       [#1957](../issues/1957-s32ds-image-crate-unverified-in-ide.md).
-- [ ] **W4d** — [#1297](../issues/1297-rmw-agnostic-api-crates-name-backends.md):
+- [x] **W4d** — [#1297](../issues/archived/1297-rmw-agnostic-api-crates-name-backends.md):
       `nros-c` / `nros-cpp` lose their `rmw-<name>` features, aliases, `?/`
       forwards and optional backend deps; `check-rmw-agnostic`'s baseline
-      reaches zero.
+      reaches zero. **Done 2026-10-19:** both crates keep `rmw-cffi` only;
+      `rmw_backend.rs` is gone (`nros-cpp` keeps the recording backend's anchor
+      as `metadata_backend.rs`); `nros/rmw-cyclonedds` became
+      `nros/needs-type-descriptors`, turned on by the facade from the
+      descriptor's `type_register_crate`. `nros_feature_set` emits `rmw-cffi`
+      plus the edition's `<rlib>/<feature>` row for every RMW, the image crate
+      no longer strips a selection, and the descriptor's `c_cffi_feature` /
+      `cffi_feature` and the `rmw-<x>-cffi` announcements are retired (stating
+      one is refused). The two roads still asking for a feature moved to the
+      generator's script mode: PX4's bridge recipe and the link-determinism
+      fixture. `check-nros-c-feature-agreement` now refuses glue that asks an
+      API crate for a backend; it found the Zephyr module's strings, the C++
+      clippy lane and the compile-check header build, all moved to `rmw-cffi`.
+      Baseline 41 → 0 lines.
 
 ## Acceptance
 
@@ -143,7 +156,7 @@ ledger has no row whose decision is not yet applied.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1297](../issues/1297-rmw-agnostic-api-crates-name-backends.md) | Per-backend Cargo features, `register()` calls and `extern` declarations in nros-c and nros-cpp are RFC-0071 D2's class. `check-rmw-agnostic` baselines them. |
+| [#1297](../issues/archived/1297-rmw-agnostic-api-crates-name-backends.md) | Per-backend Cargo features, `register()` calls and `extern` declarations in nros-c and nros-cpp are RFC-0071 D2's class. `check-rmw-agnostic` baselines them. |
 | [#1298](../issues/archived/1298-rmw-agnostic-core-names-backends.md) | `nros-macros` and one other core crate name backends in code, inside RFC-0071's reach. |
 | [#1299](../issues/archived/1299-rmw-agnostic-backend-named-config-in-api.md) | Backend-named configuration (`CONFIG_NROS_ZENOH_*`, `ZENOH_LOCATOR`) in the API crates is RFC-0071 D8's class. |
 | [#1300](../issues/1300-closed-backend-lists-outside-core-api.md) | Closed backend lists outside core/api (the CLI scaffold, colcon's `RMW_BACKENDS`, `board.knobs.zenoh`) are beyond the gate's reach. |

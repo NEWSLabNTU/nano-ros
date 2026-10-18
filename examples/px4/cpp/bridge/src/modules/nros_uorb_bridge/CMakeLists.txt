@@ -121,8 +121,8 @@ endif()
 #     than a wiring mistake. Driving both from one value is what removes it.
 #
 # The cargo half is NOT here. A networked backend is compiled into
-# libnros_cpp.a by `--features rmw-<rmw>-cffi`, which `just px4
-# build-bridge-example rmw=<rmw>` passes; this file only names it. That split is
+# libnros_cpp.a by the generated image crate for `<rmw>`, which `just px4
+# build-bridge-example` builds (NROS_PX4_BRIDGE_RMW=<rmw>); this file only names it. That split is
 # deliberate (the archive is built before cmake runs) and is why the recipe
 # exports the same value it builds with.
 if(DEFINED NROS_PX4_BRIDGE_RMW AND NOT "${NROS_PX4_BRIDGE_RMW}" STREQUAL "")
@@ -154,7 +154,7 @@ nros_px4_add_module(
 	STACK_MAIN 32768
 	# uorb = inward (in-firmware, zero-copy). zenoh = outward; a networked
 	# backend contributes no sources here — it is compiled INTO libnros_cpp.a by
-	# `--features rmw-zenoh-cffi`, and this list only drives the register call.
+	# the image crate `just px4 build-bridge-example` builds, and this list only drives the register call.
 	BACKENDS uorb ${_rmw}
 	# `<rclcpp/bridge.hpp>` (MultiExecutor) is gated on NROS_CPP_STD rather than
 	# __STDC_HOSTED__ on purpose (issue 0332: a hosted compiler can be run

@@ -97,12 +97,12 @@ scheduler-time-triggered = []
 sim-time = ["dep:nros-rosgraph-msgs"]
 rmw-cffi = ["dep:nros-rmw-cffi"]
 # Phase 248 (C2) — INTERNAL marker feature. The umbrella
-# `nros/rmw-cyclonedds` activates this (via `nros-node/__cyclonedds-link`)
+# `nros/needs-type-descriptors` activates this
 # so the typed-creator descriptor hook
 # (`cyclonedds_register::register_type::<M>()`) compiles in via
 # `cfg(rmw_cyclonedds_present)` (emitted by `build.rs` from this feature).
 # **Not user-facing** — downstream callers depend on
-# `nros = { features = ["rmw-cyclonedds"] }` (umbrella shape) instead.
+# `nros = { features = ["needs-type-descriptors"] }` (umbrella shape) instead.
 #
 # Pure marker — carries NO `dep:` edge. Issue #60 / Phase 248 made the
 # descriptor registration a generic vtable seam

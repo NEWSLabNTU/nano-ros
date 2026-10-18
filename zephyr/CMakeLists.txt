@@ -64,8 +64,8 @@ include(${CMAKE_CURRENT_LIST_DIR}/cmake/nros_cargo_build.cmake)
 # staticlib through a generated IMAGE crate (cmake/NanoRosImageCrate.cmake),
 # exactly as on the cmake road: the API crate is built without its backend
 # feature and the backend crate the descriptor names is a dependency of the
-# image. The feature strings below keep their shape; the image strips the
-# backend selection out of them. The backend's NAME is the `CONFIG_NROS_RMW_*`
+# image. Since W4d the API crates have no backend feature at all, so the
+# strings below name none. The backend's NAME is the `CONFIG_NROS_RMW_*`
 # choice this image made, read over the provider scan rather than a list.
 include(${CMAKE_CURRENT_LIST_DIR}/../cmake/NanoRosRmwDispatch.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/../cmake/NanoRosImageCrate.cmake)
@@ -542,33 +542,17 @@ if(CONFIG_NROS_C_API)
     # nros_find_interfaces() comes from the shared core (Phase 246), pulled in by
     # the generator's include above — no separate zephyr copy.
 
-    # Select Cargo features based on RMW backend
-    # `rmw-zenoh` / `rmw-xrce`, never the `cffi-*` back-compat aliases: the
-    # nros-cpp build below forwards `nros-c/rmw-<name>`, and naming the alias
-    # here asks cargo for a feature SET no other consumer names — two `nros-c`
-    # units in one target dir, both writing the shared generated header
-    # (issues 1461, 1100). `cffi-zenoh-cffi = ["rmw-zenoh"]` resolves to the
-    # same thing; the spelling is what splits the unit.
-    if(CONFIG_NROS_RMW_ZENOH)
-        set(_nros_features "rmw-cffi,rmw-zenoh,platform-zephyr,${_nros_edition_feature}")
-    elseif(CONFIG_NROS_RMW_XRCE)
-        # Phase 115.K.2.5.1.3-zephyr — XRCE routes through the C
-        # backend's cffi shim instead of the deleted Rust direct-impl.
-        # `rmw-xrce` bundles that shim's rlib into the umbrella; its
-        # `platform-zephyr` feature drops every POSIX TU and emits
-        # `UCLIENT_PLATFORM_ZEPHYR` in the generated config.
-        set(_nros_features "rmw-cffi,rmw-xrce,platform-zephyr,${_nros_edition_feature}")
-    elseif(CONFIG_NROS_RMW_CYCLONEDDS)
-        # Phase 168.X gap 2.B — cyclonedds is now usable from the C
-        # API too. The backend's `nros_rmw_cyclonedds_register`
-        # entry point is declared with C linkage in
-        # `packages/rmw/cyclonedds/nros-rmw-cyclonedds/include/nros_rmw_cyclonedds.h`,
-        # so the Phase 160.A strong stub below resolves it from the
-        # standalone C++ library compiled by the RMW backend block
-        # above (lines 196+). nros-c just needs the generic cffi
-        # runtime + Zephyr platform feature.
-        set(_nros_features "rmw-cffi,platform-zephyr,${_nros_edition_feature}")
-    endif()
+    # RFC-0071 D9 (phase-506 W4d) — `nros-c` names no backend, so every RMW
+    # takes the same API features: the generic cffi runtime + the Zephyr
+    # platform. The backend is the image crate's DEPENDENCY
+    # (`_nros_zephyr_api_cargo_build` above): zenoh's and xrce's rlib is
+    # bundled there, its `platform-zephyr` forwarded through the descriptor
+    # (for xrce that drops every POSIX TU and emits `UCLIENT_PLATFORM_ZEPHYR`).
+    # cyclonedds has no rlib — its `nros_rmw_cyclonedds_register` (C linkage,
+    # `nros_rmw_cyclonedds.h`) comes from the standalone C++ library the RMW
+    # backend block above compiles, and the Phase 160.A strong stub below
+    # resolves it.
+    set(_nros_features "rmw-cffi,platform-zephyr,${_nros_edition_feature}")
 
     # native_sim targets run on Linux and support std (needed for panic handler)
     if(CONFIG_BOARD_NATIVE_SIM OR CONFIG_BOARD_NATIVE_POSIX)
@@ -617,9 +601,9 @@ if(CONFIG_NROS_C_API)
     # Link the built library
     zephyr_library_link_libraries(nros_c_cargo)
 
-    # issue 1636 — no standalone `nros-rmw-zenoh-staticlib` here. `nros-c`'s
-    # `rmw-zenoh` feature carries `dep:nros-rmw-zenoh` again (Phase 241.D3-rev),
-    # so `libnros_c.a` already holds the backend and `nros_rmw_zenoh_register`;
+    # issue 1636 — no standalone `nros-rmw-zenoh-staticlib` here. The image
+    # crate depends on `nros-rmw-zenoh` (RFC-0071 D9), so `libnros_c.a` already
+    # holds the backend and `nros_rmw_zenoh_register`;
     # a second staticlib was a second backend closure and REGISTRY, linked only
     # because `--allow-multiple-definition` let the first copy win.
     # Phase 169.4 retired dust-dds; the Rust DDS path (and its
@@ -797,46 +781,26 @@ if(CONFIG_NROS_CPP_API)
     # nros_find_interfaces() comes from the shared core (Phase 246), pulled in by
     # the generator's include above — no separate zephyr copy.
 
-    # Select Cargo features based on RMW backend
+    # RFC-0071 D9 (phase-506 W4d) — `nros-cpp` names no backend either: the
+    # image crate bundles it. What still differs per RMW is `alloc`, which is a
+    # CAPABILITY this module composes (phase-361 W8.d): `nros-cpp`'s error
+    # mapper references the alloc-gated `TransportError::BackendDynamic`
+    # un-gated (issue 0586 keeps mappers exhaustive), and on embedded Zephyr the
+    # platform provides a global allocator WITHOUT the `alloc` feature, so a
+    # composition that lacks it links and only the variant is missing (E0599 —
+    # issue 0730). Zenoh gets it transitively (`nros-rmw-zenoh` pins
+    # `nros-rmw-cffi/alloc`, and the image crate depends on it); xrce's
+    # `nros-rmw-xrce-cffi` does NOT carry it and cyclonedds has no rlib at all,
+    # so both spell it — measured on `aarch64-unknown-none` when these strings
+    # still named the backend (`rmw-cffi` and `rmw-cffi,rmw-xrce-cffi` E0599,
+    # `rmw-zenoh-cffi` built).
     if(CONFIG_NROS_RMW_ZENOH)
         zephyr_compile_definitions(NROS_RMW_ZENOH_CFFI=1)
-        set(_nros_cpp_features "rmw-zenoh-cffi,platform-zephyr,${_nros_edition_feature}")
+        set(_nros_cpp_features "rmw-cffi,platform-zephyr,${_nros_edition_feature}")
     elseif(CONFIG_NROS_RMW_XRCE)
         zephyr_compile_definitions(NROS_RMW_XRCE=1)
-        # Phase 115.K.2.5.1.3-zephyr — same shape as the C path
-        # above: cffi runtime + C backend + Zephyr platform feature.
-        # issue 0730 follow-up — `alloc` here too. MEASURED on
-        # `aarch64-unknown-none`: this composition fails the same E0599 as the
-        # cyclonedds one.
-        #
-        #   rmw-cffi                 (cyclonedds)  E0599
-        #   rmw-cffi,rmw-xrce-cffi                 E0599   <- this branch
-        #   rmw-zenoh-cffi                         builds
-        #
-        # So the note below is one branch short: xrce is not a bare `rmw-cffi`
-        # composition, but `rmw-xrce-cffi` pulls `dep:nros-rmw-xrce-cffi`, which
-        # unlike nros-rmw-zenoh does NOT carry `alloc`. Reaching the capability
-        # through whichever backend happens to depend on it is the shape that
-        # produced the original bug; both sites now spell it.
-        set(_nros_cpp_features "rmw-cffi,rmw-xrce-cffi,alloc,platform-zephyr,${_nros_edition_feature}")
+        set(_nros_cpp_features "rmw-cffi,alloc,platform-zephyr,${_nros_edition_feature}")
     elseif(CONFIG_NROS_RMW_CYCLONEDDS)
-        # cyclonedds bypasses Cargo: the standalone nros-rmw-cyclonedds
-        # C++ lib (compiled into the Zephyr app library by the RMW
-        # backend block above) registers the vtable via
-        # nros_rmw_cyclonedds_register(). nros-cpp only needs the
-        # generic cffi runtime + Zephyr platform feature.
-        #
-        # `alloc` is spelled here because this module IS the dep-site
-        # composing the consumer's feature set (phase-361 W8.d): nros-cpp's
-        # error mapper references the alloc-gated
-        # `TransportError::BackendDynamic` un-gated (issue 0586 keeps
-        # mappers exhaustive), and on embedded Zephyr the platform provides
-        # a global allocator WITHOUT the `alloc` feature, so the image
-        # links and only the variant is missing (E0599 — issue 0730). The
-        # sibling lanes get `alloc` transitively (zenoh via
-        # nros-rmw-zenoh's pinned nros-rmw-cffi/alloc; native_sim via
-        # `,std`). NOTE: the xrce branch above needs it too — measured, see
-        # its comment; this is not the only composition that lacked it.
         set(_nros_cpp_features "rmw-cffi,alloc,platform-zephyr,${_nros_edition_feature}")
     endif()
 
@@ -904,23 +868,9 @@ if(CONFIG_NROS_CPP_API)
     # nros_c_cargo_build target (nros-cpp's target then defers to it
     # via `TARGET nros_c_cargo_build` in nros_cargo_build.cmake).
     if(NOT CONFIG_NROS_C_API)
-        if(CONFIG_NROS_RMW_ZENOH)
-            # `rmw-zenoh`, not the `cffi-zenoh-cffi` back-compat alias. The two
-            # are the same feature (`cffi-zenoh-cffi = ["rmw-zenoh"]`, kept only
-            # so downstream cmake glue that still passes the old name does not
-            # error), but cargo keys a unit by the feature SET, so the alias
-            # spelling asks for a feature set no other consumer names.
-            # `nros-cpp` forwards `nros-c/rmw-zenoh`; naming the same thing here
-            # makes both cargo invocations resolve nros-c to the SAME feature
-            # set, which is what the shared generated header needs.
-            set(_nros_c_for_cpp_features "rmw-cffi,rmw-zenoh,platform-zephyr,${_nros_edition_feature}")
-        elseif(CONFIG_NROS_RMW_XRCE)
-            # `rmw-xrce`, for the reason stated for zenoh above — the rule was
-            # written for one branch and applied to one branch (issue 1461).
-            set(_nros_c_for_cpp_features "rmw-cffi,rmw-xrce,platform-zephyr,${_nros_edition_feature}")
-        elseif(CONFIG_NROS_RMW_CYCLONEDDS)
-            set(_nros_c_for_cpp_features "rmw-cffi,platform-zephyr,${_nros_edition_feature}")
-        endif()
+        # The same API features the C path takes (RFC-0071 D9: no backend
+        # feature on either crate; the image crate bundles it).
+        set(_nros_c_for_cpp_features "rmw-cffi,platform-zephyr,${_nros_edition_feature}")
         if(CONFIG_BOARD_NATIVE_SIM OR CONFIG_BOARD_NATIVE_POSIX)
             string(APPEND _nros_c_for_cpp_features ",std")
         endif()

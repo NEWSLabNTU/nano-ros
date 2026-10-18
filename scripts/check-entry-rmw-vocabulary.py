@@ -280,7 +280,7 @@ def cmake_known() -> set[str]:
 
     The same rule the CLI applies (`rmw_resolver::known_rmw_in`): one CANONICAL
     name per provider — its FIRST `<nano_ros_provides kind="rmw"/>` — not one
-    per announcement, because `zenoh` / `rmw-zenoh` / `rmw-zenoh-cffi` are three
+    per announcement, because `zenoh` / `rmw-zenoh` are two
     spellings of one backend and only the first is a `NROS_RMW` value.
 
     Read from source rather than by asking the CLI on purpose: this gate is on

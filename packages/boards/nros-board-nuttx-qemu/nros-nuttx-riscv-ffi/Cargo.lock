@@ -286,7 +286,6 @@ dependencies = [
  "nros-platform",
  "nros-platform-cffi",
  "nros-rmw",
- "nros-rmw-zenoh",
  "pastey",
  "portable-atomic",
 ]

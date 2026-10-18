@@ -27,11 +27,18 @@ bench = false
 # two providers in one graph is a duplicate lang item.
 nros-c = { version = "*", default-features = false, features = [
     "alloc",
-    "rmw-zenoh",
+    "rmw-cffi",
     "ros-humble",
     "platform-mps2-an385",
     "panic-platform",
 ] }
+# RFC-0071 D9 (phase-506 W4d) — the backend is this image's own dependency,
+# not an `nros-c` feature: the API crate names no backend. A DIRECT dependency
+# because `nros_cc_flags::backends` reads the backend's self-announcement
+# (`DEP_NROS_RMW_ZENOH_NROS_RMW_BACKEND`), which cargo hands a direct dependent
+# only. Its platform and edition are what `nros-c`'s `platform-mps2-an385` /
+# `ros-humble` used to forward to it.
+nros-rmw-zenoh = { version = "*", default-features = false, features = ["platform-bare-metal", "ros-humble"] }
 # The image's board crate (reset vector, CMSDK Timer0 clock, LAN9118 + smoltcp
 # bring-up, semihosting console and the `nros_log` sink — none of it reachable
 # from C, which is why this leaf is rooted in Rust), its RMW backend and its

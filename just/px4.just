@@ -158,7 +158,7 @@ build-sitl-example:
     # nros_cpp_config_variant_..._rmw_zenoh_cffi_...` -- the module compiled for
     # an archive it was not linked against.
     #
-    # `rmw-cffi` and NOT `rmw-zenoh-cffi`: this module's outward side IS uORB.
+    # `nros-cpp` and NOT an image crate bundling zenoh: this module's outward side IS uORB.
     # `build-bridge-example` does the same thing for the opposite reason (it
     # picks a NETWORKED backend), which is why that recipe never had this bug.
     echo "Building the nano-ros archive this module links (uORB only)"
@@ -194,7 +194,7 @@ build-sitl-example:
 #      consumer gets this from nros_generate_interfaces(LANGUAGE CPP), which a PX4
 #      module never runs);
 #   3. the outward backend is chosen when the ARCHIVE is built, so libnros_cpp.a
-#      must carry `rmw-zenoh-cffi`, and zenoh needs its own platform archive.
+#      must carry the backend (the image crate bundles it), with its platform.
 #
 # TOPICS is the single source of truth for the message set: it drives the
 # generator, and the FFI crate's build.rs globs whatever the generator wrote.
@@ -272,7 +272,7 @@ build-bridge-example topics="debug_key_value" edition="jazzy":
     # the whole link. Marker is INLINE because check::build-profile-literals.sh
     # only looks 3 lines up, and this comment block is longer than that.
     # phase-325 W3.3 — `rmw=` picks the OUTWARD backend, and it has to reach two
-    # places that cannot see each other: this cargo feature (which compiles the
+    # places that cannot see each other: the image crate (which compiles the
     # backend INTO libnros_cpp.a) and the module's cmake (which registers it and
     # names it in the session spec). One value, exported below, drives both.
     # The archive-vs-BACKENDS half is guarded (an llvm-nm precheck in
@@ -280,24 +280,25 @@ build-bridge-example topics="debug_key_value" edition="jazzy":
     # BACKENDS-vs-session-NAME half is not: asking for a backend by a name
     # nothing registered opens nothing and reports a transport failure, which
     # reads as a dead network. One value removes that.
-    # issue 1893 — the edition's THIRD destination. Step [1/4] writes it into
-    # the generated TYPE_HASH, but a backend may key its wire on it (zenoh's data
-    # key), and `nros-cpp/ros-*` stops at nros-node. The backend DECLARES its
-    # own feature (`[rmw.link] edition_feature`), read here from the same
-    # dispatch cmake reads, and named as `<rlib>/<feature>`. Without it a jazzy
-    # image advertised a RIHS01 hash on Humble's `TypeHashNotSupported` key.
-    if ! dispatch="$(nros ws rmw-dispatch "$RMW" --lines)"; then
-        echo "ERROR: nros ws rmw-dispatch $RMW failed" >&2
+    # RFC-0071 D9 (phase-506 W4d) — `nros-cpp` names no backend, so the
+    # archive is built from the IMAGE CRATE `cmake/NanoRosImageCrate.cmake`
+    # generates: the API crate plus the backend the descriptor names, with the
+    # platform and the edition (issue 1893) forwarded through that descriptor.
+    # It is its own cargo root, so it gets its own target dir (issue 0616), and
+    # PX4's configure finds the archive and the per-build headers there through
+    # `CARGO_TARGET_DIR`, which `nros locate artifact` honours.
+    IMAGE_DIR="$ROOT/build/px4-bridge/image"
+    export CARGO_TARGET_DIR="$IMAGE_DIR/target"
+    if ! image="$(cmake --log-level=WARNING -DNROS_IMAGE_FLAVOR=cpp \
+            -DNROS_IMAGE_RMW="$RMW" -DNROS_IMAGE_EDITION='{{edition}}' \
+            -DNROS_IMAGE_OUT_DIR="$IMAGE_DIR" \
+            "-DNROS_IMAGE_API_FEATURES=std;bridge;platform-posix;ros-{{edition}}" \
+            -P "$ROOT/cmake/NanoRosImageCrate.cmake")"; then
+        echo "ERROR: generating the $RMW image crate failed" >&2
         exit 1
     fi
-    RLIB="$(printf '%s\n' "$dispatch" | awk -F'\t' '$1=="NROS_RMW_RLIB_DEP"{print $2}')"
-    ED_FEAT="$(printf '%s\n' "$dispatch" | awk -F'\t' '$1=="NROS_RMW_EDITION_FEATURE"{print $2}')"
-    EXTRA=""
-    if [ -n "$RLIB" ] && [ -n "$ED_FEAT" ]; then
-        EXTRA=",$RLIB/${ED_FEAT//\{edition\}/{{edition}}}"
-    fi
-    cargo build -p nros-cpp --no-default-features \
-        --features "std,rmw-$RMW-cffi,bridge,platform-posix,ros-{{edition}}$EXTRA" --release # profile-literal-ok: symbol fixture
+    cargo build --manifest-path "${image%% *}" --no-default-features \
+        --features "${image#* }" --release # profile-literal-ok: symbol fixture
     # profile-literal-ok: symbol fixture: same PX4 SITL link as above.
     # The POSIX platform archive nros_px4_add_module links (its guard names this
     # exact command when it is missing).

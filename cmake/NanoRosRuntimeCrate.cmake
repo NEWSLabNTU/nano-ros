@@ -23,7 +23,7 @@ if(DEFINED _NROS_RUNTIME_CRATE_INCLUDED)
 endif()
 set(_NROS_RUNTIME_CRATE_INCLUDED TRUE)
 
-# Phase 241 W13/R1 — the BACKEND → {cffi feature, rlib, needs-cxx} dispatch, which
+# Phase 241 W13/R1 — the BACKEND → {rlib, needs-cxx} dispatch (its cffi feature went in phase-506 W4d), which
 # replaced a hardcoded `_nros_runtime_backend_feature` map here. phase-439 W4: it is
 # no longer GENERATED from `resolve_rmw()`; `nros_rmw_dispatch()` asks the CLI, which
 # reads the backend's own `nros-rmw.toml` over the provider scan (RFC-0094 D5). The
@@ -223,7 +223,7 @@ function(nros_synth_runtime_umbrella)
     # them (issue 0311 / phase-314 W1).
     # phase-439 W4 — the bare `nros_rmw_dispatch("${_NRR_BACKEND}")` that stood
     # here is GONE. It read none of the eight variables it set: the next line
-    # includes `NanoRosFeatureSet`, which computes the cffi feature from
+    # includes `NanoRosFeatureSet`, which computes the API features from
     # `_NRR_BACKEND` itself, so the call was a no-op that read as the SSoT
     # (`grep NROS_RMW` over this file returned nothing). It is a process spawn
     # now, which is a good reason to notice, but it was dead before.

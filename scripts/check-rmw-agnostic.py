@@ -113,31 +113,13 @@ EXEMPT = {
 # fourteenth (4 lines) and is DELETED rather than baselined — it was dead
 # (issue 1218).
 BASELINE: dict[str, tuple[int, str, str]] = {
-    # Issue 1297 — the API crates select and register backends BY NAME.
-    # issue 1512 raised this 16 -> 19: the three bare-metal platform arms each
-    # forward `nros-rmw-zenoh?/platform-bare-metal`, exactly as the five arms
-    # already baselined here forward their own platform. Bare metal is the one
-    # platform where `nros-platform`'s feature is board-specific, so it needs
-    # three arms where every other needs one — the same debt, three times, not a
-    # new kind of it.
-    "packages/api/nros-c/Cargo.toml":
-        (19, "1297", "per-backend features, cffi aliases, `?/` forwarding, optional deps"),
-    "packages/api/nros-cpp/Cargo.toml":
-        (8, "1297", "the twin of nros-c's feature table"),
-    "packages/api/nros-c/src/rmw_backend.rs":
-        (4, "1297", "`#[cfg(feature = \"rmw-<x>\")] nros_rmw_<x>::register()`"),
-    "packages/api/nros-cpp/src/rmw_backend.rs":
-        (4, "1297", "the twin"),
-    "packages/api/nros-c/src/lib.rs":
-        (1, "1297", "`cfg(any(feature = \"rmw-zenoh\", feature = \"rmw-xrce\"))`"),
-    "packages/api/nros-cpp/src/lib.rs":
-        (4, "1297", "the same cfg(any(...)) four times"),
-    "packages/api/nros/Cargo.toml":
-        (1, "1297", "`rmw-cyclonedds` naming a capability forward"),
-    # Issue 1298 — core names backends in code.
-    # Issue 1299 — backend-named configuration inside the API crates (D8).
-    # phase-484 W8c retired the aliases env.rs (3) and host_env.rs (2) honoured;
-    # what is left is the REFUSAL table, which must spell the name it refuses.
+    # EMPTY since phase-506 W4d (issue 1297 resolved): the last 41 lines — the
+    # API crates' per-backend features, cffi aliases, `?/` forwards, optional
+    # backend deps, `rmw_backend.rs` and its cfg sites, and `nros`'s
+    # `rmw-cyclonedds` marker — went with RFC-0071 D9-D12. A C/C++ image now
+    # bundles its backend through the generated image crate, and `nros`'s
+    # marker is named for its capability (`needs-type-descriptors`). Issues
+    # 1298 and 1299 reached zero earlier. Any new entry needs an OPEN issue.
 }
 
 
