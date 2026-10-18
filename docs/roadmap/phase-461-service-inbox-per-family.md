@@ -1,5 +1,16 @@
 # phase-461 -- the service inbox is sized per family, and the parameter family brings its own
 
+**Status (2026-10-18). Every wave LANDED; REVISED — the design is built, and
+W7–W8 are the two homed issues, re-scoped against `main`.** Nothing in "What it
+does" needs redesign: the three inboxes exist (`USER_SERVICE_INBOX`,
+`ACTION_INBOX`, `BUILTIN_INBOX`), the island links (W5), and the `params` axis
+ships (W6). The island's own acceptance — switching its bringup to `params` and
+measuring VERDICT PASS — is a change in the island's repository and is tracked
+there; this phase cannot run it and does not wait on it. What stays here is
+issue 1203 (W7) and issue 1529's "Still open" list (W8), both of whose premises
+moved after they were written. See "Revision 2026-10-18" at the end. Archive
+after W7 and W8.
+
 **Status (2026-10-14). W1, W2, W2b, W3, W4 and W6 LANDED; W5's book half
 landed and its `image-facts` half was declined.** W1 #1215, W2 #1223, W2b
 #1224, W3 #1225 (all 2026-09-23), W4 #2098 (2026-10-13), W5/W6 2026-10-14;
@@ -665,3 +676,59 @@ Homed when every open issue was given a phase. Each issue has a `**Home:**` line
 | issue | why it belongs here |
 | --- | --- |
 | [#1203](../issues/1203-parameter-builder-bypasses-reserved-parameter-hook.md) | `Executor::parameter`'s builder declares straight into the store, so `use_sim_time` attaches no clock. This is the parameter family's own surface. |
+
+## Revision 2026-10-18 — what is left, read against `main`
+
+Read at `6486216ab7`. The design above is built and needs no change; the two
+homed issues each rest on a premise that has since moved, so their work items
+are re-scoped here rather than taken as written.
+
+### W7 — issue 1203: measure what the builder does now, then route it
+
+1203 says `executor.parameter::<bool>("use_sim_time")?.default(true).mandatory()?`
+stores the value and attaches no clock, because the builder declares through
+`&mut p.server` and the executor's reserved-parameter hook never sees it. Its
+two remedies were a signature change, or a reconcile that reads the store
+"once phase-430 W2 declares `use_sim_time = false` on every node".
+
+phase-430 W2 has landed (`004a14309`): `seed_use_sim_time_default`
+(`executor/spin.rs:12404`) declares a placeholder on every node, and only the
+`declare_parameter` paths step it aside (`yield_seeded_use_sim_time`, `:12431`).
+`parameter_on` (`:13222`) does not, so on this main the builder's
+`declare_parameter` meets a name that is already taken. Read, not run: the
+symptom is probably now a REFUSAL, not 1203's silent no-op. Either is a defect
+(a declaration the app wrote does not take effect), but they are different
+defects.
+
+1. **Reproduce first**: a unit test in nros-node with `sim-time` that declares
+   `use_sim_time` through the builder and asserts what happens — the verb's
+   result, the stored value, and whether `/clock` is attached. Record the answer
+   in 1203.
+2. **Then route the builder like the other two paths**: `parameter_on` yields the
+   seeded placeholder for a reserved name before it hands out the borrow, and the
+   executor observes the declaration on the next spin. The reconcile already runs
+   at the head of every spin, so with the placeholder now present on every node
+   the hook can read the store's `use_sim_time` instead of needing to be told —
+   the issue's cheap option, whose precondition W2 met. No public signature
+   changes.
+
+**Acceptance.** The test from step 1 passes with a clock attached and a refusal
+gone; `use_sim_time_attaches_and_detaches_the_clock_source` and its siblings are
+unchanged; 1203 closes with both measurements.
+
+### W8 — issue 1529: check the hosted road, then close
+
+1529's "Still open" has two bullets. The second (the nros-node split and the
+`params` axis) is W6 plus issue 1897, both landed. The first says the hosted
+road, `cmake/NanoRosFeatureSet.cmake`, adds `param-services` for a declared
+`param_services` and nothing otherwise. On this main it also lowers `params` to
+`param-store` (`NanoRosFeatureSet.cmake:356-361`, W6). What that does not show
+is whether a posix C++ image with `features = []` and a launch `<param>` links:
+the issue's reproduction is that image, and `[]` declares neither axis.
+
+1. Build that image (a copy of a posix C++ workspace with `features = []` and one
+   launch `<param>`). If it links and declares, close 1529 with the run.
+2. If it does not, the remaining question is the issue's own: whether a launch
+   `<param>` should imply `params`. That is a bringup decision (a declared seed
+   needs a store), so it is answered in the resolver that derives capabilities
+   from the bringup, and the build is the acceptance.

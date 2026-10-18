@@ -1,9 +1,22 @@
 # Phase 441 — the one "on-target" live-peer cell runs on host sockets
 
-**Status (2026-09-10). W2 ANSWERED (Cyclone crosses slirp, with four settings — see
-below). W4 and W5 LANDED (the lane split, the phrase audit). W1 and W3 cells WRITTEN —
-#829 Zephyr Cortex-M, #835 FreeRTOS/MPS2 — and unproven by design: no on-target cell
-has met a live peer yet.**
+**Status (2026-10-18). W1–W5 DONE; REVISED — W6–W8 are open, and they are the
+homed issues' work.** The two cells this phase was opened for have met a live peer:
+`zephyr-cortex-m-pubsub-c-zenoh` and `freertos-mps2-pubsub-c-zenoh-n2r` each carry a
+recorded `pass` in `.config/interop-verdicts.toml` (2026-10-11, rmw_zenoh_cpp on
+Humble, 8.7 s and 5.7 s), and the scheduled `live-peer` lane has run both every night
+since: run 39001846062 (2026-10-17) is `live-peer board — VERDICT: cells ran and passed`
+with both tests `PASS`. So W1's and W3's "a live verdict is still owed" paragraphs
+below are history, kept because they state the prediction the run answered: **zero
+defects on the wire** across both crossings (host sockets → Zephyr's stack over
+`eth_smsc911x`, and → FreeRTOS + lwIP), i.e. phase-337 W2's five were build defects.
+
+What the phase did NOT do is the thing its homed issues need: a live peer for an RTOS
+image on **Cyclone**. Every board cell above is zenoh. W2 established that Cyclone
+crosses slirp and what it costs; W6 builds that cell, and it is the in-tree witness
+issues 0997 and 0917 have never had (both are reproduced only in the island's repo,
+over a root-provisioned tap). W7 re-measures 1281, which passed in tier 2 on
+2026-10-16. W8 takes 0814's measure-then-decide. See "Revision 2026-10-18" below.
 
 Phase-433 closed with twenty of twenty Runtime interop cells carrying a live
 verdict, and named its own remainder:
@@ -636,6 +649,68 @@ phase-433's W7 heading, which describes the cell this phase is about to build
 and is quoted verbatim above; `docs/issues/README.md`, which is generated.
 W4's own new code uses the phrase twice, both times to say why it is not the
 vocabulary of the runner split.
+
+## Revision 2026-10-18 — the remainder is Cyclone, and three homed issues
+
+Read against `main` at `6486216ab7`. What changed since 2026-09-10:
+
+- **W1 and W3 met a peer** (status above). Their acceptance is met.
+- **W2's four prerequisites, re-read.** (1) The FreeRTOS and ThreadX arms of
+  `kEmbeddedCycloneConfig` still bake `AllowMulticast=spdp` with no `Peers` — open.
+  (2) `hostfwd`: the PORTS are now derived in the harness
+  (`dds_isolation::CycloneSlirpPair::qemu_hostfwd`, issue 1251), but the launch path a
+  cell uses still has to carry them — open. (3) The NAT-shaped host profile LANDED
+  (issue 1251, `CycloneSlirpPair`, measured through libslirp by
+  `tests/cyclone_slirp_pair.rs`). (4) One port block per concurrent cell: follows from
+  the baked domain, as written.
+- **The board for the Cyclone cell exists and already delivers in-image.**
+  `workspace-cpp-mps3-an536-freertos` (Cortex-R52, FreeRTOS, lwIP over LAN9118, C++,
+  CycloneDDS) is a `fixtures.toml` row consumed by `tests/freertos_qemu.rs`, which
+  asserts in-image delivery. That is the same kernel, IP stack and NIC as the island
+  image issues 0917 and 0997 were found on.
+- **1281's test passed** in tier 2 (run 38933437082, 2026-10-16, newslab-118,
+  `c_riscv_nuttx_talker_delivers_cross_process` 3.5 s). One pass is not a closure
+  under a 28–79 s intermittent drop, which is why W7 is a re-measurement.
+
+### W6 — a Cyclone RTOS image meets a stock peer over slirp
+
+The mps3-an536 FreeRTOS C++ Cyclone entry against a stock `rmw_cyclonedds_cpp`
+peer, over slirp, with W2's recipe: the guest composes `AllowMulticast=false`,
+`ExternalNetworkAddress`, `ParticipantIndex` and one `Peers` entry over the baked
+baseline (a bringup-XML change, no code), the host peer takes
+`CycloneSlirpPair`'s profile, and QEMU forwards the two unicast ports the domain
+implies.
+
+Run it for at least 60 s, not to the first sample. That is what makes it the
+witness for **issue 0997**: the island's participant announced SPDP once and every
+peer expired its lease ~10 s later, so a cell that stops at the first delivery would
+pass on exactly the image that defect lives in. Then a second leg with one sample
+larger than a datagram (8 fragments, the island's trajectory shape) is the witness
+for **issue 0917**.
+
+**Acceptance.** An `interop::CELLS` row (`Tier::Runtime`, `Cyclone` peer,
+`assert_test_bound`), a recorded verdict in `.config/interop-verdicts.toml` written
+by `--record` from a real junit, and the `live-peer` board job building and running
+it (its scope must provision the an536 toolchain; until it does, the board job
+fails naming the scope, per W4). Whatever the 60 s and fragmented legs show is
+recorded in 0997 and 0917 — a pass narrows both to the tap/hardware path, a failure
+is their first in-tree reproduction. Either is the result.
+
+### W7 — re-measure 1281, then close or narrow it
+
+Run `c_riscv_nuttx_talker_delivers_cross_process` solo, 10 times, on freshly built
+fixtures, with `ZENOHD_LOG=debug` on the router as the issue asks. 10 of 10 closes
+1281 with the run recorded; any drop gets the router log the issue says it needs to
+tell a lease expiry from a close.
+
+### W8 — 0814: measure the copy count, then pick an option
+
+0814's own section "Options, none chosen" says the decision needs the copy-count
+measurement (memcpy'd bytes on the publish path: `publish_streamed` vs `publish_raw`
+vs `try_loan`) on the cells that already exist, not a delivery lane. Take that
+measurement, choose among the issue's three options, and meet its "Acceptance for
+this half". An embedded lending lane is only built if the chosen option keeps the
+publish half.
 
 ## What this phase does NOT promise
 
