@@ -238,9 +238,21 @@ run_one() {
 }
 export -f run_one
 
+# Issue 1350 — the fan-out is this script's to stop. It runs under
+# `nros_guard_lane`: its own process group, a trap that kills that group on
+# INT/TERM/HUP and exits 128+N saying NO VERDICT, and a sentinel inside the
+# group that kills it if this shell, or the shell that started it, vanishes.
+# Before this, a SIGTERM to the lane killed the shell and left `xargs -P 32`
+# spawning fresh gates for minutes, and the partial `results.tsv` could have
+# been summarised as OK by a caller that survived the signal.
+_fanout() {
+    grep -vE '^\s*(#|$)' "$1" \
+        | xargs -P "$jobs" -I{} bash -c 'run_one "$@"' _ {} "$2"
+}
+# shellcheck source=scripts/build/subtree-guard.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/subtree-guard.sh"
 _lane_start=$(date +%s%N)
-grep -vE '^\s*(#|$)' "$list" \
-    | xargs -P "$jobs" -I{} bash -c 'run_one "$@"' _ {} "$out_dir"
+nros_guard_lane "gates-$label" _fanout "$list" "$out_dir"
 _lane_wall_ms=$(( ($(date +%s%N) - _lane_start) / 1000000 ))
 
 failed=0

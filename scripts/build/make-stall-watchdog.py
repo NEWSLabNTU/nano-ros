@@ -42,6 +42,11 @@ Knobs:
                                   diagnostics (issue 1773). Default 60; a scan
                                   that overruns is killed and reported
                                   INCOMPLETE, and the verdict still lands.
+  NROS_JOBSERVER_DIAG_SECS        deadline for the WHOLE diagnostics phase
+                                  (issue 1785). Default: the scan budget +
+                                  120. On overrun the report is cut at the
+                                  stuck step, says DIAGNOSTICS INCOMPLETE, and
+                                  the kill and NO VERDICT still happen.
 
 Usage:
   make-stall-watchdog.py --label <name> --diag-dir <dir> -- <command> [args...]
@@ -79,6 +84,26 @@ SCAN_SECS_ENV = "NROS_JOBSERVER_SCAN_SECS"
 # other-process scan block the way a read on a hung FUSE mount does.
 SCAN_FAULT_ENV = "NROS_JOBSERVER_SCAN_FAULT"
 PROBE = "\x00PROBE"
+
+# The deadline on the WHOLE diagnostics phase — issue 1785. The scan of other
+# processes has its own budget (issue 1773), but the rest still touches the
+# kernel on make's behalf: a `stat` of each of make's own fds (the only way to
+# recognise a named FIFO), reads of make's /proc entries, `ls -l`, `gdb`. Any
+# of those can block on a filesystem that does not answer, and the verdict
+# comes AFTER them. So the phase runs in a forked child with one deadline;
+# when it overruns, the child is SIGKILLed (a FUSE wait is killable), the
+# report keeps every line written so far and says where it stopped, and the
+# kill + NO VERDICT happen regardless. Default: the scan budget plus room for
+# gdb (60 s) and `ls` (5 s).
+DIAG_SECS_ENV = "NROS_JOBSERVER_DIAG_SECS"
+# Test-only fault injection: "hang" makes the stat of make's OWN fds block the
+# way a stat on a hung FUSE file does.
+DIAG_FAULT_ENV = "NROS_JOBSERVER_DIAG_FAULT"
+DIAG_HEADROOM_SECS = 120
+
+# The watchdog's own pid, so a scan run from a forked child never lists the
+# watchdog (which inherits make's MAKEFLAGS) as a foreign jobserver holder.
+_WATCHDOG_PID = os.getpid()
 
 
 def _env_seconds(name, default):
@@ -212,6 +237,8 @@ def _pipe_fds(pid, fifo_paths=None):
         if not link.startswith("/"):
             continue  # socket:, anon_inode:, … — never a jobserver
         if fifo_paths is None:
+            if os.environ.get(DIAG_FAULT_ENV) == "hang":
+                time.sleep(3600)  # fault injection for the gate: a stat that never returns
             try:
                 is_fifo = stat.S_ISFIFO(os.stat(p).st_mode)
             except OSError:
@@ -223,8 +250,27 @@ def _pipe_fds(pid, fifo_paths=None):
     return out, None
 
 
-def collect_diagnostics(pid, label, cmd, idle_secs, stall_secs):
-    lines = []
+class _Sink(list):
+    """A line list that also streams each line to `fd`, so a diagnostics child
+    killed at its deadline has already handed over everything before the
+    point where it stuck."""
+
+    def __init__(self, fd=None):
+        super().__init__()
+        self.fd = fd
+
+    def append(self, line):
+        super().append(line)
+        if self.fd is not None:
+            os.write(self.fd, (line + "\n").encode("utf-8", "replace"))
+
+    def extend(self, more):
+        for line in more:
+            self.append(line)
+
+
+def collect_diagnostics(pid, label, cmd, idle_secs, stall_secs, sink=None):
+    lines = _Sink() if sink is None else sink
     w = lines.append
     now = datetime.datetime.now().astimezone().isoformat(timespec="seconds")
     w(f"== jobserver stall diagnostics (issue 1403) — {label} ==")
@@ -333,7 +379,7 @@ def _scan_others(pid, keys, fifo_paths, mine, out):
     unreadable_fd = unreadable_env = 0
     found = 0
     for other in sorted(_all_pids()):
-        if other == pid or other == os.getpid() or other == os.getppid():
+        if other in (pid, os.getpid(), os.getppid(), _WATCHDOG_PID):
             continue
         emit(f"{PROBE} {other}")
         if os.environ.get(SCAN_FAULT_ENV) == "hang":
@@ -431,6 +477,61 @@ def _bounded_scan(pid, keys, fifo_paths, mine):
                    "`request_wait_answer` says so). The verdict below is unaffected; "
                    f"{SCAN_SECS_ENV} sets the budget.")
     return out
+
+
+def _bounded_diagnostics(pid, label, cmd, idle_secs, stall_secs):
+    """`collect_diagnostics` in a forked child, under one deadline (issue 1785).
+
+    Returns the report text. On overrun the child is SIGKILLed and the text is
+    every line it had written, plus a DIAGNOSTICS INCOMPLETE line naming the
+    last one — the place it stuck."""
+    budget = _env_seconds(DIAG_SECS_ENV,
+                          _env_seconds(SCAN_SECS_ENV, DEFAULT_SCAN_SECS) + DIAG_HEADROOM_SECS)
+    rfd, wfd = os.pipe()
+    child = os.fork()
+    if child == 0:
+        os.close(rfd)
+        code = 0
+        try:
+            collect_diagnostics(pid, label, cmd, idle_secs, stall_secs, _Sink(wfd))
+        except BaseException:  # noqa: BLE001 — a child must never return into the caller
+            code = 1
+        finally:
+            os._exit(code)
+    os.close(wfd)
+    buf = b""
+    deadline = time.monotonic() + budget
+    timed_out = False
+    while True:
+        left = deadline - time.monotonic()
+        if left <= 0:
+            timed_out = True
+            break
+        ready, _, _ = select.select([rfd], [], [], left)
+        if not ready:
+            continue
+        chunk = os.read(rfd, 65536)
+        if not chunk:
+            break
+        buf += chunk
+    if timed_out:
+        try:
+            os.kill(child, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+    os.close(rfd)
+    os.waitpid(child, 0)
+    text = buf.decode("utf-8", "replace")
+    if timed_out:
+        done = [l for l in text.splitlines() if l.strip()]
+        last = done[-1].strip() if done else "<nothing written>"
+        text += (f"DIAGNOSTICS INCOMPLETE: no answer within {budget:.0f}s; the last line "
+                 f"written was {last!r}, so the step after it stuck (a hung FUSE mount? "
+                 f"`cat /proc/<pid>/wchan` — `request_wait_answer` says so). The verdict "
+                 f"below is unaffected; {DIAG_SECS_ENV} sets the budget.\n")
+    elif text and not text.endswith("\n"):
+        text += "\n"
+    return text
 
 
 def _gdb_backtrace(pid):
@@ -549,7 +650,7 @@ def main(argv):
         if now - idle_since < stall:
             continue
 
-        report = collect_diagnostics(proc.pid, args.label, cmd, now - idle_since, stall)
+        report = _bounded_diagnostics(proc.pid, args.label, cmd, now - idle_since, stall)
         stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
         path = os.path.abspath(os.path.join(args.diag_dir, f"jobserver-stall-{proc.pid}-{stamp}.txt"))
         try:
@@ -565,7 +666,7 @@ def main(argv):
         _say(f"make-stall-watchdog: killed pid {proc.pid} and its descendants (nothing else)\n")
         _say(f"{MARKER} — {path}\n")
         _say("  make sat idle with no child and no progress; the build did NOT fail and did "
-             "NOT pass. See docs/issues/1403-fixture-jobserver-deadlock-looks-like-a-hang.md\n")
+             "NOT pass. See docs/issues/archived/1403-fixture-jobserver-deadlock-looks-like-a-hang.md\n")
         return NO_VERDICT_RC
 
 

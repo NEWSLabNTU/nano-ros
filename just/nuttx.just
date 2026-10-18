@@ -76,7 +76,9 @@ build-integration-app:
     # rebuild, so the restore stays cheap.
     restore() { cp "$backup" "$nuttx_dir/.config"; ( cd "$nuttx_dir" && make olddefconfig >/dev/null 2>&1 && make context >/dev/null 2>&1 ); rm -f "$backup"; }
     trap restore EXIT
-    ( cd "$nuttx_dir" && echo "CONFIG_NROS=y" >> .config && make olddefconfig >/dev/null && make -j"$(nproc)" )
+    # issue 1403 — under the stall watchdog, like every `make -j`.
+    repo="$(pwd)"
+    ( cd "$nuttx_dir" && echo "CONFIG_NROS=y" >> .config && make olddefconfig >/dev/null && python3 "$repo/scripts/build/make-stall-watchdog.py" --label "nuttx integration app" --diag-dir "$nuttx_dir" -- make -j"$(nproc)" )
     echo "integration app built; objects under \$APPDIR/external/.nros-build/<arch>/"
 
 # Build NuttX QEMU ARM virt examples

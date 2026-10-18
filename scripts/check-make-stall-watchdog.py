@@ -21,6 +21,10 @@ deadlock (which nobody can produce on demand; that is the whole issue):
               read on a hung FUSE mount does — issue 1773). The verdict must
               still land inside the budget, the diagnostic saying the scan
               is INCOMPLETE and where it stuck.
+  diag-hang   make's OWN diagnostics block (fault-injected: the stat of one
+              of make's fds never returns — issue 1785). The whole
+              diagnostics phase has a deadline, so the verdict, the kill and
+              the partial report still land, saying DIAGNOSTICS INCOMPLETE.
   no-follow   a foreign process's fds are classified by LINK TEXT: no
               `os.stat` reaches a file another process holds open (a followed
               link on a hung FUSE mount never returns — issue 1773).
@@ -167,6 +171,26 @@ def scan_hang_test(tmp):
     check(not leftovers, f"scan-hang: survivors {leftovers}")
 
 
+def diag_hang_test(tmp):
+    """A blocked stat in make's OWN diagnostics must not stop the verdict (issue 1785)."""
+    fifo = os.path.join(tmp, "GMfifo-diaghang")
+    os.mkfifo(fifo)
+    body = f"exec 3<>{fifo}; read -r -u 3 line"
+    rc, _out, err, _diag, elapsed, leftovers, _ = run_watchdog(
+        tmp, body, {"NROS_JOBSERVER_DIAG_FAULT": "hang", "NROS_JOBSERVER_DIAG_SECS": "2"})
+    check(rc == NO_VERDICT_RC, f"diag-hang: rc {rc}, want {NO_VERDICT_RC} — a hung diagnostic ate the verdict")
+    check(re.search(r"^NO VERDICT: jobserver stall — ", err, re.M),
+          f"diag-hang: no NO VERDICT line: {err[-300:]!r}")
+    check("DIAGNOSTICS INCOMPLETE: no answer within 2s" in err,
+          f"diag-hang: report does not say the diagnostics were cut short: {err[-400:]!r}")
+    # The lines BEFORE the stuck step survive: the kernel-state section precedes
+    # the fd stat that hangs.
+    check("-- make's kernel state --" in err,
+          f"diag-hang: the partial report was lost: {err[-400:]!r}")
+    check(elapsed < 30, f"diag-hang: returned after {elapsed:.1f}s, the budget was 2s")
+    check(not leftovers, f"diag-hang: survivors {leftovers}")
+
+
 def no_follow_test(tmp):
     """`_pipe_fds` on a FOREIGN pid must never stat what its fds point at."""
     import importlib.util
@@ -215,6 +239,7 @@ def main():
     try:
         self_test(tmp)
         scan_hang_test(tmp)
+        diag_hang_test(tmp)
         no_follow_test(tmp)
 
         # Busy, not stalled: the only child outlives the threshold 2.5x.

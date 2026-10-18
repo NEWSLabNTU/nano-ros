@@ -143,7 +143,11 @@ build-examples JOBS=env_var_or_default("NROS_BUILD_JOBS", "75%"):
         # issue 0762 — one process group; passthrough when nested under
         # `just build-test-fixtures`, its own group when run directly.
         source scripts/build/subtree-guard.sh
-        nros_guard_exec native-examples make -j "$cargo_frontends" -f "$makefile"
+        # issue 1403 — a jobserver make, so the stall watchdog wraps it; a
+        # stall is NO VERDICT (rc 75) with a dump beside the makefile.
+        nros_guard_exec native-examples python3 scripts/build/make-stall-watchdog.py \
+            --label native-examples --diag-dir "$(dirname "$makefile")" -- \
+            make -j "$cargo_frontends" -f "$makefile"
     fi
     # Phase 181.6 — `baremetal` rust examples from the SSOT manifest
     # (plain default builds; each example's .cargo/config.toml selects the cross
