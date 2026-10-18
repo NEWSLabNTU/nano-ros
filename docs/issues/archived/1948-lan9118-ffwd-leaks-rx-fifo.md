@@ -72,6 +72,19 @@ trusted (outside `4..=MAX_FRAME_SIZE`), where there is nothing to count.
 - `lan9118-smoltcp` (bare-metal mps2-an385): the error-status drop. It has no
   allocation failure, so it rarely reached this path; same class, same fix.
 
-The QEMU model is still wrong, and fixing it belongs in our fork's
-`nano-ros-v11.0.0-patches` line (`rx_fifo_used -= rxp_size; rxp_size = 0;`
-in the fast-forward arm), with a QEMU SDK re-cut — not done here.
+The QEMU model itself is fixed on our fork's `nano-ros-v11.0.0-patches`
+line, `98e749c2ce` ("fast-forward frees the skipped words"): the arm now
+does `rx_fifo_used -= rxp_size; rxp_size = 0;` and flushes the net queue
+when that frees room, as the data-fifo pop does. The submodule pin moved to
+it. Measured with an image built BEFORE the driver fix (it still drops by
+fast-forward), ~2 kHz flood, two runs each:
+
+| QEMU | rx/s at end | ctrl stalls > 50 ms | worst gap |
+|---|---|---|---|
+| 11.0.0-nros6 (stock) | 0 / 0 | 268 / 309 | 109 / 109 ms |
+| fork `98e749c2ce` | ~1200 / ~1200 | 0 / 0 | 11 / 11 ms |
+
+So either fix alone clears the cliff, and both stay: the driver because it
+is also right on silicon and on any QEMU a user already has, the model
+because other guests fast-forward too. The provisioned SDK (`[tool.qemu]`,
+`11.0.0-nros6`) does not carry the model fix until the next re-cut.
