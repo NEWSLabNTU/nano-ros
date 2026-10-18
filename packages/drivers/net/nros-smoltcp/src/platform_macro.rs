@@ -40,8 +40,13 @@ macro_rules! define_smoltcp_platform {
 /// a private module so we can put `#![allow(...)]` inner attributes on
 /// the module item itself rather than on a const-block expression
 /// (which Rust rejects as `attributes on expressions are experimental`).
+//
+// `crate::$plat` is deliberate: the platform ZST lives in the CALLER's crate
+// (the expansion is a module inside it), so `crate` must resolve there, not to
+// `$crate` (this crate), which is exactly what clippy's lint guards against.
 #[doc(hidden)]
 #[macro_export]
+#[allow(clippy::crate_in_macro_def)]
 macro_rules! __define_smoltcp_platform_impl {
     ($plat:ident) => {
         #[doc(hidden)]

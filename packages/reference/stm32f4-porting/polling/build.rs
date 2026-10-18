@@ -1,9 +1,6 @@
 //! Build script for polling STM32F4 example
 
-use std::env;
-use std::fs::File;
-use std::io::Write;
-use std::path::PathBuf;
+use std::{env, fs::File, io::Write, path::PathBuf};
 
 fn main() {
     // Put the linker script somewhere the linker can find it

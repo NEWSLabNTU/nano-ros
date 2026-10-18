@@ -31,8 +31,10 @@
 pub mod regs;
 
 use core::ptr::{read_volatile, write_volatile};
-use smoltcp::phy::{self, Device, DeviceCapabilities, Medium};
-use smoltcp::time::Instant;
+use smoltcp::{
+    phy::{self, Device, DeviceCapabilities, Medium},
+    time::Instant,
+};
 
 pub use regs::ESP32C3_BASE;
 
@@ -284,8 +286,10 @@ impl OpenEth {
                 0
             };
 
-            if len < 14 || len > DMA_BUF_SIZE {
-                unsafe { write_volatile(rx_bd_addr as *mut u32, regs::rx_bd::E | wrap); }
+            if !(14..=DMA_BUF_SIZE).contains(&len) {
+                unsafe {
+                    write_volatile(rx_bd_addr as *mut u32, regs::rx_bd::E | wrap);
+                }
                 self.next_rx_idx = (idx + 1) % RX_BD_COUNT;
                 continue;
             }
@@ -295,7 +299,9 @@ impl OpenEth {
             self.rx_frame[..frame_len].copy_from_slice(&self.rx_bufs[idx][..frame_len]);
             self.rx_frame_len = frame_len;
 
-            unsafe { write_volatile(rx_bd_addr as *mut u32, regs::rx_bd::E | wrap); }
+            unsafe {
+                write_volatile(rx_bd_addr as *mut u32, regs::rx_bd::E | wrap);
+            }
             self.next_rx_idx = (idx + 1) % RX_BD_COUNT;
             return true;
         }
@@ -510,11 +516,7 @@ mod tests {
         let size = core::mem::size_of::<OpenEth>();
         let min_buffer_bytes = DMA_BUF_SIZE + DMA_BUF_SIZE * RX_BD_COUNT + MAX_FRAME_SIZE;
         // Allow up to 16 KB — a 4-slot RX ring at DMA_BUF_SIZE=1600 alone is 6400 bytes.
-        assert!(
-            size < 16384,
-            "OpenEth is {} bytes, expected < 16384",
-            size
-        );
+        assert!(size < 16384, "OpenEth is {} bytes, expected < 16384", size);
         assert!(
             size >= min_buffer_bytes,
             "OpenEth is {} bytes, expected >= {}",

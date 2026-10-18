@@ -57,7 +57,6 @@ impl Default for Config {
                 domain_id: option_env!("NROS_DOMAIN_ID")
                     .and_then(|s| s.parse().ok())
                     .unwrap_or(base.domain_id),
-                ..base
             },
         }
     }

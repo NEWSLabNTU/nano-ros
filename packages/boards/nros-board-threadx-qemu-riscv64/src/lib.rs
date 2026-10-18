@@ -483,8 +483,13 @@ pub fn exit_failure() -> ! {
 /// `nros-c` had two candidates for one lang item. Expressed through the ABI it
 /// is reachable from C and C++ as well, and it stops competing for the lang
 /// item, which belongs to the image (RFC-0077).
+///
+/// Not `pub`: `#[no_mangle]` exports the symbol whatever its Rust visibility,
+/// every caller reaches it by that symbol, and a `pub` safe fn that
+/// dereferences a raw argument is what clippy's `not_unsafe_ptr_arg_deref`
+/// refuses (issue 1960).
 #[unsafe(no_mangle)]
-pub extern "C" fn nros_platform_panic(msg: *const u8, len: usize) -> ! {
+extern "C" fn nros_platform_panic(msg: *const u8, len: usize) -> ! {
     uart_write_str("PANIC: ");
     if !msg.is_null() && len > 0 {
         // SAFETY: the ABI contract is `len` readable bytes at `msg`.
@@ -534,7 +539,9 @@ pub unsafe extern "C" fn __assert_func(
         let mut i = 0usize;
         let mut buf = [0u8; 256];
         while i < buf.len() - 1 {
-            let b = unsafe { *p.add(i) } as u8;
+            // Read as `u8`: `c_char` is `u8` on RISC-V and `i8` elsewhere, so
+            // an `as u8` cast is a no-op here and a conversion there.
+            let b = unsafe { *p.cast::<u8>().add(i) };
             if b == 0 {
                 break;
             }

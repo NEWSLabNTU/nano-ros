@@ -43,7 +43,9 @@ pub use clock::{clock_ms, set_clock_ms};
 
 // Re-export commonly used types
 pub use lan9118_smoltcp::{Config as EthConfig, Lan9118, MPS2_AN385_BASE};
-pub use smoltcp::iface::{Config as IfaceConfig, Interface, SocketSet};
-pub use smoltcp::socket::tcp::{Socket as TcpSocket, SocketBuffer as TcpSocketBuffer};
-pub use smoltcp::time::Instant;
-pub use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr, Ipv4Address};
+pub use smoltcp::{
+    iface::{Config as IfaceConfig, Interface, SocketSet},
+    socket::tcp::{Socket as TcpSocket, SocketBuffer as TcpSocketBuffer},
+    time::Instant,
+    wire::{EthernetAddress, IpAddress, IpCidr, Ipv4Address},
+};

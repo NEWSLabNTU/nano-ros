@@ -590,7 +590,7 @@ fn parse_port_index(dev: *const u8) -> Option<usize> {
     unsafe {
         while *ptr != 0 {
             let c = *ptr;
-            if c >= b'0' && c <= b'9' {
+            if c.is_ascii_digit() {
                 last_digit = Some(c - b'0');
             }
             ptr = ptr.add(1);

@@ -16,10 +16,12 @@
 
 use core::ptr;
 
-use smoltcp::iface::{Interface, PollResult, SocketHandle, SocketSet};
-use smoltcp::phy::Device;
-use smoltcp::socket::tcp::{Socket as TcpSocket, State as TcpState};
-use smoltcp::wire::{IpAddress, IpEndpoint, Ipv4Address};
+use smoltcp::{
+    iface::{Interface, PollResult, SocketHandle, SocketSet},
+    phy::Device,
+    socket::tcp::{Socket as TcpSocket, State as TcpState},
+    wire::{IpAddress, IpEndpoint, Ipv4Address},
+};
 
 use crate::clock;
 
