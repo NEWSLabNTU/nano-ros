@@ -155,6 +155,9 @@ use eyre::Result;
 /// invoked set is smaller than the grep's.
 fn ws_cmd_name(args: &cmd::ws::Args) -> &'static str {
     match args.command {
+        // phase-506 W4a (RFC-0071 D9) added `SeedLock`: cmake seeds a generated
+        // image crate's lock from a build directory, which may sit under
+        // another checkout.
         // phase-439 W4 added `RmwDispatch`: cmake ASKS for the rmw descriptor
         // row instead of being generated at, so the verb runs from a build
         // directory that may sit under a different checkout (issue 1166). The
@@ -177,6 +180,7 @@ fn ws_cmd_name(args: &cmd::ws::Args) -> &'static str {
         | cmd::ws::Sub::SizingDescriptor(_)
         | cmd::ws::Sub::WestLeafSizing(_)
         | cmd::ws::Sub::RmwDispatch(_)
+        | cmd::ws::Sub::SeedLock(_)
         | cmd::ws::Sub::EntityCensus(_) => "ws-build",
         _ => "ws",
     }

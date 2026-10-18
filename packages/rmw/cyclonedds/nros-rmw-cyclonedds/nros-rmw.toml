@@ -42,6 +42,7 @@ sys_crate = "cyclonedds-sys"
 # `needs-type-descriptors` capability below). A CMake build registers it
 # through the C ABI instead.
 register_crate = "nros-rmw-cyclonedds-sys"
+register_dir = "../nros-rmw-cyclonedds-sys"
 register = "register"
 type_register_crate = "nros-rmw-cyclonedds"
 

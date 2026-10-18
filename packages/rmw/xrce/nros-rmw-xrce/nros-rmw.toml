@@ -33,6 +33,8 @@ cpp_define = "NROS_RMW_XRCE_CFFI"
 crate = "nros-rmw-xrce-cffi"
 # RFC-0071 D11 — an image registers this backend as `<crate>::<register>()`.
 register = "register"
+# The register crate is the sibling cffi crate, not this C library (RFC-0071 D9).
+register_dir = "../nros-rmw-xrce-cffi"
 
 [rmw.provides.cmake]
 dir = "."

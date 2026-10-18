@@ -109,6 +109,11 @@ set(_NROS_RMW_DISPATCH_VARS
     NROS_RMW_NEEDS_CXX_LINKER
     NROS_RMW_CAPABILITIES
     NROS_RMW_PER_MESSAGE_HOOK
+    NROS_RMW_REGISTER_CRATE
+    NROS_RMW_REGISTER_FN
+    NROS_RMW_REGISTER_DIR
+    NROS_RMW_PLATFORM_FEATURES
+    NROS_RMW_CAPABILITY_FEATURES
     CACHE INTERNAL "variables nros_rmw_dispatch() sets")
 
 # ---------------------------------------------------------------------------
