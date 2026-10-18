@@ -232,7 +232,7 @@ fn emit_app_config_def(net: &nros_board_common::board_net::ResolvedNet) -> PathB
 #include <rclc/detail/app_config.h>
 
 const nros_app_config_t NROS_APP_CONFIG = {{
-    .zenoh =
+    .transport =
         {{
             .locator = "{locator}",
             .domain_id = 0,
