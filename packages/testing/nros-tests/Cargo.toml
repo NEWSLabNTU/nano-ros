@@ -312,6 +312,11 @@ path = "tests/wake_latency.rs"
 required-features = ["trigger-test"]
 
 [[test]]
+name = "entity_wake"
+path = "tests/entity_wake.rs"
+required-features = ["trigger-test"]
+
+[[test]]
 name = "ftti_detection_bounds"
 path = "tests/ftti_detection_bounds.rs"
 required-features = ["trigger-test"]

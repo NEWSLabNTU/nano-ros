@@ -287,6 +287,27 @@ pub(crate) fn fire_runtime_wake(session_index: i32) {
     RUNTIME_WAKE.fire(session_index);
 }
 
+/// phase-397 W2 — an arrival on one entity: wake the waker that entity holds,
+/// and fall back to the session's runtime wake only when it holds none.
+///
+/// A held waker ATTRIBUTES the arrival. The executor that owns the entity
+/// registered it (`*_set_on_new_*_callback`, re-armed on every wake by the cffi
+/// adapter), so it is woken through that waker by slot, and every other
+/// executor sharing this session is not: the wake fan-out stopped waking all
+/// of them per arrival (phase-436 step 5 measured 7-9 us of CPU each).
+///
+/// An EMPTY cell is the case the session wake exists for. Nobody attributed
+/// this entity, or an async caller's future already took its wake and has not
+/// polled again, or the waiter is `Promise::wait`, which registers nothing and
+/// parks on the runtime wake. `take` + `wake` is exactly `AtomicWaker::wake`,
+/// so a one-shot async caller sees no change.
+pub(crate) fn wake_entity_or_session(waker: &atomic_waker::AtomicWaker, session_index: i32) {
+    match waker.take() {
+        Some(w) => w.wake(),
+        None => fire_runtime_wake(session_index),
+    }
+}
+
 // ============================================================================
 // Executor Wake Signal (std only)
 // ============================================================================

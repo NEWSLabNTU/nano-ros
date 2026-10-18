@@ -47,7 +47,7 @@ ROOT = Path(__file__).resolve().parent.parent
 # targets are deleted, which for an obsolete test is the more honest of the two.
 #
 # Nine targets hide behind these:
-#   trigger-test            trigger_conditions, wake_latency
+#   trigger-test            trigger_conditions, wake_latency, entity_wake
 #   component-runtime-test  component_runtime, tier_filter, component_dispatch,
 #                           component_param
 #   loan-e2e                loan_e2e
