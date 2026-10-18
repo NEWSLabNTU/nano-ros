@@ -725,7 +725,8 @@ Three things found on the way, each fixed or filed:
   (`-cfg<hash>`, phase-481 W4's rule); four existing cpp rows moved to their
   hashed dirs, held by `every_generated_workspace_fixture_row_names_its_cmake_build_dir`.
 - **The bringup's `domain_id` does not reach a C/C++ entry on the CMake road**
-  — issue 1946. The row states `NROS_DOMAIN_ID = "54"` until it is fixed.
+  — issue 1946, fixed the same day: the generated entry now carries the
+  image's own `domain_id`, and the row's `NROS_DOMAIN_ID` workaround is gone.
 - **A baked DDS domain above 101 is unsafe on Linux.** Domain 141 was tried
   first; its host port 42662 sat in the ephemeral range and an unrelated
   process held it. Recorded in the bringup's comment.
@@ -823,4 +824,4 @@ Homed when every open issue was given a phase. Each issue has a `**Home:**` line
 | issue | why it belongs here |
 | --- | --- |
 | [#1281](../issues/archived/1281-riscv-nuttx-c-talker-router-drops-session.md) | The NuttX RISC-V C talker's router drops its session after 28-79 s. This needs an on-target verdict. Re-homed from phase-414, which is archived. |
-| [#1946](../issues/1946-cmake-road-drops-bringup-domain-id.md) | Found building W6: on the CMake road a C/C++ entry's session ignores `[system]` and `[image.<id>]` `domain_id`; only `-DNROS_DOMAIN_ID` reaches it. W6's row states it until this is fixed. |
+| [#1946](../issues/archived/1946-cmake-road-drops-bringup-domain-id.md) | Found building W6: on the CMake road a C/C++ entry's session ignored `[system]` and `[image.<id>]` `domain_id`. **Resolved 2026-10-18**: the generated entry carries the image's resolved domain as `DOMAIN_ID`; a disagreeing `-DNROS_DOMAIN_ID` is refused. Standalone leaves are recorded there as not covered. |

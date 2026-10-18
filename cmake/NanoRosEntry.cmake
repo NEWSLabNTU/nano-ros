@@ -323,7 +323,7 @@ function(nano_ros_entry)
     # HOST is kept solely to fail loudly for a pre-phase-326 caller.
     cmake_parse_arguments(_NRA
         "TYPED"
-        "NAME;BOARD;LAUNCH;LANG;HOST;BRINGUP;PANIC"
+        "NAME;BOARD;LAUNCH;LANG;HOST;BRINGUP;PANIC;DOMAIN_ID"
         "SOURCES;DEPLOY;LAUNCH_ARGS"
         ${ARGN})
 
@@ -960,6 +960,7 @@ function(nano_ros_entry)
     endif()
 
     set(_nra_locator "")
+    set(_nra_domain "")
     if(TARGET ${_NRA_NAME}
        AND NOT NROS_PLATFORM STREQUAL "posix"
        AND NOT _nra_is_zephyr
@@ -973,11 +974,35 @@ function(nano_ros_entry)
             "${NROS_PLATFORM}" "${NROS_BOARD}" _nra_locator)
         target_compile_definitions(${_NRA_NAME} PRIVATE
             "NROS_ENTRY_LOCATOR=\"${_nra_locator}\"")
-        # phase-287 W6 — bake the domain the same way (fixture pairs pass
-        # `-DNROS_DOMAIN_ID=<n>`; portable sources read NROS_ENTRY_DOMAIN_ID).
-        if(DEFINED NROS_DOMAIN_ID)
+        # phase-287 W6 — bake the domain the same way; portable sources read
+        # NROS_ENTRY_DOMAIN_ID.
+        #
+        # Issue 1946 — two producers, and they may not disagree. `DOMAIN_ID` is
+        # the image's own `domain_id` (`[image.<id>]`, its defaults, then
+        # `[system]`), which `nros build` writes into the generated call; a
+        # `-DNROS_DOMAIN_ID` is the configure-wide spelling a hand-written
+        # entry or a test pass. Before this only the second reached the
+        # session, so a domain the image STATED was dropped without a word —
+        # and on a DDS image the domain is the bus. Either alone is used; both
+        # must name the same domain, because ranking them only decides which
+        # one is silently lost.
+        if(DEFINED _NRA_DOMAIN_ID AND NOT _NRA_DOMAIN_ID STREQUAL "")
+            set(_nra_domain "${_NRA_DOMAIN_ID}")
+            if(DEFINED NROS_DOMAIN_ID AND NOT NROS_DOMAIN_ID STREQUAL ""
+               AND NOT NROS_DOMAIN_ID STREQUAL _NRA_DOMAIN_ID)
+                message(FATAL_ERROR
+                    "nano_ros_add_executable(${_NRA_NAME}): the image states domain "
+                    "${_NRA_DOMAIN_ID} (system.toml) but -DNROS_DOMAIN_ID=${NROS_DOMAIN_ID} "
+                    "names another. Change one so they agree, or drop the -D "
+                    "(`cmake -U NROS_DOMAIN_ID <build-dir>` clears a cached one) — "
+                    "issue 1946.")
+            endif()
+        elseif(DEFINED NROS_DOMAIN_ID AND NOT NROS_DOMAIN_ID STREQUAL "")
+            set(_nra_domain "${NROS_DOMAIN_ID}")
+        endif()
+        if(NOT _nra_domain STREQUAL "")
             target_compile_definitions(${_NRA_NAME} PRIVATE
-                "NROS_ENTRY_DOMAIN_ID=${NROS_DOMAIN_ID}")
+                "NROS_ENTRY_DOMAIN_ID=${_nra_domain}")
         endif()
     endif()
 
@@ -1075,7 +1100,12 @@ function(nano_ros_entry)
                 # The `@NROS_ENTRY_LOCATOR@` substitution the template reads —
                 # an assignment FROM the resolved value, not a second producer.
                 set(NROS_ENTRY_LOCATOR "${_nra_locator}")
-                set(NROS_ENTRY_APP_DOMAIN_ID 0)
+                # Issue 1946 — the domain baked above, not a literal 0.
+                if(_nra_domain STREQUAL "")
+                    set(NROS_ENTRY_APP_DOMAIN_ID 0)
+                else()
+                    set(NROS_ENTRY_APP_DOMAIN_ID "${_nra_domain}")
+                endif()
                 # phase-484 W4b / phase-497 W2 — the board's `[board.net]`
                 # with the image's own network over it. A test pair's members
                 # differ because each states its own `host` in system.toml

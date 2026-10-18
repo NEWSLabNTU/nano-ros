@@ -34,8 +34,8 @@ name = "talker"
 [image.mps3_an536_slirp]
 board = "mps3-an536-freertos"
 rmw = "cyclonedds"
-# The domain (54) reaches this image's session as `-DNROS_DOMAIN_ID=54` from its
-# `examples/fixtures.toml` row, not from here: on the CMake road neither
-# `[system] domain_id` nor `[image.<id>] domain_id` reaches a C/C++ entry's
-# session today (issue 1946).
+# The domain the guest's baked config is computed from (see the top of this
+# file). Stated on the image, and carried to the C++ session as the generated
+# entry's `DOMAIN_ID` (issue 1946).
+domain_id = 54
 launch = "talker.launch.xml"

@@ -77,6 +77,11 @@ pub struct CmakeEntry {
     pub deploy: String,
     /// `PANIC` — RFC-0077 policy, when the image declares one.
     pub panic: Option<String>,
+    /// `DOMAIN_ID` — the image's resolved domain (`[image.<id>]`, else its
+    /// defaults, else `[system]`; `leaf_system`'s one resolver). Issue 1946: it
+    /// is PER ENTRY because several images share one configure, so a
+    /// configure-wide `-DNROS_DOMAIN_ID` cannot carry it.
+    pub domain_id: Option<u32>,
 }
 
 /// Everything the emitted root needs that is not in [`Discovered`].
@@ -398,6 +403,9 @@ pub fn render(
         if let Some(p) = &e.panic {
             out.push_str(&format!("    PANIC   {p}\n"));
         }
+        if let Some(d) = e.domain_id {
+            out.push_str(&format!("    DOMAIN_ID {d}\n"));
+        }
         // Every one of the 57 C/C++ entries in this tree is TYPED — it routes
         // each launch node to the real executor through its component object.
         // An untyped generated entry would be a different program.
@@ -629,6 +637,7 @@ mod tests {
             lang: Language::C,
             deploy: "linux".to_string(),
             panic: None,
+            domain_id: None,
         }];
         let body = render(&d, &root.join("build/posix"), &sp).expect("renders");
 
@@ -666,6 +675,41 @@ mod tests {
     }
 
     #[test]
+    fn an_images_domain_reaches_its_generated_entry() {
+        // Issue 1946. Several images share one configure, so a domain is a
+        // property of the ENTRY: the root must emit it per call, and emit
+        // nothing for an image that states none (the session's default then
+        // holds, as it always did).
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let d = discovered(vec![pkg(root, "talker_pkg", true)]);
+        let mut sp = spec(root);
+        sp.board = Some("mps3-an536-freertos".to_string());
+        sp.entries = [("stated_entry", Some(54)), ("silent_entry", None)]
+            .iter()
+            .map(|(name, dom)| CmakeEntry {
+                name: (*name).to_string(),
+                launch: "talker.launch.xml".to_string(),
+                args: vec![],
+                lang: Language::Cpp,
+                deploy: "mps3-an536-freertos".to_string(),
+                panic: None,
+                domain_id: *dom,
+            })
+            .collect();
+        let body = render(&d, &root.join("build/freertos"), &sp).expect("renders");
+        let call = |name: &str| -> String {
+            let start = body
+                .find(&format!("nano_ros_add_executable({name}"))
+                .expect(name);
+            let rest = &body[start..];
+            rest[..rest.find(')').unwrap()].to_string()
+        };
+        assert!(call("stated_entry").contains("DOMAIN_ID 54"), "{body}");
+        assert!(!call("silent_entry").contains("DOMAIN_ID"), "{body}");
+    }
+
+    #[test]
     fn two_images_differing_only_in_args_render_differently() {
         // Issue 1136. `linux_robot1` and `linux_robot2` share a board, a
         // launch file, a language and a deploy — `args` is the ONLY thing that
@@ -687,6 +731,7 @@ mod tests {
                 lang: Language::C,
                 deploy: "linux".to_string(),
                 panic: None,
+                domain_id: None,
             })
             .collect();
         let body = render(&d, &root.join("build/posix"), &sp).expect("renders");

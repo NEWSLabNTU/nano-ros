@@ -767,10 +767,9 @@ dir = "examples/workspaces/cpp"
 bringup = "src/slirp_bringup"
 image = "mps3_an536_slirp"
 build_subdir = "build/freertos-cyclonedds-mps3-an536-freertos-cfg691ce9d54a/cmake"
-# `NROS_DOMAIN_ID` is the allocator's `domain_of(FreertosMps2, Cpp, EntryPubsub)`,
-# which the bringup's baked `rmw/cyclonedds.xml` ports are computed from. Stated
-# here because the CMake road drops the bringup's own `domain_id` (issue 1946).
-cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps3-an536-freertos", NROS_DOMAIN_ID = "54" }
+# The domain (54) is the image's own `domain_id` in `slirp_bringup/system.toml`,
+# not a `cmake_defs` row: since issue 1946 the CMake road carries it.
+cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps3-an536-freertos" }
 
 # phase-263 C2b — the NuttX (QEMU arm-virt) C workspace entry (talker + listener linked INTO
 # the kernel via cargo nros-nuttx-ffi). Dials the host zenoh router through the slirp gateway
