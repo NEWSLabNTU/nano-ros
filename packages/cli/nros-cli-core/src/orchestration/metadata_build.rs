@@ -771,7 +771,8 @@ pub fn build_metadata(o: &MetadataBuildOptions) -> Result<()> {
         let stderr = String::from_utf8_lossy(&out.stderr);
         // The first rustc diagnostic is what identifies the cause; the rest is
         // notes and a second copy under `--message-format`. Keep it short — this
-        // rides inside a one-line "probe failed" report.
+        // rides inside a one-line "probe failed" report — but keep a cargo
+        // error's root cause with it (issue 1898).
         let excerpt = first_diagnostic(&stderr);
         // #0390 — if the failure is a missing vendored `[source.*]` tree, name
         // the remedy in the user's vocabulary rather than leaving cargo's raw
@@ -889,12 +890,12 @@ fn probe_cwd(o: &MetadataBuildOptions) -> PathBuf {
 /// multi-line rustc dump there is what this issue exists to stop. Falls back to
 /// the last non-empty line when nothing matches, so a non-rustc failure (a
 /// linker, a missing binary) still says something.
+///
+/// Issue 1898 — a cargo error carries the root cause of its `Caused by:` chain
+/// on the same line: `failed to get <dep>` alone cannot tell a network flake
+/// from a resolution defect, and nothing else keeps the harness stderr.
 fn first_diagnostic(stderr: &str) -> String {
-    stderr
-        .lines()
-        .map(str::trim)
-        .find(|l| l.starts_with("error"))
-        .map(str::to_string)
+    nros_cargo_profile::diagnostic::first_error_with_cause(stderr, |l| l.starts_with("error"))
         .or_else(|| panic_message(stderr))
         .or_else(|| {
             stderr
@@ -1368,6 +1369,36 @@ note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
             !got.starts_with("note:"),
             "the backtrace note is what this replaces, got {got:?}"
         );
+    }
+
+    /// Issue 1898 — the tier-2 nightly's red said `failed to get
+    /// ros-launch-manifest-model` and nothing about why. The reason is the last
+    /// block of cargo's `Caused by:` chain, and it must ride on the same line.
+    #[test]
+    fn a_cargo_dependency_failure_reports_its_root_cause() {
+        let stderr = "\
+    Updating git repository `https://github.com/NEWSLabNTU/ros-launch-manifest.git`
+error: failed to get `ros-launch-manifest-model` as a dependency of package `nros-macros v0.6.0 (/w/packages/core/nros-macros)`
+
+Caused by:
+  failed to load source for dependency `ros-launch-manifest-model`
+
+Caused by:
+  Unable to update https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.1.57
+
+Caused by:
+  failed to resolve address for github.com: Temporary failure in name resolution; class=Net (12)
+";
+        let got = first_diagnostic(stderr);
+        assert!(
+            got.starts_with("error: failed to get `ros-launch-manifest-model`"),
+            "{got}"
+        );
+        assert!(
+            got.ends_with("Temporary failure in name resolution; class=Net (12))"),
+            "the cause must survive: {got}"
+        );
+        assert!(!got.contains('\n'), "still one line: {got}");
     }
 
     /// A build failure still wins: a rustc diagnostic is the more specific

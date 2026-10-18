@@ -1,7 +1,7 @@
 ---
 id: 1898
 title: "Tier-2 nightly stopped in `generate-bindings` on a git dependency it could not get, and the metadata harness's one-line excerpt dropped the reason"
-status: open
+status: resolved
 type: bug
 area: [ci, tooling, testing]
 severity: medium
@@ -9,7 +9,7 @@ found: 2026-10-14
 related: [1626, 1158, 0699, phase-466]
 ---
 
-**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+**Home: [phase-466](../../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## Measured
 
@@ -73,3 +73,42 @@ byte-identical reds. This is the same misleading shape 1626 found for
    will be in the log. If it does not reproduce, record this as a transient
    network failure and, if it recurs, weigh a `CARGO_NET_RETRY` for the
    fixture build alongside 1626's remedy 1.
+
+## Resolution (2026-10-18)
+
+**1. The excerpt carries the root cause.** One rule,
+`nros_cargo_profile::diagnostic` (`packages/tooling/nros-cargo-profile/src/diagnostic.rs`):
+the first error line plus the first line of the LAST `Caused by:` block of
+that error's chain, appended as ` (root cause: …)`, so the message stays one
+line. The chain ends at the next top-level `error`/`warning` line, so a second
+error's cause is never pinned on the first. Every excerpt that kept only the
+first error line now uses it:
+
+- `metadata_build.rs` `first_diagnostic` — the harness bail message this issue
+  measured.
+- `metadata_refresh.rs` `first_error_line` — the "unprobeable" marker line. Its
+  300-character cap used to cut from the end, and the harness's own message is
+  ~300 characters before the cause (the package path is in the middle), so it
+  now shortens the head and keeps the cause whole (`elide_keeping_cause`).
+- `nros-sizes-build` — the nested cargo build's `cargo:warning` summary gains
+  `| root cause: …` (its full stderr was already written to a log beside the
+  probe target dir).
+- `scripts/test/rust-fixture-stale.sh` — the `FAILED` line's reason was
+  `grep -m1 '^error'`; it is now `nros_cargo_first_error` from
+  `scripts/lib/cargo-error-cause.sh`, the shell twin of the same rule.
+  `diagnostic::tests::the_shell_twin_agrees` runs both over the same inputs.
+
+Measured with a real `cargo metadata` against this git dependency
+(`tmp/` scratch leaf, own `CARGO_HOME`):
+
+| cause | before (`first error line`) | after |
+| --- | --- | --- |
+| network (proxy refused) | ``error: failed to get `ros-launch-manifest-model` as a dependency of package …`` | … `(root cause: [7] Could not connect to server (…); class=Net (12))` |
+| unknown tag `v9.9.9` | the same line, byte for byte | … `(root cause: reference 'refs/remotes/origin/tags/v9.9.9' not found; class=Reference (4); code=NotFound (-3))` |
+
+**2. It did not reproduce.** The six nightly runs after it (2026-10-15 05:11
+through 2026-10-18 05:10: 38697534264, 38854494463, 38865877123, 39005291404,
+39012587878, 39099637271) were read in full; none of their tier-2 logs contain
+``failed to get `ros-launch-manifest-model` ``. Recorded as a transient network
+failure. No `CARGO_NET_RETRY` was added: it has not recurred, and if it does,
+the log now says whether retrying would help.

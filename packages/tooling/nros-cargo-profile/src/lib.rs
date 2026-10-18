@@ -22,8 +22,14 @@
 //! `CARGO_PROFILE_*` environment variable OVERRIDES a manifest entry of the same
 //! name — injecting unconditionally would silently discard a user's own
 //! settings.
+//!
+//! [`diagnostic`] reads cargo's error output back: the first error and the
+//! root cause of its `Caused by:` chain (issue 1898), for every excerpt that
+//! folds a cargo failure into one line.
 
 #![forbid(unsafe_code)]
+
+pub mod diagnostic;
 
 /// A cargo profile setting, as it appears both in `[profile.<name>]` TOML and
 /// in a `CARGO_PROFILE_<NAME>_<KEY>` environment variable.
