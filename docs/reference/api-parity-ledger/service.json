@@ -1419,5 +1419,105 @@
   "rust:ServiceInfo": {
     "verdict": "gap",
     "why": "rclrs's per-request metadata handed to a service callback: the request id (client GID + sequence number) and the source/received timestamps. Our service callback receives the request alone; the subscription side has `MessageInfo`, the service side has no counterpart. Issue 1942. It read as matched until phase-506 W1, because the facade re-exported the RMW seam's `ServiceInfo` -- a service descriptor -- under the same name."
+  },
+  "c:client_configure_service_introspection": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "Iron/Jazzy service introspection publishes each request and response (optionally with contents) as a `service_msgs` `_Event` message on `<service>/_service_event`. Every service and client would need one more publisher, an `_Event` type per service that our codegen does not emit, and a copy of each request/response per call: RAM, a publisher slot per service and wire bandwidth on the targets this API serves, for a host-side debugging view. DECLINED."
+  },
+  "c:service_configure_service_introspection": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "Iron/Jazzy service introspection publishes each request and response (optionally with contents) as a `service_msgs` `_Event` message on `<service>/_service_event`. Every service and client would need one more publisher, an `_Event` type per service that our codegen does not emit, and a copy of each request/response per call: RAM, a publisher slot per service and wire bandwidth on the targets this API serves, for a host-side debugging view. DECLINED."
+  },
+  "c:service_introspection_state_e": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "the state enum of `c:service_configure_service_introspection`; declined with it."
+  },
+  "c:service_introspection_state_t": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "see `c:service_introspection_state_e`."
+  },
+  "cpp:Client::configure_introspection": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "see `c:client_configure_service_introspection`."
+  },
+  "cpp:Service::configure_introspection": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "see `c:service_configure_service_introspection`."
+  },
+  "cpp:Client::stop_callbacks": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "Jazzy's teardown hook clearing a client's ready callbacks before destruction, so the destructor cannot race an executor thread. Our client's wake callbacks are executor-owned and deregistered by destruction; see `cpp:Client::clear_on_ready_callback` (declined)."
+  },
+  "cpp:GenericClient": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "a service client that loads typesupport by NAME at runtime; same decision and reason as `cpp:GenericPublisher`."
+  },
+  "cpp:Node::create_generic_client": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "see `cpp:GenericClient`."
+  },
+  "cpp:Node::count_clients": {
+    "verdict": "gap",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "ADOPT, issue 1971: the service twin of `cpp:Node::count_publishers`."
+  },
+  "cpp:Node::count_services": {
+    "verdict": "gap",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "ADOPT, issue 1971: as `cpp:Node::count_clients`."
+  },
+  "cpp:LifecycleNode::count_clients": {
+    "verdict": "gap",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "ADOPT, issue 1971: inherited from `rclcpp::Node` once `cpp:Node::count_clients` lands."
+  },
+  "cpp:LifecycleNode::count_services": {
+    "verdict": "gap",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "ADOPT, issue 1971: inherited from `rclcpp::Node` once `cpp:Node::count_services` lands."
   }
 }

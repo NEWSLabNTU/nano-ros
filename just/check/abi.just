@@ -141,8 +141,9 @@ ret-code-citations:
 # `check-rmw-api-parity` asks "is every contract symbol CLASSIFIED?"; this asks
 # "does the vtable actually MIRROR upstream?" — name, args and return type per
 # slot, with every difference declared. Both read committed snapshots
-# (`docs/reference/rmw-implementation-{contract,signatures}.txt`), so neither
-# needs a ROS install and both run on the fast line.
+# (`docs/reference/rmw-implementation-{contract,signatures}.txt` for Humble,
+# `docs/reference/editions/jazzy/` for Jazzy — both editions by default), so
+# neither needs a ROS install and both run on the fast line.
 rmw-abi-shape:
     @python3 scripts/rmw-abi-shape.py --check
 
@@ -170,11 +171,21 @@ rmw-api-comparison:
 
 # Phase 376 — every symbol in the rmw implementation contract is classified:
 # a vtable slot, another layer, or a declined RTOS reason. Reads the RECORDED
-# contract, so it needs no ROS install; regenerate that with `--contract` in the
-# distrobox when the distro moves.
+# contracts — Humble's measured one and every later edition's (Jazzy:
+# `docs/reference/editions/jazzy/`, plus a ruling on each rmw TYPE it added) —
+# so it needs no ROS install; regenerate Humble's with `--contract` in the
+# distrobox, a later edition's with `scripts/gen-upstream-edition.py`.
 [group("check")]
 rmw-api-parity:
     @python3 scripts/rmw-api-parity.py --check
+
+# The committed upstream-edition snapshots (`docs/reference/editions/<ed>/`,
+# `docs/reference/api-surface/<ed>/`) name the commits `pins.toml` pins, and
+# the recorded contract is covered by the recorded signatures. The offline
+# staleness half of `scripts/gen-upstream-edition.py`, as `check-abi-bindings`
+# is for committed bindgen output; ~0.2 s, fast line.
+upstream-edition:
+    @python3 scripts/check-upstream-edition.py --check
 
 # phase-340 W2 — the preconditions for putting a platform's rows in a SHARED
 # cargo target dir. A group writes into one flat `<profile>/` namespace, and

@@ -482,5 +482,19 @@
   "rust:TopicNamesAndTypes": {
     "verdict": "divergence",
     "why": "rclrs's alias for `HashMap<String, Vec<String>>` -- two allocations deep, and `HashMap` is not in `core` at all. See `rust:NodeNameInfo`."
+  },
+  "c:count_clients": {
+    "verdict": "gap",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "ADOPT, issue 1971: the service twin of `c:count_publishers` (which we answer as `executor_count_publishers`); needs the rmw `count_clients` slot first."
+  },
+  "c:count_services": {
+    "verdict": "gap",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "ADOPT, issue 1971: as `c:count_clients`."
   }
 }

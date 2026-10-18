@@ -153,6 +153,21 @@ LEDGER_DIR = os.path.join(ROOT, "docs", "reference", "api-parity-ledger")
 
 VERDICTS = ("divergence", "extension", "declined", "gap", "rename", "their-rename")
 
+# The upstream EDITION a run compares against. Humble's surfaces were recorded
+# from an install and live at `api-surface/<lib>.json`; every later edition is
+# recorded from pinned upstream SOURCES by `scripts/gen-upstream-edition.py`
+# (Jazzy needs noble, which the jammy box cannot install) and lives at
+# `api-surface/<edition>/<lib>.json`, pins in `docs/reference/editions/<ed>/`.
+#
+# ONE ledger serves every edition. A row about a subject only some editions
+# have says so with `"editions": [...]`; outside those editions the row is not
+# part of the ledger at all -- neither a match nor an orphan -- so a Jazzy-only
+# `gap` cannot read as a stale row under Humble, and a row written against
+# Humble cannot silently vanish when Jazzy drops its subject.
+EDITIONS = ("humble", "jazzy")
+DEFAULT_EDITION = "humble"
+EDITION = DEFAULT_EDITION
+
 # `their-rename` is the only verdict that claims the DEFECT IS UPSTREAM'S, so it
 # is the only one that can be self-serving. It therefore has to name its
 # evidence in a machine-checkable shape rather than in prose a reader has to
@@ -504,8 +519,19 @@ def ours_rust(tmpdir):
 # --------------------------------------------------------------------------
 
 
-def theirs_path(lang):
-    return os.path.join(SURFACE_DIR, {"c": "rclc", "cpp": "rclcpp", "rust": "rclrs"}[lang] + ".json")
+def theirs_path(lang, edition=None):
+    edition = edition or EDITION
+    name = {"c": "rclc", "cpp": "rclcpp", "rust": "rclrs"}[lang] + ".json"
+    if edition == DEFAULT_EDITION:
+        return os.path.join(SURFACE_DIR, name)
+    return os.path.join(SURFACE_DIR, edition, name)
+
+
+def ledger_for_edition(ledger, edition=None):
+    """The rows that are part of the ledger when comparing against `edition`."""
+    edition = edition or EDITION
+    return {k: v for k, v in ledger.items()
+            if not v.get("editions") or edition in v["editions"]}
 
 
 def load_theirs(lang):
@@ -513,7 +539,8 @@ def load_theirs(lang):
     if not os.path.exists(path):
         raise SystemExit(
             "no recorded surface at %s.\nRun `scripts/api-parity.py --refresh --lang %s` "
-            "on a host that has the source (see this script's docstring)." % (path, lang)
+            "on a host that has the source (see this script's docstring; for an "
+            "edition other than humble, scripts/gen-upstream-edition.py)." % (path, lang)
         )
     with open(path) as fh:
         return json.load(fh)
@@ -539,6 +566,10 @@ def derive_rclc(prefix, rclc_root, tmpdir):
 
 
 def derive_rclrs(rclrs_root, tmpdir):
+    # rclrs's build script picks `rcl_bindings_generated_<distro>.rs` from
+    # ROS_DISTRO, and those bindings are re-exported, so the edition is an
+    # input to the surface.
+    os.environ["ROS_DISTRO"] = EDITION
     docdir, _ = extract_rust.rustdoc_json(
         rclrs_root, with_deps=False, target_dir=os.path.join(tmpdir, "rustdoc-rclrs")
     )
@@ -555,19 +586,31 @@ def provenance(lang, prefix, rclc_root, rclrs_root):
     directory at worst. A distro name, a crate version and a git ref are what
     another host can actually compare against.
     """
+    distro = os.path.basename(prefix.rstrip("/")) if EDITION == DEFAULT_EDITION else EDITION
+    extra = {}
+    if EDITION != DEFAULT_EDITION:
+        # A synthetic prefix: name the pins file it was assembled from, and
+        # the packages that fell back to the Humble install.
+        extra["pins"] = "docs/reference/editions/%s/pins.toml" % EDITION
+        fb = os.path.join(prefix, "fallback.txt")
+        if os.path.exists(fb):
+            extra["fallback_packages"] = len([l for l in open(fb) if l.strip()])
     if lang == "cpp":
-        return {"package": "rclcpp", "distro": os.path.basename(prefix.rstrip("/"))}
+        return dict({"package": "rclcpp", "distro": distro}, **extra)
     if lang == "c":
-        return {
+        return dict({
             "package": "rclc+rcl",
-            "distro": os.path.basename(prefix.rstrip("/")),
+            "distro": distro,
             "rclc_ref": _git_describe(rclc_root),
-        }
-    return {
+        }, **extra)
+    out = {
         "package": "rclrs",
         "version": _cargo_version(rclrs_root),
         "ref": _git_describe(rclrs_root),
     }
+    if EDITION != DEFAULT_EDITION:
+        out["ros_distro"] = EDITION
+    return out
 
 
 def _git_describe(path):
@@ -614,8 +657,36 @@ def rows_citing_new_names(ledger, lang, old_quals, new_quals):
     return out
 
 
+def scrub_paths(recs, prefix, rclc_root, rclrs_root):
+    """Local checkout paths out of a committed surface (see `provenance`).
+
+    The synthetic prefix reads as the install it stands in for
+    (`/opt/ros/<edition>`, same `include/<pkg>/<pkg>/` layout, so
+    `public_surface.classify` sees what it would see on a real install), and
+    the rclc / rclrs checkouts as their repo-relative paths.
+    """
+    subs = []
+    if prefix:
+        subs.append((os.path.abspath(prefix), "/opt/ros/" + EDITION))
+    if rclc_root:
+        subs.append((os.path.abspath(rclc_root), "rclc"))
+    if rclrs_root:
+        subs.append((os.path.dirname(os.path.abspath(rclrs_root)), ""))
+    out = []
+    for r in recs:
+        h = r.get("header")
+        if h:
+            for a, b in subs:
+                if h.startswith(a + os.sep):
+                    h = (b + h[len(a):]).lstrip("/") if not b.startswith("/") else b + h[len(a):]
+                    break
+            r = dict(r, header=h)
+        out.append(r)
+    return out
+
+
 def refresh(langs, prefix, rclc_root, rclrs_root):
-    os.makedirs(SURFACE_DIR, exist_ok=True)
+    os.makedirs(os.path.dirname(theirs_path("c")), exist_ok=True)
     with tempfile.TemporaryDirectory() as tmpdir:
         for lang in langs:
             if lang == "cpp":
@@ -628,15 +699,24 @@ def refresh(langs, prefix, rclc_root, rclrs_root):
                 if not rclrs_root:
                     raise SystemExit("--rclrs <path to the rclrs crate> is required for --lang rust")
                 recs = derive_rclrs(rclrs_root, tmpdir)
+            if EDITION != DEFAULT_EDITION:
+                recs = scrub_paths(recs, prefix, rclc_root, rclrs_root)
             payload = {
                 "provenance": provenance(lang, prefix, rclc_root, rclrs_root),
                 "records": recs,
             }
             old_quals = set()
-            if os.path.exists(theirs_path(lang)):
-                old_quals = {r.get("qual", "") for r in load_theirs(lang)["records"]}
+            # A first recording of a new edition is compared against the
+            # DEFAULT edition's surface: what it ADDS over Humble is what a
+            # row's `why` may have argued from the absence of.
+            prev = theirs_path(lang)
+            if not os.path.exists(prev):
+                prev = theirs_path(lang, DEFAULT_EDITION)
+            if os.path.exists(prev):
+                with open(prev) as fh:
+                    old_quals = {r.get("qual", "") for r in json.load(fh)["records"]}
             for key, names in rows_citing_new_names(
-                    load_ledger(), lang, old_quals, {r.get("qual", "") for r in recs}):
+                    ledger_for_edition(load_ledger()), lang, old_quals, {r.get("qual", "") for r in recs}):
                 print("  may be stale: %s cites %s, which the new surface adds "
                       "(issue 1042)" % (key, ", ".join(sorted(names))))
             with open(theirs_path(lang), "w") as fh:
@@ -918,6 +998,16 @@ def validate_ledger(entries):
                                         and value[marker].strip()):
                 problems.append(
                     "ledger %s: `%s` must be a non-empty reason (issue 1323)" % (key, marker))
+        if "editions" in value:
+            eds = value["editions"]
+            if (not isinstance(eds, list) or not eds
+                    or any(e not in EDITIONS for e in eds)):
+                problems.append(
+                    "ledger %s: `editions` must be a non-empty list drawn from %s"
+                    % (key, ", ".join(EDITIONS)))
+            elif sorted(set(eds)) == sorted(EDITIONS):
+                problems.append(
+                    "ledger %s: `editions` lists every edition -- drop the field" % key)
         problems.extend(validate_their_rename(key, value))
         problems.extend(validate_owed(key, value))
         problems.extend(validate_envelope(key, value))
@@ -1582,6 +1672,9 @@ def unreferenced_refusals(ledger, macros):
 # --------------------------------------------------------------------------
 
 
+_OURS_CACHE = {}
+
+
 def run_lang(lang, tmpdir, include_internal=False):
     """Rows for one language, each annotated with WHICH SURFACE it belongs to.
 
@@ -1604,7 +1697,12 @@ def run_lang(lang, tmpdir, include_internal=False):
     The second run is pure Python over ~1200 keys; the expensive half (clang,
     rustdoc) has already happened by then, so two answers cost one extraction.
     """
-    ours_records = {"c": ours_c, "cpp": ours_cpp, "rust": ours_rust}[lang](tmpdir)
+    # OUR side does not depend on the edition, and it is the expensive half
+    # (clang over our headers, rustdoc): extracted once per run, compared
+    # against every edition asked for.
+    if lang not in _OURS_CACHE:
+        _OURS_CACHE[lang] = {"c": ours_c, "cpp": ours_cpp, "rust": ours_rust}[lang](tmpdir)
+    ours_records = _OURS_CACHE[lang]
     payload = load_theirs(lang)
     theirs_records = payload["records"]
     removed = {}
@@ -1774,8 +1872,24 @@ def gate_rows(ledger, lang, rows, key_bucket="bucket"):
 
 
 def report(langs, show, check, suggest, include_internal, grep=None, topic=None,
-           check_ported=False, require_disposition=False):
-    ledger = load_ledger()
+           check_ported=False, require_disposition=False, editions=None):
+    """One report per upstream edition, our side extracted once."""
+    global EDITION
+    editions = editions or [DEFAULT_EDITION]
+    rc = 0
+    for edition in editions:
+        EDITION = edition
+        if len(editions) > 1:
+            print("\n##### upstream edition: %s #####" % edition)
+        rc = max(rc, _report_one(langs, show, check, suggest, include_internal, grep,
+                                 topic, check_ported, require_disposition))
+    EDITION = DEFAULT_EDITION
+    return rc
+
+
+def _report_one(langs, show, check, suggest, include_internal, grep=None, topic=None,
+                check_ported=False, require_disposition=False):
+    ledger = ledger_for_edition(load_ledger())
     unledgered = []
     ported_unledgered = []
     misfiled = []
@@ -1863,7 +1977,14 @@ def report(langs, show, check, suggest, include_internal, grep=None, topic=None,
                     if show and "all" not in show:
                         continue
                 entry, inherited = lookup(ledger, lang, r["key"], bucket, by_key)
-                if entry is not None and not inherited:
+                # A shard is the DEFAULT edition's topic inventory: a row filed
+                # against Humble's headers is not misfiled because a later
+                # edition moved the declaration (Jazzy split `qos_event.hpp`
+                # into `event_handler.hpp`). An edition-scoped row is judged in
+                # the editions it names, whose headers it was filed against.
+                judge_shard = EDITION == DEFAULT_EDITION or bool(
+                    (entry or {}).get("editions"))
+                if entry is not None and not inherited and judge_shard:
                     want = row_topic(r)
                     if entry.get("_shard") not in (None, want):
                         misfiled.append((ledger_key(lang, r["key"]),
@@ -3081,6 +3202,25 @@ def self_test():
     check("a namespace-only return spelling is not a difference",
           _same[0]["detail"], None)
 
+    # Editions: a scoped row is outside the ledger for any other edition, and
+    # `editions` itself is validated (a typo'd edition would scope a row out
+    # of every comparison, which is a silent delete).
+    _rows = {"cpp:A": {"verdict": "gap", "why": "w", "editions": ["jazzy"]},
+             "cpp:B": {"verdict": "gap", "why": "w"},
+             "cpp:C": {"verdict": "gap", "why": "w", "editions": ["humble"]}}
+    check("a jazzy row is outside the humble ledger",
+          sorted(ledger_for_edition(_rows, "humble")), ["cpp:B", "cpp:C"])
+    check("a humble row is outside the jazzy ledger",
+          sorted(ledger_for_edition(_rows, "jazzy")), ["cpp:A", "cpp:B"])
+    for _eds, _ok in ((["jazzy"], True), (["kilted"], False), ([], False),
+                      (["humble", "jazzy"], False), ("jazzy", False)):
+        _p = validate_ledger({"cpp:X": {"verdict": "gap", "why": "w", "editions": _eds}})
+        check("editions=%r accepted" % (_eds,), not _p, _ok)
+    check("the default edition reads the unscoped surface path",
+          theirs_path("cpp", DEFAULT_EDITION), os.path.join(SURFACE_DIR, "rclcpp.json"))
+    check("a later edition reads its own surface directory",
+          theirs_path("cpp", "jazzy"), os.path.join(SURFACE_DIR, "jazzy", "rclcpp.json"))
+
     failures.extend(public_surface.self_test())
     failures.extend(signature_rules.self_test())
     failures.extend(topics.self_test())
@@ -3117,6 +3257,9 @@ def main():
                     help="how many decisions each stage still needs, per language")
     ap.add_argument("--refresh", action="store_true", help="re-derive the ROS 2 side and record it")
     ap.add_argument("--ros-prefix", default=os.environ.get("ROS_PREFIX", "/opt/ros/humble"))
+    ap.add_argument("--edition", choices=EDITIONS + ("all",), default=DEFAULT_EDITION,
+                    help="upstream edition to compare against (default humble); `all` "
+                         "compares every recorded edition with one extraction of ours")
     ap.add_argument("--rclc", help="path to a ros2/rclc checkout (for --refresh --lang c)")
     ap.add_argument("--rclrs", help="path to the rclrs crate (for --refresh --lang rust)")
     ap.add_argument("--self-test", action="store_true")
@@ -3133,7 +3276,12 @@ def main():
         return _selftest_rc
 
     langs = args.lang or list(LANGS)
+    editions = list(EDITIONS) if args.edition == "all" else [args.edition]
     if args.refresh:
+        if len(editions) != 1:
+            ap.error("--refresh records ONE edition")
+        global EDITION
+        EDITION = editions[0]
         refresh(langs, args.ros_prefix, args.rclc, args.rclrs)
         return 0
 
@@ -3146,7 +3294,7 @@ def main():
     grep = re.compile(args.grep) if args.grep else None
     return report(langs, show, args.check, args.suggest_renames,
                   args.include_internal, grep, args.topic,
-                  args.check_ported, args.require_disposition)
+                  args.check_ported, args.require_disposition, editions)
 
 
 if __name__ == "__main__":

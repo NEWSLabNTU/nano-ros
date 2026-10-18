@@ -552,5 +552,29 @@
   "c:cpp_node_bind_c": {
     "verdict": "extension",
     "why": "phase-492 (2026-10-13) -- not user API. `nros_cpp_node_bind_c` / `nros_cpp_node_t` are the C++ binding's seam that `RCLC_C_COMPONENT` expands to: the generated entry hosts a C component on the C++ binding's context and binds the component's `rcl_node_t` / `rclc_executor_t` to it (W4). They reach the C parity surface only because `<rclc/rclc.h>` now includes `<rclc/component.h>`, so `<rclc/rclc.h>` carries `RCLC_C_COMPONENT` and C user code needs no `<nros/*.h>` include. A user never writes either name; they keep `nros_cpp_` as seam names (c-api-rename-map class `seam`)."
+  },
+  "c:node_type_description_service_init": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "REP-2016's `~/get_type_description` service. Serving it embeds every type's full TypeDescription in flash and costs a service server per node — a zenoh queryable slot from a budget the parameter and lifecycle services already exceed embedded (`ZPICO_MAX_QUERYABLES` = 8). Type IDENTITY is not declined: codegen emits the RIHS01 hash and the zenoh keyexpr carries it under `ros-jazzy`. DECLINED; see rmw-api-map.toml `RMW_MIDDLEWARE_SUPPORTS_TYPE_DISCOVERY`."
+  },
+  "c:node_type_description_service_handle_request": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "see `c:node_type_description_service_init`."
+  },
+  "cpp:Node::get_node_type_descriptions_interface": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "two declines meet: rclcpp's `Node*Interface` slices (`cpp:Node::get_node_base_interface`) and the type description service. REP-2016's `~/get_type_description` service. Serving it embeds every type's full TypeDescription in flash and costs a service server per node — a zenoh queryable slot from a budget the parameter and lifecycle services already exceed embedded (`ZPICO_MAX_QUERYABLES` = 8). Type IDENTITY is not declined: codegen emits the RIHS01 hash and the zenoh keyexpr carries it under `ros-jazzy`. DECLINED; see rmw-api-map.toml `RMW_MIDDLEWARE_SUPPORTS_TYPE_DISCOVERY`."
   }
 }

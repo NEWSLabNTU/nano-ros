@@ -1708,5 +1708,48 @@
     "verdict": "extension",
     "why": "phase-462 W4a -- a contract mode lowered to a variant of the monitor tables (`contracts.modes`, `nros_orchestration_ir::mode_variants`). The Rust entry's install of the mode variants, after `install_contract_monitors` on the same executor handle. See `rust:install_contract_monitors`.",
     "bucket": "ours-only"
+  },
+  "cpp:DeliveredMessageKind": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "tags a delivered message as typed, serialized or DYNAMIC; exists for the dynamic-message path. dynamic typesupport (Jazzy, REP-2011): messages whose type is learned at RUNTIME, held in `rosidl_dynamic_typesupport` dynamic data. Every type in an image is generated at build time into fixed storage (RFC-0023); dynamic data needs an allocator and a type-description parser at runtime. Same decision as `cpp:GenericPublisher`; see rmw `rmw_take_dynamic_message` (declined)."
+  },
+  "cpp:EventHandler": {
+    "verdict": "divergence",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "Jazzy's name for `QOSEventHandler`, widened to carry the matched events too; same capability and same divergence as `cpp:QOSEventHandler` (QoS events are named per kind, not routed through one executor waitable)."
+  },
+  "cpp:IncompatibleTypeCallbackType": {
+    "verdict": "gap",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "ADOPT, issue 1972: the callback for the incompatible-type event."
+  },
+  "cpp:IncompatibleTypeInfo": {
+    "verdict": "gap",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "ADOPT, issue 1972: the incompatible-type event payload."
+  },
+  "cpp:MatchedInfo": {
+    "verdict": "gap",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "ADOPT, issue 1972: the matched-event payload `{total_count, total_count_change, current_count, current_count_change}`."
+  },
+  "cpp:Serialization": {
+    "verdict": "divergence",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "typed (de)serialization to bytes is generated per message by codegen (nros-serdes), with no type-erased `SerializationBase` over rosidl typesupport handles and a heap `SerializedMessage`; see `cpp:SerializedMessage`."
   }
 }

@@ -45,7 +45,7 @@
 # Verify the user API still corresponds to rclc / rclcpp / rclrs.
 [group("check")]
 api-parity:
-    @python3 scripts/api-parity.py --check --require-disposition
+    @python3 scripts/api-parity.py --edition all --check --require-disposition
 
 # Borrowed-view runtime E2E (RFC-0033 / #0423) — link the C + C++ proof binaries at
 # the build stage, then RUN them (they assert every borrowed view aliases the CDR
