@@ -1,6 +1,6 @@
 # Phase 397 — Pushed readiness: the wake says WHO, and the executor stops scanning
 
-**Status (2026-10-19). W1 DONE; W2 DONE (zenoh and Cyclone); W3 onward not started.** Implements
+**Status (2026-10-19). W1 DONE; W2 DONE (zenoh and Cyclone); W3 DONE; W4 onward not started.** Implements
 [RFC-0084](../design/0084-readiness-is-pushed-not-scanned.md).
 
 **Revision 2026-10-17, read against `main`.**
@@ -219,7 +219,7 @@ idle member at 1 kHz.
 session grain on 2026-10-16: a per-session wake table, so a second session's
 executor no longer takes the first's arrivals. This item is the entity grain.
 
-### W3 — `spin_once` reads bits instead of scanning
+### W3 — `spin_once` reads bits instead of scanning — DONE 2026-10-19
 
 ```
 bits = ready_bits.swap(0)
@@ -234,6 +234,46 @@ changes.
 **Done when** a build with only wake-capable backends performs **zero**
 `has_data` calls on a spin that dispatches one callback, shown by a counter in
 the test build.
+
+**Landed.** The rule is per SLOT, not per session. An attributed slot (one
+whose backend accepted its entity waker, W2's `entity_attributed`) takes its
+readiness from its bit in the ready word, which the scan takes once per spin,
+after the wait and the drive. Every other slot calls `has_data` as before:
+timers, guard conditions, and entities on a backend that cannot attribute. So
+the doc's "any session reported UNKNOWN" fallback is finer than written. An
+unattributed entry costs its own probe and nobody else's.
+
+The arrived-vs-present rule (W5) shapes what the bits cannot answer alone.
+`Executor::entity_recheck` holds the attributed slots the next spin must probe
+although no arrival marked them:
+- every slot that was ready this spin. A dispatch takes what one
+  `try_process` takes (a triple buffer hands out one sample), and a trigger
+  that fails dispatches nothing, so either can leave data no arrival will
+  announce again;
+- a slot held mid-dispatch when its arrival came;
+- a slot just armed. The ABI does not replay samples that arrived before the
+  registration, and says the caller closes that gap with one `has_data`.
+
+A slot leaves the recheck word the first spin its `has_data` is false. So a
+burst costs one probe after its last dispatch, and an idle spin costs none.
+The park is not shortened for a recheck. That matches the scan, which never
+knew about a leftover sample either, and it keeps a `Trigger::All` that waits
+on one quiet subscription from spinning hot.
+
+**Done-when, measured** (`nros-tests/tests/entity_wake.rs`, zenoh,
+`Executor::readiness_probe_count`):
+- `a_pushed_spin_dispatches_without_probing_readiness`: an idle spin over one
+  attributed subscription makes zero `has_data` calls, the spin that
+  dispatches its arrival makes zero, and the next two spins make at most one
+  between them.
+- `an_arrival_a_trigger_held_back_is_dispatched_when_it_passes`: under
+  `Trigger::All`, one subscription's arrival is taken by a spin whose trigger
+  fails. When the second arrives, both dispatch.
+
+Mutations, each red then restored green:
+- Probing every slot: the first test fails at its idle spin.
+- Dropping the ready slots from the recheck word: the second test fails,
+  with `a` never dispatched.
 
 ### W4 — land phase-110.A, or delete it
 

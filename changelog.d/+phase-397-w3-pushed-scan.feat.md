@@ -1,0 +1,1 @@
+`spin_once` no longer calls `has_data` on an entity whose backend attributes its arrivals (zenoh, Cyclone). Its readiness is read from the bit its arrival set, so an idle spin over such entities costs no indirect calls (phase-397 W3).

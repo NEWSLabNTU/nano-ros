@@ -25,8 +25,9 @@
 //! the owner wakes. A backend that cannot attribute (NULL slot, or
 //! `UNSUPPORTED`) keeps the session wake, and the fan-out stays the fallback.
 //!
-//! W3 is the consumer of `ready`. Until it lands, the executor still scans;
-//! the bits are accurate but unread.
+//! W3 is the consumer of `ready`: `spin_once` takes the word and reads an
+//! attributed slot's readiness from its bit instead of calling its
+//! `has_data` (see `Executor::entity_recheck` for the cases that still ask).
 
 use core::task::{RawWaker, RawWakerVTable, Waker};
 
