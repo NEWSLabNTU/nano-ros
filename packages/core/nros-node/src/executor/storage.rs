@@ -1419,11 +1419,6 @@ mod tests {
         );
     }
 
-    // phase-361 W8.e / issue 0594 — this test heap-allocates its backing array,
-    // so it needs `alloc`. It compiled under `--no-default-features` only
-    // because feature unification from another workspace member happened to
-    // turn `nros-node/alloc` on; nothing does that now.
-    #[cfg(feature = "alloc")]
     /// Issue 1970 -- a tier's sizing is its own counts, the image's
     /// scheduling contexts, and its declared parameters capped at the store
     /// the image carves (none when the image carves none).
@@ -1463,6 +1458,11 @@ mod tests {
         }
     }
 
+    // phase-361 W8.e / issue 0594 — this test heap-allocates its backing array,
+    // so it needs `alloc`. It compiled under `--no-default-features` only
+    // because feature unification from another workspace member happened to
+    // turn `nros-node/alloc` on; nothing does that now.
+    #[cfg(feature = "alloc")]
     #[test]
     fn carve_yields_right_lengths_and_inits() {
         // Heap-allocate: the default test config (MAX_CBS/MAX_SC/ARENA_SIZE from

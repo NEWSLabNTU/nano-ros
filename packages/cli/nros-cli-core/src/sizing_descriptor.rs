@@ -100,8 +100,8 @@ use nros_sizing_descriptor::{
 use rosidl_codegen::bounds::BoundState;
 
 use crate::entity_inventory::{
-    ComponentEntities, Declaration, EntityInventory, EntityKind, InfraServices, ParamCapacity, ParamDeclarations,
-    ParamServiceShape,
+    ComponentEntities, Declaration, EntityInventory, EntityKind, InfraServices, ParamCapacity,
+    ParamDeclarations, ParamServiceShape,
 };
 
 /// Which of issue 1319's registration paths an entry's Rust or C code takes.
@@ -5819,7 +5819,10 @@ pub fn tier_rows(
             .filter(|c| hosts(&c.pkg) || hosts(&c.component))
             .cloned()
             .collect();
-        let covered = |n: &String| rows.iter().any(|c| bare(&c.pkg) == bare(n) || bare(&c.component) == bare(n));
+        let covered = |n: &String| {
+            rows.iter()
+                .any(|c| bare(&c.pkg) == bare(n) || bare(&c.component) == bare(n))
+        };
         if let Some(missing) = t.nodes.iter().find(|n| !covered(n)) {
             return Err(format!(
                 "tier `{}` hosts `{missing}`, which no component of the entity inventory names",
@@ -5838,7 +5841,11 @@ pub fn tier_rows(
             .set_callback_slots(Some(k.max_cbs))
             .set_action_client_slots(Some(k.heavy_slots));
         for (field, kind) in ENTITY_COUNT_FIELDS {
-            set_entity_count(&mut img, field, k.per_kind.get(kind.tag()).copied().unwrap_or(0));
+            set_entity_count(
+                &mut img,
+                field,
+                k.per_kind.get(kind.tag()).copied().unwrap_or(0),
+            );
         }
         let mut subscription_topics: Vec<String> = rows
             .iter()
@@ -5919,7 +5926,12 @@ mod tier_row_tests {
         node(
             &mut inv,
             "mrm_emergency_stop_operator",
-            vec![sub("/odom"), sub("/cmd"), server("/emergency/operate"), timer()],
+            vec![
+                sub("/odom"),
+                sub("/cmd"),
+                server("/emergency/operate"),
+                timer(),
+            ],
         );
         inv
     }
@@ -5928,10 +5940,7 @@ mod tier_row_tests {
         vec![
             TierMembers {
                 name: "mrm".into(),
-                nodes: vec![
-                    "mrm_comfortable_stop_operator".into(),
-                    "mrm_handler".into(),
-                ],
+                nodes: vec!["mrm_comfortable_stop_operator".into(), "mrm_handler".into()],
             },
             TierMembers {
                 name: "estop".into(),
@@ -5949,10 +5958,7 @@ mod tier_row_tests {
         assert_eq!(mrm.image.subscription_entities().stated(), Some(&4));
         assert_eq!(mrm.image.timer_entities().stated(), Some(&2));
         assert_eq!(mrm.image.service_server_entities().stated(), Some(&1));
-        assert_eq!(
-            mrm.subscription_topics,
-            vec!["/a", "/b", "/c", "/odom"]
-        );
+        assert_eq!(mrm.subscription_topics, vec!["/a", "/b", "/c", "/odom"]);
         assert_eq!(estop.image.node_count().stated(), Some(&1));
         assert_eq!(estop.image.subscription_entities().stated(), Some(&2));
         assert_eq!(estop.image.service_server_entities().stated(), Some(&1));

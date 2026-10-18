@@ -440,6 +440,7 @@ nros_board_rtos_run_components	nros_board_rtos_run_components	seam	declared by a
 nros_board_rtos_run_components_in	nros_board_rtos_run_components_in	seam	declared by a port seam or the C++ FFI
 nros_board_rtos_run_components_ns	nros_board_rtos_run_components_ns	seam	declared by a port seam or the C++ FFI
 nros_board_zephyr_run_tiers	nros_board_zephyr_run_tiers	seam	declared by a port seam or the C++ FFI
+nros_board_zephyr_run_tiers_backed_in	nros_board_zephyr_run_tiers_backed_in	seam	declared by a port seam or the C++ FFI
 nros_board_zephyr_run_tiers_in	nros_board_zephyr_run_tiers_in	seam	declared by a port seam or the C++ FFI
 nros_board_zephyr_run_tiers_ns	nros_board_zephyr_run_tiers_ns	seam	declared by a port seam or the C++ FFI
 nros_board_zephyr_run_tiers_tasks_in	nros_board_zephyr_run_tiers_tasks_in	seam	declared by a port seam or the C++ FFI
@@ -903,6 +904,7 @@ nros_support_is_valid	rclc_support_is_valid	ours	ours-only
 nros_support_state_t	rclc_support_state_t	ours	ours-only
 nros_support_t	rclc_support_t	alias	`rclc_support_t` already names it (a compat alias); the definition takes it
 nros_t	rclc_t	ours	ours-only
+nros_tier_backing_t	nros_tier_backing_t	hook	defined by the application or entry, called by startup code
 nros_tier_task_memory_t	nros_tier_task_memory_t	hook	defined by the application or entry, called by startup code
 nros_time_add	rclc_time_add	ours	ours-only
 nros_time_compare	rclc_time_compare	ours	ours-only
