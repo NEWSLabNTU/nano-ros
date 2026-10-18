@@ -81,7 +81,7 @@ SYNC_NOTE = re.compile(r"keep\s+(?:it\s+|them\s+)?in\s+sync", re.IGNORECASE)
 # not be folded into it: measured on a real configure (issue 0946), a
 # threadx-linux entry bakes `NROS_ENTRY_LOCATOR=tcp/127.0.0.1:7447` while this
 # board file's app-config said `tcp/127.0.0.1:7555`, and the generated template
-# states `.zenoh.locator` is cosmetic on the typed path. (Issue 1793 has since
+# states `.transport.locator` is cosmetic on the typed path. (Issue 1793 has since
 # made the app-config the board's one fallback, `THREADX_*_DEFAULT_LOCATOR` in
 # nros-board-common, held equal to these literals by that crate's test.) If the
 # pairing with the entry locator is ever shown to matter it is its own issue,
@@ -104,6 +104,16 @@ ALLOWED_LITERALS = {
 INPUT_WRITES = {
     ("nano_rosConfig.cmake", "NROS_LEAF_LOCATOR"):
         "the leaf's system.toml declares it (RFC-0098 D5); an input like -D, not a default",
+    # RFC-0071 D10 (phase-506 W3) — on Zephyr the producer has always been
+    # Kconfig (`nano_ros_entry()` skips Zephyr; the leaf renderer and fixtures
+    # set the CONFIG value). It used to reach the image through `entry_config.h`
+    # reading three backends' Kconfig names; each backend's module now forwards
+    # ITS OWN value onto the role instead. Still one producer per road, no
+    # literal, no default — the Kconfig value arriving by another door.
+    ("zephyr/cmake/nros_rmw_zenoh.cmake", "CONFIG_NROS_ZENOH_LOCATOR"):
+        "zenoh's Kconfig locator forwarded onto the role by its own module (RFC-0071 D10)",
+    ("zephyr/cmake/nros_rmw_xrce.cmake", "CONFIG_NROS_XRCE_AGENT_ADDR"):
+        "XRCE's Kconfig agent addr:port forwarded onto the role by its own module (RFC-0071 D10)",
 }
 
 

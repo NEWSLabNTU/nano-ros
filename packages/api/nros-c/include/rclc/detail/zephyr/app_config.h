@@ -5,7 +5,7 @@
  * Phase 112.D contract: every nros example exposes a `static const
  * nros_app_config_t NROS_APP_CONFIG` populated from the example's own
  * configuration source. User code reads fields like
- * `NROS_APP_CONFIG.zenoh.locator` or `NROS_APP_CONFIG.network.ip`
+ * `NROS_APP_CONFIG.transport.locator` or `NROS_APP_CONFIG.network.ip`
  * uniformly across platforms.
  *
  * Two binding paths:
@@ -43,7 +43,7 @@ typedef struct {
     struct {
         const char* locator;
         uint32_t domain_id;
-    } zenoh;
+    } transport;
     struct {
         uint8_t ip[4];
         uint8_t mac[6];
@@ -53,12 +53,12 @@ typedef struct {
     } network;
     struct {
         uint32_t app_priority;
-        uint32_t zenoh_read_priority;
-        uint32_t zenoh_lease_priority;
+        uint32_t rx_priority;
+        uint32_t keepalive_priority;
         uint32_t poll_priority;
         uint32_t app_stack_bytes;
-        uint32_t zenoh_read_stack_bytes;
-        uint32_t zenoh_lease_stack_bytes;
+        uint32_t rx_stack_bytes;
+        uint32_t keepalive_stack_bytes;
         uint32_t poll_interval_ms;
     } scheduling;
 } nros_app_config_t;
@@ -68,26 +68,22 @@ typedef struct {
  * via prj.conf; we synthesize NROS_APP_CONFIG without an extra codegen
  * step. Defaults cover values the user can omit.
  *
- * Zenoh / XRCE locator: prefer the explicit zenoh locator string, else
- * synthesize one from the XRCE agent address (UDP). DDS examples leave
- * it empty (RTPS is locator-less). */
+ * RFC-0071 D10 (phase-506 W3) — the locator and domain are the ROLES
+ * `entry_config.h` resolves (`NROS_ENTRY_LOCATOR` / `NROS_ENTRY_DOMAIN_ID`),
+ * which each backend's Zephyr module maps its own Kconfig onto. This header
+ * names no backend; it read `CONFIG_NROS_ZENOH_LOCATOR` here, so an XRCE or
+ * Cyclone image's `.transport.locator` was always "". */
 #include <autoconf.h>
-
-#ifndef CONFIG_NROS_ZENOH_LOCATOR
-#define CONFIG_NROS_ZENOH_LOCATOR ""
-#endif
-#ifndef CONFIG_NROS_DOMAIN_ID
-#define CONFIG_NROS_DOMAIN_ID 0
-#endif
+#include <rclc/detail/entry_config.h>
 
 #if defined(__GNUC__) || defined(__clang__)
 __attribute__((unused))
 #endif
 static const nros_app_config_t NROS_APP_CONFIG = {
-    .zenoh =
+    .transport =
         {
-            .locator = CONFIG_NROS_ZENOH_LOCATOR,
-            .domain_id = CONFIG_NROS_DOMAIN_ID,
+            .locator = NROS_ENTRY_LOCATOR,
+            .domain_id = NROS_ENTRY_DOMAIN_ID,
         },
     /* Zephyr provides network configuration via DTS / NET_CONFIG; the
      * struct stays present so portable code references it uniformly,
@@ -101,7 +97,7 @@ static const nros_app_config_t NROS_APP_CONFIG = {
 /* Phase 212.M-F.10 Path C — non-Zephyr branch.
  *
  * The universal `NROS_APP_CONFIG` read promise is preserved across
- * platforms (every example reads `NROS_APP_CONFIG.zenoh.locator` /
+ * platforms (every example reads `NROS_APP_CONFIG.transport.locator` /
  * `.network.ip` / etc. with the same field paths). What moved in
  * M-F.10 is who POPULATES the symbol:
  *

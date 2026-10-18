@@ -59,11 +59,16 @@ build road, W3 changes one header family, W4 is the largest and goes last.
 
 ### W3 — configuration by role (RFC-0071 D10)
 
-- [ ] [#1299](../issues/1299-rmw-agnostic-backend-named-config-in-api.md):
+- [x] [#1299](../issues/archived/1299-rmw-agnostic-backend-named-config-in-api.md):
       `entry_config.h` and `zephyr/app_config.h` read `NROS_LOCATOR`,
       `NROS_DOMAIN_ID` and the `rx` / `keepalive` transport roles; each
       backend's Kconfig maps its own spellings onto them; backend-only knobs
       become registry rows with a generated header.
+      **Done 2026-10-18:** the headers read `NROS_ENTRY_LOCATOR` /
+      `NROS_ENTRY_DOMAIN_ID`, each backend's Zephyr module maps onto them, and
+      `nros_app_config_t` names `.transport` and `rx` / `keepalive`. The
+      backend-only knobs were already registry rows (`knobs.toml`), so no new
+      header was needed.
 
 ### W4 — a C/C++ image's backend arrives through the generated umbrella (RFC-0071 D9)
 
@@ -86,7 +91,7 @@ ledger has no row whose decision is not yet applied.
 | --- | --- |
 | [#1297](../issues/1297-rmw-agnostic-api-crates-name-backends.md) | Per-backend Cargo features, `register()` calls and `extern` declarations in nros-c and nros-cpp are RFC-0071 D2's class. `check-rmw-agnostic` baselines them. |
 | [#1298](../issues/archived/1298-rmw-agnostic-core-names-backends.md) | `nros-macros` and one other core crate name backends in code, inside RFC-0071's reach. |
-| [#1299](../issues/1299-rmw-agnostic-backend-named-config-in-api.md) | Backend-named configuration (`CONFIG_NROS_ZENOH_*`, `ZENOH_LOCATOR`) in the API crates is RFC-0071 D8's class. |
+| [#1299](../issues/archived/1299-rmw-agnostic-backend-named-config-in-api.md) | Backend-named configuration (`CONFIG_NROS_ZENOH_*`, `ZENOH_LOCATOR`) in the API crates is RFC-0071 D8's class. |
 | [#1300](../issues/1300-closed-backend-lists-outside-core-api.md) | Closed backend lists outside core/api (the CLI scaffold, colcon's `RMW_BACKENDS`, `board.knobs.zenoh`) are beyond the gate's reach. |
 | [#1405](../issues/archived/1405-c-executor-node-id-zero-reads-as-no-node.md) | `node_raw_id != 0` decodes the primary node slot as "no node" at nine nros-c registration sites, the same conflation issue 1384 fixed one layer up. |
 | [#1789](../issues/archived/1789-nros-facade-exports-runtime-machinery.md) | `nros::` still exports runtime machinery beside the user API: 64 ledger rows say a name should be hidden or moved. |

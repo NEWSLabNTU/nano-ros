@@ -90,6 +90,13 @@ EXEMPT = {
         "serialization-format axis (RFC-0088), not the RMW axis",
     ("packages/api/nros-cpp/include/rclcpp/detail/serialization_format.hpp", "uorb"):
         "serialization-format axis (RFC-0088), not the RMW axis",
+    # RFC-0071 D10 (phase-506 W3): a RETIRED spelling is refused by naming it.
+    # `ZENOH_LOCATOR` / `ZENOH_MODE` are not configuration this crate reads —
+    # they are the old names a user may still export, and the refusal must say
+    # which name it refuses and what replaced it (phase-484 W8c). Deleting them
+    # would turn a loud stop back into a silently ignored setting.
+    ("packages/api/nros/src/retired_env.rs", "zenoh"):
+        "the refusal table for RETIRED env spellings (phase-484 W8c, RFC-0071 D10)",
 }
 
 # path -> (offending code lines, OPEN issue, what it is). A RATCHET: a count
@@ -129,14 +136,8 @@ BASELINE: dict[str, tuple[int, str, str]] = {
         (1, "1297", "`rmw-cyclonedds` naming a capability forward"),
     # Issue 1298 — core names backends in code.
     # Issue 1299 — backend-named configuration inside the API crates (D8).
-    "packages/api/nros-c/include/rclc/detail/entry_config.h":
-        (6, "1299", "locator/domain from CONFIG_NROS_{ZENOH,XRCE,CYCLONE}_*"),
-    "packages/api/nros-c/include/rclc/detail/zephyr/app_config.h":
-        (9, "1299", "a `.zenoh` struct member and its task knobs"),
     # phase-484 W8c retired the aliases env.rs (3) and host_env.rs (2) honoured;
     # what is left is the REFUSAL table, which must spell the name it refuses.
-    "packages/api/nros/src/retired_env.rs":
-        (2, "1299", "the RETIRED ZENOH_LOCATOR / ZENOH_MODE refusal table (phase-484 W8c)"),
 }
 
 

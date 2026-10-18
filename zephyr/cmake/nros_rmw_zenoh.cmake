@@ -3,6 +3,13 @@
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosLocate.cmake")
 
 function(nros_zephyr_configure_rmw_zenoh)
+# RFC-0071 D10 (phase-506 W3) — this backend's spelling of the transport
+# ROLE. `entry_config.h` reads `NROS_ENTRY_LOCATOR` and names no backend; the
+# mapping from zenoh's own Kconfig lives here, with the backend.
+if(DEFINED CONFIG_NROS_ZENOH_LOCATOR)
+    zephyr_compile_definitions("NROS_ENTRY_LOCATOR=\"${CONFIG_NROS_ZENOH_LOCATOR}\"")
+endif()
+
 # -------------------------------------------------------------------------
 # Zenoh-pico library (compiled from vendored submodule)
 # -------------------------------------------------------------------------

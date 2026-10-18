@@ -522,10 +522,10 @@ static void app_task_entry(void* arg) {
      * calls zpico_init -> zp_start_read_task). Without this, the read task
      * spawns at priority 0 (idle) and never delivers subscription messages on
      * a system with higher-priority tasks. */
-    zpico_set_task_config(clamp_prio(NROS_APP_CONFIG.scheduling.zenoh_read_priority),
-                          NROS_APP_CONFIG.scheduling.zenoh_read_stack_bytes,
-                          clamp_prio(NROS_APP_CONFIG.scheduling.zenoh_lease_priority),
-                          NROS_APP_CONFIG.scheduling.zenoh_lease_stack_bytes);
+    zpico_set_task_config(clamp_prio(NROS_APP_CONFIG.scheduling.rx_priority),
+                          NROS_APP_CONFIG.scheduling.rx_stack_bytes,
+                          clamp_prio(NROS_APP_CONFIG.scheduling.keepalive_priority),
+                          NROS_APP_CONFIG.scheduling.keepalive_stack_bytes);
 
     /* Run user application */
     app_main();
@@ -551,7 +551,7 @@ static void app_task_entry(void* arg) {
      * succeeded. */
     {
         uint32_t exit_args[2] = {0x20026, /* ADP_Stopped_ApplicationExit */
-                                 (uint32_t) s_app_exit_code};
+                                 (uint32_t)s_app_exit_code};
         __asm__ volatile("mov r0, #0x20\nmov r1, %0\n" NROS_SEMIHOST_TRAP
                          :
                          : "r"(exit_args)

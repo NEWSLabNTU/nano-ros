@@ -39,56 +39,33 @@
 #ifndef NROS_ENTRY_CONFIG_H
 #define NROS_ENTRY_CONFIG_H
 
-/* ---- NROS_ENTRY_LOCATOR ----
+/* ---- NROS_ENTRY_LOCATOR / NROS_ENTRY_DOMAIN_ID — the transport ROLES ----
  *
- * Phase 244.C2 — the compile-time connect locator for Zephyr (and NuttX, which
- * reuses this macro). Defaults to the Kconfig `CONFIG_NROS_ZENOH_LOCATOR` when
- * the board sets one (the e2e gate threads
- * `CONFIG_NROS_ZENOH_LOCATOR=tcp/127.0.0.1:<port>` per fixture), else `""`.
+ * RFC-0071 D10 (phase-506 W3, issue 1299): this header names no backend. It
+ * used to read `CONFIG_NROS_ZENOH_LOCATOR`, synthesise XRCE's `addr:port` from
+ * `CONFIG_NROS_XRCE_AGENT_{ADDR,PORT}` and prefer `CONFIG_NROS_CYCLONE_DOMAIN_ID`
+ * under `NROS_RMW_CYCLONEDDS` — three backends' spellings in an API header, so
+ * a fourth backend had nowhere to put its own.
  *
- * Issue 0330 — the bottom rung is the EMPTY STRING, not a router endpoint.
- * This header is RMW-blind and must not restate a backend fact; `""` is the
- * established "absent — let the backend discover" value. It travels through
- * `rclc_support_init_with_locator` / `nros_cpp_init` to the RFC-0045 resolver's empty bottom
- * rung and then to the linked backend, which substitutes its own default
- * (zenoh: `nros_rmw_zenoh::DEFAULT_LOCATOR`).
+ * Who sets them now:
+ *   * Zephyr — each backend's module file maps ITS Kconfig onto the role
+ *     (`zephyr/cmake/nros_rmw_<backend>.cmake`, `zephyr_compile_definitions`):
+ *     zenoh's locator, XRCE's agent `addr:port`, Cyclone's domain.
+ *   * NuttX / FreeRTOS / ThreadX — `nano_ros_entry()` defines them from the
+ *     entry-locator resolver (`cmake/NanoRosEntryLocator.cmake`).
+ *
+ * The bottom rungs are backend-neutral. Issue 0330: the locator's is the EMPTY
+ * STRING — "absent, let the backend discover" — which travels through
+ * `rclc_support_init_with_locator` / `nros_cpp_init` to the RFC-0045
+ * resolver's empty rung and then to the linked backend's own default. The
+ * domain is compile-time on embedded, never a runtime env.
  */
 #ifndef NROS_ENTRY_LOCATOR
-#if defined(CONFIG_NROS_ZENOH_LOCATOR)
-#define NROS_ENTRY_LOCATOR CONFIG_NROS_ZENOH_LOCATOR
-#elif defined(CONFIG_NROS_RMW_XRCE) && defined(CONFIG_NROS_XRCE_AGENT_ADDR) &&                     \
-    defined(CONFIG_NROS_XRCE_AGENT_PORT)
-/* #174 / phase-286 W3 — XRCE has NO zenoh locator; its agent endpoint lives in
- * CONFIG_NROS_XRCE_AGENT_{ADDR,PORT}. Without this, `NROS_ENTRY_LOCATOR` fell
- * to `""` and the C/C++ XRCE entry opened its session with no agent address —
- * the transport never connected (`run_components` rc=-100 TRANSPORT_ERROR, 0
- * delivery). Synthesize the bare `host:port` the XRCE session parser accepts
- * (`nros-rmw-xrce/session.c` `parse_host_port`) — the C/C++ analog of the Rust
- * example `build.rs` bake (issue #163, which fixed only the Rust images).
- * Adjacent string-literal concat + stringize: "127.0.0.1" ":" 2018 →
- * "127.0.0.1:2018". */
-#define NROS_ENTRY_LOCATOR_STRINGIZE_(x) #x
-#define NROS_ENTRY_LOCATOR_STRINGIZE(x) NROS_ENTRY_LOCATOR_STRINGIZE_(x)
-#define NROS_ENTRY_LOCATOR                                                                         \
-    CONFIG_NROS_XRCE_AGENT_ADDR ":" NROS_ENTRY_LOCATOR_STRINGIZE(CONFIG_NROS_XRCE_AGENT_PORT)
-#else
 #define NROS_ENTRY_LOCATOR ""
-#endif
 #endif /* NROS_ENTRY_LOCATOR */
 
-/* ---- NROS_ENTRY_DOMAIN_ID ----
- *
- * Compile-time on embedded, never a runtime env (the CLAUDE.md embedded
- * domain-id rule). Cyclone keys off `CONFIG_NROS_CYCLONE_DOMAIN_ID` when
- * present (matching ASI), else the generic `CONFIG_NROS_DOMAIN_ID`.
- *
- * Never pin the Cyclone knob to a literal in a board conf: the phase-180
- * split-brain silently ran every cyclone image on domain 0.
- */
 #ifndef NROS_ENTRY_DOMAIN_ID
-#if defined(NROS_RMW_CYCLONEDDS) && defined(CONFIG_NROS_CYCLONE_DOMAIN_ID)
-#define NROS_ENTRY_DOMAIN_ID CONFIG_NROS_CYCLONE_DOMAIN_ID
-#elif defined(CONFIG_NROS_DOMAIN_ID)
+#if defined(CONFIG_NROS_DOMAIN_ID)
 #define NROS_ENTRY_DOMAIN_ID CONFIG_NROS_DOMAIN_ID
 #else
 #define NROS_ENTRY_DOMAIN_ID 0

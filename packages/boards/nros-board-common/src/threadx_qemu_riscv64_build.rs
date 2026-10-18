@@ -530,19 +530,19 @@ fn emit_nros_app_config(out_dir: &Path, net: &crate::board_net::ResolvedNet) {
 #include <rclc/detail/app_config.h>
 
 const nros_app_config_t NROS_APP_CONFIG = {
-    .zenoh = {
+    .transport = {
         .locator   = "@NROS_BOARD_LOCATOR@",
         .domain_id = 0,
     },
     .network = @NROS_BOARD_NET@,
     .scheduling = {
         .app_priority            = 0,
-        .zenoh_read_priority     = 0,
-        .zenoh_lease_priority    = 0,
+        .rx_priority     = 0,
+        .keepalive_priority    = 0,
         .poll_priority           = 0,
         .app_stack_bytes         = 0,
-        .zenoh_read_stack_bytes  = 0,
-        .zenoh_lease_stack_bytes = 0,
+        .rx_stack_bytes  = 0,
+        .keepalive_stack_bytes = 0,
         .poll_interval_ms        = 0,
     },
 };

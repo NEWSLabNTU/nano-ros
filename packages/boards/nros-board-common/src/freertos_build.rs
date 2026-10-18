@@ -217,7 +217,7 @@ pub fn emit_app_config_tu(
 #include <rclc/detail/app_config.h>
 
 const nros_app_config_t NROS_APP_CONFIG = {{
-    .zenoh = {{
+    .transport = {{
         .locator   = "{locator}",
         .domain_id = {domain_id},
     }},
@@ -230,12 +230,12 @@ const nros_app_config_t NROS_APP_CONFIG = {{
     }},
     .scheduling = {{
         .app_priority            = {app_priority},
-        .zenoh_read_priority     = {zenoh_read_priority},
-        .zenoh_lease_priority    = {zenoh_lease_priority},
+        .rx_priority     = {zenoh_read_priority},
+        .keepalive_priority    = {zenoh_lease_priority},
         .poll_priority           = {poll_priority},
         .app_stack_bytes         = {app_stack_bytes}u,
-        .zenoh_read_stack_bytes  = {zenoh_read_stack_bytes}u,
-        .zenoh_lease_stack_bytes = {zenoh_lease_stack_bytes}u,
+        .rx_stack_bytes  = {zenoh_read_stack_bytes}u,
+        .keepalive_stack_bytes = {zenoh_lease_stack_bytes}u,
         .poll_interval_ms        = {poll_interval_ms}u,
     }},
 }};
