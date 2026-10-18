@@ -3,7 +3,7 @@ rfc: 0072
 title: "RTOS integration: nano-ros is an imported library, and the RTOS owns its own build"
 status: Draft
 since: 2026-08
-last-reviewed: 2026-08
+last-reviewed: 2026-10
 implements-tracked-by: [phase-349, phase-351]
 supersedes: []
 superseded-by: null
@@ -32,16 +32,24 @@ build.** This is already how three of five platforms work:
 | Zephyr | `zephyr/` | `module.yml` + `Kconfig` + `CMakeLists.txt` — a west module |
 | NuttX | `integrations/nuttx/` | `Make.defs` + `Kconfig` + `Makefile` — an `apps/external/` app; the staticlib lands on `EXTRA_LIBS` |
 | ESP-IDF | — | **RETIRED phase-468 W2** — the component is deleted; issues 1525/1526 |
+| FreeRTOS on NXP S32DS | `integrations/s32ds/` | a CMake shell over the user's S32DS project, which builds the kernel, drivers and network stack (RFC-0064) |
 
 One shape in three languages: **build glue + Kconfig + the host's package
 manifest.** In each case the RTOS kernel, its config header, its network stack
 and its drivers belong to the host. nano-ros contributes a staticlib and its
 generated code.
 
-**FreeRTOS is the anomaly.** It has no shell. Instead
+**FreeRTOS is the anomaly.** It has no general shell. Instead
 `cmake/platform/nano-ros-freertos.cmake` + `nros_freertos_build_kernel()` make
 nano-ros compile the kernel itself from `FREERTOS_DIR` + `FREERTOS_PORT`. That
 choice dates from when upstream FreeRTOS shipped no build system. It does now.
+
+*Review 2026-10-18 (phase-349 rewrite).* The S32DS shell shows the guest model
+working for FreeRTOS on one vendor IDE, so what remains of the anomaly is
+nano-ros's own FreeRTOS boards, which still compile the kernel and lwIP from our
+source lists. The network-stack half of this RFC (§9 items 2–3) is mostly
+delivered by phase-351 and issues 1063/1143; `freertos_plus_tcp` is deferred
+until a board needs it. phase-349 tracks what is left.
 
 Everything else in this RFC follows from removing that anomaly.
 
@@ -670,7 +678,10 @@ Two rules taken from ESP-IDF's documented mistakes:
    `names = ["freertos", "freertos-lwip"]`.
 2. The six lwIP-specific lines move into the zenoh backend descriptor as a
    `(rtos, netstack)` port row; `freertos_plus_tcp` gains a row and becomes
-   reachable.
+   reachable. *(2026-10-18: the board-side half is delivered —
+   `supported_netstacks` + `resolve_netstack`, and issue 1143 keys the
+   zenoh-pico define on the `ip_stack` capability. `freertos_plus_tcp` is
+   deferred until a board lists it.)*
 3. `[build.zenoh]` leaves every platform file. Platforms keep `[capabilities]`,
    `[arch.*]`, `compile`, `required_env`.
 4. `nros_freertos_build_kernel()` and `nros_freertos_build_lwip()` are retired;
@@ -679,7 +690,8 @@ Two rules taken from ESP-IDF's documented mistakes:
    (`GCC_ARM_CM3`); we currently take a path fragment (`GCC/ARM_CM3`) under the
    same name, which fails confusingly for anyone arriving from upstream docs.
 6. A `freertos` integration shell joins the other three, so the FreeRTOS row
-   stops being the exception.
+   stops being the exception. *(2026-10-18: `integrations/s32ds/` is the
+   precedent; phase-349 W4 builds the upstream-FreeRTOS shell on it.)*
 
 ## 10. Maintainability
 
