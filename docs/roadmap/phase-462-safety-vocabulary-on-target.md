@@ -568,12 +568,36 @@ and the burst twin is the rest interval, RFC-0074's `REST`. Roads:
 `#error`. The unit test is
 `nros-zpico-build` `the_read_task_budget_is_baked_only_when_stated`.
 
-Not yet run: the gate's flood cell. It lives in the evaluation workspace RFC-0074
-measured in (`results/issue506_task_budget.md`), not in this tree, so the
-0-stall rerun is still owed. The fork commit is the same shape as the one RFC-0074
-measured: 12/12 budgeted runs with 0 stalls.
+Gate: met (2026-10-18). The flood cell, rerun in the evaluation workspace
+(FreeRTOS mps2-an385, QEMU 11.0.0-nros6, ~2 kHz flood from four generators, six
+interleaved runs per cell, scored by its `tools/analyze_506.py` `cell_stats`):
 
-Claim: phase-462-W6a. Depends on: none. Owns: zephyr/Kconfig; zephyr/nros_zenoh_zephyr_system.c; the knob's ladder entries as scripts/check-knob-delivery.py and scripts/check-kconfig-knob-forwarding.sh require them; docs/design/0074-ingress-budget-rate-and-burst.md. Gate: the RFC-0074 flood cell rerun with the budget stated records 0 stalls. Status: knob landed; flood-cell rerun pending.
+| cell | runs | stalls/run | worst | rx/s median | chain % | chain p50 |
+|---|---|---|---|---|---|---|
+| unbounded | 6 | 0.33 (one run: 2) | 206 ms | 649 | 24.8 | 20 ms |
+| `NROS_ZENOH_RX_TASK_BUDGET_FRAMES=8` | 6 | **0.0** | **11.5 ms** | **1,250** | 25.4 | 22 ms |
+
+6/6 budgeted runs have zero stalls, worst gap 10.8-11.5 ms in every run, and
+the island carries 1.9x the inbound traffic it carries unbudgeted.
+
+Getting there found two defects that had made every earlier rerun meaningless:
+
+- The eval driver piped the load generators' stdout and never read it, and a
+  hosted image logs a `[TRACE]` line per publish (issue 1949), so each
+  generator blocked in `write()` about 1.3 s in. The "collapse to ~10 msg/s"
+  of the first rerun was the flood stopping, not the island.
+- With the flood actually running, both cells died above ~1 kHz and never
+  recovered: QEMU's LAN9118 fast-forward leaks RX FIFO space on every drop,
+  and the lwIP driver drops on every dry pbuf pool (issue 1948, fixed in both
+  LAN9118 drivers by reading the dropped words). The numbers above are with
+  that fix.
+
+What differs from RFC-0074's table: unbounded now stalls in 1 of 6 runs, not
+6 of 6, so the stall COUNT no longer separates the cells as sharply; the worst
+gap (206 vs 11.5 ms) and throughput (649 vs 1,250 msg/s) still do, with no
+overlap between any budgeted run and the unbounded one that stalled.
+
+Claim: phase-462-W6a. Depends on: none. Owns: zephyr/Kconfig; zephyr/nros_zenoh_zephyr_system.c; the knob's ladder entries as scripts/check-knob-delivery.py and scripts/check-kconfig-knob-forwarding.sh require them; docs/design/0074-ingress-budget-rate-and-burst.md. Gate: the RFC-0074 flood cell rerun with the budget stated records 0 stalls. Status: landed; gate met 2026-10-18 (6/6 budgeted runs 0 stalls, worst 11.5 ms), after issues 1948 and 1949.
 
 W6b status: the derivation landed. rlm v0.1.64 settled issue 0760
 (`sub.<e>.ingress: { rate_hz, burst }`, both required, top level on the

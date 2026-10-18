@@ -971,3 +971,25 @@ So this issue is no longer blocked on a design question. It is blocked on
 implementation, and the implementable part is the enforcement half — which could
 proceed against an out-of-band source of the two numbers if that is ever wanted
 before the schema lands.
+
+## 2026-10-18 — the device-side half is done; the router rule is what remains
+
+Everything the 2026-08-23 split called implementable has landed in phase-462:
+the declaration (`sub.<e>.ingress`, rlm v0.1.64, issue 0760), the stated knob
+(W6a, `NROS_ZENOH_RX_TASK_BUDGET_FRAMES` / `_REST_US`), its derivation from the
+contract (W6b) and the per-board frame cost with both resolve-time constraints
+(W6c). The W6a gate is met: six interleaved runs per cell at ~2 kHz, budget 8
+stall-free in 6/6 (worst 11.5 ms) against unbounded 206 ms worst, and 1,250 vs
+649 msg/s drained (RFC-0074, "Rerun on the shipped knob").
+
+That rerun needed two unrelated defects fixed first, each of which had
+invalidated an attempt: issue 1949 (a hosted image logs a line per publish,
+which blocked the eval's load generators on an undrained pipe) and issue 1948
+(QEMU's LAN9118 fast-forward leaked RX FIFO space, so above ~1 kHz the island
+stopped receiving permanently).
+
+What is left is RFC-0074's **enforcement point 1, the router `downsampling`
+rule** — the only mechanism measured to save the device's CPU rather than
+bound it. Nothing in the tree emits one (`git grep downsampling -- packages
+scripts` is empty). It is a resolver output deployed with the router config,
+so it is not a device change, and it is the reason this issue stays open.

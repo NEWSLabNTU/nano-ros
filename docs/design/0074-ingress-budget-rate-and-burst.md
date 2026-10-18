@@ -227,6 +227,36 @@ not the drop policy; chain p95 is flat across cells, so it is not
 cell) and chain p50 (38/95/38, non-monotonic). Tuning — frames and rest
 interval — is unexplored; the cells above use 1000 µs.
 
+### Rerun on the shipped knob (2026-10-18, phase-462 W6a)
+
+The same lane on the knob as it shipped (`NROS_ZENOH_RX_TASK_BUDGET_FRAMES`,
+rest 1000 µs), the island ported to the current tree, ~2 kHz from four
+generators, six interleaved runs per cell, `analyze_506.py` `cell_stats`:
+
+| cell | n | stalls/run | worst | rx/s median | chain % | chain p50 |
+|---|---|---|---|---|---|---|
+| unbounded | 6 | 0.33 | 206 ms | 649 | 24.8 | 20 ms |
+| budget 8 | 6 | **0.0** | **11.5 ms** | **1,250** | 25.4 | 22 ms |
+
+6/6 budgeted runs are stall-free with a worst gap of 10.8-11.5 ms in every
+run. Two things differ from the 2026-08 table, and both are stated rather
+than smoothed:
+
+- **Unbounded stalls less often** — 1 run of 6 (2 stalls, 206 ms), not 6 of 6.
+  The stall count now separates the cells weakly; the worst gap and the
+  throughput separate them with no overlap.
+- **Throughput is now claimed**: the budget nearly doubles what the island
+  drains (649 -> 1,250 msg/s median), the "processes more when paced" result
+  of the Motivation reproduced by the task budget alone.
+
+The rerun is valid only after two defects outside the budget were fixed, and
+both had invalidated earlier attempts: the eval driver blocked its own load
+generators on an undrained stdout pipe (a hosted image logged a line per
+publish — issue 1949), and QEMU's LAN9118 fast-forward leaked RX FIFO space
+on every pbuf-pool drop, so above ~1 kHz BOTH cells stopped receiving for good
+(issue 1948, fixed in the drivers). Whether the 2026-08 stalls were partly the
+second defect is not known: those runs recovered, which a full leak does not.
+
 ### Correction: the previous blocker was aimed at dead code
 
 Earlier drafts said this half was blocked on issue
@@ -448,6 +478,10 @@ that, and a design that assumes one `c` per board should say so.
 
 ## Changelog
 
+- 2026-10-18 — phase-462 W6a: the flood cell rerun on the shipped knob,
+  6/6 budgeted runs stall-free (worst 11.5 ms) and 1.9x the unbudgeted
+  throughput; recorded under "Rerun on the shipped knob" with the two
+  defects (issues 1948, 1949) that had invalidated the earlier attempts.
 - 2026-10-18 — phase-462 W6c: the per-board `c` (`[board.rx]`) and both
   resolve-time constraints landed; "As implemented" under "What validates a
   declaration" records the readings the RFC left open (every subscriber for
