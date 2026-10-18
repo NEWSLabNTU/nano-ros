@@ -757,7 +757,9 @@ typedef struct nros_cpp_mode_deadline_t {
 
 /**
  * phase-462 W4b -- one contract mode: exactly as many rows (and ages) as the
- * base tables `nros_cpp_install_monitors` installed, in the same order.
+ * base tables `nros_cpp_install_monitors` installed, in the same order -- or
+ * `rows` NULL with `n_rows` 0 (likewise `ages`) to judge by the base table
+ * itself, for a mode whose numbers are the base's.
  */
 typedef struct nros_cpp_mode_t {
   const struct nros_cpp_mode_row_t *rows;
@@ -786,8 +788,10 @@ typedef struct nros_cpp_mode_t {
  * phase-462 W4b -- the modes `nros_cpp_install_modes` installs: mode id `i`
  * is `modes[i - 1]` (0 is the base). `storage` is static, 8-aligned, and at
  * least `(n_modes + 1) * (NROS_CPP_MODE_TABLE_STORAGE + n_base_deadlines *
- * NROS_CPP_MODE_DEADLINE_STORAGE) + n_modes * (n_rows *
- * NROS_CPP_MODE_ROW_STORAGE + n_ages * NROS_CPP_MODE_AGE_STORAGE)` bytes.
+ * NROS_CPP_MODE_DEADLINE_STORAGE) + n_row_modes * n_rows *
+ * NROS_CPP_MODE_ROW_STORAGE + n_age_modes * n_ages * NROS_CPP_MODE_AGE_STORAGE`
+ * bytes, where `n_row_modes` / `n_age_modes` count the modes with rows (ages)
+ * of their own; a mode that aliases the base costs only its table.
  */
 typedef struct nros_cpp_mode_tables_t {
   const struct nros_cpp_mode_t *modes;
@@ -2322,7 +2326,12 @@ nros_cpp_ret_t nros_cpp_install_hazards(void *handle, const struct nros_cpp_haza
  * switch. `nros_cpp_request_mode` then switches every executor at its next
  * spin.
  *
- * Refused: a mode whose row counts are not the base's
+ * A mode whose `rows` is NULL with `n_rows == 0` judges by the BASE rate
+ * table itself (no copy, no storage), and likewise for `ages`: the entry
+ * bakes that for a mode whose numbers equal the base's. Its switch budget,
+ * reaction and deadlines still apply when it is entered.
+ *
+ * Refused: a mode whose row counts are neither the base's nor an alias
  * (`NROS_CPP_RET_INVALID_ARGUMENT`), and a short or misaligned buffer
  * (`NROS_CPP_RET_FULL`). `n_modes == 0` installs nothing.
  *

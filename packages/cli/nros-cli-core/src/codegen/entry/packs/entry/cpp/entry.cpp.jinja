@@ -176,7 +176,9 @@ alignas(8) static unsigned char __nros_hz_storage{{ tag }}[{{ m.hazards | length
 {%- if m.modes %}
 /* phase-462 W4b -- the contract's modes: each mode's numbers for the rows
  * above, row for row (`nros_cpp_install_modes` copies the base specs and their
- * cells, so only the numbers are stated). */
+ * cells, so only the numbers are stated). A mode whose numbers are the
+ * base's bakes no rows (NULL, 0): it judges by the base's table and costs
+ * only its table header. */
 {%- for md in m.modes %}{% set mi = loop.index %}
 {%- if md.rows %}
 static const ::nros_cpp_mode_row_t __nros_mode_rows{{ tag }}_{{ mi }}[{{ md.rows | length }}] = {
@@ -215,7 +217,7 @@ static const ::nros_cpp_mode_t __nros_modes{{ tag }}[{{ m.modes | length }}] = {
     { {% if md.rows %}__nros_mode_rows{{ tag }}_{{ mi }}{% else %}nullptr{% endif %}, {{ md.rows | length }}u, {% if md.ages %}__nros_mode_ages{{ tag }}_{{ mi }}{% else %}nullptr{% endif %}, {{ md.ages | length }}u, {% if m.base_deadlines %}__nros_mode_deadlines{{ tag }}_{{ mi }}{% else %}nullptr{% endif %}, {{ md.deadlines | length }}u, {{ md.switch_budget_ms }}u, {% if md.reaction %}"{{ md.reaction | c_str }}"{% else %}nullptr{% endif %} },
 {%- endfor %}
 };
-alignas(8) static unsigned char __nros_mode_storage{{ tag }}[({{ m.modes | length }} + 1) * (NROS_CPP_MODE_TABLE_STORAGE + {{ m.base_deadlines | length }} * NROS_CPP_MODE_DEADLINE_STORAGE) + {{ m.modes | length }} * ({{ m.rows | length }} * NROS_CPP_MODE_ROW_STORAGE + {{ m.ages | length }} * NROS_CPP_MODE_AGE_STORAGE)];
+alignas(8) static unsigned char __nros_mode_storage{{ tag }}[({{ m.modes | length }} + 1) * (NROS_CPP_MODE_TABLE_STORAGE + {{ m.base_deadlines | length }} * NROS_CPP_MODE_DEADLINE_STORAGE) + {{ m.modes | selectattr("rows") | list | length }} * {{ m.rows | length }} * NROS_CPP_MODE_ROW_STORAGE + {{ m.modes | selectattr("ages") | list | length }} * {{ m.ages | length }} * NROS_CPP_MODE_AGE_STORAGE];
 {%- endif %}
 {%- endfor %}
 

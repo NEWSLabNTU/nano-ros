@@ -354,8 +354,10 @@ pub struct ModeDeadlineRow {
 /// `nros_cpp_mode_age_row_t`). Every other field of a row is the base row's.
 #[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ModeVariantRows {
+    /// The mode's numbers for each rate/latency row; EMPTY when they are the
+    /// base's, row for row (the install then aliases the base table).
     pub rows: Vec<ModeRow>,
-    /// Each age row's `max_age_ms`.
+    /// Each age row's `max_age_ms`; EMPTY when they are the base's.
     pub ages: Vec<u32>,
     /// phase-462 W4c -- this mode's deadline for each context of
     /// [`MonitorTable::base_deadlines`], in its order.
