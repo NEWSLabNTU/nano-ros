@@ -39,8 +39,14 @@
 //! | --- | --- | --- | --- | --- |
 //! | [`CiLane::Tier1`] | host-exec, 1-wise p,w,k + pairwise l × r | 22 | 12 | 24 % |
 //! | [`CiLane::Tier2`] | 1-wise p, l, r, k | 11 | 11 | 22 % |
-//! | [`CiLane::Tier2Nightly`] | pairwise p × l × r × k | 37 | 36 | 72 % |
-//! | tier 3 | everything | 205 | 50 | 100 % |
+//! | [`CiLane::Tier2Nightly`] | pairwise p × l × r × k | 36 | 34 | 67 % |
+//! | tier 3 | everything | 206 | 51 | 100 % |
+//!
+//! Re-measured 2026-10-18 (phase-441 W6): the slirp Cyclone cell
+//! `freertos-an536-pubsub-cpp-cyclone-n2r` is a new (freertos, cpp, cyclonedds)
+//! coordinate, so the tier-3 denominator went 50 -> 51, and the nightly
+//! pairwise cover took FEWER picks (37 -> 36 cells, 34 coords): the greedy cover
+//! finds one cell covering more pairs at once.
 //!
 //! Re-measured 2026-09-10 (phase-441 W1). FOUR of the six gated numbers had
 //! drifted before that commit touched anything — tier 1's cells (17→19), tier
@@ -948,7 +954,7 @@ _tier-build:
         let documented = [
             (CiLane::Tier1, 22, 12),
             (CiLane::Tier2, 11, 11),
-            (CiLane::Tier2Nightly, 37, 36),
+            (CiLane::Tier2Nightly, 36, 34),
         ];
         for (lane, want_cells, want_coords) in documented {
             assert_eq!(
@@ -967,8 +973,8 @@ _tier-build:
             );
         }
         assert_eq!(
-            total_coords, 50,
-            "the table's tier-3 denominator (50 coordinates) is stale; recomputed \
+            total_coords, 51,
+            "the table's tier-3 denominator (51 coordinates) is stale; recomputed \
              {total_coords}"
         );
     }

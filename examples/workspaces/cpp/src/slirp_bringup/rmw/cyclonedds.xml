@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- phase-441 W6 — the GUEST half of a slirp Cyclone pair, baked into the
+     image (phase-206 W2). It is `CycloneSlirpPair::new(54, "nros-441-w6-an536")
+     .guest_xml()` (packages/testing/nros-tests/src/dds_isolation.rs), and the
+     interop test asserts the two agree, so change both or neither.
+
+     Behind slirp the guest cannot multicast, and the host cannot dial the
+     guest's own address (10.0.2.15), so: unicast only, advertise 127.0.0.1
+     (where QEMU forwards the guest's two ports on the host), a fixed
+     participant index so those ports are known in advance, and the host's
+     meta port through the slirp gateway alias. The tag is the isolation: a
+     host participant without it never matches (issue 1251). -->
+<CycloneDDS xmlns="https://cdds.io/config">
+  <Domain id="any">
+    <General>
+      <AllowMulticast>false</AllowMulticast>
+      <ExternalNetworkAddress>127.0.0.1</ExternalNetworkAddress>
+    </General>
+    <Discovery>
+      <Tag>nros-441-w6-an536</Tag>
+      <ParticipantIndex>118</ParticipantIndex>
+      <Peers>
+        <Peer address="10.0.2.2:21148"/>
+      </Peers>
+    </Discovery>
+  </Domain>
+</CycloneDDS>

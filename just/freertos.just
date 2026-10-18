@@ -427,6 +427,18 @@ test-all verbose="":
 test-ros2 verbose="":
     @just _test-focused 'binary(=pubsub_freertos_ros2_interop_e2e)' {{verbose}}
 
+# phase-441 W6 — the mps3-an536 FreeRTOS C++ CycloneDDS talker against a stock
+# `rmw_cyclonedds_cpp` `ros2 topic echo` on the host, over QEMU slirp with the
+# guest's two unicast ports forwarded (`dds_isolation::CycloneSlirpPair`). Holds
+# the echo for 75 s and requires samples 45 s after the first (issue 0997).
+# Needs ROS 2 + `rmw_cyclonedds_cpp`, `arm-none-eabi-gcc`, `qemu-system-arm`
+# with `mps3-an536`, the FreeRTOS + lwIP trees and the
+# `workspace-cpp-mps3-an536-freertos-slirp` fixture; a missing one is an
+# `unmet!` red (issue 1758).
+[group("debug")]
+test-ros2-cyclone verbose="":
+    @just _test-focused 'binary(=pubsub_freertos_an536_cyclone_ros2_interop_e2e)' {{verbose}}
+
 # Phase 121.6 — build the FreeRTOS Posix-port smoke test for
 # nros-platform-freertos. Uses the in-tree FreeRTOS-Kernel + a
 # minimal FreeRTOSConfig.h. Excludes net.c (no lwIP in this harness).

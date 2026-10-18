@@ -700,7 +700,7 @@ rmw = "cyclonedds"
 dir = "examples/workspaces/cpp"
 bringup = "src/demo_bringup"
 image = "freertos_posix"
-build_subdir = "build/freertos-cyclonedds-freertos-posix/cmake"
+build_subdir = "build/freertos-cyclonedds-freertos-posix-cfg1ff0492eb1/cmake"
 cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "freertos-posix" }
 
 [[workspace_fixture]]
@@ -728,7 +728,7 @@ rmw = "cyclonedds"
 dir = "examples/workspaces/cpp"
 bringup = "src/demo_bringup"
 image = "s32z270"
-build_subdir = "build/freertos-cyclonedds-s32z270-freertos/cmake"
+build_subdir = "build/freertos-cyclonedds-s32z270-freertos-cfg1ff0492eb1/cmake"
 cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "s32z270-freertos", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7940" }
 
 # phase-385 W4 — the AN536 (Cortex-R52 on QEMU) cell. Same CPU, same kernel
@@ -748,8 +748,29 @@ rmw = "cyclonedds"
 dir = "examples/workspaces/cpp"
 bringup = "src/demo_bringup"
 image = "mps3_an536"
-build_subdir = "build/freertos-cyclonedds-mps3-an536-freertos/cmake"
+build_subdir = "build/freertos-cyclonedds-mps3-an536-freertos-cfg1ff0492eb1/cmake"
 cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps3-an536-freertos", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7941" }
+
+# phase-441 W6 — the same board's C++ talker as a CycloneDDS guest behind QEMU
+# user-mode networking, for a live `rmw_cyclonedds_cpp` peer on the host
+# (`tests/pubsub_freertos_an536_cyclone_ros2_interop_e2e.rs`). Its own bringup,
+# because the Cyclone config is a bringup fact (`slirp_bringup/rmw/cyclonedds.xml`
+# is `CycloneSlirpPair`'s guest half), and so its own configure: that file
+# compiles into the shared backend build, so `nros build` keys the build dir on
+# it (`-cfg<hash>`).
+[[workspace_fixture]]
+id = "workspace-cpp-mps3-an536-freertos-slirp"
+platform = "freertos"
+lang = "cpp"
+rmw = "cyclonedds"
+dir = "examples/workspaces/cpp"
+bringup = "src/slirp_bringup"
+image = "mps3_an536_slirp"
+build_subdir = "build/freertos-cyclonedds-mps3-an536-freertos-cfg691ce9d54a/cmake"
+# `NROS_DOMAIN_ID` is the allocator's `domain_of(FreertosMps2, Cpp, EntryPubsub)`,
+# which the bringup's baked `rmw/cyclonedds.xml` ports are computed from. Stated
+# here because the CMake road drops the bringup's own `domain_id` (issue 1946).
+cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps3-an536-freertos", NROS_DOMAIN_ID = "54" }
 
 # phase-263 C2b — the NuttX (QEMU arm-virt) C workspace entry (talker + listener linked INTO
 # the kernel via cargo nros-nuttx-ffi). Dials the host zenoh router through the slirp gateway
@@ -4555,7 +4576,7 @@ dir = "examples/workspaces/cpp"
 bringup = "src/demo_bringup"
 image = "linux_cyclonedds"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build/posix-cyclonedds-linux/cmake"
+build_subdir = "build/posix-cyclonedds-linux-cfg1ff0492eb1/cmake"
 
 [[workspace_fixture]]
 id = "workspace-cpp-native-xrce"

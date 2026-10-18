@@ -1,0 +1,41 @@
+# phase-441 W6 — a CycloneDDS RTOS image meets a stock ROS 2 peer over QEMU
+# user-mode networking (slirp).
+#
+# A second bringup, not an image of `demo_bringup`, because the Cyclone config
+# is a BRINGUP fact (`rmw/cyclonedds.xml`, phase-206 W2, by convention): every
+# image of a bringup bakes the same file, and `demo_bringup`'s mps3_an536 image
+# runs on a multicast LAN that this config would break.
+#
+# The domain and the tag are BAKED into the image, so they are constants here
+# and in the test (`pubsub_freertos_an536_cyclone_ros2_interop_e2e.rs`), and
+# `rmw/cyclonedds.xml` must equal `CycloneSlirpPair::new(54, ...).guest_xml()`
+# in substance — that test checks it.
+#
+# 54 is the allocator's domain for this coordinate
+# (`alloc::domain_of(FreertosMps2, Cpp, EntryPubsub)`), as every baked Cyclone
+# cell takes it. It also keeps the DDSI ports below Linux's ephemeral range
+# (32768–60999): a domain above 101 lands inside it, where any outgoing socket
+# can hold the port — measured, domain 141's host port 42662 was taken by an
+# unrelated process. Participant indices 118/119 (`CycloneSlirpPair`) sit
+# where an auto-indexed participant on the same domain never reaches.
+# Ports: guest 21146/21147 (forwarded by QEMU), host 21148/21149.
+
+[system]
+name = "slirp_demo"
+rmw = "cyclonedds"
+domain_id = 0
+default_launch = "talker.launch.xml"
+
+[[component]]
+pkg = "talker_pkg"
+class = "talker_pkg::Talker"
+name = "talker"
+
+[image.mps3_an536_slirp]
+board = "mps3-an536-freertos"
+rmw = "cyclonedds"
+# The domain (54) reaches this image's session as `-DNROS_DOMAIN_ID=54` from its
+# `examples/fixtures.toml` row, not from here: on the CMake road neither
+# `[system] domain_id` nor `[image.<id>] domain_id` reaches a C/C++ entry's
+# session today (issue 1946).
+launch = "talker.launch.xml"

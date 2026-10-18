@@ -534,6 +534,16 @@ filter = "binary(pubsub_freertos_ros2_interop_e2e)"
 test-group = "matrix-consumers-serial"
 slow-timeout = { period = "180s", terminate-after = 3 }
 
+# phase-441 W6 — the slirp Cyclone cell HOLDS its echo for 75 s on purpose
+# (issue 0997's lease window, several times over), so the 60 s default would
+# kill every run before its verdict. Only the timeout is set here: the
+# `binary(~freertos)` override below still decides its test group, since
+# nextest takes the first match PER SETTING. No router and no shared baked
+# port; its forwarded host ports are its own domain's.
+[[profile.default.overrides]]
+filter = "binary(pubsub_freertos_an536_cyclone_ros2_interop_e2e)"
+slow-timeout = { period = "120s", terminate-after = 2 }
+
 # Issue #34 — host-integration "compile-shape" tests used to shell out to cargo
 # / nros at test time and carried a 120s x 4 headroom override here. The rule
 # shrank to empty as each was converted to consume a build-stage fixture, and the

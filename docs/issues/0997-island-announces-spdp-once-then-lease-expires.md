@@ -318,3 +318,34 @@ Also worth suspicion on timing alone: the submodule tip `d97a71e` is
 "ddsrt: one funnel heap for every port". If neither handler logs and no further
 `xmit spdp` appears, the loss is at INSERT time and `ddsrt/src/fibheap.c` is
 where to look, not the handlers.
+
+## Reproduced in-tree (2026-10-18, phase-441 W6)
+
+The first reproduction outside the island's repository, and without a tap:
+phase-441 W6's cell `freertos-an536-pubsub-cpp-cyclone-n2r`
+(`tests/pubsub_freertos_an536_cyclone_ros2_interop_e2e.rs`, `just freertos
+test-ros2-cyclone`). The same board as the island (mps3-an536, FreeRTOS,
+lwIP over the emulated LAN9118, the embedded Cyclone build), with the C++
+talker of `examples/workspaces/cpp`'s `slirp_bringup` as the guest, QEMU
+user-mode networking with the guest's two unicast ports forwarded, and a
+stock `rmw_cyclonedds_cpp` `ros2 topic echo` on the host
+(`dds_isolation::CycloneSlirpPair`).
+
+- **The cell:** the guest boots and publishes (65 `Published:` lines), the
+  host receives nothing in 75 s. Recorded as `fail` against this issue in
+  `.config/interop-verdicts.toml`.
+- **A host-side Cyclone trace of the same crossing** (hand run, domain 0,
+  `<Tracing><Category>discovery</Category>`): the guest's SPDP arrives
+  (`SPDP ST0 … NEW (… nano-ros/0.10.5 …) (data udp/127.0.0.1:7647 meta
+  udp/127.0.0.1:7646)`), its `rt/chatter` writer arrives by SEDP and is
+  matched to the echo's reader, and then nothing more comes from the guest
+  until `gc: lease expired … deleting` for its participant **10.4 s** later.
+  That is this issue's headline, now on an in-tree image over slirp rather
+  than the island's tap.
+
+What it does not show yet: the guest side. On this board Cyclone's
+`<Tracing><OutputFile>stdout</OutputFile>` produces nothing on the console,
+so whether the guest's timed-event tree empties (this issue's located root
+cause) or its sends stop for another reason is not measured here. The cell
+is the reproduction to measure it on; the GVLOGDISC lines "What the empty
+tree actually implies" asks for need a console sink first.

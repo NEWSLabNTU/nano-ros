@@ -521,7 +521,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                     .ok()?;
             Some((
                 plan::qualified(&b, &id),
-                generated_outputs(&root, &id, &img, &platform, driver),
+                generated_outputs(&root, &id, &img, &platform, driver, &bd),
             ))
         })
         .collect();
@@ -595,7 +595,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
         if planning == Planning::Query {
             out.push(ResolvedBuild {
                 configure: None,
-                cmake_build_dir: cmake_build_dir_for(driver, &platform, &image),
+                cmake_build_dir: cmake_build_dir_for(driver, &platform, &image, &bringup_dir),
                 qualified: qual,
                 board,
                 platform,
@@ -1111,7 +1111,9 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
             Driver::CMake => {
                 // Unlike cargo, cmake imposes no root/member hierarchy rule, so
                 // this root DOES live under build/<coord> (RFC-0065 D8).
-                let manifest_dir = root.join("build").join(cmake_coordinate(&platform, &image));
+                let manifest_dir =
+                    root.join("build")
+                        .join(cmake_coordinate(&platform, &image, &bringup_dir));
                 record_dirs.push(manifest_dir.clone());
                 // W4.b — every image that lands on THIS coordinate.
                 //
@@ -1125,7 +1127,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                 // nothing — it is a discovered SUBDIR, and a second target of
                 // that name would collide. Delete the package and the next
                 // build emits its call (D13, incremental).
-                let coord = cmake_coordinate(&platform, &image);
+                let coord = cmake_coordinate(&platform, &image, &bringup_dir);
                 // A C++ source ANYWHERE in a package, not just at its top —
                 // `builder::discover::holds_cpp_source`, the one spelling the
                 // west application's `LANG` also reads (phase-470 W5.b3). The
@@ -1147,7 +1149,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                                         d.entry_kind,
                                         image_has_non_rust(img, bd),
                                     ) == Ok(Driver::CMake)
-                                        && cmake_coordinate(d.platform.kebab(), img) == coord
+                                        && cmake_coordinate(d.platform.kebab(), img, bd) == coord
                                 })
                                 .unwrap_or(false)
                     })
@@ -1624,7 +1626,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
 
         out.push(ResolvedBuild {
             configure: cmake_configure.or(cargo_prepare),
-            cmake_build_dir: cmake_build_dir_for(driver, &platform, &image),
+            cmake_build_dir: cmake_build_dir_for(driver, &platform, &image, &bringup_dir),
             qualified: qual,
             board,
             platform,
@@ -4224,13 +4226,23 @@ fn coordinate(platform: &str, image: &crate::orchestration::image::ImageBlock) -
 /// over [`image_config_digest`]; images whose resolved configuration is
 /// identical — including the ones that state none, which keep exactly the
 /// path they had — still share one configure.
-fn cmake_coordinate(platform: &str, image: &crate::orchestration::image::ImageBlock) -> String {
+///
+/// phase-441 W6 — the bringup's own RMW config (`rmw/<backend>.<ext>`,
+/// phase-206 W2) is such a fact too: `nros_bake_rmw_user_config` writes it
+/// ONCE per configure and it compiles into the shared `nros_rmw_<backend>`,
+/// so two bringups with different configs on one configure each got whichever
+/// was baked last. `bringup_dir` is the image's bringup.
+fn cmake_coordinate(
+    platform: &str,
+    image: &crate::orchestration::image::ImageBlock,
+    bringup_dir: &Path,
+) -> String {
     let base = coordinate(platform, image);
     let base = match image.board.as_deref() {
         Some(b) if b != platform => format!("{base}-{}", b.replace(['/', '.'], "-")),
         _ => base,
     };
-    match image_config_digest(image) {
+    match image_config_digest(image, bringup_dir) {
         Some(d) => format!("{base}-cfg{d}"),
         None => base,
     }
@@ -4242,9 +4254,14 @@ fn cmake_build_dir_for(
     driver: Driver,
     platform: &str,
     image: &crate::orchestration::image::ImageBlock,
+    bringup_dir: &Path,
 ) -> Option<String> {
-    matches!(driver, Driver::CMake)
-        .then(|| format!("build/{}/cmake", cmake_coordinate(platform, image)))
+    matches!(driver, Driver::CMake).then(|| {
+        format!(
+            "build/{}/cmake",
+            cmake_coordinate(platform, image, bringup_dir)
+        )
+    })
 }
 
 /// A short, stable digest of an image's resolved configuration
@@ -4253,11 +4270,24 @@ fn cmake_build_dir_for(
 /// so reordering or re-quoting a table does not move the build directory.
 /// Deploy keys (`ip`, `locator`, `domain_id`) are deliberately NOT in it: they
 /// reach each image's own generated entry, never the shared runtime builds.
-fn image_config_digest(image: &crate::orchestration::image::ImageBlock) -> Option<String> {
+///
+/// The bringup's RMW config file, when it ships one for the image's backend,
+/// is one more row, keyed on its CONTENT: two bringups with the same bytes
+/// still share a configure, and editing the file moves the directory the same
+/// way editing a knob does.
+fn image_config_digest(
+    image: &crate::orchestration::image::ImageBlock,
+    bringup_dir: &Path,
+) -> Option<String> {
     use sha2::{Digest as _, Sha256};
     // A retired `[image] env` key is refused where the rows are WRITTEN (the
     // cmake road's image-env file); the coordinate only needs a stable name.
-    let rows = crate::cmd::leaf_settings::image_block_layers(None, image).ok()?;
+    let mut rows = crate::cmd::leaf_settings::image_block_layers(None, image).ok()?;
+    if let Some(cfg) = rmw_user_config_file(bringup_dir, image.rmw.as_deref())
+        && let Ok(body) = std::fs::read_to_string(&cfg)
+    {
+        rows.insert("rmw-user-config".to_string(), body);
+    }
     if rows.is_empty() {
         return None;
     }
@@ -4269,6 +4299,19 @@ fn image_config_digest(image: &crate::orchestration::image::ImageBlock) -> Optio
         h.update([0xffu8]);
     }
     Some(format!("{:x}", h.finalize())[..10].to_string())
+}
+
+/// The bringup's own RMW config for `rmw`, by the convention
+/// `cmake/NanoRosRmwUserConfig.cmake` bakes (`<bringup>/rmw/<backend>.<ext>`,
+/// one extension per backend), when that file exists.
+fn rmw_user_config_file(bringup_dir: &Path, rmw: Option<&str>) -> Option<PathBuf> {
+    let ext = match rmw? {
+        "cyclonedds" => "xml",
+        "zenoh" => "conf",
+        _ => return None,
+    };
+    let f = bringup_dir.join("rmw").join(format!("{}.{ext}", rmw?));
+    f.is_file().then_some(f)
 }
 
 /// Where `nros build` GENERATES an image's entry package:
@@ -4358,6 +4401,7 @@ fn generated_outputs(
     image: &crate::orchestration::image::ImageBlock,
     platform: &str,
     driver: Driver,
+    bringup_dir: &Path,
 ) -> Vec<PathBuf> {
     let pkg = crate::builder::entry::package_name(image_id);
     let hand_written = root.join("src").join(&pkg);
@@ -4373,7 +4417,7 @@ fn generated_outputs(
         ],
         Driver::CMake => vec![
             PathBuf::from("build")
-                .join(cmake_coordinate(platform, image))
+                .join(cmake_coordinate(platform, image, bringup_dir))
                 .join(format!("<target {pkg}>")),
         ],
     }
@@ -6213,7 +6257,7 @@ mod generated_output_collision_tests {
         let id = qual.split_once(':').expect("qualified").1;
         (
             qual.to_string(),
-            generated_outputs(root, id, image, platform, driver),
+            generated_outputs(root, id, image, platform, driver, root),
         )
     }
 
@@ -6277,7 +6321,7 @@ mod generated_output_collision_tests {
     fn the_claimed_entry_dir_is_the_generated_one() {
         let t = tempfile::tempdir().unwrap();
         let z = img("zephyr");
-        let outs = generated_outputs(t.path(), "zephyr", &z, "zephyr", Driver::West);
+        let outs = generated_outputs(t.path(), "zephyr", &z, "zephyr", Driver::West, t.path());
         assert_eq!(
             t.path().join(&outs[0]),
             generated_entry_dir(t.path(), "zephyr", &z, "zephyr")
@@ -6295,7 +6339,7 @@ mod generated_output_collision_tests {
         let z = img("zephyr");
         for d in [Driver::West, Driver::Cargo, Driver::CMake] {
             assert!(
-                generated_outputs(t.path(), "zephyr", &z, "zephyr", d).is_empty(),
+                generated_outputs(t.path(), "zephyr", &z, "zephyr", d, t.path()).is_empty(),
                 "{d:?}"
             );
         }
@@ -6351,7 +6395,15 @@ mod generated_output_collision_tests {
             "the named entry is the application, not `zephyr_robot1_entry`"
         );
         assert!(
-            generated_outputs(t.path(), "zephyr", &image, "zephyr_robot1", Driver::West).is_empty(),
+            generated_outputs(
+                t.path(),
+                "zephyr",
+                &image,
+                "zephyr_robot1",
+                Driver::West,
+                t.path()
+            )
+            .is_empty(),
             "a named entry suppresses generation, so `<id>_entry` cannot win that way either"
         );
 
@@ -6359,8 +6411,15 @@ mod generated_output_collision_tests {
         // generation candidate again.
         image.entry = None;
         assert!(
-            !generated_outputs(t.path(), "zephyr", &image, "zephyr_robot1", Driver::Cargo)
-                .is_empty()
+            !generated_outputs(
+                t.path(),
+                "zephyr",
+                &image,
+                "zephyr_robot1",
+                Driver::Cargo,
+                t.path()
+            )
+            .is_empty()
         );
     }
 
@@ -6372,8 +6431,13 @@ mod generated_output_collision_tests {
         let t = tempfile::tempdir().unwrap();
         let mut z = img("zephyr");
         z.entry = Some("app".to_string());
-        assert!(generated_outputs(t.path(), "zephyr", &z, "zephyr", Driver::West).is_empty());
-        assert!(!generated_outputs(t.path(), "zephyr", &z, "zephyr", Driver::Cargo).is_empty());
+        assert!(
+            generated_outputs(t.path(), "zephyr", &z, "zephyr", Driver::West, t.path()).is_empty()
+        );
+        assert!(
+            !generated_outputs(t.path(), "zephyr", &z, "zephyr", Driver::Cargo, t.path())
+                .is_empty()
+        );
     }
 
     /// cmake: one id on one coordinate is one target in one root — the pair
@@ -6596,7 +6660,7 @@ mod per_image_configure_tests {
     #[test]
     fn an_image_stating_nothing_keeps_its_coordinate() {
         assert_eq!(
-            cmake_coordinate("native", &image(&[], None)),
+            cmake_coordinate("native", &image(&[], None), Path::new("/nonexistent")),
             "native-zenoh"
         );
     }
@@ -6606,13 +6670,68 @@ mod per_image_configure_tests {
     /// were spelled in `system.toml` (a `BTreeMap` has no insertion order).
     #[test]
     fn configuration_decides_which_configure_an_image_shares() {
-        let warn = cmake_coordinate("native", &image(&[("APP_LOG_LEVEL", "warn")], None));
-        let debug = cmake_coordinate("native", &image(&[("APP_LOG_LEVEL", "debug")], None));
+        let warn = cmake_coordinate(
+            "native",
+            &image(&[("APP_LOG_LEVEL", "warn")], None),
+            Path::new("/nonexistent"),
+        );
+        let debug = cmake_coordinate(
+            "native",
+            &image(&[("APP_LOG_LEVEL", "debug")], None),
+            Path::new("/nonexistent"),
+        );
         assert!(warn.starts_with("native-zenoh-cfg"), "{warn}");
         assert_ne!(warn, debug);
-        let ab = cmake_coordinate("native", &image(&[("A", "1"), ("B", "2")], None));
-        let ba = cmake_coordinate("native", &image(&[("B", "2"), ("A", "1")], None));
+        let ab = cmake_coordinate(
+            "native",
+            &image(&[("A", "1"), ("B", "2")], None),
+            Path::new("/nonexistent"),
+        );
+        let ba = cmake_coordinate(
+            "native",
+            &image(&[("B", "2"), ("A", "1")], None),
+            Path::new("/nonexistent"),
+        );
         assert_eq!(ab, ba);
+    }
+
+    /// phase-441 W6 — a bringup's own RMW config is baked once per configure
+    /// into the shared backend build, so two bringups whose files differ must
+    /// not share one; two with the same bytes still do, and a bringup with no
+    /// file (or a file for a backend this image does not use) keeps its path.
+    #[test]
+    fn a_bringups_rmw_config_is_configuration() {
+        let t = tempfile::tempdir().expect("tempdir");
+        let bringup = |name: &str, body: Option<&str>| {
+            let d = t.path().join(name);
+            std::fs::create_dir_all(d.join("rmw")).unwrap();
+            if let Some(b) = body {
+                std::fs::write(d.join("rmw").join("cyclonedds.xml"), b).unwrap();
+            }
+            d
+        };
+        let cyclone = |extra: &[(&str, &str)]| {
+            let mut i = image(extra, None);
+            i.rmw = Some("cyclonedds".to_string());
+            i
+        };
+        let plain = bringup("plain", None);
+        let a = bringup("a", Some("<CycloneDDS>a</CycloneDDS>"));
+        let a2 = bringup("a2", Some("<CycloneDDS>a</CycloneDDS>"));
+        let b = bringup("b", Some("<CycloneDDS>b</CycloneDDS>"));
+        let img = cyclone(&[]);
+        let base = cmake_coordinate("freertos", &img, Path::new("/nonexistent"));
+        assert!(!base.contains("-cfg"), "{base}");
+        assert_eq!(cmake_coordinate("freertos", &img, &plain), base);
+        let ca = cmake_coordinate("freertos", &img, &a);
+        assert!(ca.starts_with(&format!("{base}-cfg")), "{ca}");
+        assert_eq!(ca, cmake_coordinate("freertos", &img, &a2));
+        assert_ne!(ca, cmake_coordinate("freertos", &img, &b));
+        // A zenoh image ignores a bringup's Cyclone file.
+        assert_eq!(
+            cmake_coordinate("freertos", &image(&[], None), &a),
+            cmake_coordinate("freertos", &image(&[], None), Path::new("/nonexistent"))
+        );
     }
 
     /// A declared transport's IMPLICATION is configuration too: a serial image
@@ -6620,8 +6739,15 @@ mod per_image_configure_tests {
     /// IP image — and it reads the same rule the cargo road does.
     #[test]
     fn a_transport_implication_is_configuration() {
-        let serial = cmake_coordinate("native", &image(&[], Some("serial")));
-        assert_ne!(serial, cmake_coordinate("native", &image(&[], None)));
+        let serial = cmake_coordinate(
+            "native",
+            &image(&[], Some("serial")),
+            Path::new("/nonexistent"),
+        );
+        assert_ne!(
+            serial,
+            cmake_coordinate("native", &image(&[], None), Path::new("/nonexistent"))
+        );
         assert_eq!(
             crate::cmd::leaf_settings::image_block_layers(None, &image(&[], Some("serial")))
                 .unwrap()
@@ -6670,7 +6796,7 @@ mod per_image_configure_tests {
                 .file_name()
                 .and_then(|n| n.to_str())
                 .unwrap();
-            let Some((_, _, _, img)) = plan::all_images(&bringups)
+            let Some((_, bd, _, img)) = plan::all_images(&bringups)
                 .into_iter()
                 .find(|(b, _, id, _)| b == bringup_name && id == image_id)
             else {
@@ -6695,7 +6821,7 @@ mod per_image_configure_tests {
             let driver = plan::driver_for_board(platform, d.entry_kind, non_rust);
             let Some(want) = driver
                 .ok()
-                .and_then(|dr| cmake_build_dir_for(dr, platform, &img))
+                .and_then(|dr| cmake_build_dir_for(dr, platform, &img, &bd))
             else {
                 continue;
             };

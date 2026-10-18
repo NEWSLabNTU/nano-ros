@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>slirp_bringup</name>
+  <version>0.1.0</version>
+  <description>Bringup pkg — the talker alone, as a CycloneDDS guest behind QEMU user-mode networking, for a live ROS 2 peer on the host (phase-441 W6).</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+  <exec_depend>talker_pkg</exec_depend>
+  <export>
+    <build_type>nros_cmake</build_type>
+  </export>
+</package>
