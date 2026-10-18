@@ -440,8 +440,9 @@ impl PriorityPlan {
     /// a thread there is never preempted, which no derived placement may
     /// impose.
     ///
-    /// RFC-0079 section 6 - the band a tier enters when its contract names
-    /// the crossing (`derive::lift_supervised_above_transport`).
+    /// RFC-0079 section 6 - the band a tier enters when it names
+    /// the crossing (`derive::lift_above_transport`), and the one the
+    /// supervisor of a supervised deadline takes.
     pub fn slots_above_transport(&self) -> Vec<i64> {
         let Some(t) = self.reserved.get("transport").copied() else {
             return Vec::new();

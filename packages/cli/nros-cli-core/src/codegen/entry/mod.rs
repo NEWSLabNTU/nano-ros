@@ -854,10 +854,10 @@ pub struct EntryDerivation {
     /// Every ranked node as the realizer placed it.
     pub realized: Vec<nros_orchestration_ir::rtos_realizer::RealizedNode>,
     /// RFC-0079 section 6 - the nodes allocated above the transport band
-    /// because their contract supervises a deadline (FQNs).
+    /// because their tier names it, `above = "transport"` (FQNs).
     pub above_transport: Vec<String>,
-    /// Where the supervisor of those deadlines runs: one more urgent than
-    /// the most urgent of them.
+    /// Where the supervisor of the supervised deadlines runs: above the
+    /// transport, one beyond the most urgent lifted node if any.
     pub supervisor_priority: Option<i64>,
     /// The degradations, one line each, as printed.
     pub degradations: Vec<String>,

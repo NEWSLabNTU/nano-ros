@@ -349,43 +349,48 @@ The realizer honours it and reports the consequence, or refuses. This makes
 0623's rule structural: **both orderings stay legitimate, and neither can be
 chosen by accident**, because the only way to get one is to name it.
 
-**Implemented 2026-10-16 (in part) - the contract names the crossing.** The
-`above = "transport"` key is not implemented: `[tiers.*]` is rlm's `TierDef`
-(`deny_unknown_fields`), so the key needs the schema in rlm and a resolver
-release before any bringup can write it. What IS implemented reaches the same
-rule from a fact the contract already states: a node path with `supervise:`
-(play_launch phase 93) declares a safety deadline that a runtime monitor holds
-and whose miss starts a fallback. Such a path's executor may not wait behind
-the transport for its turn: the supervised budget would grow by whatever the
-transport ran meanwhile, and the overrun case the checker proves would not be
-the one the image runs. So `derive::lift_supervised_above_transport` allocates
-every node with a supervised path ABOVE the reserved transport band
-(`PriorityPlan::slots_above_transport`: the priority adjacent to the band
-first, skipping reserved bands, preemptive priorities only):
+**Amended 2026-10-19 (issue 1967) - only the tier names the crossing.** The
+2026-10-16 implementation (#2312) reached this rule from a contract fact
+instead: a node with a `supervise:`d path was allocated above the transport
+implicitly. That is withdrawn. `above = "transport"` on the tier is the only
+way a tier goes above the transport band; a supervised deadline is not a
+name for the crossing, it is a reason an author may write one.
 
-* the lifted nodes keep their relative rank (the least urgent adjacent to the
-  transport, each more urgent rank one further out; equal ranks share, ties
-  keep the ranker's declaration order);
-* one more priority beyond the most urgent lifted node is required and
-  recorded as `supervisor_priority` (`NROS_PRIORITY_PLAN_SUPERVISOR_PRIORITY`
-  in the header): the supervisor reacting to a miss must outrank the executor
-  it supervises;
-* no room for the ranks: nothing is lifted, a degradation says so, the nodes
-  stay in `pool.app`; room for the ranks but not the supervisor: lifted, and a
-  degradation says the supervisor has no priority above them;
-* an authored, unplaced tier takes its most urgent member, so one supervised
-  member lifts the tier; an authored priority still wins (rule 1).
+* The key is rlm's `TierDef::above` (`ReservedBand`, a closed set whose one
+  member is `transport`; rlm `7e01f1e`). An unknown band is a parse error;
+  the key is refused in a platform sub-table, because it states a system
+  fact, not one kernel's number. Until an rlm release carries it and
+  nano-ros's pin moves, `derive::names_the_transport` answers `false` and
+  no tier is lifted.
+* `derive::lift_above_transport` allocates the tier's rank above the
+  reserved transport band (`PriorityPlan::slots_above_transport`: the
+  priority adjacent to the band first, skipping reserved bands, preemptive
+  priorities only). A tier is one thread at its most urgent member's rank
+  (issue 1426 rule 2), so that rank is the one lifted; the other members'
+  ranks run on no thread and stay where they are. Lifted ranks keep their
+  relative order, the least urgent adjacent to the band. No room for them:
+  nothing is lifted, and a degradation says so.
+* An authored priority still wins (rule 1): `above` does not move a number
+  the author wrote. A plan that reserves no transport band: the tier is
+  allocated in `pool.app`, and a degradation names the tier and the target
+  (a refusal to allocate, not a build error, as in section 5).
+* The supervisor of a supervised deadline is the reaction path and
+  publishes on its own, so it runs above the transport whether or not the
+  executor it supervises does: one priority beyond the most urgent lifted
+  rank, or the one adjacent to the transport when nothing is lifted,
+  recorded as `supervisor_priority` (`NROS_PRIORITY_PLAN_SUPERVISOR_PRIORITY`).
+  No priority left for it: a degradation. A supervised node whose tier does
+  not name the transport stays below it, and the derivation records a note
+  that its supervised budget includes whatever the transport runs meanwhile.
+* `check-tier-priority-plan-image.py --derived-plan` holds a named tier
+  above the transport, every other derived or allocated tier in `pool.app`,
+  and the supervisor above the transport and above every tier.
 
-It is still "named, never by accident": the name is `supervise:`, and a
-contract with no supervised path keeps every derived tier below the
-transport, as before. The boot report
-(`nros_zephyr_report_tier_vs_transport`) prints such a tier as one that
-preempts transport I/O, which is now intended. Measured on the Autoware
-safety island (transport `[4, 4]`; `mrm_handler/call_mrm` supervised): the
-handler's rank moves from 5 to 3, its tier with it, the supervisor at 2, the
-same numbers the island had set by hand. `check-tier-priority-plan-image.py
---derived-plan` holds a lifted tier above the transport and the supervisor
-above every tier.
+Measured on the Autoware safety island (transport `[4, 4]`, one allocated
+tier `mrm`, ranks 5 / 7 / 8, `mrm_handler/call_mrm` supervised): without
+the key, the tier runs at 5, below the transport, and the supervisor at 3;
+with `above = "transport"` on `[tiers.mrm]`, the tier runs at 3 and the
+supervisor at 2, the numbers #2312's implicit lift gave.
 
 ## The primitive reduction## The primitive reduction
 

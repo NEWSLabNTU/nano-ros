@@ -211,7 +211,7 @@ impl PriorityRecord<'_> {
             define("NROS_ENTRY_TIERS_MOST_URGENT_PRIORITY", p);
         }
         // RFC-0079 section 6: the priority for the supervisor of the
-        // deadlines allocated above the transport.
+        // supervised deadlines, above the transport wherever the tiers sit.
         if let Some(p) = self.derivation.and_then(|d| d.supervisor_priority) {
             define("NROS_PRIORITY_PLAN_SUPERVISOR_PRIORITY", p);
         }
@@ -240,7 +240,7 @@ impl PriorityRecord<'_> {
                     r.priority,
                     self.origin(&r.name),
                     if self.above_transport(&r.members) {
-                        ", above the transport: a member's contract supervises a deadline"
+                        ", above the transport: the tier names it"
                     } else {
                         ""
                     }

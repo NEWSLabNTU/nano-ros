@@ -324,11 +324,11 @@ def check_derived_plan(record, resolved, tu_text=None):
             continue
         p = t["priority"]
         if t.get("above_transport"):
-            # RFC-0079 section 6: a member's contract supervises a deadline,
-            # so the tier is allocated above the transport, never on it and
-            # never cooperative.
+            # RFC-0079 section 6: the tier names `above = "transport"`
+            # (issue 1967), so it is allocated above the transport, never on
+            # it and never cooperative.
             if not above(p, edge):
-                errs.append(f"tier {t['name']} hosts a supervised deadline but runs at {p}, "
+                errs.append(f"tier {t['name']} names the transport band but runs at {p}, "
                             f"not above the transport band [{lo}, {hi}]")
             if smaller and p < 0:
                 errs.append(f"tier {t['name']} at {p} is cooperative")
@@ -643,20 +643,28 @@ def selftest():
                len(check_derived_plan(proj, cur)), 1)
         expect("a generated entry running another number does not",
                len(check_derived_plan(rec, cur, tu.replace("5LL", "3LL"))), 1)
-        # RFC-0079 section 6: a tier hosting a supervised deadline runs above
-        # the transport, the supervisor above it; the same tier below the
-        # transport, or a supervisor under the tier, does not hold.
+        # RFC-0079 section 6: a tier that names the transport runs above it,
+        # the supervisor above the tier; the same tier below the transport,
+        # or a supervisor under the tier, does not hold. A tier that does not
+        # name it stays in pool.app, supervised or not, and the supervisor
+        # still runs above the transport (issue 1967).
         lifted = {**rec, "tiers": [{"name": "mrm", "priority": 3, "origin": "allocated",
                                     "above_transport": True}],
                   "supervisor_priority": 2}
-        expect("a supervised tier above the transport holds",
+        expect("a named tier above the transport holds",
                check_derived_plan(lifted, cur, tu.replace("5LL", "3LL")), [])
         sunk = {**lifted, "tiers": [{**lifted["tiers"][0], "priority": 5}]}
-        expect("a supervised tier below the transport does not",
+        expect("a named tier below the transport does not",
                len(check_derived_plan(sunk, cur)) > 0, True)
         low_sup = {**lifted, "supervisor_priority": 3}
         expect("a supervisor not above its tier does not",
                len(check_derived_plan(low_sup, cur)), 1)
+        pooled = {**rec, "supervisor_priority": 3}
+        expect("an unnamed tier in pool.app, its supervisor above the transport, holds",
+               check_derived_plan(pooled, cur, tu), [])
+        sup_on = {**rec, "supervisor_priority": 4}
+        expect("a supervisor on the transport band does not",
+               len(check_derived_plan(sup_on, cur)), 1)
 
     # RFC-0071 D2 - the Rust twin is a CORE crate, so it may not read the
     # transport's Kconfig symbols by name: it is handed the normalised bands,

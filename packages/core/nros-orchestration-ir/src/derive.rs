@@ -56,15 +56,16 @@ pub struct DerivedSchedule {
     /// (priority, period, deadline). What a record of the derivation shows
     /// for "why this number": the tiers above are built from these.
     pub realized: Vec<crate::rtos_realizer::RealizedNode>,
-    /// RFC-0079 section 6 - the nodes the contract SUPERVISES (a node path
-    /// with `supervise:`), lifted above the transport band
-    /// ([`lift_supervised_above_transport`]). Their `realized` priority is
-    /// the lifted one.
+    /// RFC-0079 section 6 - the nodes allocated above the transport band
+    /// because their tier names it (`above = "transport"`, issue 1967;
+    /// [`lift_above_transport`]). Their `realized` priority is the lifted
+    /// one.
     pub above_transport: Vec<String>,
-    /// The priority one more urgent than the most urgent lifted node: where
-    /// the supervisor that reacts to their missed deadlines runs. `None`
-    /// when nothing was lifted, or the kernel had no priority left for it
-    /// (then a degradation says so).
+    /// Where the supervisor that reacts to a missed supervised deadline
+    /// runs: above the transport, one beyond the most urgent lifted node,
+    /// or adjacent to the transport when nothing was lifted. `None` when
+    /// the contract supervises nothing, or the kernel had no priority left
+    /// for it (then a degradation says so).
     pub supervisor_priority: Option<i64>,
 }
 
@@ -80,60 +81,97 @@ pub fn supervised_nodes(model: &SystemModel) -> std::collections::BTreeSet<Strin
         .collect()
 }
 
-/// RFC-0079 section 6, by the contract. A node path with `supervise:` states
-/// that its deadline is a safety deadline: a runtime monitor holds it, and a
-/// fallback starts when it is missed. The executor that runs such a path may
-/// not wait behind the transport tasks for its turn (a deadline the
-/// arithmetic charges as the path's budget, plus a tick, would silently
-/// grow by whatever the transport ran meanwhile), so its node is allocated
-/// ABOVE the reserved transport band rather than in `pool.app`.
+/// RFC-0079 section 6: does this authored tier NAME the transport band
+/// (`[tiers.<name>] above = "transport"`)?
 ///
-/// This is the section's "crossing requires naming it": the name is the
-/// contract's `supervise:`, a key the author writes for exactly this kind of
-/// path, so neither ordering is chosen by accident; a contract with no
-/// supervised path keeps every tier below the transport, as before.
+/// Issue 1967. The key is rlm's `TierDef::above` (`ReservedBand`, rlm
+/// `7e01f1e`), which no rlm release carries yet: nano-ros pins a tag whose
+/// `TierDef` is `deny_unknown_fields` without it, so no `system.toml` that
+/// reaches this function can have written it, and the answer is `false`.
+/// The rlm pin bump replaces the body with
+/// `t.above == Some(ReservedBand::Transport)`; everything downstream of it
+/// ([`tiers_named_above_transport`], [`lift_above_transport`]) is live and
+/// tested through [`derive_tiers_with_named`].
+fn names_the_transport(_t: &ros_launch_manifest_sched::TierDef) -> bool {
+    false
+}
+
+/// The authored tiers that name the transport band AND ask for an allocated
+/// priority on this target (issue 1426 rule 2: no platform sub-table at
+/// all). A tier with an authored priority keeps it (rule 1, `above` does
+/// not move a number the author wrote); one placed for other boards only is
+/// rule 3's error, not a request.
+pub fn tiers_named_above_transport(
+    model: &SystemModel,
+    target_rtos: &str,
+) -> std::collections::BTreeSet<String> {
+    model
+        .execution
+        .tiers
+        .iter()
+        .filter(|(_, t)| {
+            names_the_transport(t) && t.platform(target_rtos).is_none() && !authors_any_placement(t)
+        })
+        .map(|(n, _)| n.clone())
+        .collect()
+}
+
+/// RFC-0079 section 6: crossing into the transport band requires naming it,
+/// and the name is `above = "transport"` on the tier. Nothing else crosses:
+/// a node whose contract supervises a deadline (`supervise:`) stays where
+/// its rank puts it, which may be below the transport (issue 1967; until
+/// then #2312 lifted such a node implicitly).
 ///
-/// Allocation: the lifted nodes keep their relative rank. The least urgent
-/// of them takes the priority adjacent to the transport, each more urgent
+/// `lift` is the set of nodes to allocate ABOVE the reserved transport band
+/// (the most urgent members of the tiers that name it, see
+/// [`derive_tiers_with_named`]). They keep their relative rank: the least
+/// urgent takes the priority adjacent to the transport, each more urgent
 /// rank the next one out ([`PriorityPlan::slots_above_transport`]); equal
-/// ranks share. One more priority beyond the most urgent is required and
-/// recorded ([`DerivedSchedule::supervisor_priority`]): the supervisor that
-/// reacts to the miss must outrank the executor it supervises.
+/// ranks share. No room for the ranks: nothing is lifted, and a degradation
+/// says so.
 ///
-/// When the band cannot hold the ranks, nothing is lifted (degradation:
-/// they stay in `pool.app`, below the transport). When it holds the ranks
-/// but not the supervisor, they are lifted and the degradation says the
-/// supervisor has no priority above them.
-pub fn lift_supervised_above_transport(
+/// `supervised` is the set of nodes whose contract supervises a deadline.
+/// When it is not empty, one priority above the transport is reserved for
+/// the supervisor that reacts to a miss: beyond the most urgent lifted rank
+/// when something was lifted, else the one adjacent to the transport. The
+/// supervisor is the reaction path and publishes on its own, so it runs
+/// above the transport whether or not the executor it supervises does. A
+/// supervised node left below the transport is recorded (a note: its
+/// supervised budget now includes whatever the transport runs meanwhile),
+/// and is not moved.
+///
+/// Returns the lifted node names and the supervisor's priority.
+pub fn lift_above_transport(
     nodes: &mut [crate::rtos_realizer::RealizedNode],
+    lift: &std::collections::BTreeSet<String>,
     supervised: &std::collections::BTreeSet<String>,
     plan: &PriorityPlan,
     low_number_is_high: bool,
     degradations: &mut Vec<Degradation>,
 ) -> (Vec<String>, Option<i64>) {
-    let lifted: Vec<usize> = (0..nodes.len())
-        .filter(|&i| supervised.contains(&nodes[i].name))
-        .collect();
-    if lifted.is_empty() || !plan.reserved.contains_key("transport") {
+    let Some(transport) = plan.reserved.get("transport").copied() else {
         return (Vec::new(), None);
-    }
+    };
+    let slots = plan.slots_above_transport();
+    let candidates: Vec<usize> = (0..nodes.len())
+        .filter(|&i| lift.contains(&nodes[i].name))
+        .collect();
     // Distinct ranks, MOST urgent first.
-    let mut ranks: Vec<i64> = lifted.iter().map(|&i| nodes[i].priority).collect();
+    let mut ranks: Vec<i64> = candidates.iter().map(|&i| nodes[i].priority).collect();
     ranks.sort_unstable();
     ranks.dedup();
     if !low_number_is_high {
         ranks.reverse();
     }
-    let slots = plan.slots_above_transport();
-    if slots.len() < ranks.len() {
-        for &i in &lifted {
+    let lifted: Vec<usize> = if slots.len() < ranks.len() {
+        for &i in &candidates {
             degradations.push(Degradation {
                 node: nodes[i].name.clone(),
                 dim: "priority",
                 reason: format!(
-                    "its contract supervises a deadline, so it is allocated above the \
-                     transport band - but the kernel has {} priorit{} above the transport \
-                     for {} rank(s); it stays in pool.app [{}, {}], below the transport",
+                    "its tier names `above = \"transport\"` - but the kernel has {} \
+                     priorit{} above the transport for {} rank(s); it stays in pool.app \
+                     [{}, {}], below the transport",
                     slots.len(),
                     if slots.len() == 1 { "y" } else { "ies" },
                     ranks.len(),
@@ -142,28 +180,56 @@ pub fn lift_supervised_above_transport(
                 ),
             });
         }
-        return (Vec::new(), None);
-    }
-    // ranks[k] (k-th most urgent) -> slots[n - 1 - k] (the least urgent rank
-    // adjacent to the transport).
-    let n = ranks.len();
-    for &i in &lifted {
-        let k = ranks
-            .iter()
-            .position(|&r| r == nodes[i].priority)
-            .unwrap_or(0);
-        nodes[i].priority = slots[n - 1 - k];
-    }
-    let supervisor = slots.get(n).copied();
-    if supervisor.is_none() {
-        for &i in &lifted {
+        Vec::new()
+    } else {
+        // ranks[k] (k-th most urgent) -> slots[n - 1 - k] (the least urgent
+        // rank adjacent to the transport).
+        let n = ranks.len();
+        for &i in &candidates {
+            let k = ranks
+                .iter()
+                .position(|&r| r == nodes[i].priority)
+                .unwrap_or(0);
+            nodes[i].priority = slots[n - 1 - k];
+        }
+        candidates
+    };
+    let used = if lifted.is_empty() { 0 } else { ranks.len() };
+    let watched: Vec<usize> = (0..nodes.len())
+        .filter(|&i| supervised.contains(&nodes[i].name))
+        .collect();
+    let supervisor = if watched.is_empty() {
+        None
+    } else {
+        slots.get(used).copied()
+    };
+    for &i in &watched {
+        if supervisor.is_none() {
             degradations.push(Degradation {
                 node: nodes[i].name.clone(),
                 dim: "priority",
-                reason: "allocated above the transport (its contract supervises a deadline), \
-                         at the most urgent preemptive priority left: no priority remains \
-                         above it for the supervisor that reacts to a miss"
+                reason: "its contract supervises a deadline, and no priority remains above \
+                         the transport for the supervisor that reacts to a miss"
                     .to_string(),
+            });
+        }
+        if !lifted.contains(&i) {
+            degradations.push(Degradation {
+                node: nodes[i].name.clone(),
+                dim: "priority",
+                reason: format!(
+                    "note: its contract supervises a deadline, and its tier does not name \
+                     `above = \"transport\"`, so its executor runs at {} below the \
+                     transport [{}, {}]: the supervised budget includes whatever the \
+                     transport runs meanwhile{}",
+                    nodes[i].priority,
+                    transport.lo,
+                    transport.hi,
+                    match supervisor {
+                        Some(p) => format!("; the supervisor runs at {p}, above the transport"),
+                        None => String::new(),
+                    }
+                ),
             });
         }
     }
@@ -308,6 +374,28 @@ pub fn derive_tiers_in_plan(
     callback_groups: &BTreeMap<String, Vec<CallbackGroupDecl>>,
     priority_plan: &PriorityPlan,
 ) -> DerivedSchedule {
+    derive_tiers_with_named(
+        model,
+        target_rtos,
+        callback_groups,
+        priority_plan,
+        &tiers_named_above_transport(model, target_rtos),
+    )
+}
+
+/// [`derive_tiers_in_plan`] with the tiers that name the transport band
+/// given (issue 1967; [`tiers_named_above_transport`] reads them off the
+/// model). A tier is one thread at one priority, its most urgent member's
+/// (issue 1426 rule 2), so it is that member's rank that is lifted: every
+/// member at the tier's most urgent rank joins [`lift_above_transport`]'s
+/// set, and the others keep their pool ranks, which no thread runs at.
+pub fn derive_tiers_with_named(
+    model: &SystemModel,
+    target_rtos: &str,
+    callback_groups: &BTreeMap<String, Vec<CallbackGroupDecl>>,
+    priority_plan: &PriorityPlan,
+    named_above_transport: &std::collections::BTreeSet<String>,
+) -> DerivedSchedule {
     let input = mapper_input_from_model(model);
     let ranked = chain_aware_rank(&input);
     if ranked.items.is_empty() {
@@ -341,10 +429,49 @@ pub fn derive_tiers_in_plan(
     // caller's: `derive_tiers_from_contracts` passes the tier key's projection,
     // a road holding the image's `.config` passes the image's own.
     let mut plan = realize_rtos(&ranked, &input, &caps, priority_plan);
-    // RFC-0079 section 6 - a node whose contract supervises a deadline is
-    // allocated above the transport band.
-    let (above_transport, supervisor_priority) = lift_supervised_above_transport(
+    // RFC-0079 section 6 - a tier that names the transport band is
+    // allocated above it; nothing else crosses (issue 1967).
+    let mut lift = std::collections::BTreeSet::new();
+    for tier in named_above_transport {
+        if !priority_plan.reserved.contains_key("transport") {
+            plan.degradations.push(Degradation {
+                node: format!("[tiers.{tier}]"),
+                dim: "priority",
+                reason: format!(
+                    "the tier names `above = \"transport\"`, but the plan for this \
+                     target ({target_rtos:?}) reserves no transport band: it is \
+                     allocated in pool.app [{}, {}]",
+                    priority_plan.app.lo, priority_plan.app.hi
+                ),
+            });
+            continue;
+        }
+        let members: Vec<&crate::rtos_realizer::RealizedNode> = plan
+            .nodes
+            .iter()
+            .filter(|n| {
+                callback_groups
+                    .get(bare(&n.name))
+                    .is_some_and(|gs| gs.iter().any(|g| &g.tier == tier))
+            })
+            .collect();
+        let lead = if caps.low_number_is_high {
+            members.iter().map(|n| n.priority).min()
+        } else {
+            members.iter().map(|n| n.priority).max()
+        };
+        if let Some(lead) = lead {
+            lift.extend(
+                members
+                    .iter()
+                    .filter(|n| n.priority == lead)
+                    .map(|n| n.name.clone()),
+            );
+        }
+    }
+    let (above_transport, supervisor_priority) = lift_above_transport(
         &mut plan.nodes,
+        &lift,
         &supervised_nodes(model),
         priority_plan,
         caps.low_number_is_high,
@@ -893,69 +1020,158 @@ mod tests {
         assert_eq!(d.supervisor_priority, None);
     }
 
-    /// The LESS urgent rank supervised: it alone crosses, to the priority
-    /// adjacent to the transport, and outranks the unsupervised node; the
-    /// supervisor gets the next one out.
+    fn set(names: &[&str]) -> std::collections::BTreeSet<String> {
+        names.iter().map(|n| n.to_string()).collect()
+    }
+
+    /// Issue 1967: a supervised node whose tier does not name the transport
+    /// stays where its rank puts it, below the transport, and that is said
+    /// in a note; the supervisor still gets the priority adjacent to the
+    /// transport, above it.
     #[test]
-    fn a_supervised_node_is_allocated_above_the_transport() {
+    fn a_supervised_node_stays_below_the_transport_unless_its_tier_names_it() {
         let mut m = contract_model();
         supervise(&mut m, "/telem_node/loop");
         let d = derive_tiers_in_plan(&m, "zephyr", &groups(), &island_plan());
+        assert_eq!(prio(&d, "/telem_node"), 6, "pool.app, not moved");
+        assert_eq!(prio(&d, "/control_node"), 5);
+        assert!(d.above_transport.is_empty());
         assert_eq!(
-            prio(&d, "/telem_node"),
-            3,
+            d.supervisor_priority,
+            Some(3),
             "adjacent to the transport [4, 4]"
         );
-        assert_eq!(prio(&d, "/control_node"), 5, "unsupervised: pool.app");
-        assert_eq!(d.above_transport, vec!["/telem_node".to_string()]);
-        assert_eq!(d.supervisor_priority, Some(2));
-        let t = &d.tiers["derived-telem_node"];
-        assert_eq!(t.zephyr.as_ref().expect("zephyr").priority, 3);
+        assert!(
+            d.degradations
+                .iter()
+                .any(|x| x.node == "/telem_node" && x.reason.starts_with("note:")),
+            "{:?}",
+            d.degradations
+        );
     }
 
-    /// Both supervised: their relative order is kept above the transport.
+    /// The island's shape: one allocated tier, three members, the most
+    /// urgent supervised. Without the key the tier runs at its leader's
+    /// pool rank (5) and the supervisor above the transport (3); with
+    /// `above = "transport"` the leader's rank alone is lifted (3) and the
+    /// supervisor goes one beyond it (2), the numbers #2312's implicit lift
+    /// gave.
     #[test]
-    fn supervised_nodes_keep_their_order_above_the_transport() {
+    fn a_tier_that_names_the_transport_is_lifted_with_its_leader_only() {
         let mut m = contract_model();
-        supervise(&mut m, "/telem_node/loop");
         supervise(&mut m, "/control_node/loop");
-        let d = derive_tiers_in_plan(&m, "zephyr", &groups(), &island_plan());
-        assert_eq!(prio(&d, "/control_node"), 2);
-        assert_eq!(prio(&d, "/telem_node"), 3);
-        assert_eq!(d.supervisor_priority, Some(1));
-    }
-
-    /// An authored, unplaced tier (rule 2) takes its most urgent member: a
-    /// supervised member lifts the whole tier.
-    #[test]
-    fn an_allocated_tier_with_a_supervised_member_runs_above_the_transport() {
-        let mut m = contract_model();
-        supervise(&mut m, "/telem_node/loop");
         m.execution.tiers.insert("mrm".into(), Default::default());
         let mut g = BTreeMap::new();
         g.insert("control_node".into(), vec![cbg("main", "mrm")]);
         g.insert("telem_node".into(), vec![cbg("main", "mrm")]);
-        let d = derive_tiers_in_plan(&m, "zephyr", &g, &island_plan());
-        assert_eq!(d.placements["mrm"].priority, 3);
+
+        let below = derive_tiers_in_plan(&m, "zephyr", &g, &island_plan());
+        assert_eq!(below.placements["mrm"].priority, 5);
+        assert_eq!(below.supervisor_priority, Some(3));
+        assert!(below.above_transport.is_empty());
+
+        let above = derive_tiers_with_named(&m, "zephyr", &g, &island_plan(), &set(&["mrm"]));
+        assert_eq!(above.placements["mrm"].priority, 3);
+        assert_eq!(above.above_transport, vec!["/control_node".to_string()]);
+        assert_eq!(prio(&above, "/telem_node"), 6, "not the leader: not lifted");
+        assert_eq!(above.supervisor_priority, Some(2));
+        assert!(
+            !above
+                .degradations
+                .iter()
+                .any(|x| x.reason.starts_with("note:")),
+            "{:?}",
+            above.degradations
+        );
     }
 
-    /// No room above the transport: nothing crosses, and it is said.
+    /// A tier may name the transport with nothing supervised: it is lifted,
+    /// and no supervisor priority is reserved.
     #[test]
-    fn with_no_priority_above_the_transport_nothing_crosses() {
+    fn a_named_tier_without_supervision_is_lifted_and_reserves_no_supervisor() {
+        let m = {
+            let mut m = contract_model();
+            m.execution.tiers.insert("fast".into(), Default::default());
+            m
+        };
+        let mut g = groups();
+        g.insert("telem_node".into(), vec![cbg("main", "fast")]);
+        let d = derive_tiers_with_named(&m, "zephyr", &g, &island_plan(), &set(&["fast"]));
+        assert_eq!(d.placements["fast"].priority, 3);
+        assert_eq!(prio(&d, "/control_node"), 5);
+        assert_eq!(d.supervisor_priority, None);
+    }
+
+    /// A plan without a transport band: the named tier stays in pool.app,
+    /// and a degradation names the tier and the target.
+    #[test]
+    fn naming_the_transport_on_a_plan_without_one_degrades() {
         let mut m = contract_model();
-        supervise(&mut m, "/telem_node/loop");
-        // Band 255 resolves the transport to k_thread 0: nothing above it but
-        // the cooperative priorities, which a derived placement never takes.
-        let plan = crate::priority_plan::zephyr_plan(15, 16, &[255, 200], "test");
-        let d = derive_tiers_in_plan(&m, "zephyr", &groups(), &plan);
+        m.execution.tiers.insert("fast".into(), Default::default());
+        let mut g = groups();
+        g.insert("telem_node".into(), vec![cbg("main", "fast")]);
+        let mut plan = island_plan();
+        plan.reserved.remove("transport");
+        let d = derive_tiers_with_named(&m, "zephyr", &g, &plan, &set(&["fast"]));
         assert!(d.above_transport.is_empty());
-        assert!(prio(&d, "/telem_node") > 4, "stays in pool.app");
         assert!(
             d.degradations
                 .iter()
-                .any(|x| x.node == "/telem_node" && x.dim == "priority"),
+                .any(|x| x.node == "[tiers.fast]" && x.reason.contains("no transport band")),
             "{:?}",
             d.degradations
+        );
+    }
+
+    /// Two lifted ranks keep their order above the transport.
+    #[test]
+    fn lifted_nodes_keep_their_order_above_the_transport() {
+        let mut nodes = vec![realized("/a", 5), realized("/b", 6), realized("/c", 7)];
+        let mut deg = Vec::new();
+        let (lifted, s) = lift_above_transport(
+            &mut nodes,
+            &set(&["/a", "/b"]),
+            &set(&["/a"]),
+            &island_plan(),
+            true,
+            &mut deg,
+        );
+        assert_eq!(
+            (nodes[0].priority, nodes[1].priority, nodes[2].priority),
+            (2, 3, 7)
+        );
+        assert_eq!(lifted.len(), 2);
+        assert_eq!(s, Some(1));
+        assert!(deg.is_empty(), "{deg:?}");
+    }
+
+    /// No room above the transport: nothing crosses, and it is said; the
+    /// supervisor has no priority either.
+    #[test]
+    fn with_no_priority_above_the_transport_nothing_crosses() {
+        // Band 255 resolves the transport to k_thread 0: nothing above it but
+        // the cooperative priorities, which a derived placement never takes.
+        let plan = crate::priority_plan::zephyr_plan(15, 16, &[255, 200], "test");
+        let mut nodes = vec![realized("/a", 6)];
+        let mut deg = Vec::new();
+        let (lifted, s) = lift_above_transport(
+            &mut nodes,
+            &set(&["/a"]),
+            &set(&["/a"]),
+            &plan,
+            true,
+            &mut deg,
+        );
+        assert!(lifted.is_empty());
+        assert_eq!(nodes[0].priority, 6, "stays in pool.app");
+        assert_eq!(s, None);
+        assert!(
+            deg.iter().any(|x| x.reason.contains("kernel has 0")),
+            "{deg:?}"
+        );
+        assert!(
+            deg.iter().any(|x| x.reason.contains("no priority remains")),
+            "{deg:?}"
         );
     }
 
@@ -967,8 +1183,14 @@ mod tests {
         let mut plan = island_plan();
         plan.range = crate::priority_plan::Band::new(3, 14);
         let mut deg = Vec::new();
-        let sup: std::collections::BTreeSet<String> = ["/a".to_string()].into();
-        let (lifted, s) = lift_supervised_above_transport(&mut nodes, &sup, &plan, true, &mut deg);
+        let (lifted, s) = lift_above_transport(
+            &mut nodes,
+            &set(&["/a"]),
+            &set(&["/a"]),
+            &plan,
+            true,
+            &mut deg,
+        );
         assert_eq!(nodes[0].priority, 3);
         assert_eq!(lifted, vec!["/a".to_string()]);
         assert_eq!(s, None);
@@ -991,15 +1213,26 @@ mod tests {
             source: "test".into(),
         };
         let mut nodes = vec![realized("/a", 3), realized("/b", 2), realized("/c", 1)];
-        let sup: std::collections::BTreeSet<String> = ["/a".to_string(), "/b".to_string()].into();
         let mut deg = Vec::new();
-        let (_, s) = lift_supervised_above_transport(&mut nodes, &sup, &plan, false, &mut deg);
+        let (_, s) = lift_above_transport(
+            &mut nodes,
+            &set(&["/a", "/b"]),
+            &set(&["/a"]),
+            &plan,
+            false,
+            &mut deg,
+        );
         assert_eq!(
             (nodes[0].priority, nodes[1].priority, nodes[2].priority),
             (6, 5, 1)
         );
         assert_eq!(s, Some(7));
         assert!(deg.is_empty());
+        // Nothing lifted, one supervised: the supervisor is adjacent (5).
+        let mut nodes = vec![realized("/a", 3)];
+        let (_, s) =
+            lift_above_transport(&mut nodes, &set(&[]), &set(&["/a"]), &plan, false, &mut deg);
+        assert_eq!((nodes[0].priority, s), (3, Some(5)));
     }
 
     fn realized(name: &str, priority: i64) -> crate::rtos_realizer::RealizedNode {
