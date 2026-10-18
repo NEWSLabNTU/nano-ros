@@ -705,14 +705,9 @@
     "why": "the same for `now - header.stamp` age monitors (RFC-0052 W3b.2) -- 'this pose is stale' is a different question from 'this publisher missed its deadline'. See `rust:Executor::*monitor_table`.",
     "bucket": "ours-only"
   },
-  "rust:Executor::*component*": {
-    "verdict": "extension",
-    "why": "the component enrolment table the `nros::node!` macro expands into -- how many slots exist, which are filled, and each enrolled component's state. Machinery a generated entry point needs and a hand-written user does not; issue 1789. RFC-0043/0044.",
-    "bucket": "ours-only"
-  },
   "rust:Executor::*dispatch*": {
     "verdict": "extension",
-    "why": "the generated-entry-point dispatch table: reserve a slot, count them, and invoke one by index. A static table indexed by slot is how a callback reaches its component body with no trait object and no allocation. Machinery `nros::node!` expands into; issue 1789.",
+    "why": "the generated-entry-point dispatch table: reserve a slot, count them, and invoke one by index. A static table indexed by slot is how a callback reaches its component body with no trait object and no allocation. `#[doc(hidden)]` on `Executor` since phase-506 W1 (RFC-0071 D12): a method cannot move module, and the C/C++ shims and generated dispatch still call it.",
     "bucket": "ours-only"
   },
   "rust:Executor::*domain_id": {
@@ -1075,7 +1070,7 @@
   },
   "rust:ExecutorNodeRuntime": {
     "verdict": "extension",
-    "why": "the adapter that lets a declarative component (RFC-0043/0044) run against a real `Executor`: it registers the component's declared entities, owns the spin loop, and routes each callback back into `ExecutableNode::on_callback`. rclrs has no counterpart because a user there constructs entities and closures directly. Machinery `nros::node!` and the orchestration codegen expand into; issue 1789. Covers its members (`register_node`, `spin`, `spin_once`, `spin_once_counted`, `dispatch_callback`, `apply_tier_sched_policy`, `component_count`, `halt`, `executor`, `executor_mut`, `from_executor`)."
+    "why": "the adapter that lets a declarative component (RFC-0043/0044) run against a real `Executor`: it registers the component's declared entities, owns the spin loop, and routes each callback back into `ExecutableNode::on_callback`. rclrs has no counterpart because a user there constructs entities and closures directly. Covers its members (`register_node`, `spin`, `spin_once`, `spin_once_counted`, `dispatch_callback`, `apply_tier_sched_policy`, `component_count`, `halt`, `executor`, `executor_mut`, `from_executor`). Moved to the doc-hidden `nros::__macro` by phase-506 W1 (RFC-0071 D12): it is what `nros::node!` / `nros::main!` and the board entry glue expand into, so generated code keeps its path and a node author no longer meets it beside the user API."
   },
   "rust:ExecutorRuntime": {
     "verdict": "declined",

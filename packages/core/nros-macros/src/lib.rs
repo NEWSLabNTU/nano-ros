@@ -376,7 +376,7 @@ fn node_impl(input: TokenStream) -> TokenStream {
             executor: *mut ::core::ffi::c_void,
             _self: *mut ::core::ffi::c_void,
         ) -> i32 {
-            unsafe { ::nros::install_node_typed_in(executor, &#component_store_name) }
+            unsafe { ::nros::__macro::install_node_typed_in(executor, &#component_store_name) }
         }
 
         #[unsafe(no_mangle)]
@@ -489,7 +489,7 @@ fn node_impl(input: TokenStream) -> TokenStream {
             let state: <#node_ty as ::nros::ExecutableNode>::State =
                 <#node_ty as ::nros::ExecutableNode>::init();
             let state_ptr =
-                ::nros::__private_node_state_into_raw::<#node_ty>(state)
+                ::nros::__macro::__private_node_state_into_raw::<#node_ty>(state)
                     as *mut ::core::ffi::c_void;
             executor.register_dispatch_slot(state_ptr, #on_callback_fn_name)
         }
@@ -499,14 +499,14 @@ fn node_impl(input: TokenStream) -> TokenStream {
         /// owned-spin loop call `<pkg>::register(runtime)?` once per Node.
         ///
         /// This now installs through the **uniform `install` seam** — the
-        /// same `nros::install_node_typed` path the C / C++ typed entries
+        /// same `nros::__macro::install_node_typed` path the C / C++ typed entries
         /// use — via a raw `*mut Executor` the runtime sink exposes
         /// (`executor_handle()`), replacing the legacy opaque four-fn-ptr
         /// `register_dispatch_slot_dyn` bridge. The installed component
         /// enrolls in the executor's tick registry, so service-client /
         /// action poll nodes tick (phase-257 D2 closed for owned-spin too).
         ///
-        /// References `::nros::install_node_typed` → `::nros::Executor<'static>`,
+        /// References `::nros::__macro::install_node_typed` → `::nros::Executor<'static>`,
         /// gated on `rmw-cffi` inside `nros`; the Node pkg must depend on
         /// `nros` with `rmw-cffi` (every owned-spin example pkg does). A
         /// null handle (a sink with no live executor) maps to
@@ -527,7 +527,7 @@ fn node_impl(input: TokenStream) -> TokenStream {
             // overrides; `ExecutorSink::create_node` installs them on the node so
             // entity creation folds the matching ones in.
             match unsafe {
-                ::nros::install_node_typed_with_launch_in(
+                ::nros::__macro::install_node_typed_with_launch_in(
                     executor,
                     &#component_store_name,
                     runtime.params,

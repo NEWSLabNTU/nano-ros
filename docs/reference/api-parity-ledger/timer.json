@@ -114,15 +114,15 @@
   },
   "c:platform_clock_ns": {
     "verdict": "extension",
-    "why": "the platform clock seam (RFC-0073): nanosecond time and a bounded sleep supplied by the BOARD rather than by libc. ROS 2 reaches the same thing through rcutils and an OS that always has one; a bare-metal target may have only a cycle counter. Not application API -- see issue 1789 for the same complaint about seams reaching `nros::`."
+    "why": "the platform clock seam (RFC-0073): nanosecond time and a bounded sleep supplied by the BOARD rather than by libc. ROS 2 reaches the same thing through rcutils and an OS that always has one; a bare-metal target may have only a cycle counter. Kept where it is by phase-506 W1 (RFC-0071 D12): it already sits behind `nros::internals` / `nros::embedded` or is a C seam, outside the top-level Rust user API D12 is about."
   },
   "c:platform_sleep_us": {
     "verdict": "extension",
-    "why": "the platform clock seam (RFC-0073): nanosecond time and a bounded sleep supplied by the BOARD rather than by libc. ROS 2 reaches the same thing through rcutils and an OS that always has one; a bare-metal target may have only a cycle counter. Not application API -- see issue 1789 for the same complaint about seams reaching `nros::`."
+    "why": "the platform clock seam (RFC-0073): nanosecond time and a bounded sleep supplied by the BOARD rather than by libc. ROS 2 reaches the same thing through rcutils and an OS that always has one; a bare-metal target may have only a cycle counter. Kept where it is by phase-506 W1 (RFC-0071 D12): it already sits behind `nros::internals` / `nros::embedded` or is a C seam, outside the top-level Rust user API D12 is about."
   },
   "c:platform_time_now_ns": {
     "verdict": "extension",
-    "why": "the platform clock seam (RFC-0073): nanosecond time and a bounded sleep supplied by the BOARD rather than by libc. ROS 2 reaches the same thing through rcutils and an OS that always has one; a bare-metal target may have only a cycle counter. Not application API -- see issue 1789 for the same complaint about seams reaching `nros::`."
+    "why": "the platform clock seam (RFC-0073): nanosecond time and a bounded sleep supplied by the BOARD rather than by libc. ROS 2 reaches the same thing through rcutils and an OS that always has one; a bare-metal target may have only a cycle counter. Kept where it is by phase-506 W1 (RFC-0071 D12): it already sits behind `nros::internals` / `nros::embedded` or is a C seam, outside the top-level Rust user API D12 is about."
   },
   "c:ros_clock_fini": {
     "verdict": "declined",

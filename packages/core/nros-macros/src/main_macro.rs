@@ -2059,7 +2059,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                     );
                 }
             };
-            let mut node_runtime = ::nros::ExecutorNodeRuntime::from_executor(executor);
+            let mut node_runtime = ::nros::__macro::ExecutorNodeRuntime::from_executor(executor);
             let mut ctx = ::nros::__macro_support::nros_platform::RuntimeCtx::with_runtime(
                 &mut node_runtime,
             );

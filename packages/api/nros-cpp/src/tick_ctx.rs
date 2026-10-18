@@ -9,7 +9,7 @@
 //!   action-client goal from a tick body; the assigned [`GoalId`] is
 //!   stamped by the server-side accept.
 //!
-//! Both seams route through the [`nros::ClientDispatch`] trait so the
+//! Both seams route through the [`nros::__macro::ClientDispatch`] trait so the
 //! generated runtime (in `nros-cli`'s codegen — Phase 212.M-F.4.a, not yet
 //! shipped) can resolve client handles by stable entity id without dragging
 //! the executor type into [`TickCtx`].

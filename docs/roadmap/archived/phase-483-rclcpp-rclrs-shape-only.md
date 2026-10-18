@@ -313,7 +313,7 @@ example and not required by the acceptance.
   carried a pasted copy of `NodeHandle`'s "four node-shaped things" text and
   now describe their own names. 64 rows complained that `nros::` exports
   machinery beside the user API, citing 0784. That half was never settled, so
-  those rows now cite [issue 1789](../../issues/1789-nros-facade-exports-runtime-machinery.md), filed for it.
+  those rows now cite [issue 1789](../../issues/archived/1789-nros-facade-exports-runtime-machinery.md), filed for it.
 - **Two gates that had gone blind, found during the sweep:**
   - `check-component-entity-bounds` matched `impl … Node for`, so after W2
     renamed the trait it read 2 classes of ~104 and reported OK. It now

@@ -23,7 +23,7 @@ use core::mem::MaybeUninit;
 
 use heapless::spsc::{Consumer, Producer, Queue};
 #[cfg(feature = "e2e-synthetic-callback")]
-use nros::PublisherResolver;
+use nros::__macro::PublisherResolver;
 use nros_platform::{
     BoardExit, BoardInit, BoardPrint, DeployOverlay, DispatchStrategy, NodeDispatchRuntime,
     RticBoardEntry, SignaledCallback,

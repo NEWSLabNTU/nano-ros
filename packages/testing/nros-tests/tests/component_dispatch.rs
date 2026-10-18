@@ -23,9 +23,9 @@ use std::{
 };
 
 use nros::{
-    Callback, CallbackCtx, CdrReader, CdrWriter, Component, DeclarativeNode, DeserError,
-    Deserialize, ExecutableNode, Executor, ExecutorConfig, ExecutorNodeRuntime, NodeContext,
-    NodeOptions, NodeResult, SerError, Serialize, TickCtx,
+    __macro::ExecutorNodeRuntime, Callback, CallbackCtx, CdrReader, CdrWriter, Component,
+    DeclarativeNode, DeserError, Deserialize, ExecutableNode, Executor, ExecutorConfig,
+    NodeContext, NodeOptions, NodeResult, SerError, Serialize, TickCtx,
 };
 use nros_platform::RuntimeCtx;
 use nros_tests::fixtures::{ZenohRouter, require_zenohd, zenohd_unique};
@@ -230,7 +230,7 @@ fn signaled_callback_reaches_an_installed_component(zenohd_unique: ZenohRouter) 
     assert_eq!(runtime.component_count(), 0);
 
     struct NoPublishers;
-    impl nros::PublisherResolver for NoPublishers {
+    impl nros::__macro::PublisherResolver for NoPublishers {
         fn publish_raw(&self, _entity_id: &str, _data: &[u8]) -> NodeResult<()> {
             Ok(())
         }

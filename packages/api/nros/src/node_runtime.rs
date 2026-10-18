@@ -393,7 +393,7 @@ struct ComponentCell<
     // handle is kept here so the tick can complete goals / publish feedback.
     service_clients: RefCell<heapless::Vec<(IdStr, crate::HandleId), SVCS>>,
     action_clients: RefCell<heapless::Vec<(IdStr, usize), ACTC>>,
-    action_servers: RefCell<heapless::Vec<(IdStr, crate::ActionServerRawHandle), ACTS>>,
+    action_servers: RefCell<heapless::Vec<(IdStr, crate::internals::ActionServerRawHandle), ACTS>>,
     // W5-endgame ctx slabs (issue 0857) — the leaked trampoline contexts the
     // sink used to `Box::into_raw` live INSIDE the cell, sized by the class's
     // declared bounds, so the macro path allocates nothing. Monotonic
@@ -510,7 +510,7 @@ trait CellView {
     fn publisher(&self, entity_id: &str) -> Option<Ref<'_, EmbeddedRawPublisher>>;
     fn service_clients(&self) -> Ref<'_, [(IdStr, crate::HandleId)]>;
     fn action_clients(&self) -> Ref<'_, [(IdStr, usize)]>;
-    fn action_servers(&self) -> Ref<'_, [(IdStr, crate::ActionServerRawHandle)]>;
+    fn action_servers(&self) -> Ref<'_, [(IdStr, crate::internals::ActionServerRawHandle)]>;
     /// Run `f` over the component slot unless it is already mutably borrowed
     /// (a re-entrant dispatch on the same cell) — in which case the dispatch
     /// is dropped, exactly as the pre-trait `try_borrow_mut` spelled it.
@@ -535,8 +535,11 @@ trait CellView {
     fn push_publisher(&self, id: IdStr, handle: EmbeddedRawPublisher) -> Result<(), ()>;
     fn push_service_client(&self, id: IdStr, handle: crate::HandleId) -> Result<(), ()>;
     fn push_action_client(&self, id: IdStr, entry_index: usize) -> Result<(), ()>;
-    fn push_action_server(&self, id: IdStr, handle: crate::ActionServerRawHandle)
-    -> Result<(), ()>;
+    fn push_action_server(
+        &self,
+        id: IdStr,
+        handle: crate::internals::ActionServerRawHandle,
+    ) -> Result<(), ()>;
     /// W5-endgame ctx slabs — place a trampoline context into the cell's slab
     /// and return its stable address for the executor's C-ABI registration.
     /// `Err(())` = slab full (the class declared fewer of that kind than
@@ -592,7 +595,7 @@ impl<const PUBS: usize, const SVCS: usize, const ACTC: usize, const ACTS: usize,
     fn push_action_server(
         &self,
         id: IdStr,
-        handle: crate::ActionServerRawHandle,
+        handle: crate::internals::ActionServerRawHandle,
     ) -> Result<(), ()> {
         self.action_servers
             .borrow_mut()
@@ -657,7 +660,7 @@ impl<const PUBS: usize, const SVCS: usize, const ACTC: usize, const ACTS: usize,
         Ref::map(self.action_clients.borrow(), |v| v.as_slice())
     }
 
-    fn action_servers(&self) -> Ref<'_, [(IdStr, crate::ActionServerRawHandle)]> {
+    fn action_servers(&self) -> Ref<'_, [(IdStr, crate::internals::ActionServerRawHandle)]> {
         Ref::map(self.action_servers.borrow(), |v| v.as_slice())
     }
 
@@ -1238,7 +1241,7 @@ unsafe extern "C" fn component_drop_trampoline<
 // `no_std`. `BoardEntry::run` installs this `ExecutorNodeRuntime` impl on the
 // per-boot `RuntimeCtx::runtime` slot. The owned-spin entry reaches the live
 // executor through `executor_handle()` (a raw pointer crosses the layering wall
-// cleanly) and installs via `nros::install_node_typed`. Phase 258 (w5) retired
+// cleanly) and installs via `nros::__macro::install_node_typed`. Phase 258 (w5) retired
 // the old `register_dispatch_slot_dyn` four-fn-ptr bridge.
 
 #[cfg(feature = "alloc")]
@@ -1250,7 +1253,7 @@ impl ::nros_platform::NodeDispatchRuntime for ExecutorNodeRuntime {
     fn executor_handle(&mut self) -> *mut core::ffi::c_void {
         // Phase 258 (Track 2, 2a) — hand the owned-spin entry a raw pointer to
         // the executor this runtime owns, so a Node pkg's `register(runtime)`
-        // can install through `nros::install_node_typed` (same seam as the
+        // can install through `nros::__macro::install_node_typed` (same seam as the
         // C/C++ typed entries). The pointer is valid for the runtime's life
         // (the executor is an inline field); the install call uses it only
         // during registration, before any concurrent spin.
@@ -1803,7 +1806,7 @@ impl crate::node::FrameSink for ExecutorSink<'_> {
                     .map_err(|_| cell_full("action servers"))?;
                 let handle = executor
                     .register_action_server_raw_sized::<1024, 1024, 1024, 4>(
-                        crate::RawActionServerSpec {
+                        crate::internals::RawActionServerSpec {
                             node_id: Some(node),
                             action_name: entity_name,
                             type_name: metadata.type_name,
@@ -1855,7 +1858,7 @@ impl crate::node::FrameSink for ExecutorSink<'_> {
                 };
                 let handle = executor
                     .register_action_client_raw_sized::<1024, 1024, 1024>(
-                        crate::RawActionClientSpec {
+                        crate::internals::RawActionClientSpec {
                             node_id: Some(node),
                             action_name: entity_name,
                             type_name: metadata.type_name,
@@ -2244,7 +2247,7 @@ impl ClientDispatch for RuntimeClientDispatch<'_> {
         request_cdr: &[u8],
         response_buf: &mut [u8],
     ) -> NodeResult<usize> {
-        use crate::ClientTrait;
+        use nros_rmw::ClientTrait;
         let hid = self.service(service_entity)?;
         {
             let executor = unsafe { &mut *self.executor };
@@ -2275,7 +2278,7 @@ impl ClientDispatch for RuntimeClientDispatch<'_> {
     }
 
     fn service_is_ready(&self, service_entity: &str) -> NodeResult<bool> {
-        use crate::ClientTrait;
+        use nros_rmw::ClientTrait;
         let hid = self.service(service_entity)?;
         let executor = unsafe { &mut *self.executor };
         let slot = executor.resolve_handle(hid).ok_or(NodeDeclError::Runtime)?;
@@ -2321,11 +2324,11 @@ impl ClientDispatch for RuntimeClientDispatch<'_> {
 /// its `tick` via `TickCtx`.
 struct RuntimeActions<'a> {
     executor: *mut Executor<'static>,
-    handles: &'a [(IdStr, crate::ActionServerRawHandle)],
+    handles: &'a [(IdStr, crate::internals::ActionServerRawHandle)],
 }
 
 impl RuntimeActions<'_> {
-    fn handle(&self, entity: &str) -> NodeResult<crate::ActionServerRawHandle> {
+    fn handle(&self, entity: &str) -> NodeResult<crate::internals::ActionServerRawHandle> {
         self.handles
             .iter()
             .find(|(e, _)| e == entity)
