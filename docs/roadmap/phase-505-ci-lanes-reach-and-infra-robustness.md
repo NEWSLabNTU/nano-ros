@@ -114,3 +114,4 @@ ejection from a cause listed here.
 | [#1868](../issues/1868-ci-rustup-downloads-flake-merge-gating-jobs.md) | Merge-gating jobs download Rust toolchains at run time, and a failed download ejects the whole batch. |
 | [#1960](../issues/1960-standalone-cargo-roots-linted-by-no-lane.md) | Filed 2026-10-18 while closing #1309: 28 excluded cargo roots are built, as a fixture or a locked root, and clippy reaches none of them. |
 | [#1912](../issues/archived/1912-push-gate-pin-baseline-is-live-main.md) | The push-event submodule-pin gate compares against the live `origin/main`, so a superseded commit reads as a REWIND. |
+| [#1964](../issues/1964-pre-push-fast-red-unreproduced.md) | The pre-push `check fast` went red once and green on an immediate retry, and which gate it was cannot be recovered. The hook now keeps its full output outside the checkout. |

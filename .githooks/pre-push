@@ -252,9 +252,24 @@ elif ! command -v just >/dev/null 2>&1; then
 else
     echo "pre-push: running \`just check fast\` (issue 0840)." >&2
     echo "          Bypass: git push --no-verify, or NROS_SKIP_PREPUSH_CHECKS=1" >&2
-    if ! (cd "$repo_root" && just check fast); then
+    # The full output is also KEPT, outside every checkout (issue 1964): a red
+    # here was once seen only as its last three lines, in a worktree removed
+    # minutes later, and never reproduced -- so which gate it was is unknown.
+    # Sourced from the PUSHED checkout, which may predate the helper (a
+    # `core.hooksPath` naming another checkout's .githooks runs this file
+    # against an older tree), so its absence means "run unlogged", not "die".
+    logged=()
+    if [ -r "$repo_root/scripts/lib/prepush-log.sh" ]; then
+        # shellcheck source=scripts/lib/prepush-log.sh
+        . "$repo_root/scripts/lib/prepush-log.sh"
+        logged=(nros_prepush_run_logged)
+    fi
+    if ! (cd "$repo_root" && ${logged[@]+"${logged[@]}"} just check fast); then
         echo "" >&2
         echo "pre-push: REFUSING to push — the fast gate tier is red." >&2
+        if [ "${#logged[@]}" -gt 0 ]; then
+            echo "  Full output + per-gate verdicts: newest under $(nros_prepush_log_dir)/" >&2
+        fi
         echo "" >&2
         echo "  Fix the failure above and push again. If it is not yours, it came" >&2
         echo "  in on the rebase: say so in the commit that fixes it." >&2

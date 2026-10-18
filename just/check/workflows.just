@@ -426,6 +426,15 @@ runner-doctor-sdk-resolution:
 runner-sweep-eviction-order:
     @bash tests/runner-sweep-eviction-order-tests.sh
 
+# issue 1964 — the pre-push hook keeps `just check fast`'s full output and
+# per-gate verdicts in a per-user state dir, outside every checkout, so a red
+# survives the terminal and `git worktree remove`. Exercises the helper (status
+# through the tee, both streams, timings routing, unwritable dir, retention) and
+# that the hook calls it. Buildless, tmpdir, <1 s.
+[private]
+pre-push-log:
+    @bash tests/pre-push-log-tests.sh
+
 # A build recipe that redirects `cmake --build` to `/dev/null` discards the one
 # stream ninja reports failures on, so the lane keeps a verdict and loses its
 # diagnosis: the 2026-09-22 ThreadX-RV64 nightly said `0/12 ok, 12 failed` over
