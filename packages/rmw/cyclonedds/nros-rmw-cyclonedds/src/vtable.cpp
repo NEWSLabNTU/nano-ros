@@ -485,13 +485,15 @@ const nros_rmw_vtable_t kVtable = {
      * the slot's own header records that a NULL one means the hint stands. */
     /*required_rx_bytes*/ nullptr,
     /*supported_qos_policies*/ cyclone_supported_qos_policies,
-    /* Issue 1940 — per-entity wake. NULL until the reader's
-     * `on_data_available` listener carries the registration (phase-397 W1):
-     * the runtime then reports a C caller's wake callback as UNSUPPORTED
-     * instead of accepting one that never fires. */
-    /*subscription_set_on_new_message_callback*/ nullptr,
-    /*service_set_on_new_request_callback*/ nullptr,
-    /*client_set_on_new_response_callback*/ nullptr,
+    /* phase-397 W2.b — per-entity wake (issue 1940's slots). The registration
+     * rides a data_available listener on the entity's own READER, which
+     * Cyclone invokes instead of the participant's, so an attributed arrival
+     * wakes its owner and not the session. A NO_FOREIGN_WAKE build answers
+     * UNSUPPORTED from the same functions. Bodies in `session.cpp` (the
+     * helper), `subscriber.cpp` and `service.cpp`. */
+    /*subscription_set_on_new_message_callback*/ subscription_set_on_new_message_callback,
+    /*service_set_on_new_request_callback*/ service_set_on_new_request_callback,
+    /*client_set_on_new_response_callback*/ client_set_on_new_response_callback,
 };
 
 } // namespace

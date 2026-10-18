@@ -43,7 +43,7 @@ automatically as backends land implementations.
 | Actual-QoS read-back | wired | — | wired | wired |
 | Wait-for-acked | — | — | — | — |
 | Take-with-info | wired | — | wired | — |
-| Entity new-data callbacks | wired | — | — | — |
+| Entity new-data callbacks | wired | — | wired | — |
 | Graph introspection (names/types/counts) | wired | — | wired | — |
 
 ## Node-layer features

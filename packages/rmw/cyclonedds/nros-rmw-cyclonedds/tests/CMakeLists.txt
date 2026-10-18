@@ -101,6 +101,27 @@ add_test(
     COMMAND nros_rmw_cyclonedds_pubsub_smoke
 )
 
+# phase-397 W2.b — a registered entity's arrivals call its own callback, not
+# the session wake; an unregistered one, or a cleared one, reaches the session
+# wake. Reuses the test_string descriptor above.
+add_executable(nros_rmw_cyclonedds_entity_wake
+    entity_wake.cpp
+    ${_test_string_sources}
+)
+target_link_libraries(nros_rmw_cyclonedds_entity_wake
+    PRIVATE
+        nros_rmw_cyclonedds
+)
+target_include_directories(nros_rmw_cyclonedds_entity_wake
+    PRIVATE
+        ${NROS_RMW_CFFI_DIR}
+        "${CMAKE_CURRENT_BINARY_DIR}/types"
+)
+add_test(
+    NAME nros_rmw_cyclonedds_entity_wake
+    COMMAND nros_rmw_cyclonedds_entity_wake
+)
+
 # Issue 0780 — polled status events, provoked for real (a 50 ms deadline and a
 # publisher that stops). Reuses the test_string descriptor above.
 add_executable(nros_rmw_cyclonedds_status_events
@@ -762,6 +783,7 @@ set_tests_properties(
     nros_rmw_cyclonedds_session_smoke
     nros_rmw_cyclonedds_codegen_smoke
     nros_rmw_cyclonedds_pubsub_smoke
+    nros_rmw_cyclonedds_entity_wake
     nros_rmw_cyclonedds_data_roundtrip
     nros_rmw_cyclonedds_take_sequence_pending_status
     PROPERTIES

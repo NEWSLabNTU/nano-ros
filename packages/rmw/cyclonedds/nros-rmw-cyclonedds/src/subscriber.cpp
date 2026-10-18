@@ -74,6 +74,8 @@ struct SubState {
     size_t pending_too_small_len{0};
     /// Issue 1269 — the graph this reader is listed in (see PubState::graph).
     GraphState* graph{nullptr};
+    /// phase-397 W2.b — this reader's `set_on_new_message_callback`.
+    EntityWake wake{};
     /// Issue 1495 — publication handle → writer GUID, for `take_with_info`.
     ///
     /// A sample carries its writer's instance HANDLE, which is local to this
@@ -220,12 +222,22 @@ rmw_ret_t subscription_destroy(rmw_subscription_t* subscriber) {
     if (state->graph != nullptr && state->reader > 0 && dds_get_participant(state->reader) > 0) {
         graph_untrack_reader(state->graph, state->reader);
     }
+    entity_wake_release(state->reader, &state->wake);
     dds_return_t reader_rc = state->reader > 0 ? dds_delete(state->reader) : DDS_RETCODE_OK;
     dds_return_t topic_rc = state->topic > 0 ? dds_delete(state->topic) : DDS_RETCODE_OK;
     delete state;
     subscriber->backend_data = nullptr;
     if (reader_rc < 0 || topic_rc < 0) return NROS_RMW_RET_ERROR;
     return NROS_RMW_RET_OK;
+}
+
+rmw_ret_t subscription_set_on_new_message_callback(rmw_subscription_t* subscription,
+                                                   rmw_event_callback_t callback,
+                                                   const void* user_data) {
+    if (subscription == nullptr) return NROS_RMW_RET_INVALID_ARGUMENT;
+    SubState* state = as_state(subscription);
+    if (state == nullptr) return NROS_RMW_RET_INVALID_ARGUMENT;
+    return entity_wake_set(state->reader, &state->wake, callback, user_data);
 }
 
 /// One take, reporting the sample's `dds_sample_info_t` to `si_out` when the

@@ -217,6 +217,46 @@ rmw_ret_t session_create(const char *locator, uint8_t mode,
                             rmw_session_t *out);
 rmw_ret_t session_destroy(rmw_session_t *session);
 
+/* phase-397 W2.b — one entity's `*_set_on_new_*_callback` registration.
+ *
+ * Held by the entity's own state (SubState / ServerState / ClientState). The
+ * registration is carried by a data_available listener on the entity's READER,
+ * which Cyclone invokes instead of the participant's: an event handled at the
+ * reader does not propagate to its parent. So an attributed arrival calls the
+ * entity's callback and NOT the session wake, and the other executors sharing
+ * this session are not woken by it. Clearing removes the reader's listener and
+ * the arrival goes back to the participant listener and the session wake.
+ *
+ * `cb` and `user_data` change only while no listener is attached:
+ * `dds_set_listener` waits out a callback in progress, so detach, store,
+ * re-attach is the whole synchronisation. */
+struct EntityWake {
+    rmw_event_callback_t cb{nullptr};
+    const void *user_data{nullptr};
+    dds_listener_t *listener{nullptr};
+};
+
+/* Install (`cb` non-NULL) or clear the registration on `reader`. A build with
+ * `NROS_RMW_CYCLONEDDS_NO_FOREIGN_WAKE` reports UNSUPPORTED, as
+ * `session_set_wake_callback` does there: Cyclone's thread must not enter the
+ * platform's scheduler. */
+rmw_ret_t entity_wake_set(dds_entity_t reader, EntityWake *w, rmw_event_callback_t cb,
+                          const void *user_data);
+
+/* Teardown, BEFORE the reader is deleted: detach and free the listener. */
+void entity_wake_release(dds_entity_t reader, EntityWake *w);
+
+/* The three vtable slots. */
+rmw_ret_t subscription_set_on_new_message_callback(rmw_subscription_t *subscription,
+                                                   rmw_event_callback_t callback,
+                                                   const void *user_data);
+rmw_ret_t service_set_on_new_request_callback(rmw_service_t *service,
+                                              rmw_event_callback_t callback,
+                                              const void *user_data);
+rmw_ret_t client_set_on_new_response_callback(rmw_client_t *client,
+                                              rmw_event_callback_t callback,
+                                              const void *user_data);
+
 /* Phase 124.B.1 / issue 0889 — install the executor's wake callback. Cyclone
  * fires it from its delivery thread via a participant-level data_available
  * listener, which is what lets `spin_once` block on its wake primitive instead
