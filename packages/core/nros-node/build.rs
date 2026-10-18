@@ -2111,6 +2111,11 @@ fn declared_fact(key: &str) -> Option<String> {
     std::env::var(key).ok().filter(|v| !v.trim().is_empty())
 }
 
+/// Issue 1970 -- the image's arena arithmetic, handed a tier's counts, its
+/// subscriptions' descriptor rows and their topics.
+type TierArena<'a> =
+    dyn Fn([Option<usize>; 7], Option<&[SubEndpoint]>, &[String]) -> Option<usize> + 'a;
+
 /// Issue 1970 -- one tier's derived executor sizing, as `build.rs` states it.
 struct TierSizingRow {
     name: String,
@@ -2133,7 +2138,7 @@ struct TierSizingRow {
 /// image's arena is).
 fn tier_sizings(
     desc: Option<&nros_sizing_descriptor::SizingDescriptor>,
-    arena: &dyn Fn([Option<usize>; 7], Option<&[SubEndpoint]>, &[String]) -> Option<usize>,
+    arena: &TierArena<'_>,
     rx_buf_size: usize,
     rx_recv_size: usize,
     derived: &[(&str, Option<usize>)],
@@ -2178,7 +2183,7 @@ fn tier_sizings(
         let mut own = desc.clone();
         own.endpoints.retain(|ep| {
             ep.kind != nros_sizing_descriptor::EndpointKind::Subscription
-                || t.subscription_topics.iter().any(|tp| *tp == ep.topic)
+                || t.subscription_topics.contains(&ep.topic)
         });
         let rows =
             descriptor_subscriptions(&own, rx_buf_size, rx_recv_size, in_place_dispatch_trusted());
