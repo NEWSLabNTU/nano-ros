@@ -1441,6 +1441,38 @@ nros_cpp_ret_t nros_cpp_init_rmw(const char *rmw,
                                  void *storage);
 
 /**
+ * Issue 1970 -- [`nros_cpp_init`] for one TIER of a per-tier-sized image: the
+ * executor is carved from `backing` (`backing_bytes`, 8-aligned) at the sizing
+ * the image derived for the tier named `tier`, instead of from the context's
+ * inline tail (which such an image does not carry). Refused -- before a
+ * session opens -- for a tier the image sizes nothing for, or a backing below
+ * the tier's layout ([`nros_cpp_tier_backing_size`] says how many bytes).
+ *
+ * # Safety
+ * As [`nros_cpp_init`], plus: `tier` is a valid NUL-terminated string and
+ * `backing` points at `backing_bytes` writable, 8-aligned bytes that outlive
+ * the executor and are not otherwise accessed.
+ */
+nros_cpp_ret_t nros_cpp_init_tier(const char *locator,
+                                  uint8_t domain_id,
+                                  const char *node_name,
+                                  const char *namespace_,
+                                  void *storage,
+                                  const char *tier,
+                                  void *backing,
+                                  size_t backing_bytes);
+
+/**
+ * Issue 1970 -- the backing bytes the executor of the tier named `tier`
+ * carves, or `0` when this image sizes no tier of that name (its executors
+ * are then the image's, carved inline).
+ *
+ * # Safety
+ * `tier` is NULL or a valid NUL-terminated string.
+ */
+size_t nros_cpp_tier_backing_size(const char *tier);
+
+/**
  * Issue 0436 — multi-RMW init for the C++ surface: opens one session per spec
  * into the CALLER'S storage, producing a real [`CppContext`].
  *
@@ -2504,6 +2536,24 @@ nros_cpp_ret_t nros_cpp_executor_open_over_session(void *session_handle,
                                                    const char *node_name,
                                                    uint32_t domain_id,
                                                    void *out_storage);
+
+/**
+ * Issue 1970 -- [`nros_cpp_executor_open_over_session`] for one TIER of a
+ * per-tier-sized image: the borrowed executor is carved from `backing` at the
+ * sizing the image derived for the tier named `tier` (see
+ * [`nros_cpp_init_tier`] for what is refused).
+ *
+ * # Safety
+ * As [`nros_cpp_executor_open_over_session`], plus [`nros_cpp_init_tier`]'s
+ * contract on `tier` and `backing`.
+ */
+nros_cpp_ret_t nros_cpp_executor_open_over_session_tier(void *session_handle,
+                                                        const char *node_name,
+                                                        uint32_t domain_id,
+                                                        void *out_storage,
+                                                        const char *tier,
+                                                        void *backing,
+                                                        size_t backing_bytes);
 
 /**
  * Phase 274.W1 (RFC-0015 Model 1) — gate this executor to a set of named callback groups.

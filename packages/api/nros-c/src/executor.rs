@@ -44,7 +44,7 @@ pub(crate) type CExecutor = nros_node::Executor<'static>;
 /// `u64` words of per-entry backing the inline executor carves from the tail of
 /// its `_opaque` buffer (default sizing — same as the Rust `alloc` convenience).
 #[cfg(feature = "rmw-cffi")]
-pub(crate) const EXECUTOR_BACKING_U64S: usize = nros_node::ExecutorSizing::DEFAULT.u64_len();
+pub(crate) const EXECUTOR_BACKING_U64S: usize = nros_node::INLINE_BACKING_U64S;
 
 // Compile-time assertion: inline opaque storage must fit the executor header
 // PLUS its carved backing (the `ExecutorInlineStorage` layout).
@@ -472,6 +472,18 @@ pub(crate) unsafe fn executor_init_on_support(
     if session_ptr.is_null() {
         return RCL_RET_NOT_INIT;
     }
+    // Issue 1970 -- an image whose executors are sized per tier carries no
+    // inline backing, so there is nothing here to carve one from. The tier
+    // runner opens every executor such an image has, each over its own backing.
+    let Some(inline_sizing) = nros_node::INLINE_SIZING else {
+        nros_log::log_error!(
+            nros_log::get_logger("nros-c"),
+            "rclc_executor_init: this image sizes its executors per tier (issue 1970) and \
+             carries no inline executor backing; its executors are opened by the tier \
+             runner"
+        );
+        return RCL_RET_ERROR;
+    };
 
     // `mut` only needed under `feature = "env"` where the
     // env-var-driven primary-identity block below mutates it;
@@ -488,8 +500,7 @@ pub(crate) unsafe fn executor_init_on_support(
     let backing: &'static mut [core::mem::MaybeUninit<u64>] =
         core::slice::from_raw_parts_mut((*inline).backing.as_mut_ptr(), EXECUTOR_BACKING_U64S);
     #[allow(unused_mut)]
-    let mut rust_exec =
-        CExecutor::from_session_ptr_in(session_ptr, backing, nros_node::ExecutorSizing::DEFAULT);
+    let mut rust_exec = CExecutor::from_session_ptr_in(session_ptr, backing, inline_sizing);
     // Phase 156 — populate executor's primary identity fields
     // so `NodeBuilder::resolve_session_slot` can return slot 0
     // when a C-side `rclc_executor_node_init(rmw_name, ...)`

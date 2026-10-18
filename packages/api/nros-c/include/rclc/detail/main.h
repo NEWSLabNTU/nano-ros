@@ -464,6 +464,26 @@ NROS_PUBLIC int32_t nros_board_zephyr_run_tiers_tasks_in(
     const nros_native_tier_spec_t* tiers, size_t n_tiers, void* executor_storage,
     size_t storage_stride, const nros_tier_task_memory_t* task_memory);
 
+/* Issue 1970 — one tier's own executor backing, owned by the generated entry:
+ * `bytes` from the per-build header's NROS_CPP_TIER_BACKING_SIZE_<i>, 8-aligned.
+ * The array a runner takes is indexed by TIER. */
+typedef struct {
+    void* backing;
+    size_t bytes;
+} nros_tier_backing_t;
+
+/* Issue 1970 — `_tasks_in` for an image whose per-build header publishes
+ * NROS_CPP_TIER_BACKING_SIZE_<i>: each tier's executor is carved from
+ * `backings[i]`, sized for what that tier hosts, and the `storage_stride`
+ * blocks hold the tiers' contexts only (they carry no inline backing on such an
+ * image). A backing short of its tier's layout, or a tier the library sizes
+ * nothing for, is refused before that tier opens. */
+NROS_PUBLIC int32_t nros_board_zephyr_run_tiers_backed_in(
+    const char* locator, uint8_t domain_id, const char* session_name, const char* node_namespace,
+    const nros_native_tier_spec_t* tiers, size_t n_tiers, void* executor_storage,
+    size_t storage_stride, const nros_tier_backing_t* backings,
+    const nros_tier_task_memory_t* task_memory);
+
 /* phase-281 W3 (nuttx) (RFC-0015 Model 1) — run a multi-tier embedded C/C++
  * entry on NuttX: open ONE RMW session on the caller's thread (the NuttX
  * `app_main` thread), spawn one `pthread` per non-boot tier (NuttX is POSIX —

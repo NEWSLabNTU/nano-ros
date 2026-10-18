@@ -173,6 +173,17 @@ extern void* nros_cpp_executor_session_handle(void* executor);
 
 extern int nros_cpp_executor_open_over_session(void* session_handle, const char* node_name,
                                                uint32_t domain_id, void* out_storage);
+/* Issue 1970 -- the same two opens for a per-tier-sized image: the executor is
+ * carved from the tier's own backing at the sizing the library derived for the
+ * tier named `tier`, and refused before a session opens if that backing is
+ * short. */
+extern int nros_cpp_init_tier(const char* locator, uint8_t domain_id, const char* node_name,
+                              const char* namespace_, void* storage, const char* tier,
+                              void* backing, size_t backing_bytes);
+extern int nros_cpp_executor_open_over_session_tier(void* session_handle, const char* node_name,
+                                                    uint32_t domain_id, void* out_storage,
+                                                    const char* tier, void* backing,
+                                                    size_t backing_bytes);
 
 extern int nros_cpp_executor_set_active_groups(void* executor, const char* const* groups, size_t n);
 extern int nros_cpp_executor_derive_min_stack_headroom(void* executor, size_t stack_bytes);
@@ -305,6 +316,16 @@ typedef struct {
 _Static_assert(sizeof(nros_tier_task_memory_t) == 3u * sizeof(void*),
                "nros_tier_task_memory_t mirrors <rclc/detail/main.h>: three pointer-sized fields");
 
+/* Issue 1970 — one tier's executor backing, owned by the generated entry and
+ * sized by the per-build header's NROS_CPP_TIER_BACKING_SIZE_<i>. Mirror of
+ * `nros_tier_backing_t` in <rclc/detail/main.h>. */
+typedef struct {
+    void* backing;
+    size_t bytes;
+} nros_tier_backing_t;
+_Static_assert(sizeof(nros_tier_backing_t) == 2u * sizeof(void*),
+               "nros_tier_backing_t mirrors <rclc/detail/main.h>: two pointer-sized fields");
+
 /* --- Per-tier task context ---
  *
  * Heap-allocated by the spawning thread before nros_zephyr_tier_task_create;
@@ -341,6 +362,11 @@ typedef struct {
     uint32_t core_plus1;
     const char* tier_class;
     uint64_t deadline_us;
+    /* issue 1970 — this tier's own executor backing (NULL: the context's
+     * inline one), and rest[0]'s (rest[k] at rest_backings[k]). */
+    void* backing;
+    size_t backing_bytes;
+    const nros_tier_backing_t* rest_backings;
 } nros_zephyr_tier_ctx_t;
 
 /* Forward decl — zephyr_tier_task and zephyr_spawn_next_tier are mutually
@@ -348,7 +374,8 @@ typedef struct {
 static int zephyr_spawn_next_tier(void* session_handle, uint8_t domain_id,
                                   const nros_tier_spec_t* remaining, size_t n_remaining,
                                   unsigned char* storage, size_t storage_stride,
-                                  const nros_tier_task_memory_t* task_memory);
+                                  const nros_tier_task_memory_t* task_memory,
+                                  const nros_tier_backing_t* backings);
 
 /* Issue 1232 — the POOL spawn, reached only through `_in`/`_ns` (an entry with
  * no task memory). Held in a pointer `_in` sets, so a generated entry — which
@@ -403,8 +430,12 @@ static void* zephyr_tier_task(void* arg) {
     /* Open a borrowed executor that shares the primary session. The primary
      * executor (boot thread) must outlive this task — the boot spin loop runs
      * forever, enforcing this. */
-    int rc = nros_cpp_executor_open_over_session(ctx->session_handle, "tier_node", ctx->domain_id,
-                                                 ctx->executor_storage);
+    int rc = (ctx->backing != NULL)
+                 ? nros_cpp_executor_open_over_session_tier(
+                       ctx->session_handle, "tier_node", ctx->domain_id, ctx->executor_storage,
+                       ctx->name, ctx->backing, ctx->backing_bytes)
+                 : nros_cpp_executor_open_over_session(ctx->session_handle, "tier_node",
+                                                       ctx->domain_id, ctx->executor_storage);
     if (rc != 0) {
         /* Cannot open the borrowed executor; park forever (boot thread
          * continues). NOTE (issue #144): the spawn of the next tier sits AFTER
@@ -465,7 +496,7 @@ static void* zephyr_tier_task(void* arg) {
      * the return (zephyr_spawn_next_tier frees what it allocated on failure). */
     (void)zephyr_spawn_next_tier(ctx->session_handle, (uint8_t)ctx->domain_id, ctx->rest,
                                  ctx->n_rest, ctx->rest_storage, ctx->storage_stride,
-                                 ctx->rest_task_memory);
+                                 ctx->rest_task_memory, ctx->rest_backings);
 
     /* Spin loop. Pass the tier period as the spin_once timeout — a BLOCKING
      * read drives the shared session's TX/handshake from the spin path and
@@ -511,7 +542,8 @@ static void* zephyr_tier_task(void* arg) {
 static int zephyr_spawn_next_tier(void* session_handle, uint8_t domain_id,
                                   const nros_tier_spec_t* remaining, size_t n_remaining,
                                   unsigned char* storage, size_t storage_stride,
-                                  const nros_tier_task_memory_t* task_memory) {
+                                  const nros_tier_task_memory_t* task_memory,
+                                  const nros_tier_backing_t* backings) {
     if (n_remaining == 0u) {
         return 0;
     }
@@ -547,6 +579,9 @@ static int zephyr_spawn_next_tier(void* session_handle, uint8_t domain_id,
     ctx->core_plus1 = t->core_plus1;
     ctx->tier_class = t->tier_class;
     ctx->deadline_us = t->deadline_us;
+    ctx->backing = (backings != NULL) ? backings[0].backing : NULL;
+    ctx->backing_bytes = (backings != NULL) ? backings[0].bytes : 0u;
+    ctx->rest_backings = (backings != NULL) ? backings + 1 : NULL;
 
     /* RAW Zephyr priority from the tier spec (the system.toml
      * [tiers.*.zephyr].priority is the numeric Zephyr value verbatim —
@@ -621,6 +656,18 @@ int32_t nros_board_zephyr_run_tiers_tasks_in(const char* locator, uint8_t domain
                                              const nros_tier_spec_t* tiers, size_t n_tiers,
                                              void* executor_storage, size_t storage_stride,
                                              const nros_tier_task_memory_t* task_memory);
+int32_t nros_board_zephyr_run_tiers_backed_in(const char* locator, uint8_t domain_id,
+                                              const char* session_name,
+                                              const char* node_namespace,
+                                              const nros_tier_spec_t* tiers, size_t n_tiers,
+                                              void* executor_storage, size_t storage_stride,
+                                              const nros_tier_backing_t* backings,
+                                              const nros_tier_task_memory_t* task_memory);
+static int32_t zephyr_run_tiers(const char* locator, uint8_t domain_id, const char* session_name,
+                                const char* node_namespace, const nros_tier_spec_t* tiers,
+                                size_t n_tiers, void* executor_storage, size_t storage_stride,
+                                const nros_tier_backing_t* backings,
+                                const nros_tier_task_memory_t* task_memory);
 
 int32_t nros_board_zephyr_run_tiers(const char* locator, uint8_t domain_id,
                                     const char* session_name, const nros_tier_spec_t* tiers,
@@ -725,6 +772,39 @@ int32_t nros_board_zephyr_run_tiers_tasks_in(const char* locator, uint8_t domain
                                              const nros_tier_spec_t* tiers, size_t n_tiers,
                                              void* executor_storage, size_t storage_stride,
                                              const nros_tier_task_memory_t* task_memory) {
+    return zephyr_run_tiers(locator, domain_id, session_name, node_namespace, tiers, n_tiers,
+                            executor_storage, storage_stride, NULL, task_memory);
+}
+
+/*
+ * Issue 1970 — the runner for a per-tier-sized image, and the one a generated
+ * tiered Zephyr entry calls when its per-build header publishes
+ * NROS_CPP_TIER_BACKING_SIZE_<i>. `executor_storage` holds the tiers' CONTEXTS
+ * (`storage_stride` each, which on such an image carry no inline backing), and
+ * `backings[i]` is tier i's own executor backing, sized for what that tier
+ * hosts. The library refuses a backing short of its tier's layout, and a tier
+ * it sizes nothing for, before the session opens (the boot tier) or before the
+ * tier's thread opens its executor (a spawned tier).
+ */
+int32_t nros_board_zephyr_run_tiers_backed_in(const char* locator, uint8_t domain_id,
+                                              const char* session_name,
+                                              const char* node_namespace,
+                                              const nros_tier_spec_t* tiers, size_t n_tiers,
+                                              void* executor_storage, size_t storage_stride,
+                                              const nros_tier_backing_t* backings,
+                                              const nros_tier_task_memory_t* task_memory) {
+    if (backings == NULL) {
+        return -3; /* NROS_CPP_RET_INVALID_ARGUMENT */
+    }
+    return zephyr_run_tiers(locator, domain_id, session_name, node_namespace, tiers, n_tiers,
+                            executor_storage, storage_stride, backings, task_memory);
+}
+
+static int32_t zephyr_run_tiers(const char* locator, uint8_t domain_id, const char* session_name,
+                                const char* node_namespace, const nros_tier_spec_t* tiers,
+                                size_t n_tiers, void* executor_storage, size_t storage_stride,
+                                const nros_tier_backing_t* backings,
+                                const nros_tier_task_memory_t* task_memory) {
     if (tiers == NULL || n_tiers == 0 || executor_storage == NULL) {
         return -3; /* NROS_CPP_RET_INVALID_ARGUMENT */
     }
@@ -807,7 +887,10 @@ int32_t nros_board_zephyr_run_tiers_tasks_in(const char* locator, uint8_t domain
     void* boot_storage = storage;
     memset(boot_storage, 0, storage_stride);
 
-    int rc = nros_cpp_init(locator, domain_id, sn, ns, boot_storage);
+    int rc = (backings != NULL)
+                 ? nros_cpp_init_tier(locator, domain_id, sn, ns, boot_storage, tiers[0].name,
+                                      backings[0].backing, backings[0].bytes)
+                 : nros_cpp_init(locator, domain_id, sn, ns, boot_storage);
     if (rc != 0) {
         return (int32_t)rc;
     }
@@ -873,7 +956,8 @@ int32_t nros_board_zephyr_run_tiers_tasks_in(const char* locator, uint8_t domain
      * their own spawn failures by parking + continuing to spin. */
     int src = zephyr_spawn_next_tier(session_handle, domain_id, &tiers[1], n_tiers - 1u,
                                      storage + storage_stride, storage_stride,
-                                     (task_memory != NULL) ? &task_memory[1] : NULL);
+                                     (task_memory != NULL) ? &task_memory[1] : NULL,
+                                     (backings != NULL) ? &backings[1] : NULL);
     if (src != 0) {
         nros_cpp_fini(boot_storage);
         return -1;

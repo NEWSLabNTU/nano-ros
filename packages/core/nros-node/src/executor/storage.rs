@@ -634,7 +634,71 @@ pub struct ExecutorInlineStorage {
     /// The executor, written in place (offset 0) by `from_session_ptr_in`.
     pub exec: MaybeUninit<super::spin::Executor<'static>>,
     /// The carved backing the executor's slices borrow (the buffer's tail).
-    pub backing: [MaybeUninit<u64>; ExecutorSizing::DEFAULT.u64_len()],
+    ///
+    /// Issue 1970 -- [`INLINE_BACKING_U64S`] words: the image's whole
+    /// executor, or none at all on a tiered image, whose tiers each carve a
+    /// backing of their own size ([`tier_sizing`]).
+    pub backing: [MaybeUninit<u64>; INLINE_BACKING_U64S],
+}
+
+/// Issue 1970 -- the sizing an inline backing is carved at: the image's
+/// ([`ExecutorSizing::DEFAULT`]), or `None` on an image whose executors are
+/// sized per tier ([`crate::config::TIER_SIZINGS`] is non-empty). There the
+/// inline backing is EMPTY -- one whole-image backing per tier context is the
+/// cost this issue removes -- and an executor opened over a context alone
+/// (`rclc_executor_init`, `nros_cpp_init`) is refused, naming the per-tier
+/// road, rather than carved short.
+pub const INLINE_SIZING: Option<ExecutorSizing> = if crate::config::TIER_SIZINGS.is_empty() {
+    Some(ExecutorSizing::DEFAULT)
+} else {
+    None
+};
+
+/// Issue 1970 -- the inline backing's length in `u64` words.
+pub const INLINE_BACKING_U64S: usize = match INLINE_SIZING {
+    Some(s) => s.u64_len(),
+    None => 0,
+};
+
+/// Issue 1970 -- the [`ExecutorSizing`] one tier's executor is carved at: its
+/// own callback slots, node slots, arena and declared parameters, and the
+/// image's scheduling-context count. A tier that declares parameters on an
+/// image that carves no store carves none either (the store is built from
+/// the heap there, as it is for the image's one executor).
+pub const fn tier_executor_sizing(t: &crate::config::TierSizing) -> ExecutorSizing {
+    let store = nros_params::IMPLIED_STORE_SLOTS;
+    ExecutorSizing {
+        cbs: t.cbs,
+        sc: crate::config::MAX_SC,
+        arena: t.arena,
+        nodes: t.nodes,
+        params: match t.params {
+            None => store,
+            Some(n) if n < store => n,
+            Some(_) => store,
+        },
+    }
+}
+
+/// Issue 1970 -- the sizing of the tier named `name`, `None` when the image
+/// sizes no tier of that name.
+pub fn tier_sizing(name: &str) -> Option<ExecutorSizing> {
+    crate::config::TIER_SIZINGS
+        .iter()
+        .find(|t| t.name == name)
+        .map(tier_executor_sizing)
+}
+
+/// Issue 1970 -- the backing bytes the `index`-th tier's executor carves, `0`
+/// past the last tier. What `nros::sizes::TIER_BACKING_SIZE_<i>` publishes to
+/// the C/C++ header.
+pub const fn tier_backing_bytes(index: usize) -> usize {
+    let tiers = crate::config::TIER_SIZINGS;
+    if index < tiers.len() {
+        tier_executor_sizing(&tiers[index]).u64_len() * 8
+    } else {
+        0
+    }
 }
 
 /// Carve an 8-aligned `u64` backing into the typed executor slices.
