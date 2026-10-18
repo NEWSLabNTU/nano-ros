@@ -45,13 +45,19 @@ ifneq ($(wildcard $(APPDIR)/tools/Rust.mk),)
 # scripts write (`nros_build_paths::artifact`). This file used to hard-code
 # `<root>/target/...`, right only while nothing moved the target dir.
 NROS_CLI ?= nros
+# RFC-0071 D9 (phase-506 W4c) — the archives come from the generated image
+# root the Makefile builds (`cmake/NanoRosImageCrate.cmake`), not from the
+# API crates' own workspace, so locate them under THAT root's target dir.
+# Per ARCH, like the Makefile's object dir (issue 0525).
+NROS_IMAGE_ROOT := $(APPDIR)/external/.nros-build/$(patsubst "%",%,$(CONFIG_ARCH))/image
+NROS_IMAGE_TARGET_DIR := $(NROS_IMAGE_ROOT)/target
 NROS_NUTTX_TRIPLE := armv7a-nuttx-eabihf
 nros_artifact = $(or $(shell $(NROS_CLI) locate artifact $(1) $(2) --index $(NANO_ROS_ROOT_DEFS)/nros-sdk-index.toml),$(error nano-ros: `$(NROS_CLI) locate artifact $(1)` answered nothing — put the nros CLI on PATH (source activate.sh) or set NROS_CLI))
-NROS_CARGO_ARCHIVE_ARGS := --target $(NROS_NUTTX_TRIPLE) --profile release
+NROS_CARGO_ARCHIVE_ARGS := --target $(NROS_NUTTX_TRIPLE) --profile release --target-dir $(NROS_IMAGE_TARGET_DIR)
 NROS_CARGO_LIB_DIR := $(patsubst %/,%,$(dir $(call nros_artifact,c-archive,$(NROS_CARGO_ARCHIVE_ARGS))))
 # Issue 1636 — exactly ONE Rust staticlib reaches the kernel link.
 #
-# `libnros_cpp.a` bundles `nros-c` (nros-cpp's `rmw-<x>-cffi` features forward
+# `libnros_cpp.a` bundles `nros-c` (nros-cpp depends on it, and the image crate
 # `nros-c/rmw-<x>`), so it already defines every `nros_*` C-ABI symbol
 # `libnros_c.a` does (measured: 299 of 299). Linking BOTH defined 392 strong
 # symbols twice — 297 `nros_*`, the `rcl*`/`rmw_*` compat surface, the QoS and
@@ -85,7 +91,7 @@ endif
 # instead of the source-tree stub (which deliberately errors via
 # `#error` to flag mis-configured builds).
 # Where that directory is, is `nros locate artifact c-include` (above).
-NROS_C_GENERATED_INCLUDE := $(call nros_artifact,c-include)
+NROS_C_GENERATED_INCLUDE := $(call nros_artifact,c-include,--target-dir $(NROS_IMAGE_TARGET_DIR))
 CFLAGS += ${INCDIR_PREFIX}$(NROS_C_GENERATED_INCLUDE)
 
 # CFLAGS — surface the nano-ros C headers to user code that
@@ -99,7 +105,7 @@ CFLAGS += ${INCDIR_PREFIX}$(NANO_ROS_ROOT_DEFS)/packages/api/nros-c/include
 # `nros_cpp_config_generated.h` lands at
 # `$CARGO_TARGET_DIR/nros-cpp-generated/rclcpp/detail/` analogous to nros-c.
 ifneq ($(CONFIG_NROS_CPP_API),)
-CXXFLAGS += ${INCDIR_PREFIX}$(call nros_artifact,cpp-include)
+CXXFLAGS += ${INCDIR_PREFIX}$(call nros_artifact,cpp-include,--target-dir $(NROS_IMAGE_TARGET_DIR))
 CXXFLAGS += ${INCDIR_PREFIX}$(NANO_ROS_ROOT_DEFS)/packages/api/nros-cpp/include
 # nros-cpp depends on nros-c headers — keep the C-side -I on the
 # C++ compile line too.

@@ -73,6 +73,8 @@ const VENDOR_BUILD_POINTER: &str = "nros-xrce-vendor-build.txt";
 // lanes had already stopped agreeing.
 
 fn main() {
+    // RFC-0071 D9 — announce this backend to dependents (see `links`).
+    println!("cargo:nros_rmw_backend=xrce");
     // phase-454 W6.b — the derivation's negative controls, on the NORMAL path.
     // A control nobody runs decays into a comment (`check-gate-selftests`
     // holds the same line for the Python gates), and this one guards a rule

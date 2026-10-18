@@ -68,19 +68,8 @@ clean::
 
 # Cargo features assembled from Kconfig knobs. The Kconfig sibling
 # exposes RMW + ROS-edition as `choice` blocks so `make menuconfig`
-# drives Cargo via this var rather than free-form strings.
+# drives Cargo via these vars rather than free-form strings.
 #
-# Phase 157.C.11 — feature names mirror what
-# `packages/api/nros-c/CMakeLists.txt` passes to Corrosion. nros-c
-# carries `rmw-zenoh` / `rmw-xrce` / `rmw-cyclonedds` as Cargo
-# features that select the RMW + flip on `rmw-cffi`. Kconfig RMW
-# choice maps onto those names.
-#
-# NEVER the `cffi-*` back-compat aliases. They resolve to the same feature, but
-# cargo keys a unit by its feature SET — and NROS_CPP_FEATURES below forwards
-# `nros-c/rmw-<name>` — so an alias here gives this build TWO `nros-c` units
-# sharing one `target/nros-c-generated/rclc/detail/nros_config_generated.h`.
-# Issues 1461, 1100.
 # issue 0947 — derived, so a new edition needs no edit here. The Kconfig choice
 # guarantees the value is one of the three; `patsubst "%",%` strips the quotes
 # Kconfig puts around a string symbol, the same way NROS_APPS_ARCH does above.
@@ -93,29 +82,32 @@ ifeq ($(NROS_ROS_EDITION),)
 $(error CONFIG_NROS_ROS_EDITION is unset — is integrations/nuttx/Kconfig sourced?)
 endif
 
-NROS_C_FEATURES := std ros-$(NROS_ROS_EDITION) platform-nuttx
-ifneq ($(CONFIG_NROS_RMW_ZENOH),)
-NROS_C_FEATURES += rmw-zenoh
-endif
-ifneq ($(CONFIG_NROS_RMW_XRCE),)
-NROS_C_FEATURES += rmw-xrce
-endif
-ifneq ($(CONFIG_NROS_RMW_CYCLONEDDS),)
-NROS_C_FEATURES += rmw-cffi
-endif
+# RFC-0071 D9 (phase-506 W4c) — the API crates name no backend. The image's
+# staticlib is a generated IMAGE CRATE (`cmake/NanoRosImageCrate.cmake`, the
+# generator every CMake road uses, run here in script mode) that depends on
+# the API crate with `rmw-cffi` and on the backend crate the RMW's descriptor
+# names, anchoring its `register`. So this file names no backend either: the
+# RMW is the Kconfig choice that is set, `CONFIG_NROS_RMW_<NAME>=y` -> `<name>`.
+NROS_RMW := $(shell echo $(patsubst CONFIG_NROS_RMW_%,%,$(foreach v,$(filter CONFIG_NROS_RMW_%,$(.VARIABLES)),$(if $(filter y,$($(v))),$(v)))) | tr A-Z a-z)
 
-# nros-cpp features. Different per-backend feature names from nros-c
-# (`rmw-<name>-cffi`, which forwards `nros-c/rmw-<name>`). Mirrors
-# `packages/api/nros-cpp/CMakeLists.txt`.
-NROS_CPP_FEATURES := std ros-$(NROS_ROS_EDITION) platform-nuttx
-ifneq ($(CONFIG_NROS_RMW_ZENOH),)
-NROS_CPP_FEATURES += rmw-zenoh-cffi
+NROS_API_FEATURES := std;ros-$(NROS_ROS_EDITION);platform-nuttx;rmw-cffi
+
+# The C and C++ images are members of ONE generated root, so one target dir
+# serves one root (issue 0616); `Make.defs` locates the archives under it.
+# `$(shell …)` runs at parse time, so it is guarded like the mkdir above
+# (issue 0551). Prints `<manifest> <feature,feature,…>`.
+nros_image_crate = $(shell cmake --log-level=WARNING \
+	-DNROS_IMAGE_FLAVOR=$(1) -DNROS_IMAGE_RMW=$(NROS_RMW) \
+	-DNROS_IMAGE_EDITION=$(NROS_ROS_EDITION) \
+	-DNROS_IMAGE_OUT_DIR=$(NROS_IMAGE_ROOT)/nros-$(1) \
+	-DNROS_IMAGE_WORKSPACE_DIR=$(NROS_IMAGE_ROOT) \
+	"-DNROS_IMAGE_API_FEATURES=$(NROS_API_FEATURES)" \
+	-P $(NANO_ROS_ROOT_DEFS)/cmake/NanoRosImageCrate.cmake)
+ifeq ($(NROS_APPS_BUILD_OK),1)
+NROS_C_IMAGE := $(call nros_image_crate,c)
+ifneq ($(CONFIG_NROS_CPP_API),)
+NROS_CPP_IMAGE := $(call nros_image_crate,cpp)
 endif
-ifneq ($(CONFIG_NROS_RMW_XRCE),)
-NROS_CPP_FEATURES += rmw-xrce-cffi
-endif
-ifneq ($(CONFIG_NROS_RMW_CYCLONEDDS),)
-NROS_CPP_FEATURES += rmw-cffi
 endif
 
 # Pass the feature set + NuttX include dir to Cargo via env.
@@ -218,8 +210,8 @@ NROS_LIBC_PATCH := patch.crates-io.libc.path="$(NROS_REPO_DIR)/third-party/nuttx
 NROS_RUSTFLAGS_ARMV7A := target.armv7a-nuttx-eabihf.rustflags=["-C","link-arg=-mcpu=cortex-a7","-C","link-arg=-mfloat-abi=hard","-C","link-arg=-mfpu=neon-vfpv4"]
 NROS_CFLAGS_ARMV7A := env.CFLAGS_armv7a_nuttx_eabihf.value="-mcpu=cortex-a7 -mfloat-abi=hard -mfpu=neon-vfpv4"
 
-# $(3) = feature list (per-crate, since nros-c + nros-cpp have
-# different per-backend feature names).
+# $(1) = the image crate's manifest, $(2) = its features (comma-separated) —
+# the two words `nros_image_crate` printed.
 define NROS_CARGO_BUILD
 	NUTTX_INCLUDE_DIR=$(TOPDIR)/include:$(TOPDIR)/include/arch \
 	CC_armv7a_nuttx_eabihf=arm-none-eabi-gcc \
@@ -231,16 +223,17 @@ define NROS_CARGO_BUILD
     cargo build --release \
 		-Zbuild-std=std,panic_abort \
 		--no-default-features \
-		--features "$(strip $(3))" \
+		--features "$(strip $(2))" \
 		--config '$(NROS_LIBC_PATCH)' \
 		--config '$(NROS_RUSTFLAGS_ARMV7A)' \
 		--config '$(NROS_CFLAGS_ARMV7A)' \
-		--manifest-path $(2)/$(1)/Cargo.toml \
+		--manifest-path $(1) \
+		--target-dir $(NROS_IMAGE_TARGET_DIR) \
 		--target $(NROS_TARGET_TRIPLE)
 endef
 
 define NROS_CARGO_CLEAN
-	cargo clean --manifest-path $(2)/$(1)/Cargo.toml
+	cargo clean --manifest-path $(1) --target-dir $(NROS_IMAGE_TARGET_DIR)
 endef
 
 ifneq ($(wildcard $(APPDIR)/tools/Rust.mk),)
@@ -252,7 +245,7 @@ context::
 ifeq ($(NROS_TARGET_TRIPLE),)
 	$(call RUST_CARGO_BUILD,nros-c,$(NROS_REPO_DIR)/packages/api)
 else
-	$(call NROS_CARGO_BUILD,nros-c,$(NROS_REPO_DIR)/packages/api,$(NROS_C_FEATURES))
+	$(call NROS_CARGO_BUILD,$(word 1,$(NROS_C_IMAGE)),$(word 2,$(NROS_C_IMAGE)))
 endif
 # Phase 157.C.11 — also build nros-cpp staticlib when CONFIG_NROS_CPP_API=y.
 # `libnros_cpp.a` rides on the same Cargo workspace target dir as
@@ -261,14 +254,14 @@ ifneq ($(CONFIG_NROS_CPP_API),)
 ifeq ($(NROS_TARGET_TRIPLE),)
 	$(call RUST_CARGO_BUILD,nros-cpp,$(NROS_REPO_DIR)/packages/api)
 else
-	$(call NROS_CARGO_BUILD,nros-cpp,$(NROS_REPO_DIR)/packages/api,$(NROS_CPP_FEATURES))
+	$(call NROS_CARGO_BUILD,$(word 1,$(NROS_CPP_IMAGE)),$(word 2,$(NROS_CPP_IMAGE)))
 endif
 endif
 
 clean::
-	$(call NROS_CARGO_CLEAN,nros-c,$(NROS_REPO_DIR)/packages/api)
+	$(call NROS_CARGO_CLEAN,$(word 1,$(NROS_C_IMAGE)))
 ifneq ($(CONFIG_NROS_CPP_API),)
-	$(call NROS_CARGO_CLEAN,nros-cpp,$(NROS_REPO_DIR)/packages/api)
+	$(call NROS_CARGO_CLEAN,$(word 1,$(NROS_CPP_IMAGE)))
 endif
 endif
 

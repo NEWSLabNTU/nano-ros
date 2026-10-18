@@ -1,5 +1,10 @@
 [package]
 name = "nros-rmw-xrce-cffi"
+# RFC-0071 D9 (phase-506 W4c) — `links` so this backend can ANNOUNCE itself
+# to a crate that depends on it (`DEP_NROS_RMW_XRCE_NROS_RMW_BACKEND`):
+# a cargo-rooted C/C++ image generates its `nros_app_register_backends()` from
+# the backends it depends on, not from an `nros-c` feature.
+links = "nros_rmw_xrce"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

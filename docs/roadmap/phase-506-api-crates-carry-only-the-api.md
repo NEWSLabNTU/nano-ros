@@ -111,11 +111,20 @@ them. Design notes measured 2026-10-18:
       `CONFIG_NROS_RMW_<NAME>` choice over the provider scan. Verified: Zephyr
       C/C++ zenoh + XRCE pub/sub e2e 4/4; Zephyr C, C++ and mixed workspace
       `entry_e2e` cells pass.
-- [ ] **W4c — the roads that run cargo themselves**: the NuttX app
+- [x] **W4c — the roads that run cargo themselves**: the NuttX app
       Makefile, the NuttX FFI crates and the `mps2-an385-baremetal` C++
       examples depend on the backend directly instead of through an
-      `nros-c` / `nros-cpp` feature. PX4's default path (`rmw-cffi`, the
-      CMake-linked uORB backend) needs no change. **s32ds** turned out to use
+      `nros-c` / `nros-cpp` feature. The FFI crates and the baremetal
+      examples name `rmw-cffi` and anchor the backend's `register` they
+      already called. The Makefile runs `cmake/NanoRosImageCrate.cmake` in
+      script mode — the cmake roads' own generator, so the image crate has one
+      spelling — and builds that root; `Make.defs` locates the archives under
+      its target dir, and the RMW is whichever `CONFIG_NROS_RMW_<NAME>` is set,
+      so the Makefile names no backend. A backend crate announces itself
+      (`links = "nros_rmw_<name>"`, `cargo:nros_rmw_backend=<name>`), which is
+      what `nros-cc-flags` now reads instead of `nros-c`'s feature-derived
+      list. PX4's default path (`rmw-cffi`, the CMake-linked uORB backend)
+      needs no change. **s32ds** turned out to use
       the cmake road (`add_subdirectory`), so W4a already moved it; the
       maintainer ruled (2026-10-18) to treat it as covered by the FreeRTOS
       cmake-road verification, with the IDE build tracked as

@@ -322,7 +322,6 @@ dependencies = [
  "nros-node",
  "nros-platform",
  "nros-rmw",
- "nros-rmw-zenoh",
 ]
 
 [[package]]
