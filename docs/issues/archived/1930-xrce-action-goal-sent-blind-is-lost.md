@@ -1,7 +1,7 @@
 ---
 id: 1930
 title: "On XRCE an action client sends its goal blind, and a goal the Agent drops is never re-sent"
-status: open
+status: resolved
 type: bug
 area: [rmw-xrce, examples, tests]
 severity: medium
@@ -9,7 +9,7 @@ found: 2026-10-16
 related: [1686, 1918, phase-507]
 ---
 
-**Home: [phase-507](../roadmap/phase-507-xrce-and-action-client-robustness.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+**Home: [phase-507](../../roadmap/phase-507-xrce-and-action-client-robustness.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## Measured
 
@@ -81,3 +81,51 @@ endpoints never matched in 30 s, was reproduced WITHOUT the harness's
 loopback-only Fast-DDS profile, and no harness run has shown it. Next step as
 before: reproduce under `nros_tests::dds_isolation`'s profile, with an Agent
 built with its logger profile so `-v6` prints something.
+
+## 2026-10-18 — resolved: a deterministic test, and the residual measured
+
+**The fix now has a test that fails without it.** The runtime cell only met a
+lost goal by luck of discovery timing, which is why it read as a flake for so
+long. `linux_example_reqresp_e2e::xrce_action_goal_sent_before_its_server_is_resent`
+makes the loss certain instead: the CLIENT is started first, its goal goes out
+while no server exists (volatile, so the server's reader never sees it), and
+only then is the server started. The result can then arrive only through the
+re-send, and the test also asserts the client logged it
+(`nros_tests::output::ACTION_GOAL_RESENT_MARKER`). Cases: Rust, C, C++ on the
+`linux` XRCE fixtures.
+
+| build | Rust | C | C++ |
+| --- | --- | --- | --- |
+| with the re-send (HEAD) | 5/5 (~5 s) | 5/5 (~18 s) | 5/5 (~32 s) |
+| re-send removed (Rust `BLIND_RESEND` 5 s → 3600 s; C/C++ `attempt >= 2` → `>= 0`) | red: no re-send, no result | red: `No goal response from server: -2` | red: `No goal response from server (order=10, ret=-2)` |
+
+The mutated sources were restored and `cmp`'d clean against `HEAD`, the
+fixtures rebuilt, and the five green runs above (which also ran the three
+original `*_xrce_action` cells, 15/15) taken after that.
+
+**The residual — "the two endpoints never matched in 30 s" — did not
+reproduce.** Measured with the in-tree client (re-send present):
+
+| arm | runs | failed | re-sends taken |
+| --- | --- | --- | --- |
+| harness, loopback Fast-DDS profile (`dds_isolation`), all three cells | 90 | 0 | — |
+| harness, `NROS_DDS_ALLOW_LAN=1` (no profile), all three cells | 90 | 0 | — |
+| by hand, issue's shape, no profile, Rust | 60 | 0 | 1 (recovered) |
+| by hand, loopback profile, Rust | 60 | 0 | 0 |
+
+And with the Rust re-send REMOVED, to see how often the drop itself happens:
+0 of 30 under the profile, 0 of 30 with the 1734 session lock also disabled,
+0 of 30 against the ROS-paired Agent, 0 of 60 across six concurrent loops, 0
+of 20 under a 20-way CPU burner — and **1 of 30 without the profile**. So the
+blind-send drop is real and lives on the unpinned (LAN + shared-memory) bus;
+under the harness's loopback profile it was not seen at all (0 of 170 with
+the re-send removed, 0 of 150 with it), and
+the one hand-run drop without the profile was recovered by the re-send, as
+designed. The never-matched shape from the 35-run hand measurement was not
+seen again in 150 unprofiled runs with the re-send; if it returns, it is a
+new filing with an Agent log (`NROS_XRCE_AGENT_VERBOSE=1` against an Agent
+built with `NROS_XRCE_AGENT_LOGGER=1`), not this issue.
+
+Not measured here: the non-Linux copies of the clients (FreeRTOS, NuttX,
+ThreadX, Zephyr, mps2 bare-metal) — the same logic, but their XRCE fixtures
+were not built for this — and a full tier-1 sweep (phase-507's acceptance).
