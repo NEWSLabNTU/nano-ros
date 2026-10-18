@@ -15501,3 +15501,88 @@ fn a_contract_deadline_the_backend_does_not_judge_is_judged_by_silence() {
         "disarmed"
     );
 }
+
+/// Issue 1203 — `use_sim_time` declared through `Executor::parameter`'s
+/// builder attaches the `/clock` source, like the two `declare_parameter`
+/// paths.
+///
+/// The builder declares through its own borrow of the store, so the executor
+/// never saw it. Once phase-430 W2 seeded a `use_sim_time = false` placeholder
+/// on every node, the symptom changed: measured on the pre-fix code the
+/// builder's declaration was REFUSED (`Err(TypeMismatch)`) and the store kept
+/// the seeded `false`, so the app's `default(true)` was lost entirely.
+#[cfg(all(feature = "sim-time", feature = "param-store"))]
+#[test]
+fn use_sim_time_through_the_builder_attaches_the_clock_source() {
+    let _sim_time = SimTimeGuard::acquire();
+    let session = MockSession::new();
+    let mut executor: Executor = executor_with_clock(session);
+    let _ = executor.create_node("builder_node").expect("create node");
+    // Any earlier declaration builds the store, and with it the seed.
+    assert!(executor.declare_parameter("other", nros_params::ParameterValue::Integer(1)));
+    let primary = super::node_record::NodeId::PRIMARY.into();
+    assert_eq!(
+        executor
+            .params()
+            .and_then(|p| p.get_bool(primary, "use_sim_time")),
+        Some(false),
+        "precondition: the store seeds the placeholder"
+    );
+
+    let declared = executor
+        .parameter::<bool>("use_sim_time")
+        .expect("the store exists")
+        .default(true)
+        .mandatory();
+    assert!(
+        declared.is_ok(),
+        "the app's declaration must replace the placeholder, not be refused by it: {:?}",
+        declared.err()
+    );
+    assert_eq!(
+        executor
+            .params()
+            .and_then(|p| p.get_bool(primary, "use_sim_time")),
+        Some(true),
+        "the builder's default is what the store holds"
+    );
+
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    assert!(
+        executor.ros_time_source_installed(),
+        "use_sim_time = true through the builder must attach /clock on the next spin"
+    );
+    assert!(
+        crate::time_source::is_active(),
+        "attached and not armed drops every sample"
+    );
+}
+
+/// Issue 1203 — a builder for `use_sim_time` that is dropped without declaring
+/// leaves the node with its placeholder, not with no `use_sim_time` at all.
+#[cfg(all(feature = "sim-time", feature = "param-store"))]
+#[test]
+fn an_undeclared_use_sim_time_builder_puts_the_placeholder_back() {
+    let _sim_time = SimTimeGuard::acquire();
+    let session = MockSession::new();
+    let mut executor: Executor = executor_with_clock(session);
+    let _ = executor.create_node("builder_node").expect("create node");
+    assert!(executor.declare_parameter("other", nros_params::ParameterValue::Integer(1)));
+    let primary = super::node_record::NodeId::PRIMARY.into();
+
+    let _unused_builder = executor
+        .parameter::<bool>("use_sim_time")
+        .expect("the store exists");
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    assert_eq!(
+        executor
+            .params()
+            .and_then(|p| p.get_bool(primary, "use_sim_time")),
+        Some(false),
+        "the placeholder stepped aside for a builder that declared nothing"
+    );
+    assert!(
+        !executor.ros_time_source_installed(),
+        "the placeholder is nobody's statement and must attach nothing"
+    );
+}

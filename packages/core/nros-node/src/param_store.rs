@@ -214,6 +214,12 @@ pub(crate) struct ParamState<'s> {
     /// [`ParamState::services`] already uses: one entry per node key.
     #[cfg(feature = "sim-time")]
     pub(crate) sim_time_seeded: [bool; MAX_SERVICE_SETS],
+    /// Issue 1203 — a node whose `use_sim_time` was handed to a
+    /// `ParameterBuilder`. The builder declares through its own borrow of the
+    /// store, so the executor learns what it declared only on the next spin,
+    /// which reads the store back (`Executor::settle_builder_reserved_parameters`).
+    #[cfg(feature = "sim-time")]
+    pub(crate) sim_time_via_builder: [bool; MAX_SERVICE_SETS],
 }
 
 impl<'s> ParamState<'s> {
@@ -257,6 +263,8 @@ impl<'s> ParamState<'s> {
             // (`ensure_parameter_store`) seeds PRIMARY immediately after.
             #[cfg(feature = "sim-time")]
             addr_of_mut!((*dst).sim_time_seeded).write([false; MAX_SERVICE_SETS]);
+            #[cfg(feature = "sim-time")]
+            addr_of_mut!((*dst).sim_time_via_builder).write([false; MAX_SERVICE_SETS]);
         }
     }
 

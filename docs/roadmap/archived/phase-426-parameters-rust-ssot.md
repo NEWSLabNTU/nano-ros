@@ -1,10 +1,10 @@
 # Phase 426 — parameters get a Rust SSoT, and `ros2 param list` works
 
-**Archived 2026-10-11.** All six work items are met. The phase stayed active only to own [issue 1203](../../issues/1203-parameter-builder-bypasses-reserved-parameter-hook.md), which is real, low severity and needs no phase to hold it; it stays open on its own.
+**Archived 2026-10-11.** All six work items are met. The phase stayed active only to own [issue 1203](../../issues/archived/1203-parameter-builder-bypasses-reserved-parameter-hook.md), which is real, low severity and needs no phase to hold it; it stays open on its own.
 
 **Status (2026-09-13). ALL SIX WORK ITEMS ARE MET AND RE-AUDITED. The phase is
 STILL ACTIVE for exactly one reason, and it is not a work item: it owns one
-OPEN issue, [#1203](../../issues/1203-parameter-builder-bypasses-reserved-parameter-hook.md).**
+OPEN issue, [#1203](../../issues/archived/1203-parameter-builder-bypasses-reserved-parameter-hook.md).**
 Archiving it with 1203 open would put open work under a finished phase — the
 rule this phase itself applied when 1203 arrived here from the archived
 phase-430. **Resolve 1203 and this phase archives with no other change.**
@@ -473,7 +473,7 @@ shape is there and the remaining work is here.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1203](../../issues/1203-parameter-builder-bypasses-reserved-parameter-hook.md) | `Executor::parameter`'s `ParameterBuilder` declares straight into the store, bypassing the reserved-parameter hook that phase-430 W3 fixed on the other two paths — so `use_sim_time` named through the builder attaches no clock source |
+| [#1203](../../issues/archived/1203-parameter-builder-bypasses-reserved-parameter-hook.md) | `Executor::parameter`'s `ParameterBuilder` declares straight into the store, bypassing the reserved-parameter hook that phase-430 W3 fixed on the other two paths — so `use_sim_time` named through the builder attaches no clock source |
 
 **This is the whole of what keeps the phase active.** It is one issue, not a
 work item: no acceptance here depends on it, and no other phase is waiting on
