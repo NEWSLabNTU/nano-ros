@@ -17,6 +17,10 @@
 //! And the consumer (W3): a spin that dispatches an attributed arrival reads
 //! its bit and calls no `has_data` at all.
 //!
+//! And the arrived-vs-present rule (W5): a bit is cleared when its entity is
+//! DISPATCHED, never when its queue drains, so an arrival that races a drain
+//! is never left undispatched. A spurious dispatch to an empty queue is fine.
+//!
 //! Run: `cargo nextest run -p nros-tests --features trigger-test --test entity_wake`.
 
 #![cfg(feature = "trigger-test")]
@@ -379,5 +383,151 @@ fn an_arrival_a_trigger_held_back_is_dispatched_when_it_passes(zenohd_unique: Ze
          spin whose trigger failed was lost",
         counts[0].load(SeqCst),
         counts[1].load(SeqCst)
+    );
+}
+
+/// The two dispatch shapes a raw subscription can take.
+#[derive(Debug, Clone, Copy)]
+enum Shape {
+    /// In-place: one dispatch drains the backend's queue to empty, so an
+    /// arrival during its callback is usually taken by the same dispatch.
+    DrainsToEmpty,
+    /// `.message_info()`: one dispatch takes ONE sample, so an arrival during
+    /// its callback is still queued when the dispatch ends. This is the shape
+    /// the dispatch-clears rule protects.
+    OneSamplePerDispatch,
+}
+
+#[rstest]
+#[case::drains_to_empty(Shape::DrainsToEmpty)]
+#[case::one_sample_per_dispatch(Shape::OneSamplePerDispatch)]
+fn an_arrival_racing_a_drain_is_never_left_undispatched(
+    zenohd_unique: ZenohRouter,
+    #[case] shape: Shape,
+) {
+    use std::sync::atomic::{AtomicBool, AtomicU32, Ordering::SeqCst};
+    /// Long enough for the publisher to see the callback running and publish
+    /// inside it.
+    const CALLBACK_COST: Duration = Duration::from_millis(3);
+    /// Longer than the callback, so the backend's ring (depth 4 by default)
+    /// never fills. zenoh drops the NEWEST sample of a full ring (issue
+    /// 1970), which would fail this test for a reason that is not the
+    /// executor's.
+    const PUBLISH_INTERVAL: Duration = Duration::from_millis(5);
+    const ROUNDS: u32 = 20;
+    const BURST: u32 = 3;
+    require_zenohd();
+    let locator = zenohd_unique.locator();
+    let domain = u32::from(nros_tests::unique_ros_domain_id());
+
+    let mut exec = open(&locator, "entity_wake_race", domain);
+    let node = exec.node_builder("entity_wake_race").build().expect("node");
+    // The highest sequence number dispatched, and whether a callback is
+    // running right now.
+    let latest = std::sync::Arc::new(AtomicU32::new(0));
+    let in_callback = std::sync::Arc::new(AtomicBool::new(false));
+    let (latest_cb, in_callback_cb) = (latest.clone(), in_callback.clone());
+    let on_sample = move |data: &[u8]| {
+        in_callback_cb.store(true, SeqCst);
+        if let Some(seq) = data.get(4..8) {
+            latest_cb.fetch_max(u32::from_le_bytes(seq.try_into().unwrap()), SeqCst);
+        }
+        std::thread::sleep(CALLBACK_COST);
+        in_callback_cb.store(false, SeqCst);
+    };
+    let mut handle = exec.node_mut(node);
+    let builder = handle
+        .subscription("/entity_wake/race")
+        .generic(TYPE, "")
+        .qos(QoSProfile::default())
+        .rx_buffer::<256>();
+    match shape {
+        Shape::DrainsToEmpty => builder.build(on_sample),
+        Shape::OneSamplePerDispatch => builder
+            .message_info()
+            .build(move |data: &[u8], _info: &_| on_sample(data)),
+    }
+    .expect("register subscription");
+    assert_eq!(
+        exec.entity_attributed_slots().count_ones(),
+        1,
+        "the subscription was not attributed, so this would test the scan, not the bits"
+    );
+    let publisher = SendPublisher(
+        exec.node_mut(node)
+            .create_publisher_raw("/entity_wake/race", TYPE, "")
+            .expect("publisher"),
+    );
+
+    // Each round publishes a burst from another thread while this one spins,
+    // and holds the burst's LAST sample until a callback is running, so it
+    // arrives while the executor is dispatching that entity. No later arrival
+    // announces it again: if the executor drops an arrival that lands during
+    // the dispatch, that sample is never dispatched.
+    let (to_publisher, rounds) = std::sync::mpsc::channel::<u32>();
+    let (raced_tx, raced) = std::sync::mpsc::channel::<bool>();
+    let in_callback_pub = in_callback.clone();
+    let publisher_thread = std::thread::spawn(move || {
+        let publisher = publisher;
+        let publish = |seq: u32| {
+            let mut payload = [0u8, 1, 0, 0, 0, 0, 0, 0];
+            payload[4..8].copy_from_slice(&seq.to_le_bytes());
+            publisher.0.publish_raw(&payload).expect("publish");
+        };
+        while let Ok(first) = rounds.recv() {
+            let last = first + BURST - 1;
+            for seq in first..last {
+                if seq > first {
+                    std::thread::sleep(PUBLISH_INTERVAL);
+                }
+                publish(seq);
+            }
+            // Wait for that sample's dispatch to start, then publish into it.
+            let start = Instant::now();
+            while !in_callback_pub.load(SeqCst) && start.elapsed() < ARRIVAL_BUDGET {
+                std::hint::spin_loop();
+            }
+            let raced = in_callback_pub.load(SeqCst);
+            publish(last);
+            raced_tx.send(raced).unwrap();
+        }
+    });
+
+    let mut raced_rounds = 0;
+    for round in 0..ROUNDS {
+        let first = 1 + round * BURST;
+        let last = first + BURST - 1;
+        to_publisher.send(first).unwrap();
+        let start = Instant::now();
+        let mut raced_this_round = None;
+        while latest.load(SeqCst) < last {
+            if raced_this_round.is_none() {
+                raced_this_round = raced.try_recv().ok();
+            }
+            assert!(
+                start.elapsed() < ARRIVAL_BUDGET,
+                "{shape:?} round {round}: sample {last}, published while a callback ran \
+                 ({:?}), was never dispatched (latest {}); an arrival that raced a dispatch \
+                 was lost",
+                raced_this_round,
+                latest.load(SeqCst)
+            );
+            exec.spin_once(Duration::from_millis(50));
+        }
+        let raced_this_round = match raced_this_round {
+            Some(r) => r,
+            None => raced
+                .recv_timeout(ARRIVAL_BUDGET)
+                .expect("publisher finished"),
+        };
+        raced_rounds += u32::from(raced_this_round);
+    }
+    drop(to_publisher);
+    publisher_thread.join().unwrap();
+    // Control: the race this test exists for really happened.
+    assert!(
+        raced_rounds >= ROUNDS / 2,
+        "only {raced_rounds} of {ROUNDS} last samples were published while a callback ran, \
+         so the race was not exercised"
     );
 }
