@@ -1320,7 +1320,7 @@ pub(crate) unsafe extern "C" fn nros_rmw_runtime_wake_cb_from_isr(ctx: *mut core
 pub struct DispatchSlot {
     /// Owning Node's `State` blob — produced by the macro-emitted
     /// `i()` and round-tripped through
-    /// `nros::__private_node_state_into_raw`. Opaque to the
+    /// `nros::__macro::__private_node_state_into_raw`. Opaque to the
     /// executor.
     pub state: *mut core::ffi::c_void,
     /// Per-Node `extern "C"` trampoline; signature matches the
@@ -5855,12 +5855,13 @@ impl<'s> Executor<'s> {
     ///
     /// `state` must outlive the executor (the typical shape is a
     /// `*mut State` produced by
-    /// `nros::__private_node_state_into_raw` from the
+    /// `nros::__macro::__private_node_state_into_raw` from the
     /// macro-emitted `i()`; that pointer's lifetime IS the
     /// `Executor`'s by construction). `on_callback` must be safe to
     /// invoke with `(state, cb_id_ptr, cb_id_len, ctx)` matching the
     /// per-Node `__nros_node_<pkg>_on_callback` ABI emitted by the
     /// `nros::node!()` macro (Phase 216.A.5).
+    #[doc(hidden)]
     #[allow(clippy::result_unit_err)]
     pub fn register_dispatch_slot(
         &mut self,
@@ -5879,6 +5880,7 @@ impl<'s> Executor<'s> {
 
     /// Phase 216 follow-up — current registered dispatch-slot count.
     /// Diagnostic / test surface.
+    #[doc(hidden)]
     pub fn dispatch_slot_count(&self) -> usize {
         self.dispatch_slots.len()
     }
@@ -5902,6 +5904,7 @@ impl<'s> Executor<'s> {
     /// until the matching `drop` runs. `tick` must be safe to invoke with
     /// `(state, exec_ctx = *mut Executor)` each spin; `drop` must be safe to
     /// invoke exactly once with `state`.
+    #[doc(hidden)]
     #[allow(clippy::result_unit_err)]
     pub unsafe fn enroll_component(
         &mut self,
@@ -5916,6 +5919,7 @@ impl<'s> Executor<'s> {
 
     /// Phase 258 (Track 2, 2a) — current enrolled component-slot count.
     /// Diagnostic / test surface.
+    #[doc(hidden)]
     pub fn component_slot_count(&self) -> usize {
         self.component_slots.len()
     }
@@ -5928,6 +5932,7 @@ impl<'s> Executor<'s> {
     /// (`register_node_borrowed`) live ONLY here, not in
     /// `ExecutorNodeRuntime::components`, so the hosted-spin counts read zero
     /// without this surface.
+    #[doc(hidden)]
     pub fn enrolled_component_states(&self) -> impl Iterator<Item = *mut core::ffi::c_void> + '_ {
         self.component_slots.iter().map(|slot| slot.state)
     }
@@ -5979,6 +5984,7 @@ impl<'s> Executor<'s> {
     // `on_callback`; this fn never dereferences it (the registered callback
     // does, under the `register_dispatch_slot` safety contract), so it is sound
     // to call from safe code.
+    #[doc(hidden)]
     #[allow(clippy::not_unsafe_ptr_arg_deref)]
     pub fn dispatch_callback(&mut self, cb_id: &str, ctx: *mut core::ffi::c_void) {
         let cb_id_ptr = cb_id.as_ptr();
@@ -6322,6 +6328,7 @@ impl<'s> Executor<'s> {
     ///
     /// # Safety
     /// The caller must ensure that `entry_index` refers to an `ActionClientRawArenaEntry`.
+    #[doc(hidden)]
     pub unsafe fn action_client_core_mut(
         &mut self,
         entry_index: usize,
@@ -6400,6 +6407,7 @@ impl<'s> Executor<'s> {
     /// # Safety
     /// `entry_index` must be an index this executor handed out. The borrow is
     /// valid only while the arena is not re-entered.
+    #[doc(hidden)]
     pub unsafe fn subscription_handle(
         &self,
         entry_index: usize,
@@ -6418,6 +6426,7 @@ impl<'s> Executor<'s> {
     ///
     /// # Safety
     /// See [`Executor::subscription_handle`].
+    #[doc(hidden)]
     pub unsafe fn service_server_handle(
         &self,
         entry_index: usize,
@@ -6436,6 +6445,7 @@ impl<'s> Executor<'s> {
     ///
     /// # Safety
     /// See [`Executor::subscription_handle`].
+    #[doc(hidden)]
     pub unsafe fn service_client_handle(
         &self,
         entry_index: usize,

@@ -34,10 +34,13 @@ build road, W3 changes one header family, W4 is the largest and goes last.
 
 ### W1 — the facade carries only the user API (RFC-0071 D12)
 
-- [ ] [#1789](../issues/1789-nros-facade-exports-runtime-machinery.md): the RMW
+- [x] [#1789](../issues/archived/1789-nros-facade-exports-runtime-machinery.md): the RMW
       seam leaves `nros::`; macro machinery moves to a doc-hidden
       `nros::__macro`; executor raw registration to `nros::internals`. The 64
       ledger rows are re-filed against where each name now lives.
+      **Done 2026-10-18:** 76 ledger rows deleted (the seam's 66 plus 10
+      now-hidden `Executor` methods), 54 re-filed; it also unmasked issue
+      1942.
 
 ### W2 — backend facts come from the descriptor (RFC-0071 D11)
 
@@ -85,4 +88,5 @@ ledger has no row whose decision is not yet applied.
 | [#1299](../issues/1299-rmw-agnostic-backend-named-config-in-api.md) | Backend-named configuration (`CONFIG_NROS_ZENOH_*`, `ZENOH_LOCATOR`) in the API crates is RFC-0071 D8's class. |
 | [#1300](../issues/1300-closed-backend-lists-outside-core-api.md) | Closed backend lists outside core/api (the CLI scaffold, colcon's `RMW_BACKENDS`, `board.knobs.zenoh`) are beyond the gate's reach. |
 | [#1405](../issues/archived/1405-c-executor-node-id-zero-reads-as-no-node.md) | `node_raw_id != 0` decodes the primary node slot as "no node" at nine nros-c registration sites, the same conflation issue 1384 fixed one layer up. |
-| [#1789](../issues/1789-nros-facade-exports-runtime-machinery.md) | `nros::` still exports runtime machinery beside the user API: 64 ledger rows say a name should be hidden or moved. |
+| [#1789](../issues/archived/1789-nros-facade-exports-runtime-machinery.md) | `nros::` still exports runtime machinery beside the user API: 64 ledger rows say a name should be hidden or moved. |
+| [#1942](../issues/1942-rclrs-service-info-no-counterpart.md) | Found by W1: the seam's `ServiceInfo` had masked, by name, that rclrs's per-request service metadata has no counterpart here. |

@@ -701,6 +701,7 @@ impl<'s> Executor<'s> {
     ///
     /// `type_name` and `type_hash` identify the action type for key expression
     /// construction and liveliness tokens.
+    #[doc(hidden)]
     #[allow(clippy::too_many_arguments)]
     pub fn register_action_server_raw(
         &mut self,
@@ -719,6 +720,7 @@ impl<'s> Executor<'s> {
     /// `spec.qos` applies to the action's three underlying service
     /// servers (send_goal / cancel_goal / get_result; Phase 193.4b); the
     /// feedback + status publishers keep their own profiles.
+    #[doc(hidden)]
     pub fn register_action_server_raw_sized<
         const GOAL_BUF: usize,
         const RESULT_BUF: usize,
@@ -1546,6 +1548,7 @@ impl<'s> Executor<'s> {
     /// * `feedback_callback` — called when feedback is received
     /// * `result_callback` — called when result is received
     /// * `context` — opaque pointer passed to all callbacks
+    #[doc(hidden)]
     #[allow(clippy::too_many_arguments)]
     pub fn register_action_client_raw(
         &mut self,
@@ -1563,6 +1566,7 @@ impl<'s> Executor<'s> {
     /// `spec.node_id` selects the target: `None` registers on the
     /// executor's own node, `Some(id)` routes the client's 4 underlying
     /// handles through the named Node's session (Phase 104.C.3.3.a).
+    #[doc(hidden)]
     pub fn register_action_client_raw_sized<
         const GOAL_BUF: usize,
         const RESULT_BUF: usize,
@@ -1960,6 +1964,7 @@ impl<'s> Executor<'s> {
     /// Unlike `register_action_client_raw` (which creates new transport handles),
     /// this takes ownership of an existing core. Use this when the core was
     /// already created by the C/C++ action client init.
+    #[doc(hidden)]
     pub fn register_action_client_core<
         const GOAL_BUF: usize,
         const RESULT_BUF: usize,

@@ -20,8 +20,9 @@ use nros_rmw_zenoh as _;
 use std::time::Duration;
 
 use nros::{
-    Callback, CallbackCtx, Component, DeclarativeNode, ExecutableNode, Executor, ExecutorConfig,
-    ExecutorNodeRuntime, NodeContext, NodeOptions, NodeResult, ParameterDefault, TickCtx,
+    __macro::ExecutorNodeRuntime, Callback, CallbackCtx, Component, DeclarativeNode,
+    ExecutableNode, Executor, ExecutorConfig, NodeContext, NodeOptions, NodeResult,
+    ParameterDefault, TickCtx,
 };
 use nros_platform::RuntimeCtx;
 use nros_tests::fixtures::{ZenohRouter, require_zenohd, zenohd_unique};

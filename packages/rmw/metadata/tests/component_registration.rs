@@ -36,7 +36,7 @@ fn metadata_str(value: &str) -> MetadataString {
 
 fn record<C: Component>(recorder: &mut dyn NodeRuntime) -> NodeResult<()> {
     let mut executor = metadata_executor();
-    nros::record_node_metadata::<C>(recorder, &mut executor)
+    nros::__macro::record_node_metadata::<C>(recorder, &mut executor)
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -284,7 +284,7 @@ fn sticky_callback_group_stamps_subsequent_entities() {
 fn context_can_synthesize_stable_node_id_from_options_name() {
     let mut recorder = MetadataRecorder::<1, 0, 0>::new();
     let mut __exec = metadata_executor();
-    nros::__record_with_context("test", &mut recorder, &mut __exec, |context| {
+    nros::__macro::__record_with_context("test", &mut recorder, &mut __exec, |context| {
         let node = context
             .create_node(NodeOptions::new("talker").namespace("/demo").domain_id(42))
             .unwrap();
@@ -311,7 +311,7 @@ fn context_can_synthesize_stable_node_id_from_options_name() {
 fn a_declared_timer_records_the_clock_it_asked_for() {
     let mut recorder = MetadataRecorder::<1, 2, 0>::new();
     let mut __exec = metadata_executor();
-    nros::__record_with_context("test", &mut recorder, &mut __exec, |context| {
+    nros::__macro::__record_with_context("test", &mut recorder, &mut __exec, |context| {
         let mut node = context.create_node(NodeOptions::new("talker")).unwrap();
 
         let _wall = node
@@ -356,7 +356,7 @@ fn a_declared_timer_records_the_clock_it_asked_for() {
 fn synthesized_entity_helpers_record_topic_and_callback_ids() {
     let mut recorder = MetadataRecorder::<1, 3, 2>::new();
     let mut __exec = metadata_executor();
-    nros::__record_with_context("test", &mut recorder, &mut __exec, |context| {
+    nros::__macro::__record_with_context("test", &mut recorder, &mut __exec, |context| {
         let mut node = context.create_node(NodeOptions::new("talker")).unwrap();
 
         let publisher = node
@@ -419,7 +419,7 @@ fn synthesized_entity_helpers_record_topic_and_callback_ids() {
 fn named_callback_helpers_avoid_manual_callback_ids() {
     let mut recorder = MetadataRecorder::<1, 3, 2>::new();
     let mut __exec = metadata_executor();
-    nros::__record_with_context("test", &mut recorder, &mut __exec, |context| {
+    nros::__macro::__record_with_context("test", &mut recorder, &mut __exec, |context| {
         let mut node = context.create_node(NodeOptions::new("listener")).unwrap();
 
         let publisher = node
@@ -479,7 +479,7 @@ fn named_callback_helpers_avoid_manual_callback_ids() {
 fn synthesized_entity_ids_reject_collisions() {
     let mut recorder = MetadataRecorder::<1, 2, 0>::new();
     let mut __exec = metadata_executor();
-    nros::__record_with_context("test", &mut recorder, &mut __exec, |context| {
+    nros::__macro::__record_with_context("test", &mut recorder, &mut __exec, |context| {
         let mut node = context.create_node(NodeOptions::new("talker")).unwrap();
 
         node.create_publisher_for_topic::<TestMsg>("/chatter")
@@ -497,7 +497,7 @@ fn synthesized_entity_ids_reject_collisions() {
 fn component_rejects_effect_for_unknown_entity() {
     let mut recorder = MetadataRecorder::<1, 1, 1>::new();
     let mut __exec = metadata_executor();
-    nros::__record_with_context("test", &mut recorder, &mut __exec, |context| {
+    nros::__macro::__record_with_context("test", &mut recorder, &mut __exec, |context| {
         let result = context
             .callback(CallbackId::new("cb"))
             .reads(EntityId::new("missing"));
@@ -672,7 +672,7 @@ fn component_api_json_contains_planner_callback_links() {
 fn create_subscription_static_returns_tag_matching_topic() {
     let mut recorder = MetadataRecorder::<1, 1, 1>::new();
     let mut __exec = metadata_executor();
-    nros::__record_with_context("test", &mut recorder, &mut __exec, |context| {
+    nros::__macro::__record_with_context("test", &mut recorder, &mut __exec, |context| {
         let mut node = context.create_node(NodeOptions::new("listener")).unwrap();
         let tag = node
             .create_subscription_static::<TestMsg>("/chatter")
@@ -696,7 +696,7 @@ fn create_subscription_static_returns_tag_matching_topic() {
 fn create_service_static_returns_tag() {
     let mut recorder = MetadataRecorder::<1, 1, 1>::new();
     let mut __exec = metadata_executor();
-    nros::__record_with_context("test", &mut recorder, &mut __exec, |context| {
+    nros::__macro::__record_with_context("test", &mut recorder, &mut __exec, |context| {
         let mut node = context.create_node(NodeOptions::new("server")).unwrap();
         let tag = node
             .create_service_static::<TestService>("/add_two_ints")
@@ -720,7 +720,7 @@ fn create_service_static_returns_tag() {
 fn create_service_helpers_use_name_as_entity_and_callback_id() {
     let mut recorder = MetadataRecorder::<1, 2, 1>::new();
     let mut __exec = metadata_executor();
-    nros::__record_with_context("test", &mut recorder, &mut __exec, |context| {
+    nros::__macro::__record_with_context("test", &mut recorder, &mut __exec, |context| {
         let mut node = context.create_node(NodeOptions::new("services")).unwrap();
         let server = node
             .create_service_server_for_name::<TestService>("/add_two_ints")
@@ -755,7 +755,7 @@ fn create_service_helpers_use_name_as_entity_and_callback_id() {
 fn create_action_static_returns_tag() {
     let mut recorder = MetadataRecorder::<1, 1, 1>::new();
     let mut __exec = metadata_executor();
-    nros::__record_with_context("test", &mut recorder, &mut __exec, |context| {
+    nros::__macro::__record_with_context("test", &mut recorder, &mut __exec, |context| {
         let mut node = context.create_node(NodeOptions::new("server")).unwrap();
         let tag = node
             .create_action_static::<TestAction>("/fibonacci")
@@ -793,7 +793,7 @@ fn create_action_static_returns_tag() {
 fn create_action_helpers_use_name_as_entity_and_default_callback_id() {
     let mut recorder = MetadataRecorder::<1, 2, 3>::new();
     let mut __exec = metadata_executor();
-    nros::__record_with_context("test", &mut recorder, &mut __exec, |context| {
+    nros::__macro::__record_with_context("test", &mut recorder, &mut __exec, |context| {
         let mut node = context.create_node(NodeOptions::new("actions")).unwrap();
         let server = node
             .create_action_server_for_name::<TestAction>("/fibonacci")
@@ -886,7 +886,7 @@ fn node_identity_injected_wins_over_node_options() {
     };
     {
         let mut __exec = metadata_executor();
-        nros::__record_with_context("test_node", &mut rt_a, &mut __exec, |ctx| {
+        nros::__macro::__record_with_context("test_node", &mut rt_a, &mut __exec, |ctx| {
             ctx.create_node(NodeOptions::new("default").namespace("/d"))
                 .unwrap();
         });
@@ -902,7 +902,7 @@ fn node_identity_injected_wins_over_node_options() {
     };
     {
         let mut __exec = metadata_executor();
-        nros::__record_with_context("test_node", &mut rt_b, &mut __exec, |ctx| {
+        nros::__macro::__record_with_context("test_node", &mut rt_b, &mut __exec, |ctx| {
             ctx.create_node(NodeOptions::new("default").namespace("/d"))
                 .unwrap();
         });
@@ -960,7 +960,7 @@ fn entity_names_resolved_through_launch_remaps() {
     };
     {
         let mut __exec = metadata_executor();
-        nros::__record_with_context("test_node", &mut rt, &mut __exec, |ctx| {
+        nros::__macro::__record_with_context("test_node", &mut rt, &mut __exec, |ctx| {
             let mut node = ctx
                 .create_node(NodeOptions::new("filter").namespace("/sensing"))
                 .unwrap();
@@ -974,7 +974,7 @@ fn entity_names_resolved_through_launch_remaps() {
     // Un-remapped relative name → plain expansion.
     {
         let mut __exec = metadata_executor();
-        nros::__record_with_context("test_node", &mut rt, &mut __exec, |ctx| {
+        nros::__macro::__record_with_context("test_node", &mut rt, &mut __exec, |ctx| {
             let mut node = ctx
                 .create_node(NodeOptions::new("filter").namespace("/sensing"))
                 .unwrap();
@@ -987,7 +987,7 @@ fn entity_names_resolved_through_launch_remaps() {
     // Parameter names bypass the remap seam.
     {
         let mut __exec = metadata_executor();
-        nros::__record_with_context("test_node", &mut rt, &mut __exec, |ctx| {
+        nros::__macro::__record_with_context("test_node", &mut rt, &mut __exec, |ctx| {
             let mut node = ctx
                 .create_node(NodeOptions::new("filter").namespace("/sensing"))
                 .unwrap();
@@ -1004,10 +1004,11 @@ fn entity_names_resolved_through_launch_remaps() {
 fn synthesized_node_ids_reject_duplicate_names() {
     let mut recorder = MetadataRecorder::<2, 0, 0>::new();
     let mut exec = metadata_executor();
-    let second = nros::__record_with_context("test", &mut recorder, &mut exec, |context| {
-        context.create_node(NodeOptions::new("talker")).unwrap();
-        context.create_node(NodeOptions::new("talker")).map(|_| ())
-    });
+    let second =
+        nros::__macro::__record_with_context("test", &mut recorder, &mut exec, |context| {
+            context.create_node(NodeOptions::new("talker")).unwrap();
+            context.create_node(NodeOptions::new("talker")).map(|_| ())
+        });
     assert!(matches!(
         second,
         Err(NodeDeclError::Metadata(NodeMetadataError::DuplicateId))
@@ -1037,11 +1038,12 @@ fn a_component_and_a_program_share_one_node_type() {
     // The component road: `register`'s context creates it.
     let mut recorder = MetadataRecorder::<1, 0, 0>::new();
     let mut exec = metadata_executor();
-    let seen = nros::__record_with_context("shared", &mut recorder, &mut exec, |context| {
-        let mut node = context
-            .create_node(NodeOptions::new("in_component"))
-            .unwrap();
-        configure(&mut node)
-    });
+    let seen =
+        nros::__macro::__record_with_context("shared", &mut recorder, &mut exec, |context| {
+            let mut node = context
+                .create_node(NodeOptions::new("in_component"))
+                .unwrap();
+            configure(&mut node)
+        });
     assert_eq!(seen, "component");
 }

@@ -10,7 +10,7 @@
 //! [`registration_observer`][obs]. A row nobody observed REFUSES, and every
 //! consumer then budgets the receive region — the safe direction.
 //!
-//! The **Rust producer observes nothing**. `nros::record_node_metadata::<C>`
+//! The **Rust producer observes nothing**. `nros::__macro::record_node_metadata::<C>`
 //! runs a component's `register()` against a recording `NodeContext` and opens
 //! no executor at all, so no registration happens in the probe and every Rust
 //! endpoint's row refuses. That is issue 1522.

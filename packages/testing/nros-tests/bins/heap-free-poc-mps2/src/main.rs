@@ -130,7 +130,7 @@ fn main() -> ! {
             // prove that, so the whole install + spin path is IN the image —
             // which is exactly what the link gate measures.
             let rc = unsafe {
-                nros::install_node_typed_in(
+                nros::__macro::install_node_typed_in(
                     &mut executor as *mut _ as *mut core::ffi::c_void,
                     &POC_STORE,
                 )

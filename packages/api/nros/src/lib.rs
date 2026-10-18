@@ -333,10 +333,9 @@ pub use nros_core::heapless;
 // sweep — the helper had no live callers after the BSP baker + macro
 // extern emit were deleted.)
 pub use node::{
-    ActionExecutor, Callback, CallbackCtx, ClientDispatch, EntityBounds, NodeActionClient,
-    NodeActionServer, NodeDeclError, NodeOptions, NodeParameter, NodePublisher, NodeResult,
-    NodeRuntime, NodeServiceClient, NodeServiceServer, NodeSubscription, NodeTimer,
-    PublisherResolver, TickCtx,
+    Callback, CallbackCtx, EntityBounds, NodeActionClient, NodeActionServer, NodeDeclError,
+    NodeOptions, NodeParameter, NodePublisher, NodeResult, NodeRuntime, NodeServiceClient,
+    NodeServiceServer, NodeSubscription, NodeTimer, TickCtx,
 };
 // phase-483 W3 — the component API registers into a live executor, so it
 // exists where the executor does.
@@ -349,15 +348,6 @@ pub use node::{CallbackEffects, Component, DeclarativeNode, ExecutableNode, Node
 // author, and none is named by any hand-written file in `examples/` or
 // `packages/`. Hidden, not deleted: the generated code reaches them by path, the
 // same treatment as `__private_node_state_into_raw` below.
-#[cfg(feature = "rmw-cffi")]
-#[doc(hidden)]
-pub use node::{__record_with_context, record_node_metadata, register_node};
-// Phase 212.M.5.a.4 — internal helper consumed by `nros::node!()`
-// for the BSP dispatch path. Public-but-doc-hidden so the macro expand
-// resolves it as `::nros::__private_node_state_into_raw`.
-#[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
-#[doc(hidden)]
-pub use node::__private_node_state_into_raw;
 // phase-359 W8 — follows `node_metadata`'s re-gate: the type needs `alloc`,
 // not `std`.
 #[cfg(feature = "alloc")]
@@ -379,33 +369,38 @@ pub use node_metadata::{CallbackId, EntityId, NodeId};
 // `ExecutableNode::on_callback`.
 pub use dispatch_tag::{ActionTag, ServiceTag, SubscriptionTag};
 // W5-endgame (issue 0843) — the alloc-free half of the seam: per-class static
-// storage + the `_in` installs the macro emits. Available on `rmw-cffi` alone.
+// storage. The `_in` installs the macro emits live in `__macro`.
 #[cfg(feature = "rmw-cffi")]
-pub use node_runtime::{
-    ComponentSlotStorage,
-    // Phase 257 (W0-B) — the uniform cross-language component-install seam backing
-    // `__nros_component_<pkg>_install` (nros::node!): register an ExecutableNode on the
-    // shared executor a foreign typed entry hands in. (`register_node_borrowed` stays
-    // crate-internal — it returns the private `ComponentCell`.)
-    install_node_typed_in,
-    // Phase 305 W3 (issue 0255) — same seam plus launch `<remap>` rules; the variant
-    // `nros::node!()` emits.
-    install_node_typed_with_launch_in,
-};
-// The dynamic runtime + the leak-per-call conveniences still need `alloc`.
+pub use node_runtime::ComponentSlotStorage;
+// The dynamic runtime still needs `alloc`.
 #[cfg(all(feature = "rmw-cffi", feature = "alloc"))]
-pub use node_runtime::{
-    ExecutorError,
-    ExecutorNodeRuntime,
-    RegisteredNode,
-    install_node_typed,
-    install_node_typed_with_launch,
-    // Phase 268 W1 — same seam with both `<param>` initials AND `<node name= namespace=>`
-    // identity injection (RFC-0046).
-    install_node_typed_with_node_identity,
-    // W4a — same seam, seeding the node's NodeContext with launch-baked `<param>` initials.
-    install_node_typed_with_params,
-};
+pub use node_runtime::{ExecutorError, RegisteredNode};
+
+/// What `nros::node!`, `nros::main!`, the generated entry points and the board
+/// entry glue expand into — never what a node author writes.
+///
+/// RFC-0071 D12 (phase-506 W1, issue 1789). These sat at the top of `nros::`
+/// beside the user API, public only because generated code resolves them
+/// through `::nros::`. Gathering them here keeps every path reachable for
+/// generated code and takes them off the surface a porting user browses.
+#[doc(hidden)]
+pub mod __macro {
+    #[cfg(feature = "rmw-cffi")]
+    pub use crate::node::{__record_with_context, record_node_metadata, register_node};
+    pub use crate::node::{ActionExecutor, ClientDispatch, PublisherResolver};
+    // Phase 212.M.5.a.4 — consumed by `nros::node!()` for the BSP dispatch path.
+    #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+    pub use crate::node::__private_node_state_into_raw;
+    // Phase 257 (W0-B) / phase-305 W3 — the uniform cross-language
+    // component-install seam backing `__nros_component_<pkg>_install`.
+    #[cfg(all(feature = "rmw-cffi", feature = "alloc"))]
+    pub use crate::node_runtime::{
+        ExecutorNodeRuntime, install_node_typed, install_node_typed_with_launch,
+        install_node_typed_with_node_identity, install_node_typed_with_params,
+    };
+    #[cfg(feature = "rmw-cffi")]
+    pub use crate::node_runtime::{install_node_typed_in, install_node_typed_with_launch_in};
+}
 
 // phase-483 W3 — the `install_node_typed*` STUBS for builds without
 // `rmw-cffi` are gone. They existed so a `nros::node!()` package compiled
@@ -926,13 +921,20 @@ pub use nros_node::timer::TimerClockSource;
 #[cfg(all(feature = "rosout", feature = "rmw-cffi"))]
 pub use nros_node::rosout;
 
-// Re-export transport types (middleware-agnostic)
+// The QoS vocabulary a node author states. RFC-0071 D12 (phase-506 W1, issue
+// 1789): the RMW SEAM — `Session`, `Rmw`, `Transport`, `TopicInfo`, the
+// `Publisher` / `Subscription` / `ClientTrait` / `ServiceTrait` entity traits
+// and their config types — is NOT re-exported here. It is what a backend
+// implements, and every in-tree backend already imports it from `nros-rmw`
+// directly; beside the user API it was the "three audiences" problem issue
+// 0784 was named for.
 pub use nros_rmw::{
-    ClientTrait, Publisher, QoSDurabilityPolicy, QoSHistoryPolicy, QoSLivelinessPolicy,
-    QoSOverride, QoSOverrideRole, QoSOverrideValue, QoSPolicyMask, QoSProfile,
-    QoSReliabilityPolicy, Rmw, RmwConfig, ServiceInfo, ServiceRequest, ServiceTrait, Session,
-    SessionMode, Subscription as SubscriptionTrait, TopicInfo, Transport, TransportConfig,
+    QoSDurabilityPolicy, QoSHistoryPolicy, QoSLivelinessPolicy, QoSOverride, QoSOverrideRole,
+    QoSOverrideValue, QoSPolicyMask, QoSProfile, QoSReliabilityPolicy,
 };
+// `SessionMode` is the type of `ExecutorConfig`'s `mode`, so it is user
+// configuration even though it is defined beside the seam.
+pub use nros_rmw::SessionMode;
 
 /// Phase 108.B — standard ROS-2-equivalent QoS profiles. Match
 /// upstream `rmw_qos_profile_default` etc. field-by-field. Backends
@@ -1045,6 +1047,14 @@ pub use nros_rmw::{IntegrityStatus, SafetyValidator, crc32};
 /// The `Rmw*` type aliases resolve to whichever backend is active at compile time,
 /// providing a backend-agnostic way to reference concrete transport types.
 pub mod internals {
+    // RFC-0071 D12 (phase-506 W1, issue 1789) — the untyped action machinery the
+    // C and C++ shims drive, out of the top-level user API.
+    #[cfg(feature = "rmw-cffi")]
+    pub use nros_node::{
+        ActionClientCore, ActionServerCore, ActionServerRawHandle, RawActionClientSpec,
+        RawActionServerSpec,
+    };
+
     // ── Backend-agnostic type aliases ────────────────────────────────────
     // These resolve to the concrete types of the active RMW backend.
     // Today the only exposed backend at this layer is the cffi shim.
@@ -1249,12 +1259,10 @@ pub mod contract;
 // Re-export RMW-dependent types (require an active transport backend)
 #[cfg(feature = "rmw-cffi")]
 pub use nros_node::{
-    ActionClient, ActionClientCore, ActionServer, ActionServerCore, ActionServerHandle,
-    ActionServerRawHandle, ActiveGoal, CompletedGoal, EmbeddedPublisher, EmbeddedRawPublisher,
-    EmbeddedServiceClient, EmbeddedServiceServer, Executor, ExecutorSizing, FeedbackStream,
-    GoalFeedbackStream, LoanError, Node, Promise, PublishLoan, RawActionClientSpec,
-    RawActionServerSpec, RawActiveGoal, RawSubscription, RecvView, SessionHandle, SessionSpec,
-    Subscription, action_channel_type,
+    ActionClient, ActionServer, ActionServerHandle, ActiveGoal, CompletedGoal, EmbeddedPublisher,
+    EmbeddedRawPublisher, EmbeddedServiceClient, EmbeddedServiceServer, Executor, ExecutorSizing,
+    FeedbackStream, GoalFeedbackStream, LoanError, Node, Promise, PublishLoan, RawActiveGoal,
+    RawSubscription, RecvView, SessionHandle, SessionSpec, Subscription, action_channel_type,
 };
 
 // phase-271 (issue #110) — per-entry executor sizing helper: the orchestration
@@ -1481,12 +1489,14 @@ pub mod embedded {
     // Entity REGISTRATION vocabulary. A ported node writes
     // `create_publisher(...)`; these are what the declaration macros and the
     // orchestration layer use to describe what was created.
+    #[cfg(feature = "rmw-cffi")]
+    pub use crate::__macro::{record_node_metadata, register_node};
+    #[cfg(feature = "rmw-cffi")]
+    pub use crate::CallbackEffects;
     pub use crate::{
         ActionTag, Callback, CallbackEffectKind, EntityKind, NodeRuntime, ServiceTag,
         SourceLocationMetadata, SourceNameKind, SubscriptionTag,
     };
-    #[cfg(feature = "rmw-cffi")]
-    pub use crate::{CallbackEffects, record_node_metadata, register_node};
     // Gated where the root gates it — the export follows the capability, not
     // the tier.
     #[cfg(feature = "alloc")]
@@ -1500,7 +1510,7 @@ pub mod prelude {
 
     pub use crate::{
         Deserialize, Logger, MessageInfo, QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile,
-        QoSReliabilityPolicy, RosMessage, RosService, Serialize, TopicInfo,
+        QoSReliabilityPolicy, RosMessage, RosService, Serialize,
     };
 
     // phase-417 / issue 0589 — logging, in the glob a node author already

@@ -440,7 +440,7 @@ pub fn render_harness_main(o: &MetadataBuildOptions) -> Result<String> {
          \x20   let config = nros::ExecutorConfig::new(\"\").rmw(\"metadata\");\n\
          \x20   let mut executor = nros::Executor::open(&config)\n\
          \x20       .expect(\"open the metadata backend\");\n\
-         \x20   nros::record_node_metadata::<{type_path}>(&mut recorder, &mut executor)\n\
+         \x20   nros::__macro::record_node_metadata::<{type_path}>(&mut recorder, &mut executor)\n\
          \x20       .expect(\"component register (metadata mode)\");\n\
          \x20   let export = nros::SourceMetadataExport::new({pkg:?}, {comp:?}){exe}{sym};\n\
          \x20   let json = recorder\n\

@@ -1,14 +1,15 @@
 ---
 id: 1789
 title: "`nros::` still exports runtime machinery beside the user API: 64 ledger rows say a name should be hidden or moved, and nothing tracked it once issue 0784 closed"
-status: open
+status: resolved
 type: tech-debt
 area: [api]
 found: 2026-10-11
+resolved: 2026-10-18
 related: [issue-0784, phase-483, rfc-0089, rfc-0036, phase-506]
 ---
 
-**Home: [phase-506](../roadmap/phase-506-api-crates-carry-only-the-api.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+**Home: [phase-506](../../roadmap/phase-506-api-crates-carry-only-the-api.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## What
 
@@ -63,3 +64,36 @@ other two kinds need a decision on where the seam lives, for example an
 `nros::rmw` / `nros::internals` module, since `internals` already exists and
 says what it is. Run `just check rustdoc-links` and `rustdoc-workspace` when
 moving any public name.
+
+## Resolved (2026-10-18) — RFC-0071 D12, phase-506 W1
+
+The direction was decided as RFC-0071 D12 (maintainer ruling 2026-10-18), and
+the three kinds went three ways:
+
+* **The RMW seam left `nros::`.** `Session`, `Rmw`, `RmwConfig`, `Transport`,
+  `TransportConfig`, `TopicInfo`, `ServiceInfo`, `ServiceRequest`, the
+  `Publisher` / `SubscriptionTrait` / `ClientTrait` / `ServiceTrait` entity
+  traits: no hand-written file outside the facade reached any of them through
+  `nros::` (one comment did), because every backend imports `nros-rmw`
+  directly. `SessionMode` stays: it is the type of `ExecutorConfig`'s `mode`.
+  66 ledger rows described names the facade no longer exports and were
+  deleted, and one name collision surfaced: the seam's `ServiceInfo` had been
+  correlated with rclrs's per-request `ServiceInfo`, masking a real gap, now
+  issue 1942.
+* **Macro machinery moved to a doc-hidden `nros::__macro`:** `ActionExecutor`,
+  `ClientDispatch`, `PublisherResolver`, `ExecutorNodeRuntime`, the
+  `install_node_typed*` family, `record_node_metadata`, `register_node`,
+  `__record_with_context`, `__private_node_state_into_raw`. `nros-macros`, the
+  metadata probe generator, the boards and the tests follow the path.
+* **Executor internals:** the untyped action types (`ActionClientCore`,
+  `ActionServerCore`, `ActionServerRawHandle`, `RawAction{Client,Server}Spec`)
+  moved to `nros::internals`; the raw registration methods, the component and
+  dispatch-slot tables and the `*_handle` accessors are `#[doc(hidden)]` on
+  `Executor`, since a method cannot change module.
+
+What a component author writes (`declarative_component!`, `DeclarativeNode`,
+`NodeId`, `ParameterDefault`, the source ids) stays at the crate root, and its
+ledger rows now say so instead of citing this issue. Of the 64 rows that cited
+it, the 10 naming a now-hidden `Executor` method left the extraction and were
+deleted; the other 54 are re-filed with the disposition they got.
+`just check api-parity` passes.
