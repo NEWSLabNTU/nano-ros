@@ -104,6 +104,9 @@ pub struct SetupNode {
 pub struct LoweredRunners {
     pub run_components: Option<String>,
     pub run_tiers: Option<String>,
+    /// See [`CAbiRunners::run_tiers_backed`] (issue 1970).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_tiers_backed: Option<String>,
     /// See [`CAbiRunners::takes_executor_storage`].
     pub takes_executor_storage: bool,
 }
@@ -113,6 +116,7 @@ impl From<CAbiRunners> for LoweredRunners {
         LoweredRunners {
             run_components: r.run_components.map(String::from),
             run_tiers: r.run_tiers.map(String::from),
+            run_tiers_backed: r.run_tiers_backed.map(String::from),
             takes_executor_storage: r.takes_executor_storage,
         }
     }

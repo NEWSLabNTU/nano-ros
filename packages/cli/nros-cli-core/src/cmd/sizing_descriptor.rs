@@ -176,6 +176,14 @@ pub struct SizingDescriptorArgs {
     /// the wrong road is the defect this whole schema exists to prevent.
     #[arg(long, value_name = "PROSE")]
     pub road: Option<String>,
+
+    /// Issue 1970 -- `codegen entry`'s priority record
+    /// (`nros_priority_plan.json`) for this entry. When it names the tiers of a
+    /// board whose runner sizes each tier's executor from its own members, the
+    /// descriptor states one `[[tier]]` row per tier. Absent or unreadable,
+    /// nothing is added.
+    #[arg(long, value_name = "PATH", requires = "from_model")]
+    pub tier_record: Option<PathBuf>,
 }
 
 /// `--road`'s default for `--from-model`.
@@ -379,8 +387,9 @@ fn write_from_model(args: &SizingDescriptorArgs, model_path: &std::path::Path) -
     // `write_for_model` checks the declared ingress against.
     let mut inventory = inventory;
     inventory.set_board_rx_cost(board_rx_cost(args));
-    let written =
-        crate::sizing_descriptor::write_for_model(&crate::sizing_descriptor::ModelImage {
+    let tiers = tier_rows_for(args, &inventory);
+    let written = crate::sizing_descriptor::write_for_model_with_tiers(
+        &crate::sizing_descriptor::ModelImage {
             build_dir,
             entry,
             wiring: crate::sizing_descriptor::Wiring::Composed(&inventory),
@@ -392,8 +401,10 @@ fn write_from_model(args: &SizingDescriptorArgs, model_path: &std::path::Path) -
             horizon: crate::sizing_descriptor::ModelHorizon::new(
                 args.road.as_deref().unwrap_or(DEFAULT_MODEL_ROAD),
             ),
-        })?
-        .expect("a composed inventory always states its wiring");
+        },
+        tiers,
+    )?
+    .expect("a composed inventory always states its wiring");
     println!("{}", written.path.display());
     for p in observation_inputs {
         println!("input {}", p.display());
@@ -403,6 +414,36 @@ fn write_from_model(args: &SizingDescriptorArgs, model_path: &std::path::Path) -
 
 /// phase-462 W6c -- `[board.rx]` as the configure handed it
 /// (`--board-rx-frame-cost-us` / `--board-rx-floor-us`).
+/// Issue 1970 -- each tier's own `[[tier]]` row, when `--tier-record` names a
+/// per-tier-sized tier table. A tier table the inventory cannot describe tier
+/// by tier yields no row, says why, and leaves every tier on the image's
+/// executor size.
+fn tier_rows_for(
+    args: &SizingDescriptorArgs,
+    inventory: &crate::entity_inventory::EntityInventory,
+) -> Vec<nros_sizing_descriptor::Tier> {
+    let Some(text) = args
+        .tier_record
+        .as_ref()
+        .and_then(|p| std::fs::read_to_string(p).ok())
+    else {
+        return Vec::new();
+    };
+    let Some(tiers) = crate::sizing_descriptor::tiers_from_priority_record(&text) else {
+        return Vec::new();
+    };
+    match crate::sizing_descriptor::tier_rows(inventory, &tiers) {
+        Ok(rows) => rows,
+        Err(why) => {
+            eprintln!(
+                "nros ws sizing-descriptor: no per-tier executor sizing ({why}); every tier keeps \
+                 the image's executor size (issue 1970)"
+            );
+            Vec::new()
+        }
+    }
+}
+
 pub(crate) fn board_rx_cost(
     args: &SizingDescriptorArgs,
 ) -> Option<crate::entity_inventory::RxFrameCost> {
@@ -1021,6 +1062,7 @@ mod tests {
             // phase-457 W0.b — `None`, so every case exercises the PER-MODE default
             // the cmake callers rely on rather than overriding it.
             road: None,
+            tier_record: None,
             from_leaf: None,
             // phase-457-payload W2 -- no tables: the payload class refuses,
             // naming the missing registration (issue 1393 closed the road).

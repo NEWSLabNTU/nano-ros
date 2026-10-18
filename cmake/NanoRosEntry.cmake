@@ -1474,7 +1474,10 @@ function(_nros_entry_invoke_codegen)
         BUILD_DIR "${CMAKE_BINARY_DIR}"
         METADATA  "${_nrx_metadata}"
         WORKSPACE "${_nrx_colcon_ws}"
-        RMW       "${_nrx_rmw}")
+        RMW       "${_nrx_rmw}"
+        # Issue 1970 -- the tiers `codegen entry` resolved above, so a board
+        # whose runner sizes each tier's executor gets one `[[tier]]` row each.
+        TIER_RECORD "${CMAKE_CURRENT_BINARY_DIR}/nros_priority_plan.json")
     nros_sizing_descriptor_path(_nrx_sizing_path "${CMAKE_BINARY_DIR}" "${_NRX_NAME}")
     nros_sizing_descriptor_read("${_nrx_sizing_path}")
     # Issues 1653/1661 -- the Cyclone facts reach `nros_rmw_cyclonedds` ONCE,

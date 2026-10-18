@@ -638,8 +638,7 @@ mod tier_backing_tests {
 
     #[test]
     fn an_image_sized_as_one_executor_publishes_no_tier() {
-        let probed =
-            crate::shared::SizeMap::from([("TIER_BACKING_SIZE_0".to_string(), 0u64)]);
+        let probed = crate::shared::SizeMap::from([("TIER_BACKING_SIZE_0".to_string(), 0u64)]);
         assert_eq!(tier_backing_defines(&probed), "");
     }
 
@@ -652,8 +651,14 @@ mod tier_backing_tests {
         ]);
         let h = tier_backing_defines(&probed);
         assert!(h.contains("#define NROS_CPP_TIER_COUNT 2\n"), "{h}");
-        assert!(h.contains("#define NROS_CPP_TIER_BACKING_SIZE_0 34816\n"), "{h}");
-        assert!(h.contains("#define NROS_CPP_TIER_BACKING_SIZE_1 16384\n"), "{h}");
+        assert!(
+            h.contains("#define NROS_CPP_TIER_BACKING_SIZE_0 34816\n"),
+            "{h}"
+        );
+        assert!(
+            h.contains("#define NROS_CPP_TIER_BACKING_SIZE_1 16384\n"),
+            "{h}"
+        );
         assert!(!h.contains("SIZE_2"), "{h}");
     }
 }
