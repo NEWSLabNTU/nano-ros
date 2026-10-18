@@ -88,6 +88,8 @@ fn args() -> SizingDescriptorArgs {
         target_triple: None,
         host_build: false,
         heap_budget_bytes: None,
+        board_rx_frame_cost_us: None,
+        board_rx_floor_us: None,
         road: None,
     }
 }

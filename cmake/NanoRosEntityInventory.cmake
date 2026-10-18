@@ -215,6 +215,8 @@ include_guard(GLOBAL)
 
 # What a schema refusal must be able to cite (issue 1389).
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosSchemaReader.cmake")
+# phase-462 W6c -- `_nros_board_rx_cost_args`, the board's `[board.rx]`.
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosBoardRxCost.cmake")
 
 # The inventory schema this reader understands --
 # `nros_cli_core::entity_inventory::ENTITY_INVENTORY_SCHEMA_VERSION`. A fragment
@@ -588,11 +590,16 @@ function(nros_derive_entity_inventory_knobs)
     if(_ws AND _model_arg)
         set(_ws_arg --workspace "${_ws}")
     endif()
+    # phase-462 W6c -- the board's per-frame receive cost: the read-task budget
+    # below is derived with it, and an ingress the board cannot satisfy fails
+    # here, naming the subscriber (RFC-0074).
+    _nros_board_rx_cost_args(_rx_args)
     execute_process(
         COMMAND "${_E_CLI}" ws entity-inventory
                 --metadata "${_metadata}"
                 ${_model_arg}
                 ${_ws_arg}
+                ${_rx_args}
                 --output-cmake "${_output}"
                 --output-json "${CMAKE_BINARY_DIR}/nros/entity_inventory.json"
         OUTPUT_VARIABLE _out

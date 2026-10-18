@@ -93,6 +93,10 @@ pub fn run(args: WestLeafSizingArgs) -> Result<()> {
         );
     }
     crate::leaf_entity_env::with_leaf_monitor_rows(&leaf, &mut inv);
+    // phase-462 W6c -- the board's per-frame receive cost, so a read-task
+    // budget in the fragment derives with the same `c` the descriptor does.
+    inv.set_board_rx_cost(img.rx_cost);
+    crate::sizing_descriptor::report_rx_ingress(&inv, who)?;
 
     // ---- the C lane: the fragment rung 3 reads ---------------------------
     // Written even for an EMPTY inventory: `to_cmake` then states a refusal

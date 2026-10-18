@@ -3,7 +3,7 @@ rfc: 0074
 title: "Ingress budget: the contract bounds what a device is made to receive"
 status: Draft
 since: 2026-08
-last-reviewed: 2026-10-17
+last-reviewed: 2026-10-18
 implements-tracked-by: [phase-462]
 supersedes: []
 superseded-by: null
@@ -186,8 +186,18 @@ UNDER-admits by the per-frame cost, and the excess waits in the socket. REST is 
 `NROS_DERIVED_ZENOH_RX_TASK_BUDGET_*` (a rung below Kconfig and the environment)
 and every cargo road as the sizing descriptor's `[image] rx_task_budget_*`
 (a rung below every stated one in `nros-zpico-build`). No ingress declared: no
-derivation, an unbounded task, a byte-identical image. The per-board `c` and the
-`c x burst + floor <= tier slack` check are follow-up work (phase-462).
+derivation, an unbounded task, a byte-identical image.
+
+**Per-board `c` and the checks (phase-462 W6c):** a board states its measured
+cost as `[board.rx] frame_cost_us` (and optionally `floor_us`) in
+`nros-board.toml` — a fact, not a knob. Every road that derives the pair hands
+the inventory its board's `c`, and the derivation becomes this section's
+relation in full, `REST = burst x (10^6/rate_hz - c_us)`; the two constraints
+of "What validates a declaration" are checked at resolve time and a failing
+declaration REFUSES, naming the subscriber, the board fact and the remedy. A
+board that states no `[board.rx]` keeps `c = 0`, checks nothing, and its image
+is byte-identical to W6b. `nros-board-mps2-an385-freertos` states this RFC's
+measurement (940 us, 11 ms floor).
 
 Two structural properties make this a budget rather than a drop policy,
 and both were checked against the source before it was built:
@@ -348,6 +358,20 @@ Both constraints fall out of the same two lines, and both are per-platform via
 Both are resolve-time checks against numbers the contract already carries —
 tier periods and deadlines — plus `c`.
 
+**As implemented (phase-462 W6c).** Constraint 1 is checked for EVERY declared
+subscriber, not only the heaviest. Constraint 2 uses the derived FRAMES (the
+heaviest subscriber's burst — the run the read task actually takes) and the
+tightest AUTHORED tier, with `slack = D - B`: `D` the tier's `deadline`, else
+its `period`; `B` its `budget`. A tier that states no `budget` contributes its
+whole deadline — an upper bound of its slack, so a refusal is sound and a pass
+is reported as "within the deadline". Every tier is read as sharing the read
+task's core (the model places none), the stricter reading; a platform
+sub-table's tighter deadline is not read. An image whose tiers state no
+`deadline`/`period` has no slack to compute: constraint 2 is reported as NOT
+CHECKED, with the reason, rather than checked against a guessed slack. An
+absent `floor_us` is taken as 0, which can only under-state the occupancy, and
+the refusal says so.
+
 ### Caveats
 
 `c` and the 11 ms floor are from ONE lane, ONE payload size, and three budget
@@ -371,7 +395,9 @@ that, and a design that assumes one `c` per board should say so.
    declaration" below. The number to record is the **per-frame processing cost
    `c`** (0.94 ms on this lane), and a platform records exactly one of it.
    Remaining work is mechanical: measure `c` per platform and store it beside
-   the other board facts. Nothing does yet.
+   the other board facts. Since phase-462 W6c the home exists (`[board.rx]`)
+   and the mps2-an385 FreeRTOS board states this lane's measurement; other
+   boards are unmeasured.
 3. ~~**Does BEST_EFFORT already express part of this?**~~ **Answered: no.**
    Checked in zenoh-pico: `reliability` is a PUBLISHER-side field
    (`publisher->reliability`, stamped per message on the tx path), and
@@ -422,6 +448,11 @@ that, and a design that assumes one `c` per board should say so.
 
 ## Changelog
 
+- 2026-10-18 — phase-462 W6c: the per-board `c` (`[board.rx]`) and both
+  resolve-time constraints landed; "As implemented" under "What validates a
+  declaration" records the readings the RFC left open (every subscriber for
+  constraint 1, the tightest authored tier and `D - B` for constraint 2, NOT
+  CHECKED when no tier states timing).
 - 2026-08 — initial draft, from the #0506 investigation (trace
   attribution, router pacing probe, drain budget probe).
 - 2026-08-23 — the DECLARATION is marked a proposal pending a

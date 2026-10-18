@@ -638,6 +638,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
             &platform,
             &board,
             nano_ros_root.as_deref(),
+            descriptor.rx,
         );
         let resolved_dir = resolved.as_ref().map(|r| r.dir.clone());
 
@@ -1313,6 +1314,8 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                     &board,
                     nano_ros_root.as_deref(),
                 ));
+                // phase-462 W6c -- the board's `[board.rx]`, on the same terms.
+                a.extend(board_rx_configure_args(descriptor));
                 // Issue 1304 — the ROOT this generated file's
                 // `find_package(nano_ros)` resolves against. `nano_rosConfig.cmake`
                 // sits at the SDK root and is located through `nano_ros_ROOT`,
@@ -1555,6 +1558,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                     &board,
                     nano_ros_root.as_deref(),
                 ));
+                resolved_opt.extend(board_rx_configure_args(descriptor));
                 // Issue 1867 -- the image's `nros` module is THIS checkout. The
                 // store workspace's manifest project carries none (issue 1258),
                 // so without this every image built against it aborted at
@@ -2002,6 +2006,7 @@ fn plan_single_package_cmake(
         &board,
         Some(&nros_root),
     ));
+    a.extend(board_rx_configure_args(descriptor));
     a.push(format!("-Dnano_ros_ROOT={}", nros_root.display()));
     a.extend(args.native_args.iter().cloned());
     Ok(Some(vec![ResolvedBuild {
@@ -3807,6 +3812,32 @@ fn board_heap_configure_arg(
     format!("-DNROS_BOARD_HEAP_BUDGET_BYTES={value}")
 }
 
+/// phase-462 W6c (RFC-0074) — the board's `[board.rx]` per-frame receive cost
+/// as configure arguments, for the two drivers whose configure line `nros
+/// build` writes. `cmake/NanoRosBoardRxCost.cmake` hands them to both CLI
+/// producers that derive the zenoh read-task budget.
+///
+/// ALWAYS both, empty when the board states nothing, for
+/// [`board_heap_configure_arg`]'s reason: a `-D` is a cache entry, and an
+/// omitted one keeps the value a board no longer states.
+fn board_rx_configure_args(
+    descriptor: &crate::orchestration::board_descriptor::BoardDescriptor,
+) -> [String; 2] {
+    let rx = descriptor.rx;
+    [
+        format!(
+            "-DNROS_BOARD_RX_FRAME_COST_US={}",
+            rx.map(|r| r.frame_cost_us.to_string()).unwrap_or_default()
+        ),
+        format!(
+            "-DNROS_BOARD_RX_FLOOR_US={}",
+            rx.and_then(|r| r.floor_us)
+                .map(|f| f.to_string())
+                .unwrap_or_default()
+        ),
+    ]
+}
+
 /// RFC-0103 D10 (phase-497 W2) — a board's `[board.net]`, from the
 /// descriptor the catalog recorded for it. A board with no descriptor file
 /// has no interfaces, so an image naming one is refused, never dropped.
@@ -3954,6 +3985,7 @@ fn resolve_image(
     platform: &str,
     board: &str,
     nano_ros_root: Option<&std::path::Path>,
+    rx_cost: Option<crate::entity_inventory::RxFrameCost>,
 ) -> Option<ResolvedImage> {
     use crate::{
         entity_inventory::EntityInventory,
@@ -4053,6 +4085,12 @@ fn resolve_image(
         )
         .map(|mut inv| {
             inv.set_param_declarations(params.clone());
+            // phase-462 W6c -- the board's per-frame receive cost, so the
+            // read-task budget `resolved.toml` publishes and the descriptor the
+            // cargo road writes from this composition derive with the same
+            // `c`. Not CHECKED here (this phase cannot fail a build): the
+            // descriptor producer checks, and refuses.
+            inv.set_board_rx_cost(rx_cost);
             (inv, model.clone())
         })
         .ok_or_else(|| {
@@ -6451,6 +6489,41 @@ mod board_heap_tests {
         assert_eq!(
             board_heap_configure_arg(&d2, "heapy", None),
             "-DNROS_BOARD_HEAP_BUDGET_BYTES="
+        );
+    }
+
+    /// phase-462 W6c -- the board's `[board.rx]` reaches the configure line as
+    /// two `-D`s; a board that states none clears BOTH (a `-D` is a cache
+    /// entry, so an omitted one keeps the last build's cost).
+    #[test]
+    fn the_board_rx_cost_reaches_the_configure_line_and_clears_when_unstated() {
+        let t = root_with_board(None);
+        let mut d = descriptor(t.path());
+        assert_eq!(
+            board_rx_configure_args(&d),
+            [
+                "-DNROS_BOARD_RX_FRAME_COST_US=".to_string(),
+                "-DNROS_BOARD_RX_FLOOR_US=".to_string(),
+            ]
+        );
+        d.rx = Some(crate::entity_inventory::RxFrameCost {
+            frame_cost_us: 940,
+            floor_us: None,
+        });
+        assert_eq!(
+            board_rx_configure_args(&d),
+            [
+                "-DNROS_BOARD_RX_FRAME_COST_US=940".to_string(),
+                "-DNROS_BOARD_RX_FLOOR_US=".to_string(),
+            ]
+        );
+        d.rx = Some(crate::entity_inventory::RxFrameCost {
+            frame_cost_us: 940,
+            floor_us: Some(11_000),
+        });
+        assert_eq!(
+            board_rx_configure_args(&d)[1],
+            "-DNROS_BOARD_RX_FLOOR_US=11000"
         );
     }
 }

@@ -76,6 +76,18 @@ heap = true
 atomics = true
 threads = true
 
+# phase-462 W6c (RFC-0074) — the per-frame RECEIVE cost `c`, MEASURED on this
+# board's QEMU lane: worst tier gap against the zenoh read-task frame budget
+# fits `0.940 ms x FRAMES + 11.0 ms` (21 / 38 / 132 ms at FRAMES = 8 / 32 / 128,
+# FreeRTOS + lwIP, ~2 kHz flood). One payload size and three budget points, so
+# an approximation: a larger payload almost certainly costs more per frame. It
+# derives a declared subscriber `ingress` into the read-task budget and refuses
+# one this board cannot satisfy (`rate_hz <= 10^6 / c`,
+# `c x burst + floor <= tier slack`). A fact, not a knob: no compiler reads it.
+[board.rx]
+frame_cost_us = 940
+floor_us = 11000
+
 # RFC-0048 §6 / phase-287 W5 — CMake toolchain file for `nros setup`'s preset.
 [board.cmake]
 toolchain_file = "cmake/toolchain/arm-freertos-armcm3.cmake"

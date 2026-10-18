@@ -176,6 +176,16 @@ pub struct EntityInventoryArgs {
     /// for it here.
     #[arg(long)]
     pub require_derived: bool,
+
+    /// The board's `[board.rx] frame_cost_us` (phase-462 W6c, RFC-0074): the
+    /// per-frame receive cost `c` the read-task budget is derived with and the
+    /// declared ingress is checked against. Absent: `c = 0`, nothing checked.
+    #[arg(long, value_name = "US")]
+    pub board_rx_frame_cost_us: Option<u32>,
+
+    /// The board's `[board.rx] floor_us`. Only with `--board-rx-frame-cost-us`.
+    #[arg(long, value_name = "US", requires = "board_rx_frame_cost_us")]
+    pub board_rx_floor_us: Option<u32>,
 }
 
 /// Build the inventory from one parsed metadata document.
@@ -453,6 +463,17 @@ pub fn run(args: EntityInventoryArgs) -> Result<()> {
     if let Some(want) = &args.component {
         inv = narrow_to_component(&inv, want)?;
     }
+
+    // phase-462 W6c -- the board's per-frame receive cost: the fragment's
+    // `NROS_DERIVED_ZENOH_RX_TASK_BUDGET_*` are derived with it, and a declared
+    // ingress the board cannot satisfy fails this configure (RFC-0074).
+    if let Some(frame_cost_us) = args.board_rx_frame_cost_us {
+        inv.set_board_rx_cost(Some(crate::entity_inventory::RxFrameCost {
+            frame_cost_us,
+            floor_us: args.board_rx_floor_us,
+        }));
+    }
+    crate::sizing_descriptor::report_rx_ingress(&inv, "nros ws entity-inventory")?;
 
     let (json_path, cmake_path) = match &args.output_dir {
         Some(dir) => (
@@ -1198,6 +1219,8 @@ contracts:
             output_params_header: None,
             component: None,
             require_derived: false,
+            board_rx_frame_cost_us: None,
+            board_rx_floor_us: None,
             workspace: None,
         };
         // The whole CHAIN: the verb wraps the check's message in "model
