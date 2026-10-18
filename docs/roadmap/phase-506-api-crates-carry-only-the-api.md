@@ -41,17 +41,18 @@ build road, W3 changes one header family, W4 is the largest and goes last.
 
 ### W2 — backend facts come from the descriptor (RFC-0071 D11)
 
-- [ ] `[rmw.provides.cargo] register` and `[rmw.capabilities]
-      needs-type-descriptors` in every `nros-rmw.toml`, read by
-      `rmw_descriptor.rs`.
-- [ ] [#1298](../issues/1298-rmw-agnostic-core-names-backends.md): the
-      selection facade generates `register_backends()` / `register_type::<T>()`;
-      `nros-macros` calls them and loses `rmw_crate_ident`;
-      `cyclonedds_type_sizing` is keyed on the capability.
+- [x] `[rmw.provides.cargo] crate` / `register` / `type_register_crate` in
+      every `nros-rmw.toml` that has a Rust registration, read by
+      `rmw_descriptor.rs` into the generated table.
+- [x] [#1298](../issues/archived/1298-rmw-agnostic-core-names-backends.md): the
+      selection package generates `__nros_register_backends!` /
+      `__nros_register_type!`; `nros-macros` calls them and lost
+      `rmw_crate_ident`; the sizing module is `type_descriptor_sizing`.
+      **Done 2026-10-18:** both native bridge workspaces and the Zephyr
+      params image verified at run time.
 - [ ] [#1300](../issues/1300-closed-backend-lists-outside-core-api.md): the
-      scaffold and colcon's standalone task ask the provider scan;
-      `bridge_gen.rs` uses the descriptor fields; `board.knobs.zenoh` moves
-      with W3.
+      scaffold, colcon's standalone task and `bridge_gen.rs` are derived
+      (done 2026-10-18); `board.knobs.zenoh` in `nros config` moves with W3.
 
 ### W3 — configuration by role (RFC-0071 D10)
 
@@ -81,7 +82,7 @@ ledger has no row whose decision is not yet applied.
 | issue | why it belongs here |
 | --- | --- |
 | [#1297](../issues/1297-rmw-agnostic-api-crates-name-backends.md) | Per-backend Cargo features, `register()` calls and `extern` declarations in nros-c and nros-cpp are RFC-0071 D2's class. `check-rmw-agnostic` baselines them. |
-| [#1298](../issues/1298-rmw-agnostic-core-names-backends.md) | `nros-macros` and one other core crate name backends in code, inside RFC-0071's reach. |
+| [#1298](../issues/archived/1298-rmw-agnostic-core-names-backends.md) | `nros-macros` and one other core crate name backends in code, inside RFC-0071's reach. |
 | [#1299](../issues/1299-rmw-agnostic-backend-named-config-in-api.md) | Backend-named configuration (`CONFIG_NROS_ZENOH_*`, `ZENOH_LOCATOR`) in the API crates is RFC-0071 D8's class. |
 | [#1300](../issues/1300-closed-backend-lists-outside-core-api.md) | Closed backend lists outside core/api (the CLI scaffold, colcon's `RMW_BACKENDS`, `board.knobs.zenoh`) are beyond the gate's reach. |
 | [#1405](../issues/archived/1405-c-executor-node-id-zero-reads-as-no-node.md) | `node_raw_id != 0` decodes the primary node slot as "no node" at nine nros-c registration sites, the same conflation issue 1384 fixed one layer up. |
