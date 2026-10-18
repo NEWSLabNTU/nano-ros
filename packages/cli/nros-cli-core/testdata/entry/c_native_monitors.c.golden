@@ -36,7 +36,7 @@ static const nros_cpp_monitor_row_t __nros_mon_rows[1] = {
 };
 static uint64_t __nros_mon_storage[(1u * NROS_CPP_MONITOR_ROW_STORAGE + 7u) / 8u];
 static const nros_cpp_age_row_t __nros_age_rows[1] = {
-    { "/chatter", "/listener/chatter", 150u },
+    { "/chatter", "/listener/chatter", 150u, 0u },
 };
 static uint64_t __nros_age_storage[(1u * NROS_CPP_AGE_ROW_STORAGE + 7u) / 8u];
 

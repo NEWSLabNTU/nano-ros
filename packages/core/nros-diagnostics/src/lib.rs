@@ -30,6 +30,11 @@ pub const RULE_MAX_LATENCY: &str = "max-latency-runtime";
 /// leaves it silent forever -- the very failure a `max_age_ms` promise is
 /// made against. A declared bound on how old data may be is also a bound on
 /// how long there may be none.
+///
+/// phase-462 W5b -- also the on-target form of a contract `deadline` the
+/// subscription's backend cannot judge (it does not honour `DEADLINE`, or was
+/// never handed the deadline). The window is then the deadline, or the age
+/// bound when that is shorter; declared: the window, in ms.
 pub const RULE_SILENCE: &str = "silence-runtime";
 /// phase-462 W3b -- a contracted hazard's guard faulted (`contracts.hazards`):
 /// an input the safety mechanism depends on is gone. play_launch's own

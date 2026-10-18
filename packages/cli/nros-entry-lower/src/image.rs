@@ -429,6 +429,9 @@ pub struct AgeRow {
     pub topic: String,
     pub fqn: String,
     pub max_age_ms: u32,
+    /// phase-462 W5b -- the contract's `deadline`, ms; 0 = none.
+    #[serde(default)]
+    pub deadline_ms: u32,
 }
 
 /// phase-308 — a metadata probe's tail: the identity it stamps into the

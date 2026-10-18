@@ -4704,8 +4704,11 @@ pub struct nros_cpp_age_row_t {
     pub topic: *const c_char,
     /// Endpoint ref, the violation report key.
     pub fqn: *const c_char,
-    /// Declared max take-age, ms.
+    /// Declared max take-age, ms. 0 = the row carries only a deadline.
     pub max_age_ms: u32,
+    /// phase-462 W5b -- the contract's `deadline`, ms (0 = none). The executor
+    /// judges it with the silence rule only where the backend cannot.
+    pub deadline_ms: u32,
 }
 
 /// Bytes of caller storage ONE publisher row needs: its `PubMonitorCell` plus
@@ -4952,6 +4955,7 @@ unsafe fn install_monitor_tables(
                         topic,
                         fqn,
                         max_age_ms: row.max_age_ms,
+                        deadline_ms: row.deadline_ms,
                         cell: &*cell,
                     },
                 );
@@ -5296,11 +5300,13 @@ pub const NROS_CPP_MODE_ROW_STORAGE: usize = if core::mem::size_of::<usize>() ==
     48
 };
 /// Bytes of caller storage one mode's age row needs (`AgeMonitorSpec`).
+/// phase-462 W5b -- 32 on a 32-bit target, where the spec's `deadline_ms`
+/// made it 28 (two fat pointers, two `u32`, the cell reference).
 #[cfg(feature = "rmw-cffi")]
 pub const NROS_CPP_MODE_AGE_STORAGE: usize = if core::mem::size_of::<usize>() == 8 {
     48
 } else {
-    24
+    32
 };
 
 #[cfg(feature = "rmw-cffi")]

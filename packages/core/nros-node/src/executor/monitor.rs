@@ -130,6 +130,15 @@ pub struct SubMonitorCell {
     /// arrive": a window with no take and a window whose only take was
     /// perfectly fresh both leave `max_age_ms` at 0.
     pub takes: AtomicU32,
+    /// phase-462 W5b -- the executor slot + 1 whose readiness is this
+    /// endpoint's arrival evidence, set when the contract's `deadline` is
+    /// judged here rather than by the backend ([`admit_contract_deadline`]).
+    /// 0 = not armed: the backend judges the deadline, or none is declared.
+    pub deadline_slot: AtomicU32,
+    /// phase-462 W5b -- spins on which the armed slot had data, drained by
+    /// `check_age`. Counted for ANY message type, stamped or not, because a
+    /// deadline is a promise about arrival and says nothing about stamps.
+    pub arrivals: AtomicU32,
 }
 
 impl SubMonitorCell {
@@ -137,6 +146,8 @@ impl SubMonitorCell {
         Self {
             max_age_ms: AtomicU32::new(0),
             takes: AtomicU32::new(0),
+            deadline_slot: AtomicU32::new(0),
+            arrivals: AtomicU32::new(0),
         }
     }
 
@@ -285,8 +296,83 @@ pub struct AgeMonitorSpec {
     pub fqn: &'static str,
     /// Declared max take-age (ms). 0 = no age contract.
     pub max_age_ms: u32,
+    /// phase-462 W5b -- the contract's `deadline` for this endpoint, in the
+    /// wire's milliseconds. 0 = none declared. Judged HERE only when the
+    /// subscription's backend cannot judge it (see
+    /// [`admit_contract_deadline`]); otherwise the backend's own deadline
+    /// event is the detector and this row carries the number unread.
+    pub deadline_ms: u32,
     /// The endpoint's age accumulator.
     pub cell: &'static SubMonitorCell,
+}
+
+/// phase-462 W5b -- what a subscription's creation does about its contract
+/// `deadline`, decided from the backend's OWN answer
+/// (`Session::supported_qos_policies`) at the moment it is created.
+///
+/// The served set is a run-time fact -- a C backend answers through the
+/// vtable (issue 1329) -- so it is asked here rather than restated in a build
+/// table that could disagree with it. Three outcomes:
+///
+/// * the backend honours `DEADLINE` and the profile carries the deadline: the
+///   backend judges it, nothing is armed;
+/// * the backend does not honour `DEADLINE`: a profile deadline EQUAL to the
+///   contract's is stripped (it came from the contract, and refusing it at
+///   create would turn a judgeable promise into a boot failure), and the row
+///   is armed so the silence rule judges it;
+/// * the profile never carried the deadline (a registration path that does
+///   not fold the launch overrides): the backend cannot judge what it was
+///   never told, so the row is armed too.
+///
+/// A profile deadline that DIFFERS from the contract's is the caller's own
+/// request and is left alone, so a backend that cannot serve it still refuses
+/// it by name. Returns the profile to create with and the row to arm.
+pub fn admit_contract_deadline(
+    mut qos: nros_rmw::QoSProfile,
+    served: nros_rmw::QoSPolicyMask,
+    ages: &'static [AgeMonitorSpec],
+    topic: &str,
+) -> (nros_rmw::QoSProfile, Option<&'static AgeMonitorSpec>) {
+    let Some(spec) = ages.iter().find(|a| a.topic == topic && a.deadline_ms > 0) else {
+        return (qos, None);
+    };
+    let serves = served.0 & nros_rmw::QoSPolicyMask::DEADLINE.0 != 0;
+    if serves && qos.deadline_ms != 0 {
+        return (qos, None);
+    }
+    if !serves && qos.deadline_ms == spec.deadline_ms {
+        qos.deadline_ms = 0;
+    }
+    (qos, Some(spec))
+}
+
+/// phase-462 W5b -- a released subscription's slot stops being any row's
+/// arrival evidence; its slot may be claimed by an unrelated entry next.
+pub(crate) fn deadline_unbind(ages: &[AgeMonitorSpec], slot: usize) {
+    for spec in ages {
+        let _ = spec.cell.deadline_slot.compare_exchange(
+            slot as u32 + 1,
+            0,
+            Ordering::Relaxed,
+            Ordering::Relaxed,
+        );
+    }
+}
+
+/// phase-462 W5b -- credit one arrival to every armed row whose slot is in
+/// `ready` (the executor's readiness bits for this spin).
+///
+/// Readiness, not dispatch, is the evidence, because it is the one point every
+/// entry passes on the spin thread: an os-priority entry is dispatched on a
+/// worker thread that holds no executor state, and a cooperative one only when
+/// its trigger passes.
+pub(crate) fn credit_arrivals(ages: &[AgeMonitorSpec], ready: u64) {
+    for spec in ages {
+        let slot = spec.cell.deadline_slot.load(Ordering::Relaxed);
+        if slot != 0 && slot <= 64 && ready & (1u64 << (slot - 1)) != 0 {
+            spec.cell.arrivals.fetch_add(1, Ordering::Relaxed);
+        }
+    }
 }
 
 /// phase-436 E4 — how often the stack-headroom rule may query the port, in µs.
@@ -1452,7 +1538,10 @@ pub(crate) struct AgeState {
 /// at all. Then nothing is judged: a clock that never moves is a window that
 /// never elapses, and guessing a window from spin counts would put a tolerance
 /// nobody declared into a safety rule.
-fn check_silence(spec: &AgeMonitorSpec, state: &mut AgeState, took: u32, now_us: u64) -> bool {
+///
+/// phase-462 W5b -- `window_ms` is [`silence_window`]'s: the age bound, or the
+/// contract's `deadline` when the row is armed for one and it is shorter.
+fn check_silence(window_ms: u32, state: &mut AgeState, took: u32, now_us: u64) -> bool {
     let now_ms = (now_us / 1_000) as u32;
     if !state.silence_opened {
         state.silence_opened = true;
@@ -1464,7 +1553,7 @@ fn check_silence(spec: &AgeMonitorSpec, state: &mut AgeState, took: u32, now_us:
         state.silence_reported = false;
         return false;
     }
-    if now_ms.wrapping_sub(state.last_take_ms) < spec.max_age_ms {
+    if now_ms.wrapping_sub(state.last_take_ms) < window_ms {
         return false;
     }
     if state.silence_reported {
@@ -1482,25 +1571,46 @@ fn check_silence(spec: &AgeMonitorSpec, state: &mut AgeState, took: u32, now_us:
 /// it twice would let one rule's drain hide the other's evidence. They cannot
 /// both fire: with no takes the drained age is 0, so `max-age-runtime` has
 /// nothing to judge.
+/// phase-462 W5b -- the silence rule's window and its evidence for one row:
+/// `(window_ms, evidence)`, or `None` when the row judges no silence at all.
+///
+/// An age contract keeps W2's evidence (stamped takes, so an endpoint whose
+/// type carries no stamp still reads as unjudgeable) and an armed deadline
+/// shortens the window when it is the tighter bound. A row armed for a
+/// deadline ALONE counts arrivals, since a deadline promises arrival and
+/// nothing about stamps. Both counters are drained either way, so neither
+/// carries a stale window into the next check.
+fn silence_window(spec: &AgeMonitorSpec) -> Option<(u32, u32)> {
+    let took = spec.cell.takes.swap(0, Ordering::Relaxed);
+    let arrived = spec.cell.arrivals.swap(0, Ordering::Relaxed);
+    let armed = spec.deadline_ms > 0 && spec.cell.deadline_slot.load(Ordering::Relaxed) != 0;
+    match (spec.max_age_ms, armed) {
+        (0, false) => None,
+        (0, true) => Some((spec.deadline_ms, arrived)),
+        (age, false) => Some((age, took)),
+        (age, true) => Some((age.min(spec.deadline_ms), took)),
+    }
+}
+
 pub(crate) fn check_age(
     spec: &AgeMonitorSpec,
     state: &mut AgeState,
     now_us: Option<u64>,
 ) -> Option<Violation> {
-    if spec.max_age_ms == 0 {
-        return None;
-    }
-    let took = spec.cell.takes.swap(0, Ordering::Relaxed);
+    let (window_ms, took) = silence_window(spec)?;
     if let Some(now_us) = now_us
-        && check_silence(spec, state, took, now_us)
+        && check_silence(window_ms, state, took, now_us)
     {
         return Some(Violation {
             rule: "silence-runtime",
             fqn: spec.fqn,
             // Takes in the window, against the window the contract declares.
             measured: 0,
-            declared: spec.max_age_ms,
+            declared: window_ms,
         });
+    }
+    if spec.max_age_ms == 0 {
+        return None;
     }
     let max_ms = spec.cell.max_age_ms.swap(0, Ordering::Relaxed);
     if max_ms > spec.max_age_ms {
@@ -1757,6 +1867,7 @@ mod hazard_tests {
         topic: "/scan",
         fqn: "/handler/scan",
         max_age_ms: 100,
+        deadline_ms: 0,
         cell: &SUB_CELL,
     };
 
@@ -1951,6 +2062,7 @@ mod hazard_tests {
             topic: "/scan",
             fqn: "/handler/scan",
             max_age_ms: 100u32,
+            deadline_ms: 0,
             cell: &NROS_AGE_CELL_0,
         }];
 
@@ -2260,6 +2372,7 @@ mod tests {
             topic: "/scan",
             fqn: "/perc/detector/scan",
             max_age_ms: 100,
+            deadline_ms: 0,
             cell: &SC,
         };
         let mut st = AgeState::default();
@@ -2294,6 +2407,7 @@ mod tests {
             topic: "/scan",
             fqn: "/perc/detector/scan",
             max_age_ms: 100,
+            deadline_ms: 0,
             cell: &SC2,
         };
         let mut st = AgeState::default();
@@ -2328,6 +2442,7 @@ mod tests {
             topic: "/t",
             fqn: "/n/t",
             max_age_ms: 0,
+            deadline_ms: 0,
             cell: &SC3,
         };
         let mut st = AgeState::default();
@@ -2337,6 +2452,7 @@ mod tests {
         // Contracted and fed on every tick: silent rule, silent drain.
         let s = AgeMonitorSpec {
             max_age_ms: 100,
+            deadline_ms: 0,
             ..uncontracted
         };
         let mut st = AgeState::default();
@@ -3368,5 +3484,112 @@ mod route_tests {
         assert_eq!(at[0].1, "route-deadline-runtime");
         route_take(&LC_TABLE, 0, 6_000_000);
         assert!(complete(6_148_999).is_empty());
+    }
+}
+
+/// phase-462 W5b -- the three admission outcomes, decided from the backend's
+/// own mask, and the arrival evidence an armed row reads.
+#[cfg(test)]
+mod unserved_deadline_tests {
+    use super::*;
+    use nros_rmw::{QoSPolicyMask, QoSProfile};
+
+    static CELL: SubMonitorCell = SubMonitorCell::new();
+    static ROWS: [AgeMonitorSpec; 1] = [AgeMonitorSpec {
+        topic: "/scan",
+        fqn: "/h/scan",
+        max_age_ms: 0,
+        deadline_ms: 50,
+        cell: &CELL,
+    }];
+    const ALL: QoSPolicyMask = QoSPolicyMask(u32::MAX);
+    const NO_DEADLINE: QoSPolicyMask = QoSPolicyMask(!QoSPolicyMask::DEADLINE.0);
+
+    fn with_deadline(ms: u32) -> QoSProfile {
+        QoSProfile {
+            deadline_ms: ms,
+            ..QoSProfile::default()
+        }
+    }
+
+    #[test]
+    fn a_backend_that_honours_a_deadline_it_was_given_judges_it() {
+        let (qos, row) = admit_contract_deadline(with_deadline(50), ALL, &ROWS, "/scan");
+        assert_eq!((qos.deadline_ms, row.is_none()), (50, true));
+    }
+
+    #[test]
+    fn an_unserved_contract_deadline_is_stripped_and_armed() {
+        let (qos, row) = admit_contract_deadline(with_deadline(50), NO_DEADLINE, &ROWS, "/scan");
+        assert_eq!(qos.deadline_ms, 0, "stripped, so create does not refuse it");
+        assert_eq!(row.map(|r| r.fqn), Some("/h/scan"));
+    }
+
+    #[test]
+    fn a_deadline_never_handed_to_the_backend_is_armed() {
+        let (qos, row) = admit_contract_deadline(QoSProfile::default(), ALL, &ROWS, "/scan");
+        assert_eq!((qos.deadline_ms, row.is_some()), (0, true));
+    }
+
+    /// The negative controls: the caller's OWN different deadline is left for
+    /// the backend to refuse by name, and a topic with no row is untouched.
+    #[test]
+    fn a_callers_own_deadline_and_an_uncontracted_topic_are_left_alone() {
+        let (qos, _) = admit_contract_deadline(with_deadline(20), NO_DEADLINE, &ROWS, "/scan");
+        assert_eq!(qos.deadline_ms, 20);
+        let (qos, row) = admit_contract_deadline(with_deadline(50), NO_DEADLINE, &ROWS, "/other");
+        assert_eq!((qos.deadline_ms, row.is_none()), (50, true));
+    }
+
+    #[test]
+    fn readiness_credits_only_the_armed_slot_and_unbind_disarms() {
+        static C: SubMonitorCell = SubMonitorCell::new();
+        static T: [AgeMonitorSpec; 1] = [AgeMonitorSpec {
+            topic: "/t",
+            fqn: "/n/t",
+            max_age_ms: 0,
+            deadline_ms: 10,
+            cell: &C,
+        }];
+        credit_arrivals(&T, 1 << 3);
+        assert_eq!(C.arrivals.load(Ordering::Relaxed), 0, "not armed");
+        C.deadline_slot.store(4, Ordering::Relaxed);
+        credit_arrivals(&T, 1 << 2);
+        credit_arrivals(&T, 1 << 3);
+        assert_eq!(C.arrivals.load(Ordering::Relaxed), 1);
+        deadline_unbind(&T, 2);
+        assert_eq!(C.deadline_slot.load(Ordering::Relaxed), 4, "another slot");
+        deadline_unbind(&T, 3);
+        assert_eq!(C.deadline_slot.load(Ordering::Relaxed), 0);
+    }
+
+    /// An armed deadline-only row judges arrivals over the deadline; fed, it
+    /// stays quiet. Unarmed, the same row judges nothing at all.
+    #[test]
+    fn an_armed_deadline_row_judges_arrivals_over_its_window() {
+        static C: SubMonitorCell = SubMonitorCell::new();
+        let spec = AgeMonitorSpec {
+            topic: "/t",
+            fqn: "/n/t",
+            max_age_ms: 0,
+            deadline_ms: 10,
+            cell: &C,
+        };
+        let mut st = AgeState::default();
+        assert!(check_age(&spec, &mut st, Some(1_000_000)).is_none());
+        assert!(
+            check_age(&spec, &mut st, Some(1_050_000)).is_none(),
+            "unarmed"
+        );
+        C.deadline_slot.store(1, Ordering::Relaxed);
+        let mut st = AgeState::default();
+        assert!(
+            check_age(&spec, &mut st, Some(2_000_000)).is_none(),
+            "opens"
+        );
+        C.arrivals.store(1, Ordering::Relaxed);
+        assert!(check_age(&spec, &mut st, Some(2_020_000)).is_none(), "fed");
+        let v = check_age(&spec, &mut st, Some(2_040_000)).expect("silent past 10 ms");
+        assert_eq!((v.rule, v.declared), ("silence-runtime", 10));
     }
 }

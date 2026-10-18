@@ -726,6 +726,7 @@ fn golden_monitor_rows() -> (
         topic: topic.into(),
         fqn: fqn.into(),
         max_age_ms: ms,
+        deadline_ms: 0,
     };
     (
         vec![
