@@ -51,7 +51,7 @@ nros-nuttx-ffi                       1   0     0       1      0
 nros-nuttx-riscv-ffi                 1   0     0       1      0
 nros-orchestration-ir                4   0     0       0      0
 nros-params                          3   1     0       0      0
-nros-platform                        8   2     1       4      0
+nros-platform                       15   4     1       4      0
 nros-platform-api                   22   5     1       8      0
 nros-platform-cffi                  96   0     4     112      0
 nros-platform-critical-section       2   2     1       1      0
