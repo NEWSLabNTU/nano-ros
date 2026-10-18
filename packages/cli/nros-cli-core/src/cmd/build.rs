@@ -3311,22 +3311,7 @@ fn generate_entry(
         // `[image.<id>] rmw` is the diagnostic this issue is about.
         let facade_root = facade_root(root);
         let entry_name = crate::builder::entry::package_name(image_id);
-        let healed = std::fs::read_to_string(bringup_dir.join("system.toml"))
-            .map_err(|e| eyre::eyre!("reading {}: {e}", bringup_dir.join("system.toml").display()))
-            .and_then(|raw| {
-                toml::from_str::<crate::orchestration::cargo_metadata_schema::SystemToml>(&raw)
-                    .map_err(|e| eyre::eyre!("parsing the bringup's system.toml: {e}"))
-            })
-            .and_then(|sys| {
-                crate::orchestration::facade::write_facade(
-                    &entry_name,
-                    &dir,
-                    &dir.join("Cargo.toml"),
-                    bringup_dir,
-                    &sys,
-                    &facade_root,
-                )
-            });
+        let healed = write_entry_facade(&entry_name, &dir, bringup_dir, &facade_root);
 
         let healed = match healed {
             Ok(Some(f)) => Some(f),
@@ -3343,9 +3328,54 @@ fn generate_entry(
         spec.facade_dir = Some(facade_root.join(&entry_name));
         crate::builder::entry::write(&spec, &facts, &parent)
             .map_err(|e| eyre::eyre!("regenerating the entry for `{image_id}`: {e}"))?;
+    } else if spec.facade_dir.is_some() {
+        // Issue 1962 — a facade that EXISTS is rewritten too, every build.
+        //
+        // The heal above used to be the only writer this function had, so a
+        // facade was written once — the first build that found none — and
+        // then reused by every build after it, whatever generator wrote it.
+        // `nros sync` does not refresh it either: sync writes a facade per
+        // Rust package it can SEE, and a generated entry under
+        // `build/<coordinate>/` is not one of them. When the generator grew
+        // the `__nros_register_backends!` / `__nros_register_type!` macros
+        // (RFC-0071 D11) the bridge workspaces kept a 2026-10-15 facade
+        // without them, and their entries stopped compiling:
+        //
+        //     error[E0433]: cannot find `__nros_register_backends` in
+        //     `linux_entry_nros_selection`
+        //
+        // `write_facade` writes only what changed, so this costs nothing on an
+        // up-to-date tree, and the entry already depends on this directory, so
+        // it needs no second write.
+        let entry_name = crate::builder::entry::package_name(image_id);
+        write_entry_facade(&entry_name, &dir, bringup_dir, &facade_root(root))
+            .map_err(|e| eyre::eyre!("refreshing the selection facade for `{image_id}`: {e}"))?;
     }
 
     Ok(GeneratedEntry { dir: Some(dir) })
+}
+
+/// Write the selection facade for the generated entry at `dir` from the
+/// bringup's `system.toml` — the heal for a missing one, and the refresh for
+/// one an older generator wrote (issue 1962).
+fn write_entry_facade(
+    entry_name: &str,
+    dir: &Path,
+    bringup_dir: &Path,
+    facade_root: &Path,
+) -> Result<Option<crate::orchestration::facade::Facade>> {
+    let raw = std::fs::read_to_string(bringup_dir.join("system.toml"))
+        .map_err(|e| eyre::eyre!("reading {}: {e}", bringup_dir.join("system.toml").display()))?;
+    let sys = toml::from_str::<crate::orchestration::cargo_metadata_schema::SystemToml>(&raw)
+        .map_err(|e| eyre::eyre!("parsing the bringup's system.toml: {e}"))?;
+    crate::orchestration::facade::write_facade(
+        entry_name,
+        dir,
+        &dir.join("Cargo.toml"),
+        bringup_dir,
+        &sys,
+        facade_root,
+    )
 }
 
 /// What [`generate_entry`] produced for one image.
@@ -5322,6 +5352,57 @@ domain_id = 0
 
         let junk = bringup_with("this is not toml {{{");
         assert!(declared_capabilities(junk.path()).is_empty());
+    }
+
+    /// Issue 1962 — a facade an OLDER generator wrote is rewritten, not
+    /// reused. The bridge workspaces kept a 2026-10-15 facade with no
+    /// registration macros, and `nros::main!` could not find them.
+    #[test]
+    fn a_stale_facade_is_rewritten_by_the_current_generator() {
+        let ws = tempfile::tempdir().unwrap();
+        let root = ws.path();
+        let nros = root.join("nros");
+        std::fs::create_dir_all(&nros).unwrap();
+        std::fs::write(
+            nros.join("Cargo.toml"),
+            "[package]\nname = \"nros\"\n\n[features]\nros-humble = []\n",
+        )
+        .unwrap();
+        let bringup = root.join("src/demo_bringup");
+        std::fs::create_dir_all(&bringup).unwrap();
+        std::fs::write(
+            bringup.join("system.toml"),
+            "[system]\nname = \"demo\"\nrmw = \"zenoh\"\ndomain_id = 0\n\n\
+             [image.linux]\nboard = \"linux\"\n",
+        )
+        .unwrap();
+        let entry = root.join("build/posix-zenoh/linux_entry");
+        std::fs::create_dir_all(&entry).unwrap();
+        std::fs::write(
+            entry.join("Cargo.toml"),
+            "[package]\nname = \"linux_entry\"\nversion = \"0.1.0\"\n\n\
+             [dependencies]\nnros = { path = \"../../../nros\" }\n",
+        )
+        .unwrap();
+        let facades = facade_root(root);
+        let stale = facades.join("linux_entry/src/lib.rs");
+        std::fs::create_dir_all(stale.parent().unwrap()).unwrap();
+        std::fs::write(
+            &stale,
+            "//! This crate is intentionally empty.\n#![no_std]\n",
+        )
+        .unwrap();
+
+        let f = write_entry_facade("linux_entry", &entry, &bringup, &facades)
+            .unwrap()
+            .expect("an image claims the entry: a facade");
+        assert!(f.changed, "the stale facade must be rewritten");
+        let lib = std::fs::read_to_string(&stale).unwrap();
+        assert!(
+            lib.contains("macro_rules! __nros_register_backends")
+                && lib.contains("macro_rules! __nros_register_type"),
+            "the rewritten facade carries the registration macros:\n{lib}"
+        );
     }
 }
 
