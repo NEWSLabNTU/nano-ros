@@ -184,7 +184,7 @@ const _: () = assert!(
 /// never returned, exactly like the `Box::leak` it replaces. An executor that
 /// drops does not give it back — reclaiming it would need the executor's own
 /// tables to be provably dead first, which `Drop` cannot show for a slice it has
-/// already lent to `Dispatcher`.
+/// already lent out.
 #[cfg(nros_executor_backing_static)]
 static TAKEN: AtomicBool = AtomicBool::new(false);
 

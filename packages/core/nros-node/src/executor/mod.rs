@@ -24,8 +24,6 @@
 #[cfg(any(has_rmw, test))]
 pub mod action_core;
 #[cfg(any(has_rmw, test))]
-pub(crate) mod activator;
-#[cfg(any(has_rmw, test))]
 mod arena;
 // phase-412 #4 — the compile-time half of "is the arena big enough?". Not
 // `has_rmw`-gated: it reads only `config`, and the check it carries must run in
@@ -62,8 +60,6 @@ pub mod profile;
 // half runs in a probe that opens no executor, and both must read the same
 // enum.
 pub mod declared_shape;
-#[cfg(any(has_rmw, test))]
-pub(crate) mod dispatcher;
 #[cfg(any(has_rmw, test))]
 mod handles;
 // issue 0669 / phase-359 W10 — `pub mod handoff` stood here. `Handoff<M, N>`
