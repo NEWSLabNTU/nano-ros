@@ -69,6 +69,12 @@ mod msg_glue {
 /// the C ABI, the C++ FFI and the selected backend's register closure.
 fn anchor_cpp_surface() {
     core::hint::black_box(&nros_cpp::FORCE_LINK_ANCHOR);
+    // RFC-0071 D9 — the backend is a dependency of THIS crate now, so its
+    // register closure (and the `nros_rmw_zenoh_register` C symbol the C++
+    // side's `nros_app_register_backends()` calls) is anchored here.
+    core::hint::black_box(
+        nros_rmw_zenoh::register as fn() -> Result<(), nros_rmw_zenoh::RegisterError>,
+    );
 }
 
 #[entry]

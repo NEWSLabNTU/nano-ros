@@ -23,7 +23,8 @@
 #       FLAVOR       c | cpp
 #       RMW          <rmw>
 #       OUT_DIR      <dir>
-#       API_FEATURES <features nros_feature_set() derived for the API crate>)
+#       API_FEATURES <features nros_feature_set() derived for the API crate>
+#       [ALWAYS])
 #
 # Sets in the caller's scope:
 #   <prefix>_MANIFEST  the manifest to import
@@ -33,9 +34,27 @@
 #
 # A backend the image does not bundle as an rlib (CMake-linked Cyclone and
 # uORB, or no backend) leaves everything as it was: the API crate itself, with
-# the features it was given.
+# the features it was given — unless ALWAYS, for a road whose archive path
+# follows the image root and so needs one root whatever the backend (the NuttX
+# apps Makefile, below).
+#
+# Script mode, for a road with no CMake configure of its own (the NuttX apps
+# Makefile) — the same generator, so the image crate has one spelling:
+#
+#   cmake -DNROS_IMAGE_FLAVOR=c|cpp -DNROS_IMAGE_RMW=<rmw>
+#         -DNROS_IMAGE_EDITION=<edition> -DNROS_IMAGE_OUT_DIR=<dir>
+#         [-DNROS_IMAGE_WORKSPACE_DIR=<dir>]
+#         "-DNROS_IMAGE_API_FEATURES=<f;f;…>"
+#         -P cmake/NanoRosImageCrate.cmake
+#
+# prints `<manifest> <feature,feature,…>` on stdout, and always generates.
 
 include_guard(GLOBAL)
+if(CMAKE_SCRIPT_MODE_FILE STREQUAL CMAKE_CURRENT_LIST_FILE)
+    # A configure has its project's policies; `-P` starts with none, and the
+    # included modules use `IN_LIST` (CMP0057).
+    cmake_policy(VERSION 3.22)
+endif()
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRmwDispatch.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCli.cmake")
 
@@ -126,7 +145,7 @@ static _KEEP_BACKEND: fn() = || {
 endfunction()
 
 function(nros_image_crate prefix)
-    cmake_parse_arguments(_IC "" "FLAVOR;RMW;OUT_DIR;WORKSPACE_DIR" "API_FEATURES" ${ARGN})
+    cmake_parse_arguments(_IC "ALWAYS" "FLAVOR;RMW;OUT_DIR;WORKSPACE_DIR" "API_FEATURES" ${ARGN})
     if(_IC_FLAVOR STREQUAL "c")
         set(_api_pkg nros-c)
         set(_api_lib nros_c)
@@ -146,11 +165,18 @@ function(nros_image_crate prefix)
     set(${prefix}_LOCKED LOCKED PARENT_SCOPE)
 
     nros_image_backend(_ib RMW "${_IC_RMW}" API_FEATURES ${_IC_API_FEATURES})
-    if(NOT _ib_BUNDLED)
+    if(_ib_BUNDLED)
+        set(_api_feats ${_ib_API_FEATURES})
+        nros_rmw_dispatch("${_IC_RMW}")  # memoised; brings NROS_RMW_* into this scope
+        set(_bundles "${NROS_RMW_REGISTER_CRATE}")
+    elseif(_IC_ALWAYS)
+        set(_api_feats ${_IC_API_FEATURES})
+        set(_ib_DEP_LINE "")
+        set(_ib_ANCHOR "")
+        set(_bundles "no backend")
+    else()
         return()
     endif()
-    set(_api_feats ${_ib_API_FEATURES})
-    nros_rmw_dispatch("${_IC_RMW}")  # memoised; brings NROS_RMW_* into this scope
 
     # Every feature of the API crate, forwarded (`f = ["api/f"]`), so the
     # import keeps passing the API crate's features BY NAME: the panic-policy
@@ -290,10 +316,41 @@ ${_ib_ANCHOR}")
     endif()
 
     message(STATUS
-        "nano-ros: ${_api_pkg} image crate bundles ${NROS_RMW_REGISTER_CRATE} "
+        "nano-ros: ${_api_pkg} image crate bundles ${_bundles} "
         "(RFC-0071 D9) -> ${_IC_OUT_DIR}")
     set(${prefix}_MANIFEST "${_IC_OUT_DIR}/Cargo.toml" PARENT_SCOPE)
     set(${prefix}_CRATE "${_api_pkg}-image" PARENT_SCOPE)
     set(${prefix}_FEATURES "${_api_feats}" PARENT_SCOPE)
     set(${prefix}_LOCKED "" PARENT_SCOPE)
 endfunction()
+
+if(CMAKE_SCRIPT_MODE_FILE AND
+   CMAKE_SCRIPT_MODE_FILE STREQUAL CMAKE_CURRENT_LIST_FILE)
+    foreach(_v FLAVOR RMW EDITION OUT_DIR API_FEATURES)
+        if(NOT DEFINED NROS_IMAGE_${_v})
+            message(FATAL_ERROR
+                "usage: cmake -DNROS_IMAGE_FLAVOR=c|cpp -DNROS_IMAGE_RMW=<rmw> "
+                "-DNROS_IMAGE_EDITION=<edition> -DNROS_IMAGE_OUT_DIR=<dir> "
+                "[-DNROS_IMAGE_WORKSPACE_DIR=<dir>] \"-DNROS_IMAGE_API_FEATURES=<f;f>\" "
+                "-P cmake/NanoRosImageCrate.cmake (missing NROS_IMAGE_${_v})")
+        endif()
+    endforeach()
+    # The edition's backend destination (issue 1893), which a CMake road gets
+    # from nros_feature_set() as a `<rlib>/<feature>` row.
+    set(_feats ${NROS_IMAGE_API_FEATURES})
+    if(NOT NROS_IMAGE_RMW STREQUAL "" AND NOT NROS_IMAGE_RMW STREQUAL "none")
+        nros_rmw_dispatch("${NROS_IMAGE_RMW}")
+        if(NROS_RMW_RLIB_DEP AND NROS_RMW_EDITION_FEATURE)
+            string(REPLACE "{edition}" "${NROS_IMAGE_EDITION}" _ed "${NROS_RMW_EDITION_FEATURE}")
+            list(APPEND _feats "${NROS_RMW_RLIB_DEP}/${_ed}")
+        endif()
+    endif()
+    set(_ws "")
+    if(DEFINED NROS_IMAGE_WORKSPACE_DIR)
+        set(_ws WORKSPACE_DIR "${NROS_IMAGE_WORKSPACE_DIR}")
+    endif()
+    nros_image_crate(_img ALWAYS FLAVOR "${NROS_IMAGE_FLAVOR}" RMW "${NROS_IMAGE_RMW}"
+        OUT_DIR "${NROS_IMAGE_OUT_DIR}" ${_ws} API_FEATURES ${_feats})
+    string(REPLACE ";" "," _out_feats "${_img_FEATURES}")
+    execute_process(COMMAND "${CMAKE_COMMAND}" -E echo "${_img_MANIFEST} ${_out_feats}")
+endif()

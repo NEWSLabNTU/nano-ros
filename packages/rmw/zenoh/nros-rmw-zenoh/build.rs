@@ -1,6 +1,8 @@
 use nros_sizing_descriptor::{EndpointKind, Fact, SizingDescriptor};
 
 fn main() {
+    // RFC-0071 D9 — announce this backend to dependents (see `links`).
+    println!("cargo:nros_rmw_backend=zenoh");
     // phase-454 W6.a (RFC-0100 D5) — what this IMAGE declares, read by path.
     //
     // NOT watched as a variable: `load_for_build_script` puts the rebuild edge

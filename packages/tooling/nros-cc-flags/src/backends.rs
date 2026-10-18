@@ -47,17 +47,35 @@ pub fn source(backends: &[&str]) -> String {
 /// When `nros-c` published no backend: an image with no RMW cannot open a
 /// session, and saying so here beats an empty registration that fails at
 /// `rclc_support_init` on the target.
+/// The backends this crate's DIRECT dependencies announce.
+///
+/// RFC-0071 D9 (phase-506 W4c) — each backend crate declares `links =
+/// "nros_rmw_<name>"` and prints `cargo:nros_rmw_backend=<name>`, which cargo
+/// hands a direct dependent as `DEP_NROS_RMW_<NAME>_NROS_RMW_BACKEND`. The image
+/// chooses its backend by depending on it, and this reads that choice; the
+/// `nros-c` feature list ([`BACKENDS_ENV`]) is still honoured until the API
+/// crates drop their backend features. Sorted and de-duplicated.
+pub fn collect(vars: impl Iterator<Item = (String, String)>) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for (k, v) in vars {
+        if k == BACKENDS_ENV {
+            out.extend(v.split(',').filter(|b| !b.is_empty()).map(str::to_string));
+        } else if k.starts_with("DEP_") && k.ends_with("_NROS_RMW_BACKEND") && !v.is_empty() {
+            out.push(v);
+        }
+    }
+    out.sort();
+    out.dedup();
+    out
+}
+
 pub fn generate(build: &mut cc::Build) {
-    let list = std::env::var(BACKENDS_ENV).unwrap_or_else(|_| {
-        panic!(
-            "{BACKENDS_ENV} is unset -- nros-c must be a dependency carrying `links = \"nros_c\"`"
-        )
-    });
-    let backends: Vec<&str> = list.split(',').filter(|b| !b.is_empty()).collect();
+    let backends = collect(std::env::vars());
+    let backends: Vec<&str> = backends.iter().map(String::as_str).collect();
     assert!(
         !backends.is_empty(),
-        "nros-c enables no rmw-* feature, so this image has no backend to register; \
-         enable one (e.g. features = [\"rmw-zenoh\"]) on the nros-c dependency"
+        "this image depends on no RMW backend, so it has none to register: add the \
+         backend crate (e.g. `nros-rmw-zenoh`) as a dependency (RFC-0071 D9)"
     );
     let out = PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR"));
     let path = out.join("nros_app_register_backends.c");
@@ -73,6 +91,19 @@ pub fn generate(build: &mut cc::Build) {
 #[cfg(test)]
 mod tests {
     use super::source;
+
+    #[test]
+    fn collects_announced_and_legacy_backends() {
+        let vars = [
+            ("DEP_NROS_RMW_ZENOH_NROS_RMW_BACKEND", "zenoh"),
+            ("DEP_NROS_C_RMW_BACKENDS", "zenoh"),
+            ("DEP_NROS_RMW_XRCE_NROS_RMW_BACKEND", "xrce"),
+            ("UNRELATED", "x"),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()));
+        assert_eq!(super::collect(vars), vec!["xrce", "zenoh"]);
+    }
 
     #[test]
     fn registers_each_backend_in_order() {

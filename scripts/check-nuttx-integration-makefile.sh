@@ -63,8 +63,8 @@ for mk in integrations/nuttx/Makefile; do
             echo "  $mk names \$(NROS_REPO_DIR)/$rel — which does not exist" >&2
             fail=1
         fi
-    done < <(grep -oE '\$\(NROS_REPO_DIR\)/[A-Za-z0-9._/-]+' "$mk" \
-             | sed 's|^\$(NROS_REPO_DIR)/||' | sort -u)
+    done < <(grep -oE '\$\((NROS_REPO_DIR|NANO_ROS_ROOT_DEFS)\)/[A-Za-z0-9._/-]+' "$mk" \
+             | sed -E 's#^\$\((NROS_REPO_DIR|NANO_ROS_ROOT_DEFS)\)/##' | sort -u)
 
     while IFS= read -r composed; do
         [ -n "$composed" ] || continue
