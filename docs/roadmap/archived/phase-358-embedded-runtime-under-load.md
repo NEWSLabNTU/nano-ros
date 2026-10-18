@@ -28,7 +28,7 @@ error, corrected here.
 **Owns:** [issue 0271](../../issues/archived/0271-orin-spe-btcm-footprint-regression.md),
 [issue 0505](../../issues/archived/0505-timer-backlog-replay-no-overrun-policy.md)
 (**RESOLVED** — W1's own body already says so),
-[issue 0506](../../issues/0506-transport-band-unbounded-preemption.md) (**re-homed to [phase-462](../phase-462-safety-vocabulary-on-target.md) 2026-10-12**),
+[issue 0506](../../issues/0506-transport-band-unbounded-preemption.md) (**re-homed to [phase-462](phase-462-safety-vocabulary-on-target.md) 2026-10-12**),
 [issue 0557](../../issues/archived/0557-zephyr-cyclone-action-ddsrt-thread-reuse.md),
 [issue 0579](../../issues/archived/0579-nuttx-boot-tier-priority-never-applied.md)
 (**RESOLVED** — the body's W-tail already records 0579 and 0583 resolved).

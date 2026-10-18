@@ -10,7 +10,7 @@ severity: medium
 related: [issue-1352, issue-1372, phase-462]
 ---
 
-**Home: [phase-462](../../roadmap/phase-462-safety-vocabulary-on-target.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+**Home: [phase-462](../../roadmap/archived/phase-462-safety-vocabulary-on-target.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## What happens
 
