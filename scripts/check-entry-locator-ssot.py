@@ -110,8 +110,11 @@ INPUT_WRITES = {
     # reading three backends' Kconfig names; each backend's module now forwards
     # ITS OWN value onto the role instead. Still one producer per road, no
     # literal, no default — the Kconfig value arriving by another door.
-    ("zephyr/cmake/nros_rmw_zenoh.cmake", "CONFIG_NROS_ZENOH_LOCATOR"):
-        "zenoh's Kconfig locator forwarded onto the role by its own module (RFC-0071 D10)",
+    # Issue 1955 -- forwarded with its `#` written `\043` (CMake drops a
+    # definition containing `#`); still the Kconfig value, one producer.
+    ("zephyr/cmake/nros_rmw_zenoh.cmake", "_nros_entry_locator"):
+        "zenoh's Kconfig locator forwarded onto the role by its own module (RFC-0071 D10), "
+        "its `#` escaped (issue 1955)",
     ("zephyr/cmake/nros_rmw_xrce.cmake", "CONFIG_NROS_XRCE_AGENT_ADDR"):
         "XRCE's Kconfig agent addr:port forwarded onto the role by its own module (RFC-0071 D10)",
 }
