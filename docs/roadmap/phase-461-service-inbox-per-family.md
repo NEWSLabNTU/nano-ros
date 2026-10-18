@@ -676,7 +676,7 @@ Homed when every open issue was given a phase. Each issue has a `**Home:**` line
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1203](../issues/1203-parameter-builder-bypasses-reserved-parameter-hook.md) | `Executor::parameter`'s builder declares straight into the store, so `use_sim_time` attaches no clock. This is the parameter family's own surface. |
+| [#1203](../issues/archived/1203-parameter-builder-bypasses-reserved-parameter-hook.md) | `Executor::parameter`'s builder declares straight into the store, so `use_sim_time` attaches no clock. This is the parameter family's own surface. |
 
 ## Revision 2026-10-18 — what is left, read against `main`
 

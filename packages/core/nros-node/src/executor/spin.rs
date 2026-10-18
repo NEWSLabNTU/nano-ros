@@ -10023,7 +10023,11 @@ impl<'s> Executor<'s> {
         // happens on a transition, or while a request is waiting for its first
         // node to exist.
         #[cfg(all(feature = "sim-time", any(has_rmw, test)))]
-        self.reconcile_ros_time_source();
+        {
+            #[cfg(feature = "param-store")]
+            self.settle_builder_reserved_parameters();
+            self.reconcile_ros_time_source();
+        }
 
         // phase-426 W3 — attach the six parameter services to any node that
         // does not have them yet. Same reason as the reconcile above: the
@@ -12794,6 +12798,46 @@ impl<'s> Executor<'s> {
     /// [`ParameterBuilder`](nros_params::ParameterBuilder) borrows the server
     /// and declares through it, so the executor never sees the write and
     /// `use_sim_time` named that way attaches nothing — issue 1203.
+    /// Issue 1203 — finish a `use_sim_time` that went through
+    /// [`parameter`](Self::parameter)'s builder.
+    ///
+    /// The builder held the store while it declared, so nothing told the
+    /// executor; this is the spin after, reading the store back. A builder that
+    /// declared the name gets the reserved-parameter hook a `declare_parameter`
+    /// would have run. One that was dropped without declaring leaves the node
+    /// with no `use_sim_time`, because `parameter_on` stepped the placeholder
+    /// aside for it, so the placeholder goes back.
+    #[cfg(all(feature = "sim-time", any(has_rmw, test)))]
+    fn settle_builder_reserved_parameters(&mut self) {
+        let Some(params) = self.params.as_deref_mut() else {
+            return;
+        };
+        if !params.sim_time_via_builder.contains(&true) {
+            return;
+        }
+        let pending = core::mem::replace(
+            &mut params.sim_time_via_builder,
+            [false; crate::param_sizing::MAX_SERVICE_SETS],
+        );
+        let mut declared = false;
+        for (index, _) in pending.iter().enumerate().filter(|(_, p)| **p) {
+            let node = super::node_record::NodeId(index as u8);
+            let present = self.params.as_deref().is_some_and(|p| {
+                p.server
+                    .get(node.into(), crate::time_source::USE_SIM_TIME_PARAM)
+                    .is_some()
+            });
+            if present {
+                declared = true;
+            } else {
+                self.seed_use_sim_time_default(node);
+            }
+        }
+        if declared {
+            self.note_reserved_parameter(crate::time_source::USE_SIM_TIME_PARAM);
+        }
+    }
+
     fn note_reserved_parameter(&mut self, name: &str) {
         #[cfg(all(feature = "sim-time", any(has_rmw, test)))]
         if name == crate::time_source::USE_SIM_TIME_PARAM {
@@ -13266,6 +13310,22 @@ impl<'s> Executor<'s> {
         node: super::node_record::NodeId,
         name: &'a str,
     ) -> Result<nros_params::ParameterBuilder<'a, 's, T>, NodeError> {
+        // Issue 1203 — a reserved name the executor acts on. The builder
+        // declares through its own borrow of the store, so the seeded
+        // placeholder has to leave first (or the declaration is refused, the
+        // way a second `declare_parameter` is), and the next spin reads back
+        // what was declared.
+        #[cfg(all(feature = "sim-time", any(has_rmw, test)))]
+        if name == crate::time_source::USE_SIM_TIME_PARAM {
+            self.yield_seeded_use_sim_time(node, name);
+            if let Some(pending) = self
+                .params
+                .as_deref_mut()
+                .and_then(|p| p.sim_time_via_builder.get_mut(node.index()))
+            {
+                *pending = true;
+            }
+        }
         let server = self
             .params
             .as_mut()
