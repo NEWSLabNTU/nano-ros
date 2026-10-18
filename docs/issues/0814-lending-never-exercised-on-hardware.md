@@ -671,3 +671,53 @@ that no example, template, book chapter or application calls the surface is
 unchanged — but "only two test files" was already not the number, and a reader
 sweeping for callers should grep `try_lend_slot` and `.loan(` as well as
 `try_loan`, which is how the two extra files surface.
+
+## The copy-count measurement (2026-10-18, phase-441 W8)
+
+Taken as "Options, none chosen" asks: bytes `memcpy`'d on the publish path
+for each API, on the cells that already exist, not a delivery lane.
+
+**Method.** A temporary `loan_e2e.rs` test (not committed) opened one
+executor against a router (zenoh, native posix, `loan-e2e` features, `main`
+at `9fe39b90ed`) and published a 512 B payload 200 times through each API.
+An `LD_PRELOAD` shim interposed `memcpy`, `memmove` and `__memcpy_chk`,
+counting bytes and calls on the publishing thread only while a window was
+armed, and recorded the caller of each 512 B copy (`dladdr` +
+`addr2line`). The test's own fill of a loan or a streamed buffer was
+measured separately from what the stack copies.
+
+**Result, per publish:**
+
+| path | bytes | calls | payload copies by the stack | where |
+| --- | --- | --- | --- | --- |
+| `publish_raw` (typed or raw) | 689 | 9 | **1** | `_z_slice_copy` (`zenoh-pico/src/collections/slice.c:91`), from `z_bytes_copy_from_buf` in `zpico_publish` |
+| `publish_streamed` | 689 + fill | 9 + fill | **1** | the closure fills a 1 KiB stack chunk, then `z_bytes_writer_write_all` copies it (`zpico_publish_streamed`) |
+| `try_loan` + `commit` | 177 + fill | 8 + fill | **0** | `zpico_publish_with_attachment_aliased` wraps the arena with `z_bytes_from_static_buf` |
+
+Every path also copies 177 B in 8 small calls (keyexpr and header
+encoding), the same for all three. The wire encode did not copy the payload
+on any path in this build.
+
+**What this corrects above.**
+
+- §2's prediction that "zenoh-pico's encode memcpy'ing into a
+  non-expandable wire buffer regardless", so the loan saves only a copy into
+  our own arena, is not what this build does. The loan path makes **no**
+  payload copy; it is the only zero-copy publish on zenoh.
+- `publish_streamed` does not save a copy against `publish_raw`. It makes
+  the same one copy. What it saves is RAM: the payload is never staged at
+  full size, only in 1 KiB chunks. Its doc comment ("serialise straight into
+  the backend's outbound buffer without a per-publisher staging copy") is
+  true about the staging buffer and says nothing false about copies, but the
+  sentence "`publish_streamed`, which is unfeatured and which zenoh fills
+  natively, already saves it" in the options section above is wrong.
+
+**What it does not cover.** One build: native posix, zenoh, 512 B. An
+embedded target's TX buffer configuration, the other backends (Cyclone,
+XRCE, uORB), and payloads large enough to fragment were not measured.
+
+**For the decision.** Option 3 (withdraw the publish half) would remove the
+one path that measurably avoids the payload copy on zenoh, so this
+measurement argues against it. Options 1 and 2 are about the other backends,
+where the loan slot is NULL and the fallback stages, and they are unaffected.
+The choice is the maintainer's, as this issue says.

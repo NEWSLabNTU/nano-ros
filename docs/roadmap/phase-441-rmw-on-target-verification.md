@@ -716,6 +716,15 @@ measurement, choose among the issue's three options, and meet its "Acceptance fo
 this half". An embedded lending lane is only built if the chosen option keeps the
 publish half.
 
+**Measurement DONE 2026-10-18; the choice is open.** On native zenoh at this pin
+(512 B, 200 publishes each, `memcpy` interposed): `publish_raw` copies the payload
+once (`_z_slice_copy`, from `z_bytes_copy_from_buf`), `publish_streamed` also once
+(its 1 KiB chunk is copied by `z_bytes_writer_write_all`), and `try_loan` + `commit`
+**zero** times (`z_bytes_from_static_buf`). So the loan is the only zero-copy publish
+on zenoh, which argues against withdrawing it (0814's option 3), and
+`publish_streamed`'s saving is RAM, not copies. Details and caveats are in 0814.
+What remains is the maintainer's choice of option, then the issue's acceptance.
+
 ## What this phase does NOT promise
 
 **Not real hardware.** Everything above is QEMU. A QEMU MPS2-AN385 is a genuine
