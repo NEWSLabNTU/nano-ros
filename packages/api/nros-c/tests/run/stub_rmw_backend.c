@@ -338,6 +338,56 @@ static rmw_ret_t stub_supported_qos_policies(const rmw_session_t* session, uint3
     return NROS_RMW_RET_OK;
 }
 
+/* Issue 1940 — the per-entity new-data slots, stored per KIND (the probe
+ * creates one entity of each) and driven on demand by
+ * `nros_stub_rmw_invoke_entity_wake`, as a real backend's arrival path would.
+ * `s_entity_wake_supported == false` makes all three answer UNSUPPORTED — the
+ * same verdict a NULL slot carries — so one stub covers both halves of the
+ * contract. */
+static bool s_entity_wake_supported = true;
+static rmw_event_callback_t s_entity_cb[3] = {NULL, NULL, NULL};
+static const void* s_entity_user_data[3] = {NULL, NULL, NULL};
+
+static rmw_ret_t stub_store_entity_wake(int kind, rmw_event_callback_t callback,
+                                        const void* user_data) {
+    if (!s_entity_wake_supported) return NROS_RMW_RET_UNSUPPORTED;
+    s_entity_cb[kind] = callback;
+    s_entity_user_data[kind] = callback != NULL ? user_data : NULL;
+    return NROS_RMW_RET_OK;
+}
+
+static rmw_ret_t stub_subscription_set_on_new_message_callback(rmw_subscription_t* subscription,
+                                                               rmw_event_callback_t callback,
+                                                               const void* user_data) {
+    (void)subscription;
+    return stub_store_entity_wake(NROS_STUB_ENTITY_SUBSCRIPTION, callback, user_data);
+}
+
+static rmw_ret_t stub_service_set_on_new_request_callback(rmw_service_t* service,
+                                                          rmw_event_callback_t callback,
+                                                          const void* user_data) {
+    (void)service;
+    return stub_store_entity_wake(NROS_STUB_ENTITY_SERVICE, callback, user_data);
+}
+
+static rmw_ret_t stub_client_set_on_new_response_callback(rmw_client_t* client,
+                                                          rmw_event_callback_t callback,
+                                                          const void* user_data) {
+    (void)client;
+    return stub_store_entity_wake(NROS_STUB_ENTITY_CLIENT, callback, user_data);
+}
+
+void nros_stub_rmw_set_entity_wake_supported(bool supported) {
+    s_entity_wake_supported = supported;
+}
+
+bool nros_stub_rmw_invoke_entity_wake(int kind) {
+    rmw_event_callback_t cb = s_entity_cb[kind];
+    if (cb == NULL) return false;
+    cb(s_entity_user_data[kind], 1);
+    return true;
+}
+
 static const nros_rmw_vtable_t STUB_VTABLE = {
     .create_session = stub_create_session,
     .destroy_session = stub_destroy_session,
@@ -358,6 +408,9 @@ static const nros_rmw_vtable_t STUB_VTABLE = {
     .destroy_client = stub_destroy_client,
     .set_wake_callback = stub_set_wake_callback,
     .supported_qos_policies = stub_supported_qos_policies,
+    .subscription_set_on_new_message_callback = stub_subscription_set_on_new_message_callback,
+    .service_set_on_new_request_callback = stub_service_set_on_new_request_callback,
+    .client_set_on_new_response_callback = stub_client_set_on_new_response_callback,
 };
 
 int32_t nros_stub_rmw_register(void) {

@@ -3216,8 +3216,15 @@ pub trait Subscription {
     /// when new data is available, enabling event-driven async without
     /// busy-polling.
     ///
-    /// Default: no-op (backends that don't support waking simply ignore this).
-    fn register_waker(&self, _waker: &core::task::Waker) {}
+    /// Returns `true` when the backend will wake `waker` on an arrival, and
+    /// `false` when it cannot (issue 1940): the caller must then poll, or
+    /// rely on the session-wide wake, and a C caller reports
+    /// `RCL_RET_UNSUPPORTED` rather than `OK`.
+    ///
+    /// Default: `false` — a backend that writes no code cannot wake anyone.
+    fn register_waker(&self, _waker: &core::task::Waker) -> bool {
+        false
+    }
 
     /// Return a deserialization error (implementation specific)
     fn deserialization_error(&self) -> Self::Error;
@@ -3440,9 +3447,11 @@ pub trait ServiceTrait {
     /// service servers. Mirrors the matching method on
     /// `SubscriberTrait` / `ClientTrait`. Backends that
     /// surface incoming-request notifications wake `waker` when
-    /// `has_request()` flips true. Default: no-op (backends without
-    /// wake support ignore — caller falls back to polling).
-    fn register_waker(&self, _waker: &core::task::Waker) {}
+    /// `has_request()` flips true. Returns `false` when the backend cannot
+    /// (issue 1940); the caller then falls back to polling. Default: `false`.
+    fn register_waker(&self, _waker: &core::task::Waker) -> bool {
+        false
+    }
 
     /// Try to receive a service request into `buf` (non-blocking).
     ///
@@ -3799,8 +3808,11 @@ pub trait ClientTrait {
     /// when a response is available, enabling event-driven async without
     /// busy-polling.
     ///
-    /// Default: no-op (backends that don't support waking simply ignore this).
-    fn register_waker(&self, _waker: &core::task::Waker) {}
+    /// Returns `false` when the backend cannot wake `waker` (issue 1940);
+    /// the caller then polls. Default: `false`.
+    fn register_waker(&self, _waker: &core::task::Waker) -> bool {
+        false
+    }
 
     // phase-428 W13 — the `start_server_discovery` / `poll_server_discovery`
     // pair was DELETED here. It existed because the only zenoh backend could

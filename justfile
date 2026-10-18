@@ -2733,6 +2733,12 @@ test-all verbose="": _require-fixtures-ready test-zpico-multisession
     # XRCE session while another thread drives it, rides the same invocation:
     # same feature, same Agent need, and one invocation keeps one junit.
     just _nextest-platform "xrce_guard_wake xrce_concurrent_entities" "{{verbose}}" "--features xrce-wake-test" || failed=1
+    # Issue 1940 — zenoh through the C vtable (`CffiSession`), incl. a waker
+    # registered on a subscription and woken by real arrivals. `cffi_smoke` is
+    # `cfg(feature = "platform-posix")`, which the `--workspace` run below never
+    # enables, so until this line the target compiled empty in every lane. It
+    # needs a router, hence here and not in `ci gate`.
+    just _nextest-tolerant -p nros-rmw-zenoh --features platform-posix --test cffi_smoke --no-fail-fast || failed=1
     args=(--workspace "${nextest_run_profile_args[@]}" "${nextest_fail_fast_args[@]}")
     if [ -z "{{verbose}}" ]; then
         # NROS_TEST_FAILURE_OUTPUT (default `never`) — see `_test-focused`.

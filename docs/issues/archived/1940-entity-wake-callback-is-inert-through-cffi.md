@@ -1,11 +1,11 @@
 ---
 id: 1940
 title: "Entity-scoped wake registration is a no-op through `nros-rmw-cffi`: `rclc_polling_*_set_wake_callback`, the C++ twins and `recv().await`'s waker never reach a backend"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [rmw, api, executor]
-related: [phase-397, rfc-0084]
+related: [phase-397, rfc-0084, 0960]
 found: 2026-10-17
 ---
 
@@ -75,3 +75,40 @@ Acceptance:
 - A C test sets `rclc_polling_subscription_set_wake_callback` and observes the
   callback fire on an arrival, against zenoh.
 - A backend without the slot makes the call return an error, not `OK`.
+
+## Resolution (2026-10-18, phase-397 W1)
+
+The vtable gained upstream's per-entity trio,
+`{subscription,service,client}_set_on_new_*_callback`, in upstream's
+signature (`rmw_event_callback_t`), rather than the `*_set_wake(…, token)`
+shape the fix direction above proposed: `user_data` is already per entity,
+so a token argument added nothing. Issue 0960 had declined the trio on RAM
+grounds; the header keeps that argument by making `number_of_events` a lower
+bound, so no backend tracks per-entity depth.
+
+- `register_waker` on all three entity traits returns `bool`, `false` by
+  default. `CffiSubscription` / `CffiService` / `CffiClient` keep the waker in
+  a per-entity slot and forward it through the new slots
+  (`nros-rmw-cffi/src/entity_wake.rs`).
+- The Rust adapter fills the slots for every Rust backend, zenoh included. Its
+  waker re-arms itself after each wake, because zenoh's `AtomicWaker` gives the
+  waker up and the ABI says a registration persists. The zenoh client now keeps
+  a waker registered before any request exists.
+- The C and C++ setters return `RCL_RET_UNSUPPORTED` / `NROS_CPP_RET_UNSUPPORTED`
+  when the backend cannot wake. That covers the three entity setters named
+  here and the seven C++ and C action-channel setters, which were inert the
+  same way and are the same class.
+- Cyclone, XRCE and uORB leave the slots NULL. Cyclone's
+  `on_data_available` half moved to phase-397 W2.
+
+Acceptance, as run:
+- `just check c` runs `tests/run/entity_wake_callback.c` against the stub
+  backend: each kind's callback fires on each of three arrivals, and with the
+  slots answering UNSUPPORTED each setter returns `RCL_RET_UNSUPPORTED`.
+- `nros-rmw-zenoh`'s `cffi_smoke::cffi_subscription_waker_fires_on_each_arrival`
+  registers a waker once, over a real router, and sees it woken on at least
+  three arrivals. It now runs in `test-all`; before this, `cffi_smoke` was
+  compiled without `platform-posix` in every lane and ran nowhere. With the
+  adapter's re-arm removed it reads 1 wake and fails.
+- No XRCE run was done for "reports unsupported". XRCE's NULL slot takes the
+  same code path the stub's UNSUPPORTED arm drives.

@@ -431,6 +431,22 @@ c: c-fmt
         "$nros_c_lib" -lpthread -ldl -lm \
         -o tmp/entity_remove_cycles
     ./tmp/entity_remove_cycles
+    echo "  - issue 1940: a per-entity wake callback reaches the backend's"
+    echo "    set_on_new_*_callback slot, and a backend without one is reported"
+    test -f packages/api/nros-c/tests/run/entity_wake_callback.c || { \
+        echo "ERROR: entity_wake_callback.c is MISSING -- this check passes on absence." >&2; \
+        exit 1; }
+    cc -std=c11 -Wall -Wextra -Wmissing-prototypes -D_GNU_SOURCE \
+        -I"$cgen" \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/core/nros-rmw-abi/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -Ipackages/api/nros-c/tests/run \
+        packages/api/nros-c/tests/run/entity_wake_callback.c \
+        packages/api/nros-c/tests/run/stub_rmw_backend.c \
+        "$nros_c_lib" -lpthread -ldl -lm \
+        -o tmp/entity_wake_callback
+    ./tmp/entity_wake_callback
     echo "  - entry seam links from C alone + the strong override wins (phase-432 W3.1)"
     # `nros_board_network_wait()` is the board hook the three RTOS
     # `run_tiers.c` call `extern`. Its weak default used to live in

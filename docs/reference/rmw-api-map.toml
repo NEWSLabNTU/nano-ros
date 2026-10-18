@@ -41,9 +41,9 @@ where = "vtable"
 nano = "client_response_subscription_get_actual_qos"
 
 [rmw_client_set_on_new_response_callback]
-where = "declined"
-status = "not-supported"
-reason = "as rmw_service_set_on_new_request_callback (issue 0960)."
+where = "vtable"
+nano = "client_set_on_new_response_callback"
+reason = "as rmw_subscription_set_on_new_message_callback: same name and signature; the same two behavioural differences."
 
 
 [rmw_compare_gids_equal]
@@ -348,9 +348,9 @@ where = "vtable"
 nano = "service_server_is_available"
 
 [rmw_service_set_on_new_request_callback]
-where = "declined"
-status = "not-supported"
-reason = "DECLINED, phase-407: readiness belongs to the EXECUTOR here, not to the backend. `set_wake_callback` says \"something on this session moved\" and `spin_once` then walks its entry table calling `has_data` per entity — one vtable call each, on images whose entity count is single digits. Upstream's per-entity callback carries `number_of_events`, so honouring it means every backend tracking per-entity pending DEPTH: new state on a target where static RAM is already the pressure (issue 0827 measures a talker reserving 275 KB), bought for a scan nobody has measured as costly and a consumer that does not exist. If rclcpp `EventsExecutor` compatibility is ever wanted, that is a phase with a stated goal, not three slots kept warm (issue 0960)."
+where = "vtable"
+nano = "service_set_on_new_request_callback"
+reason = "as rmw_subscription_set_on_new_message_callback: same name and signature; the same two behavioural differences."
 
 
 [rmw_set_log_severity]
@@ -391,9 +391,9 @@ status = "not-supported"
 reason = "DECLINED, phase-407: network-side content filtering needs a DDS feature our pinned Cyclone does not have. 0.10.5 exposes `dds_set_topic_filter{,_and_arg,_extended}` — a LOCAL sample callback applied after the message arrives — and not `dds_create_topic_filtered`, which is the one that propagates the predicate to the writer. Shipping the local filter under this name would promise saved BANDWIDTH and deliver saved CPU, which is the class of deviation reason W4 spent its time undoing. The slot existed from phase-376 W5 to 2026-08-31 and no backend ever filled it (issue 0956)."
 
 [rmw_subscription_set_on_new_message_callback]
-where = "declined"
-status = "not-supported"
-reason = "as rmw_service_set_on_new_request_callback — and note the header had argued, correctly, that `set_wake_callback` does NOT cover this trio: it is session-scoped and serves subscriptions, services and clients identically. That is why these are DECLINED rather than re-mapped: nothing else answers them, and we have decided not to (issue 0960)."
+where = "vtable"
+nano = "subscription_set_on_new_message_callback"
+reason = "exact name and signature (issue 1940, phase-397 W1). Two deliberate differences in BEHAVIOUR, stated in the header: `number_of_events` is a lower bound (a backend may call once per arrival with 1, so none tracks per-entity pending depth — issue 0960's RAM argument, kept), and samples that arrived before the registration are not replayed; a caller registers, then checks `has_data`. phase-407 had declined the trio; RFC-0084's 2026-10-17 amendment reversed that once issue 1940 showed every per-entity wake in the C, C++ and async Rust APIs was inert without it."
 
 
 [rmw_take]

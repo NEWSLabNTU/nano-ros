@@ -2201,11 +2201,15 @@ pub extern "C" fn nros_cpp_wake_state_get_zero_initialized() -> nros_cpp_wake_st
     nros_cpp_wake_state_t { _opaque: [0u64; 2] }
 }
 
+/// Shared body of every `nros_cpp_*_set_wake_callback`. Returns
+/// `NROS_CPP_RET_UNSUPPORTED` when `register` reports the backend cannot wake
+/// this entity — no per-entity new-data slot — rather than accepting a
+/// callback that never fires (issue 1940).
 unsafe fn install_waker_on(
     state: *mut nros_cpp_wake_state_t,
     cb: Option<unsafe extern "C" fn(*mut c_void)>,
     ctx: *mut c_void,
-    register: impl FnOnce(&core::task::Waker),
+    register: impl FnOnce(&core::task::Waker) -> bool,
 ) -> nros_cpp_ret_t {
     if state.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
@@ -2217,7 +2221,11 @@ unsafe fn install_waker_on(
             nros_node::c_waker::CWakeState { fn_ptr: cb, ctx },
         );
         let waker = nros_node::c_waker::make_waker(state_ptr);
-        register(&waker);
+        // Issue 1940 — a backend with no per-entity wake says so; `OK` here
+        // would promise a callback that never fires.
+        if !register(&waker) {
+            return NROS_CPP_RET_UNSUPPORTED;
+        }
     }
     NROS_CPP_RET_OK
 }

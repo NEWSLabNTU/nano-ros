@@ -55,6 +55,10 @@ pub mod rust_adapter;
 #[cfg(feature = "alloc")]
 pub use rust_adapter::{RustBackend, RustBackendAdapter};
 
+// Issue 1940 — per-entity wake registration, both sides of the vtable.
+mod entity_wake;
+use entity_wake::{WakerSlot, runtime_entity_wake};
+
 // Phase 249 P4b.1 — `.init_array` ctor self-registration
 // (`nros_rmw_register_backend!` macro lives here).
 pub mod section;
@@ -306,6 +310,9 @@ pub const EMPTY_VTABLE: NrosRmwVtable = NrosRmwVtable {
     set_log_severity: None,
     required_rx_bytes: None,
     supported_qos_policies: None,
+    subscription_set_on_new_message_callback: None,
+    service_set_on_new_request_callback: None,
+    client_set_on_new_response_callback: None,
 };
 
 /// Compat alias for the generated `rmw_service_t`.
@@ -2792,6 +2799,7 @@ impl Session for CffiSession {
             refused_len: None,
             polled_events: [const { Cell::new(None) }; SUB_EVENT_KINDS.len()],
             polling_events: Cell::new(false),
+            entity_waker: WakerSlot::new(),
         };
         let topic_ptr = to_c_str(topic.name, &mut sub_state.topic_name_buf);
         let type_ptr = to_c_str(topic.type_name, &mut sub_state.type_name_buf);
@@ -2901,6 +2909,7 @@ impl Session for CffiSession {
             request_qos: qos_unknown_c(),
             response_qos: qos_unknown_c(),
             refused_len: None,
+            entity_waker: WakerSlot::new(),
         };
         let svc_ptr = to_c_str(service.name, &mut srv_state.service_name_buf);
         let type_ptr = to_c_str(service.type_name, &mut srv_state.type_name_buf);
@@ -2994,6 +3003,7 @@ impl Session for CffiSession {
             request_qos: qos_unknown_c(),
             response_qos: qos_unknown_c(),
             refused_len: None,
+            entity_waker: WakerSlot::new(),
         };
         let svc_ptr = to_c_str(service.name, &mut cli_state.service_name_buf);
         let type_ptr = to_c_str(service.type_name, &mut cli_state.type_name_buf);
@@ -4394,6 +4404,9 @@ pub struct CffiSubscription {
     /// user callback is free to take, and taking polls. A `Cell`, not a
     /// lock; see the publisher's field of the same name.
     polling_events: Cell<bool>,
+    /// Issue 1940 — the waker `register_waker` installed, woken by the
+    /// backend through the `subscription_set_on_new_message_callback` slot.
+    entity_waker: WakerSlot,
 }
 
 impl CffiSubscription {
@@ -4732,6 +4745,29 @@ impl nros_rmw::Subscription for CffiSubscription {
         self.run_process_in_place(f)
     }
 
+    fn register_waker(&self, waker: &core::task::Waker) -> bool {
+        // Issue 1940 — keep the waker here and point the backend at it,
+        // through upstream's `set_on_new_message_callback` slot. The
+        // slot is re-armed on EVERY call, not only the first: a handle that
+        // moved since the last registration (into an arena slot, say) hands
+        // the backend its CURRENT address, so a registration can never
+        // outlive the place it points at for longer than one re-poll.
+        let Some(set_wake) = self.vtable.subscription_set_on_new_message_callback else {
+            return false;
+        };
+        self.entity_waker.register(waker);
+        let view_ptr = self as *const _ as *mut Self;
+        let mut view = unsafe { (*view_ptr).make_view() };
+        let rc = unsafe {
+            set_wake(
+                &mut view,
+                Some(runtime_entity_wake),
+                self.entity_waker.as_user_data(),
+            )
+        };
+        rc == NROS_RMW_RET_OK
+    }
+
     fn has_data(&self) -> bool {
         // Issue 1164 — the readiness scan is the poll point `subscriber.cpp`
         // names for `subscription_take_event`. No-op unless something is
@@ -5067,6 +5103,8 @@ pub struct CffiService {
     /// Issue 1632 — what the last refused `take_request` said the request
     /// needed, as [`ServiceTrait::refused_request_len`] reports it.
     refused_len: Option<usize>,
+    /// Issue 1940 — see [`CffiSubscription`]'s field of the same name.
+    entity_waker: WakerSlot,
 }
 
 impl CffiService {
@@ -5090,6 +5128,24 @@ impl CffiService {
 
 impl ServiceTrait for CffiService {
     type Error = TransportError;
+
+    fn register_waker(&self, waker: &core::task::Waker) -> bool {
+        // Issue 1940 — see `CffiSubscription::register_waker`.
+        let Some(set_wake) = self.vtable.service_set_on_new_request_callback else {
+            return false;
+        };
+        self.entity_waker.register(waker);
+        let view_ptr = self as *const _ as *mut Self;
+        let mut view = unsafe { (*view_ptr).make_view() };
+        let rc = unsafe {
+            set_wake(
+                &mut view,
+                Some(runtime_entity_wake),
+                self.entity_waker.as_user_data(),
+            )
+        };
+        rc == NROS_RMW_RET_OK
+    }
 
     fn has_request(&self) -> bool {
         let view_ptr = self as *const _ as *mut Self;
@@ -5236,6 +5292,8 @@ pub struct CffiClient {
     /// Issue 1632 — what the last refused `take_response` said the reply
     /// needed, as [`ClientTrait::refused_response_len`] reports it.
     refused_len: Option<usize>,
+    /// Issue 1940 — see [`CffiSubscription`]'s field of the same name.
+    entity_waker: WakerSlot,
 }
 
 impl CffiClient {
@@ -5259,6 +5317,24 @@ impl CffiClient {
 
 impl ClientTrait for CffiClient {
     type Error = TransportError;
+
+    fn register_waker(&self, waker: &core::task::Waker) -> bool {
+        // Issue 1940 — see `CffiSubscription::register_waker`.
+        let Some(set_wake) = self.vtable.client_set_on_new_response_callback else {
+            return false;
+        };
+        self.entity_waker.register(waker);
+        let view_ptr = self as *const _ as *mut Self;
+        let mut view = unsafe { (*view_ptr).make_view() };
+        let rc = unsafe {
+            set_wake(
+                &mut view,
+                Some(runtime_entity_wake),
+                self.entity_waker.as_user_data(),
+            )
+        };
+        rc == NROS_RMW_RET_OK
+    }
 
     fn send_request_raw(&mut self, request: &[u8]) -> Result<i64, TransportError> {
         // Phase-301 (issue 0240) — `send_request_raw` +
@@ -6151,6 +6227,7 @@ mod tests {
             request_qos: qos_unknown_c(),
             response_qos: qos_unknown_c(),
             refused_len: None,
+            entity_waker: WakerSlot::new(),
         };
         let mut buf = [0u8; 16];
 

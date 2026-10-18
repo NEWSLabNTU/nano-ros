@@ -90,11 +90,11 @@ rmw must provide" than any reading of the headers.
 
 | | vtable | global | executor | platform | build time | serdes | runtime | none | **total** |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| same | 12 | 1 |  |  |  |  |  |  | **13** |
+| same | 15 | 1 |  |  |  |  |  |  | **16** |
 | re-shaped | 34 | 1 |  |  |  |  |  |  | **35** |
 | re-mapped | 16 |  | 4 | 1 | 3 | 3 | 1 |  | **28** |
-| not supported — *by decision* |  |  |  |  |  |  |  | 12 | **12** |
-| **total** | **62** | **2** | **4** | **1** | **3** | **3** | **1** | **12** | **88** |
+| not supported — *by decision* |  |  |  |  |  |  |  | 9 | **9** |
+| **total** | **65** | **2** | **4** | **1** | **3** | **3** | **1** | **9** | **88** |
 
 Read a row for what we did, a column for where it lives. Only
 **not implemented** should shrink over time; **not supported** is the one
@@ -240,8 +240,13 @@ text-transform:uppercase;margin:0 0 .45rem;opacity:.95}
   <span class='ty'>rmw_event_callback_t callback</span><span class=pu>,</span>
   <span class='ty'>const void * user_data</span>
 <span class=pu>)</span></pre></td>
-<td class=c><span class=nosig>—</span></td>
-<td class=why><div class='st s-not-supported'>✕ not-supported · by decision</div>as rmw_service_set_on_new_request_callback (issue 0960).</td>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
+<span class=pu>(*</span><span class='fn'>client_set_on_new_response_callback</span><span class=pu>)</span><span class=pu>(</span>
+  <span class='ty'>rmw_client_t *client</span><span class=pu>,</span>
+  <span class='ty'>rmw_event_callback_t callback</span><span class=pu>,</span>
+  <span class='ty'>const void *user_data</span>
+<span class=pu>)</span></pre></td>
+<td class=why><div class='st s-same'>● same</div></td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -1039,8 +1044,13 @@ text-transform:uppercase;margin:0 0 .45rem;opacity:.95}
   <span class='ty'>rmw_event_callback_t callback</span><span class=pu>,</span>
   <span class='ty'>const void * user_data</span>
 <span class=pu>)</span></pre></td>
-<td class=c><span class=nosig>—</span></td>
-<td class=why><div class='st s-not-supported'>✕ not-supported · by decision</div>DECLINED, phase-407: readiness belongs to the EXECUTOR here, not to the backend. `set_wake_callback` says &quot;something on this session moved&quot; and `spin_once` then walks its entry table calling `has_data` per entity — one vtable call each, on images whose entity count is single digits. Upstream&#x27;s per-entity callback carries `number_of_events`, so honouring it means every backend tracking per-entity pending DEPTH: new state on a target where static RAM is already the pressure (issue 0827 measures a talker reserving 275 KB), bought for a scan nobody has measured as costly and a consumer that does not exist. If rclcpp `EventsExecutor` compatibility is ever wanted, that is a phase with a stated goal, not three slots kept warm (issue 0960).</td>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
+<span class=pu>(*</span><span class='fn'>service_set_on_new_request_callback</span><span class=pu>)</span><span class=pu>(</span>
+  <span class='ty'>rmw_service_t *service</span><span class=pu>,</span>
+  <span class='ty'>rmw_event_callback_t callback</span><span class=pu>,</span>
+  <span class='ty'>const void *user_data</span>
+<span class=pu>)</span></pre></td>
+<td class=why><div class='st s-same'>● same</div></td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -1135,8 +1145,13 @@ text-transform:uppercase;margin:0 0 .45rem;opacity:.95}
   <span class='ty'>rmw_event_callback_t callback</span><span class=pu>,</span>
   <span class='ty'>const void * user_data</span>
 <span class=pu>)</span></pre></td>
-<td class=c><span class=nosig>—</span></td>
-<td class=why><div class='st s-not-supported'>✕ not-supported · by decision</div>as rmw_service_set_on_new_request_callback — and note the header had argued, correctly, that `set_wake_callback` does NOT cover this trio: it is session-scoped and serves subscriptions, services and clients identically. That is why these are DECLINED rather than re-mapped: nothing else answers them, and we have decided not to (issue 0960).</td>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
+<span class=pu>(*</span><span class='fn'>subscription_set_on_new_message_callback</span><span class=pu>)</span><span class=pu>(</span>
+  <span class='ty'>rmw_subscription_t *subscription</span><span class=pu>,</span>
+  <span class='ty'>rmw_event_callback_t callback</span><span class=pu>,</span>
+  <span class='ty'>const void *user_data</span>
+<span class=pu>)</span></pre></td>
+<td class=why><div class='st s-same'>● same</div></td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>

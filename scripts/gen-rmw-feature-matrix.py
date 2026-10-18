@@ -87,11 +87,15 @@ FEATURES = [
     ("Wait-for-acked", ["publisher_wait_for_all_acked"],
      r"fn wait_for_all_acked"),
     ("Take-with-info", ["take_with_info"], r"fn take_with_info"),
-    # "Entity new-data callbacks" (`subscription_set_on_new_message_callback`)
-    # was a row here until phase-407 retired the slot (issue 0960 DECLINED the
-    # trio); the generator then refused to run for four days — and nothing
-    # noticed, because `check rmw-feature-matrix` is on no lane. A row names a
-    # slot the canonical vtable has; a declined capability is not one.
+    # Issue 1940 put this row back. phase-407 had retired the slots (issue 0960
+    # DECLINED the trio) and the row went with them, because a row names a slot
+    # the canonical vtable has; the generator refused to run for four days in
+    # between, unnoticed, since `check rmw-feature-matrix` is on no lane. A
+    # Rust backend answers through the adapter, so its evidence is the trait
+    # method the adapter forwards to.
+    ("Entity new-data callbacks",
+     ["subscription_set_on_new_message_callback"],
+     r"fn register_waker"),
     ("Graph introspection (names/types/counts)",
      ["get_node_names", "get_topic_names_and_types", "count_publishers"],
      r"fn (get_node_names|get_topic_names)"),

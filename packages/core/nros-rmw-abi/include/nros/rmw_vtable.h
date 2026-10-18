@@ -1462,6 +1462,54 @@ typedef struct nros_rmw_vtable_t {
     rmw_ret_t (*supported_qos_policies)(const rmw_session_t *session,
         uint32_t *out_mask);
 
+    /* ---- Per-entity new-data callbacks (issue 1940, phase-397 W1) ---- */
+
+    /** Upstream `rmw_subscription_set_on_new_message_callback`. Exact parity
+     *  in name and signature.
+     *
+     *  `set_wake_callback` above wakes the session's executor on ANY arrival;
+     *  this names the entity. The backend stores `(callback, user_data)`
+     *  against @p subscription and calls `callback(user_data, n)` from its
+     *  arrival path when samples become takeable on it, with `n >= 1`.
+     *
+     *  `n` is a LOWER BOUND, not upstream's exact count: a backend that
+     *  cannot count calls once per arrival with 1, and none is required to
+     *  track per-entity pending depth for it (issue 0960's RAM argument, kept).
+     *  Nor is a backend required to replay samples that arrived BEFORE the
+     *  registration, as upstream's backends do; a caller registers first and
+     *  then checks `has_data`, which closes the gap.
+     *
+     *  A second call REPLACES the stored registration; `callback == NULL`
+     *  clears it. After either returns, the backend never calls the previous
+     *  pair again. `destroy_subscription` clears it as well.
+     *
+     *  `callback` may run on a backend thread, concurrently with any other
+     *  slot, so it must be short and non-blocking (set a flag, signal a
+     *  condition variable).
+     *
+     *  @p subscription is BORROWED for the call; the backend keys the
+     *  registration on its own `backend_data`, not on the struct's address.
+     *
+     *  NULL SLOT, or `NROS_RMW_RET_UNSUPPORTED`: the backend cannot name the
+     *  entity whose data arrived (XRCE, uORB, a poll-only bare-metal link).
+     *  The runtime then reports the registration as unsupported rather than
+     *  OK, and an executor falls back to the session wake. */
+    rmw_ret_t (*subscription_set_on_new_message_callback)(
+        rmw_subscription_t *subscription, rmw_event_callback_t callback,
+        const void *user_data);
+
+    /** Upstream `rmw_service_set_on_new_request_callback`: `callback` fires
+     *  when a request becomes takeable. Same contract as the subscription
+     *  slot above. */
+    rmw_ret_t (*service_set_on_new_request_callback)(rmw_service_t *service,
+        rmw_event_callback_t callback, const void *user_data);
+
+    /** Upstream `rmw_client_set_on_new_response_callback`: `callback` fires
+     *  when a response becomes takeable. Same contract as the subscription
+     *  slot above. */
+    rmw_ret_t (*client_set_on_new_response_callback)(rmw_client_t *client,
+        rmw_event_callback_t callback, const void *user_data);
+
 } nros_rmw_vtable_t;
 
 /**

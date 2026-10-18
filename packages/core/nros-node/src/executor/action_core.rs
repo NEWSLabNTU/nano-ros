@@ -782,23 +782,23 @@ impl<
     /// send_goal request arrives. Event-driven action servers
     /// register here in place of polling `try_recv_goal_request` on
     /// a timer.
-    pub fn register_goal_waker(&self, waker: &core::task::Waker) {
+    pub fn register_goal_waker(&self, waker: &core::task::Waker) -> bool {
         use nros_rmw::ServiceTrait;
-        self.send_goal_server.register_waker(waker);
+        self.send_goal_server.register_waker(waker)
     }
 
     /// Phase 122.3.c.6.e — register a `Waker` that fires when a
     /// cancel-goal request arrives.
-    pub fn register_cancel_waker(&self, waker: &core::task::Waker) {
+    pub fn register_cancel_waker(&self, waker: &core::task::Waker) -> bool {
         use nros_rmw::ServiceTrait;
-        self.cancel_goal_server.register_waker(waker);
+        self.cancel_goal_server.register_waker(waker)
     }
 
     /// Phase 122.3.c.6.e — register a `Waker` that fires when a
     /// get_result query arrives.
-    pub fn register_get_result_waker(&self, waker: &core::task::Waker) {
+    pub fn register_get_result_waker(&self, waker: &core::task::Waker) -> bool {
         use nros_rmw::ServiceTrait;
-        self.get_result_server.register_waker(waker);
+        self.get_result_server.register_waker(waker)
     }
 
     /// Phase 122.3.c.6.d — peek a pending cancel-goal request without
@@ -1401,27 +1401,27 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
 
     /// Phase 122.3.c.6.e — register a `Waker` that fires when the
     /// send_goal RPC reply lands.
-    pub fn register_goal_response_waker(&self, waker: &core::task::Waker) {
+    pub fn register_goal_response_waker(&self, waker: &core::task::Waker) -> bool {
         use nros_rmw::ClientTrait;
-        self.send_goal_client.register_waker(waker);
+        self.send_goal_client.register_waker(waker)
     }
 
     /// Phase 122.3.c.6.e — register a `Waker` for cancel-RPC replies.
-    pub fn register_cancel_response_waker(&self, waker: &core::task::Waker) {
+    pub fn register_cancel_response_waker(&self, waker: &core::task::Waker) -> bool {
         use nros_rmw::ClientTrait;
-        self.cancel_goal_client.register_waker(waker);
+        self.cancel_goal_client.register_waker(waker)
     }
 
     /// Phase 122.3.c.6.e — register a `Waker` for get_result replies.
-    pub fn register_result_waker(&self, waker: &core::task::Waker) {
+    pub fn register_result_waker(&self, waker: &core::task::Waker) -> bool {
         use nros_rmw::ClientTrait;
-        self.get_result_client.register_waker(waker);
+        self.get_result_client.register_waker(waker)
     }
 
     /// Phase 122.3.c.6.e — register a `Waker` for feedback messages.
-    pub fn register_feedback_waker(&self, waker: &core::task::Waker) {
+    pub fn register_feedback_waker(&self, waker: &core::task::Waker) -> bool {
         use nros_rmw::Subscription;
-        self.feedback_subscriber.register_waker(waker);
+        self.feedback_subscriber.register_waker(waker)
     }
 
     /// Phase 122.3.c.6.c — poll for a cancel reply (non-blocking,

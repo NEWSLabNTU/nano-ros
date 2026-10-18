@@ -1294,8 +1294,9 @@ impl ServiceTrait for ZenohServiceServer {
         b.head.load(Ordering::Relaxed) != b.tail.load(Ordering::Acquire)
     }
 
-    fn register_waker(&self, waker: &core::task::Waker) {
+    fn register_waker(&self, waker: &core::task::Waker) -> bool {
         self.buf.get().waker.register(waker);
+        true
     }
 
     fn refused_request_len(&self) -> Option<usize> {
@@ -1596,6 +1597,11 @@ pub struct ZenohServiceClient {
     rmw_gid: [u8; RMW_GID_SIZE],
     /// Issue 0153 — per-client request sequence counter for the attachment.
     request_seq: AtomicSeqCounter,
+    /// Issue 1940 — the waker registered on the CLIENT, as opposed to on one
+    /// outstanding request. `REPLY_WAKERS` is keyed per pending get, so a
+    /// waker registered before a request exists had nowhere to go; this
+    /// keeps it, and `track_outstanding` arms each new get with it.
+    entity_waker: AtomicWaker,
     /// issue 1437 — the profile `qos::admit` GRANTED. One profile for both
     /// directions; see `ZenohServiceServer::granted_qos` for why that is the
     /// honest answer on this backend and not a shortcut.
@@ -1678,6 +1684,7 @@ impl ZenohServiceClient {
             pending_handles: heapless::Vec::new(),
             rmw_gid: [0u8; RMW_GID_SIZE],
             request_seq: AtomicSeqCounter::new(0),
+            entity_waker: AtomicWaker::new(),
             granted_qos: nros_rmw::QoSProfile::QOS_PROFILE_UNKNOWN,
             refused_len: None,
             _phantom: PhantomData,
@@ -1715,13 +1722,27 @@ impl ZenohServiceClient {
         }
         // Cannot fail — we just made room above.
         let _ = self.pending_handles.push((handle, seq));
+        // Issue 1940 — arm the new get with the client's waker. `take` empties
+        // the cell, so the waker goes straight back. A reply that lands before
+        // this line wakes nobody; the caller that just sent the request takes
+        // the response on its next pass regardless, so it is a late wake, not
+        // a lost reply.
+        if let Some(waker) = self.entity_waker.take() {
+            if (handle as usize) < ZPICO_MAX_PENDING_GETS {
+                let idx = self.session_index * ZPICO_MAX_PENDING_GETS + handle as usize;
+                REPLY_WAKERS[idx].register(&waker);
+            }
+            self.entity_waker.register(&waker);
+        }
     }
 }
 
 impl ClientTrait for ZenohServiceClient {
     type Error = TransportError;
 
-    fn register_waker(&self, waker: &core::task::Waker) {
+    fn register_waker(&self, waker: &core::task::Waker) -> bool {
+        // Issue 1940 — kept for the gets not yet sent; see `entity_waker`.
+        self.entity_waker.register(waker);
         // Wake on any outstanding handle — `rclc_client_call`'s resend
         // can leave several gens in flight; any of them could complete
         // first (see `pending_handles` docs).
@@ -1732,6 +1753,7 @@ impl ClientTrait for ZenohServiceClient {
                 REPLY_WAKERS[idx].register(waker);
             }
         }
+        true
     }
 
     fn send_request_raw(&mut self, request: &[u8]) -> Result<i64, Self::Error> {

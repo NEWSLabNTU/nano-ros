@@ -123,3 +123,13 @@ answer these. It is session-scoped and carries no count, so a consumer holding
 only it must poll every entity anyway. The two mechanisms answer different
 questions; we implement one and decline the other, and the map now says exactly
 that instead of pointing at a slot the header itself said does not cover them.
+
+## Reversed, 2026-10-18 — issue 1940
+
+The decline above rested on "a consumer that does not exist". One did:
+`rclc_polling_*_set_wake_callback`, their C++ twins and `recv().await` all
+needed a per-entity wake, and without these slots every one of them was a
+no-op that returned `OK` ([issue 1940](1940-entity-wake-callback-is-inert-through-cffi.md)).
+The trio is back in `rmw_vtable.h` under upstream's names and signature. The
+RAM argument here still holds and is kept: `number_of_events` is a lower
+bound, so no backend tracks per-entity pending depth.

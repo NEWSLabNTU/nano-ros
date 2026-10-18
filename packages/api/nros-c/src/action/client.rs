@@ -1591,13 +1591,18 @@ unsafe fn set_action_client_wake_callback(
             nros_node::c_waker::CWakeState { fn_ptr: cb, ctx },
         );
         let waker = nros_node::c_waker::make_waker(state_ptr);
-        match channel {
+        let armed = match channel {
             ClientChannel::GoalResponse => core.register_goal_response_waker(&waker),
             ClientChannel::CancelResponse => core.register_cancel_response_waker(&waker),
             ClientChannel::Result => core.register_result_waker(&waker),
             ClientChannel::Feedback => core.register_feedback_waker(&waker),
+        };
+        // Issue 1940 — a backend with no per-entity wake says so.
+        if armed {
+            RCL_RET_OK
+        } else {
+            RCL_RET_UNSUPPORTED
         }
-        RCL_RET_OK
     }
     #[cfg(not(feature = "rmw-cffi"))]
     {
