@@ -1,13 +1,14 @@
 ---
 id: 1281
 title: "`c_riscv_nuttx_talker_delivers_cross_process` fails again: the guest connects and the router drops its session after 28–79 s"
-status: open
+status: resolved
 type: bug
 area: [testing, rmw, nuttx]
 related: [0820, 0801, 1280, phase-445, phase-414, phase-441]
+resolved: 2026-10-18
 ---
 
-**Home: [phase-441](../roadmap/phase-441-rmw-on-target-verification.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)". It had no home after phase-414 was archived on 2026-10-12.
+**Home: [phase-441](../../roadmap/phase-441-rmw-on-target-verification.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)". It had no home after phase-414 was archived on 2026-10-12.
 
 ## Symptom (as reported, not yet reproduced by the filer)
 
@@ -59,3 +60,37 @@ whether the guest's tokens still split across domains as in 0820.
 - Whether this is a lease timeout, a transport close, or a guest crash.
 - Whether the 0820 domain split has returned.
 - Whether it reproduces on a second host.
+
+## Resolution (2026-10-18, phase-441 W7): not reproduced, 10 of 10
+
+Re-measured as phase-441 W7 asked, on fixtures built fresh in the same session
+(`just nuttx build-riscv-c`, and the native listener row
+`native-rust-listener`), on newslab-118 at `origin/main` `6486216ab7` plus
+the unrelated #1203 change:
+
+```
+cargo nextest run -p nros-tests --test c_riscv_nuttx_e2e \
+  c_riscv_nuttx_talker_delivers_cross_process --retries 0
+```
+
+10 runs, solo, one after another: **10 PASS**, 3.48–3.53 s each. The listener
+received `/chatter` within 3.5 s every time, so the 28–79 s window the report
+gave was never reached. A tier-2 run on the same host had already passed it
+(run 38933437082, 2026-10-16, 3.5 s).
+
+Closed as not reproduced, not as explained. The report was never reproduced
+by its filer either, and nothing here says what dropped the session then. If
+it comes back, its "Reproduce" section still applies: run with
+`ZENOHD_LOG=debug` to tell a lease expiry from a protocol close, and check
+whether the guest's tokens split across domains as in 0820.
+
+Two things met on the way, neither this issue:
+
+- The first build attempt failed with `CMake Error: Parse error in cache file
+  …/examples/rv-virt-nuttx/c/talker/build-zenoh/CMakeCache.txt` on six lines,
+  and the retry configured cleanly over the same file. The same error was seen
+  once earlier on a threadx-riscv64 build in this session. The cache was clean
+  by the time it could be read, so its cause is unrecorded.
+- The first test runs failed in 0.25 s on a STALE native listener (the
+  executor had just changed), before reaching the guest. A stale fixture is
+  the absorbing verdict CLAUDE.md describes, not this defect.
