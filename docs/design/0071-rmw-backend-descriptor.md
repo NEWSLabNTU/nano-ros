@@ -3,8 +3,8 @@ rfc: 0071
 title: "RMW backend descriptor: a backend declares itself, core names none"
 status: Draft
 since: 2026-08
-last-reviewed: 2026-08
-implements-tracked-by: [phase-347, phase-348]
+last-reviewed: 2026-10
+implements-tracked-by: [phase-347, phase-348, phase-506]
 supersedes: []
 superseded-by: null
 ---
@@ -375,6 +375,85 @@ over: a custom RMW cannot receive platform knobs, and a custom platform must
 know zenoh's name to supply them. Those sections should key on the resolved
 backend (`[knobs.<rmw>.tx]`, `[build.<rmw>]`) so the platform declares
 "here are my settings for whichever backend is selected" without naming one.
+
+## Amendment 2026-10-18 — the four rulings phase-506 needed
+
+Phase-506 found that D2/D3 had landed for Rust entries and stopped there: the C
+and C++ API crates, their config headers, the entry macro and the user facade
+still named backends (issues 1297, 1298, 1299, 1300, 1789). Each needed a
+decision the RFC had not made. The maintainer took these on 2026-10-18; the
+options weighed and the measurements behind each are in phase-506.
+
+### D9 — a C/C++ image's backend arrives through a GENERATED umbrella crate
+
+`libnros_c.a` / `libnros_cpp.a` must CONTAIN the backend (one staticlib, one
+registry: phase-241 W11, issue 0436), which is why `nros-c` and `nros-cpp`
+carried a feature per backend. The ruling moves that choice out of them: every
+C/C++ configure gets the per-configure umbrella `cmake/NanoRosRuntimeCrate.cmake`
+already synthesises for workspaces with a Rust node (`nros_ws_runtime`). Its
+manifest depends on `nros-cpp` (or `nros-c`) with CAPABILITY features only, and
+on the backend crate named by the descriptor's `[rmw.provides.cargo] crate`; its
+generated `lib.rs` holds the force-link anchor `rmw_backend.rs` holds today.
+
+* `nros-c` / `nros-cpp` keep `rmw-cffi` (the capability) and lose every
+  `rmw-<name>` feature, alias and optional backend dependency.
+* No prebuilt archive ships (the release asset is the CLI plus sources,
+  measured 2026-10-18), so nothing published breaks. The integrations that run
+  `cargo build -p nros-c --features rmw-<x>` themselves — the NuttX app
+  Makefile, s32ds, PX4 — move to the same generated crate, emitted by
+  `nros sync` for their configuration.
+* The `#ifdef NROS_RMW_<X>` + `extern "C" nros_rmw_<x>_register()` chain in
+  `rclcpp/node.hpp` has no caller in the headers (registration is the
+  generated strong `nros_app_register_backends()`), so it is deleted outright;
+  a caller that registers by hand includes its backend's own header.
+
+Rejected: keeping the features as an RFC exception (a third-party backend would
+still need an `nros-c` edit — the RFC's acceptance test), and a backend
+staticlib beside `nros-c` (two registries; already measured broken).
+
+### D10 — configuration splits into shared ROLES and backend-owned knobs
+
+* Concepts every backend has get a backend-neutral name the API headers read:
+  `NROS_LOCATOR` (zenoh's router, XRCE's agent `addr:port`), `NROS_DOMAIN_ID`,
+  and transport task priority / stack by ROLE (`rx`, `keepalive`). The
+  backend's own Kconfig maps its spellings onto them; `entry_config.h` and
+  `zephyr/app_config.h` name no backend.
+* A knob only one backend has (zenoh tx batching, XRCE stream history) stays
+  backend-named and is a row the backend contributes to the knob registry
+  (RFC-0103), from which the C header that carries it is GENERATED per image.
+* Session properties (phase-206 W3) stay for run-time options only; a
+  compile-time size cannot travel that way.
+
+Old spellings retire on the phase-484 W8 pattern: set, they stop the build
+naming their replacement.
+
+### D11 — the descriptor states how to register; the selection facade calls it
+
+Two descriptor fields, filled per backend:
+
+```toml
+[rmw.provides.cargo]
+crate = "nros-rmw-zenoh"
+register = "register"          # called as <crate>::register()
+[rmw.capabilities]
+needs-type-descriptors = true  # a typed <crate>::register::<T>() per message
+```
+
+`nros sync` reads them and generates, in `<entry>_nros_selection`,
+`register_backends()` and `register_type::<T>()`. The entry macro, which already
+re-roots paths through the selection package, calls those two and names no
+backend. Tools that need the list of backends (`nros new --workspace`, colcon's
+standalone task) ask the provider scan (`known_rmw()` / `known_rmw_in()`), never
+a literal.
+
+### D12 — the user facade does not re-export the RMW seam
+
+`nros::` is the user API (rclrs-shaped, phase-483). The backend seam (`Session`,
+`Rmw`, `Transport`, `TopicInfo`, `ClientTrait`, `ServiceTrait`, …) leaves it: a
+backend depends on `nros-rmw` directly, as every in-tree backend already does
+(measured: one use of the seam through `nros::` outside the facade). What the
+macros expand into moves to a doc-hidden `nros::__macro`, and the executor's raw
+registration surface to the existing `nros::internals`.
 
 ## What this does NOT change
 
