@@ -3,15 +3,16 @@ id: 1529
 title: "A C++ image's parameter STORE comes only with `param-services`, so a
   bringup with `features = []` does not link its launch seeds and halts at its
   first `declare_parameter` (-16)"
-status: open
+status: resolved
 type: bug
 area: [cmake, zephyr, build]
 severity: medium
 found: 2026-09-28
+resolved: 2026-10-18
 related: [0745, 1260, 1100, 1272, phase-426, phase-461]
 ---
 
-**Home: [phase-461](../roadmap/phase-461-service-inbox-per-family.md)** — homed 2026-10-17; the phase doc already tracks it in its body.
+**Home: [phase-461](../../roadmap/phase-461-service-inbox-per-family.md)** — homed 2026-10-17; the phase doc already tracks it in its body.
 
 ## What this is
 
@@ -85,3 +86,37 @@ service code in flash, and the store's heap when a node declares.
 - **The nros-node split and the `params` axis** are phase-461 W6. When it
   lands, `param-store` forwards the store feature it adds instead of
   `nros-c/param-services`, and the dormant service code leaves the image.
+
+## Resolution (2026-10-18, phase-461 W8): the hosted road carries the store too
+
+**Second bullet of "Still open": done.** phase-461 W6 added the `params`
+axis and issue 1897 split nros-node's `param-store` from `param-services`.
+
+**First bullet: reproduced, then fixed.** A one-image workspace (the
+`features` workspace's `cpp_param_talker_pkg` and `cpp_params.launch.xml`,
+whose `<param name="publish_period_ms" value="250"/>` the entry seeds, on a
+bringup with `features = []`) built with `nros build
+demo_bringup:linux_cpp_params` failed exactly as this issue's first symptom
+says:
+
+```
+linux_cpp_params_entry_nros_main_generated.cpp:(.text+0x100): undefined reference to `nros_cpp_declare_param'
+```
+
+`nros_feature_set` (`cmake/NanoRosFeatureSet.cmake`) now adds `param-store`
+to every image whose capabilities do not already bring `param-services`, for
+both crates whatever `CRATE` is, so nros-c's and nros-cpp's sets still name
+one nros-c unit (issue 1100). That is the rule the Zephyr road has applied
+since the fix above (`_nros_cpp_param_suffix`), now on the CMake road too.
+The services remain a capability: `param_services` is the only thing that
+brings them or their queryables.
+
+Measured after, same workspace: the image links, boots against a router on
+a private port, and prints `Published: 250` (12 lines in 6 s): the launch
+seed reached the store and `get_parameter` read it back. Before the fix the
+same image did not link.
+
+Gates rerun: `rtos-feature-set-excludes-analysis`, `capability-conditionals`,
+`capability-flavour-guards`, `check-feature-set-ssot`,
+`check-nros-c-feature-agreement`, `check-flavour-lanes`,
+`check-baremetal-platform-arms`, all OK.

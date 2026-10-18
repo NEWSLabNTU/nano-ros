@@ -394,6 +394,20 @@ function(nros_feature_set out_var)
         endif()
     endforeach()
 
+    # issue 1529 — the parameter STORE comes with every image; only the six
+    # SERVICES are a capability. The C++ node facades and the entry's launch
+    # seeds (`nros_cpp_declare_param`, emitted for every launch `<param>`) are
+    # in every C++ image, so without the store a `features = []` bringup whose
+    # launch file seeds a parameter failed to LINK on this road (measured:
+    # `undefined reference to 'nros_cpp_declare_param'`). The Zephyr road has
+    # made the same choice since 1529 (`_nros_cpp_param_suffix` in
+    # `zephyr/CMakeLists.txt`). Added for BOTH crates whatever `CRATE` is, so
+    # nros-c's and nros-cpp's sets keep naming one nros-c unit (issue 1100).
+    # Every tier above already carries `alloc`, which the store needs.
+    if(NOT "param-services" IN_LIST _feats)
+        list(APPEND _feats param-store)
+    endif()
+
     # ---- consumer extension point -----------------------------------------
     # Applied ONCE, by construction. This is the hook whose per-path duplication
     # caused issue 0304; there is now only one place for it to be missed.
