@@ -209,7 +209,14 @@ fn zeroed<T>() -> T {
 
 /// Refuse the next allocation of `size_of::<T>()` bytes while `f` runs.
 fn refusing<T, R>(f: impl FnOnce() -> R) -> R {
-    REFUSE_SIZE.store(core::mem::size_of::<T>(), Ordering::SeqCst);
+    refusing_size(core::mem::size_of::<T>(), f)
+}
+
+/// Refuse the next allocation of `size` bytes while `f` runs. An entity
+/// handle is boxed inside its wake registration (issue 1940), so its size is
+/// [`nros_rmw_cffi::rust_adapter::entity_box_size`], not `size_of::<T>()`.
+fn refusing_size<R>(size: usize, f: impl FnOnce() -> R) -> R {
+    REFUSE_SIZE.store(size, Ordering::SeqCst);
     let r = f();
     REFUSE_SIZE.store(0, Ordering::SeqCst);
     r
@@ -319,17 +326,20 @@ fn an_exhausted_heap_at_every_create_trampoline_is_bad_alloc_not_an_abort() {
     // --- subscription ------------------------------------------------------
     let create_subscription = vt.create_subscription.expect("create_subscription slot");
     let mut sub: rmw_subscription_t = zeroed();
-    let rc = refusing::<OomSubscriber, _>(|| unsafe {
-        create_subscription(
-            &node,
-            &msg_ts,
-            topic.as_ptr(),
-            0,
-            &qos,
-            core::ptr::null(),
-            &mut sub,
-        )
-    });
+    let rc = refusing_size(
+        nros_rmw_cffi::rust_adapter::entity_box_size::<OomSubscriber>(),
+        || unsafe {
+            create_subscription(
+                &node,
+                &msg_ts,
+                topic.as_ptr(),
+                0,
+                &qos,
+                core::ptr::null(),
+                &mut sub,
+            )
+        },
+    );
     assert_eq!(rc, NROS_RMW_RET_BAD_ALLOC, "unboxable subscription");
     assert!(sub.backend_data.is_null());
     assert_eq!(SUB_DROPS.load(Ordering::SeqCst), 1);
@@ -337,9 +347,10 @@ fn an_exhausted_heap_at_every_create_trampoline_is_bad_alloc_not_an_abort() {
     // --- service server ----------------------------------------------------
     let create_service = vt.create_service.expect("create_service slot");
     let mut srv: rmw_service_t = zeroed();
-    let rc = refusing::<OomServer, _>(|| unsafe {
-        create_service(&node, &srv_ts, c"/add".as_ptr(), 0, &qos, &mut srv)
-    });
+    let rc = refusing_size(
+        nros_rmw_cffi::rust_adapter::entity_box_size::<OomServer>(),
+        || unsafe { create_service(&node, &srv_ts, c"/add".as_ptr(), 0, &qos, &mut srv) },
+    );
     assert_eq!(rc, NROS_RMW_RET_BAD_ALLOC, "unboxable service server");
     assert!(srv.backend_data.is_null());
     assert_eq!(SRV_DROPS.load(Ordering::SeqCst), 1);
@@ -347,9 +358,10 @@ fn an_exhausted_heap_at_every_create_trampoline_is_bad_alloc_not_an_abort() {
     // --- service client ----------------------------------------------------
     let create_client = vt.create_client.expect("create_client slot");
     let mut cli: rmw_client_t = zeroed();
-    let rc = refusing::<OomClient, _>(|| unsafe {
-        create_client(&node, &srv_ts, c"/add".as_ptr(), 0, &qos, &mut cli)
-    });
+    let rc = refusing_size(
+        nros_rmw_cffi::rust_adapter::entity_box_size::<OomClient>(),
+        || unsafe { create_client(&node, &srv_ts, c"/add".as_ptr(), 0, &qos, &mut cli) },
+    );
     assert_eq!(rc, NROS_RMW_RET_BAD_ALLOC, "unboxable service client");
     assert!(cli.backend_data.is_null());
     assert_eq!(CLI_DROPS.load(Ordering::SeqCst), 1);
