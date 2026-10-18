@@ -842,7 +842,7 @@ macro_rules! zephyr_component_main {
                     panic!("nros zephyr entry: Executor::open failed: {e:?}");
                 }
             };
-            let mut runtime = $crate::ExecutorNodeRuntime::from_executor(executor);
+            let mut runtime = $crate::__macro::ExecutorNodeRuntime::from_executor(executor);
             // phase-436 — Zephyr's microsecond park, which the tier runners
             // install on every tier and this single-executor entry did not.
             // Zephyr's `platform.c` always defines both symbols, and this macro
