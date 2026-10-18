@@ -125,7 +125,7 @@ Two things are worth separating, because it is tempting to collapse them:
 
 ## Why it matters beyond itself
 
-It blocks [#0997](../0997-island-announces-spdp-once-then-lease-expires.md) and
+It blocks [#0997](0997-island-announces-spdp-once-then-lease-expires.md) and
 [#1000](1000-spdp-periodic-event-orphaned-by-handler-early-return.md). Neither
 can be confirmed or refuted while the image does not reach a steady state
 deterministically, and #1000's proposed mechanism is already contradicted by the
@@ -184,7 +184,7 @@ confounder, and the earlier "3-attempt predicate" that retracted the bracket was
 itself measured under the same contamination.
 
 **Any an536 timing measurement in this issue, in
-[#0997](../0997-island-announces-spdp-once-then-lease-expires.md), and in the
+[#0997](0997-island-announces-spdp-once-then-lease-expires.md), and in the
 autoware-safety-island delivery sweeps from the same period should be re-taken on
 a quiet host before being cited.** A `uptime` reading belongs beside every
 future number.

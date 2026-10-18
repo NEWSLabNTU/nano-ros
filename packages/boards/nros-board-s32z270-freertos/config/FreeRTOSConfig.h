@@ -9,6 +9,17 @@
  * override via FREERTOS_CONFIG_DIR in that case. */
 #define NROS_BOARD_CPU_CLOCK_HZ 800000000 /* RTU0 R52 lock-step, 800 MHz */
 #define NROS_BOARD_PRIO_BITS    5         /* GIC priority bits (unused by CRx_No_GIC) */
+
+/* Every task gets an FPU context (issue 0997) — the same Cortex-R52, the same
+ * -mfloat-abi=hard -mfpu=neon-fp-armv8 objects and the same ARM_CRx default
+ * as the mps3-an536 sibling, where the default (1: a task has no FPU context
+ * until it calls vPortTaskUsesFPU(), which nothing here does) let tasks
+ * clobber each other's d-registers and was measured silencing a CycloneDDS
+ * participant ~100 ms after discovery. The reasoning is in that board's
+ * FreeRTOSConfig.h; configFPU_D32 is a compile definition for the same reason
+ * (cmake/board/nano-ros-board-s32z270-freertos.cmake). */
+#define configUSE_TASK_FPU_SUPPORT 2
+
 #include "../../nros-board-freertos/config/FreeRTOSConfig.h"
 
 /* GCC/ARM_CRx_No_GIC tick seam — board hooks, weak-stubbed in

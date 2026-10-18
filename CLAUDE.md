@@ -926,6 +926,11 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   `Promise::wait()` burns its budget in ~39 ms). → platform-implementation-notes.md.
 - **FreeRTOS:** IP-seeded `srand()`; poll-task priority ≥ 4; manual action server needs
   `try_handle_get_result()`. → platform-implementation-notes.md.
+- **FreeRTOS on an A/R-profile port (Cortex-R52 boards): `configUSE_TASK_FPU_SUPPORT 2`,
+  else hard-float tasks clobber each other's d-registers** — and it does not look like an
+  FPU bug (Cyclone stamped events `tsched = 0` and went silent after discovery). `configFPU_D32`
+  goes on `freertos_config`, never in the header (`portASM.S` cannot see it). → issue 0997
+  (archived), gate `check-freertos-fpu-context`.
 - **The executor arena is NOT on the task stack, and has not been since phase-271** —
   three documents, a build-script comment and a RUNTIME advisory string said it was,
   for five phases (corrected phase-392 W6). `Executor` holds `arena: &'s mut

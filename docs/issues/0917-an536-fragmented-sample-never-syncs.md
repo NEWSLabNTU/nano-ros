@@ -474,3 +474,11 @@ discovered once and its lease expires about 10 s later, with no sample
 delivered — issue 0997's shape (recorded there). The fragmented leg W6
 planned is therefore not built yet; it is worth building only once a
 single-datagram sample crosses and keeps crossing.
+
+**Update, same day.** 0997 was found and fixed on that cell: no FreeRTOS task on
+the Cortex-R52 boards had an FPU context, so tasks clobbered each other's
+d-registers (see 0997's resolution). The single-datagram cell now passes 3 of 3
+over a 75 s hold, so the fragmented leg has nothing in front of it. Note for
+whoever builds it: the island image this issue was measured on had the same
+missing FPU context, so its fragmented-sample failure should be re-measured with
+the fix before it is attributed to reassembly.

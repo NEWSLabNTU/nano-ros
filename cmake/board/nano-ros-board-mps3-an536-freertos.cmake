@@ -99,6 +99,12 @@ if(NOT TARGET freertos_kernel)
     # directory has assembly.
     nros_freertos_build_kernel(PORT "${FREERTOS_PORT}")
 endif()
+# Issue 0997 — the port saves d16-d31 only with configFPU_D32=1, and the
+# switch must reach portASM.S, which never includes FreeRTOSConfig.h. On the
+# `freertos_config` INTERFACE it reaches port.c and portASM.S alike, so the
+# frame port.c sizes and the frame the assembly fills cannot disagree. The
+# other half, configUSE_TASK_FPU_SUPPORT 2, is in the board's FreeRTOSConfig.h.
+nros_freertos_config_define(configFPU_D32=1)
 # configUSE_TRACE_FACILITY (CycloneDDS's ddsrt_gettid() needs vTaskGetInfo())
 # is stated in FreeRTOSConfig.h, never as a compile definition here: it changes
 # the layout of every kernel object, and a `-D` on this target never reached the

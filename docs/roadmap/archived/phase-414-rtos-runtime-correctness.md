@@ -304,7 +304,7 @@ This phase opened as a home for five runtime failures with no owner. Three more
 were filed since and had none either. They meet the same admission test: the
 image builds, links and boots, and then does the wrong thing.
 
-* **[#0997](../../issues/0997-island-announces-spdp-once-then-lease-expires.md)** — **re-homed to [phase-441](../phase-441-rmw-on-target-verification.md) 2026-10-12** —
+* **[#0997](../../issues/archived/0997-island-announces-spdp-once-then-lease-expires.md)** — **re-homed to [phase-441](../phase-441-rmw-on-target-verification.md) 2026-10-12** —
   the timed-event tree empties itself on FreeRTOS: the SPDP resend is scheduled
   and never lands. Same platform and layer as W1.
 * **[#1004](../../issues/archived/1004-an536-image-fails-to-boot-transport-error.md)** — **RESOLVED 2026-10-12** (`a6c8e8b56e`) — the
