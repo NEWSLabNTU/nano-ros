@@ -3771,22 +3771,25 @@ rmw-abi-shape:
 # docs/reference/api-surface/ (committed, so no ROS install is required); the
 # Rust lane also needs the nightly toolchain for rustdoc JSON.
 #
-#   just api-parity              # all three languages
+#   just api-parity              # all three languages, against Humble
 #   just api-parity cpp          # one
+#   just api-parity "" jazzy     # against Jazzy (or `all`)
 #
 # Re-derive the ROS 2 side after a distro or upstream bump:
 #   scripts/api-parity.py --refresh --rclc <ros2/rclc checkout> \
 #                                   --rclrs <ros2_rust/rclrs crate dir>
+# A later edition (Jazzy) is recorded from pinned sources instead:
+#   scripts/gen-upstream-edition.py --edition jazzy --src tmp/jazzy-src all
 #
 # Report the user API against rclc / rclcpp / rclrs.
 [group("check")]
-api-parity lang="":
+api-parity lang="" edition="humble":
     #!/usr/bin/env bash
     set -euo pipefail
     if [ -n "{{ lang }}" ]; then
-        python3 scripts/api-parity.py --lang "{{ lang }}"
+        python3 scripts/api-parity.py --edition "{{ edition }}" --lang "{{ lang }}"
     else
-        python3 scripts/api-parity.py
+        python3 scripts/api-parity.py --edition "{{ edition }}"
     fi
 
 # Static-memory report for a built image: RAM by symbol, by crate, and by

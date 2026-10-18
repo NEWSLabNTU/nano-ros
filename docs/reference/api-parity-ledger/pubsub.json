@@ -1950,5 +1950,120 @@
   "cpp:IntegrityStatus": {
     "verdict": "extension",
     "why": "phase-499 W4 (RFC-0089 amendment 2026-10-13) -- the E2E message-integrity status (gap, duplicate, crc_valid) a safety subscription delivers (issue 0073). ROS 2 has no end-to-end integrity check, so there is no counterpart. A typedef of the FFI struct nros_cpp_integrity_status_t rather than a mirror, so the two cannot drift; it gives the user an rclcpp:: spelling."
+  },
+  "c:take_dynamic_message": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "dynamic typesupport (Jazzy, REP-2011): messages whose type is learned at RUNTIME, held in `rosidl_dynamic_typesupport` dynamic data. Every type in an image is generated at build time into fixed storage (RFC-0023); dynamic data needs an allocator and a type-description parser at runtime. Same decision as `cpp:GenericPublisher`; see rmw `rmw_take_dynamic_message` (declined)."
+  },
+  "cpp:PublisherMatchedCallbackType": {
+    "verdict": "gap",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "ADOPT, issue 1972: the publisher's matched-event callback."
+  },
+  "cpp:SubscriptionMatchedCallbackType": {
+    "verdict": "gap",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "ADOPT, issue 1972: the subscription's matched-event callback."
+  },
+  "cpp:Publisher::is_durability_transient_local": {
+    "verdict": "gap",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "ADOPT, issue 1975: an accessor over the QoS the publisher was created with."
+  },
+  "cpp:Publisher::bind_event_callbacks": {
+    "verdict": "divergence",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "the post-construction step that wires `PublisherEventCallbacks` to event handlers, public since Jazzy. Ours binds a QoS-event callback when it is registered (`cpp:PublisherEventCallbacks`, `cpp:QOSEventHandler`), so there is no separate bind step to call."
+  },
+  "cpp:Subscription::bind_event_callbacks": {
+    "verdict": "divergence",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "see `cpp:Publisher::bind_event_callbacks`."
+  },
+  "cpp:Publisher::lowest_available_ipm_capacity": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "a query on rclcpp's intra-process manager; there is no intra-process manager here (`cpp:Publisher::get_intra_process_subscription_count`, declined)."
+  },
+  "cpp:Subscription::create_dynamic_message": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "dynamic typesupport (Jazzy, REP-2011): messages whose type is learned at RUNTIME, held in `rosidl_dynamic_typesupport` dynamic data. Every type in an image is generated at build time into fixed storage (RFC-0023); dynamic data needs an allocator and a type-description parser at runtime. Same decision as `cpp:GenericPublisher`; see rmw `rmw_take_dynamic_message` (declined)."
+  },
+  "cpp:Subscription::get_delivered_message_kind": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "see `cpp:DeliveredMessageKind`."
+  },
+  "cpp:Subscription::get_shared_dynamic_message": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "dynamic typesupport (Jazzy, REP-2011): messages whose type is learned at RUNTIME, held in `rosidl_dynamic_typesupport` dynamic data. Every type in an image is generated at build time into fixed storage (RFC-0023); dynamic data needs an allocator and a type-description parser at runtime. Same decision as `cpp:GenericPublisher`; see rmw `rmw_take_dynamic_message` (declined)."
+  },
+  "cpp:Subscription::get_shared_dynamic_message_type": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "dynamic typesupport (Jazzy, REP-2011): messages whose type is learned at RUNTIME, held in `rosidl_dynamic_typesupport` dynamic data. Every type in an image is generated at build time into fixed storage (RFC-0023); dynamic data needs an allocator and a type-description parser at runtime. Same decision as `cpp:GenericPublisher`; see rmw `rmw_take_dynamic_message` (declined)."
+  },
+  "cpp:Subscription::get_shared_dynamic_serialization_support": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "dynamic typesupport (Jazzy, REP-2011): messages whose type is learned at RUNTIME, held in `rosidl_dynamic_typesupport` dynamic data. Every type in an image is generated at build time into fixed storage (RFC-0023); dynamic data needs an allocator and a type-description parser at runtime. Same decision as `cpp:GenericPublisher`; see rmw `rmw_take_dynamic_message` (declined)."
+  },
+  "cpp:Subscription::handle_dynamic_message": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "dynamic typesupport (Jazzy, REP-2011): messages whose type is learned at RUNTIME, held in `rosidl_dynamic_typesupport` dynamic data. Every type in an image is generated at build time into fixed storage (RFC-0023); dynamic data needs an allocator and a type-description parser at runtime. Same decision as `cpp:GenericPublisher`; see rmw `rmw_take_dynamic_message` (declined)."
+  },
+  "cpp:Subscription::return_dynamic_message": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "dynamic typesupport (Jazzy, REP-2011): messages whose type is learned at RUNTIME, held in `rosidl_dynamic_typesupport` dynamic data. Every type in an image is generated at build time into fixed storage (RFC-0023); dynamic data needs an allocator and a type-description parser at runtime. Same decision as `cpp:GenericPublisher`; see rmw `rmw_take_dynamic_message` (declined)."
+  },
+  "cpp:Subscription::take_dynamic_message": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "dynamic typesupport (Jazzy, REP-2011): messages whose type is learned at RUNTIME, held in `rosidl_dynamic_typesupport` dynamic data. Every type in an image is generated at build time into fixed storage (RFC-0023); dynamic data needs an allocator and a type-description parser at runtime. Same decision as `cpp:GenericPublisher`; see rmw `rmw_take_dynamic_message` (declined)."
   }
 }

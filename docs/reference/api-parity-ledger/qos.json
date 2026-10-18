@@ -771,5 +771,33 @@
     "verdict": "extension",
     "why": "phase-462 W4c -- one SchedContext deadline a contract mode moves, applied when an executor enters the mode at its next spin. Rows of `rust:ModeTables`. No rclrs counterpart -- ROS 2 has no contract modes.",
     "bucket": "ours-only"
+  },
+  "cpp:BestAvailableQoS": {
+    "verdict": "gap",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "ADOPT, issue 1973: the profile whose policies resolve against the discovered graph at creation."
+  },
+  "cpp:QoS::durability_best_available": {
+    "verdict": "gap",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "ADOPT, issue 1973: see `cpp:BestAvailableQoS`."
+  },
+  "cpp:QoS::reliability_best_available": {
+    "verdict": "gap",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "ADOPT, issue 1973: see `cpp:BestAvailableQoS`."
+  },
+  "rust:QoSProfile::best_available": {
+    "verdict": "gap",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "ADOPT, issue 1973: rclrs's best-available profile (plus the `BestAvailable` variant each policy enum gained)."
   }
 }

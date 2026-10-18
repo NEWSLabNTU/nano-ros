@@ -38,8 +38,22 @@ Buckets:
   declined — deliberately absent, with the RTOS reason
   gap      — missing, and it should not be
 
+# Editions
+
+The contract moves with the distro, so it is recorded PER EDITION:
+  humble  docs/reference/rmw-implementation-contract.txt — measured, `nm -D`
+          over three installed `librmw_*_cpp.so` (`--contract`).
+  jazzy   docs/reference/editions/jazzy/rmw-implementation-contract.txt —
+          derived from the pinned `rmw_implementation` dispatch table by
+          `scripts/gen-upstream-edition.py` (no Jazzy can be installed on the
+          jammy box), a method validated against Humble's measured 88.
+ONE map serves both. A row for a symbol only some editions have says so with
+`editions = [...]`; outside those editions the row is neither required nor
+stale. `--edition all` (the default) checks every recorded edition.
+
 Usage:
-    scripts/rmw-api-parity.py                 # report against the recorded contract
+    scripts/rmw-api-parity.py                 # report against every recorded contract
+    scripts/rmw-api-parity.py --edition jazzy # one edition
     scripts/rmw-api-parity.py --contract      # re-derive from an installed impl (needs ROS)
     scripts/rmw-api-parity.py --check         # fail on anything unclassified
     scripts/rmw-api-parity.py --self-test
@@ -62,11 +76,24 @@ from issue_status import issue_status, refused_deferrals  # noqa: E402
 # `librmw_zenoh_cpp.so`, not `librmw_dds_common__rosidl_typesupport_fastrtps_cpp.so`.
 IMPL_LIB = re.compile(r"librmw_[a-z0-9]+_cpp\.so")
 CONTRACT = os.path.join(ROOT, "docs", "reference", "rmw-implementation-contract.txt")
+EDITIONS = ("humble", "jazzy")
+CONTRACTS = {
+    "humble": CONTRACT,
+    "jazzy": os.path.join(ROOT, "docs", "reference", "editions", "jazzy",
+                          "rmw-implementation-contract.txt"),
+}
+
+
+def row_applies(sym, edition):
+    """Is MAP's row for `sym` part of the map when checking `edition`?"""
+    eds = MAP_ROWS.get(sym, {}).get("editions")
+    return not eds or edition in eds
 
 # Where we answer each symbol. `(bucket, detail)`.
 #
-# Written against ROS 2 Humble's rmw. A symbol NOT in this table is a hard
-# failure under --check: that is the whole mechanism.
+# Written against ROS 2 Humble's rmw, extended to Jazzy's (rows scoped with
+# `editions = [...]`). A symbol NOT in this table is a hard failure under
+# --check: that is the whole mechanism.
 MAP_TOML = os.path.join(ROOT, "docs", "reference", "rmw-api-map.toml")
 
 
@@ -91,6 +118,7 @@ def _load_map():
 
     with open(MAP_TOML, "rb") as fh:
         raw = tomllib.load(fh)
+    TYPE_DELTA_ROWS.update(raw.get("type_delta", {}))
     out = {}
     for sym, row in raw.items():
         # `[[arg_rule]]` is a sibling array in the same file — the ARG
@@ -110,6 +138,9 @@ def _load_map():
 # `status` / `answers` / `issue`. Same dict, read once, so the document and the
 # gate still cannot disagree.
 MAP_ROWS = {}
+# `[type_delta.<edition>."<kind>:<name>"]` — the rulings on what an edition
+# added to the rmw TYPE surface (see `report_type_delta`).
+TYPE_DELTA_ROWS = {}
 MAP = _load_map()
 
 # What we DID about a symbol, as opposed to WHICH SURFACE answers it (`where`).
@@ -134,6 +165,14 @@ def check_status(rows=None, status_of=None):
     bad = []
     for sym, row in sorted(rows.items()):
         status, where = row.get("status"), row["where"]
+        eds = row.get("editions")
+        if eds is not None and (not isinstance(eds, list) or not eds
+                                or any(e not in EDITIONS for e in eds)
+                                or sorted(set(eds)) == sorted(EDITIONS)):
+            bad.append(
+                f"{sym}: `editions` must be a non-empty proper subset of {EDITIONS} "
+                "(a row every edition has carries no `editions`)"
+            )
         if status is None:
             if where in ("layer", "declined"):
                 bad.append(
@@ -252,11 +291,12 @@ def check_against_vtable():
     return bad
 
 
-def read_contract():
-    if not os.path.exists(CONTRACT):
+def read_contract(edition="humble"):
+    path = CONTRACTS[edition]
+    if not os.path.exists(path):
         return None
     out = []
-    for line in open(CONTRACT, encoding="utf-8"):
+    for line in open(path, encoding="utf-8"):
         line = line.strip()
         if line and not line.startswith("#"):
             out.append(line)
@@ -315,7 +355,7 @@ def derive_contract():
     return (sorted(common), {"per_lib": report, "extras": extras})
 
 
-def report(contract):
+def report(contract, edition="humble"):
     counts = {b: 0 for b in BUCKETS}
     unclassified = []
     rows = []
@@ -326,7 +366,7 @@ def report(contract):
             continue
         counts[entry[0]] += 1
         rows.append((entry[0], sym, entry[1]))
-    stale = sorted(set(MAP) - set(contract))
+    stale = sorted(s for s in set(MAP) - set(contract) if row_applies(s, edition))
     return counts, unclassified, stale, rows
 
 
@@ -377,6 +417,57 @@ def self_test():
                 f"check_status: `re-mapped` + `issue = {issue!r}` accepted={got_ok}, "
                 f"want {want_ok} — the issue rule must reach every status"
             )
+    # Editions: a row scoped to one edition is neither required nor stale in
+    # another, and the type-delta rules hold.
+    saved = dict(MAP_ROWS)
+    MAP_ROWS["rmw_planted_jazzy"] = {"where": "gap", "editions": ["jazzy"]}
+    MAP["rmw_planted_jazzy"] = ("gap", "planted")
+    try:
+        _c, _u, stale_h, _r = report(["rmw_publish"], "humble")
+        _c, _u, stale_j, _r = report(["rmw_publish"], "jazzy")
+    finally:
+        MAP_ROWS.clear()
+        MAP_ROWS.update(saved)
+        MAP.pop("rmw_planted_jazzy", None)
+    if "rmw_planted_jazzy" in stale_h:
+        bad.append("a jazzy-scoped row read as stale under humble")
+    if "rmw_planted_jazzy" not in stale_j:
+        bad.append("a jazzy-scoped row absent from the jazzy contract was not stale")
+    for eds, want_ok in ((["jazzy"], True), (["humble", "jazzy"], False), ([], False),
+                         (["kilted"], False)):
+        row = {"where": "declined", "status": "not-supported", "reason": "r", "editions": eds}
+        got_ok = not check_status({"rmw_planted": row}, fake)
+        if got_ok != want_ok:
+            bad.append(f"check_status: editions={eds!r} accepted={got_ok}, want {want_ok}")
+    ours = {"RMW_EVENT_X"}
+    delta = ["enum:rmw_event_type_t.RMW_EVENT_X", "enum:rmw_event_type_t.RMW_EVENT_Y",
+             "field:rmw_s.RMW_EVENT_X", "type:rmw_new_t"]
+    rows = {
+        "enum:rmw_event_type_t.RMW_EVENT_Y": {"status": "not-implemented", "issue": "1092",
+                                             "reason": "r"},
+        "field:rmw_s.RMW_EVENT_X": {"status": "re-mapped", "answers": ["x"], "reason": "r"},
+        "type:rmw_new_t": {"status": "not-supported", "reason": "r"},
+    }
+    counts, probs = check_type_delta("jazzy", rows, delta, ours, fake)
+    if probs or counts["same"] != 1:
+        bad.append(f"check_type_delta: clean case gave {counts} {probs}")
+    for mutate, label in (
+        (lambda r: r.pop("type:rmw_new_t"), "a missing ruling"),
+        (lambda r: r.__setitem__("enum:rmw_event_type_t.RMW_EVENT_X",
+                                 {"status": "not-supported", "reason": "r"}),
+         "an authored row on a derived-same item"),
+        (lambda r: r["enum:rmw_event_type_t.RMW_EVENT_Y"].pop("issue"), "a gap with no issue"),
+        (lambda r: r["enum:rmw_event_type_t.RMW_EVENT_Y"].__setitem__("issue", "0776"),
+         "a gap naming a resolved issue"),
+        (lambda r: r["field:rmw_s.RMW_EVENT_X"].pop("answers"), "re-mapped with no answers"),
+        (lambda r: r.__setitem__("type:rmw_gone_t", {"status": "not-supported", "reason": "r"}),
+         "a stale row"),
+    ):
+        planted = {k: dict(v) for k, v in rows.items()}
+        mutate(planted)
+        _c, probs = check_type_delta("jazzy", planted, delta, ours, fake)
+        if not probs:
+            bad.append(f"check_type_delta accepted {label}")
     if bad:
         for b in bad:
             sys.stderr.write("rmw-api-parity --self-test: " + b + "\n")
@@ -384,7 +475,7 @@ def self_test():
     n_status = sum(1 for r in MAP_ROWS.values() if r.get("status"))
     print(
         f"rmw-api-parity --self-test: OK ({len(MAP)} mapping(s), "
-        f"{n_status} authored status(es), 10 case(s))"
+        f"{n_status} authored status(es), 22 case(s))"
     )
     return 0
 
@@ -496,6 +587,8 @@ def main(argv):
     ap = argparse.ArgumentParser()
     ap.add_argument("--contract", action="store_true", help="re-derive from an installed impl")
     ap.add_argument("--check", action="store_true", help="fail on unclassified symbols")
+    ap.add_argument("--edition", choices=EDITIONS + ("all",), default="all",
+                    help="upstream edition(s) to check (default: every recorded one)")
     ap.add_argument("--self-test", action="store_true")
     args = ap.parse_args(argv)
 
@@ -523,34 +616,10 @@ def main(argv):
             print(s)
         return 0
 
-    contract = read_contract()
-    if contract is None:
-        sys.stderr.write(
-            f"rmw-api-parity: no recorded contract at {CONTRACT}.\n"
-            "  Generate it where a ROS install exists:\n"
-            "    scripts/rmw-api-parity.py --contract > docs/reference/rmw-implementation-contract.txt\n"
-        )
-        return 2
-
-    counts, unclassified, stale, rows = report(contract)
-    total = len(contract)
-
-    print(f"rmw implementation contract: {total} symbol(s)")
-    for b in BUCKETS:
-        print(f"  {b:9s} {counts[b]:3d}")
-    print()
-    print(_producer_note(contract))
-    print()
-    for bucket in ("gap", "declined"):
-        items = [r for r in rows if r[0] == bucket]
-        if not items:
-            continue
-        print(f"## {bucket} ({len(items)})")
-        for _b, sym, detail in items:
-            print(f"  {sym:52s} {detail}")
-        print()
-
     rc = 0
+    editions = list(EDITIONS) if args.edition == "all" else [args.edition]
+    for edition in editions:
+        rc = max(rc, report_edition(edition, args.check, multi=len(editions) > 1))
     drift = check_against_vtable()
     if drift:
         sys.stderr.write(
@@ -564,29 +633,192 @@ def main(argv):
             "  answer?\", and a stale one is worse than no table at all.\n"
         )
         rc = 1 if args.check else rc
+    return rc
+
+
+# ---------------------------------------------------------------------------
+# The TYPE delta. Three of the four capabilities a Humble -> Jazzy move is
+# about (matched events, discovery options, type hashes) changed rmw TYPES —
+# enumerators, struct fields — and not one contract function signature, so
+# the symbol check above would call that edition "no change". The type
+# surfaces are recorded per edition by `scripts/gen-upstream-edition.py`; what
+# an edition ADDS over Humble must each carry a ruling here.
+# ---------------------------------------------------------------------------
+
+TYPE_SURFACES = {
+    ed: os.path.join(ROOT, "docs", "reference", "editions", ed, "rmw-type-surface.txt")
+    for ed in EDITIONS
+}
+# `same` is DERIVED (the identifier is declared in our rmw ABI headers), never
+# authored — the rule `STATUSES` already applies to signatures.
+TYPE_DELTA_STATUSES = ("re-mapped", "not-supported", "not-implemented")
+OUR_ABI_DIR = os.path.join(ROOT, "packages", "core", "nros-rmw-abi", "include", "nros")
+
+
+def read_type_surface(edition):
+    path = TYPE_SURFACES[edition]
+    if not os.path.exists(path):
+        return None
+    return {":".join(l.rstrip("\n").split("\t")) for l in open(path, encoding="utf-8")
+            if l.strip() and not l.startswith("#")}
+
+
+def our_abi_identifiers(abi_dir=OUR_ABI_DIR):
+    text = ""
+    for fn in sorted(os.listdir(abi_dir)):
+        if fn.endswith(".h"):
+            text += open(os.path.join(abi_dir, fn), encoding="utf-8").read()
+    text = re.sub(r"/\*.*?\*/", " ", text, flags=re.S)
+    text = re.sub(r"(?m)//.*$", " ", text)
+    return set(re.findall(r"\b[A-Za-z_][A-Za-z0-9_]*\b", text))
+
+
+def derived_same(item, ours):
+    """An added GLOBAL identifier our ABI headers already declare.
+
+    Fields are never derived: a leaf like `allocator` is declared in a dozen
+    structs, so a token hit says nothing about THIS struct.
+    """
+    kind, _, name = item.partition(":")
+    if kind == "field":
+        return False
+    return name.rsplit(".", 1)[-1] in ours
+
+
+def check_type_delta(edition, rows=None, delta=None, ours=None, status_of=None):
+    """(counts, problems) for one edition's type-surface delta."""
+    rows = TYPE_DELTA_ROWS.get(edition, {}) if rows is None else rows
+    if delta is None:
+        base, cur = read_type_surface("humble"), read_type_surface(edition)
+        if base is None or cur is None:
+            return None, [f"no recorded rmw type surface for humble/{edition}"]
+        delta = sorted(cur - base)
+    ours = our_abi_identifiers() if ours is None else ours
+    status_of = issue_status if status_of is None else status_of
+    problems = []
+    counts = {"same": 0, **{s: 0 for s in TYPE_DELTA_STATUSES}, "UNRULED": 0}
+    for item in delta:
+        row = rows.get(item)
+        if derived_same(item, ours):
+            counts["same"] += 1
+            if row is not None:
+                problems.append(f"{item}: our ABI already declares it, so it is `same` "
+                                "(derived) — drop the row")
+            continue
+        if row is None:
+            counts["UNRULED"] += 1
+            problems.append(f"{item}: added by {edition}, no ruling")
+            continue
+        st = row.get("status")
+        if st not in TYPE_DELTA_STATUSES:
+            problems.append(f"{item}: status {st!r}, expected one of {TYPE_DELTA_STATUSES}")
+            continue
+        counts[st] += 1
+        if not str(row.get("reason", "")).strip():
+            problems.append(f"{item}: empty reason")
+        if st == "re-mapped" and not row.get("answers"):
+            problems.append(f"{item}: `re-mapped` must name what answers it (`answers`)")
+        if st == "not-implemented" and not row.get("issue"):
+            problems.append(f"{item}: `not-implemented` must carry `issue = NNNN`")
+        if st == "not-supported" and row.get("issue"):
+            problems.append(f"{item}: `not-supported` is a decision, so it takes no `issue`")
+        for num, why in refused_deferrals(row.get("issue"), status_of):
+            problems.append(f"{item}: `issue = {num!r}` {why}")
+    for item in sorted(set(rows) - set(delta)):
+        problems.append(f"{item}: ruled, but {edition} does not add it over humble — stale row")
+    return counts, problems
+
+
+def report_type_delta(edition, check):
+    counts, problems = check_type_delta(edition)
+    if counts is not None:
+        n = sum(counts.values())
+        print(f"rmw TYPE surface, {edition}-only against humble: {n} item(s)")
+        for k, v in counts.items():
+            print(f"  {k:16s} {v:3d}")
+        print()
+    if problems:
+        sys.stderr.write(f"rmw-api-parity: {len(problems)} {edition} type-delta problem(s) "
+                         f"(rows: `[type_delta.{edition}.\"<kind>:<name>\"]` in "
+                         f"{os.path.relpath(MAP_TOML, ROOT)}):\n")
+        for p in problems:
+            sys.stderr.write(f"  {p}\n")
+        return 1 if check else 0
+    return 0
+
+
+def report_edition(edition, check, multi=False):
+    contract = read_contract(edition)
+    if contract is None:
+        sys.stderr.write(
+            f"rmw-api-parity: no recorded {edition} contract at {CONTRACTS[edition]}.\n"
+            "  humble: scripts/rmw-api-parity.py --contract > "
+            "docs/reference/rmw-implementation-contract.txt (needs ROS)\n"
+            "  jazzy:  scripts/gen-upstream-edition.py --edition jazzy --src tmp/jazzy-src all\n"
+        )
+        return 2
+
+    counts, unclassified, stale, rows = report(contract, edition)
+    total = len(contract)
+
+    if multi:
+        print(f"##### upstream edition: {edition} #####")
+    print(f"rmw implementation contract ({edition}): {total} symbol(s)")
+    for b in BUCKETS:
+        print(f"  {b:9s} {counts[b]:3d}")
+    print()
+    if edition != "humble":
+        base = set(read_contract("humble") or [])
+        added = [s for s in contract if s not in base]
+        removed = sorted(base - set(contract))
+        print(f"## {edition}-only, against humble's contract ({len(added)} added, "
+              f"{len(removed)} removed)")
+        for s in added:
+            entry = MAP.get(s)
+            print(f"  + {s:50s} {entry[0] if entry else 'UNCLASSIFIED'}")
+        for s in removed:
+            print(f"  - {s}")
+        print()
+    else:
+        print(_producer_note(contract))
+        print()
+    for bucket in ("gap", "declined"):
+        items = [r for r in rows if r[0] == bucket]
+        if not items:
+            continue
+        print(f"## {bucket} ({len(items)})")
+        for _b, sym, detail in items:
+            print(f"  {sym:52s} {detail}")
+        print()
+
+    rc = 0
     if unclassified:
         sys.stderr.write(
-            f"rmw-api-parity: {len(unclassified)} contract symbol(s) with no classification:\n"
+            f"rmw-api-parity: {len(unclassified)} {edition} contract symbol(s) with no "
+            "classification:\n"
         )
         for s in unclassified:
             sys.stderr.write(f"  {s}\n")
         sys.stderr.write(
             "\n  Upstream grew a symbol, or the distro moved. Decide where we answer\n"
             "  it — a vtable slot, another layer, or a declined RTOS reason — and\n"
-            "  add it to MAP. An unclassified symbol is the one case this tool\n"
-            "  exists to prevent: a parity claim that quietly stopped being true.\n"
+            "  add it to MAP (with `editions = [...]` if only some editions have it).\n"
+            "  An unclassified symbol is the one case this tool exists to prevent: a\n"
+            "  parity claim that quietly stopped being true.\n"
         )
-        rc = 1 if args.check else rc
+        rc = 1 if check else rc
     if stale:
         sys.stderr.write(
-            f"rmw-api-parity: {len(stale)} mapping(s) for symbol(s) not in the contract "
-            "(upstream removed them, or the name is misspelled):\n"
+            f"rmw-api-parity: {len(stale)} mapping(s) for symbol(s) not in the {edition} "
+            "contract (upstream removed them, the name is misspelled, or the row "
+            "needs `editions = [...]`):\n"
         )
         for s in stale:
             sys.stderr.write(f"  {s}\n")
-        rc = 1 if args.check else rc
+        rc = 1 if check else rc
+    if edition != "humble":
+        rc = max(rc, report_type_delta(edition, check))
     return rc
-
 
 if __name__ == "__main__":
     sys.exit(main(sys.argv[1:]))

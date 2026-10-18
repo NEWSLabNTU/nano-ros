@@ -1212,11 +1212,21 @@
   },
   "cpp:Rate::Rate": {
     "verdict": "divergence",
-    "why": "phase-417 W2.d — `rclcpp::Rate`/`WallRate` as a FORWARDER onto `nros::spin(remaining_ms, poll_ms)`, which DRIVES the executor. The obvious C++ class with its own sleep loop is RFC-0020 violation class 2 and what RFC-0021 forbids; same capability, only one admissible shape. ADOPT-BOUNDED: your callbacks RUN during the sleep, which they do not under a single-threaded rclcpp executor.\n\nphase-442 W5 — the CONSTRUCTOR gained an overload rather than losing one, so nothing a ported file writes stops binding. Upstream's two forms both still compile: `Rate(double)` at `packages/api/nros-cpp/include/rclcpp/rclcpp.hpp:1129` and `Rate(std::chrono::duration<Rep, Period>)` at `:1148`. The chrono one is behind `NROS_CPP_HAS_STD_CHRONO` — a gate on a METHOD, which the capability-layout rule permits since `sizeof(Rate)` is `int64_t` + `uint64_t` in every configuration — and where `<chrono>` is absent the added `explicit Rate(::nros::Duration)` (`:1136`) is the same operation on every target. phase-442 W8 owns retiring the macro.\n\nThe RETURN type of `period()` is a SEPARATE divergence and it is recorded where it happened, on `cpp:Rate::period` (issue 1331)."
+    "disposition": "adopt-bounded",
+    "envelope": {
+      "file": "packages/api/nros-cpp/include/rclcpp/rclcpp.hpp",
+      "text": "`Rate` and `WallRate` are the SAME clock."
+    },
+    "why": "phase-417 W2.d — `rclcpp::Rate`/`WallRate` as a FORWARDER onto `nros::spin(remaining_ms, poll_ms)`, which DRIVES the executor. The obvious C++ class with its own sleep loop is RFC-0020 violation class 2 and what RFC-0021 forbids; same capability, only one admissible shape. ADOPT-BOUNDED: your callbacks RUN during the sleep, which they do not under a single-threaded rclcpp executor.\n\nphase-442 W5 — the CONSTRUCTOR gained an overload rather than losing one, so nothing a ported file writes stops binding. Upstream's two forms both still compile: `Rate(double)` at `packages/api/nros-cpp/include/rclcpp/rclcpp.hpp:1129` and `Rate(std::chrono::duration<Rep, Period>)` at `:1148`. The chrono one is behind `NROS_CPP_HAS_STD_CHRONO` — a gate on a METHOD, which the capability-layout rule permits since `sizeof(Rate)` is `int64_t` + `uint64_t` in every configuration — and where `<chrono>` is absent the added `explicit Rate(::nros::Duration)` (`:1136`) is the same operation on every target. phase-442 W8 owns retiring the macro.\n\nThe RETURN type of `period()` is a SEPARATE divergence and it is recorded where it happened, on `cpp:Rate::period` (issue 1331).\n\nJAZZY (2026-10-19, `--edition jazzy`): Jazzy's rclcpp made `Rate` a concrete class with `Rate(double, Clock::SharedPtr = <system clock>)` and `Rate(const Duration &, Clock::SharedPtr = <system clock>)`, and our constructors correspond to it in shape, so a ported Jazzy file that takes the default clock compiles here with nothing said. Disposition `adopt-bounded`: same construction contract (a rate or a period), but the clock is not selectable and is monotonic where Jazzy's default measures SYSTEM time — the envelope stated at the definition. A call passing a `Clock::SharedPtr` does not compile, which is loud."
   },
   "cpp:Rate::period": {
     "verdict": "divergence",
-    "why": "phase-417 W2.d — `rclcpp::Rate`/`WallRate` is a FORWARDER onto `nros::spin(remaining_ms, poll_ms)`, which DRIVES the executor. That is the class's divergence and it lives on `cpp:Rate` and `cpp:Rate::sleep`; this accessor does not sleep, and its own divergence is the RETURN TYPE.\n\nphase-442 W5 / issue 1331 — upstream returns `std::chrono::nanoseconds`; ours returns `nros::Duration` (`packages/api/nros-cpp/include/rclcpp/rclcpp.hpp:1194`), whose `.nanoseconds()` is the same number `.count()` gave. The reason is the CLASS, not the accessor: `Rate` used to sit entirely inside `#ifdef NROS_CPP_HAS_STD_CHRONO`, so a node written against `rclcpp::Rate` compiled on a host and was ABSENT on ThreadX. W5 measured that the gate was paying for two members out of five and removed it, which means no member may name a type that exists only where `<chrono>` does. Restoring a chrono-returning accessor for hosted builds only would re-create exactly the surface-differs-by-target property W5 deleted.\n\nThe porter's edit is one word (`nros::Duration period = rate.period();`) or one call where a chrono type must be kept (`std::chrono::nanoseconds(rate.period().nanoseconds())`). `packages/api/nros-cpp/tests/compile/ros2_api_adoption_stage2.cpp:273` writes the first and says so at the line, so the probe measures our surface rather than adapting around it.\n\nCORRECTED 2026-09-12: the fix that resolved issue 1331 (`9f600be4e`) wrote this paragraph onto `cpp:Rate::Rate` — the CONSTRUCTOR row — and left this one, the row the filing named and the only row whose signature changed, carrying the sleep-shape reason alone. Both rows now describe their own member."
+    "disposition": "adopt-bounded",
+    "envelope": {
+      "file": "packages/api/nros-cpp/include/rclcpp/rclcpp.hpp",
+      "text": "`rclcpp::Duration` rather than `std::chrono::nanoseconds` (phase-442 W5):"
+    },
+    "why": "phase-417 W2.d — `rclcpp::Rate`/`WallRate` is a FORWARDER onto `nros::spin(remaining_ms, poll_ms)`, which DRIVES the executor. That is the class's divergence and it lives on `cpp:Rate` and `cpp:Rate::sleep`; this accessor does not sleep, and its own divergence is the RETURN TYPE.\n\nphase-442 W5 / issue 1331 — upstream returns `std::chrono::nanoseconds`; ours returns `nros::Duration` (`packages/api/nros-cpp/include/rclcpp/rclcpp.hpp:1194`), whose `.nanoseconds()` is the same number `.count()` gave. The reason is the CLASS, not the accessor: `Rate` used to sit entirely inside `#ifdef NROS_CPP_HAS_STD_CHRONO`, so a node written against `rclcpp::Rate` compiled on a host and was ABSENT on ThreadX. W5 measured that the gate was paying for two members out of five and removed it, which means no member may name a type that exists only where `<chrono>` does. Restoring a chrono-returning accessor for hosted builds only would re-create exactly the surface-differs-by-target property W5 deleted.\n\nThe porter's edit is one word (`nros::Duration period = rate.period();`) or one call where a chrono type must be kept (`std::chrono::nanoseconds(rate.period().nanoseconds())`). `packages/api/nros-cpp/tests/compile/ros2_api_adoption_stage2.cpp:273` writes the first and says so at the line, so the probe measures our surface rather than adapting around it.\n\nCORRECTED 2026-09-12: the fix that resolved issue 1331 (`9f600be4e`) wrote this paragraph onto `cpp:Rate::Rate` — the CONSTRUCTOR row — and left this one, the row the filing named and the only row whose signature changed, carrying the sleep-shape reason alone. Both rows now describe their own member.\n\nJAZZY (2026-10-19, `--edition jazzy`): Jazzy's concrete `Rate::period()` still returns `std::chrono::nanoseconds`, but against it the correlator pairs our accessor as shape-corresponding (same arity, no parameters), which is the case `--require-disposition` asks about. Disposition `adopt-bounded`: same value, different type, the difference stated at the definition; `.count()` on the result does not compile here, so a ported file is told."
   },
   "rust:Executor::timer_elapsed_us": {
     "verdict": "divergence",
@@ -1364,5 +1374,156 @@
   "c:clock_get_now_time": {
     "verdict": "extension",
     "why": "the current time as an `rclc_time_t` (seconds + nanoseconds), beside rcl's `rcl_clock_get_now` (a nanosecond count, which we now have under rcl's name and signature). A device logging or stamping messages wants the split form without a division per call. Was spelled `rcl_clock_get_now` until phase-492 W1.b, which is rcl's name for the nanosecond contract."
+  },
+  "c:timer_call_info_t": {
+    "verdict": "gap",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "ADOPT, issue 1974: `{expected_call_time, actual_call_time}` handed to a timer callback; the executor already computes the due time."
+  },
+  "c:timer_call_with_info": {
+    "verdict": "gap",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "ADOPT, issue 1974: see `c:timer_call_info_t`."
+  },
+  "c:timer_init2": {
+    "verdict": "gap",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "ADOPT, issue 1974: `rcl_timer_init` plus an `autostart` flag (create the timer cancelled)."
+  },
+  "c:timer_init_default2": {
+    "verdict": "gap",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "ADOPT, issue 1974: rclc's default wrapper over `c:timer_init2`."
+  },
+  "c:timer_on_reset_callback_data_t": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "the hook Jazzy's EventsExecutor uses to learn that a timer was reset so it can re-arm its timer queue. Our executor computes the next due time from the timers themselves (`route_next_due_us`), so there is nothing to notify. DECLINED."
+  },
+  "c:timer_set_on_reset_callback": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "the hook Jazzy's EventsExecutor uses to learn that a timer was reset so it can re-arm its timer queue. Our executor computes the next due time from the timers themselves (`route_next_due_us`), so there is nothing to notify. DECLINED."
+  },
+  "cpp:Clock::cancel_sleep_or_wait": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "cancels a blocking `sleep_until`/`ClockWaiter` wait; the blocking waits themselves are declined (`cpp:Clock::sleep_until`, RFC-0021)."
+  },
+  "cpp:ClockConditionalVariable": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "a condition variable that waits until a ROS-time deadline. A blocking helper that does not drive the executor is what RFC-0021 forbids; see `cpp:Clock::sleep_until`."
+  },
+  "cpp:ClockWaiter": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "see `cpp:ClockConditionalVariable`."
+  },
+  "cpp:Timer::get_clock": {
+    "verdict": "gap",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "ADOPT, issue 1975: `create_timer` binds a `Clock`; this returns it."
+  },
+  "cpp:NodeOptions::clock_type": {
+    "verdict": "gap",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "ADOPT, issue 1975: a NodeOptions field choosing the node clock."
+  },
+  "cpp:Rate::get_type": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "reports which clock the rate measures; ours has one (`cpp:Rate::is_steady`, declined, and the `Rate`/`WallRate` envelope in rclcpp.hpp)."
+  },
+  "cpp:Rate::make_unique": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "see `cpp:Rate::make_shared`."
+  },
+  "cpp:Timer::set_on_reset_callback": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "the hook Jazzy's EventsExecutor uses to learn that a timer was reset so it can re-arm its timer queue. Our executor computes the next due time from the timers themselves (`route_next_due_us`), so there is nothing to notify. DECLINED."
+  },
+  "cpp:Timer::clear_on_reset_callback": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "the hook Jazzy's EventsExecutor uses to learn that a timer was reset so it can re-arm its timer queue. Our executor computes the next due time from the timers themselves (`route_next_due_us`), so there is nothing to notify. DECLINED."
+  },
+  "cpp:TimerInfo": {
+    "verdict": "gap",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "ADOPT, issue 1974: `{expected_call_time, actual_call_time}` for a timer callback."
+  },
+  "cpp:TimerInfoCallbackType": {
+    "verdict": "gap",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "ADOPT, issue 1974: a timer callback taking `const TimerInfo &`."
+  },
+  "cpp:WallRate::WallRate": {
+    "verdict": "divergence",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "`WallRate` is `using WallRate = Rate` here (rclcpp.hpp), so its constructor is `cpp:Rate::Rate`; Jazzy gave upstream's WallRate a constructor of its own."
+  },
+  "cpp:convert_rcl_time_to_sec_nanos": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "converts an `rcl_time_point_value_t` into a `builtin_interfaces/Time` message; rcl time points are not part of our C++ surface (our `Time` carries nanoseconds directly)."
+  },
+  "cpp:operator-": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "`builtin_interfaces::msg::Time - rclcpp::Duration`, an operator on a GENERATED message struct. Our time arithmetic lives on `rclcpp::Time`/`Duration`; codegen emits plain message PODs with no operators."
   }
 }

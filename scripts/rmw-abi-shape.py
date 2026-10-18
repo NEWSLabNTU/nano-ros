@@ -55,6 +55,20 @@ from issue_status import deferral, issue_status  # noqa: E402
 VTABLE = os.path.join(ROOT, "packages", "core", "nros-rmw-abi", "include", "nros", "rmw_vtable.h")
 SIGS = os.path.join(ROOT, "docs", "reference", "rmw-implementation-signatures.txt")
 CONTRACT = os.path.join(ROOT, "docs", "reference", "rmw-implementation-contract.txt")
+# Per upstream EDITION (see rmw-api-parity.py "Editions"). Humble's pair was
+# extracted from an install; Jazzy's from the pinned sources by
+# `scripts/gen-upstream-edition.py`. The deviation tables below are shared:
+# Jazzy kept every one of Humble's 88 signatures, so a pin that licenses a
+# Humble shape licenses the same Jazzy shape, and `--edition all` proves it.
+EDITION_FILES = {
+    "humble": (SIGS, CONTRACT),
+    "jazzy": (
+        os.path.join(ROOT, "docs", "reference", "editions", "jazzy",
+                     "rmw-implementation-signatures.txt"),
+        os.path.join(ROOT, "docs", "reference", "editions", "jazzy",
+                     "rmw-implementation-contract.txt"),
+    ),
+}
 
 # ---------------------------------------------------------------------------
 # Declared deviations. Everything here is a deliberate difference from upstream
@@ -1206,18 +1220,20 @@ def strip_param_names(params):
     return out
 
 
-def upstream_signatures(with_names=False):
+def upstream_signatures(with_names=False, edition="humble"):
     """{name: [param types]} for the implementation contract only."""
-    if not os.path.exists(SIGS) or not os.path.exists(CONTRACT):
+    sigs_path, contract_path = EDITION_FILES[edition]
+    if not os.path.exists(sigs_path) or not os.path.exists(contract_path):
         return None
     contract = {
-        l.strip() for l in open(CONTRACT, encoding="utf-8") if l.strip() and not l.startswith("#")
+        l.strip() for l in open(contract_path, encoding="utf-8")
+        if l.strip() and not l.startswith("#")
     }
     # Does this extract carry parameter names? Format 1 dropped them at
     # extraction; format 2 keeps them and leaves stripping to the comparison.
     # Stripping a format-1 line AGAIN removes the last token of a by-value
     # parameter, so the marker is load-bearing rather than decorative.
-    text = open(SIGS, encoding="utf-8").read()
+    text = open(sigs_path, encoding="utf-8").read()
     has_names = "# format: 2" in text
     sigs = {}
     for line in text.splitlines(keepends=True):
@@ -1366,9 +1382,9 @@ def added_verdict(slot, entry, slots, rets):
 _RANK = {"matched": 0, "declared": 1, "bad": 2}
 
 
-def compare(header_text=None):
+def compare(header_text=None, edition="humble"):
     slots, rets = vtable_slots(header_text)
-    up = upstream_signatures()
+    up = upstream_signatures(edition=edition)
     if up is None:
         return None
 
@@ -1723,6 +1739,8 @@ def self_test():
 def main(argv):
     ap = argparse.ArgumentParser()
     ap.add_argument("--check", action="store_true")
+    ap.add_argument("--edition", choices=tuple(EDITION_FILES) + ("all",), default="all",
+                    help="upstream edition(s) to compare against (default: every recorded one)")
     ap.add_argument("--self-test", action="store_true")
     args = ap.parse_args(argv)
 
@@ -1736,10 +1754,20 @@ def main(argv):
         sys.stdout.write(_selftest_out.getvalue())
         return _selftest_rc
 
-    r = compare()
+    rc = 0
+    editions = list(EDITION_FILES) if args.edition == "all" else [args.edition]
+    for i, edition in enumerate(editions):
+        if i:
+            print()
+        rc = max(rc, report_edition(edition, args.check))
+    return rc
+
+
+def report_edition(edition, check):
+    r = compare(edition=edition)
     if r is None:
         sys.stderr.write(
-            f"rmw-abi-shape: missing {SIGS} or {CONTRACT}.\n"
+            f"rmw-abi-shape: missing {EDITION_FILES[edition][0]} or {EDITION_FILES[edition][1]}.\n"
             "  Regenerate in the distrobox:\n"
             "    scripts/rmw-api-inventory.py --signatures > docs/reference/rmw-implementation-signatures.txt\n"
         )
@@ -1748,7 +1776,7 @@ def main(argv):
     total = (len(r["upstream"]) - len(DECLINED & set(r["upstream"]))
              - len(r["layered"]))
     go = r["grouped_only"]
-    print("rmw ABI shape — our vtable against upstream, name and args")
+    print(f"rmw ABI shape — our vtable against upstream {edition}, name and args")
     print(f"  contract symbols to mirror : {total}")
     # Phase 376 W5 — three numbers, not two. This used to print ONE, counting a
     # slot with a DECLARED deviation as "matching name + args", so the headline
@@ -1827,7 +1855,7 @@ def main(argv):
         print()
 
     rc = 0
-    if args.check and failures(r):
+    if check and failures(r):
         sys.stderr.write(
             "rmw-abi-shape: the vtable does not mirror upstream.\n"
             "  Every contract symbol needs a slot named after it, with matching\n"

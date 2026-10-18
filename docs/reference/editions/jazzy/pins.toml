@@ -1,0 +1,99 @@
+# The upstream ROS 2 Jazzy sources the committed Jazzy snapshots in this
+# directory were derived from. ONE place names the pin; every snapshot header
+# repeats the commit it read, and `scripts/check-upstream-edition.py` fails when
+# the two disagree (a snapshot regenerated from a different tree than the one
+# this file names is the drift this file exists to make visible).
+#
+# Regenerate (in the ROS 2 distrobox — Humble's rosidl generates the interface
+# headers; see `scripts/gen-upstream-edition.py`'s docstring for why that is
+# honest for an API-surface extraction and where it is not):
+#   scripts/gen-upstream-edition.py --edition jazzy --src tmp/jazzy-src all
+#
+# A pin moves the way a submodule pin does: forward, on purpose, with the
+# regenerated snapshots and the ledger rows they need in the same commit.
+
+edition = "jazzy"
+
+[repo.rmw]
+url = "https://github.com/ros2/rmw"
+branch = "jazzy"
+commit = "8cb94a87cf3f4049abe2d563af893517bf336930"
+
+[repo.rmw_implementation]
+url = "https://github.com/ros2/rmw_implementation"
+branch = "jazzy"
+commit = "835ff87c676cd65634edd3ad7ba88c8d8a0452e7"
+
+[repo.rcl]
+url = "https://github.com/ros2/rcl"
+branch = "jazzy"
+commit = "18d96c9c2b98e616324ae9a2c7701dd0b0886ff0"
+
+[repo.rclcpp]
+url = "https://github.com/ros2/rclcpp"
+branch = "jazzy"
+commit = "53fa7aeea86e8ed484f9465fa14059faf13a71f1"
+
+[repo.rclc]
+url = "https://github.com/ros2/rclc"
+branch = "jazzy"
+commit = "45ef3de567588652c7f05017a91ea29921dd6862"
+
+[repo.rcutils]
+url = "https://github.com/ros2/rcutils"
+branch = "jazzy"
+commit = "26413034bab69688475f230ea7723e534ec3f8cd"
+
+[repo.rcpputils]
+url = "https://github.com/ros2/rcpputils"
+branch = "jazzy"
+commit = "67590324311ce4c60fef774205d55c93fe3cf1b6"
+
+[repo.rosidl]
+url = "https://github.com/ros2/rosidl"
+branch = "jazzy"
+commit = "85fa592b698b0f665e3120f48fac0d35e2f7d8a4"
+
+[repo.rosidl_dynamic_typesupport]
+url = "https://github.com/ros2/rosidl_dynamic_typesupport"
+branch = "jazzy"
+commit = "cb8c54d12c678daa70410bb0626ed8626f561e45"
+
+[repo.rosidl_typesupport]
+url = "https://github.com/ros2/rosidl_typesupport"
+branch = "jazzy"
+commit = "9fcbb58b797b35a69dcc8ba111049a08eaa4aba1"
+
+[repo.rcl_logging]
+url = "https://github.com/ros2/rcl_logging"
+branch = "jazzy"
+commit = "727920c2592be6deb6983f0fe1b57cbc929cbb70"
+
+[repo.rcl_interfaces]
+url = "https://github.com/ros2/rcl_interfaces"
+branch = "jazzy"
+commit = "7aa3caf43377ea6ad615bc1040832e2c7566bfbe"
+
+[repo.unique_identifier_msgs]
+url = "https://github.com/ros2/unique_identifier_msgs"
+branch = "jazzy"
+commit = "901599ee92c2ee949f42a5c5d821c92b3e515d69"
+
+[repo.ros2_tracing]
+url = "https://github.com/ros2/ros2_tracing"
+branch = "jazzy"
+commit = "615d3dc1ea9ce39784f36ab8bce3b362cd530a07"
+
+[repo.libstatistics_collector]
+url = "https://github.com/ros-tooling/libstatistics_collector"
+branch = "jazzy"
+commit = "150e1b0e1fbf920a97e4319f98eaf02be27fa892"
+
+# rclrs is not per-distro: one crate, whose build script selects the rcl
+# bindings it re-exports from ROS_DISTRO. Pinned to the SAME ref the Humble
+# surface (`api-surface/rclrs.json`) records, so the two Rust surfaces differ
+# only by edition.
+[repo.ros2_rust]
+url = "https://github.com/ros2-rust/ros2_rust"
+branch = "main"
+commit = "0c62d768c8ad3ea62b02c8b67e4c5f0977f0735e"

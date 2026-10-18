@@ -798,5 +798,53 @@
     "verdict": "extension",
     "bucket": "ours-only",
     "why": "The value half of `c:interfaces__msg__Parameter`; same reason."
+  },
+  "cpp:Node::add_pre_set_parameters_callback": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "Jazzy's pre-set hook takes `std::vector<rclcpp::Parameter> &` and returns an owning handle — the shape `cpp:Node::add_on_set_parameters_callback` refuses, for the same reasons (no allocator, `cpp:Parameter` declined)."
+  },
+  "cpp:Node::add_post_set_parameters_callback": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "see `cpp:Node::add_pre_set_parameters_callback`."
+  },
+  "cpp:Node::remove_pre_set_parameters_callback": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "see `cpp:Node::add_pre_set_parameters_callback`."
+  },
+  "cpp:Node::remove_post_set_parameters_callback": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "see `cpp:Node::add_pre_set_parameters_callback`."
+  },
+  "cpp:copy_all_parameter_values": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "copies every parameter between two nodes through their parameter interfaces; the `Parameter` value object it moves is declined (`cpp:Parameter`)."
+  },
+  "cpp:parameters_from_map": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "builds `Parameter` vectors from rcl_yaml_param_parser's runtime YAML map; parameters are authored in `system.toml`/launch and resolved at build time, and `cpp:Parameter` is declined."
   }
 }

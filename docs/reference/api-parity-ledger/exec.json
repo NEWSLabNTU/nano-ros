@@ -433,6 +433,9 @@
   "cpp:Executor::set_memory_strategy": {
     "verdict": "declined",
     "disposition": "absent",
+    "editions": [
+      "humble"
+    ],
     "why": "rclcpp's `MemoryStrategy` swaps the allocator used for wait-set handles and for messages taken during a spin -- the seam that exists because rclcpp allocates on the dispatch path. There is no dispatch-path allocation to strategise: the arena is sized at compile time and messages are taken into caller storage. no allocator -- one global `nros_platform_alloc` and inline caller-owned storage. See `cpp:Node::make_shared` and the `no-shared-ptr` rule in signature_rules.py. rclcpp's wait-set protocol; the reason is stated in full at `cpp:WaitSet`."
   },
   "cpp:Executor::shutdown": {
@@ -522,6 +525,9 @@
   "cpp:GuardCondition::get_context": {
     "verdict": "declined",
     "disposition": "absent",
+    "editions": [
+      "humble"
+    ],
     "why": "an rclcpp guard condition holds the `Context` it was built from. See `cpp:Context`; nothing carries a context pointer here."
   },
   "cpp:GuardCondition::get_rcl_guard_condition": {
@@ -632,6 +638,9 @@
   "cpp:WeakCallbackGroupsToNodesMap": {
     "verdict": "declined",
     "disposition": "absent",
+    "editions": [
+      "humble"
+    ],
     "why": "an `std::map` of weak group pointers to the nodes they came from, so an rclcpp executor can drop a group when its node dies. no allocator -- one global `nros_platform_alloc` and inline caller-owned storage. See `cpp:Node::make_shared` and the `no-shared-ptr` rule in signature_rules.py. RFC-0047: a callback group here is a NAME, not an object the executor holds. The group structure is declared in code (`Node::create_callback_group(\"ctrl\")`) and the group -> tier POLICY is declared in the workspace `system.toml`; the executor carries a config-seeded `group -> sched_context` table and binds each callback to its group's context at REGISTRATION, once, into a fixed arena. There is no group object to add to or remove from an executor, and no membership that can change after registration."
   },
   "cpp:spin_once": {
@@ -1506,5 +1515,45 @@
     "verdict": "extension",
     "why": "phase-462 W4a -- a contract mode lowered to a variant of the monitor tables (`contracts.modes`, `nros_orchestration_ir::mode_variants`). The mode whose tables this executor judges by. See `rust:Executor::set_mode_tables`.",
     "bucket": "ours-only"
+  },
+  "c:executor_type_t": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "Jazzy rclc selects between its single-threaded, multi-threaded and non-POSIX executor implementations with this enum. RFC-0002: one executor shape, one per RTOS task; priority tiers are configured in `system.toml`, not by swapping the executor implementation. DECLINED."
+  },
+  "c:executor_func_t": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "the spin-function pointer `c:executor_type_t` selects; declined with it."
+  },
+  "cpp:CallbackGroup::size": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "counts the entities rclcpp's executor collected into the group. Our groups carry no entity list (`cpp:CallbackGroup::collect_all_ptrs`, declined), so there is nothing to count."
+  },
+  "cpp:Executor::spin_node_all": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "see `cpp:Executor::spin_all`."
+  },
+  "cpp:spin_all": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "the free form of `cpp:Executor::spin_all`; declined with it."
   }
 }

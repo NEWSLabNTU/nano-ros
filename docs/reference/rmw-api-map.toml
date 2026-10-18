@@ -27,6 +27,11 @@
 #   not-implemented — a GAP, expected to close. MUST carry `issue`; the gate
 #                     rejects it otherwise, so silence cannot turn a gap into a
 #                     decision.
+#
+# editions: OPTIONAL — the upstream editions whose contract HAS the symbol, a
+#   proper subset of humble/jazzy. Unset = every edition. Outside its editions
+#   a row is neither required nor stale (`--edition all` checks each recorded
+#   contract: humble measured, jazzy derived from pinned sources).
 
 [rmw_borrow_loaned_message]
 where = "vtable"
@@ -471,6 +476,58 @@ reason = "has_data/has_request + drive_io + set_wake_callback + next_deadline_ms
 #
 # `match` is a substring of the upstream parameter type.
 
+# ---------------------------------------------------------------------------
+# Jazzy-only contract symbols (`editions = ["jazzy"]`). Humble's 88 are above;
+# Jazzy's 95 (docs/reference/editions/jazzy/rmw-implementation-contract.txt)
+# add these seven and remove none. Every one of the 88 kept its signature.
+# ---------------------------------------------------------------------------
+
+[rmw_count_clients]
+where = "gap"
+status = "not-implemented"
+issue = 1971
+editions = ["jazzy"]
+reason = "ADOPT, issue 1971: the service twin of the live `count_publishers` slot; both graph backends already hold the per-name count (zenoh graph cache, Cyclone builtin readers)."
+
+[rmw_count_services]
+where = "gap"
+status = "not-implemented"
+issue = 1971
+editions = ["jazzy"]
+reason = "ADOPT, issue 1971: as rmw_count_clients."
+
+[rmw_event_type_is_supported]
+where = "gap"
+status = "not-implemented"
+issue = 1971
+editions = ["jazzy"]
+reason = "ADOPT, issue 1971: a static per-backend answer the event_init slots already imply by returning UNSUPPORTED; asking it up front fails a port at configuration instead of entity creation."
+
+[rmw_get_gid_for_client]
+where = "gap"
+status = "not-implemented"
+issue = 1971
+editions = ["jazzy"]
+reason = "ADOPT, issue 1971: the client twin of the live `get_gid_for_publisher`."
+
+[rmw_serialization_support_init]
+where = "declined"
+status = "not-supported"
+editions = ["jazzy"]
+reason = "dynamic typesupport (rosidl_dynamic_typesupport, REP-2011): builds a serialization-library handle so messages whose type is learned at RUNTIME can be (de)serialized. Every type in an image is generated at build time (codegen, RFC-0023) into fixed-size storage, and dynamic data needs an allocator plus a type-description parser at runtime — RAM and flash on the targets this ABI serves, for a capability (tools handling types they were not built with) that is a host-tool concern. Same decision as rclcpp's GenericPublisher (`cpp:GenericPublisher`, declined)."
+
+[rmw_take_dynamic_message]
+where = "declined"
+status = "not-supported"
+editions = ["jazzy"]
+reason = "as rmw_serialization_support_init: takes into a `rosidl_dynamic_typesupport_dynamic_data_t`, which only exists with dynamic typesupport."
+
+[rmw_take_dynamic_message_with_info]
+where = "declined"
+status = "not-supported"
+editions = ["jazzy"]
+reason = "as rmw_take_dynamic_message."
+
 [[arg_rule]]
 match = "rmw_node_t"
 title = "the SESSION is the seam"
@@ -587,3 +644,190 @@ why = """Upstream passes two `rmw_qos_profile_t` BY VALUE. The struct is ~80 byt
 by-value copy of it crosses the seam twice on every compatibility check — on a target \
 where the call may run from a 512-byte task stack. Ours takes `const rmw_qos_profile_t *`, \
 which is the same information without the copies."""
+
+# ---------------------------------------------------------------------------
+# The rmw TYPE surface an edition adds over Humble — enumerators, struct
+# fields, typedefs, QoS profiles, object-like RMW_* macros — one ruling per
+# item (`scripts/rmw-api-parity.py`'s `check_type_delta`). `same` is derived
+# (our ABI headers declare the identifier) and never authored; the rest use
+# the `status` vocabulary above: re-mapped (+ `answers`), not-supported,
+# not-implemented (+ an OPEN `issue`). Recorded surfaces:
+# docs/reference/editions/<edition>/rmw-type-surface.txt.
+# ---------------------------------------------------------------------------
+
+[type_delta.jazzy."enum:rmw_automatic_discovery_range_t.RMW_AUTOMATIC_DISCOVERY_RANGE_LOCALHOST"]
+status = "re-mapped"
+answers = ["create_session: locator + mode", "rmw_session_options_t.localhost_only", "rmw_session_options_t.properties"]
+reason = "see type:rmw_discovery_options_t."
+
+[type_delta.jazzy."enum:rmw_automatic_discovery_range_t.RMW_AUTOMATIC_DISCOVERY_RANGE_NOT_SET"]
+status = "re-mapped"
+answers = ["create_session: locator + mode", "rmw_session_options_t.localhost_only", "rmw_session_options_t.properties"]
+reason = "see type:rmw_discovery_options_t."
+
+[type_delta.jazzy."enum:rmw_automatic_discovery_range_t.RMW_AUTOMATIC_DISCOVERY_RANGE_OFF"]
+status = "re-mapped"
+answers = ["create_session: locator + mode", "rmw_session_options_t.localhost_only", "rmw_session_options_t.properties"]
+reason = "see type:rmw_discovery_options_t."
+
+[type_delta.jazzy."enum:rmw_automatic_discovery_range_t.RMW_AUTOMATIC_DISCOVERY_RANGE_SUBNET"]
+status = "re-mapped"
+answers = ["create_session: locator + mode", "rmw_session_options_t.localhost_only", "rmw_session_options_t.properties"]
+reason = "see type:rmw_discovery_options_t."
+
+[type_delta.jazzy."enum:rmw_automatic_discovery_range_t.RMW_AUTOMATIC_DISCOVERY_RANGE_SYSTEM_DEFAULT"]
+status = "re-mapped"
+answers = ["create_session: locator + mode", "rmw_session_options_t.localhost_only", "rmw_session_options_t.properties"]
+reason = "see type:rmw_discovery_options_t."
+
+[type_delta.jazzy."field:rmw_discovery_options_s.allocator"]
+status = "re-mapped"
+answers = ["create_session: locator + mode", "rmw_session_options_t.localhost_only", "rmw_session_options_t.properties"]
+reason = "see type:rmw_discovery_options_t."
+
+[type_delta.jazzy."field:rmw_discovery_options_s.automatic_discovery_range"]
+status = "re-mapped"
+answers = ["create_session: locator + mode", "rmw_session_options_t.localhost_only", "rmw_session_options_t.properties"]
+reason = "see type:rmw_discovery_options_t."
+
+[type_delta.jazzy."field:rmw_discovery_options_s.static_peers"]
+status = "re-mapped"
+answers = ["create_session: locator + mode", "rmw_session_options_t.localhost_only", "rmw_session_options_t.properties"]
+reason = "see type:rmw_discovery_options_t."
+
+[type_delta.jazzy."field:rmw_discovery_options_s.static_peers_count"]
+status = "re-mapped"
+answers = ["create_session: locator + mode", "rmw_session_options_t.localhost_only", "rmw_session_options_t.properties"]
+reason = "see type:rmw_discovery_options_t."
+
+[type_delta.jazzy."field:rmw_init_options_s.discovery_options"]
+status = "re-mapped"
+answers = ["create_session: locator + mode", "rmw_session_options_t.localhost_only", "rmw_session_options_t.properties"]
+reason = "see type:rmw_discovery_options_t; init options themselves are declined as a heap-owning trio (rmw_init_options_init)."
+
+[type_delta.jazzy."field:rmw_peer_address_s.peer_address"]
+status = "re-mapped"
+answers = ["create_session: locator + mode", "rmw_session_options_t.localhost_only", "rmw_session_options_t.properties"]
+reason = "see type:rmw_discovery_options_t."
+
+[type_delta.jazzy."macro:RMW_DISCOVERY_OPTIONS_STATIC_PEERS_MAX_LENGTH"]
+status = "re-mapped"
+answers = ["create_session: locator + mode", "rmw_session_options_t.localhost_only", "rmw_session_options_t.properties"]
+reason = "see type:rmw_discovery_options_t."
+
+[type_delta.jazzy."type:rmw_automatic_discovery_range_t"]
+status = "re-mapped"
+answers = ["create_session: locator + mode", "rmw_session_options_t.localhost_only", "rmw_session_options_t.properties"]
+reason = "see type:rmw_discovery_options_t."
+
+[type_delta.jazzy."type:rmw_discovery_options_t"]
+status = "re-mapped"
+answers = ["create_session: locator + mode", "rmw_session_options_t.localhost_only", "rmw_session_options_t.properties"]
+reason = "Jazzy's discovery options replace Humble's `localhost_only`. Covered under other names on `create_session`: the LOCALHOST range is `rmw_session_options_t.localhost_only` (issue 0808); a static peer with no automatic discovery is the session LOCATOR in client mode (zenoh connects to that one endpoint and scouts nothing); backend scouting knobs (zenoh `multicast_scouting`) are `properties`. Not 1:1 — one locator, not a peer LIST, and SUBNET is not distinguished from SYSTEM_DEFAULT — which is why this is re-mapped, not same."
+
+[type_delta.jazzy."type:rmw_peer_address_t"]
+status = "re-mapped"
+answers = ["create_session: locator + mode", "rmw_session_options_t.localhost_only", "rmw_session_options_t.properties"]
+reason = "see type:rmw_discovery_options_t."
+
+[type_delta.jazzy."enum:rmw_event_type_t.RMW_EVENT_PUBLICATION_MATCHED"]
+status = "not-implemented"
+issue = 1972
+reason = "ADOPT, issue 1972: two more event kinds through the existing event_init/take_event slots; the payload is four integers."
+
+[type_delta.jazzy."enum:rmw_event_type_t.RMW_EVENT_SUBSCRIPTION_MATCHED"]
+status = "not-implemented"
+issue = 1972
+reason = "ADOPT, issue 1972: two more event kinds through the existing event_init/take_event slots; the payload is four integers."
+
+[type_delta.jazzy."enum:rmw_event_type_t.RMW_EVENT_PUBLISHER_INCOMPATIBLE_TYPE"]
+status = "not-implemented"
+issue = 1972
+reason = "ADOPT, issue 1972: two more event kinds through the existing event_init/take_event slots; the payload is four integers."
+
+[type_delta.jazzy."enum:rmw_event_type_t.RMW_EVENT_SUBSCRIPTION_INCOMPATIBLE_TYPE"]
+status = "not-implemented"
+issue = 1972
+reason = "ADOPT, issue 1972: two more event kinds through the existing event_init/take_event slots; the payload is four integers."
+
+[type_delta.jazzy."field:rmw_matched_status_s.current_count"]
+status = "not-implemented"
+issue = 1972
+reason = "issue 1972: the matched-event payload."
+
+[type_delta.jazzy."field:rmw_matched_status_s.current_count_change"]
+status = "not-implemented"
+issue = 1972
+reason = "issue 1972: the matched-event payload."
+
+[type_delta.jazzy."field:rmw_matched_status_s.total_count"]
+status = "not-implemented"
+issue = 1972
+reason = "issue 1972: the matched-event payload."
+
+[type_delta.jazzy."field:rmw_matched_status_s.total_count_change"]
+status = "not-implemented"
+issue = 1972
+reason = "issue 1972: the matched-event payload."
+
+[type_delta.jazzy."field:rmw_incompatible_type_status_s.total_count"]
+status = "not-implemented"
+issue = 1972
+reason = "issue 1972: the incompatible-type payload."
+
+[type_delta.jazzy."field:rmw_incompatible_type_status_s.total_count_change"]
+status = "not-implemented"
+issue = 1972
+reason = "issue 1972: the incompatible-type payload."
+
+[type_delta.jazzy."type:rmw_matched_status_t"]
+status = "not-implemented"
+issue = 1972
+reason = "issue 1972."
+
+[type_delta.jazzy."type:rmw_incompatible_type_status_t"]
+status = "not-implemented"
+issue = 1972
+reason = "issue 1972."
+
+[type_delta.jazzy."enum:rmw_qos_durability_policy_t.RMW_QOS_POLICY_DURABILITY_BEST_AVAILABLE"]
+status = "not-implemented"
+issue = 1973
+reason = "ADOPT (bounded), issue 1973: resolved at creation against the discovered graph; a backend without one falls back the way upstream does when nothing is discovered."
+
+[type_delta.jazzy."enum:rmw_qos_liveliness_policy_t.RMW_QOS_POLICY_LIVELINESS_BEST_AVAILABLE"]
+status = "not-implemented"
+issue = 1973
+reason = "ADOPT (bounded), issue 1973: resolved at creation against the discovered graph; a backend without one falls back the way upstream does when nothing is discovered."
+
+[type_delta.jazzy."enum:rmw_qos_reliability_policy_t.RMW_QOS_POLICY_RELIABILITY_BEST_AVAILABLE"]
+status = "not-implemented"
+issue = 1973
+reason = "ADOPT (bounded), issue 1973: resolved at creation against the discovered graph; a backend without one falls back the way upstream does when nothing is discovered."
+
+[type_delta.jazzy."macro:RMW_QOS_DEADLINE_BEST_AVAILABLE"]
+status = "not-implemented"
+issue = 1973
+reason = "issue 1973."
+
+[type_delta.jazzy."macro:RMW_QOS_LIVELINESS_LEASE_DURATION_BEST_AVAILABLE"]
+status = "not-implemented"
+issue = 1973
+reason = "issue 1973."
+
+[type_delta.jazzy."profile:rmw_qos_profile_best_available"]
+status = "not-implemented"
+issue = 1973
+reason = "issue 1973; joins the QoS-profile record check-qos-profile-ssot reads."
+
+[type_delta.jazzy."enum:rmw_feature_t.RMW_MIDDLEWARE_CAN_TAKE_DYNAMIC_MESSAGE"]
+status = "not-supported"
+reason = "dynamic typesupport is declined (see rmw_take_dynamic_message); `feature_supported` answers false for it, which is the truthful answer, so no slot change is needed."
+
+[type_delta.jazzy."enum:rmw_feature_t.RMW_MIDDLEWARE_SUPPORTS_TYPE_DISCOVERY"]
+status = "not-supported"
+reason = "type DESCRIPTION discovery (REP-2016's `~/get_type_description` service and the endpoint type hash in graph records) is declined: serving it embeds every type's full TypeDescription in flash and costs a service server per node — a zenoh queryable slot from a budget the parameter and lifecycle services already exceed embedded (`ZPICO_MAX_QUERYABLES` = 8). Type IDENTITY on the wire is not declined: codegen emits the RIHS01 hash and the zenoh data keyexpr carries it under `ros-jazzy` (nros-rmw-zenoh keyexpr.rs). `feature_supported` answers false."
+
+[type_delta.jazzy."field:rmw_topic_endpoint_info_s.topic_type_hash"]
+status = "not-supported"
+reason = "as RMW_MIDDLEWARE_SUPPORTS_TYPE_DISCOVERY: a remote endpoint's hash in a graph RECORD serves type-description tooling; our own hash already reaches the wire."

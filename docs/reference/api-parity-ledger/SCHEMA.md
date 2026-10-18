@@ -161,6 +161,21 @@ verdict is one of:
               `scripts/api-parity.py --self-test` (fast line), which every
               `--check` runs first.
 
+editions      OPTIONAL. The upstream editions whose surface HAS the row's
+              subject: a non-empty proper subset of `humble`, `jazzy`
+              (`scripts/api-parity.py` `EDITIONS`). One ledger serves every
+              edition — `--edition all` compares ours once against each
+              recorded surface under `docs/reference/api-surface/` — so a
+              row about a Jazzy-only name carries `"editions": ["jazzy"]`
+              and one whose subject Jazzy removed carries `["humble"]`.
+              Outside its editions a row is not part of the ledger at all:
+              neither a match nor an orphan. A row with no `editions`
+              applies everywhere. A scoped row's shard is judged against the
+              headers of the editions it names; an unscoped row's against
+              the default edition's (Humble's), because a later edition may
+              move a declaration into a header of another topic (Jazzy's
+              `event_handler.hpp`).
+
 This file is SEEDED, not complete: W1 shipped the correlator, W2 classifies
 the rest. `--check` is deliberately not wired into `just check` until then --
 a gate that fails on ~2000 rows from the day it lands is one somebody
