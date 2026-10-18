@@ -1,10 +1,11 @@
 # Phase 506 — the API crates carry only the API
 
-**Status (2026-10-17). Opened to give six open issues a home; nothing landed
-under this number yet.** Four of them are the remainder of RFC-0071, baselined
-by `check-rmw-agnostic` when [phase-444](archived/phase-444-rmw-fix-up.md) was
-archived. Two are the same idea applied to what the facade exports and how it
-decodes a node.
+**Status (2026-10-18). Decided; W0 (#1405) landed in PR #2344.** The
+maintainer took the four design rulings this phase needed — RFC-0071 D9–D12,
+amendment 2026-10-18 — and the work items below are now ordered by them. The
+remaining issues were filed under RFC-0071 and baselined by
+`check-rmw-agnostic` when [phase-444](archived/phase-444-rmw-fix-up.md) was
+archived, or are the same idea applied to the facade.
 
 ## Why this phase exists
 
@@ -20,34 +21,55 @@ machinery beside the user API (issue 1789), and nros-c still decodes node slot
 
 ## Work items
 
-### W1 — no backend names in core and the API crates (RFC-0071 D2, D8)
+Landing order is chosen so no step waits on a later one: W1 and W2 touch no
+build road, W3 changes one header family, W4 is the largest and goes last.
 
-- [ ] [#1297](../issues/1297-rmw-agnostic-api-crates-name-backends.md):
-      backend features, `register()` calls and `extern` declarations leave
-      nros-c and nros-cpp.
-- [ ] [#1298](../issues/1298-rmw-agnostic-core-names-backends.md): the two core
-      crates that name backends stop doing so.
-- [ ] [#1299](../issues/1299-rmw-agnostic-backend-named-config-in-api.md):
-      backend-named configuration is keyed on the resolved backend.
-- [ ] `check-rmw-agnostic`'s baseline reaches zero, and the gate fails on any
-      new line.
+### W0 — nros-c keeps "no node" distinct from slot 0
 
-### W2 — closed backend lists outside core and the API
-
-- [ ] [#1300](../issues/1300-closed-backend-lists-outside-core-api.md): the CLI
-      scaffold, colcon's `RMW_BACKENDS` and `board.knobs.zenoh` derive their
-      list from the backends present, and a gate reaches them.
-
-### W3 — the facade's surface
-
-- [ ] [#1789](../issues/1789-nros-facade-exports-runtime-machinery.md): the 64
-      ledger rows are settled as hidden, moved or kept with a reason.
 - [x] [#1405](../issues/archived/1405-c-executor-node-id-zero-reads-as-no-node.md):
-      nros-c's nine registration sites keep "no node" distinct from slot 0.
       **Done 2026-10-18:** measured as a real defect (a primary node on an
       extra session registered its executor entities on session 0); one
       decode helper, an `executor_bound` flag in `rclc_node_ref_t`'s padding,
       and `executor_primary_node_session.c` in `just check c`.
+
+### W1 — the facade carries only the user API (RFC-0071 D12)
+
+- [ ] [#1789](../issues/1789-nros-facade-exports-runtime-machinery.md): the RMW
+      seam leaves `nros::`; macro machinery moves to a doc-hidden
+      `nros::__macro`; executor raw registration to `nros::internals`. The 64
+      ledger rows are re-filed against where each name now lives.
+
+### W2 — backend facts come from the descriptor (RFC-0071 D11)
+
+- [ ] `[rmw.provides.cargo] register` and `[rmw.capabilities]
+      needs-type-descriptors` in every `nros-rmw.toml`, read by
+      `rmw_descriptor.rs`.
+- [ ] [#1298](../issues/1298-rmw-agnostic-core-names-backends.md): the
+      selection facade generates `register_backends()` / `register_type::<T>()`;
+      `nros-macros` calls them and loses `rmw_crate_ident`;
+      `cyclonedds_type_sizing` is keyed on the capability.
+- [ ] [#1300](../issues/1300-closed-backend-lists-outside-core-api.md): the
+      scaffold and colcon's standalone task ask the provider scan;
+      `bridge_gen.rs` uses the descriptor fields; `board.knobs.zenoh` moves
+      with W3.
+
+### W3 — configuration by role (RFC-0071 D10)
+
+- [ ] [#1299](../issues/1299-rmw-agnostic-backend-named-config-in-api.md):
+      `entry_config.h` and `zephyr/app_config.h` read `NROS_LOCATOR`,
+      `NROS_DOMAIN_ID` and the `rx` / `keepalive` transport roles; each
+      backend's Kconfig maps its own spellings onto them; backend-only knobs
+      become registry rows with a generated header.
+
+### W4 — a C/C++ image's backend arrives through the generated umbrella (RFC-0071 D9)
+
+- [ ] Delete `rclcpp/node.hpp`'s `#ifdef NROS_RMW_<X>` register chain.
+- [ ] [#1297](../issues/1297-rmw-agnostic-api-crates-name-backends.md): every
+      C/C++ configure gets the `nros_ws_runtime` umbrella; `nros-c` / `nros-cpp`
+      lose their `rmw-<name>` features; the NuttX Makefile, s32ds and PX4
+      integrations build through the same generated crate.
+- [ ] `check-rmw-agnostic`'s baseline reaches zero, and the gate fails on any
+      new line.
 
 ## Acceptance
 
