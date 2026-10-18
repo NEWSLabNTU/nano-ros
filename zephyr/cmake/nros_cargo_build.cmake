@@ -2026,10 +2026,19 @@ endfunction()
 #   e.g., nros-c → nros_c_cargo, nros-cpp → nros_cpp_cargo
 # =============================================================================
 function(nros_cargo_build)
-    cmake_parse_arguments(ARG "" "PACKAGE;FEATURES;MANIFEST_PATH" "" ${ARGN})
+    cmake_parse_arguments(ARG "" "PACKAGE;FEATURES;MANIFEST_PATH;LIB" "" ${ARGN})
 
     if(NOT ARG_PACKAGE)
         message(FATAL_ERROR "nros_cargo_build: PACKAGE is required")
+    endif()
+    # RFC-0071 D9 (phase-506 W4b) — `LIB` is the API crate a generated IMAGE
+    # crate stands in for (`nros-c` / `nros-cpp`). The image's lib keeps that
+    # crate's name, so the archive, the targets and the per-build headers keep
+    # theirs; only `-p` names the image package. Absent: the package itself.
+    if(ARG_LIB)
+        set(_nros_cb_ident "${ARG_LIB}")
+    else()
+        set(_nros_cb_ident "${ARG_PACKAGE}")
     endif()
 
     nros_detect_rust_target()
@@ -2075,7 +2084,12 @@ function(nros_cargo_build)
     # it back in the shared dir. Ask cargo which root it actually resolves.
     _nros_cargo_workspace_root("${_cargo_manifest}" _cargo_ws_root)
     get_filename_component(_nros_ws_root "${NROS_REPO_DIR}/Cargo.toml" REALPATH)
-    if(_cargo_ws_root STREQUAL _nros_ws_root)
+    # RFC-0071 D9 (phase-506 W4b) — an IMAGE crate (`LIB` given) stands in for
+    # the repo root's `nros-c` / `nros-cpp`, so it takes the directory those
+    # used: the per-build headers the module includes are written under it
+    # (`$CARGO_TARGET_DIR/nros-c-generated`). The repo root builds neither API
+    # crate in such an image, so the dir still serves ONE root (issue 0616).
+    if(_cargo_ws_root STREQUAL _nros_ws_root OR ARG_LIB)
         # phase-400 W5.a — the ROOT workspace's directory is resolved ONCE, by
         # `nros_resolve_cargo_dirs()` below, and published so the generated-header
         # CONSUMERS can follow it instead of re-spelling it as a literal. Today it
@@ -2093,7 +2107,7 @@ function(nros_cargo_build)
 
 
     # Determine library filename from package name
-    string(REPLACE "-" "_" LIB_STEM ${ARG_PACKAGE})
+    string(REPLACE "-" "_" LIB_STEM ${_nros_cb_ident})
     set(LIB_NAME "lib${LIB_STEM}.a")
 
     # phase-336 — the profile and its target directory come from the shared
@@ -2199,12 +2213,12 @@ function(nros_cargo_build)
     nros_generated_header(_nros_c_api_h "${_nros_hdr_root}" c nros_generated.h)
     nros_generated_header(_nros_cpp_cfg_h "${_nros_hdr_root}" cpp nros_cpp_config_generated.h)
     set(_cargo_byproducts ${LIB_PATH})
-    if(ARG_PACKAGE STREQUAL "nros-c")
+    if(_nros_cb_ident STREQUAL "nros-c")
         list(APPEND _cargo_byproducts
             ${_nros_c_cfg_h}
             ${_nros_c_api_h}
         )
-    elseif(ARG_PACKAGE STREQUAL "nros-cpp")
+    elseif(_nros_cb_ident STREQUAL "nros-cpp")
         # nros-cpp's Cargo dep on nros-c transitively runs nros-c's
         # build.rs, which writes both nros-c headers via cbindgen.
         # Declare them as byproducts so Ninja can order user TUs
@@ -2236,7 +2250,7 @@ function(nros_cargo_build)
     # per-build generated headers, and stale headers can break C/C++ compiles
     # even when Cargo considers the archive fresh.
     # Derive target name from package: nros-c → nros_c_cargo
-    string(REPLACE "-" "_" _target_stem ${ARG_PACKAGE})
+    string(REPLACE "-" "_" _target_stem ${_nros_cb_ident})
     set(_target_name "${_target_stem}_cargo")
 
     # Cross-compile env for the `cc` crate that nros-c / nros-cpp's
@@ -2369,7 +2383,7 @@ function(nros_cargo_build)
                 --dest ${_nros_hdr_root}
                 -- cargo ${CARGO_ARGS} --message-format=json-render-diagnostics
         BYPRODUCTS ${_cargo_byproducts}
-        COMMENT "Building ${ARG_PACKAGE} via Cargo"
+        COMMENT "Building ${_nros_cb_ident} via Cargo"
         VERBATIM
     )
     # nros_cargo_build() calls that share a workspace root share a
@@ -2379,11 +2393,11 @@ function(nros_cargo_build)
     # jobserver. Kept unconditional across roots: the ordering is also what
     # makes the generated runtime crate build after the nros-c/nros-cpp
     # headers it includes, and one frontend at a time is cheap.
-    if(NOT ARG_PACKAGE STREQUAL "nros-c" AND TARGET nros_c_cargo_build)
+    if(NOT _nros_cb_ident STREQUAL "nros-c" AND TARGET nros_c_cargo_build)
         add_dependencies(${_target_name}_build nros_c_cargo_build)
     endif()
-    if(NOT ARG_PACKAGE STREQUAL "nros-c"
-       AND NOT ARG_PACKAGE STREQUAL "nros-cpp"
+    if(NOT _nros_cb_ident STREQUAL "nros-c"
+       AND NOT _nros_cb_ident STREQUAL "nros-cpp"
        AND TARGET nros_cpp_cargo_build)
         add_dependencies(${_target_name}_build nros_cpp_cargo_build)
     endif()

@@ -103,15 +103,27 @@ them. Design notes measured 2026-10-18:
       ThreadX-linux and ThreadX-riscv64 C/C++ workspace entries build;
       ThreadX-linux C/C++ `entry_e2e` cells pass; the `mixed` workspace's
       Rust-node umbrella opens a zenoh session.
-- [ ] **W4b — the Zephyr west road** (`zephyr/CMakeLists.txt`'s own import).
-- [ ] **W4c — the integrations that run cargo themselves**: the NuttX app
-      Makefile and PX4 build through the same generated crate. **s32ds stays
-      on a compatibility shim** (maintainer ruling 2026-10-18: its IDE is not
-      available to verify a change), tracked as its own issue.
+- [x] **W4b — the Zephyr west road** (`zephyr/CMakeLists.txt`'s own import).
+      **Done 2026-10-18:** `nros_cargo_build` takes `LIB` (the API crate an
+      image stands in for); the C and C++ images of one Zephyr build are
+      members of ONE generated workspace that takes the `nros-rust` target dir
+      the per-build headers are read from; the backend name comes from the
+      `CONFIG_NROS_RMW_<NAME>` choice over the provider scan. Verified: Zephyr
+      C/C++ zenoh + XRCE pub/sub e2e 4/4; Zephyr C, C++ and mixed workspace
+      `entry_e2e` cells pass.
+- [ ] **W4c — the roads that run cargo themselves**: the NuttX app
+      Makefile, the NuttX FFI crates and the `mps2-an385-baremetal` C++
+      examples depend on the backend directly instead of through an
+      `nros-c` / `nros-cpp` feature. PX4's default path (`rmw-cffi`, the
+      CMake-linked uORB backend) needs no change. **s32ds** turned out to use
+      the cmake road (`add_subdirectory`), so W4a already moved it; the
+      maintainer ruled (2026-10-18) to treat it as covered by the FreeRTOS
+      cmake-road verification, with the IDE build tracked as
+      [#1957](../issues/1957-s32ds-image-crate-unverified-in-ide.md).
 - [ ] **W4d** — [#1297](../issues/1297-rmw-agnostic-api-crates-name-backends.md):
       `nros-c` / `nros-cpp` lose their `rmw-<name>` features, aliases, `?/`
       forwards and optional backend deps; `check-rmw-agnostic`'s baseline
-      reaches zero (the s32ds shim aside, which lives outside the API crates).
+      reaches zero.
 
 ## Acceptance
 
@@ -129,3 +141,4 @@ ledger has no row whose decision is not yet applied.
 | [#1405](../issues/archived/1405-c-executor-node-id-zero-reads-as-no-node.md) | `node_raw_id != 0` decodes the primary node slot as "no node" at nine nros-c registration sites, the same conflation issue 1384 fixed one layer up. |
 | [#1789](../issues/archived/1789-nros-facade-exports-runtime-machinery.md) | `nros::` still exports runtime machinery beside the user API: 64 ledger rows say a name should be hidden or moved. |
 | [#1942](../issues/1942-rclrs-service-info-no-counterpart.md) | Found by W1: the seam's `ServiceInfo` had masked, by name, that rclrs's per-request service metadata has no counterpart here. |
+| [#1957](../issues/1957-s32ds-image-crate-unverified-in-ide.md) | s32ds moved onto the generated image crate with the cmake road in W4a and has not been built in its IDE since. |
