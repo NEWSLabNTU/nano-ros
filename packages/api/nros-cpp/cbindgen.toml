@@ -57,7 +57,7 @@ after_includes = """
  * `ModeTables`, `MonitorSpec` and `AgeMonitorSpec` it writes. The install
  * checks the real requirement and refuses a short buffer.
  */
-#define NROS_CPP_MODE_TABLE_STORAGE (sizeof(void *) == 8 ? 32 : 16)
+#define NROS_CPP_MODE_TABLE_STORAGE (sizeof(void *) == 8 ? 72 : 40)
 #define NROS_CPP_MODE_ROW_STORAGE (sizeof(void *) == 8 ? 80 : 48)
 #define NROS_CPP_MODE_AGE_STORAGE (sizeof(void *) == 8 ? 48 : 32)
 """

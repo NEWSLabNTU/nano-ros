@@ -5267,11 +5267,33 @@ pub struct nros_cpp_mode_t {
     pub n_rows: usize,
     pub ages: *const nros_cpp_mode_age_row_t,
     pub n_ages: usize,
+    /// phase-462 W4c -- the sched-context deadlines this mode moves: as many
+    /// as the tables' `n_base_deadlines`, naming the same contexts in the
+    /// same order. NULL when none.
+    pub deadlines: *const nros_cpp_mode_deadline_t,
+    pub n_deadlines: usize,
+    /// phase-462 W4c -- how long entering this mode may take, ms (its
+    /// reaction path's `max_latency`); 0 = none.
+    pub switch_budget_ms: u32,
+    /// phase-462 W4c -- that reaction path's key, static, or NULL.
+    pub reaction: *const c_char,
+}
+
+/// phase-462 W4c -- one sched-context deadline a mode moves, the C spelling of
+/// `nros::monitor::ModeDeadline`. `sc` is the context's id on the executor,
+/// or -- when the tables pass `sc_ids` -- an index into `sc_ids`.
+#[cfg(feature = "rmw-cffi")]
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct nros_cpp_mode_deadline_t {
+    pub sc: u8,
+    pub deadline_us: u32,
 }
 
 /// phase-462 W4b -- the modes `nros_cpp_install_modes` installs: mode id `i`
 /// is `modes[i - 1]` (0 is the base). `storage` is static, 8-aligned, and at
-/// least `(n_modes + 1) * NROS_CPP_MODE_TABLE_STORAGE + n_modes * (n_rows *
+/// least `(n_modes + 1) * (NROS_CPP_MODE_TABLE_STORAGE + n_base_deadlines *
+/// NROS_CPP_MODE_DEADLINE_STORAGE) + n_modes * (n_rows *
 /// NROS_CPP_MODE_ROW_STORAGE + n_ages * NROS_CPP_MODE_AGE_STORAGE)` bytes.
 #[cfg(feature = "rmw-cffi")]
 #[repr(C)]
@@ -5281,17 +5303,31 @@ pub struct nros_cpp_mode_tables_t {
     pub n_modes: usize,
     pub storage: *mut c_void,
     pub storage_len: usize,
+    /// phase-462 W4c -- the base's deadlines for the contexts the modes move,
+    /// restored when the base is entered again. NULL when none.
+    pub base_deadlines: *const nros_cpp_mode_deadline_t,
+    pub n_base_deadlines: usize,
+    /// phase-462 W4c -- when non-NULL, each row's `sc` indexes this array of
+    /// context ids (the entry's `nros_cpp_create_sched_context_from_policy`
+    /// results, by tier); NULL means `sc` IS the id.
+    pub sc_ids: *const u8,
+    pub n_sc_ids: usize,
 }
 
-/// Bytes of caller storage one mode's table pair needs (`ModeTables`): 32 on
-/// a 64-bit host, 16 on a 32-bit target. Stated in the header with
+/// Bytes of caller storage one mode's tables need (`ModeTables`): 72 on a
+/// 64-bit host, 40 on a 32-bit target (phase-462 W4c added the deadline rows,
+/// the switch budget and the reaction key). Stated in the header with
 /// `sizeof(void *)`, see `cbindgen.toml`.
 #[cfg(feature = "rmw-cffi")]
 pub const NROS_CPP_MODE_TABLE_STORAGE: usize = if core::mem::size_of::<usize>() == 8 {
-    32
+    72
 } else {
-    16
+    40
 };
+/// phase-462 W4c -- bytes of caller storage one deadline row of one mode
+/// needs (`ModeDeadline`).
+#[cfg(feature = "rmw-cffi")]
+pub const NROS_CPP_MODE_DEADLINE_STORAGE: usize = 8;
 /// Bytes of caller storage one mode's rate/latency row needs (`MonitorSpec`).
 #[cfg(feature = "rmw-cffi")]
 pub const NROS_CPP_MODE_ROW_STORAGE: usize = if core::mem::size_of::<usize>() == 8 {
@@ -5324,6 +5360,10 @@ const _: () = {
     assert!(size_of::<AgeMonitorSpec>().is_multiple_of(align_of::<MonitorSpec>()));
     assert!(align_of::<ModeTables>() <= 8 && align_of::<MonitorSpec>() <= 8);
     assert!(align_of::<AgeMonitorSpec>() <= 8);
+    // phase-462 W4c -- the deadline rows go last, so their 4-byte alignment
+    // follows any region; the C row is the Rust row.
+    assert!(size_of::<nros::monitor::ModeDeadline>() <= NROS_CPP_MODE_DEADLINE_STORAGE);
+    assert!(size_of::<nros_cpp_mode_deadline_t>() == size_of::<nros::monitor::ModeDeadline>());
 };
 
 /// phase-462 W4b -- install the contract's MODE variants of the two monitor
@@ -5348,7 +5388,7 @@ pub unsafe extern "C" fn nros_cpp_install_modes(
     tables: *const nros_cpp_mode_tables_t,
 ) -> nros_cpp_ret_t {
     use core::mem::size_of;
-    use nros::monitor::{AgeMonitorSpec, ModeTables, MonitorSpec};
+    use nros::monitor::{AgeMonitorSpec, ModeDeadline, ModeTables, MonitorSpec};
     let Some(ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
@@ -5364,11 +5404,17 @@ pub unsafe extern "C" fn nros_cpp_install_modes(
     let base_rows = ctx.executor.monitor_table();
     let base_ages = ctx.executor.age_table();
     let modes = unsafe { core::slice::from_raw_parts(t.modes, t.n_modes) };
+    let nd = t.n_base_deadlines;
+    if nd > 0 && t.base_deadlines.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
     for m in modes {
         if m.n_rows != base_rows.len()
             || m.n_ages != base_ages.len()
             || (m.n_rows > 0 && m.rows.is_null())
             || (m.n_ages > 0 && m.ages.is_null())
+            || m.n_deadlines != nd
+            || (nd > 0 && m.deadlines.is_null())
         {
             cpp_diag!(
                 "install_modes: a mode has {} rate and {} age rows, the base {} and {}",
@@ -5382,7 +5428,8 @@ pub unsafe extern "C" fn nros_cpp_install_modes(
     }
     let n = t.n_modes;
     let per_mode = core::mem::size_of_val(base_rows) + core::mem::size_of_val(base_ages);
-    let needed = (n + 1) * size_of::<ModeTables>() + n * per_mode;
+    let per_deadlines = nd * size_of::<ModeDeadline>();
+    let needed = (n + 1) * (size_of::<ModeTables>() + per_deadlines) + n * per_mode;
     if needed > t.storage_len {
         cpp_diag!(
             "install_modes: storage holds {} bytes, the modes need {}",
@@ -5394,12 +5441,51 @@ pub unsafe extern "C" fn nros_cpp_install_modes(
     let base = t.storage as *mut u8;
     let pairs = base as *mut ModeTables;
     let mut at = (n + 1) * size_of::<ModeTables>();
+    // phase-462 W4c -- one table's deadline rows, copied after every spec
+    // region with `sc` translated through `sc_ids`. `'static`: the storage
+    // outlives the executor (see Safety).
+    let mut dl_at = (n + 1) * size_of::<ModeTables>() + n * per_mode;
+    let mut copy_deadlines =
+        |src: *const nros_cpp_mode_deadline_t| -> Option<&'static [ModeDeadline]> {
+            if nd == 0 {
+                return Some(&[]);
+            }
+            let dst = unsafe { base.add(dl_at) } as *mut ModeDeadline;
+            let rows = unsafe { core::slice::from_raw_parts(src, nd) };
+            for (i, r) in rows.iter().enumerate() {
+                let sc = if t.sc_ids.is_null() {
+                    r.sc
+                } else if usize::from(r.sc) < t.n_sc_ids {
+                    unsafe { *t.sc_ids.add(usize::from(r.sc)) }
+                } else {
+                    return None;
+                };
+                unsafe {
+                    core::ptr::write(
+                        dst.add(i),
+                        ModeDeadline {
+                            sc,
+                            deadline_us: r.deadline_us,
+                        },
+                    )
+                };
+            }
+            dl_at += per_deadlines;
+            Some(unsafe { core::slice::from_raw_parts(dst, nd) })
+        };
+    let Some(base_dl) = copy_deadlines(t.base_deadlines) else {
+        cpp_diag!("install_modes: a deadline row names a tier past `n_sc_ids`");
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
     unsafe {
         core::ptr::write(
             pairs,
             ModeTables {
                 monitors: base_rows,
                 ages: base_ages,
+                deadlines: base_dl,
+                switch_budget_ms: 0,
+                reaction: "",
             },
         )
     };
@@ -5440,7 +5526,31 @@ pub unsafe extern "C" fn nros_cpp_install_modes(
             unsafe { core::slice::from_raw_parts(specs, base_rows.len()) };
         let ages: &'static [AgeMonitorSpec] =
             unsafe { core::slice::from_raw_parts(age_specs, base_ages.len()) };
-        unsafe { core::ptr::write(pairs.add(k + 1), ModeTables { monitors, ages }) };
+        let Some(deadlines) = copy_deadlines(m.deadlines) else {
+            cpp_diag!("install_modes: a deadline row names a tier past `n_sc_ids`");
+            return NROS_CPP_RET_INVALID_ARGUMENT;
+        };
+        let reaction: &'static str = if m.reaction.is_null() {
+            ""
+        } else {
+            // SAFETY: a static NUL-terminated string from the generated entry
+            // (see Safety); a non-UTF-8 key reports as "".
+            unsafe { core::ffi::CStr::from_ptr(m.reaction) }
+                .to_str()
+                .unwrap_or("")
+        };
+        unsafe {
+            core::ptr::write(
+                pairs.add(k + 1),
+                ModeTables {
+                    monitors,
+                    ages,
+                    deadlines,
+                    switch_budget_ms: m.switch_budget_ms,
+                    reaction,
+                },
+            )
+        };
     }
     let all: &'static [ModeTables] = unsafe { core::slice::from_raw_parts(pairs, n + 1) };
     match ctx.executor.set_mode_tables(all) {

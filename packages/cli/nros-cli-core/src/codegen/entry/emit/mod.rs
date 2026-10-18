@@ -42,7 +42,16 @@ pub fn emit_typed_monitored(
     monitors: &[MonitorRow],
     ages: &[AgeRow],
 ) -> Result<String, String> {
-    emit_typed_monitored_lowered(language, plan, monitors, ages, None, &[]).map(|(src, _)| src)
+    emit_typed_monitored_lowered(
+        language,
+        plan,
+        monitors,
+        ages,
+        None,
+        &[],
+        &ModeTier::default(),
+    )
+    .map(|(src, _)| src)
 }
 
 /// [`emit_typed_monitored`], also handing back the [`LoweredEntry`] the TU was
@@ -56,6 +65,7 @@ pub fn emit_typed_monitored_lowered(
     ages: &[AgeRow],
     hazard_model: Option<&ros_launch_manifest_model::SystemModel>,
     modes: &[(String, Vec<MonitorRow>, Vec<AgeRow>)],
+    mode_tier: &ModeTier,
 ) -> Result<(String, LoweredEntry), String> {
     emit_lowered(
         language,
@@ -65,9 +75,19 @@ pub fn emit_typed_monitored_lowered(
             ages,
             hazard_model,
             modes,
+            mode_deadlines: Some(&mode_tier.deadlines),
+            mode_switch: &mode_tier.switch,
             probe: None,
         },
     )
+}
+
+/// phase-462 W4c -- what a contract's modes do to the tiers: each mode's
+/// derived tier deadlines and its switch budget.
+#[derive(Debug, Clone, Default)]
+pub struct ModeTier {
+    pub deadlines: nros_orchestration_ir::mode_variants::ModeTierDeadlines,
+    pub switch: Vec<(u32, String)>,
 }
 
 /// phase-308 W1 — the metadata probe: the same TU an entry would be, with a

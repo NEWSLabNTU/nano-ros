@@ -425,6 +425,9 @@ fn run_entry(args: EntryArgs) -> Result<()> {
     // the lowering lands on whichever executor's slice observes each one.
     // phase-462 W4b -- and each contract mode's variant of those rows, refused
     // when a mode would change which endpoints they watch.
+    // phase-462 W4c -- and, when there are modes, the model their switch budget
+    // is checked against once the tiers (whose spin periods bound it) resolve.
+    let mut switch_model: Option<ros_launch_manifest_model::SystemModel> = None;
     let (monitor_rows, age_rows, hazard_model, mode_rows) = match &args.model {
         Some(model_path) => {
             let model = crate::orchestration::model_ingest::load_model(model_path)?;
@@ -438,6 +441,9 @@ fn run_entry(args: EntryArgs) -> Result<()> {
                     (v.name, rows, ages)
                 })
                 .collect::<Vec<_>>();
+            if !modes.is_empty() {
+                switch_model = Some(model.model.clone());
+            }
             (
                 crate::orchestration::model_ingest::monitor_rows(&model)?,
                 crate::orchestration::model_ingest::age_rows(&model)?,
@@ -505,6 +511,42 @@ fn run_entry(args: EntryArgs) -> Result<()> {
                 .unwrap_or_else(|| std::path::Path::new("."));
             record.write(dir)?;
         }
+        // phase-462 W4c -- a mode's deadlines on the tiers derived above, and
+        // its switch, refused when the slowest tier's spin outlasts its budget.
+        let mut mode_tier = entry_codegen::emit::ModeTier::default();
+        if let Some(model) = &switch_model {
+            for n in derivation
+                .as_ref()
+                .map(|d| d.mode_deadlines.not_lowered.as_slice())
+                .unwrap_or_default()
+            {
+                eprintln!("nros codegen entry: {n}");
+            }
+            if let Some(tiers) = plan.resolved_tiers.as_ref() {
+                let periods: Vec<(String, u64)> = tiers
+                    .tiers
+                    .iter()
+                    .map(|t| {
+                        (
+                            t.name.clone(),
+                            t.spin_period_us.or(t.period_us).unwrap_or(0),
+                        )
+                    })
+                    .collect();
+                for n in nros_orchestration_ir::mode_variants::check_switch_latency(model, &periods)
+                    .map_err(|e| eyre!("codegen entry: {e}"))?
+                {
+                    eprintln!("nros codegen entry: {n}");
+                }
+            }
+            mode_tier = entry_codegen::emit::ModeTier {
+                deadlines: derivation
+                    .as_ref()
+                    .map(|d| d.mode_deadlines.clone())
+                    .unwrap_or_default(),
+                switch: nros_orchestration_ir::mode_variants::mode_switch_rows(model),
+            };
+        }
         // phase-494 — ONE renderer, whatever the language: the pack that
         // renders `lang` on this board is found by its manifest
         // (`pack::entry_pack_for`), and everything a language contributes is
@@ -538,6 +580,7 @@ fn run_entry(args: EntryArgs) -> Result<()> {
             &age_rows,
             hazard_model.as_ref(),
             &mode_rows,
+            &mode_tier,
         )
         .map_err(|e| eyre!("{e}"))?
     } else {

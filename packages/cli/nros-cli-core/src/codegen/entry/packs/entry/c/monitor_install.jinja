@@ -64,6 +64,10 @@
             .n_modes = {{ m.modes | length }}u,
             .storage = __nros_mode_storage{{ tag }},
             .storage_len = sizeof(__nros_mode_storage{{ tag }}),
+            .base_deadlines = {% if m.base_deadlines %}__nros_mode_deadlines{{ tag }}_0{% else %}NULL{% endif %},
+            .n_base_deadlines = {{ m.base_deadlines | length }}u,
+            .sc_ids = {% if m.deadline_sc_is_tier and m.base_deadlines %}__nros_sc_ids{% else %}NULL{% endif %},
+            .n_sc_ids = {% if m.deadline_sc_is_tier and m.base_deadlines %}sizeof(__nros_sc_ids){% else %}0u{% endif %},
         };
         mret = nros_cpp_install_modes({{ mexec }}, &mtab);
         if (mret != NROS_CPP_RET_OK) return (int32_t)mret;

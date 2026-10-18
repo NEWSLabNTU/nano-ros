@@ -742,6 +742,9 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // phase-462 W3b -- kept only when the model declares hazards, which the
     // monitor-table emitter lowers onto the rows above.
     let mut hazard_model: Option<ros_launch_manifest_model::SystemModel> = None;
+    // phase-462 W4c -- each mode's derived tier deadlines and switch budget.
+    let mut mode_tier = nros_orchestration_ir::mode_variants::ModeTierDeadlines::default();
+    let mut mode_switch: Vec<(u32, String)> = Vec::new();
     let mut resolved_tiers: Option<ResolvedTierTable> = None;
     // issue 0438 — the tier names the SYSTEM declared, as opposed to the ones
     // that survived membership resolution. Empty when the schedule is derived.
@@ -1266,6 +1269,36 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 })?;
             nros_orchestration_ir::validate_tier_platform_applicability(&table, &rtos)
                 .map_err(|e| syn::Error::new(model_lit.span(), format!("nros::main!: {e}")))?;
+            // phase-462 W4c -- a mode moves its derived tiers' deadlines, and
+            // its switch must fit its reaction budget at the slowest tier's
+            // spin. Both refusals are the bake's, before anything is emitted.
+            if !mode_rows.is_empty() {
+                let mode_err = |e: nros_orchestration_ir::mode_variants::ModeError| {
+                    syn::Error::new(
+                        model_lit.span(),
+                        format!("nros::main!: model `{}`: {e}", model_path.display()),
+                    )
+                };
+                mode_tier = nros_orchestration_ir::mode_variants::mode_tier_deadlines(
+                    &model,
+                    &rtos,
+                    &node_groups,
+                )
+                .map_err(mode_err)?;
+                let periods: Vec<(String, u64)> = table
+                    .tiers
+                    .iter()
+                    .map(|t| {
+                        (
+                            t.name.clone(),
+                            t.spin_period_us.or(t.period_us).unwrap_or(0),
+                        )
+                    })
+                    .collect();
+                nros_orchestration_ir::mode_variants::check_switch_latency(&model, &periods)
+                    .map_err(mode_err)?;
+                mode_switch = nros_orchestration_ir::mode_variants::mode_switch_rows(&model);
+            }
             resolved_tiers = Some(table);
         }
 
@@ -1778,6 +1811,15 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         multi_tier,
         &node_namespaces,
         hazard_model.as_ref(),
+        &ModeTokens {
+            tier: &mode_tier,
+            switch: &mode_switch,
+            single_tier: resolved_tiers
+                .as_ref()
+                .filter(|t| t.is_single_tier())
+                .and_then(|t| t.tiers.first())
+                .map(|t| t.name.as_str()),
+        },
     );
     // phase-302 W4 (issue 0265) — reject multi-tier systems on targets with
     // no `run_tiers` EARLY with a real diagnostic. Previously the deploy fell
@@ -4297,6 +4339,14 @@ fn tier_task_memory_tokens(
 /// Emit a `&[TierSpec]` literal from the resolved tier table (Phase 228.G,
 /// RFC-0032 §5). `priority` is the raw per-RTOS value; `groups` is the tier's
 /// distinct callback-group ids (the executor's `active_groups` filter).
+/// phase-462 W4c -- what each executor's mode tables carry beyond the rows.
+struct ModeTokens<'a> {
+    tier: &'a nros_orchestration_ir::mode_variants::ModeTierDeadlines,
+    switch: &'a [(u32, String)],
+    /// The one tier of a single-tier entry, whose executor is the one table.
+    single_tier: Option<&'a str>,
+}
+
 /// Issue 1676 — the contract-monitor tables a Rust entry bakes, and the call
 /// that installs them on the executor a register body runs against.
 ///
@@ -4332,6 +4382,7 @@ fn contract_monitor_tokens(
     // phase-462 W3b -- the model whose hazards the tables may observe; `None`
     // on a road that resolved no model (no hazards, as before).
     model: Option<&ros_launch_manifest_model::SystemModel>,
+    modes_extra: &ModeTokens<'_>,
 ) -> (proc_macro2::TokenStream, proc_macro2::TokenStream) {
     use nros_orchestration_ir::contract_monitors::{
         RenderPaths, hazard_rows, render_monitor_rs_full, row_node_fqn,
@@ -4346,17 +4397,23 @@ fn contract_monitor_tokens(
         Vec<nros_orchestration_ir::contract_monitors::MonitorRow>,
         Vec<nros_orchestration_ir::contract_monitors::AgeRow>,
     )>;
+    // phase-462 W4c -- each table's tier name, for its deadline rows: a tier
+    // executor's tier runs under that executor's DEFAULT sched context (id 0).
+    let mut tier_of: Vec<Option<String>> = Vec::new();
     let mut tables: Vec<(Member, Vec<_>, Vec<_>, ModeSlice)> = Vec::new();
     match multi_tier {
-        None => tables.push((
-            None,
-            mons.clone(),
-            ages.clone(),
-            modes
-                .iter()
-                .map(|(_, r, a)| (r.clone(), a.clone()))
-                .collect(),
-        )),
+        None => {
+            tier_of.push(modes_extra.single_tier.map(str::to_string));
+            tables.push((
+                None,
+                mons.clone(),
+                ages.clone(),
+                modes
+                    .iter()
+                    .map(|(_, r, a)| (r.clone(), a.clone()))
+                    .collect(),
+            ));
+        }
         Some(table) => {
             for t in &table.tiers {
                 let mut members: Vec<(String, String, String)> = t
@@ -4412,6 +4469,7 @@ fn contract_monitor_tokens(
                 // A tier with no members admits every group (the wildcard), so
                 // it cannot be told apart by asking; it has no nodes, so no
                 // rows either, and was skipped above.
+                tier_of.push(Some(t.name.clone()));
                 tables.push((members.into_iter().next(), t_mons, t_ages, t_modes));
             }
         }
@@ -4428,9 +4486,17 @@ fn contract_monitor_tokens(
             .iter()
             .map(|(r, a)| (r.as_slice(), a.as_slice()))
             .collect();
+        let tier = tier_of[k].as_deref();
+        let extras = nros_orchestration_ir::mode_variants::ModeExtras {
+            deadlines: nros_orchestration_ir::mode_variants::deadline_rows(modes_extra.tier, |t| {
+                (Some(t) == tier).then_some(0)
+            }),
+            switch: modes_extra.switch.to_vec(),
+        };
         rendered.push_str(
             &nros_orchestration_ir::mode_variants::render_mode_tables_rs(
                 &slices,
+                &extras,
                 RenderPaths::NROS,
             ),
         );
@@ -5762,6 +5828,19 @@ mod contract_monitor_tests {
 
     /// Issue 1676 — an uncontracted image carries none of it: both streams
     /// empty, so its expansion is byte-identical to before.
+    /// phase-462 W4c -- no mode deadlines, no switch budget.
+    static NO_MODE_TIERS: nros_orchestration_ir::mode_variants::ModeTierDeadlines =
+        nros_orchestration_ir::mode_variants::ModeTierDeadlines {
+            tiers: Vec::new(),
+            deadlines: Vec::new(),
+            not_lowered: Vec::new(),
+        };
+    static NO_MODES: ModeTokens<'static> = ModeTokens {
+        tier: &NO_MODE_TIERS,
+        switch: &[],
+        single_tier: None,
+    };
+
     #[test]
     fn an_uncontracted_entry_emits_nothing() {
         let (items, call) = contract_monitor_tokens(
@@ -5770,6 +5849,7 @@ mod contract_monitor_tests {
             None,
             &BTreeMap::new(),
             None,
+            &NO_MODES,
         );
         assert!(items.is_empty() && call.is_empty());
     }
@@ -5789,7 +5869,7 @@ mod contract_monitor_tests {
         let ages = nros_orchestration_ir::contract_monitors::age_rows(&model).expect("ages");
         let rows = (Vec::new(), ages);
         let (items, call) =
-            contract_monitor_tokens(&rows, &[], None, &BTreeMap::new(), Some(&model));
+            contract_monitor_tokens(&rows, &[], None, &BTreeMap::new(), Some(&model), &NO_MODES);
         let items = items.to_string();
         let call = call.to_string();
         assert!(items.contains("NROS_HAZARDS"), "{items}");
@@ -5798,8 +5878,57 @@ mod contract_monitor_tests {
         let hz = call.find("install_contract_hazards").expect("hazards");
         assert!(hz > mons, "{call}");
         // Without the model the same rows bake no hazard and no install.
-        let (_, plain) = contract_monitor_tokens(&rows, &[], None, &BTreeMap::new(), None);
+        let (_, plain) =
+            contract_monitor_tokens(&rows, &[], None, &BTreeMap::new(), None, &NO_MODES);
         assert!(!plain.to_string().contains("install_contract_hazards"));
+    }
+
+    /// phase-462 W4c -- the executor's tier's deadline rows ride its mode
+    /// tables at the DEFAULT sched context, the base's value in table 0, with
+    /// each mode's switch budget; another executor's tier bakes none.
+    #[test]
+    fn a_mode_that_moves_a_tier_deadline_bakes_it_on_that_executor() {
+        let base = vec![row("/talker/chatter", "/chatter")];
+        let rows = (base.clone(), Vec::<AgeRow>::new());
+        let modes = vec![("tight".to_string(), base, Vec::<AgeRow>::new())];
+        let tier = nros_orchestration_ir::mode_variants::ModeTierDeadlines {
+            tiers: vec!["derived-talker".to_string()],
+            deadlines: vec![vec![5_000], vec![2_000]],
+            not_lowered: Vec::new(),
+        };
+        let switch = [(50, "//enter_tight".to_string())];
+        let extra = |single: Option<&'static str>| ModeTokens {
+            tier: &tier,
+            switch: &switch,
+            single_tier: single,
+        };
+        let (items, _) = contract_monitor_tokens(
+            &rows,
+            &modes,
+            None,
+            &BTreeMap::new(),
+            None,
+            &extra(Some("derived-talker")),
+        );
+        let items = items.to_string();
+        assert!(
+            items.contains("sc : 0u8 , deadline_us : 5000u32"),
+            "{items}"
+        );
+        assert!(
+            items.contains("sc : 0u8 , deadline_us : 2000u32"),
+            "{items}"
+        );
+        assert!(items.contains("switch_budget_ms : 50u32"), "{items}");
+        let (other, _) = contract_monitor_tokens(
+            &rows,
+            &modes,
+            None,
+            &BTreeMap::new(),
+            None,
+            &extra(Some("x")),
+        );
+        assert!(!other.to_string().contains("deadline_us"), "not this tier");
     }
 
     /// phase-462 W4 -- a model with a mode bakes one variant per mode beside
@@ -5812,7 +5941,8 @@ mod contract_monitor_tests {
         relaxed[0].min_rate_hz_milli = 1_000;
         let rows = (base, Vec::<AgeRow>::new());
         let modes = vec![("degraded-safe".to_string(), relaxed, Vec::<AgeRow>::new())];
-        let (items, call) = contract_monitor_tokens(&rows, &modes, None, &BTreeMap::new(), None);
+        let (items, call) =
+            contract_monitor_tokens(&rows, &modes, None, &BTreeMap::new(), None, &NO_MODES);
         let items = items.to_string();
         let call = call.to_string();
         assert!(items.contains("NROS_MODE_MONITORS_1"), "{items}");
@@ -5824,7 +5954,7 @@ mod contract_monitor_tests {
         assert!(md > mons, "{call}");
         // No modes: byte-identical to before -- no variant, no install.
         let (plain_items, plain) =
-            contract_monitor_tokens(&rows, &[], None, &BTreeMap::new(), None);
+            contract_monitor_tokens(&rows, &[], None, &BTreeMap::new(), None, &NO_MODES);
         assert!(!plain_items.to_string().contains("NROS_MODE"));
         assert!(!plain.to_string().contains("install_contract_modes"));
     }
@@ -5838,7 +5968,8 @@ mod contract_monitor_tests {
             vec![row("/talker/chatter", "/chatter")],
             Vec::<AgeRow>::new(),
         );
-        let (items, call) = contract_monitor_tokens(&rows, &[], None, &BTreeMap::new(), None);
+        let (items, call) =
+            contract_monitor_tokens(&rows, &[], None, &BTreeMap::new(), None, &NO_MODES);
         let items = items.to_string();
         let call = call.to_string();
         assert!(items.contains("mod __nros_contract_monitors_0"), "{items}");
@@ -5880,7 +6011,7 @@ mod contract_monitor_tests {
             .iter()
             .map(|n| (n.to_string(), "/".to_string()))
             .collect();
-        let (items, call) = contract_monitor_tokens(&rows, &[], Some(&table), &ns, None);
+        let (items, call) = contract_monitor_tokens(&rows, &[], Some(&table), &ns, None, &NO_MODES);
         let items = items.to_string();
         let call = call.to_string();
         assert!(items.contains("__nros_contract_monitors_0"), "{items}");

@@ -47,7 +47,7 @@
  * `ModeTables`, `MonitorSpec` and `AgeMonitorSpec` it writes. The install
  * checks the real requirement and refuses a short buffer.
  */
-#define NROS_CPP_MODE_TABLE_STORAGE (sizeof(void *) == 8 ? 32 : 16)
+#define NROS_CPP_MODE_TABLE_STORAGE (sizeof(void *) == 8 ? 72 : 40)
 #define NROS_CPP_MODE_ROW_STORAGE (sizeof(void *) == 8 ? 80 : 48)
 #define NROS_CPP_MODE_AGE_STORAGE (sizeof(void *) == 8 ? 48 : 32)
 
@@ -121,6 +121,12 @@
  * Bytes of caller storage ONE guard member needs (`GuardRef`).
  */
 #define NROS_CPP_HAZARD_MEMBER_STORAGE 4
+
+/**
+ * phase-462 W4c -- bytes of caller storage one deadline row of one mode
+ * needs (`ModeDeadline`).
+ */
+#define NROS_CPP_MODE_DEADLINE_STORAGE 8
 
 /**
  * phase-503 — [`nros_cpp_monitor_row_t::mechanism`]: the route deadline is
@@ -740,6 +746,16 @@ typedef struct nros_cpp_mode_age_row_t {
 } nros_cpp_mode_age_row_t;
 
 /**
+ * phase-462 W4c -- one sched-context deadline a mode moves, the C spelling of
+ * `nros::monitor::ModeDeadline`. `sc` is the context's id on the executor,
+ * or -- when the tables pass `sc_ids` -- an index into `sc_ids`.
+ */
+typedef struct nros_cpp_mode_deadline_t {
+  uint8_t sc;
+  uint32_t deadline_us;
+} nros_cpp_mode_deadline_t;
+
+/**
  * phase-462 W4b -- one contract mode: exactly as many rows (and ages) as the
  * base tables `nros_cpp_install_monitors` installed, in the same order.
  */
@@ -748,12 +764,29 @@ typedef struct nros_cpp_mode_t {
   size_t n_rows;
   const struct nros_cpp_mode_age_row_t *ages;
   size_t n_ages;
+  /**
+   * phase-462 W4c -- the sched-context deadlines this mode moves: as many
+   * as the tables' `n_base_deadlines`, naming the same contexts in the
+   * same order. NULL when none.
+   */
+  const struct nros_cpp_mode_deadline_t *deadlines;
+  size_t n_deadlines;
+  /**
+   * phase-462 W4c -- how long entering this mode may take, ms (its
+   * reaction path's `max_latency`); 0 = none.
+   */
+  uint32_t switch_budget_ms;
+  /**
+   * phase-462 W4c -- that reaction path's key, static, or NULL.
+   */
+  const char *reaction;
 } nros_cpp_mode_t;
 
 /**
  * phase-462 W4b -- the modes `nros_cpp_install_modes` installs: mode id `i`
  * is `modes[i - 1]` (0 is the base). `storage` is static, 8-aligned, and at
- * least `(n_modes + 1) * NROS_CPP_MODE_TABLE_STORAGE + n_modes * (n_rows *
+ * least `(n_modes + 1) * (NROS_CPP_MODE_TABLE_STORAGE + n_base_deadlines *
+ * NROS_CPP_MODE_DEADLINE_STORAGE) + n_modes * (n_rows *
  * NROS_CPP_MODE_ROW_STORAGE + n_ages * NROS_CPP_MODE_AGE_STORAGE)` bytes.
  */
 typedef struct nros_cpp_mode_tables_t {
@@ -761,6 +794,19 @@ typedef struct nros_cpp_mode_tables_t {
   size_t n_modes;
   void *storage;
   size_t storage_len;
+  /**
+   * phase-462 W4c -- the base's deadlines for the contexts the modes move,
+   * restored when the base is entered again. NULL when none.
+   */
+  const struct nros_cpp_mode_deadline_t *base_deadlines;
+  size_t n_base_deadlines;
+  /**
+   * phase-462 W4c -- when non-NULL, each row's `sc` indexes this array of
+   * context ids (the entry's `nros_cpp_create_sched_context_from_policy`
+   * results, by tier); NULL means `sc` IS the id.
+   */
+  const uint8_t *sc_ids;
+  size_t n_sc_ids;
 } nros_cpp_mode_tables_t;
 
 /**

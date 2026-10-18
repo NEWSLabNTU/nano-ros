@@ -1180,7 +1180,8 @@ mod tests {
         //     baked mode variants (each a pair of `&'static` table references,
         //     in the entry's statics, not here) and two `u16` mode ids. Scales
         //     with nothing -- a mode adds a table to the image, not to this
-        //     value.
+        //     value. phase-462 W4c adds the monotonic ms of the previous mode
+        //     check (an `Option<u32>`), the window a mode switch is judged over.
         #[allow(unused_mut)]
         let mut ceiling =
             1280 + size_of::<super::super::spin::SessionStore>()
@@ -1195,6 +1196,7 @@ mod tests {
                 + size_of::<&'static [super::super::monitor::HazardSpec]>()
                 + size_of::<&'static [super::super::monitor::ModeTables]>()
                 + 2 * size_of::<u16>()
+                + size_of::<Option<u32>>()
                 + size_of::<
                     [Option<super::super::spin::WakeSourceSlot>;
                         super::super::spin::MAX_WAKE_SOURCES],

@@ -29,9 +29,9 @@ use std::collections::HashMap;
 use nros_entry_lower::{
     AgeRow, ComponentKind, ComponentSeam, GroupBind, HazardGuard, HazardMember, HazardRow,
     LoweredBoot, LoweredBootConfig, LoweredEntry, LoweredNode, LoweredProbe, LoweredRunners,
-    LoweredSched, LoweredServices, LoweredTaskMemory, LoweredTiers, ModeName, ModeRow,
-    ModeVariantRows, MonitorRow, MonitorTable, NodeBind, NodeIdentity, QosOverride, SchedContext,
-    SetupNode, TierRow, TierSetup,
+    LoweredSched, LoweredServices, LoweredTaskMemory, LoweredTiers, ModeDeadlineRow, ModeName,
+    ModeRow, ModeVariantRows, MonitorRow, MonitorTable, NodeBind, NodeIdentity, QosOverride,
+    SchedContext, SetupNode, TierRow, TierSetup,
 };
 use nros_orchestration_ir::ResolvedTierTable;
 
@@ -73,8 +73,26 @@ pub struct LowerOptions<'a> {
         Vec<model_ingest::MonitorRow>,
         Vec<model_ingest::AgeRow>,
     )],
+    /// phase-462 W4c -- each mode's derived tier deadlines
+    /// (`mode_variants::mode_tier_deadlines`), lowered per executor onto the
+    /// sched context each moved tier runs under there.
+    pub mode_deadlines: Option<&'a nros_orchestration_ir::mode_variants::ModeTierDeadlines>,
+    /// phase-462 W4c -- each mode's `(switch_budget_ms, reaction)`, in mode-id
+    /// order (`mode_variants::mode_switch_rows`).
+    pub mode_switch: &'a [(u32, String)],
     /// `Some` for a metadata probe.
     pub probe: Option<&'a ProbeExport>,
+}
+
+/// phase-462 W4c -- how one executor names the sched context a tier runs
+/// under: `Context(id)` maps one tier to a context id (a tier executor's
+/// default, 0), `TierIndex` maps every tier of the table to its index into
+/// the setup's `__nros_sc_ids`, `None` bakes no deadline rows.
+#[derive(Clone, Copy)]
+enum DeadlineSc<'t> {
+    None,
+    Context(&'t str, u8),
+    TierIndex(&'t ResolvedTierTable),
 }
 
 /// The name a plan node is CREATED with: its launch name, or its executable.
@@ -312,7 +330,15 @@ pub fn lower_image(plan: &Plan, opts: &LowerOptions<'_>) -> Result<LoweredEntry,
             e.sched = Some(lower_sched(tiers, plan));
         }
         let nodes: Vec<String> = plan.nodes.iter().map(plan_node_fqn).collect();
-        e.monitors = monitor_table(None, opts, |node| nodes.iter().any(|n| n == node));
+        let sc = match (shape, plan.resolved_tiers.as_ref()) {
+            (ExecutorShape::SchedContexts, Some(t)) => DeadlineSc::TierIndex(t),
+            (_, Some(t)) if t.is_single_tier() => t
+                .tiers
+                .first()
+                .map_or(DeadlineSc::None, |only| DeadlineSc::Context(&only.name, 0)),
+            _ => DeadlineSc::None,
+        };
+        e.monitors = monitor_table(None, opts, sc, |node| nodes.iter().any(|n| n == node));
         e.monitor_tables.extend(e.monitors.iter().cloned());
     }
 
@@ -442,9 +468,12 @@ fn lower_tiers(
                     })
                     .collect(),
                 emits_services: ti == 0,
-                monitors: monitor_table(Some((ti, &tier.name)), opts, |node| {
-                    members.iter().any(|n| n == node)
-                }),
+                monitors: monitor_table(
+                    Some((ti, &tier.name)),
+                    opts,
+                    DeadlineSc::Context(&tier.name, 0),
+                    |node| members.iter().any(|n| n == node),
+                ),
             }
         })
         .collect();
@@ -594,6 +623,7 @@ use nros_orchestration_ir::contract_monitors::row_node_fqn;
 fn monitor_table(
     tier: Option<(usize, &str)>,
     opts: &LowerOptions<'_>,
+    sc: DeadlineSc<'_>,
     keep: impl Fn(&str) -> bool,
 ) -> Option<MonitorTable> {
     let ir_rows: Vec<model_ingest::MonitorRow> = opts
@@ -646,10 +676,46 @@ fn monitor_table(
         .collect::<Vec<HazardRow>>();
     // phase-462 W4b -- each mode's numbers for the rows kept above, by the
     // same predicate, so a variant is row for row this table.
+    // phase-462 W4c -- the deadline rows of the tiers THIS executor runs.
+    let deadline_rows = opts
+        .mode_deadlines
+        .map(|d| {
+            nros_orchestration_ir::mode_variants::deadline_rows(d, |t| match sc {
+                DeadlineSc::None => None,
+                DeadlineSc::Context(name, id) => (t == name).then_some(id),
+                DeadlineSc::TierIndex(table) => table
+                    .tiers
+                    .iter()
+                    .position(|x| x.name == t)
+                    .and_then(|i| u8::try_from(i).ok()),
+            })
+        })
+        .unwrap_or_default();
+    let dl = |k: usize| -> Vec<ModeDeadlineRow> {
+        deadline_rows
+            .get(k)
+            .map(|r| {
+                r.iter()
+                    .map(|(sc, us)| ModeDeadlineRow {
+                        sc: *sc,
+                        deadline_us: *us,
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
     let modes = opts
         .modes
         .iter()
-        .map(|(_, rows, ages)| ModeVariantRows {
+        .enumerate()
+        .map(|(k, (_, rows, ages))| ModeVariantRows {
+            deadlines: dl(k + 1),
+            switch_budget_ms: opts.mode_switch.get(k).map_or(0, |(b, _)| *b),
+            reaction: opts
+                .mode_switch
+                .get(k)
+                .map(|(_, r)| r.clone())
+                .unwrap_or_default(),
             rows: rows
                 .iter()
                 .filter(|r| keep(row_node_fqn(&r.fqn)))
@@ -676,6 +742,8 @@ fn monitor_table(
     let t = MonitorTable {
         tier: tier.map(|(i, _)| i),
         tier_name: tier.map(|(_, n)| n.to_string()),
+        base_deadlines: if modes.is_empty() { Vec::new() } else { dl(0) },
+        deadline_sc_is_tier: matches!(sc, DeadlineSc::TierIndex(_)),
         modes,
         hazards,
         hazard_guards,

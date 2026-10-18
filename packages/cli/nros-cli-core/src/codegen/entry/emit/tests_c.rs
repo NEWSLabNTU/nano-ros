@@ -893,9 +893,16 @@ fn typed_emit_bakes_the_hazard_table_after_the_monitors() {
     let plan = fixture_plan(&[("talker_pkg", "talker"), ("listener_pkg", "listener")]);
     let (rows, ages) = c_monitor_fixture_rows();
     let model = super::hazard_fixture_model();
-    let (src, _) =
-        super::emit_typed_monitored_lowered(Lang::C, &plan, &rows, &ages, Some(&model), &[])
-            .expect("hazard emit ok");
+    let (src, _) = super::emit_typed_monitored_lowered(
+        Lang::C,
+        &plan,
+        &rows,
+        &ages,
+        Some(&model),
+        &[],
+        &super::ModeTier::default(),
+    )
+    .expect("hazard emit ok");
     assert!(
         src.contains("{ 0u, 0u },") && src.contains("{ 1u, 0u },"),
         "members: age row 0 and rate row 0; src:\n{src}"
@@ -928,9 +935,16 @@ fn typed_emit_wires_a_hazards_safe_state_reaction_to_the_hook() {
     let plan = fixture_plan(&[("talker_pkg", "talker"), ("listener_pkg", "listener")]);
     let (rows, ages) = c_monitor_fixture_rows();
     let model = super::hazard_fixture_model_reacting(true);
-    let (src, _) =
-        super::emit_typed_monitored_lowered(Lang::C, &plan, &rows, &ages, Some(&model), &[])
-            .expect("hazard emit ok");
+    let (src, _) = super::emit_typed_monitored_lowered(
+        Lang::C,
+        &plan,
+        &rows,
+        &ages,
+        Some(&model),
+        &[],
+        &super::ModeTier::default(),
+    )
+    .expect("hazard emit ok");
     assert!(
         src.contains("__nros_hz_guards_0, 1u, 0u, 1u },"),
         "sink rate row 0, reaction id 1; src:\n{src}"
@@ -962,8 +976,16 @@ fn typed_emit_bakes_a_modes_numbers_after_the_monitors() {
         a.max_age_ms = 999;
     }
     let modes = vec![("degraded-safe".to_string(), relaxed, slow)];
-    let (src, _) = super::emit_typed_monitored_lowered(Lang::C, &plan, &rows, &ages, None, &modes)
-        .expect("mode emit ok");
+    let (src, _) = super::emit_typed_monitored_lowered(
+        Lang::C,
+        &plan,
+        &rows,
+        &ages,
+        None,
+        &modes,
+        &super::ModeTier::default(),
+    )
+    .expect("mode emit ok");
     assert!(src.contains("#define NROS_MODE_DEGRADED_SAFE 1u"), "{src}");
     assert!(
         src.contains("static const nros_cpp_mode_row_t __nros_mode_rows_1["),
@@ -973,7 +995,8 @@ fn typed_emit_bakes_a_modes_numbers_after_the_monitors() {
     assert!(src.contains("{ 999u },"), "the mode's age; src:\n{src}");
     assert!(
         src.contains(
-            "static uint64_t __nros_mode_storage[((1u + 1u) * NROS_CPP_MODE_TABLE_STORAGE + 1u * ("
+            "static uint64_t __nros_mode_storage[((1u + 1u) * (NROS_CPP_MODE_TABLE_STORAGE + 0u * \
+             NROS_CPP_MODE_DEADLINE_STORAGE) + 1u * ("
         ),
         "{src}"
     );
@@ -983,8 +1006,16 @@ fn typed_emit_bakes_a_modes_numbers_after_the_monitors() {
     let modes_at = src.find("nros_cpp_install_modes(").expect("mode install");
     assert!(modes_at > monitors, "{src}");
     // No modes: nothing of this.
-    let (plain, _) = super::emit_typed_monitored_lowered(Lang::C, &plan, &rows, &ages, None, &[])
-        .expect("plain emit ok");
+    let (plain, _) = super::emit_typed_monitored_lowered(
+        Lang::C,
+        &plan,
+        &rows,
+        &ages,
+        None,
+        &[],
+        &super::ModeTier::default(),
+    )
+    .expect("plain emit ok");
     assert!(
         !plain.contains("NROS_MODE_") && !plain.contains("nros_cpp_install_modes"),
         "{plain}"

@@ -459,10 +459,21 @@ pub struct ModeTablesMismatch {
     pub monitors: (usize, usize),
     /// `(the mode's, the base's)` age row count.
     pub ages: (usize, usize),
+    /// phase-462 W4c -- a deadline row naming a SchedContext this executor
+    /// does not have.
+    pub missing_sc: Option<u8>,
 }
 
 impl core::fmt::Display for ModeTablesMismatch {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        if let Some(sc) = self.missing_sc {
+            return write!(
+                f,
+                "mode {} moves the deadline of sched context {sc}, which this executor does \
+                 not have: install the mode tables after the sched contexts (re-run the bake)",
+                self.mode
+            );
+        }
         write!(
             f,
             "mode {} bakes {} rate/latency and {} age rows where the base has {} and {}: a \
@@ -539,7 +550,7 @@ pub struct Violation {
 /// can carry a string. Append only: a capture or a RAM dump taken before a
 /// reorder would silently decode as the wrong rule, which is the class the
 /// callback-trace marker ids are frozen against (`callback_trace.rs`).
-pub const RULE_IDS: [&str; 14] = [
+pub const RULE_IDS: [&str; 15] = [
     "rate-hierarchy-runtime",
     "max-age-runtime",
     "max-latency-runtime",
@@ -558,6 +569,8 @@ pub const RULE_IDS: [&str; 14] = [
     "hazard-detected",
     "hazard-reaction",
     "hazard-recovered",
+    // phase-462 W4c.
+    "mode-switch-runtime",
 ];
 
 /// The wire code of `rule` ([`RULE_IDS`] index + 1), or 0 for a rule the
@@ -840,6 +853,50 @@ pub struct ModeTables {
     pub monitors: &'static [MonitorSpec],
     /// The age table in this mode.
     pub ages: &'static [AgeMonitorSpec],
+    /// phase-462 W4c -- the SchedContext deadlines this mode moves. Every
+    /// mode's table, the base's included, lists the SAME contexts, so entering
+    /// any mode leaves every moved deadline at that mode's value.
+    pub deadlines: &'static [ModeDeadline],
+    /// phase-462 W4c -- how long ENTERING this mode may take, ms: its reaction
+    /// path's `max_latency`. 0 = the contract states none.
+    pub switch_budget_ms: u32,
+    /// phase-462 W4c -- that reaction path's key, the `mode-switch-runtime`
+    /// report's endpoint ref ("" when there is none).
+    pub reaction: &'static str,
+}
+
+/// phase-462 W4c -- one SchedContext's deadline in one mode.
+///
+/// The deadline is the one tier fact a switch can apply: the executor reads
+/// `SchedContext::deadline_us` each time it judges a dispatch. A priority is a
+/// thread's and a reservation is armed at boot, so the bake lists a mode that
+/// moves either instead of baking it.
+///
+/// `repr(C)`: the C ABI's `nros_cpp_mode_deadline_t` is the same two fields.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ModeDeadline {
+    /// The SchedContext's id on this executor.
+    pub sc: u8,
+    /// The deadline in this mode, µs; 0 = none.
+    pub deadline_us: u32,
+}
+
+/// phase-462 W4c -- the `mode-switch-runtime` verdict for entering `t`: how
+/// long the request could have waited, against the mode's budget.
+///
+/// An executor enters a requested mode at its next spin, so a request
+/// waited at most the gap since the previous spin's check -- the measured
+/// value is that gap, an upper bound on the switch's own latency. `None` when
+/// the mode states no budget, the gap is within it, or there is no clock.
+pub(crate) fn check_mode_switch(t: &ModeTables, waited_ms: Option<u32>) -> Option<Violation> {
+    let waited = waited_ms?;
+    (t.switch_budget_ms != 0 && waited > t.switch_budget_ms).then_some(Violation {
+        rule: "mode-switch-runtime",
+        fqn: t.reaction,
+        measured: waited,
+        declared: t.switch_budget_ms,
+    })
 }
 
 /// phase-462 W4 -- the mode the application asked for. A STATE, not an
@@ -1961,7 +2018,8 @@ mod hazard_tests {
     /// after the base tables for a one-row model with one mode (its
     /// `the_variant_tables_render_over_the_base_cells` fixture), verbatim but
     /// for the crate root, so the generated shape compiles against the real
-    /// types.
+    /// types. phase-462 W4c -- with the deadline rows and switch budget of its
+    /// `the_variant_tables_render_deadlines_and_the_switch_budget` fixture.
     #[allow(dead_code, non_upper_case_globals)]
     mod rendered_modes {
         use crate::executor::monitor::{AgeMonitorSpec, MonitorSpec, PubMonitorCell};
@@ -1996,14 +2054,30 @@ mod hazard_tests {
             cell: &NROS_MONITOR_CELL_0,
         }];
         pub static NROS_MODE_AGE_MONITORS_1: &[AgeMonitorSpec] = &[];
+        pub static NROS_MODE_DEADLINES_0: &[crate::executor::monitor::ModeDeadline] =
+            &[crate::executor::monitor::ModeDeadline {
+                sc: 0u8,
+                deadline_us: 5000u32,
+            }];
+        pub static NROS_MODE_DEADLINES_1: &[crate::executor::monitor::ModeDeadline] =
+            &[crate::executor::monitor::ModeDeadline {
+                sc: 0u8,
+                deadline_us: 2000u32,
+            }];
         pub static NROS_MODE_TABLES: &[crate::executor::monitor::ModeTables] = &[
             crate::executor::monitor::ModeTables {
                 monitors: NROS_MONITORS,
                 ages: NROS_AGE_MONITORS,
+                deadlines: NROS_MODE_DEADLINES_0,
+                switch_budget_ms: 0u32,
+                reaction: "",
             },
             crate::executor::monitor::ModeTables {
                 monitors: NROS_MODE_MONITORS_1,
                 ages: NROS_MODE_AGE_MONITORS_1,
+                deadlines: NROS_MODE_DEADLINES_1,
+                switch_budget_ms: 50u32,
+                reaction: "//enter_safe",
             },
         ];
 
