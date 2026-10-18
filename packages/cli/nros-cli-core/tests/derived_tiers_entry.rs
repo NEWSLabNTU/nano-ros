@@ -313,3 +313,59 @@ fn a_group_tiers_only_image_derives_like_the_macro_does() {
         }
     }
 }
+
+/// RFC-0079's table, the `spin_period_us` row - the safety island's shape: one
+/// authored, unplaced tier holding every component (`group_tiers`), with no
+/// `spin_period`. The tier's spin period is its fastest member's release, the
+/// 30 Hz pair's 33,333 us, not the C runner's 1 ms floor.
+fn one_tier_plan(fixture: &Fixture, tier_toml: &str) -> eyre::Result<Plan> {
+    let meta = fixture.configure(&["main"]);
+    let all: Vec<&str> = FAST.iter().chain(SLOW.iter()).copied().collect();
+    fixture.author("app", &all, tier_toml);
+    let model = resolve_model_path(&fixture.bringup(), true);
+    let mut plan = plan_from_model(&model, Some(BOARD.to_string()))?;
+    let index = metadata::ComponentIndex::load(&meta)?;
+    metadata::enrich_plan(&mut plan, &index)?;
+    resolve_plan_sched(&mut plan, BOARD)?;
+    Ok(plan)
+}
+
+fn the_tier(plan: &Plan) -> &nros_orchestration_ir::ResolvedTier {
+    let table = plan.resolved_tiers.as_ref().expect("a tier table");
+    table
+        .tiers
+        .iter()
+        .find(|t| t.name == "app")
+        .expect("the authored tier `app`")
+}
+
+#[test]
+fn an_unset_spin_period_is_derived_from_the_fastest_member() {
+    let fixture = Fixture::copy("spin-derived");
+    let plan = one_tier_plan(&fixture, "[tiers.app]\n").expect("resolve");
+    assert_eq!(the_tier(&plan).spin_period_us, Some(33_333));
+    let src = emit::emit_typed(Lang::Cpp, &plan).expect("the typed C++ entry emits");
+    assert!(
+        src.contains(".spin_period_us = 33333ull"),
+        "the runner is handed the derived period; src:\n{src}"
+    );
+}
+
+#[test]
+fn a_faster_authored_spin_period_is_kept() {
+    let fixture = Fixture::copy("spin-override");
+    let plan = one_tier_plan(&fixture, "[tiers.app]\nspin_period = \"10ms\"\n").expect("resolve");
+    assert_eq!(the_tier(&plan).spin_period_us, Some(10_000));
+}
+
+#[test]
+fn a_slower_authored_spin_period_is_refused() {
+    let fixture = Fixture::copy("spin-too-slow");
+    let err = one_tier_plan(&fixture, "[tiers.app]\nspin_period = \"50ms\"\n")
+        .expect_err("a spin period slower than the 30 Hz members is refused");
+    let msg = format!("{err:#}");
+    assert!(
+        msg.contains("slower than its fastest release") && msg.contains("33333"),
+        "{msg}"
+    );
+}
