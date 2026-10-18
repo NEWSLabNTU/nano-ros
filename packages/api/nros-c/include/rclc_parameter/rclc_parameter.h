@@ -23,8 +23,9 @@
  *    for the duration of the callback. A scalar `string_value` is
  *    NUL-terminated; array elements, including a string array's, are not —
  *    read `size`.
- *  - `notify_changed_over_dds` is accepted; `/parameter_events` publication
- *    lands with phase-491 W3.
+ *  - `notify_changed_over_dds` (default on) gives the node one
+ *    `/parameter_events` publisher, and each accepted change is published
+ *    on it (phase-491 W3, RFC-0105 D8).
  *
  * Calling context: the executor's task only, never an ISR. Like rclc, nothing
  * here takes a lock.

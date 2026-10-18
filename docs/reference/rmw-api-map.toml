@@ -251,7 +251,7 @@ reason = "as rmw_init_options_init — \"fini\" is nothing"
 where = "declined"
 status = "re-mapped"
 answers = ["build time: rmw_init_options_t is a POD"]
-reason = "upstream needs the init/copy/fini trio because its options OWN heap and carry an rcutils_allocator_t, which cannot cross this seam; ours is a build-time POD. Does NOT decide what the options CARRY: `localhost_only` and `enclave` are gaps (issue 0785, shape deferred to 0331), `security_options` is declined on the target (a DDS-SROS2 keystore path, no filesystem and no security plugin there), and `discovery_options` is an IRON field this Humble contract does not have"
+reason = "upstream needs the init/copy/fini trio because its options OWN heap and carry an rcutils_allocator_t, which cannot cross this seam; ours is a build-time POD. Does NOT decide what the options CARRY: `localhost_only` and `enclave` are CARRIED by `create_session`'s NULLable `rmw_session_options_t` (issue 0808 closed issue 0785's two gaps; Cyclone honours `localhost_only` by restricting discovery to loopback, a backend with no discovery to restrict ignores both), `security_options` is declined on the target (a DDS-SROS2 keystore path, no filesystem and no security plugin there), and `discovery_options` is an IRON field this Humble contract does not have"
 
 [rmw_init_publisher_allocation]
 where = "declined"

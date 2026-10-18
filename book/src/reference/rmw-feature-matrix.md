@@ -5,79 +5,86 @@
 # Per-RMW Feature Matrix
 
 One table per question the capability pages used to answer in
-contradictory prose. **Derived from the backend sources** — the two
-C vtables (`vtable.cpp`,
-`vtable.c`) and the zenoh shim's trait
+contradictory prose. **Derived from the backend sources** — the C
+vtables (`vtable.c` (XRCE-DDS), `vtable.cpp` (Cyclone DDS), `vtable.cpp` (uORB)) and the zenoh shim's trait
 overrides — so a backend gaining or losing a slot moves this page in
 the same commit or fails the gate.
 
 `wired` = the backend implements it. `—` = not wired: the runtime
 surfaces `UNSUPPORTED` or falls back where a fallback exists (the
-vtable comments name which). The rows below the parity marker are
-the phase-376 W4 surface — slots declared in the ABI whose backend
-wiring is the in-flight campaign; all-dash rows there mean
-*declared, not yet wired anywhere*, and they flip automatically as
-backends land implementations.
+vtable comments name which). A slot filled with a function that only
+returns `UNSUPPORTED` (uORB's service stubs) is `—`, not `wired`.
+Status events count as wired whether the backend calls back
+(`*_event_init`) or the runtime polls it (`*_take_event`). The rows
+below the parity marker are the phase-376 W4 surface — slots declared
+in the ABI whose backend wiring is the in-flight campaign; all-dash
+rows there mean *declared, not yet wired anywhere*, and they flip
+automatically as backends land implementations.
 
 ## Session / entity capabilities
 
-| Capability | Zenoh | XRCE-DDS | Cyclone DDS |
-|---|---|---|---|
-| Publish / subscribe | wired | wired | wired |
-| Services (server side) | wired | wired | wired |
-| Service clients | wired | wired | wired |
-| Server-availability probe | wired | — | wired |
-| Status events (deadline / liveliness / lost) | wired | — | — |
-| Manual liveliness assert | wired | — | wired |
-| Event-driven wake (`set_wake_callback`) | wired | — | wired |
-| Deadline hint (`next_deadline_ms`) | wired | — | — |
-| Zero-copy loan API | — | — | — |
-| Batch receive (`take_sequence`) | wired | — | wired |
-| Streamed publish | wired | wired | — |
-| Connectivity ping | wired | wired | — |
-| Identity / feature probe | — | — | — |
-| Publisher GID / matched counts | — | — | wired |
-| Actual-QoS read-back | wired | — | wired |
-| Wait-for-acked | — | — | — |
-| Take-with-info | wired | — | wired |
-| Entity new-data callbacks | wired | — | — |
-| Graph introspection (names/types/counts) | wired | — | wired |
+| Capability | Zenoh | XRCE-DDS | Cyclone DDS | uORB |
+|---|---|---|---|---|
+| Publish / subscribe | wired | wired | wired | wired |
+| Services (server side) | wired | wired | wired | — |
+| Service clients | wired | wired | wired | — |
+| Server-availability probe | wired | — | wired | — |
+| Status events (deadline / liveliness / lost) | wired | — | wired | — |
+| Manual liveliness assert | — | — | wired | — |
+| Event-driven wake (`set_wake_callback`) | wired | — | wired | — |
+| Deadline hint (`next_deadline_ms`) | wired | — | — | — |
+| Zero-copy loan API | wired | — | — | — |
+| Batch receive (`take_sequence`) | wired | — | wired | — |
+| Streamed publish | wired | wired | — | — |
+| Connectivity ping | wired | wired | — | — |
+| Identity / feature probe | — | — | — | — |
+| Publisher GID | wired | — | wired | — |
+| Matched-endpoint counts | — | — | wired | — |
+| Actual-QoS read-back | wired | — | wired | wired |
+| Wait-for-acked | — | — | — | — |
+| Take-with-info | wired | — | wired | — |
+| Entity new-data callbacks | wired | — | — | — |
+| Graph introspection (names/types/counts) | wired | — | wired | — |
 
 ## Node-layer features
 
 These live in `nros-node` on top of pub/sub + services — they are
-not backend slots, so the rule, not a vtable, decides the row:
+not backend slots, so a backend has them exactly when it has those.
+`tested` = at least one `Runtime` cell for that backend and workload
+in `matrix::CELLS` or `interop::CELLS` (`packages/testing/nros-tests/src/`);
+`untested` = available, but no runtime cell runs it; `—` = the
+backend lacks pub/sub or services, so the feature cannot exist there.
 
-| Feature | Zenoh | XRCE-DDS | Cyclone DDS | Rule |
-|---|---|---|---|---|
-| Actions | yes | yes | untested | Built in `nros-node` on pub/sub + services. Cyclone has both since `service.cpp`, but no action example runs on it in CI — see [known limitations](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/reference/cyclonedds-known-limitations.md). |
-| Parameters (+ param services) | yes | yes | yes | Node-layer services (RFC-0004); available wherever services are. |
-| Lifecycle (REP-2002) | yes | yes | yes | Node-layer state machine + services (`lifecycle-services` feature). |
+| Feature | Zenoh | XRCE-DDS | Cyclone DDS | uORB | Rule |
+|---|---|---|---|---|---|
+| Actions | tested | tested | tested | — | Built in `nros-node` on pub/sub + services (goal / cancel / result services + feedback / status topics). |
+| Parameters (+ param services) | tested | tested | tested | — | Node-layer services (RFC-0004); available wherever services are. |
+| Lifecycle (REP-2002) | tested | untested | untested | — | Node-layer state machine + services (`lifecycle-services` feature). |
 
 ## QoS policies
 
 A backend advertises the policies it can enforce via
 `supported_qos_policies()`; requesting an unadvertised policy fails
 entity creation loudly (`INCOMPATIBLE_QOS`) — **no silent
-downgrade**. Per-policy semantics: [RMW vs upstream §7](../design/rmw-vs-upstream.md).
+downgrade**. Each column is that backend's OWN answer: the zenoh
+shim's `Session::supported_qos_policies`, and for a C backend the
+function its vtable puts in the `supported_qos_policies` slot.
+Per-policy semantics: [RMW vs upstream §7](../design/rmw-vs-upstream.md).
 
-| Policy | Zenoh | XRCE-DDS / Cyclone DDS (via C ABI) ¹ |
-|---|---|---|
-| `CORE` | ✓ | — |
-| `DURABILITY_TRANSIENT_LOCAL` | ✓ | — |
-| `DEADLINE` | ✓ | — |
-| `LIFESPAN` | ✓ | — |
-| `LIVELINESS_AUTOMATIC` | ✓ | — |
-| `LIVELINESS_MANUAL_BY_TOPIC` | ✓ | — |
-| `LIVELINESS_MANUAL_BY_NODE` | — | — |
-| `LIVELINESS_LEASE` | ✓ | — |
-| `AVOID_ROS_NAMESPACE_CONVENTIONS` | — | — |
-
-¹ The C-ABI backends' mask is asserted by the **runtime shim**
-(`packages/rmw/cffi/src/lib.rs`), not reported by the backend — the
-vtable has no `supported_qos_policies` slot yet (TODO 115.K.2.x).
-Treat the column as the runtime's assumption; the backend's own
-enforcement happens at entity creation.
+| Policy | Zenoh | XRCE-DDS | Cyclone DDS | uORB |
+|---|---|---|---|---|
+| `RELIABILITY` | ✓ | ✓ | ✓ | ✓ |
+| `DURABILITY_VOLATILE` | ✓ | ✓ | ✓ | ✓ |
+| `DURABILITY_TRANSIENT_LOCAL` | ✓ | ✓ | ✓ | — |
+| `HISTORY` | ✓ | ✓ | ✓ | ✓ |
+| `DEPTH` | ✓ | ✓ | ✓ | ✓ |
+| `DEADLINE` | ✓ | — | ✓ | — |
+| `LIFESPAN` | ✓ | — | ✓ | — |
+| `LIVELINESS_AUTOMATIC` | ✓ | — | ✓ | — |
+| `LIVELINESS_MANUAL_BY_TOPIC` | ✓ | — | ✓ | — |
+| `LIVELINESS_MANUAL_BY_NODE` | — | — | — | — |
+| `LIVELINESS_LEASE` | ✓ | — | ✓ | — |
+| `AVOID_ROS_NAMESPACE_CONVENTIONS` | — | ✓ | — | — |
 
 ## Related
 

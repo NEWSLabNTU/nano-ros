@@ -152,13 +152,15 @@ Not every backend can generate every event. Apps must handle
 | Backend | `LivelinessChanged` / `Lost` | `DeadlineMissed` | `MessageLost` |
 |---------|------------------------------|------------------|---------------|
 | Cyclone DDS | ✅ Polled `dds_get_liveliness_changed_status` / `_liveliness_lost_status` | ✅ Polled `dds_get_{requested,offered}_deadline_missed_status` (deadline comes from the QoS profile, not the `on_*` argument) | ✅ Polled `dds_get_sample_lost_status` |
-| XRCE-DDS | ✗ Not exposed (xrce-dds-client API limitation) | ✅ Shim-side clock check (sub: `has_data` / `take_serialized`; pub: `publish_raw`) | ✗ Not exposed |
+| XRCE-DDS | ✗ Not exposed (xrce-dds-client API limitation) | ✗ No deadline tracking: the C backend fills neither `*_event_init` nor `*_take_event`, and refuses a `DEADLINE` QoS at create (`uxrQoS_t` has no field for it) | ✗ Not exposed |
 | zenoh-pico | ✅ Poll-based via zenoh tokens (alive_count ∈ {0,1}) | ✅ Shim-side clock check (`<P as PlatformClock>::clock_ms`) | ✅ Seq-gap detection from RMW attachment |
-| uORB | ✗ No wire-level liveliness | ✗ No rate concept | ✅ Native (host mock + real PX4 via `RustSubscriptionCallback` publish-counter) |
+| uORB | ✗ No wire-level liveliness | ✗ No rate concept | ✗ Not wired: the C++ backend (`nros-rmw-uorb`) fills no event slot. The publish-counter `MessageLost` of the retired Rust uORB backend (phase-108) did not carry over |
 
-✓ = wired and tested. 🟡 = surface API works (returns Err while pending), wiring planned. ✗ = not feasible at this layer.
+✅ = wired. ✗ = not wired (registration answers `Unsupported`). The
+slot-level view is generated from the backend sources in the
+[per-RMW feature matrix](../reference/rmw-feature-matrix.md).
 
-Cyclone DDS is the one backend that carries the whole Tier-1 set, and
+Cyclone DDS carries the whole Tier-1 set, as zenoh-pico does, but
 it does it by POLLING rather than by calling you back: the backend
 fills the ABI's `*_take_event` slots instead of `*_event_init`, and
 the runtime drains them from the entity's ordinary data path
