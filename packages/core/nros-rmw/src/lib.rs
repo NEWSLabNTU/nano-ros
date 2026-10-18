@@ -36,6 +36,9 @@ extern crate std;
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
+// issue 1940 — the C-callback `Waker` bridge, here rather than in `nros-node`
+// so the cffi route can recognise one (see `c_waker::state_of`).
+pub mod c_waker;
 pub mod custom_transport;
 pub mod event;
 // issue 1551 — the one spelling of a fallible `Box::new` (`Box::try_new` is

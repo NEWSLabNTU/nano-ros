@@ -53,7 +53,14 @@ use nros_rmw::{
 pub mod rust_adapter;
 
 #[cfg(feature = "alloc")]
+#[doc(hidden)]
+pub use rust_adapter::boxed_entity_size;
+#[cfg(feature = "alloc")]
 pub use rust_adapter::{RustBackend, RustBackendAdapter};
+
+// Issue 1940 — per-entity wake across the C ABI, both directions; the one
+// helper every cffi entity handle and the Rust adapter share.
+pub(crate) mod entity_wake;
 
 // Phase 249 P4b.1 — `.init_array` ctor self-registration
 // (`nros_rmw_register_backend!` macro lives here).
@@ -306,6 +313,9 @@ pub const EMPTY_VTABLE: NrosRmwVtable = NrosRmwVtable {
     set_log_severity: None,
     required_rx_bytes: None,
     supported_qos_policies: None,
+    subscription_set_wake: None,
+    service_set_wake: None,
+    client_set_wake: None,
 };
 
 /// Compat alias for the generated `rmw_service_t`.
@@ -2792,6 +2802,7 @@ impl Session for CffiSession {
             refused_len: None,
             polled_events: [const { Cell::new(None) }; SUB_EVENT_KINDS.len()],
             polling_events: Cell::new(false),
+            wake: entity_wake::EntityWake::new(),
         };
         let topic_ptr = to_c_str(topic.name, &mut sub_state.topic_name_buf);
         let type_ptr = to_c_str(topic.type_name, &mut sub_state.type_name_buf);
@@ -2901,6 +2912,7 @@ impl Session for CffiSession {
             request_qos: qos_unknown_c(),
             response_qos: qos_unknown_c(),
             refused_len: None,
+            wake: entity_wake::EntityWake::new(),
         };
         let svc_ptr = to_c_str(service.name, &mut srv_state.service_name_buf);
         let type_ptr = to_c_str(service.type_name, &mut srv_state.type_name_buf);
@@ -2994,6 +3006,7 @@ impl Session for CffiSession {
             request_qos: qos_unknown_c(),
             response_qos: qos_unknown_c(),
             refused_len: None,
+            wake: entity_wake::EntityWake::new(),
         };
         let svc_ptr = to_c_str(service.name, &mut cli_state.service_name_buf);
         let type_ptr = to_c_str(service.type_name, &mut cli_state.type_name_buf);
@@ -4394,6 +4407,8 @@ pub struct CffiSubscription {
     /// user callback is free to take, and taking polls. A `Cell`, not a
     /// lock; see the publisher's field of the same name.
     polling_events: Cell<bool>,
+    /// Issue 1940 — what `register_waker` forwards to `subscription_set_wake`.
+    wake: entity_wake::EntityWake,
 }
 
 impl CffiSubscription {
@@ -4724,6 +4739,21 @@ fn refused_len_from_span(len: usize, cap: usize) -> Option<usize> {
 impl nros_rmw::Subscription for CffiSubscription {
     type Error = TransportError;
 
+    /// Issue 1940 — forwarded to the backend's `subscription_set_wake`. A NULL
+    /// slot, or a backend that refuses, answers `false`: the caller reports
+    /// "unsupported" instead of waiting on a wake that never comes.
+    fn register_waker(&self, waker: &core::task::Waker) -> bool {
+        let Some(slot) = self.vtable.subscription_set_wake else {
+            return false;
+        };
+        let mut view = self.view_shared();
+        // SAFETY: the view carries this entity's `backend_data`; `EntityWake`
+        // keeps whatever `ctx` it installs alive until after `destroy`.
+        self.wake.register(waker, |cb, ctx, token| unsafe {
+            slot(&mut view, Some(cb), ctx, token)
+        })
+    }
+
     fn supports_process_in_place(&self) -> bool {
         self.supports_in_place
     }
@@ -5027,6 +5057,9 @@ impl Drop for CffiSubscription {
                     .destroy_subscription
                     .expect("rmw vtable: destroy_subscription"))(&mut view)
             };
+            // Issue 1940 — the backend can no longer call the wake callback
+            // once destroy returned OK, so its storage may go.
+            self.wake.release(ret == NROS_RMW_RET_OK);
             // Phase 376 W5 — the slot reports now, and `Drop` is the one caller
             // that cannot propagate. Logging is not a consolation prize: a
             // teardown that failed is a leak, and a leak with no message
@@ -5067,6 +5100,8 @@ pub struct CffiService {
     /// Issue 1632 — what the last refused `take_request` said the request
     /// needed, as [`ServiceTrait::refused_request_len`] reports it.
     refused_len: Option<usize>,
+    /// Issue 1940 — what `register_waker` forwards to `service_set_wake`.
+    wake: entity_wake::EntityWake,
 }
 
 impl CffiService {
@@ -5090,6 +5125,24 @@ impl CffiService {
 
 impl ServiceTrait for CffiService {
     type Error = TransportError;
+
+    /// Issue 1940 — forwarded to the backend's `service_set_wake`; see
+    /// `CffiSubscription::register_waker`.
+    fn register_waker(&self, waker: &core::task::Waker) -> bool {
+        let Some(slot) = self.vtable.service_set_wake else {
+            return false;
+        };
+        let mut view = NrosRmwService {
+            service_name: self.service_name_buf.as_ptr().cast(),
+            type_name: self.type_name_buf.as_ptr().cast(),
+            _reserved: [0u8; 8],
+            backend_data: self.backend_data,
+        };
+        // SAFETY: as for the subscription.
+        self.wake.register(waker, |cb, ctx, token| unsafe {
+            slot(&mut view, Some(cb), ctx, token)
+        })
+    }
 
     fn has_request(&self) -> bool {
         let view_ptr = self as *const _ as *mut Self;
@@ -5196,6 +5249,9 @@ impl Drop for CffiService {
                     .destroy_service
                     .expect("rmw vtable: destroy_service"))(&mut view)
             };
+            // Issue 1940 — the backend can no longer call the wake callback
+            // once destroy returned OK, so its storage may go.
+            self.wake.release(ret == NROS_RMW_RET_OK);
             // Phase 376 W5 — the slot reports now, and `Drop` is the one caller
             // that cannot propagate. Logging is not a consolation prize: a
             // teardown that failed is a leak, and a leak with no message
@@ -5236,6 +5292,8 @@ pub struct CffiClient {
     /// Issue 1632 — what the last refused `take_response` said the reply
     /// needed, as [`ClientTrait::refused_response_len`] reports it.
     refused_len: Option<usize>,
+    /// Issue 1940 — what `register_waker` forwards to `client_set_wake`.
+    wake: entity_wake::EntityWake,
 }
 
 impl CffiClient {
@@ -5259,6 +5317,24 @@ impl CffiClient {
 
 impl ClientTrait for CffiClient {
     type Error = TransportError;
+
+    /// Issue 1940 — forwarded to the backend's `client_set_wake`; see
+    /// `CffiSubscription::register_waker`.
+    fn register_waker(&self, waker: &core::task::Waker) -> bool {
+        let Some(slot) = self.vtable.client_set_wake else {
+            return false;
+        };
+        let mut view = NrosRmwClient {
+            service_name: self.service_name_buf.as_ptr().cast(),
+            type_name: self.type_name_buf.as_ptr().cast(),
+            _reserved: [0u8; 8],
+            backend_data: self.backend_data,
+        };
+        // SAFETY: as for the subscription.
+        self.wake.register(waker, |cb, ctx, token| unsafe {
+            slot(&mut view, Some(cb), ctx, token)
+        })
+    }
 
     fn send_request_raw(&mut self, request: &[u8]) -> Result<i64, TransportError> {
         // Phase-301 (issue 0240) — `send_request_raw` +
@@ -5380,6 +5456,9 @@ impl Drop for CffiClient {
                     .destroy_client
                     .expect("rmw vtable: destroy_client"))(&mut view)
             };
+            // Issue 1940 — the backend can no longer call the wake callback
+            // once destroy returned OK, so its storage may go.
+            self.wake.release(ret == NROS_RMW_RET_OK);
             // Phase 376 W5 — the slot reports now, and `Drop` is the one caller
             // that cannot propagate. Logging is not a consolation prize: a
             // teardown that failed is a leak, and a leak with no message
@@ -6151,6 +6230,7 @@ mod tests {
             request_qos: qos_unknown_c(),
             response_qos: qos_unknown_c(),
             refused_len: None,
+            wake: entity_wake::EntityWake::new(),
         };
         let mut buf = [0u8; 16];
 

@@ -1761,12 +1761,17 @@ unsafe fn set_action_server_wake_callback(
             nros_node::c_waker::CWakeState { fn_ptr: cb, ctx },
         );
         let waker = nros_node::c_waker::make_waker(state_ptr);
-        match kind {
+        let armed = match kind {
             ChannelKind::Goal => core.register_goal_waker(&waker),
             ChannelKind::Cancel => core.register_cancel_waker(&waker),
             ChannelKind::GetResult => core.register_get_result_waker(&waker),
+        };
+        // Issue 1940 — a backend that cannot wake this channel says so.
+        if armed {
+            RCL_RET_OK
+        } else {
+            RCL_RET_UNSUPPORTED
         }
-        RCL_RET_OK
     }
     #[cfg(not(feature = "rmw-cffi"))]
     {

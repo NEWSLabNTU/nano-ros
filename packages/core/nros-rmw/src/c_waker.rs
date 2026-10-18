@@ -88,6 +88,33 @@ pub unsafe fn make_waker(state: *const CWakeState) -> Waker {
 
 static VTABLE: RawWakerVTable = RawWakerVTable::new(clone, wake, wake_by_ref, drop_fn);
 
+/// Issue 1940 — the [`CWakeState`] behind `waker`, if [`make_waker`] built it.
+///
+/// A waker from [`make_waker`] needs no storage to be forwarded across a C
+/// ABI: its data pointer is already a stable, caller-owned `CWakeState`, and
+/// its clone and drop are no-ops, so `(trampoline, state)` is an exact C
+/// spelling of it. `nros-rmw-cffi` uses this to hand a C caller's wake
+/// straight to a backend's per-entity wake slot, which is what lets the C and
+/// C++ `*_set_wake_callback` functions work on a build with no allocator.
+///
+/// Any other waker returns `None`; forwarding one needs owned storage for a
+/// clone (see `nros-rmw-cffi`'s entity-wake cell).
+pub fn state_of(waker: &Waker) -> Option<*const CWakeState> {
+    if core::ptr::eq(waker.vtable(), &VTABLE) {
+        Some(waker.data() as *const CWakeState)
+    } else {
+        None
+    }
+}
+
+/// Issue 1940 — call the callback stored in `state`, if any.
+///
+/// # Safety
+/// `state` must point to a live [`CWakeState`] (see [`make_waker`]).
+pub unsafe fn wake_state(state: *const CWakeState) {
+    unsafe { wake_by_ref(state as *const ()) };
+}
+
 /// # Safety
 ///
 /// Invoked by the `RawWakerVTable` clone slot. `data` is the pointer

@@ -15,11 +15,15 @@ superseded-by: null
 > **Amendment 2026-10-17.** §4.2's premise does not hold on `main`: the
 > entity-scoped wake functions end in `register_waker`, which no
 > `nros-rmw-cffi` handle implements and no vtable slot carries, so they are
-> no-ops ([issue 1940](../issues/1940-entity-wake-callback-is-inert-through-cffi.md)).
+> no-ops ([issue 1940](../issues/archived/1940-entity-wake-callback-is-inert-through-cffi.md)).
 > The token therefore needs a new per-entity vtable slot, specified in §4.2
 > below. Two further changes: Cyclone can supply tokens as well as zenoh
 > (§8), and the registration also names the OWNING executor, which retires
 > RFC-0106 D6's spurious wakes (§4.5).
+>
+> **2026-10-18:** the per-entity slots exist now (`subscription_set_wake`,
+> `service_set_wake`, `client_set_wake`) and issue 1940 is resolved; the
+> executor half (phase-397 W2) and Cyclone's slots are still open.
 
 > The executor is already woken *precisely* — a k_sem signalled from the
 > backend's arrival path, sub-millisecond, ISR-capable. It then throws that

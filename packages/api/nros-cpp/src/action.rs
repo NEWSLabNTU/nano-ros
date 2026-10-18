@@ -2205,7 +2205,7 @@ unsafe fn install_waker_on(
     state: *mut nros_cpp_wake_state_t,
     cb: Option<unsafe extern "C" fn(*mut c_void)>,
     ctx: *mut c_void,
-    register: impl FnOnce(&core::task::Waker),
+    register: impl FnOnce(&core::task::Waker) -> bool,
 ) -> nros_cpp_ret_t {
     if state.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
@@ -2217,9 +2217,13 @@ unsafe fn install_waker_on(
             nros_node::c_waker::CWakeState { fn_ptr: cb, ctx },
         );
         let waker = nros_node::c_waker::make_waker(state_ptr);
-        register(&waker);
+        // Issue 1940 — `OK` only when a wake will actually come.
+        if register(&waker) {
+            NROS_CPP_RET_OK
+        } else {
+            NROS_CPP_RET_UNSUPPORTED
+        }
     }
-    NROS_CPP_RET_OK
 }
 
 /// Phase 122.3.c.6.e — wake on subscription rx.

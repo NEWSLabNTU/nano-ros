@@ -653,6 +653,14 @@ impl<R: RustBackend> RustBackendAdapter<R> {
         service_response_publisher_get_actual_qos: Some(
             service_response_publisher_get_actual_qos_trampoline::<R>,
         ),
+        // Issue 1940 — per-entity wake. Unconditional for every
+        // `R: RustBackend`, like the graph-change row: the backend's own
+        // `register_waker` answers per entity (`false` from the trait default),
+        // and a `false` is returned as UNSUPPORTED, so a backend that cannot
+        // wake still says so rather than accepting a callback.
+        subscription_set_wake: Some(subscription_set_wake_trampoline::<R>),
+        service_set_wake: Some(service_set_wake_trampoline::<R>),
+        client_set_wake: Some(client_set_wake_trampoline::<R>),
         ..EMPTY_VTABLE
     };
 
@@ -943,7 +951,9 @@ unsafe extern "C" fn create_subscription_trampoline<R: RustBackend>(
         Ok(sub_handle) => {
             #[cfg(all(target_os = "none", not(feature = "std")))]
             {
-                let Some(ptr) = (unsafe { static_subscriber_storage::insert(sub_handle) }) else {
+                let Some(ptr) =
+                    (unsafe { static_subscriber_storage::insert(Hosted::new(sub_handle)) })
+                else {
                     return crate::NROS_RMW_RET_BAD_ALLOC;
                 };
                 unsafe {
@@ -953,7 +963,7 @@ unsafe extern "C" fn create_subscription_trampoline<R: RustBackend>(
             }
             #[cfg(not(all(target_os = "none", not(feature = "std"))))]
             {
-                match box_handle("subscription", sub_handle) {
+                match box_handle("subscription", Hosted::new(sub_handle)) {
                     Ok(boxed) => {
                         unsafe {
                             (*out).backend_data = boxed;
@@ -980,18 +990,20 @@ unsafe extern "C" fn destroy_subscription_trampoline<R: RustBackend>(
     #[cfg(all(target_os = "none", not(feature = "std")))]
     {
         if unsafe {
-            static_subscriber_storage::take::<R::Subscription>(*slot as *mut R::Subscription)
+            static_subscriber_storage::take::<Hosted<R::Subscription>>(
+                *slot as *mut Hosted<R::Subscription>,
+            )
         } {
             *slot = core::ptr::null_mut();
             return NROS_RMW_RET_OK;
         }
     }
-    let _ = unsafe { take_box::<R::Subscription>(slot) };
+    let _ = unsafe { take_box::<Hosted<R::Subscription>>(slot) };
 
     NROS_RMW_RET_OK
 }
 
-unsafe extern "C" fn take_trampoline<R: RustBackend>(
+unsafe extern "C" fn take_trampoline_inner<R: RustBackend>(
     subscriber: *const NrosRmwSubscription,
     // phase-406 W2 — by POINTER; `capacity` in, `len` out.
     out: *mut crate::generated::rmw_mut_byte_span_t,
@@ -1121,7 +1133,7 @@ unsafe extern "C" fn subscription_supports_in_place_trampoline<R: RustBackend>(
     NROS_RMW_RET_OK
 }
 
-unsafe extern "C" fn process_raw_in_place_trampoline<R: RustBackend>(
+unsafe extern "C" fn process_raw_in_place_trampoline_inner<R: RustBackend>(
     subscriber: *mut NrosRmwSubscription,
     ctx: *mut core::ffi::c_void,
     cb: Option<
@@ -1208,7 +1220,7 @@ unsafe extern "C" fn create_service_trampoline<R: RustBackend>(
     };
     let qos_settings = qos_from_cffi(unsafe { &*qos });
     match Session::create_service(s, &info, qos_settings) {
-        Ok(server) => match box_handle("service server", server) {
+        Ok(server) => match box_handle("service server", Hosted::new(server)) {
             Ok(boxed) => {
                 unsafe {
                     (*out).backend_data = boxed;
@@ -1228,12 +1240,12 @@ unsafe extern "C" fn create_service_trampoline<R: RustBackend>(
 unsafe extern "C" fn destroy_service_trampoline<R: RustBackend>(
     server: *mut NrosRmwService,
 ) -> NrosRmwRet {
-    let _ = unsafe { take_box::<R::Service>(service_data_mut(server)) };
+    let _ = unsafe { take_box::<Hosted<R::Service>>(service_data_mut(server)) };
 
     NROS_RMW_RET_OK
 }
 
-unsafe extern "C" fn take_request_trampoline<R: RustBackend>(
+unsafe extern "C" fn take_request_trampoline_inner<R: RustBackend>(
     server: *const NrosRmwService,
     request: *mut crate::generated::rmw_mut_byte_span_t,
     seq_out: *mut i64,
@@ -1372,7 +1384,7 @@ unsafe extern "C" fn create_client_trampoline<R: RustBackend>(
     };
     let qos_settings = qos_from_cffi(unsafe { &*qos });
     match Session::create_client(s, &info, qos_settings) {
-        Ok(client) => match box_handle("service client", client) {
+        Ok(client) => match box_handle("service client", Hosted::new(client)) {
             Ok(boxed) => {
                 unsafe {
                     (*out).backend_data = boxed;
@@ -1392,7 +1404,7 @@ unsafe extern "C" fn create_client_trampoline<R: RustBackend>(
 unsafe extern "C" fn destroy_client_trampoline<R: RustBackend>(
     client: *mut NrosRmwClient,
 ) -> NrosRmwRet {
-    let _ = unsafe { take_box::<R::Client>(client_data_mut(client)) };
+    let _ = unsafe { take_box::<Hosted<R::Client>>(client_data_mut(client)) };
 
     NROS_RMW_RET_OK
 }
@@ -1426,7 +1438,7 @@ unsafe extern "C" fn send_request_trampoline<R: RustBackend>(
     }
 }
 
-unsafe extern "C" fn take_response_trampoline<R: RustBackend>(
+unsafe extern "C" fn take_response_trampoline_inner<R: RustBackend>(
     client: *const NrosRmwClient,
     reply: *mut crate::generated::rmw_mut_byte_span_t,
     seq_out: *mut i64,
@@ -2332,7 +2344,7 @@ unsafe extern "C" fn publish_streamed_trampoline<R: RustBackend>(
     }
 }
 
-unsafe extern "C" fn take_sequence_trampoline<R: RustBackend>(
+unsafe extern "C" fn take_sequence_trampoline_inner<R: RustBackend>(
     subscriber: *const NrosRmwSubscription,
     buf: *mut u8,
     per_msg_cap: usize,
@@ -2568,6 +2580,217 @@ unsafe fn take_box<T>(slot: &mut *mut c_void) -> Option<Box<T>> {
         // possible.
         Some(unsafe { Box::from_raw(ptr) })
     }
+}
+
+// ============================================================================
+// Issue 1940 — per-entity wake
+// ============================================================================
+
+/// What a subscription / service / client handle is stored as: the Rust
+/// backend's handle, plus the C installer's wake triple at a stable address
+/// beside it (the `Waker` the backend is given points at `wake`).
+///
+/// `repr(C)` with `handle` FIRST, so `backend_data` is also a valid
+/// `*mut T` — every other trampoline keeps casting it to the bare handle.
+#[repr(C)]
+struct Hosted<T> {
+    handle: T,
+    wake: crate::entity_wake::AdapterWake,
+}
+
+impl<T> Hosted<T> {
+    fn new(handle: T) -> Self {
+        Self {
+            handle,
+            wake: crate::entity_wake::AdapterWake::new(),
+        }
+    }
+}
+
+/// Issue 1940 — the size of the allocation a subscription / service / client
+/// handle of type `T` is boxed in (`Hosted<T>`). Public only so a test that
+/// refuses that one allocation (`tests/adapter_oom.rs`) can name it.
+#[doc(hidden)]
+pub const fn boxed_entity_size<T>() -> usize {
+    core::mem::size_of::<Hosted<T>>()
+}
+
+/// The `Hosted<T>` behind an entity's `backend_data`.
+///
+/// # Safety
+/// `backend_data` must be NULL or a pointer minted by this adapter's create
+/// trampoline for `T`.
+unsafe fn hosted<'a, T>(backend_data: *mut c_void) -> Option<&'a Hosted<T>> {
+    unsafe { (backend_data as *const Hosted<T>).as_ref() }
+}
+
+/// Install `(cb, ctx, token)` on `h` and hand the backend a `Waker` for it.
+fn set_wake<T>(
+    h: &Hosted<T>,
+    cb: crate::generated::rmw_entity_wake_callback_t,
+    ctx: *mut c_void,
+    token: u32,
+    register: impl FnOnce(&T, &core::task::Waker) -> bool,
+) -> NrosRmwRet {
+    h.wake.set(cb, ctx, token);
+    // Registered even for a clear (`cb == NULL`): the waker then fires nothing,
+    // and the backend's answer still says whether it COULD wake this entity.
+    if register(&h.handle, &h.wake.waker()) {
+        NROS_RMW_RET_OK
+    } else {
+        h.wake.set(None, core::ptr::null_mut(), 0);
+        NROS_RMW_RET_UNSUPPORTED
+    }
+}
+
+/// Re-arm after a take. The trait's wakers are ONE-SHOT (a backend wakes and
+/// forgets, the `atomic-waker` contract a future re-polls against), while the
+/// C slot promises a wake per arrival for as long as the triple is installed.
+/// So every take hands the waker back, and if data is already waiting fires
+/// the callback itself — closing the window between the last wake and this
+/// re-registration.
+fn rearm<T>(
+    h: &Hosted<T>,
+    register: impl FnOnce(&T, &core::task::Waker) -> bool,
+    pending: impl FnOnce(&T) -> bool,
+) {
+    if h.wake.is_armed() && register(&h.handle, &h.wake.waker()) && pending(&h.handle) {
+        h.wake.fire();
+    }
+}
+
+unsafe extern "C" fn subscription_set_wake_trampoline<R: RustBackend>(
+    subscription: *mut NrosRmwSubscription,
+    cb: crate::generated::rmw_entity_wake_callback_t,
+    ctx: *mut c_void,
+    token: u32,
+) -> NrosRmwRet {
+    if subscription.is_null() {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    // SAFETY: minted by `create_subscription_trampoline::<R>`.
+    let Some(h) = (unsafe { hosted::<R::Subscription>((*subscription).backend_data) }) else {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    };
+    set_wake(h, cb, ctx, token, Subscription::register_waker)
+}
+
+unsafe extern "C" fn service_set_wake_trampoline<R: RustBackend>(
+    service: *mut NrosRmwService,
+    cb: crate::generated::rmw_entity_wake_callback_t,
+    ctx: *mut c_void,
+    token: u32,
+) -> NrosRmwRet {
+    if service.is_null() {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    // SAFETY: minted by `create_service_trampoline::<R>`.
+    let Some(h) = (unsafe { hosted::<R::Service>((*service).backend_data) }) else {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    };
+    set_wake(h, cb, ctx, token, ServiceTrait::register_waker)
+}
+
+unsafe extern "C" fn client_set_wake_trampoline<R: RustBackend>(
+    client: *mut NrosRmwClient,
+    cb: crate::generated::rmw_entity_wake_callback_t,
+    ctx: *mut c_void,
+    token: u32,
+) -> NrosRmwRet {
+    if client.is_null() {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    // SAFETY: minted by `create_client_trampoline::<R>`.
+    let Some(h) = (unsafe { hosted::<R::Client>((*client).backend_data) }) else {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    };
+    set_wake(h, cb, ctx, token, ClientTrait::register_waker)
+}
+
+/// # Safety
+/// As the take trampolines: `subscriber` NULL or minted by this adapter.
+unsafe fn rearm_subscription<R: RustBackend>(subscriber: *const NrosRmwSubscription) {
+    if subscriber.is_null() {
+        return;
+    }
+    if let Some(h) = unsafe { hosted::<R::Subscription>((*subscriber).backend_data) } {
+        rearm(h, Subscription::register_waker, Subscription::has_data);
+    }
+}
+
+unsafe extern "C" fn take_trampoline<R: RustBackend>(
+    subscriber: *const NrosRmwSubscription,
+    out: *mut crate::generated::rmw_mut_byte_span_t,
+    taken: *mut bool,
+) -> NrosRmwRet {
+    let rc = unsafe { take_trampoline_inner::<R>(subscriber, out, taken) };
+    unsafe { rearm_subscription::<R>(subscriber) };
+    rc
+}
+
+unsafe extern "C" fn process_raw_in_place_trampoline<R: RustBackend>(
+    subscriber: *mut NrosRmwSubscription,
+    ctx: *mut core::ffi::c_void,
+    cb: Option<
+        unsafe extern "C" fn(
+            ctx: *mut core::ffi::c_void,
+            message: crate::generated::rmw_byte_span_t,
+        ),
+    >,
+    out_processed: *mut bool,
+) -> NrosRmwRet {
+    let rc =
+        unsafe { process_raw_in_place_trampoline_inner::<R>(subscriber, ctx, cb, out_processed) };
+    unsafe { rearm_subscription::<R>(subscriber) };
+    rc
+}
+
+unsafe extern "C" fn take_sequence_trampoline<R: RustBackend>(
+    subscriber: *const NrosRmwSubscription,
+    buf: *mut u8,
+    per_msg_cap: usize,
+    max_msgs: usize,
+    out_lens: *mut usize,
+    taken: *mut usize,
+) -> NrosRmwRet {
+    let rc = unsafe {
+        take_sequence_trampoline_inner::<R>(subscriber, buf, per_msg_cap, max_msgs, out_lens, taken)
+    };
+    unsafe { rearm_subscription::<R>(subscriber) };
+    rc
+}
+
+unsafe extern "C" fn take_request_trampoline<R: RustBackend>(
+    server: *const NrosRmwService,
+    request: *mut crate::generated::rmw_mut_byte_span_t,
+    seq_out: *mut i64,
+    taken: *mut bool,
+) -> NrosRmwRet {
+    let rc = unsafe { take_request_trampoline_inner::<R>(server, request, seq_out, taken) };
+    if !server.is_null() {
+        // SAFETY: minted by `create_service_trampoline::<R>`.
+        if let Some(h) = unsafe { hosted::<R::Service>((*server).backend_data) } {
+            rearm(h, ServiceTrait::register_waker, ServiceTrait::has_request);
+        }
+    }
+    rc
+}
+
+unsafe extern "C" fn take_response_trampoline<R: RustBackend>(
+    client: *const NrosRmwClient,
+    reply: *mut crate::generated::rmw_mut_byte_span_t,
+    seq_out: *mut i64,
+    taken: *mut bool,
+) -> NrosRmwRet {
+    let rc = unsafe { take_response_trampoline_inner::<R>(client, reply, seq_out, taken) };
+    if !client.is_null() {
+        // SAFETY: minted by `create_client_trampoline::<R>`. A client has no
+        // "reply pending" probe, so only the waker goes back.
+        if let Some(h) = unsafe { hosted::<R::Client>((*client).backend_data) } {
+            rearm(h, ClientTrait::register_waker, |_| false);
+        }
+    }
+    rc
 }
 
 #[cfg(test)]

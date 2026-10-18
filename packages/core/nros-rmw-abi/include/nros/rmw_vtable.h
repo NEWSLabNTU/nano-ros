@@ -78,6 +78,22 @@ extern "C" {
  */
 
 
+/* ---- issue 1940 / phase-397 W1 — per-entity wake ----
+ *
+ * The callback the three `*_set_wake` slots install. `ctx` and `token` are
+ * whatever the installer passed, handed back unchanged; the backend reads
+ * neither. `token` lets ONE context serve many entities (phase-397 W2 names
+ * the entity's executor slot with it); an installer with nothing to say
+ * passes `NROS_RMW_WAKE_TOKEN_UNKNOWN`.
+ *
+ * May be invoked from a transport thread, a worker thread or an ISR, and must
+ * therefore be short and must not re-enter the backend.
+ */
+typedef void (*rmw_entity_wake_callback_t)(void *ctx, uint32_t token);
+
+/** The token for an installer that does not attribute wakes to an entity. */
+#define NROS_RMW_WAKE_TOKEN_UNKNOWN 0xFFFFFFFFu
+
 /* ---- Phase 376 W4 — graph enumeration visitors ----
  *
  * Upstream returns `rcutils_string_array_t` and `rmw_names_and_types_t`, which
@@ -1461,6 +1477,47 @@ typedef struct nros_rmw_vtable_t {
      *  off `session->backend_data`. */
     rmw_ret_t (*supported_qos_policies)(const rmw_session_t *session,
         uint32_t *out_mask);
+
+    /* ---- issue 1940 / phase-397 W1 — per-entity wake (optional) ---- */
+
+    /** Wake when THIS subscription has a message to take. RTOS addition:
+     *  upstream's per-entity notification is
+     *  `rmw_subscription_set_on_new_message_callback`, which reports a COUNT
+     *  and is declined here (issue 0960) because honouring the count means
+     *  per-entity depth tracking. This slot is an EDGE with no count: one
+     *  arrival, one call, coalescing allowed.
+     *
+     *  `set_wake_callback` is the SESSION-scoped wake ("something on this
+     *  session moved"); this one names the entity, which is what the C
+     *  `rclc_polling_subscription_set_wake_callback`, the C++ twin and Rust's
+     *  `recv().await` ask for. Before it existed those three accepted a
+     *  callback and nothing ever fired it.
+     *
+     *  The backend stores `(cb, ctx, token)` per entity and calls
+     *  `cb(ctx, token)` from its arrival path once a message is takeable.
+     *  Installing again REPLACES the stored triple. `cb == NULL` clears it.
+     *  After a clear or `destroy_subscription` returns, the backend must never
+     *  invoke the cleared callback again. `ctx` is borrowed for as long as the
+     *  triple is installed.
+     *
+     *  NULL slot = the backend cannot attribute an arrival to an entity
+     *  (XRCE, uORB, a purely poll-driven backend). The runtime reports that
+     *  to the installer as UNSUPPORTED instead of accepting a callback that
+     *  will never fire. A non-NULL slot may also answer
+     *  `NROS_RMW_RET_UNSUPPORTED` per entity: on the Rust road the adapter
+     *  fills it for every backend, and the backend's own handle decides. */
+    rmw_ret_t (*subscription_set_wake)(rmw_subscription_t *subscription,
+        rmw_entity_wake_callback_t cb, void *ctx, uint32_t token);
+
+    /** As `subscription_set_wake`, for a request reaching this service
+     *  server. Same contract, same NULL meaning. */
+    rmw_ret_t (*service_set_wake)(rmw_service_t *service,
+        rmw_entity_wake_callback_t cb, void *ctx, uint32_t token);
+
+    /** As `subscription_set_wake`, for a response reaching this service
+     *  client. Same contract, same NULL meaning. */
+    rmw_ret_t (*client_set_wake)(rmw_client_t *client,
+        rmw_entity_wake_callback_t cb, void *ctx, uint32_t token);
 
 } nros_rmw_vtable_t;
 

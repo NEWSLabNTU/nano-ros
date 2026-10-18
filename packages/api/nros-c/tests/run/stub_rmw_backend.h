@@ -99,4 +99,13 @@ const uint8_t* nros_stub_rmw_last_payload(size_t* len);
 /** phase-492 W8 — publishes the stub has accepted since process start. */
 uint32_t nros_stub_rmw_publish_count(void);
 
+/** Issue 1940 — make the `subscription_set_wake` slot refuse
+ *  (`NROS_RMW_RET_UNSUPPORTED`) or accept. Accepts by default. */
+void nros_stub_rmw_set_entity_wake_supported(bool supported);
+
+/** Issue 1940 — invoke the per-subscription wake callback the slot was last
+ *  handed, as a real backend's arrival path would. Returns false (and calls
+ *  nothing) when none is installed. */
+bool nros_stub_rmw_invoke_subscription_wake(void);
+
 #endif /* NROS_TESTS_STUB_RMW_BACKEND_H */

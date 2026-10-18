@@ -265,6 +265,31 @@ ADDED = {
             "family, and this is not a substitute for them"
         ),
     ),
+    # Issue 1940 / phase-397 W1 — the per-ENTITY wake. Upstream's
+    # `*_set_on_new_*_callback` trio is declined (issue 0960: its COUNT means
+    # per-entity depth tracking), so these are additions, not re-shapes.
+    "subscription_set_wake": Added(
+        ret="rmw_ret_t",
+        args=("rmw_subscription_t *", "rmw_entity_wake_callback_t", "void *", "uint32_t"),
+        why=(
+            "wake when THIS subscription has data, as an EDGE with no count. The C "
+            "`rclc_polling_*_set_wake_callback` functions, their C++ twins and Rust's "
+            "`recv().await` all ask for this, and before the slot existed they answered "
+            "OK and nothing fired (issue 1940). The `token` lets one context serve many "
+            "entities (phase-397 W2). Not upstream's `rmw_subscription_set_on_new_message_"
+            "callback`: that one reports a COUNT, which issue 0960 declined"
+        ),
+    ),
+    "service_set_wake": Added(
+        ret="rmw_ret_t",
+        args=("rmw_service_t *", "rmw_entity_wake_callback_t", "void *", "uint32_t"),
+        why="as `subscription_set_wake`, for a request reaching a service server",
+    ),
+    "client_set_wake": Added(
+        ret="rmw_ret_t",
+        args=("rmw_client_t *", "rmw_entity_wake_callback_t", "void *", "uint32_t"),
+        why="as `subscription_set_wake`, for a response reaching a service client",
+    ),
     "ping_session": Added(
         ret="rmw_ret_t",
         args=("rmw_session_t *", "int32_t"),

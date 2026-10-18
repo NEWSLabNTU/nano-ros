@@ -1718,9 +1718,12 @@ impl<const RX_BUF: usize> RawSubscription<RX_BUF> {
     /// message arrives. Mirror of the existing service-server /
     /// service-client wake plumbing. No-op on backends that don't
     /// support waking — caller falls back to polling.
-    pub fn register_waker(&self, waker: &core::task::Waker) {
+    ///
+    /// Returns whether a wake will come (issue 1940): `false` from a backend
+    /// that cannot wake this entity.
+    pub fn register_waker(&self, waker: &core::task::Waker) -> bool {
         use nros_rmw::Subscription as _;
-        self.handle.register_waker(waker);
+        self.handle.register_waker(waker)
     }
 
     /// Phase 108.A — `true` if the active backend can fire the named
@@ -1956,9 +1959,11 @@ impl<const REQ_BUF: usize, const RESP_BUF: usize> RawServiceServer<REQ_BUF, RESP
     /// request arrives. Mirror of the existing subscriber /
     /// service-client wake plumbing. No-op on backends that don't
     /// support waking — caller falls back to polling.
-    pub fn register_waker(&self, waker: &core::task::Waker) {
+    ///
+    /// Returns whether a wake will come (issue 1940).
+    pub fn register_waker(&self, waker: &core::task::Waker) -> bool {
         use nros_rmw::ServiceTrait;
-        self.handle.register_waker(waker);
+        self.handle.register_waker(waker)
     }
 
     /// Construct a [`RawServiceServer`] from a backend-allocated
@@ -2061,9 +2066,11 @@ pub struct RawServiceClient<
 impl<const REQ_BUF: usize, const REPLY_BUF: usize> RawServiceClient<REQ_BUF, REPLY_BUF> {
     /// Phase 122.3.c.6.e — register a `Waker` that fires when the
     /// reply to a previously-sent request lands.
-    pub fn register_waker(&self, waker: &core::task::Waker) {
+    ///
+    /// Returns whether a wake will come (issue 1940).
+    pub fn register_waker(&self, waker: &core::task::Waker) -> bool {
         use nros_rmw::ClientTrait;
-        self.handle.register_waker(waker);
+        self.handle.register_waker(waker)
     }
 
     /// Construct from a backend-allocated handle. Same audience as

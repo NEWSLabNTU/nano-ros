@@ -331,6 +331,26 @@ c: c-fmt
     test -f packages/api/nros-c/tests/run/executor_backend_wake.c || {         echo "ERROR: executor_backend_wake.c is MISSING -- this check passes on absence." >&2;         exit 1; }
     cc -std=c11 -Wall -Wextra -Wmissing-prototypes -D_GNU_SOURCE         -I"$cgen"         -Ipackages/api/nros-c/include         -Ipackages/core/nros-rmw-abi/include         -Ipackages/platform/nros-platform-api/include         -Ipackages/api/nros-c/tests/run         packages/api/nros-c/tests/run/executor_backend_wake.c         packages/api/nros-c/tests/run/stub_rmw_backend.c         "$nros_c_lib" -lpthread -ldl -lm         -o tmp/executor_backend_wake
     ./tmp/executor_backend_wake
+    echo "  - issue 1940: rclc_polling_subscription_set_wake_callback REACHES the backend, or says it cannot"
+    # Compile+link+run for the same reason as the probes above: an inert
+    # `register_waker` compiles, returns OK, and fires nothing. The probe reads
+    # the stub's `subscription_set_wake` slot back, plays an arrival, and checks
+    # the refusal path answers RCL_RET_UNSUPPORTED rather than OK. `test -f`
+    # first — a missing TU must not read as a pass (issue 0196).
+    test -f packages/api/nros-c/tests/run/polling_entity_wake.c || { \
+        echo "ERROR: polling_entity_wake.c is MISSING -- this check passes on absence." >&2; \
+        exit 1; }
+    cc -std=c11 -Wall -Wextra -Wmissing-prototypes -D_GNU_SOURCE \
+        -I"$cgen" \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/core/nros-rmw-abi/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -Ipackages/api/nros-c/tests/run \
+        packages/api/nros-c/tests/run/polling_entity_wake.c \
+        packages/api/nros-c/tests/run/stub_rmw_backend.c \
+        "$nros_c_lib" -lpthread -ldl -lm \
+        -o tmp/polling_entity_wake
+    ./tmp/polling_entity_wake
     echo "  - issue 1384: an executor-bound node creates its EAGER entities from EITHER slot"
     # The FIFTH compile+link+run TU, same reason as the four above: the defect
     # is a behaviour every shape of which compiles. `is_multi_session()` read

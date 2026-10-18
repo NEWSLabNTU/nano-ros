@@ -37,6 +37,8 @@ pub type rmw_status_event_callback_t = ::core::option::Option<
 pub type rmw_event_callback_t = ::core::option::Option<
     unsafe extern "C" fn(user_data: *const core::ffi::c_void, number_of_events: usize),
 >;
+pub type rmw_entity_wake_callback_t =
+    ::core::option::Option<unsafe extern "C" fn(ctx: *mut core::ffi::c_void, token: u32)>;
 #[doc = " Visit one node. `enclave` is NULL where the backend does not track one —\n  which is what lets a single slot answer both `rmw_get_node_names` and\n  `rmw_get_node_names_with_enclaves`. Return `false` to stop."]
 pub type rmw_node_visit_fn = ::core::option::Option<
     unsafe extern "C" fn(
@@ -846,6 +848,33 @@ pub struct nros_rmw_vtable_t {
     pub supported_qos_policies: ::core::option::Option<
         unsafe extern "C" fn(session: *const rmw_session_t, out_mask: *mut u32) -> rmw_ret_t,
     >,
+    #[doc = " Wake when THIS subscription has a message to take. RTOS addition:\n  upstream's per-entity notification is\n  `rmw_subscription_set_on_new_message_callback`, which reports a COUNT\n  and is declined here (issue 0960) because honouring the count means\n  per-entity depth tracking. This slot is an EDGE with no count: one\n  arrival, one call, coalescing allowed.\n\n  `set_wake_callback` is the SESSION-scoped wake (\"something on this\n  session moved\"); this one names the entity, which is what the C\n  `rclc_polling_subscription_set_wake_callback`, the C++ twin and Rust's\n  `recv().await` ask for. Before it existed those three accepted a\n  callback and nothing ever fired it.\n\n  The backend stores `(cb, ctx, token)` per entity and calls\n  `cb(ctx, token)` from its arrival path once a message is takeable.\n  Installing again REPLACES the stored triple. `cb == NULL` clears it.\n  After a clear or `destroy_subscription` returns, the backend must never\n  invoke the cleared callback again. `ctx` is borrowed for as long as the\n  triple is installed.\n\n  NULL slot = the backend cannot attribute an arrival to an entity\n  (XRCE, uORB, a purely poll-driven backend). The runtime reports that\n  to the installer as UNSUPPORTED instead of accepting a callback that\n  will never fire. A non-NULL slot may also answer\n  `NROS_RMW_RET_UNSUPPORTED` per entity: on the Rust road the adapter\n  fills it for every backend, and the backend's own handle decides."]
+    pub subscription_set_wake: ::core::option::Option<
+        unsafe extern "C" fn(
+            subscription: *mut rmw_subscription_t,
+            cb: rmw_entity_wake_callback_t,
+            ctx: *mut core::ffi::c_void,
+            token: u32,
+        ) -> rmw_ret_t,
+    >,
+    #[doc = " As `subscription_set_wake`, for a request reaching this service\n  server. Same contract, same NULL meaning."]
+    pub service_set_wake: ::core::option::Option<
+        unsafe extern "C" fn(
+            service: *mut rmw_service_t,
+            cb: rmw_entity_wake_callback_t,
+            ctx: *mut core::ffi::c_void,
+            token: u32,
+        ) -> rmw_ret_t,
+    >,
+    #[doc = " As `subscription_set_wake`, for a response reaching this service\n  client. Same contract, same NULL meaning."]
+    pub client_set_wake: ::core::option::Option<
+        unsafe extern "C" fn(
+            client: *mut rmw_client_t,
+            cb: rmw_entity_wake_callback_t,
+            ctx: *mut core::ffi::c_void,
+            token: u32,
+        ) -> rmw_ret_t,
+    >,
 }
 #[doc = " Runtime-pluggable custom transport. The runtime never\n dereferences `user_data`; it's the caller's per-transport\n context, threaded back into every callback's first argument.\n\n THIS declaration is the ABI single source of truth (RFC-0054): Rust\n consumes the committed bindgen output of this header, and\n `nros_rmw::NrosTransportOps` is the hand-written Rust-side view kept in\n lockstep with it — not the other way round. The previous wording had that\n backwards (issue 0331). Layout equivalence is asserted on both sides: see\n `nros_transport_ops_t` in `nros-rmw-cffi/tests/c_stubs/abi_layout_check.c`\n and the `const _` size/align block beside\n `nros_rmw_cffi_set_custom_transport` in `nros-rmw-cffi/src/lib.rs`. Same\n layout, same threading contract, same return codes."]
 #[repr(C)]
@@ -933,6 +962,7 @@ pub const NROS_RMW_QOS_POLICY_LIVELINESS_LEASE: i32 = 1024;
 pub const NROS_RMW_QOS_POLICY_AVOID_ROS_NAMESPACE_CONVENTIONS: i32 = 2048;
 pub const NROS_RMW_QOS_POLICY_NONE: i32 = 0;
 pub const NROS_RMW_QOS_POLICY_CORE: i32 = 27;
+pub const NROS_RMW_WAKE_TOKEN_UNKNOWN: i64 = 4294967295;
 pub const NROS_RMW_VISITOR_DEFINED: i32 = 1;
 #[doc = " Borrow-shaped union the backend supplies to the registered\n  callback. The `kind` argument selects which member is valid."]
 #[repr(C)]

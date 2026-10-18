@@ -99,7 +99,10 @@ extern crate alloc;
 
 /// phase-412 -- the boot self-report, for boards with no reachable log sink.
 pub mod boot_report;
-pub mod c_waker;
+/// Issue 1940 — moved to `nros-rmw` so `nros-rmw-cffi` (which sits below this
+/// crate) can recognise a C waker and forward it to a backend's per-entity
+/// wake slot with no storage. Re-exported so `nros_node::c_waker` still names it.
+pub use nros_rmw::c_waker;
 pub mod config;
 /// phase-454 W10 — the DECLARED QoS history depth, and the registration check
 /// over it. Rust's half of what C++ does with `NROS_SUBSCRIBE`'s

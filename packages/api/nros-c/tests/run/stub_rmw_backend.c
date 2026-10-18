@@ -338,6 +338,39 @@ static rmw_ret_t stub_supported_qos_policies(const rmw_session_t* session, uint3
     return NROS_RMW_RET_OK;
 }
 
+/* Issue 1940 — the per-entity wake slot, stored and read back the way the
+ * session slot above is. `rclc_polling_subscription_set_wake_callback` used to
+ * answer OK while installing nothing, because the cffi handle had no slot to
+ * forward to; this lets a C probe see the install and play the arrival.
+ * `nros_stub_rmw_set_entity_wake_supported(false)` makes the slot refuse, the
+ * answer a backend that cannot attribute an arrival gives. */
+static rmw_entity_wake_callback_t s_sub_wake_cb = NULL;
+static void* s_sub_wake_ctx = NULL;
+static uint32_t s_sub_wake_token = 0;
+static bool s_entity_wake_supported = true;
+
+static rmw_ret_t stub_subscription_set_wake(rmw_subscription_t* subscription,
+                                            rmw_entity_wake_callback_t cb, void* ctx,
+                                            uint32_t token) {
+    (void)subscription;
+    if (!s_entity_wake_supported) return NROS_RMW_RET_UNSUPPORTED;
+    s_sub_wake_cb = cb;
+    s_sub_wake_ctx = ctx;
+    s_sub_wake_token = token;
+    return NROS_RMW_RET_OK;
+}
+
+void nros_stub_rmw_set_entity_wake_supported(bool supported) {
+    s_entity_wake_supported = supported;
+}
+
+bool nros_stub_rmw_invoke_subscription_wake(void) {
+    rmw_entity_wake_callback_t cb = s_sub_wake_cb;
+    if (cb == NULL) return false;
+    cb(s_sub_wake_ctx, s_sub_wake_token);
+    return true;
+}
+
 static const nros_rmw_vtable_t STUB_VTABLE = {
     .create_session = stub_create_session,
     .destroy_session = stub_destroy_session,
@@ -358,6 +391,7 @@ static const nros_rmw_vtable_t STUB_VTABLE = {
     .destroy_client = stub_destroy_client,
     .set_wake_callback = stub_set_wake_callback,
     .supported_qos_policies = stub_supported_qos_policies,
+    .subscription_set_wake = stub_subscription_set_wake,
 };
 
 int32_t nros_stub_rmw_register(void) {

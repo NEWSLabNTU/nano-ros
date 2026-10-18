@@ -627,6 +627,11 @@ pub extern "C" fn rclc_wake_state_get_zero_initialized() -> rclc_wake_state_t {
 /// Pass `cb = NULL` to disable. The backend wakes the callback
 /// when a new request arrives.
 ///
+/// Returns `RCL_RET_UNSUPPORTED` when the backend cannot wake this
+/// entity (no per-entity wake slot — XRCE, uORB, Cyclone today), so a
+/// caller falls back to polling instead of waiting for a callback that
+/// never fires (issue 1940).
+///
 /// # Safety
 /// All pointers valid; `state` storage stable for the entity's
 /// lifetime.
@@ -658,8 +663,12 @@ pub unsafe extern "C" fn rclc_polling_service_set_wake_callback(
             nros_node::c_waker::CWakeState { fn_ptr: cb, ctx },
         );
         let waker = nros_node::c_waker::make_waker(state_ptr);
-        raw.register_waker(&waker);
-        RCL_RET_OK
+        // Issue 1940 — `OK` only when a wake will actually come.
+        if raw.register_waker(&waker) {
+            RCL_RET_OK
+        } else {
+            RCL_RET_UNSUPPORTED
+        }
     }
     #[cfg(not(feature = "rmw-cffi"))]
     {
@@ -670,7 +679,8 @@ pub unsafe extern "C" fn rclc_polling_service_set_wake_callback(
 
 /// Phase 122.3.c.6.e — register a C wake callback on an L1
 /// polling-mode service client. Wakes when a reply lands. See
-/// `rclc_polling_service_set_wake_callback` for the lifetime contract.
+/// `rclc_polling_service_set_wake_callback` for the lifetime contract
+/// and the `RCL_RET_UNSUPPORTED` answer.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rclc_polling_client_set_wake_callback(
     client: *mut rclc_polling_client_t,
@@ -694,8 +704,12 @@ pub unsafe extern "C" fn rclc_polling_client_set_wake_callback(
             nros_node::c_waker::CWakeState { fn_ptr: cb, ctx },
         );
         let waker = nros_node::c_waker::make_waker(state_ptr);
-        raw.register_waker(&waker);
-        RCL_RET_OK
+        // Issue 1940 — `OK` only when a wake will actually come.
+        if raw.register_waker(&waker) {
+            RCL_RET_OK
+        } else {
+            RCL_RET_UNSUPPORTED
+        }
     }
     #[cfg(not(feature = "rmw-cffi"))]
     {

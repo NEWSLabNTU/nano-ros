@@ -1664,8 +1664,9 @@ impl ZenohSubscriber {
 impl Subscription for ZenohSubscriber {
     type Error = TransportError;
 
-    fn register_waker(&self, waker: &core::task::Waker) {
+    fn register_waker(&self, waker: &core::task::Waker) -> bool {
         self.buf.get().waker.register(waker);
+        true
     }
 
     fn take_serialized(&mut self, buf: &mut [u8]) -> Result<Option<usize>, Self::Error> {

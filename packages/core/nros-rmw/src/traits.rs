@@ -3216,8 +3216,17 @@ pub trait Subscription {
     /// when new data is available, enabling event-driven async without
     /// busy-polling.
     ///
-    /// Default: no-op (backends that don't support waking simply ignore this).
-    fn register_waker(&self, _waker: &core::task::Waker) {}
+    /// Returns whether a wake WILL come: `true` once the backend holds the
+    /// waker, `false` from a backend (or a route to one) that cannot wake
+    /// this entity, so the caller can report "unsupported" rather than wait
+    /// for a wake that never fires (issue 1940 — the C and C++
+    /// `*_set_wake_callback` functions returned OK over the `false` case).
+    ///
+    /// Default: `false` (backends that don't support waking; the caller falls
+    /// back to polling).
+    fn register_waker(&self, _waker: &core::task::Waker) -> bool {
+        false
+    }
 
     /// Return a deserialization error (implementation specific)
     fn deserialization_error(&self) -> Self::Error;
@@ -3440,9 +3449,12 @@ pub trait ServiceTrait {
     /// service servers. Mirrors the matching method on
     /// `SubscriberTrait` / `ClientTrait`. Backends that
     /// surface incoming-request notifications wake `waker` when
-    /// `has_request()` flips true. Default: no-op (backends without
-    /// wake support ignore — caller falls back to polling).
-    fn register_waker(&self, _waker: &core::task::Waker) {}
+    /// `has_request()` flips true. Returns whether a wake will come, as
+    /// the subscription twin does. Default: `false` (backends without wake
+    /// support — caller falls back to polling).
+    fn register_waker(&self, _waker: &core::task::Waker) -> bool {
+        false
+    }
 
     /// Try to receive a service request into `buf` (non-blocking).
     ///
@@ -3799,8 +3811,17 @@ pub trait ClientTrait {
     /// when a response is available, enabling event-driven async without
     /// busy-polling.
     ///
-    /// Default: no-op (backends that don't support waking simply ignore this).
-    fn register_waker(&self, _waker: &core::task::Waker) {}
+    /// Returns whether a wake WILL come: `true` once the backend holds the
+    /// waker, `false` from a backend (or a route to one) that cannot wake
+    /// this entity, so the caller can report "unsupported" rather than wait
+    /// for a wake that never fires (issue 1940 — the C and C++
+    /// `*_set_wake_callback` functions returned OK over the `false` case).
+    ///
+    /// Default: `false` (backends that don't support waking; the caller falls
+    /// back to polling).
+    fn register_waker(&self, _waker: &core::task::Waker) -> bool {
+        false
+    }
 
     // phase-428 W13 — the `start_server_discovery` / `poll_server_discovery`
     // pair was DELETED here. It existed because the only zenoh backend could

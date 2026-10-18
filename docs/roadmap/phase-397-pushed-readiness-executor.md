@@ -15,7 +15,7 @@
   `nros-rmw-cffi` handle implements that, and `rmw_vtable.h` has no
   per-entity slot to forward it to. So in every `rmw-cffi` build they are
   no-ops:
-  [issue 1940](../issues/1940-entity-wake-callback-is-inert-through-cffi.md).
+  [issue 1940](../issues/archived/1940-entity-wake-callback-is-inert-through-cffi.md).
   The token therefore needs a NEW vtable slot, which is now W1. Fixing 1940
   is that slot's first consumer, and it is what this phase stands on.
 - **The backend set is two, not one.** Cyclone's `on_data_available(reader,
@@ -108,6 +108,13 @@ same change.
 **Done when** issue 1940's acceptance holds: a C test's
 `rclc_polling_subscription_set_wake_callback` fires on a zenoh arrival, and an
 XRCE build reports the call unsupported. Every other backend still links.
+
+**Status (2026-10-18): landed except the Cyclone half.** The three slots, the
+cffi forwarding, the adapter (which covers zenoh) and the UNSUPPORTED answer
+shipped with issue 1940's fix — see its Resolution. The slot's callback is
+`rmw_entity_wake_callback_t` (`void (*)(void *ctx, uint32_t token)`), the shape
+above under a typedef. Cyclone still leaves the slots NULL and answers
+unsupported; filling them from `on_data_available` is what remains of W1.
 
 ### W2 — the executor registers each entity with its token AND its owner
 

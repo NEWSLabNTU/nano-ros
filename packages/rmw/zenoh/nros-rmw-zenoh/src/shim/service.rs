@@ -1294,8 +1294,9 @@ impl ServiceTrait for ZenohServiceServer {
         b.head.load(Ordering::Relaxed) != b.tail.load(Ordering::Acquire)
     }
 
-    fn register_waker(&self, waker: &core::task::Waker) {
+    fn register_waker(&self, waker: &core::task::Waker) -> bool {
         self.buf.get().waker.register(waker);
+        true
     }
 
     fn refused_request_len(&self) -> Option<usize> {
@@ -1583,6 +1584,12 @@ pub struct ZenohServiceClient {
     /// on either side there was nothing to tell a retry generation of the
     /// current request from a reply to a DIFFERENT one.
     pending_handles: heapless::Vec<(i32, i64), ZPICO_MAX_PENDING_GETS>,
+    /// Issue 1940 — the last waker [`ClientTrait::register_waker`] was given,
+    /// re-registered on every request sent after it. Registration only reaches
+    /// the reply slots outstanding AT THAT MOMENT, so a waker installed once
+    /// (the C `rclc_polling_client_set_wake_callback`, through the cffi
+    /// `client_set_wake` slot) and a request sent later used to meet nowhere.
+    entity_waker: core::cell::Cell<Option<core::task::Waker>>,
     /// Issue 0153 — client GID for the rmw request attachment. rmw_zenoh_cpp
     /// service servers REQUIRE the (sequence_number, source_timestamp, gid)
     /// attachment on the query — `service_take_request` errors without it and
@@ -1676,6 +1683,7 @@ impl ZenohServiceClient {
             session_index: session_index as usize,
             timeout_ms: SERVICE_DEFAULT_TIMEOUT_MS,
             pending_handles: heapless::Vec::new(),
+            entity_waker: core::cell::Cell::new(None),
             rmw_gid: [0u8; RMW_GID_SIZE],
             request_seq: AtomicSeqCounter::new(0),
             granted_qos: nros_rmw::QoSProfile::QOS_PROFILE_UNKNOWN,
@@ -1715,13 +1723,23 @@ impl ZenohServiceClient {
         }
         // Cannot fail — we just made room above.
         let _ = self.pending_handles.push((handle, seq));
+        // Issue 1940 — a waker installed before this request reaches its slot.
+        if let Some(waker) = self.entity_waker.take() {
+            if (handle as usize) < ZPICO_MAX_PENDING_GETS {
+                let idx = self.session_index * ZPICO_MAX_PENDING_GETS + handle as usize;
+                REPLY_WAKERS[idx].register(&waker);
+            }
+            self.entity_waker.set(Some(waker));
+        }
     }
 }
 
 impl ClientTrait for ZenohServiceClient {
     type Error = TransportError;
 
-    fn register_waker(&self, waker: &core::task::Waker) {
+    fn register_waker(&self, waker: &core::task::Waker) -> bool {
+        // Issue 1940 — remembered for requests not sent yet (`track_outstanding`).
+        self.entity_waker.set(Some(waker.clone()));
         // Wake on any outstanding handle — `rclc_client_call`'s resend
         // can leave several gens in flight; any of them could complete
         // first (see `pending_handles` docs).
@@ -1732,6 +1750,7 @@ impl ClientTrait for ZenohServiceClient {
                 REPLY_WAKERS[idx].register(waker);
             }
         }
+        true
     }
 
     fn send_request_raw(&mut self, request: &[u8]) -> Result<i64, Self::Error> {

@@ -215,6 +215,15 @@ fn refusing<T, R>(f: impl FnOnce() -> R) -> R {
     r
 }
 
+/// Issue 1940 — subscriptions, services and clients are boxed WITH their wake
+/// cell (`Hosted<T>`), so the allocation to refuse is that size, not `T`'s.
+fn refusing_entity<T, R>(f: impl FnOnce() -> R) -> R {
+    REFUSE_SIZE.store(nros_rmw_cffi::boxed_entity_size::<T>(), Ordering::SeqCst);
+    let r = f();
+    REFUSE_SIZE.store(0, Ordering::SeqCst);
+    r
+}
+
 /// ONE test, deliberately: `REFUSE_SIZE` is process-global and `cargo test`
 /// runs a file's tests as threads of one process.
 #[test]
@@ -319,7 +328,7 @@ fn an_exhausted_heap_at_every_create_trampoline_is_bad_alloc_not_an_abort() {
     // --- subscription ------------------------------------------------------
     let create_subscription = vt.create_subscription.expect("create_subscription slot");
     let mut sub: rmw_subscription_t = zeroed();
-    let rc = refusing::<OomSubscriber, _>(|| unsafe {
+    let rc = refusing_entity::<OomSubscriber, _>(|| unsafe {
         create_subscription(
             &node,
             &msg_ts,
@@ -337,7 +346,7 @@ fn an_exhausted_heap_at_every_create_trampoline_is_bad_alloc_not_an_abort() {
     // --- service server ----------------------------------------------------
     let create_service = vt.create_service.expect("create_service slot");
     let mut srv: rmw_service_t = zeroed();
-    let rc = refusing::<OomServer, _>(|| unsafe {
+    let rc = refusing_entity::<OomServer, _>(|| unsafe {
         create_service(&node, &srv_ts, c"/add".as_ptr(), 0, &qos, &mut srv)
     });
     assert_eq!(rc, NROS_RMW_RET_BAD_ALLOC, "unboxable service server");
@@ -347,7 +356,7 @@ fn an_exhausted_heap_at_every_create_trampoline_is_bad_alloc_not_an_abort() {
     // --- service client ----------------------------------------------------
     let create_client = vt.create_client.expect("create_client slot");
     let mut cli: rmw_client_t = zeroed();
-    let rc = refusing::<OomClient, _>(|| unsafe {
+    let rc = refusing_entity::<OomClient, _>(|| unsafe {
         create_client(&node, &srv_ts, c"/add".as_ptr(), 0, &qos, &mut cli)
     });
     assert_eq!(rc, NROS_RMW_RET_BAD_ALLOC, "unboxable service client");
