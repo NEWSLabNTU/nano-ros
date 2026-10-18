@@ -245,6 +245,7 @@ fn subs_arena(
     rx_recv_size: usize,
     entry_struct: usize,
     ring_len_bytes: usize,
+    topics: Option<&[String]>,
 ) -> usize {
     // The SUBSCRIPTION-scoped count, not the broad one. `carries_qos_depth`
     // admits publishers and services, and says of a publisher that its depth
@@ -263,8 +264,15 @@ fn subs_arena(
         // `cmake/NanoRosEntityFacts.cmake`.
         .filter_map(|t| t.rsplit_once('='))
         .filter_map(|(head, d)| {
-            let ty = head.split_once('|').map_or(head, |(ty, _topic)| ty).trim();
-            d.trim().parse::<usize>().ok().map(|d| (ty, d))
+            let (ty, topic) = head.split_once('|').unwrap_or((head, ""));
+            // Issue 1970 -- a TIER's arena counts only the subscriptions its
+            // members register, picked out by topic.
+            if let Some(topics) = topics
+                && !topics.iter().any(|t| t == topic.trim())
+            {
+                return None;
+            }
+            d.trim().parse::<usize>().ok().map(|d| (ty.trim(), d))
         })
         .collect();
 
@@ -1059,49 +1067,52 @@ fn main() {
     // Issue 1970 -- the arithmetic as a function of the counts and the rows, so
     // a TIER's arena (its own members' counts, its own subscriptions' rows) is
     // priced by exactly the code that prices the image's.
-    let arena_required =
-        |counts: [Option<usize>; 7], rows: Option<&[SubEndpoint]>| -> Option<usize> {
-            match counts {
-                [
-                    Some(subs),
-                    Some(timers),
-                    Some(services),
-                    Some(acl),
-                    Some(asv),
-                    Some(scl),
-                    Some(gcs),
-                ] => Some(
-                    // phase-454 W5 -- the descriptor first, the env carriers second.
-                    // ONE road wherever the file can answer (issue 1199); the second
-                    // is what W9 retires, and what an image with no `nros sync` keeps.
-                    rows.and_then(|rows| {
-                        subs_arena_from_descriptor(
-                            rows,
-                            subs,
-                            PUBSUB_ENTRY_STRUCT,
-                            ring_len_bytes,
-                            rx_buf_size,
-                        )
-                    })
-                    .unwrap_or_else(|| {
-                        subs_arena(
-                            subs,
-                            pubsub_entry,
-                            rx_recv_size,
-                            PUBSUB_ENTRY_STRUCT,
-                            ring_len_bytes,
-                        )
-                    }) + timers * TIMER_ENTRY
-                        + services * service_entry
-                        + acl * action_client_entry
-                        + asv * action_server_entry
-                        + scl * service_client_entry
-                        + gcs * guard_condition_entry
-                        + ARENA_BASE_OVERHEAD,
-                ),
-                _ => None,
-            }
-        };
+    let arena_required = |counts: [Option<usize>; 7],
+                          rows: Option<&[SubEndpoint]>,
+                          topics: Option<&[String]>|
+     -> Option<usize> {
+        match counts {
+            [
+                Some(subs),
+                Some(timers),
+                Some(services),
+                Some(acl),
+                Some(asv),
+                Some(scl),
+                Some(gcs),
+            ] => Some(
+                // phase-454 W5 -- the descriptor first, the env carriers second.
+                // ONE road wherever the file can answer (issue 1199); the second
+                // is what W9 retires, and what an image with no `nros sync` keeps.
+                rows.and_then(|rows| {
+                    subs_arena_from_descriptor(
+                        rows,
+                        subs,
+                        PUBSUB_ENTRY_STRUCT,
+                        ring_len_bytes,
+                        rx_buf_size,
+                    )
+                })
+                .unwrap_or_else(|| {
+                    subs_arena(
+                        subs,
+                        pubsub_entry,
+                        rx_recv_size,
+                        PUBSUB_ENTRY_STRUCT,
+                        ring_len_bytes,
+                        topics,
+                    )
+                }) + timers * TIMER_ENTRY
+                    + services * service_entry
+                    + acl * action_client_entry
+                    + asv * action_server_entry
+                    + scl * service_client_entry
+                    + gcs * guard_condition_entry
+                    + ARENA_BASE_OVERHEAD,
+            ),
+            _ => None,
+        }
+    };
     let model_required = arena_required(
         [
             declared_subs,
@@ -1113,6 +1124,7 @@ fn main() {
             declared_guard_conditions,
         ],
         sub_rows.as_deref(),
+        None,
     );
     let derived_arena = match model_required {
         Some(required) => required.max(ARENA_FLOOR),
@@ -1151,9 +1163,30 @@ fn main() {
     // derived beside it would be smaller than what the author asked for.
     let tier_sizings = tier_sizings(
         sizing.as_ref(),
-        &|counts, rows| arena_required(counts, rows).map(|r| r.max(ARENA_FLOOR)),
+        &|counts, rows, topics| {
+            arena_required(counts, rows, Some(topics)).map(|r| r.max(ARENA_FLOOR))
+        },
         rx_buf_size,
         rx_recv_size,
+        &[
+            (
+                "NROS_EXECUTOR_MAX_CBS",
+                described_image_count(
+                    sizing.as_ref(),
+                    "callback_slots",
+                    nros_sizing_descriptor::Image::callback_slots,
+                ),
+            ),
+            (
+                "NROS_EXECUTOR_MAX_NODES",
+                described_image_count(
+                    sizing.as_ref(),
+                    "node_count",
+                    nros_sizing_descriptor::Image::node_count,
+                ),
+            ),
+            ("NROS_EXECUTOR_ARENA_SIZE", Some(derived_arena)),
+        ],
     );
     let tier_sizings_src = tier_sizings_literal(&tier_sizings);
 
@@ -2100,9 +2133,10 @@ struct TierSizingRow {
 /// image's arena is).
 fn tier_sizings(
     desc: Option<&nros_sizing_descriptor::SizingDescriptor>,
-    arena: &dyn Fn([Option<usize>; 7], Option<&[SubEndpoint]>) -> Option<usize>,
+    arena: &dyn Fn([Option<usize>; 7], Option<&[SubEndpoint]>, &[String]) -> Option<usize>,
     rx_buf_size: usize,
     rx_recv_size: usize,
+    derived: &[(&str, Option<usize>)],
 ) -> Vec<TierSizingRow> {
     let Some(desc) = desc else {
         return Vec::new();
@@ -2111,15 +2145,13 @@ fn tier_sizings(
         return Vec::new();
     }
     // A STATED size is the author's: it outranks a derived one, for the image
-    // and so for its tiers.
-    for knob in [
-        "NROS_EXECUTOR_MAX_CBS",
-        "NROS_EXECUTOR_MAX_NODES",
-        "NROS_EXECUTOR_ARENA_SIZE",
-    ] {
+    // and so for its tiers. A rung that delivers the image's OWN derived value
+    // (the cmake entity inventory forwards `MAX_CBS` / `MAX_NODES` as env
+    // carriers, equal to the descriptor's `[image]` fact) states nothing.
+    for (knob, own) in derived {
         let probe = usize::MAX;
         let v = env_usize(knob, probe);
-        if v != probe && v != 0 {
+        if v != probe && v != 0 && Some(v) != *own {
             println!(
                 "cargo::warning=nros-node: `{knob}` is stated ({v}), so the image's {} \
                  tiers keep the image's executor size each (issue 1970: a tier is sized \
@@ -2151,7 +2183,7 @@ fn tier_sizings(
         let rows =
             descriptor_subscriptions(&own, rx_buf_size, rx_recv_size, in_place_dispatch_trusted());
         let (Some(arena), Some(cbs), Some(nodes)) = (
-            arena(counts, rows.as_deref()),
+            arena(counts, rows.as_deref(), &t.subscription_topics),
             img.callback_slots().stated().copied(),
             img.node_count().stated().copied(),
         ) else {
