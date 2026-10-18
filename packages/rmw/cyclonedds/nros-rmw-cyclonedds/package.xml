@@ -24,6 +24,5 @@
     -->
     <nano_ros_provides kind="rmw" name="cyclonedds"/>
     <nano_ros_provides kind="rmw" name="rmw-cyclonedds"/>
-    <nano_ros_provides kind="rmw" name="rmw-cyclonedds-cffi"/>
   </export>
 </package>

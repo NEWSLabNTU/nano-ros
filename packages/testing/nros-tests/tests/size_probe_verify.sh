@@ -36,7 +36,7 @@ cd "$(git rev-parse --show-toplevel)"
 # shellcheck source=../../../../scripts/build/cargo.sh
 . "$(git rev-parse --show-toplevel)/scripts/build/cargo.sh"
 HEADER="$(nros_locate_artifact c-config-header)"
-FEATURES="rmw-zenoh,platform-posix,ros-humble"
+FEATURES="rmw-cffi,platform-posix,ros-humble"  # phase-506 W4d: nros-c names no backend
 JOBS="${JOBS:-8}"
 SOAK_ROUNDS="${SOAK_ROUNDS:-3}"
 
@@ -92,7 +92,7 @@ if installed_targets="$(rustup target list --installed)" \
         && nros_grep_q '^i686-unknown-linux-gnu$' <<<"$installed_targets"; then
     cargo clean -p nros-c >/dev/null
     cargo build -p nros-c --target i686-unknown-linux-gnu \
-        --features rmw-zenoh,platform-posix,ros-humble \
+        --features rmw-cffi,platform-posix,ros-humble \
         -j "$JOBS" 2>&1 | tail -3 || true
     # nros-c emits the same header path under the 32-bit build's
     # OUT_DIR; capture sizes from the canonical install location.

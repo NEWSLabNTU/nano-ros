@@ -1784,8 +1784,6 @@ dependencies = [
  "nros-platform-cffi",
  "nros-rmw",
  "nros-rmw-metadata",
- "nros-rmw-xrce-cffi",
- "nros-rmw-zenoh",
  "panic-halt",
  "pastey",
  "portable-atomic",
@@ -1839,8 +1837,6 @@ dependencies = [
  "nros-platform-cffi",
  "nros-rmw",
  "nros-rmw-metadata",
- "nros-rmw-xrce-cffi",
- "nros-rmw-zenoh",
  "panic-halt",
 ]
 

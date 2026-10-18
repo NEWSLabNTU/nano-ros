@@ -44,15 +44,6 @@ use panic_halt as _;
 #[cfg(test)]
 use nros_platform_cffi as _;
 
-// Phase 241.D3-rev — single-runtime umbrella: force-link the selected RMW backend
-// rlib into this staticlib and auto-register it before `main`. `nros-c` is the
-// staticlib root, so an unreferenced backend rlib is DCE'd entirely; `rmw_backend`
-// references the backend's `register()` (pulling its closure + the cffi vtable
-// install) and installs an `.init_array` ctor. Folds in the retired
-// `nros-rmw-{zenoh,xrce}-cffi-staticlib` wrappers.
-#[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce"))]
-mod rmw_backend;
-
 #[cfg(feature = "alloc")]
 extern crate alloc;
 

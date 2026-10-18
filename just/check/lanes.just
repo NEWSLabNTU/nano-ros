@@ -1127,9 +1127,11 @@ compile-smoke:
     echo "  feature alone (issue 1468), and nros-node param-services heap-free (issue 1812)."
 
 # Check C++ headers: formatting + freestanding syntax + nros-cpp clippy. The
-# clippy (rmw-zenoh-cffi) + syntax probe COMPILE nros-cpp/nros-c (zpico-sys pulls
-# the zenoh-pico source submodule) → source-dependent → build tier (check-build),
-# NOT the source-free push lane.
+# clippy + syntax probe COMPILE nros-cpp/nros-c → build tier (check-build), NOT
+# the source-free push lane. (The clippy took `rmw-zenoh-cffi` until phase-506
+# W4d deleted it — RFC-0071 D9, the API crates name no backend — so it lints the
+# `rmw-cffi` surface now; its target dir keeps its `-zenoh` name, whose
+# `.gitignore` row `check-scoped-target-dirs-ignored` holds.)
 [private]
 cpp: cpp-fmt
     #!/usr/bin/env bash
@@ -2544,7 +2546,7 @@ cpp: cpp-fmt
     # Green on a fresh dir, red on the second run — which is why it read as a
     # race rather than as a lane that overwrites its own input.
     CARGO_TARGET_DIR="$gen_clippy_zenoh" \
-        cargo clippy --quiet -p nros-cpp --no-default-features --features "std,rmw-zenoh-cffi,platform-posix,ros-humble"
+        cargo clippy --quiet -p nros-cpp --no-default-features --features "std,rmw-cffi,platform-posix,ros-humble"
     echo "All C++ checks passed!"
 
 # `decoupling` is REWRITTEN, not retired (phase-444 W4.b, issue 1219, which

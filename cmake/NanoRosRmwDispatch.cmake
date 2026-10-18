@@ -72,8 +72,6 @@ set(_NROS_RMW_DISPATCH_DIR "${CMAKE_CURRENT_LIST_DIR}"
 #   NROS_RMW_PACKAGE_DIR            the dir holding that package.xml
 #   NROS_RMW_CMAKE_DIR              the cmake project to add_subdirectory()
 #   NROS_RMW_LINK_STRATEGY          `umbrella` | `cmake` (RFC-0094 D5)
-#   NROS_RMW_UMBRELLA_CFFI_FEATURE  the nros-cpp cffi feature, or ""
-#   NROS_RMW_C_CFFI_FEATURE         the nros-c cffi feature, or ""
 #   NROS_RMW_RLIB_DEP               backend rlib bundled in the umbrella, or ""
 #   NROS_RMW_EDITION_FEATURE        that rlib's feature for an edition, with
 #                                   `{edition}` unsubstituted, or "" (issue 1893)
@@ -98,8 +96,6 @@ set(_NROS_RMW_DISPATCH_VARS
     NROS_RMW_PACKAGE_DIR
     NROS_RMW_CMAKE_DIR
     NROS_RMW_LINK_STRATEGY
-    NROS_RMW_UMBRELLA_CFFI_FEATURE
-    NROS_RMW_C_CFFI_FEATURE
     NROS_RMW_RLIB_DEP
     NROS_RMW_EDITION_FEATURE
     NROS_RMW_CARGO_FEATURE
@@ -351,7 +347,7 @@ endfunction()
 # ---------------------------------------------------------------------------
 # nros_rmw_is_known(<name> <out_var>) — TRUE when a provider announces <name>.
 #
-# Aliases count: `rmw-zenoh` and `rmw-zenoh-cffi` reach the same backend, and
+# Aliases count: `zenoh` and `rmw-zenoh` reach the same backend, and
 # `nros_rmw_dispatch` accepts them, so a validator that refused them would
 # reject a name the dispatch handles. `nros_rmw_known` lists one CANONICAL name
 # per provider (a drop-down offering three spellings of one choice is worse than

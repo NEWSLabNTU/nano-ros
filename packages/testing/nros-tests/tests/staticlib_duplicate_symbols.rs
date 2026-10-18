@@ -11,8 +11,8 @@
 //! bundling.
 //!
 //! **Now (241.D3-rev / phase-249 single-runtime).** The C umbrella bundles the
-//! zenoh backend (rlib dep) into ONE archive (`cargo build -p nros-c --features
-//! platform-posix,rmw-zenoh`). There is no second archive, so "duplicate symbols
+//! zenoh backend (rlib dep) into ONE archive (since phase-506 W4d through the
+//! generated image crate — `scripts/build/link-determinism-fixture.sh`). There is no second archive, so "duplicate symbols
 //! across a pair" is moot — and the D3 goal it was a precondition for is now the
 //! direct assertion: the single `libnros_c.a` links a host binary with
 //! **`-u nros_rmw_zenoh_register`** and **NO `--allow-multiple-definition`**, with

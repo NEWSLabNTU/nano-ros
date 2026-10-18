@@ -57,8 +57,8 @@ NROS_CARGO_ARCHIVE_ARGS := --target $(NROS_NUTTX_TRIPLE) --profile release --tar
 NROS_CARGO_LIB_DIR := $(patsubst %/,%,$(dir $(call nros_artifact,c-archive,$(NROS_CARGO_ARCHIVE_ARGS))))
 # Issue 1636 — exactly ONE Rust staticlib reaches the kernel link.
 #
-# `libnros_cpp.a` bundles `nros-c` (nros-cpp depends on it, and the image crate
-# `nros-c/rmw-<x>`), so it already defines every `nros_*` C-ABI symbol
+# `libnros_cpp.a` bundles `nros-c` (nros-cpp depends on it, and its image crate
+# bundles the backend), so it already defines every `nros_*` C-ABI symbol
 # `libnros_c.a` does (measured: 299 of 299). Linking BOTH defined 392 strong
 # symbols twice — 297 `nros_*`, the `rcl*`/`rmw_*` compat surface, the QoS and
 # `__NROS_SIZE_*` constants, and `REGISTRY`, the backend registry — from two

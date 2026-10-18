@@ -103,16 +103,10 @@ metadata-mode = ["nros/metadata-mode", "nros-c/metadata-mode", "dep:nros-rmw-met
 profile-mode = ["nros/profile-mode", "rmw-cffi"]
 
 # Phase 252 / issue 0073 — E2E message-integrity (CRC) for the C++ API. Forwards
-# to nros + nros-c + the zenoh backend's safety-e2e, and surfaces
-# nros_cpp_integrity_status_t + nros_cpp_subscription_take_validated.
-safety-e2e = ["nros/safety-e2e", "nros-c/safety-e2e", "nros-rmw-zenoh?/safety-e2e"]
-# The backend is also a DIRECT dep here (`dep:`) so nros-cpp's own `rmw_backend`
-# module can force-link it: nros-cpp is the staticlib root, and a `#[used]` anchor
-# living in the `nros-c` dependency is DCE'd before nros-cpp's archive is emitted.
-# cargo dedups the backend rlib with nros-c's, so this adds no second closure.
-rmw-zenoh-cffi = ["rmw-cffi", "nros-c/rmw-zenoh", "dep:nros-rmw-zenoh"]
-rmw-xrce-cffi = ["rmw-cffi", "nros-c/rmw-xrce", "dep:nros-rmw-xrce-cffi"]
-rmw-cyclonedds-cffi = ["rmw-cffi", "nros-c/rmw-cyclonedds"]
+# to nros + nros-c, and surfaces nros_cpp_integrity_status_t +
+# nros_cpp_subscription_take_validated. The backend half is the image crate's
+# (RFC-0071 D9), exactly as for `nros-c`.
+safety-e2e = ["nros/safety-e2e", "nros-c/safety-e2e"]
 
 # Phase 124.A — zero-copy publisher/subscriber loan ABI exposed
 # through the C++ FFI (`nros_cpp_publisher_loan` / `_commit` /
@@ -152,15 +146,6 @@ param-services = ["param-store", "nros/param-services", "nros-c/param-services"]
 lifecycle-services = ["rmw-cffi", "nros-c/lifecycle-services"]
 # issue 1589 — `/rosout` from C++ (`<rclcpp/rosout.hpp>`); forwards the C bridge.
 rosout = ["rmw-cffi", "nros-c/rosout"]
-
-# Zenoh transport refinements (require rmw-zenoh-cffi)
-# Phase 128.E.1 — `link-tcp` / `link-udp-unicast` retired.
-
-# XRCE transport refinements (require rmw-xrce-cffi)
-# Phase 248 C5c — inert markers (nros's vestigial aliases removed); forward to
-# nros-c's equivalents so downstream cmake passing the names still resolves.
-xrce-udp = ["nros-c/xrce-udp"]
-xrce-serial = ["nros-c/xrce-serial"]
 
 # phase-361 W8.c / issue 0594 — `global-allocator` is GONE from this crate. It
 # was a dead declaration: zero `cfg` sites, forwarding nowhere, while the
@@ -298,16 +283,12 @@ nros-rmw = { version = "0.6.0", path = "../../core/nros-rmw", default-features =
 # Issue 1635 / 1676 — the `/diagnostics` reporter (`src/diag.rs`) is
 # `nros::contract::DiagSink`, shared with the Rust entry; `nros-diagnostics`
 # arrives through `nros`'s `rmw-cffi`, not as a dep of this crate.
-# Backend deps for nros-cpp's own root-crate force-link (`src/rmw_backend.rs`);
-# shared with nros-c's copy by cargo (one backend rlib).
 # phase-308 — the recording RMW backend. Optional and pulled in ONLY by
 # `metadata-mode`, so a firmware build never links it. Without this dep the
 # backend is an orphan crate: the probe links `libnros_cpp.a`, the backend's
 # `.init_array` self-registration is never in the image, and `NROS_RMW=metadata`
 # resolves to an unknown backend.
 nros-rmw-metadata = { path = "../../rmw/metadata", optional = true }
-nros-rmw-zenoh = { workspace = true, optional = true, default-features = false }
-nros-rmw-xrce-cffi = { workspace = true, optional = true, default-features = false }
 # phase-361 W8.c — `zpico-alloc` is gone with the duplicate `HeapStats` static;
 # `alloc-stats` forwards to `nros-c`, which forwards to `nros-platform`.
 panic-halt = { version = "1", optional = true }

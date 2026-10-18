@@ -38,6 +38,5 @@
     -->
     <nano_ros_provides kind="rmw" name="zenoh"/>
     <nano_ros_provides kind="rmw" name="rmw-zenoh"/>
-    <nano_ros_provides kind="rmw" name="rmw-zenoh-cffi"/>
   </export>
 </package>

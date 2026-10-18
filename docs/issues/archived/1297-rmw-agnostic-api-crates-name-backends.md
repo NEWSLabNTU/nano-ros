@@ -1,15 +1,16 @@
 ---
 id: 1297
 title: "The C/C++ API crates select and register backends BY NAME — per-backend Cargo features, `register()` calls and `extern` decls that RFC-0071 D2 says core-facing crates must not carry"
-status: open
+status: resolved
 type: tech-debt
 area: api, rmw
 severity: medium
 found: 2026-09-11
+resolved: 2026-10-19
 related: [1219, RFC-0071, RFC-0031, phase-444, phase-506]
 ---
 
-**Home: [phase-506](../roadmap/phase-506-api-crates-carry-only-the-api.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+**Home: [phase-506](../../roadmap/phase-506-api-crates-carry-only-the-api.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## What
 
@@ -67,3 +68,27 @@ register_crate` / `register_dir`), forwarding the platform through the
 descriptor's new `[rmw.provides.cargo.platform_features]` table, and anchors its
 `register`. The features themselves stay until the Zephyr west road, the NuttX
 Makefile and PX4 move too (W4b/W4c); s32ds keeps a shim.
+
+## Resolution (2026-10-19) — phase-506 W4d
+
+The features are gone. `nros-c` and `nros-cpp` keep `rmw-cffi` and lose
+`rmw-zenoh` / `rmw-xrce` / `rmw-cyclonedds`, the `cffi-*` aliases,
+`rmw-<name>-cffi`, `xrce-udp` / `xrce-serial`, every `nros-rmw-zenoh?/…`
+forward and both optional backend deps. `nros-c/src/rmw_backend.rs` is deleted;
+`nros-cpp`'s shrank to `metadata_backend.rs`, the recording backend's anchor
+under `metadata-mode`, which is not a backend an image selects. `nros`'s
+`rmw-cyclonedds` marker is renamed for its capability,
+`needs-type-descriptors`, and the facade turns it on for any linked backend
+whose descriptor names a `type_register_crate`.
+
+Every road that bundles an rlib backend builds the generated image crate: the
+cmake road (W4a), Zephyr west (W4b), the NuttX Makefile (W4c), and now PX4's
+bridge recipe and the link-determinism fixture through the generator's `-P`
+script mode. The descriptor fields that named the old features are refused if
+stated (`[rmw.link] c_cffi_feature`, `[rmw] cffi_feature`), the `rmw-<x>-cffi`
+`package.xml` announcements are dropped, `nros-c` no longer publishes
+`cargo:rmw_backends` (each backend announces itself over its own `links` key),
+and `check-nros-c-feature-agreement` now refuses any glue that still asks an
+API crate for a backend.
+
+`check-rmw-agnostic`'s baseline is EMPTY: 41 lines over 7 files to 0.

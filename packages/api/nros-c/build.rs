@@ -35,21 +35,11 @@ fn emit_include_dirs() {
     // `nros_c-static`'s INTERFACE beside this crate's own two. One consumer-
     // facing include set, whichever build system asks for it.
     println!("cargo:platform_include={manifest_dir}/../../platform/nros-platform-api/include");
-    // phase-499 W3 -- the RMW backends this build links, so a cargo-rooted
-    // C/C++ image (`DEP_NROS_C_RMW_BACKENDS`) GENERATES its
-    // `nros_app_register_backends()` from the same fact the cmake road's
-    // `nano_ros_link_rmw()` does, instead of the application writing it.
-    // Derived from the enabled `rmw-<backend>` features, never a list of names
-    // (RFC-0071 D2: this crate receives capabilities, not backends). Each
-    // backend's registration symbol is `nros_rmw_<backend>_register`, the
-    // convention `nano_ros_link_rmw()` relies on too. `rmw-cffi` is the shim
-    // every backend feature enables, not a backend.
-    let mut backends: Vec<String> = std::env::vars()
-        .filter_map(|(k, _)| k.strip_prefix("CARGO_FEATURE_RMW_").map(str::to_lowercase))
-        .filter(|b| b != "cffi")
-        .collect();
-    backends.sort();
-    println!("cargo:rmw_backends={}", backends.join(","));
+    // phase-499 W3 published `cargo:rmw_backends` here, derived from this
+    // crate's `rmw-<backend>` features. Those features are gone (RFC-0071 D9,
+    // phase-506 W4d): each backend announces ITSELF now, through its own
+    // `links` key (`cargo:nros_rmw_backend=<name>`), which
+    // `nros_cc_flags::backends::collect` reads as `DEP_*_NROS_RMW_BACKEND`.
 }
 
 /// Is cargo feature `feat` enabled for this build? cargo exports `CARGO_FEATURE_<NAME>`

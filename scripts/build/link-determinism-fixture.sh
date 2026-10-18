@@ -23,29 +23,38 @@ repo_root="$(cd "$script_dir/../.." && pwd)"
 out_dir="$(nros_build_dir "$NROS_KIND_LINK_DETERMINISM")"
 
 echo "== link-determinism fixture: host staticlib pair =="
-rm -rf "$out_dir"
+# Only this fixture's OUTPUTS are cleared: the image crate and its target dir
+# below persist, so a re-run is incremental rather than a zenoh-pico rebuild.
+rm -f "$out_dir/libnros_c.a" "$out_dir/bare.c" "$out_dir/lkproof" "$out_dir/.compile-ok"
 mkdir -p "$out_dir"
 
 # Phase 241.D3-rev — single-runtime model: the C umbrella `libnros_c.a` bundles the
 # zenoh backend (rlib dep) into ONE archive, so a host C binary links a single Rust
 # staticlib with one `std` + one `REGISTRY` — no `--allow-multiple-definition`.
-( cd "$repo_root" \
-    && cargo build -p nros-c --features std,platform-posix,rmw-zenoh )
+#
+# RFC-0071 D9 (phase-506 W4d) — `nros-c` names no backend, so the archive is
+# built from the IMAGE CRATE `cmake/NanoRosImageCrate.cmake` generates (its
+# `-P` script mode): `nros-c` plus the backend the zenoh descriptor names, with
+# the platform forwarded through that descriptor. Its lib is named `nros_c`, so
+# the archive keeps its name. It is its own cargo root, so it gets its own
+# target dir (issue 0616) — which also retires the `CARGO_TARGET_DIR` hazard
+# this script used to guard (a foreign `target/debug/libnros_c.a` built by
+# another lane, issue 0400's class): nothing else writes there.
+image_dir="$out_dir/image"
+if ! image="$(cmake --log-level=WARNING -DNROS_IMAGE_FLAVOR=c -DNROS_IMAGE_RMW=zenoh \
+        -DNROS_IMAGE_EDITION=humble -DNROS_IMAGE_OUT_DIR="$image_dir" \
+        "-DNROS_IMAGE_API_FEATURES=std;platform-posix;rmw-cffi;ros-humble" \
+        -P "$repo_root/cmake/NanoRosImageCrate.cmake")"; then
+    echo "link-determinism: generating the zenoh image crate failed" >&2
+    exit 1
+fi
+target_dir="$image_dir/target"
+cargo build --manifest-path "${image%% *}" --no-default-features \
+    --features "${image#* }" --target-dir "$target_dir"
 
-# Copy from the target dir cargo ACTUALLY wrote to. Hardcoding
-# `$repo_root/target` silently copies a foreign archive whenever
-# CARGO_TARGET_DIR is set — which is exactly the ROS distrobox setup
-# (`scripts/dev/ros2-box-env.sh` redirects it so host-built build scripts don't
-# get re-run against the box's older glibc). The box then shipped the HOST's
-# `target/debug/libnros_c.a`, built by some other lane with different features,
-# and the validator failed with "did not pull the backend register entry" —
-# a link-model error message for what was really a stale file from another
-# machine image. Issue 0400 is the same class in the justfile recipes.
-target_dir="${CARGO_TARGET_DIR:-$repo_root/target}"
-case "$target_dir" in /*) ;; *) target_dir="$repo_root/$target_dir" ;; esac
 # profile-literal-ok: unprofiled: the determinism fixture builds with a plain `cargo build`
 built="$target_dir/debug/libnros_c.a"
-[ -f "$built" ] || { echo "no archive at $built (CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-unset})" >&2; exit 1; }
+[ -f "$built" ] || { echo "no archive at $built" >&2; exit 1; }
 cp "$built" "$out_dir/"
 
 # phase-329 W5 — the single-runtime LINK PROOF moves to the BUILD stage (was a

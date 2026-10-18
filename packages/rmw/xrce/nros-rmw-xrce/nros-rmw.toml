@@ -13,7 +13,8 @@
 #   cargo_feature = "..."    `<kind>-<name>`
 #   cmake_value = "..."      the canonical name
 #   c_define_token = "..."   `UPPER(name)`
-#   cffi_feature = "..."     `<cargo_feature>-cffi`
+#   cffi_feature = "..."     `<cargo_feature>-cffi` (retired with the
+#                            `nros-c`/`nros-cpp` features it named — phase-506 W4d)
 #
 # All five are DERIVED now (`cargo-nano-ros/src/derived_descriptor.rs`, shared
 # by `build.rs` and the library). The names come from `package.xml`, which is
@@ -42,11 +43,6 @@ target = "nros_rmw_xrce"
 
 [rmw.link]
 rlib_dep = "nros-rmw-xrce-cffi"
-# See the zenoh descriptor's note: this names the feature `nros-cpp` forwards
-# (`rmw-xrce-cffi = [… "nros-c/rmw-xrce" …]`), never the `cffi-xrce-c`
-# back-compat alias, so both cargo invocations resolve `nros-c` to ONE feature
-# set and the shared generated header has one content. Issue 1461.
-c_cffi_feature = "rmw-xrce"
 needs_cxx_linker = false
 
 [rmw.capabilities]

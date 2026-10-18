@@ -225,8 +225,8 @@ nros_apply_panic_policy(platform "integrations/s32ds")
 # Which ONE runtime archive the image links (issue 1664, the NuttX fix of
 # issue 1636).
 #
-# `libnros_cpp.a` bundles nros-c (nros-cpp's `rmw-<x>-cffi` features forward
-# `nros-c/rmw-<x>`), so it defines every `nros_*` C-ABI symbol `libnros_c.a`
+# `libnros_cpp.a` bundles nros-c (nros-cpp depends on it, and its image crate
+# bundles the backend), so it defines every `nros_*` C-ABI symbol `libnros_c.a`
 # does. Linking BOTH puts two different nros-c builds in one image — every
 # `nros_*`, the QoS constants and `REGISTRY`, the backend registry, twice, each
 # copy with its own statics. NuttX measured 392 such duplicates. So the image

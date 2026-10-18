@@ -8,12 +8,10 @@
 //! whose C is compiled by `cc` in `build.rs` -- had no generator, so each
 //! application wrote the function by hand. RFC-0089 (2026-10-13) keeps that
 //! configuration out of user code: this writes the same TU from the backends
-//! `nros-c` publishes over its `links = "nros_c"` key (`cargo:rmw_backends`).
+//! the image depends on, each of which announces itself over its own `links`
+//! key (RFC-0071 D9).
 
 use std::path::PathBuf;
-
-/// The `links` metadata `nros-c`'s build script publishes.
-pub const BACKENDS_ENV: &str = "DEP_NROS_C_RMW_BACKENDS";
 
 /// The TU's text for `backends` (each `nros_rmw_<name>_register`), byte for
 /// byte the shape `nano_ros_link_rmw()` writes.
@@ -44,7 +42,7 @@ pub fn source(backends: &[&str]) -> String {
 ///
 /// # Panics
 ///
-/// When `nros-c` published no backend: an image with no RMW cannot open a
+/// When no dependency announced a backend: an image with no RMW cannot open a
 /// session, and saying so here beats an empty registration that fails at
 /// `rclc_support_init` on the target.
 /// The backends this crate's DIRECT dependencies announce.
@@ -52,15 +50,13 @@ pub fn source(backends: &[&str]) -> String {
 /// RFC-0071 D9 (phase-506 W4c) — each backend crate declares `links =
 /// "nros_rmw_<name>"` and prints `cargo:nros_rmw_backend=<name>`, which cargo
 /// hands a direct dependent as `DEP_NROS_RMW_<NAME>_NROS_RMW_BACKEND`. The image
-/// chooses its backend by depending on it, and this reads that choice; the
-/// `nros-c` feature list ([`BACKENDS_ENV`]) is still honoured until the API
-/// crates drop their backend features. Sorted and de-duplicated.
+/// chooses its backend by depending on it, and this reads that choice. (W4d
+/// retired the other source, `nros-c`'s `DEP_NROS_C_RMW_BACKENDS`, with the
+/// backend features it was derived from.) Sorted and de-duplicated.
 pub fn collect(vars: impl Iterator<Item = (String, String)>) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for (k, v) in vars {
-        if k == BACKENDS_ENV {
-            out.extend(v.split(',').filter(|b| !b.is_empty()).map(str::to_string));
-        } else if k.starts_with("DEP_") && k.ends_with("_NROS_RMW_BACKEND") && !v.is_empty() {
+        if k.starts_with("DEP_") && k.ends_with("_NROS_RMW_BACKEND") && !v.is_empty() {
             out.push(v);
         }
     }
@@ -93,10 +89,10 @@ mod tests {
     use super::source;
 
     #[test]
-    fn collects_announced_and_legacy_backends() {
+    fn collects_announced_backends() {
         let vars = [
             ("DEP_NROS_RMW_ZENOH_NROS_RMW_BACKEND", "zenoh"),
-            ("DEP_NROS_C_RMW_BACKENDS", "zenoh"),
+            ("DEP_NROS_C_RMW_BACKENDS", "cyclonedds"),
             ("DEP_NROS_RMW_XRCE_NROS_RMW_BACKEND", "xrce"),
             ("UNRELATED", "x"),
         ]

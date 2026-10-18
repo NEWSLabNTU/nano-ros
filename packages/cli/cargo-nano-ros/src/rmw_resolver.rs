@@ -13,10 +13,10 @@
 //! `rmw-X` feature codegen places on the entry's board dep.
 //!
 //! The umbrella is SELECTION-agnostic, which issue 1295 showed is not the same
-//! as RMW-agnostic: `nros` declares `rmw-cyclonedds`, a marker forwarding
-//! `nros-node/needs-type-descriptors`, and an image that links Cyclone without
-//! it cannot create a publisher. So one `cargo_feature` name is offered to BOTH
-//! crates and each takes it only if it declares it (`facade.rs`).
+//! as needing nothing: an image that links Cyclone without `nros`'s
+//! `needs-type-descriptors` cannot create a publisher. The facade turns that on
+//! for a backend whose descriptor names a `type_register_crate` (`facade.rs`);
+//! `nros` itself names the capability, never a backend (RFC-0071).
 //!
 //! It lives in `cargo-nano-ros` (the lower crate) so both the scaffolder here
 //! and the orchestration loader in `nros-cli-core` share one mapping.
@@ -83,10 +83,6 @@ pub struct ResolvedRmw {
 /// both consumed via duplicated conditionals before.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RmwDispatch {
-    /// The C/C++ umbrella (`nros-c`/`nros-cpp`) cffi feature that bundles +
-    /// force-links this backend, e.g. `"rmw-zenoh-cffi"`. The W11 synthesized
-    /// `nros_ws_runtime` crate sets this on its `nros-cpp` dep.
-    pub umbrella_cffi_feature: &'static str,
     /// The pure-Rust backend crate force-linked **into** the umbrella as an rlib
     /// dep, e.g. `Some("nros-rmw-zenoh")`. `None` for a backend that is not a
     /// Rust crate — cyclonedds and uorb are C/C++ CMake projects.
@@ -98,14 +94,6 @@ pub struct RmwDispatch {
     pub rlib_dep: Option<&'static str>,
     /// `umbrella` | `cmake` — see `rmw_descriptor::LINK_STRATEGIES`.
     pub link_strategy: &'static str,
-    /// The `nros-c` feature that bundles this backend, or empty.
-    ///
-    /// AUTHORED per backend rather than derived, in the same way `cpp_define`
-    /// is. `umbrella_cffi_feature` is the `nros-cpp` half, which IS regular
-    /// (`<cargo_feature>-cffi`) — and the two must agree on which `nros-c`
-    /// feature they select, or a road building both crates into one target dir
-    /// resolves `nros-c` twice (issues 1461, 1100).
-    pub c_cffi_feature: &'static str,
     /// Whether the final link must use the C++ linker driver (libstdc++ on the
     /// line). True for cyclonedds (its wrapper is C++), even for C binaries.
     pub needs_cxx_linker: bool,
@@ -131,8 +119,9 @@ impl fmt::Display for UnknownRmw {
 impl std::error::Error for UnknownRmw {}
 
 /// The canonical backend name (`"zenoh"` / `"xrce"` / `"cyclonedds"`) from any
-/// accepted spelling — the bare name, the `rmw-<x>` feature spelling, or the
-/// legacy `rmw-<x>-cffi`. `None` for empty / unknown.
+/// accepted spelling — the bare name or the `rmw-<x>` feature spelling (the
+/// `rmw-<x>-cffi` one went with the API crates' features, phase-506 W4d).
+/// `None` for empty / unknown.
 ///
 /// This is the single alias table; the orchestration layer's `normalize_rmw`
 /// delegates here so there is one source of truth for RMW name recognition.
@@ -199,10 +188,8 @@ pub fn resolve_rmw(declared: &str) -> Result<ResolvedRmw, UnknownRmw> {
             register_fn: r.register_fn,
             type_register_crate: r.type_register_crate,
             dispatch: RmwDispatch {
-                umbrella_cffi_feature: r.cffi_feature,
                 rlib_dep: (!r.rlib_dep.is_empty()).then_some(r.rlib_dep),
                 link_strategy: r.link_strategy,
-                c_cffi_feature: r.c_cffi_feature,
                 needs_cxx_linker: r.needs_cxx_linker,
             },
         })
@@ -235,8 +222,8 @@ pub fn resolve_rmw_in(scan: &ScanResult, declared: &str) -> Result<ResolvedRmwIn
     let pkg = resolution.winner;
 
     // The CANONICAL name is the provider's first `rmw` announcement, not the
-    // string the consumer typed: a provider announcing `zenoh`, `rmw-zenoh` and
-    // `rmw-zenoh-cffi` has one canonical spelling, and the lowering must not
+    // string the consumer typed: a provider announcing `zenoh` and
+    // `rmw-zenoh` has one canonical spelling, and the lowering must not
     // depend on which alias the consumer reached it by.
     let canonical = pkg
         .provides
@@ -275,12 +262,10 @@ pub fn resolve_rmw_in(scan: &ScanResult, declared: &str) -> Result<ResolvedRmwIn
     let cargo_feature = crate::derived_descriptor::cargo_feature(RMW_KIND, &canonical);
     let cmake_value = crate::derived_descriptor::cmake_value(&canonical);
     let c_define_token = crate::derived_descriptor::c_define_token(&canonical);
-    let cffi_feature = crate::derived_descriptor::cffi_feature(&cargo_feature);
     for (field, stated, derived) in [
         ("cargo_feature", &d.stated_cargo_feature, &cargo_feature),
         ("cmake_value", &d.stated_cmake_value, &cmake_value),
         ("c_define_token", &d.stated_c_define_token, &c_define_token),
-        ("cffi_feature", &d.stated_cffi_feature, &cffi_feature),
     ] {
         agree_with_convention(&origin, field, stated, derived).map_err(fail)?;
     }
@@ -322,7 +307,6 @@ pub fn resolve_rmw_in(scan: &ScanResult, declared: &str) -> Result<ResolvedRmwIn
         cargo_feature,
         cmake_value,
         c_define_token,
-        cffi_feature,
         package: pkg.package.clone(),
         package_dir: pkg.dir.clone(),
         cmake_dir,
@@ -342,7 +326,6 @@ pub struct ResolvedRmwIn {
     pub cargo_feature: String,
     pub cmake_value: String,
     pub c_define_token: String,
-    pub cffi_feature: String,
     /// The `package.xml` `<name>`.
     pub package: String,
     /// The directory holding the provider's `package.xml`.
@@ -379,9 +362,9 @@ impl std::error::Error for RmwResolveError {}
 ///
 /// The scan-based sibling of [`known_rmw`], and the producer of the cmake
 /// `NROS_RMW_KNOWN` list. One entry per provider — its FIRST `rmw` provision —
-/// not one per announcement: `zenoh`, `rmw-zenoh` and `rmw-zenoh-cffi` are
-/// three ways to reach one backend, and listing all three in the cache
-/// drop-down would offer a user three choices that are one choice.
+/// not one per announcement: `zenoh` and `rmw-zenoh` are two ways to reach
+/// one backend, and listing both in the cache drop-down would offer a user
+/// two choices that are one choice.
 /// [`resolve_rmw_in`] still accepts every alias.
 ///
 /// Sorted rather than in scan order so the list does not reorder when an
@@ -446,7 +429,9 @@ mod tests {
     fn canonical_rmw_accepts_aliases() {
         assert_eq!(canonical_rmw("zenoh"), Some("zenoh"));
         assert_eq!(canonical_rmw("rmw-zenoh"), Some("zenoh"));
-        assert_eq!(canonical_rmw("rmw-zenoh-cffi"), Some("zenoh"));
+        // phase-506 W4d — the `-cffi` spelling named an API-crate feature that
+        // no longer exists, and no provider announces it any more.
+        assert_eq!(canonical_rmw("rmw-zenoh-cffi"), None);
         assert_eq!(canonical_rmw("rmw-cyclonedds"), Some("cyclonedds"));
         assert_eq!(canonical_rmw("nope"), None);
         // resolve_rmw accepts aliases via canonical_rmw.
@@ -504,10 +489,6 @@ mod tests {
                 scanned.c_define_token, baked.c_define_token,
                 "{name}: c_define_token"
             );
-            assert_eq!(
-                scanned.cffi_feature, baked.dispatch.umbrella_cffi_feature,
-                "{name}: cffi"
-            );
             let d = &scanned.descriptor;
             assert_eq!(d.cpp_define, baked.cpp_define, "{name}: cpp_define");
             assert_eq!(
@@ -517,10 +498,6 @@ mod tests {
             assert_eq!(
                 d.link_strategy, baked.dispatch.link_strategy,
                 "{name}: link_strategy"
-            );
-            assert_eq!(
-                d.c_cffi_feature, baked.dispatch.c_cffi_feature,
-                "{name}: c_cffi_feature"
             );
             assert_eq!(
                 d.needs_cxx_linker, baked.dispatch.needs_cxx_linker,

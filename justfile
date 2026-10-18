@@ -4122,7 +4122,7 @@ verify-kani:
     done
     echo ""
     echo "--- Verifying nros-c ---"
-    cargo kani -p nros-c --features "rmw-zenoh,platform-posix,ros-humble" || { echo "[FAIL] nros-c"; failed=$((failed + 1)); }
+    cargo kani -p nros-c --features "rmw-cffi,platform-posix,ros-humble" || { echo "[FAIL] nros-c"; failed=$((failed + 1)); }
     echo ""
     if [ "$failed" -gt 0 ]; then
         echo "[FAIL] $failed crate(s) failed verification"
@@ -5625,7 +5625,7 @@ doc-c:
     if [ ! -f "$header" ]; then
         echo "Generated header not found, building nros-c first..."
         # phase-361 W3 — `std` explicit (host build; nros-c `default = []` now).
-        cargo build -p nros-c --features "std,rmw-zenoh,platform-posix,ros-humble"
+        cargo build -p nros-c --features "std,rmw-cffi,platform-posix,ros-humble"
     fi
     mkdir -p target/doxygen/c
     (cd packages/api/nros-c && doxygen Doxyfile)

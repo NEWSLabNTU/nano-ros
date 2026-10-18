@@ -86,11 +86,12 @@ rmw-cffi = ["nros/rmw-cffi"]
 # Phase 252 / issue 0073 — E2E message-integrity (CRC + sequence gap/dup) for the
 # C/C++ API. Forwards to the `nros` umbrella (the CFFI integrity machinery +
 # `IntegrityStatus`) AND the zenoh backend's own `safety-e2e` (the CRC attach on
-# publish + validate on receive — `nros/safety-e2e` does not reach the backend;
-# Cargo features don't propagate upward). Surfaces `rclc_integrity_status_t` +
-# `rclc_polling_subscription_take_validated` across the C ABI. zenoh-only (the only
-# backend with the CRC path); `?` keeps it inert when zenoh isn't selected.
-safety-e2e = ["nros/safety-e2e", "nros-rmw-zenoh?/safety-e2e"]
+# publish + validate on receive). Surfaces `rclc_integrity_status_t` +
+# `rclc_polling_subscription_take_validated` across the C ABI. The backend half
+# is NOT spelled here (RFC-0071 D9): a backend that offers the `safety`
+# capability declares its own feature for it in `nros-rmw.toml`, and the
+# generated image crate (`cmake/NanoRosImageCrate.cmake`) turns it on there.
+safety-e2e = ["nros/safety-e2e"]
 
 
 # Phase 124.A — opt in to the zero-copy publisher loan / subscriber
@@ -107,56 +108,16 @@ lending = ["rmw-cffi", "nros/lending"]
 # default.
 trace-callbacks = ["nros/trace-callbacks"]
 
-# Phase 123.A.11 — `cffi-xrce-c` / `cffi-dds-cffi` / `cffi-zenoh-cffi`
-# DELETED. They previously selected which `extern fn
-# nros_rmw_<x>_register()` call site got compiled into
-# `rclc_support_init`. The auto-register pattern in each backend's
-# wrapper staticlib makes nros-c truly RMW-agnostic — one
-# `libnros_c.a` per target triple covers every backend.
-#
-# Compatibility shims: keep the feature names accepted so downstream
-# CMake glue that still passes them doesn't error. `cffi-xrce-c` also
-# links the C XRCE backend for Zephyr's in-tree staticlib path, where
-# downstream `nano_ros_link_rmw()` is not involved.
-# Phase 241.D3-rev — single-runtime umbrella. Bundle the selected RMW backend as an
-# rlib dep so `libnros_c.a` carries the C ABI + the cffi shim + the backend in ONE
-# archive: one `std`, one `REGISTRY`, one backend closure. The backend self-registers
-# via the `RMW_INIT_ENTRIES` linkme section (same path as a pure-Rust binary), walked
-# by `nros_rmw_cffi_walk_init_section` at `Executor::open`.
-#
-# This reverts Phase 134.fix's `dep:nros-rmw-zenoh` drop. That drop worked around a
-# *multi-staticlib* hazard — `libnros_c.a` AND `libnros_rmw_zenoh.a` each bundling a
-# crate-hash-distinct cffi/zenoh-pico instance, reconciled only by
-# `--allow-multiple-definition`, leaving each public no_mangle entry possibly bound
-# to the other instance's structs. With exactly one Rust staticlib that cannot occur:
-# one cffi instance, one VTABLE, one zenoh-pico. The linkme DUPCHECK that forced the
-# standalone-staticlib `.init_array` workaround likewise cannot collide.
-#
-# Backends are mutually exclusive — select exactly one. The backend rlib is
-# force-linked into the umbrella via `src/rmw_backend.rs` (a `pub use` of its
-# `register` + an `.init_array` ctor), NOT the linkme section: `nros-c` is the
-# staticlib root and would otherwise DCE the unreferenced backend rlib entirely.
-# (Mirrors the retired `nros-rmw-zenoh-staticlib` wrapper, now folded in here.)
-rmw-zenoh = ["rmw-cffi", "dep:nros-rmw-zenoh"]
-rmw-xrce = ["rmw-cffi", "dep:nros-rmw-xrce-cffi"]
-# Cyclone DDS is a C++ CMake lib linked separately (not a Rust staticlib) — the
-# umbrella only carries the cffi shim it registers against.
-rmw-cyclonedds = ["rmw-cffi"]
-# Back-compat shims (downstream cmake glue may still pass these names).
-cffi-xrce-c = ["rmw-xrce"]
-cffi-zenoh-cffi = ["rmw-zenoh"]
-cffi-dds-cffi = ["rmw-cyclonedds"]
-
-# Zenoh transport refinements (require rmw-zenoh-cffi)
-# Phase 128.E.1 — `link-tcp` / `link-udp-unicast` retired.
-
-# XRCE transport refinements (require rmw-xrce-cffi)
-# Phase 248 C5c — `nros`'s vestigial `xrce-udp`/`xrce-serial` aliases (chained
-# to inert/platform features) were removed; these stay as inert markers for
-# downstream cmake glue that may still pass the names. The XRCE transport mode
-# is selected by the linked backend + board, not these.
-xrce-udp = []
-xrce-serial = ["nros-node/posix-serial"]
+# RFC-0071 D9 (phase-506 W4d) — this crate names NO backend. It used to carry
+# a feature per backend (`rmw-zenoh`, `rmw-xrce`, `rmw-cyclonedds`), three
+# `cffi-*` aliases, the `xrce-udp`/`xrce-serial` markers, a `nros-rmw-<x>?/…`
+# forward on every platform arm and an optional dep per rlib backend, so that
+# `libnros_c.a` could bundle the one an image selected. That bundling moved to
+# the image crate `cmake/NanoRosImageCrate.cmake` generates per image: it
+# depends on this crate for the API and on the backend the image's
+# `nros-rmw.toml` names, forwards the platform through that descriptor's
+# `platform_features` table and anchors `<crate>::<register>()` past staticlib
+# DCE. Adding a backend therefore needs no edit here (issue 1297).
 
 # Functional capability — install the Rust `#[global_allocator]` routing
 # through the platform vtable (`nros_platform_alloc`/`_dealloc`). Phase 248:
@@ -208,20 +169,17 @@ critical-section = ["dep:critical-section"]
 platform-posix = [
     "nros-log/platform-clock",
     "nros-platform/platform-posix",
-    "nros-rmw-zenoh?/platform-posix",
 ]
 platform-zephyr = [
     "nros-log/platform-clock",
     "global-allocator",
     "critical-section",
     "nros-platform/platform-zephyr",
-    "nros-rmw-zenoh?/platform-zephyr",
 ]
 platform-freertos = [
     "nros-log/platform-clock",
     "global-allocator",
     "nros-platform/platform-freertos",
-    "nros-rmw-zenoh?/platform-freertos",
 ]
 platform-nuttx = [
     # issue 0617 — NuttX owns a kernel heap (`kmm_malloc`, reached through the
@@ -236,13 +194,11 @@ platform-nuttx = [
     "nros-log/platform-clock",
     "global-allocator",
     "nros-platform/platform-nuttx",
-    "nros-rmw-zenoh?/platform-nuttx",
 ]
 platform-threadx = [
     "nros-log/platform-clock",
     "global-allocator",
     "nros-platform/platform-threadx",
-    "nros-rmw-zenoh?/platform-threadx",
 ]
 
 # ---- Bare metal: one arm PER BOARD, and that is not a slip (issue 1512) ----
@@ -305,19 +261,16 @@ platform-mps2-an385 = [
     "global-allocator",
     "nros-platform/platform-mps2-an385",
     "nros-platform/critical-section",
-    "nros-rmw-zenoh?/platform-bare-metal",
 ]
 platform-stm32f4 = [
     "nros-log/platform-clock",
     "global-allocator",
     "nros-platform/platform-stm32f4",
-    "nros-rmw-zenoh?/platform-bare-metal",
 ]
 platform-esp32-qemu = [
     "nros-log/platform-clock",
     "global-allocator",
     "nros-platform/platform-esp32-qemu",
-    "nros-rmw-zenoh?/platform-bare-metal",
 ]
 
 # ROS edition (orthogonal to RMW and platform)
@@ -424,8 +377,6 @@ nros-log = { workspace = true }
 # edge costs an embedded build nothing. The C API's consumers are images, and an
 # image links a port by construction.
 nros-platform-cffi = { workspace = true, default-features = false }
-nros-rmw-zenoh = { workspace = true, optional = true, default-features = false }
-nros-rmw-xrce-cffi = { workspace = true, optional = true, default-features = false }
 # phase-361 W8.c — the `zpico-alloc` dep is gone with the `HeapStats` static it
 # provided; `alloc-stats` now forwards to `nros-platform/alloc-stats`, whose
 # counter lives beside the one global allocator.

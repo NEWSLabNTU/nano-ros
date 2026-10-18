@@ -102,9 +102,9 @@ _nros_px4_resolve_archive(_NROS_PX4_CPP_A NROS_CPP_ARCHIVE NROS_CPP_ARCHIVE
     "${_NROS_PX4_CPP_A_DEFAULT}"
     # Issue 0436 — a MULTI-RMW module (a uORB->RMW bridge) additionally needs the
     # `bridge` feature, which is what puts `rclc_init_multi` / `nros_pubsub_bridge_*`
-    # (the ABI `<rclcpp/bridge.hpp>`'s MultiExecutor calls) into this archive:
-    #   cargo build -p nros-cpp --no-default-features \
-    #       --features std,rmw-zenoh-cffi,bridge --release
+    # (the ABI `<rclcpp/bridge.hpp>`'s MultiExecutor calls) into this archive,
+    # plus the networked backend, which `nros-cpp` no longer names (RFC-0071 D9):
+    # `just px4 build-bridge-example` builds it from the generated image crate.
     # profile-literal-ok: prebuilt archive — the instruction that builds it
     "cargo build -p nros-cpp --no-default-features --features std,rmw-cffi --release")
 
@@ -122,7 +122,7 @@ set(_NROS_PX4_NETWORKED_BACKENDS zenoh xrce cyclonedds)
 #
 # Bounded on both sides rather than a bare substring, because the archive also
 # carries Rust-mangled names that CONTAIN the C one's prefix — measured on a
-# `rmw-zenoh-cffi` archive:
+# zenoh-bundling archive:
 #
 #   nros_rmw_zenoh_register                                    <- the C symbol
 #   _RNvNtCs..._14nros_rmw_zenoh13cffi_register8register       <- not it
@@ -211,13 +211,13 @@ include(${CMAKE_CURRENT_LIST_DIR}/NanoRosArchivePairing.cmake)
 # umbrella" — but WHICH features depends on the module, and a hint that named only
 # the uORB set would send a bridge developer to the command that breaks their
 # link (issue 0436: `bridge` is what puts rclc_init_multi / nros_pubsub_bridge_*
-# in, and `rmw-<net>-cffi` is what makes the outward backend exist at all). At
+# in, and the image crate bundling `<net>` is what makes the outward backend exist at all). At
 # file scope BACKENDS is not yet known, so the hint says both rather than
 # guessing one.
 set(_NROS_PX4_REBUILD_HINT
     # profile-literal-ok: prebuilt archive — the instruction that builds it
     "cargo build -p nros-cpp --no-default-features --features std,rmw-cffi,platform-posix --release\n"
-    "    (a uORB->RMW BRIDGE module instead wants: --features std,rmw-<zenoh|xrce|cyclonedds>-cffi,bridge,platform-posix)\n"
+    "    (a uORB->RMW BRIDGE module instead wants the image-crate archive `just px4 build-bridge-example` builds)\n"
     "    Whichever you run, it rewrites the header and the archive together -- that is the point.")
 
 nros_assert_archive_pairs_with_header(
@@ -314,18 +314,14 @@ function(nros_px4_add_module)
             set(_needs_work_queue TRUE)
         elseif(_b IN_LIST _NROS_PX4_NETWORKED_BACKENDS)
             # A NETWORKED backend contributes nothing at the cmake layer: it is
-            # compiled INTO libnros_cpp.a by the cargo feature
-            # `rmw-<name>-cffi`, which also pulls in `rmw-cffi` (the seam uORB
-            # registers through). All that is needed here is the register call,
-            # which the stub below emits from this same list.
+            # compiled INTO libnros_cpp.a by the image crate
+            # `cmake/NanoRosImageCrate.cmake` generates for it (RFC-0071 D9 —
+            # `nros-cpp` names no backend). All that is needed here is the
+            # register call, which the stub below emits from this same list.
             #
             # So "select the outward RMW at build time" (phase-325 W3) is chosen
-            # when the ARCHIVE is built, not in cmake:
-            #
-            #   cargo build -p nros-cpp --no-default-features \
-            #       --features std,rmw-zenoh-cffi --release
-            #
-            # which is the same knob every other example uses, one layer down.
+            # when the ARCHIVE is built, not in cmake —
+            # `NROS_PX4_BRIDGE_RMW=<name> just px4 build-bridge-example`.
             set(_needs_networked_archive TRUE)
             list(APPEND _networked_backends "${_b}")
         else()
@@ -505,9 +501,7 @@ function(nros_px4_add_module)
                     "    ${_NROS_PX4_CPP_A}\n"
                     "does not define nros_rmw_${_nb}_register. Rebuild it "
                     "with that backend:\n"
-                    "    cargo build -p nros-cpp --no-default-features "
-                    # profile-literal-ok: prebuilt archive — the instruction that builds it
-                    "--features std,rmw-${_nb}-cffi --release")
+                    "    NROS_PX4_BRIDGE_RMW=${_nb} just px4 build-bridge-example")
             endif()
         endforeach()
 
@@ -573,12 +567,9 @@ function(nros_px4_add_module)
     # usually catches.
     #
     # The fix is a single source, not a second archive: build the umbrella with a
-    # PLATFORM feature and its zenoh-pico is complete —
-    #
-    #   cargo build -p nros-cpp --no-default-features \
-    #       --features std,rmw-zenoh-cffi,platform-posix --release
-    #
-    # verified to yield all 1576 symbols, i.e. exactly what the separate archive
+    # PLATFORM feature (`platform-posix`, which the image crate forwards to the
+    # backend through its descriptor's `platform_features`) and its zenoh-pico
+    # is complete — verified to yield all 1576 symbols, i.e. exactly what the separate archive
     # had. So nothing extra is linked here; a missing platform layer now surfaces
     # as an undefined-symbol link error naming `z_clock_now` & friends, whose fix
     # is the feature above rather than another archive.

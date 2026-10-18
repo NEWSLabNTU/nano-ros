@@ -13,7 +13,8 @@
 #   cargo_feature = "..."    `<kind>-<name>`
 #   cmake_value = "..."      the canonical name
 #   c_define_token = "..."   `UPPER(name)`
-#   cffi_feature = "..."     `<cargo_feature>-cffi`
+#   cffi_feature = "..."     `<cargo_feature>-cffi` (retired with the
+#                            `nros-c`/`nros-cpp` features it named — phase-506 W4d)
 #
 # All five are DERIVED now (`cargo-nano-ros/src/derived_descriptor.rs`, shared
 # by `build.rs` and the library). The names come from `package.xml`, which is
@@ -39,18 +40,9 @@ register = "register"
 # reads it as `strategy = "umbrella"` (RFC-0094 D5), which is what retired the
 # root `CMakeLists.txt`'s `if(NROS_RMW STREQUAL "zenoh" OR ... "xrce")` arm.
 rlib_dep = "nros-rmw-zenoh"
-# The `nros-c` feature that bundles it. AUTHORED, like `cpp_define`, because
-# `nros-c` names its backends `rmw-<name>` while the `nros-cpp` half is regular
-# and derived (`rmw-zenoh-cffi`).
-#
-# This MUST be the feature `nros-cpp`'s own cffi feature forwards
-# (`rmw-zenoh-cffi = [… "nros-c/rmw-zenoh" …]`), not the `cffi-zenoh-cffi`
-# back-compat alias it used to name. The alias resolves to the same thing, but
-# cargo keys a unit by its feature SET, so naming it made the C road resolve
-# `nros-c` to a set no other consumer asks for — two `nros-c` units in one
-# `--target-dir`, both writing `nros-c-generated/rclc/detail/nros_config_generated.h`.
-# Issue 1461; the same divergence issue 1100 fixed one road over.
-c_cffi_feature = "rmw-zenoh"
+# (`c_cffi_feature`, the `nros-c` feature that bundled this rlib, is gone with
+# that feature — RFC-0071 D9, phase-506 W4d. The image crate bundles it by
+# depending on `[rmw.provides.cargo] crate`.)
 # This backend's OWN feature for a ROS edition, `{edition}` substituted
 # (issue 1893). The data key expression is cfg-gated on it (`keyexpr.rs`:
 # RIHS01 tail on iron/jazzy, `TypeHashNotSupported` otherwise), so an edition

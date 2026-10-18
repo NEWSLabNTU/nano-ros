@@ -57,6 +57,12 @@ unsafe extern "C" {
 /// binary-root half of that arrangement.
 fn anchor_c_surface() {
     core::hint::black_box(&nros_c::c_surface_anchor::C_SURFACE_ANCHOR);
+    // RFC-0071 D9 — the backend is a dependency of THIS crate now, so its
+    // register closure (and the `nros_rmw_zenoh_register` C symbol the
+    // generated `nros_app_register_backends()` calls) is anchored here.
+    core::hint::black_box(
+        nros_rmw_zenoh::register as fn() -> Result<(), nros_rmw_zenoh::RegisterError>,
+    );
 }
 
 #[entry]
@@ -66,8 +72,8 @@ fn main() -> ! {
     // NOTE: the backend is deliberately NOT registered here. Bare metal runs no
     // `.init_array` and the linkme section is never walked, so registration is
     // explicit — and the hook `rclc_support_init` itself calls is the C
-    // `nros_app_register_backends()`, which `build.rs` generates from nros-c's RMW
-    // features (`nros_cc_flags::backends`), as `nano_ros_link_rmw()` does on the
+    // `nros_app_register_backends()`, which `build.rs` generates from the backend
+    // this crate depends on (`nros_cc_flags::backends`), as `nano_ros_link_rmw()` does on the
     // cmake road. A
     // `nros_rmw_zenoh::register()` here would be idempotent and harmless, and it
     // would also be a second site for one fact.

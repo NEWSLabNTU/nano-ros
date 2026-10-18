@@ -29,9 +29,11 @@
 //! This module's schema-passing body compiles to a no-op unless
 //! `cfg(rmw_needs_type_descriptors)` is on. The cfg is emitted by
 //! `nros-node/build.rs` from the `needs-type-descriptors` capability
-//! marker feature (no dep edge), which the umbrella `nros/rmw-cyclonedds`
-//! activates alongside its own `dep:nros-rmw-cyclonedds-sys`. Callers
-//! depend on `nros = { features = ["rmw-cyclonedds"] }`; the hook lights
+//! marker feature (no dep edge), which the umbrella
+//! `nros/needs-type-descriptors` activates; the backend dep stays the image's.
+//! Callers depend on `nros = { features = ["needs-type-descriptors"] }` (the
+//! facade adds it for a backend whose descriptor names a
+//! `type_register_crate`); the hook lights
 //! up automatically — no user-facing feature flag on `nros-node`. Each
 //! typed creator calls `register_type::<M>` unconditionally; the body
 //! is empty when the cfg is off so zenoh/xrce paths pay nothing. With the

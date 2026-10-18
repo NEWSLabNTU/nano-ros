@@ -72,19 +72,6 @@ pub struct RmwDescriptor {
     pub needs_cxx_linker: bool,
     /// `[rmw.link].strategy`, or the derivation in [`derive_link_strategy`].
     pub link_strategy: String,
-    /// `[rmw.link].c_cffi_feature` — the `nros-c` feature that bundles this
-    /// backend. AUTHORED, not derived, in the same way `cpp_define` is, and
-    /// `nros-c`'s feature table is what a wrong guess would break. Empty means
-    /// "this backend is not bundled into `nros-c`", which is correct for every
-    /// non-Rust backend.
-    ///
-    /// It must name the feature the `nros-cpp` half FORWARDS
-    /// (`rmw-<name>-cffi = [… "nros-c/rmw-<name>" …]`), never a back-compat
-    /// alias for it: cargo keys a unit by its feature SET, so a road that
-    /// builds both crates into one `--target-dir` would otherwise get two
-    /// `nros-c` units writing one generated header (issues 1461, 1100).
-    /// `check-nros-c-feature-agreement` holds both halves to it.
-    pub c_cffi_feature: String,
     /// `[rmw.link].edition_feature` — this backend's own feature for a ROS
     /// edition, with `{edition}` where the edition goes (`ros-{edition}`), or
     /// empty for a backend whose wire does not depend on it. The C/C++ road
@@ -130,7 +117,6 @@ pub struct RmwDescriptor {
     pub stated_cargo_feature: String,
     pub stated_cmake_value: String,
     pub stated_c_define_token: String,
-    pub stated_cffi_feature: String,
 }
 
 /// Parse an `nros-rmw.toml`.
@@ -187,7 +173,14 @@ pub fn parse_rmw_descriptor(text: &str, origin: &str) -> Result<RmwDescriptor, S
             ("rmw", "cargo_feature") => d.stated_cargo_feature = scalar(),
             ("rmw", "cmake_value") => d.stated_cmake_value = scalar(),
             ("rmw", "c_define_token") => d.stated_c_define_token = scalar(),
-            ("rmw", "cffi_feature") => d.stated_cffi_feature = scalar(),
+            // phase-506 W4d — the `nros-c`/`nros-cpp` feature this restated is
+            // gone (RFC-0071 D9), so stating it is refused, not ignored.
+            ("rmw", "cffi_feature") => {
+                return Err(format!(
+                    "{origin}: [rmw].cffi_feature is retired — `nros-c` and `nros-cpp` \
+                     have no backend features any more (RFC-0071 D9). Delete the line."
+                ));
+            }
             ("rmw.provides.cmake", "target") => d.cmake_target = scalar(),
             ("rmw.provides.cmake", "dir") => d.cmake_dir = scalar(),
             ("rmw.provides.cargo", "crate") => cargo_crate = scalar(),
@@ -201,7 +194,16 @@ pub fn parse_rmw_descriptor(text: &str, origin: &str) -> Result<RmwDescriptor, S
             ("rmw.link", "rlib_dep") => d.rlib_dep = scalar(),
             ("rmw.link", "needs_cxx_linker") => d.needs_cxx_linker = value == "true",
             ("rmw.link", "strategy") => d.link_strategy = scalar(),
-            ("rmw.link", "c_cffi_feature") => d.c_cffi_feature = scalar(),
+            // RFC-0071 D9 (phase-506 W4d): the `nros-c` feature this named is
+            // gone — the image crate bundles a backend by DEPENDING on it — so a
+            // descriptor still stating one is refused rather than ignored.
+            ("rmw.link", "c_cffi_feature") => {
+                return Err(format!(
+                    "{origin}: [rmw.link].c_cffi_feature is retired — `nros-c` and \
+                     `nros-cpp` name no backend (RFC-0071 D9); an image bundles the \
+                     backend through `[rmw.provides.cargo] crate`. Delete the line."
+                ));
+            }
             ("rmw.link", "edition_feature") => d.edition_feature = scalar(),
             ("rmw.capabilities", k) => d.capabilities.push((k.to_string(), scalar())),
             ("rmw.codegen", "per_message") => d.per_message_hook = scalar(),

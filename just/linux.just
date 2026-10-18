@@ -405,7 +405,7 @@ build-fixture-extras:
     # bridge was retired by Phase 212.M.1 (deleted the per-example
     # CMakeLists.txt) once `cargo build --features rmw-cyclonedds` could link
     # `nros_rmw_cyclonedds_register` through `nros-rmw-cyclonedds-sys`. Each
-    # example carries an `rmw-cyclonedds = ["nros/rmw-cyclonedds"]` feature
+    # example carries an feature turning on `nros/needs-type-descriptors`
     # that routes the typed-creator hook (K.7.6.b) into the C++ backend.
     for collapsed_case in talker listener; do
         echo "  → linux/rust/${collapsed_case} (cargo --features rmw-cyclonedds, target-cyclonedds/)"
