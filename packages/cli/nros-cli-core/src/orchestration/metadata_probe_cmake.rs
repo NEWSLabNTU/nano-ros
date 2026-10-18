@@ -526,6 +526,10 @@ fn run_one(build_dir: &Path, c: &CmakeProbeOptions, target: &str) -> Result<()> 
     Ok(())
 }
 
+/// Issue 1969 - the probe executor's callback slots: the ceiling of the
+/// executor's `u64` ready-set (`ExecutorSizing::cbs` must be <= 64).
+pub const PROBE_EXECUTOR_MAX_CBS: usize = 64;
+
 /// One configure of the probe project.
 ///
 /// Issue 1593 — the configure is PINNED to `nano_ros` on every probe. The build
@@ -576,8 +580,22 @@ fn configure_project(probe_dir: &Path, build_dir: &Path, nano_ros: &Path) -> Res
 /// The environment every probe cmake invocation carries — configure AND build,
 /// because a build can re-run cmake on its own (`RERUN_CMAKE`) and must resolve
 /// the same tree and CLI the configure did.
+///
+/// Issue 1969 - and the probe's executor CAPACITY. The probe is the census: it
+/// runs a component's constructor to count what it registers, so its executor
+/// must not be the thing that stops it. Left to the build default
+/// (`NROS_EXECUTOR_MAX_CBS` 4: the probe has no inventory to derive from - it is
+/// what produces one), every component with more than four callback entities
+/// failed its constructor with `NodeError::ExecutorFull` and went unprobed (the
+/// Autoware safety island's `mrm_handler`: six subscriptions, two service
+/// clients and a timer, refused at its fifth subscription).
+/// The cap is the executor's ready-set ceiling, so no component that can run
+/// at all is refused here. Set for the probe's own build only, and it is part
+/// of the shared cargo dir's knob key (`nros_knob_key_fields`, road 2), so it
+/// never reaches a firmware build's directory.
 fn pin_probe_env(cmd: &mut Command, nano_ros: &Path) {
     cmd.env("NROS_WORKSPACE", nano_ros);
+    cmd.env("NROS_EXECUTOR_MAX_CBS", PROBE_EXECUTOR_MAX_CBS.to_string());
     if let Ok(exe) = std::env::current_exe() {
         cmd.env("NROS_CLI", exe);
     }
@@ -806,6 +824,24 @@ mod w4_configure_attribution_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Issue 1969 - every probe cmake invocation (configure and build) sizes
+    /// the probe's executor at the ready-set ceiling, so a component with more
+    /// than the build default's four callback entities is counted, not
+    /// refused with `ExecutorFull`.
+    #[test]
+    fn the_probe_executor_is_sized_at_the_ready_set_ceiling() {
+        let mut cmd = Command::new("cmake");
+        pin_probe_env(&mut cmd, Path::new("/nano-ros"));
+        let cbs = cmd
+            .get_envs()
+            .find(|(k, _)| *k == "NROS_EXECUTOR_MAX_CBS")
+            .and_then(|(_, v)| v)
+            .and_then(|v| v.to_str())
+            .map(str::to_owned);
+        assert_eq!(cbs.as_deref(), Some("64"));
+        assert_eq!(PROBE_EXECUTOR_MAX_CBS, 64);
+    }
 
     fn opts() -> CmakeProbeOptions {
         CmakeProbeOptions {
