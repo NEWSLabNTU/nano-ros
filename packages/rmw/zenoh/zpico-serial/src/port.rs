@@ -76,13 +76,13 @@ impl PortState {
             if n == 0 {
                 break;
             }
-            for i in 0..n {
+            for &byte in &tmp[..n] {
                 let next_tail = (self.rx_tail + 1) % RX_BUF_SIZE;
                 if next_tail == self.rx_head {
                     // Ring buffer full — drop remaining bytes
                     return total;
                 }
-                self.rx_buf[self.rx_tail] = tmp[i];
+                self.rx_buf[self.rx_tail] = byte;
                 self.rx_tail = next_tail;
             }
             total += n;
@@ -105,10 +105,7 @@ impl PortState {
 }
 
 /// Static port table.
-static mut PORTS: [PortState; MAX_SERIAL_PORTS] = [
-    PortState::new(),
-    PortState::new(),
-];
+static mut PORTS: [PortState; MAX_SERIAL_PORTS] = [PortState::new(), PortState::new()];
 
 /// Register a serial port at the given index.
 ///

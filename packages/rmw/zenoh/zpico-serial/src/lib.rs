@@ -38,4 +38,4 @@
 mod ffi;
 mod port;
 
-pub use port::{SerialPort, register_port, MAX_SERIAL_PORTS};
+pub use port::{MAX_SERIAL_PORTS, SerialPort, register_port};

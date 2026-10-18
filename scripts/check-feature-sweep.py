@@ -40,12 +40,14 @@ Four lists keep it honest:
   CROSS     the cross runs. A host SKIP that says "cross" must name one here
             and every run here must be such a SKIP — both directions, so a
             `_CROSS` reason cannot claim coverage that does not exist.
-  STANDALONE  the crates no `-p` can name (issue 1309): a root-workspace
-            `exclude` entry under `packages/` that is its own cargo root and
-            that no other root builds. Each is linted from its own manifest for
-            its target. The set is DERIVED from the root manifest, and every
-            member of it is a run or a STANDALONE_SKIP with a reason, both
-            directions.
+  STANDALONE  the crates no `-p` can name (issues 1309, 1960): every
+            root-workspace `exclude` entry under `packages/` that is its own
+            cargo root, whether or not it has its own `[workspace]` or a
+            tracked lock. Each is linted from its own manifest, for the board
+            or triple its row names (or the target the leaf states), then
+            `rustfmt --check`ed. The set is DERIVED from the root manifest, and
+            every member of it is a run or a STANDALONE_SKIP with a reason,
+            both directions.
 
 Run: python3 scripts/check-feature-sweep.py [--crate NAME] [--half host|cross] [--list]
 """
@@ -341,19 +343,88 @@ CROSS = [
 
 # Issue 1309 — a root-workspace `exclude` entry takes a crate out of every `-p`
 # run above, and out of `--workspace` too, so an excluded crate that is its own
-# cargo root is linted by nothing unless it is named here. These four are
-# excluded for a measured reason (`critical-section` refuses the two
-# restore-state widths cortex-m and esp-hal select in one unified graph), so
-# membership is not the fix; a standalone run is. Each run seeds the leaf's lock
-# from the pin set, lints the library for its target in its OWN target dir (one
-# workspace root per dir, issue 0616), then holds the resolved lock to the pins.
+# cargo root is linted by nothing unless it is named here. Clippy lints only
+# the members of the root it runs in, so being BUILT as some other root's path
+# dependency (a fixture, an example leaf) is not being linted (issue 1960).
+#
+# Each run names WHERE its target comes from, the CROSS half's way: a BOARD
+# (`packages/boards/<board>/nros-board.toml` supplies the triple, the
+# environment and any build-std, read through `cross_shape`), a bare TRIPLE,
+# `LEAF` (the root states its own target: a tracked `.cargo/config.toml`
+# `[build] target`, or a `system.toml` image `nros sync` renders), or `HOST`.
+# `check_standalone_where` refuses a LEAF row whose root states no target, and
+# a row that overrides a target the root does state.
+#
+# The rest is the root's SHAPE (`standalone_shape`), never restated here:
+#   - a tracked `Cargo.lock` is linted `--locked` against that lock;
+#     otherwise the lock is seeded from the pin set, resolved, and held to the
+#     pins (`nros ws seed-lock` / `nros ws check-lock`);
+#   - a root whose manifest path-depends on a `generated/` or `build/` tree is
+#     rendered by `nros sync` first, as its fixture build does;
+#   - an explicit `[workspace] members` list is linted `--workspace`; an
+#     implicit one is the root package alone, because its other members are
+#     the `generated/` message crates sync wrote, which are not ours to judge;
+#   - the lint is the root's default targets (library and binaries) in its OWN
+#     target dir (one workspace root per dir, issue 0616), then `rustfmt
+#     --check` on the same packages with the pinned nightly.
+HOST = "host"
+LEAF = "leaf"
 STANDALONE = {
+    # issue 1309's set: no lock of their own, no [workspace]
     "packages/platform/nros-platform-mps2-an385": "thumbv7m-none-eabi",
     "packages/platform/nros-platform-stm32f4": "thumbv7em-none-eabihf",
     "packages/platform/nros-platform-esp32-qemu": "riscv32imc-unknown-none-elf",
-    "packages/testing/qemu-smoltcp-bridge": "thumbv7m-none-eabi",
+    "packages/testing/qemu-smoltcp-bridge": "nros-board-mps2-an385",
+    # issue 1960 — own [workspace], fixture binaries
+    "packages/testing/nros-bench/executor-fairness": HOST,
+    "packages/testing/nros-bench/stress-zenoh": HOST,
+    "packages/testing/nros-bench/stress-xrce": HOST,
+    "packages/testing/nros-bench/large-msg-xrce": HOST,
+    "packages/testing/nros-bench/port-metric": HOST,
+    "packages/testing/nros-bench/wcet-cycles-qemu": LEAF,
+    "packages/testing/nros-bench/large-msg-baremetal": LEAF,
+    "packages/testing/nros-tests/bins/cdr-roundtrip-qemu": LEAF,
+    "packages/testing/nros-tests/bins/lan9118-qemu": LEAF,
+    # own [workspace] (+ tracked lock)
+    "packages/testing/nros-smoke/stm32f4-smoltcp-echo": LEAF,
+    "packages/testing/nros-smoke/esp32-hello-world": LEAF,
+    "packages/boards/nros-board-nuttx-qemu": "nros-board-nuttx-qemu",
+    "packages/boards/nros-board-zephyr": "thumbv7m-none-eabi",
+    # tracked lock (a `locked_roots` entry)
+    "packages/drivers/net/nros-smoltcp": "nros-board-mps2-an385",
+    "packages/drivers/net/openeth-smoltcp": "riscv32imc-unknown-none-elf",
+    "packages/drivers/serial/cmsdk-uart": "nros-board-mps2-an385",
+    "packages/drivers/serial/stm32f4-usart": "thumbv7em-none-eabihf",
+    "packages/rmw/zenoh/zpico-serial": "nros-board-mps2-an385",
+    "packages/boards/mps2-an385-pac": "nros-board-mps2-an385",
+    "packages/boards/nros-board-mps2-an385": "nros-board-mps2-an385",
+    "packages/boards/nros-board-mps2-an385-freertos": "nros-board-mps2-an385-freertos",
+    "packages/boards/nros-board-s32z270-freertos": "nros-board-s32z270-freertos",
+    "packages/boards/nros-board-mps3-an536-freertos": "nros-board-mps3-an536-freertos",
+    "packages/boards/nros-board-threadx-linux": "nros-board-threadx-linux",
+    "packages/boards/nros-board-threadx-qemu-riscv64": "nros-board-threadx-qemu-riscv64",
+    "packages/reference/stm32f4-porting/polling": LEAF,
+    "packages/reference/stm32f4-porting/rtic": LEAF,
+}
+# A STANDALONE row linted `--no-default-features`, with the reason its
+# defaults cannot build on the cargo road. Every key is a STANDALONE row.
+_ARMV8R_ZPICO = (
+    "the default `rmw-zenoh` builds zpico-sys's C for `armv8r-none-eabihf`, and "
+    "on the cargo road that compile gets `-mfloat-abi=hard` with no `-mfpu` "
+    "(issue 1966: the cortex-r52 FPU flags reach cargo only through the cmake "
+    "road's `nros_armv8r_cflags_env`); the board's own Rust and C still lint"
+)
+STANDALONE_NO_DEFAULT = {
+    "packages/boards/nros-board-s32z270-freertos": _ARMV8R_ZPICO,
+    "packages/boards/nros-board-mps3-an536-freertos": _ARMV8R_ZPICO,
 }
 STANDALONE_SKIP = {
+    "packages/verification/nros-verification": (
+        "a Verus crate: `verus!` erases its spec and proof items unless Verus "
+        "builds it (`cfg(verus_keep_ghost)`), so plain rustc cannot resolve the "
+        "spec functions its modules import; it is checked by `just verify-verus` "
+        "with the SDK-store Verus this sweep does not provision"
+    ),
     "packages/boards/nros-board-esp32-qemu": (
         "ESP32 is dormant (issue 1525), and this board resolves three crates the "
         "pin set does not name (esp-alloc, allocator-api2, linked_list_allocator); "
@@ -362,21 +433,24 @@ STANDALONE_SKIP = {
 }
 
 
-def standalone_roots():
-    """Issue 1309's set: every root-workspace `exclude` entry under `packages/`
-    that declares a Rust target, is not inside a `[workspace]` (its own or an
-    ancestor's), and has no tracked `Cargo.lock`. Narrower than the rule: a
-    root with its own `[workspace]` or a tracked lock is BUILT by some recipe
-    and still linted by none, which is issue 1960's 28 roots. Widening this to
-    them is that issue's fix; the coverage check then forces a run or a skip
-    for each."""
-    toml = _toml()
-    exclude = toml.loads((ROOT / "Cargo.toml").read_text(encoding="utf8"))["workspace"]["exclude"]
-    tracked = set(
+def _tracked(pattern):
+    return set(
         subprocess.run(
-            ["git", "ls-files", "*Cargo.lock"], cwd=ROOT, capture_output=True, text=True, check=True
+            ["git", "ls-files", pattern], cwd=ROOT, capture_output=True, text=True, check=True
         ).stdout.split()
     )
+
+
+def standalone_roots():
+    """Every root-workspace `exclude` entry under `packages/` that has a
+    `[package]`, declares a Rust target, and is its own cargo root: no
+    ANCESTOR inside the checkout holds a `[workspace]` (a member of a nested
+    workspace is linted, or not, with that workspace). A root's own
+    `[workspace]` and a tracked `Cargo.lock` change HOW it is linted
+    (`standalone_shape`), never WHETHER — issue 1309 derived only the roots
+    with neither, which left issue 1960's 28 built and linted by no lane."""
+    toml = _toml()
+    exclude = toml.loads((ROOT / "Cargo.toml").read_text(encoding="utf8"))["workspace"]["exclude"]
 
     def is_workspace(d):
         m = d / "Cargo.toml"
@@ -391,23 +465,74 @@ def standalone_roots():
         if not manifest.is_file():
             continue
         doc = toml.loads(manifest.read_text(encoding="utf8"))
-        if "package" not in doc or f"{entry}/Cargo.lock" in tracked:
+        if "package" not in doc:
             continue
         if not ((d / "src").is_dir() or "lib" in doc or "bin" in doc):
             continue
-        if any(is_workspace(a) for a in [d, *d.parents] if a != ROOT and ROOT in a.parents):
+        if any(is_workspace(a) for a in d.parents if a != ROOT and ROOT in a.parents):
             continue
         roots.add(entry)
     return roots
 
 
-def check_standalone_coverage(roots, runs, skip):
+def standalone_shape(rel, tracked_locks=None, tracked_configs=None):
+    """What a root's own files say about how it is built — see STANDALONE."""
+    toml = _toml()
+    d = ROOT / rel
+    doc = toml.loads((d / "Cargo.toml").read_text(encoding="utf8"))
+    if tracked_locks is None:
+        tracked_locks = _tracked("*Cargo.lock")
+    if tracked_configs is None:
+        tracked_configs = _tracked("*.cargo/config.toml")
+    members = doc.get("workspace", {}).get("members")
+    deps = {}
+    for key in ("dependencies", "build-dependencies", "dev-dependencies"):
+        deps.update(doc.get(key, {}))
+    renders = any(
+        isinstance(v, dict) and str(v.get("path", "")).startswith(("generated/", "build/"))
+        for v in deps.values()
+    )
+    config = f"{rel}/.cargo/config.toml"
+    states_target = False
+    if config in tracked_configs:
+        states_target = "target" in toml.loads((ROOT / config).read_text(encoding="utf8")).get(
+            "build", {}
+        )
+    system = d / "system.toml"
+    image = system.is_file() and "image" in toml.loads(system.read_text(encoding="utf8"))
+    return {
+        "package": doc["package"]["name"],
+        "locked": f"{rel}/Cargo.lock" in tracked_locks,
+        "workspace": bool(members),
+        "renders": renders or image,
+        "states_target": states_target or image,
+        "image": image,
+    }
+
+
+def check_standalone_where(rel, where, shape):
+    """A LEAF row needs a root that states its target; any other row must not
+    override one the root states (its images are built for THAT target)."""
+    if where == LEAF and not shape["states_target"]:
+        raise SystemExit(
+            f"check-feature-sweep: STANDALONE takes {rel}'s target from the leaf, and "
+            "it states none (no tracked `.cargo/config.toml` `[build] target`, no "
+            "`system.toml` image) — name its board or triple"
+        )
+    if where != LEAF and shape["states_target"]:
+        raise SystemExit(
+            f"check-feature-sweep: STANDALONE gives {rel} `{where}`, but the root states "
+            "its own target — use LEAF, so the lint builds what its images build"
+        )
+
+
+def check_standalone_coverage(roots, runs, skip, no_default=()):
     """Both directions: a derived root is a run or a reasoned skip, and a run or
     a skip names a root the derivation still finds."""
     for r in sorted(roots - set(runs) - set(skip)):
         raise SystemExit(
             f"check-feature-sweep: {r} is excluded from the root workspace and is "
-            "its own cargo root, so no `-p` run lints it (issue 1309) — add it to "
+            "its own cargo root, so no `-p` run lints it (issues 1309, 1960) — add it to "
             "STANDALONE with its target, or to STANDALONE_SKIP with the reason"
         )
     for r in sorted((set(runs) | set(skip)) - roots):
@@ -417,6 +542,11 @@ def check_standalone_coverage(roots, runs, skip):
         )
     for r in sorted(set(runs) & set(skip)):
         raise SystemExit(f"check-feature-sweep: {r} is both a STANDALONE run and a skip")
+    for r in sorted(set(no_default) - set(runs)):
+        raise SystemExit(
+            f"check-feature-sweep: STANDALONE_NO_DEFAULT names {r}, which is no "
+            "STANDALONE run — drop the entry"
+        )
 
 
 def check_cross_coverage(crates, cross):
@@ -619,27 +749,87 @@ def cross_clippy(name, feats, triple, board_env_vars, target_dir, prefix=(), unm
     return p.returncode, p.stderr
 
 
-def standalone_clippy(rel, triple, target_dir, cli):
-    """A STANDALONE run: seed, lint the library for `triple`, hold the lock.
+def standalone_shape_of_where(where):
+    """(triple or None, env, cargo prefix args, unmet) for a STANDALONE row:
+    `HOST` and `LEAF` pass no `--target` (the leaf's own config, read from its
+    directory, decides); a board or triple is the CROSS half's `cross_shape`."""
+    if where in (HOST, LEAF):
+        return None, {}, [], None
+    return cross_shape(where)
 
-    Unlocked on purpose: a seeded lock holds the registry pins only, and the
-    first resolve completes it with the root's path crates, as `nros build`'s
-    does. The pins are then checked by `nros ws check-lock`, so a crate the pin
-    set does not name FAILS here rather than resolving freely."""
+
+def image_config_args(d):
+    """The `--config` a cargo run inside a rendered `system.toml` leaf needs:
+    `scripts/build/leaf-settings.sh`'s `nros_leaf_inside_config_args`, the one
+    rule the example lint and the fixture build share. Nothing when sync wired
+    the settings into the leaf's own `.cargo/config.toml` as an `include`."""
+    cfg = d / ".cargo" / "config.toml"
+    if cfg.is_file() and "/nros-cargo.toml" in cfg.read_text(encoding="utf8"):
+        return []
+    out = []
+    for f in sorted(d.glob("build/*/nros-cargo.toml")):
+        out += ["--config", str(f.relative_to(d))]
+    return out
+
+
+def standalone_clippy(rel, where, target_dir, cli, shape=None, no_default=False):
+    """A STANDALONE run: render, lint, hold the lock, check the format.
+
+    An unlocked root runs unlocked on purpose: a seeded lock holds the registry
+    pins only, and the first resolve completes it with the root's path crates,
+    as `nros build`'s does. The pins are then checked by `nros ws check-lock`,
+    so a crate the pin set does not name FAILS here rather than resolving
+    freely. A root with a tracked lock is held to THAT lock (`--locked`), which
+    `check-cargo-registry-pins` already holds to the pins."""
     if cli is None:
         return 1, "error: no nros CLI to seed the lock from the pin set: run `just setup-cli`"
     d = ROOT / rel
-    seed = subprocess.run([cli, "ws", "seed-lock", str(d)], capture_output=True, text=True)
-    if seed.returncode != 0:
-        return seed.returncode, seed.stderr
-    cmd = ["cargo", "clippy", "--quiet", "--manifest-path", str(d / "Cargo.toml"), "--lib"]
-    cmd += ["--target", triple, "--", "-D", "warnings"]
-    env = dict(os.environ, CARGO_TARGET_DIR=str(Path(target_dir) / "standalone" / d.name))
+    shape = shape or standalone_shape(rel)
+    triple, board_vars, prefix, unmet = standalone_shape_of_where(where)
+    if unmet:
+        return 1, f"error: {unmet}"
+    if shape["renders"]:
+        sync = subprocess.run([cli, "sync"], cwd=d, capture_output=True, text=True)
+        if sync.returncode != 0:
+            return sync.returncode, "error: `nros sync` failed\n" + sync.stdout + sync.stderr
+    if not shape["locked"]:
+        seed = subprocess.run([cli, "ws", "seed-lock", str(d)], capture_output=True, text=True)
+        if seed.returncode != 0:
+            return seed.returncode, seed.stderr
+    scope = ["--workspace"] if shape["workspace"] else []
+    cmd = ["cargo", *prefix[:1], "clippy", *prefix[1:], "--quiet"]
+    cmd += ["--manifest-path", str(d / "Cargo.toml"), *scope]
+    if shape["locked"]:
+        cmd.append("--locked")
+    if no_default:
+        cmd.append("--no-default-features")
+    if triple:
+        cmd += ["--target", triple]
+    if shape["image"]:
+        cmd += image_config_args(d)
+    cmd += ["--", "-D", "warnings"]
+    env = dict(
+        os.environ,
+        CARGO_TARGET_DIR=str(Path(target_dir) / "standalone" / rel.replace("/", "-")),
+        **board_vars,
+    )
     p = subprocess.run(cmd, cwd=d, capture_output=True, text=True, env=env)
     if p.returncode != 0:
         return p.returncode, p.stderr
-    lock = subprocess.run([cli, "ws", "check-lock", str(d)], capture_output=True, text=True)
-    return lock.returncode, lock.stdout + lock.stderr
+    if not shape["locked"]:
+        lock = subprocess.run([cli, "ws", "check-lock", str(d)], capture_output=True, text=True)
+        if lock.returncode != 0:
+            return lock.returncode, lock.stdout + lock.stderr
+    # `-p <package>` (or `--all` over explicit members), never a bare
+    # `fmt --check`: a rendered root's implicit members include the generated
+    # message crates, which rustfmt has no business judging.
+    fmt = ["cargo", f"+{pinned_nightly()}", "fmt", "--check", "--manifest-path"]
+    fmt += [str(d / "Cargo.toml")]
+    fmt += ["--all"] if shape["workspace"] else ["-p", shape["package"]]
+    f = subprocess.run(fmt, cwd=d, capture_output=True, text=True)
+    if f.returncode != 0:
+        return f.returncode, "error: rustfmt --check found diffs\n" + f.stdout + f.stderr
+    return 0, ""
 
 
 def verdict(expect, rc, err):
@@ -698,8 +888,31 @@ def self_test():
             pass
         else:
             raise AssertionError("a one-sided standalone claim was accepted")
+    # A no-default-features reason must name a STANDALONE run.
+    check_standalone_coverage({"a"}, {"a": "t"}, {}, {"a": "why"})
+    for roots, runs, skip, nd in (({"a"}, {"a": "t"}, {}, {"gone": "why"}),):
+        try:
+            check_standalone_coverage(roots, runs, skip, nd)
+        except SystemExit:
+            pass
+        else:
+            raise AssertionError("a one-sided standalone claim was accepted")
     # No CLI is a FAILED run naming the remedy, never a skip.
     assert standalone_clippy("x", "t", "/nonexistent", None)[0] == 1
+    # A LEAF row needs a root that states its target; a board or triple row
+    # must not override one the root states.
+    check_standalone_where("a", LEAF, {"states_target": True})
+    check_standalone_where("a", "t", {"states_target": False})
+    for where, states in ((LEAF, False), ("t", True), (HOST, True)):
+        try:
+            check_standalone_where("a", where, {"states_target": states})
+        except SystemExit:
+            pass
+        else:
+            raise AssertionError("a STANDALONE row disagreeing with its root's target was accepted")
+    # HOST and LEAF pass no --target and no board environment.
+    assert standalone_shape_of_where(HOST) == (None, {}, [], None)
+    assert standalone_shape_of_where(LEAF) == (None, {}, [], None)
     # A board asking for build-std gets the pinned nightly and the -Z flags;
     # one that does not gets plain cargo.
     args = build_std_args({"unstable": {"build-std": ["core", "alloc"]}})
@@ -726,7 +939,12 @@ def main():
     # into a comment.
     self_test()
     check_cross_coverage(CRATES, CROSS)
-    check_standalone_coverage(standalone_roots(), STANDALONE, STANDALONE_SKIP)
+    check_standalone_coverage(
+        standalone_roots(), STANDALONE, STANDALONE_SKIP, STANDALONE_NO_DEFAULT
+    )
+    locks, configs = _tracked("*Cargo.lock"), _tracked("*.cargo/config.toml")
+    for rel, where in STANDALONE.items():
+        check_standalone_where(rel, where, standalone_shape(rel, locks, configs))
     if args.self_test:
         print("check-feature-sweep --self-test: OK")
         return 0
@@ -775,15 +993,29 @@ def main():
         from source_locate import nros_cli_bin
 
         cli = None if args.list else nros_cli_bin()
-        for rel, triple in sorted(STANDALONE.items()):
+        locks, configs = _tracked("*Cargo.lock"), _tracked("*.cargo/config.toml")
+        for rel, where in sorted(STANDALONE.items()):
             name = Path(rel).name
             if args.crate and name not in args.crate:
                 continue
+            shape = standalone_shape(rel, locks, configs)
+            nd = rel in STANDALONE_NO_DEFAULT
+            how = [
+                w
+                for w, on in (
+                    ("locked", shape["locked"]),
+                    ("synced", shape["renders"]),
+                    ("--no-default-features", nd),
+                )
+                if on
+            ]
             jobs.append(
                 (
-                    f"{name} --manifest-path {rel} --target {triple} (standalone)",
+                    f"{name} --manifest-path {rel} ({where}{', ' + ', '.join(how) if how else ''})",
                     None,
-                    lambda r=rel, tr=triple: standalone_clippy(r, tr, target_dir, cli),
+                    lambda r=rel, w=where, sh=shape, n=nd: standalone_clippy(
+                        r, w, target_dir, cli, sh, n
+                    ),
                 )
             )
     failures = []
@@ -801,7 +1033,7 @@ def main():
             print(f"  FAIL {label}{': ' + why if why else ''}")
             if not expect:
                 for line in err.splitlines():
-                    if line.startswith(("error", "  -->")):
+                    if line.startswith(("error", "  -->", "Diff in")):
                         print(f"        {line}")
             failures.append(label)
         sys.stdout.flush()
@@ -814,8 +1046,9 @@ def main():
             print(f"  {f}")
         print("  reproduce: cargo clippy -p <crate> --lib --tests --features <set> -- -D warnings")
         print(
-            "  standalone: nros ws seed-lock <dir> && cargo clippy --manifest-path "
-            "<dir>/Cargo.toml --lib --target <triple> -- -D warnings && nros ws check-lock <dir>"
+            "  standalone: [nros sync] [nros ws seed-lock <dir>] && cargo clippy --manifest-path "
+            "<dir>/Cargo.toml [--locked] [--target <triple>] -- -D warnings "
+            "[&& nros ws check-lock <dir>] && cargo +<nightly> fmt --check -p <package>"
         )
         return 1
     print(f"check-feature-sweep: OK — {total} combination(s) across {len(names)} crate(s)")

@@ -24,7 +24,7 @@ pub unsafe fn parse_ip_address(s: *const u8) -> Option<[u8; 4]> {
             break;
         }
 
-        if ch >= b'0' && ch <= b'9' {
+        if ch.is_ascii_digit() {
             value = value * 10 + (ch - b'0') as u32;
             has_digit = true;
             if value > 255 {
@@ -73,7 +73,7 @@ pub unsafe fn parse_port(s: *const u8) -> Option<u16> {
             break;
         }
 
-        if ch >= b'0' && ch <= b'9' {
+        if ch.is_ascii_digit() {
             value = value * 10 + (ch - b'0') as u32;
             has_digit = true;
             if value > 65535 {

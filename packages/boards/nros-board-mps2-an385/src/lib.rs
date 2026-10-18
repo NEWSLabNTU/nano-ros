@@ -30,7 +30,10 @@
 // Application modules
 mod config;
 mod error;
-/// phase-338 W7 — `log` -> semihosting bridge, reachable from BOTH boot paths.
+/// phase-338 W7 — `log` -> semihosting bridge, reachable from BOTH boot paths
+/// and compiled only with one of them (issue 1960: without either it is dead
+/// code, which `-D warnings` refuses).
+#[cfg(any(feature = "board-entry", feature = "rtic"))]
 mod log_bridge;
 // Phase 244.D1 enabler — `nros_platform::BoardEntry` for `nros::main!()`.
 // Behind a feature so the legacy `run(Config, closure)` consumers don't pull

@@ -756,8 +756,7 @@ impl SmoltcpBridge {
         use portable_atomic::Ordering;
         unsafe {
             let table = &raw mut SOCKET_TABLE;
-            for idx in 0..MAX_SOCKETS {
-                let entry = &mut (*table)[idx];
+            for (idx, entry) in (*table).iter_mut().enumerate() {
                 if !entry.allocated || !entry.has_handle() {
                     continue;
                 }
@@ -804,8 +803,7 @@ impl SmoltcpBridge {
             }
 
             let table = &raw mut UDP_SOCKET_TABLE;
-            for idx in 0..MAX_UDP_SOCKETS {
-                let entry = &mut (*table)[idx];
+            for (idx, entry) in (*table).iter_mut().enumerate() {
                 if !entry.allocated || !entry.has_handle() {
                     continue;
                 }
@@ -845,8 +843,7 @@ impl SmoltcpBridge {
         use portable_atomic::Ordering;
         unsafe {
             let table = &raw mut SOCKET_TABLE;
-            for idx in 0..MAX_SOCKETS {
-                let entry = &mut (*table)[idx];
+            for (idx, entry) in (*table).iter_mut().enumerate() {
                 if !entry.allocated || !entry.has_handle() {
                     continue;
                 }
@@ -880,8 +877,7 @@ impl SmoltcpBridge {
             }
 
             let table = &raw mut UDP_SOCKET_TABLE;
-            for idx in 0..MAX_UDP_SOCKETS {
-                let entry = &mut (*table)[idx];
+            for (idx, entry) in (*table).iter_mut().enumerate() {
                 if !entry.allocated || !entry.has_handle() {
                     continue;
                 }

@@ -143,7 +143,12 @@ impl ZephyrBoard {
     /// with a static IP is reported "up" immediately by the same
     /// API, so the deadline-miss variant maps onto the closest
     /// `NetworkError` flavour (`DhcpTimeout`).
-    fn wait_link_up() -> Result<(), NetworkError> {
+    ///
+    /// `pub` because it is this crate's documented entry point (the crate doc
+    /// and the README call it from the app). Turning the trait impl into an
+    /// inherent method left it private, so nothing could call it and
+    /// `-D warnings` read the whole link-up path as dead code (issue 1960).
+    pub fn wait_link_up() -> Result<(), NetworkError> {
         // SAFETY: Zephyr's `net_if_get_default` is callable from any
         // thread context post-kernel-init; the returned pointer is
         // either NULL or stable for the lifetime of the kernel.

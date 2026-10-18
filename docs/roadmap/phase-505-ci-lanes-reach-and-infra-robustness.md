@@ -10,8 +10,9 @@ phase when the open-issue survey of 2026-10-17 ran.
 - **#1309 is fixed here.** The feature sweep's `STANDALONE` half lints the
   excluded roots, and its first runs found 50 latent `-D warnings` errors in
   five crates.
-- **#1960 was filed while closing #1309.** It covers 28 more roots that are
-  built but never linted.
+- **#1960 was filed while closing #1309, and is now fixed.** The sweep lints
+  all 33 excluded standalone roots (31 runs, 2 reasoned skips), which found
+  20 clippy errors in 8 roots and rustfmt diffs in 5. It also filed #1966.
 - **#1800 is down to `cyclone_slirp_pair`,** which needs a host that permits
   user namespaces.
 
@@ -54,7 +55,7 @@ phase's. Build speed is phase-489's.
       `cyclone_slirp_pair`. `workspace_shadowing` has run in live-peer since
       PR #1942. `cyclone_slirp_pair` waits on a lane host that permits user
       namespaces.
-- [ ] [#1960](../issues/1960-standalone-cargo-roots-linted-by-no-lane.md): the
+- [x] [#1960](../issues/archived/1960-standalone-cargo-roots-linted-by-no-lane.md): the
       28 excluded roots that are built but linted by nothing each get a
       `STANDALONE` sweep run, or a reason.
 
@@ -112,6 +113,6 @@ ejection from a cause listed here.
 | [#1795](../issues/archived/1795-rtos-carrier-route-no-fixture.md) | No lane builds an RTOS TYPED carrier image, so the link of `nano_ros_node_register`'s ThreadX and NuttX arms has no coverage. |
 | [#1800](../issues/1800-ros2-tests-no-scheduled-lane-claims.md) | `workspace_shadowing` and `cyclone_slirp_pair` claim ROS 2 and are not interop cells, so no scheduled lane runs them. |
 | [#1868](../issues/archived/1868-ci-rustup-downloads-flake-merge-gating-jobs.md) | Merge-gating jobs download Rust toolchains at run time, and a failed download ejects the whole batch. |
-| [#1960](../issues/1960-standalone-cargo-roots-linted-by-no-lane.md) | Filed 2026-10-18 while closing #1309: 28 excluded cargo roots are built, as a fixture or a locked root, and clippy reaches none of them. |
+| [#1960](../issues/archived/1960-standalone-cargo-roots-linted-by-no-lane.md) | Filed 2026-10-18 while closing #1309: 28 excluded cargo roots are built, as a fixture or a locked root, and clippy reaches none of them. |
 | [#1912](../issues/archived/1912-push-gate-pin-baseline-is-live-main.md) | The push-event submodule-pin gate compares against the live `origin/main`, so a superseded commit reads as a REWIND. |
 | [#1964](../issues/1964-pre-push-fast-red-unreproduced.md) | The pre-push `check fast` went red once and green on an immediate retry, and which gate it was cannot be recovered. The hook now keeps its full output outside the checkout. |

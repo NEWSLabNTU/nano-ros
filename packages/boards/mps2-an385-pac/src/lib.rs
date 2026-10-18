@@ -183,6 +183,12 @@ pub struct Peripherals {
 
 impl Peripherals {
     /// Steal the peripherals (required by RTIC)
+    ///
+    /// # Safety
+    ///
+    /// The struct is empty and owns no register, so stealing it aliases
+    /// nothing; the signature is `unsafe` because RTIC's `#[app(device)]`
+    /// calls `Peripherals::steal()` in an `unsafe` block and expects it so.
     #[inline]
     pub unsafe fn steal() -> Self {
         Peripherals { _0: () }
