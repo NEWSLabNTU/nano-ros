@@ -20,8 +20,12 @@ is in the same code an XRCE action client runs.
 
 ## Work items
 
-- [ ] [#1930](../issues/1930-xrce-action-goal-sent-blind-is-lost.md): an XRCE
-      action goal is confirmed or re-sent.
+- [x] [#1930](../issues/archived/1930-xrce-action-goal-sent-blind-is-lost.md): an XRCE
+      action goal is confirmed or re-sent. **Done 2026-10-18:** the re-send
+      (`dac8ce0e84`) now has a deterministic test,
+      `xrce_action_goal_sent_before_its_server_is_resent` (client started
+      before its server, Rust/C/C++): 15 of 15 with the re-send, 3 of 3 red
+      without it.
 - [x] [#1756](../issues/archived/1756-native-async-action-result-never-resolves.md): the
       async action client resolves its result, or times out with an error.
       **Done 2026-10-18:** the fix (`c0d34e3bf6`) passed four consecutive
@@ -48,5 +52,5 @@ session.
 | --- | --- |
 | [#1734](../issues/archived/1734-xrce-concurrent-entity-creation-unguarded.md) | The XRCE shim has no guard for entity creation from more than one thread, the check-then-act that issue 1711 fixed for zenoh. |
 | [#1756](../issues/archived/1756-native-async-action-result-never-resolves.md) | The native async action client gets its goal accepted and never resolves the awaited result. |
-| [#1930](../issues/1930-xrce-action-goal-sent-blind-is-lost.md) | An XRCE action client sends its goal blind, and a goal the Agent drops is never sent again. |
+| [#1930](../issues/archived/1930-xrce-action-goal-sent-blind-is-lost.md) | An XRCE action client sends its goal blind, and a goal the Agent drops is never sent again. |
 | [#1932](../issues/1932-xrce-session-open-fails-under-full-sweep-load.md) | Two XRCE clients failed to open their Agent session under full-sweep load, and both pass 20 of 20 solo. |

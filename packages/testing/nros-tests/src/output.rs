@@ -785,6 +785,13 @@ pub const ACTION_GOAL_ACCEPTED_MARKER: &str = "Goal accepted by server, waiting 
 /// because their `send_goal` waits for the server's answer.
 pub const ACTION_GOAL_SENT_MARKER: &str = "Goal sent, waiting for result";
 
+/// Issue 1930 — the tail every action-client example logs when it sends a
+/// goal AGAIN because the first send was BLIND (the backend could not confirm
+/// a server — XRCE, issue 1686) and drew no answer. The Rust clients print
+/// `"No result yet; sending the goal again"`, the C and C++ clients
+/// `"No goal response; sending the goal again"`; this is the part they share.
+pub const ACTION_GOAL_RESENT_MARKER: &str = "sending the goal again";
+
 /// Did the server accept the client's goal, judged from the client's output?
 ///
 /// A client that waits for the goal response says so

@@ -23,7 +23,10 @@ use nros_tests::{
         require_zenohd,
     },
     matrix::{Cell as MCell, Kind as MK, Lang as ML, Rmw as MR, Tier as MT, Workload as MW},
-    output::{ACTION_RESULT_PREFIX, FIBONACCI_ORDER_10_SEQUENCE, SERVICE_RESULT_PREFIX},
+    output::{
+        ACTION_GOAL_RESENT_MARKER, ACTION_RESULT_PREFIX, ACTION_SENDING_GOAL_MARKER, DemoRole,
+        FIBONACCI_ORDER_10_SEQUENCE, SERVICE_RESULT_PREFIX,
+    },
 };
 use rstest::rstest;
 use std::{path::PathBuf, process::Command, time::Duration};
@@ -366,4 +369,98 @@ fn run_cell(cell: &MCell) {
             rmw_str(cell.rmw),
         );
     }
+}
+
+/// Issue 1930 — on XRCE an action goal sent BLIND, and lost, is sent again.
+///
+/// XRCE cannot say whether an action server exists (the Agent owns the DDS
+/// graph, issue 1686), so every action-client example sends its goal without
+/// that confirmation. A goal the Agent writes before the server's request
+/// reader has matched is dropped — volatile, so a reader that matches later
+/// never sees it — and a client that sent once then waited forever. The
+/// runtime cell above only ever hit that by luck of discovery timing (3 of 10
+/// by hand, 0 of 160 under this harness's loopback profile on 2026-10-18).
+///
+/// This makes the loss deterministic instead: the CLIENT starts first, sends
+/// into a graph with no server at all, and only then is the server started.
+/// The first goal is gone by construction, so the result can only arrive
+/// through the re-send — which the client must also say it made. Without the
+/// re-send this fails every time; with it, the Rust client's 5 s silence
+/// window, or the C/C++ client's blocking goal-response timeout, ends in a
+/// second send that the now-present server answers (measured 2026-10-18: the
+/// result at ~5 s Rust, ~18 s C, ~32 s C++).
+#[rstest]
+#[case::rust(ML::Rust)]
+#[case::c(ML::C)]
+#[case::cpp(ML::Cpp)]
+fn xrce_action_goal_sent_before_its_server_is_resent(#[case] lang: ML) {
+    // Bound to the matrix cell this scenario reuses the fixtures of, so a cell
+    // that is retired cannot leave this test resolving fixtures nobody builds.
+    assert!(
+        nros_tests::matrix::CELLS.iter().any(|c| is_reqresp_cell(c)
+            && c.lang == lang
+            && c.rmw == MR::Xrce
+            && c.workload == MW::Action),
+        "matrix regression: no Linux/Example/Runtime {}/xrce/action cell",
+        lang.as_str()
+    );
+    let (srv_case, srv_bin, cli_case, cli_bin, _ready, result) = roles(lang, MW::Action);
+    let server = resolve(lang, srv_case, srv_bin, MR::Xrce)
+        .unwrap_or_else(|e| panic!("{} server fixture not built: {e}", lang.as_str()));
+    let client = resolve(lang, cli_case, cli_bin, MR::Xrce)
+        .unwrap_or_else(|e| panic!("{} client fixture not built: {e}", lang.as_str()));
+
+    require_xrce_agent();
+    let agent = XrceAgent::start_unique()
+        .unwrap_or_else(|e| nros_tests::unmet!("XRCE Agent failed to start: {e:?}"));
+    let addr = agent.addr();
+    let domain = nros_tests::unique_ros_domain_id().to_string();
+    let mut server_cmd = Command::new(&server);
+    let mut client_cmd = Command::new(&client);
+    for cmd in [&mut server_cmd, &mut client_cmd] {
+        cmd.env("RUST_LOG", "info")
+            .env("NROS_LOCATOR", &addr)
+            .env("XRCE_AGENT_ADDR", &addr)
+            .env("ROS_DOMAIN_ID", &domain);
+    }
+
+    // Client FIRST: its first goal goes out with no server on the graph.
+    let mut cli = ManagedProcess::spawn_command(client_cmd, "xrce-blind-client")
+        .unwrap_or_else(|e| panic!("[{}/xrce] spawn client: {e}", lang.as_str()));
+    let mut out = cli
+        .wait_for_output_pattern(ACTION_SENDING_GOAL_MARKER, Duration::from_secs(30))
+        .unwrap_or_else(|e| panic!("[{}/xrce] client never sent its goal: {e}", lang.as_str()));
+    // The send follows the marker line directly; give it time to reach the
+    // Agent so the first goal is written while there is still no reader.
+    std::thread::sleep(Duration::from_secs(1));
+
+    let mut srv =
+        ManagedProcess::spawn_command(server_cmd, "xrce-late-server").unwrap_or_else(|e| {
+            cli.kill();
+            panic!("[{}/xrce] spawn server: {e}", lang.as_str())
+        });
+    srv.expect_ready(DemoRole::ActionServer, lang, Duration::from_secs(30));
+
+    // Rust re-sends after 5 s of silence, C after its 15 s goal-response
+    // timeout, C++ after ~30 s (measured); 60 s covers all three.
+    // Wait for the RESULT line, not the sequence: the feedback line carries the
+    // same sequence and arrives first.
+    out.push_str(&cli.collect_until(result, Duration::from_secs(60)));
+    cli.kill();
+    srv.kill();
+    drop(agent);
+
+    assert!(
+        out.contains(ACTION_GOAL_RESENT_MARKER),
+        "[{}/xrce] the client never re-sent its blind goal (`{ACTION_GOAL_RESENT_MARKER}`) \
+         — issue 1930: a goal sent before the server existed was its only send:\n{out}",
+        lang.as_str()
+    );
+    assert!(
+        out.lines()
+            .any(|l| l.contains(result) && l.contains(FIBONACCI_ORDER_10_SEQUENCE)),
+        "[{}/xrce] the re-sent goal drew no order-10 result (`{FIBONACCI_ORDER_10_SEQUENCE}`) \
+         — issue 1930:\n{out}",
+        lang.as_str()
+    );
 }
