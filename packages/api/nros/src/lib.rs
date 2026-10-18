@@ -676,7 +676,7 @@ macro_rules! panic_to_platform {
 ///
 /// The macro is intended for `rust_cargo_application()` apps whose crate
 /// already invokes `nros::node!()`. It opens a Zephyr executor, registers
-/// the supplied component through [`ExecutorNodeRuntime`], and spins forever.
+/// the supplied component through `nros::node_runtime::ExecutorNodeRuntime`, and spins forever.
 /// Issue 0330 — force-link an RMW backend crate into a pure-Rust staticlib.
 ///
 /// On a Rust-only image (Zephyr and friends) the Zephyr module emits a weak
