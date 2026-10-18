@@ -566,8 +566,8 @@ xrce-config-manifest:
 # phase-420 W9 — EXACTLY ONE LANE COMPILES THE VENDORED ZENOH-PICO TREE PER
 # PLATFORM. Measured 2026-09-05, because W9's zenoh bullet asked and the answer
 # decided the work: can one Zephyr image hold zenoh-pico TUs from BOTH lanes?
-# NO. Zephyr's `nros-platform.toml` says `[build.zenoh] compiled_by =
-# "platform"` and `runner.rs` skips `build_zenoh_pico_unified` on it (issue
+# NO. Zephyr's zenoh port row (`[port.zephyr]` in the zenoh nros-rmw.toml since
+# phase-349 W2b) says `compiled_by = "platform"` and `runner.rs` skips `build_zenoh_pico_unified` on it (issue
 # 0534/0541 — the cargo lane cannot compile those TUs on Zephyr at all, they
 # include a `version.h` only the west build generates). The one C TU cargo emits
 # into a Zephyr image is the in-repo alias TU, which includes no vendored

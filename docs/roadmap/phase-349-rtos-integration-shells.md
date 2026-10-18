@@ -1,7 +1,8 @@
 # Phase 349 — RTOS integration: make FreeRTOS an imported library like the rest
 
 **Status (2026-10-18). Rewritten after a relevance review; W1 LANDED, W2
-ABSORBED, W3 in progress.** The review measured each wave against `main` at
+ABSORBED (W2b LANDED), W3 in progress.** The review measured each wave against
+`main` at
 `6486216ab7`, two months after the phase was written. The principle still holds
 and the remaining work is narrower. See "Relevance review (2026-10-18)" below
 for what changed and why.
@@ -69,9 +70,9 @@ Delivered by other work, so nothing here remains open:
 - **The zenoh-pico platform header follows the board.** Issue 1143 replaced the
   lwIP-only define with `defines_conditional` on the `ip_stack` capability.
 
-### W2b — Platforms name no backends
+### W2b — Platforms name no backends — **LANDED (2026-10-18)**
 
-- [ ] `[build.zenoh]` leaves every platform file (the five under
+- [x] `[build.zenoh]` leaves every platform file (the five under
       `packages/platform/nros-platform-*/` and `config/{bare-metal,generic}/`).
       The zenoh backend's own descriptor holds those rows, keyed by platform and
       capability. Platforms keep `[capabilities]`, `[arch.*]`, `compile` and
@@ -81,8 +82,57 @@ Delivered by other work, so nothing here remains open:
 the zenoh-pico define set of each built fixture is unchanged (compare the
 compile commands before and after).
 
-This extends phase-347's *core names no backends* to the platform layer. It is
-a keying change in `nros-zpico-build` and the cmake readers, not a schema design.
+This extends phase-347's *core names no backends* to the platform layer.
+
+**How it landed.**
+
+- **Where the rows went.** Each block is a `[port.<platform>]` table in
+  `packages/rmw/zenoh/nros-rmw-zenoh/nros-rmw.toml`, moved as text with its
+  comments. The key is the platform's canonical name; an alias resolves, and a
+  row for a platform nobody declares is a load error.
+- **What stayed on the platform.** `arch` became the top-level `arch_profiles`,
+  because `nros-board-common`'s FreeRTOS kernel and lwIP builds read it with no
+  backend involved. `compile` and `required_env` stayed as top-level keys. The
+  list cannot be derived from the `[arch.*]` keys: `bare-metal` defines four
+  profiles and admits two.
+- **Schema.** `PlatformConfigFile` lost `build`, so `deny_unknown_fields` makes a
+  leftover `[build.*]` a load error. Rows parse as `PortRow`, also
+  `deny_unknown_fields`, so a row naming `arch`, `compile` or `required_env` is
+  refused rather than dropped. `PlatformsTree::as_platform_manifest(&rows)` joins
+  the two halves into the same `PlatformEntry` every consumer resolved before.
+  The `[rmw.*]` line parser in `cargo-nano-ros` skips the new tables, which a
+  test checks against the real descriptor.
+- **Proof the move changed nothing.** Every platform's parsed block is
+  identical before and after, and so is every platform's resolved
+  `for_platform()` output (651 lines of debug output on each side, diffed).
+  That is the input `build_zenoh_pico_unified` compiles from, so the define set
+  cannot have moved. It is stronger than comparing one fixture's compile
+  commands.
+- **Gates retargeted** (each was reading the platform files):
+  - `check-zenoh-lane-ownership` reads `compiled_by` from the rows.
+  - `check-arch-profile-resolution` reads `arch_profiles`.
+  - `check-zenoh-platform-macros` attributes macros by row key.
+  - `check-path-env-fingerprints` scans the backend descriptors too.
+  - `check-capability-conditionals` joins the rows with each platform's
+    capabilities.
+- **Two of those gates went silently vacuous during the move** and printed OK.
+  `check-zenoh-platform-macros` read no macros, and
+  `check-capability-conditionals` counted 0 capability-gated rows. The second
+  now fails on zero: the FreeRTOS row gates its netstack, so zero means the scan
+  is broken, never that the tree is clean.
+- **The drift gate's negative control is a unit test.** It used to be two
+  build-stage rows (`zpico_drift_*`) that corrupted the posix platform file
+  through `NROS_PLATFORMS_DIR`. That override cannot reach the rows, and a
+  second override for one file is what phase-412 deleted. The check moved into
+  `nros-zpico-build`'s `check_port_includes`, tested with a corrupted row and
+  against the real rows. The fixture and its test are retired.
+- **Correction.** The "cmake readers" this paragraph used to name do not exist:
+  the cmake lane reads `zenoh-sources.txt`, never a platform file.
+
+**Found for W3's third box.** The FreeRTOS port row puts
+`{source:freertos-kernel}/portable/{env:FREERTOS_PORT}` on zenoh-pico's include
+path. That is a second reader that assumes the port is a path, beside the
+cargo road's `build.rs`. Moving the boards to upstream's enum must fix it too.
 
 ## W3 — Retire the kernel builder — **IN PROGRESS (two of three landed)**
 

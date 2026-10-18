@@ -7,7 +7,7 @@ two neighbours that defect had.
 WHAT PHASE-385 W1 FOUND, AND WHY A GATE
 ---------------------------------------
 `[arch.cortex-r52]` landed with phase-372 W1 and was never added to the
-platform's `arch = [..]` list. The resolver
+platform's `arch_profiles` list. The resolver
 (`nros_board_common::arch_flags::cflags_for_target`) walks THAT list, in
 declared order, first match wins — so the block was unreachable and an
 `armv8r-none-eabihf` cargo build panicked with "no [arch.*] profile … admits
@@ -66,9 +66,9 @@ profile that STATES an ABI contradicting the triple it claims.
 
 THE RULES
 ---------
-  R1  every name in a platform's `arch = [..]` has an `[arch.<name>]` block
+  R1  every name in a platform's `arch_profiles` has an `[arch.<name>]` block
       readable from that platform's root                     (listed => defined)
-  R2  every `[arch.<name>]` block is named by some platform's `arch = [..]`
+  R2  every `[arch.<name>]` block is named by some platform's `arch_profiles`
       in that root                                           (defined => listed)
   R3  for every (platform, triple) the resolver would answer, the resolved
       `-mfloat-abi=` agrees with the triple's ABI suffix      (the wiring)
@@ -103,7 +103,7 @@ most-repeated defect (issue 0196's class); R5 closes that side.
 TWO DEBT LISTS, NOT ONE
 -----------------------
 R2 and R5 are different defects with different remedies — "nobody lists it"
-is fixed by editing an `arch = [..]`, "it matches nothing" by fixing a
+is fixed by editing an `arch_profiles`, "it matches nothing" by fixing a
 `target_match` or provisioning a triple — so `KNOWN_UNLISTED` and
 `KNOWN_INERT` are separate, and a profile that is both appears in both.
 `config/bare-metal`'s `riscv32gc` is exactly that. Merging them would mean
@@ -145,7 +145,7 @@ TARGET_LIST = ROOT / "config" / "rust-targets.txt"
 # found BY this gate on the day it was written, in a file phase-418 418.3 does
 # not own.
 #
-# `config/bare-metal` declares `arch = ["cortex-m3", "riscv32imc"]` while
+# `config/bare-metal` declares `arch_profiles = ["cortex-m3", "riscv32imc"]` while
 # defining four profiles. So a bare-metal `thumbv7em-none-eabihf` (STM32F4) or
 # `riscv32gc` build resolves NOTHING and panics — phase-385 W1's defect,
 # untouched, two more times. Fixing it means editing that platform's list,
@@ -185,7 +185,7 @@ ARM_EABI = re.compile(r"^(?:armv?|thumbv)[0-9]")
 
 
 def parse_platform_file(text: str) -> tuple[dict, list[str], bool]:
-    """(`[arch.*]` blocks, the `arch = [..]` names, declares `inherits`).
+    """(`[arch.*]` blocks, the `arch_profiles` names, declares `inherits`).
 
     Regex rather than a TOML library: this runs in the fast lane on whatever
     Python the host has, and 3.10 has no `tomllib`. `check-rust-targets-covered`
@@ -232,9 +232,10 @@ def parse_platform_file(text: str) -> tuple[dict, list[str], bool]:
         if key == "inherits" and section == "" and value not in ('""', "''"):
             inherits = True
 
-        # The `arch = ..` LIST lives under `[build.<component>]`; the `[arch.*]`
-        # BLOCKS are top-level tables. Two different things, one word.
-        if key == "arch" and section.startswith("build"):
+        # phase-349 W2b — the LIST is the top-level `arch_profiles`; the
+        # `[arch.*]` BLOCKS are top-level tables. (Until W2b the list was
+        # `arch = [..]` inside `[build.zenoh]`: two things, one word.)
+        if key == "arch_profiles" and section == "":
             if value.startswith("[") and "]" not in value:
                 pending_key, pending = "arch", [value]
             elif value.startswith("["):
@@ -413,7 +414,7 @@ def check(tree: dict, triples: list[str], known_unlisted: dict,
             for name in declared:
                 if name not in merged:
                     problems.append(
-                        f"{rel}: `arch = [..]` names `{name}`, but no "
+                        f"{rel}: `arch_profiles` names `{name}`, but no "
                         f"[arch.{name}] block exists under {root}/.\n"
                         f"      `cflags_for_target` returns Err for this and the "
                         f"build stops with it."
@@ -464,7 +465,7 @@ def check(tree: dict, triples: list[str], known_unlisted: dict,
                 problems.append(
                     f"{owner[name]}: [arch.{name}] is defined and NO platform "
                     f"under {root}/ lists it\n"
-                    f"      in `arch = [..]`. The resolver walks that list, so "
+                    f"      in `arch_profiles`. The resolver walks that list, so "
                     f"the block is unreachable:\n"
                     f"      a build for its target panics \"no [arch.*] profile … "
                     f"admits TARGET\" while the\n"
@@ -665,13 +666,12 @@ def self_test() -> int:
             print(f"  self-test FAIL predicate: {prof} vs {target} "
                   f"!= {want}")
 
-    # The TOML reader has to tell the `arch = [..]` LIST from the `[arch.*]`
+    # The TOML reader has to tell the `arch_profiles` LIST from the `[arch.*]`
     # BLOCKS — one word, two meanings, and getting it wrong makes every
     # platform read as declaring nothing (R2 red everywhere) or as declaring
     # every profile (R2 vacuous).
     profiles, declared, inh = parse_platform_file(
-        '[build.zenoh]\n'
-        'arch = ["a", "b"]\n'
+        'arch_profiles = ["a", "b"]\n'
         '[arch.a]\n'
         'target_match = "x"\n'
         'cflags = [\n  "-p",\n  "-mfloat-abi=hard",\n]\n'
@@ -682,6 +682,13 @@ def self_test() -> int:
             or profiles["a"]["cflags"] != ["-p", "-mfloat-abi=hard"]):
         ok = False
         print(f"  self-test FAIL parser: {profiles} {declared} {inh}")
+
+    # phase-349 W2b — `arch = [..]` under a table is NOT the list any more; a
+    # leftover `[build.zenoh] arch` must read as declaring nothing.
+    _, declared_old, _ = parse_platform_file('[build.zenoh]\narch = ["a"]\n')
+    if declared_old:
+        ok = False
+        print(f"  self-test FAIL parser: a [build.zenoh] arch list still counts: {declared_old}")
 
     print("check-arch-profile-resolution --self-test: "
           + ("OK" if ok else "FAILED"))

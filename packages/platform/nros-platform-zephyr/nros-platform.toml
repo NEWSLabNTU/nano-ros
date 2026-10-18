@@ -1,9 +1,10 @@
 # RFC-0049 / phase-290 — per-platform-package configuration.
 #
 # Sections: `[capabilities]` (software-stack facts), `[knobs.*]` (typed
-# policy defaults; deny_unknown_fields), `[build.zenoh]` (the zenoh-pico /
-# zpico shim build block — keys documented in
-# nros-board-common/src/manifest.rs), `[arch.*]` (reusable compiler-flag
+# policy defaults; deny_unknown_fields), top-level `arch_profiles` /
+# `compile` / `required_env` (what any vendored C build here needs; the
+# zenoh-pico port rows are `[port.<platform>]` in nros-rmw-zenoh's
+# nros-rmw.toml since phase-349 W2b), `[arch.*]` (reusable compiler-flag
 # profiles; may be duplicated across platform files only byte-identically).
 # Resolution ladder: builtin < platform (inherits chain) < board < env.
 # Schema + loader: nros-board-common/src/platform_config.rs.
@@ -39,16 +40,3 @@ per_fd_tx_ceiling = true
 batch = true
 split_lock = true
 flush_ms = 50
-
-[build.zenoh]
-# Zephyr's build system compiles zenoh-pico itself; this block exists so the
-# drift gate has a manifest entry, and to document what that external build is
-# expected to use. `compiled_by` is what KEEPS cargo out of it — issue 0534.
-# That used to be a comment saying "no cc-rs consumer hits it", and #529 then
-# made one hit it: naming zephyr in the zpico resolver is also what selects
-# `build_zenoh_pico_unified`, which cc-compiled the vendored `system/zephyr/*.c`
-# and died on the `version.h` only Zephyr's own build generates.
-compiled_by = "platform"
-defines = ["ZENOH_GENERIC", "ZENOH_ZEPHYR"]
-include = ["system/common", "system/zephyr"]
-

@@ -115,6 +115,29 @@ def platform_manifests(root: pathlib.Path) -> list[pathlib.Path]:
     return sorted(root.glob("packages/platform/*/nros-platform.toml"))
 
 
+# phase-349 W2b — the gated rows live in the zenoh backend's descriptor now, one
+# `[port.<platform>]` table per platform; the capabilities they test stay in the
+# platform's own file, and so does `required_env`.
+PORT_ROWS = ROOT / "packages/rmw/zenoh/nros-rmw-zenoh/nros-rmw.toml"
+
+
+def platform_name(doc: dict, path: pathlib.Path) -> str:
+    """`names[0]`, else the directory name — `PlatformsTree::load`'s rule."""
+    names = doc.get("names") or []
+    return names[0] if names else path.parent.name
+
+
+def joined_doc(doc: dict, rows: dict, name: str) -> dict:
+    """One platform's view as the rules read it: its `[capabilities]`, and a
+    `[build.zenoh]` block made of its port row plus its own `required_env` —
+    exactly the join `PlatformsTree::as_platform_manifest` performs. The rules
+    are unchanged by the move; only where their input lives is."""
+    block = dict(rows.get(name) or {})
+    if doc.get("required_env"):
+        block["required_env"] = doc["required_env"]
+    return {"capabilities": doc.get("capabilities") or {}, "build": {"zenoh": block}}
+
+
 # ── the manifest side ────────────────────────────────────────────────────────
 
 
@@ -806,9 +829,14 @@ def main() -> int:
             f"{ZENOH_PICO.relative_to(ROOT)}`",
         )
 
-    problems = check_rust_binding(manifests) + check_selector_is_reached()
+    rows = tomllib.loads(PORT_ROWS.read_text(encoding="utf-8")).get("port") or {}
+    joined = []
     for path in manifests:
         doc = tomllib.loads(path.read_text(encoding="utf-8"))
+        joined.append((path, joined_doc(doc, rows, platform_name(doc, path))))
+
+    problems = check_rust_binding(manifests) + check_selector_is_reached()
+    for path, doc in joined:
         problems += check_manifest(
             path.relative_to(ROOT).as_posix(),
             doc,
@@ -824,10 +852,21 @@ def main() -> int:
         return 1
 
     gated = sum(
-        len(capability_matchers(b))
-        for path in manifests
-        for b in build_blocks(tomllib.loads(path.read_text(encoding="utf-8"))).values()
+        len(capability_matchers(b)) for _, doc in joined for b in build_blocks(doc).values()
     )
+    # phase-349 W2b — moving the rows out of the files this gate scanned left it
+    # reading 0 gated rows and printing OK: issue 1220's vacuity, one file over.
+    # The FreeRTOS port gates its netstack on `ip_stack`, so zero is a broken
+    # scan, never a clean tree.
+    if gated == 0:
+        print(
+            "check-capability-conditionals: VACUOUS — 0 capability-gated rows across "
+            f"{len(manifests)} platform(s) and {PORT_ROWS.relative_to(ROOT)}. The FreeRTOS "
+            "port row gates its netstack on a capability, so the scan no longer reaches "
+            "the rows.",
+            file=sys.stderr,
+        )
+        return 1
     scope = "rules 1-3, 5, 6 only — 4/7/8 NOT VERIFIED, " if not PLATFORM_DISPATCH.is_file() else ""
     print(
         f"check-capability-conditionals: OK "

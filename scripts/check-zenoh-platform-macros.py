@@ -16,10 +16,14 @@ the port has and is inert everywhere else.
 
 TWO PRODUCERS, because one was not enough
 -----------------------------------------
-The NuttX define set is authored twice: in `nros-platform.toml` and again in
+The NuttX define set is authored twice: in the port rows and again in
 `nros-zpico-build`'s `runner.rs` as `build.define(...)`. A check that read only
-the manifests would pass while the build still defined the macro. Both are
+the rows would pass while the build still defined the macro. Both are
 scanned.
+
+The rows were each platform's `[build.zenoh]` in its `nros-platform.toml`
+until phase-349 W2b moved them to `[port.<platform>]` in the zenoh backend's
+`nros-rmw.toml`. A row's PORT is its table key now, not a directory name.
 """
 
 from __future__ import annotations
@@ -60,7 +64,7 @@ OWN_MACRO = {
     "threadx": {"ZENOH_THREADX"},
     # issue 1143 -- the freertos port claims BOTH FreeRTOS arms. Which one a
     # given image gets is a BOARD fact (`capabilities.ip_stack`), selected by
-    # `[build.zenoh] defines_conditional`, so the port is entitled to name
+    # its port row's `defines_conditional`, so the port is entitled to name
     # either and `check-capability-conditionals` is what checks it names the
     # right one for the right value.
     "freertos": {"ZENOH_FREERTOS_LWIP", "ZENOH_ORIN_SPE"},
@@ -83,6 +87,25 @@ def macros_in(text: str) -> set[str]:
             if m.group(1) in PLATFORM_MACROS:
                 found.add(m.group(1))
     return found
+
+
+PORT_ROWS = "packages/rmw/zenoh/nros-rmw-zenoh/nros-rmw.toml"
+
+
+def port_sections(text: str) -> dict[str, str]:
+    """`{platform: its row's text}` for every `[port.<platform>]` row, its
+    `[[port.<platform>.*]]` sub-tables included."""
+    out: dict[str, list[str]] = {}
+    cur: str | None = None
+    for line in text.splitlines():
+        m = re.match(r"\s*\[\[?port\.([A-Za-z0-9_-]+)", line)
+        if m:
+            cur = m.group(1)
+        elif re.match(r"\s*\[", line):
+            cur = None
+        if cur is not None:
+            out.setdefault(cur, []).append(line)
+    return {k: "\n".join(v) for k, v in out.items()}
 
 
 def platform_of(path: Path) -> str | None:
@@ -108,25 +131,23 @@ def main() -> int:
     failures: list[str] = []
     checked = 0
 
-    manifests = sorted(ROOT.glob("packages/platform/*/nros-platform.toml"))
-    if not manifests:
+    rows = ROOT / PORT_ROWS
+    sections = port_sections(rows.read_text(encoding="utf8")) if rows.is_file() else {}
+    if not sections:
         print(
-            "ERROR: no packages/platform/*/nros-platform.toml found — this "
-            "check would pass by having nothing to inspect.",
+            f"ERROR: no [port.<platform>] row in {PORT_ROWS} — this check would "
+            "pass by having nothing to inspect.",
             file=sys.stderr,
         )
         return 2
 
-    for man in manifests:
-        plat = platform_of(man)
-        if plat is None or plat not in OWN_MACRO:
+    for plat, text in sorted(sections.items()):
+        if plat not in OWN_MACRO:
             continue
         checked += 1
-        for macro in sorted(macros_in(man.read_text(encoding="utf8"))):
+        for macro in sorted(macros_in(text)):
             if macro not in OWN_MACRO[plat]:
-                failures.append(
-                    f"{man.relative_to(ROOT)}: the {plat} port declares {macro}"
-                )
+                failures.append(f"{PORT_ROWS} [port.{plat}]: the {plat} port declares {macro}")
 
     # Second producer: the zpico build script defines the same set in Rust.
     runner = ROOT / "packages/rmw/zenoh/nros-zpico-build/src/runner.rs"

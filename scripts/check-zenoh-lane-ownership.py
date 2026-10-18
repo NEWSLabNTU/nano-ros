@@ -13,7 +13,9 @@ issue-0135 ABI split: two independently-resolved `Z_FEATURE_*` sets deciding
 flag-gated struct layouts inside one link.
 
 Measured answer: **NO — the lanes are disjoint, per platform.** Zephyr's
-`nros-platform.toml` declares `[build.zenoh] compiled_by = "platform"`, and
+zenoh port row declares `compiled_by = "platform"` (`[port.zephyr]` in the
+zenoh backend's `nros-rmw.toml` since phase-349 W2b; it was `[build.zenoh]` in
+the platform file before), and
 `runner.rs` skips `build_zenoh_pico_unified` for exactly that (issue 0534/0541;
 the cargo lane cannot compile these TUs on Zephyr at all — `system/platform/
 zephyr.h` includes `version.h`, which only the west build generates). The one C
@@ -34,7 +36,8 @@ exists to make impossible.
 What it checks
 --------------
 
-1. Every platform declares its zenoh owner (`[build.zenoh] compiled_by`,
+1. Every platform declares its zenoh owner (`compiled_by` in its
+   `[port.<platform>]` row,
    defaulting to `cargo` exactly as `CompiledBy::default()` does), and the value
    is one of the two the enum has.
 2. **`compiled_by = "platform"` ⟺ a non-cargo lane compiles the tree for it**,
@@ -182,6 +185,8 @@ QEMU_SH = REPO / "scripts/qemu/build-zenoh-pico.sh"
 # The platform search path `PlatformsTree::default_search_path` walks, in its
 # order. A platform is one subdirectory holding an `nros-platform.toml`.
 PLATFORM_ROOTS = ("packages/platform", "config")
+# phase-349 W2b — zenoh-pico's port rows, `[port.<platform>]`, one per platform.
+PORT_ROWS = "packages/rmw/zenoh/nros-rmw-zenoh/nros-rmw.toml"
 
 # Lanes OTHER than cargo that compile the vendored zenoh-pico tree, keyed by the
 # platform they build for, with the call that puts the manifest expansion into a
@@ -313,37 +318,59 @@ def norm(name: str) -> str:
     return name.replace("-", "_")
 
 
-def parse_platform(text: str, dirname: str) -> tuple[str, str]:
-    """`(platform name, zenoh owner)` for one `nros-platform.toml`.
+def parse_platform(text: str, dirname: str) -> str:
+    """The platform name one `nros-platform.toml` declares.
 
-    The name rule mirrors `PlatformsTree::load`: the descriptor's first
-    `names` entry when it declares one, else the directory name — a platform
-    package lives in `nros-platform-<x>/`, so the directory alone would make it
-    answer to `nros-platform-zephyr`. The owner defaults to `cargo`, which is
-    `CompiledBy::default()`; the absence of the key is a declaration.
+    The rule mirrors `PlatformsTree::load`: the descriptor's first `names`
+    entry when it declares one, else the directory name — a platform package
+    lives in `nros-platform-<x>/`, so the directory alone would make it answer
+    to `nros-platform-zephyr`.
     """
     name = dirname
-    owner = "cargo"
+    for line in text.splitlines():
+        stripped = line.split("#", 1)[0]
+        if _SECTION.match(stripped):
+            break
+        m = _NAMES.match(stripped)
+        if m:
+            name = m.group(1)
+    return name
+
+
+def parse_port_owners(text: str) -> dict[str, str]:
+    """`{platform: owner}` from the zenoh backend's `[port.<platform>]` rows.
+
+    phase-349 W2b — `compiled_by` lives in each platform's port row now. A row
+    that leaves it out is `cargo`, which is `CompiledBy::default()`: the absence
+    of the key is a declaration. Only a TOP-LEVEL key of a row counts — a
+    `compiled_by` in any other table is a different field.
+    """
+    owners: dict[str, str] = {}
     section = ""
     for line in text.splitlines():
         stripped = line.split("#", 1)[0]
         m = _SECTION.match(stripped)
         if m:
             section = m.group(1).strip()
+            if section.startswith("port.") and section.count(".") == 1:
+                owners.setdefault(section[len("port."):], "cargo")
             continue
-        if not section:
-            m = _NAMES.match(stripped)
-            if m:
-                name = m.group(1)
-        elif section == "build.zenoh":
+        if section.startswith("port.") and section.count(".") == 1:
             m = _COMPILED_BY.match(stripped)
             if m:
-                owner = m.group(1)
-    return name, owner
+                owners[section[len("port."):]] = m.group(1)
+    return owners
 
 
 def load_platforms(repo: Path) -> dict[str, tuple[str, Path]]:
-    """platform name → (owner, the manifest that declared it)."""
+    """platform name → (owner, the file that declares the owner).
+
+    Names come from the platform descriptors; the owner from the zenoh port
+    rows (phase-349 W2b). A platform with no row is `cargo`, as
+    `PortRow::default()` is.
+    """
+    rows = repo / PORT_ROWS
+    owners = parse_port_owners(rows.read_text(encoding="utf-8")) if rows.is_file() else {}
     out: dict[str, tuple[str, Path]] = {}
     for root in PLATFORM_ROOTS:
         base = repo / root
@@ -353,9 +380,9 @@ def load_platforms(repo: Path) -> dict[str, tuple[str, Path]]:
             f = d / "nros-platform.toml"
             if not f.is_file():
                 continue
-            name, owner = parse_platform(f.read_text(encoding="utf-8"), d.name)
+            name = parse_platform(f.read_text(encoding="utf-8"), d.name)
             # First root wins, matching the search path's precedence.
-            out.setdefault(name, (owner, f))
+            out.setdefault(name, (owners.get(name, "cargo"), rows))
     return out
 
 
@@ -429,7 +456,7 @@ def ownership_problems(
     for name, (owner, where) in sorted(platforms.items()):
         if owner not in ("cargo", "platform"):
             bad.append(
-                f"{name}: [build.zenoh] compiled_by = \"{owner}\" in "
+                f"{name}: [port.{name}] compiled_by = \"{owner}\" in "
                 f"{where} — the enum has `cargo` and `platform`, nothing else."
             )
             continue
@@ -504,8 +531,8 @@ def guard_problems(text: str, where: str = str(RUST_RUNNER)) -> list[str]:
         if "CompiledBy::Cargo" not in window:
             bad.append(
                 f"{where}:{i + 1}: `build_zenoh_pico_unified` is called with no "
-                "`CompiledBy::Cargo` test above it. Without that guard `[build.zenoh] "
-                "compiled_by` is a comment and cargo compiles the tree for a platform whose "
+                "`CompiledBy::Cargo` test above it. Without that guard a port row's "
+                "`compiled_by` is a comment and cargo compiles the tree for a platform whose "
                 "own build system already does."
             )
     return bad
@@ -900,7 +927,7 @@ def readiness_lane_problems(
     owner = platforms[plat][0]
     if owner != "cargo":
         bad.append(
-            f"{plat}: [build.zenoh] compiled_by = \"{owner}\" in {platforms[plat][1]}, so the "
+            f"{plat}: [port.{plat}] compiled_by = \"{owner}\" in {platforms[plat][1]}, so the "
             f"cargo lane does not compile the vendored tree for it — but "
             f"{QEMU_SH.relative_to(REPO)} is a PROXY for that compile. It now stands for a "
             "build nobody performs."
@@ -1371,16 +1398,16 @@ def self_test() -> None:
     """Runs on the NORMAL path — a negative control nobody runs decays into a
     comment (`check-gate-selftests`)."""
     # --- platform parsing ---------------------------------------------------
-    assert parse_platform("names = [\"zephyr\"]\n[build.zenoh]\ncompiled_by = \"platform\"\n",
-                          "nros-platform-zephyr") == ("zephyr", "platform")
-    # no key ⇒ cargo, which is `CompiledBy::default()`; and the directory name
-    # is the fallback the loader uses.
-    assert parse_platform("[build.zenoh]\ndefines = []\n", "bare-metal") == ("bare-metal", "cargo")
-    # `compiled_by` outside `[build.zenoh]` is a different field and must not be
-    # read as this one.
-    assert parse_platform(
-        'names = ["posix"]\n[build.other]\ncompiled_by = "platform"\n', "d"
-    ) == ("posix", "cargo")
+    assert parse_platform('names = ["zephyr"]\n[capabilities]\n', "nros-platform-zephyr") == "zephyr"
+    # the directory name is the fallback the loader uses.
+    assert parse_platform("[capabilities]\n", "bare-metal") == "bare-metal"
+    owners = parse_port_owners(
+        '[rmw]\ncompiled_by = "platform"\n'          # not a port row
+        '[port.zephyr]\ncompiled_by = "platform"\n'
+        '[port.posix]\ndefines = []\n'                # no key ⇒ cargo
+        '[[port.posix.include_paths_conditional]]\ncompiled_by = "platform"\n'  # a sub-table
+    )
+    assert owners == {"zephyr": "platform", "posix": "cargo"}, owners
 
     # --- token → platform ---------------------------------------------------
     plats = {"zephyr", "posix", "bare-metal", "freertos", "freertos-lwip"}

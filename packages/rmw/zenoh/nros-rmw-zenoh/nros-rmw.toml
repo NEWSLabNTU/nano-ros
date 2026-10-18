@@ -88,3 +88,338 @@ platform-threadx = "platform-threadx"
 platform-mps2-an385 = "platform-bare-metal"
 platform-stm32f4 = "platform-bare-metal"
 platform-esp32-qemu = "platform-bare-metal"
+
+# ----------------------------------------------------------------------------
+# phase-349 W2b (RFC-0072 §9) — zenoh-pico's PORT ROWS, one per platform.
+#
+# These were each platform's `[build.zenoh]` block. Every key here is a fact
+# about how ZENOH-PICO builds on that platform (its `system/` subtree, its
+# platform macro, the shim TUs, their include paths), so they belong to the
+# backend: a platform descriptor now names no backend. The key is the
+# platform's canonical name (`names[0]` of its `nros-platform.toml`); a row
+# for a platform no descriptor declares is a load error. What a platform
+# needs from any C build (`arch_profiles`, `compile`, `required_env`) stayed
+# in its own file.
+#
+# Read by `nros_platform_config::load_port_rows` (serde, the row schema is
+# `PortRow`, deny_unknown_fields). The `[rmw.*]` reader
+# (`cargo-nano-ros/src/rmw_descriptor.rs`) is line-oriented and skips these
+# tables by section name.
+# ----------------------------------------------------------------------------
+
+# from packages/platform/nros-platform-freertos/nros-platform.toml
+[port.freertos]
+defines = ["ZENOH_GENERIC"]
+# issue 1143 — the zenoh-pico PLATFORM header is a BOARD fact, not a platform
+# one. `system/common/platform.h` dispatches on exactly one `ZENOH_*` macro and
+# the two FreeRTOS arms pick INCOMPATIBLE socket types: `freertos/lwip.h`
+# declares `_z_sys_net_socket_t = { int _socket; }` and `#include`s
+# `lwip/sockets.h` at line 21, so an lwIP-less board cannot even PARSE it;
+# `freertos/orin_spe.h` degenerates the same union to a one-byte placeholder and
+# includes no netstack at all. That is why the DEFINE has to branch and not just
+# the source list. `ZENOH_GENERIC` stays unconditional — its live role is the
+# `#ifdef` in `zenoh-pico/config.h` selecting the generated
+# `zenoh_generic_config.h`, and in the `#elif` chain both FreeRTOS arms are
+# tested BEFORE it, so it never competes for the type header.
+defines_conditional = [
+  { name = "ZENOH_FREERTOS_LWIP", when = { capability = { ip_stack = true } } },
+  { name = "ZENOH_ORIN_SPE", when = { capability = { ip_stack = false } } },
+]
+# Phase 154 — `Z_FEATURE_LINK_UDP_MULTICAST = 0` disables the
+# vendor `_z_close_udp_multicast` codepath in
+# `system/freertos/lwip/network.c`, which has a vendor
+# `sockrecv->socket` typo (the struct field is `_socket`).
+# nano-ros doesn't use UDP multicast over zenoh-pico on
+# FreeRTOS (router is TCP-only on this slirp path), so the
+# feature loss is harmless and the typo stops mattering.
+defines_kv = { ZENOH_DEBUG = "0", Z_FEATURE_MULTI_THREAD = "1", Z_FEATURE_LINK_UDP_MULTICAST = "0" }
+# Phase 154 — pull vendor's FreeRTOS+lwIP `system/freertos/lwip`
+# subtree + the top-level `system/freertos/system.c` so vendor's
+# native `_z_send_tcp` / `_z_read_tcp` / `_z_task_*` / `_z_mutex_*`
+# impls are compiled. Vendor's `system/common/platform.h`
+# dispatch picks `platform/freertos/lwip.h` on an lwIP board
+# (`{int _socket;}` struct) — having the matching network /
+# system impls in the same TU set keeps caller / callee ABI
+# coherent without needing the alias TU's opaque socket
+# (alias TU is gated off for FreeRTOS in build.rs).
+include = ["system/common", "system/freertos/lwip"]
+extra_sources = [
+  # Phase 154 — vendor `system/freertos/system.c` +
+  # `system/freertos/lwip/network.c` provide the matching
+  # `_z_sys_net_socket_t = { int _socket; }` ABI that the vendor
+  # `src/link/unicast/tcp.c` caller expects. The alias TU's 32-byte
+  # opaque socket would mismatch; vendor impls are the working
+  # path. build.rs skips the alias TU entirely on FreeRTOS via
+  # `if !use_freertos { ... alias_build.compile(...) }`.
+  { path = "{src}/system/freertos/system.c" },
+  { path = "{src}/system/freertos/lwip/network.c", when = { capability = { ip_stack = true } } },
+  { path = "{nros}/c/zpico/zpico.c" },
+]
+include_paths = [
+  "{nros}/c/include",
+  "{source:freertos-kernel}/include",
+  "{source:freertos-kernel}/portable/{env:FREERTOS_PORT}",
+  "{envpath:FREERTOS_CONFIG_DIR}",
+  # Phase 154 — `nros-platform-api/include` carries
+  # `<nros/platform_net.h>` (the canonical `nros_platform_*` ABI).
+  # `zpico.c` includes it unconditionally.
+  "{nros}/../../platform/nros-platform-api/include",
+]
+# issue 1143 — the lwIP headers move with the lwIP TU. A board with no IP stack
+# has no `LWIP_DIR` to point at, and an unconditional entry here would make one
+# a hard requirement of every FreeRTOS zenoh build.
+include_paths_conditional = [
+  { path = "{source:lwip}/src/include", when = { capability = { ip_stack = true } } },
+  { path = "{source:lwip}/contrib/ports/freertos/include", when = { capability = { ip_stack = true } } },
+]
+# issue 0491 — VALUE knobs only. `FREERTOS_PORT` is a port NAME and stays; the
+# three PATH variables were dropped, because cargo compares an env value as
+# TEXT and each leaf spells the same directory differently (`relative = true`).
+# The include paths they feed are watched by CONTENT in `runner.rs`.
+rerun_if_env_changed = ["FREERTOS_PORT"]
+
+# from packages/platform/nros-platform-nuttx/nros-platform.toml
+[port.nuttx]
+defines = ["ZENOH_GENERIC", "ZENOH_NUTTX", "ZENOH_HAS_GETRANDOM"]
+defines_kv = { ZENOH_DEBUG = "0", Z_FEATURE_MULTI_THREAD = "1", Z_CONFIG_SOCKET_TIMEOUT = "5000" }
+include = ["system/common"]
+# Phase 156 Sub-bug B (NuttX) — `system/common/platform.h` routes
+# `ZENOH_NUTTX` to `system/platform/unix.h` (BY-VALUE 4-byte socket
+# struct). Pull `system/unix/network.c` so the upstream
+# `_z_open_tcp` / `_z_send_tcp` / `_z_read_tcp` impls (matching
+# unix.h's shape) compile in. Paired with the
+# `NROS_ZENOH_PLATFORM_USES_UNIX` macro set in `build.rs` which
+# `#ifndef`-elides the alias TU's wrong-shape network section.
+# `unix/tls.c` is `#if Z_FEATURE_LINK_TLS == 1`-gated, so it
+# compiles to an empty TU on NuttX (no TLS feature flag set).
+extra_sources = [
+  { path = "{nros}/c/zpico/nuttx_clock.c" },
+  { path = "{nros}/c/zpico/zpico.c" },
+  { path = "{src}/system/unix/network.c" },
+]
+pic = false
+include_paths = [
+  "{nros}/c/include",
+  # issue 0551 — NOT `{env:NUTTX_DIR}/include`. The shared tree holds whichever
+  # arch was configured last and, after any `make olddefconfig`, no generated
+  # `nuttx/config.h` at all. `{nuttx_include}` resolves through
+  # `nros_build_paths::nuttx_include_root`, which prefers this arch's export
+  # snapshot (issue 0525's one sanctioned spelling).
+  "{nuttx_include}",
+  # Phase 154 — `<nros/platform_net.h>` source; same need as posix/
+  # bare-metal/freertos-lwip blocks above.
+  "{nros}/../../platform/nros-platform-api/include",
+]
+# issue 0491 — VALUE knobs only; `NUTTX_DIR` is a PATH and was dropped. Cargo
+# compares an env value as TEXT, so a directory with one spelling per leaf and
+# another from `just` makes rows sharing a `--target-dir` rebuild each other.
+rerun_if_env_changed = []
+
+# from packages/platform/nros-platform-posix/nros-platform.toml
+[port.posix]
+defines = ["ZENOH_GENERIC"]
+# phase-500 W1 — this file names POSIX facts only. `ZENOH_LINUX` (zenoh-pico's
+# `unix.h` platform arm) is a LINUX fact, so it is derived from the target
+# triple, never asserted for every POSIX system. The zpico shim derives it the
+# same way (`nros-zpico-build` runner, `target.contains("linux")`).
+defines_conditional = [
+  { name = "ZENOH_LINUX", when = { target_match = "linux" } },
+]
+# Phase 156 — `Z_FEATURE_MULTI_THREAD = 1` so
+# `zp_start_read_task` / `zp_start_lease_task` actually spawn
+# pthreads via `_z_task_init` (rather than returning -1
+# unconditionally). POSIX always has pthreads available; the
+# missing flag was leftover from an era where the alias TU
+# was assumed to handle threading singleton-style. Other
+# platforms (freertos-lwip / nuttx / threadx) already set
+# it; POSIX should too.
+defines_kv = { ZENOH_DEBUG = "0", Z_FEATURE_MULTI_THREAD = "1" }
+include = ["system/common"]
+exclude = ["tests", "example"]
+extra_sources = [
+  # Phase 156 option B — compile zenoh-pico's upstream
+  # `system/unix/network.c` so the by-value socket TCP/UDP
+  # impls (using `unix.h`'s `_z_sys_net_socket_t = { int _fd; }`
+  # 4-byte struct) match the call-site ABI in `tx.c` /
+  # `link.c`. The alias TU's 32-byte opaque network
+  # functions are skipped on POSIX via the
+  # `NROS_ZENOH_PLATFORM_USES_UNIX` macro defined from
+  # `build.rs`. `unix/tls.c` already in extra_sources +
+  # calls `_z_open_tcp` etc. — now resolves against the
+  # native unix impls instead of the wrong-shape aliases.
+  { path = "{src}/system/unix/network.c" },
+  { path = "{src}/system/unix/tls.c" },
+]
+# phase-500 W1 — `rt` (timer_*) is a glibc split, a Linux fact; it is linked
+# where the target is derived (`nros-platform-cffi/build.rs`, the posix
+# CMakeLists), not listed here for every POSIX system.
+system_libs = ["pthread"]
+mbedtls = "pkg-config"
+# Phase 154 — `nros-platform-api/include` carries
+# `<nros/platform_net.h>` which the zpico.c TU pulls in for
+# the multicast / UDP shim glue. Bare-metal already carries
+# this path; POSIX was missing it, so `cargo build` on
+# anything that consumes zpico-sys via cc-rs (e.g. the
+# bridge examples) failed with "platform_net.h: No such
+# file or directory". Phase 104.D.3.
+include_paths = [
+  "{nros}/../../platform/nros-platform-api/include",
+]
+
+# from packages/platform/nros-platform-threadx/nros-platform.toml
+[port.threadx]
+# `NROS_PLATFORM_ALIASES` selects the 32-byte opaque socket / endpoint
+# / task layouts from `nros_zenoh_generic_platform.h`. Must match the
+# layout the alias TU (`platform_aliases.c`) is compiled with — without
+# this define on the vendor build, `c/platform/zenoh_generic_platform.h`
+# falls through to `threadx/platform.h` (`{ int _fd; }`, 4 bytes), and
+# every `_z_send_tcp(*socket, ...)` call passes 4 bytes by value while
+# the alias TU's wrapper expects a 32-byte struct → caller passes fd as
+# the a0 register value, callee dereferences fd as a pointer → load
+# access fault at `mtval = fd`. Phase 154 doc claimed this was set; the
+# build.rs hookup was missing, fixed in this row directly (it was the threadx
+# platform file's `[build.zenoh]` block then).
+defines = [
+  "ZENOH_GENERIC", "ZENOH_THREADX", "NROS_PLATFORM_ALIASES",
+  "NX_BSD_ENABLE_NATIVE_API",
+  "TX_INCLUDE_USER_DEFINE_FILE", "NX_INCLUDE_USER_DEFINE_FILE",
+]
+defines_kv = { Z_FEATURE_MULTI_THREAD = "1" }
+# Issue 0626 — the zenoh read/lease task priority, on the NORMALISED 0-31 band
+# (0 = least urgent, larger = more urgent; phase-364 W5). `task.c` INVERTS it for
+# ThreadX, which counts 0 as the highest priority.
+#
+# Settable here rather than in `build_c_shim`: ThreadX's shim is compiled by the
+# manifest-driven unified builder (`extra_sources` below), and `build_c_shim` is
+# explicitly skipped for this platform — a define added there would never have
+# reached the lane that needs it.
+#
+# 17, not the 16 used elsewhere, and the difference is deliberate: 17 is the
+# band value that maps BACK to ThreadX 14, the `Z_TASK_PRIORITY` every zenoh
+# task took before this change. (31 - round(31*17/31) = 14; 16 would land on
+# 15.) Plumbing a value through should not also retune it — a one-step
+# scheduling shift on an RTOS is exactly the kind of change that resurfaces
+# later as a timing flake nobody connects to this commit.
+#
+# Retuning it is now a one-line edit here, which is the point of the issue.
+defines_env = { ZENOH_DEBUG = { env = "NROS_ZENOH_DEBUG", default = "0" }, ZPICO_READ_TASK_PRIORITY = { env = "NROS_ZENOH_READ_PRIORITY", default = "17" }, ZPICO_LEASE_TASK_PRIORITY = { env = "NROS_ZENOH_LEASE_PRIORITY", default = "17" } }
+include = ["system/common"]
+extra_sources = [
+  { path = "{nros}/c/platform/threadx/task.c" },
+  { path = "{nros}/c/platform/threadx/log_uart.c", if_env = "NROS_ZPICO_LOG_TO_UART", with_define = ["ZENOH_LOG_PRINT", "zpico_log_print"] },
+  { path = "{nros}/c/zpico/zpico.c" },
+]
+include_paths = [
+  "{nros}/c/platform",
+  # Phase 154 — `c/zpico/` exposes `nros_zenoh_generic_platform.h`
+  # (32-byte opaque socket / endpoint / task layouts the alias
+  # TU uses). `c/platform/zenoh_generic_platform.h` `#include`s
+  # it when `NROS_PLATFORM_ALIASES` is defined (now set on the
+  # vendor build; see build.rs). Without `c/zpico` on the
+  # include path the chain fails to resolve and vendor src
+  # falls back to the small `threadx/platform.h` socket struct,
+  # ABI-misaligning every `_z_send_tcp` / `_z_read_tcp` call
+  # into the alias TU.
+  "{nros}/c/zpico",
+  # Phase 154 — `nros-platform-api/include` carries
+  # `<nros/platform_net.h>` (the canonical `nros_platform_*`
+  # ABI + the `nros_platform_socket_get_fd` accessor used by
+  # `zpico.c::get_session_fd` to read peer fd without
+  # depending on the per-RTOS socket-struct layout).
+  "{nros}/../../platform/nros-platform-api/include",
+  "{nros}/c/include",
+  "{source:threadx}/common/inc",
+  "{envpath:THREADX_CONFIG_DIR}",
+  "{source:threadx-netxduo}/common/inc",
+  "{source:threadx-netxduo}/addons/BSD",
+  "{envpath:NETX_CONFIG_DIR}",
+]
+# issue 0491 — VALUE knobs only. The four PATH variables this platform
+# interpolates above (`THREADX_DIR`, `THREADX_CONFIG_DIR`, `NETX_DIR`,
+# `NETX_CONFIG_DIR`) must NOT be listed: cargo compares an env value as TEXT,
+# and each example leaf spells the same directory differently
+# (`relative = true`, resolved against that leaf) from what `just` exports, so
+# every ThreadX row sharing one `--target-dir` re-ran zpico-sys's build script
+# forever. The include paths are watched by CONTENT in `runner.rs` instead.
+rerun_if_env_changed = [
+  "NROS_ZPICO_LOG_TO_UART", "NROS_ZENOH_DEBUG",
+  # Issue 0626 — VALUE knobs (a small integer), so they belong here: 0491's
+  # exclusion is for PATH variables, which have several spellings for one
+  # directory. Without these, changing the priority in the environment would
+  # not rebuild the shim and the old value would silently persist — the same
+  # "declared value never took effect" failure the issue is about.
+  "NROS_ZENOH_READ_PRIORITY", "NROS_ZENOH_LEASE_PRIORITY",
+]
+[[port.threadx.include_paths_conditional]]
+path = "{source:threadx}/ports/linux/gnu/inc"
+when = { target_not = "embedded" }
+# phase-337 W4.a — the ARCH-PORT override must precede upstream's port inc
+# below. `tx_port.h` used to reach this build through `THREADX_CONFIG_DIR`
+# (the board's `config/`); it now lives in the layer-2 arch-port unit. The
+# zpico shim and the ThreadX kernel MUST agree on `ULONG`'s width or every
+# `TX_THREAD` offset differs between them — a clean compile and a runtime
+# corruption. `{nros}` is `packages/rmw/zenoh/zpico-sys`, so three levels up
+# is `packages/`.
+[[port.threadx.include_paths_conditional]]
+path = "{nros}/../../../boards/nros-board-threadx-port-riscv64/port/inc"
+when = { target_match = "riscv64" }
+[[port.threadx.include_paths_conditional]]
+path = "{source:threadx}/ports/risc-v64/gnu/inc"
+when = { target_match = "riscv64" }
+[[port.threadx.include_paths_conditional]]
+path = "{source:threadx-netxduo}/ports/linux/gnu/inc"
+when = { target_not = "embedded" }
+
+# from packages/platform/nros-platform-zephyr/nros-platform.toml
+[port.zephyr]
+# Zephyr's build system compiles zenoh-pico itself; this block exists so the
+# drift gate has a manifest entry, and to document what that external build is
+# expected to use. `compiled_by` is what KEEPS cargo out of it — issue 0534.
+# That used to be a comment saying "no cc-rs consumer hits it", and #529 then
+# made one hit it: naming zephyr in the zpico resolver is also what selects
+# `build_zenoh_pico_unified`, which cc-compiled the vendored `system/zephyr/*.c`
+# and died on the `version.h` only Zephyr's own build generates.
+compiled_by = "platform"
+defines = ["ZENOH_GENERIC", "ZENOH_ZEPHYR"]
+include = ["system/common", "system/zephyr"]
+
+# from config/bare-metal/nros-platform.toml
+[port.bare-metal]
+# `ZPICO_SMOLTCP` activates the smoltcp branches inside `zpico.c`
+# (clock via `smoltcp_clock_now_ms`, RX via `zp_read` single-read drain,
+# init via `smoltcp_init`). Without it `zpico_spin_once` falls into the
+# generic single-threaded `#else` that calls POSIX `select()` +
+# `clock_gettime`, both unresolved at bare-metal link time. Phase 136.4
+# (build_c_shim → build_zenoh_pico_unified manifest migration) dropped
+# this define from the bare-metal path; the manifest had no opinion so
+# `ZPICO_SMOLTCP` was simply not emitted.
+#
+# #189 — the legacy `ZPICO_NO_SMOLTCP` env-based opt-out (Phase 132) IS
+# wired again, in the runner (Step 6 of `build_zenoh_pico_unified`): a
+# serial-only link set + `ZPICO_NO_SMOLTCP` swaps this define for
+# `ZPICO_SERIAL`. The serial-only boards were never hypothetical
+# (mps2-an385-baremetal serial-talker/-listener predate the migration),
+# and the smoltcp spin branch's clock is frozen without a smoltcp iface
+# — timers never fire on such firmware.
+defines = ["ZENOH_GENERIC", "ZPICO_SMOLTCP"]
+defines_kv = { ZENOH_DEBUG = "0", Z_FEATURE_MULTI_THREAD = "0" }
+include = ["system/common"]
+extra_sources = [
+  { path = "{nros}/c/zpico/zpico.c" },
+]
+include_paths = [
+  "{nros}/c/platform",
+  "{nros}/c/include",
+  # Phase 154 — `nros-platform-api/include` carries
+  # `<nros/platform_net.h>` (the canonical `nros_platform_*` ABI +
+  # `nros_platform_socket_get_fd` accessor). `zpico.c` includes it
+  # unconditionally; without this on the bare-metal path
+  # `cargo check` against any `examples/mps2-an385-baremetal/...`
+  # example fails with `nros/platform_net.h: No such file or directory`.
+  "{nros}/../../platform/nros-platform-api/include",
+]
+
+# from config/generic/nros-platform.toml
+[port.generic]
+defines = ["ZENOH_GENERIC"]
+include = ["system/common"]

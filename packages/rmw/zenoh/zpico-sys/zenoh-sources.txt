@@ -121,7 +121,7 @@
 #
 #   nros-zpico-build   always       → true
 #                      zephyr       → `platform == "zephyr"`, which is FALSE by
-#                                     construction today: `nros-platform.toml`
+#                                     construction today: the zenoh port row
 #                                     declares Zephyr `compiled_by =
 #                                     "platform"` and `build_zenoh_pico_unified`
 #                                     is not called for it (issue 0541 — when it
@@ -142,8 +142,9 @@
 # WHAT IS DELIBERATELY NOT HERE
 #
 #   `src/system/<platform>/` for platforms OTHER than Zephyr. Those are
-#   declared per platform in `packages/platform/nros-platform-*/
-#   nros-platform.toml` (`extra_sources`), which is a different axis — one
+#   declared per platform in the zenoh `[port.<platform>]` rows
+#   (`extra_sources`, packages/rmw/zenoh/nros-rmw-zenoh/nros-rmw.toml), which
+#   is a different axis — one
 #   declaration per platform, read by one lane, so there is no mirror to drift.
 #   Zephyr's two files are here because Zephyr has no such block: the cmake lane
 #   IS its `extra_sources`, and leaving them spelled there would be exactly the

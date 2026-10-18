@@ -1,9 +1,10 @@
 # RFC-0049 / phase-290 — per-platform-package configuration.
 #
 # Sections: `[capabilities]` (software-stack facts), `[knobs.*]` (typed
-# policy defaults; deny_unknown_fields), `[build.zenoh]` (the zenoh-pico /
-# zpico shim build block — keys documented in
-# nros-board-common/src/manifest.rs), `[arch.*]` (reusable compiler-flag
+# policy defaults; deny_unknown_fields), top-level `arch_profiles` /
+# `compile` / `required_env` (what any vendored C build here needs; the
+# zenoh-pico port rows are `[port.<platform>]` in nros-rmw-zenoh's
+# nros-rmw.toml since phase-349 W2b), `[arch.*]` (reusable compiler-flag
 # profiles; may be duplicated across platform files only byte-identically).
 # Resolution ladder: builtin < platform (inherits chain) < board < env.
 # Schema + loader: nros-board-common/src/platform_config.rs.
@@ -24,122 +25,27 @@
 # "freertos-lwip"]`); this is the same shape. names[0] stays canonical.
 names = ["threadx", "threadx-linux", "threadx-riscv64"]
 
-# phase-400 W3 / RFC-0086 — software-stack FACTS (open vocabulary).
-[capabilities]
-clock = true       # issue 1037 — exports nros_platform_clock_ns (src/platform.c)
-
-[build.zenoh]
-# `NROS_PLATFORM_ALIASES` selects the 32-byte opaque socket / endpoint
-# / task layouts from `nros_zenoh_generic_platform.h`. Must match the
-# layout the alias TU (`platform_aliases.c`) is compiled with — without
-# this define on the vendor build, `c/platform/zenoh_generic_platform.h`
-# falls through to `threadx/platform.h` (`{ int _fd; }`, 4 bytes), and
-# every `_z_send_tcp(*socket, ...)` call passes 4 bytes by value while
-# the alias TU's wrapper expects a 32-byte struct → caller passes fd as
-# the a0 register value, callee dereferences fd as a pointer → load
-# access fault at `mtval = fd`. Phase 154 doc claimed this was set; the
-# build.rs hookup was missing, fixed in this [build.zenoh] block directly.
-defines = [
-  "ZENOH_GENERIC", "ZENOH_THREADX", "NROS_PLATFORM_ALIASES",
-  "NX_BSD_ENABLE_NATIVE_API",
-  "TX_INCLUDE_USER_DEFINE_FILE", "NX_INCLUDE_USER_DEFINE_FILE",
-]
-defines_kv = { Z_FEATURE_MULTI_THREAD = "1" }
-# Issue 0626 — the zenoh read/lease task priority, on the NORMALISED 0-31 band
-# (0 = least urgent, larger = more urgent; phase-364 W5). `task.c` INVERTS it for
-# ThreadX, which counts 0 as the highest priority.
-#
-# Settable here rather than in `build_c_shim`: ThreadX's shim is compiled by the
-# manifest-driven unified builder (`extra_sources` below), and `build_c_shim` is
-# explicitly skipped for this platform — a define added there would never have
-# reached the lane that needs it.
-#
-# 17, not the 16 used elsewhere, and the difference is deliberate: 17 is the
-# band value that maps BACK to ThreadX 14, the `Z_TASK_PRIORITY` every zenoh
-# task took before this change. (31 - round(31*17/31) = 14; 16 would land on
-# 15.) Plumbing a value through should not also retune it — a one-step
-# scheduling shift on an RTOS is exactly the kind of change that resurfaces
-# later as a timing flake nobody connects to this commit.
-#
-# Retuning it is now a one-line edit here, which is the point of the issue.
-defines_env = { ZENOH_DEBUG = { env = "NROS_ZENOH_DEBUG", default = "0" }, ZPICO_READ_TASK_PRIORITY = { env = "NROS_ZENOH_READ_PRIORITY", default = "17" }, ZPICO_LEASE_TASK_PRIORITY = { env = "NROS_ZENOH_LEASE_PRIORITY", default = "17" } }
-include = ["system/common"]
-extra_sources = [
-  { path = "{nros}/c/platform/threadx/task.c" },
-  { path = "{nros}/c/platform/threadx/log_uart.c", if_env = "NROS_ZPICO_LOG_TO_UART", with_define = ["ZENOH_LOG_PRINT", "zpico_log_print"] },
-  { path = "{nros}/c/zpico/zpico.c" },
-]
-arch = "riscv64gc"
+# phase-349 W2b — what this platform needs from ANY C build of a vendored
+# component: which `[arch.*]` profiles apply (first `target_match` wins, in
+# this order), the compile settings, and the board facts it requires. The
+# zenoh-pico port rows that used to sit beside these in `[build.zenoh]` live
+# in the zenoh backend's descriptor now: `[port.threadx]` in
+# packages/rmw/zenoh/nros-rmw-zenoh/nros-rmw.toml ("platforms name no
+# backends", RFC-0072 §9).
+arch_profiles = "riscv64gc"
 compile = { opt_level = "s", warnings = false, cflags = ["-ffunction-sections", "-fdata-sections"] }
 # phase-484 W2c — the source TREES (kernel, lwIP, ThreadX, NetX Duo) are not
-# required env any more: `{source:<name>}` below locates each through the one
+# required env any more: `{source:<name>}` in the zenoh port row locates each through the one
 # ladder and refuses with the remedy when none answers. Only board facts the
 # board descriptor carries remain here.
 required_env = [
   { name = "THREADX_CONFIG_DIR", help = "Directory containing tx_user.h. Example: packages/boards/nros-board-threadx-linux/config" },
   { name = "NETX_CONFIG_DIR", help = "Directory containing nx_user.h. Example: packages/boards/nros-board-threadx-linux/config" },
 ]
-include_paths = [
-  "{nros}/c/platform",
-  # Phase 154 — `c/zpico/` exposes `nros_zenoh_generic_platform.h`
-  # (32-byte opaque socket / endpoint / task layouts the alias
-  # TU uses). `c/platform/zenoh_generic_platform.h` `#include`s
-  # it when `NROS_PLATFORM_ALIASES` is defined (now set on the
-  # vendor build; see build.rs). Without `c/zpico` on the
-  # include path the chain fails to resolve and vendor src
-  # falls back to the small `threadx/platform.h` socket struct,
-  # ABI-misaligning every `_z_send_tcp` / `_z_read_tcp` call
-  # into the alias TU.
-  "{nros}/c/zpico",
-  # Phase 154 — `nros-platform-api/include` carries
-  # `<nros/platform_net.h>` (the canonical `nros_platform_*`
-  # ABI + the `nros_platform_socket_get_fd` accessor used by
-  # `zpico.c::get_session_fd` to read peer fd without
-  # depending on the per-RTOS socket-struct layout).
-  "{nros}/../../platform/nros-platform-api/include",
-  "{nros}/c/include",
-  "{source:threadx}/common/inc",
-  "{envpath:THREADX_CONFIG_DIR}",
-  "{source:threadx-netxduo}/common/inc",
-  "{source:threadx-netxduo}/addons/BSD",
-  "{envpath:NETX_CONFIG_DIR}",
-]
-# issue 0491 — VALUE knobs only. The four PATH variables this platform
-# interpolates above (`THREADX_DIR`, `THREADX_CONFIG_DIR`, `NETX_DIR`,
-# `NETX_CONFIG_DIR`) must NOT be listed: cargo compares an env value as TEXT,
-# and each example leaf spells the same directory differently
-# (`relative = true`, resolved against that leaf) from what `just` exports, so
-# every ThreadX row sharing one `--target-dir` re-ran zpico-sys's build script
-# forever. The include paths are watched by CONTENT in `runner.rs` instead.
-rerun_if_env_changed = [
-  "NROS_ZPICO_LOG_TO_UART", "NROS_ZENOH_DEBUG",
-  # Issue 0626 — VALUE knobs (a small integer), so they belong here: 0491's
-  # exclusion is for PATH variables, which have several spellings for one
-  # directory. Without these, changing the priority in the environment would
-  # not rebuild the shim and the old value would silently persist — the same
-  # "declared value never took effect" failure the issue is about.
-  "NROS_ZENOH_READ_PRIORITY", "NROS_ZENOH_LEASE_PRIORITY",
-]
-[[build.zenoh.include_paths_conditional]]
-path = "{source:threadx}/ports/linux/gnu/inc"
-when = { target_not = "embedded" }
-# phase-337 W4.a — the ARCH-PORT override must precede upstream's port inc
-# below. `tx_port.h` used to reach this build through `THREADX_CONFIG_DIR`
-# (the board's `config/`); it now lives in the layer-2 arch-port unit. The
-# zpico shim and the ThreadX kernel MUST agree on `ULONG`'s width or every
-# `TX_THREAD` offset differs between them — a clean compile and a runtime
-# corruption. `{nros}` is `packages/rmw/zenoh/zpico-sys`, so three levels up
-# is `packages/`.
-[[build.zenoh.include_paths_conditional]]
-path = "{nros}/../../../boards/nros-board-threadx-port-riscv64/port/inc"
-when = { target_match = "riscv64" }
-[[build.zenoh.include_paths_conditional]]
-path = "{source:threadx}/ports/risc-v64/gnu/inc"
-when = { target_match = "riscv64" }
-[[build.zenoh.include_paths_conditional]]
-path = "{source:threadx-netxduo}/ports/linux/gnu/inc"
-when = { target_not = "embedded" }
 
+# phase-400 W3 / RFC-0086 — software-stack FACTS (open vocabulary).
+[capabilities]
+clock = true       # issue 1037 — exports nros_platform_clock_ns (src/platform.c)
 
 [arch.riscv64gc]
 target_match = "riscv64"

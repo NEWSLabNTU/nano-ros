@@ -1,17 +1,13 @@
 # RFC-0049 / phase-290 — per-platform-package configuration.
 #
 # Sections: `[capabilities]` (software-stack facts), `[knobs.*]` (typed
-# policy defaults; deny_unknown_fields), `[build.zenoh]` (the zenoh-pico /
-# zpico shim build block — keys documented in
-# nros-board-common/src/manifest.rs), `[arch.*]` (reusable compiler-flag
+# policy defaults; deny_unknown_fields), top-level `arch_profiles` /
+# `compile` / `required_env` (what any vendored C build here needs; the
+# zenoh-pico port rows are `[port.<platform>]` in nros-rmw-zenoh's
+# nros-rmw.toml since phase-349 W2b), `[arch.*]` (reusable compiler-flag
 # profiles; may be duplicated across platform files only byte-identically).
 # Resolution ladder: builtin < platform (inherits chain) < board < env.
 # Schema + loader: nros-board-common/src/platform_config.rs.
 # phase-349 W1 / RFC-0072 — the names this platform answers to; the
 # directory is just where the file lives. names[0] is canonical.
 names = ["generic"]
-
-[build.zenoh]
-defines = ["ZENOH_GENERIC"]
-include = ["system/common"]
-

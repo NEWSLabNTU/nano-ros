@@ -504,7 +504,7 @@ pub fn config_header(
     // phase-337 W7.b — was `0` on orin-spe alone (its FSP build had no room for
     // the encoding tables). That board is gone; a future space-constrained
     // platform should turn this off through the RFC-0049 knob ladder like every
-    // other `[build.zenoh]` value, not through a board-named bool parameter.
+    // other port-row value, not through a board-named bool parameter.
     writeln!(header, "#define Z_FEATURE_ENCODING_VALUES 1").unwrap();
     writeln!(header, "#define Z_FEATURE_TCP_NODELAY 1").unwrap();
     // Same-session loopback (issue 0096): a single `nros::main!` entry registers every
