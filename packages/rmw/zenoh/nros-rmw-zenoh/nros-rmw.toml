@@ -30,6 +30,8 @@ cpp_define = "NROS_RMW_ZENOH_CFFI"
 # the C/C++ umbrella, nothing extra on the link line.
 [rmw.provides.cargo]
 crate = "nros-rmw-zenoh"
+# RFC-0071 D11 — an image registers this backend as `<crate>::<register>()`.
+register = "register"
 
 [rmw.link]
 # Naming an rlib IS the statement that this backend arrives INSIDE the C/C++

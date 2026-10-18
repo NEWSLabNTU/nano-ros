@@ -62,6 +62,15 @@ pub struct ResolvedRmw {
     pub cmake_target: &'static str,
     /// `[rmw.codegen].per_message` — a cmake command run per message type.
     pub per_message_hook: &'static str,
+    /// `[rmw.provides.cargo] crate`, as a Rust path root (`-` -> `_`): the crate
+    /// whose `register_fn` an image calls (RFC-0071 D11). Empty: the backend
+    /// registers through the C ABI only.
+    pub register_crate: &'static str,
+    /// `[rmw.provides.cargo] register`, the function inside `register_crate`.
+    pub register_fn: &'static str,
+    /// `[rmw.provides.cargo] type_register_crate`: where `register::<T>()`
+    /// lives, for a backend that needs per-type descriptors. Empty otherwise.
+    pub type_register_crate: &'static str,
     /// Phase 241 W13/R1 (RFC-0042 §D3 bullet 2) — the **link dispatch** data,
     /// the one place that records how each backend reaches the final link.
     /// Consumed by both the W11 synthesized `nros_ws_runtime` crate's nros-cpp
@@ -186,6 +195,9 @@ pub fn resolve_rmw(declared: &str) -> Result<ResolvedRmw, UnknownRmw> {
             cpp_define: r.cpp_define,
             cmake_target: r.cmake_target,
             per_message_hook: r.per_message_hook,
+            register_crate: r.register_crate,
+            register_fn: r.register_fn,
+            type_register_crate: r.type_register_crate,
             dispatch: RmwDispatch {
                 umbrella_cffi_feature: r.cffi_feature,
                 rlib_dep: (!r.rlib_dep.is_empty()).then_some(r.rlib_dep),

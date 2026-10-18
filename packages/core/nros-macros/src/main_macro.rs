@@ -1619,24 +1619,18 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // resolvable; unknown rmw names emit nothing (data-driven fallbacks).
     // The RMW is the leaf's (RFC-0098 D5 — `system.toml`'s image/system `rmw`,
     // else the retiring deploy table's), read by the same reader as the board.
+    // RFC-0071 D11 (phase-506 W2, issue 1298) — the call itself comes from the
+    // image's selection package, which `nros sync` generates from the backend's
+    // `[rmw.provides.cargo]` statement; this macro names no backend. `gated`
+    // keeps each call behind the entry's own `rmw-<x>` feature, so an entry
+    // built with a Kconfig-chosen feature set still compiles.
     let zephyr_rmw_register_ts: proc_macro2::TokenStream = deploy_for_framework
         .as_deref()
         .and(leaf_decl.as_ref())
-        .and_then(|leaf| leaf.rmw.clone())
-        .and_then(|rmw| rmw_crate_ident(&rmw).map(|ident| (rmw, ident)))
-        .map(|(rmw, crate_ident)| {
-            let id = Ident::new(crate_ident, Span::call_site());
-            // Gate on the entry's matching `rmw-<x>` cargo feature so an entry
-            // built with a different `--features rmw-<y>` selection (the
-            // Kconfig-driven multi-RMW shape) still compiles — the register
-            // call cfg-outs together with the optional backend dep.
-            let feature = format!("rmw-{rmw}");
-            quote! {
-                #[cfg(feature = #feature)]
-                {
-                    let _ = ::#id::register();
-                }
-            }
+        .and_then(|leaf| leaf.rmw.as_ref())
+        .map(|_| match entry_selection_crate(&manifest_dir) {
+            Some(sel) => quote! { ::#sel::__nros_register_backends!(gated); },
+            None => no_selection_error("this Zephyr entry's backend registration"),
         })
         .unwrap_or_default();
 
@@ -2838,25 +2832,34 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         // InvalidArgument)` (null vtable). Mirrors the board boot path's
         // `nros_rmw_<x>::register()` (Phase 248 C5a). Unknown rmw names map to
         // nothing (the data-driven config still drives the actual open).
-        let register_calls: Vec<proc_macro2::TokenStream> = bridge_rmws
-            .iter()
-            .filter_map(|rmw| rmw_crate_ident(rmw))
-            .map(|crate_ident| {
-                let id = Ident::new(crate_ident, Span::call_site());
-                quote! { let _ = ::#id::register(); }
-            })
-            .collect();
-        // phase-267 (non-flat types) — stage each cyclonedds-egress non-flat type's
-        // Cyclone descriptor via a typed `register::<M>()` (reuses `M::FIELDS`, so
-        // nested / array / sequence work without a flat schema). The Entry deps the
-        // forwarded msg crate(s) + `nros-rmw-cyclonedds`. `let _ =` mirrors the
-        // backend register: a failure surfaces downstream as the egress pub error.
-        let typed_register_calls: Vec<proc_macro2::TokenStream> = read_register_types(cfg_path)
-            .into_iter()
-            .filter(|(_, rmw)| rmw == "cyclonedds")
-            .filter_map(|(rust_path, _)| syn::parse_str::<SynPath>(&rust_path).ok())
-            .map(|path| quote! { let _ = ::nros_rmw_cyclonedds::register::<#path>(); })
-            .collect();
+        // RFC-0071 D11 (phase-506 W2, issue 1298) — both the backend calls and
+        // the per-type staging are the selection package's macros, generated
+        // from the descriptors: `__nros_register_type!` expands to the backend's
+        // typed `register::<T>()` for a backend with `needs-type-descriptors`
+        // and to nothing for any other.
+        let _ = &bridge_rmws;
+        let (register_calls, typed_register_calls): (
+            Vec<proc_macro2::TokenStream>,
+            Vec<proc_macro2::TokenStream>,
+        ) = match entry_selection_crate(&manifest_dir) {
+            Some(sel) => (
+                vec![quote! { ::#sel::__nros_register_backends!(); }],
+                read_register_types(cfg_path)
+                    .into_iter()
+                    .filter_map(|(rust_path, rmw)| {
+                        syn::parse_str::<SynPath>(&rust_path)
+                            .ok()
+                            .map(|path| quote! { ::#sel::__nros_register_type!(#rmw, #path); })
+                    })
+                    .collect(),
+            ),
+            None => (
+                vec![no_selection_error(
+                    "this bridge entry's backend registration",
+                )],
+                Vec::new(),
+            ),
+        };
         let expanded = quote! {
             #( #tracked_consts )*
             fn main() -> ::core::result::Result<(), ::nros_bridge::ConfigError> {
@@ -3030,16 +3033,45 @@ fn reroot_through(path: &SynPath, sel: &Ident) -> SynPath {
     p
 }
 
-/// Issue 0106 — map an `system.toml` rmw name to the backend crate ident the
-/// Entry deps (so the macro can emit `nros_rmw_<x>::register()`). Mirrors the
-/// orchestration codegen map (`generate.rs` ~2785). `None` for unknown names.
-fn rmw_crate_ident(rmw: &str) -> Option<&'static str> {
-    match rmw {
-        "zenoh" => Some("nros_rmw_zenoh"),
-        "cyclonedds" => Some("nros_rmw_cyclonedds_sys"),
-        "xrce" => Some("nros_rmw_xrce_cffi"),
-        _ => None,
+/// `Some(<pkg>_nros_selection)` when the entry's manifest names its generated
+/// selection package in any dependency table — whether or not it also names
+/// its board crate (unlike [`leaf_selection_crate`], which re-roots the board
+/// path and so must defer to a direct board dependency).
+///
+/// RFC-0071 D11: the selection package is where an image's backend
+/// registration is generated, so this is the only route by which the macro
+/// can register a backend without naming it.
+fn entry_selection_crate(manifest_dir: &Path) -> Option<Ident> {
+    let pkg = entry_env("CARGO_PKG_NAME")?.into_string().ok()?;
+    let raw = std::fs::read_to_string(manifest_dir.join("Cargo.toml")).ok()?;
+    let doc: toml::Table = toml::from_str(&raw).ok()?;
+    let sel = nros_orchestration_ir::leaf_system::selection_crate_name(&pkg);
+    let scopes = std::iter::once(&doc).chain(
+        doc.get("target")
+            .and_then(|t| t.as_table())
+            .into_iter()
+            .flat_map(|t| t.values().filter_map(|v| v.as_table())),
+    );
+    let mut found = false;
+    for scope in scopes {
+        if let Some(deps) = scope.get("dependencies").and_then(|d| d.as_table()) {
+            found |= deps.keys().any(|k| k.replace('-', "_") == sel);
+        }
     }
+    found.then(|| Ident::new(&sel, Span::call_site()))
+}
+
+/// A registration that has no selection package to come from is a build
+/// error naming the fix, never a silent omission: without it the cffi registry
+/// stays empty and `Executor::open` fails at run time with `NoBackend`.
+fn no_selection_error(what: &str) -> proc_macro2::TokenStream {
+    let msg = format!(
+        "nros::main!: {what} comes from the image's generated selection package \
+         (`<package>_nros_selection`, RFC-0071 D11), and this entry's Cargo.toml \
+         does not depend on it. Run `nros sync` (or `nros build`), which writes \
+         the package and the dependency."
+    );
+    quote! { ::core::compile_error!(#msg); }
 }
 
 /// Phase 216 final wave — read `[package.metadata.nros.entry]
@@ -5256,17 +5288,17 @@ mod remap_bake_tests {
 
 #[cfg(test)]
 mod bridge_rmw_tests {
-    use super::rmw_crate_ident;
+    use super::no_selection_error;
 
+    /// RFC-0071 D11 — the macro names no backend. With no selection package
+    /// to take the registration from, the entry fails to BUILD and the message
+    /// names the fix; it never compiles into an image whose registry is empty.
     #[test]
-    fn rmw_crate_ident_maps_known_backends() {
-        assert_eq!(rmw_crate_ident("zenoh"), Some("nros_rmw_zenoh"));
-        assert_eq!(
-            rmw_crate_ident("cyclonedds"),
-            Some("nros_rmw_cyclonedds_sys")
-        );
-        assert_eq!(rmw_crate_ident("xrce"), Some("nros_rmw_xrce_cffi"));
-        assert_eq!(rmw_crate_ident("unknown"), None);
+    fn a_missing_selection_package_is_a_build_error_naming_the_fix() {
+        let ts = no_selection_error("this bridge entry's backend registration").to_string();
+        assert!(ts.contains("compile_error"), "{ts}");
+        assert!(ts.contains("nros sync"), "{ts}");
+        assert!(ts.contains("_nros_selection"), "{ts}");
     }
 }
 
