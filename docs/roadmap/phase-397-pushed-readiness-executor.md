@@ -1,6 +1,6 @@
 # Phase 397 — Pushed readiness: the wake says WHO, and the executor stops scanning
 
-**Status (2026-10-19). W1 DONE; W2 DONE (zenoh and Cyclone); W3 DONE; W4 onward not started.** Implements
+**Status (2026-10-19). W1-W5 DONE (W2 on zenoh and Cyclone; W4 by deletion); W6 not started.** Implements
 [RFC-0084](../design/0084-readiness-is-pushed-not-scanned.md).
 
 **Revision 2026-10-17, read against `main`.**
@@ -275,7 +275,7 @@ Mutations, each red then restored green:
 - Dropping the ready slots from the recheck word: the second test fails,
   with `a` never dispatched.
 
-### W4 — land phase-110.A, or delete it
+### W4 — land phase-110.A, or delete it — DONE 2026-10-19 (deleted)
 
 `Activator` and `Dispatcher` (`executor/activator.rs`, `executor/dispatcher.rs`)
 were defined by phase 110.A with the note that 110.A.b would rewire `spin_once`
@@ -289,7 +289,20 @@ firing it — with two implementations: `ScanActivator` (today's loop) and
 supplied. Land them as that, or delete them. An abstraction that documents an
 architecture the code does not have is worse than either.
 
-### W5 — the arrived-vs-present rule
+**Deleted.** W3 did not need the seam in the shape this item expected. One
+executor holds pushed and scanned slots at once, and the scan settles each
+slot by its own kind: its arrival bit if its backend attributes arrivals,
+otherwise `has_data`. A per-session choice of activator would have been
+coarser than that, and nothing would have called it.
+
+So `executor/activator.rs` and `executor/dispatcher.rs` are gone, together
+with `ActivatorCtx` and the unused `DrainMode`, which only the dispatcher's
+doc comment named. `ActiveJob` and `SortKey` stay: the ready sets use them.
+They lost their stale `dead_code` allowances. RFC-0084 §5 records the
+decision, and RFC-0002 §4.4 carries a note that its sketch was never
+implemented.
+
+### W5 — the arrived-vs-present rule — DONE 2026-10-19
 
 A bit says data **arrived**; `has_data` says data is **present now**. They
 disagree when a callback drains its queue while an arrival races it.
@@ -301,6 +314,38 @@ ready bit has always stood for any number of queued messages.
 
 **Done when** a test drives arrival and drain concurrently and no message is
 left undispatched (a spurious extra dispatch is a pass, a lost message is not).
+
+**Landed.** W3 already implements the rule. The ready word is taken once, at
+the scan, and nothing clears a bit afterwards. An arrival that lands during a
+dispatch sets its bit in the word for the next spin and signals the wake, and
+a slot that was ready is probed once more on the next spin (`entity_recheck`).
+W5 adds the test.
+
+`an_arrival_racing_a_drain_is_never_left_undispatched`
+(`nros-tests/tests/entity_wake.rs`, zenoh) runs 20 rounds. In each round a
+second thread publishes a short burst and holds the burst's LAST sample until
+the subscription's callback is running. So the last sample arrives during a
+dispatch of its own entity, and no later arrival announces it again. Each
+round requires that sample to be dispatched. A control requires at least half
+the rounds to have really published inside a callback.
+
+It runs on both dispatch shapes a raw subscription has:
+- in-place, whose dispatch drains the backend's queue to empty;
+- `.message_info()`, whose dispatch takes one sample, so the racing sample is
+  still queued when the dispatch ends.
+
+Mutation: clearing the ready word and the recheck word at the end of each
+spin (the "clear when drained" rule) fails the one-sample case:
+`sample 3, published while a callback ran (Some(true)), was never dispatched`.
+The in-place case still passes under that mutation, because its drain loop
+takes the racing sample in the same dispatch. That is why both shapes run.
+
+The test also found
+[issue 1970](../issues/1970-zenoh-full-ring-drops-newest-sample.md). zenoh's
+subscriber ring drops the NEWEST sample when it is full, silently. A first
+draft with a callback slower than its publisher lost each burst's last sample
+there, with W3 enabled or disabled. The test is paced so the ring never
+fills.
 
 ### W6 — measure
 
