@@ -276,6 +276,15 @@ cc-build-policy:
 cli-source-dirs:
     @python3 scripts/gen-cli-source-dirs.py --check
 
+# Issue 1868 — `config/rust-toolchains.txt` must equal the fold of every tracked
+# `rust-toolchain.toml`. The CI image bakes exactly that list, so a pin it
+# misses is downloaded from static.rust-lang.org at RUN time inside a
+# merge-gating job, where a failed fetch is a red with nothing wrong in the
+# change. Buildless: the git index and some regexes.
+[private]
+rust-toolchains-list:
+    @python3 scripts/gen-rust-toolchains.py --check
+
 # Issue 1578 — `packages/cli/probe-source-dirs.txt` must equal cargo's resolve of
 # what a metadata PROBE compiles.
 #

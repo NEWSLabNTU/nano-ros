@@ -60,11 +60,11 @@ phase's. Build speed is phase-489's.
 
 ### W2 — the merge gate fails only for the code
 
-- [ ] [#1626](../issues/1626-api-parity-fast-line-needs-crates-io.md):
+- [x] [#1626](../issues/archived/1626-api-parity-fast-line-needs-crates-io.md):
       `check-api-parity` survives a crates.io hiccup.
-- [ ] [#1868](../issues/1868-ci-rustup-downloads-flake-merge-gating-jobs.md):
+- [x] [#1868](../issues/archived/1868-ci-rustup-downloads-flake-merge-gating-jobs.md):
       merge-gating jobs stop downloading toolchains at run time.
-- [ ] [#1760](../issues/1760-ci-just-installer-403.md): installing `just` is
+- [x] [#1760](../issues/archived/1760-ci-just-installer-403.md): installing `just` is
       pinned and retried.
 - [ ] [#1629](../issues/1629-queue-check-timeout-outgrown-by-gate-lane.md): the
       queue's check timeout and the gate lane's duration are kept in agreement.
@@ -103,15 +103,15 @@ ejection from a cause listed here.
 | [#1403](../issues/1403-fixture-jobserver-deadlock-looks-like-a-hang.md) | `build-examples` deadlocked on its own make jobserver FIFO. In CI that reads as a hang, not a failure. |
 | [#1621](../issues/1621-sdk-store-submodule-provision-breaks-worktree-git.md) | A fast-line probe gate in a worktree without zenoh-pico leaves a broken gitlink, and after that `git status` fails for the whole worktree. |
 | [#1625](../issues/1625-dep-chain-nuttx-cell-one-run-red.md) | A `dep-chain` FAIL printed `thiserror` tree rows instead of cargo's error, so the cause of that red cannot be recovered. |
-| [#1626](../issues/1626-api-parity-fast-line-needs-crates-io.md) | `check-api-parity` runs `cargo doc`, so the one required check goes red on a crates.io hiccup, with no retry. |
+| [#1626](../issues/archived/1626-api-parity-fast-line-needs-crates-io.md) | `check-api-parity` runs `cargo doc`, so the one required check goes red on a crates.io hiccup, with no retry. |
 | [#1629](../issues/1629-queue-check-timeout-outgrown-by-gate-lane.md) | The merge queue's 60-minute check timeout is shorter than the gate lane, so entries are ejected while their gate goes on to pass. |
 | [#1745](../issues/1745-probe-gates-race-mbedtls-submodule-fetch.md) | Two parallel probe gates provision the mbedtls submodule at the same time, and one of them dies on git's shallow-file race. |
-| [#1760](../issues/1760-ci-just-installer-403.md) | CI installs `just` by piping an installer script with no retry, and one 403 failed a lane. |
+| [#1760](../issues/archived/1760-ci-just-installer-403.md) | CI installs `just` by piping an installer script with no retry, and one 403 failed a lane. |
 | [#1784](../issues/archived/1784-workspace-features-threadx-posix-duplicate-platform.md) | `check::workspace-features` links two platform ABIs into one test binary. The gate runs only in `ci gate` (issue 1177's class). |
 | [#1785](../issues/1785-stall-watchdog-diagnostics-hang-on-fuse-fd.md) | The make-stall watchdog hangs in its own diagnostics on a stuck FUSE mount, so the watchdog never fires. |
 | [#1795](../issues/archived/1795-rtos-carrier-route-no-fixture.md) | No lane builds an RTOS TYPED carrier image, so the link of `nano_ros_node_register`'s ThreadX and NuttX arms has no coverage. |
 | [#1800](../issues/1800-ros2-tests-no-scheduled-lane-claims.md) | `workspace_shadowing` and `cyclone_slirp_pair` claim ROS 2 and are not interop cells, so no scheduled lane runs them. |
-| [#1868](../issues/1868-ci-rustup-downloads-flake-merge-gating-jobs.md) | Merge-gating jobs download Rust toolchains at run time, and a failed download ejects the whole batch. |
+| [#1868](../issues/archived/1868-ci-rustup-downloads-flake-merge-gating-jobs.md) | Merge-gating jobs download Rust toolchains at run time, and a failed download ejects the whole batch. |
 | [#1960](../issues/1960-standalone-cargo-roots-linted-by-no-lane.md) | Filed 2026-10-18 while closing #1309: 28 excluded cargo roots are built, as a fixture or a locked root, and clippy reaches none of them. |
 | [#1912](../issues/archived/1912-push-gate-pin-baseline-is-live-main.md) | The push-event submodule-pin gate compares against the live `origin/main`, so a superseded commit reads as a REWIND. |
 | [#1964](../issues/1964-pre-push-fast-red-unreproduced.md) | The pre-push `check fast` went red once and green on an immediate retry, and which gate it was cannot be recovered. The hook now keeps its full output outside the checkout. |

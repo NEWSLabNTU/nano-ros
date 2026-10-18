@@ -118,6 +118,15 @@ ci-image-python-deps:
 ci-image-apt-packages:
     @python3 scripts/check-ci-image-apt-packages.py
 
+# Issues 1201 / 1760 / 1868 — a file a CI Dockerfile COPYs from the tree is an
+# image INPUT, declared in four places: its `.dockerignore` (or the build dies
+# at checksum and the old tag keeps serving), `images.yml`'s push paths and the
+# image's `changes` filter (or an edit never rebuilds it), and the content-tag
+# hash (or new content publishes under the old tag). Buildless.
+[private]
+ci-image-inputs:
+    @python3 scripts/check-ci-image-inputs.py
+
 # CI may not set NROS_FIXTURES_OPTIONAL. A lane names its scope, so a missing
 # fixture INSIDE that scope is a failure; the flag turned it into a skip and made
 # correctness depend on remembering to unset a variable (phase-411 W4). The

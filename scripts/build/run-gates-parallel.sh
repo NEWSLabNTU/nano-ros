@@ -170,6 +170,20 @@ just _check-skip-reset >/dev/null 2>&1 || true
 # rename 'downloaded' file", "detected conflict: 'bin/cargo-clippy'"), which
 # failed `check / fast` on main twice on 2026-10-16. `workspace-all` got the
 # same line for the same race.
+#
+# EVERY pinned channel, not just the root one: `leaf-lockfiles` reaches
+# `nros-verification`, which pins its own 1.93.0, and that download happened
+# mid-gate (gate run 39100015249). The installer reads
+# `config/rust-toolchains.txt` (derived from every tracked rust-toolchain.toml)
+# and asks rustup's LOCAL state first, so on the CI image — which bakes the
+# same list — it fetches nothing; only a missing piece is fetched, serially and
+# with a bounded retry.
+if ! "$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)/install-rust-toolchains.sh"; then
+    echo "run-gates-parallel: [INFRA] could not complete the pinned Rust toolchains" >&2
+    echo "  (a static.rust-lang.org download failed; no gate ran, so no gate verdict" >&2
+    echo "  is implicated — issue 1868)." >&2
+    exit 1
+fi
 cargo --version >/dev/null
 
 # The skip ledger's reader. Sourced here rather than at the bottom because

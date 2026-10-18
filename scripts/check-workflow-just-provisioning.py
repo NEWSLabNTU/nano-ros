@@ -96,8 +96,55 @@ JUST = invoke_re(("just",))
 # "Install just (if absent)" step use the first; the second is what
 # `scripts/sdk-env.sh` tells a human to type. A third-party action whose name
 # ends in `setup-just` is the community convention.
-INSTALLERS = ("just.systems/install.sh", "cargo install just")
+# The `--to` is part of the marker: the script's NAME also appears where it is
+# merely hashed (`images.yml`'s content tag), which installs nothing.
+INSTALLERS = ("scripts/ci/install-just.sh --to", "cargo install just")
 INSTALL_ACTION = re.compile(r"setup-just(?:@|$)")
+
+# Issue 1760 — REFUSED, wherever it appears under `.github/` or `ci/docker/`.
+# Piping `just.systems/install.sh` makes a lane's verdict depend on one fetch of
+# a third-party SCRIPT succeeding: one 403 on it stopped the probe's installed
+# track before it reached its probe (run 37904203449), and curl does not retry
+# a 403. It also chose the version at run time. `scripts/ci/install-just.sh` is
+# the one spelling: a pinned, checksummed release asset, `--retry-all-errors`.
+REFUSED_INSTALLERS = ("just.systems/install.sh",)
+
+
+def _tracked_ci_files():
+    """Tracked files under `.github/` and `ci/docker/` — the git index, not a walk."""
+    import subprocess
+
+    out = subprocess.run(
+        ["git", "-C", str(REPO), "ls-files", "--", ".github", "ci/docker"],
+        check=True, capture_output=True, text=True,
+    ).stdout.split()
+    return [REPO / f for f in out]
+
+
+def refused_installer_sites(files=None):
+    """[(path, line_no, line)] for every refused `just` installer spelling.
+
+    Reads the workflow and action YAML and every CI Dockerfile as TEXT, so a
+    site the step classifier would not reach (a Dockerfile `RUN`, a commented
+    continuation) is still found. Comment lines are skipped: prose explaining
+    why the old spelling is gone is not a use of it.
+    """
+    hits = []
+    for f in sorted(_tracked_ci_files() if files is None else files):
+        if not (f.suffix in (".yml", ".yaml") or "Dockerfile" in f.name):
+            continue
+        if "dockerignore" in f.name:
+            continue
+        try:
+            lines = f.read_text().splitlines()
+        except (OSError, UnicodeDecodeError):
+            continue
+        for i, line in enumerate(lines, 1):
+            if line.lstrip().startswith("#"):
+                continue
+            if any(m in line for m in REFUSED_INSTALLERS):
+                hits.append((f, i, line.strip()))
+    return hits
 
 
 def image_dockerfiles():
@@ -301,7 +348,7 @@ def report(failures, self_hosted, checked, quiet=False):
         print("    * container: ghcr.io/newslabntu/nano-ros-ci:humble  (bakes it), or")
         print("    * a step BEFORE the first invocation, copying the one in")
         print("      .github/workflows/probe.yml (\"Install just\"): `command -v just` guard,")
-        print("      https://just.systems/install.sh --to \"$HOME/.local/bin\",")
+        print("      `bash scripts/ci/install-just.sh --to \"$HOME/.local/bin\"`,")
         print("      then append that dir to $GITHUB_PATH.")
         return 1
     if quiet:
@@ -341,11 +388,11 @@ def self_test():
         ("bare runner, no install", {"runs-on": "ubuntu-latest", "steps": [
             {"name": "go", "run": "source ./activate.sh\njust probe checkout\n"}]}, True),
         ("bare runner, install first", {"runs-on": "ubuntu-latest", "steps": [
-            {"name": "install", "run": "curl -sSf https://just.systems/install.sh | bash\n"},
+            {"name": "install", "run": "bash scripts/ci/install-just.sh --to \"$HOME/.local/bin\"\n"},
             {"name": "go", "run": "just probe checkout\n"}]}, False),
         ("bare runner, install AFTER", {"runs-on": "ubuntu-latest", "steps": [
             {"name": "go", "run": "just probe checkout\n"},
-            {"name": "install", "run": "curl -sSf https://just.systems/install.sh | bash\n"}]}, True),
+            {"name": "install", "run": "bash scripts/ci/install-just.sh --to \"$HOME/.local/bin\"\n"}]}, True),
         ("container that bakes just", {"runs-on": "ubuntu-22.04",
             "container": {"image": "ghcr.io/newslabntu/nano-ros-ci:humble"},
             "steps": [{"name": "go", "run": "just check fast\n"}]}, False),
@@ -470,12 +517,28 @@ def self_test():
         )
         failures += 1
 
+    # Arm 4 (issue 1760) — the refused-installer scan finds a planted site and
+    # ignores the same text in a comment.
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        wf = Path(td) / "x.yml"
+        wf.write_text("# was: curl https://just.systems/install.sh | bash\njobs: {}\n")
+        if refused_installer_sites([wf]):
+            print("  self-test FAIL: arm 4 counted a COMMENT as a refused installer")
+            failures += 1
+        df = Path(td) / "Dockerfile"
+        df.write_text(
+            "RUN curl -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin\n")
+        if len(refused_installer_sites([wf, df])) != 1:
+            print("  self-test FAIL: arm 4 missed a refused installer in a Dockerfile RUN")
+            failures += 1
+
     if failures:
         print(f"check-workflow-just-provisioning self-test: {failures} case(s) FAILED")
         return 1
     print(
         f"check-workflow-just-provisioning self-test: OK "
-        f"({len(cases)} synthetic + 3 real-tree provider arms disarmed)"
+        f"({len(cases)} synthetic + 3 real-tree provider arms disarmed + refused-installer scan)"
     )
     return 0
 
@@ -495,6 +558,15 @@ def main():
     # as a self-test complaint about an empty set instead of naming the job.
     # A broken detector still cannot pass, because both run every time.
     verdict = report(*audit(load_workflows()))
+    refused = refused_installer_sites()
+    if refused:
+        print("check-workflow-just-provisioning: refused `just` installer spelling (issue 1760):")
+        for path, line_no, line in refused:
+            print(f"  {path.relative_to(REPO)}:{line_no}: {line[:96]}")
+        print("  Piping a remote installer SCRIPT ties the lane to one unretried fetch of")
+        print("  a third-party host. Use the one spelling instead:")
+        print("    bash scripts/ci/install-just.sh --to <dir>   (pinned, checksummed, retried)")
+        verdict = 1
     return 1 if (self_test() != 0 or verdict) else 0
 
 

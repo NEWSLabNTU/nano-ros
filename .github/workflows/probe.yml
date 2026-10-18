@@ -66,9 +66,9 @@ jobs:
         run: |
           set -euo pipefail
           if ! command -v just >/dev/null 2>&1; then
-            mkdir -p "$HOME/.local/bin"
-            curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh \
-              | bash -s -- --to "$HOME/.local/bin"
+            # issue 1760 — the pinned, checksummed release asset, retried on
+            # every error class; never a piped installer script.
+            bash scripts/ci/install-just.sh --to "$HOME/.local/bin"
             echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           fi
       - name: just probe checkout
@@ -93,9 +93,9 @@ jobs:
         run: |
           set -euo pipefail
           if ! command -v just >/dev/null 2>&1; then
-            mkdir -p "$HOME/.local/bin"
-            curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh \
-              | bash -s -- --to "$HOME/.local/bin"
+            # issue 1760 — the pinned, checksummed release asset, retried on
+            # every error class; never a piped installer script.
+            bash scripts/ci/install-just.sh --to "$HOME/.local/bin"
             echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           fi
       - name: just probe installed

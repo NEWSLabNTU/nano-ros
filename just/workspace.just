@@ -644,35 +644,20 @@ apt-packages:
 _pinned-toolchain-files:
     #!/usr/bin/env bash
     set -e
-    # Phase 208.D.6 — replaced `shopt -s globstar; for f in
-    # examples/**/rust-toolchain.toml` with a `find -prune` because
-    # bash globstar descends into every `target/`, `target-*/`,
-    # `build-*/` dir under `examples/` (which is GB of build output
-    # on a warm tree) and took ~78 s on this host — the symptom the
-    # audit reported as "`just doctor tier=default` hangs". The find
-    # form prunes those dirs and returns in ~10 ms.
-    # `return 0`, because "emit it if it is there" is the whole job and a file
-    # that is absent is the expected case. Without it the `&&` leaves the
-    # function's status at 1, `set -e` above aborts the recipe mid-list, and
-    # the caller sees a TRUNCATED list with a non-zero status nobody read
-    # (issue 1466).
-    emit() { [ -f "$1" ] && echo "$1"; return 0; }
-    emit rust-toolchain.toml
-    emit tools/rust-toolchain.toml
-    emit packages/verification/nros-verification/rust-toolchain.toml
-    # Tracked-file enumeration via the git index (no traversal of build trees).
-    git ls-files 'examples/**/rust-toolchain.toml' 2>/dev/null
+    # Issue 1868 — ONE enumeration: the same git-index walk that derives
+    # `config/rust-toolchains.txt`, which the CI image bakes. This recipe used
+    # to name three files and glob `examples/**`, so it missed the four pins
+    # under `packages/` that the generator (and the rustup proxy) see.
+    python3 scripts/gen-rust-toolchains.py --files
 
 # Install every pinned toolchain referenced by a checked-in
 # `rust-toolchain.toml`, together with the components each file declares.
 #
-# This is the single source of truth for Rust toolchain versions in the
-# repo:
-#   - rust-toolchain.toml                                   stable + workspace components
-#   - tools/rust-toolchain.toml                             pinned nightly for workspace tooling
-#   - examples/qemu-armv7a-nuttx/rust-toolchain.toml           nightly for -Z build-std + patched libc
-#   - examples/zephyr/rust-toolchain.toml                   nightly for Corrosion + Zephyr Rust
-#   - packages/verification/nros-verification/…             Verus-required channel
+# The toolchain files are the single source of truth for Rust toolchain
+# versions (`just workspace _pinned-toolchain-files` lists them; the root
+# pins the workspace channel, `tools/` the nightly, `nros-verification` its
+# Verus channel). `config/rust-toolchains.txt` is their derived fold, which the
+# CI image bakes (issue 1868).
 #
 # Channels and components are never duplicated into shell scripts; the
 # TOML files are authoritative. Running cargo in a directory triggers
@@ -681,40 +666,18 @@ _pinned-toolchain-files:
 [group("setup")]
 rust-pinned-toolchains:
     #!/usr/bin/env bash
-    set -e
-    declare -A seen
-    # Split installs into two steps:
-    #   1. `rustup toolchain install --profile minimal <channel>` — idempotent;
-    #      skips when the toolchain is already present.
-    #   2. `rustup component add <c>` per declared component — also idempotent;
-    #      `rustup component add` reports "already installed" and exits 0 when
-    #      the component is present.
-    #
-    # The two-step form replaces the prior `rustup toolchain install … -c <c>`
-    # one-liner, which forces a whole-toolchain re-validation. On a tree where
-    # someone has previously added a non-stock target via `rustup target add`
-    # (e.g. armv7r-none-eabihf via `just workspace rust-targets`) the
-    # re-validation tries to roll back changes that reference a manifest the
-    # local toolchain never had (`manifest-rust-std-thumbv7em-none-eabi`
-    # without the `hf` suffix, etc.) — the install then aborts mid-rollback
-    # and leaves rustup state partially uninstalled. `rustup component add`
-    # is per-component and self-healing, so a single missing component is
-    # the only thing it touches.
-    while read -r f; do
-        [ -z "$f" ] && continue
-        channel=$(awk '/^channel *=/ { gsub(/["]/, "", $3); print $3; exit }' "$f")
-        components=$(awk '/^components *=/ { sub(/^[^=]*= */, ""); gsub(/[][",]/, " "); print; exit }' "$f")
-        [ -z "$channel" ] && continue
-        key="$channel | $components"
-        if [ -n "${seen[$key]}" ]; then continue; fi
-        seen[$key]=1
-        echo "=== $channel ($f; components: ${components:-<none>}) ==="
-        rustup toolchain install --profile minimal "$channel"
-        for c in $components; do
-            [ -z "$c" ] && continue
-            rustup component add --toolchain "$channel" "$c"
-        done
-    done < <(just workspace _pinned-toolchain-files)
+    set -euo pipefail
+    # Issue 1868 — the installer the CI image and the gate fan-outs use, fed the
+    # list derived from THIS tree (not the committed copy, so a pin edited a
+    # minute ago is honoured before it is regenerated). It asks rustup's local
+    # state first, installs only what is missing, two-step (toolchain, then
+    # `component add` / `target add` — never a re-validating
+    # `toolchain install -c …` over an existing toolchain), with a bounded retry.
+    list="$(mktemp)"
+    trap 'rm -f "$list"' EXIT
+    python3 scripts/gen-rust-toolchains.py --stdout > "$list"
+    scripts/lib/install-rust-toolchains.sh --list "$list"
+    echo "rust-pinned-toolchains: complete"
 
 # Install cross-compilation targets.
 [group("setup")]

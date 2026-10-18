@@ -241,8 +241,10 @@ RUN pip3 install --no-cache-dir \
 # uv (Python 3.12 for the Zephyr 4.4 line) + just (recipe runner). Both via
 # their canonical installers (arch/version handled upstream).
 RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
-RUN curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh \
-        | bash -s -- --to /usr/local/bin
+# `just` from `scripts/ci/install-just.sh` (issue 1760): pinned, checksummed,
+# retried — the one spelling ci-base and `probe.yml` use too.
+COPY scripts/ci/install-just.sh /opt/nros-ssot/scripts/ci/install-just.sh
+RUN bash /opt/nros-ssot/scripts/ci/install-just.sh --to /usr/local/bin
 
 # Rust toolchain + the cross targets the zephyr examples build for (native_sim =
 # x86_64-unknown-none; cortex-a9 = armv7a; cortex-m = thumbv7m/em; the SDK-built

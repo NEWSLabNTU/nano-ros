@@ -3,15 +3,16 @@ id: 1626
 title: "`check-api-parity` shells out to `cargo doc`, so the ONE required status
   check fails on a crates.io hiccup — with an error naming a dependency of a
   crate nobody touched, and no retry anywhere in the repo"
-status: open
+status: resolved
 type: bug
 area: ci, tooling
 severity: medium
 found: 2026-10-02
 related: [issue-1066, issue-1356, issue-1453, phase-505]
+resolved_in: "branch fix/phase-505-w2-net"
 ---
 
-**Home: [phase-505](../roadmap/phase-505-ci-lanes-reach-and-infra-robustness.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+**Home: [phase-505](../../roadmap/phase-505-ci-lanes-reach-and-infra-robustness.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## Measured
 
@@ -172,3 +173,39 @@ That is a fourth site (after `api-parity`, `setup-cli` and
 `submodule-commits-reachable`) and a third failure shape (after a refused
 connection and a DNS failure). `CARGO_NET_RETRY` covers this one too: cargo
 retries a failed HTTP transfer, and an HTTP/2 framing error is one.
+
+## Resolution (2026-10-19)
+
+Two of the three remedies above are in, and the third is in a form that does
+not hide a real mismatch.
+
+- **Retry, set once for every lane (remedy 1).** The root `.cargo/config.toml`
+  now sets `[net] retry = 10`. cargo's default is 3. Every cargo invocation
+  under the checkout reads this file through cargo's config walk-up, the
+  `packages/cli` sub-workspace included. That covers all three cargo sites
+  measured here: `api-parity`'s `cargo doc`, `setup-cli`, and `dep-chain`'s
+  `cargo tree`, on every lane and every host, with no per-workflow `env:`. All
+  three failure shapes (HTTP/2 framing, connect timeout, refused connection)
+  are errors cargo treats as spurious, so it retries them. A real outage still
+  fails, about a minute later than before.
+- **Classify, without a pass (remedy 3).** `scripts/api_parity/extract_rust.py`
+  now recognises a registry or download failure in cargo's stderr
+  (`is_registry_failure`). It retries the whole `cargo doc` up to 3 times with a
+  20 s × n pause. If the last attempt still fails on the network, it raises
+  `RegistryUnreachable`, and `scripts/api-parity.py` reports
+  `[INFRA] api-parity: NO VERDICT -- the crates.io registry was unreachable, so
+  the ledger was never compared` with exit status 75, not 1. The gate still
+  FAILS: a gate that could not measure has not passed, so nothing can launder a
+  mismatch into a skip. A compile, resolver or feature error is not matched,
+  and still reads as itself. The self-test classifies the four measured stderr
+  shapes plus a DNS failure as network, and four non-network errors as not
+  network. It runs on every invocation.
+- **Not done: caching the registry (remedy 2).** The retry budget covers the
+  measured shapes, and caching would leave the cold case exposed anyway.
+
+Not covered here: the `submodule-commits-reachable` DNS failure for
+`github.com` (merge-group run 38641874951) is a git fetch, not cargo. It is
+outside this issue's subject.
+
+Observation is what verifies this: phase-505's W2 acceptance, two weeks of
+merge-queue ejections with no INFRA ejection from a crates.io fetch.

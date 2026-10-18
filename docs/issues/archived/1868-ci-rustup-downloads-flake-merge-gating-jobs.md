@@ -1,15 +1,16 @@
 ---
 id: 1868
 title: "Merge-gating CI jobs fetch Rust toolchains and targets from static.rust-lang.org at run time, and a failed download ejects the batch"
-status: open
+status: resolved
 type: bug
 area: [ci]
 severity: medium
 found: 2026-10-13
 related: [1353, phase-505]
+resolved_in: "branch fix/phase-505-w2-net"
 ---
 
-**Home: [phase-505](../roadmap/phase-505-ci-lanes-reach-and-infra-robustness.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+**Home: [phase-505](../../roadmap/phase-505-ci-lanes-reach-and-infra-robustness.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## Measured
 
@@ -116,3 +117,51 @@ toolchain and downloads it mid-gate. The download went to static.rust-lang.org
 and failed on the network. The next push gate (21e244d6d) was green. Any leaf
 with its own `rust-toolchain.toml` has this exposure. Two ways to close it:
 complete those channels before the fan-out too, or provision them in the image.
+
+## Resolution (2026-10-19)
+
+Remedy 1, baking the toolchains into the image, with remedy 2's bounded retry
+kept for the window before the image catches up. A retry alone would hide the
+dependency, as this issue warns. Here the image removes it, and the retry only
+covers a pin bump that has not yet republished the image.
+
+- **What the image lacked.** `ci/docker/ci-base/Dockerfile` installed a
+  floating `stable` and the pinned nightly. The root `rust-toolchain.toml`
+  pins `1.99.0` and `nros-verification` pins `1.93.0`, so neither channel was
+  in the image unless `stable` happened to match. That is why both measured
+  downloads were `channel-rust-<pinned>.toml.sha256`.
+- **One derived list.** `scripts/gen-rust-toolchains.py` folds every tracked
+  `rust-toolchain.toml` (git index, root first) into
+  `config/rust-toolchains.txt`: channel, components and targets, as the union
+  per channel. Gate `check-rust-toolchains-list` (fast line, self-testing)
+  fails on drift, so a pin bump that forgets the list fails before it merges.
+  `just workspace _pinned-toolchain-files` now reads the same enumeration. It
+  used to miss the four pins under `packages/`.
+- **The image bakes it.** ci-base installs rustup with
+  `--default-toolchain none`. It then runs `scripts/lib/install-rust-toolchains.sh
+  --set-default`, which installs each channel with its declared components and
+  targets and makes line 1 (the root channel) the default. The nightly's extra
+  targets read the channel from the list, so a nightly bump edits no
+  Dockerfile line.
+- **Pre-fan-out, every channel.** `scripts/build/run-gates-parallel.sh` and
+  `check::workspace-all` run the same installer serially before forking. It
+  reads rustup's local state first (`toolchain list`, `component list
+  --installed`, `target list --installed`, all measured to answer with
+  `RUSTUP_DIST_SERVER` pointed at a dead port), from `/`, with
+  `RUSTUP_AUTO_INSTALL=0`. On a complete image it makes no request. Without the
+  `cd /`, a plain `rustup toolchain list` under the checkout auto-installed the
+  root toolchain, which was measured. A missing piece is fetched once, with
+  3 attempts and a 15 s × n pause. If that fails, the runner exits with
+  `[INFRA] could not complete the pinned Rust toolchains` before any gate runs.
+  This covers the 2026-10-18 `leaf-lockfiles` sighting, which #2315's
+  root-only `cargo --version` could not.
+- **The image republishes on merge.** `config/rust-toolchains.txt` and the
+  installer are in `images.yml`'s push paths, in the ci-base `changes` filter
+  and in its content tag. The new gate `check-ci-image-inputs` holds every
+  Dockerfile `COPY` source to those three places and to the image's
+  `.dockerignore` (the issue 1201 class). The `check` jobs pin the floating
+  `humble` tag, so they pick up the new image once `images.yml` has run on
+  `main`.
+
+Observation is what verifies this: a week of merge-gating runs with no rustup
+download red.

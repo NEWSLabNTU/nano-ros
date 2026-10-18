@@ -2209,6 +2209,32 @@ def self_test():
         if got != want:
             failures.append("%s: got %r want %r" % (name, got, want))
 
+    # issue 1626 -- the registry-failure classifier. The four measured shapes
+    # must classify as network; a real cargo error must NOT, or a broken crate
+    # would read as "re-run the job".
+    for _name, _err in [
+        ("http2 framing", "error: failed to get `ignore` as a dependency of package `tokei v14.0.0`\n"
+                          "Caused by:\n  unable to update registry `crates-io`\n"
+                          "Caused by:\n  download of ig/no/ignore failed\n"
+                          "Caused by:\n  curl failed\nCaused by:\n  [16] Error in the HTTP2 framing layer\n"),
+        ("connect timeout", "error: failed to get `pastey` as a dependency of package `nros v0.6.0`\n"
+                            "  download of pa/st/pastey failed\n"
+                            "  [28] Timeout was reached (Connection timed out after 30002 milliseconds)\n"),
+        ("refused", "error: failed to download from `https://static.crates.io/crates/minijinja/2.21.0/download`\n"
+                    "Caused by:\n  [7] Could not connect to server\n"),
+        ("dns", "Caused by:\n  [6] Could not resolve host: index.crates.io\n"),
+    ]:
+        check("registry failure: %s classifies as network" % _name,
+              extract_rust.is_registry_failure(_err), True)
+    for _name, _err in [
+        ("compile error", "error[E0425]: cannot find value `x` in this scope\n"),
+        ("resolver", "error: failed to select a version for `serde`.\n"),
+        ("missing feature", "error: Package `nros v0.6.0` does not have the feature `nope`\n"),
+        ("empty", ""),
+    ]:
+        check("registry failure: %s is NOT network" % _name,
+              extract_rust.is_registry_failure(_err), False)
+
     # issue 1323 -- the reverse walk, both directions, plus its two exemptions.
     _known = {"cpp": {"Node", "Node::spin", "QoS"}}
     _row = {"verdict": "extension", "why": "x"}
@@ -3231,6 +3257,11 @@ def self_test():
     return 1 if failures else 0
 
 
+# Issue 1626 -- the exit status for "could not reach crates.io", distinct from
+# 1 (an unledgered difference) so a reader of the gate's rc can tell them apart.
+REGISTRY_UNREACHABLE_RC = 75  # EX_TEMPFAIL
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--lang", action="append", choices=LANGS, help="default: all three")
@@ -3292,9 +3323,20 @@ def main():
             return by_topic(langs, tmpdir)
 
     grep = re.compile(args.grep) if args.grep else None
-    return report(langs, show, args.check, args.suggest_renames,
-                  args.include_internal, grep, args.topic,
-                  args.check_ported, args.require_disposition, editions)
+    try:
+        return report(langs, show, args.check, args.suggest_renames,
+                      args.include_internal, grep, args.topic,
+                      args.check_ported, args.require_disposition, editions)
+    except extract_rust.RegistryUnreachable as e:
+        # Issue 1626 -- still a failure (a gate that cannot measure has not
+        # passed), but one that says what it is. The ledger was never compared,
+        # so nothing in the diff under test is implicated; re-run the job.
+        sys.stderr.write(
+            "[INFRA] api-parity: NO VERDICT -- the crates.io registry was "
+            "unreachable, so the ledger was never compared (issue 1626).\n"
+            "        Not caused by the change under test; re-run the job.\n\n"
+            "%s\n" % e)
+        return REGISTRY_UNREACHABLE_RC
 
 
 if __name__ == "__main__":

@@ -188,29 +188,49 @@ RUN pip3 install --no-cache-dir \
 #
 # Bump deliberately, and bump the image tag with it (see `images.yml`): the tag
 # encodes what is baked precisely so a bump cannot be silent.
+#
+# `just` comes from `scripts/ci/install-just.sh` (issue 1760), the same script
+# the bare-runner `probe.yml` jobs use: its pin and SHA-256 live there, once,
+# and it fetches the release asset from github.com with `--retry-all-errors`
+# rather than piping `just.systems/install.sh`.
 ARG UV_VERSION=0.12.5
-ARG JUST_VERSION=1.57.0
 RUN curl -LsSf "https://astral.sh/uv/${UV_VERSION}/install.sh" \
         | env UV_INSTALL_DIR=/usr/local/bin sh \
     && uv --version | grep -q "$UV_VERSION"
-RUN curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh \
-        | bash -s -- --tag "$JUST_VERSION" --to /usr/local/bin \
-    && just --version | grep -q "$JUST_VERSION"
+COPY scripts/ci/install-just.sh /opt/nros-ssot/scripts/ci/install-just.sh
+RUN bash /opt/nros-ssot/scripts/ci/install-just.sh --to /usr/local/bin
 
 # Rust toolchain + the cross targets the platforms build for. Pinned to a fixed
 # root on PATH for all users (so in-container jobs need no per-cell rustup).
 ENV RUSTUP_HOME=/usr/local/rustup CARGO_HOME=/usr/local/cargo
 ENV PATH=/usr/local/cargo/bin:$PATH
-# Stable toolchain baked WITH the exact components + targets the workspace
-# `rust-toolchain.toml` declares (rustfmt/clippy/rust-src/llvm-tools;
-# thumbv7em-none-eabihf/armv7r-none-eabihf/aarch64-unknown-none) PLUS the other
-# cross targets the platforms build for. rustup auto-installs any declared
-# component/target on first use; under `parallel` (build-fixtures) that races on
-# /usr/local/rustup/downloads (`could not rename '...partial'` /
-# `rustfmt-preview ... conflict bin/cargo-fmt`). Baking the full set = no runtime
-# install. Keep in lockstep with rust-toolchain.toml.
+# The PINNED toolchains, baked — every channel any tracked `rust-toolchain.toml`
+# names, with the components and targets those files declare (issue 1868).
+#
+# This used to bake a floating `stable` plus the nightly, while the root
+# `rust-toolchain.toml` pins `1.99.0` and `nros-verification` pins `1.93.0`. So
+# neither pinned channel was in the image unless `stable` happened to equal one,
+# and the rustup proxy downloaded it at the first `cargo` of a merge-gating job:
+# `channel-rust-1.99.0.toml.sha256` failed `setup-cli` and ejected a batch,
+# `channel-rust-1.93.0` failed `leaf-lockfiles`. A gate's verdict depended on
+# static.rust-lang.org being up at that moment.
+#
+# `config/rust-toolchains.txt` is DERIVED from the toolchain files
+# (`scripts/gen-rust-toolchains.py`; gate `check-rust-toolchains-list`), so a pin
+# bump that forgets it fails before it merges, and the bump republishes this
+# image on merge (the list is in `images.yml`'s filter and content tag). Line 1
+# is the root channel and becomes the default. The same installer runs before
+# every gate fan-out, where on this image it finds nothing missing and makes no
+# request.
+#
+# Baking the full set also keeps the anti-race property the old comment named:
+# rustup auto-installs any declared component/target on first use, and under a
+# parallel fan-out that races on /usr/local/rustup/downloads.
+COPY config/rust-toolchains.txt /opt/nros-ssot/config/rust-toolchains.txt
+COPY scripts/lib/install-rust-toolchains.sh /opt/nros-ssot/scripts/lib/install-rust-toolchains.sh
 RUN curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --no-modify-path \
-        -c rustfmt,clippy,rust-src,llvm-tools \
+        --default-toolchain none \
+    && bash /opt/nros-ssot/scripts/lib/install-rust-toolchains.sh --set-default \
     && rustup target add \
         x86_64-unknown-none armv7a-none-eabi armv7r-none-eabihf aarch64-unknown-none \
         thumbv7m-none-eabi thumbv7em-none-eabi thumbv7em-none-eabihf \
@@ -269,19 +289,19 @@ RUN set -eux; \
     rm -rf /tmp/sccache.tar.gz "/tmp/sccache-v${SCCACHE_VERSION}-${target}"; \
     sccache --version
 
-# Pinned nightly (tools/rust-toolchain.toml `nightly-2026-04-11`) baked WITH its
-# declared components (rustfmt/miri/rust-src/llvm-tools/clippy) + the cross targets. The
-# fixture builds need it (esp32 `-Z build-std` for riscv32imc, `-Z emit-stack-
-# sizes`, nightly-only target adds). Same anti-race rationale as stable. Bump in
-# lockstep with the pin.
-RUN rustup toolchain install nightly-2026-04-11 --profile minimal \
-        -c rustfmt -c miri -c rust-src -c llvm-tools -c clippy \
-    && rustup +nightly-2026-04-11 target add \
+# The pinned nightly (tools/rust-toolchain.toml) is installed above, from the
+# list, WITH its declared components; this adds the cross targets the fixture
+# builds need on it (esp32 `-Z build-std` for riscv32imc, `-Z emit-stack-sizes`,
+# nightly-only target adds). The channel is READ from the list, so a nightly
+# bump moves no line here.
+RUN nightly="$(awk -F'\t' '$1 ~ /^nightly-/ {print $1; exit}' /opt/nros-ssot/config/rust-toolchains.txt)" \
+    && [ -n "$nightly" ] \
+    && rustup +"$nightly" target add \
         x86_64-unknown-none armv7a-none-eabi armv7r-none-eabihf aarch64-unknown-none \
         thumbv7m-none-eabi thumbv7em-none-eabi thumbv7em-none-eabihf \
         riscv32imc-unknown-none-elf riscv64imac-unknown-none-elf \
     && . /opt/nros-ssot/scripts/lib/rust-targets.sh \
-    && nros_rust_targets rustup | xargs -r rustup +nightly-2026-04-11 target add
+    && nros_rust_targets rustup | xargs -r rustup +"$nightly" target add
 
 # bindgen-cli — what `check-abi-bindings` needs to have an opinion at all.
 #

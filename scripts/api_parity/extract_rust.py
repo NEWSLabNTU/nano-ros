@@ -26,6 +26,7 @@ import json
 import os
 import re
 import subprocess
+import time
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -93,6 +94,50 @@ def _pinned_nightly():
     raise RuntimeError("no `channel = \"...\"` line in " + manifest)
 
 
+# Issue 1626 -- how many cargo processes `rustdoc_json` runs before it calls a
+# registry failure final, and the pause (times the attempt number) between them.
+REGISTRY_ATTEMPTS = 3
+REGISTRY_BACKOFF_S = 20
+
+# What cargo prints when it could not reach a registry or download a crate, as
+# opposed to rejecting the crate. Each pattern is one measured shape: the four
+# sightings in issue 1626 (an HTTP/2 framing error, a connect timeout, a refused
+# connection) plus a DNS failure. Matched against cargo's stderr only when the
+# exit status is already non-zero, so a pattern can only change WHICH error is
+# raised, never whether one is.
+_REGISTRY_FAILURE = re.compile(
+    r"unable to update registry"
+    r"|failed to download from `https?://"
+    r"|download of \S+ failed"
+    r"|\[\d+\] (?:Could not resolve host|Could not connect|Error in the HTTP2"
+    r"|Timeout was reached|SSL connect error|Failure when receiving|Send failure|Recv failure)"
+    r"|spurious network error"
+)
+
+
+def is_registry_failure(stderr):
+    """True when a failed cargo run failed to REACH the registry.
+
+    A compile error, a resolver conflict or a missing feature is not one, and
+    must keep reading as the failure it is.
+    """
+    return bool(_REGISTRY_FAILURE.search(stderr or ""))
+
+
+class RegistryUnreachable(RuntimeError):
+    """cargo could not reach crates.io: an infrastructure failure, not a verdict."""
+
+    def __init__(self, manifest_dir, attempts, stderr):
+        self.manifest_dir = manifest_dir
+        self.attempts = attempts
+        self.stderr = stderr
+        super().__init__(
+            "cargo doc in %s could not reach the crates.io registry after %d attempt(s) "
+            "(issue 1626). This is a network failure, NOT an API-parity verdict:\n%s"
+            % (manifest_dir, attempts, stderr)
+        )
+
+
 def rustdoc_json(manifest_dir, with_deps, target_dir=None, extra_env=None, features=None):
     """Build rustdoc JSON for the lib target of the crate at `manifest_dir`.
 
@@ -115,11 +160,24 @@ def rustdoc_json(manifest_dir, with_deps, target_dir=None, extra_env=None, featu
         cmd.append("--no-deps")
     if features:
         cmd += ["--features", ",".join(features)]
-    proc = subprocess.run(cmd, cwd=manifest_dir, env=env, capture_output=True, text=True)
-    if proc.returncode != 0:
-        raise RuntimeError(
-            "cargo doc failed in %s:\n%s" % (manifest_dir, proc.stderr[-3000:])
-        )
+    # Issue 1626 -- a registry failure is retried, then reported AS one. Cargo
+    # already retries a spurious transfer `net.retry` times (the root
+    # `.cargo/config.toml` raises it); this outer loop covers the case where a
+    # whole cargo process gives up, e.g. a registry that is down for a minute.
+    # Nothing here can turn a failure into a pass: after the last attempt a
+    # network failure raises `RegistryUnreachable`, still an error.
+    attempts = REGISTRY_ATTEMPTS
+    for attempt in range(1, attempts + 1):
+        proc = subprocess.run(cmd, cwd=manifest_dir, env=env, capture_output=True, text=True)
+        if proc.returncode == 0:
+            break
+        if not is_registry_failure(proc.stderr):
+            raise RuntimeError(
+                "cargo doc failed in %s:\n%s" % (manifest_dir, proc.stderr[-3000:])
+            )
+        if attempt == attempts:
+            raise RegistryUnreachable(manifest_dir, attempts, proc.stderr[-3000:])
+        time.sleep(REGISTRY_BACKOFF_S * attempt)
 
     out = target_dir or os.path.join(manifest_dir, "target")
     docdir = os.path.join(out, "doc")
