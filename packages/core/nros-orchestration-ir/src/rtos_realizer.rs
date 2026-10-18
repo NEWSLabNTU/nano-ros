@@ -347,6 +347,21 @@ fn node_facts(input: &MapperInput) -> BTreeMap<&str, NodeFacts> {
     out
 }
 
+/// Each node's release period in microseconds, as the realizer reads it
+/// (RFC-0079's table: a tier's spin period is derived from its members'
+/// releases). The SAME fold [`realize_rtos`] stamps `RealizedNode::period_us`
+/// from, so the spin period and the realized period cannot disagree. Nodes
+/// that are purely event-driven have no entry.
+pub fn node_periods_us(input: &MapperInput) -> BTreeMap<String, u64> {
+    node_facts(input)
+        .into_iter()
+        .filter_map(|(name, f)| {
+            f.period_ms
+                .map(|ms| (name.to_string(), (ms * 1000.0).round().max(0.0) as u64))
+        })
+        .collect()
+}
+
 /// Dense per-node rank from the ranking order: nodes sharing a `fine_group`
 /// (segment) share a rank; a node's rank is the highest (lowest index) of its
 /// items. Returns `name → dense_rank` (0 = most urgent) and the rank count.

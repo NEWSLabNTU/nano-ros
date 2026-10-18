@@ -966,7 +966,7 @@ pub fn resolve_plan_sched_recorded(
         .map(|n| n.name.as_deref().unwrap_or(n.exec.as_str()))
         .collect();
 
-    let table = resolve_tiers(
+    let mut table = resolve_tiers(
         &plan.tiers,
         &plan.node_overrides,
         &component_names,
@@ -974,6 +974,9 @@ pub fn resolve_plan_sched_recorded(
         target_rtos,
     )
     .map_err(|e: TierResolveError| eyre::eyre!("tier resolution failed: {e}"))?;
+
+    // RFC-0079's table - each tier's spin period from its members' releases.
+    derive_tier_spin_periods(plan, &mut table)?;
 
     // Stamp PlanNode.sched_context with the 0-based index into the ordered tier list
     // (highest-priority-first). Nodes not assigned to any tier keep `sched_context = None`.
@@ -992,6 +995,30 @@ pub fn resolve_plan_sched_recorded(
 
     plan.resolved_tiers = Some(table);
     Ok(record)
+}
+
+/// RFC-0079's table, the `spin_period_us` row: fill each tier's unset spin
+/// period from its members' release periods, and refuse an authored one slower
+/// than them ([`nros_orchestration_ir::spin_period`] states the rule).
+///
+/// The periods are the realizer's (`node_periods_us`, the fold that stamps the
+/// priority record's `period_us`), read from the model the plan was built
+/// from. A plan with no model (`bringup` other than `system-model`: the cmake
+/// registered-node road, hand-built test plans) has no releases to derive
+/// from and keeps its table as resolved.
+fn derive_tier_spin_periods(plan: &Plan, table: &mut ResolvedTierTable) -> Result<()> {
+    if plan.bringup != "system-model" {
+        return Ok(());
+    }
+    let model = crate::orchestration::model_ingest::load_model(&plan.launch_file)?;
+    let input = nros_orchestration_ir::mapper_input::mapper_input_from_model(&model);
+    let periods = nros_orchestration_ir::rtos_realizer::node_periods_us(&input);
+    let notes = nros_orchestration_ir::spin_period::apply_derived_spin_periods(table, &periods)
+        .map_err(|e| eyre::eyre!("codegen entry: {e}"))?;
+    for n in &notes {
+        eprintln!("codegen entry: {n}");
+    }
+    Ok(())
 }
 
 /// Write the depfile in GNU-make `target: dep1 dep2 …` form so cmake's
