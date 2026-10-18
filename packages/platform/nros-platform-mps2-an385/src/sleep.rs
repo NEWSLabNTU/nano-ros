@@ -19,8 +19,11 @@ pub fn init_clock() {
 
 /// Phase 127.D — `wfi` shim used by [`enable_wfi_idle`].
 ///
-/// Wrapped in `extern "C"` so it matches `IdleFn`. SAFETY: `wfi` is
-/// only safe once an IRQ source is armed; see [`enable_wfi_idle`].
+/// Wrapped in `extern "C"` so it matches `IdleFn`.
+///
+/// # Safety
+///
+/// `wfi` is only safe once an IRQ source is armed; see [`enable_wfi_idle`].
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_mps2_an385_wfi_idle() {
     cortex_m::asm::wfi();

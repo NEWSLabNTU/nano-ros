@@ -166,7 +166,7 @@ Opened by W3's own fallout, and it is the same defect one level up. Promoting
 the other lane" but **checked by no lane at all**: not host clippy, not embedded
 clippy, not `cargo test`.
 
-[Issue 1309](../../issues/1309-excluded-crate-is-built-by-no-lane.md) has the
+[Issue 1309](../../issues/archived/1309-excluded-crate-is-built-by-no-lane.md) has the
 measurement. Of 55 `packages/` exclusions, 20 have neither their own workspace
 nor their own lock; 11 of those are fixture leaves and eight are real crates
 reached only as somebody else's path dependency.

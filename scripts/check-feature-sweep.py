@@ -29,7 +29,7 @@ FAILS, naming the setup step, when that tree is missing.
 Scheduled, never merge-gating: it is ~330 clippy runs, each a partial rebuild
 of the crate's dependency graph under a new feature set.
 
-Three lists keep it honest:
+Four lists keep it honest:
 
   SKIP      a feature this sweep does not lint, each with the reason and where
             it IS covered. A crate's feature that is in neither the run nor this
@@ -40,6 +40,12 @@ Three lists keep it honest:
   CROSS     the cross runs. A host SKIP that says "cross" must name one here
             and every run here must be such a SKIP — both directions, so a
             `_CROSS` reason cannot claim coverage that does not exist.
+  STANDALONE  the crates no `-p` can name (issue 1309): a root-workspace
+            `exclude` entry under `packages/` that is its own cargo root and
+            that no other root builds. Each is linted from its own manifest for
+            its target. The set is DERIVED from the root manifest, and every
+            member of it is a run or a STANDALONE_SKIP with a reason, both
+            directions.
 
 Run: python3 scripts/check-feature-sweep.py [--crate NAME] [--half host|cross] [--list]
 """
@@ -337,6 +343,86 @@ CROSS = [
 ]
 
 
+# Issue 1309 — a root-workspace `exclude` entry takes a crate out of every `-p`
+# run above, and out of `--workspace` too, so an excluded crate that is its own
+# cargo root is linted by nothing unless it is named here. These four are
+# excluded for a measured reason (`critical-section` refuses the two
+# restore-state widths cortex-m and esp-hal select in one unified graph), so
+# membership is not the fix; a standalone run is. Each run seeds the leaf's lock
+# from the pin set, lints the library for its target in its OWN target dir (one
+# workspace root per dir, issue 0616), then holds the resolved lock to the pins.
+STANDALONE = {
+    "packages/platform/nros-platform-mps2-an385": "thumbv7m-none-eabi",
+    "packages/platform/nros-platform-stm32f4": "thumbv7em-none-eabihf",
+    "packages/platform/nros-platform-esp32-qemu": "riscv32imc-unknown-none-elf",
+    "packages/testing/qemu-smoltcp-bridge": "thumbv7m-none-eabi",
+}
+STANDALONE_SKIP = {
+    "packages/boards/nros-board-esp32-qemu": (
+        "ESP32 is dormant (issue 1525), and this board resolves three crates the "
+        "pin set does not name (esp-alloc, allocator-api2, linked_list_allocator); "
+        "pinning them for a board nothing builds is a pin-set change with no user"
+    ),
+}
+
+
+def standalone_roots():
+    """Issue 1309's set: every root-workspace `exclude` entry under `packages/`
+    that declares a Rust target, is not inside a `[workspace]` (its own or an
+    ancestor's), and has no tracked `Cargo.lock`. Narrower than the rule: a
+    root with its own `[workspace]` or a tracked lock is BUILT by some recipe
+    and still linted by none, which is issue 1960's 28 roots. Widening this to
+    them is that issue's fix; the coverage check then forces a run or a skip
+    for each."""
+    toml = _toml()
+    exclude = toml.loads((ROOT / "Cargo.toml").read_text(encoding="utf8"))["workspace"]["exclude"]
+    tracked = set(
+        subprocess.run(
+            ["git", "ls-files", "*Cargo.lock"], cwd=ROOT, capture_output=True, text=True, check=True
+        ).stdout.split()
+    )
+
+    def is_workspace(d):
+        m = d / "Cargo.toml"
+        return m.is_file() and "workspace" in toml.loads(m.read_text(encoding="utf8"))
+
+    roots = set()
+    for entry in exclude:
+        if not entry.startswith("packages/"):
+            continue
+        d = ROOT / entry
+        manifest = d / "Cargo.toml"
+        if not manifest.is_file():
+            continue
+        doc = toml.loads(manifest.read_text(encoding="utf8"))
+        if "package" not in doc or f"{entry}/Cargo.lock" in tracked:
+            continue
+        if not ((d / "src").is_dir() or "lib" in doc or "bin" in doc):
+            continue
+        if any(is_workspace(a) for a in [d, *d.parents] if a != ROOT and ROOT in a.parents):
+            continue
+        roots.add(entry)
+    return roots
+
+
+def check_standalone_coverage(roots, runs, skip):
+    """Both directions: a derived root is a run or a reasoned skip, and a run or
+    a skip names a root the derivation still finds."""
+    for r in sorted(roots - set(runs) - set(skip)):
+        raise SystemExit(
+            f"check-feature-sweep: {r} is excluded from the root workspace and is "
+            "its own cargo root, so no `-p` run lints it (issue 1309) — add it to "
+            "STANDALONE with its target, or to STANDALONE_SKIP with the reason"
+        )
+    for r in sorted((set(runs) | set(skip)) - roots):
+        raise SystemExit(
+            f"check-feature-sweep: STANDALONE names {r}, which is no longer an "
+            "excluded standalone root — drop the entry"
+        )
+    for r in sorted(set(runs) & set(skip)):
+        raise SystemExit(f"check-feature-sweep: {r} is both a STANDALONE run and a skip")
+
+
 def check_cross_coverage(crates, cross):
     """Both directions: a `_CROSS` skip has a run, and a run is a `_CROSS` skip."""
     runs = {(c, f) for c, f, _, _ in cross}
@@ -537,6 +623,29 @@ def cross_clippy(name, feats, triple, board_env_vars, target_dir, prefix=(), unm
     return p.returncode, p.stderr
 
 
+def standalone_clippy(rel, triple, target_dir, cli):
+    """A STANDALONE run: seed, lint the library for `triple`, hold the lock.
+
+    Unlocked on purpose: a seeded lock holds the registry pins only, and the
+    first resolve completes it with the root's path crates, as `nros build`'s
+    does. The pins are then checked by `nros ws check-lock`, so a crate the pin
+    set does not name FAILS here rather than resolving freely."""
+    if cli is None:
+        return 1, "error: no nros CLI to seed the lock from the pin set: run `just setup-cli`"
+    d = ROOT / rel
+    seed = subprocess.run([cli, "ws", "seed-lock", str(d)], capture_output=True, text=True)
+    if seed.returncode != 0:
+        return seed.returncode, seed.stderr
+    cmd = ["cargo", "clippy", "--quiet", "--manifest-path", str(d / "Cargo.toml"), "--lib"]
+    cmd += ["--target", triple, "--", "-D", "warnings"]
+    env = dict(os.environ, CARGO_TARGET_DIR=str(Path(target_dir) / "standalone" / d.name))
+    p = subprocess.run(cmd, cwd=d, capture_output=True, text=True, env=env)
+    if p.returncode != 0:
+        return p.returncode, p.stderr
+    lock = subprocess.run([cli, "ws", "check-lock", str(d)], capture_output=True, text=True)
+    return lock.returncode, lock.stdout + lock.stderr
+
+
 def verdict(expect, rc, err):
     """(passed, reason). An EXPECTED refusal passes only if it still refuses,
     with its named text; anything else passes only if clippy is clean."""
@@ -580,6 +689,21 @@ def self_test():
             pass
         else:
             raise AssertionError("a one-sided cross claim was accepted")
+    # A derived standalone root needs a run or a skip, and an entry needs a root.
+    check_standalone_coverage({"a", "b"}, {"a": "t"}, {"b": "r"})
+    for roots, runs, skip in (
+        ({"a", "b"}, {"a": "t"}, {}),
+        ({"a"}, {"a": "t", "gone": "t"}, {}),
+        ({"a"}, {"a": "t"}, {"a": "r"}),
+    ):
+        try:
+            check_standalone_coverage(roots, runs, skip)
+        except SystemExit:
+            pass
+        else:
+            raise AssertionError("a one-sided standalone claim was accepted")
+    # No CLI is a FAILED run naming the remedy, never a skip.
+    assert standalone_clippy("x", "t", "/nonexistent", None)[0] == 1
     # A board asking for build-std gets the pinned nightly and the -Z flags;
     # one that does not gets plain cargo.
     args = build_std_args({"unstable": {"build-std": ["core", "alloc"]}})
@@ -606,6 +730,7 @@ def main():
     # into a comment.
     self_test()
     check_cross_coverage(CRATES, CROSS)
+    check_standalone_coverage(standalone_roots(), STANDALONE, STANDALONE_SKIP)
     if args.self_test:
         print("check-feature-sweep --self-test: OK")
         return 0
@@ -614,13 +739,14 @@ def main():
         Path(os.environ.get("CARGO_TARGET_DIR", ROOT / "target")).name + "-feature-sweep"
     )
     names = args.crate or list(CRATES)
+    standalone_names = {Path(rel).name for rel in STANDALONE}
     for name in names:
-        if name not in CRATES:
-            raise SystemExit(f"check-feature-sweep: {name} is not in CRATES")
+        if name not in CRATES and name not in standalone_names:
+            raise SystemExit(f"check-feature-sweep: {name} is not in CRATES or STANDALONE")
     # (label, expected refusal, thunk) for every run this invocation owns.
     jobs = []
     if args.half != "cross":
-        for name in names:
+        for name in (n for n in names if n in CRATES):
             cfg = CRATES[name]
             for axis, f, feats in plan(name, cfg, crate_features(name)):
                 jobs.append(
@@ -646,6 +772,22 @@ def main():
                     lambda n=name, s=feats, tr=triple, e=env, px=prefix, u=unmet: cross_clippy(
                         n, s, tr, e, target_dir, px, u
                     ),
+                )
+            )
+    if args.half != "host":
+        sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+        from source_locate import nros_cli_bin
+
+        cli = None if args.list else nros_cli_bin()
+        for rel, triple in sorted(STANDALONE.items()):
+            name = Path(rel).name
+            if args.crate and name not in args.crate:
+                continue
+            jobs.append(
+                (
+                    f"{name} --manifest-path {rel} --target {triple} (standalone)",
+                    None,
+                    lambda r=rel, tr=triple: standalone_clippy(r, tr, target_dir, cli),
                 )
             )
     failures = []
@@ -675,6 +817,10 @@ def main():
         for f in failures:
             print(f"  {f}")
         print("  reproduce: cargo clippy -p <crate> --lib --tests --features <set> -- -D warnings")
+        print(
+            "  standalone: nros ws seed-lock <dir> && cargo clippy --manifest-path "
+            "<dir>/Cargo.toml --lib --target <triple> -- -D warnings && nros ws check-lock <dir>"
+        )
         return 1
     print(f"check-feature-sweep: OK — {total} combination(s) across {len(names)} crate(s)")
     return 0

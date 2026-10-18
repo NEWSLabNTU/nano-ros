@@ -1,8 +1,19 @@
 # Phase 505 — every gate runs somewhere, and a red names the code
 
-**Status (2026-10-17). Opened to give sixteen open issues a home; nothing landed
-under this number yet.** Every issue below was open with no active phase when
-the open-issue survey of 2026-10-17 ran.
+**Status (2026-10-18). W1 nearly done: four of its five issues are resolved,
+and #1960 joined it.** Every issue in the first table was open with no active
+phase when the open-issue survey of 2026-10-17 ran.
+
+- **Three W1 issues were already fixed by earlier PRs, never closed:**
+  #1380 (PR #2290), #1795 (PR #1938) and #1784 (PR #1864, as issue 1779).
+  Each was re-measured on 2026-10-18 before it was archived.
+- **#1309 is fixed here.** The feature sweep's `STANDALONE` half lints the
+  excluded roots, and its first runs found 50 latent `-D warnings` errors in
+  five crates.
+- **#1960 was filed while closing #1309.** It covers 28 more roots that are
+  built but never linted.
+- **#1800 is down to `cyclone_slirp_pair`,** which needs a host that permits
+  user namespaces.
 
 ## Why this phase exists
 
@@ -27,20 +38,25 @@ phase's. Build speed is phase-489's.
 
 ### W1 — reach: every gate and test is run by a named lane
 
-- [ ] [#1309](../issues/1309-excluded-crate-is-built-by-no-lane.md): a
+- [x] [#1309](../issues/archived/1309-excluded-crate-is-built-by-no-lane.md): a
       root-workspace `exclude` entry names the lane that builds and tests the
       crate, or the crate becomes a member.
-- [ ] [#1380](../issues/1380-zenoh-backend-clippy-red-for-platform-bare-metal.md):
+- [x] [#1380](../issues/archived/1380-zenoh-backend-clippy-red-for-platform-bare-metal.md):
       `nros-rmw-zenoh` is clippy-clean under `platform-bare-metal`, and a lane
       runs that combination.
-- [ ] [#1784](../issues/1784-workspace-features-threadx-posix-duplicate-platform.md):
+- [x] [#1784](../issues/archived/1784-workspace-features-threadx-posix-duplicate-platform.md):
       `check::workspace-features` stops linking two platform ABIs into one test
       binary.
-- [ ] [#1795](../issues/1795-rtos-carrier-route-no-fixture.md): a fixture row
+- [x] [#1795](../issues/archived/1795-rtos-carrier-route-no-fixture.md): a fixture row
       builds a ThreadX or NuttX TYPED carrier image.
 - [ ] [#1800](../issues/1800-ros2-tests-no-scheduled-lane-claims.md): a
       scheduled lane that claims ROS 2 runs `workspace_shadowing` and
-      `cyclone_slirp_pair`.
+      `cyclone_slirp_pair`. `workspace_shadowing` has run in live-peer since
+      PR #1942. `cyclone_slirp_pair` waits on a lane host that permits user
+      namespaces.
+- [ ] [#1960](../issues/1960-standalone-cargo-roots-linted-by-no-lane.md): the
+      28 excluded roots that are built but linted by nothing each get a
+      `STANDALONE` sweep run, or a reason.
 
 ### W2 — the merge gate fails only for the code
 
@@ -81,9 +97,9 @@ ejection from a cause listed here.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1309](../issues/1309-excluded-crate-is-built-by-no-lane.md) | A root-workspace `exclude` entry takes eight crates out of every lane, so their unit tests never run. It is a gap in what the lanes reach. |
+| [#1309](../issues/archived/1309-excluded-crate-is-built-by-no-lane.md) | A root-workspace `exclude` entry takes eight crates out of every lane, so their unit tests never run. It is a gap in what the lanes reach. |
 | [#1350](../issues/1350-killed-lane-orphans-parallel-gate-children.md) | Killing a `ci gate` lane leaves its `-P 32` gate fan-out running as orphans, and the killed lane reads as success. |
-| [#1380](../issues/1380-zenoh-backend-clippy-red-for-platform-bare-metal.md) | `nros-rmw-zenoh` fails `clippy -D warnings` under `platform-bare-metal`, a feature combination no lane runs clippy on. |
+| [#1380](../issues/archived/1380-zenoh-backend-clippy-red-for-platform-bare-metal.md) | `nros-rmw-zenoh` fails `clippy -D warnings` under `platform-bare-metal`, a feature combination no lane runs clippy on. |
 | [#1403](../issues/1403-fixture-jobserver-deadlock-looks-like-a-hang.md) | `build-examples` deadlocked on its own make jobserver FIFO. In CI that reads as a hang, not a failure. |
 | [#1621](../issues/1621-sdk-store-submodule-provision-breaks-worktree-git.md) | A fast-line probe gate in a worktree without zenoh-pico leaves a broken gitlink, and after that `git status` fails for the whole worktree. |
 | [#1625](../issues/1625-dep-chain-nuttx-cell-one-run-red.md) | A `dep-chain` FAIL printed `thiserror` tree rows instead of cargo's error, so the cause of that red cannot be recovered. |
@@ -91,9 +107,10 @@ ejection from a cause listed here.
 | [#1629](../issues/1629-queue-check-timeout-outgrown-by-gate-lane.md) | The merge queue's 60-minute check timeout is shorter than the gate lane, so entries are ejected while their gate goes on to pass. |
 | [#1745](../issues/1745-probe-gates-race-mbedtls-submodule-fetch.md) | Two parallel probe gates provision the mbedtls submodule at the same time, and one of them dies on git's shallow-file race. |
 | [#1760](../issues/1760-ci-just-installer-403.md) | CI installs `just` by piping an installer script with no retry, and one 403 failed a lane. |
-| [#1784](../issues/1784-workspace-features-threadx-posix-duplicate-platform.md) | `check::workspace-features` links two platform ABIs into one test binary. The gate runs only in `ci gate` (issue 1177's class). |
+| [#1784](../issues/archived/1784-workspace-features-threadx-posix-duplicate-platform.md) | `check::workspace-features` links two platform ABIs into one test binary. The gate runs only in `ci gate` (issue 1177's class). |
 | [#1785](../issues/1785-stall-watchdog-diagnostics-hang-on-fuse-fd.md) | The make-stall watchdog hangs in its own diagnostics on a stuck FUSE mount, so the watchdog never fires. |
-| [#1795](../issues/1795-rtos-carrier-route-no-fixture.md) | No lane builds an RTOS TYPED carrier image, so the link of `nano_ros_node_register`'s ThreadX and NuttX arms has no coverage. |
+| [#1795](../issues/archived/1795-rtos-carrier-route-no-fixture.md) | No lane builds an RTOS TYPED carrier image, so the link of `nano_ros_node_register`'s ThreadX and NuttX arms has no coverage. |
 | [#1800](../issues/1800-ros2-tests-no-scheduled-lane-claims.md) | `workspace_shadowing` and `cyclone_slirp_pair` claim ROS 2 and are not interop cells, so no scheduled lane runs them. |
 | [#1868](../issues/1868-ci-rustup-downloads-flake-merge-gating-jobs.md) | Merge-gating jobs download Rust toolchains at run time, and a failed download ejects the whole batch. |
+| [#1960](../issues/1960-standalone-cargo-roots-linted-by-no-lane.md) | Filed 2026-10-18 while closing #1309: 28 excluded cargo roots are built, as a fixture or a locked root, and clippy reaches none of them. |
 | [#1912](../issues/archived/1912-push-gate-pin-baseline-is-live-main.md) | The push-event submodule-pin gate compares against the live `origin/main`, so a superseded commit reads as a REWIND. |

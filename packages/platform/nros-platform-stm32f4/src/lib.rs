@@ -4,6 +4,12 @@
 //! `clock::init(sysclk_hz)` and periodically call `clock::update_from_dwt()`.
 
 #![no_std]
+// The `nros-platform-api` traits this crate implements (serial, panic, and the
+// smoltcp sockets `define_smoltcp_platform!` expands here) take raw pointers in
+// SAFE signatures: the pointer contract is the C ABI's, stated on the trait.
+// An impl cannot add `unsafe`, so the lint has no fix here. Same allow as
+// `nros-platform-cffi`.
+#![allow(clippy::not_unsafe_ptr_arg_deref)]
 
 pub mod clock;
 pub mod libc_stubs;
@@ -48,7 +54,7 @@ impl nros_platform_api::PlatformTimer for Stm32f4Platform {
         sporadic_timer::dispatch_register(period_us, callback, user_data)?;
         // v1: single-slot hook, sentinel handle (1) — `destroy`
         // ignores the value + tears the hook's slot down.
-        Ok(TimerHandleStub(1 as *mut core::ffi::c_void))
+        Ok(TimerHandleStub(core::ptr::dangling_mut()))
     }
 
     fn destroy(_handle: Self::TimerHandle) {

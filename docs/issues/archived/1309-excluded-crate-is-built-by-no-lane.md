@@ -3,20 +3,21 @@ id: 1309
 title: "A root-workspace `exclude` entry opts a crate out of BOTH lanes, so eight
   in-tree crates are compiled only as somebody else's dependency — and three unit
   tests in one of them have never run"
-status: open
+status: resolved
 type: bug
 area: [build, ci, testing]
 severity: medium
 found: 2026-09-11
 related: [1217, 1155, 0287, 0957, 1146, 1315, phase-450, phase-451, phase-505]
+resolved_in: "phase-505 W1: the feature sweep lints this issue's excluded roots standalone"
 ---
 
-**Home: [phase-505](../roadmap/phase-505-ci-lanes-reach-and-infra-robustness.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+**Home: [phase-505](../../roadmap/phase-505-ci-lanes-reach-and-infra-robustness.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## What
 
 `packages/rmw/transport-callbacks` was in the root `Cargo.toml`'s `exclude` list
-with no reason of its own — that is [issue 1217](archived/1217-workspace-exclude-list-is-unaudited.md),
+with no reason of its own — that is [issue 1217](1217-workspace-exclude-list-is-unaudited.md),
 and phase-451 W3 promoted it to a member on the evidence that it builds clean on
 the host.
 
@@ -31,7 +32,7 @@ error[E0463]: can't find crate for `std`
 `thumbv7em-none-eabihf`. This crate's factories are `std::net::TcpStream` and
 `std::sync::Mutex` over `std::collections`, so it cannot build there — and
 through cargo's workspace feature unification it would have leaked `std` into
-every no_std member, which is [issue 0287](archived/0287-host-only-workspace-members-break-embedded-lane.md)'s
+every no_std member, which is [issue 0287](0287-host-only-workspace-members-break-embedded-lane.md)'s
 exact failure.
 
 **0287 already solved this.** It replaced a 20-line hand-written exclude list
@@ -104,7 +105,7 @@ emulator, nothing that would stop them running on the host in milliseconds.
 They are unreachable because the crate is not in any workspace, so no `cargo
 test` invocation in this repo can name them.
 
-This is [issue 1155](1155-arch-flags-tests-in-no-lane.md) one crate over —
+This is [issue 1155](../1155-arch-flags-tests-in-no-lane.md) one crate over —
 there, `nros-board-common`'s `arch_flags` tests run in no lane because
 `test-unit` activates no feature; here the crate is not in a workspace at all.
 Same verdict, different mechanism, which is why fixing 1155 will not fix this.
@@ -152,7 +153,7 @@ separately; it is not obviously wrong, and it is not obviously intended.
 
 ## Adjacent, and probably one gate eventually
 
-[Issue 0957](archived/0957-format-blocked-by-unexcluded-workspace-leaf.md) is the
+[Issue 0957](0957-format-blocked-by-unexcluded-workspace-leaf.md) is the
 complementary hole: a leaf in NEITHER `members` nor `exclude`. Both are
 questions about the same two lists being complete and meaningful, and both are
 currently answered by different code. Worth folding together when either is
@@ -242,7 +243,7 @@ every one of these is a member that declares which lane it cannot enter, and
 
 ## The missing mirror is now its own issue
 
-[Issue 1315](archived/1315-host-uncheckable-is-a-hand-written-list.md) files the blocker
+[Issue 1315](1315-host-uncheckable-is-a-hand-written-list.md) files the blocker
 named above, with the measurement: `HOST_UNCHECKABLE` is a hand-written string
 of 8 crates and **5 of them are already stale** — clean under the exact
 per-crate command `check::test-targets` runs. The three real ones share one
@@ -304,3 +305,54 @@ That leaves **seven** of this issue's nine, and none of the seven is affected �
 the two removed here were the ones the issue itself already marked "not a
 defect". `check-workspace-exclude-list`'s R6 rule keeps its derivation and no
 longer names a standing example, since the example was the part that went stale.
+
+## Resolution (2026-10-18, phase-505 W1)
+
+The two halves of this issue had different answers.
+
+**Tests: already closed by issue 1472.** `just check excluded-crate-tests`
+(`scripts/run-excluded-crate-tests.sh`) runs every excluded crate's `#[test]`s,
+including the three `detect_phy_type` tests (`3 passed`), and FAILS on an
+excluded crate with tests that is neither run nor exempted with a reason.
+
+**Lint: closed here.** A crate excluded from the root workspace is linted by no
+`-p` run, so `scripts/check-feature-sweep.py` gained a `STANDALONE` half:
+
+- **`standalone_roots()` derives this issue's own set.** It takes every
+  `exclude` entry under `packages/` that declares a Rust target, sits inside
+  no `[workspace]` (its own or an ancestor's), and has no tracked lock.
+  `check_standalone_coverage()` requires each such root to have a run or a
+  `STANDALONE_SKIP` reason, and it checks both directions, so an entry cannot
+  outlive its root. Its negative controls run on every invocation.
+- **Each run is honest about the pins.** It seeds the leaf lock
+  (`nros ws seed-lock`), runs `cargo clippy --manifest-path … --lib --target
+  <triple> -- -D warnings` in a target dir of its own (one root per dir, issue
+  0616), then `nros ws check-lock`. A crate the pin set does not name fails
+  the run rather than resolving freely.
+
+The first runs found what this issue predicted, latent errors in every crate
+nothing had linted:
+
+| root | errors | fix |
+| --- | ---: | --- |
+| `nros-platform-mps2-an385` | 13 | crate-level `allow(not_unsafe_ptr_arg_deref)` (the `nros-platform-api` trait signatures, same allow as `nros-platform-cffi`), `ptr::dangling_mut()`, a `# Safety` heading |
+| `nros-platform-stm32f4` | 12 | the same allow and `dangling_mut()` |
+| `nros-platform-esp32-qemu` | 19 | the same, plus `allow(unnecessary_cast)` on its libc stubs (`c_char` is `u8` here, `i8` on x86), as `nros-baremetal-common` already has |
+| `qemu-smoltcp-bridge` | 5 | that same `unnecessary_cast` allow |
+
+`qemu-smoltcp-bridge` was not in this issue's list. It is a `[[fixture]]` row,
+so a lane builds it, but the derivation found that nothing lints it.
+
+`nros-board-esp32-qemu` is a `STANDALONE_SKIP`. ESP32 is dormant (issue
+1525), and the board resolves three crates the pin set does not name, so
+`check-lock` refuses it. It also has one latent error (`manual_is_multiple_of`,
+`src/network.rs:18`). Both are left for whoever revives the port.
+
+Mutations:
+- removing the stm32f4 `STANDALONE` row makes the coverage check refuse it;
+- restoring `1 as *mut c_void` in stm32f4 fails its run.
+
+**The wider class is issue 1960.** This issue exempted a root with its own
+`[workspace]` or a tracked lock as "built by a recipe". That is true, but none
+of those 28 roots is linted either. The derivation's docstring says so, and
+widening it is that issue's fix.
