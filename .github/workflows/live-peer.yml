@@ -611,6 +611,19 @@ jobs:
           # shellcheck disable=SC2086  # deliberate: $pkgs is a package LIST
           apt-get install -y --no-install-recommends $pkgs
 
+      # Issue 1959 — `just build <lane>` reaches `check::fast`, and with it
+      # check-submodule-pins, which is network-free and FAILS in CI when its
+      # baseline does not resolve. Since issue 1912 that baseline is the tested
+      # commit's own (the first parent, on schedule/dispatch), which a depth-1
+      # tree does not hold. Same three steps as every gate.yml job;
+      # `check-workflow-pin-baseline` keeps a job that reaches the gate from
+      # dropping them.
+      - name: Fetch the pin baseline for check-submodule-pins
+        run: bash scripts/ci/pin-baseline.sh provide
+      - name: Init submodules whose pin moved (commits only)
+        run: bash scripts/ci/pin-baseline.sh init-moved
+      - name: Fetch submodule history for check-submodule-pins
+        run: bash scripts/ci/pin-baseline.sh deepen
       # NARROWED to the leaves these rows resolve. `just build zephyr` is the
       # whole west lane, and the tree already says what that is worth — on this
       # very cell: "running the whole west lane to reach one cell is not
@@ -787,6 +800,19 @@ jobs:
               just setup "$s"
           done
 
+      # Issue 1959 — `just build <lane>` reaches `check::fast`, and with it
+      # check-submodule-pins, which is network-free and FAILS in CI when its
+      # baseline does not resolve. Since issue 1912 that baseline is the tested
+      # commit's own (the first parent, on schedule/dispatch), which a depth-1
+      # tree does not hold. Same three steps as every gate.yml job;
+      # `check-workflow-pin-baseline` keeps a job that reaches the gate from
+      # dropping them.
+      - name: Fetch the pin baseline for check-submodule-pins
+        run: bash scripts/ci/pin-baseline.sh provide
+      - name: Init submodules whose pin moved (commits only)
+        run: bash scripts/ci/pin-baseline.sh init-moved
+      - name: Fetch submodule history for check-submodule-pins
+        run: bash scripts/ci/pin-baseline.sh deepen
       - name: Build the fixtures those rows resolve
         id: fixtures
         env:

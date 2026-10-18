@@ -560,6 +560,15 @@ sysdep-remedies:
 # commit about issue-ID renumbering moved zenoh-pico BACK over a Zephyr
 # `socklen_t` build fix, and nothing noticed for seven hours.
 # Deliberate rollback: NROS_ALLOW_SUBMODULE_REWIND=1 (and say why).
+# Issue 1959 — a workflow job that reaches check-submodule-pins (through
+# `just build <lane>`, `just check fast`, ...) runs `pin-baseline.sh provide`
+# first. The gate is network-free and fails in CI on a baseline that does not
+# resolve; three fixture lanes went red on the night issue 1912 made the
+# baseline the tested commit's own, because they had no step.
+[private]
+workflow-pin-baseline:
+    @python3 scripts/check-workflow-pin-baseline.py
+
 # Every tier RFC-0061 declares must be RUN by some workflow. Two of four were
 # invoked by nothing at all, and a tier nobody runs cannot go red to say so
 # (phase-411).
