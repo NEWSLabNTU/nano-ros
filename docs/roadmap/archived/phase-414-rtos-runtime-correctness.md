@@ -331,4 +331,4 @@ evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1281](../../issues/1281-riscv-nuttx-c-talker-router-drops-session.md) | `c_riscv_nuttx_talker_delivers_cross_process` fails again: the guest connects and the router never sees it. An image that boots and then misbehaves on an RTOS is this phase's admission test, and it is the sibling of the three issues already adopted above — **unhomed 2026-10-12** (no active phase fits) |
+| [#1281](../../issues/archived/1281-riscv-nuttx-c-talker-router-drops-session.md) | `c_riscv_nuttx_talker_delivers_cross_process` fails again: the guest connects and the router never sees it. An image that boots and then misbehaves on an RTOS is this phase's admission test, and it is the sibling of the three issues already adopted above — **unhomed 2026-10-12** (no active phase fits) |

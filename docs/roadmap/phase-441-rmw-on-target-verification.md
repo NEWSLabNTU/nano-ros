@@ -1,7 +1,7 @@
 # Phase 441 — the one "on-target" live-peer cell runs on host sockets
 
-**Status (2026-10-18). W1–W5 DONE; REVISED — W6–W8 are open, and they are the
-homed issues' work.** The two cells this phase was opened for have met a live peer:
+**Status (2026-10-18). W1–W5 and W7 DONE; REVISED — W6 and W8 are open, and they
+are the homed issues' work.** The two cells this phase was opened for have met a live peer:
 `zephyr-cortex-m-pubsub-c-zenoh` and `freertos-mps2-pubsub-c-zenoh-n2r` each carry a
 recorded `pass` in `.config/interop-verdicts.toml` (2026-10-11, rmw_zenoh_cpp on
 Humble, 8.7 s and 5.7 s), and the scheduled `live-peer` lane has run both every night
@@ -703,6 +703,10 @@ fixtures, with `ZENOHD_LOG=debug` on the router as the issue asks. 10 of 10 clos
 1281 with the run recorded; any drop gets the router log the issue says it needs to
 tell a lease expiry from a close.
 
+**DONE 2026-10-18.** 10 of 10 PASS, 3.48–3.53 s each, on fixtures built fresh in
+the same session on newslab-118. 1281 is resolved as not reproduced, with the run
+recorded in the issue.
+
 ### W8 — 0814: measure the copy count, then pick an option
 
 0814's own section "Options, none chosen" says the decision needs the copy-count
@@ -754,4 +758,4 @@ Homed when every open issue was given a phase. Each issue has a `**Home:**` line
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1281](../issues/1281-riscv-nuttx-c-talker-router-drops-session.md) | The NuttX RISC-V C talker's router drops its session after 28-79 s. This needs an on-target verdict. Re-homed from phase-414, which is archived. |
+| [#1281](../issues/archived/1281-riscv-nuttx-c-talker-router-drops-session.md) | The NuttX RISC-V C talker's router drops its session after 28-79 s. This needs an on-target verdict. Re-homed from phase-414, which is archived. |
