@@ -140,6 +140,28 @@ static const nros_tier_task_memory_t __nros_tier_task_memory[2] = {
     NROS_TIER_TASK_MEMORY(1),
 };
 
+/* Issue 1970 — each tier's OWN executor backing, when this build sizes its
+ * executors per tier: the per-build header then publishes NROS_CPP_TIER_COUNT
+ * and one NROS_CPP_TIER_BACKING_SIZE_<i> per tier (tier-table order), the
+ * contexts above carry no inline backing, and the runner hands tier i's
+ * executor `__nros_tier_backing_<i>`. A build that sizes no tier (or a tier
+ * table other than this entry's) publishes no matching count, and the entry
+ * keeps the whole-image executor per tier. The library refuses a backing short
+ * of its tier's layout before that tier opens. */
+#if defined(NROS_CPP_TIER_COUNT) && NROS_CPP_TIER_COUNT == 2
+#define NROS_ENTRY_TIERS_BACKED 1
+static uint64_t __nros_tier_backing_0[NROS_CPP_TIER_BACKING_SIZE_0 / 8u];
+static uint64_t __nros_tier_backing_1[NROS_CPP_TIER_BACKING_SIZE_1 / 8u];
+static const nros_tier_backing_t __nros_tier_backings[2] = {
+    {__nros_tier_backing_0, sizeof(__nros_tier_backing_0)},
+    {__nros_tier_backing_1, sizeof(__nros_tier_backing_1)},
+};
+#endif
+
 int main(void) {
+#if defined(NROS_ENTRY_TIERS_BACKED)
+    return static_cast<int>(::rclcpp::board::ZephyrBoard::run_tiers(nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), __nros_tiers, 2u, __nros_tier_executor_storage, sizeof(__nros_tier_executor_storage[0]), __nros_tier_backings, __nros_tier_task_memory));
+#else
     return static_cast<int>(::rclcpp::board::ZephyrBoard::run_tiers(nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), __nros_tiers, 2u, __nros_tier_executor_storage, sizeof(__nros_tier_executor_storage[0]), __nros_tier_task_memory));
+#endif
 }

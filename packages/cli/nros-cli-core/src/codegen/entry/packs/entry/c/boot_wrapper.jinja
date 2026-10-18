@@ -78,6 +78,24 @@ static uint64_t __nros_tier_executor_storage[{{ boot.n_tiers }}][(NROS_CPP_EXECU
 {% for r in boot.task_memory.rows %}    {% if r.spawned %}NROS_TIER_TASK_MEMORY({{ r.index }}){% else %}NROS_TIER_TASK_MEMORY_NONE{% endif %},
 {% endfor %}};
 
+{% if boot.runners.run_tiers_backed -%}
+/* Issue 1970 — each tier's OWN executor backing, when this build sizes its
+ * executors per tier: the per-build header then publishes NROS_CPP_TIER_COUNT
+ * and one NROS_CPP_TIER_BACKING_SIZE_<i> per tier (tier-table order), the
+ * contexts above carry no inline backing, and the runner hands tier i's
+ * executor `__nros_tier_backing_<i>`. A build that sizes no tier (or a tier
+ * table other than this entry's) publishes no matching count, and the entry
+ * keeps the whole-image executor per tier. The library refuses a backing short
+ * of its tier's layout before that tier opens. */
+#if defined(NROS_CPP_TIER_COUNT) && NROS_CPP_TIER_COUNT == {{ boot.n_tiers }}
+#define NROS_ENTRY_TIERS_BACKED 1
+{% for r in boot.task_memory.rows %}static uint64_t __nros_tier_backing_{{ r.index }}[NROS_CPP_TIER_BACKING_SIZE_{{ r.index }} / 8u];
+{% endfor %}static const nros_tier_backing_t __nros_tier_backings[{{ boot.n_tiers }}] = {
+{% for r in boot.task_memory.rows %}    {__nros_tier_backing_{{ r.index }}, sizeof(__nros_tier_backing_{{ r.index }})},
+{% endfor %}};
+#endif
+
+{% endif -%}
 {% endif -%}
 {% elif boot.component_storage -%}
 /* Issue 1568 — the executor's storage, as a file-scope static the linker
@@ -104,15 +122,35 @@ static uint64_t __nros_executor_storage[(NROS_CPP_EXECUTOR_STORAGE_SIZE + 7u) / 
 {{ boot.runners.run_components }}(NROS_ENTRY_LOCATOR, (uint8_t)NROS_ENTRY_DOMAIN_ID, nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_entry_setup{% if boot.component_storage %}, __nros_executor_storage, sizeof(__nros_executor_storage){% endif %})
 {%- endif -%}
 {%- endset -%}
+{%- set backed = boot.tiers and boot.tier_storage and boot.task_memory and boot.runners.run_tiers_backed -%}
+{%- set backed_call -%}
+{{ boot.runners.run_tiers_backed }}(NROS_ENTRY_LOCATOR, (uint8_t)NROS_ENTRY_DOMAIN_ID, nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), __nros_tiers, {{ boot.n_tiers }}u, __nros_tier_executor_storage, sizeof(__nros_tier_executor_storage[0]), __nros_tier_backings, __nros_tier_task_memory)
+{%- endset -%}
 {%- if boot_shape == "kernel" -%}
 int main(void) {
+{%- if backed %}
+#if defined(NROS_ENTRY_TIERS_BACKED)
+    return (int){{ backed_call }};
+#else
     return (int){{ call }};
+#endif
+{%- else %}
+    return (int){{ call }};
+{%- endif %}
 }
 {% elif boot_shape == "app" -%}
 int nros_app_main(int argc, char** argv) {
     (void)argc;
     (void)argv;
+{%- if backed %}
+#if defined(NROS_ENTRY_TIERS_BACKED)
+    return {{ backed_call }};
+#else
     return {{ call }};
+#endif
+{%- else %}
+    return {{ call }};
+{%- endif %}
 }
 
 NROS_APP_MAIN_REGISTER_VOID();

@@ -100,7 +100,7 @@ use nros_sizing_descriptor::{
 use rosidl_codegen::bounds::BoundState;
 
 use crate::entity_inventory::{
-    Declaration, EntityInventory, EntityKind, InfraServices, ParamCapacity, ParamDeclarations,
+    ComponentEntities, Declaration, EntityInventory, EntityKind, InfraServices, ParamCapacity, ParamDeclarations,
     ParamServiceShape,
 };
 
@@ -2152,7 +2152,17 @@ pub enum Wiring<'a> {
 /// cmake consumer registers the result in `CMAKE_CONFIGURE_DEPENDS` (issue 1018)
 /// and identical bytes must keep their mtime.
 pub fn write_for_model(img: &ModelImage<'_>) -> eyre::Result<Option<WrittenDescriptor>> {
-    write_model_descriptor(img, None)
+    write_model_descriptor(img, None, Vec::new())
+}
+
+/// Issue 1970 -- [`write_for_model`], stating each tier's own `[[tier]]` row
+/// ([`tier_rows`]) in the same write, so the file is written once per
+/// configure and identical bytes keep their mtime.
+pub fn write_for_model_with_tiers(
+    img: &ModelImage<'_>,
+    tiers: Vec<nros_sizing_descriptor::Tier>,
+) -> eyre::Result<Option<WrittenDescriptor>> {
+    write_model_descriptor(img, None, tiers)
 }
 
 /// RFC-0100 D12 (issue 1649) — the descriptor for a RUNTIME that several
@@ -2172,7 +2182,7 @@ pub fn write_for_runtime(
     img: &ModelImage<'_>,
     runtime: &RuntimeComposition<'_>,
 ) -> eyre::Result<Option<WrittenDescriptor>> {
-    write_model_descriptor(img, Some(runtime))
+    write_model_descriptor(img, Some(runtime), Vec::new())
 }
 
 /// What a RUNTIME descriptor records beyond an entry's (RFC-0100 D12).
@@ -2491,6 +2501,7 @@ fn refuse_conflicts(desc: &mut SizingDescriptor, conflicts: &[QosConflict]) {
 fn write_model_descriptor(
     img: &ModelImage<'_>,
     runtime: Option<&RuntimeComposition<'_>>,
+    tiers: Vec<nros_sizing_descriptor::Tier>,
 ) -> eyre::Result<Option<WrittenDescriptor>> {
     let path = match runtime {
         Some(_) => nros_sizing_descriptor::runtime_descriptor_path(img.build_dir),
@@ -2520,6 +2531,8 @@ fn write_model_descriptor(
             (desc, roots.to_vec())
         }
     };
+    let mut desc = desc;
+    desc.tiers = tiers;
     let body = nros_sizing_descriptor::render(&desc);
 
     // Issue 0320, the same rule the leaf road holds to and for the same reason:
@@ -5735,5 +5748,259 @@ contracts:
         // the service-server queryables, whose carrier DOES reach that road.
         assert!(desc.image.node_count().is_stated());
         assert!(desc.image.service_server_queryables().is_stated());
+    }
+}
+
+/// Issue 1970 -- the most tiers a per-tier-sized image carries: the C/C++
+/// header publishes `TIER_BACKING_SIZE_0..7` (`nros::sizes`).
+pub const MAX_SIZED_TIERS: usize = 8;
+
+/// Issue 1970 -- one tier as `codegen entry`'s priority record states it: its
+/// name and the node names it hosts, in the tier table's order.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TierMembers {
+    pub name: String,
+    pub nodes: Vec<String>,
+}
+
+/// Issue 1970 -- the tiers a `codegen entry` priority record
+/// (`nros_priority_plan.json`, beside the generated TU) names, when the
+/// entry's board runs per-tier-sized tiers; `None` for an entry with no tier
+/// table, or one whose runner has no per-tier twin
+/// (`CAbiRunners::run_tiers_backed`), or more tiers than
+/// [`MAX_SIZED_TIERS`].
+pub fn tiers_from_priority_record(text: &str) -> Option<Vec<TierMembers>> {
+    let v: serde_json::Value = serde_json::from_str(text).ok()?;
+    let key = v.get("tier_key")?.as_str()?;
+    let family = nros_entry_lower::board_family(key).ok()?;
+    family.c_abi_runners()?.run_tiers_backed?;
+    let tiers: Vec<TierMembers> = v
+        .get("tiers")?
+        .as_array()?
+        .iter()
+        .map(|t| {
+            let name = t.get("name")?.as_str()?.to_string();
+            let mut nodes: Vec<String> = t
+                .get("members")?
+                .as_array()?
+                .iter()
+                .filter_map(|m| m.get(0)?.as_str().map(str::to_string))
+                .collect();
+            nodes.sort();
+            nodes.dedup();
+            Some(TierMembers { name, nodes })
+        })
+        .collect::<Option<_>>()?;
+    (!tiers.is_empty() && tiers.len() <= MAX_SIZED_TIERS).then_some(tiers)
+}
+
+/// Issue 1970 -- the `[[tier]]` rows: each tier's own facts, composed by the
+/// image's derivation (`EntityInventory::derive`) over the components the
+/// tier hosts, and the parameter store over the nodes it hosts
+/// (`ParamDeclarations::sizing`).
+///
+/// All or nothing (`Err` names why): a tier whose members the inventory does
+/// not cover, or whose derivation refuses, leaves the image on one executor
+/// size, which is the shape before this issue rather than a short tier.
+pub fn tier_rows(
+    inventory: &EntityInventory,
+    tiers: &[TierMembers],
+) -> Result<Vec<nros_sizing_descriptor::Tier>, String> {
+    use crate::entity_inventory::Derivation;
+    fn bare(s: &str) -> &str {
+        s.rsplit('/').next().unwrap_or(s)
+    }
+    let mut out = Vec::with_capacity(tiers.len());
+    for t in tiers {
+        let hosts = |name: &str| t.nodes.iter().any(|n| bare(n) == bare(name));
+        let rows: Vec<ComponentEntities> = inventory
+            .components()
+            .into_iter()
+            .filter(|c| hosts(&c.pkg) || hosts(&c.component))
+            .cloned()
+            .collect();
+        let covered = |n: &String| rows.iter().any(|c| bare(&c.pkg) == bare(n) || bare(&c.component) == bare(n));
+        if let Some(missing) = t.nodes.iter().find(|n| !covered(n)) {
+            return Err(format!(
+                "tier `{}` hosts `{missing}`, which no component of the entity inventory names",
+                t.name
+            ));
+        }
+        let own = inventory.with_components(rows.clone());
+        let k = match own.derive() {
+            Derivation::Derived(k) => k,
+            Derivation::Refused { reason } => {
+                return Err(format!("tier `{}`: {reason}", t.name));
+            }
+        };
+        let mut img = nros_sizing_descriptor::Image::default();
+        img.set_node_count(Some(k.max_nodes))
+            .set_callback_slots(Some(k.max_cbs))
+            .set_action_client_slots(Some(k.heavy_slots));
+        for (field, kind) in ENTITY_COUNT_FIELDS {
+            set_entity_count(&mut img, field, k.per_kind.get(kind.tag()).copied().unwrap_or(0));
+        }
+        let mut subscription_topics: Vec<String> = rows
+            .iter()
+            .flat_map(|c| c.declaration.entities().iter())
+            .filter(|e| e.kind == EntityKind::Subscription)
+            .filter_map(|e| e.topic().map(str::to_string))
+            .collect();
+        subscription_topics.sort();
+        subscription_topics.dedup();
+        let param_slots = match inventory.param_declarations() {
+            ParamDeclarations::Declared { nodes, params } => ParamDeclarations::Declared {
+                nodes: nodes.iter().filter(|n| hosts(n)).cloned().collect(),
+                params: params.iter().filter(|p| hosts(&p.node)).cloned().collect(),
+            }
+            .sizing()
+            .map(|s| s.max_parameters),
+            _ => None,
+        };
+        out.push(nros_sizing_descriptor::Tier {
+            name: t.name.clone(),
+            nodes: t.nodes.clone(),
+            subscription_topics,
+            param_slots,
+            image: img,
+        });
+    }
+    Ok(out)
+}
+
+#[cfg(test)]
+mod tier_row_tests {
+    use super::*;
+    use crate::entity_inventory::EntityDecl;
+
+    fn node(inv: &mut EntityInventory, name: &str, decls: Vec<EntityDecl>) {
+        inv.insert(ComponentEntities {
+            pkg: format!("/{name}"),
+            component: name.into(),
+            class: String::new(),
+            declaration: Declaration::Stated(decls),
+        });
+    }
+
+    fn sub(topic: &str) -> EntityDecl {
+        EntityDecl::bare(
+            EntityKind::Subscription,
+            Some("nav_msgs/msg/Odometry".into()),
+            Some(topic.into()),
+        )
+    }
+
+    fn timer() -> EntityDecl {
+        EntityDecl::bare(EntityKind::Timer, None, None)
+    }
+
+    fn server(name: &str) -> EntityDecl {
+        EntityDecl::bare(
+            EntityKind::ServiceServer,
+            Some("tier4_system_msgs/srv/OperateMrm".into()),
+            Some(name.into()),
+        )
+    }
+
+    /// The safety island's split: the 30 Hz emergency operator alone, the
+    /// handler and the comfortable operator together.
+    fn island() -> EntityInventory {
+        let mut inv = EntityInventory::new("model");
+        node(
+            &mut inv,
+            "mrm_handler",
+            vec![sub("/a"), sub("/b"), sub("/c"), timer()],
+        );
+        node(
+            &mut inv,
+            "mrm_comfortable_stop_operator",
+            vec![sub("/odom"), server("/comfortable/operate"), timer()],
+        );
+        node(
+            &mut inv,
+            "mrm_emergency_stop_operator",
+            vec![sub("/odom"), sub("/cmd"), server("/emergency/operate"), timer()],
+        );
+        inv
+    }
+
+    fn tiers() -> Vec<TierMembers> {
+        vec![
+            TierMembers {
+                name: "mrm".into(),
+                nodes: vec![
+                    "mrm_comfortable_stop_operator".into(),
+                    "mrm_handler".into(),
+                ],
+            },
+            TierMembers {
+                name: "estop".into(),
+                nodes: vec!["mrm_emergency_stop_operator".into()],
+            },
+        ]
+    }
+
+    #[test]
+    fn each_tier_states_its_own_members_facts() {
+        let rows = tier_rows(&island(), &tiers()).unwrap();
+        let (mrm, estop) = (&rows[0], &rows[1]);
+        assert_eq!(mrm.name, "mrm");
+        assert_eq!(mrm.image.node_count().stated(), Some(&2));
+        assert_eq!(mrm.image.subscription_entities().stated(), Some(&4));
+        assert_eq!(mrm.image.timer_entities().stated(), Some(&2));
+        assert_eq!(mrm.image.service_server_entities().stated(), Some(&1));
+        assert_eq!(
+            mrm.subscription_topics,
+            vec!["/a", "/b", "/c", "/odom"]
+        );
+        assert_eq!(estop.image.node_count().stated(), Some(&1));
+        assert_eq!(estop.image.subscription_entities().stated(), Some(&2));
+        assert_eq!(estop.image.service_server_entities().stated(), Some(&1));
+        assert_eq!(estop.subscription_topics, vec!["/cmd", "/odom"]);
+        // The callback slots split exactly: what the image derives is the sum.
+        let image = match island().derive() {
+            crate::entity_inventory::Derivation::Derived(k) => k.max_cbs,
+            _ => panic!("the island derives"),
+        };
+        assert_eq!(
+            mrm.image.callback_slots().stated().unwrap()
+                + estop.image.callback_slots().stated().unwrap(),
+            image
+        );
+        // No contract `params:` here, so no tier states a store.
+        assert_eq!(mrm.param_slots, None);
+    }
+
+    #[test]
+    fn a_tier_hosting_a_node_the_inventory_does_not_name_is_refused() {
+        let mut t = tiers();
+        t[1].nodes.push("ghost".into());
+        let e = tier_rows(&island(), &t).unwrap_err();
+        assert!(e.contains("`ghost`"), "{e}");
+    }
+
+    #[test]
+    fn only_a_board_with_a_per_tier_runner_reads_the_record() {
+        let record = |key: &str| {
+            format!(
+                r#"{{"version":1,"tier_key":"{key}","tiers":[
+                    {{"name":"estop","members":[["mrm_emergency_stop_operator","main"]]}},
+                    {{"name":"mrm","members":[["mrm_handler","main"],
+                                              ["mrm_comfortable_stop_operator","main"]]}}]}}"#
+            )
+        };
+        let t = tiers_from_priority_record(&record("zephyr")).unwrap();
+        assert_eq!(t.len(), 2);
+        assert_eq!(t[0].name, "estop");
+        assert_eq!(
+            t[1].nodes,
+            vec!["mrm_comfortable_stop_operator", "mrm_handler"]
+        );
+        assert_eq!(tiers_from_priority_record(&record("freertos")), None);
+        // An entry with no tier table writes `"tiers": []`.
+        assert_eq!(
+            tiers_from_priority_record(r#"{"tier_key":"zephyr","tiers":[]}"#),
+            None
+        );
     }
 }

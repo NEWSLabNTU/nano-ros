@@ -70,9 +70,7 @@ use std::path::{Path, PathBuf};
 
 pub use fact::Fact;
 pub use render::{portability_violation, render};
-pub use schema::{
-    Endpoint, Image, Meta, Params, Policy, SizingDescriptor, Target, Tier, Types,
-};
+pub use schema::{Endpoint, Image, Meta, Params, Policy, SizingDescriptor, Target, Tier, Types};
 pub use vocabulary::{
     Basis, CapacityNeed, Durability, EndpointKind, History, InfraFamilies, ParamStore,
     RegistrationPath, Reliability, Status,
@@ -1252,7 +1250,12 @@ mod tests {
         assert_eq!(back.tiers[0].image.callback_slots().stated(), Some(&3));
         assert_eq!(back.tiers[1].param_slots, None);
         // A descriptor with no `[[tier]]` states no tier.
-        assert!(parse(&render(&island()), Path::new("t.toml")).unwrap().tiers.is_empty());
+        assert!(
+            parse(&render(&island()), Path::new("t.toml"))
+                .unwrap()
+                .tiers
+                .is_empty()
+        );
     }
 
     #[test]

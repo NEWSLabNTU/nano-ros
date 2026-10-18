@@ -1059,50 +1059,49 @@ fn main() {
     // Issue 1970 -- the arithmetic as a function of the counts and the rows, so
     // a TIER's arena (its own members' counts, its own subscriptions' rows) is
     // priced by exactly the code that prices the image's.
-    let arena_required = |counts: [Option<usize>; 7],
-                          rows: Option<&[SubEndpoint]>|
-     -> Option<usize> {
-        match counts {
-            [
-                Some(subs),
-                Some(timers),
-                Some(services),
-                Some(acl),
-                Some(asv),
-                Some(scl),
-                Some(gcs),
-            ] => Some(
-                // phase-454 W5 -- the descriptor first, the env carriers second.
-                // ONE road wherever the file can answer (issue 1199); the second
-                // is what W9 retires, and what an image with no `nros sync` keeps.
-                rows.and_then(|rows| {
-                    subs_arena_from_descriptor(
-                        rows,
-                        subs,
-                        PUBSUB_ENTRY_STRUCT,
-                        ring_len_bytes,
-                        rx_buf_size,
-                    )
-                })
-                .unwrap_or_else(|| {
-                    subs_arena(
-                        subs,
-                        pubsub_entry,
-                        rx_recv_size,
-                        PUBSUB_ENTRY_STRUCT,
-                        ring_len_bytes,
-                    )
-                }) + timers * TIMER_ENTRY
-                    + services * service_entry
-                    + acl * action_client_entry
-                    + asv * action_server_entry
-                    + scl * service_client_entry
-                    + gcs * guard_condition_entry
-                    + ARENA_BASE_OVERHEAD,
-            ),
-            _ => None,
-        }
-    };
+    let arena_required =
+        |counts: [Option<usize>; 7], rows: Option<&[SubEndpoint]>| -> Option<usize> {
+            match counts {
+                [
+                    Some(subs),
+                    Some(timers),
+                    Some(services),
+                    Some(acl),
+                    Some(asv),
+                    Some(scl),
+                    Some(gcs),
+                ] => Some(
+                    // phase-454 W5 -- the descriptor first, the env carriers second.
+                    // ONE road wherever the file can answer (issue 1199); the second
+                    // is what W9 retires, and what an image with no `nros sync` keeps.
+                    rows.and_then(|rows| {
+                        subs_arena_from_descriptor(
+                            rows,
+                            subs,
+                            PUBSUB_ENTRY_STRUCT,
+                            ring_len_bytes,
+                            rx_buf_size,
+                        )
+                    })
+                    .unwrap_or_else(|| {
+                        subs_arena(
+                            subs,
+                            pubsub_entry,
+                            rx_recv_size,
+                            PUBSUB_ENTRY_STRUCT,
+                            ring_len_bytes,
+                        )
+                    }) + timers * TIMER_ENTRY
+                        + services * service_entry
+                        + acl * action_client_entry
+                        + asv * action_server_entry
+                        + scl * service_client_entry
+                        + gcs * guard_condition_entry
+                        + ARENA_BASE_OVERHEAD,
+                ),
+                _ => None,
+            }
+        };
     let model_required = arena_required(
         [
             declared_subs,
@@ -2149,12 +2148,8 @@ fn tier_sizings(
             ep.kind != nros_sizing_descriptor::EndpointKind::Subscription
                 || t.subscription_topics.iter().any(|tp| *tp == ep.topic)
         });
-        let rows = descriptor_subscriptions(
-            &own,
-            rx_buf_size,
-            rx_recv_size,
-            in_place_dispatch_trusted(),
-        );
+        let rows =
+            descriptor_subscriptions(&own, rx_buf_size, rx_recv_size, in_place_dispatch_trusted());
         let (Some(arena), Some(cbs), Some(nodes)) = (
             arena(counts, rows.as_deref()),
             img.callback_slots().stated().copied(),

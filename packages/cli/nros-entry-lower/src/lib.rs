@@ -175,6 +175,7 @@ impl BoardFamily {
             BoardFamily::Linux => Some(CAbiRunners {
                 run_components: Some("nros_board_native_run_components_named_in"),
                 run_tiers: Some("nros_board_native_run_tiers_in"),
+                run_tiers_backed: None,
                 // Issue 1597 — the host too. Its runners are Rust and used to
                 // build each `CppContext` on a stack (`size_of`-exact, but
                 // priced by nothing and a second road beside the shared one);
@@ -186,6 +187,7 @@ impl BoardFamily {
             BoardFamily::Freertos => Some(CAbiRunners {
                 run_components: Some("nros_board_rtos_run_components_in"),
                 run_tiers: Some("nros_board_freertos_run_tiers_tasks_in"),
+                run_tiers_backed: None,
                 takes_executor_storage: true,
                 // Issue 1598 — each spawned tier's stack + TCB are the entry's
                 // statics (`xTaskCreateStatic`), not heap_4 blocks. The
@@ -202,6 +204,8 @@ impl BoardFamily {
             BoardFamily::Zephyr => Some(CAbiRunners {
                 run_components: Some("nros_board_rtos_run_components_in"),
                 run_tiers: Some("nros_board_zephyr_run_tiers_tasks_in"),
+                // Issue 1970 -- and its per-tier-sized twin.
+                run_tiers_backed: Some("nros_board_zephyr_run_tiers_backed_in"),
                 takes_executor_storage: true,
                 // Issue 1232 — each spawned tier's thread + stack are the
                 // entry's `K_THREAD_STACK_DEFINE`, sized from the tier's own
@@ -219,6 +223,7 @@ impl BoardFamily {
             BoardFamily::Nuttx => Some(CAbiRunners {
                 run_components: Some("nros_board_rtos_run_components_in"),
                 run_tiers: Some("nros_board_nuttx_run_tiers_in"),
+                run_tiers_backed: None,
                 takes_executor_storage: true,
                 // A NuttX tier is a pthread whose stack the kernel allocates;
                 // not moved (yet).
@@ -227,6 +232,7 @@ impl BoardFamily {
             BoardFamily::Threadx => Some(CAbiRunners {
                 run_components: Some("nros_board_rtos_run_components_in"),
                 run_tiers: None,
+                run_tiers_backed: None,
                 takes_executor_storage: true,
                 tier_task_memory: None,
             }),
@@ -309,6 +315,15 @@ pub struct CAbiRunners {
     /// `(…, tiers, n_tiers, storage, stride) -> int32_t` when
     /// [`takes_executor_storage`](Self::takes_executor_storage).
     pub run_tiers: Option<&'static str>,
+    /// Issue 1970 -- the tier runner for a PER-TIER-SIZED image:
+    /// `(…, tiers, n_tiers, storage, stride, backings, task_memory) -> int32_t`,
+    /// where `backings[i]` is tier `i`'s own executor backing, sized by the
+    /// per-build header's `NROS_CPP_TIER_BACKING_SIZE_<i>`. The entry calls it
+    /// when that header publishes `NROS_CPP_TIER_COUNT` equal to its own tier
+    /// count, and [`run_tiers`](Self::run_tiers) otherwise. `None` for a family
+    /// whose runner has no such twin (its tiers keep one whole-image executor
+    /// each).
+    pub run_tiers_backed: Option<&'static str>,
     /// Issues 1551 + 1568 — this family's runners take the executor storage
     /// from the CALLER, and the entry emits it as ONE file-scope static: `n`
     /// blocks of `NROS_CPP_EXECUTOR_STORAGE_SIZE` rounded to 8, one per tier
@@ -716,6 +731,7 @@ mod tests {
             Some(CAbiRunners {
                 run_components: Some("nros_board_rtos_run_components_in"),
                 run_tiers: None,
+                run_tiers_backed: None,
                 takes_executor_storage: true,
                 tier_task_memory: None,
             })
