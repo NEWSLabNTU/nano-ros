@@ -1,10 +1,13 @@
 
 ## zenoh build blocks (phase-290)
 
-Each platform directory's `nros-platform.toml` carries the `[build.zenoh]`
+Each platform directory's `nros-platform.toml` carried a `[build.zenoh]`
 block relocated verbatim from the retired central
 `packages/rmw/zenoh/zpico-sys/zenoh_platforms.toml` (phase-136.4 → phase-290).
-Original file header preserved below for the schema commentary:
+phase-349 W2b moved those blocks again, to `[port.<platform>]` rows in
+`packages/rmw/zenoh/nros-rmw-zenoh/nros-rmw.toml`, keeping `arch` (as
+`arch_profiles`), `compile` and `required_env` on the platform. The keys are
+unchanged. Original file header preserved below for the schema commentary:
 
 ```
 # Phase 136.1 / 136.4 — canonical zenoh-pico build manifest.

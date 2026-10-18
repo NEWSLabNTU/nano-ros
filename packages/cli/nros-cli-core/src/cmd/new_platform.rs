@@ -75,7 +75,8 @@ description = "nano-ros platform layer for {name}: clock, sleep, net shims"
 //! - `clock`  — a monotonic `clock_ns()` source + its resolution
 //! - `sleep`  — `sleep_ms()` (+ optional idle-yield hook installation)
 //! - net shims — the `nros_platform_*` socket ABI, or a zenoh-pico
-//!   system-layer under `[build.zenoh]` in `nros-platform.toml`
+//!   system layer, described by a `[port.<platform>]` row in the zenoh
+//!   backend's `nros-rmw.toml` (phase-349 W2b)
 //!
 //! Board crates (`nros-board-*`) layer hardware bring-up on top and pick
 //! this platform via their `nros-board.toml`.
@@ -139,13 +140,14 @@ pub mod sleep {{
 # split_lock = false   # append while a send is in flight (needs threads)
 # flush_ms = 50        # flush cadence / added publish latency bound
 
-# [build.zenoh]
-# zenoh-pico system-layer build block (keys documented in
-# nros-board-common/src/manifest.rs — defines, defines_kv, include,
-# extra_sources, arch, compile, ...). Start from the closest in-tree
-# platform's file under config/.
-# defines = ["ZENOH_GENERIC"]
-# include = ["system/common"]
+# What a vendored C build on this platform needs goes at the TOP of this file,
+# before any table: `arch_profiles = ["<arch>"]` (which [arch.*] profiles
+# apply, first match wins), `compile = {{ opt_level = "s" }}` and
+# `required_env = [...]`. How zenoh-pico builds here is NOT this file's: it is
+# a `[port.{name}]` row in packages/rmw/zenoh/nros-rmw-zenoh/nros-rmw.toml
+# (keys: defines, defines_kv, include, extra_sources, include_paths, ...;
+# schema `PortRow` in nros-platform-config). Start from the closest in-tree
+# platform's row.
 "#
         ),
     )?;

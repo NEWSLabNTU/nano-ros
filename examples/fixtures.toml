@@ -3751,26 +3751,6 @@ builder = "cargo-check-verdict"
 dir = "packages/testing/nros-tests/fixtures/diagnostic_rustc_fixture"
 output = ".verdict"
 
-# issue 1656 — the zenoh-pico source-list drift gate (`zpico_drift_gate.rs`).
-# `zpico-sys/build.rs` must PANIC when a platform descriptor's `[build.zenoh]
-# include` names a directory zenoh-pico does not have. The fixture shadows the
-# posix descriptor through `NROS_PLATFORMS_DIR` (its `.cargo/config.toml`
-# `[env]`), with `cases/<id>/platforms/` holding the descriptor each row uses:
-# the canonical one with ONE include corrupted (must fail, naming the sentinel)
-# and the canonical one verbatim (must pass — the override hook itself works).
-# The test checks both copies against `packages/platform/nros-platform-posix/`.
-[[compile_check_fixture]]
-id = "zpico_drift_sentinel_include"
-builder = "cargo-check-verdict"
-dir = "packages/testing/nros-tests/fixtures/zpico_drift_gate"
-output = ".verdict"
-
-[[compile_check_fixture]]
-id = "zpico_drift_canonical_include"
-builder = "cargo-check-verdict"
-dir = "packages/testing/nros-tests/fixtures/zpico_drift_gate"
-output = ".verdict"
-
 [[compile_check_fixture]]
 id = "diagnostic_cmake_verbatim"
 builder = "cmake-configure-verdict"

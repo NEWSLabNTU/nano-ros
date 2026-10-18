@@ -36,7 +36,9 @@ use serde::{Deserialize, Deserializer};
 /// Accept either a single TOML string (`arch = "cortex-m3"`) or an
 /// array (`arch = ["cortex-m3", "riscv32imc"]`). Returns the
 /// normalised `Vec<String>`. Phase 148.
-fn deserialize_arch_field<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<String>, D::Error> {
+pub(crate) fn deserialize_arch_list<'de, D: Deserializer<'de>>(
+    d: D,
+) -> Result<Vec<String>, D::Error> {
     #[derive(Deserialize)]
     #[serde(untagged)]
     enum StringOrVec {
@@ -132,7 +134,7 @@ pub struct PlatformEntry {
     /// cortex-m3 + riscv32imc) declare every arch they support and
     /// let `build.rs::build_zenoh_pico_unified` pick the first one
     /// whose `target_match` matches the build target. See Phase 148.
-    #[serde(default, deserialize_with = "deserialize_arch_field")]
+    #[serde(default, deserialize_with = "deserialize_arch_list")]
     pub arch: Vec<String>,
     /// Cross-compile compile-rs options (opt_level, warnings,
     /// extra cflags).
@@ -152,6 +154,115 @@ pub struct PlatformEntry {
     /// set it, which is why this is an `Option` like `pic` and `mbedtls`.
     #[serde(default)]
     pub compiled_by: Option<CompiledBy>,
+}
+
+/// One zenoh-pico PORT ROW — `[port.<platform>]` in the zenoh backend's
+/// `nros-rmw.toml` (phase-349 W2b, RFC-0072 §9).
+///
+/// These keys were each platform's `[build.zenoh]` block. They describe how a
+/// BACKEND's vendored C builds on a platform, so the backend owns them and a
+/// platform descriptor names no backend. What a platform needs from any C
+/// build — `arch_profiles`, `compile`, `required_env` — stayed on
+/// [`crate::platform_config::PlatformConfigFile`], and
+/// [`crate::platform_config::PlatformsTree::as_platform_manifest`] joins the
+/// two halves back into the [`PlatformEntry`] every consumer resolves.
+///
+/// `deny_unknown_fields`, unlike [`PlatformEntry`]: a row that names `arch`,
+/// `compile` or `required_env` is a platform fact written in the wrong file,
+/// and silently dropping it is the dead-config shape issue 0529 records.
+/// Field meanings are [`PlatformEntry`]'s.
+#[derive(Debug, Default, Deserialize, Clone)]
+#[serde(deny_unknown_fields)]
+pub struct PortRow {
+    #[serde(default)]
+    pub defines: Vec<String>,
+    #[serde(default)]
+    pub defines_conditional: Vec<ConditionalDefine>,
+    #[serde(default)]
+    pub defines_kv: BTreeMap<String, String>,
+    #[serde(default)]
+    pub defines_env: BTreeMap<String, EnvDefault>,
+    #[serde(default)]
+    pub include: Vec<String>,
+    #[serde(default)]
+    pub exclude: Vec<String>,
+    #[serde(default)]
+    pub system_libs: Vec<String>,
+    #[serde(default)]
+    pub mbedtls: Option<String>,
+    #[serde(default)]
+    pub link: BTreeMap<String, LinkOverride>,
+    #[serde(default)]
+    pub extra_sources: Vec<ExtraSource>,
+    #[serde(default)]
+    pub include_paths: Vec<String>,
+    #[serde(default)]
+    pub include_paths_conditional: Vec<ConditionalPath>,
+    #[serde(default)]
+    pub pic: Option<bool>,
+    #[serde(default)]
+    pub rerun_if_env_changed: Vec<String>,
+    #[serde(default)]
+    pub compiled_by: Option<CompiledBy>,
+}
+
+impl PortRow {
+    /// This row as a [`PlatformEntry`], with the platform's own half supplied.
+    pub fn into_entry(
+        self,
+        inherits: Option<String>,
+        arch: Vec<String>,
+        compile: CompileSettings,
+        required_env: Vec<RequiredEnv>,
+    ) -> PlatformEntry {
+        PlatformEntry {
+            inherits,
+            defines: self.defines,
+            defines_conditional: self.defines_conditional,
+            defines_kv: self.defines_kv,
+            defines_env: self.defines_env,
+            include: self.include,
+            exclude: self.exclude,
+            system_libs: self.system_libs,
+            mbedtls: self.mbedtls,
+            link: self.link,
+            extra_sources: self.extra_sources,
+            required_env,
+            include_paths: self.include_paths,
+            include_paths_conditional: self.include_paths_conditional,
+            arch,
+            compile,
+            pic: self.pic,
+            rerun_if_env_changed: self.rerun_if_env_changed,
+            compiled_by: self.compiled_by,
+        }
+    }
+}
+
+/// The `[port.*]` rows of one backend descriptor, keyed by platform name.
+pub type PortRows = BTreeMap<String, PortRow>;
+
+/// Read the `[port.*]` rows out of a backend descriptor (`nros-rmw.toml`).
+///
+/// Only the `port` table is deserialized here. The `[rmw.*]` tables belong to
+/// `cargo-nano-ros`'s own reader, so the document as a whole is NOT
+/// `deny_unknown_fields`; each row is.
+pub fn parse_port_rows(text: &str, origin: &str) -> Result<PortRows, String> {
+    #[derive(Deserialize)]
+    struct Doc {
+        #[serde(default)]
+        port: PortRows,
+    }
+    toml::from_str::<Doc>(text)
+        .map(|d| d.port)
+        .map_err(|e| format!("{origin}: {e}"))
+}
+
+/// [`parse_port_rows`] over a file on disk.
+pub fn load_port_rows(path: &Path) -> Result<PortRows, String> {
+    let text = fs::read_to_string(path)
+        .map_err(|e| format!("{}: cannot read backend descriptor: {e}", path.display()))?;
+    parse_port_rows(&text, &path.display().to_string())
 }
 
 /// Who compiles a `[build.<component>]` block's vendored C sources.

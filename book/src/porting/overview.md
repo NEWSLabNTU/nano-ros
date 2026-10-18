@@ -23,7 +23,10 @@ nros new board myboard --for-platform myrtos   # nros-board-myboard/  + nros-boa
 
 - **`nros-platform.toml`** (platform package) — software-stack facts
   (`[capabilities]`), knob defaults (`[knobs.*]`, only flip what you
-  measured), and the zenoh-pico system-layer build block (`[build.zenoh]`).
+  measured), and what any vendored C build on the platform needs
+  (top-level `arch_profiles`, `compile`, `required_env`). How zenoh-pico
+  builds there is a `[port.<platform>]` row in the zenoh backend's own
+  `nros-rmw.toml`, not part of the platform file.
   An empty file is valid: built-in defaults always produce a working build.
 - **`nros-board.toml`** (board package) — the RFC-0042 hardware descriptor
   plus per-board `[capabilities]`/`[knobs]` deltas.

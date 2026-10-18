@@ -66,7 +66,6 @@ weak_symbol_audit
 workspace_dirwalk_discovery
 workspace_lints_check
 zephyr_prjconf_requirements
-zpico_drift_gate
 advertised_state_interop::cases_bound_to_interop_cells
 bridge_zenoh_to_cyclonedds::cases_bound_to_interop_cells
 cpp_multi_node_entry::cases_bound_to_interop_cells

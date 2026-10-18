@@ -1359,6 +1359,56 @@ fn env_usize(name: &str, default: usize) -> usize {
     nros_zephyr_build::knob(name).resolve(default)
 }
 
+/// phase-349 W2b — the zenoh backend descriptor that holds zenoh-pico's
+/// `[port.<platform>]` rows. Resolved from the repo root, the same anchor as
+/// the platform search path (issue 1558), never from the caller's manifest dir.
+pub(crate) fn zenoh_port_rows_file(repo_root: &Path) -> PathBuf {
+    repo_root.join("packages/rmw/zenoh/nros-rmw-zenoh/nros-rmw.toml")
+}
+
+/// Phase 136.6 — every port row's `include` must name a directory under
+/// `zenoh-pico/src/` holding at least one `.c` file or subdirectory. Returns
+/// the directories to watch, or the first violation as a message naming the
+/// platform and the key.
+pub(crate) fn check_port_includes(
+    manifest: &manifest::PlatformManifest,
+    zenoh_pico_src: &Path,
+) -> Result<Vec<PathBuf>, String> {
+    let mut watch = Vec::new();
+    for name in manifest.platform.keys() {
+        let resolved = manifest
+            .for_platform(name)
+            .map_err(|e| format!("zenoh port rows: resolve {name}: {e}"))?;
+        for include in &resolved.include {
+            let dir = zenoh_pico_src.join(include);
+            if !dir.is_dir() {
+                return Err(format!(
+                    "[port.{name}] `include = \"{include}\"` does not resolve to a \
+                     directory under zenoh-pico/src/ (expected: {})",
+                    dir.display()
+                ));
+            }
+            let has_c_file = std::fs::read_dir(&dir)
+                .map(|entries| {
+                    entries.flatten().any(|e| {
+                        e.path().extension().is_some_and(|x| x == "c")
+                            || e.file_type().map(|t| t.is_dir()).unwrap_or(false)
+                    })
+                })
+                .unwrap_or(false);
+            if !has_c_file {
+                return Err(format!(
+                    "[port.{name}] `include = \"{include}\"` resolves to {} but \
+                     contains no .c files or subdirs",
+                    dir.display()
+                ));
+            }
+            watch.push(dir);
+        }
+    }
+    Ok(watch)
+}
+
 /// Generate a zenoh-pico config header in OUT_DIR based on Cargo link-* features.
 ///
 /// This replaces the hardcoded `zenoh_generic_config.h` with a generated version
@@ -1476,8 +1526,10 @@ pub fn run() {
     // 136.3 plugs the data into cc-rs.
     //
     // phase-290 (RFC-0049) — the central `zenoh_platforms.toml` is retired.
-    // Each platform package directory carries `nros-platform.toml` with the
-    // `[build.zenoh]` block (keys verbatim) + `[capabilities]` + `[knobs]`.
+    // Each platform package directory carries `nros-platform.toml` with
+    // `[capabilities]` + `[knobs]` + the platform's C-build half; zenoh-pico's
+    // own per-platform block is a `[port.<platform>]` row in this backend's
+    // descriptor since phase-349 W2b (keys verbatim).
     // Precedence: `NROS_PLATFORMS_DIR` (tree override) > the in-tree default.
     // The selector is a PATH, so it is not fingerprinted as a string (issue
     // 0491) — the manifest FILES it selects are watched by `rerun-if-changed`.
@@ -1554,7 +1606,17 @@ pub fn run() {
         for manifest in platform_manifests_to_watch(&platform_search_path) {
             println!("cargo:rerun-if-changed={}", manifest.display());
         }
-        let m = tree.as_platform_manifest();
+        // phase-349 W2b — zenoh-pico's per-platform port rows live in THIS
+        // backend's descriptor (`[port.<platform>]`), not in the platform
+        // files: a platform names no backend (RFC-0072 §9). One file, in-tree,
+        // beside the backend crate; watched by CONTENT like the platform files.
+        let ports_file = zenoh_port_rows_file(&repo_root);
+        println!("cargo:rerun-if-changed={}", ports_file.display());
+        let ports = manifest::load_port_rows(&ports_file)
+            .unwrap_or_else(|e| panic!("zenoh port rows: {e}"));
+        let m = tree
+            .as_platform_manifest(&ports)
+            .unwrap_or_else(|e| panic!("{}: {e}", ports_file.display()));
         (m, Some(tree))
     };
     for name in platform_manifest.platform.keys() {
@@ -1567,40 +1629,17 @@ pub fn run() {
     // platform, verify each `include` root names a real directory
     // under `zenoh-pico/src/` and contains at least one `.c` file.
     // Catches submodule bumps that rename / delete dirs and typos
-    // in the manifest. Full set-equality vs. the cc-rs source list
-    // lands with 136.4 once the per-RTOS functions collapse into a
-    // single manifest-driven path.
+    // in the port rows. phase-349 W2b moved the check into
+    // `check_port_includes`, whose unit test is the negative control.
     let zenoh_pico_src = zenoh_pico_dir(&manifest_dir).join("src");
     if zenoh_pico_src.exists() {
-        for name in platform_manifest.platform.keys() {
-            let resolved = platform_manifest.for_platform(name).unwrap();
-            for include in &resolved.include {
-                let dir = zenoh_pico_src.join(include);
-                if !dir.is_dir() {
-                    panic!(
-                        "nros-platform.toml: platform `{name}` `include = \"{include}\"` \
-                         does not resolve to a directory under zenoh-pico/src/ \
-                         (expected: {})",
-                        dir.display()
-                    );
+        match check_port_includes(&platform_manifest, &zenoh_pico_src) {
+            Ok(dirs) => {
+                for dir in dirs {
+                    println!("cargo:rerun-if-changed={}", dir.display());
                 }
-                let has_c_file = std::fs::read_dir(&dir)
-                    .map(|entries| {
-                        entries.flatten().any(|e| {
-                            e.path().extension().is_some_and(|x| x == "c")
-                                || e.file_type().map(|t| t.is_dir()).unwrap_or(false)
-                        })
-                    })
-                    .unwrap_or(false);
-                if !has_c_file {
-                    panic!(
-                        "nros-platform.toml: platform `{name}` `include = \"{include}\"` \
-                         resolves to {} but contains no .c files or subdirs",
-                        dir.display()
-                    );
-                }
-                println!("cargo:rerun-if-changed={}", dir.display());
             }
+            Err(e) => panic!("{e}"),
         }
     }
 
@@ -2990,7 +3029,7 @@ fn build_c_shim(
     if use_posix {
         #[cfg(target_os = "linux")]
         build.define("ZENOH_LINUX", None);
-        // Mirror `posix nros-platform.toml [build.zenoh] defines_kv` — the
+        // Mirror `[port.posix] defines_kv` (the zenoh nros-rmw.toml) — the
         // generated header's `#ifndef Z_FEATURE_MULTI_THREAD` fallback is 0,
         // so without this the shim would flip single-threaded while the
         // library runs multi-threaded (same ABI-divergence class as #135).
@@ -3076,7 +3115,8 @@ fn build_c_shim(
 }
 
 /// Phase 136.4 — unified zenoh-pico cc-rs builder, driven by the
-/// resolved `[build.zenoh]` block from the platform package's `nros-platform.toml` (RFC-0049).
+/// resolved platform: the zenoh `[port.<platform>]` row joined with the
+/// platform's own `arch_profiles` / `compile` / `required_env` (phase-349 W2b).
 /// Replaces the five per-RTOS functions (`build_zenoh_pico_{embedded,
 /// orin_spe, freertos, nuttx, threadx}` — historical names) and the POSIX
 /// `build_zenoh_pico_native` body. Per-platform deltas all come from
@@ -3687,5 +3727,81 @@ mod condvar_slice_header_tests {
             src: &store_src,
         });
         assert_eq!(a, b);
+    }
+}
+
+#[cfg(test)]
+mod port_include_drift_tests {
+    use super::*;
+
+    fn manifest_with(include: &str) -> manifest::PlatformManifest {
+        let mut platform = std::collections::BTreeMap::new();
+        platform.insert(
+            "posix".to_string(),
+            manifest::PlatformEntry {
+                include: vec![include.to_string()],
+                ..Default::default()
+            },
+        );
+        manifest::PlatformManifest {
+            platform,
+            arch: Default::default(),
+        }
+    }
+
+    /// phase-349 W2b — the drift gate's negative control, as a unit test. It
+    /// used to be a build-stage fixture that shadowed the posix platform file
+    /// through `NROS_PLATFORMS_DIR`; the `include` it corrupted lives in the
+    /// zenoh descriptor's port rows now, which that override cannot reach, and
+    /// a second override for one file is what phase-412 deleted.
+    #[test]
+    fn the_drift_gate_fires_on_an_include_that_is_not_under_zenoh_pico_src() {
+        let src = std::env::temp_dir().join(format!("nros-zpico-drift-{}", std::process::id()));
+        let common = src.join("system/common");
+        std::fs::create_dir_all(&common).unwrap();
+        std::fs::write(common.join("platform.c"), "").unwrap();
+        std::fs::create_dir_all(src.join("system/empty")).unwrap();
+
+        let ok = check_port_includes(&manifest_with("system/common"), &src)
+            .expect("a real include passes");
+        assert_eq!(ok, vec![common.clone()]);
+
+        let err = check_port_includes(&manifest_with("system/unixx"), &src)
+            .expect_err("a typo'd include must fail");
+        assert!(
+            err.contains("[port.posix]") && err.contains("system/unixx"),
+            "{err}"
+        );
+
+        let err = check_port_includes(&manifest_with("system/empty"), &src)
+            .expect_err("an include with no sources must fail");
+        assert!(err.contains("no .c files"), "{err}");
+
+        std::fs::remove_dir_all(&src).unwrap();
+    }
+
+    /// The real zenoh rows join onto the real platform tree, and every platform
+    /// that compiles zenoh-pico through cargo names at least one `include` for
+    /// the gate to check. The check against the real zenoh-pico tree itself
+    /// runs in `build.rs` on every build; this test needs no submodule.
+    #[test]
+    fn the_real_port_rows_give_the_drift_gate_something_to_check() {
+        let repo = nros_build_paths::repo_root();
+        let tree = platform_config::PlatformsTree::load_search_path(
+            &platform_config::PlatformsTree::default_search_path(&repo, None),
+        )
+        .expect("the real platform search path loads");
+        let rows = manifest::load_port_rows(&zenoh_port_rows_file(&repo))
+            .expect("the zenoh [port.*] rows parse");
+        let m = tree.as_platform_manifest(&rows).expect("rows join");
+        let with_include = m
+            .platform
+            .keys()
+            .filter(|n| !m.for_platform(n).unwrap().include.is_empty())
+            .count();
+        assert!(
+            with_include >= 7,
+            "only {with_include} platforms name an include"
+        );
     }
 }

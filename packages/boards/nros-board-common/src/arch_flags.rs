@@ -132,24 +132,20 @@ pub fn cflags_for_target(
     Ok(None)
 }
 
-/// The arch profile names `platform` declares, in `arch = [..]` order.
+/// The arch profile names `platform` declares, in `arch_profiles` order.
 ///
 /// Order matters: the predicates are substring tests, so `cortex-m3`
 /// (`thumbv7m`) must be offered before a profile that could also admit the
 /// triple. First match wins, as in the zpico include-path resolver.
+///
+/// phase-349 W2b — the list is the platform's own `arch_profiles`. It used to
+/// be read out of the platform's `[build.zenoh]` block, so the FreeRTOS kernel
+/// and lwIP builds here took their CPU flags from a backend's build table with
+/// no backend involved. `PlatformsTree::arch_profiles` resolves aliases
+/// (phase-349 W1, `freertos_lwip_resolves_both_declared_arches`).
 pub fn declared_arch_names(tree: &PlatformsTree, platform: &str) -> Vec<String> {
-    // phase-349 W1 — the manifest is keyed by DIRECTORY, so an alias
-    // (`freertos-lwip` after the directory became `freertos`) has to be
-    // resolved first. This path does NOT go through `PlatformsTree::chain()`,
-    // which is where the other lookups get alias handling for free — the
-    // arch table is merged across all files and addressed separately. Caught by
-    // `freertos_lwip_resolves_both_declared_arches`, which kept using the alias
-    // for exactly this reason.
-    let dir = tree.resolve_alias(platform);
-    tree.as_platform_manifest()
-        .platform
-        .get(dir)
-        .map(|entry| entry.arch.clone())
+    tree.arch_profiles(platform)
+        .map(<[String]>::to_vec)
         .unwrap_or_default()
 }
 

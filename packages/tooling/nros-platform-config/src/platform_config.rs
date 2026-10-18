@@ -7,6 +7,10 @@
 //!
 //! ```toml
 //! inherits = "generic"        # optional family chain (sibling dir name)
+//! arch_profiles = ["cortex-m3"]  # which [arch.*] profiles a C build here may
+//! compile = { opt_level = "s" }  # use, its compile settings and required env
+//! # (phase-349 W2b; the zenoh-pico port rows that sat beside these in
+//! # `[build.zenoh]` are `[port.<platform>]` in the zenoh nros-rmw.toml)
 //!
 //! [capabilities]              # software-stack FACTS (open vocabulary)
 //! threads = true
@@ -16,10 +20,6 @@
 //! batch = true
 //! split_lock = true
 //! flush_ms = 50
-//!
-//! [build.zenoh]               # the former zenoh_platforms.toml block,
-//! defines = ["ZENOH_GENERIC"] # keys verbatim (RFC-0049 open question 1:
-//! # ...                       # verbatim relocation)
 //!
 //! [arch.cortex-m3]            # reusable compiler-flag profiles; may be
 //! # ...                       # duplicated across files if byte-identical
@@ -51,7 +51,9 @@ use std::{
 
 use serde::Deserialize;
 
-use crate::manifest::{ArchEntry, ManifestError, PlatformEntry, PlatformManifest};
+use crate::manifest::{
+    ArchEntry, CompileSettings, ManifestError, PlatformManifest, PortRow, PortRows, RequiredEnv,
+};
 
 /// Filename of the per-platform-package config file.
 pub const PLATFORM_CONFIG_FILENAME: &str = "nros-platform.toml";
@@ -81,8 +83,9 @@ pub struct PlatformConfigFile {
     pub names: Vec<String>,
 
     /// Optional parent platform (sibling directory name). The parent's
-    /// `[build.zenoh]`, `[capabilities]` and `[knobs]` merge underneath
-    /// this file's values.
+    /// `[capabilities]`, `[knobs]` and C-build half (`arch_profiles`,
+    /// `compile`, `required_env`, plus its port rows) merge underneath this
+    /// file's values.
     #[serde(default)]
     pub inherits: Option<String>,
     /// Software-stack facts. Open vocabulary by design — facts are
@@ -110,8 +113,22 @@ pub struct PlatformConfigFile {
     pub priority_plan: Option<toml::Value>,
     #[serde(default)]
     pub knobs: Knobs,
+    /// phase-349 W2b — which `[arch.*]` profiles apply to a C build on this
+    /// platform, in order (the first whose `target_match` admits the target
+    /// wins). Was `arch` inside `[build.zenoh]`; it moved up because it is a
+    /// fact about the platform's CPUs, and `nros-board-common`'s kernel builds
+    /// read it with no backend involved. A list, not the `[arch.*]` keys:
+    /// `bare-metal` defines four profiles and admits two.
+    #[serde(default, deserialize_with = "crate::manifest::deserialize_arch_list")]
+    pub arch_profiles: Vec<String>,
+    /// phase-349 W2b — compile settings for a vendored C build here (was
+    /// `compile` inside `[build.zenoh]`).
     #[serde(default)]
-    pub build: BuildSection,
+    pub compile: CompileSettings,
+    /// phase-349 W2b — board facts a C build here requires (was `required_env`
+    /// inside `[build.zenoh]`).
+    #[serde(default)]
+    pub required_env: Vec<RequiredEnv>,
     /// Reusable compiler-flag profiles. Files may repeat a profile
     /// (e.g. `cortex-m3` in both `bare-metal` and `freertos-lwip`)
     /// only if the copies are identical; conflicting redefinition is a
@@ -120,25 +137,12 @@ pub struct PlatformConfigFile {
     pub arch: BTreeMap<String, ArchEntry>,
 }
 
-/// `[build.*]` — per-vendored-component build blocks, keyed by COMPONENT NAME.
-///
-/// phase-347 W6 — this was `struct BuildSection { zenoh: Option<PlatformEntry> }`
-/// with `deny_unknown_fields`, so `[build.cyclonedds]` was not merely absent, it
-/// was REJECTED: a platform could describe exactly one backend's vendored C
-/// build, and the one it could describe was named in core.
-///
-/// Only the KEY was ever backend-specific. `PlatformEntry` carries `defines`,
-/// `include`, `extra_sources`, `arch`, `compile` … — generic vendored-library
-/// build config with no zenoh-shaped field, already proven across the seven
-/// `config/*/nros-platform.toml` files. So this is a keying change, not a schema
-/// design: `[build.zenoh]` parses as the key `"zenoh"` and **none of those seven
-/// files change**.
-///
-/// The second tenant is not hypothetical: `nros-rmw-xrce-cffi/build.rs` is ~500
-/// lines hardcoding this same shape (`_DEFAULT_SOURCE`, `_POSIX_C_SOURCE`,
-/// posix/embedded branching, a generated config header) because there was
-/// nowhere to declare it.
-pub type BuildSection = BTreeMap<String, PlatformEntry>;
+// `[build.*]` was retired by phase-349 W2b. It held each backend's vendored C
+// build block, keyed by component (phase-347 W6), and its one tenant was
+// zenoh: those rows are `[port.<platform>]` in the zenoh backend's
+// `nros-rmw.toml` now (`crate::manifest::PortRow`), so a platform names no
+// backend. `deny_unknown_fields` on `PlatformConfigFile` makes a leftover
+// `[build.zenoh]` a load error rather than a block nobody reads.
 
 /// `[knobs]` — typed policy. `zenoh.tx` is the first tenant
 /// (phase-282); future tenants (`executor`, `log`, ring depths, …) are
@@ -1666,7 +1670,7 @@ pub struct PlatformsTree {
 }
 
 /// Load / resolution errors. `Manifest` wraps the underlying shared
-/// parser's error type for the `[build.zenoh]` payload.
+/// parser's error type for the resolved port-row payload.
 #[derive(Debug)]
 pub enum ConfigError {
     /// issue 1143 — a descriptor file declares several boards, they disagree
@@ -1959,29 +1963,62 @@ impl PlatformsTree {
         &self.arch
     }
 
-    /// Assemble the legacy [`PlatformManifest`] view (the `[build.zenoh]`
-    /// payloads keyed by platform name, `inherits` preserved) so the
-    /// existing `for_platform` inheritance/merge logic — and every
-    /// downstream consumer of `ResolvedPlatform` — keeps working
-    /// unchanged.
-    pub fn as_platform_manifest(&self) -> PlatformManifest {
+    /// Assemble the [`PlatformManifest`] view a backend's C build resolves
+    /// through: for each platform, the backend's `[port.<platform>]` row
+    /// joined with the platform's own half (`arch_profiles`, `compile`,
+    /// `required_env`, `inherits`), so `for_platform`'s inheritance/merge
+    /// logic — and every consumer of `ResolvedPlatform` — is unchanged.
+    ///
+    /// phase-349 W2b. The rows used to be each file's `[build.zenoh]`. A
+    /// platform with no row gets an empty one, as a file with no
+    /// `[build.zenoh]` did. A row keyed by a name no platform answers to is an
+    /// ERROR: it is a typo or a deleted platform, and either way it describes a
+    /// build nothing selects. A row keyed by an ALIAS resolves to its platform,
+    /// and two rows for one platform are refused.
+    pub fn as_platform_manifest(&self, ports: &PortRows) -> Result<PlatformManifest, String> {
+        let mut rows: BTreeMap<&str, (&str, &PortRow)> = BTreeMap::new();
+        for (key, row) in ports {
+            let name = self.resolve_alias(key);
+            if !self.files.contains_key(name) {
+                let mut known: Vec<&str> = self.files.keys().map(String::as_str).collect();
+                known.sort_unstable();
+                return Err(format!(
+                    "[port.{key}] names no platform on the search path (known: {})",
+                    known.join(", ")
+                ));
+            }
+            if let Some((other, _)) = rows.insert(name, (key.as_str(), row)) {
+                return Err(format!(
+                    "[port.{other}] and [port.{key}] both describe platform `{name}`"
+                ));
+            }
+        }
         let mut platform = BTreeMap::new();
         for (name, file) in &self.files {
-            // phase-347 W6 — `[build.<component>]` by key. Still "zenoh" here: this
-            // assembles the zenoh-pico system-layer view. A second component
-            // reads its own key without a schema change.
-            let mut entry = file.build.get("zenoh").cloned().unwrap_or_default();
-            // `inherits` lives at file top level in the new format; the
-            // legacy resolver reads it from the entry.
-            if entry.inherits.is_none() {
-                entry.inherits = file.inherits.clone();
-            }
+            let row = rows
+                .get(name.as_str())
+                .map(|(_, r)| (*r).clone())
+                .unwrap_or_default();
+            let entry = row.into_entry(
+                file.inherits.clone(),
+                file.arch_profiles.clone(),
+                file.compile.clone(),
+                file.required_env.clone(),
+            );
             platform.insert(name.clone(), entry);
         }
-        PlatformManifest {
+        Ok(PlatformManifest {
             platform,
             arch: self.arch.clone(),
-        }
+        })
+    }
+
+    /// The `[arch.*]` profiles a platform admits, in order (`arch_profiles`).
+    /// `None` when no platform answers to `name`.
+    pub fn arch_profiles(&self, name: &str) -> Option<&[String]> {
+        self.files
+            .get(self.resolve_alias(name))
+            .map(|f| f.arch_profiles.as_slice())
     }
 
     /// The directory a platform NAME resolves to, following `[names]` aliases.
@@ -4321,18 +4358,17 @@ serial = true
         assert_eq!(tx.batch.source, KnobSource::Platform);
     }
 
-    /// phase-347 W6 — a SECOND `[build.<component>]` key parses.
-    ///
-    /// This is the whole point of the keying change and the only thing that
-    /// could regress it: before, `BuildSection` was a struct with one `zenoh`
-    /// field and `deny_unknown_fields`, so this input was a hard parse ERROR —
-    /// a platform could describe exactly one backend's vendored C build.
-    ///
-    /// Asserts both keys survive independently, so a future component's block
-    /// cannot silently overwrite or shadow zenoh's.
-    /// phase-347 W6 — the seven REAL platform files still load, and each still
-    /// exposes its zenoh block under the new keying. Behaviour-preserving is
-    /// the claim; this is the check.
+    /// The zenoh backend descriptor's rows, read from the real tree.
+    fn real_zenoh_ports(repo: &std::path::Path) -> crate::manifest::PortRows {
+        crate::manifest::load_port_rows(
+            &repo.join("packages/rmw/zenoh/nros-rmw-zenoh/nros-rmw.toml"),
+        )
+        .expect("the zenoh backend descriptor's [port.*] rows parse")
+    }
+
+    /// phase-349 W2b — every REAL platform still has its zenoh-pico port, now
+    /// as a `[port.<platform>]` row in the zenoh backend descriptor, and every
+    /// row lands on a platform the search path declares.
     #[test]
     fn real_config_tree_still_loads_zenoh_blocks() {
         let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -4350,15 +4386,14 @@ serial = true
             !tree.files.is_empty(),
             "platform search path yielded no platform files"
         );
-        let with_zenoh = tree
-            .files
-            .values()
-            .filter(|f| f.build.contains_key("zenoh"))
-            .count();
+        let ports = real_zenoh_ports(&repo);
         assert!(
-            with_zenoh >= 7,
-            "expected >=7 platform files carrying a [build.zenoh] block, saw {with_zenoh}"
+            ports.len() >= 7,
+            "expected >=7 [port.*] rows in the zenoh backend descriptor, saw {}",
+            ports.len()
         );
+        tree.as_platform_manifest(&ports)
+            .expect("every [port.*] row names a platform on the search path");
     }
 
     /// issue 0534 — exactly which platforms keep cargo out of the vendored C
@@ -4385,7 +4420,9 @@ serial = true
         }
         let tree =
             PlatformsTree::load_search_path(&root_path).expect("the real config/ tree loads");
-        let manifest = tree.as_platform_manifest();
+        let manifest = tree
+            .as_platform_manifest(&real_zenoh_ports(&repo))
+            .expect("rows join");
         let mut delegating: Vec<String> = Vec::new();
         let mut checked = 0usize;
         for name in tree.files.keys() {
@@ -4468,23 +4505,74 @@ serial = true
         assert_eq!(caps.get("threads"), Some(&true));
     }
 
+    /// phase-349 W2b — a platform file may no longer carry a backend's build
+    /// block. `[build.*]` left the schema, so `deny_unknown_fields` turns a
+    /// leftover (or a new one written from an old example) into a load error
+    /// naming the key, rather than a block nothing reads.
     #[test]
-    fn build_section_accepts_a_second_component() {
-        let tmp = write_tree(&[(
-            "zephyr",
-            "[build.zenoh]\ndefines = [\"Z_ONE\"]\n\
-             [build.xrce]\ndefines = [\"X_ONE\", \"X_TWO\"]\n",
-        )]);
-        let tree = PlatformsTree::load(tmp.path()).expect("a second [build.*] key must parse");
-        let file = tree.files.get("zephyr").expect("zephyr file loaded");
-        assert_eq!(
-            file.build.get("zenoh").expect("zenoh block").defines,
-            vec!["Z_ONE".to_string()],
+    fn a_platform_file_with_a_build_table_is_rejected() {
+        let tmp = write_tree(&[("zephyr", "[build.zenoh]\ndefines = [\"Z_ONE\"]\n")]);
+        let err = PlatformsTree::load(tmp.path()).expect_err("[build.zenoh] must not parse");
+        assert!(
+            err.to_string().contains("build"),
+            "error must name the key: {err}"
         );
-        assert_eq!(
-            file.build.get("xrce").expect("xrce block").defines,
-            vec!["X_ONE".to_string(), "X_TWO".to_string()],
+    }
+
+    /// phase-349 W2b — a port row keyed by a name no platform answers to is an
+    /// error, an alias resolves, and two rows for one platform are refused.
+    #[test]
+    fn port_rows_must_name_a_platform_once() {
+        let tmp = write_tree(&[("freertos", "names = [\"freertos\", \"freertos-lwip\"]\n")]);
+        let tree = PlatformsTree::load(tmp.path()).unwrap();
+        let rows = |t: &str| crate::manifest::parse_port_rows(t, "test").unwrap();
+
+        let err = tree
+            .as_platform_manifest(&rows("[port.freertoss]\ndefines = [\"A\"]\n"))
+            .expect_err("a typo'd row must not be dropped");
+        assert!(
+            err.contains("freertoss") && err.contains("freertos"),
+            "{err}"
         );
+
+        let m = tree
+            .as_platform_manifest(&rows("[port.freertos-lwip]\ndefines = [\"A\"]\n"))
+            .expect("an alias names its platform");
+        assert_eq!(
+            m.for_platform("freertos").unwrap().defines,
+            vec!["A".to_string()]
+        );
+
+        let err = tree
+            .as_platform_manifest(&rows(
+                "[port.freertos]\ndefines = [\"A\"]\n[port.freertos-lwip]\ndefines = [\"B\"]\n",
+            ))
+            .expect_err("two rows for one platform");
+        assert!(err.contains("both describe"), "{err}");
+    }
+
+    /// phase-349 W2b — a port row cannot carry the platform's half. `arch`,
+    /// `compile` and `required_env` are platform facts; written in the backend
+    /// descriptor they would be dropped, so the row schema refuses them.
+    #[test]
+    fn a_port_row_refuses_platform_keys() {
+        for key in [
+            "arch = [\"cortex-m3\"]",
+            "compile = { opt_level = 2 }",
+            "required_env = []",
+        ] {
+            let err = crate::manifest::parse_port_rows(&format!("[port.p]\n{key}\n"), "test")
+                .expect_err(key);
+            assert!(err.contains("unknown field"), "{key}: {err}");
+        }
+        // ...and the rest of the descriptor is someone else's: `[rmw.*]` tables
+        // beside the rows do not disturb the parse.
+        let rows = crate::manifest::parse_port_rows(
+            "[rmw]\ncpp_define = \"X\"\n[rmw.capabilities]\nsafety = \"s\"\n[port.p]\ndefines = [\"A\"]\n",
+            "test",
+        )
+        .unwrap();
+        assert_eq!(rows["p"].defines, vec!["A".to_string()]);
     }
 
     #[test]
@@ -4602,19 +4690,36 @@ serial = true
         ));
     }
 
+    /// phase-349 W2b — the join: a row merges with the platform's own half,
+    /// and the platform's `inherits` still layers the parent underneath (row
+    /// AND platform half).
     #[test]
-    fn legacy_manifest_view_resolves_build_zenoh() {
+    fn manifest_view_joins_port_rows_with_the_platform_half() {
         let tmp = write_tree(&[
-            ("generic", "[build.zenoh]\ndefines = [\"A\"]\n"),
+            (
+                "generic",
+                "arch_profiles = \"cortex-m3\"\n[arch.cortex-m3]\n",
+            ),
             (
                 "child",
-                "inherits = \"generic\"\n[build.zenoh]\ndefines = [\"B\"]\n",
+                "inherits = \"generic\"\ncompile = { opt_level = \"s\" }\n",
             ),
         ]);
         let tree = PlatformsTree::load(tmp.path()).unwrap();
-        let manifest = tree.as_platform_manifest();
+        let rows = crate::manifest::parse_port_rows(
+            "[port.generic]\ndefines = [\"A\"]\n[port.child]\ndefines = [\"B\"]\n",
+            "test",
+        )
+        .unwrap();
+        let manifest = tree.as_platform_manifest(&rows).unwrap();
         let resolved = manifest.for_platform("child").unwrap();
         assert_eq!(resolved.defines, vec!["A".to_string(), "B".to_string()]);
+        assert_eq!(resolved.arch, vec!["cortex-m3".to_string()]);
+        assert_eq!(tree.arch_profiles("child"), Some(&[][..]));
+        assert_eq!(
+            tree.arch_profiles("generic"),
+            Some(&["cortex-m3".to_string()][..])
+        );
     }
 
     /// Issue 0979 — the regression, and it needs no env and no cwd fiddling.
@@ -4667,7 +4772,7 @@ serial = true
     /// prepends a tree of their own to the in-tree ones.
     #[test]
     fn a_search_path_keeps_skipping_individual_missing_roots() {
-        let tmp = write_tree(&[("generic", "[build.zenoh]\ndefines = [\"A\"]\n")]);
+        let tmp = write_tree(&[("generic", "names = [\"generic\"]\n")]);
         let tree = PlatformsTree::load_search_path(&[
             PathBuf::from("/nonexistent-nros-0979/b"),
             tmp.path().to_path_buf(),

@@ -150,8 +150,9 @@ apply_case_overlay() {
 # changes what a dependency's build script reads, and a shared unit could carry
 # one row's build-script result into another's verdict (0501's shape, one crate
 # down). Such a template says so with a `.private-target-dir` file, and each of
-# its rows gets a target dir of its own (`zpico_drift_gate` does — its rows
-# differ only in the descriptor `zpico-sys/build.rs` reads).
+# its rows gets a target dir of its own. (`zpico_drift_gate` was the one user —
+# its rows differed only in the descriptor `zpico-sys/build.rs` read — until
+# phase-349 W2b made its negative control a unit test in `nros-zpico-build`.)
 #
 # Both kinds live OUTSIDE the row dir, which `stage_tree` deletes on every
 # build: a target dir inside it made every rebuild a cold one.

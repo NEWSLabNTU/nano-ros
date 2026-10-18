@@ -513,12 +513,20 @@ def tracked_platform_manifests():
     The vacuity guard is `manifests_declare_something` below: producer 2 having
     NO data is now a failure, not a quiet pass, so the same silence cannot come
     back through a third root.
+
+    phase-349 W2b — and the BACKEND descriptors. Each platform's zenoh-pico
+    port row (`rerun_if_env_changed` included) moved out of its
+    `nros-platform.toml` into `[port.<platform>]` of the zenoh backend's
+    `nros-rmw.toml`, so producer 2's lists live there now. Every backend
+    descriptor is scanned, not just zenoh's: a second backend gaining port rows
+    must not be the 1220 scope gap again.
     """
     listed = subprocess.run(
         [
             "git", "ls-files",
             "config/*/nros-platform.toml",
             "packages/platform/*/nros-platform.toml",
+            "packages/rmw/*/*/nros-rmw.toml",
         ],
         capture_output=True,
         text=True,

@@ -416,4 +416,35 @@ mod tests {
         let err = agree_with_convention("acme", "cmake_value", "acme-rmw", "acme").unwrap_err();
         assert!(err.contains("RFC-0087 D4"), "{err}");
     }
+
+    /// phase-349 W2b — the zenoh descriptor carries zenoh-pico's
+    /// `[port.<platform>]` rows, owned by `nros-platform-config`. This line
+    /// parser must read them as nothing: the real descriptor parses exactly as
+    /// it does with every `[port.*]` / `[[port.*]]` table cut out, and none of
+    /// their keys reaches `[rmw.capabilities]`, which records every key it sees.
+    #[test]
+    fn port_rows_do_not_change_the_zenoh_descriptor_parse() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../rmw/zenoh/nros-rmw-zenoh/nros-rmw.toml");
+        let text = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+        assert!(
+            text.contains("[port."),
+            "the zenoh descriptor has no port rows"
+        );
+        let mut kept = Vec::new();
+        let mut in_port = false;
+        for line in text.lines() {
+            let t = line.trim_start();
+            if t.starts_with('[') {
+                in_port = t.starts_with("[port.") || t.starts_with("[[port.");
+            }
+            if !in_port {
+                kept.push(line);
+            }
+        }
+        let with = parse_rmw_descriptor(&text, "zenoh").unwrap();
+        let without = parse_rmw_descriptor(&kept.join("\n"), "zenoh").unwrap();
+        assert_eq!(with, without);
+    }
 }

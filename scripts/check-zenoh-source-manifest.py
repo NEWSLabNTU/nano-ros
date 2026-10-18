@@ -135,11 +135,11 @@ PER_PLATFORM_TREES = {
     # directory the vendored tree ships, claimed or not.
     "espidf": "no nano-ros platform selects it",
     "flipper": "no nano-ros platform selects it",
-    "freertos": "packages/platform/nros-platform-freertos/nros-platform.toml extra_sources",
+    "freertos": "[port.freertos] extra_sources (zenoh nros-rmw.toml)",
     "mbed": "no nano-ros platform selects it",
     "rpi_pico": "no nano-ros platform selects it",
-    "threadx": "packages/platform/nros-platform-threadx/nros-platform.toml (alias TU + task.c)",
-    "unix": "packages/platform/nros-platform-{posix,nuttx}/nros-platform.toml extra_sources",
+    "threadx": "[port.threadx] in the zenoh nros-rmw.toml (alias TU + task.c)",
+    "unix": "[port.posix] / [port.nuttx] extra_sources (zenoh nros-rmw.toml)",
     "windows": "no nano-ros platform selects it",
 }
 

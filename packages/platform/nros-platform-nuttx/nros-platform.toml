@@ -1,15 +1,29 @@
 # RFC-0049 / phase-290 — per-platform-package configuration.
 #
 # Sections: `[capabilities]` (software-stack facts), `[knobs.*]` (typed
-# policy defaults; deny_unknown_fields), `[build.zenoh]` (the zenoh-pico /
-# zpico shim build block — keys documented in
-# nros-board-common/src/manifest.rs), `[arch.*]` (reusable compiler-flag
+# policy defaults; deny_unknown_fields), top-level `arch_profiles` /
+# `compile` / `required_env` (what any vendored C build here needs; the
+# zenoh-pico port rows are `[port.<platform>]` in nros-rmw-zenoh's
+# nros-rmw.toml since phase-349 W2b), `[arch.*]` (reusable compiler-flag
 # profiles; may be duplicated across platform files only byte-identically).
 # Resolution ladder: builtin < platform (inherits chain) < board < env.
 # Schema + loader: nros-board-common/src/platform_config.rs.
 # phase-349 W1 / RFC-0072 — the names this platform answers to; the
 # directory is just where the file lives. names[0] is canonical.
 names = ["nuttx"]
+
+# phase-349 W2b — what this platform needs from ANY C build of a vendored
+# component: which `[arch.*]` profiles apply (first `target_match` wins, in
+# this order), the compile settings, and the board facts it requires. The
+# zenoh-pico port rows that used to sit beside these in `[build.zenoh]` live
+# in the zenoh backend's descriptor now: `[port.nuttx]` in
+# packages/rmw/zenoh/nros-rmw-zenoh/nros-rmw.toml ("platforms name no
+# backends", RFC-0072 §9).
+arch_profiles = "cortex-a7"
+compile = { opt_level = "s", warnings = false, cflags = ["-ffunction-sections", "-fdata-sections"] }
+required_env = [
+  { name = "NUTTX_DIR", help = "NuttX OS source. just nuttx setup; export NUTTX_DIR=$PWD/third-party/nuttx/nuttx", validate_subdir = "include" },
+]
 
 # phase-400 W3 / RFC-0086 — software-stack FACTS. A transport that needs a
 # capability this platform declares `false` fails at config time; a capability
@@ -18,48 +32,6 @@ names = ["nuttx"]
 [capabilities]
 ip_stack = true    # posix sockets, named in [build]
 clock = true       # issue 1037 — exports nros_platform_clock_ns (src/platform.c)
-
-[build.zenoh]
-defines = ["ZENOH_GENERIC", "ZENOH_NUTTX", "ZENOH_HAS_GETRANDOM"]
-defines_kv = { ZENOH_DEBUG = "0", Z_FEATURE_MULTI_THREAD = "1", Z_CONFIG_SOCKET_TIMEOUT = "5000" }
-include = ["system/common"]
-# Phase 156 Sub-bug B (NuttX) — `system/common/platform.h` routes
-# `ZENOH_NUTTX` to `system/platform/unix.h` (BY-VALUE 4-byte socket
-# struct). Pull `system/unix/network.c` so the upstream
-# `_z_open_tcp` / `_z_send_tcp` / `_z_read_tcp` impls (matching
-# unix.h's shape) compile in. Paired with the
-# `NROS_ZENOH_PLATFORM_USES_UNIX` macro set in `build.rs` which
-# `#ifndef`-elides the alias TU's wrong-shape network section.
-# `unix/tls.c` is `#if Z_FEATURE_LINK_TLS == 1`-gated, so it
-# compiles to an empty TU on NuttX (no TLS feature flag set).
-extra_sources = [
-  { path = "{nros}/c/zpico/nuttx_clock.c" },
-  { path = "{nros}/c/zpico/zpico.c" },
-  { path = "{src}/system/unix/network.c" },
-]
-arch = "cortex-a7"
-compile = { opt_level = "s", warnings = false, cflags = ["-ffunction-sections", "-fdata-sections"] }
-pic = false
-required_env = [
-  { name = "NUTTX_DIR", help = "NuttX OS source. just nuttx setup; export NUTTX_DIR=$PWD/third-party/nuttx/nuttx", validate_subdir = "include" },
-]
-include_paths = [
-  "{nros}/c/include",
-  # issue 0551 — NOT `{env:NUTTX_DIR}/include`. The shared tree holds whichever
-  # arch was configured last and, after any `make olddefconfig`, no generated
-  # `nuttx/config.h` at all. `{nuttx_include}` resolves through
-  # `nros_build_paths::nuttx_include_root`, which prefers this arch's export
-  # snapshot (issue 0525's one sanctioned spelling).
-  "{nuttx_include}",
-  # Phase 154 — `<nros/platform_net.h>` source; same need as posix/
-  # bare-metal/freertos-lwip blocks above.
-  "{nros}/../../platform/nros-platform-api/include",
-]
-# issue 0491 — VALUE knobs only; `NUTTX_DIR` is a PATH and was dropped. Cargo
-# compares an env value as TEXT, so a directory with one spelling per leaf and
-# another from `just` makes rows sharing a `--target-dir` rebuild each other.
-rerun_if_env_changed = []
-
 
 [arch.cortex-a7]
 target_match = "armv7a"

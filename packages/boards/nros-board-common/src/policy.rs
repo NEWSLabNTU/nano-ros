@@ -350,7 +350,7 @@ impl LinkPolicy {
 
 /// The RFC-0086 capability that decides whether a socket-based link can exist
 /// in this image. One spelling, shared by the policy selector above and by the
-/// `[build.zenoh] defines_conditional` / `extra_sources` rows that pick the
+/// zenoh port row's `defines_conditional` / `extra_sources` entries that pick the
 /// matching zenoh-pico `system/` TU set — the two halves of issue 1143 have to
 /// agree about the fact or they pick a socket type and a link policy that
 /// disagree, which is the 0135 class.

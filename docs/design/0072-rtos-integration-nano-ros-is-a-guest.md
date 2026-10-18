@@ -684,6 +684,10 @@ Two rules taken from ESP-IDF's documented mistakes:
    deferred until a board lists it.)*
 3. `[build.zenoh]` leaves every platform file. Platforms keep `[capabilities]`,
    `[arch.*]`, `compile`, `required_env`.
+   *(Landed 2026-10-18, phase-349 W2b: zenoh-pico's rows are
+   `[port.<platform>]` tables in the zenoh `nros-rmw.toml`, keyed by platform;
+   the platform file keeps `arch_profiles`, `compile` and `required_env` as
+   top-level keys.)*
 4. `nros_freertos_build_kernel()` and `nros_freertos_build_lwip()` are retired;
    the mps2 fixture adopts upstream's `CMakeLists.txt`.
 5. `FREERTOS_PORT` stops being ours. Upstream owns that name and takes an enum
