@@ -70,7 +70,9 @@ use std::path::{Path, PathBuf};
 
 pub use fact::Fact;
 pub use render::{portability_violation, render};
-pub use schema::{Endpoint, Image, Meta, Params, Policy, SizingDescriptor, Target, Types};
+pub use schema::{
+    Endpoint, Image, Meta, Params, Policy, SizingDescriptor, Target, Tier, Types,
+};
 pub use vocabulary::{
     Basis, CapacityNeed, Durability, EndpointKind, History, InfraFamilies, ParamStore,
     RegistrationPath, Reliability, Status,
@@ -1221,6 +1223,36 @@ mod tests {
                 .unwrap()
                 .contains("names no rmw")
         );
+    }
+
+    #[test]
+    fn the_tier_rows_survive_a_round_trip() {
+        // Issue 1970 -- each tier's own facts, after every other section.
+        let mut d = island();
+        let mut estop = Tier {
+            name: "estop".into(),
+            nodes: vec!["mrm_emergency_stop_operator".into()],
+            subscription_topics: vec!["/control/command/control_cmd".into()],
+            param_slots: Some(4),
+            ..Tier::default()
+        };
+        estop
+            .image
+            .set_node_count(Some(1))
+            .set_subscription_entities(Some(1))
+            .set_callback_slots(Some(3));
+        let mrm = Tier {
+            name: "mrm".into(),
+            nodes: vec!["mrm_handler".into()],
+            ..Tier::default()
+        };
+        d.tiers = vec![estop.clone(), mrm.clone()];
+        let back = parse(&render(&d), Path::new("t.toml")).unwrap();
+        assert_eq!(back.tiers, vec![estop, mrm]);
+        assert_eq!(back.tiers[0].image.callback_slots().stated(), Some(&3));
+        assert_eq!(back.tiers[1].param_slots, None);
+        // A descriptor with no `[[tier]]` states no tier.
+        assert!(parse(&render(&island()), Path::new("t.toml")).unwrap().tiers.is_empty());
     }
 
     #[test]

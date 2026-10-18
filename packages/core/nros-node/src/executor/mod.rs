@@ -205,7 +205,8 @@ pub use spin::SessionSpec;
 pub use spin::{MAX_WAKE_SOURCES, NextDeadlineFn, ParkUntilFn, WakeSourceId};
 #[cfg(any(has_rmw, test))]
 pub use storage::{
-    ExecutorInlineStorage, ExecutorSizing, RegionUnit, RegionUnits, executor_storage_layout,
-    executor_storage_layout_with, executor_storage_u64_len,
+    ExecutorInlineStorage, ExecutorSizing, INLINE_BACKING_U64S, INLINE_SIZING, RegionUnit,
+    RegionUnits, executor_storage_layout, executor_storage_layout_with, executor_storage_u64_len,
+    tier_backing_bytes, tier_executor_sizing, tier_sizing,
 };
 pub use types::*;

@@ -1056,51 +1056,65 @@ fn main() {
     // `NROS_EXECUTOR_ARENA_SIZE` below it is a build error naming both numbers
     // instead of `NodeError::BufferTooSmall` at the first registration that
     // does not fit.
-    let model_required = match (
-        declared_subs,
-        declared_timers,
-        declared_services,
-        declared_action_clients,
-        declared_action_servers,
-        declared_service_clients,
-        declared_guard_conditions,
-    ) {
-        (Some(subs), Some(timers), Some(services), Some(acl), Some(asv), Some(scl), Some(gcs)) => {
-            Some(
+    // Issue 1970 -- the arithmetic as a function of the counts and the rows, so
+    // a TIER's arena (its own members' counts, its own subscriptions' rows) is
+    // priced by exactly the code that prices the image's.
+    let arena_required = |counts: [Option<usize>; 7],
+                          rows: Option<&[SubEndpoint]>|
+     -> Option<usize> {
+        match counts {
+            [
+                Some(subs),
+                Some(timers),
+                Some(services),
+                Some(acl),
+                Some(asv),
+                Some(scl),
+                Some(gcs),
+            ] => Some(
                 // phase-454 W5 -- the descriptor first, the env carriers second.
                 // ONE road wherever the file can answer (issue 1199); the second
                 // is what W9 retires, and what an image with no `nros sync` keeps.
-                sub_rows
-                    .as_deref()
-                    .and_then(|rows| {
-                        subs_arena_from_descriptor(
-                            rows,
-                            subs,
-                            PUBSUB_ENTRY_STRUCT,
-                            ring_len_bytes,
-                            rx_buf_size,
-                        )
-                    })
-                    .unwrap_or_else(|| {
-                        subs_arena(
-                            subs,
-                            pubsub_entry,
-                            rx_recv_size,
-                            PUBSUB_ENTRY_STRUCT,
-                            ring_len_bytes,
-                        )
-                    })
-                    + timers * TIMER_ENTRY
+                rows.and_then(|rows| {
+                    subs_arena_from_descriptor(
+                        rows,
+                        subs,
+                        PUBSUB_ENTRY_STRUCT,
+                        ring_len_bytes,
+                        rx_buf_size,
+                    )
+                })
+                .unwrap_or_else(|| {
+                    subs_arena(
+                        subs,
+                        pubsub_entry,
+                        rx_recv_size,
+                        PUBSUB_ENTRY_STRUCT,
+                        ring_len_bytes,
+                    )
+                }) + timers * TIMER_ENTRY
                     + services * service_entry
                     + acl * action_client_entry
                     + asv * action_server_entry
                     + scl * service_client_entry
                     + gcs * guard_condition_entry
                     + ARENA_BASE_OVERHEAD,
-            )
+            ),
+            _ => None,
         }
-        _ => None,
     };
+    let model_required = arena_required(
+        [
+            declared_subs,
+            declared_timers,
+            declared_services,
+            declared_action_clients,
+            declared_action_servers,
+            declared_service_clients,
+            declared_guard_conditions,
+        ],
+        sub_rows.as_deref(),
+    );
     let derived_arena = match model_required {
         Some(required) => required.max(ARENA_FLOOR),
         // Nobody declared, or declared only partly: keep the pre-step-3
@@ -1130,6 +1144,20 @@ fn main() {
         n => n,
     };
 
+    // Issue 1970 -- each executor TIER's own sizing, from the descriptor's
+    // `[[tier]]` rows. Empty (every executor sized as the image, inline, as
+    // before) unless EVERY tier composed and no rung STATES one of the sizes
+    // the tiers would otherwise derive: a stated `MAX_CBS` / `MAX_NODES` /
+    // arena is the author's number for the image's one executor, and a tier
+    // derived beside it would be smaller than what the author asked for.
+    let tier_sizings = tier_sizings(
+        sizing.as_ref(),
+        &|counts, rows| arena_required(counts, rows).map(|r| r.max(ARENA_FLOOR)),
+        rx_buf_size,
+        rx_recv_size,
+    );
+    let tier_sizings_src = tier_sizings_literal(&tier_sizings);
+
     let contents = format!(
         "/// Maximum number of executor callback slots \
          (set via NROS_EXECUTOR_MAX_CBS, default 4).\n\
@@ -1138,6 +1166,12 @@ fn main() {
          /// Maximum number of `SchedContext` slots per executor \
          (set via NROS_EXECUTOR_MAX_SC, default 8). Phase 110.B.\n\
          pub const MAX_SC: usize = {max_sc};\n\
+         \n\
+         /// Issue 1970 -- each executor tier's own sizing, from the sizing \
+         descriptor's `[[tier]]` rows. Empty when the image is not tiered, \
+         or a tier did not compose, or a rung states an executor size: every \
+         executor is then the image's, carved inline.\n\
+         pub const TIER_SIZINGS: &[TierSizing] = {tier_sizings_src};\n\
          \n\
          /// Contract-monitor RATE/LATENCY rows one executor can watch \
          (set via NROS_EXECUTOR_MAX_MONITORS, derived from the contract's \
@@ -2043,4 +2077,122 @@ fn dds_type_name(ros: &str) -> String {
 /// [`declared_param_service_shapes`] gives.
 fn declared_fact(key: &str) -> Option<String> {
     std::env::var(key).ok().filter(|v| !v.trim().is_empty())
+}
+
+/// Issue 1970 -- one tier's derived executor sizing, as `build.rs` states it.
+struct TierSizingRow {
+    name: String,
+    cbs: usize,
+    arena: usize,
+    nodes: usize,
+    params: Option<usize>,
+}
+
+/// Issue 1970 -- each `[[tier]]` row priced into an executor sizing, or none
+/// at all.
+///
+/// All or nothing: a tiered entry carves EVERY tier's backing from these rows,
+/// so a tier that cannot be priced leaves the whole image on the inline
+/// executor (each block the image's size, the shape before this issue) rather
+/// than one tier on each road. Each skip is a warning naming why.
+///
+/// `arena` is the image's own arithmetic over the tier's counts and the rows of
+/// the subscriptions its members register (the caller's closure, floored as the
+/// image's arena is).
+fn tier_sizings(
+    desc: Option<&nros_sizing_descriptor::SizingDescriptor>,
+    arena: &dyn Fn([Option<usize>; 7], Option<&[SubEndpoint]>) -> Option<usize>,
+    rx_buf_size: usize,
+    rx_recv_size: usize,
+) -> Vec<TierSizingRow> {
+    let Some(desc) = desc else {
+        return Vec::new();
+    };
+    if desc.tiers.is_empty() {
+        return Vec::new();
+    }
+    // A STATED size is the author's: it outranks a derived one, for the image
+    // and so for its tiers.
+    for knob in [
+        "NROS_EXECUTOR_MAX_CBS",
+        "NROS_EXECUTOR_MAX_NODES",
+        "NROS_EXECUTOR_ARENA_SIZE",
+    ] {
+        let probe = usize::MAX;
+        let v = env_usize(knob, probe);
+        if v != probe && v != 0 {
+            println!(
+                "cargo::warning=nros-node: `{knob}` is stated ({v}), so the image's {} \
+                 tiers keep the image's executor size each (issue 1970: a tier is sized \
+                 from its own members only when nothing states the size)",
+                desc.tiers.len()
+            );
+            return Vec::new();
+        }
+    }
+    let mut out = Vec::with_capacity(desc.tiers.len());
+    for t in &desc.tiers {
+        let img = &t.image;
+        let counts = [
+            img.subscription_entities().stated().copied(),
+            img.timer_entities().stated().copied(),
+            img.service_server_entities().stated().copied(),
+            img.action_client_entities().stated().copied(),
+            img.action_server_entities().stated().copied(),
+            img.service_client_entities().stated().copied(),
+            img.guard_condition_entities().stated().copied(),
+        ];
+        // The tier's rows: the image's `[[endpoint]]` table with every
+        // subscription the tier does not register taken out.
+        let mut own = desc.clone();
+        own.endpoints.retain(|ep| {
+            ep.kind != nros_sizing_descriptor::EndpointKind::Subscription
+                || t.subscription_topics.iter().any(|tp| *tp == ep.topic)
+        });
+        let rows = descriptor_subscriptions(
+            &own,
+            rx_buf_size,
+            rx_recv_size,
+            in_place_dispatch_trusted(),
+        );
+        let (Some(arena), Some(cbs), Some(nodes)) = (
+            arena(counts, rows.as_deref()),
+            img.callback_slots().stated().copied(),
+            img.node_count().stated().copied(),
+        ) else {
+            println!(
+                "cargo::warning=nros-node: tier `{}` states too little to size its own \
+                 executor (its entity counts, callback slots and node count must all \
+                 compose), so every tier keeps the image's executor size (issue 1970)",
+                t.name
+            );
+            return Vec::new();
+        };
+        out.push(TierSizingRow {
+            name: t.name.clone(),
+            cbs,
+            arena,
+            nodes,
+            params: t.param_slots,
+        });
+    }
+    out
+}
+
+/// The Rust literal `TIER_SIZINGS` is written from.
+fn tier_sizings_literal(rows: &[TierSizingRow]) -> String {
+    if rows.is_empty() {
+        return "&[]".to_string();
+    }
+    let items: Vec<String> = rows
+        .iter()
+        .map(|r| {
+            format!(
+                "TierSizing {{ name: {:?}, cbs: {}, arena: {}, nodes: {}, \
+                 params: {:?} }}",
+                r.name, r.cbs, r.arena, r.nodes, r.params
+            )
+        })
+        .collect();
+    format!("&[{}]", items.join(", "))
 }

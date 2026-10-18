@@ -1628,6 +1628,53 @@ pub struct SizingDescriptor {
     pub params: Params,
     #[serde(default)]
     pub policy: Policy,
+    /// Issue 1970 -- `[[tier]]`: one row per executor tier of a tiered entry,
+    /// each stating its OWN members' facts, so a tier's executor is sized for
+    /// what it hosts rather than for the image. ADDITIVE like `[params]`
+    /// ([`crate::SCHEMA_VERSION`] stays): a descriptor without the section
+    /// parses unchanged and states no tier, which every consumer reads as "the
+    /// image's one executor size", the answer it had before.
+    #[serde(default, rename = "tier")]
+    pub tiers: Vec<Tier>,
+}
+
+/// Issue 1970 -- `[[tier]]`, one executor tier of the entry.
+///
+/// A row is written only when every fact a tier's executor is sized from
+/// composed for it; a tier the producer could not describe is left out, and
+/// a consumer that finds no row for a tier sizes it as the image (the inline
+/// executor). There is no per-field refusal here: a tier sized from part of
+/// its facts would be the short executor this section exists to avoid.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Tier {
+    /// The tier's name, as the resolved tier table and the entry spell it.
+    pub name: String,
+    /// The node names the tier hosts (sorted).
+    #[serde(default)]
+    pub nodes: Vec<String>,
+    /// The topics of the subscriptions those nodes register (sorted), which
+    /// select the tier's rows out of `[[endpoint]]` for the arena's receive
+    /// regions.
+    #[serde(default)]
+    pub subscription_topics: Vec<String>,
+    /// Parameters the tier's nodes declare: the tier executor's store slots.
+    pub param_slots: Option<usize>,
+    /// The tier's own `[image]` counts, composed by the same derivation as
+    /// the image's over the tier's members only.
+    #[serde(default)]
+    pub image: Image,
+}
+
+impl Tier {
+    pub(crate) const FIELDS: &'static [&'static str] = &["param_slots"];
+
+    pub(crate) fn raw_value(&self, field: &str) -> Option<String> {
+        match field {
+            "param_slots" => self.param_slots.map(|v| v.to_string()),
+            _ => None,
+        }
+    }
 }
 
 impl SizingDescriptor {
@@ -1649,6 +1696,7 @@ impl SizingDescriptor {
             types: Types::default(),
             params: Params::default(),
             policy: Policy::default(),
+            tiers: Vec::new(),
         }
     }
 
@@ -1682,6 +1730,9 @@ impl SizingDescriptor {
         self.types.validate()?;
         self.params.validate()?;
         self.policy.validate()?;
+        for t in &self.tiers {
+            t.image.validate()?;
+        }
         Ok(())
     }
 }

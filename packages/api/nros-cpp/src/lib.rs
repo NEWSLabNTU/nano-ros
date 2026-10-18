@@ -607,7 +607,7 @@ pub(crate) type CppExecutor = nros_node::Executor<'static>;
 /// `u64` words of per-entry backing the inline executor carves from its
 /// `CppContext` buffer (default sizing).
 #[cfg(feature = "rmw-cffi")]
-pub(crate) const CPP_EXECUTOR_BACKING_U64S: usize = nros_node::ExecutorSizing::DEFAULT.u64_len();
+pub(crate) const CPP_EXECUTOR_BACKING_U64S: usize = nros_node::INLINE_BACKING_U64S;
 
 /// Context wrapping the executor and the domain ID.
 ///
@@ -1004,6 +1004,124 @@ pub unsafe extern "C" fn nros_cpp_init_rmw(
     namespace: *const c_char,
     storage: *mut c_void,
 ) -> nros_cpp_ret_t {
+    unsafe { init_rmw_over(rmw, locator, domain_id, node_name, namespace, storage, None) }
+}
+
+/// Issue 1970 -- [`nros_cpp_init`] for one TIER of a per-tier-sized image: the
+/// executor is carved from `backing` (`backing_bytes`, 8-aligned) at the sizing
+/// the image derived for the tier named `tier`, instead of from the context's
+/// inline tail (which such an image does not carry). Refused -- before a
+/// session opens -- for a tier the image sizes nothing for, or a backing below
+/// the tier's layout ([`nros_cpp_tier_backing_size`] says how many bytes).
+///
+/// # Safety
+/// As [`nros_cpp_init`], plus: `tier` is a valid NUL-terminated string and
+/// `backing` points at `backing_bytes` writable, 8-aligned bytes that outlive
+/// the executor and are not otherwise accessed.
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn nros_cpp_init_tier(
+    locator: *const c_char,
+    domain_id: u8,
+    node_name: *const c_char,
+    namespace: *const c_char,
+    storage: *mut c_void,
+    tier: *const c_char,
+    backing: *mut c_void,
+    backing_bytes: usize,
+) -> nros_cpp_ret_t {
+    let external = match unsafe { tier_backing(tier, backing, backing_bytes) } {
+        Ok(b) => b,
+        Err(ret) => return ret,
+    };
+    unsafe {
+        init_rmw_over(
+            core::ptr::null(),
+            locator,
+            domain_id,
+            node_name,
+            namespace,
+            storage,
+            Some(external),
+        )
+    }
+}
+
+/// Issue 1970 -- the backing bytes the executor of the tier named `tier`
+/// carves, or `0` when this image sizes no tier of that name (its executors
+/// are then the image's, carved inline).
+///
+/// # Safety
+/// `tier` is NULL or a valid NUL-terminated string.
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_tier_backing_size(tier: *const c_char) -> usize {
+    unsafe { cstr_to_str(tier) }
+        .and_then(nros_node::tier_sizing)
+        .map_or(0, |s| s.u64_len() * 8)
+}
+
+/// Issue 1970 -- one tier's own backing and the sizing it is carved at.
+#[cfg(feature = "rmw-cffi")]
+type TierBacking = (
+    &'static mut [core::mem::MaybeUninit<u64>],
+    nros_node::ExecutorSizing,
+);
+
+/// Issue 1970 -- an external backing for the tier named `tier`, checked: the
+/// tier must be one the image sizes, and the backing non-null, 8-aligned and
+/// at least the tier's layout.
+#[cfg(feature = "rmw-cffi")]
+unsafe fn tier_backing(
+    tier: *const c_char,
+    backing: *mut c_void,
+    backing_bytes: usize,
+) -> Result<TierBacking, nros_cpp_ret_t> {
+    let Some(name) = (unsafe { cstr_to_str(tier) }) else {
+        return Err(NROS_CPP_RET_INVALID_ARGUMENT);
+    };
+    let Some(sizing) = nros_node::tier_sizing(name) else {
+        cpp_diag!(
+            "nros: tier `{name}` has no executor sizing in this image (issue 1970) -- the \
+             entry and the library were built from different tier tables; rebuild"
+        );
+        return Err(NROS_CPP_RET_INVALID_ARGUMENT);
+    };
+    let need = sizing.u64_len() * 8;
+    if backing.is_null()
+        || !(backing as usize).is_multiple_of(core::mem::align_of::<u64>())
+        || backing_bytes < need
+    {
+        cpp_diag!(
+            "nros: tier `{name}`: executor backing refused ({backing_bytes} bytes; the tier \
+             needs {need}, 8-aligned) (issue 1970)"
+        );
+        return Err(NROS_CPP_RET_INVALID_ARGUMENT);
+    }
+    // SAFETY: caller contract -- `backing_bytes` writable, aligned bytes that
+    // outlive the executor and nothing else touches.
+    let words = unsafe {
+        core::slice::from_raw_parts_mut(
+            backing as *mut core::mem::MaybeUninit<u64>,
+            backing_bytes / 8,
+        )
+    };
+    Ok((words, sizing))
+}
+
+/// The body of [`nros_cpp_init_rmw`] and [`nros_cpp_init_tier`]: `external`
+/// is the tier's own backing, `None` the context's inline one.
+#[cfg(feature = "rmw-cffi")]
+unsafe fn init_rmw_over(
+    rmw: *const c_char,
+    locator: *const c_char,
+    domain_id: u8,
+    node_name: *const c_char,
+    namespace: *const c_char,
+    storage: *mut c_void,
+    external: Option<TierBacking>,
+) -> nros_cpp_ret_t {
     // phase-412 -- stamp the self-report BEFORE anything can reject an
     // argument. This is the first nano-ros code an image runs, so a record that
     // is still zero after this point means the image never got here at all.
@@ -1142,7 +1260,16 @@ pub unsafe extern "C" fn nros_cpp_init_rmw(
     let ctx_ptr = storage as *mut CppContext;
     // Issue 1419 -- the inline tail at the build's sizing, except for a census
     // run, which opens at the executor's ceilings over a heap block.
-    let (backing, sizing) = unsafe { executor_backing_for_open(ctx_ptr) };
+    let (backing, sizing) = match external {
+        Some(b) => b,
+        None => match unsafe { executor_backing_for_open(ctx_ptr) } {
+            Some(b) => b,
+            None => {
+                nros_node::boot_report::note_cpp_init_ret(NROS_CPP_RET_NOT_INIT);
+                return NROS_CPP_RET_NOT_INIT;
+            }
+        },
+    };
     // SAFETY: `backing` is sized/aligned for `sizing` and lives for the program
     // (caller owns the buffer, or the block is leaked); `open_in`'s contract is met.
     match unsafe { CppExecutor::open_in(&config, backing, sizing) } {
@@ -1594,10 +1721,16 @@ pub unsafe extern "C" fn nros_cpp_init_multi(
     let owned = &flat[..specs_len];
 
     let ctx_ptr = storage as *mut CppContext;
+    let Some(inline_sizing) = nros_node::INLINE_SIZING else {
+        cpp_diag!(
+            "nros_cpp_init_multi: this image sizes its executors per tier (issue 1970) and \
+             carries no inline executor backing"
+        );
+        return NROS_CPP_RET_NOT_INIT;
+    };
     let backing: &'static mut [core::mem::MaybeUninit<u64>] = unsafe { inline_backing(ctx_ptr) };
     // SAFETY: as `nros_cpp_init` — caller-owned, correctly sized/aligned buffer.
-    match unsafe { CppExecutor::open_multi_in(owned, backing, nros_node::ExecutorSizing::DEFAULT) }
-    {
+    match unsafe { CppExecutor::open_multi_in(owned, backing, inline_sizing) } {
         Ok(executor) => {
             unsafe {
                 write_context(
@@ -2012,22 +2145,26 @@ static CENSUS_SIZING_PENDING: core::sync::atomic::AtomicBool =
 /// `ctx_ptr` must point at caller storage of at least `sizeof(CppContext)`
 /// bytes that outlives the executor, as `nros_cpp_init`'s own contract says.
 #[cfg(feature = "rmw-cffi")]
-unsafe fn executor_backing_for_open(
-    ctx_ptr: *mut CppContext,
-) -> (
-    &'static mut [core::mem::MaybeUninit<u64>],
-    nros_node::ExecutorSizing,
-) {
+unsafe fn executor_backing_for_open(ctx_ptr: *mut CppContext) -> Option<TierBacking> {
     #[cfg(all(feature = "env", feature = "metadata-mode"))]
     if CENSUS_SIZING_PENDING.swap(false, core::sync::atomic::Ordering::AcqRel) {
         let block: &'static mut [core::mem::MaybeUninit<u64>] =
             alloc::boxed::Box::leak(alloc::boxed::Box::new_uninit_slice(CENSUS_SIZING.u64_len()));
-        return (block, CENSUS_SIZING);
+        return Some((block, CENSUS_SIZING));
     }
+    // Issue 1970 -- a per-tier-sized image carries no inline backing.
+    let Some(sizing) = nros_node::INLINE_SIZING else {
+        cpp_diag!(
+            "nros: this image sizes its executors per tier (issue 1970) and carries no \
+             inline executor backing; open each tier's executor over its own \
+             (`nros_cpp_init_tier` / `nros_cpp_executor_open_over_session_tier`)"
+        );
+        return None;
+    };
     // SAFETY: caller contract -- the inline tail is `CPP_EXECUTOR_BACKING_U64S`
-    // words sized for `ExecutorSizing::DEFAULT` and lives as long as the buffer.
+    // words sized for `INLINE_SIZING` and lives as long as the buffer.
     let backing = unsafe { inline_backing(ctx_ptr) };
-    (backing, nros_node::ExecutorSizing::DEFAULT)
+    Some((backing, sizing))
 }
 
 /// Write the census of everything the setup path declared.
@@ -6020,6 +6157,52 @@ pub unsafe extern "C" fn nros_cpp_executor_open_over_session(
     domain_id: u32,
     out_storage: *mut c_void,
 ) -> nros_cpp_ret_t {
+    unsafe { open_over_session(session_handle, node_name, domain_id, out_storage, None) }
+}
+
+/// Issue 1970 -- [`nros_cpp_executor_open_over_session`] for one TIER of a
+/// per-tier-sized image: the borrowed executor is carved from `backing` at the
+/// sizing the image derived for the tier named `tier` (see
+/// [`nros_cpp_init_tier`] for what is refused).
+///
+/// # Safety
+/// As [`nros_cpp_executor_open_over_session`], plus [`nros_cpp_init_tier`]'s
+/// contract on `tier` and `backing`.
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_executor_open_over_session_tier(
+    session_handle: *mut c_void,
+    node_name: *const c_char,
+    domain_id: u32,
+    out_storage: *mut c_void,
+    tier: *const c_char,
+    backing: *mut c_void,
+    backing_bytes: usize,
+) -> nros_cpp_ret_t {
+    let external = match unsafe { tier_backing(tier, backing, backing_bytes) } {
+        Ok(b) => b,
+        Err(ret) => return ret,
+    };
+    unsafe {
+        open_over_session(
+            session_handle,
+            node_name,
+            domain_id,
+            out_storage,
+            Some(external),
+        )
+    }
+}
+
+/// The body of both open-over-session entry points.
+#[cfg(feature = "rmw-cffi")]
+unsafe fn open_over_session(
+    session_handle: *mut c_void,
+    node_name: *const c_char,
+    domain_id: u32,
+    out_storage: *mut c_void,
+    external: Option<TierBacking>,
+) -> nros_cpp_ret_t {
     if session_handle.is_null() || out_storage.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
@@ -6036,17 +6219,25 @@ pub unsafe extern "C" fn nros_cpp_executor_open_over_session(
     // domain_id. The executor Borrows the session — does NOT open a new RMW
     // session and does NOT close it on drop (the Rust tier-task pattern).
     let ctx_ptr = out_storage as *mut CppContext;
-    let backing: &'static mut [core::mem::MaybeUninit<u64>] = unsafe { inline_backing(ctx_ptr) };
-    // SAFETY: the handle's session is alive (caller's contract); `backing` is
-    // sized/aligned per `ExecutorSizing::DEFAULT` and lives for the caller's
-    // buffer lifetime, meeting `open_with_session_handle_in`'s contract.
-    let mut executor = unsafe {
-        CppExecutor::open_with_session_handle_in(
-            handle,
-            backing,
-            nros_node::ExecutorSizing::DEFAULT,
-        )
+    // Issue 1970 -- the tier's own backing, or the context's inline tail.
+    let (backing, sizing) = match external {
+        Some(b) => b,
+        None => {
+            let Some(sizing) = nros_node::INLINE_SIZING else {
+                cpp_diag!(
+                    "nros: this image sizes its executors per tier (issue 1970) and carries \
+                     no inline executor backing; use \
+                     `nros_cpp_executor_open_over_session_tier`"
+                );
+                return NROS_CPP_RET_NOT_INIT;
+            };
+            (unsafe { inline_backing(ctx_ptr) }, sizing)
+        }
     };
+    // SAFETY: the handle's session is alive (caller's contract); `backing` is
+    // sized/aligned for `sizing` and lives for the caller's buffer lifetime,
+    // meeting `open_with_session_handle_in`'s contract.
+    let mut executor = unsafe { CppExecutor::open_with_session_handle_in(handle, backing, sizing) };
 
     // Set node identity for graph naming (liveliness key expressions etc.).
     if let Some(name_str) = unsafe { cstr_to_str(node_name) } {

@@ -25,7 +25,7 @@
 //! writes freely, and the one place an interpolated `Path::display()` would slip
 //! in. A refusal that names a file names it relative, or names the entry instead.
 
-use crate::schema::{Endpoint, Image, Meta, Params, Policy, SizingDescriptor, Target, Types};
+use crate::schema::{Endpoint, Image, Meta, Params, Policy, SizingDescriptor, Target, Tier, Types};
 
 /// The header every descriptor carries.
 const HEADER: &str = "\
@@ -109,7 +109,29 @@ pub fn render(desc: &SizingDescriptor) -> String {
     emit_values(&mut out, Policy::FIELDS, |f| desc.policy.raw_value(f));
     emit_refusals(&mut out, "policy.refused", desc.policy.refusals());
 
+    // Issue 1970 -- last: an array of tables, each with its own `[tier.image]`.
+    for t in &desc.tiers {
+        out.push_str("\n[[tier]]\n");
+        out.push_str(&format!("name = \"{}\"\n", escape(&t.name)));
+        out.push_str(&format!("nodes = [{}]\n", quoted_list(&t.nodes)));
+        out.push_str(&format!(
+            "subscription_topics = [{}]\n",
+            quoted_list(&t.subscription_topics)
+        ));
+        emit_values(&mut out, Tier::FIELDS, |f| t.raw_value(f));
+        out.push_str("\n[tier.image]\n");
+        emit_values(&mut out, Image::FIELDS, |f| t.image.raw_value(f));
+    }
+
     out
+}
+
+fn quoted_list(items: &[String]) -> String {
+    items
+        .iter()
+        .map(|i| format!("\"{}\"", escape(i)))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 fn emit_values(out: &mut String, fields: &[&str], value: impl Fn(&str) -> Option<String>) {

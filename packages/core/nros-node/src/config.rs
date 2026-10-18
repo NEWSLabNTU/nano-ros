@@ -5,6 +5,22 @@
 
 include!(concat!(env!("OUT_DIR"), "/nros_node_config.rs"));
 
+/// Issue 1970 -- one executor tier's own sizing, as `build.rs` derived it from
+/// the sizing descriptor's `[[tier]]` row: the callback slots, node slots and
+/// arena its members need, and the parameters they declare (`None`: the tier
+/// stated no count, so it carves the image's store). Read through
+/// [`TIER_SIZINGS`]; `crate::executor::tier_sizing` turns a row into the
+/// `ExecutorSizing` its executor is carved at.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TierSizing {
+    /// The tier's name, as the entry's tier table spells it.
+    pub name: &'static str,
+    pub cbs: usize,
+    pub arena: usize,
+    pub nodes: usize,
+    pub params: Option<usize>,
+}
+
 /// phase-271 — default arena bytes for a per-entry executor holding `cbs`
 /// callback slots. Scales the build-time [`ARENA_SIZE`] (which is sized for the
 /// default [`MAX_CBS`]) linearly by `cbs`, so a per-entry [`ExecutorSizing`] with

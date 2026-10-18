@@ -58,7 +58,15 @@ mod rmw_sizes {
 
     macro_rules! export_size {
         ($vis:vis $name:ident = $ty:ty) => {
-            $vis const $name: usize = core::mem::size_of::<$ty>();
+            export_bytes!($vis $name = core::mem::size_of::<$ty>());
+        };
+    }
+
+    // Issue 1970 -- the same marker for a byte count that is not one type's
+    // size (a tier's executor backing).
+    macro_rules! export_bytes {
+        ($vis:vis $name:ident = $bytes:expr) => {
+            $vis const $name: usize = $bytes;
             // issue 1765 — every marker is `cfg`'d on the probe-only feature,
             // not merely `cfg_attr(.., used)`. A `#[no_mangle]` static is
             // EXPORTED from a staticlib whether or not it is `#[used]`, so the
@@ -118,6 +126,21 @@ mod rmw_sizes {
     // header AND the per-entry storage backing carved from the same buffer, so it
     // must be sized for the combined `#[repr(C)]` layout, not bare `Executor`.
     export_size!(pub EXECUTOR_SIZE       = nros_node::ExecutorInlineStorage);
+
+    // Issue 1970 -- each executor tier's own backing, in the tier table's order
+    // (`nros_node::config::TIER_SIZINGS`), zero past the last tier and on an
+    // image sized as one executor. Eight is the most a per-tier image carries:
+    // the CLI's descriptor states no tier beyond it. The C/C++ header publishes
+    // them as `NROS_CPP_TIER_BACKING_SIZE_<i>`, which size the generated
+    // entry's per-tier backing statics.
+    export_bytes!(pub TIER_BACKING_SIZE_0 = nros_node::tier_backing_bytes(0));
+    export_bytes!(pub TIER_BACKING_SIZE_1 = nros_node::tier_backing_bytes(1));
+    export_bytes!(pub TIER_BACKING_SIZE_2 = nros_node::tier_backing_bytes(2));
+    export_bytes!(pub TIER_BACKING_SIZE_3 = nros_node::tier_backing_bytes(3));
+    export_bytes!(pub TIER_BACKING_SIZE_4 = nros_node::tier_backing_bytes(4));
+    export_bytes!(pub TIER_BACKING_SIZE_5 = nros_node::tier_backing_bytes(5));
+    export_bytes!(pub TIER_BACKING_SIZE_6 = nros_node::tier_backing_bytes(6));
+    export_bytes!(pub TIER_BACKING_SIZE_7 = nros_node::tier_backing_bytes(7));
 
     // issue 0961 — the STACK requirement is a different number from the one
     // above, and reusing that one would overstate it. `EXECUTOR_SIZE` is the

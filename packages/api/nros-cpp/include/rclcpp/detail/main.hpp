@@ -583,6 +583,20 @@ class ZephyrBoard {
             node_namespace, reinterpret_cast<const ::nros_native_tier_spec_t*>(tiers), n_tiers,
             executor_storage, storage_stride, task_memory);
     }
+
+    /// Issue 1970 — [`run_tiers`] for a per-tier-sized image: `backings[i]` is
+    /// tier `i`'s own executor backing (`NROS_CPP_TIER_BACKING_SIZE_<i>` bytes),
+    /// and the `storage_stride` blocks hold the contexts. See
+    /// `nros_board_zephyr_run_tiers_backed_in` in `<rclc/detail/main.h>`.
+    static int32_t run_tiers(const char* session_name, const char* node_namespace,
+                             const NativeTierSpec* tiers, size_t n_tiers, void* executor_storage,
+                             size_t storage_stride, const ::nros_tier_backing_t* backings,
+                             const ::nros_tier_task_memory_t* task_memory) {
+        return ::nros_board_zephyr_run_tiers_backed_in(
+            NROS_ENTRY_LOCATOR, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID), session_name,
+            node_namespace, reinterpret_cast<const ::nros_native_tier_spec_t*>(tiers), n_tiers,
+            executor_storage, storage_stride, backings, task_memory);
+    }
 };
 
 /// Phase 238 — embedded NuttX board adapter, sibling to `ZephyrBoard`.
