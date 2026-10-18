@@ -1423,6 +1423,45 @@ mod tests {
     // because feature unification from another workspace member happened to
     // turn `nros-node/alloc` on; nothing does that now.
     #[cfg(feature = "alloc")]
+    /// Issue 1970 -- a tier's sizing is its own counts, the image's
+    /// scheduling contexts, and its declared parameters capped at the store
+    /// the image carves (none when the image carves none).
+    #[test]
+    fn a_tier_is_carved_at_its_own_counts() {
+        let t = crate::config::TierSizing {
+            name: "estop",
+            cbs: 3,
+            arena: 8192,
+            nodes: 2,
+            params: Some(4),
+        };
+        let s = tier_executor_sizing(&t);
+        assert_eq!((s.cbs, s.arena, s.nodes), (3, 8192, 2));
+        assert_eq!(s.sc, crate::config::MAX_SC);
+        let store = nros_params::IMPLIED_STORE_SLOTS;
+        assert_eq!(s.params, 4.min(store));
+        let unstated = tier_executor_sizing(&crate::config::TierSizing { params: None, ..t });
+        assert_eq!(unstated.params, store);
+        // A smaller tier is a smaller backing.
+        let image = ExecutorSizing::DEFAULT;
+        if image.cbs >= 3 && image.arena >= 8192 && image.nodes >= 2 {
+            assert!(s.u64_len() <= image.u64_len());
+        }
+    }
+
+    /// Issue 1970 -- an image that sizes no tier keeps its inline backing,
+    /// and publishes no tier backing.
+    #[test]
+    fn an_image_sized_as_one_executor_keeps_the_inline_backing() {
+        if crate::config::TIER_SIZINGS.is_empty() {
+            assert_eq!(INLINE_BACKING_U64S, ExecutorSizing::DEFAULT.u64_len());
+            assert_eq!(tier_backing_bytes(0), 0);
+            assert!(tier_sizing("anything").is_none());
+        } else {
+            assert_eq!(INLINE_BACKING_U64S, 0);
+        }
+    }
+
     #[test]
     fn carve_yields_right_lengths_and_inits() {
         // Heap-allocate: the default test config (MAX_CBS/MAX_SC/ARENA_SIZE from
