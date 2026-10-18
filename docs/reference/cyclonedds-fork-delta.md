@@ -30,7 +30,7 @@ when upstream releases.
 
 ## What the fork adds
 
-26 commits, 56 files, +2604/−141 against the 0.10.x boundary `5041f356`.
+27 commits, 56 files, +2623/−142 against the 0.10.x boundary `5041f356`.
 Eight groups.
 
 Re-measured 2026-08-29 and it had drifted BOTH ways: the headline said 15
@@ -109,18 +109,28 @@ Stock Cyclone ignores the return of `pthread_mutex_init`. That is defensible on 
 desktop and useless here: it converts pool exhaustion into an anonymous `abort()`
 seconds later, which is exactly how 0371 cost as much time as it did.
 
-### 5. FreeRTOS (2 commits)
+### 5. FreeRTOS (3 commits)
 
 | commit | subject |
 | --- | --- |
 | `22150fbf` | fix(freertos): avoid TLS-only DDS state |
 | `99cfac88` | ddsrt: give every FreeRTOS thread its lwIP per-thread netconn semaphore |
+| `8665a51f` | ddsrt: take the log sink lock exclusively where the scratch buffer is shared |
 
 With `LWIP_NETCONN_SEM_PER_THREAD=1` every thread touching the socket API needs
 its own netconn semaphore. ddsrt creates its own threads and never called
 `lwip_socket_thread_init()`, so the first socket call from one asserted
 `sem != NULL`. `thread_start_routine` is the point they have in common. Found by
 phase-370 W4, the first work to boot an embedded Cyclone image at all.
+
+`8665a51f` is the same TLS gap seen from the log path, and it covers ThreadX too.
+GCC compiles `__thread` as emulated TLS on a bare-metal newlib toolchain, whose
+gthreads are single-threaded, so `vlog`'s scratch buffer is one object shared
+by every task. `vlog` still took the sink lock for READING, so two threads
+tracing at once could advance the shared `pos` past the buffer and `vsnprintf`
+wrote without a bound. It now takes the lock exclusively on those two ports.
+Found tracing issue 0997, as interleaved records; that issue's own cause was the
+FreeRTOS FPU context, not this.
 
 ### 6. The platform allocation funnel (3 commits)
 

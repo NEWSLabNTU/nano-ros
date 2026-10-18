@@ -1349,7 +1349,7 @@ version = "0.10.5-nros1"
 dest = "third-party/dds/cyclonedds"
 submodule = "third-party/dds/cyclonedds"
 git = "https://github.com/NEWSLabNTU/cyclonedds.git"
-ref = "2314625c5226f5c2b6853ecc493f9e24ce17b91d"
+ref = "8665a51f7080c146b7e5f628f3f5599f294cbda1"
 
 # Phase 197.2/197.4 — build-time source submodules, folded into the relevant
 # board/rmw `packages` (approach A) so `nros setup <board>` provisions them and a
