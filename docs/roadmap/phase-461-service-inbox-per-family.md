@@ -1,7 +1,8 @@
 # phase-461 -- the service inbox is sized per family, and the parameter family brings its own
 
 **Status (2026-10-18). Every wave LANDED; REVISED — the design is built, and
-W7–W8 are the two homed issues, re-scoped against `main`.** Nothing in "What it
+W7–W8 are the two homed issues, re-scoped against `main`. W8 DONE (issue 1529
+resolved); W7 (issue 1203) is in PR #2353.** Nothing in "What it
 does" needs redesign: the three inboxes exist (`USER_SERVICE_INBOX`,
 `ACTION_INBOX`, `BUILTIN_INBOX`), the island links (W5), and the `params` axis
 ships (W6). The island's own acceptance — switching its bringup to `params` and
@@ -732,3 +733,10 @@ the issue's reproduction is that image, and `[]` declares neither axis.
    `<param>` should imply `params`. That is a bringup decision (a declared seed
    needs a store), so it is answered in the resolver that derives capabilities
    from the bringup, and the build is the acceptance.
+
+**DONE 2026-10-18.** The image did not link on this road
+(`undefined reference to 'nros_cpp_declare_param'`), so step 2 applied, and
+the answer was the Zephyr road's own rule rather than a resolver change:
+`nros_feature_set` adds `param-store` to every image that does not bring
+`param-services`. The probe image then linked, booted and read its launch
+seed (`Published: 250`). 1529 is resolved with both measurements.
