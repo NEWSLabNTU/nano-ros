@@ -36,6 +36,14 @@ target = "nros_rmw_cyclonedds"
 
 [rmw.provides.cargo]
 sys_crate = "cyclonedds-sys"
+# RFC-0071 D11 — a Rust image that links Cyclone through cargo (a host
+# board) registers it as `<register_crate>::<register>()`, and stages each message
+# type with `<type_register_crate>::register::<T>()` (the
+# `needs-type-descriptors` capability below). A CMake build registers it
+# through the C ABI instead.
+register_crate = "nros-rmw-cyclonedds-sys"
+register = "register"
+type_register_crate = "nros-rmw-cyclonedds"
 
 [rmw.link]
 rlib_dep = ""                       # none — it is a C++ library, not an rlib

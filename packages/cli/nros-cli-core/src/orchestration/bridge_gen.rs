@@ -361,23 +361,43 @@ fn render_backend_register_fn(out: &mut String, plan: &NrosPlan) {
     // Phase 173.5 — register every RMW the transports bind to (bridge
     // mode registers 2+ before `Executor::open_multi`). Single-RMW emits
     // one call, byte-identical.
-    let cyclone_cargo = cyclone_links_via_cargo(&plan.build);
+    //
+    // RFC-0071 D11 (phase-506 W2, issues 1298/1300) — the call is the
+    // backend's own `[rmw.provides.cargo]` statement, `<crate>::<register>()`,
+    // never a `match` on its name here. A backend that names no crate
+    // registers through the C ABI only and gets no line.
     for rmw in rmw_set(&plan.build) {
-        match rmw {
-            "zenoh" => out.push_str("    let _ = nros_rmw_zenoh::register();\n"),
-            "xrce" => out.push_str("    let _ = nros_rmw_xrce_cffi::register();\n"),
-            // phase-263 B3 — a NATIVE Rust entry takes `nros-rmw-cyclonedds-sys`
-            // as a cargo dep, so it registers the backend in-process here. A
-            // CMake/corrosion build registers cyclone through the C ABI at the
-            // CMake layer (NROS_RMW=cyclonedds), so no Rust call is emitted
-            // there (byte-identical to before).
-            "cyclonedds" if cyclone_cargo => {
-                out.push_str("    let _ = nros_rmw_cyclonedds_sys::register();\n")
-            }
-            _ => {}
+        if let Some(call) = rust_register_call(rmw, &plan.build) {
+            out.push_str(&format!("    let _ = {call};\n"));
         }
     }
     out.push_str("}\n\n");
+}
+
+/// The Rust call that registers `rmw` in this image, from its descriptor.
+///
+/// phase-263 B3 — a backend whose link strategy is CMake (Cyclone: a C++
+/// library) registers in-process only where the entry takes its sys crate as
+/// a cargo dep, which is a host board. A CMake/corrosion build registers it
+/// through the C ABI at the CMake layer, so no Rust call is emitted there
+/// (byte-identical to before). That rule used to be spelled for `cyclonedds`
+/// by name; it is now a property of the link strategy.
+fn rust_register_call(rmw: &str, build: &PlanBuildOptions) -> Option<String> {
+    let row = cargo_nano_ros::rmw_resolver::resolve_rmw(rmw).ok()?;
+    if row.register_crate.is_empty() {
+        return None;
+    }
+    if row.dispatch.link_strategy == cargo_nano_ros::rmw_descriptor::LINK_CMAKE
+        // The host board is the cargo case, under either of its names (issue 1109).
+        && !nros_orchestration_ir::is_host_board_key(&build.board)
+    {
+        return None;
+    }
+    Some(format!(
+        "{}::{}()",
+        row.register_crate.replace('-', "_"),
+        row.register_fn
+    ))
 }
 
 fn normalize_rmw(rmw: &str) -> Option<&'static str> {
@@ -411,14 +431,6 @@ fn rmw_set(build: &PlanBuildOptions) -> Vec<&'static str> {
         }
     }
     set
-}
-
-/// phase-263 B3 — a native Rust entry (built by plain cargo, no CMake layer)
-/// must take `nros-rmw-cyclonedds-sys` as a cargo dep; a CMake / corrosion build
-/// links the cyclone staticlib itself. The host board is the cargo case, under
-/// either of its names (issue 1109).
-fn cyclone_links_via_cargo(build: &PlanBuildOptions) -> bool {
-    nros_orchestration_ir::is_host_board_key(&build.board)
 }
 
 fn interface_type_name(interface: &super::schema::InterfaceRef) -> String {
@@ -520,6 +532,34 @@ mod tests {
         .unwrap();
         build.transports = transports;
         build
+    }
+
+    /// RFC-0071 D11 (phase-506 W2) — each backend's registration call is its
+    /// descriptor's `[rmw.provides.cargo]` statement. Byte-identical to the
+    /// closed `match` it replaced for every backend that match knew, and
+    /// `uorb` (which names no crate) gets no line, as before.
+    #[test]
+    fn register_calls_come_from_the_descriptors() {
+        let host = build_with(vec![]);
+        let mut embedded = build_with(vec![]);
+        embedded.board = "mps2-an385".to_string();
+        for b in [&host, &embedded] {
+            assert_eq!(
+                rust_register_call("zenoh", b).as_deref(),
+                Some("nros_rmw_zenoh::register()")
+            );
+            assert_eq!(
+                rust_register_call("xrce", b).as_deref(),
+                Some("nros_rmw_xrce_cffi::register()")
+            );
+            assert_eq!(rust_register_call("uorb", b), None);
+        }
+        // A CMake-linked backend registers in Rust only where cargo links it.
+        assert_eq!(
+            rust_register_call("cyclonedds", &host).as_deref(),
+            Some("nros_rmw_cyclonedds_sys::register()")
+        );
+        assert_eq!(rust_register_call("cyclonedds", &embedded), None);
     }
 
     /// Phase 255 Wave 5 — `rmw_set` folds the `bridged_rmws` link set (from a

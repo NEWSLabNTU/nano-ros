@@ -97,6 +97,20 @@ pub struct RmwDescriptor {
     /// right-hand side, so a third-party backend can offer a capability
     /// nano-ros has never heard of.
     pub capabilities: Vec<(String, String)>,
+    /// The Rust crate whose registration function an image calls to put this
+    /// backend in the cffi registry (RFC-0071 D11):
+    /// `[rmw.provides.cargo] register_crate`, else the backend's own
+    /// `[rmw.provides.cargo] crate` once a `register` function is stated.
+    /// Empty: the backend registers through the C ABI only.
+    pub register_crate: String,
+    /// `[rmw.provides.cargo] register` — that function's name inside
+    /// `register_crate`, called as `<crate>::<register>()`. Defaults to
+    /// `register` when a crate is named.
+    pub register_fn: String,
+    /// `[rmw.provides.cargo] type_register_crate` — for a backend with the
+    /// `needs-type-descriptors` capability, the crate whose
+    /// `register::<T>()` stages one message type (RFC-0071 D11).
+    pub type_register_crate: String,
     /// `[rmw.codegen].per_message` — a cmake command run per message type.
     pub per_message_hook: String,
 
@@ -128,6 +142,7 @@ pub fn parse_rmw_descriptor(text: &str, origin: &str) -> Result<RmwDescriptor, S
         ..RmwDescriptor::default()
     };
     let mut section = String::new();
+    let mut cargo_crate = String::new();
 
     for raw in text.lines() {
         let line = raw.split('#').next().unwrap_or("").trim();
@@ -165,6 +180,10 @@ pub fn parse_rmw_descriptor(text: &str, origin: &str) -> Result<RmwDescriptor, S
             ("rmw", "cffi_feature") => d.stated_cffi_feature = scalar(),
             ("rmw.provides.cmake", "target") => d.cmake_target = scalar(),
             ("rmw.provides.cmake", "dir") => d.cmake_dir = scalar(),
+            ("rmw.provides.cargo", "crate") => cargo_crate = scalar(),
+            ("rmw.provides.cargo", "register_crate") => d.register_crate = scalar(),
+            ("rmw.provides.cargo", "register") => d.register_fn = scalar(),
+            ("rmw.provides.cargo", "type_register_crate") => d.type_register_crate = scalar(),
             ("rmw.link", "rlib_dep") => d.rlib_dep = scalar(),
             ("rmw.link", "needs_cxx_linker") => d.needs_cxx_linker = value == "true",
             ("rmw.link", "strategy") => d.link_strategy = scalar(),
@@ -198,6 +217,18 @@ pub fn parse_rmw_descriptor(text: &str, origin: &str) -> Result<RmwDescriptor, S
                  OF that crate, and a backend that is not bundled has nowhere to receive it"
             ));
         }
+    }
+    if !d.register_crate.is_empty() && d.register_fn.is_empty() {
+        d.register_fn = "register".to_string();
+    }
+    if !d.register_fn.is_empty() && d.register_crate.is_empty() {
+        d.register_crate = cargo_crate;
+    }
+    if !d.register_fn.is_empty() && d.register_crate.is_empty() {
+        return Err(format!(
+            "{origin}: [rmw.provides.cargo].register names a function but no `crate` \
+             holds it — the registration call would have no path"
+        ));
     }
     if d.link_strategy.is_empty() {
         d.link_strategy = derive_link_strategy(&d.rlib_dep, &d.cmake_target)
