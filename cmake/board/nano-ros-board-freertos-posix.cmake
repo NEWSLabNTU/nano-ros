@@ -111,22 +111,17 @@ nros_freertos_board_port(nano-ros-board-freertos-posix "ThirdParty/GCC/Posix")
 #     budget the host does not have, which is a simulator lying about a
 #     constraint.
 #   * `utils/wait_for_event.c` — the Posix port's own dependency (its
-#     `port.c` builds task suspension on that event abstraction). Upstream
-#     ships it beside the port rather than in `portable/`, so the generic
-#     builder cannot infer it.
+#     `port.c` builds task suspension on that event abstraction). Upstream's
+#     CMake lists it for GCC_POSIX, so it comes with the port (phase-349 W3).
 # ---------------------------------------------------------------------------
 nros_freertos_validate(REQUIRE FREERTOS_PORT)
 
 if(NOT TARGET freertos_kernel)
     nros_freertos_build_kernel(
         PORT "${FREERTOS_PORT}"
-        HEAP heap_3
-        EXTRA_SOURCES "${FREERTOS_DIR}/portable/ThirdParty/GCC/Posix/utils/wait_for_event.c")
+        HEAP heap_3)
 endif()
 if(TARGET freertos_kernel)
-    # The Posix port casts away const in a few places upstream; the tree builds
-    # with -Wcast-qual on and this is vendored code.
-    target_compile_options(freertos_kernel PRIVATE -Wno-cast-qual)
     # A FreeRTOS task IS a pthread here, so the kernel itself needs the library.
     find_package(Threads REQUIRED)
     target_link_libraries(freertos_kernel PUBLIC Threads::Threads)

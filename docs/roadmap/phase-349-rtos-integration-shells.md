@@ -84,16 +84,21 @@ compile commands before and after).
 This extends phase-347's *core names no backends* to the platform layer. It is
 a keying change in `nros-zpico-build` and the cmake readers, not a schema design.
 
-## W3 — Retire the kernel builder — **IN PROGRESS**
+## W3 — Retire the kernel builder — **IN PROGRESS (two of three landed)**
 
-- [ ] The CMake road builds the FreeRTOS kernel with upstream's own
+- [x] The CMake road builds the FreeRTOS kernel with upstream's own
       `CMakeLists.txt`: `add_subdirectory(${FREERTOS_DIR})` with a
       `freertos_config` INTERFACE target, `FREERTOS_PORT` in upstream's enum and
       `FREERTOS_HEAP`. Upstream names its library `freertos_kernel`, the same
-      name every consumer already links.
-- [ ] The CMake road builds lwIP from upstream's `src/Filelists.cmake`
-      (`lwipcore`) plus the FreeRTOS `sys_arch.c` from contrib, instead of our
-      source list.
+      name every consumer already links. A path spelling is mapped to the enum
+      through upstream's own port table (`portable/CMakeLists.txt`, parsed at
+      configure), and a vendor port under `portable/` goes through upstream's
+      `A_CUSTOM_PORT` hook.
+- [x] The CMake road builds lwIP from upstream's `src/Filelists.cmake` lists
+      (core, IPv4 core, API) plus the FreeRTOS `sys_arch.c` from contrib,
+      instead of our source list. The lists are **parsed as text, never
+      included**: including the file `configure_file()`s `init.h` and
+      `lwip.Doxyfile` into the lwIP source tree.
 - [ ] `FREERTOS_PORT` takes upstream's enum. Each board states its port in that
       vocabulary, and the path-fragment spelling becomes a deprecated alias with
       a warning, retired one release later (the phase-484 W8 pattern).
@@ -110,7 +115,20 @@ risk the original W3 named):
 
 *Acceptance:* every FreeRTOS fixture builds and its QEMU / POSIX tests pass,
 with nano-ros compiling no kernel or lwIP source list of its own:
-`git grep -c 'portable/' -- 'cmake/**' 'packages/api/nros-c/cmake/**'` is zero.
+`git grep -nE 'tasks\.c|MemMang|src/core/|src/api/' -- 'cmake/**' 'packages/api/nros-c/cmake/**'`
+finds nothing. (The original check, zero `portable/` mentions, cannot hold:
+the port-table parser has to name `portable/CMakeLists.txt`.)
+
+**Measured for the two landed bullets (2026-10-18).** All nine CMake-road
+FreeRTOS workspace fixtures build: mps2-an385 C, C++, mixed and the two
+realtime C++ entries; mps3-an536 and s32z270 C++ (R-profile, port assembly
+included); freertos-posix C and C++. `entry_matrix`'s three mps2 cells, the
+mps3-an536 CycloneDDS entry and both freertos-posix entries pass.
+`libfreertos_kernel.a` holds upstream's seven kernel units plus `heap_4` and the
+port. The definitions that change `FreeRTOSConfig.h` moved to the
+`freertos_config` INTERFACE (`nros_freertos_config_define()`), because
+upstream builds the port as its own OBJECT library that never sees
+`freertos_kernel`'s usage requirements (issue 1197's every-TU rule).
 
 **Scope: the CMake road only, by design.** The cargo road builds a pure-Rust
 FreeRTOS image through `nros-board-freertos/build.rs`, which compiles the kernel

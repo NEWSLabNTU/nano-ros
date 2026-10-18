@@ -12,18 +12,21 @@
 #       Always requires FREERTOS_DIR and FREERTOS_CONFIG_DIR plus
 #       whatever the caller passes in REQUIRE.
 #
-#   nros_freertos_build_kernel(PORT <subdir>
+#   nros_freertos_build_kernel(PORT <enum-or-path>
 #                              [HEAP <name>]
 #                              [EXTRA_SOURCES <files…>]
 #                              [EXTRA_INCLUDES <dirs…>])
-#       Build the freertos_kernel STATIC library. PORT is the suffix
-#       under "${FREERTOS_DIR}/portable/" (e.g. "GCC/ARM_CM3"). HEAP
-#       picks the heap implementation under
-#       "${FREERTOS_DIR}/portable/MemMang/" (default: "heap_4").
-#       Source list covers the standard kernel set: tasks, queue,
-#       list, timers, event_groups, stream_buffer, port.c, heap_X.c.
-#       Optimised with -O2 -w by default (FreeRTOS upstream is
-#       warning-noisy under strict compile flags).
+#       Build the kernel with upstream FreeRTOS-Kernel's own CMake
+#       (phase-349 W3): defines `freertos_config` and hands upstream
+#       FREERTOS_PORT (its enum, e.g. GCC_ARM_CM3; a path under
+#       portable/ such as GCC/ARM_CM3 is mapped through upstream's
+#       table) and FREERTOS_HEAP (default heap_4). Upstream's target
+#       is `freertos_kernel`. Optimised with -O2 -w (vendored code).
+#
+#   nros_freertos_config_define(<definition>…)
+#       Add a definition every TU including FreeRTOSConfig.h sees
+#       (the kernel, its port and their consumers), via the
+#       `freertos_config` INTERFACE (issue 1197).
 #
 #   nros_freertos_build_lwip([CONTRIB_DIR <dir>]
 #                            [EXTRA_SOURCES <files…>]
@@ -128,7 +131,80 @@ function(nros_freertos_board_port board port)
 endfunction()
 
 # ----------------------------------------------------------------------
+# _nros_freertos_port_table(<freertos_dir> <out_enums> <out_paths>)
+#
+# phase-349 W3 — upstream's port vocabulary, READ from upstream. Every port
+# upstream builds has a row in `portable/CMakeLists.txt`'s header-directory
+# table:
+#
+#   $<$<STREQUAL:${FREERTOS_PORT},GCC_ARM_CM3>:${CMAKE_CURRENT_LIST_DIR}/GCC/ARM_CM3>
+#
+# so the enum <-> `portable/` path pairing is derived here rather than
+# restated. A hand table would be one more copy of a fact upstream owns, and
+# the path is not the enum with `/` for `_`: `GCC/ARM_CRx_No_GIC` is
+# `GCC_ARM_CRX_NOGIC` and `ThirdParty/GCC/Posix` is `GCC_POSIX`.
+# ----------------------------------------------------------------------
+function(_nros_freertos_port_table freertos_dir out_enums out_paths)
+    set(_table "${freertos_dir}/portable/CMakeLists.txt")
+    set(_enums "")
+    set(_paths "")
+    if(EXISTS "${_table}")
+        # A row may wrap (`GCC_POSIX>:` then the directory on the next line),
+        # so match across whitespace, and take the row's first directory.
+        # The patterns match upstream's literal `${CMAKE_CURRENT_LIST_DIR}`
+        # TEXT; the `DI[R]` spelling keeps them from reading as a use of that
+        # variable inside a function (check-cmake-function-list-dir).
+        file(READ "${_table}" _text)
+        string(REGEX MATCHALL
+            "STREQUAL:\\$\\{FREERTOS_PORT\\},[A-Za-z0-9_]+>:[ \t\r\n]*\\$\\{CMAKE_CURRENT_LIST_DI[R]\\}/[^> \t\r\n]+"
+            _rows "${_text}")
+        foreach(_row IN LISTS _rows)
+            if(_row MATCHES
+               "FREERTOS_PORT\\},([A-Za-z0-9_]+)>:[ \t\r\n]*\\$\\{CMAKE_CURRENT_LIST_DI[R]\\}/(.+)$")
+                list(APPEND _enums "${CMAKE_MATCH_1}")
+                list(APPEND _paths "${CMAKE_MATCH_2}")
+            endif()
+        endforeach()
+    endif()
+    set(${out_enums} "${_enums}" PARENT_SCOPE)
+    set(${out_paths} "${_paths}" PARENT_SCOPE)
+endfunction()
+
+# ----------------------------------------------------------------------
+# nros_freertos_config_define(<definition>…)
+#
+# A definition that changes what `FreeRTOSConfig.h` says (the heap size, a
+# feature switch) must reach EVERY translation unit that includes it — issue
+# 1197. With upstream's CMake the kernel is two targets: `freertos_kernel` and
+# the port's OBJECT library `freertos_kernel_port`, which links only
+# `freertos_kernel_include` -> `freertos_config`. A PUBLIC definition on
+# `freertos_kernel` never reaches `port.c`, so the one home that reaches every
+# TU, the kernel's consumers included, is the `freertos_config` INTERFACE.
+# ----------------------------------------------------------------------
+function(nros_freertos_config_define)
+    if(NOT TARGET freertos_config)
+        message(FATAL_ERROR
+            "nros_freertos_config_define: no `freertos_config` target. It is "
+            "created by nros_freertos_build_kernel(), or by a host project that "
+            "builds FreeRTOS with upstream's CMake.")
+    endif()
+    target_compile_definitions(freertos_config INTERFACE ${ARGN})
+endfunction()
+
+# ----------------------------------------------------------------------
 # nros_freertos_build_kernel
+#
+# phase-349 W3 — the kernel is built by UPSTREAM's `CMakeLists.txt`, not from a
+# source list of ours. This function only supplies what upstream asks its
+# consumer for: a `freertos_config` INTERFACE target (FreeRTOSConfig.h),
+# `FREERTOS_PORT` in upstream's enum, and `FREERTOS_HEAP`. Upstream names the
+# library `freertos_kernel`, which is what every consumer already links.
+#
+# PORT accepts upstream's enum (`GCC_ARM_CM3`) or a path under `portable/`
+# (`GCC/ARM_CM3`, issue 0530); a path is mapped to its enum through upstream's
+# own table. A path upstream does not list — a vendor port dropped into
+# `portable/`, such as NXP's `GCC/ARM_CR52_GIC` — goes through upstream's
+# `A_CUSTOM_PORT` hook, built from the `.c` and `.S` files in that directory.
 # ----------------------------------------------------------------------
 function(nros_freertos_build_kernel)
     cmake_parse_arguments(_NFBK
@@ -143,68 +219,129 @@ function(nros_freertos_build_kernel)
     if(NOT _NFBK_HEAP)
         set(_NFBK_HEAP heap_4)
     endif()
+    if(NOT EXISTS "${FREERTOS_DIR}/CMakeLists.txt")
+        message(FATAL_ERROR
+            "nros_freertos_build_kernel: ${FREERTOS_DIR} has no CMakeLists.txt. "
+            "nano-ros builds the kernel with upstream FreeRTOS-Kernel's own CMake, "
+            "which it has shipped since V10.5.0; point FREERTOS_DIR at such a tree.")
+    endif()
 
-    # issue 0530 — `FREERTOS_PORT` is UPSTREAM's variable name, and upstream
-    # takes an ENUM keyed into a table (`GCC_ARM_CM4F`), while this function
-    # takes a PATH FRAGMENT under `portable/` (`GCC/ARM_CM3`). Same name,
-    # incompatible values, and the old failure was a missing-source error deep
-    # in the build naming a `.c` file the user never mentioned.
-    #
-    # Accept upstream's spelling by translating it — forward-compatible, since
-    # phase-349 W3 retires this builder for upstream's own CMakeLists and its
-    # vocabulary. `GCC_ARM_CM4F` -> `GCC/ARM_CM4F`: upstream's enum is
-    # `<COMPILER>_<CORE…>`, and the compiler is the first underscore-separated
-    # token in every one of them.
-    set(_port_dir "${FREERTOS_DIR}/portable/${_NFBK_PORT}")
-    if(NOT EXISTS "${_port_dir}/port.c" AND NOT _NFBK_PORT MATCHES "/")
-        string(REGEX REPLACE "^([A-Za-z]+)_(.*)$" "\\1/\\2" _upstream_as_path
-               "${_NFBK_PORT}")
-        if(EXISTS "${FREERTOS_DIR}/portable/${_upstream_as_path}/port.c")
-            message(STATUS
-                "nano-ros: FREERTOS_PORT='${_NFBK_PORT}' read as upstream's "
-                "enum spelling -> portable/${_upstream_as_path}")
-            set(_port_dir "${FREERTOS_DIR}/portable/${_upstream_as_path}")
+    _nros_freertos_port_table("${FREERTOS_DIR}" _enums _paths)
+    set(_enum "")
+    set(_port_path "")
+    if(_NFBK_PORT MATCHES "/")
+        list(FIND _paths "${_NFBK_PORT}" _i)
+        if(_i GREATER -1)
+            list(GET _enums ${_i} _enum)
+            set(_port_path "${_NFBK_PORT}")
+        elseif(EXISTS "${FREERTOS_DIR}/portable/${_NFBK_PORT}/port.c")
+            set(_enum A_CUSTOM_PORT)
+            set(_port_path "${_NFBK_PORT}")
+        endif()
+    else()
+        list(FIND _enums "${_NFBK_PORT}" _i)
+        if(_i GREATER -1)
+            set(_enum "${_NFBK_PORT}")
+            list(GET _paths ${_i} _port_path)
         endif()
     endif()
-
-    # Fail HERE, naming the variable and both spellings, rather than letting the
-    # build report a missing `port.c` nobody asked for.
-    if(NOT EXISTS "${_port_dir}/port.c")
-        file(GLOB _compilers RELATIVE "${FREERTOS_DIR}/portable"
-             "${FREERTOS_DIR}/portable/*")
+    # Fail HERE, naming the variable and both spellings, rather than letting
+    # upstream warn and the build report a missing `port.c` nobody asked for.
+    if(NOT _enum)
         message(FATAL_ERROR
-            "nros_freertos_build_kernel: no port.c under "
-            "${FREERTOS_DIR}/portable/${_NFBK_PORT}.\n"
+            "nros_freertos_build_kernel: FREERTOS_PORT '${_NFBK_PORT}' is neither "
+            "a port upstream lists in ${FREERTOS_DIR}/portable/CMakeLists.txt nor "
+            "a directory under portable/ with a port.c.\n"
             "  FREERTOS_PORT accepts either spelling:\n"
-            "    nano-ros path fragment : GCC/ARM_CM3\n"
             "    upstream enum          : GCC_ARM_CM3\n"
-            "  Compiler dirs present here: ${_compilers}\n"
-            "  (FREERTOS_DIR=${FREERTOS_DIR})")
+            "    path under portable/   : GCC/ARM_CM3")
+    endif()
+    set(_port_dir "${FREERTOS_DIR}/portable/${_port_path}")
+    if(NOT _NFBK_PORT STREQUAL _enum)
+        message(STATUS "nano-ros: FreeRTOS port ${_NFBK_PORT} -> ${_enum}")
     endif()
 
-    set(_includes
+    # The A/R-profile ports carry their context switch in assembly
+    # (`portASM.S`); without ASM enabled, add_library() drops a `.S` source
+    # SILENTLY and the link fails on FreeRTOS_IRQ_Handler four targets later.
+    file(GLOB _port_asm "${_port_dir}/*.S")
+    if(_port_asm)
+        enable_language(ASM)
+    endif()
+
+    if(NOT TARGET freertos_config)
+        add_library(freertos_config INTERFACE)
+        target_include_directories(freertos_config SYSTEM INTERFACE
+            "${FREERTOS_CONFIG_DIR}" ${_NFBK_EXTRA_INCLUDES})
+    endif()
+
+    if(_enum STREQUAL "A_CUSTOM_PORT")
+        file(GLOB _port_c "${_port_dir}/*.c")
+        add_library(freertos_kernel_port OBJECT ${_port_c} ${_port_asm})
+        add_library(freertos_kernel_port_headers INTERFACE)
+        target_include_directories(freertos_kernel_port_headers INTERFACE "${_port_dir}")
+        target_link_libraries(freertos_kernel_port
+            PUBLIC freertos_kernel_port_headers
+            PRIVATE freertos_kernel_include)
+    endif()
+
+    # Upstream reads these as ordinary variables of the including scope.
+    # `FREERTOS_PORT` shadows the board's CACHE entry (a path, for the
+    # alias) with the enum for this one call.
+    set(FREERTOS_PORT "${_enum}")
+    string(REGEX REPLACE "^heap_" "" FREERTOS_HEAP "${_NFBK_HEAP}")
+    add_subdirectory("${FREERTOS_DIR}" "${CMAKE_BINARY_DIR}/nros-freertos-kernel"
+                     EXCLUDE_FROM_ALL)
+
+    # Vendored code: warning-noisy under the tree's strict flags.
+    target_compile_options(freertos_kernel PRIVATE -O2 -w)
+    target_compile_options(freertos_kernel_port PRIVATE -O2 -w)
+    if(_NFBK_EXTRA_SOURCES)
+        target_sources(freertos_kernel PRIVATE ${_NFBK_EXTRA_SOURCES})
+    endif()
+
+    set(NROS_FREERTOS_INCLUDES
         "${FREERTOS_CONFIG_DIR}"
         "${FREERTOS_DIR}/include"
         "${_port_dir}"
-        ${_NFBK_EXTRA_INCLUDES})
-
-    set(_sources
-        "${FREERTOS_DIR}/tasks.c"
-        "${FREERTOS_DIR}/queue.c"
-        "${FREERTOS_DIR}/list.c"
-        "${FREERTOS_DIR}/timers.c"
-        "${FREERTOS_DIR}/event_groups.c"
-        "${FREERTOS_DIR}/stream_buffer.c"
-        "${_port_dir}/port.c"
-        "${FREERTOS_DIR}/portable/MemMang/${_NFBK_HEAP}.c"
-        ${_NFBK_EXTRA_SOURCES})
-
-    add_library(freertos_kernel STATIC ${_sources})
-    target_include_directories(freertos_kernel PUBLIC ${_includes})
-    target_compile_options(freertos_kernel PRIVATE -O2 -w)
-
-    set(NROS_FREERTOS_INCLUDES "${_includes}" PARENT_SCOPE)
+        ${_NFBK_EXTRA_INCLUDES}
+        PARENT_SCOPE)
     set(NROS_FREERTOS_PORT_DIR "${_port_dir}" PARENT_SCOPE)
+endfunction()
+
+# ----------------------------------------------------------------------
+# _nros_lwip_filelist(<lwip_dir> <list_name> <out_var>)
+#
+# phase-349 W3 — read one `set(<list_name> …)` source list out of lwIP's
+# `src/Filelists.cmake` as TEXT. That file is designed to be `include()`d, but
+# including it is not read-only: it `configure_file`s `src/include/lwip/init.h`
+# and `doc/doxygen/lwip.Doxyfile` INTO the lwIP source tree, which is a
+# vendored, possibly shared store directory (and an `init.h` rewrite re-stales
+# every TU including it). So the lists are parsed and the file is never run.
+# ----------------------------------------------------------------------
+function(_nros_lwip_filelist lwip_dir list_name out_var)
+    set(_f "${lwip_dir}/src/Filelists.cmake")
+    if(NOT EXISTS "${_f}")
+        message(FATAL_ERROR
+            "nros_freertos_build_lwip: ${_f} not found — LWIP_DIR must be an "
+            "lwIP 2.1+ source tree (${lwip_dir}).")
+    endif()
+    file(READ "${_f}" _text)
+    if(NOT _text MATCHES "set\\(${list_name}[ \t\r\n]+([^)]*)\\)")
+        message(FATAL_ERROR
+            "nros_freertos_build_lwip: no `set(${list_name} …)` in ${_f}.")
+    endif()
+    string(REGEX MATCHALL "\\$\\{LWIP_DIR\\}/[^ \t\r\n]+\\.c" _items "${CMAKE_MATCH_1}")
+    set(_srcs "")
+    foreach(_item IN LISTS _items)
+        string(REPLACE "\${LWIP_DIR}" "${lwip_dir}" _item "${_item}")
+        list(APPEND _srcs "${_item}")
+    endforeach()
+    if(NOT _srcs)
+        message(FATAL_ERROR
+            "nros_freertos_build_lwip: `${list_name}` in ${_f} lists no sources.")
+    endif()
+    set(${out_var} "${_srcs}" PARENT_SCOPE)
 endfunction()
 
 # ----------------------------------------------------------------------
@@ -229,49 +366,16 @@ function(nros_freertos_build_lwip)
         "${_NFL_CONTRIB_DIR}/include"
         ${_NFL_EXTRA_INCLUDES})
 
+    # phase-349 W3 — the source list is upstream's, read from
+    # `src/Filelists.cmake`: the IPv4 core, the sequential and socket APIs, and
+    # Ethernet framing. What lwIP compiles is then what lwIP says it has, and a
+    # file added upstream arrives with the next pin. Disabled features compile
+    # to empty units (`LWIP_DHCP`, `LWIP_ALTCP` … in lwipopts.h decide).
+    _nros_lwip_filelist("${LWIP_DIR}" lwipcore_SRCS _core)
+    _nros_lwip_filelist("${LWIP_DIR}" lwipcore4_SRCS _core4)
+    _nros_lwip_filelist("${LWIP_DIR}" lwipapi_SRCS _api)
     set(_lwip_sources
-        # Core
-        "${LWIP_DIR}/src/core/init.c"
-        "${LWIP_DIR}/src/core/def.c"
-        "${LWIP_DIR}/src/core/dns.c"
-        "${LWIP_DIR}/src/core/inet_chksum.c"
-        "${LWIP_DIR}/src/core/ip.c"
-        "${LWIP_DIR}/src/core/mem.c"
-        "${LWIP_DIR}/src/core/memp.c"
-        "${LWIP_DIR}/src/core/netif.c"
-        "${LWIP_DIR}/src/core/pbuf.c"
-        "${LWIP_DIR}/src/core/raw.c"
-        "${LWIP_DIR}/src/core/stats.c"
-        "${LWIP_DIR}/src/core/sys.c"
-        "${LWIP_DIR}/src/core/tcp.c"
-        "${LWIP_DIR}/src/core/tcp_in.c"
-        "${LWIP_DIR}/src/core/tcp_out.c"
-        "${LWIP_DIR}/src/core/timeouts.c"
-        "${LWIP_DIR}/src/core/udp.c"
-        # IPv4
-        "${LWIP_DIR}/src/core/ipv4/etharp.c"
-        "${LWIP_DIR}/src/core/ipv4/icmp.c"
-        # Phase 97.1.kconfig.freertos — `LWIP_IGMP=1` is set in
-        # lwipopts.h to support RTPS SPDP multicast. Without igmp.c
-        # here, `igmp_init` / `igmp_joingroup` / `igmp_leavegroup`
-        # / `lwip_netconn_do_join_leave_group` end up undefined at
-        # link time in C / C++ FreeRTOS examples sharing this lwIP
-        # build.
-        "${LWIP_DIR}/src/core/ipv4/igmp.c"
-        "${LWIP_DIR}/src/core/ipv4/ip4.c"
-        "${LWIP_DIR}/src/core/ipv4/ip4_addr.c"
-        "${LWIP_DIR}/src/core/ipv4/ip4_frag.c"
-        # API (sockets)
-        "${LWIP_DIR}/src/api/api_lib.c"
-        "${LWIP_DIR}/src/api/api_msg.c"
-        "${LWIP_DIR}/src/api/err.c"
-        "${LWIP_DIR}/src/api/if_api.c"
-        "${LWIP_DIR}/src/api/netbuf.c"
-        "${LWIP_DIR}/src/api/netdb.c"
-        "${LWIP_DIR}/src/api/netifapi.c"
-        "${LWIP_DIR}/src/api/sockets.c"
-        "${LWIP_DIR}/src/api/tcpip.c"
-        # Netif
+        ${_core} ${_core4} ${_api}
         "${LWIP_DIR}/src/netif/ethernet.c"
         # FreeRTOS sys_arch
         "${_NFL_CONTRIB_DIR}/sys_arch.c"

@@ -775,9 +775,9 @@ function(nano_ros_entry)
     # The sidecar states the moved total; the kernel's DEFAULT heap subtracts
     # it (`FreeRTOSConfig.h`), so the move is a move and not a second
     # reservation. An explicit `NROS_FREERTOS_HEAP_KB` is a size someone chose
-    # and is left alone. PUBLIC because every TU that includes
+    # and is left alone. On `freertos_config`, because every TU that includes
     # `FreeRTOSConfig.h` must agree on `configTOTAL_HEAP_SIZE` (issue 1197).
-    if(TARGET ${_NRA_NAME} AND TARGET freertos_kernel)
+    if(TARGET ${_NRA_NAME} AND TARGET freertos_config)
         get_target_property(_nra_tier_bss ${_NRA_NAME} NROS_TIER_STACKS_BSS_BYTES)
         if(_nra_tier_bss)
             # Whole KiB, rounded DOWN, so the heap never shrinks by more than
@@ -795,7 +795,7 @@ function(nano_ros_entry)
             if(NOT _nra_prev)
                 set_property(GLOBAL PROPERTY
                     _NROS_FREERTOS_TIER_STACKS_IN_BSS_KB "${_nra_tier_bss_kb}")
-                target_compile_definitions(freertos_kernel PUBLIC
+                nros_freertos_config_define(
                     "NROS_FREERTOS_TIER_STACKS_IN_BSS_KB=${_nra_tier_bss_kb}")
             endif()
         endif()

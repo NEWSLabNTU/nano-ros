@@ -89,24 +89,10 @@ endif()
 nros_freertos_validate(REQUIRE LWIP_DIR FREERTOS_PORT)
 
 if(NOT TARGET freertos_kernel)
-    # The A/R-profile ports carry their context-switch machinery in
-    # portASM.S (FreeRTOS_IRQ_Handler / FreeRTOS_SVC_Handler /
-    # vPortRestoreTaskContext); the generic builder compiles port.c only
-    # (every M-profile port is C-only), so name the .S explicitly.
-    set(_s32z_port_asm
-        "${FREERTOS_DIR}/portable/${FREERTOS_PORT}/portASM.S")
-    if(EXISTS "${_s32z_port_asm}")
-        # Without ASM enabled, add_library() drops a .S source SILENTLY —
-        # the exact quiet-veto shape: the archive builds, the link fails on
-        # FreeRTOS_IRQ_Handler four targets later.
-        enable_language(ASM)
-        nros_freertos_build_kernel(PORT "${FREERTOS_PORT}"
-            EXTRA_SOURCES "${_s32z_port_asm}")
-    else()
-        # The NXP GCC/ARM_CR52_GIC port ships its asm under a different
-        # name/layout; the consumer's FREERTOS_PORT provisioning brings it.
-        nros_freertos_build_kernel(PORT "${FREERTOS_PORT}")
-    endif()
+    # phase-349 W3 — upstream's CMake compiles the port, `portASM.S` included
+    # (the A/R-profile context switch); the builder enables ASM when the port
+    # directory has assembly.
+    nros_freertos_build_kernel(PORT "${FREERTOS_PORT}")
 endif()
 # configUSE_TRACE_FACILITY (CycloneDDS's ddsrt_gettid() needs vTaskGetInfo())
 # is stated in FreeRTOSConfig.h, never as a compile definition here: it changes

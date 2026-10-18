@@ -206,11 +206,18 @@ if(NROS_RMW STREQUAL "cyclonedds" AND NROS_FREERTOS_BOARD_HAS_LWIP
             "nano-ros: the FreeRTOS Cyclone build needs FREERTOS_PORT — the board "
             "module sets it (cmake/board/nano-ros-board-<board>.cmake).")
     endif()
+    # phase-349 W3 — the port's DIRECTORY, as the kernel builder resolved it:
+    # FREERTOS_PORT may be upstream's enum, which is not a path.
+    if(NROS_FREERTOS_PORT_DIR)
+        set(_cyc_port_dir "${NROS_FREERTOS_PORT_DIR}")
+    else()
+        set(_cyc_port_dir "${FREERTOS_DIR}/portable/${FREERTOS_PORT}")
+    endif()
     set(_cyc_freertos_inc
         "-I${FREERTOS_CONFIG_DIR}"
         "-I${FREERTOS_CONFIG_DIR}/arch"
         "-I${FREERTOS_DIR}/include"
-        "-I${FREERTOS_DIR}/portable/${FREERTOS_PORT}"
+        "-I${_cyc_port_dir}"
         "-I${LWIP_DIR}/src/include"
         "-I${LWIP_DIR}/contrib/ports/freertos/include")
     string(JOIN " " _cyc_freertos_inc_str ${_cyc_freertos_inc})
@@ -238,12 +245,17 @@ endif()
 # in nros-board-common); a zenoh image keeps the header's fallback, which is the
 # one this road has run on (issue 1657 records why it was not re-derived here).
 # A selector rather than a number, so the number has one home: the header.
-# PUBLIC, because every TU that reads `configTOTAL_HEAP_SIZE` must agree on it
-# (issue 1197). An explicit `NROS_FREERTOS_HEAP_KB` still wins over both.
+# On `freertos_config`, because every TU that reads `configTOTAL_HEAP_SIZE`
+# must agree on it (issue 1197). An explicit `NROS_FREERTOS_HEAP_KB` still wins over both.
 # ---------------------------------------------------------------------------
 string(TOLOWER "${NROS_RMW}" _nros_freertos_rmw)
-if(TARGET freertos_kernel AND _nros_freertos_rmw MATCHES "^(cyclonedds|xrce)$")
-    target_compile_definitions(freertos_kernel PUBLIC NROS_FREERTOS_HEAP_DEFAULT_DDS=1)
+# Keyed on `freertos_config`, the target that carries FreeRTOSConfig.h to every
+# kernel TU: nano-ros's boards create it (phase-349 W3), and so does a host that
+# builds FreeRTOS with upstream's CMake. A host that compiles the kernel itself
+# with no such target (the S32DS shell) owns its heap size, and this has nowhere
+# to say it.
+if(TARGET freertos_config AND _nros_freertos_rmw MATCHES "^(cyclonedds|xrce)$")
+    nros_freertos_config_define(NROS_FREERTOS_HEAP_DEFAULT_DDS=1)
 endif()
 
 # ---------------------------------------------------------------------------
