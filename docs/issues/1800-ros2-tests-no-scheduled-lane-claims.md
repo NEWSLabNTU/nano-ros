@@ -81,3 +81,19 @@ assert reads 1 of 1.
 
 `cyclone_slirp_pair` stays in tier 3 and is run by hand (option 3). This issue
 stays open for it until a lane runs on a host that permits user namespaces.
+
+## Progress (2026-10-18)
+
+**`workspace_shadowing` has a lane.** PR #1942 landed option 1, and the
+scheduled live-peer lane runs it every night. In run 39096469491
+(2026-10-18) the host job's `== workspace_shadowing ==` step reads:
+
+```
+PASS [   0.296s] (1/1) nros-tests::workspace_shadowing workspace_std_msgs_shadows_ament_in_consumer_binary
+```
+
+**What keeps this issue open is `cyclone_slirp_pair` alone.** Its blocker is
+infrastructure, not code: it needs a lane on a host, not a container, that
+permits unprivileged user and network namespaces and has `slirp4netns`. Every
+CI lane here runs in a `--cap-drop ALL` container that refuses both. Until such
+a host exists, it runs by hand before a release, which is option 3 above.
