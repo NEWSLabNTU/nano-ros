@@ -86,5 +86,5 @@ fast-forward), ~2 kHz flood, two runs each:
 
 So either fix alone clears the cliff, and both stay: the driver because it
 is also right on silicon and on any QEMU a user already has, the model
-because other guests fast-forward too. The provisioned SDK (`[tool.qemu]`,
-`11.0.0-nros6`) does not carry the model fix until the next re-cut.
+because other guests fast-forward too. The provisioned SDK carries the model
+fix from `[tool.qemu]` `11.0.0-nros7` (re-cut 2026-10-18 from `98e749c2ce`).

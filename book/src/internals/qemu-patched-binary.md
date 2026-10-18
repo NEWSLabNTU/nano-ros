@@ -33,9 +33,10 @@ The patches live on a branch of our QEMU fork,
 `NEWSLabNTU/qemu` `nano-ros-v11.0.0-patches`, and
 [nano-ros-sdk](https://github.com/NEWSLabNTU/nano-ros-sdk) publishes it as a
 prebuilt dist. `nros-sdk-index.toml` pins it as one row, `[tool.qemu]`
-(`version = "11.0.0-nros6"` at the time of writing — read the index, not this
+(`version = "11.0.0-nros7"` at the time of writing — read the index, not this
 line), with a `[tool.qemu.source]` recipe for a host that has no prebuilt.
-There is no QEMU submodule in this tree any more.
+The fork is also the `third-party/qemu/qemu` submodule, pinned at the commit
+the current dist was built from.
 
 Two places can hold it:
 
