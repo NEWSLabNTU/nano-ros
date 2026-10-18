@@ -91,6 +91,7 @@ fn args() -> SizingDescriptorArgs {
         board_rx_frame_cost_us: None,
         board_rx_floor_us: None,
         road: None,
+        tier_record: None,
     }
 }
 

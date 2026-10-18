@@ -1132,6 +1132,38 @@
     "verdict": "extension",
     "why": "see `rust:SubMonitorCell`."
   },
+  "rust:TIER_BACKING_SIZE_0": {
+    "verdict": "extension",
+    "why": "Issue 1970 -- an `export_bytes!` probe in `nros::sizes` (the `EXECUTOR_SIZE` mechanism, see `rust:EXECUTOR_SIZE`): the backing bytes the executor of tier 0 carves on an image whose executors are sized per tier (`nros_node::tier_backing_bytes`, zero past the last tier). `nros-build-helpers` (`cpp.rs`, `tier_backing_defines`) bakes it as `NROS_CPP_TIER_BACKING_SIZE_<i>`, which sizes the generated entry's per-tier backing static. rclrs has no counterpart: it never hands an executor's storage across an FFI boundary into caller-owned memory."
+  },
+  "rust:TIER_BACKING_SIZE_1": {
+    "verdict": "extension",
+    "why": "Issue 1970 -- an `export_bytes!` probe in `nros::sizes` (the `EXECUTOR_SIZE` mechanism, see `rust:EXECUTOR_SIZE`): the backing bytes the executor of tier 1 carves on an image whose executors are sized per tier (`nros_node::tier_backing_bytes`, zero past the last tier). `nros-build-helpers` (`cpp.rs`, `tier_backing_defines`) bakes it as `NROS_CPP_TIER_BACKING_SIZE_<i>`, which sizes the generated entry's per-tier backing static. rclrs has no counterpart: it never hands an executor's storage across an FFI boundary into caller-owned memory."
+  },
+  "rust:TIER_BACKING_SIZE_2": {
+    "verdict": "extension",
+    "why": "Issue 1970 -- an `export_bytes!` probe in `nros::sizes` (the `EXECUTOR_SIZE` mechanism, see `rust:EXECUTOR_SIZE`): the backing bytes the executor of tier 2 carves on an image whose executors are sized per tier (`nros_node::tier_backing_bytes`, zero past the last tier). `nros-build-helpers` (`cpp.rs`, `tier_backing_defines`) bakes it as `NROS_CPP_TIER_BACKING_SIZE_<i>`, which sizes the generated entry's per-tier backing static. rclrs has no counterpart: it never hands an executor's storage across an FFI boundary into caller-owned memory."
+  },
+  "rust:TIER_BACKING_SIZE_3": {
+    "verdict": "extension",
+    "why": "Issue 1970 -- an `export_bytes!` probe in `nros::sizes` (the `EXECUTOR_SIZE` mechanism, see `rust:EXECUTOR_SIZE`): the backing bytes the executor of tier 3 carves on an image whose executors are sized per tier (`nros_node::tier_backing_bytes`, zero past the last tier). `nros-build-helpers` (`cpp.rs`, `tier_backing_defines`) bakes it as `NROS_CPP_TIER_BACKING_SIZE_<i>`, which sizes the generated entry's per-tier backing static. rclrs has no counterpart: it never hands an executor's storage across an FFI boundary into caller-owned memory."
+  },
+  "rust:TIER_BACKING_SIZE_4": {
+    "verdict": "extension",
+    "why": "Issue 1970 -- an `export_bytes!` probe in `nros::sizes` (the `EXECUTOR_SIZE` mechanism, see `rust:EXECUTOR_SIZE`): the backing bytes the executor of tier 4 carves on an image whose executors are sized per tier (`nros_node::tier_backing_bytes`, zero past the last tier). `nros-build-helpers` (`cpp.rs`, `tier_backing_defines`) bakes it as `NROS_CPP_TIER_BACKING_SIZE_<i>`, which sizes the generated entry's per-tier backing static. rclrs has no counterpart: it never hands an executor's storage across an FFI boundary into caller-owned memory."
+  },
+  "rust:TIER_BACKING_SIZE_5": {
+    "verdict": "extension",
+    "why": "Issue 1970 -- an `export_bytes!` probe in `nros::sizes` (the `EXECUTOR_SIZE` mechanism, see `rust:EXECUTOR_SIZE`): the backing bytes the executor of tier 5 carves on an image whose executors are sized per tier (`nros_node::tier_backing_bytes`, zero past the last tier). `nros-build-helpers` (`cpp.rs`, `tier_backing_defines`) bakes it as `NROS_CPP_TIER_BACKING_SIZE_<i>`, which sizes the generated entry's per-tier backing static. rclrs has no counterpart: it never hands an executor's storage across an FFI boundary into caller-owned memory."
+  },
+  "rust:TIER_BACKING_SIZE_6": {
+    "verdict": "extension",
+    "why": "Issue 1970 -- an `export_bytes!` probe in `nros::sizes` (the `EXECUTOR_SIZE` mechanism, see `rust:EXECUTOR_SIZE`): the backing bytes the executor of tier 6 carves on an image whose executors are sized per tier (`nros_node::tier_backing_bytes`, zero past the last tier). `nros-build-helpers` (`cpp.rs`, `tier_backing_defines`) bakes it as `NROS_CPP_TIER_BACKING_SIZE_<i>`, which sizes the generated entry's per-tier backing static. rclrs has no counterpart: it never hands an executor's storage across an FFI boundary into caller-owned memory."
+  },
+  "rust:TIER_BACKING_SIZE_7": {
+    "verdict": "extension",
+    "why": "Issue 1970 -- an `export_bytes!` probe in `nros::sizes` (the `EXECUTOR_SIZE` mechanism, see `rust:EXECUTOR_SIZE`): the backing bytes the executor of tier 7 carves on an image whose executors are sized per tier (`nros_node::tier_backing_bytes`, zero past the last tier). `nros-build-helpers` (`cpp.rs`, `tier_backing_defines`) bakes it as `NROS_CPP_TIER_BACKING_SIZE_<i>`, which sizes the generated entry's per-tier backing static. rclrs has no counterpart: it never hands an executor's storage across an FFI boundary into caller-owned memory."
+  },
   "rust:TIER_TASK_TCB_U64S": {
     "verdict": "divergence",
     "why": "issue 1598 -- the control-block region a `TierTaskMemory` carries, in 8-byte words: a STATED upper bound (512 B) because a Rust entry cannot name `sizeof(StaticTask_t)`; the FreeRTOS glue checks it against the real size and refuses a kernel whose TCB outgrew it. See `rust:TierTaskMemory`."
