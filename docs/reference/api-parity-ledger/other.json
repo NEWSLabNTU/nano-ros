@@ -1569,6 +1569,10 @@
     "verdict": "extension",
     "why": "phase-503 -- the supervised route deadline (`route-deadline-runtime`): a monitor row's `mechanism`: also supervised by the port's own timer. See `rust:ReactionEvent`."
   },
+  "rust:RouteWatch": {
+    "verdict": "extension",
+    "why": "phase-503 W7 -- the supervised route deadline (`route-deadline-runtime`) read from outside the executor: the table and the clock, `next_due_us` at the moment of the call from any thread or interrupt. Mirrored by nros-cpp's `nros_cpp_route_watch_t`. See `rust:Executor::route_watch`."
+  },
   "rust:route_next_due_us": {
     "verdict": "extension",
     "why": "phase-503 -- the supervised route deadline (`route-deadline-runtime`): the table-level spelling of `rust:Executor::route_next_due_us`."

@@ -1367,7 +1367,9 @@ pub(crate) fn route_take(table: &[MonitorSpec], slot: usize, take_us: u64) {
         spec.cell
             .route_take_us
             .store(take_us as u32, Ordering::Relaxed);
-        spec.cell.route.store(w | ROUTE_PENDING, Ordering::Relaxed);
+        // Release: a `RouteWatch` on another thread that sees the route
+        // pending sees this take with it.
+        spec.cell.route.store(w | ROUTE_PENDING, Ordering::Release);
     }
 }
 
@@ -1464,17 +1466,24 @@ fn route_supervised(spec: &MonitorSpec) -> bool {
 /// difference is exact across a wrap as long as a route waits less than ~71
 /// minutes, and a supervised one is reported long before that.
 pub fn route_next_due_us(table: &[MonitorSpec], now_us: u64) -> Option<u64> {
+    route_next_due(table, || now_us)
+}
+
+/// [`route_next_due_us`] with the clock read AFTER each pending row's take is
+/// loaded, so a take stored by another thread between the two reads can never
+/// look older than now (which would read as a due already passed).
+fn route_next_due(table: &[MonitorSpec], now_us: impl Fn() -> u64) -> Option<u64> {
     let mut best: Option<u64> = None;
     for spec in table.iter().take(MAX_MONITORS) {
         if !route_supervised(spec) {
             continue;
         }
-        let w = spec.cell.route.load(Ordering::Relaxed);
+        let w = spec.cell.route.load(Ordering::Acquire);
         if w & ROUTE_PENDING == 0 {
             continue;
         }
-        let waited_us =
-            (now_us as u32).wrapping_sub(spec.cell.route_take_us.load(Ordering::Relaxed));
+        let take_us = spec.cell.route_take_us.load(Ordering::Relaxed);
+        let waited_us = (now_us() as u32).wrapping_sub(take_us);
         let deadline_us = spec.route_deadline_ms.saturating_mul(1_000);
         let left = deadline_us.saturating_sub(waited_us) as u64;
         best = Some(best.map_or(left, |b| b.min(left)));
@@ -1483,6 +1492,56 @@ pub fn route_next_due_us(table: &[MonitorSpec], now_us: u64) -> Option<u64> {
         }
     }
     best
+}
+
+/// phase-503 W7 -- an executor's supervised routes, read from OUTSIDE it: from
+/// a port's timer expiry, a reaction thread or an interrupt, while the spin
+/// thread is anywhere, including inside a dispatch.
+///
+/// A route is answered when the dispatch that publishes its output ends:
+/// `route_judge` clears [`ROUTE_PENDING`] right there, on the executor's
+/// clock, in the row's atomic cell. Until this type, a port's independent timer
+/// (`MECHANISM_TIMER`) learned that only from `Executor::route_next_due_us`
+/// after the spin that answered it RETURNED, so a callback that answered
+/// before the due inside a spin that ran past it looked like a miss at the
+/// timer's expiry (a false safe state on a board). [`Self::next_due_us`] reads
+/// the cells at the moment of the call instead: `Some(0)` only when a take is
+/// still unanswered at or after its deadline -- the executor's own verdict
+/// (`route_overdue`, `route_judge`: an answer exactly at the deadline is a
+/// miss).
+///
+/// It never touches the executor: the table and the clock it holds are fixed
+/// once the monitors are installed (take it after `set_monitor_table` and any
+/// clock change). Reading takes no lock and allocates nothing.
+#[derive(Debug, Clone, Copy)]
+pub struct RouteWatch {
+    table: &'static [MonitorSpec],
+    clock_us: fn() -> u64,
+}
+
+impl RouteWatch {
+    /// A watch over `table` on `clock_us` (microseconds, the clock the
+    /// executor stamps takes with).
+    pub const fn new(table: &'static [MonitorSpec], clock_us: fn() -> u64) -> Self {
+        Self { table, clock_us }
+    }
+
+    /// The watched table.
+    pub const fn table(&self) -> &'static [MonitorSpec] {
+        self.table
+    }
+
+    /// The clock the watch reads.
+    pub const fn clock_us(&self) -> fn() -> u64 {
+        self.clock_us
+    }
+
+    /// Microseconds from now to the earliest deadline of a pending supervised
+    /// route; `Some(0)` when one has passed with no answer; `None` when none
+    /// is waiting (every take answered, or none taken).
+    pub fn next_due_us(&self) -> Option<u64> {
+        route_next_due(self.table, self.clock_us)
+    }
 }
 
 /// phase-503 -- judge every pending supervised route at `now_us`: a take still

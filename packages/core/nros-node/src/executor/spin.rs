@@ -3583,6 +3583,20 @@ impl<'s> Executor<'s> {
         super::monitor::route_next_due_us(self.monitor_table, clock())
     }
 
+    /// phase-503 W7 -- a [`RouteWatch`](super::monitor::RouteWatch) over this
+    /// executor's supervised routes, which a port's timer or reaction thread
+    /// reads from outside the spin thread: at its expiry it sees a route the
+    /// running spin has already answered, without waiting for the spin to
+    /// return. `None` without a monitor table or a clock. Take it after
+    /// `set_monitor_table` and any clock change.
+    pub fn route_watch(&self) -> Option<super::monitor::RouteWatch> {
+        if self.monitor_table.is_empty() {
+            return None;
+        }
+        let clock = self.clock_us_fn?;
+        Some(super::monitor::RouteWatch::new(self.monitor_table, clock))
+    }
+
     /// Issue #515 — warn about periods the spin cadence cannot express.
     ///
     /// A timer fires on the first spin at or after its period elapses, so
