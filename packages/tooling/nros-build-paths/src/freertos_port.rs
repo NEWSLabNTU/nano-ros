@@ -24,6 +24,8 @@
 //!   a kernel tree that predates upstream's CMake) has no enum at all, so the
 //!   path is its only spelling and nothing is deprecated. It must hold a
 //!   `port.c`.
+//!
+//! [`PortDir::deprecated_alias_of`]: crate::freertos_port::PortDir::deprecated_alias_of
 
 use std::path::{Path, PathBuf};
 
