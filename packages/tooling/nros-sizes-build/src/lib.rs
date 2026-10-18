@@ -564,6 +564,12 @@ fn find_dep_rlib_isolated(
             .take(6)
             .collect::<Vec<_>>()
             .join(" | ");
+        // Issue 1898 — a cargo error's WHY is the last block of its `Caused by:`
+        // chain, which is indented and so matched by none of the prefixes above.
+        let last = match nros_cargo_profile::diagnostic::root_cause(&stderr) {
+            Some(cause) => format!("{last} | root cause: {cause}"),
+            None => last,
+        };
         return Err(Error::CargoMetadata(format!(
             "nested cargo build failed (full log: {}): {}",
             log_path.display(),

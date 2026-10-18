@@ -905,22 +905,26 @@ fn mark_unprobeable_with_reason(
 /// Falls back to the message's own first line (the `metadata probe <step> failed
 /// for …` frame) when nothing matches, so a failure that is not a compile still
 /// records something a reader can act on rather than nothing at all.
+///
+/// Issue 1898 — a cargo error keeps the root cause of its `Caused by:` chain,
+/// and the cap shortens the head rather than cutting that cause off: a
+/// `failed to get <dep>` line is ~200 characters of package path before the
+/// part that says why.
 fn first_error_line(why: &str) -> String {
+    use nros_cargo_profile::diagnostic::{elide_keeping_cause, first_error_with_cause};
     const CAP: usize = 300;
-    let pick = why
-        .lines()
-        .map(str::trim)
-        .find(|l| {
-            let lower = l.to_ascii_lowercase();
-            lower.starts_with("error") || lower.contains("error:") || lower.contains("error[")
-        })
-        .or_else(|| why.lines().map(str::trim).find(|l| !l.is_empty()))
-        .unwrap_or("");
-    let mut line: String = pick.chars().take(CAP).collect();
-    if pick.chars().count() > CAP {
-        line.push('…');
-    }
-    line
+    let pick = first_error_with_cause(why, |l| {
+        let lower = l.to_ascii_lowercase();
+        lower.starts_with("error") || lower.contains("error:") || lower.contains("error[")
+    })
+    .or_else(|| {
+        why.lines()
+            .map(str::trim)
+            .find(|l| !l.is_empty())
+            .map(str::to_string)
+    })
+    .unwrap_or_default();
+    elide_keeping_cause(&pick, CAP)
 }
 
 /// Drop the negative marker — the package probed successfully (or its sidecar
@@ -1514,6 +1518,37 @@ mod tests {
             got.chars().count() == 301 && got.ends_with('…'),
             "a marker is a cache entry, not a log: got {} chars",
             got.chars().count()
+        );
+    }
+
+    /// Issue 1898 — the marker keeps WHY a git dependency could not be got.
+    /// The harness's own report is one ~300-character line (a package path in
+    /// the middle), so cutting at the cap dropped exactly the root cause.
+    #[test]
+    fn the_recorded_line_keeps_a_cargo_root_cause_past_the_cap() {
+        let path = "/w/runner/_work/nano-ros/nros-fixture-tree/packages/core/nros-macros";
+        let why = format!(
+            "metadata-mode harness failed (exit 101) for component 'reliable_talker': \
+             error: failed to get `ros-launch-manifest-model` as a dependency of package \
+             `nros-macros v0.6.0 ({path})` (root cause: failed to resolve address for \
+             github.com: Temporary failure in name resolution; class=Net (12))"
+        );
+        assert!(why.chars().count() > 300, "the case must exceed the cap");
+        let got = first_error_line(&why);
+        assert!(got.chars().count() <= 301, "{got}");
+        assert!(
+            got.ends_with("Temporary failure in name resolution; class=Net (12))"),
+            "{got}"
+        );
+        // And a raw cargo stream (a C/C++ probe's captured log) gets its cause
+        // appended the same way.
+        let raw = "error: failed to get `x` as a dependency of package `y`\n\n\
+                   Caused by:\n  failed to load source for dependency `x`\n\n\
+                   Caused by:\n  revspec 'v9' not found\n";
+        assert_eq!(
+            first_error_line(raw),
+            "error: failed to get `x` as a dependency of package `y` \
+             (root cause: revspec 'v9' not found)"
         );
     }
 

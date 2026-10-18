@@ -261,5 +261,5 @@ Homed when every open issue was given a phase. Each issue has a `**Home:**` line
 | [#1755](../issues/1755-runner-home-cache-not-writable.md) | After a runner-container restart, two tier-1 steps cannot create directories under `~/.cache`. |
 | [#1758](../issues/1758-skip-and-pass-is-a-failure.md) | Scope, not host probes, decides what runs. What is left is every scheduled lane declaring its scope and reporting in-scope reds. |
 | [#1842](../issues/1842-tier-priority-plan-image-red-verdict-unprinted.md) | `tier-priority-plan-image` fails the Zephyr fixture build in two scheduled lanes, and neither lane shows its verdict. |
-| [#1898](../issues/1898-metadata-harness-excerpt-drops-cargo-cause.md) | The tier-2 nightly stopped in `generate-bindings` on a git dependency it could not fetch, and the excerpt dropped the reason. |
+| [#1898](../issues/archived/1898-metadata-harness-excerpt-drops-cargo-cause.md) | The tier-2 nightly stopped in `generate-bindings` on a git dependency it could not fetch, and the excerpt dropped the reason. |
 | [#1899](../issues/1899-tier2-nightly-fixture-compilers-sigkilled.md) | Compilers were SIGKILLed across five families at once in the tier-2 nightly build, so crates fail with no diagnostic. |

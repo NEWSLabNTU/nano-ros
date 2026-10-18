@@ -27,6 +27,8 @@ IFS=$'\x1f' read -r platform dir envstr cargo_args <<< "$line"
 source scripts/build/cargo.sh 2>/dev/null || exit 0
 # shellcheck source=scripts/lib/grep-q.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)/grep-q.sh"
+# shellcheck source=scripts/lib/cargo-error-cause.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)/cargo-error-cause.sh"
 # phase-340 P2 — the PLATFORM's profile, not the ambient one. A platform with a
 # carve-out (`freertos` -> freertos-qemu, `nuttx` -> nuttx-rust) builds its whole
 # rust fixture lane at that profile, and cargo writes each profile into its own
@@ -232,7 +234,9 @@ fi
 if [ "$build_rc" -ne 0 ]; then
     # `--message-format=json` puts diagnostics on stdout as JSON too, so prefer a
     # bare `error[E...]`/`error:` line and fall back to naming the exit code.
-    reason="$(printf '%s\n' "$build_out" | grep -m1 -E '^error' || true)"
+    # Issue 1898: with cargo's root cause appended, so a network flake and a
+    # resolution defect do not print the same FAILED line.
+    reason="$(printf '%s\n' "$build_out" | nros_cargo_first_error || true)"
     printf 'FAILED\t%s\t%s\n' "$dir${cargo_args:+ ($cargo_args)}" \
         "${reason:-cargo exited $build_rc}"
 elif [ "$(_row_artifacts)" != "$art_before" ]; then
