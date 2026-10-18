@@ -43,8 +43,13 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # Ports whose task FPU context is opt-in (`configUSE_TASK_FPU_SUPPORT`).
 # Cortex-M ports with an FPU (ARM_CM4F, ARM_CM7, ...) stack it lazily in
-# hardware and are not in this set.
-FPU_OPTIONAL_PORTS = re.compile(r"GCC/(ARM_CRx\w*|ARM_CR5|ARM_CA9|ARM_CA53\w*|ARM_AARCH64\w*)$")
+# hardware and are not in this set. A board names its port by upstream's
+# `FREERTOS_PORT` enum (`GCC_ARM_CRX_NOGIC`, phase-349 W3); the `portable/`
+# path spelling (`GCC/ARM_CRx_No_GIC`) is still accepted, so both match.
+FPU_OPTIONAL_PORTS = re.compile(
+    r"GCC/(ARM_CRx\w*|ARM_CR5|ARM_CA9|ARM_CA53\w*|ARM_AARCH64\w*)$"
+    r"|^GCC_(ARM_CRX\w*|ARM_CR5|ARM_CA9|ARM_CA53\w*|ARM_AARCH64\w*)$"
+)
 
 BOARD_PORT = re.compile(r'nros_freertos_board_port\(\s*(nano-ros-board-[\w-]+)\s+"([^"]+)"')
 D32_DEFINE = re.compile(r"nros_freertos_config_define\([^)]*\bconfigFPU_D32=[01]\b")
@@ -115,6 +120,10 @@ def selftest() -> int:
         "d32-in-header": (good_cmake, "#define configUSE_TASK_FPU_SUPPORT 2\n#define configFPU_D32 1\n", 1),
         "cortex-m-ignored": ('nros_freertos_board_port(nano-ros-board-x-freertos "GCC/ARM_CM3")\n',
                              "/* nothing */\n", 0),
+        "enum-spelling": ('nros_freertos_board_port(nano-ros-board-x-freertos "GCC_ARM_CRX_NOGIC")\n',
+                          "/* nothing */\n", 2),
+        "enum-cortex-m-ignored": ('nros_freertos_board_port(nano-ros-board-x-freertos "GCC_ARM_CM3")\n',
+                                  "/* nothing */\n", 0),
     }
     failed = 0
     for label, (cmake, header, want) in cases.items():
