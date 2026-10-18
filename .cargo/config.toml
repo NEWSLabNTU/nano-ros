@@ -7,6 +7,18 @@
 # 77.23/77.24. v0 has been stable since Rust 1.60; the only
 # user-visible effect is slightly cleaner demangled output in
 # backtraces.
+# Issue 1626 -- ONE place every cargo invocation under this checkout reads, on
+# every lane and every host (cargo merges this file into any leaf's config
+# walk-up, including the `packages/cli` sub-workspace). cargo retries a
+# SPURIOUS network error -- a refused connection, a timeout, an HTTP/2 framing
+# error, a 5xx -- `net.retry` times with a growing pause, and the default is 3.
+# Four merge-gating reds in two weeks were exactly that class reaching crates.io
+# (`api-parity`'s `cargo doc`, `setup-cli`, `dep-chain`'s `cargo tree`), so the
+# budget is raised to ride out a minute-long blip. A real outage still fails,
+# about a minute later than it did; a non-spurious error is never retried.
+[net]
+retry = 10
+
 [build]
 rustflags = ["-C", "symbol-mangling-version=v0"]
 

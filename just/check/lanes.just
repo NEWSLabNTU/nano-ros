@@ -3615,7 +3615,13 @@ workspace-all:
     # on rustup's shared downloads dir ("component download failed for
     # rust-std-<target>: could not rename 'downloaded' file"), which ejected
     # three merge-queue batches on 2026-10-13. The same rule `rustup target add`
-    # follows further down: serially, first.
+    # follows further down: serially, first. Every pinned channel, through the
+    # same installer `run-gates-parallel.sh` uses (local check first, so the CI
+    # image, which bakes the list, fetches nothing).
+    scripts/lib/install-rust-toolchains.sh || {
+        echo "workspace-all: [INFRA] could not complete the pinned Rust toolchains (issue 1868)" >&2
+        exit 1
+    }
     cargo --version >/dev/null
     # The HOST half is the real host clippy (`--workspace --all-targets`,
     # `-D warnings`, then per crate). It was `just check workspace`, an echo —

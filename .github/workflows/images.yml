@@ -29,6 +29,12 @@ on:
       # place. It is in both `changes` filters below and in ci-base's content
       # tag.
       - "ci/docker/apt-packages.txt"
+      # issue 1760 — the `just` installer BOTH images COPY and run. Same rule.
+      - "scripts/ci/install-just.sh"
+      # issue 1868 — the pinned Rust toolchains ci-base bakes, and the script
+      # that installs them. Same rule.
+      - "config/rust-toolchains.txt"
+      - "scripts/lib/install-rust-toolchains.sh"
   workflow_dispatch:
     inputs:
       image:
@@ -54,9 +60,13 @@ jobs:
               - 'ci/docker/apt-packages.txt'
               - 'scripts/lib/rust-targets.sh'
               - 'config/rust-targets.txt'
+              - 'scripts/ci/install-just.sh'
+              - 'config/rust-toolchains.txt'
+              - 'scripts/lib/install-rust-toolchains.sh'
             zephyr:
               - 'ci/docker/zephyr-ros/**'
               - 'ci/docker/apt-packages.txt'
+              - 'scripts/ci/install-just.sh'
 
   ci-base:
     name: build + push ci-base image
@@ -105,6 +115,8 @@ jobs:
         run: |
           sha="$(cat ci/docker/ci-base/Dockerfile ci/docker/apt-packages.txt \
                      scripts/lib/rust-targets.sh config/rust-targets.txt \
+                     scripts/ci/install-just.sh \
+                     config/rust-toolchains.txt scripts/lib/install-rust-toolchains.sh \
                  | sha256sum | cut -c1-12)"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           echo "content tag: ${{ env.IMAGE }}:humble-$sha"
@@ -190,8 +202,13 @@ jobs:
       # every repo script that reads TOML (jammy Python 3.10 has no `tomllib`
       # and the image had no `tomli`). Both now come from
       # `ci/docker/apt-packages.txt`, the ONE list both images COPY.
+      # r6 (issue 1760): `just` is the pinned, checksummed release asset from
+      # `scripts/ci/install-just.sh` instead of whatever `just.systems/install.sh`
+      # served at build time. Consumers (nightly.yml, live-peer.yml) are
+      # schedule-only, so moving them in the same commit has the slack the r3
+      # note above relies on.
       IMAGE: ghcr.io/newslabntu/nano-ros-zephyr-ci
-      TAG: humble-sdk0.17.4-r5
+      TAG: humble-sdk0.17.4-r6
     steps:
       - uses: actions/checkout@v4
       # The same CONTENT tag ci-base carries, for the same reason and now for a
@@ -205,6 +222,7 @@ jobs:
         id: ctag
         run: |
           sha="$(cat ci/docker/zephyr-ros/Dockerfile ci/docker/apt-packages.txt \
+                     scripts/ci/install-just.sh \
                  | sha256sum | cut -c1-12)"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           echo "content tag: ${{ env.IMAGE }}:${{ env.TAG }}-$sha"

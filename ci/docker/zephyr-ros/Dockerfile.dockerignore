@@ -13,3 +13,4 @@
 *
 !ci/docker/zephyr-ros/
 !ci/docker/apt-packages.txt
+!scripts/ci/install-just.sh

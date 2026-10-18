@@ -1,15 +1,16 @@
 ---
 id: 1760
 title: "CI installs `just` by piping `https://just.systems/install.sh`, with no retry, and one 403 failed the probe's installed track"
-status: open
+status: resolved
 type: bug
 area: [ci]
 severity: low
 found: 2026-10-09
 related: [1439, 1304, phase-505]
+resolved_in: "branch fix/phase-505-w2-net"
 ---
 
-**Home: [phase-505](../roadmap/phase-505-ci-lanes-reach-and-infra-robustness.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+**Home: [phase-505](../../roadmap/phase-505-ci-lanes-reach-and-infra-robustness.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## Measured
 
@@ -62,3 +63,32 @@ not depend on a single fetch from `just.systems` succeeding. Options:
 
 Acceptance: a probe run where both tracks reach their probe step. A run that
 injects a failing first fetch should still install `just`.
+
+## Resolution (2026-10-19)
+
+Option 1, as one spelling at every site.
+
+- `scripts/ci/install-just.sh --to <dir>` downloads the pinned release asset
+  (`just` 1.57.0, the version ci-base already pinned) from
+  `github.com/casey/just/releases`. It uses `curl --retry 5
+  --retry-all-errors`, so a 403 or 5xx is retried too. It checks the asset's
+  SHA-256 (pinned in the script for x86_64 and aarch64 musl) before extracting,
+  and then checks `just --version`.
+- Every site uses it: both `probe.yml` tracks, `ci/docker/ci-base/Dockerfile`
+  (which piped the installer with `--tag`) and `ci/docker/zephyr-ros/Dockerfile`
+  (which piped it unpinned). The zephyr image's tag moves to
+  `humble-sdk0.17.4-r6`, with its schedule-only consumers (`nightly.yml`,
+  `live-peer.yml`) moved in the same change. `check-ci-image-inputs` holds the
+  new `COPY` to each image's `.dockerignore`, push paths, `changes` filter and
+  content tag.
+- `check-workflow-just-provisioning` now counts `scripts/ci/install-just.sh
+  --to` as the installer. It REFUSES `just.systems/install.sh` anywhere in a
+  tracked workflow, action or CI Dockerfile (comments excepted), and a
+  self-test arm plants that spelling. `git grep just.systems` outside docs now
+  finds only that gate.
+- Not done: `GITHUB_TOKEN` authentication. A release-asset download is not
+  API-rate-limited, and curl drops the header on the redirect to the asset
+  host anyway.
+
+Observation is what verifies this: a probe run where both tracks reach their
+probe step.

@@ -9,3 +9,6 @@
 !ci/docker/apt-packages.txt
 !scripts/lib/rust-targets.sh
 !config/rust-targets.txt
+!scripts/ci/install-just.sh
+!config/rust-toolchains.txt
+!scripts/lib/install-rust-toolchains.sh
