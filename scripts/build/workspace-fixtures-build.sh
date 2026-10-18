@@ -269,7 +269,18 @@ build_workspace() {
     unignored_before="$(mktemp)"
     nros_unignored_snapshot "$repo_root" "$dir" > "$unignored_before"
     local row_rc=0
+    # Issue 1961 — the row runs with errexit ON. It used to be
+    # `( ... ) || row_rc=$?`, and bash switches `set -e` off for EVERYTHING
+    # inside a command on the left of `||`, subshells included: a failed
+    # `nros build` / `cmake` was ignored, the row went on to `built:` over the
+    # previous build's binary, and the lane read green over a configure that
+    # never ran. An asynchronous subshell is not part of that list, so it keeps
+    # the `set -e` it states; `wait` hands its status back. (Measured both ways
+    # in the issue. It does NOT survive a caller that runs this function from
+    # an `if`/`||` itself — no idiom does — which is why the commands that
+    # produce the artifact also check their own status below.)
     (
+        set -e
         cd "$repo_root/$dir"
         if [ "$lang" != "rust" ] && [ -n "$build_subdir" ] && \
            [ -f "$build_subdir/CMakeCache.txt" ] && \
@@ -371,7 +382,11 @@ build_workspace() {
                 fi
                 nros_args+=("${extra_args[@]}")
                 echo "     nros ${nros_args[*]}"
-                "$nros_cli" "${nros_args[@]}"
+                "$nros_cli" "${nros_args[@]}" || {
+                    rc=$?
+                    echo "  !! $id: nros build failed (rc=$rc); the row's artifact is NOT current (issue 1961)" >&2
+                    return "$rc"
+                }
             else
                 # phase-445 W4/W5 (RFC-0098 D1/D9) — a cargo workspace row MUST
                 # name its `image`. This branch used to `cargo build -p <entry>`
@@ -481,7 +496,11 @@ build_workspace() {
                     nros_args+=(-- "${def_args[@]}")
                 fi
                 echo "     nros ${nros_args[*]}"
-                "$nros_cli" "${nros_args[@]}"
+                "$nros_cli" "${nros_args[@]}" || {
+                    rc=$?
+                    echo "  !! $id: nros build failed (rc=$rc); the row's artifact is NOT current (issue 1961)" >&2
+                    return "$rc"
+                }
                 if [ -x "$build_subdir/$entry" ]; then
                     echo "     built: $dir/$build_subdir/$entry"
                 else
@@ -498,7 +517,11 @@ build_workspace() {
             else
 
             echo "     cmake -S . -B $build_subdir ${cmake_args[*]}"
-            nros_cmake_configure_if_needed . "$build_subdir" "${cmake_args[@]}"
+            nros_cmake_configure_if_needed . "$build_subdir" "${cmake_args[@]}" || {
+                rc=$?
+                echo "  !! $id: cmake configure failed (rc=$rc) (issue 1961)" >&2
+                return "$rc"
+            }
 
             # phase-263 C2b — on NuttX the entry's real artifact is the NuttX KERNEL ELF
             # produced by the cargo `<entry>_build` custom target (cross arm-none-eabi-gcc link),
@@ -513,7 +536,11 @@ build_workspace() {
                 build_target="${entry}_build"
             fi
             echo "     cmake --build $build_subdir --target $build_target"
-            cmake --build "$build_subdir" --target "$build_target"
+            cmake --build "$build_subdir" --target "$build_target" || {
+                rc=$?
+                echo "  !! $id: cmake --build failed (rc=$rc) (issue 1961)" >&2
+                return "$rc"
+            }
             # The entry executable lands at the canonical
             # `<build>/src/<entry>/<entry>` for every cmake-built workspace, so
             # ask for it directly instead of searching. The old unpruned
@@ -565,7 +592,8 @@ build_workspace() {
         mkdir -p "$stamp_dir"
         bash "$repo_root/scripts/build/workspace-fixture-signature.sh" "$record" \
             > "$stamp_dir/.nros-workspace-fixture.$id.inputsig"
-    ) || row_rc=$?
+    ) &
+    wait "$!" || row_rc=$?
     rm -f "$unignored_before"
     echo "     row-time: $id $((SECONDS - row_t0))s"
     return "$row_rc"
