@@ -15362,15 +15362,24 @@ fn a_requested_mode_judges_by_its_variant_table() {
         ModeTables {
             monitors: &BASE,
             ages: &[],
+            deadlines: &[],
+            switch_budget_ms: 0,
+            reaction: "",
         },
         ModeTables {
             monitors: &RELAXED,
             ages: &[],
+            deadlines: &[],
+            switch_budget_ms: 0,
+            reaction: "",
         },
     ];
     static SHORT: [ModeTables; 1] = [ModeTables {
         monitors: &[],
         ages: &[],
+        deadlines: &[],
+        switch_budget_ms: 0,
+        reaction: "",
     }];
 
     mode_switch_clock::claim_at_us(1_000_000);
@@ -15608,4 +15617,102 @@ fn an_undeclared_use_sim_time_builder_puts_the_placeholder_back() {
         !executor.ros_time_source_installed(),
         "the placeholder is nobody's statement and must attach nothing"
     );
+}
+
+private_test_clock!(mode_deadline_clock);
+
+/// phase-462 W4c -- entering a mode moves the SchedContext deadlines its table
+/// lists, and entering the base restores them; a switch whose request could
+/// have waited longer than the mode's budget is reported as
+/// `mode-switch-runtime`, measured as the gap since the previous check.
+#[cfg(all(feature = "std", feature = "alloc"))]
+#[test]
+fn a_mode_switch_moves_the_tier_deadline_and_judges_its_latency() {
+    use super::{
+        monitor::{ModeDeadline, ModeTables, request_mode},
+        sched_context::{OptUs, SchedContext, SchedContextId},
+    };
+    let _g = arming_lock();
+
+    static BASE_D: [ModeDeadline; 1] = [ModeDeadline {
+        sc: 1,
+        deadline_us: 5_000,
+    }];
+    static TIGHT_D: [ModeDeadline; 1] = [ModeDeadline {
+        sc: 1,
+        deadline_us: 2_000,
+    }];
+    static MODES: [ModeTables; 2] = [
+        ModeTables {
+            monitors: &[],
+            ages: &[],
+            deadlines: &BASE_D,
+            switch_budget_ms: 0,
+            reaction: "",
+        },
+        ModeTables {
+            monitors: &[],
+            ages: &[],
+            deadlines: &TIGHT_D,
+            switch_budget_ms: 20,
+            reaction: "//enter_tight",
+        },
+    ];
+    static MISSING: [ModeTables; 1] = [ModeTables {
+        monitors: &[],
+        ages: &[],
+        deadlines: &[ModeDeadline {
+            sc: 9,
+            deadline_us: 1,
+        }],
+        switch_budget_ms: 0,
+        reaction: "",
+    }];
+
+    request_mode(0);
+    mode_deadline_clock::claim_at_us(1_000_000);
+    let mut executor = executor_with_clock_fn(MockSession::new(), mode_deadline_clock::now_us);
+    let sc = executor
+        .create_sched_context(SchedContext {
+            deadline_us: OptUs::from_us(5_000),
+            ..SchedContext::new_fifo()
+        })
+        .expect("sc");
+    assert_eq!(sc, SchedContextId(1));
+    assert!(
+        executor.set_mode_tables(&MISSING).is_err(),
+        "a row naming a context this executor lacks is refused"
+    );
+    executor.set_mode_tables(&MODES).expect("tables");
+    let deadline = |e: &Executor<'_>| e.sched_context(sc).unwrap().deadline_us.raw();
+    let spin = |e: &mut Executor<'_>, at_us: u64| {
+        mode_deadline_clock::set_us(at_us);
+        let _ = e.spin_once(core::time::Duration::from_millis(0));
+    };
+
+    spin(&mut executor, 1_000_000);
+    request_mode(1);
+    spin(&mut executor, 1_010_000);
+    assert_eq!(deadline(&executor), 2_000, "the mode's deadline");
+    request_mode(0);
+    spin(&mut executor, 1_020_000);
+    assert_eq!(deadline(&executor), 5_000, "the base restored");
+
+    let mut got = alloc::vec::Vec::new();
+    executor.drain_violations(|v| got.push(v.rule));
+    assert!(
+        !got.contains(&"mode-switch-runtime"),
+        "10 ms within 20: {got:?}"
+    );
+
+    // The negative control: a request seen 50 ms after the previous check.
+    request_mode(1);
+    spin(&mut executor, 1_070_000);
+    let mut got = alloc::vec::Vec::new();
+    executor.drain_violations(|v| got.push((v.rule, v.fqn, v.measured, v.declared)));
+    assert!(
+        got.contains(&("mode-switch-runtime", "//enter_tight", 50, 20)),
+        "{got:?}"
+    );
+    request_mode(0);
 }

@@ -48,6 +48,12 @@ pub const RULE_HAZARD_REACTION: &str = "hazard-reaction";
 /// phase-462 W3b -- no guard of the hazard is faulted any more. Measured: how
 /// long the hazard lasted, ms.
 pub const RULE_HAZARD_RECOVERED: &str = "hazard-recovered";
+/// phase-462 W4c -- entering a contract mode took longer than its reaction
+/// path allows. An executor enters a requested mode at its next spin, so the
+/// measured value is the gap since its previous check (ms), an upper bound on
+/// how long the request waited; declared: the reaction path's `max_latency`.
+/// A GUARANTEE: how promptly this image switches is its own behaviour.
+pub const RULE_MODE_SWITCH: &str = "mode-switch-runtime";
 
 /// Which side of the contract the violated field belongs to — drives the
 /// 4-quadrant diagnosis (RFC-0050 §contracts): a violated GUARANTEE with

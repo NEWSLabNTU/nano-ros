@@ -2017,6 +2017,9 @@ pub struct Executor<'s> {
     /// whose tables it judges by. They differ only after a request for a mode
     /// this executor has no table for.
     pub(crate) mode_seen: u16,
+    /// phase-462 W4c -- monotonic ms of the previous mode check, the start
+    /// of the window a request seen at this one could have waited in.
+    pub(crate) mode_checked_ms: Option<u32>,
     pub(crate) mode_applied: u16,
     /// W3b.5 — hook invoked on `DeadlineAction::Fault` (panic when unset).
     pub(crate) fault_fn: Option<fn(&super::monitor::Violation)>,
@@ -2342,6 +2345,7 @@ impl<'s> Executor<'s> {
             hazard_table: &[],
             mode_tables: &[],
             mode_seen: 0,
+            mode_checked_ms: None,
             mode_applied: 0,
             fault_fn: None,
             reaction_hook: None,
@@ -3234,6 +3238,19 @@ impl<'s> Executor<'s> {
                     mode: id as u16,
                     monitors: (m.monitors.len(), self.monitor_table.len()),
                     ages: (m.ages.len(), self.age_table.len()),
+                    missing_sc: None,
+                });
+            }
+            if let Some(d) = m
+                .deadlines
+                .iter()
+                .find(|d| !matches!(self.sched_contexts.get(usize::from(d.sc)), Some(Some(_))))
+            {
+                return Err(super::monitor::ModeTablesMismatch {
+                    mode: id as u16,
+                    monitors: (m.monitors.len(), self.monitor_table.len()),
+                    ages: (m.ages.len(), self.age_table.len()),
+                    missing_sc: Some(d.sc),
                 });
             }
         }
@@ -3249,10 +3266,18 @@ impl<'s> Executor<'s> {
 
     /// phase-462 W4 -- once per spin, before any rule runs: enter the mode the
     /// application asked for, if this executor has tables for it.
-    fn update_mode(&mut self) {
+    fn update_mode(&mut self, now_us: Option<u64>) {
         if self.mode_tables.is_empty() {
             return;
         }
+        // phase-462 W4c -- a request seen now arrived after the previous
+        // check, so this gap bounds how long it waited.
+        let now_ms = now_us.map(|us| (us / 1_000) as u32);
+        let waited_ms = match (now_ms, self.mode_checked_ms) {
+            (Some(now), Some(prev)) => Some(now.wrapping_sub(prev)),
+            _ => None,
+        };
+        self.mode_checked_ms = now_ms;
         let want = super::monitor::requested_mode();
         if want == self.mode_seen {
             return;
@@ -3262,6 +3287,14 @@ impl<'s> Executor<'s> {
             Some(t) => {
                 self.monitor_table = t.monitors;
                 self.age_table = t.ages;
+                for d in t.deadlines {
+                    if let Some(Some(sc)) = self.sched_contexts.get_mut(usize::from(d.sc)) {
+                        sc.deadline_us = super::sched_context::OptUs::from_us(d.deadline_us);
+                    }
+                }
+                if let Some(v) = super::monitor::check_mode_switch(t, waited_ms) {
+                    self.violations.record(v);
+                }
                 self.mode_applied = want;
                 nros_log::log_info!(
                     nros_log::get_logger("nros"),
@@ -10176,7 +10209,7 @@ impl<'s> Executor<'s> {
         self.update_monitor_arming(spin_start_us);
         // phase-462 W4 -- and switch to the requested mode's tables, before
         // any rule of this spin judges by them.
-        self.update_mode();
+        self.update_mode(spin_start_us);
 
         // RFC-0052 W3b.4 — contract monitors tick once per spin (window
         // logic inside; single branch when the baked table is empty).

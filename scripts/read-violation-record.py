@@ -74,6 +74,7 @@ RULES = (
     "hazard-detected",
     "hazard-reaction",
     "hazard-recovered",
+    "mode-switch-runtime",
 )
 
 

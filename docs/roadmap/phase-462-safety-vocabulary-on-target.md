@@ -1,8 +1,7 @@
 # phase-462 -- the contract's safety vocabulary reaches the target
 
-**Status (2026-10-18). IN PROGRESS: W1, W2, W3 and W5 landed; W4a/W4b and
-W6a/W6b landed; W4c and the W6 follow-ups (the per-board frame cost, the
-flood-cell rerun) are open.** (Planned 2026-09-21.) Numbered highest + 7 (phase-461 took +6;
+**Status (2026-10-18). IN PROGRESS: W1, W2, W3, W4 (a/b/c), W5 and W6a/W6b/W6c
+landed; the one item open is W6a's gate, the RFC-0074 flood-cell rerun.** (Planned 2026-09-21.) Numbered highest + 7 (phase-461 took +6;
 456-460 belong to concurrent sessions). Depends on two pieces of work outside
 this document: the shared MapperInput derivation phase (a play_launch / rlm
 phase being designed in parallel, referred to here by that name and not by a
@@ -397,17 +396,51 @@ different things.
     and tests_cpp. The rendered C and C++ compile against the regenerated
     header with `gcc -std=c11`, `g++ -std=c++17` and `arm-none-eabi-gcc` (a
     32-bit target).
-- **W4c, the tier-table half: not started.** It covers:
-  - SchedContext deadlines per mode;
-  - the mode switch as a contracted transition with its own
-    `max_latency_ms`;
-  - the gate's `mem-report` pricing of a second table;
-  - `nros-tests` `mode_variants`.
+- **W4c, the tier-table half: landed in this change.**
+  - Per-mode tier deadlines. `mode_variants::mode_tier_deadlines` derives
+    the schedule of the base and of each mode
+    (`derive_tiers_from_contracts` over the applied model) and refuses a
+    mode whose derived TIER SET differs (`TierSetChanged`). A tier whose
+    deadline any mode moves gets one `ModeDeadline { sc, deadline_us }` row
+    in EVERY mode's table, the base's included, so entering the base again
+    restores it. Only the deadline is applied at a switch: the executor
+    reads `SchedContext::deadline_us` per dispatch. A mode that moves a
+    tier's priority, period or budget is LISTED (`not_lowered`): a priority
+    is a thread's and a reservation is armed at boot. An authored placement
+    derives nothing, so its modes bake no deadline rows.
+  - Where a row lands: a tier executor (Rust `nros::main!` tiers, the C/C++
+    `run_tiers` shape, a single-tier entry) at its default context 0, on the
+    moved tier's table only; the C/C++ single-executor sched-context shape
+    by tier index through `__nros_sc_ids` (`nros_cpp_mode_tables_t.sc_ids`).
+    The Zephyr `codegen-system` road bakes the switch budget but no deadline
+    rows, and says so per moved tier: `system_monitors.rs` is installed by
+    whichever entry includes it, on contexts that entry creates.
+  - The switch as a contracted transition. A mode's budget is its
+    `reaction` path's `max_latency` (`mode_switch_budget_ms`). At bake time
+    `check_switch_latency` refuses a mode whose budget is shorter than the
+    slowest tier's spin period (an executor enters a mode at its next
+    spin); a tier with no period is stated as not checked. At run time the
+    executor measures the gap since its previous mode check when it enters a
+    mode and reports `mode-switch-runtime` (new rule, a GUARANTEE, in
+    `RULE_IDS`, `nros-diagnostics` and `read-violation-record.py`) when that
+    gap exceeds the budget.
+  - Pricing: a mode adds its re-stated spec rows and one deadline row per
+    moved context, and shares every cell with the base, so `mem-report`
+    attributes a second table to its `NROS_MODE_*` symbols and to nothing
+    else.
+  - C ABI: `nros_cpp_mode_deadline_t`; `nros_cpp_mode_t` gains `deadlines`,
+    `switch_budget_ms`, `reaction`; `nros_cpp_mode_tables_t` gains
+    `base_deadlines` and `sc_ids`; `NROS_CPP_MODE_TABLE_STORAGE` is 72/40 and
+    `NROS_CPP_MODE_DEADLINE_STORAGE` 8.
+  - Tests: `nros-tests` `mode_variants` (3, the phase gate);
+    `nros-orchestration-ir` `mode_variants` (4 new); `nros-node`
+    `a_mode_switch_moves_the_tier_deadline_and_judges_its_latency`;
+    `nros-macros` `a_mode_that_moves_a_tier_deadline_bakes_it_on_that_executor`;
+    `nros-cli-core` `a_mode_tier_deadline_lowers_onto_each_executor_shape`.
+    The rendered C (gcc and arm-none-eabi-gcc) and C++ (g++) compile against
+    the regenerated header.
 
-  The tier table is built from the plan, not from the monitor rows, so this
-  half needs the plan to carry per-mode deadlines first.
-
-Claim: phase-462-W4. Depends on: phase-462-W1, phase-462-W2, phase-495-W2. Owns: packages/core/nros-orchestration-ir/src/mode_variants.rs (new); the Plan variant tables in packages/cli/nros-cli-core/src/codegen/entry/mod.rs; the variant emission in emit_cpp.rs and emit_rust.rs; packages/testing/nros-tests/tests/mode_variants.rs (new). Gate: cargo test -p nros-tests --test mode_variants; just mem-report. Status: W4a and W4b landed; W4c not started.
+Claim: phase-462-W4. Depends on: phase-462-W1, phase-462-W2, phase-495-W2. Owns: packages/core/nros-orchestration-ir/src/mode_variants.rs (new); the Plan variant tables in packages/cli/nros-cli-core/src/codegen/entry/mod.rs; the variant emission in emit_cpp.rs and emit_rust.rs; packages/testing/nros-tests/tests/mode_variants.rs (new). Gate: cargo test -p nros-tests --test mode_variants; just mem-report. Status: W4a, W4b and W4c landed.
 
 ### W5 [cli, rmw] -- deadline and liveliness QoS from the contract
 

@@ -22,14 +22,17 @@
 //! never applied silently and never refused: it is a requirement the
 //! resolve-time checks hold, not one the image observes.
 
-use std::fmt;
+use std::{collections::BTreeMap, fmt};
 
 use ros_launch_manifest_model::{
     ModeOverrideContract, OverrideTable, ResolvedOverride, SystemModel,
 };
 use ros_launch_manifest_types::duration::Duration;
 
-use crate::contract_monitors::{self, AgeRow, MonitorRow};
+use crate::{
+    CallbackGroupDecl,
+    contract_monitors::{self, AgeRow, MonitorRow},
+};
 
 /// One mode applied to the model.
 #[derive(Debug, Clone)]
@@ -75,6 +78,24 @@ pub enum ModeError {
     /// Deriving the rows of the variant failed (the same refusal the base
     /// would give).
     Rows { mode: String, reason: String },
+    /// phase-462 W4c -- the mode's derived schedule has a different set of
+    /// tiers from the base's. Tier threads are created once at boot, so a
+    /// mode may change a tier's deadline but not which tiers exist.
+    TierSetChanged {
+        mode: String,
+        added: Vec<String>,
+        removed: Vec<String>,
+    },
+    /// phase-462 W4c -- the mode switch cannot meet the latency its reaction
+    /// path states: an executor enters the mode at its next spin, and the
+    /// slowest declared spin period is longer than the budget.
+    SwitchTooSlow {
+        mode: String,
+        reaction: String,
+        budget_ms: u32,
+        tier: String,
+        period_us: u64,
+    },
 }
 
 impl fmt::Display for ModeError {
@@ -123,6 +144,32 @@ impl fmt::Display for ModeError {
                 removed.join(", ")
             ),
             ModeError::Rows { mode, reason } => write!(f, "mode `{mode}`: {reason}"),
+            ModeError::TierSetChanged {
+                mode,
+                added,
+                removed,
+            } => write!(
+                f,
+                "mode `{mode}` changes which tiers the contract derives (added: [{}], \
+                 removed: [{}]). Tier threads are created once at boot, so a mode may \
+                 change a tier's deadline but not whether the tier exists: keep the base's \
+                 callback groups and paths, and override their numbers in the mode",
+                added.join(", "),
+                removed.join(", ")
+            ),
+            ModeError::SwitchTooSlow {
+                mode,
+                reaction,
+                budget_ms,
+                tier,
+                period_us,
+            } => write!(
+                f,
+                "mode `{mode}`: its reaction path `{reaction}` allows {budget_ms} ms for the \
+                 switch, but tier `{tier}` spins every {period_us} us and an executor enters a \
+                 mode at its next spin. Shorten that tier's period or widen the reaction's \
+                 `max_latency`"
+            ),
         }
     }
 }
@@ -364,9 +411,14 @@ pub fn all_variants(model: &SystemModel) -> Result<Vec<LoweredMode>, ModeError> 
 /// them through `Executor::set_mode_tables`. `modes` are `(rows, ages)` in mode-id order,
 /// already sliced to this executor exactly as the base was. Empty when there
 /// are no modes.
+///
+/// phase-462 W4c -- `extras` carries what a table holds beyond its rows: each
+/// mode's SchedContext deadlines (the base's first) and each mode's switch
+/// budget. [`ModeExtras::default`] bakes neither.
 #[must_use]
 pub fn render_mode_tables_rs(
     modes: &[(&[MonitorRow], &[AgeRow])],
+    extras: &ModeExtras,
     paths: contract_monitors::RenderPaths,
 ) -> String {
     if modes.is_empty() {
@@ -385,16 +437,46 @@ pub fn render_mode_tables_rs(
             &format!("NROS_MODE_AGE_MONITORS_{id}"),
         ));
     }
+    for k in 0..=modes.len() {
+        let Some(rows) = extras.deadlines.get(k).filter(|d| !d.is_empty()) else {
+            continue;
+        };
+        out.push_str(&format!(
+            "pub static NROS_MODE_DEADLINES_{k}: &[{m}::ModeDeadline] = &[\n",
+            m = paths.monitor
+        ));
+        for (sc, us) in rows {
+            out.push_str(&format!(
+                "    {m}::ModeDeadline {{ sc: {sc}u8, deadline_us: {us}u32 }},\n",
+                m = paths.monitor
+            ));
+        }
+        out.push_str("];\n");
+    }
+    let tail = |k: usize| {
+        let deadlines = if extras.deadlines.get(k).is_some_and(|d| !d.is_empty()) {
+            format!("NROS_MODE_DEADLINES_{k}")
+        } else {
+            "&[]".to_string()
+        };
+        let (budget, reaction) = k
+            .checked_sub(1)
+            .and_then(|i| extras.switch.get(i))
+            .map_or((0, ""), |(b, r)| (*b, r.as_str()));
+        format!("deadlines: {deadlines}, switch_budget_ms: {budget}u32, reaction: {reaction:?}")
+    };
     out.push_str(&format!(
         "pub static NROS_MODE_TABLES: &[{m}::ModeTables] = &[\n    \
-         {m}::ModeTables {{ monitors: NROS_MONITORS, ages: NROS_AGE_MONITORS }},\n",
-        m = paths.monitor
+         {m}::ModeTables {{ monitors: NROS_MONITORS, ages: NROS_AGE_MONITORS, {t} }},\n",
+        m = paths.monitor,
+        t = tail(0)
     ));
     for k in 1..=modes.len() {
         out.push_str(&format!(
             "    {m}::ModeTables {{ monitors: NROS_MODE_MONITORS_{k}, ages: \
-             NROS_MODE_AGE_MONITORS_{k} }},\n",
-            m = paths.monitor
+             NROS_MODE_AGE_MONITORS_{k}, {t} }},\n",
+            m = paths.monitor,
+            t = tail(k)
         ));
     }
     out.push_str("];\n\n");
@@ -408,6 +490,278 @@ pub fn render_mode_tables_rs(
         m = paths.monitor
     ));
     out
+}
+
+/// phase-462 W4c -- every DERIVED tier's deadline in one model, µs (0 = the
+/// tier states none), keyed by tier name.
+///
+/// Only a derived tier's deadline is the contract's: an authored
+/// `[tiers.*]` table states its own, which a mode override of a path's
+/// latency does not move. So a model whose placement is authored derives
+/// nothing here, and its modes bake no deadline rows.
+#[must_use]
+pub fn derived_tier_deadlines(
+    model: &SystemModel,
+    target_rtos: &str,
+    callback_groups: &BTreeMap<String, Vec<CallbackGroupDecl>>,
+) -> BTreeMap<String, TierTiming> {
+    if !crate::derive::placement_is_unauthored(model, target_rtos, callback_groups) {
+        return BTreeMap::new();
+    }
+    crate::derive::derive_tiers_from_contracts(model, target_rtos, callback_groups)
+        .tiers
+        .into_iter()
+        .map(|(name, def)| {
+            let spec = match target_rtos {
+                "zephyr" => def.zephyr.as_ref(),
+                "freertos" => def.freertos.as_ref(),
+                "threadx" => def.threadx.as_ref(),
+                "nuttx" => def.nuttx.as_ref(),
+                "posix" | "native" => def.posix.as_ref(),
+                _ => None,
+            };
+            let priority = spec.map(|p| p.priority);
+            (
+                name,
+                TierTiming {
+                    deadline_us: def.deadline_us.unwrap_or(0),
+                    period_us: def.period_us.unwrap_or(0),
+                    budget_us: def.budget_us.unwrap_or(0),
+                    priority,
+                },
+            )
+        })
+        .collect()
+}
+
+/// phase-462 W4c -- one derived tier's timing, as a mode compares it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TierTiming {
+    /// µs; 0 = none.
+    pub deadline_us: u64,
+    /// µs; 0 = none.
+    pub period_us: u64,
+    /// µs; 0 = none.
+    pub budget_us: u64,
+    /// The allocated priority on this target, when the tier has one.
+    pub priority: Option<i64>,
+}
+
+/// phase-462 W4c -- each mode's derived tier deadlines, and the tiers whose
+/// deadline differs in ANY mode.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ModeTierDeadlines {
+    /// The tiers a mode moves, in name order. A mode table carries one row per
+    /// tier here, the base included, so switching back restores the base.
+    pub tiers: Vec<String>,
+    /// `deadlines[0]` is the base, `deadlines[id]` mode `id`: each tier of
+    /// [`Self::tiers`] in the same order, µs (0 = none).
+    pub deadlines: Vec<Vec<u64>>,
+    /// What a mode changes about a tier that the executor cannot apply at a
+    /// switch (priority, period, budget), as `"mode `m`: <why>"`.
+    pub not_lowered: Vec<String>,
+}
+
+/// phase-462 W4c -- the per-mode deadlines of every derived tier, refusing a
+/// mode whose derived tier SET differs from the base's.
+///
+/// The deadline is the one tier fact a switch can apply: the executor reads
+/// a SchedContext's `deadline_us` when it judges a dispatch, so replacing it
+/// at the next spin takes effect for the next callback. A priority, period or
+/// budget a mode moves is LISTED, not applied: a priority is a thread's,
+/// created once; a period or budget is a reservation armed at boot.
+///
+/// # Errors
+///
+/// [`ModeError::TierSetChanged`] for the first mode that adds or removes a
+/// derived tier; any [`apply_mode`] refusal.
+pub fn mode_tier_deadlines(
+    model: &SystemModel,
+    target_rtos: &str,
+    callback_groups: &BTreeMap<String, Vec<CallbackGroupDecl>>,
+) -> Result<ModeTierDeadlines, ModeError> {
+    let names = mode_names(model);
+    let base = derived_tier_deadlines(model, target_rtos, callback_groups);
+    if names.is_empty() || base.is_empty() {
+        return Ok(ModeTierDeadlines::default());
+    }
+    let mut per_mode = Vec::with_capacity(names.len());
+    let mut not_lowered = Vec::new();
+    for m in &names {
+        let v = apply_mode(model, m)?;
+        let t = derived_tier_deadlines(&v.model, target_rtos, callback_groups);
+        let bk: Vec<String> = base.keys().cloned().collect();
+        let vk: Vec<String> = t.keys().cloned().collect();
+        if bk != vk {
+            let (added, removed) = diff(&bk, &vk);
+            return Err(ModeError::TierSetChanged {
+                mode: m.clone(),
+                added,
+                removed,
+            });
+        }
+        for (name, b) in &base {
+            let x = &t[name];
+            let mut note = |what: &str, from: String, to: String| {
+                not_lowered.push(format!(
+                    "mode `{m}`: tier `{name}` {what} {from} -> {to} is not applied at a \
+                     switch (set once at boot); the mode keeps {from}"
+                ));
+            };
+            if b.priority != x.priority {
+                note(
+                    "priority",
+                    format!("{:?}", b.priority),
+                    format!("{:?}", x.priority),
+                );
+            }
+            if b.period_us != x.period_us {
+                note(
+                    "period_us",
+                    b.period_us.to_string(),
+                    x.period_us.to_string(),
+                );
+            }
+            if b.budget_us != x.budget_us {
+                note(
+                    "budget_us",
+                    b.budget_us.to_string(),
+                    x.budget_us.to_string(),
+                );
+            }
+        }
+        per_mode.push(t);
+    }
+    let tiers: Vec<String> = base
+        .iter()
+        .filter(|(name, b)| {
+            per_mode
+                .iter()
+                .any(|t| t[*name].deadline_us != b.deadline_us)
+        })
+        .map(|(name, _)| name.clone())
+        .collect();
+    let row = |t: &BTreeMap<String, TierTiming>| -> Vec<u64> {
+        tiers.iter().map(|n| t[n].deadline_us).collect()
+    };
+    let mut deadlines = vec![row(&base)];
+    deadlines.extend(per_mode.iter().map(row));
+    Ok(ModeTierDeadlines {
+        tiers,
+        deadlines,
+        not_lowered,
+    })
+}
+
+/// phase-462 W4c -- the latency a mode's switch is allowed: its reaction
+/// path's `max_latency`, in ms, rounded up. `None` when the mode names no
+/// reaction or the path states no latency.
+#[must_use]
+pub fn mode_switch_budget_ms(model: &SystemModel, mode: &str) -> Option<(String, u32)> {
+    let m = model.contracts.modes.get(mode)?;
+    let reaction = m.reaction.as_ref()?;
+    let ms = model
+        .contracts
+        .scope_paths
+        .get(reaction)
+        .or_else(|| model.contracts.node_paths.get(reaction))?
+        .max_latency_ms?;
+    Some((
+        reaction.clone(),
+        ms.ceil().clamp(1.0, f64::from(u32::MAX)) as u32,
+    ))
+}
+
+/// phase-462 W4c -- refuse a mode whose switch cannot meet its budget.
+///
+/// An executor enters a requested mode at its NEXT spin, so the switch's
+/// on-target latency is bounded by the longest spin period among the
+/// executors that switch. `periods` is each tier's `(name, period_us)`, 0 for
+/// a tier that states none. A tier with no period has no bound, so a mode
+/// with a budget is then NOT CHECKED and says so in the returned notes rather
+/// than passing; the run-time rule still judges it.
+///
+/// # Errors
+///
+/// [`ModeError::SwitchTooSlow`] for the first mode the slowest tier misses.
+pub fn check_switch_latency(
+    model: &SystemModel,
+    periods: &[(String, u64)],
+) -> Result<Vec<String>, ModeError> {
+    let mut notes = Vec::new();
+    for m in mode_names(model) {
+        let Some((reaction, budget_ms)) = mode_switch_budget_ms(model, &m) else {
+            continue;
+        };
+        if let Some((tier, _)) = periods.iter().find(|(_, p)| *p == 0) {
+            notes.push(format!(
+                "mode `{m}`: switch latency not checked at build time -- tier `{tier}` states \
+                 no period, so its next spin is unbounded"
+            ));
+            continue;
+        }
+        if let Some((tier, period_us)) = periods.iter().max_by_key(|(_, p)| *p)
+            && *period_us > u64::from(budget_ms) * 1_000
+        {
+            return Err(ModeError::SwitchTooSlow {
+                mode: m,
+                reaction,
+                budget_ms,
+                tier: tier.clone(),
+                period_us: *period_us,
+            });
+        }
+    }
+    Ok(notes)
+}
+
+/// phase-462 W4c -- what one executor's mode tables carry beyond the rows.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ModeExtras {
+    /// `(sched context id, deadline_us)` rows: index 0 the base, `k` mode `k`,
+    /// every entry naming the same contexts in the same order. Empty when no
+    /// mode moves a deadline on this executor.
+    pub deadlines: Vec<Vec<(u8, u32)>>,
+    /// `(switch_budget_ms, reaction path)` per mode, index `k - 1` for mode
+    /// `k` ([`mode_switch_rows`]).
+    pub switch: Vec<(u32, String)>,
+}
+
+/// phase-462 W4c -- each mode's switch budget and reaction path, in
+/// [`mode_names`] order; `(0, "")` for a mode that states none.
+#[must_use]
+pub fn mode_switch_rows(model: &SystemModel) -> Vec<(u32, String)> {
+    mode_names(model)
+        .iter()
+        .map(|m| mode_switch_budget_ms(model, m).map_or((0, String::new()), |(r, b)| (b, r)))
+        .collect()
+}
+
+/// phase-462 W4c -- [`ModeTierDeadlines`] as one executor's deadline rows:
+/// `sc_of(tier)` names the context a tier runs under on this executor, or
+/// `None` when the tier is not this executor's (its rows are skipped).
+#[must_use]
+pub fn deadline_rows(
+    d: &ModeTierDeadlines,
+    sc_of: impl Fn(&str) -> Option<u8>,
+) -> Vec<Vec<(u8, u32)>> {
+    let mine: Vec<(usize, u8)> = d
+        .tiers
+        .iter()
+        .enumerate()
+        .filter_map(|(i, t)| sc_of(t).map(|sc| (i, sc)))
+        .collect();
+    if mine.is_empty() {
+        return Vec::new();
+    }
+    d.deadlines
+        .iter()
+        .map(|per| {
+            mine.iter()
+                .map(|(i, sc)| (*sc, per[*i].min(u64::from(u32::MAX)) as u32))
+                .collect()
+        })
+        .collect()
 }
 
 /// The baked id of each mode, in [`mode_names`] order: `(name, id)`, ids
@@ -444,6 +798,178 @@ pub fn mode_const_name(name: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// phase-462 W4c -- two timer nodes whose callback groups name no tier,
+    /// so the contract derives one tier each; `modes` lands under
+    /// `contracts.modes`, `extra` under `contracts:`.
+    fn tiered(modes: &str, extra: &str) -> SystemModel {
+        let yaml = format!(
+            r#"
+meta:
+  version: 1
+structure:
+  nodes:
+    /control_node:
+      scope: /
+    /telem_node:
+      scope: /
+  topics:
+    /cmd:
+      type: std_msgs/Int32
+      pub: [/control_node/cmd]
+    /status:
+      type: std_msgs/Int32
+      pub: [/telem_node/status]
+contracts:
+  pub_endpoints:
+    /control_node/cmd: {{}}
+    /telem_node/status: {{}}
+  node_paths:
+    /control_node/loop:
+      output: [/control_node/cmd]
+      trigger: {{ kind: timer, value: {{ rate_hz: 100.0 }} }}
+      max_latency_ms: 5.0
+    /telem_node/loop:
+      output: [/telem_node/status]
+      trigger: {{ kind: timer, value: {{ rate_hz: 10.0 }} }}
+      max_latency_ms: 100.0
+{extra}
+  modes:
+{modes}
+"#
+        );
+        SystemModel::from_yaml_str(&yaml).expect("tiered fixture")
+    }
+
+    fn groups() -> BTreeMap<String, Vec<CallbackGroupDecl>> {
+        let g = |id: &str| {
+            vec![CallbackGroupDecl {
+                id: id.to_string(),
+                r#type: "MutuallyExclusive".to_string(),
+                tier: id.to_string(),
+            }]
+        };
+        BTreeMap::from([
+            ("control_node".to_string(), g("ctrl")),
+            ("telem_node".to_string(), g("telem")),
+        ])
+    }
+
+    fn latency(key: &str, value: &str) -> String {
+        ov(
+            "nodes.x.paths.loop.max_latency",
+            value,
+            "node_paths",
+            key,
+            "max_latency",
+        )
+    }
+
+    /// A mode that tightens one path's latency moves that tier's derived
+    /// deadline, and only that tier carries rows -- the base's value first,
+    /// so switching back restores it.
+    #[test]
+    fn a_mode_moves_the_derived_deadline_of_the_tier_it_tightens() {
+        let m = tiered(
+            &format!(
+                "    tight:\n      overrides:\n{}",
+                latency("/control_node/loop", "2ms")
+            ),
+            "",
+        );
+        let d = mode_tier_deadlines(&m, "posix", &groups()).expect("lowers");
+        assert_eq!(d.tiers, ["derived-control_node"]);
+        assert_eq!(d.deadlines, [vec![5_000], vec![2_000]]);
+    }
+
+    /// The negative controls: a model with no modes, and a mode that moves no
+    /// deadline, bake no deadline rows; an authored placement derives none.
+    #[test]
+    fn no_mode_or_no_moved_deadline_means_no_rows() {
+        let none = tiered("    {}", "");
+        assert_eq!(
+            mode_tier_deadlines(&none, "posix", &groups()).unwrap(),
+            ModeTierDeadlines::default()
+        );
+        let rate_only = tiered(
+            &format!(
+                "    quiet:\n      overrides:\n{}",
+                ov(
+                    "nodes.x.pub.cmd.min_rate_hz",
+                    "5",
+                    "pub_endpoints",
+                    "/control_node/cmd",
+                    "min_rate_hz"
+                )
+            ),
+            "",
+        );
+        let d = mode_tier_deadlines(&rate_only, "posix", &groups()).unwrap();
+        assert!(d.tiers.is_empty(), "{d:?}");
+    }
+
+    /// The rendered tables carry each mode's deadline rows -- the base's in
+    /// table 0, so a switch back restores it -- and each mode's budget.
+    #[test]
+    fn the_variant_tables_render_deadlines_and_the_switch_budget() {
+        let empty: (&[MonitorRow], &[AgeRow]) = (&[], &[]);
+        let extras = ModeExtras {
+            deadlines: vec![vec![(0, 5_000)], vec![(0, 2_000)]],
+            switch: vec![(50, "//enter_safe".to_string())],
+        };
+        let text =
+            render_mode_tables_rs(&[empty], &extras, contract_monitors::RenderPaths::NROS_NODE);
+        for want in [
+            "pub static NROS_MODE_DEADLINES_0: &[::nros_node::executor::monitor::ModeDeadline] = &[",
+            "ModeDeadline { sc: 0u8, deadline_us: 5000u32 }",
+            "ModeDeadline { sc: 0u8, deadline_us: 2000u32 }",
+            "deadlines: NROS_MODE_DEADLINES_0, switch_budget_ms: 0u32, reaction: \"\" }",
+            "deadlines: NROS_MODE_DEADLINES_1, switch_budget_ms: 50u32, reaction: \"//enter_safe\" }",
+        ] {
+            assert!(text.contains(want), "missing `{want}` in:\n{text}");
+        }
+        let d = ModeTierDeadlines {
+            tiers: vec!["a".into(), "b".into()],
+            deadlines: vec![vec![1, 2], vec![3, 4]],
+            not_lowered: Vec::new(),
+        };
+        assert_eq!(
+            deadline_rows(&d, |t| (t == "b").then_some(7)),
+            [vec![(7, 2)], vec![(7, 4)]],
+            "only this executor's tiers"
+        );
+        assert!(deadline_rows(&d, |_| None).is_empty());
+    }
+
+    /// A switch budget below the slowest tier's period refuses; at or above
+    /// it passes; a tier with no period is stated as not checked.
+    #[test]
+    fn a_switch_slower_than_its_reaction_budget_refuses() {
+        let reaction = "  scope_paths:\n    //enter_safe:\n      input: [/cmd]\n      \
+                        output: [/cmd]\n      max_latency_ms: 50.0\n";
+        let m = tiered(
+            &format!(
+                "    safe:\n      reaction: //enter_safe\n      overrides:\n{}",
+                latency("/control_node/loop", "2ms")
+            ),
+            reaction,
+        );
+        assert_eq!(
+            mode_switch_budget_ms(&m, "safe"),
+            Some(("//enter_safe".to_string(), 50))
+        );
+        let slow = [("ctrl".to_string(), 10_000), ("telem".to_string(), 100_000)];
+        let e = check_switch_latency(&m, &slow).unwrap_err();
+        assert!(
+            matches!(&e, ModeError::SwitchTooSlow { tier, period_us: 100_000, .. } if tier == "telem"),
+            "{e}"
+        );
+        let fast = [("ctrl".to_string(), 10_000), ("telem".to_string(), 50_000)];
+        assert!(check_switch_latency(&m, &fast).unwrap().is_empty());
+        let unbounded = [("ctrl".to_string(), 10_000), ("idle".to_string(), 0)];
+        let notes = check_switch_latency(&m, &unbounded).unwrap();
+        assert!(notes[0].contains("not checked"), "{notes:?}");
+    }
 
     /// One talker publishing `/cmd` at 10 Hz from a 20 ms node path, one
     /// listener taking it with a 200 ms age, and the modes under test.
@@ -624,7 +1150,11 @@ contracts:
             .iter()
             .map(|(_, r, a)| (r.as_slice(), a.as_slice()))
             .collect();
-        let text = render_mode_tables_rs(&slices, contract_monitors::RenderPaths::NROS_NODE);
+        let text = render_mode_tables_rs(
+            &slices,
+            &ModeExtras::default(),
+            contract_monitors::RenderPaths::NROS_NODE,
+        );
         assert!(
             text.contains("pub static NROS_MODE_MONITORS_1: &[MonitorSpec] = &["),
             "{text}"
@@ -632,14 +1162,24 @@ contracts:
         assert!(text.contains("min_rate_hz_milli: 5000u32"), "{text}");
         assert!(text.contains("cell: &NROS_MONITOR_CELL_0"), "{text}");
         assert!(
-            text.contains("ModeTables { monitors: NROS_MONITORS, ages: NROS_AGE_MONITORS }"),
+            text.contains(
+                "ModeTables { monitors: NROS_MONITORS, ages: NROS_AGE_MONITORS, deadlines: &[], \
+                 switch_budget_ms: 0u32, reaction: \"\" }"
+            ),
             "{text}"
         );
         assert!(
-            text.contains("monitors: NROS_MODE_MONITORS_1, ages: NROS_MODE_AGE_MONITORS_1"),
+            text.contains("monitors: NROS_MODE_MONITORS_1, ages: NROS_MODE_AGE_MONITORS_1, "),
             "{text}"
         );
-        assert!(render_mode_tables_rs(&[], contract_monitors::RenderPaths::NROS_NODE).is_empty());
+        assert!(
+            render_mode_tables_rs(
+                &[],
+                &ModeExtras::default(),
+                contract_monitors::RenderPaths::NROS_NODE
+            )
+            .is_empty()
+        );
         assert_eq!(mode_ids(&model(&modes)), [("degraded".to_string(), 1)]);
         assert_eq!(mode_const_name("degraded-safe"), "DEGRADED_SAFE");
         assert_eq!(mode_const_name("2x"), "_2X");

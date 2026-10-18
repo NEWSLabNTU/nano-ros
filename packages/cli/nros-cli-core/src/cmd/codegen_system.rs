@@ -473,6 +473,10 @@ pub fn run(args: Args) -> Result<()> {
         Vec<crate::orchestration::model_ingest::AgeRow>,
     )> = Vec::new();
     let mut model_transports: Vec<crate::orchestration::plan::PlanTransport> = Vec::new();
+    // phase-462 W4c -- each mode's switch budget, and the model it is checked
+    // against once the tier table (whose spin periods bound it) is resolved.
+    let mut model_mode_switch: Vec<(u32, String)> = Vec::new();
+    let mut switch_model: Option<ros_launch_manifest_model::SystemModel> = None;
     // R-code.2 — convention discovery: with no explicit `--model`, a committed
     // `<bringup>/config/system_model.yaml` IS the model. Users (and every
     // vendor seam that shells this verb — the zephyr module, the pio
@@ -542,6 +546,29 @@ pub fn run(args: Args) -> Result<()> {
                 (rows, ages)
             })
             .collect();
+        // phase-462 W4c -- a mode's derived tier deadlines are NOT baked on this
+        // road: `system_monitors.rs` is installed by whichever entry includes
+        // it, on sched contexts that entry creates, so no context id is known
+        // here. Say so per moved tier rather than drop it.
+        if !model_modes.is_empty() {
+            let moved = nros_orchestration_ir::mode_variants::mode_tier_deadlines(
+                &model,
+                &target_rtos,
+                &callback_groups,
+            )
+            .map_err(|e| eyre::eyre!("codegen-system: {e}"))?;
+            for t in &moved.tiers {
+                eprintln!(
+                    "codegen-system: a mode moves tier `{t}`'s deadline; not lowered on this \
+                     road (the entry that includes system_monitors.rs owns its sched contexts)"
+                );
+            }
+            for n in &moved.not_lowered {
+                eprintln!("codegen-system: {n}");
+            }
+            model_mode_switch = nros_orchestration_ir::mode_variants::mode_switch_rows(&model);
+            switch_model = Some(model.model.clone());
+        }
         // R1-N3 — transports ride the bake plan.
         model_transports = crate::orchestration::model_ingest::plan_transports(&model)?;
         // Issue 0257 — refuse a bake whose modelled entity count cannot fit the
@@ -705,6 +732,26 @@ pub fn run(args: Args) -> Result<()> {
     // RFC-0052 W2 — bake-time reject for knobs the selected target can't honor.
     nros_orchestration_ir::validate_tier_platform_applicability(&tier_table, &target_rtos)
         .map_err(|e| eyre::eyre!(e))?;
+    // phase-462 W4c -- a mode's switch must fit its reaction budget at the
+    // slowest tier's spin (the same refusal `nros::main!` and the entry road
+    // make).
+    if let Some(model) = &switch_model {
+        let periods: Vec<(String, u64)> = tier_table
+            .tiers
+            .iter()
+            .map(|t| {
+                (
+                    t.name.clone(),
+                    t.spin_period_us.or(t.period_us).unwrap_or(0),
+                )
+            })
+            .collect();
+        for n in nros_orchestration_ir::mode_variants::check_switch_latency(model, &periods)
+            .map_err(|e| eyre::eyre!("codegen-system: {e}"))?
+        {
+            eprintln!("codegen-system: {n}");
+        }
+    }
 
     // Phase 212.L.6 — resolve the launch input. For a Path A bringup
     // pkg (no Cargo.toml, no CMakeLists.txt) we surface the resolver's
@@ -741,6 +788,7 @@ pub fn run(args: Args) -> Result<()> {
         model_ages,
         model_hazards,
         model_modes,
+        &model_mode_switch,
         model_transports,
     )?;
 
@@ -977,6 +1025,7 @@ fn emit_bake_tree(
         Vec<crate::orchestration::model_ingest::MonitorRow>,
         Vec<crate::orchestration::model_ingest::AgeRow>,
     )>,
+    mode_switch: &[(u32, String)],
     transports: Vec<crate::orchestration::plan::PlanTransport>,
 ) -> Result<()> {
     fs::create_dir_all(bake_dir)
@@ -1036,6 +1085,10 @@ fn emit_bake_tree(
                     .iter()
                     .map(|(r, a)| (r.as_slice(), a.as_slice()))
                     .collect::<Vec<_>>(),
+                &nros_orchestration_ir::mode_variants::ModeExtras {
+                    deadlines: Vec::new(),
+                    switch: mode_switch.to_vec(),
+                },
                 nros_orchestration_ir::contract_monitors::RenderPaths::NROS_NODE,
             )),
         )?;

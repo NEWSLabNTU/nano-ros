@@ -752,6 +752,74 @@ fn golden_monitor_rows() -> (
     )
 }
 
+/// phase-462 W4c -- a mode's tier deadline lowers onto the context each
+/// shape names: the single sched-context executor by TIER INDEX through
+/// `__nros_sc_ids`, a tier executor at its default context 0 (only on the
+/// moved tier's table), with the switch budget on every mode.
+#[test]
+fn a_mode_tier_deadline_lowers_onto_each_executor_shape() {
+    use super::emit::{ModeTier, emit_typed_monitored_lowered};
+    let (rows, ages) = golden_monitor_rows();
+    let modes = vec![("tight".to_string(), rows.clone(), ages.clone())];
+    let tier = ModeTier {
+        deadlines: nros_orchestration_ir::mode_variants::ModeTierDeadlines {
+            tiers: vec!["high".to_string()],
+            deadlines: vec![vec![5_000], vec![2_000]],
+            not_lowered: Vec::new(),
+        },
+        switch: vec![(50, "//enter_tight".to_string())],
+    };
+    let emit = |lang: Lang, p: &Plan| {
+        emit_typed_monitored_lowered(lang, p, &rows, &ages, None, &modes, &tier)
+            .expect("emit")
+            .0
+    };
+
+    // The sched-context shape: one executor, the tier's index translated.
+    let sched = emit(Lang::C, &group_split(c_tiered_plan("linux")));
+    for want in [
+        "static const nros_cpp_mode_deadline_t __nros_mode_deadlines_0[1] = {\n    { 0u, 5000u },",
+        "static const nros_cpp_mode_deadline_t __nros_mode_deadlines_1[1] = {\n    { 0u, 2000u },",
+        "__nros_mode_deadlines_1, 1u, 50u, \"//enter_tight\" }",
+        ".sc_ids = __nros_sc_ids,",
+        "(NROS_CPP_MODE_TABLE_STORAGE + 1u * NROS_CPP_MODE_DEADLINE_STORAGE)",
+    ] {
+        assert!(sched.contains(want), "missing `{want}`:\n{sched}");
+    }
+
+    // The tier shape: only the moved tier's table carries rows, at context 0.
+    for (lang, p) in [
+        (Lang::C, c_tiered_plan("linux")),
+        (Lang::Cpp, cpp_tiered_plan("linux")),
+    ] {
+        let src = emit(lang, &p);
+        assert!(
+            src.contains(
+                "nros_cpp_mode_deadline_t __nros_mode_deadlines_t0_0[1] = {\n    { 0u, 5000u },"
+            ),
+            "{src}"
+        );
+        assert!(!src.contains("__nros_mode_deadlines_t1_0"), "{src}");
+        assert!(!src.contains(".sc_ids = __nros_sc_ids"), "{src}");
+        assert!(src.contains("50u, \"//enter_tight\" }"), "{src}");
+    }
+
+    // The negative control: no mode moves a deadline, so no row and no sc_ids.
+    let none = emit_typed_monitored_lowered(
+        Lang::C,
+        &group_split(c_tiered_plan("linux")),
+        &rows,
+        &ages,
+        None,
+        &modes,
+        &ModeTier::default(),
+    )
+    .expect("emit")
+    .0;
+    assert!(!none.contains("nros_cpp_mode_deadline_t"), "{none}");
+    assert!(none.contains(".n_base_deadlines = 0u,"), "{none}");
+}
+
 /// Where the goldens live.
 ///
 /// OUTSIDE `src/`, and every file carries a `.golden` suffix, because a golden

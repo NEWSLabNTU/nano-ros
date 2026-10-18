@@ -819,6 +819,14 @@ fn derive_entry_tiers(
                 )
             })
             .collect(),
+        // phase-462 W4c -- each mode's deadlines for the tiers derived above,
+        // refused here when a mode would change which tiers exist.
+        mode_deadlines: nros_orchestration_ir::mode_variants::mode_tier_deadlines(
+            &model,
+            target_rtos,
+            callback_groups,
+        )
+        .map_err(|e| eyre::eyre!("codegen entry: {e}"))?,
     };
     // MERGE, never assign: a `derived-<node>` name is one no author writes, and
     // a placement lands on the authored tier that asked for one, so neither can
@@ -855,6 +863,9 @@ pub struct EntryDerivation {
     pub degradations: Vec<String>,
     /// Authored priorities that won over an allocated one, one line each.
     pub shadowed: Vec<String>,
+    /// phase-462 W4c -- each contract mode's deadline for the derived tiers a
+    /// mode moves (empty without modes).
+    pub mode_deadlines: nros_orchestration_ir::mode_variants::ModeTierDeadlines,
 }
 
 /// Phase 269 (W4) — resolve `[tiers.*]` + `[[node_overrides]]` + per-node

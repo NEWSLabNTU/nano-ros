@@ -331,6 +331,22 @@ pub struct MonitorTable {
     /// row for row, in mode-id order (mode `i + 1` is `modes[i]`).
     #[serde(default)]
     pub modes: Vec<ModeVariantRows>,
+    /// phase-462 W4c -- the base's deadline for each sched context a mode
+    /// moves on this executor (each mode's `deadlines` names the same ones).
+    #[serde(default)]
+    pub base_deadlines: Vec<ModeDeadlineRow>,
+    /// phase-462 W4c -- each row's `sc` is a TIER INDEX into the setup's
+    /// `__nros_sc_ids` (the single-executor sched shape), not a context id.
+    #[serde(default)]
+    pub deadline_sc_is_tier: bool,
+}
+
+/// phase-462 W4c -- one sched-context deadline in one mode
+/// (`nros_cpp_mode_deadline_t`).
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ModeDeadlineRow {
+    pub sc: u8,
+    pub deadline_us: u32,
 }
 
 /// phase-462 W4b -- one contract mode's numbers for a [`MonitorTable`], in the
@@ -341,6 +357,16 @@ pub struct ModeVariantRows {
     pub rows: Vec<ModeRow>,
     /// Each age row's `max_age_ms`.
     pub ages: Vec<u32>,
+    /// phase-462 W4c -- this mode's deadline for each context of
+    /// [`MonitorTable::base_deadlines`], in its order.
+    #[serde(default)]
+    pub deadlines: Vec<ModeDeadlineRow>,
+    /// phase-462 W4c -- how long entering this mode may take, ms; 0 = none.
+    #[serde(default)]
+    pub switch_budget_ms: u32,
+    /// phase-462 W4c -- the reaction path that budget belongs to ("" = none).
+    #[serde(default)]
+    pub reaction: String,
 }
 
 /// phase-462 W4b -- one contract mode's name and the suffix of its id
