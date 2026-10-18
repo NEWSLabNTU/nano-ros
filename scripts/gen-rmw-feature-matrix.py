@@ -130,9 +130,12 @@ FEATURES = [
     # Issue 1940 put this row back. phase-407 had retired the slots (issue 0960
     # DECLINED the trio) and the row went with them, because a row names a slot
     # the canonical vtable has. A Rust backend answers through the adapter, so
-    # its evidence is the trait method the adapter forwards to.
+    # its evidence is the trait method the adapter forwards to. All three
+    # slots: a backend that wakes subscriptions alone is not "wired" here.
     ("Entity new-data callbacks",
-     any_of(["subscription_set_on_new_message_callback"]),
+     any_of(["subscription_set_on_new_message_callback",
+             "service_set_on_new_request_callback",
+             "client_set_on_new_response_callback"]),
      [r"fn register_waker"]),
     ("Graph introspection (names/types/counts)",
      any_of(["get_node_names", "get_topic_names_and_types", "count_publishers"]),
