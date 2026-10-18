@@ -141,6 +141,20 @@ are prefixed with the enum name (`prefix_with_name = true`) to avoid C++ name co
 
 ## FreeRTOS pitfalls
 
+- **On an A/R-profile port (`ARM_CRx_No_GIC`, `ARM_CR5`, `ARM_CA9`, AArch64) every
+  task must get an FPU context** — issue 0997. Those ports default
+  `configUSE_TASK_FPU_SUPPORT` to 1, which saves a task's VFP/NEON registers only
+  after it calls `vPortTaskUsesFPU()`; nothing calls it, and a hard-float build
+  uses the d-registers in integer code (64-bit constants, struct copies, NEON
+  `memcpy`). The result does not look like an FPU bug: Cyclone stamped its timed
+  events `tsched = 0` (a `vstr d8` of `DDS_NEVER`), stopped rescheduling SPDP and
+  PMD, and the participant went silent ~100 ms after discovery; the same stale
+  stamp later surfaced as a heap_4 double free. Set `configUSE_TASK_FPU_SUPPORT 2`
+  in the board's `FreeRTOSConfig.h` and `configFPU_D32` with
+  `nros_freertos_config_define()` — NOT in the header, because `portASM.S` never
+  includes it and the two halves of the task frame would disagree. Gate:
+  `check-freertos-fpu-context`. Cortex-M FPU ports stack the FPU lazily in
+  hardware and need none of this.
 - Stack overflow → "Invalid mbox". **The three numbers this entry used to name are all gone —
   read it as a symptom, not as a recipe** (corrected phase-392 W6, 2026-09-06):
   - `Executor` has NOT held an inline `arena: [MaybeUninit<u8>; ARENA_SIZE]` since phase-271

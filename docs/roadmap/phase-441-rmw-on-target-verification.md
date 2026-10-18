@@ -1,7 +1,7 @@
 # Phase 441 — the one "on-target" live-peer cell runs on host sockets
 
-**Status (2026-10-18). W1–W5 and W7 DONE; REVISED — W6 and W8 are open, and they
-are the homed issues' work.** The two cells this phase was opened for have met a live peer:
+**Status (2026-10-18). W1–W5 and W7 DONE; REVISED — W6's live cell PASSES (issue
+0997 found and fixed on it); W6's fragmented leg (0917) and W8 are open.** The two cells this phase was opened for have met a live peer:
 `zephyr-cortex-m-pubsub-c-zenoh` and `freertos-mps2-pubsub-c-zenoh-n2r` each carry a
 recorded `pass` in `.config/interop-verdicts.toml` (2026-10-11, rmw_zenoh_cpp on
 Humble, 8.7 s and 5.7 s), and the scheduled `live-peer` lane has run both every night
@@ -736,6 +736,21 @@ writer matched, and the guest's lease expiring 10.4 s later — 0997's shape,
 reproduced in-tree for the first time (details in 0997). The fragmented leg for
 0917 waits on it.
 
+**Second verdict PASS, 2026-10-18 — 0997 found and fixed on this cell.** The guest
+side, traced (Cyclone's trace reaches the console through `stderr`) and read over
+the gdb stub: the guest sent 15 frames in its first 100 ms and none afterwards,
+because its periodic SPDP and PMD events were never rescheduled — they had been
+stamped `tsched = 0`. The cause was not Cyclone: neither Cortex-R52 board set
+`configUSE_TASK_FPU_SUPPORT`, so no FreeRTOS task had an FPU context, and the
+hard-float code GCC emits (here `vstr d8` of `DDS_NEVER`) shared the d-registers
+across context switches. Both R52 boards now set it to 2 and state
+`configFPU_D32=1` on `freertos_config`; `check-freertos-fpu-context` holds the
+class. The cell passed 3 of 3 runs at the cyclonedds pin and the ledger records
+`pass`, so the `live-peer` board lane now runs it. Full account in
+[0997](../issues/archived/0997-island-announces-spdp-once-then-lease-expires.md).
+What remains of W6 is the fragmented leg for 0917, which no longer has a
+small-sample failure in front of it.
+
 ### W7 — re-measure 1281, then close or narrow it
 
 Run `c_riscv_nuttx_talker_delivers_cross_process` solo, 10 times, on freshly built
@@ -798,7 +813,7 @@ evidence, the item is *close it*.
 | [#1139](../issues/archived/1139-cyclone-ros2-pubsub-e2e-flakes-under-the-parallel-gate.md) | `nros_rmw_cyclonedds_ros2_pubsub_e2e` fails under the 21-way parallel run. Today it is a row in phase-444's verdict table reading 'open | Acceptance, still unmet' — a status, not an owner; its acceptance needs a live peer, which is this phase |
 | [#1251](../issues/archived/1251-cyclone-slirp-needs-nat-profile.md) | a Cyclone peer for a QEMU guest cannot be loopback-pinned. It is W2's own residue and appears only as prerequisite #3 of a prose list |
 | [#0917](../issues/0917-an536-fragmented-sample-never-syncs.md) | re-homed 2026-10-12 from phase-358 (archived). Interrupt-driven RX landed, but the an536 FreeRTOS Cyclone target still never syncs a fragmented sample. Getting an on-target verdict on it is this phase's job |
-| [#0997](../issues/0997-island-announces-spdp-once-then-lease-expires.md) | re-homed 2026-10-12 from phase-414 (archived). On FreeRTOS + Cyclone the timed-event tree empties itself, so the SPDP resend is scheduled and never lands. The root cause is still unknown, and only an on-target run can show it |
+| [#0997](../issues/archived/0997-island-announces-spdp-once-then-lease-expires.md) | re-homed 2026-10-12 from phase-414 (archived). **Resolved 2026-10-18 on W6's cell**: no FreeRTOS task on the Cortex-R52 boards had an FPU context, so hard-float code clobbered other tasks' d-registers; Cyclone stamped its events `tsched = 0` and its SPDP/PMD events stopped rescheduling. Fixed in both R52 boards' FreeRTOS config, gated by `check-freertos-fpu-context`. |
 | [#0814](../issues/0814-lending-never-exercised-on-hardware.md) | re-homed 2026-10-13 from phase-433 (archived). The zero-copy lending surface is enabled only by a posix test crate, so no embedded target has run it. An on-target cell with lending on closes it. |
 
 ## Issues homed here (2026-10-17)

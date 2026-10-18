@@ -1,13 +1,14 @@
 ---
 id: 997
 title: "The timed-event tree empties itself on FreeRTOS: the SPDP resend is scheduled, never lands in the queue, and every peer expires the participant's lease"
-status: open
+status: resolved
 area: [rmw, platform, embedded]
 severity: high
-related: [0917, 0888, phase-177, phase-441]
+related: [0917, 0888, 1000, phase-177, phase-441]
+resolved: 2026-10-18
 ---
 
-**Home: [phase-441](../roadmap/phase-441-rmw-on-target-verification.md)** — re-homed 2026-10-12 from phase-414, which is archived.
+**Home: [phase-441](../../roadmap/phase-441-rmw-on-target-verification.md)** — re-homed 2026-10-12 from phase-414, which is archived.
 
 # The announcements are correct, on schedule, and then they stop
 
@@ -349,3 +350,68 @@ so whether the guest's timed-event tree empties (this issue's located root
 cause) or its sends stop for another reason is not measured here. The cell
 is the reproduction to measure it on; the GVLOGDISC lines "What the empty
 tree actually implies" asks for need a console sink first.
+
+## RESOLVED 2026-10-18 — tasks shared the FPU registers; Cyclone stamped its events 0
+
+**Cause.** Neither Cortex-R52 board (`mps3-an536-freertos`, `s32z270-freertos`)
+set `configUSE_TASK_FPU_SUPPORT`, so the `GCC/ARM_CRx_No_GIC` port's default of
+1 applied: a task is created without a floating-point context, and its VFP/NEON
+registers are saved across a context switch only after it calls
+`vPortTaskUsesFPU()`. Nothing in the tree calls it. Every object on these
+boards is compiled `-mfloat-abi=hard -mfpu=neon-fp-armv8`, and GCC uses the
+d-registers in code with no floating point in it, so every task's
+d-registers were live and unsaved.
+
+Cyclone's event loop is where it showed. `handle_xevents` stamps an event it is
+about to run with `tsched = DDS_NEVER`, and GCC emits that as one `vldr d8,
+<INT64_MAX>` at function entry and a `vstr d8` per event. Another task's VFP use
+replaced `d8` while `tev` was descheduled, so events were stamped
+**`tsched = 0`** instead — read live over the gdb stub, on the handler's own
+event and on deleted acknack events. Both symptoms follow from that one value:
+
+- `resched_xevent_if_earlier` refuses a time that is not earlier than the
+  stored one, and no time is earlier than 0. The periodic SPDP and PMD events
+  were therefore never rescheduled after their first firing — the empty
+  `xevents` tree recorded above, measured again in-tree: SPDP + PMD on the heap
+  at 4 s, PMD alone at 12 s, an empty tree at 22 s.
+- `delete_xevent` treats `tsched != DDS_NEVER` as "on the heap" and calls
+  `ddsrt_fibheap_decrease_key` on an event that is not in it. The heap then
+  holds a node already handed back, which surfaced at peer teardown as a heap_4
+  double free of an `XEVK_ACKNACK` (`heap_4.c:369`) and once as a corrupted
+  queue (`queue.c:364`).
+
+On the wire (QEMU `filter-dump`): the guest sent 15 frames in its first 100 ms
+of discovery and nothing for the rest of a 40 s run, while the host kept sending
+to it; Cyclone's write path reached `nn_xpack_send_real` and stopped there, and
+no handler sent SPDP again. That is this issue's headline.
+
+**Why the earlier hunts did not find it.** Every reading above is correct about
+Cyclone's logic; the logic was fine. The 2026-09-04 retractions (the
+`resched_xevent_if_earlier` lost update, the half-updated transmit list) were
+right to retract, and #1000 was right that the handler early returns do not
+orphan events. The defect was one layer down, in a register the C source never
+names. It also hides under any instrumentation that changes scheduling: with a
+gdb breakpoint on every allocation the same image delivered 99 samples in
+120 s.
+
+**Fix.** `configUSE_TASK_FPU_SUPPORT 2` in both boards' `FreeRTOSConfig.h` (every
+task gets an FPU context), plus `configFPU_D32=1` as a compile definition on
+`freertos_config` in both board cmake files: the image uses d16-d31, and the port
+saves them only with that switch, which must reach `portASM.S` (it never
+includes `FreeRTOSConfig.h`). 260 bytes of stack per task. Gated by
+`check-freertos-fpu-context`.
+
+**Verified.** phase-441 W6's cell `freertos-an536-pubsub-cpp-cyclone-n2r`, which
+received 0 samples in 75 s before the fix, passed 3 of 3 consecutive runs after
+it with cyclonedds at its pin, and the ledger records `pass`. Five hand runs
+with a guest-side discovery trace delivered counters 0..50+ continuously with
+no lease expiry and no heap assert, and the guest kept transmitting (~90 frames
+against 15). `freertos_qemu::an536_cyclonedds_cpp_entry_delivers_within_the_dds_heap_default`
+still passes under its heap budget.
+
+**Found on the way, separate.** Cyclone's `vlog` scratch buffer is one object
+for every task on FreeRTOS (GCC emulated TLS over single-threaded newlib
+gthreads), written under a SHARED read lock, so two tracing threads could run
+`pos` past the buffer. Fixed in the cyclonedds fork (`ddsrt: take the log sink
+lock exclusively where the scratch buffer is shared`), not needed for this
+issue's fix and not yet in the pinned commit.

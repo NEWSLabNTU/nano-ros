@@ -398,6 +398,15 @@ zephyr-kconfig-knobs:
 kconfig-overridden-values:
     @python3 scripts/check-kconfig-overridden-values.py
 
+# issue 0997 — a FreeRTOS board on an FPU-optional port (ARM_CRx/CR5/CA9/AArch64)
+# sets `configUSE_TASK_FPU_SUPPORT 2` in its FreeRTOSConfig.h and states
+# `configFPU_D32` as a compile definition portASM.S can see. Without the first,
+# hard-float tasks clobber each other's d-registers; mps3-an536's Cyclone
+# participant went silent after discovery for exactly that reason.
+[group("checks")]
+freertos-fpu-context:
+    @python3 scripts/check-freertos-fpu-context.py
+
 # phase-481 W2 (RFC-0098 D10/D11) — a tracked `examples/**/*.conf` may not
 # assign a nano-ros knob (the RMW choice, the language API, the deploy endpoint,
 # or any `CONFIG_NROS_*` an `[image.<id>] env` row renders to): the module's

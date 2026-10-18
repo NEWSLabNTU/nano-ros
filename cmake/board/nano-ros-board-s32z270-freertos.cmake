@@ -94,6 +94,9 @@ if(NOT TARGET freertos_kernel)
     # directory has assembly.
     nros_freertos_build_kernel(PORT "${FREERTOS_PORT}")
 endif()
+# Issue 0997 — save d16-d31 too; a compile definition so portASM.S sees it
+# (see cmake/board/nano-ros-board-mps3-an536-freertos.cmake).
+nros_freertos_config_define(configFPU_D32=1)
 # configUSE_TRACE_FACILITY (CycloneDDS's ddsrt_gettid() needs vTaskGetInfo())
 # is stated in FreeRTOSConfig.h, never as a compile definition here: it changes
 # the layout of every kernel object, and a `-D` on this target never reached the
