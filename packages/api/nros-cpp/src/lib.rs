@@ -5258,7 +5258,9 @@ pub struct nros_cpp_mode_age_row_t {
 }
 
 /// phase-462 W4b -- one contract mode: exactly as many rows (and ages) as the
-/// base tables `nros_cpp_install_monitors` installed, in the same order.
+/// base tables `nros_cpp_install_monitors` installed, in the same order -- or
+/// `rows` NULL with `n_rows` 0 (likewise `ages`) to judge by the base table
+/// itself, for a mode whose numbers are the base's.
 #[cfg(feature = "rmw-cffi")]
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
@@ -5293,8 +5295,10 @@ pub struct nros_cpp_mode_deadline_t {
 /// phase-462 W4b -- the modes `nros_cpp_install_modes` installs: mode id `i`
 /// is `modes[i - 1]` (0 is the base). `storage` is static, 8-aligned, and at
 /// least `(n_modes + 1) * (NROS_CPP_MODE_TABLE_STORAGE + n_base_deadlines *
-/// NROS_CPP_MODE_DEADLINE_STORAGE) + n_modes * (n_rows *
-/// NROS_CPP_MODE_ROW_STORAGE + n_ages * NROS_CPP_MODE_AGE_STORAGE)` bytes.
+/// NROS_CPP_MODE_DEADLINE_STORAGE) + n_row_modes * n_rows *
+/// NROS_CPP_MODE_ROW_STORAGE + n_age_modes * n_ages * NROS_CPP_MODE_AGE_STORAGE`
+/// bytes, where `n_row_modes` / `n_age_modes` count the modes with rows (ages)
+/// of their own; a mode that aliases the base costs only its table.
 #[cfg(feature = "rmw-cffi")]
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
@@ -5373,7 +5377,12 @@ const _: () = {
 /// switch. `nros_cpp_request_mode` then switches every executor at its next
 /// spin.
 ///
-/// Refused: a mode whose row counts are not the base's
+/// A mode whose `rows` is NULL with `n_rows == 0` judges by the BASE rate
+/// table itself (no copy, no storage), and likewise for `ages`: the entry
+/// bakes that for a mode whose numbers equal the base's. Its switch budget,
+/// reaction and deadlines still apply when it is entered.
+///
+/// Refused: a mode whose row counts are neither the base's nor an alias
 /// (`NROS_CPP_RET_INVALID_ARGUMENT`), and a short or misaligned buffer
 /// (`NROS_CPP_RET_FULL`). `n_modes == 0` installs nothing.
 ///
@@ -5387,8 +5396,6 @@ pub unsafe extern "C" fn nros_cpp_install_modes(
     handle: *mut c_void,
     tables: *const nros_cpp_mode_tables_t,
 ) -> nros_cpp_ret_t {
-    use core::mem::size_of;
-    use nros::monitor::{AgeMonitorSpec, ModeDeadline, ModeTables, MonitorSpec};
     let Some(ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
@@ -5398,21 +5405,53 @@ pub unsafe extern "C" fn nros_cpp_install_modes(
     if t.n_modes == 0 {
         return NROS_CPP_RET_OK;
     }
-    if t.modes.is_null() || t.storage.is_null() || !(t.storage as usize).is_multiple_of(8) {
-        return NROS_CPP_RET_INVALID_ARGUMENT;
-    }
     let base_rows = ctx.executor.monitor_table();
     let base_ages = ctx.executor.age_table();
+    // SAFETY: forwarded from this function's contract.
+    let all = match unsafe { carve_mode_tables(base_rows, base_ages, t) } {
+        Ok(all) => all,
+        Err(ret) => return ret,
+    };
+    match ctx.executor.set_mode_tables(all) {
+        Ok(()) => NROS_CPP_RET_OK,
+        Err(e) => {
+            cpp_diag!("install_modes: {}", e);
+            NROS_CPP_RET_INVALID_ARGUMENT
+        }
+    }
+}
+
+/// The carve half of [`nros_cpp_install_modes`]: build the `ModeTables` for
+/// the base and every mode of `t` in `t.storage`, over the installed base
+/// tables. A mode with its own rows gets a copy of the base specs with its
+/// numbers; a mode that aliases (`rows` NULL, `n_rows` 0) gets the base slice
+/// itself and takes no storage. Ages alike.
+///
+/// # Safety
+/// `t` must satisfy [`nros_cpp_install_modes`]'s contract, with
+/// `t.n_modes > 0`.
+#[cfg(feature = "rmw-cffi")]
+unsafe fn carve_mode_tables(
+    base_rows: &'static [nros::monitor::MonitorSpec],
+    base_ages: &'static [nros::monitor::AgeMonitorSpec],
+    t: &nros_cpp_mode_tables_t,
+) -> Result<&'static [nros::monitor::ModeTables], nros_cpp_ret_t> {
+    use core::mem::size_of;
+    use nros::monitor::{AgeMonitorSpec, ModeDeadline, ModeTables, MonitorSpec};
+    if t.modes.is_null() || t.storage.is_null() || !(t.storage as usize).is_multiple_of(8) {
+        return Err(NROS_CPP_RET_INVALID_ARGUMENT);
+    }
     let modes = unsafe { core::slice::from_raw_parts(t.modes, t.n_modes) };
     let nd = t.n_base_deadlines;
     if nd > 0 && t.base_deadlines.is_null() {
-        return NROS_CPP_RET_INVALID_ARGUMENT;
+        return Err(NROS_CPP_RET_INVALID_ARGUMENT);
     }
+    // A mode aliases the base table when it states no rows at all.
+    let own_rows = |m: &nros_cpp_mode_t| !(m.n_rows == 0 && m.rows.is_null());
+    let own_ages = |m: &nros_cpp_mode_t| !(m.n_ages == 0 && m.ages.is_null());
     for m in modes {
-        if m.n_rows != base_rows.len()
-            || m.n_ages != base_ages.len()
-            || (m.n_rows > 0 && m.rows.is_null())
-            || (m.n_ages > 0 && m.ages.is_null())
+        if (own_rows(m) && (m.n_rows != base_rows.len() || m.rows.is_null()))
+            || (own_ages(m) && (m.n_ages != base_ages.len() || m.ages.is_null()))
             || m.n_deadlines != nd
             || (nd > 0 && m.deadlines.is_null())
         {
@@ -5423,20 +5462,27 @@ pub unsafe extern "C" fn nros_cpp_install_modes(
                 base_rows.len(),
                 base_ages.len()
             );
-            return NROS_CPP_RET_INVALID_ARGUMENT;
+            return Err(NROS_CPP_RET_INVALID_ARGUMENT);
         }
     }
     let n = t.n_modes;
-    let per_mode = core::mem::size_of_val(base_rows) + core::mem::size_of_val(base_ages);
+    let rows_bytes = core::mem::size_of_val(base_rows);
+    let ages_bytes = core::mem::size_of_val(base_ages);
+    let specs_total: usize = modes
+        .iter()
+        .map(|m| {
+            (if own_rows(m) { rows_bytes } else { 0 }) + (if own_ages(m) { ages_bytes } else { 0 })
+        })
+        .sum();
     let per_deadlines = nd * size_of::<ModeDeadline>();
-    let needed = (n + 1) * (size_of::<ModeTables>() + per_deadlines) + n * per_mode;
+    let needed = (n + 1) * (size_of::<ModeTables>() + per_deadlines) + specs_total;
     if needed > t.storage_len {
         cpp_diag!(
             "install_modes: storage holds {} bytes, the modes need {}",
             t.storage_len,
             needed
         );
-        return NROS_CPP_RET_FULL;
+        return Err(NROS_CPP_RET_FULL);
     }
     let base = t.storage as *mut u8;
     let pairs = base as *mut ModeTables;
@@ -5444,7 +5490,7 @@ pub unsafe extern "C" fn nros_cpp_install_modes(
     // phase-462 W4c -- one table's deadline rows, copied after every spec
     // region with `sc` translated through `sc_ids`. `'static`: the storage
     // outlives the executor (see Safety).
-    let mut dl_at = (n + 1) * size_of::<ModeTables>() + n * per_mode;
+    let mut dl_at = (n + 1) * size_of::<ModeTables>() + specs_total;
     let mut copy_deadlines =
         |src: *const nros_cpp_mode_deadline_t| -> Option<&'static [ModeDeadline]> {
             if nd == 0 {
@@ -5475,7 +5521,7 @@ pub unsafe extern "C" fn nros_cpp_install_modes(
         };
     let Some(base_dl) = copy_deadlines(t.base_deadlines) else {
         cpp_diag!("install_modes: a deadline row names a tier past `n_sc_ids`");
-        return NROS_CPP_RET_INVALID_ARGUMENT;
+        return Err(NROS_CPP_RET_INVALID_ARGUMENT);
     };
     unsafe {
         core::ptr::write(
@@ -5490,45 +5536,43 @@ pub unsafe extern "C" fn nros_cpp_install_modes(
         )
     };
     for (k, m) in modes.iter().enumerate() {
-        let specs = unsafe { base.add(at) } as *mut MonitorSpec;
-        let rows = if m.n_rows == 0 {
-            &[][..]
+        let monitors: &'static [MonitorSpec] = if own_rows(m) {
+            let specs = unsafe { base.add(at) } as *mut MonitorSpec;
+            let rows = unsafe { core::slice::from_raw_parts(m.rows, m.n_rows) };
+            for (i, (b, r)) in base_rows.iter().zip(rows).enumerate() {
+                let spec = MonitorSpec {
+                    min_rate_hz_milli: r.min_rate_hz_milli,
+                    max_latency_ms: r.max_latency_ms,
+                    route_max_latency_ms: r.route_max_latency_ms,
+                    route_deadline_ms: r.route_deadline_ms,
+                    ..*b
+                };
+                unsafe { core::ptr::write(specs.add(i), spec) };
+            }
+            at += rows_bytes;
+            // `'static`: the storage outlives the executor (see Safety).
+            unsafe { core::slice::from_raw_parts(specs, base_rows.len()) }
         } else {
-            unsafe { core::slice::from_raw_parts(m.rows, m.n_rows) }
+            base_rows
         };
-        for (i, (b, r)) in base_rows.iter().zip(rows).enumerate() {
-            let spec = MonitorSpec {
-                min_rate_hz_milli: r.min_rate_hz_milli,
-                max_latency_ms: r.max_latency_ms,
-                route_max_latency_ms: r.route_max_latency_ms,
-                route_deadline_ms: r.route_deadline_ms,
-                ..*b
-            };
-            unsafe { core::ptr::write(specs.add(i), spec) };
-        }
-        at += core::mem::size_of_val(base_rows);
-        let age_specs = unsafe { base.add(at) } as *mut AgeMonitorSpec;
-        let ages = if m.n_ages == 0 {
-            &[][..]
+        let ages: &'static [AgeMonitorSpec] = if own_ages(m) {
+            let age_specs = unsafe { base.add(at) } as *mut AgeMonitorSpec;
+            let ages = unsafe { core::slice::from_raw_parts(m.ages, m.n_ages) };
+            for (i, (b, r)) in base_ages.iter().zip(ages).enumerate() {
+                let spec = AgeMonitorSpec {
+                    max_age_ms: r.max_age_ms,
+                    ..*b
+                };
+                unsafe { core::ptr::write(age_specs.add(i), spec) };
+            }
+            at += ages_bytes;
+            unsafe { core::slice::from_raw_parts(age_specs, base_ages.len()) }
         } else {
-            unsafe { core::slice::from_raw_parts(m.ages, m.n_ages) }
+            base_ages
         };
-        for (i, (b, r)) in base_ages.iter().zip(ages).enumerate() {
-            let spec = AgeMonitorSpec {
-                max_age_ms: r.max_age_ms,
-                ..*b
-            };
-            unsafe { core::ptr::write(age_specs.add(i), spec) };
-        }
-        at += core::mem::size_of_val(base_ages);
-        // `'static`: the storage outlives the executor (see Safety).
-        let monitors: &'static [MonitorSpec] =
-            unsafe { core::slice::from_raw_parts(specs, base_rows.len()) };
-        let ages: &'static [AgeMonitorSpec] =
-            unsafe { core::slice::from_raw_parts(age_specs, base_ages.len()) };
         let Some(deadlines) = copy_deadlines(m.deadlines) else {
             cpp_diag!("install_modes: a deadline row names a tier past `n_sc_ids`");
-            return NROS_CPP_RET_INVALID_ARGUMENT;
+            return Err(NROS_CPP_RET_INVALID_ARGUMENT);
         };
         let reaction: &'static str = if m.reaction.is_null() {
             ""
@@ -5552,14 +5596,7 @@ pub unsafe extern "C" fn nros_cpp_install_modes(
             )
         };
     }
-    let all: &'static [ModeTables] = unsafe { core::slice::from_raw_parts(pairs, n + 1) };
-    match ctx.executor.set_mode_tables(all) {
-        Ok(()) => NROS_CPP_RET_OK,
-        Err(e) => {
-            cpp_diag!("install_modes: {}", e);
-            NROS_CPP_RET_INVALID_ARGUMENT
-        }
-    }
+    Ok(unsafe { core::slice::from_raw_parts(pairs, n + 1) })
 }
 
 /// phase-462 W4b -- ask every executor to judge by mode `id`'s tables (0 =
@@ -8525,6 +8562,170 @@ mod install_argv_remaps_tests {
         assert_eq!(
             rc, NROS_CPP_RET_OK,
             "(0, NULL) is what every RTOS board passes"
+        );
+    }
+}
+
+/// A mode whose numbers equal the base's aliases the base tables instead of
+/// copying them: the entry bakes it as `rows` NULL / `n_rows` 0, and the carve
+/// hands the base slice itself to that mode, taking no storage for it. A mode
+/// with numbers of its own is carved exactly as before.
+#[cfg(all(test, feature = "rmw-cffi"))]
+mod mode_alias_tests {
+    use super::*;
+    use nros::monitor::{AgeMonitorSpec, MonitorSpec, PubMonitorCell, SubMonitorCell};
+
+    static CELL: PubMonitorCell = PubMonitorCell::new();
+    static AGE_CELL: SubMonitorCell = SubMonitorCell::new();
+    const fn spec(max_latency_ms: u32) -> MonitorSpec {
+        MonitorSpec {
+            topic: "/mode/status",
+            fqn: "/mode/handler/status",
+            min_rate_hz_milli: 9000,
+            max_latency_ms,
+            route_trigger: "",
+            route_max_latency_ms: 0,
+            route_deadline_ms: 0,
+            reaction_id: 0,
+            mechanism: 0,
+            cell: &CELL,
+        }
+    }
+    static BASE: [MonitorSpec; 2] = [spec(5), spec(7)];
+    static AGES: [AgeMonitorSpec; 1] = [AgeMonitorSpec {
+        topic: "/mode/in",
+        fqn: "/mode/handler/in",
+        max_age_ms: 500,
+        deadline_ms: 0,
+        cell: &AGE_CELL,
+    }];
+    static RELAXED: [nros_cpp_mode_row_t; 2] = [
+        nros_cpp_mode_row_t {
+            min_rate_hz_milli: 9000,
+            max_latency_ms: 50,
+            route_max_latency_ms: 0,
+            route_deadline_ms: 0,
+        },
+        nros_cpp_mode_row_t {
+            min_rate_hz_milli: 9000,
+            max_latency_ms: 70,
+            route_max_latency_ms: 0,
+            route_deadline_ms: 0,
+        },
+    ];
+    static LONG_AGE: [nros_cpp_mode_age_row_t; 1] = [nros_cpp_mode_age_row_t { max_age_ms: 900 }];
+
+    fn aliased(budget: u32) -> nros_cpp_mode_t {
+        nros_cpp_mode_t {
+            rows: core::ptr::null(),
+            n_rows: 0,
+            ages: core::ptr::null(),
+            n_ages: 0,
+            deadlines: core::ptr::null(),
+            n_deadlines: 0,
+            switch_budget_ms: budget,
+            reaction: c"island.tor".as_ptr(),
+        }
+    }
+    fn relaxed() -> nros_cpp_mode_t {
+        nros_cpp_mode_t {
+            rows: RELAXED.as_ptr(),
+            n_rows: RELAXED.len(),
+            ages: LONG_AGE.as_ptr(),
+            n_ages: LONG_AGE.len(),
+            deadlines: core::ptr::null(),
+            n_deadlines: 0,
+            switch_budget_ms: 0,
+            reaction: core::ptr::null(),
+        }
+    }
+    fn tables(modes: &'static [nros_cpp_mode_t], storage_len: usize) -> nros_cpp_mode_tables_t {
+        let words = alloc::vec![0u64; storage_len.div_ceil(8)].leak();
+        nros_cpp_mode_tables_t {
+            modes: modes.as_ptr(),
+            n_modes: modes.len(),
+            storage: words.as_mut_ptr().cast(),
+            storage_len,
+            base_deadlines: core::ptr::null(),
+            n_base_deadlines: 0,
+            sc_ids: core::ptr::null(),
+            n_sc_ids: 0,
+        }
+    }
+    fn leak(m: alloc::vec::Vec<nros_cpp_mode_t>) -> &'static [nros_cpp_mode_t] {
+        m.leak()
+    }
+
+    /// Five modes with the base's numbers -- the safety island's shape --
+    /// fit in their table headers alone and each judges by the base slice.
+    #[test]
+    fn modes_equal_to_the_base_alias_it_and_take_only_their_headers() {
+        let modes = leak((0..5).map(|k| aliased(200 + k)).collect());
+        let header = core::mem::size_of::<nros::monitor::ModeTables>();
+        let t = tables(modes, 6 * header);
+        let all = unsafe { carve_mode_tables(&BASE, &AGES, &t) }.expect("headers suffice");
+        assert_eq!(all.len(), 6);
+        for (k, m) in all.iter().enumerate().skip(1) {
+            assert!(
+                core::ptr::eq(m.monitors, &BASE[..]),
+                "mode {k} aliases the base rows"
+            );
+            assert!(
+                core::ptr::eq(m.ages, &AGES[..]),
+                "mode {k} aliases the base ages"
+            );
+            assert_eq!(
+                m.switch_budget_ms,
+                200 + k as u32 - 1,
+                "its switch budget is kept"
+            );
+            assert_eq!(m.reaction, "island.tor", "its reaction is kept");
+        }
+    }
+
+    /// A mode with numbers of its own is carved as before: the base specs
+    /// with its numbers, in the storage, beside an aliased mode that takes
+    /// none.
+    #[test]
+    fn a_mode_with_its_own_numbers_is_carved_as_before() {
+        let modes = leak(alloc::vec![aliased(210), relaxed()]);
+        let header = core::mem::size_of::<nros::monitor::ModeTables>();
+        let own = core::mem::size_of_val(&BASE) + core::mem::size_of_val(&AGES);
+        let short = tables(modes, 3 * header + own - 8);
+        assert_eq!(
+            unsafe { carve_mode_tables(&BASE, &AGES, &short) }.err(),
+            Some(NROS_CPP_RET_FULL),
+            "the differing mode still needs its rows"
+        );
+        let t = tables(modes, 3 * header + own);
+        let all = unsafe { carve_mode_tables(&BASE, &AGES, &t) }.expect("fits");
+        assert!(core::ptr::eq(all[1].monitors, &BASE[..]));
+        let m = &all[2];
+        assert!(!core::ptr::eq(m.monitors, &BASE[..]));
+        assert_eq!(m.monitors.len(), 2);
+        assert_eq!(m.monitors[0].max_latency_ms, 50);
+        assert_eq!(m.monitors[1].max_latency_ms, 70);
+        assert_eq!(
+            m.monitors[1].fqn, BASE[1].fqn,
+            "every other field is the base's"
+        );
+        assert!(
+            core::ptr::eq(m.monitors[0].cell, &CELL),
+            "the cells are shared"
+        );
+        assert_eq!(m.ages[0].max_age_ms, 900);
+    }
+
+    /// A row count that is neither the base's nor an alias is still refused.
+    #[test]
+    fn a_short_mode_is_refused() {
+        let mut m = relaxed();
+        m.n_rows = 1;
+        let modes = leak(alloc::vec![m]);
+        let t = tables(modes, 4096);
+        assert_eq!(
+            unsafe { carve_mode_tables(&BASE, &AGES, &t) }.err(),
+            Some(NROS_CPP_RET_INVALID_ARGUMENT)
         );
     }
 }

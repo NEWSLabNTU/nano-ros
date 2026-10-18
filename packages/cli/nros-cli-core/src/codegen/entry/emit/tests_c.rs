@@ -996,7 +996,7 @@ fn typed_emit_bakes_a_modes_numbers_after_the_monitors() {
     assert!(
         src.contains(
             "static uint64_t __nros_mode_storage[((1u + 1u) * (NROS_CPP_MODE_TABLE_STORAGE + 0u * \
-             NROS_CPP_MODE_DEADLINE_STORAGE) + 1u * ("
+             NROS_CPP_MODE_DEADLINE_STORAGE) + 1u * "
         ),
         "{src}"
     );
@@ -1020,4 +1020,57 @@ fn typed_emit_bakes_a_modes_numbers_after_the_monitors() {
         !plain.contains("NROS_MODE_") && !plain.contains("nros_cpp_install_modes"),
         "{plain}"
     );
+}
+
+/// A mode whose numbers equal the base's bakes no rows of its own: the entry
+/// hands `nros_cpp_install_modes` NULL / 0, which aliases the base table, and
+/// sizes the storage for the modes with rows of their own only. A mode that
+/// differs in its rates but not its ages bakes its rows and aliases the ages.
+#[test]
+fn typed_emit_aliases_a_mode_equal_to_the_base() {
+    let plan = fixture_plan(&[("talker_pkg", "talker"), ("listener_pkg", "listener")]);
+    let (rows, ages) = c_monitor_fixture_rows();
+    let mut relaxed = rows.clone();
+    for r in &mut relaxed {
+        r.max_latency_ms = 77;
+    }
+    let modes = vec![
+        ("relaxed".to_string(), relaxed, ages.clone()),
+        ("same".to_string(), rows.clone(), ages.clone()),
+    ];
+    let (src, _) = super::emit_typed_monitored_lowered(
+        Lang::C,
+        &plan,
+        &rows,
+        &ages,
+        None,
+        &modes,
+        &super::ModeTier::default(),
+    )
+    .expect("mode emit ok");
+    assert!(src.contains("#define NROS_MODE_SAME 2u"), "{src}");
+    let same = src.contains("__nros_mode_rows_2[") || src.contains("__nros_mode_ages_2[");
+    assert!(
+        !same,
+        "the mode equal to the base bakes no rows; src:\n{src}"
+    );
+    assert!(
+        src.contains("{ NULL, 0u, NULL, 0u, "),
+        "it aliases both base tables; src:\n{src}"
+    );
+    assert!(
+        src.contains("static const nros_cpp_mode_row_t __nros_mode_rows_1["),
+        "the differing mode bakes its rows; src:\n{src}"
+    );
+    assert!(src.contains(", 77u, "), "{src}");
+    assert!(
+        !src.contains("__nros_mode_ages_1["),
+        "and aliases the ages it shares; src:\n{src}"
+    );
+    let storage = format!(
+        "static uint64_t __nros_mode_storage[((2u + 1u) * (NROS_CPP_MODE_TABLE_STORAGE + 0u * NROS_CPP_MODE_DEADLINE_STORAGE) + 1u * {r}u * NROS_CPP_MODE_ROW_STORAGE + 0u * {a}u * NROS_CPP_MODE_AGE_STORAGE + 7u) / 8u];",
+        r = rows.len(),
+        a = ages.len()
+    );
+    assert!(src.contains(&storage), "want `{storage}`; src:\n{src}");
 }

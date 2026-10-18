@@ -704,7 +704,7 @@ fn monitor_table(
             })
             .unwrap_or_default()
     };
-    let modes = opts
+    let mut modes = opts
         .modes
         .iter()
         .enumerate()
@@ -733,6 +733,29 @@ fn monitor_table(
                 .collect(),
         })
         .collect::<Vec<_>>();
+    // A mode whose numbers equal the base's, row for row, bakes no rows of its
+    // own: an empty `rows` (or `ages`) renders as NULL / 0, which
+    // `nros_cpp_install_modes` reads as "the base's table", so the mode costs
+    // its table header and nothing per row. Its switch budget, reaction and
+    // deadlines are kept, so entering it behaves exactly as before.
+    let base_mode_rows: Vec<ModeRow> = ir_rows
+        .iter()
+        .map(|r| ModeRow {
+            min_rate_hz_milli: r.min_rate_hz_milli,
+            max_latency_ms: r.max_latency_ms,
+            route_max_latency_ms: r.route_max_latency_ms,
+            route_deadline_ms: r.route_deadline_ms,
+        })
+        .collect();
+    let base_mode_ages: Vec<u32> = ir_ages.iter().map(|r| r.max_age_ms).collect();
+    for m in &mut modes {
+        if m.rows == base_mode_rows {
+            m.rows.clear();
+        }
+        if m.ages == base_mode_ages {
+            m.ages.clear();
+        }
+    }
     let hazard_guards = hazards.iter().map(|h| h.guards.len()).sum();
     let hazard_members = hazards
         .iter()

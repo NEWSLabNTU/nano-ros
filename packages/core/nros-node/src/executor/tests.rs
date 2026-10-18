@@ -15594,6 +15594,122 @@ fn a_requested_mode_judges_by_its_variant_table() {
     request_mode(0);
 }
 
+#[cfg(all(feature = "std", feature = "alloc"))]
+private_test_clock!(mode_alias_clock);
+
+/// A mode whose tables ARE the base's (the C/C++ entry bakes a mode with the
+/// base's numbers as an alias of the base slice) is still a mode: it is
+/// entered at the next spin and judges by the base numbers, and a mode with
+/// numbers of its own beside it still applies them.
+#[cfg(all(feature = "std", feature = "alloc"))]
+#[test]
+fn a_mode_aliasing_the_base_is_entered_and_a_differing_one_still_applies() {
+    use super::monitor::{ModeTables, MonitorSpec, PubMonitorCell, request_mode};
+    let _g = arming_lock();
+
+    static CELL: PubMonitorCell = PubMonitorCell::new();
+    const fn spec(max_latency_ms: u32) -> MonitorSpec {
+        MonitorSpec {
+            topic: "/alias/status",
+            fqn: "/alias/handler/status",
+            min_rate_hz_milli: 0,
+            max_latency_ms,
+            route_trigger: "",
+            route_max_latency_ms: 0,
+            route_deadline_ms: 0,
+            reaction_id: 0,
+            mechanism: 0,
+            cell: &CELL,
+        }
+    }
+    static BASE: [MonitorSpec; 1] = [spec(5)];
+    static RELAXED: [MonitorSpec; 1] = [spec(50)];
+    static MODES: [ModeTables; 3] = [
+        ModeTables {
+            monitors: &BASE,
+            ages: &[],
+            deadlines: &[],
+            switch_budget_ms: 0,
+            reaction: "",
+        },
+        ModeTables {
+            monitors: &BASE,
+            ages: &[],
+            deadlines: &[],
+            switch_budget_ms: 1_000,
+            reaction: "island.tor",
+        },
+        ModeTables {
+            monitors: &RELAXED,
+            ages: &[],
+            deadlines: &[],
+            switch_budget_ms: 0,
+            reaction: "",
+        },
+    ];
+
+    mode_alias_clock::claim_at_us(1_000_000);
+    fn step(executor: &mut Executor, ms: u64) {
+        mode_alias_clock::set_us(mode_alias_clock::now_us() + ms * 1_000);
+        let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    }
+    request_mode(0);
+    let mut executor: Executor =
+        executor_with_clock_fn(MockSession::new(), mode_alias_clock::now_us);
+    executor.set_monitor_table(&BASE);
+    executor.set_report_violations(false);
+    executor
+        .set_mode_tables(&MODES)
+        .expect("an aliased mode has the base's shape");
+    let nid = executor.node_builder("handler").build().expect("node");
+    let status = executor
+        .node_mut(nid)
+        .create_generic_publisher("/alias/status", "std_msgs::msg::dds_::Int32_", "")
+        .expect("contracted publisher");
+    executor
+        .register_timer(TimerDuration::from_millis(100), move || {
+            let _ = status.publish_raw(&[0, 1, 0, 0, 1, 0, 0, 0]);
+            mode_alias_clock::set_us(mode_alias_clock::now_us() + 20_000);
+        })
+        .expect("timer");
+    let latency = |ex: &mut Executor| {
+        let mut n = 0;
+        ex.drain_violations(|v| {
+            if v.rule == "max-latency-runtime" {
+                n += 1;
+            }
+        });
+        n
+    };
+
+    request_mode(1);
+    step(&mut executor, 80);
+    assert_eq!(executor.current_mode(), 1, "the aliased mode is entered");
+    assert!(
+        core::ptr::eq(executor.monitor_table(), &BASE[..]),
+        "and judges by the base table itself"
+    );
+    let _ = latency(&mut executor);
+    for _ in 0..4 {
+        step(&mut executor, 80);
+    }
+    assert!(
+        latency(&mut executor) >= 1,
+        "the base's 5 ms still judges 20 ms in the aliased mode"
+    );
+
+    request_mode(2);
+    step(&mut executor, 80);
+    assert_eq!(executor.current_mode(), 2);
+    assert_eq!(executor.monitor_table()[0].max_latency_ms, 50);
+    let _ = latency(&mut executor);
+    for _ in 0..4 {
+        step(&mut executor, 80);
+    }
+    assert_eq!(latency(&mut executor), 0, "20 ms is inside mode 2's 50 ms");
+    request_mode(0);
+}
+
 private_test_clock!(unserved_deadline_clock);
 
 /// phase-462 W5b -- a contract `deadline` the backend is never asked to judge
