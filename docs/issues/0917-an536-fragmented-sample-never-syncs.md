@@ -464,3 +464,13 @@ trajectory, and the controller holds a safe stop without it, so the vehicle
 never moves. The repo's own examples publish small fixed-size messages and
 never reach a second fragment, which is why the whole class stays invisible in
 CI.
+
+## phase-441 W6 (2026-10-18): the in-tree cell stops before fragments matter
+
+phase-441 W6 built the in-tree Cyclone live-peer cell this issue never had
+(`freertos-an536-pubsub-cpp-cyclone-n2r`, mps3-an536 over slirp). It fails
+before a fragmented sample can be tried: the guest's participant is
+discovered once and its lease expires about 10 s later, with no sample
+delivered — issue 0997's shape (recorded there). The fragmented leg W6
+planned is therefore not built yet; it is worth building only once a
+single-datagram sample crosses and keeps crossing.

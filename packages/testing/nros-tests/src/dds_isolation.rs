@@ -334,9 +334,17 @@ pub struct CycloneSlirpPair {
 
 impl CycloneSlirpPair {
     /// The guest's fixed participant index.
-    pub const GUEST_INDEX: u32 = 0;
+    ///
+    /// phase-441 W6 — HIGH, not 0 and 1 as W2 measured with. A Cyclone
+    /// participant that is not given an index takes the lowest free one from
+    /// 0, so any auto-indexed participant on the same domain (another test, a
+    /// `ros2` daemon) would bind 0/1 first and this pair's fixed bind would
+    /// fail. 118/119 are the top of the domain's 250-port window
+    /// (`(DomainGain - UnicastDataOffset) / ParticipantGain`), which an
+    /// auto-indexed participant never reaches in practice.
+    pub const GUEST_INDEX: u32 = 118;
     /// The host peer's fixed participant index.
-    pub const HOST_INDEX: u32 = 1;
+    pub const HOST_INDEX: u32 = 119;
     /// What slirp calls the host, from inside the guest (the gateway alias of
     /// the host's loopback).
     pub const SLIRP_HOST_ALIAS: &'static str = "10.0.2.2";
@@ -534,16 +542,18 @@ mod tests {
         assert!(cyc.contains(r#"address="127.0.0.1""#));
     }
 
-    /// Issue 1251 — the port arithmetic phase-441 W2 measured with: domain 42,
-    /// index 0 is meta 17910 / data 17911, index 1 is 17912 / 17913.
+    /// Issue 1251 — the DDSI port arithmetic phase-441 W2 measured with
+    /// (domain 42, index 0 is meta 17910 / data 17911), and the pair's own
+    /// indices 118/119 on the same domain.
     #[test]
     fn slirp_pair_ports_are_the_ddsi_arithmetic_phase_441_measured() {
+        assert_eq!(ddsi_unicast_ports(42, 0), (17910, 17911));
         let p = CycloneSlirpPair::new(42, "t");
-        assert_eq!(p.guest_ports(), (17910, 17911));
-        assert_eq!(p.host_ports(), (17912, 17913));
+        assert_eq!(p.guest_ports(), (18146, 18147));
+        assert_eq!(p.host_ports(), (18148, 18149));
         assert_eq!(
             p.qemu_hostfwd("10.0.2.15"),
-            "hostfwd=udp::17910-10.0.2.15:17910,hostfwd=udp::17911-10.0.2.15:17911"
+            "hostfwd=udp::18146-10.0.2.15:18146,hostfwd=udp::18147-10.0.2.15:18147"
         );
     }
 
@@ -560,11 +570,11 @@ mod tests {
         }
         assert!(host.contains(r#"name="eth9""#));
         assert!(host.contains("<ExternalNetworkAddress>10.0.2.2</ExternalNetworkAddress>"));
-        assert!(host.contains(r#"<Peer address="127.0.0.1:17910"/>"#));
-        assert!(host.contains("<ParticipantIndex>1</ParticipantIndex>"));
+        assert!(host.contains(r#"<Peer address="127.0.0.1:18146"/>"#));
+        assert!(host.contains("<ParticipantIndex>119</ParticipantIndex>"));
         assert!(guest.contains("<ExternalNetworkAddress>127.0.0.1</ExternalNetworkAddress>"));
-        assert!(guest.contains(r#"<Peer address="10.0.2.2:17912"/>"#));
-        assert!(guest.contains("<ParticipantIndex>0</ParticipantIndex>"));
+        assert!(guest.contains(r#"<Peer address="10.0.2.2:18148"/>"#));
+        assert!(guest.contains("<ParticipantIndex>118</ParticipantIndex>"));
         // The host half must NOT be the loopback pin: that is the collision.
         assert!(!host.contains(r#"address="127.0.0.1" priority"#));
     }

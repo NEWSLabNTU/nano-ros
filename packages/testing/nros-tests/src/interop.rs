@@ -146,13 +146,13 @@ pub struct InteropCell {
 }
 
 /// Interop cells (by `InteropCell::id`) that pair a slirp-guest nano side with a
-/// Cyclone peer and build BOTH halves from a [`crate::dds_isolation::CycloneSlirpPair`]. Empty: no
-/// such cell exists yet (phase-441 W2 lists what one still needs). A cell may
-/// join only by actually using the pair, which is what
-/// `dds_isolation`'s
+/// Cyclone peer and build BOTH halves from a [`crate::dds_isolation::CycloneSlirpPair`]. A cell
+/// may join only by actually using the pair, which is what `dds_isolation`'s
 /// `no_runnable_cyclone_interop_cell_puts_its_nano_side_behind_slirp` holds
-/// (issue 1251).
-pub const SLIRP_PAIR_CELLS: &[&str] = &[];
+/// (issue 1251). phase-441 W6's cell does: its test starts the host half from
+/// the pair, and `the_bringup_bakes_the_pairs_guest_half` holds the image's
+/// baked guest half to it.
+pub const SLIRP_PAIR_CELLS: &[&str] = &["freertos-an536-pubsub-cpp-cyclone-n2r"];
 
 /// `test` sentinel for a carved-out cell no test runs.
 pub const NO_TEST: &str = "(carved-out — no runtime lane)";
@@ -480,6 +480,21 @@ pub const CELLS: &[InteropCell] = &[
        c(FreertosMps2, C, Zenoh, EntryPubsub, Interop, Runtime),
        FreertosMps2Fixtures, RosEdition(Zenoh), NanoToRos,
        "pubsub_freertos_ros2_interop_e2e"),
+
+    // ── phase-441 W6 — the first CYCLONE RTOS image to meet a stock peer ──
+    // Every board cell above is zenoh, which crosses slirp by dialling a TCP
+    // router. Cyclone discovers by SPDP, which slirp cannot carry, so this
+    // cell is W2's measured recipe on a real image: the mps3-an536 FreeRTOS
+    // C++ talker (`slirp_bringup`, whose baked `rmw/cyclonedds.xml` is the
+    // guest half of `dds_isolation::CycloneSlirpPair`), QEMU forwarding its
+    // two unicast ports, and `rmw_cyclonedds_cpp` on the host with the pair's
+    // host half. Held for a minute, not to the first sample: the island image
+    // issue 0997 was found on announced SPDP once and lost every peer's lease
+    // about 10 s later, which a first-sample cell would pass.
+    ic("freertos-an536-pubsub-cpp-cyclone-n2r",
+       c(FreertosMps2, Cpp, Cyclonedds, EntryPubsub, Interop, Runtime),
+       FreertosMps2Fixtures, RosEdition(Cyclonedds), NanoToRos,
+       "pubsub_freertos_an536_cyclone_ros2_interop_e2e"),
 
     // ── Declarative cross-RMW bridges ───────────────────────────────────
     // The nano bridge is a `ws-bridge-*-rust` linux_entry; a ROS 2 peer sits on

@@ -1,0 +1,6 @@
+<?xml version="1.0"?>
+<!-- phase-441 W6 — the talker alone: the listener is a stock `ros2 topic echo`
+     on the host, reached through slirp. -->
+<launch>
+  <node pkg="talker_pkg" exec="talker" name="talker"/>
+</launch>

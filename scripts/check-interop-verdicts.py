@@ -294,6 +294,11 @@ BOARD_FIXTURE_NARROWING: "dict[str, tuple[str, str]]" = {
     "freertos-mps2-pubsub-c-zenoh-n2r": (
         "NROS_FIXTURE_ID", "workspace-c-freertos",
     ),
+    # phase-441 W6 — the slirp Cyclone guest, the same `just build freertos`
+    # narrowed to its one workspace row.
+    "freertos-an536-pubsub-cpp-cyclone-n2r": (
+        "NROS_FIXTURE_ID", "workspace-cpp-mps3-an536-freertos-slirp",
+    ),
 }
 
 FIXTURES_TOML = ROOT / "examples" / "fixtures.toml"

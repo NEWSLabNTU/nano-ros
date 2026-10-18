@@ -3579,8 +3579,27 @@ pub fn build_freertos_workspace_cpp_an536_entry() -> TestResult<&'static Path> {
             build_workspace_cmake_entry_in(
                 "workspace-cpp-mps3-an536-freertos",
                 "cpp",
-                "build/freertos-cyclonedds-mps3-an536-freertos/cmake",
+                "build/freertos-cyclonedds-mps3-an536-freertos-cfg1ff0492eb1/cmake",
                 "mps3_an536_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// phase-441 W6 — the same board's C++ talker as a CycloneDDS guest behind
+/// QEMU user-mode networking, `slirp_bringup:mps3_an536_slirp`. Its own
+/// configure (`-cfg<hash>`) because its bringup bakes a different
+/// `rmw/cyclonedds.xml` than `demo_bringup`'s, and that file compiles into the
+/// shared Cyclone backend build.
+pub fn build_freertos_workspace_cpp_an536_slirp_entry() -> TestResult<&'static Path> {
+    static FREERTOS_WORKSPACE_CPP_AN536_SLIRP_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+    FREERTOS_WORKSPACE_CPP_AN536_SLIRP_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_cmake_entry_in(
+                "workspace-cpp-mps3-an536-freertos-slirp",
+                "cpp",
+                "build/freertos-cyclonedds-mps3-an536-freertos-cfg691ce9d54a/cmake",
+                "mps3_an536_slirp_entry",
             )
         })
         .map(|p| p.as_path())

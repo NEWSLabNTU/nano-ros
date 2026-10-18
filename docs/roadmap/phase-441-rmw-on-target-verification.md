@@ -696,6 +696,44 @@ fails naming the scope, per W4). Whatever the 60 s and fragmented legs show is
 recorded in 0997 and 0917 — a pass narrows both to the tap/hardware path, a failure
 is their first in-tree reproduction. Either is the result.
 
+
+**Built 2026-10-18; first verdict FAIL, owned by issue 0997.** What landed:
+
+- `examples/workspaces/cpp/src/slirp_bringup` — the talker alone, with a baked
+  `rmw/cyclonedds.xml` that is `CycloneSlirpPair::new(54, "nros-441-w6-an536")
+  .guest_xml()` (held to it by `the_bringup_bakes_the_pairs_guest_half`). Domain
+  54 is the allocator's `domain_of(FreertosMps2, Cpp, EntryPubsub)`.
+- `CycloneSlirpPair`'s fixed participant indices moved from 0/1 to 118/119: an
+  auto-indexed participant on the same domain takes the lowest free index and
+  would otherwise bind the pair's ports first.
+- `QemuProcess::start_mps3_an536_slirp`, the row
+  `workspace-cpp-mps3-an536-freertos-slirp`, the cell, the test, `just freertos
+  test-ros2-cyclone`, and the board lane's narrowing entry in
+  `check-interop-verdicts.py` (`BOARD_FIXTURE_NARROWING`). The lane runs a cell
+  once it has a recorded PASS, so this one joins `live-peer` when 0997 is fixed;
+  its scopes (`freertos`, `qemu`) were already provisioned there.
+
+Three things found on the way, each fixed or filed:
+
+- **Two bringups shared one configure and one baked Cyclone config.**
+  `nros_bake_rmw_user_config` writes the bringup's `rmw/<backend>.<ext>` once per
+  configure into the shared backend build, so `slirp_bringup` and
+  `demo_bringup` on one board/RMW each got whichever was baked last. `nros
+  build` now folds that file's content into the configure digest
+  (`-cfg<hash>`, phase-481 W4's rule); four existing cpp rows moved to their
+  hashed dirs, held by `every_generated_workspace_fixture_row_names_its_cmake_build_dir`.
+- **The bringup's `domain_id` does not reach a C/C++ entry on the CMake road**
+  — issue 1946. The row states `NROS_DOMAIN_ID = "54"` until it is fixed.
+- **A baked DDS domain above 101 is unsafe on Linux.** Domain 141 was tried
+  first; its host port 42662 sat in the ephemeral range and an unrelated
+  process held it. Recorded in the bringup's comment.
+
+The verdict: the guest boots and publishes, the host receives nothing in 75 s.
+A host-side trace of the same crossing shows SPDP and SEDP arriving once, the
+writer matched, and the guest's lease expiring 10.4 s later — 0997's shape,
+reproduced in-tree for the first time (details in 0997). The fragmented leg for
+0917 waits on it.
+
 ### W7 — re-measure 1281, then close or narrow it
 
 Run `c_riscv_nuttx_talker_delivers_cross_process` solo, 10 times, on freshly built
@@ -759,3 +797,4 @@ Homed when every open issue was given a phase. Each issue has a `**Home:**` line
 | issue | why it belongs here |
 | --- | --- |
 | [#1281](../issues/archived/1281-riscv-nuttx-c-talker-router-drops-session.md) | The NuttX RISC-V C talker's router drops its session after 28-79 s. This needs an on-target verdict. Re-homed from phase-414, which is archived. |
+| [#1946](../issues/1946-cmake-road-drops-bringup-domain-id.md) | Found building W6: on the CMake road a C/C++ entry's session ignores `[system]` and `[image.<id>]` `domain_id`; only `-DNROS_DOMAIN_ID` reaches it. W6's row states it until this is fixed. |

@@ -149,6 +149,16 @@ ALLOWLIST = {
         "guest on the loopback profile and recreate the collision the test "
         "measures."
     ),
+    TESTS
+    + "tests/pubsub_freertos_an536_cyclone_ros2_interop_e2e.rs": (
+        "phase-441 W6, the same pair on a real image. The nano side is a QEMU "
+        "guest behind slirp whose Cyclone config is BAKED: the bringup's "
+        "`rmw/cyclonedds.xml` is `CycloneSlirpPair::guest_xml`, held to it by "
+        "`the_bringup_bakes_the_pairs_guest_half`, and the peer takes the "
+        "pair's host half through `ros2_env_setup_cyclonedds_with_profile`. "
+        "Pinned symmetrically by tag; the only Command spawned for our side is "
+        "QEMU, which joins no DDS bus itself."
+    ),
 }
 
 REMEDY = (

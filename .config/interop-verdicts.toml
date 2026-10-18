@@ -30,6 +30,16 @@ where = "ros2 distrobox, Humble, tree with #684 + #692"
 evidence = "1 case(s) produced a result in declarative_bridge_zenoh_to_xrce.xml"
 
 [[verdict]]
+cell = "freertos-an536-pubsub-cpp-cyclone-n2r"
+date = "2026-10-18"
+verdict = "fail"
+tests = ["nros_freertos_an536_cyclone_publisher_stays_reachable_from_ros2", "the_bringup_bakes_the_pairs_guest_half"]
+run = "just freertos test-ros2-cyclone"
+where = "aeon's workstation (newslab-118), Ubuntu 22.04, ROS 2 Humble apt (rmw_cyclonedds_cpp 1.3.5), QEMU 11.0.0-nros6 mps3-an536 over slirp; fixture built from the branch adding this cell"
+evidence = "First run of this cell: the guest booted and published 65 samples; a stock ros2 topic echo on rmw_cyclonedds_cpp with CycloneSlirpPair's host half received none in 75 s. A host-side Cyclone discovery trace of the same crossing (hand run, domain 0) shows the guest's SPDP and SEDP arriving once and the writer matched, then 'lease expired' for the guest participant 10.4 s later and no further traffic: issue 0997's shape, reproduced in-tree for the first time."
+issue = "0997"
+
+[[verdict]]
 cell = "freertos-mps2-pubsub-c-zenoh-n2r"
 date = "2026-10-11"
 verdict = "pass"

@@ -513,6 +513,43 @@ impl QemuProcess {
         Self::spawn(cmd)
     }
 
+    /// Start QEMU `mps3-an536` (Cortex-R52) on user-mode networking (slirp),
+    /// forwarding the host UDP ports a Cyclone guest receives on.
+    ///
+    /// phase-441 W6 — the shape a live ROS 2 peer on the HOST can reach with
+    /// no `sudo` and no tap. Slirp carries no multicast, so the guest's
+    /// Cyclone config must be unicast-only and name its peer; `hostfwd` is the
+    /// clause list `CycloneSlirpPair::qemu_hostfwd` writes for the guest's two
+    /// unicast ports. The guest's address is the board's QEMU network plan
+    /// (`10.0.2.15`, gateway `10.0.2.2`).
+    pub fn start_mps3_an536_slirp(binary: &Path, hostfwd: &str) -> TestResult<Self> {
+        if !binary.exists() {
+            return Err(TestError::BuildFailed(format!(
+                "Binary not found: {}",
+                binary.display()
+            )));
+        }
+
+        let mut cmd = qemu_system_arm_cmd();
+        cmd.args([
+            "-machine",
+            "mps3-an536",
+            "-nographic",
+            "-icount",
+            "shift=auto",
+            "-semihosting-config",
+            "enable=on,target=native",
+            "-kernel",
+        ])
+        .arg(binary)
+        .args(["-nic", &format!("user,model=lan9118,{hostfwd}")])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+        #[cfg(unix)]
+        set_new_process_group(&mut cmd);
+        Self::spawn(cmd)
+    }
+
     /// Start QEMU with MPS2-AN385 machine + external serial device
     ///
     /// Connects UART0 to the given serial device path (e.g., a socat PTY).
