@@ -9346,6 +9346,9 @@ fn deadline_warn_reports_without_skipping() {
     assert!(misses >= 1, "warn reported the miss");
 }
 
+#[cfg(all(feature = "std", feature = "alloc"))]
+private_test_clock!(stalled_timer_clock);
+
 /// Issue #505 — a stalled tier must SAY it dropped activations.
 ///
 /// The rate rule cannot: `check_rate` samples publish counts over a ~5 s
@@ -9357,8 +9360,16 @@ fn deadline_warn_reports_without_skipping() {
 #[test]
 #[cfg(feature = "std")] // std::sync::Mutex has no no_std equivalent
 fn a_stalled_timer_reports_a_timer_overrun_violation() {
+    // A PRIVATE clock the test moves by hand (issue 1945): on the real clock
+    // the quiet step below sleeps exactly one period, so a preemption under a
+    // parallel gate drops a period and the "no repeat" check reads a new stall.
+    stalled_timer_clock::claim_at_us(1_000_000);
+    fn elapse_then_spin_once(executor: &mut Executor, ms: u64) -> super::types::SpinOnceResult {
+        stalled_timer_clock::set_us(stalled_timer_clock::now_us() + ms * 1_000);
+        executor.spin_once(core::time::Duration::from_millis(0))
+    }
     let session = MockSession::new();
-    let mut executor: Executor = executor_with_clock(session);
+    let mut executor: Executor = executor_with_clock_fn(session, stalled_timer_clock::now_us);
     let fires = alloc::sync::Arc::new(std::sync::Mutex::new(0u32));
     let f = fires.clone();
     let id = executor
@@ -12828,6 +12839,9 @@ fn retargeting_a_raw_action_client_moves_its_context() {
     let _ = new_home;
 }
 
+#[cfg(all(feature = "std", feature = "alloc"))]
+private_test_clock!(violation_sink_clock);
+
 /// Issue 1635 -- with a sink installed, every violation reaches it (at the end
 /// of a spin since phase-474 I7, not at detection), so an image whose entry
 /// never calls `drain_violations` still reports. The ring is filled as before, so a hand-draining application or
@@ -12849,7 +12863,16 @@ fn an_installed_violation_sink_sees_every_violation() {
         pending.len()
     }
 
-    let mut executor: Executor = executor_with_clock(MockSession::new());
+    // A PRIVATE clock (issue 1945): the 10 ms step after each stall is one
+    // timer period, so on the real clock a preempted step drops a period and
+    // a second verdict no longer matches the running total below.
+    violation_sink_clock::claim_at_us(1_000_000);
+    fn elapse_then_spin_once(executor: &mut Executor, ms: u64) -> super::types::SpinOnceResult {
+        violation_sink_clock::set_us(violation_sink_clock::now_us() + ms * 1_000);
+        executor.spin_once(core::time::Duration::from_millis(0))
+    }
+    let mut executor: Executor =
+        executor_with_clock_fn(MockSession::new(), violation_sink_clock::now_us);
     // The log line is not what this asserts, and the log sink is process-wide:
     // left on, these two lines reached T4's capture when the two tests ran
     // side by side, and T4 failed "nothing reported" (phase-474 I7).
