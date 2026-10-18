@@ -11,7 +11,7 @@ phase's own status line is current. This table only summarises them:
 | [463](archived/phase-463-host-census-reconciles-contract-with-code.md) (M1 track A, M2) | **archived 2026-10-12**, every in-tree wave landed |
 | [460](phase-460-formal-checks-on-the-contract-chain.md) (M0, M3) | W1, W2, W4, W5, W6, W7 landed; W3's first half (1368) not started |
 | [461](phase-461-service-inbox-per-family.md) (M3) | W1–W4 landed; W5 (the island links) and W6 not started |
-| [462](phase-462-safety-vocabulary-on-target.md) (M2, M4) | W1 landed (PR #1170); W2–W6 not started |
+| [462](archived/phase-462-safety-vocabulary-on-target.md) (M2, M4) | **archived 2026-10-18**, every wave landed; W6a's flood-cell gate met (6/6 budgeted runs stall-free) |
 
 The milestone tables below are the 2026-09-21 plan. Their rows for the three
 archived phases are done.
@@ -25,7 +25,7 @@ indexes are [495, opened as 457](archived/phase-495-consume-the-shared-derivatio
 [459](archived/phase-459-cmake-image-reaches-tier-derivation.md),
 [460](phase-460-formal-checks-on-the-contract-chain.md),
 [461](phase-461-service-inbox-per-family.md),
-[462](phase-462-safety-vocabulary-on-target.md) and
+[462](archived/phase-462-safety-vocabulary-on-target.md) and
 [463](archived/phase-463-host-census-reconciles-contract-with-code.md); outside this
 repository, play_launch `docs/roadmap/phase-78-one-derivation-two-consumers.md`,
 ros-launch-manifest `docs/design-issues.md` #52, and the island's
@@ -172,6 +172,16 @@ with its four nodes on derived priorities, its counts reconciled against
 its code, its deadlines enforced by the kernel where it can and by the
 executor where it cannot, and every number in `docs/nxp-deployment.md`
 traceable to a gate.
+
+
+## Issues homed here (2026-10-18)
+
+This umbrella owns no code, so an issue homed here is waiting for a phase of
+its own, and says which.
+
+| issue | why it belongs here |
+| --- | --- |
+| [#0506](../issues/0506-transport-band-unbounded-preemption.md) | Re-homed from phase-462 when it archived. Its device side landed there (the `ingress` declaration, the read-task budget, its derivation, the per-board frame cost); what remains is RFC-0074's router `downsampling` rule, a contract term the resolver would lower into the ROUTER's config. No phase owns router-side lowering yet. |
 
 ## Not in this program
 

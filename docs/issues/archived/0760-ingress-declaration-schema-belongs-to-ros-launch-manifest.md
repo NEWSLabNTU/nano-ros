@@ -8,7 +8,7 @@ related: [issue-0506, rfc-0074, rfc-0060, phase-462]
 resolved_in: phase-462 W6b
 ---
 
-**Home: [phase-462](../roadmap/phase-462-safety-vocabulary-on-target.md)** — re-homed 2026-10-12 from phase-296, which is archived.
+**Home: [phase-462](../../roadmap/archived/phase-462-safety-vocabulary-on-target.md)** — re-homed 2026-10-12 from phase-296, which is archived.
 
 ## Why this is its own topic
 

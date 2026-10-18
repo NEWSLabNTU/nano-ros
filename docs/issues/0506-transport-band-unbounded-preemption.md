@@ -4,10 +4,10 @@ title: "Transport tasks above application tiers is the right default but has no 
 status: open
 type: enhancement
 area: embedded
-related: [issue-0505, phase-462]
+related: [issue-0505, phase-462, phase-464, rfc-0074, 1948, 1949]
 ---
 
-**Home: [phase-462](../roadmap/phase-462-safety-vocabulary-on-target.md)** — re-homed 2026-10-12 from phase-358, which is archived.
+**Home: [phase-464](../roadmap/phase-464-contract-chain-program.md)** — re-homed 2026-10-18 from [phase-462](../roadmap/archived/phase-462-safety-vocabulary-on-target.md), archived with every wave landed; what is left is the router rule, a contract term lowered outside the device. Before that, re-homed 2026-10-12 from phase-358.
 
 ## Problem
 

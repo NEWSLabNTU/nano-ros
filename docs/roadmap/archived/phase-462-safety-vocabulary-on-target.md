@@ -1,7 +1,9 @@
 # phase-462 -- the contract's safety vocabulary reaches the target
 
-**Status (2026-10-18). IN PROGRESS: W1, W2, W3, W4 (a/b/c), W5 and W6a/W6b/W6c
-landed; the one item open is W6a's gate, the RFC-0074 flood-cell rerun.** (Planned 2026-09-21.) Numbered highest + 7 (phase-461 took +6;
+**Status (2026-10-18). COMPLETE, archived: W1, W2, W3, W4 (a/b/c), W5 and
+W6a/W6b/W6c landed, and W6a's gate, the RFC-0074 flood-cell rerun, is met
+(6/6 budgeted runs stall-free, worst 11.5 ms). Issue 0506 is re-homed to
+[phase-464](../phase-464-contract-chain-program.md) for the router rule.** (Planned 2026-09-21.) Numbered highest + 7 (phase-461 took +6;
 456-460 belong to concurrent sessions). Depends on two pieces of work outside
 this document: the shared MapperInput derivation phase (a play_launch / rlm
 phase being designed in parallel, referred to here by that name and not by a
@@ -22,9 +24,9 @@ TTL, and an open PR supersedes them). `owns` is the set of files a wave edits;
 two waves with disjoint `owns` cannot conflict. Every path below exists in the
 tree today unless marked `(new)`. The two external dependencies the status
 paragraph names by description now have numbers: the shared MapperInput
-derivation phase is [phase-495](archived/phase-495-consume-the-shared-derivation.md)
+derivation phase is [phase-495](phase-495-consume-the-shared-derivation.md)
 (its W2 is the call), and the tier-derivation fix is
-[phase-459](archived/phase-459-cmake-image-reaches-tier-derivation.md) (its W2 is the
+[phase-459](phase-459-cmake-image-reaches-tier-derivation.md) (its W2 is the
 wave after which a grouped node has a SchedContext on target).
 
 | claim id | depends on | owns | gate | starts now? |
@@ -752,7 +754,7 @@ Open issues whose `related:` names this phase (listed 2026-10-12, so the
 link runs both ways). Listing one here records the link, not a claim that
 this phase will fix it.
 
-- [issue 0506](../issues/0506-transport-band-unbounded-preemption.md) — Transport tasks above application tiers is the right default but has no budget — inbound overload preempts every tier …
+- [issue 0506](../../issues/0506-transport-band-unbounded-preemption.md) — Transport tasks above application tiers is the right default but has no budget — inbound overload preempts every tier …
 
 ## Issues homed here (2026-10-17)
 
@@ -760,4 +762,5 @@ Homed when every open issue was given a phase. Each issue has a `**Home:**` line
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1374](../issues/archived/1374-contract-cannot-express-qos-durability.md) (resolved 2026-10-18: issues 1256 and 1608 plus W5) | A contract's `qos:` carries only depth, so durability the code depends on is invisible to the contract, which is the vocabulary this phase brings on target. |
+| [#1374](../../issues/archived/1374-contract-cannot-express-qos-durability.md) (resolved 2026-10-18: issues 1256 and 1608 plus W5) | A contract's `qos:` carries only depth, so durability the code depends on is invisible to the contract, which is the vocabulary this phase brings on target. |
+| [#0506](../../issues/0506-transport-band-unbounded-preemption.md) (re-homed 2026-10-18 to phase-464) | The transport band's unbounded preemption: W6a-W6c bounded it on the device; the router rule is what is left, and it is not a device change. |
