@@ -265,16 +265,31 @@ mod global_allocator {
 
     unsafe impl GlobalAlloc for PlatformGlobalAllocator {
         unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-            // phase-361 W8.c — an over-aligned request FAILS rather than
-            // silently returning under-aligned memory. The ABI cannot express
-            // alignment, so the honest answer to `align > 8` is null, which
-            // routes the caller into `handle_alloc_error`. The previous
-            // `let _ = layout.align();` produced UB no build could see;
-            // `zpico-alloc` already answered the same question with null.
-            if layout.align() > PLATFORM_ALIGN {
-                return core::ptr::null_mut();
-            }
-            let p = <ConcretePlatform as PlatformAlloc>::alloc(layout.size()) as *mut u8;
+            // phase-361 W8.c — never return under-aligned memory: the previous
+            // `let _ = layout.align();` produced UB no build could see.
+            //
+            // An over-aligned request used to FAIL here (null, so
+            // `handle_alloc_error`). phase-397 W2 made the executor's
+            // `WakeCtx` `repr(align(64))` and put it in an `Arc`, so every
+            // embedded image with an executor panicked at boot with "memory
+            // allocation of 128 bytes failed" before registering a node
+            // (S32K344, Zephyr 4.4). The ABI still cannot express alignment,
+            // so an over-aligned block is carved out of a larger one instead
+            // (`over_align`).
+            let p = if layout.align() > PLATFORM_ALIGN {
+                match super::over_align::raw_size(layout) {
+                    // SAFETY: `raw_size` sized the raw block for `place`.
+                    Some(raw_size) => unsafe {
+                        super::over_align::place(
+                            <ConcretePlatform as PlatformAlloc>::alloc(raw_size) as *mut u8,
+                            layout,
+                        )
+                    },
+                    None => core::ptr::null_mut(),
+                }
+            } else {
+                <ConcretePlatform as PlatformAlloc>::alloc(layout.size()) as *mut u8
+            };
             #[cfg(feature = "alloc-stats")]
             if !p.is_null() {
                 super::heap_stats::STATS.on_alloc(layout.size());
@@ -282,15 +297,108 @@ mod global_allocator {
             p
         }
 
-        unsafe fn dealloc(&self, ptr: *mut u8, _layout: Layout) {
-            <ConcretePlatform as PlatformAlloc>::dealloc(ptr as *mut c_void);
+        unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+            let raw = if layout.align() > PLATFORM_ALIGN {
+                // SAFETY: `ptr` came from the over-aligned branch of `alloc`
+                // (same layout), which stored the raw block below it.
+                unsafe { super::over_align::raw_of(ptr) }
+            } else {
+                ptr
+            };
+            <ConcretePlatform as PlatformAlloc>::dealloc(raw as *mut c_void);
             #[cfg(feature = "alloc-stats")]
-            super::heap_stats::STATS.on_dealloc(_layout.size());
+            super::heap_stats::STATS.on_dealloc(layout.size());
         }
     }
 
     #[global_allocator]
     static ALLOCATOR: PlatformGlobalAllocator = PlatformGlobalAllocator;
+}
+
+/// An over-aligned block inside an 8-aligned one (the global allocator's
+/// `align > 8` path). The raw block is `size + align` bytes; the returned
+/// pointer is the first `align` boundary at least one `usize` past its start,
+/// and that `usize` just below it keeps the raw pointer for `dealloc`.
+///
+/// Room: the raw pointer is 8-aligned and `align` is a power of two above 8,
+/// so the gap to the boundary is a multiple of 8 in `8..=align`: the header
+/// fits in it and `gap + size <= align + size`.
+#[cfg_attr(
+    not(all(feature = "global-allocator", not(feature = "std"))),
+    allow(dead_code)
+)]
+mod over_align {
+    use core::alloc::Layout;
+
+    const HEADER: usize = core::mem::size_of::<usize>();
+
+    /// The raw block's size for `layout`, or `None` on overflow.
+    pub(crate) fn raw_size(layout: Layout) -> Option<usize> {
+        layout.size().checked_add(layout.align())
+    }
+
+    /// The aligned pointer inside `raw` (null stays null).
+    ///
+    /// # Safety
+    /// `raw` is null or an 8-aligned block of `raw_size(layout)` bytes, and
+    /// `layout.align() > 8`.
+    pub(crate) unsafe fn place(raw: *mut u8, layout: Layout) -> *mut u8 {
+        if raw.is_null() {
+            return raw;
+        }
+        let align = layout.align();
+        let start = raw as usize;
+        let aligned = (start + HEADER + align - 1) & !(align - 1);
+        let p = raw.wrapping_add(aligned - start);
+        // SAFETY: `aligned - HEADER >= start`, and it is 8-aligned (both
+        // `aligned` and `start` are), inside the raw block.
+        unsafe { (p.sub(HEADER) as *mut usize).write(start) };
+        p
+    }
+
+    /// The raw block `place` carved `p` out of.
+    ///
+    /// # Safety
+    /// `p` came from `place`.
+    pub(crate) unsafe fn raw_of(p: *mut u8) -> *mut u8 {
+        // SAFETY: `place` wrote the raw pointer there.
+        let start = unsafe { (p.sub(HEADER) as *const usize).read() };
+        p.wrapping_sub(p as usize - start)
+    }
+
+    #[cfg(test)]
+    mod tests {
+        extern crate std;
+        use super::*;
+        use std::{vec, vec::Vec};
+
+        #[test]
+        fn every_offset_fits_and_round_trips() {
+            for align in [16usize, 32, 64, 128] {
+                for size in [1usize, 8, 63, 64, 128, 200] {
+                    let layout = Layout::from_size_align(size, align).unwrap();
+                    let n = raw_size(layout).unwrap();
+                    // Every 8-aligned start an align-period can present.
+                    let mut buf: Vec<u64> = vec![0; (n + 2 * align) / 8 + 1];
+                    let base = buf.as_mut_ptr() as *mut u8;
+                    for off in (0..align).step_by(8) {
+                        let raw = base.wrapping_add(off);
+                        let p = unsafe { place(raw, layout) };
+                        assert_eq!(p as usize % align, 0);
+                        assert!(p as usize - raw as usize >= HEADER);
+                        assert!(p as usize + size <= raw as usize + n);
+                        assert_eq!(unsafe { raw_of(p) }, raw);
+                    }
+                }
+            }
+        }
+
+        #[test]
+        fn null_stays_null() {
+            let layout = Layout::from_size_align(128, 64).unwrap();
+            assert!(unsafe { place(core::ptr::null_mut(), layout) }.is_null());
+        }
+    }
 }
 
 // phase-361 W8.c — the Rust-footprint heap counter, moved here with the
