@@ -1832,6 +1832,16 @@ unsafe extern "C" fn set_wake_callback_trampoline<R: RustBackend>(
     NROS_RMW_RET_OK
 }
 
+/// Issue 1940 — the bytes the adapter allocates for a subscription, service
+/// or client handle of type `T`: the handle plus its wake registration
+/// (`crate::entity_wake::Hosted`). For a test that refuses that allocation,
+/// such as `tests/adapter_oom.rs`, which must not re-derive the wrapper's
+/// layout.
+#[doc(hidden)]
+pub const fn entity_box_size<T>() -> usize {
+    core::mem::size_of::<Hosted<T>>()
+}
+
 // Issue 1940 — the per-entity new-data callback slots. The registration lives in the
 // entity's `Hosted` wrapper; see `crate::entity_wake`.
 unsafe extern "C" fn subscription_set_on_new_message_callback_trampoline<R: RustBackend>(
