@@ -988,7 +988,11 @@ mod group_filter_tests {
 /// Phase 124.B.2 — opaque context handed to the runtime wake
 /// callback. Backends store the raw pointer + invoke the callback;
 /// the callback decodes back to `&WakeCtx`.
+///
+/// `repr(align(64))` because an entity waker carries its slot in the low six
+/// bits of a pointer to this struct (phase-397 W2, `entity_wake`).
 #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+#[repr(align(64))]
 pub(crate) struct WakeCtx {
     pub(crate) flag: portable_atomic_util::Arc<portable_atomic::AtomicBool>,
     /// The wake primitive. Phase 130.3 added it beside a `std::sync::Condvar`
@@ -996,6 +1000,53 @@ pub(crate) struct WakeCtx {
     /// branch instead of two"; phase-359 W10 is that migration, and this is the
     /// one that survived.
     pub(crate) node_wake: Option<portable_atomic_util::Arc<super::node_wake::NodeWake>>,
+    /// phase-397 W2 — one bit per entry slot an attributed arrival has marked
+    /// since the executor last took the word. Set by an entity waker
+    /// (`entity_wake`), never by the session-scoped callback, which cannot
+    /// name an entry. W3 reads it instead of scanning.
+    pub(crate) ready: portable_atomic::AtomicU64,
+}
+
+#[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+impl WakeCtx {
+    pub(crate) fn new(
+        flag: portable_atomic_util::Arc<portable_atomic::AtomicBool>,
+        node_wake: Option<portable_atomic_util::Arc<super::node_wake::NodeWake>>,
+    ) -> Self {
+        Self {
+            flag,
+            node_wake,
+            ready: portable_atomic::AtomicU64::new(0),
+        }
+    }
+
+    /// The wake itself: flag, then the primitive. Shared by the session
+    /// callback and the entity waker so the two cannot drift.
+    pub(crate) fn signal(&self) {
+        // Phase 141.B.2 — capture T0 at cb entry. No-op when the
+        // probe feature is off or no cycle reader is installed.
+        #[cfg(feature = "wake-latency-probe")]
+        super::wake_probe::on_wake();
+        // Lock-free: the `flag` store is SeqCst and therefore happens-before any
+        // subsequent acquire in the waiter, so a wake cannot be missed even though
+        // nothing is held here.
+        self.flag.store(true, core::sync::atomic::Ordering::SeqCst);
+        // phase-359 W10 — ONE primitive. This used to signal both a
+        // `std::sync::Condvar` and (since phase 130.3) the `NodeWake`, "so the cb
+        // keeps working whichever wait primitive spin_once is using". `spin_once`
+        // now has only one, so this has only one to signal.
+        if let Some(nw) = self.node_wake.as_ref() {
+            nw.signal();
+        }
+    }
+
+    /// phase-397 W2 — an attributed arrival on entry `slot`: its bit, then the
+    /// wake. The bit is set FIRST, so a waiter that sees the flag sees the bit.
+    pub(crate) fn mark_ready(&self, slot: usize) {
+        self.ready
+            .fetch_or(1u64 << slot, core::sync::atomic::Ordering::SeqCst);
+        self.signal();
+    }
 }
 
 /// Phase 124.B.2 — runtime wake callback.
@@ -1028,10 +1079,6 @@ pub(crate) unsafe extern "C" fn nros_rmw_runtime_wake_cb(ctx: *mut core::ffi::c_
     if ctx.is_null() {
         return;
     }
-    // Phase 141.B.2 — capture T0 at cb entry. No-op when the
-    // probe feature is off or no cycle reader is installed.
-    #[cfg(feature = "wake-latency-probe")]
-    super::wake_probe::on_wake();
     // SAFETY: ctx points at a `WakeCtx` owned by an Executor still
     // alive at the time of the call. `Executor::clear_wake_signal`
     // discharges that obligation — `set_wake_callback(None, _)` on the
@@ -1041,17 +1088,7 @@ pub(crate) unsafe extern "C" fn nros_rmw_runtime_wake_cb(ctx: *mut core::ffi::c_
     // an "`install_wake_*` teardown path" that did not exist, and
     // `set_wake_callback(None` occurred nowhere in the tree but here.
     let wake = unsafe { &*(ctx as *const WakeCtx) };
-    // Lock-free: the `flag` store is SeqCst and therefore happens-before any
-    // subsequent acquire in the waiter, so a wake cannot be missed even though
-    // nothing is held here.
-    wake.flag.store(true, core::sync::atomic::Ordering::SeqCst);
-    // phase-359 W10 — ONE primitive. This used to signal both a
-    // `std::sync::Condvar` and (since phase 130.3) the `NodeWake`, "so the cb
-    // keeps working whichever wait primitive spin_once is using". `spin_once`
-    // now has only one, so this has only one to signal.
-    if let Some(nw) = wake.node_wake.as_ref() {
-        nw.signal();
-    }
+    wake.signal();
 }
 
 /// phase-436 — the callback a backend holds when several executors share its
@@ -1831,6 +1868,14 @@ pub struct Executor<'s> {
     /// redelivery never fires).
     #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
     pub(crate) has_async_wake: bool,
+    /// phase-397 W2 — one bit per entry slot whose handle accepted an entity
+    /// waker (`arm_entity_wake`): its arrivals mark [`WakeCtx::ready`] and wake
+    /// this executor alone. A clear bit is an entry whose backend cannot
+    /// attribute an arrival, which the session wake still covers. W3 needs
+    /// both halves: the ready bits are only a complete answer when every live
+    /// entry that can have data is attributed.
+    #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+    pub(crate) entity_attributed: u64,
     /// Phase 124.B.2 — opaque context Arc handed to backends via
     /// `set_wake_callback`. Lazy-allocated on first install; stays
     /// alive for the Executor's lifetime so the raw pointer stored
@@ -2286,6 +2331,8 @@ impl<'s> Executor<'s> {
             graph_change_target: None,
             #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
             has_async_wake: false,
+            #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+            entity_attributed: 0,
             // Phase 141.A.3 — alloc-mode wake state init. Constructed
             // eagerly (NodeWake allocation) so the runtime cb can be
             // installed lazily on first session without a fallible
@@ -5393,10 +5440,10 @@ impl<'s> Executor<'s> {
     #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
     fn wake_ctx_ptr(&mut self) -> *mut core::ffi::c_void {
         if self.wake_ctx.is_none() {
-            self.wake_ctx = Some(portable_atomic_util::Arc::new(WakeCtx {
-                flag: self.wake_flag.clone(),
-                node_wake: self.node_wake.clone(),
-            }));
+            self.wake_ctx = Some(portable_atomic_util::Arc::new(WakeCtx::new(
+                self.wake_flag.clone(),
+                self.node_wake.clone(),
+            )));
         }
         let arc = self.wake_ctx.as_ref().expect("just set");
         portable_atomic_util::Arc::as_ptr(arc) as *mut core::ffi::c_void
@@ -6920,6 +6967,11 @@ impl<'s> Executor<'s> {
             let was = tag.set(super::types::SlotTag::RELEASE_PENDING);
             return was & super::types::SlotTag::RELEASE_PENDING == 0;
         }
+        // phase-397 W2 — the slot's next occupant arms (or not) on its own.
+        #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+        if index < super::entity_wake::SLOTS {
+            self.entity_attributed &= !(1u64 << index);
+        }
         let Some(meta) = self.entries[index].take() else {
             return false;
         };
@@ -7161,6 +7213,93 @@ impl<'s> Executor<'s> {
             tag.owner = 0;
             tag.reset_flags();
         }
+    }
+
+    /// phase-397 W2 — register `slot`'s entity with THIS executor's wake
+    /// context, through `register` (the entry handle's `register_waker`).
+    ///
+    /// Called by every subscription, service and client registration AFTER
+    /// the entry is written into the arena: the handle's address is stable
+    /// from then on, and a backend that keeps a pointer into the handle (the
+    /// cffi route's per-entity `user_data`) must not see it move.
+    ///
+    /// Records whether the backend accepted it in `entity_attributed`. A
+    /// backend that cannot attribute an arrival returns `false`, and the
+    /// session-scoped wake keeps covering that entry. Without the async wake
+    /// primitive, or without `rmw-cffi`, there is nothing to wake and this does
+    /// nothing.
+    #[allow(unused_variables, unused_mut)]
+    pub(crate) fn arm_entity_wake(
+        &mut self,
+        slot: usize,
+        register: impl FnOnce(&core::task::Waker) -> bool,
+    ) {
+        #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+        {
+            if self.node_wake.is_none() || slot >= super::entity_wake::SLOTS {
+                return;
+            }
+            self.wake_ctx_ptr();
+            let Some(waker) = self
+                .wake_ctx
+                .as_ref()
+                .and_then(|ctx| super::entity_wake::waker(ctx, slot))
+            else {
+                return;
+            };
+            let bit = 1u64 << slot;
+            if register(&waker) {
+                self.entity_attributed |= bit;
+            } else {
+                self.entity_attributed &= !bit;
+            }
+        }
+    }
+
+    /// [`arm_entity_wake`](Self::arm_entity_wake) for the entry of type `T`
+    /// at arena `offset`: the one place a registration site's entry is read
+    /// back to reach its handle.
+    ///
+    /// # Safety
+    ///
+    /// A `T` was written at `offset` and is the live occupant of `slot`. It
+    /// stays at that address until its release, which drops the handle (and
+    /// with it the backend's registration) first.
+    pub(crate) unsafe fn arm_entry_wake<T>(
+        &mut self,
+        slot: usize,
+        offset: usize,
+        register: impl FnOnce(&T, &core::task::Waker) -> bool,
+    ) {
+        let entry = self
+            .arena
+            .as_ptr()
+            .cast::<u8>()
+            .wrapping_add(offset)
+            .cast::<T>();
+        // SAFETY: the caller's contract — a live `T` at `offset`.
+        self.arm_entity_wake(slot, |w| register(unsafe { &*entry }, w));
+    }
+
+    /// phase-397 W2 — the ready word, taken: every slot an attributed arrival
+    /// marked since the last take. W3's `spin_once` consumes it; until then it
+    /// is read by tests only.
+    #[doc(hidden)]
+    pub fn take_entity_ready_bits(&self) -> u64 {
+        #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+        if let Some(ctx) = self.wake_ctx.as_ref() {
+            return ctx.ready.swap(0, core::sync::atomic::Ordering::SeqCst);
+        }
+        0
+    }
+
+    /// phase-397 W2 — the slots whose backend accepted an entity waker.
+    #[doc(hidden)]
+    pub fn entity_attributed_slots(&self) -> u64 {
+        #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+        return self.entity_attributed;
+        #[cfg(not(all(feature = "alloc", feature = "rmw-cffi")))]
+        0
     }
 
     /// phase-476 W0 — the handle for the CURRENT occupant of `slot`. Every
@@ -7515,6 +7654,13 @@ impl<'s> Executor<'s> {
                 drop_fn: drop_entry::<SubInplaceEntry<M, F>>,
             };
             self.emplace_entry(slot, meta, TraceName::Text(topic_name));
+            // phase-397 W2 — this entry's arrivals mark its slot and wake this executor.
+            // SAFETY: a `SubInplaceEntry<M, F>` was written at `entry_offset` just above.
+            unsafe {
+                self.arm_entry_wake::<SubInplaceEntry<M, F>>(slot, entry_offset, |e, w| {
+                    nros_rmw::Subscription::register_waker(&e.handle, w)
+                })
+            };
             self.apply_node_default_sched(slot, Some(node_id), group);
             return Ok(self.handle_for(slot));
         }
@@ -7558,6 +7704,13 @@ impl<'s> Executor<'s> {
             drop_fn: drop_entry::<Entry<M, F>>,
         };
         self.emplace_entry(slot, meta, TraceName::Text(topic_name));
+        // phase-397 W2 — this entry's arrivals mark its slot and wake this executor.
+        // SAFETY: a `Entry<M, F>` was written at `entry_offset` just above.
+        unsafe {
+            self.arm_entry_wake::<Entry<M, F>>(slot, entry_offset, |e, w| {
+                nros_rmw::Subscription::register_waker(&e.handle, w)
+            })
+        };
         // Phase 104.C.4 — apply Node's default SchedContext.
         self.apply_node_default_sched(slot, Some(node_id), group);
         Ok(self.handle_for(slot))
@@ -7674,6 +7827,13 @@ impl<'s> Executor<'s> {
             // Same trace name as the buffered arm, so a trace reads the same
             // whichever dispatch the backend chose.
             self.emplace_entry(slot, meta, TraceName::Slot("sub", slot));
+            // phase-397 W2 — this entry's arrivals mark its slot and wake this executor.
+            // SAFETY: a `Entry<F>` was written at `entry_offset` just above.
+            unsafe {
+                self.arm_entry_wake::<Entry<F>>(slot, entry_offset, |e, w| {
+                    nros_rmw::Subscription::register_waker(&e.handle, w)
+                })
+            };
         } else {
             self.emplace_raw_buffered_subscription(slot, handle, qos, slot_bytes, callback)?;
         }
@@ -7767,6 +7927,13 @@ impl<'s> Executor<'s> {
             drop_fn: drop_entry::<Entry<B, F>>,
         };
         self.emplace_entry(slot, meta, TraceName::Text(topic_name));
+        // phase-397 W2 — this entry's arrivals mark its slot and wake this executor.
+        // SAFETY: a `Entry<B, F>` was written at `entry_offset` just above.
+        unsafe {
+            self.arm_entry_wake::<Entry<B, F>>(slot, entry_offset, |e, w| {
+                nros_rmw::Subscription::register_waker(&e.handle, w)
+            })
+        };
         self.apply_node_default_sched(slot, Some(node_id), None);
         Ok(self.handle_for(slot))
     }
@@ -7842,6 +8009,13 @@ impl<'s> Executor<'s> {
             drop_fn: drop_entry::<Entry<F>>,
         };
         self.emplace_entry(slot, meta, TraceName::Text(topic_name));
+        // phase-397 W2 — this entry's arrivals mark its slot and wake this executor.
+        // SAFETY: a `Entry<F>` was written at `offset` just above.
+        unsafe {
+            self.arm_entry_wake::<Entry<F>>(slot, offset, |e, w| {
+                nros_rmw::Subscription::register_waker(&e.handle, w)
+            })
+        };
         self.apply_node_default_sched(slot, Some(node_id), None);
         Ok(self.handle_for(slot))
     }
@@ -7923,6 +8097,13 @@ impl<'s> Executor<'s> {
             drop_fn: drop_entry::<Entry<F>>,
         };
         self.emplace_entry(slot, meta, TraceName::Text(topic_name));
+        // phase-397 W2 — this entry's arrivals mark its slot and wake this executor.
+        // SAFETY: a `Entry<F>` was written at `offset` just above.
+        unsafe {
+            self.arm_entry_wake::<Entry<F>>(slot, offset, |e, w| {
+                nros_rmw::Subscription::register_waker(&e.handle, w)
+            })
+        };
         self.apply_node_default_sched(slot, Some(node_id), None);
         Ok(self.handle_for(slot))
     }
@@ -8024,6 +8205,13 @@ impl<'s> Executor<'s> {
             drop_fn: drop_entry::<Entry<F>>,
         };
         self.emplace_entry(slot, meta, TraceName::Slot("sub", slot));
+        // phase-397 W2 — this entry's arrivals mark its slot and wake this executor.
+        // SAFETY: a `Entry<F>` was written at `entry_offset` just above.
+        unsafe {
+            self.arm_entry_wake::<Entry<F>>(slot, entry_offset, |e, w| {
+                nros_rmw::Subscription::register_waker(&e.handle, w)
+            })
+        };
         Ok(())
     }
 
@@ -8095,6 +8283,13 @@ impl<'s> Executor<'s> {
             drop_fn: drop_entry::<Entry<M, F>>,
         };
         self.emplace_entry(slot, meta, TraceName::Text(topic_name));
+        // phase-397 W2 — this entry's arrivals mark its slot and wake this executor.
+        // SAFETY: a `Entry<M, F>` was written at `offset` just above.
+        unsafe {
+            self.arm_entry_wake::<Entry<M, F>>(slot, offset, |e, w| {
+                nros_rmw::Subscription::register_waker(&e.handle, w)
+            })
+        };
         self.apply_node_default_sched(slot, node_id, None);
         Ok(self.handle_for(slot))
     }
@@ -8165,6 +8360,13 @@ impl<'s> Executor<'s> {
             drop_fn: drop_entry::<Entry<M, F>>,
         };
         self.emplace_entry(slot, meta, TraceName::Text(topic_name));
+        // phase-397 W2 — this entry's arrivals mark its slot and wake this executor.
+        // SAFETY: a `Entry<M, F>` was written at `offset` just above.
+        unsafe {
+            self.arm_entry_wake::<Entry<M, F>>(slot, offset, |e, w| {
+                nros_rmw::Subscription::register_waker(&e.handle, w)
+            })
+        };
         self.apply_node_default_sched(slot, node_id, None);
         Ok(self.handle_for(slot))
     }
@@ -8249,6 +8451,13 @@ impl<'s> Executor<'s> {
             drop_fn: drop_entry::<Entry<Svc, F, REQ_BUF, REPLY_BUF>>,
         };
         self.emplace_entry(slot, meta, TraceName::Text(service_name));
+        // phase-397 W2 — this entry's arrivals mark its slot and wake this executor.
+        // SAFETY: a `Entry<Svc, F, REQ_BUF, REPLY_BUF>` was written at `offset` just above.
+        unsafe {
+            self.arm_entry_wake::<Entry<Svc, F, REQ_BUF, REPLY_BUF>>(slot, offset, |e, w| {
+                nros_rmw::ServiceTrait::register_waker(&e.handle, w)
+            })
+        };
         Ok(self.handle_for(slot))
     }
 
@@ -8331,6 +8540,13 @@ impl<'s> Executor<'s> {
             drop_fn: drop_entry::<Entry<Svc, F, REQ_BUF, REPLY_BUF>>,
         };
         self.emplace_entry(slot, meta, TraceName::Text(service_name));
+        // phase-397 W2 — this entry's arrivals mark its slot and wake this executor.
+        // SAFETY: a `Entry<Svc, F, REQ_BUF, REPLY_BUF>` was written at `offset` just above.
+        unsafe {
+            self.arm_entry_wake::<Entry<Svc, F, REQ_BUF, REPLY_BUF>>(slot, offset, |e, w| {
+                nros_rmw::ServiceTrait::register_waker(&e.handle, w)
+            })
+        };
         self.apply_node_default_sched(slot, Some(node_id), None);
         Ok(self.handle_for(slot))
     }
@@ -8781,6 +8997,15 @@ impl<'s> Executor<'s> {
                 drop_fn: drop_entry::<super::arena::SubInplaceRawCEntry>,
             };
             self.emplace_entry(slot, meta, TraceName::Text(topic_name));
+            // phase-397 W2 — this entry's arrivals mark its slot and wake this executor.
+            // SAFETY: a `super::arena::SubInplaceRawCEntry` was written at `entry_offset` just above.
+            unsafe {
+                self.arm_entry_wake::<super::arena::SubInplaceRawCEntry>(
+                    slot,
+                    entry_offset,
+                    |e, w| nros_rmw::Subscription::register_waker(&e.handle, w),
+                )
+            };
             self.apply_node_default_sched(slot, node_id, group);
             return Ok(self.handle_for(slot));
         }
@@ -8830,6 +9055,13 @@ impl<'s> Executor<'s> {
             drop_fn: drop_entry::<SubBufferedRawCEntry>,
         };
         self.emplace_entry(slot, meta, TraceName::Text(topic_name));
+        // phase-397 W2 — this entry's arrivals mark its slot and wake this executor.
+        // SAFETY: a `SubBufferedRawCEntry` was written at `entry_offset` just above.
+        unsafe {
+            self.arm_entry_wake::<SubBufferedRawCEntry>(slot, entry_offset, |e, w| {
+                nros_rmw::Subscription::register_waker(&e.handle, w)
+            })
+        };
         self.apply_node_default_sched(slot, node_id, group);
         Ok(self.handle_for(slot))
     }
@@ -8955,6 +9187,13 @@ impl<'s> Executor<'s> {
             drop_fn: drop_entry::<SubBufferedTypedCEntry>,
         };
         self.emplace_entry(slot, meta, TraceName::Text(topic_name));
+        // phase-397 W2 — this entry's arrivals mark its slot and wake this executor.
+        // SAFETY: a `SubBufferedTypedCEntry` was written at `entry_offset` just above.
+        unsafe {
+            self.arm_entry_wake::<SubBufferedTypedCEntry>(slot, entry_offset, |e, w| {
+                nros_rmw::Subscription::register_waker(&e.handle, w)
+            })
+        };
         self.apply_node_default_sched(slot, node_id, group);
         Ok(self.handle_for(slot))
     }
@@ -9040,6 +9279,13 @@ impl<'s> Executor<'s> {
             drop_fn: drop_entry::<Entry>,
         };
         self.emplace_entry(slot, meta, TraceName::Text(topic_name));
+        // phase-397 W2 — this entry's arrivals mark its slot and wake this executor.
+        // SAFETY: a `Entry` was written at `offset` just above.
+        unsafe {
+            self.arm_entry_wake::<Entry>(slot, offset, |e, w| {
+                nros_rmw::Subscription::register_waker(&e.handle, w)
+            })
+        };
         self.apply_node_default_sched(slot, node_id, None);
         Ok(self.handle_for(slot))
     }
@@ -9131,6 +9377,13 @@ impl<'s> Executor<'s> {
             drop_fn: drop_entry::<Entry>,
         };
         self.emplace_entry(slot, meta, TraceName::Text(topic_name));
+        // phase-397 W2 — this entry's arrivals mark its slot and wake this executor.
+        // SAFETY: a `Entry` was written at `offset` just above.
+        unsafe {
+            self.arm_entry_wake::<Entry>(slot, offset, |e, w| {
+                nros_rmw::Subscription::register_waker(&e.handle, w)
+            })
+        };
         self.apply_node_default_sched(slot, node_id, None);
         Ok(self.handle_for(slot))
     }
@@ -9283,6 +9536,13 @@ impl<'s> Executor<'s> {
             drop_fn: drop_entry::<SrvRawEntry<REQ_BUF, REPLY_BUF>>,
         };
         self.emplace_entry(slot, meta, TraceName::Text(service_name));
+        // phase-397 W2 — this entry's arrivals mark its slot and wake this executor.
+        // SAFETY: a `SrvRawEntry<REQ_BUF, REPLY_BUF>` was written at `offset` just above.
+        unsafe {
+            self.arm_entry_wake::<SrvRawEntry<REQ_BUF, REPLY_BUF>>(slot, offset, |e, w| {
+                nros_rmw::ServiceTrait::register_waker(&e.handle, w)
+            })
+        };
         self.apply_node_default_sched(slot, node_id, None);
         Ok(self.handle_for(slot))
     }
@@ -9440,6 +9700,13 @@ impl<'s> Executor<'s> {
             drop_fn: drop_entry::<ServiceClientRawArenaEntry<REPLY_BUF>>,
         };
         self.emplace_entry(slot, meta, TraceName::Text(service_name));
+        // phase-397 W2 — this entry's arrivals mark its slot and wake this executor.
+        // SAFETY: a `ServiceClientRawArenaEntry<REPLY_BUF>` was written at `offset` just above.
+        unsafe {
+            self.arm_entry_wake::<ServiceClientRawArenaEntry<REPLY_BUF>>(slot, offset, |e, w| {
+                nros_rmw::ClientTrait::register_waker(&e.handle, w)
+            })
+        };
         self.apply_node_default_sched(slot, node_id, None);
         Ok(self.handle_for(slot))
     }
@@ -9527,6 +9794,15 @@ impl<'s> Executor<'s> {
             drop_fn: drop_entry::<ServiceClientCallbackEntry<Svc, F, REPLY_BUF>>,
         };
         self.emplace_entry(slot, meta, TraceName::Text(service_name));
+        // phase-397 W2 — this entry's arrivals mark its slot and wake this executor.
+        // SAFETY: a `ServiceClientCallbackEntry<Svc, F, REPLY_BUF>` was written at `offset` just above.
+        unsafe {
+            self.arm_entry_wake::<ServiceClientCallbackEntry<Svc, F, REPLY_BUF>>(
+                slot,
+                offset,
+                |e, w| nros_rmw::ClientTrait::register_waker(&e.hdr.handle, w),
+            )
+        };
         self.apply_node_default_sched(slot, node_id, None);
         Ok((self.handle_for(slot), hdr_ptr))
     }

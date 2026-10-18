@@ -3194,7 +3194,7 @@ required-features-tests:
         --test trigger_conditions --test wake_latency --test ftti_detection_bounds \
         --test component_runtime --test tier_filter \
         --test component_dispatch --test component_param \
-        --test dispatch_strategy --test signal_fd_wake
+        --test dispatch_strategy --test signal_fd_wake --test entity_wake
     # phase-427 W10 — the rclrs talker port + its diff against upstream's text.
     # A lane line of its own, not a `--test` on the tolerant invocation above,
     # because `rclrs-port-test` is deliberately the CHEAP feature: it needs

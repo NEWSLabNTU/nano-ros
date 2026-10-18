@@ -939,17 +939,17 @@ extern "C" fn queryable_callback(
     let payload = unsafe { core::slice::from_raw_parts(payload, payload_len) };
     store(buffer, tail, payload, seq as SeqScalar);
 
-    // Phase 122.3.c.6.e — wake any task that registered a Waker on
-    // this server (event-driven callers).
-    buffer.waker.wake();
-
-    // Issue 1195 / phase-436 D1 — fire the nros-node runtime wake callback,
-    // as `subscriber_notify_callback` does (issue 0317). This callback runs on
-    // the zenoh-pico read task, so `drive_io`'s poll path never sees the
-    // arrival; without this a parked server slept out its whole `spin_once`
-    // slice before dispatching the request. Measured on native zenoh: every
-    // service round trip took one 10 ms slice (p50 10.1 ms).
-    super::fire_runtime_wake(super::session_wake_index(session));
+    // Phase 122.3.c.6.e — wake the waker registered on this server (an
+    // event-driven caller, or, phase-397 W2, the owning executor by slot).
+    //
+    // Issue 1195 / phase-436 D1 — with none registered, fire the nros-node
+    // runtime wake callback instead, as `subscriber_notify_callback` does
+    // (issue 0317). This callback runs on the zenoh-pico read task, so
+    // `drive_io`'s poll path never sees the arrival; without a wake here a
+    // parked server slept out its whole `spin_once` slice before dispatching
+    // the request. Measured on native zenoh: every service round trip took one
+    // 10 ms slice (p50 10.1 ms).
+    super::wake_entity_or_session(&buffer.waker, super::session_wake_index(session));
 
     // Wake the executor spin loop (if waiting)
     #[cfg(feature = "std")]
@@ -1499,13 +1499,16 @@ unsafe extern "C" fn reply_waker_callback(session_index: i32, slot: i32) {
         && (slot as usize) < ZPICO_MAX_PENDING_GETS
     {
         let idx = session_index as usize * ZPICO_MAX_PENDING_GETS + slot as usize;
-        REPLY_WAKERS[idx].wake();
+        // Issue 1195 / phase-436 D1 — a get with no waker armed is a caller
+        // parked in `Promise::wait` (or the tick path's `call_raw`), which
+        // waits on the runtime wake, not on `REPLY_WAKERS`: the reply lands on
+        // the read task, where `drive_io` never sees it. Fired for the
+        // channel-close edge too — a timeout is something a waiter must also
+        // see. A get the owning executor armed (phase-397 W2) wakes that
+        // executor alone.
+        super::wake_entity_or_session(&REPLY_WAKERS[idx], session_index);
+        return;
     }
-    // Issue 1195 / phase-436 D1 — and the executor parked in `Promise::wait`
-    // (or the tick path's `call_raw`), which waits on the runtime wake, not on
-    // `REPLY_WAKERS`. Same reason as in `queryable_callback`: the reply lands
-    // on the read task, where `drive_io` never sees it. Fired for the
-    // channel-close edge too — a timeout is something a waiter must also see.
     super::fire_runtime_wake(session_index);
 }
 

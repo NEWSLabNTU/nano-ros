@@ -887,16 +887,16 @@ extern "C" fn subscriber_notify_callback(
     // A no-op (and no code) without `pool-occupancy`.
     super::occupancy::sample();
 
-    // Wake any async task waiting for data on this subscriber.
-    buffer.waker.wake();
-
-    // Issue #0317 — fire the nros-node runtime wake callback (→ wake-latency
-    // probe `on_wake` T0 + executor cv-signal) at the real arrival instant. On
-    // the multi-threaded backend THIS callback runs on the zenoh-pico read task,
-    // so it is the only place the transport-arrival wake can be timestamped
-    // (`drive_io`'s poll path returns 0 and never fires it). no_std-safe; a no-op
-    // when no executor installed a wake callback.
-    super::fire_runtime_wake(buffer.session_index.load(Ordering::Acquire));
+    // Wake whoever is waiting on THIS subscriber: its entity waker when one is
+    // held (phase-397 W2 — the owning executor, by slot, and no other), else
+    // the session's runtime wake.
+    //
+    // Issue #0317 — either way the wake happens HERE, at the real arrival
+    // instant (→ wake-latency probe `on_wake` T0 + executor cv-signal). On the
+    // multi-threaded backend this callback runs on the zenoh-pico read task, so
+    // it is the only place the transport-arrival wake can be timestamped
+    // (`drive_io`'s poll path returns 0 and never fires it). no_std-safe.
+    super::wake_entity_or_session(&buffer.waker, buffer.session_index.load(Ordering::Acquire));
 
     // Wake the (std BasicExecutor) spin loop's own cvar, if waiting.
     #[cfg(feature = "std")]

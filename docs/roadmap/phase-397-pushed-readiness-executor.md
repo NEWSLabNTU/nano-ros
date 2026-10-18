@@ -1,6 +1,6 @@
 # Phase 397 — Pushed readiness: the wake says WHO, and the executor stops scanning
 
-**Status (2026-10-18). W1 DONE; W2 onward not started.** Implements
+**Status (2026-10-18). W1 DONE; W2 DONE for zenoh (W2.b, Cyclone, open); W3 onward not started.** Implements
 [RFC-0084](../design/0084-readiness-is-pushed-not-scanned.md).
 
 **Revision 2026-10-17, read against `main`.**
@@ -128,40 +128,73 @@ Acceptance, as run:
 - A per-backend XRCE run reporting UNSUPPORTED was not done. It follows from
   XRCE's NULL slot through the same code path the stub's UNSUPPORTED arm drives.
 
-### W2 — the executor registers each entity with its token AND its owner
+### W2 — the executor registers each entity with its token AND its owner — DONE for zenoh 2026-10-18
 
-At registration the executor calls W1's slot with `user_data` pointing at a
-per-entity record of its OWN wake context and the entity's `DescIdx` (the slot
-has no token argument; see W1). The runtime callback,
-`nros_rmw_runtime_wake_cb_tok`, reads both from that record and sets
-`ready_bits |= 1 << idx` (one `fetch_or` on an `AtomicU64` in `WakeCtx`), sets
-the flag and signals the primitive. The session-scoped callback stays,
-forwarding `UNKNOWN`.
+**Landed (W2.a).** Every subscription, service and client registration
+(the 19 sites in `executor/spin.rs`) calls `Executor::arm_entity_wake` after
+the entry is written into the arena. That hands the handle's `register_waker`
+a waker from `executor/entity_wake.rs`. The waker carries no separate record:
+it holds a strong reference to the owning executor's `WakeCtx` and keeps the
+slot in the low six bits of that pointer. `WakeCtx` is `repr(align(64))` to
+make room for them.
 
-Cyclone fills W1's slots here, from the reader its `on_data_available`
-listener receives; W1 left them NULL.
+Waking it calls `WakeCtx::mark_ready(slot)`: `ready |= 1 << slot` on a new
+`AtomicU64`, then the same flag, probe and signal as the session callback.
+That shared step is now one function, `WakeCtx::signal`. The executor also
+records which slots a backend accepted, in `entity_attributed`. W3 needs that
+mask, because a clear bit is an entry only the session wake still covers.
 
-Because the context named is the owning executor's, an arrival wakes that
-executor alone. The wake fan-out (RFC-0106 D6) stays only as the fallback for
-a backend whose entity slot is NULL.
+Two choices differ from the text this item first had:
 
-**Done when**:
-- each registered entity's arrivals set that entity's bit and no other, under
-  a test with three subscriptions on distinct topics;
-- two executors over one session, a subscription on one: the other is not
-  woken by its arrivals (phase-436 step 5's probe, inverted).
+- **No `nros_rmw_runtime_wake_cb_tok`.** The executor reaches W1's slot through
+  the handle's `register_waker`, so the per-entity record is a Rust `Waker`, not
+  a C `user_data`. On the cffi route the adapter's `Hosted<T>` and
+  `WakerSlot` (W1) carry it across the ABI. The waker owns an `Arc` reference,
+  so a backend that keeps a clone past the entry's release cannot dangle.
+- **The session wake is skipped by the BACKEND, not by the fan-out.** The
+  fan-out cannot know which entity an arrival was for, so it cannot be the
+  one to skip it. zenoh's arrival hooks (subscriber, queryable, reply) now go
+  through `shim::wake_entity_or_session`, which wakes the entity's
+  `AtomicWaker` when it holds one and fires the session wake only when it is
+  empty.
+  - Empty is still the case the session wake exists for: an entity nobody
+    attributed, an async future whose wake was already taken, or
+    `Promise::wait`, which registers nothing.
+  - `take` + `wake` is exactly `AtomicWaker::wake`, so a one-shot async caller
+    sees no change.
+
+**Done-when, both measured** (`nros-tests/tests/entity_wake.rs`, in
+`just check required-features-tests`):
+- Three subscriptions on distinct topics: each arrival sets that
+  subscription's bit and no other. There is also a negative control: no bits
+  are set before the first publish.
+- Two executors over one session (the tier shape, `open_with_session_handle`),
+  with a subscription on the first. Under an arrival every 50 ms, the second
+  sleeps out its whole 800 ms `spin_once`, and the control asserts the
+  arrivals reached the owner.
+- Both tests publish on the subscriber's own session. zenoh-pico's
+  local-subscriber delivery runs the same arrival hook a remote sample does,
+  and the POSIX pool holds one session per process.
+
+Mutations, each red then restored green:
+- Firing the session wake beside the entity wake fails the second test:
+  `other` returned after 7.92 µs.
+- Disabling `arm_entity_wake` fails both tests, with no slot attributed.
+
+**Open (W2.b) — Cyclone fills W1's slots**, from the reader its
+`on_data_available` listener receives; W1 left them NULL. Until then a Cyclone
+entity reports `UNSUPPORTED`, keeps its `entity_attributed` bit clear, and is
+woken through the fan-out as before.
 
 **Why the owner rides on the token** (phase-436 step 5,
 2026-10-16). Several executors share one session through the wake fan-out
-(RFC-0106 D6), and today every arrival wakes all of them. Measured on a native
-host: 7-9 us of CPU per spurious wake, about 0.8 % of a core per idle member at
-1 kHz. When the entity's registration names its executor's wake context, the
-arrival wakes that executor alone, and the fan-out stays only as the fallback
-for a backend that reports UNKNOWN. Fixing
-[issue 1929](../issues/archived/1929-zenoh-async-wake-is-one-process-global-slot.md)
+(RFC-0106 D6), and before this item every arrival woke all of them. Measured
+on a native host: 7-9 us of CPU per spurious wake, about 0.8 % of a core per
+idle member at 1 kHz.
+[Issue 1929](../issues/archived/1929-zenoh-async-wake-is-one-process-global-slot.md)
 (zenoh's arrival wake was one process-global slot) was fixed ahead of this at
-session grain (2026-10-16): a per-session wake table, so a second session's
-executor no longer takes the first's arrivals. Entity grain is still this item.
+session grain on 2026-10-16: a per-session wake table, so a second session's
+executor no longer takes the first's arrivals. This item is the entity grain.
 
 ### W3 — `spin_once` reads bits instead of scanning
 
