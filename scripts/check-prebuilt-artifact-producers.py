@@ -66,6 +66,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+import just_closure  # noqa: E402  issue 1959 — the one recipe-closure walk
+
 ROOT = Path(__file__).resolve().parents[1]
 TESTS = "packages/testing/nros-tests"
 SEED_FUNNEL = ("require_prebuilt_artifact", 1)  # (name, remedy arg index)
@@ -272,65 +275,8 @@ def excluded(binary: str, exact: set[str], sub: set[str]) -> bool:
 
 # --- the lane build's closure, from just's own dump -------------------------
 
-JUST_CALL = re.compile(
-    r"""(?:^|[;&|(\s])just\s+(?:--?[A-Za-z][\w-]*(?:[ =]\S+)?\s+)*"""
-    r"""("[^"]*"|'[^']*'|\S+)(?:\s+("[^"]*"|'[^']*'|\S+))?"""
-)
-
-
-def _line_text(frags) -> str:
-    out = []
-    for f in frags:
-        out.append(f if isinstance(f, str) else "{{x}}")
-    return "".join(out)
-
-
-def recipe_table(dump) -> dict[str, dict]:
-    """`mod::recipe` (or `recipe` at the root) -> recipe json."""
-    table = {}
-
-    def walk(node, prefix):
-        for name, r in node.get("recipes", {}).items():
-            table[prefix + name] = r
-        for mname, m in node.get("modules", {}).items():
-            walk(m, prefix + mname + "::")
-
-    walk(dump, "")
-    return table
-
-
 def lane_closure(dump) -> set[str]:
-    table = recipe_table(dump)
-    modules = set(dump.get("modules", {}))
-    closure: set[str] = set()
-    todo = [LANE_ROOT]
-    while todo:
-        q = todo.pop()
-        if q in closure or q not in table:
-            continue
-        closure.add(q)
-        r = table[q]
-        prefix = q.rsplit("::", 1)[0] + "::" if "::" in q else ""
-        for d in r.get("dependencies", []):
-            dn = d["recipe"]
-            todo.append(dn if "::" in dn or not prefix else prefix + dn)
-        for frags in r.get("body", []):
-            text = _line_text(frags)
-            if text.lstrip().startswith("#"):
-                continue
-            for m in JUST_CALL.finditer(text):
-                a = m.group(1).strip("\"'")
-                b = (m.group(2) or "").strip("\"'")
-                if a.startswith("$") or a.startswith("{{"):
-                    # A variable module: that recipe, in every module with it.
-                    todo.extend(f"{mod}::{b}" for mod in modules)
-                elif "::" in a:
-                    todo.append(a)
-                elif a in modules and b:
-                    todo.append(f"{a}::{b}")
-                else:
-                    todo.append(prefix + a if prefix and prefix + a in table else a)
-    return closure
+    return just_closure.closure(dump, LANE_ROOT)
 
 
 def remedy_recipe(remedy: str, modules: set[str]) -> str | None:
