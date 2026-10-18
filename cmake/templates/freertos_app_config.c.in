@@ -53,7 +53,7 @@
  * `report_heap_peak` beside it prints what the whole heap ever needed. Rebuild
  * with `bash scripts/build/fixtures-build.sh freertos {c,cpp} zenoh`.
  *
- * `.zenoh.locator` is cosmetic on the typed C/C++ path: the connect locator the
+ * `.transport.locator` is cosmetic on the typed C/C++ path: the connect locator the
  * runtime actually dials is baked into the generated entry TU
  * (`FreertosBoard::run_components("@NROS_ENTRY_LOCATOR@", ...)`), not read from
  * here. `.network.*` and `.scheduling.*` ARE consumed by startup.c.
@@ -63,7 +63,7 @@
 #include <rclc/detail/app_config.h>
 
 const nros_app_config_t NROS_APP_CONFIG = {
-    .zenoh = {
+    .transport = {
         .locator   = "@NROS_ENTRY_LOCATOR@",
         .domain_id = @NROS_ENTRY_APP_DOMAIN_ID@,
     },
@@ -84,12 +84,12 @@ const nros_app_config_t NROS_APP_CONFIG = {
          * the build script emits, and reads in the same units as a
          * `[tiers.*.freertos] priority`. */
         .app_priority            = 3,
-        .zenoh_read_priority     = 4,
-        .zenoh_lease_priority    = 4,
+        .rx_priority     = 4,
+        .keepalive_priority    = 4,
         .poll_priority           = 4,
         .app_stack_bytes         = 65536u,
-        .zenoh_read_stack_bytes  = 5120u,
-        .zenoh_lease_stack_bytes = 5120u,
+        .rx_stack_bytes  = 5120u,
+        .keepalive_stack_bytes = 5120u,
         .poll_interval_ms        = 5u,
     },
 };

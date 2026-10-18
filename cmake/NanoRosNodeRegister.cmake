@@ -1206,7 +1206,7 @@ function(nano_ros_node_register)
         endif()
 
         # NROS_APP_CONFIG definition TU (network + scheduling) for startup.c.
-        # `.zenoh.locator` is cosmetic on the typed path; bake the entry locator
+        # `.transport.locator` is cosmetic on the typed path; bake the entry locator
         # for consistency and a domain id of 0 (the deploy DOMAIN_ID default —
         # the typed path's runtime domain is the compile-time NROS_ENTRY_DOMAIN_ID).
         set(NROS_ENTRY_APP_DOMAIN_ID 0)

@@ -3,6 +3,14 @@
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosLocate.cmake")
 
 function(nros_zephyr_configure_rmw_cyclonedds)
+# RFC-0071 D10 (phase-506 W3) — Cyclone's own domain knob, mapped onto the
+# `NROS_ENTRY_DOMAIN_ID` role `entry_config.h` reads. It defaults to
+# `NROS_DOMAIN_ID`, so this is the same value unless an image sets it apart on
+# purpose (issue 0161's split-brain rule stays in `NanoRosDomainAgreement`).
+if(DEFINED CONFIG_NROS_CYCLONE_DOMAIN_ID)
+    zephyr_compile_definitions("NROS_ENTRY_DOMAIN_ID=${CONFIG_NROS_CYCLONE_DOMAIN_ID}")
+endif()
+
 # -------------------------------------------------------------------------
 # Cyclone DDS RMW backend — Phase 117 + ASI Phase 1D
 # -------------------------------------------------------------------------
