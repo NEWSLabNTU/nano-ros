@@ -654,7 +654,7 @@ pub fn resolve_cyclonedds_max_types(
 /// are two, "the same count answers both" stops being a sentence in a doc comment
 /// and becomes something a reader can check by following one call.
 fn count_cyclonedds_registered_types(model: &nros_orchestration_ir::overlay::LoadedModel) -> usize {
-    use nros_orchestration_ir::cyclonedds_type_sizing as ty;
+    use nros_orchestration_ir::type_descriptor_sizing as ty;
 
     // Issue 1268 — the model names what an ENTRY wires; the six parameter
     // services (and, since issue 1293, the lifecycle family) are the
@@ -697,7 +697,7 @@ pub fn resolve_cyclonedds_max_descriptor_types_with(
     model: &nros_orchestration_ir::overlay::LoadedModel,
     user_pin: Option<usize>,
 ) -> Result<Option<usize>> {
-    use nros_orchestration_ir::cyclonedds_type_sizing as ty;
+    use nros_orchestration_ir::type_descriptor_sizing as ty;
 
     let counted = count_cyclonedds_registered_types(model);
     if counted == 0 {
@@ -731,7 +731,7 @@ pub fn resolve_cyclonedds_max_types_with(
     model: &nros_orchestration_ir::overlay::LoadedModel,
     user_pin: Option<usize>,
 ) -> Result<Option<usize>> {
-    use nros_orchestration_ir::cyclonedds_type_sizing as ty;
+    use nros_orchestration_ir::type_descriptor_sizing as ty;
 
     let counted = count_cyclonedds_registered_types(model);
     if counted == 0 {
@@ -2191,7 +2191,7 @@ mod cyclonedds_type_capacity_tests {
     /// The two knobs read ONE count. A model change moves both or neither.
     #[test]
     fn both_cyclonedds_tables_are_sized_from_the_same_count() {
-        use nros_orchestration_ir::cyclonedds_type_sizing as ty;
+        use nros_orchestration_ir::type_descriptor_sizing as ty;
         let m = model(300, 0);
         let counted = count_cyclonedds_registered_types(
             &nros_orchestration_ir::overlay::LoadedModel::bare(m.clone()),

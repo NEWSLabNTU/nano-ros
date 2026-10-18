@@ -1693,7 +1693,7 @@ fn type_facts(inputs: &DescriptorInputs<'_>, endpoints: &[Endpoint]) -> Types {
     // `distinct_count` counts the DECLARED interfaces, one per distinct
     // `[[endpoint]] type`, and deliberately not the registered message types
     // `schemas` walks below. The registered COUNT has its own producer —
-    // `nros_orchestration_ir::cyclonedds_type_sizing`, which resolves
+    // `nros_orchestration_ir::type_descriptor_sizing`, which resolves
     // `NROS_CYCLONEDDS_MAX_TYPES` from the SystemModel (a srv is 2, an action
     // 8 + 3) — and a second answer to that question here is what the
     // single-writer rule beside `cyclonedds_env` exists to refuse.

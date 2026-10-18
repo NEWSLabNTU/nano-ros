@@ -128,8 +128,6 @@ BASELINE: dict[str, tuple[int, str, str]] = {
     "packages/api/nros/Cargo.toml":
         (1, "1297", "`rmw-cyclonedds` naming a capability forward"),
     # Issue 1298 — core names backends in code.
-    "packages/core/nros-orchestration-ir/src/lib.rs":
-        (1, "1298", "`pub mod cyclonedds_type_sizing;`"),
     # Issue 1299 — backend-named configuration inside the API crates (D8).
     "packages/api/nros-c/include/rclc/detail/entry_config.h":
         (6, "1299", "locator/domain from CONFIG_NROS_{ZENOH,XRCE,CYCLONE}_*"),

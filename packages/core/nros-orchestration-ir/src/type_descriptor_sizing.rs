@@ -1,4 +1,10 @@
-//! Issue 0284 — model-derived CycloneDDS type-registry sizing.
+//! Issue 0284 — model-derived type-descriptor registry sizing.
+//!
+//! Named for the CAPABILITY, not the backend (RFC-0071 D11, phase-506 W2, issue
+//! 1298): it sizes the registry a backend with `needs-type-descriptors` keeps,
+//! which today is CycloneDDS alone. The knob it feeds,
+//! `NROS_CYCLONEDDS_MAX_TYPES`, stays backend-named: a knob only one backend has
+//! is that backend's knob-registry row (RFC-0071 D10).
 //!
 //! The CycloneDDS backend memoises one DDS type descriptor per DISTINCT ROS type
 //! name in a bounded `heapless::FnvIndexMap` of `NROS_CYCLONEDDS_MAX_TYPES`

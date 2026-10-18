@@ -44,7 +44,7 @@ the way phase-439 W4 did for CMake, or classify the surface and extend
 `check-rmw-agnostic`'s reach with a closed-list rule (two or more names in one
 construct) once the noise is sorted.
 
-## 2026-10-18 — two of the four lists are derived now (phase-506 W2)
+## 2026-10-18 — three of the four lists are derived now (phase-506 W2)
 
 RFC-0071 D11 settled the direction: tools list backends through the provider
 scan, never a literal.
@@ -53,5 +53,5 @@ scan, never a literal.
 | --- | --- |
 | `workspace_scaffold.rs` | `rmw_resolver::resolve_rmw()`, the descriptor-derived table `nros new` (single package) already used. `uorb` is accepted; a test walks `known_rmw()` and checks an unknown name is refused before any write |
 | colcon `RMW_BACKENDS` | gone; `known_rmw_backends()` asks `nros ws rmw-dispatch --known` |
-| `bridge_gen.rs` | open — needs the descriptor's `register` field (D11) |
+| `bridge_gen.rs` | the descriptor's `register` field (D11); Cyclone's host-only rule is now its CMake link strategy, not its name |
 | `config.rs` `board.knobs.zenoh` | open — moves with the knob roles (D10, phase-506 W3) |
