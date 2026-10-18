@@ -38,7 +38,7 @@ W5 promotion (measured 15–20× streaming) was silently inert on Zephyr, and th
 that the C and Rust lanes disagreed as an issue-0135 ABI split. **Both are
 false.** Recording the corrections because they were asserted in
 [RFC-0072](../design/0072-rtos-integration-nano-ros-is-a-guest.md) §11 and
-[phase-349](../roadmap/phase-349-rtos-integration-shells.md) before being
+[phase-349](../roadmap/archived/phase-349-rtos-integration-shells.md) before being
 checked:
 
 1. **The optimisation is applied on Zephyr.** It arrives by a different route —

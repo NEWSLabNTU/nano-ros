@@ -54,7 +54,7 @@ does not exist fails with the guidance rather than a missing-source error.
 ## Note on direction
 
 Accepting upstream's spelling is deliberately the forward-compatible choice:
-[phase-349](../roadmap/phase-349-rtos-integration-shells.md) W3 retires this
+[phase-349](../roadmap/archived/phase-349-rtos-integration-shells.md) W3 retires this
 builder in favour of upstream's own `CMakeLists.txt`, at which point upstream's
 enum becomes the only vocabulary and this translation layer is deleted along
 with the function. Translating toward upstream now means the eventual migration
