@@ -3,15 +3,16 @@ id: 1625
 title: "`post-submit` dep-chain failed one cell on one commit and the cause is
   unrecoverable, because the FAIL diagnostic printed `thiserror` tree rows
   instead of cargo's error"
-status: open
+status: resolved
 type: bug
 area: ci
 severity: low
 found: 2026-10-02
 related: [issue-0363, issue-1040, phase-505]
+resolved_in: "phase-505 W3: the repaired diagnostic named the cause on its next red (a crates.io download transient)"
 ---
 
-**Home: [phase-505](../roadmap/phase-505-ci-lanes-reach-and-infra-robustness.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+**Home: [phase-505](../../roadmap/phase-505-ci-lanes-reach-and-infra-robustness.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## Measured
 
@@ -139,3 +140,42 @@ mechanism.
 
 **What would close this** is unchanged, with one input fixed: the next
 occurrence now prints the failing run's own error.
+
+## Resolution (2026-10-19, phase-505 W3): the diagnostic named the cause
+
+`post-submit` from 2026-10-02 to 2026-10-18: **724 runs. 652 succeeded, 63 were
+cancelled and 9 failed**, and every failure was in `dep-chain`. Six of the nine
+fall in one unrelated window (2026-10-07 07:09–08:34). They are
+`esp32-c3-baremetal:zenoh` failing at `nros setup`, not at the cargo probe, and
+that cell left the lane with issue 1525. The other three are this cell: the two
+occurrences above, and a **third** on 2026-10-16. That was run
+**38830050185**, job **116747973225**, head `25847c111`, reporting
+`dep-chain: 6 passed, 1 failed (of 7 cells)` and
+`FAILED: qemu-armv7a-nuttx:zenoh`. This time the single-run diagnostic printed
+cargo's own error:
+
+```
+  [FAIL] cargo tree did not resolve (default features), exit 101; last 20 lines of its stderr:
+      error: failed to get `memchr` as a dependency of package `quick-xml v0.41.0`
+      ... (path deps up to nuttx_rs_talker)
+      Caused by: failed to load source for dependency `memchr`
+      Caused by: unable to update registry `crates-io`
+      Caused by: download of me/mc/memchr failed
+      Caused by: curl failed
+      Caused by: [16] Error in the HTTP2 framing layer
+```
+
+So the phase item, "a `dep-chain` FAIL prints cargo's error", is done, and the
+evidence is a real red rather than a fake. The cause it names is a **crates.io
+download transient**, not a defect in the dependency graph. That also explains
+why it is always this cell. Its graph, with the `[patch]` onto the freshly
+cloned `third-party/nuttx/libc`, is resolved against a fresh index fetch in that
+job, so it is the cell that hits the network. This is the same class as
+[#1626](../1626-api-parity-fast-line-needs-crates-io.md), a lane going red on a
+crates.io hiccup. A retry or an offline-index policy for the probe belongs with
+that class, not here.
+
+No gate checks the diagnostic's shape (one run, the exit code, the last 20
+lines of stderr). Its evidence is the run above. If it regressed to a filtered
+or re-run diagnostic, the symptom would be a `[FAIL]` with no `error:` line
+again.

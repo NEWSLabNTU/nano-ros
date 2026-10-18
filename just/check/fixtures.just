@@ -243,6 +243,13 @@ fixture-id-guard:
 make-stall-watchdog:
     @python3 scripts/check-make-stall-watchdog.py
 
+# Issue 1403 — the watchdog only answers for the makes it WRAPS. Every `make -j`
+# / `--jobserver-style` / `make_args` invocation in justfile, just/ and
+# scripts/ must carry `make-stall-watchdog.py` in the same command; the sweep
+# that resolved 1403 found four that did not. Static, with a self-test.
+jobserver-makes-watched:
+    @python3 scripts/check-jobserver-makes-watched.py
+
 # Issue 1264 — `nros_platform_rmws` (and the fixture-id-guard functions above,
 # which share its `nros_manifest_query` helper) must report a manifest parser
 # that failed to even START as a PARSER failure, never as "this platform/id

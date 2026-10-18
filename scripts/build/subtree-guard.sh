@@ -252,3 +252,133 @@ nros_guard_exec() {
     rm -f "$(_nros_guard_lock_path "$name")"
     return "$rc"
 }
+
+# Run a LANE's fan-out so that stopping the lane stops the fan-out — issue 1350.
+#
+#   nros_guard_lane <name> <command> [args...]
+#
+# `nros_guard_exec` is for a BUILD: one per tree, a lock, refuse-or-reap. A CI
+# lane needs neither — two lanes in one tree are legitimate (a `check fast`
+# beside a `ci gate`), and a lock would turn that into a refusal — but it does
+# need the subtree promise, and it needs it in TWO places the build guard does
+# not reach:
+#
+#   * Stopping `just ci gate` sends SIGTERM to the recipe's shell only (`just`
+#     forwards a signal to its direct child and no further — measured on just
+#     1.51). The lane runner below that shell is not signalled at all, so it
+#     was reparented and went on fanning out `-P 32` gates for minutes, while
+#     the lane read as stopped. Issue 1350 found it twice.
+#   * The owner itself can die untrappably (SIGKILL, or a `kill -9 -<pgid>` of
+#     an OUTER group that contains the owner but not the inner group).
+#
+# Both are covered the same way: the command runs in its own process group with
+# a SENTINEL inside that group. The sentinel watches two pids — the owner (this
+# shell) and the parent the owner had when it started — and when either is
+# gone it kills its own group. It lives in the group it guards, so killing the
+# group kills it too and nothing is left polling. A trap covers the ordinary
+# INT/TERM/HUP to the owner, faster than the sentinel's one-second poll.
+#
+# On a signal the owner exits 128+N after saying "NO VERDICT": a stopped lane
+# must never read as success, and its partial results are not a verdict about
+# the gates it did not finish.
+#
+# NROS_SUBTREE_GUARD is deliberately NOT exported here: a build guard nested in
+# a lane (a jobserver pool under `check::build`) keeps its own lock and its own
+# refusal (issue 1886). Its owner shell is a member of this lane's group, so the
+# lane's kill reaches that shell and ITS trap takes its group down.
+nros_guard_lane() {
+    local name="$1"
+    shift
+    if [ "${NROS_GUARD_DISABLE:-}" = "1" ]; then
+        "$@"
+        return $?
+    fi
+    local owner="$$" watched="$PPID"
+    set -m
+    (
+        set +m
+        # Read BEFORE the `&`: a background command expands its words in the
+        # child, where $BASHPID is the sentinel's own pid.
+        holder="$BASHPID"
+        _nros_guard_lane_sentinel "$owner" "$watched" "$holder" \
+            </dev/null >/dev/null 2>&1 &
+        # stdin from /dev/null: the group is not the terminal's foreground
+        # group, so a step that touched the tty (nextest's key handler puts it
+        # in raw mode when stdin is a terminal) would be STOPPED by SIGTTIN /
+        # SIGTTOU — a hang. A gate never reads stdin.
+        "$@" </dev/null
+    ) &
+    local pid=$!
+    set +m
+    # shellcheck disable=SC2064  # expand pid/name NOW, not at trap time
+    trap "_nros_guard_lane_stop $pid $name INT 130" INT
+    trap "_nros_guard_lane_stop $pid $name TERM 143" TERM
+    trap "_nros_guard_lane_stop $pid $name HUP 129" HUP
+    local rc=0
+    wait "$pid" || rc=$?
+    trap - INT TERM HUP
+    # The sentinel outlives the command by at most one poll: it exits on its own
+    # once its parent (the subshell above) is gone. It is NOT signalled here, so
+    # nothing is sent to a group id that could be recycled.
+    return "$rc"
+}
+
+_nros_guard_lane_stop() {
+    local pid="$1" name="$2" sig="$3" code="$4"
+    # Once, not per signal: an outer group's kill delivers a second TERM while
+    # this runs, and re-entering would restart the drain (seen on a real stop).
+    trap '' INT TERM HUP
+    echo "" >&2
+    echo "subtree-guard: caught SIG$sig — stopping the '$name' lane and its whole fan-out (pgid $pid)." >&2
+    kill -TERM -"$pid" 2>/dev/null || true
+    local waited=0
+    while [ "$waited" -lt 10 ]; do
+        [ -z "$(_nros_guard_group_members "$pid")" ] && break
+        sleep 1
+        waited=$((waited + 1))
+    done
+    if [ -n "$(_nros_guard_group_members "$pid")" ]; then
+        kill -KILL -"$pid" 2>/dev/null || true
+    fi
+    echo "subtree-guard: '$name' was STOPPED by SIG$sig — NO VERDICT (exit $code)." >&2
+    NROS_GUARD_CAUGHT="$sig"
+    exit "$code"
+}
+
+# The sentinel. Runs inside the guarded group; `kill 0` is that group.
+#
+# `$3` is the subshell that holds the command; once it is gone the command
+# finished on its own, and the sentinel leaves without signalling anything.
+_nros_guard_lane_sentinel() {
+    local owner="$1" watched="$2" holder="$3" stat
+    local -a f
+    while :; do
+        # The holder is our parent; reparenting means it finished. Field 4 of
+        # /proc/<pid>/stat, read after the `comm` field, which may hold spaces.
+        read -r stat < "/proc/$BASHPID/stat" 2>/dev/null || exit 0
+        read -r -a f <<<"${stat##*) }"
+        [ "${f[1]:-}" = "$holder" ] || exit 0
+        if ! kill -0 "$watched" 2>/dev/null; then
+            # The owner's parent is gone: whoever stopped the lane stopped the
+            # shell ABOVE the owner (`just` forwards to its direct child only).
+            # Tell the owner, so it says NO VERDICT, then take the group down
+            # in case the owner cannot.
+            kill -HUP "$owner" 2>/dev/null
+            break
+        fi
+        kill -0 "$owner" 2>/dev/null || break
+        sleep 1
+    done
+    # Ignore our own broadcast (and the owner's), so the escalation below runs.
+    trap '' TERM HUP
+    kill -TERM 0 2>/dev/null
+    local waited=0
+    while [ "$waited" -lt 10 ]; do
+        # Only this sentinel left (or nothing): done.
+        [ "$(_nros_guard_group_members "$(ps -o pgid= -p "$BASHPID" | tr -d ' ')" | wc -l)" -le 1 ] && exit 0
+        sleep 1
+        waited=$((waited + 1))
+    done
+    trap - TERM
+    kill -KILL 0 2>/dev/null
+}

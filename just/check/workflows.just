@@ -559,6 +559,15 @@ site-config:
 subtree-guard:
     @bash packages/testing/nros-tests/tests/subtree_guard.sh
 
+# issue 1350 — stopping a LANE stops its gate fan-out, and the stop reads as NO
+# VERDICT, never success. Drives the real run-gates-parallel.sh and
+# run-lane-steps.sh against a stub `just` and asserts on the process table:
+# owner TERM, owner KILL, and a TERM to the shell ABOVE the owner (all `just`
+# delivers) leave no survivor; an unknown step is NO VERDICT (rc 2). Its
+# negative control — the guard disabled — must leave orphans. ~15 s.
+lane-stop-kills-fanout:
+    @python3 scripts/check-lane-stop-kills-fanout.py
+
 # Support-status page (tiers, RTOS/RMW/toolchain pins, editions) — version
 # strings parsed from nros-sdk-index.toml + rust-toolchain.toml so a pin bump
 # moves the page in the same commit.

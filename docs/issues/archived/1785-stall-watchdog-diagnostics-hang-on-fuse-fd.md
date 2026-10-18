@@ -1,15 +1,16 @@
 ---
 id: 1785
 title: "`make-stall-watchdog.py` hangs in its own diagnostics when any process on the host holds an fd on a stuck FUSE mount, so the watchdog that must never hang never fires"
-status: open
+status: resolved
 type: bug
 area: [build, testing]
 severity: medium
 found: 2026-10-10
 related: [issue-1403, phase-505]
+resolved_in: "issue 1773 (no foreign stat, bounded scan) + phase-505 W3 (a deadline on the whole diagnostics phase)"
 ---
 
-**Home: [phase-505](../roadmap/phase-505-ci-lanes-reach-and-infra-robustness.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+**Home: [phase-505](../../roadmap/phase-505-ci-lanes-reach-and-infra-robustness.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## What was measured
 
@@ -57,3 +58,35 @@ diagnostic needs to match, or bound each `stat` with a timeout in a worker
 thread. Acceptance: the stall case passes on a host where some unrelated
 process holds an fd on a FUSE file whose server is suspended (`kill -STOP` on
 an `sshfs` reproduces it on demand).
+
+## Resolution (2026-10-19, phase-505 W3)
+
+**Most of this was already fixed under
+[#1773](1773-stall-watchdog-host-scan-blocks-on-hung-fuse.md).** That issue was
+filed the same day from the same measurement (the same `rc -9, want 75` and the
+same `request_wait_answer`). After its fix, `_pipe_fds` keys a foreign
+process's pipes by their `readlink` text and never `stat`s a foreign fd, and
+the scan of other processes runs in a forked child with a budget
+(`NROS_JOBSERVER_SCAN_SECS`). Its `scan-hang` and `no-follow` cases in
+`check-make-stall-watchdog` fail against the watchdog from before 1773. This
+issue is the same report, filed twice.
+
+**What was left, and is now closed: the rest of the diagnostics phase had no
+deadline.** Make's OWN fds are still `stat`ed, because that is the only way to
+recognise a named FIFO. Make's `/proc` entries, `ls -l` and `gdb` also run
+before the verdict. `_bounded_diagnostics` now runs all of
+`collect_diagnostics` in a forked child with one deadline
+(`NROS_JOBSERVER_DIAG_SECS`, default: the scan budget + 120 s), and the child
+streams each line as it writes it. When the deadline passes, the child is
+SIGKILLed. The report keeps every line written before the stuck step and says
+`DIAGNOSTICS INCOMPLETE … the last line written was …`, and `kill_tree` and
+`NO VERDICT` (rc 75) happen anyway.
+
+**A reproducer that needs no root:** `NROS_JOBSERVER_DIAG_FAULT=hang`
+(test-only) makes the stat of make's own fds block forever, the way a stat on a
+hung FUSE file does. The new `diag-hang` case in `check-make-stall-watchdog`
+expects rc 75, the NO VERDICT line, `DIAGNOSTICS INCOMPLETE: no answer within
+2s`, the partial report, a return in under 30 s, and no survivor. Run against
+the unbounded call (`collect_diagnostics` in place of `_bounded_diagnostics`),
+it gets rc -9, no NO VERDICT line, and hits the gate's 40 s ceiling, which is
+the failure this issue describes. The whole gate takes 18 s.

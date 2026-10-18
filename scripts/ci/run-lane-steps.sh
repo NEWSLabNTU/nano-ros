@@ -62,9 +62,41 @@ mark() {
     fi
 }
 
+# Issue 1350 — a stopped lane stops its steps, and says it has no verdict.
+#
+# Each step runs under `nros_guard_lane`: its own process group, a trap on
+# INT/TERM/HUP, and a sentinel that kills the group if this runner — or the
+# recipe shell above it, which is the only process `just` signals — goes away.
+# Before this, stopping `just ci gate` killed the recipe shell and nothing
+# else: this runner was reparented and its `check::build` went on running its
+# `-P 32` fan-out, unowned, while the stop read as clean.
+# shellcheck source=scripts/build/subtree-guard.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/../build" && pwd)/subtree-guard.sh"
+
+# The adjacent trap (same issue): `just` exits 1 for a recipe it does not have,
+# which reads exactly like a red gate. A lane naming a step that does not exist
+# never ran, so it is NO VERDICT (exit 2), decided before any step starts.
+for s in "${steps[@]}"; do
+    if ! just --show "$s" >/dev/null 2>&1; then
+        printf 'ci %s: NO VERDICT — step `%s` is not a recipe, so the lane did not run (issue 1350).\n' \
+            "$lane" "$s" >&2
+        exit 2
+    fi
+done
+
 declare -a verdict=() took=()
 failed_at=-1
+current=-1
 lane_start=$(date +%s)
+_lane_stopped() {
+    [ -n "${NROS_GUARD_CAUGHT:-}" ] || return 0
+    [ "$current" -ge 0 ] || return 0
+    printf '\nci %s STOPPED by SIG%s during step %d of %d (%s) — NO VERDICT.\n' \
+        "$lane" "$NROS_GUARD_CAUGHT" $((current + 1)) "$n" "${steps[$current]}" >&2
+    printf '  Its process group was killed; %d step(s) after it did not run.\n' \
+        $((n - current - 1)) >&2
+}
+trap _lane_stopped EXIT
 for i in "${!steps[@]}"; do
     if [ "$failed_at" -ge 0 ]; then
         verdict[$i]="NOT RUN"
@@ -73,7 +105,8 @@ for i in "${!steps[@]}"; do
     fi
     mark "$(printf '==> ci %s [%d/%d] %s — started %s' "$lane" $((i + 1)) "$n" "${steps[$i]}" "$(now_utc)")"
     t0=$(date +%s)
-    if just "${steps[$i]}"; then verdict[$i]="ok"; else verdict[$i]="FAILED"; failed_at=$i; fi
+    current=$i
+    if nros_guard_lane "ci-$lane" just "${steps[$i]}"; then verdict[$i]="ok"; else verdict[$i]="FAILED"; failed_at=$i; fi
     dt=$(( $(date +%s) - t0 ))
     took[$i]="$(fmt_dur "$dt")"
     mark "$(printf '<== ci %s [%d/%d] %s — %s after %s (at %s)' \

@@ -2,15 +2,16 @@
 id: 1403
 title: "`build-examples` deadlocked on its own make jobserver FIFO with zero
   children left — a CI lane hitting this reads as a HANG, not a failure"
-status: open
+status: resolved
 type: bug
 area: [build, ci]
 severity: medium
 found: 2026-09-21
 related: [0022, 0616, 1390, phase-505]
+resolved_in: "phase-505 W3: detected as a failure; every parallel make is under the stall watchdog, gated by `check-jobserver-makes-watched`"
 ---
 
-**Home: [phase-505](../roadmap/phase-505-ci-lanes-reach-and-infra-robustness.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+**Home: [phase-505](../../roadmap/phase-505-ci-lanes-reach-and-infra-robustness.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## What was observed
 
@@ -109,3 +110,43 @@ between the hypotheses above are the FIONREAD count against `N-1`, whether any
 process NOT in make's tree holds make's FIFO (the concurrent-build suspect),
 whether zombie children are listed (make stopped reaping), and the SigBlk/SigIgn
 masks. Do not raise the threshold to make it go away; a dump is the point.
+
+## Resolution (2026-10-19, phase-505 W3): detected as a failure
+
+Phase-505's item reads "the jobserver deadlock is fixed, **or it is detected as
+a failure**". The cause is still unknown and has still not been reproduced.
+What is closed is the failure mode that made this worth filing: a stall can no
+longer be a silent hang that a CI timeout reports as an infrastructure flake.
+
+**The sweep found the watchdog reached fewer makes than claimed.** "Every
+fixture/jobserver `make`" above was not true. Four `make -j` invocations ran
+outside the watchdog:
+
+- `build-test-fixtures`' top-level fan-out (`justfile`). Every fixture build
+  shares this make's jobserver.
+- `linux build-examples`' fan-out (`just/linux.just`).
+- The two NuttX kernel makes (`scripts/nuttx/build-nuttx.sh`,
+  `just/nuttx.just`). These matter because they run INSIDE fixture builds: a
+  stalled inner make keeps the outer make's child alive, so no outer watchdog
+  can see the stall.
+
+All four are wrapped now.
+
+**Gate: `just check jobserver-makes-watched`** (fast line, static). In
+`justfile`, `just/*.just` and `scripts/*.sh`, every shell command that runs
+`make` with `-j`, `--jobserver-style` or a `make_args` array must have
+`make-stall-watchdog.py` in the same logical command. Continuation lines are
+joined, and `echo`/`printf` lines count as mentions, not invocations. Its
+self-test runs on every invocation. Run against the tree before this change, it
+reports exactly the four sites above. It scans 348 files and finds 0 now.
+
+**The watchdog itself can no longer hang** (issues
+[1773](1773-stall-watchdog-host-scan-blocks-on-hung-fuse.md) and
+[1785](1785-stall-watchdog-diagnostics-hang-on-fuse-fd.md)). The whole
+diagnostics phase runs under a deadline, so the kill and the `NO VERDICT`
+(rc 75) always happen, and `just nightly-triage` already counts that line as
+NO VERDICT.
+
+**If it happens again**, the dump is the next step, as "If you get a dump"
+above says. File a new issue with it rather than reopening this one, because
+the open question is now the cause, not the detection.

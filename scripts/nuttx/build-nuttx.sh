@@ -319,7 +319,14 @@ fi
 
 echo "Building NuttX..."
 NCPUS=$(nproc 2>/dev/null || echo 4)
-make -j"$NCPUS"
+# issue 1403 — every `make -j` runs under the stall watchdog
+# (`check-jobserver-makes-watched`): a kernel make that stalls inside a fixture
+# fan-out keeps the OUTER make's child alive, so only a watchdog on this make
+# can turn it into a verdict. Fires only on "no live child, no CPU" for
+# NROS_JOBSERVER_STALL_SECS; otherwise transparent.
+python3 "$PROJECT_ROOT/scripts/build/make-stall-watchdog.py" \
+    --label "nuttx kernel" --diag-dir "$PWD" -- \
+    make -j"$NCPUS"
 
 # --- Export NuttX for external C/C++ apps ---
 

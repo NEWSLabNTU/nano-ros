@@ -2339,7 +2339,13 @@ build-test-fixtures-leaves lane="all": _require-owned-provisioned-roots _require
     # launcher takes the whole make/just/cmake/cargo tree with it instead of
     # orphaning it. Nested launchers see NROS_SUBTREE_GUARD and pass through.
     source scripts/build/subtree-guard.sh
-    nros_guard_exec fixtures make -j "$make_jobs" -f "$makefile"
+    # issue 1403 — the stall watchdog wraps THIS make too: it is the top of the
+    # fixture jobserver, and a stall here was a silent hang (the sweep that
+    # resolved 1403 found it unwrapped). Inside the guard, so the guard's group
+    # still owns the whole tree.
+    nros_guard_exec fixtures python3 scripts/build/make-stall-watchdog.py \
+        --label build-test-fixtures --diag-dir "$log_dir" -- \
+        make -j "$make_jobs" -f "$makefile"
     echo "All test fixtures built."
 
 # Phase 150.E rev3 — single deterministic fixture serving both
