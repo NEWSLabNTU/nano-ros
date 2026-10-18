@@ -72,13 +72,46 @@ build road, W3 changes one header family, W4 is the largest and goes last.
 
 ### W4 — a C/C++ image's backend arrives through the generated umbrella (RFC-0071 D9)
 
-- [ ] Delete `rclcpp/node.hpp`'s `#ifdef NROS_RMW_<X>` register chain.
-- [ ] [#1297](../issues/1297-rmw-agnostic-api-crates-name-backends.md): every
-      C/C++ configure gets the `nros_ws_runtime` umbrella; `nros-c` / `nros-cpp`
-      lose their `rmw-<name>` features; the NuttX Makefile, s32ds and PX4
-      integrations build through the same generated crate.
-- [ ] `check-rmw-agnostic`'s baseline reaches zero, and the gate fails on any
-      new line.
+Staged, because every C/C++ road builds `nros-c` / `nros-cpp` with an
+`rmw-<name>` feature today, and the features can only go once no road uses
+them. Design notes measured 2026-10-18:
+
+* The umbrella exists (`cmake/NanoRosRuntimeCrate.cmake`, `nros_ws_runtime`)
+  but only for workspaces with a Rust node, and it still takes the backend as
+  an `nros-cpp` feature and anchors it through a hardcoded zenoh/xrce branch.
+* The register crate is not always in the descriptor's directory (XRCE's is
+  `nros-rmw-xrce-cffi`), so the descriptor states where it is.
+* `nros-c` forwards the platform onto zenoh (`nros-rmw-zenoh?/platform-*`,
+  several nros platforms onto `platform-bare-metal`); that mapping moves into
+  the backend's descriptor.
+* Two umbrella flavours: a pure-C image's umbrella sits over `nros-c`, a C++
+  image's over `nros-cpp`, so a small C image does not grow by the C++ FFI
+  surface.
+
+- [x] Delete `rclcpp/node.hpp`'s `#ifdef NROS_RMW_<X>` register chain (W2,
+      PR #2357).
+- [x] **W4a — the cmake road.** Every C/C++ configure links a generated
+      umbrella that depends on the backend crate directly (descriptor `crate`,
+      `crate_dir`, platform / edition / capability features) and anchors its
+      `register`; `nros_feature_set` stops handing `nros-c` / `nros-cpp` an
+      `rmw-<name>` feature.
+      **Done 2026-10-18:** `cmake/NanoRosImageCrate.cmake` generates the
+      image crate; its lib keeps the API crate's name (`nros_c` /
+      `nros_cpp`), so every Corrosion target keeps its name. The Rust-node
+      workspace umbrella uses the same backend split. Verified: native C/C++
+      zenoh + XRCE pub/sub, service and action cells (12/12); FreeRTOS,
+      ThreadX-linux and ThreadX-riscv64 C/C++ workspace entries build;
+      ThreadX-linux C/C++ `entry_e2e` cells pass; the `mixed` workspace's
+      Rust-node umbrella opens a zenoh session.
+- [ ] **W4b — the Zephyr west road** (`zephyr/CMakeLists.txt`'s own import).
+- [ ] **W4c — the integrations that run cargo themselves**: the NuttX app
+      Makefile and PX4 build through the same generated crate. **s32ds stays
+      on a compatibility shim** (maintainer ruling 2026-10-18: its IDE is not
+      available to verify a change), tracked as its own issue.
+- [ ] **W4d** — [#1297](../issues/1297-rmw-agnostic-api-crates-name-backends.md):
+      `nros-c` / `nros-cpp` lose their `rmw-<name>` features, aliases, `?/`
+      forwards and optional backend deps; `check-rmw-agnostic`'s baseline
+      reaches zero (the s32ds shim aside, which lives outside the API crates).
 
 ## Acceptance
 

@@ -53,15 +53,26 @@ include("${CMAKE_CURRENT_LIST_DIR}/../../../cmake/NanoRosCargoProfile.cmake")
 # phase-347 W3 — `nros_rmw_dispatch()` / `nros_rmw_is_known()` (RFC-0071).
 include("${CMAKE_CURRENT_LIST_DIR}/../../../cmake/NanoRosRmwDispatch.cmake")
 nros_resolve_cargo_profile()
-set(_nros_cpp_cargo_manifest "${PROJECT_SOURCE_DIR}/Cargo.toml")
+# RFC-0071 D9 (phase-506 W4a) — a backend bundled as an rlib reaches this
+# staticlib through a generated IMAGE crate that depends on `nros-cpp` without a
+# backend feature and on the backend crate its descriptor names. Its lib keeps
+# the name `nros_cpp`, so every target below keeps its name. A
+# backend that is not bundled, or none, imports `nros-cpp` exactly as before.
+include("${CMAKE_CURRENT_LIST_DIR}/../../../cmake/NanoRosImageCrate.cmake")
+nros_image_crate(_nros_cpp_img
+    FLAVOR       cpp
+    RMW          "${NROS_RMW}"
+    OUT_DIR      "${CMAKE_CURRENT_BINARY_DIR}/nros-cpp-image"
+    API_FEATURES ${_cpp_features})
+set(_nros_cpp_cargo_manifest "${_nros_cpp_img_MANIFEST}")
 corrosion_import_crate(
     MANIFEST_PATH "${_nros_cpp_cargo_manifest}"
-    CRATES        nros-cpp
+    CRATES        ${_nros_cpp_img_CRATE}
     CRATE_TYPES   staticlib
     NO_DEFAULT_FEATURES
-    FEATURES      ${_cpp_features}
+    FEATURES      ${_nros_cpp_img_FEATURES}
     PROFILE       ${NROS_CARGO_PROFILE}
-    LOCKED
+    ${_nros_cpp_img_LOCKED}
 )
 # issue 1904 — the mirror reads the cargo subdir THIS manifest gets, never a
 # sibling's (see `nros_config_header_cargo_manifest`).

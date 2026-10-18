@@ -869,6 +869,35 @@ fn run_rmw_dispatch(args: RmwDispatchArgs) -> Result<()> {
                 .join(";"),
         ),
         ("NROS_RMW_PER_MESSAGE_HOOK", d.per_message_hook.clone()),
+        // RFC-0071 D9 (phase-506 W4a) — what a generated C/C++ umbrella needs to
+        // depend on the backend crate directly and anchor its registration,
+        // instead of selecting it through an `nros-c` / `nros-cpp` feature.
+        ("NROS_RMW_REGISTER_CRATE", d.register_crate.clone()),
+        ("NROS_RMW_REGISTER_FN", d.register_fn.clone()),
+        (
+            "NROS_RMW_REGISTER_DIR",
+            if d.register_crate.is_empty() {
+                String::new()
+            } else {
+                r.package_dir.join(&d.register_dir).display().to_string()
+            },
+        ),
+        (
+            "NROS_RMW_PLATFORM_FEATURES",
+            d.platform_features
+                .iter()
+                .map(|(k, v)| format!("{k}={v}"))
+                .collect::<Vec<_>>()
+                .join(";"),
+        ),
+        (
+            "NROS_RMW_CAPABILITY_FEATURES",
+            d.capabilities
+                .iter()
+                .map(|(k, v)| format!("{k}={v}"))
+                .collect::<Vec<_>>()
+                .join(";"),
+        ),
     ];
 
     if args.lines {

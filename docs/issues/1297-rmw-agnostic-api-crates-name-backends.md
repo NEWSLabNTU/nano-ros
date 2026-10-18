@@ -56,3 +56,14 @@ caller in the headers: registration is the generated strong
 template and `nros-px4-register-check`) declare the symbol themselves. Its
 `check-rmw-agnostic` baseline row (8 lines) is gone. The rest of this issue is
 phase-506 W4.
+
+## 2026-10-18 — the cmake road no longer uses the features (phase-506 W4a)
+
+Every C/C++ configure that bundles an rlib backend imports a generated image
+crate (`cmake/NanoRosImageCrate.cmake`) instead of `nros-c` / `nros-cpp` with an
+`rmw-<name>` feature: the image depends on the API crate without a backend and
+on the backend crate the descriptor names (`[rmw.provides.cargo]
+register_crate` / `register_dir`), forwarding the platform through the
+descriptor's new `[rmw.provides.cargo.platform_features]` table, and anchors its
+`register`. The features themselves stay until the Zephyr west road, the NuttX
+Makefile and PX4 move too (W4b/W4c); s32ds keeps a shim.

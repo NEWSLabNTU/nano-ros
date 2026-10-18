@@ -75,3 +75,16 @@ zero-copy-receive = "unstable-zenoh-api"   # -> zpico-sys -> Z_FEATURE_UNSTABLE_
 # registry; the backend declares it here instead, so a third-party backend can
 # offer `safety` without an edit to core.
 safety = "safety-e2e"
+
+# RFC-0071 D9 (phase-506 W4a) — the backend feature for each nros platform
+# feature an image may select. A generated C/C++ umbrella forwards the image's
+# platform through this table; `nros-c` used to with `nros-rmw-zenoh?/…` lines.
+[rmw.provides.cargo.platform_features]
+platform-posix = "platform-posix"
+platform-zephyr = "platform-zephyr"
+platform-freertos = "platform-freertos"
+platform-nuttx = "platform-nuttx"
+platform-threadx = "platform-threadx"
+platform-mps2-an385 = "platform-bare-metal"
+platform-stm32f4 = "platform-bare-metal"
+platform-esp32-qemu = "platform-bare-metal"

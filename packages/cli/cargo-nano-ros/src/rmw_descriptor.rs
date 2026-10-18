@@ -111,6 +111,16 @@ pub struct RmwDescriptor {
     /// `needs-type-descriptors` capability, the crate whose
     /// `register::<T>()` stages one message type (RFC-0071 D11).
     pub type_register_crate: String,
+    /// `[rmw.provides.cargo] register_dir` — the directory of `register_crate`,
+    /// relative to this descriptor (default `.`). A generated C/C++ umbrella
+    /// path-depends on it (RFC-0071 D9); XRCE's register crate is a sibling.
+    pub register_dir: String,
+    /// `[rmw.provides.cargo.platform_features]` — the backend crate's feature
+    /// for each nros platform feature an image may select (`platform-posix =
+    /// "platform-posix"`, `platform-mps2-an385 = "platform-bare-metal"`). The
+    /// umbrella forwards the image's platform through it; `nros-c` used to do
+    /// so with `nros-rmw-zenoh?/platform-*` lines (RFC-0071 D9).
+    pub platform_features: Vec<(String, String)>,
     /// `[rmw.codegen].per_message` — a cmake command run per message type.
     pub per_message_hook: String,
 
@@ -184,6 +194,10 @@ pub fn parse_rmw_descriptor(text: &str, origin: &str) -> Result<RmwDescriptor, S
             ("rmw.provides.cargo", "register_crate") => d.register_crate = scalar(),
             ("rmw.provides.cargo", "register") => d.register_fn = scalar(),
             ("rmw.provides.cargo", "type_register_crate") => d.type_register_crate = scalar(),
+            ("rmw.provides.cargo", "register_dir") => d.register_dir = scalar(),
+            ("rmw.provides.cargo.platform_features", k) => {
+                d.platform_features.push((k.to_string(), scalar()))
+            }
             ("rmw.link", "rlib_dep") => d.rlib_dep = scalar(),
             ("rmw.link", "needs_cxx_linker") => d.needs_cxx_linker = value == "true",
             ("rmw.link", "strategy") => d.link_strategy = scalar(),
@@ -217,6 +231,9 @@ pub fn parse_rmw_descriptor(text: &str, origin: &str) -> Result<RmwDescriptor, S
                  OF that crate, and a backend that is not bundled has nowhere to receive it"
             ));
         }
+    }
+    if d.register_dir.is_empty() {
+        d.register_dir = ".".to_string();
     }
     if !d.register_crate.is_empty() && d.register_fn.is_empty() {
         d.register_fn = "register".to_string();

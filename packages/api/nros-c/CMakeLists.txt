@@ -163,15 +163,26 @@ if(COMMAND nros_share_corrosion_cargo_dir)
     endif()
 endif()
 
-set(_nros_c_cargo_manifest "${PROJECT_SOURCE_DIR}/Cargo.toml")
+# RFC-0071 D9 (phase-506 W4a) — a backend bundled as an rlib reaches this
+# staticlib through a generated IMAGE crate that depends on `nros-c` without a
+# backend feature and on the backend crate its descriptor names. Its lib keeps
+# the name `nros_c`, so every target below keeps its name. A
+# backend that is not bundled, or none, imports `nros-c` exactly as before.
+include("${CMAKE_CURRENT_LIST_DIR}/../../../cmake/NanoRosImageCrate.cmake")
+nros_image_crate(_nros_c_img
+    FLAVOR       c
+    RMW          "${NROS_RMW}"
+    OUT_DIR      "${CMAKE_CURRENT_BINARY_DIR}/nros-c-image"
+    API_FEATURES ${_features})
+set(_nros_c_cargo_manifest "${_nros_c_img_MANIFEST}")
 corrosion_import_crate(
     MANIFEST_PATH "${_nros_c_cargo_manifest}"
-    CRATES        nros-c
+    CRATES        ${_nros_c_img_CRATE}
     CRATE_TYPES   staticlib
     NO_DEFAULT_FEATURES
-    FEATURES      ${_features}
+    FEATURES      ${_nros_c_img_FEATURES}
     PROFILE       ${NROS_CARGO_PROFILE}
-    LOCKED
+    ${_nros_c_img_LOCKED}
 )
 # issue 1904 — the mirror reads the cargo subdir THIS manifest gets, never a
 # sibling's (see `nros_config_header_cargo_manifest`).
