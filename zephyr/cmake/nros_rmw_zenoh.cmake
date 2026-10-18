@@ -6,8 +6,19 @@ function(nros_zephyr_configure_rmw_zenoh)
 # RFC-0071 D10 (phase-506 W3) — this backend's spelling of the transport
 # ROLE. `entry_config.h` reads `NROS_ENTRY_LOCATOR` and names no backend; the
 # mapping from zenoh's own Kconfig lives here, with the backend.
+#
+# Issue 1955 -- CMake DROPS a definition containing `#` from the compiler
+# command line ("Preprocessor definitions containing '#' may not be passed on
+# the compiler command line"; a configure warning, nothing else), and a serial
+# locator has one: `serial/<dev>#baudrate=<n>`. Since this mapping moved here
+# from `entry_config.h` (2ccf662c0d), every Zephyr serial image baked the
+# empty bottom rung and opened no session (a board: `nros_cpp_init` -100,
+# Transport ConnectionFailed at stage 2). So the `#` travels as the C octal
+# escape `\043` (at most three digits, so a following digit cannot extend it);
+# the string literal the compiler sees is the locator unchanged.
 if(DEFINED CONFIG_NROS_ZENOH_LOCATOR)
-    zephyr_compile_definitions("NROS_ENTRY_LOCATOR=\"${CONFIG_NROS_ZENOH_LOCATOR}\"")
+    string(REPLACE "#" "\\043" _nros_entry_locator "${CONFIG_NROS_ZENOH_LOCATOR}")
+    zephyr_compile_definitions("NROS_ENTRY_LOCATOR=\"${_nros_entry_locator}\"")
 endif()
 
 # -------------------------------------------------------------------------
