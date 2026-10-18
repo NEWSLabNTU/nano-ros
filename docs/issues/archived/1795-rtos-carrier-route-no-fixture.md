@@ -1,15 +1,16 @@
 ---
 id: 1795
 title: "No lane builds an RTOS TYPED carrier image (`nano_ros_node_register(... TYPED DEPLOY threadx|nuttx)`): every in-tree ThreadX/NuttX C/C++ image takes `nano_ros_entry()`, so the carrier route's link has no coverage"
-status: open
+status: resolved
 type: tech-debt
 area: [build, cmake, testing, threadx, nuttx]
 severity: low
 found: 2026-10-11
 related: [issue-1753, issue-1742, rfc-0043, phase-505]
+resolved_in: "PR #1938"
 ---
 
-**Home: [phase-505](../roadmap/phase-505-ci-lanes-reach-and-infra-robustness.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+**Home: [phase-505](../../roadmap/phase-505-ci-lanes-reach-and-infra-robustness.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## What was measured
 
@@ -157,3 +158,17 @@ change and is on main.
 - `cargo nextest run --test typed_carrier_e2e`: 3/3 (ThreadX boot, NuttX boot,
   tripwire).
 - NuttX `rtos_e2e`: 9/9 (no regression from the family dispatch).
+
+## Closed (2026-10-18)
+
+The resolution above landed in PR #1938 (with issue 1801), and its acceptance
+was met there. Both carrier arms have a `[[fixture]]` row:
+
+- `examples/rv-virt-threadx/c/typed-carrier`
+- `examples/qemu-armv7a-nuttx/c/typed-carrier`
+
+Both rows are built by their platform lane, each has a `matrix::CELLS` cell,
+and removing `cxx_static_abi.c` fails the ThreadX lane's build. The status was
+not flipped when it merged. The scheduled matrix lanes giving no verdict
+(they currently stop in the build) is phase-466's subject, not a gap in this
+issue's coverage.
