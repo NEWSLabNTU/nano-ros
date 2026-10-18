@@ -95,3 +95,24 @@ this fan-out. `xargs -P` in that script is the only one in `scripts/`,
 
 Fix, in the same change: the runner runs `cargo --version` once before the
 fan-out, the same line `workspace-all` got.
+
+## Sighting 2026-10-18: `leaf-lockfiles` installs a leaf's own toolchain
+
+- Run: gate push 39100015249 (head `1dee9fdfe`).
+- Job: 117596461534, `check / fast`.
+- Result: `1 of 456 gate(s) FAILED`.
+
+```
+===== FAIL (leaf-lockfiles, rc=1, 8902ms) =====
+  packages/verification/nros-verification
+      info: syncing channel updates for 1.93.0-x86_64-unknown-linux-gnu
+      error: could not download file from 'https://static.rust-lang.org/dist/channel-rust-1.93.0.toml.sha256' …: error sending req
+```
+
+This is a site that #2315's pre-fan-out `cargo --version` cannot cover.
+`nros-verification` pins its own channel (1.93.0, not the workspace's
+1.99.0), so the gate's per-leaf `cargo` is the first thing to need that
+toolchain and downloads it mid-gate. The download went to static.rust-lang.org
+and failed on the network. The next push gate (21e244d6d) was green. Any leaf
+with its own `rust-toolchain.toml` has this exposure. Two ways to close it:
+complete those channels before the fan-out too, or provision them in the image.
