@@ -4707,6 +4707,10 @@ fn arena_exhaustion_reaches_the_boot_record() {
 #[test]
 fn an_exhausted_arena_decodes_to_the_knob_an_operator_must_set() {
     use std::io::Write as _;
+    // It installs the process-global sink list below; without the lock a
+    // sibling that also installs one (`two_nodes_on_one_executor_emit_under_
+    // their_own_names`) can have its sink swapped out mid-assertion.
+    let _sinks = log_sinks_lock();
 
     static CAPTURED: std::sync::Mutex<alloc::vec::Vec<alloc::string::String>> =
         std::sync::Mutex::new(alloc::vec::Vec::new());
