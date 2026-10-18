@@ -1802,6 +1802,18 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         ));
     }
     let multi_tier = resolved_tiers.as_ref().filter(|t| !t.is_single_tier());
+    // Issue 1943 -- the tiered closure runs once per tier executor, and each
+    // register call installs its component into a per-class store of
+    // `NROS_RUNTIME_MAX_CLASS_INSTANCES` slots. Run unguarded, every tier
+    // installed every component, so a third tier failed every one of them
+    // (`NodeRegister`, the store's `-3`), and a node whose groups a tier does
+    // not run was still created there. A tier now registers a node only when it
+    // admits one of the node's groups -- the rule the C/C++ packs already apply
+    // by building each tier's setup from the nodes it names.
+    let tiered_register_calls: Vec<proc_macro2::TokenStream> = match multi_tier {
+        Some(table) => tier_guarded_register_calls(&entry_nodes, &register_calls, table),
+        None => register_calls.clone(),
+    };
     // issue 1676 — install the contract's monitor tables (and arm the
     // `/diagnostics` reporter) on every executor this entry builds, BEFORE any
     // node exists: a publisher attaches its counter cell at create time.
@@ -1880,7 +1892,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                         // W4c — param services BEFORE the node registers, so the store
                         // exists when each cell captures it (cell → `ctx.parameter`).
                         #contract_monitors_call #declared_params_call #param_services_call
-                        #( #register_calls )*
+                        #( #tiered_register_calls )*
                         #lifecycle_call
                         ::core::result::Result::Ok(())
                     },
@@ -2078,7 +2090,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                         // captures it), lifecycle AFTER; the board sets each
                         // tier's `active_groups` filter and owns the spin.
                         #contract_monitors_call #declared_params_call #param_services_call
-                        #( #register_calls )*
+                        #( #tiered_register_calls )*
                         #lifecycle_call
                         ::core::result::Result::Ok(())
                     },
@@ -5124,6 +5136,55 @@ fn pkg_to_crate_ident(pkg: &str) -> String {
 ///
 /// Order is load-bearing too: the state is written BEFORE the `register` call
 /// it configures. After it would configure the NEXT node, or nothing.
+/// Issue 1943 -- `calls` (one per node of `nodes`, in order), each run only on a
+/// tier executor that admits one of the node's groups in `table`.
+///
+/// A node the table names no group for is registered on every tier, as
+/// before: its entities carry no group, so every tier's filter admits them.
+pub(crate) fn tier_guarded_register_calls(
+    nodes: &[LoweredNode],
+    calls: &[proc_macro2::TokenStream],
+    table: &ResolvedTierTable,
+) -> Vec<proc_macro2::TokenStream> {
+    nodes
+        .iter()
+        .zip(calls)
+        .map(|(node, call)| {
+            // The Rust road states a node's name in its launch IDENTITY and
+            // leaves `name` / `namespace` to the C-ABI packs (phase-494 W2).
+            let (node_name, node_ns) = node
+                .identity_pair()
+                .unwrap_or((node.name.as_str(), node.namespace.as_str()));
+            let mut groups: Vec<&str> = table
+                .tiers
+                .iter()
+                .flat_map(|t| &t.members)
+                .filter(|(n, _)| n == node_name)
+                .map(|(_, g)| g.as_str())
+                .collect();
+            groups.sort_unstable();
+            groups.dedup();
+            if groups.is_empty() {
+                return call.clone();
+            }
+            let name = LitStr::new(node_name, Span::call_site());
+            let ns = LitStr::new(node_ns, Span::call_site());
+            let gs = groups.iter().map(|g| LitStr::new(g, Span::call_site()));
+            quote! {
+                if {
+                    let __nros_tier_exec = unsafe {
+                        &*(runtime.runtime.executor_handle()
+                            as *const ::nros::Executor<'static>)
+                    };
+                    false #( || __nros_tier_exec.group_active(#name, #ns, #gs) )*
+                } {
+                    #call
+                }
+            }
+        })
+        .collect()
+}
+
 pub(crate) fn render_register_calls(nodes: &[LoweredNode]) -> Vec<proc_macro2::TokenStream> {
     nodes
         .iter()
@@ -5824,6 +5885,49 @@ mod contract_monitor_tests {
                 .map(|(n, g)| (n.to_string(), g.to_string()))
                 .collect(),
         }
+    }
+
+    /// Issue 1943 -- a tier registers a node only when it admits one of the
+    /// node's groups, so three tiers no longer install each component three
+    /// times; a node the table names no group for keeps registering on every
+    /// tier (the negative control).
+    #[test]
+    fn a_tier_registers_only_the_nodes_whose_groups_it_runs() {
+        // The Rust road's shape: the name rides the launch identity only.
+        let node = |name: &str| LoweredNode {
+            identity: Some(nros_entry_lower::NodeIdentity::new(name, "/")),
+            ..LoweredNode::bare(&format!("{name}_pkg"))
+        };
+        let nodes = [node("ctrl"), node("telem"), node("loose")];
+        let calls: Vec<proc_macro2::TokenStream> = ["CTRL", "TELEM", "LOOSE"]
+            .iter()
+            .map(|c| {
+                let id = Ident::new(c, Span::call_site());
+                quote! { #id(); }
+            })
+            .collect();
+        let table = ResolvedTierTable {
+            tiers: vec![
+                tier("high", &[("ctrl", "c")]),
+                tier("low", &[("telem", "t"), ("telem", "t2")]),
+            ],
+        };
+        let out: Vec<String> = tier_guarded_register_calls(&nodes, &calls, &table)
+            .iter()
+            .map(ToString::to_string)
+            .collect();
+        assert!(
+            out[0].contains("group_active (\"ctrl\" , \"/\" , \"c\")"),
+            "{}",
+            out[0]
+        );
+        assert!(out[0].contains("CTRL ()"), "{}", out[0]);
+        assert!(
+            out[1].contains("\"t\"") && out[1].contains("\"t2\""),
+            "{}",
+            out[1]
+        );
+        assert_eq!(out[2], "LOOSE () ;", "a groupless node is not guarded");
     }
 
     /// Issue 1676 — an uncontracted image carries none of it: both streams
