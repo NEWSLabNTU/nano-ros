@@ -1,8 +1,9 @@
 //! Phase 110.A — `ReadySet` trait + default `FifoReadySet` impl.
 //!
-//! `ReadySet` abstracts the queue + selection layer between
-//! [`Activator`](super::activator::Activator) and
-//! [`Dispatcher`](super::dispatcher::Dispatcher).
+//! `ReadySet` is the queue + selection layer between `spin_once`'s
+//! readiness scan, which fills it, and its dispatch loop, which drains it.
+//! (Phase 110.A also defined `Activator` and `Dispatcher` traits for those two
+//! halves; they were never wired and phase-397 W4 deleted them.)
 //!
 //! 110.A ships only `FifoReadySet` (registration-order, bit-for-bit
 //! parity with the pre-refactor `spin_once`). Phase 110.B adds

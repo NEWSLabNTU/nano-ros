@@ -931,7 +931,7 @@ impl From<nros_core::DeserError> for NodeError {
 pub(crate) const DEFAULT_TX_BUF: usize = crate::config::DEFAULT_RX_BUF_SIZE;
 
 // ============================================================================
-// Phase 110.A — Activator + ReadySet + Dispatcher
+// Phase 110.A — ReadySet
 // ============================================================================
 
 /// Index into the executor's `entries[]` array. Phase 110.A caps at
@@ -947,36 +947,18 @@ pub(crate) type DescIdx = u8;
 /// Phase 110.B will widen this to encode an EDF deadline ahead of
 /// `desc_idx`.
 #[cfg(any(has_rmw, test))]
-#[allow(dead_code)] // Phase 110.A — wired in 110.A.b spin_once rewire.
 pub(crate) type SortKey = u32;
 
 /// One ready callback queued for dispatch. Stored in the `ReadySet`,
-/// consumed by the `Dispatcher`. Full handle metadata (callback fn,
+/// popped by `spin_once`'s dispatch loop. Full handle metadata (callback fn,
 /// data offset, kind) is reconstructed from
 /// `Executor::entries[desc_idx]` at dispatch time so the ready set
 /// itself stays compact.
 #[cfg(any(has_rmw, test))]
-#[allow(dead_code)] // Phase 110.A — wired in 110.A.b spin_once rewire.
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub(crate) struct ActiveJob {
     pub sort_key: SortKey,
     pub desc_idx: DescIdx,
-}
-
-/// How aggressively the dispatcher drains the `ReadySet`.
-///
-/// `Latched` (default) preserves today's `spin_once` semantics:
-/// callbacks that become ready *during* dispatch wait for the next
-/// cycle. `Greedy` re-runs the activator after each callback so newly
-/// ready entries fire in the same cycle — soft-RT pipelines that want
-/// chain-style propagation use this.
-#[cfg(any(has_rmw, test))]
-#[allow(dead_code)] // Phase 110.B introduces the user-facing knob.
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Default)]
-pub(crate) enum DrainMode {
-    #[default]
-    Latched,
-    Greedy,
 }
 
 // ============================================================================

@@ -235,6 +235,15 @@ Built-in implementations:
 
 ### 4.4 `Activator` + `Dispatcher`
 
+> **Not implemented, and deleted (2026-10-19).** Phase 110.A defined these
+> traits and 110.A.b, which would have routed `spin_once` through them, never
+> landed. `spin_once` keeps the shape below as two inline phases: a readiness
+> scan that fills the `ReadySet` and a dispatch loop that drains it. Since
+> phase-397 W3 the scan reads an entity's arrival bit where its backend pushes
+> one ([RFC-0084](0084-readiness-is-pushed-not-scanned.md) §5 records why the
+> traits went rather than landed). `DrainMode` was deleted with them; dispatch
+> is latched. The sketch is kept as the design it was.
+
 **No `dyn Transport` trait.** Transports (zenoh-pico, xrce-dds, dust-dds, uorb, ros2-rmw) have wildly different shapes; forcing a common dyn trait costs vtable + alloc-style indirection (we want to remain alloc-free) without buying anything. Instead, the existing `session.drive_io(timeout_ms)` path stays — it pumps the wire in the platform-native way. The `Activator` runs *after* `drive_io` returns and only consults handle metadata via per-entry `has_data` callbacks. This keeps the design no_std + alloc-free and isolates transport concerns from scheduling concerns.
 
 ```rust

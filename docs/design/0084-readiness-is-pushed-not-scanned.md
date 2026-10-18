@@ -3,7 +3,7 @@ rfc: 0084
 title: "Readiness is PUSHED by the arrival path, not scanned by the executor — the wake says who, not just that"
 status: Draft
 since: 2026-08
-last-reviewed: 2026-10-18
+last-reviewed: 2026-10-19
 implements-tracked-by: [phase-397]
 amends: [rfc-0052]
 supersedes: []
@@ -240,6 +240,16 @@ natural shape, selected per session by whether a token was supplied.
 So: land 110.A.b as part of this, or delete the traits. Keeping an abstraction
 that documents an architecture the code does not have is the worse of the three
 options.
+
+**Resolved 2026-10-19 (phase-397 W4): deleted.** The pushed scan (W3) did not
+split by session. One executor holds slots of both kinds at once, and each
+slot is settled inside the same scan: by its arrival bit if its backend
+attributes arrivals, otherwise by `has_data`. A per-session
+`ScanActivator`/`PushedActivator` choice would have been coarser than the code
+that landed, and had no call site. The traits, `ActivatorCtx` and the unused
+`DrainMode` went with them. The seam they described still exists, as two
+phases of `spin_once`: a readiness scan that fills a `ReadySet`, and a
+dispatch loop that drains it.
 
 ## 6. Alternatives considered
 
