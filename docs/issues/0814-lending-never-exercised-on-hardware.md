@@ -679,7 +679,7 @@ for each API, on the cells that already exist, not a delivery lane.
 
 **Method.** A temporary `loan_e2e.rs` test (not committed) opened one
 executor against a router (zenoh, native posix, `loan-e2e` features, `main`
-at `9fe39b90ed`) and published a 512 B payload 200 times through each API.
+as of 2026-10-18) and published a 512 B payload 200 times through each API.
 An `LD_PRELOAD` shim interposed `memcpy`, `memmove` and `__memcpy_chk`,
 counting bytes and calls on the publishing thread only while a window was
 armed, and recorded the caller of each 512 B copy (`dladdr` +
