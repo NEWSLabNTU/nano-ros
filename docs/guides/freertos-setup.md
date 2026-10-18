@@ -37,7 +37,7 @@ Override paths if sources are elsewhere:
 | Variable              | Default                    | Description                          |
 |-----------------------|----------------------------|--------------------------------------|
 | `FREERTOS_DIR`        | `third-party/freertos/kernel` | FreeRTOS kernel source               |
-| `FREERTOS_PORT`       | `GCC/ARM_CM3`              | FreeRTOS portable layer              |
+| `FREERTOS_PORT`       | stated by the board (`GCC_ARM_CM3` on mps2) | upstream FreeRTOS-Kernel's port enum (phase-349 W3) |
 | `LWIP_DIR`            | `third-party/freertos/lwip`            | lwIP source                          |
 | `FREERTOS_CONFIG_DIR` | Board crate's `config/`    | `FreeRTOSConfig.h` + `lwipopts.h`   |
 

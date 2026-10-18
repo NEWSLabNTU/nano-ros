@@ -40,7 +40,10 @@ rustflags = [
 # two board modules had to write code to refuse. `force`: these are board facts
 # the ambient environment must not replace; an image overrides one through its
 # own `[image.<id>] env` row (the project rung).
-FREERTOS_PORT = { value = "GCC/ARM_CRx_No_GIC", force = true }
+# phase-349 W3 — upstream FreeRTOS-Kernel's port enum (`portable/GCC/ARM_CRx_No_GIC`).
+# NXP's `GCC/ARM_CR52_GIC` has no upstream enum, so a consumer overriding to it
+# writes the path, which is its only spelling.
+FREERTOS_PORT = { value = "GCC_ARM_CRX_NOGIC", force = true }
 FREERTOS_CONFIG_DIR = { value = "${workspace}/packages/boards/nros-board-s32z270-freertos/config", force = true }
 '''
 

@@ -70,9 +70,11 @@ endforeach()
 set(FREERTOS_CONFIG_DIR "${_NROS_BOARD_CONFIG_DIR}" CACHE PATH
     "Directory containing FreeRTOSConfig.h for s32z270-freertos" FORCE)
 # phase-484 W2 — a board fact, set by the board. OVERRIDABLE: real hardware
-# uses NXP's `GCC/ARM_CR52_GIC`, which a consumer passes as -DFREERTOS_PORT;
-# the in-tree default only makes a clean checkout link-complete.
-nros_freertos_board_port(nano-ros-board-s32z270-freertos "GCC/ARM_CRx_No_GIC" OVERRIDABLE)
+# uses NXP's `GCC/ARM_CR52_GIC`, which a consumer passes as -DFREERTOS_PORT —
+# a path, because upstream has no enum for a vendor port (phase-349 W3); the
+# in-tree default, upstream's `GCC_ARM_CRX_NOGIC`, only makes a clean checkout
+# link-complete.
+nros_freertos_board_port(nano-ros-board-s32z270-freertos "GCC_ARM_CRX_NOGIC" OVERRIDABLE)
 # The platform module's third-party fallback runs AFTER board overlays; the
 # kernel build below needs the path NOW (portASM.S existence probe).
 # phase-484 W2c — source trees come from `nros locate` (RFC-0103 D4).
@@ -108,11 +110,15 @@ endif()
 set(FREERTOS_LINKER_SCRIPT "${_NROS_BOARD_CONFIG_DIR}/s32z270_rtu.ld"
     CACHE INTERNAL "Cortex-R52 / FreeRTOS linker script for s32z270-rtu")
 
+# phase-349 W4 — the board composes `freertos_platform` through the FreeRTOS
+# integration shell, the same call a host project makes after building these
+# targets itself: the board is the shell's first user, so both share one
+# consumption path and the shell's configure checks (missing target, missing
+# capability, missing include dir) run on every in-tree FreeRTOS image.
+include("${CMAKE_CURRENT_LIST_DIR}/../../integrations/freertos/NanoRosFreertos.cmake")
 if(NOT TARGET freertos_platform)
-    nros_freertos_compose_platform(
-        COMPONENTS
-            lwip
-            freertos_kernel
+    nros_freertos_integrate(
+        NETSTACK lwip
         LINK_OPTIONS
             "-T${FREERTOS_LINKER_SCRIPT}"
             "-L${_NROS_FREERTOS_SHARED_CONFIG_DIR}"

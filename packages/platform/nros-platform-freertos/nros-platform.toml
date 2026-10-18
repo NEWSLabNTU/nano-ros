@@ -44,7 +44,7 @@ compile = { opt_level = "s", warnings = false, cflags = ["-ffunction-sections", 
 # ladder and refuses with the remedy when none answers. Only board facts the
 # board descriptor carries remain here.
 required_env = [
-  { name = "FREERTOS_PORT", help = "FreeRTOS portable layer. Examples: export FREERTOS_PORT=GCC/ARM_CM3 (Cortex-M3) | GCC/ARM_CM7/r0p1 (Cortex-M7)" },
+  { name = "FREERTOS_PORT", help = "FreeRTOS port, as upstream FreeRTOS-Kernel's enum (phase-349 W3). Examples: GCC_ARM_CM3 (Cortex-M3) | GCC_ARM_CM7 (Cortex-M7). A vendor port upstream does not list is its path under portable/" },
   { name = "FREERTOS_CONFIG_DIR", help = "Directory containing FreeRTOSConfig.h + lwipopts.h. Example: packages/boards/nros-board-mps2-an385-freertos/config" },
 ]
 

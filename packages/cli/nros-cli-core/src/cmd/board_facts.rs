@@ -883,7 +883,7 @@ mod tests {
         let facts = resolve_one("t", &root, &board, &board, &BTreeMap::new(), &|_| None).unwrap();
         assert_eq!(
             facts.get("FREERTOS_PORT").map(String::as_str),
-            Some("GCC/ARM_CM3")
+            Some("GCC_ARM_CM3")
         );
         assert!(
             facts
@@ -1236,7 +1236,7 @@ sdk = { freertos = "{env:FREERTOS_DIR}", lwip = "{env:LWIP_DIR}" }
             .expect("the named image picks demo_bringup");
         assert_eq!(
             facts.get("FREERTOS_PORT").map(String::as_str),
-            Some("GCC/ARM_CM3")
+            Some("GCC_ARM_CM3")
         );
         let by_board = resolve(ws.path(), &root, None, Some("qemu-cortex-a53"), &|_| None)
             .expect("the named board picks smp_bringup");

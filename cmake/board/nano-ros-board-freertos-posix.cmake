@@ -98,9 +98,9 @@ set(FREERTOS_CONFIG_DIR "${_NROS_BOARD_CONFIG_DIR}" CACHE PATH
 # used to export compiled `portable/GCC/ARM_CM3/port.c` into a host binary and
 # failed on `configMAX_SYSCALL_INTERRUPT_PRIORITY` — an NVIC macro the POSIX
 # FreeRTOSConfig.h has no reason to define. The POSIX simulator has exactly one
-# port, so a disagreeing `-D` is refused. The path carries `ThirdParty/`
-# because upstream ships it under `portable/ThirdParty/GCC/Posix`.
-nros_freertos_board_port(nano-ros-board-freertos-posix "ThirdParty/GCC/Posix")
+# port, so a disagreeing `-D` is refused. Upstream's enum is `GCC_POSIX`; the
+# directory is `portable/ThirdParty/GCC/Posix` (phase-349 W3).
+nros_freertos_board_port(nano-ros-board-freertos-posix "GCC_POSIX")
 
 # ---------------------------------------------------------------------------
 # Kernel. Two departures from every other FreeRTOS board here, both required by
@@ -203,10 +203,17 @@ endif()
 # freertos_platform — the umbrella apps link. No linker script, no
 # `-nostartfiles`, no `--specs=nosys.specs`: this is a hosted link.
 # ---------------------------------------------------------------------------
+# phase-349 W4 — the board composes `freertos_platform` through the FreeRTOS
+# integration shell, the same call a host project makes after building these
+# targets itself: the board is the shell's first user, so both share one
+# consumption path and the shell's configure checks (missing target, missing
+# capability, missing include dir) run on every in-tree FreeRTOS image.
+include("${CMAKE_CURRENT_LIST_DIR}/../../integrations/freertos/NanoRosFreertos.cmake")
 if(NOT TARGET freertos_platform)
-    nros_freertos_compose_platform(
-        COMPONENTS
-            freertos_kernel)
+    # NETSTACK NONE: the host's kernel owns the network stack here (tasks are
+    # pthreads, sockets are the host's), which is what lets the shell waive
+    # the platform's `ip_stack` capability.
+    nros_freertos_integrate(NETSTACK NONE)
 endif()
 
 # ---------------------------------------------------------------------------

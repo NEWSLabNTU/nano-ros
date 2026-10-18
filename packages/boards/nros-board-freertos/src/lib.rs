@@ -52,7 +52,7 @@
 //! | Var | Default | Purpose |
 //! |---|---|---|
 //! | `FREERTOS_DIR` | none (required) | FreeRTOS kernel source root. |
-//! | `FREERTOS_PORT` | `GCC/ARM_CM3` | Portable layer. |
+//! | `FREERTOS_PORT` | none (the board states it) | Upstream's port enum (phase-349 W3); a listed path still works, deprecated. |
 //! | `LWIP_DIR` | none (required) | lwIP source root. |
 //! | `FREERTOS_CONFIG_DIR` | none (required) | `FreeRTOSConfig.h` + `lwipopts.h` dir. |
 //! | `FREERTOS_CFLAGS` | `-mcpu=cortex-m3 -mthumb` | Extra compiler flags. |

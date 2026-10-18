@@ -121,9 +121,22 @@ foreach(_extra IN LISTS NROS_S32DS_EXTRA_INCLUDES)
     target_include_directories(freertos_kernel INTERFACE "${_extra}")
 endforeach()
 
-# Hand the shim's own CMake the same facts.
-set(FREERTOS_DIR    "${NROS_S32DS_FREERTOS_DIR}"  CACHE PATH   "" FORCE)
-set(FREERTOS_PORT   "${NROS_S32DS_FREERTOS_PORT}" CACHE STRING "" FORCE)
+# Hand the shim's own CMake the same facts. The probe reads the port as the
+# project's PATH under `portable/` (`GCC/ARM_CM7/r0p1`); FREERTOS_PORT is
+# upstream's enum since phase-349 W3, so a path upstream's table lists is
+# handed on as its enum. A kernel with no table (NXP's distributions predate
+# upstream's CMake) keeps the path, which is then the port's only spelling.
+include("${_nros_root}/packages/api/nros-c/cmake/nros-freertos.cmake")
+set(_nros_s32ds_port "${NROS_S32DS_FREERTOS_PORT}")
+if(NROS_S32DS_FREERTOS_DIR)
+    _nros_freertos_port_table("${NROS_S32DS_FREERTOS_DIR}" _enums _paths)
+    list(FIND _paths "${_nros_s32ds_port}" _i)
+    if(_i GREATER -1)
+        list(GET _enums ${_i} _nros_s32ds_port)
+    endif()
+endif()
+set(FREERTOS_DIR    "${NROS_S32DS_FREERTOS_DIR}" CACHE PATH   "" FORCE)
+set(FREERTOS_PORT   "${_nros_s32ds_port}"        CACHE STRING "" FORCE)
 
 # ---------------------------------------------------------------------------
 # lwip — YOUR responsibility, and nano-ros will not pretend otherwise.

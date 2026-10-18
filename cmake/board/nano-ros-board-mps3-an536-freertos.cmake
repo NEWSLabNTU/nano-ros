@@ -77,7 +77,7 @@ set(FREERTOS_CONFIG_DIR "${_NROS_BOARD_CONFIG_DIR}" CACHE PATH
 # kernel build), and `activate.sh` used to export `GCC/ARM_CM3` repo-wide, which
 # is why this used to be a dedicated refusal. The helper ignores the inherited
 # value and refuses a disagreeing `-D`, which covers it.
-nros_freertos_board_port(nano-ros-board-mps3-an536-freertos "GCC/ARM_CRx_No_GIC")
+nros_freertos_board_port(nano-ros-board-mps3-an536-freertos "GCC_ARM_CRX_NOGIC")
 # The platform module's third-party fallback runs AFTER board overlays; the
 # kernel build below needs the path NOW (portASM.S existence probe).
 # phase-484 W2c — source trees come from `nros locate` (RFC-0103 D4).
@@ -161,15 +161,19 @@ endif()
 set(FREERTOS_LINKER_SCRIPT "${_NROS_BOARD_CONFIG_DIR}/an536.ld"
     CACHE INTERNAL "Cortex-R52 / FreeRTOS linker script for an536")
 
+# phase-349 W4 — the board composes `freertos_platform` through the FreeRTOS
+# integration shell, the same call a host project makes after building these
+# targets itself: the board is the shell's first user, so both share one
+# consumption path and the shell's configure checks (missing target, missing
+# capability, missing include dir) run on every in-tree FreeRTOS image.
+include("${CMAKE_CURRENT_LIST_DIR}/../../integrations/freertos/NanoRosFreertos.cmake")
 if(NOT TARGET freertos_platform)
-    nros_freertos_compose_platform(
-        COMPONENTS
-            # The netif must be named here, not merely built: the S32Z270
-            # overlay this was derived from has no netif to link (its NETC
-            # driver is consumer-side), so its COMPONENTS list omits one.
-            lan9118_lwip
-            lwip
-            freertos_kernel
+    nros_freertos_integrate(
+        NETSTACK lwip
+        # The netif must be named here, not merely built: the S32Z270
+        # overlay this was derived from has no netif to link (its NETC
+        # driver is consumer-side), so it names none.
+        NETIFS   lan9118_lwip
         LINK_OPTIONS
             "-T${FREERTOS_LINKER_SCRIPT}"
             "-L${_NROS_FREERTOS_SHARED_CONFIG_DIR}"

@@ -18,10 +18,17 @@
 #                              [EXTRA_INCLUDES <dirs…>])
 #       Build the kernel with upstream FreeRTOS-Kernel's own CMake
 #       (phase-349 W3): defines `freertos_config` and hands upstream
-#       FREERTOS_PORT (its enum, e.g. GCC_ARM_CM3; a path under
-#       portable/ such as GCC/ARM_CM3 is mapped through upstream's
-#       table) and FREERTOS_HEAP (default heap_4). Upstream's target
+#       FREERTOS_PORT (its enum, e.g. GCC_ARM_CM3; the path spelling
+#       GCC/ARM_CM3 is a deprecated alias) and FREERTOS_HEAP (default
+#       heap_4). Upstream's target
 #       is `freertos_kernel`. Optimised with -O2 -w (vendored code).
+#
+#   nros_freertos_port_dir(<out_var> PORT <enum-or-path>
+#                          [FREERTOS_DIR <dir>] [OUT_ENUM <var>])
+#       The `portable/` directory a port names (phase-349 W3). PORT is
+#       upstream's enum; a path upstream lists is a deprecated alias
+#       (one DEPRECATION message per spelling), and a vendor path with no
+#       enum is its own spelling. Fatal on an unknown port.
 #
 #   nros_freertos_config_define(<definition>…)
 #       Add a definition every TU including FreeRTOSConfig.h sees
@@ -59,7 +66,7 @@
 #
 #   NROS_FREERTOS_INCLUDES       — kernel include set
 #   NROS_FREERTOS_LWIP_INCLUDES  — lwip include set
-#   NROS_FREERTOS_PORT_DIR       — "${FREERTOS_DIR}/portable/${PORT}"
+#   NROS_FREERTOS_PORT_DIR       — the port's directory under portable/
 
 if(DEFINED _NROS_FREERTOS_INCLUDED)
     return()
@@ -116,7 +123,23 @@ function(nros_freertos_board_port board port)
             "the board allows it, or unset the variable.")
     endif()
     set(_port "${port}")
-    if(DEFINED FREERTOS_PORT AND NOT FREERTOS_PORT STREQUAL "" AND NOT FREERTOS_PORT STREQUAL "${port}")
+    # phase-349 W3 — a `-DFREERTOS_PORT` written in the deprecated path
+    # spelling of the board's own port (`GCC/ARM_CM3` for `GCC_ARM_CM3`) names
+    # the SAME port, so it is accepted, with the deprecation said once by the
+    # resolver, rather than refused as a disagreement.
+    set(_given "${FREERTOS_PORT}")
+    if(_given MATCHES "/" AND NOT _given STREQUAL "${port}")
+        if(NOT DEFINED FREERTOS_DIR AND COMMAND nros_locate_var)
+            nros_locate_var(FREERTOS_DIR)
+        endif()
+        if(DEFINED FREERTOS_DIR)
+            _nros_freertos_resolve_port("${FREERTOS_DIR}" "${_given}" _given_enum _given_path)
+            if(_given_enum STREQUAL "${port}")
+                set(_given "${port}")
+            endif()
+        endif()
+    endif()
+    if(DEFINED FREERTOS_PORT AND NOT _given STREQUAL "" AND NOT _given STREQUAL "${port}")
         if(_NFBP_OVERRIDABLE)
             set(_port "${FREERTOS_PORT}")
         else()
@@ -126,7 +149,8 @@ function(nros_freertos_board_port board port)
                 "port you meant.")
         endif()
     endif()
-    set(FREERTOS_PORT "${_port}" CACHE STRING "FreeRTOS portable-layer subdir for ${board}" FORCE)
+    set(FREERTOS_PORT "${_port}" CACHE STRING
+        "FreeRTOS port for ${board}: upstream's enum, or a vendor port's path under portable/" FORCE)
     set(FREERTOS_PORT "${_port}" PARENT_SCOPE)
 endfunction()
 
@@ -171,6 +195,90 @@ function(_nros_freertos_port_table freertos_dir out_enums out_paths)
 endfunction()
 
 # ----------------------------------------------------------------------
+# _nros_freertos_resolve_port(<freertos_dir> <port> <out_enum> <out_path>)
+#
+# phase-349 W3 — one resolution of a port name, shared by the kernel builder,
+# the board-port check and every consumer that needs the port's DIRECTORY.
+# PORT is upstream's enum; a path under `portable/` is accepted in two cases
+# that differ:
+#
+#   * a path upstream LISTS (`GCC/ARM_CM3`) is the deprecated spelling of its
+#     enum. One DEPRECATION message per spelling per configure; the spelling
+#     is retired one release after W3 (the phase-484 W8 pattern).
+#   * a path upstream does not list, holding a `port.c` (NXP's
+#     `GCC/ARM_CR52_GIC`, or any port of a kernel with no port table), has no
+#     enum: `<out_enum>` is `A_CUSTOM_PORT` and the path is its only spelling.
+#
+# Unknown: both outputs empty; the caller decides how to fail. The Rust twin
+# is `nros_build_paths::freertos_port`; both read the same table rows.
+# ----------------------------------------------------------------------
+function(_nros_freertos_resolve_port freertos_dir port out_enum out_path)
+    _nros_freertos_port_table("${freertos_dir}" _enums _paths)
+    set(_enum "")
+    set(_path "")
+    if(port MATCHES "/")
+        list(FIND _paths "${port}" _i)
+        if(_i GREATER -1)
+            list(GET _enums ${_i} _enum)
+            set(_path "${port}")
+            get_property(_said GLOBAL PROPERTY "_NROS_FREERTOS_PORT_ALIAS_SAID_${_enum}")
+            if(NOT _said)
+                set_property(GLOBAL PROPERTY "_NROS_FREERTOS_PORT_ALIAS_SAID_${_enum}" TRUE)
+                message(DEPRECATION
+                    "nano-ros: FREERTOS_PORT '${port}' is the path spelling of upstream's "
+                    "port '${_enum}'. Write '${_enum}' (phase-349 W3); the path spelling "
+                    "is retired one release later.")
+            endif()
+        elseif(EXISTS "${freertos_dir}/portable/${port}/port.c")
+            set(_enum A_CUSTOM_PORT)
+            set(_path "${port}")
+        endif()
+    else()
+        list(FIND _enums "${port}" _i)
+        if(_i GREATER -1)
+            set(_enum "${port}")
+            list(GET _paths ${_i} _path)
+        endif()
+    endif()
+    set(${out_enum} "${_enum}" PARENT_SCOPE)
+    set(${out_path} "${_path}" PARENT_SCOPE)
+endfunction()
+
+# ----------------------------------------------------------------------
+# nros_freertos_port_dir(<out_var> PORT <p> [FREERTOS_DIR <d>] [OUT_ENUM <v>])
+#
+# The `portable/` directory PORT names, for a consumer that needs the port's
+# headers without building the kernel (the Cyclone ddsrt flags, an
+# integration shell). FREERTOS_DIR defaults to the variable of that name.
+# ----------------------------------------------------------------------
+function(nros_freertos_port_dir out_var)
+    cmake_parse_arguments(_NFPD "" "PORT;FREERTOS_DIR;OUT_ENUM" "" ${ARGN})
+    if(NOT _NFPD_FREERTOS_DIR)
+        set(_NFPD_FREERTOS_DIR "${FREERTOS_DIR}")
+    endif()
+    _nros_freertos_resolve_port("${_NFPD_FREERTOS_DIR}" "${_NFPD_PORT}" _enum _path)
+    if(NOT _enum)
+        _nros_freertos_port_refusal("${_NFPD_FREERTOS_DIR}" "${_NFPD_PORT}" _why)
+        message(FATAL_ERROR "nros_freertos_port_dir: ${_why}")
+    endif()
+    set(${out_var} "${_NFPD_FREERTOS_DIR}/portable/${_path}" PARENT_SCOPE)
+    if(_NFPD_OUT_ENUM)
+        set(${_NFPD_OUT_ENUM} "${_enum}" PARENT_SCOPE)
+    endif()
+endfunction()
+
+function(_nros_freertos_port_refusal freertos_dir port out_var)
+    string(CONCAT _why
+        "FREERTOS_PORT '${port}' is neither a port upstream lists in "
+        "${freertos_dir}/portable/CMakeLists.txt nor a directory under "
+        "portable/ with a port.c.\n"
+        "  Upstream's ports are named by its enum (GCC_ARM_CM3, "
+        "GCC_ARM_CRX_NOGIC, GCC_POSIX, ...); a vendor port upstream does not "
+        "list is named by its path under portable/.")
+    set(${out_var} "${_why}" PARENT_SCOPE)
+endfunction()
+
+# ----------------------------------------------------------------------
 # nros_freertos_config_define(<definition>…)
 #
 # A definition that changes what `FreeRTOSConfig.h` says (the heap size, a
@@ -200,11 +308,11 @@ endfunction()
 # `FREERTOS_PORT` in upstream's enum, and `FREERTOS_HEAP`. Upstream names the
 # library `freertos_kernel`, which is what every consumer already links.
 #
-# PORT accepts upstream's enum (`GCC_ARM_CM3`) or a path under `portable/`
-# (`GCC/ARM_CM3`, issue 0530); a path is mapped to its enum through upstream's
-# own table. A path upstream does not list — a vendor port dropped into
-# `portable/`, such as NXP's `GCC/ARM_CR52_GIC` — goes through upstream's
-# `A_CUSTOM_PORT` hook, built from the `.c` and `.S` files in that directory.
+# PORT is upstream's enum (`GCC_ARM_CM3`), resolved by
+# `_nros_freertos_resolve_port`: a path upstream lists is a deprecated alias,
+# and a path upstream does not list — a vendor port dropped into `portable/`,
+# such as NXP's `GCC/ARM_CR52_GIC` — goes through upstream's `A_CUSTOM_PORT`
+# hook, built from the `.c` and `.S` files in that directory.
 # ----------------------------------------------------------------------
 function(nros_freertos_build_kernel)
     cmake_parse_arguments(_NFBK
@@ -226,40 +334,14 @@ function(nros_freertos_build_kernel)
             "which it has shipped since V10.5.0; point FREERTOS_DIR at such a tree.")
     endif()
 
-    _nros_freertos_port_table("${FREERTOS_DIR}" _enums _paths)
-    set(_enum "")
-    set(_port_path "")
-    if(_NFBK_PORT MATCHES "/")
-        list(FIND _paths "${_NFBK_PORT}" _i)
-        if(_i GREATER -1)
-            list(GET _enums ${_i} _enum)
-            set(_port_path "${_NFBK_PORT}")
-        elseif(EXISTS "${FREERTOS_DIR}/portable/${_NFBK_PORT}/port.c")
-            set(_enum A_CUSTOM_PORT)
-            set(_port_path "${_NFBK_PORT}")
-        endif()
-    else()
-        list(FIND _enums "${_NFBK_PORT}" _i)
-        if(_i GREATER -1)
-            set(_enum "${_NFBK_PORT}")
-            list(GET _paths ${_i} _port_path)
-        endif()
-    endif()
-    # Fail HERE, naming the variable and both spellings, rather than letting
+    _nros_freertos_resolve_port("${FREERTOS_DIR}" "${_NFBK_PORT}" _enum _port_path)
+    # Fail HERE, naming the variable and the vocabulary, rather than letting
     # upstream warn and the build report a missing `port.c` nobody asked for.
     if(NOT _enum)
-        message(FATAL_ERROR
-            "nros_freertos_build_kernel: FREERTOS_PORT '${_NFBK_PORT}' is neither "
-            "a port upstream lists in ${FREERTOS_DIR}/portable/CMakeLists.txt nor "
-            "a directory under portable/ with a port.c.\n"
-            "  FREERTOS_PORT accepts either spelling:\n"
-            "    upstream enum          : GCC_ARM_CM3\n"
-            "    path under portable/   : GCC/ARM_CM3")
+        _nros_freertos_port_refusal("${FREERTOS_DIR}" "${_NFBK_PORT}" _why)
+        message(FATAL_ERROR "nros_freertos_build_kernel: ${_why}")
     endif()
     set(_port_dir "${FREERTOS_DIR}/portable/${_port_path}")
-    if(NOT _NFBK_PORT STREQUAL _enum)
-        message(STATUS "nano-ros: FreeRTOS port ${_NFBK_PORT} -> ${_enum}")
-    endif()
 
     # The A/R-profile ports carry their context switch in assembly
     # (`portASM.S`); without ASM enabled, add_library() drops a `.S` source
@@ -286,8 +368,9 @@ function(nros_freertos_build_kernel)
     endif()
 
     # Upstream reads these as ordinary variables of the including scope.
-    # `FREERTOS_PORT` shadows the board's CACHE entry (a path, for the
-    # alias) with the enum for this one call.
+    # `FREERTOS_PORT` shadows the board's CACHE entry with the resolved enum
+    # for this one call (the entry may be a deprecated path, or a vendor
+    # port's path that resolves to A_CUSTOM_PORT).
     set(FREERTOS_PORT "${_enum}")
     string(REGEX REPLACE "^heap_" "" FREERTOS_HEAP "${_NFBK_HEAP}")
     add_subdirectory("${FREERTOS_DIR}" "${CMAKE_BINARY_DIR}/nros-freertos-kernel"

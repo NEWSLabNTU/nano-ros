@@ -693,9 +693,20 @@ Two rules taken from ESP-IDF's documented mistakes:
 5. `FREERTOS_PORT` stops being ours. Upstream owns that name and takes an enum
    (`GCC_ARM_CM3`); we currently take a path fragment (`GCC/ARM_CM3`) under the
    same name, which fails confusingly for anyone arriving from upstream docs.
+   *(Landed 2026-10-18, phase-349 W3: every board states upstream's enum, on
+   both roads. One resolver per language reads upstream's
+   `portable/CMakeLists.txt` table — `_nros_freertos_resolve_port` in CMake,
+   `nros_build_paths::freertos_port` in Rust, the latter also behind the
+   zenoh-pico row's `{freertos_port_dir}` token. A listed path is a deprecated
+   alias; a vendor port upstream does not list keeps its path.)*
 6. A `freertos` integration shell joins the other three, so the FreeRTOS row
-   stops being the exception. *(2026-10-18: `integrations/s32ds/` is the
-   precedent; phase-349 W4 builds the upstream-FreeRTOS shell on it.)*
+   stops being the exception. *(Landed 2026-10-18, phase-349 W4:
+   `integrations/freertos/NanoRosFreertos.cmake`, `nros_freertos_integrate()`,
+   consumes a host's `freertos_kernel` / `freertos_config` / netstack targets
+   and composes `freertos_platform`, with §7's configure diagnostics. All four
+   in-tree FreeRTOS boards call it, so the shell and the boards share one
+   path. `integrations/s32ds/` stays separate: S32DS compiles the kernel in
+   its own project, so there is no upstream target to consume.)*
 
 ## 10. Maintainability
 

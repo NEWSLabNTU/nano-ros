@@ -2575,8 +2575,16 @@ fn probe_net_type_sizes(
         // exists to prevent.
         if let Ok(dir) = nros_build_paths::locate::try_source("freertos-kernel") {
             build.include(dir.join("include"));
+            // phase-349 W3 — FREERTOS_PORT is upstream's enum, not a path:
+            // the same resolver the port row's `{freertos_port_dir}` token
+            // uses, so the probe and the build cannot disagree on the port.
             if let Ok(port) = env::var("FREERTOS_PORT") {
-                build.include(dir.join("portable").join(&port));
+                match nros_build_paths::freertos_port::resolve(&dir, &port) {
+                    Ok(r) => {
+                        build.include(r.dir);
+                    }
+                    Err(e) => panic!("zpico-sys size_probe: {e}"),
+                }
             }
         }
         if let Some(dir) = nros_build_paths::env_path("FREERTOS_CONFIG_DIR") {

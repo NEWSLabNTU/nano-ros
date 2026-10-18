@@ -63,6 +63,10 @@ interpolator before being passed to `cc-rs`:
 | `{out}` | `OUT_DIR`. |
 | `{src}` | `zenoh-pico/src/` under `{nros}`. |
 | `{env:VAR}` | Value of env var `VAR`; build fails with a clear error if unset. |
+| `{envpath:VAR}` | A path-valued env var, resolved through the checkout-path rule (issue 1280). |
+| `{source:NAME}` | A vendored source tree by name, located through `nros locate` (RFC-0103 D4). |
+| `{nuttx_include}` | The NuttX include root for this arch's export. |
+| `{freertos_port_dir}` | The FreeRTOS port directory `FREERTOS_PORT` names. The port is upstream's enum (`GCC_ARM_CM3`), mapped through upstream's `portable/CMakeLists.txt` table (phase-349 W3). |
 
 ### `when` matcher
 
