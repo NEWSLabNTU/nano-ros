@@ -482,16 +482,17 @@ impl Lan9118 {
         let pkt_len =
             ((rx_stat & regs::rx_stat::PKT_LEN_MASK) >> regs::rx_stat::PKT_LEN_SHIFT) as usize;
 
-        // Check for errors
-        if (rx_stat & regs::rx_stat::ES) != 0 {
+        // Packet length includes 4-byte FCS. An unusable length is the one
+        // case the words cannot be counted, so only it fast-forwards.
+        if !(4..=MAX_FRAME_SIZE).contains(&pkt_len) {
             self.rx_discard();
             RX_PKT_ERR_TOTAL.fetch_add(1, Ordering::Relaxed);
             return false;
         }
 
-        // Packet length includes 4-byte FCS
-        if !(4..=MAX_FRAME_SIZE).contains(&pkt_len) {
-            self.rx_discard();
+        // Check for errors
+        if (rx_stat & regs::rx_stat::ES) != 0 {
+            self.rx_drain_words(pkt_len);
             RX_PKT_ERR_TOTAL.fetch_add(1, Ordering::Relaxed);
             return false;
         }
@@ -526,7 +527,20 @@ impl Lan9118 {
         true
     }
 
-    /// Discard current RX packet (fast-forward).
+    /// Drop a packet of known length by READING its words (issue 1948).
+    ///
+    /// QEMU's model (through 11.0) advances the FIFO head on a fast-forward
+    /// but never returns the words to its used count, so each one leaks FIFO
+    /// space and leaves the read pointer mid-packet, until the model refuses
+    /// every frame. Reading the words is correct on silicon too.
+    fn rx_drain_words(&self, pkt_len: usize) {
+        for _ in 0..pkt_len.div_ceil(4) {
+            let _ = self.read_reg(regs::offset::RX_DATA_PORT);
+        }
+    }
+
+    /// Discard current RX packet (fast-forward). Only for a length that
+    /// cannot be trusted — see [`Self::rx_drain_words`].
     fn rx_discard(&self) {
         self.write_reg(regs::offset::RX_DP_CTRL, regs::rx_dp_ctrl::RX_FFWD);
         // Wait for fast-forward to complete

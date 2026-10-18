@@ -323,6 +323,19 @@ static inline uint32_t rx_packets_pending(uint32_t base) {
     return (inf & RX_FIFO_INF_RXSUSED_MASK) >> RX_FIFO_INF_RXSUSED_SHIFT;
 }
 
+/* Drop one packet whose status was already popped, by READING its words.
+ * Fast-forward (RX_DP_CTRL.RX_FFWD) is reserved for a length that cannot be
+ * trusted: QEMU's model (through 11.0) advances the FIFO head on FFWD but
+ * never returns the words to its used count, so every fast-forward leaks
+ * FIFO space and leaves the read pointer mid-packet. Under an inbound flood
+ * the pbuf pool runs dry, each dry pool discards, and once the leak fills
+ * the FIFO the model refuses every frame: receive stops for good while the
+ * guest idles (issue 1948). Reading the words is correct on silicon too. */
+static void rx_drain_words(uint32_t base, uint32_t pkt_len) {
+    for (uint32_t i = 0; i < (pkt_len + 3) / 4; i++)
+        (void)reg_read(base, REG_RX_DATA_PORT);
+}
+
 static void rx_discard(uint32_t base) {
     reg_write(base, REG_RX_DP_CTRL, RX_DP_CTRL_RX_FFWD);
     for (int i = 0; i < 100; i++) {
@@ -343,15 +356,16 @@ static struct pbuf *rx_receive(uint32_t base) {
     uint32_t rx_stat = reg_read(base, REG_RX_STAT_PORT);
     uint32_t pkt_len = (rx_stat & RX_STAT_PKT_LEN_MASK) >> RX_STAT_PKT_LEN_SHIFT;
 
-    /* Error check */
-    if (rx_stat & RX_STAT_ES) {
+    /* Length sanity (includes 4-byte FCS): an unusable length is the one
+     * case the words cannot be counted, so only it fast-forwards. */
+    if (pkt_len < 4 || pkt_len > MAX_FRAME_SIZE) {
         rx_discard(base);
         return NULL;
     }
 
-    /* Length sanity (includes 4-byte FCS) */
-    if (pkt_len < 4 || pkt_len > MAX_FRAME_SIZE) {
-        rx_discard(base);
+    /* Error check */
+    if (rx_stat & RX_STAT_ES) {
+        rx_drain_words(base, pkt_len);
         return NULL;
     }
 
@@ -360,7 +374,7 @@ static struct pbuf *rx_receive(uint32_t base) {
     /* Allocate pbuf for the Ethernet frame */
     struct pbuf *p = pbuf_alloc(PBUF_RAW, (u16_t)data_len, PBUF_POOL);
     if (p == NULL) {
-        rx_discard(base);
+        rx_drain_words(base, pkt_len);
         return NULL;
     }
 
