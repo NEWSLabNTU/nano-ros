@@ -125,8 +125,6 @@ BASELINE: dict[str, tuple[int, str, str]] = {
         (1, "1297", "`cfg(any(feature = \"rmw-zenoh\", feature = \"rmw-xrce\"))`"),
     "packages/api/nros-cpp/src/lib.rs":
         (4, "1297", "the same cfg(any(...)) four times"),
-    "packages/api/nros-cpp/include/rclcpp/node.hpp":
-        (8, "1297", "`#ifdef NROS_RMW_<X>` + `extern \"C\" nros_rmw_<x>_register()`, all four"),
     "packages/api/nros/Cargo.toml":
         (1, "1297", "`rmw-cyclonedds` naming a capability forward"),
     # Issue 1298 — core names backends in code.

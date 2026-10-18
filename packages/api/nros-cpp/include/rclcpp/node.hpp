@@ -153,18 +153,10 @@
 // on the executor rather than multiplied by the node count. Do not reintroduce
 // a per-facade capacity: a second number is how a second store starts.
 
-#ifdef NROS_RMW_CYCLONEDDS
-extern "C" int32_t nros_rmw_cyclonedds_register(void);
-#endif
-#if defined(NROS_RMW_XRCE) || defined(NROS_RMW_XRCE_CFFI)
-extern "C" int32_t nros_rmw_xrce_register(void);
-#endif
-#ifdef NROS_RMW_ZENOH_CFFI
-extern "C" int32_t nros_rmw_zenoh_register(void);
-#endif
-#ifdef NROS_RMW_UORB
-extern "C" int32_t nros_rmw_uorb_register(void);
-#endif
+// RFC-0071 D9 (phase-506 W4) — no per-backend `nros_rmw_<x>_register()`
+// declarations here. Nothing in these headers called them: registration is the
+// generated strong `nros_app_register_backends()`, and a caller that registers
+// by hand includes its backend's own header.
 
 // Issue #229 pin (cross-space, C++-FFI half): ErrorCode must stay
 // value-identical to the NROS_CPP_RET_* codes (nros_cpp_ffi.h, included

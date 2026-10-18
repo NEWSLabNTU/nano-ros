@@ -47,3 +47,12 @@ RFC-0071 D2/D3: the crates receive CAPABILITIES (`rmw-present`,
 the backend dependency and its registration. Each line removed lowers its
 `BASELINE` row in `scripts/check-rmw-agnostic.py` in the same change (the gate
 fails on a stale count, so it cannot regrow into the headroom).
+
+## 2026-10-18 — `node.hpp`'s register chain is deleted (RFC-0071 D9)
+
+The `#ifdef NROS_RMW_<X>` + `extern "C" nros_rmw_<x>_register()` lines had no
+caller in the headers: registration is the generated strong
+`nros_app_register_backends()`, and the two hand callers (the PX4 module
+template and `nros-px4-register-check`) declare the symbol themselves. Its
+`check-rmw-agnostic` baseline row (8 lines) is gone. The rest of this issue is
+phase-506 W4.
