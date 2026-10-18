@@ -60,6 +60,49 @@ if(CONFIG_NROS)
 
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/nros_cargo_build.cmake)
 
+# RFC-0071 D9 (phase-506 W4b) — the backend reaches `nros-c` / `nros-cpp`'s
+# staticlib through a generated IMAGE crate (cmake/NanoRosImageCrate.cmake),
+# exactly as on the cmake road: the API crate is built without its backend
+# feature and the backend crate the descriptor names is a dependency of the
+# image. The feature strings below keep their shape; the image strips the
+# backend selection out of them. The backend's NAME is the `CONFIG_NROS_RMW_*`
+# choice this image made, read over the provider scan rather than a list.
+include(${CMAKE_CURRENT_LIST_DIR}/../cmake/NanoRosRmwDispatch.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/../cmake/NanoRosImageCrate.cmake)
+set(_NROS_ZEPHYR_RMW "")
+nros_rmw_known(_nros_zephyr_known_rmw)
+foreach(_n IN LISTS _nros_zephyr_known_rmw)
+    string(TOUPPER "${_n}" _n_up)
+    if(CONFIG_NROS_RMW_${_n_up})
+        set(_NROS_ZEPHYR_RMW "${_n}")
+    endif()
+endforeach()
+function(_nros_zephyr_api_cargo_build pkg features)
+    string(REPLACE "," ";" _list "${features}")
+    list(REMOVE_ITEM _list "")
+    if(pkg STREQUAL "nros-c")
+        set(_flavor c)
+    else()
+        set(_flavor cpp)
+    endif()
+    nros_image_crate(_zi
+        FLAVOR       ${_flavor}
+        RMW          "${_NROS_ZEPHYR_RMW}"
+        OUT_DIR      "${CMAKE_BINARY_DIR}/nros/image/${pkg}"
+        WORKSPACE_DIR "${CMAKE_BINARY_DIR}/nros/image"
+        API_FEATURES ${_list})
+    if(_zi_CRATE STREQUAL pkg)
+        nros_cargo_build(PACKAGE ${pkg} FEATURES "${features}")
+    else()
+        string(REPLACE ";" "," _zi_flat "${_zi_FEATURES}")
+        nros_cargo_build(
+            PACKAGE       ${_zi_CRATE}
+            LIB           ${pkg}
+            MANIFEST_PATH "${_zi_MANIFEST}"
+            FEATURES      "${_zi_flat}")
+    endif()
+endfunction()
+
 # phase-351 W5 / issue 0605 — resolve the board facts ONCE per Zephyr configure,
 # at MODULE scope.
 #
@@ -568,10 +611,7 @@ if(CONFIG_NROS_C_API)
     string(APPEND _nros_features "${_nros_cap_suffix}")
 
     # Build nros-c static library via Cargo
-    nros_cargo_build(
-        PACKAGE nros-c
-        FEATURES "${_nros_features}${_nros_panic_suffix}"
-    )
+    _nros_zephyr_api_cargo_build(nros-c "${_nros_features}${_nros_panic_suffix}")
     add_dependencies(app nros_c_cargo_build)
 
     # Link the built library
@@ -922,18 +962,12 @@ if(CONFIG_NROS_CPP_API)
         endif()
         # issue 1681 -- nros-cpp forwards both of these to nros-c too.
         string(APPEND _nros_c_for_cpp_features "${_nros_cap_suffix}")
-        nros_cargo_build(
-            PACKAGE nros-c
-            FEATURES "${_nros_c_for_cpp_features}${_nros_panic_suffix}"
-        )
+        _nros_zephyr_api_cargo_build(nros-c "${_nros_c_for_cpp_features}${_nros_panic_suffix}")
         add_dependencies(app nros_c_cargo_build)
     endif()
 
     # Build nros-cpp static library via Cargo
-    nros_cargo_build(
-        PACKAGE nros-cpp
-        FEATURES "${_nros_cpp_features}${_nros_panic_suffix}"
-    )
+    _nros_zephyr_api_cargo_build(nros-cpp "${_nros_cpp_features}${_nros_panic_suffix}")
     add_dependencies(app nros_cpp_cargo_build)
 
     # phase-263 C2c-zephyr — a MIXED workspace (C + C++ + Rust node) bundles nros-cpp + every

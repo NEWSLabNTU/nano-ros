@@ -186,6 +186,11 @@ function(_nros_rmw_watch_descriptors)
     _nros_rmw_root(_root)
     file(GLOB_RECURSE _descriptors "${_root}/packages/rmw/*/nros-rmw.toml")
     foreach(_d IN LISTS _descriptors)
+        # ONE spelling per file. A root reached as `<x>/zephyr/../cmake/..`
+        # globs paths with `..` in them; another scope registers the same file
+        # normalised, and ninja then refuses to LOAD ("multiple rules generate
+        # …/nros-rmw.toml") — the state no re-run repairs (issue 0882's class).
+        get_filename_component(_d "${_d}" REALPATH)
         set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_d}")
         get_filename_component(_dir "${_d}" DIRECTORY)
         if(EXISTS "${_dir}/package.xml")
