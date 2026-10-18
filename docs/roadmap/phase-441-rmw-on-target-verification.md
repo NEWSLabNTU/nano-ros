@@ -425,8 +425,10 @@ it was one.
 
 ### W3 — a second RTOS, not a second Zephyr board
 
-**Status: the cell is LANDED and has NEVER MET A PEER. Kernel taken: FreeRTOS on
-MPS2-AN385.** The declaration, the tripwire, the test and the runner exist; the
+**Status: the cell has MET A PEER — `pass` on 2026-10-11 in
+`.config/interop-verdicts.toml` (5.7 s), and nightly in the `live-peer` lane
+since; see the phase status at the top. Kernel taken: FreeRTOS on MPS2-AN385.**
+The next sentences are as written when the cell landed, before that run. The declaration, the tripwire, the test and the runner exist; the
 verdict does not, and `.config/interop-verdicts.toml` carries no entry for it —
 which is what "never run" is supposed to look like here, not an oversight.
 

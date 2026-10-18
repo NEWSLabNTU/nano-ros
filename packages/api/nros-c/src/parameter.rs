@@ -68,8 +68,10 @@ mod imp {
     /// rclc's `rclc_parameter_options_t`, field for field.
     #[repr(C)]
     pub struct rclc_parameter_options_t {
-        /// Publish `/parameter_events` (phase-491 W3; accepted, not yet
-        /// emitted).
+        /// Publish `/parameter_events` (phase-491 W3, RFC-0105 D8): when set,
+        /// `rclc_parameter_server_init_with_option` gives the node one
+        /// `/parameter_events` publisher and every accepted change is
+        /// published on the executor's next flush.
         pub notify_changed_over_dds: bool,
         /// A per-node QUOTA inside the build-time store, not an allocation.
         pub max_params: usize,

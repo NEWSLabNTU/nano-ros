@@ -1219,10 +1219,11 @@ typedef struct nros_rmw_vtable_t {
      *    `instance_id` is rcl-side process identity. `security_options` is
      *    declined on the target: it is a DDS-SROS2 keystore PATH plus an
      *    enforcement switch, and neither a filesystem nor a security plugin
-     *    exists where this ABI runs. `localhost_only` and `enclave` are real
-     *    GAPS — issue 0785, to be carried by whatever shape issue 0808 gives
-     *    backend-private session config, because this flat argument list
-     *    cannot grow either without another ABI break.
+     *    exists where this ABI runs. `localhost_only` and `enclave` are
+     *    CARRIED, by `create_session`'s NULLable `rmw_session_options_t`
+     *    (issue 0808, which closed issue 0785's two gaps): Cyclone honours
+     *    `localhost_only` by restricting discovery to loopback, and a backend
+     *    with no discovery to restrict ignores both, as it does `mode`.
      *
      *    `discovery_options` is NOT in this list: it is an IRON field, and the
      *    recorded contract is Humble. It was named here until issue 0785, the

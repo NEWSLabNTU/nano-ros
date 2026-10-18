@@ -682,9 +682,9 @@ generate every event:
 | Backend | Liveliness | Deadline | Message lost |
 |---------|-----------|----------|--------------|
 | Cyclone DDS | ✅ Polled: `dds_get_liveliness_changed_status` (sub) / `_liveliness_lost_status` (pub), drained by the runtime from the entity's data path | ✅ Polled: `dds_get_requested_deadline_missed_status` / `_offered_deadline_missed_status`. The deadline is the entity's QoS `deadline_ms`; the `on_*` argument is not forwarded on this path | ✅ Polled: `dds_get_sample_lost_status` |
-| XRCE-DDS | ❌ XRCE protocol carries no session→client liveliness callback | 🟡 Sub: shim-side clock check on `take`; pub: shim-side check on `publish`. `LivelinessChanged` / `LivelinessLost` not feasible. | ❌ `topic_callback` carries no per-sample sequence |
+| XRCE-DDS | ❌ XRCE protocol carries no session→client liveliness callback | ❌ No deadline tracking in the C backend (no `*_event_init` / `*_take_event` fill); a `DEADLINE` QoS is refused at create, since `uxrQoS_t` has no field for it | ❌ `topic_callback` carries no per-sample sequence |
 | zenoh-pico | ✅ Sub: per-publisher count via `zpico_liveliness_get_count` + wildcard keyexpr query; pub: shim-side keepalive timer fires `LivelinessLost` from `publish` when `MANUAL_BY_*` lease expires. | ✅ Clock-based check at sub + pub, rate-limited to ≤ 1 fire per deadline period | ✅ Sequence-gap detection from RMW attachment |
-| uORB | ❌ No wire-level liveliness | ❌ No rate concept | ✅ Native: `RustSubscriptionCallback` publish-counter delta on host mock + real PX4 |
+| uORB | ❌ No wire-level liveliness | ❌ No rate concept | ❌ Not wired: the C++ backend fills no event slot (the retired Rust backend's publish-counter delta did not carry over) |
 
 `assert_liveliness()` (manual): **cyclonedds** performs a real assertion
 (`dds_assert_liveliness`). **zenoh-pico, XRCE-DDS and uORB** have no

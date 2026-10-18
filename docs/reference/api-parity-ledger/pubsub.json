@@ -370,7 +370,7 @@
   },
   "c:subscription_try_recv_sequence": {
     "verdict": "extension",
-    "why": "DEPRECATED SPELLING as of phase-379 W6 decision 1 (2026-09-03); the live name is `nros_subscription_take_sequence` and the forwarder is a NROS_DEPRECATED_MSG `static inline` in the hand-written module header, so it adds no exported symbol and no ABI cost. Still on the surface, so still a row. Retired in W7 step 4, in one batch with the rest of the deprecated set. See `c:take`.",
+    "why": "DEPRECATED SPELLING as of phase-379 W6 decision 1 (2026-09-03); the live name was then `nros_subscription_take_sequence` (now `rclc_polling_subscription_take_sequence`, phase-487 W1) and the forwarder was a NROS_DEPRECATED_MSG `static inline` in the hand-written module header, so it added no exported symbol and no ABI cost. Retired in W7 step 4, in one batch with the rest of the deprecated set; the row records the rename (CORRECTED 2026-10-18: this still read as if the forwarder shipped). See `c:take`.",
     "retired": "a deprecated alias, deleted after its one release; the row records the rename"
   },
   "c:subscription_try_recv_validated": {
@@ -398,7 +398,7 @@
   "c:take_sequence": {
     "verdict": "declined",
     "disposition": "adopt",
-    "why": "RE-VERDICTED 2026-09-03 (phase-379 W6 decision 1), rename -> declined. The VERB landed: ours is `nros_subscription_take_sequence`, so the only difference left is rcl's free-function spelling against our module-prefixed `nros_<entity>_<verb>`. That is `c:get_zero_initialized_publisher`'s precedent, which argues for KEEPING ours, and `c:send_request` records that `nros_<entity>_` is the same construction rcl uses in `rcl_client_fini`. See `c:take`."
+    "why": "RE-VERDICTED 2026-09-03 (phase-379 W6 decision 1), rename -> declined. The VERB landed: ours is `rclc_polling_subscription_take_sequence` (spelled `nros_subscription_take_sequence` until phase-487 W1 gave the polled subscription its own type, `rclc_polling_subscription_t`; CORRECTED 2026-10-18), so the only difference left is rcl's free-function spelling against our entity-prefixed `<prefix>_<entity>_<verb>`. That is `c:get_zero_initialized_publisher`'s precedent, which argues for KEEPING ours, and `c:send_request` records that `nros_<entity>_` is the same construction rcl uses in `rcl_client_fini`. See `c:take`."
   },
   "c:take_serialized_message": {
     "verdict": "divergence",

@@ -1317,6 +1317,66 @@ def orphan_rows(ledger, known_by_lang):
     return out
 
 
+# The prefixes `correlate.normalize` strips from OUR C names; a rename's `to`
+# is written as the shipped symbol, so it is folded the same way before lookup.
+_C_OURS_PREFIXES = ("nros_", "NROS_", "rclc_", "RCLC_", "rcl_", "RCL_")
+
+
+def rename_target_key(lkey, to):
+    """The report key a landed rename's `to` names, or None if it names none.
+
+    `to` is written for a reader -- a bare symbol (`nros_service_send_response_raw`),
+    a qualified method (`Service::send_response`), a method relative to the
+    row's own type (`service_is_ready` on `cpp:Client::server_available`), or a
+    whole signature (`rcl_ret_t rclc_..._count(server, size_t *out)`). The
+    identifier that is CALLED wins; otherwise the first identifier path.
+    """
+    lang, _, name = lkey.partition(":")
+    called = re.search(r"([A-Za-z_][A-Za-z0-9_]*(?:::[A-Za-z_][A-Za-z0-9_]*)*)\s*\(", to)
+    paths = re.findall(r"[A-Za-z_][A-Za-z0-9_]*(?:::[A-Za-z_][A-Za-z0-9_]*)*", to)
+    ident = called.group(1) if called else (paths[0] if paths else None)
+    if ident is None:
+        return None
+    if lang == "c":
+        for p in _C_OURS_PREFIXES:
+            if ident.startswith(p):
+                return ident[len(p):]
+        return ident
+    if "::" not in ident and "::" in name:
+        ident = name.rsplit("::", 1)[0] + "::" + ident
+    return ident
+
+
+def dead_rename_targets(ledger, ours_by_lang):
+    """(key, reason) for a LANDED rename whose `to` names nothing we ship.
+
+    The orphan walk (issue 1323) asks whether a row's SUBJECT exists, and a
+    `retired` marker exempts a rename row whose old name is gone -- correctly,
+    since recording where a name went is the row's whole job. Nothing asked
+    whether the place it says the name WENT still exists. So when the new name
+    was itself renamed later, the row kept pointing a porting user at a symbol
+    that is an undeclared-identifier error: `c:service_send_reply_raw` named
+    `nros_service_send_response_raw` five weeks after phase-487 W2 made it
+    `rclc_polling_service_send_response_raw`, and `cpp:Service::send_reply`
+    named `Service::send_response` after phase-456 W5 moved the verb to
+    `PollService`. The target must be one of OUR keys: a `to` that only
+    upstream declares is not a place our name went.
+    """
+    out = []
+    for lkey, entry in sorted(ledger.items()):
+        lang = lkey.partition(":")[0]
+        ours = ours_by_lang.get(lang)
+        rn = entry.get("rename") if isinstance(entry, dict) else None
+        if ours is None or not isinstance(rn, dict) or rn.get("status") != "landed":
+            continue
+        to = rn.get("to") or ""
+        target = rename_target_key(lkey, to)
+        if target is None or target not in ours:
+            out.append((lkey, "rename `to` (%r -> key %r) names nothing our surface "
+                              "produces -- point it at the live name" % (to, target)))
+    return out
+
+
 def contradictory_verdicts(ledger, lang, rows):
     """(key, reason) for a row whose VERDICT cannot coexist with its BUCKET.
 
@@ -1723,6 +1783,7 @@ def report(langs, show, check, suggest, include_internal, grep=None, topic=None,
     misdeclared = []
     per_lang_rows = []
     known_by_lang = {}
+    ours_by_lang = {}
     contradictions = []
     with gate_scratch("api-parity") as tmpdir:
         for lang in langs:
@@ -1733,6 +1794,7 @@ def report(langs, show, check, suggest, include_internal, grep=None, topic=None,
             clang_ = {"c": "c", "cpp": "c++", "rust": "rust"}[lang]
             known_by_lang[lang] = {r["key"] for r in rows} | set(
                 correlate.flatten(load_theirs(lang)["records"], clang_, "theirs"))
+            ours_by_lang[lang] = {r["key"] for r in rows if r["bucket"] != "theirs-only"}
             ported_counts, native_counts = surface_counts(rows)
             counts = ported_counts
             by_key = {r["key"]: r["bucket"] for r in rows}
@@ -1912,6 +1974,17 @@ def report(langs, show, check, suggest, include_internal, grep=None, topic=None,
             for key, reason in orphans:
                 print("  %s  %s" % (key, reason), file=sys.stderr)
             return 1
+        dead_targets = dead_rename_targets(ledger, ours_by_lang)
+        if dead_targets:
+            print(
+                "\n%d landed rename row(s) point at a name we no longer ship. The row "
+                "is where a porting user looks up what an old name became:"
+                % len(dead_targets),
+                file=sys.stderr,
+            )
+            for key, reason in dead_targets:
+                print("  %s  %s" % (key, reason), file=sys.stderr)
+            return 1
         closed = closed_gap_findings(ledger, per_lang_rows)
         if closed:
             print(
@@ -2038,6 +2111,30 @@ def self_test():
     check("orphan: an empty marker is refused",
           [p for p in validate_ledger({"cpp:x": dict(_row, retired="  ")}) if "issue 1323" in p] != [],
           True)
+
+    # A landed rename must point at a name we still ship.
+    _ours = {"c": {"polling_service_send_response_raw"},
+             "cpp": {"PollService::send_response", "Client::service_is_ready"}}
+    _rn = lambda to: dict(_row, verdict="rename", rename={"to": to, "status": "landed"})
+    check("rename: a live C target passes (prefix folded)",
+          dead_rename_targets({"c:x": _rn("rclc_polling_service_send_response_raw")}, _ours), [])
+    check("rename: a dead C target fails",
+          [k for k, _ in dead_rename_targets(
+              {"c:x": _rn("nros_service_send_response_raw")}, _ours)], ["c:x"])
+    check("rename: a relative method resolves on the row's type",
+          dead_rename_targets({"cpp:Client::server_available": _rn("service_is_ready")}, _ours), [])
+    check("rename: a signature's CALLED name is the target",
+          rename_target_key("c:x", "rcl_ret_t rclc_foo_count(server, size_t *out)"), "foo_count")
+    check("rename: a target only upstream has fails",
+          [k for k, _ in dead_rename_targets(
+              {"cpp:Service::send_reply": _rn("Service::send_response")}, _ours)],
+          ["cpp:Service::send_reply"])
+    check("rename: a non-landed rename is not judged",
+          dead_rename_targets({"c:x": dict(_row, verdict="rename",
+                                           rename={"to": "gone", "status": "blocked-needs-decision"})},
+                              _ours), [])
+    check("rename: a language not run is not judged",
+          dead_rename_targets({"rust:X": _rn("gone")}, _ours), [])
 
     # issue 1042 -- a verdict its bucket rules out.
     def _cv(verdict, bucket, **extra):

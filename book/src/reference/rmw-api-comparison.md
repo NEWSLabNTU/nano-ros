@@ -763,7 +763,7 @@ text-transform:uppercase;margin:0 0 .45rem;opacity:.95}
   <span class='ty'>rcutils_allocator_t allocator</span>
 <span class=pu>)</span></pre></td>
 <td class=c><span class=nosig>—</span></td>
-<td class=why><div class='st s-re-mapped'>◆ re-mapped · build time</div><div class=answers><div class=ans>build time: rmw_init_options_t is a POD</div></div>upstream needs the init/copy/fini trio because its options OWN heap and carry an rcutils_allocator_t, which cannot cross this seam; ours is a build-time POD. Does NOT decide what the options CARRY: `localhost_only` and `enclave` are gaps (issue 0785, shape deferred to 0331), `security_options` is declined on the target (a DDS-SROS2 keystore path, no filesystem and no security plugin there), and `discovery_options` is an IRON field this Humble contract does not have</td>
+<td class=why><div class='st s-re-mapped'>◆ re-mapped · build time</div><div class=answers><div class=ans>build time: rmw_init_options_t is a POD</div></div>upstream needs the init/copy/fini trio because its options OWN heap and carry an rcutils_allocator_t, which cannot cross this seam; ours is a build-time POD. Does NOT decide what the options CARRY: `localhost_only` and `enclave` are CARRIED by `create_session`&#x27;s NULLable `rmw_session_options_t` (issue 0808 closed issue 0785&#x27;s two gaps; Cyclone honours `localhost_only` by restricting discovery to loopback, a backend with no discovery to restrict ignores both), `security_options` is declined on the target (a DDS-SROS2 keystore path, no filesystem and no security plugin there), and `discovery_options` is an IRON field this Humble contract does not have</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
