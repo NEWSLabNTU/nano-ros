@@ -13,6 +13,10 @@
 //! - Memory regions do not overlap for memcpy (use memmove for overlapping regions)
 
 #![allow(clippy::missing_safety_doc)]
+// `*ptr as u8` reads a `c_char` as a byte. `c_char` is `u8` on Arm and
+// riscv and `i8` on x86, so the cast is a no-op here and needed elsewhere.
+// Same allow as `nros-baremetal-common`'s copy of these stubs.
+#![allow(clippy::unnecessary_cast)]
 
 use core::ffi::{c_char, c_int, c_ulong, c_void};
 

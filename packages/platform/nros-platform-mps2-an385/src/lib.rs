@@ -9,6 +9,12 @@
 //! abstraction needed by the unified platform interface.
 
 #![no_std]
+// The `nros-platform-api` traits this crate implements (serial, panic, and the
+// smoltcp sockets `define_smoltcp_platform!` expands here) take raw pointers in
+// SAFE signatures: the pointer contract is the C ABI's, stated on the trait.
+// An impl cannot add `unsafe`, so the lint has no fix here. Same allow as
+// `nros-platform-cffi`.
+#![allow(clippy::not_unsafe_ptr_arg_deref)]
 
 pub mod clock;
 #[cfg(feature = "libc-heap")]
@@ -53,7 +59,7 @@ impl nros_platform_api::PlatformTimer for Mps2An385Platform {
         user_data: *mut core::ffi::c_void,
     ) -> Result<Self::TimerHandle, nros_platform_api::TimerError> {
         sporadic_timer::register_periodic(period_us, callback, user_data)?;
-        Ok(TimerHandleStub(1 as *mut core::ffi::c_void))
+        Ok(TimerHandleStub(core::ptr::dangling_mut()))
     }
 
     fn destroy(_handle: Self::TimerHandle) {
