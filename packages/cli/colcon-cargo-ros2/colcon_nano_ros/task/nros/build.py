@@ -54,25 +54,43 @@ PLATFORM_CMAKE = {
     "zephyr": "zephyr",
 }
 
-# Canonical RMW backends. The orchestration `nros build` path is the
-# single source of truth for RMW (it reads `system.target.rmw` from the
-# plan; see orchestration/generate.rs). The standalone per-package colcon
-# task has no system config in scope, so it takes the RMW from the
-# `NROS_RMW` env var (default `zenoh`) — Phase 172.M, replacing the
-# former hardcoded `zenoh`.
-RMW_BACKENDS = ("zenoh", "xrce", "cyclonedds")
+# The standalone per-package colcon task has no system config in scope, so it
+# takes the RMW from the `NROS_RMW` env var (default `zenoh`) — Phase 172.M.
+# The orchestration `nros build` path does not use this: it threads
+# `system.target.rmw` from the plan (orchestration/generate.rs).
+
+
+def known_rmw_backends():
+    """The backends the provider scan finds, asked of the `nros` CLI.
+
+    RFC-0071 D11 (phase-506 W2, issue 1300): a tool never spells the backend
+    list. This was ``RMW_BACKENDS = ("zenoh", "xrce", "cyclonedds")``, which
+    had already stopped covering the tree it governed (``uorb`` was absent).
+    """
+    result = subprocess.run(
+        ["nros", "ws", "rmw-dispatch", "--known"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            "`nros ws rmw-dispatch --known` failed, so the RMW backends on this "
+            f"search path are unknown:\n{result.stderr.strip()}"
+        )
+    return tuple(result.stdout.split())
 
 
 def resolve_rmw():
     """Resolve the RMW backend for a standalone colcon package build.
 
-    Reads ``NROS_RMW`` (default ``zenoh``); validates against
-    :data:`RMW_BACKENDS`. The orchestration ``nros build`` path does not
-    use this — it threads ``system.target.rmw`` from the plan.
+    Reads ``NROS_RMW`` (default ``zenoh``) and validates it against the
+    backends the provider scan announces (:func:`known_rmw_backends`).
     """
     rmw = os.environ.get("NROS_RMW", "zenoh")
-    if rmw not in RMW_BACKENDS:
-        raise ValueError(f"NROS_RMW={rmw!r} not one of {RMW_BACKENDS}")
+    known = known_rmw_backends()
+    if rmw not in known:
+        raise ValueError(f"NROS_RMW={rmw!r} not one of {known}")
     return rmw
 
 

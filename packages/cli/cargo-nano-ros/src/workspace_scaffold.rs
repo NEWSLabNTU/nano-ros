@@ -224,7 +224,7 @@ pub struct WorkspaceScaffold {
     /// template of its own. It is now an arm of an exhaustive match, so it
     /// reads as a scope decision rather than as an unparsed string.
     pub lang: Language,
-    /// "cyclonedds" | "zenoh" | "xrce".
+    /// A backend this checkout provides (`rmw_resolver::known_rmw()`).
     pub rmw: String,
     pub force: bool,
 }
@@ -271,10 +271,11 @@ pub fn scaffold_workspace(cfg: &WorkspaceScaffold) -> Result<()> {
              workspace via `nros new --component --lang c`."
         ),
     };
-    match cfg.rmw.as_str() {
-        "cyclonedds" | "zenoh" | "xrce" => {}
-        other => bail!("unknown --rmw `{other}` (cyclonedds | zenoh | xrce)"),
-    }
+    // RFC-0071 D11 (phase-506 W2, issue 1300) — the backends this checkout
+    // provides, derived from their descriptors, never a literal list. The
+    // literal this replaced rejected `uorb`, a backend the tree ships.
+    crate::rmw_resolver::resolve_rmw(&cfg.rmw)
+        .map_err(|e| eyre::eyre!("nros new --workspace: {e}"))?;
     if cfg.dir.exists() && !cfg.force {
         bail!(
             "`{}` already exists — pass --force to scaffold into it anyway",
@@ -338,6 +339,29 @@ mod tests {
         })
         .expect("scaffold");
         tmp
+    }
+
+    /// Issue 1300 — the accepted set is the descriptors', not a literal. The
+    /// literal accepted three of the four backends the tree ships (`uorb` was
+    /// refused), so this walks `known_rmw()` rather than naming any.
+    #[test]
+    fn every_provided_backend_is_accepted_and_an_unknown_one_is_not() {
+        for rmw in crate::rmw_resolver::known_rmw() {
+            let tmp = scaffold(Language::Cpp, rmw);
+            let sys = std::fs::read_to_string(tmp.path().join("ws/src/demo_bringup/system.toml"))
+                .unwrap();
+            assert!(sys.contains(&format!("rmw = \"{rmw}\"")), "{rmw}: {sys}");
+        }
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let err = scaffold_workspace(&WorkspaceScaffold {
+            dir: tmp.path().join("ws"),
+            lang: Language::Cpp,
+            rmw: "not-a-backend".into(),
+            force: false,
+        })
+        .expect_err("an unknown rmw must be refused");
+        assert!(err.to_string().contains("not-a-backend"), "{err}");
+        assert!(!tmp.path().join("ws").exists(), "refused before any write");
     }
 
     #[test]
