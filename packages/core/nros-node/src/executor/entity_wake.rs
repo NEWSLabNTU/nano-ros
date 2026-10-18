@@ -15,7 +15,8 @@
 //! - the owning executor's [`WakeCtx`], an `Arc` the waker holds a strong
 //!   reference to, so a backend that keeps a clone past the entry's release
 //!   cannot dangle;
-//! - the entry's slot, in the low six bits of the same pointer. `WakeCtx` is
+//! - the entry's slot, in the low bits of the same pointer (six on a 64-bit
+//!   target, five on a 32-bit one). `WakeCtx` is
 //!   `repr(align(64))`, so those bits are free.
 //!
 //! Waking it sets that slot's bit in [`WakeCtx::ready`] and then does exactly
@@ -33,9 +34,10 @@ use portable_atomic_util::Arc;
 
 use super::spin::WakeCtx;
 
-/// Slots the ready word can name: one `u64`. An entry above this keeps the
-/// session-scoped wake.
-pub(crate) const SLOTS: usize = 64;
+/// Slots the ready word can name: one `usize` (64 on a 64-bit target, 32 on
+/// a 32-bit one, which may have no 64-bit atomics). An entry above this keeps
+/// the session-scoped wake.
+pub(crate) const SLOTS: usize = usize::BITS as usize;
 
 const SLOT_MASK: usize = SLOTS - 1;
 

@@ -1004,7 +1004,10 @@ pub(crate) struct WakeCtx {
     /// since the executor last took the word. Set by an entity waker
     /// (`entity_wake`), never by the session-scoped callback, which cannot
     /// name an entry. W3 reads it instead of scanning.
-    pub(crate) ready: portable_atomic::AtomicU64,
+    /// A `usize`, not a `u64`: 32-bit targets without 64-bit atomics have no
+    /// `AtomicU64`, so the word names `usize::BITS` slots (`entity_wake::SLOTS`)
+    /// and an entry above that keeps the session wake.
+    pub(crate) ready: portable_atomic::AtomicUsize,
 }
 
 #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
@@ -1016,7 +1019,7 @@ impl WakeCtx {
         Self {
             flag,
             node_wake,
-            ready: portable_atomic::AtomicU64::new(0),
+            ready: portable_atomic::AtomicUsize::new(0),
         }
     }
 
@@ -1044,7 +1047,7 @@ impl WakeCtx {
     /// wake. The bit is set FIRST, so a waiter that sees the flag sees the bit.
     pub(crate) fn mark_ready(&self, slot: usize) {
         self.ready
-            .fetch_or(1u64 << slot, core::sync::atomic::Ordering::SeqCst);
+            .fetch_or(1usize << slot, core::sync::atomic::Ordering::SeqCst);
         self.signal();
     }
 }
@@ -7288,7 +7291,7 @@ impl<'s> Executor<'s> {
     pub fn take_entity_ready_bits(&self) -> u64 {
         #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
         if let Some(ctx) = self.wake_ctx.as_ref() {
-            return ctx.ready.swap(0, core::sync::atomic::Ordering::SeqCst);
+            return ctx.ready.swap(0, core::sync::atomic::Ordering::SeqCst) as u64;
         }
         0
     }
