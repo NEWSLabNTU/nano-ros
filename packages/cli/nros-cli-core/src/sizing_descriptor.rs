@@ -1954,6 +1954,18 @@ pub fn write_for_leaf(
         }
         (inv, _) => inv,
     };
+    // phase-462 W6c -- the board's per-frame receive cost, and RFC-0074's two
+    // checks against it. A declaration the board cannot satisfy fails the
+    // write: an image sized from it would be built for a rate nobody can
+    // receive.
+    let inventory = match inventory {
+        Some(mut inv) => {
+            inv.set_board_rx_cost(img.rx_cost);
+            report_rx_ingress(&inv, &format!("{who}: board `{}`", img.board))?;
+            Some(inv)
+        }
+        None => None,
+    };
     if let Some(e) = &inv_error {
         eprintln!(
             "{who}: {}: sizing descriptor has no endpoint rows ({e}); every consumer keeps its \
@@ -2485,7 +2497,13 @@ fn write_model_descriptor(
         None => nros_sizing_descriptor::descriptor_path(img.build_dir, img.entry),
     };
     let (desc, roots) = match &img.wiring {
-        Wiring::Composed(inventory) => compose_wired(img, inventory, runtime),
+        Wiring::Composed(inventory) => {
+            // phase-462 W6c -- RFC-0074's checks against the board cost the
+            // caller handed the inventory (`set_board_rx_cost`); a road that
+            // handed none checks nothing and derives at `c = 0`.
+            report_rx_ingress(inventory, &format!("sizing descriptor `{}`", img.entry))?;
+            compose_wired(img, inventory, runtime)
+        }
         Wiring::Unwired {
             params,
             infra,
@@ -2799,6 +2817,24 @@ fn backend_dispatch(rmw: &str) -> Option<BackendDispatch> {
 /// Read through the board's own descriptor, which `board_facts` has already
 /// located as `NROS_BOARD_TOML` — so this does not re-discover the board and
 /// cannot disagree with the settings file written beside it.
+/// phase-462 W6c -- RFC-0074's two resolve-time checks on an inventory that
+/// was handed its board's per-frame cost: a refusal is an error naming the
+/// inputs, and a constraint that could not be checked is SAID (stderr, under
+/// `who`), never left silent. Nothing is printed when the board states no
+/// cost or no subscriber declares ingress.
+pub fn report_rx_ingress(
+    inv: &crate::entity_inventory::EntityInventory,
+    who: &str,
+) -> eyre::Result<()> {
+    let check = inv
+        .check_rx_ingress()
+        .map_err(|e| eyre::eyre!("{who}: the declared subscriber ingress is refused: {e}"))?;
+    if let Some(line) = check.statement() {
+        eprintln!("{who}: {line}");
+    }
+    Ok(())
+}
+
 fn heap_budget(
     path_env: &std::collections::BTreeMap<String, std::path::PathBuf>,
     board: &str,
@@ -5218,6 +5254,70 @@ execution:
         );
         assert_eq!(a.desc.image.model_nodes().stated(), Some(&2));
         assert_eq!(b.desc.image.model_nodes().stated(), Some(&2));
+    }
+
+    /// phase-462 W6c -- the model road REFUSES a declared ingress the board
+    /// cannot receive (RFC-0074 constraint 1): `write_for_model` fails naming
+    /// the subscriber and writes no file. Negative control: the same image on
+    /// a board that states no `[board.rx]` writes W6b's `c = 0` pair.
+    #[test]
+    fn the_model_road_refuses_an_ingress_the_board_cannot_receive() {
+        let m: ros_launch_manifest_model::SystemModel = serde_yaml_ng::from_str(
+            r#"
+meta: { version: 1 }
+structure:
+  nodes:
+    /listener:
+      { scope: s.launch.xml, pkg: listener_pkg, exec: listener,
+        node_name: listener }
+  topics:
+    /cmd:
+      type: std_msgs/msg/Int32
+      sub: [/listener/cmd]
+contracts:
+  sub_endpoints:
+    /listener/cmd:
+      ingress: { rate_hz: 2000, burst: 1 }
+"#,
+        )
+        .expect("model fixture parses");
+        let inv = EntityInventory::from_model(
+            "img",
+            &nros_orchestration_ir::overlay::LoadedModel::bare(m),
+        )
+        .expect("wiring described");
+        let image = |dir, inv| ModelImage {
+            wiring: Wiring::Composed(inv),
+            ..unwired(
+                dir,
+                "img",
+                &ParamDeclarations::Absent,
+                InfraServices::default(),
+            )
+        };
+
+        let dir = tempfile::tempdir().unwrap();
+        let w6b = write_for_model(&image(dir.path(), &inv))
+            .unwrap()
+            .expect("a composed inventory always writes");
+        assert_eq!(w6b.desc.image.rx_task_budget_rest_us().stated(), Some(&500));
+
+        let mut on_board = inv.clone();
+        on_board.set_board_rx_cost(Some(crate::entity_inventory::RxFrameCost {
+            frame_cost_us: 940,
+            floor_us: None,
+        }));
+        let dir = tempfile::tempdir().unwrap();
+        let Err(err) = write_for_model(&image(dir.path(), &on_board)) else {
+            panic!("2000 Hz is above a 940 us board's 1063.8 msg/s, and was written");
+        };
+        let msg = format!("{err:#}");
+        assert!(msg.contains("/listener/cmd"), "{msg}");
+        assert!(msg.contains("1063.8 msg/s"), "{msg}");
+        assert!(
+            !nros_sizing_descriptor::descriptor_path(dir.path(), "img").exists(),
+            "a refused declaration wrote a descriptor"
+        );
     }
 
     /// phase-486 W4 -- ONE writer for both shapes, so the stale rule holds

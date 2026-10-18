@@ -524,6 +524,15 @@ pub struct BoardDescriptor {
     /// is real and someone else owns it"; omitting it would have said "typo".
     #[serde(default)]
     pub priority_plan: Option<toml::Value>,
+    /// `[board.rx]` — phase-462 W6c (RFC-0074): the board's MEASURED per-frame
+    /// receive cost `c` (and the optional gap floor). A fact, not a knob: no
+    /// compiler reads it. It enters the zenoh read-task budget derivation
+    /// (`REST = burst x (10^6/rate_hz - c)`) and the two resolve-time checks
+    /// on a declared subscriber `ingress` —
+    /// [`crate::entity_inventory::check_rx_ingress`]. Absent: `c = 0`, nothing
+    /// checked, and the image is byte-identical to before the table existed.
+    #[serde(default)]
+    pub rx: Option<crate::entity_inventory::RxFrameCost>,
 }
 
 /// `[board.zephyr]` — the Zephyr facts, and only the ones no convention gives.
@@ -2168,6 +2177,7 @@ signature = "#[nros_board_stm32f4::entry]\nfn main() -> !"
             crate_path: None,
             board_features: vec![],
             priority_plan: None,
+            rx: None,
             cargo_config: Some("inc = \"${workspace}/third-party/x\"".into()),
             entry: None,
             disambiguate_by_target: None,
@@ -2440,6 +2450,7 @@ signature = "#[nros_board_stm32f4::entry]\nfn main() -> !"
             crate_path: None,
             board_features: vec![],
             priority_plan: None,
+            rx: None,
             cargo_config: None,
             entry: None,
             disambiguate_by_target: None,
@@ -2659,6 +2670,48 @@ entry_kind = "zephyr-staticlib"
         let top = BoardFile::parse(&format!("[knbos.net]\nmax_udp_sockets = 2\n\n{HEAD}"))
             .expect_err("an unknown top-level table is refused");
         assert!(top.to_string().contains("knbos"), "{top}");
+    }
+
+    /// phase-462 W6c -- `[board.rx]` is the board's per-frame receive cost:
+    /// absent is `None` (c = 0), the floor is optional, and a misspelt key is
+    /// refused naming itself rather than read as "no cost".
+    #[test]
+    fn board_rx_states_the_frame_cost_and_refuses_a_typo() {
+        const HEAD: &str = "[[board]]\nnames = [\"demo\"]\nplatform = \"posix\"\n\
+                            toolchain = \"stable\"\nentry_kind = \"hosted-main\"\n";
+        let none = BoardFile::parse(HEAD).expect("a board with no [board.rx] loads");
+        assert_eq!(none.boards[0].rx, None);
+        let rx = BoardFile::parse(&format!("{HEAD}\n[board.rx]\nframe_cost_us = 940\n"))
+            .expect("[board.rx] loads");
+        assert_eq!(
+            rx.boards[0].rx,
+            Some(crate::entity_inventory::RxFrameCost {
+                frame_cost_us: 940,
+                floor_us: None,
+            })
+        );
+        let floor = BoardFile::parse(&format!(
+            "{HEAD}\n[board.rx]\nframe_cost_us = 940\nfloor_us = 11000\n"
+        ))
+        .expect("[board.rx] with a floor loads");
+        assert_eq!(floor.boards[0].rx.and_then(|r| r.floor_us), Some(11_000));
+        let typo = BoardFile::parse(&format!("{HEAD}\n[board.rx]\nframe_cost = 940\n"))
+            .expect_err("a misspelt [board.rx] key is refused");
+        assert!(typo.to_string().contains("frame_cost"), "{typo}");
+        // The in-tree board RFC-0074 measured states its measurement.
+        let cat = BoardCatalog::load_with_extra(&repo_root_for_tests(), &[]).expect("catalog");
+        let mps2 = cat
+            .descriptors()
+            .iter()
+            .find(|d| d.names.iter().any(|n| n == "mps2-an385-freertos"))
+            .expect("the mps2-an385 FreeRTOS board is in the tree");
+        assert_eq!(
+            mps2.rx,
+            Some(crate::entity_inventory::RxFrameCost {
+                frame_cost_us: 940,
+                floor_us: Some(11_000),
+            })
+        );
     }
 
     /// The other half of the same claim: a key nobody reads must now FAIL, and

@@ -537,16 +537,67 @@ unbounded and the image byte-identical. Tests: `entity_inventory`
 `the_read_task_budget_is_stated_only_when_ingress_is_declared`.
 
 Follow-up, not in W6b:
-- `c = 0`. RFC-0074's relation is `REST = burst x (10^6/rate_hz - c_us)`, and
-  no per-board frame cost `c` exists in the tree, so the derivation takes 0.
-  The declared rate is then an UPPER bound of the admitted one: the task
-  under-admits by the per-frame cost (the excess waits in the socket). A board
-  fact for `c`, and the resolve-time checks `rate_hz <= 1/c` and
-  `c x burst + floor <= tier slack`, are owed.
+- ~~`c = 0`.~~ **Landed as W6c (below).**
 - The gate's "derived pair equals the hand-stated pair on the flood cell's
   contract" needs the flood cell, which lives outside this tree (see W6a).
 
-Claim: phase-462-W6b. Depends on: phase-462-W6a; rlm issue 0760. Owns: the knob derivation in packages/cli/nros-cli-core/src/entity_inventory.rs and a test beside it. Gate: cargo test -p nros-cli-core entity_inventory. Status: derivation landed (c = 0); the per-board cost and the slack check are follow-up.
+Claim: phase-462-W6b. Depends on: phase-462-W6a; rlm issue 0760. Owns: the knob derivation in packages/cli/nros-cli-core/src/entity_inventory.rs and a test beside it. Gate: cargo test -p nros-cli-core entity_inventory. Status: derivation landed (c = 0); the per-board cost and the slack check landed as W6c.
+
+W6c status: the per-board frame cost and RFC-0074's two resolve-time checks
+landed.
+- **Where `c` lives.** `[board.rx]` in the board's `nros-board.toml`,
+  `frame_cost_us` (required) and `floor_us` (optional), typed by
+  `RxFrameCost` (`deny_unknown_fields`) as `BoardDescriptor::rx`. A MEASURED
+  fact, not a `[knobs]` rung: no compiler reads it, and a knob would have
+  grown an env front-end and a ladder for a number nothing sets per build.
+  `nros-board-mps2-an385-freertos` states RFC-0074's measurement
+  (`frame_cost_us = 940`, `floor_us = 11000`); no other board states one.
+  Absent: `c = 0`, nothing checked, the image byte-identical to W6b.
+- **Derivation.** The inventory now keeps the declarations
+  (`DeclaredIngress`, every subscriber's `rate_hz`/`burst` in key order) beside
+  the W6b pair. A road that knows the board calls
+  `EntityInventory::set_board_rx_cost`, and `rx_task_budget()` re-derives from
+  the same heaviest subscriber as `REST = burst x (10^6/rate_hz - c)`
+  (`RxTaskBudget::from_ingress_with_cost`; `c = 0` is `from_ingress` exactly).
+- **Checks** (`check_rx_ingress`, RFC-0065 D2 refusals naming inputs and
+  remedy): (1) `rate_hz <= 10^6 / c` for every declared subscriber; (2)
+  `FRAMES x c + floor <= slack` of the tightest authored tier, where slack is
+  `D - B` (`D` = the tier's `deadline`, else its `period`; `B` its `budget`).
+  A tier with no `budget` is checked against its whole deadline, an UPPER bound
+  of its slack: the refusal is sound and the pass is said to be "within the
+  deadline". A model whose tiers state no `deadline`/`period` has no slack to
+  compute, and constraint 2 is reported `NOT CHECKED` with the reason (stderr,
+  on every road) -- never a guessed slack. Only the portable head is read; a
+  platform sub-table that tightens a deadline is not seen (an over-stated
+  slack, the same direction). A stated `frame_cost_us = 0` is refused.
+- **Roads.** The cost reaches every producer of the pair: the cargo leaf road
+  and the Zephyr west Rust leaf (`LeafImage::rx_cost` -> `write_for_leaf`,
+  `west-leaf-sizing`); the workspace cargo road (stage 3.5 sets it on the
+  composition, so `resolved.toml` and the descriptor agree; stage 3.5 does not
+  check, since it cannot fail a build, and `write_for_model` does); the cmake
+  and west configure lines (`-DNROS_BOARD_RX_FRAME_COST_US` /
+  `_FLOOR_US`, always passed and empty when unstated -- issue 1653's cache
+  reason), forwarded by `cmake/NanoRosBoardRxCost.cmake` to both
+  `nros ws sizing-descriptor` (`--board-rx-frame-cost-us` /
+  `--board-rx-floor-us`) and `nros ws entity-inventory` (the Zephyr fragment's
+  `NROS_DERIVED_ZENOH_RX_TASK_BUDGET_*`). A refusal fails the producer, hence
+  the configure / the build. A bare `cmake` or `west build` passes nothing and
+  derives at `c = 0`.
+- Tests: `entity_inventory`
+  `the_board_frame_cost_shortens_the_rest_and_absent_keeps_it_identical`,
+  `a_rate_the_board_cannot_receive_is_refused_naming_the_subscriber` (with its
+  negative control under the ceiling), `a_burst_longer_than_the_tightest_tier_slack_is_refused`
+  (with its negative control one floor smaller, and the budget-less upper-bound
+  case), `the_slack_check_is_stated_as_not_checked_without_tier_timing`;
+  `sizing_descriptor` `the_model_road_refuses_an_ingress_the_board_cannot_receive`;
+  `board_descriptor` `board_rx_states_the_frame_cost_and_refuses_a_typo`;
+  `build` `the_board_rx_cost_reaches_the_configure_line_and_clears_when_unstated`.
+- Not done: one `c` per board is RFC-0074's stated approximation (payload size
+  almost certainly enters it); the check reads every authored tier as sharing
+  the read task's core, the stricter reading, because the model places no tier
+  on a core.
+
+Claim: phase-462-W6c. Depends on: phase-462-W6b. Owns: `[board.rx]` (`BoardDescriptor::rx`), `RxFrameCost` / `DeclaredIngress` / `TierSlack` / `check_rx_ingress` in packages/cli/nros-cli-core/src/entity_inventory.rs, the road plumbing, `cmake/NanoRosBoardRxCost.cmake`. Gate: cargo test -p nros-cli-core entity_inventory. Status: landed.
 
 ## Order and dependencies, in one place
 

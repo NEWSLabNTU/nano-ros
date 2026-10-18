@@ -46,6 +46,9 @@
 
 include_guard(GLOBAL)
 
+# phase-462 W6c -- `_nros_board_rx_cost_args`, the board's `[board.rx]`.
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosBoardRxCost.cmake")
+
 # nros_sizing_descriptor_path(<out_var> <build_dir> <entry>)
 #
 # The ONE path rule, mirroring `nros_sizing_descriptor::descriptor_path`. Spelled
@@ -305,6 +308,7 @@ function(nros_sizing_descriptor_from_model _out_var)
 
     _nros_sizing_bound_args(_bound_args)
     _nros_sizing_heap_args(_heap_args)
+    _nros_board_rx_cost_args(_rx_args)
 
     # Issue 1594 -- the WORKSPACE whose metadata-probe sidecars carry each
     # subscription's REGISTRATION observation (`in_place`). Without it every
@@ -325,7 +329,7 @@ function(nros_sizing_descriptor_from_model _out_var)
                 --build-dir "${_build_dir}"
                 --entry "${_nsw_ENTRY}"
                 --road "a cmake entry"
-                ${_host_arg} ${_heap_args} ${_rmw_arg} ${_meta_arg} ${_ws_arg} ${_bound_args}
+                ${_host_arg} ${_heap_args} ${_rx_args} ${_rmw_arg} ${_meta_arg} ${_ws_arg} ${_bound_args}
         OUTPUT_VARIABLE _out
         ERROR_VARIABLE _err
         RESULT_VARIABLE _rc
@@ -532,10 +536,11 @@ function(_nros_sizing_descriptor_runtime _out_var)
     _nros_sizing_target_args(_host_arg)
     _nros_sizing_bound_args(_bound_args)
     _nros_sizing_heap_args(_heap_args)
+    _nros_board_rx_cost_args(_rx_args)
 
     set(_args ${_model_args} ${_entry_args} --build-dir "${_build_dir}"
         --entry shared-runtime --road "a multi-entry cmake configure"
-        ${_host_arg} ${_heap_args} ${_rmw_arg} ${_meta_arg} ${_ws_arg} ${_bound_args})
+        ${_host_arg} ${_heap_args} ${_rx_args} ${_rmw_arg} ${_meta_arg} ${_ws_arg} ${_bound_args})
     string(SHA256 _key "${_cli};${_args}")
     get_property(_memo_key GLOBAL PROPERTY NROS_SIZING_RUNTIME_MEMO_KEY)
     if(_memo_key STREQUAL _key)

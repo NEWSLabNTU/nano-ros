@@ -153,6 +153,18 @@ pub struct SizingDescriptorArgs {
     #[arg(long, value_name = "BYTES")]
     pub heap_budget_bytes: Option<usize>,
 
+    /// `--from-model`: the board's `[board.rx] frame_cost_us` (phase-462 W6c,
+    /// RFC-0074), when the caller knows it -- the per-frame receive cost `c`
+    /// the zenoh read-task budget is derived with and checked against. Absent:
+    /// `c = 0`, nothing checked.
+    #[arg(long, value_name = "US")]
+    pub board_rx_frame_cost_us: Option<u32>,
+
+    /// `--from-model`: the board's `[board.rx] floor_us`. Only with
+    /// `--board-rx-frame-cost-us`.
+    #[arg(long, value_name = "US", requires = "board_rx_frame_cost_us")]
+    pub board_rx_floor_us: Option<u32>,
+
     /// The road, in prose, for every refusal written.
     ///
     /// phase-457 W0.b — `Option`, with the default resolved PER MODE
@@ -363,6 +375,10 @@ fn write_from_model(args: &SizingDescriptorArgs, model_path: &std::path::Path) -
         None => (inventory, Vec::new()),
     };
 
+    // phase-462 W6c -- the board's per-frame receive cost, which
+    // `write_for_model` checks the declared ingress against.
+    let mut inventory = inventory;
+    inventory.set_board_rx_cost(board_rx_cost(args));
     let written =
         crate::sizing_descriptor::write_for_model(&crate::sizing_descriptor::ModelImage {
             build_dir,
@@ -383,6 +399,18 @@ fn write_from_model(args: &SizingDescriptorArgs, model_path: &std::path::Path) -
         println!("input {}", p.display());
     }
     Ok(())
+}
+
+/// phase-462 W6c -- `[board.rx]` as the configure handed it
+/// (`--board-rx-frame-cost-us` / `--board-rx-floor-us`).
+pub(crate) fn board_rx_cost(
+    args: &SizingDescriptorArgs,
+) -> Option<crate::entity_inventory::RxFrameCost> {
+    args.board_rx_frame_cost_us
+        .map(|frame_cost_us| crate::entity_inventory::RxFrameCost {
+            frame_cost_us,
+            floor_us: args.board_rx_floor_us,
+        })
 }
 
 /// Read one SystemModel and apply the two refusals every model producer makes.
@@ -561,6 +589,8 @@ fn write_runtime_from_models(args: &SizingDescriptorArgs) -> Result<()> {
         }
     }
 
+    // phase-462 W6c -- one runtime, one board: its per-frame receive cost.
+    inventory.set_board_rx_cost(board_rx_cost(args));
     let written = crate::sizing_descriptor::write_for_runtime(
         &image(crate::sizing_descriptor::Wiring::Composed(&inventory)),
         &crate::sizing_descriptor::RuntimeComposition {
@@ -986,6 +1016,8 @@ mod tests {
             target_triple: None,
             host_build: false,
             heap_budget_bytes: None,
+            board_rx_frame_cost_us: None,
+            board_rx_floor_us: None,
             // phase-457 W0.b — `None`, so every case exercises the PER-MODE default
             // the cmake callers rely on rather than overriding it.
             road: None,
