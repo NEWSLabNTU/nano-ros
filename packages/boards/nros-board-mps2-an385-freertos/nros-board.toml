@@ -40,7 +40,9 @@ CC_thumbv7m_none_eabi = "arm-none-eabi-gcc"
 # two board modules had to write code to refuse. `force`: these are board facts
 # the ambient environment must not replace; an image overrides one through its
 # own `[image.<id>] env` row (the project rung).
-FREERTOS_PORT = { value = "GCC/ARM_CM3", force = true }
+# phase-349 W3 — upstream FreeRTOS-Kernel's port enum (its `portable/` directory
+# is read from upstream's own table, never restated).
+FREERTOS_PORT = { value = "GCC_ARM_CM3", force = true }
 FREERTOS_CONFIG_DIR = { value = "${workspace}/packages/boards/nros-board-mps2-an385-freertos/config", force = true }
 '''
 

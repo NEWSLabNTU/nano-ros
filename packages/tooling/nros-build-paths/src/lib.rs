@@ -1045,6 +1045,10 @@ version = \"not-this-one\"
 /// phase-484 W6b, RFC-0103 D7.
 pub mod artifact;
 
+/// Which `portable/` directory a FreeRTOS port name means — phase-349 W3.
+/// `FREERTOS_PORT` is upstream's enum; the pairing is read from upstream.
+pub mod freertos_port;
+
 /// Where the nano-ros store is — RFC-0103 D6, phase-484 W1.
 ///
 /// ONE variable names the store root: `$NROS_HOME`, else `$HOME/.nros`. Its

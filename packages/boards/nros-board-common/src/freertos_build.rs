@@ -118,6 +118,31 @@ fn resolve_cflags() -> String {
     }
 }
 
+/// The port directory `FREERTOS_PORT` names, for a build script.
+///
+/// phase-349 W3 — the port is upstream's enum (`GCC_ARM_CM3`), mapped to its
+/// `portable/` directory through upstream's own table by
+/// [`nros_build_paths::freertos_port`], the one Rust spelling of that pairing
+/// (the zenoh-pico port row's `{freertos_port_dir}` token resolves through it
+/// too). A path upstream lists still works and says it is deprecated; an
+/// unknown name stops the build here, naming the table it checked, rather than
+/// as a missing `portmacro.h` in the first kernel TU.
+pub fn port_dir(crate_name: &str, freertos_dir: &Path, port: &str) -> PathBuf {
+    match nros_build_paths::freertos_port::resolve(freertos_dir, port) {
+        Ok(r) => {
+            if let Some(name) = &r.deprecated_alias_of {
+                println!(
+                    "cargo:warning={crate_name}: FREERTOS_PORT `{port}` is the deprecated path \
+                     spelling of upstream's `{name}`; write `{name}` (phase-349 W3 — the path \
+                     spelling is retired one release later)"
+                );
+            }
+            r.dir
+        }
+        Err(e) => panic!("{crate_name}: {e}"),
+    }
+}
+
 /// FreeRTOS kernel + port + `FreeRTOSConfig.h` include dirs.
 pub fn add_freertos_includes(
     build: &mut cc::Build,
@@ -336,8 +361,9 @@ pub struct OverlayEnv {
     pub shared_config_dir: PathBuf,
     /// The FreeRTOS kernel root.
     pub freertos_dir: PathBuf,
-    /// `<freertos_dir>/portable/<port>`, with `<port>` from `FREERTOS_PORT` or
-    /// the overlay's [`Overlay::default_port`].
+    /// The port's directory under `<freertos_dir>/portable/`, for the port
+    /// `FREERTOS_PORT` or the overlay's [`Overlay::default_port`] names
+    /// ([`port_dir`]).
     pub port_dir: PathBuf,
     /// The lwIP root.
     pub lwip_dir: PathBuf,
@@ -377,7 +403,8 @@ pub struct Overlay<'a> {
     /// This board's linker script, by name, in `config/`. The shared section
     /// layout is added by the runner.
     pub board_linker_script: &'a str,
-    /// The `portable/<...>` port used when `FREERTOS_PORT` is unset.
+    /// The port used when `FREERTOS_PORT` is unset, in upstream's enum
+    /// (`GCC_ARM_CM3`; phase-349 W3).
     pub default_port: &'a str,
     /// The board's own C translation units, relative to the crate root.
     pub board_c_files: &'a [&'a str],
@@ -558,7 +585,8 @@ fn resolve_overlay_env(default_port: &str) -> OverlayEnv {
 
     let freertos_dir = nros_build_paths::freertos_dir();
     let freertos_port = env::var("FREERTOS_PORT").unwrap_or_else(|_| default_port.to_string());
-    let port_dir = freertos_dir.join("portable").join(&freertos_port);
+    let crate_name = env::var("CARGO_PKG_NAME").unwrap_or_default();
+    let port_dir = port_dir(&crate_name, &freertos_dir, &freertos_port);
     let lwip_dir = nros_build_paths::lwip_dir();
     // issue 1527 — through `env_path`, like the two lines above it: a raw
     // `env::var` skips issue 1280's three-valued rule, so a worktree build

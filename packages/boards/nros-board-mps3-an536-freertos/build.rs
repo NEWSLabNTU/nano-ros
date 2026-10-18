@@ -10,7 +10,8 @@
 //! and the generic C glue are compiled by `nros-board-freertos/build.rs` and
 //! propagate transitively.
 //!
-//! Kernel + port: the in-tree `GCC/ARM_CRx_No_GIC`, with no override
+//! Kernel + port: the in-tree `GCC_ARM_CRX_NOGIC` (upstream's enum for
+//! `portable/GCC/ARM_CRx_No_GIC`, phase-349 W3), with no override
 //! expected. Unlike the S32Z270 sibling there is no licensing seam here —
 //! that port needs a board-supplied tick and GIC, which is exactly what
 //! `c/board_an536.c` provides, so a clean checkout is RUNNABLE, not merely
@@ -34,7 +35,7 @@ fn main() {
         ..Overlay::new(
             "nros-board-mps3-an536-freertos",
             "an536.ld",
-            "GCC/ARM_CRx_No_GIC",
+            "GCC_ARM_CRX_NOGIC",
             &["c/board_an536.c"],
         )
     });

@@ -58,7 +58,7 @@ nros::main!(spin = "forever");
 
 ```bash
 export FREERTOS_DIR=$HOME/sdk/freertos/kernel
-export FREERTOS_PORT=GCC/ARM_CM3
+export FREERTOS_PORT=GCC_ARM_CM3   # upstream FreeRTOS-Kernel's port enum
 export LWIP_DIR=$HOME/sdk/freertos/lwip
 cargo build --release --target thumbv7m-none-eabi
 ```

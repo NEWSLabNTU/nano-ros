@@ -720,6 +720,20 @@ pub fn interpolate(input: &str, ctx: &InterpContext<'_>) -> Result<String, Inter
             nros_build_paths::nuttx_include_root(&dir)
                 .display()
                 .to_string()
+        } else if token == "freertos_port_dir" {
+            // phase-349 W3 — the directory of the port `FREERTOS_PORT` names.
+            // The port is upstream's ENUM (`GCC_ARM_CM3`), which is not a path:
+            // `{source:freertos-kernel}/portable/{env:FREERTOS_PORT}` joined a
+            // name onto a directory and was right only while the name happened
+            // to be a path. One resolver, `nros_build_paths::freertos_port`,
+            // reads upstream's table; the board build scripts use the same one.
+            let dir = nros_build_paths::locate::try_source("freertos-kernel")
+                .map_err(InterpError::SourceNotLocated)?;
+            let port = std::env::var("FREERTOS_PORT")
+                .map_err(|_| InterpError::MissingEnv("FREERTOS_PORT".to_string()))?;
+            let resolved = nros_build_paths::freertos_port::resolve(&dir, &port)
+                .map_err(InterpError::SourceNotLocated)?;
+            resolved.dir.display().to_string()
         } else if let Some(name) = token.strip_prefix("source:") {
             // phase-484 W2c (RFC-0103 D4/D5) — a vendored tree BY NAME, located
             // through the one ladder: the row's `env` override (re-rooted), the
@@ -738,8 +752,9 @@ pub fn interpolate(input: &str, ctx: &InterpContext<'_>) -> Result<String, Inter
             //
             // A separate token rather than routing `{env:…}` through the
             // resolver, because **not every `{env:…}` names a path** and the
-            // interpolator cannot tell which does. `{env:FREERTOS_PORT}` is
-            // `GCC/ARM_CRx_No_GIC` — a fragment joined onto another path.
+            // interpolator cannot tell which does. `{env:FREERTOS_PORT}` was
+            // `GCC/ARM_CRx_No_GIC` — a fragment joined onto another path (it is
+            // upstream's enum since phase-349 W3, read via `{freertos_port_dir}`).
             //
             // Measured, because the obvious argument is wrong: `canonical()`
             // KEEPS the spelling of a path that does not exist, so routing that
@@ -1082,10 +1097,11 @@ mod env_token_tests {
     }
 
     /// A PLAIN value survives verbatim. This is the case that breaks if
-    /// `{env:…}` is ever routed through the path resolver: `FREERTOS_PORT` is
-    /// `GCC/ARM_CRx_No_GIC`, a fragment joined onto another path, and
-    /// canonicalising it would resolve it against the process CWD and yield a
-    /// directory nobody named.
+    /// `{env:…}` is ever routed through the path resolver: a value such as the
+    /// `GCC/ARM_CRx_No_GIC` fragment `FREERTOS_PORT` used to carry (it is
+    /// upstream's enum since phase-349 W3, read via `{freertos_port_dir}`) is
+    /// joined onto another path, and canonicalising it would resolve it
+    /// against the process CWD and yield a directory nobody named.
     #[test]
     fn a_plain_token_is_passed_through_unresolved() {
         let here = Path::new(".");

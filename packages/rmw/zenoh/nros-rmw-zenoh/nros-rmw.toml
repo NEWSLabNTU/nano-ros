@@ -158,7 +158,9 @@ extra_sources = [
 include_paths = [
   "{nros}/c/include",
   "{source:freertos-kernel}/include",
-  "{source:freertos-kernel}/portable/{env:FREERTOS_PORT}",
+  # phase-349 W3 — FREERTOS_PORT is upstream's enum (`GCC_ARM_CM3`), not a
+  # path; the token maps it through upstream's own `portable/` table.
+  "{freertos_port_dir}",
   "{envpath:FREERTOS_CONFIG_DIR}",
   # Phase 154 — `nros-platform-api/include` carries
   # `<nros/platform_net.h>` (the canonical `nros_platform_*` ABI).

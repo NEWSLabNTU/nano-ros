@@ -1,7 +1,7 @@
 # Phase 349 — RTOS integration: make FreeRTOS an imported library like the rest
 
 **Status (2026-10-18). Rewritten after a relevance review; W1 LANDED, W2
-ABSORBED (W2b LANDED), W3 in progress.** The review measured each wave against
+ABSORBED (W2b LANDED), W3 LANDED, W4 LANDED; W5/W6 parked.** The review measured each wave against
 `main` at
 `6486216ab7`, two months after the phase was written. The principle still holds
 and the remaining work is narrower. See "Relevance review (2026-10-18)" below
@@ -134,7 +134,7 @@ This extends phase-347's *core names no backends* to the platform layer.
 path. That is a second reader that assumes the port is a path, beside the
 cargo road's `build.rs`. Moving the boards to upstream's enum must fix it too.
 
-## W3 — Retire the kernel builder — **IN PROGRESS (two of three landed)**
+## W3 — Retire the kernel builder — **LANDED (2026-10-18)**
 
 - [x] The CMake road builds the FreeRTOS kernel with upstream's own
       `CMakeLists.txt`: `add_subdirectory(${FREERTOS_DIR})` with a
@@ -149,7 +149,7 @@ cargo road's `build.rs`. Moving the boards to upstream's enum must fix it too.
       instead of our source list. The lists are **parsed as text, never
       included**: including the file `configure_file()`s `init.h` and
       `lwip.Doxyfile` into the lwIP source tree.
-- [ ] `FREERTOS_PORT` takes upstream's enum. Each board states its port in that
+- [x] `FREERTOS_PORT` takes upstream's enum. Each board states its port in that
       vocabulary, and the path-fragment spelling becomes a deprecated alias with
       a warning, retired one release later (the phase-484 W8 pattern).
 
@@ -180,6 +180,30 @@ port. The definitions that change `FreeRTOSConfig.h` moved to the
 upstream builds the port as its own OBJECT library that never sees
 `freertos_kernel`'s usage requirements (issue 1197's every-TU rule).
 
+**How the third box landed (2026-10-18).** The enum is the board fact on BOTH
+roads: the three `nros-board.toml` descriptors (cargo road and board facts) and
+the four board CMake files state `GCC_ARM_CM3` / `GCC_ARM_CRX_NOGIC` /
+`GCC_POSIX`. The enum-to-directory pairing has one resolver per language, both
+reading upstream's table: `_nros_freertos_resolve_port` in CMake (with a public
+`nros_freertos_port_dir()`), and `nros_build_paths::freertos_port` in Rust. The
+Rust one serves the two FreeRTOS build scripts, zenoh-pico's size probe, and a
+new `{freertos_port_dir}` interpolation token, which replaced the port row's
+`{source:freertos-kernel}/portable/{env:FREERTOS_PORT}` (a NAME joined onto a
+directory). The size probe was a second, hand-written copy of that join and the
+first fixture build after the switch found it (`portmacro.h: No such file or
+directory` in `size_probe.c`), which is why it now calls the resolver. A listed
+path still works with one DEPRECATION per spelling; a vendor port upstream does
+not list keeps its path as its only spelling (`A_CUSTOM_PORT`).
+
+**Measured (2026-10-18), for the third box and W4 together.** All fifteen
+FreeRTOS workspace fixtures build: C, C++, mixed and the realtime entries on
+mps2-an385; mps3-an536 (two) and s32z270 C++; freertos-posix C and C++; and the
+four cargo-road Rust images (`rust-qemu-freertos`, the realtime one and the two
+bridge robots). `entry_matrix`'s three mps2 cells, the mps3-an536 CycloneDDS
+entry and both freertos-posix entries pass. The Rust images' runtime tests were
+NOT run: the bridge pair needs a host `qemu-br` (sudo) and the tier test a
+compile-check fixture this run did not build.
+
 **Scope: the CMake road only, by design.** The cargo road builds a pure-Rust
 FreeRTOS image through `nros-board-freertos/build.rs`, which compiles the kernel
 and lwIP with `cc`. There is no user project on that road: the board crate is
@@ -188,14 +212,14 @@ upstream's CMake from a build script would add CMake to a road that does not
 otherwise need it. This is a decision, not an oversight. Revisit it if the two
 source lists drift (a third port, or a kernel bump that adds a source file).
 
-## W4 — A FreeRTOS integration shell, on the s32ds precedent
+## W4 — A FreeRTOS integration shell, on the s32ds precedent — **LANDED (2026-10-18)**
 
-- [ ] `integrations/freertos/` for a user CMake project that already defines
+- [x] `integrations/freertos/` for a user CMake project that already defines
       `freertos_kernel`, `freertos_config` and an lwIP target, which is exactly
       what upstream's own CMake produces. The shell consumes those targets and
       contributes nano-ros, the way `integrations/s32ds/` does for an S32DS
       project.
-- [ ] Configure-time diagnostics named in RFC-0072 §7 ("What fails, and how"): a required capability
+- [x] Configure-time diagnostics named in RFC-0072 §7 ("What fails, and how"): a required capability
       nothing provides, an include dir that does not exist.
 
 After W3, nano-ros's own boards produce those same targets through upstream's
@@ -204,6 +228,40 @@ fixture is then the shell's first user, and that is the acceptance:
 
 *Acceptance:* `mps2-an385-freertos` builds through `integrations/freertos/`, and
 a configure with a missing include dir fails naming it.
+
+**How it landed (2026-10-18).** `integrations/freertos/NanoRosFreertos.cmake`
+defines `nros_freertos_integrate([KERNEL] [CONFIG] [NETSTACK <t>|NONE] [NETIFS]
+[LINK_LIBS] [LINK_OPTIONS])`. It composes `freertos_platform` before
+`add_subdirectory(<nano-ros>)`, which is what puts the platform module into
+board-less mode. All four in-tree boards call it in place of
+`nros_freertos_compose_platform`, so all eleven CMake-road images above went
+through the shell, mps2-an385 among them. The cargo road has no CMake project,
+so it does not use the shell. The configure checks:
+
+* a missing target, named with how upstream produces it;
+* `ip_stack`, READ from the platform descriptor's `[capabilities]`, with no
+  NETSTACK provider. `NETSTACK NONE` waives it for a host kernel that owns the
+  sockets (freertos-posix);
+* a missing include dir, named with the target that exports it, followed
+  transitively through linked targets (upstream's `freertos_kernel` carries
+  none itself);
+* no `FreeRTOSConfig.h` in the config target.
+
+The first real configure caught the include-dir scan's own bug. Upstream writes
+its port-header table as ONE generator expression spread over several list
+elements, so a per-element `$<` test read eleven other ports' directories as
+plain entries and reported them missing. The scan now carries genex depth
+across elements.
+
+`just check freertos-shell-diagnostics` (fast line, `LANGUAGES NONE`, under a
+second) configures twelve probe projects:
+
+* the shell's three passing shapes, the multi-element genex included;
+* its five failing ones;
+* the port resolver's four cases.
+
+Disabling the include-dir check, the once-only deprecation guard or the genex
+depth tracking each turns it red.
 
 ## W5, W6 — PARKED
 

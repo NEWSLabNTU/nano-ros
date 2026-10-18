@@ -23,7 +23,7 @@
 //! | Var | Purpose | Required |
 //! |---|---|---|
 //! | `FREERTOS_DIR`        | FreeRTOS kernel source root | yes |
-//! | `FREERTOS_PORT`       | Portable layer (e.g. `GCC/ARM_CM3`) | defaults to `GCC/ARM_CM3` |
+//! | `FREERTOS_PORT`       | Upstream's port enum (e.g. `GCC_ARM_CM3`) | none (the board states it) |
 //! | `LWIP_DIR`            | lwIP source root | yes |
 //! | `FREERTOS_CONFIG_DIR` | Directory with `FreeRTOSConfig.h` + `lwipopts.h` | yes |
 //! | `FREERTOS_CFLAGS`     | Space-separated cflags (`-mcpu=cortex-m3 -mthumb` etc.) | defaults to Cortex-M3 |
@@ -41,7 +41,7 @@ use std::{env, path::PathBuf};
 // overlays. Two copies had already drifted (the overlay hardcoded Cortex-M3
 // while this crate resolved `[arch.*]`), so there is one spelling now.
 use nros_board_common::freertos_build::{
-    add_freertos_includes, add_lwip_includes, configure_cflags,
+    add_freertos_includes, add_lwip_includes, configure_cflags, port_dir,
 };
 // issue 0491 — the ONE path-input helper, reached through the build-helper
 // crate this script already deps (no new edge in any leaf lockfile).
@@ -142,7 +142,7 @@ fn main() {
     let freertos_port = env::var("FREERTOS_PORT").expect("checked above");
     let lwip_dir = nros_build_paths::locate::source("lwip");
     let freertos_config_dir = env_path("FREERTOS_CONFIG_DIR");
-    let port_dir = freertos_dir.join("portable").join(&freertos_port);
+    let port_dir = port_dir("nros-board-freertos", &freertos_dir, &freertos_port);
 
     // --- Build FreeRTOS kernel ---
     let mut freertos = cc::Build::new();

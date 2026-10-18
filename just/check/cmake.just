@@ -606,3 +606,12 @@ runtime-umbrella-link-sites:
 [private]
 no-build-time-fetch:
     @python3 scripts/check/check-no-build-time-fetch.py
+
+# phase-349 W4 — the FreeRTOS integration shell's configure-time diagnostics
+# (RFC-0072 §7: a missing target, a missing `ip_stack` capability, a missing
+# include dir, no FreeRTOSConfig.h) fire and name the thing, and its two passing
+# shapes compose `freertos_platform`. LANGUAGES NONE probes over directories the
+# gate creates, no compiler or SDK; seven configures in well under a second.
+[private]
+freertos-shell-diagnostics:
+    @python3 scripts/check-freertos-shell-diagnostics.py

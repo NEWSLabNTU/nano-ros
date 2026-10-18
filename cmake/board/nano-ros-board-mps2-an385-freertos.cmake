@@ -13,7 +13,8 @@
 # Required cmake variables (env or -D):
 #   FREERTOS_DIR   — FreeRTOS-Kernel source root
 #   LWIP_DIR       — lwIP source root
-#   FREERTOS_PORT  — set by this board (GCC/ARM_CM3); a different -D is refused
+#   FREERTOS_PORT  — set by this board (GCC_ARM_CM3, upstream's enum); a
+#                    different -D is refused
 #
 # What this overlay declares:
 #
@@ -137,8 +138,9 @@ endif()
 set(FREERTOS_CONFIG_DIR "${_NROS_BOARD_CONFIG_DIR}" CACHE PATH
     "Directory containing FreeRTOSConfig.h for mps2-an385-freertos" FORCE)
 
-# phase-484 W2 — a board fact, set by the board; one port (Cortex-M3).
-nros_freertos_board_port(nano-ros-board-mps2-an385-freertos "GCC/ARM_CM3")
+# phase-484 W2 — a board fact, set by the board; one port (Cortex-M3), named
+# in upstream FreeRTOS-Kernel's enum (phase-349 W3).
+nros_freertos_board_port(nano-ros-board-mps2-an385-freertos "GCC_ARM_CM3")
 
 # ---------------------------------------------------------------------------
 # Build kernel + lwIP + netif via the layer-2 helpers.
@@ -170,12 +172,16 @@ endif()
 set(FREERTOS_LINKER_SCRIPT "${_NROS_BOARD_CONFIG_DIR}/mps2_an385.ld"
     CACHE INTERNAL "Cortex-M3 / FreeRTOS linker script for mps2-an385")
 
+# phase-349 W4 — the board composes `freertos_platform` through the FreeRTOS
+# integration shell, the same call a host project makes after building these
+# targets itself: the board is the shell's first user, so both share one
+# consumption path and the shell's configure checks (missing target, missing
+# capability, missing include dir) run on every in-tree FreeRTOS image.
+include("${CMAKE_CURRENT_LIST_DIR}/../../integrations/freertos/NanoRosFreertos.cmake")
 if(NOT TARGET freertos_platform)
-    nros_freertos_compose_platform(
-        COMPONENTS
-            lan9118_lwip
-            lwip
-            freertos_kernel
+    nros_freertos_integrate(
+        NETSTACK lwip
+        NETIFS   lan9118_lwip
         LINK_OPTIONS
             "-T${FREERTOS_LINKER_SCRIPT}"
             # phase-337 W5.e — `mps2_an385.ld` carries the memory map and

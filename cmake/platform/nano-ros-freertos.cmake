@@ -206,12 +206,13 @@ if(NROS_RMW STREQUAL "cyclonedds" AND NROS_FREERTOS_BOARD_HAS_LWIP
             "nano-ros: the FreeRTOS Cyclone build needs FREERTOS_PORT — the board "
             "module sets it (cmake/board/nano-ros-board-<board>.cmake).")
     endif()
-    # phase-349 W3 — the port's DIRECTORY, as the kernel builder resolved it:
-    # FREERTOS_PORT may be upstream's enum, which is not a path.
+    # phase-349 W3 — the port's DIRECTORY: FREERTOS_PORT is upstream's enum,
+    # which is not a path. As the kernel builder resolved it, else through the
+    # same resolver (a host that built the kernel itself).
     if(NROS_FREERTOS_PORT_DIR)
         set(_cyc_port_dir "${NROS_FREERTOS_PORT_DIR}")
     else()
-        set(_cyc_port_dir "${FREERTOS_DIR}/portable/${FREERTOS_PORT}")
+        nros_freertos_port_dir(_cyc_port_dir PORT "${FREERTOS_PORT}")
     endif()
     set(_cyc_freertos_inc
         "-I${FREERTOS_CONFIG_DIR}"

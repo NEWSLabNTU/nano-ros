@@ -108,7 +108,7 @@ fn main() {
         ..Overlay::new(
             "nros-board-mps2-an385-freertos",
             "mps2_an385.ld",
-            "GCC/ARM_CM3",
+            "GCC_ARM_CM3",
             // MPS2-AN385 vector table + Reset_Handler + the LAN9118 netif
             // registration, then `trace_dump` (always compiled).
             &["c/board_mps2.c", "trace/trace_dump.c"],

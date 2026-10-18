@@ -105,7 +105,7 @@ REROOT_FN = "nros_reroot_checkout_path"
 # entry here is a claim that the value can never be a directory or file path;
 # anything else needs the wrapper.
 NOT_A_PATH = {
-    "FREERTOS_PORT": "a port subdirectory NAME (`GCC/ARM_CM3`), relative to FREERTOS_DIR",
+    "FREERTOS_PORT": "upstream's port enum (`GCC_ARM_CM3`, phase-349 W3), never a path",
 }
 
 EXPORT = re.compile(r"^export\s+([A-Za-z_][A-Za-z0-9_]*)\s*:=\s*(.*)$")

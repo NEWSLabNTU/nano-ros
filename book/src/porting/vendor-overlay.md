@@ -222,7 +222,7 @@ nros-board-<your-vendor>-<rtos> = { path = "../nros-board-<your-vendor>-<rtos>" 
 
 # 3. Build with the vendor SDK env vars set.
 export FREERTOS_DIR=$HOME/sdk/freertos/kernel
-export FREERTOS_PORT=GCC/ARM_CM4F
+export FREERTOS_PORT=GCC_ARM_CM4F  # upstream FreeRTOS-Kernel's port enum
 export LWIP_DIR=$HOME/sdk/freertos/lwip
 export STM32_HAL_DIR=$HOME/sdk/stm32cube/STM32F4xx_HAL_Driver
 cargo build --release --target thumbv7em-none-eabihf
