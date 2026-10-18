@@ -6295,6 +6295,103 @@ pub unsafe extern "C" fn nros_cpp_executor_route_next_due_us(
     NROS_CPP_RET_OK
 }
 
+/// phase-503 W7 — an executor's supervised routes, readable from OUTSIDE the
+/// spin thread: what [`nros_cpp_executor_route_watch`] fills and
+/// [`nros_cpp_route_watch_next_due_us`] reads. The fields are the runtime's;
+/// treat the struct as opaque and copy it by value.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct nros_cpp_route_watch_t {
+    /// The installed monitor table (runtime-private).
+    pub table: *const c_void,
+    /// Its row count (runtime-private); 0 = nothing to watch.
+    pub len: usize,
+    /// The executor's microsecond clock (runtime-private).
+    pub clock_us: *const c_void,
+}
+
+/// phase-503 W7 — fill `*out` with a watch over this executor's supervised
+/// routes. Call on the spin thread (or before the first spin) after
+/// `nros_cpp_install_monitors`; the watch stays valid as long as the
+/// executor's monitor storage, and reading it never touches the executor. With
+/// no monitor table or no clock the watch is empty and reads `UINT64_MAX`.
+///
+/// Why: a port supervising with its own timer (`NROS_CPP_MECHANISM_TIMER`)
+/// that learns a route is answered only from
+/// [`nros_cpp_executor_route_next_due_us`] after the spin returns sees a route
+/// answered before its due, inside a spin that runs past the due, as a miss at
+/// the timer's expiry. The watch reads the answer when it happens.
+///
+/// # Safety
+/// `handle` must be a live executor handle from this ABI, or NULL; `out` must
+/// be writable.
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_executor_route_watch(
+    handle: *mut c_void,
+    out: *mut nros_cpp_route_watch_t,
+) -> nros_cpp_ret_t {
+    let Some(cpp) = (unsafe { cpp_ctx_checked(handle) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    if out.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let w = match cpp.executor.route_watch() {
+        Some(w) => nros_cpp_route_watch_t {
+            table: w.table().as_ptr() as *const c_void,
+            len: w.table().len(),
+            clock_us: w.clock_us() as *const c_void,
+        },
+        None => nros_cpp_route_watch_t {
+            table: core::ptr::null(),
+            len: 0,
+            clock_us: core::ptr::null(),
+        },
+    };
+    unsafe { *out = w };
+    NROS_CPP_RET_OK
+}
+
+/// phase-503 W7 — microseconds from now to the earliest deadline of a pending
+/// supervised route, read from the routes' own cells at the moment of the
+/// call: 0 when a take is still unanswered at or after its deadline (the
+/// executor's verdict: an answer exactly at the deadline is a miss),
+/// `UINT64_MAX` when none is waiting. A route the running dispatch has just
+/// answered reads as answered. Callable from any thread or an interrupt, while
+/// the spin thread is anywhere: no lock, no allocation, no executor.
+///
+/// # Safety
+/// `watch` must be NULL or point at a watch filled by
+/// [`nros_cpp_executor_route_watch`] whose executor's monitor storage is still
+/// live; `out_us` must be writable.
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_route_watch_next_due_us(
+    watch: *const nros_cpp_route_watch_t,
+    out_us: *mut u64,
+) -> nros_cpp_ret_t {
+    let Some(w) = (unsafe { watch.as_ref() }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    if out_us.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    if w.len == 0 || w.table.is_null() || w.clock_us.is_null() {
+        unsafe { *out_us = u64::MAX };
+        return NROS_CPP_RET_OK;
+    }
+    use nros_node::executor::monitor::{MonitorSpec, RouteWatch};
+    // SAFETY: the fields were written by `nros_cpp_executor_route_watch` from
+    // a `RouteWatch`: a `&'static [MonitorSpec]` and a `fn() -> u64`.
+    let table: &'static [MonitorSpec] =
+        unsafe { core::slice::from_raw_parts(w.table as *const MonitorSpec, w.len) };
+    let clock = unsafe { core::mem::transmute::<*const c_void, fn() -> u64>(w.clock_us) };
+    let due = RouteWatch::new(table, clock).next_due_us();
+    unsafe { *out_us = due.unwrap_or(u64::MAX) };
+    NROS_CPP_RET_OK
+}
+
 /// phase-436 W7.a — register a platform deadline source on this executor.
 ///
 /// The seam existed only as a Rust method, so the board entries that go through

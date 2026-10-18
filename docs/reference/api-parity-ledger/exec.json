@@ -931,6 +931,11 @@
     "why": "phase-503 -- the supervised route deadline (`route-deadline-runtime`): microseconds to the earliest pending supervised route deadline, the value the executor parks on and a port's independent timer re-arms from. No rclrs counterpart. See `rust:Executor::set_reaction_hook`.",
     "bucket": "ours-only"
   },
+  "rust:Executor::route_watch": {
+    "verdict": "extension",
+    "why": "phase-503 W7 -- a `RouteWatch` over the executor's supervised routes, which a port's timer or reaction thread reads from outside the spin thread, so a route the running spin already answered reads as answered at the timer's expiry. No rclrs counterpart. See `rust:Executor::route_next_due_us`.",
+    "bucket": "ours-only"
+  },
   "rust:Executor::set_invocation": {
     "verdict": "extension",
     "why": "switches one registered callback between ON_NEW_DATA and ALWAYS at runtime -- rclc's invocation mode, which rclrs has no counterpart for. See `c:executor_handle_invocation_t`.",

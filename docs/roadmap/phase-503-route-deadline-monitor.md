@@ -1,9 +1,10 @@
 # Phase 503 -- Deadline-armed route monitor with a reaction hook
 
-**Status (2026-10-16).** W1-W6 done. W1-W4 landed in PR #2264; W5 (the
+**Status (2026-10-18).** W1-W7 done. W1-W4 landed in PR #2264; W5 (the
 model read, ros-launch-manifest pinned by rev 33577ff until its v0.1.61 tag)
 and the end-to-end test in the follow-up; W6 (a late completion is a
-deadline miss) after a board run.
+deadline miss) after a board run; W7 (a port's timer reads the answer from
+outside the spin, `RouteWatch`) after a false safe state on a board.
 
 **Continues:** phase10-B3, which added `route-latency-runtime` (a node path
 judged from the take of its trigger input to the dispatch that publishes its
@@ -97,6 +98,41 @@ was recorded and the hook never ran). A route whose fallback must start at the
 deadline even then needs `mechanism: timer`; requiring it where the overrun
 case does not fit is the checker's job, not the executor's.
 
+### Reading a route from outside the spin (W7)
+
+A port that supervises with its own timer (`mechanism: timer`) used to learn
+a route's state only from `route_next_due_us` after each spin, on the spin
+thread. A route answered before its due by one callback of a spin that then
+runs past the due (other callbacks, transport work) was still armed at the
+timer's expiry: the port judged a miss and drove its safe state, while the
+executor judged the route on time and recorded nothing (a board, 2026-10-18:
+spin gaps up to ~13 ms against a 149 ms route).
+
+The answer is already atomic: `route_judge` clears `ROUTE_PENDING` in the
+row's cell at the end of the answering dispatch, on the executor's
+microsecond clock. `RouteWatch` (the table and the clock, fixed once the
+monitors are installed; `Executor::route_watch`) reads it at the moment of
+the call from any thread or interrupt: `next_due_us` is `Some(0)` only when
+a take is still unanswered at or after its deadline, the executor's own
+verdict (an answer exactly at the deadline is a miss). The row's take is
+stored before `ROUTE_PENDING` is set (release / acquire), and the watch reads
+the clock after loading each take, so a take stored by the spin thread
+between the two reads never looks overdue. No new cell word: memory is
+unchanged.
+
+```c
+typedef struct nros_cpp_route_watch_t { /* opaque: table, len, clock */ } nros_cpp_route_watch_t;
+nros_cpp_ret_t nros_cpp_executor_route_watch(void *executor, nros_cpp_route_watch_t *out);
+nros_cpp_ret_t nros_cpp_route_watch_next_due_us(const nros_cpp_route_watch_t *watch, uint64_t *out_us);
+```
+
+The port fills the watch once on the spin thread and, at its timer's expiry,
+asks it again instead of trusting the due it armed: answered (`UINT64_MAX`)
+or a later take (re-arm), or due now (the miss, at the same instant as
+before). A late answer between the deadline and the timer's expiry reads as
+answered here; `route_judge` judged it overdue at completion and called the
+hook (W6), so the fallback still starts.
+
 ### The reaction hook
 
 ```c
@@ -151,6 +187,7 @@ executor; the comment in the generated entry maps it back to the path.
 | W4 | IR / lowered rows, C and C++ entry templates, weak hook install, Rust render | done |
 | W5 | fill the rows from the model's supervision (`apply_route_supervision`) | done |
 | W6 | a late completion of a supervised route is a deadline miss: verdict + hook at completion, once per take (`route_judge`, `spin.rs`) | done |
+| W7 | `RouteWatch` / `nros_cpp_executor_route_watch` / `nros_cpp_route_watch_next_due_us`: a port's timer reads a route answered mid-spin as answered (`monitor.rs`, `spin.rs`, nros-cpp) | done |
 
 W5: the model (ros-launch-manifest `33577ff`, play_launch phase 93's lowering)
 carries `contracts.node_paths.<key>.supervise: { route_deadline_ms, reaction,
@@ -188,6 +225,12 @@ play_launch that writes it.
   runs 327 ms and publishes; one hook call (reaction id 4, rule 11, measured
   327, declared 149, mechanism 0), both verdicts, no second call from the
   check after the park, none for an on-time callback.
+- `a_route_answered_before_its_due_reads_answered_while_the_spin_runs_on`
+  (`executor/tests.rs`): a take in one spin; the next spin answers at 145 ms
+  of 149 and runs a second callback to 155 ms, which reads the watch as the
+  port's timer would at its expiry: answered (the due armed after the first
+  spin is past: the old port latched). Its twin with no answer reads due now
+  at the same instant, and the hook runs once, at the next spin.
 - The existing route tests (`route_rule`,
   `b3_a_late_tick_exceeds_the_route_while_every_callback_passes`) unchanged.
 - Codegen: a supervised row renders its three fields, the comment and the

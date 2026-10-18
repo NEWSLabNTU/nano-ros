@@ -912,6 +912,27 @@ typedef struct nros_cpp_reaction_event_t {
 typedef void (*nros_cpp_reaction_hook_t)(const struct nros_cpp_reaction_event_t *event, void *ctx);
 
 /**
+ * phase-503 W7 — an executor's supervised routes, readable from OUTSIDE the
+ * spin thread: what [`nros_cpp_executor_route_watch`] fills and
+ * [`nros_cpp_route_watch_next_due_us`] reads. The fields are the runtime's;
+ * treat the struct as opaque and copy it by value.
+ */
+typedef struct nros_cpp_route_watch_t {
+  /**
+   * The installed monitor table (runtime-private).
+   */
+  const void *table;
+  /**
+   * Its row count (runtime-private); 0 = nothing to watch.
+   */
+  size_t len;
+  /**
+   * The executor's microsecond clock (runtime-private).
+   */
+  const void *clock_us;
+} nros_cpp_route_watch_t;
+
+/**
  * C callback type for guard conditions: `void callback(void* context)`.
  */
 typedef void (*nros_cpp_guard_callback_t)(void *context);
@@ -2521,6 +2542,42 @@ nros_cpp_ret_t nros_cpp_executor_set_reaction_hook(void *handle,
  * must be writable.
  */
 nros_cpp_ret_t nros_cpp_executor_route_next_due_us(void *handle, uint64_t *out_us);
+
+/**
+ * phase-503 W7 — fill `*out` with a watch over this executor's supervised
+ * routes. Call on the spin thread (or before the first spin) after
+ * `nros_cpp_install_monitors`; the watch stays valid as long as the
+ * executor's monitor storage, and reading it never touches the executor. With
+ * no monitor table or no clock the watch is empty and reads `UINT64_MAX`.
+ *
+ * Why: a port supervising with its own timer (`NROS_CPP_MECHANISM_TIMER`)
+ * that learns a route is answered only from
+ * [`nros_cpp_executor_route_next_due_us`] after the spin returns sees a route
+ * answered before its due, inside a spin that runs past the due, as a miss at
+ * the timer's expiry. The watch reads the answer when it happens.
+ *
+ * # Safety
+ * `handle` must be a live executor handle from this ABI, or NULL; `out` must
+ * be writable.
+ */
+nros_cpp_ret_t nros_cpp_executor_route_watch(void *handle, struct nros_cpp_route_watch_t *out);
+
+/**
+ * phase-503 W7 — microseconds from now to the earliest deadline of a pending
+ * supervised route, read from the routes' own cells at the moment of the
+ * call: 0 when a take is still unanswered at or after its deadline (the
+ * executor's verdict: an answer exactly at the deadline is a miss),
+ * `UINT64_MAX` when none is waiting. A route the running dispatch has just
+ * answered reads as answered. Callable from any thread or an interrupt, while
+ * the spin thread is anywhere: no lock, no allocation, no executor.
+ *
+ * # Safety
+ * `watch` must be NULL or point at a watch filled by
+ * [`nros_cpp_executor_route_watch`] whose executor's monitor storage is still
+ * live; `out_us` must be writable.
+ */
+nros_cpp_ret_t nros_cpp_route_watch_next_due_us(const struct nros_cpp_route_watch_t *watch,
+                                                uint64_t *out_us);
 
 /**
  * phase-436 W7.a — register a platform deadline source on this executor.

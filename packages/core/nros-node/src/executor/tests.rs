@@ -15149,6 +15149,153 @@ fn a_late_completion_of_a_supervised_route_calls_the_reaction_hook() {
     assert!(verdicts(&mut executor).is_empty());
 }
 
+private_test_clock!(route_watch_clock);
+
+/// phase-503 W7 -- the board finding behind `RouteWatch`: a port supervises a
+/// route with its own timer (`mechanism: timer`), armed from
+/// `route_next_due_us` after each spin. The take is in one spin; a later spin
+/// ANSWERS the route 4 ms before its due and then runs on, in another
+/// callback, past the due. The timer expires there, mid-spin. Armed from the
+/// last spin's due, the port saw a miss (a false safe state) although the
+/// executor judged the route on time. The watch, read at that instant from
+/// inside the running spin, says answered; its real-miss twin (the same spin,
+/// no answer) says due now, at the same instant.
+#[cfg(all(feature = "std", feature = "alloc"))]
+#[test]
+fn a_route_answered_before_its_due_reads_answered_while_the_spin_runs_on() {
+    use super::monitor::{MECHANISM_TIMER, MonitorSpec, PubMonitorCell, RouteWatch};
+    use core::sync::atomic::{AtomicU32, Ordering};
+    use std::sync::Mutex;
+    let _g = arming_lock();
+
+    static CELL: PubMonitorCell = PubMonitorCell::new();
+    static TABLE: [MonitorSpec; 1] = [MonitorSpec {
+        topic: "/rw/state",
+        fqn: "/rw/handler/state",
+        min_rate_hz_milli: 0,
+        max_latency_ms: 0,
+        route_trigger: "/rw/availability",
+        route_max_latency_ms: 149,
+        route_deadline_ms: 149,
+        reaction_id: 1,
+        mechanism: MECHANISM_TIMER,
+        cell: &CELL,
+    }];
+    // The watch the "port" holds, and what it read at the timer's expiry.
+    static WATCH: Mutex<Option<RouteWatch>> = Mutex::new(None);
+    static AT_EXPIRY: Mutex<Option<Option<u64>>> = Mutex::new(None);
+    static HOOK_CALLS: AtomicU32 = AtomicU32::new(0);
+    unsafe extern "C" fn hook(
+        _ev: *const super::monitor::ReactionEvent,
+        _ctx: *mut core::ffi::c_void,
+    ) {
+        HOOK_CALLS.fetch_add(1, Ordering::SeqCst);
+    }
+
+    route_watch_clock::claim_at_us(1_000_000);
+    let mut executor = executor_with_clock_fn(MockSession::new(), route_watch_clock::now_us);
+    executor.set_monitor_table(&TABLE);
+    executor.set_reaction_hook(Some((hook, core::ptr::null_mut())));
+    let nid = executor.node_builder("handler").build().expect("node");
+    let _state = executor
+        .node_mut(nid)
+        .create_generic_publisher("/rw/state", "std_msgs::msg::dds_::Int32_", "")
+        .expect("contracted publisher");
+    // The trigger: 0 = a take only; 1 = (pending already, so no new take)
+    // publish the output, which answers the route at this dispatch's end.
+    executor
+        .node_mut(nid)
+        .create_subscription::<TestMsg, _>("/rw/availability", |m: &TestMsg| {
+            if m.data == 1 {
+                CELL.count.fetch_add(1, Ordering::Relaxed);
+            }
+        })
+        .expect("trigger subscription");
+    // The rest of the spin: runs `v` ms, and the port's timer expires at its
+    // end, on another context: read the watch there.
+    executor
+        .node_mut(nid)
+        .create_subscription::<TestMsg, _>("/rw/other", |m: &TestMsg| {
+            route_watch_clock::set_us(route_watch_clock::now_us() + m.data as u64 * 1_000);
+            let w = WATCH.lock().unwrap().expect("the port took its watch");
+            *AT_EXPIRY.lock().unwrap() = Some(w.next_due_us());
+        })
+        .expect("second subscription");
+    let subs: alloc::vec::Vec<usize> = executor
+        .entries
+        .iter()
+        .enumerate()
+        .filter(|(_, e)| {
+            e.as_ref()
+                .is_some_and(|m| m.kind == super::arena::EntryKind::Subscription)
+        })
+        .map(|(i, _)| i)
+        .collect();
+    assert_eq!(subs.len(), 2);
+    let arena_ptr = executor.arena.as_ptr() as *const u8;
+    let offs: alloc::vec::Vec<usize> = subs
+        .iter()
+        .map(|&i| executor.entries[i].as_ref().unwrap().offset)
+        .collect();
+    let load = |sub: usize, v: i32| {
+        let (d, n) = encode_test_msg(v);
+        unsafe { &*(arena_ptr.add(offs[sub]) as *const MockSubscriber) }.load(d, n);
+    };
+    *WATCH.lock().unwrap() = Some(executor.route_watch().expect("table and clock"));
+
+    for answer in [true, false] {
+        *AT_EXPIRY.lock().unwrap() = None;
+        let base = route_watch_clock::now_us();
+        // Spin A: the take. The port re-arms its timer after it: due =
+        // now + 149 ms (the old port's only source).
+        load(0, 0);
+        let _ = executor.spin_once(core::time::Duration::from_millis(0));
+        let armed_due_us = route_watch_clock::now_us()
+            + executor.route_next_due_us().expect("the take is waiting");
+        assert_eq!(armed_due_us, base + 149_000);
+        // Spin B starts 145 ms in: the trigger's callback answers there (or
+        // does not), then the other callback runs 10 ms, to 155 ms. The
+        // timer expires at 149 ms, inside it.
+        route_watch_clock::set_us(base + 145_000);
+        if answer {
+            load(0, 1);
+        }
+        load(1, 10);
+        let _ = executor.spin_once(core::time::Duration::from_millis(0));
+        let expiry_read = AT_EXPIRY.lock().unwrap().expect("the other callback ran");
+        let read_at = route_watch_clock::now_us();
+        assert!(
+            read_at >= armed_due_us,
+            "the expiry is inside the spin, past the due armed after spin A"
+        );
+        // Before W7 the port knew nothing newer than spin A's due: armed and
+        // past at the expiry, so it latched either way.
+        if answer {
+            assert_eq!(
+                expiry_read, None,
+                "answered at 145 ms of 149: the watch reads answered mid-spin"
+            );
+            assert_eq!(
+                HOOK_CALLS.load(Ordering::SeqCst),
+                0,
+                "on time for the executor too"
+            );
+        } else {
+            assert_eq!(
+                expiry_read,
+                Some(0),
+                "unanswered at the due: the watch reads the miss at the same instant"
+            );
+        }
+        // Leave nothing pending for the next round.
+        let _ = executor.spin_once(core::time::Duration::from_millis(0));
+        executor.drain_violations(|_| {});
+        assert_eq!(executor.route_watch().unwrap().next_due_us(), None);
+        route_watch_clock::set_us(route_watch_clock::now_us() + 1_000_000);
+    }
+    assert_eq!(HOOK_CALLS.load(Ordering::SeqCst), 1, "the miss, once");
+}
+
 /// Issue 1913 — a raw action server and client key each endpoint on its OWN
 /// hash. An Iron+ `rmw_zenoh_cpp` peer keys all five on different types, and
 /// every raw registration used to pass the one `type_hash` to all of them, so
