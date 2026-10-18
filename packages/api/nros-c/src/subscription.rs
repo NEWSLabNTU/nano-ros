@@ -642,6 +642,10 @@ pub unsafe extern "C" fn rclc_polling_subscription_init_with_qos(
 /// to disable. The backend wakes the callback when a new message
 /// arrives.
 ///
+/// Returns `RCL_RET_UNSUPPORTED` when the backend cannot name the entity
+/// whose data arrived (XRCE, uORB, a poll-only link) — it has no
+/// per-entity new-data slot, so the callback would never fire (issue 1940).
+///
 /// # Safety
 /// All pointers valid; `state` storage stable for the
 /// subscription's lifetime.
@@ -671,8 +675,13 @@ pub unsafe extern "C" fn rclc_polling_subscription_set_wake_callback(
             nros_node::c_waker::CWakeState { fn_ptr: cb, ctx },
         );
         let waker = nros_node::c_waker::make_waker(state_ptr);
-        raw.register_waker(&waker);
-        RCL_RET_OK
+        // Issue 1940 — a backend with no per-entity wake says so; `OK` here
+        // would promise a callback that never fires.
+        if raw.register_waker(&waker) {
+            RCL_RET_OK
+        } else {
+            RCL_RET_UNSUPPORTED
+        }
     }
     #[cfg(not(feature = "rmw-cffi"))]
     {

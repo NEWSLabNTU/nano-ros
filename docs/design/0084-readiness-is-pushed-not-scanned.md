@@ -3,7 +3,7 @@ rfc: 0084
 title: "Readiness is PUSHED by the arrival path, not scanned by the executor — the wake says who, not just that"
 status: Draft
 since: 2026-08
-last-reviewed: 2026-10-17
+last-reviewed: 2026-10-18
 implements-tracked-by: [phase-397]
 amends: [rfc-0052]
 supersedes: []
@@ -15,11 +15,23 @@ superseded-by: null
 > **Amendment 2026-10-17.** §4.2's premise does not hold on `main`: the
 > entity-scoped wake functions end in `register_waker`, which no
 > `nros-rmw-cffi` handle implements and no vtable slot carries, so they are
-> no-ops ([issue 1940](../issues/1940-entity-wake-callback-is-inert-through-cffi.md)).
+> no-ops ([issue 1940](../issues/archived/1940-entity-wake-callback-is-inert-through-cffi.md)).
 > The token therefore needs a new per-entity vtable slot, specified in §4.2
 > below. Two further changes: Cyclone can supply tokens as well as zenoh
 > (§8), and the registration also names the OWNING executor, which retires
 > RFC-0106 D6's spurious wakes (§4.5).
+
+> **Amendment 2026-10-18.** The slot landed (issue 1940, phase-397 W1), and
+> not in the shape §4.2 first gave it. It is upstream's own trio,
+> `{subscription,service,client}_set_on_new_*_callback`, with upstream's
+> `rmw_event_callback_t` — `(const void *user_data, size_t n)` — rather than a
+> new `*_set_wake(cb(ctx, token), ctx, token)`. A token argument is redundant
+> once `user_data` is per ENTITY: the registration already names one entity, so
+> the executor points `user_data` at a record holding its wake context and the
+> entity's `DescIdx`. Mirroring upstream turned three `declined` rows of the
+> parity map (issue 0960) into exact matches. §4.2 is rewritten to match; §4.1's
+> `nros_rmw_runtime_wake_cb_tok` survives as the RUNTIME's side of that
+> callback, not as an ABI type.
 
 > The executor is already woken *precisely* — a k_sem signalled from the
 > backend's arrival path, sub-millisecond, ISR-capable. It then throws that
@@ -140,21 +152,31 @@ arrival, and it keeps the token optional rather than mandatory.
 (`rclc_polling_{subscription,service,client}_set_wake_callback`, their C++
 twins, and `recv().await`'s waker) end in `register_waker`, which reaches no
 backend through cffi (issue 1940). So the vtable gains one NULL-able slot per
-entity kind:
+entity kind, upstream's own (landed 2026-10-18, phase-397 W1):
 
 ```c
-rmw_ret_t (*subscription_set_wake)(rmw_subscription_t *sub,
-                                   void (*cb)(void *ctx, uint32_t token),
-                                   void *ctx, uint32_t token);
-/* + service_set_wake, client_set_wake */
+typedef void (*rmw_event_callback_t)(const void *user_data, size_t number_of_events);
+
+rmw_ret_t (*subscription_set_on_new_message_callback)(
+    rmw_subscription_t *subscription, rmw_event_callback_t callback,
+    const void *user_data);
+/* + service_set_on_new_request_callback, client_set_on_new_response_callback */
 ```
 
-The executor calls it at registration with its own wake context and the
-entity's `DescIdx`. The cffi handles forward `register_waker` through the same
-slot with `NROS_RMW_WAKE_TOKEN_UNKNOWN`, so issue 1940's callers reach a
-backend too. A NULL slot means the backend cannot attribute arrivals: the
-executor keeps the session callback for it, and the user-facing calls report
-"unsupported" instead of `OK`.
+There is no token argument: `user_data` is per entity, so it carries the
+token. The executor registers each entity with `user_data` pointing at a
+record of its own wake context and the entity's `DescIdx`, and the runtime's
+callback (§4.1's `_tok` body) reads both from there. The cffi handles already
+forward `register_waker` through the same slot, so issue 1940's callers reach
+a backend. A NULL slot, or a slot answering UNSUPPORTED, means the backend
+cannot attribute arrivals: the executor keeps the session callback for it, and
+the user-facing calls report "unsupported" instead of `OK`.
+
+Two behaviours differ from upstream, on purpose, and the header states both.
+`number_of_events` is a lower bound (a backend may call once per arrival with
+1), so no backend has to track per-entity pending depth — the RAM argument
+issue 0960 declined the trio on, kept. And samples that arrived before the
+registration are not replayed; a caller registers, then checks `has_data`.
 
 ### 4.3 The scan becomes the fallback
 
@@ -265,11 +287,11 @@ already wrong in principle on an image whose whole purpose is bounded latency.
 
 | | |
 | --- | --- |
-| ABI | one new callback symbol and three NULL-able vtable slots (§4.2); old symbol kept, forwards with UNKNOWN |
+| ABI | three NULL-able vtable slots, upstream's names and signature (§4.2, landed); `set_wake_callback` kept for backends that leave them NULL |
 | executor state | one `AtomicU64` in `WakeCtx` (8 B) |
 | hot path added | one `fetch_or` per arrival |
 | hot path removed | up to 64 indirect calls per spin |
-| backends touched | zenoh (arrival hooks) and Cyclone (`on_data_available` receives the reader); XRCE, uORB and bare metal leave the slots NULL and keep today's behaviour |
+| backends touched | zenoh (through the Rust adapter, landed) and Cyclone (`on_data_available` receives the reader; still NULL); XRCE, uORB and bare metal leave the slots NULL and keep today's behaviour |
 | risk | the arrived-vs-present semantics of §4.4 |
 
 ## 9. Open questions

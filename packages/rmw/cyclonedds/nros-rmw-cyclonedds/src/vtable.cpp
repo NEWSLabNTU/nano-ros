@@ -485,6 +485,13 @@ const nros_rmw_vtable_t kVtable = {
      * the slot's own header records that a NULL one means the hint stands. */
     /*required_rx_bytes*/ nullptr,
     /*supported_qos_policies*/ cyclone_supported_qos_policies,
+    /* Issue 1940 — per-entity wake. NULL until the reader's
+     * `on_data_available` listener carries the registration (phase-397 W1):
+     * the runtime then reports a C caller's wake callback as UNSUPPORTED
+     * instead of accepting one that never fires. */
+    /*subscription_set_on_new_message_callback*/ nullptr,
+    /*service_set_on_new_request_callback*/ nullptr,
+    /*client_set_on_new_response_callback*/ nullptr,
 };
 
 } // namespace

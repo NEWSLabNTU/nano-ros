@@ -7694,6 +7694,10 @@ NROS_PUBLIC struct rclc_wake_state_t rclc_wake_state_get_zero_initialized(void);
  * Pass `cb = NULL` to disable. The backend wakes the callback
  * when a new request arrives.
  *
+ * Returns `RCL_RET_UNSUPPORTED` when the backend cannot name the entity
+ * whose data arrived (XRCE, uORB, a poll-only link) — it has no
+ * per-entity new-data slot, so the callback would never fire (issue 1940).
+ *
  * # Safety
  * All pointers valid; `state` storage stable for the entity's
  * lifetime.
@@ -7707,7 +7711,8 @@ rcl_ret_t rclc_polling_service_set_wake_callback(struct rclc_polling_service_t *
 /**
  * Phase 122.3.c.6.e — register a C wake callback on an L1
  * polling-mode service client. Wakes when a reply lands. See
- * `rclc_polling_service_set_wake_callback` for the lifetime contract.
+ * `rclc_polling_service_set_wake_callback` for the lifetime contract
+ * and the `RCL_RET_UNSUPPORTED` return.
  */
 NROS_PUBLIC
 rcl_ret_t rclc_polling_client_set_wake_callback(struct rclc_polling_client_t *client,
@@ -8480,6 +8485,10 @@ rcl_ret_t rclc_polling_subscription_init_with_qos(struct rclc_polling_subscripti
  * must outlive the subscription and not move. Pass `cb = NULL`
  * to disable. The backend wakes the callback when a new message
  * arrives.
+ *
+ * Returns `RCL_RET_UNSUPPORTED` when the backend cannot name the entity
+ * whose data arrived (XRCE, uORB, a poll-only link) — it has no
+ * per-entity new-data slot, so the callback would never fire (issue 1940).
  *
  * # Safety
  * All pointers valid; `state` storage stable for the

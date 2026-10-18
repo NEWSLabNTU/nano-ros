@@ -54,6 +54,7 @@ use crate::{
     NROS_RMW_RET_OK, NROS_RMW_RET_UNSUPPORTED, NrosRmwClient, NrosRmwEventCallback,
     NrosRmwEventKind, NrosRmwGid, NrosRmwNode, NrosRmwPublisher, NrosRmwQos, NrosRmwRet,
     NrosRmwService, NrosRmwSession, NrosRmwSessionOptions, NrosRmwSubscription, NrosRmwVtable,
+    entity_wake::{EntityWakeCb, Hosted},
     event_kind_from_c, ret_from_error, rmw_publisher_options_t, rmw_subscription_options_t,
 };
 // phase-381 W3 — the endpoint-info slots marshal the generated ABI types
@@ -653,6 +654,19 @@ impl<R: RustBackend> RustBackendAdapter<R> {
         service_response_publisher_get_actual_qos: Some(
             service_response_publisher_get_actual_qos_trampoline::<R>,
         ),
+        // Issue 1940 — every Rust backend's `register_waker`, reached from C.
+        // Unconditional: a backend whose `register_waker` returns `false` (the
+        // trait default) makes the slot answer UNSUPPORTED, the same verdict a
+        // NULL slot carries.
+        subscription_set_on_new_message_callback: Some(
+            subscription_set_on_new_message_callback_trampoline::<R>,
+        ),
+        service_set_on_new_request_callback: Some(
+            service_set_on_new_request_callback_trampoline::<R>,
+        ),
+        client_set_on_new_response_callback: Some(
+            client_set_on_new_response_callback_trampoline::<R>,
+        ),
         ..EMPTY_VTABLE
     };
 
@@ -941,6 +955,12 @@ unsafe extern "C" fn create_subscription_trampoline<R: RustBackend>(
     let qos_settings = qos_from_cffi(unsafe { &*qos });
     match Session::create_subscription(s, &topic, qos_settings) {
         Ok(sub_handle) => {
+            // Issue 1940 — the handle travels inside a `Hosted`, which carries
+            // its C wake registration. `backend_data` still reads as a
+            // `*const R::Subscription` everywhere else (`repr(C)`, inner first).
+            let sub_handle = Hosted::new(sub_handle, |t: &R::Subscription, w| {
+                Subscription::register_waker(t, w)
+            });
             #[cfg(all(target_os = "none", not(feature = "std")))]
             {
                 let Some(ptr) = (unsafe { static_subscriber_storage::insert(sub_handle) }) else {
@@ -980,13 +1000,15 @@ unsafe extern "C" fn destroy_subscription_trampoline<R: RustBackend>(
     #[cfg(all(target_os = "none", not(feature = "std")))]
     {
         if unsafe {
-            static_subscriber_storage::take::<R::Subscription>(*slot as *mut R::Subscription)
+            static_subscriber_storage::take::<Hosted<R::Subscription>>(
+                *slot as *mut Hosted<R::Subscription>,
+            )
         } {
             *slot = core::ptr::null_mut();
             return NROS_RMW_RET_OK;
         }
     }
-    let _ = unsafe { take_box::<R::Subscription>(slot) };
+    let _ = unsafe { take_box::<Hosted<R::Subscription>>(slot) };
 
     NROS_RMW_RET_OK
 }
@@ -1208,7 +1230,12 @@ unsafe extern "C" fn create_service_trampoline<R: RustBackend>(
     };
     let qos_settings = qos_from_cffi(unsafe { &*qos });
     match Session::create_service(s, &info, qos_settings) {
-        Ok(server) => match box_handle("service server", server) {
+        Ok(server) => match box_handle(
+            "service server",
+            Hosted::new(server, |t: &R::Service, w| {
+                ServiceTrait::register_waker(t, w)
+            }),
+        ) {
             Ok(boxed) => {
                 unsafe {
                     (*out).backend_data = boxed;
@@ -1228,7 +1255,7 @@ unsafe extern "C" fn create_service_trampoline<R: RustBackend>(
 unsafe extern "C" fn destroy_service_trampoline<R: RustBackend>(
     server: *mut NrosRmwService,
 ) -> NrosRmwRet {
-    let _ = unsafe { take_box::<R::Service>(service_data_mut(server)) };
+    let _ = unsafe { take_box::<Hosted<R::Service>>(service_data_mut(server)) };
 
     NROS_RMW_RET_OK
 }
@@ -1372,7 +1399,10 @@ unsafe extern "C" fn create_client_trampoline<R: RustBackend>(
     };
     let qos_settings = qos_from_cffi(unsafe { &*qos });
     match Session::create_client(s, &info, qos_settings) {
-        Ok(client) => match box_handle("service client", client) {
+        Ok(client) => match box_handle(
+            "service client",
+            Hosted::new(client, |t: &R::Client, w| ClientTrait::register_waker(t, w)),
+        ) {
             Ok(boxed) => {
                 unsafe {
                     (*out).backend_data = boxed;
@@ -1392,7 +1422,7 @@ unsafe extern "C" fn create_client_trampoline<R: RustBackend>(
 unsafe extern "C" fn destroy_client_trampoline<R: RustBackend>(
     client: *mut NrosRmwClient,
 ) -> NrosRmwRet {
-    let _ = unsafe { take_box::<R::Client>(client_data_mut(client)) };
+    let _ = unsafe { take_box::<Hosted<R::Client>>(client_data_mut(client)) };
 
     NROS_RMW_RET_OK
 }
@@ -1800,6 +1830,44 @@ unsafe extern "C" fn set_wake_callback_trampoline<R: RustBackend>(
     // lifetime contract to the Rust backend.
     unsafe { Session::set_wake_callback(s, cb, ctx) };
     NROS_RMW_RET_OK
+}
+
+// Issue 1940 — the per-entity new-data callback slots. The registration lives in the
+// entity's `Hosted` wrapper; see `crate::entity_wake`.
+unsafe extern "C" fn subscription_set_on_new_message_callback_trampoline<R: RustBackend>(
+    subscription: *mut NrosRmwSubscription,
+    cb: Option<EntityWakeCb>,
+    user_data: *const c_void,
+) -> NrosRmwRet {
+    if subscription.is_null() {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    let data = unsafe { *subscription_data_mut(subscription) };
+    unsafe { Hosted::<R::Subscription>::set_wake(data, cb, user_data) }
+}
+
+unsafe extern "C" fn service_set_on_new_request_callback_trampoline<R: RustBackend>(
+    service: *mut NrosRmwService,
+    cb: Option<EntityWakeCb>,
+    user_data: *const c_void,
+) -> NrosRmwRet {
+    if service.is_null() {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    let data = unsafe { *service_data_mut(service) };
+    unsafe { Hosted::<R::Service>::set_wake(data, cb, user_data) }
+}
+
+unsafe extern "C" fn client_set_on_new_response_callback_trampoline<R: RustBackend>(
+    client: *mut NrosRmwClient,
+    cb: Option<EntityWakeCb>,
+    user_data: *const c_void,
+) -> NrosRmwRet {
+    if client.is_null() {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    let data = unsafe { *client_data_mut(client) };
+    unsafe { Hosted::<R::Client>::set_wake(data, cb, user_data) }
 }
 
 /// phase-467 Row 8 — the graph-CHANGE edge for every Rust backend.

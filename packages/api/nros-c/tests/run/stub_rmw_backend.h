@@ -99,4 +99,17 @@ const uint8_t* nros_stub_rmw_last_payload(size_t* len);
 /** phase-492 W8 — publishes the stub has accepted since process start. */
 uint32_t nros_stub_rmw_publish_count(void);
 
+/** Issue 1940 — the entity kinds the per-entity new-data slots are stored by. */
+#define NROS_STUB_ENTITY_SUBSCRIPTION 0
+#define NROS_STUB_ENTITY_SERVICE 1
+#define NROS_STUB_ENTITY_CLIENT 2
+
+/** Issue 1940 — `false` makes the three `*_set_on_new_*_callback` slots answer
+ *  `NROS_RMW_RET_UNSUPPORTED`, as a backend that cannot name the entity does. */
+void nros_stub_rmw_set_entity_wake_supported(bool supported);
+
+/** Issue 1940 — call the callback stored for @p kind (an `NROS_STUB_ENTITY_*`),
+ *  as a real backend's arrival path would. Returns `false` when none is stored. */
+bool nros_stub_rmw_invoke_entity_wake(int kind);
+
 #endif /* NROS_TESTS_STUB_RMW_BACKEND_H */

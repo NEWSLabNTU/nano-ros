@@ -150,6 +150,10 @@ const nros_rmw_vtable_t kVtable = {
     /*set_log_severity*/ nullptr,
     /*required_rx_bytes*/ nullptr,
     /*supported_qos_policies*/ supported_qos_policies,
+    /* Issue 1940 — uORB names no entity on arrival, so no per-entity wake. */
+    /*subscription_set_on_new_message_callback*/ nullptr,
+    /*service_set_on_new_request_callback*/ nullptr,
+    /*client_set_on_new_response_callback*/ nullptr,
 };
 #pragma GCC diagnostic pop
 

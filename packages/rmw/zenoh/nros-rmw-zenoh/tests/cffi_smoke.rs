@@ -153,3 +153,85 @@ fn cffi_pubsub_round_trip() {
     // must match the i32 payload we serialised.
     assert_eq!(&buf[4..8], &payload[4..8]);
 }
+
+/// Issue 1940 — a waker registered on a cffi subscription is woken by a zenoh
+/// arrival, and keeps being woken.
+///
+/// Before 1940, `CffiSubscription::register_waker` was the trait's no-op, so
+/// this waker was never woken and `register_waker` had nothing to return. The
+/// chain now under test: `CffiSubscription::register_waker` ->
+/// `subscription_set_on_new_message_callback` (the adapter's slot) -> the
+/// zenoh shim's `register_waker` -> the arrival hook -> the C callback -> this
+/// waker. The shim's `AtomicWaker` gives its waker up on every wake, so a
+/// count above ONE is what proves the adapter re-arms it — the ABI says a
+/// registration persists until replaced.
+///
+/// The waker is registered ONCE and never re-polled, so nothing but the
+/// backend's arrival path can wake it. Lower bound only: two samples may land
+/// before the hook runs, and the ABI's count is a lower bound for that reason.
+#[test]
+fn cffi_subscription_waker_fires_on_each_arrival() {
+    use std::{
+        sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        },
+        task::{Wake, Waker},
+    };
+
+    struct Count(AtomicUsize);
+    impl Wake for Count {
+        fn wake(self: Arc<Self>) {
+            self.0.fetch_add(1, Ordering::SeqCst);
+        }
+        fn wake_by_ref(self: &Arc<Self>) {
+            self.0.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    let locator =
+        router_locator().expect("zenohd unavailable — run `nros setup <board> --rmw zenoh`");
+    nros_rmw_zenoh::register().expect("register");
+
+    let mut session =
+        CffiSession::open(&locator, /* client */ 0, 0, "l2_entity_wake", "").expect("open");
+    let topic = TopicInfo::new("test/cffi_entity_wake", "Int32", "hash1940");
+    let qos = QoSProfile::BEST_EFFORT;
+
+    let mut subscriber = session
+        .create_subscription(&topic, qos)
+        .expect("create_subscription");
+    let count = Arc::new(Count(AtomicUsize::new(0)));
+    let waker = Waker::from(count.clone());
+    assert!(
+        subscriber.register_waker(&waker),
+        "zenoh fills the per-entity slot through the adapter, so registration must \
+         report that a wake will come"
+    );
+    std::thread::sleep(Duration::from_secs(1));
+    let publisher = session
+        .create_publisher(&topic, qos)
+        .expect("create_publisher");
+
+    let payload: [u8; 8] = [0x00, 0x01, 0x00, 0x00, 0x94, 0x07, 0x00, 0x00];
+    let mut buf = [0u8; 64];
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while Instant::now() < deadline && count.0.load(Ordering::SeqCst) < 3 {
+        let _ = publisher.publish_raw(&payload);
+        let _ = session.drive_io(50);
+        std::thread::sleep(Duration::from_millis(100));
+        // Drain so every arrival is a fresh one; never re-registers.
+        while let Ok(Some(_)) = subscriber.take_serialized(&mut buf) {}
+    }
+    let woken = count.0.load(Ordering::SeqCst);
+    drop(publisher);
+    drop(subscriber);
+    drop(session);
+
+    assert!(
+        woken >= 3,
+        "the waker was woken {woken} time(s) in 10 s of publishing; 0 means the \
+         registration never reached zenoh, 1 means the adapter did not re-arm the \
+         shim's one-shot waker"
+    );
+}
