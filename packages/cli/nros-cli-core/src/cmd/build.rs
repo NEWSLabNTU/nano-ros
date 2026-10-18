@@ -1153,7 +1153,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                                 })
                                 .unwrap_or(false)
                     })
-                    .filter_map(|(_, _, id, img)| {
+                    .filter_map(|(_, bd, id, img)| {
                         let name = crate::builder::entry::package_name(&id);
                         if root
                             .join("src")
@@ -1164,7 +1164,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                             return None;
                         }
                         let b = img.board.clone().unwrap_or_default();
-                        Some(crate::builder::cmake_root::CmakeEntry {
+                        Some(Ok(crate::builder::cmake_root::CmakeEntry {
                             launch: img.launch.clone().unwrap_or_else(|| "default".to_string()),
                             args: img
                                 .args
@@ -1199,10 +1199,21 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                                 b.clone()
                             },
                             panic: img.panic.clone(),
+                            // Issue 1946 — the image's domain, by the resolver
+                            // the cargo and west roads read
+                            // (`leaf_system`: `[image]`, its defaults, then
+                            // `[system]`). Until this the CMake road carried
+                            // none, and a stated domain was dropped silently.
+                            domain_id: match nros_orchestration_ir::leaf_system::read_image(
+                                &bd, &id,
+                            ) {
+                                Ok(sys) => sys.and_then(|s| s.network.domain_id),
+                                Err(e) => return Some(Err(eyre::eyre!("{e}"))),
+                            },
                             name,
-                        })
+                        }))
                     })
-                    .collect();
+                    .collect::<Result<Vec<_>>>()?;
 
                 // phase-481 W4 — this configure's images resolve ONE configuration
                 // (the coordinate is keyed on it), so its rows are this image's.

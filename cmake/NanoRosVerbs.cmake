@@ -112,7 +112,7 @@ endfunction()
 # ---------------------------------------------------------------------------
 # nano_ros_add_executable(<name> <sources…> [DEPLOY <target>…] [BOARD <board>]
 #     [BRINGUP <dir>] [LAUNCH <launch.xml>] [LAUNCH_ARGS <k=v>…] [LANG c|cpp]
-#     [PANIC <policy>] [TYPED])
+#     [PANIC <policy>] [DOMAIN_ID <n>] [TYPED])
 #
 # Standalone entry. DEPLOY/BOARD default to the package.xml `<export>` tuple in
 # W4; until then DEPLOY defaults to `linux` and an embedded board is passed
@@ -137,7 +137,7 @@ function(nano_ros_add_executable name)
     # and removed the callee's half of it; this is the other half. Parsing them
     # explicitly also makes the chain checkable: `check-generated-cmake-keywords`
     # compares what `cmake_root.rs` emits against BOTH frames' keyword sets.
-    cmake_parse_arguments(_NRE "TYPED;ROS2_MAIN" "BOARD;BRINGUP;LAUNCH;MODEL;HOST;LANG;PANIC" "DEPLOY;SOURCES;LAUNCH_ARGS" ${ARGN})
+    cmake_parse_arguments(_NRE "TYPED;ROS2_MAIN" "BOARD;BRINGUP;LAUNCH;MODEL;HOST;LANG;PANIC;DOMAIN_ID" "DEPLOY;SOURCES;LAUNCH_ARGS" ${ARGN})
     set(_srcs ${_NRE_SOURCES} ${_NRE_UNPARSED_ARGUMENTS})
     if(NOT _srcs AND NOT _NRE_LAUNCH AND NOT _NRE_BRINGUP AND NOT _NRE_MODEL)
         message(FATAL_ERROR
@@ -214,6 +214,11 @@ function(nano_ros_add_executable name)
     endif()
     if(_NRE_PANIC)
         list(APPEND _entry_extra PANIC ${_NRE_PANIC})
+    endif()
+    # Issue 1946 — the image's resolved domain, emitted per entry by the
+    # generated root. `DEFINED`, not truthiness: domain 0 is a domain.
+    if(DEFINED _NRE_DOMAIN_ID)
+        list(APPEND _entry_extra DOMAIN_ID ${_NRE_DOMAIN_ID})
     endif()
     if(_NRE_TYPED)
         list(APPEND _entry_extra TYPED)
