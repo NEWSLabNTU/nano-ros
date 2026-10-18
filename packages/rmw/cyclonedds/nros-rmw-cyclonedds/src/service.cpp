@@ -288,6 +288,8 @@ struct ServerState {
     RequestSlot slots[kRequestSlots];
     /// Issue 1269 — the graph both endpoints are listed in.
     GraphState* graph{nullptr};
+    /// phase-397 W2.b — this entity's `set_on_new_*_callback`, on `reader`.
+    EntityWake wake{};
 };
 
 struct ClientState {
@@ -320,6 +322,8 @@ struct ClientState {
     int64_t pending_request_seq{-1};
     /// Issue 1269 — the graph both endpoints are listed in.
     GraphState* graph{nullptr};
+    /// phase-397 W2.b — this entity's `set_on_new_*_callback`, on `reader`.
+    EntityWake wake{};
 };
 
 /// Issue 1269 — take a service/client pair back out of the graph on destroy.
@@ -851,6 +855,7 @@ rmw_ret_t service_destroy(rmw_service_t* server) {
     }
     auto* state = static_cast<ServerState*>(server->backend_data);
     untrack_pair(state->graph, state->reader, state->writer);
+    entity_wake_release(state->reader, &state->wake);
     dds_return_t rc = DDS_RETCODE_OK;
     if (state->reader > 0 && dds_delete(state->reader) < 0) rc = DDS_RETCODE_ERROR;
     if (state->writer > 0 && dds_delete(state->writer) < 0) rc = DDS_RETCODE_ERROR;
@@ -859,6 +864,26 @@ rmw_ret_t service_destroy(rmw_service_t* server) {
     delete state;
     server->backend_data = nullptr;
     return rc < 0 ? NROS_RMW_RET_ERROR : NROS_RMW_RET_OK;
+}
+
+rmw_ret_t service_set_on_new_request_callback(rmw_service_t* service,
+                                              rmw_event_callback_t callback,
+                                              const void* user_data) {
+    if (service == nullptr || service->backend_data == nullptr) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    auto* state = static_cast<ServerState*>(service->backend_data);
+    return entity_wake_set(state->reader, &state->wake, callback, user_data);
+}
+
+rmw_ret_t client_set_on_new_response_callback(rmw_client_t* client,
+                                              rmw_event_callback_t callback,
+                                              const void* user_data) {
+    if (client == nullptr || client->backend_data == nullptr) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    auto* state = static_cast<ClientState*>(client->backend_data);
+    return entity_wake_set(state->reader, &state->wake, callback, user_data);
 }
 
 // Issue 1632 — the caller-visible size a refused wire sample needed: the wire
@@ -1185,6 +1210,7 @@ rmw_ret_t client_destroy(rmw_client_t* client) {
     }
     auto* state = static_cast<ClientState*>(client->backend_data);
     untrack_pair(state->graph, state->reader, state->writer);
+    entity_wake_release(state->reader, &state->wake);
     dds_return_t rc = DDS_RETCODE_OK;
     if (state->writer > 0 && dds_delete(state->writer) < 0) rc = DDS_RETCODE_ERROR;
     if (state->reader > 0 && dds_delete(state->reader) < 0) rc = DDS_RETCODE_ERROR;

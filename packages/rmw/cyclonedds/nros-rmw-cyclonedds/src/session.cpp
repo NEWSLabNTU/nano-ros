@@ -235,6 +235,82 @@ void release_listener_if_idle(SessionState *state) {
 
 } // namespace
 
+#ifndef NROS_RMW_CYCLONEDDS_NO_FOREIGN_WAKE
+namespace {
+/// phase-397 W2.b — an arrival on ONE entity's reader. Same thread and same
+/// contract as `on_data_available`: the callback is a flag write plus a
+/// signal, safe from Cyclone's delivery thread. One call per invocation, so
+/// `1` — the lower bound the slot's contract allows.
+void on_entity_data_available(dds_entity_t /*reader*/, void* arg) {
+    auto* w = static_cast<EntityWake*>(arg);
+    if (w != nullptr && w->cb != nullptr) {
+        w->cb(w->user_data, 1);
+    }
+}
+}  // namespace
+#endif
+
+rmw_ret_t entity_wake_set(dds_entity_t reader, EntityWake* w, rmw_event_callback_t cb,
+                          const void* user_data) {
+    if (w == nullptr || reader <= 0) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+#ifdef NROS_RMW_CYCLONEDDS_NO_FOREIGN_WAKE
+    /* Issue 1237 — the reason `session_set_wake_callback` declines on this
+     * build applies to an entity's callback too: it would run on Cyclone's
+     * thread and signal the platform's wake primitive from there. Clearing
+     * is always fine. */
+    (void)user_data;
+    return cb == nullptr ? NROS_RMW_RET_OK : NROS_RMW_RET_UNSUPPORTED;
+#else
+    /* Detach first. `dds_set_listener` waits for a callback already running
+     * on this reader, so nothing reads the pair while it changes. */
+    if (w->listener != nullptr) {
+        if (dds_set_listener(reader, nullptr) < 0) {
+            return NROS_RMW_RET_ERROR;
+        }
+        dds_delete_listener(w->listener);
+        w->listener = nullptr;
+    }
+    w->cb = cb;
+    w->user_data = user_data;
+    if (cb == nullptr) {
+        /* The reader inherits the participant's listener again, so its
+         * arrivals reach the session wake as before. */
+        return NROS_RMW_RET_OK;
+    }
+    w->listener = dds_create_listener(w);
+    if (w->listener == nullptr) {
+        w->cb = nullptr;
+        w->user_data = nullptr;
+        return NROS_RMW_RET_BAD_ALLOC;
+    }
+    /* reset_on_invoke = false: a level signal, as on the participant. */
+    dds_lset_data_available_arg(w->listener, on_entity_data_available, w, false);
+    if (dds_set_listener(reader, w->listener) < 0) {
+        dds_delete_listener(w->listener);
+        w->listener = nullptr;
+        w->cb = nullptr;
+        w->user_data = nullptr;
+        return NROS_RMW_RET_ERROR;
+    }
+    return NROS_RMW_RET_OK;
+#endif
+}
+
+void entity_wake_release(dds_entity_t reader, EntityWake* w) {
+    if (w == nullptr || w->listener == nullptr) {
+        return;
+    }
+    if (reader > 0) {
+        (void)dds_set_listener(reader, nullptr);
+    }
+    dds_delete_listener(w->listener);
+    w->listener = nullptr;
+    w->cb = nullptr;
+    w->user_data = nullptr;
+}
+
 rmw_ret_t session_set_wake_callback(rmw_session_t* session,
                                     void (*cb)(void*),
                                     void* ctx) {
