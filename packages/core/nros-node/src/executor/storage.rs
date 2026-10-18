@@ -1226,12 +1226,13 @@ mod tests {
                 >,
             >();
         }
-        // phase-397 W2 -- the mask of entry slots whose backend accepted an
-        // entity waker: one `u64`, whatever MAX_CBS is (the ready word it
-        // describes is one machine word).
+        // phase-397 W2/W3 -- the mask of entry slots whose backend accepted an
+        // entity waker and the mask W3 re-probes: one `u64` each, whatever
+        // MAX_CBS is (the ready word they describe is one machine word), plus
+        // W3's `u32` probe counter.
         #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
         {
-            ceiling += size_of::<u64>();
+            ceiling += 2 * size_of::<u64>() + size_of::<u32>();
         }
         // Issue 1938 -- `signal-fd-wake`'s worker: an fd, one `Arc` to its
         // context and the task handle. Scales with nothing; it sat unnamed and

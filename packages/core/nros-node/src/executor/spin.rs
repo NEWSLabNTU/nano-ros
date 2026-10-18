@@ -1879,6 +1879,20 @@ pub struct Executor<'s> {
     /// entry that can have data is attributed.
     #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
     pub(crate) entity_attributed: u64,
+    /// phase-397 W3 — attributed slots the NEXT spin must ask `has_data`
+    /// about, although no arrival marked them: each one that was ready on
+    /// this spin (dispatched or not, since a dispatch may leave data behind
+    /// and a failed trigger dispatches nothing), one held mid-dispatch when
+    /// its arrival came, and one just armed (its data may predate the
+    /// registration, which the ABI says the caller closes with one
+    /// `has_data`). A slot drops out the first spin its `has_data` is false.
+    #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+    pub(crate) entity_recheck: u64,
+    /// phase-397 W3 — `has_data` calls the readiness scan has made, for the
+    /// test that proves a pushed spin makes none. Wrapping; read only through
+    /// [`Executor::readiness_probe_count`].
+    #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+    pub(crate) readiness_probes: u32,
     /// Phase 124.B.2 — opaque context Arc handed to backends via
     /// `set_wake_callback`. Lazy-allocated on first install; stays
     /// alive for the Executor's lifetime so the raw pointer stored
@@ -2336,6 +2350,10 @@ impl<'s> Executor<'s> {
             has_async_wake: false,
             #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
             entity_attributed: 0,
+            #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+            entity_recheck: 0,
+            #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+            readiness_probes: 0,
             // Phase 141.A.3 — alloc-mode wake state init. Constructed
             // eagerly (NodeWake allocation) so the runtime cb can be
             // installed lazily on first session without a fallible
@@ -6974,6 +6992,7 @@ impl<'s> Executor<'s> {
         #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
         if index < super::entity_wake::SLOTS {
             self.entity_attributed &= !(1u64 << index);
+            self.entity_recheck &= !(1u64 << index);
         }
         let Some(meta) = self.entries[index].take() else {
             return false;
@@ -7253,8 +7272,12 @@ impl<'s> Executor<'s> {
             let bit = 1u64 << slot;
             if register(&waker) {
                 self.entity_attributed |= bit;
+                // W3 — the backend replays nothing that arrived before this
+                // call, so the first spin asks `has_data` once.
+                self.entity_recheck |= bit;
             } else {
                 self.entity_attributed &= !bit;
+                self.entity_recheck &= !bit;
             }
         }
     }
@@ -7285,8 +7308,8 @@ impl<'s> Executor<'s> {
     }
 
     /// phase-397 W2 — the ready word, taken: every slot an attributed arrival
-    /// marked since the last take. W3's `spin_once` consumes it; until then it
-    /// is read by tests only.
+    /// marked since the last take. `spin_once` consumes it (W3), so a caller
+    /// that also spins sees only what arrived since the last spin. Tests only.
     #[doc(hidden)]
     pub fn take_entity_ready_bits(&self) -> u64 {
         #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
@@ -7301,6 +7324,18 @@ impl<'s> Executor<'s> {
     pub fn entity_attributed_slots(&self) -> u64 {
         #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
         return self.entity_attributed;
+        #[cfg(not(all(feature = "alloc", feature = "rmw-cffi")))]
+        0
+    }
+
+    /// phase-397 W3 — how many `has_data` calls the readiness scan has made
+    /// (wrapping). An attributed slot's readiness comes from its arrival bit,
+    /// so a spin over attributed entries alone adds nothing here. Tests only;
+    /// `0` in a build with no entity wake, where it is not counted.
+    #[doc(hidden)]
+    pub fn readiness_probe_count(&self) -> u32 {
+        #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+        return self.readiness_probes;
         #[cfg(not(all(feature = "alloc", feature = "rmw-cffi")))]
         0
     }
@@ -10742,13 +10777,61 @@ impl<'s> Executor<'s> {
         let mut non_timer_mask: u64 = 0;
         let mut always_mask: u64 = 0;
 
+        // phase-397 W3 (RFC-0084) — an ATTRIBUTED slot's readiness is pushed,
+        // not probed. Its arrivals set its bit in the ready word (W2), so the
+        // bit is read and `has_data` is not called. Two cases still ask:
+        //
+        // - a slot in `entity_recheck`, which may hold data no arrival will
+        //   announce again (see the field);
+        // - a slot whose backend cannot attribute (XRCE, uORB, a timer, a
+        //   guard condition), exactly as before.
+        //
+        // The bit means the data ARRIVED, not that it is still PRESENT: an
+        // arrival that races a drain may dispatch to an empty queue, and every
+        // `try_process` already answers `Ok(false)` to that. A bit cleared
+        // before its dispatch would lose a message; one that over-reports
+        // costs one empty call.
+        //
+        // The word is taken AFTER the wait and the drive above, so it holds
+        // every arrival that ended this spin's park, including those a
+        // single-threaded backend delivered inside `drive_io`. One that lands
+        // after the take stays in the word and has signalled the wake, so the
+        // next spin does not park on it.
+        #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+        let (attributed, arrived, recheck) = {
+            let attributed = self.entity_attributed;
+            let arrived = self.wake_ctx.as_ref().map_or(0, |ctx| {
+                ctx.ready.swap(0, portable_atomic::Ordering::SeqCst) as u64
+            });
+            let recheck = core::mem::take(&mut self.entity_recheck);
+            (attributed, arrived & attributed, recheck & attributed)
+        };
+        #[cfg(not(all(feature = "alloc", feature = "rmw-cffi")))]
+        let (attributed, arrived, recheck) = (0u64, 0u64, 0u64);
+        // Attributed slots the scan could not settle (held mid-dispatch).
+        let mut carry: u64 = 0;
+        let mut probes: u32 = 0;
+
         for (i, meta) in self.entries.iter().enumerate() {
-            if let Some(meta) = meta
-                && !Self::slot_held(self.slot_tags, i)
+            let Some(meta) = meta else { continue };
+            let bit = 1u64 << i;
+            if Self::slot_held(self.slot_tags, i) {
+                carry |= (arrived | recheck) & bit;
+                continue;
+            }
             {
-                let data_ptr = unsafe { arena_ptr.add(meta.offset) as *const u8 };
-                if unsafe { (meta.has_data)(data_ptr) } {
-                    bits |= 1u64 << i;
+                let pushed = attributed & bit != 0;
+                let ready = if pushed && arrived & bit != 0 {
+                    true
+                } else if pushed && recheck & bit == 0 {
+                    false
+                } else {
+                    probes = probes.wrapping_add(1);
+                    let data_ptr = unsafe { arena_ptr.add(meta.offset) as *const u8 };
+                    unsafe { (meta.has_data)(data_ptr) }
+                };
+                if ready {
+                    bits |= bit;
                 }
                 if !matches!(meta.kind, EntryKind::Timer | EntryKind::GuardCondition) {
                     non_timer_mask |= 1u64 << i;
@@ -10759,6 +10842,16 @@ impl<'s> Executor<'s> {
                 count += 1;
             }
         }
+        // Every attributed slot that was ready is asked again next spin: a
+        // dispatch takes what one call takes, and a trigger that does not
+        // pass dispatches nothing, so either may leave data behind.
+        #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+        {
+            self.entity_recheck |= carry | (bits & attributed);
+            self.readiness_probes = self.readiness_probes.wrapping_add(probes);
+        }
+        #[cfg(not(all(feature = "alloc", feature = "rmw-cffi")))]
+        let _ = (carry, probes);
 
         // phase-462 W5b — an armed deadline row's arrival evidence.
         if bits != 0 && !self.age_table.is_empty() {

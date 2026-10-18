@@ -13,6 +13,10 @@
 //!    (RFC-0106 D6) woke every member per arrival, which phase-436 step 5
 //!    measured at 7-9 us of CPU per spurious wake.
 //!
+//!
+//! And the consumer (W3): a spin that dispatches an attributed arrival reads
+//! its bit and calls no `has_data` at all.
+//!
 //! Run: `cargo nextest run -p nros-tests --features trigger-test --test entity_wake`.
 
 #![cfg(feature = "trigger-test")]
@@ -213,5 +217,167 @@ fn a_shared_session_member_is_not_woken_by_another_members_arrivals(zenohd_uniqu
         owner.take_entity_ready_bits(),
         0,
         "the owner saw no arrival while `other` waited, so `other` staying asleep proves nothing"
+    );
+}
+
+#[rstest]
+fn a_pushed_spin_dispatches_without_probing_readiness(zenohd_unique: ZenohRouter) {
+    require_zenohd();
+    let locator = zenohd_unique.locator();
+    let domain = u32::from(nros_tests::unique_ros_domain_id());
+
+    let mut exec = open(&locator, "entity_wake_pushed", domain);
+    let node = exec
+        .node_builder("entity_wake_pushed")
+        .build()
+        .expect("node");
+    let received = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
+    let received_cb = received.clone();
+    let before = exec.entity_attributed_slots();
+    exec.node_mut(node)
+        .subscription("/entity_wake/pushed")
+        .generic(TYPE, "")
+        .qos(QoSProfile::default())
+        .rx_buffer::<256>()
+        .build(move |_data: &[u8]| {
+            received_cb.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        })
+        .expect("register subscription");
+    assert_eq!(
+        (exec.entity_attributed_slots() & !before).count_ones(),
+        1,
+        "the subscription was not attributed, so its readiness can only be probed"
+    );
+    let publisher = exec
+        .node_mut(node)
+        .create_publisher_raw("/entity_wake/pushed", TYPE, "")
+        .expect("publisher");
+
+    // The first spin after arming asks `has_data` once, for data that may
+    // predate the registration. After that an idle spin asks nothing.
+    exec.spin_once(Duration::from_millis(20));
+    let idle_from = exec.readiness_probe_count();
+    exec.spin_once(Duration::from_millis(20));
+    assert_eq!(
+        exec.readiness_probe_count() - idle_from,
+        0,
+        "an idle spin over one attributed subscription probed its readiness"
+    );
+
+    let start = Instant::now();
+    let mut published = false;
+    loop {
+        assert!(
+            start.elapsed() < ARRIVAL_BUDGET,
+            "the subscription dispatched nothing within {ARRIVAL_BUDGET:?} of publishing"
+        );
+        if !published || start.elapsed() > Duration::from_secs(1) {
+            publisher.publish_raw(PAYLOAD).expect("publish");
+            published = true;
+        }
+        let probes_before = exec.readiness_probe_count();
+        exec.spin_once(Duration::from_millis(100));
+        let probes = exec.readiness_probe_count() - probes_before;
+        if received.load(std::sync::atomic::Ordering::SeqCst) > 0 {
+            assert_eq!(
+                probes, 0,
+                "the spin that dispatched the arrival made {probes} `has_data` call(s); its \
+                 readiness came from the entity's ready bit"
+            );
+            break;
+        }
+    }
+
+    // The slot that was ready is asked once more (a dispatch may leave data
+    // behind), then the executor goes quiet again.
+    let after_from = exec.readiness_probe_count();
+    exec.spin_once(Duration::from_millis(20));
+    exec.spin_once(Duration::from_millis(20));
+    assert!(
+        exec.readiness_probe_count() - after_from <= 1,
+        "after the dispatch the scan kept probing: {} call(s) over two spins",
+        exec.readiness_probe_count() - after_from
+    );
+}
+
+/// Publish once on `publisher` and spin `exec` until `done` holds or the
+/// budget runs out.
+fn spin_until(
+    exec: &mut Executor<'static>,
+    publisher: Option<&nros_node::EmbeddedRawPublisher>,
+    budget: Duration,
+    done: impl Fn() -> bool,
+) -> bool {
+    if let Some(p) = publisher {
+        p.publish_raw(PAYLOAD).expect("publish");
+    }
+    let start = Instant::now();
+    while start.elapsed() < budget {
+        exec.spin_once(Duration::from_millis(20));
+        if done() {
+            return true;
+        }
+    }
+    false
+}
+
+#[rstest]
+fn an_arrival_a_trigger_held_back_is_dispatched_when_it_passes(zenohd_unique: ZenohRouter) {
+    use std::sync::atomic::{AtomicU32, Ordering::SeqCst};
+    require_zenohd();
+    let locator = zenohd_unique.locator();
+    let domain = u32::from(nros_tests::unique_ros_domain_id());
+
+    let mut exec = open(&locator, "entity_wake_all", domain);
+    let node = exec.node_builder("entity_wake_all").build().expect("node");
+    let counts: [std::sync::Arc<AtomicU32>; 2] = Default::default();
+    let topics = ["/entity_wake/all_a", "/entity_wake/all_b"];
+    for (topic, count) in topics.iter().zip(&counts) {
+        let count = count.clone();
+        exec.node_mut(node)
+            .subscription(topic)
+            .generic(TYPE, "")
+            .qos(QoSProfile::default())
+            .rx_buffer::<256>()
+            .build(move |_data: &[u8]| {
+                count.fetch_add(1, SeqCst);
+            })
+            .expect("register subscription");
+    }
+    assert_eq!(exec.entity_attributed_slots().count_ones(), 2);
+    let publishers: Vec<_> = topics
+        .iter()
+        .map(|t| {
+            exec.node_mut(node)
+                .create_publisher_raw(t, TYPE, "")
+                .expect("publisher")
+        })
+        .collect();
+    // Dispatch only when BOTH subscriptions have data.
+    exec.set_trigger(Trigger::All);
+
+    // `a` arrives alone: its bit is taken by a spin whose trigger fails, so
+    // nothing dispatches, and the arrival must not be forgotten.
+    let total = || counts[0].load(SeqCst) + counts[1].load(SeqCst);
+    assert!(
+        !spin_until(
+            &mut exec,
+            Some(&publishers[0]),
+            Duration::from_millis(600),
+            || { total() > 0 }
+        ),
+        "Trigger::All dispatched with only one subscription holding data"
+    );
+
+    // `b` arrives: now both hold data, so both dispatch, `a` included,
+    // although no arrival has marked `a` since its bit was taken.
+    assert!(
+        spin_until(&mut exec, Some(&publishers[1]), ARRIVAL_BUDGET, || {
+            counts[0].load(SeqCst) > 0 && counts[1].load(SeqCst) > 0
+        }),
+        "after both arrivals: a dispatched {} time(s), b {} time(s); an arrival taken by a \
+         spin whose trigger failed was lost",
+        counts[0].load(SeqCst),
+        counts[1].load(SeqCst)
     );
 }
