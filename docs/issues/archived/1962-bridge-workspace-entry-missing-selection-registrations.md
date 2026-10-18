@@ -1,7 +1,8 @@
 ---
 id: 1962
 title: "The two bridge workspaces' generated `linux_entry` does not compile: `nros::main!` finds no `__nros_register_backends` / `__nros_register_type` in its selection crate"
-status: open
+status: resolved
+resolved: 2026-10-19
 type: bug
 area: [build, cli, rmw]
 severity: medium
@@ -46,9 +47,41 @@ So anything that consumed these fixtures since then ran a museum binary.
   `rmw` (`cyclonedds`, `xrce`) is the bridged side; the entry builds under
   `build/posix-zenoh/`.
 - The failing symbols are the two the macro expects the generated selection
-  crate (`linux_entry_nros_selection`) to export. Not investigated further:
-  which change since 2026-10-15 stopped the selection crate emitting them for a
-  bridge system, or whether it is the multi-RMW selection that lacks them.
+  crate (`linux_entry_nros_selection`) to export.
+
+## Cause
+
+The generator was fine. The selection crate on disk was not the generator's
+output: `generated/nros-selection/linux_entry/src/lib.rs` in both workspaces
+was dated 2026-10-15 15:09 and read "This crate is intentionally empty" — the
+shape from before RFC-0071 D11 (phase-506 W2) moved backend registration into
+the facade as `__nros_register_backends!` / `__nros_register_type!`.
+
+Nothing rewrote it, by construction:
+
+- `nros build` (`generate_entry`) wrote a facade only through its HEAL path,
+  which runs when the directory is MISSING. A facade that existed was taken
+  as-is, whatever generator had written it.
+- `nros sync` writes a facade per Rust package it can see. A generated entry
+  under `build/<coordinate>/` is not one of them, so sync never touched it
+  either (measured: `nros sync --verbose` in `bridge-cyclonedds` printed no
+  facade line and left the file unchanged).
+
+So a facade was written once, by the first build that found none, and then
+frozen. Every other workspace carries the same frozen facades (all ten in
+`examples/workspaces/rust` lacked the macros); only the bridge and Zephyr
+entries expand them, which is why only the bridge rows broke on the linux
+lane. A fresh clone never sees this, because there the heal writes a current
+facade — it is a defect of incremental trees, i.e. of every developer host
+and every persistent runner workspace.
+
+## Fix
+
+`generate_entry` now rewrites an EXISTING facade on every build, through the
+same `write_entry_facade` helper the heal uses. `write_facade` writes only what
+changed, so an up-to-date tree pays nothing, and the entry already depends on
+that directory, so it needs no second write. Unit test:
+`a_stale_facade_is_rewritten_by_the_current_generator`.
 
 ## Acceptance
 
