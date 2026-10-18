@@ -1,6 +1,6 @@
 # Phase 397 — Pushed readiness: the wake says WHO, and the executor stops scanning
 
-**Status (2026-10-18). W1 DONE; W2 DONE for zenoh (W2.b, Cyclone, open); W3 onward not started.** Implements
+**Status (2026-10-19). W1 DONE; W2 DONE (zenoh and Cyclone); W3 onward not started.** Implements
 [RFC-0084](../design/0084-readiness-is-pushed-not-scanned.md).
 
 **Revision 2026-10-17, read against `main`.**
@@ -128,19 +128,21 @@ Acceptance, as run:
 - A per-backend XRCE run reporting UNSUPPORTED was not done. It follows from
   XRCE's NULL slot through the same code path the stub's UNSUPPORTED arm drives.
 
-### W2 — the executor registers each entity with its token AND its owner — DONE for zenoh 2026-10-18
+### W2 — the executor registers each entity with its token AND its owner — DONE 2026-10-19
 
 **Landed (W2.a).** Every subscription, service and client registration
 (the 19 sites in `executor/spin.rs`) calls `Executor::arm_entity_wake` after
 the entry is written into the arena. That hands the handle's `register_waker`
 a waker from `executor/entity_wake.rs`. The waker carries no separate record:
 it holds a strong reference to the owning executor's `WakeCtx` and keeps the
-slot in the low six bits of that pointer. `WakeCtx` is `repr(align(64))` to
-make room for them.
+slot in the low bits of that pointer. `WakeCtx` is `repr(align(64))` to make
+room for them.
 
 Waking it calls `WakeCtx::mark_ready(slot)`: `ready |= 1 << slot` on a new
-`AtomicU64`, then the same flag, probe and signal as the session callback.
-That shared step is now one function, `WakeCtx::signal`. The executor also
+`AtomicUsize`, then the same flag, probe and signal as the session callback.
+That shared step is now one function, `WakeCtx::signal`. The word is a
+`usize` because a 32-bit target may have no 64-bit atomics, so there it
+names 32 slots, and an entry above that keeps the session wake. The executor also
 records which slots a backend accepted, in `entity_attributed`. W3 needs that
 mask, because a clear bit is an entry only the session wake still covers.
 
@@ -181,10 +183,31 @@ Mutations, each red then restored green:
   `other` returned after 7.92 µs.
 - Disabling `arm_entity_wake` fails both tests, with no slot attributed.
 
-**Open (W2.b) — Cyclone fills W1's slots**, from the reader its
-`on_data_available` listener receives; W1 left them NULL. Until then a Cyclone
-entity reports `UNSUPPORTED`, keeps its `entity_attributed` bit clear, and is
-woken through the fan-out as before.
+**Landed (W2.b) — Cyclone fills W1's slots.** Each slot puts a
+data_available listener on the entity's own READER, carrying the registration
+(`EntityWake`, `entity_wake_set` in `session.cpp`). Cyclone invokes a reader's
+own listener instead of the participant's, where the session wake lives, so
+an attributed arrival calls its entity's callback and the session wake does
+not fire for it. That is the same split zenoh makes, decided by Cyclone's
+listener lookup rather than by a waker cell.
+
+Clearing removes the reader's listener, and its arrivals reach the session
+wake again. `cb` and `user_data` change only while no listener is attached,
+because `dds_set_listener` waits out a callback in progress. A
+`NO_FOREIGN_WAKE` build reports `UNSUPPORTED`, for issue 1237's reason.
+
+`tests/entity_wake.cpp` (Cyclone suite, 35/35) covers three cases:
+- registered: the entity callback fires with its `user_data`, and the session
+  wake does not;
+- unregistered on the same session: the session wake still fires;
+- cleared: the arrival goes back to the session wake.
+
+Not attaching the listener fails the first case.
+
+That test also found
+[issue 1963](../issues/1963-cyclone-late-wake-callback-misses-existing-readers.md):
+a session wake installed AFTER a reader exists never fires for that reader.
+Every in-tree caller installs at session open, so it is latent.
 
 **Why the owner rides on the token** (phase-436 step 5,
 2026-10-16). Several executors share one session through the wake fan-out
