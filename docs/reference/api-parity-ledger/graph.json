@@ -488,13 +488,13 @@
     "editions": [
       "jazzy"
     ],
-    "why": "ADOPT, issue 1971: the service twin of `c:count_publishers` (which we answer as `executor_count_publishers`); needs the rmw `count_clients` slot first."
+    "why": "ADOPT, issue 1978: the service twin of `c:count_publishers` (which we answer as `executor_count_publishers`); needs the rmw `count_clients` slot first."
   },
   "c:count_services": {
     "verdict": "gap",
     "editions": [
       "jazzy"
     ],
-    "why": "ADOPT, issue 1971: as `c:count_clients`."
+    "why": "ADOPT, issue 1978: as `c:count_clients`."
   }
 }

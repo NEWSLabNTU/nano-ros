@@ -485,30 +485,30 @@ reason = "has_data/has_request + drive_io + set_wake_callback + next_deadline_ms
 [rmw_count_clients]
 where = "gap"
 status = "not-implemented"
-issue = 1971
+issue = 1978
 editions = ["jazzy"]
-reason = "ADOPT, issue 1971: the service twin of the live `count_publishers` slot; both graph backends already hold the per-name count (zenoh graph cache, Cyclone builtin readers)."
+reason = "ADOPT, issue 1978: the service twin of the live `count_publishers` slot; both graph backends already hold the per-name count (zenoh graph cache, Cyclone builtin readers)."
 
 [rmw_count_services]
 where = "gap"
 status = "not-implemented"
-issue = 1971
+issue = 1978
 editions = ["jazzy"]
-reason = "ADOPT, issue 1971: as rmw_count_clients."
+reason = "ADOPT, issue 1978: as rmw_count_clients."
 
 [rmw_event_type_is_supported]
 where = "gap"
 status = "not-implemented"
-issue = 1971
+issue = 1978
 editions = ["jazzy"]
-reason = "ADOPT, issue 1971: a static per-backend answer the event_init slots already imply by returning UNSUPPORTED; asking it up front fails a port at configuration instead of entity creation."
+reason = "ADOPT, issue 1978: a static per-backend answer the event_init slots already imply by returning UNSUPPORTED; asking it up front fails a port at configuration instead of entity creation."
 
 [rmw_get_gid_for_client]
 where = "gap"
 status = "not-implemented"
-issue = 1971
+issue = 1978
 editions = ["jazzy"]
-reason = "ADOPT, issue 1971: the client twin of the live `get_gid_for_publisher`."
+reason = "ADOPT, issue 1978: the client twin of the live `get_gid_for_publisher`."
 
 [rmw_serialization_support_init]
 where = "declined"

@@ -1,5 +1,5 @@
 ---
-id: 1971
+id: 1978
 title: "Jazzy rmw contract adds count_clients/count_services, get_gid_for_client and event_type_is_supported; we answer none"
 status: open
 type: enhancement
