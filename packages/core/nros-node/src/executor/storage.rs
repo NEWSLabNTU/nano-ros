@@ -572,9 +572,9 @@ pub struct ExecutorSizing {
     /// Issue 1971 -- RUNTIME remap-table slots: `--ros-args -r` rules and
     /// rules a hand-written caller declares with `declare_remap`. The launch
     /// file's rules are not here (one flash table, `super::launch_remap`).
-    /// The default is [`MAX_REMAPS`] (`NROS_EXECUTOR_RUNTIME_REMAPS`: 16 on a
-    /// target with process arguments, 0 on bare metal), the same for every
-    /// tier. A full or absent table is `declare_remap`'s named refusal, never
+    /// The default is [`crate::config::RUNTIME_REMAPS`]
+    /// (`NROS_EXECUTOR_RUNTIME_REMAPS`: 16 on a target with process
+    /// arguments, 0 on bare metal), the same for every tier. A full or absent table is `declare_remap`'s named refusal, never
     /// a silently dropped rule.
     pub remaps: usize,
 }
