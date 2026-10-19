@@ -2175,7 +2175,9 @@ pub fn write_for_model_with_tiers(
 /// generated entry declares exactly these on the executor that hosts the node
 /// (`shared/declare_calls.jinja`, one `nros_cpp_declare_remap` per pair), so
 /// their sum over an executor's nodes is that executor's remap-table demand.
-pub fn launch_remaps(model: &ros_launch_manifest_model::SystemModel) -> std::collections::BTreeMap<String, usize> {
+pub fn launch_remaps(
+    model: &ros_launch_manifest_model::SystemModel,
+) -> std::collections::BTreeMap<String, usize> {
     model
         .structure
         .nodes
