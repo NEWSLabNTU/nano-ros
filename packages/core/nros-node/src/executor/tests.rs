@@ -132,6 +132,10 @@ fn executor_with_clock_fn(session: MockSession, clock: fn() -> u64) -> Executor<
 /// ```
 macro_rules! private_test_clock {
     ($name:ident) => {
+        // A clock is declared beside its test, and some of those tests are
+        // feature-gated where the declaration is not; an unused clock is not
+        // a defect, so it must not fail the build that drops its test.
+        #[allow(dead_code)]
         mod $name {
             use portable_atomic::{AtomicBool, AtomicU64, Ordering};
 
@@ -172,6 +176,33 @@ macro_rules! private_test_clock {
                     )
                 );
             }
+
+            /// Move "now" forward by `ms`. Also what a callback calls to
+            /// COST time: the executor measures a callback's runtime on this
+            /// clock, so an advance inside one is a runtime of exactly `ms`,
+            /// where a real sleep is "at least `ms`, plus whatever the host
+            /// adds".
+            pub fn advance_ms(ms: u64) {
+                NOW_US.fetch_add(ms * 1_000, Ordering::SeqCst);
+            }
+
+            /// Advance this clock by exactly `ms`, then `spin_once(0)` —
+            /// issues 1944/1950.
+            ///
+            /// This used to be ONE shared helper that SLEPT `ms` on the wall
+            /// clock, so every step it took was "at least `ms`": a loaded host
+            /// added its own delay on top, which fired a 100 ms timer after a
+            /// "50 ms" step (1944) and took 11 ms off a "60 ms remaining" floor
+            /// (1950). A step on this clock is exactly `ms`, and the spin
+            /// itself costs nothing on it however long it takes for real, so a
+            /// test may assert an EQUALITY — both bounds at once.
+            pub fn elapse_then_spin_once(
+                executor: &mut crate::executor::Executor,
+                ms: u64,
+            ) -> crate::executor::types::SpinOnceResult {
+                advance_ms(ms);
+                executor.spin_once(core::time::Duration::from_millis(0))
+            }
         }
     };
 }
@@ -187,23 +218,16 @@ use crate::{
     timer::TimerDuration,
 };
 
-/// Sleep `ms` then call `spin_once(0)`. Phase 100 follow-up: spin_once
-/// credits the wall-clock since the previous `spin_once` exited (not the
-/// requested timeout) to the timer accumulator. Tests that previously
-/// relied on `spin_once(N ms)` advancing virtual time by N must now
-/// elapse real wall-clock time between calls. MockSession's `drive_io`
-/// is a no-op, so the requested timeout adds no real elapsed.
-// phase-359 W10 — sleeps through the platform, like the code under test does.
-// This helper was the reason six tests below carried a `std` gate: it called
-// `std::thread::sleep`, so everything that elapsed real time inherited the
-// flavour. It now uses the same `nros_platform_sleep_us` the spin loops pace
-// on, which also means these tests exercise that path rather than a parallel
-// one.
-#[cfg(feature = "alloc")]
-fn elapse_then_spin_once(executor: &mut Executor, ms: u64) -> super::types::SpinOnceResult {
-    super::spin::platform_sleep(core::time::Duration::from_millis(ms));
-    executor.spin_once(core::time::Duration::from_millis(0))
-}
+// Issues 1944/1950 — there is deliberately NO module-level
+// `elapse_then_spin_once`. The one that lived here slept `ms` on the wall
+// clock against the shared `test_clock_us`, so "elapse 50 ms" meant "at least
+// 50 ms, plus whatever a loaded host adds", and every timer assertion built on
+// it held only while the host stayed quiet. `spin_once` credits the CLOCK's
+// delta since the previous spin (phase 100), so the fix is the clock, not the
+// sleep: a test that steps time declares a `private_test_clock!` and calls
+// `<clock>::elapse_then_spin_once`, whose step is exact. Leaving no shared
+// spelling is the point — a new test cannot reach the wall-clock version by
+// habit, because it does not exist.
 
 /// Issue 0355 — a live-but-idle session (`MockSession::drive_io` returns
 /// `Ok(())` with no data) must NEVER accumulate `session_io_failures`, no matter
@@ -1917,16 +1941,18 @@ fn test_time_triggered_schedule_rejects_overlapping_windows() {
     );
 }
 
+private_test_clock!(sporadic_exhaustion_clock);
+
 /// Phase 110.E — `SchedClass::Sporadic` budget suppression. After the
 /// budget is exhausted within a period, the bound subscription's
 /// callback no longer fires until the next period boundary refills
 /// the budget.
 #[test]
-#[cfg(feature = "std")] // sleeps or reads wall time
 fn test_sporadic_budget_exhaustion_suppresses_dispatch() {
+    sporadic_exhaustion_clock::claim_at_us(1_000_000);
     use crate::executor::sched_context::{OptUs, SchedClass, SchedContext};
     let session = MockSession::new();
-    let mut executor: Executor = executor_with_clock(session);
+    let mut executor: Executor = executor_with_clock_fn(session, sporadic_exhaustion_clock::now_us);
 
     let nid = executor
         .node_builder("test_sporadic_budget_exhaustion")
@@ -1944,14 +1970,17 @@ fn test_sporadic_budget_exhaustion_suppresses_dispatch() {
             // worked only because the executor charged the inter-spin
             // wall-clock gap to every sporadic SC whether or not it had run.
             // That was the defect; a test that relies on it is asserting the
-            // bug. Sleeping HERE is the same test of the same rule — "an SC
+            // bug. Costing time HERE is the same test of the same rule — "an SC
             // that has spent its budget is not dispatched again" — expressed
             // in the quantity the budget actually bounds.
-            std::thread::sleep(std::time::Duration::from_millis(2));
+            //
+            // Issue 1944 — the cost is an advance of the executor's private
+            // clock, which is what the budget is measured on: exactly 2 ms.
+            sporadic_exhaustion_clock::advance_ms(2);
         })
         .unwrap();
 
-    // 1 us budget per 60 s period: one dispatch costs ~2 ms of measured
+    // 1 us budget per 60 s period: one dispatch costs 2 ms of measured
     // runtime, which exhausts it for the rest of the period.
     let sc_id = executor
         .create_sched_context(SchedContext {
@@ -1967,7 +1996,7 @@ fn test_sporadic_budget_exhaustion_suppresses_dispatch() {
     let off = executor.entries[0].as_ref().unwrap().offset;
 
     // Cycle 1 — refill puts 1 us in the budget, the callback fires and spends
-    // ~2 ms of it. The period is 60 s, so nothing refills before cycle 2.
+    // 2 ms of it. The period is 60 s, so nothing refills before cycle 2.
     let (d, n) = encode_test_msg(1);
     unsafe { &*(arena_ptr.add(off) as *const MockSubscriber) }.load(d, n);
     let _ = executor.spin_once(core::time::Duration::from_millis(0));
@@ -1991,6 +2020,9 @@ fn test_sporadic_budget_exhaustion_suppresses_dispatch() {
     );
 }
 
+#[cfg(feature = "alloc")]
+private_test_clock!(per_callback_runtime_clock);
+
 /// Phase 110.E.b follow-up — per-callback runtime accounting.
 /// When a Sporadic SC has an `AtomicSporadicState` registered (the
 /// ISR-driven refill path), `spin_once` measures each bound
@@ -1999,27 +2031,29 @@ fn test_sporadic_budget_exhaustion_suppresses_dispatch() {
 /// that previously charged the full cycle `delta_us` against every
 /// Sporadic SC regardless of which entries actually fired.
 #[test]
-#[cfg(feature = "std")] // sleeps or reads wall time
 #[cfg(feature = "alloc")]
 fn test_atomic_sporadic_per_callback_runtime_consumed() {
+    per_callback_runtime_clock::claim_at_us(1_000_000);
     use crate::executor::{
         sched_context::{OptUs, SchedClass, SchedContext},
         spin::OpaqueTimerHandle,
     };
 
     let session = MockSession::new();
-    let mut executor: Executor = executor_with_clock(session);
+    let mut executor: Executor =
+        executor_with_clock_fn(session, per_callback_runtime_clock::now_us);
 
     let nid = executor
         .node_builder("test_atomic_sporadic_per_callback_runtime_consumed")
         .build()
         .unwrap();
-    // Subscription that sleeps a known interval so the per-callback
-    // dispatch timing is deterministic enough to assert on.
+    // Subscription that costs a known interval on the executor's clock, so
+    // the per-callback dispatch time is exact (issue 1944: it was a real
+    // sleep, bounded above by 500 ms that a descheduled host could exceed).
     let h = executor
         .node_mut(nid)
         .create_subscription::<TestMsg, _>("/timed", move |_msg: &TestMsg| {
-            std::thread::sleep(std::time::Duration::from_millis(10));
+            per_callback_runtime_clock::advance_ms(10);
         })
         .unwrap();
 
@@ -2047,7 +2081,7 @@ fn test_atomic_sporadic_per_callback_runtime_consumed() {
         .budget_remaining_us
         .load(portable_atomic::Ordering::Acquire);
 
-    // Drive one dispatch — the registered closure sleeps 10 ms.
+    // Drive one dispatch — the registered closure costs 10 ms.
     let arena_ptr = executor.arena.as_ptr() as *const u8;
     let off = executor.entries[0].as_ref().unwrap().offset;
     let (d, n) = encode_test_msg(7);
@@ -2058,19 +2092,18 @@ fn test_atomic_sporadic_per_callback_runtime_consumed() {
         .budget_remaining_us
         .load(portable_atomic::Ordering::Acquire);
 
-    // Per-callback runtime consumed at least the 10 ms (= 10_000 us)
-    // sleep, but well under the full 1 s budget — proves dispatch-
-    // local measurement, not cycle-level over-attribution.
+    // Per-callback runtime consumed exactly the 10 ms (= 10_000 us) the
+    // callback cost, not the 1 s budget or the cycle — proves dispatch-local
+    // measurement, not cycle-level over-attribution.
     let consumed = before.saturating_sub(after);
-    assert!(
-        consumed >= 10_000,
-        "expected at least 10 ms (10000 us) consumed for a 10 ms callback, got {consumed} us"
-    );
-    assert!(
-        consumed < 500_000,
-        "consumed {consumed} us suggests cycle-level over-attribution, not per-callback measurement"
+    assert_eq!(
+        consumed, 10_000,
+        "a 10 ms callback consumes exactly 10 ms of budget"
     );
 }
+
+#[cfg(feature = "alloc")]
+private_test_clock!(atomic_overrun_clock);
 
 /// Phase 110.E.b — overrun detection. A Sporadic-bound callback
 /// whose measured runtime exceeds the SC's budget bumps
@@ -2080,26 +2113,27 @@ fn test_atomic_sporadic_per_callback_runtime_consumed() {
 /// (we can't preempt a running callback), so this is the
 /// diagnostic signal end-callers consume to tune budgets.
 #[test]
-#[cfg(feature = "std")] // sleeps or reads wall time
 #[cfg(feature = "alloc")]
 fn test_atomic_overrun_exceeds_budget() {
+    atomic_overrun_clock::claim_at_us(1_000_000);
     use crate::executor::{
         sched_context::{OptUs, SchedClass, SchedContext},
         spin::OpaqueTimerHandle,
     };
 
     let session = MockSession::new();
-    let mut executor: Executor = executor_with_clock(session);
+    let mut executor: Executor = executor_with_clock_fn(session, atomic_overrun_clock::now_us);
 
     let nid = executor
         .node_builder("test_atomic_sporadic_overrun_recorded")
         .build()
         .unwrap();
-    // Subscription sleeps 25 ms; budget is 5 ms → must overrun.
+    // Subscription costs 25 ms on the executor's clock; budget is 5 ms →
+    // must overrun.
     let h = executor
         .node_mut(nid)
         .create_subscription::<TestMsg, _>("/overrun", move |_msg: &TestMsg| {
-            std::thread::sleep(std::time::Duration::from_millis(25));
+            atomic_overrun_clock::advance_ms(25);
         })
         .unwrap();
 
@@ -2121,7 +2155,7 @@ fn test_atomic_overrun_exceeds_budget() {
         0
     );
 
-    // Drive one dispatch — the registered closure sleeps 25 ms.
+    // Drive one dispatch — the registered closure costs 25 ms.
     let arena_ptr = executor.arena.as_ptr() as *const u8;
     let off = executor.entries[0].as_ref().unwrap().offset;
     let (d, n) = encode_test_msg(42);
@@ -2133,11 +2167,10 @@ fn test_atomic_overrun_exceeds_budget() {
         .last_overrun_us
         .load(portable_atomic::Ordering::Acquire);
     assert_eq!(count, 1, "overrun_count must increment exactly once");
-    // Overrun = measured - budget; measured ≥ 25 ms, budget = 5 ms.
-    // last_overrun_us should be ≥ 20 ms = 20_000 us.
-    assert!(
-        last >= 20_000,
-        "last_overrun_us {last} should be ≥ 20000 (25 ms callback - 5 ms budget)"
+    // Overrun = measured - budget = 25 ms - 5 ms.
+    assert_eq!(
+        last, 20_000,
+        "last_overrun_us is the 25 ms callback less the 5 ms budget"
     );
 
     // `clear_overrun_stats` resets both counters.
@@ -2958,26 +2991,33 @@ fn the_spin_quantization_audit_speaks_only_of_wall_timers() {
     );
 }
 
+#[cfg(all(feature = "sim-time", feature = "std"))]
+private_test_clock!(budget_skip_ros_clock);
+
 /// Issue 1321's third site, and the one that is NOT bounded: issue 0736's
 /// budget-skip path advanced every timer's `elapsed_us` by the executor's WALL
 /// delta, so a ROS-time timer bound to a starved sporadic context kept
 /// accumulating while `/clock` was paused — and would eventually fire an
 /// activation that no simulated time paid for.
-#[cfg(all(feature = "sim-time", feature = "std"))] // the budget is spent in wall time
+#[cfg(all(feature = "sim-time", feature = "std"))]
 #[test]
 fn a_budget_skipped_ros_timer_does_not_advance_on_wall_time() {
+    budget_skip_ros_clock::claim_at_us(1_000_000);
     use crate::executor::sched_context::{OptUs, SchedClass, SchedContext};
     use nros_core::clock::Clock;
 
     let _sim_time = SimTimeGuard::acquire();
-    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let mut executor: Executor =
+        executor_with_clock_fn(MockSession::new(), budget_skip_ros_clock::now_us);
     Clock::set_ros_time_override(10_000 * 1_000_000);
 
     // A wall timer that COSTS: callback runtime is what consumes a sporadic
-    // budget, and one dispatch of this exhausts 1 us for the next 60 s.
+    // budget, and one dispatch of this exhausts 1 us for the next 60 s. The
+    // runtime is measured on the executor's clock, so the cost is an advance
+    // of it — exactly 2 ms, where a real sleep was "2 ms or more".
     let spender = executor
         .register_timer(TimerDuration::from_millis(1), || {
-            std::thread::sleep(std::time::Duration::from_millis(2));
+            budget_skip_ros_clock::advance_ms(2);
         })
         .unwrap();
     let ros = executor
@@ -3003,7 +3043,7 @@ fn a_budget_skipped_ros_timer_does_not_advance_on_wall_time() {
 
     // Cycle 1 spends the budget; cycles 2..5 are the skipped ones.
     for _ in 0..5 {
-        let _ = elapse_then_spin_once(&mut executor, 50);
+        let _ = budget_skip_ros_clock::elapse_then_spin_once(&mut executor, 50);
     }
 
     assert_eq!(
@@ -3304,11 +3344,13 @@ fn a_cancelled_timer_does_not_bound_the_park() {
     );
 }
 
+private_test_clock!(add_timer_fire_clock);
+
 #[test]
-#[cfg(feature = "std")] // asserts on real elapsed time, not a counter
 fn test_add_timer_and_fire() {
+    add_timer_fire_clock::claim_at_us(1_000_000);
     let session = MockSession::new();
-    let mut executor: Executor = executor_with_clock(session);
+    let mut executor: Executor = executor_with_clock_fn(session, add_timer_fire_clock::now_us);
 
     let count = alloc::sync::Arc::new(portable_atomic::AtomicUsize::new(0));
     let count2 = count.clone();
@@ -3319,15 +3361,18 @@ fn test_add_timer_and_fire() {
         .unwrap();
 
     // Not enough time elapsed — should not fire
-    let result = elapse_then_spin_once(&mut executor, 50);
+    let result = add_timer_fire_clock::elapse_then_spin_once(&mut executor, 50);
     assert_eq!(result.timers_fired, 0);
     assert_eq!(count.load(portable_atomic::Ordering::SeqCst), 0);
 
     // Now enough time elapsed (50 + 60 = 110 >= 100)
-    let result = elapse_then_spin_once(&mut executor, 60);
+    let result = add_timer_fire_clock::elapse_then_spin_once(&mut executor, 60);
     assert_eq!(result.timers_fired, 1);
     assert_eq!(count.load(portable_atomic::Ordering::SeqCst), 1);
 }
+
+#[cfg(feature = "sim-time")]
+private_test_clock!(ros_timer_sim_clock);
 
 /// phase-425 W4 — a `TimerClockSource::Ros` timer follows the SIMULATED clock,
 /// and a wall timer on the same executor does not.
@@ -3348,6 +3393,7 @@ fn test_add_timer_and_fire() {
 #[cfg(feature = "sim-time")]
 #[test]
 fn ros_time_timer_follows_the_simulated_clock() {
+    ros_timer_sim_clock::claim_at_us(1_000_000);
     let _sim_time = SimTimeGuard::acquire();
     use nros_core::clock::Clock;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -3355,7 +3401,7 @@ fn ros_time_timer_follows_the_simulated_clock() {
     const MS: i64 = 1_000_000;
 
     let session = MockSession::new();
-    let mut executor: Executor = executor_with_clock(session);
+    let mut executor: Executor = executor_with_clock_fn(session, ros_timer_sim_clock::now_us);
 
     // A simulator is publishing /clock: t = 10 s.
     Clock::set_ros_time_override(10_000 * MS);
@@ -3383,7 +3429,7 @@ fn ros_time_timer_follows_the_simulated_clock() {
     // 1. PAUSED. Real time passes; simulated time does not. The wall timer
     //    fires and the ROS timer must not -- this is the whole point.
     for _ in 0..3 {
-        let _ = elapse_then_spin_once(&mut executor, 120);
+        let _ = ros_timer_sim_clock::elapse_then_spin_once(&mut executor, 120);
     }
     assert_eq!(
         ros_ticks.load(Ordering::SeqCst),
@@ -3391,8 +3437,11 @@ fn ros_time_timer_follows_the_simulated_clock() {
         "a ROS-time timer fired while the simulator was paused: 360 ms of REAL \
          time passed and /clock did not move, so no period elapsed"
     );
-    assert!(
-        wall_ticks.load(Ordering::SeqCst) >= 3,
+    // Exact, not `>= 3`: each 120 ms step on the private clock is one fire of
+    // the 100 ms wall timer (20, 40, 60 ms carried), and nothing else moves it.
+    assert_eq!(
+        wall_ticks.load(Ordering::SeqCst),
+        3,
         "the wall timer on the same executor must be unaffected by the pause \
          (that is what makes it the right clock for a watchdog); fired {} times",
         wall_ticks.load(Ordering::SeqCst)
@@ -3403,7 +3452,7 @@ fn ros_time_timer_follows_the_simulated_clock() {
     let wall_before = wall_ticks.load(Ordering::SeqCst);
     for i in 1..=4 {
         Clock::set_ros_time_override(10_000 * MS + i * 100 * MS);
-        let _ = elapse_then_spin_once(&mut executor, 10);
+        let _ = ros_timer_sim_clock::elapse_then_spin_once(&mut executor, 10);
     }
     assert_eq!(
         ros_ticks.load(Ordering::SeqCst),
@@ -3411,22 +3460,25 @@ fn ros_time_timer_follows_the_simulated_clock() {
         "four 100 ms steps of simulated time on a 100 ms ROS timer must be four \
          activations -- the timer tracks /clock, not the executor's spin delta"
     );
-    assert!(
-        wall_ticks.load(Ordering::SeqCst) - wall_before <= 1,
-        "~40 ms of real time cannot be four activations of a 100 ms wall timer"
+    // 60 ms carried + four 10 ms steps = exactly one wall period. On the wall
+    // clock this was an UPPER bound (`<= 1`) that a descheduled host broke.
+    assert_eq!(
+        wall_ticks.load(Ordering::SeqCst) - wall_before,
+        1,
+        "40 ms of steady time cannot be four activations of a 100 ms wall timer"
     );
 
     // 3. BACKWARDS JUMP -- a bag looping, or a simulator reset. The period
     //    restarts; the timer must not stall for the length of the jump.
     Clock::set_ros_time_override(1_000 * MS); // back 9.4 s
-    let _ = elapse_then_spin_once(&mut executor, 1);
+    let _ = ros_timer_sim_clock::elapse_then_spin_once(&mut executor, 1);
     assert_eq!(
         ros_ticks.load(Ordering::SeqCst),
         4,
         "a backwards jump is not an elapsed period"
     );
     Clock::set_ros_time_override(1_100 * MS); // one period past the new origin
-    let _ = elapse_then_spin_once(&mut executor, 1);
+    let _ = ros_timer_sim_clock::elapse_then_spin_once(&mut executor, 1);
     assert_eq!(
         ros_ticks.load(Ordering::SeqCst),
         5,
@@ -3434,6 +3486,9 @@ fn ros_time_timer_follows_the_simulated_clock() {
          that accumulated the negative delta would stay dead for 9.4 s"
     );
 }
+
+#[cfg(feature = "sim-time")]
+private_test_clock!(ros_timer_no_source_clock);
 
 /// A `TimerClockSource::Ros` timer with NO `/clock` source still fires, at its
 /// period, on the wall clock — issue 1334.
@@ -3469,6 +3524,7 @@ fn ros_time_timer_follows_the_simulated_clock() {
 // that SET it. Without the shared guard the two race (issue 1104's shape).
 #[test]
 fn ros_timer_fires_on_its_period_with_no_clock_source_installed() {
+    ros_timer_no_source_clock::claim_at_us(1_000_000);
     let _sim_time = SimTimeGuard::acquire();
     use nros_core::clock::Clock;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -3483,7 +3539,7 @@ fn ros_timer_fires_on_its_period_with_no_clock_source_installed() {
     Clock::set_steady_time(1_700_000_000 * 1_000_000_000);
 
     let session = MockSession::new();
-    let mut executor: Executor = executor_with_clock(session);
+    let mut executor: Executor = executor_with_clock_fn(session, ros_timer_no_source_clock::now_us);
 
     let ticks = std::sync::Arc::new(AtomicUsize::new(0));
     let t = ticks.clone();
@@ -3499,10 +3555,10 @@ fn ros_timer_fires_on_its_period_with_no_clock_source_installed() {
 
     // Three periods of wall time. The counter bump is what makes this
     // deterministic in BOTH shapes: with no port linked it is the wall clock,
-    // and with one linked it is a no-op beside the real 120 ms slept.
+    // and with one linked it is a no-op beside the port's own clock.
     for _ in 0..3 {
         Clock::update_steady_time_ms(120);
-        let _ = elapse_then_spin_once(&mut executor, 1);
+        let _ = ros_timer_no_source_clock::elapse_then_spin_once(&mut executor, 1);
     }
 
     assert_eq!(
@@ -3517,7 +3573,7 @@ fn ros_timer_fires_on_its_period_with_no_clock_source_installed() {
     // from a `Steady` timer.
     let before = ticks.load(Ordering::SeqCst);
     for _ in 0..3 {
-        let _ = elapse_then_spin_once(&mut executor, 120);
+        let _ = ros_timer_no_source_clock::elapse_then_spin_once(&mut executor, 120);
     }
     assert_eq!(
         ticks.load(Ordering::SeqCst),
@@ -4936,11 +4992,13 @@ fn an_exhausted_arena_decodes_to_the_knob_an_operator_must_set() {
     );
 }
 
+private_test_clock!(timer_repeats_clock);
+
 #[test]
-#[cfg(feature = "std")] // asserts on real elapsed time, not a counter
 fn test_timer_repeats() {
+    timer_repeats_clock::claim_at_us(1_000_000);
     let session = MockSession::new();
-    let mut executor: Executor = executor_with_clock(session);
+    let mut executor: Executor = executor_with_clock_fn(session, timer_repeats_clock::now_us);
 
     let count = alloc::sync::Arc::new(portable_atomic::AtomicUsize::new(0));
     let count2 = count.clone();
@@ -4951,9 +5009,9 @@ fn test_timer_repeats() {
         .unwrap();
 
     // Fire 3 times
-    let _ = elapse_then_spin_once(&mut executor, 100);
-    let _ = elapse_then_spin_once(&mut executor, 100);
-    let _ = elapse_then_spin_once(&mut executor, 100);
+    let _ = timer_repeats_clock::elapse_then_spin_once(&mut executor, 100);
+    let _ = timer_repeats_clock::elapse_then_spin_once(&mut executor, 100);
+    let _ = timer_repeats_clock::elapse_then_spin_once(&mut executor, 100);
     assert_eq!(count.load(portable_atomic::Ordering::SeqCst), 3);
 }
 
@@ -5032,6 +5090,8 @@ fn timer_readiness_and_elapsed_agree_with_the_dispatcher() {
     assert_eq!(executor.timer_is_ready(not_a_timer), None);
 }
 
+private_test_clock!(time_until_next_clock);
+
 /// phase-417 G6 — `timer_time_until_next_call_ns` is SIGNED, and the sign is
 /// the answer.
 ///
@@ -5043,15 +5103,18 @@ fn timer_readiness_and_elapsed_agree_with_the_dispatcher() {
 /// unsigned made lateness read as `0`, which is also what "fires now" reads as.
 ///
 /// Driven through the executor rather than asserted on a free function,
-/// because that is what both wrappers actually call. The bounds are bounds for
-/// the reason the test above gives — `spin_once` credits the real wall-clock
-/// cost of the spin on top of the injected delta — and the LOWER bound is the
-/// assertion, since an upper-bound-only check passes a counter that never
-/// advanced.
+/// because that is what both wrappers actually call.
+///
+/// Issue 1950 — on a PRIVATE clock, so every reading is an equality. On the
+/// shared wall clock the "60 ms remain" check had to be a range, and its floor
+/// was the one load moves toward: `spin_once` credited the spin's real cost on
+/// top of the 40 ms slept, so a loaded gate read 48.9 ms. An equality is both
+/// bounds at once, so nothing that never advanced can pass it either.
 #[test]
 fn time_until_next_call_goes_negative_once_a_timer_is_overdue() {
+    time_until_next_clock::claim_at_us(1_000_000);
     let session = MockSession::new();
-    let mut executor: Executor = executor_with_clock(session);
+    let mut executor: Executor = executor_with_clock_fn(session, time_until_next_clock::now_us);
 
     // A one-shot, so the fire does not rewind `elapsed_us` and the overdue
     // reading survives to be asserted.
@@ -5066,11 +5129,11 @@ fn time_until_next_call_goes_negative_once_a_timer_is_overdue() {
         Some(100_000_000)
     );
 
-    let _ = elapse_then_spin_once(&mut executor, 40);
+    let _ = time_until_next_clock::elapse_then_spin_once(&mut executor, 40);
     let remaining = executor.timer_time_until_next_call_ns(id).unwrap();
-    assert!(
-        (50_000_000..=60_000_000).contains(&remaining),
-        "40ms of a 100ms period gone, so ~60ms remain: {remaining}ns"
+    assert_eq!(
+        remaining, 60_000_000,
+        "40ms of a 100ms period gone, so 60ms remain"
     );
 
     // OVERDUE — on a ONE-SHOT that has already fired.
@@ -5091,28 +5154,27 @@ fn time_until_next_call_goes_negative_once_a_timer_is_overdue() {
     let oneshot = executor
         .register_timer_oneshot(TimerDuration::from_millis(100), || {})
         .unwrap();
-    let result = elapse_then_spin_once(&mut executor, 150);
+    let result = time_until_next_clock::elapse_then_spin_once(&mut executor, 150);
     assert!(
         result.timers_fired >= 1,
         "the one-shot must have fired (the repeating timer above fires too)"
     );
-    let _ = elapse_then_spin_once(&mut executor, 200);
+    let _ = time_until_next_clock::elapse_then_spin_once(&mut executor, 200);
     let overdue = executor.timer_time_until_next_call_ns(oneshot).unwrap();
     assert!(
         overdue < 0,
         "a fired one-shot's elapsed count keeps climbing, so the remaining \
          time must be NEGATIVE, got {overdue}ns"
     );
-    // The MAGNITUDE is a lower bound, not an equality: the fire consumed one
-    // period and the accounting stopped there, so what remains is the
-    // overshoot of the step that fired it (measured ~50ms of the 150ms step,
-    // and the later 200ms step adds nothing because nothing dispatches a
-    // fired one-shot). The assertion that matters is the SIGN; the bound is
-    // here so a value that merely rounds below zero cannot pass.
-    assert!(
-        overdue <= -40_000_000,
-        "the overshoot of the firing step must survive as the overdue amount: \
-         {overdue}ns"
+    // The MAGNITUDE is exact: the fire consumed one period and the
+    // accounting stopped there, so what remains is the overshoot of the step
+    // that fired it (50ms of the 150ms step), and the later 200ms step adds
+    // nothing because nothing dispatches a fired one-shot. The assertion that
+    // matters is the SIGN; the value is here so a reading that merely rounds
+    // below zero cannot pass.
+    assert_eq!(
+        overdue, -50_000_000,
+        "the overshoot of the firing step must survive as the overdue amount"
     );
     assert_eq!(
         executor.timer_is_ready(oneshot),
@@ -5210,10 +5272,13 @@ fn exchanging_a_timers_period_changes_the_cadence_without_rewinding_it() {
     assert_eq!(executor.exchange_timer_period_us(not_a_timer, 1_000), None);
 }
 
+private_test_clock!(oneshot_fires_once_clock);
+
 #[test]
 fn test_timer_oneshot_fires_once() {
+    oneshot_fires_once_clock::claim_at_us(1_000_000);
     let session = MockSession::new();
-    let mut executor: Executor = executor_with_clock(session);
+    let mut executor: Executor = executor_with_clock_fn(session, oneshot_fires_once_clock::now_us);
 
     let count = alloc::sync::Arc::new(portable_atomic::AtomicUsize::new(0));
     let count2 = count.clone();
@@ -5224,39 +5289,47 @@ fn test_timer_oneshot_fires_once() {
         .unwrap();
 
     // First spin fires
-    let result = elapse_then_spin_once(&mut executor, 60);
+    let result = oneshot_fires_once_clock::elapse_then_spin_once(&mut executor, 60);
     assert_eq!(result.timers_fired, 1);
     assert_eq!(count.load(portable_atomic::Ordering::SeqCst), 1);
 
     // Second spin should NOT fire again
-    let result = elapse_then_spin_once(&mut executor, 60);
+    let result = oneshot_fires_once_clock::elapse_then_spin_once(&mut executor, 60);
     assert_eq!(result.timers_fired, 0);
     assert_eq!(count.load(portable_atomic::Ordering::SeqCst), 1);
 }
 
+private_test_clock!(zero_delta_clock);
+
 #[test]
 fn test_timer_does_not_fire_at_zero_delta() {
+    zero_delta_clock::claim_at_us(1_000_000);
     let session = MockSession::new();
-    let mut executor: Executor = executor_with_clock(session);
+    let mut executor: Executor = executor_with_clock_fn(session, zero_delta_clock::now_us);
 
     let count = alloc::sync::Arc::new(portable_atomic::AtomicUsize::new(0));
     let count2 = count.clone();
-    executor
+    let id = executor
         .register_timer(TimerDuration::from_millis(100), move || {
             count2.fetch_add(1, portable_atomic::Ordering::SeqCst);
         })
         .unwrap();
 
-    // Zero delta should never fire
+    // Zero delta should never fire. On a private clock the delta IS zero; on
+    // the shared wall clock it was "however long registration took", which a
+    // descheduled host stretched past the period (issue 1944's sweep).
     let result = executor.spin_once(core::time::Duration::from_millis(0));
     assert_eq!(result.timers_fired, 0);
+    assert_eq!(executor.timer_elapsed_us(id), Some(0), "no time passed");
 }
 
+private_test_clock!(timer_with_subs_clock);
+
 #[test]
-#[cfg(feature = "std")] // asserts on real elapsed time, not a counter
 fn test_timer_with_subscriptions() {
+    timer_with_subs_clock::claim_at_us(1_000_000);
     let session = MockSession::new();
-    let mut executor: Executor = executor_with_clock(session);
+    let mut executor: Executor = executor_with_clock_fn(session, timer_with_subs_clock::now_us);
 
     let timer_count = alloc::sync::Arc::new(portable_atomic::AtomicUsize::new(0));
     let timer_count2 = timer_count.clone();
@@ -5285,7 +5358,7 @@ fn test_timer_with_subscriptions() {
     let arena_ptr = executor.arena.as_ptr() as *const u8;
     unsafe { &*(arena_ptr.add(meta1.offset) as *const MockSubscriber) }.load(data, len);
 
-    let result = elapse_then_spin_once(&mut executor, 100);
+    let result = timer_with_subs_clock::elapse_then_spin_once(&mut executor, 100);
     assert_eq!(result.timers_fired, 1);
     assert_eq!(result.subscriptions_processed, 1);
     assert_eq!(timer_count.load(portable_atomic::Ordering::SeqCst), 1);
@@ -5863,21 +5936,55 @@ fn test_spin_timeout() {
     let start = std::time::Instant::now();
     let result = executor.spin(SpinOptions::new().timeout(core::time::Duration::from_millis(50)));
     assert!(result.is_ok());
-    // Should exit within a reasonable time after 50ms timeout
-    assert!(start.elapsed() < std::time::Duration::from_secs(2));
+    let elapsed = start.elapsed();
+    // The subject IS the wall-clock wait, so this one stays on real time. A
+    // LOWER bound too (issue 1944's sweep): an upper-bound-only check passes a
+    // spin that returned without waiting at all. Load only lengthens the wait;
+    // the 2 s ceiling is 40x the timeout.
+    //
+    // The floor is 50 ms less ONE microsecond, and that microsecond is the
+    // executor's clock granule, not slack: `test_clock_us` truncates to whole
+    // µs, so 50_000 µs between two truncated reads proves only > 49_999 µs of
+    // real time between them. Measured: a `>= 50 ms` floor failed 8 of 20
+    // parallel runs at 49.9993..49.9999 ms.
+    assert!(
+        elapsed >= std::time::Duration::from_micros(49_999),
+        "spin returned after {elapsed:?}, before its 50ms timeout"
+    );
+    assert!(elapsed < std::time::Duration::from_secs(2));
 }
 
+private_test_clock!(one_period_timed_clock);
+
+/// `spin_one_period_timed` reports an overrun from the executor's OWN clock.
+///
+/// Issue 1944 — on a private clock. On the wall clock "the mock returns
+/// instantly, so no overrun" was an upper bound on the spin's real cost: a
+/// host that descheduled the test for 50 ms reported an overrun that was true
+/// of the host and not of the executor. Here a spin costs what its work
+/// advances the clock by, so both directions are asserted exactly.
 #[test]
-#[cfg(feature = "std")] // sleeps or reads wall time
 fn test_spin_one_period_timed_no_overrun() {
+    one_period_timed_clock::claim_at_us(1_000_000);
     let session = MockSession::new();
-    let mut executor: Executor = executor_with_clock(session);
+    let mut executor: Executor = executor_with_clock_fn(session, one_period_timed_clock::now_us);
 
     let period = std::time::Duration::from_millis(50);
     let result = executor.spin_one_period_timed(period);
-    // Mock session returns instantly, so no overrun
+    // No work, and no clock time spent: no overrun.
     assert!(!result.overrun);
+    assert_eq!(result.elapsed, core::time::Duration::ZERO);
     assert_eq!(result.work.total(), 0);
+
+    // A callback that costs 60 ms of a 50 ms period IS an overrun, measured
+    // as exactly that cost.
+    let (_id, guard) = executor
+        .register_guard_condition(|| one_period_timed_clock::advance_ms(60))
+        .expect("register_guard_condition");
+    guard.trigger();
+    let result = executor.spin_one_period_timed(period);
+    assert!(result.overrun, "60 ms of work in a 50 ms period overruns");
+    assert_eq!(result.elapsed, core::time::Duration::from_millis(60));
 }
 
 #[test]
@@ -5979,23 +6086,30 @@ fn test_guard_handle_send_across_thread() {
     // test runs with the default feature set.
 }
 
+/// Pre-arming wake_flag must not leave spin_once blocked in `drive_io` for
+/// the caller's 200 ms tick.
+///
+/// Issue 1944 — asserted on what the executor ASKED the transport for, not on
+/// how long the call took. The old `elapsed < 50 ms` timed a mock whose
+/// `drive_io` returns at once whatever it is asked, so it could not fail on
+/// the executor and could only fail on a host that descheduled the test.
+///
+/// In this build shape (`std`, mock session, no `rmw-cffi`) the primary drive
+/// is non-blocking by construction (`spin.rs`'s std arm), so this pins that
+/// arm. The wake-collapse arm proper is `rmw-cffi`-only and is exercised end
+/// to end by `nros-c`'s `tests/run/node_guard_condition.c`.
 #[test]
-#[cfg(feature = "std")] // sleeps or reads wall time
+#[cfg(feature = "std")] // the std arm of the primary drive is what this pins
 fn test_wake_short_circuits_drive_timeout() {
-    // Pre-arming wake_flag should make spin_once skip its blocking
-    // wait on drive_io (timeout collapses to 0) and return promptly,
-    // even when the caller asked for a 200ms tick.
     let session = MockSession::new();
     let mut executor: Executor = executor_with_clock(session);
 
     executor.wake();
-
-    let start = std::time::Instant::now();
     let _ = executor.spin_once(core::time::Duration::from_millis(200));
-    let elapsed = start.elapsed();
-    assert!(
-        elapsed < core::time::Duration::from_millis(50),
-        "wake_flag set → spin_once must not wait 200ms; elapsed = {elapsed:?}",
+    assert_eq!(
+        executor.session().last_drive_timeout_ms,
+        Some(0),
+        "wake_flag set → spin_once must not hand the transport the 200ms tick"
     );
 }
 
@@ -7163,11 +7277,13 @@ fn test_let_semantics_raw_subscription() {
 // Phase 47: Trigger::All requires all non-timer handles
 // ====================================================================
 
+private_test_clock!(trigger_all_mixed_clock);
+
 #[test]
-#[cfg(feature = "std")] // asserts on real elapsed time, not a counter
 fn test_trigger_all_with_mixed_handles() {
+    trigger_all_mixed_clock::claim_at_us(1_000_000);
     let session = MockSession::new();
-    let mut executor: Executor = executor_with_clock(session);
+    let mut executor: Executor = executor_with_clock_fn(session, trigger_all_mixed_clock::now_us);
 
     // Add a timer and a subscription
     executor
@@ -7195,7 +7311,7 @@ fn test_trigger_all_with_mixed_handles() {
     let arena_ptr = executor.arena.as_ptr() as *const u8;
     unsafe { &*(arena_ptr.add(meta1.offset) as *const MockSubscriber) }.load(data, len);
 
-    let result = elapse_then_spin_once(&mut executor, 100);
+    let result = trigger_all_mixed_clock::elapse_then_spin_once(&mut executor, 100);
     assert_eq!(result.subscriptions_processed, 1);
     assert_eq!(result.timers_fired, 1);
 }
@@ -7354,15 +7470,17 @@ fn test_trigger_anyof_empty_set_never_fires() {
 // Phase 49: Timer fires even when trigger fails
 // ====================================================================
 
+private_test_clock!(trigger_fails_delta_clock);
+
 #[test]
 // Needs time to advance INDEPENDENTLY of how often it is read: one waits
 // out RATE_CHECK_INTERVAL_US (5 s), the other a timer period. The
 // alloc-only clock is a per-read counter, so time only moves when someone
 // looks, and neither window can close.
-#[cfg(feature = "std")]
 fn test_timer_delta_accumulates_when_trigger_fails() {
+    trigger_fails_delta_clock::claim_at_us(1_000_000);
     let session = MockSession::new();
-    let mut executor: Executor = executor_with_clock(session);
+    let mut executor: Executor = executor_with_clock_fn(session, trigger_fails_delta_clock::now_us);
 
     let count = alloc::sync::Arc::new(portable_atomic::AtomicUsize::new(0));
     let count2 = count.clone();
@@ -7388,10 +7506,10 @@ fn test_timer_delta_accumulates_when_trigger_fails() {
     // When the timer fires during the trigger-failed path, its callback
     // IS invoked (timers always fire regardless of trigger), but the
     // SpinOnceResult is not propagated.
-    let _result = elapse_then_spin_once(&mut executor, 50); // elapsed=50, not ready
+    let _result = trigger_fails_delta_clock::elapse_then_spin_once(&mut executor, 50); // elapsed=50, not ready
     assert_eq!(count.load(portable_atomic::Ordering::SeqCst), 0);
 
-    let _result = elapse_then_spin_once(&mut executor, 60); // elapsed=110, fires!
+    let _result = trigger_fails_delta_clock::elapse_then_spin_once(&mut executor, 60); // elapsed=110, fires!
     // Timer callback fired even though trigger didn't pass
     assert_eq!(count.load(portable_atomic::Ordering::SeqCst), 1);
 }
@@ -7862,6 +7980,9 @@ fn test_promise_try_recv_returns_none_then_some() {
     assert_eq!(reply.sum, 99);
 }
 
+#[cfg(feature = "alloc")]
+private_test_clock!(no_timeout_credit_clock);
+
 // ====================================================================
 // Wall-clock-accurate timer accumulation regression test (Phase 100
 // follow-up: 232 Hz → 40 Hz fix).
@@ -7874,13 +7995,19 @@ fn test_promise_try_recv_returns_none_then_some() {
 // elapsed. Under sustained traffic that broke a 30 Hz control loop into
 // >200 Hz overshoot.
 //
-// The fix: measure real elapsed via `Instant::now()` and carry the
-// sub-ms remainder across calls. This test asserts a 50 ms timer does
-// NOT fire after a single 1 s `spin_once` against a no-op session.
+// The fix: measure the clock's delta and carry the sub-ms remainder across
+// calls. This test asserts a 50 ms timer does NOT fire after a single 1 s
+// `spin_once` against a no-op session.
+//
+// Issue 1944 — on a PRIVATE clock that does not move, so the right answer is
+// exactly zero fires. On the wall clock the bound was derived from a measured
+// elapsed that began at `start`, while the executor's delta began at its
+// construction: a host that descheduled the test between the two for over
+// 100 ms fired the timer and failed it, with nothing wrong in the executor.
 #[test]
-#[cfg(feature = "std")] // sleeps or reads wall time
 #[cfg(feature = "alloc")]
 fn test_spin_once_does_not_credit_timeout_to_timer_delta() {
+    no_timeout_credit_clock::claim_at_us(1_000_000);
     use core::{
         sync::atomic::{AtomicU32, Ordering},
         time::Duration,
@@ -7889,7 +8016,7 @@ fn test_spin_once_does_not_credit_timeout_to_timer_delta() {
     FIRES.store(0, Ordering::SeqCst);
 
     let session = MockSession::new();
-    let mut executor: Executor = executor_with_clock(session);
+    let mut executor: Executor = executor_with_clock_fn(session, no_timeout_credit_clock::now_us);
 
     // 50 ms periodic timer.
     let _timer = executor
@@ -7898,23 +8025,24 @@ fn test_spin_once_does_not_credit_timeout_to_timer_delta() {
         })
         .unwrap();
 
-    // Ask for a 1 s spin. MockSession::drive_io returns instantly, so
-    // real elapsed is ~0 ms. With the bug the timer would fire ~20 times
-    // (1000 ms / 50 ms). Without the bug, 0 fires.
-    let start = std::time::Instant::now();
+    // Ask for a 1 s spin. MockSession::drive_io returns instantly and the
+    // clock does not move, so no time elapsed. With the bug the timer would
+    // fire ~20 times (1000 ms / 50 ms). Without the bug, 0 fires.
     executor.spin_once(Duration::from_millis(1000));
-    let real_elapsed_ms = start.elapsed().as_millis() as u64;
+    assert_eq!(
+        FIRES.load(Ordering::SeqCst),
+        0,
+        "timer fired with no clock time elapsed. The pre-fix bug credited the \
+         requested timeout (1000 ms) to the timer delta."
+    );
 
-    let fires = FIRES.load(Ordering::SeqCst);
-
-    // Expected fires = real_elapsed / 50 ms. Allow off-by-one for the
-    // residual carry. Pre-fix this would be ~20 regardless of elapsed.
-    let expected_max = (real_elapsed_ms / 50 + 1) as u32;
-    assert!(
-        fires <= expected_max,
-        "timer over-fired: got {fires} fires after only {real_elapsed_ms} ms wall-clock \
-         (expected ≤ {expected_max}). The pre-fix bug credited the requested \
-         timeout (1000 ms) to the timer delta.",
+    // The positive control: the SAME timer, once the clock really moves one
+    // period, fires once — so the zero above is not a timer that never runs.
+    let _ = no_timeout_credit_clock::elapse_then_spin_once(&mut executor, 50);
+    assert_eq!(
+        FIRES.load(Ordering::SeqCst),
+        1,
+        "one period elapsed, one fire"
     );
 }
 
@@ -9213,15 +9341,19 @@ fn test_callback_group_unmapped_group_falls_back_to_node_default() {
 // RFC-0052 / phase-296 W3b.5 — deadline-miss actions
 // ====================================================================
 
+#[cfg(feature = "std")]
+private_test_clock!(deadline_skip_clock);
+
 /// `DeadlineAction::Skip`: a callback overrunning its SC deadline masks
 /// the SAME SC's remaining callbacks for the rest of that spin cycle,
 /// and the miss lands on the violation drain.
 #[test]
-#[cfg(feature = "std")] // sleeps or reads wall time
+#[cfg(feature = "std")] // std::sync::Mutex has no no_std equivalent
 fn deadline_skip_masks_remaining_same_sc_callbacks() {
+    deadline_skip_clock::claim_at_us(1_000_000);
     use crate::executor::sched_context::{DeadlineAction, OptUs, SchedContext};
     let session = MockSession::new();
-    let mut executor: Executor = executor_with_clock(session);
+    let mut executor: Executor = executor_with_clock_fn(session, deadline_skip_clock::now_us);
 
     let fired = alloc::sync::Arc::new(std::sync::Mutex::new(alloc::vec::Vec::<i32>::new()));
     let f_slow = fired.clone();
@@ -9232,7 +9364,7 @@ fn deadline_skip_masks_remaining_same_sc_callbacks() {
         .node_mut(nid)
         .create_service::<TestService, _>("/slow", move |req: &TestServiceRequest| {
             f_slow.lock().unwrap().push(req.a);
-            std::thread::sleep(core::time::Duration::from_millis(5));
+            deadline_skip_clock::advance_ms(5);
             TestServiceReply { sum: req.a }
         })
         .unwrap();
@@ -9288,13 +9420,17 @@ fn deadline_skip_masks_remaining_same_sc_callbacks() {
     );
 }
 
+#[cfg(feature = "std")]
+private_test_clock!(deadline_warn_clock);
+
 /// `DeadlineAction::Warn`: reports the miss but never masks siblings.
 #[test]
-#[cfg(feature = "std")] // sleeps or reads wall time
+#[cfg(feature = "std")] // std::sync::Mutex has no no_std equivalent
 fn deadline_warn_reports_without_skipping() {
+    deadline_warn_clock::claim_at_us(1_000_000);
     use crate::executor::sched_context::{DeadlineAction, OptUs, SchedContext};
     let session = MockSession::new();
-    let mut executor: Executor = executor_with_clock(session);
+    let mut executor: Executor = executor_with_clock_fn(session, deadline_warn_clock::now_us);
 
     let fired = alloc::sync::Arc::new(std::sync::Mutex::new(alloc::vec::Vec::<i32>::new()));
     let f_slow = fired.clone();
@@ -9305,7 +9441,7 @@ fn deadline_warn_reports_without_skipping() {
         .node_mut(nid)
         .create_service::<TestService, _>("/slow", move |req: &TestServiceRequest| {
             f_slow.lock().unwrap().push(req.a);
-            std::thread::sleep(core::time::Duration::from_millis(5));
+            deadline_warn_clock::advance_ms(5);
             TestServiceReply { sum: req.a }
         })
         .unwrap();
@@ -9368,10 +9504,6 @@ fn a_stalled_timer_reports_a_timer_overrun_violation() {
     // the quiet step below sleeps exactly one period, so a preemption under a
     // parallel gate drops a period and the "no repeat" check reads a new stall.
     stalled_timer_clock::claim_at_us(1_000_000);
-    fn elapse_then_spin_once(executor: &mut Executor, ms: u64) -> super::types::SpinOnceResult {
-        stalled_timer_clock::set_us(stalled_timer_clock::now_us() + ms * 1_000);
-        executor.spin_once(core::time::Duration::from_millis(0))
-    }
     let session = MockSession::new();
     let mut executor: Executor = executor_with_clock_fn(session, stalled_timer_clock::now_us);
     let fires = alloc::sync::Arc::new(std::sync::Mutex::new(0u32));
@@ -9383,7 +9515,7 @@ fn a_stalled_timer_reports_a_timer_overrun_violation() {
         .unwrap();
 
     // A stall worth ~12 periods: one activation, the rest dropped.
-    let _ = elapse_then_spin_once(&mut executor, 120);
+    let _ = stalled_timer_clock::elapse_then_spin_once(&mut executor, 120);
     assert_eq!(*fires.lock().unwrap(), 1, "Skip coalesces the backlog");
     let overruns = executor.timer_overruns(id).unwrap();
     assert!(overruns >= 10, "dropped periods counted: {overruns}");
@@ -9402,7 +9534,7 @@ fn a_stalled_timer_reports_a_timer_overrun_violation() {
 
     // A second check with no new stall must stay silent — the rule
     // reports newly dropped activations, not the running total.
-    let _ = elapse_then_spin_once(&mut executor, 10);
+    let _ = stalled_timer_clock::elapse_then_spin_once(&mut executor, 10);
     let mut again = alloc::vec::Vec::new();
     executor.drain_violations(|v| again.push(v.rule));
     assert!(
@@ -9410,6 +9542,9 @@ fn a_stalled_timer_reports_a_timer_overrun_violation() {
         "no repeat without a new drop: {again:?}"
     );
 }
+
+#[cfg(feature = "alloc")]
+private_test_clock!(violation_logged_clock);
 
 /// Issue #514 — a detected violation must reach a SINK, not just a ring.
 ///
@@ -9421,20 +9556,19 @@ fn a_stalled_timer_reports_a_timer_overrun_violation() {
 /// is unaffected by the default.
 #[cfg(feature = "alloc")]
 #[test]
-// Needs time to advance INDEPENDENTLY of how often it is read: one waits
-// out RATE_CHECK_INTERVAL_US (5 s), the other a timer period. The
-// alloc-only clock is a per-read counter, so time only moves when someone
-// looks, and neither window can close.
-#[cfg(feature = "std")]
+// Needs time to advance INDEPENDENTLY of how often it is read, which the
+// alloc-only shared clock (a per-read counter) cannot do. It ran on `std`
+// only for that reason; on a private clock (issue 1944) it runs on both.
 fn a_violation_is_logged_and_still_drainable() {
+    violation_logged_clock::claim_at_us(1_000_000);
     let session = MockSession::new();
-    let mut executor: Executor = executor_with_clock(session);
+    let mut executor: Executor = executor_with_clock_fn(session, violation_logged_clock::now_us);
     executor
         .register_timer(TimerDuration::from_millis(10), || {})
         .unwrap();
 
     // Stall past several periods so the overrun rule fires.
-    let _ = elapse_then_spin_once(&mut executor, 120);
+    let _ = violation_logged_clock::elapse_then_spin_once(&mut executor, 120);
 
     // Reporting is on by default...
     let mut drained = alloc::vec::Vec::new();
@@ -9447,7 +9581,7 @@ fn a_violation_is_logged_and_still_drainable() {
 
     // ...and can be turned off by an application that reports its own way.
     executor.set_report_violations(false);
-    let _ = elapse_then_spin_once(&mut executor, 120);
+    let _ = violation_logged_clock::elapse_then_spin_once(&mut executor, 120);
     let mut again = alloc::vec::Vec::new();
     executor.drain_violations(|v| again.push(v.rule));
     assert!(
@@ -9456,16 +9590,19 @@ fn a_violation_is_logged_and_still_drainable() {
     );
 }
 
+#[cfg(feature = "alloc")]
+private_test_clock!(violation_ring_clock);
+
 /// Issue #514 — faults produced faster than they are reported must be
 /// COUNTED, not silently lost. The ring holds `MAX_VIOLATIONS`; an
 /// application that never drains would otherwise report a stale prefix
 /// of its faults and no indication that a prefix is all it is.
 #[cfg(feature = "alloc")]
 #[test]
-#[cfg(feature = "std")] // asserts on real elapsed time, not a counter
 fn violations_beyond_the_ring_are_counted() {
+    violation_ring_clock::claim_at_us(1_000_000);
     let session = MockSession::new();
-    let mut executor: Executor = executor_with_clock(session);
+    let mut executor: Executor = executor_with_clock_fn(session, violation_ring_clock::now_us);
     // ONE timer, stalled repeatedly — not `MAX_VIOLATIONS + 4` timers.
     //
     // This test asked for 12 callback slots against a `MAX_CBS` that has
@@ -9484,12 +9621,14 @@ fn violations_beyond_the_ring_are_counted() {
         .register_timer(TimerDuration::from_millis(10), || {})
         .unwrap();
     for _ in 0..(super::monitor::MAX_VIOLATIONS + 4) {
-        let _ = elapse_then_spin_once(&mut executor, 120);
+        let _ = violation_ring_clock::elapse_then_spin_once(&mut executor, 120);
     }
-    assert!(
-        executor.violations_dropped() >= 1,
-        "overflow counted: dropped={}",
-        executor.violations_dropped()
+    // Exact: every 120 ms stall of the 10 ms timer is one verdict, so the
+    // spins past the ring's capacity are the drops, one each.
+    assert_eq!(
+        executor.violations_dropped(),
+        4,
+        "overflow counted: the 4 verdicts beyond MAX_VIOLATIONS"
     );
 }
 
@@ -10686,29 +10825,37 @@ fn an_undeclared_cadence_falls_back_to_the_timeout() {
     );
 }
 
+private_test_clock!(tier_slower_cadence_clock);
+
 /// The bug this fixes, end to end: a 1 kHz tier that actually wakes every
 /// 10 ms is nine periods late every time, and against the old 10 ms yardstick
 /// it looked perfectly on time.
+///
+/// Issue 1944 — the 10 ms between wakes is an advance of a private clock, so
+/// every interval is exactly 10 ms and the lateness exactly 9 ms. It was a
+/// real sleep, which only ever made the numbers larger; the bounds held, but
+/// as "at least" where they can now be "exactly".
 #[test]
-#[cfg(feature = "std")] // sleeps to make the wake genuinely late
 fn a_tier_slower_than_its_declared_cadence_is_late() {
-    let mut executor: Executor = executor_with_clock(MockSession::new());
+    tier_slower_cadence_clock::claim_at_us(1_000_000);
+    let mut executor: Executor =
+        executor_with_clock_fn(MockSession::new(), tier_slower_cadence_clock::now_us);
     executor.set_spin_nominal_us(1_000);
     for _ in 0..3 {
         executor.spin_once(core::time::Duration::ZERO);
-        std::thread::sleep(std::time::Duration::from_millis(10));
+        tier_slower_cadence_clock::advance_ms(10);
     }
     executor.spin_once(core::time::Duration::ZERO);
 
     let (max_us, late, total) = executor.release_jitter();
-    assert!(total >= 3, "four spins must count at least three intervals");
-    assert!(
-        late >= 3,
-        "every 10 ms interval overruns a declared 1 ms cadence, got {late} late of {total}"
+    assert_eq!(total, 3, "four spins are three intervals");
+    assert_eq!(
+        late, 3,
+        "every 10 ms interval overruns a declared 1 ms cadence"
     );
-    assert!(
-        max_us >= 5_000,
-        "a 10 ms wake against a 1 ms cadence is ~9 ms late, got {max_us} us"
+    assert_eq!(
+        max_us, 9_000,
+        "a 10 ms wake against a 1 ms cadence is 9 ms late"
     );
 }
 
@@ -10960,6 +11107,9 @@ fn release_jitter_is_judged_against_the_grid() {
     assert_eq!(ex.skipped_releases(), 1);
 }
 
+#[cfg(feature = "sim-time")]
+private_test_clock!(node_ros_timer_clock);
+
 /// phase-430 W4 — the clock axis reaches the NODE-LEVEL surface, not just the
 /// executor's `register_timer_on_clock`.
 ///
@@ -10975,6 +11125,7 @@ fn release_jitter_is_judged_against_the_grid() {
 #[cfg(feature = "sim-time")]
 #[test]
 fn a_node_level_ros_time_timer_follows_the_simulated_clock() {
+    node_ros_timer_clock::claim_at_us(1_000_000);
     let _sim_time = SimTimeGuard::acquire();
     use crate::executor::TimerClockSource;
     use nros_core::clock::Clock;
@@ -10982,7 +11133,8 @@ fn a_node_level_ros_time_timer_follows_the_simulated_clock() {
 
     const MS: i64 = 1_000_000;
 
-    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let mut executor: Executor =
+        executor_with_clock_fn(MockSession::new(), node_ros_timer_clock::now_us);
     let nid = executor.node_builder("node_level_clock").build().unwrap();
 
     Clock::set_ros_time_override(10_000 * MS);
@@ -11024,7 +11176,7 @@ fn a_node_level_ros_time_timer_follows_the_simulated_clock() {
 
     // 1. STOPPED. Real time passes, simulated time does not.
     for _ in 0..3 {
-        let _ = elapse_then_spin_once(&mut executor, 120);
+        let _ = node_ros_timer_clock::elapse_then_spin_once(&mut executor, 120);
     }
     assert_eq!(
         ros_ticks.load(Ordering::SeqCst),
@@ -11038,8 +11190,11 @@ fn a_node_level_ros_time_timer_follows_the_simulated_clock() {
         "the callback-group form must take the clock too -- a group is a \
          scheduling choice, not a clock choice"
     );
-    assert!(
-        wall_ticks.load(Ordering::SeqCst) >= 3,
+    // Exact, not `>= 3`: each 120 ms step on the private clock is one fire of
+    // the 100 ms wall timer (20, 40, 60 ms carried), and nothing else moves it.
+    assert_eq!(
+        wall_ticks.load(Ordering::SeqCst),
+        3,
         "`create_timer_in_group` is the WALL spelling and must be unaffected by the \
          stopped simulator; fired {} times",
         wall_ticks.load(Ordering::SeqCst)
@@ -11049,7 +11204,7 @@ fn a_node_level_ros_time_timer_follows_the_simulated_clock() {
     let wall_before = wall_ticks.load(Ordering::SeqCst);
     for i in 1..=4 {
         Clock::set_ros_time_override(10_000 * MS + i * 100 * MS);
-        let _ = elapse_then_spin_once(&mut executor, 10);
+        let _ = node_ros_timer_clock::elapse_then_spin_once(&mut executor, 10);
     }
     assert_eq!(
         ros_ticks.load(Ordering::SeqCst),
@@ -11062,9 +11217,12 @@ fn a_node_level_ros_time_timer_follows_the_simulated_clock() {
         4,
         "the group form follows the same clock as the plain one"
     );
-    assert!(
-        wall_ticks.load(Ordering::SeqCst) - wall_before <= 1,
-        "~40 ms of real time cannot be four activations of a 100 ms wall timer"
+    // 60 ms carried + four 10 ms steps = exactly one wall period. On the wall
+    // clock this was an UPPER bound (`<= 1`) that a descheduled host broke.
+    assert_eq!(
+        wall_ticks.load(Ordering::SeqCst) - wall_before,
+        1,
+        "40 ms of steady time cannot be four activations of a 100 ms wall timer"
     );
 }
 
@@ -12345,12 +12503,15 @@ unsafe extern "C" fn captured_timer_cb(ctx: *mut core::ffi::c_void) {
     CAPTURED_TIMER_SEEN.store(unsafe { *words.add(2) }, portable_atomic::Ordering::SeqCst);
 }
 
+private_test_clock!(capturing_timer_clock);
+
 /// The capture is the ARENA's copy: the caller's bytes are gone before the
 /// timer first fires, and the callback still reads them.
 #[test]
-#[cfg(feature = "std")] // fires on real elapsed time
 fn a_capturing_timer_dispatches_with_the_arenas_copy() {
-    let mut executor: Executor = executor_with_clock(MockSession::new());
+    capturing_timer_clock::claim_at_us(1_000_000);
+    let mut executor: Executor =
+        executor_with_clock_fn(MockSession::new(), capturing_timer_clock::now_us);
     {
         let capture: [usize; 3] = [1, 2, 0xBEEF];
         let bytes = unsafe {
@@ -12371,7 +12532,7 @@ fn a_capturing_timer_dispatches_with_the_arenas_copy() {
             .expect("register");
     }
     CAPTURED_TIMER_SEEN.store(0, portable_atomic::Ordering::SeqCst);
-    let fired = elapse_then_spin_once(&mut executor, 20).timers_fired;
+    let fired = capturing_timer_clock::elapse_then_spin_once(&mut executor, 20).timers_fired;
     assert_eq!(fired, 1);
     assert_eq!(
         CAPTURED_TIMER_SEEN.load(portable_atomic::Ordering::SeqCst),
@@ -12469,10 +12630,14 @@ unsafe extern "C" fn self_releasing_timer_drop(ctx: *mut core::ffi::c_void) {
     }
 }
 
+private_test_clock!(self_release_clock);
+
 #[test]
 fn a_callback_releasing_its_own_entry_is_deferred_until_it_returns() {
+    self_release_clock::claim_at_us(1_000_000);
     use portable_atomic::Ordering::SeqCst;
-    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let mut executor: Executor =
+        executor_with_clock_fn(MockSession::new(), self_release_clock::now_us);
     let capture: [usize; 3] = [0, 0, SELF_RELEASE_MARK];
     let bytes = unsafe {
         core::slice::from_raw_parts(
@@ -12495,7 +12660,7 @@ fn a_callback_releasing_its_own_entry_is_deferred_until_it_returns() {
     SELF_RELEASE_EXEC.store(&mut executor as *mut Executor<'static>, SeqCst);
 
     for _ in 0..3 {
-        elapse_then_spin_once(&mut executor, 5);
+        self_release_clock::elapse_then_spin_once(&mut executor, 5);
     }
     SELF_RELEASE_EXEC.store(core::ptr::null_mut(), SeqCst);
 
@@ -12871,10 +13036,6 @@ fn an_installed_violation_sink_sees_every_violation() {
     // timer period, so on the real clock a preempted step drops a period and
     // a second verdict no longer matches the running total below.
     violation_sink_clock::claim_at_us(1_000_000);
-    fn elapse_then_spin_once(executor: &mut Executor, ms: u64) -> super::types::SpinOnceResult {
-        violation_sink_clock::set_us(violation_sink_clock::now_us() + ms * 1_000);
-        executor.spin_once(core::time::Duration::from_millis(0))
-    }
     let mut executor: Executor =
         executor_with_clock_fn(MockSession::new(), violation_sink_clock::now_us);
     // The log line is not what this asserts, and the log sink is process-wide:
@@ -12887,8 +13048,8 @@ fn an_installed_violation_sink_sees_every_violation() {
     unsafe { executor.set_violation_sink(Some((sink, 0x1635usize as *mut core::ffi::c_void))) };
 
     // A stall worth ~12 periods: one overrun verdict.
-    let _ = elapse_then_spin_once(&mut executor, 120);
-    let _ = elapse_then_spin_once(&mut executor, 10);
+    let _ = violation_sink_clock::elapse_then_spin_once(&mut executor, 120);
+    let _ = violation_sink_clock::elapse_then_spin_once(&mut executor, 10);
     let overruns = executor.timer_overruns(id).unwrap();
     let seen = SEEN.lock().unwrap().clone();
     assert_eq!(
@@ -12908,8 +13069,8 @@ fn an_installed_violation_sink_sees_every_violation() {
     // Removing the sink stops the feed; the ring still fills.
     unsafe { executor.set_violation_sink(None) };
     SEEN.lock().unwrap().clear();
-    let _ = elapse_then_spin_once(&mut executor, 120);
-    let _ = elapse_then_spin_once(&mut executor, 10);
+    let _ = violation_sink_clock::elapse_then_spin_once(&mut executor, 120);
+    let _ = violation_sink_clock::elapse_then_spin_once(&mut executor, 10);
     assert!(SEEN.lock().unwrap().is_empty(), "no sink, no feed");
     let mut kept = alloc::vec::Vec::new();
     executor.drain_violations(|v| kept.push(v.rule));
@@ -14419,11 +14580,15 @@ fn i3_an_opted_in_subscription_traces_each_take_and_its_stamp() {
     set_trace_sink(None);
 }
 
+#[cfg(all(feature = "std", feature = "trace-callbacks"))]
+private_test_clock!(i3_thinned_clock);
+
 /// phase-474 I3 -- a thinned timer traces one tick in N; the default traces
 /// every tick.
 #[cfg(all(feature = "std", feature = "trace-callbacks"))]
 #[test]
 fn i3_a_thinned_timer_traces_one_tick_in_n() {
+    i3_thinned_clock::claim_at_us(1_000_000);
     use super::callback_trace::{
         MARKER_END, MARKER_START, reset_trace_settings, set_timer_trace_every, set_trace_sink,
     };
@@ -14449,7 +14614,8 @@ fn i3_a_thinned_timer_traces_one_tick_in_n() {
     static TICKS: AtomicU32 = AtomicU32::new(0);
     TICKS.store(0, Ordering::SeqCst);
 
-    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let mut executor: Executor =
+        executor_with_clock_fn(MockSession::new(), i3_thinned_clock::now_us);
     // A late tick is not what this asserts; keep the process-wide log quiet.
     executor.set_report_violations(false);
     executor
@@ -14460,7 +14626,7 @@ fn i3_a_thinned_timer_traces_one_tick_in_n() {
     let tick_until = |executor: &mut Executor, n: u32| {
         let mut spins = 0;
         while TICKS.load(Ordering::SeqCst) < n && spins < 400 {
-            let _ = elapse_then_spin_once(executor, 6);
+            let _ = i3_thinned_clock::elapse_then_spin_once(executor, 6);
             spins += 1;
         }
     };

@@ -1,12 +1,12 @@
 ---
 id: 1950
 title: "A timer's remaining-time test asserts a lower bound that load breaks, because the spin's real cost is credited on top"
-status: open
+status: resolved
 type: bug
 area: [testing, node]
 severity: low
 found: 2026-10-18
-related: [1945, 1939]
+related: [1945, 1939, 1944]
 ---
 
 ## Measured
@@ -69,3 +69,27 @@ hitting.
 Re-run the sweep keyed on what the assertion bounds, not on whether it reads a
 verdict: every real-clock test with a lower bound on a remaining or budget
 quantity. Put that sweep command in the fix's commit message.
+
+## Resolution (2026-10-19)
+
+Fixed with issue 1944, by the same change. The wall-clock
+`elapse_then_spin_once` is deleted, and this test runs on
+`time_until_next_clock`, a `private_test_clock!`. Every reading is now an
+equality:
+
+- `Some(100_000_000)` while the timer is fresh.
+- `60_000_000` after the 40 ms step, where the range was `50..=60 ms`.
+- `-50_000_000` once the one-shot is overdue, where the bound was
+  `<= -40 ms`.
+
+An equality is both bounds at once. The floor this issue asked to keep holds
+exactly, and a counter that never advanced still cannot pass.
+
+The sweep this issue asked for was keyed on what load does, not on whether a
+test reads a verdict. Every test in the binary ran under a 120 ms
+deschedule loop. The command, the result and the full list of siblings are
+in issue 1944's resolution. This test went red 38 of 40 before the fix and 0
+of 40 after. With 40 CPU hogs and 4 copies in parallel it went red 2 of 40
+in one pass and 0 of 80 in a later one: rare, but the reported shape. Under
+mutation M2 (+1 ms credited per spin), this test goes red only after the
+fix. The old range admitted 59 ms.
