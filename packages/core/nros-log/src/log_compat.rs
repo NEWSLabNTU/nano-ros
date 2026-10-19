@@ -14,6 +14,7 @@
 //! Either / both can be active. Cycles are short-circuited by the
 //! facade's process-global recursion guard.
 
+#[cfg(target_has_atomic = "ptr")]
 use core::sync::atomic::{AtomicBool, Ordering};
 
 use crate::{LogSink, Record, Severity};
@@ -48,6 +49,29 @@ pub fn log_level_to_severity(level: log::Level) -> Severity {
         log::Level::Warn => Severity::Warn,
         log::Level::Error => Severity::Error,
     }
+}
+
+/// Whether a `log` crate record passes nros-log's runtime threshold for its
+/// target: the interned logger's own level, else its ancestors', else the
+/// process default ([`Logger::default_level`](crate::Logger::default_level),
+/// `Info` unless the application moves it), under the image's compile-time
+/// ceiling.
+///
+/// The ONE answer every `log::Log` in the tree gives (issue 1949): the
+/// bridge below, and each board's console sink. `log::set_max_level` is a
+/// process-wide CEILING, not a threshold, and every sink raises it to
+/// `Trace` so that a later [`Logger::set_default_level`] can reach records
+/// that are below the default today. A sink that answered `true` here
+/// instead printed every `trace!` in every crate: a hosted image publishing
+/// at 500 Hz wrote a flushed stdout line per publish.
+///
+/// The `log` macros test only that ceiling before calling `Log::log`, never
+/// `Log::enabled`, so a sink must ask this in `log` as well.
+///
+/// [`Logger::set_default_level`]: crate::Logger::set_default_level
+#[must_use]
+pub fn admits(metadata: &log::Metadata<'_>) -> bool {
+    crate::get_logger(metadata.target()).is_enabled(log_level_to_severity(metadata.level()))
 }
 
 // =============================================================================
@@ -127,12 +151,7 @@ fn bridged_logger_name<'a>(logger: &'static crate::Logger, target: &'a str) -> &
 
 impl log::Log for LogCrateBridge {
     fn enabled(&self, metadata: &log::Metadata<'_>) -> bool {
-        let sev = log_level_to_severity(metadata.level());
-        if !crate::severity_enabled_at_compile_time(sev) {
-            return false;
-        }
-        let logger = crate::get_logger(metadata.target());
-        logger.is_enabled(sev)
+        admits(metadata)
     }
 
     fn log(&self, record: &log::Record<'_>) {
@@ -168,7 +187,13 @@ impl log::Log for LogCrateBridge {
     }
 }
 
+// `log::set_logger`/`set_max_level` exist only where the target has
+// pointer-width atomics; a CAS-less target (riscv32imc, esp32-qemu) gets the
+// `_racy` variants and calls them itself. [`admits`] needs neither, which is
+// why the board sinks on such a target can still use this module (issue 1949).
+#[cfg(target_has_atomic = "ptr")]
 static BRIDGE_INSTALLED: AtomicBool = AtomicBool::new(false);
+#[cfg(any(target_has_atomic = "ptr", test))]
 static BRIDGE: LogCrateBridge = LogCrateBridge;
 
 /// Install [`LogCrateBridge`] as the process-wide `log::Log` impl.
@@ -180,6 +205,7 @@ static BRIDGE: LogCrateBridge = LogCrateBridge;
 ///
 /// Returns `Err(log::SetLoggerError)` if the process already
 /// installed a different `log::Log` impl.
+#[cfg(target_has_atomic = "ptr")]
 pub fn install_log_crate_bridge() -> Result<(), log::SetLoggerError> {
     if BRIDGE_INSTALLED.swap(true, Ordering::SeqCst) {
         return Ok(());
@@ -242,5 +268,44 @@ mod tests {
     fn interned_logger_names_itself() {
         static OWN: Logger = Logger::new("own");
         assert_eq!(bridged_logger_name(&OWN, "something-else"), "own");
+    }
+
+    /// Issue 1949: a board sink asks the record's logger, not `true`. Uses a
+    /// logger with a STATED level, so the test never moves the process
+    /// default another test asserts on.
+    #[test]
+    fn admits_filters_on_the_target_loggers_threshold() {
+        let metadata = |target, level| log::Metadata::builder().level(level).target(target).build();
+        static SINK_1949: Logger = Logger::with_level("test-1949-sink", Severity::Info);
+        assert!(core::ptr::eq(
+            crate::register_logger(&SINK_1949),
+            &SINK_1949
+        ));
+        assert!(!admits(&metadata("test-1949-sink", log::Level::Trace)));
+        assert!(!admits(&metadata("test-1949-sink", log::Level::Debug)));
+        assert!(admits(&metadata("test-1949-sink", log::Level::Info)));
+        assert!(admits(&metadata("test-1949-sink", log::Level::Error)));
+
+        // A lowered threshold reaches records below `Info`: the reason every
+        // sink keeps `set_max_level(Trace)` as its ceiling.
+        SINK_1949.set_level(Severity::Trace);
+        assert!(admits(&metadata("test-1949-sink", log::Level::Trace)));
+    }
+
+    /// The bridge gives the same answer as the board sinks.
+    #[test]
+    fn bridge_enabled_is_admits() {
+        let metadata = |target, level| log::Metadata::builder().level(level).target(target).build();
+        use log::Log as _;
+        static BRIDGED_1949: Logger = Logger::with_level("test-1949-bridge", Severity::Warn);
+        assert!(core::ptr::eq(
+            crate::register_logger(&BRIDGED_1949),
+            &BRIDGED_1949
+        ));
+        for level in [log::Level::Trace, log::Level::Info, log::Level::Warn] {
+            let m = metadata("test-1949-bridge", level);
+            assert_eq!(BRIDGE.enabled(&m), admits(&m), "{level}");
+        }
+        assert!(!BRIDGE.enabled(&metadata("test-1949-bridge", log::Level::Info)));
     }
 }

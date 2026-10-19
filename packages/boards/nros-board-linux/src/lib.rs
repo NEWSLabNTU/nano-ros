@@ -1253,10 +1253,17 @@ fn install_stdout_log_bridge() {
 
     struct StdoutLogger;
     impl log::Log for StdoutLogger {
-        fn enabled(&self, _: &log::Metadata<'_>) -> bool {
-            true
+        // Issue 1949: nros-log's threshold for the record's target, not
+        // `true` — `set_max_level(Trace)` below is the ceiling a later
+        // `Logger::set_default_level` needs, not a filter.
+        fn enabled(&self, metadata: &log::Metadata<'_>) -> bool {
+            nros_log::log_compat::admits(metadata)
         }
         fn log(&self, record: &log::Record<'_>) {
+            // The `log` macros never call `enabled`.
+            if !nros_log::log_compat::admits(record.metadata()) {
+                return;
+            }
             // The examples bake the full human line into the message
             // (`Publishing: '...'` / `I heard: [...]`), so the message is
             // emitted verbatim — the e2e harness greps those markers with
@@ -1307,6 +1314,26 @@ mod tests {
         // Smoke: calling `init_hardware` from a unit test must not
         // panic or affect global state.
         <LinuxBoard as BoardInit>::init_hardware();
+    }
+
+    /// Issue 1949: the hosted `log` sink no longer prints every `trace!` in
+    /// every crate. The publish path's `log::trace!` is the record that wrote
+    /// a flushed stdout line per publish; at the default threshold it is
+    /// refused, while `info!` still gets through.
+    #[test]
+    fn stdout_log_bridge_filters_below_the_default_threshold() {
+        install_stdout_log_bridge();
+        let meta = |level| {
+            log::Metadata::builder()
+                .level(level)
+                .target("nros_rmw_zenoh::shim::publisher")
+                .build()
+        };
+        assert!(!log::logger().enabled(&meta(log::Level::Trace)));
+        assert!(!log::logger().enabled(&meta(log::Level::Debug)));
+        assert!(log::logger().enabled(&meta(log::Level::Info)));
+        // The ceiling stays at Trace, so lowering the threshold later works.
+        assert_eq!(log::max_level(), log::LevelFilter::Trace);
     }
 
     #[test]

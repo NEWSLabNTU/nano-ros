@@ -325,6 +325,7 @@ name = "nros-log"
 version = "0.6.0"
 dependencies = [
  "heapless",
+ "log",
  "nros-platform-config",
  "nros-zephyr-build",
  "portable-atomic",

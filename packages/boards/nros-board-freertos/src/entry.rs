@@ -119,11 +119,18 @@ static LOG_PRINT_FN: AtomicUsize = AtomicUsize::new(0);
 struct UartLogger;
 
 impl log::Log for UartLogger {
-    fn enabled(&self, _: &log::Metadata<'_>) -> bool {
-        true
+    // Issue 1949: nros-log's threshold for the record's target, not
+    // `true` — `set_max_level(Trace)` below is the ceiling a later
+    // `Logger::set_default_level` needs, not a filter.
+    fn enabled(&self, metadata: &log::Metadata<'_>) -> bool {
+        nros_log::log_compat::admits(metadata)
     }
 
     fn log(&self, record: &log::Record<'_>) {
+        // The `log` macros never call `enabled`.
+        if !nros_log::log_compat::admits(record.metadata()) {
+            return;
+        }
         let p = LOG_PRINT_FN.load(Ordering::Relaxed);
         if p != 0 {
             // SAFETY: `p` is only ever set by `install_uart_logger` to a valid
