@@ -709,6 +709,15 @@ next-stable-advisory:
 lane-health-selftest:
     @python3 scripts/ci/lane-health.py --selftest >/dev/null
 
+# issue 1629 — `just queue-timeout`'s verdict logic and the declared timeout
+# parse, offline. The live comparison needs gh and the network, so it runs in
+# nightly-report; what the fast line can hold still is that the two spellings
+# of `check_response_timeout_minutes` in `enable-merge-queue.sh` agree and that
+# a lane outgrowing the window (2026-10-02's 73-minute run against 60) FAILS.
+[private]
+queue-timeout-selftest:
+    @python3 scripts/ci/queue-timeout-agreement.py --selftest >/dev/null
+
 # issue 1158 — `run-matrix.yml`'s stage report must still describe the steps that
 # exist. The step->stage map is AUTHORED (the workflow hands `lane-stage.py` a
 # copy of its own `- name:` lines), and an authored map drifts the moment a step

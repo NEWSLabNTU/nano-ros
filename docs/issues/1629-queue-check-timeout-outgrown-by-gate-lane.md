@@ -132,3 +132,79 @@ The 05:33 attempt burned a full 73-minute gate whose green verdict arrived for a
 entry that no longer existed, and `main` stayed frozen from 04:49:21 to 07:32:19
 — **2 h 43 m** — with nothing wrong anywhere. The throughput argument in this
 issue is that figure, not the ejection count.
+
+## Progress (2026-10-19): the agreement is gated; the ruleset edit waits on an admin
+
+### The lane now, measured
+
+Completed `merge_group` runs of `gate.yml` from `gh run list`, timed from
+creation (when the queue starts waiting) to completion, over the last 300 runs:
+
+| day | runs | p50 | p90 | max |
+| --- | --- | --- | --- | --- |
+| 2026-10-13 | 34 | 16 | 19 | 19 |
+| 2026-10-14 | 75 | 13 | 15 | 25 |
+| 2026-10-15 | 68 | 14 | 16 | 17 |
+| 2026-10-16 | 38 | 14 | 16 | 27 |
+| 2026-10-17 | 17 | 24 | 27 | 28 |
+| 2026-10-18 | 68 | 26 | 31 | 31 |
+
+(minutes; the p50/p90/max columns count successful runs only.) Over the last
+50 runs, failures included, the figures are p50 27, p90 31 and max 54. The lane
+fell well inside the window after 2026-10-02 and has been climbing back since
+2026-10-17. At p90 31, 60 minutes is **1.9x**, which is already under the
+phase-396 rule of 2x. That is the trend this issue says nothing was watching.
+
+### What landed (branch `fix/phase-505-w2-provision`)
+
+- **A declared value.** `scripts/ci/enable-merge-queue.sh` is the one committed
+  spelling of the queue settings. A re-run of it with `--with-queue` would have
+  silently set the timeout back to 60. It now declares **90** in both places it
+  spells the value (the JSON it PUTs and the plan it prints).
+- **`just queue-timeout`** (`scripts/ci/queue-timeout-agreement.py`) reads the
+  live ruleset (`gh api …/rulesets/<id>`) and the last 50 completed
+  merge_group gate runs. It FAILS on any of three conditions: live differs from
+  declared, declared is less than 2x the p90, or live is less than the slowest
+  observed run. Each FAIL prints the exact ruleset command and never runs it.
+  Without `gh`, auth or the network it reports NOT VERIFIED through the
+  `nros_check_skip` ledger (fails under `NROS_CHECK_SKIP_STRICT=1`), never OK.
+- **Where it runs.** `nightly-report.yml` runs it daily as a step that writes
+  the job summary and raises a `::warning` on FAIL. It never goes red, because
+  the remedy is an admin's and not the code's. The fast line runs only
+  `check queue-timeout-selftest`, which is offline: both spellings of the
+  declared value must agree, and the selftest replays 2026-10-02's runs
+  (60 min against a 73-minute run, which must FAIL and recommend 150).
+
+Run today, it fails on exactly one count:
+
+```
+queue-timeout-agreement: declared 90, live 60; 50 merge_group gate runs p50 27 / p90 31 / max 54 min
+[FAIL] the ruleset holds check_response_timeout_minutes=60, but enable-merge-queue.sh declares 90
+```
+
+### What is left: one admin action
+
+Raise the ruleset to the declared value. A ruleset PUT replaces the whole
+`rules` array, so the command edits the live array in place:
+
+```sh
+gh api repos/NEWSLabNTU/nano-ros/rulesets/21680073 \
+  | jq '{rules: (.rules | map(if .type == "merge_queue" then .parameters.check_response_timeout_minutes = 90 else . end))}' \
+  | gh api -X PUT repos/NEWSLabNTU/nano-ros/rulesets/21680073 --input -
+```
+
+The `jq` half was checked against the live ruleset: it changes only that one
+field. The PUT was not run. If the API refuses a field of the round-tripped
+`pull_request` rule, make the same edit in the web UI under Settings → Rules →
+`main-rules` → merge queue → status check timeout. Do **not** use
+`enable-merge-queue.sh --apply --with-queue`. Its other queue values (build 4,
+merge-min 1) are older than the live ones (5, 3), so it would change more than
+the timeout.
+
+Why 90: it is 2.9x today's p90 and 1.2x the worst run this issue measured
+(73 min), so a lane back at its 2026-10-02 tail still fits. The cost is a
+slower eviction of a really wedged entry (issue 1492's case). 150 (2x of 73)
+would keep that cost for a tail that has not returned. The nightly will say
+when the lane outgrows 90.
+
+Close this when `just queue-timeout` reports OK.

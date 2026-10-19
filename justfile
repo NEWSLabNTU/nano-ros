@@ -3158,6 +3158,16 @@ pr-verdicts *ARGS:
 queue-triage *ARGS:
     @bash scripts/ci/queue-triage.sh {{ARGS}}
 
+# Is the merge queue's check timeout still ~2x the merge_group gate lane, and
+# does the ruleset hold the value `enable-merge-queue.sh` declares? (issue 1629)
+# Read-only: on a FAIL it prints the ruleset command and never runs it. Needs
+# gh + network; without them it is NOT VERIFIED, never OK. nightly-report runs it.
+#
+#   just queue-timeout         just queue-timeout --runs 100 --ratio 2.5
+[group("ci")]
+queue-timeout *ARGS:
+    @python3 scripts/ci/queue-timeout-agreement.py {{ARGS}}
+
 # Show (or apply) the merge-queue + branch-protection settings — phase-395 W7.
 # Read-only by default; `--apply` touches branch protection, which affects
 # everyone, so it is never the default. `--status` shows what is set now.
