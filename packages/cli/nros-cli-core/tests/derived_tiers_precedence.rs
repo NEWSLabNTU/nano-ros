@@ -244,6 +244,83 @@ fn a_declared_tier_with_no_placement_has_its_priority_allocated() {
     );
 }
 
+/// Issue 1967, end to end: `[tiers.ctrl] above = "transport"` written in
+/// the `system.toml` reaches the model through the pinned resolver (rlm
+/// v0.1.67's `TierDef::above`) and the derivation allocates the tier ABOVE
+/// the reserved transport band; the same tier without the key is allocated
+/// in the application pool, below it.
+///
+/// The plan is the island's (15 preemptive priorities, the zenoh read band
+/// at its default, transport `[4, 4]`), which leaves room above the band;
+/// the Kconfig-defaults projection the other cases use reserves `[0, 4]`,
+/// where nothing fits above.
+#[test]
+fn a_tier_that_names_the_transport_is_allocated_above_it() {
+    use nros_orchestration_ir::{derive::derive_tiers_in_plan, priority_plan::zephyr_plan};
+    use ros_launch_manifest_sched::ReservedBand;
+
+    let plan = zephyr_plan(15, 16, &[200, 200], "island");
+    let transport = plan.reserved["transport"];
+    let above_band = plan.slots_above_transport();
+    assert!(
+        !above_band.is_empty(),
+        "the island plan has room above the transport {transport:?}"
+    );
+
+    let all: Vec<&str> = FAST.iter().chain(SLOW.iter()).copied().collect();
+    for names_it in [true, false] {
+        let fixture = Fixture::copy(if names_it {
+            "prec-above-transport"
+        } else {
+            "prec-below-transport"
+        });
+        fixture.configure(&["main"]);
+        let head = if names_it {
+            "[tiers.ctrl]\nclass = \"real_time\"\nabove = \"transport\"\n"
+        } else {
+            "[tiers.ctrl]\nclass = \"real_time\"\n"
+        };
+        fixture.author("ctrl", &all, head);
+
+        let model = resolve_model(&fixture.bringup(), true);
+        assert_eq!(
+            model.execution.tiers["ctrl"].above,
+            names_it.then_some(ReservedBand::Transport),
+            "the key reaches the model as written"
+        );
+        let system = system_toml(&fixture);
+        let cfg = NrosConfig::from_workspace(&fixture.bake_workspace()).expect("workspace");
+        let groups = collect_callback_groups(&cfg, &system.components);
+        let derived = derive_tiers_in_plan(&model, TARGET_RTOS, &groups, &plan);
+        let prio = derived
+            .placements
+            .get("ctrl")
+            .unwrap_or_else(|| panic!("`ctrl` must get an allocated placement: {derived:?}"))
+            .priority;
+
+        if names_it {
+            assert!(
+                prio < transport.lo && above_band.contains(&prio),
+                "`above = \"transport\"` allocates the tier above the transport \
+                 {transport:?} (Zephyr: a smaller number): got {prio}, {:?}",
+                derived.degradations
+            );
+            assert!(
+                !derived.above_transport.is_empty(),
+                "the tier's leader is recorded as lifted"
+            );
+        } else {
+            assert!(
+                prio > transport.hi && plan.app.contains(prio),
+                "without the key the tier stays in the application pool {:?}, below \
+                 the transport {transport:?}: got {prio}",
+                plan.app
+            );
+            assert!(derived.above_transport.is_empty(), "nothing is lifted");
+        }
+    }
+}
+
 /// The negative control for rule 2, and the measurement of what the
 /// table-shaped guard did with this exact input: with no allocation,
 /// `[tiers.ctrl]` has no `[tiers.ctrl.<rtos>]` and `resolve_tiers` REFUSES.

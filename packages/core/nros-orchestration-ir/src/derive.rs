@@ -84,16 +84,12 @@ pub fn supervised_nodes(model: &SystemModel) -> std::collections::BTreeSet<Strin
 /// RFC-0079 section 6: does this authored tier NAME the transport band
 /// (`[tiers.<name>] above = "transport"`)?
 ///
-/// Issue 1967. The key is rlm's `TierDef::above` (`ReservedBand`, rlm
-/// `7e01f1e`), which no rlm release carries yet: nano-ros pins a tag whose
-/// `TierDef` is `deny_unknown_fields` without it, so no `system.toml` that
-/// reaches this function can have written it, and the answer is `false`.
-/// The rlm pin bump replaces the body with
-/// `t.above == Some(ReservedBand::Transport)`; everything downstream of it
-/// ([`tiers_named_above_transport`], [`lift_above_transport`]) is live and
-/// tested through [`derive_tiers_with_named`].
-fn names_the_transport(_t: &ros_launch_manifest_sched::TierDef) -> bool {
-    false
+/// Issue 1967. The key is rlm's `TierDef::above` (`ReservedBand`, a closed
+/// set whose one member is `transport`; rlm v0.1.67). rlm refuses a misspelt
+/// band at parse, so a tier that reaches this either named the transport or
+/// named nothing.
+fn names_the_transport(t: &ros_launch_manifest_sched::TierDef) -> bool {
+    t.above == Some(ros_launch_manifest_sched::ReservedBand::Transport)
 }
 
 /// The authored tiers that name the transport band AND ask for an allocated

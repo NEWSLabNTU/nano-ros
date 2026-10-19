@@ -1,11 +1,13 @@
 ---
 id: 1967
 title: "A tier cannot name the band it crosses: `above = \"transport\"` is not authorable"
-status: open
+status: resolved
 type: enhancement
 area: [codegen]
 severity: low
 found: 2026-10-19
+resolved: 2026-10-19
+resolved_in: "branch fix/1967-tier-above-transport"
 related: [rfc-0079, issue-1426, issue-1508]
 ---
 
@@ -95,13 +97,27 @@ allocates what #2312 did: the tier's most urgent member `mrm_handler`
 (rank 5) is the one rank lifted, so the tier spins at 3 and the supervisor
 gets 2.
 
-## Blocked on
+## Resolution
 
-The resolver half is in (`derive::lift_above_transport`,
-`derive::derive_tiers_with_named`), but `derive::names_the_transport`
-answers `false` until an rlm release carries `TierDef::above` (rlm
-`7e01f1e` on main, not yet tagged) and nano-ros's rlm pin moves; the bump
-replaces its body with `t.above == Some(ReservedBand::Transport)`. The island's own resolve also
-goes through the vendored play_launch's rlm pin
-(`packages/cli/nros-launch-resolve`), so play_launch needs the same tag
-before a bringup can write the key end to end.
+rlm v0.1.67 carries `TierDef::above` (`ReservedBand`), and play_launch
+pins it, so the vendored resolver (`packages/cli/nros-launch-resolve`)
+carries the key from a bringup's `system.toml` into the model's
+`execution.tiers`. nano-ros's rlm pin moves to v0.1.67 and its play_launch
+submodule to the commit that pins it; `derive::names_the_transport` reads
+the key (`t.above == Some(ReservedBand::Transport)`) instead of answering
+`false`. nano-ros's own strict reader of the bringup (`nros-orchestration-ir`'s
+`TierDef`, `deny_unknown_fields`) gains the same key (`above:
+Option<ReservedBand>`, carried by `tier_from_model`); without it the bake
+refused the `system.toml` the resolver had accepted.
+
+Tests: `nros-cli-core`
+(`derived_tiers_precedence::a_tier_that_names_the_transport_is_allocated_above_it`):
+on the island's plan (transport `[4, 4]`), the derived-tiers fixture with
+`[tiers.ctrl] above = "transport"` resolves through the pinned resolver to
+a model carrying the key, and the tier is allocated above the transport;
+the same tier without the key is allocated in the application pool, below
+it. The resolver half keeps its unit tests in `nros-orchestration-ir`
+(`derive::tests`).
+
+The island writes no `above` on `[tiers.mrm]`: its comparison chose mrm
+below the transport, with the supervisor above it.
