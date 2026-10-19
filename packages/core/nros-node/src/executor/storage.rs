@@ -1170,6 +1170,7 @@ mod tests {
 
     /// Issue 1971 -- the remap table is a sizing count: an executor sized for
     /// no launch remap carves none, and each slot costs one rule.
+    #[cfg(feature = "alloc")]
     #[test]
     fn the_remap_table_is_carved_at_the_sizing_count() {
         const DEFAULT: ExecutorSizing = ExecutorSizing::DEFAULT;
@@ -1184,7 +1185,12 @@ mod tests {
             params: 0,
             ..DEFAULT
         };
-        let mut backing = [MaybeUninit::<u64>::uninit(); SIZING.u64_len()];
+        // Heap-allocate, as `carve_yields_right_lengths_and_inits` does: the
+        // DEFAULT callback/sched-context counts make this backing larger than
+        // `clippy::large_stack_arrays` allows, and its size is not what is
+        // under test.
+        let mut backing = alloc::vec![const { MaybeUninit::<u64>::uninit() }; SIZING.u64_len()]
+            .into_boxed_slice();
         // SAFETY: the backing is `u64_len()` words, and it outlives `slices`.
         let slices = unsafe { carve(&mut backing, SIZING) };
         assert_eq!(slices.remaps.len(), 3);
