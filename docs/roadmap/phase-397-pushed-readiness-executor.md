@@ -341,7 +341,7 @@ The in-place case still passes under that mutation, because its drain loop
 takes the racing sample in the same dispatch. That is why both shapes run.
 
 The test also found
-[issue 1970](../issues/1970-zenoh-full-ring-drops-newest-sample.md). zenoh's
+[issue 1979](../issues/1979-zenoh-full-ring-drops-newest-sample.md). zenoh's
 subscriber ring drops the NEWEST sample when it is full, silently. A first
 draft with a callback slower than its publisher lost each burst's last sample
 there, with W3 enabled or disabled. The test is paced so the ring never
