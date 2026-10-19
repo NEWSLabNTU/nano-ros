@@ -1973,13 +1973,6 @@
     ],
     "why": "ADOPT, issue 1972: the subscription's matched-event callback."
   },
-  "cpp:Publisher::is_durability_transient_local": {
-    "verdict": "gap",
-    "editions": [
-      "jazzy"
-    ],
-    "why": "ADOPT, issue 1975: an accessor over the QoS the publisher was created with."
-  },
   "cpp:Publisher::bind_event_callbacks": {
     "verdict": "divergence",
     "editions": [
@@ -2065,5 +2058,12 @@
       "jazzy"
     ],
     "why": "dynamic typesupport (Jazzy, REP-2011): messages whose type is learned at RUNTIME, held in `rosidl_dynamic_typesupport` dynamic data. Every type in an image is generated at build time into fixed storage (RFC-0023); dynamic data needs an allocator and a type-description parser at runtime. Same decision as `cpp:GenericPublisher`; see rmw `rmw_take_dynamic_message` (declined)."
+  },
+  "cpp:Publisher::is_durability_transient_local": {
+    "verdict": "extension",
+    "editions": [
+      "humble"
+    ],
+    "why": "issue 1975 — HUMBLE ONLY, because Humble's rclcpp has no such member: Jazzy added `PublisherBase::is_durability_transient_local()`, and under Jazzy this correlates `same`, so the row is scoped out there. Read off `get_actual_qos()` (`packages/api/nros-cpp/include/rclcpp/publisher.hpp`) as upstream reads `rcl_publisher_get_actual_qos`: the GRANTED durability. Envelope inherited from that accessor: a backend that cannot report durability (XRCE) answers `DurabilityPolicy::Unknown`, which is not TRANSIENT_LOCAL, so it reads `false` there. HELD BY `packages/api/nros-cpp/tests/compile/jazzy_small_accessors_runtime.cpp`, against the stub backend whose `publisher_get_actual_qos` now echoes the create profile."
   }
 }

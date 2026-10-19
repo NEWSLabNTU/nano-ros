@@ -163,7 +163,10 @@ struct ClientOptions {
 // rclcpp-shaped named-options structs live, so it is where the node's own
 // options object belongs.
 //
-// The TYPE survives; every OPTION on it is REFUSE-LOUD (RFC-0089 W3.f).
+// The TYPE survives; every OPTION on it is REFUSE-LOUD (RFC-0089 W3.f) --
+// except `clock_type()` (issue 1975), the one option with something behind it:
+// the node's clock is a real member, so the option is a real field the node
+// constructor reads, not one more inert setter.
 //
 // What was here: ten setters that stored their argument in a private field
 // nothing read, and returned `*this` so the idiomatic chain compiled and
@@ -223,12 +226,37 @@ struct ClientOptions {
 // it costs 16 unledgered API-parity items. That classification is a decision
 // for whoever makes it, not a consequence of un-gating this class.
 #include "rclcpp/detail/std_detect.hpp"
+// issue 1975 -- `clock_type()` is spelled in rcl's `rcl_clock_type_t`, the
+// vocabulary `rclcpp::Clock` already takes (`clock.hpp`).
+#include "rclc/types.h"
 
 namespace rclcpp {
 
 class NodeOptions {
   public:
     NodeOptions() = default;
+
+    // --- LIVE: the one option with something behind it ----------------------
+
+    /// `rclcpp::NodeOptions::clock_type()` (Jazzy) -- which clock the node's
+    /// own clock (`Node::get_clock()`, `Node::now()`) is. issue 1975.
+    ///
+    /// Defaults to `RCL_ROS_TIME`, upstream's default and what a node's clock
+    /// was before this option existed, so `NodeOptions{}` changes nothing.
+    /// Unlike every refused option below this one is READ: the
+    /// `Node(name, options)` constructors build the node clock from it and
+    /// `Node::get_node_options()` hands back the options the node was given.
+    const rcl_clock_type_t& clock_type() const { return clock_type_; }
+
+    /// Choose the node's clock -- the setter upstream pairs with the getter.
+    /// A type that is not a clock (`RCL_CLOCK_UNINITIALIZED`) is not refused
+    /// here, where upstream also accepts it; the NODE refuses it at
+    /// construction, latching `ok() == false` where upstream's constructor
+    /// throws (RFC-0018).
+    NodeOptions& clock_type(const rcl_clock_type_t& clock_type) {
+        clock_type_ = clock_type;
+        return *this;
+    }
 
     // --- REFUSED: see NROS_RCLCPP_REFUSE_NODE_OPTIONS -----------------------
     //
@@ -337,6 +365,8 @@ class NodeOptions {
     /// the refused `arguments()` has a return expression of the right type,
     /// keeping the diagnostic to ONE error instead of two.
     static const char* const* no_arguments_() { return nullptr; }
+
+    rcl_clock_type_t clock_type_ = RCL_ROS_TIME;
 };
 
 } // namespace rclcpp

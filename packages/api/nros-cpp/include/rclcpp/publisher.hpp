@@ -363,6 +363,21 @@ template <typename M> class Publisher {
         return ::rclcpp::detail::qos_from_ffi(f);
     }
 
+    /// `rclcpp::PublisherBase::is_durability_transient_local()` (Jazzy) --
+    /// whether this publisher keeps samples for late-joining subscribers.
+    /// issue 1975.
+    ///
+    /// Read off `get_actual_qos()`, as upstream reads it off
+    /// `rcl_publisher_get_actual_qos`: the GRANTED durability, not the
+    /// requested one. Its envelope is that accessor's: a backend that cannot
+    /// report durability (XRCE) answers `DurabilityPolicy::Unknown`, and
+    /// Unknown is not TRANSIENT_LOCAL, so this reads `false` there -- an
+    /// absence, never your request echoed back. An uninitialized publisher
+    /// answers `false`.
+    bool is_durability_transient_local() const {
+        return get_actual_qos().durability() == ::rclcpp::DurabilityPolicy::TransientLocal;
+    }
+
     /// How many subscriptions are on this publisher's topic, RIGHT NOW —
     /// rclcpp's `Publisher::get_subscription_count`. phase-444.
     ///

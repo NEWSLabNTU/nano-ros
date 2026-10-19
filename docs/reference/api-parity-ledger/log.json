@@ -399,10 +399,10 @@
     "bucket": "ours-only"
   },
   "cpp:Logger::get_effective_level": {
-    "verdict": "gap",
+    "verdict": "extension",
     "editions": [
-      "jazzy"
+      "humble"
     ],
-    "why": "ADOPT, issue 1975: the read side of `cpp:Logger::set_level`."
+    "why": "issue 1975 — HUMBLE ONLY, because Humble's rclcpp has no such member: Jazzy added `Logger::get_effective_level()`, and under Jazzy this correlates `same`, so the row is scoped out there. A forwarder onto `get_level()` (`packages/api/nros-cpp/include/rclcpp/logging.hpp`), which already answered the EFFECTIVE level (own, else nearest ancestor's, else the process default; never `Unset`) — two spellings, one answer, so they cannot part. A null handle answers `Fatal`, the C entry point's rule, where upstream throws. HELD BY `packages/api/nros-cpp/tests/compile/jazzy_small_accessors_runtime.cpp`."
   }
 }

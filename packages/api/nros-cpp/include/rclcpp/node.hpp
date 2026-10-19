@@ -511,7 +511,8 @@ inline void report_declared_param_mismatch(const char* fqn, const char* param, c
 // `rclcpp::NodeOptions`, a type with no data members (every accessor is a
 // REFUSE-LOUD template, `options.hpp`). Allocating a heap block to store an
 // empty object bought nothing, so `get_node_options()` answers a constant and
-// the block, the member and the `operator new` go.
+// the block, the member and the `operator new` go. (issue 1975 later gave
+// `NodeOptions` one real field, `clock_type`, kept inline on the node.)
 
 } // namespace detail
 
@@ -844,26 +845,24 @@ class Node {
     // phase-476 W3 — each member below is gated on the ONE capability its
     // signature uses, not on a conjunction of all four.
 
-    /// Upstream's `(name, options)` constructor, freestanding. `NodeOptions`
-    /// carries no state (`options.hpp`), so there is nothing to keep.
+    /// Upstream's `(name, options)` constructor, freestanding. The one option
+    /// `NodeOptions` carries, `clock_type()` (issue 1975), picks the node's
+    /// clock; every other option refuses at its call site (`options.hpp`).
     Node(const char* name, const ::rclcpp::NodeOptions& options) : Node(name, nullptr) {
-        (void)options;
+        apply_options_(options);
     }
 
     /// Upstream's `(name, namespace, options)` constructor, freestanding. No
     /// default for `options` here: `Node(name, ns)` is the two-argument
     /// constructor above, and a default would make that call ambiguous.
     Node(const char* name, const char* ns, const ::rclcpp::NodeOptions& options) : Node(name, ns) {
-        (void)options;
+        apply_options_(options);
     }
 
-    /// `rclcpp::Node::get_node_options()`. FREESTANDING since phase-476 W3:
-    /// `NodeOptions` has no data members, so every node's options are the same
-    /// default, and a constant answers what the constructor was given.
-    const ::rclcpp::NodeOptions& get_node_options() const {
-        static constexpr ::rclcpp::NodeOptions kOptions{};
-        return kOptions;
-    }
+    /// `rclcpp::Node::get_node_options()` -- the options this node was
+    /// constructed with (the default `NodeOptions{}` for a constructor that
+    /// took none). Freestanding: the stored object is one `rcl_clock_type_t`.
+    const ::rclcpp::NodeOptions& get_node_options() const { return options_; }
 
 #ifdef NROS_CPP_HAS_STD_STRING // hosted-family: string-interop
     /// `std::make_shared<rclcpp::Node>("talker")` — upstream's constructor.
@@ -2477,7 +2476,7 @@ class Node {
     // Move semantics (non-copyable)
     Node(Node&& other)
         : handle_(other.handle_), initialized_(other.initialized_),
-          executor_handle_(other.executor_handle_), clock_(other.clock_),
+          executor_handle_(other.executor_handle_), clock_(other.clock_), options_(other.options_),
           // The latch travels with the node: a moved-from node's failure is
           // still this node's failure, and the entry checks `ok()` on whichever
           // object it ended up holding.
@@ -2496,6 +2495,7 @@ class Node {
             initialized_ = other.initialized_;
             executor_handle_ = other.executor_handle_;
             clock_ = other.clock_;
+            options_ = other.options_;
             has_error_ = other.has_error_;
             error_what_ = other.error_what_;
             error_code_ = other.error_code_;
@@ -2509,6 +2509,22 @@ class Node {
     Node(const Node&) = delete;
     Node& operator=(const Node&) = delete;
 
+    /// issue 1975 -- what the `(name, options)` constructors do with their
+    /// options: keep them for `get_node_options()` and build the node clock
+    /// from `clock_type()`. A type that is not a clock latches the error
+    /// (`ok() == false`) where upstream's constructor throws, and leaves the
+    /// clock at ROS time rather than reading zero forever.
+    void apply_options_(const ::rclcpp::NodeOptions& options) {
+        options_ = options;
+        Clock chosen(options.clock_type());
+        if (!chosen.is_valid()) {
+            this->set_error("NodeOptions::clock_type (not a clock)",
+                            static_cast<int32_t>(::rclcpp::ErrorCode::InvalidArgument));
+            return;
+        }
+        clock_ = chosen;
+    }
+
     nros_cpp_node_t handle_;
     bool initialized_;
     void* executor_handle_; // Set by rclcpp::init() via friendship
@@ -2516,6 +2532,10 @@ class Node {
     // it touches no platform service (only a steady clock records an epoch),
     // so a Node in static storage stays as cheap to create as it was.
     Clock clock_;
+    // issue 1975 -- the options the node was constructed with, for
+    // `get_node_options()`; `clock_` above is built from `clock_type()`.
+    // Unconditional (one enum), so the layout stays probe-independent.
+    ::rclcpp::NodeOptions options_;
     // phase-476 W3 — `void* hosted_` and its lazy `hosted()` accessor are gone
     // with `detail::NodeHosted` (see there): the block's last member was an
     // empty `NodeOptions`. `sizeof(Node)` loses that pointer on EVERY target,

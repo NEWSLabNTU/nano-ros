@@ -10258,6 +10258,26 @@ impl<'s> Executor<'s> {
         Some(header.period_us)
     }
 
+    /// Which clock advances this timer, or `None` if the handle is not a valid
+    /// timer.
+    ///
+    /// issue 1975 — the state `rclcpp::TimerBase::get_clock()` reports. The
+    /// header field is the one `arena::timer_try_process` reads, so the answer
+    /// is the dispatcher's own rather than a copy a wrapper kept beside it: a
+    /// wall timer answers [`TimerClockSource::Steady`], a clock timer the
+    /// source it was registered with.
+    pub fn timer_clock_source(&self, id: HandleId) -> Option<TimerClockSource> {
+        let meta = self
+            .entries
+            .get(self.live_slot(id))
+            .and_then(|e| e.as_ref())
+            .filter(|m| matches!(m.kind, EntryKind::Timer))?;
+        let arena_ptr = self.arena.as_ptr() as *const u8;
+        // SAFETY: same layout invariant as `timer_period_us`.
+        let header = unsafe { &*(arena_ptr.add(meta.offset) as *const TimerHeader) };
+        Some(header.clock_source)
+    }
+
     /// Swap a registered timer's period, in microseconds, returning the one
     /// it had — or `None` if the handle is not a valid timer.
     ///
