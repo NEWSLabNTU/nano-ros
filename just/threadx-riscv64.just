@@ -292,29 +292,24 @@ build-fixture-extras:
         local rmw="$2"
         local build_dir="$3"
         echo "  → $dir (-DNROS_RMW=$rmw, $build_dir/)"
-        # phase-295 W4 (ex Phase 177.38) — Cyclone RUST role builds bake the
-        # allocator domain (nros_tests::alloc::domain_of(ThreadxRiscv64, Rust,
-        # Pubsub) = 127; env for the Rust/Corrosion build + -D for the C/C++
-        # glue); fold it into the cache sig so a domain change forces a
-        # rebuild. Empty for non-Cyclone (keeps the config.toml default).
-        local _dom=""
-        [ "$rmw" = "cyclonedds" ] && _dom="127"
+        # Cyclone RUST role builds bake the allocator domain
+        # (nros_tests::alloc::domain_of(ThreadxRiscv64, Rust, Pubsub) = 127),
+        # which the leaf states in its `[image.rv-virt-threadx-cyclonedds]`
+        # (issue 1946): select that image, and fold it into the cache sig so a
+        # change of image forces a rebuild. Empty for zenoh (the default image).
+        local _image=""
+        [ "$rmw" = "cyclonedds" ] && _image="rv-virt-threadx-cyclonedds"
         local sig
         sig="$(printf '%s\n' \
           "platform=threadx_riscv64" \
           "rmw=$rmw" \
-          "domain=${_dom}" \
+          "image=${_image}" \
           "src=$dir" \
           "toolchain=$toolchain" \
           "threadx_dir=$threadx_dir" \
           "netx_dir=$netx_dir" \
           "codegen=$codegen" \
           "cyclonedds_prefix=${cyclonedds_prefix:-}")"
-        # Export the domain (not an inline VAR=val prefix — a prefix produced by
-        # ${_dom:+…} expansion is parsed as a command, not an assignment). The
-        # Rust/Corrosion build reads it via option_env!; the -D below covers the
-        # C/C++ glue. Only set for Cyclone (_dom non-empty).
-        [ -n "$_dom" ] && export NROS_DOMAIN_ID="$_dom"
         # issue 0805 — one Corrosion cargo dir per (platform, resolved feature
         # inputs) instead of one per leaf. cmake keys the subdirectory itself:
         # the leaf's capabilities are not knowable here, and keying on
@@ -332,7 +327,7 @@ build-fixture-extras:
             -DNROS_SHARED_CARGO_ROOT="$shared_cargo_root" \
             -DNROS_PLATFORM=threadx_riscv64 \
             -DNROS_RMW="$rmw" \
-            ${_dom:+-DNROS_DOMAIN_ID=$_dom} \
+            ${_image:+-DNROS_IMAGE=$_image} \
             -DCMAKE_TOOLCHAIN_FILE="$toolchain" \
             -DTHREADX_DIR="$threadx_dir" \
             -DNETX_DIR="$netx_dir" \
@@ -405,14 +400,16 @@ build-fixture-extras:
         if ! command -v idlc >/dev/null 2>&1; then
             nros_lane_skip_note threadx-riscv64 "Cyclone fixtures need a host 'idlc' — just cyclonedds setup (builds build/cyclonedds/bin/idlc), or put an idlc on PATH, or NROS_THREADX_RV64_CYCLONEDDS_FIXTURES=0 to opt out"
         else
-            # phase-295 W4 (ex Phase 177.38) — each ThreadX-RV64 Cyclone lang
-            # pass bakes ITS allocator domain (alloc::domain_of(ThreadxRiscv64,
-            # lang, Pubsub): c=128, cpp=129; rust roles get 127 via the
-            # helper's env + -D). A pair (talker+listener) shares its lang's
-            # domain; different langs stay SPDP-disjoint.
-            export NROS_CMAKE_EXTRA_DEFS="$base_defs -DNROS_DOMAIN_ID=128"
+            # Each ThreadX-RV64 Cyclone lang pass bakes ITS allocator domain
+            # (alloc::domain_of(ThreadxRiscv64, lang, Pubsub): c=128, cpp=129,
+            # rust roles 127). The leaf states it in its
+            # `[image.rv-virt-threadx-cyclonedds]`, which the row (and the
+            # helper above, for the rust roles) selects with `NROS_IMAGE` —
+            # issue 1946; this lane used to pass `-DNROS_DOMAIN_ID` over a leaf
+            # stating 0. A pair (talker+listener) shares its lang's domain;
+            # different langs stay SPDP-disjoint.
+            export NROS_CMAKE_EXTRA_DEFS="$base_defs"
             bash scripts/build/fixtures-build.sh threadx-riscv64 c cyclonedds
-            export NROS_CMAKE_EXTRA_DEFS="$base_defs -DNROS_DOMAIN_ID=129"
             bash scripts/build/fixtures-build.sh threadx-riscv64 cpp cyclonedds
             # phase-369 W2 — BOTH RMWs go through this seam now.
             #

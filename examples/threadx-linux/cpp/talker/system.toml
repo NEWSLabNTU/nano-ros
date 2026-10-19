@@ -10,6 +10,7 @@
 name = "threadx_linux_cpp_talker"
 rmw = "zenoh"
 domain_id = 0
+default_images = ["threadx-linux"]
 
 [[component]]
 pkg = "threadx_linux_cpp_talker"
@@ -19,6 +20,16 @@ name = "talker"
 # ThreadX's Linux simulator (a hosted process).
 [image.threadx-linux]
 board = "threadx-linux"
+
+# The Cyclone build of the same board, as its own image (issue 1946): the
+# domain is a property of the BUILD — 108 is `alloc::domain_of(ThreadxLinux, Cpp,
+# Pubsub)` — so a lane selects this image with
+# `-DNROS_IMAGE=threadx-linux-cyclonedds` rather than passing a `-DNROS_DOMAIN_ID`
+# this file would contradict.
+[image.threadx-linux-cyclonedds]
+board = "threadx-linux"
+rmw = "cyclonedds"
+domain_id = 108
 
 # SITE config for this board (RFC-0072 §5): where THIS checkout keeps the
 # SDK roots it builds against. Keyed by BOARD, not by a deploy or image

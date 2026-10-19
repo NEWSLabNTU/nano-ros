@@ -3512,72 +3512,84 @@ platform = "threadx-linux"
 lang = "c"
 rmw = "cyclonedds"
 dir = "examples/threadx-linux/c/talker"
+cmake_defs = { NROS_IMAGE = "threadx-linux-cyclonedds" }
 
 [[fixture]]
 platform = "threadx-linux"
 lang = "c"
 rmw = "cyclonedds"
 dir = "examples/threadx-linux/c/listener"
+cmake_defs = { NROS_IMAGE = "threadx-linux-cyclonedds" }
 
 [[fixture]]
 platform = "threadx-linux"
 lang = "c"
 rmw = "cyclonedds"
 dir = "examples/threadx-linux/c/service-server"
+cmake_defs = { NROS_IMAGE = "threadx-linux-cyclonedds" }
 
 [[fixture]]
 platform = "threadx-linux"
 lang = "c"
 rmw = "cyclonedds"
 dir = "examples/threadx-linux/c/service-client"
+cmake_defs = { NROS_IMAGE = "threadx-linux-cyclonedds" }
 
 [[fixture]]
 platform = "threadx-linux"
 lang = "c"
 rmw = "cyclonedds"
 dir = "examples/threadx-linux/c/action-server"
+cmake_defs = { NROS_IMAGE = "threadx-linux-cyclonedds" }
 
 [[fixture]]
 platform = "threadx-linux"
 lang = "c"
 rmw = "cyclonedds"
 dir = "examples/threadx-linux/c/action-client"
+cmake_defs = { NROS_IMAGE = "threadx-linux-cyclonedds" }
 
 [[fixture]]
 platform = "threadx-linux"
 lang = "cpp"
 rmw = "cyclonedds"
 dir = "examples/threadx-linux/cpp/talker"
+cmake_defs = { NROS_IMAGE = "threadx-linux-cyclonedds" }
 
 [[fixture]]
 platform = "threadx-linux"
 lang = "cpp"
 rmw = "cyclonedds"
 dir = "examples/threadx-linux/cpp/listener"
+cmake_defs = { NROS_IMAGE = "threadx-linux-cyclonedds" }
 
 [[fixture]]
 platform = "threadx-linux"
 lang = "cpp"
 rmw = "cyclonedds"
 dir = "examples/threadx-linux/cpp/service-server"
+cmake_defs = { NROS_IMAGE = "threadx-linux-cyclonedds" }
 
 [[fixture]]
 platform = "threadx-linux"
 lang = "cpp"
 rmw = "cyclonedds"
 dir = "examples/threadx-linux/cpp/service-client"
+cmake_defs = { NROS_IMAGE = "threadx-linux-cyclonedds" }
 
 [[fixture]]
 platform = "threadx-linux"
 lang = "cpp"
 rmw = "cyclonedds"
 dir = "examples/threadx-linux/cpp/action-server"
+cmake_defs = { NROS_IMAGE = "threadx-linux-cyclonedds" }
 
 [[fixture]]
 platform = "threadx-linux"
 lang = "cpp"
 rmw = "cyclonedds"
 dir = "examples/threadx-linux/cpp/action-client"
+cmake_defs = { NROS_IMAGE = "threadx-linux-cyclonedds" }
 
 # ===========================================================================
 # threadx-riscv64 — experimental Cyclone C / C++ (gated; talker/listener only).
@@ -3588,12 +3600,14 @@ platform = "threadx-riscv64"
 lang = "c"
 rmw = "cyclonedds"
 dir = "examples/rv-virt-threadx/c/talker"
+cmake_defs = { NROS_IMAGE = "rv-virt-threadx-cyclonedds" }
 
 [[fixture]]
 platform = "threadx-riscv64"
 lang = "c"
 rmw = "cyclonedds"
 dir = "examples/rv-virt-threadx/c/listener"
+cmake_defs = { NROS_IMAGE = "rv-virt-threadx-cyclonedds" }
 # The two-QEMU Cyclone pubsub e2e (`test_threadx_riscv64_cyclonedds_two_qemu_pubsub`)
 # needs distinct NetX L2/L3 identities on its shared link. Each leaf states its
 # own (`[image.*] net`, RFC-0103 D10, phase-497 W2): talker 10.0.2.40 / MAC :56,
@@ -3605,12 +3619,14 @@ platform = "threadx-riscv64"
 lang = "cpp"
 rmw = "cyclonedds"
 dir = "examples/rv-virt-threadx/cpp/talker"
+cmake_defs = { NROS_IMAGE = "rv-virt-threadx-cyclonedds" }
 
 [[fixture]]
 platform = "threadx-riscv64"
 lang = "cpp"
 rmw = "cyclonedds"
 dir = "examples/rv-virt-threadx/cpp/listener"
+cmake_defs = { NROS_IMAGE = "rv-virt-threadx-cyclonedds" }
 # Its distinct identity is the leaf's own `[image.*] net` (see the C cell above).
 
 # ===========================================================================

@@ -7,6 +7,7 @@
 name = "rv_virt_threadx_service_client"
 rmw = "zenoh"
 domain_id = 0
+default_images = ["rv-virt-threadx"]
 
 [[component]]
 pkg = "rv_virt_threadx_service_client"
@@ -18,5 +19,17 @@ name = "add_two_ints_client"
 # locator (no router).
 [image.rv-virt-threadx]
 board = "rv-virt-threadx"
+locator = "tcp/10.0.2.2:9410"
+net = { eth0 = { network = "qemu", host = 16 } }
+
+# The Cyclone build of the same board, as its own image (issue 1946): the
+# domain is a property of the BUILD — 127 is `alloc::domain_of(ThreadxRiscv64, Rust,
+# Pubsub)` — so a lane selects this image with
+# `-DNROS_IMAGE=rv-virt-threadx-cyclonedds` rather than passing a `-DNROS_DOMAIN_ID`
+# this file would contradict.
+[image.rv-virt-threadx-cyclonedds]
+board = "rv-virt-threadx"
+rmw = "cyclonedds"
+domain_id = 127
 locator = "tcp/10.0.2.2:9410"
 net = { eth0 = { network = "qemu", host = 16 } }

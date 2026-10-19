@@ -999,8 +999,13 @@ function(nano_ros_entry)
             endif()
         elseif(DEFINED NROS_DOMAIN_ID AND NOT NROS_DOMAIN_ID STREQUAL "")
             set(_nra_domain "${NROS_DOMAIN_ID}")
+        else()
+            # An `add_subdirectory(<nano-ros>)` leaf: its system.toml was read
+            # in nano-ros's scope, which publishes the domain (already agreed
+            # with any -D) as a GLOBAL property — issue 1946.
+            get_property(_nra_domain GLOBAL PROPERTY NROS_TOP_LEAF_DOMAIN_ID)
         endif()
-        if(NOT _nra_domain STREQUAL "")
+        if(NOT "${_nra_domain}" STREQUAL "")
             target_compile_definitions(${_NRA_NAME} PRIVATE
                 "NROS_ENTRY_DOMAIN_ID=${_nra_domain}")
         endif()
@@ -1101,7 +1106,7 @@ function(nano_ros_entry)
                 # an assignment FROM the resolved value, not a second producer.
                 set(NROS_ENTRY_LOCATOR "${_nra_locator}")
                 # Issue 1946 — the domain baked above, not a literal 0.
-                if(_nra_domain STREQUAL "")
+                if("${_nra_domain}" STREQUAL "")
                     set(NROS_ENTRY_APP_DOMAIN_ID 0)
                 else()
                     set(NROS_ENTRY_APP_DOMAIN_ID "${_nra_domain}")
