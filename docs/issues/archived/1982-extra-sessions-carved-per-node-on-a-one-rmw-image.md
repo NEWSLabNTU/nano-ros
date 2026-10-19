@@ -7,7 +7,7 @@ area: [memory, zephyr]
 severity: low
 found: 2026-10-19
 resolved: 2026-10-19
-resolved_in: "branch fix/1982-extra-sessions-from-backend-count"
+resolved_in: "PR #2424"
 related: [1971, 1970, 0436]
 ---
 
