@@ -189,6 +189,14 @@ CLASSIFIED_CMP: dict[tuple[str, str], str] = {
         'target_os_for_alias == "none"',
     ): "Bare-metal question: `-ffreestanding` for the alias TU because a "
     "bare-metal cross gcc lacks a usable newlib; NuttX has its libc headers.",
+    (
+        "packages/core/nros-node/build.rs",
+        'os == "none"',
+    ): "Process-argument question (issue 1971): does the image have an argv "
+    "the `--ros-args -r` road can install remaps from? Every target with an OS "
+    "does -- NuttX's task dispatch passes `main(argc, argv)` as glibc's crt0 "
+    "does -- so NuttX keeps the runtime remap table; only bare metal (`none`) "
+    "has no argument vector and carves none.",
 }
 
 

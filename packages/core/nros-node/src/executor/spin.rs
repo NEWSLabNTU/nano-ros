@@ -1462,10 +1462,54 @@ pub(crate) struct FreedRegion {
     pub(crate) len: usize,
 }
 
-/// Phase 305 W3 (issue 0255) — upper bound on launch remap rules held by one
-/// executor (across all its nodes). Launch files carry a handful per node;
-/// raise here if a plan legitimately outgrows it.
-pub const MAX_REMAPS: usize = 16;
+/// Phase 305 W3 (issue 0255) — the slots of one executor's RAM remap table
+/// (across all its nodes).
+///
+/// Issue 1971 (RFC-0107 step 1) -- the launch file's rules no longer live
+/// here: they are one `const` table in flash every executor reads
+/// ([`super::launch_remap`]). This table holds the RUNTIME rules: `--ros-args
+/// -r` rules (`crate::ros_args::install_argv_remaps`) and rules a hand-written
+/// caller declares with [`Executor::declare_remap`]. Its default is
+/// [`crate::config::RUNTIME_REMAPS`]: 16 on a target with process arguments,
+/// 0 on bare metal (no argv; `NROS_EXECUTOR_RUNTIME_REMAPS` restores slots).
+pub const MAX_REMAPS: usize = crate::config::RUNTIME_REMAPS;
+
+/// Why [`Executor::declare_remap`] refused a rule -- never a silently dropped
+/// routing rule.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RemapRefused {
+    /// This executor has no runtime remap table: bare metal sizes it 0, since
+    /// the launch's rules are the flash table and there is no argv. Restore
+    /// slots with `NROS_EXECUTOR_RUNTIME_REMAPS`, or let codegen emit the rule
+    /// into the launch table.
+    NoRuntimeTable,
+    /// The runtime table is full (`ExecutorSizing::remaps` slots, shared with
+    /// `--ros-args -r` rules).
+    TableFull,
+    /// A string is longer than its slot (node name / namespace 64 bytes,
+    /// `from` / `to` `MAX_RESOLVED_NAME_LEN`).
+    TooLong,
+}
+
+impl core::fmt::Display for RemapRefused {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::NoRuntimeTable => f.write_str(
+                "declare_remap: this executor has no runtime remap table (0 slots: bare \
+                 metal takes launch remaps from the flash table, nros_cpp_set_launch_remaps); \
+                 set NROS_EXECUTOR_RUNTIME_REMAPS to restore runtime slots",
+            ),
+            Self::TableFull => f.write_str(
+                "declare_remap: the runtime remap table is full (NROS_EXECUTOR_RUNTIME_REMAPS \
+                 slots, shared with --ros-args -r rules)",
+            ),
+            Self::TooLong => f.write_str(
+                "declare_remap: a name is longer than its slot (node name and namespace 64 \
+                 bytes, from/to MAX_RESOLVED_NAME_LEN)",
+            ),
+        }
+    }
+}
 
 /// Which of [`crate::names::resolve_name_layered`]'s two tiers a stored rule
 /// belongs to.
@@ -1538,6 +1582,71 @@ pub(crate) fn tier_rules<'r>(
         .flatten()
         .filter(move |r| r.applies(tier, node_name, ns))
         .map(|r| (r.from.as_str(), r.to.as_str()))
+}
+
+/// Issue 1971 -- the two places an executor's remap rules live, read as the
+/// two tiers of [`crate::names::resolve_name_layered`]:
+///
+/// * AUTHORITATIVE: the launch table in flash (`launch`) and, after it, any
+///   rule a hand-written caller declared at run time (`RemapTier::Launch`
+///   rows of `runtime`);
+/// * FALLBACK: the `--ros-args -r` rules (`RemapTier::Argv` rows of
+///   `runtime`).
+///
+/// The tier is decided by which parameter a rule is passed in, never by
+/// where it sits, so an argv rule installed before a launch rule still loses.
+#[derive(Clone, Copy)]
+pub(crate) struct RemapView<'r> {
+    pub(crate) launch: &'r [super::launch_remap::LaunchRemap],
+    pub(crate) runtime: &'r [Option<RemapRule>],
+}
+
+impl<'r> RemapView<'r> {
+    /// The authoritative rules for one node: the flash table's, then the
+    /// runtime-declared ones.
+    pub(crate) fn launch_rules<'a>(
+        self,
+        node_name: &'a str,
+        ns: &'a str,
+    ) -> impl Iterator<Item = (&'a str, &'a str)> + 'a
+    where
+        'r: 'a,
+    {
+        super::launch_remap::launch_rules_for(self.launch, node_name, ns).chain(tier_rules(
+            self.runtime,
+            RemapTier::Launch,
+            node_name,
+            ns,
+        ))
+    }
+
+    /// The fallback (`--ros-args -r`) rules for one node.
+    pub(crate) fn argv_rules<'a>(
+        self,
+        node_name: &'a str,
+        ns: &'a str,
+    ) -> impl Iterator<Item = (&'a str, &'a str)> + 'a
+    where
+        'r: 'a,
+    {
+        tier_rules(self.runtime, RemapTier::Argv, node_name, ns)
+    }
+
+    /// `resolve_name_layered` over both tiers.
+    pub(crate) fn resolve(
+        self,
+        source: &str,
+        node_name: &str,
+        ns: &str,
+    ) -> Result<crate::names::ResolvedName, ()> {
+        crate::names::resolve_name_layered(
+            source,
+            node_name,
+            ns,
+            self.launch_rules(node_name, ns),
+            self.argv_rules(node_name, ns),
+        )
+    }
 }
 
 /// The executor's halt flag, in the one shape each configuration can hold.
@@ -1712,6 +1821,12 @@ pub struct Executor<'s> {
     /// `remap_len` is the fill cursor — occupied slots are `[0, remap_len)`.
     pub(crate) remap_table: &'s mut [Option<RemapRule>],
     pub(crate) remap_len: usize,
+    /// Issue 1971 -- this executor's own launch remap table, when one was set
+    /// on it ([`Self::set_launch_remaps`]); `None` reads the image's
+    /// ([`super::launch_remap::launch_remaps`]), which the generated entry
+    /// installs once before any tier is set up. A borrow of `.rodata`, never
+    /// a copy.
+    pub(crate) launch_remaps: Option<&'static [super::launch_remap::LaunchRemap]>,
     /// Phase 216 follow-up — per-Node dispatch trampoline registry.
     ///
     /// Populated by [`Executor::register_dispatch_slot`]; walked by
@@ -2313,6 +2428,7 @@ impl<'s> Executor<'s> {
             group_sched_table,
             remap_table: remaps,
             remap_len: 0,
+            launch_remaps: None,
             dispatch_slots,
             component_slots,
             extra_sessions,
@@ -2949,14 +3065,22 @@ impl<'s> Executor<'s> {
     /// but are tagged as the fallback tier, and resolution reads both tiers
     /// through [`crate::names::resolve_name_layered`] — so an argv rule
     /// installed BEFORE a launch rule still loses to it.
-    #[allow(clippy::result_unit_err)]
+    ///
+    /// Issue 1971 -- a GENERATED entry no longer calls this: its launch rules
+    /// are the flash table ([`super::launch_remap::set_launch_remaps`]). This
+    /// writes the RUNTIME table, for hand-written callers; on bare metal that
+    /// table is 0 slots by default and the call is refused by name
+    /// ([`RemapRefused::NoRuntimeTable`]).
     pub fn declare_remap(
         &mut self,
         node_name: &str,
         namespace: &str,
         from: &str,
         to: &str,
-    ) -> Result<(), ()> {
+    ) -> Result<(), RemapRefused> {
+        if self.remap_table.is_empty() {
+            return Err(RemapRefused::NoRuntimeTable);
+        }
         let mut rule = RemapRule {
             node_name: heapless::String::new(),
             namespace: heapless::String::new(),
@@ -2964,14 +3088,18 @@ impl<'s> Executor<'s> {
             to: heapless::String::new(),
             tier: RemapTier::Launch,
         };
-        rule.node_name.push_str(node_name)?;
+        let too_long = |_| RemapRefused::TooLong;
+        rule.node_name.push_str(node_name).map_err(too_long)?;
         let ns = if namespace.is_empty() { "/" } else { namespace };
-        rule.namespace.push_str(ns)?;
-        rule.from.push_str(from)?;
-        rule.to.push_str(to)?;
+        rule.namespace.push_str(ns).map_err(too_long)?;
+        rule.from.push_str(from).map_err(too_long)?;
+        rule.to.push_str(to).map_err(too_long)?;
         // Same contract as the `heapless::Vec::push` this replaces: full table
         // is an error the caller surfaces, never a silently dropped rule.
-        let slot = self.remap_table.get_mut(self.remap_len).ok_or(())?;
+        let slot = self
+            .remap_table
+            .get_mut(self.remap_len)
+            .ok_or(RemapRefused::TableFull)?;
         *slot = Some(rule);
         self.remap_len += 1;
         Ok(())
@@ -2998,14 +3126,25 @@ impl<'s> Executor<'s> {
         source: &str,
     ) -> Result<crate::names::ResolvedName, ()> {
         let ns = if namespace.is_empty() { "/" } else { namespace };
-        let table = &self.remap_table[..self.remap_len];
-        crate::names::resolve_name_layered(
-            source,
-            node_name,
-            ns,
-            tier_rules(table, RemapTier::Launch, node_name, ns),
-            tier_rules(table, RemapTier::Argv, node_name, ns),
-        )
+        self.remap_view().resolve(source, node_name, ns)
+    }
+
+    /// Issue 1971 -- give this executor its own launch remap table instead of
+    /// the image's ([`super::launch_remap::set_launch_remaps`]). A borrow of
+    /// `.rodata`; nothing is copied.
+    pub fn set_launch_remaps(&mut self, table: &'static [super::launch_remap::LaunchRemap]) {
+        self.launch_remaps = Some(table);
+    }
+
+    /// Both remap sources this executor resolves through: the launch table
+    /// (flash) and the runtime table (RAM).
+    pub(crate) fn remap_view(&self) -> RemapView<'_> {
+        RemapView {
+            launch: self
+                .launch_remaps
+                .unwrap_or_else(super::launch_remap::launch_remaps),
+            runtime: &self.remap_table[..self.remap_len],
+        }
     }
 
     /// [`Self::resolve_entity_name_for`] against the executor's CURRENT node
@@ -4986,8 +5125,13 @@ impl<'s> Executor<'s> {
     pub(crate) fn session_and_remaps_at_mut(
         &mut self,
         idx: u8,
-    ) -> Option<(&mut session::ConcreteSession, &[Option<RemapRule>])> {
-        let remaps = &self.remap_table[..self.remap_len];
+    ) -> Option<(&mut session::ConcreteSession, RemapView<'_>)> {
+        let remaps = RemapView {
+            launch: self
+                .launch_remaps
+                .unwrap_or_else(super::launch_remap::launch_remaps),
+            runtime: &self.remap_table[..self.remap_len],
+        };
         let session = if idx == 0 {
             Some(&mut *self.session)
         } else {

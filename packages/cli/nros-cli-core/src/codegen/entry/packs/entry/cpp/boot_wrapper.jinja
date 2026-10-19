@@ -74,6 +74,7 @@ static uint64_t __nros_tier_executor_storage[{{ boot.n_tiers }}][(NROS_CPP_EXECU
 {% endif -%}
 {% endif -%}
 {% endif -%}
+{% include "launch_remap_table.jinja" -%}
 {%- set call -%}
 {%- if boot.tiers -%}
 {{ family | cpp_board_class }}::run_tiers(nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), __nros_tiers, {{ boot.n_tiers }}u{% if boot.tier_storage %}, __nros_tier_executor_storage, sizeof(__nros_tier_executor_storage[0]){% endif %}{% if boot.task_memory %}, __nros_tier_task_memory{% endif %})
@@ -89,6 +90,7 @@ static uint64_t __nros_tier_executor_storage[{{ boot.n_tiers }}][(NROS_CPP_EXECU
 {%- endset -%}
 {%- if boot_shape == "kernel" -%}
 int main(void) {
+{%- include "launch_remap_install.jinja" %}
 {%- if backed %}
 #if defined(NROS_ENTRY_TIERS_BACKED)
     return static_cast<int>({{ backed_call }});
@@ -101,6 +103,7 @@ int main(void) {
 }
 {% elif boot_shape == "app" -%}
 extern "C" int nros_app_main(int /*argc*/, char** /*argv*/) {
+{%- include "launch_remap_install.jinja" %}
 {%- if backed %}
 #if defined(NROS_ENTRY_TIERS_BACKED)
     return {{ backed_call }};
@@ -115,6 +118,7 @@ extern "C" int nros_app_main(int /*argc*/, char** /*argv*/) {
 NROS_APP_MAIN_REGISTER_VOID();
 {% else -%}
 int main(int /*argc*/, char** /*argv*/) {
+{%- include "launch_remap_install.jinja" %}
     return {{ call }};
 }
 {% endif -%}

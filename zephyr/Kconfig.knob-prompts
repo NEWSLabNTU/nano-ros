@@ -37,6 +37,9 @@ config NROS_EXECUTOR_MAX_SHUTDOWN_CBS
 config NROS_EXECUTOR_MAX_VIOLATIONS
     int "Contract-violation ring depth per executor"
 
+config NROS_EXECUTOR_RUNTIME_REMAPS
+    int "Runtime remap-table slots per executor (-1 = derive)"
+
 config NROS_LOG_BUFFER_SIZE
     int "nros-log per-call formatting buffer (bytes)"
 

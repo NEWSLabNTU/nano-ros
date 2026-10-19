@@ -114,6 +114,9 @@ pub(crate) mod ready_set;
 #[cfg(feature = "registration-observer")]
 pub mod registration_observer;
 pub mod sched_context;
+// Issue 1971 -- the image's launch remap table, one `const` table in flash
+// that every executor reads (RFC-0107 step 1). No RMW: it is plain data.
+pub mod launch_remap;
 #[cfg(any(has_rmw, test))]
 pub(crate) mod spin;
 #[cfg(any(has_rmw, test))]
@@ -193,12 +196,13 @@ pub use spin::Executor;
 // `WakeSourceId` and `register_wake_source` / `set_park_primitive` TAKE the two
 // fn-pointer types, so all four are already public API; without these a caller
 // outside the crate could receive a value it cannot name or match on.
+pub use launch_remap::{BadLaunchRemap, LaunchRemap, launch_remaps, set_launch_remaps};
 #[cfg(any(has_rmw, test))]
 pub use spin::SessionHandle;
 #[cfg(all(any(has_rmw, test), feature = "rmw-cffi"))]
 pub use spin::SessionSpec;
 #[cfg(any(has_rmw, test))]
-pub use spin::{MAX_WAKE_SOURCES, NextDeadlineFn, ParkUntilFn, WakeSourceId};
+pub use spin::{MAX_WAKE_SOURCES, NextDeadlineFn, ParkUntilFn, RemapRefused, WakeSourceId};
 #[cfg(any(has_rmw, test))]
 pub use storage::{
     ExecutorInlineStorage, ExecutorSizing, INLINE_BACKING_U64S, INLINE_SIZING, RegionUnit,

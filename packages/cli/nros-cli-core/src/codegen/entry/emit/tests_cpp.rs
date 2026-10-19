@@ -212,11 +212,11 @@ fn typed_emit_includes_headers_constructs_and_runs_components() {
     assert!(!src.contains("NROS_BOOT_SET_NODE_NAME"));
 }
 
-// Phase 305 W3 (issue 0255) — launch `<remap>` rules bake as per-pair
-// `nros_cpp_declare_remap` calls BEFORE construction/configure (rclcpp
-// ctors register entities immediately; configure-shape registers there).
+// Issue 1971 (RFC-0107 step 1) — launch `<remap>` rules bake as ONE flash
+// table, installed in the entry point before the runner (rclcpp ctors register
+// entities immediately, so the table must be in place before any setup).
 #[test]
-fn typed_emit_remaps_declared_before_configure() {
+fn typed_emit_remaps_are_one_flash_table() {
     let mut plan = fixture_plan_typed(&[(
         "talker_pkg",
         "talker",
@@ -227,14 +227,25 @@ fn typed_emit_remaps_declared_before_configure() {
     plan.nodes[0].remaps = vec![("chatter".into(), "chatter_remapped".into())];
     let src = emit_typed(&plan).expect("typed emit ok");
     assert!(
-        src.contains(
-            "nros_cpp_declare_remap(::rclcpp::global_handle(), \"talker\", \"/\", \"chatter\", \"chatter_remapped\")"
-        ),
-        "expected declare_remap call; src:\n{src}"
+        src.contains("{\"talker\", \"/\", \"chatter\", \"chatter_remapped\"},"),
+        "expected the table row; src:\n{src}"
     );
-    let remap_at = src.find("nros_cpp_declare_remap").unwrap();
-    let cfg_at = src.find(".configure(__nros_node_0)").unwrap();
-    assert!(remap_at < cfg_at, "remap decl must precede configure");
+    assert!(!src.contains("nros_cpp_declare_remap"));
+    assert_launch_table_installed_before_the_runner(&src, "run_components");
+}
+
+#[test]
+fn typed_emit_tiered_remaps_are_installed_before_every_tier_setup() {
+    let mut plan = fixture_plan_with_tiers();
+    plan.nodes[0].remaps = vec![("a".into(), "/x".into())];
+    plan.nodes[1].remaps = vec![("b".into(), "/y".into())];
+    let src = emit_typed(&plan).expect("typed cpp tier emit ok");
+    assert!(
+        src.contains("__nros_launch_remaps[2]"),
+        "one table for both tiers; src:\n{src}"
+    );
+    assert!(!src.contains("nros_cpp_declare_remap"));
+    assert_launch_table_installed_before_the_runner(&src, "run_tiers");
 }
 
 #[test]
@@ -249,6 +260,31 @@ fn typed_emit_no_remaps_no_declare_calls() {
     )]);
     let src = emit_typed(&plan).expect("typed emit ok");
     assert!(!src.contains("nros_cpp_declare_remap"));
+    assert!(!src.contains("__nros_launch_remaps"));
+}
+
+/// Issue 1971 -- the launch remap table is installed in the entry point,
+/// before the runner, so before the runner calls any (tier) setup.
+fn assert_launch_table_installed_before_the_runner(src: &str, runner: &str) {
+    let install_at = src
+        .find("nros_cpp_set_launch_remaps(__nros_launch_remaps")
+        .unwrap_or_else(|| panic!("expected the launch table install; src:\n{src}"));
+    let table_at = src
+        .find("static const nros_cpp_launch_remap_t __nros_launch_remaps[")
+        .expect("the launch table is emitted");
+    assert!(table_at < install_at, "the table precedes its install");
+    let runner_at = src[install_at..]
+        .find(runner)
+        .unwrap_or_else(|| panic!("expected `{runner}` after the install; src:\n{src}"));
+    assert!(runner_at > 0);
+    // Every setup is a function DEFINED above and CALLED by the runner; none
+    // is called directly from the entry point ahead of the install.
+    let entry_at = src[..install_at].rfind("main(").expect("an entry point");
+    assert!(
+        !src[entry_at..install_at].contains("__nros_entry_setup"),
+        "nothing runs a setup before the install; src:\n{src}"
+    );
+    assert!(src.contains("if (lrc != NROS_CPP_RET_OK) return (int)lrc;"));
 }
 
 /// Phase 211.H (issue #52) — a configure-shape node carrying qos_overrides

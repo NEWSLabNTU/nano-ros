@@ -871,6 +871,31 @@ typedef struct nros_cpp_violation_counts_t {
 } nros_cpp_violation_counts_t;
 
 /**
+ * One launch `<remap from= to=/>` rule as the generated C/C++ entry emits it
+ * (issue 1971, RFC-0107 step 1): four NUL-terminated strings with static
+ * lifetime (literals in the entry's `.rodata`). `node_namespace` NULL or
+ * empty is the root namespace.
+ */
+typedef struct nros_cpp_launch_remap_t {
+  /**
+   * The owning node's name.
+   */
+  const char *node_name;
+  /**
+   * The owning node's namespace (`/`; NULL or empty also means root).
+   */
+  const char *node_namespace;
+  /**
+   * The name as written in the source.
+   */
+  const char *from;
+  /**
+   * The replacement.
+   */
+  const char *to;
+} nros_cpp_launch_remap_t;
+
+/**
  * phase-503 — what the reaction hook receives: the C spelling of
  * `nros_node::executor::monitor::ReactionEvent`, field for field (the layout
  * is asserted equal below, which is what lets the hook be handed to the
@@ -2447,6 +2472,12 @@ void nros_cpp_monitors_arm(void);
  * required and a NULL one answers `NROS_CPP_RET_INVALID_ARGUMENT` rather than
  * faulting. A full remap table answers `NROS_CPP_RET_FULL`.
  *
+ * Issue 1971 -- this writes the executor's RUNTIME remap table, for
+ * hand-written callers. The generated entry no longer calls it: its launch
+ * rules are one flash table (`nros_cpp_set_launch_remaps`). On bare metal the
+ * runtime table is 0 slots unless `NROS_EXECUTOR_RUNTIME_REMAPS` states some,
+ * so the call answers `NROS_CPP_RET_FULL` and logs why.
+ *
  * # Safety
  * `handle` must be a live executor handle from this ABI, or NULL.
  * `node_name`, `from` and `to` must each point at a NUL-terminated C string
@@ -2458,6 +2489,26 @@ nros_cpp_ret_t nros_cpp_declare_remap(void *handle,
                                       const char *node_namespace,
                                       const char *from,
                                       const char *to);
+
+/**
+ * Install the image's launch remap table: ONE `static const` table the
+ * generated entry emits, read by every executor (issue 1971, RFC-0107
+ * step 1). Launch rules stay AUTHORITATIVE over `--ros-args -r` rules.
+ *
+ * Call it once at boot, BEFORE the board runner sets up any tier or the
+ * entry builds any node: an rclcpp-shape constructor registers its entities
+ * immediately (issue 0255). The generated entry does exactly that.
+ *
+ * Returns `NROS_CPP_RET_OK`, or `NROS_CPP_RET_INVALID_ARGUMENT` when `table`
+ * is NULL with `len > 0`, or a row has a NULL node name, `from` or `to`, or a
+ * string that is not UTF-8 (nothing is installed then).
+ *
+ * # Safety
+ * `table` must point at `len` rows that, with every string they point at,
+ * live for the rest of the program and are never written (a `static const`
+ * array of string literals).
+ */
+nros_cpp_ret_t nros_cpp_set_launch_remaps(const struct nros_cpp_launch_remap_t *table, size_t len);
 
 /**
  * Honour `--ros-args` from a C++ `argc`/`argv`: parse it with rcl's grammar

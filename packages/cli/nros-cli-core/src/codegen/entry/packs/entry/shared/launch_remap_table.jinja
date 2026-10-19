@@ -1,0 +1,28 @@
+{#-
+  Issue 1971 (RFC-0107 step 1) -- the launch file's `<remap from= to=/>`
+  rules, as ONE `static const` table in flash for the whole image.
+
+  Before this, `declare_calls.jinja` emitted one `nros_cpp_declare_remap` call
+  per rule on the executor of the node's tier, and every executor carved a
+  16-rule RAM table to hold them (6,464 B per backing on thumbv7em, once per
+  tier). The rows are string literals, so the table costs 16 B a rule plus
+  the strings, in `.rodata`; an image whose launch states no remap emits
+  nothing at all.
+
+  `launch_remap_install.jinja` hands it to the runtime before the runner is
+  called, so before any tier is set up or any node is built: an rclcpp-shape
+  constructor registers its entities immediately (issue 0255).
+
+  The namespace is `/`, as the `declare_remap` calls passed it.
+-#}
+{%- set n_launch_remaps = nodes | map(attribute="remaps") | map("length") | sum %}
+{%- if n_launch_remaps -%}
+/* Issue 1971 -- the launch's remap rules, one table in flash every executor
+ * reads (installed below, before the runner sets up any tier). */
+static const nros_cpp_launch_remap_t __nros_launch_remaps[{{ n_launch_remaps }}] = {
+{%- for n in nodes %}{% for r in n.remaps %}
+    {"{{ n.name | c_str }}", "/", "{{ r[0] | c_str }}", "{{ r[1] | c_str }}"},
+{%- endfor %}{% endfor %}
+};
+
+{% endif -%}

@@ -295,11 +295,11 @@ pub(crate) struct ExecutorSlices<'s> {
     /// what made constructing an executor a ~9.3 KB STACK temporary and
     /// overflowed the Zephyr Cortex-M main stack in issue 0552.
     ///
-    /// Fixed count (`MAX_REMAPS`) rather than a new `ExecutorSizing` knob:
-    /// the capability is unchanged, so this needs no public API change and no
-    /// regeneration of every entry's sizing. The required backing grows by the
-    /// same bytes, but that lands in the caller's STATIC buffer instead of on
-    /// the stack, which is the entire point.
+    /// Issue 1971 -- [`ExecutorSizing::remaps`] slots, the RUNTIME table
+    /// (`--ros-args -r` and hand-declared rules). It was a fixed 16 here,
+    /// 6,464 B on thumbv7em in every backing, once per tier on a tiered image,
+    /// holding the launch's rules too; those are now one flash table every
+    /// executor reads (`super::launch_remap`), and bare metal carves 0.
     pub(crate) remaps: &'s mut [Option<RemapRule>],
     // phase-409 (issue 0961) — the remaining nine, same reasoning one campaign
     // later. `MAX_CBS` 14 -> 36 put ~3.7 KiB of `group_sched_table` on the stack
@@ -442,7 +442,7 @@ const fn counts_for(sizing: ExecutorSizing) -> RegionCounts {
         sc: sizing.sc,
         nodes: sizing.nodes,
         arena: sizing.arena,
-        remaps: MAX_REMAPS,
+        remaps: sizing.remaps,
         violations: MAX_VIOLATIONS,
         alloc: cfg!(feature = "alloc"),
         params: sizing.params,
@@ -569,6 +569,14 @@ pub struct ExecutorSizing {
     /// backing — Rust `EXECUTOR_BACKING`, every C/C++ `rclc_executor_t`, every
     /// tier slot — which is issue 1702's rejected `.bss` static, everywhere.
     pub params: usize,
+    /// Issue 1971 -- RUNTIME remap-table slots: `--ros-args -r` rules and
+    /// rules a hand-written caller declares with `declare_remap`. The launch
+    /// file's rules are not here (one flash table, `super::launch_remap`).
+    /// The default is [`MAX_REMAPS`] (`NROS_EXECUTOR_RUNTIME_REMAPS`: 16 on a
+    /// target with process arguments, 0 on bare metal), the same for every
+    /// tier. A full or absent table is `declare_remap`'s named refusal, never
+    /// a silently dropped rule.
+    pub remaps: usize,
 }
 
 impl ExecutorSizing {
@@ -581,6 +589,7 @@ impl ExecutorSizing {
         arena: crate::config::ARENA_SIZE,
         nodes: crate::config::MAX_NODES,
         params: nros_params::IMPLIED_STORE_SLOTS,
+        remaps: MAX_REMAPS,
     };
 
     /// `u64` words a backing must hold for this sizing (see
@@ -677,6 +686,9 @@ pub const fn tier_executor_sizing(t: &crate::config::TierSizing) -> ExecutorSizi
             Some(n) if n < store => n,
             Some(_) => store,
         },
+        // Issue 1971 -- the runtime table is the image's, per executor: the
+        // launch's rules are the shared flash table, not a per-tier count.
+        remaps: MAX_REMAPS,
     }
 }
 
@@ -722,6 +734,7 @@ pub(crate) unsafe fn carve<'s>(
         arena,
         nodes: node_slots,
         params: param_slots,
+        remaps: remap_slots,
     } = sizing;
     let o = compute_offsets(sizing);
     // Fail-loud on EVERY profile (not `debug_assert!`): embedded release builds
@@ -803,11 +816,11 @@ pub(crate) unsafe fn carve<'s>(
 
         let remaps_p = base.add(o.remaps) as *mut Option<RemapRule>;
         let mut i = 0;
-        while i < MAX_REMAPS {
+        while i < remap_slots {
             remaps_p.add(i).write(None);
             i += 1;
         }
-        let remaps_s = region_slice(remaps_p, MAX_REMAPS);
+        let remaps_s = region_slice(remaps_p, remap_slots);
 
         let alive_p = base.add(o.alive_slots) as *mut AliveSlot;
         let mut i = 0;
@@ -906,6 +919,7 @@ mod tests {
             arena: 0,
             nodes: 0,
             params: 0,
+            remaps: MAX_REMAPS,
         };
         let native = executor_storage_layout_with(sizing, NATIVE_UNITS);
 
@@ -955,6 +969,7 @@ mod tests {
                 arena: 4096,
                 nodes: 4,
                 params: 3,
+                remaps: MAX_REMAPS,
             },
             zeroed,
         );
@@ -1158,6 +1173,35 @@ mod tests {
         );
     }
 
+    /// Issue 1971 -- the runtime remap table is a sizing count: an executor
+    /// sized 0 (bare metal) carves none, and each slot costs one rule.
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn the_remap_table_is_carved_at_the_sizing_count() {
+        const DEFAULT: ExecutorSizing = ExecutorSizing::DEFAULT;
+        let at = |remaps| executor_storage_layout(ExecutorSizing { remaps, ..DEFAULT }).size();
+        let rule = size_of::<Option<RemapRule>>();
+        assert!(at(0) + rule * 4 <= at(4) && at(4) <= at(0) + rule * 4 + 8);
+        assert!(at(0) + rule * MAX_REMAPS <= at(MAX_REMAPS));
+
+        const SIZING: ExecutorSizing = ExecutorSizing {
+            remaps: 3,
+            arena: 64,
+            params: 0,
+            ..DEFAULT
+        };
+        // Heap-allocate, as `carve_yields_right_lengths_and_inits` does: the
+        // DEFAULT callback/sched-context counts make this backing larger than
+        // `clippy::large_stack_arrays` allows, and its size is not what is
+        // under test.
+        let mut backing = alloc::vec![const { MaybeUninit::<u64>::uninit() }; SIZING.u64_len()]
+            .into_boxed_slice();
+        // SAFETY: the backing is `u64_len()` words, and it outlives `slices`.
+        let slices = unsafe { carve(&mut backing, SIZING) };
+        assert_eq!(slices.remaps.len(), 3);
+        assert!(slices.remaps.iter().all(Option::is_none));
+    }
+
     /// The other half of the same claim, and the one issue 0961 is about: the
     /// VALUE does not move.
     ///
@@ -1259,6 +1303,9 @@ mod tests {
                 + size_of::<u32>()
                 + size_of::<&'static [super::super::monitor::HazardSpec]>()
                 + size_of::<&'static [super::super::monitor::ModeTables]>()
+                // Issue 1971 -- the executor's own launch-remap borrow (a
+                // `&'static` slice of `.rodata`; scales with nothing).
+                + size_of::<Option<&'static [super::super::launch_remap::LaunchRemap]>>()
                 + 2 * size_of::<u16>()
                 + size_of::<Option<u32>>()
                 + size_of::<
@@ -1398,6 +1445,7 @@ mod tests {
                 arena: 1,
                 nodes: 1,
                 params: 0,
+                remaps: MAX_REMAPS,
             };
             if !compute_offsets(sizing).params.is_multiple_of(align) {
                 misaligned += 1;
@@ -1433,6 +1481,9 @@ mod tests {
         };
         let s = tier_executor_sizing(&t);
         assert_eq!((s.cbs, s.arena, s.nodes), (3, 8192, 2));
+        // Issue 1971 -- the runtime remap table is the image's default on
+        // every tier; the launch's rules are the shared flash table.
+        assert_eq!(s.remaps, MAX_REMAPS);
         assert_eq!(s.sc, crate::config::MAX_SC);
         let store = nros_params::IMPLIED_STORE_SLOTS;
         assert_eq!(s.params, 4.min(store));
@@ -1521,6 +1572,7 @@ mod tests {
             arena: 64,
             nodes: 1,
             params: PARAMS,
+            remaps: MAX_REMAPS,
         };
         const WORDS: usize = executor_storage_u64_len(TINY);
         static mut BACKING: [MaybeUninit<u64>; WORDS] = [MaybeUninit::uninit(); WORDS];

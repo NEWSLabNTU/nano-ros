@@ -303,6 +303,7 @@ SIZING_KNOBS = {
     "NROS_ENTITY_DECLARED_DEPTHS": "the per-kind subscription region sum",
     "NROS_ENTITY_UNDECLARED_DEPTH_COUNT_SUBSCRIPTION": "the same sum's guard",
     "NROS_EXECUTOR_MAX_VIOLATIONS": "the carved violation ring (phase-474 I1)",
+    "NROS_EXECUTOR_RUNTIME_REMAPS": "the carved runtime remap table (issue 1971)",
     "NROS_SUBSCRIBED_TYPE_BOUNDS": "each subscription's own region (issue 1255)",
 }
 NOT_SIZING = {
