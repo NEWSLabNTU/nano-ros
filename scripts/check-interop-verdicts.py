@@ -566,10 +566,15 @@ def host_workspace_fixtures_for(cells, ids, known=None, read=None, helpers=None)
 # result (`--assert-ran`), beside the cells. No ledger verdict: the case was
 # never an interop measurement, so a red is a red, not a regression.
 #
-# `cyclone_slirp_pair` is NOT here and cannot be: it needs unprivileged user
-# namespaces, which the runner container refuses (see issue 1800).
+# `cyclone_slirp_pair` needs unprivileged user + network namespaces and a TUN
+# device. The SELF-HOSTED runner container (`--cap-drop ALL`) refuses them on
+# purpose, but this lane's host job runs on a GitHub-hosted VM, where its
+# container is started with `seccomp=unconfined` and `/dev/net/tun` instead
+# (live-peer.yml, issue 1800). Its guest is the `cyclone_slirp_guest`
+# compile-check row, which `--host-compile-checks` derives from the test source.
 HOST_ROS2_TESTS: "list[tuple[str, str]]" = [
     ("workspace_shadowing", "workspace_std_msgs_shadows_ament_in_consumer_binary"),
+    ("cyclone_slirp_pair", "a_tag_isolated_host_profile_reaches_a_slirp_guest_and_nothing_else"),
 ]
 
 
@@ -1845,9 +1850,12 @@ def _self_test_runner_split(
         assert re.search(rf"\bfn\s+{re.escape(case)}\b", (TESTS_DIR / f"{b}.rs").read_text()), (
             f"selftest: HOST_ROS2_TESTS names {b}::{case}, which the source no longer defines"
         )
-    b, case = HOST_ROS2_TESTS[0]
     d = tmp / "ros2-tests"
     d.mkdir(exist_ok=True)
+    # Every other declared test passes, so the verdict is the first one's alone.
+    for ob, ocase in HOST_ROS2_TESTS[1:]:
+        (d / f"{ob}.xml").write_text(_junit([(ob, ocase, "pass")]))
+    b, case = HOST_ROS2_TESTS[0]
     for outcome, want in (("pass", 0), ("fail", 0), ("skip", 3)):
         (d / f"{b}.xml").write_text(_junit([(b, case, outcome)]))
         with contextlib.redirect_stdout(io.StringIO()):

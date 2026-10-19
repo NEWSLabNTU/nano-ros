@@ -13,8 +13,7 @@ phase when the open-issue survey of 2026-10-17 ran.
 - **#1960 was filed while closing #1309, and is now fixed.** The sweep lints
   all 33 excluded standalone roots (31 runs, 2 reasoned skips), which found
   20 clippy errors in 8 roots and rustfmt diffs in 5. It also filed #1966.
-- **#1800 is down to `cyclone_slirp_pair`,** which needs a host that permits
-  user namespaces.
+- **#1800 is resolved:** live-peer's host job runs both of its tests.
 
 ## Why this phase exists
 
@@ -50,11 +49,12 @@ phase's. Build speed is phase-489's.
       binary.
 - [x] [#1795](../issues/archived/1795-rtos-carrier-route-no-fixture.md): a fixture row
       builds a ThreadX or NuttX TYPED carrier image.
-- [ ] [#1800](../issues/1800-ros2-tests-no-scheduled-lane-claims.md): a
+- [x] [#1800](../issues/archived/1800-ros2-tests-no-scheduled-lane-claims.md): a
       scheduled lane that claims ROS 2 runs `workspace_shadowing` and
-      `cyclone_slirp_pair`. `workspace_shadowing` has run in live-peer since
-      PR #1942. `cyclone_slirp_pair` waits on a lane host that permits user
-      namespaces.
+      `cyclone_slirp_pair`. Both run in live-peer's host job, which is a
+      GitHub-hosted VM: `workspace_shadowing` since PR #1942, and
+      `cyclone_slirp_pair` since its container gained `seccomp=unconfined` and
+      `/dev/net/tun`.
 - [x] [#1960](../issues/archived/1960-standalone-cargo-roots-linted-by-no-lane.md): the
       28 excluded roots that are built but linted by nothing each get a
       `STANDALONE` sweep run, or a reason.
@@ -111,7 +111,7 @@ ejection from a cause listed here.
 | [#1784](../issues/archived/1784-workspace-features-threadx-posix-duplicate-platform.md) | `check::workspace-features` links two platform ABIs into one test binary. The gate runs only in `ci gate` (issue 1177's class). |
 | [#1785](../issues/archived/1785-stall-watchdog-diagnostics-hang-on-fuse-fd.md) | The make-stall watchdog hangs in its own diagnostics on a stuck FUSE mount, so the watchdog never fires. |
 | [#1795](../issues/archived/1795-rtos-carrier-route-no-fixture.md) | No lane builds an RTOS TYPED carrier image, so the link of `nano_ros_node_register`'s ThreadX and NuttX arms has no coverage. |
-| [#1800](../issues/1800-ros2-tests-no-scheduled-lane-claims.md) | `workspace_shadowing` and `cyclone_slirp_pair` claim ROS 2 and are not interop cells, so no scheduled lane runs them. |
+| [#1800](../issues/archived/1800-ros2-tests-no-scheduled-lane-claims.md) | `workspace_shadowing` and `cyclone_slirp_pair` claim ROS 2 and are not interop cells, so no scheduled lane runs them. |
 | [#1868](../issues/archived/1868-ci-rustup-downloads-flake-merge-gating-jobs.md) | Merge-gating jobs download Rust toolchains at run time, and a failed download ejects the whole batch. |
 | [#1960](../issues/archived/1960-standalone-cargo-roots-linted-by-no-lane.md) | Filed 2026-10-18 while closing #1309: 28 excluded cargo roots are built, as a fixture or a locked root, and clippy reaches none of them. |
 | [#1912](../issues/archived/1912-push-gate-pin-baseline-is-live-main.md) | The push-event submodule-pin gate compares against the live `origin/main`, so a superseded commit reads as a REWIND. |
