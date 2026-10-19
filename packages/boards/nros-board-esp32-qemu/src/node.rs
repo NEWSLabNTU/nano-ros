@@ -356,12 +356,19 @@ where
 struct ConsoleLogger;
 
 impl log::Log for ConsoleLogger {
-    fn enabled(&self, _: &log::Metadata<'_>) -> bool {
-        // Filtered by `log::max_level()` already.
-        true
+    // Issue 1949: nros-log's threshold for the record's target, the answer
+    // every board sink gives. The `Info` this board used to put in
+    // `set_max_level` was the right default in the wrong place: a ceiling no
+    // later `Logger::set_default_level(Debug)` could get under.
+    fn enabled(&self, metadata: &log::Metadata<'_>) -> bool {
+        nros_log::log_compat::admits(metadata)
     }
 
     fn log(&self, record: &log::Record<'_>) {
+        // The `log` macros never call `enabled`.
+        if !nros_log::log_compat::admits(record.metadata()) {
+            return;
+        }
         esp_println::println!(
             "[{}] {}: {}",
             record.level(),
@@ -384,7 +391,7 @@ fn install_log_facade() {
     // installs a `log` logger (esp-println's own `init_logger` is not called).
     unsafe {
         if log::set_logger_racy(&CONSOLE_LOGGER).is_ok() {
-            log::set_max_level_racy(log::LevelFilter::Info);
+            log::set_max_level_racy(log::LevelFilter::Trace);
         }
     }
 }
