@@ -6,10 +6,10 @@ type: limitation
 area: [build, integrations]
 severity: low
 found: 2026-10-18
-related: [issue-1297, phase-506]
+related: [issue-1297, phase-478]
 ---
 
-**Home: [phase-506](../roadmap/phase-506-api-crates-carry-only-the-api.md)** — its W4c records this.
+**Home: [phase-478](../roadmap/phase-478-island-developer-experience-findings.md)** — rehomed 2026-10-19 when phase-506 was archived; building the island's image in its IDE is that phase's subject. Phase-506 W4c ([archived](../roadmap/archived/phase-506-api-crates-carry-only-the-api.md)) records how it got here.
 
 ## What
 

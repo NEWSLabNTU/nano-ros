@@ -218,6 +218,12 @@ pub struct Knobs {
     pub backends: BTreeMap<String, BackendKnobs>,
 }
 
+/// The backend whose `[knobs.<rmw>.tx]` table is a NAMED field of [`Knobs`]
+/// (`zenoh`) rather than an entry of the flattened map — kept so the in-tree
+/// platform files parse unchanged. A fact about this schema's history, not a
+/// selection: [`Knobs::tx_for`] is the only reader.
+pub const LEGACY_TX_BACKEND: &str = "zenoh";
+
 /// Per-backend policy, keyed by the backend's own name in `[knobs.<rmw>]`.
 #[derive(Debug, Default, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -238,12 +244,23 @@ impl Knobs {
             .collect()
     }
 
-    /// The `tx` knobs for `backend`, preferring the flattened per-backend
-    /// table and falling back to the legacy `[knobs.zenoh.tx]` field.
+    /// The `tx` knobs for `backend`: its flattened `[knobs.<backend>.tx]`
+    /// table, else — for the one backend whose table is a named field — the
+    /// legacy `[knobs.zenoh.tx]`, else nothing set.
+    ///
+    /// Issue 1300 — the fallback used to apply to EVERY backend, so asking for
+    /// `xrce`'s tx knobs answered with zenoh's. It is the legacy field's own
+    /// key now, [`LEGACY_TX_BACKEND`], and no other.
     pub fn tx_for(&self, backend: &str) -> &TxKnobs {
+        static UNSET: TxKnobs = TxKnobs {
+            batch: None,
+            split_lock: None,
+            flush_ms: None,
+        };
         match self.backends.get(backend) {
             Some(b) => &b.tx,
-            None => &self.zenoh.tx,
+            None if backend == LEGACY_TX_BACKEND => &self.zenoh.tx,
+            None => &UNSET,
         }
     }
 }
@@ -2151,11 +2168,11 @@ impl PlatformsTree {
 
     /// Resolve one platform's `[knobs]` (inherits-merged, child wins,
     /// field-level).
-    fn platform_tx_knobs(&self, name: &str) -> Result<TxKnobs, ConfigError> {
+    fn platform_tx_knobs(&self, name: &str, backend: &str) -> Result<TxKnobs, ConfigError> {
         let chain = self.chain(name)?;
         let mut tx = TxKnobs::default();
         for file in chain.iter().rev() {
-            let t = &file.knobs.zenoh.tx;
+            let t = file.knobs.tx_for(backend);
             if t.batch.is_some() {
                 tx.batch = t.batch;
             }
@@ -2187,19 +2204,26 @@ impl PlatformsTree {
         Ok(t)
     }
 
-    /// Resolve the `zenoh.tx` knob set for `platform`, applying the full
+    /// Resolve `backend`'s `tx` knob set for `platform`, applying the full
     /// ladder: builtin < platform < `board` deltas < `env` overrides.
     ///
     /// `env` is an accessor (injected for tests): `env(name)` returns the
     /// raw env value if SET (tri-state front-end — a set `"0"` overrides
-    /// an on-default).
+    /// an on-default). The env rung is the knob registry's `<backend>.tx.*`
+    /// rows; a backend the registry has no row for has no env rung.
+    ///
+    /// Issue 1300 — `backend` is a parameter: this read `[knobs.zenoh.tx]`
+    /// whatever the caller was asking about.
     pub fn resolve_tx(
         &self,
+        backend: &str,
         platform: &str,
         board: Option<&TxKnobs>,
         env: &dyn Fn(&str) -> Option<String>,
     ) -> Result<ResolvedTxKnobs, ConfigError> {
-        let plat = self.platform_tx_knobs(platform)?;
+        let plat = self.platform_tx_knobs(platform, backend)?;
+        let group = format!("{backend}.tx");
+        let env_of = |knob: &str| registry_env(&group, knob).and_then(|key| knob_env(env, key));
 
         fn rung<T: Copy>(builtin: T, plat: Option<T>, board: Option<T>) -> (T, KnobSource) {
             match (board, plat) {
@@ -2223,15 +2247,15 @@ impl PlatformsTree {
         );
 
         // Env front-end — top rung, tri-state.
-        if let Some(v) = knob_env(env, tx_env_key("batch")) {
+        if let Some(v) = env_of("batch") {
             batch = v.trim().parse::<u64>().map(|n| n != 0).unwrap_or(false);
             batch_src = KnobSource::Env;
         }
-        if let Some(v) = knob_env(env, tx_env_key("split_lock")) {
+        if let Some(v) = env_of("split_lock") {
             split = v.trim().parse::<u64>().map(|n| n != 0).unwrap_or(false);
             split_src = KnobSource::Env;
         }
-        if let Some(v) = knob_env(env, tx_env_key("flush_ms"))
+        if let Some(v) = env_of("flush_ms")
             && let Ok(n) = v.trim().parse::<u64>()
         {
             flush = n;
@@ -4323,7 +4347,28 @@ serial = true
         let tree = PlatformsTree::load(tmp.path()).unwrap();
         // Parsing a third-party backend's knobs must not require nano-ros to
         // know its name — that is the whole point of de-keying the section.
-        assert!(tree.resolve_tx("p", None, &no_env).is_ok());
+        // Issue 1300 — and resolving it must read ITS table, not zenoh's.
+        let tx = tree.resolve_tx("acme-rmw", "p", None, &no_env).unwrap();
+        assert!(tx.batch.value);
+        assert_eq!(tx.batch.source, KnobSource::Platform);
+        assert_eq!(tx.flush_ms.value, 7);
+        let zenoh = tree
+            .resolve_tx(LEGACY_TX_BACKEND, "p", None, &no_env)
+            .unwrap();
+        assert_eq!(zenoh.batch.source, KnobSource::Builtin);
+    }
+
+    #[test]
+    fn a_backend_without_a_table_does_not_inherit_the_legacy_one() {
+        // Issue 1300 — `tx_for` handed `[knobs.zenoh.tx]` to every backend.
+        let tmp = write_tree(&[("p", "[knobs.zenoh.tx]\nbatch = true\n")]);
+        let tree = PlatformsTree::load(tmp.path()).unwrap();
+        let other = tree.resolve_tx("xrce", "p", None, &no_env).unwrap();
+        assert_eq!(other.batch.source, KnobSource::Builtin);
+        let zenoh = tree
+            .resolve_tx(LEGACY_TX_BACKEND, "p", None, &no_env)
+            .unwrap();
+        assert_eq!(zenoh.batch.source, KnobSource::Platform);
     }
 
     #[test]
@@ -4353,7 +4398,9 @@ serial = true
         // is the acceptance rule phase-290 W2.c set for this schema.
         let tmp = write_tree(&[("p", "[knobs.zenoh.tx]\nbatch = true\n")]);
         let tree = PlatformsTree::load(tmp.path()).unwrap();
-        let tx = tree.resolve_tx("p", None, &no_env).unwrap();
+        let tx = tree
+            .resolve_tx(LEGACY_TX_BACKEND, "p", None, &no_env)
+            .unwrap();
         assert!(tx.batch.value);
         assert_eq!(tx.batch.source, KnobSource::Platform);
     }
@@ -4485,7 +4532,10 @@ serial = true
         assert_eq!(by_alias.get("threads"), Some(&true));
 
         let no_env = |_: &str| None;
-        assert!(tree.resolve_tx("freertos-lwip", None, &no_env).is_ok());
+        assert!(
+            tree.resolve_tx(LEGACY_TX_BACKEND, "freertos-lwip", None, &no_env)
+                .is_ok()
+        );
     }
 
     /// `inherits` names a sibling, and an alias there must resolve too —
@@ -4579,7 +4629,9 @@ serial = true
     fn empty_tree_yields_builtins() {
         let tmp = write_tree(&[("zephyr", "")]);
         let tree = PlatformsTree::load(tmp.path()).unwrap();
-        let tx = tree.resolve_tx("zephyr", None, &no_env).unwrap();
+        let tx = tree
+            .resolve_tx(LEGACY_TX_BACKEND, "zephyr", None, &no_env)
+            .unwrap();
         assert!(!tx.batch.value);
         assert_eq!(tx.batch.source, KnobSource::Builtin);
         assert_eq!(tx.flush_ms.value, BUILTIN_TX_FLUSH_MS);
@@ -4594,7 +4646,9 @@ serial = true
         let tree = PlatformsTree::load(tmp.path()).unwrap();
 
         // platform rung
-        let tx = tree.resolve_tx("zephyr", None, &no_env).unwrap();
+        let tx = tree
+            .resolve_tx(LEGACY_TX_BACKEND, "zephyr", None, &no_env)
+            .unwrap();
         assert!(tx.batch.value);
         assert_eq!(tx.batch.source, KnobSource::Platform);
         assert_eq!(tx.flush_ms.value, 40);
@@ -4605,14 +4659,18 @@ serial = true
             split_lock: None,
             flush_ms: None,
         };
-        let tx = tree.resolve_tx("zephyr", Some(&board), &no_env).unwrap();
+        let tx = tree
+            .resolve_tx(LEGACY_TX_BACKEND, "zephyr", Some(&board), &no_env)
+            .unwrap();
         assert!(!tx.batch.value);
         assert_eq!(tx.batch.source, KnobSource::Board);
         assert_eq!(tx.flush_ms.value, 40); // untouched delta falls through
 
         // env rung overrides board — including explicit re-enable
         let env = |k: &str| (k == "NROS_ZENOH_TX_BATCH").then(|| "1".to_string());
-        let tx = tree.resolve_tx("zephyr", Some(&board), &env).unwrap();
+        let tx = tree
+            .resolve_tx(LEGACY_TX_BACKEND, "zephyr", Some(&board), &env)
+            .unwrap();
         assert!(tx.batch.value);
         assert_eq!(tx.batch.source, KnobSource::Env);
     }
@@ -4625,7 +4683,9 @@ serial = true
         )]);
         let tree = PlatformsTree::load(tmp.path()).unwrap();
         let env = |k: &str| (k == "NROS_ZENOH_TX_BATCH").then(|| "0".to_string());
-        let tx = tree.resolve_tx("zephyr", None, &env).unwrap();
+        let tx = tree
+            .resolve_tx(LEGACY_TX_BACKEND, "zephyr", None, &env)
+            .unwrap();
         assert!(!tx.batch.value, "set env 0 must beat an on-default");
         assert_eq!(tx.batch.source, KnobSource::Env);
         assert!(
@@ -4647,7 +4707,9 @@ serial = true
             ),
         ]);
         let tree = PlatformsTree::load(tmp.path()).unwrap();
-        let tx = tree.resolve_tx("child", None, &no_env).unwrap();
+        let tx = tree
+            .resolve_tx(LEGACY_TX_BACKEND, "child", None, &no_env)
+            .unwrap();
         assert_eq!(tx.flush_ms.value, 60);
         let caps = tree.capabilities("child").unwrap();
         assert_eq!(caps.get("threads"), Some(&true));
@@ -4667,7 +4729,9 @@ serial = true
             "[knobs.zenoh.tx]\nbatch = true\nsplit_lock = true\n",
         )]);
         let tree = PlatformsTree::load(tmp.path()).unwrap();
-        let mut tx = tree.resolve_tx("bare-metal", None, &no_env).unwrap();
+        let mut tx = tree
+            .resolve_tx(LEGACY_TX_BACKEND, "bare-metal", None, &no_env)
+            .unwrap();
         let warnings = tree.capability_check("bare-metal", &mut tx).unwrap();
         assert_eq!(warnings.len(), 1);
         assert!(!tx.split_lock.value);

@@ -12,7 +12,7 @@ resolved: 2026-10-18
 related: [issue-1384, issue-0312, phase-156, phase-189, phase-506]
 ---
 
-**Home: [phase-506](../../roadmap/phase-506-api-crates-carry-only-the-api.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+**Home: [phase-506](../../roadmap/archived/phase-506-api-crates-carry-only-the-api.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## What is true
 
