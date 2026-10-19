@@ -116,3 +116,5 @@ ejection from a cause listed here.
 | [#1960](../issues/archived/1960-standalone-cargo-roots-linted-by-no-lane.md) | Filed 2026-10-18 while closing #1309: 28 excluded cargo roots are built, as a fixture or a locked root, and clippy reaches none of them. |
 | [#1912](../issues/archived/1912-push-gate-pin-baseline-is-live-main.md) | The push-event submodule-pin gate compares against the live `origin/main`, so a superseded commit reads as a REWIND. |
 | [#1964](../issues/1964-pre-push-fast-red-unreproduced.md) | The pre-push `check fast` went red once and green on an immediate retry, and which gate it was cannot be recovered. The hook now keeps its full output outside the checkout. |
+| [#1984](../issues/archived/1984-run-matrix-coordinate-truth-nm-sweep-timeout.md) | The `nm` audit of every workspace row timed out on a slow runner with no row named. Each pass and the sweep are now bounded and timed. |
+| [#1985](../issues/archived/1985-identity-budget-counts-retired-cargo-root.md) | `artifact-identity-budget` counted a cargo root the image no longer builds, so the persistent fixture tree failed it after phase-506 W4a. |

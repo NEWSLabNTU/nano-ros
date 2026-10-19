@@ -366,11 +366,52 @@ if [ "${1:-}" = "--self-test" ]; then
         _st_fails=$((_st_fails + 1))
     fi
 
+    # (i) issue 1985 — a cargo root no build file names is history. The live
+    # root sits exactly on the budget; the retired one (named so its name has
+    # the live one's as a PREFIX) adds two identities that must not count.
+    _st_ti="$_st_tmp/tree_i"
+    for h in a1 a2 a3 a4; do
+        mkdir -p "$_st_ti/cargo/live_1/p/deps"
+        : > "$_st_ti/cargo/live_1/p/deps/libnros_core-${h}00000000000000.rlib"
+    done
+    for h in b1 b2; do
+        mkdir -p "$_st_ti/cargo/live_12/p/deps"
+        : > "$_st_ti/cargo/live_12/p/deps/libnros_core-${h}00000000000000.rlib"
+    done
+    mkdir -p "$_st_ti/CMakeFiles/x.dir"
+    printf 'cargo build --target-dir=%s/cargo/live_1 --profile=p\n' "$_st_ti" \
+        > "$_st_ti/CMakeFiles/x.dir/build.make"
+    _st_rc=0
+    _st_out="$(NROS_IDENTITY_BUDGET_TREE="$_st_ti" NROS_FIXTURE_STAMP="$_st_tmp/no-stamp" \
+        bash "$0" 2>&1)" || _st_rc=$?
+    if [ "$_st_rc" -eq 0 ] && nros_grep_q 'issue 1985): live_12' <<<"$_st_out"; then
+        echo "  ok   (i) a retired cargo root is left out, and the reading names it"
+    else
+        echo "  FAIL (i) a root no build file names was counted (rc=$_st_rc):" >&2
+        printf '%s\n' "$_st_out" | sed 's/^/        /' >&2
+        _st_fails=$((_st_fails + 1))
+    fi
+
+    # (j) the negative control: once a build file names that root it is live,
+    # and its two extra identities fail the budget.
+    printf 'cargo build --target-dir=%s/cargo/live_12 --profile=p\n' "$_st_ti" \
+        >> "$_st_ti/CMakeFiles/x.dir/build.make"
+    _st_rc=0
+    _st_out="$(NROS_IDENTITY_BUDGET_TREE="$_st_ti" NROS_FIXTURE_STAMP="$_st_tmp/no-stamp" \
+        bash "$0" 2>&1)" || _st_rc=$?
+    if [ "$_st_rc" -ne 0 ] && nros_grep_q 'nros_core has 6 distinct' <<<"$_st_out"; then
+        echo "  ok   (j) a root a build file names is still counted"
+    else
+        echo "  FAIL (j) a live cargo root was left out (rc=$_st_rc):" >&2
+        printf '%s\n' "$_st_out" | sed 's/^/        /' >&2
+        _st_fails=$((_st_fails + 1))
+    fi
+
     if [ "$_st_fails" -ne 0 ]; then
         echo "check-artifact-identity-budget --self-test: $_st_fails case(s) FAILED" >&2
         exit 1
     fi
-    echo "check-artifact-identity-budget --self-test: 8 case(s) OK"
+    echo "check-artifact-identity-budget --self-test: 10 case(s) OK"
     exit 0
 fi
 
@@ -707,6 +748,56 @@ _all="$(find "$TREE" \
     -type d -path '*/out/sizes-probe-target-*' -prune -o \
     -path '*/deps/*' -name 'lib*-*.rlib' -print 2>/dev/null | sort)"
 
+# issue 1985 — a cargo ROOT that this configure no longer builds is history,
+# whatever its mtime.
+#
+# Corrosion gives every imported cargo root its own `cargo/<root>_<hash>/`, and
+# a change to which roots an image imports leaves the old dir behind with its
+# own identities in it: phase-506 W4a moved the C/C++ API crates from the
+# repo-root workspace into a generated image crate, and the persistent fixture
+# tree of run 39210994277 still held the retired `<repo dir>_<hash>` root, so
+# `nros_core` read 6 against a budget of 4 while a fresh build of the same
+# commit reads exactly 4. The started_at window cannot catch this when the
+# gate runs BEFORE the build (the fixture-tree lanes run `check fast` first),
+# and `prune-superseded-artifacts.py` cannot either: it keeps the newest file
+# per DIRECTORY, and a retired root is a directory of its own.
+#
+# The current configure says which roots it builds: every one is a
+# `--target-dir` in a generated `build.ninja`/`build.make`. A root none of them
+# names cannot be linked by this build. A tree with no build files (a synthetic
+# self-test tree, a half-configured dir) is left exactly as it was — no
+# evidence, no filter.
+RETIRED_ROOT_NOTE=""
+if [ -d "$TREE/cargo" ] && [ -n "$_all" ]; then
+    _build_files="$(find "$TREE" -path "$TREE/cargo" -prune -o \
+        \( -name build.ninja -o -name build.make \) -type f -print 2>/dev/null)"
+    if [ -n "$_build_files" ]; then
+        _retired=""
+        for _root in "$TREE"/cargo/*/; do
+            [ -d "$_root" ] || continue
+            _name="$(basename "$_root")"
+            _pat="/cargo/$(printf '%s' "$_name" | sed 's/[.]/[.]/g')([^A-Za-z0-9_.-]|\$)"
+            if [ -z "$(printf '%s\n' "$_build_files" \
+                | xargs -d '\n' grep -lE -m1 -- "$_pat" 2>/dev/null | head -1)" ]; then
+                _retired="$_retired $_name"
+            fi
+        done
+        if [ -n "$_retired" ]; then
+            _n_before=$(printf '%s\n' "$_all" | grep -c . || true)
+            for _name in $_retired; do
+                _all="$(printf '%s\n' "$_all" | grep -vF -- "$TREE/cargo/$_name/" || true)"
+            done
+            _n_after=$(printf '%s\n' "$_all" | grep -c . || true)
+            RETIRED_ROOT_NOTE="  left out $((_n_before - _n_after)) rlib(s) under cargo root(s) no build file of this configure names (issue 1985):$_retired"
+        fi
+    fi
+fi
+# Every reading says what it counted; a retired root it left out is part of that.
+era_notes() {
+    echo "$IDENTITY_ERA_NOTE"
+    [ -z "$RETIRED_ROOT_NOTE" ] || echo "$RETIRED_ROOT_NOTE"
+}
+
 _started=""
 _started_from_sidecar=0
 [ -r "$STAMP" ] && _started="$(sed -n 's/^started_at=//p' "$STAMP" | head -1)"
@@ -837,7 +928,7 @@ fi
 
 if [ -z "$triples" ]; then
     echo "artifact-identity budget: FAIL" >&2
-    echo "$IDENTITY_ERA_NOTE" >&2
+    era_notes >&2
     echo "  $TREE has rlibs under deps/, but none matched lib<crate>-<hash>.rlib." >&2
     echo "  The naming convention this gate reads has changed; fix the gate." >&2
     exit 1
@@ -929,7 +1020,7 @@ _selftest="$(printf 'nros 0aaaaaaaa\nnros_board 1bbbbbbbb\nnros fccccccccc\n' \
     | count_identities | awk '$2 == "nros" {print $1}')"
 if [ "$_selftest" != "2" ]; then
     echo "artifact-identity budget: FAIL" >&2
-    echo "$IDENTITY_ERA_NOTE" >&2
+    era_notes >&2
     echo "  the identity counter is not collation-independent: it reported" >&2
     echo "  '$_selftest' identities for a crate that has exactly 2." >&2
     echo "  A counter that splits one crate into two runs under-reports the" >&2
@@ -1022,7 +1113,7 @@ report_crate() {
 budgeted_n="$(crate_identities "$BUDGET_CRATE")"
 if [ -z "$budgeted_n" ]; then
     echo "artifact-identity budget: FAIL" >&2
-    echo "$IDENTITY_ERA_NOTE" >&2
+    era_notes >&2
     echo "  $TREE holds compiled rlibs, but NONE for $BUDGET_CRATE." >&2
     echo "  The gate cannot answer the question it exists to ask, so it fails" >&2
     echo "  rather than passing on a tree it did not understand. Either the" >&2
@@ -1033,7 +1124,7 @@ fi
 
 if [ "$budgeted_n" -gt "$BUDGET_IDENTITIES" ]; then
     echo "artifact-identity budget: FAIL" >&2
-    echo "$IDENTITY_ERA_NOTE" >&2
+    era_notes >&2
     echo "  $BUDGET_CRATE has $budgeted_n distinct -C metadata identities in $TREE" >&2
     echo "  (budget $BUDGET_IDENTITIES, recorded 2026-08-07 by phase-340 W4)." >&2
     echo "  Each identity is a separate compilation of the same crate:" >&2
@@ -1063,7 +1154,7 @@ over_ceiling="$(printf '%s\n' "$_tree_counts" \
     | awk -v k="$CEILING_IDENTITIES" '$1 > k {print $2, $1}')"
 if [ -n "$over_ceiling" ]; then
     echo "artifact-identity budget: FAIL" >&2
-    echo "$IDENTITY_ERA_NOTE" >&2
+    era_notes >&2
     echo "  crates over the tree-wide ceiling of $CEILING_IDENTITIES identities in $TREE:" >&2
     while read -r crate n; do
         echo "  $crate: $n" >&2
@@ -1088,7 +1179,7 @@ over_copies="$(printf '%s\n' "$_tree_triples" | awk '{print $1, $2}' | sort | un
     | awk -v k="$CEILING_COPIES" '$1 > k {print $2, $3, $1}')"
 if [ -n "$over_copies" ]; then
     echo "artifact-identity budget: FAIL" >&2
-    echo "$IDENTITY_ERA_NOTE" >&2
+    era_notes >&2
     echo "  identities written into more than $CEILING_COPIES target dirs in $TREE:" >&2
     while read -r crate hash n; do
         echo "  $crate $hash: $n copies" >&2
@@ -1110,6 +1201,6 @@ max_copies="$(printf '%s\n' "$_tree_triples" | awk '{print $1, $2}' | sort | uni
     | awk '{print $1}' | sort -rn | head -1)"
 echo "artifact-identity budget OK ($TREE): $BUDGET_CRATE $budgeted_n/$BUDGET_IDENTITIES identities;" \
      "worst crate $max_ids/$CEILING_IDENTITIES; worst identity $max_copies/$CEILING_COPIES copies."
-echo "$IDENTITY_ERA_NOTE"
+era_notes
 axis_report
 if [ -n "$_xr_out" ]; then printf '%s\n' "$_xr_out"; fi

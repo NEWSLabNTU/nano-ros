@@ -102,3 +102,10 @@ lists the three fixture-tree jobs (run-matrix `matrix` and `tier1`, nightly
 Acceptance is still the one stated above. It needs a scheduled or dispatched run
 on the self-hosted runner, and none has run since `9a1ff7855f`.
 
+
+**Acceptance met, 2026-10-19.** In run-matrix run 39210994277 (schedule), both
+fixture-tree jobs ran the in-tree `pin-baseline.sh provide`
+(`pin-baseline: schedule -> c13a88fe88`). Tier 2's `check fast` then ran 456
+gates with no failure, `submodule-pins` included. Tier 1's one red was
+issue 1985. Nightly run 39216095521's `tier 2 nightly (pairwise cover)`
+provided its baseline the same way, and its `check fast` passed 456 gates.
