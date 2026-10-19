@@ -1608,6 +1608,9 @@ function(nros_resolve_knobs)
     # issue 1971 -- runtime remap-table slots (`-1` derives: 0 on bare metal).
     _nros_resolve_knob(NROS_EXECUTOR_RUNTIME_REMAPS
         "${CONFIG_NROS_EXECUTOR_RUNTIME_REMAPS}")
+    # issue 1982 -- extra-session slots (`-1` derives: backends - 1).
+    _nros_resolve_knob(NROS_EXECUTOR_EXTRA_SESSIONS
+        "${CONFIG_NROS_EXECUTOR_EXTRA_SESSIONS}")
     # phase-474 I2 -- the arming deadline after the first spin.
     _nros_resolve_knob(NROS_MONITOR_ARM_GRACE_MS
         "${CONFIG_NROS_MONITOR_ARM_GRACE_MS}")

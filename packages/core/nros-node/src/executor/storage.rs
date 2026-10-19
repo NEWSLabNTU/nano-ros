@@ -250,6 +250,7 @@ pub(crate) struct ExecutorStorage<
     const NODES: usize,
     const PARAMS: usize,
     const HOMES: usize,
+    const EXTRA: usize = { extra_session_slots(ExecutorSizing::DEFAULT) },
 > {
     arena: [MaybeUninit<u8>; ARENA],
     entries: [Option<CallbackMeta>; CBS],
@@ -261,8 +262,9 @@ pub(crate) struct ExecutorStorage<
     remaps: [Option<RemapRule>; MAX_REMAPS],
     // phase-409 — the nine that phase-271 left inline.
     nodes: [MaybeUninit<NodeRecord>; NODES],
-    extra_sessions: [MaybeUninit<ConcreteSession>; NODES],
-    extra_session_ids: [MaybeUninit<ExtraSessionId>; NODES],
+    // Issue 1982 -- one per OTHER backend, at most one per node.
+    extra_sessions: [MaybeUninit<ConcreteSession>; EXTRA],
+    extra_session_ids: [MaybeUninit<ExtraSessionId>; EXTRA],
     node_sched_table: [MaybeUninit<NodeSchedEntry>; NODES],
     dispatch_slots: [MaybeUninit<DispatchSlot>; NODES],
     component_slots: [MaybeUninit<ComponentSlot>; NODES],
@@ -435,12 +437,27 @@ const fn unit_of<T>() -> RegionUnit {
     }
 }
 
+/// Issue 1982 -- extra-session slots for `sizing`: one per node slot at most,
+/// and no more than the image's other backends
+/// ([`crate::config::MAX_EXTRA_SESSIONS`]; 0 for a one-RMW image).
+// The cap is a build constant, `usize::MAX` or 0 on some builds, so the
+// comparison is constant there; it is the one place the cap is applied.
+#[allow(clippy::absurd_extreme_comparisons)]
+pub(crate) const fn extra_session_slots(sizing: ExecutorSizing) -> usize {
+    if crate::config::MAX_EXTRA_SESSIONS < sizing.nodes {
+        crate::config::MAX_EXTRA_SESSIONS
+    } else {
+        sizing.nodes
+    }
+}
+
 /// The counts this build was configured with, for `sizing`.
 const fn counts_for(sizing: ExecutorSizing) -> RegionCounts {
     RegionCounts {
         cbs: sizing.cbs,
         sc: sizing.sc,
         nodes: sizing.nodes,
+        extra_sessions: extra_session_slots(sizing),
         arena: sizing.arena,
         remaps: sizing.remaps,
         violations: MAX_VIOLATIONS,
@@ -736,6 +753,7 @@ pub(crate) unsafe fn carve<'s>(
         params: param_slots,
         remaps: remap_slots,
     } = sizing;
+    let extra_slots = extra_session_slots(sizing);
     let o = compute_offsets(sizing);
     // Fail-loud on EVERY profile (not `debug_assert!`): embedded release builds
     // strip debug-assertions, and a backing that is too small is silent memory
@@ -860,8 +878,8 @@ pub(crate) unsafe fn carve<'s>(
             sporadic_atomic_states: atomic_s,
             remaps: remaps_s,
             nodes: carved!(o.nodes, node_slots, NodeRecord),
-            extra_sessions: carved!(o.extra_sessions, node_slots, ConcreteSession),
-            extra_session_ids: carved!(o.extra_session_ids, node_slots, ExtraSessionId),
+            extra_sessions: carved!(o.extra_sessions, extra_slots, ConcreteSession),
+            extra_session_ids: carved!(o.extra_session_ids, extra_slots, ExtraSessionId),
             node_sched_table: carved!(o.node_sched_table, node_slots, NodeSchedEntry),
             dispatch_slots: carved!(o.dispatch_slots, node_slots, DispatchSlot),
             component_slots: carved!(o.component_slots, node_slots, ComponentSlot),
@@ -1534,8 +1552,11 @@ mod tests {
         assert!(s.sched_context_bindings.iter().all(|b| b.0 == 0));
         // phase-409 — the CarvedVecs come back empty at their carved capacity.
         assert_eq!(s.nodes.capacity(), NODES);
-        assert_eq!(s.extra_sessions.capacity(), NODES);
-        assert_eq!(s.extra_session_ids.capacity(), NODES);
+        // Issue 1982 -- one per OTHER backend, capped at the node slots.
+        let extra = extra_session_slots(DEFAULT);
+        assert!(extra <= NODES);
+        assert_eq!(s.extra_sessions.capacity(), extra);
+        assert_eq!(s.extra_session_ids.capacity(), extra);
         assert_eq!(s.node_sched_table.capacity(), NODES);
         assert_eq!(s.dispatch_slots.capacity(), NODES);
         assert_eq!(s.component_slots.capacity(), NODES);
@@ -1602,6 +1623,29 @@ mod tests {
             "capacity is the carved length"
         );
         assert_eq!(server.get(key, "p1").and_then(|v| v.as_integer()), Some(1));
+    }
+
+    /// Issue 1982 -- the extra-session tables are capped by the image's other
+    /// backends, never above the node slots, and cost nothing when capped at
+    /// zero.
+    #[test]
+    fn extra_session_slots_are_capped_by_the_backends_and_the_nodes() {
+        let at = |nodes| extra_session_slots(ExecutorSizing { nodes, ..DEFAULT });
+        // Through `black_box`: the cap is a build constant, and a comparison
+        // against it would be judged constant rather than checked.
+        let cap = core::hint::black_box(crate::config::MAX_EXTRA_SESSIONS);
+        assert_eq!(at(0), 0);
+        assert_eq!(at(3), cap.min(3));
+        // A capped region shrinks the backing by its whole slots.
+        let mut no_session = NATIVE_UNITS;
+        no_session.concrete_session = RegionUnit { size: 0, align: 1 };
+        no_session.extra_session_id = RegionUnit { size: 0, align: 1 };
+        if cap == 0 {
+            assert_eq!(
+                executor_storage_layout(DEFAULT).size(),
+                executor_storage_layout_with(DEFAULT, no_session).size(),
+            );
+        }
     }
 
     #[test]

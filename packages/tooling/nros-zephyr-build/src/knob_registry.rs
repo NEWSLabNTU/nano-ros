@@ -138,6 +138,17 @@ pub const KNOBS: &[KnobRow] = &[
         names: &[],
     },
     KnobRow {
+        id: "EXECUTOR_EXTRA_SESSIONS",
+        env: "NROS_EXECUTOR_EXTRA_SESSIONS",
+        legacy: &[],
+        kconfig: "CONFIG_NROS_EXECUTOR_EXTRA_SESSIONS",
+        toml: None,
+        image_key: "executor.extra_sessions",
+        ty: Some("int"),
+        range: None,
+        names: &[],
+    },
+    KnobRow {
         id: "EXECUTOR_MAX_AGE_MONITORS",
         env: "NROS_EXECUTOR_MAX_AGE_MONITORS",
         legacy: &[],
@@ -1204,6 +1215,13 @@ pub const KCONFIG_KNOBS: &[crate::KconfigKnob] = &[
     crate::KconfigKnob {
         symbol: "NROS_EXECUTOR_BACKING_U64S",
         id: "EXECUTOR_BACKING_U64S",
+        ty: "int",
+        kconfig_if: None,
+        depends: &[],
+    },
+    crate::KconfigKnob {
+        symbol: "NROS_EXECUTOR_EXTRA_SESSIONS",
+        id: "EXECUTOR_EXTRA_SESSIONS",
         ty: "int",
         kconfig_if: None,
         depends: &[],

@@ -92,6 +92,11 @@ pub struct Counts {
     pub cbs: usize,
     pub sc: usize,
     pub nodes: usize,
+    /// Issue 1982 -- extra-session slots (and their ids): sessions a node
+    /// opens on an RMW backend other than the primary's. At most `nodes`;
+    /// `nros-node` sizes it from the image's backend count (0 when it links
+    /// one), this crate only places the region.
+    pub extra_sessions: usize,
     pub arena: usize,
     pub remaps: usize,
     pub violations: usize,
@@ -151,6 +156,7 @@ pub const fn offsets(counts: Counts, units: RegionUnits) -> Offsets {
         cbs,
         sc,
         nodes: node_slots,
+        extra_sessions: extra_slots,
         arena,
         remaps: remap_slots,
         violations: violation_slots,
@@ -196,8 +202,8 @@ pub const fn offsets(counts: Counts, units: RegionUnits) -> Offsets {
     };
     let remaps = place!(remap_slots, units.remap_rule);
     let nodes = place!(node_slots, units.node_record);
-    let extra_sessions = place!(node_slots, units.concrete_session);
-    let extra_session_ids = place!(node_slots, units.extra_session_id);
+    let extra_sessions = place!(extra_slots, units.concrete_session);
+    let extra_session_ids = place!(extra_slots, units.extra_session_id);
     let node_sched_table = place!(node_slots, units.node_sched_entry);
     let dispatch_slots = place!(node_slots, units.dispatch_slot);
     let component_slots = place!(node_slots, units.component_slot);

@@ -1200,6 +1200,24 @@ config NROS_EXECUTOR_BACKING_U64S
       linker price them.
 
 
+# prompt: Extra-session slots per executor (-1 = derive)
+config NROS_EXECUTOR_EXTRA_SESSIONS
+    int
+    default -1
+    help
+      Issue 1982 -- slots for sessions a node opens on an RMW backend other
+      than the primary's (NodeBuilder::rmw, open_multi), per executor (per
+      tier), at most one per node slot. A slot is the backend's session
+      (528 bytes on thumbv7em with zenoh) plus a 168-byte id.
+
+      `-1` derives it from the image's backend count (the sizing
+      descriptor's [image] backend_count, which also sizes the RMW backend
+      registry): backends - 1, so 0 for a one-RMW image. With no backend
+      count stated, one per node slot (the old size). State a count only for
+      a second session on the SAME backend (another locator or domain, on a
+      backend that allows it); a full table is NodeError::NodeTableFull.
+
+
 # prompt: Contract-monitor age rows per executor (-1 = derive)
 config NROS_EXECUTOR_MAX_AGE_MONITORS
     int
