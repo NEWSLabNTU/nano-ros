@@ -171,7 +171,7 @@ download transient**, not a defect in the dependency graph. That also explains
 why it is always this cell. Its graph, with the `[patch]` onto the freshly
 cloned `third-party/nuttx/libc`, is resolved against a fresh index fetch in that
 job, so it is the cell that hits the network. This is the same class as
-[#1626](../1626-api-parity-fast-line-needs-crates-io.md), a lane going red on a
+[#1626](1626-api-parity-fast-line-needs-crates-io.md), a lane going red on a
 crates.io hiccup. A retry or an offline-index policy for the probe belongs with
 that class, not here.
 
