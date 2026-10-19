@@ -1,7 +1,7 @@
 ---
 id: 1954
 title: "FreeRTOS C++ fixtures read STALE against a SIBLING leaf's generated image crate source"
-status: open
+status: resolved
 type: bug
 area: [testing, build, cmake]
 severity: high
@@ -65,3 +65,51 @@ Two fixes are defensible.
 Either way, check why the C rows on the same platform were not hit; their leaves also generate
 `nros-c-image`. Acceptance: the `freertos` nightly job runs the three C++ cells to a runtime
 verdict.
+
+## Resolution
+
+Fixed on the probe side. The issue's reading was right about the symptom and
+wrong about one fact: the cargo target dirs ARE shared, one level up.
+
+**Cause.** Every cross-compiled leaf's `build-<rmw>/cargo` is a symlink into the
+phase-340 group dir `build/corrosion-cargo/<platform>/<hash>/`, shared by every
+leaf with the same feature key. Corrosion's `--target-dir` is
+`<build>/cargo/<ws>_<hash>`, hashed on the workspace manifest path. Before
+RFC-0071 D9 that manifest was the repository root for every leaf, so the group
+held one folder (`nano-ros_1147c`) and walking all of it was walking the
+leaf's own closure. D9 gives each leaf its own generated image crate root, so
+the group now holds one folder per leaf. Measured locally after
+`just freertos build-fixture-extras`: 30 folders (15 `nros-c-image_*`, 15
+`nros-cpp-image_*`) under one group, of which `cpp/talker`'s `build.ninja`
+names two. `cargo_unit_dep_files` and `find_build_script_outputs` walked
+`<build>/cargo` whole, so they read every sibling's `.d`, and each sibling's
+names its own generated `src/lib.rs`.
+
+**Why C was not hit in the nightly.** Not a different mechanism. With the fix
+disabled and a C++ sibling's `lib.rs` touched, both FreeRTOS C cells fail with
+the identical verdict (`newer:` the C++ sibling's file). The nightly's C rows
+escaped by build order only.
+
+**Fix.** `CargoScope` in `packages/testing/nros-tests/src/fixtures/binaries/mod.rs`:
+the folders under `<build>/cargo` a build owns are the `--target-dir` values its
+own `build.ninja` passes whose grandparent is that build dir. Both walks skip
+any other folder there. When `build.ninja` names none (no manifest, or an
+unrecognised layout), everything is admitted, so an unknown layout fails toward
+STALE, never toward FRESH. The leaf's FFI glue crate's
+`--target-dir <build>/<pkg>/target` is outside the group and is unaffected.
+NuttX and ThreadX cmake fixtures go through the same two walks.
+
+**Verification.**
+
+- Reproduced locally: touching `cpp/service-client`'s generated `lib.rs` made
+  `cpp_talker` STALE with the nightly's exact message (examined 11,051 inputs).
+  With the fix the talker runs, and a sibling cell's probe reports 1,249
+  inputs examined (`cpp_service_client`), its own closure only.
+- All six `test_rtos_{pubsub,service,action}_e2e::platform_1_Platform__Freertos`
+  C and C++ cells reach a runtime verdict and pass. `cpp_service_client`
+  correctly stays STALE against its OWN touched `lib.rs` until rebuilt.
+- Unit test `a_sibling_leafs_image_crate_is_not_a_staleness_input` covers the
+  sibling folder, the leaf's own edit, the build-script record walk and the
+  no-manifest fallback. Mutation-tested: making the scope admit everything
+  turns it red.
+- Not run: the `freertos` nightly job itself.
