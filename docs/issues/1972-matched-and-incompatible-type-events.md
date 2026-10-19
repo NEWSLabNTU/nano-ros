@@ -6,7 +6,7 @@ type: enhancement
 area: rmw
 severity: low
 found: 2026-10-19
-related: [issue-1971]
+related: [issue-1978]
 ---
 
 ## What

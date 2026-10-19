@@ -1497,27 +1497,27 @@
     "editions": [
       "jazzy"
     ],
-    "why": "ADOPT, issue 1971: the service twin of `cpp:Node::count_publishers`."
+    "why": "ADOPT, issue 1978: the service twin of `cpp:Node::count_publishers`."
   },
   "cpp:Node::count_services": {
     "verdict": "gap",
     "editions": [
       "jazzy"
     ],
-    "why": "ADOPT, issue 1971: as `cpp:Node::count_clients`."
+    "why": "ADOPT, issue 1978: as `cpp:Node::count_clients`."
   },
   "cpp:LifecycleNode::count_clients": {
     "verdict": "gap",
     "editions": [
       "jazzy"
     ],
-    "why": "ADOPT, issue 1971: inherited from `rclcpp::Node` once `cpp:Node::count_clients` lands."
+    "why": "ADOPT, issue 1978: inherited from `rclcpp::Node` once `cpp:Node::count_clients` lands."
   },
   "cpp:LifecycleNode::count_services": {
     "verdict": "gap",
     "editions": [
       "jazzy"
     ],
-    "why": "ADOPT, issue 1971: inherited from `rclcpp::Node` once `cpp:Node::count_services` lands."
+    "why": "ADOPT, issue 1978: inherited from `rclcpp::Node` once `cpp:Node::count_services` lands."
   }
 }
