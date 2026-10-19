@@ -1463,9 +1463,15 @@ pub(crate) struct FreedRegion {
 }
 
 /// Phase 305 W3 (issue 0255) — upper bound on launch remap rules held by one
-/// executor (across all its nodes). Launch files carry a handful per node;
-/// raise here if a plan legitimately outgrows it.
-pub const MAX_REMAPS: usize = 16;
+/// executor (across all its nodes).
+///
+/// Issue 1971 -- the image's DEFAULT table ([`crate::config::MAX_REMAPS`]),
+/// derived by the build script from the launch's `<remap>` count (plus the
+/// `--ros-args -r` road's 16 on a target with process arguments; 16 when no
+/// launch count is stated). One executor's table is its sizing's
+/// [`ExecutorSizing::remaps`](super::storage::ExecutorSizing::remaps), which a
+/// tier sizes from its own nodes.
+pub const MAX_REMAPS: usize = crate::config::MAX_REMAPS;
 
 /// Which of [`crate::names::resolve_name_layered`]'s two tiers a stored rule
 /// belongs to.

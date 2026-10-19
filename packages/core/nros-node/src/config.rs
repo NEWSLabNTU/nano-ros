@@ -19,6 +19,10 @@ pub struct TierSizing {
     pub arena: usize,
     pub nodes: usize,
     pub params: Option<usize>,
+    /// Issue 1971 -- remap-table slots: the launch remaps of the tier's own
+    /// nodes (plus the argv road's on a hosted target), or the image's
+    /// [`MAX_REMAPS`] when the tier states none.
+    pub remaps: usize,
 }
 
 /// phase-271 — default arena bytes for a per-entry executor holding `cbs`
@@ -49,7 +53,7 @@ pub struct TierSizing {
 /// 7,212. Half.
 ///
 /// So when the image declares, this asks the model: `ARENA_SIZE` IS the model
-/// (floored, and `executor::arena_oracle` refuses at compile time to let a
+/// (unfloored since issue 1971, and `executor::arena_oracle` refuses at compile time to let a
 /// stated knob sit below it), and every per-entry executor gets all of it.
 ///
 /// **That over-provisions a TIERED boot**, where one tier holds a subset of the

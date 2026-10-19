@@ -551,9 +551,9 @@ impl core::fmt::Display for ApplyError<'_> {
             Self::Refused(e) => e.fmt(f),
             Self::DoesNotFit(r) => write!(
                 f,
-                "remap `{}:={}` does not fit: the executor's remap table holds {} rules, \
-                 shared with the launch file's; `from`/`to` hold {} bytes, a `node:` \
-                 prefix 64",
+                "remap `{}:={}` does not fit: the executor's remap table is full (its \
+                 sizing's `remaps` slots, {} on this image's default, shared with the \
+                 launch file's rules); `from`/`to` hold {} bytes, a `node:` prefix 64",
                 r.from,
                 r.to,
                 crate::executor::spin::MAX_REMAPS,

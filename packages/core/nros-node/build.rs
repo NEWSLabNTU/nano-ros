@@ -800,6 +800,13 @@ fn main() {
     // cannot use -- 8,192 holds 128 timers. A floor is safe exactly when the
     // per-entry model is right, which is why the fix went there and why the
     // model's terms are now asserted to be upper bounds rather than trusted.
+    //
+    // Issue 1971 -- and it applies only where the demand is UNKNOWN: the
+    // budget over `max_cbs` slots an undeclared image gets. An image (or a
+    // tier) whose entities are declared is sized to its model, which is the
+    // claim those asserted upper bounds make; flooring it as well charged
+    // every derived executor up to 8 KiB it was modelled not to need, once
+    // per tier on a tiered image.
     const ARENA_FLOOR: usize = 8192;
     // issue 0900 — the budget for the two entry SHAPES, summed over how many
     // slots each may occupy, instead of charging every slot the larger one.
@@ -1127,7 +1134,8 @@ fn main() {
         None,
     );
     let derived_arena = match model_required {
-        Some(required) => required.max(ARENA_FLOOR),
+        // Issue 1971 -- the model, unfloored: the demand is known.
+        Some(required) => required,
         // Nobody declared, or declared only partly: keep the pre-step-3
         // arithmetic byte for byte, so no existing image moves.
         None => (action_clients * worst_slot_entry
@@ -1155,6 +1163,26 @@ fn main() {
         n => n,
     };
 
+    // Issue 1971 -- the remap table's slots, an executor sizing count like the
+    // others rather than a fixed 16 every backing paid (6,464 B on
+    // thumbv7em). The launch's rules are what the generated entry declares
+    // (`[image] remap_rules`); a target with process arguments adds what the
+    // `--ros-args -r` road may install beside them (the old fixed table, so a
+    // hosted image keeps what it had), and an image whose launch nobody
+    // stated keeps the old table whole.
+    const DEFAULT_REMAPS: usize = 16;
+    let argv_remaps = match std::env::var("CARGO_CFG_TARGET_OS") {
+        Ok(os) if os == "none" => 0,
+        _ => DEFAULT_REMAPS,
+    };
+    let remap_slots = |launch: Option<usize>| launch.map(|n| n + argv_remaps);
+    let max_remaps = remap_slots(
+        sizing
+            .as_ref()
+            .and_then(|d| d.image.remap_rules().stated().copied()),
+    )
+    .unwrap_or(DEFAULT_REMAPS);
+
     // Issue 1970 -- each executor TIER's own sizing, from the descriptor's
     // `[[tier]]` rows. Empty (every executor sized as the image, inline, as
     // before) unless EVERY tier composed and no rung STATES one of the sizes
@@ -1163,9 +1191,8 @@ fn main() {
     // derived beside it would be smaller than what the author asked for.
     let tier_sizings = tier_sizings(
         sizing.as_ref(),
-        &|counts, rows, topics| {
-            arena_required(counts, rows, Some(topics)).map(|r| r.max(ARENA_FLOOR))
-        },
+        &|counts, rows, topics| arena_required(counts, rows, Some(topics)),
+        &|launch| remap_slots(launch).unwrap_or(max_remaps),
         rx_buf_size,
         rx_recv_size,
         &[
@@ -1204,6 +1231,12 @@ fn main() {
          or a tier did not compose, or a rung states an executor size: every \
          executor is then the image's, carved inline.\n\
          pub const TIER_SIZINGS: &[TierSizing] = {tier_sizings_src};\n\
+         \n\
+         /// Issue 1971 -- launch remap rules one executor's table holds: the \
+         launch's `<remap>` count (the sizing descriptor's `[image] \
+         remap_rules`), plus 16 for the `--ros-args -r` road on a target with \
+         process arguments; 16 when no launch count is stated.\n\
+         pub const MAX_REMAPS: usize = {max_remaps};\n\
          \n\
          /// Contract-monitor RATE/LATENCY rows one executor can watch \
          (set via NROS_EXECUTOR_MAX_MONITORS, derived from the contract's \
@@ -2123,6 +2156,7 @@ struct TierSizingRow {
     arena: usize,
     nodes: usize,
     params: Option<usize>,
+    remaps: usize,
 }
 
 /// Issue 1970 -- each `[[tier]]` row priced into an executor sizing, or none
@@ -2134,11 +2168,13 @@ struct TierSizingRow {
 /// than one tier on each road. Each skip is a warning naming why.
 ///
 /// `arena` is the image's own arithmetic over the tier's counts and the rows of
-/// the subscriptions its members register (the caller's closure, floored as the
-/// image's arena is).
+/// the subscriptions its members register (the caller's closure, unfloored:
+/// a tier's demand is derived, issue 1971). `remaps` turns the tier's stated
+/// launch remap count into its table's slots.
 fn tier_sizings(
     desc: Option<&nros_sizing_descriptor::SizingDescriptor>,
     arena: &TierArena<'_>,
+    remaps: &dyn Fn(Option<usize>) -> usize,
     rx_buf_size: usize,
     rx_recv_size: usize,
     derived: &[(&str, Option<usize>)],
@@ -2206,6 +2242,10 @@ fn tier_sizings(
             arena,
             nodes,
             params: t.param_slots,
+            // Issue 1971 -- the tier's own nodes' launch remaps (plus the
+            // argv road's, where there is one); the image's table when the
+            // tier states none.
+            remaps: remaps(t.image.remap_rules().stated().copied()),
         });
     }
     out
@@ -2221,8 +2261,8 @@ fn tier_sizings_literal(rows: &[TierSizingRow]) -> String {
         .map(|r| {
             format!(
                 "TierSizing {{ name: {:?}, cbs: {}, arena: {}, nodes: {}, \
-                 params: {:?} }}",
-                r.name, r.cbs, r.arena, r.nodes, r.params
+                 params: {:?}, remaps: {} }}",
+                r.name, r.cbs, r.arena, r.nodes, r.params, r.remaps
             )
         })
         .collect();

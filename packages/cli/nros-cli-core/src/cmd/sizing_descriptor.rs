@@ -387,7 +387,10 @@ fn write_from_model(args: &SizingDescriptorArgs, model_path: &std::path::Path) -
     // `write_for_model` checks the declared ingress against.
     let mut inventory = inventory;
     inventory.set_board_rx_cost(board_rx_cost(args));
-    let tiers = tier_rows_for(args, &inventory);
+    // Issue 1971 -- the launch's remap rules, per node: the image's sum is
+    // `[image] remap_rules`, each tier's its own nodes' sum.
+    let remaps = crate::sizing_descriptor::launch_remaps(&model);
+    let tiers = tier_rows_for(args, &inventory, &remaps);
     let written = crate::sizing_descriptor::write_for_model_with_tiers(
         &crate::sizing_descriptor::ModelImage {
             build_dir,
@@ -403,6 +406,7 @@ fn write_from_model(args: &SizingDescriptorArgs, model_path: &std::path::Path) -
             ),
         },
         tiers,
+        Some(remaps.values().sum()),
     )?
     .expect("a composed inventory always states its wiring");
     println!("{}", written.path.display());
@@ -421,6 +425,7 @@ fn write_from_model(args: &SizingDescriptorArgs, model_path: &std::path::Path) -
 fn tier_rows_for(
     args: &SizingDescriptorArgs,
     inventory: &crate::entity_inventory::EntityInventory,
+    remaps: &std::collections::BTreeMap<String, usize>,
 ) -> Vec<nros_sizing_descriptor::Tier> {
     let Some(text) = args
         .tier_record
@@ -432,7 +437,7 @@ fn tier_rows_for(
     let Some(tiers) = crate::sizing_descriptor::tiers_from_priority_record(&text) else {
         return Vec::new();
     };
-    match crate::sizing_descriptor::tier_rows(inventory, &tiers) {
+    match crate::sizing_descriptor::tier_rows(inventory, &tiers, Some(remaps)) {
         Ok(rows) => rows,
         Err(why) => {
             eprintln!(

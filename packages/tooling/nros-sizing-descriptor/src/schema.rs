@@ -623,6 +623,7 @@ pub struct Image {
     entity_liveliness_tokens: Option<usize>,
     model_nodes: Option<usize>,
     infra_families: Option<InfraFamilies>,
+    remap_rules: Option<usize>,
     #[serde(default)]
     refused: BTreeMap<String, String>,
 }
@@ -652,6 +653,7 @@ impl Image {
         "entity_liveliness_tokens",
         "model_nodes",
         "infra_families",
+        "remap_rules",
     ];
 
     /// Distinct `(name, namespace)` nodes the image registers — one per declared
@@ -913,6 +915,21 @@ impl Image {
         fact(&self.infra_families, "infra_families", &self.refused)
     }
 
+    /// Issue 1971 -- the launch `<remap>` rules the image's nodes are launched
+    /// with, summed over those nodes: the rules the generated entry declares
+    /// on the executor (`nros_cpp_declare_remap`, one per pair), and so the
+    /// executor's remap-table slots.
+    ///
+    /// A MODEL fact, like [`Self::model_nodes`]. ABSENT means nobody said,
+    /// which the executor reads as its default table; a stated zero is an
+    /// image whose launch states no remap. What a hosted image's
+    /// `--ros-args -r` road needs on top is the executor's own term
+    /// (`nros-node`'s build script adds it on a target with process
+    /// arguments), not the descriptor's.
+    pub fn remap_rules(&self) -> Fact<usize> {
+        fact(&self.remap_rules, "remap_rules", &self.refused)
+    }
+
     pub fn new(
         node_count: Option<usize>,
         backend_count: Option<usize>,
@@ -1019,6 +1036,10 @@ impl Image {
         self.infra_families = v;
         self
     }
+    pub fn set_remap_rules(&mut self, v: Option<usize>) -> &mut Self {
+        self.remap_rules = v;
+        self
+    }
 
     pub fn refuse(&mut self, field: &str, reason: impl Into<String>) -> &mut Self {
         debug_assert!(
@@ -1058,6 +1079,7 @@ impl Image {
             "entity_liveliness_tokens" => self.entity_liveliness_tokens?.to_string(),
             "model_nodes" => self.model_nodes?.to_string(),
             "infra_families" => quoted(self.infra_families?.tag()),
+            "remap_rules" => self.remap_rules?.to_string(),
             _ => return None,
         })
     }
@@ -1121,6 +1143,7 @@ impl Image {
                 ),
                 ("model_nodes", self.model_nodes.is_some()),
                 ("infra_families", self.infra_families.is_some()),
+                ("remap_rules", self.remap_rules.is_some()),
             ],
         )
     }

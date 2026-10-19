@@ -2152,17 +2152,36 @@ pub enum Wiring<'a> {
 /// cmake consumer registers the result in `CMAKE_CONFIGURE_DEPENDS` (issue 1018)
 /// and identical bytes must keep their mtime.
 pub fn write_for_model(img: &ModelImage<'_>) -> eyre::Result<Option<WrittenDescriptor>> {
-    write_model_descriptor(img, None, Vec::new())
+    write_model_descriptor(img, None, Vec::new(), None)
 }
 
 /// Issue 1970 -- [`write_for_model`], stating each tier's own `[[tier]]` row
 /// ([`tier_rows`]) in the same write, so the file is written once per
 /// configure and identical bytes keep their mtime.
+///
+/// Issue 1971 -- `remap_rules` is the launch's `<remap>` count over the
+/// image's nodes ([`launch_remaps`]), stated as `[image] remap_rules`; `None`
+/// leaves it absent (the executor keeps its default table).
 pub fn write_for_model_with_tiers(
     img: &ModelImage<'_>,
     tiers: Vec<nros_sizing_descriptor::Tier>,
+    remap_rules: Option<usize>,
 ) -> eyre::Result<Option<WrittenDescriptor>> {
-    write_model_descriptor(img, None, tiers)
+    write_model_descriptor(img, None, tiers, remap_rules)
+}
+
+/// Issue 1971 -- the launch `<remap>` rules each node of `model` is launched
+/// with, keyed by the node's model key (its fully-qualified name). The
+/// generated entry declares exactly these on the executor that hosts the node
+/// (`shared/declare_calls.jinja`, one `nros_cpp_declare_remap` per pair), so
+/// their sum over an executor's nodes is that executor's remap-table demand.
+pub fn launch_remaps(model: &ros_launch_manifest_model::SystemModel) -> std::collections::BTreeMap<String, usize> {
+    model
+        .structure
+        .nodes
+        .iter()
+        .map(|(fqn, n)| (fqn.clone(), n.remaps.len()))
+        .collect()
 }
 
 /// RFC-0100 D12 (issue 1649) — the descriptor for a RUNTIME that several
@@ -2182,7 +2201,7 @@ pub fn write_for_runtime(
     img: &ModelImage<'_>,
     runtime: &RuntimeComposition<'_>,
 ) -> eyre::Result<Option<WrittenDescriptor>> {
-    write_model_descriptor(img, Some(runtime), Vec::new())
+    write_model_descriptor(img, Some(runtime), Vec::new(), None)
 }
 
 /// What a RUNTIME descriptor records beyond an entry's (RFC-0100 D12).
@@ -2502,6 +2521,7 @@ fn write_model_descriptor(
     img: &ModelImage<'_>,
     runtime: Option<&RuntimeComposition<'_>>,
     tiers: Vec<nros_sizing_descriptor::Tier>,
+    remap_rules: Option<usize>,
 ) -> eyre::Result<Option<WrittenDescriptor>> {
     let path = match runtime {
         Some(_) => nros_sizing_descriptor::runtime_descriptor_path(img.build_dir),
@@ -2533,6 +2553,9 @@ fn write_model_descriptor(
     };
     let mut desc = desc;
     desc.tiers = tiers;
+    if remap_rules.is_some() {
+        desc.image.set_remap_rules(remap_rules);
+    }
     let body = nros_sizing_descriptor::render(&desc);
 
     // Issue 0320, the same rule the leaf road holds to and for the same reason:
@@ -5802,9 +5825,16 @@ pub fn tiers_from_priority_record(text: &str) -> Option<Vec<TierMembers>> {
 /// All or nothing (`Err` names why): a tier whose members the inventory does
 /// not cover, or whose derivation refuses, leaves the image on one executor
 /// size, which is the shape before this issue rather than a short tier.
+///
+/// Issue 1971 -- `remaps` is [`launch_remaps`] over the image's model: each
+/// tier states `[tier.image] remap_rules`, the rules of the nodes it hosts,
+/// which is what the entry declares on that tier's executor. A tier hosting
+/// a node the model does not name states none (its executor keeps the
+/// image's table).
 pub fn tier_rows(
     inventory: &EntityInventory,
     tiers: &[TierMembers],
+    remaps: Option<&std::collections::BTreeMap<String, usize>>,
 ) -> Result<Vec<nros_sizing_descriptor::Tier>, String> {
     use crate::entity_inventory::Derivation;
     fn bare(s: &str) -> &str {
@@ -5840,6 +5870,14 @@ pub fn tier_rows(
         img.set_node_count(Some(k.max_nodes))
             .set_callback_slots(Some(k.max_cbs))
             .set_action_client_slots(Some(k.heavy_slots));
+        let tier_remaps = remaps.and_then(|m| {
+            t.nodes.iter().try_fold(0usize, |sum, n| {
+                m.iter()
+                    .find(|(fqn, _)| bare(fqn) == bare(n))
+                    .map(|(_, r)| sum + r)
+            })
+        });
+        img.set_remap_rules(tier_remaps);
         for (field, kind) in ENTITY_COUNT_FIELDS {
             set_entity_count(
                 &mut img,
@@ -5951,7 +5989,7 @@ mod tier_row_tests {
 
     #[test]
     fn each_tier_states_its_own_members_facts() {
-        let rows = tier_rows(&island(), &tiers()).unwrap();
+        let rows = tier_rows(&island(), &tiers(), None).unwrap();
         let (mrm, estop) = (&rows[0], &rows[1]);
         assert_eq!(mrm.name, "mrm");
         assert_eq!(mrm.image.node_count().stated(), Some(&2));
@@ -5981,8 +6019,31 @@ mod tier_row_tests {
     fn a_tier_hosting_a_node_the_inventory_does_not_name_is_refused() {
         let mut t = tiers();
         t[1].nodes.push("ghost".into());
-        let e = tier_rows(&island(), &t).unwrap_err();
+        let e = tier_rows(&island(), &t, None).unwrap_err();
         assert!(e.contains("`ghost`"), "{e}");
+    }
+
+    /// Issue 1971 -- each tier states the launch remaps of the nodes it
+    /// hosts; a tier hosting a node the model does not name states none.
+    #[test]
+    fn each_tier_states_its_own_nodes_remaps() {
+        let remaps: std::collections::BTreeMap<String, usize> = [
+            ("/mrm_handler".to_string(), 2),
+            ("/mrm_comfortable_stop_operator".to_string(), 1),
+            ("/mrm_emergency_stop_operator".to_string(), 0),
+        ]
+        .into_iter()
+        .collect();
+        let rows = tier_rows(&island(), &tiers(), Some(&remaps)).unwrap();
+        assert_eq!(rows[0].image.remap_rules().stated(), Some(&3));
+        assert_eq!(rows[1].image.remap_rules().stated(), Some(&0));
+
+        let partial: std::collections::BTreeMap<String, usize> =
+            [("/mrm_handler".to_string(), 2)].into_iter().collect();
+        let rows = tier_rows(&island(), &tiers(), Some(&partial)).unwrap();
+        assert_eq!(rows[0].image.remap_rules().tag(), "absent");
+        let rows = tier_rows(&island(), &tiers(), None).unwrap();
+        assert_eq!(rows[1].image.remap_rules().tag(), "absent");
     }
 
     #[test]
