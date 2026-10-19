@@ -1350,7 +1350,7 @@ cpp: cpp-fmt
     # to `c++`: the driver picks the language by EXTENSION, and `c++ foo.c`
     # compiles C as C++, which mangles `nros_stub_rmw_register` and fails to
     # link against the `extern "C"` declaration in the header.
-    for _tu in executor_cancel_runtime logger_names_and_levels_runtime node_launch_identity_runtime node_qos_overrides_runtime node_unset_namespace_runtime node_destroy_releases_entries_runtime arena_capture_lifetime_runtime; do \
+    for _tu in executor_cancel_runtime logger_names_and_levels_runtime node_launch_identity_runtime node_qos_overrides_runtime node_unset_namespace_runtime node_destroy_releases_entries_runtime arena_capture_lifetime_runtime jazzy_small_accessors_runtime; do \
         test -f "packages/api/nros-cpp/tests/compile/$_tu.cpp" || { \
             echo "ERROR: $_tu.cpp is MISSING -- this check would pass on absence." >&2; \
             exit 1; \
@@ -1409,6 +1409,24 @@ cpp: cpp-fmt
         "$gen/nros-cpp-tests"/stub_rmw_backend.o \
         "$nros_cpp_lib" -lpthread -ldl -lm
     "$gen/nros-cpp-tests"/logger_names_and_levels_runtime
+    # issue 1975 -- the four accessors Jazzy's rclcpp added. A RUN because each
+    # would compile as an inert stub (a `clock_type` nothing reads, a timer
+    # `get_clock` answering the node's clock); the question is what a created
+    # node, timer, publisher and logger ANSWER.
+    echo "  - NodeOptions::clock_type reaches the node clock; Timer::get_clock answers the timer's clock (runtime, issue 1975)"
+    c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+        -I"$cppgen" \
+        -I"$cgen" \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/core/nros-rmw-abi/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -Ipackages/api/nros-c/tests/run \
+        -o "$gen/nros-cpp-tests"/jazzy_small_accessors_runtime \
+        packages/api/nros-cpp/tests/compile/jazzy_small_accessors_runtime.cpp \
+        "$gen/nros-cpp-tests"/stub_rmw_backend.o \
+        "$nros_cpp_lib" -lpthread -ldl -lm
+    "$gen/nros-cpp-tests"/jazzy_small_accessors_runtime
     # issue 1456 — an `rclcpp`-shape component's IDENTITY. The shape constructs
     # its own node, so the launch-declared name and namespace reach it only
     # through the `NodeHandle` the entry hands it; before the fix they reached

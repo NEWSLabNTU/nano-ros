@@ -138,6 +138,14 @@ static rmw_ret_t stub_drive_io(rmw_session_t* session, int32_t timeout_ms) {
 /* ---- Entities: present so registration succeeds, refusing so a test that
  *      strays past this backend's purpose fails loudly ---------------------- */
 
+/* issue 1975 — the profile the last publisher was created with, echoed back
+ * as its GRANTED QoS. The cffi layer reads `publisher_get_actual_qos` once,
+ * right after create, so "the last one" is the one being asked about. This is
+ * what a backend that grants every request reports, which lets a probe check
+ * an accessor over the granted profile (`is_durability_transient_local`) on a
+ * known answer rather than on the all-Unknown profile of a NULL slot. */
+static rmw_qos_profile_t s_last_publisher_qos;
+
 static rmw_ret_t
 stub_create_publisher(const rmw_node_t* node, const rmw_message_type_support_t* type_support,
                       const char* topic_name, uint32_t domain_id, const rmw_qos_profile_t* qos,
@@ -147,11 +155,21 @@ stub_create_publisher(const rmw_node_t* node, const rmw_message_type_support_t* 
     (void)node;
     (void)type_support;
     (void)domain_id;
-    (void)qos;
     (void)options;
     (void)out;
-    if (accept_create(&out->backend_data)) return NROS_RMW_RET_OK;
+    if (accept_create(&out->backend_data)) {
+        if (qos != NULL) s_last_publisher_qos = *qos;
+        return NROS_RMW_RET_OK;
+    }
     return NROS_RMW_RET_UNSUPPORTED;
+}
+
+static rmw_ret_t stub_publisher_get_actual_qos(const rmw_publisher_t* publisher,
+                                               rmw_qos_profile_t* qos) {
+    (void)publisher;
+    if (qos == NULL) return NROS_RMW_RET_INVALID_ARGUMENT;
+    *qos = s_last_publisher_qos;
+    return NROS_RMW_RET_OK;
 }
 
 static rmw_ret_t stub_destroy_publisher(rmw_publisher_t* publisher) {
@@ -408,6 +426,7 @@ static const nros_rmw_vtable_t STUB_VTABLE = {
     .destroy_client = stub_destroy_client,
     .set_wake_callback = stub_set_wake_callback,
     .supported_qos_policies = stub_supported_qos_policies,
+    .publisher_get_actual_qos = stub_publisher_get_actual_qos,
     .subscription_set_on_new_message_callback = stub_subscription_set_on_new_message_callback,
     .service_set_on_new_request_callback = stub_service_set_on_new_request_callback,
     .client_set_on_new_response_callback = stub_client_set_on_new_response_callback,

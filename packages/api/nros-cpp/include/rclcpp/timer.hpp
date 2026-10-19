@@ -26,6 +26,9 @@
 // includes no capability probe.
 
 #include "rclcpp/detail/nros_cpp_ffi.h"
+// issue 1975 -- `get_clock()` returns the clock the timer runs on. AFTER
+// `nros_cpp_ffi.h`, the order `node.hpp` already includes the two in.
+#include "rclcpp/clock.hpp"
 
 // phase-427 W7 — `Node` is DEFINED in `rclcpp::` (RFC-0089: that namespace is
 // the home). The friend declaration below is qualified, and a qualified friend
@@ -38,6 +41,21 @@ class Node;
 namespace rclcpp {
 
 class Timer;
+
+namespace detail {
+/// The clock a registered timer runs on, read back from the EXECUTOR (issue
+/// 1975) -- one reader for `Timer::get_clock` and `TimerOps::get_clock`. A
+/// handle the executor cannot answer for yields an invalid clock, which the
+/// returned value's `operator bool` reports.
+inline ClockValuePtr timer_clock(void* executor, size_t handle_id) {
+    uint8_t clock_type = static_cast<uint8_t>(RCL_CLOCK_UNINITIALIZED);
+    if (executor == nullptr ||
+        nros_cpp_timer_get_clock_type(executor, handle_id, &clock_type) != NROS_CPP_RET_OK) {
+        clock_type = static_cast<uint8_t>(RCL_CLOCK_UNINITIALIZED);
+    }
+    return ClockValuePtr(static_cast<rcl_clock_type_t>(clock_type));
+}
+} // namespace detail
 
 /// What `timer_->...` reaches on a [`TimerHandle`]: the operations a timer
 /// registration supports, over the same two words — phase-476 W2.
@@ -78,6 +96,11 @@ class TimerOps {
         }
         return Duration::from_nanoseconds(ns);
     }
+
+    /// The clock this timer runs on -- `TimerBase::get_clock()`. See
+    /// `rclcpp::Timer::get_clock`; an empty, released or stale handle answers
+    /// a value whose `operator bool` is false.
+    detail::ClockValuePtr get_clock() const { return detail::timer_clock(executor_, handle_id_); }
 
   protected:
     constexpr TimerOps(void* executor, size_t handle_id)
@@ -269,6 +292,25 @@ class Timer {
             return Duration();
         }
         return Duration::from_nanoseconds(ns);
+    }
+
+    /// The clock this timer runs on -- rclcpp's `TimerBase::get_clock()`.
+    /// issue 1975.
+    ///
+    /// A wall timer (`create_wall_timer`) answers `RCL_STEADY_TIME`, as
+    /// rclcpp's wall timers do; a `create_timer(clock, …)` timer answers the
+    /// clock it was created with. The answer is the EXECUTOR's -- the clock
+    /// field the dispatcher reads -- so it cannot drift from what actually
+    /// advances the timer.
+    ///
+    /// ADOPT-BOUNDED. Upstream returns `const Clock::SharedPtr&`; this returns
+    /// a [`detail::ClockValuePtr`], the clock held by value behind `->` and
+    /// `*`, because there is no allocator to share one from (RFC-0022) and the
+    /// clock owns nothing a copy could lose. `timer->get_clock()->now()` keeps
+    /// its spelling. An uninitialized timer answers a value whose
+    /// `operator bool` is false and whose clock reads zero.
+    detail::ClockValuePtr get_clock() const {
+        return detail::timer_clock(initialized_ ? executor_ : nullptr, handle_id_);
     }
 
     /// Check if the timer is initialized and valid.

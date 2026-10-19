@@ -5090,6 +5090,48 @@ fn timer_readiness_and_elapsed_agree_with_the_dispatcher() {
     assert_eq!(executor.timer_is_ready(not_a_timer), None);
 }
 
+/// issue 1975 — `timer_clock_source` reports the clock each timer was
+/// REGISTERED with (what `rclcpp::TimerBase::get_clock()` reads), and `None`
+/// for a handle that is not a timer rather than defaulting to `Steady`.
+#[test]
+fn timer_clock_source_reports_the_registered_clock() {
+    use super::arena::TimerClockSource;
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let wall = executor
+        .register_timer(TimerDuration::from_millis(100), || {})
+        .unwrap();
+    let ros = executor
+        .register_timer_on_clock(
+            TimerDuration::from_millis(100),
+            TimerClockSource::Ros,
+            || {},
+        )
+        .unwrap();
+    let system = executor
+        .register_timer_on_clock(
+            TimerDuration::from_millis(100),
+            TimerClockSource::System,
+            || {},
+        )
+        .unwrap();
+
+    assert_eq!(
+        executor.timer_clock_source(wall),
+        Some(TimerClockSource::Steady)
+    );
+    assert_eq!(
+        executor.timer_clock_source(ros),
+        Some(TimerClockSource::Ros)
+    );
+    assert_eq!(
+        executor.timer_clock_source(system),
+        Some(TimerClockSource::System)
+    );
+
+    let not_a_timer = HandleId::new(system.slot() + 1, system.generation());
+    assert_eq!(executor.timer_clock_source(not_a_timer), None);
+}
+
 private_test_clock!(time_until_next_clock);
 
 /// phase-417 G6 — `timer_time_until_next_call_ns` is SIGNED, and the sign is

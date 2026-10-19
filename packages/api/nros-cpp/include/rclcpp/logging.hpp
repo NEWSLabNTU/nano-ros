@@ -464,6 +464,18 @@ class Logger {
     /// answers `RCLC_LOG_SEVERITY_FATAL`.
     Level get_level() const { return static_cast<Level>(rclc_logger_get_level(handle_)); }
 
+    /// `rclcpp::Logger::get_effective_level()` (Jazzy) -- the threshold this
+    /// logger actually filters on: its own level if set, else its nearest
+    /// ancestor's, else the process default. issue 1975.
+    ///
+    /// The same answer as `get_level()`, which already reported the EFFECTIVE
+    /// level before upstream named one; this is upstream's spelling of it, and
+    /// it forwards rather than re-deriving so the two cannot part. Never
+    /// `Level::Unset`. A null handle answers `Fatal`, the C entry point's rule
+    /// (see `get_level`) -- where upstream throws on a logger it cannot
+    /// resolve, which RFC-0018 forbids.
+    Level get_effective_level() const { return get_level(); }
+
     /// Would a record at `level` pass this logger's threshold? -- OURS-ONLY.
     ///
     /// Spelled `is_enabled` to agree with C's `rclc_logger_is_enabled` and

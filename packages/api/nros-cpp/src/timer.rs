@@ -529,6 +529,51 @@ pub unsafe extern "C" fn nros_cpp_timer_time_until_next_call_ns(
     }
 }
 
+/// The clock that advances this timer, as an `rcl_clock_type_t` discriminant
+/// — issue 1975, `rclcpp::TimerBase::get_clock()`.
+///
+/// Read from the executor (`Executor::timer_clock_source`), the field the
+/// dispatcher itself reads, so the C++ side keeps no copy that could disagree:
+/// a wall timer answers `RCL_STEADY_TIME` (rclcpp's wall timers run on a
+/// steady clock too), a `create_timer(clock, …)` timer the clock it was given.
+/// The discriminant mapping is `nros_c::nros_timer_clock_type`, the inverse of
+/// the decode `nros_cpp_timer_create_on_clock` uses. `u8` rather than
+/// `rcl_clock_type_t` for the reason that function states (`no_includes`).
+///
+/// Returns `NROS_CPP_RET_INVALID_ARGUMENT` for a NULL out-pointer or an
+/// executor handle that does not validate, and `NROS_CPP_RET_NOT_FOUND` when
+/// the handle is not a registered timer.
+///
+/// # Safety
+/// `executor_handle` must be a valid executor handle and `out_clock_type`
+/// writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_timer_get_clock_type(
+    executor_handle: *mut c_void,
+    handle_id: usize,
+    out_clock_type: *mut u8,
+) -> nros_cpp_ret_t {
+    if out_clock_type.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let Some(ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    let ctx = &*ctx;
+    match ctx
+        .executor
+        .timer_clock_source(nros_node::HandleId::from_raw(handle_id))
+    {
+        Some(source) => {
+            unsafe {
+                *out_clock_type = nros_c::nros_timer_clock_type(source);
+            }
+            NROS_CPP_RET_OK
+        }
+        None => crate::NROS_CPP_RET_NOT_FOUND,
+    }
+}
+
 /// Check if a timer is cancelled.
 ///
 /// # Safety

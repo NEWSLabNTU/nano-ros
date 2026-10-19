@@ -125,6 +125,45 @@ class Clock {
     rcl_clock_t clock_;
 };
 
+namespace detail {
+
+/// What `rclcpp::Timer::get_clock()` returns -- a `Clock` HELD BY VALUE behind
+/// a pointer's spelling. issue 1975.
+///
+/// Upstream returns `const rclcpp::Clock::SharedPtr&`, a reference to a clock
+/// the timer co-owns. There is no allocator here to own one (RFC-0022), and a
+/// timer handle is two words with nowhere to keep a reference into, so the
+/// accessor hands back the clock itself. `Clock` is copyable and trivially
+/// destructible (it owns nothing; the ROS-time override is process-global), so
+/// a copy reads the same time as the clock the timer runs on.
+///
+/// `timer->get_clock()->now()` -- the spelling a ported file writes -- keeps
+/// working through `operator->`; the temporary lives to the end of the full
+/// expression. What does NOT carry over is keeping the returned value as a
+/// `Clock::SharedPtr`: there is no such alias, and `auto c = t->get_clock();`
+/// is a copy of the clock, not a share of it.
+///
+/// `explicit operator bool` is false when the timer could not answer (an
+/// uninitialised, released or stale timer), which is the null a `SharedPtr`
+/// test would have caught; such a value holds an INVALID clock, whose `now()`
+/// reads zero (see `Clock::now`).
+class ClockValuePtr {
+  public:
+    explicit ClockValuePtr(rcl_clock_type_t clock_type) : clock_(clock_type) {}
+
+    /// `get_clock()->now()`.
+    const Clock* operator->() const { return &clock_; }
+    /// `*get_clock()` -- e.g. to hand the timer's clock to `create_timer`.
+    const Clock& operator*() const { return clock_; }
+    /// Whether the timer named a clock; false for one that could not answer.
+    explicit operator bool() const { return clock_.is_valid(); }
+
+  private:
+    Clock clock_;
+};
+
+} // namespace detail
+
 } // namespace rclcpp
 
 #endif // NROS_RCLCPP_CLOCK_HPP

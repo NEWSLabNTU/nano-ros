@@ -91,6 +91,22 @@ pub fn nros_timer_clock_source(clock_type: u8) -> Option<nros_node::executor::Ti
     }
 }
 
+/// The `rcl_clock_type_t` discriminant a `TimerClockSource` is spelled as --
+/// the inverse of [`nros_timer_clock_source`], kept beside it so the two cannot
+/// disagree about what a clock kind means. issue 1975: `nros-cpp` reads a
+/// timer's clock back for `rclcpp::TimerBase::get_clock()`. Gated like its
+/// sibling, for the same reason (issue 1177).
+#[cfg(feature = "rmw-cffi")]
+pub fn nros_timer_clock_type(source: nros_node::executor::TimerClockSource) -> u8 {
+    use nros_node::executor::TimerClockSource;
+
+    match source {
+        TimerClockSource::Steady => rcl_clock_type_t::RCL_STEADY_TIME as u8,
+        TimerClockSource::Ros => rcl_clock_type_t::RCL_ROS_TIME as u8,
+        TimerClockSource::System => rcl_clock_type_t::RCL_SYSTEM_TIME as u8,
+    }
+}
+
 /// Clock state enumeration.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1004,5 +1020,28 @@ mod tests {
             assert_eq!(rcl_clock_get_now(&ros, &mut nanoseconds), RCL_RET_OK);
             assert!(nanoseconds > simulated);
         }
+    }
+
+    /// issue 1975 -- `nros_timer_clock_type` is the inverse of
+    /// `nros_timer_clock_source` for every source, so a clock read back off a
+    /// timer is the one it was created with.
+    #[cfg(feature = "rmw-cffi")]
+    #[test]
+    fn timer_clock_type_inverts_timer_clock_source() {
+        use nros_node::executor::TimerClockSource;
+        for source in [
+            TimerClockSource::Steady,
+            TimerClockSource::Ros,
+            TimerClockSource::System,
+        ] {
+            assert_eq!(
+                nros_timer_clock_source(nros_timer_clock_type(source)),
+                Some(source)
+            );
+        }
+        assert_eq!(
+            nros_timer_clock_type(TimerClockSource::Steady),
+            rcl_clock_type_t::RCL_STEADY_TIME as u8
+        );
     }
 }

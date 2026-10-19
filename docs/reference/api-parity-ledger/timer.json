@@ -1236,6 +1236,10 @@
     "verdict": "divergence",
     "why": "phase-417 W5.c — a read of the arena's own timer accounting, exposed so the C accessors forward rather than recompute. rclrs puts the equivalents on `Timer`; RFC-0002's arena owns timer state here, so there is no owning `Timer` object to hang them on and they sit on the executor. Returns `Option` deliberately: \"not a timer handle\" is a different answer from `0`/`false`, which is issue 1008's shape."
   },
+  "rust:Executor::timer_clock_source": {
+    "verdict": "extension",
+    "why": "issue 1975 — a read of the arena's own `TimerHeader::clock_source`, the field `arena::timer_try_process` reads, exposed so `nros-cpp`'s `Timer::get_clock` (`cpp:Timer::get_clock`) forwards rather than keeping a second copy of the clock beside the registration. Sits on the executor for the reason its `timer_is_ready` / `timer_elapsed_us` siblings do: RFC-0002's arena owns timer state, so there is no owning `Timer` object to hang it on. Returns `Option`: \"not a timer handle\" is a different answer from `Steady`, which is issue 1008's shape."
+  },
   "c:timer_init_on_clock": {
     "verdict": "divergence",
     "why": "phase-430 W1 -- the clock-taking timer verb in C. rcl has ONE init, `rcl_timer_init(timer, clock, context, period, callback, allocator)`, and its clock is not optional; C has no overloading, so a single verb here would have to grow the parameter and break every existing caller. The platform constraint that decides it is the SAME no-allocator/no-runtime-env one that already made `timer_init` a `rule:no-allocator systematic` match: our timers live in an executor arena the caller supplies, so an init is cheap and a second one costs an image nothing but a symbol.\n\nSo the pair is `rcl_timer_init` (the wall timer -- what every caller has always got, unchanged, and what rclcpp spells `create_wall_timer`) and `rclc_timer_init_on_clock`, which takes an `rcl_clock_t *` IN RCL'S POSITION: second, immediately after the timer, ahead of the context-carrying `support`. That is RFC-0089's \"C takes rcl's spellings\" applied to the ARGUMENT LIST, which is the half of the spelling that survives.\n\nThe NAME `rcl_timer_init` stays refused, and for the reason `<rclc/detail/rcl_compat.h>` sec. 4 already records rather than a new one: `rcl_timer_callback_t` is `void(*)(rcl_timer_t *, int64_t last_call_time)` and ours is `void(*)(rcl_timer_t *, void *context)`, so a ported timer callback is a different FUNCTION and taking the name would be a compile-and-differ. Adding the clock does not change that; closing it still needs a decision about what our callback receives.\n\n`rcl_timer_t` grew one field, `const rcl_clock_t *clock` (NULL = the wall timer), which is what rcl's timer keeps too. Both verbs end at the ONE dispatch `Executor::register_timer_on_clock`, and the clock kind is mapped by the ONE `nros_c::nros_timer_clock_source`, shared with `nros_cpp_timer_create_on_clock` so a `RCL_ROS_TIME` cannot mean one thing in a C image and another in a C++ one. An UNINITIALIZED clock is refused rather than defaulted to steady. Behaviour pinned by `packages/api/nros-c/tests/run/timer_clock_source.c` in `just check c`."
@@ -1274,6 +1278,22 @@
       "text": "the arena's timer accounting is MICROSECOND-based (issue #505), so"
     },
     "why": "RE-VERDICTED gap -> divergence, phase-417 G6 — WE HAVE IT NOW, and only the RETURN TYPE differs. `nros::Timer::time_until_trigger()` (`packages/api/nros-cpp/include/rclcpp/timer.hpp`) forwards to `Executor::timer_time_until_next_call_ns`, the same arena read `rcl_timer_get_time_until_next_call` makes.\n\nTHE RETURN TYPE is `nros::Duration`, where rclcpp's is `std::chrono::nanoseconds`. `<chrono>` is not reachable from every target this header serves — Zephyr's minimal libcpp ships three headers and `<chrono>` is not one of them (issue 0112), and this surface's floor is a freestanding build — so a `std::chrono` return would remove the accessor from exactly the images the timer exists for. The UNIT is upstream's: `d.nanoseconds()` is the count `std::chrono::nanoseconds::count()` would have given.\n\nTWO ENVELOPE FACTS, both inherited from the C side and both in the doc comment. The arena's timer accounting is MICROSECOND-based (issue #505), so the nanosecond value is a microsecond quantity scaled by 1000 — the unit is rclcpp's, the resolution is ours. And a wall timer answers on the platform steady clock while a `create_timer(clock, …)` timer answers on its own.\n\nONE THING THE C SURFACE HAS THAT THIS DOES NOT: a way to say 'cannot answer'. `rcl_timer_get_time_until_next_call` spends a return code on it (`RCL_RET_NOT_INIT` for an uninitialised, finalised or unregistered timer); a `Duration`-returning accessor has no room for one, so an unknown timer reads `Duration()` — which collides with 'fires exactly now'. `is_valid()` is the question to ask first. rclcpp has the same collision and does not document it."
+  },
+  "cpp:Timer::get_clock": {
+    "verdict": "divergence",
+    "disposition": "adopt-bounded",
+    "envelope": {
+      "file": "packages/api/nros-cpp/include/rclcpp/clock.hpp",
+      "text": "`auto c = t->get_clock();`"
+    },
+    "why": "ADOPTED, issue 1975 (was a Jazzy-only `gap`, \"ADOPT: `create_timer` binds a `Clock`; this returns it\"). `rclcpp::Timer::get_clock()` and `rclcpp::TimerHandle`'s `timer_->get_clock()` (`packages/api/nros-cpp/include/rclcpp/timer.hpp`) both answer from the EXECUTOR — `nros_cpp_timer_get_clock_type` -> `Executor::timer_clock_source`, the `TimerHeader::clock_source` field `arena::timer_try_process` itself reads — so the answer cannot drift from what advances the timer. A wall timer answers `RCL_STEADY_TIME` (rclcpp's wall timers are steady too); a `create_timer(clock, …)` timer the clock it was created with.\n\nONLY THE RETURN TYPE DIFFERS. Upstream returns `const Clock::SharedPtr&`, a reference to a clock the timer co-owns. There is no allocator to own one (RFC-0022), and the handle `Timer::SharedPtr` names is two words with nowhere to keep a reference into, so the accessor returns `rclcpp::detail::ClockValuePtr`: the `Clock` held BY VALUE behind `->` and `*`. `Clock` owns nothing (`rcl_clock_t` has no allocation; the ROS-time override is process-global), so a copy reads the same time. `timer->get_clock()->now()` — what a ported file writes — keeps its spelling. What does not carry over is keeping the result as a `Clock::SharedPtr` (no such alias here): `auto c = t->get_clock();` is a copy of the clock, not a share of it. `explicit operator bool` is false for an uninitialised, released or stale timer — the null a `SharedPtr` test would have caught — where upstream's is never null.\n\nHELD BY: `packages/api/nros-cpp/tests/compile/jazzy_small_accessors_runtime.cpp` (COMPILE+LINK+RUN on `just check cpp`): steady / ROS / system clocks read back on both the `Timer` and the handle path, false on an empty, released and stale handle; plus `timer_clock_source_reports_the_registered_clock` in `nros-node`.\n\nNO EDITION SCOPE, deliberately: Humble's `TimerBase` has no `get_clock()`, so under Humble this is an ours-only item, and the same row answers it — the accessor and its envelope are the same whichever upstream it is read against."
+  },
+  "cpp:NodeOptions::clock_type": {
+    "verdict": "extension",
+    "editions": [
+      "humble"
+    ],
+    "why": "issue 1975 — HUMBLE ONLY, because Humble's rclcpp has no such member: Jazzy added `NodeOptions::clock_type()` (getter + builder setter), and under Jazzy this correlates `same`, so the row is scoped out there. A real field the `Node(name, options)` constructors read to build the node clock (`packages/api/nros-cpp/include/rclcpp/options.hpp`), default `RCL_ROS_TIME` as upstream; `Node::get_node_options()` now hands back the options the node was given rather than a constant. A type that is not a clock latches `ok() == false` where upstream's constructor throws (RFC-0018). The one LIVE option on a type whose other options are REFUSE-LOUD. HELD BY `packages/api/nros-cpp/tests/compile/jazzy_small_accessors_runtime.cpp`."
   },
   "rust:SecNanosecMsg": {
     "verdict": "divergence",
@@ -1442,20 +1462,6 @@
       "jazzy"
     ],
     "why": "see `cpp:ClockConditionalVariable`."
-  },
-  "cpp:Timer::get_clock": {
-    "verdict": "gap",
-    "editions": [
-      "jazzy"
-    ],
-    "why": "ADOPT, issue 1975: `create_timer` binds a `Clock`; this returns it."
-  },
-  "cpp:NodeOptions::clock_type": {
-    "verdict": "gap",
-    "editions": [
-      "jazzy"
-    ],
-    "why": "ADOPT, issue 1975: a NodeOptions field choosing the node clock."
   },
   "cpp:Rate::get_type": {
     "verdict": "declined",
