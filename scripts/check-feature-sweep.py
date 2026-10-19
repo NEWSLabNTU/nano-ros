@@ -408,16 +408,9 @@ STANDALONE = {
 }
 # A STANDALONE row linted `--no-default-features`, with the reason its
 # defaults cannot build on the cargo road. Every key is a STANDALONE row.
-_ARMV8R_ZPICO = (
-    "the default `rmw-zenoh` builds zpico-sys's C for `armv8r-none-eabihf`, and "
-    "on the cargo road that compile gets `-mfloat-abi=hard` with no `-mfpu` "
-    "(issue 1966: the cortex-r52 FPU flags reach cargo only through the cmake "
-    "road's `nros_armv8r_cflags_env`); the board's own Rust and C still lint"
-)
-STANDALONE_NO_DEFAULT = {
-    "packages/boards/nros-board-s32z270-freertos": _ARMV8R_ZPICO,
-    "packages/boards/nros-board-mps3-an536-freertos": _ARMV8R_ZPICO,
-}
+# Empty since issue 1966: the two Cortex-R52 boards were here because zpico-sys's
+# size probe compiled without the platform's `[arch.cortex-r52]` profile.
+STANDALONE_NO_DEFAULT = {}
 STANDALONE_SKIP = {
     "packages/verification/nros-verification": (
         "a Verus crate: `verus!` erases its spec and proof items unless Verus "
