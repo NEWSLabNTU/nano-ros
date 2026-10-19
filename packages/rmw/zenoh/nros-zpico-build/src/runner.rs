@@ -18,8 +18,8 @@ use nros_board_common::{manifest, platform_config, policy};
 use policy::{LinkFeatures, LinkPolicy};
 
 use crate::{
-    add_zenoh_pico_core_sources, apply_arch, arch_matches, detect_riscv_compiler,
-    get_picolibc_sysroot, has_picolibc_specs, is_embedded_target, read_symbol_size,
+    add_zenoh_pico_core_sources, apply_arch, has_picolibc_specs, is_embedded_target, platform_arch,
+    read_symbol_size,
 };
 
 type ShimConfig = crate::ShimConfig;
@@ -2166,11 +2166,26 @@ pub fn run() {
     // this reorder the file doesn't exist when alias_build runs the
     // first time after a clean and `#if defined(...)` silently
     // suppresses the assert.
+    // issue 1966 — the ONE `[arch.*]` profile every zenoh-pico C compile of
+    // this image applies: the library (`build_zenoh_pico_unified`), both alias
+    // TUs and the size probe. `for_platform` failing here is not swallowed
+    // into "no profile" for the library — it panicked above already.
+    let image_arch = platform_name
+        .and_then(|name| platform_manifest.for_platform(name).ok())
+        .and_then(|resolved| {
+            platform_arch(
+                &resolved.name,
+                &resolved.arch,
+                &platform_manifest.arch,
+                &target,
+            )
+        });
     if backend_count > 0 && !use_zephyr {
         probe_net_type_sizes(
             &c_dir,
             &zenoh_pico_src.join("include"),
             &out_dir,
+            image_arch,
             use_bare_metal,
             use_freertos,
             use_nuttx,
@@ -2247,17 +2262,8 @@ pub fn run() {
         }
         // Match zpico.c's `[arch.*]` float-ABI / march / mabi so
         // platform_aliases.o lands in the same archive without an ABI clash.
-        if let Some(name) = platform_name
-            && let Ok(resolved) = platform_manifest.for_platform(name)
-        {
-            for arch_name in &resolved.arch {
-                if let Some(arch) = platform_manifest.arch.get(arch_name.as_str())
-                    && arch_matches(arch, &target)
-                {
-                    apply_arch(arch, &mut alias_build, &out_dir);
-                    break;
-                }
-            }
+        if let Some(arch) = image_arch {
+            apply_arch(arch, &mut alias_build, &out_dir);
         }
         // issue 1599 — the compiler names what it read (alias TU + headers).
         nros_cc_flags::header_deps::track_header_deps(&mut alias_build);
@@ -2390,17 +2396,8 @@ pub fn run() {
         // (ThreadX-RV64) hit `cannot link object files with different
         // floating-point ABI` — rustc emits lp64d while cc-rs picks
         // the bare-metal toolchain default (lp64).
-        if let Some(name) = platform_name
-            && let Ok(resolved) = platform_manifest.for_platform(name)
-        {
-            for arch_name in &resolved.arch {
-                if let Some(arch) = platform_manifest.arch.get(arch_name.as_str())
-                    && arch_matches(arch, &target)
-                {
-                    apply_arch(arch, &mut alias_build, &out_dir);
-                    break;
-                }
-            }
+        if let Some(arch) = image_arch {
+            apply_arch(arch, &mut alias_build, &out_dir);
         }
         // issue 1599 — the compiler names what it read (alias TU + headers).
         nros_cc_flags::header_deps::track_header_deps(&mut alias_build);
@@ -2487,6 +2484,7 @@ fn probe_net_type_sizes(
     c_dir: &Path,
     zenoh_pico_include: &Path,
     out_dir: &Path,
+    arch: Option<&manifest::ArchEntry>,
     use_bare_metal: bool,
     use_freertos: bool,
     use_nuttx: bool,
@@ -2496,6 +2494,16 @@ fn probe_net_type_sizes(
     // issue 0383 — implicit-function-declaration / int-conversion as errors.
     nros_cc_flags::strict_decls(&mut build);
     build.file(c_dir.join("size_probe.c"));
+    // issue 1966 — the library's own `[arch.*]` profile (cflags, picolibc
+    // sysroot, errno override, RISC-V compiler), applied exactly as
+    // `build_zenoh_pico_unified` applies it. The probe measures the types
+    // the library is compiled with, so it must be compiled the same way.
+    // It used to carry per-triple flags of its own — four arms that copied
+    // four profiles, and none on FreeRTOS, so `armv8r-none-eabihf` got
+    // cc-rs's `-mfloat-abi=hard` with no `-mfpu` and gcc refused it.
+    if let Some(arch) = arch {
+        apply_arch(arch, &mut build, out_dir);
+    }
     build.include(zenoh_pico_include);
     // Issue #135 — the ZENOH_GENERIC branches below used to find
     // <zenoh_generic_config.h> via the stale c/platform copy (deleted);
@@ -2516,53 +2524,6 @@ fn probe_net_type_sizes(
         build.define("ZENOH_GENERIC", None);
         let platform_dir = c_dir.join("platform");
         build.include(&platform_dir);
-
-        // RV32 bare-metal (ESP32-C3): mirror `build_zenoh_pico_embedded` —
-        // add the cross-compile flags, errno override and picolibc sysroot
-        // so the probe finds <stdint.h>. Without this the probe emits
-        // `fatal error: stdint.h: No such file or directory` (picolibc
-        // headers aren't on the default system include path for
-        // `riscv64-unknown-elf-gcc -march=rv32imc`) and falls back to the
-        // hardcoded 16/8 defaults.
-        let target = env::var("TARGET").unwrap_or_default();
-        if target.contains("riscv32") {
-            detect_riscv_compiler(&mut build);
-            build.flag("-march=rv32imc").flag("-mabi=ilp32");
-
-            let errno_dir = out_dir.join("errno-override");
-            std::fs::create_dir_all(&errno_dir).ok();
-            std::fs::write(
-                errno_dir.join("errno.h"),
-                include_bytes!("../../zpico-sys/c/platform/errno_override.h"),
-            )
-            .ok();
-            build.include(&errno_dir);
-
-            if let Some(sysroot) = get_picolibc_sysroot() {
-                build.include(sysroot.join("include"));
-            }
-        } else if target.contains("thumbv7m") || target.contains("thumbv7em") {
-            // ARM Cortex-M bare-metal: cc crate selects arm-none-eabi-gcc
-            // which ships its own newlib sysroot, so no sysroot include
-            // is needed here — but the -mcpu flags are required for the
-            // preprocessor to pick the right architecture-dependent
-            // headers.
-            if target.contains("thumbv7em") {
-                build
-                    .flag("-mcpu=cortex-m4")
-                    .flag("-mthumb")
-                    .flag("-mfpu=fpv4-sp-d16")
-                    .flag("-mfloat-abi=hard");
-            } else {
-                build.flag("-mcpu=cortex-m3").flag("-mthumb");
-            }
-        } else if target.contains("armv7r") {
-            // Phase 100.6 — AGX Orin SPE (Cortex-R5F). cc emits
-            // `-march=armv7-r` from the target triple; we add
-            // hard-float matching the FSP's vfpv3-d16 build. Same
-            // flags as `zpico-platform-shim/build.rs`'s armv7r branch.
-            build.flag("-mfpu=vfpv3-d16").flag("-mfloat-abi=hard");
-        }
     } else if use_freertos {
         build.define("ZENOH_FREERTOS_LWIP", None);
         // lwIP + FreeRTOS headers needed
@@ -2672,32 +2633,6 @@ fn probe_net_type_sizes(
         }
         if let Some(dir) = nros_build_paths::env_path("NETX_CONFIG_DIR") {
             build.include(dir);
-        }
-
-        // Cross-compile flags + C-library sysroot for bare-metal
-        // RISC-V. Without these the probe fails with
-        // `stdint.h: No such file or directory` and falls back to
-        // the hardcoded default sizes.
-        if target.contains("riscv64") {
-            build
-                .flag("-march=rv64gc")
-                .flag("-mabi=lp64d")
-                .flag("-mcmodel=medany");
-
-            // errno-override header (picolibc's TLS errno doesn't
-            // work on bare-metal). Must be searched before picolibc.
-            let errno_dir = out_dir.join("errno-override");
-            std::fs::create_dir_all(&errno_dir).ok();
-            std::fs::write(
-                errno_dir.join("errno.h"),
-                include_bytes!("../../zpico-sys/c/platform/errno_override.h"),
-            )
-            .ok();
-            build.include(&errno_dir);
-
-            if let Some(sysroot) = get_picolibc_sysroot() {
-                build.include(sysroot.join("include"));
-            }
         }
     } else {
         // POSIX: zenoh-pico auto-detects ZENOH_LINUX/ZENOH_MACOS from target
@@ -3191,17 +3126,8 @@ fn build_zenoh_pico_unified(
     // hits the build target. Multi-arch platforms (bare-metal across
     // cortex-m3 + riscv32imc) thus map to the right profile per
     // target instead of being hard-coded to one arch.
-    for arch_name in &plat.arch {
-        let arch = arch_table.get(arch_name.as_str()).unwrap_or_else(|| {
-            panic!(
-                "zenoh_platforms.toml: platform `{}` references unknown arch `{}`",
-                plat.name, arch_name
-            )
-        });
-        if arch_matches(arch, target) {
-            apply_arch(arch, &mut build, out_dir);
-            break;
-        }
+    if let Some(arch) = platform_arch(&plat.name, &plat.arch, arch_table, target) {
+        apply_arch(arch, &mut build, out_dir);
     }
 
     // Step 4 — core sources + per-platform extra C files.

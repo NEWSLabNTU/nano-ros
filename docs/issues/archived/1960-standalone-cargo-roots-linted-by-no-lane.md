@@ -123,7 +123,7 @@ Exceptions, each with its reason in the script:
   linted `--no-default-features`. On the cargo road, their default
   `rmw-zenoh` builds zpico-sys's C for `armv8r-none-eabihf` without `-mfpu`,
   which gcc refuses. Filed as
-  [issue 1966](../1966-armv8r-cargo-road-zpico-c-lacks-fpu-flags.md); drop
+  [issue 1966](1966-armv8r-cargo-road-zpico-c-lacks-fpu-flags.md); drop
   the entries when it is fixed.
 
 The NuttX board's run needs a configured NuttX tree, which the scheduled

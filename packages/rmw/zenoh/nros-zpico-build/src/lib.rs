@@ -725,6 +725,40 @@ pub fn apply_arch(arch: &manifest::ArchEntry, build: &mut cc::Build, out_dir: &P
     }
 }
 
+/// The first `[arch.*]` profile, in the platform's declared `arch_profiles`
+/// order, that admits `target`.
+///
+/// Issue 1966 — every zenoh-pico C compile of one image must use the SAME
+/// profile, because their objects share an archive (float ABI, march/mabi)
+/// and the size probe measures the types the library is built with. The
+/// library, both alias TUs and the size probe each walked the list
+/// themselves, and the probe did not walk it at all: it carried its own
+/// per-triple flags, with none on FreeRTOS, so `armv8r-none-eabihf` probed
+/// with cc-rs's `-mfloat-abi=hard` and no `-mfpu` and gcc refused it. One
+/// lookup now, called by all four.
+///
+/// A name in `arch_names` with no `[arch.<name>]` block is a manifest bug and
+/// panics, rather than silently trying the next profile and picking the wrong
+/// flags.
+pub fn platform_arch<'a>(
+    platform: &str,
+    arch_names: &[String],
+    arch_table: &'a std::collections::BTreeMap<String, manifest::ArchEntry>,
+    target: &str,
+) -> Option<&'a manifest::ArchEntry> {
+    for arch_name in arch_names {
+        let arch = arch_table.get(arch_name.as_str()).unwrap_or_else(|| {
+            panic!(
+                "nros-platform.toml: platform `{platform}` references unknown arch `{arch_name}`"
+            )
+        });
+        if arch_matches(arch, target) {
+            return Some(arch);
+        }
+    }
+    None
+}
+
 /// Returns `true` when the `[arch.*]` predicates allow the current target triple.
 ///
 /// phase-338 W4 — the predicate now has ONE spelling, in `nros_board_common`
