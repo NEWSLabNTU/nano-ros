@@ -1033,10 +1033,11 @@ fn refspecs_cover_branch(specs: &str, branch: &str) -> bool {
 /// `refs/heads/*` and start pulling every branch tip). Idempotent — a
 /// submodule with no declared branch, or one already covered, is untouched, so
 /// re-running `nros setup` repairs a tree provisioned before this landed.
-fn ensure_submodule_branch_refspec(workspace: &Path, path: &str, shallow: bool) -> Result<()> {
+/// The submodule NAME `.gitmodules` records for `path` — the key of its
+/// config section and of its git dir, which need not equal its path.
+fn submodule_name(workspace: &Path, path: &str) -> Option<String> {
     let ws = workspace.to_string_lossy();
-    // `.gitmodules` is keyed by submodule NAME, which need not equal its path.
-    let Ok(entries) = sh_capture(
+    let entries = sh_capture(
         &[
             "git",
             "-C",
@@ -1048,17 +1049,21 @@ fn ensure_submodule_branch_refspec(workspace: &Path, path: &str, shallow: bool) 
             r"^submodule\..*\.path$",
         ],
         None,
-    ) else {
-        return Ok(());
-    };
-    let Some(name) = entries.lines().find_map(|line| {
+    )
+    .ok()?;
+    entries.lines().find_map(|line| {
         let (key, value) = line.split_once(char::is_whitespace)?;
         (value.trim() == path).then(|| {
             key.trim_start_matches("submodule.")
                 .trim_end_matches(".path")
                 .to_string()
         })
-    }) else {
+    })
+}
+
+fn ensure_submodule_branch_refspec(workspace: &Path, path: &str, shallow: bool) -> Result<()> {
+    let ws = workspace.to_string_lossy();
+    let Some(name) = submodule_name(workspace, path) else {
         return Ok(());
     };
 
@@ -1136,6 +1141,230 @@ fn ensure_submodule_branch_refspec(workspace: &Path, path: &str, shallow: bool) 
         ));
     }
     Ok(())
+}
+
+/// The `git submodule update` of the workspace submodule arm, with its by-SHA
+/// fallback. Split out of [`provision_source_unlocked`] so a failure anywhere
+/// in it reaches one cleanup (issue 1621).
+fn update_workspace_submodule(
+    name: &str,
+    path: &str,
+    workspace: &Path,
+    recursive: bool,
+    shallow: bool,
+) -> Result<()> {
+    // Fast path: `git submodule update --init [--recursive] [--depth 1]`.
+    // CAVEAT: `--depth 1` shallow-fetches the submodule's BRANCH TIP, not
+    // the pinned gitlink SHA — so a pin that lags its tip and isn't an
+    // advertised ref (e.g. PX4-Autopilot's 1.15.x sha vs `main`) fails the
+    // checkout here. We catch that and fall back to an explicit
+    // depth-1 fetch-by-SHA (GitHub serves reachable SHAs), which `git
+    // clone --branch` / `submodule update` can't express directly.
+    let workspace_s = workspace.to_string_lossy();
+    let mut args: Vec<&str> = vec!["git", "-C", &workspace_s, "submodule", "update", "--init"];
+    if recursive {
+        args.push("--recursive");
+    }
+    if shallow {
+        args.push("--depth");
+        args.push("1");
+    }
+    args.push("--");
+    args.push(path);
+    let fast = sh(&args, None);
+    if let Err(e) = fast {
+        if !shallow {
+            return Err(e).wrap_err_with(|| format!("git submodule update {path} (source {name})"));
+        }
+        // By-SHA fallback. `submodule update` already initialised the
+        // gitdir + worktree (only its checkout of the lagging pin failed),
+        // so fetch the exact gitlink SHA at depth 1 and check it out, then
+        // descend if recursive.
+        let sha = sh_capture(&["git", "-C", &workspace_s, "ls-tree", "HEAD", path], None)
+            .wrap_err_with(|| format!("read gitlink sha for {path} (source {name})"))?
+            .split_whitespace()
+            .nth(2)
+            .map(str::to_owned)
+            .ok_or_else(|| eyre!("no gitlink sha for {path} (source {name})"))?;
+        let subdir = workspace.join(path);
+        let subdir_s = subdir.to_string_lossy();
+        // The fallback runs `fetch` and `checkout` with `-C <path>`. If the
+        // update left no repository THERE, git walks up and finds the
+        // SUPERPROJECT, so both would act on the checkout being provisioned
+        // (issue 1621 measured `'origin' does not appear to be a git
+        // repository` at this step). Refuse unless <path> is its own top level.
+        if !is_own_repository(&subdir) {
+            bail!(
+                "git submodule update {path} left no repository at {} (source {name})",
+                subdir.display()
+            );
+        }
+        sh(
+            &[
+                "git", "-C", &subdir_s, "fetch", "--depth", "1", "origin", &sha,
+            ],
+            None,
+        )
+        .wrap_err_with(|| format!("git fetch --depth 1 {sha} ({path}, source {name})"))?;
+        sh(&["git", "-C", &subdir_s, "checkout", "-q", &sha], None)
+            .wrap_err_with(|| format!("git checkout {sha} ({path}, source {name})"))?;
+        if recursive {
+            sh(
+                &[
+                    "git",
+                    "-C",
+                    &subdir_s,
+                    "submodule",
+                    "update",
+                    "--init",
+                    "--recursive",
+                    "--depth",
+                    "1",
+                    "--recommend-shallow",
+                ],
+                None,
+            )
+            .wrap_err_with(|| {
+                format!("git submodule update --recursive ({path}, source {name})")
+            })?;
+        }
+    }
+    Ok(())
+}
+
+/// Is `dir` the TOP LEVEL of a repository of its own — not a directory git
+/// would resolve to an enclosing superproject?
+fn is_own_repository(dir: &Path) -> bool {
+    let d = dir.to_string_lossy();
+    let Ok(top) = sh_capture(&["git", "-C", &d, "rev-parse", "--show-toplevel"], None) else {
+        return false;
+    };
+    match (std::fs::canonicalize(top), std::fs::canonicalize(dir)) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => false,
+    }
+}
+
+/// Issue 1621 — remove a `<path>/.git` FILE that names no repository.
+///
+/// git treats a gitfile it cannot follow as fatal, for `git -C <path>` and for
+/// the superproject's `git status` alike, so such a file blocks every git
+/// command in the worktree and is useless to keep. A `.git` that resolves, or
+/// a `.git` DIRECTORY, is never touched.
+fn heal_dangling_gitlink(subdir: &Path) {
+    let gitlink = subdir.join(".git");
+    if !gitlink.is_file() {
+        return;
+    }
+    let d = subdir.to_string_lossy();
+    if sh_capture(&["git", "-C", &d, "rev-parse", "--absolute-git-dir"], None).is_ok() {
+        return;
+    }
+    if std::fs::remove_file(&gitlink).is_ok() {
+        super::step_log::say(format!(
+            "nros setup: removed {}, a gitlink naming no repository (issue 1621)",
+            gitlink.display()
+        ));
+    }
+}
+
+/// What a workspace submodule looked like before a provision step touched it,
+/// so a FAILED step can remove exactly what it created and nothing else
+/// (issue 1621).
+///
+/// The module's git dir is ASKED for — `git rev-parse --git-path
+/// modules/<name>` — never assembled: in a linked worktree it lives under the
+/// worktree's own git dir, and there `.git` is a file (issue 1336).
+struct SubmoduleBefore {
+    subdir: PathBuf,
+    had_gitlink: bool,
+    had_content: bool,
+    module_dir: Option<PathBuf>,
+    had_module_dir: bool,
+}
+
+impl SubmoduleBefore {
+    fn take(workspace: &Path, path: &str) -> Self {
+        let subdir = workspace.join(path);
+        let module_dir = submodule_name(workspace, path).and_then(|n| {
+            let ws = workspace.to_string_lossy();
+            let rel = format!("modules/{n}");
+            sh_capture(
+                &[
+                    "git",
+                    "-C",
+                    &ws,
+                    "rev-parse",
+                    "--path-format=absolute",
+                    "--git-path",
+                    &rel,
+                ],
+                None,
+            )
+            .ok()
+            .map(PathBuf::from)
+        });
+        Self {
+            had_gitlink: std::fs::symlink_metadata(subdir.join(".git")).is_ok(),
+            had_content: subdir
+                .read_dir()
+                .map(|mut d| d.next().is_some())
+                .unwrap_or(false),
+            had_module_dir: module_dir.as_deref().is_some_and(Path::exists),
+            module_dir,
+            subdir,
+        }
+    }
+
+    /// Best effort; returns what it removed, for the error it is attached to.
+    fn undo(&self) -> Vec<String> {
+        let mut removed = Vec::new();
+        if let Some(m) = self.module_dir.as_deref() {
+            if !self.had_module_dir && m.exists() && std::fs::remove_dir_all(m).is_ok() {
+                removed.push(m.display().to_string());
+            }
+        }
+        if self.had_gitlink {
+            return removed;
+        }
+        let gitlink = self.subdir.join(".git");
+        if std::fs::symlink_metadata(&gitlink).is_ok() {
+            let gone = if gitlink.is_dir() {
+                std::fs::remove_dir_all(&gitlink)
+            } else {
+                std::fs::remove_file(&gitlink)
+            };
+            if gone.is_ok() {
+                removed.push(gitlink.display().to_string());
+            }
+        }
+        // A directory that was EMPTY before (the checkout's placeholder for an
+        // uninitialised submodule) goes back to empty; one that held files
+        // before is somebody's, and is never touched.
+        if !self.had_content {
+            if let Ok(rd) = self.subdir.read_dir() {
+                let mut n = 0;
+                for e in rd.flatten() {
+                    let p = e.path();
+                    let ok = if p.is_dir() && !p.is_symlink() {
+                        std::fs::remove_dir_all(&p)
+                    } else {
+                        std::fs::remove_file(&p)
+                    };
+                    if ok.is_ok() {
+                        n += 1;
+                    }
+                }
+                if n > 0 {
+                    removed.push(format!(
+                        "{n} checked-out entries in {}",
+                        self.subdir.display()
+                    ));
+                }
+            }
+        }
+        removed
+    }
 }
 
 /// RFC-0099 D6 — is this submodule already initialised AT its recorded pin?
@@ -1514,10 +1743,31 @@ fn object_repo_for(
     }
     let mirror = store.join("fetch").join("git").join(format!("{name}.git"));
     let m = mirror.to_string_lossy().into_owned();
-    if !mirror.exists() {
+    // Issue 1745 — the mirror is shared by EVERY pin of `name`, while the
+    // provision lock is per pin (it sits beside the pin's `dest`). Two
+    // checkouts at different pins would otherwise fetch into one shallow
+    // repository at once — `shallow file has changed since we read it`, the
+    // race 1745 measured in a checkout submodule, one directory over. Taken
+    // after the per-pin lock and never before it, so the order is fixed.
+    std::fs::create_dir_all(store.join("fetch").join("git"))
+        .wrap_err_with(|| format!("create the mirror dir for {m}"))?;
+    let lock_path = mirror.with_file_name(format!(".{name}.git.nros-fetch.lock"));
+    let lock = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(&lock_path)
+        .wrap_err_with(|| format!("open mirror lock {}", lock_path.display()))?;
+    lock_exclusive(&lock).wrap_err_with(|| format!("lock {}", lock_path.display()))?;
+    // A mirror dir without `HEAD` is a failed `init` (or one interrupted
+    // before it wrote anything): re-initialise rather than fetching into a
+    // directory that is not a repository forever.
+    if !mirror.join("HEAD").is_file() {
         std::fs::create_dir_all(&mirror).wrap_err_with(|| format!("create {m}"))?;
-        sh(&["git", "init", "-q", "--bare", &m], None)
-            .wrap_err_with(|| format!("git init --bare {m} (source {name})"))?;
+        if let Err(e) = sh(&["git", "init", "-q", "--bare", &m], None) {
+            let _ = std::fs::remove_dir_all(&mirror);
+            return Err(e).wrap_err_with(|| format!("git init --bare {m} (source {name})"));
+        }
     }
     if !has(&mirror) {
         let mut fetch: Vec<&str> = vec!["git", "-C", &m, "fetch", "-q"];
@@ -1832,72 +2082,28 @@ fn provision_source_unlocked(
                 ensure_submodule_branch_refspec(workspace, path, shallow)?;
                 return Ok(SourceDisposition::AlreadyPresent);
             }
-            // Fast path: `git submodule update --init [--recursive] [--depth 1]`.
-            // CAVEAT: `--depth 1` shallow-fetches the submodule's BRANCH TIP, not
-            // the pinned gitlink SHA — so a pin that lags its tip and isn't an
-            // advertised ref (e.g. PX4-Autopilot's 1.15.x sha vs `main`) fails the
-            // checkout here. We catch that and fall back to an explicit
-            // depth-1 fetch-by-SHA (GitHub serves reachable SHAs), which `git
-            // clone --branch` / `submodule update` can't express directly.
-            let workspace_s = workspace.to_string_lossy();
-            let mut args: Vec<&str> =
-                vec!["git", "-C", &workspace_s, "submodule", "update", "--init"];
-            if src.recursive {
-                args.push("--recursive");
-            }
-            if shallow {
-                args.push("--depth");
-                args.push("1");
-            }
-            args.push("--");
-            args.push(path);
-            let fast = sh(&args, None);
-            if let Err(e) = fast {
-                if !shallow {
-                    return Err(e)
-                        .wrap_err_with(|| format!("git submodule update {path} (source {name})"));
+            // Issue 1621 — a provision that FAILS removes what it created.
+            // In a linked worktree a half-made submodule left `<path>/.git`
+            // naming a module dir that did not exist, after which `git status`
+            // failed for the whole worktree and it could not commit. What
+            // existed before the step is left alone — except a gitlink that
+            // already names no repository, which an older CLI left behind and
+            // which nothing can use.
+            heal_dangling_gitlink(&workspace.join(path));
+            let before = SubmoduleBefore::take(workspace, path);
+            if let Err(e) =
+                update_workspace_submodule(name, path, workspace, src.recursive, shallow)
+            {
+                let undone = before.undo();
+                if undone.is_empty() {
+                    return Err(e);
                 }
-                // By-SHA fallback. `submodule update` already initialised the
-                // gitdir + worktree (only its checkout of the lagging pin failed),
-                // so fetch the exact gitlink SHA at depth 1 and check it out, then
-                // descend if recursive.
-                let sha = sh_capture(&["git", "-C", &workspace_s, "ls-tree", "HEAD", path], None)
-                    .wrap_err_with(|| format!("read gitlink sha for {path} (source {name})"))?
-                    .split_whitespace()
-                    .nth(2)
-                    .map(str::to_owned)
-                    .ok_or_else(|| eyre!("no gitlink sha for {path} (source {name})"))?;
-                let subdir = workspace.join(path);
-                let subdir_s = subdir.to_string_lossy();
-                sh(
-                    &[
-                        "git", "-C", &subdir_s, "fetch", "--depth", "1", "origin", &sha,
-                    ],
-                    None,
-                )
-                .wrap_err_with(|| format!("git fetch --depth 1 {sha} ({path}, source {name})"))?;
-                sh(&["git", "-C", &subdir_s, "checkout", "-q", &sha], None)
-                    .wrap_err_with(|| format!("git checkout {sha} ({path}, source {name})"))?;
-                if src.recursive {
-                    sh(
-                        &[
-                            "git",
-                            "-C",
-                            &subdir_s,
-                            "submodule",
-                            "update",
-                            "--init",
-                            "--recursive",
-                            "--depth",
-                            "1",
-                            "--recommend-shallow",
-                        ],
-                        None,
+                return Err(e).wrap_err_with(|| {
+                    format!(
+                        "provision of {path} failed; removed what it created: {}",
+                        undone.join(", ")
                     )
-                    .wrap_err_with(|| {
-                        format!("git submodule update --recursive ({path}, source {name})")
-                    })?;
-                }
+                });
             }
             // Issue 0833 follow-on — `--depth 1` clones single-branch, so a
             // submodule declaring a non-`main` branch could not resolve it.
@@ -3312,6 +3518,127 @@ mod tests {
             ws.join(path).join("f.txt").is_file(),
             "the submodule was reported provisioned but its content is absent"
         );
+    }
+
+    /// `git status` in `dir`, through the same env-clearing runner the code
+    /// under test uses. `Err` is the issue-1621 symptom.
+    fn status_of(dir: &Path) -> Result<String> {
+        let d = dir.to_string_lossy();
+        sh_capture(&["git", "-C", &d, "status", "--porcelain"], None)
+    }
+
+    /// Issue 1621 — a provision that FAILS removes what it created.
+    ///
+    /// The gitlink records a commit the submodule's repository does not have,
+    /// so `submodule update` reconnects the (kept, deinit'd) module dir, writes
+    /// `<path>/.git`, and then fails its checkout. The module dir existed
+    /// before the step and must survive it; the gitlink did not, and must go.
+    #[test]
+    fn a_failed_submodule_provision_removes_the_gitlink_it_wrote() {
+        let (ws, path) = superproject_with_submodule("submodule-failed");
+        git_sh(&ws, "git submodule deinit -f third-party/sub");
+        git_sh(
+            &ws,
+            "git update-index --cacheinfo \
+             160000,1234567890123456789012345678901234567890,third-party/sub \
+             && git commit -qm unreachable-pin",
+        );
+        let ws_s = ws.to_string_lossy();
+        let module_dir = PathBuf::from(
+            sh_capture(
+                &[
+                    "git",
+                    "-C",
+                    &ws_s,
+                    "rev-parse",
+                    "--path-format=absolute",
+                    "--git-path",
+                    "modules/third-party/sub",
+                ],
+                None,
+            )
+            .unwrap(),
+        );
+        assert!(module_dir.is_dir(), "deinit keeps the module dir");
+
+        let src = submodule_source(path, false);
+        let err = provision_source("sub", &src, &ws, false, None)
+            .expect_err("a pin the submodule does not have cannot be provisioned");
+        assert!(
+            !ws.join(path).join(".git").exists(),
+            "the failed provision left the gitlink it wrote: {err:?}"
+        );
+        assert!(
+            module_dir.is_dir(),
+            "a module dir that existed before was removed"
+        );
+        status_of(&ws).expect("git status must still work after a failed provision");
+    }
+
+    /// Issue 1621, measured shape — a LINKED worktree whose `<path>/.git`
+    /// names a module dir that does not exist. Reproduced here first (the
+    /// assertion that `git status` fails), then provisioned: whatever the
+    /// provision's own outcome, the worktree's git must work afterwards.
+    ///
+    /// The provision itself fails here — re-cloning needs the `file`
+    /// transport, which git refuses for submodules (CVE-2022-39253) and the
+    /// code under test rightly does not override — and that is the point:
+    /// the healed gitlink must not come back with the failure.
+    #[test]
+    fn a_gitlink_naming_no_repository_is_removed_in_a_linked_worktree() {
+        let (ws, path) = superproject_with_submodule("submodule-dangling");
+        let wt = ws.parent().unwrap().join("wt");
+        git_sh(&ws, "git worktree add -q --detach ../wt");
+        git_sh(&wt, "git submodule update --init third-party/sub");
+        let wt_s = wt.to_string_lossy();
+        let module_dir = PathBuf::from(
+            sh_capture(
+                &[
+                    "git",
+                    "-C",
+                    &wt_s,
+                    "rev-parse",
+                    "--path-format=absolute",
+                    "--git-path",
+                    "modules/third-party/sub",
+                ],
+                None,
+            )
+            .unwrap(),
+        );
+        assert!(
+            module_dir.is_dir() && !module_dir.starts_with(ws.join(".git/modules")),
+            "a linked worktree keeps its own module dir: {}",
+            module_dir.display()
+        );
+        // The measured state: the module dir is gone and `<path>/.git` is the
+        // only thing left, a file naming it.
+        std::fs::remove_dir_all(&module_dir).unwrap();
+        std::fs::remove_file(wt.join(path).join("f.txt")).unwrap();
+        assert!(
+            status_of(&wt).is_err(),
+            "the reproduction: a gitlink naming no repository breaks `git status`"
+        );
+
+        let src = submodule_source(path, false);
+        let _ = provision_source("sub", &src, &wt, false, None);
+        status_of(&wt).expect("git status must work again after a provision");
+        assert!(
+            !wt.join(path).join(".git").is_file()
+                || sh_capture(
+                    &[
+                        "git",
+                        "-C",
+                        &wt.join(path).to_string_lossy(),
+                        "rev-parse",
+                        "--git-dir"
+                    ],
+                    None
+                )
+                .is_ok(),
+            "a gitlink naming no repository survived the provision"
+        );
+        status_of(&ws).expect("the main checkout is untouched");
     }
 
     /// The other half of the discrimination, and the one that would be a
