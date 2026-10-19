@@ -346,14 +346,23 @@ function(nano_ros_read_leaf_system)
     # Zephyr cargo command passes — and it honours `-DNROS_IMAGE=<id>`, which
     # this read must honour too, so the RMW this leaf's cmake reads and the one
     # the fragment states are the same image's.
+    #
+    # Issue 1946 — `-DNROS_IMAGE=<id>` selects the image on EVERY road, not
+    # only Zephyr's: a leaf built once per RMW states each build's domain in
+    # that build's own image, which is what lets a fixture lane stop passing
+    # `-DNROS_DOMAIN_ID` over a leaf that states another. Only the top-level
+    # leaf's read honours it — a member of a larger configure is not the
+    # image the -D names.
     set(_nrl_image_env_arg --image-env-out "${CMAKE_CURRENT_BINARY_DIR}/nros/nros-image-env.toml")
     set(_nrl_image_arg "")
+    set(_nrl_top "${CMAKE_SOURCE_DIR}")
     if(DEFINED ZEPHYR_BASE)
         set(_nrl_image_env_arg "")
-        if(DEFINED NROS_IMAGE AND NOT NROS_IMAGE STREQUAL ""
-           AND _NRL_DIR STREQUAL APPLICATION_SOURCE_DIR)
-            set(_nrl_image_arg --image "${NROS_IMAGE}")
-        endif()
+        set(_nrl_top "${APPLICATION_SOURCE_DIR}")
+    endif()
+    if(DEFINED NROS_IMAGE AND NOT NROS_IMAGE STREQUAL ""
+       AND _NRL_DIR STREQUAL _nrl_top)
+        set(_nrl_image_arg --image "${NROS_IMAGE}")
     endif()
     execute_process(
         COMMAND "${_nros}" ws leaf-system "${_NRL_DIR}" --nano-ros-path "${NROS_REPO_DIR}"
@@ -409,6 +418,36 @@ function(nano_ros_read_leaf_system)
         set_property(GLOBAL PROPERTY NROS_LEAF_IMAGE_NET "${_NROS_LEAF_IMAGE_NET}")
     endif()
 
+    # Issue 1946 — the top-level leaf's domain, and the one rule about it. On a
+    # DDS image the domain is the bus, so a `-DNROS_DOMAIN_ID` that silently
+    # outranked the leaf's stated `domain_id` put the image on a bus nobody
+    # wrote down. Either alone is used; both must agree — the rule
+    # `nano_ros_add_executable` applies to a generated entry's `DOMAIN_ID`. A
+    # leaf built once per RMW states each build's domain in that build's
+    # `[image.<id>]`, selected with `-DNROS_IMAGE=<id>`.
+    #
+    # Asked HERE because this is the one reader both roads reach: a
+    # `find_package(nano_ros)` leaf from its own scope, an
+    # `add_subdirectory(<nano-ros>)` leaf from nano-ros's, which the leaf's
+    # scope cannot see — hence the GLOBAL property, which the session's
+    # bakes (NanoRosEntry.cmake, a board's Rust app) read where no
+    # `NROS_DOMAIN_ID` is in scope. Not on Zephyr, whose carrier is Kconfig's
+    # `CONFIG_NROS_DOMAIN_ID` with its own agreement check (issue 1550).
+    if(_NRL_DIR STREQUAL _nrl_top AND NOT DEFINED ZEPHYR_BASE)
+        if(NOT "${_NROS_LEAF_DOMAIN_ID}" STREQUAL ""
+           AND DEFINED NROS_DOMAIN_ID AND NOT NROS_DOMAIN_ID STREQUAL ""
+           AND NOT NROS_DOMAIN_ID STREQUAL _NROS_LEAF_DOMAIN_ID)
+            message(FATAL_ERROR
+                "nano-ros: ${_NRL_DIR}/system.toml states domain "
+                "${_NROS_LEAF_DOMAIN_ID} for image `${_NROS_LEAF_IMAGE}` but "
+                "-DNROS_DOMAIN_ID=${NROS_DOMAIN_ID} names another. State the domain "
+                "in the image this build is (`[image.<id>] domain_id`, selected with "
+                "-DNROS_IMAGE=<id>) and drop the -D (`cmake -U NROS_DOMAIN_ID "
+                "<build-dir>` clears a cached one) — issue 1946.")
+        endif()
+        set_property(GLOBAL PROPERTY NROS_TOP_LEAF_DOMAIN_ID "${_NROS_LEAF_DOMAIN_ID}")
+    endif()
+
     # A board that IS its deploy token (`linux`, `zephyr`) names no separate
     # provider — exactly the tuple shape `<nano_ros deploy="native"/>` had.
     set(_board "${_NROS_LEAF_BOARD}")
@@ -459,3 +498,4 @@ function(nano_ros_read_leaf_system)
         "deploy=${_NROS_LEAF_DEPLOY} rmw=${_NROS_LEAF_RMW} "
         "domain_id=${_NROS_LEAF_DOMAIN_ID} locator=${_NROS_LEAF_LOCATOR}")
 endfunction()
+

@@ -10,6 +10,7 @@
 name = "riscv64_threadx_cpp_listener"
 rmw = "zenoh"
 domain_id = 0
+default_images = ["rv-virt-threadx"]
 
 [[component]]
 pkg = "riscv64_threadx_cpp_listener"
@@ -22,4 +23,15 @@ board = "rv-virt-threadx"
 # RFC-0103 D10 (phase-497 W2) — the Cyclone pair shares one L2 link, so each
 # member states its own address, and the MAC QEMU gives its virtio device
 # (`threadx_riscv64_qemu.rs` passes the same one to `-device`).
+net = { eth0 = { network = "qemu", host = 41, mac = "52:54:00:12:34:57" } }
+
+# The Cyclone build of the same board, as its own image (issue 1946): the
+# domain is a property of the BUILD — 129 is `alloc::domain_of(ThreadxRiscv64, Cpp,
+# Pubsub)` — so a lane selects this image with
+# `-DNROS_IMAGE=rv-virt-threadx-cyclonedds` rather than passing a `-DNROS_DOMAIN_ID`
+# this file would contradict.
+[image.rv-virt-threadx-cyclonedds]
+board = "rv-virt-threadx"
+rmw = "cyclonedds"
+domain_id = 129
 net = { eth0 = { network = "qemu", host = 41, mac = "52:54:00:12:34:57" } }

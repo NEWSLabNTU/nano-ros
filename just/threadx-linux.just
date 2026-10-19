@@ -174,18 +174,16 @@ build-fixture-extras:
     bash scripts/build/fixtures-build.sh threadx-linux c zenoh
     bash scripts/build/fixtures-build.sh threadx-linux cpp zenoh
     if command -v idlc >/dev/null 2>&1 || [ -x build/install/bin/idlc ]; then
-        # phase-295 W4 (ex Phase 177.38) — bake each Cyclone lang pass onto its
-        # ALLOCATOR domain (nros_tests::alloc::domain_of(ThreadxLinux, lang,
-        # Pubsub): c=107, cpp=108; C/C++ → cmake -DNROS_DOMAIN_ID via
-        # NanoRosConfig.cmake) so its host RTPS ports stay disjoint from every
-        # other baked Cyclone fixture. Only the cyclonedds pass gets it; zenoh
-        # keeps the config.toml default. The paired native listener spawns at
-        # domain 107 in linux_api.rs's
+        # Each Cyclone lang pass bakes its ALLOCATOR domain
+        # (nros_tests::alloc::domain_of(ThreadxLinux, lang, Pubsub): c=107,
+        # cpp=108) so its host RTPS ports stay disjoint from every other baked
+        # Cyclone fixture. The leaf states it, in its `[image.threadx-linux-
+        # cyclonedds]`, which the row selects with `NROS_IMAGE` (issue 1946 —
+        # this lane used to pass `-DNROS_DOMAIN_ID` over a leaf stating 0).
+        # The paired native listener spawns at domain 107 in linux_api.rs's
         # test_threadx_linux_cyclonedds_talker_to_native_listener.
-        NROS_CMAKE_EXTRA_DEFS="$NROS_CMAKE_EXTRA_DEFS -DNROS_DOMAIN_ID=107" \
-            bash scripts/build/fixtures-build.sh threadx-linux c cyclonedds
-        NROS_CMAKE_EXTRA_DEFS="$NROS_CMAKE_EXTRA_DEFS -DNROS_DOMAIN_ID=108" \
-            bash scripts/build/fixtures-build.sh threadx-linux cpp cyclonedds
+        bash scripts/build/fixtures-build.sh threadx-linux c cyclonedds
+        bash scripts/build/fixtures-build.sh threadx-linux cpp cyclonedds
     else
         # Issue 1758 — not "skipped" + carry on: when this run selects the
         # cyclonedds rows, a missing idlc is a missing prerequisite (named or

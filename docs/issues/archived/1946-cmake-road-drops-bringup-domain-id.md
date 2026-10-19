@@ -99,3 +99,46 @@ lanes that bake Cyclone domains into such leaves do it with `-DNROS_DOMAIN_ID`
 `just/freertos.just` 60) while those leaves state `domain_id = 0`, so wiring
 the leaf's domain in would make every one of them refuse. Closing that half means
 moving each lane's domain into its leaf `system.toml` first.
+
+## Standalone leaves, RESOLVED 2026-10-20
+
+Measured first, because the note above was half right. A
+`find_package(nano_ros)` leaf already took its `domain_id` when no `-D` spoke
+(`nano_rosConfig.cmake`, since 2026-10-11); what it did wrong was let a
+`-DNROS_DOMAIN_ID` outrank a domain the leaf stated, which is how every
+Cyclone lane baked 107/108/127/128/129 over leaves saying `domain_id = 0`. An
+`add_subdirectory(<nano-ros>)` leaf (the six rv-virt-threadx Rust roles) never
+took it at all: its `system.toml` is read in nano-ros's scope, which the leaf's
+scope cannot see, so with the cached `-D` cleared the Rust session fell back to
+0.
+
+**One rule, in the one reader.** `nano_ros_read_leaf_system` (both roads reach
+it) refuses a `-DNROS_DOMAIN_ID` that disagrees with the top-level leaf's
+domain, naming both and the remedy, and publishes the domain as the GLOBAL
+property `NROS_TOP_LEAF_DOMAIN_ID`. The two session bakes read it where no
+`NROS_DOMAIN_ID` is in scope: `NanoRosEntry.cmake`'s `NROS_ENTRY_DOMAIN_ID` and
+the rv-virt-threadx board's corrosion env for `option_env!("NROS_DOMAIN_ID")`.
+Not on Zephyr, whose carrier is Kconfig with its own check (issue 1550).
+
+**The lanes' domains moved into the leaves.** A leaf built once per RMW now
+states each build's domain in that build's image, as the Zephyr leaves already
+did: 22 leaves (threadx-linux c/cpp ×6, rv-virt-threadx c/cpp talker+listener,
+the six rv-virt-threadx Rust roles) gained `[image.<board>-cyclonedds]` with
+`rmw = "cyclonedds"` and the allocator's domain, plus `default_images` keeping
+the zenoh image the default. `-DNROS_IMAGE=<id>` now selects an image on every
+road (it was Zephyr-only); the 16 Cyclone fixture rows pass it in
+`cmake_defs`, the riscv64 Rust-role helper passes it, and the
+`-DNROS_DOMAIN_ID` / `export NROS_DOMAIN_ID` in `just/threadx-linux.just` and
+`just/threadx-riscv64.just` are gone.
+
+**Measured.** With every Cyclone build dir's cached `NROS_DOMAIN_ID` cleared
+(`cmake -U`), the fixtures bake 107 / 108 (threadx-linux c / cpp), 128 / 129
+(rv-virt-threadx c / cpp) and 127 (the six Rust roles, corrosion env); the
+zenoh images bake 0. `-DNROS_DOMAIN_ID=7` over the threadx-linux C talker's
+Cyclone image stops the configure. The seven ThreadX Cyclone cells pass:
+`test_threadx_linux_cyclonedds_{talker_to_native_listener,cpp_talker_to_native_listener,service,action}`
+and `test_threadx_riscv64_cyclonedds_two_qemu_{pubsub,cpp_pubsub,rust_pubsub}`.
+
+FreeRTOS's `export NROS_DOMAIN_ID=60` (`just/freertos.just`) stays: it is an
+ENV value for the retired Rust Cyclone path, which no cmake configure reads.
+

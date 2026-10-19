@@ -134,7 +134,10 @@ if(NROS_LEAF_SYSTEM)
     if(NOT NROS_LEAF_LOCATOR STREQUAL "" AND NOT DEFINED NROS_ENTRY_LOCATOR)
         set(NROS_ENTRY_LOCATOR "${NROS_LEAF_LOCATOR}")
     endif()
-    if(NOT NROS_LEAF_DOMAIN_ID STREQUAL "" AND NOT DEFINED NROS_DOMAIN_ID)
+    # Issue 1946 — the leaf's domain is what the session opens on. A
+    # disagreeing `-DNROS_DOMAIN_ID` was refused by the read above, so this is
+    # never a choice between two values.
+    if(NOT NROS_LEAF_DOMAIN_ID STREQUAL "")
         set(NROS_DOMAIN_ID "${NROS_LEAF_DOMAIN_ID}")
     endif()
     # Issue 1142 — and what the leaf DECLARES it creates (RFC-0098 D8). This is

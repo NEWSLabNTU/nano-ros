@@ -1102,8 +1102,8 @@ fn test_threadx_linux_cyclonedds_talker_to_native_listener() {
 
     // domain 107 — the allocator's (threadx-linux, c, pubsub) Cyclone domain
     // (`nros_tests::alloc::domain_of`; `just threadx_linux build-fixtures`
-    // bakes the same number via -DNROS_DOMAIN_ID into the cyclonedds
-    // fixture). The native listener reads the domain from the env at runtime
+    // bakes the same number into the cyclonedds fixture: the leaf's
+    // `[image.threadx-linux-cyclonedds] domain_id`, issue 1946). The native listener reads the domain from the env at runtime
     // (host exception), so set it to 107 to pair with the talker.
     let mut listener = spawn_cyclone_binary(&listener_bin, "native-c-cyclonedds-listener", "107");
     listener
@@ -1192,8 +1192,8 @@ fn test_threadx_linux_cyclonedds_cpp_talker_to_native_listener() {
 /// same Cyclone backend, mirroring the #215 pubsub interop lane. The
 /// service/action fixtures always built (BuildOnly in the matrix); this is
 /// the runtime proof. Domain 107 matches the threadx cyclone fixture's baked
-/// `-DNROS_DOMAIN_ID` (the native client reads it from the env — host
-/// exception).
+/// domain, its leaf's `[image.threadx-linux-cyclonedds] domain_id` (the native
+/// client reads it from the env — host exception).
 #[test]
 fn test_threadx_linux_cyclonedds_service() {
     require_cmake();

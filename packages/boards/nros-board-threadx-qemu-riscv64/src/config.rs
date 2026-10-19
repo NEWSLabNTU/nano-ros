@@ -47,7 +47,7 @@ impl Default for Config {
         // locator on that path come from the image itself (`image_config()` in
         // lib.rs, issue 1557), not from these defaults. `NROS_DOMAIN_ID` is set
         // per-build by `nros_threadx_rv64_rust_app` (corrosion env), matching
-        // the C fixtures' `-DNROS_DOMAIN_ID` bake.
+        // the leaf image's `domain_id` the C fixtures bake (issue 1946).
         //
         // `option_env!` deliberately stays in the BOARD crate rather than
         // moving to `BaseConfig`: it is expanded where it is written, and the
