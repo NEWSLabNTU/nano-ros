@@ -163,7 +163,7 @@ def live_timeout() -> tuple[int | None, int | None, str]:
     return None, rid, f"ruleset {RULESET!r} has no merge_queue rule"
 
 
-def selftest() -> int:
+def selftest(quiet: bool = False) -> int:
     text = DECLARING_SCRIPT.read_text()
     declared = declared_timeout(text)
     # The two spellings must be caught disagreeing, and a missing one refused.
@@ -195,7 +195,8 @@ def selftest() -> int:
     ]
     assert durations(runs) == [30.0]
     assert "rulesets/7 --input -" in update_command(7, 90)
-    print(f"{GATE} selftest: OK (declared {KEY}={declared})")
+    if not quiet:
+        print(f"{GATE} selftest: OK (declared {KEY}={declared})")
     return 0
 
 
@@ -207,6 +208,9 @@ def main() -> int:
     a = ap.parse_args()
     if a.selftest:
         return selftest()
+    # The negative control runs on the normal path too: a live verdict from
+    # broken verdict logic would be a false all-clear every night.
+    selftest(quiet=True)
 
     declared = declared_timeout(DECLARING_SCRIPT.read_text())
     live, rid, err = live_timeout()

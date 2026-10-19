@@ -3606,8 +3606,24 @@ mod tests {
             )
             .unwrap(),
         );
+        let ws_s = ws.to_string_lossy();
+        let main_module_dir = PathBuf::from(
+            sh_capture(
+                &[
+                    "git",
+                    "-C",
+                    &ws_s,
+                    "rev-parse",
+                    "--path-format=absolute",
+                    "--git-path",
+                    "modules/third-party/sub",
+                ],
+                None,
+            )
+            .unwrap(),
+        );
         assert!(
-            module_dir.is_dir() && !module_dir.starts_with(ws.join(".git/modules")),
+            module_dir.is_dir() && module_dir != main_module_dir,
             "a linked worktree keeps its own module dir: {}",
             module_dir.display()
         );
