@@ -59,6 +59,7 @@ if(CMAKE_SCRIPT_MODE_FILE STREQUAL CMAKE_CURRENT_LIST_FILE)
 endif()
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRmwDispatch.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCli.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRootProfiles.cmake")
 
 set(_NROS_IMAGE_CRATE_REPO "${CMAKE_CURRENT_LIST_DIR}/.."
     CACHE INTERNAL "nano-ros checkout, for NanoRosImageCrate.cmake")
@@ -212,7 +213,11 @@ function(nros_image_crate prefix)
     # Standalone, the image crate is its own cargo root. With WORKSPACE_DIR it
     # is a MEMBER of one generated root shared with its sibling (the C and C++
     # images of one build), so one target dir serves one root (issue 0616).
-    set(_ws_table "\n[workspace]\n")
+    # Either way the ROOT carries the root workspace's profiles (issue 1953):
+    # before D9 the API crate was built inside that workspace, and a generated
+    # root states every profile it is built with or gets cargo's defaults.
+    nros_root_cargo_profiles(_profiles REPO "${_repo}")
+    set(_ws_table "\n[workspace]\n${_profiles}")
     set(_lock_root "${_IC_OUT_DIR}")
     if(_IC_WORKSPACE_DIR)
         set(_ws_table "")
@@ -232,7 +237,7 @@ function(nros_image_crate prefix)
 [workspace]
 resolver = \"2\"
 members = [${_mlist}]
-")
+${_profiles}")
         file(MAKE_DIRECTORY "${_IC_WORKSPACE_DIR}")
         set(_old_root "")
         if(EXISTS "${_IC_WORKSPACE_DIR}/Cargo.toml")

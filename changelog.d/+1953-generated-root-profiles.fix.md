@@ -1,0 +1,1 @@
+A C or C++ image built with `CMAKE_BUILD_TYPE=Release` gets the root workspace's release profile again (`panic = "abort"`, fat LTO). The generated image crate and the workspace runtime umbrella are their own cargo roots and had stopped stating it, so threadx-linux C/C++ failed to compile and cross images lost their LTO (issue 1953).

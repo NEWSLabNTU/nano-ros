@@ -112,6 +112,12 @@ function(nros_write_runtime_umbrella_crate)
         set(_backend_dep_line "${_ib_DEP_LINE}\n")
         set(_backend_ctor "${_ib_ANCHOR}")
     endif()
+    # This umbrella is its own workspace root, so it builds with only the
+    # profiles it states. The `nros-*` presets also arrive as `CARGO_PROFILE_*`
+    # (phase-336), but `release` and `dev` never do, so without these a
+    # `--profile release` build got cargo's `panic = "unwind"` (issue 1953).
+    # Copied from the root manifest, not restated.
+    nros_root_cargo_profiles(_profiles REPO "${NROS_REPO_DIR}")
     set(_feat_toml "")
     foreach(_f IN LISTS _cpp_feats)
         if(NOT _f MATCHES "/")
@@ -136,12 +142,7 @@ crate-type = [\"staticlib\"]
 nros-cpp = { path = \"${NROS_REPO_DIR}/packages/api/nros-cpp\", default-features = false, features = [${_feat_toml}] }
 ${_backend_dep_line}${_dep_lines}
 [workspace]
-
-# phase-336 — NO mirrored `[profile.*]` block. This umbrella is its own
-# workspace root, so a custom profile used to have to be redeclared here or
-# cargo errored `profile \`nros-…\` is not defined`; the import now injects the
-# definition through `CARGO_PROFILE_*` instead, which is one fewer copy to drift.
-")
+${_profiles}")
 
     # phase-263 C2c — on an embedded cross target the umbrella crate itself must be no_std
     # (else IT pulls `std`, defeating the alloc-only nros-cpp tier above). The anchor surface
