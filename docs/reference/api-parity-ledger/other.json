@@ -1751,5 +1751,9 @@
       "jazzy"
     ],
     "why": "typed (de)serialization to bytes is generated per message by codegen (nros-serdes), with no type-erased `SerializationBase` over rosidl typesupport handles and a heap `SerializedMessage`; see `cpp:SerializedMessage`."
+  },
+  "rust:install_port_park": {
+    "verdict": "extension",
+    "why": "phase-436 W7 -- a board's Rust arm installs the platform's park primitive (the spin loop's wait-for-work seam) once at boot. A porting seam for the RTOS boards, not a client-library call; rclrs runs on a hosted OS and has nothing to install."
   }
 }
