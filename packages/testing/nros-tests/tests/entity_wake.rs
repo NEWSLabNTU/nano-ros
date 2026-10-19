@@ -411,7 +411,7 @@ fn an_arrival_racing_a_drain_is_never_left_undispatched(
     const CALLBACK_COST: Duration = Duration::from_millis(3);
     /// Longer than the callback, so the backend's ring (depth 4 by default)
     /// never fills. zenoh drops the NEWEST sample of a full ring (issue
-    /// 1970), which would fail this test for a reason that is not the
+    /// 1979), which would fail this test for a reason that is not the
     /// executor's.
     const PUBLISH_INTERVAL: Duration = Duration::from_millis(5);
     const ROUNDS: u32 = 20;

@@ -1,5 +1,5 @@
 ---
-id: 1970
+id: 1979
 title: "zenoh: a full subscriber ring drops the NEWEST sample, silently, which is the opposite of KEEP_LAST"
 status: open
 type: bug
