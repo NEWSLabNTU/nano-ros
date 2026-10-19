@@ -485,6 +485,10 @@ pub struct MockSession {
     /// in order, so a test can assert which hash each endpoint was keyed on.
     /// Always recorded; the first 16 are kept.
     pub(crate) created: RefCell<heapless::Vec<(heapless::String<96>, heapless::String<80>), 16>>,
+    /// Issue 1944 — the timeout the most recent `drive_io` was ASKED for, so a
+    /// test asserts what the executor requested of the transport instead of
+    /// timing how long a no-op took on a host that may be loaded.
+    pub(crate) last_drive_timeout_ms: Option<i32>,
 }
 
 impl MockSession {
@@ -514,6 +518,7 @@ impl MockSession {
             graph: false,
             subscribers_dispatch_in_place: false,
             created: RefCell::new(heapless::Vec::new()),
+            last_drive_timeout_ms: None,
         }
     }
 
@@ -539,6 +544,7 @@ impl MockSession {
             graph: false,
             subscribers_dispatch_in_place: false,
             created: RefCell::new(heapless::Vec::new()),
+            last_drive_timeout_ms: None,
         }
     }
 
@@ -551,6 +557,7 @@ impl MockSession {
             graph: false,
             subscribers_dispatch_in_place: false,
             created: RefCell::new(heapless::Vec::new()),
+            last_drive_timeout_ms: None,
         }
     }
 
@@ -570,6 +577,7 @@ impl MockSession {
             graph: true,
             subscribers_dispatch_in_place: false,
             created: RefCell::new(heapless::Vec::new()),
+            last_drive_timeout_ms: None,
         }
     }
 }
@@ -694,8 +702,9 @@ impl Session for MockSession {
         Ok(())
     }
 
-    fn drive_io(&mut self, _timeout_ms: i32) -> Result<(), TransportError> {
-        // Mock transport: no I/O to drive.
+    fn drive_io(&mut self, timeout_ms: i32) -> Result<(), TransportError> {
+        // Mock transport: no I/O to drive. Only the request is recorded.
+        self.last_drive_timeout_ms = Some(timeout_ms);
         Ok(())
     }
 
