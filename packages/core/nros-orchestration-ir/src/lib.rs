@@ -482,6 +482,13 @@ pub struct TierDef {
     /// CPU core to pin the tier task to (SMP); `None` ⇒ unpinned.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub core: Option<u32>,
+    /// `above = "transport"` (RFC-0079 section 6, issue 1967): the tier is
+    /// allocated above the port's reserved transport band. rlm's
+    /// `ReservedBand`, a closed set, so a misspelt band is a parse error here
+    /// as it is in rlm's reader. A system fact, so it lives on the head, never
+    /// in a `<rtos>` sub-table.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub above: Option<ros_launch_manifest_sched::ReservedBand>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub freertos: Option<TierRtosSpec>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1061,6 +1068,7 @@ pub fn tier_from_model(t: &ros_launch_manifest_sched::TierDef, target_rtos: &str
         // executor into cooperative Sporadic gating.
         deadline_policy: t.deadline_policy.clone(),
         core: selected.and_then(|s| s.core),
+        above: t.above,
         freertos: t.freertos.as_ref().map(rtos_spec_from_model),
         zephyr: t.zephyr.as_ref().map(rtos_spec_from_model),
         threadx: t.threadx.as_ref().map(rtos_spec_from_model),
@@ -1136,6 +1144,7 @@ mod tests {
             budget: Some(Duration::from_micros(500)),
             deadline_policy: Some("skip".to_string()),
             spin_period: Some(Duration::from_micros(250)),
+            above: Some(ros_launch_manifest_sched::ReservedBand::Transport),
             posix: Some(TierPlatformSpec {
                 priority: 80,
                 stack_bytes: Some(65536),
@@ -1182,6 +1191,10 @@ mod tests {
         assert_eq!(ir.deadline_us, Some(1500), "per-platform override wins");
         assert_eq!(ir.deadline_policy.as_deref(), Some("skip"));
         assert_eq!(ir.core, Some(2), "core hoisted from selected platform");
+        assert_eq!(
+            ir.above,
+            Some(ros_launch_manifest_sched::ReservedBand::Transport)
+        );
 
         // Non-selected sub-table values must NOT leak: freertos declares no
         // sporadic override, so its bake keeps the GENERIC head budget/period.

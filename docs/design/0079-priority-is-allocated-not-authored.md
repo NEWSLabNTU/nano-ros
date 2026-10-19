@@ -357,11 +357,9 @@ way a tier goes above the transport band; a supervised deadline is not a
 name for the crossing, it is a reason an author may write one.
 
 * The key is rlm's `TierDef::above` (`ReservedBand`, a closed set whose one
-  member is `transport`; rlm `7e01f1e`). An unknown band is a parse error;
+  member is `transport`; rlm v0.1.67). An unknown band is a parse error;
   the key is refused in a platform sub-table, because it states a system
-  fact, not one kernel's number. Until an rlm release carries it and
-  nano-ros's pin moves, `derive::names_the_transport` answers `false` and
-  no tier is lifted.
+  fact, not one kernel's number. `derive::names_the_transport` reads it.
 * `derive::lift_above_transport` allocates the tier's rank above the
   reserved transport band (`PriorityPlan::slots_above_transport`: the
   priority adjacent to the band first, skipping reserved bands, preemptive
