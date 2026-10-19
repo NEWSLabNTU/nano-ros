@@ -347,6 +347,11 @@ draft with a callback slower than its publisher lost each burst's last sample
 there, with W3 enabled or disabled. The test is paced so the ring never
 fills.
 
+Its first red on main is
+[issue 1980](../issues/1980-entity-wake-race-test-blames-executor-for-failed-publish.md).
+In a tier-1 run the publisher thread's own `publish` failed
+(`Transport(PublishFailed)`), and the test reported that as a lost dispatch.
+
 ### W6 — measure
 
 Report, before and after:
