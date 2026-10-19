@@ -2379,7 +2379,7 @@ function(nros_cargo_build)
             # `json-render-diagnostics` keeps diagnostics human on stderr and
             # leaves stdout pure JSON for the placer to read `out_dir` from.
             python3 ${NROS_REPO_DIR}/scripts/build/cargo-out-dir-headers.py
-                --package ${ARG_PACKAGE}
+                --package ${_nros_cb_ident}
                 --dest ${_nros_hdr_root}
                 -- cargo ${CARGO_ARGS} --message-format=json-render-diagnostics
         BYPRODUCTS ${_cargo_byproducts}
