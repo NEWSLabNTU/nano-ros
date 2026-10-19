@@ -73,7 +73,8 @@ use crate::config::arena_model;
 /// with an RMW seam, and this must fire in every build of the crate.
 ///
 /// It can fire only when `NROS_EXECUTOR_ARENA_SIZE` is STATED: a derived arena
-/// is the model, floored.
+/// is the model (unfloored since issue 1971; only an undeclared image's
+/// worst-case budget is floored).
 const _: () = assert_covers(
     crate::config::ARENA_SIZE,
     arena_model::REQUIRED,

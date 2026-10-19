@@ -49,8 +49,8 @@ pub struct TierSizing {
 /// 7,212. Half.
 ///
 /// So when the image declares, this asks the model: `ARENA_SIZE` IS the model
-/// (floored, and `executor::arena_oracle` refuses at compile time to let a
-/// stated knob sit below it), and every per-entry executor gets all of it.
+/// (unfloored since issue 1971, and `executor::arena_oracle` refuses at
+/// compile time to let a stated knob sit below it), and every per-entry executor gets all of it.
 ///
 /// **That over-provisions a TIERED boot**, where one tier holds a subset of the
 /// image and now carries the whole model. Deliberate, and the direction is the

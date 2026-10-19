@@ -16,6 +16,12 @@ use sub_arena::{
     SubEndpoint, buffered_region, descriptor_subscriptions, subs_arena_from_descriptor,
 };
 
+// Issue 1971 -- where the arena floor applies, in its own file so
+// `tests/arena_floor.rs` checks the rule this build runs.
+#[path = "build/arena_floor.rs"]
+mod arena_floor;
+use arena_floor::{ARENA_FLOOR, arena_for_demand, tier_arena};
+
 /// `size_of::<usize>()` for the `SpscRing`'s per-slot length array, at its
 /// 64-bit width — the value used when nothing tells this build the target's.
 ///
@@ -800,7 +806,10 @@ fn main() {
     // cannot use -- 8,192 holds 128 timers. A floor is safe exactly when the
     // per-entry model is right, which is why the fix went there and why the
     // model's terms are now asserted to be upper bounds rather than trusted.
-    const ARENA_FLOOR: usize = 8192;
+    //
+    // Issue 1971 -- and so the floor applies only where the demand is UNKNOWN
+    // (`ARENA_FLOOR` and the rule are in `build/arena_floor.rs`): an image or
+    // a tier whose entities are declared is sized to its model, unfloored.
     // issue 0900 — the budget for the two entry SHAPES, summed over how many
     // slots each may occupy, instead of charging every slot the larger one.
     // With `action_clients == max_cbs` (the default) the second term is zero
@@ -1126,15 +1135,15 @@ fn main() {
         sub_rows.as_deref(),
         None,
     );
-    let derived_arena = match model_required {
-        Some(required) => required.max(ARENA_FLOOR),
-        // Nobody declared, or declared only partly: keep the pre-step-3
-        // arithmetic byte for byte, so no existing image moves.
-        None => (action_clients * worst_slot_entry
+    // Nobody declared, or declared only partly: the pre-step-3 worst-case
+    // arithmetic byte for byte, floored, so no undeclared image moves.
+    // Declared: the model, unfloored (issue 1971).
+    let derived_arena = arena_for_demand(
+        model_required,
+        action_clients * worst_slot_entry
             + max_cbs.saturating_sub(action_clients) * pubsub_entry
-            + ARENA_BASE_OVERHEAD)
-            .max(ARENA_FLOOR),
-    };
+            + ARENA_BASE_OVERHEAD,
+    );
     // `0` is the Kconfig SENTINEL for "derive it" (zephyr/Kconfig:
     // NROS_EXECUTOR_ARENA_SIZE, "0 = derive"), and it has to be honoured HERE,
     // where the value is consumed.
@@ -1163,9 +1172,8 @@ fn main() {
     // derived beside it would be smaller than what the author asked for.
     let tier_sizings = tier_sizings(
         sizing.as_ref(),
-        &|counts, rows, topics| {
-            arena_required(counts, rows, Some(topics)).map(|r| r.max(ARENA_FLOOR))
-        },
+        // Issue 1971 -- a tier's arena is its own model, unfloored.
+        &|counts, rows, topics| tier_arena(arena_required(counts, rows, Some(topics))),
         rx_buf_size,
         rx_recv_size,
         &[
@@ -1384,7 +1392,9 @@ fn main() {
              {action_feedback_depth};\n    \
              /// Per-executor overhead the derivation adds once.\n    \
              pub const BASE_OVERHEAD: usize = {arena_base_overhead};\n    \
-             /// Smallest arena the derivation will produce.\n    \
+             /// Smallest arena the derivation produces where the demand is \
+             unknown (nothing declared); a declared image's arena is its \
+             model, unfloored (issue 1971).\n    \
              pub const FLOOR: usize = {arena_floor};\n    \
              /// phase-412 #4 -- what the entities this image DECLARES are \
              modelled to need, before the floor. `0` when it declared \
@@ -2134,8 +2144,8 @@ struct TierSizingRow {
 /// than one tier on each road. Each skip is a warning naming why.
 ///
 /// `arena` is the image's own arithmetic over the tier's counts and the rows of
-/// the subscriptions its members register (the caller's closure, floored as the
-/// image's arena is).
+/// the subscriptions its members register (the caller's closure). It is the
+/// tier's model, unfloored: a tier's demand is derived (issue 1971).
 fn tier_sizings(
     desc: Option<&nros_sizing_descriptor::SizingDescriptor>,
     arena: &TierArena<'_>,
