@@ -30,9 +30,17 @@ is in the same code an XRCE action client runs.
       async action client resolves its result, or times out with an error.
       **Done 2026-10-18:** the fix (`c0d34e3bf6`) passed four consecutive
       self-hosted tier-1 runs (38818350050 through 38980380118).
-- [ ] [#1932](../issues/1932-xrce-session-open-fails-under-full-sweep-load.md):
+- [x] [#1932](../issues/archived/1932-xrce-session-open-fails-under-full-sweep-load.md):
       an XRCE session open retries within its budget, and the failure under load
-      is explained.
+      is explained. **Done 2026-10-19:** the `XrceAgent` fixture read "the port
+      is bound" as "the Agent holds it". A sweep's client sockets draw
+      ephemeral ports without consulting the lease, so one could take a leased
+      port first: the Agent died on `Error while starting IPvX agent!` and the
+      client's open timed out against a stranger. The probe now requires the
+      Agent's own pid to hold the socket, and `start_unique` re-leases.
+      Mechanism measured against the real Agent; that it was this on 241 is
+      inferred (the Agent's log was not kept). The open budget stays: opens
+      take 105–134 ms when an Agent is listening.
 - [x] [#1734](../issues/archived/1734-xrce-concurrent-entity-creation-unguarded.md): the
       XRCE shim serialises entity creation per session, as the zenoh shim does
       since issue 1711. **Done 2026-10-18:** a recursive lock per session over
@@ -53,4 +61,4 @@ session.
 | [#1734](../issues/archived/1734-xrce-concurrent-entity-creation-unguarded.md) | The XRCE shim has no guard for entity creation from more than one thread, the check-then-act that issue 1711 fixed for zenoh. |
 | [#1756](../issues/archived/1756-native-async-action-result-never-resolves.md) | The native async action client gets its goal accepted and never resolves the awaited result. |
 | [#1930](../issues/archived/1930-xrce-action-goal-sent-blind-is-lost.md) | An XRCE action client sends its goal blind, and a goal the Agent drops is never sent again. |
-| [#1932](../issues/1932-xrce-session-open-fails-under-full-sweep-load.md) | Two XRCE clients failed to open their Agent session under full-sweep load, and both pass 20 of 20 solo. |
+| [#1932](../issues/archived/1932-xrce-session-open-fails-under-full-sweep-load.md) | Two XRCE clients failed to open their Agent session under full-sweep load, and both pass 20 of 20 solo. |

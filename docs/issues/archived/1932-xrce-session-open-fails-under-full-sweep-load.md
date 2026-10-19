@@ -1,15 +1,16 @@
 ---
 id: 1932
 title: "Two XRCE clients failed to open their Agent session in one tier-1 sweep on newslab-server-241, and pass 20 of 20 solo"
-status: open
+status: resolved
 type: bug
 area: [rmw-xrce, testing, ci]
 severity: low
 found: 2026-10-17
+resolved: 2026-10-19
 related: [0741, 1365, phase-507]
 ---
 
-**Home: [phase-507](../roadmap/phase-507-xrce-and-action-client-robustness.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+**Home: [phase-507](../../roadmap/phase-507-xrce-and-action-client-robustness.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## Seen
 
@@ -88,3 +89,53 @@ participant, whether the Agent answered at all:
 The next sighting's test log therefore names the step. If it is the
 participant with "no answer", raise that one wait; if it is the session, the
 Agent was not answering at all, and its own log is the next thing to read.
+
+## Resolution (2026-10-19) — the fixture handed the test an Agent that was not there
+
+The fixture's readiness probe was wrong in a way that only a full sweep can
+trigger. `XrceAgent::wait_until_listening` read "a second UDP bind on the port
+fails" as "the agent holds it". The port LEASE (issue 0470) makes the port
+exclusive among OUR fixtures and nothing else, as its own docs say. In a sweep,
+every other socket that binds port 0 draws from the same ephemeral range
+without consulting the lease: each XRCE client's, each DNS lookup's. One can
+land on a leased port between the lease and the Agent's bind. Measured with a
+stranger socket on the Agent's port:
+
+| step | result |
+| --- | --- |
+| the fixture's probe (`bind 127.0.0.1:<port>`) | fails (`Address already in use`) → reported READY |
+| the Agent | dead within 1.5 s: `Error while starting IPvX agent!` |
+| the client | sends CREATE_CLIENT to the stranger, gets nothing → `rmw_ret error` after its 3 × 1000 ms budget |
+
+That last row is this issue's signature, and it is a CLEAN session-open
+failure: no Agent answers at all. That fits what the earlier measurement ruled
+out (CPU load adds ~30 ms) and what it could not explain (sweep-only, and
+never solo, because only a sweep has hundreds of concurrent ephemeral binds).
+The two failures landed within one second of each other (09:44:11–12Z), which
+fits one transient collision rather than a slow host.
+
+**What is measured and what is inferred.** The mechanism is measured, end to
+end, against the real Agent. That it is what happened on 241 on 2026-10-16 is
+inferred: the fixture sent the Agent's output to `/dev/null`, so that run kept
+no `Error while starting IPvX agent!` line to confirm it.
+
+**Fix** (`nros-tests/src/fixtures/xrce_agent.rs`):
+
+- The probe now asks WHO holds the port. On Linux it reads the port's socket
+  inodes from `/proc/net/udp{,6}` and requires one of them among the Agent's
+  own `/proc/<pid>/fd`. Elsewhere it keeps the bind answer.
+- A port held by anyone else is `StartError::PortTaken`, and `start_unique`
+  answers it with a fresh lease, up to 5 times, saying so on stderr. A caller
+  that named its own port (`start(port)`) gets the error, naming issue 1932.
+- **Unit test:** `a_port_held_by_a_stranger_is_not_the_agent_listening` is the
+  negative control. The old probe returned `Ok` there.
+- **Real Agent:** 20 of 20 `start_unique` agents were confirmed as owners, and
+  `start(port)` on a stranger's port is refused with the new message.
+
+**Class sweep.** This was the only bind-probe readiness check in
+`nros-tests`. The router fixtures use TCP `connect`, which a non-listening
+client socket cannot satisfy, so a stranger there times out loudly instead of
+reading as ready.
+
+The session-open retry budget was left as it was: with an Agent actually
+listening, opens take 105–134 ms even under 32-way load.

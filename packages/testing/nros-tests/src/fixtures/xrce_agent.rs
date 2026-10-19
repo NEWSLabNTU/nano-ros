@@ -37,6 +37,10 @@ impl XrceAgent {
     /// # Arguments
     /// * `port` - UDP port to listen on
     pub fn start(port: u16) -> TestResult<Self> {
+        Self::start_inner(port).map_err(StartError::into_test_error)
+    }
+
+    fn start_inner(port: u16) -> Result<Self, StartError> {
         // Issue 0741 — say WHICH agent this run used, once, before it matters.
         // Two can be installed at a time and the resolution order picks one
         // silently; the failure mode it produces (a 15-byte reader history for
@@ -99,11 +103,11 @@ impl XrceAgent {
         #[cfg(unix)]
         crate::process::set_new_process_group(&mut cmd);
         let handle = cmd.spawn().map_err(|e| {
-            TestError::ProcessFailed(format!(
+            StartError::Other(TestError::ProcessFailed(format!(
                 "Failed to start XRCE Agent ({}): {}",
                 binary.display(),
                 e
-            ))
+            )))
         })?;
 
         let mut agent = Self {
@@ -136,33 +140,70 @@ impl XrceAgent {
     /// A dead agent is reported as a dead agent rather than waited out — that
     /// is the case the old sleep turned into a 15-second silence followed by an
     /// unrelated assertion.
-    fn wait_until_listening(&mut self, timeout: Duration) -> TestResult<()> {
+    ///
+    /// Issue 1932 — "bind failed" means "SOMEONE holds the port", and the lease
+    /// above only makes our own fixtures exclusive. Every other socket in a
+    /// full sweep (each XRCE client's, for one) takes an ephemeral port from the
+    /// same range without asking it, so one can land on a leased port between
+    /// the lease and the agent's bind. The agent then dies on
+    /// `Error while starting IPvX agent!`, this probe read the stranger's socket
+    /// as the agent's and reported ready, and the client's session open went to
+    /// the stranger: an `rmw_ret error` 3 s later, which is the signature 1932
+    /// recorded. Measured with a stranger socket on the port: probe "ready",
+    /// agent dead within 1.5 s. So the holder is now CHECKED on Linux — the
+    /// port's socket inode must be one of the agent's own fds — and a port a
+    /// stranger holds is [`StartError::PortTaken`], which `start_unique`
+    /// answers with a fresh lease.
+    fn wait_until_listening(&mut self, timeout: Duration) -> Result<(), StartError> {
         let deadline = std::time::Instant::now() + timeout;
         loop {
             match self.handle.try_wait() {
                 Ok(Some(status)) => {
-                    return Err(TestError::ProcessFailed(format!(
-                        "XRCE Agent exited before binding udp4 port {} ({status})",
+                    let held = udp_port_held_by(None, self.port) == Some(true);
+                    let why = if held {
+                        " — another process holds that port"
+                    } else {
+                        ""
+                    };
+                    let msg = format!(
+                        "XRCE Agent exited before binding udp4 port {} ({status}){why}",
                         self.port
-                    )));
+                    );
+                    return Err(if held {
+                        StartError::PortTaken(msg)
+                    } else {
+                        StartError::Other(TestError::ProcessFailed(msg))
+                    });
                 }
                 Ok(None) => {}
                 Err(e) => {
-                    return Err(TestError::ProcessFailed(format!(
+                    return Err(StartError::Other(TestError::ProcessFailed(format!(
                         "could not poll the XRCE Agent on port {}: {e}",
                         self.port
-                    )));
+                    ))));
                 }
             }
             if std::net::UdpSocket::bind(("127.0.0.1", self.port)).is_err() {
-                return Ok(());
+                match udp_port_held_by(Some(self.handle.id()), self.port) {
+                    // The agent's own socket, or no /proc to ask: ready.
+                    Some(true) | None => return Ok(()),
+                    Some(false) => {
+                        return Err(StartError::PortTaken(format!(
+                            "udp4 port {} is held by another process, not the XRCE Agent \
+                             (pid {}) — a client socket took the leased port before the \
+                             agent bound it (issue 1932)",
+                            self.port,
+                            self.handle.id()
+                        )));
+                    }
+                }
             }
             if std::time::Instant::now() >= deadline {
-                return Err(TestError::ProcessFailed(format!(
+                return Err(StartError::Other(TestError::ProcessFailed(format!(
                     "XRCE Agent did not bind udp4 port {} within {:?} — it is running but not \
                      listening, so every client on this port would time out",
                     self.port, timeout
-                )));
+                ))));
             }
             std::thread::sleep(Duration::from_millis(10));
         }
@@ -177,12 +218,34 @@ impl XrceAgent {
     /// allocations across 12 processes). Two agents on one port put a
     /// neighbour's samples into this test's subscription, which surfaced as a
     /// payload-integrity failure rather than as a port conflict.
+    ///
+    /// Issue 1932 — a leased port that a non-fixture socket took first is
+    /// answered with a FRESH lease, a bounded number of times, rather than
+    /// handed to the test as an agent that is not there.
     pub fn start_unique() -> TestResult<Self> {
-        let lease = crate::port_lease::lease_port(crate::port_lease::Transport::Udp)
-            .map_err(|e| TestError::ProcessFailed(format!("Failed to lease UDP port: {}", e)))?;
-        let mut agent = Self::start(lease.port())?;
-        agent._lease = Some(lease);
-        Ok(agent)
+        const ATTEMPTS: usize = 5;
+        let mut last = String::new();
+        for _ in 0..ATTEMPTS {
+            let lease =
+                crate::port_lease::lease_port(crate::port_lease::Transport::Udp).map_err(|e| {
+                    TestError::ProcessFailed(format!("Failed to lease UDP port: {}", e))
+                })?;
+            match Self::start_inner(lease.port()) {
+                Ok(mut agent) => {
+                    agent._lease = Some(lease);
+                    return Ok(agent);
+                }
+                Err(StartError::PortTaken(msg)) => {
+                    eprintln!("xrce agent: {msg}; leasing another port");
+                    last = msg;
+                }
+                Err(StartError::Other(e)) => return Err(e),
+            }
+        }
+        Err(TestError::ProcessFailed(format!(
+            "no leased udp port stayed free long enough for the XRCE Agent to bind it \
+             ({ATTEMPTS} attempts); last: {last}"
+        )))
     }
 
     /// Get the address string for connecting to this agent (e.g., "127.0.0.1:2019").
@@ -199,6 +262,73 @@ impl XrceAgent {
     pub fn is_running(&mut self) -> bool {
         matches!(self.handle.try_wait(), Ok(None))
     }
+}
+
+/// Why an agent did not come up — split so `start_unique` can tell a port a
+/// stranger took (retry with another) from everything else (report it).
+#[derive(Debug)]
+enum StartError {
+    /// Issue 1932 — another process holds the port the agent was given.
+    PortTaken(String),
+    Other(TestError),
+}
+
+impl StartError {
+    fn into_test_error(self) -> TestError {
+        match self {
+            StartError::PortTaken(msg) => TestError::ProcessFailed(msg),
+            StartError::Other(e) => e,
+        }
+    }
+}
+
+/// Is UDP `port` bound, and by `pid`? `Some(true)`: bound, and by `pid` (or by
+/// anyone, when `pid` is `None`). `Some(false)`: bound, by someone else — or
+/// not bound at all when `pid` is `None`. `None`: no `/proc` to ask.
+///
+/// Reads the socket inodes bound to `port` from `/proc/net/udp{,6}` and looks
+/// for one of them among `/proc/<pid>/fd`. Linux-only; elsewhere the caller
+/// keeps the bind probe's answer.
+fn udp_port_held_by(pid: Option<u32>, port: u16) -> Option<bool> {
+    let mut inodes = Vec::new();
+    let mut read_any = false;
+    for table in ["/proc/net/udp", "/proc/net/udp6"] {
+        let Ok(text) = std::fs::read_to_string(table) else {
+            continue;
+        };
+        read_any = true;
+        for line in text.lines().skip(1) {
+            let cols: Vec<&str> = line.split_whitespace().collect();
+            // sl local_address rem_address st tx_queue:rx_queue tr:tm->when
+            // retrnsmt uid timeout inode
+            let (Some(local), Some(inode)) = (cols.get(1), cols.get(9)) else {
+                continue;
+            };
+            let Some((_, hex_port)) = local.rsplit_once(':') else {
+                continue;
+            };
+            if u16::from_str_radix(hex_port, 16) == Ok(port) {
+                inodes.push(format!("socket:[{inode}]"));
+            }
+        }
+    }
+    if !read_any {
+        return None;
+    }
+    let Some(pid) = pid else {
+        return Some(!inodes.is_empty());
+    };
+    let Ok(fds) = std::fs::read_dir(format!("/proc/{pid}/fd")) else {
+        // The agent is gone (or its fds are unreadable): it holds nothing.
+        return Some(false);
+    };
+    let owned = fds.flatten().any(|fd| {
+        std::fs::read_link(fd.path())
+            .ok()
+            .and_then(|l| l.to_str().map(|s| inodes.iter().any(|i| i == s)))
+            .unwrap_or(false)
+    });
+    Some(owned)
 }
 
 #[cfg(test)]
@@ -244,6 +374,39 @@ mod readiness_tests {
             msg.contains("did not bind"),
             "the timeout must say the port was never bound, got: {msg}"
         );
+    }
+
+    /// Issue 1932 — a port a STRANGER holds is not a listening agent. The old
+    /// probe returned `Ok` here (bind failed, so "listening"); measured with the
+    /// real agent, which dies on `Error while starting IPvX agent!` while the
+    /// probe reports ready.
+    #[test]
+    fn a_port_held_by_a_stranger_is_not_the_agent_listening() {
+        let stranger = std::net::UdpSocket::bind(("0.0.0.0", 0)).expect("bind the stranger");
+        let port = stranger.local_addr().unwrap().port();
+        let mut cmd = std::process::Command::new("sleep");
+        #[cfg(unix)]
+        crate::process::set_new_process_group(&mut cmd);
+        let handle = cmd
+            .arg("5")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn the stand-in child");
+        let mut agent = XrceAgent {
+            handle,
+            port,
+            _lease: None,
+        };
+        let err = agent
+            .wait_until_listening(Duration::from_secs(2))
+            .expect_err("a stranger's socket must not read as the agent listening");
+        let _ = agent.handle.kill();
+        assert!(
+            matches!(err, StartError::PortTaken(_)),
+            "a stranger on the port must be PortTaken (retryable), got: {err:?}"
+        );
+        drop(stranger);
     }
 
     /// And it must NOTICE a dead agent rather than waiting out the timeout.
