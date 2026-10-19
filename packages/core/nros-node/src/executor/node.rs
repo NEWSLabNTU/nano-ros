@@ -73,9 +73,10 @@ pub struct NodeHandle<'a> {
     name: heapless::String<64>,
     namespace: heapless::String<64>,
     session: &'a mut session::ConcreteSession,
-    /// The executor's remap table, both tiers. Consulted only to SUBSTITUTE a
-    /// name some rule matches — see `NodeHandle::remapped`.
-    remaps: &'a [Option<super::spin::RemapRule>],
+    /// The executor's remap rules, both tiers (issue 1971: the launch table in
+    /// flash plus the runtime table). Consulted only to SUBSTITUTE a name some
+    /// rule matches — see `NodeHandle::remapped`.
+    remaps: super::spin::RemapView<'a>,
     domain_id: u32,
     /// Phase 211.H — per-node QoS overrides lowered from the launch
     /// `qos_overrides.<topic>.<role>.<policy>` params and baked into a
@@ -100,7 +101,7 @@ impl<'a> NodeHandle<'a> {
         name: heapless::String<64>,
         namespace: heapless::String<64>,
         session: &'a mut session::ConcreteSession,
-        remaps: &'a [Option<super::spin::RemapRule>],
+        remaps: super::spin::RemapView<'a>,
         domain_id: u32,
     ) -> Self {
         Self {
@@ -305,13 +306,12 @@ impl<'a> NodeHandle<'a> {
     /// the executor reached C, C++ and component entities and silently missed
     /// every entity created through `Executor::create_node`'s handle.
     fn remapped(&self, source: &str) -> Option<crate::names::ResolvedName> {
-        use super::spin::{RemapTier, tier_rules};
         crate::names::remap_layered(
             source,
             &self.name,
             &self.namespace,
-            tier_rules(self.remaps, RemapTier::Launch, &self.name, &self.namespace),
-            tier_rules(self.remaps, RemapTier::Argv, &self.name, &self.namespace),
+            self.remaps.launch_rules(&self.name, &self.namespace),
+            self.remaps.argv_rules(&self.name, &self.namespace),
         )
     }
 
@@ -3638,7 +3638,16 @@ mod builder_tests {
     #[test]
     fn publisher_builder_typed_and_generic() {
         let mut session = MockSession::new();
-        let mut node = NodeHandle::new(s("n"), s("/"), &mut session, &[], 0);
+        let mut node = NodeHandle::new(
+            s("n"),
+            s("/"),
+            &mut session,
+            crate::executor::spin::RemapView {
+                launch: &[],
+                runtime: &[],
+            },
+            0,
+        );
 
         // typed: node.publisher(t).typed::<M>().qos(..).build()
         let _typed = node
@@ -3693,6 +3702,26 @@ mod builder_tests {
             .create_publisher::<TestMsg>("chatter")
             .expect("publisher");
         assert_eq!(p.handle.topic_name(), "/from_launch");
+    }
+
+    /// Issue 1971 -- the handle reads the flash launch table too, above argv.
+    #[test]
+    fn create_node_handle_prefers_a_flash_launch_rule_over_argv() {
+        static LAUNCH: [crate::executor::LaunchRemap; 1] = [crate::executor::LaunchRemap::new(
+            c"talker",
+            c"/",
+            c"chatter",
+            c"/from_flash",
+        )];
+        let mut exec: Executor = Executor::from_session(MockSession::new());
+        crate::ros_args::install_argv_remaps(&mut exec, [argv_rule("chatter", "/from_argv")])
+            .unwrap();
+        exec.set_launch_remaps(&LAUNCH);
+        let mut node = exec.create_node("talker").expect("node");
+        let p = node
+            .create_publisher::<TestMsg>("chatter")
+            .expect("publisher");
+        assert_eq!(p.handle.topic_name(), "/from_flash");
     }
 
     #[test]

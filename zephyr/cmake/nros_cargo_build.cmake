@@ -1605,6 +1605,9 @@ function(nros_resolve_knobs)
     # phase-474 I1 -- violation ring depth (and the SWD record's slot count).
     _nros_resolve_knob(NROS_EXECUTOR_MAX_VIOLATIONS
         "${CONFIG_NROS_EXECUTOR_MAX_VIOLATIONS}")
+    # issue 1971 -- runtime remap-table slots (`-1` derives: 0 on bare metal).
+    _nros_resolve_knob(NROS_EXECUTOR_RUNTIME_REMAPS
+        "${CONFIG_NROS_EXECUTOR_RUNTIME_REMAPS}")
     # phase-474 I2 -- the arming deadline after the first spin.
     _nros_resolve_knob(NROS_MONITOR_ARM_GRACE_MS
         "${CONFIG_NROS_MONITOR_ARM_GRACE_MS}")

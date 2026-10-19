@@ -287,6 +287,8 @@ pub use executor::{
     ShutdownCallbackHandle, ShutdownPhase, SpinOnceResult, SpinOptions, SpinPeriodPollingResult,
     Trigger, baked_domain_from_c_abi,
 };
+// Issue 1971 -- the launch remap table (RFC-0107 step 1).
+pub use executor::{BadLaunchRemap, LaunchRemap, launch_remaps, set_launch_remaps};
 
 // Re-export RMW-dependent executor types
 #[cfg(any(has_rmw, test))]
@@ -296,8 +298,8 @@ pub use executor::{
     EmbeddedRawPublisher, EmbeddedServiceClient, EmbeddedServiceServer, Executor, FeedbackStream,
     GoalFeedbackStream, LoanError, Node, NodeHandle, Promise, PublishLoan, RawActionClientSpec,
     RawActionServerSpec, RawActiveGoal, RawServiceClient, RawServiceServer, RawSubscription,
-    RecvView, SessionHandle, Subscription, action_channel_type, executor_storage_layout,
-    executor_storage_layout_with, executor_storage_u64_len,
+    RecvView, RemapRefused, SessionHandle, Subscription, action_channel_type,
+    executor_storage_layout, executor_storage_layout_with, executor_storage_u64_len,
 };
 #[cfg(any(has_rmw, test))]
 pub use executor::{

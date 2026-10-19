@@ -25,10 +25,6 @@ static ::listener_pkg::LISTENER __nros_comp_1;
 static int32_t __nros_entry_setup() {
     {
         {
-            nros_cpp_ret_t rrc = nros_cpp_declare_remap(::rclcpp::global_handle(), "renamed_talker", "/", "chatter", "/demo/chatter");
-            if (rrc != NROS_CPP_RET_OK) return (int32_t)rrc;
-        }
-        {
             nros_cpp_ret_t prc = nros_cpp_declare_param(::rclcpp::global_handle(), 0, "rate_hz", "10");
             if (prc != NROS_CPP_RET_OK) return (int32_t)prc;
         }
@@ -70,6 +66,16 @@ __attribute__((section(".nros_boot_config"), used))
 .rmw        = "",
 };
 
+/* Issue 1971 -- the launch's remap rules, one table in flash every executor
+ * reads (installed below, before the runner sets up any tier). */
+static const nros_cpp_launch_remap_t __nros_launch_remaps[1] = {
+    {"renamed_talker", "/", "chatter", "/demo/chatter"},
+};
+
 int main(int /*argc*/, char** /*argv*/) {
+    {
+        nros_cpp_ret_t lrc = nros_cpp_set_launch_remaps(__nros_launch_remaps, sizeof(__nros_launch_remaps) / sizeof(__nros_launch_remaps[0]));
+        if (lrc != NROS_CPP_RET_OK) return (int)lrc;
+    }
     return ::rclcpp::board::LinuxBoard::run_components(nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_entry_setup);
 }

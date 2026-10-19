@@ -215,6 +215,17 @@ pub const KNOBS: &[KnobRow] = &[
         names: &[],
     },
     KnobRow {
+        id: "EXECUTOR_RUNTIME_REMAPS",
+        env: "NROS_EXECUTOR_RUNTIME_REMAPS",
+        legacy: &[],
+        kconfig: "CONFIG_NROS_EXECUTOR_RUNTIME_REMAPS",
+        toml: None,
+        image_key: "executor.runtime_remaps",
+        ty: Some("int"),
+        range: None,
+        names: &[],
+    },
+    KnobRow {
         id: "FREERTOS_APP_STACK_KB",
         env: "NROS_FREERTOS_APP_STACK_KB",
         legacy: &[],
@@ -1242,6 +1253,13 @@ pub const KCONFIG_KNOBS: &[crate::KconfigKnob] = &[
     crate::KconfigKnob {
         symbol: "NROS_EXECUTOR_MAX_VIOLATIONS",
         id: "EXECUTOR_MAX_VIOLATIONS",
+        ty: "int",
+        kconfig_if: None,
+        depends: &[],
+    },
+    crate::KconfigKnob {
+        symbol: "NROS_EXECUTOR_RUNTIME_REMAPS",
+        id: "EXECUTOR_RUNTIME_REMAPS",
         ty: "int",
         kconfig_if: None,
         depends: &[],

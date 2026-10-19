@@ -16149,3 +16149,52 @@ fn a_mode_switch_moves_the_tier_deadline_and_judges_its_latency() {
     );
     request_mode(0);
 }
+
+/// Issue 1971 (RFC-0107 step 1) -- an executor with no runtime remap table
+/// (bare metal's default) refuses `declare_remap` BY NAME, and still resolves
+/// the flash launch table.
+#[test]
+fn declare_remap_without_a_runtime_table_is_refused_by_name() {
+    static LAUNCH: [super::LaunchRemap; 1] = [super::LaunchRemap::new(
+        c"talker",
+        c"/",
+        c"chatter",
+        c"/from_flash",
+    )];
+    let sizing = super::storage::ExecutorSizing {
+        remaps: 0,
+        ..super::storage::ExecutorSizing::DEFAULT
+    };
+    let backing: &'static mut [core::mem::MaybeUninit<u64>] =
+        alloc::boxed::Box::leak(alloc::boxed::Box::new_uninit_slice(sizing.u64_len()));
+    // SAFETY: `backing` is exactly `sizing.u64_len()` words, `'static`, and is
+    // handed to this executor alone.
+    let mut executor: Executor =
+        unsafe { Executor::from_session_in(MockSession::new(), backing, sizing) };
+    assert_eq!(
+        executor.declare_remap("talker", "/", "chatter", "/x"),
+        Err(super::RemapRefused::NoRuntimeTable)
+    );
+    executor.set_launch_remaps(&LAUNCH);
+    assert_eq!(
+        executor
+            .resolve_entity_name_for("talker", "/", "chatter")
+            .unwrap()
+            .as_str(),
+        "/from_flash"
+    );
+}
+
+/// Issue 1971 -- a full runtime table is `TableFull`, not a dropped rule.
+#[test]
+fn declare_remap_into_a_full_runtime_table_is_table_full() {
+    let mut executor: Executor = Executor::from_session(MockSession::new());
+    for i in 0..super::spin::MAX_REMAPS {
+        let from = alloc::format!("/f{i}");
+        executor.declare_remap("n", "/", &from, "/t").unwrap();
+    }
+    assert_eq!(
+        executor.declare_remap("n", "/", "/one_more", "/t"),
+        Err(super::RemapRefused::TableFull)
+    );
+}

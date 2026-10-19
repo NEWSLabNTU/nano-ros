@@ -91,6 +91,7 @@ NROS_EXECUTOR_ACTION_CLIENTS | executor | | action-client entries the executor a
 NROS_EXECUTOR_MAX_NODES | executor | | node slots inside the executor; the zenoh backend also sizes its per-node liveliness cap from it
 NROS_EXECUTOR_MAX_SHUTDOWN_CBS | executor | | shutdown-callback slots inside the executor
 NROS_EXECUTOR_MAX_VIOLATIONS | executor | | violation-ring slots carved from the executor backing (24 B each on a 32-bit target); with the boot report it also sizes the `NROS_VIOLATION_RECORD` static (40 B + 28 B a slot), measured per image by `mem-report` (phase-474 I1)
+NROS_EXECUTOR_RUNTIME_REMAPS | executor | | runtime remap-table slots carved from the executor backing (404 B each on a 32-bit target): `--ros-args -r` and hand-declared rules; 16 with process arguments, 0 on bare metal; the launch's rules are a flash table (issue 1971)
 NROS_PUBSUB_QOS_DEPTH | executor | | the per-subscription receive queue depth the arena budgets for; derived from the declared QoS where an image states one
 NROS_SUBSCRIPTION_BUFFER_SIZE | executor | | each subscription's receive buffer inside the executor arena (`DEFAULT_RX_BUF_SIZE`)
 NROS_SUBSCRIBER_BUFFER_SIZE | pool | nros_rmw_zenoh::shim::subscriber::SMALL_PAYLOADS | the small payload class (formula-priced); read by two crates with two defaults — the page flags that

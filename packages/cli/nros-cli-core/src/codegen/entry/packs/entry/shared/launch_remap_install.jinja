@@ -1,0 +1,13 @@
+{#-
+  Issue 1971 -- install the launch remap table (`launch_remap_table.jinja`)
+  as the first statement of the entry point, BEFORE the runner: every tier
+  setup, and every node it builds, then resolves names against it. Bytes are
+  C that a C++ entry compiles unchanged. Nothing when the launch states no
+  remap.
+-#}
+{%- if nodes | map(attribute="remaps") | map("length") | sum %}
+    {
+        nros_cpp_ret_t lrc = nros_cpp_set_launch_remaps(__nros_launch_remaps, sizeof(__nros_launch_remaps) / sizeof(__nros_launch_remaps[0]));
+        if (lrc != NROS_CPP_RET_OK) return (int)lrc;
+    }
+{%- endif -%}

@@ -653,6 +653,21 @@ fn main() {
     // out of the ring altogether. Raise it with `NROS_EXECUTOR_MAX_VIOLATIONS`
     // (`CONFIG_NROS_EXECUTOR_MAX_VIOLATIONS`) when a burst must be kept whole.
     let max_violations = env_usize("NROS_EXECUTOR_MAX_VIOLATIONS", 8);
+    // Issue 1971 (RFC-0107 step 1) -- the RUNTIME remap table's slots, per
+    // executor. The launch file's rules are no longer here: the generated
+    // entry hands them over as one `const` table in flash every executor reads
+    // (`executor::launch_remap`). What stays in RAM is what arrives at run
+    // time: `--ros-args -r` rules, and rules a hand-written caller declares.
+    // A target with process arguments keeps the old 16; bare metal has no
+    // argument vector, so it carves none and `declare_remap` is refused by
+    // name there unless `NROS_EXECUTOR_RUNTIME_REMAPS` restores slots.
+    let runtime_remaps = env_usize(
+        "NROS_EXECUTOR_RUNTIME_REMAPS",
+        match env::var("CARGO_CFG_TARGET_OS") {
+            Ok(os) if os == "none" => 0,
+            _ => 16,
+        },
+    );
     assert!(
         (1..=256).contains(&max_violations),
         "NROS_EXECUTOR_MAX_VIOLATIONS={max_violations}: must be 1..=256 (phase-474 I1)"
@@ -1302,6 +1317,12 @@ fn main() {
          slot count (set via NROS_EXECUTOR_MAX_VIOLATIONS, default 8). The ring \
          keeps the LATEST entries. phase-474 I1.\n\
          pub const MAX_VIOLATIONS: usize = {max_violations};\n\
+         \n\
+         /// Issue 1971 -- runtime remap-table slots per executor \
+         (`--ros-args -r` and hand-declared rules; the launch's rules are the \
+         flash table). Set via NROS_EXECUTOR_RUNTIME_REMAPS; default 16 on a \
+         target with process arguments, 0 on bare metal.\n\
+         pub const RUNTIME_REMAPS: usize = {runtime_remaps};\n\
          \n\
          /// Whether a new executor starts with the drain-and-report hook on \
          (set via NROS_VIOLATION_DRAIN_REPORT, default off). phase-474 I1.\n\

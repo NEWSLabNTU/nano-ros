@@ -34,6 +34,9 @@ const EXEC_SIZING: nros::ExecutorSizing = nros::ExecutorSizing {
     // phase-382 W3' — no parameters here; the build-implied store slots (zero
     // for this bench) are kept rather than restated.
     params: nros::ExecutorSizing::DEFAULT.params,
+    // Issue 1971 -- the build's runtime remap table (0 on bare metal), kept
+    // rather than restated.
+    remaps: nros::ExecutorSizing::DEFAULT.remaps,
 };
 // phase-412 #4 — this is the image's ONE executor, so its caller-supplied arena
 // must hold everything the image declares. Held at compile time against the

@@ -200,35 +200,68 @@ fn typed_emit_multi_node_boot_config_unset() {
     assert!(!src.contains("NROS_BOOT_SET_NODE_NAME"));
 }
 
-// Phase 305 W3 (issue 0255) — launch `<remap>` rules bake as per-pair
-// `nros_cpp_declare_remap` calls BEFORE the component configure (entities
-// register during configure, so the rules must already be in the table).
+// Issue 1971 (RFC-0107 step 1) — launch `<remap>` rules bake as ONE flash
+// table, installed in the entry point before the runner (so before any setup
+// builds a node). No per-rule `nros_cpp_declare_remap` call is emitted.
 #[test]
-fn typed_emit_remaps_declared_before_configure() {
+fn typed_emit_remaps_are_one_flash_table() {
     let mut plan = fixture_plan(&[("talker_pkg", "talker")]);
     plan.nodes[0].remaps = vec![("~/out".into(), "/wire".into())];
     let src = emit_typed(&plan).expect("typed C emit ok");
     assert!(
-        src.contains("nros_cpp_declare_remap(executor, \"talker\", \"/\", \"~/out\", \"/wire\")"),
-        "expected declare_remap call; src:\n{src}"
+        src.contains("{\"talker\", \"/\", \"~/out\", \"/wire\"},"),
+        "expected the table row; src:\n{src}"
     );
-    // Error-propagation guard.
-    assert!(src.contains("if (rrc != NROS_CPP_RET_OK) return (int32_t)rrc"));
-    // Compare against the configure CALL (the extern forward-decl sits at
-    // the top of the TU before everything).
-    let remap_at = src.find("nros_cpp_declare_remap").unwrap();
-    let cfg_at = src
-        .find("__nros_c_component_talker_pkg_configure(&__nros_node_0")
-        .unwrap();
-    assert!(remap_at < cfg_at, "remap decl must precede configure");
+    assert!(!src.contains("nros_cpp_declare_remap"));
+    assert_launch_table_installed_before_the_runner(&src, "run_components");
+}
+
+#[test]
+fn typed_emit_tiered_remaps_are_installed_before_every_tier_setup() {
+    let mut plan = fixture_plan_with_tiers();
+    plan.nodes[0].remaps = vec![("a".into(), "/x".into())];
+    plan.nodes[1].remaps = vec![("b".into(), "/y".into())];
+    let src = emit_typed(&plan).expect("typed C tier emit ok");
+    assert!(
+        src.contains("__nros_launch_remaps[2]"),
+        "one table for both tiers; src:\n{src}"
+    );
+    assert!(!src.contains("nros_cpp_declare_remap"));
+    assert_launch_table_installed_before_the_runner(&src, "run_tiers");
 }
 
 #[test]
 fn typed_emit_no_remaps_no_declare_calls() {
-    // Guard: remap-free plans produce byte-identical output (no declare block).
+    // Guard: remap-free plans produce byte-identical output (no table, no
+    // install).
     let plan = fixture_plan(&[("talker_pkg", "talker")]);
     let src = emit_typed(&plan).expect("typed C emit ok");
     assert!(!src.contains("nros_cpp_declare_remap"));
+    assert!(!src.contains("__nros_launch_remaps"));
+}
+
+/// Issue 1971 -- the launch remap table is installed in the entry point,
+/// before the runner, so before the runner calls any (tier) setup.
+fn assert_launch_table_installed_before_the_runner(src: &str, runner: &str) {
+    let install_at = src
+        .find("nros_cpp_set_launch_remaps(__nros_launch_remaps")
+        .unwrap_or_else(|| panic!("expected the launch table install; src:\n{src}"));
+    let table_at = src
+        .find("static const nros_cpp_launch_remap_t __nros_launch_remaps[")
+        .expect("the launch table is emitted");
+    assert!(table_at < install_at, "the table precedes its install");
+    let runner_at = src[install_at..]
+        .find(runner)
+        .unwrap_or_else(|| panic!("expected `{runner}` after the install; src:\n{src}"));
+    assert!(runner_at > 0);
+    // Every setup is a function DEFINED above and CALLED by the runner; none
+    // is called directly from the entry point ahead of the install.
+    let entry_at = src[..install_at].rfind("main(").expect("an entry point");
+    assert!(
+        !src[entry_at..install_at].contains("__nros_entry_setup"),
+        "nothing runs a setup before the install; src:\n{src}"
+    );
+    assert!(src.contains("if (lrc != NROS_CPP_RET_OK) return (int)lrc;"));
 }
 
 #[test]

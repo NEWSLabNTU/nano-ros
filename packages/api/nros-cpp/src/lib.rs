@@ -5903,6 +5903,12 @@ pub extern "C" fn nros_cpp_monitors_arm() {
 /// required and a NULL one answers `NROS_CPP_RET_INVALID_ARGUMENT` rather than
 /// faulting. A full remap table answers `NROS_CPP_RET_FULL`.
 ///
+/// Issue 1971 -- this writes the executor's RUNTIME remap table, for
+/// hand-written callers. The generated entry no longer calls it: its launch
+/// rules are one flash table (`nros_cpp_set_launch_remaps`). On bare metal the
+/// runtime table is 0 slots unless `NROS_EXECUTOR_RUNTIME_REMAPS` states some,
+/// so the call answers `NROS_CPP_RET_FULL` and logs why.
+///
 /// # Safety
 /// `handle` must be a live executor handle from this ABI, or NULL.
 /// `node_name`, `from` and `to` must each point at a NUL-terminated C string
@@ -5948,7 +5954,90 @@ pub unsafe extern "C" fn nros_cpp_declare_remap(
         .declare_remap(name_str, ns_str, from_str, to_str)
     {
         Ok(()) => NROS_CPP_RET_OK,
-        Err(()) => NROS_CPP_RET_FULL,
+        // Issue 1971 -- refused by name: a bare-metal image has no runtime
+        // table (its launch rules are the flash table), and a full or too-long
+        // rule is a refusal, never a dropped rule.
+        Err(e) => {
+            cpp_diag!("{e}");
+            match e {
+                nros_node::RemapRefused::TooLong => NROS_CPP_RET_INVALID_ARGUMENT,
+                nros_node::RemapRefused::NoRuntimeTable | nros_node::RemapRefused::TableFull => {
+                    NROS_CPP_RET_FULL
+                }
+            }
+        }
+    }
+}
+
+/// One launch `<remap from= to=/>` rule as the generated C/C++ entry emits it
+/// (issue 1971, RFC-0107 step 1): four NUL-terminated strings with static
+/// lifetime (literals in the entry's `.rodata`). `node_namespace` NULL or
+/// empty is the root namespace.
+#[cfg(feature = "rmw-cffi")]
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct nros_cpp_launch_remap_t {
+    /// The owning node's name.
+    pub node_name: *const c_char,
+    /// The owning node's namespace (`/`; NULL or empty also means root).
+    pub node_namespace: *const c_char,
+    /// The name as written in the source.
+    pub from: *const c_char,
+    /// The replacement.
+    pub to: *const c_char,
+}
+
+// The C row IS `nros_node::LaunchRemap`: same four pointers, same order, both
+// `#[repr(C)]`, so the table is lent to the runtime without a copy.
+#[cfg(feature = "rmw-cffi")]
+const _: () = {
+    assert!(
+        core::mem::size_of::<nros_cpp_launch_remap_t>()
+            == core::mem::size_of::<nros_node::LaunchRemap>()
+    );
+    assert!(
+        core::mem::align_of::<nros_cpp_launch_remap_t>()
+            == core::mem::align_of::<nros_node::LaunchRemap>()
+    );
+};
+
+/// Install the image's launch remap table: ONE `static const` table the
+/// generated entry emits, read by every executor (issue 1971, RFC-0107
+/// step 1). Launch rules stay AUTHORITATIVE over `--ros-args -r` rules.
+///
+/// Call it once at boot, BEFORE the board runner sets up any tier or the
+/// entry builds any node: an rclcpp-shape constructor registers its entities
+/// immediately (issue 0255). The generated entry does exactly that.
+///
+/// Returns `NROS_CPP_RET_OK`, or `NROS_CPP_RET_INVALID_ARGUMENT` when `table`
+/// is NULL with `len > 0`, or a row has a NULL node name, `from` or `to`, or a
+/// string that is not UTF-8 (nothing is installed then).
+///
+/// # Safety
+/// `table` must point at `len` rows that, with every string they point at,
+/// live for the rest of the program and are never written (a `static const`
+/// array of string literals).
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_set_launch_remaps(
+    table: *const nros_cpp_launch_remap_t,
+    len: usize,
+) -> nros_cpp_ret_t {
+    let rows: &'static [nros_node::LaunchRemap] = if len == 0 {
+        &[]
+    } else if table.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    } else {
+        // SAFETY: the caller's contract (`len` static, immutable rows), and the
+        // two row types share one layout (asserted above).
+        unsafe { core::slice::from_raw_parts(table as *const nros_node::LaunchRemap, len) }
+    };
+    match nros_node::set_launch_remaps(rows) {
+        Ok(()) => NROS_CPP_RET_OK,
+        Err(e) => {
+            cpp_diag!("nros_cpp_set_launch_remaps: {e}");
+            NROS_CPP_RET_INVALID_ARGUMENT
+        }
     }
 }
 

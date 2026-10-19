@@ -262,6 +262,12 @@ KNOB_CLASS = {
         "backing) and the SWD record's slot count; not yet an ExecutorKnobs "
         "tenant",
     ),
+    "NROS_EXECUTOR_RUNTIME_REMAPS": (
+        "sizing",
+        "issue 1971 runtime remap-table slots per executor (carved from the "
+        "backing; 16 with argv, 0 on bare metal); not yet an ExecutorKnobs "
+        "tenant",
+    ),
     "NROS_ARENA_EXHAUSTION_IS_FATAL": ("infra", "fault-hook toggle (issue 1036); a bool, so it has no rung"),
     "NROS_HEAP_EXHAUSTION_IS_FATAL": ("infra", "fault-hook toggle for the bare-metal heap (issue 1640); a bool, so it has no rung"),
     "NROS_BUILD_ROOT": ("infra", "path"),

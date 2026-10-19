@@ -493,8 +493,9 @@ fn yaml_node_selector(key: &str) -> Option<Option<&str>> {
 /// each, a launch rule for the same name still wins.
 ///
 /// All or nothing: on failure nothing is installed and the rule that did not
-/// fit is returned (a full table — `MAX_REMAPS` slots are shared with launch
-/// rules — or a name past its slot's length). Silently installing a prefix of
+/// fit is returned (a full table — the executor's runtime table,
+/// `MAX_REMAPS` slots shared with hand-declared rules and none on bare metal —
+/// or a name past its slot's length). Silently installing a prefix of
 /// the rules would be a partial version of the drop this exists to prevent.
 pub fn install_argv_remaps<'r, I>(
     executor: &mut crate::executor::Executor<'_>,
@@ -539,8 +540,9 @@ where
 pub enum ApplyError<'a> {
     /// The parse refused a token ([`parse_ros_args`]).
     Refused(RosArgsError<'a>),
-    /// The rule did not fit: the remap table is full (its slots are shared
-    /// with launch rules), or a name is longer than its slot.
+    /// The rule did not fit: the runtime remap table is full or absent (its
+    /// slots are shared with hand-declared rules), or a name is longer than
+    /// its slot.
     DoesNotFit(RemapArg<'a>),
 }
 
@@ -551,8 +553,9 @@ impl core::fmt::Display for ApplyError<'_> {
             Self::Refused(e) => e.fmt(f),
             Self::DoesNotFit(r) => write!(
                 f,
-                "remap `{}:={}` does not fit: the executor's remap table holds {} rules, \
-                 shared with the launch file's; `from`/`to` hold {} bytes, a `node:` \
+                "remap `{}:={}` does not fit: the executor's runtime remap table holds {} \
+                 rules (NROS_EXECUTOR_RUNTIME_REMAPS; 0 on bare metal, which has no argv), \
+                 shared with hand-declared rules; `from`/`to` hold {} bytes, a `node:` \
                  prefix 64",
                 r.from,
                 r.to,
@@ -572,6 +575,9 @@ impl core::fmt::Display for ApplyError<'_> {
 /// vector before opening a session at all. All or nothing either way: on any
 /// error nothing is installed. Returns the number of rules installed (or that
 /// would be).
+// `MAX_REMAPS` is 0 on bare metal (no runtime remap table, issue 1971): every
+// rule is then the overflow, refused by name.
+#[allow(clippy::absurd_extreme_comparisons)]
 pub fn apply_ros_args<'a, I>(
     executor: Option<&mut crate::executor::Executor<'_>>,
     args: I,
@@ -970,6 +976,36 @@ mod tests {
             assert_eq!(resolve(&exec, "listener", "chatter"), "/from_argv");
             // ...and a name no rule mentions is only expanded.
             assert_eq!(resolve(&exec, "talker", "other"), "/other");
+        }
+
+        // Issue 1971 -- the launch rules are the flash table now; the same
+        // layering holds against it.
+        static LAUNCH: [crate::executor::LaunchRemap; 1] = [crate::executor::LaunchRemap::new(
+            c"talker",
+            c"/",
+            c"chatter",
+            c"/from_flash",
+        )];
+
+        #[test]
+        fn a_flash_launch_rule_wins_over_argv() {
+            let mut exec = executor();
+            install_argv(
+                &mut exec,
+                &["prog", "--ros-args", "-r", "chatter:=/from_argv"],
+            );
+            exec.set_launch_remaps(&LAUNCH);
+            assert_eq!(resolve(&exec, "talker", "chatter"), "/from_flash");
+            // A node the flash table names no rule for still falls back.
+            assert_eq!(resolve(&exec, "listener", "chatter"), "/from_argv");
+        }
+
+        #[test]
+        fn a_flash_launch_rule_takes_no_runtime_slot() {
+            let mut exec = executor();
+            exec.set_launch_remaps(&LAUNCH);
+            assert_eq!(exec.remap_len, 0);
+            assert_eq!(resolve(&exec, "talker", "chatter"), "/from_flash");
         }
 
         #[test]

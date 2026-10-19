@@ -17,4 +17,6 @@ filters = ["c_str"]
 templates = [
     { key = "boot_config.jinja", file = "boot_config.jinja" },
     { key = "declare_calls.jinja", file = "declare_calls.jinja" },
+    { key = "launch_remap_table.jinja", file = "launch_remap_table.jinja" },
+    { key = "launch_remap_install.jinja", file = "launch_remap_install.jinja" },
 ]

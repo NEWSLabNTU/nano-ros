@@ -358,6 +358,28 @@ the record. Raise it only when a burst must be kept whole.
 '''
 
 [[knob]]
+id = "EXECUTOR_RUNTIME_REMAPS"
+type = "int"
+prompt = "Runtime remap-table slots per executor (-1 = derive)"
+kconfig_attrs = [
+    "default -1",
+]
+help = '''
+Issue 1971 (RFC-0107 step 1) -- slots of one executor's RUNTIME remap
+table (nros-node build.rs RUNTIME_REMAPS): `--ros-args -r` rules and
+rules hand-written code declares with nros_cpp_declare_remap /
+Executor::declare_remap. The launch file's <remap> rules are NOT here:
+the generated entry emits them as one const table in flash that every
+executor reads (nros_cpp_set_launch_remaps).
+
+`-1` derives it: 16 on a target with process arguments (Linux, NuttX),
+0 on bare metal (Zephyr, FreeRTOS, ThreadX), which has no argv. A rule
+costs 404 bytes on a 32-bit target, per executor (per tier). At 0,
+declare_remap is refused by name (RemapRefused::NoRuntimeTable,
+NROS_CPP_RET_FULL); state a count here to restore runtime slots.
+'''
+
+[[knob]]
 id = "FREERTOS_APP_STACK_KB"
 
 [[knob]]
