@@ -454,7 +454,7 @@ merge queue:
     max_entries_to_build      4           batch size
     min_entries_to_merge      1           never wait for a second PR to exist
     min_entries_to_merge_wait 5 min       how long to try to fill a batch
-    check_response_timeout    60 min      must exceed L3's p99, or slow != broken
+    check_response_timeout    90 min      ~2x the merge_group gate p90 (issue 1629)
 PLAN
 
 if [ "$APPLY" != 1 ]; then
@@ -537,7 +537,7 @@ if with_queue:
             "min_entries_to_merge_wait_minutes": 5,
             "max_entries_to_merge": 4,
             "grouping_strategy": "ALLGREEN",
-            "check_response_timeout_minutes": 60,
+            "check_response_timeout_minutes": 90,
         },
     }
 

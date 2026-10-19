@@ -89,6 +89,33 @@ jobs:
             echo "::warning title=$n lane(s) on main produce no signal::$(sed -n 's/^lane-health: [0-9]* of [0-9]* lane(s) on main produce no signal: //p' /tmp/lanes.md)"
           fi
 
+      # Issue 1629: the queue ejects an entry `checks_timed_out` while its gate
+      # is still running once the lane outgrows `check_response_timeout_minutes`.
+      # A warning, not a red: the fix is a ruleset edit only an admin makes.
+      - name: Does the queue's check timeout still fit the gate lane?
+        if: ${{ always() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NROS_QUEUE_REPO: ${{ github.repository }}
+        run: |
+          set -uo pipefail
+          rc=0
+          python3 scripts/ci/queue-timeout-agreement.py > /tmp/queue-timeout.txt 2>&1 || rc=$?
+          cat /tmp/queue-timeout.txt
+          {
+            echo
+            echo '## Does the merge queue timeout fit the gate lane?'
+            echo
+            echo '```'
+            cat /tmp/queue-timeout.txt
+            echo '```'
+            echo
+            echo 'Locally: `just queue-timeout`.'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$rc" -ne 0 ]; then
+            echo "::warning title=Merge queue timeout disagrees with the gate lane::$(grep -m1 '^\[FAIL\]' /tmp/queue-timeout.txt)"
+          fi
+
       - name: Annotate when the lane produced no verdict
         if: ${{ always() }}
         run: |
