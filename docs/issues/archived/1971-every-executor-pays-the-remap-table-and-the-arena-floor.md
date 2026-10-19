@@ -7,7 +7,7 @@ area: [memory, zephyr]
 severity: low
 found: 2026-10-19
 resolved: 2026-10-19
-resolved_in: "PR #2421 (arena floor) + branch fix/1971-launch-remaps-in-flash (launch remaps in flash)"
+resolved_in: "PR #2421 (arena floor) + PR #2423 (launch remaps in flash)"
 related: [1970, 0563]
 ---
 
