@@ -78,7 +78,9 @@ pub struct ExplainArgs {
 /// including live env overrides, so the printout matches what the next
 /// build will bake.
 fn explain(args: ExplainArgs) -> Result<()> {
-    use nros_board_common::platform_config::{BoardKnobsFile, KnobSource, PlatformsTree};
+    use nros_board_common::platform_config::{
+        BoardKnobsFile, KnobSource, PlatformsTree, registry_env,
+    };
 
     // phase-400 W1 — a search path. An explicit --platforms-dir still pins one
     // root, because that is what it is for; otherwise the path is
@@ -114,16 +116,6 @@ fn explain(args: ExplainArgs) -> Result<()> {
     };
 
     let env_get = |name: &str| std::env::var(name).ok().filter(|v| !v.is_empty());
-    let mut tx = tree
-        .resolve_tx(
-            &args.platform,
-            board.as_ref().map(|b| &b.knobs.zenoh.tx),
-            &env_get,
-        )
-        .map_err(|e| eyre!("{e}"))?;
-    let warnings = tree
-        .capability_check(&args.platform, &mut tx)
-        .map_err(|e| eyre!("{e}"))?;
 
     println!(
         "platform: {}   (platforms root: {})",
@@ -143,24 +135,55 @@ fn explain(args: ExplainArgs) -> Result<()> {
     println!();
     println!("{:<24} {:<10} set by", "knob", "value");
     println!("{:<24} {:<10} ------", "----", "-----");
-    println!(
-        "{:<24} {:<10} {}",
-        "zenoh.tx.batch",
-        tx.batch.value,
-        tx.batch.source.as_str()
-    );
-    println!(
-        "{:<24} {:<10} {}",
-        "zenoh.tx.split_lock",
-        tx.split_lock.value,
-        tx.split_lock.source.as_str()
-    );
-    println!(
-        "{:<24} {:<10} {}",
-        "zenoh.tx.flush_ms",
-        tx.flush_ms.value,
-        tx.flush_ms.source.as_str()
-    );
+
+    // Each backend's `[knobs.<rmw>.tx]` tenant, for every backend the
+    // descriptors announce (issue 1300, RFC-0071 D8). This printed
+    // `zenoh.tx.*` by name, for any platform and whatever it ran. A backend
+    // is listed when the knob registry has `<rmw>.tx.*` rows for it or the
+    // platform / board states its table; the others have no such tenant.
+    let plat_knobs = tree.knobs_for(&args.platform).map_err(|e| eyre!("{e}"))?;
+    let mut warnings = Vec::new();
+    for rmw in crate::orchestration::rmw_resolver::known_rmw() {
+        let declared = plat_knobs.backends.contains_key(rmw)
+            || board
+                .as_ref()
+                .is_some_and(|b| b.knobs.backends.contains_key(rmw));
+        let in_registry = registry_env(&format!("{rmw}.tx"), "batch").is_some();
+        if !declared && !in_registry {
+            continue;
+        }
+        let mut tx = tree
+            .resolve_tx(
+                rmw,
+                &args.platform,
+                board.as_ref().map(|b| b.knobs.tx_for(rmw)),
+                &env_get,
+            )
+            .map_err(|e| eyre!("{e}"))?;
+        warnings.extend(
+            tree.capability_check(&args.platform, &mut tx)
+                .map_err(|e| eyre!("{e}"))?,
+        );
+        let row = |knob: &str, value: String, source: KnobSource| {
+            println!(
+                "{:<24} {:<10} {}",
+                format!("{rmw}.tx.{knob}"),
+                value,
+                source.as_str()
+            );
+        };
+        row("batch", tx.batch.value.to_string(), tx.batch.source);
+        row(
+            "split_lock",
+            tx.split_lock.value.to_string(),
+            tx.split_lock.source,
+        );
+        row(
+            "flush_ms",
+            tx.flush_ms.value.to_string(),
+            tx.flush_ms.source,
+        );
+    }
 
     // phase-400 W3/W4 — the transport tenant and everything it implies.
     //

@@ -1850,8 +1850,9 @@ pub fn run() {
         (Some(tree), Some(name)) => {
             let mut tx = tree
                 .resolve_tx(
+                    "zenoh",
                     name,
-                    board_knobs.as_ref().map(|b| &b.knobs.zenoh.tx),
+                    board_knobs.as_ref().map(|b| b.knobs.tx_for("zenoh")),
                     &env_get,
                 )
                 .unwrap_or_else(|e| panic!("nros-platform.toml: {e}"));

@@ -1,15 +1,16 @@
 # Phase 506 — the API crates carry only the API
 
-**Status (2026-10-18). Decided; W0 (#1405) landed in PR #2344.** The
-maintainer took the four design rulings this phase needed — RFC-0071 D9–D12,
-amendment 2026-10-18 — and the work items below are now ordered by them. The
-remaining issues were filed under RFC-0071 and baselined by
-`check-rmw-agnostic` when [phase-444](archived/phase-444-rmw-fix-up.md) was
-archived, or are the same idea applied to the facade.
+**Status (2026-10-19). COMPLETE — archived.** Every work item landed: W0
+(#1405), W1 (the facade, #1789), W2 (descriptor registration, #1298), W3
+(configuration by role, #1299), W4a–W4d (the generated image crate; #1297) and
+#1300's last list. Acceptance holds: `check-rmw-agnostic` passes with an empty
+baseline, and the `nros::` export ledger's rows were applied by W1. Two issues
+found along the way were rehomed: #1957 to phase-478, and #1942 left unhomed
+beside the other API-parity gaps.
 
 ## Why this phase exists
 
-[RFC-0071](../design/0071-rmw-backend-descriptor.md) says the core-facing crates
+[RFC-0071](../../design/0071-rmw-backend-descriptor.md) says the core-facing crates
 (`packages/core/**`, `nros`, `nros-c`, `nros-cpp`) name no backend. A backend
 is selected by the build and reached through the vtable, not by name. The gate
 holds that line for new code. The baselined sites are still there, and each
@@ -26,7 +27,7 @@ build road, W3 changes one header family, W4 is the largest and goes last.
 
 ### W0 — nros-c keeps "no node" distinct from slot 0
 
-- [x] [#1405](../issues/archived/1405-c-executor-node-id-zero-reads-as-no-node.md):
+- [x] [#1405](../../issues/archived/1405-c-executor-node-id-zero-reads-as-no-node.md):
       **Done 2026-10-18:** measured as a real defect (a primary node on an
       extra session registered its executor entities on session 0); one
       decode helper, an `executor_bound` flag in `rclc_node_ref_t`'s padding,
@@ -34,7 +35,7 @@ build road, W3 changes one header family, W4 is the largest and goes last.
 
 ### W1 — the facade carries only the user API (RFC-0071 D12)
 
-- [x] [#1789](../issues/archived/1789-nros-facade-exports-runtime-machinery.md): the RMW
+- [x] [#1789](../../issues/archived/1789-nros-facade-exports-runtime-machinery.md): the RMW
       seam leaves `nros::`; macro machinery moves to a doc-hidden
       `nros::__macro`; executor raw registration to `nros::internals`. The 64
       ledger rows are re-filed against where each name now lives.
@@ -47,19 +48,23 @@ build road, W3 changes one header family, W4 is the largest and goes last.
 - [x] `[rmw.provides.cargo] crate` / `register` / `type_register_crate` in
       every `nros-rmw.toml` that has a Rust registration, read by
       `rmw_descriptor.rs` into the generated table.
-- [x] [#1298](../issues/archived/1298-rmw-agnostic-core-names-backends.md): the
+- [x] [#1298](../../issues/archived/1298-rmw-agnostic-core-names-backends.md): the
       selection package generates `__nros_register_backends!` /
       `__nros_register_type!`; `nros-macros` calls them and lost
       `rmw_crate_ident`; the sizing module is `type_descriptor_sizing`.
       **Done 2026-10-18:** both native bridge workspaces and the Zephyr
       params image verified at run time.
-- [ ] [#1300](../issues/1300-closed-backend-lists-outside-core-api.md): the
+- [x] [#1300](../../issues/archived/1300-closed-backend-lists-outside-core-api.md): the
       scaffold, colcon's standalone task and `bridge_gen.rs` are derived
       (done 2026-10-18); `board.knobs.zenoh` in `nros config` moves with W3.
+      **Done 2026-10-19:** `resolve_tx` takes the backend, `tx_for` no longer
+      hands zenoh's legacy table to every backend, and `nros config explain`
+      prints `<rmw>.tx.*` for each backend the descriptors announce that has
+      the tenant — in-tree output unchanged.
 
 ### W3 — configuration by role (RFC-0071 D10)
 
-- [x] [#1299](../issues/archived/1299-rmw-agnostic-backend-named-config-in-api.md):
+- [x] [#1299](../../issues/archived/1299-rmw-agnostic-backend-named-config-in-api.md):
       `entry_config.h` and `zephyr/app_config.h` read `NROS_LOCATOR`,
       `NROS_DOMAIN_ID` and the `rx` / `keepalive` transport roles; each
       backend's Kconfig maps its own spellings onto them; backend-only knobs
@@ -128,8 +133,8 @@ them. Design notes measured 2026-10-18:
       the cmake road (`add_subdirectory`), so W4a already moved it; the
       maintainer ruled (2026-10-18) to treat it as covered by the FreeRTOS
       cmake-road verification, with the IDE build tracked as
-      [#1957](../issues/1957-s32ds-image-crate-unverified-in-ide.md).
-- [x] **W4d** — [#1297](../issues/archived/1297-rmw-agnostic-api-crates-name-backends.md):
+      [#1957](../../issues/1957-s32ds-image-crate-unverified-in-ide.md).
+- [x] **W4d** — [#1297](../../issues/archived/1297-rmw-agnostic-api-crates-name-backends.md):
       `nros-c` / `nros-cpp` lose their `rmw-<name>` features, aliases, `?/`
       forwards and optional backend deps; `check-rmw-agnostic`'s baseline
       reaches zero. **Done 2026-10-19:** both crates keep `rmw-cffi` only;
@@ -156,11 +161,11 @@ ledger has no row whose decision is not yet applied.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1297](../issues/archived/1297-rmw-agnostic-api-crates-name-backends.md) | Per-backend Cargo features, `register()` calls and `extern` declarations in nros-c and nros-cpp are RFC-0071 D2's class. `check-rmw-agnostic` baselines them. |
-| [#1298](../issues/archived/1298-rmw-agnostic-core-names-backends.md) | `nros-macros` and one other core crate name backends in code, inside RFC-0071's reach. |
-| [#1299](../issues/archived/1299-rmw-agnostic-backend-named-config-in-api.md) | Backend-named configuration (`CONFIG_NROS_ZENOH_*`, `ZENOH_LOCATOR`) in the API crates is RFC-0071 D8's class. |
-| [#1300](../issues/1300-closed-backend-lists-outside-core-api.md) | Closed backend lists outside core/api (the CLI scaffold, colcon's `RMW_BACKENDS`, `board.knobs.zenoh`) are beyond the gate's reach. |
-| [#1405](../issues/archived/1405-c-executor-node-id-zero-reads-as-no-node.md) | `node_raw_id != 0` decodes the primary node slot as "no node" at nine nros-c registration sites, the same conflation issue 1384 fixed one layer up. |
-| [#1789](../issues/archived/1789-nros-facade-exports-runtime-machinery.md) | `nros::` still exports runtime machinery beside the user API: 64 ledger rows say a name should be hidden or moved. |
-| [#1942](../issues/1942-rclrs-service-info-no-counterpart.md) | Found by W1: the seam's `ServiceInfo` had masked, by name, that rclrs's per-request service metadata has no counterpart here. |
-| [#1957](../issues/1957-s32ds-image-crate-unverified-in-ide.md) | s32ds moved onto the generated image crate with the cmake road in W4a and has not been built in its IDE since. |
+| [#1297](../../issues/archived/1297-rmw-agnostic-api-crates-name-backends.md) | Per-backend Cargo features, `register()` calls and `extern` declarations in nros-c and nros-cpp are RFC-0071 D2's class. `check-rmw-agnostic` baselines them. |
+| [#1298](../../issues/archived/1298-rmw-agnostic-core-names-backends.md) | `nros-macros` and one other core crate name backends in code, inside RFC-0071's reach. |
+| [#1299](../../issues/archived/1299-rmw-agnostic-backend-named-config-in-api.md) | Backend-named configuration (`CONFIG_NROS_ZENOH_*`, `ZENOH_LOCATOR`) in the API crates is RFC-0071 D8's class. |
+| [#1300](../../issues/archived/1300-closed-backend-lists-outside-core-api.md) | Closed backend lists outside core/api (the CLI scaffold, colcon's `RMW_BACKENDS`, `board.knobs.zenoh`) are beyond the gate's reach. |
+| [#1405](../../issues/archived/1405-c-executor-node-id-zero-reads-as-no-node.md) | `node_raw_id != 0` decodes the primary node slot as "no node" at nine nros-c registration sites, the same conflation issue 1384 fixed one layer up. |
+| [#1789](../../issues/archived/1789-nros-facade-exports-runtime-machinery.md) | `nros::` still exports runtime machinery beside the user API: 64 ledger rows say a name should be hidden or moved. |
+| [#1942](../../issues/1942-rclrs-service-info-no-counterpart.md) | Found by W1: the seam's `ServiceInfo` had masked, by name, that rclrs's per-request service metadata has no counterpart here. |
+| [#1957](../../issues/1957-s32ds-image-crate-unverified-in-ide.md) | s32ds moved onto the generated image crate with the cmake road in W4a and has not been built in its IDE since. |

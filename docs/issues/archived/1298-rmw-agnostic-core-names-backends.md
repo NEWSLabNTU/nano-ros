@@ -10,7 +10,7 @@ resolved: 2026-10-18
 related: [1219, RFC-0071, phase-444, phase-506]
 ---
 
-**Home: [phase-506](../../roadmap/phase-506-api-crates-carry-only-the-api.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+**Home: [phase-506](../../roadmap/archived/phase-506-api-crates-carry-only-the-api.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## What
 

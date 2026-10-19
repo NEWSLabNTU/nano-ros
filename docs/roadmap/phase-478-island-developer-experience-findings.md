@@ -418,3 +418,4 @@ this phase will fix it.
 
 - [issue 0772](../issues/0772-freertos-lwip-wall-clock-epoch.md) — FreeRTOS/lwIP has no wall-clock epoch — the same consumer that drove the Zephyr one runs a FreeRTOS board too
 - [issue 0913](../issues/0913-the-debugger-is-not-a-passive-instrument.md) — attaching pyocd RTT kills the zenoh session — the debugger perturbs the system under test, and issue 0879 makes the p …
+- [issue 1957](../issues/1957-s32ds-image-crate-unverified-in-ide.md) — s32ds builds its staticlib through the generated image crate since phase-506 W4a and has not been built in the S32 Design Studio since

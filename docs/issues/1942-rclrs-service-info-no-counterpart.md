@@ -6,10 +6,10 @@ type: limitation
 area: [api]
 severity: low
 found: 2026-10-18
-related: [issue-1789, phase-506]
+related: [issue-1789]
 ---
 
-**Home: [phase-506](../roadmap/phase-506-api-crates-carry-only-the-api.md)** — found by its W1; listed in that phase's issue table.
+**Found by** phase-506 W1 ([archived](../roadmap/archived/phase-506-api-crates-carry-only-the-api.md)). Unhomed since that phase closed, like the other API-parity gaps (#1972–#1978); it is a feature to add, not part of the cleanup that phase did.
 
 ## What
 
