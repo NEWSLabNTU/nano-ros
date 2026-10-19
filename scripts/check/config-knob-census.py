@@ -262,6 +262,11 @@ KNOB_CLASS = {
         "backing) and the SWD record's slot count; not yet an ExecutorKnobs "
         "tenant",
     ),
+    "NROS_EXECUTOR_EXTRA_SESSIONS": (
+        "sizing",
+        "issue 1982 extra-session slots per executor (carved from the backing; "
+        "backend_count - 1, else one per node); not yet an ExecutorKnobs tenant",
+    ),
     "NROS_EXECUTOR_RUNTIME_REMAPS": (
         "sizing",
         "issue 1971 runtime remap-table slots per executor (carved from the "

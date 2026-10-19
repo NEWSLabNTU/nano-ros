@@ -22,6 +22,11 @@ use sub_arena::{
 mod arena_floor;
 use arena_floor::{ARENA_FLOOR, arena_for_demand, tier_arena};
 
+// Issue 1982 -- extra sessions sized from the backends the image registers,
+// in its own file so `tests/extra_sessions.rs` checks the rule this build runs.
+#[path = "build/extra_sessions.rs"]
+mod extra_sessions;
+
 /// `size_of::<usize>()` for the `SpscRing`'s per-slot length array, at its
 /// 64-bit width — the value used when nothing tells this build the target's.
 ///
@@ -653,6 +658,23 @@ fn main() {
     // out of the ring altogether. Raise it with `NROS_EXECUTOR_MAX_VIOLATIONS`
     // (`CONFIG_NROS_EXECUTOR_MAX_VIOLATIONS`) when a burst must be kept whole.
     let max_violations = env_usize("NROS_EXECUTOR_MAX_VIOLATIONS", 8);
+    // Issue 1982 -- extra-session slots per executor, capped by the backends
+    // the image registers (`build/extra_sessions.rs` has the rule and why).
+    // A stated `NROS_EXECUTOR_EXTRA_SESSIONS` wins (a second session on one
+    // backend); `usize::MAX` is "no cap below the node slots".
+    let extra_sessions_derived = extra_sessions::extra_session_cap(described_image_count(
+        sizing.as_ref(),
+        "backend_count",
+        nros_sizing_descriptor::Image::backend_count,
+    ))
+    .unwrap_or(usize::MAX);
+    let max_extra_sessions = match env_usize("NROS_EXECUTOR_EXTRA_SESSIONS", extra_sessions_derived)
+    {
+        // Spelled, not printed: the host's `usize::MAX` overflows a 32-bit
+        // target's `usize` as a literal.
+        usize::MAX => "usize::MAX".to_string(),
+        n => n.to_string(),
+    };
     // Issue 1971 (RFC-0107 step 1) -- the RUNTIME remap table's slots, per
     // executor. The launch file's rules are no longer here: the generated
     // entry hands them over as one `const` table in flash every executor reads
@@ -1323,6 +1345,12 @@ fn main() {
          flash table). Set via NROS_EXECUTOR_RUNTIME_REMAPS; default 16 on a \
          target with process arguments, 0 on bare metal.\n\
          pub const RUNTIME_REMAPS: usize = {runtime_remaps};\n\
+         \n\
+         /// Issue 1982 -- extra-session slots per executor, at most its node \
+         slots: the image's backend count minus one (0 for a one-RMW image, \
+         0 without rmw-cffi), `usize::MAX` (one per node) when no backend \
+         count is stated. Set via NROS_EXECUTOR_EXTRA_SESSIONS.\n\
+         pub const MAX_EXTRA_SESSIONS: usize = {max_extra_sessions};\n\
          \n\
          /// Whether a new executor starts with the drain-and-report hook on \
          (set via NROS_VIOLATION_DRAIN_REPORT, default off). phase-474 I1.\n\
