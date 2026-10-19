@@ -615,3 +615,12 @@ no-build-time-fetch:
 [private]
 freertos-shell-diagnostics:
     @python3 scripts/check-freertos-shell-diagnostics.py
+
+# issue 1953 — every cargo root cmake GENERATES (the image crate, the workspace
+# runtime umbrella) carries the root workspace's `[profile.*]` tables, copied
+# by `nros_root_cargo_profiles()`. Without them `--profile release` got cargo's
+# default `panic = "unwind"`, and every threadx-linux C/C++ image failed at the
+# nightly's CMAKE_BUILD_TYPE=Release. Three cmake script runs, no compiler; ~0.3 s.
+[private]
+generated-root-profiles:
+    @python3 scripts/check-generated-root-profiles.py
