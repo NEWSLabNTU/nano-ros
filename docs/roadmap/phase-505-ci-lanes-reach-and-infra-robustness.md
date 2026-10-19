@@ -71,9 +71,9 @@ phase's. Build speed is phase-489's.
 - [x] [#1912](../issues/archived/1912-push-gate-pin-baseline-is-live-main.md): the
       push-event pin gate compares against the pushed commit's parent, not the
       live `origin/main`.
-- [ ] [#1745](../issues/1745-probe-gates-race-mbedtls-submodule-fetch.md):
+- [x] [#1745](../issues/archived/1745-probe-gates-race-mbedtls-submodule-fetch.md):
       parallel probe gates provision a submodule once.
-- [ ] [#1621](../issues/1621-sdk-store-submodule-provision-breaks-worktree-git.md):
+- [x] [#1621](../issues/archived/1621-sdk-store-submodule-provision-breaks-worktree-git.md):
       a failed submodule provision leaves the worktree's git usable.
 
 ### W3 — a stopped or failed lane says so, with the cause
@@ -101,11 +101,11 @@ ejection from a cause listed here.
 | [#1350](../issues/archived/1350-killed-lane-orphans-parallel-gate-children.md) | Killing a `ci gate` lane leaves its `-P 32` gate fan-out running as orphans, and the killed lane reads as success. |
 | [#1380](../issues/archived/1380-zenoh-backend-clippy-red-for-platform-bare-metal.md) | `nros-rmw-zenoh` fails `clippy -D warnings` under `platform-bare-metal`, a feature combination no lane runs clippy on. |
 | [#1403](../issues/archived/1403-fixture-jobserver-deadlock-looks-like-a-hang.md) | `build-examples` deadlocked on its own make jobserver FIFO. In CI that reads as a hang, not a failure. |
-| [#1621](../issues/1621-sdk-store-submodule-provision-breaks-worktree-git.md) | A fast-line probe gate in a worktree without zenoh-pico leaves a broken gitlink, and after that `git status` fails for the whole worktree. |
+| [#1621](../issues/archived/1621-sdk-store-submodule-provision-breaks-worktree-git.md) | A fast-line probe gate in a worktree without zenoh-pico leaves a broken gitlink, and after that `git status` fails for the whole worktree. |
 | [#1625](../issues/archived/1625-dep-chain-nuttx-cell-one-run-red.md) | A `dep-chain` FAIL printed `thiserror` tree rows instead of cargo's error, so the cause of that red cannot be recovered. |
 | [#1626](../issues/archived/1626-api-parity-fast-line-needs-crates-io.md) | `check-api-parity` runs `cargo doc`, so the one required check goes red on a crates.io hiccup, with no retry. |
 | [#1629](../issues/1629-queue-check-timeout-outgrown-by-gate-lane.md) | The merge queue's 60-minute check timeout is shorter than the gate lane, so entries are ejected while their gate goes on to pass. |
-| [#1745](../issues/1745-probe-gates-race-mbedtls-submodule-fetch.md) | Two parallel probe gates provision the mbedtls submodule at the same time, and one of them dies on git's shallow-file race. |
+| [#1745](../issues/archived/1745-probe-gates-race-mbedtls-submodule-fetch.md) | Two parallel probe gates provision the mbedtls submodule at the same time, and one of them dies on git's shallow-file race. |
 | [#1760](../issues/archived/1760-ci-just-installer-403.md) | CI installs `just` by piping an installer script with no retry, and one 403 failed a lane. |
 | [#1784](../issues/archived/1784-workspace-features-threadx-posix-duplicate-platform.md) | `check::workspace-features` links two platform ABIs into one test binary. The gate runs only in `ci gate` (issue 1177's class). |
 | [#1785](../issues/archived/1785-stall-watchdog-diagnostics-hang-on-fuse-fd.md) | The make-stall watchdog hangs in its own diagnostics on a stuck FUSE mount, so the watchdog never fires. |
