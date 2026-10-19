@@ -68,13 +68,69 @@ const BACKENDS: &[(&str, &str)] = &[("zenoh", "_z_"), ("cyclonedds", "dds_"), ("
 /// to seven `nm` invocations per binary across every artifact tree and blew the
 /// 60 s nextest timeout. `nm` on an 8 MB binary is not cheap and there are
 /// hundreds of them.
-fn backend_symbols(bin: &Path) -> Option<BTreeMap<&'static str, usize>> {
-    let out = Command::new("nm").arg(bin).output().ok()?;
-    if !out.status.success() {
-        return None;
+///
+/// Issue 1984 — bounded by `budget`. An unbounded `nm` let one slow read spend
+/// the test's whole nextest budget, and a suite-level TIMEOUT names no binary.
+fn backend_symbols(bin: &Path, budget: std::time::Duration) -> NmVerdict {
+    use std::io::Read;
+    let Ok(mut child) = Command::new("nm")
+        .arg(bin)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+    else {
+        return NmVerdict::Unreadable;
+    };
+    // Drained on its own thread: `nm` blocks on a full pipe, so polling for its
+    // exit without reading would turn a large symbol table into a hang.
+    let mut stdout = child.stdout.take().expect("stdout is piped");
+    let reader = std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        let _ = stdout.read_to_end(&mut buf);
+        buf
+    });
+    let deadline = std::time::Instant::now() + budget;
+    let exited = loop {
+        match child.try_wait() {
+            Ok(Some(st)) => break Some(st.success()),
+            Ok(None) if std::time::Instant::now() >= deadline => {
+                let _ = child.kill();
+                let _ = child.wait();
+                break None;
+            }
+            Ok(None) => std::thread::sleep(std::time::Duration::from_millis(20)),
+            Err(_) => break Some(false),
+        }
+    };
+    let text = reader.join().unwrap_or_default();
+    match exited {
+        None => NmVerdict::OverBudget,
+        Some(false) => NmVerdict::Unreadable,
+        Some(true) => NmVerdict::Counts(count_nm_output(&String::from_utf8_lossy(&text))),
     }
-    Some(count_nm_output(&String::from_utf8_lossy(&out.stdout)))
 }
+
+/// What one bounded `nm` pass answered.
+enum NmVerdict {
+    Counts(BTreeMap<&'static str, usize>),
+    /// `nm` could not run or refused the file.
+    Unreadable,
+    /// `nm` outlived [`NM_BUDGET`] and was killed.
+    OverBudget,
+    /// The sweep had spent [`NM_SWEEP_BUDGET`] before this row's turn.
+    NotStarted,
+}
+
+/// Issue 1984 — one `nm` pass's budget. 1690 measured the whole sweep at
+/// 2.7 s solo here and CI's runner 118 at 5.6-6.9 s, so a single binary that
+/// needs 20 s is a finding, not load.
+const NM_BUDGET: std::time::Duration = std::time::Duration::from_secs(20);
+
+/// Issue 1984 — no row STARTS after this much of the sweep. With [`NM_BUDGET`]
+/// on top, the worst case stays inside nextest's 60 s terminate, so a slow
+/// sweep fails with the rows and timings that explain it instead of a
+/// suite-level TIMEOUT that names nothing.
+const NM_SWEEP_BUDGET: std::time::Duration = std::time::Duration::from_secs(25);
 
 /// Count each backend's namespace in `nm` output.
 ///
@@ -362,6 +418,7 @@ fn a_rows_rmw_is_the_backend_its_artifact_linked() {
     // located binaries on a pool (issue 1690): `nm` on an 8 MB binary is the
     // cost, and summed over every row it reached 54.8 s of a 60 s budget.
     let mut located: Vec<(&nros_tests::fixtures::lane::Row, PathBuf)> = Vec::new();
+    let locate_started = std::time::Instant::now();
     for row in nros_tests::fixtures::lane::manifest_rows() {
         if row.kind != "workspace_fixture" {
             continue;
@@ -379,12 +436,63 @@ fn a_rows_rmw_is_the_backend_its_artifact_linked() {
             located.push((row, bin));
         }
     }
-    let symbols = par_map(&located, |(_, bin)| backend_symbols(bin));
+    let locate_took = locate_started.elapsed();
+    // Issue 1984 — every pass bounded and timed, and the sweep bounded too, so
+    // the slowest rows are named whether the test passes or not.
+    let sweep_started = std::time::Instant::now();
+    let symbols = par_map(&located, |(_, bin)| {
+        if sweep_started.elapsed() >= NM_SWEEP_BUDGET {
+            return (NmVerdict::NotStarted, std::time::Duration::ZERO);
+        }
+        let t0 = std::time::Instant::now();
+        (backend_symbols(bin, NM_BUDGET), t0.elapsed())
+    });
+    let sweep_took = sweep_started.elapsed();
+    let mut slowest: Vec<(std::time::Duration, &str)> = located
+        .iter()
+        .zip(&symbols)
+        .map(|((row, _), (_, took))| (*took, row.id.as_str()))
+        .collect();
+    slowest.sort_by_key(|a| std::cmp::Reverse(a.0));
+    let timing = format!(
+        "located {} binar{} in {locate_took:.1?}, `nm` over them in {sweep_took:.1?}; slowest: {}",
+        located.len(),
+        if located.len() == 1 { "y" } else { "ies" },
+        slowest
+            .iter()
+            .take(5)
+            .map(|(d, id)| format!("{id} {d:.1?}"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+    eprintln!("rmw-coordinate-truth: {timing}");
+    let over: Vec<String> = located
+        .iter()
+        .zip(&symbols)
+        .filter_map(|((row, bin), (v, took))| match v {
+            NmVerdict::OverBudget => Some(format!(
+                "{}: `nm` outlived its {NM_BUDGET:?} budget (killed after {took:.1?}): {}",
+                row.id,
+                bin.display()
+            )),
+            NmVerdict::NotStarted => Some(format!(
+                "{}: not read — the sweep had spent its {NM_SWEEP_BUDGET:?}",
+                row.id
+            )),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        over.is_empty(),
+        "{} row(s) got no `nm` verdict within budget ({timing}):\n  {}",
+        over.len(),
+        over.join("\n  ")
+    );
 
-    for ((row, bin), counts) in located.iter().zip(symbols) {
+    for ((row, bin), (verdict, _)) in located.iter().zip(symbols) {
         let declared = row.coord.2.as_str();
         {
-            let Some(counts) = counts else {
+            let NmVerdict::Counts(counts) = verdict else {
                 unreadable += 1;
                 continue;
             };

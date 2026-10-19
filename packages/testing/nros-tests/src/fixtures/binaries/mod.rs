@@ -2188,40 +2188,56 @@ fn workspace_example_dir(name: &str) -> TestResult<PathBuf> {
 /// (`rmw_coordinate_truth`, issue 0831). Re-deriving a row by parsing
 /// `fixtures.toml` in a second place is the split that issue 0393 spent a
 /// wave collapsing.
+///
+/// Issue 1984 — the manifest is read ONCE per process. This spawned a
+/// `python3` per call, and an audit asks once per row (126 rows), serially,
+/// before any of its real work starts: 5 s on an idle host, and a large share
+/// of a 60 s nextest budget on an I/O-starved runner. `list-workspaces --id X`
+/// renders exactly the record the unfiltered listing does (all 126 compared),
+/// so the cache changes no answer.
 pub fn current_workspace_fixture_record(fixture_id: &str) -> TestResult<String> {
-    let root = project_root();
-    // No `--platform` filter: workspace cmake fixtures span platforms (native +
-    // the phase-263 C2a embedded threadx-linux row), and a cmake record is NOT
-    // platform-prefixed (only rust cargo records are), so listing all platforms and
-    // matching by the unique id prefix resolves any of them with a stable signature.
-    let output = Command::new("python3")
-        .arg(root.join("scripts/build/fixtures-manifest.py"))
-        .arg("list-workspaces")
-        .arg("--id")
-        .arg(fixture_id)
-        .current_dir(&root)
-        .output()
-        .map_err(|e| {
-            TestError::BuildFailed(format!("Failed to run workspace fixture manifest: {e}"))
-        })?;
-
-    if !output.status.success() {
-        return Err(TestError::BuildFailed(format!(
-            "Failed to read workspace fixture manifest:\n{}",
-            String::from_utf8_lossy(&output.stderr)
-        )));
-    }
-
+    let records = workspace_fixture_records()
+        .as_ref()
+        .map_err(|e| TestError::BuildFailed(e.clone()))?;
     let prefix = format!("{fixture_id}\x1f");
-    String::from_utf8_lossy(&output.stdout)
-        .lines()
+    records
+        .iter()
         .find(|line| line.starts_with(&prefix))
-        .map(ToOwned::to_owned)
+        .cloned()
         .ok_or_else(|| {
             TestError::BuildFailed(format!(
                 "Workspace fixture {fixture_id:?} is not declared in examples/fixtures.toml"
             ))
         })
+}
+
+/// Every workspace row's record, read once (issue 1984). A failure is kept
+/// too, so each caller reports the same cause rather than re-running it.
+fn workspace_fixture_records() -> &'static Result<Vec<String>, String> {
+    static RECORDS: std::sync::OnceLock<Result<Vec<String>, String>> = std::sync::OnceLock::new();
+    RECORDS.get_or_init(|| {
+        let root = project_root();
+        // No `--platform` filter: workspace cmake fixtures span platforms (native +
+        // the phase-263 C2a embedded threadx-linux row), and a cmake record is NOT
+        // platform-prefixed (only rust cargo records are), so listing all platforms and
+        // matching by the unique id prefix resolves any of them with a stable signature.
+        let output = Command::new("python3")
+            .arg(root.join("scripts/build/fixtures-manifest.py"))
+            .arg("list-workspaces")
+            .current_dir(&root)
+            .output()
+            .map_err(|e| format!("Failed to run workspace fixture manifest: {e}"))?;
+        if !output.status.success() {
+            return Err(format!(
+                "Failed to read workspace fixture manifest:\n{}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
+        }
+        Ok(String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .map(ToOwned::to_owned)
+            .collect())
+    })
 }
 
 fn current_workspace_fixture_signature(fixture_id: &str) -> TestResult<String> {
