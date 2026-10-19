@@ -281,6 +281,59 @@ self_test() {
         = "$(git -C "$sh" rev-parse HEAD)" ] && [ "$(git -C "$shtree" remote get-url origin)" = "file://$deep" ] \
         && pass "origin URL and refs/remotes/origin/* mirror the job checkout" || fail "origin not mirrored"
 
+    # The pin gate's baseline reaches the tree (issues 1952/1959). A fixture
+    # lane runs `check fast` — through `just build <lane>` — INSIDE this tree,
+    # and on a schedule/dispatch event its baseline is the tested commit's
+    # first parent (issue 1912), which a depth-1 tree does not hold. The lane
+    # runs `pin-baseline.sh provide` with the tree as its cwd, and that fetch
+    # works only because `sync` mirrors the checkout's `origin` URL. Nothing
+    # else asserted that composition: check-workflow-pin-baseline checks that
+    # the STEP exists, not that it can succeed where it runs. So run the real
+    # scripts, in the lane's order, against a tree that fetched one commit.
+    local up="$t/up" pc="$t/_work/pc/pc" pctree base_sha ev="$t/schedule.json" penv="$t/pin-env"
+    local here pins_out pins_rc
+    here="$(cd "$(dirname "$0")" && pwd)"
+    git init -q "$up"
+    echo 1 > "$up/f"; git -C "$up" add f
+    # A gitlink pinned identically at both commits: the gate has a pin to
+    # compare and needs no submodule store.
+    git -C "$up" update-index --add --cacheinfo "160000,1111111111111111111111111111111111111111,sub"
+    git -C "$up" commit -qm base
+    base_sha="$(git -C "$up" rev-parse HEAD)"
+    echo 2 > "$up/f"; git -C "$up" commit -qam tested
+    mkdir -p "$(dirname "$pc")"
+    git clone -q --depth=1 "file://$up" "$pc"
+    pctree="$(tree_for "$pc")"
+    sync_tree "$pc" "$pctree" 7 >/dev/null
+    echo '{}' > "$ev"
+    # A fixture lane's environment: CI, a schedule event, cwd = the tree.
+    pin_gate() {
+        (cd "$pctree" && env -u NROS_SUBMODULE_PIN_BASELINE GITHUB_ACTIONS=true \
+            GITHUB_EVENT_NAME=schedule GITHUB_EVENT_PATH="$ev" GITHUB_ENV="$penv" \
+            NROS_SUBMODULE_PINS_REENTRY=1 "$@" 2>&1)
+    }
+    pins_rc=0; pins_out="$(pin_gate bash "$here/submodule-pins-check.sh")" || pins_rc=$?
+    if [ "$pins_rc" -ne 0 ] && [[ "$pins_out" == *"does not resolve, in CI"* ]]; then
+        pass "a synced tree with no provide fails the pin gate closed (the issue-1952 shape)"
+    else
+        fail "the pin gate in an unprovided tree: rc=$pins_rc: $pins_out"
+    fi
+    : > "$penv"
+    if pin_gate bash "$here/pin-baseline.sh" provide >/dev/null \
+        && [ "$(cat "$penv")" = "NROS_SUBMODULE_PIN_BASELINE=$base_sha" ] \
+        && git -C "$pctree" cat-file -e "${base_sha}^{commit}" 2>/dev/null; then
+        pass "pin-baseline.sh provide, run in the tree, fetches the first parent through the mirrored origin"
+    else
+        fail "provide in the tree: env='$(cat "$penv")', want baseline $base_sha"
+    fi
+    pins_rc=0
+    pins_out="$(pin_gate env NROS_SUBMODULE_PIN_BASELINE="$base_sha" bash "$here/submodule-pins-check.sh")" || pins_rc=$?
+    if [ "$pins_rc" -eq 0 ] && [[ "$pins_out" == *"submodule-pins: OK"* ]]; then
+        pass "after provide, the pin gate reports OK in the tree"
+    else
+        fail "the pin gate after provide: rc=$pins_rc: $pins_out"
+    fi
+
     # An inherited GIT_DIR must not redirect the sync into another repository.
     local victim="$t/victim" vhead
     git init -q "$victim"; echo v > "$victim/v"; git -C "$victim" add v; git -C "$victim" commit -qm v
