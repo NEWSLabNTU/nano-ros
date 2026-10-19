@@ -1,7 +1,7 @@
 ---
 id: 1956
 title: "A FreeRTOS island under flood re-dispatched ONE buffered subscription sample ~289k times and never ran another callback"
-status: open
+status: resolved
 type: bug
 area: [executor, rmw-zenoh, freertos]
 severity: high
@@ -126,3 +126,63 @@ Tell (1) from (2) on the stuck island: dump the stuck buffer's
 4` with the read task still advancing `tail` is (1). Bounding the in-place
 drain (at the ring depth, or at the count seen on entry) is the fix for (1)
 either way.
+
+## Cause (measured on target, 2026-10-19)
+
+Candidate (2), reached through a producer race rather than a reused
+buffer. `Z_FEATURE_LOCAL_SUBSCRIBER=1` makes `z_put` deliver to a
+same-session subscriber synchronously ON THE PUBLISHER'S TASK, and
+zenoh-pico calls subscription handlers outside its session mutex. The
+gate tier publishes `/control/command/control_cmd` and the actuator
+subscribes to it, while the read task pushes the remote samples on the
+same key — so `_zpico_ring_push` had TWO producers. Its tail update is
+a load, a slot write, then a Release-store: a producer preempted between
+the load and the store writes back a stale tail, after which `head`
+passes `tail`.
+
+Gdbstub dumps of the unfixed image (`hunt1956b.sh`, ring fields at
+`SUBSCRIBER_BUFFERS + 224*i`), two stuck runs of 12:
+
+| run | shape | buffer | t | `ring_head` | `ring_tail` |
+|---|---|---|---|---|---|
+| 20261018-234810Z | runaway (143,085 `[e2e]`) | buf2 | hit | 84,074 | 5,551 |
+| | | | +1 s | 160,858 | 5,551 |
+| 20261018-235238Z | silent (95 `[e2e]`) | buf2 | hit | 1,494,756 | 12,447 |
+| | | | +1 s | 1,878,233 | 12,447 |
+
+Every other buffer has `0 <= tail - head <= 4`. `tail` is frozen (the
+producer's `tail - head >= depth` reads "full", so every new sample is
+dropped), `head` climbs ~76k–380k a second (the unbounded in-place drain,
+candidate (1), consuming the same 4 stale slots), and the backtrace is
+the actuator's `on_cmd` deserialising a `Control`. The silent runs are
+the SAME state with flood samples (`stamp.sec = 0`, unlogged) in the
+stuck slots — one defect, two log shapes. `NEXT_BUFFER_INDEX = 9` with
+nine distinct live buffers, so (2)'s reused-index route did not occur
+here; it is fixed anyway as the same class.
+
+## Resolution (2026-10-19)
+
+- `_zpico_ring_push` (`zpico.c`) takes the subscription's existing
+  `slot_mutex` from the history admit through the tail store, so the
+  ring has one producer at a time. No new mutex: Zephyr's pthread mutex
+  pool is fixed-size. The waker is notified after unlock.
+- The in-place drains (`sub_inplace_try_process`, `_raw_c_`, `_raw_`)
+  go through one `drain_in_place`, bounded at `IN_PLACE_DRAIN_LIMIT`
+  (64) per pass: a refilled ring can no longer hold the executor, and an
+  arrival during the pass raises the wake itself.
+- The shim's bump allocators (subscriber metadata, both payload classes,
+  service headers and inbox rings) share `shim::bump::{claim, release}`:
+  a claim never moves past its table, and a failed creation hands its
+  slot back only while it is still the latest claim — the `fetch_sub`
+  undo could hand a live slot out twice. The `TopicNameInvalid` path,
+  which leaked its slot, now releases it.
+
+A/B on budget8, same harness, idle host:
+
+| image | runs | runaway | silent tail > 0.5 s / stalled |
+|---|---|---|---|
+| unfixed (`7bbead7846`) | 72 | 2 | 11 |
+| fixed | 30 | 0 | 0 |
+
+(Unfixed: hunt v1 30 runs, 4 silent; hunt v2 30 runs, 1 runaway + 6
+stalled; v2 rerun 12 runs, 1 runaway + 1 stalled.)

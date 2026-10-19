@@ -715,9 +715,9 @@ fn is_builtin_service(name: &str) -> bool {
     BUILTIN_SERVICE_ENDPOINTS.contains(&endpoint)
 }
 
-/// Take the next ring of `family`'s table for `session_index`, or `None` when
-/// that table is spent.
-fn draw_from(session_index: usize, family: ShimFamily) -> Option<InboxRing> {
+/// Take the next ring of `family`'s table for `session_index`, with its index
+/// in that table (for [`release_shim_ring`]), or `None` when the table is spent.
+fn draw_from(session_index: usize, family: ShimFamily) -> Option<(InboxRing, usize)> {
     let (cursor, per_session) = match family {
         ShimFamily::UserService => (
             &NEXT_USER_SERVICE_INBOX[session_index],
@@ -729,28 +729,29 @@ fn draw_from(session_index: usize, family: ShimFamily) -> Option<InboxRing> {
             BUILTIN_INBOX_PER_SESSION,
         ),
     };
-    let local = cursor.fetch_add(1, Ordering::SeqCst);
-    if local >= per_session {
-        cursor.fetch_sub(1, Ordering::SeqCst);
-        return None;
-    }
+    // Issue 1956 -- one claim/release spelling for every shim table.
+    let local = super::bump::claim(cursor, per_session)?;
     let index = session_index * per_session + local;
-    Some(match family {
+    let ring = match family {
         ShimFamily::UserService => InboxRing::over(&USER_SERVICE_INBOX[index]),
         ShimFamily::Action => InboxRing::over(&ACTION_INBOX[index]),
         ShimFamily::Builtin => InboxRing::over(&BUILTIN_INBOX[index]),
-    })
+    };
+    Some((ring, local))
 }
 
-/// The ring a shim-family registration receives through, and which table it
-/// came from (so a failed declaration can hand it back).
+/// The ring a shim-family registration receives through, and which table and
+/// slot it came from (so a failed declaration can hand it back).
 ///
 /// Own family first, then the other's spare. The two tables hold exactly one
 /// ring per header between them, so a header that is free always finds a
 /// ring; which family's geometry it gets is exact on an image whose
 /// declaration priced the action share and today's single geometry on one
 /// that did not.
-fn draw_shim_ring(session_index: usize, family: ShimFamily) -> Option<(InboxRing, ShimFamily)> {
+fn draw_shim_ring(
+    session_index: usize,
+    family: ShimFamily,
+) -> Option<(InboxRing, (ShimFamily, usize))> {
     let order = match family {
         ShimFamily::UserService => [
             ShimFamily::UserService,
@@ -773,16 +774,16 @@ fn draw_shim_ring(session_index: usize, family: ShimFamily) -> Option<(InboxRing
     };
     order
         .into_iter()
-        .find_map(|f| draw_from(session_index, f).map(|ring| (ring, f)))
+        .find_map(|f| draw_from(session_index, f).map(|(ring, local)| (ring, (f, local))))
 }
 
-fn release_shim_ring(session_index: usize, family: ShimFamily) {
-    match family {
+fn release_shim_ring(session_index: usize, (family, local): (ShimFamily, usize)) {
+    let cursor = match family {
         ShimFamily::UserService => &NEXT_USER_SERVICE_INBOX[session_index],
         ShimFamily::Action => &NEXT_ACTION_INBOX[session_index],
         ShimFamily::Builtin => &NEXT_BUILTIN_INBOX[session_index],
-    }
-    .fetch_sub(1, Ordering::SeqCst);
+    };
+    super::bump::release(cursor, local);
 }
 
 /// Bind `ring` to header `buffer_index` and reset its cursors. Called once
@@ -1043,9 +1044,12 @@ impl ZenohServiceServer {
             return Err(TransportError::ServiceServerCreationFailed);
         }
         let session_index = session_index as usize;
-        let local = NEXT_SERVICE_BUFFER_INDEX[session_index].fetch_add(1, Ordering::SeqCst);
-        if local >= ZPICO_MAX_QUERYABLES {
-            NEXT_SERVICE_BUFFER_INDEX[session_index].fetch_sub(1, Ordering::SeqCst);
+        // Issue 1956 -- `bump::claim`/`release`: a `fetch_sub` undo could hand
+        // a live header out twice when another server was declared meanwhile.
+        let Some(local) = super::bump::claim(
+            &NEXT_SERVICE_BUFFER_INDEX[session_index],
+            ZPICO_MAX_QUERYABLES,
+        ) else {
             // issue 0406 — this table is the reason, and the bare
             // `ServiceServerCreationFailed` never said so. A service server IS a
             // queryable, and the runtime registers its own before the
@@ -1129,7 +1133,7 @@ impl ZenohServiceServer {
                  ROS parameter and REP-2002 lifecycle services claim theirs before an \
                  entry's own callbacks."
             }));
-        }
+        };
         let buffer_index = session_index * ZPICO_MAX_QUERYABLES + local;
 
         // phase-461 W1 - bind the ring BEFORE declaring, for the reason the
@@ -1151,7 +1155,7 @@ impl ZenohServiceServer {
                         // header, which they do by construction; said rather
                         // than assumed, because the header space above can be
                         // raised without this file noticing.
-                        NEXT_SERVICE_BUFFER_INDEX[session_index].fetch_sub(1, Ordering::SeqCst);
+                        super::bump::release(&NEXT_SERVICE_BUFFER_INDEX[session_index], local);
                         return Err(TransportError::Backend(
                             "zenoh service inbox tables exhausted - a queryable header was \
                              free but no ring was; USER_SERVICE_INBOX, ACTION_INBOX and \
@@ -1192,9 +1196,9 @@ impl ZenohServiceServer {
             )
         }
         .map_err(|e| {
-            NEXT_SERVICE_BUFFER_INDEX[session_index].fetch_sub(1, Ordering::SeqCst);
-            if let Some(family) = drawn_from {
-                release_shim_ring(session_index, family);
+            super::bump::release(&NEXT_SERVICE_BUFFER_INDEX[session_index], local);
+            if let Some(drawn) = drawn_from {
+                release_shim_ring(session_index, drawn);
             }
             TransportError::from(e)
         })?;
@@ -2808,7 +2812,7 @@ pub(super) mod tests {
             "with no builtin share the partition is W1's, byte for byte"
         );
         let (ring, from) = draw_shim_ring(0, ShimFamily::Builtin).expect("a user ring is spare");
-        assert_eq!(from, ShimFamily::UserService);
+        assert_eq!(from.0, ShimFamily::UserService);
         assert_eq!(
             (ring.slot_bytes(), ring.depth()),
             (SERVICE_INBOX_BYTES, SERVICE_INBOX_DEPTH)
@@ -2838,7 +2842,7 @@ pub(super) mod tests {
             "this test build declares no action server"
         );
         let (ring, from) = draw_shim_ring(0, ShimFamily::Action).expect("a user ring is spare");
-        assert_eq!(from, ShimFamily::UserService);
+        assert_eq!(from.0, ShimFamily::UserService);
         assert_eq!(
             (ring.slot_bytes(), ring.depth()),
             (SERVICE_INBOX_BYTES, SERVICE_INBOX_DEPTH)
