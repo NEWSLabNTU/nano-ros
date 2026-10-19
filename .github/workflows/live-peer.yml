@@ -143,6 +143,16 @@ jobs:
         - /opt/ghc:/__host-reclaim/ghc
         - /usr/share/swift:/__host-reclaim/swift
         - /usr/local/share/powershell:/__host-reclaim/powershell
+      # Issue 1800 — `cyclone_slirp_pair` (a declared host ROS 2 test) runs its
+      # guest in an unprivileged user + network namespace behind slirp4netns.
+      # Docker's default seccomp profile refuses `unshare` without
+      # CAP_SYS_ADMIN, and slirp4netns opens `/dev/net/tun`, which a default
+      # container lacks. Measured on ubuntu:22.04: default flags give
+      # `unshare failed: Operation not permitted`; these two give a tap0 with
+      # 10.0.2.100 and a ping to 10.0.2.2. No capability is added. This is a
+      # GitHub-hosted, single-use VM; the self-hosted runner container keeps
+      # refusing both on purpose (`runner-container.sh`).
+      options: --security-opt seccomp=unconfined --device /dev/net/tun
     defaults:
       run:
         shell: bash

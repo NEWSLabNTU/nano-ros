@@ -1,15 +1,17 @@
 ---
 id: 1800
 title: "Two ROS 2 tests that are not interop cells are run by no scheduled lane: `workspace_shadowing` and `cyclone_slirp_pair`"
-status: open
+status: resolved
 type: tech-debt
 area: [ci, testing]
 severity: low
 found: 2026-10-11
+resolved: 2026-10-19
+resolved_in: "branch fix/phase-505-1800"
 related: [1758, 1251, 1127, phase-505]
 ---
 
-**Home: [phase-505](../roadmap/phase-505-ci-lanes-reach-and-infra-robustness.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+**Home: [phase-505](../../roadmap/phase-505-ci-lanes-reach-and-infra-robustness.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## Measured
 
@@ -97,3 +99,61 @@ infrastructure, not code: it needs a lane on a host, not a container, that
 permits unprivileged user and network namespaces and has `slirp4netns`. Every
 CI lane here runs in a `--cap-drop ALL` container that refuses both. Until such
 a host exists, it runs by hand before a release, which is option 3 above.
+
+## Resolution (2026-10-19)
+
+**`cyclone_slirp_pair` joins live-peer too, so both tests have a scheduled
+lane.** The blocker named above was real for the SELF-HOSTED runner and wrong
+for live-peer. Live-peer's host job (`regression`, "rows whose board IS this
+runner") runs on a GitHub-hosted `ubuntu-22.04` VM, inside an ordinary Docker
+container of `nano-ros-ci:humble`, not inside `runner-container.sh`'s
+`--cap-drop ALL` container. A default Docker container still refuses the test,
+for two reasons, both measured on `ubuntu:22.04`:
+
+- Docker's default seccomp profile allows `unshare` only with
+  `CAP_SYS_ADMIN`: `unshare --user --map-root-user --net true` gives
+  `unshare: unshare failed: Operation not permitted`. With
+  `--security-opt seccomp=unconfined` it exits 0. No capability is added.
+- `slirp4netns` opens `/dev/net/tun`, which a default container does not
+  have (`open("/dev/net/tun"): No such file or directory`). With
+  `--device /dev/net/tun`, a non-root user gets a `tap0` with
+  `10.0.2.100/24` and a ping to `10.0.2.2` answers.
+
+What changed:
+
+- `live-peer.yml`: the `regression` job's container gets
+  `options: --security-opt seccomp=unconfined --device /dev/net/tun`. The VM
+  is single-use, so this loosens nothing that outlives the run. The
+  self-hosted runner container still refuses both, on purpose.
+- `nros-sdk-index.toml`: `[prereq.slirp4netns]` and `[prereq.iproute2]`
+  (role `infra`). The image has neither: `ros:humble-ros-base` has `unshare`
+  but no `ip` and no `slirp4netns`. The job's existing
+  `nros setup --system --sudo` step installs them from the index.
+- `scripts/check-interop-verdicts.py`: `HOST_ROS2_TESTS` names
+  `cyclone_slirp_pair::a_tag_isolated_host_profile_reaches_a_slirp_guest_and_nothing_else`.
+  `--host-compile-checks` derives the guest row `cyclone_slirp_guest` (issue
+  1903) from the test source, and `--assert-ran` fails the lane if the case
+  produces no result. The self-test now covers a list of more than one entry.
+
+Cost, measured locally:
+
+- The `cyclone_slirp_guest` row (static Cyclone plus the backend's
+  `ros2_pub`) builds in 46 s on 4 CPUs, and its output is 15 MB.
+- The test takes 44.6 s. Its two negative controls spend their full 12 s
+  windows.
+- The two apt packages are small.
+
+That is about 2 minutes added to a lane that already takes 70 to 100 minutes.
+
+Evidence, local, on Ubuntu 22.04 with `/opt/ros/humble`: the row built through
+`NROS_FIXTURE_ID=cyclone_slirp_guest scripts/build/compile-check-fixtures.sh`,
+then the lane's own filter ran it:
+
+```
+PASS [  44.583s] (1/1) nros-tests::cyclone_slirp_pair a_tag_isolated_host_profile_reaches_a_slirp_guest_and_nothing_else
+```
+
+`workspace_shadowing` keeps running there. See the 2026-10-18 progress note
+above (run 39096469491). The first scheduled run after this lands is the first
+CI measurement of `cyclone_slirp_pair`. A red there is a red, not a
+regression, because the case records no ledger verdict.

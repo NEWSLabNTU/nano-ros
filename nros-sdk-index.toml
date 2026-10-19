@@ -2187,6 +2187,27 @@ pacman = ["socat"]
 brew = ["socat"]
 check = { cmd = "socat" }
 
+# Issue 1800 — `tests/cyclone_slirp_pair.rs` (issue 1251's libslirp probe) puts
+# its guest in a user + network namespace whose only way out is `slirp4netns`,
+# and brings the namespace's loopback up with `ip`. Linux only: there is no brew
+# provider, and the test is a `linux` coordinate. live-peer's host job gets both
+# from its `nros setup --system` closure.
+[prereq.slirp4netns]
+role = "infra"
+why = "cyclone_slirp_pair's guest network: the same libslirp QEMU's `-netdev user` uses, attached to an unprivileged network namespace (issue 1251)"
+apt = ["slirp4netns"]
+dnf = ["slirp4netns"]
+pacman = ["slirp4netns"]
+check = { cmd = "slirp4netns" }
+
+[prereq.iproute2]
+role = "infra"
+why = "`ip link set lo up` inside cyclone_slirp_pair's guest namespace; absent from the minimal `ros:humble-ros-base` the CI images start from"
+apt = ["iproute2"]
+dnf = ["iproute"]
+pacman = ["iproute2"]
+check = { cmd = "ip" }
+
 [prereq.file]
 role = "infra"
 why = "the Zephyr SDK host-tools installer (`setup.sh -h`) relocates its binaries with `xargs file`; without it the step aborts \"Relocate script failed\" and no Zephyr workspace is created. Absent from a minimal Ubuntu image"
