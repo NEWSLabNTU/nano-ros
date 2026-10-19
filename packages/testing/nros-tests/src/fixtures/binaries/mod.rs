@@ -1496,7 +1496,8 @@ fn zpico_manifest_dir() -> PathBuf {
 fn zpico_recorded_inputs(build_dir: &Path) -> Vec<PathBuf> {
     let root = project_root();
     let mut out = Vec::new();
-    for output in find_build_script_outputs(build_dir, "zpico-sys-", 0) {
+    let scope = CargoScope::of(build_dir);
+    for output in find_build_script_outputs(build_dir, "zpico-sys-", &scope, 0) {
         let Ok(text) = fs::read_to_string(&output) else {
             continue;
         };
@@ -1549,8 +1550,14 @@ fn zpico_recorded_inputs(build_dir: &Path) -> Vec<PathBuf> {
 }
 
 /// `<dir>/**/build/<prefix><hash>/output`, bounded so a deep cmake tree cannot
-/// turn a staleness probe into a full-tree walk.
-fn find_build_script_outputs(dir: &Path, prefix: &str, depth: usize) -> Vec<PathBuf> {
+/// turn a staleness probe into a full-tree walk. `scope` keeps it out of
+/// sibling leaves' folders in the shared group dir (issue 1954).
+fn find_build_script_outputs(
+    dir: &Path,
+    prefix: &str,
+    scope: &CargoScope,
+    depth: usize,
+) -> Vec<PathBuf> {
     const MAX_DEPTH: usize = 8;
     let mut found = Vec::new();
     if depth > MAX_DEPTH {
@@ -1571,7 +1578,7 @@ fn find_build_script_outputs(dir: &Path, prefix: &str, depth: usize) -> Vec<Path
         // should be unreachable for a built fixture, announcing itself via
         // `note_unmeasured_input_set()`. It had been running for the whole
         // cross-compiled half of the tree.
-        if !path.is_dir() {
+        if !path.is_dir() || !scope.admits(&path) {
             continue;
         }
         let name = entry.file_name();
@@ -1583,7 +1590,7 @@ fn find_build_script_outputs(dir: &Path, prefix: &str, depth: usize) -> Vec<Path
             }
             continue;
         }
-        found.extend(find_build_script_outputs(&path, prefix, depth + 1));
+        found.extend(find_build_script_outputs(&path, prefix, scope, depth + 1));
     }
     found
 }
@@ -1752,9 +1759,11 @@ fn linked_archive_copies(dir: &Path, name: &std::ffi::OsStr, depth: usize) -> Ve
 /// under a cmake build dir (`<group>/<triple>/<profile>/libnros_c.d`).
 ///
 /// The cargo target dir is a phase-340 group dir — usually a symlink to
-/// `build/corrosion-cargo/<platform>/<hash>/<group>` shared by every leaf of
-/// the family, which is correct here: those leaves link the SAME staticlib, so
-/// they have the same Rust input closure.
+/// `build/corrosion-cargo/<platform>/<hash>/` shared by every leaf of the
+/// family. Since RFC-0071 D9 each leaf builds its OWN generated image crate in
+/// its own folder there, so the walk is scoped to the folders this build's
+/// `build.ninja` names ([`CargoScope`], issue 1954); a sibling's `.d` is not
+/// this binary's input closure.
 ///
 /// Only the top level of a profile dir is read. `deps/*.d` holds one file per
 /// intermediate unit, with paths written RELATIVE to the cargo invocation's
@@ -1763,7 +1772,8 @@ fn linked_archive_copies(dir: &Path, name: &std::ffi::OsStr, depth: usize) -> Ve
 /// is already the union of those units.
 fn cargo_unit_dep_files(build_dir: &Path) -> Vec<PathBuf> {
     let mut out = Vec::new();
-    for profile in find_cargo_profile_dirs(build_dir, 0) {
+    let scope = CargoScope::of(build_dir);
+    for profile in find_cargo_profile_dirs(build_dir, &scope, 0) {
         let Ok(entries) = fs::read_dir(&profile) else {
             continue;
         };
@@ -1777,11 +1787,99 @@ fn cargo_unit_dep_files(build_dir: &Path) -> Vec<PathBuf> {
     out
 }
 
+/// issue 1954 — which folders under `<build>/cargo` THIS build writes.
+///
+/// `<build>/cargo` is a symlink into the phase-340 shared group dir
+/// (`nros_share_corrosion_cargo_dir`), shared by every leaf whose feature key
+/// matches. Corrosion's `--target-dir` is `<build>/cargo/<ws>_<hash>`, hashed
+/// on the WORKSPACE manifest path. Before RFC-0071 D9 that manifest was the
+/// repository root for every leaf (`nano-ros_1147c`), so the group held one
+/// folder and reading all of it was reading this leaf's own closure. D9 gives
+/// each leaf its own generated image crate root, so the group now holds one
+/// folder PER LEAF (30 in the FreeRTOS group, measured), and a walk of
+/// `<build>/cargo` read every sibling's `.d`. Each of those names the
+/// sibling's generated `src/lib.rs`, written when the sibling configured —
+/// later in the same fixture pass — so all three FreeRTOS C++ cells read STALE
+/// against files their binaries never compile.
+///
+/// The build answers which folders are its own: every `--target-dir` its
+/// `build.ninja` passes that sits directly under `<build>/cargo`. When it
+/// names none (no manifest, or a layout this does not recognise) `own` is
+/// `None` and everything is admitted — over-broad fails toward STALE, never
+/// toward FRESH.
+struct CargoScope {
+    cargo_dir: PathBuf,
+    own: Option<Vec<std::ffi::OsString>>,
+}
+
+impl CargoScope {
+    fn of(build_dir: &Path) -> Self {
+        let cargo_dir = build_dir.join("cargo");
+        let own = fs::read_to_string(build_dir.join("build.ninja"))
+            .ok()
+            .map(|text| ninja_own_cargo_folders(&text, build_dir))
+            .filter(|own| !own.is_empty());
+        Self { cargo_dir, own }
+    }
+
+    /// Whether a walk may enter `path`. Only a path INSIDE `<build>/cargo/`
+    /// is ever refused, and only when its first component is a folder some
+    /// other build named.
+    fn admits(&self, path: &Path) -> bool {
+        let Some(own) = &self.own else {
+            return true;
+        };
+        match path.strip_prefix(&self.cargo_dir) {
+            Ok(rest) => match rest.components().next() {
+                Some(std::path::Component::Normal(first)) => own.iter().any(|o| o == first),
+                _ => true,
+            },
+            Err(_) => true,
+        }
+    }
+}
+
+/// The `<folder>` of every `--target-dir <build>/cargo/<folder>` in a
+/// `build.ninja`. A value counts only if its grandparent IS `build_dir`
+/// (compared canonically, since the manifest spells the absolute path and the
+/// caller may not) — a leaf's FFI glue crate passes `--target-dir
+/// <build>/<pkg>/target`, which is outside the shared group and needs no scope.
+fn ninja_own_cargo_folders(text: &str, build_dir: &Path) -> Vec<std::ffi::OsString> {
+    let Ok(build_canon) = build_dir.canonicalize() else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    let mut tokens = text.split_whitespace();
+    while let Some(token) = tokens.next() {
+        let value = if token == "--target-dir" {
+            tokens.next()
+        } else {
+            token.strip_prefix("--target-dir=")
+        };
+        let Some(value) = value else { continue };
+        let value = Path::new(value.trim_matches('"'));
+        let (Some(folder), Some(cargo)) = (value.file_name(), value.parent()) else {
+            continue;
+        };
+        if cargo.file_name().and_then(|n| n.to_str()) != Some("cargo") {
+            continue;
+        }
+        let Some(owner) = cargo.parent().and_then(|b| b.canonicalize().ok()) else {
+            continue;
+        };
+        if owner == build_canon && !out.iter().any(|o| o == folder) {
+            out.push(folder.to_os_string());
+        }
+    }
+    out
+}
+
 /// Directories that look like a cargo profile output dir — i.e. that contain a
 /// `deps/` child. Bounded like [`find_build_script_outputs`], and it does not
 /// descend into cargo's own bulk subtrees, so this stays a handful of
-/// `read_dir`s rather than a walk of a cmake tree.
-fn find_cargo_profile_dirs(dir: &Path, depth: usize) -> Vec<PathBuf> {
+/// `read_dir`s rather than a walk of a cmake tree. `scope` keeps it out of
+/// sibling leaves' folders in the shared group dir (issue 1954).
+fn find_cargo_profile_dirs(dir: &Path, scope: &CargoScope, depth: usize) -> Vec<PathBuf> {
     const MAX_DEPTH: usize = 8;
     let mut found = Vec::new();
     if depth > MAX_DEPTH {
@@ -1797,7 +1895,7 @@ fn find_cargo_profile_dirs(dir: &Path, depth: usize) -> Vec<PathBuf> {
         // Stat, not lstat: `build-<rmw>/cargo` is a symlink to the phase-340
         // shared group dir on every cross-compiled leaf (see
         // `find_build_script_outputs`). MAX_DEPTH bounds a symlink cycle.
-        if !path.is_dir() {
+        if !path.is_dir() || !scope.admits(&path) {
             continue;
         }
         let name = entry.file_name();
@@ -1820,7 +1918,7 @@ fn find_cargo_profile_dirs(dir: &Path, depth: usize) -> Vec<PathBuf> {
         found.push(dir.to_path_buf());
     }
     for child in children {
-        found.extend(find_cargo_profile_dirs(&child, depth + 1));
+        found.extend(find_cargo_profile_dirs(&child, scope, depth + 1));
     }
     found
 }
@@ -8507,6 +8605,110 @@ mod tests {
             found.contains(&in_repo_file.canonicalize().unwrap()),
             "the walk must cross the group-dir symlink, or every cross-compiled \
              fixture silently falls back to the hand-authored input set: {found:?}"
+        );
+
+        fs::remove_dir_all(&tmp).unwrap();
+    }
+
+    /// issue 1954 — a SIBLING leaf's folder in the shared group dir is not an
+    /// input of this binary.
+    ///
+    /// The layout measured on `examples/mps2-an385-freertos/cpp/talker/
+    /// build-zenoh` (2026-10-20): `cargo` -> `build/corrosion-cargo/freertos/
+    /// <hash>/`, holding one `nros-c-image_<hash>` / `nros-cpp-image_<hash>`
+    /// folder per leaf (30), of which the talker's `build.ninja` passes two as
+    /// `--target-dir`. A sibling's `.d` names that sibling's generated
+    /// `src/lib.rs`; giving it a future mtime must not make this binary STALE,
+    /// while the same edit in this leaf's own folder still must.
+    #[test]
+    fn a_sibling_leafs_image_crate_is_not_a_staleness_input() {
+        let root = project_root();
+        let tmp = root.join("tmp/issue-1954-sibling");
+        let _ = fs::remove_dir_all(&tmp);
+
+        let build_dir = tmp.join("talker/build-zenoh");
+        fs::create_dir_all(&build_dir).unwrap();
+        let group = tmp.join("corrosion-cargo/freertos/a29e5aaa6870");
+        std::os::unix::fs::symlink(&group, build_dir.join("cargo")).unwrap();
+
+        let unit = |folder: &str, input: &Path| {
+            let profile = group.join(folder).join("thumbv7m-none-eabi/release");
+            fs::create_dir_all(profile.join("deps")).unwrap();
+            fs::write(
+                profile.join("libnros_c.d"),
+                format!(
+                    "{}: {}\n",
+                    profile.join("libnros_c.a").display(),
+                    input.display()
+                ),
+            )
+            .unwrap();
+            let bs = profile.join("build/zpico-sys-deadbeef");
+            fs::create_dir_all(&bs).unwrap();
+            fs::write(
+                bs.join("output"),
+                format!("cargo:rerun-if-changed={}\n", input.display()),
+            )
+            .unwrap();
+        };
+        let own_src = tmp.join("talker/own_lib.rs");
+        let sibling_src = tmp.join("service-client/sibling_lib.rs");
+        fs::create_dir_all(sibling_src.parent().unwrap()).unwrap();
+        fs::write(&own_src, "// own\n").unwrap();
+        fs::write(&sibling_src, "// sibling\n").unwrap();
+        unit("nros-c-image_ce006", &own_src);
+        unit("nros-c-image_b74e9", &sibling_src);
+
+        // Before the build manifest exists the scope is unknown, and the walk
+        // admits everything: over-broad, i.e. toward STALE.
+        let before = cargo_rust_inputs(&build_dir, std::time::SystemTime::UNIX_EPOCH).1;
+        assert!(before.contains(&sibling_src), "{before:?}");
+
+        fs::write(
+            build_dir.join("build.ninja"),
+            format!(
+                "  COMMAND = cargo build --target-dir {}/cargo/nros-c-image_ce006 \
+                 && cargo build --target-dir {}/nano_ros_cpp_ffi_x/target\n",
+                build_dir.display(),
+                build_dir.display()
+            ),
+        )
+        .unwrap();
+
+        let now = std::time::SystemTime::now();
+        let future = now + std::time::Duration::from_secs(86_400);
+        let set_mtime = |p: &Path, t| {
+            fs::File::options()
+                .write(true)
+                .open(p)
+                .unwrap()
+                .set_times(fs::FileTimes::new().set_modified(t))
+                .unwrap()
+        };
+
+        set_mtime(&sibling_src, future);
+        let (newer, candidates) = cargo_rust_inputs(&build_dir, now);
+        assert_eq!(
+            newer, None,
+            "a sibling's generated image crate made this binary STALE: {candidates:?}"
+        );
+        assert!(candidates.contains(&own_src), "{candidates:?}");
+        assert!(!candidates.contains(&sibling_src), "{candidates:?}");
+        // The build-script record is scoped by the same rule. Both recorded
+        // paths are outside the repo, so compare via the walk directly.
+        let scope = CargoScope::of(&build_dir);
+        let outputs = find_build_script_outputs(&build_dir, "zpico-sys-", &scope, 0);
+        assert_eq!(outputs.len(), 1, "{outputs:?}");
+        assert!(
+            outputs[0].to_string_lossy().contains("nros-c-image_ce006"),
+            "{outputs:?}"
+        );
+
+        // …and this is not a probe that went blind: the leaf's OWN edit is seen.
+        set_mtime(&own_src, future);
+        assert_eq!(
+            cargo_rust_inputs(&build_dir, now).0.as_deref(),
+            Some(own_src.as_path())
         );
 
         fs::remove_dir_all(&tmp).unwrap();
