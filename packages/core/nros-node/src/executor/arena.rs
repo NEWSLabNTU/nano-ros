@@ -1556,6 +1556,41 @@ pub(crate) unsafe fn sub_buffered_has_data<M, F>(ptr: *const u8) -> bool {
 // In-place typed subscription (Phase 231 Wave 0.2 — RFC-0038)
 // ============================================================================
 
+/// The most samples ONE in-place dispatch takes before it returns (issue 1956).
+///
+/// An in-place entry reads the backend's receive ring directly, and that ring
+/// is refilled by a transport task that may run at a HIGHER priority than the
+/// executor. "Drain until empty" was then unbounded: under a flood the check
+/// for "empty" never came true, one `try_process` never returned, and no other
+/// entry on the executor (or any lower tier on the core) ran again. The
+/// buffered shapes never had this — they drain what was copied in.
+///
+/// Why 64 and not 1: every sample that was in the ring when the dispatch began
+/// should be taken in it, because one left behind waits for the NEXT spin, and
+/// a spin parks until something wakes it. A sample that ARRIVES during the
+/// dispatch raises that wake itself, so leaving it costs nothing. 64 covers
+/// every shipped ring depth (zenoh's default is 4) with room; a ring
+/// configured deeper still makes progress, a spin at a time.
+pub(crate) const IN_PLACE_DRAIN_LIMIT: usize = 64;
+
+/// Run one in-place `step` (one `process_raw_in_place`) until it reports no
+/// sample or [`IN_PLACE_DRAIN_LIMIT`] samples have been taken. The one
+/// spelling of the in-place drain, so no shape can fall back to "until
+/// empty". Returns whether any sample was dispatched.
+#[inline]
+pub(crate) fn drain_in_place(
+    mut step: impl FnMut() -> Result<bool, TransportError>,
+) -> Result<bool, TransportError> {
+    let mut did_work = false;
+    for _ in 0..IN_PLACE_DRAIN_LIMIT {
+        if !step()? {
+            break;
+        }
+        did_work = true;
+    }
+    Ok(did_work)
+}
+
 /// In-place typed subscription entry — **no arena buffer**.
 ///
 /// Unlike [`SubBufferedEntry`], this carries no trailing `BufferStrategy`: the
@@ -1574,8 +1609,8 @@ pub(crate) struct SubInplaceEntry<M, F> {
 
 /// Monomorphized in-place dispatch for typed subscriptions.
 ///
-/// Drains all pending messages from the backend, deserializing + invoking the
-/// callback directly from each borrowed slot. Returns `Ok(true)` if any message
+/// Drains pending messages from the backend, up to [`IN_PLACE_DRAIN_LIMIT`],
+/// deserializing + invoking the callback directly from each borrowed slot. Returns `Ok(true)` if any message
 /// was dispatched.
 ///
 /// # Safety
@@ -1597,8 +1632,7 @@ where
         age_mon,
         ..
     } = entry;
-    let mut did_work = false;
-    loop {
+    drain_in_place(|| {
         let mut deser_err = false;
         // Phase 8 — hooked inside the `Ok(msg)` arm of the borrow closure,
         // which the drain loop re-enters once per pending message: N
@@ -1624,13 +1658,59 @@ where
         if deser_err {
             return Err(TransportError::DeserializationError);
         }
-        if processed {
-            did_work = true;
-        } else {
-            break;
-        }
+        Ok(processed)
+    })
+}
+
+#[cfg(test)]
+mod in_place_drain_tests {
+    use super::*;
+
+    /// Issue 1956 — a ring a higher-priority task keeps refilling is never
+    /// empty at the check. The drain has to come back anyway.
+    #[test]
+    fn a_ring_that_never_empties_still_returns() {
+        let mut taken = 0usize;
+        let r = drain_in_place(|| {
+            taken += 1;
+            Ok(true)
+        });
+        assert_eq!(r, Ok(true));
+        assert_eq!(taken, IN_PLACE_DRAIN_LIMIT);
     }
-    Ok(did_work)
+
+    #[test]
+    fn an_emptied_ring_stops_the_drain_early() {
+        let mut left = 3usize;
+        let mut calls = 0usize;
+        let r = drain_in_place(|| {
+            calls += 1;
+            Ok(if left == 0 {
+                false
+            } else {
+                left -= 1;
+                true
+            })
+        });
+        assert_eq!(r, Ok(true));
+        assert_eq!(calls, 4, "three samples, then the empty check");
+        assert_eq!(drain_in_place(|| Ok(false)), Ok(false));
+    }
+
+    #[test]
+    fn a_failed_take_ends_the_drain_with_its_error() {
+        let mut calls = 0usize;
+        let r = drain_in_place(|| {
+            calls += 1;
+            if calls == 2 {
+                Err(TransportError::DeserializationError)
+            } else {
+                Ok(true)
+            }
+        });
+        assert_eq!(r, Err(TransportError::DeserializationError));
+        assert_eq!(calls, 2);
+    }
 }
 
 /// Readiness check for in-place typed subscriptions.
@@ -2188,8 +2268,8 @@ pub(crate) struct SubInplaceRawCEntry {
 
 /// Dispatch for in-place C-style raw subscriptions.
 ///
-/// Drains every pending sample, invoking the callback directly on the backend's
-/// borrowed slot. Returns `Ok(true)` if any sample was dispatched.
+/// Drains pending samples, up to [`IN_PLACE_DRAIN_LIMIT`], invoking the callback
+/// directly on the backend's borrowed slot. Returns `Ok(true)` if any sample was dispatched.
 ///
 /// # Safety
 /// `ptr` must point to a valid, aligned [`SubInplaceRawCEntry`].
@@ -2208,25 +2288,18 @@ pub(crate) unsafe fn sub_inplace_raw_c_try_process(
     } = entry;
     let context = *context;
     let callback = *callback;
-    let mut did_work = false;
-    loop {
+    drain_in_place(|| {
         // Phase 8 — hooked INSIDE the borrow closure, which the drain loop
         // re-enters once per pending sample, so N samples produce N spans. The
         // pair is fully contained in the closure, so the `?` below can never
         // fire between a start and its end.
-        let processed = handle.process_raw_in_place(|raw| {
+        handle.process_raw_in_place(|raw| {
             trace_take(desc_idx, raw, None);
             trace_cb_start(desc_idx);
             unsafe { callback(raw.as_ptr(), raw.len(), context) };
             trace_cb_end(desc_idx);
-        })?;
-        if processed {
-            did_work = true;
-        } else {
-            break;
-        }
-    }
-    Ok(did_work)
+        })
+    })
 }
 
 /// Readiness check for in-place C-style raw subscriptions.
@@ -2260,8 +2333,8 @@ pub(crate) struct SubInplaceRawEntry<F> {
 
 /// Dispatch for in-place Rust raw subscriptions.
 ///
-/// Drains every pending sample, invoking the callback directly on the
-/// backend's borrowed slot. Returns `Ok(true)` if any sample was dispatched.
+/// Drains pending samples, up to [`IN_PLACE_DRAIN_LIMIT`], invoking the callback
+/// directly on the backend's borrowed slot. Returns `Ok(true)` if any sample was dispatched.
 /// Same drain and the same trace pairing as [`sub_inplace_raw_c_try_process`],
 /// which it mirrors.
 ///
@@ -2275,24 +2348,17 @@ pub(crate) unsafe fn sub_inplace_raw_try_process<F: FnMut(&[u8])>(
     let entry = unsafe { &mut *(ptr as *mut SubInplaceRawEntry<F>) };
     // Split-borrow the handle from the callback (disjoint fields).
     let SubInplaceRawEntry { handle, callback } = entry;
-    let mut did_work = false;
-    loop {
+    drain_in_place(|| {
         // Hooked INSIDE the borrow closure, which the drain loop re-enters once
         // per pending sample, so N samples produce N spans and the `?` below
         // can never fire between a start and its end.
-        let processed = handle.process_raw_in_place(|raw| {
+        handle.process_raw_in_place(|raw| {
             trace_take(desc_idx, raw, None);
             trace_cb_start(desc_idx);
             callback(raw);
             trace_cb_end(desc_idx);
-        })?;
-        if processed {
-            did_work = true;
-        } else {
-            break;
-        }
-    }
-    Ok(did_work)
+        })
+    })
 }
 
 /// Readiness check for in-place Rust raw subscriptions.

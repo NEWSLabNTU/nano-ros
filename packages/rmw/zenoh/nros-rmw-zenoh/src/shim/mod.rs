@@ -39,6 +39,7 @@
 //! session.spin_once(core::time::Duration::from_millis(10))?;
 //! ```
 
+mod bump;
 pub mod entity_gid;
 pub mod occupancy;
 pub mod publisher;

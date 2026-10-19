@@ -1271,11 +1271,36 @@ static bool _zpico_history_admit(subscriber_entry_t* entry, const z_loaned_bytes
                                      &entry->hist_dropped, att, n) != 0;
 }
 
-/* The SPSC ring producer: one sample (live, or a history reply) into the next
- * free slot. Split out of `sample_handler` so the transient-local history reply
+static inline void zpico_slot_lock(struct zpico_session* s);
+static inline void zpico_slot_unlock(struct zpico_session* s);
+
+/* The ring producer: one sample (live, or a history reply) into the next free
+ * slot. Split out of `sample_handler` so the transient-local history reply
  * lands in the SAME ring through the SAME code -- the consumer cannot tell the
- * two apart, which is the point. Both callers run on the read task, so the
- * single-producer rule holds. */
+ * two apart, which is the point.
+ *
+ * Issue 1956 -- there is MORE THAN ONE producer, and this comment used to say
+ * there was not ("both callers run on the read task"). With
+ * Z_FEATURE_LOCAL_SUBSCRIBER a `z_put` delivers to a subscriber on the same
+ * session SYNCHRONOUSLY, on the PUBLISHER's task, and zenoh-pico calls the
+ * handler outside every session lock. So a tier that publishes a topic another
+ * tier subscribes to pushes into that ring while the read task pushes remote
+ * samples into it too. The tail update is a load and a later store: a producer
+ * preempted between the two stores a STALE tail after the other has advanced
+ * it, the consumer has meanwhile drained past it, and `head` is now AHEAD of
+ * `tail`. From then on the ring reads as non-empty forever (the consumer
+ * re-dispatches its last few slots) and as full to every new sample. That is
+ * the shape issue 1956 measured on the rt-eval island under flood, where the
+ * gate tier's forwarded command and the flood share
+ * `/control/command/control_cmd` and the actuator re-ran one sample ~289,000
+ * times.
+ *
+ * The producers serialize on the session's `slot_mutex`. Every producer of a
+ * ring is on that ring's session; under the lock this only copies bytes out of
+ * a sample it already holds, so it takes no zenoh-pico lock and cannot invert
+ * with one; and reusing it costs no second mutex per session (Zephyr's
+ * pthread mutexes come from a fixed pool). Notify runs after the unlock. */
+
 static void _zpico_ring_push(struct zpico_session* s, subscriber_entry_t* entry,
                              const z_loaned_bytes_t* payload, const z_loaned_bytes_t* attachment) {
     size_t payload_len = z_bytes_len(payload);
@@ -1292,13 +1317,18 @@ static void _zpico_ring_push(struct zpico_session* s, subscriber_entry_t* entry,
     if (payload_len == 0) {
         return;
     }
+    // The window dedup state `_zpico_history_admit` updates is per entry and
+    // shared by the same producers, so it is inside the lock too.
+    zpico_slot_lock(s);
     if (!_zpico_history_admit(entry, attachment)) {
+        zpico_slot_unlock(s);
         return;
     }
     zpico_ring_desc_t* r = entry->ring;
 
     // Acquire-load head (published by the Rust consumer) and a
-    // relaxed-load of our own tail. Ring full when the gap is
+    // relaxed-load of our own tail (only producers write it, and they
+    // hold the lock). Ring full when the gap is
     // slot_count — drop the newest message (matches DDS
     // KEEP_LAST overwrite-from-the-front intent loosely; a
     // dropped burst tail is reported via msg-lost accounting on
@@ -1306,6 +1336,7 @@ static void _zpico_ring_push(struct zpico_session* s, subscriber_entry_t* entry,
     uintptr_t head = atomic_load_explicit((const _Atomic uintptr_t*)r->head, memory_order_acquire);
     uintptr_t tail = atomic_load_explicit((_Atomic uintptr_t*)r->tail, memory_order_relaxed);
     if (tail - head >= r->slot_count) {
+        zpico_slot_unlock(s);
         // Ring full — drop. Still fire notify(len) so the Rust
         // side can observe the arrival for waker / lost-count.
         entry->notify(payload_len, NULL, 0, entry->ctx);
@@ -1316,6 +1347,7 @@ static void _zpico_ring_push(struct zpico_session* s, subscriber_entry_t* entry,
     uintptr_t slot = tail % r->slot_count;
     uint8_t* pay_dst = r->payload_base + slot * r->payload_stride;
     if (payload_len > r->payload_stride) {
+        zpico_slot_unlock(s);
         // Slot too small — report overflow via notify, don't
         // advance tail.
         entry->notify(payload_len, NULL, 0, entry->ctx);
@@ -1340,6 +1372,7 @@ static void _zpico_ring_push(struct zpico_session* s, subscriber_entry_t* entry,
     // Publish the slot: Release store advances tail so the Rust
     // consumer sees the payload + len writes above.
     atomic_store_explicit((_Atomic uintptr_t*)r->tail, tail + 1, memory_order_release);
+    zpico_slot_unlock(s);
 
     // Fire notify for the async waker. Pass NULL attachment —
     // the consumer reads the per-slot attachment array directly.

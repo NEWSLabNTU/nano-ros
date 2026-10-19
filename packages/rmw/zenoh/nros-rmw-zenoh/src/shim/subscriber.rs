@@ -622,23 +622,19 @@ pub(super) fn alloc_payload_block(rx_buffer_hint: usize) -> Option<(*mut u8, usi
         return None;
     }
     if rx_buffer_hint > SMALL_CLASS_CEILING {
-        let idx = NEXT_LARGE_PAYLOAD.fetch_add(1, Ordering::SeqCst);
-        if idx >= MAX_LARGE_SUBSCRIBERS {
-            NEXT_LARGE_PAYLOAD.fetch_sub(1, Ordering::SeqCst);
+        let Some(idx) = super::bump::claim(&NEXT_LARGE_PAYLOAD, MAX_LARGE_SUBSCRIBERS) else {
             record_alloc(rx_buffer_hint, 2);
             return None;
-        }
+        };
         // Safety: idx is in-bounds; LARGE_PAYLOADS is a static with a stable address.
         let base = unsafe { (&raw mut LARGE_PAYLOADS[idx]) as *mut u8 };
         record_alloc(rx_buffer_hint, 0);
         Some((base, SUBSCRIBER_LARGE_SIZE))
     } else {
-        let idx = NEXT_SMALL_PAYLOAD.fetch_add(1, Ordering::SeqCst);
-        if idx >= ZPICO_MAX_SUBSCRIBERS {
-            NEXT_SMALL_PAYLOAD.fetch_sub(1, Ordering::SeqCst);
+        let Some(idx) = super::bump::claim(&NEXT_SMALL_PAYLOAD, ZPICO_MAX_SUBSCRIBERS) else {
             record_alloc(rx_buffer_hint, 3);
             return None;
-        }
+        };
         // Safety: idx is in-bounds; SMALL_PAYLOADS is a static with a stable address.
         let base = unsafe { (&raw mut SMALL_PAYLOADS[idx]) as *mut u8 };
         record_alloc(rx_buffer_hint, 0);
@@ -1177,15 +1173,16 @@ impl ZenohSubscriber {
         let liveliness_keyexpr: heapless::String<256> =
             super::Ros2Liveliness::publisher_keyexpr_wildcard(topic.domain_id, topic);
         // Allocate a buffer index
-        let buffer_index = NEXT_BUFFER_INDEX.fetch_add(1, Ordering::SeqCst);
-        if buffer_index >= ZPICO_MAX_SUBSCRIBERS {
-            // Roll back and return error
-            // BEFORE the rollback, and the INDEX rather than the counter --
-            // the first cut read the counter afterwards and reported 0 for a
-            // pool of 10, which is the wrong-number-that-looks-like-a-number
-            // this record exists to stop producing.
-            record_buffer_index(buffer_index);
-            NEXT_BUFFER_INDEX.fetch_sub(1, Ordering::SeqCst);
+        // Issue 1956 -- `bump::claim`, not `fetch_add` + a `fetch_sub` undo: the
+        // undo could move the cursor below a slot another tier had just
+        // claimed, and the next create then got that LIVE ring a second time.
+        let Some(buffer_index) = super::bump::claim(&NEXT_BUFFER_INDEX, ZPICO_MAX_SUBSCRIBERS)
+        else {
+            // The INDEX this create would have taken, not a counter read that
+            // could be 0 for a pool of 10 -- the wrong-number-that-looks-like-
+            // a-number this record exists to stop producing. A refused claim
+            // leaves the cursor at the table's size, which is that index.
+            record_buffer_index(ZPICO_MAX_SUBSCRIBERS);
             // phase-412 -- refusal 4. This guard runs BEFORE the payload classes,
             // so without recording here the report shows every block allocated
             // and no refusal, and the failure looks like it came from somewhere
@@ -1195,13 +1192,13 @@ impl ZenohSubscriber {
             // identity.
             record_alloc(topic.rx_buffer_hint, 4);
             return Err(TransportError::SubscriberCreationFailed);
-        }
+        };
 
         // Phase 231 (RFC-0038) — reserve a size-class payload block (small vs
         // large by the topic's rx_buffer_hint). Roll back the metadata index if
         // the class is exhausted.
         let Some((payload_base, payload_stride)) = alloc_payload_block(topic.rx_buffer_hint) else {
-            NEXT_BUFFER_INDEX.fetch_sub(1, Ordering::SeqCst);
+            super::bump::release(&NEXT_BUFFER_INDEX, buffer_index);
             return Err(TransportError::SubscriberCreationFailed);
         };
 
@@ -1222,6 +1219,7 @@ impl ZenohSubscriber {
         let bytes = key.as_bytes();
         record_keyexpr(bytes.len(), KEYEXPR_STRING_SIZE);
         if bytes.len() >= keyexpr_buf.len() {
+            super::bump::release(&NEXT_BUFFER_INDEX, buffer_index);
             return Err(TransportError::TopicNameInvalid);
         }
         keyexpr_buf[..bytes.len()].copy_from_slice(bytes);
@@ -1251,7 +1249,7 @@ impl ZenohSubscriber {
                     crate::zpico::Subscriber<'static>,
                 >(s),
                 Err(e) => {
-                    NEXT_BUFFER_INDEX.fetch_sub(1, Ordering::SeqCst);
+                    super::bump::release(&NEXT_BUFFER_INDEX, buffer_index);
                     // phase-412 -- read the C shim's exit marker and raw code
                     // BEFORE anything else can call the function again. The
                     // mapped ZpicoError cannot say which of five exits ran, and
