@@ -1,0 +1,67 @@
+---
+id: 1980
+title: "The entity-wake race test reports a lost dispatch when its own publish failed, and the publish failed in a tier-1 run on main"
+status: open
+type: bug
+area: [testing, runtime, zenoh]
+severity: medium
+found: 2026-10-19
+related: [phase-397, 1979, 1956]
+---
+
+## Measured
+
+- Run: host-tests 39194192517 (tier 1, schedule, 2026-10-19 03:20 UTC).
+- Job: 117873262543, `tier-1 gates (just check)`. The failing gate is
+  `required-features-tests` (`check-build (parallel): 1 of 26 gate(s) FAILED`).
+- The one failing test:
+  `nros-tests::entity_wake an_arrival_racing_a_drain_is_never_left_undispatched::case_1_drains_to_empty`,
+  at 5.215 s. Its sibling `case_2_one_sample_per_dispatch` passed in the same run.
+- Two panics, in this order:
+
+```
+panicked at packages/testing/nros-tests/tests/entity_wake.rs:507:13:
+DrainsToEmpty round 0: sample 3, published while a callback ran (None), was never dispatched (latest 2); an arrival that raced a dispatch was lost
+
+thread '<unnamed>' panicked at packages/testing/nros-tests/tests/entity_wake.rs:475:47:
+publish: Transport(PublishFailed)
+```
+
+The test landed with #2408 (phase-397 W5), merged a few hours before this run.
+
+## Reading
+
+The verdict blames the executor, but the evidence points at the publish. The
+`<unnamed>` thread is the publisher. Line 475 is its
+`publish_raw(...).expect("publish")`. It panicked before it could send on
+`raced_tx`, which is why the main loop reports the race as `None`.
+
+So in round 0, sample 3 (the burst's last sample) was most likely never
+published. The main loop waited out `ARRIVAL_BUDGET` for a sample that did
+not exist, then printed the "an arrival that raced a dispatch was lost"
+message. The test then reports a lost dispatch for what was a failed publish.
+
+The order of the two panic messages is not evidence by itself, because
+stderr from two threads interleaves. But `(None)` is: `raced_tx` sends only
+after `publish(last)` returns.
+
+## What it is NOT
+
+- Not shown to be an executor defect. Nothing here says an arrival was
+  dropped.
+- Not issue 1979 (a full ring drops the newest sample). That needs 4 samples
+  queued, and this burst stopped at sample 3, with the publish itself failing.
+- Not stale-fixture noise: tier 1 builds and tests in the same job.
+
+## What would close it
+
+1. **The test reports what happened.** The publisher thread's failure must
+   reach the verdict. Join it, or send its `Result` back on the channel, and
+   fail with "publish failed: …" rather than the lost-arrival message. That
+   is a test fix, and it separates the two failures from now on.
+2. **Then the publish failure gets its own answer.** Find why `publish_raw`
+   returned `Transport(PublishFailed)` in a loaded tier-1 job. The same job
+   also runs the parallel `check build` gates. It may be zenoh-pico's TX path
+   refusing under load, or a session not yet ready when round 0 begins. The
+   test publishes immediately after `create_publisher_raw`, with no wait for
+   the session to settle.
