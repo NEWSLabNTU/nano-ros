@@ -3,14 +3,19 @@
 #include "bulk_listener_pkg/BulkListener.hpp"
 
 #include <cstdio>
-#include <cstdlib>
 
 namespace bulk_listener_pkg {
 
 void BulkListener::on_msg(const ::std_msgs::msg::String& msg) {
     ++recv_;
-    // `strtoul` stops at the `:` the publisher puts after the number.
-    unsigned long seq = std::strtoul(msg.data.c_str(), nullptr, 10);
+    // The leading decimal digits, up to the `:` the publisher puts after the
+    // number. Parsed by hand, not with `strtoul`: under the FreeRTOS
+    // toolchain's `-ffreestanding` the C++ library declares no `strtoul`,
+    // in `std` or globally, so the image failed to compile.
+    unsigned long seq = 0;
+    for (const char* p = msg.data.c_str(); *p >= '0' && *p <= '9'; ++p) {
+        seq = seq * 10 + static_cast<unsigned long>(*p - '0');
+    }
     std::printf("Received bulk: seq=%lu len=%u n=%lu\n", seq,
                 static_cast<unsigned>(msg.data.length()), recv_);
 }
