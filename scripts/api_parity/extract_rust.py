@@ -372,6 +372,30 @@ def _is_message_module(name):
     return any(name.endswith(sfx) for sfx in MESSAGE_MODULES)
 
 
+# Where cargo unpacks a dependency it did not build from this tree: crates.io
+# sources and git checkouts, under any CARGO_HOME.
+DEPENDENCY_SPAN = re.compile(r"/(registry/src|git/checkouts)/")
+
+
+def dependency_records(records):
+    """(own, dependency) -- split OUR records by whether this tree declared them.
+
+    `pub use nros_core::heapless;` re-exports a whole crates.io crate, so its
+    `Vec`, `Deque` and `spsc::Queue` reach the facade's surface. They are
+    heapless's API, versioned by heapless, and no ledger row of ours can say
+    anything true about them. Applied to OUR side only: THEIR side is a
+    recorded surface, filtered by `public_surface` at report time.
+    """
+    own, dep = [], []
+    for rec in records:
+        (dep if DEPENDENCY_SPAN.search(rec.get("header") or "") else own).append(rec)
+    return own, dep
+
+
+def _crate_name(doc):
+    return doc["index"].get(str(doc["root"]), {}).get("name")
+
+
 def surface(docs, doc, crate_prefix):
     """Flatten a rustdoc JSON crate into records rooted at its top-level module.
 
@@ -385,16 +409,24 @@ def surface(docs, doc, crate_prefix):
 
     def walk_module(d, item_id, path):
         d2, it = docs.resolve(d, item_id)
+        walk_items(d2, it, path)
+
+    def walk_items(d, it, path):
+        # `d` must be the doc that DEFINES `it`: a module's child ids are
+        # numbered by that crate, and only by that crate.
         if it is None:
             return
         mod = it.get("inner", {}).get("module")
         if mod is None:
             return
         for child in mod.get("items", []):
-            emit(d2, child, path)
+            emit(d, child, path)
 
     def emit(d, item_id, path):
-        key = (str(item_id), path)
+        # Ids are per-crate, so the crate is part of the key (issue 1986): a
+        # glob re-export emits the other crate's children at the facade's own
+        # path, where an equal id would otherwise dedup a different item away.
+        key = (_crate_name(d), str(item_id), path)
         if key in seen:
             return
         seen.add(key)
@@ -426,8 +458,12 @@ def surface(docs, doc, crate_prefix):
             return
 
         if kind == "module":
+            # Walk the item already resolved, not `item_id`: for a
+            # `pub use other_crate::module;` that id is the RE-EXPORTER's, and
+            # `d` is now the defining crate, where the same number names some
+            # unrelated item or nothing (issue 1986).
             if name and not _is_message_module(name):
-                walk_module(d, item_id, qual)
+                walk_items(d, it, qual)
             return
 
         if kind == "function":
@@ -523,3 +559,76 @@ def surface(docs, doc, crate_prefix):
             file=sys.stderr,
         )
     return out
+
+
+def _fixture_doc(name, items, paths, external=None):
+    """A minimal rustdoc JSON crate for `self_test`: `items` maps id -> item."""
+    return {
+        "root": 0,
+        "index": dict({"0": {"name": name, "visibility": "public",
+                             "inner": {"module": {"items": items.pop("root")}}}},
+                      **{str(k): v for k, v in items.items()}),
+        "paths": {str(k): {"crate_id": c, "path": p} for k, (c, p) in paths.items()},
+        "external_crates": external or {},
+    }
+
+
+def self_test():
+    """Walk synthetic two-crate rustdoc JSON (issue 1986).
+
+    The ids are chosen to collide: the facade numbers its re-export of
+    `defn::exec::pp` 7, and in `defn` 7 is an unrelated function. A walk that
+    looks the facade's id up in `defn` loses `pp`'s items without a word.
+    """
+    import tempfile
+
+    failures = []
+
+    def fn(name):
+        return {"name": name, "visibility": "public",
+                "inner": {"function": {"sig": {"inputs": [], "output": None}}}}
+
+    def module(name, items):
+        return {"name": name, "visibility": "public", "inner": {"module": {"items": items}}}
+
+    def use(name, target, glob=False):
+        return {"name": name, "visibility": "public",
+                "inner": {"use": {"name": name, "id": target, "is_glob": glob}}}
+
+    defn = _fixture_doc(
+        "defn",
+        {"root": [3, 2], 3: module("exec", [4]), 4: module("pp", [5]),
+         5: fn("install_pp"), 7: fn("decoy"), 2: fn("from_defn")},
+        {0: (0, ["defn"]), 3: (0, ["defn", "exec"]), 4: (0, ["defn", "exec", "pp"])},
+    )
+    facade = _fixture_doc(
+        "facade",
+        # `pub use defn::exec::pp;`, `pub use defn::*;`, and a function of its
+        # own whose id (2) equals one the glob brings in from `defn`.
+        {"root": [1, 6, 2], 1: use("pp", 7), 6: use("defn", 8, glob=True), 2: fn("own")},
+        {7: (1, ["defn", "exec", "pp"]), 8: (1, ["defn"])},
+        external={"1": {"name": "defn"}},
+    )
+    with tempfile.TemporaryDirectory() as tmp:
+        for d in (defn, facade):
+            with open(os.path.join(tmp, _crate_name(d) + ".json"), "w") as fh:
+                json.dump(d, fh)
+        docs = Docs(tmp)
+        got = sorted(r["qual"] for r in surface(docs, docs.crate("facade"), "facade"))
+    for want in ("facade::pp::install_pp", "facade::own", "facade::from_defn"):
+        if want not in got:
+            failures.append("extract_rust (issue 1986): %s not extracted, got %r" % (want, got))
+    if "facade::pp::decoy" in got:
+        failures.append("extract_rust (issue 1986): walked defn's id 7 as the module")
+
+    own, dep = dependency_records([
+        {"header": "packages/core/nros-node/src/executor/port_park.rs"},
+        {"header": "/tmp/t/debug/build/nros-0/out/nros_runtime_config.rs"},
+        {"header": "/home/u/.cargo/registry/src/index.crates.io-0/heapless-0.8.0/src/vec.rs"},
+        {"header": "/opt/cargo/git/checkouts/foo-0/abc/src/lib.rs"},
+        {"header": ""},
+    ])
+    if (len(own), len(dep)) != (3, 2):
+        failures.append("extract_rust: dependency_records split %d/%d, want 3/2"
+                        % (len(own), len(dep)))
+    return failures

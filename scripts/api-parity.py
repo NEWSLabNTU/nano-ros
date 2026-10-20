@@ -511,7 +511,15 @@ def ours_rust(tmpdir):
         features=extract_rust.NROS_FEATURES,
     )
     docs = extract_rust.Docs(docdir)
-    return extract_rust.surface(docs, docs.crate("nros"), "nros")
+    records = extract_rust.surface(docs, docs.crate("nros"), "nros")
+    # A re-exported third-party crate (`nros::heapless`) is that crate's API,
+    # not ours -- reachable only since issue 1986 let a cross-crate module
+    # re-export be walked at all. Counted, so the cut is never silent.
+    records, dep = extract_rust.dependency_records(records)
+    if dep:
+        print("note: %d record(s) declared in a dependency crate excluded from "
+              "OUR surface" % len(dep), file=sys.stderr)
+    return records
 
 
 # --------------------------------------------------------------------------
@@ -3247,6 +3255,7 @@ def self_test():
     check("a later edition reads its own surface directory",
           theirs_path("cpp", "jazzy"), os.path.join(SURFACE_DIR, "jazzy", "rclcpp.json"))
 
+    failures.extend(extract_rust.self_test())
     failures.extend(public_surface.self_test())
     failures.extend(signature_rules.self_test())
     failures.extend(topics.self_test())
