@@ -4,14 +4,15 @@ title: "`examples/workspaces/features/src/custom_msgs` declares
   `rosidl_default_generators` and `rosidl_default_runtime`, which resolve to
   nothing on a ROS-less host — so the `native` module of the tier-2 build refuses
   the fixture"
-status: open
+status: resolved
 type: bug
 area: ci, examples, cli
 severity: high
-related: [1158, 1357, 0662, 0967, rfc-0033, phase-466]
+related: [1158, 1357, 0662, 0967, 1509, rfc-0033, phase-466]
+resolved_in: 2026-10-21
 ---
 
-**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+**Home: [phase-466](../../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## What happens
 
@@ -111,3 +112,47 @@ The unit's `Error:` text is interleaved with 25 other units' output, and only
 here), so a reader of the tail sees 25 successes followed by `exit code 2`.
 
 Not issue 1665 (the Zephyr module built), not 1277 (esp32 built), not disk.
+
+## Resolution
+
+**Both sites were fixed in October.** Each name now resolves with no ROS
+installed, and each one twice over:
+
+- `rosidl_default_generators` / `rosidl_default_runtime`:
+  - `eb838d418b` (2026-10-02) lets a `rosidl_interface_packages` member satisfy
+    them itself (`ROSIDL_SERVED_BY_CODEGEN`).
+  - `91359af501` (phase-482 W1, 2026-10-07) ships `cmake/find/Findrosidl_default_*.cmake`.
+- `rclcpp` (`workspace-shadowing`): `b0feb69658` (2026-10-06) resolves the ROS
+  packages nano-ros's CMake package supplies (one `Find<pkg>.cmake` each,
+  `nano_ros_provided_packages`), and `91359af501` moved them to `cmake/find`.
+
+Item 1 is answered by the first fix: the declarations are not vestigial.
+`nros sync` serves them, so they stay. No `NROS_ALLOW_UNRESOLVED_DEPS` is
+involved anywhere.
+
+**Item 3, the check, was still missing, and this change adds it.**
+`declared_depends_resolve.rs` (issue 1509 rule 2) could not fail on this
+class. On a host with ROS the ament rung answers a ROS-only name. On a ROS-less
+host the reading is NOT VERIFIED. Neither ever failed on `custom_msgs`.
+
+- `declared_depends_report_with_ament` takes the ament rung as an argument
+  (`declared_depends_report` passes `AMENT_PREFIX_PATH`'s, as before). The
+  input is lifted to the boundary, the issue 1313 shape, and the environment is never written.
+- New test `every_example_workspace_depend_resolves_without_ros` asks every
+  example root (27, the `--list-roots` scope) with the ament rung EMPTY. That is
+  the tier-2 runner's question, and it gives a verdict on any host. It runs in `check-cli-tests`, which is on the
+  required pull-request context.
+- New negative control `a_ros_only_depend_is_refused_without_ros`: a name that
+  only the ament rung holds resolves when the rung has it and FAILS when it is
+  empty, while `rclcpp` (`cmake/find`) still resolves.
+
+| Mutation (restored, cmp clean) | Old test | New test |
+| --- | --- | --- |
+| none | pass | pass (27 roots, 0 failures) |
+| `ROSIDL_SERVED_BY_CODEGEN` rule off **and** both `Findrosidl_default_*.cmake` hidden (1592's original state) | pass | **FAIL**: `features/custom_msgs` and `templates/local-msg-package`, both names |
+| `cmake/find/Findrclcpp.cmake` hidden (the second site) | fails only on ROS-less hosts as NOT VERIFIED | **FAIL**: `rclcpp`, named |
+
+On the lanes: the 2026-10-20 run-matrix jobs (118488124531, 118507538649) and
+the tier-2 nightly job (118503733224) each build under
+`examples/workspaces/features/build`, and none of the three logs contains
+`resolve to nothing`. Those lanes are still red, for other issues.

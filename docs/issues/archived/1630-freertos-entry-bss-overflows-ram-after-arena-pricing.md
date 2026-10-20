@@ -3,15 +3,16 @@ id: 1630
 title: "`freertos_entry`'s `.bss` overflows `RAM` by 151,016 bytes on
   mps2-an385-freertos — the first nightly after the per-kind arena pricing landed,
   on a lane that was green the three nightlies before"
-status: open
+status: resolved
 type: bug
 area: [freertos, executor, build]
 severity: high
 found: 2026-10-02
-related: [issue-1145, issue-0810, issue-1340, issue-1171, phase-394]
+related: [issue-1145, issue-0810, issue-1340, issue-1171, issue-1598, phase-394]
+resolved_in: 2026-10-02
 ---
 
-**Home: [phase-394](../roadmap/phase-394-memory-campaign-ledger.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+**Home: [phase-394](../../roadmap/phase-394-memory-campaign-ledger.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## Measured
 
@@ -96,3 +97,55 @@ Acceptance: the 07:13 nightly's `freertos` job links again, and whatever number
 changed is written down next to the board rather than left derived — issue 1146's
 lesson about `app_stack_bytes`, where a bisected constant stood for phases before
 anyone measured it.
+
+## Resolution
+
+**Fixed 2026-10-02 by `fba1b024a9`** ("the FreeRTOS heap default stops
+reserving the tier stacks twice"), the same day the issue was filed. The
+issue stayed open. **The leading candidate above was wrong**: per-kind
+arena pricing (PR #1538) did not cause this.
+
+**The image.** The link that overflowed was
+`examples/workspaces/realtime-cpp/build/freertos-zenoh-mps2-an385-freertos/cmake/freertos_entry`
+(fixture row `workspace-cpp-freertos-realtime`, `demo_bringup:freertos`, the C++
+cmake road). `board_mps2.c.obj` and `nros_app_register_backends.c.obj`, quoted
+above, belong to the `c` and `realtime-c` links just before it, which passed.
+
+**The cause.** Issue 1598 (`0ba0600e5c`, `fe3f012c9b`, both inside `27070bdbd`)
+moved the two spawned tiers' task stacks (2 × 256 KiB) out of heap_4 and into
+`.bss` statics. On the cmake road `freertos_kernel` never runs the board
+`build.rs`, so `ucHeap` kept `FreeRTOSConfig.h`'s 3 MiB default, and the
+stacks were reserved twice: in `.bss` and still inside the heap. The fix has
+codegen emit `NROS_TIER_STACKS_BSS_BYTES`, which `nano_ros_entry` turns into
+`NROS_FREERTOS_TIER_STACKS_IN_BSS_KB` (PUBLIC on `freertos_kernel`). The
+`FreeRTOSConfig.h` default becomes `3072 − that`. Its commit message measures
+the same image: overflow 151,024 B before, `ucHeap` 0x280000 after, links.
+
+**Verified (2026-10-21).**
+- Nightly history: the `freertos` job was green from the next nightly
+  (37105887851, 2026-10-03, head `4c1e2dd0b5`, which contains `fba1b024a9`).
+  Its log builds realtime-cpp with no `overflowed` line.
+- Later reds of that job (10-10..10-12, 10-18..10-20) are other failures with no `overflowed` line.
+  The 10-20 one was checked: it builds this image (`Built target freertos_entry`)
+  and fails on `BulkListener.cpp`'s `std::strtoul`.
+- Local build at `e9835ab8ff` of the nightly's exact command
+  (`nros build demo_bringup:freertos --workspace . --offline -- -DNROS_RMW=zenoh
+  -DNROS_PLATFORM=freertos -DNROS_BOARD=mps2-an385-freertos …`, exit 0), read
+  with `arm-none-eabi-size -A` and `just mem-report`:
+
+| | bytes |
+| --- | ---: |
+| `RAM` region (`mps2_an385.ld`, unchanged since `27070bdbd`) | 4,194,304 |
+| `.data` + `.bss` + `._check_stack` | 3,805,152 |
+| headroom | **389,144** |
+| `ucHeap` | 2,621,440 (0x280000) |
+| `__nros_tier_stack_0` / `_1` | 262,144 each |
+| `__nros_tier_executor_storage` (the C++ executor arena) | 251,280 |
+
+Today's headroom minus the 524,288 B the fix freed is −135,144, which is the order of
+the original −151,016. The ~16 KB difference is other `.bss` drift since then. The
+arena is 6.6 % of `RAM` on this image.
+
+**Not done.** The issue asked for "whatever number changed is written down next
+to the board". That number is now derived: `ucHeap` follows the tier
+stacks by construction. No constant was added beside the board.

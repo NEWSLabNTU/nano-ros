@@ -3,15 +3,16 @@ id: 1590
 title: "A `threadx_riscv64` RUST leaf built with `-DNROS_RMW=cyclonedds` links no
   Cyclone backend archive, so the generated typesupport's registration
   constructor has no `nros_rmw_cyclonedds_register_descriptor` to call"
-status: open
+status: resolved
 type: bug
 area: build, cmake, rmw, boards, threadx
 severity: high
 found: 2026-09-30
 related: [1355, 1467, 0425, 1557, 1158, phase-466]
+resolved_in: 2026-10-02
 ---
 
-**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+**Home: [phase-466](../../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## What happens
 
@@ -148,3 +149,36 @@ Same count, same symbol, two different lanes and two different heads. Worth
 noting for 1158's axis as well: this tier-2 run **reached the build stage** —
 its failure is a link error, not a provisioning one — so a `failure` on
 `run-matrix` is not automatically the never-reached-the-cells shape.
+
+## Resolution
+
+**Fixed 2026-10-02 by `be2d7efd39`** ("a Rust runtime carrier links the cmake
+RMW backend"). The issue stayed open.
+
+**Item 2: issue 1467 was the cause.** The hypothesis above held. The leaves build
+their crate with `nros-rmw-cyclonedds-sys` at `default-features = false`, so
+the Cyclone C++ backend is not vendored into the Rust staticlib and must come
+from cmake. The runtime umbrella was the only thing that ever whole-archived it,
+and 1467 drops the umbrella for a binary that carries its own Rust runtime.
+
+**The fix respects 0425/1467's rule.** It keys on the consumer, not the tree. The root wires a
+`cmake`-strategy backend into an umbrella-free INTERFACE target,
+`NanoRosRmwBackend`, through the same `_nros_link_cmake_rmw` helper the
+umbrellas use (whole-archive, with `libddsc.a` riding along). `nano_ros_link_rmw`
+links that target only into a target that declared itself a Rust runtime
+carrier, and only for the RMW being linked. The condition is that property,
+so it covers every Rust-staticlib leaf on a cmake-linked backend, not just
+ThreadX/riscv64. A C/C++ binary never declares the property, so nothing is
+whole-archived twice. The commit's negative control (its `if` forced false)
+reproduces CI's exact `undefined symbol`.
+
+**Measured 2026-10-21 at `a745966b03`:** `just threadx_riscv64
+build-fixture-extras` (the recipe that failed in tier 2) exits 0 and links all
+**12/12** rust leaves, all six `build-cyclonedds/` images included. In
+`riscv64_threadx_rust_talker`,
+`nros_rmw_cyclonedds_register_descriptor` is `T` (defined) and 294 `dds_`
+text symbols are present. The leaf's `build.ninja` names
+`libnros_rmw_cyclonedds.a` and `libddsc.a`.
+
+**Item 3:** issue 1355 still owns the lane's cell verdict. The images were not
+booted here.

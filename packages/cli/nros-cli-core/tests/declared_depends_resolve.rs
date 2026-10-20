@@ -32,7 +32,7 @@ use std::{
 
 use nros_cli_core::{
     builder::discover,
-    cmd::build::{DependsReport, declared_depends_report},
+    cmd::build::{DependsReport, declared_depends_report, declared_depends_report_with_ament},
 };
 
 fn repo_root() -> PathBuf {
@@ -137,6 +137,118 @@ fn every_example_workspace_depend_resolves() {
         roots.len(),
         failures.len(),
         not_verified.len()
+    );
+}
+
+/// Issue 1592 — every example workspace resolves on a host with NO ROS.
+///
+/// The test above cannot fail on a name only ament provides: where ROS is
+/// installed the ament rung answers it, and where it is not the reading is
+/// NOT VERIFIED. That is how `features/custom_msgs`' `rosidl_default_*` and
+/// `workspace-shadowing`'s `rclcpp` reached the tier-2 runner, which has no
+/// ROS by design and refused both at `nros build`. So this asks the ROS-less
+/// host's question, with the ament rung EMPTY, from any host — a verdict
+/// either way, not a NOT VERIFIED.
+#[test]
+fn every_example_workspace_depend_resolves_without_ros() {
+    let repo = repo_root();
+    let mut failures = Vec::new();
+    let roots = scope_roots(&repo);
+    for root in &roots {
+        let rel = root
+            .strip_prefix(&repo)
+            .unwrap_or(root)
+            .display()
+            .to_string();
+        let r = report_without_ros(root, &repo);
+        for u in &r.unresolved {
+            failures.push(format!(
+                "{rel}: `{}` resolves only through an ament index (declared by {})",
+                u.name,
+                u.declared_by.join(", ")
+            ));
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "{} <depend> name(s) in the example workspaces resolve only on a host \
+         with ROS installed (issue 1592):\n  {}\n\nThe tier-2 runner has no ROS, \
+         so `nros build` refuses these there. Drop the declaration if nothing \
+         needs it, or make nano-ros provide it: a `Find<pkg>.cmake` in \
+         cmake/find, a bundled message package, or a `[prereq.*]` key whose \
+         role is `package`.",
+        failures.len(),
+        failures.join("\n  ")
+    );
+    eprintln!(
+        "declared_depends_resolve (no ROS): {} root(s), {} failure(s)",
+        roots.len(),
+        failures.len()
+    );
+}
+
+fn report_without_ros(root: &Path, repo: &Path) -> DependsReport {
+    let members = discover::cargo_members_or_walk(root);
+    let found = discover::discover(root, &members)
+        .unwrap_or_else(|e| panic!("{}: discover failed: {e}", root.display()));
+    declared_depends_report_with_ament(root, &found.packages, Some(repo), Default::default())
+        .unwrap_or_else(|e| panic!("{}: ladder failed: {e:#}", root.display()))
+}
+
+/// Issue 1592's negative control: a ROS package nano-ros does not provide
+/// resolves when the ament rung holds it and FAILS when it is empty — so the
+/// test above reads the ROS-less ladder, not the host's.
+#[test]
+fn a_ros_only_depend_is_refused_without_ros() {
+    let repo = repo_root();
+    let ws = repo
+        .join("tmp")
+        .join(format!("declared-depends-rosonly-{}", std::process::id()));
+    let pkg = ws.join("src/talker_pkg");
+    std::fs::create_dir_all(&pkg).unwrap();
+    std::fs::write(ws.join(".colcon_workspace"), "").unwrap();
+    std::fs::write(
+        pkg.join("package.xml"),
+        r#"<?xml version="1.0"?>
+<package format="3">
+  <name>talker_pkg</name>
+  <version>0.1.0</version>
+  <description>negative control</description>
+  <maintainer email="dev@example.com">dev</maintainer>
+  <license>Apache-2.0</license>
+  <depend>rclcpp</depend>
+  <depend>nros_test_ros_only_pkg</depend>
+  <export><build_type>ament_cmake</build_type></export>
+</package>
+"#,
+    )
+    .unwrap();
+    let members = discover::cargo_members_or_walk(&ws);
+    let found = discover::discover(&ws, &members).unwrap();
+    let with_ros = declared_depends_report_with_ament(
+        &ws,
+        &found.packages,
+        Some(&repo),
+        ["nros_test_ros_only_pkg".to_string()].into(),
+    )
+    .unwrap();
+    let without = report_without_ros(&ws, &repo);
+    let _ = std::fs::remove_dir_all(&ws);
+    assert!(
+        with_ros.unresolved.is_empty(),
+        "the ament rung must resolve a name it holds — got {:?}",
+        with_ros
+            .unresolved
+            .iter()
+            .map(|u| &u.name)
+            .collect::<Vec<_>>()
+    );
+    let names: Vec<&str> = without.unresolved.iter().map(|u| u.name.as_str()).collect();
+    assert_eq!(
+        names,
+        vec!["nros_test_ros_only_pkg"],
+        "with no ament index a ROS-only name must be refused, while `rclcpp` \
+         (nano-ros's own cmake/find module) still resolves — got {names:?}"
     );
 }
 
