@@ -88,26 +88,33 @@ rclc_subscription_set_liveliness_changed_callback(
     sub, on_liveliness_changed, NULL);
 ```
 
-Same shape on the four other event kinds. Each returns
-`NROS_RMW_RET_UNSUPPORTED` if the active backend doesn't generate
-that event.
+Same shape on the four other event kinds.
+
+> **Not wired yet (issue 1993).** These five C setters, and their five
+> C++ twins below, currently return `RCL_RET_UNSUPPORTED` /
+> `ErrorCode::Unsupported` UNCONDITIONALLY — on every backend, including
+> Cyclone DDS and zenoh-pico, which do generate the events. The callback
+> is never stored. Until issue 1993 lands, the Tier-1 events are reachable
+> from Rust (`nros-node`'s `on_*`) only.
 
 ### C++
 
 ```cpp
-sub.on_liveliness_changed([&](rclcpp::LivelinessChangedStatus status) {
+static void on_liveliness_changed(void* storage,
+                                  nros_cpp_liveliness_changed_status_t status,
+                                  void* user_context) {
     if (status.alive_count == 0) trigger_failover();
-});
+}
 
-sub.on_requested_deadline_missed(
-    std::chrono::milliseconds(15),
-    [&](rclcpp::DeadlineMissedStatus status) {
-        late_count_ += status.total_count_change;
-    });
+// On `rclcpp::PollingSubscription` / `rclcpp::Publisher`.
+sub.on_liveliness_changed(on_liveliness_changed, nullptr);
+sub.on_requested_deadline_missed(15 /* ms */, on_deadline_missed, nullptr);
 ```
 
-`std::function` overloads available with `NROS_CPP_STD`; freestanding
-mode uses C function pointers + user-context.
+C function pointers + `user_context` only; there are no lambda or
+`std::function` overloads. The subscription-side setters exist on
+`PollingSubscription` alone. Same caveat as C: they currently answer
+`ErrorCode::Unsupported` on every backend (issue 1993).
 
 ## How dispatch works
 
