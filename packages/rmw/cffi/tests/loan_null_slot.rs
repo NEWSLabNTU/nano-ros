@@ -1,26 +1,23 @@
-//! issue 0814 — the HEAP-FREE arm of the loan fallback must report a
-//! PERMANENT condition, not a transient one.
+//! issue 0814 — a backend whose vtable has no `borrow_loaned_message` cannot
+//! lend, and `try_lend_slot` must say so PERMANENTLY, the same way in every
+//! build.
 //!
-//! This is the `not(alloc)` twin of `loan_fallback.rs`, which covers the
-//! same backend shape (`borrow_loaned_message == NULL`) with a heap. The
-//! two cfgs are mutually exclusive by construction, so both files are
-//! load-bearing and neither subsumes the other.
+//! That is a static fact about the publisher, so it cannot depend on the
+//! build. Until option 2 of 0814 it did: a heap-free build refused, while an
+//! `alloc` build handed out a staging `Box` + `Vec`, had the caller encode
+//! into it exactly as into its own buffer, then `publish_raw`'d it — no copy
+//! removed, an allocation pair added, and `can_loan_messages` (derived from
+//! the same slot) saying `false` the whole time. This file was the heap-free
+//! twin of `loan_fallback.rs`, which tested that staging; both are now one
+//! contract, and this file runs it with and without `alloc`.
 //!
-//! With `alloc` off there is no staging buffer to hand out and there
-//! never will be: the absence of `alloc` is a compile-time fact about
-//! the image, and the NULL vtable slot is a static fact about the
-//! publisher. Neither can change while the publisher lives.
-//!
-//! Before this test, that arm returned `Ok(None)`, which every caller
-//! above reads as "no slot RIGHT NOW, retry":
-//! `EmbeddedRawPublisher::try_loan` maps it to `LoanError::WouldBlock`,
-//! `loan_with_timeout` then spins the executor until its whole budget is
-//! gone, and `LoanFuture` returns `Pending` after a self-wake — a hot
-//! loop that can never resolve. A permanent condition presenting as a
-//! retryable one is a silent-hang shape, so the contract asserted here
-//! is that the answer is an ERROR the caller can act on.
+//! The answer must also be an ERROR, not `Ok(None)`. Every caller above reads
+//! `Ok(None)` as "no slot RIGHT NOW, retry": `EmbeddedRawPublisher::try_loan`
+//! maps it to `LoanError::WouldBlock`, `loan_with_timeout` then spins the
+//! executor until its whole budget is gone, and `LoanFuture` returns `Pending`
+//! after a self-wake — a hot loop that can never resolve.
 
-#![cfg(all(feature = "lending", not(feature = "alloc")))]
+#![cfg(feature = "lending")]
 
 use core::{
     ffi::c_void,
@@ -200,8 +197,7 @@ static VTABLE: NrosRmwVtable = NrosRmwVtable {
     subscription_event_init: Some(noop_regsubev),
     publisher_event_init: Some(noop_regpubev),
     publisher_assert_liveliness: Some(noop_alv),
-    // NULL `borrow_loaned_message` — the shape `loan_fallback.rs` serves from
-    // the heap and this file cannot serve at all.
+    // NULL `borrow_loaned_message` — Cyclone, XRCE and uORB's shape.
     ..EMPTY_VTABLE
 };
 
@@ -225,14 +221,14 @@ fn publisher_on(locator: &'static str, node: &'static str, topic: &'static str) 
         .expect("create publisher")
 }
 
-/// The contract: a heap-free image whose backend cannot lend reports a
-/// PERMANENT error, never `Ok(None)`.
+/// The contract: a publisher whose backend cannot lend reports a PERMANENT
+/// error, never `Ok(None)` and never a slot — with or without `alloc`.
 ///
 /// `Ok(None)` is the transient answer — it is what a native backend returns
 /// for `NROS_RMW_RET_WOULD_BLOCK`, i.e. "the slot is busy, ask again". This
 /// arm can never become available, so it must not borrow that spelling.
 #[test]
-fn heap_free_fallback_is_a_permanent_error_not_would_block() {
+fn a_null_loan_slot_is_a_permanent_error_not_would_block() {
     let publisher = publisher_on("tcp/127.0.0.1:7451", "lna_node", "/lna");
 
     let outcome = publisher.try_lend_slot(8);
@@ -240,17 +236,17 @@ fn heap_free_fallback_is_a_permanent_error_not_would_block() {
     match outcome {
         Err(TransportError::Unsupported) => {}
         Ok(None) => panic!(
-            "heap-free fallback returned Ok(None) — the transient spelling. \
+            "a NULL loan slot returned Ok(None) — the transient spelling. \
              `try_loan` maps that to LoanError::WouldBlock, so `loan_with_timeout` \
              burns its whole budget and `LoanFuture` self-wakes forever on a \
              condition that can never clear."
         ),
         Ok(Some(_)) => panic!(
-            "heap-free fallback handed out a slot — there is no staging buffer \
-             without `alloc`, so this cannot be a real loan"
+            "a NULL loan slot handed out a slot — the backend cannot lend, so \
+             this can only be a staging buffer, which removes no copy (issue 0814)"
         ),
         Err(other) => panic!(
-            "heap-free fallback reported {other:?}; the caller needs to be able to \
+            "a NULL loan slot reported {other:?}; the caller needs to be able to \
              tell PERMANENT from retryable, which is what Unsupported says"
         ),
     }
@@ -260,14 +256,14 @@ fn heap_free_fallback_is_a_permanent_error_not_would_block() {
 /// would be right to retry; it is not, so a second identical call must give
 /// the identical permanent answer rather than eventually succeeding.
 #[test]
-fn heap_free_fallback_refusal_is_stable_across_retries() {
+fn a_null_loan_slot_refusal_is_stable_across_retries() {
     let publisher = publisher_on("tcp/127.0.0.1:7452", "lna_node2", "/lna2");
 
     for attempt in 0..4 {
         assert!(
             matches!(publisher.try_lend_slot(8), Err(TransportError::Unsupported)),
-            "attempt {attempt} changed the answer — the condition is a compile-time \
-             fact about the image and a static fact about the vtable, so it cannot"
+            "attempt {attempt} changed the answer — the condition is a static fact \
+             about the vtable, so it cannot"
         );
     }
 }

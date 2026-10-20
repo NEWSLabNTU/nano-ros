@@ -3278,7 +3278,12 @@ required-features-tests:
     # have caught this class, so do not pass `--no-tests`.
     cargo nextest run "${cargo_nextest_args[@]}" \
         -p nros-rmw-cffi --features alloc,lending \
-        --test loan_fallback --test loan_native
+        --test loan_null_slot --test loan_native
+    # Issue 0814 — the NULL-slot refusal is one contract in every build, so it
+    # runs heap-free too; `alloc` once changed the answer.
+    cargo nextest run "${cargo_nextest_args[@]}" \
+        -p nros-rmw-cffi --no-default-features --features lending \
+        --test loan_null_slot
     # Issue 1906 -- `condvar_shim_codes` needs the same `platform-posix`: it
     # calls the zenoh-pico alias shim against the POSIX port.
     cargo nextest run "${cargo_nextest_args[@]}" \

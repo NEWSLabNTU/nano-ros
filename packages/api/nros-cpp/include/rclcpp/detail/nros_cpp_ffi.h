@@ -3165,9 +3165,12 @@ nros_cpp_ret_t nros_cpp_publisher_publish_streamed(void *storage,
  * guard of its own, so against a default build the failure surfaces at
  * LINK as an undefined symbol, not at the call site.
  *
- * The supported zero-copy surface is `publish_streamed` and its receive
- * twin `process_raw_in_place`: no feature, no token, no arena, no size
- * ceiling. See issue 0814.
+ * Only zenoh fills the loan slots (and there the loan makes no payload
+ * copy, measured); on Cyclone, XRCE and uORB this call returns the
+ * backend-cannot-lend error, the same in every build. The surface every
+ * backend serves is `publish_streamed` and its receive twin
+ * `process_raw_in_place`: no feature, no token, no arena, no size ceiling.
+ * See issue 0814.
  *
  * On success, `*out_buf` points at `*out_cap` writable bytes the
  * caller fills in place. Pass `*out_token` back to

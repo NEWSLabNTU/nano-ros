@@ -323,6 +323,11 @@ template <typename M> class Publisher {
     /// Loan a writable slot of at least `requested_len` bytes. The returned
     /// `Loan` is RAII: call `commit(actual_len)` to send, `discard()` to
     /// abandon, or let it drop (auto-discard).
+    ///
+    /// Zero-copy only where the backend lends, which is zenoh alone; on
+    /// Cyclone, XRCE and uORB this returns an error, permanently and in every
+    /// build (issue 0814) — publish with `publish()` or `publish_streamed()`
+    /// there.
     ::rclcpp::ResultOf<Loan> loan(size_t requested_len) {
         if (!initialized_)
             return ::rclcpp::ResultOf<Loan>::error(Result(::rclcpp::ErrorCode::NotInitialized));

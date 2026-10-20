@@ -814,11 +814,14 @@ use portable_atomic::{AtomicBool, Ordering};
 ///
 /// - [`publish_raw`](Self::publish_raw): user supplies a `&[u8]`, backend
 ///   memcpys into its outbound buffer. One copy.
-/// - [`try_loan`](Self::try_loan): backend (or per-publisher arena fallback)
-///   hands user a `&mut [u8]` slice. User writes in place. [`PublishLoan::commit`]
-///   triggers the wire write. Zero-copy on backends with native lending
-///   (Phase 99: zenoh-pico `unstable-zenoh-api`, XRCE-DDS); single-memcpy
-///   fallback on backends without (uORB).
+/// - [`try_loan`](Self::try_loan): backend (or, without `rmw-lending`, a
+///   per-publisher arena) hands user a `&mut [u8]` slice. User writes in
+///   place. [`PublishLoan::commit`] triggers the wire write. With
+///   `rmw-lending` it is zero-copy where the backend lends — zenoh, the only
+///   one that fills the loan slots (no payload copy, measured in issue 0814)
+///   — and REFUSED where it does not (Cyclone, XRCE, uORB):
+///   `LoanError::Backend(Unsupported)`, permanent, the same in every build.
+///   The arena path is one copy, the same as `publish_raw`.
 ///
 /// The const-generic `TX_BUF` sizes the inline arena slot (default
 /// [`DEFAULT_LOAN_BUF`]). Loans larger than `TX_BUF` return
@@ -1024,9 +1027,10 @@ impl<const TX_BUF: usize> EmbeddedRawPublisher<TX_BUF> {
     /// `len` exceeds the publisher's slot capacity.
     ///
     /// With the `rmw-lending` cargo feature on, this dispatches to the
-    /// active backend's `SlotLending::try_lend_slot`
-    /// — zero-copy on backends that natively lend (zenoh-pico via
-    /// `z_bytes_from_static_buf`, XRCE-DDS via `uxr_prepare_output_stream`).
+    /// active backend's `SlotLending::try_lend_slot` — zero-copy on zenoh
+    /// (`z_bytes_from_static_buf`), the only backend that lends; on
+    /// Cyclone, XRCE and uORB it returns `LoanError::Backend(Unsupported)`,
+    /// a permanent answer (issue 0814): use `publish_raw` there.
     /// Without `rmw-lending`, the arena fallback is used: caller fills a
     /// per-publisher inline slot, [`commit`](PublishLoan::commit) calls
     /// the backend's `publish_raw` (single memcpy into the backend's
@@ -1234,9 +1238,10 @@ impl From<TransportError> for LoanError {
 ///
 /// - **Arena (default)**: per-publisher inline `[u8; TX_BUF]` slot. On
 ///   commit, `publish_raw` memcpys into the backend's outbound buffer.
-/// - **Backend lending (`rmw-lending`)**: slot owned by the backend
-///   (zenoh-pico's static buffer aliased via `z_bytes_from_static_buf`,
-///   XRCE's `ucdrBuffer` reservation). True zero-copy publish.
+/// - **Backend lending (`rmw-lending`)**: slot owned by the backend —
+///   zenoh-pico's static buffer aliased via `z_bytes_from_static_buf`, the
+///   only backend that lends. True zero-copy publish there; the other
+///   backends refuse the loan (issue 0814).
 #[must_use = "PublishLoan must be committed or discarded; dropping silently rolls back"]
 #[cfg(not(feature = "rmw-lending"))]
 pub struct PublishLoan<'a, const TX_BUF: usize> {
