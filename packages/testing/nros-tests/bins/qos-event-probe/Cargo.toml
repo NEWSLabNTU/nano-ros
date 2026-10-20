@@ -20,7 +20,7 @@ nros = { path = "../../../../api/nros", default-features = false, features = ["a
 # the event surface. So a consumer that wants to NAME an event kind has to
 # path-dep `nros-rmw` itself, which is what this line is and what phase-433 W6
 # reports as part of the finding.
-nros-rmw = { path = "../../../../core/nros-rmw", default-features = false, features = ["std"] }
+nros-rmw = { path = "../../../../core/nros-rmw", default-features = false, features = ["alloc"] }
 # Phase 248 C5c — posix `nros_platform_*` symbols via a direct `nros-platform`
 # dep, same as `ros2-string-interop`.
 nros-platform = { path = "../../../../platform/nros-platform", default-features = false, features = ["platform-posix"] }

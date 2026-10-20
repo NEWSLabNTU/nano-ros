@@ -29,7 +29,7 @@
 #![cfg(any(
     // The tests that drive it: `executor/tests.rs`'s own predicate, plus `std`
     // (they run the worker body on a `std::thread`).
-    all(test, feature = "std", not(feature = "rmw-cffi")),
+    all(test, feature = "alloc", not(feature = "rmw-cffi")),
     all(
         has_rmw,
         feature = "alloc",

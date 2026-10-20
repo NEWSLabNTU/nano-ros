@@ -3648,7 +3648,7 @@ impl<'c, 'e, 't, 's, const RX: usize> GenericSubInfoBuilder<'c, 'e, 't, 's, RX> 
 // build that unifies `rmw-cffi` on swaps `ConcreteSession` to the cffi session
 // and drops `mock`, so the module must drop with it (matches the
 // `mock_integration` gate in lifecycle_services.rs).
-#[cfg(all(test, feature = "std", not(feature = "rmw-cffi")))]
+#[cfg(all(test, feature = "alloc", not(feature = "rmw-cffi")))]
 mod builder_tests {
     use super::*;
     use crate::{executor::Executor, mock::MockSession};

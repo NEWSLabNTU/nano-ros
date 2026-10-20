@@ -2875,7 +2875,7 @@ node-std-tests:
     # `param-services` joined for W3b: `use_sim_time` is a PARAMETER, so its two
     # tests need the store — and `Executor::declare_parameter`, the seam W3b
     # hooks, lives in a `#[cfg(feature = "param-services")]` impl block.
-    cargo test -p nros-node --lib --features std,sim-time,param-services --quiet
+    cargo test -p nros-node --lib --features alloc,log,sim-time,param-services --quiet
     # Lint the build this lane just compiled. `test-targets` clippies nros-node
     # with NO features (workspace) and its own DEFAULT features (per crate) —
     # both without `std` — so a test that only compiles under `std` was linted
@@ -2883,7 +2883,7 @@ node-std-tests:
     # `cargo clippy -p nros-node --features std --tests -D warnings` on main
     # while every merge-gating lane stayed green. Same feature set as the line
     # above, so the two cannot drift apart.
-    cargo clippy -p nros-node --lib --tests --features std,sim-time,param-services --quiet -- -D warnings
+    cargo clippy -p nros-node --lib --tests --features alloc,log,sim-time,param-services --quiet -- -D warnings
     # Issue 1705 -- the OS-priority worker POOL compiles only under
     # `alloc` + `rmw-cffi` + `scheduler-os-priority`, and NO recipe enabled the
     # feature, so the pool and its dispatch site compiled nowhere. The hand-off
@@ -2929,16 +2929,16 @@ node-std-tests:
         esac
     }
     ran_tests "boot_report::tests" \
-        env NROS_BOOT_REPORT=1 cargo test -p nros-node --lib --features std --quiet \
+        env NROS_BOOT_REPORT=1 cargo test -p nros-node --lib --features alloc,log --quiet \
         boot_report::tests
     ran_tests "the arena-to-record link test" \
-        env NROS_BOOT_REPORT=1 cargo test -p nros-node --lib --features std --quiet -- \
+        env NROS_BOOT_REPORT=1 cargo test -p nros-node --lib --features alloc,log --quiet -- \
         --exact executor::tests::arena_exhaustion_reaches_the_boot_record
     # Issue 1856 -- the carved parameter home in a build without the services.
     # Issue 1897: that is the `param-store` feature now, not a knob, so the
     # whole store-only build runs (the full run above is the served branch).
     ran_tests "the store-only parameter build" \
-        cargo test -p nros-node --lib --features std,sim-time,param-store --quiet
+        cargo test -p nros-node --lib --features alloc,log,sim-time,param-store --quiet
     # Issue 1938 -- the executor's byte budget is a ceiling plus NAMED
     # allowances, one per feature-gated header field. A field added under a
     # feature no lane enables went over it with nothing reporting it
@@ -2960,7 +2960,7 @@ node-std-tests:
     # one-shot on a process-scoped latch, and this cell asserts the LOG channel
     # too.
     ran_tests "the boot-report decode cell" \
-        env NROS_BOOT_REPORT=1 cargo test -p nros-node --lib --features std --quiet -- \
+        env NROS_BOOT_REPORT=1 cargo test -p nros-node --lib --features alloc,log --quiet -- \
         --exact executor::tests::an_exhausted_arena_decodes_to_the_knob_an_operator_must_set
     # issues 1183/1186 — a THIRD process-global in this crate, found the same
     # way and answered the same way. `executor::backing::TAKEN` is a
@@ -2980,7 +2980,7 @@ node-std-tests:
     # spelling is how a rule ends up enforced in one place and not the others.
     ran_tests "the executor-backing latch test" \
         cargo test -p nros-node --lib \
-        --features std,sim-time,param-services --quiet -- --ignored --exact \
+        --features alloc,log,sim-time,param-services --quiet -- --ignored --exact \
         executor::backing::tests::the_static_is_handed_out_once_and_only_once
     # Issue 1284 — a STATED executor backing must MEET the executor's default.
     # `check-executor-backing-arena-pairing` (fast line) holds `arena + 8 *
@@ -3051,7 +3051,7 @@ node-std-tests:
                       END { for (k in c) print k "\t" c[k] }' | sort)
     ran_tests "the executor-backing claims test" \
         env NROS_BACKING_CROSS_VERIFIED="$cross_verified" \
-        cargo test -p nros-node --features std,rmw-cffi --test executor_backing_claims \
+        cargo test -p nros-node --features alloc,log,rmw-cffi --test executor_backing_claims \
         --quiet -- --ignored --exact every_stated_executor_backing_meets_the_measured_default
 
     # Issue 1370 — the PLATFORM arena's own counters, the same defect class one
@@ -3184,7 +3184,7 @@ node-std-tests:
     # model before asserting the new arithmetic covers it, so a pass here is a
     # positive control and not an accident of the numbers.
     ran_tests "the per-entry arena model test" \
-        env "${oracle_env[@]}" cargo test -p nros-node --lib --features std --quiet \
+        env "${oracle_env[@]}" cargo test -p nros-node --lib --features alloc,log --quiet \
         -- --ignored --exact \
         config::arena_size_for_tests::the_scaling_this_replaced_was_short_of_the_declared_model
     # `env,std` and NOT `rmw-cffi`: the cffi flavour makes the wall clock an
@@ -3198,8 +3198,8 @@ node-std-tests:
     # _wall_clock` DEFINES the port symbol itself, so this lane needs no port
     # linked; without the combination the test is in no lane at all, which is how
     # the `not(std)` gate on `platform_wall_clock` survived unnoticed.
-    cargo test -p nros-core --lib --no-default-features --features std,platform-clock --quiet
-    echo "non-default-feature unit tests passed (nros-node std + boot-report, nros env, nros-core clock)!"
+    cargo test -p nros-core --lib --no-default-features --features alloc,platform-clock --quiet
+    echo "non-default-feature unit tests passed (nros-node alloc,log + boot-report, nros env, nros-core clock)!"
 
 # Phase 166.R.5 — guard `nros-log` on CAS-less ESP32-C3 /
 # riscv32imc so portable-atomic fallback regressions surface in
@@ -3779,8 +3779,8 @@ workspace-features:
     cargo clippy --quiet -p nros --no-default-features --features "rmw-cffi"
     @echo "  - transport: sync-critical-section"
     cargo clippy --quiet -p nros-rmw --no-default-features --features "sync-critical-section" --target thumbv7em-none-eabihf
-    @echo "  - nros-rmw (std)"
-    cargo clippy --quiet -p nros-rmw --features "std"
+    @echo "  - nros-rmw (alloc,log)"
+    cargo clippy --quiet -p nros-rmw --features "alloc,log"
     # Phase 214.G.2 — workspace-wide no-default-features smoke. Catches
     # the feature-unification regression class (Track F) at `just check`
     # time rather than waiting for `just test-unit`. `--no-run` compiles
@@ -3847,7 +3847,7 @@ workspace-features:
 # Check zenoh transport
 [private]
 zenoh:
-    cargo clippy --quiet -p nros-rmw --features std
+    cargo clippy --quiet -p nros-rmw --features alloc,log
 
 # Phase 134.5 — verify the in-tree zenoh staticlib's internal symbol
 # parity. For every defined `_z_f_link_*_<transport>` wrapper, the

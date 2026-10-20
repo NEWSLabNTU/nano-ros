@@ -56,31 +56,10 @@ impl Drop for SimTimeGuard {
     }
 }
 
-#[cfg(feature = "std")]
 fn test_clock_us() -> u64 {
     use std::{sync::OnceLock, time::Instant};
     static EPOCH: OnceLock<Instant> = OnceLock::new();
     EPOCH.get_or_init(Instant::now).elapsed().as_micros() as u64
-}
-
-/// Deterministic stand-in for the host clock on an `alloc`-only build.
-///
-/// The real one above reads `std::time::Instant`, which is what kept this
-/// whole module host-only: 98 tests reach it through `executor_with_clock`
-/// without needing real elapsed time, only a monotonic source. A counter is
-/// monotonic, needs no host, and is reproducible -- which is strictly better
-/// for those tests than wall time that varies run to run.
-///
-/// Tests that genuinely need real time to pass (they sleep, then assert that
-/// time moved) are marked `#[cfg(feature = "std")]` individually and do not
-/// run here.
-#[cfg(not(feature = "std"))]
-fn test_clock_us() -> u64 {
-    use portable_atomic::{AtomicU64, Ordering};
-    static NOW_US: AtomicU64 = AtomicU64::new(0);
-    // 1 ms per read: coarse enough that a spin loop sees progress, fine
-    // enough that nothing overflows in a test run.
-    NOW_US.fetch_add(1_000, Ordering::Relaxed)
 }
 
 fn executor_with_clock(session: MockSession) -> Executor<'static> {
@@ -1380,7 +1359,6 @@ fn test_add_subscription_and_spin_once_no_data() {
 }
 
 #[test]
-#[cfg(feature = "std")] // std::sync::Mutex has no no_std equivalent
 fn test_add_subscription_and_spin_once_with_data() {
     let session = MockSession::new();
     let mut executor: Executor = executor_with_clock(session);
@@ -1479,7 +1457,6 @@ impl ViewableMessage for ImageViewable {
 }
 
 #[test]
-#[cfg(feature = "std")] // std::sync::Mutex has no no_std equivalent
 fn borrowed_subscription_e2e_zero_copy_through_spin_once() {
     let session = MockSession::new();
     let mut executor: Executor = executor_with_clock(session);
@@ -1578,7 +1555,6 @@ fn test_multiple_subscriptions() {
 /// the one with the earlier deadline dispatches first regardless of
 /// registration order.
 #[test]
-#[cfg(feature = "std")] // sleeps or reads wall time
 fn test_edf_dispatch_order() {
     use crate::executor::sched_context::{DeadlinePolicy, OptUs, SchedClass, SchedContext};
     let session = MockSession::new();
@@ -1672,7 +1648,6 @@ fn test_edf_dispatch_order() {
 /// Uses a no-op `apply_policy` (non-root tests can't lift to SCHED_FIFO).
 #[cfg(feature = "scheduler-os-priority")]
 #[test]
-#[cfg(feature = "std")] // sleeps or reads wall time
 fn test_os_priority_worker_dispatches_callback() {
     use crate::executor::sched_context::{SchedClass, SchedContext};
     use nros_platform_api::SchedPolicy;
@@ -2020,7 +1995,6 @@ fn test_sporadic_budget_exhaustion_suppresses_dispatch() {
     );
 }
 
-#[cfg(feature = "alloc")]
 private_test_clock!(per_callback_runtime_clock);
 
 /// Phase 110.E.b follow-up — per-callback runtime accounting.
@@ -2031,7 +2005,6 @@ private_test_clock!(per_callback_runtime_clock);
 /// that previously charged the full cycle `delta_us` against every
 /// Sporadic SC regardless of which entries actually fired.
 #[test]
-#[cfg(feature = "alloc")]
 fn test_atomic_sporadic_per_callback_runtime_consumed() {
     per_callback_runtime_clock::claim_at_us(1_000_000);
     use crate::executor::{
@@ -2102,7 +2075,6 @@ fn test_atomic_sporadic_per_callback_runtime_consumed() {
     );
 }
 
-#[cfg(feature = "alloc")]
 private_test_clock!(atomic_overrun_clock);
 
 /// Phase 110.E.b — overrun detection. A Sporadic-bound callback
@@ -2113,7 +2085,6 @@ private_test_clock!(atomic_overrun_clock);
 /// (we can't preempt a running callback), so this is the
 /// diagnostic signal end-callers consume to tune budgets.
 #[test]
-#[cfg(feature = "alloc")]
 fn test_atomic_overrun_exceeds_budget() {
     atomic_overrun_clock::claim_at_us(1_000_000);
     use crate::executor::{
@@ -2195,7 +2166,6 @@ fn test_atomic_overrun_exceeds_budget() {
 /// works — full timing acceptance for S1 / S3 ships once the
 /// integration harness with privileged scheduling is in place.
 #[test]
-#[cfg(feature = "std")] // sleeps or reads wall time
 fn test_open_threaded_two_executors_independent_lifecycle() {
     use nros_platform_api::SchedPolicy;
     fn apply_noop(_p: SchedPolicy) -> Result<(), nros_platform_api::SchedError> {
@@ -2236,7 +2206,6 @@ fn test_open_threaded_two_executors_independent_lifecycle() {
 /// the executor onto a fresh OS thread, lets it spin, then halts via
 /// the returned `ThreadHandle`.
 #[test]
-#[cfg(feature = "std")] // sleeps or reads wall time
 fn test_open_threaded_spawn_and_halt() {
     use nros_platform_api::SchedPolicy;
     let session = MockSession::new();
@@ -2271,7 +2240,6 @@ fn test_open_threaded_spawn_and_halt() {
 /// `BestEffort`-bucket callback when both are ready in the same cycle,
 /// regardless of registration order.
 #[test]
-#[cfg(feature = "std")] // std::sync::Mutex has no no_std equivalent
 fn test_bucketed_priority_dispatch_order() {
     use crate::executor::sched_context::{Priority, SchedClass, SchedContext};
     let session = MockSession::new();
@@ -2339,7 +2307,6 @@ fn test_bucketed_priority_dispatch_order() {
 /// Phase 110.B — default `Fifo` SC binding preserves registration
 /// order even when other entries are bound to `Edf` SCs.
 #[test]
-#[cfg(feature = "std")] // std::sync::Mutex has no no_std equivalent
 fn test_fifo_default_binding_preserved_alongside_edf() {
     use crate::executor::sched_context::{OptUs, SchedClass, SchedContext};
     let session = MockSession::new();
@@ -2991,7 +2958,7 @@ fn the_spin_quantization_audit_speaks_only_of_wall_timers() {
     );
 }
 
-#[cfg(all(feature = "sim-time", feature = "std"))]
+#[cfg(feature = "sim-time")]
 private_test_clock!(budget_skip_ros_clock);
 
 /// Issue 1321's third site, and the one that is NOT bounded: issue 0736's
@@ -2999,7 +2966,7 @@ private_test_clock!(budget_skip_ros_clock);
 /// delta, so a ROS-time timer bound to a starved sporadic context kept
 /// accumulating while `/clock` was paused — and would eventually fire an
 /// activation that no simulated time paid for.
-#[cfg(all(feature = "sim-time", feature = "std"))]
+#[cfg(feature = "sim-time")]
 #[test]
 fn a_budget_skipped_ros_timer_does_not_advance_on_wall_time() {
     budget_skip_ros_clock::claim_at_us(1_000_000);
@@ -4759,7 +4726,7 @@ fn arena_exhaustion_reaches_the_boot_record() {
 /// then assert on that test's numbers. `just check node-std-tests` runs it with
 /// its own `--exact` filter for exactly that reason, and checks that the filter
 /// matched something.
-#[cfg(all(nros_boot_report, feature = "std"))]
+#[cfg(nros_boot_report)]
 #[test]
 fn an_exhausted_arena_decodes_to_the_knob_an_operator_must_set() {
     use std::io::Write as _;
@@ -5733,7 +5700,6 @@ fn test_spin_only_next() {
 }
 
 #[test]
-#[cfg(feature = "std")] // sleeps or reads wall time
 fn test_spin_halt() {
     let session = MockSession::new();
     let mut executor: Executor = executor_with_clock(session);
@@ -5781,7 +5747,6 @@ fn spin_with_a_timeout_and_no_clock_errors() {
 /// promise a clockless build can keep. Halted from a peer thread so the test
 /// cannot hang if the guard is ever widened by mistake.
 #[test]
-#[cfg(feature = "std")] // sleeps or reads wall time
 fn spin_without_a_timeout_still_runs_with_no_clock() {
     let session = MockSession::new();
     let mut executor: Executor = executor_with_clock(session);
@@ -5970,7 +5935,6 @@ fn from_session_with_installs_the_callers_clock() {
 }
 
 #[test]
-#[cfg(feature = "std")] // sleeps or reads wall time
 fn test_spin_timeout() {
     let session = MockSession::new();
     let mut executor: Executor = executor_with_clock(session);
@@ -6042,7 +6006,6 @@ fn test_halt_flag_clone() {
 }
 
 #[test]
-#[cfg(feature = "std")] // sleeps or reads wall time
 fn test_spin_period_halts() {
     let session = MockSession::new();
     let mut executor: Executor = executor_with_clock(session);
@@ -6104,7 +6067,6 @@ fn test_halt_raises_wake_flag() {
 }
 
 #[test]
-#[cfg(feature = "std")] // sleeps or reads wall time
 fn test_guard_handle_send_across_thread() {
     // Phase 124.B.7.d — GuardCondition must be Send (so a
     // worker thread / signal handler can own it and call trigger()).
@@ -6141,7 +6103,6 @@ fn test_guard_handle_send_across_thread() {
 /// arm. The wake-collapse arm proper is `rmw-cffi`-only and is exercised end
 /// to end by `nros-c`'s `tests/run/node_guard_condition.c`.
 #[test]
-#[cfg(feature = "std")] // the std arm of the primary drive is what this pins
 fn test_wake_short_circuits_drive_timeout() {
     let session = MockSession::new();
     let mut executor: Executor = executor_with_clock(session);
@@ -7238,7 +7199,6 @@ fn test_set_semantics() {
 // ====================================================================
 
 #[test]
-#[cfg(feature = "std")] // std::sync::Mutex has no no_std equivalent
 fn test_let_semantics_pre_samples_data() {
     // In LET mode, data is pre-sampled into the entry buffer before any
     // callback runs. This test verifies that the callback receives data
@@ -7685,7 +7645,6 @@ fn test_node_service_client_with_qos() {
 /// `call` → inject-reply → dispatch → callback path through the executor with the
 /// mock transport.
 #[test]
-#[cfg(feature = "std")] // std::sync::Mutex has no no_std equivalent
 fn test_service_client_callback_fires_at_spin() {
     use crate::executor::arena::ServiceClientSendHeader;
 
@@ -7736,7 +7695,6 @@ fn test_service_client_callback_fires_at_spin() {
 /// goal-response / feedback / result to typed closures at `spin_once`. Drives
 /// each receive by injecting into the entry's mock channels and spinning.
 #[test]
-#[cfg(feature = "std")] // std::sync::Mutex has no no_std equivalent
 fn test_action_client_callbacks_fire_at_spin() {
     use crate::executor::action_core::ActionClientCore;
 
@@ -7844,7 +7802,6 @@ fn test_action_client_callbacks_fire_at_spin() {
 /// RFC-0041 / Phase 239.7 — two feedbacks arriving before a spin are **both**
 /// delivered via the QoS-depth ring (vs the pre-239 single-buffer overwrite).
 #[test]
-#[cfg(feature = "std")] // std::sync::Mutex has no no_std equivalent
 fn test_action_client_feedback_burst_buffered() {
     use crate::executor::action_core::ActionClientCore;
 
@@ -7918,7 +7875,6 @@ fn test_action_client_feedback_burst_buffered() {
 /// services (now arena-registered + sched-bindable across C/C++) ride the same
 /// SC-ordered dispatch as subscriptions (mirrors `test_edf_dispatch_order`).
 #[test]
-#[cfg(feature = "std")] // std::sync::Mutex has no no_std equivalent
 fn test_service_dispatch_respects_sched_context() {
     use crate::executor::sched_context::{DeadlinePolicy, OptUs, SchedClass, SchedContext};
     let session = MockSession::new();
@@ -8022,7 +7978,6 @@ fn test_promise_try_recv_returns_none_then_some() {
     assert_eq!(reply.sum, 99);
 }
 
-#[cfg(feature = "alloc")]
 private_test_clock!(no_timeout_credit_clock);
 
 // ====================================================================
@@ -8047,7 +8002,6 @@ private_test_clock!(no_timeout_credit_clock);
 // construction: a host that descheduled the test between the two for over
 // 100 ms fired the timer and failed it, with nothing wrong in the executor.
 #[test]
-#[cfg(feature = "alloc")]
 fn test_spin_once_does_not_credit_timeout_to_timer_delta() {
     no_timeout_credit_clock::claim_at_us(1_000_000);
     use core::{
@@ -9383,14 +9337,12 @@ fn test_callback_group_unmapped_group_falls_back_to_node_default() {
 // RFC-0052 / phase-296 W3b.5 — deadline-miss actions
 // ====================================================================
 
-#[cfg(feature = "std")]
 private_test_clock!(deadline_skip_clock);
 
 /// `DeadlineAction::Skip`: a callback overrunning its SC deadline masks
 /// the SAME SC's remaining callbacks for the rest of that spin cycle,
 /// and the miss lands on the violation drain.
 #[test]
-#[cfg(feature = "std")] // std::sync::Mutex has no no_std equivalent
 fn deadline_skip_masks_remaining_same_sc_callbacks() {
     deadline_skip_clock::claim_at_us(1_000_000);
     use crate::executor::sched_context::{DeadlineAction, OptUs, SchedContext};
@@ -9462,12 +9414,10 @@ fn deadline_skip_masks_remaining_same_sc_callbacks() {
     );
 }
 
-#[cfg(feature = "std")]
 private_test_clock!(deadline_warn_clock);
 
 /// `DeadlineAction::Warn`: reports the miss but never masks siblings.
 #[test]
-#[cfg(feature = "std")] // std::sync::Mutex has no no_std equivalent
 fn deadline_warn_reports_without_skipping() {
     deadline_warn_clock::claim_at_us(1_000_000);
     use crate::executor::sched_context::{DeadlineAction, OptUs, SchedContext};
@@ -9528,7 +9478,6 @@ fn deadline_warn_reports_without_skipping() {
     assert!(misses >= 1, "warn reported the miss");
 }
 
-#[cfg(all(feature = "std", feature = "alloc"))]
 private_test_clock!(stalled_timer_clock);
 
 /// Issue #505 — a stalled tier must SAY it dropped activations.
@@ -9538,9 +9487,7 @@ private_test_clock!(stalled_timer_clock);
 /// `CatchUp` the replayed activations refill the window entirely. The
 /// overrun counter is exact and immediate, and `run_contract_monitors`
 /// turns its delta into a `timer-overrun-runtime` violation.
-#[cfg(feature = "alloc")]
 #[test]
-#[cfg(feature = "std")] // std::sync::Mutex has no no_std equivalent
 fn a_stalled_timer_reports_a_timer_overrun_violation() {
     // A PRIVATE clock the test moves by hand (issue 1945): on the real clock
     // the quiet step below sleeps exactly one period, so a preemption under a
@@ -9585,7 +9532,6 @@ fn a_stalled_timer_reports_a_timer_overrun_violation() {
     );
 }
 
-#[cfg(feature = "alloc")]
 private_test_clock!(violation_logged_clock);
 
 /// Issue #514 — a detected violation must reach a SINK, not just a ring.
@@ -9596,7 +9542,6 @@ private_test_clock!(violation_logged_clock);
 /// this test can still drain the ring afterwards — the two paths are
 /// independent, and an application that reports violations its own way
 /// is unaffected by the default.
-#[cfg(feature = "alloc")]
 #[test]
 // Needs time to advance INDEPENDENTLY of how often it is read, which the
 // alloc-only shared clock (a per-read counter) cannot do. It ran on `std`
@@ -9632,14 +9577,12 @@ fn a_violation_is_logged_and_still_drainable() {
     );
 }
 
-#[cfg(feature = "alloc")]
 private_test_clock!(violation_ring_clock);
 
 /// Issue #514 — faults produced faster than they are reported must be
 /// COUNTED, not silently lost. The ring holds `MAX_VIOLATIONS`; an
 /// application that never drains would otherwise report a stale prefix
 /// of its faults and no indication that a prefix is all it is.
-#[cfg(feature = "alloc")]
 #[test]
 fn violations_beyond_the_ring_are_counted() {
     violation_ring_clock::claim_at_us(1_000_000);
@@ -9681,7 +9624,6 @@ fn violations_beyond_the_ring_are_counted() {
 /// mechanism around it: it runs exactly once, only on a non-zero
 /// timeout, and it never touches timer behaviour (the alternation it
 /// warns about is legal — the mean cadence is preserved).
-#[cfg(feature = "alloc")]
 #[test]
 fn spin_quantization_audit_runs_once_on_the_first_timed_spin() {
     let session = MockSession::new();
@@ -9713,7 +9655,6 @@ fn spin_quantization_audit_runs_once_on_the_first_timed_spin() {
 
 /// Issue #515 — a period that divides the spin period evenly is not a
 /// finding, and neither is a timer with no period.
-#[cfg(feature = "alloc")]
 #[test]
 fn spin_quantization_audit_accepts_exact_multiples() {
     let session = MockSession::new();
@@ -10651,7 +10592,6 @@ fn a_service_server_costs_a_measurable_and_constant_arena_slice() {
 }
 
 #[test]
-#[cfg(feature = "std")] // sleeps or reads wall time
 fn an_unbounded_subscription_costs_more_than_a_bounded_one() {
     // Measured 2316 bounded against 5356 unbounded on x86_64 -- 2.3x. This is
     // why step 3 must REFUSE when a subscribed type is unbounded rather than
@@ -10905,7 +10845,6 @@ fn a_tier_slower_than_its_declared_cadence_is_late() {
 /// `now_us()` were both in hand every cycle and the difference was discarded,
 /// so a loop that never met its period looked identical to one that always did.
 #[test]
-#[cfg(feature = "std")] // sleeps or reads wall time
 fn spin_period_counts_its_wakes_and_keeps_late_within_total() {
     let mut executor: Executor = executor_with_clock(MockSession::new());
     let flag = executor.halt_flag();
@@ -11294,7 +11233,6 @@ fn a_node_level_ros_time_timer_follows_the_simulated_clock() {
 /// Host-only, like every test in this file: capture is a `LogSink` installed
 /// with `nros_log::init`, which works on any target, but the buffer here is a
 /// `std::sync::Mutex<Vec<_>>`.
-#[cfg(feature = "std")]
 #[test]
 fn two_nodes_on_one_executor_emit_under_their_own_names() {
     use alloc::{string::String, vec::Vec};
@@ -11821,7 +11759,6 @@ fn a_backend_matched_count_wins_over_the_graph_count() {
 /// real one uses. The payloads are distinct per entity and per kind, so a
 /// trampoline that decoded the wrong union arm, or a publisher wired to the
 /// subscription's kind, reads a different number and fails.
-#[cfg(feature = "std")]
 #[test]
 fn matched_and_incompatible_type_callbacks_reach_the_application() {
     use std::{
@@ -12879,7 +12816,6 @@ fn a_callback_releasing_its_own_entry_is_deferred_until_it_returns() {
 
 /// Issue 1705 — the OS-priority worker hand-off. `std`: the worker body runs on
 /// a `std::thread`, and the tests share statics behind a `std::sync::Mutex`.
-#[cfg(feature = "std")]
 mod worker_release {
     use super::*;
 
@@ -13196,16 +13132,13 @@ fn retargeting_a_raw_action_client_moves_its_context() {
     let _ = new_home;
 }
 
-#[cfg(all(feature = "std", feature = "alloc"))]
 private_test_clock!(violation_sink_clock);
 
 /// Issue 1635 -- with a sink installed, every violation reaches it (at the end
 /// of a spin since phase-474 I7, not at detection), so an image whose entry
 /// never calls `drain_violations` still reports. The ring is filled as before, so a hand-draining application or
 /// fixture sees exactly what it did; removing the sink stops the feed.
-#[cfg(feature = "alloc")]
 #[test]
-#[cfg(feature = "std")]
 fn an_installed_violation_sink_sees_every_violation() {
     static SEEN: std::sync::Mutex<alloc::vec::Vec<(&'static str, u32)>> =
         std::sync::Mutex::new(alloc::vec::Vec::new());
@@ -13270,7 +13203,6 @@ fn an_installed_violation_sink_sees_every_violation() {
 /// contracted endpoint's cell and bumps it on every publish, as the typed
 /// `EmbeddedPublisher` always did. Before this a contracted Rust talker
 /// publishing at 1 Hz was measured at 0.
-#[cfg(feature = "alloc")]
 #[test]
 fn a_raw_publisher_on_a_contracted_topic_bumps_its_cell() {
     use super::monitor::{MonitorSpec, PubMonitorCell};
@@ -13331,7 +13263,7 @@ fn a_raw_publisher_on_a_contracted_topic_bumps_its_cell() {
 /// (`HEAP EXHAUSTED`, then issue 0589's recursion) and a FreeRTOS one hung in
 /// `MALLOC FAILED`. Every caller has a refusal to return, so it now returns it,
 /// once, without retrying.
-#[cfg(all(feature = "std", feature = "param-store"))]
+#[cfg(feature = "param-store")]
 #[test]
 fn a_heap_too_small_for_the_parameter_store_refuses_the_declaration() {
     use nros_params::ParameterValue;
@@ -13380,7 +13312,7 @@ fn a_heap_too_small_for_the_parameter_store_refuses_the_declaration() {
 /// The capacity is the carved length and not `MAX_PARAMETERS` — a fourth
 /// declaration over three carved slots is refused as FULL, which also rules
 /// out a store that came from somewhere else and merely happened to fit.
-#[cfg(all(feature = "std", feature = "param-store"))]
+#[cfg(feature = "param-store")]
 #[test]
 fn a_store_carved_from_the_backing_never_asks_the_heap() {
     use nros_params::ParameterValue;
@@ -13478,7 +13410,7 @@ fn a_store_carved_from_the_backing_never_asks_the_heap() {
 /// whole home) and with `param-store` alone (an image that HOLDS a store and
 /// serves none, the safety island's shape). Each build compiles the branch it
 /// must satisfy, so neither run passes by skipping.
-#[cfg(all(feature = "std", feature = "param-store"))]
+#[cfg(feature = "param-store")]
 #[test]
 fn the_carved_home_reserves_the_services_only_when_the_image_serves_them() {
     use crate::param_store::{HOME_BUFFER_BYTES, ParamHome, ParamState, Placed};
@@ -13544,7 +13476,7 @@ fn the_carved_home_reserves_the_services_only_when_the_image_serves_them() {
 /// NOTHING still gets a store, from the heap, exactly as before W3'. Zero
 /// slots is the default for every image the build does not know to build a
 /// store, so this is the road an undeclared store takes.
-#[cfg(all(feature = "std", feature = "param-store"))]
+#[cfg(feature = "param-store")]
 #[test]
 fn a_backing_that_carved_no_store_falls_back_to_the_heap() {
     use nros_params::ParameterValue;
@@ -13693,7 +13625,6 @@ fn a_churning_mixed_workload_never_exhausts_the_arena() {
 /// what it evicted, and numbers each one, so a late violation is never lost to
 /// start-up noise (the Autoware Safety Island's ring held its first 8 since
 /// boot, all start-up).
-#[cfg(feature = "alloc")]
 #[test]
 fn the_violation_ring_keeps_the_latest_and_numbers_them() {
     use super::monitor::{MAX_VIOLATIONS, Violation};
@@ -13734,7 +13665,6 @@ fn the_violation_ring_keeps_the_latest_and_numbers_them() {
 /// phase-474 I1 -- the drain-and-report hook drains the ring at the end of the
 /// spin that detected the verdict; with it off the ring keeps the verdict for
 /// a hand drain.
-#[cfg(feature = "alloc")]
 #[test]
 fn the_drain_report_hook_drains_at_the_end_of_the_spin() {
     use super::monitor::Violation;
@@ -13763,7 +13693,7 @@ fn the_drain_report_hook_drains_at_the_end_of_the_spin() {
 
 /// phase-474 I1 -- with callback tracing compiled in, a stored violation is
 /// four marker events on the installed sink.
-#[cfg(all(feature = "alloc", feature = "trace-callbacks"))]
+#[cfg(feature = "trace-callbacks")]
 #[test]
 fn a_stored_violation_emits_its_trace_markers() {
     use super::monitor::{Violation, violation_marker_words};
@@ -13780,7 +13710,6 @@ fn a_stored_violation_emits_its_trace_markers() {
             EVENTS.with(|e| e.borrow_mut().push((id, arg)));
         }
     }
-    #[cfg(feature = "std")]
     let _g = trace_sink_lock();
     super::callback_trace::set_trace_sink(Some(sink));
     let mut executor: Executor = executor_with_clock(MockSession::new());
@@ -13803,7 +13732,6 @@ fn a_stored_violation_emits_its_trace_markers() {
 /// Tests that install `nros_log`'s process-global sink list (`nros_log::init`
 /// swaps it) and assert on what reached THEIR sink. Serialised so one cannot
 /// swap the other's sink out mid-assertion (phase-474 T4).
-#[cfg(feature = "std")]
 fn log_sinks_lock() -> std::sync::MutexGuard<'static, ()> {
     static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
     LOCK.lock().unwrap_or_else(|e| e.into_inner())
@@ -13812,13 +13740,11 @@ fn log_sinks_lock() -> std::sync::MutexGuard<'static, ()> {
 /// phase-474 I2 -- tests that put an executor in "armed on call" mode, which
 /// the process-global arm request reaches. Serialised so one test's request
 /// cannot arm another's executor mid-assertion.
-#[cfg(feature = "alloc")]
 fn arming_lock() -> std::sync::MutexGuard<'static, ()> {
     static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
     LOCK.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-#[cfg(feature = "alloc")]
 fn startup_verdict(measured: u32) -> super::monitor::Violation {
     super::monitor::Violation {
         rule: "release-jitter-runtime",
@@ -13830,7 +13756,6 @@ fn startup_verdict(measured: u32) -> super::monitor::Violation {
 
 /// phase-474 I2 -- the default is today's behaviour: armed from the start, so
 /// the first verdict is stored.
-#[cfg(feature = "alloc")]
 #[test]
 fn monitors_arm_at_the_first_spin_by_default() {
     let mut executor: Executor = executor_with_clock(MockSession::new());
@@ -13852,7 +13777,6 @@ fn monitors_arm_at_the_first_spin_by_default() {
 /// phase-474 I2 -- armed on call: a verdict before the call is counted and not
 /// stored; the call arms, and the next one is stored. The app's call is the
 /// global request (`rclc_monitors_arm`), seen at the next spin.
-#[cfg(feature = "alloc")]
 #[test]
 fn monitors_armed_on_call_count_but_do_not_store_start_up() {
     let _g = arming_lock();
@@ -13904,7 +13828,6 @@ private_test_clock!(arm_grace_clock);
 
 /// phase-474 I2 -- a grace period arms the monitors that long after the first
 /// spin, for an application with no lifecycle to call from.
-#[cfg(feature = "alloc")]
 #[test]
 fn a_grace_period_arms_after_the_first_spin() {
     let _g = arming_lock();
@@ -13926,7 +13849,6 @@ fn a_grace_period_arms_after_the_first_spin() {
     assert_eq!(executor.violations_total(), 0);
 }
 
-#[cfg(all(feature = "std", feature = "alloc"))]
 private_test_clock!(t4_overrun_clock);
 
 /// phase-474 T4 -- the end-to-end violation test, on the host executor (the
@@ -13947,7 +13869,6 @@ private_test_clock!(t4_overrun_clock);
 /// rule, endpoint and `measured >= declared`; the drain-and-report hook
 /// prints it with its number; the trace markers carry it. Then a burst of
 /// overruns overfills the ring and the ring keeps the LATEST.
-#[cfg(all(feature = "std", feature = "alloc"))]
 #[test]
 fn t4_an_overrun_after_arming_is_the_one_stored_violation() {
     use super::monitor::{MAX_VIOLATIONS, MonitorSpec, PubMonitorCell};
@@ -14180,7 +14101,6 @@ fn t4_an_overrun_after_arming_is_the_one_stored_violation() {
     super::callback_trace::set_trace_sink(None);
 }
 
-#[cfg(all(feature = "std", feature = "alloc"))]
 private_test_clock!(t4_idle_sub_clock);
 
 /// phase-474 I6 -- T4's overrun again, on the shape the safety island actually
@@ -14196,7 +14116,6 @@ private_test_clock!(t4_idle_sub_clock);
 /// stored `max-latency-runtime` verdict on the publisher the timer outputs,
 /// with `measured >= declared`, and the timer really fired from the sweep
 /// (the subscription never had data).
-#[cfg(all(feature = "std", feature = "alloc"))]
 #[test]
 fn t4_a_timer_overrun_beside_an_idle_subscription_is_judged() {
     use super::monitor::{MonitorSpec, PubMonitorCell};
@@ -14519,7 +14438,6 @@ fn params_file_overrides_reach_their_nodes_with_dotted_names() {
         "`/robot/talker:` does not reach the listener"
     );
 }
-#[cfg(all(feature = "std", feature = "alloc"))]
 private_test_clock!(i7_report_clock);
 
 /// phase-474 I7 -- the `/diagnostics` report leaves OFF the judged tick, and
@@ -14537,7 +14455,6 @@ private_test_clock!(i7_report_clock);
 /// the 40 ms timer waiting -- a dropped activation -- and an 80 ms spin
 /// interval against a 30 ms cadence. Asserted: both latency verdicts reach the
 /// sink in ONE coalesced call, and the ring holds no overrun or jitter verdict.
-#[cfg(all(feature = "std", feature = "alloc"))]
 #[test]
 fn i7_a_slow_report_breeds_no_overrun_or_jitter_verdict() {
     use super::monitor::{MonitorSpec, PubMonitorCell, Violation};
@@ -14687,7 +14604,7 @@ fn i7_a_slow_report_breeds_no_overrun_or_jitter_verdict() {
 /// phase-474 I3 -- tests that install the process-global trace sink or touch
 /// the per-slot trace settings. Serialised so one cannot swap the other's sink
 /// or settings out mid-assertion.
-#[cfg(all(feature = "std", feature = "trace-callbacks"))]
+#[cfg(feature = "trace-callbacks")]
 fn trace_sink_lock() -> std::sync::MutexGuard<'static, ()> {
     static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
     LOCK.lock().unwrap_or_else(|e| e.into_inner())
@@ -14696,7 +14613,7 @@ fn trace_sink_lock() -> std::sync::MutexGuard<'static, ()> {
 /// phase-474 I3 -- a subscription opted in to take tracing emits one TAKE
 /// event per sample, before its callback's start, and the stamp pair when the
 /// slot names where the stamp is; a subscription not opted in emits none.
-#[cfg(all(feature = "std", feature = "trace-callbacks"))]
+#[cfg(feature = "trace-callbacks")]
 #[test]
 fn i3_an_opted_in_subscription_traces_each_take_and_its_stamp() {
     use super::callback_trace::{
@@ -14768,12 +14685,12 @@ fn i3_an_opted_in_subscription_traces_each_take_and_its_stamp() {
     set_trace_sink(None);
 }
 
-#[cfg(all(feature = "std", feature = "trace-callbacks"))]
+#[cfg(feature = "trace-callbacks")]
 private_test_clock!(i3_thinned_clock);
 
 /// phase-474 I3 -- a thinned timer traces one tick in N; the default traces
 /// every tick.
-#[cfg(all(feature = "std", feature = "trace-callbacks"))]
+#[cfg(feature = "trace-callbacks")]
 #[test]
 fn i3_a_thinned_timer_traces_one_tick_in_n() {
     i3_thinned_clock::claim_at_us(1_000_000);
@@ -15086,7 +15003,6 @@ fn rounding_to_the_park_tick_is_late_but_not_beyond_the_granule() {
     );
 }
 
-#[cfg(all(feature = "std", feature = "alloc"))]
 private_test_clock!(b3_route_clock);
 
 /// phase10-B3 -- `route-latency-runtime`, the route rule, on the host
@@ -15106,7 +15022,6 @@ private_test_clock!(b3_route_clock);
 /// `measured >= 260` and `declared = 149`, while the callback-level measure
 /// of the same dispatch stays far below its 150 ms. The verdict is recorded
 /// only: the next on-time route is judged and clean, and nothing else changes.
-#[cfg(all(feature = "std", feature = "alloc"))]
 #[test]
 fn b3_a_late_tick_exceeds_the_route_while_every_callback_passes() {
     use super::monitor::{MonitorSpec, PubMonitorCell};
@@ -15274,7 +15189,6 @@ private_test_clock!(route_deadline_clock);
 /// reaction hook with the row's reaction id, index and mechanism. The
 /// verdict is recorded once; a second take that misses requests the reaction
 /// again.
-#[cfg(all(feature = "std", feature = "alloc"))]
 #[test]
 fn route_deadline_fires_when_the_output_never_comes() {
     use super::monitor::{MECHANISM_TIMER, MonitorSpec, PubMonitorCell, ReactionEvent};
@@ -15406,7 +15320,6 @@ private_test_clock!(route_late_clock);
 /// the route is answered, so before the fix only `route-latency-runtime` was
 /// recorded and the hook never ran. The completion now reports the deadline
 /// miss and calls the hook, once; the overdue check that follows does not.
-#[cfg(all(feature = "std", feature = "alloc"))]
 #[test]
 fn a_late_completion_of_a_supervised_route_calls_the_reaction_hook() {
     use super::monitor::{MECHANISM_EXECUTOR, MonitorSpec, PubMonitorCell, ReactionEvent};
@@ -15518,7 +15431,6 @@ private_test_clock!(route_watch_clock);
 /// executor judged the route on time. The watch, read at that instant from
 /// inside the running spin, says answered; its real-miss twin (the same spin,
 /// no answer) says due now, at the same instant.
-#[cfg(all(feature = "std", feature = "alloc"))]
 #[test]
 fn a_route_answered_before_its_due_reads_answered_while_the_spin_runs_on() {
     use super::monitor::{MECHANISM_TIMER, MonitorSpec, PubMonitorCell, RouteWatch};
@@ -15723,7 +15635,7 @@ fn raw_action_endpoints_are_keyed_on_their_own_hashes() {
 
 /// A default sink (the Zephyr tier runner's) installs only into an empty
 /// slot: a sink the application installed first is kept.
-#[cfg(all(feature = "std", feature = "trace-callbacks"))]
+#[cfg(feature = "trace-callbacks")]
 #[test]
 fn a_default_trace_sink_keeps_the_applications_sink() {
     use super::callback_trace::{set_trace_sink, set_trace_sink_if_unset};
@@ -15753,7 +15665,6 @@ private_test_clock!(hazard_reaction_clock);
 /// detection, with the hazard's reaction id and its index in the hazard table.
 /// The verdicts land on the drain beside it: the guard's `silence-runtime`
 /// and the observer's `hazard-detected`.
-#[cfg(all(feature = "std", feature = "alloc"))]
 #[test]
 fn a_detected_hazard_starts_its_safe_state_reaction() {
     use super::monitor::{
@@ -15828,7 +15739,6 @@ fn a_detected_hazard_starts_its_safe_state_reaction() {
     );
 }
 
-#[cfg(all(feature = "std", feature = "alloc"))]
 private_test_clock!(mode_switch_clock);
 
 /// phase-462 W4 -- a contract mode is a variant of the base monitor table,
@@ -15840,7 +15750,6 @@ private_test_clock!(mode_switch_clock);
 /// after `request_mode(1)` the same 20 ms is inside the budget and nothing
 /// more is stored; a request for a mode the executor has no table for keeps
 /// it in mode 1.
-#[cfg(all(feature = "std", feature = "alloc"))]
 #[test]
 fn a_requested_mode_judges_by_its_variant_table() {
     use super::monitor::{ModeTables, MonitorSpec, PubMonitorCell, request_mode};
@@ -15952,14 +15861,12 @@ fn a_requested_mode_judges_by_its_variant_table() {
     request_mode(0);
 }
 
-#[cfg(all(feature = "std", feature = "alloc"))]
 private_test_clock!(mode_alias_clock);
 
 /// A mode whose tables ARE the base's (the C/C++ entry bakes a mode with the
 /// base's numbers as an alias of the base slice) is still a mode: it is
 /// entered at the next spin and judges by the base numbers, and a mode with
 /// numbers of its own beside it still applies them.
-#[cfg(all(feature = "std", feature = "alloc"))]
 #[test]
 fn a_mode_aliasing_the_base_is_entered_and_a_differing_one_still_applies() {
     use super::monitor::{ModeTables, MonitorSpec, PubMonitorCell, request_mode};
@@ -16076,7 +15983,6 @@ private_test_clock!(unserved_deadline_clock);
 /// rule over the deadline's window. A subscription whose profile DOES carry the
 /// deadline, on a backend that honours it, is left to the backend; a released
 /// subscription stops being evidence for its row.
-#[cfg(all(feature = "std", feature = "alloc"))]
 #[test]
 fn a_contract_deadline_the_backend_does_not_judge_is_judged_by_silence() {
     use super::monitor::{AgeMonitorSpec, SubMonitorCell};
@@ -16246,7 +16152,6 @@ private_test_clock!(mode_deadline_clock);
 /// lists, and entering the base restores them; a switch whose request could
 /// have waited longer than the mode's budget is reported as
 /// `mode-switch-runtime`, measured as the gap since the previous check.
-#[cfg(all(feature = "std", feature = "alloc"))]
 #[test]
 fn a_mode_switch_moves_the_tier_deadline_and_judges_its_latency() {
     use super::{

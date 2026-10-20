@@ -19,6 +19,6 @@ path = "src/main.rs"
 nros-log = { path = "../../../../core/nros-log", features = ["rosout"] }
 # The boot record (`nros_node::boot_report`), enabled by the image's
 # `NROS_BOOT_REPORT=1`. Nothing else of the node layer is used.
-nros-node = { path = "../../../../core/nros-node", default-features = false, features = ["std"] }
+nros-node = { path = "../../../../core/nros-node", default-features = false, features = ["alloc"] }
 # The POSIX `nros_platform_*` symbols the core links against.
 nros-platform-cffi = { path = "../../../../platform/nros-platform-cffi", features = ["posix-c-port"] }

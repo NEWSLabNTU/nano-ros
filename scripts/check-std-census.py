@@ -272,7 +272,10 @@ BASELINE = {
     # the other answered the platform's wall clock. They are one function now:
     # the port when `platform-clock` is on, the caller-advanced counter when it
     # is not. The 1 that remains is `extern crate std`.
-    "nros-core": {"cfg": 1, "path": 0},
+    #
+    # phase-359 W10 stage A: the `std` FEATURE is deleted from this crate. The
+    # last site was `extern crate std`, which is `cfg(test)` now.
+    "nros-core": {"cfg": 0, "path": 0},
     #
     # phase-359 W10: 9 -> 7 cfg, 21 -> 18 path. `nros_cpp_time_ns` was the same
     # clock pair, and it is what `nros::Future::wait()` budgets its spin
@@ -496,7 +499,11 @@ BASELINE = {
     # which is what the exemption's correct form was always going to give:
     # a PREVENTED INFLATION (`graph_wait_tests.rs`'s two paths never enter),
     # not a removal.
-    "nros-node": {"cfg": 3, "path": 0},
+    #
+    # phase-359 W10 stage A: 3 -> 0, the `std` FEATURE deleted. Every gate
+    # that named it now names `alloc`, which `std` always implied, so each
+    # lane that passed `std` passes `alloc,log` and builds the same code.
+    "nros-node": {"cfg": 0, "path": 0},
     #
     # phase-359 W10: 7 -> 5. Both were gates expressing a preference rather than
     # a constraint: the `heapless::String` parameter impl was excluded on `std`
@@ -515,9 +522,12 @@ BASELINE = {
     #
     # The 1 is `extern crate std`, and this crate now has NO `std::` path at
     # all: the feature survives only to forward to dependencies.
-    "nros-params": {"cfg": 1, "path": 0},
-    "nros-rmw": {"cfg": 1, "path": 0},
-    "nros-serdes": {"cfg": 1, "path": 0},
+    #
+    # phase-359 W10 stage A: the `std` FEATURE is deleted from this crate. The
+    # last site was `extern crate std`, which is `cfg(test)` now.
+    "nros-params": {"cfg": 0, "path": 0},
+    "nros-rmw": {"cfg": 0, "path": 0},
+    "nros-serdes": {"cfg": 0, "path": 0},
 }
 
 

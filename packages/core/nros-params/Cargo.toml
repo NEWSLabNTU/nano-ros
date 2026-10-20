@@ -24,12 +24,8 @@ links = "nros_params"
 [features]
 # phase-361 W3 — EMPTY; `std` is opt-in per dep-site.
 default = []
-# phase-359 W8 — `std` implies `alloc`, matching nros / nros-node / nros-core.
-# The `ParameterVariant` impls below are gated on `alloc` (they are `alloc`
-# types); without this implication a consumer enabling only `std` would lose
-# them. Upstream reached this independently; phase-361 W2.a reached it too,
-# after trying the opposite and measuring what it cost.
-std = ["alloc"]
+# phase-359 W10 — no `std` feature. A core crate is `core` or `core+alloc`
+# (ARCHITECTURE §2); `alloc` is the one heap axis.
 alloc = []
 
 [dependencies]

@@ -8,6 +8,12 @@
 #![no_std]
 #![allow(non_camel_case_types, dead_code)]
 
+// phase-359 W10 — this staticlib is linked into a HOSTED C++ binary, so its
+// ROOT links libstd for `#[panic_handler]`, the allocator and unwinding. It
+// used to inherit that from `nros-serdes/std`; the core crates have no `std`
+// now, and the image root is the one place that decides it.
+extern crate std;
+
 use nros_serdes::{CdrReader, CdrWriter, DeserError, SerError};
 
 unsafe extern "C" {

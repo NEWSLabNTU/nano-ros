@@ -22,13 +22,13 @@
 //!
 //! # Features
 //!
-//! - `std` — Enable standard library support
 //! - `alloc` — Enable heap allocation (`String`, `Vec<T>`)
 
 #![forbid(unsafe_code)]
 #![no_std]
 
-#[cfg(feature = "std")]
+// phase-359 W10 — no `std` feature; the test harness is hosted.
+#[cfg(test)]
 extern crate std;
 
 #[cfg(feature = "alloc")]

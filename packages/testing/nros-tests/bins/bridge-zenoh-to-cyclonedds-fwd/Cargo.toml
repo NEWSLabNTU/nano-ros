@@ -19,8 +19,8 @@ nros = { path = "../../../../api/nros", default-features = false, features = ["a
 nros-platform = { path = "../../../../platform/nros-platform", default-features = false, features = ["platform-posix"] }
 nros-rmw-zenoh = { path = "../../../../rmw/zenoh/nros-rmw-zenoh", features = ["std", "platform-posix", "ros-humble"] }
 nros-rmw-cyclonedds-sys = { path = "../../../../rmw/cyclonedds/nros-rmw-cyclonedds-sys", features = ["platform-posix"] }
-nros-rmw = { path = "../../../../core/nros-rmw", default-features = false, features = ["std"] }
-nros-serdes = { path = "../../../../core/nros-serdes", default-features = false, features = ["std"] }
+nros-rmw = { path = "../../../../core/nros-rmw", default-features = false, features = ["alloc"] }
+nros-serdes = { path = "../../../../core/nros-serdes", default-features = false, features = ["alloc"] }
 log = "0.4"
 env_logger = "0.11"
 

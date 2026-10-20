@@ -15,8 +15,12 @@ keywords = ["ros2", "node", "executor", "embedded", "no-std"]
 categories = ["embedded", "no-std"]
 
 [features]
-# phase-361 W3 / issue 0591 — EMPTY; `std` is opt-in per dep-site.
+# phase-361 W3 / issue 0591 — EMPTY.
 default = []
+# phase-359 W10 — no `std` feature. A core crate is `core` or `core+alloc`
+# (ARCHITECTURE §2). What `std` used to switch on is named where it is wanted:
+# `alloc`, `log`, and `nros-rmw-cffi/std` for the `NROS_RMW_TRACE_OPEN` trace.
+# The test target is a hosted harness and has `std` whatever the features say.
 
 # issue 1197 — emit the executor backing's per-type (size, align) as symbols a
 # build script can read out of the rlib, the way `nros-c` recovers
@@ -27,8 +31,8 @@ default = []
 # its own nested build, which is a separate compilation from the linked one.
 layout-size-markers = []
 # phase-361 W2 (final) — `portable-atomic-util` is an IMPLEMENTATION dep (the
-# no_std stand-in for `std::sync::Arc`), not the heap axis, so it rides `alloc`
-# and `std` reaches it by implying `alloc`. It is declared once, on the feature
+# no_std stand-in for `std::sync::Arc`), not the heap axis, so it rides `alloc`.
+# It is declared once, on the feature
 # whose `cfg` sites use it. (phase-359 W2 collapses the five std/alloc field
 # pairs onto `portable_atomic_util::Arc` for BOTH flavours, which is why the dep
 # must not be std-conditional.)
@@ -59,8 +63,6 @@ deprecate-node-name-setter = []
 # nothing at all. `sync-spin` is what makes the global `Sync` in a `no_std`
 # crate — the same dep `metadata-mode` itself names.
 registration-observer = ["nros-rmw/sync-spin"]
-
-std = ["alloc", "nros-core/std", "nros-rmw/std", "nros-rmw-cffi?/std", "log"]
 
 # phase-463 W7 — the PROFILING half of the host census: per-callback
 # `max_observed` (ns, host monotonic clock) and the topics each invocation

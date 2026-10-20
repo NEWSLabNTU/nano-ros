@@ -35,11 +35,11 @@
 //! `cargo test -- --ignored` without that step refuses the cross-width claims,
 //! which is the correct answer for a run that did not measure them.
 //!
-//! Built with `std,rmw-cffi` because the default's layout depends on the RMW
+//! Built with `alloc,rmw-cffi` because the default's layout depends on the RMW
 //! seam (`ConcreteSession` is `CffiSession` only under `rmw-cffi`) and on
 //! `alloc`; a Zephyr Rust image reaches `nros-node` through `nros`'s
 //! `alloc,rmw-cffi`.
-#![cfg(all(feature = "std", feature = "rmw-cffi"))]
+#![cfg(all(feature = "alloc", feature = "rmw-cffi"))]
 
 use std::{path::PathBuf, process::Command};
 

@@ -962,7 +962,7 @@ fn resolved_features_for(crate_name: &str) -> Result<Vec<String>, Error> {
     //
     // Name-intersection alone silently under-forwards whenever a caller's
     // feature enables a DIFFERENTLY-NAMED feature of the probed crate. That is
-    // exactly what `nros-c` does:
+    // exactly what `nros-c` did when this was written:
     //
     //     std = ["alloc", "nros/std", "nros/env", "nros-node/std", …]
     //

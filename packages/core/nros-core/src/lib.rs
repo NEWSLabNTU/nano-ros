@@ -10,7 +10,8 @@
 
 #![no_std]
 
-#[cfg(feature = "std")]
+// phase-359 W10 — no `std` feature; the test harness is hosted.
+#[cfg(test)]
 extern crate std;
 
 // phase-361 W2 (final) / issue 0598 — `alloc` is THE heap predicate, in this

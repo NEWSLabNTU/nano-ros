@@ -1,17 +1,18 @@
 # phase-359 — drop `std` from the core crates, and make `alloc` explicit
 
-**Status (2026-10-14). W10 is still open: the defaults are flipped, but the
-feature is not deleted.** Every one of the nine census crates now defaults
-off `std`. `nros`, `nros-node`, `nros-core`, `nros-rmw`, `nros-params`,
-`nros-log` and `nros-serdes` have `default = []`, and `nros-c`/`nros-cpp`
-have `default = ["panic-platform"]`. All nine still DECLARE a `std` feature.
-`just check std-census` measures **24 cfg sites / 25 `std::` paths**:
-`nros` 5/15, `nros-c` 7/1, `nros-cpp` 5/9, `nros-node` 3/0, and `nros-core`,
-`nros-params`, `nros-rmw` and `nros-serdes` 1/0 each. At least 31 tracked
-manifests outside those crates still name a core crate's `std` (single-line
-`git grep` forms only). The codegen templates and the committed message
-crates no longer do. Deleting the feature still needs those manifests and
-the remaining cfg sites to go in one change.
+**Status (2026-10-21). W10 stage A landed: six of the nine crates have no
+`std` feature.** `nros-core`, `nros-rmw`, `nros-serdes`, `nros-params`,
+`nros-log` and `nros-node` are `core` / `core+alloc` with nothing else to
+ask for; their tests get `std` from the hosted harness (`cfg(test)`).
+`just check std-census` measures **17 cfg sites / 24 `std::` paths**, all in
+the three that remain: `nros` 5/14, `nros-c` 7/1, `nros-cpp` 5/9. Those are
+stages B and C under "What remains of W10" below — they are not the
+mechanical tail the earlier count suggested, because the C/C++ `std` is the
+STATICLIB's flavour (libstd's panic handler), carried by cmake.
+
+**Status (2026-10-14).** 24 cfg / 24 paths; every one of the nine crates
+defaulted off `std` and all nine still declared it. (This line said 25
+paths; the census measured 24.)
 
 **Earlier status (2026-08-20). W0–W4, W6, W9 landed; W5 RE-SCOPED after measurement; W8 AUDIT COMPLETE; W7 IMPLEMENTED — NuttX is off `std`. W10 IN PROGRESS: the three `std::thread`-backed blocks are ported/deleted, `env` is split off as a CAPABILITY, and `nros-board-linux` — the last `std` platform — now runs the CORE crates on the `alloc` path, verified by a green native fixture build and `roundtrip_xprocess` 8/8. `nros-node` 106/76 -> 86/40. What remains of the manifest half: ~38 consumer manifests still naming a core crate's `std`, 10 generated message crates, 2 codegen template copies, and the ~86 `cfg` sites that must resolve before the `std` feature can be deleted from the nine crates. The clock ruling landed 2026-08-20: the platform API IS the clock, so the `std` clock fallbacks in `nros-core`, `nros-node` and `nros::time` are deleted rather than kept for the no-port build — that build supplies its own via `ExecutorConfig::clock_us`, or fails loud. Census 18 cfg sites / 16 `std::` paths; `nros-node` and `nros-core` are at zero `std::` paths.** The campaign
 removes `std` from the crates that run on targets, leaving `core` and
@@ -1299,12 +1300,65 @@ but it still BLOCKS, and it is what the `alloc` arm always did there.
 
 #### What remains of W10
 
-The three `nros-node` blocks are done; 91 cfg sites and 40 paths remain there,
-now mostly paired arms that collapse mechanically. Still untouched: the other
-eight crates (60 cfg sites), the 54 consumer manifests, the 8 generated message
-crates, the 2 codegen template copies, and `nros-board-linux` — the manifest
-half, which must land as one change because a manifest naming a deleted feature
-is a resolution error.
+*(2026-08-16 text, kept for the record: "the other eight crates (60 cfg
+sites), the 54 consumer manifests, the 8 generated message crates, the 2
+codegen template copies, and `nros-board-linux`". The message crates and
+templates were done by 2026-10-14.)*
+
+W10 is split into three stages, each landable alone, because a manifest
+naming a deleted feature is a resolution error and the three stages touch
+disjoint sets of manifests.
+
+**Stage A — DONE 2026-10-21: the six crates below the facade.** `std` deleted
+from `nros-core`, `nros-rmw`, `nros-serdes`, `nros-params`, `nros-log`,
+`nros-node`. Every `std` there implied `alloc`, so the mapping is exact:
+
+* a gate that named `std` names `alloc` (`nros-node`'s mock-session drive arm,
+  its test gates, three integration tests); inside `executor/tests.rs`, whose
+  module already requires `alloc`, the gates went and so did the counter
+  clock that only an `alloc`-without-`std` test build reached;
+* what `std` used to switch on is named by whoever wants it: `nros/std` now
+  forwards `nros-node/log`, `nros-rmw/log` and `nros-rmw-cffi?/std` (the
+  `NROS_RMW_TRACE_OPEN` trace), and every lane that passed `nros-node`'s
+  `std` passes `alloc,log`;
+* six manifests that named a core crate's `std` directly (`nros-tests`,
+  four of its bins, `nros-rmw-metadata`) name `alloc`.
+
+**Stage B — the facade. NEEDS A RULING before it is a sweep.** `nros` keeps a
+`std` feature that forwards `alloc` and `log` and gives `extern crate std` to
+its `env` code (`src/env.rs`, `init.rs`: 13 `std::env` paths plus
+`OnceLock`, `fs`, `process::id`). ARCHITECTURE §2 says `env` REQUIRES `std`
+and the consumer names it, and that nothing may enable `std` — which cannot
+both hold once `nros` has no `std` to name. Two ways out, and they differ in
+where the hosted code lives:
+
+1. **`env` grants `std` itself** (`#[cfg(feature = "env")] extern crate std`).
+   Smallest change: the 45 manifests that ask for `nros`'s `std` (17
+   `examples/linux/rust`, 21 under `nros-tests`, 4 `nros-bench`,
+   `nros-board-linux`, `nros-rmw-metadata`, the rustdoc driver; TOML-parsed,
+   so multi-line feature lists count) drop it and keep `env`. Amends §2's
+   "consumer names `std`" ruling of 2026-08-16, and leaves `std` code in a
+   crate the census tracks, behind a capability.
+2. **The reader moves to the hosted edge.** `ExecutorConfigEnvExt` and the
+   `init*` argv/env entry leave `nros` for a hosted crate (`nros-board-linux`
+   already is one, and the C/C++ hosted entry has its own). `nros` reaches
+   `core+alloc` like the six below it, and §2's rule stands as written.
+   Larger: every `from_env` caller's import path moves.
+
+Either way the CLI's two manifest emitters (`cargo-nano-ros/src/scaffold.rs`,
+`leaf_entity_env.rs`), `packs/scaffold/lib_nros.rs.jinja` and
+`check-flavour-lanes` (which reads a board's flavour off a `"std"` on its
+`nros` dep, so it would read `nros-board-linux` as `no_std`; the board crate
+itself has no `#![no_std]`, which is the fact to read instead) move with it.
+
+**Stage C — `nros-c` / `nros-cpp`.** Their `std` is not a convenience: it is
+whether the STATICLIB links libstd, and so whose `#[panic_handler]` ends the
+image (`panic-platform` stands down under `std`; issue 1742). cmake reads it
+in three places (`NanoRosFeatureSet.cmake`'s panic-policy guard,
+`NanoRosRuntimeCrate.cmake`'s umbrella `#![no_std]`, RFC-0071 D9's
+`NanoRosImageCrate.cmake`). In the image-crate model the image ROOT decides
+`#![no_std]`, so the likely end state is that the root, not `nros-c`, carries
+the hosted flavour — which is a design ruling, not a sweep.
 
 ## Costs accepted
 

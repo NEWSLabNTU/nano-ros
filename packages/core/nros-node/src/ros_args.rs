@@ -922,7 +922,7 @@ mod tests {
 
     /// Same gate as `executor::node`'s tests: `Executor::from_session` over a
     /// `MockSession` needs `std` and no linked backend.
-    #[cfg(all(feature = "std", not(feature = "rmw-cffi")))]
+    #[cfg(all(feature = "alloc", not(feature = "rmw-cffi")))]
     mod chain {
         use super::super::*;
         extern crate std;

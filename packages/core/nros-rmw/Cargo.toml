@@ -19,14 +19,11 @@ links = "nros_rmw"
 build = "build.rs"
 
 [features]
-# Default: no-std. Depending crates that want `std` must opt in
-# explicitly (matches nros-core). Previously `default = ["std"]`, which
-# required `default-features = false` on every `no_std` downstream.
+# Default: no-std. Previously `default = ["std"]`, which required
+# `default-features = false` on every `no_std` downstream.
 default = []
-# phase-361 W2 (revised) — `std` does NOT imply `alloc`. On embedded, both are
-# opted into EXPLICITLY, per package, by the end user; a dep that needs the heap
-# must make the user say `alloc`, never turn it on behind their back.
-std = ["alloc", "nros-core/std", "log"]
+# phase-359 W10 — no `std` feature. A core crate is `core` or `core+alloc`
+# (ARCHITECTURE §2); `alloc` is the one heap axis.
 alloc = ["nros-core/alloc"]
 # phase-359 W10 (backend tier) — pass-through only; see `nros-core`'s row.
 platform-clock = ["nros-core/platform-clock"]

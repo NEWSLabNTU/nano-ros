@@ -38,7 +38,7 @@
 // this module has no consumer — `#[allow(dead_code)]` keeps the
 // type compilable so 141.A.3 only has to add the caller, not
 // re-introduce the type.
-#![cfg_attr(not(feature = "std"), allow(dead_code))]
+#![cfg_attr(not(feature = "alloc"), allow(dead_code))]
 
 use core::ffi::c_void;
 

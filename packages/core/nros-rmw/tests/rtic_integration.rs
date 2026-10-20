@@ -4,7 +4,7 @@
 //! - Mutex synchronization primitives
 //! - QoS settings types
 
-#![cfg(feature = "std")]
+#![cfg(feature = "alloc")]
 
 /// Test that Mutex type is available and usable
 #[test]
