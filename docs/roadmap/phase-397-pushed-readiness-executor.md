@@ -205,9 +205,10 @@ because `dds_set_listener` waits out a callback in progress. A
 Not attaching the listener fails the first case.
 
 That test also found
-[issue 1963](../issues/1963-cyclone-late-wake-callback-misses-existing-readers.md):
-a session wake installed AFTER a reader exists never fires for that reader.
-Every in-tree caller installs at session open, so it is latent.
+[issue 1963](../issues/archived/1963-cyclone-late-wake-callback-misses-existing-readers.md):
+a session wake installed AFTER a reader existed never fired for that reader.
+Resolved 2026-10-21: the participant's listener is now attached when the
+session is created, and the test runs both orderings.
 
 **Why the owner rides on the token** (phase-436 step 5,
 2026-10-16). Several executors share one session through the wake fan-out

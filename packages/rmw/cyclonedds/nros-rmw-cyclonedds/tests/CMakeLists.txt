@@ -121,6 +121,12 @@ add_test(
     NAME nros_rmw_cyclonedds_entity_wake
     COMMAND nros_rmw_cyclonedds_entity_wake
 )
+# Issue 1963 — the same properties with the session wake installed after the
+# entities exist.
+add_test(
+    NAME nros_rmw_cyclonedds_entity_wake_late
+    COMMAND nros_rmw_cyclonedds_entity_wake late
+)
 
 # Issue 0780 — polled status events, provoked for real (a 50 ms deadline and a
 # publisher that stops). Reuses the test_string descriptor above.
@@ -812,6 +818,7 @@ set_tests_properties(
     nros_rmw_cyclonedds_codegen_smoke
     nros_rmw_cyclonedds_pubsub_smoke
     nros_rmw_cyclonedds_entity_wake
+    nros_rmw_cyclonedds_entity_wake_late
     nros_rmw_cyclonedds_data_roundtrip
     nros_rmw_cyclonedds_take_sequence_pending_status
     PROPERTIES

@@ -158,7 +158,7 @@ void on_data_available(dds_entity_t reader, void *arg) {
      * `graph.cpp` and concluded Cyclone had no change signal at all, so the
      * row should be split and Cyclone's half filed as a threading-model
      * change. It is not: the listener is on the PARTICIPANT (see
-     * `session_set_wake_callback`), DDS propagates an unhandled event to the
+     * `create_session_listener`), DDS propagates an unhandled event to the
      * parent, and `reader` names the reader that actually has data. So the
      * whole discriminator is the comparison below — no new thread, no new
      * context, no waitset.
@@ -176,59 +176,49 @@ void on_data_available(dds_entity_t reader, void *arg) {
     }
 }
 
-/* phase-467 Row 8 — the participant-level data_available listener, now that
- * TWO consumers want it.
+/* The participant-level data_available listener, shared by the wake path and
+ * the graph path (phase-467 Row 8).
  *
- * On the PARTICIPANT, not per reader: DDS propagates an unhandled event up to
- * the parent, so one listener covers every reader this session will ever
- * create, including ones created later. Readers set no data_available handler
- * of their own (`subscriber.cpp` polls), so nothing is being overridden.
+ * It is attached ONCE, at `session_create`, before any reader exists, and it
+ * stays attached until `session_destroy`. Installing a callback only
+ * publishes its pair; it never touches the listener. Issue 1963 is why.
+ *
+ * DDS propagates an unhandled event up to the parent, so one listener on the
+ * participant covers every reader that INHERITED it. Cyclone 0.10.5 decides
+ * inheritance once, at the reader's creation: `dds_entity_init` merges each
+ * ancestor's handlers into the reader's and marks the merged fields
+ * `inherited`. A later `dds_set_listener` on the participant pushes down with
+ * `dds_override_inherited_listener`, which replaces only fields already
+ * marked. A reader created while the participant had no data_available
+ * handler never got the mark, so a listener attached after it never reached
+ * it. That was measured: install the wake after the entities, and an
+ * unregistered reader's arrivals woke nothing (`tests/entity_wake.cpp`,
+ * `late`). With the listener on the participant from its birth, every reader
+ * inherits it, whenever either callback is installed.
+ *
+ * Readers set no data_available handler of their own unless an entity wake
+ * is registered (`entity_wake_set`), so nothing else is overridden.
  *
  * reset_on_invoke = false: this is a level signal, not a one-shot. The
  * executor may still be draining an earlier batch when the next one lands,
  * and it must be woken again.
  *
- * Extracted rather than copied. The wake path and the graph path need the
- * SAME listener with the same `arg`, and a second `dds_set_listener` on one
- * participant REPLACES the first — so two spellings here would not be a
- * duplication smell, they would be the two consumers silently unhooking each
- * other. */
-bool ensure_listener(SessionState *state) {
-    if (state->listener != nullptr) {
-        return true;
+ * The cost when nothing is installed is one call per arrival that reads two
+ * null pairs and returns. A failure to allocate the listener leaves the
+ * session usable and makes both installs refuse (see `has_listener`). */
+dds_listener_t* create_session_listener(SessionState* state) {
+    dds_listener_t* l = dds_create_listener(state);
+    if (l != nullptr) {
+        dds_lset_data_available_arg(l, on_data_available, state, false);
     }
-    state->listener = dds_create_listener(state);
-    if (state->listener == nullptr) {
-        return false;
-    }
-    dds_lset_data_available_arg(state->listener, on_data_available, state, false);
-    if (dds_set_listener(state->participant, state->listener) < 0) {
-        dds_delete_listener(state->listener);
-        state->listener = nullptr;
-        return false;
-    }
-    return true;
+    return l;
 }
 
-/* Detach the listener once NOBODY wants it.
- *
- * The clear paths null their own pair first and then call this, which is a
- * change from the pre-Row-8 order ("detach first, then drop the pair"): with
- * a second consumer the detach may not happen at all, so the pair has to be
- * gone before the decision is made. `on_data_available` reads each pair once
- * and returns on a null callback — it has always had to, since it reads them
- * without a lock — so a handler racing this observes "nothing installed",
- * never a half-cleared pair. */
-void release_listener_if_idle(SessionState *state) {
-    if (state->listener == nullptr) {
-        return;
-    }
-    if (state->wake_cb != nullptr || state->graph_cb != nullptr) {
-        return;
-    }
-    (void)dds_set_listener(state->participant, nullptr);
-    dds_delete_listener(state->listener);
-    state->listener = nullptr;
+/* Whether an install can be honoured. Never attaches a listener late: a late
+ * attach is the bug described above, and refusing is better than an install
+ * that silently misses the readers that already exist. */
+bool has_listener(const SessionState* state) {
+    return state->listener != nullptr;
 }
 
 #endif /* !NROS_RMW_CYCLONEDDS_NO_FOREIGN_WAKE */
@@ -348,24 +338,22 @@ rmw_ret_t session_set_wake_callback(rmw_session_t* session,
     auto* state = as_state(session);
 
     if (cb == nullptr) {
-        /* Drop the pair, THEN detach if nobody else wants the listener. See
-         * `release_listener_if_idle` for why this order changed with Row 8. */
+        /* Drop the pair. The listener stays attached (see
+         * `create_session_listener`); `on_data_available` reads each pair
+         * once and returns on a null callback, so a handler racing this
+         * observes "nothing installed", never a half-cleared pair. */
         state->wake_cb = nullptr;
         state->wake_ctx = nullptr;
-        release_listener_if_idle(state);
         return NROS_RMW_RET_OK;
     }
 
-    /* Publish the pair BEFORE the listener exists, so the first callback
-     * cannot see a null cb. */
-    state->wake_ctx = ctx;
-    state->wake_cb = cb;
-
-    if (!ensure_listener(state)) {
-        state->wake_cb = nullptr;
-        state->wake_ctx = nullptr;
+    if (!has_listener(state)) {
         return NROS_RMW_RET_ERROR;
     }
+    /* ctx BEFORE cb: the handler tests cb, so it never calls a new cb with
+     * the old ctx. */
+    state->wake_ctx = ctx;
+    state->wake_cb = cb;
     return NROS_RMW_RET_OK;
 #endif
 }
@@ -397,7 +385,6 @@ rmw_ret_t session_node_get_graph_guard_condition(rmw_session_t* session,
     if (callback == nullptr) {
         state->graph_cb = nullptr;
         state->graph_user_data = nullptr;
-        release_listener_if_idle(state);
         /* OK on a clear is the capability answer the runtime probes with:
          * this backend HAS a graph. Whether the reader can be created is the
          * install's question, below. */
@@ -426,22 +413,18 @@ rmw_ret_t session_node_get_graph_guard_condition(rmw_session_t* session,
      * `ros_discovery_info` edge still covers arrivals, and refusing the whole
      * slot over it would lose a capability that works. `graph_reader` IS
      * fatal — without it there is no edge at all. */
+    if (!has_listener(state)) {
+        return NROS_RMW_RET_ERROR;
+    }
     if (!graph_ensure_reader(&state->graph)) {
         return NROS_RMW_RET_UNSUPPORTED;
     }
     (void)graph_ensure_builtin_reader(&state->graph, state->participant, /*writers=*/true);
     (void)graph_ensure_builtin_reader(&state->graph, state->participant, /*writers=*/false);
 
-    /* Publish the pair BEFORE the listener exists, so a first callback cannot
-     * see a null one. */
+    /* user_data BEFORE the callback, as for the wake pair. */
     state->graph_user_data = user_data;
     state->graph_cb = callback;
-
-    if (!ensure_listener(state)) {
-        state->graph_cb = nullptr;
-        state->graph_user_data = nullptr;
-        return NROS_RMW_RET_ERROR;
-    }
     return NROS_RMW_RET_OK;
 #endif
 }
@@ -605,13 +588,21 @@ if (NROS_CYC_COMPOSE_DOMAIN || has_user_cyclone_config()) {
         }
     }
 
+#ifndef NROS_RMW_CYCLONEDDS_NO_FOREIGN_WAKE
+    /* Issue 1963 — the listener goes on the participant as it is CREATED, so
+     * every reader inherits it. See `create_session_listener`. */
+    state->listener = create_session_listener(state);
+#endif
     NROS_CYC_TRACE("session_create: calling dds_create_participant");
-    dds_entity_t pp = dds_create_participant(domain_id, pp_qos, nullptr);
+    dds_entity_t pp = dds_create_participant(domain_id, pp_qos, state->listener);
     if (pp_qos != nullptr) {
         dds_delete_qos(pp_qos);
     }
     NROS_CYC_TRACE("session_create: dds_create_participant returned %d", (int)pp);
     if (pp < 0) {
+        if (state->listener != nullptr) {
+            dds_delete_listener(state->listener);
+        }
         if (state->domain > 0) {
             (void)dds_delete(state->domain);
         }
@@ -697,12 +688,6 @@ rmw_ret_t node_destroy(rmw_node_t* node) {
 }
 
 rmw_ret_t session_destroy(rmw_session_t* session) {
-    /* Drop the wake path before anything it points at goes away — the ctx
-     * belongs to the executor, and Cyclone must stop calling us first. */
-    if (session != nullptr && session->backend_data != nullptr) {
-        (void)session_set_wake_callback(session, nullptr, nullptr);
-    }
-
     if (session == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
@@ -710,10 +695,25 @@ rmw_ret_t session_destroy(rmw_session_t* session) {
     if (state == nullptr) {
         return NROS_RMW_RET_OK; // already closed / never opened
     }
+    /* Drop both callback pairs before anything they point at goes away: the
+     * contexts belong to the executor. A handler still running reads null
+     * pairs and returns. */
+    state->wake_cb = nullptr;
+    state->wake_ctx = nullptr;
+    state->graph_cb = nullptr;
+    state->graph_user_data = nullptr;
     if (state->participant > 0) {
         // dds_delete on the participant cascades to every child
-        // entity (writers, readers, topics) it owns.
+        // entity (writers, readers, topics) it owns, and waits for any
+        // listener callback running on them, so `state` is unreferenced
+        // once it returns.
         (void)dds_delete(state->participant);
+    }
+    if (state->listener != nullptr) {
+        // Cyclone copied the handlers into each entity; this frees only the
+        // object `create_session_listener` allocated.
+        dds_delete_listener(state->listener);
+        state->listener = nullptr;
     }
     if (state->domain > 0) {
         (void)dds_delete(state->domain);
@@ -725,8 +725,8 @@ rmw_ret_t session_destroy(rmw_session_t* session) {
 
 rmw_ret_t session_drive_io(rmw_session_t* /*session*/, int32_t timeout_ms) {
     // Cyclone owns its own RX threads internally — `drive_io` has
-    // nothing to pump. Listener trampolines (Phase 117.6) wake the
-    // runtime's `Activator` directly from inside Cyclone's worker.
+    // nothing to pump. The data_available listener wakes the runtime
+    // directly from inside Cyclone's worker (`on_data_available`).
     //
     // Phase 11W.10 — the executor spin loop calls drive_io as its
     // "wait up to timeout_ms for events" primitive. As a poll-only

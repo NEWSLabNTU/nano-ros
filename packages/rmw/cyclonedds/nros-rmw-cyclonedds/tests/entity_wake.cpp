@@ -14,6 +14,13 @@
 //
 // Negative control: before anything is published, both counters are zero.
 //
+// Run twice (issue 1963). With no argument the session wake is installed
+// FIRST, as the executor does at session open. With `late` it is installed
+// AFTER every entity exists; the three properties must hold either way. The
+// late ordering is the one that failed property 2 while the participant's
+// listener was attached at install time, because Cyclone only pushes a parent
+// listener down into readers that inherited it when they were created.
+//
 // Stubs `nros_rmw_cffi_register_named` since the runtime isn't linked.
 
 #include <atomic>
@@ -93,7 +100,8 @@ extern "C" rmw_ret_t nros_rmw_cffi_register_named(const char* /*name*/,
     return NROS_RMW_RET_OK;
 }
 
-int main() {
+int main(int argc, char** argv) {
+    const bool late = argc > 1 && std::strcmp(argv[1], "late") == 0;
     if (nros_rmw_cyclonedds_register() != NROS_RMW_RET_OK || g_vt == nullptr) {
         std::fprintf(stderr, "register failed\n");
         return 1;
@@ -120,9 +128,9 @@ int main() {
     rmw_qos_profile_t qos = NROS_RMW_QOS_PROFILE_DEFAULT;
     const rmw_message_type_support_t ts{"nros_test::msg::TestString", ""};
 
-    // Installed first, as the executor does at session open: readers created
-    // afterwards inherit the participant's listener.
-    if (g_vt->set_wake_callback(&s, on_session_wake, nullptr) != NROS_RMW_RET_OK) {
+    // Installed first by default, as the executor does at session open; with
+    // `late`, after the entities below.
+    if (!late && g_vt->set_wake_callback(&s, on_session_wake, nullptr) != NROS_RMW_RET_OK) {
         std::fprintf(stderr, "set_wake_callback failed\n");
         return 5;
     }
@@ -140,6 +148,10 @@ int main() {
             NROS_RMW_RET_OK) {
         std::fprintf(stderr, "entity creation failed\n");
         return 4;
+    }
+    if (late && g_vt->set_wake_callback(&s, on_session_wake, nullptr) != NROS_RMW_RET_OK) {
+        std::fprintf(stderr, "late set_wake_callback failed\n");
+        return 5;
     }
 
     if (g_vt->subscription_set_on_new_message_callback(&sub_a, on_entity_wake, &g_marker) !=
@@ -217,8 +229,8 @@ int main() {
         return 16;
     }
     if (rc == 0) {
-        std::printf("OK attributed %d, session %d\n", g_entity_wakes.load(),
-                    g_session_wakes.load());
+        std::printf("OK %s: attributed %d, session %d\n", late ? "late" : "early",
+                    g_entity_wakes.load(), g_session_wakes.load());
     }
     return rc;
 }
