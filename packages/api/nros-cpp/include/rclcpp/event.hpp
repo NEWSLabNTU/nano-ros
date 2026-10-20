@@ -8,9 +8,12 @@
  * the C surface in `<nros/event.h>` (cbindgen-generated from
  * `nros-c/src/event.rs`), wrapped as typed C++ callbacks.
  *
- * Backends opt in to specific event kinds. The Tier-1 setters still return
- * `ErrorCode::Unsupported` at this layer; the matched and incompatible-type
- * ones (issue 1972) reach the backend.
+ * Every setter reaches the backend (Tier-1 kinds: issue 1993; matched and
+ * incompatible type: issue 1972), and the BACKEND decides which kinds it
+ * carries: Cyclone DDS and zenoh carry all of them, XRCE-DDS and uORB none,
+ * and there a setter returns `ErrorCode::Unsupported`. Registrations live in
+ * a process-wide table of 16 slots shared with the C API; one past that is
+ * `ErrorCode::Full`.
  */
 
 #ifndef NROS_RCLCPP_EVENT_HPP

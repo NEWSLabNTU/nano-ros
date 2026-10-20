@@ -1,10 +1,12 @@
 //! Phase 108 — status-event API for the nros C user-facing surface.
 //!
-//! User-facing typedefs + setter functions for status events. The five
-//! Tier-1 setters (liveliness, deadline, message-lost) still return
-//! `RCL_RET_UNSUPPORTED` at this layer; the four issue-1972 setters
-//! (matched, incompatible type) reach the backend through
-//! [`status_event_slots`].
+//! User-facing typedefs + setter functions for status events. All nine
+//! setters — the five Tier-1 kinds (liveliness, deadline, message-lost,
+//! issue 1993) and the four issue-1972 kinds (matched, incompatible type) —
+//! reach the backend through [`status_event_slots`]. Whether an event is
+//! carried is the backend's answer (`supports_event`, which the cffi route
+//! takes from `backend_event_type_is_supported`): Cyclone DDS and zenoh carry
+//! all nine, XRCE-DDS and uORB none, and those answer `RCL_RET_UNSUPPORTED`.
 
 use core::ffi::c_void;
 
@@ -76,11 +78,27 @@ pub type rclc_event_subscriber_count_cb_t = Option<
     ),
 >;
 
-/// Register a callback for `NROS_EVENT_LIVELINESS_CHANGED`.
+/// Register a callback for `NROS_EVENT_LIVELINESS_CHANGED` — upstream
+/// `RMW_EVENT_LIVELINESS_CHANGED`. Fires when a matched publisher starts or
+/// stops asserting its liveliness; observed as the executor polls the
+/// subscription.
 ///
-/// Returns `NROS_RMW_RET_UNSUPPORTED` until the active backend wires
-/// up liveliness-event detection (Phase 109+). Applications can call
-/// it today; the event fires once the backend gains support.
+/// The subscription must already be ADDED to an executor
+/// (`rclc_executor_add_subscription*`): the executor owns the subscriber, so
+/// before that there is nothing to register on. Registering again for the
+/// same subscription replaces the earlier callback.
+///
+/// # Returns
+/// * `RCL_RET_OK` — registered
+/// * `RCL_RET_INVALID_ARGUMENT` — NULL `sub` or `cb`
+/// * `RCL_RET_NOT_INIT` — the subscription is not initialised, or not yet
+///   added to an executor
+/// * `RCL_RET_UNSUPPORTED` — the backend does not generate this event
+///   (XRCE-DDS, uORB; zenoh on bare metal). Decided by the backend, never
+///   by this layer.
+/// * `RCLC_RET_FULL` — the process-wide event-slot table is full: it holds
+///   16 registrations across every C and C++ entity, and one publisher
+///   with all four of its kinds plus one subscription with all five fit
 ///
 /// # Safety
 ///
@@ -89,46 +107,96 @@ pub type rclc_event_subscriber_count_cb_t = Option<
 /// is opaque to nros and must outlive the subscription.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rclc_subscription_set_liveliness_changed_callback(
-    _sub: *mut rcl_subscription_t,
-    _cb: rclc_event_liveliness_changed_cb_t,
-    _user_context: *mut c_void,
+    sub: *mut rcl_subscription_t,
+    cb: rclc_event_liveliness_changed_cb_t,
+    user_context: *mut c_void,
 ) -> rcl_ret_t {
-    // Backend wiring lands per-phase (109+); for now, the API surface
-    // is exposed but no backend implements the underlying event.
-    RCL_RET_UNSUPPORTED
+    #[cfg(feature = "rmw-cffi")]
+    {
+        let cb = cb.map_or(core::ptr::null(), |f| f as *const ());
+        unsafe {
+            subscription_set(
+                sub,
+                nros_rmw::EventKind::LivelinessChanged,
+                0,
+                cb,
+                user_context,
+            )
+        }
+    }
+    #[cfg(not(feature = "rmw-cffi"))]
+    {
+        let _ = (sub, cb, user_context);
+        RCL_RET_UNSUPPORTED
+    }
 }
 
-/// Register a callback for `NROS_EVENT_REQUESTED_DEADLINE_MISSED`.
+/// Register a callback for `NROS_EVENT_REQUESTED_DEADLINE_MISSED` —
+/// upstream `RMW_EVENT_REQUESTED_DEADLINE_MISSED`.
 ///
-/// `deadline_ms` is the maximum acceptable inter-arrival time for
-/// expected samples. When a sample doesn't arrive within this window,
-/// the callback fires.
+/// `deadline_ms` is the maximum acceptable inter-arrival time for expected
+/// samples; it is handed to the backend's registration. zenoh uses it when
+/// the subscription's QoS states no deadline of its own; Cyclone DDS takes
+/// the deadline from the QoS profile and ignores it.
+///
+/// Same contract and returns as
+/// [`rclc_subscription_set_liveliness_changed_callback`].
 ///
 /// # Safety
 ///
 /// See [`rclc_subscription_set_liveliness_changed_callback`].
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rclc_subscription_set_requested_deadline_missed_callback(
-    _sub: *mut rcl_subscription_t,
-    _deadline_ms: u32,
-    _cb: rclc_event_subscriber_count_cb_t,
-    _user_context: *mut c_void,
+    sub: *mut rcl_subscription_t,
+    deadline_ms: u32,
+    cb: rclc_event_subscriber_count_cb_t,
+    user_context: *mut c_void,
 ) -> rcl_ret_t {
-    RCL_RET_UNSUPPORTED
+    #[cfg(feature = "rmw-cffi")]
+    {
+        let cb = cb.map_or(core::ptr::null(), |f| f as *const ());
+        unsafe {
+            subscription_set(
+                sub,
+                nros_rmw::EventKind::RequestedDeadlineMissed,
+                deadline_ms,
+                cb,
+                user_context,
+            )
+        }
+    }
+    #[cfg(not(feature = "rmw-cffi"))]
+    {
+        let _ = (sub, deadline_ms, cb, user_context);
+        RCL_RET_UNSUPPORTED
+    }
 }
 
-/// Register a callback for `NROS_EVENT_MESSAGE_LOST`.
+/// Register a callback for `NROS_EVENT_MESSAGE_LOST` — upstream
+/// `RMW_EVENT_MESSAGE_LOST`. Fires when the backend reports a dropped sample.
+///
+/// Same contract and returns as
+/// [`rclc_subscription_set_liveliness_changed_callback`].
 ///
 /// # Safety
 ///
 /// See [`rclc_subscription_set_liveliness_changed_callback`].
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rclc_subscription_set_message_lost_callback(
-    _sub: *mut rcl_subscription_t,
-    _cb: rclc_event_subscriber_count_cb_t,
-    _user_context: *mut c_void,
+    sub: *mut rcl_subscription_t,
+    cb: rclc_event_subscriber_count_cb_t,
+    user_context: *mut c_void,
 ) -> rcl_ret_t {
-    RCL_RET_UNSUPPORTED
+    #[cfg(feature = "rmw-cffi")]
+    {
+        let cb = cb.map_or(core::ptr::null(), |f| f as *const ());
+        unsafe { subscription_set(sub, nros_rmw::EventKind::MessageLost, 0, cb, user_context) }
+    }
+    #[cfg(not(feature = "rmw-cffi"))]
+    {
+        let _ = (sub, cb, user_context);
+        RCL_RET_UNSUPPORTED
+    }
 }
 
 // ============================================================================
@@ -145,48 +213,105 @@ pub type rclc_event_publisher_count_cb_t = Option<
     ),
 >;
 
-/// Register a callback for `NROS_EVENT_LIVELINESS_LOST`.
+/// Register a callback for `NROS_EVENT_LIVELINESS_LOST` — upstream
+/// `RMW_EVENT_LIVELINESS_LOST`. Fires when this publisher misses its own
+/// liveliness assertion; observed on the publisher's poll points
+/// (`rcl_publish`, `rcl_publisher_assert_liveliness`).
+///
+/// Registering again for the same publisher replaces the earlier callback.
+///
+/// # Returns
+/// * `RCL_RET_OK` — registered
+/// * `RCL_RET_INVALID_ARGUMENT` — NULL `pub_` or `cb`
+/// * `RCL_RET_NOT_INIT` — the publisher is not initialised
+/// * `RCL_RET_UNSUPPORTED` — the backend does not generate this event
+///   (XRCE-DDS, uORB). Decided by the backend, never by this layer.
+/// * `RCLC_RET_FULL` — the process-wide event-slot table is full: it holds
+///   16 registrations across every C and C++ entity, and one publisher
+///   with all four of its kinds plus one subscription with all five fit
 ///
 /// # Safety
 ///
-/// `pub_` must point to a valid, initialised `rcl_publisher_t`.
-/// `cb` must be a valid function pointer or `None`.
+/// `pub_` must point to a valid, initialised `rcl_publisher_t` that is not
+/// moved while registered. `cb` must be a valid function pointer or `None`;
+/// `user_context` must outlive the publisher.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rclc_publisher_set_liveliness_lost_callback(
-    _pub_: *mut rcl_publisher_t,
-    _cb: rclc_event_publisher_count_cb_t,
-    _user_context: *mut c_void,
+    pub_: *mut rcl_publisher_t,
+    cb: rclc_event_publisher_count_cb_t,
+    user_context: *mut c_void,
 ) -> rcl_ret_t {
-    RCL_RET_UNSUPPORTED
+    #[cfg(feature = "rmw-cffi")]
+    {
+        let cb = cb.map_or(core::ptr::null(), |f| f as *const ());
+        unsafe {
+            publisher_set(
+                pub_,
+                nros_rmw::EventKind::LivelinessLost,
+                0,
+                cb,
+                user_context,
+            )
+        }
+    }
+    #[cfg(not(feature = "rmw-cffi"))]
+    {
+        let _ = (pub_, cb, user_context);
+        RCL_RET_UNSUPPORTED
+    }
 }
 
-/// Register a callback for `NROS_EVENT_OFFERED_DEADLINE_MISSED`.
+/// Register a callback for `NROS_EVENT_OFFERED_DEADLINE_MISSED` — upstream
+/// `RMW_EVENT_OFFERED_DEADLINE_MISSED`.
 ///
-/// `deadline_ms` is the publisher's offered minimum-rate window.
+/// `deadline_ms` is the publisher's offered minimum-rate window; it is handed
+/// to the backend's registration. zenoh uses it when the publisher's QoS
+/// states no deadline of its own; Cyclone DDS takes the deadline from the QoS
+/// profile and ignores it.
+///
+/// Same contract and returns as
+/// [`rclc_publisher_set_liveliness_lost_callback`].
 ///
 /// # Safety
 ///
 /// See [`rclc_publisher_set_liveliness_lost_callback`].
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rclc_publisher_set_offered_deadline_missed_callback(
-    _pub_: *mut rcl_publisher_t,
-    _deadline_ms: u32,
-    _cb: rclc_event_publisher_count_cb_t,
-    _user_context: *mut c_void,
+    pub_: *mut rcl_publisher_t,
+    deadline_ms: u32,
+    cb: rclc_event_publisher_count_cb_t,
+    user_context: *mut c_void,
 ) -> rcl_ret_t {
-    RCL_RET_UNSUPPORTED
+    #[cfg(feature = "rmw-cffi")]
+    {
+        let cb = cb.map_or(core::ptr::null(), |f| f as *const ());
+        unsafe {
+            publisher_set(
+                pub_,
+                nros_rmw::EventKind::OfferedDeadlineMissed,
+                deadline_ms,
+                cb,
+                user_context,
+            )
+        }
+    }
+    #[cfg(not(feature = "rmw-cffi"))]
+    {
+        let _ = (pub_, deadline_ms, cb, user_context);
+        RCL_RET_UNSUPPORTED
+    }
 }
 
 // ============================================================================
-// Issue 1972 — matched and incompatible-type events, WIRED
+// Issue 1972 — matched and incompatible-type events
 // ============================================================================
 //
-// Unlike the five Tier-1 setters above, these four reach the backend. The
-// difference is a place to keep the user's `(callback, context, entity)`
-// triple: the backend's status-event channel carries ONE opaque pointer, and
-// the C entity's layout is a generated header users allocate, so the triple
-// lives in [`status_event_slots`] — a small static table shared with the C++
-// API — and the backend is handed a tagged slot reference instead.
+// Every setter in this file needs a place to keep the user's `(callback,
+// context, entity)` triple: the backend's status-event channel carries ONE
+// opaque pointer, and the C entity's layout is a generated header users
+// allocate, so the triple lives in [`status_event_slots`] — a small static
+// table shared with the C++ API — and the backend is handed a tagged slot
+// reference instead.
 
 /// Matched payload — upstream `rmw_matched_status_t` (Iron+), rclcpp's
 /// `MatchedInfo`. Same four fields in upstream's order; the counts are
@@ -269,6 +394,36 @@ const _: () = {
     );
 };
 
+#[cfg(feature = "rmw-cffi")]
+const _: () = {
+    use core::mem::{align_of, offset_of, size_of};
+    use nros_rmw::{CountStatus as R, LivelinessChangedStatus as L};
+    // Issue 1993 — the Tier-1 payloads, by value, for the same reason.
+    assert!(size_of::<rclc_liveliness_changed_status_t>() == size_of::<L>());
+    assert!(align_of::<rclc_liveliness_changed_status_t>() == align_of::<L>());
+    assert!(
+        offset_of!(rclc_liveliness_changed_status_t, alive_count) == offset_of!(L, alive_count)
+    );
+    assert!(
+        offset_of!(rclc_liveliness_changed_status_t, not_alive_count)
+            == offset_of!(L, not_alive_count)
+    );
+    assert!(
+        offset_of!(rclc_liveliness_changed_status_t, alive_count_change)
+            == offset_of!(L, alive_count_change)
+    );
+    assert!(
+        offset_of!(rclc_liveliness_changed_status_t, not_alive_count_change)
+            == offset_of!(L, not_alive_count_change)
+    );
+    assert!(size_of::<rclc_count_status_t>() == size_of::<R>());
+    assert!(align_of::<rclc_count_status_t>() == align_of::<R>());
+    assert!(offset_of!(rclc_count_status_t, total_count) == offset_of!(R, total_count));
+    assert!(
+        offset_of!(rclc_count_status_t, total_count_change) == offset_of!(R, total_count_change)
+    );
+};
+
 /// Map a registration verdict onto `rcl_ret_t`.
 #[cfg(feature = "rmw-cffi")]
 fn slot_verdict(r: Result<(), nros_rmw::TransportError>) -> rcl_ret_t {
@@ -280,11 +435,14 @@ fn slot_verdict(r: Result<(), nros_rmw::TransportError>) -> rcl_ret_t {
     }
 }
 
-/// Register on an inline-storage publisher.
+/// Register on an inline-storage publisher. `deadline_ms` is forwarded to the
+/// backend's registration (`0` for the kinds that take none, as `nros-node`
+/// does).
 #[cfg(feature = "rmw-cffi")]
 unsafe fn publisher_set(
     pub_: *mut rcl_publisher_t,
     kind: nros_rmw::EventKind,
+    deadline_ms: u32,
     cb: *const (),
     user_context: *mut c_void,
 ) -> rcl_ret_t {
@@ -297,6 +455,11 @@ unsafe fn publisher_set(
         return RCL_RET_NOT_INIT;
     }
     let handle = publisher._opaque.as_mut_ptr() as *mut nros::internals::RmwPublisher;
+    // Issue 1993 — the backend decides whether it carries `kind`; this layer
+    // never answers for it.
+    if !nros_rmw::Publisher::supports_event(unsafe { &*handle }, kind) {
+        return RCL_RET_UNSUPPORTED;
+    }
     let r = unsafe {
         status_event_slots::register(
             handle as usize,
@@ -305,18 +468,26 @@ unsafe fn publisher_set(
             cb,
             user_context,
             |k, tramp, tag| {
-                nros_rmw::Publisher::register_event_callback(&mut *handle, k, 0, tramp, tag)
+                nros_rmw::Publisher::register_event_callback(
+                    &mut *handle,
+                    k,
+                    deadline_ms,
+                    tramp,
+                    tag,
+                )
             },
         )
     };
     slot_verdict(r)
 }
 
-/// Register on an executor-owned subscription.
+/// Register on an executor-owned subscription. `deadline_ms` as for
+/// [`publisher_set`].
 #[cfg(feature = "rmw-cffi")]
 unsafe fn subscription_set(
     sub: *mut rcl_subscription_t,
     kind: nros_rmw::EventKind,
+    deadline_ms: u32,
     cb: *const (),
     user_context: *mut c_void,
 ) -> rcl_ret_t {
@@ -338,6 +509,9 @@ unsafe fn subscription_set(
         return RCL_RET_NOT_INIT;
     };
     let handle = handle as *mut nros::internals::RmwSubscriber;
+    if !nros_rmw::Subscription::supports_event(unsafe { &*handle }, kind) {
+        return RCL_RET_UNSUPPORTED;
+    }
     let r = unsafe {
         status_event_slots::register(
             handle as usize,
@@ -346,7 +520,13 @@ unsafe fn subscription_set(
             cb,
             user_context,
             |k, tramp, tag| {
-                nros_rmw::Subscription::register_event_callback(&mut *handle, k, 0, tramp, tag)
+                nros_rmw::Subscription::register_event_callback(
+                    &mut *handle,
+                    k,
+                    deadline_ms,
+                    tramp,
+                    tag,
+                )
             },
         )
     };
@@ -386,6 +566,7 @@ pub unsafe extern "C" fn rclc_publisher_set_matched_callback(
             publisher_set(
                 pub_,
                 nros_rmw::EventKind::PublicationMatched,
+                0,
                 cb,
                 user_context,
             )
@@ -418,6 +599,7 @@ pub unsafe extern "C" fn rclc_publisher_set_incompatible_type_callback(
             publisher_set(
                 pub_,
                 nros_rmw::EventKind::PublisherIncompatibleType,
+                0,
                 cb,
                 user_context,
             )
@@ -456,6 +638,7 @@ pub unsafe extern "C" fn rclc_subscription_set_matched_callback(
             subscription_set(
                 sub,
                 nros_rmw::EventKind::SubscriptionMatched,
+                0,
                 cb,
                 user_context,
             )
@@ -487,6 +670,7 @@ pub unsafe extern "C" fn rclc_subscription_set_incompatible_type_callback(
             subscription_set(
                 sub,
                 nros_rmw::EventKind::SubscriptionIncompatibleType,
+                0,
                 cb,
                 user_context,
             )
@@ -514,7 +698,16 @@ pub unsafe extern "C" fn rclc_subscription_set_incompatible_type_callback(
 /// entity; the generation makes such a late call a no-op instead of the other
 /// entity's callback.
 ///
-/// Bounded (16 slots), no allocation, `no_std`.
+/// **The bound.** [`MAX_SLOTS`](status_event_slots::MAX_SLOTS) = 16 live
+/// registrations, process-wide, across the C and C++ APIs; no allocation,
+/// `no_std`. A publisher can hold four (liveliness lost, offered deadline,
+/// matched, incompatible type) and a subscription five (liveliness changed,
+/// requested deadline, message lost, matched, incompatible type), so one of
+/// each with every kind registered takes nine. A registration past the bound
+/// is refused — `RCLC_RET_FULL` in C, `NROS_CPP_RET_FULL` in C++ — never
+/// dropped; every setter that can return it says so. Each slot is six
+/// pointer-sized words, which is why the table is not sized for the worst case
+/// of every entity in an image (issue 1993).
 #[cfg(feature = "rmw-cffi")]
 pub mod status_event_slots {
     use core::ffi::c_void;
@@ -522,9 +715,15 @@ pub mod status_event_slots {
 
     use nros_rmw::{EventKind, EventPayload, TransportError};
 
-    /// Live registrations, process-wide, across both the C and C++ APIs. Four
-    /// event kinds per entity carry a slot today (issue 1972).
-    const MAX_SLOTS: usize = 16;
+    /// Live registrations, process-wide, across both the C and C++ APIs. Nine
+    /// event kinds carry a slot (issue 1993): up to four per publisher, five
+    /// per subscription. See the module doc for why 16.
+    pub const MAX_SLOTS: usize = 16;
+
+    // One publisher and one subscription with every kind registered must fit.
+    const _: () = assert!(MAX_SLOTS >= 4 + 5);
+    // The tag packs the index into 8 bits.
+    const _: () = assert!(MAX_SLOTS <= 0x100);
 
     struct Slot {
         /// The registering entity's RMW handle address; 0 = free.
@@ -574,6 +773,11 @@ pub mod status_event_slots {
         {
             return; // a registration that outlived its slot
         }
+        if slot.kind.load(Ordering::Acquire) != kind as u32 {
+            // The callback's SHAPE was chosen by the registered kind; calling
+            // it with another kind's payload would be the wrong signature.
+            return;
+        }
         let cb = slot.cb.load(Ordering::Acquire);
         if cb.is_null() || payload.is_null() {
             return;
@@ -601,7 +805,30 @@ pub mod status_event_slots {
                 ) = unsafe { core::mem::transmute(cb) };
                 unsafe { f(entity, *s, ctx) };
             }
-            _ => {}
+            // Issue 1993 — the Tier-1 kinds. No `_` arm: a payload variant
+            // added later must be routed here, not dropped without a trace.
+            EventPayload::LivelinessChanged(s) => {
+                // SAFETY: registered for `LivelinessChanged`, so `cb` takes
+                // `(entity*, liveliness status by value, void*)`; the C and
+                // C++ status structs are layout-identical to
+                // `LivelinessChangedStatus` (const-asserted beside each).
+                let f: unsafe extern "C" fn(
+                    *mut c_void,
+                    nros_rmw::LivelinessChangedStatus,
+                    *mut c_void,
+                ) = unsafe { core::mem::transmute(cb) };
+                unsafe { f(entity, *s, ctx) };
+            }
+            EventPayload::RequestedDeadlineMissed(s)
+            | EventPayload::MessageLost(s)
+            | EventPayload::LivelinessLost(s)
+            | EventPayload::OfferedDeadlineMissed(s) => {
+                // SAFETY: as above, for the count shape every one of these
+                // four kinds shares (`CountStatus`).
+                let f: unsafe extern "C" fn(*mut c_void, nros_rmw::CountStatus, *mut c_void) =
+                    unsafe { core::mem::transmute(cb) };
+                unsafe { f(entity, *s, ctx) };
+            }
         }
     }
 
@@ -733,6 +960,143 @@ pub mod status_event_slots {
             CALLS.fetch_add(1, Ordering::SeqCst);
         }
 
+        static LIVE_ALIVE: StdAtomicU32 = StdAtomicU32::new(0);
+        static LIVE_NOT_ALIVE_CHANGE: AtomicI32 = AtomicI32::new(0);
+        static COUNT_TOTAL: StdAtomicU32 = StdAtomicU32::new(0);
+        static COUNT_CALLS: StdAtomicU32 = StdAtomicU32::new(0);
+
+        unsafe extern "C" fn user_liveliness(
+            entity: *mut c_void,
+            s: nros_rmw::LivelinessChangedStatus,
+            ctx: *mut c_void,
+        ) {
+            assert_eq!(ctx as usize, 0xC1);
+            SEEN_ENTITY.store(entity as usize, Ordering::SeqCst);
+            LIVE_ALIVE.store(s.alive_count as u32, Ordering::SeqCst);
+            LIVE_NOT_ALIVE_CHANGE.store(s.not_alive_count_change as i32, Ordering::SeqCst);
+        }
+
+        unsafe extern "C" fn user_count(
+            entity: *mut c_void,
+            s: nros_rmw::CountStatus,
+            ctx: *mut c_void,
+        ) {
+            assert_eq!(ctx as usize, 0xC2);
+            SEEN_ENTITY.store(entity as usize, Ordering::SeqCst);
+            COUNT_TOTAL.store(s.total_count, Ordering::SeqCst);
+            COUNT_CALLS.fetch_add(1, Ordering::SeqCst);
+        }
+
+        /// Issue 1993 — the Tier-1 shapes reach their callbacks, a payload of
+        /// another kind is refused, and one publisher plus one subscription
+        /// with every kind registered fit in the table. Called from the one
+        /// test below (the table is process-global).
+        fn tier1_kinds_dispatch_and_fit() {
+            let mut regs: [Option<(nros_rmw::EventCallback, *mut c_void)>; 9] = [None; 9];
+            let pub_kinds = [
+                (EventKind::LivelinessLost, user_count as *const ()),
+                (EventKind::OfferedDeadlineMissed, user_count as *const ()),
+                (EventKind::PublicationMatched, user_matched as *const ()),
+                (
+                    EventKind::PublisherIncompatibleType,
+                    user_matched as *const (),
+                ),
+            ];
+            let sub_kinds = [
+                (EventKind::LivelinessChanged, user_liveliness as *const ()),
+                (EventKind::RequestedDeadlineMissed, user_count as *const ()),
+                (EventKind::MessageLost, user_count as *const ()),
+                (EventKind::SubscriptionMatched, user_matched as *const ()),
+                (
+                    EventKind::SubscriptionIncompatibleType,
+                    user_matched as *const (),
+                ),
+            ];
+            for (owner, entity, kinds) in [
+                (0x5000usize, 0xA1usize, &pub_kinds[..]),
+                (0x6000, 0xA2, &sub_kinds[..]),
+            ] {
+                for (kind, cb) in kinds {
+                    let ctx = match kind {
+                        EventKind::LivelinessChanged => 0xC1,
+                        EventKind::PublicationMatched
+                        | EventKind::SubscriptionMatched
+                        | EventKind::PublisherIncompatibleType
+                        | EventKind::SubscriptionIncompatibleType => 0xC0,
+                        _ => 0xC2,
+                    };
+                    unsafe {
+                        register(
+                            owner,
+                            entity as *mut c_void,
+                            *kind,
+                            *cb,
+                            ctx as *mut c_void,
+                            |k, f, t| {
+                                regs[k as usize] = Some((f, t));
+                                Ok(())
+                            },
+                        )
+                    }
+                    .expect("every kind of one publisher and one subscription fits");
+                }
+            }
+            assert_eq!(in_use(), 9);
+
+            let (f, t) = regs[EventKind::LivelinessChanged as usize].unwrap();
+            let live = nros_rmw::LivelinessChangedStatus {
+                alive_count: 3,
+                not_alive_count: 1,
+                alive_count_change: 0,
+                not_alive_count_change: -1,
+            };
+            unsafe {
+                f(
+                    EventKind::LivelinessChanged,
+                    &live as *const _ as *const c_void,
+                    t,
+                )
+            };
+            assert_eq!(SEEN_ENTITY.load(Ordering::SeqCst), 0xA2);
+            assert_eq!(LIVE_ALIVE.load(Ordering::SeqCst), 3);
+            assert_eq!(LIVE_NOT_ALIVE_CHANGE.load(Ordering::SeqCst), -1);
+
+            let count = nros_rmw::CountStatus {
+                total_count: 42,
+                total_count_change: 1,
+            };
+            for (kind, entity) in [
+                (EventKind::RequestedDeadlineMissed, 0xA2),
+                (EventKind::MessageLost, 0xA2),
+                (EventKind::LivelinessLost, 0xA1),
+                (EventKind::OfferedDeadlineMissed, 0xA1),
+            ] {
+                let before = COUNT_CALLS.load(Ordering::SeqCst);
+                let (f, t) = regs[kind as usize].unwrap();
+                unsafe { f(kind, &count as *const _ as *const c_void, t) };
+                assert_eq!(COUNT_CALLS.load(Ordering::SeqCst), before + 1, "{kind:?}");
+                assert_eq!(SEEN_ENTITY.load(Ordering::SeqCst), entity, "{kind:?}");
+                assert_eq!(COUNT_TOTAL.load(Ordering::SeqCst), 42, "{kind:?}");
+            }
+
+            // A payload of another kind through a slot is refused: the
+            // callback's shape was chosen by the REGISTERED kind.
+            let before = COUNT_CALLS.load(Ordering::SeqCst);
+            let (f, t) = regs[EventKind::MessageLost as usize].unwrap();
+            unsafe {
+                f(
+                    EventKind::LivelinessChanged,
+                    &live as *const _ as *const c_void,
+                    t,
+                )
+            };
+            assert_eq!(COUNT_CALLS.load(Ordering::SeqCst), before);
+
+            release_owner(0x5000);
+            release_owner(0x6000);
+            assert_eq!(in_use(), 0);
+        }
+
         /// One test, because the table is process-global and tests run in
         /// parallel threads.
         #[test]
@@ -847,6 +1211,8 @@ pub mod status_event_slots {
             };
             assert_eq!(r, Err(TransportError::Unsupported));
             assert_eq!(in_use(), 0);
+
+            tier1_kinds_dispatch_and_fit();
 
             // The table is bounded, and says so.
             for i in 0..MAX_SLOTS {

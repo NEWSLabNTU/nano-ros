@@ -1019,11 +1019,18 @@ typedef struct nros_cpp_qos_t {
   uint8_t tx_express;
 } nros_cpp_qos_t;
 
+/**
+ * Count payload for the publisher-side Tier-1 kinds (liveliness lost,
+ * offered deadline missed). Layout-identical to `nros_rmw::CountStatus`.
+ */
 typedef struct nros_cpp_pub_count_status_t {
   uint32_t total_count;
   uint32_t total_count_change;
 } nros_cpp_pub_count_status_t;
 
+/**
+ * Callback for the publisher-side count kinds.
+ */
 typedef void (*nros_cpp_publisher_count_cb_t)(void *storage,
                                               struct nros_cpp_pub_count_status_t status,
                                               void *user_context);
@@ -1125,6 +1132,9 @@ typedef struct nros_cpp_integrity_status_t {
   int8_t crc_valid;
 } nros_cpp_integrity_status_t;
 
+/**
+ * Liveliness payload. Layout-identical to `nros_rmw::LivelinessChangedStatus`.
+ */
 typedef struct nros_cpp_liveliness_changed_status_t {
   uint16_t alive_count;
   uint16_t not_alive_count;
@@ -1132,15 +1142,25 @@ typedef struct nros_cpp_liveliness_changed_status_t {
   int16_t not_alive_count_change;
 } nros_cpp_liveliness_changed_status_t;
 
+/**
+ * Callback for `LivelinessChanged`.
+ */
 typedef void (*nros_cpp_liveliness_changed_cb_t)(void *storage,
                                                  struct nros_cpp_liveliness_changed_status_t status,
                                                  void *user_context);
 
+/**
+ * Count payload for the subscription-side count kinds (requested deadline
+ * missed, message lost). Layout-identical to `nros_rmw::CountStatus`.
+ */
 typedef struct nros_cpp_count_status_t {
   uint32_t total_count;
   uint32_t total_count_change;
 } nros_cpp_count_status_t;
 
+/**
+ * Callback for the subscription-side count kinds.
+ */
 typedef void (*nros_cpp_subscriber_count_cb_t)(void *storage,
                                                struct nros_cpp_count_status_t status,
                                                void *user_context);
@@ -3239,14 +3259,38 @@ nros_cpp_ret_t nros_cpp_publisher_destroy(void *storage);
  */
 nros_cpp_ret_t nros_cpp_publisher_relocate(void *old_storage, void *new_storage);
 
-nros_cpp_ret_t nros_cpp_publisher_set_liveliness_lost(void *_storage,
-                                                      nros_cpp_publisher_count_cb_t _cb,
-                                                      void *_user_context);
+/**
+ * Register a liveliness-lost callback — rclcpp's
+ * `PublisherEventCallbacks::liveliness_callback`, issue 1993. Observed on the
+ * publisher's poll points (publish, `assert_liveliness`).
+ *
+ * Returns `NROS_CPP_RET_OK`, `NROS_CPP_RET_INVALID_ARGUMENT` (NULL storage or
+ * callback), `NROS_CPP_RET_UNSUPPORTED` when the backend does not generate
+ * the event (XRCE-DDS, uORB — the backend's answer, not this layer's), or
+ * `NROS_CPP_RET_FULL` when the process-wide event-slot table (16
+ * registrations) is full.
+ *
+ * # Safety
+ * `storage` must be a live publisher storage; `user_context` must outlive it.
+ */
+nros_cpp_ret_t nros_cpp_publisher_set_liveliness_lost(void *storage,
+                                                      nros_cpp_publisher_count_cb_t cb,
+                                                      void *user_context);
 
-nros_cpp_ret_t nros_cpp_publisher_set_offered_deadline_missed(void *_storage,
-                                                              uint32_t _deadline_ms,
-                                                              nros_cpp_publisher_count_cb_t _cb,
-                                                              void *_user_context);
+/**
+ * Register an offered-deadline-missed callback — rclcpp's
+ * `PublisherEventCallbacks::deadline_callback`, issue 1993. `deadline_ms`
+ * reaches the backend's registration (zenoh uses it when the QoS states no
+ * deadline; Cyclone DDS takes the QoS deadline). Same returns as
+ * [`nros_cpp_publisher_set_liveliness_lost`].
+ *
+ * # Safety
+ * See [`nros_cpp_publisher_set_liveliness_lost`].
+ */
+nros_cpp_ret_t nros_cpp_publisher_set_offered_deadline_missed(void *storage,
+                                                              uint32_t deadline_ms,
+                                                              nros_cpp_publisher_count_cb_t cb,
+                                                              void *user_context);
 
 /**
  * Register a matched callback — rclcpp's
@@ -3824,18 +3868,50 @@ nros_cpp_ret_t nros_cpp_subscription_destroy(void *storage);
  */
 nros_cpp_ret_t nros_cpp_subscription_relocate(void *old_storage, void *new_storage);
 
-nros_cpp_ret_t nros_cpp_subscription_set_liveliness_changed(void *_storage,
-                                                            nros_cpp_liveliness_changed_cb_t _cb,
-                                                            void *_user_context);
+/**
+ * Register a liveliness-changed callback on a poll-style subscription —
+ * rclcpp's `SubscriptionEventCallbacks::liveliness_callback`, issue 1993.
+ * Observed as the subscription is polled (`has_data` / take).
+ *
+ * Returns `NROS_CPP_RET_OK`, `NROS_CPP_RET_INVALID_ARGUMENT` (NULL storage or
+ * callback), `NROS_CPP_RET_UNSUPPORTED` when the backend does not generate
+ * the event (XRCE-DDS, uORB; zenoh on bare metal), or `NROS_CPP_RET_FULL`
+ * when the process-wide event-slot table (16 registrations) is full.
+ *
+ * # Safety
+ * `storage` must be a live poll-subscription storage; `user_context` must
+ * outlive it.
+ */
+nros_cpp_ret_t nros_cpp_subscription_set_liveliness_changed(void *storage,
+                                                            nros_cpp_liveliness_changed_cb_t cb,
+                                                            void *user_context);
 
-nros_cpp_ret_t nros_cpp_subscription_set_requested_deadline_missed(void *_storage,
-                                                                   uint32_t _deadline_ms,
-                                                                   nros_cpp_subscriber_count_cb_t _cb,
-                                                                   void *_user_context);
+/**
+ * Register a requested-deadline-missed callback — rclcpp's
+ * `SubscriptionEventCallbacks::deadline_callback`, issue 1993. `deadline_ms`
+ * reaches the backend's registration (zenoh uses it when the QoS states no
+ * deadline; Cyclone DDS takes the QoS deadline). Same returns as
+ * [`nros_cpp_subscription_set_liveliness_changed`].
+ *
+ * # Safety
+ * See [`nros_cpp_subscription_set_liveliness_changed`].
+ */
+nros_cpp_ret_t nros_cpp_subscription_set_requested_deadline_missed(void *storage,
+                                                                   uint32_t deadline_ms,
+                                                                   nros_cpp_subscriber_count_cb_t cb,
+                                                                   void *user_context);
 
-nros_cpp_ret_t nros_cpp_subscription_set_message_lost(void *_storage,
-                                                      nros_cpp_subscriber_count_cb_t _cb,
-                                                      void *_user_context);
+/**
+ * Register a message-lost callback — rclcpp's
+ * `SubscriptionEventCallbacks::message_lost_callback`, issue 1993. Same
+ * returns as [`nros_cpp_subscription_set_liveliness_changed`].
+ *
+ * # Safety
+ * See [`nros_cpp_subscription_set_liveliness_changed`].
+ */
+nros_cpp_ret_t nros_cpp_subscription_set_message_lost(void *storage,
+                                                      nros_cpp_subscriber_count_cb_t cb,
+                                                      void *user_context);
 
 /**
  * Register a matched callback on a poll-style subscription — rclcpp's

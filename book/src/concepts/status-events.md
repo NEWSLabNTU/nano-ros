@@ -71,8 +71,8 @@ be added to an executor first), payloads `rclc_matched_status_t` /
 `rclc_incompatible_type_status_t`. C++: `Publisher::on_matched` /
 `on_incompatible_type` and the same pair on `PollSubscription`, taking
 rclcpp's `MatchedInfo` / `IncompatibleTypeInfo` through a function pointer
-plus `user_context`. Unlike the five Tier-1 C/C++ setters below, these
-four reach the backend today.
+plus `user_context`. Like the five Tier-1 C/C++ setters below, they keep
+the registration in one process-wide 16-slot table shared by C and C++.
 
 ## Registering callbacks
 
@@ -131,12 +131,26 @@ rclc_subscription_set_liveliness_changed_callback(
 
 Same shape on the four other event kinds.
 
-> **Not wired yet (issue 1993).** These five C setters, and their five
-> C++ twins below, currently return `RCL_RET_UNSUPPORTED` /
-> `ErrorCode::Unsupported` UNCONDITIONALLY — on every backend, including
-> Cyclone DDS and zenoh-pico, which do generate the events. The callback
-> is never stored. Until issue 1993 lands, the Tier-1 events are reachable
-> from Rust (`nros-node`'s `on_*`) only.
+Every setter returns `RCL_RET_OK` once the backend holds the
+registration, and `RCL_RET_UNSUPPORTED` when the backend does not generate
+that event (XRCE-DDS and uORB carry none; zenoh-pico has no
+`LivelinessChanged` on bare metal). That answer comes from the backend, never
+from the C layer. The other returns:
+
+- `RCL_RET_NOT_INIT` — for the three subscription setters, the subscription
+  has not been added to an executor yet (`rclc_executor_add_subscription*`).
+  The executor owns the subscriber, so before that there is nothing to
+  register on. Register after the add.
+- `RCLC_RET_FULL` — the process-wide event-slot table is full. It holds 16
+  registrations across every C and C++ entity; one publisher with all four of
+  its kinds plus one subscription with all five take nine.
+
+`deadline_ms` on the two deadline setters reaches the backend: zenoh uses it
+when the entity's QoS states no deadline of its own, Cyclone DDS takes the
+deadline from the QoS profile and ignores the argument. Registering the same
+kind again replaces the earlier callback, and a callback never runs after
+`rcl_publisher_fini` / `rcl_subscription_fini` (or
+`rclc_executor_remove_subscription`), even if the backend fires late.
 
 ### C++
 
@@ -154,8 +168,10 @@ sub.on_requested_deadline_missed(15 /* ms */, on_deadline_missed, nullptr);
 
 C function pointers + `user_context` only; there are no lambda or
 `std::function` overloads. The subscription-side setters exist on
-`PollingSubscription` alone. Same caveat as C: they currently answer
-`ErrorCode::Unsupported` on every backend (issue 1993).
+`PollingSubscription` alone. The first callback argument is the entity's
+storage, and it follows the object through a C++ move. Same answers as C:
+`ErrorCode::Unsupported` where the backend does not generate the event,
+`ErrorCode::Full` when the shared 16-slot table is full.
 
 ## How dispatch works
 

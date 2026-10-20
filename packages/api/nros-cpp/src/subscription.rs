@@ -1156,14 +1156,18 @@ pub unsafe extern "C" fn nros_cpp_subscription_relocate(
 }
 
 // ============================================================================
-// Phase 108 — status events (stub: returns NROS_CPP_RET_UNSUPPORTED)
+// Poll-subscription status events — Phase 108 (Tier-1 kinds, wired by issue
+// 1993) and issue 1972 (matched, incompatible type)
 // ============================================================================
 //
-// User-facing C++ event-setter shims. Match the typedefs in
-// `<rclcpp/subscription.hpp>`. Backend wiring lands per phase (109+);
-// for now the runtime returns NROS_CPP_RET_UNSUPPORTED so the C++
-// API compiles and is callable.
+// User-facing C++ event-setter shims, matching the typedefs in
+// `<rclcpp/polling_subscription.hpp>`. Every setter keeps its `(callback,
+// context, storage)` triple in nros-c's process-wide `status_event_slots`
+// table (16 registrations across every C and C++ entity; one past that is
+// `NROS_CPP_RET_FULL`), and the backend decides whether it carries the kind:
+// `NROS_CPP_RET_UNSUPPORTED` on XRCE-DDS and uORB.
 
+/// Liveliness payload. Layout-identical to `nros_rmw::LivelinessChangedStatus`.
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct nros_cpp_liveliness_changed_status_t {
@@ -1173,6 +1177,8 @@ pub struct nros_cpp_liveliness_changed_status_t {
     pub not_alive_count_change: i16,
 }
 
+/// Count payload for the subscription-side count kinds (requested deadline
+/// missed, message lost). Layout-identical to `nros_rmw::CountStatus`.
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct nros_cpp_count_status_t {
@@ -1180,6 +1186,37 @@ pub struct nros_cpp_count_status_t {
     pub total_count_change: u32,
 }
 
+const _: () = {
+    use core::mem::{align_of, offset_of, size_of};
+    use nros_rmw::{CountStatus as R, LivelinessChangedStatus as L};
+    // The slot trampoline passes the `nros_rmw` payload BY VALUE.
+    assert!(size_of::<nros_cpp_liveliness_changed_status_t>() == size_of::<L>());
+    assert!(align_of::<nros_cpp_liveliness_changed_status_t>() == align_of::<L>());
+    assert!(
+        offset_of!(nros_cpp_liveliness_changed_status_t, alive_count) == offset_of!(L, alive_count)
+    );
+    assert!(
+        offset_of!(nros_cpp_liveliness_changed_status_t, not_alive_count)
+            == offset_of!(L, not_alive_count)
+    );
+    assert!(
+        offset_of!(nros_cpp_liveliness_changed_status_t, alive_count_change)
+            == offset_of!(L, alive_count_change)
+    );
+    assert!(
+        offset_of!(nros_cpp_liveliness_changed_status_t, not_alive_count_change)
+            == offset_of!(L, not_alive_count_change)
+    );
+    assert!(size_of::<nros_cpp_count_status_t>() == size_of::<R>());
+    assert!(align_of::<nros_cpp_count_status_t>() == align_of::<R>());
+    assert!(offset_of!(nros_cpp_count_status_t, total_count) == offset_of!(R, total_count));
+    assert!(
+        offset_of!(nros_cpp_count_status_t, total_count_change)
+            == offset_of!(R, total_count_change)
+    );
+};
+
+/// Callback for `LivelinessChanged`.
 pub type nros_cpp_liveliness_changed_cb_t = Option<
     unsafe extern "C" fn(
         storage: *mut c_void,
@@ -1188,6 +1225,7 @@ pub type nros_cpp_liveliness_changed_cb_t = Option<
     ),
 >;
 
+/// Callback for the subscription-side count kinds.
 pub type nros_cpp_subscriber_count_cb_t = Option<
     unsafe extern "C" fn(
         storage: *mut c_void,
@@ -1196,37 +1234,91 @@ pub type nros_cpp_subscriber_count_cb_t = Option<
     ),
 >;
 
+/// Register a liveliness-changed callback on a poll-style subscription —
+/// rclcpp's `SubscriptionEventCallbacks::liveliness_callback`, issue 1993.
+/// Observed as the subscription is polled (`has_data` / take).
+///
+/// Returns `NROS_CPP_RET_OK`, `NROS_CPP_RET_INVALID_ARGUMENT` (NULL storage or
+/// callback), `NROS_CPP_RET_UNSUPPORTED` when the backend does not generate
+/// the event (XRCE-DDS, uORB; zenoh on bare metal), or `NROS_CPP_RET_FULL`
+/// when the process-wide event-slot table (16 registrations) is full.
+///
+/// # Safety
+/// `storage` must be a live poll-subscription storage; `user_context` must
+/// outlive it.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_subscription_set_liveliness_changed(
-    _storage: *mut c_void,
-    _cb: nros_cpp_liveliness_changed_cb_t,
-    _user_context: *mut c_void,
+    storage: *mut c_void,
+    cb: nros_cpp_liveliness_changed_cb_t,
+    user_context: *mut c_void,
 ) -> nros_cpp_ret_t {
-    crate::NROS_CPP_RET_UNSUPPORTED
+    let cb = cb.map_or(core::ptr::null(), |f| f as *const ());
+    unsafe {
+        subscription_set_slot(
+            storage,
+            nros_rmw::EventKind::LivelinessChanged,
+            0,
+            cb,
+            user_context,
+        )
+    }
 }
 
+/// Register a requested-deadline-missed callback — rclcpp's
+/// `SubscriptionEventCallbacks::deadline_callback`, issue 1993. `deadline_ms`
+/// reaches the backend's registration (zenoh uses it when the QoS states no
+/// deadline; Cyclone DDS takes the QoS deadline). Same returns as
+/// [`nros_cpp_subscription_set_liveliness_changed`].
+///
+/// # Safety
+/// See [`nros_cpp_subscription_set_liveliness_changed`].
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_subscription_set_requested_deadline_missed(
-    _storage: *mut c_void,
-    _deadline_ms: u32,
-    _cb: nros_cpp_subscriber_count_cb_t,
-    _user_context: *mut c_void,
+    storage: *mut c_void,
+    deadline_ms: u32,
+    cb: nros_cpp_subscriber_count_cb_t,
+    user_context: *mut c_void,
 ) -> nros_cpp_ret_t {
-    crate::NROS_CPP_RET_UNSUPPORTED
+    let cb = cb.map_or(core::ptr::null(), |f| f as *const ());
+    unsafe {
+        subscription_set_slot(
+            storage,
+            nros_rmw::EventKind::RequestedDeadlineMissed,
+            deadline_ms,
+            cb,
+            user_context,
+        )
+    }
 }
 
+/// Register a message-lost callback — rclcpp's
+/// `SubscriptionEventCallbacks::message_lost_callback`, issue 1993. Same
+/// returns as [`nros_cpp_subscription_set_liveliness_changed`].
+///
+/// # Safety
+/// See [`nros_cpp_subscription_set_liveliness_changed`].
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_subscription_set_message_lost(
-    _storage: *mut c_void,
-    _cb: nros_cpp_subscriber_count_cb_t,
-    _user_context: *mut c_void,
+    storage: *mut c_void,
+    cb: nros_cpp_subscriber_count_cb_t,
+    user_context: *mut c_void,
 ) -> nros_cpp_ret_t {
-    crate::NROS_CPP_RET_UNSUPPORTED
+    let cb = cb.map_or(core::ptr::null(), |f| f as *const ());
+    unsafe {
+        subscription_set_slot(
+            storage,
+            nros_rmw::EventKind::MessageLost,
+            0,
+            cb,
+            user_context,
+        )
+    }
 }
 
 unsafe fn subscription_set_slot(
     storage: *mut c_void,
     kind: nros_rmw::EventKind,
+    deadline_ms: u32,
     cb: *const (),
     user_context: *mut c_void,
 ) -> nros_cpp_ret_t {
@@ -1234,6 +1326,10 @@ unsafe fn subscription_set_slot(
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
     let handle = storage as *mut nros::internals::RmwSubscriber;
+    // Issue 1993 — the backend decides whether it carries `kind`.
+    if !SubscriberTrait::supports_event(unsafe { &*handle }, kind) {
+        return crate::NROS_CPP_RET_UNSUPPORTED;
+    }
     let r = unsafe {
         nros_c::status_event_slots::register(
             storage as usize,
@@ -1242,7 +1338,7 @@ unsafe fn subscription_set_slot(
             cb,
             user_context,
             |k, tramp, tag| {
-                SubscriberTrait::register_event_callback(&mut *handle, k, 0, tramp, tag)
+                SubscriberTrait::register_event_callback(&mut *handle, k, deadline_ms, tramp, tag)
             },
         )
     };
@@ -1270,6 +1366,7 @@ pub unsafe extern "C" fn nros_cpp_subscription_set_matched(
         subscription_set_slot(
             storage,
             nros_rmw::EventKind::SubscriptionMatched,
+            0,
             cb,
             user_context,
         )
@@ -1292,6 +1389,7 @@ pub unsafe extern "C" fn nros_cpp_subscription_set_incompatible_type(
         subscription_set_slot(
             storage,
             nros_rmw::EventKind::SubscriptionIncompatibleType,
+            0,
             cb,
             user_context,
         )

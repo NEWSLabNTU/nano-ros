@@ -447,6 +447,23 @@ c: c-fmt
         "$nros_c_lib" -lpthread -ldl -lm \
         -o tmp/entity_wake_callback
     ./tmp/entity_wake_callback
+    echo "  - issue 1993: the five Tier-1 status-event setters register through the"
+    echo "    slot table with their deadline, fire the user callback, refuse without"
+    echo "    backend support, and a late fire after fini is a no-op"
+    test -f packages/api/nros-c/tests/run/status_event_setters.c || { \
+        echo "ERROR: status_event_setters.c is MISSING -- this check passes on absence." >&2; \
+        exit 1; }
+    cc -std=c11 -Wall -Wextra -Wmissing-prototypes -D_GNU_SOURCE \
+        -I"$cgen" \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/core/nros-rmw-abi/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -Ipackages/api/nros-c/tests/run \
+        packages/api/nros-c/tests/run/status_event_setters.c \
+        packages/api/nros-c/tests/run/stub_rmw_backend.c \
+        "$nros_c_lib" -lpthread -ldl -lm \
+        -o tmp/status_event_setters
+    ./tmp/status_event_setters
     echo "  - entry seam links from C alone + the strong override wins (phase-432 W3.1)"
     # `nros_board_network_wait()` is the board hook the three RTOS
     # `run_tiers.c` call `extern`. Its weak default used to live in
@@ -1360,7 +1377,7 @@ cpp: cpp-fmt
     # to `c++`: the driver picks the language by EXTENSION, and `c++ foo.c`
     # compiles C as C++, which mangles `nros_stub_rmw_register` and fails to
     # link against the `extern "C"` declaration in the header.
-    for _tu in executor_cancel_runtime logger_names_and_levels_runtime node_launch_identity_runtime node_qos_overrides_runtime node_unset_namespace_runtime node_destroy_releases_entries_runtime arena_capture_lifetime_runtime jazzy_small_accessors_runtime timer_call_info_runtime; do \
+    for _tu in executor_cancel_runtime logger_names_and_levels_runtime node_launch_identity_runtime node_qos_overrides_runtime node_unset_namespace_runtime node_destroy_releases_entries_runtime arena_capture_lifetime_runtime jazzy_small_accessors_runtime timer_call_info_runtime status_event_setters_runtime; do \
         test -f "packages/api/nros-cpp/tests/compile/$_tu.cpp" || { \
             echo "ERROR: $_tu.cpp is MISSING -- this check would pass on absence." >&2; \
             exit 1; \
@@ -1534,6 +1551,24 @@ cpp: cpp-fmt
         "$gen/nros-cpp-tests"/stub_rmw_backend.o \
         "$nros_cpp_lib" -lpthread -ldl -lm
     "$gen/nros-cpp-tests"/node_destroy_releases_entries_runtime
+    # issue 1993 — the five Tier-1 C++ status-event setters register through
+    # nros-c's slot table with their deadline, fire the user callback with the
+    # entity's storage (the NEW storage after a move), refuse without backend
+    # support, and a late fire after destroy is a no-op.
+    echo "  - the five Tier-1 C++ status-event setters reach the backend (runtime, issue 1993)"
+    c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+        -I"$cppgen" \
+        -I"$cgen" \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/core/nros-rmw-abi/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -Ipackages/api/nros-c/tests/run \
+        -o "$gen/nros-cpp-tests"/status_event_setters_runtime \
+        packages/api/nros-cpp/tests/compile/status_event_setters_runtime.cpp \
+        "$gen/nros-cpp-tests"/stub_rmw_backend.o \
+        "$nros_cpp_lib" -lpthread -ldl -lm
+    "$gen/nros-cpp-tests"/status_event_setters_runtime
     # phase-476 W2 — a C++ timer's callable lives in the executor arena: it
     # fires from the arena's copy, a capture that owns something is destroyed
     # exactly once (on `timer_.reset()` or node destruction), `timer_->reset()`

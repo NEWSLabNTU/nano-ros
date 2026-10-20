@@ -427,17 +427,24 @@ template <typename M> class PollSubscription {
     // arena never filled. They live here now for that reason, and the dispatch
     // entity offers no such setter rather than one that reinterprets zeros.
 
-    /// Register a callback for liveliness-changed events.
-    ///
-    /// Returns `Result(ErrorCode::Unsupported)` until the active
-    /// backend wires up liveliness detection.
+    /// Register a callback for liveliness-changed events — rclcpp's
+    /// `SubscriptionEventCallbacks::liveliness_callback` (issue 1993).
+    /// `cb(storage, liveliness status, user_context)`, observed as the
+    /// subscription is polled. `ErrorCode::Unsupported` on a backend that does
+    /// not generate the event (XRCE-DDS, uORB; zenoh on bare metal);
+    /// `ErrorCode::Full` when the process-wide event-slot table (16
+    /// registrations, C and C++ together) is full.
     Result on_liveliness_changed(nros_cpp_liveliness_changed_cb_t cb,
                                  void* user_context = nullptr) {
         if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
         return Result(nros_cpp_subscription_set_liveliness_changed(storage_, cb, user_context));
     }
 
-    /// Register a callback for requested-deadline-missed events.
+    /// Register a callback for requested-deadline-missed events — rclcpp's
+    /// `SubscriptionEventCallbacks::deadline_callback`. `deadline_ms` reaches
+    /// the backend's registration: zenoh uses it when the QoS states no
+    /// deadline, Cyclone DDS takes the QoS deadline. Same returns as
+    /// `on_liveliness_changed`.
     Result on_requested_deadline_missed(uint32_t deadline_ms, nros_cpp_subscriber_count_cb_t cb,
                                         void* user_context = nullptr) {
         if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
@@ -445,7 +452,9 @@ template <typename M> class PollSubscription {
                                                                           user_context));
     }
 
-    /// Register a callback for message-lost events.
+    /// Register a callback for message-lost events — rclcpp's
+    /// `SubscriptionEventCallbacks::message_lost_callback`. Same returns as
+    /// `on_liveliness_changed`.
     Result on_message_lost(nros_cpp_subscriber_count_cb_t cb, void* user_context = nullptr) {
         if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
         return Result(nros_cpp_subscription_set_message_lost(storage_, cb, user_context));

@@ -462,14 +462,23 @@ template <typename M> class Publisher {
     // Phase 108 — status events
     // ====================================================================
 
-    /// Register a callback for liveliness-lost events on this publisher.
+    /// Register a callback for liveliness-lost events on this publisher —
+    /// rclcpp's `PublisherEventCallbacks::liveliness_callback` (issue 1993).
+    /// `cb(storage, count status, user_context)`, observed on this
+    /// publisher's poll points (`publish`, `assert_liveliness()`).
+    /// `ErrorCode::Unsupported` on a backend that does not generate the event
+    /// (XRCE-DDS, uORB); `ErrorCode::Full` when the process-wide event-slot
+    /// table (16 registrations, C and C++ together) is full.
     Result on_liveliness_lost(nros_cpp_publisher_count_cb_t cb, void* user_context = nullptr) {
         if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
         return Result(nros_cpp_publisher_set_liveliness_lost(storage_, cb, user_context));
     }
 
     /// Register a callback for offered-deadline-missed events on this
-    /// publisher.
+    /// publisher — rclcpp's `PublisherEventCallbacks::deadline_callback`.
+    /// `deadline_ms` reaches the backend's registration: zenoh uses it when
+    /// the QoS states no deadline, Cyclone DDS takes the QoS deadline. Same
+    /// returns as `on_liveliness_lost`.
     Result on_offered_deadline_missed(uint32_t deadline_ms, nros_cpp_publisher_count_cb_t cb,
                                       void* user_context = nullptr) {
         if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
