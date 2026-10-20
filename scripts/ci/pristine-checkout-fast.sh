@@ -74,14 +74,29 @@ fi
 
 # Overlay: tracked edits (staged + unstaged), then untracked non-ignored files.
 # A gitlink change is deliberately NOT applied: the clone has no submodules.
+# `--index` applies the edits to the clone's INDEX as well as its files (issue
+# 1994). Without it a staged new file or a `git mv` landed on disk only, so a
+# gate that asks `git ls-files` did not see the new path and still listed the
+# old one -- red here, green once committed.
 if ! git diff --binary HEAD --ignore-submodules=all > "$tmp/edits.patch"; then
     echo "pristine-checkout: could not read the working-tree edits" >&2
     exit 2
 fi
 if [ -s "$tmp/edits.patch" ] \
-    && ! git -C "$clone" apply --whitespace=nowarn "$tmp/edits.patch" 2>"$tmp/apply.log"; then
+    && ! git -C "$clone" apply --index --whitespace=nowarn "$tmp/edits.patch" 2>"$tmp/apply.log"; then
     echo "pristine-checkout: could not overlay the working-tree edits" >&2
     sed 's/^/    /' "$tmp/apply.log" >&2
+    exit 2
+fi
+# The overlay must leave the clone's index saying what this tree says, path for
+# path, or a git-asking gate measures a different tree (issue 1994).
+git diff --name-status --no-renames --ignore-submodules=all HEAD > "$tmp/want.status"
+git -C "$clone" diff --cached --name-status --no-renames --ignore-submodules=all HEAD \
+    > "$tmp/got.status"
+if ! cmp -s "$tmp/want.status" "$tmp/got.status"; then
+    echo "pristine-checkout: the clone's index does not match the working-tree edits" >&2
+    echo "  (issue 1994); want vs got:" >&2
+    diff "$tmp/want.status" "$tmp/got.status" | sed 's/^/    /' >&2
     exit 2
 fi
 git ls-files -z --others --exclude-standard > "$tmp/untracked.z"
