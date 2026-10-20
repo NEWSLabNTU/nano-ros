@@ -16240,3 +16240,206 @@ fn declare_remap_into_a_full_runtime_table_is_table_full() {
         Err(super::RemapRefused::TableFull)
     );
 }
+
+private_test_clock!(timer_call_info_clock);
+
+/// Issue 1974 — a `*_with_info` timer receives the dispatcher's call info:
+/// `actual - expected` is exactly how far the activation ran past its
+/// deadline, and is never negative.
+///
+/// On a PRIVATE spin clock so each step is the delta it names: a 25 ms step
+/// against a 10 ms period is due 15 ms late, and (`Skip`) the 5 ms remainder
+/// makes the next 5 ms step exactly on time.
+#[test]
+fn timer_with_info_reports_expected_and_actual_call_times() {
+    use std::sync::{Arc, Mutex};
+    timer_call_info_clock::claim_at_us(1_000_000);
+    let mut executor: Executor =
+        executor_with_clock_fn(MockSession::new(), timer_call_info_clock::now_us);
+
+    let seen: Arc<Mutex<Vec<crate::TimerCallInfo>>> = Arc::new(Mutex::new(Vec::new()));
+    let sink = seen.clone();
+    executor
+        .register_timer_with_info(
+            TimerDuration::from_millis(10),
+            super::arena::TimerClockSource::Steady,
+            true,
+            move |info| sink.lock().unwrap().push(*info),
+        )
+        .unwrap();
+
+    let r = timer_call_info_clock::elapse_then_spin_once(&mut executor, 4);
+    assert_eq!(r.timers_fired, 0, "4 ms is short of the 10 ms period");
+    let r = timer_call_info_clock::elapse_then_spin_once(&mut executor, 21);
+    assert_eq!(r.timers_fired, 1, "25 ms >= 10 ms");
+    let r = timer_call_info_clock::elapse_then_spin_once(&mut executor, 5);
+    assert_eq!(r.timers_fired, 1, "the 5 ms remainder + 5 ms is one period");
+
+    let seen = seen.lock().unwrap();
+    assert_eq!(seen.len(), 2);
+    for info in seen.iter() {
+        assert!(
+            info.actual_call_time >= info.expected_call_time,
+            "an activation can never run BEFORE its deadline: {info:?}"
+        );
+    }
+    assert_eq!(
+        seen[0].lateness_ns(),
+        15_000_000,
+        "25 ms of elapsed time against a 10 ms period is 15 ms late"
+    );
+    assert_eq!(seen[1].lateness_ns(), 0, "back on the phase grid");
+}
+
+private_test_clock!(timer_autostart_clock);
+
+/// Issue 1974 — `autostart = false` creates the timer CANCELLED: it never
+/// fires, however long it waits, until `reset_timer` starts it, and then its
+/// first period counts from the reset.
+#[test]
+fn timer_created_without_autostart_fires_only_after_reset() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    timer_autostart_clock::claim_at_us(1_000_000);
+    let mut executor: Executor =
+        executor_with_clock_fn(MockSession::new(), timer_autostart_clock::now_us);
+
+    let ticks = std::sync::Arc::new(AtomicUsize::new(0));
+    let t = ticks.clone();
+    let id = executor
+        .register_timer_with_info(
+            TimerDuration::from_millis(10),
+            super::arena::TimerClockSource::Steady,
+            false,
+            move |_| {
+                t.fetch_add(1, Ordering::SeqCst);
+            },
+        )
+        .unwrap();
+    assert!(
+        executor.timer_is_canceled(id),
+        "autostart=false is cancelled"
+    );
+
+    for _ in 0..10 {
+        let _ = timer_autostart_clock::elapse_then_spin_once(&mut executor, 25);
+    }
+    assert_eq!(
+        ticks.load(Ordering::SeqCst),
+        0,
+        "250 ms passed and a timer created without autostart fired"
+    );
+
+    executor.reset_timer(id).unwrap();
+    assert!(!executor.timer_is_canceled(id));
+    let r = timer_autostart_clock::elapse_then_spin_once(&mut executor, 9);
+    assert_eq!(r.timers_fired, 0, "the period counts from the reset");
+    let r = timer_autostart_clock::elapse_then_spin_once(&mut executor, 1);
+    assert_eq!(r.timers_fired, 1);
+    assert_eq!(ticks.load(Ordering::SeqCst), 1);
+}
+
+#[cfg(feature = "sim-time")]
+private_test_clock!(ros_timer_info_clock);
+
+/// Issue 1974 — on a CLOCK timer both call times are on that clock, and a
+/// timer started late by `reset_timer` does not count the interval it spent
+/// cancelled (the reset re-seeds the clock reading, else the first poll would
+/// credit the whole cancelled span and fire at once).
+#[cfg(feature = "sim-time")]
+#[test]
+fn ros_time_timer_info_is_on_the_ros_clock_and_reset_reseeds() {
+    use nros_core::clock::Clock;
+    use std::sync::{Arc, Mutex};
+    ros_timer_info_clock::claim_at_us(1_000_000);
+    let _sim_time = SimTimeGuard::acquire();
+    const MS: i64 = 1_000_000;
+
+    let mut executor: Executor =
+        executor_with_clock_fn(MockSession::new(), ros_timer_info_clock::now_us);
+    Clock::set_ros_time_override(10_000 * MS);
+
+    let seen: Arc<Mutex<Vec<crate::TimerCallInfo>>> = Arc::new(Mutex::new(Vec::new()));
+    let sink = seen.clone();
+    let id = executor
+        .register_timer_with_info(
+            TimerDuration::from_millis(100),
+            super::arena::TimerClockSource::Ros,
+            false,
+            move |info| sink.lock().unwrap().push(*info),
+        )
+        .unwrap();
+
+    // Cancelled for 5 s of simulated time.
+    Clock::set_ros_time_override(15_000 * MS);
+    let _ = ros_timer_info_clock::elapse_then_spin_once(&mut executor, 10);
+    assert!(seen.lock().unwrap().is_empty(), "cancelled: never fires");
+
+    executor.reset_timer(id).unwrap();
+    let _ = ros_timer_info_clock::elapse_then_spin_once(&mut executor, 10);
+    assert!(
+        seen.lock().unwrap().is_empty(),
+        "reset must start a FRESH period, not credit the 5 s spent cancelled"
+    );
+
+    // 130 ms of simulated time after the reset: due 30 ms late.
+    Clock::set_ros_time_override(15_130 * MS);
+    let _ = ros_timer_info_clock::elapse_then_spin_once(&mut executor, 10);
+
+    let seen = seen.lock().unwrap();
+    assert_eq!(seen.len(), 1);
+    assert_eq!(
+        seen[0].actual_call_time,
+        15_130 * MS,
+        "now on the ROS clock"
+    );
+    assert_eq!(
+        seen[0].expected_call_time,
+        15_100 * MS,
+        "one period after reset"
+    );
+    assert!(seen[0].actual_call_time >= seen[0].expected_call_time);
+}
+
+private_test_clock!(node_timer_info_clock);
+
+/// Issue 1974 — the node-level spelling, `Node::create_timer_with_info`,
+/// reaches the same dispatcher: `autostart = false` waits for `reset_timer`,
+/// and the activation reports `actual >= expected` with the exact lateness.
+#[test]
+fn a_node_level_timer_with_info_honours_autostart_and_reports_lateness() {
+    use std::sync::{Arc, Mutex};
+    node_timer_info_clock::claim_at_us(1_000_000);
+    let mut executor: Executor =
+        executor_with_clock_fn(MockSession::new(), node_timer_info_clock::now_us);
+    let nid = executor.node_builder("node_timer_info").build().unwrap();
+
+    let seen: Arc<Mutex<Vec<crate::TimerCallInfo>>> = Arc::new(Mutex::new(Vec::new()));
+    let sink = seen.clone();
+    let id = executor
+        .node_mut(nid)
+        .create_timer_with_info(
+            TimerDuration::from_millis(20),
+            crate::executor::TimerClockSource::Steady,
+            false,
+            move |info| sink.lock().unwrap().push(*info),
+        )
+        .unwrap();
+
+    let _ = node_timer_info_clock::elapse_then_spin_once(&mut executor, 100);
+    assert!(
+        seen.lock().unwrap().is_empty(),
+        "autostart=false never fires"
+    );
+
+    executor.reset_timer(id).unwrap();
+    let _ = node_timer_info_clock::elapse_then_spin_once(&mut executor, 27);
+    let seen = seen.lock().unwrap();
+    assert_eq!(seen.len(), 1, "one period after the reset");
+    assert!(seen[0].actual_call_time >= seen[0].expected_call_time);
+    assert_eq!(
+        seen[0].lateness_ns(),
+        7_000_000,
+        "27 ms against a 20 ms period"
+    );
+    assert_eq!(seen[0].clock, crate::executor::TimerClockSource::Steady);
+}

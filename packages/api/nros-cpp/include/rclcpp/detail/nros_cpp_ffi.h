@@ -1099,6 +1099,41 @@ typedef void (*nros_cpp_subscriber_count_cb_t)(void *storage,
                                                void *user_context);
 
 /**
+ * When a timer activation was due and when it ran — issue 1974, the FFI face
+ * of `rclcpp::TimerInfo`.
+ *
+ * Nanoseconds on the timer's own clock. A field-for-field copy of the
+ * executor dispatcher's `nros_node::TimerCallInfo` (this header is generated
+ * without includes, so it cannot name that type); the C++ side wraps the two
+ * numbers in `rclcpp::Time` on the timer's clock type.
+ */
+typedef struct nros_cpp_timer_call_info_t {
+  /**
+   * The deadline the activation was serving (ns).
+   */
+  int64_t expected_call_time;
+  /**
+   * When the callback ran (ns).
+   */
+  int64_t actual_call_time;
+  /**
+   * The `rcl_clock_type_t` both times are on — the timer's clock, so the
+   * C++ side builds `rclcpp::Time(ns, clock_type)` without a capture of
+   * its own (the decoding is `nros_c::nros_timer_clock_type`, the one
+   * mapping `get_clock()` also uses).
+   */
+  uint8_t clock_type;
+} nros_cpp_timer_call_info_t;
+
+/**
+ * Timer callback that receives the activation's call info (issue 1974):
+ * `void callback(const nros_cpp_timer_call_info_t* info, void* context)`.
+ * `info` is valid for the duration of the call only.
+ */
+typedef void (*nros_cpp_timer_info_callback_t)(const struct nros_cpp_timer_call_info_t *info,
+                                               void *context);
+
+/**
  * C callback type for timers: `void callback(void* context)`.
  */
 typedef void (*nros_cpp_timer_callback_t)(void *context);
@@ -3727,6 +3762,36 @@ nros_cpp_ret_t nros_cpp_subscription_get_actual_qos(const void *storage,
                                                     void *executor,
                                                     size_t handle_id,
                                                     struct nros_cpp_qos_t *out_qos);
+
+/**
+ * [`nros_cpp_timer_create_capturing`] with the call info handed to the
+ * callback, a callback group and an `autostart` flag — issue 1974, what the
+ * value-returning C++ `create_wall_timer(period, cb, group, autostart)` and
+ * `rclcpp::create_timer(node, clock, period, cb, group, autostart)` call for
+ * EVERY callable: one taking `const rclcpp::TimerInfo&` reads `info`, a
+ * plain `void()` one ignores it.
+ *
+ * `group` may be NULL or empty (the node's default sched binding).
+ * `autostart == false` registers the timer cancelled; `nros_cpp_timer_reset`
+ * starts it, and its first period counts from that reset.
+ *
+ * The call info itself is computed by the executor's timer dispatcher, never
+ * here: this only copies it into the FFI struct.
+ *
+ * # Safety
+ * As [`nros_cpp_timer_create_capturing`]; `group`, if non-NULL, must be a
+ * NUL-terminated string that outlives the timer.
+ */
+nros_cpp_ret_t nros_cpp_timer_create_capturing_with_info(const struct nros_cpp_node_t *node,
+                                                         uint8_t clock_type,
+                                                         uint64_t period_ms,
+                                                         nros_cpp_timer_info_callback_t callback,
+                                                         const uint8_t *capture,
+                                                         size_t capture_len,
+                                                         nros_cpp_timer_callback_t capture_drop,
+                                                         const char *group,
+                                                         bool autostart,
+                                                         size_t *out_handle_id);
 
 /**
  * Create a repeating timer and register it with the executor.

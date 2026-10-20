@@ -2325,6 +2325,47 @@ typedef void (*rclc_subscription_info_callback_t)(const uint8_t *data,
 typedef void (*rclc_timer_callback_with_context_t)(struct rcl_timer_t *timer, void *context);
 
 /**
+ * When a timer activation was due and when it ran — Jazzy rcl's
+ * `rcl_timer_call_info_t` (issue 1974), same name, same two fields.
+ *
+ * Both are `rcl_time_point_value_t` nanoseconds on the TIMER'S clock: the
+ * clock it was initialised on (`rclc_timer_init_on_clock*`), or the platform
+ * steady clock for a wall timer. `actual_call_time >= expected_call_time`
+ * always; the difference is the activation's lateness.
+ *
+ * The executor's timer dispatcher is the one producer
+ * (`nros_node::TimerCallInfo`); this is a field-for-field copy of it, handed
+ * to an `rclc_timer_callback_with_info_t` for the duration of the call.
+ */
+typedef struct rcl_timer_call_info_t {
+  /**
+   * The deadline the activation was serving (ns, timer's clock).
+   */
+  int64_t expected_call_time;
+  /**
+   * When the callback ran (ns, timer's clock).
+   */
+  int64_t actual_call_time;
+} rcl_timer_call_info_t;
+
+/**
+ * Timer callback that also receives the activation's call info — issue 1974.
+ *
+ * rcl hands call info out through `rcl_timer_call_with_info`, a dispatch
+ * entry point the caller's own wait-set loop calls; here the executor
+ * dispatches, so the info rides on the callback instead. `info` is valid for
+ * the duration of the call only.
+ *
+ * # Parameters
+ * * `timer` - Pointer to the timer that triggered
+ * * `info` - Expected vs actual call time of this activation
+ * * `context` - User-provided context pointer
+ */
+typedef void (*rclc_timer_callback_with_info_t)(struct rcl_timer_t *timer,
+                                                const struct rcl_timer_call_info_t *info,
+                                                void *context);
+
+/**
  * Timer structure.
  *
  * Already an arena handle before phase-487: `rclc_executor_add_timer`
@@ -2372,6 +2413,12 @@ typedef struct rcl_timer_t {
    * Opaque pointer to internal executor (set by rclc_executor_add_timer)
    */
   void *_executor;
+  /**
+   * The call-info callback `rclc_timer_init_with_info` registers, or NULL
+   * (issue 1974). Exactly one of `callback` / `info_callback` is set on an
+   * initialised timer. APPENDED, so every field above keeps its offset.
+   */
+  rclc_timer_callback_with_info_t info_callback;
 } rcl_timer_t;
 
 /**
@@ -9020,6 +9067,77 @@ rcl_ret_t rclc_timer_init_with_context(struct rcl_timer_t *timer,
                                        uint64_t period_ns,
                                        rclc_timer_callback_with_context_t callback,
                                        void *context);
+
+/**
+ * [`rclc_timer_init_with_context`] with Jazzy's `autostart` flag — issue 1974,
+ * our counterpart of `rclc_timer_init_default2`.
+ *
+ * `autostart == false` creates the timer CANCELLED: `rclc_executor_add_timer`
+ * registers it cancelled and it does not fire until `rcl_timer_reset`, whose
+ * call starts its first period. `true` is exactly
+ * [`rclc_timer_init_with_context`].
+ *
+ * Not spelled `rclc_timer_init_default2` for the reason
+ * `rclc_timer_init_default` is refused (`<rclc/detail/rcl_compat.h>` §4):
+ * rclc's callback receives the time since its last call, ours the caller's
+ * context.
+ *
+ * # Safety
+ * As [`rclc_timer_init_with_context`].
+ */
+NROS_PUBLIC
+rcl_ret_t rclc_timer_init_with_context2(struct rcl_timer_t *timer,
+                                        uint64_t period_ns,
+                                        rclc_timer_callback_with_context_t callback,
+                                        void *context,
+                                        bool autostart);
+
+/**
+ * [`rclc_timer_init_on_clock`] with Jazzy's `autostart` flag — issue 1974,
+ * our counterpart of `rcl_timer_init2(..., autostart)`: clock second, as
+ * rcl's, and `autostart` last, as rcl's.
+ *
+ * `autostart == false` creates the timer cancelled; `rcl_timer_reset` starts
+ * it, and its first period counts from that reset on the timer's own clock.
+ *
+ * # Safety
+ * As [`rclc_timer_init_on_clock`].
+ */
+NROS_PUBLIC
+rcl_ret_t rclc_timer_init_on_clock2(struct rcl_timer_t *timer,
+                                    const struct rcl_clock_t *clock,
+                                    uint64_t period_ns,
+                                    rclc_timer_callback_with_context_t callback,
+                                    void *context,
+                                    bool autostart);
+
+/**
+ * Initialise a timer whose callback receives the activation's
+ * [`rcl_timer_call_info_t`] — issue 1974, the C counterpart of Jazzy's
+ * `rcl_timer_call_with_info` / `rclcpp::TimerInfoCallbackType`.
+ *
+ * `clock` NULL is the wall timer ([`rclc_timer_init_with_context`]'s
+ * schedule, call times on the platform steady clock); a non-NULL clock
+ * selects the schedule exactly as [`rclc_timer_init_on_clock`] does, and the
+ * call times are on that clock. `autostart` as in
+ * [`rclc_timer_init_on_clock2`].
+ *
+ * # Returns
+ * * `RCL_RET_OK` on success
+ * * `RCL_RET_INVALID_ARGUMENT` if `timer` or `callback` is NULL, the period
+ *   is 0, or the clock names no schedule
+ * * `RCL_RET_NOT_INIT` if the clock is not initialized
+ *
+ * # Safety
+ * As [`rclc_timer_init_on_clock`]; `clock` may be NULL.
+ */
+NROS_PUBLIC
+rcl_ret_t rclc_timer_init_with_info(struct rcl_timer_t *timer,
+                                    const struct rcl_clock_t *clock,
+                                    uint64_t period_ns,
+                                    rclc_timer_callback_with_info_t callback,
+                                    void *context,
+                                    bool autostart);
 
 /**
  * Initialize a timer scheduled against `clock` — rcl's shape (phase-430 W1).

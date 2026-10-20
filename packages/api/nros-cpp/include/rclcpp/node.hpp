@@ -2016,14 +2016,26 @@ class Node {
     ///
     /// ADOPT-BOUNDED as before: the period is truncated to whole milliseconds,
     /// and a missed deadline catches up where rcl drops (see `rclcpp::Timer`).
-    template <typename Cb>::rclcpp::TimerHandle create_wall_timer(::rclcpp::Duration period, Cb cb);
+    ///
+    /// Issue 1974 — Jazzy's `(period, callback, group = nullptr, autostart =
+    /// true)`. `group` is a `const rclcpp::CallbackGroup*` (our group is a
+    /// value token, so a ported `nullptr` binds and `&group` names one);
+    /// `autostart = false` creates the timer cancelled until `reset()`. A
+    /// callback invocable as `void(const rclcpp::TimerInfo&)` receives the
+    /// activation's expected and actual call times.
+    template <typename Cb>
+    ::rclcpp::TimerHandle create_wall_timer(::rclcpp::Duration period, Cb cb,
+                                            const ::rclcpp::CallbackGroup* group = nullptr,
+                                            bool autostart = true);
 
 #ifdef NROS_CPP_HAS_STD_CHRONO // hosted-family: chrono-interop
     /// `create_wall_timer(500ms, callback)` — the `std::chrono` spelling a
     /// ported file writes. Conversion sugar over the `rclcpp::Duration` overload,
     /// which is the one that exists on every target.
     template <typename Rep, typename Period, typename Cb>
-    ::rclcpp::TimerHandle create_wall_timer(::std::chrono::duration<Rep, Period> period, Cb cb);
+    ::rclcpp::TimerHandle create_wall_timer(::std::chrono::duration<Rep, Period> period, Cb cb,
+                                            const ::rclcpp::CallbackGroup* group = nullptr,
+                                            bool autostart = true);
 #endif
 
     /// Create a repeating WALL timer — `rclcpp::Node::create_wall_timer`.

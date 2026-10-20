@@ -23,7 +23,7 @@ use super::{
 use crate::session;
 // phase-430 W4 — the clock-source enum moved to the ungated `timer` module so
 // the declarative metadata layer can name it; `executor` re-exports it.
-pub(crate) use crate::timer::TimerClockSource;
+pub(crate) use crate::timer::{TimerCallInfo, TimerClockSource};
 
 // ============================================================================
 // Callback metadata
@@ -2893,6 +2893,32 @@ pub(crate) fn timer_advance_without_dispatch(header: &mut TimerHeader, spin_delt
     }
 }
 
+/// The call info for an activation that is due NOW — issue 1974.
+///
+/// `actual` is now on the timer's clock ([`TimerClockSource::dispatch_now_ns`]);
+/// `expected` subtracts how far `elapsed_us` has run past `period_us`. A
+/// zero-period timer ("fire every spin") has no deadline to be late for, so its
+/// two times coincide.
+pub(crate) fn timer_call_info(
+    clock_source: TimerClockSource,
+    last_clock_ns: i64,
+    elapsed_us: u64,
+    period_us: u64,
+) -> TimerCallInfo {
+    let actual = clock_source.dispatch_now_ns(last_clock_ns);
+    let late_us = if period_us == 0 {
+        0
+    } else {
+        elapsed_us.saturating_sub(period_us)
+    };
+    let late_ns = i64::try_from(late_us.saturating_mul(1_000)).unwrap_or(i64::MAX);
+    TimerCallInfo {
+        expected_call_time: actual.saturating_sub(late_ns),
+        actual_call_time: actual,
+        clock: clock_source,
+    }
+}
+
 /// Monomorphized timer dispatch function.
 ///
 /// # Safety
@@ -2903,7 +2929,7 @@ pub(crate) unsafe fn timer_try_process<F>(
     desc_idx: u8,
 ) -> Result<bool, TransportError>
 where
-    F: FnMut(),
+    F: FnMut(&TimerCallInfo),
 {
     let entry = unsafe { &mut *(ptr as *mut TimerEntry<F>) };
 
@@ -2933,10 +2959,21 @@ where
         // the `try_process` boundary would have produced.
         // phase-474 I3 -- one tick in N when the timer is thinned.
         let traced = timer_tick_traced(desc_idx);
+        // Issue 1974 — the ONE producer of a timer's call info, computed from
+        // the very comparison that just decided the activation is due, so the
+        // three language surfaces read the dispatcher's answer rather than
+        // keeping their own. Lateness is how far `elapsed_us` ran past the
+        // period; it is never negative here, so `actual >= expected` always.
+        let info = timer_call_info(
+            entry.clock_source,
+            entry.last_clock_ns,
+            entry.elapsed_us,
+            entry.period_us,
+        );
         if traced {
             trace_cb_start(desc_idx);
         }
-        (entry.callback)();
+        (entry.callback)(&info);
         if traced {
             trace_cb_end(desc_idx);
         }
@@ -4451,7 +4488,7 @@ mod timer_overrun_tests {
 
     /// Drive `entry` through one `try_process` pass, crediting `delta_ms`
     /// worth of elapsed time (the dispatcher's unit is microseconds).
-    fn step<F: FnMut()>(entry: &mut TimerEntry<F>, delta_ms: u64) -> bool {
+    fn step<F: FnMut(&TimerCallInfo)>(entry: &mut TimerEntry<F>, delta_ms: u64) -> bool {
         // SAFETY: `entry` is a live, aligned `TimerEntry<F>`.
         unsafe {
             timer_try_process::<F>(
@@ -4464,14 +4501,17 @@ mod timer_overrun_tests {
     }
 
     /// Same, in microseconds — the dispatcher's native unit.
-    fn step_us<F: FnMut()>(entry: &mut TimerEntry<F>, delta_us: u64) -> bool {
+    fn step_us<F: FnMut(&TimerCallInfo)>(entry: &mut TimerEntry<F>, delta_us: u64) -> bool {
         // SAFETY: `entry` is a live, aligned `TimerEntry<F>`.
         unsafe {
             timer_try_process::<F>((entry as *mut TimerEntry<F>).cast::<u8>(), delta_us, 0).unwrap()
         }
     }
 
-    fn periodic(period_us: u64, policy: TimerOverrunPolicy) -> TimerEntry<impl FnMut()> {
+    fn periodic(
+        period_us: u64,
+        policy: TimerOverrunPolicy,
+    ) -> TimerEntry<impl FnMut(&TimerCallInfo)> {
         TimerEntry {
             period_us,
             elapsed_us: 0,
@@ -4483,7 +4523,7 @@ mod timer_overrun_tests {
             overrun_policy: policy,
             clock_source: TimerClockSource::Steady,
             last_clock_ns: 0,
-            callback: || {},
+            callback: |_: &TimerCallInfo| {},
         }
     }
 
@@ -4561,7 +4601,7 @@ mod timer_overrun_tests {
             overrun_policy: TimerOverrunPolicy::Skip,
             clock_source: TimerClockSource::Steady,
             last_clock_ns: 0,
-            callback: || {},
+            callback: |_: &TimerCallInfo| {},
         };
         assert!(step(&mut t, 205));
         assert_eq!(t.overruns, 0);

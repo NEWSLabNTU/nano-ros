@@ -5,7 +5,10 @@ use core::{marker::PhantomData, mem::MaybeUninit};
 use nros_core::{RosMessage, RosService, ViewableMessage};
 use nros_rmw::{QoSProfile, ServiceInfo, Session, TopicInfo, TransportError};
 
-use crate::{session, timer::TimerDuration};
+use crate::{
+    session,
+    timer::{TimerCallInfo, TimerDuration},
+};
 
 #[cfg(feature = "safety-e2e")]
 use super::arena::{
@@ -8785,15 +8788,17 @@ impl<'s> Executor<'s> {
     where
         F: FnMut() + 'static,
     {
+        let mut callback = callback;
         self.register_timer_entry_with(
             node_id,
             period,
             source,
             oneshot,
+            true,
             group,
             None,
             core::ptr::null_mut(),
-            move |_| callback,
+            move |_| move |_: &TimerCallInfo| callback(),
         )
     }
 
@@ -8806,6 +8811,13 @@ impl<'s> Executor<'s> {
     /// lets the capture ride in the timer entry's own trailing region (so a
     /// release frees it) while the closure that reads it is still a plain
     /// `TimerEntry<F>`.
+    ///
+    /// Issue 1974 — the stored callback takes the dispatcher's
+    /// [`TimerCallInfo`]; a plain `FnMut()` is adapted by ignoring it, so there
+    /// is one entry type and one dispatch whichever flavour the caller wrote.
+    /// `autostart == false` builds the entry CANCELLED (rcl's
+    /// `rcl_timer_init2(..., autostart = false)`): it never fires until
+    /// [`reset_timer`](Self::reset_timer) starts it.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn register_timer_entry_with<F, M>(
         &mut self,
@@ -8813,13 +8825,14 @@ impl<'s> Executor<'s> {
         period: TimerDuration,
         source: TimerClockSource,
         oneshot: bool,
+        autostart: bool,
         group: Option<&str>,
         capture: Option<&[u8]>,
         context: *mut core::ffi::c_void,
         make: M,
     ) -> Result<HandleId, NodeError>
     where
-        F: FnMut() + 'static,
+        F: FnMut(&TimerCallInfo) + 'static,
         M: FnOnce(*mut core::ffi::c_void) -> F,
     {
         let slot = self.next_entry_slot()?;
@@ -8846,7 +8859,7 @@ impl<'s> Executor<'s> {
                     overruns_reported: 0,
                     oneshot,
                     fired: false,
-                    cancelled: false,
+                    cancelled: !autostart,
                     overrun_policy: TimerOverrunPolicy::default(),
                     clock_source: source,
                     // Seeded HERE rather than on the first poll: a zero would
@@ -8976,6 +8989,7 @@ impl<'s> Executor<'s> {
             period,
             source,
             false,
+            true,
             None,
             capture,
             core::ptr::null_mut(),
@@ -8987,8 +9001,126 @@ impl<'s> Executor<'s> {
                         drop: capture_drop,
                     },
                 };
-                move || held.call()
+                move |_: &TimerCallInfo| held.call()
             },
+        )
+    }
+
+    /// [`register_timer_c_capturing`](Self::register_timer_c_capturing) with
+    /// the dispatcher's [`TimerCallInfo`] handed to the C callback, a callback
+    /// group, and rcl's `autostart` — issue 1974, the road a C++
+    /// `TimerInfoCallbackType` lambda and `create_wall_timer(..., autostart)`
+    /// take.
+    ///
+    /// `I` is the FFI's own `#[repr(C)]` mirror of the info struct (the C++
+    /// header is generated without includes, so it cannot name this crate's
+    /// type); it is built from the executor's `TimerCallInfo` by `From` on each
+    /// activation — a copy of two words, never a second computation.
+    ///
+    /// `autostart == false` registers the timer cancelled; `reset_timer`
+    /// starts it. `group` binds it as `register_timer_on` does.
+    #[allow(clippy::too_many_arguments)]
+    pub fn register_timer_c_capturing_with_info<I>(
+        &mut self,
+        node_id: Option<super::node_record::NodeId>,
+        period: TimerDuration,
+        source: TimerClockSource,
+        autostart: bool,
+        group: Option<&str>,
+        callback: unsafe extern "C" fn(*const I, *mut core::ffi::c_void),
+        capture: Option<&[u8]>,
+        capture_drop: Option<unsafe extern "C" fn(*mut core::ffi::c_void)>,
+    ) -> Result<HandleId, NodeError>
+    where
+        I: From<TimerCallInfo> + 'static,
+    {
+        self.register_timer_entry_with(
+            node_id,
+            period,
+            source,
+            false,
+            autostart,
+            group,
+            capture,
+            core::ptr::null_mut(),
+            move |ctx| {
+                let guard = super::arena::CaptureGuard {
+                    ctx,
+                    drop: capture_drop,
+                };
+                move |info: &TimerCallInfo| {
+                    // Borrow the WHOLE guard: a closure naming only `guard.ctx`
+                    // would capture that `Copy` field alone and let the guard
+                    // (whose `Drop` runs the capture's destructor) die here.
+                    let guard = &guard;
+                    let ffi_info = I::from(*info);
+                    // SAFETY: the registrant's contract — `callback` reads its
+                    // capture through the pointer it is given, and the info
+                    // pointer is valid for the duration of the call.
+                    unsafe { callback(&ffi_info, guard.ctx) }
+                }
+            },
+        )
+    }
+
+    /// Register a repeating timer whose callback receives the dispatcher's
+    /// [`TimerCallInfo`] — issue 1974, the Rust counterpart of Jazzy's
+    /// `rclcpp::TimerInfoCallbackType` / `rcl_timer_call_info_t`.
+    ///
+    /// `source` picks the clock both the period and the two call times are
+    /// measured on. `autostart == false` creates the timer CANCELLED (rcl's
+    /// `rcl_timer_init2(..., autostart)`): it does not fire until
+    /// [`reset_timer`](Self::reset_timer) starts it, and its first period
+    /// counts from that reset.
+    ///
+    /// ```ignore
+    /// executor.register_timer_with_info(
+    ///     TimerDuration::from_millis(10),
+    ///     TimerClockSource::Steady,
+    ///     true,
+    ///     |info| jitter.record(info.lateness_ns()),
+    /// )?;
+    /// ```
+    pub fn register_timer_with_info<F>(
+        &mut self,
+        period: TimerDuration,
+        source: TimerClockSource,
+        autostart: bool,
+        callback: F,
+    ) -> Result<HandleId, NodeError>
+    where
+        F: FnMut(&TimerCallInfo) + 'static,
+    {
+        self.register_timer_with_info_on(None, period, source, autostart, None, callback)
+    }
+
+    /// [`register_timer_with_info`](Self::register_timer_with_info) bound to a
+    /// node and an optional callback group — the executor primitive behind
+    /// `Node::create_timer_with_info` and the C `rclc_timer_init_*2` /
+    /// `rclc_timer_init_with_info` timers (issue 1974). `node_id`/`group` feed
+    /// the sched binding exactly as [`register_timer_on`](Self::register_timer_on).
+    pub fn register_timer_with_info_on<F>(
+        &mut self,
+        node_id: Option<super::node_record::NodeId>,
+        period: TimerDuration,
+        source: TimerClockSource,
+        autostart: bool,
+        group: Option<&str>,
+        callback: F,
+    ) -> Result<HandleId, NodeError>
+    where
+        F: FnMut(&TimerCallInfo) + 'static,
+    {
+        self.register_timer_entry_with(
+            node_id,
+            period,
+            source,
+            false,
+            autostart,
+            group,
+            None,
+            core::ptr::null_mut(),
+            move |_| callback,
         )
     }
 
@@ -10212,6 +10344,14 @@ impl<'s> Executor<'s> {
         let header = unsafe { &mut *(arena_ptr.add(meta.offset) as *mut TimerHeader) };
         header.cancelled = false;
         header.elapsed_us = 0;
+        // Issue 1974 — a CLOCK timer advances by `now - last_clock_ns`, and a
+        // cancelled timer is not polled, so its last reading is from when it
+        // was cancelled (or, for `autostart = false`, registered). Without a
+        // re-seed the first poll after this reset would credit the whole
+        // cancelled interval as one step and fire at once — "a fresh period"
+        // would hold for wall timers only. `Steady` reads no clock; its seed
+        // stays 0 and is never read.
+        header.last_clock_ns = header.clock_source.now_ns();
         Ok(())
     }
 

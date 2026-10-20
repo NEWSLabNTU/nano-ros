@@ -172,7 +172,7 @@ pub use action_core::{ActionClientCore, ActionServerCore, RawActiveGoal, action_
 // `nros_node::executor::TimerClockSource` keeps resolving for every caller
 // phase-425 wrote while the declarative metadata layer, which builds with no
 // transport, can name the same enum instead of inventing a second one.
-pub use crate::timer::TimerClockSource;
+pub use crate::timer::{TimerCallInfo, TimerClockSource};
 #[cfg(any(has_rmw, test))]
 pub use arena::TimerOverrunPolicy;
 #[cfg(any(has_rmw, test))]
