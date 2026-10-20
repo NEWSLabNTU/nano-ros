@@ -29,6 +29,34 @@ publish: Transport(PublishFailed)
 
 The test landed with #2408 (phase-397 W5), merged a few hours before this run.
 
+### Second sighting, 2026-10-20
+
+- Run: gate 39356789492 (schedule, 2026-10-20 02:03 UTC, main at
+  `3ed9ed306`).
+- Job: 118413362232, `check / build tier + no-std (nightly/manual only)`,
+  step `just check build`. The failing gate is again
+  `required-features-tests` (`check-build (parallel): 1 of 26 gate(s) FAILED`).
+- This time BOTH cases failed, at 5.35 s and 15.33 s, and each one has the same
+  pair of panics:
+
+```
+DrainsToEmpty round 8: sample 27, published while a callback ran (None), was never dispatched (latest 26); an arrival that raced a dispatch was lost
+panicked at packages/testing/nros-tests/tests/entity_wake.rs:475:47:
+publish: Transport(PublishFailed)
+
+OneSamplePerDispatch round 11: sample 36, published while a callback ran (None), was never dispatched (latest 35); an arrival that raced a dispatch was lost
+panicked at packages/testing/nros-tests/tests/entity_wake.rs:475:47:
+publish: Transport(PublishFailed)
+```
+
+This weakens the "session not yet ready when round 0 begins" reading under
+item 2 below. These failures came in rounds 8 and 11, after 26 and 35 samples
+had already been published and dispatched. So the publish can fail well into
+a session that was already working. It is still the publisher thread
+panicking, with `(None)` in the verdict, so the item 1 test fix applies
+unchanged. The red is also not limited to the tier-1 lane: the scheduled
+gate's build tier runs the same gate.
+
 ## Reading
 
 The verdict blames the executor, but the evidence points at the publish. The
