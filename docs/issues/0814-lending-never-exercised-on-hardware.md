@@ -605,7 +605,7 @@ against the transport — and `publish_streamed`, which is unfeatured and which
 zenoh fills natively, already saves it by assembling inside zenoh's own
 `z_owned_bytes_t`.
 
-### Options, none chosen
+### Options — option 2 chosen and landed 2026-10-21 (see the end of this issue)
 
 1. **Fill the slots.** Cyclone 0.10.5's `dds_loan_sample` is typed and needs
    `DDS_HAS_SHM` + a live iceoryx endpoint (§2); XRCE's
@@ -721,3 +721,50 @@ one path that measurably avoids the payload copy on zenoh, so this
 measurement argues against it. Options 1 and 2 are about the other backends,
 where the loan slot is NULL and the fallback stages, and they are unaffected.
 The choice is the maintainer's, as this issue says.
+
+## Option 2, landed (2026-10-21, phase-441 W8)
+
+The maintainer's choice. Option 3 would have removed the one publish the
+measurement above found copy-free; option 1 has no implementation on any of
+the three NULL-slot backends at their pins. Option 2 is what both halves of
+"Acceptance for this half" ask for, and it costs no caller: nothing outside the
+loan tests calls the surface.
+
+**What changed.**
+
+- `CffiPublisher::try_lend_slot` returns `TransportError::Unsupported` for a
+  vtable with no `borrow_loaned_message`, in EVERY build. The `alloc`-only
+  staging arm is gone, with `ArenaStaging`, `CffiSlot::fallback`,
+  `loan_is_fallback` and the staging branches of `commit_slot` and `Drop`.
+  The answer a caller gets is now the same with and without a heap, because
+  the fact behind it (this vtable has no loan slot) is. `can_loan_messages`,
+  derived from the same slot, is the complete up-front answer.
+- Tests: `loan_fallback.rs`, which asserted the staging published, is deleted;
+  `loan_no_alloc.rs`, which asserted the heap-free refusal, is now
+  `loan_null_slot.rs` and runs in both builds (`check required-features-tests`
+  runs it with `alloc,lending` and with `lending` alone). Under the old code its
+  `alloc` run fails on `Ok(Some(_))`, which is the regression it now guards.
+  Zenoh's native loan is unaffected: `loan_e2e` passes 2/2 under
+  `just test-zpico-multisession`.
+- Docs that claimed a saving the measurement does not show are corrected: the C
+  (`rclc_publisher_loan`) and C++ (`nros_cpp_publisher_loan`,
+  `Publisher::loan`) docs said XRCE and zenoh both fill the streamed path
+  "while all three NULL the loan trio" and described the heap fallback; the
+  Rust `EmbeddedRawPublisher` / `PublishLoan` docs said XRCE lends natively and
+  uORB gets a "single-memcpy fallback". Each now says zenoh is the only
+  backend that lends, and the others refuse permanently.
+
+**Corrected above, not rewritten.** The options section's sentence that
+`publish_streamed` "already saves" the copy the loan saves is wrong, as the
+copy-count section says: it makes the same one copy as `publish_raw` and saves
+RAM.
+
+**Not changed:** `EmbeddedRawPublisher`'s own inline arena, used when
+`rmw-lending` is OFF. It is a static slot, not a heap staging, and its doc
+already says it costs one copy, "same as `publish_raw` directly" — a
+convenience, not a zero-copy claim.
+
+**What stays open is this issue's title.** Option 2 keeps the publish half, so
+phase-441 W8's condition for an embedded lending lane is met: the zenoh loan is
+compiled for embedded targets by the no-std ratchet and RUN only on posix.
+

@@ -811,6 +811,14 @@ on zenoh, which argues against withdrawing it (0814's option 3), and
 `publish_streamed`'s saving is RAM, not copies. Details and caveats are in 0814.
 What remains is the maintainer's choice of option, then the issue's acceptance.
 
+**Option 2 chosen and landed 2026-10-21.** A backend with no loan slot now
+refuses a loan permanently in every build: the `alloc`-only staging fallback in
+`nros-rmw-cffi`, which removed no copy and added an allocation pair, is gone,
+and the C, C++ and Rust loan docs stop claiming XRCE lends or uORB falls back
+with one copy. That meets 0814's "Acceptance for this half". Option 2 keeps the
+publish half, so by this item's own condition the embedded lending lane is
+next: the zenoh loan is compiled for embedded targets and run only on posix.
+
 ## What this phase does NOT promise
 
 **Not real hardware.** Everything above is QEMU. A QEMU MPS2-AN385 is a genuine

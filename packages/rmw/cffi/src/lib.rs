@@ -3802,12 +3802,6 @@ pub struct CffiSlot<'a> {
     /// `None` after `commit_slot` consumes the slot — Drop skips the
     /// discard call in that case.
     publisher: Option<&'a CffiPublisher>,
-    /// Phase 124.A.3 — `true` when this slot came from the runtime's
-    /// arena fallback (backend had NULL `pub_loan`). Commit performs
-    /// a `publish_raw` of the staged bytes; discard / Drop reclaims
-    /// the staging buffer. `false` for native backend loans —
-    /// commit / discard go through the vtable slots.
-    fallback: bool,
 }
 
 #[cfg(feature = "lending")]
@@ -3819,17 +3813,6 @@ impl<'a> CffiSlot<'a> {
         debug_assert!(len <= self.cap);
         self.cursor = len.min(self.cap);
     }
-}
-
-/// Phase 124.A.3 — staging buffer for the arena-fallback loan path.
-/// Allocated on each `try_lend_slot` when the backend's `pub_loan`
-/// slot is NULL; commit copies into a `publish_raw` call; Drop /
-/// discard reclaims the allocation. `Box::into_raw` of this struct
-/// becomes the slot's opaque `token` so commit / discard can find
-/// it back.
-#[cfg(all(feature = "lending", feature = "alloc"))]
-struct ArenaStaging {
-    buf: alloc::vec::Vec<u8>,
 }
 
 #[cfg(feature = "lending")]
@@ -3848,14 +3831,6 @@ impl<'a> Drop for CffiSlot<'a> {
     fn drop(&mut self) {
         if self.publisher.is_none() {
             // commit_slot consumed the loan — nothing to release.
-            return;
-        }
-        if self.fallback {
-            // Phase 124.A.3 — reclaim the staging allocation.
-            #[cfg(feature = "alloc")]
-            unsafe {
-                let _ = alloc::boxed::Box::from_raw(self.token as *mut ArenaStaging);
-            }
             return;
         }
         if let Some(p) = self.publisher
@@ -3893,60 +3868,31 @@ impl nros_rmw::SlotLending for CffiPublisher {
 
     fn try_lend_slot(&self, len: usize) -> Result<Option<CffiSlot<'_>>, TransportError> {
         let Some(loan) = self.vtable.borrow_loaned_message else {
-            // Phase 124.A.3 — backend doesn't natively lend; allocate
-            // a staging buffer and stash it in `token` so commit can
-            // memcpy → publish_raw and discard / Drop can reclaim.
-            // Requires `alloc` for the dynamic staging; without it there
-            // is no staging to hand out and the answer is PERMANENT — see
-            // the `not(alloc)` arm below.
-            #[cfg(feature = "alloc")]
-            {
-                let mut staging = alloc::boxed::Box::new(ArenaStaging {
-                    buf: alloc::vec![0u8; len],
-                });
-                let buf_ptr = staging.buf.as_mut_ptr();
-                // phase-406 W3 — the FALLBACK carries its own staging box in the token
-                // slot. It is not a backend loan handle, so the cast is the
-                // honest thing here: `fallback: true` below is what tells the
-                // return path to unbox rather than call the backend.
-                let token =
-                    alloc::boxed::Box::into_raw(staging) as *mut generated::rmw_loan_token_t;
-                return Ok(Some(CffiSlot {
-                    buf: buf_ptr,
-                    cap: len,
-                    cursor: len,
-                    token,
-                    publisher: Some(self),
-                    fallback: true,
-                }));
-            }
-            #[cfg(not(feature = "alloc"))]
-            {
-                // issue 0814 — this arm used to return `Ok(None)`, which every
-                // caller above reads as "no slot RIGHT NOW, retry":
-                // `EmbeddedRawPublisher::try_loan` maps it to
-                // `LoanError::WouldBlock`, `loan_with_timeout` then spins the
-                // executor until its whole budget is gone, and `LoanFuture`
-                // returns `Pending` after a self-wake — a hot loop that never
-                // resolves. But the condition is a COMPILE-TIME fact about this
-                // image (no `alloc`) and a STATIC fact about this publisher
-                // (its vtable has no `borrow_loaned_message`); neither can
-                // change while the publisher lives, so no amount of retrying
-                // will ever clear it. A permanent condition must not present as
-                // a transient one.
-                //
-                // `Unsupported` rather than `LoanNotSupported`: the latter's
-                // own doc bundles "or the loan slot is currently in use", which
-                // is exactly the transient reading this arm must not offer.
-                //
-                // What a caller should do on seeing it: stop asking for a loan
-                // on this publisher and take a non-loan path — `publish_raw`,
-                // or better `publish_streamed`, which needs no token, no arena
-                // and no heap, and which the XRCE and zenoh backends fill
-                // natively.
-                let _ = len;
-                return Err(TransportError::Unsupported);
-            }
+            // Issue 0814 (option 2) — a backend with no `borrow_loaned_message`
+            // cannot lend, and that is a STATIC fact about this publisher's
+            // vtable, the same in every build. So the answer is the same in
+            // every build: a permanent `Unsupported`.
+            //
+            // There used to be a staging fallback here in `alloc` builds: a
+            // `Box` + `Vec` per loan, encoded into exactly as the caller's own
+            // buffer would have been, then `publish_raw` of it at commit. It
+            // removed no copy and added an allocation pair per message, while
+            // `can_loan_messages` (derived from this same slot) said `false` —
+            // a loan API advertising a saving it did not make, and answering
+            // differently with and without a heap.
+            //
+            // Not `Ok(None)`: every caller reads that as "no slot RIGHT NOW,
+            // retry" (`LoanError::WouldBlock`, `loan_with_timeout` spinning its
+            // whole budget, `LoanFuture` self-waking forever), and no retry can
+            // change a vtable. Not `LoanNotSupported` either: its doc bundles
+            // "or the loan slot is currently in use", the transient reading.
+            //
+            // What a caller should do on seeing it: stop asking for a loan on
+            // this publisher — `can_loan_messages` says so up front — and take
+            // `publish_raw`, or `publish_streamed`, which needs no token, no
+            // arena and no heap.
+            let _ = len;
+            return Err(TransportError::Unsupported);
         };
         let view = NrosRmwPublisher {
             topic_name: self.topic_name_buf.as_ptr().cast(),
@@ -3996,7 +3942,6 @@ impl nros_rmw::SlotLending for CffiPublisher {
             cursor: len,
             token: out_token,
             publisher: Some(self),
-            fallback: false,
         }))
     }
 
@@ -4007,24 +3952,6 @@ impl nros_rmw::SlotLending for CffiPublisher {
             .take()
             .ok_or(TransportError::InvalidArgument)?;
         debug_assert!(core::ptr::eq(publisher, self));
-        if slot.fallback {
-            // Phase 124.A.3 — fallback path: reclaim the staging
-            // box, run a single publish_raw of the cursor-truncated
-            // contents.
-            #[cfg(feature = "alloc")]
-            {
-                // SAFETY: `slot.token` came from
-                // `Box::into_raw(Box<ArenaStaging>)` in try_lend_slot.
-                let staging =
-                    unsafe { alloc::boxed::Box::from_raw(slot.token as *mut ArenaStaging) };
-                let bytes = &staging.buf[..slot.cursor.min(staging.buf.len())];
-                return Publisher::publish_raw(self, bytes);
-            }
-            #[cfg(not(feature = "alloc"))]
-            {
-                return Err(TransportError::Unsupported);
-            }
-        }
         let commit = self
             .vtable
             .publish_loaned_message
@@ -4060,9 +3987,9 @@ impl nros_rmw::SlotLending for CffiPublisher {
 // heap-free image is supposed to be able to use.
 //
 // None of that state has to cross the boundary. Commit and discard are handed
-// the publisher back as a parameter; whether the loan took the staging
-// fallback is a property of that publisher's vtable, not of the individual
-// loan; and the backend already minted a stable token of its own. So the FFI
+// the publisher back as a parameter, and the backend already minted a stable
+// token of its own (there is no runtime-side loan since issue 0814 retired the
+// staging fallback: a backend with no loan slot refuses). So the FFI
 // layers pass the BACKEND's token straight through and store nothing at all.
 //
 // One implementation, not two: `commit_raw` / `discard_raw` rebuild the
@@ -4071,22 +3998,12 @@ impl nros_rmw::SlotLending for CffiPublisher {
 // ---------------------------------------------------------------------------
 #[cfg(feature = "lending")]
 impl CffiPublisher {
-    /// `true` when loans on this publisher take the runtime's staging
-    /// fallback rather than the backend's own slot. A property of the
-    /// vtable, so every loan on a given publisher answers the same — which
-    /// is why the per-loan `fallback` bit need not travel in the token.
-    #[inline]
-    fn loan_is_fallback(&self) -> bool {
-        self.vtable.borrow_loaned_message.is_none()
-    }
-
     /// Rebuild the [`CffiSlot`] describing an outstanding loan from its
     /// token, so the shared commit / discard bodies can run on it.
     ///
     /// `buf` and `cap` are only ever read by `as_mut` / `set_len`, neither of
-    /// which runs on the commit or discard path (the fallback arm reads the
-    /// staging buffer back out of `token`, the native arm hands `token` to
-    /// the backend), so the rebuilt slot deliberately carries no buffer.
+    /// which runs on the commit or discard path (both hand `token` to the
+    /// backend), so the rebuilt slot deliberately carries no buffer.
     ///
     /// # Safety
     /// `token` must be the token of a loan that is still outstanding on
@@ -4103,7 +4020,6 @@ impl CffiPublisher {
             cursor: len,
             token,
             publisher: Some(self),
-            fallback: self.loan_is_fallback(),
         }
     }
 
@@ -4136,10 +4052,9 @@ impl CffiPublisher {
 
     /// Commit a loan taken with [`try_lend_raw`](Self::try_lend_raw).
     ///
-    /// `actual_len` is the number of bytes written. On the native path it
-    /// reaches the backend's own commit, which is the layer that knows the
-    /// slot's capacity and is responsible for clamping; the staging fallback
-    /// clamps to the staging buffer here.
+    /// `actual_len` is the number of bytes written. It reaches the backend's
+    /// own commit, which is the layer that knows the slot's capacity and is
+    /// responsible for clamping.
     ///
     /// # Safety
     /// `token` must come from a prior `try_lend_raw` on THIS publisher, must
@@ -4166,8 +4081,7 @@ impl CffiPublisher {
         token: *mut generated::rmw_loan_token_t,
     ) -> Result<(), TransportError> {
         // SAFETY: forwarded from this function's own contract. Dropping the
-        // rebuilt slot is what fires the backend's discard (or reclaims the
-        // staging buffer).
+        // rebuilt slot is what fires the backend's discard.
         drop(unsafe { self.slot_from_token(token, 0) });
         Ok(())
     }

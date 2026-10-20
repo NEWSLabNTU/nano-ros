@@ -301,9 +301,12 @@ pub unsafe extern "C" fn nros_cpp_publisher_publish_streamed(
 /// guard of its own, so against a default build the failure surfaces at
 /// LINK as an undefined symbol, not at the call site.
 ///
-/// The supported zero-copy surface is `publish_streamed` and its receive
-/// twin `process_raw_in_place`: no feature, no token, no arena, no size
-/// ceiling. See issue 0814.
+/// Only zenoh fills the loan slots (and there the loan makes no payload
+/// copy, measured); on Cyclone, XRCE and uORB this call returns the
+/// backend-cannot-lend error, the same in every build. The surface every
+/// backend serves is `publish_streamed` and its receive twin
+/// `process_raw_in_place`: no feature, no token, no arena, no size ceiling.
+/// See issue 0814.
 ///
 /// On success, `*out_buf` points at `*out_cap` writable bytes the
 /// caller fills in place. Pass `*out_token` back to
@@ -402,8 +405,8 @@ pub unsafe extern "C" fn nros_cpp_publisher_discard(
     let publisher = unsafe { &*(storage as *const CppPublisher) };
     // SAFETY: `token` is the backend token a prior `nros_cpp_publisher_loan`
     // handed out on this publisher. `discard_raw` fires the backend's
-    // pub_discard (or reclaims the arena staging buffer) — issue 0812
-    // retired the per-loan Box this used to reconstitute.
+    // pub_discard — issue 0812 retired the per-loan Box this used to
+    // reconstitute.
     match unsafe { publisher.handle.discard_raw(token.cast()) } {
         Ok(()) => NROS_CPP_RET_OK,
         Err(e) => crate::transport_error_to_cpp_ret(e),

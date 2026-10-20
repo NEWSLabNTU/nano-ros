@@ -846,7 +846,8 @@ pub unsafe extern "C" fn rclc_publisher_get_gid(
 // ============================================================================
 
 /// Phase 124.A.6 — loan a writable slot from the publisher's outbound
-/// buffer (zero-copy publish path).
+/// buffer. Zero-copy on a backend that lends (zenoh: measured, no payload
+/// copy on the stack); refused on one that does not (issue 0814).
 ///
 /// # AVAILABILITY — read this before calling
 ///
@@ -864,10 +865,12 @@ pub unsafe extern "C" fn rclc_publisher_get_gid(
 /// appears. Calling this against a default build compiles and then fails
 /// at LINK with an undefined symbol.
 ///
-/// The supported zero-copy surface is `rclc_publisher_publish_streamed`
-/// and its receive twin `process_raw_in_place`: no feature, no token, no
-/// arena, no size ceiling, and the XRCE and zenoh backends fill them
-/// natively while all three NULL the loan trio. See issue 0814.
+/// Only zenoh fills the loan slots; Cyclone, XRCE and uORB leave them NULL,
+/// and there this call refuses (below). The surface every backend serves is
+/// `rclc_publisher_publish_streamed` and its receive twin
+/// `process_raw_in_place`: no feature, no token, no arena, no size ceiling.
+/// It makes one payload copy on zenoh, as `rclc_publish` does — what it saves
+/// is the full-size staging buffer, not the copy. See issue 0814.
 ///
 /// On success, `*out_buf` points at `*out_cap` writable bytes the
 /// caller fills in place. Pass `*out_token` back to
@@ -877,12 +880,13 @@ pub unsafe extern "C" fn rclc_publisher_get_gid(
 /// caller is responsible for matching every loan with exactly one
 /// commit OR discard.
 ///
-/// Falls back to a heap-allocated staging buffer when the active
-/// backend's vtable doesn't expose a native loan slot — the wire
-/// payload still takes a single memcpy at commit time. `requested_len`
-/// is the minimum capacity; `*out_cap` may exceed it. That fallback
-/// needs a heap: in a build without `alloc` there is nothing to hand
-/// out, and the answer is `RCLC_RET_NOT_ALLOWED` (see below).
+/// `requested_len` is the minimum capacity; `*out_cap` may exceed it.
+///
+/// There is no fallback for a backend without a loan slot. One used to
+/// stage the bytes in a heap buffer and `publish` them at commit, which
+/// removed no copy and added an allocation pair per message; since issue
+/// 0814 such a backend answers `RCLC_RET_NOT_ALLOWED`, the same in every
+/// build.
 ///
 /// # Returns
 /// * `RCL_RET_OK` — slot reserved.
@@ -890,11 +894,10 @@ pub unsafe extern "C" fn rclc_publisher_get_gid(
 ///   TRANSIENT: retry later, or use a non-loan publish path.
 /// * `RCLC_RET_NOT_ALLOWED` (`-12`) — this publisher cannot loan at
 ///   all. PERMANENT (issue 0814): the backend's vtable exposes no loan
-///   slot and this build has no heap for the staging fallback, and
-///   neither fact can change while the publisher lives. Do NOT retry —
-///   take a non-loan path. `rclc_publisher_publish_streamed` is the
-///   better one: it needs no token, no arena and no heap, and the XRCE
-///   and zenoh backends fill it natively.
+///   slot, which cannot change while the publisher lives. Do NOT retry —
+///   take a non-loan path: `rclc_publish`, or
+///   `rclc_publisher_publish_streamed`, which needs no token, no arena and
+///   no heap.
 /// * `RCL_RET_INVALID_ARGUMENT` on NULL pointers or zero `requested_len`.
 /// * `RCL_RET_NOT_INIT` if publisher isn't initialised.
 ///
@@ -1010,8 +1013,8 @@ pub unsafe extern "C" fn rclc_publisher_discard(
     );
     // SAFETY: `token` is the backend token a prior `rclc_publisher_loan`
     // handed out on this publisher. `discard_raw` fires the backend's
-    // pub_discard (or reclaims the arena staging buffer) — issue 0812
-    // retired the per-loan Box this used to reconstitute.
+    // pub_discard — issue 0812 retired the per-loan Box this used to
+    // reconstitute.
     let pub_handle = &*(publisher._opaque.as_ptr() as *const nros::internals::RmwPublisher);
     match pub_handle.discard_raw(token as *mut _) {
         Ok(()) => RCL_RET_OK,
