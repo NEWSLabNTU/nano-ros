@@ -1274,6 +1274,131 @@ static bool _zpico_history_admit(subscriber_entry_t* entry, const z_loaned_bytes
 static inline void zpico_slot_lock(struct zpico_session* s);
 static inline void zpico_slot_unlock(struct zpico_session* s);
 
+/* Issue 1979 -- what a full ring does with one more sample.
+ *
+ * A subscription is KEEP_LAST: the newest samples are the ones to keep. This
+ * used to refuse the incoming sample instead, so a burst into a slow consumer
+ * ended on stale data and the burst's final value never arrived, and the drop
+ * was counted nowhere.
+ *
+ * The consumer reads a slot IN PLACE (an in-place callback runs on the ring's
+ * bytes), so the producer may never write the slot the consumer is reading.
+ * The consumer says which one that is: it CLAIMS the head slot before reading
+ * it (`zpico_ring_claim_head`) and gives it up when it consumes it
+ * (`zpico_ring_consume_head`). Both take the session's `slot_mutex`, the lock
+ * every producer of the ring already holds, so a claim and a producer's
+ * decision are never interleaved. The consumer holds the lock only for the
+ * claim itself, never while it reads.
+ *
+ * On a full ring, under that lock:
+ *   - head not claimed: evict the OLDEST sample (advance head), and write the
+ *     new one at tail. This is KEEP_LAST.
+ *   - head claimed and depth >= 2: the consumer is reading the oldest, so
+ *     REPLACE the newest queued sample (tail - 1) in place. The final value
+ *     of a burst still arrives; one older sample is lost instead of the
+ *     oldest. Tail does not move.
+ *   - head claimed and depth 1: the only slot is being read, so the incoming
+ *     sample is dropped.
+ * Every one of the three counts in `full_drops`.
+ *
+ * Returns the slot to write, or -1 when the sample is dropped. `*advance` is
+ * set when the caller must publish the slot by advancing tail. */
+static intptr_t _zpico_ring_reserve(zpico_ring_desc_t* r, bool* advance) {
+    uintptr_t head = atomic_load_explicit((_Atomic uintptr_t*)r->head, memory_order_acquire);
+    uintptr_t tail = atomic_load_explicit((_Atomic uintptr_t*)r->tail, memory_order_relaxed);
+    *advance = true;
+    if (tail - head < r->slot_count) {
+        return (intptr_t)(tail % r->slot_count);
+    }
+    uintptr_t drops = atomic_load_explicit((_Atomic uintptr_t*)r->full_drops, memory_order_relaxed);
+    atomic_store_explicit((_Atomic uintptr_t*)r->full_drops, drops + 1, memory_order_relaxed);
+    uintptr_t claimed = atomic_load_explicit((_Atomic uintptr_t*)r->claimed, memory_order_relaxed);
+    if (claimed != head + 1) {
+        atomic_store_explicit((_Atomic uintptr_t*)r->head, head + 1, memory_order_release);
+        return (intptr_t)(tail % r->slot_count);
+    }
+    if (r->slot_count >= 2) {
+        *advance = false;
+        return (intptr_t)((tail - 1) % r->slot_count);
+    }
+    return -1;
+}
+
+/* Publish a slot `_zpico_ring_reserve` returned. Release, so the consumer's
+ * acquire load of tail sees the payload and length writes. A replaced slot
+ * is already published; its writes became visible under the lock, which the
+ * consumer takes before it can claim that slot. */
+static void _zpico_ring_commit(zpico_ring_desc_t* r, bool advance) {
+    if (advance) {
+        uintptr_t tail = atomic_load_explicit((_Atomic uintptr_t*)r->tail, memory_order_relaxed);
+        atomic_store_explicit((_Atomic uintptr_t*)r->tail, tail + 1, memory_order_release);
+    }
+}
+
+static inline void _zpico_ring_lock(zpico_ring_desc_t* r) {
+    if (r->lock_session != NULL) {
+        zpico_slot_lock((struct zpico_session*)r->lock_session);
+    }
+}
+
+static inline void _zpico_ring_unlock(zpico_ring_desc_t* r) {
+    if (r->lock_session != NULL) {
+        zpico_slot_unlock((struct zpico_session*)r->lock_session);
+    }
+}
+
+intptr_t zpico_ring_claim_head(zpico_ring_desc_t* r) {
+    if (r == NULL || r->head == NULL || r->slot_count == 0) {
+        return -1;
+    }
+    _zpico_ring_lock(r);
+    uintptr_t head = atomic_load_explicit((_Atomic uintptr_t*)r->head, memory_order_relaxed);
+    uintptr_t tail = atomic_load_explicit((_Atomic uintptr_t*)r->tail, memory_order_acquire);
+    intptr_t slot = -1;
+    if (head != tail) {
+        atomic_store_explicit((_Atomic uintptr_t*)r->claimed, head + 1, memory_order_relaxed);
+        slot = (intptr_t)(head % r->slot_count);
+    }
+    _zpico_ring_unlock(r);
+    return slot;
+}
+
+void zpico_ring_consume_head(zpico_ring_desc_t* r) {
+    if (r == NULL || r->head == NULL) {
+        return;
+    }
+    _zpico_ring_lock(r);
+    uintptr_t head = atomic_load_explicit((_Atomic uintptr_t*)r->head, memory_order_relaxed);
+    uintptr_t tail = atomic_load_explicit((_Atomic uintptr_t*)r->tail, memory_order_acquire);
+    if (head != tail) {
+        atomic_store_explicit((_Atomic uintptr_t*)r->head, head + 1, memory_order_release);
+    }
+    atomic_store_explicit((_Atomic uintptr_t*)r->claimed, 0, memory_order_relaxed);
+    _zpico_ring_unlock(r);
+}
+
+int32_t zpico_ring_push_bytes(zpico_ring_desc_t* r, const uint8_t* payload, size_t len) {
+    if (r == NULL || r->head == NULL || len == 0) {
+        return ZPICO_ERR_INVALID;
+    }
+    if (len > r->payload_stride) {
+        return ZPICO_ERR_INVALID;
+    }
+    _zpico_ring_lock(r);
+    bool advance = false;
+    intptr_t slot = _zpico_ring_reserve(r, &advance);
+    if (slot < 0) {
+        _zpico_ring_unlock(r);
+        return ZPICO_ERR_FULL;
+    }
+    memcpy(r->payload_base + (size_t)slot * r->payload_stride, payload, len);
+    r->payload_len[slot] = len;
+    r->att_len[slot] = 0;
+    _zpico_ring_commit(r, advance);
+    _zpico_ring_unlock(r);
+    return 0;
+}
+
 /* The ring producer: one sample (live, or a history reply) into the next free
  * slot. Split out of `sample_handler` so the transient-local history reply
  * lands in the SAME ring through the SAME code -- the consumer cannot tell the
@@ -1304,8 +1429,6 @@ static inline void zpico_slot_unlock(struct zpico_session* s);
 static void _zpico_ring_push(struct zpico_session* s, subscriber_entry_t* entry,
                              const z_loaned_bytes_t* payload, const z_loaned_bytes_t* attachment) {
     size_t payload_len = z_bytes_len(payload);
-    // Phase 124.D.3.c — SPSC ring producer path. C is the sole
-    // writer of `tail`; Rust the sole writer of `head`.
     if (entry->notify == NULL || entry->ring == NULL) {
         return;
     }
@@ -1325,34 +1448,26 @@ static void _zpico_ring_push(struct zpico_session* s, subscriber_entry_t* entry,
         return;
     }
     zpico_ring_desc_t* r = entry->ring;
-
-    // Acquire-load head (published by the Rust consumer) and a
-    // relaxed-load of our own tail (only producers write it, and they
-    // hold the lock). Ring full when the gap is
-    // slot_count — drop the newest message (matches DDS
-    // KEEP_LAST overwrite-from-the-front intent loosely; a
-    // dropped burst tail is reported via msg-lost accounting on
-    // the Rust side from the sequence gap).
-    uintptr_t head = atomic_load_explicit((const _Atomic uintptr_t*)r->head, memory_order_acquire);
-    uintptr_t tail = atomic_load_explicit((_Atomic uintptr_t*)r->tail, memory_order_relaxed);
-    if (tail - head >= r->slot_count) {
+    if (payload_len > r->payload_stride) {
         zpico_slot_unlock(s);
-        // Ring full — drop. Still fire notify(len) so the Rust
-        // side can observe the arrival for waker / lost-count.
+        // Slot too small — report overflow via notify; nothing is written,
+        // and nothing queued is evicted for a sample that cannot be kept.
+        entry->notify(payload_len, NULL, 0, entry->ctx);
+        return;
+    }
+
+    bool advance = false;
+    intptr_t slot = _zpico_ring_reserve(r, &advance);
+    if (slot < 0) {
+        zpico_slot_unlock(s);
+        // Dropped (depth 1, slot being read). Still fire notify(len) so the
+        // Rust side observes the arrival for its waker.
         entry->notify(payload_len, NULL, 0, entry->ctx);
         _zpico_notify_spin(s);
         return;
     }
 
-    uintptr_t slot = tail % r->slot_count;
-    uint8_t* pay_dst = r->payload_base + slot * r->payload_stride;
-    if (payload_len > r->payload_stride) {
-        zpico_slot_unlock(s);
-        // Slot too small — report overflow via notify, don't
-        // advance tail.
-        entry->notify(payload_len, NULL, 0, entry->ctx);
-        return;
-    }
+    uint8_t* pay_dst = r->payload_base + (size_t)slot * r->payload_stride;
     z_bytes_reader_t reader = z_bytes_get_reader(payload);
     z_bytes_reader_read(&reader, pay_dst, payload_len);
     r->payload_len[slot] = payload_len;
@@ -1364,14 +1479,12 @@ static void _zpico_ring_push(struct zpico_session* s, subscriber_entry_t* entry,
         if (att_len <= r->att_stride) {
             z_bytes_reader_t att_reader = z_bytes_get_reader(attachment);
             att_written =
-                z_bytes_reader_read(&att_reader, r->att_base + slot * r->att_stride, att_len);
+                z_bytes_reader_read(&att_reader, r->att_base + (size_t)slot * r->att_stride, att_len);
         }
     }
     r->att_len[slot] = att_written;
 
-    // Publish the slot: Release store advances tail so the Rust
-    // consumer sees the payload + len writes above.
-    atomic_store_explicit((_Atomic uintptr_t*)r->tail, tail + 1, memory_order_release);
+    _zpico_ring_commit(r, advance);
     zpico_slot_unlock(s);
 
     // Fire notify for the async waker. Pass NULL attachment —
@@ -2894,6 +3007,8 @@ int32_t zpico_declare_subscriber_ring(zpico_session_t* session, const char* keye
     s->subscribers[idx].direct_write = false;
     s->subscribers[idx].ring_mode = true;
     s->subscribers[idx].ring = desc;
+    /* Issue 1979 -- the consumer's claim takes this session's slot lock. */
+    desc->lock_session = s;
     s->subscribers[idx].hist_active = false;
     s->subscribers[idx].hist_have = false;
     s->subscribers[idx].hist_replies = 0;

@@ -342,11 +342,12 @@ The in-place case still passes under that mutation, because its drain loop
 takes the racing sample in the same dispatch. That is why both shapes run.
 
 The test also found
-[issue 1979](../issues/1979-zenoh-full-ring-drops-newest-sample.md). zenoh's
-subscriber ring drops the NEWEST sample when it is full, silently. A first
-draft with a callback slower than its publisher lost each burst's last sample
-there, with W3 enabled or disabled. The test is paced so the ring never
-fills.
+[issue 1979](../issues/archived/1979-zenoh-full-ring-drops-newest-sample.md).
+zenoh's subscriber ring dropped the NEWEST sample when it was full, silently.
+A first draft with a callback slower than its publisher lost each burst's
+last sample there, with W3 enabled or disabled. The test is paced so the ring
+never fills. Resolved 2026-10-21: a full ring now keeps the newest samples and
+counts the rest, with its own end-to-end test beside this one.
 
 Its first red on main is
 [issue 1980](../issues/1980-entity-wake-race-test-blames-executor-for-failed-publish.md).

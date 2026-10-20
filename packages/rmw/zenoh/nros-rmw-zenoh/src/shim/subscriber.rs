@@ -33,9 +33,16 @@ use super::signal_executor_wake;
 /// (writes payload + attachment + lengths into the slot at
 /// `ring_tail % SUBSCRIBER_RING_DEPTH`, then Release-stores
 /// `ring_tail + 1`). The Rust shim is the sole consumer (reads the
-/// slot at `ring_head % SUBSCRIBER_RING_DEPTH`, then Release-stores
-/// `ring_head + 1`). Ring empty when `head == tail`, full when
-/// `tail - head == SUBSCRIBER_RING_DEPTH`.
+/// slot at `ring_head % SUBSCRIBER_RING_DEPTH`). Ring empty when
+/// `head == tail`, full when `tail - head == SUBSCRIBER_RING_DEPTH`.
+///
+/// Issue 1979 — a full ring keeps the NEWEST samples (KEEP_LAST), so the
+/// producer may advance `ring_head` too, evicting the oldest. It never
+/// evicts or writes a slot the consumer has CLAIMED: the consumer claims
+/// the head slot before reading it ([`peek_head_slot`](Self::peek_head_slot))
+/// and consumes it after ([`consume_head`](Self::consume_head)), both in C
+/// under the session's slot lock. The policy is in `zpico.c`
+/// (`_zpico_ring_reserve`).
 ///
 /// Replaces the previous single-slot + `locked` flag design — a
 /// burst of up to `SUBSCRIBER_RING_DEPTH` messages arriving between
@@ -59,6 +66,12 @@ pub(super) struct SubscriberBuffer {
     pub(super) ring_head: AtomicUsize,
     /// Producer counter — advanced only by the C shim.
     pub(super) ring_tail: AtomicUsize,
+    /// Issue 1979 — the consumer's claim (0, or claimed head + 1). Written
+    /// only by the C claim / consume functions.
+    pub(super) ring_claimed: AtomicUsize,
+    /// Issue 1979 — samples this ring evicted, replaced or dropped because
+    /// it was full. Written only by the C producer.
+    pub(super) ring_full_drops: AtomicUsize,
     /// Descriptor handed to the C shim at subscribe time. The raw
     /// pointers reference this same `SubscriberBuffer` (a
     /// `static mut` element — its address is stable for the
@@ -82,6 +95,8 @@ impl SubscriberBuffer {
             ring_att_len: [0usize; SUBSCRIBER_RING_DEPTH],
             ring_head: AtomicUsize::new(0),
             ring_tail: AtomicUsize::new(0),
+            ring_claimed: AtomicUsize::new(0),
+            ring_full_drops: AtomicUsize::new(0),
             ring_desc: zpico_ring_desc_t {
                 payload_base: core::ptr::null_mut(),
                 payload_stride: 0,
@@ -92,6 +107,9 @@ impl SubscriberBuffer {
                 att_len: core::ptr::null_mut(),
                 head: core::ptr::null_mut(),
                 tail: core::ptr::null_mut(),
+                claimed: core::ptr::null_mut(),
+                full_drops: core::ptr::null_mut(),
+                lock_session: core::ptr::null_mut(),
             },
             waker: AtomicWaker::new(),
             session_index: portable_atomic::AtomicI32::new(-1),
@@ -103,29 +121,31 @@ impl SubscriberBuffer {
         self.ring_head.load(Ordering::Acquire) != self.ring_tail.load(Ordering::Acquire)
     }
 
-    /// Index of the head slot if the ring is non-empty. Does NOT
-    /// advance `ring_head` — the caller reads the slot, then calls
-    /// [`consume_head`](Self::consume_head). The Acquire-load of
-    /// `ring_tail` synchronises-with the C producer's Release-store,
-    /// so the per-slot payload / attachment / length writes that
-    /// happened-before that store are visible here.
+    /// Index of the head slot if the ring is non-empty, CLAIMED for reading.
+    /// Does NOT advance `ring_head` — the caller reads the slot, then calls
+    /// [`consume_head`](Self::consume_head). Until then no producer writes
+    /// the slot or evicts it (issue 1979), so it may be read in place.
+    /// Claiming the same head again, as the attachment helpers do, is a
+    /// no-op. The claim's acquire of `ring_tail` (and the slot lock) make
+    /// the producer's payload / attachment / length writes visible here.
     pub(super) fn peek_head_slot(&self) -> Option<usize> {
-        let head = self.ring_head.load(Ordering::Acquire);
-        let tail = self.ring_tail.load(Ordering::Acquire);
-        if head == tail {
-            None
-        } else {
-            Some(head % SUBSCRIBER_RING_DEPTH)
+        // An empty ring needs no claim, and an empty poll is the common case.
+        if self.ring_head.load(Ordering::Acquire) == self.ring_tail.load(Ordering::Acquire) {
+            return None;
         }
+        let desc = (&raw const self.ring_desc).cast_mut();
+        // Safety: `ring_desc` points into this buffer's own fields (or is
+        // all-null, which the C side refuses).
+        let slot = unsafe { zpico_sys::zpico_ring_claim_head(desc) };
+        usize::try_from(slot).ok()
     }
 
-    /// Advance `ring_head` past the slot returned by the most recent
-    /// [`peek_head_slot`](Self::peek_head_slot). Release-store so the
-    /// C producer's Acquire-load of `ring_head` sees the slot freed.
+    /// Consume the slot returned by the most recent
+    /// [`peek_head_slot`](Self::peek_head_slot) and drop the claim.
     pub(super) fn consume_head(&self) {
-        let head = self.ring_head.load(Ordering::Acquire);
-        self.ring_head
-            .store(head.wrapping_add(1), Ordering::Release);
+        let desc = (&raw const self.ring_desc).cast_mut();
+        // Safety: as in `peek_head_slot`.
+        unsafe { zpico_sys::zpico_ring_consume_head(desc) };
     }
 
     /// Populate `ring_desc` so the C shim can produce into this buffer. Must be
@@ -145,6 +165,11 @@ impl SubscriberBuffer {
             att_len: self.ring_att_len.as_mut_ptr(),
             head: self.ring_head.as_ptr(),
             tail: self.ring_tail.as_ptr(),
+            claimed: self.ring_claimed.as_ptr(),
+            full_drops: self.ring_full_drops.as_ptr(),
+            // Set by `zpico_declare_subscriber_ring` for a ring a session
+            // produces into.
+            lock_session: core::ptr::null_mut(),
         };
     }
 
@@ -158,22 +183,6 @@ impl SubscriberBuffer {
         // hold by the SPSC producer contract.
         unsafe {
             core::slice::from_raw_parts(
-                self.ring_desc
-                    .payload_base
-                    .add(slot * self.ring_desc.payload_stride),
-                len,
-            )
-        }
-    }
-
-    /// Mutable counterpart to [`payload_slot`](Self::payload_slot) — for the
-    /// Rust-side producer paths that write into a ring slot directly (non-C-shim
-    /// push / loopback). Writes through the external size-class storage.
-    /// (Only some platform/feature configs exercise the Rust-side producer.)
-    #[allow(dead_code)]
-    pub(super) fn payload_slot_mut(&mut self, slot: usize, len: usize) -> &'static mut [u8] {
-        unsafe {
-            core::slice::from_raw_parts_mut(
                 self.ring_desc
                     .payload_base
                     .add(slot * self.ring_desc.payload_stride),
@@ -914,6 +923,26 @@ static OVERFLOW_DROPS: portable_atomic::AtomicU32 = portable_atomic::AtomicU32::
 /// size the subscriber buffer up-front.
 pub fn overflow_drops_total() -> u32 {
     OVERFLOW_DROPS.load(Ordering::Relaxed)
+}
+
+/// Issue 1979 — cumulative count, over every live subscriber, of samples a
+/// FULL ring evicted, replaced or dropped. A full ring keeps the newest
+/// samples, so each one counted here is an older sample this process will
+/// never dispatch. A nonzero count means a consumer is slower than its
+/// publisher's bursts at the configured ring depth
+/// (`SUBSCRIBER_RING_DEPTH`). Separate from [`overflow_drops_total`], which
+/// counts samples too large for a slot.
+pub fn ring_full_drops_total() -> usize {
+    let live = NEXT_BUFFER_INDEX
+        .load(Ordering::Acquire)
+        .min(ZPICO_MAX_SUBSCRIBERS);
+    // Safety: as in `live_payload` — a fixed-address static, clamped to the
+    // claimed prefix, read through atomics only.
+    let buffers: &'static [SubscriberBuffer] = unsafe { &SUBSCRIBER_BUFFERS[..live] };
+    buffers
+        .iter()
+        .map(|b| b.ring_full_drops.load(Ordering::Relaxed))
+        .fold(0usize, usize::wrapping_add)
 }
 
 // ============================================================================
@@ -2072,11 +2101,10 @@ pub(super) mod tests {
 
     // --- Subscription buffer helpers ---
 
-    /// Phase 124.D.3.c — simulate the C-shim SPSC ring producer.
-    /// Pushes `payload` into the slot at `ring_tail % DEPTH` and
-    /// advances `ring_tail`. Drops the message (no advance) when the
-    /// ring is full, the payload is oversized, or the payload is
-    /// empty — exactly mirroring the C `sample_handler` ring branch.
+    /// Phase 124.D.3.c — produce into a ring as the C shim does. Since
+    /// issue 1979 this IS the C producer (`zpico_ring_push_bytes`), full-ring
+    /// policy included, rather than a Rust copy of it. An empty or oversized
+    /// payload is dropped, as the C `sample_handler` ring branch drops it.
     pub(in crate::shim) fn simulate_subscription_callback(slot: usize, payload: &[u8]) {
         let mut buf_ref = SubscriberBufferRef::new(slot);
         let buffer = buf_ref.get_mut();
@@ -2089,23 +2117,10 @@ pub(super) mod tests {
             buffer.init_ring_desc(base, SUBSCRIBER_BUFFER_SIZE);
         }
 
-        if payload.is_empty() {
-            return; // Empty probe — dropped by the C producer.
-        }
-        let head = buffer.ring_head.load(Ordering::Acquire);
-        let tail = buffer.ring_tail.load(Ordering::Acquire);
-        if tail - head >= SUBSCRIBER_RING_DEPTH {
-            return; // Ring full — drop.
-        }
-        if payload.len() > SUBSCRIBER_BUFFER_SIZE {
-            return; // Oversized for a slot — drop.
-        }
-        let s = tail % SUBSCRIBER_RING_DEPTH;
-        let plen = payload.len();
-        buffer.payload_slot_mut(s, plen).copy_from_slice(payload);
-        buffer.ring_len[s] = payload.len();
-        buffer.ring_att_len[s] = 0;
-        buffer.ring_tail.store(tail + 1, Ordering::Release);
+        let desc: *mut zpico_ring_desc_t = &mut buffer.ring_desc;
+        // Safety: `desc` was initialised above and points into this buffer;
+        // the C side rejects an empty or oversized payload without writing.
+        let _ = unsafe { zpico_sys::zpico_ring_push_bytes(desc, payload.as_ptr(), payload.len()) };
     }
 
     /// Reset a subscriber ring to the empty state.
@@ -2114,6 +2129,8 @@ pub(super) mod tests {
         let buffer = buf_ref.get_mut();
         buffer.ring_head.store(0, Ordering::Release);
         buffer.ring_tail.store(0, Ordering::Release);
+        buffer.ring_claimed.store(0, Ordering::Release);
+        buffer.ring_full_drops.store(0, Ordering::Release);
     }
 
     /// Try to receive one message from a subscriber ring slot.
@@ -2539,27 +2556,84 @@ pub(super) mod tests {
     }
 
     #[test]
-    fn sub_buf_ring_full_drops_excess() {
-        // Filling the ring past SUBSCRIBER_RING_DEPTH drops the
-        // overflow message; the buffered ones still drain in order.
+    fn sub_buf_full_ring_keeps_the_newest() {
+        // Issue 1979 — KEEP_LAST: a sample arriving at a full ring evicts the
+        // OLDEST, so the newest DEPTH samples drain in order and the incoming
+        // one is the last of them. It used to be the one dropped.
         let slot = 6;
         reset_subscriber_buffer(slot);
 
         for i in 0..SUBSCRIBER_RING_DEPTH {
-            let msg = [i as u8; 4];
-            simulate_subscription_callback(slot, &msg);
+            simulate_subscription_callback(slot, &[i as u8; 4]);
         }
-        // One more — ring is full, this is dropped.
         simulate_subscription_callback(slot, &[0xFFu8; 4]);
 
         let mut recv_buf = [0u8; 16];
-        for i in 0..SUBSCRIBER_RING_DEPTH {
-            let result = take_subscription(slot, &mut recv_buf);
-            assert!(matches!(result, Ok(Some(4))));
+        for i in 1..SUBSCRIBER_RING_DEPTH {
+            assert!(matches!(
+                take_subscription(slot, &mut recv_buf),
+                Ok(Some(4))
+            ));
             assert_eq!(&recv_buf[..4], &[i as u8; 4]);
         }
-        // The dropped message never appears.
+        assert!(matches!(
+            take_subscription(slot, &mut recv_buf),
+            Ok(Some(4))
+        ));
+        assert_eq!(
+            &recv_buf[..4],
+            &[0xFFu8; 4],
+            "the newest sample was not kept"
+        );
         assert!(matches!(take_subscription(slot, &mut recv_buf), Ok(None)));
+
+        // And the eviction is counted, not silent.
+        let buffer_ref = SubscriberBufferRef::new(slot);
+        assert_eq!(buffer_ref.get().ring_full_drops.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    fn sub_buf_full_ring_never_writes_the_claimed_slot() {
+        // Issue 1979 — the consumer may read its head slot in place, so a full
+        // ring whose head is CLAIMED keeps that slot intact and replaces the
+        // newest queued sample instead. The incoming sample still arrives.
+        let slot = 6;
+        reset_subscriber_buffer(slot);
+
+        for i in 0..SUBSCRIBER_RING_DEPTH {
+            simulate_subscription_callback(slot, &[i as u8; 4]);
+        }
+        let buffer_ref = SubscriberBufferRef::new(slot);
+        let buffer = buffer_ref.get();
+        let head = buffer.peek_head_slot().expect("a full ring has a head");
+
+        simulate_subscription_callback(slot, &[0xFFu8; 4]);
+        simulate_subscription_callback(slot, &[0xFEu8; 4]);
+
+        // The claimed slot was neither overwritten nor evicted.
+        assert_eq!(buffer.payload_slot(head, 4), &[0u8; 4]);
+        assert_eq!(buffer.peek_head_slot(), Some(head));
+        buffer.consume_head();
+
+        let mut recv_buf = [0u8; 16];
+        for i in 1..SUBSCRIBER_RING_DEPTH - 1 {
+            assert!(matches!(
+                take_subscription(slot, &mut recv_buf),
+                Ok(Some(4))
+            ));
+            assert_eq!(&recv_buf[..4], &[i as u8; 4]);
+        }
+        assert!(matches!(
+            take_subscription(slot, &mut recv_buf),
+            Ok(Some(4))
+        ));
+        assert_eq!(
+            &recv_buf[..4],
+            &[0xFEu8; 4],
+            "the newest sample was not kept"
+        );
+        assert!(matches!(take_subscription(slot, &mut recv_buf), Ok(None)));
+        assert_eq!(buffer.ring_full_drops.load(Ordering::Relaxed), 2);
     }
 
     #[test]

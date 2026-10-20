@@ -203,6 +203,18 @@ mod cbindgen_stubs {
         pub head: *mut usize,
         /// Producer counter — written only by the C shim.
         pub tail: *mut usize,
+        /// Issue 1979 — the consumer's claim: 0, or one more than the claimed
+        /// head counter. Written only by `zpico_ring_claim_head` and
+        /// `zpico_ring_consume_head`, under the session's slot lock; a producer
+        /// never writes a claimed slot.
+        pub claimed: *mut usize,
+        /// Issue 1979 — samples a full ring evicted, replaced or dropped.
+        /// Written only by the C producer, under the session's slot lock.
+        pub full_drops: *mut usize,
+        /// The session whose slot lock serialises the claim with the
+        /// producers. Set by `zpico_declare_subscriber_ring`; NULL (no lock)
+        /// for a ring no session produces into.
+        pub lock_session: *mut c_void,
     }
 
     /// Initialize zenoh configuration with client mode and connect locator.
@@ -461,6 +473,38 @@ mod cbindgen_stubs {
         _desc: *mut zpico_ring_desc_t,
         _callback: ZpicoNotifyCallback,
         _ctx: *mut c_void,
+    ) -> i32 {
+        0
+    }
+
+    /// Issue 1979 — claim the head slot of a ring for reading, under the
+    /// ring's session slot lock. A producer never writes a claimed slot, so
+    /// the consumer may read it in place until it calls
+    /// `zpico_ring_consume_head`. Claiming the same head again is a no-op.
+    ///
+    /// # Returns
+    /// The head slot's index, or -1 when the ring is empty.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn zpico_ring_claim_head(_desc: *mut zpico_ring_desc_t) -> isize {
+        -1
+    }
+
+    /// Issue 1979 — consume the claimed head slot and drop the claim, under
+    /// the ring's session slot lock.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn zpico_ring_consume_head(_desc: *mut zpico_ring_desc_t) {}
+
+    /// Issue 1979 — push `len` payload bytes into a ring through the same
+    /// producer path a zenoh sample takes, full-ring policy included. For a
+    /// ring no session produces into (unit tests).
+    ///
+    /// # Returns
+    /// 0 when the sample was written, a negative error code when it was not.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn zpico_ring_push_bytes(
+        _desc: *mut zpico_ring_desc_t,
+        _payload: *const u8,
+        _len: usize,
     ) -> i32 {
         0
     }

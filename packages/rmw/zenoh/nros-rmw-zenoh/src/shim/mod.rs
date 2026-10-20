@@ -86,7 +86,9 @@ pub use service::{
     InboxDropStats, InboxRing, InboxSpec, InboxStorage, ZenohServiceClient, ZenohServiceServer,
 };
 pub use session::{ZenohSession, effective_client_locator, normalize_locator};
-pub use subscriber::{ZenohSubscriber, overflow_drops_total, required_rx_bytes};
+pub use subscriber::{
+    ZenohSubscriber, overflow_drops_total, required_rx_bytes, ring_full_drops_total,
+};
 pub use transport::{ZenohRmw, ZenohTransport};
 
 // ============================================================================
