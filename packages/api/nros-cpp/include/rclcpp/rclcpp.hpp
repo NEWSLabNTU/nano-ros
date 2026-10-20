@@ -1071,33 +1071,90 @@ inline typename Client<S>::SharedPtr Node::create_client(const char*, F, const :
 namespace rclcpp {
 namespace detail {
 
+/// Whether a timer callable is invocable as `cb(const rclcpp::TimerInfo&)` —
+/// issue 1974, upstream's `TimerInfoCallbackType` overload. Overload resolution
+/// in `sizeof`, as `tr::is_convertible` does: nothing is evaluated.
+template <typename F> class timer_takes_info {
+    typedef char yes_t[1];
+    typedef char no_t[2];
+    template <typename G>
+    static yes_t& probe(G* g, decltype((*g)(*static_cast<const TimerInfo*>(nullptr)), 0));
+    template <typename G> static no_t& probe(...);
+
+  public:
+    static const bool value = sizeof(probe<F>(nullptr, 0)) == sizeof(yes_t);
+};
+
+/// The one callable the arena stores for a timer: it takes the FFI call info
+/// and either converts it to a `TimerInfo` (on the timer's own clock, which
+/// the info carries, so the adapter adds no capture of its own) or ignores it.
+template <typename F, bool TakesInfo = timer_takes_info<F>::value> struct TimerAdapter {
+    F f;
+    void operator()(const nros_cpp_timer_call_info_t& raw) {
+        const rcl_clock_type_t clock = static_cast<rcl_clock_type_t>(raw.clock_type);
+        const TimerInfo info{Time(raw.expected_call_time, clock),
+                             Time(raw.actual_call_time, clock)};
+        f(info);
+    }
+};
+template <typename F> struct TimerAdapter<F, false> {
+    F f;
+    void operator()(const nros_cpp_timer_call_info_t&) { f(); }
+};
+
+/// The capture capacity a timer adapter needs: the usual knob, except for a
+/// callable that is ITSELF an `InplaceFn` (a `TimerInfoCallbackType` variable
+/// passed by name), whose size is the knob plus two pointers by construction.
+/// The arena copies any length, so this only stops that one shape from tripping
+/// the capacity `static_assert` meant for oversized lambdas.
+template <typename F> struct timer_capture_capacity {
+    static constexpr tr::size_type value = NROS_CPP_CALLBACK_CAPACITY;
+};
+template <typename Sig, tr::size_type Cap> struct timer_capture_capacity<InplaceFn<Sig, Cap>> {
+    static constexpr tr::size_type value = sizeof(TimerAdapter<InplaceFn<Sig, Cap>>);
+};
+
 /// Register `cb` as a timer on `clock_type`, its callable held by the arena.
 ///
-/// The bridge between `rclcpp::InplaceFn` and `nros_cpp_timer_create_capturing`,
-/// the timer twin of `register_subscription_capturing`. The `InplaceFn`'s bytes
-/// are COPIED into the arena; on success this object relinquishes them without
-/// destroying, because the arena's copy now owns the callable and its
-/// `destroy` hook runs `clear()` on that copy when the timer is released. A
-/// capture that owns something (a `std::string`, a `shared_ptr`) is destroyed
-/// exactly once, there.
+/// The bridge between `rclcpp::InplaceFn` and
+/// `nros_cpp_timer_create_capturing_with_info`, the timer twin of
+/// `register_subscription_capturing`. The `InplaceFn`'s bytes are COPIED into
+/// the arena; on success this object relinquishes them without destroying,
+/// because the arena's copy now owns the callable and its `destroy` hook runs
+/// `clear()` on that copy when the timer is released. A capture that owns
+/// something (a `std::string`, a `shared_ptr`) is destroyed exactly once, there.
+///
+/// Issue 1974: every callable goes through the call-info entry point. One
+/// taking `const TimerInfo&` receives the executor's expected/actual call
+/// times; a `void()` one ignores them at no capture cost. `group` (may be
+/// null) and `autostart` are Jazzy's trailing `create_*timer` arguments:
+/// `autostart == false` registers the timer cancelled until `reset()`.
 template <typename Cb>
 inline TimerHandle register_timer_capturing(::rclcpp::Node& node, rcl_clock_type_t clock_type,
-                                            Duration period, Cb&& cb, const char* verb) {
-    using Capture = InplaceFn<void()>;
-    Capture captured(tr::relay<Cb>(cb));
+                                            Duration period, Cb&& cb, const char* verb,
+                                            const CallbackGroup* group = nullptr,
+                                            bool autostart = true) {
+    using F = typename tr::decay<Cb>::type;
+    using Adapter = TimerAdapter<F>;
+    using Capture =
+        InplaceFn<void(const nros_cpp_timer_call_info_t&), timer_capture_capacity<F>::value>;
+    Capture captured(Adapter{tr::relay<Cb>(cb)});
     // Non-capturing lambdas, so each decays to the plain function pointer the
     // arena stores. `ctx` is the ARENA's copy of `captured`, never ours.
-    nros_cpp_timer_callback_t invoke = [](void* ctx) { (*static_cast<Capture*>(ctx))(); };
+    nros_cpp_timer_info_callback_t invoke = [](const nros_cpp_timer_call_info_t* info, void* ctx) {
+        (*static_cast<Capture*>(ctx))(*info);
+    };
     nros_cpp_timer_callback_t destroy = [](void* ctx) { static_cast<Capture*>(ctx)->clear(); };
     const int64_t ns = period.nanoseconds();
     const uint64_t ms = ns > 0 ? static_cast<uint64_t>(ns / 1000000) : uint64_t(0);
     size_t handle_id = 0;
     const nros_cpp_node_t* h = node.ffi_handle();
+    const char* group_name = group != nullptr ? group->get_name() : nullptr;
     Result r = h == nullptr ? Result(ErrorCode::NotInitialized)
-                            : Result(nros_cpp_timer_create_capturing(
+                            : Result(nros_cpp_timer_create_capturing_with_info(
                                   h, static_cast<uint8_t>(clock_type), ms, invoke,
                                   reinterpret_cast<const uint8_t*>(&captured), sizeof(Capture),
-                                  destroy, &handle_id));
+                                  destroy, group_name, autostart, &handle_id));
     if (r.ok()) {
         captured.relinquish();
     }
@@ -1114,18 +1171,22 @@ inline TimerHandle register_timer_capturing(::rclcpp::Node& node, rcl_clock_type
 namespace rclcpp {
 
 template <typename Cb>
-inline ::rclcpp::TimerHandle Node::create_wall_timer(::rclcpp::Duration period, Cb cb) {
-    return ::rclcpp::detail::register_timer_capturing(
-        *this, RCL_STEADY_TIME, period, ::rclcpp::tr::forward_rvalue(cb), "create_wall_timer");
+inline ::rclcpp::TimerHandle Node::create_wall_timer(::rclcpp::Duration period, Cb cb,
+                                                     const ::rclcpp::CallbackGroup* group,
+                                                     bool autostart) {
+    return ::rclcpp::detail::register_timer_capturing(*this, RCL_STEADY_TIME, period,
+                                                      ::rclcpp::tr::forward_rvalue(cb),
+                                                      "create_wall_timer", group, autostart);
 }
 
 #ifdef NROS_CPP_HAS_STD_CHRONO // hosted-family: chrono-interop
 template <typename Rep, typename Period, typename Cb>
 inline ::rclcpp::TimerHandle Node::create_wall_timer(::std::chrono::duration<Rep, Period> period,
-                                                     Cb cb) {
+                                                     Cb cb, const ::rclcpp::CallbackGroup* group,
+                                                     bool autostart) {
     const auto ns = ::std::chrono::duration_cast<::std::chrono::nanoseconds>(period).count();
     return this->create_wall_timer(::rclcpp::Duration::from_nanoseconds(static_cast<int64_t>(ns)),
-                                   ::rclcpp::tr::forward_rvalue(cb));
+                                   ::rclcpp::tr::forward_rvalue(cb), group, autostart);
 }
 #endif // NROS_CPP_HAS_STD_CHRONO
 
@@ -1152,14 +1213,22 @@ inline ::rclcpp::Node& as_node_ref(::rclcpp::Node* n) {
 /// not `rclcpp::Clock::SharedPtr`; the period is truncated to whole MILLISECONDS;
 /// Humble's optional trailing `group` argument is not taken; and the result is
 /// a `rclcpp::TimerHandle` (`rclcpp::TimerBase::SharedPtr` names the same type).
+///
+/// Jazzy's trailing `group` and `autostart` are taken (issue 1974): `group` is a
+/// `const rclcpp::CallbackGroup*` (null = the node default — a ported `nullptr`
+/// binds), and `autostart = false` creates the timer cancelled until `reset()`.
+/// A callback invocable as `void(const rclcpp::TimerInfo&)` receives the
+/// activation's expected and actual call times on `clock`.
 template <typename NodeT, typename CallbackT>
-inline ::rclcpp::TimerHandle create_timer(NodeT&& node, ::rclcpp::Clock* clock,
-                                          ::rclcpp::Duration period, CallbackT&& callback) {
+inline ::rclcpp::TimerHandle
+create_timer(NodeT&& node, ::rclcpp::Clock* clock, ::rclcpp::Duration period, CallbackT&& callback,
+             const ::rclcpp::CallbackGroup* group = nullptr, bool autostart = true) {
     ::rclcpp::Node& n = detail::as_node_ref(node);
     const rcl_clock_type_t type =
         clock != nullptr ? clock->get_clock_type() : n.get_clock()->get_clock_type();
-    return ::rclcpp::detail::register_timer_capturing(
-        n, type, period, ::rclcpp::tr::relay<CallbackT>(callback), "create_timer");
+    return ::rclcpp::detail::register_timer_capturing(n, type, period,
+                                                      ::rclcpp::tr::relay<CallbackT>(callback),
+                                                      "create_timer", group, autostart);
 }
 
 #ifdef NROS_CPP_HAS_STD_CHRONO // hosted-family: chrono-interop
@@ -1169,13 +1238,14 @@ inline ::rclcpp::TimerHandle create_timer(NodeT&& node, ::rclcpp::Clock* clock,
 /// is not (it reaches freestanding targets where `<chrono>` does not exist), so
 /// the conversion is an overload rather than a constructor.
 template <typename NodeT, typename Rep, typename Period, typename CallbackT>
-inline ::rclcpp::TimerHandle create_timer(NodeT&& node, ::rclcpp::Clock* clock,
-                                          ::std::chrono::duration<Rep, Period> period,
-                                          CallbackT&& callback) {
+inline ::rclcpp::TimerHandle
+create_timer(NodeT&& node, ::rclcpp::Clock* clock, ::std::chrono::duration<Rep, Period> period,
+             CallbackT&& callback, const ::rclcpp::CallbackGroup* group = nullptr,
+             bool autostart = true) {
     const auto ns = ::std::chrono::duration_cast<::std::chrono::nanoseconds>(period).count();
     return create_timer(::rclcpp::tr::relay<NodeT>(node), clock,
                         ::rclcpp::Duration::from_nanoseconds(static_cast<int64_t>(ns)),
-                        ::rclcpp::tr::relay<CallbackT>(callback));
+                        ::rclcpp::tr::relay<CallbackT>(callback), group, autostart);
 }
 #endif // NROS_CPP_HAS_STD_CHRONO
 

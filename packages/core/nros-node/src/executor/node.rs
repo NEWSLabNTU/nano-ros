@@ -1931,6 +1931,45 @@ impl<'e, 's> Node<'e, 's> {
         )
     }
 
+    /// Create a repeating timer whose callback receives the activation's
+    /// [`TimerCallInfo`](crate::TimerCallInfo) — issue 1974, the Rust
+    /// counterpart of Jazzy's `rclcpp::TimerInfoCallbackType`.
+    ///
+    /// `info.expected_call_time` is the deadline the executor was serving and
+    /// `info.actual_call_time` when the callback ran, both on `source`'s clock;
+    /// `info.lateness_ns()` is the jitter a real-time node otherwise measures
+    /// by hand. `autostart == false` creates the timer cancelled (rclcpp's
+    /// `create_timer(..., autostart = false)`); `Executor::reset_timer` on the
+    /// returned handle starts it.
+    ///
+    /// ```ignore
+    /// node.create_timer_with_info(
+    ///     TimerDuration::from_millis(10),
+    ///     TimerClockSource::Steady,
+    ///     true,
+    ///     |info| worst = worst.max(info.lateness_ns()),
+    /// )?;
+    /// ```
+    pub fn create_timer_with_info<F>(
+        &mut self,
+        period: crate::timer::TimerDuration,
+        source: crate::executor::TimerClockSource,
+        autostart: bool,
+        callback: F,
+    ) -> Result<super::types::HandleId, NodeError>
+    where
+        F: FnMut(&crate::TimerCallInfo) + 'static,
+    {
+        self.executor.register_timer_with_info_on(
+            Some(self.node_id),
+            period,
+            source,
+            autostart,
+            None,
+            callback,
+        )
+    }
+
     /// Create a typed subscription **in** a callback group (phase 273, rclcpp shape).
     ///
     /// The subscription's callback is bound to the `SchedContext` associated

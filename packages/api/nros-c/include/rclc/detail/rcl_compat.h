@@ -372,6 +372,14 @@ NROS_RCL_COMPAT_ASSERT(sizeof(rcl_ret_t) == 4, "rcl_ret_t must be 32-bit, as ups
  * entry hosts has none. Closing the gap for real needs a decision about what
  * our timer callback receives, not a rename.
  *
+ * Jazzy's `rcl_timer_init2` / `rclc_timer_init_default2` (issue 1974) add a
+ * trailing `bool autostart` and inherit the same refusal: ours are
+ * `rclc_timer_init_on_clock2` / `rclc_timer_init_with_context2`, the two
+ * verbs above plus that flag. Jazzy's call info (`rcl_timer_call_info_t`, same
+ * name and fields) reaches a callback registered with
+ * `rclc_timer_init_with_info` rather than through `rcl_timer_call_with_info`,
+ * which is a dispatch call our executor makes for the user.
+ *
  * ── The CLOCK, though, is taken (phase-430 W1) ────────────────────────────
  *
  * The refusal above is about the NAME and the callback contract; it says

@@ -193,6 +193,22 @@ impl TimerClockSource {
         self.clock().map(|c| c.now().to_nanos()).unwrap_or(0)
     }
 
+    /// "Now" on this source, for a timer DISPATCH — issue 1974's
+    /// `actual_call_time`.
+    ///
+    /// `last_clock_ns` is the reading `timer_clock_step` took on this very
+    /// poll for a `Ros`/`System` timer, so it IS now on the timer's clock and
+    /// reading again would only add skew. A `Steady` timer reads no clock to
+    /// advance (it consumes the spin delta), so its time base is the
+    /// platform's monotonic clock — the same quantity `RCL_STEADY_TIME`
+    /// answers in C — read once, only when an activation actually fires.
+    pub(crate) fn dispatch_now_ns(self, last_clock_ns: i64) -> i64 {
+        match self {
+            TimerClockSource::Steady => nros_core::clock::Clock::steady().now().to_nanos(),
+            TimerClockSource::Ros | TimerClockSource::System => last_clock_ns,
+        }
+    }
+
     /// Whether the time left on a timer with this source is a quantity of WALL
     /// microseconds — issue 1321.
     ///
@@ -262,6 +278,55 @@ impl TimerClockSource {
             TimerClockSource::Steady | TimerClockSource::System => true,
             TimerClockSource::Ros => false,
         }
+    }
+}
+
+/// When a timer activation was DUE and when it actually RAN — issue 1974, the
+/// Jazzy `rcl_timer_call_info_t` / `rclcpp::TimerInfo` pair.
+///
+/// Both are nanoseconds on the TIMER'S OWN clock (the [`TimerClockSource`] it
+/// was registered with, which `Executor::timer_clock_source` reports):
+/// `/clock` time for a `Ros` timer, the wall clock for `System`, the
+/// platform's monotonic clock for `Steady`.
+///
+/// There is ONE producer: the executor's timer dispatcher fills this in at the
+/// moment it decides the activation is due, from the same `elapsed_us` /
+/// `period_us` comparison that decides it, and hands it by reference to the
+/// callback. The C (`rcl_timer_call_info_t`) and C++ (`rclcpp::TimerInfo`)
+/// surfaces copy these two numbers; neither computes its own.
+///
+/// * `actual_call_time` — the timer's clock as read for this dispatch.
+/// * `expected_call_time` — `actual_call_time` minus how far `elapsed_us` had
+///   run past the period, i.e. the deadline the dispatcher was serving. Under
+///   `TimerOverrunPolicy::CatchUp` each replayed activation reports its own
+///   (earlier) deadline.
+///
+/// `actual_call_time >= expected_call_time` always holds: an activation is
+/// dispatched only once `elapsed_us >= period_us`, so the difference — the
+/// activation's lateness, [`Self::lateness_ns`] — is never negative.
+///
+/// `Copy`, two words, no allocation: it lives on the dispatcher's stack for
+/// the duration of the callback.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[repr(C)]
+pub struct TimerCallInfo {
+    /// The deadline this activation was serving, in nanoseconds on the timer's
+    /// clock.
+    pub expected_call_time: i64,
+    /// When the dispatcher ran the callback, in nanoseconds on the timer's
+    /// clock.
+    pub actual_call_time: i64,
+    /// WHICH clock both times are on — the timer's registered source, so a
+    /// consumer that wraps the numbers in a typed time (C++'s
+    /// `rclcpp::Time(ns, clock_type)`) needs no second lookup.
+    pub clock: TimerClockSource,
+}
+
+impl TimerCallInfo {
+    /// `actual_call_time - expected_call_time`: how late this activation ran.
+    /// Never negative (see the type's docs).
+    pub const fn lateness_ns(&self) -> i64 {
+        self.actual_call_time - self.expected_call_time
     }
 }
 

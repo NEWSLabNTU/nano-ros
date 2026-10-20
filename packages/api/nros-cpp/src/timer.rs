@@ -15,6 +15,125 @@ use crate::{
 /// C callback type for timers: `void callback(void* context)`.
 pub type nros_cpp_timer_callback_t = Option<unsafe extern "C" fn(context: *mut c_void)>;
 
+/// When a timer activation was due and when it ran — issue 1974, the FFI face
+/// of `rclcpp::TimerInfo`.
+///
+/// Nanoseconds on the timer's own clock. A field-for-field copy of the
+/// executor dispatcher's `nros_node::TimerCallInfo` (this header is generated
+/// without includes, so it cannot name that type); the C++ side wraps the two
+/// numbers in `rclcpp::Time` on the timer's clock type.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct nros_cpp_timer_call_info_t {
+    /// The deadline the activation was serving (ns).
+    pub expected_call_time: i64,
+    /// When the callback ran (ns).
+    pub actual_call_time: i64,
+    /// The `rcl_clock_type_t` both times are on — the timer's clock, so the
+    /// C++ side builds `rclcpp::Time(ns, clock_type)` without a capture of
+    /// its own (the decoding is `nros_c::nros_timer_clock_type`, the one
+    /// mapping `get_clock()` also uses).
+    pub clock_type: u8,
+}
+
+impl From<nros_node::TimerCallInfo> for nros_cpp_timer_call_info_t {
+    fn from(info: nros_node::TimerCallInfo) -> Self {
+        Self {
+            expected_call_time: info.expected_call_time,
+            actual_call_time: info.actual_call_time,
+            clock_type: nros_c::nros_timer_clock_type(info.clock),
+        }
+    }
+}
+
+/// Timer callback that receives the activation's call info (issue 1974):
+/// `void callback(const nros_cpp_timer_call_info_t* info, void* context)`.
+/// `info` is valid for the duration of the call only.
+pub type nros_cpp_timer_info_callback_t =
+    Option<unsafe extern "C" fn(info: *const nros_cpp_timer_call_info_t, context: *mut c_void)>;
+
+/// [`nros_cpp_timer_create_capturing`] with the call info handed to the
+/// callback, a callback group and an `autostart` flag — issue 1974, what the
+/// value-returning C++ `create_wall_timer(period, cb, group, autostart)` and
+/// `rclcpp::create_timer(node, clock, period, cb, group, autostart)` call for
+/// EVERY callable: one taking `const rclcpp::TimerInfo&` reads `info`, a
+/// plain `void()` one ignores it.
+///
+/// `group` may be NULL or empty (the node's default sched binding).
+/// `autostart == false` registers the timer cancelled; `nros_cpp_timer_reset`
+/// starts it, and its first period counts from that reset.
+///
+/// The call info itself is computed by the executor's timer dispatcher, never
+/// here: this only copies it into the FFI struct.
+///
+/// # Safety
+/// As [`nros_cpp_timer_create_capturing`]; `group`, if non-NULL, must be a
+/// NUL-terminated string that outlives the timer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_timer_create_capturing_with_info(
+    node: *const nros_cpp_node_t,
+    clock_type: u8,
+    period_ms: u64,
+    callback: nros_cpp_timer_info_callback_t,
+    capture: *const u8,
+    capture_len: usize,
+    capture_drop: nros_cpp_timer_callback_t,
+    group: *const c_char,
+    autostart: bool,
+    out_handle_id: *mut usize,
+) -> nros_cpp_ret_t {
+    if node.is_null() || out_handle_id.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let Some(source) = nros_c::nros_timer_clock_source(clock_type) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    let Some(cb) = callback else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    let node_ref = unsafe { &*node };
+    let Some(ctx) = (unsafe { cpp_ctx_checked(node_ref.executor) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    let bytes = if capture.is_null() || capture_len == 0 {
+        None
+    } else {
+        Some(unsafe { core::slice::from_raw_parts(capture, capture_len) })
+    };
+    let group_str = if group.is_null() {
+        None
+    } else {
+        let s = unsafe { cstr_to_str(group) }.unwrap_or("");
+        if s.is_empty() { None } else { Some(s) }
+    };
+    match ctx
+        .executor
+        .register_timer_c_capturing_with_info::<nros_cpp_timer_call_info_t>(
+            crate::node_id_opt(node_ref),
+            TimerDuration::from_millis(period_ms),
+            source,
+            autostart,
+            group_str,
+            cb,
+            bytes,
+            capture_drop,
+        ) {
+        Ok(handle_id) => {
+            crate::issue_owned_handle(ctx.executor, node_ref, handle_id, out_handle_id);
+            let kind = if group_str.is_some() {
+                nros::node_metadata::TimerKind::InGroup
+            } else if matches!(source, nros_node::executor::TimerClockSource::Steady) {
+                nros::node_metadata::TimerKind::Wall
+            } else {
+                nros::node_metadata::TimerKind::Clock
+            };
+            nros::census_hooks::on_timer_create(kind, period_ms);
+            NROS_CPP_RET_OK
+        }
+        Err(_) => NROS_CPP_RET_FULL,
+    }
+}
+
 /// Create a repeating timer and register it with the executor.
 ///
 /// The timer fires every `period_ms` milliseconds during `spin_once()`.

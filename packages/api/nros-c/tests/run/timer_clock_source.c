@@ -64,6 +64,32 @@ static void wall_timer_cb(struct rcl_timer_t* timer, void* context) {
     s_wall_fires++;
 }
 
+/* issue 1974 — the call-info flavour and the autostart flag. */
+static unsigned s_info_fires = 0;
+static struct rcl_timer_call_info_t s_last_info;
+static unsigned s_late_fires = 0;
+static unsigned s_group_fires = 0;
+
+static void info_timer_cb(struct rcl_timer_t* timer, const struct rcl_timer_call_info_t* info,
+                          void* context) {
+    (void)timer;
+    (void)context;
+    s_last_info = *info;
+    s_info_fires++;
+}
+
+static void late_timer_cb(struct rcl_timer_t* timer, void* context) {
+    (void)timer;
+    (void)context;
+    s_late_fires++;
+}
+
+static void group_timer_cb(struct rcl_timer_t* timer, void* context) {
+    (void)timer;
+    (void)context;
+    s_group_fires++;
+}
+
 /* ---- Assertions --------------------------------------------------------
  *
  * Hand-rolled rather than <assert.h>: NDEBUG would compile the whole probe
@@ -182,6 +208,78 @@ int main(void) {
               "the clock-taking verb requires a clock; the clock-less form is "
               "rclc_timer_init_with_context");
     CHECK(rejected.state == RCLC_TIMER_STATE_UNINITIALIZED, "a refused init left the timer alone");
+
+    /* --- 4. issue 1974: call info, autostart, and a grouped clock timer. ---
+     * All on the ROS clock, so every time is the override this test writes and
+     * every assertion is an equality. The two timers above are removed first:
+     * the builtin executor holds four handles (NROS_EXECUTOR_MAX_HANDLES). */
+    CHECK_RET(rclc_executor_remove_timer(&executor, &ros_timer), RCL_RET_OK, "ROS timer removed");
+    CHECK_RET(rclc_executor_remove_timer(&executor, &wall_timer), RCL_RET_OK,
+              "wall timer removed");
+    const int64_t t0 = sim_epoch_ns + 1000000000ll; /* 2 s */
+    CHECK_RET(rcl_set_ros_time_override(&ros_clock, t0), RCL_RET_OK, "freeze /clock at t0");
+
+    struct rcl_timer_t info_timer = rcl_get_zero_initialized_timer();
+    CHECK_RET(rclc_timer_init_with_info(&info_timer, &ros_clock, 10000000ull, info_timer_cb, NULL,
+                                        true),
+              RCL_RET_OK, "a call-info timer on the ROS clock");
+    CHECK_RET(rclc_executor_add_timer(&executor, &info_timer), RCL_RET_OK,
+              "call-info timer registered");
+
+    struct rcl_timer_t late_timer = rcl_get_zero_initialized_timer();
+    CHECK_RET(rclc_timer_init_on_clock2(&late_timer, &ros_clock, 10000000ull, late_timer_cb, NULL,
+                                        false),
+              RCL_RET_OK, "autostart=false timer on the ROS clock");
+    CHECK(late_timer.state == RCLC_TIMER_STATE_CANCELED, "autostart=false is created CANCELLED");
+    CHECK_RET(rclc_executor_add_timer(&executor, &late_timer), RCL_RET_OK,
+              "a cancelled timer can be added; it is registered cancelled");
+    bool canceled = false;
+    CHECK_RET(rcl_timer_is_canceled(&late_timer, &canceled), RCL_RET_OK, "is_canceled readable");
+    CHECK(canceled, "the registered timer is cancelled until reset");
+
+    /* The class fix: the in-group verb used to drop the clock and register a
+     * WALL timer, so this one would fire on every spin while /clock is frozen. */
+    struct rcl_timer_t group_timer = rcl_get_zero_initialized_timer();
+    CHECK_RET(rclc_timer_init_on_clock(&group_timer, &ros_clock, 1000000ull, group_timer_cb, NULL),
+              RCL_RET_OK, "grouped ROS-time timer");
+    CHECK_RET(rclc_executor_add_timer_in_group(&executor, &group_timer, "ctrl"), RCL_RET_OK,
+              "grouped timer registered");
+
+    spin_n(&executor, 50);
+    CHECK(s_info_fires == 0, "the call-info timer waits for /clock");
+    CHECK(s_late_fires == 0, "a cancelled timer does not fire");
+    CHECK(s_group_fires == 0, "a grouped ROS-time timer follows the ROS clock, not the wall");
+
+    /* 35 ms of simulated time against a 10 ms period: due at t0 + 10 ms, run
+     * at t0 + 35 ms. */
+    CHECK_RET(rcl_set_ros_time_override(&ros_clock, t0 + 35000000ll), RCL_RET_OK, "/clock +35 ms");
+    spin_n(&executor, 3);
+    CHECK(s_info_fires == 1, "the call-info timer fired once (Skip coalesces the backlog)");
+    CHECK(s_last_info.actual_call_time == t0 + 35000000ll,
+          "actual_call_time is now on the timer's ROS clock");
+    CHECK(s_last_info.expected_call_time == t0 + 10000000ll,
+          "expected_call_time is the deadline it was serving");
+    CHECK(s_last_info.actual_call_time >= s_last_info.expected_call_time,
+          "an activation never runs before its deadline");
+    CHECK(s_late_fires == 0, "still cancelled after /clock moved");
+    CHECK(s_group_fires > 0, "the grouped ROS-time timer fires when /clock advances");
+
+    /* reset starts it, and the first period counts from the reset — not from
+     * creation, which would make it fire at once. */
+    CHECK_RET(rcl_timer_reset(&late_timer), RCL_RET_OK, "reset starts the timer");
+    spin_n(&executor, 3);
+    CHECK(s_late_fires == 0, "the first period counts from the reset");
+    CHECK_RET(rcl_set_ros_time_override(&ros_clock, t0 + 45000000ll), RCL_RET_OK, "/clock +10 ms");
+    spin_n(&executor, 3);
+    CHECK(s_late_fires == 1, "fires one period after the reset");
+    if (s_failures != 0) {
+        fprintf(stderr, "       info=%u late=%u group=%u expected=%lld actual=%lld\n", s_info_fires,
+                s_late_fires, s_group_fires, (long long)s_last_info.expected_call_time,
+                (long long)s_last_info.actual_call_time);
+    }
+
+    CHECK_RET(rclc_timer_init_with_info(&rejected, NULL, 1000000ull, NULL, NULL, true),
+              RCL_RET_INVALID_ARGUMENT, "a call-info timer needs a callback");
 
     CHECK(nros_stub_rmw_drive_io_calls() > 0, "the stub backend was actually driven");
 

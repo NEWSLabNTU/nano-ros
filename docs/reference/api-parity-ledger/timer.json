@@ -444,11 +444,16 @@
   },
   "cpp:Node::create_wall_timer": {
     "verdict": "divergence",
-    "why": "EXECUTED 2026-09-05 (phase-425 W1). `nros::Node::create_timer` -> `create_wall_timer`, with no deprecated alias, alongside the other three spellings the recommendation named (`nros::create_wall_timer` in the since-DELETED `std_compat.hpp`, both `ComponentNode` overloads, and the macro, now `NROS_CREATE_WALL_TIMER`). The name is accurate: ours is monotonic, by the RFC-0073 platform-clock contract, so it is a WALL timer in rclcpp's sense.\n\nWhat is left is not a name difference and needs no campaign row of its own — the report now matches this item under the systematic `no-shared-ptr` rule (ours `(Timer&, uint64_t, cpp_timer_callback_t, void*)`, theirs `(chrono::duration, CallbackT, CallbackGroup::SharedPtr)`): caller-owned storage because there is no allocator, `uint64_t period_ms` because a freestanding build has no `<chrono>` (the chrono spelling is the free `nros::create_wall_timer` under `NROS_CPP_STD`), and a group passed to a separate `create_timer_in_group` rather than as a trailing argument.\n\nThe name this FREES is the point of the phase: rclcpp's bare `create_timer` is the CLOCK-TAKING form, and `cpp:create_timer` now records it as the gap phase-425 W4 fills.\n\nphase-428 W5 (2026-09-06) — ledgering a recorded sweep finding, RANKED-9, and phase-428 Q1 (2026-09-06) CLOSED it: the `rclcpp::Node` adapter's `create_wall_timer` (`packages/api/nros-cpp/include/rclcpp/rclcpp.hpp:785`) passes `node_.create_wall_timer`'s `Result` to `detail::require_created` (`:384`), which aborts naming the verb (`abort_failed_create`, `:376`, `NROS_RCLCPP_ABORT_FAILED_CREATE`) — and this is the site where a null or dead return would have been silent above all, because a ported node stores the timer handle and never dereferences it, so a dead timer would simply never fire. The entity name passed to the diagnostic is empty: a timer has none. History, one sentence: until Q1 this site (then `:707`) was one of seven that discarded the create `Result` with an explicit `(void)` and returned a non-null `shared_ptr` to an entity that was never initialised, SILENTLY WRONG. Separately, what it returns is `std::shared_ptr<rclcpp::TimerBase>`, and our `rclcpp::TimerBase` carries none of upstream's methods; see `cpp:Timer::cancel`.\n\nThe disposition for the create-`Result` finding is recorded on `cpp:Node::create_publisher`, which carries the full statement.\n\nphase-442 W2 (2026-09-11) — `std_compat.hpp` is DELETED, so any sentence above naming that header describes a spelling that no longer exists. It was a third orphaned vocabulary: free functions shadowing the `Node` methods a ported file calls, dead in every shipping configuration, and RFC-0096 removed the layer it belonged to. The always-available spelling is the method.\n\nphase-476 W2 (2026-10-05) — the value-returning `create_wall_timer(period, callback)` returns a two-word `nros::TimerHandle` (`rclcpp::Timer::SharedPtr`), not a `std::shared_ptr<nros::Timer>` aliased onto a heap cell. Its callable is copied into the executor arena, which destroys it when the timer is released. It is FREESTANDING: the primary overload takes `nros::Duration`, and the `std::chrono` overload is conversion sugar over it.",
+    "disposition": "adopt-bounded",
+    "why": "EXECUTED 2026-09-05 (phase-425 W1). `nros::Node::create_timer` -> `create_wall_timer`, with no deprecated alias, alongside the other three spellings the recommendation named (`nros::create_wall_timer` in the since-DELETED `std_compat.hpp`, both `ComponentNode` overloads, and the macro, now `NROS_CREATE_WALL_TIMER`). The name is accurate: ours is monotonic, by the RFC-0073 platform-clock contract, so it is a WALL timer in rclcpp's sense.\n\nWhat is left is not a name difference and needs no campaign row of its own — the report now matches this item under the systematic `no-shared-ptr` rule (ours `(Timer&, uint64_t, cpp_timer_callback_t, void*)`, theirs `(chrono::duration, CallbackT, CallbackGroup::SharedPtr)`): caller-owned storage because there is no allocator, `uint64_t period_ms` because a freestanding build has no `<chrono>` (the chrono spelling is the free `nros::create_wall_timer` under `NROS_CPP_STD`), and a group passed to a separate `create_timer_in_group` rather than as a trailing argument.\n\nThe name this FREES is the point of the phase: rclcpp's bare `create_timer` is the CLOCK-TAKING form, and `cpp:create_timer` now records it as the gap phase-425 W4 fills.\n\nphase-428 W5 (2026-09-06) — ledgering a recorded sweep finding, RANKED-9, and phase-428 Q1 (2026-09-06) CLOSED it: the `rclcpp::Node` adapter's `create_wall_timer` (`packages/api/nros-cpp/include/rclcpp/rclcpp.hpp:785`) passes `node_.create_wall_timer`'s `Result` to `detail::require_created` (`:384`), which aborts naming the verb (`abort_failed_create`, `:376`, `NROS_RCLCPP_ABORT_FAILED_CREATE`) — and this is the site where a null or dead return would have been silent above all, because a ported node stores the timer handle and never dereferences it, so a dead timer would simply never fire. The entity name passed to the diagnostic is empty: a timer has none. History, one sentence: until Q1 this site (then `:707`) was one of seven that discarded the create `Result` with an explicit `(void)` and returned a non-null `shared_ptr` to an entity that was never initialised, SILENTLY WRONG. Separately, what it returns is `std::shared_ptr<rclcpp::TimerBase>`, and our `rclcpp::TimerBase` carries none of upstream's methods; see `cpp:Timer::cancel`.\n\nThe disposition for the create-`Result` finding is recorded on `cpp:Node::create_publisher`, which carries the full statement.\n\nphase-442 W2 (2026-09-11) — `std_compat.hpp` is DELETED, so any sentence above naming that header describes a spelling that no longer exists. It was a third orphaned vocabulary: free functions shadowing the `Node` methods a ported file calls, dead in every shipping configuration, and RFC-0096 removed the layer it belonged to. The always-available spelling is the method.\n\nphase-476 W2 (2026-10-05) — the value-returning `create_wall_timer(period, callback)` returns a two-word `nros::TimerHandle` (`rclcpp::Timer::SharedPtr`), not a `std::shared_ptr<nros::Timer>` aliased onto a heap cell. Its callable is copied into the executor arena, which destroys it when the timer is released. It is FREESTANDING: the primary overload takes `nros::Duration`, and the `std::chrono` overload is conversion sugar over it.\n\nissue 1974 (2026-10-20) — the value-returning overload now takes Jazzy's trailing `(group = nullptr, autostart = true)`, so under Jazzy its shape CORRESPONDS and a ported line compiles; DISPOSITION added. THE ENVELOPE is on the declaration in `node.hpp`: the period is truncated to whole milliseconds, `group` is a `const rclcpp::CallbackGroup*` (our group is a value token; a ported `nullptr` binds), and `autostart = false` creates the timer cancelled until `reset()`, as upstream. A callback invocable as `void(const rclcpp::TimerInfo&)` receives the call info (`cpp:TimerInfoCallbackType`).",
     "rename": {
       "category": "B",
       "status": "resolved",
       "resolution": "Executed 2026-09-05 (phase-425 W1), as ONE four-name decision plus the macro, on an owner's yes. Sweep, as the recommendation required, because half the sites are outside this report's TU set:\n\n    rg -w create_timer packages/api/nros-cpp/ examples/ docs/ cmake/\n\n`create_timer_oneshot`, `create_timer_in_group`, `ComponentNode::create_timer_in` and `bind_timer` KEEP the `timer` stem — recorded so the stem split is a decision, not an oversight. No deprecated alias: it would have kept the ours-only half of this pair alive permanently.\n\nThe soft collision the blocker predicted is real and harmless as predicted: `rclcpp::Node::create_wall_timer` (then `rclcpp_compat.hpp:406`; `packages/api/nros-cpp/include/rclcpp/rclcpp.hpp:785` since phase-417 stage 6 step A deleted the shim) is a different class in a different namespace — at the time driven by its own `pump()`, and since phase-417 dispatched by the nros executor like everything else, which changes nothing here. No ODR break, no overload set."
+    },
+    "envelope": {
+      "file": "packages/api/nros-cpp/include/rclcpp/node.hpp",
+      "text": "ADOPT-BOUNDED as before: the period is truncated to whole milliseconds,"
     }
   },
   "cpp:Node::get_node_clock_interface": {
@@ -1396,32 +1401,33 @@
     "why": "the current time as an `rclc_time_t` (seconds + nanoseconds), beside rcl's `rcl_clock_get_now` (a nanosecond count, which we now have under rcl's name and signature). A device logging or stamping messages wants the split form without a division per call. Was spelled `rcl_clock_get_now` until phase-492 W1.b, which is rcl's name for the nanosecond contract."
   },
   "c:timer_call_info_t": {
-    "verdict": "gap",
+    "verdict": "extension",
     "editions": [
-      "jazzy"
+      "humble"
     ],
-    "why": "ADOPT, issue 1974: `{expected_call_time, actual_call_time}` handed to a timer callback; the executor already computes the due time."
+    "why": "issue 1974 — HUMBLE ONLY, because Humble's rcl has no such struct: Jazzy added `rcl_timer_call_info_t {expected_call_time, actual_call_time}`, and under Jazzy ours correlates `same` (same name, same two `int64_t` nanosecond fields), so the row is scoped out there. Handed to an `rclc_timer_callback_with_info_t` (`c:timer_callback_with_info_t`). One producer: the executor's timer dispatcher (`arena::timer_call_info`, `nros_node::TimerCallInfo`) computes expected = actual - (elapsed - period) at the moment it decides the activation is due; C, C++ and Rust copy those two numbers, none computes its own."
   },
   "c:timer_call_with_info": {
-    "verdict": "gap",
+    "verdict": "declined",
+    "disposition": "absent",
     "editions": [
       "jazzy"
     ],
-    "why": "ADOPT, issue 1974: see `c:timer_call_info_t`."
+    "why": "issue 1974 — rcl's DISPATCH entry point: the caller's own wait-set loop calls it to run the timer callback and receive the call info, exactly as `c:timer_call` (declined) runs it without. Here the executor dispatches and a user never calls a timer, so the CAPABILITY is delivered on the callback instead: `rclc_timer_init_with_info` registers an `rclc_timer_callback_with_info_t` that receives the same `rcl_timer_call_info_t`. A ported file calling `rcl_timer_call_with_info` gets `undeclared identifier`."
   },
   "c:timer_init2": {
-    "verdict": "gap",
+    "verdict": "divergence",
     "editions": [
       "jazzy"
     ],
-    "why": "ADOPT, issue 1974: `rcl_timer_init` plus an `autostart` flag (create the timer cancelled)."
+    "why": "issue 1974 — `rcl_timer_init2(timer, clock, context, period, callback, allocator, autostart)` is `rcl_timer_init` plus `autostart`, and ours is `rclc_timer_init_on_clock2(timer, clock, period_ns, callback, context, autostart)`: clock second and `autostart` last, as rcl's. The NAME is not taken for the reason `c:timer_init` gives — rcl's callback receives the time since its last call, ours the caller's context (`<rclc/detail/rcl_compat.h>` section 4), so a ported callback is a different function; and there is no rcl context or allocator (no allocator, RFC-0019/0020). `autostart == false` creates the timer cancelled; `rclc_executor_add_timer` registers it cancelled and `rcl_timer_reset` starts it, its first period counting from the reset (the executor re-seeds a clock timer's reading on reset)."
   },
   "c:timer_init_default2": {
-    "verdict": "gap",
+    "verdict": "divergence",
     "editions": [
       "jazzy"
     ],
-    "why": "ADOPT, issue 1974: rclc's default wrapper over `c:timer_init2`."
+    "why": "issue 1974 — rclc's `rclc_timer_init_default2(timer, support, period, callback, autostart)`; ours is `rclc_timer_init_with_context2(timer, period_ns, callback, context, autostart)`. Same constraint as `c:timer_init_default`/`c:timer_init`: the callback contract differs (context, not last-call time), and no support is taken because the timer belongs to no session until `rclc_executor_add_timer`. See `c:timer_init2` for what autostart does."
   },
   "c:timer_on_reset_callback_data_t": {
     "verdict": "declined",
@@ -1496,18 +1502,20 @@
     "why": "the hook Jazzy's EventsExecutor uses to learn that a timer was reset so it can re-arm its timer queue. Our executor computes the next due time from the timers themselves (`route_next_due_us`), so there is nothing to notify. DECLINED."
   },
   "cpp:TimerInfo": {
-    "verdict": "gap",
+    "verdict": "extension",
     "editions": [
-      "jazzy"
+      "humble"
     ],
-    "why": "ADOPT, issue 1974: `{expected_call_time, actual_call_time}` for a timer callback."
+    "why": "issue 1974 — HUMBLE ONLY, because Humble's rclcpp has no such type: Jazzy added `rclcpp::TimerInfo {expected_call_time, actual_call_time}`, and under Jazzy ours correlates `same` (same name, same two `rclcpp::Time` members, on the timer's clock type), so the row is scoped out there. A callback invocable as `void(const TimerInfo&)` passed to `create_wall_timer` / `rclcpp::create_timer` receives it (`packages/api/nros-cpp/include/rclcpp/rclcpp.hpp`, `detail::TimerAdapter`). One producer: the executor's timer dispatcher (`arena::timer_call_info`, `nros_node::TimerCallInfo`) computes expected = actual - (elapsed - period) at the moment it decides the activation is due; C, C++ and Rust copy those two numbers, none computes its own."
   },
   "cpp:TimerInfoCallbackType": {
-    "verdict": "gap",
-    "editions": [
-      "jazzy"
-    ],
-    "why": "ADOPT, issue 1974: a timer callback taking `const TimerInfo &`."
+    "verdict": "divergence",
+    "disposition": "adopt-bounded",
+    "why": "issue 1974 — upstream's is `std::function<void(const TimerInfo&)>`; ours is `rclcpp::InplaceFn<void(const TimerInfo&)>`, the inline-storage callable every freestanding callback here uses (no allocator, no `<functional>` — RFC-0096 D2). A lambda converts to either and either is a timer callback. What a porting user loses: an `InplaceFn` is MOVE-only, so a named variable is passed with `std::move(cb)` (a copy is a compile error, never a silent difference), and an over-large capture is a `static_assert` naming `NROS_CPP_CALLBACK_CAPACITY`. Under Humble the name is ours-only (Humble has no `TimerInfo`).",
+    "envelope": {
+      "file": "packages/api/nros-cpp/include/rclcpp/timer.hpp",
+      "text": "An `InplaceFn` is MOVE-only: pass a named variable as"
+    }
   },
   "cpp:WallRate::WallRate": {
     "verdict": "divergence",
@@ -1531,5 +1539,37 @@
       "jazzy"
     ],
     "why": "`builtin_interfaces::msg::Time - rclcpp::Duration`, an operator on a GENERATED message struct. Our time arithmetic lives on `rclcpp::Time`/`Duration`; codegen emits plain message PODs with no operators."
+  },
+  "c:timer_callback_with_info_t": {
+    "verdict": "divergence",
+    "why": "issue 1974 — `void (*)(rcl_timer_t *, const rcl_timer_call_info_t *, void *context)`: the timer callback that receives Jazzy's call info. rcl hands the info out of `rcl_timer_call_with_info`, a dispatch call the user's own loop makes (`c:timer_call_with_info`, declined); here the executor dispatches, so the info rides on the callback, beside the context every callback here carries (`c:timer_callback_with_context_t`). The info pointer is valid for the duration of the call. One producer: the executor's timer dispatcher (`arena::timer_call_info`, `nros_node::TimerCallInfo`) computes expected = actual - (elapsed - period) at the moment it decides the activation is due; C, C++ and Rust copy those two numbers, none computes its own."
+  },
+  "c:timer_init_with_info": {
+    "verdict": "divergence",
+    "why": "issue 1974 — `rclc_timer_init_with_info(timer, clock /*NULL = wall*/, period_ns, callback_with_info, context, autostart)` registers a `c:timer_callback_with_info_t`. Upstream reaches call info through `rcl_timer_call_with_info` (a dispatch call, `c:timer_call_with_info`); ours is an init verb because the executor dispatches. Times are on the timer's clock (the platform steady clock for a NULL clock); `autostart` as `c:timer_init2`."
+  },
+  "c:timer_init_on_clock2": {
+    "verdict": "divergence",
+    "why": "issue 1974 — our spelling of `rcl_timer_init2` (`c:timer_init2`): `rclc_timer_init_on_clock` plus Jazzy's trailing `autostart`."
+  },
+  "c:timer_init_with_context2": {
+    "verdict": "divergence",
+    "why": "issue 1974 — our spelling of `rclc_timer_init_default2` (`c:timer_init_default2`): `rclc_timer_init_with_context` plus Jazzy's trailing `autostart`."
+  },
+  "rust:Executor::register_timer_with_info": {
+    "verdict": "extension",
+    "why": "issue 1974 — rclrs has no timer call info and no autostart flag, so this is ours alone. Registers a repeating timer whose callback receives `&TimerCallInfo` (expected vs actual call time, on the timer's clock), with an `autostart` flag (`false` = created cancelled, `reset_timer` starts it): the Rust counterpart of Jazzy's `rclcpp::TimerInfoCallbackType` and `rcl_timer_init2(..., autostart)`. On the executor for the reason every timer verb is: RFC-0002's arena owns timer state. One producer: the executor's timer dispatcher (`arena::timer_call_info`, `nros_node::TimerCallInfo`) computes expected = actual - (elapsed - period) at the moment it decides the activation is due; C, C++ and Rust copy those two numbers, none computes its own."
+  },
+  "rust:Executor::register_timer_with_info_on": {
+    "verdict": "extension",
+    "why": "issue 1974 — rclrs has no timer call info and no autostart flag, so this is ours alone. `register_timer_with_info` bound to a node and an optional callback group — the executor primitive the C init verbs and `Node::create_timer_with_info` lower to, as `register_timer_on` is for the plain flavour."
+  },
+  "rust:Executor::register_timer_c_capturing_with_info": {
+    "verdict": "extension",
+    "why": "issue 1974 — rclrs has no timer call info and no autostart flag, so this is ours alone. `register_timer_c_capturing` (the C++ lambda road, capture held in the arena) with the call info, a callback group and `autostart`. Generic over the FFI's own `#[repr(C)]` info mirror (`From<TimerCallInfo>`), because `nros_cpp_ffi.h` is generated without includes and cannot name the executor's type; the mirror is a copy of two words per activation, never a second computation."
+  },
+  "rust:Node::create_timer_with_info": {
+    "verdict": "extension",
+    "why": "issue 1974 — rclrs has no timer call info and no autostart flag, so this is ours alone. The node-level spelling of `Executor::register_timer_with_info` on the imperative node handle (`exec.node_mut(id)`), bound to the node's default sched context."
   }
 }

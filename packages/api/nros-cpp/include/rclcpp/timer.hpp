@@ -29,6 +29,8 @@
 // issue 1975 -- `get_clock()` returns the clock the timer runs on. AFTER
 // `nros_cpp_ffi.h`, the order `node.hpp` already includes the two in.
 #include "rclcpp/clock.hpp"
+// issue 1974 -- `TimerInfoCallbackType` is an `InplaceFn`.
+#include "rclcpp/inplace_fn.hpp"
 
 // phase-427 W7 — `Node` is DEFINED in `rclcpp::` (RFC-0089: that namespace is
 // the home). The friend declaration below is qualified, and a qualified friend
@@ -509,6 +511,37 @@ namespace rclcpp {
 /// whose destructor is not virtual. Both are documented divergences with ledger
 /// rows rather than silent ones.
 using TimerBase = ::rclcpp::Timer;
+
+/// When a timer activation was due and when it ran — Jazzy's
+/// `rclcpp::TimerInfo` (issue 1974), same name, same two members.
+///
+/// Both are `rclcpp::Time` on the TIMER'S clock: `RCL_STEADY_TIME` for a
+/// `create_wall_timer` timer, the clock's own type for `rclcpp::create_timer`.
+/// `actual_call_time >= expected_call_time` always; the difference is the
+/// activation's lateness. Computed by the executor's timer dispatcher (the one
+/// producer, shared with C's `rcl_timer_call_info_t` and Rust's
+/// `TimerCallInfo`), never by this header.
+///
+/// A timer callback receives it when it is invocable as
+/// `void(const rclcpp::TimerInfo&)` — upstream's `TimerInfoCallbackType` —
+/// passed to `create_wall_timer` or `rclcpp::create_timer` like any other
+/// callable.
+struct TimerInfo {
+    Time expected_call_time;
+    Time actual_call_time;
+};
+
+/// `rclcpp::TimerInfoCallbackType` — a callback taking `const TimerInfo&`
+/// (issue 1974).
+///
+/// DIVERGENCE: upstream's is `std::function<void(const TimerInfo&)>`; ours is
+/// the inline-storage `rclcpp::InplaceFn` every freestanding callback here
+/// uses (no allocator, no `<functional>` — RFC-0096 D2). A lambda converts to
+/// either, so `TimerInfoCallbackType cb = [](const TimerInfo& i) {...};`
+/// compiles. An `InplaceFn` is MOVE-only: pass a named variable as
+/// `std::move(cb)` (a copy is a compile error), and a capture larger than
+/// `NROS_CPP_CALLBACK_CAPACITY` is a `static_assert`.
+using TimerInfoCallbackType = InplaceFn<void(const TimerInfo&)>;
 
 // phase-476 W2 deleted `detail::WallTimer`, the heap cell (a `std::function`
 // plus an `rclcpp::Timer`) that gave a capturing timer callback a stable address

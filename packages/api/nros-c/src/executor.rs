@@ -2448,112 +2448,155 @@ pub unsafe extern "C" fn rclc_executor_add_timer(
     executor: *mut rclc_executor_t,
     timer: *mut rcl_timer_t,
 ) -> rcl_ret_t {
-    validate_not_null!(executor, timer);
+    match unsafe { add_timer_inner(executor, timer, None) } {
+        Ok((period_ms, on_clock)) => {
+            // Issue 1556 item 1 — a timer never reaches the RMW, so the
+            // recording backend cannot see it; this hook is how a C timer
+            // enters the census. `Clock` when the timer was initialised on a
+            // clock, `Wall` otherwise — the same split `nros-cpp`'s entry
+            // points report. No-op unless `metadata-mode` is on.
+            nros::census_hooks::on_timer_create(
+                if on_clock {
+                    nros::node_metadata::TimerKind::Clock
+                } else {
+                    nros::node_metadata::TimerKind::Wall
+                },
+                period_ms,
+            );
+            RCL_RET_OK
+        }
+        Err(ret) => ret,
+    }
+}
 
-    let executor = &mut *executor;
-    let timer_ref = &*timer;
+/// The ONE body behind `rclc_executor_add_timer` and
+/// `rclc_executor_add_timer_in_group` (issue 1974).
+///
+/// Before this the two were copies, and the in-group copy had already drifted:
+/// it ignored the timer's clock and registered every grouped timer as a WALL
+/// timer, so `rclc_timer_init_on_clock` + `_add_timer_in_group` silently lost
+/// ROS time. Both now take the clock, the callback flavour (plain context or
+/// call info) and the autostart state from the timer, and land on the one
+/// executor primitive `Executor::register_timer_with_info_on`, whose
+/// dispatcher is the single producer of the call info.
+///
+/// A timer may be added RUNNING or CANCELLED: a cancelled one (initialised
+/// with `autostart = false`, or `rcl_timer_cancel`led before being added) is
+/// registered cancelled and starts at `rcl_timer_reset`.
+///
+/// Returns the period in whole milliseconds and whether the timer runs on a
+/// clock (vs the wall), for the CALLER's
+/// census hook: each `extern "C"` entry point calls
+/// `census_hooks::on_timer_create` itself, which is what
+/// `check-census-hooks-complete` holds it to.
+///
+/// # Safety
+/// All non-NULL pointers must be valid and point to initialized objects.
+unsafe fn add_timer_inner(
+    executor: *mut rclc_executor_t,
+    timer: *mut rcl_timer_t,
+    group: Option<&str>,
+) -> Result<(u64, bool), rcl_ret_t> {
+    if executor.is_null() || timer.is_null() {
+        return Err(RCL_RET_INVALID_ARGUMENT);
+    }
 
-    validate_state!(
-        executor,
-        rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED
-    );
-    validate_state!(timer_ref, rclc_timer_state_t::RCLC_TIMER_STATE_RUNNING);
+    let executor = unsafe { &mut *executor };
+    let timer_ref = unsafe { &*timer };
+
+    if executor.state != rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED {
+        return Err(RCL_RET_NOT_INIT);
+    }
+    let autostart = match timer_ref.state {
+        rclc_timer_state_t::RCLC_TIMER_STATE_RUNNING => true,
+        rclc_timer_state_t::RCLC_TIMER_STATE_CANCELED => false,
+        _ => return Err(RCL_RET_NOT_INIT),
+    };
 
     // Check capacity
     if executor.handle_count >= executor.max_handles {
-        return RCLC_RET_FULL;
+        return Err(RCLC_RET_FULL);
     }
 
-    {
-        let rust_exec = get_executor(executor);
+    // Issue #505 — this used to truncate ns to MILLISECONDS, so the ABI
+    // promised nanoseconds and rejected every sub-millisecond period with
+    // INVALID_ARGUMENT (while the Rust API silently turned the same request
+    // into a fire-every-spin timer). The executor's timer accounting is
+    // microsecond-based, so convert to microseconds and reject only a
+    // genuinely sub-microsecond request.
+    let period_us = timer_ref.period_ns / 1_000;
+    if period_us == 0 {
+        return Err(RCL_RET_INVALID_ARGUMENT);
+    }
 
-        // Get the C callback and context from the timer
-        let c_callback = match timer_ref.get_callback() {
-            Some(cb) => cb,
-            None => return RCL_RET_INVALID_ARGUMENT,
-        };
-        let c_context = timer_ref.get_context();
-        let timer_ptr = timer;
-
-        // Wrap the C callback in a Rust closure
-        let wrapper = move || {
-            // SAFETY: The C callback and timer/context pointers remain valid
-            // for the lifetime of the executor (same guarantee as rclc).
-            c_callback(timer_ptr, c_context);
-        };
-
-        // Issue #505 — this used to truncate ns to MILLISECONDS, so the
-        // ABI promised nanoseconds and rejected every sub-millisecond
-        // period with INVALID_ARGUMENT (while the Rust API silently
-        // turned the same request into a fire-every-spin timer). The
-        // executor's timer accounting is microsecond-based, so convert
-        // to microseconds and reject only a genuinely sub-microsecond
-        // request.
-        let period_us = timer_ref.period_ns / 1_000;
-        if period_us == 0 {
-            return RCL_RET_INVALID_ARGUMENT;
+    // phase-430 W1 — the clock the timer was initialised on selects the
+    // schedule. A NULL clock is the wall timer `rclc_timer_init_with_context`
+    // makes, which is `TimerClockSource::Steady`. The clock's type is read HERE
+    // rather than cached at init because that is where rcl reads it too, and
+    // because the mapping has exactly one implementation
+    // (`nros_c::nros_timer_clock_source`) shared with the C++ verb. A clock
+    // that has been finalised or was never initialised between init and this
+    // call is refused rather than defaulted to a wall timer.
+    let source = if timer_ref.clock.is_null() {
+        nros_node::executor::TimerClockSource::Steady
+    } else {
+        let clock_ref = unsafe { &*timer_ref.clock };
+        if clock_ref.state != crate::clock::rclc_clock_state_t::RCLC_CLOCK_STATE_READY {
+            return Err(RCL_RET_NOT_INIT);
         }
-
-        // phase-430 W1 — the clock the timer was initialised on selects the
-        // schedule, and every timer this crate creates ends at the ONE dispatch
-        // `Executor::register_timer_on_clock`. A NULL clock is the wall timer
-        // `rclc_timer_init_with_context` makes, which is `TimerClockSource::Steady` — the
-        // pre-425 code path, byte for byte.
-        //
-        // The clock's type is read HERE rather than cached at init because that
-        // is where rcl reads it too, and because the mapping has exactly one
-        // implementation (`nros_c::nros_timer_clock_source`) shared with the
-        // C++ verb. A clock that has been finalised or was never initialised
-        // between init and this call is refused rather than defaulted to a wall
-        // timer — silently becoming a wall timer is the confusion phase-425
-        // exists to remove.
-        let source = if timer_ref.clock.is_null() {
-            nros_node::executor::TimerClockSource::Steady
-        } else {
-            let clock_ref = &*timer_ref.clock;
-            if clock_ref.state != crate::clock::rclc_clock_state_t::RCLC_CLOCK_STATE_READY {
-                return RCL_RET_NOT_INIT;
-            }
-            match crate::clock::nros_timer_clock_source(clock_ref.r#type as u8) {
-                Some(source) => source,
-                None => return RCL_RET_INVALID_ARGUMENT,
-            }
-        };
-
-        // Register with the nros-node executor
-        let period = nros_node::TimerDuration::from_micros(period_us);
-        match rust_exec.register_timer_on_clock(period, source, wrapper) {
-            Ok(handle_id) => {
-                // Issue 1556 item 1 — a timer never reaches the RMW, so the
-                // recording backend cannot see it; this hook is how a C timer
-                // enters the census. `Clock` when the timer was initialised on
-                // a clock (`rclc_timer_init_on_clock`), `Wall` otherwise — the
-                // same split `nros-cpp`'s two entry points report. No-op unless
-                // `metadata-mode` is on.
-                nros::census_hooks::on_timer_create(
-                    if timer_ref.clock.is_null() {
-                        nros::node_metadata::TimerKind::Wall
-                    } else {
-                        nros::node_metadata::TimerKind::Clock
-                    },
-                    period_us / 1_000,
-                );
-                // Store handle ID and executor pointer for cancel/reset operations
-                let timer_mut = &mut *timer;
-                timer_mut.set_handle_id(handle_id);
-                timer_mut.set_executor_ptr(executor_ptr(executor));
-                record_trigger_entity(
-                    &mut executor._handle_entities,
-                    handle_id,
-                    timer as *mut core::ffi::c_void,
-                );
-
-                executor.handle_count += 1;
-                executor.timer_count += 1;
-                RCL_RET_OK
-            }
-            Err(_) => RCL_RET_ERROR,
+        match crate::clock::nros_timer_clock_source(clock_ref.r#type as u8) {
+            Some(source) => source,
+            None => return Err(RCL_RET_INVALID_ARGUMENT),
         }
+    };
+
+    let c_context = timer_ref.get_context();
+    let timer_ptr = timer;
+    let period = nros_node::TimerDuration::from_micros(period_us);
+    let rust_exec = get_executor(executor);
+
+    // SAFETY (both closures): the C callback and timer/context pointers remain
+    // valid for the lifetime of the executor (same guarantee as rclc).
+    let registered = match (timer_ref.get_callback(), timer_ref.get_info_callback()) {
+        (Some(c_callback), _) => rust_exec.register_timer_with_info_on(
+            None,
+            period,
+            source,
+            autostart,
+            group,
+            move |_: &nros_node::TimerCallInfo| unsafe { c_callback(timer_ptr, c_context) },
+        ),
+        (None, Some(c_callback)) => rust_exec.register_timer_with_info_on(
+            None,
+            period,
+            source,
+            autostart,
+            group,
+            move |info: &nros_node::TimerCallInfo| {
+                let info = crate::timer::rcl_timer_call_info_t::from(*info);
+                unsafe { c_callback(timer_ptr, &info, c_context) }
+            },
+        ),
+        (None, None) => return Err(RCL_RET_INVALID_ARGUMENT),
+    };
+
+    match registered {
+        Ok(handle_id) => {
+            // Store handle ID and executor pointer for cancel/reset operations
+            let timer_mut = unsafe { &mut *timer };
+            timer_mut.set_handle_id(handle_id);
+            timer_mut.set_executor_ptr(executor_ptr(executor));
+            record_trigger_entity(
+                &mut executor._handle_entities,
+                handle_id,
+                timer as *mut core::ffi::c_void,
+            );
+
+            executor.handle_count += 1;
+            executor.timer_count += 1;
+            Ok((period_us / 1_000, !timer_ref.clock.is_null()))
+        }
+        Err(_) => Err(RCL_RET_ERROR),
     }
 }
 
@@ -2695,78 +2738,35 @@ pub unsafe extern "C" fn rclc_executor_add_timer_in_group(
     timer: *mut rcl_timer_t,
     callback_group: *const c_char,
 ) -> rcl_ret_t {
-    validate_not_null!(executor, timer);
-
-    let executor = &mut *executor;
-    let timer_ref = &*timer;
-
-    validate_state!(
-        executor,
-        rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED
-    );
-    validate_state!(timer_ref, rclc_timer_state_t::RCLC_TIMER_STATE_RUNNING);
-
-    if executor.handle_count >= executor.max_handles {
-        return RCLC_RET_FULL;
-    }
-
-    {
-        let rust_exec = get_executor(executor);
-
-        let c_callback = match timer_ref.get_callback() {
-            Some(cb) => cb,
-            None => return RCL_RET_INVALID_ARGUMENT,
-        };
-        let c_context = timer_ref.get_context();
-        let timer_ptr = timer;
-
-        let wrapper = move || {
-            c_callback(timer_ptr, c_context);
-        };
-
-        // Issue #505 — microseconds, as in `rclc_executor_add_timer`.
-        let period_us = timer_ref.period_ns / 1_000;
-        if period_us == 0 {
-            return RCL_RET_INVALID_ARGUMENT;
+    // Extract the group name (NULL or empty ⇒ None). The C timer struct
+    // carries no node_id, so the group lookup falls back to the executor's
+    // primary node — sufficient for the single-node C use case.
+    let group_str = if callback_group.is_null() {
+        None
+    } else {
+        let s = unsafe { core::ffi::CStr::from_ptr(callback_group) }
+            .to_str()
+            .unwrap_or("");
+        if s.is_empty() { None } else { Some(s) }
+    };
+    match unsafe { add_timer_inner(executor, timer, group_str) } {
+        Ok((period_ms, on_clock)) => {
+            // Issue 1556 item 1 — as `rclc_executor_add_timer`, under the
+            // in-group kind `nros-cpp`'s group entry point reports (a NULL or
+            // empty group is the plain registration's kind).
+            nros::census_hooks::on_timer_create(
+                if group_str.is_some() {
+                    nros::node_metadata::TimerKind::InGroup
+                } else if on_clock {
+                    nros::node_metadata::TimerKind::Clock
+                } else {
+                    nros::node_metadata::TimerKind::Wall
+                },
+                period_ms,
+            );
+            RCL_RET_OK
         }
-
-        // Extract the group name (NULL or empty ⇒ None).
-        let group_str = if callback_group.is_null() {
-            None
-        } else {
-            let s = core::ffi::CStr::from_ptr(callback_group)
-                .to_str()
-                .unwrap_or("");
-            if s.is_empty() { None } else { Some(s) }
-        };
-
-        // Node identity: the C timer struct doesn't carry a node_id today.
-        // Group lookup falls back to the executor's primary node when no
-        // node_id is threaded — sufficient for the single-node C use case.
-        let period = nros_node::TimerDuration::from_micros(period_us);
-        match rust_exec.register_timer_on(None, period, wrapper, group_str) {
-            Ok(handle_id) => {
-                // Issue 1556 item 1 — as `rclc_executor_add_timer`, under the
-                // in-group kind `nros-cpp`'s group entry point reports.
-                nros::census_hooks::on_timer_create(
-                    nros::node_metadata::TimerKind::InGroup,
-                    period_us / 1_000,
-                );
-                let timer_mut = &mut *timer;
-                timer_mut.set_handle_id(handle_id);
-                timer_mut.set_executor_ptr(executor_ptr(executor));
-                record_trigger_entity(
-                    &mut executor._handle_entities,
-                    handle_id,
-                    timer as *mut core::ffi::c_void,
-                );
-
-                executor.handle_count += 1;
-                executor.timer_count += 1;
-                RCL_RET_OK
-            }
-            Err(_) => RCL_RET_ERROR,
-        }
+        Err(ret) => ret,
     }
 }
 
