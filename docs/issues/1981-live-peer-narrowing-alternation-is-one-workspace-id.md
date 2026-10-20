@@ -48,6 +48,24 @@ fails it as a typo, which is its exit 2.
 The single-node stage of the same job already prints that it does not narrow
 on this variable and builds its 9 rows, so only the workspace stage refuses.
 
+### Second night, 2026-10-20: the set grew to three
+
+- Run: live-peer 39368677787 (schedule, 2026-10-20 04:16 UTC, head
+  `b3f9d3298`). Job 118451788420, same job name and step, same exit 2:
+
+```
+narrowing: NROS_FIXTURE_ID=workspace-c-freertos|workspace-cpp-mps3-an536-freertos-slirp|workspace-cpp-mps3-an536-freertos-slirp-bulk
+fixtures: no row anywhere carries id 'workspace-c-freertos|workspace-cpp-mps3-an536-freertos-slirp|workspace-cpp-mps3-an536-freertos-slirp-bulk'.
+```
+
+The third id came from #2435 (`22f9861a6`, phase-441 W6, the fragmented
+leg), which added a fixture row and an interop verdict that narrow on the same
+key. So every new board cell recorded on `NROS_FIXTURE_ID` makes the merged
+string longer, and the job stays red until one of the fixes below lands.
+Before the guard, the single-node stage built all 9 of its rows again
+(row-times 82–265 s), so the job spends several minutes a night building
+before it refuses.
+
 ## What it is NOT
 
 - Not issue 1961's errexit change (#2393). The refusal comes from the id
