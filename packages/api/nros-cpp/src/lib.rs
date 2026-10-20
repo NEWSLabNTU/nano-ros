@@ -3995,7 +3995,19 @@ pub unsafe extern "C" fn nros_cpp_executor_get_service_names_and_types(
     unsafe { cpp_names_and_types(handle, visit, ctx, true) }
 }
 
-/// The shared body for the two counts.
+/// Which graph count [`cpp_count_on_topic`] asks for.
+#[cfg(feature = "rmw-cffi")]
+#[derive(Clone, Copy)]
+enum CppGraphCount {
+    Publishers,
+    Subscribers,
+    /// Issue 1978 — the name is a SERVICE name.
+    Clients,
+    /// Issue 1978 — the name is a SERVICE name.
+    Services,
+}
+
+/// The shared body for the four counts.
 ///
 /// # Safety
 /// Same contract as its callers.
@@ -4004,7 +4016,7 @@ unsafe fn cpp_count_on_topic(
     handle: *mut c_void,
     topic_name: *const core::ffi::c_char,
     out_count: *mut usize,
-    subscribers: bool,
+    kind: CppGraphCount,
 ) -> nros_cpp_ret_t {
     let Some(cpp) = (unsafe { cpp_ctx_checked(handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
@@ -4015,10 +4027,11 @@ unsafe fn cpp_count_on_topic(
     let Ok(topic) = (unsafe { core::ffi::CStr::from_ptr(topic_name) }).to_str() else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
-    let r = if subscribers {
-        cpp.executor.count_subscribers(topic)
-    } else {
-        cpp.executor.count_publishers(topic)
+    let r = match kind {
+        CppGraphCount::Publishers => cpp.executor.count_publishers(topic),
+        CppGraphCount::Subscribers => cpp.executor.count_subscribers(topic),
+        CppGraphCount::Clients => cpp.executor.count_clients(topic),
+        CppGraphCount::Services => cpp.executor.count_services(topic),
     };
     match r {
         Ok(n) => {
@@ -4045,7 +4058,7 @@ pub unsafe extern "C" fn nros_cpp_executor_count_publishers(
     topic_name: *const core::ffi::c_char,
     out_count: *mut usize,
 ) -> nros_cpp_ret_t {
-    unsafe { cpp_count_on_topic(handle, topic_name, out_count, false) }
+    unsafe { cpp_count_on_topic(handle, topic_name, out_count, CppGraphCount::Publishers) }
 }
 
 /// phase-381 W4 — how many subscribers are visible on `topic_name`.
@@ -4060,7 +4073,40 @@ pub unsafe extern "C" fn nros_cpp_executor_count_subscribers(
     topic_name: *const core::ffi::c_char,
     out_count: *mut usize,
 ) -> nros_cpp_ret_t {
-    unsafe { cpp_count_on_topic(handle, topic_name, out_count, true) }
+    unsafe { cpp_count_on_topic(handle, topic_name, out_count, CppGraphCount::Subscribers) }
+}
+
+/// Issue 1978 — how many service clients are visible on `service_name`
+/// (Jazzy `rclcpp::Node::count_clients`). A backend with no graph answers
+/// `NROS_CPP_RET_UNSUPPORTED`, never a 0.
+///
+/// # Safety
+/// `handle` must be a valid `CppContext`; `service_name` NUL-terminated;
+/// `out_count` writable.
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_executor_count_clients(
+    handle: *mut c_void,
+    service_name: *const core::ffi::c_char,
+    out_count: *mut usize,
+) -> nros_cpp_ret_t {
+    unsafe { cpp_count_on_topic(handle, service_name, out_count, CppGraphCount::Clients) }
+}
+
+/// Issue 1978 — how many service servers are visible on `service_name`
+/// (Jazzy `rclcpp::Node::count_services`).
+///
+/// # Safety
+/// `handle` must be a valid `CppContext`; `service_name` NUL-terminated;
+/// `out_count` writable.
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_executor_count_services(
+    handle: *mut c_void,
+    service_name: *const core::ffi::c_char,
+    out_count: *mut usize,
+) -> nros_cpp_ret_t {
+    unsafe { cpp_count_on_topic(handle, service_name, out_count, CppGraphCount::Services) }
 }
 
 /// phase-381 W4 — one discovered endpoint on a topic. Strings BORROWED for the

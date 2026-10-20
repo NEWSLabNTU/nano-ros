@@ -1491,33 +1491,5 @@
       "jazzy"
     ],
     "why": "see `cpp:GenericClient`."
-  },
-  "cpp:Node::count_clients": {
-    "verdict": "gap",
-    "editions": [
-      "jazzy"
-    ],
-    "why": "ADOPT, issue 1978: the service twin of `cpp:Node::count_publishers`."
-  },
-  "cpp:Node::count_services": {
-    "verdict": "gap",
-    "editions": [
-      "jazzy"
-    ],
-    "why": "ADOPT, issue 1978: as `cpp:Node::count_clients`."
-  },
-  "cpp:LifecycleNode::count_clients": {
-    "verdict": "gap",
-    "editions": [
-      "jazzy"
-    ],
-    "why": "ADOPT, issue 1978: inherited from `rclcpp::Node` once `cpp:Node::count_clients` lands."
-  },
-  "cpp:LifecycleNode::count_services": {
-    "verdict": "gap",
-    "editions": [
-      "jazzy"
-    ],
-    "why": "ADOPT, issue 1978: inherited from `rclcpp::Node` once `cpp:Node::count_services` lands."
   }
 }

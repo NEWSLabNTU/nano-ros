@@ -6384,6 +6384,27 @@ impl<'s> Executor<'s> {
             .map_err(NodeError::Transport)
     }
 
+    /// Issue 1978 — how many service CLIENTS are visible on `service_name`,
+    /// upstream (Jazzy) `rcl_count_clients`. `service_name` is a ROS name
+    /// (`"/add_two_ints"`); same discovery caveats as
+    /// [`Self::count_publishers`], and a backend with no graph answers
+    /// `Unsupported`, never `0`.
+    pub fn count_clients(&mut self, service_name: &str) -> Result<usize, NodeError> {
+        use nros_rmw::Session;
+        self.session
+            .count_clients(service_name)
+            .map_err(NodeError::Transport)
+    }
+
+    /// Issue 1978 — how many service SERVERS are visible on `service_name`,
+    /// upstream (Jazzy) `rcl_count_services`. See [`Self::count_clients`].
+    pub fn count_services(&mut self, service_name: &str) -> Result<usize, NodeError> {
+        use nros_rmw::Session;
+        self.session
+            .count_services(service_name)
+            .map_err(NodeError::Transport)
+    }
+
     /// phase-381 W4 — what one named node PUBLISHES, with the types.
     ///
     /// `visit(topic_name, types)` per distinct topic. A node the graph has not

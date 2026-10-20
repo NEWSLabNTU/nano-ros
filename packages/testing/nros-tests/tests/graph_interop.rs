@@ -140,6 +140,12 @@ fn nano_ros_enumerates_a_stock_ros2_node() {
         "all eleven graph slots must answer against a live peer; probe said:\n{output}"
     );
 
+    // Issue 1978's acceptance: a ROS 2 service counted from an image. The
+    // stock talker serves `/talker/get_parameters`; the probe fails itself on a
+    // zero, and the marker is asserted so an `Unsupported` cannot pass as the
+    // PARTIAL verdict.
+    assert_counts_a_ros2_service(&output);
+
     // And the reverse direction, which is what `ros2 node list` answers. Our
     // node was visible in the graph long before it could read one — that
     // asymmetry is what issue 0791 filed — so asserting only our side would
@@ -220,6 +226,23 @@ fn cyclone_enumerates_a_stock_ros2_node() {
     assert!(
         output.contains(nros_tests::output::GRAPH_PROBE_SAW),
         "cyclone must ENUMERATE the stock talker; probe said:\n{output}"
+    );
+    // Issue 1978 — Cyclone counts the server's reader on
+    // `rq/talker/get_parametersRequest`.
+    assert_counts_a_ros2_service(&output);
+}
+
+/// Issue 1978 — the probe's `count_services` answered, with at least one
+/// server, for the stock node's parameter service.
+fn assert_counts_a_ros2_service(output: &str) {
+    let n = output
+        .lines()
+        .find_map(|l| l.strip_prefix(nros_tests::output::GRAPH_COUNT_SERVICES))
+        .and_then(|v| v.trim().parse::<usize>().ok());
+    assert!(
+        matches!(n, Some(c) if c >= 1),
+        "count_services must count the stock talker's /talker/get_parameters \
+         (>= 1, not Unsupported); probe said:\n{output}"
     );
 }
 

@@ -1182,10 +1182,10 @@ impl Publisher for ZenohPublisher {
         // (clock-based check on publish_raw) and a slot for
         // LivelinessLost (not fired today; needs per-publisher
         // keepalive-timer infra, separate phase).
-        matches!(
-            kind,
-            nros_rmw::EventKind::OfferedDeadlineMissed | nros_rmw::EventKind::LivelinessLost
-        )
+        //
+        // Issue 1978 — the kind list lives in `shim::events`, shared with the
+        // backend-level `event_type_is_supported`.
+        super::events::publisher_event_supported(kind)
     }
 
     unsafe fn register_event_callback(

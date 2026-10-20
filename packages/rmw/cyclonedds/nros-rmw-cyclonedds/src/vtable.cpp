@@ -162,6 +162,48 @@ static rmw_ret_t cyclone_get_gid_for_publisher(const rmw_publisher_t *publisher,
     return NROS_RMW_RET_OK;
 }
 
+/* Issue 1978 — upstream (Jazzy) `rmw_get_gid_for_client`: the request
+ * writer's GUID, which is what stock `rmw_cyclonedds_cpp` reports and what
+ * `writer_request_id64` already keys this client's request ids on. Same body
+ * as the publisher's, one entity over. */
+static rmw_ret_t cyclone_get_gid_for_client(const rmw_client_t *client, rmw_gid_t *gid) {
+    if (client == nullptr || gid == nullptr) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    const dds_entity_t writer = nros_rmw_cyclonedds::client_request_writer(client);
+    if (writer <= 0) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    dds_guid_t guid;
+    std::memset(&guid, 0, sizeof(guid));
+    if (dds_get_guid(writer, &guid) != DDS_RETCODE_OK) {
+        return NROS_RMW_RET_ERROR;
+    }
+    std::memset(gid->data, 0, RMW_GID_STORAGE_SIZE);
+    std::memcpy(gid->data, guid.v, sizeof(guid.v));
+    gid->implementation_identifier = kImplementationIdentifier;
+    return NROS_RMW_RET_OK;
+}
+
+/* Issue 1978 — upstream (Jazzy) `rmw_event_type_is_supported`. Every kind the
+ * ABI names is served by the poll half (`subscription_take_event` in
+ * `subscriber.cpp` serves the three subscription kinds, `publisher_take_event`
+ * in `publisher.cpp` the two publisher kinds), so the answer is "every known
+ * kind" and `false` for anything else. The suite's `event_type_is_supported`
+ * case asks each take slot about every kind this says yes to, so the two
+ * cannot drift apart silently. */
+static bool cyclone_event_type_is_supported(rmw_event_type_t event_type) {
+    switch (event_type) {
+    case NROS_RMW_EVENT_LIVELINESS_CHANGED:
+    case NROS_RMW_EVENT_REQUESTED_DEADLINE_MISSED:
+    case NROS_RMW_EVENT_MESSAGE_LOST:
+    case NROS_RMW_EVENT_LIVELINESS_LOST:
+    case NROS_RMW_EVENT_OFFERED_DEADLINE_MISSED:
+        return true;
+    }
+    return false;
+}
+
 /* Issue 1495 — the with-info take. The body is the subscriber's; this wrapper
  * adds the one field that belongs to the registration rather than to the
  * sample: which backend produced the gid, so it is compared only against gids
@@ -494,6 +536,13 @@ const nros_rmw_vtable_t kVtable = {
     /*subscription_set_on_new_message_callback*/ subscription_set_on_new_message_callback,
     /*service_set_on_new_request_callback*/ service_set_on_new_request_callback,
     /*client_set_on_new_response_callback*/ client_set_on_new_response_callback,
+    /* Issue 1978 — the Jazzy contract's four ADOPT slots. The counts read the
+     * same builtin-topic readers as `count_publishers`; bodies in
+     * `graph_query.cpp`. */
+    /*count_clients*/ graph_count_clients,
+    /*count_services*/ graph_count_services,
+    /*get_gid_for_client*/ cyclone_get_gid_for_client,
+    /*event_type_is_supported*/ cyclone_event_type_is_supported,
 };
 
 } // namespace

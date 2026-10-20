@@ -400,10 +400,17 @@ rmw_ret_t names_and_types(const rmw_session_t* session, Want want, bool writers,
     return NROS_RMW_RET_OK;
 }
 
-/// Shared body of `count_publishers` / `count_subscribers`.
-rmw_ret_t count_on_topic(const rmw_session_t* session, const char* topic_name, bool writers,
-                         std::size_t* count) {
-    if (session == nullptr || topic_name == nullptr || count == nullptr) {
+/// Shared body of `count_publishers` / `count_subscribers` and (issue 1978)
+/// `count_clients` / `count_services`. `prefix` + `suffix` mangle the asked
+/// ROS name the way the matching create path does: `rt/<topic>` for a topic,
+/// `rq/<service>Request` for a service — the REQUEST topic, because that is
+/// where the server/client split lives (a server READS it, a client WRITES
+/// it), the same rule `names_and_types` uses and the one stock
+/// `rmw_cyclonedds_cpp` counts by.
+rmw_ret_t count_on_dds_topic(const rmw_session_t* session, const char* ros_name,
+                             const char* prefix, const char* suffix, bool writers,
+                             std::size_t* count) {
+    if (session == nullptr || ros_name == nullptr || count == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
     GraphState* g = session_graph(const_cast<rmw_session_t*>(session));
@@ -414,8 +421,16 @@ rmw_ret_t count_on_topic(const rmw_session_t* session, const char* topic_name, b
     // Mangle the ASKED name once and compare raw, rather than demangling every
     // endpoint — the same direction `publisher_create` writes, so a topic this
     // session could publish is a topic this count can find.
+    char with_suffix[kNameCap];
+    const std::size_t nlen = std::strlen(ros_name);
+    const std::size_t slen = std::strlen(suffix);
+    if (nlen + slen + 1 > sizeof(with_suffix)) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    std::memcpy(with_suffix, ros_name, nlen);
+    std::memcpy(with_suffix + nlen, suffix, slen + 1);
     char mangled[kNameCap];
-    if (!topic_prefix::apply(topic_name, "rt", mangled, sizeof(mangled))) {
+    if (!topic_prefix::apply(with_suffix, prefix, mangled, sizeof(mangled))) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
     EndpointBatch batch;
@@ -602,12 +617,24 @@ rmw_ret_t graph_get_subscriptions_info_by_topic(const rmw_session_t* session,
 
 rmw_ret_t graph_count_publishers(const rmw_session_t* session, const char* topic_name,
                                  std::size_t* count) {
-    return count_on_topic(session, topic_name, /*writers=*/true, count);
+    return count_on_dds_topic(session, topic_name, "rt", "", /*writers=*/true, count);
 }
 
 rmw_ret_t graph_count_subscribers(const rmw_session_t* session, const char* topic_name,
                                   std::size_t* count) {
-    return count_on_topic(session, topic_name, /*writers=*/false, count);
+    return count_on_dds_topic(session, topic_name, "rt", "", /*writers=*/false, count);
+}
+
+rmw_ret_t graph_count_clients(const rmw_session_t* session, const char* service_name,
+                              std::size_t* count) {
+    // A client WRITES the request topic.
+    return count_on_dds_topic(session, service_name, "rq", "Request", /*writers=*/true, count);
+}
+
+rmw_ret_t graph_count_services(const rmw_session_t* session, const char* service_name,
+                               std::size_t* count) {
+    // A server READS the request topic.
+    return count_on_dds_topic(session, service_name, "rq", "Request", /*writers=*/false, count);
 }
 
 } // namespace nros_rmw_cyclonedds

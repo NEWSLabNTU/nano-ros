@@ -1511,6 +1511,56 @@ typedef struct nros_rmw_vtable_t {
     rmw_ret_t (*client_set_on_new_response_callback)(rmw_client_t *client,
         rmw_event_callback_t callback, const void *user_data);
 
+    /* ---- Issue 1978 — the Jazzy contract's four ADOPT additions ----
+     *
+     * Jazzy's `rmw_implementation` dispatch table carries seven symbols
+     * Humble's does not; three are dynamic typesupport (declined, see
+     * `docs/reference/rmw-api-map.toml`) and these four were adopted. All
+     * optional, appended, NULL = UNSUPPORTED like their siblings. */
+
+    /** Upstream `rmw_count_clients` (Jazzy). The service twin of
+     *  `count_publishers`: how many service CLIENTS this session can see on
+     *  @p service_name, a ROS name (`/add_two_ints`) the backend mangles as it
+     *  does for its own clients. Same warm-up caveat as every graph slot: a
+     *  count reflects what has already been discovered.
+     *
+     *  NULL slot, or `NROS_RMW_RET_UNSUPPORTED`: the backend has no graph
+     *  (XRCE, uORB) or it is not running — never a fabricated 0, which would
+     *  claim there are none. */
+    rmw_ret_t (*count_clients)(const rmw_session_t *session,
+        const char *service_name, size_t *count);
+
+    /** Upstream `rmw_count_services` (Jazzy). As `count_clients`, counting
+     *  service SERVERS. */
+    rmw_ret_t (*count_services)(const rmw_session_t *session,
+        const char *service_name, size_t *count);
+
+    /** Upstream `rmw_get_gid_for_client` (Jazzy). Exact parity. The client
+     *  twin of `get_gid_for_publisher`: this client's own identity, the value
+     *  a server keys the request id on (zenoh: the gid stamped into the request
+     *  attachment; Cyclone: the request writer's GUID). The backend zero-pads to
+     *  the full width; see `rmw_gid_t`. */
+    rmw_ret_t (*get_gid_for_client)(const rmw_client_t *client, rmw_gid_t *gid);
+
+    /** Upstream `rmw_event_type_is_supported` (Jazzy). Exact parity.
+     *
+     *  A STATIC per-backend answer: whether ANY entity of this backend can
+     *  carry status event @p event_type, through either event shape
+     *  (`*_event_init` callback or `*_take_event` poll). It is the question a
+     *  port asks at configuration so it fails there rather than at entity
+     *  creation; registration stays the per-entity authority (a kind the
+     *  backend supports can still be refused for one entity).
+     *
+     *  A `true` is only meaningful where the backend also fills an event path
+     *  for that kind's side; the runtime requires both.
+     *
+     *  NULL slot: the backend states nothing per kind, and the runtime falls
+     *  back to slot granularity — a kind is supported iff its side has an
+     *  event path. A backend with neither (XRCE, uORB) therefore answers
+     *  `false` for every kind. The runtime reads this slot through ONE helper
+     *  (cffi's `backend_event_type_is_supported`), never a per-layer guess. */
+    bool (*event_type_is_supported)(rmw_event_type_t event_type);
+
 } nros_rmw_vtable_t;
 
 /**

@@ -870,6 +870,29 @@ pub struct nros_rmw_vtable_t {
             user_data: *const core::ffi::c_void,
         ) -> rmw_ret_t,
     >,
+    #[doc = " Upstream `rmw_count_clients` (Jazzy). The service twin of\n  `count_publishers`: how many service CLIENTS this session can see on\n  @p service_name, a ROS name (`/add_two_ints`) the backend mangles as it\n  does for its own clients. Same warm-up caveat as every graph slot: a\n  count reflects what has already been discovered.\n\n  NULL slot, or `NROS_RMW_RET_UNSUPPORTED`: the backend has no graph\n  (XRCE, uORB) or it is not running — never a fabricated 0, which would\n  claim there are none."]
+    pub count_clients: ::core::option::Option<
+        unsafe extern "C" fn(
+            session: *const rmw_session_t,
+            service_name: *const core::ffi::c_char,
+            count: *mut usize,
+        ) -> rmw_ret_t,
+    >,
+    #[doc = " Upstream `rmw_count_services` (Jazzy). As `count_clients`, counting\n  service SERVERS."]
+    pub count_services: ::core::option::Option<
+        unsafe extern "C" fn(
+            session: *const rmw_session_t,
+            service_name: *const core::ffi::c_char,
+            count: *mut usize,
+        ) -> rmw_ret_t,
+    >,
+    #[doc = " Upstream `rmw_get_gid_for_client` (Jazzy). Exact parity. The client\n  twin of `get_gid_for_publisher`: this client's own identity, the value\n  a server keys the request id on (zenoh: the gid stamped into the request\n  attachment; Cyclone: the request writer's GUID). The backend zero-pads to\n  the full width; see `rmw_gid_t`."]
+    pub get_gid_for_client: ::core::option::Option<
+        unsafe extern "C" fn(client: *const rmw_client_t, gid: *mut rmw_gid_t) -> rmw_ret_t,
+    >,
+    #[doc = " Upstream `rmw_event_type_is_supported` (Jazzy). Exact parity.\n\n  A STATIC per-backend answer: whether ANY entity of this backend can\n  carry status event @p event_type, through either event shape\n  (`*_event_init` callback or `*_take_event` poll). It is the question a\n  port asks at configuration so it fails there rather than at entity\n  creation; registration stays the per-entity authority (a kind the\n  backend supports can still be refused for one entity).\n\n  A `true` is only meaningful where the backend also fills an event path\n  for that kind's side; the runtime requires both.\n\n  NULL slot: the backend states nothing per kind, and the runtime falls\n  back to slot granularity — a kind is supported iff its side has an\n  event path. A backend with neither (XRCE, uORB) therefore answers\n  `false` for every kind. The runtime reads this slot through ONE helper\n  (cffi's `backend_event_type_is_supported`), never a per-layer guess."]
+    pub event_type_is_supported:
+        ::core::option::Option<unsafe extern "C" fn(event_type: rmw_event_type_t::Type) -> bool>,
 }
 #[doc = " Runtime-pluggable custom transport. The runtime never\n dereferences `user_data`; it's the caller's per-transport\n context, threaded back into every callback's first argument.\n\n THIS declaration is the ABI single source of truth (RFC-0054): Rust\n consumes the committed bindgen output of this header, and\n `nros_rmw::NrosTransportOps` is the hand-written Rust-side view kept in\n lockstep with it — not the other way round. The previous wording had that\n backwards (issue 0331). Layout equivalence is asserted on both sides: see\n `nros_transport_ops_t` in `nros-rmw-cffi/tests/c_stubs/abi_layout_check.c`\n and the `const _` size/align block beside\n `nros_rmw_cffi_set_custom_transport` in `nros-rmw-cffi/src/lib.rs`. Same\n layout, same threading contract, same return codes."]
 #[repr(C)]

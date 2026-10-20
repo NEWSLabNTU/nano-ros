@@ -390,6 +390,34 @@ fn main() {
         }
     }
 
+    // Issue 1978 — the Jazzy service counts, against a service the peer is
+    // GUARANTEED to serve: a stock node with parameters serves
+    // `/<node>/get_parameters`, so `count_services` must be >= 1 — that is a
+    // ROS 2 service counted from this image. `count_clients` may legitimately
+    // be 0 (nobody calls it), so like `count_subscribers` it is checked for an
+    // ERROR only.
+    let service = std::env::var("GRAPH_PROBE_SERVICE")
+        .unwrap_or_else(|_| format!("/{node}/get_parameters"));
+    match executor.count_services(&service) {
+        Ok(n) => {
+            println!("GRAPH_COUNT_SERVICES {n}");
+            if n == 0 {
+                failures.push(format!(
+                    "count_services({service}) == 0 with {node:?} serving it"
+                ));
+            }
+        }
+        Err(e) => {
+            classify!("count_services", e);
+        }
+    }
+    match executor.count_clients(&service) {
+        Ok(n) => println!("GRAPH_COUNT_CLIENTS {n}"),
+        Err(e) => {
+            classify!("count_clients", e);
+        }
+    }
+
     // The four by-node forms. Only the publisher one has a guaranteed answer
     // (the talker publishes `/chatter`); the rest must simply not error, which
     // is the assertion that catches an undispatched slot.
@@ -516,7 +544,7 @@ fn main() {
             eprintln!("GRAPH_PROBE_SLOT_FAIL {f}");
         }
         eprintln!(
-            "GRAPH_PROBE_FAIL: {} of 11 graph slots failed",
+            "GRAPH_PROBE_FAIL: {} of 13 graph slots failed",
             failures.len()
         );
         let _ = executor.close();

@@ -2015,6 +2015,14 @@ impl ClientTrait for ZenohServiceClient {
     /// The match is on `(service name, type)`, the pair `rmw_zenoh_cpp` keys a
     /// service on (`liveliness_utils.cpp`, `Entity::Entity`); zid, node,
     /// namespace, type hash and QoS are not consulted.
+    /// Issue 1978 — upstream (Jazzy) `rmw_get_gid_for_client`: the gid this
+    /// client stamps into every request attachment (issue 0153), which a stock
+    /// server keys the request id on. Same derivation and padding as
+    /// `ZenohPublisher::get_gid` (issue 1495).
+    fn get_gid(&self) -> Result<[u8; nros_rmw::PUBLISHER_GID_SIZE], Self::Error> {
+        Ok(nros_rmw::pad_publisher_gid(&self.rmw_gid))
+    }
+
     fn service_is_ready(&self) -> Result<bool, TransportError> {
         let context = unsafe { &*self.context };
         let mut found = false;

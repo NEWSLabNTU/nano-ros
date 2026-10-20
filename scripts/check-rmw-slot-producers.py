@@ -120,6 +120,9 @@ GRAPH_SLOTS = {
     "get_subscriptions_info_by_topic",
     "count_publishers",
     "count_subscribers",
+    # Issue 1978 — the Jazzy service twins.
+    "count_clients",
+    "count_services",
     "node_get_graph_guard_condition",
 }
 

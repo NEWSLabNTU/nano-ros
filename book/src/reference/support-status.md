@@ -71,9 +71,11 @@ editions discover nothing (different key expressions).
 (`docs/reference/editions/jazzy/`), since it cannot be installed beside
 Humble. Iron is not compared on its own; what it added and Jazzy kept is
 covered there. Jazzy's additions over Humble are each RULED, not each implemented:
-matched/incompatible-type events, timer call info,
-`count_clients`/`count_services` and a few rclcpp accessors are open gaps
-(issues 1972, 1974, 1975 and 1978); `BEST_AVAILABLE` QoS is implemented,
+matched/incompatible-type events, timer call info and a few rclcpp
+accessors are open gaps (issues 1972, 1974 and 1975);
+`count_clients`/`count_services`, the client GID and
+`event_type_is_supported` are implemented (issue 1978);
+`BEST_AVAILABLE` QoS is implemented,
 resolved at creation against the discovered graph (issue 1973);
 dynamic typesupport, service introspection and the
 `~/get_type_description` service are declined on RAM/flash grounds;

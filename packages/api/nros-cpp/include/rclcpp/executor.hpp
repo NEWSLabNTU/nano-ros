@@ -330,6 +330,21 @@ class Executor {
         return Result(nros_cpp_executor_count_subscribers(storage_, topic_name, out_count));
     }
 
+    /// Issue 1978 — how many service clients are visible on `service_name`
+    /// (Jazzy `rclcpp::Node::count_clients`). See [`count_publishers`] for the
+    /// caveats; a backend with no graph answers `Unsupported`, never 0.
+    Result count_clients(const char* service_name, size_t* out_count) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        return Result(nros_cpp_executor_count_clients(storage_, service_name, out_count));
+    }
+
+    /// Issue 1978 — how many service servers are visible on `service_name`
+    /// (Jazzy `rclcpp::Node::count_services`). See [`count_clients`].
+    Result count_services(const char* service_name, size_t* out_count) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        return Result(nros_cpp_executor_count_services(storage_, service_name, out_count));
+    }
+
     /// phase-381 W4 — what one named node PUBLISHES, with the types.
     Result get_publisher_names_and_types_by_node(const char* node_name, const char* node_namespace,
                                                  nros_cpp_names_and_types_visit_fn visit,

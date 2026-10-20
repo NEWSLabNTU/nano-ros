@@ -483,32 +483,28 @@ reason = "has_data/has_request + drive_io + set_wake_callback + next_deadline_ms
 # ---------------------------------------------------------------------------
 
 [rmw_count_clients]
-where = "gap"
-status = "not-implemented"
-issue = 1978
+where = "vtable"
+nano = "count_clients"
 editions = ["jazzy"]
-reason = "ADOPT, issue 1978: the service twin of the live `count_publishers` slot; both graph backends already hold the per-name count (zenoh graph cache, Cyclone builtin readers)."
+reason = "issue 1978: the service twin of `count_publishers`; zenoh counts `SC` tokens in its graph cache, Cyclone counts writers on the `rq/<name>Request` builtin topic (stock `rmw_cyclonedds_cpp`'s rule). XRCE and uORB leave it NULL = UNSUPPORTED."
 
 [rmw_count_services]
-where = "gap"
-status = "not-implemented"
-issue = 1978
+where = "vtable"
+nano = "count_services"
 editions = ["jazzy"]
-reason = "ADOPT, issue 1978: as rmw_count_clients."
+reason = "issue 1978: as rmw_count_clients, counting servers (`SS` tokens; readers on `rq/<name>Request`)."
 
 [rmw_event_type_is_supported]
-where = "gap"
-status = "not-implemented"
-issue = 1978
+where = "vtable"
+nano = "event_type_is_supported"
 editions = ["jazzy"]
-reason = "ADOPT, issue 1978: a static per-backend answer the event_init slots already imply by returning UNSUPPORTED; asking it up front fails a port at configuration instead of entity creation."
+reason = "issue 1978: a static per-backend answer. zenoh answers from the one kind table its entities' `supports_event` read (`shim::events`); Cyclone answers every known kind (its `*_take_event` bodies serve all five); XRCE/uORB NULL = false. The runtime reads it through one helper, cffi's `backend_event_type_is_supported`."
 
 [rmw_get_gid_for_client]
-where = "gap"
-status = "not-implemented"
-issue = 1978
+where = "vtable"
+nano = "get_gid_for_client"
 editions = ["jazzy"]
-reason = "ADOPT, issue 1978: the client twin of the live `get_gid_for_publisher`."
+reason = "issue 1978: the client twin of `get_gid_for_publisher`. zenoh: the gid stamped into every request attachment; Cyclone: the request writer's GUID. XRCE/uORB NULL = UNSUPPORTED."
 
 [rmw_serialization_support_init]
 where = "declined"

@@ -1753,21 +1753,10 @@ impl Subscription for ZenohSubscriber {
         // subscriber bridge fires it from a session-side
         // z_liveliness_declare_subscriber callback. LIFESPAN is a
         // filter, not an event, so no event kind for it.
-        if matches!(
-            kind,
-            nros_rmw::EventKind::MessageLost | nros_rmw::EventKind::RequestedDeadlineMissed
-        ) {
-            return true;
-        }
-
-        #[cfg(not(feature = "platform-bare-metal"))]
-        {
-            matches!(kind, nros_rmw::EventKind::LivelinessChanged)
-        }
-        #[cfg(feature = "platform-bare-metal")]
-        {
-            false
-        }
+        //
+        // Issue 1978 — the kind list lives in `shim::events`, shared with the
+        // backend-level `event_type_is_supported`.
+        super::events::subscription_event_supported(kind)
     }
 
     unsafe fn register_event_callback(

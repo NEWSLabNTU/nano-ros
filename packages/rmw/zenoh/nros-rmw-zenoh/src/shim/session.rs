@@ -1030,7 +1030,8 @@ impl ZenohSession {
 
     /// Count the entities of one kind on a topic — phase-381 W3.
     ///
-    /// `count_publishers` / `count_subscribers` differ only by kind.
+    /// `count_publishers` / `count_subscribers` differ only by kind, and so
+    /// (issue 1978) do `count_clients` / `count_services`.
     fn count_entities_on_topic(
         &mut self,
         kind: EntityKind,
@@ -1649,6 +1650,25 @@ impl Session for ZenohSession {
 
     fn count_subscribers(&mut self, topic_name: &str) -> Result<usize, Self::Error> {
         self.count_entities_on_topic(EntityKind::Subscriber, topic_name)
+    }
+
+    /// Issue 1978 — upstream (Jazzy) `rmw_count_clients`, from the same graph
+    /// cache as `count_publishers`. A service token carries the service name
+    /// mangled exactly as a topic name, so the one counting body serves both.
+    fn count_clients(&mut self, service_name: &str) -> Result<usize, Self::Error> {
+        self.count_entities_on_topic(EntityKind::ServiceClient, service_name)
+    }
+
+    /// Issue 1978 — upstream (Jazzy) `rmw_count_services`. See
+    /// [`Self::count_clients`].
+    fn count_services(&mut self, service_name: &str) -> Result<usize, Self::Error> {
+        self.count_entities_on_topic(EntityKind::ServiceServer, service_name)
+    }
+
+    /// Issue 1978 — upstream (Jazzy) `rmw_event_type_is_supported`, from the
+    /// one kind table the entities' `supports_event` also read.
+    fn event_type_is_supported(kind: nros_rmw::EventKind) -> bool {
+        super::events::event_type_is_supported(kind)
     }
 
     fn get_topic_names_and_types(

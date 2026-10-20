@@ -5050,6 +5050,37 @@ rcl_ret_t rclc_executor_count_subscribers(struct rclc_executor_t *executor,
                                           size_t *out_count);
 
 /**
+ * Issue 1978 — how many service CLIENTS are visible on `service_name`,
+ * upstream (Jazzy) `rcl_count_clients`, under the executor receiver every
+ * graph verb here uses (`rclc_executor_count_publishers`). `service_name` is a
+ * ROS name (`"/add_two_ints"`); same caveats as the publisher count, and a
+ * backend with no graph returns `RCL_RET_UNSUPPORTED`, never a 0.
+ *
+ * # Safety
+ * * `executor` must point to an initialised executor.
+ * * `service_name` must be a valid NUL-terminated string.
+ * * `out_count` must be writable.
+ */
+NROS_PUBLIC
+rcl_ret_t rclc_executor_count_clients(struct rclc_executor_t *executor,
+                                      const char *service_name,
+                                      size_t *out_count);
+
+/**
+ * Issue 1978 — how many service SERVERS are visible on `service_name`,
+ * upstream (Jazzy) `rcl_count_services`. See `rclc_executor_count_clients`.
+ *
+ * # Safety
+ * * `executor` must point to an initialised executor.
+ * * `service_name` must be a valid NUL-terminated string.
+ * * `out_count` must be writable.
+ */
+NROS_PUBLIC
+rcl_ret_t rclc_executor_count_services(struct rclc_executor_t *executor,
+                                       const char *service_name,
+                                       size_t *out_count);
+
+/**
  * phase-444 — block until at least `count` publishers are visible on
  * `topic_name`, or `timeout_ms` elapses. Upstream's `rcl_wait_for_publishers`.
  *

@@ -955,6 +955,19 @@ class LifecycleEngine {
         return ::rclcpp::Result(nros_cpp_executor_count_subscribers(exec_, topic_name, out_count));
     }
 
+    /// How many service clients are visible on `service_name` — rclcpp's
+    /// (Jazzy) `count_clients()`, inherited from `rclcpp::Node` upstream.
+    /// Issue 1978. See [`count_publishers`].
+    ::rclcpp::Result count_clients(const char* service_name, size_t* out_count) const {
+        return ::rclcpp::Result(nros_cpp_executor_count_clients(exec_, service_name, out_count));
+    }
+
+    /// How many service servers are visible on `service_name` — rclcpp's
+    /// (Jazzy) `count_services()`. See [`count_clients`].
+    ::rclcpp::Result count_services(const char* service_name, size_t* out_count) const {
+        return ::rclcpp::Result(nros_cpp_executor_count_services(exec_, service_name, out_count));
+    }
+
     /// What one named node PUBLISHES, with the types.
     ::rclcpp::Result get_publisher_names_and_types_by_node(const char* node_name,
                                                            const char* node_namespace,
