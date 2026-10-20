@@ -112,4 +112,30 @@ void nros_stub_rmw_set_entity_wake_supported(bool supported);
  *  as a real backend's arrival path would. Returns `false` when none is stored. */
 bool nros_stub_rmw_invoke_entity_wake(int kind);
 
+/** Issue 1993 — status events. The stub fills `publisher_event_init` and
+ *  `subscription_event_init` and keeps ONE registration per event kind (an
+ *  `rmw_event_type_t` value, 0..8) — a probe creates one publisher and one
+ *  subscription — and fires it on demand, as a backend's event path would.
+ *  A registration outlives the entity's destroy on purpose: that is the late
+ *  fire the runtime's generation check must turn into a no-op.
+ *
+ *  `false` makes `event_type_is_supported` deny every kind, the answer of a
+ *  backend that carries no status events (XRCE-DDS, uORB). */
+void nros_stub_rmw_set_status_events_supported(bool supported);
+
+/** Issue 1993 — the `deadline_ms` the last registration of @p kind carried,
+ *  or -1 if that kind was never registered. */
+int64_t nros_stub_rmw_status_event_deadline_ms(int kind);
+
+/** Issue 1993 — fire the registration held for a count-shaped @p kind
+ *  (requested deadline missed, message lost, liveliness lost, offered
+ *  deadline missed). Returns `false` (and calls nothing) when none is held. */
+bool nros_stub_rmw_fire_count_event(int kind, uint32_t total_count, uint32_t total_count_change);
+
+/** Issue 1993 — fire the `LIVELINESS_CHANGED` registration. Returns `false`
+ *  when none is held. */
+bool nros_stub_rmw_fire_liveliness_changed(uint16_t alive_count, uint16_t not_alive_count,
+                                           int16_t alive_count_change,
+                                           int16_t not_alive_count_change);
+
 #endif /* NROS_TESTS_STUB_RMW_BACKEND_H */

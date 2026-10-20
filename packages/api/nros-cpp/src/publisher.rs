@@ -459,9 +459,17 @@ pub unsafe extern "C" fn nros_cpp_publisher_relocate(
 }
 
 // ============================================================================
-// Phase 108 — publisher-side status events (stub: NROS_CPP_RET_UNSUPPORTED)
+// Publisher-side status events — Phase 108 (Tier-1 kinds, wired by issue
+// 1993) and issue 1972 (matched, incompatible type). Every setter keeps its
+// `(callback, context, storage)` triple in nros-c's process-wide
+// `status_event_slots` table, because the storage RELOCATES on a C++ move and
+// has no room to spare; `relocate` and `destroy` above keep the table in step.
+// The table holds 16 registrations across every C and C++ entity; one past
+// that is `NROS_CPP_RET_FULL`.
 // ============================================================================
 
+/// Count payload for the publisher-side Tier-1 kinds (liveliness lost,
+/// offered deadline missed). Layout-identical to `nros_rmw::CountStatus`.
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct nros_cpp_pub_count_status_t {
@@ -469,6 +477,20 @@ pub struct nros_cpp_pub_count_status_t {
     pub total_count_change: u32,
 }
 
+const _: () = {
+    use core::mem::{align_of, offset_of, size_of};
+    use nros_rmw::CountStatus as R;
+    // The slot trampoline passes the `nros_rmw` payload BY VALUE.
+    assert!(size_of::<nros_cpp_pub_count_status_t>() == size_of::<R>());
+    assert!(align_of::<nros_cpp_pub_count_status_t>() == align_of::<R>());
+    assert!(offset_of!(nros_cpp_pub_count_status_t, total_count) == offset_of!(R, total_count));
+    assert!(
+        offset_of!(nros_cpp_pub_count_status_t, total_count_change)
+            == offset_of!(R, total_count_change)
+    );
+};
+
+/// Callback for the publisher-side count kinds.
 pub type nros_cpp_publisher_count_cb_t = Option<
     unsafe extern "C" fn(
         storage: *mut c_void,
@@ -477,32 +499,62 @@ pub type nros_cpp_publisher_count_cb_t = Option<
     ),
 >;
 
+/// Register a liveliness-lost callback — rclcpp's
+/// `PublisherEventCallbacks::liveliness_callback`, issue 1993. Observed on the
+/// publisher's poll points (publish, `assert_liveliness`).
+///
+/// Returns `NROS_CPP_RET_OK`, `NROS_CPP_RET_INVALID_ARGUMENT` (NULL storage or
+/// callback), `NROS_CPP_RET_UNSUPPORTED` when the backend does not generate
+/// the event (XRCE-DDS, uORB — the backend's answer, not this layer's), or
+/// `NROS_CPP_RET_FULL` when the process-wide event-slot table (16
+/// registrations) is full.
+///
+/// # Safety
+/// `storage` must be a live publisher storage; `user_context` must outlive it.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_publisher_set_liveliness_lost(
-    _storage: *mut c_void,
-    _cb: nros_cpp_publisher_count_cb_t,
-    _user_context: *mut c_void,
+    storage: *mut c_void,
+    cb: nros_cpp_publisher_count_cb_t,
+    user_context: *mut c_void,
 ) -> nros_cpp_ret_t {
-    crate::NROS_CPP_RET_UNSUPPORTED
+    let cb = cb.map_or(core::ptr::null(), |f| f as *const ());
+    unsafe {
+        publisher_set_slot(
+            storage,
+            nros_rmw::EventKind::LivelinessLost,
+            0,
+            cb,
+            user_context,
+        )
+    }
 }
 
+/// Register an offered-deadline-missed callback — rclcpp's
+/// `PublisherEventCallbacks::deadline_callback`, issue 1993. `deadline_ms`
+/// reaches the backend's registration (zenoh uses it when the QoS states no
+/// deadline; Cyclone DDS takes the QoS deadline). Same returns as
+/// [`nros_cpp_publisher_set_liveliness_lost`].
+///
+/// # Safety
+/// See [`nros_cpp_publisher_set_liveliness_lost`].
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_publisher_set_offered_deadline_missed(
-    _storage: *mut c_void,
-    _deadline_ms: u32,
-    _cb: nros_cpp_publisher_count_cb_t,
-    _user_context: *mut c_void,
+    storage: *mut c_void,
+    deadline_ms: u32,
+    cb: nros_cpp_publisher_count_cb_t,
+    user_context: *mut c_void,
 ) -> nros_cpp_ret_t {
-    crate::NROS_CPP_RET_UNSUPPORTED
+    let cb = cb.map_or(core::ptr::null(), |f| f as *const ());
+    unsafe {
+        publisher_set_slot(
+            storage,
+            nros_rmw::EventKind::OfferedDeadlineMissed,
+            deadline_ms,
+            cb,
+            user_context,
+        )
+    }
 }
-
-// ============================================================================
-// Issue 1972 — matched and incompatible-type events, WIRED (unlike the two
-// Tier-1 stubs above). The `(callback, context, storage)` triple lives in
-// nros-c's process-wide `status_event_slots` table, because the storage
-// RELOCATES on a C++ move and has no room to spare; `relocate` and `destroy`
-// below keep the table in step.
-// ============================================================================
 
 /// Matched payload — rclcpp's `MatchedInfo` (upstream `rmw_matched_status_t`).
 #[repr(C)]
@@ -560,6 +612,7 @@ pub type nros_cpp_incompatible_type_cb_t = Option<
 unsafe fn publisher_set_slot(
     storage: *mut c_void,
     kind: nros_rmw::EventKind,
+    deadline_ms: u32,
     cb: *const (),
     user_context: *mut c_void,
 ) -> nros_cpp_ret_t {
@@ -567,6 +620,10 @@ unsafe fn publisher_set_slot(
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
     let handle = unsafe { core::ptr::addr_of_mut!((*(storage as *mut CppPublisher)).handle) };
+    // Issue 1993 — the backend decides whether it carries `kind`.
+    if !PublisherTrait::supports_event(unsafe { &*handle }, kind) {
+        return crate::NROS_CPP_RET_UNSUPPORTED;
+    }
     let r = unsafe {
         nros_c::status_event_slots::register(
             storage as usize,
@@ -574,7 +631,9 @@ unsafe fn publisher_set_slot(
             kind,
             cb,
             user_context,
-            |k, tramp, tag| PublisherTrait::register_event_callback(&mut *handle, k, 0, tramp, tag),
+            |k, tramp, tag| {
+                PublisherTrait::register_event_callback(&mut *handle, k, deadline_ms, tramp, tag)
+            },
         )
     };
     match r {
@@ -600,6 +659,7 @@ pub unsafe extern "C" fn nros_cpp_publisher_set_matched(
         publisher_set_slot(
             storage,
             nros_rmw::EventKind::PublicationMatched,
+            0,
             cb,
             user_context,
         )
@@ -622,6 +682,7 @@ pub unsafe extern "C" fn nros_cpp_publisher_set_incompatible_type(
         publisher_set_slot(
             storage,
             nros_rmw::EventKind::PublisherIncompatibleType,
+            0,
             cb,
             user_context,
         )

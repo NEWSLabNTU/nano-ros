@@ -117,6 +117,13 @@ struct rclc_goal_uuid_t;
 #define NROS_SERIALIZATION_FORMAT_ID 1
 
 /**
+ * Live registrations, process-wide, across both the C and C++ APIs. Nine
+ * event kinds carry a slot (issue 1993): up to four per publisher, five
+ * per subscription. See the module doc for why 16.
+ */
+#define MAX_SLOTS 16
+
+/**
  * Lifecycle state: Unconfigured
  */
 #define RCLC_LIFECYCLE_STATE_UNCONFIGURED 1
@@ -4882,11 +4889,27 @@ rcl_ret_t rclc_polling_action_server_set_get_result_wake_callback(struct rclc_po
                                                                   void *ctx);
 
 /**
- * Register a callback for `NROS_EVENT_LIVELINESS_CHANGED`.
+ * Register a callback for `NROS_EVENT_LIVELINESS_CHANGED` — upstream
+ * `RMW_EVENT_LIVELINESS_CHANGED`. Fires when a matched publisher starts or
+ * stops asserting its liveliness; observed as the executor polls the
+ * subscription.
  *
- * Returns `NROS_RMW_RET_UNSUPPORTED` until the active backend wires
- * up liveliness-event detection (Phase 109+). Applications can call
- * it today; the event fires once the backend gains support.
+ * The subscription must already be ADDED to an executor
+ * (`rclc_executor_add_subscription*`): the executor owns the subscriber, so
+ * before that there is nothing to register on. Registering again for the
+ * same subscription replaces the earlier callback.
+ *
+ * # Returns
+ * * `RCL_RET_OK` — registered
+ * * `RCL_RET_INVALID_ARGUMENT` — NULL `sub` or `cb`
+ * * `RCL_RET_NOT_INIT` — the subscription is not initialised, or not yet
+ *   added to an executor
+ * * `RCL_RET_UNSUPPORTED` — the backend does not generate this event
+ *   (XRCE-DDS, uORB; zenoh on bare metal). Decided by the backend, never
+ *   by this layer.
+ * * `RCLC_RET_FULL` — the process-wide event-slot table is full: it holds
+ *   16 registrations across every C and C++ entity, and one publisher
+ *   with all four of its kinds plus one subscription with all five fit
  *
  * # Safety
  *
@@ -4895,66 +4918,98 @@ rcl_ret_t rclc_polling_action_server_set_get_result_wake_callback(struct rclc_po
  * is opaque to nros and must outlive the subscription.
  */
 NROS_PUBLIC
-rcl_ret_t rclc_subscription_set_liveliness_changed_callback(struct rcl_subscription_t *_sub,
-                                                            rclc_event_liveliness_changed_cb_t _cb,
-                                                            void *_user_context);
+rcl_ret_t rclc_subscription_set_liveliness_changed_callback(struct rcl_subscription_t *sub,
+                                                            rclc_event_liveliness_changed_cb_t cb,
+                                                            void *user_context);
 
 /**
- * Register a callback for `NROS_EVENT_REQUESTED_DEADLINE_MISSED`.
+ * Register a callback for `NROS_EVENT_REQUESTED_DEADLINE_MISSED` —
+ * upstream `RMW_EVENT_REQUESTED_DEADLINE_MISSED`.
  *
- * `deadline_ms` is the maximum acceptable inter-arrival time for
- * expected samples. When a sample doesn't arrive within this window,
- * the callback fires.
+ * `deadline_ms` is the maximum acceptable inter-arrival time for expected
+ * samples; it is handed to the backend's registration. zenoh uses it when
+ * the subscription's QoS states no deadline of its own; Cyclone DDS takes
+ * the deadline from the QoS profile and ignores it.
+ *
+ * Same contract and returns as
+ * [`rclc_subscription_set_liveliness_changed_callback`].
  *
  * # Safety
  *
  * See [`rclc_subscription_set_liveliness_changed_callback`].
  */
 NROS_PUBLIC
-rcl_ret_t rclc_subscription_set_requested_deadline_missed_callback(struct rcl_subscription_t *_sub,
-                                                                   uint32_t _deadline_ms,
-                                                                   rclc_event_subscriber_count_cb_t _cb,
-                                                                   void *_user_context);
+rcl_ret_t rclc_subscription_set_requested_deadline_missed_callback(struct rcl_subscription_t *sub,
+                                                                   uint32_t deadline_ms,
+                                                                   rclc_event_subscriber_count_cb_t cb,
+                                                                   void *user_context);
 
 /**
- * Register a callback for `NROS_EVENT_MESSAGE_LOST`.
+ * Register a callback for `NROS_EVENT_MESSAGE_LOST` — upstream
+ * `RMW_EVENT_MESSAGE_LOST`. Fires when the backend reports a dropped sample.
+ *
+ * Same contract and returns as
+ * [`rclc_subscription_set_liveliness_changed_callback`].
  *
  * # Safety
  *
  * See [`rclc_subscription_set_liveliness_changed_callback`].
  */
 NROS_PUBLIC
-rcl_ret_t rclc_subscription_set_message_lost_callback(struct rcl_subscription_t *_sub,
-                                                      rclc_event_subscriber_count_cb_t _cb,
-                                                      void *_user_context);
+rcl_ret_t rclc_subscription_set_message_lost_callback(struct rcl_subscription_t *sub,
+                                                      rclc_event_subscriber_count_cb_t cb,
+                                                      void *user_context);
 
 /**
- * Register a callback for `NROS_EVENT_LIVELINESS_LOST`.
+ * Register a callback for `NROS_EVENT_LIVELINESS_LOST` — upstream
+ * `RMW_EVENT_LIVELINESS_LOST`. Fires when this publisher misses its own
+ * liveliness assertion; observed on the publisher's poll points
+ * (`rcl_publish`, `rcl_publisher_assert_liveliness`).
+ *
+ * Registering again for the same publisher replaces the earlier callback.
+ *
+ * # Returns
+ * * `RCL_RET_OK` — registered
+ * * `RCL_RET_INVALID_ARGUMENT` — NULL `pub_` or `cb`
+ * * `RCL_RET_NOT_INIT` — the publisher is not initialised
+ * * `RCL_RET_UNSUPPORTED` — the backend does not generate this event
+ *   (XRCE-DDS, uORB). Decided by the backend, never by this layer.
+ * * `RCLC_RET_FULL` — the process-wide event-slot table is full: it holds
+ *   16 registrations across every C and C++ entity, and one publisher
+ *   with all four of its kinds plus one subscription with all five fit
  *
  * # Safety
  *
- * `pub_` must point to a valid, initialised `rcl_publisher_t`.
- * `cb` must be a valid function pointer or `None`.
+ * `pub_` must point to a valid, initialised `rcl_publisher_t` that is not
+ * moved while registered. `cb` must be a valid function pointer or `None`;
+ * `user_context` must outlive the publisher.
  */
 NROS_PUBLIC
-rcl_ret_t rclc_publisher_set_liveliness_lost_callback(struct rcl_publisher_t *_pub_,
-                                                      rclc_event_publisher_count_cb_t _cb,
-                                                      void *_user_context);
+rcl_ret_t rclc_publisher_set_liveliness_lost_callback(struct rcl_publisher_t *pub_,
+                                                      rclc_event_publisher_count_cb_t cb,
+                                                      void *user_context);
 
 /**
- * Register a callback for `NROS_EVENT_OFFERED_DEADLINE_MISSED`.
+ * Register a callback for `NROS_EVENT_OFFERED_DEADLINE_MISSED` — upstream
+ * `RMW_EVENT_OFFERED_DEADLINE_MISSED`.
  *
- * `deadline_ms` is the publisher's offered minimum-rate window.
+ * `deadline_ms` is the publisher's offered minimum-rate window; it is handed
+ * to the backend's registration. zenoh uses it when the publisher's QoS
+ * states no deadline of its own; Cyclone DDS takes the deadline from the QoS
+ * profile and ignores it.
+ *
+ * Same contract and returns as
+ * [`rclc_publisher_set_liveliness_lost_callback`].
  *
  * # Safety
  *
  * See [`rclc_publisher_set_liveliness_lost_callback`].
  */
 NROS_PUBLIC
-rcl_ret_t rclc_publisher_set_offered_deadline_missed_callback(struct rcl_publisher_t *_pub_,
-                                                              uint32_t _deadline_ms,
-                                                              rclc_event_publisher_count_cb_t _cb,
-                                                              void *_user_context);
+rcl_ret_t rclc_publisher_set_offered_deadline_missed_callback(struct rcl_publisher_t *pub_,
+                                                              uint32_t deadline_ms,
+                                                              rclc_event_publisher_count_cb_t cb,
+                                                              void *user_context);
 
 /**
  * Register a callback for `NROS_EVENT_PUBLICATION_MATCHED` — issue 1972,

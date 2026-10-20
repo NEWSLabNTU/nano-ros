@@ -406,6 +406,79 @@ bool nros_stub_rmw_invoke_entity_wake(int kind) {
     return true;
 }
 
+/* Issue 1993 — the status-event slots. One registration per kind, kept
+ * after the entity is destroyed (a real backend's listener can fire late, and
+ * the runtime must make that a no-op). `s_status_events_supported == false`
+ * makes `event_type_is_supported` deny every kind, which is what a backend
+ * with no event path answers. */
+#define STUB_EVENT_KINDS 9
+static bool s_status_events_supported = true;
+static rmw_status_event_callback_t s_event_cb[STUB_EVENT_KINDS];
+static void* s_event_ctx[STUB_EVENT_KINDS];
+static int64_t s_event_deadline[STUB_EVENT_KINDS] = {-1, -1, -1, -1, -1, -1, -1, -1, -1};
+
+static rmw_ret_t stub_store_status_event(rmw_event_type_t kind, uint32_t deadline_ms,
+                                         rmw_status_event_callback_t cb, void* user_context) {
+    if ((unsigned)kind >= STUB_EVENT_KINDS) return NROS_RMW_RET_INVALID_ARGUMENT;
+    if (!s_status_events_supported) return NROS_RMW_RET_UNSUPPORTED;
+    s_event_cb[kind] = cb;
+    s_event_ctx[kind] = user_context;
+    s_event_deadline[kind] = (int64_t)deadline_ms;
+    return NROS_RMW_RET_OK;
+}
+
+static rmw_ret_t stub_subscription_event_init(const rmw_subscription_t* subscription,
+                                              rmw_event_type_t kind, uint32_t deadline_ms,
+                                              rmw_status_event_callback_t cb, void* user_context) {
+    (void)subscription;
+    return stub_store_status_event(kind, deadline_ms, cb, user_context);
+}
+
+static rmw_ret_t stub_publisher_event_init(const rmw_publisher_t* publisher, rmw_event_type_t kind,
+                                           uint32_t deadline_ms, rmw_status_event_callback_t cb,
+                                           void* user_context) {
+    (void)publisher;
+    return stub_store_status_event(kind, deadline_ms, cb, user_context);
+}
+
+static bool stub_event_type_is_supported(rmw_event_type_t kind) {
+    return s_status_events_supported && (unsigned)kind < STUB_EVENT_KINDS;
+}
+
+void nros_stub_rmw_set_status_events_supported(bool supported) {
+    s_status_events_supported = supported;
+}
+
+int64_t nros_stub_rmw_status_event_deadline_ms(int kind) {
+    if (kind < 0 || kind >= STUB_EVENT_KINDS) return -1;
+    return s_event_deadline[kind];
+}
+
+bool nros_stub_rmw_fire_count_event(int kind, uint32_t total_count, uint32_t total_count_change) {
+    if (kind < 0 || kind >= STUB_EVENT_KINDS || s_event_cb[kind] == NULL) return false;
+    rmw_event_payload_t payload;
+    memset(&payload, 0, sizeof(payload));
+    payload.count.total_count = total_count;
+    payload.count.total_count_change = total_count_change;
+    s_event_cb[kind]((rmw_event_type_t)kind, &payload, s_event_ctx[kind]);
+    return true;
+}
+
+bool nros_stub_rmw_fire_liveliness_changed(uint16_t alive_count, uint16_t not_alive_count,
+                                           int16_t alive_count_change,
+                                           int16_t not_alive_count_change) {
+    const int kind = NROS_RMW_EVENT_LIVELINESS_CHANGED;
+    if (s_event_cb[kind] == NULL) return false;
+    rmw_event_payload_t payload;
+    memset(&payload, 0, sizeof(payload));
+    payload.liveliness_changed.alive_count = alive_count;
+    payload.liveliness_changed.not_alive_count = not_alive_count;
+    payload.liveliness_changed.alive_count_change = alive_count_change;
+    payload.liveliness_changed.not_alive_count_change = not_alive_count_change;
+    s_event_cb[kind]((rmw_event_type_t)kind, &payload, s_event_ctx[kind]);
+    return true;
+}
+
 static const nros_rmw_vtable_t STUB_VTABLE = {
     .create_session = stub_create_session,
     .destroy_session = stub_destroy_session,
@@ -430,6 +503,9 @@ static const nros_rmw_vtable_t STUB_VTABLE = {
     .subscription_set_on_new_message_callback = stub_subscription_set_on_new_message_callback,
     .service_set_on_new_request_callback = stub_service_set_on_new_request_callback,
     .client_set_on_new_response_callback = stub_client_set_on_new_response_callback,
+    .subscription_event_init = stub_subscription_event_init,
+    .publisher_event_init = stub_publisher_event_init,
+    .event_type_is_supported = stub_event_type_is_supported,
 };
 
 int32_t nros_stub_rmw_register(void) {

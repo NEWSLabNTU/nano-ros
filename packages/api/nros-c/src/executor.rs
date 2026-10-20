@@ -3599,6 +3599,16 @@ pub unsafe extern "C" fn rclc_executor_remove_subscription(
 
     let handle_id = nros_node::executor::HandleId::from_raw(subscription.handle_id);
     let rust_exec = get_executor(executor);
+    // Issue 1993 — the status-event slots are keyed on the executor-owned
+    // subscriber, which `release_subscription` drops; free them first, or
+    // every remove/re-add cycle leaks registrations from the process-wide
+    // table (`rcl_subscription_fini` can no longer find the handle after this).
+    #[cfg(feature = "rmw-cffi")]
+    if let Some(handle) = unsafe { rust_exec.subscription_handle(subscription.handle_id) } {
+        crate::event::status_event_slots::release_owner(
+            handle as *const nros::internals::RmwSubscriber as usize,
+        );
+    }
     // SAFETY: the subscription's (handle, executor) pair is its only record of
     // the slot and is cleared below, so nothing names the slot afterwards.
     let released = rust_exec.release_subscription(handle_id);

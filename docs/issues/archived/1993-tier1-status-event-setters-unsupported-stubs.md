@@ -1,12 +1,13 @@
 ---
 id: 1993
 title: "The five Tier-1 C/C++ status-event setters (liveliness, deadline, message-lost) are UNSUPPORTED stubs on every backend, though Cyclone, zenoh and Rust all carry the events"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [api, rmw]
 related: [1972, 1978, 1164, phase-108]
 found: 2026-10-20
+resolved_in: 2026-10-21
 ---
 
 ## What happens
@@ -168,24 +169,92 @@ PR adds to `book/src/concepts/status-events.md`.
 
 ## Acceptance
 
-- [ ] All ten entry points (5 C, 5 C++) register through
+- [x] All ten entry points (5 C, 5 C++) register through
       `status_event_slots`. On a backend whose `supports_event(kind)` is
       true they return `OK`. On XRCE/uORB they return `UNSUPPORTED`,
       decided by the backend and never by a stub.
-- [ ] `deadline_ms` reaches `register_event_callback`. A test asserts
+- [x] `deadline_ms` reaches `register_event_callback`. A test asserts
       that the zenoh backend sees the value the caller passed.
-- [ ] The trampoline dispatches `LivelinessChanged` and the four
+- [x] The trampoline dispatches `LivelinessChanged` and the four
       `CountStatus` kinds, with layout const-asserts for every C/C++
       payload struct.
-- [ ] The slot-table bound is either derived from a knob or documented
+- [x] The slot-table bound is either derived from a knob or documented
       per setter, and one publisher plus one subscription with ALL their
       kinds registered fit in the default.
-- [ ] Each setter has a test: a C test and a C++ test per event kind,
+- [x] Each setter has a test: a C test and a C++ test per event kind,
       against a stub vtable as `packages/rmw/cffi/tests/` uses, that
       fires the event and observes the user callback with the right
       entity, status and context. Plus a test that a late fire after
       `*_fini` is a no-op (the generation check).
-- [ ] No `RCL_RET_UNSUPPORTED` / `NROS_CPP_RET_UNSUPPORTED` stub left in
+- [x] No `RCL_RET_UNSUPPORTED` / `NROS_CPP_RET_UNSUPPORTED` stub left in
       `event.rs` / `nros-cpp/src/{publisher,subscription}.rs`. The ledger
       `why` text and the book no longer say "stub" or "registered … stored"
       where that is false. `just check api-parity` is green.
+
+## Resolution
+
+**One mechanism, C and C++.** All ten entry points now go through
+`nros_c::status_event_slots`, the table issue 1972 added: the C setters via
+`publisher_set` / `subscription_set` (`packages/api/nros-c/src/event.rs`), the
+C++ FFI via `publisher_set_slot` / `subscription_set_slot`
+(`packages/api/nros-cpp/src/{publisher,subscription}.rs`). No
+`RCL_RET_UNSUPPORTED` / `NROS_CPP_RET_UNSUPPORTED` stub is left.
+
+1. **Deadline.** The four helpers take `deadline_ms` and hand it to
+   `register_event_callback`; `0` for every kind but the two deadline ones.
+2. **Support is the backend's answer.** Each helper asks the entity's
+   `supports_event(kind)` first (the cffi route answers through
+   `backend_event_type_is_supported`), then the backend's registration may
+   still refuse. XRCE-DDS and uORB therefore answer `UNSUPPORTED`; Cyclone
+   DDS and zenoh answer `OK` (zenoh `LivelinessChanged` is refused on bare
+   metal, by the shim).
+3. **Trampoline.** The `_ => {}` arm is gone: the match over `EventPayload`
+   is exhaustive, with an arm for `LivelinessChanged` and one for the four
+   `CountStatus` kinds. A payload whose kind differs from the slot's
+   registered kind is now refused (the callback's shape is chosen by the
+   registered kind). Size, alignment and per-field offset const-asserts sit
+   beside `rclc_liveliness_changed_status_t`, `rclc_count_status_t`,
+   `nros_cpp_liveliness_changed_status_t`, `nros_cpp_count_status_t` and
+   `nros_cpp_pub_count_status_t`.
+4. **Bound documented, not a knob.** `MAX_SLOTS` stays 16, now `pub`, with
+   `const` asserts that one publisher (4 kinds) plus one subscription (5)
+   fit and that the index fits the tag's 8 bits. The bound is stated on the
+   module and on every setter: `RCLC_RET_FULL` / `NROS_CPP_RET_FULL` /
+   `ErrorCode::Full` on exhaustion.
+5. **`NOT_INIT`.** The three C subscription setters document that an
+   unattached subscription (not yet added to an executor) answers
+   `RCL_RET_NOT_INIT`.
+
+**A leak closed on the way.** `rclc_executor_remove_subscription` dropped the
+executor-owned subscriber the slots are keyed on without releasing them, and
+`rcl_subscription_fini` could no longer find the handle afterwards: each
+remove/re-add cycle leaked registrations from the process-wide table (already
+true for the 1972 kinds). It now calls `release_owner` before the release.
+
+**Tests.**
+
+- `packages/api/nros-c/tests/run/status_event_setters.c` (`just check c`):
+  against the stub backend, which now fills `publisher_event_init`,
+  `subscription_event_init` and `event_type_is_supported`, every C setter
+  returns `OK`, the stub sees 250 / 500 ms for the deadline kinds and 0 for
+  the rest, a fire reaches the user callback with the right entity, status
+  and context, an unattached subscription is `NOT_INIT`, a backend denying
+  events makes all five `UNSUPPORTED`, a remove releases the slots, and a
+  late fire after `rcl_*_fini` is a no-op.
+- `packages/api/nros-cpp/tests/compile/status_event_setters_runtime.cpp`
+  (`just check cpp`): the same for the five C++ entry points, plus a
+  `nros_cpp_publisher_relocate` that moves the callback's storage argument.
+- `status_event_slots` unit test: the Tier-1 shapes dispatch, a mismatched
+  kind is refused, and all nine kinds of one publisher plus one subscription
+  fit.
+- `packages/rmw/zenoh/nros-rmw-zenoh/tests/status_events_matrix.rs` (live,
+  needs a router): with no deadline in the QoS, a publisher registered at
+  100 ms misses after a 300 ms silence and one registered at 10 s does not,
+  so zenoh uses the value the registration carries.
+
+**Ledgers and book.** The shared "the callback is a fn-ptr in the entity's own
+static storage" sentence in `pubsub.json` (18 rows) and `qos.json` (10 rows)
+now says where the triple lives and which backends carry the events; the
+matched rows' "unlike the five Tier-1 setters" now say "like". The "Not wired
+yet" note in `book/src/concepts/status-events.md` became the returns,
+deadline and lifetime contract.

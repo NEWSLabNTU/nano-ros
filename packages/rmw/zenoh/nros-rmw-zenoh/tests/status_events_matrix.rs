@@ -274,4 +274,69 @@ fn zenoh_event_matrix() {
         .create_publisher(&topic(), Qos::QOS_PROFILE_DEFAULT)
         .expect("create_publisher automatic liveliness");
     assert_eq!(automatic_pub.assert_liveliness(), Ok(()));
+
+    // ---- The registration's `deadline_ms` is the one the backend uses ----
+    //
+    // Issue 1993 — the C/C++ setters now forward the caller's `deadline_ms`
+    // into `register_event_callback` (the stub-backend probes prove the
+    // forwarding). This is the zenoh half: with no deadline in the QoS, the
+    // window the shim checks is the REGISTERED one, not some default. Two
+    // publishers, same QoS (no deadline): one registered with a 100 ms
+    // window, one with 10 s. After a 300 ms silence only the first fires.
+    static ODM_SHORT: AtomicU32 = AtomicU32::new(0);
+    static ODM_LONG: AtomicU32 = AtomicU32::new(0);
+    unsafe extern "C" fn on_odm(_kind: EventKind, _payload: *const c_void, ctx: *mut c_void) {
+        let counter = unsafe { &*(ctx as *const AtomicU32) };
+        counter.fetch_add(1, AtomicOrdering::Relaxed);
+    }
+    let mut short_pub = sess
+        .create_publisher(&topic(), Qos::QOS_PROFILE_DEFAULT)
+        .expect("create_publisher short deadline");
+    let mut long_pub = sess
+        .create_publisher(&topic(), Qos::QOS_PROFILE_DEFAULT)
+        .expect("create_publisher long deadline");
+    for (p, window, counter) in [
+        (&mut short_pub, 100u32, &ODM_SHORT),
+        (&mut long_pub, 10_000u32, &ODM_LONG),
+    ] {
+        let res = unsafe {
+            p.register_event_callback(
+                EventKind::OfferedDeadlineMissed,
+                window,
+                on_odm,
+                counter as *const AtomicU32 as *mut c_void,
+            )
+        };
+        assert!(
+            res.is_ok(),
+            "register OfferedDeadlineMissed({window}): {res:?}"
+        );
+        // Prime: stamps the last-publish time (a first publish may report the
+        // gap since creation; only the change after this point is measured).
+        p.publish_raw(b"prime").expect("publish_raw");
+    }
+    let (short0, long0) = (
+        ODM_SHORT.load(AtomicOrdering::Relaxed),
+        ODM_LONG.load(AtomicOrdering::Relaxed),
+    );
+    short_pub.publish_raw(b"inside").expect("publish_raw");
+    long_pub.publish_raw(b"inside").expect("publish_raw");
+    assert_eq!(
+        ODM_SHORT.load(AtomicOrdering::Relaxed),
+        short0,
+        "inside the registered window nothing fires"
+    );
+    std::thread::sleep(Duration::from_millis(300));
+    short_pub.publish_raw(b"late").expect("publish_raw");
+    long_pub.publish_raw(b"late").expect("publish_raw");
+    assert_eq!(
+        ODM_SHORT.load(AtomicOrdering::Relaxed),
+        short0 + 1,
+        "a 300 ms silence misses the REGISTERED 100 ms deadline"
+    );
+    assert_eq!(
+        ODM_LONG.load(AtomicOrdering::Relaxed),
+        long0,
+        "and does not miss a registered 10 s one"
+    );
 }
