@@ -4938,6 +4938,30 @@ pub fn declared_depends_report(
     packages: &[cargo_nano_ros::provider_scan::WorkspacePackage],
     nano_ros_root: Option<&std::path::Path>,
 ) -> Result<DependsReport> {
+    declared_depends_report_with_ament(
+        root,
+        packages,
+        nano_ros_root,
+        crate::orchestration::prereq_resolve::ros_packages(),
+    )
+}
+
+/// [`declared_depends_report`] with the ament rung SUPPLIED rather than read
+/// from `AMENT_PREFIX_PATH` — issue 1592.
+///
+/// An empty set is the ROS-less host, which is what the tier-2 runner is by
+/// design. Asking that host's question from a host that HAS ROS is the only
+/// way to catch an in-tree `<depend>` that resolves through ament alone: there
+/// the ament rung answers it, and on a ROS-less host the report is NOT
+/// VERIFIED, so neither reading ever failed on `custom_msgs`'
+/// `rosidl_default_generators`. Same ladder, one input lifted to the boundary
+/// (issue 1313's shape), never an environment write.
+pub fn declared_depends_report_with_ament(
+    root: &std::path::Path,
+    packages: &[cargo_nano_ros::provider_scan::WorkspacePackage],
+    nano_ros_root: Option<&std::path::Path>,
+    ros: std::collections::BTreeSet<String>,
+) -> Result<DependsReport> {
     use crate::orchestration::prereq_resolve as pr;
 
     let declared = pr::declared_depends(root);
@@ -5004,7 +5028,6 @@ pub fn declared_depends_report(
             .unwrap_or_default();
     let prereq_keys: std::collections::BTreeSet<String> = prereq_map.keys().cloned().collect();
 
-    let ros = pr::ros_packages();
     // Off-ROS safety: a package's own buildtool is satisfied by the builder that
     // is building it. Without this, adding the `<buildtool_depend>` that rosdep
     // expects would hard-fail every host with no `AMENT_PREFIX_PATH`.
