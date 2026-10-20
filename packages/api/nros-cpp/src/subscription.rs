@@ -1124,6 +1124,8 @@ pub unsafe extern "C" fn nros_cpp_subscription_destroy(storage: *mut c_void) -> 
     unsafe {
         core::ptr::drop_in_place(storage as *mut nros::internals::RmwSubscriber);
     }
+    // Issue 1972 — the backend registration died with the handle.
+    nros_c::status_event_slots::release_owner(storage as usize);
     NROS_CPP_RET_OK
 }
 
@@ -1147,6 +1149,9 @@ pub unsafe extern "C" fn nros_cpp_subscription_relocate(
         let value = core::ptr::read(old_storage as *mut nros::internals::RmwSubscriber);
         core::ptr::write(new_storage as *mut nros::internals::RmwSubscriber, value);
     }
+    // Issue 1972 — the one external registration that DOES name the storage:
+    // a status-event callback receives it, so its slot follows the move.
+    nros_c::status_event_slots::rekey(old_storage as usize, new_storage as usize, new_storage);
     NROS_CPP_RET_OK
 }
 
@@ -1217,6 +1222,80 @@ pub unsafe extern "C" fn nros_cpp_subscription_set_message_lost(
     _user_context: *mut c_void,
 ) -> nros_cpp_ret_t {
     crate::NROS_CPP_RET_UNSUPPORTED
+}
+
+unsafe fn subscription_set_slot(
+    storage: *mut c_void,
+    kind: nros_rmw::EventKind,
+    cb: *const (),
+    user_context: *mut c_void,
+) -> nros_cpp_ret_t {
+    if storage.is_null() || cb.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let handle = storage as *mut nros::internals::RmwSubscriber;
+    let r = unsafe {
+        nros_c::status_event_slots::register(
+            storage as usize,
+            storage,
+            kind,
+            cb,
+            user_context,
+            |k, tramp, tag| {
+                SubscriberTrait::register_event_callback(&mut *handle, k, 0, tramp, tag)
+            },
+        )
+    };
+    match r {
+        Ok(()) => NROS_CPP_RET_OK,
+        Err(e) => crate::transport_error_to_cpp_ret(e),
+    }
+}
+
+/// Register a matched callback on a poll-style subscription — rclcpp's
+/// `SubscriptionEventCallbacks::matched_callback`, issue 1972. Observed as the
+/// subscription is polled (`has_data` / take).
+///
+/// # Safety
+/// `storage` must be a live poll-subscription storage; `user_context` must
+/// outlive it.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_subscription_set_matched(
+    storage: *mut c_void,
+    cb: crate::publisher::nros_cpp_matched_cb_t,
+    user_context: *mut c_void,
+) -> nros_cpp_ret_t {
+    let cb = cb.map_or(core::ptr::null(), |f| f as *const ());
+    unsafe {
+        subscription_set_slot(
+            storage,
+            nros_rmw::EventKind::SubscriptionMatched,
+            cb,
+            user_context,
+        )
+    }
+}
+
+/// Register an incompatible-type callback on a poll-style subscription —
+/// rclcpp's `SubscriptionEventCallbacks::incompatible_type_callback`.
+///
+/// # Safety
+/// See [`nros_cpp_subscription_set_matched`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_subscription_set_incompatible_type(
+    storage: *mut c_void,
+    cb: crate::publisher::nros_cpp_incompatible_type_cb_t,
+    user_context: *mut c_void,
+) -> nros_cpp_ret_t {
+    let cb = cb.map_or(core::ptr::null(), |f| f as *const ());
+    unsafe {
+        subscription_set_slot(
+            storage,
+            nros_rmw::EventKind::SubscriptionIncompatibleType,
+            cb,
+            user_context,
+        )
+    }
 }
 
 /// The QoS profile this subscription is ACTUALLY running — issue 1437.

@@ -61,6 +61,7 @@
 #include "rclcpp/owned.hpp"
 
 #include "rclcpp/detail/nros_cpp_ffi.h"
+#include "rclcpp/event.hpp" // issue 1972 — MatchedInfo / IncompatibleTypeInfo
 
 // phase-427 W7 — `Node` is DEFINED in `rclcpp::` (RFC-0089: that namespace is
 // the home). The friend declaration below is qualified, and a qualified friend
@@ -448,6 +449,23 @@ template <typename M> class PollSubscription {
     Result on_message_lost(nros_cpp_subscriber_count_cb_t cb, void* user_context = nullptr) {
         if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
         return Result(nros_cpp_subscription_set_message_lost(storage_, cb, user_context));
+    }
+
+    /// Issue 1972 — rclcpp's `SubscriptionEventCallbacks::matched_callback`:
+    /// `cb(storage, MatchedInfo, user_context)` when a publisher starts or
+    /// stops matching this subscription. Observed as the subscription is
+    /// polled. `ErrorCode::Unsupported` on XRCE-DDS and uORB.
+    Result on_matched(SubscriptionMatchedCallbackType cb, void* user_context = nullptr) {
+        if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
+        return Result(nros_cpp_subscription_set_matched(storage_, cb, user_context));
+    }
+
+    /// Issue 1972 — rclcpp's
+    /// `SubscriptionEventCallbacks::incompatible_type_callback`: a publisher
+    /// on this topic NAME with a different type was seen.
+    Result on_incompatible_type(IncompatibleTypeCallbackType cb, void* user_context = nullptr) {
+        if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
+        return Result(nros_cpp_subscription_set_incompatible_type(storage_, cb, user_context));
     }
 
   private:

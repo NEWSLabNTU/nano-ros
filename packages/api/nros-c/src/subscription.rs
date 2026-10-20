@@ -1258,6 +1258,20 @@ pub unsafe extern "C" fn rcl_subscription_fini(
         return RCL_RET_NOT_INIT;
     }
 
+    // Issue 1972 — free this subscription's status-event slots. The arena
+    // entry (and its backend registration) may outlive this call; the slot's
+    // generation tag makes any later backend call a no-op.
+    #[cfg(feature = "rmw-cffi")]
+    if !subscription._executor.is_null() && subscription.handle_id != usize::MAX {
+        let exec_t = subscription._executor as *mut crate::executor::rclc_executor_t;
+        let exec = crate::executor::get_executor(exec_t);
+        if let Some(handle) = exec.subscription_handle(subscription.handle_id) {
+            crate::event::status_event_slots::release_owner(
+                handle as *const nros::internals::RmwSubscriber as usize,
+            );
+        }
+    }
+
     subscription.handle_id = usize::MAX;
     // issue 1437 — the index and the arena it indexes are ONE fact;
     // clearing half would leave a stale executor pointer paired with

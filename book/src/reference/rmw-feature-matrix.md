@@ -30,6 +30,7 @@ automatically as backends land implementations.
 | Service clients | wired | wired | wired | — |
 | Server-availability probe | wired | — | wired | — |
 | Status events (deadline / liveliness / lost) | wired | — | wired | — |
+| Matched / incompatible-type events (Iron+) | wired | — | wired | — |
 | Manual liveliness assert | — | — | wired | — |
 | Event-driven wake (`set_wake_callback`) | wired | — | wired | — |
 | Deadline hint (`next_deadline_ms`) | wired | — | — | — |

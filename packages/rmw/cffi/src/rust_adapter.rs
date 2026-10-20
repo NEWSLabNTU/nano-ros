@@ -1550,7 +1550,23 @@ const _: () = {
     );
     assert!(size_of::<crate::NrosRmwCountStatus>() == size_of::<nros_rmw::CountStatus>());
     assert!(align_of::<crate::NrosRmwCountStatus>() == align_of::<nros_rmw::CountStatus>());
-    // EventKind tags must round-trip 0..=4 between the generated C
+    // Issue 1972 — the matched and incompatible-type payloads.
+    assert!(
+        size_of::<crate::generated::rmw_matched_status_t>() == size_of::<nros_rmw::MatchedStatus>()
+    );
+    assert!(
+        align_of::<crate::generated::rmw_matched_status_t>()
+            == align_of::<nros_rmw::MatchedStatus>()
+    );
+    assert!(
+        size_of::<crate::generated::rmw_incompatible_type_status_t>()
+            == size_of::<nros_rmw::IncompatibleTypeStatus>()
+    );
+    assert!(
+        align_of::<crate::generated::rmw_incompatible_type_status_t>()
+            == align_of::<nros_rmw::IncompatibleTypeStatus>()
+    );
+    // EventKind tags must round-trip 0..=8 between the generated C
     // discriminants and the `#[repr(u8)]` trait enum.
     use crate::rmw_event_type_t as ck;
     assert!(
@@ -1565,6 +1581,22 @@ const _: () = {
     assert!(
         ck::NROS_RMW_EVENT_OFFERED_DEADLINE_MISSED
             == nros_rmw::EventKind::OfferedDeadlineMissed as ck::Type
+    );
+    assert!(
+        ck::NROS_RMW_EVENT_PUBLICATION_MATCHED
+            == nros_rmw::EventKind::PublicationMatched as ck::Type
+    );
+    assert!(
+        ck::NROS_RMW_EVENT_SUBSCRIPTION_MATCHED
+            == nros_rmw::EventKind::SubscriptionMatched as ck::Type
+    );
+    assert!(
+        ck::NROS_RMW_EVENT_PUBLISHER_INCOMPATIBLE_TYPE
+            == nros_rmw::EventKind::PublisherIncompatibleType as ck::Type
+    );
+    assert!(
+        ck::NROS_RMW_EVENT_SUBSCRIPTION_INCOMPATIBLE_TYPE
+            == nros_rmw::EventKind::SubscriptionIncompatibleType as ck::Type
     );
 };
 
@@ -2093,7 +2125,7 @@ unsafe extern "C" fn get_gid_for_client_trampoline<R: RustBackend>(
 
 /// Issue 1978 — upstream (Jazzy) `rmw_event_type_is_supported`, answered from
 /// the backend TYPE (`Session::event_type_is_supported`, a static fn: the slot
-/// carries no session). A discriminant outside the five known kinds is
+/// carries no session). A discriminant outside the nine known kinds is
 /// `false` — `event_kind_from_c` folds unknown values into `MessageLost`,
 /// which would answer for a kind nobody asked about.
 unsafe extern "C" fn event_type_is_supported_trampoline<R: RustBackend>(
@@ -2107,6 +2139,10 @@ unsafe extern "C" fn event_type_is_supported_trampoline<R: RustBackend>(
             | ck::NROS_RMW_EVENT_MESSAGE_LOST
             | ck::NROS_RMW_EVENT_LIVELINESS_LOST
             | ck::NROS_RMW_EVENT_OFFERED_DEADLINE_MISSED
+            | ck::NROS_RMW_EVENT_PUBLICATION_MATCHED
+            | ck::NROS_RMW_EVENT_SUBSCRIPTION_MATCHED
+            | ck::NROS_RMW_EVENT_PUBLISHER_INCOMPATIBLE_TYPE
+            | ck::NROS_RMW_EVENT_SUBSCRIPTION_INCOMPATIBLE_TYPE
     );
     known && <R::Session as Session>::event_type_is_supported(event_kind_from_c(event_type))
 }

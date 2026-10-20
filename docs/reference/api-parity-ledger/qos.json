@@ -203,9 +203,11 @@
     "verdict": "divergence",
     "provides": [
       "nros::Publisher::on_liveliness_lost",
-      "nros::Publisher::on_offered_deadline_missed"
+      "nros::Publisher::on_offered_deadline_missed",
+      "nros::Publisher::on_matched",
+      "nros::Publisher::on_incompatible_type"
     ],
-    "why": "a `std::function` typedef, or the struct bundling one per event, that rclcpp hands to an entity's options. QoS events. rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours are named callbacks per event registered on the entity -- five in C (`rclc_subscription_set_liveliness_changed_callback`, `rclc_subscription_set_requested_deadline_missed_callback`, `rclc_subscription_set_message_lost_callback`, `rclc_publisher_set_liveliness_lost_callback`, `rclc_publisher_set_offered_deadline_missed_callback`) and the same five in C++ (`Publisher::on_liveliness_lost`, `Publisher::on_offered_deadline_missed`, `Subscription::on_liveliness_changed`, `Subscription::on_requested_deadline_missed`, `Subscription::on_message_lost`). Constraint: no allocator for a per-event handler object and no wait-set to poll it from -- the callback is a fn-ptr in the entity's own static storage. The whole family was classified in the pubsub stage; see `cpp:QOSEventHandler`. A fn-ptr plus a `void *` context, not a `std::function`: no allocator for the closure's captured state. CORRECTED 2026-09-04 (phase-379 W6): this sentence used to name `Subscription::register_event_callback`, which exists in no header -- there is no one generic registrar on either entity, which is the whole point of the row, so naming one argued against itself. The real spellings are the five per-event methods above (`subscription.hpp:498-513`, `publisher.hpp:228-235`). Fixed in all NINE rows that shared this boilerplate, not just the one it was noticed on."
+    "why": "a `std::function` typedef, or the struct bundling one per event, that rclcpp hands to an entity's options. QoS events. rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours are named callbacks per event registered on the entity -- five in C (`rclc_subscription_set_liveliness_changed_callback`, `rclc_subscription_set_requested_deadline_missed_callback`, `rclc_subscription_set_message_lost_callback`, `rclc_publisher_set_liveliness_lost_callback`, `rclc_publisher_set_offered_deadline_missed_callback`) and the same five in C++ (`Publisher::on_liveliness_lost`, `Publisher::on_offered_deadline_missed`, `Subscription::on_liveliness_changed`, `Subscription::on_requested_deadline_missed`, `Subscription::on_message_lost`). Constraint: no allocator for a per-event handler object and no wait-set to poll it from -- the callback is a fn-ptr in the entity's own static storage. The whole family was classified in the pubsub stage; see `cpp:QOSEventHandler`. A fn-ptr plus a `void *` context, not a `std::function`: no allocator for the closure's captured state. CORRECTED 2026-09-04 (phase-379 W6): this sentence used to name `Subscription::register_event_callback`, which exists in no header -- there is no one generic registrar on either entity, which is the whole point of the row, so naming one argued against itself. The real spellings are the five per-event methods above (`subscription.hpp:498-513`, `publisher.hpp:228-235`). Fixed in all NINE rows that shared this boilerplate, not just the one it was noticed on. Issue 1972 added the `matched_callback` / `incompatible_type_callback` members' counterparts (`on_matched`, `on_incompatible_type`), which, unlike the five above, are wired to the backend."
   },
   "cpp:QOSDeadlineOfferedCallbackType": {
     "verdict": "divergence",
@@ -490,9 +492,11 @@
     "provides": [
       "nros::Subscription::on_liveliness_changed",
       "nros::Subscription::on_requested_deadline_missed",
-      "nros::Subscription::on_message_lost"
+      "nros::Subscription::on_message_lost",
+      "nros::PollSubscription::on_matched",
+      "nros::PollSubscription::on_incompatible_type"
     ],
-    "why": "a `std::function` typedef, or the struct bundling one per event, that rclcpp hands to an entity's options. QoS events. rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours are named callbacks per event registered on the entity -- five in C (`rclc_subscription_set_liveliness_changed_callback`, `rclc_subscription_set_requested_deadline_missed_callback`, `rclc_subscription_set_message_lost_callback`, `rclc_publisher_set_liveliness_lost_callback`, `rclc_publisher_set_offered_deadline_missed_callback`) and the same five in C++ (`Publisher::on_liveliness_lost`, `Publisher::on_offered_deadline_missed`, `Subscription::on_liveliness_changed`, `Subscription::on_requested_deadline_missed`, `Subscription::on_message_lost`). Constraint: no allocator for a per-event handler object and no wait-set to poll it from -- the callback is a fn-ptr in the entity's own static storage. The whole family was classified in the pubsub stage; see `cpp:QOSEventHandler`. A fn-ptr plus a `void *` context, not a `std::function`: no allocator for the closure's captured state. CORRECTED 2026-09-04 (phase-379 W6): this sentence used to name `Subscription::register_event_callback`, which exists in no header -- there is no one generic registrar on either entity, which is the whole point of the row, so naming one argued against itself. The real spellings are the five per-event methods above (`subscription.hpp:498-513`, `publisher.hpp:228-235`). Fixed in all NINE rows that shared this boilerplate, not just the one it was noticed on."
+    "why": "a `std::function` typedef, or the struct bundling one per event, that rclcpp hands to an entity's options. QoS events. rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours are named callbacks per event registered on the entity -- five in C (`rclc_subscription_set_liveliness_changed_callback`, `rclc_subscription_set_requested_deadline_missed_callback`, `rclc_subscription_set_message_lost_callback`, `rclc_publisher_set_liveliness_lost_callback`, `rclc_publisher_set_offered_deadline_missed_callback`) and the same five in C++ (`Publisher::on_liveliness_lost`, `Publisher::on_offered_deadline_missed`, `Subscription::on_liveliness_changed`, `Subscription::on_requested_deadline_missed`, `Subscription::on_message_lost`). Constraint: no allocator for a per-event handler object and no wait-set to poll it from -- the callback is a fn-ptr in the entity's own static storage. The whole family was classified in the pubsub stage; see `cpp:QOSEventHandler`. A fn-ptr plus a `void *` context, not a `std::function`: no allocator for the closure's captured state. CORRECTED 2026-09-04 (phase-379 W6): this sentence used to name `Subscription::register_event_callback`, which exists in no header -- there is no one generic registrar on either entity, which is the whole point of the row, so naming one argued against itself. The real spellings are the five per-event methods above (`subscription.hpp:498-513`, `publisher.hpp:228-235`). Fixed in all NINE rows that shared this boilerplate, not just the one it was noticed on. Issue 1972 added the `matched_callback` / `incompatible_type_callback` members' counterparts (`on_matched`, `on_incompatible_type`), which, unlike the five above, are wired to the backend."
   },
   "cpp:SystemDefaultsQoS": {
     "verdict": "declined",
@@ -814,5 +818,56 @@
       "humble"
     ],
     "why": "issue 1973. Matches upstream's Iron+ surface, so under Jazzy it is a `same` row and carries no entry; Humble predates best-available QoS, so against Humble's headers it reads ours-only. rclrs's `QoSProfile::best_available()`, returning `QOS_PROFILE_BEST_AVAILABLE` (the `qos_profiles!` table row bound to `rmw_qos_profile_best_available` by `check-qos-profile-ssot`); each policy enum gained the matching `BestAvailable` variant."
+  },
+  "cpp:LivelinessChangedStatus": {
+    "verdict": "divergence",
+    "why": "see `cpp:CountStatus`."
+  },
+  "cpp:DeadlineMissedStatus": {
+    "verdict": "divergence",
+    "why": "see `cpp:CountStatus`."
+  },
+  "cpp:CountStatus": {
+    "verdict": "divergence",
+    "why": "the Tier-1 status payloads `rclcpp/event.hpp` declares (`LivelinessChangedStatus`, `CountStatus` and its `DeadlineMissedStatus` / `MessageLostStatus` aliases). rclcpp names them `QOSLivelinessChangedInfo`, `QOSDeadlineRequestedInfo`, `QOSMessageLostInfo` and so on, each a typedef of its rmw status. They print now because issue 1972 made `publisher.hpp` / `polling_subscription.hpp` include `event.hpp` for `MatchedInfo`; the header had been included by nothing, so the correlator never saw these. Fixed widths (`uint32_t`, `uint16_t`/`int16_t`) for the by-value FFI payload, as `c:count_status_t`."
+  },
+  "cpp:IncompatibleTypeCallbackType": {
+    "verdict": "divergence",
+    "editions": [
+      "humble"
+    ],
+    "why": "issue 1972 — HUMBLE ONLY, as `cpp:PublisherMatchedCallbackType`: one fn-pointer typedef for both sides, as upstream's is one `std::function` type."
+  },
+  "cpp:IncompatibleTypeInfo": {
+    "verdict": "divergence",
+    "editions": [
+      "humble"
+    ],
+    "why": "issue 1972 — HUMBLE ONLY, as `cpp:MatchedInfo`: aliases `nros_cpp_incompatible_type_status_t` (`total_count`, `total_count_change`), `uint32_t` where upstream's `rmw_incompatible_type_status_t` has `int32_t`."
+  },
+  "cpp:MatchedInfo": {
+    "verdict": "divergence",
+    "editions": [
+      "humble"
+    ],
+    "why": "issue 1972 — HUMBLE ONLY: Jazzy's rclcpp declares `MatchedInfo` and under Jazzy it correlates `same`, so the row is scoped out there. Upstream's is `rmw_matched_status_t`; ours aliases `nros_cpp_matched_status_t` (`rclcpp/event.hpp`), the same four fields in the same order, `uint32_t` where upstream has `size_t` so the by-value callback payload has one layout on a 64-bit host and a 32-bit target."
+  },
+  "cpp:MessageLostStatus": {
+    "verdict": "divergence",
+    "why": "see `cpp:CountStatus`."
+  },
+  "cpp:PublisherMatchedCallbackType": {
+    "verdict": "divergence",
+    "editions": [
+      "humble"
+    ],
+    "why": "issue 1972 — HUMBLE ONLY: Jazzy's rclcpp declares this name and under Jazzy it correlates `same`, so the row is scoped out there. A C function pointer `(storage, MatchedInfo, user_context)` plus the context, not a `std::function`: the backend keeps no heap closure (RFC-0018). issue 1972. The matched / incompatible-type kinds Iron added, through the SAME per-event shape as the QoS events: rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours is a named callback per event registered on the entity. Unlike the five Tier-1 C/C++ setters, these four REACH the backend: the `(callback, context, entity)` triple lives in nros-c's process-wide `status_event_slots` table (16 registrations, no allocator), and the backend is handed a generation-tagged slot reference, so a registration that outlives its entity is a no-op rather than another entity's callback. Produced by Cyclone DDS (its own matched status; builtin-topic type comparison for incompatible type) and zenoh (the graph cache's liveliness tokens, as `rmw_zenoh_cpp` does); XRCE-DDS and uORB answer UNSUPPORTED. Delivery is POLLED from the entity's data path, so a publisher observes it on its next publish or `assert_liveliness`. HELD BY `packages/api/nros-cpp/tests/compile/matched_events_entry_points.cpp` (declarations), `nros_rmw_cyclonedds_matched_events` and `matched_events_live` (behaviour)."
+  },
+  "cpp:SubscriptionMatchedCallbackType": {
+    "verdict": "divergence",
+    "editions": [
+      "humble"
+    ],
+    "why": "issue 1972 — HUMBLE ONLY, as `cpp:PublisherMatchedCallbackType` (same shape, one typedef)."
   }
 }

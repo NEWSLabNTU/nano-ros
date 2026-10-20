@@ -22,17 +22,22 @@
  * `book/src/concepts/status-events.md` and
  * `book/src/design/rmw-vs-upstream.md` Section 8 for the design.
  *
- * **Tier-2 / Tier-3 events skipped.** `MATCHED` (Tier-2) is deferred
- * until dynamic-discovery use cases appear — additive without ABI
- * break (the enum is integer-valued; unknown values pass through).
- * Upstream's QOS_INCOMPATIBLE and INCOMPATIBLE_TYPE (Tier-3) are surfaced
- * synchronously at create-time as `rmw_ret_t` codes
- * (`NROS_RMW_RET_INCOMPATIBLE_QOS`, `NROS_RMW_RET_TOPIC_NAME_INVALID`)
- * rather than as runtime events.
+ * **Matched and incompatible-type events (issue 1972).** Iron/Jazzy's
+ * RMW_EVENT_{PUBLICATION,SUBSCRIPTION}_MATCHED and
+ * RMW_EVENT_{PUBLISHER,SUBSCRIPTION}_INCOMPATIBLE_TYPE are values 5..8,
+ * APPENDED. Upstream inserted them in the middle of its enum; ours was never
+ * value-compatible with upstream's (ours numbers LIVELINESS_LOST 3, upstream
+ * numbers it 6), so appending keeps every existing value and every compiled
+ * backend's switch arms. They travel through the same `*_event_init` /
+ * `*_take_event` slots as the Tier-1 kinds — no new slot.
+ *
+ * Upstream's QOS_INCOMPATIBLE is still surfaced synchronously at
+ * create-time as `NROS_RMW_RET_INCOMPATIBLE_QOS` rather than as a runtime
+ * event.
  */
 
-/** Tier-1 event kinds. Stable integer values; future kinds (Tier-2)
- *  extend the enum at end. */
+/** Status event kinds. Stable integer values; new kinds extend the enum at
+ *  the END, never in the middle. */
 typedef enum rmw_event_type_t {
     /** Subscriber: a tracked publisher's liveliness state changed. */
     NROS_RMW_EVENT_LIVELINESS_CHANGED         = 0,
@@ -45,6 +50,21 @@ typedef enum rmw_event_type_t {
     NROS_RMW_EVENT_LIVELINESS_LOST            = 3,
     /** Publisher: this publisher promised X Hz, fell behind. */
     NROS_RMW_EVENT_OFFERED_DEADLINE_MISSED    = 4,
+    /** Publisher: the set of subscriptions matched to it changed (one
+     *  appeared or left). Payload: `matched`. Upstream
+     *  RMW_EVENT_PUBLICATION_MATCHED (Iron+), issue 1972. */
+    NROS_RMW_EVENT_PUBLICATION_MATCHED        = 5,
+    /** Subscription: the set of publishers matched to it changed. Payload:
+     *  `matched`. Upstream RMW_EVENT_SUBSCRIPTION_MATCHED. */
+    NROS_RMW_EVENT_SUBSCRIPTION_MATCHED       = 6,
+    /** Publisher: an endpoint on the same topic was seen with a DIFFERENT
+     *  type. Payload: `incompatible_type`. Upstream
+     *  RMW_EVENT_PUBLISHER_INCOMPATIBLE_TYPE. */
+    NROS_RMW_EVENT_PUBLISHER_INCOMPATIBLE_TYPE    = 7,
+    /** Subscription: an endpoint on the same topic was seen with a
+     *  DIFFERENT type. Payload: `incompatible_type`. Upstream
+     *  RMW_EVENT_SUBSCRIPTION_INCOMPATIBLE_TYPE. */
+    NROS_RMW_EVENT_SUBSCRIPTION_INCOMPATIBLE_TYPE = 8,
 } rmw_event_type_t;
 
 /** Liveliness payload. Mirrors the DDS
@@ -65,11 +85,46 @@ typedef struct rmw_count_status_t {
     uint32_t total_count_change;
 } rmw_count_status_t;
 
+/** Matched payload — `NROS_RMW_EVENT_PUBLICATION_MATCHED` /
+ *  `NROS_RMW_EVENT_SUBSCRIPTION_MATCHED`. Upstream `rmw_matched_status_t`
+ *  (Iron+), same four fields in the same order.
+ *
+ *  Width is the one deviation: upstream's three counts are `size_t`; ours
+ *  are `uint32_t`, like every other count in this header, so the union keeps
+ *  one layout on 32- and 64-bit targets. `current_count_change` is `int32_t`
+ *  on both sides. */
+typedef struct rmw_matched_status_t {
+    /** Cumulative matches over the entity's lifetime. */
+    uint32_t total_count;
+    /** Change in `total_count` since the last report. */
+    uint32_t total_count_change;
+    /** Endpoints matched RIGHT NOW. */
+    uint32_t current_count;
+    /** Change in `current_count` since the last report; negative when an
+     *  endpoint left. */
+    int32_t  current_count_change;
+} rmw_matched_status_t;
+
+/** Incompatible-type payload — `NROS_RMW_EVENT_PUBLISHER_INCOMPATIBLE_TYPE`
+ *  / `NROS_RMW_EVENT_SUBSCRIPTION_INCOMPATIBLE_TYPE`. Upstream
+ *  `rmw_incompatible_type_status_t` (Iron+); upstream's fields are `int32_t`,
+ *  ours `uint32_t` like `rmw_count_status_t`, since both only grow. */
+typedef struct rmw_incompatible_type_status_t {
+    uint32_t total_count;
+    uint32_t total_count_change;
+} rmw_incompatible_type_status_t;
+
 /** Borrow-shaped union the backend supplies to the registered
- *  callback. The `kind` argument selects which member is valid. */
+ *  callback. The `kind` argument selects which member is valid.
+ *
+ *  Members are APPENDED (issue 1972 grew it from 8 to 16 bytes). A caller
+ *  owns the union it hands `*_take_event`, so a backend built against the
+ *  older, smaller header writes within the larger one. */
 typedef union rmw_event_payload_t {
     rmw_liveliness_changed_status_t liveliness_changed;
     rmw_count_status_t              count;
+    rmw_matched_status_t            matched;
+    rmw_incompatible_type_status_t  incompatible_type;
 } rmw_event_payload_t;
 
 /**

@@ -1,0 +1,14 @@
+// Issue 1972 test type — a SECOND type on a topic `TestString` already uses,
+// which is what an incompatible-type event is about.
+//
+// Generated symbol (Cyclone idlc):
+//   const dds_topic_descriptor_t nros_test_msg_TestInt32_desc;
+// registered under the canonical type name "nros_test::msg::TestInt32".
+
+module nros_test {
+    module msg {
+        struct TestInt32 {
+            long data;
+        };
+    };
+};

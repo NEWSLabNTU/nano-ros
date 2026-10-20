@@ -624,6 +624,10 @@ pub fn event_kind_to_c(k: nros_rmw::EventKind) -> NrosRmwEventKind {
         K::MessageLost => C::NROS_RMW_EVENT_MESSAGE_LOST,
         K::LivelinessLost => C::NROS_RMW_EVENT_LIVELINESS_LOST,
         K::OfferedDeadlineMissed => C::NROS_RMW_EVENT_OFFERED_DEADLINE_MISSED,
+        K::PublicationMatched => C::NROS_RMW_EVENT_PUBLICATION_MATCHED,
+        K::SubscriptionMatched => C::NROS_RMW_EVENT_SUBSCRIPTION_MATCHED,
+        K::PublisherIncompatibleType => C::NROS_RMW_EVENT_PUBLISHER_INCOMPATIBLE_TYPE,
+        K::SubscriptionIncompatibleType => C::NROS_RMW_EVENT_SUBSCRIPTION_INCOMPATIBLE_TYPE,
         // unreachable for now (#[non_exhaustive])
         _ => C::NROS_RMW_EVENT_MESSAGE_LOST,
     }
@@ -642,6 +646,10 @@ pub fn event_kind_from_c(k: NrosRmwEventKind) -> nros_rmw::EventKind {
         C::NROS_RMW_EVENT_MESSAGE_LOST => K::MessageLost,
         C::NROS_RMW_EVENT_LIVELINESS_LOST => K::LivelinessLost,
         C::NROS_RMW_EVENT_OFFERED_DEADLINE_MISSED => K::OfferedDeadlineMissed,
+        C::NROS_RMW_EVENT_PUBLICATION_MATCHED => K::PublicationMatched,
+        C::NROS_RMW_EVENT_SUBSCRIPTION_MATCHED => K::SubscriptionMatched,
+        C::NROS_RMW_EVENT_PUBLISHER_INCOMPATIBLE_TYPE => K::PublisherIncompatibleType,
+        C::NROS_RMW_EVENT_SUBSCRIPTION_INCOMPATIBLE_TYPE => K::SubscriptionIncompatibleType,
         _ => K::MessageLost,
     }
 }
@@ -684,26 +692,36 @@ pub fn event_kind_from_c(k: NrosRmwEventKind) -> nros_rmw::EventKind {
 /// One status-event callback the runtime holds on the entity's behalf,
 /// because the backend filled `*_take_event` instead of `*_event_init`.
 ///
-/// `cb` is the same nullable C callback `*_event_init` would have received;
+/// `cb` is the C callback `*_event_init` would have received, unwrapped —
+/// a NULL one is refused at registration. Non-`Option` so the fn pointer's
+/// niche makes `Option<PolledEventReg>` 16 bytes rather than 24: issue 1972
+/// grew the per-entity registry to five kinds, and the entity struct is
+/// budgeted against `PUBSUB_STRUCT` in every image's executor arena.
 /// `user_ctx` is owned by whoever registered (`nros-node` keeps the boxed
 /// closure alive for the entity's lifetime).
 #[derive(Clone, Copy)]
 struct PolledEventReg {
-    cb: NrosRmwEventCallback,
+    cb: unsafe extern "C" fn(NrosRmwEventKind, *const NrosRmwEventPayload, *mut c_void),
     user_ctx: *mut c_void,
 }
 
 /// Subscription-side event kinds, in registry-slot order.
-const SUB_EVENT_KINDS: [nros_rmw::EventKind; 3] = [
+const SUB_EVENT_KINDS: [nros_rmw::EventKind; 5] = [
     nros_rmw::EventKind::LivelinessChanged,
     nros_rmw::EventKind::RequestedDeadlineMissed,
     nros_rmw::EventKind::MessageLost,
+    // Issue 1972.
+    nros_rmw::EventKind::SubscriptionMatched,
+    nros_rmw::EventKind::SubscriptionIncompatibleType,
 ];
 
 /// Publisher-side event kinds, in registry-slot order.
-const PUB_EVENT_KINDS: [nros_rmw::EventKind; 2] = [
+const PUB_EVENT_KINDS: [nros_rmw::EventKind; 4] = [
     nros_rmw::EventKind::LivelinessLost,
     nros_rmw::EventKind::OfferedDeadlineMissed,
+    // Issue 1972.
+    nros_rmw::EventKind::PublicationMatched,
+    nros_rmw::EventKind::PublisherIncompatibleType,
 ];
 
 /// Registry slot for a subscription-side kind. `None` for a publisher-side
@@ -3705,9 +3723,7 @@ impl CffiPublisher {
             let Some(reg) = self.polled_events[slot].get() else {
                 continue;
             };
-            let Some(cb) = reg.cb else {
-                continue;
-            };
+            let cb = reg.cb;
             let view = self.view_shared();
             let mut payload = empty_event_payload();
             let mut taken = false;
@@ -3759,7 +3775,10 @@ impl CffiPublisher {
         cb: NrosRmwEventCallback,
         user_ctx: *mut c_void,
     ) -> Result<(), TransportError> {
-        if self.vtable.publisher_take_event.is_none() || cb.is_none() {
+        let Some(cb) = cb else {
+            return Err(TransportError::Unsupported);
+        };
+        if self.vtable.publisher_take_event.is_none() {
             return Err(TransportError::Unsupported);
         }
         let Some(slot) = pub_event_slot(kind) else {
@@ -4609,7 +4628,10 @@ impl CffiSubscription {
         cb: NrosRmwEventCallback,
         user_ctx: *mut c_void,
     ) -> Result<(), TransportError> {
-        if self.vtable.subscription_take_event.is_none() || cb.is_none() {
+        let Some(cb) = cb else {
+            return Err(TransportError::Unsupported);
+        };
+        if self.vtable.subscription_take_event.is_none() {
             return Err(TransportError::Unsupported);
         }
         let Some(slot) = sub_event_slot(kind) else {
@@ -4642,9 +4664,7 @@ impl CffiSubscription {
             let Some(reg) = self.polled_events[slot].get() else {
                 continue;
             };
-            let Some(cb) = reg.cb else {
-                continue;
-            };
+            let cb = reg.cb;
             let view = self.view_shared();
             let mut payload = empty_event_payload();
             let mut taken = false;

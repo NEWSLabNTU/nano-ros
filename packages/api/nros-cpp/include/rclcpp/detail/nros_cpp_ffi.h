@@ -1029,6 +1029,40 @@ typedef void (*nros_cpp_publisher_count_cb_t)(void *storage,
                                               void *user_context);
 
 /**
+ * Matched payload — rclcpp's `MatchedInfo` (upstream `rmw_matched_status_t`).
+ */
+typedef struct nros_cpp_matched_status_t {
+  uint32_t total_count;
+  uint32_t total_count_change;
+  uint32_t current_count;
+  int32_t current_count_change;
+} nros_cpp_matched_status_t;
+
+/**
+ * Matched callback — `storage` is the entity's storage (publisher or
+ * poll-subscription), as for the other C++ event callbacks.
+ */
+typedef void (*nros_cpp_matched_cb_t)(void *storage,
+                                      struct nros_cpp_matched_status_t status,
+                                      void *user_context);
+
+/**
+ * Incompatible-type payload — rclcpp's `IncompatibleTypeInfo` (upstream
+ * `rmw_incompatible_type_status_t`).
+ */
+typedef struct nros_cpp_incompatible_type_status_t {
+  uint32_t total_count;
+  uint32_t total_count_change;
+} nros_cpp_incompatible_type_status_t;
+
+/**
+ * Incompatible-type callback.
+ */
+typedef void (*nros_cpp_incompatible_type_cb_t)(void *storage,
+                                                struct nros_cpp_incompatible_type_status_t status,
+                                                void *user_context);
+
+/**
  * Subscription creation options (phase-402).
  *
  * The three register functions differ in exactly one thing — the callback
@@ -3212,6 +3246,29 @@ nros_cpp_ret_t nros_cpp_publisher_set_offered_deadline_missed(void *_storage,
                                                               void *_user_context);
 
 /**
+ * Register a matched callback — rclcpp's
+ * `PublisherEventCallbacks::matched_callback`, issue 1972. Observed on the
+ * publisher's poll points (publish, `assert_liveliness`).
+ *
+ * # Safety
+ * `storage` must be a live publisher storage; `user_context` must outlive it.
+ */
+nros_cpp_ret_t nros_cpp_publisher_set_matched(void *storage,
+                                              nros_cpp_matched_cb_t cb,
+                                              void *user_context);
+
+/**
+ * Register an incompatible-type callback — rclcpp's
+ * `PublisherEventCallbacks::incompatible_type_callback`, issue 1972.
+ *
+ * # Safety
+ * See [`nros_cpp_publisher_set_matched`].
+ */
+nros_cpp_ret_t nros_cpp_publisher_set_incompatible_type(void *storage,
+                                                        nros_cpp_incompatible_type_cb_t cb,
+                                                        void *user_context);
+
+/**
  * Phase 108.B.7 — manually assert this publisher's liveliness.
  *
  * Required for entities created with QoS `liveliness_kind =
@@ -3776,6 +3833,30 @@ nros_cpp_ret_t nros_cpp_subscription_set_requested_deadline_missed(void *_storag
 nros_cpp_ret_t nros_cpp_subscription_set_message_lost(void *_storage,
                                                       nros_cpp_subscriber_count_cb_t _cb,
                                                       void *_user_context);
+
+/**
+ * Register a matched callback on a poll-style subscription — rclcpp's
+ * `SubscriptionEventCallbacks::matched_callback`, issue 1972. Observed as the
+ * subscription is polled (`has_data` / take).
+ *
+ * # Safety
+ * `storage` must be a live poll-subscription storage; `user_context` must
+ * outlive it.
+ */
+nros_cpp_ret_t nros_cpp_subscription_set_matched(void *storage,
+                                                 nros_cpp_matched_cb_t cb,
+                                                 void *user_context);
+
+/**
+ * Register an incompatible-type callback on a poll-style subscription —
+ * rclcpp's `SubscriptionEventCallbacks::incompatible_type_callback`.
+ *
+ * # Safety
+ * See [`nros_cpp_subscription_set_matched`].
+ */
+nros_cpp_ret_t nros_cpp_subscription_set_incompatible_type(void *storage,
+                                                           nros_cpp_incompatible_type_cb_t cb,
+                                                           void *user_context);
 
 /**
  * The QoS profile this subscription is ACTUALLY running — issue 1437.

@@ -10,21 +10,31 @@
 use nros_rmw::EventKind;
 
 /// Publisher-side kinds: `OfferedDeadlineMissed` (clock-based check on
-/// `publish_raw`) and `LivelinessLost` (the manual-liveliness watchdog).
+/// `publish_raw`), `LivelinessLost` (the manual-liveliness watchdog), and —
+/// issue 1972 — `PublicationMatched` / `PublisherIncompatibleType`, derived
+/// from the graph cache (`shim::matched`).
 pub(crate) const fn publisher_event_supported(kind: EventKind) -> bool {
     matches!(
         kind,
-        EventKind::OfferedDeadlineMissed | EventKind::LivelinessLost
+        EventKind::OfferedDeadlineMissed
+            | EventKind::LivelinessLost
+            | EventKind::PublicationMatched
+            | EventKind::PublisherIncompatibleType
     )
 }
 
 /// Subscription-side kinds: `MessageLost` (attachment sequence gap),
-/// `RequestedDeadlineMissed` (clock-based poll), and — off bare metal, where
-/// the session-side liveliness subscriber exists — `LivelinessChanged`.
+/// `RequestedDeadlineMissed` (clock-based poll), issue 1972's
+/// `SubscriptionMatched` / `SubscriptionIncompatibleType` (graph cache), and —
+/// off bare metal, where the session-side liveliness subscriber exists —
+/// `LivelinessChanged`.
 pub(crate) const fn subscription_event_supported(kind: EventKind) -> bool {
     matches!(
         kind,
-        EventKind::MessageLost | EventKind::RequestedDeadlineMissed
+        EventKind::MessageLost
+            | EventKind::RequestedDeadlineMissed
+            | EventKind::SubscriptionMatched
+            | EventKind::SubscriptionIncompatibleType
     ) || (matches!(kind, EventKind::LivelinessChanged)
         && cfg!(not(feature = "platform-bare-metal")))
 }
@@ -46,6 +56,10 @@ mod tests {
             EventKind::MessageLost,
             EventKind::LivelinessLost,
             EventKind::OfferedDeadlineMissed,
+            EventKind::PublicationMatched,
+            EventKind::SubscriptionMatched,
+            EventKind::PublisherIncompatibleType,
+            EventKind::SubscriptionIncompatibleType,
         ] {
             assert_eq!(
                 event_type_is_supported(kind),
@@ -54,5 +68,13 @@ mod tests {
         }
         assert!(event_type_is_supported(EventKind::OfferedDeadlineMissed));
         assert!(event_type_is_supported(EventKind::MessageLost));
+        // Issue 1972 — each matched kind on its own side only.
+        assert!(publisher_event_supported(EventKind::PublicationMatched));
+        assert!(!subscription_event_supported(EventKind::PublicationMatched));
+        assert!(subscription_event_supported(EventKind::SubscriptionMatched));
+        assert!(!publisher_event_supported(EventKind::SubscriptionMatched));
+        assert!(event_type_is_supported(
+            EventKind::SubscriptionIncompatibleType
+        ));
     }
 }

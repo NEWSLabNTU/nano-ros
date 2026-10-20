@@ -449,14 +449,22 @@ int main() {
     // Issue 1978 — `event_type_is_supported` must agree with what the event
     // slots actually serve: every kind it claims, asked of a REAL entity on
     // its side, is answered (taken or not) rather than refused.
-    for (int k = 0; k <= 4; ++k) {
+    // Issue 1972 widened the known kinds to 0..8; the matched pair and the
+    // incompatible-type pair must be claimed AND served.
+    for (int k = 0; k <= 8; ++k) {
         const rmw_event_type_t kind = static_cast<rmw_event_type_t>(k);
+        if (k >= 5) {
+            expect(g_vt->event_type_is_supported(kind),
+                   "Cyclone claims the issue-1972 matched / incompatible-type kinds");
+        }
         if (!g_vt->event_type_is_supported(kind)) continue;
         rmw_event_payload_t payload{};
         bool taken = false;
         const bool sub_side = kind == NROS_RMW_EVENT_LIVELINESS_CHANGED ||
                               kind == NROS_RMW_EVENT_REQUESTED_DEADLINE_MISSED ||
-                              kind == NROS_RMW_EVENT_MESSAGE_LOST;
+                              kind == NROS_RMW_EVENT_MESSAGE_LOST ||
+                              kind == NROS_RMW_EVENT_SUBSCRIPTION_MATCHED ||
+                              kind == NROS_RMW_EVENT_SUBSCRIPTION_INCOMPATIBLE_TYPE;
         const rmw_ret_t erc = sub_side
                                   ? g_vt->subscription_take_event(&sub, kind, &payload, &taken)
                                   : g_vt->publisher_take_event(&pub, kind, &payload, &taken);

@@ -66,6 +66,10 @@ struct PubState {
     /// Issue 1269 — the graph this writer is listed in, so destroying the
     /// publisher takes its GID back out of `ros_discovery_info`.
     GraphState* graph{nullptr};
+    /// Issue 1972 — what `PUBLICATION_MATCHED` / `PUBLISHER_INCOMPATIBLE_TYPE`
+    /// last reported (see `EventSeen`).
+    EventSeen matched_seen{};
+    EventSeen incompatible_seen{};
 };
 
 inline PubState* as_state(const rmw_publisher_t* p) {
@@ -262,11 +266,38 @@ rmw_ret_t publisher_take_event(const rmw_publisher_t* publisher, rmw_event_type_
             *taken = true;
             return NROS_RMW_RET_OK;
         }
+        // Issue 1972 — matched subscriptions, from Cyclone's own match status
+        // (QoS-compatible readers only, as upstream counts them).
+        case NROS_RMW_EVENT_PUBLICATION_MATCHED: {
+            dds_publication_matched_status_t st{};
+            if (dds_get_publication_matched_status(state->writer, &st) != DDS_RETCODE_OK) {
+                return NROS_RMW_RET_ERROR;
+            }
+            if (matched_report(&state->matched_seen, st.total_count, st.current_count,
+                               &out->matched)) {
+                *taken = true;
+            }
+            return NROS_RMW_RET_OK;
+        }
+        // Issue 1972 — readers on our topic name with another type, from the
+        // builtin DCPSSubscription topic (see `graph_count_type_mismatch`).
+        case NROS_RMW_EVENT_PUBLISHER_INCOMPATIBLE_TYPE: {
+            const int n = count_type_mismatch(state->graph, state->writer, state->topic,
+                                              state->desc, /*writers=*/false);
+            if (n < 0) return NROS_RMW_RET_ERROR;
+            if (incompatible_type_report(&state->incompatible_seen, static_cast<uint32_t>(n),
+                                         &out->incompatible_type)) {
+                *taken = true;
+            }
+            return NROS_RMW_RET_OK;
+        }
         // Subscription-side kinds on a publisher: a caller error, reported as
         // one rather than as an eternally empty poll.
         case NROS_RMW_EVENT_LIVELINESS_CHANGED:
         case NROS_RMW_EVENT_REQUESTED_DEADLINE_MISSED:
         case NROS_RMW_EVENT_MESSAGE_LOST:
+        case NROS_RMW_EVENT_SUBSCRIPTION_MATCHED:
+        case NROS_RMW_EVENT_SUBSCRIPTION_INCOMPATIBLE_TYPE:
         default:
             return NROS_RMW_RET_INVALID_ARGUMENT;
     }

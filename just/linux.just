@@ -992,6 +992,24 @@ test-reply-slot-decline verbose="":
     fi
     just _nextest-tolerant "${args[@]}"
 
+# The matched / incompatible-type events against a LIVE peer — issue 1972. The
+# zenoh shim derives them from its graph cache, so the only honest input is a
+# second process whose liveliness token really arrives and really leaves; the
+# test re-executes itself as that peer (one session per process). Asserts a
+# subscription's current_count going 0 -> 1 -> 0 and a different-type publisher
+# raising incompatible-type instead.
+# Runs `matched_events_live`; needs a zenoh router and nothing else.
+[group("debug")]
+test-matched-events verbose="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    args=(-p nros-rmw-zenoh --features platform-posix --test matched_events_live
+          --no-fail-fast)
+    if [ -z "{{verbose}}" ]; then
+        args+=(--failure-output "${NROS_TEST_FAILURE_OUTPUT:-final}")
+    fi
+    just _nextest-tolerant "${args[@]}"
+
 # A QoS STATUS EVENT fires against a live peer and reaches an application
 # callback — phase-433 W6. The four event slots are `produced` and had never met
 # one, and they are the family least able to be tested in isolation: a QoS

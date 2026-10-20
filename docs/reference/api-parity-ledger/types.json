@@ -180,5 +180,13 @@
   "c:cpp_node_t": {
     "verdict": "extension",
     "why": "phase-492 (2026-10-13) -- not user API. `nros_cpp_node_bind_c` / `nros_cpp_node_t` are the C++ binding's seam that `RCLC_C_COMPONENT` expands to: the generated entry hosts a C component on the C++ binding's context and binds the component's `rcl_node_t` / `rclc_executor_t` to it (W4). They reach the C parity surface only because `<rclc/rclc.h>` now includes `<rclc/component.h>`, so `<rclc/rclc.h>` carries `RCLC_C_COMPONENT` and C user code needs no `<nros/*.h>` include. A user never writes either name; they keep `nros_cpp_` as seam names (c-api-rename-map class `seam`)."
+  },
+  "c:matched_status_t": {
+    "verdict": "divergence",
+    "why": "issue 1972 — the matched-event payload, upstream `rmw_matched_status_t` (`rmw`, outside the rclc+rcl surface, hence ours-only). Same four fields in upstream's order; `uint32_t` where upstream has `size_t`, because it crosses the C ABI BY VALUE into a callback (as `c:count_status_t`)."
+  },
+  "c:incompatible_type_status_t": {
+    "verdict": "divergence",
+    "why": "issue 1972 — the incompatible-type payload, upstream `rmw_incompatible_type_status_t`; `uint32_t` where upstream has `int32_t`. See `c:matched_status_t`."
   }
 }

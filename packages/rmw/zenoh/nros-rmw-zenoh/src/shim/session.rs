@@ -373,6 +373,35 @@ pub(super) fn graph_cache_for_each(
     Ok(dropped)
 }
 
+/// Declare the session's standing graph-cache subscriber on
+/// `@ros2_lv/<domain>/**` — THE one spelling of that key and that call.
+///
+/// Returns the C shim's code: `0` started (or already running — the C side is
+/// idempotent), `ZPICO_ERR_CONFIG` when graph discovery is compiled out, any
+/// other negative when the declaration failed. Free rather than a session
+/// method because an ENTITY that needs the cache (issue 1972's matched
+/// events) holds only the raw session handle, as `service_is_ready` does.
+pub(super) fn start_graph_cache(
+    handle: *mut zpico_sys::zpico_session_t,
+    domain_id: u32,
+) -> Result<i32, TransportError> {
+    let key = Ros2Liveliness::graph_keyexpr_wildcard::<256>(domain_id);
+    #[cfg(feature = "std")]
+    if std::env::var_os("NROS_GRAPH_DUMP").is_some() {
+        log::warn!("GRAPH_CACHE_START {}", key.as_str());
+    }
+    let mut buf = [0u8; 257];
+    let bytes = key.as_bytes();
+    if bytes.len() >= buf.len() {
+        return Err(TransportError::InvalidArgument);
+    }
+    buf[..bytes.len()].copy_from_slice(bytes);
+    buf[bytes.len()] = 0;
+    Ok(unsafe {
+        zpico_sys::zpico_graph_cache_start(handle, buf.as_ptr() as *const core::ffi::c_char)
+    })
+}
+
 /// Which standing query a drain is reading — phase-381 W3.
 #[derive(Copy, Clone, PartialEq, Eq)]
 enum GraphQuery {
@@ -973,24 +1002,7 @@ impl ZenohSession {
         if self.graph_discovery_off {
             return Err(TransportError::Unsupported);
         }
-        let key = Ros2Liveliness::graph_keyexpr_wildcard::<256>(self.domain_id);
-        #[cfg(feature = "std")]
-        if std::env::var_os("NROS_GRAPH_DUMP").is_some() {
-            log::warn!("GRAPH_CACHE_START {}", key.as_str());
-        }
-        let mut buf = [0u8; 257];
-        let bytes = key.as_bytes();
-        if bytes.len() >= buf.len() {
-            return Err(TransportError::InvalidArgument);
-        }
-        buf[..bytes.len()].copy_from_slice(bytes);
-        buf[bytes.len()] = 0;
-        let rc = unsafe {
-            zpico_sys::zpico_graph_cache_start(
-                self.context.handle(),
-                buf.as_ptr() as *const core::ffi::c_char,
-            )
-        };
+        let rc = start_graph_cache(self.context.handle(), self.domain_id)?;
         if rc == crate::zpico::ZPICO_ERR_CONFIG {
             // D9 (graph discovery off): this image declares its own tokens and
             // asks nothing about anyone else's. Said ONCE, at INFO, because it

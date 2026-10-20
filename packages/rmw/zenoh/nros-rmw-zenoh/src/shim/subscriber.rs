@@ -1095,6 +1095,9 @@ pub struct ZenohSubscriber {
     /// dropped before Session::close).
     #[cfg(not(feature = "platform-bare-metal"))]
     context: *const Context,
+    /// Issue 1972 — `SubscriptionMatched` / `SubscriptionIncompatibleType`,
+    /// derived from the session's graph cache. Inert until registered.
+    matched: super::matched::MatchWatch,
     /// Phantom to indicate we don't own the buffer
     _phantom: PhantomData<()>,
 }
@@ -1303,6 +1306,7 @@ impl ZenohSubscriber {
             liveliness_poll: core::cell::Cell::new(LivelinessPoll::IDLE),
             #[cfg(not(feature = "platform-bare-metal"))]
             context: context as *const Context,
+            matched: super::matched::MatchWatch::new(context.handle(), topic, false),
             _phantom: PhantomData,
             granted_qos: *qos,
         })
@@ -1743,6 +1747,8 @@ impl Subscription for ZenohSubscriber {
         // start, so calling on every has_data is cheap (one clock
         // read + cell-load + cell-store when idle).
         self.check_liveliness_and_fire();
+        // Issue 1972 — matched / incompatible-type, rate-limited graph walk.
+        self.matched.poll(now_ms());
         self.buf.get().has_data()
     }
 
@@ -1801,6 +1807,10 @@ impl Subscription for ZenohSubscriber {
                     self.liveliness_cb.set(Some(EventReg { cb, user_ctx }));
                     Ok(())
                 }
+            }
+            nros_rmw::EventKind::SubscriptionMatched
+            | nros_rmw::EventKind::SubscriptionIncompatibleType => {
+                self.matched.register(kind, cb, user_ctx)
             }
             _ => Err(TransportError::Unsupported),
         }

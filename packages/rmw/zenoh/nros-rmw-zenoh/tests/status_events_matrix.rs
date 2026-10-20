@@ -121,6 +121,12 @@ fn zenoh_event_matrix() {
     assert!(sub.supports_event(EventKind::MessageLost));
     assert!(!sub.supports_event(EventKind::LivelinessLost));
     assert!(!sub.supports_event(EventKind::OfferedDeadlineMissed));
+    // Issue 1972 — matched / incompatible-type from the graph cache, on the
+    // subscription's side only.
+    assert!(sub.supports_event(EventKind::SubscriptionMatched));
+    assert!(sub.supports_event(EventKind::SubscriptionIncompatibleType));
+    assert!(!sub.supports_event(EventKind::PublicationMatched));
+    assert!(!sub.supports_event(EventKind::PublisherIncompatibleType));
 
     let cb: EventCallback = dummy_cb;
     let res = unsafe {
@@ -150,6 +156,18 @@ fn zenoh_event_matrix() {
     assert!(!pubr.supports_event(EventKind::LivelinessChanged));
     assert!(!pubr.supports_event(EventKind::RequestedDeadlineMissed));
     assert!(!pubr.supports_event(EventKind::MessageLost));
+    // Issue 1972 — the publisher's side of the pair.
+    assert!(pubr.supports_event(EventKind::PublicationMatched));
+    assert!(pubr.supports_event(EventKind::PublisherIncompatibleType));
+    assert!(!pubr.supports_event(EventKind::SubscriptionMatched));
+    let res = unsafe {
+        pubr.register_event_callback(EventKind::PublicationMatched, 0, cb, core::ptr::null_mut())
+    };
+    assert!(res.is_ok(), "register PublicationMatched: {res:?}");
+    let res = unsafe {
+        pubr.register_event_callback(EventKind::SubscriptionMatched, 0, cb, core::ptr::null_mut())
+    };
+    assert!(matches!(res, Err(TransportError::Unsupported)));
 
     let res = unsafe {
         pubr.register_event_callback(

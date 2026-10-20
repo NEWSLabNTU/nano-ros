@@ -24,6 +24,7 @@
 #include "rclcpp/detail/serialization_format.hpp"
 
 #include "rclcpp/detail/nros_cpp_ffi.h"
+#include "rclcpp/event.hpp" // issue 1972 — MatchedInfo / IncompatibleTypeInfo
 
 // issue 1437 — `get_actual_qos()` returns a `rclcpp::QoS` BY VALUE from an
 // inline body, so the complete type must be here, not only by the time
@@ -469,6 +470,29 @@ template <typename M> class Publisher {
         if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
         return Result(nros_cpp_publisher_set_offered_deadline_missed(storage_, deadline_ms, cb,
                                                                      user_context));
+    }
+
+    /// Issue 1972 — rclcpp's `PublisherEventCallbacks::matched_callback`:
+    /// `cb(storage, MatchedInfo, user_context)` when a subscription starts or
+    /// stops matching this publisher.
+    ///
+    /// Observed on this publisher's poll points — `publish` and
+    /// `assert_liveliness()` — on both backends that carry it (Cyclone DDS,
+    /// zenoh); a publisher waiting for a listener calls `assert_liveliness()`
+    /// in its wait loop. `ErrorCode::Unsupported` on XRCE-DDS and uORB.
+    /// Registering again replaces the earlier callback; the registration
+    /// follows the publisher across a move.
+    Result on_matched(PublisherMatchedCallbackType cb, void* user_context = nullptr) {
+        if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
+        return Result(nros_cpp_publisher_set_matched(storage_, cb, user_context));
+    }
+
+    /// Issue 1972 — rclcpp's
+    /// `PublisherEventCallbacks::incompatible_type_callback`: a subscription
+    /// on this topic NAME with a different type was seen.
+    Result on_incompatible_type(IncompatibleTypeCallbackType cb, void* user_context = nullptr) {
+        if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
+        return Result(nros_cpp_publisher_set_incompatible_type(storage_, cb, user_context));
     }
 
     /// Phase 108.B.7 — manually assert liveliness. Required for

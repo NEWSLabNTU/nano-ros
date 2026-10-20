@@ -324,6 +324,26 @@ pub struct rmw_count_status_t {
     pub total_count: u32,
     pub total_count_change: u32,
 }
+#[doc = " Matched payload — `NROS_RMW_EVENT_PUBLICATION_MATCHED` /\n  `NROS_RMW_EVENT_SUBSCRIPTION_MATCHED`. Upstream `rmw_matched_status_t`\n  (Iron+), same four fields in the same order.\n\n  Width is the one deviation: upstream's three counts are `size_t`; ours\n  are `uint32_t`, like every other count in this header, so the union keeps\n  one layout on 32- and 64-bit targets. `current_count_change` is `int32_t`\n  on both sides."]
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct rmw_matched_status_t {
+    #[doc = " Cumulative matches over the entity's lifetime."]
+    pub total_count: u32,
+    #[doc = " Change in `total_count` since the last report."]
+    pub total_count_change: u32,
+    #[doc = " Endpoints matched RIGHT NOW."]
+    pub current_count: u32,
+    #[doc = " Change in `current_count` since the last report; negative when an\n  endpoint left."]
+    pub current_count_change: i32,
+}
+#[doc = " Incompatible-type payload — `NROS_RMW_EVENT_PUBLISHER_INCOMPATIBLE_TYPE`\n  / `NROS_RMW_EVENT_SUBSCRIPTION_INCOMPATIBLE_TYPE`. Upstream\n  `rmw_incompatible_type_status_t` (Iron+); upstream's fields are `int32_t`,\n  ours `uint32_t` like `rmw_count_status_t`, since both only grow."]
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct rmw_incompatible_type_status_t {
+    pub total_count: u32,
+    pub total_count_change: u32,
+}
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct rmw_loan_token_t {
@@ -984,12 +1004,14 @@ pub const NROS_RMW_QOS_POLICY_AVOID_ROS_NAMESPACE_CONVENTIONS: i32 = 2048;
 pub const NROS_RMW_QOS_POLICY_NONE: i32 = 0;
 pub const NROS_RMW_QOS_POLICY_CORE: i32 = 27;
 pub const NROS_RMW_VISITOR_DEFINED: i32 = 1;
-#[doc = " Borrow-shaped union the backend supplies to the registered\n  callback. The `kind` argument selects which member is valid."]
+#[doc = " Borrow-shaped union the backend supplies to the registered\n  callback. The `kind` argument selects which member is valid.\n\n  Members are APPENDED (issue 1972 grew it from 8 to 16 bytes). A caller\n  owns the union it hands `*_take_event`, so a backend built against the\n  older, smaller header writes within the larger one."]
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub union rmw_event_payload_t {
     pub liveliness_changed: rmw_liveliness_changed_status_t,
     pub count: rmw_count_status_t,
+    pub matched: rmw_matched_status_t,
+    pub incompatible_type: rmw_incompatible_type_status_t,
 }
 pub mod rmw_feature_t {
     #[doc = " Upstream `rmw_feature_t` — an optional piece of CONTENT a backend may or may\n  not populate. Upstream defines exactly these two, both about whether\n  message-info sequence numbers are real. Values mirror upstream's."]
@@ -1064,7 +1086,7 @@ pub mod rmw_internet_protocol_t {
     pub const RMW_INTERNET_PROTOCOL_COUNT: Type = 3;
 }
 pub mod rmw_event_type_t {
-    #[doc = " Tier-1 event kinds. Stable integer values; future kinds (Tier-2)\n  extend the enum at end."]
+    #[doc = " Status event kinds. Stable integer values; new kinds extend the enum at\n  the END, never in the middle."]
     pub type Type = core::ffi::c_uint;
     #[doc = " Subscriber: a tracked publisher's liveliness state changed."]
     pub const NROS_RMW_EVENT_LIVELINESS_CHANGED: Type = 0;
@@ -1076,6 +1098,14 @@ pub mod rmw_event_type_t {
     pub const NROS_RMW_EVENT_LIVELINESS_LOST: Type = 3;
     #[doc = " Publisher: this publisher promised X Hz, fell behind."]
     pub const NROS_RMW_EVENT_OFFERED_DEADLINE_MISSED: Type = 4;
+    #[doc = " Publisher: the set of subscriptions matched to it changed (one\n  appeared or left). Payload: `matched`. Upstream\n  RMW_EVENT_PUBLICATION_MATCHED (Iron+), issue 1972."]
+    pub const NROS_RMW_EVENT_PUBLICATION_MATCHED: Type = 5;
+    #[doc = " Subscription: the set of publishers matched to it changed. Payload:\n  `matched`. Upstream RMW_EVENT_SUBSCRIPTION_MATCHED."]
+    pub const NROS_RMW_EVENT_SUBSCRIPTION_MATCHED: Type = 6;
+    #[doc = " Publisher: an endpoint on the same topic was seen with a DIFFERENT\n  type. Payload: `incompatible_type`. Upstream\n  RMW_EVENT_PUBLISHER_INCOMPATIBLE_TYPE."]
+    pub const NROS_RMW_EVENT_PUBLISHER_INCOMPATIBLE_TYPE: Type = 7;
+    #[doc = " Subscription: an endpoint on the same topic was seen with a\n  DIFFERENT type. Payload: `incompatible_type`. Upstream\n  RMW_EVENT_SUBSCRIPTION_INCOMPATIBLE_TYPE."]
+    pub const NROS_RMW_EVENT_SUBSCRIPTION_INCOMPATIBLE_TYPE: Type = 8;
 }
 pub mod nros_rmw_session_mode_t {
     #[doc = " Session mode for `create_session`'s @p mode parameter (issue 0331).\n\n These values were previously an undocumented bare `uint8_t` with no legal-\n value list — the only slot in the vtable without one — encoded inline as\n `0u8` / `1u8` at the Rust boundary.\n\n Divergence from `rmw.h`, recorded deliberately: Humble's\n `rmw_init_options_t` carries `instance_id`, `implementation_identifier`,\n `domain_id`, `security_options`, `localhost_only`, `enclave`, `allocator`\n and `impl` — and has NO session-mode concept. (This list said \"domain_id,\n enclave, security_options and discovery_options\" until 2026-08-24, which\n omitted five of the eight and named one, `discovery_options`, that is an\n IRON field and does not exist in the distro our recorded contract is taken\n from. What we do and do not carry from those eight is issue 0785.) This parameter is closest to zenoh's `whatami`, and a\n backend that has no such notion (cyclonedds, XRCE) is expected to IGNORE it\n rather than fail. Folding it into backend-private config behind the locator\n — so the agnostic vtable stops carrying a backend-shaped field — is the\n structural fix, and is not done here; see issue 0808. (This said \"see issue\n 0331\" until 2026-08-26. That issue documented this enum and stated in its own\n resolution that the structural half was NOT done, deferring it to issue 0330\n part 3 — which resolved a different concern entirely. Both are closed, so the\n fold was tracked by nothing; 0808 is its home.)"]

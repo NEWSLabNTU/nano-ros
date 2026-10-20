@@ -1123,6 +1123,8 @@ pub unsafe extern "C" fn rcl_publisher_fini(
         core::ptr::drop_in_place(
             publisher._opaque.as_mut_ptr() as *mut nros::internals::RmwPublisher
         );
+        // Issue 1972 — the backend registration died with the handle.
+        crate::event::status_event_slots::release_owner(publisher._opaque.as_ptr() as usize);
     }
 
     publisher._opaque = [0u64; PUBLISHER_OPAQUE_U64S];

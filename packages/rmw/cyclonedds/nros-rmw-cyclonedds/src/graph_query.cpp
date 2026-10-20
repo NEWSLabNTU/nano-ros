@@ -615,6 +615,65 @@ rmw_ret_t graph_get_subscriptions_info_by_topic(const rmw_session_t* session,
     return endpoint_info_by_topic(session, topic_name, no_mangle, /*writers=*/false, visitor);
 }
 
+int graph_count_type_mismatch(GraphState* g, dds_entity_t participant, const char* dds_topic_name,
+                              const char* dds_type_name, bool writers) {
+    if (g == nullptr || participant <= 0 || dds_topic_name == nullptr ||
+        dds_type_name == nullptr) {
+        return -1;
+    }
+    EndpointBatch batch;
+    if (!batch.read(g, participant, writers)) {
+        return -1;
+    }
+    int n = 0;
+    for (int i = 0; i < batch.count(); ++i) {
+        const dds_builtintopic_endpoint_t* ep = batch.at(i);
+        if (ep == nullptr || ep->topic_name == nullptr || ep->type_name == nullptr) continue;
+        if (std::strcmp(ep->topic_name, dds_topic_name) != 0) continue;
+        if (std::strcmp(ep->type_name, dds_type_name) != 0) ++n;
+    }
+    return n;
+}
+
+bool matched_report(EventSeen* seen, uint32_t total, uint32_t current, rmw_matched_status_t* out) {
+    if (seen == nullptr || out == nullptr) return false;
+    if (total == seen->total && current == seen->current) return false;
+    out->total_count = total;
+    out->total_count_change = total > seen->total ? total - seen->total : 0u;
+    out->current_count = current;
+    const int64_t d = static_cast<int64_t>(current) - static_cast<int64_t>(seen->current);
+    out->current_count_change = d > INT32_MAX   ? INT32_MAX
+                                : d < INT32_MIN ? INT32_MIN
+                                                : static_cast<int32_t>(d);
+    seen->total = total;
+    seen->current = current;
+    return true;
+}
+
+bool incompatible_type_report(EventSeen* seen, uint32_t current_now,
+                              rmw_incompatible_type_status_t* out) {
+    if (seen == nullptr || out == nullptr) return false;
+    const uint32_t grew = current_now > seen->current ? current_now - seen->current : 0u;
+    seen->current = current_now;
+    if (grew == 0) return false;
+    seen->total = seen->total > UINT32_MAX - grew ? UINT32_MAX : seen->total + grew;
+    out->total_count = seen->total;
+    out->total_count_change = grew;
+    return true;
+}
+
+int count_type_mismatch(GraphState* graph, dds_entity_t entity, dds_entity_t topic,
+                        const dds_topic_descriptor_t* desc, bool writers) {
+    if (graph == nullptr || entity <= 0 || topic <= 0 || desc == nullptr ||
+        desc->m_typename == nullptr) {
+        return -1;
+    }
+    char name[kNameCap];
+    if (dds_get_name(topic, name, sizeof(name)) < 0) return -1;
+    return graph_count_type_mismatch(graph, dds_get_participant(entity), name, desc->m_typename,
+                                     writers);
+}
+
 rmw_ret_t graph_count_publishers(const rmw_session_t* session, const char* topic_name,
                                  std::size_t* count) {
     return count_on_dds_topic(session, topic_name, "rt", "", /*writers=*/true, count);

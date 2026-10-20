@@ -53,7 +53,8 @@ pub mod safety;
 // Phase 108 — status-event surface.
 pub use event::{
     CountStatus, DeadlineMissedStatus, EventCallback, EventKind, EventPayload,
-    LivelinessChangedStatus, MessageLostStatus, payload_from_raw,
+    IncompatibleTypeCounter, IncompatibleTypeStatus, LivelinessChangedStatus, MatchedCounter,
+    MatchedStatus, MessageLostStatus, payload_from_raw,
 };
 
 // Phase 115.A — runtime-pluggable custom transport vtable.

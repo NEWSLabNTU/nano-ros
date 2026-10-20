@@ -1724,27 +1724,6 @@
     ],
     "why": "Jazzy's name for `QOSEventHandler`, widened to carry the matched events too; same capability and same divergence as `cpp:QOSEventHandler` (QoS events are named per kind, not routed through one executor waitable)."
   },
-  "cpp:IncompatibleTypeCallbackType": {
-    "verdict": "gap",
-    "editions": [
-      "jazzy"
-    ],
-    "why": "ADOPT, issue 1972: the callback for the incompatible-type event."
-  },
-  "cpp:IncompatibleTypeInfo": {
-    "verdict": "gap",
-    "editions": [
-      "jazzy"
-    ],
-    "why": "ADOPT, issue 1972: the incompatible-type event payload."
-  },
-  "cpp:MatchedInfo": {
-    "verdict": "gap",
-    "editions": [
-      "jazzy"
-    ],
-    "why": "ADOPT, issue 1972: the matched-event payload `{total_count, total_count_change, current_count, current_count_change}`."
-  },
   "cpp:Serialization": {
     "verdict": "divergence",
     "editions": [

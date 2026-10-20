@@ -28,6 +28,52 @@ type MockTake = Result<([u8; 256], usize), TransportError>;
 /// the accessor.
 const MOCK_NAME_MAX: usize = 64;
 
+/// Issue 1972 — the status-event registrations a mock entity accepted, so a
+/// test can fire one through the same `(kind, payload, ctx)` channel a backend
+/// uses and observe what the node API hands the application.
+#[derive(Default)]
+pub struct MockEventRegs(
+    RefCell<
+        heapless::Vec<
+            (
+                nros_rmw::EventKind,
+                nros_rmw::EventCallback,
+                *mut core::ffi::c_void,
+            ),
+            5,
+        >,
+    >,
+);
+
+impl MockEventRegs {
+    fn register(
+        &self,
+        kind: nros_rmw::EventKind,
+        cb: nros_rmw::EventCallback,
+        ctx: *mut core::ffi::c_void,
+    ) -> Result<(), TransportError> {
+        let mut v = self.0.borrow_mut();
+        v.retain(|(k, _, _)| *k != kind);
+        v.push((kind, cb, ctx))
+            .map_err(|_| TransportError::Unsupported)
+    }
+
+    /// Fire `kind` with `payload` (which must be the payload type `kind`
+    /// selects). Returns whether a callback was registered for it.
+    pub fn fire<T>(&self, kind: nros_rmw::EventKind, payload: &T) -> bool {
+        let reg = self.0.borrow().iter().find(|(k, _, _)| *k == kind).copied();
+        match reg {
+            Some((k, cb, ctx)) => {
+                // SAFETY: the registrant paired `cb` with `ctx`; `payload` is
+                // the caller's promise that it is `kind`'s payload type.
+                unsafe { cb(k, payload as *const T as *const core::ffi::c_void, ctx) };
+                true
+            }
+            None => false,
+        }
+    }
+}
+
 /// The name an entity was created on, retained the way every real backend
 /// handle retains it (`CffiPublisher::topic_name` writes the caller's string
 /// into the handle at create and never re-resolves it).
@@ -85,6 +131,8 @@ pub struct MockSubscriber {
     /// backend without the slot reports; a test sets `Some(n)` to stand for
     /// one that fills it (Cyclone).
     pub matched: Cell<Option<usize>>,
+    /// Issue 1972 — registered status-event callbacks.
+    pub events: MockEventRegs,
 }
 
 impl MockSubscriber {
@@ -100,6 +148,7 @@ impl MockSubscriber {
             topic_name: MockName::new(topic_name),
             in_place: Cell::new(false),
             matched: Cell::new(None),
+            events: MockEventRegs::default(),
         }
     }
 
@@ -133,6 +182,23 @@ impl Subscription for MockSubscriber {
 
     fn count_matched_publishers(&self) -> Result<usize, TransportError> {
         self.matched.get().ok_or(TransportError::Unsupported)
+    }
+
+    fn supports_event(&self, kind: nros_rmw::EventKind) -> bool {
+        !kind.is_publisher_side()
+    }
+
+    unsafe fn register_event_callback(
+        &mut self,
+        kind: nros_rmw::EventKind,
+        _deadline_ms: u32,
+        cb: nros_rmw::EventCallback,
+        user_ctx: *mut core::ffi::c_void,
+    ) -> Result<(), TransportError> {
+        if kind.is_publisher_side() {
+            return Err(TransportError::Unsupported);
+        }
+        self.events.register(kind, cb, user_ctx)
     }
 
     fn has_data(&self) -> bool {
@@ -299,6 +365,8 @@ pub struct MockPublisher {
     /// Issue 1643 — what `count_matched_subscriptions` answers. See
     /// [`MockSubscriber::matched`].
     pub matched: Cell<Option<usize>>,
+    /// Issue 1972 — registered status-event callbacks.
+    pub events: MockEventRegs,
 }
 
 impl MockPublisher {
@@ -314,6 +382,7 @@ impl MockPublisher {
             count: Cell::new(0),
             topic_name: MockName::new(topic_name),
             matched: Cell::new(None),
+            events: MockEventRegs::default(),
         }
     }
 
@@ -373,6 +442,23 @@ impl Publisher for MockPublisher {
 
     fn count_matched_subscriptions(&self) -> Result<usize, TransportError> {
         self.matched.get().ok_or(TransportError::Unsupported)
+    }
+
+    fn supports_event(&self, kind: nros_rmw::EventKind) -> bool {
+        kind.is_publisher_side()
+    }
+
+    unsafe fn register_event_callback(
+        &mut self,
+        kind: nros_rmw::EventKind,
+        _deadline_ms: u32,
+        cb: nros_rmw::EventCallback,
+        user_ctx: *mut core::ffi::c_void,
+    ) -> Result<(), TransportError> {
+        if !kind.is_publisher_side() {
+            return Err(TransportError::Unsupported);
+        }
+        self.events.register(kind, cb, user_ctx)
     }
 }
 

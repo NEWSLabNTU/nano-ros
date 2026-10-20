@@ -609,9 +609,9 @@ match, message-lost, type-incompatibility — all dispatched through
 the waitset.
 
 **nano-ros.** Callback-on-entity for a Tier-1 subset (liveliness
-changes, deadline misses, message lost). Skips the waitset. Skips
-Tier-2 (`MATCHED`) and Tier-3 (`QOS_INCOMPATIBLE`,
-`INCOMPATIBLE_TYPE`) — see "What's skipped" below.
+changes, deadline misses, message lost) plus Iron's matched and
+incompatible-type kinds (issue 1972). Skips the waitset. Skips
+`QOS_INCOMPATIBLE` — see "What's skipped" below.
 
 ```rust
 sub.on_liveliness_changed(|status| {
@@ -637,17 +637,27 @@ C side mirrors with `nros_subscription_set_*_callback` functions.
 | Requested deadline missed | sub | `on_requested_deadline_missed(deadline, DeadlineMissedStatus)` |
 | Offered deadline missed | pub | `on_offered_deadline_missed(deadline, DeadlineMissedStatus)` |
 | Message lost | sub | `on_message_lost(MessageLostStatus)` |
+| Publication / subscription matched (Iron+) | pub / sub | `on_matched(MatchedStatus)` |
+| Publisher / subscription incompatible type (Iron+) | pub / sub | `on_incompatible_type(IncompatibleTypeStatus)` |
+
+The matched pair and the incompatible-type pair are values 5..8 of
+`rmw_event_type_t`, APPENDED: upstream inserted them mid-enum, and ours was
+never value-compatible with upstream's, so appending keeps every existing
+value. The payloads are upstream's `rmw_matched_status_t` (four counts, in
+upstream's order) and `rmw_incompatible_type_status_t`, at fixed `uint32_t`
+widths.
 
 ### What's skipped
 
-- **`MATCHED`** — embedded apps usually have static topology;
-  rarely load-bearing. Add the kind if a discovery-tracking app
-  shows up; additive.
-- **`QOS_INCOMPATIBLE`** / **`INCOMPATIBLE_TYPE`** — these surface
-  at create time, not as runtime events. The existing
-  `rmw_ret_t` codes (`NROS_RMW_RET_INCOMPATIBLE_QOS`) carry
-  the diagnostic synchronously from `create_publisher` /
-  `create_subscription`. No event needed.
+- **`QOS_INCOMPATIBLE`** — surfaces at create time, not as a runtime
+  event: `NROS_RMW_RET_INCOMPATIBLE_QOS` carries the diagnostic
+  synchronously from `create_publisher` / `create_subscription`.
+
+`MATCHED` was skipped here until issue 1972 ruled it ADOPT: "start
+publishing once somebody listens" is the event an embedded node most often
+wants, and without it the node polls the matched count. `INCOMPATIBLE_TYPE`
+came with it — the same graph machinery, and a peer with another type on
+the same name is a runtime condition no create-time code can report.
 
 ### Dispatch — callback-on-entity, not waitset-take
 
@@ -685,6 +695,20 @@ generate every event:
 | XRCE-DDS | ❌ XRCE protocol carries no session→client liveliness callback | ❌ No deadline tracking in the C backend (no `*_event_init` / `*_take_event` fill); a `DEADLINE` QoS is refused at create, since `uxrQoS_t` has no field for it | ❌ `topic_callback` carries no per-sample sequence |
 | zenoh-pico | ✅ Sub: per-publisher count via `zpico_liveliness_get_count` + wildcard keyexpr query; pub: shim-side keepalive timer fires `LivelinessLost` from `publish` when `MANUAL_BY_*` lease expires. | ✅ Clock-based check at sub + pub, rate-limited to ≤ 1 fire per deadline period | ✅ Sequence-gap detection from RMW attachment |
 | uORB | ❌ No wire-level liveliness | ❌ No rate concept | ❌ Not wired: the C++ backend fills no event slot (the retired Rust backend's publish-counter delta did not carry over) |
+
+Matched / incompatible type (issue 1972):
+
+| Backend | Matched | Incompatible type |
+|---------|---------|-------------------|
+| Cyclone DDS | ✅ Polled: `dds_get_{publication,subscription}_matched_status` — QoS-compatible endpoints only, as upstream counts them. The change fields are computed against what the event last reported, because other readers of the same status reset Cyclone's own change counters | ✅ Polled: endpoints on the same DDS topic name with another type name, read from the builtin `DCPSPublication` / `DCPSSubscription` topics. NOT `DDS_INCONSISTENT_TOPIC_STATUS` (what `rmw_cyclonedds_cpp` maps it to): the pinned 0.10.5 never raises it |
+| zenoh-pico | ✅ From the session's graph cache: liveliness tokens of the opposite kind with the same topic name and type, as `rmw_zenoh_cpp` derives it. Snapshot-based, so `total_count` counts increases seen between polls; QoS is not consulted | ✅ Same walk: same name, another type |
+| XRCE-DDS | ❌ No event slot | ❌ |
+| uORB | ❌ No event slot | ❌ |
+
+Both producers are POLLED from the entity's data path, so a publisher
+observes a new match on its next `publish` or `assert_liveliness` — the
+latter is the poll point for a publisher that waits for a listener before
+publishing.
 
 `assert_liveliness()` (manual): **cyclonedds** performs a real assertion
 (`dds_assert_liveliness`). **zenoh-pico, XRCE-DDS and uORB** have no

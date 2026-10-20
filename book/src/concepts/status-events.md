@@ -14,9 +14,11 @@ liveliness changes, deadline misses, and message loss.
 This page describes the event surface, the dispatch model, and the
 patterns that motivate having events at all on RTOS targets.
 
-## The Tier-1 events
+## The event kinds
 
-Five event kinds. Three on subscribers, two on publishers.
+Nine event kinds: the five Tier-1 kinds below, plus Iron's matched and
+incompatible-type pairs ([below](#matched-and-incompatible-type-iron)).
+Three Tier-1 kinds on subscribers, two on publishers.
 
 ### Subscriber events
 
@@ -32,6 +34,45 @@ Five event kinds. Three on subscribers, two on publishers.
 |------|-----------|-----|
 | `LivelinessLost` | This publisher missed its own liveliness assertion deadline | Self-monitoring: detect own task starvation |
 | `OfferedDeadlineMissed` | This publisher promised X Hz, fell behind | Self-monitoring: detect overrunning compute |
+
+### Matched and incompatible type (Iron+)
+
+Issue 1972. Both pairs have one kind per side.
+
+| Kind | Side | Fires when | Payload |
+|------|------|-----------|---------|
+| `PublicationMatched` | publisher | a subscription starts or stops matching it | `MatchedStatus` |
+| `SubscriptionMatched` | subscription | a publisher starts or stops matching it | `MatchedStatus` |
+| `PublisherIncompatibleType` | publisher | a subscription on the same topic name with another type appears | `IncompatibleTypeStatus` |
+| `SubscriptionIncompatibleType` | subscription | a publisher on the same topic name with another type appears | `IncompatibleTypeStatus` |
+
+`MatchedStatus` is upstream's `rmw_matched_status_t` — `total_count`,
+`total_count_change`, `current_count`, `current_count_change` (signed: an
+endpoint leaving is `-1`). The typical use is "start publishing once somebody
+listens":
+
+```rust
+pub_.on_matched(|s| {
+    if s.current_count > 0 { LISTENER_PRESENT.store(true, Ordering::Release); }
+})?;
+// Publisher-side events are observed on the publisher's poll points, so a
+// publisher that is not publishing yet gives it one:
+while !LISTENER_PRESENT.load(Ordering::Acquire) {
+    let _ = pub_.assert_liveliness();
+    executor.spin_once(Duration::from_millis(50));
+}
+```
+
+C: `rclc_publisher_set_matched_callback`,
+`rclc_publisher_set_incompatible_type_callback`,
+`rclc_subscription_set_matched_callback` and
+`rclc_subscription_set_incompatible_type_callback` (the subscription must
+be added to an executor first), payloads `rclc_matched_status_t` /
+`rclc_incompatible_type_status_t`. C++: `Publisher::on_matched` /
+`on_incompatible_type` and the same pair on `PollSubscription`, taking
+rclcpp's `MatchedInfo` / `IncompatibleTypeInfo` through a function pointer
+plus `user_context`. Unlike the five Tier-1 C/C++ setters below, these
+four reach the backend today.
 
 ## Registering callbacks
 
@@ -156,6 +197,14 @@ Not every backend can generate every event. Apps must handle
 | zenoh-pico | ✅ Poll-based via zenoh tokens (alive_count ∈ {0,1}) | ✅ Shim-side clock check (`<P as PlatformClock>::clock_ms`) | ✅ Seq-gap detection from RMW attachment |
 | uORB | ✗ No wire-level liveliness | ✗ No rate concept | ✗ Not wired: the C++ backend (`nros-rmw-uorb`) fills no event slot. The publish-counter `MessageLost` of the retired Rust uORB backend (phase-108) did not carry over |
 
+Matched / incompatible type: **Cyclone DDS** (its own matched status;
+builtin-topic type comparison) and **zenoh-pico** (the graph cache's
+liveliness tokens, as `rmw_zenoh_cpp` does) carry both pairs; **XRCE-DDS**
+and **uORB** answer `Unsupported`. On zenoh the counts are snapshots of the
+graph cache, so `total_count` counts increases seen between polls, and an
+image built with graph discovery off (`ZPICO_GRAPH_DISCOVERY=0`) refuses the
+registration.
+
 ✅ = wired. ✗ = not wired (registration answers `Unsupported`). The
 slot-level view is generated from the backend sources in the
 [per-RMW feature matrix](../reference/rmw-feature-matrix.md).
@@ -189,14 +238,8 @@ pinned to one backend can call register-and-unwrap.
 
 ## What's deliberately skipped
 
-Three upstream event types are intentionally absent from the API:
-
-### `*_MATCHED` (publication / subscription matched)
-
-Fires when a remote endpoint appears or disappears. Useful for
-discovery-tracking dashboards and dynamic-topology apps. Static-
-topology embedded apps don't benefit; if a use case appears, the
-event kind is additive.
+One upstream event type is intentionally absent from the API (`*_MATCHED`
+and `*_INCOMPATIBLE_TYPE` were listed here until issue 1972 adopted them):
 
 ### `*_QOS_INCOMPATIBLE`
 
@@ -204,13 +247,6 @@ Fires when publisher and subscriber QoS profiles can't be
 reconciled. nano-ros surfaces this synchronously at `create_publisher`
 / `create_subscription` time as `NROS_RMW_RET_INCOMPATIBLE_QOS`. No
 runtime event needed; the failure is visible at startup.
-
-### `*_INCOMPATIBLE_TYPE`
-
-Type-hash mismatch. Same: surfaced synchronously as
-`NROS_RMW_RET_TOPIC_NAME_INVALID` (or a future `INCOMPATIBLE_TYPE` code,
-unprefixed here because `rmw_ret.h` does not define one yet — issue 1126)
-at creation. No runtime event.
 
 ## Patterns
 

@@ -6708,6 +6708,28 @@ impl<'s> Executor<'s> {
         Some(unsafe { &*(arena_ptr.add(meta.offset) as *const session::RmwSubscriber) })
     }
 
+    /// [`Executor::subscription_handle`], mutably — issue 1972: registering a
+    /// status-event callback (`Subscription::register_event_callback`) takes
+    /// `&mut`, and the C API's subscription is arena-owned.
+    ///
+    /// # Safety
+    /// See [`Executor::subscription_handle`]; in addition no other borrow of
+    /// the same entry may be live.
+    #[doc(hidden)]
+    pub unsafe fn subscription_handle_mut(
+        &mut self,
+        entry_index: usize,
+    ) -> Option<&mut session::RmwSubscriber> {
+        let meta = self.entries.get(self.slot_of_raw(entry_index)?)?.as_ref()?;
+        if !matches!(meta.kind, EntryKind::Subscription) {
+            return None;
+        }
+        let offset = meta.offset;
+        let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
+        // SAFETY: as `subscription_handle`; `&mut self` makes the borrow unique.
+        Some(unsafe { &mut *(arena_ptr.add(offset) as *mut session::RmwSubscriber) })
+    }
+
     /// The `RmwServiceServer` of an arena-registered service, by entry index.
     ///
     /// # Safety
