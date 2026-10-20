@@ -393,6 +393,59 @@ impl<M: RosMessage> EmbeddedPublisher<M> {
         )
     }
 
+    /// Register a callback for `PublicationMatched` — issue 1972, upstream
+    /// `RMW_EVENT_PUBLICATION_MATCHED` / rclcpp's
+    /// `PublisherEventCallbacks::matched_callback`. Fires when a subscription
+    /// starts or stops matching this publisher; `current_count` is how many
+    /// match now.
+    ///
+    /// **When it is observed is a backend property.** Both backends that
+    /// carry it (Cyclone DDS, zenoh) poll it from the publisher's own data
+    /// path — `publish` and [`assert_liveliness`](Self::assert_liveliness) —
+    /// so a publisher that waits for a listener before its first publish
+    /// calls `assert_liveliness()` in its wait loop to give it a poll point.
+    #[cfg(feature = "alloc")]
+    pub fn on_matched<F>(&mut self, cb: F) -> Result<(), NodeError>
+    where
+        F: FnMut(nros_rmw::MatchedStatus) + Send + 'static,
+    {
+        register_pub_event::<F, _>(
+            &mut self.handle,
+            &mut self.event_regs,
+            nros_rmw::EventKind::PublicationMatched,
+            0,
+            cb,
+            |payload, f| {
+                if let nros_rmw::EventPayload::PublicationMatched(s) = payload {
+                    f(*s);
+                }
+            },
+        )
+    }
+
+    /// Register a callback for `PublisherIncompatibleType` — issue 1972,
+    /// upstream `RMW_EVENT_PUBLISHER_INCOMPATIBLE_TYPE` / rclcpp's
+    /// `PublisherEventCallbacks::incompatible_type_callback`. Fires when a
+    /// subscription on this topic NAME with a different type is seen.
+    #[cfg(feature = "alloc")]
+    pub fn on_incompatible_type<F>(&mut self, cb: F) -> Result<(), NodeError>
+    where
+        F: FnMut(nros_rmw::IncompatibleTypeStatus) + Send + 'static,
+    {
+        register_pub_event::<F, _>(
+            &mut self.handle,
+            &mut self.event_regs,
+            nros_rmw::EventKind::PublisherIncompatibleType,
+            0,
+            cb,
+            |payload, f| {
+                if let nros_rmw::EventPayload::PublisherIncompatibleType(s) = payload {
+                    f(*s);
+                }
+            },
+        )
+    }
+
     /// The topic this publisher was created on — rclrs's
     /// `PublisherState::topic_name`, C's `rcl_publisher_get_topic_name`,
     /// C++'s `Publisher::get_topic_name`. phase-444.
@@ -469,11 +522,13 @@ impl<M: RosMessage> EmbeddedPublisher<M> {
 }
 
 /// Cap on registered event callbacks per entity. Subscribers can hold
-/// up to 3 (LivelinessChanged + RequestedDeadlineMissed + MessageLost);
-/// publishers up to 2 (LivelinessLost + OfferedDeadlineMissed). One vec
-/// type fits both — extra slots are unused on publishers.
+/// up to 5 (LivelinessChanged + RequestedDeadlineMissed + MessageLost +
+/// SubscriptionMatched + SubscriptionIncompatibleType); publishers up to 4
+/// (LivelinessLost + OfferedDeadlineMissed + PublicationMatched +
+/// PublisherIncompatibleType, issue 1972). One vec type fits both — the
+/// extra slot is unused on publishers.
 #[cfg(feature = "alloc")]
-pub(crate) const MAX_EVENTS_PER_ENTITY: usize = 3;
+pub(crate) const MAX_EVENTS_PER_ENTITY: usize = 5;
 
 /// One row of the per-entity event-callback registry. Stores enough to
 /// type-erase the boxed closure for `Drop`-time deallocation.
@@ -536,7 +591,7 @@ fn register_pub_event<F, D>(
     dispatch: D,
 ) -> Result<(), NodeError>
 where
-    F: FnMut(nros_rmw::CountStatus) + Send + 'static,
+    F: Send + 'static,
     D: Fn(nros_rmw::EventPayload<'_>, &mut F) + 'static,
 {
     use nros_rmw::Publisher as _;
@@ -590,7 +645,7 @@ unsafe extern "C" fn event_trampoline<F, D>(
     payload_ptr: *const core::ffi::c_void,
     user_ctx: *mut core::ffi::c_void,
 ) where
-    F: FnMut(nros_rmw::CountStatus) + Send + 'static,
+    F: Send + 'static,
     D: Fn(nros_rmw::EventPayload<'_>, &mut F) + 'static,
 {
     let state = unsafe { &mut *(user_ctx as *mut EventClosureState<F, D>) };
@@ -601,7 +656,7 @@ unsafe extern "C" fn event_trampoline<F, D>(
 #[cfg(feature = "alloc")]
 unsafe fn drop_event_state<F, D>(ctx: *mut core::ffi::c_void)
 where
-    F: FnMut(nros_rmw::CountStatus) + Send + 'static,
+    F: Send + 'static,
     D: Fn(nros_rmw::EventPayload<'_>, &mut F) + 'static,
 {
     // SAFETY: caller guarantees `ctx` was obtained from
@@ -623,7 +678,7 @@ fn register_sub_event_count<F, D>(
     dispatch: D,
 ) -> Result<(), NodeError>
 where
-    F: FnMut(nros_rmw::CountStatus) + Send + 'static,
+    F: Send + 'static,
     D: Fn(nros_rmw::EventPayload<'_>, &mut F) + 'static,
 {
     use nros_rmw::Subscription as _;
@@ -1448,6 +1503,54 @@ impl<M: RosMessage, const RX_BUF: usize> Subscription<M, RX_BUF> {
         )
     }
 
+    /// Register a callback for `SubscriptionMatched` — issue 1972, upstream
+    /// `RMW_EVENT_SUBSCRIPTION_MATCHED` / rclcpp's
+    /// `SubscriptionEventCallbacks::matched_callback`. Fires when a publisher
+    /// starts or stops matching this subscription; `current_count` is how
+    /// many match now. Polled from the subscription's data path, like the
+    /// other status events.
+    #[cfg(feature = "alloc")]
+    pub fn on_matched<F>(&mut self, cb: F) -> Result<(), NodeError>
+    where
+        F: FnMut(nros_rmw::MatchedStatus) + Send + 'static,
+    {
+        register_sub_event_count::<F, _>(
+            &mut self.handle,
+            &mut self.event_regs,
+            nros_rmw::EventKind::SubscriptionMatched,
+            0,
+            cb,
+            |payload, f| {
+                if let nros_rmw::EventPayload::SubscriptionMatched(s) = payload {
+                    f(*s);
+                }
+            },
+        )
+    }
+
+    /// Register a callback for `SubscriptionIncompatibleType` — issue 1972,
+    /// upstream `RMW_EVENT_SUBSCRIPTION_INCOMPATIBLE_TYPE` / rclcpp's
+    /// `SubscriptionEventCallbacks::incompatible_type_callback`. Fires when a
+    /// publisher on this topic NAME with a different type is seen.
+    #[cfg(feature = "alloc")]
+    pub fn on_incompatible_type<F>(&mut self, cb: F) -> Result<(), NodeError>
+    where
+        F: FnMut(nros_rmw::IncompatibleTypeStatus) + Send + 'static,
+    {
+        register_sub_event_count::<F, _>(
+            &mut self.handle,
+            &mut self.event_regs,
+            nros_rmw::EventKind::SubscriptionIncompatibleType,
+            0,
+            cb,
+            |payload, f| {
+                if let nros_rmw::EventPayload::SubscriptionIncompatibleType(s) = payload {
+                    f(*s);
+                }
+            },
+        )
+    }
+
     /// Check if data is available without consuming it.
     pub fn has_data(&self) -> bool {
         self.handle.has_data()
@@ -1778,6 +1881,54 @@ impl<const RX_BUF: usize> RawSubscription<RX_BUF> {
             cb,
             |payload, f| {
                 if let nros_rmw::EventPayload::MessageLost(s) = payload {
+                    f(*s);
+                }
+            },
+        )
+    }
+
+    /// Register a callback for `SubscriptionMatched` — issue 1972, upstream
+    /// `RMW_EVENT_SUBSCRIPTION_MATCHED` / rclcpp's
+    /// `SubscriptionEventCallbacks::matched_callback`. Fires when a publisher
+    /// starts or stops matching this subscription; `current_count` is how
+    /// many match now. Polled from the subscription's data path, like the
+    /// other status events.
+    #[cfg(feature = "alloc")]
+    pub fn on_matched<F>(&mut self, cb: F) -> Result<(), NodeError>
+    where
+        F: FnMut(nros_rmw::MatchedStatus) + Send + 'static,
+    {
+        register_sub_event_count::<F, _>(
+            &mut self.handle,
+            &mut self.event_regs,
+            nros_rmw::EventKind::SubscriptionMatched,
+            0,
+            cb,
+            |payload, f| {
+                if let nros_rmw::EventPayload::SubscriptionMatched(s) = payload {
+                    f(*s);
+                }
+            },
+        )
+    }
+
+    /// Register a callback for `SubscriptionIncompatibleType` — issue 1972,
+    /// upstream `RMW_EVENT_SUBSCRIPTION_INCOMPATIBLE_TYPE` / rclcpp's
+    /// `SubscriptionEventCallbacks::incompatible_type_callback`. Fires when a
+    /// publisher on this topic NAME with a different type is seen.
+    #[cfg(feature = "alloc")]
+    pub fn on_incompatible_type<F>(&mut self, cb: F) -> Result<(), NodeError>
+    where
+        F: FnMut(nros_rmw::IncompatibleTypeStatus) + Send + 'static,
+    {
+        register_sub_event_count::<F, _>(
+            &mut self.handle,
+            &mut self.event_regs,
+            nros_rmw::EventKind::SubscriptionIncompatibleType,
+            0,
+            cb,
+            |payload, f| {
+                if let nros_rmw::EventPayload::SubscriptionIncompatibleType(s) = payload {
                     f(*s);
                 }
             },

@@ -2157,6 +2157,74 @@ typedef void (*rclc_event_publisher_count_cb_t)(struct rcl_publisher_t *pub_,
                                                 void *user_context);
 
 /**
+ * Matched payload — upstream `rmw_matched_status_t` (Iron+), rclcpp's
+ * `MatchedInfo`. Same four fields in upstream's order; the counts are
+ * `uint32_t` where upstream has `size_t`.
+ */
+typedef struct rclc_matched_status_t {
+  /**
+   * Cumulative matches over the entity's lifetime.
+   */
+  uint32_t total_count;
+  /**
+   * Change in `total_count` since the last report.
+   */
+  uint32_t total_count_change;
+  /**
+   * Endpoints matched right now.
+   */
+  uint32_t current_count;
+  /**
+   * Change in `current_count` since the last report (negative when an
+   * endpoint left).
+   */
+  int32_t current_count_change;
+} rclc_matched_status_t;
+
+/**
+ * Callback for `NROS_EVENT_PUBLICATION_MATCHED`.
+ */
+typedef void (*rclc_event_publisher_matched_cb_t)(struct rcl_publisher_t *pub_,
+                                                  struct rclc_matched_status_t status,
+                                                  void *user_context);
+
+/**
+ * Incompatible-type payload — upstream `rmw_incompatible_type_status_t`
+ * (Iron+), rclcpp's `IncompatibleTypeInfo`.
+ */
+typedef struct rclc_incompatible_type_status_t {
+  /**
+   * Cumulative incompatible endpoints seen over the entity's lifetime.
+   */
+  uint32_t total_count;
+  /**
+   * Change since the last report.
+   */
+  uint32_t total_count_change;
+} rclc_incompatible_type_status_t;
+
+/**
+ * Callback for `NROS_EVENT_PUBLISHER_INCOMPATIBLE_TYPE`.
+ */
+typedef void (*rclc_event_publisher_incompatible_type_cb_t)(struct rcl_publisher_t *pub_,
+                                                            struct rclc_incompatible_type_status_t status,
+                                                            void *user_context);
+
+/**
+ * Callback for `NROS_EVENT_SUBSCRIPTION_MATCHED`.
+ */
+typedef void (*rclc_event_subscription_matched_cb_t)(struct rcl_subscription_t *sub,
+                                                     struct rclc_matched_status_t status,
+                                                     void *user_context);
+
+/**
+ * Callback for `NROS_EVENT_SUBSCRIPTION_INCOMPATIBLE_TYPE`.
+ */
+typedef void (*rclc_event_subscription_incompatible_type_cb_t)(struct rcl_subscription_t *sub,
+                                                               struct rclc_incompatible_type_status_t status,
+                                                               void *user_context);
+
+/**
  * phase-381 W4 — visit one node on the graph.
  *
  * `node_namespace` is a ROS namespace (`"/"`, `"/demo"`). `enclave` is NULL
@@ -4887,6 +4955,80 @@ rcl_ret_t rclc_publisher_set_offered_deadline_missed_callback(struct rcl_publish
                                                               uint32_t _deadline_ms,
                                                               rclc_event_publisher_count_cb_t _cb,
                                                               void *_user_context);
+
+/**
+ * Register a callback for `NROS_EVENT_PUBLICATION_MATCHED` — issue 1972,
+ * upstream `RMW_EVENT_PUBLICATION_MATCHED`. Fires when a subscription starts
+ * or stops matching this publisher.
+ *
+ * Observed on the publisher's poll points (`rcl_publish`,
+ * `rcl_publisher_assert_liveliness`) on both backends that carry it
+ * (Cyclone DDS, zenoh). Registering again for the same publisher replaces
+ * the earlier callback.
+ *
+ * # Returns
+ * * `RCL_RET_OK` — registered
+ * * `RCL_RET_INVALID_ARGUMENT` — NULL `pub_` or `cb`
+ * * `RCL_RET_NOT_INIT` — the publisher is not initialised
+ * * `RCL_RET_UNSUPPORTED` — the backend does not generate this event
+ * * `RCLC_RET_FULL` — the process-wide event-slot table
+ *   (16 registrations, process-wide) is full
+ *
+ * # Safety
+ * `pub_` must point to a valid `rcl_publisher_t` that is not moved while
+ * registered; `user_context` must outlive it.
+ */
+NROS_PUBLIC
+rcl_ret_t rclc_publisher_set_matched_callback(struct rcl_publisher_t *pub_,
+                                              rclc_event_publisher_matched_cb_t cb,
+                                              void *user_context);
+
+/**
+ * Register a callback for `NROS_EVENT_PUBLISHER_INCOMPATIBLE_TYPE` — issue
+ * 1972. Fires when a subscription on this topic NAME with a different type
+ * is seen. Same returns and safety as
+ * [`rclc_publisher_set_matched_callback`].
+ *
+ * # Safety
+ * See [`rclc_publisher_set_matched_callback`].
+ */
+NROS_PUBLIC
+rcl_ret_t rclc_publisher_set_incompatible_type_callback(struct rcl_publisher_t *pub_,
+                                                        rclc_event_publisher_incompatible_type_cb_t cb,
+                                                        void *user_context);
+
+/**
+ * Register a callback for `NROS_EVENT_SUBSCRIPTION_MATCHED` — issue 1972,
+ * upstream `RMW_EVENT_SUBSCRIPTION_MATCHED`. Fires when a publisher starts
+ * or stops matching this subscription; observed as the executor polls it.
+ *
+ * The subscription must already be ADDED to an executor
+ * (`rclc_executor_add_subscription`): the executor owns the subscriber, so
+ * before that there is nothing to register on and this answers
+ * `RCL_RET_NOT_INIT`. Otherwise the same returns as
+ * [`rclc_publisher_set_matched_callback`].
+ *
+ * # Safety
+ * `sub` must point to a valid `rcl_subscription_t`; `user_context` must
+ * outlive it.
+ */
+NROS_PUBLIC
+rcl_ret_t rclc_subscription_set_matched_callback(struct rcl_subscription_t *sub,
+                                                 rclc_event_subscription_matched_cb_t cb,
+                                                 void *user_context);
+
+/**
+ * Register a callback for `NROS_EVENT_SUBSCRIPTION_INCOMPATIBLE_TYPE` —
+ * issue 1972. Fires when a publisher on this topic NAME with a different
+ * type is seen. Same contract as [`rclc_subscription_set_matched_callback`].
+ *
+ * # Safety
+ * See [`rclc_subscription_set_matched_callback`].
+ */
+NROS_PUBLIC
+rcl_ret_t rclc_subscription_set_incompatible_type_callback(struct rcl_subscription_t *sub,
+                                                           rclc_event_subscription_incompatible_type_cb_t cb,
+                                                           void *user_context);
 
 /**
  * Get a zero-initialized executor.

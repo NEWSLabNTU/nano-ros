@@ -142,6 +142,34 @@ add_test(
     COMMAND nros_rmw_cyclonedds_status_events
 )
 
+# Issue 1972 — matched and incompatible-type events, provoked for real: a
+# matching publisher appears and leaves (current_count 0 -> 1 -> 0), then a
+# publisher of a DIFFERENT type takes the same topic name. The second type is
+# compiled here only; nothing else needs it.
+nros_rmw_cyclonedds_idlc_compile(_test_int32_gen
+    IDL_FILE  "${CMAKE_CURRENT_SOURCE_DIR}/types/test_int32.idl"
+    OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/types"
+    TYPE_NAME "nros_test::msg::TestInt32"
+)
+add_executable(nros_rmw_cyclonedds_matched_events
+    matched_events.cpp
+    ${_test_string_sources}
+    ${_test_int32_gen}
+)
+target_link_libraries(nros_rmw_cyclonedds_matched_events
+    PRIVATE
+        nros_rmw_cyclonedds
+)
+target_include_directories(nros_rmw_cyclonedds_matched_events
+    PRIVATE
+        ${NROS_RMW_CFFI_DIR}
+        "${CMAKE_CURRENT_BINARY_DIR}/types"
+)
+add_test(
+    NAME nros_rmw_cyclonedds_matched_events
+    COMMAND nros_rmw_cyclonedds_matched_events
+)
+
 # Issue 1231 — manual liveliness, provoked both ways: a 500 ms lease held open
 # by assertions, then left to lapse. The second half is the first half's
 # negative control. Reuses the test_string descriptor above.

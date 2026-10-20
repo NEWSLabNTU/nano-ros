@@ -422,6 +422,8 @@ pub unsafe extern "C" fn nros_cpp_publisher_destroy(storage: *mut c_void) -> nro
     unsafe {
         core::ptr::drop_in_place(storage as *mut CppPublisher);
     }
+    // Issue 1972 — the backend registration died with the handle.
+    nros_c::status_event_slots::release_owner(storage as usize);
     NROS_CPP_RET_OK
 }
 
@@ -450,6 +452,9 @@ pub unsafe extern "C" fn nros_cpp_publisher_relocate(
         let value = core::ptr::read(old_storage as *mut CppPublisher);
         core::ptr::write(new_storage as *mut CppPublisher, value);
     }
+    // Issue 1972 — a registered event callback receives the storage pointer;
+    // it now lives here.
+    nros_c::status_event_slots::rekey(old_storage as usize, new_storage as usize, new_storage);
     NROS_CPP_RET_OK
 }
 
@@ -489,6 +494,138 @@ pub unsafe extern "C" fn nros_cpp_publisher_set_offered_deadline_missed(
     _user_context: *mut c_void,
 ) -> nros_cpp_ret_t {
     crate::NROS_CPP_RET_UNSUPPORTED
+}
+
+// ============================================================================
+// Issue 1972 — matched and incompatible-type events, WIRED (unlike the two
+// Tier-1 stubs above). The `(callback, context, storage)` triple lives in
+// nros-c's process-wide `status_event_slots` table, because the storage
+// RELOCATES on a C++ move and has no room to spare; `relocate` and `destroy`
+// below keep the table in step.
+// ============================================================================
+
+/// Matched payload — rclcpp's `MatchedInfo` (upstream `rmw_matched_status_t`).
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct nros_cpp_matched_status_t {
+    pub total_count: u32,
+    pub total_count_change: u32,
+    pub current_count: u32,
+    pub current_count_change: i32,
+}
+
+/// Incompatible-type payload — rclcpp's `IncompatibleTypeInfo` (upstream
+/// `rmw_incompatible_type_status_t`).
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct nros_cpp_incompatible_type_status_t {
+    pub total_count: u32,
+    pub total_count_change: u32,
+}
+
+const _: () = {
+    use core::mem::{align_of, size_of};
+    // The slot trampoline passes the `nros_rmw` payload BY VALUE.
+    assert!(size_of::<nros_cpp_matched_status_t>() == size_of::<nros_rmw::MatchedStatus>());
+    assert!(align_of::<nros_cpp_matched_status_t>() == align_of::<nros_rmw::MatchedStatus>());
+    assert!(
+        size_of::<nros_cpp_incompatible_type_status_t>()
+            == size_of::<nros_rmw::IncompatibleTypeStatus>()
+    );
+    assert!(
+        align_of::<nros_cpp_incompatible_type_status_t>()
+            == align_of::<nros_rmw::IncompatibleTypeStatus>()
+    );
+};
+
+/// Matched callback — `storage` is the entity's storage (publisher or
+/// poll-subscription), as for the other C++ event callbacks.
+pub type nros_cpp_matched_cb_t = Option<
+    unsafe extern "C" fn(
+        storage: *mut c_void,
+        status: nros_cpp_matched_status_t,
+        user_context: *mut c_void,
+    ),
+>;
+
+/// Incompatible-type callback.
+pub type nros_cpp_incompatible_type_cb_t = Option<
+    unsafe extern "C" fn(
+        storage: *mut c_void,
+        status: nros_cpp_incompatible_type_status_t,
+        user_context: *mut c_void,
+    ),
+>;
+
+unsafe fn publisher_set_slot(
+    storage: *mut c_void,
+    kind: nros_rmw::EventKind,
+    cb: *const (),
+    user_context: *mut c_void,
+) -> nros_cpp_ret_t {
+    if storage.is_null() || cb.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let handle = unsafe { core::ptr::addr_of_mut!((*(storage as *mut CppPublisher)).handle) };
+    let r = unsafe {
+        nros_c::status_event_slots::register(
+            storage as usize,
+            storage,
+            kind,
+            cb,
+            user_context,
+            |k, tramp, tag| PublisherTrait::register_event_callback(&mut *handle, k, 0, tramp, tag),
+        )
+    };
+    match r {
+        Ok(()) => NROS_CPP_RET_OK,
+        Err(e) => crate::transport_error_to_cpp_ret(e),
+    }
+}
+
+/// Register a matched callback — rclcpp's
+/// `PublisherEventCallbacks::matched_callback`, issue 1972. Observed on the
+/// publisher's poll points (publish, `assert_liveliness`).
+///
+/// # Safety
+/// `storage` must be a live publisher storage; `user_context` must outlive it.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_publisher_set_matched(
+    storage: *mut c_void,
+    cb: nros_cpp_matched_cb_t,
+    user_context: *mut c_void,
+) -> nros_cpp_ret_t {
+    let cb = cb.map_or(core::ptr::null(), |f| f as *const ());
+    unsafe {
+        publisher_set_slot(
+            storage,
+            nros_rmw::EventKind::PublicationMatched,
+            cb,
+            user_context,
+        )
+    }
+}
+
+/// Register an incompatible-type callback — rclcpp's
+/// `PublisherEventCallbacks::incompatible_type_callback`, issue 1972.
+///
+/// # Safety
+/// See [`nros_cpp_publisher_set_matched`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_publisher_set_incompatible_type(
+    storage: *mut c_void,
+    cb: nros_cpp_incompatible_type_cb_t,
+    user_context: *mut c_void,
+) -> nros_cpp_ret_t {
+    let cb = cb.map_or(core::ptr::null(), |f| f as *const ());
+    unsafe {
+        publisher_set_slot(
+            storage,
+            nros_rmw::EventKind::PublisherIncompatibleType,
+            cb,
+            user_context,
+        )
+    }
 }
 
 /// Phase 108.B.7 — manually assert this publisher's liveliness.

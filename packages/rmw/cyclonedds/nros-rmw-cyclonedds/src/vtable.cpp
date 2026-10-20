@@ -187,8 +187,8 @@ static rmw_ret_t cyclone_get_gid_for_client(const rmw_client_t *client, rmw_gid_
 
 /* Issue 1978 — upstream (Jazzy) `rmw_event_type_is_supported`. Every kind the
  * ABI names is served by the poll half (`subscription_take_event` in
- * `subscriber.cpp` serves the three subscription kinds, `publisher_take_event`
- * in `publisher.cpp` the two publisher kinds), so the answer is "every known
+ * `subscriber.cpp` serves the five subscription kinds, `publisher_take_event`
+ * in `publisher.cpp` the four publisher kinds, issue 1972 included), so the answer is "every known
  * kind" and `false` for anything else. The suite's `event_type_is_supported`
  * case asks each take slot about every kind this says yes to, so the two
  * cannot drift apart silently. */
@@ -199,6 +199,12 @@ static bool cyclone_event_type_is_supported(rmw_event_type_t event_type) {
     case NROS_RMW_EVENT_MESSAGE_LOST:
     case NROS_RMW_EVENT_LIVELINESS_LOST:
     case NROS_RMW_EVENT_OFFERED_DEADLINE_MISSED:
+    /* Issue 1972 — the matched pair and the incompatible-type pair, served by
+     * the same two take slots. */
+    case NROS_RMW_EVENT_PUBLICATION_MATCHED:
+    case NROS_RMW_EVENT_SUBSCRIPTION_MATCHED:
+    case NROS_RMW_EVENT_PUBLISHER_INCOMPATIBLE_TYPE:
+    case NROS_RMW_EVENT_SUBSCRIPTION_INCOMPATIBLE_TYPE:
         return true;
     }
     return false;

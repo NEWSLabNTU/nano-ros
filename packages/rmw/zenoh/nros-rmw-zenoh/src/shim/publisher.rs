@@ -547,6 +547,9 @@ pub struct ZenohPublisher {
     /// than making every warning site take the name as an argument it does not
     /// have.
     name: heapless::String<KEYEXPR_STRING_SIZE>,
+    /// Issue 1972 — `PublicationMatched` / `PublisherIncompatibleType`,
+    /// derived from the session's graph cache. Inert until registered.
+    matched: super::matched::MatchWatch,
 }
 
 /// One claimed retention slot plus the queryable that answers from it.
@@ -668,6 +671,7 @@ impl ZenohPublisher {
             retention,
             name: heapless::String::try_from(topic.name).unwrap_or_default(),
             granted_qos: *qos,
+            matched: super::matched::MatchWatch::new(context.handle(), topic, true),
         })
     }
 
@@ -978,6 +982,8 @@ impl Publisher for ZenohPublisher {
         // the check fires when the lease has expired since the last
         // explicit assert.
         self.check_liveliness_lost();
+        // Issue 1972 — matched / incompatible-type, rate-limited graph walk.
+        self.matched.poll(now_ms());
 
         // Get next sequence number and timestamp atomically
         #[allow(clippy::useless_conversion)] // i32→i64 on embedded, no-op on std
@@ -1139,6 +1145,9 @@ impl Publisher for ZenohPublisher {
     /// `None` — under those kinds there was nothing to assert, so nothing
     /// was lost.
     fn assert_liveliness(&self) -> Result<(), Self::Error> {
+        // Issue 1972 — the publisher's other poll point, so a publisher that
+        // waits for a listener before publishing has one to call.
+        self.matched.poll(now_ms());
         if !self.liveliness_kind.is_manual() {
             return Ok(());
         }
@@ -1208,6 +1217,10 @@ impl Publisher for ZenohPublisher {
                 // Slot landed; never fired today (see struct doc).
                 self.liveliness_lost_cb.set(Some(EventReg { cb, user_ctx }));
                 Ok(())
+            }
+            nros_rmw::EventKind::PublicationMatched
+            | nros_rmw::EventKind::PublisherIncompatibleType => {
+                self.matched.register(kind, cb, user_ctx)
             }
             _ => Err(TransportError::Unsupported),
         }

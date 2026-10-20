@@ -544,6 +544,16 @@ c: c-fmt
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
         packages/api/nros-c/tests/compile/graph_query_entry_points.c
+    echo "  - matched / incompatible-type setters are DECLARED (issue 1972)"
+    test -f packages/api/nros-c/tests/compile/matched_events_entry_points.c || { \
+        echo "ERROR: matched_events_entry_points.c is MISSING -- issue 1972 is unpinned." >&2; \
+        exit 1; \
+    }
+    cc -fsyntax-only -std=c11 \
+        -I"$cgen" \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        packages/api/nros-c/tests/compile/matched_events_entry_points.c
     echo "  - a message's serialization format matches the linked backend (RFC-0088 D5)"
     # phase-421 W6 — every generated C message header carries a
     # `_Static_assert` comparing its format id against the image's. The positive
@@ -1626,6 +1636,18 @@ cpp: cpp-fmt
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
         packages/api/nros-cpp/tests/compile/graph_query_entry_points.cpp
+    echo "  - matched / incompatible-type faces carry rclcpp's names (issue 1972)"
+    test -f packages/api/nros-cpp/tests/compile/matched_events_entry_points.cpp || { \
+        echo "ERROR: matched_events_entry_points.cpp is MISSING -- issue 1972 is unpinned." >&2; \
+        exit 1; \
+    }
+    c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
+        -I"$cppgen" \
+        -I"$cgen" \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        packages/api/nros-cpp/tests/compile/matched_events_entry_points.cpp
     echo "  - lifecycle transition ids ARE lifecycle_msgs, in BOTH languages (issue 1099)"
     # `nros::LifecycleNode::trigger_transition(uint8_t)` has rclcpp's exact
     # signature, so its id space must be rclcpp's. It was not: four of eight

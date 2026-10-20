@@ -349,6 +349,30 @@ rmw_ret_t subscription_take_event(const rmw_subscription_t *subscription,
 rmw_ret_t publisher_take_event(const rmw_publisher_t *publisher, rmw_event_type_t kind,
                                     rmw_event_payload_t *out, bool *taken);
 
+/* Issue 1972 — the matched and incompatible-type events, polled like the rest.
+ *
+ * The change fields are computed against what THIS event last reported, not
+ * read from Cyclone's `*_change` counters: `dds_get_publication_matched_status`
+ * resets those as it reads them, and the publisher's create path already reads
+ * that very status (`wait_for_writer_match`), so a counter-based report would
+ * lose whichever change that read swallowed. The absolute counts survive any
+ * number of readers. */
+struct EventSeen {
+    uint32_t total{0};
+    uint32_t current{0};
+};
+/** Fill `out` and advance `seen` when `(total, current)` moved; false when it
+ *  did not. */
+bool matched_report(EventSeen *seen, uint32_t total, uint32_t current, rmw_matched_status_t *out);
+/** Incompatible endpoints visible now -> a report when the number GREW. */
+bool incompatible_type_report(EventSeen *seen, uint32_t current_now,
+                              rmw_incompatible_type_status_t *out);
+/** How many endpoints of the other side (writers when `writers`) sit on
+ *  `topic`'s DDS name with a type other than `desc`'s; -1 when it cannot be
+ *  read. `entity` is our reader/writer (for its participant). */
+int count_type_mismatch(GraphState *graph, dds_entity_t entity, dds_entity_t topic,
+                        const dds_topic_descriptor_t *desc, bool writers);
+
 rmw_ret_t service_send_request_raw(const rmw_client_t *client,
                                         rmw_byte_span_t request_span,
                                         int64_t *sequence_id);

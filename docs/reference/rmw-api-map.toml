@@ -727,64 +727,54 @@ answers = ["create_session: locator + mode", "rmw_session_options_t.localhost_on
 reason = "see type:rmw_discovery_options_t."
 
 [type_delta.jazzy."enum:rmw_event_type_t.RMW_EVENT_PUBLICATION_MATCHED"]
-status = "not-implemented"
-issue = 1972
-reason = "ADOPT, issue 1972: two more event kinds through the existing event_init/take_event slots; the payload is four integers."
+status = "re-mapped"
+answers = ["NROS_RMW_EVENT_PUBLICATION_MATCHED (rmw_event.h)"]
+reason = "issue 1972 (resolved): APPENDED to our `rmw_event_type_t` as value 5, under the `NROS_RMW_` prefix every value of that enum carries. Upstream inserted the Iron kinds mid-enum; ours was never value-compatible with upstream's (LIVELINESS_LOST is 3 here, 6 there), so appending keeps every existing value. Same `*_event_init` / `*_take_event` slots as the Tier-1 kinds; Cyclone DDS and zenoh produce it, XRCE-DDS and uORB answer UNSUPPORTED."
 
 [type_delta.jazzy."enum:rmw_event_type_t.RMW_EVENT_SUBSCRIPTION_MATCHED"]
-status = "not-implemented"
-issue = 1972
-reason = "ADOPT, issue 1972: two more event kinds through the existing event_init/take_event slots; the payload is four integers."
+status = "re-mapped"
+answers = ["NROS_RMW_EVENT_SUBSCRIPTION_MATCHED (rmw_event.h)"]
+reason = "issue 1972 (resolved): APPENDED to our `rmw_event_type_t` as value 6, under the `NROS_RMW_` prefix every value of that enum carries. Upstream inserted the Iron kinds mid-enum; ours was never value-compatible with upstream's (LIVELINESS_LOST is 3 here, 6 there), so appending keeps every existing value. Same `*_event_init` / `*_take_event` slots as the Tier-1 kinds; Cyclone DDS and zenoh produce it, XRCE-DDS and uORB answer UNSUPPORTED."
 
 [type_delta.jazzy."enum:rmw_event_type_t.RMW_EVENT_PUBLISHER_INCOMPATIBLE_TYPE"]
-status = "not-implemented"
-issue = 1972
-reason = "ADOPT, issue 1972: two more event kinds through the existing event_init/take_event slots; the payload is four integers."
+status = "re-mapped"
+answers = ["NROS_RMW_EVENT_PUBLISHER_INCOMPATIBLE_TYPE (rmw_event.h)"]
+reason = "issue 1972 (resolved): APPENDED to our `rmw_event_type_t` as value 7, under the `NROS_RMW_` prefix every value of that enum carries. Upstream inserted the Iron kinds mid-enum; ours was never value-compatible with upstream's (LIVELINESS_LOST is 3 here, 6 there), so appending keeps every existing value. Same `*_event_init` / `*_take_event` slots as the Tier-1 kinds; Cyclone DDS and zenoh produce it, XRCE-DDS and uORB answer UNSUPPORTED."
 
 [type_delta.jazzy."enum:rmw_event_type_t.RMW_EVENT_SUBSCRIPTION_INCOMPATIBLE_TYPE"]
-status = "not-implemented"
-issue = 1972
-reason = "ADOPT, issue 1972: two more event kinds through the existing event_init/take_event slots; the payload is four integers."
+status = "re-mapped"
+answers = ["NROS_RMW_EVENT_SUBSCRIPTION_INCOMPATIBLE_TYPE (rmw_event.h)"]
+reason = "issue 1972 (resolved): APPENDED to our `rmw_event_type_t` as value 8, under the `NROS_RMW_` prefix every value of that enum carries. Upstream inserted the Iron kinds mid-enum; ours was never value-compatible with upstream's (LIVELINESS_LOST is 3 here, 6 there), so appending keeps every existing value. Same `*_event_init` / `*_take_event` slots as the Tier-1 kinds; Cyclone DDS and zenoh produce it, XRCE-DDS and uORB answer UNSUPPORTED."
 
 [type_delta.jazzy."field:rmw_matched_status_s.current_count"]
-status = "not-implemented"
-issue = 1972
-reason = "issue 1972: the matched-event payload."
+status = "re-mapped"
+answers = ["rmw_matched_status_t.current_count (rmw_event.h)"]
+reason = "issue 1972 (resolved): the same field on our `rmw_matched_status_t` (rmw_event.h), in upstream's order. Field rows are never derived (a leaf name proves nothing about THIS struct), and the struct tag differs: ours is `struct rmw_matched_status_t`, upstream's `struct rmw_matched_status_s`. Width differs too: `uint32_t` where upstream has `size_t`, like every count on this surface."
 
 [type_delta.jazzy."field:rmw_matched_status_s.current_count_change"]
-status = "not-implemented"
-issue = 1972
-reason = "issue 1972: the matched-event payload."
+status = "re-mapped"
+answers = ["rmw_matched_status_t.current_count_change (rmw_event.h)"]
+reason = "issue 1972 (resolved): the same field on our `rmw_matched_status_t` (rmw_event.h), in upstream's order. Field rows are never derived (a leaf name proves nothing about THIS struct), and the struct tag differs: ours is `struct rmw_matched_status_t`, upstream's `struct rmw_matched_status_s`. `int32_t` on both sides."
 
 [type_delta.jazzy."field:rmw_matched_status_s.total_count"]
-status = "not-implemented"
-issue = 1972
-reason = "issue 1972: the matched-event payload."
+status = "re-mapped"
+answers = ["rmw_matched_status_t.total_count (rmw_event.h)"]
+reason = "issue 1972 (resolved): the same field on our `rmw_matched_status_t` (rmw_event.h), in upstream's order. Field rows are never derived (a leaf name proves nothing about THIS struct), and the struct tag differs: ours is `struct rmw_matched_status_t`, upstream's `struct rmw_matched_status_s`. Width differs too: `uint32_t` where upstream has `size_t`, like every count on this surface."
 
 [type_delta.jazzy."field:rmw_matched_status_s.total_count_change"]
-status = "not-implemented"
-issue = 1972
-reason = "issue 1972: the matched-event payload."
+status = "re-mapped"
+answers = ["rmw_matched_status_t.total_count_change (rmw_event.h)"]
+reason = "issue 1972 (resolved): the same field on our `rmw_matched_status_t` (rmw_event.h), in upstream's order. Field rows are never derived (a leaf name proves nothing about THIS struct), and the struct tag differs: ours is `struct rmw_matched_status_t`, upstream's `struct rmw_matched_status_s`. Width differs too: `uint32_t` where upstream has `size_t`, like every count on this surface."
 
 [type_delta.jazzy."field:rmw_incompatible_type_status_s.total_count"]
-status = "not-implemented"
-issue = 1972
-reason = "issue 1972: the incompatible-type payload."
+status = "re-mapped"
+answers = ["rmw_incompatible_type_status_t.total_count (rmw_event.h)"]
+reason = "issue 1972 (resolved): the same field on our `rmw_incompatible_type_status_t` (rmw_event.h). `uint32_t` where upstream has `int32_t` (both only grow), and the struct tag is `rmw_incompatible_type_status_t`, not upstream's `_s`."
 
 [type_delta.jazzy."field:rmw_incompatible_type_status_s.total_count_change"]
-status = "not-implemented"
-issue = 1972
-reason = "issue 1972: the incompatible-type payload."
-
-[type_delta.jazzy."type:rmw_matched_status_t"]
-status = "not-implemented"
-issue = 1972
-reason = "issue 1972."
-
-[type_delta.jazzy."type:rmw_incompatible_type_status_t"]
-status = "not-implemented"
-issue = 1972
-reason = "issue 1972."
+status = "re-mapped"
+answers = ["rmw_incompatible_type_status_t.total_count_change (rmw_event.h)"]
+reason = "issue 1972 (resolved): the same field on our `rmw_incompatible_type_status_t` (rmw_event.h). `uint32_t` where upstream has `int32_t` (both only grow), and the struct tag is `rmw_incompatible_type_status_t`, not upstream's `_s`."
 
 [type_delta.jazzy."enum:rmw_qos_durability_policy_t.RMW_QOS_POLICY_DURABILITY_BEST_AVAILABLE"]
 status = "re-mapped"

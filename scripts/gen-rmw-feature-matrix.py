@@ -98,6 +98,18 @@ FEATURES = [
      any_of(["subscription_event_init", "publisher_event_init"],
             ["subscription_take_event", "publisher_take_event"]),
      [r"fn register_event_callback"]),
+    # Issue 1972: the Iron+ kinds ride the SAME slots, so the slot shape alone
+    # cannot tell them apart from the Tier-1 set. The fourth element is the
+    # extra evidence a C backend must carry: a `case` arm WITH A BODY for each
+    # matched kind in its sources (a wrong-side `case X:` that falls through to
+    # the caller-error default has no `{`). zenoh's evidence is its trait code
+    # naming the kinds.
+    ("Matched / incompatible-type events (Iron+)",
+     any_of(["subscription_event_init", "publisher_event_init"],
+            ["subscription_take_event", "publisher_take_event"]),
+     [r"EventKind::PublicationMatched", r"EventKind::SubscriptionMatched"],
+     [r"case\s+NROS_RMW_EVENT_PUBLICATION_MATCHED\s*:\s*\{",
+      r"case\s+NROS_RMW_EVENT_SUBSCRIPTION_MATCHED\s*:\s*\{"]),
     ("Manual liveliness assert", any_of(["publisher_assert_liveliness"]),
      [r"fn assert_liveliness"]),
     ("Event-driven wake (`set_wake_callback`)", any_of(["set_wake_callback"]),
@@ -367,7 +379,7 @@ def cell(v):
 
 def render():
     canon = canonical_slots()
-    missing = sorted({s for _l, shapes, _z in FEATURES for sh in shapes for s in sh
+    missing = sorted({s for _l, shapes, *_rest in FEATURES for sh in shapes for s in sh
                       if s not in canon})
     if missing:
         # A renamed/removed slot must fail the generator, not silently
@@ -378,9 +390,14 @@ def render():
                  f"vtable (EMPTY_VTABLE): {missing}")
 
     backends = []
+    c_src_text = {}
     for label, vtable, shape, src_dir, rmw in C_BACKENDS:
         fills, raw, bodies = c_backend_fills(vtable, shape, src_dir)
         backends.append((label, fills, c_qos(raw, bodies, label), rmw))
+        c_src_text[label] = "\n".join(
+            strip_comments(p.read_text(encoding="utf8"))
+            for p in tracked(os.path.join(ROOT, src_dir))
+            if p.suffix in (".c", ".cpp", ".h", ".hpp"))
 
     cols = ["Zenoh"] + [b[0] for b in backends]
     lines = [
@@ -415,11 +432,13 @@ def render():
     ]
     wired_rows = {}
     zen_fills = zenoh_slot_fills()
-    for label, shapes, zpat in FEATURES:
+    for label, shapes, zpat, *c_extra in FEATURES:
+        c_pats = c_extra[0] if c_extra else []
         row = {"Zenoh": zenoh_has(zpat)
                or any(all(s in zen_fills for s in sh) for sh in shapes)}
         for blabel, fills, _q, _r in backends:
-            row[blabel] = any(all(fills.get(s, False) for s in sh) for sh in shapes)
+            row[blabel] = any(all(fills.get(s, False) for s in sh) for sh in shapes) and all(
+                re.search(p, c_src_text[blabel]) for p in c_pats)
         wired_rows[label] = row
         lines.append(f"| {label} | " + " | ".join(cell(row[c]) for c in cols) + " |")
 

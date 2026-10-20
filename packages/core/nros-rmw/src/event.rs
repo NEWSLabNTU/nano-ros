@@ -14,18 +14,18 @@
 //! patterns and `book/src/design/rmw-vs-upstream.md` Section 8 for
 //! the design rationale.
 //!
-//! ### Tier-2 / Tier-3 deliberately skipped
+//! ### Matched and incompatible-type (issue 1972)
 //!
-//! Upstream `rmw_event_type_t` includes `MATCHED`, `QOS_INCOMPATIBLE`,
-//! and `INCOMPATIBLE_TYPE`. The first is deferred until dynamic-
-//! discovery use cases appear; additive without an ABI break. The
-//! latter two are surfaced synchronously at create time as
-//! `TransportError::IncompatibleQos` / `TopicNameInvalid` (mapped to
-//! `NROS_RMW_RET_INCOMPATIBLE_QOS` / `NROS_RMW_RET_TOPIC_NAME_INVALID`
-//! at the C boundary). No runtime event needed.
+//! Iron/Jazzy's `*_MATCHED` and `*_INCOMPATIBLE_TYPE` kinds are appended
+//! after the Tier-1 set ([`EventKind::PublicationMatched`] onward), with
+//! payloads [`MatchedStatus`] and [`IncompatibleTypeStatus`]. Upstream's
+//! `QOS_INCOMPATIBLE` is still surfaced synchronously at create time as
+//! `TransportError::IncompatibleQos` (`NROS_RMW_RET_INCOMPATIBLE_QOS` at the
+//! C boundary); no runtime event for it.
 
-/// Tier-1 status-event kinds. `#[non_exhaustive]` so adding a Tier-2
-/// (`MATCHED`) variant later is not an ABI break for matchers.
+/// Status-event kinds. `#[non_exhaustive]` so adding a variant later is not
+/// a break for matchers. Discriminants equal the C `rmw_event_type_t`
+/// values, which only ever grow at the end.
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(u8)]
@@ -42,6 +42,31 @@ pub enum EventKind {
     LivelinessLost = 3,
     /// Publisher: this publisher promised X Hz, fell behind.
     OfferedDeadlineMissed = 4,
+    /// Publisher: the set of subscriptions matched to it changed. Upstream
+    /// `RMW_EVENT_PUBLICATION_MATCHED` (Iron+), issue 1972.
+    PublicationMatched = 5,
+    /// Subscription: the set of publishers matched to it changed. Upstream
+    /// `RMW_EVENT_SUBSCRIPTION_MATCHED`.
+    SubscriptionMatched = 6,
+    /// Publisher: an endpoint on the same topic was seen with a different
+    /// type. Upstream `RMW_EVENT_PUBLISHER_INCOMPATIBLE_TYPE`.
+    PublisherIncompatibleType = 7,
+    /// Subscription: an endpoint on the same topic was seen with a different
+    /// type. Upstream `RMW_EVENT_SUBSCRIPTION_INCOMPATIBLE_TYPE`.
+    SubscriptionIncompatibleType = 8,
+}
+
+impl EventKind {
+    /// `true` for a kind a PUBLISHER carries, `false` for a subscription's.
+    pub const fn is_publisher_side(self) -> bool {
+        matches!(
+            self,
+            EventKind::LivelinessLost
+                | EventKind::OfferedDeadlineMissed
+                | EventKind::PublicationMatched
+                | EventKind::PublisherIncompatibleType
+        )
+    }
 }
 
 /// Liveliness-status payload. Mirrors DDS
@@ -72,6 +97,122 @@ pub struct CountStatus {
     pub total_count_change: u32,
 }
 
+/// Matched payload — upstream `rmw_matched_status_t` (Iron+), issue 1972.
+///
+/// Same four fields in upstream's order. The counts are `u32` where upstream
+/// has `size_t`, like every other count on this surface.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[repr(C)]
+pub struct MatchedStatus {
+    /// Cumulative matches over the entity's lifetime.
+    pub total_count: u32,
+    /// Change in `total_count` since the last report.
+    pub total_count_change: u32,
+    /// Endpoints matched right now.
+    pub current_count: u32,
+    /// Change in `current_count` since the last report (negative when an
+    /// endpoint left).
+    pub current_count_change: i32,
+}
+
+/// Incompatible-type payload — upstream `rmw_incompatible_type_status_t`
+/// (Iron+), issue 1972. `u32` where upstream has `int32_t`: both only grow.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[repr(C)]
+pub struct IncompatibleTypeStatus {
+    /// Cumulative incompatible endpoints seen over the entity's lifetime.
+    pub total_count: u32,
+    /// Change since the last report.
+    pub total_count_change: u32,
+}
+
+/// Turns successive SNAPSHOTS of a matched count into [`MatchedStatus`]
+/// reports — issue 1972. `no_std`, no allocation, eight bytes.
+///
+/// A backend that can count its matched peers but has no change counter of
+/// its own (zenoh's graph cache; a DDS backend whose change counters are
+/// reset by other readers of the same status) feeds the current count here
+/// on every poll, and gets a report only when it moved.
+///
+/// **`total_count` counts INCREASES SEEN between polls.** A peer that leaves
+/// and another that joins between two polls nets to no change and is not
+/// counted; upstream's DDS counter would count the join. A snapshot cannot
+/// do better, and saying so is the honest bound.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct MatchedCounter {
+    total: u32,
+    current: u32,
+}
+
+impl MatchedCounter {
+    /// A counter that has seen nothing matched yet.
+    pub const fn new() -> Self {
+        Self {
+            total: 0,
+            current: 0,
+        }
+    }
+
+    /// The last `current_count` observed.
+    pub const fn current(&self) -> u32 {
+        self.current
+    }
+
+    /// Record a snapshot of how many endpoints are matched now. `Some` with
+    /// the report when the count moved, `None` when it did not.
+    pub fn observe(&mut self, current_now: u32) -> Option<MatchedStatus> {
+        if current_now == self.current {
+            return None;
+        }
+        let grew = current_now.saturating_sub(self.current);
+        let change = (current_now as i64 - self.current as i64)
+            .clamp(i32::MIN as i64, i32::MAX as i64) as i32;
+        self.total = self.total.saturating_add(grew);
+        self.current = current_now;
+        Some(MatchedStatus {
+            total_count: self.total,
+            total_count_change: grew,
+            current_count: current_now,
+            current_count_change: change,
+        })
+    }
+}
+
+/// Turns successive snapshots of an incompatible-type count into
+/// [`IncompatibleTypeStatus`] reports. Same bound as [`MatchedCounter`]:
+/// only increases between polls are counted.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct IncompatibleTypeCounter {
+    total: u32,
+    current: u32,
+}
+
+impl IncompatibleTypeCounter {
+    /// A counter that has seen nothing yet.
+    pub const fn new() -> Self {
+        Self {
+            total: 0,
+            current: 0,
+        }
+    }
+
+    /// Record how many incompatible endpoints are visible now. `Some` when
+    /// the number GREW (a new incompatible endpoint), `None` otherwise — a
+    /// mismatched endpoint leaving is not an event upstream reports either.
+    pub fn observe(&mut self, current_now: u32) -> Option<IncompatibleTypeStatus> {
+        let grew = current_now.saturating_sub(self.current);
+        self.current = current_now;
+        if grew == 0 {
+            return None;
+        }
+        self.total = self.total.saturating_add(grew);
+        Some(IncompatibleTypeStatus {
+            total_count: self.total,
+            total_count_change: grew,
+        })
+    }
+}
+
 /// Type alias: the deadline-missed shape is identical to
 /// [`CountStatus`].
 pub type DeadlineMissedStatus = CountStatus;
@@ -88,6 +229,10 @@ pub enum EventPayload<'a> {
     MessageLost(&'a MessageLostStatus),
     LivelinessLost(&'a CountStatus),
     OfferedDeadlineMissed(&'a DeadlineMissedStatus),
+    PublicationMatched(&'a MatchedStatus),
+    SubscriptionMatched(&'a MatchedStatus),
+    PublisherIncompatibleType(&'a IncompatibleTypeStatus),
+    SubscriptionIncompatibleType(&'a IncompatibleTypeStatus),
 }
 
 impl<'a> EventPayload<'a> {
@@ -99,6 +244,12 @@ impl<'a> EventPayload<'a> {
             EventPayload::MessageLost(_) => EventKind::MessageLost,
             EventPayload::LivelinessLost(_) => EventKind::LivelinessLost,
             EventPayload::OfferedDeadlineMissed(_) => EventKind::OfferedDeadlineMissed,
+            EventPayload::PublicationMatched(_) => EventKind::PublicationMatched,
+            EventPayload::SubscriptionMatched(_) => EventKind::SubscriptionMatched,
+            EventPayload::PublisherIncompatibleType(_) => EventKind::PublisherIncompatibleType,
+            EventPayload::SubscriptionIncompatibleType(_) => {
+                EventKind::SubscriptionIncompatibleType
+            }
         }
     }
 }
@@ -151,5 +302,124 @@ pub unsafe fn payload_from_raw<'a>(
         EventKind::OfferedDeadlineMissed => unsafe {
             EventPayload::OfferedDeadlineMissed(&*(payload_ptr as *const CountStatus))
         },
+        EventKind::PublicationMatched => unsafe {
+            EventPayload::PublicationMatched(&*(payload_ptr as *const MatchedStatus))
+        },
+        EventKind::SubscriptionMatched => unsafe {
+            EventPayload::SubscriptionMatched(&*(payload_ptr as *const MatchedStatus))
+        },
+        EventKind::PublisherIncompatibleType => unsafe {
+            EventPayload::PublisherIncompatibleType(
+                &*(payload_ptr as *const IncompatibleTypeStatus),
+            )
+        },
+        EventKind::SubscriptionIncompatibleType => unsafe {
+            EventPayload::SubscriptionIncompatibleType(
+                &*(payload_ptr as *const IncompatibleTypeStatus),
+            )
+        },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn matched_counter_reports_only_movement_and_signs_the_change() {
+        let mut c = MatchedCounter::new();
+        assert_eq!(c.observe(0), None, "0 -> 0 is no event");
+        let up = c.observe(1).expect("0 -> 1");
+        assert_eq!(
+            up,
+            MatchedStatus {
+                total_count: 1,
+                total_count_change: 1,
+                current_count: 1,
+                current_count_change: 1,
+            }
+        );
+        assert_eq!(c.observe(1), None, "1 -> 1 is no event");
+        let up2 = c.observe(3).expect("1 -> 3");
+        assert_eq!((up2.total_count, up2.total_count_change), (3, 2));
+        let down = c.observe(0).expect("3 -> 0");
+        assert_eq!(
+            down,
+            MatchedStatus {
+                total_count: 3,
+                total_count_change: 0,
+                current_count: 0,
+                current_count_change: -3,
+            }
+        );
+        assert_eq!(c.current(), 0);
+    }
+
+    #[test]
+    fn incompatible_type_counter_reports_growth_only() {
+        let mut c = IncompatibleTypeCounter::new();
+        assert_eq!(c.observe(0), None);
+        assert_eq!(
+            c.observe(2),
+            Some(IncompatibleTypeStatus {
+                total_count: 2,
+                total_count_change: 2
+            })
+        );
+        assert_eq!(
+            c.observe(1),
+            None,
+            "a mismatched endpoint leaving is not an event"
+        );
+        assert_eq!(
+            c.observe(2),
+            Some(IncompatibleTypeStatus {
+                total_count: 3,
+                total_count_change: 1
+            })
+        );
+    }
+
+    #[test]
+    fn side_split_covers_every_kind() {
+        use EventKind::*;
+        for k in [
+            LivelinessLost,
+            OfferedDeadlineMissed,
+            PublicationMatched,
+            PublisherIncompatibleType,
+        ] {
+            assert!(k.is_publisher_side(), "{k:?}");
+        }
+        for k in [
+            LivelinessChanged,
+            RequestedDeadlineMissed,
+            MessageLost,
+            SubscriptionMatched,
+            SubscriptionIncompatibleType,
+        ] {
+            assert!(!k.is_publisher_side(), "{k:?}");
+        }
+    }
+
+    #[test]
+    fn payload_round_trips_through_the_raw_pointer() {
+        let m = MatchedStatus {
+            total_count: 4,
+            total_count_change: 1,
+            current_count: 2,
+            current_count_change: -1,
+        };
+        let p = unsafe {
+            payload_from_raw(
+                EventKind::SubscriptionMatched,
+                &m as *const _ as *const core::ffi::c_void,
+            )
+        };
+        assert_eq!(p.kind(), EventKind::SubscriptionMatched);
+        match p {
+            EventPayload::SubscriptionMatched(s) => assert_eq!(*s, m),
+            other => panic!("wrong arm: {other:?}"),
+        }
     }
 }

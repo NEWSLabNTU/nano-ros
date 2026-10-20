@@ -74,6 +74,10 @@ struct SubState {
     size_t pending_too_small_len{0};
     /// Issue 1269 — the graph this reader is listed in (see PubState::graph).
     GraphState* graph{nullptr};
+    /// Issue 1972 — what `SUBSCRIPTION_MATCHED` /
+    /// `SUBSCRIPTION_INCOMPATIBLE_TYPE` last reported (see `EventSeen`).
+    EventSeen matched_seen{};
+    EventSeen incompatible_seen{};
     /// phase-397 W2.b — this reader's `set_on_new_message_callback`.
     EntityWake wake{};
     /// Issue 1495 — publication handle → writer GUID, for `take_with_info`.
@@ -613,8 +617,34 @@ rmw_ret_t subscription_take_event(const rmw_subscription_t* subscription, rmw_ev
     // Publisher-side kinds on a subscription are a caller error, not an
     // empty poll: answering `taken = false` would let the mistake run
     // forever looking like "no events".
+    // Issue 1972 — matched publishers, from Cyclone's own match status.
+    case NROS_RMW_EVENT_SUBSCRIPTION_MATCHED: {
+        dds_subscription_matched_status_t st{};
+        if (dds_get_subscription_matched_status(state->reader, &st) != DDS_RETCODE_OK) {
+            return NROS_RMW_RET_ERROR;
+        }
+        if (matched_report(&state->matched_seen, st.total_count, st.current_count,
+                           &out->matched)) {
+            *taken = true;
+        }
+        return NROS_RMW_RET_OK;
+    }
+    // Issue 1972 — writers on our topic name with another type, from the
+    // builtin DCPSPublication topic.
+    case NROS_RMW_EVENT_SUBSCRIPTION_INCOMPATIBLE_TYPE: {
+        const int n = count_type_mismatch(state->graph, state->reader, state->topic, state->desc,
+                                          /*writers=*/true);
+        if (n < 0) return NROS_RMW_RET_ERROR;
+        if (incompatible_type_report(&state->incompatible_seen, static_cast<uint32_t>(n),
+                                     &out->incompatible_type)) {
+            *taken = true;
+        }
+        return NROS_RMW_RET_OK;
+    }
     case NROS_RMW_EVENT_LIVELINESS_LOST:
     case NROS_RMW_EVENT_OFFERED_DEADLINE_MISSED:
+    case NROS_RMW_EVENT_PUBLICATION_MATCHED:
+    case NROS_RMW_EVENT_PUBLISHER_INCOMPATIBLE_TYPE:
     default:
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }

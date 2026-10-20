@@ -125,6 +125,20 @@ bool graph_ensure_reader(GraphState* g);
 /// edge, because half a notification reads as a working one.
 bool graph_ensure_builtin_reader(GraphState* g, dds_entity_t participant, bool writers);
 
+/// Issue 1972 — how many endpoints on the DDS topic `dds_topic_name` (the
+/// MANGLED `rt/...` name) carry a type name OTHER than `dds_type_name`:
+/// writers when `writers`, readers otherwise. Read from the DDS builtin
+/// topics, which is where an endpoint's type is visible. -1 when the builtin
+/// reader cannot be created. Defined in `graph_query.cpp`.
+///
+/// This is the incompatible-type event's source. Cyclone's own
+/// `DDS_INCONSISTENT_TOPIC_STATUS` (what `rmw_cyclonedds_cpp` maps it to) is
+/// never raised by the pinned 0.10.5 — its raiser is under `#if 0` in
+/// `dds_topic.c` pending topic discovery — so mapping to it would report a
+/// supported event that cannot fire.
+int graph_count_type_mismatch(GraphState* g, dds_entity_t participant, const char* dds_topic_name,
+                              const char* dds_type_name, bool writers);
+
 /// Find the record for `(name, ns)`, adding it if absent, and republish when a
 /// record is added. Returns the slot index, or `kGraphNodeInvalid` /
 /// `kGraphNodeFull`. A name is never truncated: two long names sharing a

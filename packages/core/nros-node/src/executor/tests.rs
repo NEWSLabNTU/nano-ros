@@ -11814,6 +11814,122 @@ fn a_backend_matched_count_wins_over_the_graph_count() {
     assert_eq!(publisher.get_subscription_count(&mut executor).unwrap(), 0);
 }
 
+/// Issue 1972 — the matched and incompatible-type callbacks reach the
+/// application with the backend's payload, each through its OWN kind.
+///
+/// The mock backend fires through the same `(kind, payload, ctx)` channel a
+/// real one uses. The payloads are distinct per entity and per kind, so a
+/// trampoline that decoded the wrong union arm, or a publisher wired to the
+/// subscription's kind, reads a different number and fails.
+#[cfg(feature = "std")]
+#[test]
+fn matched_and_incompatible_type_callbacks_reach_the_application() {
+    use std::{
+        sync::{Arc, Mutex},
+        vec,
+        vec::Vec,
+    };
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let (mut publisher, mut subscription) = {
+        let mut node = executor.create_node("matched").expect("node");
+        let publisher = node
+            .create_publisher::<TestMsg>("/matched")
+            .expect("publisher");
+        let subscription = node
+            .create_polling_subscription::<TestMsg>("/matched")
+            .expect("subscription");
+        (publisher, subscription)
+    };
+
+    let pub_seen: Arc<Mutex<Vec<nros_rmw::MatchedStatus>>> = Arc::default();
+    let sub_seen: Arc<Mutex<Vec<nros_rmw::MatchedStatus>>> = Arc::default();
+    let pub_incompat: Arc<Mutex<Vec<nros_rmw::IncompatibleTypeStatus>>> = Arc::default();
+    let sub_incompat: Arc<Mutex<Vec<nros_rmw::IncompatibleTypeStatus>>> = Arc::default();
+
+    assert!(publisher.supports_event(nros_rmw::EventKind::PublicationMatched));
+    assert!(subscription.supports_event(nros_rmw::EventKind::SubscriptionMatched));
+    {
+        let v = pub_seen.clone();
+        publisher
+            .on_matched(move |s| v.lock().unwrap().push(s))
+            .expect("publisher on_matched");
+        let v = pub_incompat.clone();
+        publisher
+            .on_incompatible_type(move |s| v.lock().unwrap().push(s))
+            .expect("publisher on_incompatible_type");
+        let v = sub_seen.clone();
+        subscription
+            .on_matched(move |s| v.lock().unwrap().push(s))
+            .expect("subscription on_matched");
+        let v = sub_incompat.clone();
+        subscription
+            .on_incompatible_type(move |s| v.lock().unwrap().push(s))
+            .expect("subscription on_incompatible_type");
+    }
+
+    let appeared = nros_rmw::MatchedStatus {
+        total_count: 1,
+        total_count_change: 1,
+        current_count: 1,
+        current_count_change: 1,
+    };
+    let left = nros_rmw::MatchedStatus {
+        total_count: 1,
+        total_count_change: 0,
+        current_count: 0,
+        current_count_change: -1,
+    };
+    let sub_appeared = nros_rmw::MatchedStatus {
+        total_count: 3,
+        total_count_change: 3,
+        current_count: 3,
+        current_count_change: 3,
+    };
+    assert!(
+        publisher
+            .handle
+            .events
+            .fire(nros_rmw::EventKind::PublicationMatched, &appeared)
+    );
+    assert!(
+        publisher
+            .handle
+            .events
+            .fire(nros_rmw::EventKind::PublicationMatched, &left)
+    );
+    assert!(
+        subscription
+            .handle
+            .events
+            .fire(nros_rmw::EventKind::SubscriptionMatched, &sub_appeared)
+    );
+    let it = nros_rmw::IncompatibleTypeStatus {
+        total_count: 2,
+        total_count_change: 2,
+    };
+    let it_sub = nros_rmw::IncompatibleTypeStatus {
+        total_count: 9,
+        total_count_change: 1,
+    };
+    assert!(
+        publisher
+            .handle
+            .events
+            .fire(nros_rmw::EventKind::PublisherIncompatibleType, &it)
+    );
+    assert!(
+        subscription
+            .handle
+            .events
+            .fire(nros_rmw::EventKind::SubscriptionIncompatibleType, &it_sub)
+    );
+
+    assert_eq!(*pub_seen.lock().unwrap(), vec![appeared, left]);
+    assert_eq!(*sub_seen.lock().unwrap(), vec![sub_appeared]);
+    assert_eq!(*pub_incompat.lock().unwrap(), vec![it]);
+    assert_eq!(*sub_incompat.lock().unwrap(), vec![it_sub]);
+}
+
 /// phase-444 — a backend with no graph answers `Unsupported`, and that is a
 /// DIFFERENT answer from `0`.
 ///

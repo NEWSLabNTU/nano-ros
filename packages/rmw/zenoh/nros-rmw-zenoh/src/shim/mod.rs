@@ -42,6 +42,7 @@
 mod bump;
 pub mod entity_gid;
 mod events;
+mod matched;
 pub mod occupancy;
 pub mod publisher;
 pub mod qos;
