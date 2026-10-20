@@ -613,10 +613,9 @@ static rmw_ret_t xrce_client_create_locked(const rmw_node_t* node,
         }
     }
     if (slot == NULL) {
-        /* issue 1033 — see subscriber.c. Service CLIENTS are the one cap of the
-         * three that is still STATED rather than derived (no audited aggregate
-         * counts them, and the raw count would under-size an action client), so
-         * the remedy named here is the only one there is. */
+        /* issue 1033 — see subscriber.c. Derived from the sizing descriptor
+         * (declared clients plus three per action client) since phase-400 W6;
+         * an image that opens an undeclared client lands here. */
         xrce_report_capacity_exhausted("service client", service_name,
                                        (unsigned)XRCE_MAX_SERVICE_CLIENTS,
                                        "NROS_XRCE_MAX_SERVICE_CLIENTS");

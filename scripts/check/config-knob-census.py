@@ -101,16 +101,20 @@ KNOB_CLASS = {
         "phase-473 W1 -- a 0/1, not a size: off when every compiled zenoh link "
         "is serial or CAN (graph_discovery_derived)",
     ),
-    # phase-412 W3b — the arena's QoS-depth multiplier, and a SIZING knob rather
-    # than a derived one. The per-endpoint answer IS derived (from
-    # `<stem>.contract.yaml`'s `qos.depth`, when every endpoint states one) and
-    # this is the image-wide number that outranks it, which is what the ladder
-    # is for. Default 10 is ROS 2's own `rmw_qos_profile_default` KEEP_LAST(10).
+    # phase-412 W3b — the arena's QoS-depth multiplier. Classed `sizing` until
+    # phase-400's 2026-10-21 re-sort, on the reading that the image-wide
+    # statement outranking the derivation is "what the ladder is for". It is
+    # not: the ladder gives a PLATFORM default, and the depth an image's
+    # subscriptions keep is a property of the image. The derived answer is
+    # the sizing descriptor's max_subscription_depth (issue 1655); an image
+    # that declares no contract states its one number on the RFC-0049 APP
+    # rung, `[image.<id>.knobs.*]`. Same shape as NROS_ZENOH_MAX_QUERYABLES:
+    # a checked statement over a derived default. Default 10 is ROS 2's own
+    # `rmw_qos_profile_default` KEEP_LAST(10).
     "NROS_PUBSUB_QOS_DEPTH": (
-        "sizing",
-        "the arena's per-subscription history depth; the derived form is the "
-        "sizing descriptor's max_subscription_depth (issue 1655), which this "
-        "outranks",
+        "derived",
+        "the arena's per-subscription history depth; the sizing descriptor's "
+        "max_subscription_depth (issue 1655), a statement outranks it",
     ),
     "ZPICO_SUBSCRIBER_BUFFER_SIZE": ("derived", "SMALL_PAYLOADS class (phase-403)"),
     "NROS_ZENOH_SUBSCRIBER_LARGE_SIZE": ("derived", "LARGE_PAYLOADS class (phase-403)"),
@@ -152,7 +156,7 @@ KNOB_CLASS = {
     # variable, so no read call spelled them and they were never counted.
     "NROS_XRCE_MAX_SUBSCRIBERS": ("derived", "subscriber slot count; NROS_DERIVED_MAX_SUBSCRIBERS from the entity inventory (issue 1033)"),
     "NROS_XRCE_MAX_SERVICE_SERVERS": ("derived", "service-server slot count; NROS_DERIVED_MAX_QUERYABLES from the entity inventory (issue 1033)"),
-    "NROS_XRCE_MAX_SERVICE_CLIENTS": ("sizing", "service-client slot count; no inventory counts the clients an image opens"),
+    "NROS_XRCE_MAX_SERVICE_CLIENTS": ("derived", "service-client slot count; the sizing descriptor's declared clients plus three per action client (phase-400 W6)"),
     "NROS_XRCE_SUBSCRIBER_RING_DEPTH": ("sizing", "samples per subscriber slot; a burst policy, not derivable"),
     "NROS_XRCE_BUFFER_SIZE": ("sizing", "the default of the three per-family receive sizes"),
     "NROS_XRCE_SUBSCRIBER_BUFFER_SIZE": ("derived", "subscriber ring entry; the largest declared subscription wire bound (phase-403 W8)"),
@@ -263,9 +267,9 @@ KNOB_CLASS = {
         "tenant",
     ),
     "NROS_EXECUTOR_EXTRA_SESSIONS": (
-        "sizing",
-        "issue 1982 extra-session slots per executor (carved from the backing; "
-        "backend_count - 1, else one per node); not yet an ExecutorKnobs tenant",
+        "derived",
+        "issue 1982 extra-session slots per executor (carved from the backing); "
+        "the sizing descriptor's backend_count - 1, else one per node",
     ),
     "NROS_EXECUTOR_RUNTIME_REMAPS": (
         "sizing",

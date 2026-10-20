@@ -115,9 +115,47 @@ pub fn infra_service_servers(infra: Option<&str>, nodes: Option<&str>) -> usize 
         }
 }
 
+/// Service clients an action CLIENT opens: `send_goal`, `cancel_goal` and
+/// `get_result`.
+///
+/// Mirrors `nros_node::executor::action::ACTION_CLIENT_SERVICE_CLIENTS`, held
+/// the same way as the two above.
+pub const ACTION_CLIENT_SERVICE_CLIENTS: usize = 3;
+
+/// The service clients the image opens, from what it declares: one per
+/// declared service client plus [`ACTION_CLIENT_SERVICE_CLIENTS`] per action
+/// client. `None` unless BOTH counts are stated.
+///
+/// Issue 1033 left XRCE's client slots the one stated cap of its three because
+/// "the raw count would under-size an action client". The multiplier is that
+/// count's missing term. It is the same sum the entity inventory prices the
+/// zenoh liveliness pool from, so the two backends cannot count one image's
+/// clients differently (issue 1025's rule). The runtime opens no service client
+/// of its own, so there is no runtime half to add.
+///
+/// UNFLOORED (D7): an image with no clients needs 0.
+pub fn service_client_slots(image: &crate::Image) -> Option<usize> {
+    let clients = *image.service_client_entities().stated()?;
+    let actions = *image.action_client_entities().stated()?;
+    Some(clients + actions * ACTION_CLIENT_SERVICE_CLIENTS)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_action_client_costs_three_service_clients() {
+        let mut img = crate::Image::default();
+        assert_eq!(service_client_slots(&img), None, "nothing stated");
+        img.set_service_client_entities(Some(2));
+        assert_eq!(service_client_slots(&img), None, "half stated");
+        img.set_action_client_entities(Some(1));
+        assert_eq!(service_client_slots(&img), Some(5));
+        img.set_service_client_entities(Some(0));
+        img.set_action_client_entities(Some(0));
+        assert_eq!(service_client_slots(&img), Some(0), "unfloored");
+    }
 
     #[test]
     fn each_family_costs_its_own_servers() {

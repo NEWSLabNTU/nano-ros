@@ -1015,6 +1015,8 @@ const ENV_PARAM_REQUEST: &str = "NROS_PARAM_SERVICE_INBOX_BYTES";
 // Issue 1743 — the service-server slot count. The two facts that complete it
 // with the runtime's own parameter and lifecycle servers are the descriptor's.
 const ENV_SERVICE_SERVERS: &str = "NROS_XRCE_MAX_SERVICE_SERVERS";
+// phase-400 W6 — the service-client slot count, the last of issue 1033's three.
+const ENV_SERVICE_CLIENTS: &str = "NROS_XRCE_MAX_SERVICE_CLIENTS";
 
 /// Rung 3.5 of the ladder in `packages/rmw/xrce/xrce-config.txt`.
 ///
@@ -1064,6 +1066,10 @@ impl XrceDemand {
         // parameter family's request size is a property of the declared
         // PARAMETERS, which `[params]` states whatever the endpoints say.
         d.derive_param_request(desc, param_inbox_stated);
+        // phase-400 W6 — a COUNT, like the param request outside the QoS
+        // gates below: what the image opens does not depend on what its
+        // endpoints say about delivery.
+        d.derive_service_clients(desc);
 
         // A `closure` basis describes every type the link closure can reach,
         // not the set this image creates. D6 forbids silently widening it, and
@@ -1207,6 +1213,21 @@ impl XrceDemand {
                  (issue 1743)"
             )),
             None => {}
+        }
+    }
+
+    /// phase-400 W6 — the service-client slots, from the image's declared
+    /// clients (`nros_sizing_descriptor::infra::service_client_slots`: each
+    /// action client opens three). Issue 1033 left this the one cap of three
+    /// still stated, because the raw client count under-sizes an action
+    /// client; the shared rule carries that term.
+    ///
+    /// UNFLOORED like its two siblings: an image that opens no client derives
+    /// 0 and the slot array goes. Either count unstated derives nothing, and
+    /// the header's default stands.
+    fn derive_service_clients(&mut self, desc: &SizingDescriptor) {
+        if let Some(n) = nros_sizing_descriptor::infra::service_client_slots(&desc.image) {
+            self.values.insert(ENV_SERVICE_CLIENTS, n);
         }
     }
 
@@ -1635,4 +1656,16 @@ fn xrce_demand_selftest() {
     let (v, notes) = servers(None, Some("lifecycle"), None);
     assert_eq!(v, None);
     assert_eq!(notes, 1, "the runtime's 5 servers must not pass silently");
+
+    // 14. phase-400 W6 — the service-client slots: an action client is three.
+    let clients = |svc: Option<usize>, act: Option<usize>| {
+        let mut d = image(vec![]);
+        d.image
+            .set_service_client_entities(svc)
+            .set_action_client_entities(act);
+        XrceDemand::derive(Some(&d)).for_knob(ENV_SERVICE_CLIENTS)
+    };
+    assert_eq!(clients(Some(1), Some(2)), Some(7));
+    assert_eq!(clients(Some(0), Some(0)), Some(0), "unfloored");
+    assert_eq!(clients(Some(1), None), None, "half a count is no count");
 }

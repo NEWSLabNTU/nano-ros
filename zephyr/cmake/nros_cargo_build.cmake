@@ -1481,8 +1481,17 @@ function(nros_resolve_knobs)
         _nros_resolve_derivable_knob(NROS_XRCE_MAX_SERVICE_SERVERS
             "${CONFIG_NROS_XRCE_MAX_SERVICE_SERVERS}" NROS_DERIVED_MAX_QUERYABLES
             "entity inventory" "${CMAKE_BINARY_DIR}/nros/entity_inventory.cmake")
-        _nros_resolve_knob(NROS_XRCE_MAX_SERVICE_CLIENTS
-            "${CONFIG_NROS_XRCE_MAX_SERVICE_CLIENTS}")
+        # phase-400 W6 — the client slots derive like the three receive
+        # families below: at the sentinel nothing is forwarded and
+        # `nros-rmw-xrce-cffi/build.rs` reads them off the sizing descriptor
+        # (declared service clients plus three per action client,
+        # `nros_sizing_descriptor::infra::service_client_slots`). The variable
+        # is the same never-set one, for the reason given there.
+        _nros_resolve_derivable_knob(NROS_XRCE_MAX_SERVICE_CLIENTS
+            "${CONFIG_NROS_XRCE_MAX_SERVICE_CLIENTS}"
+            _NROS_XRCE_FAMILY_DERIVED_BY_BUILD_SCRIPT
+            "the sizing descriptor, which only the cargo lane reads"
+            "${CMAKE_BINARY_DIR}/nros/sizing")
         # issue 1033 — the slot COUNT above is half the arithmetic; this is the
         # other half. A slot is RING_DEPTH x BUFFER_SIZE, and BUFFER_SIZE was
         # forwarded while RING_DEPTH was not, so the 32 in `32 x 1024` was the

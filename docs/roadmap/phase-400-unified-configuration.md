@@ -1,15 +1,19 @@
 # Phase 400 — the unified config system: build it, migrate onto it, retire the rest
 
-**Status (2026-10-14).** W1–W5 and W7 are unchanged. W6 is still open:
-`just check config-knob-census` now counts **53** ladder knobs in 12 tenants
-(`log` landed with issue 1037) and **17** sizing names still to migrate. The
-17 are the graph and QoS-depth caps, six `NROS_XRCE_*` sizes and the MTU,
-the three inbox depths, `NROS_EXECUTOR_MAX_VIOLATIONS`, the two zenoh
-transport-band priorities, `NROS_SERVICE_TIMEOUT_MS` and
-`NROS_ENTRY_SPIN_MS`. `NROS_ZEPHYR_HEAP_SIZE` is still outside the ladder
+**Status (2026-10-21).** W1–W5 and W7 are unchanged. W6 is still open:
+`just check config-knob-census` counts **55** ladder knobs in 12 tenants and
+**15** sizing names still to migrate, after the re-sort below moved three
+names that were already derived (or now are) out of the backlog. The 15 are
+the graph entity budget and graph cache bytes, five `NROS_XRCE_*` sizes and
+the MTU, the three inbox depths, `NROS_EXECUTOR_MAX_VIOLATIONS`,
+`NROS_EXECUTOR_RUNTIME_REMAPS`, the two zenoh transport-band priorities and
+`NROS_SERVICE_TIMEOUT_MS`. `NROS_ZEPHYR_HEAP_SIZE` is still outside the ladder
 (`MemoryKnobs` holds 2). W8's one-reader gate exists
 (`check-knob-single-reader`); retiring the legacy env SPELLINGS moved to
 phase-484 W8. See "Boundary with phase-484" below.
+
+**Status (2026-10-14).** 53 ladder knobs, 17 to migrate (the census read 18
+once issues 1971 and 1982 added two executor knobs).
 
 **Earlier status (2026-09-04): W1-W5, W7 and W8 done; W6's `executor`, `transport`,
 `zenoh.tx`, `memory`, `params`, `rmw`, `net`, `runtime`, `zenoh.wire`, `xrce` and `zenoh.limits` tenants done, its remaining tenants
@@ -80,7 +84,7 @@ The registry is now where a W6 migration is written down. A row gains a
 still in the backlog because its two readers (`nros-rmw-zenoh/build.rs`'s
 `env_usize` and `nros-build-helpers/src/c.rs`'s `knob(..).resolve`) do not
 take the board or platform rung.
-So W6 keeps its remaining 17 here and does each through 484's registry. It
+So W6 keeps its remaining backlog here and does each through 484's registry. It
 does not reopen 484. W8's legacy-spelling retirement belongs to phase-484
 W8, and the one-reader rule stays here (`check-knob-single-reader`).
 
@@ -579,6 +583,40 @@ No campaign owns these; the only doc hit was
 consumer's `build.sh`. That is the argument FOR a rung, not against one: a
 consumer discovering a platform-appropriate value and having nowhere to put it
 is the gap the ladder closes.
+
+### The re-sort of 2026-10-21 — three names were never backlog
+
+Rechecked against main before taking the remainder. Three `sizing` rows
+already had, or were one call away from, the derivation the census's
+`derived` class describes, so a ladder rung would have given each a
+per-platform default for a number that is a property of the image:
+
+* **`NROS_PUBSUB_QOS_DEPTH`.** `nros-node/build.rs` defaults it from the
+  sizing descriptor's `max_subscription_depth` (issue 1655). The row called it
+  `sizing` because a statement outranks the derivation, but that is also
+  true of `NROS_ZENOH_MAX_QUERYABLES`, which was always `derived`. An image
+  with no contract states its one depth on the APP rung
+  (`[image.<id>.knobs.*]`), not on a platform rung.
+* **`NROS_EXECUTOR_EXTRA_SESSIONS`.** Issue 1982 landed it already derived
+  from the descriptor's `backend_count`; the census row was filed as
+  `sizing` with that derivation in its own reason text.
+* **`NROS_XRCE_MAX_SERVICE_CLIENTS`.** The one XRCE cap of issue 1033's three
+  still stated, because "no inventory counts the clients an image opens".
+  The descriptor has stated `service_client_entities` since issue 0810; what
+  was missing was the action client's three service clients. That term is
+  now `nros_sizing_descriptor::infra::service_client_slots`, beside the
+  parameter and lifecycle server counts, and `nros-rmw-xrce-cffi/build.rs`
+  derives the slots from it (unfloored, issue 1033). The Kconfig default is
+  `-1`, so a Zephyr west entry derives it the way its three receive-buffer
+  families already do. The mirror of `ACTION_CLIENT_SERVICE_CLIENTS` is held
+  by `check-infra-queryable-counts`.
+
+The remaining 15 are policy values with no derivation: depths that absorb
+bursts, a timeout, priorities, an MTU, the peer graph's size. Those are what
+a platform or board rung is for. The two zenoh priorities stay zenoh-named
+registry rows; RFC-0071 D10 (phase-506 W3) maps a backend's own priority
+knobs onto the `rx`/`keepalive` roles, so the rung lands on the backend's
+row and the role reads it.
 
 ### The census had been under-counting by 29
 
