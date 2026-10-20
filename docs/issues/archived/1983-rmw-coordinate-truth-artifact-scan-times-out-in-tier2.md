@@ -1,12 +1,13 @@
 ---
 id: 1983
 title: "`a_rows_rmw_is_the_backend_its_artifact_linked` ran past nextest's 60 s terminate in tier 2, after issue 1690 put its `nm` sweep on a pool"
-status: open
+status: resolved  # duplicate of 1984
 type: bug
 area: [testing]
 severity: medium
 found: 2026-10-19
-related: [1690]
+related: [1690, 1984]
+resolved_in: 2026-10-20
 ---
 
 ## Measured
@@ -64,3 +65,23 @@ Measure first, then pick one:
    critical path.
 
 Acceptance: the test reaches a verdict in a tier-2 run.
+
+## Resolution
+
+**Duplicate of issue [1984](1984-run-matrix-coordinate-truth-nm-sweep-timeout.md)**,
+which was filed from the same run (39210994277) in another session and fixed
+by PR #2432 (merged 2026-10-19). This issue's option 2 is what landed, plus
+bounds, not option 1:
+
+- The manifest is read once per process instead of one `python3` per row.
+- Every `nm` pass is bounded (20 s), and so is the sweep (25 s). Either case
+  fails the test, naming the row and binary, instead of a suite-level TIMEOUT.
+- Every run prints its locate time, its sweep time and its five slowest rows.
+- No nextest override was added.
+
+**Acceptance met.** The next scheduled run-matrix, 39380448771 (2026-10-20,
+head `22a482fae4`), reached a verdict in both jobs:
+`PASS [ 0.583s] … a_rows_rmw_is_the_backend_its_artifact_linked` in tier 2
+(job 118488124531) and `PASS [ 0.589s]` in tier 1 (job 118507538649). Both
+jobs ran on runner 118. The test has not yet run on runner 241, the slow host
+1984 was measured on.
