@@ -510,6 +510,14 @@ pub enum QoSReliabilityPolicy {
     /// "nobody asked, so the middleware chooses" — see
     /// [`QoSProfile::QOS_PROFILE_UNKNOWN`].
     Unknown,
+    /// **Resolve at creation against the discovered graph** (issue 1973).
+    /// Upstream's `RMW_QOS_POLICY_RELIABILITY_BEST_AVAILABLE` (Iron+); lowers
+    /// to `NROS_RMW_RELIABILITY_BEST_AVAILABLE` (4) across the C ABI.
+    ///
+    /// A REQUEST, never a grant: the runtime replaces it before the backend's
+    /// create slot runs ([`QoSProfile::resolve_best_available`]), so a
+    /// `*_get_actual_qos` read-back reports the concrete policy chosen.
+    BestAvailable,
 }
 
 /// QoS durability policy
@@ -536,6 +544,11 @@ pub enum QoSDurabilityPolicy {
     /// "nobody asked, so the middleware chooses" — see
     /// [`QoSProfile::QOS_PROFILE_UNKNOWN`].
     Unknown,
+    /// **Resolve at creation against the discovered graph** (issue 1973).
+    /// Upstream's `RMW_QOS_POLICY_DURABILITY_BEST_AVAILABLE` (Iron+); lowers
+    /// to `NROS_RMW_DURABILITY_BEST_AVAILABLE` (4) across the C ABI. A
+    /// request only — see [`QoSReliabilityPolicy::BestAvailable`].
+    BestAvailable,
 }
 
 /// QoS liveliness policy. Matches DDS `LIVELINESS` semantics.
@@ -576,6 +589,12 @@ pub enum QoSLivelinessPolicy {
     /// `*_get_actual_qos` read-back writes it for a policy it cannot report;
     /// an application never requests it.
     Unknown = 4,
+    /// **Resolve at creation against the discovered graph** (issue 1973).
+    /// Discriminant 5, upstream's `RMW_QOS_POLICY_LIVELINESS_BEST_AVAILABLE`
+    /// (Iron+) and the C ABI's `NROS_RMW_LIVELINESS_BEST_AVAILABLE`. A
+    /// request only — see [`QoSReliabilityPolicy::BestAvailable`]. Not manual:
+    /// it resolves to `Automatic` or `ManualByTopic` before anything asks.
+    BestAvailable = 5,
 }
 
 impl QoSLivelinessPolicy {
@@ -783,6 +802,19 @@ pub struct QoSOverride {
 /// `NROS_RMW_DURATION_INFINITE_MS`.
 pub const DURATION_INFINITE_MS: u32 = u32::MAX;
 
+/// Issue 1973 — the "best available" spelling for `deadline_ms` and
+/// `liveliness_lease_ms`: resolve at creation against the discovered graph.
+///
+/// Upstream spells it `RMW_QOS_DEADLINE_BEST_AVAILABLE` /
+/// `RMW_QOS_LIVELINESS_LEASE_DURATION_BEST_AVAILABLE`, both
+/// `RMW_DURATION_INFINITE - 1`; this is the same idea in our u32-millisecond
+/// fields: [`DURATION_INFINITE_MS`] minus one. A REQUEST only — the runtime
+/// replaces it before a backend sees the profile
+/// ([`QoSProfile::resolve_best_available`]). Mirrors the C header's
+/// `NROS_RMW_DURATION_BEST_AVAILABLE_MS`. Not meaningful for `lifespan_ms`,
+/// as upstream defines no best-available lifespan.
+pub const DURATION_BEST_AVAILABLE_MS: u32 = DURATION_INFINITE_MS - 1;
+
 /// Phase-301 (issue 0241) — lower a [`core::time::Duration`] into a u32
 /// millisecond QoS field. Boundary contract:
 ///
@@ -791,7 +823,9 @@ pub const DURATION_INFINITE_MS: u32 = u32::MAX;
 ///   would silently turn a real deadline into "no deadline");
 /// - values at or past [`DURATION_INFINITE_MS`] ms are a create-time
 ///   error, never a clamp (infinite is requested via the sentinel or
-///   `0`, not by a huge finite duration).
+///   `0`, not by a huge finite duration). The bound starts one below, at
+///   [`DURATION_BEST_AVAILABLE_MS`] (issue 1973), so no finite duration can
+///   collide with that sentinel either.
 pub fn duration_to_qos_ms(d: core::time::Duration) -> Result<u32, TransportError> {
     if d.is_zero() {
         return Ok(0);
@@ -800,7 +834,7 @@ pub fn duration_to_qos_ms(d: core::time::Duration) -> Result<u32, TransportError
     if !d.subsec_nanos().is_multiple_of(1_000_000) {
         ms += 1;
     }
-    if ms >= DURATION_INFINITE_MS as u128 {
+    if ms >= DURATION_BEST_AVAILABLE_MS as u128 {
         return Err(TransportError::InvalidArgument);
     }
     Ok(ms as u32)
@@ -1239,6 +1273,27 @@ qos_profiles! {
         tx_express: false,
     };
 
+    /// `rmw_qos_profile_best_available` (Iron+) — KEEP_LAST(10) with every
+    /// policy that CAN be best-available set so (issue 1973).
+    ///
+    /// Reliability, durability, liveliness, deadline and lease are resolved at
+    /// creation against the endpoints already discovered on the topic, by
+    /// [`QoSProfile::resolve_best_available`]; history, depth and lifespan
+    /// are stated, exactly as upstream states them. A request only: no
+    /// backend is handed this profile unresolved.
+    QOS_PROFILE_BEST_AVAILABLE: "rmw_qos_profile_best_available" = {
+        history: KeepLast,
+        depth: 10,
+        reliability: BestAvailable,
+        durability: BestAvailable,
+        deadline_ms: DURATION_BEST_AVAILABLE_MS,
+        lifespan_ms: 0,
+        liveliness_kind: BestAvailable,
+        liveliness_lease_ms: DURATION_BEST_AVAILABLE_MS,
+        avoid_ros_namespace_conventions: false,
+        tx_express: false,
+    };
+
     /// Clock QoS profile — sensor-data shaped with depth 1.
     // phase-428 W4 — the provenance string said "/clock has no rmw constant",
     // which is true and was read as "no upstream at all". `rclrs::QOS_PROFILE_CLOCK`
@@ -1417,6 +1472,20 @@ impl QoSProfile {
     /// Get the default QoS profile for clock topics
     pub const fn clock_default() -> Self {
         Self::QOS_PROFILE_CLOCK
+    }
+
+    /// rclrs's `QoSProfile::best_available()` — `rmw_qos_profile_best_available`
+    /// ([`QOS_PROFILE_BEST_AVAILABLE`](Self::QOS_PROFILE_BEST_AVAILABLE)),
+    /// issue 1973.
+    ///
+    /// Reliability, durability, liveliness, deadline and liveliness lease are
+    /// chosen when the entity is created, from the endpoints the backend has
+    /// already discovered on the topic ([`QoSProfile::resolve_best_available`]
+    /// states the rule); read the outcome back with the entity's
+    /// `actual_qos()`. Upstream's caveat holds: the choice is not revisited
+    /// when endpoints appear later.
+    pub const fn best_available() -> Self {
+        Self::QOS_PROFILE_BEST_AVAILABLE
     }
 
     // --- Builder methods ---
@@ -2264,21 +2333,27 @@ pub struct GraphEndpointInfo<'a> {
     pub is_publisher: bool,
     /// The endpoint's 24-byte identity; all-zero when the backend has none.
     pub endpoint_gid: [u8; 24],
+    /// The profile the endpoint is known by — what the backend MATCHED on.
+    ///
+    /// [`QoSProfile::QOS_PROFILE_UNKNOWN`] (every policy `Unknown`, windows 0)
+    /// when the backend cannot read it, which is the C seam's contract on
+    /// `rmw_topic_endpoint_info_t::qos_profile` too.
+    pub qos: QoSProfile,
 }
 
-// No `qos` field, deliberately. The C seam carries one and fills it with the
-// ABI's `*_UNKNOWN` sentinels, which is the contract for a policy a backend
-// cannot determine (see `publisher_get_actual_qos`: write UNKNOWN and return
-// OK; `UNSUPPORTED` means no read-back AT ALL).
+// The `qos` field arrived with issue 1973, because resolving a best-available
+// profile needs every peer's profile and this is the seam that walks them.
 //
-// No backend can fill it today. zenoh's liveliness token carries the DECLARING
-// side's own profile, not a negotiated grant, and this seam promises the
-// granted one — reporting the declaration would be the plausible wrong answer
-// the slot exists to avoid, since "why is nothing arriving" is usually a QoS
-// mismatch and the requested profile cannot show it. Cyclone can read a real
-// grant and will need this; adding a field to a Rust struct then is additive
-// and not an ABI change, which is why carrying an always-`None` field now
-// buys nothing.
+// It was left out before on the reading that zenoh's liveliness token carries
+// the DECLARING side's profile, not a negotiated grant. Measured against what
+// the token actually holds, that distinction does not exist on zenoh: there is
+// no negotiation, our token is written from `shim/qos.rs`'s GRANT
+// (`keyexpr.rs`), and a stock `rmw_zenoh_cpp` peer writes its own resolved
+// profile and reports the same string from `rmw_get_publishers_info_by_topic`.
+// So the token is what the endpoint does, which is what the C seam's
+// `qos_profile` promises ("reports what it MATCHED on"). Cyclone fills it from
+// the discovered endpoint's DDS QoS (`graph_query.cpp`). A backend that cannot
+// read one writes `QOS_PROFILE_UNKNOWN`, never the local request.
 
 /// Bitmask of QoS policies a backend can honour. See
 /// [`Session::supported_qos_policies`].
@@ -2489,7 +2564,9 @@ impl QoSProfile {
     /// standing between `QOS_PROFILE_SYSTEM_DEFAULT` and a hard refusal.
     pub fn required_policies(&self) -> QoSPolicyMask {
         let mut mask = QoSPolicyMask(0);
-        if self.reliability != QoSReliabilityPolicy::SystemDefault {
+        if self.reliability != QoSReliabilityPolicy::SystemDefault
+            && self.reliability != QoSReliabilityPolicy::BestAvailable
+        {
             mask |= QoSPolicyMask::RELIABILITY;
         }
         if self.history != QoSHistoryPolicy::SystemDefault {
@@ -2518,10 +2595,18 @@ impl QoSProfile {
             // `validate_against`, where it is refused for every policy at once
             // rather than smuggled in as an unsatisfiable mask bit.
             QoSDurabilityPolicy::Unknown => {}
+            // issue 1973 — a best-available field demands NOTHING: the
+            // resolver clamps its choice to the backend's own mask
+            // (`resolve_best_available`), so whatever it picks is honoured.
+            QoSDurabilityPolicy::BestAvailable => {}
         }
         // Phase-301 (issue 0241): DURATION_INFINITE_MS reads the same as 0
-        // (infinite = no check) at every duration check site.
-        if self.deadline_ms != 0 && self.deadline_ms != DURATION_INFINITE_MS {
+        // (infinite = no check) at every duration check site. The
+        // best-available sentinel demands nothing either (see above).
+        if self.deadline_ms != 0
+            && self.deadline_ms != DURATION_INFINITE_MS
+            && self.deadline_ms != DURATION_BEST_AVAILABLE_MS
+        {
             mask |= QoSPolicyMask::DEADLINE;
         }
         if self.lifespan_ms != 0 && self.lifespan_ms != DURATION_INFINITE_MS {
@@ -2534,8 +2619,12 @@ impl QoSProfile {
             QoSLivelinessPolicy::ManualByNode => mask |= QoSPolicyMask::LIVELINESS_MANUAL_BY_NODE,
             // See the durability arm.
             QoSLivelinessPolicy::Unknown => {}
+            QoSLivelinessPolicy::BestAvailable => {}
         }
-        if self.liveliness_lease_ms != 0 && self.liveliness_lease_ms != DURATION_INFINITE_MS {
+        if self.liveliness_lease_ms != 0
+            && self.liveliness_lease_ms != DURATION_INFINITE_MS
+            && self.liveliness_lease_ms != DURATION_BEST_AVAILABLE_MS
+        {
             mask |= QoSPolicyMask::LIVELINESS_LEASE;
         }
         if self.avoid_ros_namespace_conventions {
@@ -2625,6 +2714,322 @@ impl QoSProfile {
             || matches!(self.durability, QoSDurabilityPolicy::SystemDefault)
             || matches!(self.history, QoSHistoryPolicy::SystemDefault)
     }
+
+    /// `true` if any field still asks to be resolved best-available (issue
+    /// 1973): one of the three policy variants, or the
+    /// [`DURATION_BEST_AVAILABLE_MS`] sentinel in `deadline_ms` /
+    /// `liveliness_lease_ms`.
+    #[must_use]
+    pub const fn has_best_available(&self) -> bool {
+        matches!(self.reliability, QoSReliabilityPolicy::BestAvailable)
+            || matches!(self.durability, QoSDurabilityPolicy::BestAvailable)
+            || matches!(self.liveliness_kind, QoSLivelinessPolicy::BestAvailable)
+            || self.deadline_ms == DURATION_BEST_AVAILABLE_MS
+            || self.liveliness_lease_ms == DURATION_BEST_AVAILABLE_MS
+    }
+
+    /// Replace every best-available field with a concrete value — issue 1973,
+    /// the ONE resolution rule every backend reaches.
+    ///
+    /// The rule is upstream's, transcribed from `rmw_dds_common`'s
+    /// `qos_profile_get_best_available_for_{subscription,publisher}` and
+    /// `qos_profile_update_best_available_for_services` (jazzy):
+    ///
+    /// | policy      | subscription (peers = publishers)                  | publisher (peers = subscriptions)              |
+    /// |-------------|----------------------------------------------------|------------------------------------------------|
+    /// | reliability | RELIABLE iff ≥1 peer and every peer is RELIABLE, else BEST_EFFORT | RELIABLE                           |
+    /// | durability  | TRANSIENT_LOCAL iff ≥1 peer and all are, else VOLATILE | TRANSIENT_LOCAL                            |
+    /// | liveliness  | MANUAL_BY_TOPIC iff ≥1 peer and all are, else AUTOMATIC | MANUAL_BY_TOPIC iff any peer is, else AUTOMATIC |
+    /// | deadline    | largest finite peer deadline, else default (0)     | smallest finite peer deadline, else default (0) |
+    /// | lease       | largest finite peer lease, else default (0)        | smallest finite peer lease, else default (0)    |
+    ///
+    /// A service or client ([`BestAvailableRole::Service`]) takes each field
+    /// from `rmw_qos_profile_services_default`, as upstream does.
+    ///
+    /// **No peers is a real answer, not a failure.** It is what a backend with
+    /// no graph (XRCE, uORB) always reports, and it yields upstream's own
+    /// "nothing discovered yet" profile: BEST_EFFORT / VOLATILE / AUTOMATIC for
+    /// a subscription, RELIABLE / TRANSIENT_LOCAL / AUTOMATIC for a publisher.
+    ///
+    /// **A peer whose profile the backend cannot read** (its fields are the
+    /// `Unknown` sentinels, durations 0) contributes its LEAST demanding value:
+    /// not reliable, not transient-local, not manual, no deadline. For a
+    /// subscription that keeps the choice compatible with the peer whatever it
+    /// really offers; a publisher cannot be protected the same way and offers
+    /// what the readable peers ask for.
+    ///
+    /// **Last, the choice is clamped to what the backend honours**
+    /// (`supported`, its [`Session::supported_qos_policies`]): a resolved value
+    /// the backend could not grant steps down to the next one it can —
+    /// TRANSIENT_LOCAL → VOLATILE, MANUAL_BY_TOPIC → AUTOMATIC, a finite
+    /// deadline or lease → default — and to the `SYSTEM_DEFAULT` sentinel when
+    /// the backend honours the policy not at all. "Best available" is then
+    /// literally the best this backend has; the alternative, choosing a value
+    /// the next line refuses with `IncompatibleQos`, would make the request
+    /// fail for asking to be accommodated. Fields the caller stated are never
+    /// touched.
+    ///
+    /// Idempotent: a profile with nothing best-available is returned as is.
+    #[must_use]
+    pub fn resolve_best_available(
+        mut self,
+        role: BestAvailableRole,
+        peers: &BestAvailablePeers,
+        supported: QoSPolicyMask,
+    ) -> Self {
+        let rel = matches!(self.reliability, QoSReliabilityPolicy::BestAvailable);
+        let dur = matches!(self.durability, QoSDurabilityPolicy::BestAvailable);
+        let liv = matches!(self.liveliness_kind, QoSLivelinessPolicy::BestAvailable);
+        let dl = self.deadline_ms == DURATION_BEST_AVAILABLE_MS;
+        let lease = self.liveliness_lease_ms == DURATION_BEST_AVAILABLE_MS;
+        let any = peers.count > 0;
+        match role {
+            BestAvailableRole::Subscription => {
+                if rel {
+                    self.reliability = if any && peers.reliable == peers.count {
+                        QoSReliabilityPolicy::Reliable
+                    } else {
+                        QoSReliabilityPolicy::BestEffort
+                    };
+                }
+                if dur {
+                    self.durability = if any && peers.transient_local == peers.count {
+                        QoSDurabilityPolicy::TransientLocal
+                    } else {
+                        QoSDurabilityPolicy::Volatile
+                    };
+                }
+                if liv {
+                    self.liveliness_kind = if any && peers.manual_by_topic == peers.count {
+                        QoSLivelinessPolicy::ManualByTopic
+                    } else {
+                        QoSLivelinessPolicy::Automatic
+                    };
+                }
+                if dl {
+                    self.deadline_ms = peers.deadline_max;
+                }
+                if lease {
+                    self.liveliness_lease_ms = peers.lease_max;
+                }
+            }
+            BestAvailableRole::Publisher => {
+                if rel {
+                    self.reliability = QoSReliabilityPolicy::Reliable;
+                }
+                if dur {
+                    self.durability = QoSDurabilityPolicy::TransientLocal;
+                }
+                if liv {
+                    self.liveliness_kind = if peers.manual_by_topic > 0 {
+                        QoSLivelinessPolicy::ManualByTopic
+                    } else {
+                        QoSLivelinessPolicy::Automatic
+                    };
+                }
+                if dl {
+                    self.deadline_ms = peers.deadline_min;
+                }
+                if lease {
+                    self.liveliness_lease_ms = peers.lease_min;
+                }
+            }
+            BestAvailableRole::Service => {
+                let svc = Self::QOS_PROFILE_SERVICES_DEFAULT;
+                if rel {
+                    self.reliability = svc.reliability;
+                }
+                if dur {
+                    self.durability = svc.durability;
+                }
+                if liv {
+                    self.liveliness_kind = svc.liveliness_kind;
+                }
+                if dl {
+                    self.deadline_ms = svc.deadline_ms;
+                }
+                if lease {
+                    self.liveliness_lease_ms = svc.liveliness_lease_ms;
+                }
+            }
+        }
+
+        // The clamp — only on fields that WERE best-available.
+        if rel && !supported.contains(QoSPolicyMask::RELIABILITY) {
+            self.reliability = QoSReliabilityPolicy::SystemDefault;
+        }
+        if dur {
+            if matches!(self.durability, QoSDurabilityPolicy::TransientLocal)
+                && !supported.contains(QoSPolicyMask::DURABILITY_TRANSIENT_LOCAL)
+            {
+                self.durability = QoSDurabilityPolicy::Volatile;
+            }
+            if matches!(self.durability, QoSDurabilityPolicy::Volatile)
+                && !supported.contains(QoSPolicyMask::DURABILITY_VOLATILE)
+            {
+                self.durability = QoSDurabilityPolicy::SystemDefault;
+            }
+        }
+        if liv {
+            if matches!(self.liveliness_kind, QoSLivelinessPolicy::ManualByTopic)
+                && !supported.contains(QoSPolicyMask::LIVELINESS_MANUAL_BY_TOPIC)
+            {
+                self.liveliness_kind = QoSLivelinessPolicy::Automatic;
+            }
+            if matches!(self.liveliness_kind, QoSLivelinessPolicy::Automatic)
+                && !supported.contains(QoSPolicyMask::LIVELINESS_AUTOMATIC)
+            {
+                self.liveliness_kind = QoSLivelinessPolicy::None;
+            }
+        }
+        if dl && self.deadline_ms != 0 && !supported.contains(QoSPolicyMask::DEADLINE) {
+            self.deadline_ms = 0;
+        }
+        if lease
+            && self.liveliness_lease_ms != 0
+            && !supported.contains(QoSPolicyMask::LIVELINESS_LEASE)
+        {
+            self.liveliness_lease_ms = 0;
+        }
+        self
+    }
+}
+
+/// Which end of the graph a best-available profile is resolved for — issue
+/// 1973. See [`QoSProfile::resolve_best_available`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BestAvailableRole {
+    /// A publisher; resolved against the topic's discovered SUBSCRIPTIONS.
+    Publisher,
+    /// A subscription; resolved against the topic's discovered PUBLISHERS.
+    Subscription,
+    /// A service server or client; resolved to
+    /// `rmw_qos_profile_services_default`, never against the graph.
+    Service,
+}
+
+/// The discovered peers of one topic, folded down to what
+/// [`QoSProfile::resolve_best_available`] reads — issue 1973.
+///
+/// A fold rather than a list so a graph walk can feed it one endpoint at a
+/// time, with no allocator and no bound on how many endpoints there are.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct BestAvailablePeers {
+    /// Peers observed.
+    pub count: usize,
+    /// …of which RELIABLE.
+    pub reliable: usize,
+    /// …of which TRANSIENT_LOCAL.
+    pub transient_local: usize,
+    /// …of which MANUAL_BY_TOPIC.
+    pub manual_by_topic: usize,
+    /// Smallest finite deadline seen, ms; `0` when none was finite.
+    pub deadline_min: u32,
+    /// Largest finite deadline seen, ms; `0` when none was finite.
+    pub deadline_max: u32,
+    /// Smallest finite liveliness lease seen, ms; `0` when none was finite.
+    pub lease_min: u32,
+    /// Largest finite liveliness lease seen, ms; `0` when none was finite.
+    pub lease_max: u32,
+}
+
+impl BestAvailablePeers {
+    /// No peers — what a backend with no graph reports.
+    pub const NONE: Self = Self {
+        count: 0,
+        reliable: 0,
+        transient_local: 0,
+        manual_by_topic: 0,
+        deadline_min: 0,
+        deadline_max: 0,
+        lease_min: 0,
+        lease_max: 0,
+    };
+
+    /// Fold one discovered endpoint's profile in.
+    ///
+    /// `0`, [`DURATION_INFINITE_MS`] and the best-available sentinel all read
+    /// as "no finite window" — upstream's `RMW_QOS_DEADLINE_DEFAULT`
+    /// comparison, widened to our two spellings of infinite.
+    pub fn observe(&mut self, peer: &QoSProfile) {
+        self.count += 1;
+        if matches!(peer.reliability, QoSReliabilityPolicy::Reliable) {
+            self.reliable += 1;
+        }
+        if matches!(peer.durability, QoSDurabilityPolicy::TransientLocal) {
+            self.transient_local += 1;
+        }
+        if matches!(peer.liveliness_kind, QoSLivelinessPolicy::ManualByTopic) {
+            self.manual_by_topic += 1;
+        }
+        fn finite(ms: u32) -> Option<u32> {
+            (ms != 0 && ms < DURATION_BEST_AVAILABLE_MS).then_some(ms)
+        }
+        fn fold(min: &mut u32, max: &mut u32, v: Option<u32>) {
+            if let Some(v) = v {
+                *min = if *min == 0 { v } else { (*min).min(v) };
+                *max = (*max).max(v);
+            }
+        }
+        fold(
+            &mut self.deadline_min,
+            &mut self.deadline_max,
+            finite(peer.deadline_ms),
+        );
+        fold(
+            &mut self.lease_min,
+            &mut self.lease_max,
+            finite(peer.liveliness_lease_ms),
+        );
+    }
+}
+
+/// Resolve `qos`'s best-available fields against what `session` has
+/// discovered on `topic_name` — issue 1973. The graph half of
+/// [`QoSProfile::resolve_best_available`], shared by every create path.
+///
+/// Queries [`Session::get_endpoint_info_by_topic`] for the OTHER side of the
+/// topic (subscriptions for a publisher, publishers for a subscription) and
+/// folds each endpoint's [`GraphEndpointInfo::qos`]. A backend that cannot
+/// answer — `Unsupported`, or any error from the walk — is treated as having
+/// discovered nothing, which resolves to upstream's documented
+/// nothing-discovered profile rather than to a guess. A
+/// [`BestAvailableRole::Service`] never walks the graph.
+///
+/// Returns `qos` unchanged when nothing in it is best-available, so it is
+/// free to call on every create.
+pub fn resolve_best_available_on<S: Session + ?Sized>(
+    session: &mut S,
+    role: BestAvailableRole,
+    topic_name: &str,
+    qos: QoSProfile,
+) -> QoSProfile
+where
+    S::Error: From<TransportError>,
+{
+    if !qos.has_best_available() {
+        return qos;
+    }
+    let mut peers = BestAvailablePeers::NONE;
+    let publishers = match role {
+        BestAvailableRole::Publisher => Some(false),
+        BestAvailableRole::Subscription => Some(true),
+        BestAvailableRole::Service => None,
+    };
+    if let Some(publishers) = publishers {
+        let mut walked = BestAvailablePeers::NONE;
+        let ok = session
+            .get_endpoint_info_by_topic(publishers, topic_name, &mut |info| {
+                walked.observe(&info.qos);
+                true
+            })
+            .is_ok();
+        if ok {
+            peers = walked;
+        }
+    }
+    let supported = session.supported_qos_policies();
+    qos.resolve_best_available(role, &peers, supported)
 }
 
 /// Publisher trait for sending messages.
@@ -4987,5 +5392,266 @@ mod granted_qos_tests {
         p.durability = QoSDurabilityPolicy::Unknown;
         p.liveliness_kind = QoSLivelinessPolicy::Unknown;
         assert_eq!(p.required_policies().0, QoSPolicyMask(0).0);
+    }
+}
+
+#[cfg(test)]
+mod best_available_tests {
+    //! issue 1973 — the ONE best-available rule, asserted against upstream's
+    //! `rmw_dds_common` behaviour case by case.
+    use super::*;
+
+    const ALL: QoSPolicyMask = QoSPolicyMask(u32::MAX);
+
+    fn peer(
+        rel: QoSReliabilityPolicy,
+        dur: QoSDurabilityPolicy,
+        liv: QoSLivelinessPolicy,
+        deadline_ms: u32,
+        lease_ms: u32,
+    ) -> QoSProfile {
+        let mut q = QoSProfile::QOS_PROFILE_DEFAULT;
+        q.reliability = rel;
+        q.durability = dur;
+        q.liveliness_kind = liv;
+        q.deadline_ms = deadline_ms;
+        q.liveliness_lease_ms = lease_ms;
+        q
+    }
+
+    fn fold(peers: &[QoSProfile]) -> BestAvailablePeers {
+        let mut f = BestAvailablePeers::NONE;
+        for p in peers {
+            f.observe(p);
+        }
+        f
+    }
+
+    #[test]
+    fn the_profile_matches_upstream_and_asks_for_resolution() {
+        let q = QoSProfile::best_available();
+        assert_eq!(q, QoSProfile::QOS_PROFILE_BEST_AVAILABLE);
+        assert!(q.has_best_available());
+        assert_eq!((q.history, q.depth), (QoSHistoryPolicy::KeepLast, 10));
+        assert_eq!(q.lifespan_ms, 0, "lifespan has no best-available spelling");
+        assert!(!QoSProfile::QOS_PROFILE_DEFAULT.has_best_available());
+    }
+
+    /// A best-available field demands nothing of the backend: the resolver
+    /// clamps to the backend's mask, so validation of the REQUEST cannot fail
+    /// on it.
+    #[test]
+    fn a_best_available_request_requires_no_policy_bit() {
+        let q = QoSProfile::best_available();
+        assert_eq!(
+            q.required_policies(),
+            QoSPolicyMask::HISTORY | QoSPolicyMask::DEPTH
+        );
+        assert!(
+            q.validate_against(QoSPolicyMask::HISTORY | QoSPolicyMask::DEPTH)
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn subscription_with_no_publishers_gets_upstreams_nothing_discovered_answer() {
+        let q = QoSProfile::best_available().resolve_best_available(
+            BestAvailableRole::Subscription,
+            &BestAvailablePeers::NONE,
+            ALL,
+        );
+        assert_eq!(q.reliability, QoSReliabilityPolicy::BestEffort);
+        assert_eq!(q.durability, QoSDurabilityPolicy::Volatile);
+        assert_eq!(q.liveliness_kind, QoSLivelinessPolicy::Automatic);
+        assert_eq!((q.deadline_ms, q.liveliness_lease_ms), (0, 0));
+        assert!(!q.has_best_available());
+    }
+
+    #[test]
+    fn publisher_with_no_subscriptions_gets_the_highest_service() {
+        let q = QoSProfile::best_available().resolve_best_available(
+            BestAvailableRole::Publisher,
+            &BestAvailablePeers::NONE,
+            ALL,
+        );
+        assert_eq!(q.reliability, QoSReliabilityPolicy::Reliable);
+        assert_eq!(q.durability, QoSDurabilityPolicy::TransientLocal);
+        assert_eq!(q.liveliness_kind, QoSLivelinessPolicy::Automatic);
+        assert_eq!((q.deadline_ms, q.liveliness_lease_ms), (0, 0));
+    }
+
+    #[test]
+    fn subscription_takes_the_strictest_value_every_publisher_offers() {
+        use QoSDurabilityPolicy as D;
+        use QoSLivelinessPolicy as L;
+        use QoSReliabilityPolicy as R;
+        // All reliable + transient-local + manual: the subscription may ask
+        // for all three; largest finite deadline / lease.
+        let all = fold(&[
+            peer(R::Reliable, D::TransientLocal, L::ManualByTopic, 100, 10),
+            peer(R::Reliable, D::TransientLocal, L::ManualByTopic, 300, 30),
+        ]);
+        let q = QoSProfile::best_available().resolve_best_available(
+            BestAvailableRole::Subscription,
+            &all,
+            ALL,
+        );
+        assert_eq!(q.reliability, R::Reliable);
+        assert_eq!(q.durability, D::TransientLocal);
+        assert_eq!(q.liveliness_kind, L::ManualByTopic);
+        assert_eq!((q.deadline_ms, q.liveliness_lease_ms), (300, 30));
+
+        // One best-effort volatile automatic publisher with no deadline drags
+        // each policy down — and an infinite window makes the deadline default.
+        let mixed = fold(&[
+            peer(R::Reliable, D::TransientLocal, L::ManualByTopic, 100, 0),
+            peer(
+                R::BestEffort,
+                D::Volatile,
+                L::Automatic,
+                DURATION_INFINITE_MS,
+                0,
+            ),
+        ]);
+        let q = QoSProfile::best_available().resolve_best_available(
+            BestAvailableRole::Subscription,
+            &mixed,
+            ALL,
+        );
+        assert_eq!(q.reliability, R::BestEffort);
+        assert_eq!(q.durability, D::Volatile);
+        assert_eq!(q.liveliness_kind, L::Automatic);
+        assert_eq!(
+            q.deadline_ms, 100,
+            "infinite reads as no finite window, like upstream's DEFAULT"
+        );
+    }
+
+    #[test]
+    fn publisher_follows_any_manual_subscription_and_the_smallest_window() {
+        use QoSDurabilityPolicy as D;
+        use QoSLivelinessPolicy as L;
+        use QoSReliabilityPolicy as R;
+        let subs = fold(&[
+            peer(R::BestEffort, D::Volatile, L::Automatic, 300, 0),
+            peer(R::BestEffort, D::Volatile, L::ManualByTopic, 100, 40),
+        ]);
+        let q = QoSProfile::best_available().resolve_best_available(
+            BestAvailableRole::Publisher,
+            &subs,
+            ALL,
+        );
+        assert_eq!(
+            q.reliability,
+            R::Reliable,
+            "reliable serves every subscription"
+        );
+        assert_eq!(
+            q.durability,
+            D::TransientLocal,
+            "transient-local serves every subscription"
+        );
+        assert_eq!(q.liveliness_kind, L::ManualByTopic);
+        assert_eq!((q.deadline_ms, q.liveliness_lease_ms), (100, 40));
+    }
+
+    /// A peer the backend could not read contributes its least demanding
+    /// value — never counted reliable — so a subscription stays compatible.
+    #[test]
+    fn an_unreadable_peer_counts_as_least_demanding() {
+        let unknown = fold(&[QoSProfile::QOS_PROFILE_UNKNOWN]);
+        let q = QoSProfile::best_available().resolve_best_available(
+            BestAvailableRole::Subscription,
+            &unknown,
+            ALL,
+        );
+        assert_eq!(q.reliability, QoSReliabilityPolicy::BestEffort);
+        assert_eq!(q.durability, QoSDurabilityPolicy::Volatile);
+    }
+
+    #[test]
+    fn services_take_the_services_default_profile() {
+        let q = QoSProfile::best_available().resolve_best_available(
+            BestAvailableRole::Service,
+            &BestAvailablePeers::NONE,
+            ALL,
+        );
+        let svc = QoSProfile::QOS_PROFILE_SERVICES_DEFAULT;
+        assert_eq!(q.reliability, svc.reliability);
+        assert_eq!(q.durability, svc.durability);
+        assert_eq!(q.liveliness_kind, svc.liveliness_kind);
+        assert_eq!((q.deadline_ms, q.liveliness_lease_ms), (0, 0));
+    }
+
+    /// The choice never lands on a value the backend would refuse: it steps
+    /// down to the next one the mask honours, and to the sentinel when the
+    /// policy is not honoured at all.
+    #[test]
+    fn the_choice_is_clamped_to_what_the_backend_honours() {
+        let mask = QoSPolicyMask::RELIABILITY
+            | QoSPolicyMask::DURABILITY_VOLATILE
+            | QoSPolicyMask::LIVELINESS_AUTOMATIC;
+        let subs = fold(&[peer(
+            QoSReliabilityPolicy::Reliable,
+            QoSDurabilityPolicy::TransientLocal,
+            QoSLivelinessPolicy::ManualByTopic,
+            100,
+            40,
+        )]);
+        let q = QoSProfile::best_available().resolve_best_available(
+            BestAvailableRole::Publisher,
+            &subs,
+            mask,
+        );
+        assert_eq!(q.durability, QoSDurabilityPolicy::Volatile);
+        assert_eq!(q.liveliness_kind, QoSLivelinessPolicy::Automatic);
+        assert_eq!((q.deadline_ms, q.liveliness_lease_ms), (0, 0));
+        assert!(
+            q.validate_against(mask | QoSPolicyMask::HISTORY | QoSPolicyMask::DEPTH)
+                .is_ok()
+        );
+
+        let q = QoSProfile::best_available().resolve_best_available(
+            BestAvailableRole::Publisher,
+            &subs,
+            QoSPolicyMask::NONE,
+        );
+        assert_eq!(q.reliability, QoSReliabilityPolicy::SystemDefault);
+        assert_eq!(q.durability, QoSDurabilityPolicy::SystemDefault);
+        assert_eq!(q.liveliness_kind, QoSLivelinessPolicy::None);
+    }
+
+    /// Fields the caller STATED are never touched — only the best-available
+    /// ones resolve.
+    #[test]
+    fn stated_fields_are_left_alone() {
+        let q = QoSProfile::best_available().best_effort();
+        let r =
+            q.resolve_best_available(BestAvailableRole::Publisher, &BestAvailablePeers::NONE, ALL);
+        assert_eq!(r.reliability, QoSReliabilityPolicy::BestEffort);
+        assert_eq!(r.durability, QoSDurabilityPolicy::TransientLocal);
+        let plain = QoSProfile::QOS_PROFILE_SENSOR_DATA;
+        assert_eq!(
+            plain.resolve_best_available(
+                BestAvailableRole::Subscription,
+                &BestAvailablePeers::NONE,
+                ALL
+            ),
+            plain
+        );
+    }
+
+    /// No finite duration lowers onto the best-available sentinel.
+    #[test]
+    fn a_finite_duration_cannot_collide_with_the_sentinel() {
+        use core::time::Duration;
+        assert_eq!(
+            duration_to_qos_ms(Duration::from_millis(DURATION_BEST_AVAILABLE_MS as u64)),
+            Err(TransportError::InvalidArgument)
+        );
+        assert_eq!(
+            duration_to_qos_ms(Duration::from_millis(DURATION_BEST_AVAILABLE_MS as u64 - 1)),
+            Ok(DURATION_BEST_AVAILABLE_MS - 1)
+        );
     }
 }

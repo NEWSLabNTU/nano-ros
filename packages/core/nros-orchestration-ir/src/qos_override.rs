@@ -218,6 +218,10 @@ pub fn reliability_spelling(p: QoSReliabilityPolicy) -> &'static str {
         // no `qos_overrides.*` spelling upstream either — there is nothing to
         // render it INTO — so it renders as what it is.
         QoSReliabilityPolicy::Unknown => "unknown",
+        // issue 1973 — upstream's own `rmw_qos_reliability_policy_to_str`
+        // spelling. Not parsed here: a `qos_overrides.*` value is applied
+        // after creation-time resolution has nothing left to resolve against.
+        QoSReliabilityPolicy::BestAvailable => "best_available",
     }
 }
 
@@ -229,6 +233,7 @@ pub fn durability_spelling(p: QoSDurabilityPolicy) -> &'static str {
         QoSDurabilityPolicy::TransientLocal => "transient_local",
         // See `reliability_spelling`.
         QoSDurabilityPolicy::Unknown => "unknown",
+        QoSDurabilityPolicy::BestAvailable => "best_available",
     }
 }
 
@@ -394,7 +399,11 @@ pub fn lower(name: &str, value: &str) -> Result<Option<LoweredOverride>, QoSOver
                 Some(QoSReliabilityPolicy::Reliable) => 1,
                 // Unreachable while `parse_reliability` refuses the spelling;
                 // written out rather than `_` so adding one is a decision here.
-                Some(QoSReliabilityPolicy::SystemDefault | QoSReliabilityPolicy::Unknown)
+                Some(
+                    QoSReliabilityPolicy::SystemDefault
+                    | QoSReliabilityPolicy::Unknown
+                    | QoSReliabilityPolicy::BestAvailable,
+                )
                 | None => {
                     return Err(bad(RELIABILITY_VALUES));
                 }
@@ -405,7 +414,12 @@ pub fn lower(name: &str, value: &str) -> Result<Option<LoweredOverride>, QoSOver
             match parse_durability(v) {
                 Some(QoSDurabilityPolicy::Volatile) => 0,
                 Some(QoSDurabilityPolicy::TransientLocal) => 1,
-                Some(QoSDurabilityPolicy::SystemDefault | QoSDurabilityPolicy::Unknown) | None => {
+                Some(
+                    QoSDurabilityPolicy::SystemDefault
+                    | QoSDurabilityPolicy::Unknown
+                    | QoSDurabilityPolicy::BestAvailable,
+                )
+                | None => {
                     return Err(bad(DURABILITY_VALUES));
                 }
             },

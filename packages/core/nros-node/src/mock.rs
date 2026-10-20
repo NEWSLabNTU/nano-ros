@@ -831,6 +831,7 @@ impl Session for MockSession {
             topic_type,
             is_publisher: publishers,
             endpoint_gid: [0u8; 24],
+            qos: nros_rmw::QoSProfile::QOS_PROFILE_UNKNOWN,
         };
         let _ = visit(&info);
         Ok(())

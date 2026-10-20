@@ -1,0 +1,29 @@
+# The upstream QoS profile constants — every field, verbatim.
+#
+# Derived, not asserted: the brace initialisers of every
+# `static const rmw_qos_profile_t` in the headers below, with the duration and
+# depth sentinels resolved from `rmw/time.h` and `rmw/types.h`. Recorded here
+# because the fast gate lane runs on hosts with no ROS, and a gate that
+# degrades to `nothing to check` reports a pass it never established.
+#
+# Sources (<jazzy> = an install prefix holding the ros2/rmw and rcl jazzy-branch
+# headers; the profiles a Humble install already defines live in
+# rmw-qos-profiles.txt):
+#   <jazzy>/include/rcl_action/rcl_action/default_qos.h
+#   <jazzy>/include/rmw/rmw/qos_profiles.h
+#   <jazzy>/include/rmw/rmw/time.h
+#   <jazzy>/include/rmw/rmw/types.h
+#
+# Windows are milliseconds; RMW_DURATION_UNSPECIFIED ({0,0}) lands on 0, which
+# is also nano-ros's `off`. `liveliness` is upstream's own spelling —
+# `QoSLivelinessPolicy::None` is nano-ros's name for SYSTEM_DEFAULT (phase-376
+# W5/B2 collapsed the two onto discriminant 0). RMW_*_BEST_AVAILABLE windows
+# (RMW_DURATION_INFINITE - 1, Iron+) land on 4294967294, nano-ros's
+# DURATION_BEST_AVAILABLE_MS (issue 1973).
+#
+# Regenerate where a ROS install exists:
+#   python3 scripts/check-qos-profile-ssot.py --write-upstream
+#
+# Generated 2026-10-20, ROS 2 jazzy.
+# columns: profile history depth reliability durability deadline_ms lifespan_ms liveliness_kind liveliness_lease_ms avoid_ros_namespace_conventions
+rmw_qos_profile_best_available KEEP_LAST 10 BEST_AVAILABLE BEST_AVAILABLE 4294967294 0 BEST_AVAILABLE 4294967294 false

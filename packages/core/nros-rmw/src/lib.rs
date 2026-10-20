@@ -77,14 +77,15 @@ pub use safety::{IntegrityStatus, SafetyValidator, crc32};
 
 // Re-export main types
 pub use traits::{
-    ActionEndpointHashes, ActionInfo, ClientTrait, DEPTH_SYSTEM_DEFAULT, DURATION_INFINITE_MS,
-    GraphEndpointInfo, GraphEntityKind, LocatorProtocol, Publisher, QoSDurabilityPolicy,
-    QoSHistoryPolicy, QoSLivelinessPolicy, QoSOverride, QoSOverrideCode, QoSOverrideRole,
-    QoSOverrideValue, QoSPolicyMask, QoSProfile, QoSReliabilityPolicy, QoSSystemDefaults,
-    RefusedLen, Rmw, RmwConfig, ServiceInfo, ServiceRequest, ServiceTrait, Session, SessionMode,
-    Subscription, TopicInfo, Transport, TransportConfig, TransportError, decode_qos_override,
-    decode_qos_override_parts, decode_qos_override_role, decode_qos_override_value,
-    duration_to_qos_ms, locator_protocol, qos_override_policy, qos_override_role, validate_locator,
+    ActionEndpointHashes, ActionInfo, BestAvailablePeers, BestAvailableRole, ClientTrait,
+    DEPTH_SYSTEM_DEFAULT, DURATION_BEST_AVAILABLE_MS, DURATION_INFINITE_MS, GraphEndpointInfo,
+    GraphEntityKind, LocatorProtocol, Publisher, QoSDurabilityPolicy, QoSHistoryPolicy,
+    QoSLivelinessPolicy, QoSOverride, QoSOverrideCode, QoSOverrideRole, QoSOverrideValue,
+    QoSPolicyMask, QoSProfile, QoSReliabilityPolicy, QoSSystemDefaults, RefusedLen, Rmw, RmwConfig,
+    ServiceInfo, ServiceRequest, ServiceTrait, Session, SessionMode, Subscription, TopicInfo,
+    Transport, TransportConfig, TransportError, decode_qos_override, decode_qos_override_parts,
+    decode_qos_override_role, decode_qos_override_value, duration_to_qos_ms, locator_protocol,
+    qos_override_policy, qos_override_role, resolve_best_available_on, validate_locator,
 };
 
 // Re-export `MessageInfo` from nros-core so backends implementing

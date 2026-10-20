@@ -190,6 +190,7 @@ fn reliability_spelling(r: QoSReliabilityPolicy) -> &'static str {
         QoSReliabilityPolicy::BestEffort => "best_effort",
         QoSReliabilityPolicy::SystemDefault => "system_default",
         QoSReliabilityPolicy::Unknown => "unknown",
+        QoSReliabilityPolicy::BestAvailable => "best_available",
     }
 }
 
@@ -200,17 +201,22 @@ fn durability_spelling(d: QoSDurabilityPolicy) -> &'static str {
         QoSDurabilityPolicy::TransientLocal => "transient_local",
         QoSDurabilityPolicy::SystemDefault => "system_default",
         QoSDurabilityPolicy::Unknown => "unknown",
+        QoSDurabilityPolicy::BestAvailable => "best_available",
     }
 }
 
 /// How much a reliability ASKS FOR: the order [`honour`] reads "stronger" in.
 /// `None` is "states no opinion" -- `SystemDefault` hands the choice to the
 /// middleware and `Unknown` is a read-back sentinel nobody requests.
+/// `BestAvailable` (issue 1973) defers to the graph at creation, which is no
+/// fixed opinion either, so a declared value is free to settle it.
 fn reliability_rank(r: QoSReliabilityPolicy) -> Option<u8> {
     match r {
         QoSReliabilityPolicy::BestEffort => Some(0),
         QoSReliabilityPolicy::Reliable => Some(1),
-        QoSReliabilityPolicy::SystemDefault | QoSReliabilityPolicy::Unknown => None,
+        QoSReliabilityPolicy::SystemDefault
+        | QoSReliabilityPolicy::Unknown
+        | QoSReliabilityPolicy::BestAvailable => None,
     }
 }
 
@@ -219,7 +225,9 @@ fn durability_rank(d: QoSDurabilityPolicy) -> Option<u8> {
     match d {
         QoSDurabilityPolicy::Volatile => Some(0),
         QoSDurabilityPolicy::TransientLocal => Some(1),
-        QoSDurabilityPolicy::SystemDefault | QoSDurabilityPolicy::Unknown => None,
+        QoSDurabilityPolicy::SystemDefault
+        | QoSDurabilityPolicy::Unknown
+        | QoSDurabilityPolicy::BestAvailable => None,
     }
 }
 

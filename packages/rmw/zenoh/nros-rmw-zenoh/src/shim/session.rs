@@ -1279,6 +1279,20 @@ impl Session for ZenohSession {
         // `rmw_zenoh_cpp` peer to parse out of the graph; upstream resolves in
         // `best_available_qos` before the token exists, so its tokens never
         // carry a sentinel and neither may ours.
+        // issue 1973 — and BEST_AVAILABLE before either, against this
+        // session's own graph cache, through the one shared rule. Normally
+        // `nros-rmw-cffi` has already resolved it (the runtime reaches this
+        // backend through `CffiSession`), so this is a no-op there; it is what
+        // keeps a caller holding a `ZenohSession` directly from putting a
+        // request value in the token. A cache that is not running yet answers
+        // "nothing discovered", upstream's documented default — the race with
+        // discovery upstream warns about, not a guess of ours.
+        let qos = nros_rmw::resolve_best_available_on(
+            self,
+            nros_rmw::BestAvailableRole::Publisher,
+            topic.name,
+            qos,
+        );
         let qos = qos.resolve_system_default(&ZENOH_SYSTEM_DEFAULTS);
         // phase-428 W9 — and the GRANT before the keyexpr, for the same reason
         // the resolve comes first: the token must carry what this backend does,
@@ -1311,7 +1325,13 @@ impl Session for ZenohSession {
         topic: &TopicInfo,
         qos: QoSProfile,
     ) -> Result<Self::SubscriptionHandle, Self::Error> {
-        // issue 0829 — see `create_publisher`: resolve before the keyexpr.
+        // issue 0829 / 1973 — see `create_publisher`: resolve before the keyexpr.
+        let qos = nros_rmw::resolve_best_available_on(
+            self,
+            nros_rmw::BestAvailableRole::Subscription,
+            topic.name,
+            qos,
+        );
         let qos = qos.resolve_system_default(&ZENOH_SYSTEM_DEFAULTS);
         // phase-428 W9 — see `create_publisher`. This is the entity whose ring
         // a depth actually meets.
@@ -1353,6 +1373,12 @@ impl Session for ZenohSession {
         // now carries the caller's granted profile instead of a hardcoded
         // `QoSProfile::services_default()` that had nothing to do with what
         // was asked for.
+        let qos = nros_rmw::resolve_best_available_on(
+            self,
+            nros_rmw::BestAvailableRole::Service,
+            service.name,
+            qos,
+        );
         let qos = qos.resolve_system_default(&ZENOH_SYSTEM_DEFAULTS);
         let qos = super::qos::admit(super::qos::EntityKind::Service, service.name, &qos)?;
         let mut server = ZenohServiceServer::new(&self.context, service, None)?;
@@ -1386,6 +1412,12 @@ impl Session for ZenohSession {
     ) -> Result<Self::ClientHandle, Self::Error> {
         // phase-428 W9 — see `create_service`: applied where it is ours to
         // apply (refusals, request ring, graph declaration), not discarded.
+        let qos = nros_rmw::resolve_best_available_on(
+            self,
+            nros_rmw::BestAvailableRole::Service,
+            service.name,
+            qos,
+        );
         let qos = qos.resolve_system_default(&ZENOH_SYSTEM_DEFAULTS);
         let qos = super::qos::admit(super::qos::EntityKind::Client, service.name, &qos)?;
         // Phase 268 W2 — ensure a per-node NN token for this client's node.
@@ -1688,6 +1720,15 @@ impl Session for ZenohSession {
                 endpoint_gid: nros_rmw::pad_publisher_gid(&super::entity_gid::entity_gid(
                     e.keyexpr,
                 )),
+                // Issue 1973 — the token's QoS chunk, decoded by upstream's
+                // own grammar. It is what the endpoint does (ours is written
+                // from the GRANT; a stock peer writes its resolved profile),
+                // and the best-available resolution folds it. A missing or
+                // malformed chunk reads as `QOS_PROFILE_UNKNOWN`.
+                qos: e
+                    .qos
+                    .map(crate::keyexpr::qos_from_keyexpr)
+                    .unwrap_or(QoSProfile::QOS_PROFILE_UNKNOWN),
             };
             visit(&info)
         });
