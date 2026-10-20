@@ -3,7 +3,9 @@ id: 1629
 title: "The merge queue's 60-minute `check_response_timeout_minutes` is now
   SHORTER than the gate lane, so entries are ejected `checks_timed_out` while
   their own gate goes on to pass — main has not merged for 2 hours"
-status: open
+status: resolved
+resolved: 2026-10-21
+resolved_in: "PR #2428 (agreement gate, declared 90 min) + ruleset main-rules edit 2026-10-21"
 type: bug
 area: ci, process
 severity: high
@@ -11,7 +13,7 @@ found: 2026-10-02
 related: [phase-396, issue-1347, issue-1365, issue-1500, phase-505]
 ---
 
-**Home: [phase-505](../roadmap/phase-505-ci-lanes-reach-and-infra-robustness.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+**Home: [phase-505](../../roadmap/phase-505-ci-lanes-reach-and-infra-robustness.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## Measured
 
@@ -208,3 +210,23 @@ would keep that cost for a tail that has not returned. The nightly will say
 when the lane outgrows 90.
 
 Close this when `just queue-timeout` reports OK.
+
+## Resolution (2026-10-21)
+
+The ruleset `main-rules` (id 21680073) now sets `check_response_timeout_minutes`
+to **90**, the value `scripts/ci/enable-merge-queue.sh` declares since PR #2428.
+It was changed with one `PUT` built from the live ruleset. A diff of the rules
+before and after shows that field as the only change, and enforcement, target,
+conditions and bypass actors are unchanged.
+
+`just queue-timeout` (`scripts/ci/queue-timeout-agreement.py`) now passes:
+
+```
+queue-timeout-agreement: declared 90, live 90; 49 merge_group gate runs p50 27 / p90 31 / max 33 min
+queue-timeout-agreement: OK
+```
+
+90 minutes is 2.9x today's p90. It is also 1.2x the 73-minute run that this
+issue measured, so a repeat of that run now merges instead of being ejected.
+`nightly-report.yml` runs the check daily, so if the lane outgrows the window
+again, the check reports it before the queue starts ejecting entries.

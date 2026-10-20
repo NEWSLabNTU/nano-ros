@@ -1,7 +1,10 @@
 # Phase 505 — every gate runs somewhere, and a red names the code
 
-**Status (2026-10-18). W1 nearly done: four of its five issues are resolved,
-and #1960 joined it.** Every issue in the first table was open with no active
+**Status (2026-10-21). Every work item is done: W1 by PRs #2394, #2429 and
+#2430, W2 by #2426 and #2428 plus the ruleset edit that closed #1629, and W3 by
+#2427.** What remains is the acceptance window: two weeks of merge-queue
+ejections with no INFRA ejection from a W2 cause, then this phase is archived.
+The 2026-10-18 notes follow. Every issue in the first table was open with no active
 phase when the open-issue survey of 2026-10-17 ran.
 
 - **Three W1 issues were already fixed by earlier PRs, never closed:**
@@ -67,7 +70,7 @@ phase's. Build speed is phase-489's.
       merge-gating jobs stop downloading toolchains at run time.
 - [x] [#1760](../issues/archived/1760-ci-just-installer-403.md): installing `just` is
       pinned and retried.
-- [ ] [#1629](../issues/1629-queue-check-timeout-outgrown-by-gate-lane.md): the
+- [x] [#1629](../issues/archived/1629-queue-check-timeout-outgrown-by-gate-lane.md): the
       queue's check timeout and the gate lane's duration are kept in agreement.
 - [x] [#1912](../issues/archived/1912-push-gate-pin-baseline-is-live-main.md): the
       push-event pin gate compares against the pushed commit's parent, not the
@@ -105,7 +108,7 @@ ejection from a cause listed here.
 | [#1621](../issues/archived/1621-sdk-store-submodule-provision-breaks-worktree-git.md) | A fast-line probe gate in a worktree without zenoh-pico leaves a broken gitlink, and after that `git status` fails for the whole worktree. |
 | [#1625](../issues/archived/1625-dep-chain-nuttx-cell-one-run-red.md) | A `dep-chain` FAIL printed `thiserror` tree rows instead of cargo's error, so the cause of that red cannot be recovered. |
 | [#1626](../issues/archived/1626-api-parity-fast-line-needs-crates-io.md) | `check-api-parity` runs `cargo doc`, so the one required check goes red on a crates.io hiccup, with no retry. |
-| [#1629](../issues/1629-queue-check-timeout-outgrown-by-gate-lane.md) | The merge queue's 60-minute check timeout is shorter than the gate lane, so entries are ejected while their gate goes on to pass. |
+| [#1629](../issues/archived/1629-queue-check-timeout-outgrown-by-gate-lane.md) | The merge queue's 60-minute check timeout is shorter than the gate lane, so entries are ejected while their gate goes on to pass. |
 | [#1745](../issues/archived/1745-probe-gates-race-mbedtls-submodule-fetch.md) | Two parallel probe gates provision the mbedtls submodule at the same time, and one of them dies on git's shallow-file race. |
 | [#1760](../issues/archived/1760-ci-just-installer-403.md) | CI installs `just` by piping an installer script with no retry, and one 403 failed a lane. |
 | [#1784](../issues/archived/1784-workspace-features-threadx-posix-duplicate-platform.md) | `check::workspace-features` links two platform ABIs into one test binary. The gate runs only in `ci gate` (issue 1177's class). |
