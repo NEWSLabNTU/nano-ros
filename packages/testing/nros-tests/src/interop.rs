@@ -152,7 +152,10 @@ pub struct InteropCell {
 /// (issue 1251). phase-441 W6's cell does: its test starts the host half from
 /// the pair, and `the_bringup_bakes_the_pairs_guest_half` holds the image's
 /// baked guest half to it.
-pub const SLIRP_PAIR_CELLS: &[&str] = &["freertos-an536-pubsub-cpp-cyclone-n2r"];
+pub const SLIRP_PAIR_CELLS: &[&str] = &[
+    "freertos-an536-pubsub-cpp-cyclone-n2r",
+    "freertos-an536-pubsub-cpp-cyclone-r2n",
+];
 
 /// `test` sentinel for a carved-out cell no test runs.
 pub const NO_TEST: &str = "(carved-out — no runtime lane)";
@@ -495,6 +498,15 @@ pub const CELLS: &[InteropCell] = &[
        c(FreertosMps2, Cpp, Cyclonedds, EntryPubsub, Interop, Runtime),
        FreertosMps2Fixtures, RosEdition(Cyclonedds), NanoToRos,
        "pubsub_freertos_an536_cyclone_ros2_interop_e2e"),
+    // The same image's fragmented leg (issue 0917), turned around: the
+    // bringup's second image is a LISTENER and a host rclpy node publishes an
+    // 8-fragment `std_msgs/String`, because the island's defect was on
+    // RECEIVE. Its own cell, not a case of the one above, so a green on
+    // either is no evidence about the other — the CASE_CELLS map splits them.
+    ic("freertos-an536-pubsub-cpp-cyclone-r2n",
+       c(FreertosMps2, Cpp, Cyclonedds, EntryPubsub, Interop, Runtime),
+       FreertosMps2Fixtures, RosEdition(Cyclonedds), RosToNano,
+       "pubsub_freertos_an536_cyclone_ros2_interop_e2e"),
 
     // ── Declarative cross-RMW bridges ───────────────────────────────────
     // The nano bridge is a `ws-bridge-*-rust` linux_entry; a ROS 2 peer sits on
@@ -759,6 +771,21 @@ pub const CASE_CELLS: &[CaseOwner] = &[
     co("interop_e2e", "interop::case_7_cyclone_pubsub_ros2_to_nano",    "native-pubsub-c-cyclone-n2r"),
     co("interop_e2e", "interop::case_8_cyclone_service_nano_server",    "native-service-c-cyclone-r2n"),
     co("interop_e2e", "interop::case_9_zenoh_lifecycle_full_cycle",     "native-lifecycle-rust-zenoh"),
+
+    // ── pubsub_freertos_an536_cyclone_ros2_interop_e2e — phase-441 W6 ───
+    // The talker cell and the fragmented-sample listener (issue 0917): one
+    // coordinate, two directions, two questions. The bake check holds the
+    // guest XML BOTH images carry; it is recorded with the talker cell, where
+    // it was first.
+    co("pubsub_freertos_an536_cyclone_ros2_interop_e2e",
+       "nros_freertos_an536_cyclone_publisher_stays_reachable_from_ros2",
+       "freertos-an536-pubsub-cpp-cyclone-n2r"),
+    co("pubsub_freertos_an536_cyclone_ros2_interop_e2e",
+       "the_bringup_bakes_the_pairs_guest_half",
+       "freertos-an536-pubsub-cpp-cyclone-n2r"),
+    co("pubsub_freertos_an536_cyclone_ros2_interop_e2e",
+       "nros_freertos_an536_cyclone_listener_keeps_receiving_a_fragmented_sample",
+       "freertos-an536-pubsub-cpp-cyclone-r2n"),
 
     // ── params_per_node_interop — issue 1268 gave it a second cell ──────
     // Two zenoh cases and one Cyclone case. Before the Cyclone cell existed this

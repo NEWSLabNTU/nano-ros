@@ -771,6 +771,21 @@ build_subdir = "build/freertos-cyclonedds-mps3-an536-freertos-cfg691ce9d54a/cmak
 # not a `cmake_defs` row: since issue 1946 the CMake road carries it.
 cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps3-an536-freertos" }
 
+# phase-441 W6, fragmented leg (issue 0917) — the same bringup's second image,
+# a LISTENER for an 8-fragment `std_msgs/String`, for a host rclpy publisher
+# over the same slirp recipe. Same bringup, so the same configure and the same
+# baked Cyclone config as the row above.
+[[workspace_fixture]]
+id = "workspace-cpp-mps3-an536-freertos-slirp-bulk"
+platform = "freertos"
+lang = "cpp"
+rmw = "cyclonedds"
+dir = "examples/workspaces/cpp"
+bringup = "src/slirp_bringup"
+image = "mps3_an536_slirp_bulk"
+build_subdir = "build/freertos-cyclonedds-mps3-an536-freertos-cfg691ce9d54a/cmake"
+cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps3-an536-freertos" }
+
 # phase-263 C2b — the NuttX (QEMU arm-virt) C workspace entry (talker + listener linked INTO
 # the kernel via cargo nros-nuttx-ffi). Dials the host zenoh router through the slirp gateway
 # 10.0.2.2; the baked NROS_ENTRY_LOCATOR is ferried into the cc-rs entry-TU compile via the

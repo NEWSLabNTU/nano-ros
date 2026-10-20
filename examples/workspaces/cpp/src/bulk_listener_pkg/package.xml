@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>bulk_listener_pkg</name>
+  <version>0.1.0</version>
+  <description>C++ Node pkg — subscribes std_msgs/String on /bulk, a sample larger than one datagram (phase-441 W6, issue 0917).</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+  <depend>std_msgs</depend>
+  <export>
+    <build_type>nros_cmake</build_type>
+  </export>
+</package>

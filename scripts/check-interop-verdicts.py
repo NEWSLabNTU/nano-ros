@@ -299,6 +299,10 @@ BOARD_FIXTURE_NARROWING: "dict[str, tuple[str, str]]" = {
     "freertos-an536-pubsub-cpp-cyclone-n2r": (
         "NROS_FIXTURE_ID", "workspace-cpp-mps3-an536-freertos-slirp",
     ),
+    # Its fragmented leg (issue 0917): the same bringup's listener image.
+    "freertos-an536-pubsub-cpp-cyclone-r2n": (
+        "NROS_FIXTURE_ID", "workspace-cpp-mps3-an536-freertos-slirp-bulk",
+    ),
 }
 
 FIXTURES_TOML = ROOT / "examples" / "fixtures.toml"

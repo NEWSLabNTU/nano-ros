@@ -752,6 +752,36 @@ class. The cell passed 3 of 3 runs at the cyclonedds pin and the ledger records
 What remains of W6 is the fragmented leg for 0917, which no longer has a
 small-sample failure in front of it.
 
+**Fragmented leg DONE 2026-10-20 — PASS, which narrows 0917 to the tap path.**
+0917's defect is on RECEIVE (an 8-fragment burst into the LAN9118 RX FIFO), so
+the leg is the talker cell turned around: `slirp_bringup` gained a second image,
+`mps3_an536_slirp_bulk`, running `bulk_listener_pkg` — a `std_msgs/String`
+subscriber on `/bulk`, bounded at 16384 by the workspace's `nros-codegen.toml`
+(workspace scope because a stock type is generated once per project, issue
+1470). The host publishes from a stock rclpy node, 10 Hz, 10 576-byte samples:
+eight `DATA_FRAG`s each, the 120-point trajectory's size.
+
+- Cell `freertos-an536-pubsub-cpp-cyclone-r2n` (its own cell; `CASE_CELLS`
+  splits the binary's three cases between it and the talker cell), fixture
+  row `workspace-cpp-mps3-an536-freertos-slirp-bulk`, test
+  `nros_freertos_an536_cyclone_listener_keeps_receiving_a_fragmented_sample`
+  in the same binary. Both legs bake one domain, participant index and port
+  set, so `.config/nextest.toml` gives the binary its own one-thread group.
+- The test requires every sample to arrive WHOLE and delivery to last 45 s of
+  the publisher's sequence. Measured: 725 of 751 received, all 10 576 bytes,
+  seq 21..=745 with no gap, the same in 5 of 5 runs (identical because the
+  launcher runs `-icount shift=auto`). The ledger records `pass`, with
+  `BOARD_FIXTURE_NARROWING` naming the row.
+
+What this does and does not say about 0917 is recorded there: with 0997's FPU
+fix, over slirp, under `-icount`, the stock FIFO and the 5 ms polled drain
+deliver an 8-fragment sample continuously. The island's failure was on a
+free-running QEMU fed unpaced frames from a tap, and that path is not in tree.
+
+The board lane cannot run this cell's narrowing yet: `NROS_FIXTURE_ID` now has
+three recorded cells behind it, and the workspace builder reads the merged
+value as ONE id — issue 1981, which the talker cell already tripped.
+
 ### W7 — re-measure 1281, then close or narrow it
 
 Run `c_riscv_nuttx_talker_delivers_cross_process` solo, 10 times, on freshly built

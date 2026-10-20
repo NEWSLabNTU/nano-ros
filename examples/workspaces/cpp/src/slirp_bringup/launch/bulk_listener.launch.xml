@@ -1,0 +1,6 @@
+<?xml version="1.0"?>
+<!-- phase-441 W6, fragmented leg (issue 0917) — the bulk listener alone: the
+     publisher is a stock rclpy node on the host, reached through slirp. -->
+<launch>
+  <node pkg="bulk_listener_pkg" exec="bulk_listener" name="bulk_listener"/>
+</launch>

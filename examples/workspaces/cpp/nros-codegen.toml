@@ -1,0 +1,14 @@
+# RFC-0033 capacity for the stock `std_msgs/String`, at WORKSPACE scope.
+#
+# phase-441 W6's fragmented leg (`bulk_listener_pkg`, issue 0917) receives a
+# `std_msgs/String` of ~10.6 KB — eight RTPS fragments, the island
+# trajectory's shape. The type states no bound of its own, so the consumer
+# states it. Here rather than beside the package: a stock type is generated
+# once per project, so a cap attached to one consumer would depend on which
+# reached it first (issue 1470). No other package in this workspace uses
+# `std_msgs/String`, so no other image's storage moves.
+#
+# 16384 leaves room above the 10 576-byte payload the test sends; a sample
+# above it is refused by `_deserialize` and never dispatched.
+[fields]
+"std_msgs/String.data" = 16384

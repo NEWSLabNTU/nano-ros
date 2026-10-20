@@ -3621,6 +3621,25 @@ pub fn build_freertos_workspace_cpp_an536_slirp_entry() -> TestResult<&'static P
         .map(|p| p.as_path())
 }
 
+/// phase-441 W6, fragmented leg (issue 0917) — `slirp_bringup`'s second image,
+/// `mps3_an536_slirp_bulk`: a LISTENER for an 8-fragment `std_msgs/String`.
+/// The same bringup, so the same configure as
+/// [`build_freertos_workspace_cpp_an536_slirp_entry`].
+pub fn build_freertos_workspace_cpp_an536_slirp_bulk_entry() -> TestResult<&'static Path> {
+    static FREERTOS_WORKSPACE_CPP_AN536_SLIRP_BULK_ENTRY_BINARY: OnceCell<PathBuf> =
+        OnceCell::new();
+    FREERTOS_WORKSPACE_CPP_AN536_SLIRP_BULK_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_cmake_entry_in(
+                "workspace-cpp-mps3-an536-freertos-slirp-bulk",
+                "cpp",
+                "build/freertos-cyclonedds-mps3-an536-freertos-cfg691ce9d54a/cmake",
+                "mps3_an536_slirp_bulk_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
 /// phase-263 C2c — the FreeRTOS (QEMU MPS2-AN385) C++ workspace embedded entry (cached).
 pub fn build_freertos_workspace_cpp_entry() -> TestResult<&'static Path> {
     FREERTOS_WORKSPACE_CPP_ENTRY_BINARY
