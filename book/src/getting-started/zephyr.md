@@ -371,7 +371,7 @@ The answer, and why it came out that way, is written to
 | `CONFIG_NROS_XRCE_TRANSPORT_MTU` | int | 512 | Transport MTU |
 | `CONFIG_NROS_XRCE_MAX_SUBSCRIBERS` | int | -1 (derive) | Max concurrent subscribers |
 | `CONFIG_NROS_XRCE_MAX_SERVICE_SERVERS` | int | -1 (derive) | Max service servers |
-| `CONFIG_NROS_XRCE_MAX_SERVICE_CLIENTS` | int | 4 | Max service clients |
+| `CONFIG_NROS_XRCE_MAX_SERVICE_CLIENTS` | int | -1 (derive) | Max service clients |
 | `CONFIG_NROS_XRCE_SUBSCRIBER_RING_DEPTH` | int | 32 | Queued samples per subscriber |
 | `CONFIG_NROS_XRCE_BUFFER_SIZE` | int | 1024 | Per-slot buffer size; the default of the three below |
 | `CONFIG_NROS_XRCE_SUBSCRIBER_BUFFER_SIZE` | int | -1 (derive) | Subscriber ring entry size |

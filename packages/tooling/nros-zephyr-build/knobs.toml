@@ -1109,14 +1109,17 @@ type = "int"
 prompt = "Maximum concurrent service clients"
 kconfig_if = "NROS_RMW_XRCE"
 kconfig_attrs = [
-    "default 4",
+    "default -1",
 ]
 help = '''
 Maximum number of concurrent XRCE service clients.
 Maps to XRCE_MAX_SERVICE_CLIENTS.
 
-Not derived: no inventory counts the clients an image opens, so this
-is stated or left at the default.
+-1 means DERIVE: the XRCE build reads the image's sizing descriptor and
+takes its declared service clients plus three per action client
+(send_goal, cancel_goal, get_result). Zero is a legitimate derived
+answer (issue 1033). With no descriptor, or one that does not state
+both counts, the crate default of 4 stands. Stating a number wins.
 '''
 
 [[knob]]

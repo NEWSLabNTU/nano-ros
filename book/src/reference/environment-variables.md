@@ -156,7 +156,7 @@ and reports no error.
 | `NROS_XRCE_SUBSCRIBER_RING_DEPTH`  | Queued samples per subscriber                                               | `32`    | 1   | nros-rmw-xrce |
 | `NROS_XRCE_MAX_SUBSCRIBERS`        | Max concurrent subscribers. On Zephyr, DERIVED — see below.                 | `8`     | 0   | nros-rmw-xrce |
 | `NROS_XRCE_MAX_SERVICE_SERVERS`    | Max concurrent service servers. On Zephyr, DERIVED — see below.             | `4`     | 0   | nros-rmw-xrce |
-| `NROS_XRCE_MAX_SERVICE_CLIENTS`    | Max concurrent service clients                                              | `4`     | 0   | nros-rmw-xrce |
+| `NROS_XRCE_MAX_SERVICE_CLIENTS`    | Max concurrent service clients. DERIVED from the sizing descriptor — see below. | `4`     | 0   | nros-rmw-xrce |
 | `NROS_XRCE_STREAM_HISTORY`         | Reliable stream history depth; sizes the per-session output buffer          | `16`    | 4   | nros-rmw-xrce |
 | `NROS_XRCE_CUSTOM_TRANSPORT_MTU`   | Custom transport MTU; stream buffers are `MTU x STREAM_HISTORY`             | `4096`  | 128 | nros-rmw-xrce |
 | `NROS_XRCE_TRANSPORT_MTU`          | UDP/TCP transport MTU, and the Zephyr default of `CUSTOM_TRANSPORT_MTU`     | `4096` (Zephyr `512`) | 128 | nros-rmw-xrce |
@@ -188,6 +188,12 @@ to 59,088 on the zephyr cpp listener ([issue
 1033](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/1033-xrce-subscriber-slots-budget-eight-for-one.md)).
 Stating a number in Kconfig or the environment still wins over the derivation,
 in both directions.
+
+`CONFIG_NROS_XRCE_MAX_SERVICE_CLIENTS` also defaults to `-1`, and its number
+comes from the image's sizing descriptor on every road that writes one: the
+declared service clients plus three per action client (`send_goal`,
+`cancel_goal`, `get_result`). With no descriptor, or one that does not state
+both counts, the crate default of 4 stands.
 
 Zero is a legal, honoured value for all three caps — it is not rounded up to 1.
 So creating an entity the image never declared does not truncate silently: the
