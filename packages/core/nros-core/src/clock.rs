@@ -681,7 +681,7 @@ mod tests {
     /// both sources are CLOCK_REALTIME, so nothing short of a port with an
     /// opinion can tell them apart.
     #[test]
-    #[cfg(all(feature = "std", feature = "platform-clock"))]
+    #[cfg(feature = "platform-clock")]
     fn platform_port_outranks_std_for_the_wall_clock() {
         let _guard = ClockGuard::acquire();
         let now = Clock::system().now();

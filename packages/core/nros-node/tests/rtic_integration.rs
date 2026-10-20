@@ -5,7 +5,7 @@
 //! - Node configuration types
 //! - QoS settings
 
-#![cfg(feature = "std")]
+#![cfg(feature = "alloc")]
 
 /// Test NodeConfig creation
 #[test]

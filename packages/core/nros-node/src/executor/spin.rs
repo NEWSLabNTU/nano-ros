@@ -745,15 +745,15 @@ pub const PARAMETER_STORE_BYTES: usize = core::mem::size_of::<nros_params::Param
 /// for the store's request, on the current thread only (tests run in
 /// parallel). Not a test `#[global_allocator]`: `check-feature-contract`
 /// clause (e) allows exactly one, `nros-platform`'s.
-#[cfg(all(test, feature = "std", feature = "param-store"))]
+#[cfg(all(test, feature = "alloc", feature = "param-store"))]
 pub(crate) struct RefuseParameterStore;
 
-#[cfg(all(test, feature = "std", feature = "param-store"))]
+#[cfg(all(test, feature = "alloc", feature = "param-store"))]
 std::thread_local! {
     static REFUSE_PARAMETER_STORE: core::cell::Cell<bool> = const { core::cell::Cell::new(false) };
 }
 
-#[cfg(all(test, feature = "std", feature = "param-store"))]
+#[cfg(all(test, feature = "alloc", feature = "param-store"))]
 impl RefuseParameterStore {
     // Only `executor::tests` arms it, and that module is mock-session only.
     #[cfg(not(feature = "rmw-cffi"))]
@@ -767,7 +767,7 @@ impl RefuseParameterStore {
     }
 }
 
-#[cfg(all(test, feature = "std", feature = "param-store"))]
+#[cfg(all(test, feature = "alloc", feature = "param-store"))]
 impl Drop for RefuseParameterStore {
     fn drop(&mut self) {
         REFUSE_PARAMETER_STORE.with(|c| c.set(false));
@@ -11032,13 +11032,13 @@ impl<'s> Executor<'s> {
         // backends) keep the original "drive_io is non-blocking" assumption.
         // `std` implies `alloc`, so this is the only std configuration the arm
         // above does not cover.
-        #[cfg(all(feature = "std", not(feature = "rmw-cffi")))]
+        #[cfg(all(feature = "alloc", not(feature = "rmw-cffi")))]
         let primary_drive_timeout_ms = 0;
 
         // no_std without (alloc + rmw-cffi) keeps the legacy
         // full-timeout drive_io call.
         #[cfg(all(
-            not(feature = "std"),
+            not(feature = "alloc"),
             not(all(feature = "alloc", feature = "rmw-cffi"))
         ))]
         let primary_drive_timeout_ms = timeout_ms;
@@ -13298,7 +13298,7 @@ impl<'s> Executor<'s> {
     /// the store is the carved one or none (see `new_param_state`).
     #[cfg(feature = "alloc")]
     fn leak_parameter_storage() -> Option<nros_params::ParameterTable<'static>> {
-        #[cfg(all(test, feature = "std"))]
+        #[cfg(all(test, feature = "alloc"))]
         if RefuseParameterStore::armed() {
             return None;
         }
@@ -15144,7 +15144,7 @@ impl<'s> Drop for Executor<'s> {
     }
 }
 
-#[cfg(all(test, feature = "std", not(feature = "rmw-cffi")))]
+#[cfg(all(test, feature = "alloc", not(feature = "rmw-cffi")))]
 mod dispatch_registry_tests {
     //! Phase 216 follow-up — `Executor::register_dispatch_slot` +
     //! `Executor::dispatch_callback` round-trip.
@@ -15266,7 +15266,7 @@ mod dispatch_registry_tests {
 ///
 /// Uses `MockSession` (same pattern as `dispatch_registry_tests`); gated
 /// `not(feature = "rmw-cffi")` for the same reason.
-#[cfg(all(test, feature = "std", not(feature = "rmw-cffi")))]
+#[cfg(all(test, feature = "alloc", not(feature = "rmw-cffi")))]
 mod p274_w1_tier_executor_tests {
     use super::Executor;
     use crate::mock::MockSession;

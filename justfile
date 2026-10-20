@@ -4260,7 +4260,7 @@ coverage:
 # Build zenoh transport
 [private]
 build-zenoh:
-    cargo build -p nros-rmw --features std
+    cargo build -p nros-rmw --features alloc,log
 
 # Build zenoh-pico C library (standalone, for debugging)
 [group("debug")]

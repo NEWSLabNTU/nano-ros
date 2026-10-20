@@ -16,10 +16,8 @@ categories = ["embedded", "no-std", "encoding"]
 [features]
 # phase-361 W3 / issue 0591 — EMPTY; `std` is opt-in per dep-site.
 default = []
-# phase-361 W2 (revised) — `std` does NOT imply `alloc`. On embedded, both are
-# opted into EXPLICITLY, per package, by the end user; a dep that needs the heap
-# must make the user say `alloc`, never turn it on behind their back.
-std = ["alloc"]
+# phase-359 W10 — no `std` feature. A core crate is `core` or `core+alloc`
+# (ARCHITECTURE §2); `alloc` is the one heap axis.
 alloc = []
 
 [dependencies]

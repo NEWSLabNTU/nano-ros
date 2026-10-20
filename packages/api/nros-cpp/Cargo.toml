@@ -53,8 +53,6 @@ std = [
     # nothing about it.
     "nros/env",
     "nros/std",
-    "nros-node/std",
-    "nros-rmw/std",
     "nros-c/std",
     # Optional-dep forward: only applies when `bridge` is also on. Without it the
     # bridge ABI's std-only diagnostics compile out (issue 0436).

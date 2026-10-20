@@ -30,10 +30,10 @@ nros-rmw-cffi = { path = "../../../../rmw/cffi", default-features = false, featu
 # registered `dds_topic_descriptor_t`. Same staging step, same reason, as
 # `bridge-zenoh-to-cyclonedds-fwd`.
 nros-rmw = { path = "../../../../core/nros-rmw", default-features = false, features = [
-    "std",
+    "alloc",
 ] }
 nros-serdes = { path = "../../../../core/nros-serdes", default-features = false, features = [
-    "std",
+    "alloc",
 ] }
 # posix `nros_platform_*` symbols; the Cyclone backend's C++ links against
 # them and `nros-rmw-cyclonedds-sys[platform-posix]` re-anchors the archive.

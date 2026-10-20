@@ -101,11 +101,13 @@ deprecate-node-name-setter = ["nros-node/deprecate-node-name-setter"]
 
 std = [
     "alloc",
-    "nros-core/std",
-    "nros-node/std",
-    "nros-rmw/std",
-    "nros-params/std",
-    "nros-serdes/std",
+    # phase-359 W10 — the core crates under this one have no `std` any more.
+    # What their `std` used to switch on is named here instead: the `log`
+    # facade in nros-node and nros-rmw, and nros-rmw-cffi's
+    # `NROS_RMW_TRACE_OPEN` trace.
+    "nros-node/log",
+    "nros-rmw/log",
+    "nros-rmw-cffi?/std",
     # `config` refuses to build without the bridge's `std` (it parses TOML),
     # and a consumer of the facade names `std` here, never on the bridge.
     "nros-bridge?/std",

@@ -52,7 +52,7 @@ default = ["panic-platform"]
 # selection. Without this feature the cfg would be permanently false and that
 # selection would vanish from the C API silently.
 env = ["nros/env"]
-std = ["alloc", "env", "nros/std", "nros-node/std", "nros-rmw/std", "log"]
+std = ["alloc", "env", "nros/std", "log"]
 # Issue 1875 -- `nros-node`'s `log` feature routes its records (the
 # `nros: session open` stability marker among them) through the `log` crate.
 # A C/C++ image has no `nros::main!` to install the bridge into the nros-log

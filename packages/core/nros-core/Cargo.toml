@@ -14,28 +14,23 @@ keywords = ["ros2", "embedded", "no-std", "robotics", "middleware"]
 categories = ["embedded", "no-std", "network-programming"]
 
 [features]
-# phase-361 W3 / issue 0591 — EMPTY. `no_std` is the baseline; `std` is a thing
-# you ask for, in one spelling, at your own dep-site. A non-empty `default` also
-# made `default` itself a feature-set member, so a consumer reaching this crate
-# via `default-features = false` + explicit `std` and one reaching it through
-# the default were TWO compile units for identical code.
+# phase-361 W3 / issue 0591 — EMPTY. A non-empty `default` made `default`
+# itself a feature-set member, so a consumer reaching this crate through it and
+# one naming the same features explicitly were TWO compile units for identical
+# code.
 default = []
-# phase-361 W2 (final) / issue 0598 — `std` implies `alloc`, in ONE line, and
-# forwards BOTH to `nros-serdes`. That is the whole fix: the defect was this
-# crate's heap gate and `nros-serdes`'s disagreeing, so a `std`-only build got
-# `heap::{Vec, String}` whose `Serialize` impls had never been compiled.
-# The alternative — independent axes, with `any(alloc, std)` at every use site —
-# was tried and reverted; see `src/lib.rs` and phase-361's phase-359 overlap
-# section for why the manifest edge is the spelling that survives.
-std = ["alloc", "nros-serdes/std"]
+# phase-359 W10 — no `std` feature. A core crate is `core` or `core+alloc`
+# (ARCHITECTURE §2); `alloc` is the one heap axis.
 # phase-359 W10 (backend tier) — "a platform port is linked, so its wall-clock
 # symbols resolve". Off by default: a pure-core build (no port) would fail to
 # link. `nros-rmw-cffi` forwards it, because a C-ABI build always has a port.
 #
-# This exists so `Clock::system()` stops being a thing you get by naming `std`.
-# The RMW backends used to forward `nros-core/std` purely to keep that working
-# on native, which made every backend a `std` grantor for the whole graph.
+# This exists so `Clock::system()` stopped being a thing you got by naming
+# `std`. The RMW backends used to forward `nros-core/std` purely to keep that
+# working on native, which made every backend a `std` grantor for the whole graph.
 platform-clock = []
+# phase-361 W2 (final) / issue 0598 — `alloc` forwards to `nros-serdes`, in ONE
+# line: the defect was this crate's heap gate and `nros-serdes`'s disagreeing.
 alloc = ["nros-serdes/alloc"]
 
 [dependencies]

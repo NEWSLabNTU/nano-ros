@@ -29,7 +29,8 @@ categories = ["embedded", "no-std", "development-tools::debugging"]
 
 [features]
 default = []
-std = ["alloc"]
+# phase-359 W10 — no `std` feature. A core crate is `core` or `core+alloc`
+# (ARCHITECTURE §2); `alloc` is the one heap axis.
 alloc = []
 
 # Issue #503 — populate `Record::timestamp_ns` from the platform's monotonic

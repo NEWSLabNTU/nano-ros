@@ -88,19 +88,19 @@ nvidia-ivc = { path = "../../drivers/ipc/nvidia-ivc", features = ["unix-mock", "
 
 # Workspace dependencies for type access (optional). phase-361 W3 — both now
 # default to `no_std`; the test harness always runs hosted, so ask for `std`.
-nros-core = { path = "../../core/nros-core", default-features = false, features = ["std"], optional = true }
-nros-serdes = { path = "../../core/nros-serdes", default-features = false, features = ["std"], optional = true }
+nros-core = { path = "../../core/nros-core", default-features = false, features = ["alloc"], optional = true }
+nros-serdes = { path = "../../core/nros-serdes", default-features = false, features = ["alloc"], optional = true }
 
 # RMW abstraction layer (optional, for in-process integration tests)
 # `nros-rmw` defaults to no-std; tests always run with std, so opt in
 # explicitly to keep rich error-context / logging available.
-nros-rmw = { path = "../../core/nros-rmw", default-features = false, features = ["std"], optional = true }
+nros-rmw = { path = "../../core/nros-rmw", default-features = false, features = ["alloc"], optional = true }
 
 # Node + executor API (optional, for trigger condition integration tests).
 # Phase 141.C — `wake-latency-probe` feature pulls in
 # `wake_probe::{parse_csv, percentile_ns}` for the
 # `wake_latency_cortex_m3` host runner.
-nros-node = { path = "../../core/nros-node", default-features = false, features = ["std", "rmw-cffi", "ros-humble", "wake-latency-probe"], optional = true }
+nros-node = { path = "../../core/nros-node", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble", "wake-latency-probe"], optional = true }
 
 # Phase 124.A.8.b — zenoh-pico backend (lending feature on) for the
 # loan E2E test. Optional so the default test build doesn't pull
@@ -173,10 +173,10 @@ trigger-test = [
     # harness and uses std freely; what it stops doing is imposing that on
     # `nros-node`.
 ]
-# issue 0612 — the POSIX signalfd wake path. `signal-fd-wake` needs `alloc`,
-# `rmw-cffi` and `std` on `nros-node` (three `compile_error!`s say so); the
-# first two arrive with `trigger-test`, the third with this crate's own
-# `nros-node` feature list. What `trigger-test` supplies that `nros-node`'s own
+# issue 0612 — the POSIX signalfd wake path. `signal-fd-wake` needs `alloc`
+# and `rmw-cffi` on `nros-node` (its `compile_error!`s say so); `rmw-cffi`
+# arrives with `trigger-test`, `alloc` with this crate's own `nros-node`
+# feature list. What `trigger-test` supplies that `nros-node`'s own
 # test dir could not is a REGISTERED BACKEND and a router fixture: the wake path
 # is gated `all(alloc, rmw-cffi)`, and turning `rmw-cffi` on is exactly what
 # removes `nros_node::mock`, so in that crate no invocation both compiled the

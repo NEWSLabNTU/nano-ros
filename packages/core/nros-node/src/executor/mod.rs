@@ -147,8 +147,8 @@ pub mod action;
 //
 // These tests genuinely need a host: they spawn threads, sleep, and read the
 // wall clock. Gating them is not hiding coverage, it is declaring what they
-// already required. `cargo test -p nros-node --features std` is unchanged and
-// remains the way to run them.
+// already required. `cargo test -p nros-node --features alloc` runs them; the
+// test harness has `std` whatever the features say (phase-359 W10).
 #[cfg(all(test, feature = "alloc", not(feature = "rmw-cffi")))]
 mod tests;
 
