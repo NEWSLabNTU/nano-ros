@@ -64,6 +64,10 @@ pub enum rclc_qos_reliability_t {
     /// The backend could not determine this policy — an ABSENCE, never a
     /// request. Upstream's `RMW_QOS_POLICY_RELIABILITY_UNKNOWN`.
     RCLC_QOS_RELIABILITY_UNKNOWN = 3,
+    /// Resolve at creation against the endpoints already discovered on the
+    /// topic (issue 1973) — upstream's `RMW_QOS_POLICY_RELIABILITY_BEST_AVAILABLE`.
+    /// A request only: a read-back reports the concrete policy chosen.
+    RCLC_QOS_RELIABILITY_BEST_AVAILABLE = 4,
 }
 
 /// QoS durability policy
@@ -80,6 +84,9 @@ pub enum rclc_qos_durability_t {
     /// The backend could not determine this policy — an ABSENCE, never a
     /// request. Upstream's `RMW_QOS_POLICY_DURABILITY_UNKNOWN`.
     RCLC_QOS_DURABILITY_UNKNOWN = 3,
+    /// Resolve at creation against the discovered graph (issue 1973) —
+    /// upstream's `RMW_QOS_POLICY_DURABILITY_BEST_AVAILABLE`. A request only.
+    RCLC_QOS_DURABILITY_BEST_AVAILABLE = 4,
 }
 
 /// QoS history policy
@@ -120,6 +127,9 @@ pub enum rclc_qos_liveliness_t {
     /// The backend could not determine this policy — an ABSENCE, never a
     /// request. Upstream's `RMW_QOS_POLICY_LIVELINESS_UNKNOWN`.
     RCLC_QOS_LIVELINESS_UNKNOWN = 4,
+    /// Resolve at creation against the discovered graph (issue 1973) —
+    /// upstream's `RMW_QOS_POLICY_LIVELINESS_BEST_AVAILABLE`. A request only.
+    RCLC_QOS_LIVELINESS_BEST_AVAILABLE = 5,
 }
 
 /// Full DDS-shaped QoS profile (Phase 109).
@@ -321,6 +331,9 @@ impl rclc_qos_t {
                 QoSReliabilityPolicy::SystemDefault
             }
             rclc_qos_reliability_t::RCLC_QOS_RELIABILITY_UNKNOWN => QoSReliabilityPolicy::Unknown,
+            rclc_qos_reliability_t::RCLC_QOS_RELIABILITY_BEST_AVAILABLE => {
+                QoSReliabilityPolicy::BestAvailable
+            }
         };
 
         let durability = match self.durability {
@@ -332,6 +345,9 @@ impl rclc_qos_t {
                 QoSDurabilityPolicy::SystemDefault
             }
             rclc_qos_durability_t::RCLC_QOS_DURABILITY_UNKNOWN => QoSDurabilityPolicy::Unknown,
+            rclc_qos_durability_t::RCLC_QOS_DURABILITY_BEST_AVAILABLE => {
+                QoSDurabilityPolicy::BestAvailable
+            }
         };
 
         let history = match self.history {
@@ -351,6 +367,9 @@ impl rclc_qos_t {
                 QoSLivelinessPolicy::ManualByNode
             }
             rclc_qos_liveliness_t::RCLC_QOS_LIVELINESS_UNKNOWN => QoSLivelinessPolicy::Unknown,
+            rclc_qos_liveliness_t::RCLC_QOS_LIVELINESS_BEST_AVAILABLE => {
+                QoSLivelinessPolicy::BestAvailable
+            }
         };
 
         nros_node::QoSProfile {
@@ -398,6 +417,11 @@ impl rclc_qos_t {
                 QoSReliabilityPolicy::Unknown => {
                     rclc_qos_reliability_t::RCLC_QOS_RELIABILITY_UNKNOWN
                 }
+                // issue 1973 — never a grant (the runtime resolves it before
+                // the backend), but the conversion stays total and faithful.
+                QoSReliabilityPolicy::BestAvailable => {
+                    rclc_qos_reliability_t::RCLC_QOS_RELIABILITY_BEST_AVAILABLE
+                }
             },
             durability: match qos.durability {
                 QoSDurabilityPolicy::Volatile => {
@@ -410,6 +434,9 @@ impl rclc_qos_t {
                     rclc_qos_durability_t::RCLC_QOS_DURABILITY_SYSTEM_DEFAULT
                 }
                 QoSDurabilityPolicy::Unknown => rclc_qos_durability_t::RCLC_QOS_DURABILITY_UNKNOWN,
+                QoSDurabilityPolicy::BestAvailable => {
+                    rclc_qos_durability_t::RCLC_QOS_DURABILITY_BEST_AVAILABLE
+                }
             },
             history: match qos.history {
                 QoSHistoryPolicy::KeepLast => rclc_qos_history_t::RCLC_QOS_HISTORY_KEEP_LAST,
@@ -431,6 +458,9 @@ impl rclc_qos_t {
                     rclc_qos_liveliness_t::RCLC_QOS_LIVELINESS_MANUAL_BY_NODE
                 }
                 QoSLivelinessPolicy::Unknown => rclc_qos_liveliness_t::RCLC_QOS_LIVELINESS_UNKNOWN,
+                QoSLivelinessPolicy::BestAvailable => {
+                    rclc_qos_liveliness_t::RCLC_QOS_LIVELINESS_BEST_AVAILABLE
+                }
             },
             depth: c_depth_saturating(qos.depth),
             deadline_ms: qos.deadline_ms,

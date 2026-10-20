@@ -68,6 +68,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 TRAITS = ROOT / "packages" / "core" / "nros-rmw" / "src" / "traits.rs"
 RECORD = ROOT / "docs" / "reference" / "rmw-qos-profiles.txt"
+# issue 1973 — the profiles a LATER edition added, recorded beside the base
+# record rather than in it: the base is regenerated from a Humble install,
+# which does not define them, and a regeneration must not delete them. The two
+# files are one record to every check (`_load` merges them; a symbol in both is
+# an error). `--write-upstream` on a non-Humble install writes this file with
+# the symbols the base does not hold.
+RECORD_LATER = ROOT / "docs" / "reference" / "rmw-qos-profiles-jazzy.txt"
 
 # The nine fields upstream's `rmw_qos_profile_t` declares, in DECLARATION
 # order (`rmw/include/rmw/types.h`). Order is load-bearing twice: the SSoT rows
@@ -113,12 +120,14 @@ RUST_TO_CANONICAL = {
         "Reliable": "RELIABLE",
         "BestEffort": "BEST_EFFORT",
         "Unknown": "UNKNOWN",
+        "BestAvailable": "BEST_AVAILABLE",
     },
     "durability": {
         "SystemDefault": "SYSTEM_DEFAULT",
         "Volatile": "VOLATILE",
         "TransientLocal": "TRANSIENT_LOCAL",
         "Unknown": "UNKNOWN",
+        "BestAvailable": "BEST_AVAILABLE",
     },
     "liveliness_kind": {
         "None": "SYSTEM_DEFAULT",
@@ -126,6 +135,7 @@ RUST_TO_CANONICAL = {
         "ManualByNode": "MANUAL_BY_NODE",
         "ManualByTopic": "MANUAL_BY_TOPIC",
         "Unknown": "UNKNOWN",
+        "BestAvailable": "BEST_AVAILABLE",
     },
 }
 
@@ -139,16 +149,28 @@ C_TO_CANONICAL = {
     "RMW_QOS_POLICY_RELIABILITY_RELIABLE": "RELIABLE",
     "RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT": "BEST_EFFORT",
     "RMW_QOS_POLICY_RELIABILITY_UNKNOWN": "UNKNOWN",
+    "RMW_QOS_POLICY_RELIABILITY_BEST_AVAILABLE": "BEST_AVAILABLE",
     "RMW_QOS_POLICY_DURABILITY_SYSTEM_DEFAULT": "SYSTEM_DEFAULT",
     "RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL": "TRANSIENT_LOCAL",
     "RMW_QOS_POLICY_DURABILITY_VOLATILE": "VOLATILE",
     "RMW_QOS_POLICY_DURABILITY_UNKNOWN": "UNKNOWN",
+    "RMW_QOS_POLICY_DURABILITY_BEST_AVAILABLE": "BEST_AVAILABLE",
     "RMW_QOS_POLICY_LIVELINESS_SYSTEM_DEFAULT": "SYSTEM_DEFAULT",
     "RMW_QOS_POLICY_LIVELINESS_AUTOMATIC": "AUTOMATIC",
     "RMW_QOS_POLICY_LIVELINESS_MANUAL_BY_NODE": "MANUAL_BY_NODE",
     "RMW_QOS_POLICY_LIVELINESS_MANUAL_BY_TOPIC": "MANUAL_BY_TOPIC",
     "RMW_QOS_POLICY_LIVELINESS_UNKNOWN": "UNKNOWN",
+    "RMW_QOS_POLICY_LIVELINESS_BEST_AVAILABLE": "BEST_AVAILABLE",
 }
+
+# issue 1973 — the best-available window. Upstream spells it
+# `RMW_QOS_{DEADLINE,LIVELINESS_LEASE_DURATION}_BEST_AVAILABLE`, both
+# `RMW_DURATION_INFINITE - 1` ns; nano-ros spells it `DURATION_BEST_AVAILABLE_MS`
+# (`DURATION_INFINITE_MS - 1`, i.e. `u32::MAX - 1`). The record writes OUR
+# number, the way `RMW_DURATION_UNSPECIFIED` is recorded as our 0 — a mapping of
+# one sentinel onto the other, verified against the header's literal in
+# `extract_upstream` rather than assumed.
+BEST_AVAILABLE_MS = 0xFFFF_FFFF - 1
 
 # Alternatives the selftest draws mutants from.
 MUTANTS = {
@@ -169,6 +191,12 @@ TABLE_END = "// nros-qos-table: END"
 ROW_HEAD = re.compile(r"^\s{4}([A-Z][A-Z0-9_]*)\s*:\s*\"([^\"]*)\"\s*=\s*\{\s*$")
 FIELD = re.compile(r"^\s{8}([a-z_]+)\s*:\s*([^,]+),\s*$")
 DEPTH_CONST = re.compile(r"^pub const DEPTH_SYSTEM_DEFAULT: u32 = (\d+);", re.M)
+# issue 1973 — the two duration sentinels, read from the crate so the number
+# the table's `DURATION_BEST_AVAILABLE_MS` stands for is measured, not assumed.
+INFINITE_CONST = re.compile(r"^pub const DURATION_INFINITE_MS: u32 = u32::MAX;", re.M)
+BEST_AVAILABLE_CONST = re.compile(
+    r"^pub const DURATION_BEST_AVAILABLE_MS: u32 = DURATION_INFINITE_MS - 1;", re.M
+)
 
 DEVIATION = re.compile(r"^//\s*nros-qos-deviation:\s*(.+?)\s*$", re.M)
 ABSENT = re.compile(r"^//\s*nros-qos-absent:\s*(.+?)\s*$", re.M)
@@ -221,6 +249,12 @@ def parse_table(text):
     if not m:
         raise Fail("`pub const DEPTH_SYSTEM_DEFAULT: u32 = N;` not found")
     depth_sentinel = int(m.group(1))
+    if not INFINITE_CONST.search(text) or not BEST_AVAILABLE_CONST.search(text):
+        raise Fail(
+            "`DURATION_INFINITE_MS = u32::MAX` / `DURATION_BEST_AVAILABLE_MS = "
+            "DURATION_INFINITE_MS - 1` not found — the best-available sentinel the "
+            "table names (issue 1973) is no longer the number this gate records"
+        )
 
     rows, name, fields, head_line = {}, None, None, 0
     for i in range(begin + 1, end):
@@ -268,6 +302,8 @@ def _rust_value(key, raw, depth_sentinel, where):
     if key in INT_FIELDS:
         if raw == "DEPTH_SYSTEM_DEFAULT":
             return depth_sentinel
+        if raw == "DURATION_BEST_AVAILABLE_MS" and key != "depth":
+            return BEST_AVAILABLE_MS
         if not re.fullmatch(r"\d+", raw):
             raise Fail(f"{where}: {key} = {raw!r} is not an integer literal")
         return int(raw)
@@ -675,6 +711,36 @@ def _cpp_qos_table(text, where):
                 fields["durability"] = "VOLATILE"
             elif call == "keep_all":
                 fields["history"] = "KEEP_ALL"
+            # issue 1973 — the two best-available setters, and the
+            # enum-taking liveliness setter the best-available row is the
+            # first to use.
+            elif call == "reliability_best_available":
+                fields["reliability"] = "BEST_AVAILABLE"
+            elif call == "durability_best_available":
+                fields["durability"] = "BEST_AVAILABLE"
+            elif call == "liveliness":
+                kinds = {
+                    "SystemDefault": "SYSTEM_DEFAULT",
+                    "Automatic": "AUTOMATIC",
+                    "ManualByTopic": "MANUAL_BY_TOPIC",
+                    "ManualByNode": "MANUAL_BY_NODE",
+                    "BestAvailable": "BEST_AVAILABLE",
+                }
+                m = re.fullmatch(r"(?:::)?rclcpp::LivelinessPolicy::([A-Za-z]+)", arg)
+                if not m or m.group(1) not in kinds:
+                    raise Fail(
+                        f"{where}: qos_table::{row}() liveliness({arg!r}) is not a "
+                        "`rclcpp::LivelinessPolicy::` enumerator the gate knows"
+                    )
+                fields["liveliness_kind"] = kinds[m.group(1)]
+            elif call in ("deadline", "liveliness_lease_duration") and re.fullmatch(
+                r"(?:::)?rclcpp::detail::qos_best_available_duration\(\)", arg
+            ):
+                key = "liveliness_lease_ms" if call == "liveliness_lease_duration" \
+                    else "deadline_ms"
+                fields[key] = BEST_AVAILABLE_MS
+            elif call == "qos_best_available_duration":
+                continue  # consumed by its enclosing window call
             elif call == "keep_last":
                 if not re.fullmatch(r"\d+", arg):
                     raise Fail(f"{where}: qos_table::{row}() keep_last({arg!r}) is not a literal")
@@ -779,6 +845,7 @@ MIRRORS = [
             "parameters": "QOS_PROFILE_PARAMETERS",
             "parameter_events": "QOS_PROFILE_PARAMETER_EVENTS",
             "clock": "QOS_PROFILE_CLOCK",
+            "best_available": "QOS_PROFILE_BEST_AVAILABLE",
         },
     ),
     Mirror(
@@ -1068,6 +1135,24 @@ def extract_upstream(headers):
         "RMW_QOS_LIFESPAN_DEFAULT": durations["RMW_DURATION_UNSPECIFIED"],
         "RMW_QOS_LIVELINESS_LEASE_DURATION_DEFAULT": durations["RMW_DURATION_UNSPECIFIED"],
     }
+    # issue 1973 — Iron+ defines the best-available windows as literals. Each
+    # is resolved onto OUR sentinel only after checking it IS upstream's
+    # `RMW_DURATION_INFINITE - 1` ns; anything else is a header this gate does
+    # not understand, and fails rather than guesses.
+    inf = re.search(
+        r"#define\s+RMW_DURATION_INFINITE\s*\{\s*(-?\d+)LL?\s*,\s*(-?\d+)LL?\s*\}", time_src
+    )
+    inf_ns = int(inf.group(1)) * 1_000_000_000 + int(inf.group(2))
+    for name in ("RMW_QOS_DEADLINE_BEST_AVAILABLE",
+                 "RMW_QOS_LIVELINESS_LEASE_DURATION_BEST_AVAILABLE"):
+        d = re.search(rf"#define\s+{name}\s*\{{\s*(-?\d+)LL?\s*,\s*(-?\d+)LL?\s*\}}",
+                      types_src)
+        if not d:
+            continue  # Humble: the edition that predates best-available
+        ns = int(d.group(1)) * 1_000_000_000 + int(d.group(2))
+        if ns != inf_ns - 1:
+            raise Fail(f"{name} is {ns} ns, not RMW_DURATION_INFINITE - 1 ({inf_ns - 1})")
+        aliases[name] = BEST_AVAILABLE_MS
 
     rows = {}
     for key in ("qos_profiles", "action"):
@@ -1703,6 +1788,15 @@ def _load():
             "    python3 scripts/check-qos-profile-ssot.py --write-upstream"
         )
     record = parse_record(RECORD.read_text(encoding="utf8"))
+    if RECORD_LATER.exists():
+        later = parse_record(RECORD_LATER.read_text(encoding="utf8"))
+        both = sorted(set(record) & set(later))
+        if both:
+            raise Fail(
+                f"{', '.join(both)} recorded in both {RECORD.name} and "
+                f"{RECORD_LATER.name} — a symbol has one home"
+            )
+        record.update(later)
     return rows, record, deviations, absences
 
 
@@ -1727,7 +1821,9 @@ def _provenance_header(headers):
         "# Windows are milliseconds; RMW_DURATION_UNSPECIFIED ({0,0}) lands on 0, which",
         "# is also nano-ros's `off`. `liveliness` is upstream's own spelling —",
         "# `QoSLivelinessPolicy::None` is nano-ros's name for SYSTEM_DEFAULT (phase-376",
-        "# W5/B2 collapsed the two onto discriminant 0).",
+        "# W5/B2 collapsed the two onto discriminant 0). RMW_*_BEST_AVAILABLE windows",
+        "# (RMW_DURATION_INFINITE - 1, Iron+) land on 4294967294, nano-ros's",
+        "# DURATION_BEST_AVAILABLE_MS (issue 1973).",
         "#",
         "# Regenerate where a ROS install exists:",
         "#   python3 scripts/check-qos-profile-ssot.py --write-upstream",
@@ -1748,8 +1844,17 @@ def main():
                     "and retry."
                 )
             rows = extract_upstream(headers)
-            RECORD.write_text(format_record(rows, _provenance_header(headers)), encoding="utf8")
-            print(f"wrote {RECORD.relative_to(ROOT)} — {len(rows)} profile(s)")
+            # issue 1973 — Humble writes the base record; a later edition
+            # writes only what the base does not hold, so neither regeneration
+            # can delete the other's rows.
+            if os.environ.get("ROS_DISTRO", "humble") == "humble":
+                target = RECORD
+            else:
+                base = parse_record(RECORD.read_text(encoding="utf8"))
+                rows = {k: v for k, v in rows.items() if k not in base}
+                target = RECORD_LATER
+            target.write_text(format_record(rows, _provenance_header(headers)), encoding="utf8")
+            print(f"wrote {target.relative_to(ROOT)} — {len(rows)} profile(s)")
             return 0
 
         # The negative control runs on the NORMAL path, not behind a flag —

@@ -488,6 +488,12 @@ impl TryFrom<QoSProfile> for NrosRmwQos {
                 // here carrying it is one the runtime built for a read-back
                 // OUT-parameter — which is exactly where it has to be legal.
                 QoSReliabilityPolicy::Unknown => generated::NROS_RMW_RELIABILITY_UNKNOWN as u8,
+                // issue 1973 — lowers faithfully; `CffiSession`'s create paths
+                // resolve it BEFORE this lowering, so a backend's create slot
+                // never receives it.
+                QoSReliabilityPolicy::BestAvailable => {
+                    generated::NROS_RMW_RELIABILITY_BEST_AVAILABLE as u8
+                }
             },
             durability: match qos.durability {
                 QoSDurabilityPolicy::SystemDefault => {
@@ -498,6 +504,9 @@ impl TryFrom<QoSProfile> for NrosRmwQos {
                     generated::NROS_RMW_DURABILITY_TRANSIENT_LOCAL as u8
                 }
                 QoSDurabilityPolicy::Unknown => generated::NROS_RMW_DURABILITY_UNKNOWN as u8,
+                QoSDurabilityPolicy::BestAvailable => {
+                    generated::NROS_RMW_DURABILITY_BEST_AVAILABLE as u8
+                }
             },
             history: match qos.history {
                 QoSHistoryPolicy::SystemDefault => generated::NROS_RMW_HISTORY_SYSTEM_DEFAULT as u8,
@@ -532,12 +541,14 @@ pub fn qos_from_c(q: &NrosRmwQos) -> QoSProfile {
             NROS_RMW_RELIABILITY_SYSTEM_DEFAULT => QoSReliabilityPolicy::SystemDefault,
             NROS_RMW_RELIABILITY_RELIABLE => QoSReliabilityPolicy::Reliable,
             NROS_RMW_RELIABILITY_BEST_EFFORT => QoSReliabilityPolicy::BestEffort,
+            generated::NROS_RMW_RELIABILITY_BEST_AVAILABLE => QoSReliabilityPolicy::BestAvailable,
             _ => QoSReliabilityPolicy::Unknown,
         },
         durability: match q.durability as i32 {
             generated::NROS_RMW_DURABILITY_SYSTEM_DEFAULT => QoSDurabilityPolicy::SystemDefault,
             generated::NROS_RMW_DURABILITY_VOLATILE => QoSDurabilityPolicy::Volatile,
             generated::NROS_RMW_DURABILITY_TRANSIENT_LOCAL => QoSDurabilityPolicy::TransientLocal,
+            generated::NROS_RMW_DURABILITY_BEST_AVAILABLE => QoSDurabilityPolicy::BestAvailable,
             _ => QoSDurabilityPolicy::Unknown,
         },
         history: match q.history as i32 {
@@ -558,6 +569,9 @@ pub fn qos_from_c(q: &NrosRmwQos) -> QoSProfile {
             }
             generated::rmw_liveliness_kind_t::NROS_RMW_LIVELINESS_MANUAL_BY_TOPIC => {
                 QoSLivelinessPolicy::ManualByTopic
+            }
+            generated::rmw_liveliness_kind_t::NROS_RMW_LIVELINESS_BEST_AVAILABLE => {
+                QoSLivelinessPolicy::BestAvailable
             }
             _ => QoSLivelinessPolicy::Unknown,
         },
@@ -1856,6 +1870,9 @@ unsafe extern "C" fn endpoint_info_visit_trampoline(
         topic_type,
         is_publisher: info.endpoint_type == generated::rmw_endpoint_type_t::RMW_ENDPOINT_PUBLISHER,
         endpoint_gid: info.endpoint_gid.data,
+        // issue 1973 — what the backend matched this endpoint on; the
+        // best-available resolution folds it.
+        qos: qos_from_c(&info.qos_profile),
     };
     cb(&view)
 }
@@ -2655,6 +2672,19 @@ impl Session for CffiSession {
     ) -> Result<CffiPublisher, TransportError> {
         let mut hash_buf = [0u8; HASH_BUF_LEN];
         let hash_ptr = to_c_str(topic.type_hash, &mut hash_buf);
+        // issue 1973 — resolve BEST_AVAILABLE here, the one seam every
+        // backend's create passes through (`nros-node`'s session IS this
+        // type), so no backend's create slot ever receives the request
+        // value and its `*_get_actual_qos` reports the concrete choice. The
+        // graph comes from the backend's own `get_*_info_by_topic` slot; a
+        // NULL slot (XRCE, uORB) is "nothing discovered" — upstream's
+        // documented default, see `QoSProfile::resolve_best_available`.
+        let qos = nros_rmw::resolve_best_available_on(
+            self,
+            nros_rmw::BestAvailableRole::Publisher,
+            topic.name,
+            qos,
+        );
         let qos_struct = NrosRmwQos::try_from(qos)?;
         // phase-301 (issue 0240) — the express hint travels in the options
         // struct, not the QoS profile. Either surface wins: the QoS profile
@@ -2776,6 +2806,13 @@ impl Session for CffiSession {
     ) -> Result<CffiSubscription, TransportError> {
         let mut hash_buf = [0u8; HASH_BUF_LEN];
         let hash_ptr = to_c_str(topic.type_hash, &mut hash_buf);
+        // issue 1973 — see `create_publisher`.
+        let qos = nros_rmw::resolve_best_available_on(
+            self,
+            nros_rmw::BestAvailableRole::Subscription,
+            topic.name,
+            qos,
+        );
         let qos_struct = NrosRmwQos::try_from(qos)?;
         // Phase 231 (RFC-0038) / phase-301 (issue 0240) — the receive-buffer
         // size hint travels in the options struct so a size-classing backend
@@ -2895,6 +2932,13 @@ impl Session for CffiSession {
         service: &ServiceInfo,
         qos: QoSProfile,
     ) -> Result<CffiService, TransportError> {
+        // issue 1973 — see `create_publisher`.
+        let qos = nros_rmw::resolve_best_available_on(
+            self,
+            nros_rmw::BestAvailableRole::Service,
+            service.name,
+            qos,
+        );
         let qos_struct = NrosRmwQos::try_from(qos)?;
         let mut hash_buf = [0u8; HASH_BUF_LEN];
         let hash_ptr = to_c_str(service.type_hash, &mut hash_buf);
@@ -2989,6 +3033,13 @@ impl Session for CffiSession {
         service: &ServiceInfo,
         qos: QoSProfile,
     ) -> Result<CffiClient, TransportError> {
+        // issue 1973 — see `create_publisher`.
+        let qos = nros_rmw::resolve_best_available_on(
+            self,
+            nros_rmw::BestAvailableRole::Service,
+            service.name,
+            qos,
+        );
         let qos_struct = NrosRmwQos::try_from(qos)?;
         let mut hash_buf = [0u8; HASH_BUF_LEN];
         let hash_ptr = to_c_str(service.type_hash, &mut hash_buf);
@@ -6198,10 +6249,15 @@ mod tests {
         assert_eq!(duration_to_qos_ms(Duration::from_micros(999)), Ok(1));
         assert_eq!(duration_to_qos_ms(Duration::from_millis(1)), Ok(1));
         assert_eq!(duration_to_qos_ms(Duration::from_micros(1001)), Ok(2));
-        // Largest representable finite value.
+        // Largest representable finite value — one below the best-available
+        // sentinel (issue 1973), which no finite duration may lower onto.
+        assert_eq!(
+            duration_to_qos_ms(Duration::from_millis(DURATION_INFINITE_MS as u64 - 2)),
+            Ok(DURATION_INFINITE_MS - 2)
+        );
         assert_eq!(
             duration_to_qos_ms(Duration::from_millis(DURATION_INFINITE_MS as u64 - 1)),
-            Ok(DURATION_INFINITE_MS - 1)
+            Err(TransportError::InvalidArgument)
         );
         // At / past the sentinel: create-time error, never a clamp (infinite
         // is spelled via the sentinel or 0, not a huge finite duration).
@@ -6321,6 +6377,196 @@ mod tests {
     //
     // This test is the pair to `register_rejects_incomplete_vtable` above: one
     // asserts the gate still bites, this asserts it does not over-bite. Keep
+    // ---- issue 1973: BEST_AVAILABLE resolves HERE, for every C backend ----
+    //
+    // The captured QoS is what the backend's create slot received. Each slot
+    // writes its own static, and each test owns its statics, so the parallel
+    // test runner cannot interleave them.
+
+    static mut BA_SUB_QOS: Option<NrosRmwQos> = None;
+    static mut BA_PUB_QOS: Option<NrosRmwQos> = None;
+    static mut BA_NULL_SUB_QOS: Option<NrosRmwQos> = None;
+
+    unsafe extern "C" fn ba_create_subscription(
+        _: *const NrosRmwNode,
+        _: *const generated::rmw_message_type_support_t,
+        _: *const core::ffi::c_char,
+        _: u32,
+        qos: *const NrosRmwQos,
+        _: *const rmw_subscription_options_t,
+        out: *mut NrosRmwSubscription,
+    ) -> NrosRmwRet {
+        unsafe {
+            BA_SUB_QOS = Some(*qos);
+            (*out).backend_data = core::ptr::dangling_mut::<c_void>();
+        }
+        NROS_RMW_RET_OK
+    }
+
+    unsafe extern "C" fn ba_null_create_subscription(
+        _: *const NrosRmwNode,
+        _: *const generated::rmw_message_type_support_t,
+        _: *const core::ffi::c_char,
+        _: u32,
+        qos: *const NrosRmwQos,
+        _: *const rmw_subscription_options_t,
+        out: *mut NrosRmwSubscription,
+    ) -> NrosRmwRet {
+        unsafe {
+            BA_NULL_SUB_QOS = Some(*qos);
+            (*out).backend_data = core::ptr::dangling_mut::<c_void>();
+        }
+        NROS_RMW_RET_OK
+    }
+
+    unsafe extern "C" fn ba_create_publisher(
+        _: *const NrosRmwNode,
+        _: *const generated::rmw_message_type_support_t,
+        _: *const core::ffi::c_char,
+        _: u32,
+        qos: *const NrosRmwQos,
+        _: *const rmw_publisher_options_t,
+        out: *mut NrosRmwPublisher,
+    ) -> NrosRmwRet {
+        unsafe {
+            BA_PUB_QOS = Some(*qos);
+            (*out).backend_data = 0xBEEFusize as *mut c_void;
+        }
+        NROS_RMW_RET_OK
+    }
+
+    /// One discovered endpoint for the stub graph slots.
+    fn ba_endpoint(publisher: bool, qos: QoSProfile) -> generated::rmw_topic_endpoint_info_t {
+        generated::rmw_topic_endpoint_info_t {
+            node_name: c"peer".as_ptr(),
+            node_namespace: c"/".as_ptr(),
+            topic_type: c"std_msgs/msg/Int32".as_ptr(),
+            endpoint_type: if publisher {
+                generated::rmw_endpoint_type_t::RMW_ENDPOINT_PUBLISHER
+            } else {
+                generated::rmw_endpoint_type_t::RMW_ENDPOINT_SUBSCRIPTION
+            },
+            endpoint_gid: generated::rmw_gid_t {
+                implementation_identifier: core::ptr::null(),
+                data: [0u8; 24],
+            },
+            qos_profile: NrosRmwQos::try_from(qos).unwrap(),
+        }
+    }
+
+    /// Two publishers on the topic: both RELIABLE, only one TRANSIENT_LOCAL,
+    /// deadlines 50 ms and 200 ms.
+    unsafe extern "C" fn ba_publishers(
+        _: *const NrosRmwSession,
+        _: *const core::ffi::c_char,
+        _: bool,
+        visitor: generated::rmw_topic_endpoint_info_visitor_t,
+    ) -> NrosRmwRet {
+        let visit = visitor.visit.unwrap();
+        let mut a = QoSProfile::QOS_PROFILE_DEFAULT.transient_local();
+        a.deadline_ms = 50;
+        let mut b = QoSProfile::QOS_PROFILE_DEFAULT;
+        b.deadline_ms = 200;
+        for q in [a, b] {
+            let info = ba_endpoint(true, q);
+            unsafe { visit(visitor.ctx, &info) };
+        }
+        NROS_RMW_RET_OK
+    }
+
+    /// One subscription on the topic: MANUAL_BY_TOPIC with a 100 ms deadline.
+    unsafe extern "C" fn ba_subscriptions(
+        _: *const NrosRmwSession,
+        _: *const core::ffi::c_char,
+        _: bool,
+        visitor: generated::rmw_topic_endpoint_info_visitor_t,
+    ) -> NrosRmwRet {
+        let visit = visitor.visit.unwrap();
+        let mut q = QoSProfile::QOS_PROFILE_DEFAULT;
+        q.liveliness_kind = QoSLivelinessPolicy::ManualByTopic;
+        q.deadline_ms = 100;
+        let info = ba_endpoint(false, q);
+        unsafe { visit(visitor.ctx, &info) };
+        NROS_RMW_RET_OK
+    }
+
+    fn ba_session(vtable: &'static NrosRmwVtable, mask: nros_rmw::QoSPolicyMask) -> CffiSession {
+        CffiSession {
+            vtable,
+            node_name_buf: [0u8; NAME_BUF_LEN],
+            namespace_buf: [0u8; NAME_BUF_LEN],
+            backend_data: core::ptr::dangling_mut::<c_void>(),
+            domain_id: 0,
+            qos_policies: mask,
+        }
+    }
+
+    /// issue 1973 — the backend's create slot receives the RESOLVED policy,
+    /// folded from what its own graph slot reported: a subscription takes
+    /// RELIABLE because every publisher offers it, VOLATILE because one does
+    /// not offer TRANSIENT_LOCAL, and the LARGEST peer deadline; a publisher
+    /// takes RELIABLE / TRANSIENT_LOCAL unconditionally, MANUAL_BY_TOPIC
+    /// because a subscription asks for it, and the SMALLEST peer deadline.
+    #[test]
+    fn best_available_reaches_the_backend_resolved_against_its_graph() {
+        static VT: NrosRmwVtable = NrosRmwVtable {
+            create_subscription: Some(ba_create_subscription),
+            create_publisher: Some(ba_create_publisher),
+            get_publishers_info_by_topic: Some(ba_publishers),
+            get_subscriptions_info_by_topic: Some(ba_subscriptions),
+            ..STUB_VTABLE
+        };
+        let mut session = ba_session(&VT, nros_rmw::QoSPolicyMask(u32::MAX));
+        let topic = TopicInfo::new("/chatter", "std_msgs/msg/Int32", "");
+
+        let _sub = session
+            .create_subscription(&topic, QoSProfile::best_available())
+            .expect("subscription");
+        let got = qos_from_c(&unsafe { BA_SUB_QOS }.expect("create slot ran"));
+        assert_eq!(got.reliability, QoSReliabilityPolicy::Reliable);
+        assert_eq!(got.durability, QoSDurabilityPolicy::Volatile);
+        assert_eq!(got.liveliness_kind, QoSLivelinessPolicy::Automatic);
+        assert_eq!(got.deadline_ms, 200);
+        assert_eq!(got.liveliness_lease_ms, 0);
+        assert_eq!(got.depth, 10, "depth is stated, never resolved");
+
+        let _pub = session
+            .create_publisher(&topic, QoSProfile::best_available())
+            .expect("publisher");
+        let got = qos_from_c(&unsafe { BA_PUB_QOS }.expect("create slot ran"));
+        assert_eq!(got.reliability, QoSReliabilityPolicy::Reliable);
+        assert_eq!(got.durability, QoSDurabilityPolicy::TransientLocal);
+        assert_eq!(got.liveliness_kind, QoSLivelinessPolicy::ManualByTopic);
+        assert_eq!(got.deadline_ms, 100);
+    }
+
+    /// issue 1973 — a backend with NO graph slot (XRCE, uORB) has discovered
+    /// nothing, and a subscription resolves to upstream's nothing-discovered
+    /// answer — BEST_EFFORT / VOLATILE / AUTOMATIC — rather than being handed
+    /// the request value. A policy the backend does not honour at all clamps
+    /// to the SYSTEM_DEFAULT sentinel the backend then resolves itself.
+    #[test]
+    fn best_available_without_a_graph_slot_resolves_to_nothing_discovered() {
+        static VT: NrosRmwVtable = NrosRmwVtable {
+            create_subscription: Some(ba_null_create_subscription),
+            ..STUB_VTABLE
+        };
+        let honoured =
+            nros_rmw::QoSPolicyMask::RELIABILITY | nros_rmw::QoSPolicyMask::DURABILITY_VOLATILE;
+        let mut session = ba_session(&VT, honoured);
+        let topic = TopicInfo::new("/chatter", "std_msgs/msg/Int32", "");
+        let _sub = session
+            .create_subscription(&topic, QoSProfile::best_available())
+            .expect("subscription");
+        let got = qos_from_c(&unsafe { BA_NULL_SUB_QOS }.expect("create slot ran"));
+        assert_eq!(got.reliability, QoSReliabilityPolicy::BestEffort);
+        assert_eq!(got.durability, QoSDurabilityPolicy::Volatile);
+        // No liveliness bit honoured: AUTOMATIC steps down to the sentinel.
+        assert_eq!(got.liveliness_kind, QoSLivelinessPolicy::None);
+        assert_eq!(got.deadline_ms, 0);
+        assert_eq!(got.liveliness_lease_ms, 0);
+    }
+
     // both — dropping either turns the gate into a one-way ratchet.
     /// phase-381 W6 — a NULL graph slot must say UNSUPPORTED, not "empty".
     ///

@@ -345,6 +345,9 @@ pub enum nros_cpp_qos_reliability_t {
     /// The backend could not determine this policy. An absence, never a
     /// request.
     NROS_CPP_QOS_RELIABILITY_UNKNOWN = 3,
+    /// Resolve at creation against the discovered graph (issue 1973) —
+    /// `rclcpp::ReliabilityPolicy::BestAvailable`. A request, never a grant.
+    NROS_CPP_QOS_RELIABILITY_BEST_AVAILABLE = 4,
 }
 
 /// QoS durability policy.
@@ -357,6 +360,8 @@ pub enum nros_cpp_qos_durability_t {
     NROS_CPP_QOS_DURABILITY_SYSTEM_DEFAULT = 2,
     /// The backend could not determine this policy.
     NROS_CPP_QOS_DURABILITY_UNKNOWN = 3,
+    /// Resolve at creation against the discovered graph (issue 1973).
+    NROS_CPP_QOS_DURABILITY_BEST_AVAILABLE = 4,
 }
 
 /// QoS history policy.
@@ -384,6 +389,8 @@ pub enum nros_cpp_qos_liveliness_t {
     NROS_CPP_QOS_LIVELINESS_MANUAL_BY_NODE = 3,
     /// The backend could not determine this policy.
     NROS_CPP_QOS_LIVELINESS_UNKNOWN = 4,
+    /// Resolve at creation against the discovered graph (issue 1973).
+    NROS_CPP_QOS_LIVELINESS_BEST_AVAILABLE = 5,
 }
 
 /// QoS settings (passed by value from C++).
@@ -434,6 +441,9 @@ impl nros_cpp_qos_t {
                 nros_cpp_qos_reliability_t::NROS_CPP_QOS_RELIABILITY_UNKNOWN => {
                     QoSReliabilityPolicy::Unknown
                 }
+                nros_cpp_qos_reliability_t::NROS_CPP_QOS_RELIABILITY_BEST_AVAILABLE => {
+                    QoSReliabilityPolicy::BestAvailable
+                }
             },
             durability: match self.durability {
                 nros_cpp_qos_durability_t::NROS_CPP_QOS_VOLATILE => QoSDurabilityPolicy::Volatile,
@@ -445,6 +455,9 @@ impl nros_cpp_qos_t {
                 }
                 nros_cpp_qos_durability_t::NROS_CPP_QOS_DURABILITY_UNKNOWN => {
                     QoSDurabilityPolicy::Unknown
+                }
+                nros_cpp_qos_durability_t::NROS_CPP_QOS_DURABILITY_BEST_AVAILABLE => {
+                    QoSDurabilityPolicy::BestAvailable
                 }
             },
             history: match self.history {
@@ -470,6 +483,9 @@ impl nros_cpp_qos_t {
                 }
                 nros_cpp_qos_liveliness_t::NROS_CPP_QOS_LIVELINESS_UNKNOWN => {
                     QoSLivelinessPolicy::Unknown
+                }
+                nros_cpp_qos_liveliness_t::NROS_CPP_QOS_LIVELINESS_BEST_AVAILABLE => {
+                    QoSLivelinessPolicy::BestAvailable
                 }
             },
             depth: self.depth as u32,
@@ -505,6 +521,11 @@ impl nros_cpp_qos_t {
                 QoSReliabilityPolicy::Unknown => {
                     nros_cpp_qos_reliability_t::NROS_CPP_QOS_RELIABILITY_UNKNOWN
                 }
+                // issue 1973 — the runtime resolves it before any backend, so
+                // no grant carries it; the conversion stays total regardless.
+                QoSReliabilityPolicy::BestAvailable => {
+                    nros_cpp_qos_reliability_t::NROS_CPP_QOS_RELIABILITY_BEST_AVAILABLE
+                }
             },
             durability: match qos.durability {
                 QoSDurabilityPolicy::Volatile => nros_cpp_qos_durability_t::NROS_CPP_QOS_VOLATILE,
@@ -516,6 +537,9 @@ impl nros_cpp_qos_t {
                 }
                 QoSDurabilityPolicy::Unknown => {
                     nros_cpp_qos_durability_t::NROS_CPP_QOS_DURABILITY_UNKNOWN
+                }
+                QoSDurabilityPolicy::BestAvailable => {
+                    nros_cpp_qos_durability_t::NROS_CPP_QOS_DURABILITY_BEST_AVAILABLE
                 }
             },
             history: match qos.history {
@@ -541,6 +565,9 @@ impl nros_cpp_qos_t {
                 }
                 QoSLivelinessPolicy::Unknown => {
                     nros_cpp_qos_liveliness_t::NROS_CPP_QOS_LIVELINESS_UNKNOWN
+                }
+                QoSLivelinessPolicy::BestAvailable => {
+                    nros_cpp_qos_liveliness_t::NROS_CPP_QOS_LIVELINESS_BEST_AVAILABLE
                 }
             },
             // A runtime read-back, so `c_int::MAX` saturates rather than

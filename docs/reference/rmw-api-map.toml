@@ -791,34 +791,34 @@ issue = 1972
 reason = "issue 1972."
 
 [type_delta.jazzy."enum:rmw_qos_durability_policy_t.RMW_QOS_POLICY_DURABILITY_BEST_AVAILABLE"]
-status = "not-implemented"
-issue = 1973
-reason = "ADOPT (bounded), issue 1973: resolved at creation against the discovered graph; a backend without one falls back the way upstream does when nothing is discovered."
+status = "re-mapped"
+answers = ["NROS_RMW_DURABILITY_BEST_AVAILABLE (rmw_entity.h)"]
+reason = "issue 1973 (resolved): see `enum:rmw_qos_reliability_policy_t.RMW_QOS_POLICY_RELIABILITY_BEST_AVAILABLE`."
 
 [type_delta.jazzy."enum:rmw_qos_liveliness_policy_t.RMW_QOS_POLICY_LIVELINESS_BEST_AVAILABLE"]
-status = "not-implemented"
-issue = 1973
-reason = "ADOPT (bounded), issue 1973: resolved at creation against the discovered graph; a backend without one falls back the way upstream does when nothing is discovered."
+status = "re-mapped"
+answers = ["NROS_RMW_LIVELINESS_BEST_AVAILABLE (rmw_entity.h)"]
+reason = "issue 1973 (resolved): see `enum:rmw_qos_reliability_policy_t.RMW_QOS_POLICY_RELIABILITY_BEST_AVAILABLE`."
 
 [type_delta.jazzy."enum:rmw_qos_reliability_policy_t.RMW_QOS_POLICY_RELIABILITY_BEST_AVAILABLE"]
-status = "not-implemented"
-issue = 1973
-reason = "ADOPT (bounded), issue 1973: resolved at creation against the discovered graph; a backend without one falls back the way upstream does when nothing is discovered."
+status = "re-mapped"
+answers = ["NROS_RMW_RELIABILITY_BEST_AVAILABLE (rmw_entity.h)"]
+reason = "issue 1973 (resolved): a REQUEST value, resolved at creation against the discovered graph by the ONE rule `nros_rmw::QoSProfile::resolve_best_available` (upstream's rmw_dds_common rule, transcribed), applied for every backend at `nros-rmw-cffi`'s create seam before the backend's create slot runs; a backend with no graph slot resolves to upstream's nothing-discovered answer. Never reaches a backend, never reported by a read-back."
 
 [type_delta.jazzy."macro:RMW_QOS_DEADLINE_BEST_AVAILABLE"]
-status = "not-implemented"
-issue = 1973
-reason = "issue 1973."
+status = "re-mapped"
+answers = ["NROS_RMW_DURATION_BEST_AVAILABLE_MS in rmw_qos_profile_t.deadline_ms (rmw_entity.h)"]
+reason = "issue 1973 (resolved): see `enum:rmw_qos_reliability_policy_t.RMW_QOS_POLICY_RELIABILITY_BEST_AVAILABLE`."
 
 [type_delta.jazzy."macro:RMW_QOS_LIVELINESS_LEASE_DURATION_BEST_AVAILABLE"]
-status = "not-implemented"
-issue = 1973
-reason = "issue 1973."
+status = "re-mapped"
+answers = ["NROS_RMW_DURATION_BEST_AVAILABLE_MS in rmw_qos_profile_t.liveliness_lease_ms (rmw_entity.h)"]
+reason = "issue 1973 (resolved): see `enum:rmw_qos_reliability_policy_t.RMW_QOS_POLICY_RELIABILITY_BEST_AVAILABLE`."
 
 [type_delta.jazzy."profile:rmw_qos_profile_best_available"]
-status = "not-implemented"
-issue = 1973
-reason = "issue 1973; joins the QoS-profile record check-qos-profile-ssot reads."
+status = "re-mapped"
+answers = ["QoSProfile::QOS_PROFILE_BEST_AVAILABLE (nros-rmw qos_profiles! table, bound by check-qos-profile-ssot to the jazzy record)", "rclcpp::BestAvailableQoS", "QoSProfile::best_available()"]
+reason = "issue 1973 (resolved): see `enum:rmw_qos_reliability_policy_t.RMW_QOS_POLICY_RELIABILITY_BEST_AVAILABLE`."
 
 [type_delta.jazzy."enum:rmw_feature_t.RMW_MIDDLEWARE_CAN_TAKE_DYNAMIC_MESSAGE"]
 status = "not-supported"

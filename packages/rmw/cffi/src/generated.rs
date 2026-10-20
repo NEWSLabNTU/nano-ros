@@ -930,10 +930,12 @@ pub const NROS_RMW_RELIABILITY_SYSTEM_DEFAULT: i32 = 0;
 pub const NROS_RMW_RELIABILITY_RELIABLE: i32 = 1;
 pub const NROS_RMW_RELIABILITY_BEST_EFFORT: i32 = 2;
 pub const NROS_RMW_RELIABILITY_UNKNOWN: i32 = 3;
+pub const NROS_RMW_RELIABILITY_BEST_AVAILABLE: i32 = 4;
 pub const NROS_RMW_DURABILITY_SYSTEM_DEFAULT: i32 = 0;
 pub const NROS_RMW_DURABILITY_TRANSIENT_LOCAL: i32 = 1;
 pub const NROS_RMW_DURABILITY_VOLATILE: i32 = 2;
 pub const NROS_RMW_DURABILITY_UNKNOWN: i32 = 3;
+pub const NROS_RMW_DURABILITY_BEST_AVAILABLE: i32 = 4;
 pub const NROS_RMW_HISTORY_SYSTEM_DEFAULT: i32 = 0;
 pub const NROS_RMW_HISTORY_KEEP_LAST: i32 = 1;
 pub const NROS_RMW_HISTORY_KEEP_ALL: i32 = 2;
@@ -942,6 +944,7 @@ pub const RMW_GID_STORAGE_SIZE: i32 = 24;
 pub const NROS_RMW_TAKE_LEN_UNKNOWN: i32 = 0;
 pub const RMW_INET_ADDRSTRLEN: i32 = 48;
 pub const NROS_RMW_DURATION_INFINITE_MS: i64 = 4294967295;
+pub const NROS_RMW_DURATION_BEST_AVAILABLE_MS: i64 = 4294967294;
 pub const RMW_SESSION_MAX_PROPERTIES: i32 = 16;
 pub const NROS_RMW_QOS_POLICY_RELIABILITY: i32 = 1;
 pub const NROS_RMW_QOS_POLICY_DURABILITY_VOLATILE: i32 = 2;
@@ -984,6 +987,8 @@ pub mod rmw_liveliness_kind_t {
     pub const NROS_RMW_LIVELINESS_MANUAL_BY_TOPIC: Type = 3;
     #[doc = " The backend could not determine this policy."]
     pub const NROS_RMW_LIVELINESS_UNKNOWN: Type = 4;
+    #[doc = " Upstream's `RMW_QOS_POLICY_LIVELINESS_BEST_AVAILABLE` (Iron+), issue\n  1973. A request value only — see `NROS_RMW_RELIABILITY_BEST_AVAILABLE`."]
+    pub const NROS_RMW_LIVELINESS_BEST_AVAILABLE: Type = 5;
 }
 pub mod rmw_qos_compatibility_type_t {
     #[doc = " Verdict of a QoS compatibility check. Upstream `rmw_qos_compatibility_type_t`,\n  values included.\n\n  `WARNING` means \"compatible as far as could be checked, but at least one\n  policy on one side is `*_UNKNOWN`\" — the backend could not read it back.\n  Reachable since W5/B2 gave the policies an UNKNOWN encoding; it was defined\n  and unreachable before that, so the value could not be reused for anything\n  else in the meantime.\n\n  A definite clash OUTRANKS an unknown: if the policies that COULD be compared\n  are already incompatible the verdict is `ERROR`, because softening it to a\n  warning would hide something the caller can act on."]

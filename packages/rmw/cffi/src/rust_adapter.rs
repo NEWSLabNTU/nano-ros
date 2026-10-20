@@ -407,11 +407,16 @@ fn qos_from_cffi(q: &NrosRmwQos) -> QoSProfile {
             generated::NROS_RMW_RELIABILITY_SYSTEM_DEFAULT => QoSReliabilityPolicy::SystemDefault,
             generated::NROS_RMW_RELIABILITY_BEST_EFFORT => QoSReliabilityPolicy::BestEffort,
             generated::NROS_RMW_RELIABILITY_RELIABLE => QoSReliabilityPolicy::Reliable,
+            // issue 1973 — RAISED like the sentinel, never folded: a Rust
+            // backend reached past `CffiSession` (which resolves first) must
+            // still see the request and resolve it against its own graph.
+            generated::NROS_RMW_RELIABILITY_BEST_AVAILABLE => QoSReliabilityPolicy::BestAvailable,
             _ => QoSReliabilityPolicy::Reliable,
         },
         durability: match q.durability as i32 {
             generated::NROS_RMW_DURABILITY_SYSTEM_DEFAULT => QoSDurabilityPolicy::SystemDefault,
             generated::NROS_RMW_DURABILITY_TRANSIENT_LOCAL => QoSDurabilityPolicy::TransientLocal,
+            generated::NROS_RMW_DURABILITY_BEST_AVAILABLE => QoSDurabilityPolicy::BestAvailable,
             _ => QoSDurabilityPolicy::Volatile,
         },
         history: match q.history as i32 {
@@ -436,6 +441,9 @@ fn qos_from_cffi(q: &NrosRmwQos) -> QoSProfile {
             }
             generated::rmw_liveliness_kind_t::NROS_RMW_LIVELINESS_MANUAL_BY_TOPIC => {
                 QoSLivelinessPolicy::ManualByTopic
+            }
+            generated::rmw_liveliness_kind_t::NROS_RMW_LIVELINESS_BEST_AVAILABLE => {
+                QoSLivelinessPolicy::BestAvailable
             }
             _ => QoSLivelinessPolicy::None,
         },
@@ -2327,16 +2335,22 @@ unsafe fn endpoint_info_impl<R: RustBackend>(
         // cannot determine and return OK; `UNSUPPORTED` means no read-back AT
         // ALL, not "I know some of it".
         //
-        // zenoh's liveliness token DOES carry a QoS chunk, but decoding it is
-        // deferred rather than guessed: it is the DECLARING side's own profile
-        // and this seam promises a GRANTED one, so shipping it now would be the
-        // plausible wrong answer this slot exists to avoid. `GraphEndpointInfo::qos`
-        // is `None` from every backend today, so this is always the UNKNOWN arm.
-        let mut qos: rmw_qos_profile_t = unsafe { core::mem::zeroed() };
-        qos.reliability = NROS_RMW_RELIABILITY_UNKNOWN as u8;
-        qos.durability = NROS_RMW_DURABILITY_UNKNOWN as u8;
-        qos.history = NROS_RMW_HISTORY_UNKNOWN as u8;
-        qos.liveliness_kind = rmw_liveliness_kind_t::NROS_RMW_LIVELINESS_UNKNOWN as u8;
+        // issue 1973 — the backend's own answer crosses now
+        // (`GraphEndpointInfo::qos`; zenoh decodes the token's QoS chunk). It
+        // is already `QOS_PROFILE_UNKNOWN` where the backend could not read
+        // one; a depth the C ABI's u16 cannot carry also degrades to that,
+        // never to a truncated guess.
+        let qos: rmw_qos_profile_t = match NrosRmwQos::try_from(info.qos) {
+            Ok(q) => q,
+            Err(_) => {
+                let mut q: rmw_qos_profile_t = unsafe { core::mem::zeroed() };
+                q.reliability = NROS_RMW_RELIABILITY_UNKNOWN as u8;
+                q.durability = NROS_RMW_DURABILITY_UNKNOWN as u8;
+                q.history = NROS_RMW_HISTORY_UNKNOWN as u8;
+                q.liveliness_kind = rmw_liveliness_kind_t::NROS_RMW_LIVELINESS_UNKNOWN as u8;
+                q
+            }
+        };
         let c_info = rmw_topic_endpoint_info_t {
             node_name: name_buf.as_ptr() as *const c_char,
             node_namespace: ns_buf.as_ptr() as *const c_char,

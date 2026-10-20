@@ -1763,6 +1763,10 @@ fn reliability_json(value: QoSReliabilityPolicy) -> &'static str {
         // `validate_against` refuses `UNKNOWN` as a request. Spelled out
         // rather than `_` so a new policy value is a decision here.
         QoSReliabilityPolicy::Unknown => "unknown",
+        // issue 1973 — a REQUEST, so it is exactly what this reports: the
+        // node asked for the graph to decide, and the decision happens at
+        // creation on the target, not here. Upstream's own spelling.
+        QoSReliabilityPolicy::BestAvailable => "best_available",
     }
 }
 
@@ -1774,6 +1778,7 @@ fn durability_json(value: QoSDurabilityPolicy) -> &'static str {
         QoSDurabilityPolicy::TransientLocal => "transient_local",
         // See `reliability_json`.
         QoSDurabilityPolicy::Unknown => "unknown",
+        QoSDurabilityPolicy::BestAvailable => "best_available",
     }
 }
 
@@ -1797,6 +1802,7 @@ fn liveliness_json(value: QoSLivelinessPolicy) -> &'static str {
         QoSLivelinessPolicy::ManualByNode => "manual_by_node",
         // See `reliability_json`.
         QoSLivelinessPolicy::Unknown => "unknown",
+        QoSLivelinessPolicy::BestAvailable => "best_available",
     }
 }
 

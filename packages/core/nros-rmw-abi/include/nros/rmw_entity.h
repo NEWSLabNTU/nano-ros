@@ -73,12 +73,21 @@
 /** The backend could not determine this policy. See the note on
  *  `rmw_qos_profile_t` about partial answers. */
 #define NROS_RMW_RELIABILITY_UNKNOWN        3
+/** Resolve at creation against the discovered graph — upstream's
+ *  `RMW_QOS_POLICY_RELIABILITY_BEST_AVAILABLE` (Iron+), issue 1973. A REQUEST
+ *  value only: the runtime (`nros-rmw-cffi`) resolves it with
+ *  `QoSProfile::resolve_best_available` before calling a backend's create
+ *  slot, so no backend ever receives it and no read-back reports it. */
+#define NROS_RMW_RELIABILITY_BEST_AVAILABLE 4
 
 /** Durability policy values for `rmw_qos_profile_t::durability`. */
 #define NROS_RMW_DURABILITY_SYSTEM_DEFAULT   0
 #define NROS_RMW_DURABILITY_TRANSIENT_LOCAL  1
 #define NROS_RMW_DURABILITY_VOLATILE         2
 #define NROS_RMW_DURABILITY_UNKNOWN          3
+/** Upstream's `RMW_QOS_POLICY_DURABILITY_BEST_AVAILABLE` (Iron+), issue 1973.
+ *  A request value only — see `NROS_RMW_RELIABILITY_BEST_AVAILABLE`. */
+#define NROS_RMW_DURABILITY_BEST_AVAILABLE   4
 
 /** History policy values for `rmw_qos_profile_t::history`. */
 #define NROS_RMW_HISTORY_SYSTEM_DEFAULT 0
@@ -296,6 +305,9 @@ typedef enum rmw_liveliness_kind_t {
     NROS_RMW_LIVELINESS_MANUAL_BY_TOPIC   = 3,
     /** The backend could not determine this policy. */
     NROS_RMW_LIVELINESS_UNKNOWN           = 4,
+    /** Upstream's `RMW_QOS_POLICY_LIVELINESS_BEST_AVAILABLE` (Iron+), issue
+     *  1973. A request value only — see `NROS_RMW_RELIABILITY_BEST_AVAILABLE`. */
+    NROS_RMW_LIVELINESS_BEST_AVAILABLE    = 5,
 } rmw_liveliness_kind_t;
 
 /**
@@ -583,6 +595,15 @@ typedef void (*rmw_content_filter_visit_fn)(void *ctx,
  *  (phase-301, issue 0241). Semantically identical to 0 (no check) but
  *  lets a caller distinguish "I mean infinite" from "I left it unset". */
 #define NROS_RMW_DURATION_INFINITE_MS  UINT32_MAX
+
+/** "Best available" spelling for `deadline_ms` and `liveliness_lease_ms` —
+ *  upstream's `RMW_QOS_DEADLINE_BEST_AVAILABLE` /
+ *  `RMW_QOS_LIVELINESS_LEASE_DURATION_BEST_AVAILABLE` (both
+ *  `RMW_DURATION_INFINITE - 1`), issue 1973: the infinite sentinel minus one.
+ *  A request value only, resolved by the runtime before a backend sees the
+ *  profile; no finite duration lowers onto it (the u32-ms range for a finite
+ *  window ends one below). */
+#define NROS_RMW_DURATION_BEST_AVAILABLE_MS  (UINT32_MAX - 1u)
 
 /* ------------------------------------------------------------------ */
 /* Entity options — transport hints (phase-301, issue 0240)           */

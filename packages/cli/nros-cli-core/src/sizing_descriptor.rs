@@ -955,6 +955,10 @@ fn map_reliability(
         R::Reliable => Some(Reliability::Reliable),
         R::BestEffort => Some(Reliability::BestEffort),
         R::Unknown => None,
+        // issue 1973 — resolved on the TARGET at creation, from the graph it
+        // discovers then; nothing at build time can state the outcome, so it
+        // is "nobody said" here by the same rule as the sentinel.
+        R::BestAvailable => None,
     }
 }
 
@@ -967,6 +971,8 @@ fn map_durability(
         D::Volatile => Some(Durability::Volatile),
         D::TransientLocal => Some(Durability::TransientLocal),
         D::Unknown => None,
+        // issue 1973 — see `map_reliability`.
+        D::BestAvailable => None,
     }
 }
 

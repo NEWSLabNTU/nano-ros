@@ -68,8 +68,8 @@
 //! depth are both the served ones.
 
 use nros_rmw::{
-    DURATION_INFINITE_MS, QoSDurabilityPolicy, QoSHistoryPolicy, QoSLivelinessPolicy,
-    QoSPolicyMask, QoSProfile, QoSReliabilityPolicy, TransportError,
+    DURATION_BEST_AVAILABLE_MS, DURATION_INFINITE_MS, QoSDurabilityPolicy, QoSHistoryPolicy,
+    QoSLivelinessPolicy, QoSPolicyMask, QoSProfile, QoSReliabilityPolicy, TransportError,
 };
 
 use portable_atomic::Ordering;
@@ -266,6 +266,17 @@ pub(super) fn admit(
                 "durability SYSTEM_DEFAULT reached the backend unresolved",
             ));
         }
+        // issue 1973 — `ZenohSession::create_*` resolves it before calling
+        // here, so reaching this arm is a caller bypassing that. Refused, never
+        // folded: granting a guess would put a policy nobody chose in the token.
+        QoSDurabilityPolicy::BestAvailable => {
+            return Err(refuse(
+                kind,
+                name,
+                QoSPolicyMask::NONE,
+                "durability BEST_AVAILABLE reached the backend unresolved",
+            ));
+        }
     }
 
     // nros-qos-honours: RELIABILITY — read, and granted as asked (issue
@@ -277,6 +288,15 @@ pub(super) fn admit(
         QoSReliabilityPolicy::Reliable | QoSReliabilityPolicy::BestEffort => {}
         QoSReliabilityPolicy::SystemDefault | QoSReliabilityPolicy::Unknown => {
             granted.reliability = QoSReliabilityPolicy::Reliable;
+        }
+        // issue 1973 — see the durability arm.
+        QoSReliabilityPolicy::BestAvailable => {
+            return Err(refuse(
+                kind,
+                name,
+                QoSPolicyMask::NONE,
+                "reliability BEST_AVAILABLE reached the backend unresolved",
+            ));
         }
     }
 
@@ -378,6 +398,28 @@ pub(super) fn admit(
                  `*_get_actual_qos` answer was fed back into `create_*`",
             ));
         }
+        // issue 1973 — see the durability arm.
+        QoSLivelinessPolicy::BestAvailable => {
+            return Err(refuse(
+                kind,
+                name,
+                QoSPolicyMask::NONE,
+                "liveliness BEST_AVAILABLE reached the backend unresolved",
+            ));
+        }
+    }
+
+    // issue 1973 — the two duration sentinels, same reason: unresolved, a
+    // 49-day window would be applied verbatim by `publisher.rs`.
+    if requested.deadline_ms == DURATION_BEST_AVAILABLE_MS
+        || requested.liveliness_lease_ms == DURATION_BEST_AVAILABLE_MS
+    {
+        return Err(refuse(
+            kind,
+            name,
+            QoSPolicyMask::NONE,
+            "a BEST_AVAILABLE deadline or lease reached the backend unresolved",
+        ));
     }
 
     // nros-qos-honours: LIVELINESS_LEASE — `publisher.rs` gates and rate-limits

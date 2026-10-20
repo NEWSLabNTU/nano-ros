@@ -4,7 +4,8 @@
 //! to the middleware-agnostic `TopicInfo`, `ServiceInfo`, and `QoSProfile` types.
 
 use nros_rmw::{
-    QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy, ServiceInfo, TopicInfo,
+    DURATION_BEST_AVAILABLE_MS, DURATION_INFINITE_MS, QoSDurabilityPolicy, QoSHistoryPolicy,
+    QoSLivelinessPolicy, QoSProfile, QoSReliabilityPolicy, ServiceInfo, TopicInfo,
 };
 
 /// Extension trait for generating zenoh key expressions from `TopicInfo`
@@ -211,6 +212,11 @@ impl QosKeyExpr for QoSProfile {
             // one. Upstream's `rmw_zenoh_cpp` has no digit for it either, so 0
             // ("unstated") is the least wrong thing to emit if it ever did.
             QoSReliabilityPolicy::Unknown => 0,
+            // issue 1973 — a REQUEST value, resolved by `create_*` before the
+            // grant this token is derived from, so it cannot arrive either.
+            // Upstream never puts it in a token (it resolves first too), so 0
+            // ("unstated") is again the least wrong digit.
+            QoSReliabilityPolicy::BestAvailable => 0,
         };
 
         let durability = match self.durability {
@@ -219,6 +225,7 @@ impl QosKeyExpr for QoSProfile {
             QoSDurabilityPolicy::Volatile => 2,
             // See the reliability arm.
             QoSDurabilityPolicy::Unknown => 0,
+            QoSDurabilityPolicy::BestAvailable => 0,
         };
 
         let history = match self.history {
@@ -257,6 +264,110 @@ impl QosKeyExpr for QoSProfile {
 
         s
     }
+}
+
+/// Decode a liveliness token's QoS chunk — issue 1973.
+///
+/// The inverse of [`QosKeyExpr::to_qos_string`], in `rmw_zenoh_cpp`'s grammar
+/// (`keyexpr_to_qos`): six `:`-separated fields
+/// `rel:dur:hist,depth:dl_sec,dl_nsec:ls_sec,ls_nsec:liv,lease_sec,lease_nsec`,
+/// where an EMPTY field means upstream's `QoS::default_qos()` value (reliable,
+/// volatile, keep-last(42), automatic liveliness, infinite windows — the
+/// constants below, plus `RMW_ZENOH_DEFAULT_LIVELINESS = AUTOMATIC`).
+///
+/// Windows land on our u32 milliseconds the way [`nros_rmw::duration_to_qos_ms`]
+/// lowers them (a sub-millisecond remainder ceils); one too large for the
+/// finite range — upstream's `RMW_DURATION_INFINITE` among them — reads as
+/// [`DURATION_INFINITE_MS`]. A digit this grammar does not define reads as that
+/// policy's `Unknown`, and a chunk that does not parse at all as
+/// [`QoSProfile::QOS_PROFILE_UNKNOWN`]: a peer's token is somebody else's
+/// output, and "I cannot say" is the honest reading of one we cannot read.
+pub fn qos_from_keyexpr(s: &str) -> QoSProfile {
+    fn num(f: &str) -> Option<Option<u64>> {
+        if f.is_empty() {
+            Some(None)
+        } else {
+            f.parse::<u64>().ok().map(Some)
+        }
+    }
+    fn window(f: &str) -> Option<u32> {
+        let mut it = f.split(',');
+        let (sec, nsec) = (it.next()?, it.next()?);
+        if it.next().is_some() {
+            return None;
+        }
+        let (sec, nsec) = (num(sec)?, num(nsec)?);
+        Some(window_ms(
+            sec.unwrap_or(0),
+            nsec.unwrap_or(0),
+            sec.is_none() && nsec.is_none(),
+        ))
+    }
+    fn window_ms(sec: u64, nsec: u64, empty: bool) -> u32 {
+        if empty {
+            // `RMW_ZENOH_DEFAULT_{DEADLINE,LIFESPAN,…}` is RMW_DURATION_INFINITE.
+            return DURATION_INFINITE_MS;
+        }
+        if sec == 0 && nsec == 0 {
+            return 0;
+        }
+        let ms = (sec as u128) * 1000 + (nsec as u128).div_ceil(1_000_000);
+        if ms >= DURATION_BEST_AVAILABLE_MS as u128 {
+            DURATION_INFINITE_MS
+        } else {
+            ms as u32
+        }
+    }
+    let parse = || -> Option<QoSProfile> {
+        let mut parts = s.split(':');
+        let rel = parts.next()?;
+        let dur = parts.next()?;
+        let hist = parts.next()?;
+        let deadline = parts.next()?;
+        let lifespan = parts.next()?;
+        let liv = parts.next()?;
+        if parts.next().is_some() {
+            return None;
+        }
+        let mut q = QoSProfile::QOS_PROFILE_UNKNOWN;
+        q.reliability = match num(rel)? {
+            None | Some(1) => QoSReliabilityPolicy::Reliable,
+            Some(0) => QoSReliabilityPolicy::SystemDefault,
+            Some(2) => QoSReliabilityPolicy::BestEffort,
+            Some(_) => QoSReliabilityPolicy::Unknown,
+        };
+        q.durability = match num(dur)? {
+            None | Some(2) => QoSDurabilityPolicy::Volatile,
+            Some(0) => QoSDurabilityPolicy::SystemDefault,
+            Some(1) => QoSDurabilityPolicy::TransientLocal,
+            Some(_) => QoSDurabilityPolicy::Unknown,
+        };
+        let (h, depth) = hist.split_once(',')?;
+        q.history = match num(h)? {
+            None | Some(1) => QoSHistoryPolicy::KeepLast,
+            Some(0) => QoSHistoryPolicy::SystemDefault,
+            Some(2) => QoSHistoryPolicy::KeepAll,
+            Some(_) => QoSHistoryPolicy::Unknown,
+        };
+        q.depth = match num(depth)? {
+            None => UPSTREAM_DEFAULT_DEPTH,
+            Some(d) => u32::try_from(d).ok()?,
+        };
+        q.deadline_ms = window(deadline)?;
+        q.lifespan_ms = window(lifespan)?;
+        let (kind, lease) = liv.split_once(',')?;
+        q.liveliness_kind = match num(kind)? {
+            None | Some(1) => QoSLivelinessPolicy::Automatic,
+            Some(0) => QoSLivelinessPolicy::None,
+            Some(2) => QoSLivelinessPolicy::ManualByNode,
+            Some(3) => QoSLivelinessPolicy::ManualByTopic,
+            Some(_) => QoSLivelinessPolicy::Unknown,
+        };
+        q.liveliness_lease_ms = window(lease)?;
+        q.avoid_ros_namespace_conventions = false;
+        Some(q)
+    };
+    parse().unwrap_or(QoSProfile::QOS_PROFILE_UNKNOWN)
 }
 
 /// `rmw_zenoh_cpp`'s `QoS::default_qos()` (`detail/qos.cpp`, 0.1.9): the
@@ -412,6 +523,62 @@ mod tests {
         let qos = QoSProfile::new().keep_all().depth(0);
         let s: heapless::String<32> = qos.to_qos_string();
         assert_eq!(s.as_str(), "::2,0:,:,:,,");
+    }
+
+    /// issue 1973 — the decoder inverts the encoder for every profile the
+    /// encoder can write, so what our graph walk reports for our own entities
+    /// is what they granted.
+    #[test]
+    fn qos_keyexpr_round_trips_the_encoder() {
+        for qos in [
+            QoSProfile::QOS_PROFILE_DEFAULT,
+            QoSProfile::QOS_PROFILE_SENSOR_DATA,
+            QoSProfile::QOS_PROFILE_ACTION_STATUS_DEFAULT,
+            QoSProfile::new().keep_all().depth(0),
+            QoSProfile::new()
+                .best_effort()
+                .transient_local()
+                .keep_last(42),
+        ] {
+            let s: heapless::String<32> = qos.to_qos_string();
+            let back = qos_from_keyexpr(&s);
+            assert_eq!(back.reliability, qos.reliability, "{s}");
+            assert_eq!(back.durability, qos.durability, "{s}");
+            assert_eq!(back.history, qos.history, "{s}");
+            assert_eq!(back.depth, qos.depth, "{s}");
+        }
+    }
+
+    /// issue 1973 — a stock `rmw_zenoh_cpp` token states the windows and the
+    /// liveliness kind; those decode into our milliseconds, and upstream's
+    /// RMW_DURATION_INFINITE lands on our infinite sentinel, not on a 49-day
+    /// finite window.
+    #[test]
+    fn qos_keyexpr_decodes_upstream_windows_and_liveliness() {
+        let q = qos_from_keyexpr("2:1:1,5:0,500000000:9223372036,854775807:3,1,500");
+        assert_eq!(q.reliability, QoSReliabilityPolicy::BestEffort);
+        assert_eq!(q.durability, QoSDurabilityPolicy::TransientLocal);
+        assert_eq!(q.depth, 5);
+        assert_eq!(q.deadline_ms, 500);
+        assert_eq!(q.lifespan_ms, DURATION_INFINITE_MS);
+        assert_eq!(q.liveliness_kind, QoSLivelinessPolicy::ManualByTopic);
+        // 1 s + 500 ns ceils to the next millisecond.
+        assert_eq!(q.liveliness_lease_ms, 1001);
+    }
+
+    /// issue 1973 — something that is not the grammar reads as "I cannot say",
+    /// never as a profile.
+    #[test]
+    fn qos_keyexpr_malformed_is_unknown() {
+        for bad in ["", "1:2", "x:2:1,10:,:,:,,", "1:2:1,10:,:,:,,:extra"] {
+            assert_eq!(
+                qos_from_keyexpr(bad),
+                QoSProfile::QOS_PROFILE_UNKNOWN,
+                "{bad:?}"
+            );
+        }
+        let q = qos_from_keyexpr("9:2:1,10:,:,:,,");
+        assert_eq!(q.reliability, QoSReliabilityPolicy::Unknown);
     }
 
     #[test]

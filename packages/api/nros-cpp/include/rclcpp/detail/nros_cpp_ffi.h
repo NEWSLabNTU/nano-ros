@@ -253,6 +253,11 @@ typedef enum nros_cpp_qos_reliability_t {
    * request.
    */
   nros_cpp_qos_reliability_t_NROS_CPP_QOS_RELIABILITY_UNKNOWN = 3,
+  /**
+   * Resolve at creation against the discovered graph (issue 1973) —
+   * `rclcpp::ReliabilityPolicy::BestAvailable`. A request, never a grant.
+   */
+  nros_cpp_qos_reliability_t_NROS_CPP_QOS_RELIABILITY_BEST_AVAILABLE = 4,
 } nros_cpp_qos_reliability_t;
 
 /**
@@ -269,6 +274,10 @@ typedef enum nros_cpp_qos_durability_t {
    * The backend could not determine this policy.
    */
   nros_cpp_qos_durability_t_NROS_CPP_QOS_DURABILITY_UNKNOWN = 3,
+  /**
+   * Resolve at creation against the discovered graph (issue 1973).
+   */
+  nros_cpp_qos_durability_t_NROS_CPP_QOS_DURABILITY_BEST_AVAILABLE = 4,
 } nros_cpp_qos_durability_t;
 
 /**
@@ -304,6 +313,10 @@ typedef enum nros_cpp_qos_liveliness_t {
    * The backend could not determine this policy.
    */
   nros_cpp_qos_liveliness_t_NROS_CPP_QOS_LIVELINESS_UNKNOWN = 4,
+  /**
+   * Resolve at creation against the discovered graph (issue 1973).
+   */
+  nros_cpp_qos_liveliness_t_NROS_CPP_QOS_LIVELINESS_BEST_AVAILABLE = 5,
 } nros_cpp_qos_liveliness_t;
 
 /**

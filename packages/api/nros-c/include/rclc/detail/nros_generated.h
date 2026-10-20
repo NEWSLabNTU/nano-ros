@@ -511,6 +511,12 @@ typedef enum rclc_qos_reliability_t {
    * request. Upstream's `RMW_QOS_POLICY_RELIABILITY_UNKNOWN`.
    */
   RCLC_QOS_RELIABILITY_UNKNOWN = 3,
+  /**
+   * Resolve at creation against the endpoints already discovered on the
+   * topic (issue 1973) — upstream's `RMW_QOS_POLICY_RELIABILITY_BEST_AVAILABLE`.
+   * A request only: a read-back reports the concrete policy chosen.
+   */
+  RCLC_QOS_RELIABILITY_BEST_AVAILABLE = 4,
 } rclc_qos_reliability_t;
 
 /**
@@ -535,6 +541,11 @@ typedef enum rclc_qos_durability_t {
    * request. Upstream's `RMW_QOS_POLICY_DURABILITY_UNKNOWN`.
    */
   RCLC_QOS_DURABILITY_UNKNOWN = 3,
+  /**
+   * Resolve at creation against the discovered graph (issue 1973) —
+   * upstream's `RMW_QOS_POLICY_DURABILITY_BEST_AVAILABLE`. A request only.
+   */
+  RCLC_QOS_DURABILITY_BEST_AVAILABLE = 4,
 } rclc_qos_durability_t;
 
 /**
@@ -593,6 +604,11 @@ typedef enum rclc_qos_liveliness_t {
    * request. Upstream's `RMW_QOS_POLICY_LIVELINESS_UNKNOWN`.
    */
   RCLC_QOS_LIVELINESS_UNKNOWN = 4,
+  /**
+   * Resolve at creation against the discovered graph (issue 1973) —
+   * upstream's `RMW_QOS_POLICY_LIVELINESS_BEST_AVAILABLE`. A request only.
+   */
+  RCLC_QOS_LIVELINESS_BEST_AVAILABLE = 5,
 } rclc_qos_liveliness_t;
 
 /**

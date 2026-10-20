@@ -58,12 +58,14 @@ enum nros_cpp_qos_reliability_t {
     NROS_CPP_QOS_BEST_EFFORT = 1,
     NROS_CPP_QOS_RELIABILITY_SYSTEM_DEFAULT = 2,
     NROS_CPP_QOS_RELIABILITY_UNKNOWN = 3,
+    NROS_CPP_QOS_RELIABILITY_BEST_AVAILABLE = 4,
 };
 enum nros_cpp_qos_durability_t {
     NROS_CPP_QOS_VOLATILE = 0,
     NROS_CPP_QOS_TRANSIENT_LOCAL = 1,
     NROS_CPP_QOS_DURABILITY_SYSTEM_DEFAULT = 2,
     NROS_CPP_QOS_DURABILITY_UNKNOWN = 3,
+    NROS_CPP_QOS_DURABILITY_BEST_AVAILABLE = 4,
 };
 enum nros_cpp_qos_history_t {
     NROS_CPP_QOS_KEEP_LAST = 0,
@@ -77,6 +79,7 @@ enum nros_cpp_qos_liveliness_t {
     NROS_CPP_QOS_LIVELINESS_MANUAL_BY_TOPIC = 2,
     NROS_CPP_QOS_LIVELINESS_MANUAL_BY_NODE = 3,
     NROS_CPP_QOS_LIVELINESS_UNKNOWN = 4,
+    NROS_CPP_QOS_LIVELINESS_BEST_AVAILABLE = 5,
 };
 struct nros_cpp_qos_t {
     enum nros_cpp_qos_reliability_t reliability;
@@ -141,6 +144,10 @@ enum class ReliabilityPolicy : int {
     SystemDefault = 2,
     /// The backend could not determine this policy. An ABSENCE.
     Unknown = 3,
+    /// Resolve at creation against the endpoints already discovered on the
+    /// topic — upstream's `BestAvailable` (Iron+), issue 1973. A REQUEST:
+    /// `get_actual_qos()` reports the concrete policy it resolved to.
+    BestAvailable = 4,
 };
 
 /// Durability policy. Matches DDS `DURABILITY_QOS_POLICY`.
@@ -151,6 +158,8 @@ enum class DurabilityPolicy : int {
     SystemDefault = 2,
     /// The backend could not determine this policy. An ABSENCE.
     Unknown = 3,
+    /// Resolve at creation against the discovered graph (issue 1973).
+    BestAvailable = 4,
 };
 
 /// History policy. Matches DDS `HISTORY_QOS_POLICY`.
@@ -177,6 +186,8 @@ enum class LivelinessPolicy : int {
     /// The backend could not determine this policy. An ABSENCE, reportable by
     /// `get_actual_qos()` and never a value to request.
     Unknown = 4,
+    /// Resolve at creation against the discovered graph (issue 1973).
+    BestAvailable = 5,
 };
 
 class QoS;
@@ -196,20 +207,37 @@ namespace detail {
 ///     window becomes 1 ms rather than infinity, and rounding up is the
 ///     lenient direction for all three policies (a longer deadline, lifespan
 ///     or lease never turns a working profile into a violated one).
-///   * above `UINT32_MAX` ms (~49.7 days) → `UINT32_MAX`, saturating rather
-///     than wrapping into a short window.
+///   * a window that would land at or above `UINT32_MAX - 1` ms (~49.7 days)
+///     → `UINT32_MAX`, saturating to infinity rather than wrapping into a
+///     short window. The bound starts one below `UINT32_MAX` because that
+///     value is the best-available sentinel (issue 1973), which only
+///     `qos_best_available_duration()` reaches.
 constexpr uint32_t qos_window_ms(const Duration& d) {
-    return d.nanoseconds() <= 0
-               ? 0u
-               : (d.nanoseconds() > static_cast<int64_t>(UINT32_MAX) * 1000000
+    return d.nanoseconds() <= 0 ? 0u
+           : d.nanoseconds() == INT64_MAX - 1
+               ? UINT32_MAX - 1u
+               : (d.nanoseconds() >= static_cast<int64_t>(UINT32_MAX - 1u) * 1000000 - 999999
                       ? UINT32_MAX
                       : static_cast<uint32_t>((d.nanoseconds() + 999999) / 1000000));
 }
 
+/// The best-available window — issue 1973.
+///
+/// Upstream spells it `RMW_QOS_DEADLINE_BEST_AVAILABLE` /
+/// `RMW_QOS_LIVELINESS_LEASE_DURATION_BEST_AVAILABLE`, both
+/// `RMW_DURATION_INFINITE - 1` = `INT64_MAX - 1` ns. As a `Duration` it is that
+/// same value, and `qos_window_ms` lowers it — and only it — onto the C ABI's
+/// `NROS_RMW_DURATION_BEST_AVAILABLE_MS` (`UINT32_MAX - 1`).
+constexpr Duration qos_best_available_duration() {
+    return Duration::from_nanoseconds(INT64_MAX - 1);
+}
+
 /// The inverse: the C ABI's milliseconds as a `Duration`. Exact, and exact in
-/// both directions — `qos_window_ms(qos_window_duration(ms)) == ms`.
+/// both directions — `qos_window_ms(qos_window_duration(ms)) == ms` — the
+/// best-available sentinel included.
 constexpr Duration qos_window_duration(uint32_t ms) {
-    return Duration::from_nanoseconds(static_cast<int64_t>(ms) * 1000000);
+    return ms == UINT32_MAX - 1u ? qos_best_available_duration()
+                                 : Duration::from_nanoseconds(static_cast<int64_t>(ms) * 1000000);
 }
 
 /// issue 1437 — declared here, defined below `QoS`, and named as a friend of
@@ -275,6 +303,23 @@ class QoS {
     /// Set durability to `VOLATILE` — late joiners get nothing (default).
     constexpr QoS& durability_volatile() {
         durability_ = DurabilityPolicy::Volatile;
+        return *this;
+    }
+
+    /// Set reliability to `BEST_AVAILABLE` — `rclcpp::QoS::reliability_best_available`
+    /// (issue 1973). Resolved when the entity is created: a subscription takes
+    /// RELIABLE only if every publisher already discovered offers it, a
+    /// publisher always takes RELIABLE. `get_actual_qos()` reports the result.
+    constexpr QoS& reliability_best_available() {
+        reliability_ = ReliabilityPolicy::BestAvailable;
+        return *this;
+    }
+
+    /// Set durability to `BEST_AVAILABLE` — `rclcpp::QoS::durability_best_available`
+    /// (issue 1973). Same creation-time resolution as
+    /// `reliability_best_available()`, over TRANSIENT_LOCAL / VOLATILE.
+    constexpr QoS& durability_best_available() {
+        durability_ = DurabilityPolicy::BestAvailable;
         return *this;
     }
 
@@ -616,6 +661,19 @@ struct qos_table {
     /// (`rclcpp/qos.hpp:371-377`), which is why the depth differs from
     /// `sensor_data()`'s 5 and the reliability does not.
     static constexpr QoS clock() { return QoS().best_effort().keep_last(1); }
+
+    /// `rmw_qos_profile_best_available` (Iron+) — KEEP_LAST(10), and every
+    /// policy that can be best-available set so: reliability, durability,
+    /// liveliness, deadline, liveliness lease (issue 1973).
+    static constexpr QoS best_available() {
+        return QoS()
+            .reliability_best_available()
+            .durability_best_available()
+            .keep_last(10)
+            .liveliness(::rclcpp::LivelinessPolicy::BestAvailable)
+            .deadline(::rclcpp::detail::qos_best_available_duration())
+            .liveliness_lease_duration(::rclcpp::detail::qos_best_available_duration());
+    }
 };
 
 /// `QoS` → the by-value C ABI record, in ONE place.
@@ -886,6 +944,21 @@ class RosoutQoS : public QoS {
 class ClockQoS : public QoS {
   public:
     constexpr ClockQoS() : QoS(::rclcpp::detail::qos_table::clock()) {}
+};
+
+/// `rclcpp::BestAvailableQoS` — `rmw_qos_profile_best_available`. ADOPT
+/// (issue 1973).
+///
+/// Its policies resolve when the entity is created, against the endpoints the
+/// backend has already discovered on the topic — upstream's rule, applied once
+/// for every backend by the runtime (`nros_rmw::QoSProfile::resolve_best_available`).
+/// A backend with no graph (XRCE, uORB) has discovered nothing, which resolves
+/// to upstream's own nothing-discovered answer. Read the outcome back with
+/// `get_actual_qos()`. Upstream's caveat holds verbatim: the choice is not
+/// revisited when endpoints appear later.
+class BestAvailableQoS : public QoS {
+  public:
+    constexpr BestAvailableQoS() : QoS(::rclcpp::detail::qos_table::best_available()) {}
 };
 
 /// `rclcpp::SystemDefaultsQoS` — **REFUSE-LOUD**.

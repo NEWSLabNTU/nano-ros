@@ -268,4 +268,39 @@ static_assert(rclcpp::detail::qos_from_ffi(kMarshalled) ==
                       .tx_express(true),
               "qos_from_ffi inverts qos_to_ffi");
 
+// -- issue 1973: BEST_AVAILABLE --------------------------------------------
+//
+// Appended values, and the FFI enums' value for value: `qos_to_ffi` casts.
+static_assert(static_cast<int>(rclcpp::ReliabilityPolicy::BestAvailable) == 4 &&
+                  static_cast<int>(rclcpp::DurabilityPolicy::BestAvailable) == 4 &&
+                  static_cast<int>(rclcpp::LivelinessPolicy::BestAvailable) == 5,
+              "best-available values are appended ABI");
+static_assert(QoS().reliability_best_available().reliability() ==
+                  rclcpp::ReliabilityPolicy::BestAvailable,
+              "reliability_best_available()");
+static_assert(QoS().durability_best_available().durability() ==
+                  rclcpp::DurabilityPolicy::BestAvailable,
+              "durability_best_available()");
+
+// The profile: KEEP_LAST(10), every best-available-able policy set so, and the
+// two windows on the C ABI's sentinel — the ONE window that lowers onto it.
+constexpr nros_cpp_qos_t kBestAvailable = rclcpp::detail::qos_to_ffi(rclcpp::BestAvailableQoS());
+static_assert(static_cast<int>(kBestAvailable.reliability) == 4, "reliability best-available");
+static_assert(static_cast<int>(kBestAvailable.durability) == 4, "durability best-available");
+static_assert(static_cast<int>(kBestAvailable.liveliness_kind) == 5, "liveliness best-available");
+static_assert(kBestAvailable.depth == 10, "rmw_qos_profile_best_available is KEEP_LAST(10)");
+static_assert(kBestAvailable.deadline_ms == UINT32_MAX - 1u, "deadline is the sentinel");
+static_assert(kBestAvailable.liveliness_lease_ms == UINT32_MAX - 1u, "lease is the sentinel");
+static_assert(kBestAvailable.lifespan_ms == 0u, "lifespan has no best-available spelling");
+static_assert(rclcpp::detail::qos_from_ffi(kBestAvailable) == rclcpp::BestAvailableQoS(),
+              "the sentinel survives the round trip");
+// No finite window can collide with the sentinel: one that would land on it
+// saturates to infinity instead.
+static_assert(rclcpp::detail::qos_window_ms(Duration::from_nanoseconds(
+                  static_cast<int64_t>(UINT32_MAX - 1u) * 1000000)) == UINT32_MAX,
+              "a finite window never lowers onto the best-available sentinel");
+static_assert(rclcpp::detail::qos_window_ms(Duration::from_nanoseconds(
+                  static_cast<int64_t>(UINT32_MAX - 2u) * 1000000)) == UINT32_MAX - 2u,
+              "the largest finite window is one below the sentinel");
+
 } // namespace
