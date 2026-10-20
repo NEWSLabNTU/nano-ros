@@ -920,6 +920,17 @@ ARG_DEVIATIONS = {
         ours=("const rmw_session_t *", "const char *", "size_t *"),
         why=("as count_publishers"),
     ),
+    # Issue 1978 — the Jazzy service twins, pinned for the same reason.
+    "count_clients": ArgPin(
+        upstream=("const rmw_node_t *", "const char *", "size_t *"),
+        ours=("const rmw_session_t *", "const char *", "size_t *"),
+        why=("as count_publishers: the service twin, session not node"),
+    ),
+    "count_services": ArgPin(
+        upstream=("const rmw_node_t *", "const char *", "size_t *"),
+        ours=("const rmw_session_t *", "const char *", "size_t *"),
+        why=("as count_publishers: the service twin, session not node"),
+    ),
     "node_get_graph_guard_condition": ArgPin(
         upstream=("const rmw_node_t *",),
         ours=("rmw_session_t *", "rmw_event_callback_t", "const void *"),
@@ -1470,8 +1481,22 @@ def compare(header_text=None, edition="humble"):
         elif status == "declared":
             declared.append(slot)
 
+    # Issue 1978 — a slot named after a symbol ANOTHER recorded edition's
+    # contract carries (Jazzy's `count_clients`, read against Humble) is
+    # neither an undeclared extra nor an orphaned pin here: that edition's own
+    # run is what checks its shape, and `--edition all` runs both.
+    other_editions = set()
+    for other in EDITION_FILES:
+        if other == edition:
+            continue
+        other_up = upstream_signatures(edition=other) or {}
+        other_editions |= {
+            GROUPED_SYMBOLS.get(n) or n[len("rmw_"):] for n in other_up if n not in DECLINED
+        }
+    other_editions -= {GROUPED_SYMBOLS.get(n) or n[len("rmw_"):] for n in up}
+
     for table, tname in ((ARG_DEVIATIONS, "ARG_DEVIATIONS"), (RET_DEVIATIONS, "RET_DEVIATIONS")):
-        for s in sorted(set(table) - consulted):
+        for s in sorted(set(table) - consulted - other_editions):
             orphan_pin.append(
                 f"{tname}[{s!r}] was never consulted — "
                 + ("there is no such vtable slot" if s not in slots else
@@ -1493,7 +1518,8 @@ def compare(header_text=None, edition="humble"):
     # whose comment says "upstream has no equivalent" while their own reasons
     # say the opposite. The headline then claimed 11 RTOS additions when 9 are
     # additions.
-    expected = {n[len("rmw_"):] for n in up} | set(ADDED) | set(GROUPED_SYMBOLS.values())
+    expected = ({n[len("rmw_"):] for n in up} | set(ADDED) | set(GROUPED_SYMBOLS.values())
+                | other_editions)
     undeclared_extra = sorted(s for s in slots if s not in expected)
 
     # Vendor-named types in the signatures — the "generic flavour" rule.

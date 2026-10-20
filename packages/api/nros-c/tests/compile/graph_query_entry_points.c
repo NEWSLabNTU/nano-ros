@@ -50,6 +50,12 @@ int main(void) {
         rclc_executor_count_publishers;
     rcl_ret_t (*p_count_sub)(struct rclc_executor_t*, const char*, size_t*) =
         rclc_executor_count_subscribers;
+    /* Issue 1978 — the Jazzy service twins (`rcl_count_clients` /
+     * `rcl_count_services`), same shape. */
+    rcl_ret_t (*p_count_cli)(struct rclc_executor_t*, const char*, size_t*) =
+        rclc_executor_count_clients;
+    rcl_ret_t (*p_count_srv)(struct rclc_executor_t*, const char*, size_t*) =
+        rclc_executor_count_services;
 
     /* phase-381 W3/W4 — the six per-node and per-topic forms.
      *
@@ -105,6 +111,8 @@ int main(void) {
     (void)p_services;
     (void)p_count_pub;
     (void)p_count_sub;
+    (void)p_count_cli;
+    (void)p_count_srv;
     (void)nv;
     (void)ntv;
     return 0;

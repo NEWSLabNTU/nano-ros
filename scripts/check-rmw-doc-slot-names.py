@@ -82,6 +82,13 @@ HDR_DIR = os.path.join(ROOT, "packages", "core", "nros-rmw-abi", "include", "nro
 UPSTREAM = (
     os.path.join(ROOT, "docs", "reference", "rmw-implementation-contract.txt"),
     os.path.join(ROOT, "docs", "reference", "rmw-implementation-signatures.txt"),
+    # Issue 1978 — every LATER recorded edition too. A slot answering a
+    # Jazzy-only symbol (`rmw_count_clients`) cites it, and the Humble snapshot
+    # alone cannot resolve it. Same edition list `rmw-abi-shape` compares.
+    os.path.join(ROOT, "docs", "reference", "editions", "jazzy",
+                 "rmw-implementation-contract.txt"),
+    os.path.join(ROOT, "docs", "reference", "editions", "jazzy",
+                 "rmw-implementation-signatures.txt"),
 )
 BASELINE = os.path.join(ROOT, ".config", "rmw-doc-external-names.txt")
 

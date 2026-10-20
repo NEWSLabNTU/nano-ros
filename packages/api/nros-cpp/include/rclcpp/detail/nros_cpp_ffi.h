@@ -2160,6 +2160,31 @@ nros_cpp_ret_t nros_cpp_executor_count_subscribers(void *handle,
                                                    size_t *out_count);
 
 /**
+ * Issue 1978 — how many service clients are visible on `service_name`
+ * (Jazzy `rclcpp::Node::count_clients`). A backend with no graph answers
+ * `NROS_CPP_RET_UNSUPPORTED`, never a 0.
+ *
+ * # Safety
+ * `handle` must be a valid `CppContext`; `service_name` NUL-terminated;
+ * `out_count` writable.
+ */
+nros_cpp_ret_t nros_cpp_executor_count_clients(void *handle,
+                                               const char *service_name,
+                                               size_t *out_count);
+
+/**
+ * Issue 1978 — how many service servers are visible on `service_name`
+ * (Jazzy `rclcpp::Node::count_services`).
+ *
+ * # Safety
+ * `handle` must be a valid `CppContext`; `service_name` NUL-terminated;
+ * `out_count` writable.
+ */
+nros_cpp_ret_t nros_cpp_executor_count_services(void *handle,
+                                                const char *service_name,
+                                                size_t *out_count);
+
+/**
  * phase-381 W4 — what one named node PUBLISHES.
  *
  * # Safety

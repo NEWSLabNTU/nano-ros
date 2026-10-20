@@ -1328,6 +1328,12 @@ pub const QOS_EVENT_PROBE_READY: &str = "QOS_EVENT_PROBE_READY";
 /// behind two that had.
 pub const GRAPH_PROBE_ALL_SLOTS_OK: &str = "GRAPH_PROBE_ALL_SLOTS_OK";
 
+/// Issue 1978 — the probe's `count_services` answer on the peer's
+/// `/<node>/get_parameters`, followed by the count. Present only when the slot
+/// ANSWERED (an `Unsupported` prints `GRAPH_SLOT_UNSUPPORTED count_services`
+/// instead), so its presence is what proves a ROS 2 service was counted.
+pub const GRAPH_COUNT_SERVICES: &str = "GRAPH_COUNT_SERVICES ";
+
 // ---------------------------------------------------------------------------
 // phase-467 Row 8 — the graph-CHANGE edge (`graph-probe`'s watch mode).
 //

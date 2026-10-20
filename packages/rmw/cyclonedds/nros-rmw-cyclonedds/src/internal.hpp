@@ -175,6 +175,11 @@ rmw_ret_t graph_count_publishers(const rmw_session_t *session, const char *topic
                                  std::size_t *count);
 rmw_ret_t graph_count_subscribers(const rmw_session_t *session, const char *topic_name,
                                   std::size_t *count);
+/** Issue 1978 — Jazzy `rmw_count_clients` / `rmw_count_services`. */
+rmw_ret_t graph_count_clients(const rmw_session_t *session, const char *service_name,
+                              std::size_t *count);
+rmw_ret_t graph_count_services(const rmw_session_t *session, const char *service_name,
+                               std::size_t *count);
 
 /* ---- publisher.cpp / subscriber.cpp helpers ---- */
 /** Return the Cyclone writer handle for a publisher created by

@@ -58,10 +58,14 @@ TOPICS = [
     # Graph introspection first, and only its narrow spellings: `count_publishers`
     # contains `publisher` and pubsub would take it, but counting publishers is a
     # graph query -- nothing about the publisher API is incomplete without it.
+    # Issue 1978: the same holds one entity over -- `count_clients` /
+    # `count_services` contain `client` / `service`, and counting them is a
+    # graph query, not a gap in the service API.
     (
         "graph",
         re.compile(
-            r"count_publishers|count_subscri|get_node_names|names_and_types|graph"
+            r"count_publishers|count_subscri|count_clients|count_services"
+            r"|get_node_names|names_and_types|graph"
         ),
     ),
     # Actions next: `action_publish_feedback` contains `publish`, and pubsub
@@ -529,6 +533,8 @@ def self_test():
     check("Logger::get_child", "log")
     check("count_publishers", "graph")
     check("count_subscribers", "graph")
+    check("count_clients", "graph")
+    check("Node::count_services", "graph")
     check("get_topic_names_and_types", "graph")
     # ...but the narrow graph entry must not swallow the publisher API itself.
     check("Publisher::get_subscription_count", "pubsub")

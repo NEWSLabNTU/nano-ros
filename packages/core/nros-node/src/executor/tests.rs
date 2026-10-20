@@ -11591,6 +11591,23 @@ fn node_ctx_forwards_each_graph_verb_to_its_own_slot() {
         "count_subscriptions is rclrs's spelling of the SUBSCRIBER counter — \
          a forward to count_publishers reads the other number"
     );
+    // Issue 1978 — the Jazzy service twins, each reaching its own counter.
+    assert_eq!(
+        executor
+            .node_mut(nid)
+            .count_clients("/add_two_ints")
+            .unwrap(),
+        canned::CLIENTS,
+        "count_clients must reach the client counter"
+    );
+    assert_eq!(
+        executor
+            .node_mut(nid)
+            .count_services("/add_two_ints")
+            .unwrap(),
+        canned::SERVICES,
+        "count_services must reach the service counter, not the client one"
+    );
 
     // --- the four by_node walks: right kind, and the two names in the right
     // order. The mock echoes `node_name` then `node_namespace` after its kind
@@ -11670,6 +11687,19 @@ fn node_ctx_graph_reports_unsupported_rather_than_an_empty_graph() {
         ),
         "a count from a backend with no graph must not read as 0"
     );
+    // Issue 1978 — the service twins keep the same distinction.
+    for ret in [
+        executor.node_mut(nid).count_clients("/add_two_ints"),
+        executor.node_mut(nid).count_services("/add_two_ints"),
+    ] {
+        assert!(
+            matches!(
+                ret,
+                Err(NodeError::Transport(nros_rmw::TransportError::Unsupported))
+            ),
+            "a service count from a backend with no graph must not read as 0: {ret:?}"
+        );
+    }
 }
 
 /// phase-444 — every entity handle reads back the name it was created on, and

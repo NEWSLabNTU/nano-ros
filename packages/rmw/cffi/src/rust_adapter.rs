@@ -675,6 +675,15 @@ impl<R: RustBackend> RustBackendAdapter<R> {
         client_set_on_new_response_callback: Some(
             client_set_on_new_response_callback_trampoline::<R>,
         ),
+        // Issue 1978 — the Jazzy contract's four ADOPT slots. Unconditional
+        // for the same reason as the graph slots above: each trait default
+        // (`Unsupported`, `Unsupported`, `Unsupported`, `false`) is the answer
+        // a NULL slot would carry, so a backend that overrides nothing still
+        // answers honestly.
+        count_clients: Some(count_clients_trampoline::<R>),
+        count_services: Some(count_services_trampoline::<R>),
+        get_gid_for_client: Some(get_gid_for_client_trampoline::<R>),
+        event_type_is_supported: Some(event_type_is_supported_trampoline::<R>),
         ..EMPTY_VTABLE
     };
 
@@ -2053,6 +2062,54 @@ macro_rules! count_trampoline {
 
 count_trampoline!(count_publishers_trampoline, count_publishers);
 count_trampoline!(count_subscribers_trampoline, count_subscribers);
+// Issue 1978 — the service twins. The name is a SERVICE name; the body is the
+// same.
+count_trampoline!(count_clients_trampoline, count_clients);
+count_trampoline!(count_services_trampoline, count_services);
+
+/// Issue 1978 — upstream (Jazzy) `rmw_get_gid_for_client`, the client twin of
+/// [`get_gid_for_publisher_trampoline`], and like it writes only `data`.
+unsafe extern "C" fn get_gid_for_client_trampoline<R: RustBackend>(
+    client: *const NrosRmwClient,
+    gid: *mut NrosRmwGid,
+) -> NrosRmwRet {
+    if gid.is_null() {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    let Some(c) = (unsafe { client_mut::<R::Client>(client) }) else {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    };
+    match ClientTrait::get_gid(&*c) {
+        Ok(bytes) => {
+            // SAFETY: checked non-null above; the caller owns the storage.
+            unsafe {
+                (*gid).data = bytes;
+            }
+            NROS_RMW_RET_OK
+        }
+        Err(e) => ret_from_error(&e),
+    }
+}
+
+/// Issue 1978 — upstream (Jazzy) `rmw_event_type_is_supported`, answered from
+/// the backend TYPE (`Session::event_type_is_supported`, a static fn: the slot
+/// carries no session). A discriminant outside the five known kinds is
+/// `false` — `event_kind_from_c` folds unknown values into `MessageLost`,
+/// which would answer for a kind nobody asked about.
+unsafe extern "C" fn event_type_is_supported_trampoline<R: RustBackend>(
+    event_type: NrosRmwEventKind,
+) -> bool {
+    use crate::rmw_event_type_t as ck;
+    let known = matches!(
+        event_type,
+        ck::NROS_RMW_EVENT_LIVELINESS_CHANGED
+            | ck::NROS_RMW_EVENT_REQUESTED_DEADLINE_MISSED
+            | ck::NROS_RMW_EVENT_MESSAGE_LOST
+            | ck::NROS_RMW_EVENT_LIVELINESS_LOST
+            | ck::NROS_RMW_EVENT_OFFERED_DEADLINE_MISSED
+    );
+    known && <R::Session as Session>::event_type_is_supported(event_kind_from_c(event_type))
+}
 
 /// phase-381 W3 — `get_topic_names_and_types` / `get_service_names_and_types`.
 ///

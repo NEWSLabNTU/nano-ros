@@ -154,6 +154,12 @@ const nros_rmw_vtable_t kVtable = {
     /*subscription_set_on_new_message_callback*/ nullptr,
     /*service_set_on_new_request_callback*/ nullptr,
     /*client_set_on_new_response_callback*/ nullptr,
+    /* Issue 1978 — uORB has no graph and no client identity, and states no
+     * status events: NULL is UNSUPPORTED / `false`, never a fabricated 0. */
+    /*count_clients*/ nullptr,
+    /*count_services*/ nullptr,
+    /*get_gid_for_client*/ nullptr,
+    /*event_type_is_supported*/ nullptr,
 };
 #pragma GCC diagnostic pop
 

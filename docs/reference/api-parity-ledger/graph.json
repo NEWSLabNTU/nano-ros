@@ -484,17 +484,71 @@
     "why": "rclrs's alias for `HashMap<String, Vec<String>>` -- two allocations deep, and `HashMap` is not in `core` at all. See `rust:NodeNameInfo`."
   },
   "c:count_clients": {
-    "verdict": "gap",
+    "verdict": "divergence",
     "editions": [
       "jazzy"
     ],
-    "why": "ADOPT, issue 1978: the service twin of `c:count_publishers` (which we answer as `executor_count_publishers`); needs the rmw `count_clients` slot first."
+    "why": "IMPLEMENTED (issue 1978), under our receiver: see `c:executor_count_clients`. The service twin of `c:count_publishers`."
   },
   "c:count_services": {
-    "verdict": "gap",
+    "verdict": "divergence",
     "editions": [
       "jazzy"
     ],
-    "why": "ADOPT, issue 1978: as `c:count_clients`."
+    "why": "IMPLEMENTED (issue 1978), under our receiver: see `c:executor_count_services`. As `c:count_clients`."
+  },
+  "c:executor_count_clients": {
+    "verdict": "divergence",
+    "why": "issue 1978. Same verb as ROS 2 (Jazzy `rcl_count_clients` / `rclcpp::Node::count_clients`); the RECEIVER differs, for the reason every graph verb here gives (`c:executor_count_publishers`): a nano-ros image opens ONE session and the Executor owns it, so the graph is asked of the Executor. Reports what has been DISCOVERED and never blocks; a backend with no graph (XRCE, uORB) answers UNSUPPORTED, never 0. Backed by the rmw `count_clients` slot (zenoh: `SC` tokens in the graph cache; Cyclone: writers on `rq/<name>Request`)."
+  },
+  "c:executor_count_services": {
+    "verdict": "divergence",
+    "why": "issue 1978. Same verb as ROS 2 (Jazzy `rcl_count_services` / `rclcpp::Node::count_services`); the RECEIVER differs, for the reason every graph verb here gives (`c:executor_count_publishers`): a nano-ros image opens ONE session and the Executor owns it, so the graph is asked of the Executor. Reports what has been DISCOVERED and never blocks; a backend with no graph (XRCE, uORB) answers UNSUPPORTED, never 0. Backed by the rmw `count_services` slot (zenoh: `SS` tokens in the graph cache; Cyclone: readers on `rq/<name>Request`)."
+  },
+  "cpp:Executor::count_clients": {
+    "verdict": "divergence",
+    "why": "issue 1978. Same verb as ROS 2 (Jazzy `rcl_count_clients` / `rclcpp::Node::count_clients`); the RECEIVER differs, for the reason every graph verb here gives (`c:executor_count_publishers`): a nano-ros image opens ONE session and the Executor owns it, so the graph is asked of the Executor. Reports what has been DISCOVERED and never blocks; a backend with no graph (XRCE, uORB) answers UNSUPPORTED, never 0. Backed by the rmw `count_clients` slot (zenoh: `SC` tokens in the graph cache; Cyclone: writers on `rq/<name>Request`)."
+  },
+  "cpp:Executor::count_services": {
+    "verdict": "divergence",
+    "why": "issue 1978. Same verb as ROS 2 (Jazzy `rcl_count_services` / `rclcpp::Node::count_services`); the RECEIVER differs, for the reason every graph verb here gives (`c:executor_count_publishers`): a nano-ros image opens ONE session and the Executor owns it, so the graph is asked of the Executor. Reports what has been DISCOVERED and never blocks; a backend with no graph (XRCE, uORB) answers UNSUPPORTED, never 0. Backed by the rmw `count_services` slot (zenoh: `SS` tokens in the graph cache; Cyclone: readers on `rq/<name>Request`)."
+  },
+  "rust:Executor::count_clients": {
+    "verdict": "divergence",
+    "why": "issue 1978. Same verb as ROS 2 (Jazzy `rcl_count_clients` / `rclcpp::Node::count_clients`); the RECEIVER differs, for the reason every graph verb here gives (`c:executor_count_publishers`): a nano-ros image opens ONE session and the Executor owns it, so the graph is asked of the Executor. Reports what has been DISCOVERED and never blocks; a backend with no graph (XRCE, uORB) answers UNSUPPORTED, never 0. Backed by the rmw `count_clients` slot (zenoh: `SC` tokens in the graph cache; Cyclone: writers on `rq/<name>Request`)."
+  },
+  "rust:Executor::count_services": {
+    "verdict": "divergence",
+    "why": "issue 1978. Same verb as ROS 2 (Jazzy `rcl_count_services` / `rclcpp::Node::count_services`); the RECEIVER differs, for the reason every graph verb here gives (`c:executor_count_publishers`): a nano-ros image opens ONE session and the Executor owns it, so the graph is asked of the Executor. Reports what has been DISCOVERED and never blocks; a backend with no graph (XRCE, uORB) answers UNSUPPORTED, never 0. Backed by the rmw `count_services` slot (zenoh: `SS` tokens in the graph cache; Cyclone: readers on `rq/<name>Request`)."
+  },
+  "rust:Node::count_clients": {
+    "verdict": "extension",
+    "why": "issue 1978. rclrs has no `count_clients` (neither edition); rclcpp (Jazzy) does, as `Node::count_clients`, and this is that verb on the Rust node, forwarding to `rust:Executor::count_clients` like `rust:Node::count_publishers`. The graph's count, not this node's; discovered, never blocking; `Err(Unsupported)` from a backend with no graph, never `Ok(0)`."
+  },
+  "rust:Node::count_services": {
+    "verdict": "extension",
+    "why": "issue 1978. rclrs has no `count_services` (neither edition); rclcpp (Jazzy) does, as `Node::count_services`, and this is that verb on the Rust node, forwarding to `rust:Executor::count_services` like `rust:Node::count_publishers`. The graph's count, not this node's; discovered, never blocking; `Err(Unsupported)` from a backend with no graph, never `Ok(0)`."
+  },
+  "cpp:Node::count_clients": {
+    "verdict": "divergence",
+    "why": "LANDED (issue 1978): `nros::Node` and `nros::LifecycleNode` forward this to the executor that owns them, over `nros_cpp_executor_count_clients`. rclcpp (Jazzy) has `Node::count_clients`; Humble's rclcpp does not, which is why the Humble run reads it ours-only and this row carries no `editions`. It stays a divergence on SHAPE, as `cpp:Node::count_publishers`: `Result count_clients(const char*, size_t*)` rather than a returned `size_t`, so UNSUPPORTED (a backend with no graph) stays distinct from 0. The count reflects what has been DISCOVERED and never blocks."
+  },
+  "cpp:Node::count_services": {
+    "verdict": "divergence",
+    "why": "LANDED (issue 1978): `nros::Node` and `nros::LifecycleNode` forward this to the executor that owns them, over `nros_cpp_executor_count_services`. rclcpp (Jazzy) has `Node::count_services`; Humble's rclcpp does not, which is why the Humble run reads it ours-only and this row carries no `editions`. It stays a divergence on SHAPE, as `cpp:Node::count_publishers`: `Result count_services(const char*, size_t*)` rather than a returned `size_t`, so UNSUPPORTED (a backend with no graph) stays distinct from 0. The count reflects what has been DISCOVERED and never blocks."
+  },
+  "cpp:LifecycleNode::count_clients": {
+    "verdict": "divergence",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "issue 1978: `rclcpp_lifecycle::LifecycleNode` IS an `rclcpp::Node`, so this is `rclcpp::Node::count_clients`, inherited, with `cpp:Node::count_clients`'s contract; ours forwards it the same way (`rclcpp_lifecycle/lifecycle_node.hpp`). The extractor records only the members a class declares, so this key correlates as upstream-only even though the name resolves (as `cpp:LifecycleNode::count_publishers`)."
+  },
+  "cpp:LifecycleNode::count_services": {
+    "verdict": "divergence",
+    "editions": [
+      "jazzy"
+    ],
+    "why": "issue 1978: `rclcpp_lifecycle::LifecycleNode` IS an `rclcpp::Node`, so this is `rclcpp::Node::count_services`, inherited, with `cpp:Node::count_services`'s contract; ours forwards it the same way (`rclcpp_lifecycle/lifecycle_node.hpp`). The extractor records only the members a class declares, so this key correlates as upstream-only even though the name resolves (as `cpp:LifecycleNode::count_publishers`)."
   }
 }

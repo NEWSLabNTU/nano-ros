@@ -45,6 +45,9 @@ automatically as backends land implementations.
 | Take-with-info | wired | — | wired | — |
 | Entity new-data callbacks | wired | — | wired | — |
 | Graph introspection (names/types/counts) | wired | — | wired | — |
+| Service-graph counts (`count_clients` / `count_services`) | wired | — | wired | — |
+| Client GID | wired | — | wired | — |
+| Event-kind probe (`event_type_is_supported`) | wired | — | wired | — |
 
 ## Node-layer features
 

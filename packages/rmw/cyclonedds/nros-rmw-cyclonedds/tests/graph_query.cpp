@@ -211,7 +211,9 @@ int main() {
         g_vt->get_client_names_and_types_by_node == nullptr ||
         g_vt->get_publishers_info_by_topic == nullptr ||
         g_vt->get_subscriptions_info_by_topic == nullptr || g_vt->count_publishers == nullptr ||
-        g_vt->count_subscribers == nullptr || g_vt->create_node == nullptr) {
+        g_vt->count_subscribers == nullptr || g_vt->count_clients == nullptr ||
+        g_vt->count_services == nullptr || g_vt->get_gid_for_client == nullptr ||
+        g_vt->event_type_is_supported == nullptr || g_vt->create_node == nullptr) {
         std::fprintf(stderr, "FAIL: a graph slot under test is NULL\n");
         return 2;
     }
@@ -417,9 +419,51 @@ int main() {
         by_node_srv(g_vt->get_client_names_and_types_by_node, &observer, "caller", "/", &rc);
     expect(rc == NROS_RMW_RET_OK, "client_names_and_types_by_node returned non-OK");
     expect(find_name(c_cli, "/gq_add") != nullptr, "caller CALLS /gq_add");
+
+    // Issue 1978 — the Jazzy service counts, on the same split: one server
+    // (a reader on `rq/gq_addRequest`), one client (a writer on it).
+    expect(g_vt->count_services(&observer, kService, &n) == NROS_RMW_RET_OK && n == 1,
+           "count_services must see the one server");
+    expect(g_vt->count_clients(&observer, kService, &n) == NROS_RMW_RET_OK && n == 1,
+           "count_clients must see the one client");
+    expect(g_vt->count_services(&observer, "/gq_nobody_serves", &n) == NROS_RMW_RET_OK && n == 0,
+           "a service nobody serves counts 0 — empty is an answer, not an error");
+    expect(g_vt->count_clients(&observer, kTopic, &n) == NROS_RMW_RET_OK && n == 0,
+           "a TOPIC's writers are not a service's clients");
+
+    // Issue 1978 — the client's own gid: the request writer's GUID, nonzero
+    // and stamped with the backend identifier, like a publisher's.
+    rmw_gid_t cgid{};
+    expect(g_vt->get_gid_for_client(&client, &cgid) == NROS_RMW_RET_OK,
+           "get_gid_for_client returned non-OK");
+    expect(gid_nonzero(std::string(reinterpret_cast<const char*>(cgid.data),
+                                   RMW_GID_STORAGE_SIZE)),
+           "a client gid of all zeroes identifies nothing");
+    expect(cgid.implementation_identifier != nullptr &&
+               std::strcmp(cgid.implementation_identifier, "cyclonedds") == 0,
+           "a client gid carries its backend identifier");
     (void)g_vt->destroy_client(&client);
     (void)g_vt->destroy_service(&server);
 #endif
+
+    // Issue 1978 — `event_type_is_supported` must agree with what the event
+    // slots actually serve: every kind it claims, asked of a REAL entity on
+    // its side, is answered (taken or not) rather than refused.
+    for (int k = 0; k <= 4; ++k) {
+        const rmw_event_type_t kind = static_cast<rmw_event_type_t>(k);
+        if (!g_vt->event_type_is_supported(kind)) continue;
+        rmw_event_payload_t payload{};
+        bool taken = false;
+        const bool sub_side = kind == NROS_RMW_EVENT_LIVELINESS_CHANGED ||
+                              kind == NROS_RMW_EVENT_REQUESTED_DEADLINE_MISSED ||
+                              kind == NROS_RMW_EVENT_MESSAGE_LOST;
+        const rmw_ret_t erc = sub_side
+                                  ? g_vt->subscription_take_event(&sub, kind, &payload, &taken)
+                                  : g_vt->publisher_take_event(&pub, kind, &payload, &taken);
+        expect(erc == NROS_RMW_RET_OK, "a kind event_type_is_supported claims must be served");
+    }
+    expect(!g_vt->event_type_is_supported(static_cast<rmw_event_type_t>(99)),
+           "an unknown event kind is not supported");
 
     (void)g_vt->destroy_subscription(&sub);
     (void)g_vt->destroy_publisher(&pub);

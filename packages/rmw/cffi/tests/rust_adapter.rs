@@ -259,7 +259,23 @@ impl Session for NoopSession {
     fn supported_qos_policies(&self) -> QoSPolicyMask {
         QoSPolicyMask::CORE
     }
+    // Issue 1978 — distinct counts so a trampoline wired to the wrong method
+    // reads the wrong number.
+    fn count_clients(&mut self, service_name: &str) -> Result<usize, Self::Error> {
+        assert_eq!(service_name, "/svc", "the service name must cross the seam");
+        Ok(NOOP_CLIENTS)
+    }
+    fn count_services(&mut self, service_name: &str) -> Result<usize, Self::Error> {
+        assert_eq!(service_name, "/svc", "the service name must cross the seam");
+        Ok(NOOP_SERVICES)
+    }
+    fn event_type_is_supported(kind: EventKind) -> bool {
+        kind == EventKind::LivelinessLost
+    }
 }
+
+const NOOP_CLIENTS: usize = 4;
+const NOOP_SERVICES: usize = 6;
 
 impl Drop for NoopPublisher {
     fn drop(&mut self) {
@@ -435,6 +451,10 @@ impl ClientTrait for NoopClient {
     }
     fn refused_response_len(&self) -> Option<usize> {
         known(LAST_REFUSED_REPLY.load(Ordering::SeqCst))
+    }
+    // Issue 1978 — the client's own identity, through `get_gid_for_client`.
+    fn get_gid(&self) -> Result<[u8; nros_rmw::PUBLISHER_GID_SIZE], Self::Error> {
+        Ok(nros_rmw::pad_publisher_gid(&NARROW_GID))
     }
 }
 
@@ -981,6 +1001,42 @@ fn rust_backend_adapter_routes_events_and_services() {
         NROS_RMW_RET_OK
     );
     assert_eq!(CREATE_SRV_CLIENT_HITS.load(Ordering::SeqCst), 1);
+
+    // Issue 1978 — the four Jazzy slots route to their trait counterparts.
+    let mut gid = nros_rmw_cffi::NrosRmwGid {
+        implementation_identifier: core::ptr::null(),
+        data: [0xA5u8; nros_rmw::PUBLISHER_GID_SIZE],
+    };
+    assert_eq!(
+        unsafe { (vt.get_gid_for_client.expect("vtable slot"))(&cli, &mut gid) },
+        NROS_RMW_RET_OK
+    );
+    assert_eq!(gid.data, nros_rmw::pad_publisher_gid(&NARROW_GID));
+    let mut n: usize = 0;
+    assert_eq!(
+        unsafe { (vt.count_clients.expect("vtable slot"))(&sess, c"/svc".as_ptr(), &mut n) },
+        NROS_RMW_RET_OK
+    );
+    assert_eq!(n, NOOP_CLIENTS);
+    assert_eq!(
+        unsafe { (vt.count_services.expect("vtable slot"))(&sess, c"/svc".as_ptr(), &mut n) },
+        NROS_RMW_RET_OK
+    );
+    assert_eq!(n, NOOP_SERVICES);
+    {
+        use nros_rmw_cffi::rmw_event_type_t as k;
+        let f = vt.event_type_is_supported.expect("vtable slot");
+        assert!(unsafe { f(k::NROS_RMW_EVENT_LIVELINESS_LOST) });
+        assert!(!unsafe { f(k::NROS_RMW_EVENT_MESSAGE_LOST) });
+        // An out-of-range discriminant is `false`, not whatever kind the
+        // lossy converter folds it into.
+        assert!(!unsafe { f(99) });
+        // A backend that states nothing keeps the trait default: `false`.
+        let silent = RustBackendAdapter::<UorbLikeRmw>::VTABLE
+            .event_type_is_supported
+            .expect("vtable slot");
+        assert!(!unsafe { silent(k::NROS_RMW_EVENT_LIVELINESS_LOST) });
+    }
 
     // Issue 1632 — and a refused REPLY.
     REFUSE_NEXT_REPLY_WITH.store(1100, Ordering::SeqCst);

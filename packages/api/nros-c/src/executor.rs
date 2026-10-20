@@ -833,6 +833,41 @@ pub unsafe extern "C" fn rclc_executor_count_subscribers(
     nros_executor_count_impl(executor, topic_name, out_count, CountKind::Subscribers)
 }
 
+/// Issue 1978 — how many service CLIENTS are visible on `service_name`,
+/// upstream (Jazzy) `rcl_count_clients`, under the executor receiver every
+/// graph verb here uses (`rclc_executor_count_publishers`). `service_name` is a
+/// ROS name (`"/add_two_ints"`); same caveats as the publisher count, and a
+/// backend with no graph returns `RCL_RET_UNSUPPORTED`, never a 0.
+///
+/// # Safety
+/// * `executor` must point to an initialised executor.
+/// * `service_name` must be a valid NUL-terminated string.
+/// * `out_count` must be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rclc_executor_count_clients(
+    executor: *mut rclc_executor_t,
+    service_name: *const core::ffi::c_char,
+    out_count: *mut usize,
+) -> rcl_ret_t {
+    nros_executor_count_impl(executor, service_name, out_count, CountKind::Clients)
+}
+
+/// Issue 1978 — how many service SERVERS are visible on `service_name`,
+/// upstream (Jazzy) `rcl_count_services`. See `rclc_executor_count_clients`.
+///
+/// # Safety
+/// * `executor` must point to an initialised executor.
+/// * `service_name` must be a valid NUL-terminated string.
+/// * `out_count` must be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rclc_executor_count_services(
+    executor: *mut rclc_executor_t,
+    service_name: *const core::ffi::c_char,
+    out_count: *mut usize,
+) -> rcl_ret_t {
+    nros_executor_count_impl(executor, service_name, out_count, CountKind::Services)
+}
+
 /// phase-444 — block until at least `count` publishers are visible on
 /// `topic_name`, or `timeout_ms` elapses. Upstream's `rcl_wait_for_publishers`.
 ///
@@ -979,6 +1014,8 @@ enum NamesAndTypesKind {
 enum CountKind {
     Publishers,
     Subscribers,
+    Clients,
+    Services,
 }
 
 /// The shared body for the two names-and-types entry points.
@@ -1052,7 +1089,8 @@ unsafe fn nros_executor_names_and_types_impl(
     }
 }
 
-/// The shared body for the two count entry points.
+/// The shared body for the four count entry points (the name is a topic for
+/// the first two, a service for the issue-1978 pair).
 ///
 /// # Safety
 /// Same contract as its callers.
@@ -1081,6 +1119,8 @@ unsafe fn nros_executor_count_impl(
         let r = match kind {
             CountKind::Publishers => exec.count_publishers(topic),
             CountKind::Subscribers => exec.count_subscribers(topic),
+            CountKind::Clients => exec.count_clients(topic),
+            CountKind::Services => exec.count_services(topic),
         };
         match r {
             Ok(n) => {

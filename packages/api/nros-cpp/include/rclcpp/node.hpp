@@ -1577,6 +1577,22 @@ class Node {
         return Result(nros_cpp_executor_count_subscribers(executor_handle_, topic_name, out_count));
     }
 
+    /// How many service clients are visible on `service_name` — rclcpp's
+    /// (Jazzy) `Node::count_clients()`. Issue 1978. The name is used as given,
+    /// like [`count_publishers`], with the same caveats; a backend with no
+    /// graph answers `Unsupported`, never 0.
+    Result count_clients(const char* service_name, size_t* out_count) const {
+        if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
+        return Result(nros_cpp_executor_count_clients(executor_handle_, service_name, out_count));
+    }
+
+    /// How many service servers are visible on `service_name` — rclcpp's
+    /// (Jazzy) `Node::count_services()`. See [`count_clients`].
+    Result count_services(const char* service_name, size_t* out_count) const {
+        if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
+        return Result(nros_cpp_executor_count_services(executor_handle_, service_name, out_count));
+    }
+
     /// What one named node PUBLISHES, with the types — rclcpp's
     /// `NodeGraph::get_publisher_names_and_types_by_node()`. Same discovery
     /// envelope as [`get_node_names`].

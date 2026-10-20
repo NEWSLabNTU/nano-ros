@@ -2161,6 +2161,53 @@ pub trait Session {
         Err(TransportError::Unsupported.into())
     }
 
+    /// Issue 1978 — how many service CLIENTS this session can see on
+    /// `service_name`, upstream (Jazzy) `rmw_count_clients`. The service twin
+    /// of [`Self::count_publishers`], with the same caveats: `service_name` is
+    /// a ROS name the backend mangles, and a count reflects what has already
+    /// been discovered.
+    ///
+    /// Default body: `Err(Unsupported)` — distinct from `Ok(0)`.
+    fn count_clients(&mut self, service_name: &str) -> Result<usize, Self::Error>
+    where
+        Self::Error: From<TransportError>,
+    {
+        let _ = service_name;
+        Err(TransportError::Unsupported.into())
+    }
+
+    /// Issue 1978 — how many service SERVERS this session can see on
+    /// `service_name`, upstream (Jazzy) `rmw_count_services`. See
+    /// [`Self::count_clients`].
+    fn count_services(&mut self, service_name: &str) -> Result<usize, Self::Error>
+    where
+        Self::Error: From<TransportError>,
+    {
+        let _ = service_name;
+        Err(TransportError::Unsupported.into())
+    }
+
+    /// Issue 1978 — upstream (Jazzy) `rmw_event_type_is_supported`: whether
+    /// ANY entity of this backend can carry status event `kind`.
+    ///
+    /// STATIC, like [`Self::SERIALIZATION_FORMAT`]: upstream's signature
+    /// takes no entity and no session, so the C-ABI adapter answers it from
+    /// the backend TYPE. Per-entity registration
+    /// ([`Publisher::supports_event`], [`Subscription::supports_event`]) stays
+    /// the authority for one entity; a backend's per-entity answer must be a
+    /// subset of this one, and the way to keep it so is to derive both from
+    /// one helper in the backend (zenoh's `shim::events`).
+    ///
+    /// Default: `false` — the backend states no event support, the answer a
+    /// NULL vtable slot carries.
+    fn event_type_is_supported(kind: crate::event::EventKind) -> bool
+    where
+        Self: Sized,
+    {
+        let _ = kind;
+        false
+    }
+
     /// phase-381 W3 — every topic, with the types published or subscribed on it.
     ///
     /// A visitor for the same reason as [`Self::get_node_names`], and one call
@@ -4279,6 +4326,26 @@ pub trait ClientTrait {
     {
         Err(TransportError::Unsupported.into())
     }
+
+    /// This client's own global identifier — upstream (Jazzy)
+    /// `rmw_get_gid_for_client`, the vtable's `get_gid_for_client`. Issue
+    /// 1978.
+    ///
+    /// The client twin of [`Publisher::get_gid`]: the identity a server keys
+    /// a request id on (zenoh: the gid stamped into every request
+    /// attachment; Cyclone: the request writer's GUID), zero-extended to
+    /// [`PUBLISHER_GID_SIZE`](nros_core::PUBLISHER_GID_SIZE) by
+    /// [`pad_publisher_gid`](nros_core::pad_publisher_gid).
+    ///
+    /// The default is `Err(Unsupported)`, never an all-zero id — the same
+    /// discipline, for the same reason, as `Publisher::get_gid`.
+    fn get_gid(&self) -> Result<[u8; nros_core::PUBLISHER_GID_SIZE], Self::Error>
+    where
+        Self::Error: From<TransportError>,
+    {
+        Err(TransportError::Unsupported.into())
+    }
+
     /// The profile this entity is ACTUALLY running — what the backend GRANTED,
     /// not what the call site requested.
     ///

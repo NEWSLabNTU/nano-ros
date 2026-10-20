@@ -313,6 +313,10 @@ pub const EMPTY_VTABLE: NrosRmwVtable = NrosRmwVtable {
     subscription_set_on_new_message_callback: None,
     service_set_on_new_request_callback: None,
     client_set_on_new_response_callback: None,
+    count_clients: None,
+    count_services: None,
+    get_gid_for_client: None,
+    event_type_is_supported: None,
 };
 
 /// Compat alias for the generated `rmw_service_t`.
@@ -712,6 +716,36 @@ fn sub_event_slot(kind: nros_rmw::EventKind) -> Option<usize> {
 /// Registry slot for a publisher-side kind. See [`sub_event_slot`].
 fn pub_event_slot(kind: nros_rmw::EventKind) -> Option<usize> {
     PUB_EVENT_KINDS.iter().position(|k| *k == kind)
+}
+
+/// Issue 1978 — THE one answer to "can this backend carry event `kind`?",
+/// for every caller behind the C ABI: the per-entity
+/// `supports_event` of [`CffiPublisher`] and [`CffiSubscription`] both ask
+/// it, so the per-entity answer can never claim a kind the backend-level
+/// `event_type_is_supported` slot denies.
+///
+/// A kind is supported when the backend has an event PATH for its side
+/// (`*_event_init` callback or `*_take_event` poll, issue 1164) AND, where
+/// the backend fills `event_type_is_supported`, that slot says yes. A NULL
+/// `event_type_is_supported` falls back to the path alone — slot
+/// granularity, which was the whole answer before the slot existed and is
+/// still the honest one for a backend that states nothing per kind.
+pub fn backend_event_type_is_supported(vtable: &NrosRmwVtable, kind: nros_rmw::EventKind) -> bool {
+    let has_path = if sub_event_slot(kind).is_some() {
+        vtable.subscription_event_init.is_some() || vtable.subscription_take_event.is_some()
+    } else if pub_event_slot(kind).is_some() {
+        vtable.publisher_event_init.is_some() || vtable.publisher_take_event.is_some()
+    } else {
+        false
+    };
+    if !has_path {
+        return false;
+    }
+    match vtable.event_type_is_supported {
+        // SAFETY: a plain value argument; the slot takes no pointers.
+        Some(f) => unsafe { f(event_kind_to_c(kind)) },
+        None => true,
+    }
 }
 
 /// A payload union with no member selected yet. The backend writes one of the
@@ -1915,7 +1949,8 @@ unsafe extern "C" fn names_and_types_visit_trampoline(
     cb(name, &buf[..n])
 }
 
-/// Shared body for `count_publishers` / `count_subscribers`.
+/// Shared body for `count_publishers` / `count_subscribers`, and (issue
+/// 1978) `count_clients` / `count_services`, whose name is a service name.
 fn count_on_topic(
     view: &NrosRmwSession,
     f: unsafe extern "C" fn(
@@ -3496,6 +3531,23 @@ impl Session for CffiSession {
         count_on_topic(&self.make_view(), f, topic_name)
     }
 
+    /// Issue 1978 — upstream (Jazzy) `rmw_count_clients`. A NULL slot is
+    /// `Unsupported`, never `Ok(0)`.
+    fn count_clients(&mut self, service_name: &str) -> Result<usize, TransportError> {
+        let Some(f) = self.vtable.count_clients else {
+            return Err(TransportError::Unsupported);
+        };
+        count_on_topic(&self.make_view(), f, service_name)
+    }
+
+    /// Issue 1978 — upstream (Jazzy) `rmw_count_services`.
+    fn count_services(&mut self, service_name: &str) -> Result<usize, TransportError> {
+        let Some(f) = self.vtable.count_services else {
+            return Err(TransportError::Unsupported);
+        };
+        count_on_topic(&self.make_view(), f, service_name)
+    }
+
     fn ping_session(&mut self, timeout_ms: i32) -> Result<(), TransportError> {
         // Phase 124.F.1 — forward to the backend's vtable slot when
         // available; NULL surfaces `Unsupported` to the caller (no
@@ -4269,9 +4321,10 @@ impl Publisher for CffiPublisher {
         // status-events.md` tells applications to gate registration on this
         // call, so a flat `false` made every backend behind this vtable look
         // eventless whether it was or not.
-        pub_event_slot(kind).is_some()
-            && (self.vtable.publisher_event_init.is_some()
-                || self.vtable.publisher_take_event.is_some())
+        //
+        // Issue 1978 — the ABI now HAS a per-kind query
+        // (`event_type_is_supported`); the one helper folds it in.
+        pub_event_slot(kind).is_some() && backend_event_type_is_supported(self.vtable, kind)
     }
 
     fn assert_liveliness(&self) -> Result<(), TransportError> {
@@ -5073,9 +5126,7 @@ impl nros_rmw::Subscription for CffiSubscription {
     fn supports_event(&self, kind: nros_rmw::EventKind) -> bool {
         // Issue 1164 — slot granularity; see `CffiPublisher::supports_event`
         // for why that is the honest answer and why a flat `false` was not.
-        sub_event_slot(kind).is_some()
-            && (self.vtable.subscription_event_init.is_some()
-                || self.vtable.subscription_take_event.is_some())
+        sub_event_slot(kind).is_some() && backend_event_type_is_supported(self.vtable, kind)
     }
 
     /// The profile the backend GRANTED. See
@@ -5482,6 +5533,32 @@ impl ClientTrait for CffiClient {
             return Err(error_from_ret(rc));
         }
         Ok(available)
+    }
+
+    /// Issue 1978 — upstream (Jazzy) `rmw_get_gid_for_client`, through the
+    /// `get_gid_for_client` slot. The client twin of
+    /// [`CffiPublisher::get_gid`](Publisher::get_gid); a NULL slot answers
+    /// `Unsupported`, never an all-zero gid.
+    fn get_gid(&self) -> Result<[u8; nros_rmw::PUBLISHER_GID_SIZE], TransportError> {
+        let Some(f) = self.vtable.get_gid_for_client else {
+            return Err(TransportError::Unsupported);
+        };
+        // Same transient `&self` view as `service_is_ready` above.
+        let view = NrosRmwClient {
+            service_name: self.service_name_buf.as_ptr().cast(),
+            type_name: self.type_name_buf.as_ptr().cast(),
+            _reserved: [0u8; 8],
+            backend_data: self.backend_data,
+        };
+        let mut gid = NrosRmwGid {
+            implementation_identifier: core::ptr::null(),
+            data: [0u8; nros_rmw::PUBLISHER_GID_SIZE],
+        };
+        let rc = unsafe { f(&view, &mut gid) };
+        if rc != NROS_RMW_RET_OK {
+            return Err(error_from_ret(rc));
+        }
+        Ok(gid.data)
     }
 
     /// What the REQUEST endpoint — the publisher this client sends requests on

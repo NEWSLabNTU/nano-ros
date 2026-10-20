@@ -2410,6 +2410,22 @@ impl<'e, 's> Node<'e, 's> {
         self.executor.count_subscribers(topic_name)
     }
 
+    /// How many service clients are visible on `service_name` — rclcpp's
+    /// (Jazzy) `Node::count_clients`; rclrs has no counterpart. Issue 1978.
+    ///
+    /// The graph's count, not this node's; see
+    /// [`count_publishers`](Self::count_publishers) for that distinction and
+    /// for the discovery caveats.
+    pub fn count_clients(&mut self, service_name: &str) -> Result<usize, NodeError> {
+        self.executor.count_clients(service_name)
+    }
+
+    /// How many service servers are visible on `service_name` — rclcpp's
+    /// (Jazzy) `Node::count_services`. See [`count_clients`](Self::count_clients).
+    pub fn count_services(&mut self, service_name: &str) -> Result<usize, NodeError> {
+        self.executor.count_services(service_name)
+    }
+
     /// What one named node PUBLISHES, with the types — rclrs's
     /// `Node::get_publisher_names_and_types_by_node`.
     ///

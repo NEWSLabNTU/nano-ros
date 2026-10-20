@@ -140,6 +140,16 @@ FEATURES = [
     ("Graph introspection (names/types/counts)",
      any_of(["get_node_names", "get_topic_names_and_types", "count_publishers"]),
      [r"fn get_node_names", r"fn get_topic_names"]),
+    # Issue 1978 — the Jazzy contract's four ADOPT slots, one row per question.
+    ("Service-graph counts (`count_clients` / `count_services`)",
+     any_of(["count_clients", "count_services"]),
+     [r"fn count_clients", r"fn count_services"]),
+    # The zenoh evidence is the same `fn get_gid` spelling the publisher row
+    # reads — the client's override lives beside it in `service.rs`.
+    ("Client GID", any_of(["get_gid_for_client"]), [r"fn get_gid\b"]),
+    ("Event-kind probe (`event_type_is_supported`)",
+     any_of(["event_type_is_supported"]),
+     [r"fn event_type_is_supported"]),
 ]
 
 # Node-layer features: built in `nros-node` on pub/sub + services, so they

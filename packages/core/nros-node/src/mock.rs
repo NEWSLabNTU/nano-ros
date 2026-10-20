@@ -603,6 +603,11 @@ pub mod canned {
     pub const PUBLISHERS: usize = 3;
     /// `count_subscribers`.
     pub const SUBSCRIBERS: usize = 7;
+    /// `count_clients` (issue 1978). Distinct from every other count so a
+    /// forwarder wired to the wrong counter fails.
+    pub const CLIENTS: usize = 11;
+    /// `count_services` (issue 1978).
+    pub const SERVICES: usize = 13;
 
     /// The marker `get_names_and_types_by_node` emits for each entity kind.
     /// A forwarder that passes the wrong `GraphEntityKind` sees another
@@ -766,6 +771,20 @@ impl Session for MockSession {
             return Err(TransportError::Unsupported);
         }
         Ok(canned::SUBSCRIBERS)
+    }
+
+    fn count_clients(&mut self, _service_name: &str) -> Result<usize, Self::Error> {
+        if !self.graph {
+            return Err(TransportError::Unsupported);
+        }
+        Ok(canned::CLIENTS)
+    }
+
+    fn count_services(&mut self, _service_name: &str) -> Result<usize, Self::Error> {
+        if !self.graph {
+            return Err(TransportError::Unsupported);
+        }
+        Ok(canned::SERVICES)
     }
 
     /// Emits THREE entries: the kind's own marker, then the `node_name` and

@@ -54,6 +54,8 @@ int main() {
         &Executor::get_service_names_and_types;
     Result (Executor::*p_count_pub)(const char*, size_t*) = &Executor::count_publishers;
     Result (Executor::*p_count_sub)(const char*, size_t*) = &Executor::count_subscribers;
+    Result (Executor::*p_count_cli)(const char*, size_t*) = &Executor::count_clients;
+    Result (Executor::*p_count_srv)(const char*, size_t*) = &Executor::count_services;
 
     // phase-381 W3/W4 — the six per-node and per-topic forms.
     //
@@ -89,6 +91,8 @@ int main() {
     (void)p_services;
     (void)p_count_pub;
     (void)p_count_sub;
+    (void)p_count_cli;
+    (void)p_count_srv;
     (void)nv;
     (void)ntv;
     return 0;

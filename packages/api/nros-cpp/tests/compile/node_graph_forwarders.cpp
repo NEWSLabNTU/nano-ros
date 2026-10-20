@@ -113,6 +113,9 @@ template <typename N> void graph_surface_exists() {
         &N::get_service_names_and_types;
     Result (N::*p_count_pub)(const char*, size_t*) const = &N::count_publishers;
     Result (N::*p_count_sub)(const char*, size_t*) const = &N::count_subscribers;
+    // Issue 1978 — the Jazzy service twins, on both node types.
+    Result (N::*p_count_cli)(const char*, size_t*) const = &N::count_clients;
+    Result (N::*p_count_srv)(const char*, size_t*) const = &N::count_services;
 
     // `get_subscription_names_and_types_by_node`, NOT `subscriber`: the C++
     // surface takes rclcpp's vocabulary and `rclcpp::Executor` already spells it
@@ -143,6 +146,8 @@ template <typename N> void graph_surface_exists() {
     (void)p_services;
     (void)p_count_pub;
     (void)p_count_sub;
+    (void)p_count_cli;
+    (void)p_count_srv;
     (void)p_pub_by_node;
     (void)p_sub_by_node;
     (void)p_srv_by_node;
@@ -165,6 +170,8 @@ template <typename N> bool graph_surface_calls(N& node) {
     ok = ok && !node.get_service_names_and_types(visit_names_and_types, nullptr);
     ok = ok && !node.count_publishers("/chatter", &count);
     ok = ok && !node.count_subscribers("/chatter", &count);
+    ok = ok && !node.count_clients("/add_two_ints", &count);
+    ok = ok && !node.count_services("/add_two_ints", &count);
     ok = ok &&
          !node.get_publisher_names_and_types_by_node("talker", "/", visit_names_and_types, nullptr);
     ok = ok && !node.get_subscription_names_and_types_by_node("talker", "/", visit_names_and_types,
