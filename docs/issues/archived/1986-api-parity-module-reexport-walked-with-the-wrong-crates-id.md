@@ -38,12 +38,12 @@ crates dropped one of the two items.
 
 ## What the fix newly extracted
 
-48 records, none dropped:
+48 qualified names (49 records), none dropped:
 
 - `nros::port_park::install_port_park`: its `rust:install_port_park` row in
   `other.json` is back.
-- 47 records under `nros::heapless` (`pub use nros_core::heapless;`, a
-  crates.io crate). They are heapless's API, not ours, so
+- 47 names, 48 records, under `nros::heapless` (`pub use
+  nros_core::heapless;`, a crates.io crate; `Iter` is declared twice). They are heapless's API, not ours, so
   `extract_rust.dependency_records` excludes records declared under a cargo
   `registry/src` or `git/checkouts` tree from OUR surface, and the run prints
   how many it cut.
