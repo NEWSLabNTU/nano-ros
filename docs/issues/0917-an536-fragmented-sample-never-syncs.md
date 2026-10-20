@@ -482,3 +482,39 @@ over a 75 s hold, so the fragmented leg has nothing in front of it. Note for
 whoever builds it: the island image this issue was measured on had the same
 missing FPU context, so its fragmented-sample failure should be re-measured with
 the fix before it is attributed to reassembly.
+
+## phase-441 W6 fragmented leg (2026-10-20): delivered in tree
+
+The in-tree witness exists now and PASSES: cell
+`freertos-an536-pubsub-cpp-cyclone-r2n`
+(`tests/pubsub_freertos_an536_cyclone_ros2_interop_e2e.rs`,
+`nros_freertos_an536_cyclone_listener_keeps_receiving_a_fragmented_sample`). An
+mps3-an536 FreeRTOS C++ Cyclone image subscribes `std_msgs/String` on `/bulk`; a
+stock rclpy node on the host publishes 10 576-byte samples (eight
+`DATA_FRAG`s, this issue's 120-point trajectory size) at 10 Hz over slirp.
+Stock LAN9118 RX FIFO, stock 5 ms polled drain, the image carrying 0997's
+FPU-context fix.
+
+Measured, 5 of 5 runs and identical in each: 725 of 751 samples reached the
+callback, every one 10 576 bytes, seq 21..=745 with no gap. The first 21 were
+sent before the reader matched, so nothing was lost once it had. The hold
+is 75 s.
+
+What that does and does not settle:
+
+- **Not reproduced in tree, so 0917 stays open.** The island's failure was a
+  free-running QEMU fed UNPACED frames from a tap, whose burst lands in the FIFO
+  at host speed. This cell runs under `-icount shift=auto` (the launcher's,
+  as every test QEMU here) and receives through slirp, and neither
+  is the path the defect was measured on. The "Host scheduling" section
+  above already noted that `-icount` "buys reproducibility by measuring a
+  different machine", and this is that.
+- **Whether 0997's fix changes the island's result is still unknown.** The
+  fragmented failure has not been re-measured on the island's tap rig since
+  that fix, which "Update, same day" above asks for. Until it is, the budget
+  arithmetic (a 5 ms poll against a 0.7 ms fill time) still stands as the
+  claim, with interrupt-driven RX as its fix.
+- **What it does settle:** Cyclone's defragmentation, the reliable reader's
+  repair path and nros's typed delivery of a 10.6 KB sample work end to end on
+  this board. A regression in any of them now turns this cell red.
+

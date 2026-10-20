@@ -39,3 +39,21 @@ rmw = "cyclonedds"
 # entry's `DOMAIN_ID` (issue 1946).
 domain_id = 54
 launch = "talker.launch.xml"
+
+[[component]]
+pkg = "bulk_listener_pkg"
+class = "bulk_listener_pkg::BulkListener"
+name = "bulk_listener"
+
+# phase-441 W6's fragmented leg (issue 0917): the same board, the same baked
+# Cyclone config and domain, with a LISTENER for a sample larger than a
+# datagram. The island's defect was on RECEIVE — an 8-fragment burst landing
+# in the emulated LAN9118's RX FIFO — so this image subscribes and the host
+# publishes. Same domain, same participant index, same forwarded ports as the
+# talker image, so the two cells never run at once (one test binary, run
+# serially).
+[image.mps3_an536_slirp_bulk]
+board = "mps3-an536-freertos"
+rmw = "cyclonedds"
+domain_id = 54
+launch = "bulk_listener.launch.xml"
