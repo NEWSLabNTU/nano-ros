@@ -21,6 +21,10 @@
 //! DISPATCHED, never when its queue drains, so an arrival that races a drain
 //! is never left undispatched. A spurious dispatch to an empty queue is fine.
 //!
+//! And what a full ring keeps (issue 1979): a burst into a subscription slower
+//! than its publisher ends on the burst's NEWEST sample, and the samples the
+//! ring could not hold are counted.
+//!
 //! Run: `cargo nextest run -p nros-tests --features trigger-test --test entity_wake`.
 
 #![cfg(feature = "trigger-test")]
@@ -410,9 +414,8 @@ fn an_arrival_racing_a_drain_is_never_left_undispatched(
     /// inside it.
     const CALLBACK_COST: Duration = Duration::from_millis(3);
     /// Longer than the callback, so the backend's ring (depth 4 by default)
-    /// never fills. zenoh drops the NEWEST sample of a full ring (issue
-    /// 1979), which would fail this test for a reason that is not the
-    /// executor's.
+    /// never fills and this test stays about dispatch. What a full ring
+    /// keeps is the next test's subject (issue 1979).
     const PUBLISH_INTERVAL: Duration = Duration::from_millis(5);
     const ROUNDS: u32 = 20;
     const BURST: u32 = 3;
@@ -529,5 +532,104 @@ fn an_arrival_racing_a_drain_is_never_left_undispatched(
         raced_rounds >= ROUNDS / 2,
         "only {raced_rounds} of {ROUNDS} last samples were published while a callback ran, \
          so the race was not exercised"
+    );
+}
+
+/// Issue 1979 — a burst into a slow subscription fills the backend's ring
+/// (depth 4 by default). The ring is KEEP_LAST, so the burst's final sample
+/// must be dispatched, whichever dispatch shape the subscription has. The
+/// ring used to refuse the incoming sample instead, and this measured
+/// `latest 23` of 25 with the same shape. The samples the ring could not
+/// hold are counted, which is also the control that the ring did fill.
+#[rstest]
+#[case::drains_to_empty(Shape::DrainsToEmpty)]
+#[case::one_sample_per_dispatch(Shape::OneSamplePerDispatch)]
+fn a_burst_into_a_slow_subscription_ends_on_its_newest_sample(
+    zenohd_unique: ZenohRouter,
+    #[case] shape: Shape,
+) {
+    use std::sync::atomic::{AtomicU32, Ordering::SeqCst};
+    /// Four publishes per callback, so the ring fills within one dispatch.
+    const CALLBACK_COST: Duration = Duration::from_millis(2);
+    const PUBLISH_INTERVAL: Duration = Duration::from_micros(500);
+    const BURST: u32 = 25;
+    require_zenohd();
+    let locator = zenohd_unique.locator();
+    let domain = u32::from(nros_tests::unique_ros_domain_id());
+
+    let mut exec = open(&locator, "entity_wake_burst", domain);
+    let node = exec
+        .node_builder("entity_wake_burst")
+        .build()
+        .expect("node");
+    let latest = std::sync::Arc::new(AtomicU32::new(0));
+    let latest_cb = latest.clone();
+    let on_sample = move |data: &[u8]| {
+        if let Some(seq) = data.get(4..8) {
+            latest_cb.fetch_max(u32::from_le_bytes(seq.try_into().unwrap()), SeqCst);
+        }
+        std::thread::sleep(CALLBACK_COST);
+    };
+    let mut handle = exec.node_mut(node);
+    let builder = handle
+        .subscription("/entity_wake/burst")
+        .generic(TYPE, "")
+        .qos(QoSProfile::default())
+        .rx_buffer::<256>();
+    match shape {
+        Shape::DrainsToEmpty => builder.build(on_sample),
+        Shape::OneSamplePerDispatch => builder
+            .message_info()
+            .build(move |data: &[u8], _info: &_| on_sample(data)),
+    }
+    .expect("register subscription");
+    let publisher = SendPublisher(
+        exec.node_mut(node)
+            .create_publisher_raw("/entity_wake/burst", TYPE, "")
+            .expect("publisher"),
+    );
+    let drops_before = nros_rmw_zenoh::ring_full_drops_total();
+
+    // The first sample, alone, until it is dispatched: discovery has settled
+    // and the burst cannot be lost before the subscription matches.
+    let publish = |seq: u32| {
+        let mut payload = [0u8, 1, 0, 0, 0, 0, 0, 0];
+        payload[4..8].copy_from_slice(&seq.to_le_bytes());
+        publisher.0.publish_raw(&payload).expect("publish");
+    };
+    let start = Instant::now();
+    while latest.load(SeqCst) < 1 {
+        assert!(
+            start.elapsed() < ARRIVAL_BUDGET,
+            "{shape:?}: the first sample never arrived"
+        );
+        publish(1);
+        exec.spin_once(Duration::from_millis(50));
+    }
+
+    let publisher_thread = std::thread::spawn(move || {
+        let publisher = publisher;
+        for seq in 2..=BURST {
+            let mut payload = [0u8, 1, 0, 0, 0, 0, 0, 0];
+            payload[4..8].copy_from_slice(&seq.to_le_bytes());
+            publisher.0.publish_raw(&payload).expect("publish");
+            std::thread::sleep(PUBLISH_INTERVAL);
+        }
+    });
+    let start = Instant::now();
+    while latest.load(SeqCst) < BURST && start.elapsed() < ARRIVAL_BUDGET {
+        exec.spin_once(Duration::from_millis(50));
+    }
+    publisher_thread.join().unwrap();
+    assert_eq!(
+        latest.load(SeqCst),
+        BURST,
+        "{shape:?}: the burst's newest sample was never dispatched; a full ring kept older \
+         samples instead"
+    );
+    // Control: the ring really filled, so this tested what a full ring keeps.
+    assert!(
+        nros_rmw_zenoh::ring_full_drops_total() > drops_before,
+        "{shape:?}: the ring never filled, so the burst did not test eviction"
     );
 }

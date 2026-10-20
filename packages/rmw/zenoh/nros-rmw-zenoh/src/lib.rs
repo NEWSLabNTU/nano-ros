@@ -87,7 +87,7 @@ pub use shim::{
     MessageInfo, RMW_GID_SIZE, RmwAttachment, Ros2Liveliness, SERVICE_BUFFER_SIZE,
     SUBSCRIBER_BUFFER_SIZE, ZenohPublisher, ZenohRmw, ZenohServiceClient, ZenohServiceServer,
     ZenohSession, ZenohSubscriber, ZenohTransport, effective_client_locator, normalize_locator,
-    overflow_drops_total,
+    overflow_drops_total, ring_full_drops_total,
 };
 
 // phase-392 amendment B -- the payload pools' live-vs-reserved high-water.

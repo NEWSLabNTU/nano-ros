@@ -210,6 +210,24 @@ typedef struct zpico_ring_desc_t {
    * Producer counter — written only by the C shim.
    */
   size_t *tail;
+  /**
+   * Issue 1979 — the consumer's claim: 0, or one more than the claimed
+   * head counter. Written only by `zpico_ring_claim_head` and
+   * `zpico_ring_consume_head`, under the session's slot lock; a producer
+   * never writes a claimed slot.
+   */
+  size_t *claimed;
+  /**
+   * Issue 1979 — samples a full ring evicted, replaced or dropped.
+   * Written only by the C producer, under the session's slot lock.
+   */
+  size_t *full_drops;
+  /**
+   * The session whose slot lock serialises the claim with the
+   * producers. Set by `zpico_declare_subscriber_ring`; NULL (no lock)
+   * for a ring no session produces into.
+   */
+  void *lock_session;
 } zpico_ring_desc_t;
 
 /**
@@ -268,6 +286,15 @@ typedef void (*ZpicoQueryCallback)(const char *keyexpr,
 /**
  * Phase 99.F: zero-copy publish via z_bytes_from_static_buf.
  * Caller guarantees `data` outlives the call.
+ */
+/**
+ * Issue 1979 — claim the head slot for reading; -1 when empty.
+ */
+/**
+ * Issue 1979 — consume the claimed head slot and drop the claim.
+ */
+/**
+ * Issue 1979 — push bytes through the C producer (unit tests).
  */
 /**
  * Transient-local, the subscriber half: one history query on `keyexpr`
@@ -648,6 +675,35 @@ int32_t zpico_declare_subscriber_ring(struct zpico_session_t *_session,
                                       struct zpico_ring_desc_t *_desc,
                                       ZpicoNotifyCallback _callback,
                                       void *_ctx);
+
+/**
+ * Issue 1979 — claim the head slot of a ring for reading, under the
+ * ring's session slot lock. A producer never writes a claimed slot, so
+ * the consumer may read it in place until it calls
+ * `zpico_ring_consume_head`. Claiming the same head again is a no-op.
+ *
+ * # Returns
+ * The head slot's index, or -1 when the ring is empty.
+ */
+ptrdiff_t zpico_ring_claim_head(struct zpico_ring_desc_t *_desc);
+
+/**
+ * Issue 1979 — consume the claimed head slot and drop the claim, under
+ * the ring's session slot lock.
+ */
+void zpico_ring_consume_head(struct zpico_ring_desc_t *_desc);
+
+/**
+ * Issue 1979 — push `len` payload bytes into a ring through the same
+ * producer path a zenoh sample takes, full-ring policy included. For a
+ * ring no session produces into (unit tests).
+ *
+ * # Returns
+ * 0 when the sample was written, a negative error code when it was not.
+ */
+int32_t zpico_ring_push_bytes(struct zpico_ring_desc_t *_desc,
+                              const uint8_t *_payload,
+                              size_t _len);
 
 /**
  * The SUBSCRIBER half of transient-local durability: one history query on

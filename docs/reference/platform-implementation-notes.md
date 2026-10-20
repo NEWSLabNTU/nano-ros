@@ -264,7 +264,8 @@ Consequences and rules:
   `tests/w1_zephyr_tx_throughput_measure.rs` (`--ignored`, tiers) +
   `packages/testing/nros-bench/stress-zenoh-zephyr` (streaming; bench
   listeners MUST build with `NROS_ZENOH_SUBSCRIBER_RING_DEPTH=1024` — the default
-  4-slot ring drop-newests batched callback bursts). User-facing decision
+  4-slot ring evicts most of a batched callback burst, keeping its newest
+  samples — issue 1979). User-facing decision
   tree: book "TX Throughput & Latency Tuning" page.
 - **`Z_CONFIG_SOCKET_TIMEOUT` must stay short on Zephyr (100 ms, like the unix
   port).** At 5000 ms the client's ~3.3 s lease keepalives miss the 10 s lease and

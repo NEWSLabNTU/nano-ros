@@ -164,9 +164,10 @@ auto pub = node.create_publisher<Twist>("/cmd_vel", rclcpp::QoS().tx_express(tru
 
 - **Benchmark listeners need a deep rx ring.** A batched publisher delivers a
   whole wire batch as one callback burst; the per-subscriber SPSC ring depth
-  is compile-time (`NROS_ZENOH_SUBSCRIBER_RING_DEPTH`, default 4, drop-newest) —
-  build measurement sinks with e.g. `NROS_ZENOH_SUBSCRIBER_RING_DEPTH=1024` or the
-  numbers undercount by >10×.
+  is compile-time (`NROS_ZENOH_SUBSCRIBER_RING_DEPTH`, default 4). A full ring
+  keeps the newest samples and evicts older ones, counted by
+  `nros_rmw_zenoh::ring_full_drops_total()` — build measurement sinks with e.g.
+  `NROS_ZENOH_SUBSCRIBER_RING_DEPTH=1024` or the numbers undercount by >10×.
 - **Express ≠ fast on Zephyr.** Express bypasses the batch, so each sample
   pays the socket-window wait itself. Reserve it for topics whose *rate* is
   low but whose *latency* matters.
