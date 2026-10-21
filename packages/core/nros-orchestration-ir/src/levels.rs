@@ -15,7 +15,7 @@
 //!    server's budget), a dynamic program over the band boundaries finds the
 //!    fewest contiguous bands in which every callback still meets its
 //!    deadline under the preemption-threshold response time
-//!    ([`response_time`]). Ties go to the largest minimum normalised slack
+//!    ([`response_time`](crate::levels::response_time)). Ties go to the largest minimum normalised slack
 //!    `(D - R) / D`.
 //! 3. **Merge without execution times,** only to meet the cap: merge the
 //!    least urgent adjacent pair, skipping a pair whose more urgent band
@@ -25,7 +25,7 @@
 //! 4. **The cap** is a count, `max_levels`: the image's
 //!    `CONFIG_NROS_EXECUTOR_MAX_LEVELS` when its `.config` is in hand
 //!    ([`crate::priority_plan::PriorityPlan::max_levels`]), else the
-//!    platform's default ([`default_max_levels`], RFC-0108 D6).
+//!    platform's default ([`default_max_levels`](crate::levels::default_max_levels), RFC-0108 D6).
 //! 5. **Report:** one `level-budget` degradation per member that loses its
 //!    rank, naming the cap, the rank it would have had and the band it
 //!    shares.
@@ -34,11 +34,11 @@
 //!    spans a pin's priority.
 //! 7. (The cost report is P9's.)
 //! 8. **Equal kernel priorities merge** on a time-slicing kernel
-//!    ([`time_slices_equal_priorities`]): two levels at one priority there
+//!    ([`time_slices_equal_priorities`](crate::levels::time_slices_equal_priorities)): two levels at one priority there
 //!    buy no preemption, only memory, and slicing would cut a callback.
 //!
 //! An unanalysable callback (RFC-0108 D1) is placed at the least urgent rank
-//! of its level ([`Level::best_effort`]), so it never orders ahead of an
+//! of its level ([`Level::best_effort`](crate::levels::Level::best_effort)), so it never orders ahead of an
 //! analysed member of its band.
 //!
 //! # Where the response-time analysis lives (RFC-0108, deferred to P5)
