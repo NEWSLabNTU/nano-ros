@@ -67,6 +67,13 @@ pub struct DerivedSchedule {
     /// the contract supervises nothing, or the kernel had no priority left
     /// for it (then a degradation says so).
     pub supervisor_priority: Option<i64>,
+    /// phase-509 P4 (RFC-0108 D1) - the task record of every callback the
+    /// model names: release kind, T or T_min, D, C, and a server's Q/P
+    /// ([`crate::task_record`]). On an image whose contract supervises
+    /// nothing, each unanalysable one is also a `unanalysable` degradation;
+    /// on one that supervises a deadline it is refused before this runs
+    /// ([`crate::task_record::check_model`]).
+    pub tasks: Vec<crate::task_record::TaskRecord>,
 }
 
 /// The node FQNs whose contract supervises a deadline: a node path
@@ -392,10 +399,23 @@ pub fn derive_tiers_with_named(
     priority_plan: &PriorityPlan,
     named_above_transport: &std::collections::BTreeSet<String>,
 ) -> DerivedSchedule {
+    // phase-509 P4 (RFC-0108 D1) - the task record, and its report on an
+    // image that supervises nothing. Before the rank, so an image with
+    // nothing to rank still reports an unbounded input.
+    let tasks = crate::task_record::task_records(model, None);
+    let unanalysable = if supervised_nodes(model).is_empty() {
+        crate::task_record::unanalysable_degradations(&tasks)
+    } else {
+        Vec::new()
+    };
     let input = mapper_input_from_model(model);
     let ranked = chain_aware_rank(&input);
     if ranked.items.is_empty() {
-        return DerivedSchedule::default();
+        return DerivedSchedule {
+            degradations: unanalysable,
+            tasks,
+            ..Default::default()
+        };
     }
 
     // Issue 0951 — the per-deploy `edf` / `cores` knobs are GONE, because they
@@ -473,11 +493,13 @@ pub fn derive_tiers_with_named(
         caps.low_number_is_high,
         &mut plan.degradations,
     );
+    plan.degradations.extend(unanalysable);
     let mut out = DerivedSchedule {
         degradations: plan.degradations.clone(),
         realized: plan.nodes.clone(),
         above_transport,
         supervisor_priority,
+        tasks,
         ..Default::default()
     };
 

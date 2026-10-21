@@ -96,6 +96,9 @@ pub mod spin_period;
 // same reason that one is: both producers of a baked tier table must ask, and
 // the proc-macro road cannot dep `nros-cli-core`.
 pub mod violation_agreement;
+/// phase-509 P4 (RFC-0108 D1) — the task record per callback, and the
+/// refusal of an unanalysable input on a safety image.
+pub mod task_record;
 /// RFC-0078 — declared WCETs, keyed per named measurement profile.
 pub mod wcet;
 
