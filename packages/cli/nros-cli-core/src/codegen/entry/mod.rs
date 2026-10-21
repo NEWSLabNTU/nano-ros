@@ -942,6 +942,8 @@ pub fn resolve_plan_sched_recorded(
         .iter()
         .any(|n| !n.callback_groups.is_empty() || !n.group_tiers.is_empty());
     if plan.tiers.is_empty() && plan.node_overrides.is_empty() && !has_groups {
+        // phase-509 P8 -- a tierless image is one level.
+        check_blocking_calls(plan, None, target_rtos)?;
         return Ok(None);
     }
 
@@ -1007,6 +1009,8 @@ pub fn resolve_plan_sched_recorded(
 
     // RFC-0079's table - each tier's spin period from its members' releases.
     derive_tier_spin_periods(plan, &mut table)?;
+    // phase-509 P8 (RFC-0108 D8.3) -- until P9 a level is a tier.
+    check_blocking_calls(plan, Some(&table), target_rtos)?;
 
     // Stamp PlanNode.sched_context with the 0-based index into the ordered tier list
     // (highest-priority-first). Nodes not assigned to any tier keep `sched_context = None`.
@@ -1047,6 +1051,42 @@ fn derive_tier_spin_periods(plan: &Plan, table: &mut ResolvedTierTable) -> Resul
         .map_err(|e| eyre::eyre!("codegen entry: {e}"))?;
     for n in &notes {
         eprintln!("codegen entry: {n}");
+    }
+    Ok(())
+}
+
+/// phase-509 P8 (RFC-0108 D8.3): refuse a `call: blocking` whose server runs
+/// at the client's own level or one that cannot preempt it, and report each
+/// client that states no `call:` to such a server
+/// ([`nros_orchestration_ir::blocking_calls`]). Until P9 a level is a tier
+/// of `table`; `None` is a tierless image, one level.
+///
+/// Like [`derive_tier_spin_periods`], a plan with no model (`bringup` other
+/// than `system-model`) names no clients and is not checked.
+fn check_blocking_calls(
+    plan: &Plan,
+    table: Option<&ResolvedTierTable>,
+    target_rtos: &str,
+) -> Result<()> {
+    use nros_orchestration_ir::blocking_calls::{ImageLevels, check_model};
+    if plan.bringup != "system-model" {
+        return Ok(());
+    }
+    let model = crate::orchestration::model_ingest::load_model(&plan.launch_file)?;
+    let members = plan
+        .nodes
+        .iter()
+        .map(|n| n.name.as_deref().unwrap_or(n.exec.as_str()));
+    let levels = match table {
+        Some(t) => ImageLevels::from_tiers(
+            t,
+            nros_orchestration_ir::rtos_realizer::sched_caps_for(target_rtos).low_number_is_high,
+            members,
+        ),
+        None => ImageLevels::one_level(members),
+    };
+    for f in check_model(&model, &levels).map_err(|e| eyre::eyre!("codegen entry: {e}"))? {
+        eprintln!("codegen entry: {}", f.render());
     }
     Ok(())
 }

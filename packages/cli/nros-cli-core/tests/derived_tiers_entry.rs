@@ -436,3 +436,54 @@ fn a_one_tier_entry_seeds_each_nodes_rank() {
         );
     }
 }
+
+/// phase-509 P8 (RFC-0108 D8.3) - the entry road checks a blocking call
+/// against the levels it resolved. `mrm_handler` calls a server on
+/// `mrm_comfortable_stop_operator`; both run at 10 Hz, so the derivation puts
+/// them on one level, where a blocking call deadlocks. `call` is the client's
+/// stated mode (`None`: unstated).
+fn plan_with_a_call(tag: &str, call: Option<&str>) -> eyre::Result<Plan> {
+    let fixture = Fixture::copy(tag);
+    let contract = fixture.bringup().join("launch/system.contract.yaml");
+    let text = fs::read_to_string(&contract).expect("read the contract");
+    let cli = match call {
+        Some(c) => format!("    cli:\n      ask: {{ call: {c} }}\n"),
+        None => "    cli:\n      ask: {}\n".to_string(),
+    };
+    let text = text
+        .replacen("  mrm_handler:\n", &format!("  mrm_handler:\n{cli}"), 1)
+        .replacen(
+            "  mrm_comfortable_stop_operator:\n",
+            "  mrm_comfortable_stop_operator:\n    srv:\n      ask: {}\n",
+            1,
+        )
+        + "\nservices:\n  /system/ask:\n    type: std_srvs/srv/Trigger\n    \
+           server: [mrm_comfortable_stop_operator/ask]\n    client: [mrm_handler/ask]\n";
+    fs::write(&contract, text).expect("write the contract");
+    let meta = fixture.configure(&["main"]);
+    let model = resolve_model_path(&fixture.bringup(), false);
+    let mut plan = plan_from_model(&model, Some(BOARD.to_string()))?;
+    let index = metadata::ComponentIndex::load(&meta)?;
+    metadata::enrich_plan(&mut plan, &index)?;
+    resolve_plan_sched(&mut plan, BOARD)?;
+    Ok(plan)
+}
+
+#[test]
+fn a_blocking_call_to_the_clients_own_level_is_refused() {
+    let err = plan_with_a_call("call-blocking", Some("blocking"))
+        .expect_err("a blocking call inside one level deadlocks");
+    let msg = format!("{err:#}");
+    assert!(
+        msg.contains("RFC-0108 D8.3")
+            && msg.contains("mrm_handler/ask` calls")
+            && msg.contains("deadlocks"),
+        "{msg}"
+    );
+}
+
+#[test]
+fn an_async_or_unstated_call_builds() {
+    plan_with_a_call("call-async", Some("async")).expect("an async call never waits");
+    plan_with_a_call("call-unstated", None).expect("an unstated call is reported, not refused");
+}

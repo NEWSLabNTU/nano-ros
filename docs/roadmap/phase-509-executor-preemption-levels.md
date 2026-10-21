@@ -1,6 +1,6 @@
 # Phase 509 -- Executor preemption levels (RFC-0108, amended RFC-0107 steps 4-6)
 
-**Status (2026-10-21). In progress: P1, P2, P3, P4 and P5 done.** The design is
+**Status (2026-10-21). In progress: P1, P2, P3, P4, P5 and P8 done.** The design is
 [RFC-0108](../design/0108-executor-preemption-levels.md) (Draft, its open
 questions decided 2026-10-21). This phase also carries RFC-0107's steps 4-6
 as RFC-0108 amends them (RFC-0107 is on branch
@@ -418,9 +418,48 @@ and their headers.
 
 ### P8 -- Refuse blocking calls to equal or less urgent levels
 
-- [ ] Goal: the build refuses a synchronous service call whose server is at a
+- [x] Goal: the build refuses a synchronous service call whose server is at a
       level equal to or less urgent than the client's, when the contract
       names both. Asynchronous calls pass.
+
+**Done (as built).** The contract had no key that says a client waits, so
+P8 needed one: rlm v0.1.69 (1fcf438) adds `call: blocking | async` on a
+`cli.<e>` endpoint and on an `actions.<a>` entry (for every client it
+lists); play_launch 0b44a695 carries it into the model
+(`Contracts::cli_endpoints`, `Contracts::action_cli_endpoints`).
+`blocking_calls.rs` (new) checks each service and action client against
+each of its servers:
+
+- `call: blocking` to the client's own level is refused as a deadlock, to
+  a level that cannot preempt it (less urgent, or another tier at the same
+  kernel priority) as an inversion, each by name.
+- `call: async` is never checked.
+- **No `call:` is not `async`:** such a client to an equal or less urgent
+  level is reported, never refused, so a contract written before the key
+  (the island's async `mrm_handler`) builds unchanged and is told what to
+  state.
+- **A level is a tier until P9:** the resolved tier table's tiers, urgency
+  in the kernel's own direction (`SchedCaps::low_number_is_high`). A
+  tierless image, or a table of one tier, is one level. A node of a
+  multi-tier image that no tier holds has an unknown level: its calls are
+  reported. A server outside the image is a call across images and is not
+  checked. Tier members are bare node names, so a contract endpoint is
+  matched by the last segment of its node FQN.
+- **Where:** the three bake roads, after each resolves its table:
+  `codegen entry` (`resolve_plan_sched_recorded`, also on its tierless
+  early return), `codegen-system` (after `resolve_system_tiers`), and
+  `nros::main!` (after `resolve_tiers`, or with no table). Reports go to
+  the build's stderr beside the spin-period notes.
+
+Tests: `blocking_calls::tests` (`a_blocking_call_to_an_equal_or_less_urgent_level_is_refused`,
+`an_async_call_passes`, `an_unstated_call_is_reported_not_refused`,
+`a_tierless_image_is_one_level`, `urgency_follows_the_kernels_direction`,
+`an_action_client_is_checked_and_an_unplaced_node_reported`); the entry
+road on the `derived-tiers-cpp` fixture
+(`a_blocking_call_to_the_clients_own_level_is_refused`,
+`an_async_or_unstated_call_builds`); rlm `a_clients_call_is_blocking_or_async`
+and the model round trip; play_launch `a_clients_call_mode_reaches_the_model`.
+No golden moves.
 
 **Touches:** `derive.rs` (or the check module that reads the contract's
 client/server pairs); the degradation and refusal text.
