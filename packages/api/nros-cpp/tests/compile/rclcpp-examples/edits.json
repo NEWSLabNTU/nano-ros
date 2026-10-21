@@ -1,0 +1,110 @@
+{
+  "_doc": "phase-488 \u2014 per-example edit counts for porting the stock rclcpp examples to nros-cpp. See edit_count.py. `edited_lines_before_phase_488` is the measurement against the headers this fixture was added to; `remaining` names each cause still costing edits.",
+  "upstream": {
+    "repo": "https://github.com/ros2/examples",
+    "humble": "09899ca6b6361f2cca6d4f626c0304c86e7b9ada",
+    "jazzy": "07008852303f2a35a91c65d78046b274a35477ea",
+    "copied_from": "jazzy (identical on humble except minimal_subscriber/lambda.cpp)",
+    "license": "Apache-2.0"
+  },
+  "examples": {
+    "minimal_publisher_lambda": {
+      "source": "rclcpp/topics/minimal_publisher/lambda.cpp",
+      "edited_lines": 0,
+      "edited_lines_before_phase_488": 0,
+      "remaining": []
+    },
+    "minimal_publisher_member_function": {
+      "source": "rclcpp/topics/minimal_publisher/member_function.cpp",
+      "edited_lines": 0,
+      "edited_lines_before_phase_488": 0,
+      "remaining": []
+    },
+    "minimal_publisher_not_composable": {
+      "source": "rclcpp/topics/minimal_publisher/not_composable.cpp",
+      "edited_lines": 11,
+      "edited_lines_before_phase_488": 13,
+      "remaining": [
+        "exceptions: the try/catch around publish + spin_some is removed (RFC-0018, -fno-exceptions; there is no rclcpp::exceptions::RCLError)"
+      ]
+    },
+    "minimal_subscriber_lambda": {
+      "source": "rclcpp/topics/minimal_subscriber/lambda.cpp",
+      "edited_lines": 4,
+      "edited_lines_before_phase_488": 4,
+      "remaining": [
+        "pointer-shaped subscription callback: std_msgs::msg::String::UniquePtr has no codegen alias and the arena delivers `const M&` (no per-message allocation); write `const M& msg` and `msg.` for `msg->` (Jazzy only \u2014 Humble's lambda already ports)"
+      ]
+    },
+    "minimal_subscriber_member_function": {
+      "source": "rclcpp/topics/minimal_subscriber/member_function.cpp",
+      "edited_lines": 0,
+      "edited_lines_before_phase_488": 0,
+      "remaining": []
+    },
+    "minimal_subscriber_not_composable": {
+      "source": "rclcpp/topics/minimal_subscriber/not_composable.cpp",
+      "edited_lines": 3,
+      "edited_lines_before_phase_488": 3,
+      "remaining": [
+        "global Node::SharedPtr from a temporary: `g_node = rclcpp::Node::make_shared(...)` is refused because Node::SharedPtr does not own; keep the shared_ptr in a local (`auto node = ...; g_node = node;`)"
+      ]
+    },
+    "minimal_timer_lambda": {
+      "source": "rclcpp/timers/minimal_timer/lambda.cpp",
+      "edited_lines": 0,
+      "edited_lines_before_phase_488": 0,
+      "remaining": []
+    },
+    "minimal_timer_member_function": {
+      "source": "rclcpp/timers/minimal_timer/member_function.cpp",
+      "edited_lines": 0,
+      "edited_lines_before_phase_488": 0,
+      "remaining": []
+    },
+    "minimal_service": {
+      "source": "rclcpp/services/minimal_service/main.cpp",
+      "edited_lines": 3,
+      "edited_lines_before_phase_488": 13,
+      "remaining": [
+        "global Node::SharedPtr from a temporary (as minimal_subscriber_not_composable)"
+      ]
+    },
+    "minimal_client": {
+      "source": "rclcpp/services/minimal_client/main.cpp",
+      "edited_lines": 15,
+      "edited_lines_before_phase_488": 26,
+      "remaining": [
+        "future shape: async_send_request(shared_ptr) / future.get() / remove_pending_request are declined (no shared_future, no allocator); use send_request(const Request&) + Future::try_take + Future::cancel"
+      ]
+    },
+    "minimal_action_server_member_functions": {
+      "source": "rclcpp/actions/minimal_action_server/member_functions.cpp",
+      "edited_lines": 77,
+      "edited_lines_before_phase_488": 78,
+      "remaining": [
+        "actions: no ServerGoalHandle / rclcpp_action::create_server(node interfaces, std::bind...) \u2014 the server is created in place and callbacks are function pointers keyed by the 16-byte goal id",
+        "no hidden threads: the stock example detaches a std::thread per goal; the port runs the goal in the accepted callback and drops rclcpp::Rate::sleep (it would re-enter the executor from a callback)"
+      ]
+    },
+    "minimal_action_client_member_functions": {
+      "source": "rclcpp/actions/minimal_action_client/member_functions.cpp",
+      "edited_lines": 87,
+      "edited_lines_before_phase_488": 88,
+      "remaining": [
+        "actions: no ClientGoalHandle / create_client(node interfaces) / async_send_goal future; SendGoalOptions are raw function pointers with a context, feedback/result arrive as CDR bytes to deserialize, and the result is requested with get_result_async",
+        "generated sequences are FixedSequence/HeapSequence, not std::vector: `.back()` / `.size()` are spelled `[length() - 1]` / `.length()` (`size` is the layout's length field)"
+      ]
+    },
+    "multithreaded_executor": {
+      "source": "rclcpp/executors/multithreaded_executor/multithreaded_executor.cpp",
+      "edited_lines": 26,
+      "edited_lines_before_phase_488": 29,
+      "remaining": [
+        "MultiThreadedExecutor is refused (RFC-0002: one task per executor, no hidden threads) \u2014 renamed to SingleThreadedExecutor",
+        "callback groups: create_callback_group(CallbackGroupType) / SubscriptionOptions::callback_group / CallbackGroup::SharedPtr have no counterpart (every group is mutually exclusive on one task); the group plumbing is deleted",
+        "pointer-shaped subscription callback (ConstSharedPtr), as minimal_subscriber_lambda"
+      ]
+    }
+  }
+}

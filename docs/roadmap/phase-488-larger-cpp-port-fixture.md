@@ -25,6 +25,29 @@ that never reach those surfaces. Phase-209 G.4 asked for one node that does,
 to find the next round of compatibility gaps (composition, several nodes in
 one process, intra-process delivery) before a user does.
 
+## W0 — the stock rclcpp examples, measured (2026-10-21, landed)
+
+Before porting one large node, the 13 stock `ros2/examples` rclcpp files
+(humble + jazzy: publisher, subscriber, timer, service, client, action
+server/client, multithreaded executor) were ported with the fewest edits and
+committed beside the verbatim originals in
+`packages/api/nros-cpp/tests/compile/rclcpp-examples/`. `just check cpp`
+compiles, links and boots every port on the stub backend and fails when an
+example's edited-line count (`edits.json`) moves either way.
+
+Measured 254 edited lines before the drop-ins, 226 after. Drop-ins:
+`Node::make_shared` / `make_unique` (hosted), `Executor::spin_some` (the
+`cpp:Executor::spin_some` wave, one drain with Rust's), the `shared_ptr`
+service handler lent from the dispatch frame (overrides the phase-417 W2.c
+refusal; no heap, retention aborts), `executors::SingleThreadedExecutor` plus a
+refusing `MultiThreadedExecutor`, `std::chrono` overloads of
+`wait_for_service` / `wait_for_action_server`, and `<rclcpp_action/rclcpp_action.hpp>`, plus a fix to
+`spin_until_future_complete`, which could not take a real `rclcpp::Future`.
+What still costs edits is listed per example in `edits.json` and in the
+porting guide; the action shapes (164 of the 226 lines) dominate. Filed from
+it: issue 1995 (pointer-shaped subscription callbacks) and issue 1996 (the
+client future shape).
+
 ## Work items
 
 ### W1 — pick the node

@@ -1242,6 +1242,24 @@ cpp: cpp-fmt
         -o "$gen/nros-cpp-tests"/failed_create_aborts \
         packages/api/nros-cpp/tests/compile/failed_create_aborts.cpp
     "$gen/nros-cpp-tests"/failed_create_aborts
+    # phase-488 — upstream's shared_ptr service handler, lent from the dispatch
+    # frame: the handler's answer reaches the reply, and KEEPING a pointer past
+    # the call aborts naming why. Same header-only link shape as above.
+    test -f packages/api/nros-cpp/tests/compile/service_shared_ptr_handler_runtime.cpp || { \
+        echo "ERROR: service_shared_ptr_handler_runtime.cpp is MISSING -- this check would pass on absence." >&2; \
+        exit 1; \
+    }
+    echo "  - shared_ptr service handlers: answered from the frame, retention aborts (runtime, phase-488)"
+    c++ -std=c++14 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+        -I"$cppgen" \
+        -I"$cgen" \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -Wl,--unresolved-symbols=ignore-all \
+        -o "$gen/nros-cpp-tests"/service_shared_ptr_handler_runtime \
+        packages/api/nros-cpp/tests/compile/service_shared_ptr_handler_runtime.cpp
+    "$gen/nros-cpp-tests"/service_shared_ptr_handler_runtime
     # phase-459 W6 — a node's callback groups and its registration's
     # CALLBACK_GROUPS must agree. RUNTIME for the reason the probe above gives:
     # the refusal is decided at boot, so a syntax-only sweep is green either
@@ -1472,6 +1490,49 @@ cpp: cpp-fmt
         "$gen/nros-cpp-tests"/stub_rmw_backend.o \
         "$nros_cpp_lib" -lpthread -ldl -lm
     "$gen/nros-cpp-tests"/timer_call_info_runtime
+    # phase-488 — the STOCK rclcpp examples (ros2/examples, humble + jazzy),
+    # ported with the fewest edits and kept beside the verbatim originals, so a
+    # header change that breaks a stock line shows as a count, not as a user's
+    # bug report. Three checks: the per-example edit count still matches
+    # `edits.json` (either direction fails), every ported file COMPILES and
+    # LINKS against `libnros_cpp.a` + the stub backend, and every one BOOTS:
+    # init, session, entity creation and its spin, still alive at 3 s (124) or
+    # finished on its own (0). A failed create aborts (134), which is the
+    # regression the run exists to catch. The message headers are the codegen
+    # SHAPE with stub FFI bodies (`rclcpp-examples/msgs/`).
+    _rx=packages/api/nros-cpp/tests/compile/rclcpp-examples
+    echo "  - stock rclcpp examples: edit counts, compile + link + boot on the stub backend (phase-488)"
+    python3 "$_rx/edit_count.py" --check
+    mkdir -p "$gen/nros-cpp-tests/rclcpp-examples"
+    c++ -std=c++17 -c \
+        -I"$cgen" \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -Ipackages/api/nros-c/tests/run \
+        -o "$gen/nros-cpp-tests/rclcpp-examples/stub_backend_registration.o" \
+        "$_rx/stub_backend_registration.cpp"
+    _rx_n=0
+    for _src in "$_rx"/ported/*.cpp; do
+        _ex="$(basename "$_src" .cpp)"
+        _bin="$gen/nros-cpp-tests/rclcpp-examples/$_ex"
+        c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+            -I"$cppgen" \
+            -I"$cgen" \
+            -I"$_rx/msgs" \
+            -Ipackages/api/nros-cpp/include \
+            -Ipackages/api/nros-c/include \
+            -Ipackages/platform/nros-platform-api/include \
+            -o "$_bin" "$_src" \
+            "$gen/nros-cpp-tests/rclcpp-examples/stub_backend_registration.o" \
+            "$gen/nros-cpp-tests"/stub_rmw_backend.o \
+            "$nros_cpp_lib" -lpthread -ldl -lm
+        _rx_n=$((_rx_n + 1))
+    done
+    test "$_rx_n" -gt 0 || { echo "ERROR: no ported rclcpp example compiled -- this check would pass on absence." >&2; exit 1; }
+    # Boot all of them, judged by one script with its own negative control.
+    _rx_names=()
+    for _src in "$_rx"/ported/*.cpp; do _rx_names+=("$(basename "$_src" .cpp)"); done
+    scripts/check-rclcpp-examples-boot.sh "$gen/nros-cpp-tests/rclcpp-examples" "${_rx_names[@]}"
     # issue 1456 — an `rclcpp`-shape component's IDENTITY. The shape constructs
     # its own node, so the launch-declared name and namespace reach it only
     # through the `NodeHandle` the entry hands it; before the fix they reached
@@ -2468,7 +2529,7 @@ cpp: cpp-fmt
     # expected-failure compile proves only that a file does not build.
     for probe in node_options system_defaults_qos log_throttle service_callback \
                  unbounded_spin unbounded_wait unbounded_wait_dispatch \
-                 unbounded_wait_handle unbounded_action_wait; do \
+                 unbounded_wait_handle unbounded_action_wait multi_threaded_executor; do \
         f="packages/api/nros-cpp/tests/compile/ros2_refuse_${probe}_probe.cpp"; \
         test -f "$f" || { echo "ERROR: $f is MISSING -- this check passes on absence." >&2; exit 1; }; \
         if c++ -fsyntax-only -std=c++14 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \

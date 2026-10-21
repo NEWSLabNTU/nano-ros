@@ -44,6 +44,15 @@ static_assert(
     std::is_same<decltype(std::declval<rclcpp::Executor&>().spin_once(10)), rclcpp::Result>::value,
     "Executor::spin_once(timeout_ms) must exist");
 
+// phase-488 — rclcpp's drain verb, `spin_some(max_duration = 0)`, under its
+// own name beside `spin_once` (the `cpp:Executor::spin_some` row).
+static_assert(
+    std::is_same<decltype(std::declval<rclcpp::Executor&>().spin_some()), rclcpp::Result>::value,
+    "Executor::spin_some() must exist with rclcpp's no-limit default");
+static_assert(
+    std::is_same<decltype(std::declval<rclcpp::Executor&>().spin_some(5u)), rclcpp::Result>::value,
+    "Executor::spin_some(max_ms) must exist");
+
 // Deliberately NOT asserted with `decltype(…spin_once())`: the refusal is a
 // `static_assert` in a member-template BODY, and `decltype` does not instantiate
 // a body. Such an assertion passes whether or not the refusal exists, which is

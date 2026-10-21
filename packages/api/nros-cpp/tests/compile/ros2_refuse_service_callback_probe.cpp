@@ -1,23 +1,24 @@
 /*
- * NEGATIVE probe — phase-417 W2.c, the callback-shape refusal.
+ * NEGATIVE probe — phase-417 W2.c, the callback-shape refusal, as phase-488
+ * narrowed it.
  *
- * `rclcpp::Node::create_service<Srv>(name, callback)` hands the callback
- * `std::shared_ptr<Request>` and `std::shared_ptr<Response>` (plus a request
- * header), which needs a per-request heap allocation on the delivery path.
- * nano-ros has no allocator there (RFC-0022) and delivers by REFERENCE into
- * caller-owned storage, so adopting that signature would mean a second delivery
- * path — RFC-0019's "a second code path that can produce a different answer".
+ * phase-488 TOOK upstream's `std::shared_ptr<Request>` / `std::shared_ptr<Response>`
+ * handler (hosted, function pointer or capture-less lambda): the request and
+ * response are lent from the dispatch frame through a no-op deleter and a
+ * frame-local control block, so it needs no heap and no second delivery path —
+ * the two reasons this probe used to exist for. `ported/minimal_service.cpp`
+ * under `rclcpp-examples/` is the stock upstream file compiling, linking and
+ * booting with that shape.
  *
- * Absence would give "no matching function for call to create_service", which
- * is honest and teaches nothing. The refusal names the required handler
- * signature instead, which is the whole migration.
+ * What is STILL refused, and what this TU now holds: a handler with STATE —
+ * a capturing lambda or a `std::bind` result. The arena stores one function
+ * pointer per service, so there is nowhere for the captures to live. Absence
+ * would give "no matching function for call to create_service"; the refusal
+ * names both accepted shapes and `rclcpp::bind_service` instead.
  *
- * `just check cpp` requires this TU to FAIL. The handler shapes nano-ros DOES
- * take — `void(const S::Request&, S::Response&)` for a service,
- * `void(const S::Response&)` for a client, as a function pointer or a
- * capture-less lambda — plus the poll-style overloads and a QoS argument that
- * must NOT be mistaken for a callback, are all in the POSITIVE probe
- * (`ros2_api_adoption_stage2.cpp`). Compile that one first.
+ * `just check cpp` requires this TU to FAIL. The shapes nano-ros takes are in
+ * the POSITIVE probe (`ros2_api_adoption_stage2.cpp`) and in the ported
+ * minimal_service example.
  */
 
 #include <rclcpp/rclcpp.hpp>
@@ -57,16 +58,16 @@ struct AddTwoInts {
 };
 
 // Upstream's handler signature, verbatim.
-void upstream_shaped_handler(const std::shared_ptr<AddTwoInts::Request> request,
-                             std::shared_ptr<AddTwoInts::Response> response) {
-    response->sum = request->a + request->b;
-}
-
 } // namespace
 
 int ros2_refuse_service_callback_probe(rclcpp::Node& node);
 int ros2_refuse_service_callback_probe(rclcpp::Node& node) {
-    auto service = node.create_service<AddTwoInts>("add_two_ints", &upstream_shaped_handler);
+    int64_t offset = 1;
+    auto service = node.create_service<AddTwoInts>(
+        "add_two_ints", [offset](const std::shared_ptr<AddTwoInts::Request> request,
+                                 std::shared_ptr<AddTwoInts::Response> response) {
+            response->sum = request->a + request->b + offset;
+        });
     (void)service;
     return 0;
 }

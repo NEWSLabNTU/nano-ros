@@ -219,8 +219,8 @@ class Executor {
     /// carries: this dispatches EVERY ready arena entry, where upstream's
     /// `spin_once` executes the next ONE. RFC-0002 §3 computes the ready bitmap
     /// once per cycle, so "one item" is not a shape this executor has. A
-    /// `spin_once(0)` here is therefore upstream's `spin_some`. That naming
-    /// question is open and lives on the `cpp:Executor::spin_some` ledger row.
+    /// `spin_once(0)` here is one pass of upstream's `spin_some`, which this
+    /// class now also has under its own name (phase-488, [`spin_some`]).
     ///
     /// @param timeout_ms  Maximum time to block waiting for I/O. `0` polls;
     ///                    negative is REFUSED (see above).
@@ -255,6 +255,30 @@ class Executor {
     template <typename T = void> Result spin_once() {
         static_assert(::rclcpp::detail::refuse<T>::value, NROS_RCLCPP_REFUSE_UNBOUNDED_SPIN);
         return Result(ErrorCode::Unsupported);
+    }
+
+    /// `spin_some(max_duration = 0)` — phase-488, rclcpp's drain verb. ADOPT.
+    ///
+    /// Executes everything already ready and returns without waiting for new
+    /// work. A callback that makes more work ready (a publish to a topic this
+    /// executor also subscribes) is drained in the same call, pass after pass,
+    /// until a pass does nothing — the same drain Rust's
+    /// `Executor::spin_some` runs, through one implementation
+    /// (`nros_cpp_spin_some`). `max_ms` bounds that loop and is checked
+    /// BETWEEN passes, so a single long callback overruns it; `0`, the
+    /// default, is rclcpp's "no limit".
+    ///
+    /// The bound is MILLISECONDS in a `uint32_t`, not a
+    /// `std::chrono::nanoseconds`: this surface cannot require `<chrono>`
+    /// (the `cpp:Executor::spin_once` row). A non-zero bound on an executor
+    /// with no clock answers `ErrorCode::Unsupported` instead of draining
+    /// unbounded.
+    ///
+    /// Where `spin_once(timeout_ms)` is a blocking wait with a budget, this is
+    /// a poll: use it in a loop that does its own work between calls.
+    Result spin_some(uint32_t max_ms = 0) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        return Result(nros_cpp_spin_some(storage_, max_ms));
     }
 
     /// Phase 124.F.3 — session-level connectivity probe.

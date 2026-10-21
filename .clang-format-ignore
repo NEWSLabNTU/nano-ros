@@ -16,3 +16,9 @@ packages/testing/nros-px4-register-check/*
 # (phase-338 widened the C/C++ fmt recipes to every platform) and this pattern
 # did not hold: 723 lines of PX4 style were reflowed before it was caught.
 examples/px4/**
+
+# phase-488 — the stock rclcpp examples and their ports keep UPSTREAM's style
+# (ament_uncrustify, 2-space): `edit_count.py` diffs ported/ against upstream/
+# line by line, so a reflow would count every line as an edit.
+packages/api/nros-cpp/tests/compile/rclcpp-examples/upstream/**
+packages/api/nros-cpp/tests/compile/rclcpp-examples/ported/**

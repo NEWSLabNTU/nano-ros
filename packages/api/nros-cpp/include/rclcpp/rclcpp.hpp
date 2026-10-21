@@ -713,11 +713,11 @@ namespace rclcpp {} // namespace rclcpp
 
 namespace rclcpp {
 template <typename S, typename F, typename, typename>
-inline typename Service<S>::SharedPtr Node::create_service(const ::std::string&, F,
-                                                           const ::rclcpp::QoS&) {
-    static_assert(::rclcpp::detail::refuse<F>::value,
-                  NROS_RCLCPP_REFUSE_SHARED_PTR_SERVICE_CALLBACK);
-    return typename Service<S>::SharedPtr();
+inline typename Service<S>::SharedPtr Node::create_service(const ::std::string& name, F callback,
+                                                           const ::rclcpp::QoS& qos) {
+    // phase-488 — the `const char*` overload decides: it takes upstream's
+    // shared_ptr handler and refuses the rest.
+    return this->template create_service<S>(name.c_str(), callback, qos);
 }
 } // namespace rclcpp
 
@@ -822,7 +822,8 @@ inline ::rclcpp::Node& as_node_ref(const ::std::shared_ptr<N>& n) {
 //
 // phase-417 — FORWARDERS, and nothing else. `rclcpp::spin(node)` is
 // `rclcpp::spin()` (block until `ok()` goes false) and `rclcpp::spin_some(node)`
-// is one 0-timeout `rclcpp::spin_once`. Both used to call a node-local `pump()`
+// is the process executor's `spin_some` drain (phase-488; it was one 0-timeout
+// `rclcpp::spin_once`). Both used to call a node-local `pump()`
 // first, which was the ONLY thing that ran a ported node's timers and
 // subscriptions; now those live on the executor, so these two dispatch nothing
 // of their own and a file that reaches for `rclcpp::spin_once()` or drives an
@@ -862,7 +863,13 @@ inline void spin_some(const Node::SharedPtr& node) {
     if (!node || !node->initialized()) {
         return;
     }
-    (void)::rclcpp::spin_once(0);
+    // phase-488 — the process executor's `spin_some`, the same drain as
+    // `Executor::spin_some` and Rust's (`nros_cpp_spin_some`). It was one
+    // `spin_once(0)` pass, which leaves work a callback made ready for the
+    // next call.
+    void* const executor = ::rclcpp::global_handle();
+    if (executor == nullptr) return;
+    (void)nros_cpp_spin_some(executor, 0);
 }
 
 // Future type is templated rather than `const auto& future` so the header
@@ -882,9 +889,16 @@ inline void spin_some(const Node::SharedPtr& node) {
 /// compile. It spins the PROCESS executor in 10 ms `spin_once` slices — there is
 /// one executor per task (RFC-0002) and no executor argument — so the deadline
 /// is quantised to 10 ms. Returns upstream's `FutureReturnCode`.
+///
+/// phase-488 — the future is taken by FORWARDING reference. It was `const
+/// Future&`, which no `rclcpp::Future` could bind: its `is_ready()` caches the
+/// reply and is non-const, so `spin_until_future_complete(node,
+/// client->send_request(req))` — the pairing the poll client's own doc
+/// recommends — did not compile, and the only thing the drift snippet ever
+/// passed was a fake with a `const` `is_ready()`. Both now bind.
 template <typename Future>
-inline FutureReturnCode spin_until_future_complete(const Node::SharedPtr& node,
-                                                   const Future& future, int32_t timeout_ms = -1) {
+inline FutureReturnCode spin_until_future_complete(const Node::SharedPtr& node, Future&& future,
+                                                   int32_t timeout_ms = -1) {
     if (!node || !node->initialized()) {
         return FutureReturnCode::INTERRUPTED;
     }
@@ -911,6 +925,81 @@ inline FutureReturnCode spin_until_future_complete(const Node::SharedPtr& node,
     }
     return FutureReturnCode::INTERRUPTED;
 }
+
+// --- rclcpp::executors (phase-488) --------------------------------------------
+namespace executors {
+
+/// `rclcpp::executors::SingleThreadedExecutor` — phase-488. ADOPT-BOUNDED.
+///
+/// A FACADE over the process executor, which is what every `rclcpp::Node`
+/// already lives on: there is one session per image (issue 0465) and a node's
+/// entities are created in that executor's arena when the node is constructed
+/// (RFC-0002). So the three lines a stock `main` writes keep their meaning —
+///
+///     rclcpp::executors::SingleThreadedExecutor executor;
+///     executor.add_node(node);
+///     executor.spin();
+///
+/// — with `add_node` CHECKING the attachment that construction already made
+/// rather than making one. The bound, stated: there is no second executor to
+/// build, so two of these are the same executor; `add_node` aborts, naming the
+/// node, when the node failed to create or was created on an explicit
+/// `rclcpp::Executor` instead (spinning this would never reach it); there is
+/// no `remove_node`, because arena registration is one-way (the
+/// `cpp:Executor::add_node` row). `spin` / `spin_some` are `rclcpp::spin_in()` /
+/// the process executor's `spin_some`.
+class SingleThreadedExecutor {
+  public:
+    SingleThreadedExecutor() {}
+
+    /// Check that `node` is on the process executor. `notify` is accepted and
+    /// ignored, as there is no waiting executor to wake.
+    void add_node(const ::rclcpp::Node::SharedPtr& node, bool notify = true) {
+        (void)notify;
+        const char* name = (node && node->initialized()) ? node->get_name() : "";
+        if (!node || !node->initialized()) {
+            ::rclcpp::detail::abort_failed_create("add_node", name,
+                                                  static_cast<int32_t>(ErrorCode::NotInitialized));
+        }
+        if (node->executor_handle() != ::rclcpp::global_handle()) {
+            NROS_RCLCPP_SAY_REFUSED(NROS_RCLCPP_REFUSE_FOREIGN_EXECUTOR_NODE);
+            ::rclcpp::detail::abort_failed_create("add_node", name,
+                                                  static_cast<int32_t>(ErrorCode::Unsupported));
+        }
+    }
+
+    /// Block until `rclcpp::ok()` goes false — `rclcpp::spin_in()`.
+    void spin() { (void)::rclcpp::spin_in(); }
+
+    /// Drain what is ready, without waiting — `Executor::spin_some` on the
+    /// process executor. `max_ms` is MILLISECONDS (`0` = no limit).
+    void spin_some(uint32_t max_ms = 0) {
+        void* const executor = ::rclcpp::global_handle();
+        if (executor == nullptr) return;
+        (void)nros_cpp_spin_some(executor, max_ms);
+    }
+};
+
+/// The refusal behind `MultiThreadedExecutor`; see that alias.
+template <typename T = void> class MultiThreadedExecutorRefused {
+  public:
+    template <typename... Args> explicit MultiThreadedExecutorRefused(Args&&...) {
+        static_assert(::rclcpp::detail::refuse<T>::value,
+                      NROS_RCLCPP_REFUSE_MULTI_THREADED_EXECUTOR);
+    }
+};
+
+/// `rclcpp::executors::MultiThreadedExecutor` — phase-488. REFUSED.
+///
+/// The NAME exists so a ported `main` fails here, with the alternative, rather
+/// than on an unknown identifier. Declaring one is the compile error. An
+/// executor dispatches on ONE task with run-to-completion callbacks (RFC-0002),
+/// and nano-ros starts no threads behind the caller's back, so a pool of
+/// workers is not a shape it has. Parallelism is per TIER — one executor per
+/// RTOS task, declared in the system description — not per callback group.
+using MultiThreadedExecutor = MultiThreadedExecutorRefused<>;
+
+} // namespace executors
 
 } // namespace rclcpp
 
@@ -939,7 +1028,7 @@ template <
     typename N, typename Future,
     typename ::rclcpp::tr::enable_if<::rclcpp::tr::is_convertible<N*, Node*>::value, int>::type = 0>
 inline FutureReturnCode spin_until_future_complete(const ::std::shared_ptr<N>& node,
-                                                   const Future& future, int32_t timeout_ms = -1) {
+                                                   Future&& future, int32_t timeout_ms = -1) {
     return spin_until_future_complete(Node::SharedPtr(node), future, timeout_ms);
 }
 
@@ -1015,10 +1104,31 @@ inline typename Service<S>::SharedPtr Node::create_service(const char* name, F c
 }
 
 template <typename S, typename F, typename, typename>
-inline typename Service<S>::SharedPtr Node::create_service(const char*, F, const ::rclcpp::QoS&) {
-    static_assert(::rclcpp::detail::refuse<F>::value,
-                  NROS_RCLCPP_REFUSE_SHARED_PTR_SERVICE_CALLBACK);
+inline typename Service<S>::SharedPtr Node::create_service(const char* name, F callback,
+                                                           const ::rclcpp::QoS& qos) {
+#if defined(NROS_CPP_HAS_SHARED_PTR) // hosted-family: shared-ptr-interop
+    // phase-488 — upstream's `shared_ptr` handler, lent from the dispatch frame
+    // (`detail::shared_ptr_service_trampoline`, no heap). Anything else that is
+    // not the reference shape is still refused, naming both shapes.
+    constexpr int shape = ::rclcpp::detail::service_ptr_shape<S, F>::value;
+    static_assert(shape != 0 || ::rclcpp::detail::refuse<F>::value,
+                  NROS_RCLCPP_REFUSE_SERVICE_CALLBACK_SHAPE);
+    Service<S> s;
+    ::rclcpp::detail::require_created(
+        this->template register_service_<S>(
+            s, name, &::rclcpp::detail::shared_ptr_service_trampoline<S, shape>::call,
+            ::rclcpp::detail::shared_ptr_service_context<S>(
+                callback, ::rclcpp::tr::integral_constant<int, (shape == 3 ? 3 : 2)>()),
+            qos, ::rclcpp::ServiceOptions()),
+        "create_service", name);
+    return typename Service<S>::SharedPtr(this->executor_handle(), s.handle_id());
+#else
+    (void)name;
+    (void)callback;
+    (void)qos;
+    static_assert(::rclcpp::detail::refuse<F>::value, NROS_RCLCPP_REFUSE_SERVICE_CALLBACK_SHAPE);
     return typename Service<S>::SharedPtr();
+#endif // NROS_CPP_HAS_SHARED_PTR
 }
 
 template <typename S>

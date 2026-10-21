@@ -204,10 +204,17 @@ nano-ros covers the patterns a typical ROS 2 C++ node uses:
 |---|---|---|
 | `class MyNode : public rclcpp::Node` | `rclcpp::Node` — ours, and the same name. | Ctor takes `(name)`, `(name, options)` or `(name, ns, options)`. |
 | `std::make_shared<MyNode>()` | works | `auto node = std::make_shared<MyNode>()` and `rclcpp::spin(std::make_shared<MyNode>())` are unchanged. `rclcpp::Node::SharedPtr node = std::make_shared<…>(…)` does not compile — write `auto`; see "`Node::SharedPtr` observes, it does not own" below. `shared_from_this()` works too, with the same caveat. |
+| `rclcpp::Node::make_shared("name")` | `std::make_shared<rclcpp::Node>(…)`, the owning `std::shared_ptr` | Hosted builds. `auto node = rclcpp::Node::make_shared("x");` is unchanged; assigning the temporary straight to a global `rclcpp::Node::SharedPtr` is not — keep it in a local first (`auto node = …; g_node = node;`). |
 | `create_publisher<M>(topic, qos)` | shared_ptr-returning wrapper | `qos` can be `rclcpp::QoS(10)` or an int. |
 | `create_subscription<M>(topic, qos, callback)` | registered on the executor arena; dispatched by **any** spin verb | **Capturing lambdas + `std::function` all work**. |
 | `create_wall_timer(period, callback)` | registered on the executor arena; dispatched by **any** spin verb | `std::chrono::duration` arg, capturing-lambda callback. Returns `rclcpp::TimerBase::SharedPtr`, which is `rclcpp::Timer::SharedPtr` — one flat type, two names. See below. |
 | `rclcpp::create_timer(node, clock, period, cb)` | the clock-taking verb; a `RCL_ROS_TIME` clock follows `/clock` | Humble's only form. `create_wall_timer` stays on the steady clock. |
+| `create_service<S>(name, handler)` with upstream's `std::shared_ptr<Request>` / `std::shared_ptr<Response>` handler (optionally with `std::shared_ptr<rmw_request_id_t>` first) | lent from the dispatch: the handler gets pointers to the request and response the dispatch decoded | Hosted builds; a plain function or a capture-less lambda. The handler must not KEEP a pointer past its call: that aborts, naming why. The request header is zero-filled. A capturing lambda is refused (use `rclcpp::bind_service`). |
+| `rclcpp::executors::SingleThreadedExecutor` + `add_node` + `spin` | the process executor every node already lives on | `add_node` checks rather than attaches. `MultiThreadedExecutor` is a compile error naming the alternative: an executor dispatches on one task, and parallelism is a tier, not a callback group. |
+| `executor.spin_some()` / `rclcpp::spin_some(node)` | drain what is ready, without waiting | The bound is milliseconds (`spin_some(5)`), not a `std::chrono` duration. |
+| `client->wait_for_service(1s)` / `wait_for_action_server(10s)` | the millisecond wait, converted | Hosted builds. The budget is still required; a negative duration is refused at the call. |
+| `rclcpp::spin_until_future_complete(node, client->send_request(req))` | spins until the reply arrives | The timeout is milliseconds. |
+| `#include "rclcpp_action/rclcpp_action.hpp"` | an umbrella over `Server<A>` / `Client<A>` | The action shapes still differ; see below. |
 | `rclcpp::init(argc, argv) / shutdown() / ok() / spin(n) / spin_some(n)` | wraps `rclcpp::init_in/shutdown_in/ok/spin_once` | `--ros-args -r from:=to` is honoured, beneath any remap the launch file sets for the same name. `-p [node:]name:=value` and `--params-file <file>` are honoured in an image with a parameter store: the value replaces the default when the node declares the parameter (scalars only from a file; a value of the wrong type is logged and the default kept). Any other ROS argument (`__node`, log flags) aborts, naming it. |
 | `RCLCPP_INFO / WARN / ERROR / DEBUG / FATAL` | dispatched through the `NROS_LOG_*` family into `nros_log` | Carries the logger, so `get_logger("x")` selects a real per-logger level, and `FATAL` is a distinct severity. Reaches `LOG_ERR`/`printk` on embedded, where the legacy `NROS_*` sink is a no-op (issue 1019). `_THROTTLE` variants are REFUSE-LOUD. |
 | `get_logger().get_child("sub")` | a real child logger, `<parent>.sub` (RFC-0102) | Its level, when unset, follows the nearest ancestor's, so `set_level` on the node logger reaches it. A full name over 48 bytes or a full runtime-logger arena emits through the PARENT and `set_level` on it is refused — never a silent move of the parent's threshold. Iron/Jazzy images publish children on `/rosout`; Humble ones, as upstream, do not. |
@@ -218,6 +225,42 @@ nano-ros covers the patterns a typical ROS 2 C++ node uses:
 | `class MyNode : public rclcpp_lifecycle::LifecycleNode` | ours, under upstream's name (`<rclcpp_lifecycle/lifecycle_node.hpp>`) | It IS an `rclcpp::Node`. The `on_configure(const State&)` … `on_shutdown` overrides, `CallbackReturn::SUCCESS`, `configure()` / `activate()` / … and `get_current_state()` keep upstream's signatures; the REP-2002 services are registered by the constructor. `create_publisher<M>(topic, qos)` returns a managed `LifecyclePublisher<M>::SharedPtr` that sends only while Active. One managed node per executor. |
 | `RCLCPP_COMPONENTS_REGISTER_NODE(class)` | no-op macro + cmake-side `rclcpp_components_register_node()` emits a thin `int main()` per registration | Single-binary embedded. |
 | `find_package(ament_cmake_auto / rclcpp / rclcpp_components / diagnostic_updater / std_msgs / …)` | find modules at `cmake/find/` | ~28 of the most-cited ROS 2 packages; a message package not among them is found by the resolver from `NROS_INTERFACE_SEARCH_PATH` / `AMENT_PREFIX_PATH`. |
+
+## Measured: the stock rclcpp examples
+
+`packages/api/nros-cpp/tests/compile/rclcpp-examples/` holds 13 files from
+[ros2/examples](https://github.com/ros2/examples) (humble and jazzy) verbatim,
+each beside its port. The repository's C++ check compiles and links every port
+against nros-cpp, boots it on a stub middleware, and fails if the number of edited
+lines changes in either direction (`edits.json`). Today:
+
+| example | edited lines | what the edits are |
+|---|---|---|
+| `minimal_publisher` lambda / member_function | 0 | — |
+| `minimal_subscriber` member_function | 0 | — |
+| `minimal_timer` lambda / member_function | 0 | — |
+| `minimal_service` | 3 | global `Node::SharedPtr` from a temporary |
+| `minimal_subscriber` not_composable | 3 | global `Node::SharedPtr` from a temporary |
+| `minimal_subscriber` lambda (jazzy) | 4 | a `String::UniquePtr` callback becomes `const String&` |
+| `minimal_publisher` not_composable | 11 | the `try`/`catch` goes: no exceptions |
+| `minimal_client` | 15 | `async_send_request` / `future.get()` / `remove_pending_request` become `send_request` / `Future::try_take` / `Future::cancel` |
+| `multithreaded_executor` | 26 | `MultiThreadedExecutor`, callback groups, `ConstSharedPtr` callbacks |
+| `minimal_action_server` member_functions | 77 | goal handles, `create_server` over node interfaces, a thread per goal |
+| `minimal_action_client` member_functions | 87 | goal handles, futures, raw-byte feedback/result callbacks |
+
+The remaining causes, largest first:
+
+- **Actions** (164 lines). No `ServerGoalHandle` / `ClientGoalHandle` and no
+  futures; see the next section. The stock server also starts a `std::thread`
+  per goal, which nano-ros does not do for you.
+- **Callback groups and the multi-threaded executor** (most of 26 lines).
+- **The client future shape** (15 lines, issue 1996). `send_request` returns a
+  `rclcpp::Future` you drain with `try_take`, not a `shared_future`.
+- **Exceptions** (11 lines). There is nothing to catch.
+- **Pointer-shaped subscription callbacks** (`Msg::UniquePtr`,
+  `Msg::ConstSharedPtr`, issue 1995). The subscription delivers `const Msg&`; generated
+  messages carry no `SharedPtr` aliases.
+- **A global `Node::SharedPtr` assigned from `make_shared`** (2 lines each).
 
 ## Actions: no goal handles, no futures
 

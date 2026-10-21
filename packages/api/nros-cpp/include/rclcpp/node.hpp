@@ -910,6 +910,31 @@ class Node {
     /// Const overload of [`shared_from_this`].
     ConstSharedPtr shared_from_this() const { return ConstSharedPtr(this); }
 
+#if defined(NROS_CPP_HAS_SHARED_PTR) // hosted-family: shared-ptr-interop
+    /// `rclcpp::Node::make_shared(args...)` — phase-488. ADOPT, hosted.
+    ///
+    /// Upstream's `RCLCPP_SMART_PTR_DEFINITIONS` factory, and exactly
+    /// `std::make_shared<rclcpp::Node>(args...)`, which a ported `main` could
+    /// already write in this same configuration — so this is a spelling, not a
+    /// new allocation. It returns the OWNING `std::shared_ptr<Node>`, as
+    /// upstream's does, not `SharedPtr` (a non-owning handle): `auto node =
+    /// rclcpp::Node::make_shared("x");` keeps the node alive for as long as
+    /// `node` lives. Assigning the TEMPORARY straight to a `Node::SharedPtr`
+    /// (`g_node = rclcpp::Node::make_shared("x");`) stays a compile error, for
+    /// the reason `rclcpp::Handle` gives — nothing would own the node.
+    ///
+    /// Absent on a freestanding build, where there is no `<memory>`; the node
+    /// is a value there (`rclcpp::Node node("x");`).
+    template <typename... Args> static ::std::shared_ptr<Node> make_shared(Args&&... args) {
+        return ::std::make_shared<Node>(static_cast<Args&&>(args)...);
+    }
+
+    /// `rclcpp::Node::make_unique(args...)` — see [`make_shared`].
+    template <typename... Args> static ::std::unique_ptr<Node> make_unique(Args&&... args) {
+        return ::std::unique_ptr<Node>(new Node(static_cast<Args&&>(args)...));
+    }
+#endif // NROS_CPP_HAS_SHARED_PTR
+
     /// The shim's own `initialized()` — the same answer as [`ok`] and
     /// [`is_valid`]. Kept so a file written against the pre-merge
     /// `rclcpp::Node` still compiles.
@@ -971,8 +996,11 @@ class Node {
     create_service(const ::std::string& name, F callback,
                    const ::rclcpp::QoS& qos = ::rclcpp::QoS::services());
 
-    /// **REFUSED** — upstream's `shared_ptr` handler shape. See
-    /// `NROS_RCLCPP_REFUSE_SHARED_PTR_SERVICE_CALLBACK`.
+    /// Every handler that is not the reference shape. phase-488: on a hosted
+    /// build upstream's `shared_ptr` shape (`[header,] request, response`, as a
+    /// function pointer or capture-less lambda) is TAKEN here, lent from the
+    /// dispatch frame with no heap; anything else — a handler with state — is
+    /// refused with `NROS_RCLCPP_REFUSE_SERVICE_CALLBACK_SHAPE`.
     template <typename S, typename F,
               typename = typename std::enable_if<
                   !::rclcpp::detail::is_qos_arg<F>::value &&
@@ -1084,8 +1112,11 @@ class Node {
     create_service(const char* name, F callback,
                    const ::rclcpp::QoS& qos = ::rclcpp::QoS::services());
 
-    /// **REFUSED** — upstream's `shared_ptr` handler shape. See
-    /// `NROS_RCLCPP_REFUSE_SHARED_PTR_SERVICE_CALLBACK`.
+    /// Every handler that is not the reference shape. phase-488: on a hosted
+    /// build upstream's `shared_ptr` shape (`[header,] request, response`, as a
+    /// function pointer or capture-less lambda) is TAKEN here, lent from the
+    /// dispatch frame with no heap; anything else — a handler with state — is
+    /// refused with `NROS_RCLCPP_REFUSE_SERVICE_CALLBACK_SHAPE`.
     template <typename S, typename F,
               typename = typename ::rclcpp::tr::enable_if<
                   !::rclcpp::detail::is_qos_arg<F>::value &&
@@ -2536,6 +2567,18 @@ class Node {
   private:
     Node(const Node&) = delete;
     Node& operator=(const Node&) = delete;
+
+    /// phase-488 — the ONE service registration both handler shapes share:
+    /// the reference shape (`create_service(Service<S>&, name, cb)`) and the
+    /// hosted `shared_ptr` shape (`create_service<S>(name, cb)`). They differ
+    /// only in the trampoline that adapts the arena's bytes to the handler, so
+    /// that is the parameter; everything the arena records is this body.
+    template <typename S>
+    Result register_service_(::rclcpp::Service<S>& out, const char* service_name,
+                             bool (*trampoline)(const uint8_t*, size_t, uint8_t*, size_t, size_t*,
+                                                void*),
+                             void* context, const ::rclcpp::QoS& qos,
+                             const ::rclcpp::ServiceOptions& options);
 
     /// issue 1975 -- what the `(name, options)` constructors do with their
     /// options: keep them for `get_node_options()` and build the node clock
