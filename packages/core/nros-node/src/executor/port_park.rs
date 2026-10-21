@@ -20,6 +20,9 @@
 use super::spin::{Executor, ParkUntilFn};
 
 /// Install `park` on `executor`, waiting on the executor's own wake object.
+/// The park is its worker's (phase-509 P6, RFC-0108 D7): the one-level
+/// executor has one worker, and a worker of a scheduler with several levels
+/// parks on its own wake object, which only its band's arrivals signal.
 ///
 /// Returns `false` — and installs nothing — when this build has no wake
 /// object to park on. That build keeps the millisecond `wake_wait_ms` path it

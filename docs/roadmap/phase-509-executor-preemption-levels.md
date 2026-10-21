@@ -1,6 +1,6 @@
 # Phase 509 -- Executor preemption levels (RFC-0108, amended RFC-0107 steps 4-6)
 
-**Status (2026-10-21). In progress: P1, P2, P3, P4 and P5 done.** The design is
+**Status (2026-10-21). In progress: P1, P2, P3, P4, P5 and P6 done.** The design is
 [RFC-0108](../design/0108-executor-preemption-levels.md) (Draft, its open
 questions decided 2026-10-21). This phase also carries RFC-0107's steps 4-6
 as RFC-0108 amends them (RFC-0107 is on branch
@@ -371,11 +371,59 @@ the release kinds for the merge).
 
 ### P6 -- Scheduler / worker split in nros-node (amended RFC-0107 step 4)
 
-- [ ] Goal: RFC-0107's per-tier `Dispatcher` splits into a per-core
+- [x] Goal: RFC-0107's per-tier `Dispatcher` splits into a per-core
       `Scheduler` and a per-level `Worker`. The Scheduler holds the ready
       set, callback slots, and release and budget accounting. The Worker
       holds the thread, stack, current dispatch and park state. `Executor`
       stays the one-level facade.
+
+**Done (as built).** `executor/scheduler.rs` (new):
+
+- **`Scheduler`** (per core): each callback slot's dispatch level, one
+  atomic word of ready bits, and the band table: contiguous `Band`s of
+  dispatch levels that partition 0-31, most urgent first, one per worker.
+  Its run-time half takes `&self` and is lock-free (the workers and the
+  transport's arrival path reach it at once); its set-up half
+  (`add_worker`, `bind_slot`) takes `&mut self`. `pick(worker)` takes the
+  most urgent queued slot of the worker's own band (lowest level, slot
+  order within a level); `run(worker, dispatch)` re-picks after every
+  callback (D2).
+- **D7:** `arrive(slot)` queues an attributed arrival and wakes only its
+  band's worker; `arrive_unattributed()` wakes the most urgent parked
+  worker, which re-picks.
+- **`Worker`**: its band, its park (RFC-0106: the deadline sources, the
+  park primitive and its granularity, the last park's bound, source and
+  achieved value) and its stack record (the headroom rule's bound and
+  state). These fields moved from `Executor` unchanged; `Executor` holds
+  one `Worker` whose band is every level (`Band::ALL`), so it is the
+  one-level facade and dispatches, parks and checks its stack exactly as
+  before. No golden moves.
+
+Deviations, recorded in RFC-0108 ("As built in P6"):
+
+- **Release and budget accounting and the callback slots stay in
+  `Executor`** (timers, sporadic refill, time-triggered windows, the
+  callback table). A second worker over the same executor needs
+  concurrent access that `&mut Executor` does not give; they move behind
+  the scheduler when the runners spawn levels over one scheduler (P9),
+  which is also where the FFI opens a scheduler and its levels. Until
+  then the `Scheduler` is crate-private and driven by its own tests.
+- **A worker picks only its own band.** D3 said "at or above its floor".
+  A worker's stack is sized for its band's members (D3, decision 7), so
+  it must never run a more urgent band's callback; on one core the more
+  urgent band's own worker takes that work first anyway.
+- **Size:** the backing is unchanged (no carved table moved). The
+  `Executor` value grows by 8 B on the x86-64 host (5,024 -> 5,032), the
+  padding at the worker's boundary.
+
+Tests: `scheduler::tests` (`bands_partition_the_levels_most_urgent_first`,
+`one_band_picks_by_level_then_registration`,
+`an_arrival_wakes_only_its_bands_worker`, and on a deterministic one-core
+kernel mock `a_more_urgent_bands_arrival_preempts_a_running_callback`,
+`members_of_one_band_never_preempt_each_other`,
+`a_less_urgent_arrival_waits_and_the_band_keeps_its_order`);
+`the_park_and_the_stack_record_are_the_one_workers`; every RFC-0106 park
+test passes with the park on the worker.
 
 **Touches:** `executor/spin.rs`, `executor/storage.rs`, `executor/backing.rs`,
 `executor/sched_context.rs`, `executor/port_park.rs` (the park moves to the

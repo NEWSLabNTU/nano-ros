@@ -3345,6 +3345,23 @@ fn the_park_primitive_is_singular_and_replaceable() {
     assert!(executor.has_park_primitive());
 }
 
+/// phase-509 P6 (RFC-0108 D3) -- the park and the stack record are the
+/// executor's one worker's, and that worker runs every dispatch level: the
+/// one-level facade over the scheduler / worker split.
+#[test]
+fn the_park_and_the_stack_record_are_the_one_workers() {
+    unsafe extern "C" fn park_a(_c: *mut core::ffi::c_void, _d: u64) -> i8 {
+        0
+    }
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    assert_eq!(executor.worker.band, super::scheduler::Band::ALL);
+    executor.set_park_primitive(park_a, core::ptr::null_mut(), 250);
+    assert!(executor.worker.park_primitive.is_some());
+    assert_eq!(executor.worker.park_granularity_declared_us, 250);
+    executor.set_min_stack_headroom_bytes(512);
+    assert_eq!(executor.worker.min_stack_headroom_bytes, 512);
+}
+
 // ===========================================================================
 // phase-436 W1 (issue 1192) — the park is bounded by the next TIMER deadline.
 // ===========================================================================
@@ -11674,7 +11691,7 @@ fn the_headroom_query_runs_at_most_once_per_interval() {
         executor.spin_once(core::time::Duration::ZERO);
     }
     assert_eq!(
-        executor.stack_headroom_checks, 1,
+        executor.worker.stack_headroom_checks, 1,
         "fifty spins inside one interval must query the port once, not fifty times"
     );
     headroom_throttle_clock::set_us(
@@ -11682,7 +11699,7 @@ fn the_headroom_query_runs_at_most_once_per_interval() {
     );
     executor.spin_once(core::time::Duration::ZERO);
     assert_eq!(
-        executor.stack_headroom_checks, 2,
+        executor.worker.stack_headroom_checks, 2,
         "one full interval later it queries again"
     );
 }
