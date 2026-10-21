@@ -116,7 +116,9 @@ _ZPICO_PLATFORMS = (
 
 CRATES = {
     "nros-node": {
-        "base": "std,alloc",
+        # phase-359 W10: nros-node has no `std` feature; cargo refuses one it
+        # does not declare, which failed all 58 of this crate's rows.
+        "base": "alloc",
         "axes": ["", "rmw-cffi"],
         "expected": {
             ("signal-fd-wake", ""): "add \"rmw-cffi\" to this crate's features",
