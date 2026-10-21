@@ -369,3 +369,69 @@ fn a_slower_authored_spin_period_is_refused() {
         "{msg}"
     );
 }
+
+/// phase-509 P2 (RFC-0108 D2) - the island's shape again: one authored tier
+/// holding every component, so one thread. The entry seeds each node's
+/// contract rank, normalised (0 the most urgent), before the node is created,
+/// so the executor dispatches the 30 Hz pair before the 10 Hz pair inside the
+/// one tier instead of in registration order.
+#[test]
+fn a_one_tier_entry_seeds_each_nodes_rank() {
+    let fixture = Fixture::copy("rank-seeded");
+    let meta = fixture.configure(&["main"]);
+    let all: Vec<&str> = FAST.iter().chain(SLOW.iter()).copied().collect();
+    fixture.author("app", &all, "[tiers.app]\n");
+    let model = resolve_model_path(&fixture.bringup(), true);
+    let mut plan = plan_from_model(&model, Some(BOARD.to_string())).expect("plan");
+    let index = metadata::ComponentIndex::load(&meta).expect("metadata");
+    metadata::enrich_plan(&mut plan, &index).expect("enrich");
+    let derivation =
+        nros_cli_core::codegen::entry::resolve_plan_sched_recorded(&mut plan, BOARD, None)
+            .expect("resolve")
+            .expect("the unplaced tier is allocated, so the entry derived");
+    let direction = nros_orchestration_ir::priority_plan::PriorityPlan::for_target(BOARD).direction;
+    let ranks = derivation.node_ranks(direction);
+    let rank_of = |node: &str| {
+        ranks
+            .iter()
+            .find(|(f, _)| f.rsplit('/').next() == Some(node))
+            .map(|(_, r)| *r)
+            .unwrap_or_else(|| panic!("{node} ranked: {ranks:?}"))
+    };
+    for n in FAST {
+        assert_eq!(rank_of(n), 0, "{n}: {ranks:?}");
+    }
+    for n in SLOW {
+        assert_eq!(rank_of(n), 1, "{n}: {ranks:?}");
+    }
+
+    let (src, _) = emit::emit_typed_ranked_lowered(
+        Lang::Cpp,
+        &plan,
+        &[],
+        &[],
+        None,
+        &[],
+        &emit::ModeTier::default(),
+        &ranks,
+    )
+    .expect("the typed C++ entry emits");
+    let lines: Vec<&str> = src.lines().collect();
+    for n in FAST.iter().chain(SLOW.iter()) {
+        let r = rank_of(n);
+        let seed = "nros_cpp_bind_node_rank(";
+        let args = format!("\"{n}\", \"/\", {r}u)");
+        let at = lines
+            .iter()
+            .position(|l| l.contains(seed) && l.contains(&args))
+            .unwrap_or_else(|| panic!("{n} seeded with rank {r}; src:\n{src}"));
+        let created = lines
+            .iter()
+            .position(|l| l.contains("NodeHandle __h(") && l.contains(&format!("\"{n}\"")))
+            .unwrap_or_else(|| panic!("{n} is created; src:\n{src}"));
+        assert!(
+            at < created,
+            "{n}: the rank is seeded before the node exists"
+        );
+    }
+}

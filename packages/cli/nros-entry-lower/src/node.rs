@@ -131,6 +131,13 @@ pub struct LoweredNode {
     /// derivation ranked, so the two cannot disagree silently.
     #[serde(default)]
     pub declared_callback_groups: Option<String>,
+    /// phase-509 P2 (RFC-0108 D2) -- the node's contract rank, normalised so
+    /// 0 is the most urgent, when the entry derived one. A C-ABI pack seeds it
+    /// (`nros_cpp_bind_node_rank`) before the node is created, so the
+    /// executor dispatches the node's callbacks in rank order. `None` seeds
+    /// nothing: the node holds rank 0, which is today's order.
+    #[serde(default)]
+    pub rank: Option<u8>,
 }
 
 /// The facts a language pack renders an entry from — and, since phase-494 W2,

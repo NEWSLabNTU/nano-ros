@@ -102,7 +102,55 @@ impl Priority {
     pub const fn index(self) -> usize {
         self as usize
     }
+
+    /// phase-509 P2 (RFC-0108 D2) -- the dispatch level of a callback whose
+    /// sched context is in this bucket and whose node holds contract `rank`
+    /// (0 = most urgent). Smaller levels dispatch first; equal levels keep
+    /// registration order.
+    ///
+    /// The three buckets are three RESERVED ranks around the contract's: a
+    /// `Critical` callback is level 0 and a `BestEffort` one level
+    /// [`DISPATCH_LEVELS`]` - 1` whatever their rank, and a `Normal` one (the
+    /// default) is `1 + rank`, clamped to [`MAX_CONTRACT_RANK`]. So the C and
+    /// C++ `Priority` API orders exactly as before, and an image whose nodes
+    /// hold one rank dispatches in exactly today's order.
+    pub const fn dispatch_level(self, rank: u8) -> u8 {
+        match self {
+            Priority::Critical => 0,
+            Priority::Normal => {
+                1 + if rank > MAX_CONTRACT_RANK {
+                    MAX_CONTRACT_RANK
+                } else {
+                    rank
+                }
+            }
+            Priority::BestEffort => (DISPATCH_LEVELS - 1) as u8,
+        }
+    }
+
+    /// The dispatch levels this bucket spans, `lo..hi`.
+    pub const fn level_range(self) -> (u8, u8) {
+        (self.dispatch_level(0), self.dispatch_level(u8::MAX) + 1)
+    }
+
+    /// The bucket at `index` ([`Self::index`]'s inverse); `Normal` past the end.
+    pub const fn from_index(index: usize) -> Self {
+        match index {
+            0 => Priority::Critical,
+            2 => Priority::BestEffort,
+            _ => Priority::Normal,
+        }
+    }
 }
+
+/// phase-509 P2 -- the number of dispatch levels one executor orders by: one
+/// per bit of the ready set's 32-bit presence word.
+pub const DISPATCH_LEVELS: usize = 32;
+
+/// phase-509 P2 -- the largest contract rank a `Normal` callback keeps. Levels
+/// 0 and 31 are the reserved `Critical` and `BestEffort` ranks, so the
+/// contract's ranks are levels 1..=30; a rank past this one shares the last.
+pub const MAX_CONTRACT_RANK: u8 = (DISPATCH_LEVELS - 3) as u8;
 
 /// How an EDF deadline is interpreted relative to a callback firing.
 ///

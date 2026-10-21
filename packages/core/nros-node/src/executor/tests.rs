@@ -2304,6 +2304,124 @@ fn test_bucketed_priority_dispatch_order() {
     assert_eq!(*order, alloc::vec![2, 1]);
 }
 
+/// phase-509 P2 (RFC-0108 D2) -- one node per entry of `ranks`, registered in
+/// that order, each with one subscription carrying its index as data and,
+/// for `Some(r)`, seeded with rank `r` before the node is built. Every
+/// subscription is made ready, one `spin_once` runs, and the data in
+/// dispatch order comes back. `bucket` binds entry `i` to a sched context of
+/// that priority when given.
+fn ranked_dispatch_order(
+    ranks: &[Option<u8>],
+    bucket: &[(usize, crate::executor::sched_context::Priority)],
+) -> alloc::vec::Vec<i32> {
+    use crate::executor::sched_context::{SchedClass, SchedContext};
+    let session = MockSession::new();
+    let mut executor: Executor = executor_with_clock(session);
+    let firing_order = alloc::sync::Arc::new(std::sync::Mutex::new(alloc::vec::Vec::<i32>::new()));
+    let mut handles = alloc::vec::Vec::new();
+    for (i, rank) in ranks.iter().enumerate() {
+        let name = alloc::format!("ranked_{i}");
+        if let Some(r) = rank {
+            executor.bind_node_rank(&name, "/", *r).unwrap();
+        }
+        let nid = executor.node_builder(&name).build().unwrap();
+        let o = firing_order.clone();
+        let h = executor
+            .node_mut(nid)
+            .create_subscription::<TestMsg, _>(&alloc::format!("/t{i}"), move |msg: &TestMsg| {
+                o.lock().unwrap().push(msg.data);
+            })
+            .unwrap();
+        handles.push(h);
+    }
+    for (i, priority) in bucket {
+        let sc = executor
+            .create_sched_context(SchedContext {
+                class: SchedClass::Fifo,
+                priority: *priority,
+                ..Default::default()
+            })
+            .unwrap();
+        executor
+            .bind_handle_to_sched_context(handles[*i], sc)
+            .unwrap();
+    }
+    let arena_ptr = executor.arena.as_ptr() as *const u8;
+    for i in 0..ranks.len() {
+        let (d, n) = encode_test_msg(i as i32);
+        let off = executor.entries[i].as_ref().unwrap().offset;
+        unsafe { &*(arena_ptr.add(off) as *const MockSubscriber) }.load(d, n);
+    }
+    let result = executor.spin_once(core::time::Duration::from_millis(0));
+    assert_eq!(result.subscriptions_processed, ranks.len());
+    firing_order.lock().unwrap().clone()
+}
+
+/// phase-509 P2 -- three callbacks registered in REVERSE rank order, all
+/// ready in one pass, dispatch most urgent first. Before P2 they ran in
+/// registration order (`[0, 1, 2]`), whatever the contract ranked them.
+#[test]
+fn ranked_callbacks_dispatch_in_rank_order_not_registration_order() {
+    assert_eq!(
+        ranked_dispatch_order(&[Some(2), Some(1), Some(0)], &[]),
+        alloc::vec![2, 1, 0]
+    );
+}
+
+/// phase-509 P2 -- equal ranks keep registration order among themselves.
+#[test]
+fn equal_ranks_keep_registration_order() {
+    assert_eq!(
+        ranked_dispatch_order(&[Some(1), Some(1), Some(0), Some(1)], &[]),
+        alloc::vec![2, 0, 1, 3]
+    );
+}
+
+/// phase-509 P2 -- an image with one rank dispatches in exactly today's
+/// order: registration order, the same as an image that seeds no rank.
+#[test]
+fn one_rank_dispatches_in_registration_order() {
+    let unseeded = ranked_dispatch_order(&[None, None, None, None], &[]);
+    assert_eq!(unseeded, alloc::vec![0, 1, 2, 3]);
+    assert_eq!(
+        ranked_dispatch_order(&[Some(4), Some(4), Some(4), Some(4)], &[]),
+        unseeded
+    );
+}
+
+/// phase-509 P2 -- the C/C++ `Priority` buckets are three reserved ranks
+/// around the contract's: `Critical` beats rank 0 and `BestEffort` waits
+/// behind every rank, whatever their registration order.
+#[test]
+fn priority_buckets_are_reserved_ranks_around_the_contracts() {
+    use crate::executor::sched_context::Priority;
+    assert_eq!(
+        ranked_dispatch_order(
+            &[Some(0), Some(200), Some(5), Some(3)],
+            &[(0, Priority::BestEffort), (3, Priority::Critical)],
+        ),
+        alloc::vec![3, 2, 1, 0]
+    );
+}
+
+/// phase-509 P2 -- the dispatch levels: `Critical` 0, `Normal` 1 + rank
+/// (clamped), `BestEffort` the last; each bucket spans exactly its levels.
+#[test]
+fn dispatch_levels_reserve_the_ends_for_the_buckets() {
+    use crate::executor::sched_context::{DISPATCH_LEVELS, MAX_CONTRACT_RANK, Priority};
+    assert_eq!(Priority::Critical.dispatch_level(7), 0);
+    assert_eq!(Priority::Normal.dispatch_level(0), 1);
+    assert_eq!(Priority::Normal.dispatch_level(MAX_CONTRACT_RANK), 30);
+    assert_eq!(Priority::Normal.dispatch_level(u8::MAX), 30);
+    assert_eq!(
+        Priority::BestEffort.dispatch_level(0) as usize,
+        DISPATCH_LEVELS - 1
+    );
+    assert_eq!(Priority::Critical.level_range(), (0, 1));
+    assert_eq!(Priority::Normal.level_range(), (1, 31));
+    assert_eq!(Priority::BestEffort.level_range(), (31, 32));
+}
+
 /// Phase 110.B — default `Fifo` SC binding preserves registration
 /// order even when other entries are bound to `Edf` SCs.
 #[test]

@@ -91,5 +91,9 @@ toolchain_file = "cmake/toolchain/riscv64-threadx.cmake"
 # slot joined the backing, 4 slots x 4 B = 16 B = 2 words. `node-std-tests`
 # refused 11,069 on this target; its own `cargo check` accepts 11,071 and
 # refuses 11,070. Not re-measured with `nm` on a rebuilt image.
+#
+# 11,072 since phase-509 P2 (2026-10-21): the lifetime tag carries the slot's
+# dispatch rank, 4 -> 6 B per slot, 4 slots x 2 B = 8 B = 1 word
+# (`executor_backing_claims` measured 11,072 on the 64-bit host).
 [knobs.executor]
-backing_u64s = 11071
+backing_u64s = 11072

@@ -480,6 +480,7 @@ fn run_entry(args: EntryArgs) -> Result<()> {
             family.tier_rtos_key(),
             image_plan.as_ref(),
         )?;
+        let image_plan_direction;
         // RFC-0079 section 5 - the plan and the priorities this entry runs at,
         // recorded beside the TU (JSON + a C header) and printed, so the image
         // can be held to them and an application thread placed from them.
@@ -494,6 +495,7 @@ fn run_entry(args: EntryArgs) -> Result<()> {
                     &projection
                 }
             };
+            image_plan_direction = plan_ref.direction;
             let record = entry_codegen::priority_record::PriorityRecord {
                 tier_key: family.tier_rtos_key(),
                 plan: plan_ref,
@@ -573,7 +575,14 @@ fn run_entry(args: EntryArgs) -> Result<()> {
         // phase-462 W1 — the contract monitor rows go to every pack; a pack
         // that renders no install block (the C pack today, issue 1604)
         // ignores them.
-        entry_codegen::emit::emit_typed_monitored_lowered(
+        // phase-509 P2 (RFC-0108 D2) -- each ranked node's contract rank,
+        // normalised (0 the most urgent), so the executor dispatches in rank
+        // order inside a tier. Nothing derived, nothing seeded.
+        let node_ranks = derivation
+            .as_ref()
+            .map(|d| d.node_ranks(image_plan_direction))
+            .unwrap_or_default();
+        entry_codegen::emit::emit_typed_ranked_lowered(
             lang,
             &plan,
             &monitor_rows,
@@ -581,6 +590,7 @@ fn run_entry(args: EntryArgs) -> Result<()> {
             hazard_model.as_ref(),
             &mode_rows,
             &mode_tier,
+            &node_ranks,
         )
         .map_err(|e| eyre!("{e}"))?
     } else {
