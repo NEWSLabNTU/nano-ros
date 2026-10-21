@@ -2422,6 +2422,177 @@ fn dispatch_levels_reserve_the_ends_for_the_buckets() {
     assert_eq!(Priority::BestEffort.level_range(), (31, 32));
 }
 
+/// phase-509 P3 -- three ranked nodes, one subscription each: `a` (rank 1)
+/// and `c` (rank 2) are ready at the scan; `b` (rank 0) is not, and `a`'s
+/// callback makes it ready. Returns the dispatch order of one `spin_once` as
+/// node letters. `a_readies` lets `a` ready `a` again instead of `b`.
+fn repick_order(
+    reprobe: bool,
+    semantics: Option<ExecutorSemantics>,
+    a_readies_self: bool,
+) -> alloc::string::String {
+    use core::sync::atomic::{AtomicPtr, Ordering};
+    let session = MockSession::new();
+    let mut executor: Executor = executor_with_clock(session);
+    executor.set_reprobe_each_callback(reprobe);
+    if let Some(sem) = semantics {
+        executor.set_semantics(sem);
+    }
+    let order = alloc::sync::Arc::new(std::sync::Mutex::new(alloc::string::String::new()));
+    let target = alloc::sync::Arc::new(AtomicPtr::<MockSubscriber>::new(core::ptr::null_mut()));
+    for (name, rank) in [("a", 1u8), ("c", 2), ("b", 0)] {
+        executor.bind_node_rank(name, "/", rank).unwrap();
+        let nid = executor.node_builder(name).build().unwrap();
+        let o = order.clone();
+        let t = target.clone();
+        let is_a = name == "a";
+        executor
+            .node_mut(nid)
+            .create_subscription::<TestMsg, _>(&alloc::format!("/{name}"), move |_m: &TestMsg| {
+                o.lock().unwrap().push_str(name);
+                if is_a {
+                    let p = t.load(Ordering::SeqCst);
+                    if !p.is_null() {
+                        let (d, n) = encode_test_msg(7);
+                        unsafe { &*p }.load(d, n);
+                    }
+                }
+            })
+            .unwrap();
+    }
+    let arena_ptr = executor.arena.as_ptr() as *const u8;
+    let sub = |i: usize| -> *mut MockSubscriber {
+        let off = executor.entries[i].as_ref().unwrap().offset;
+        unsafe { arena_ptr.add(off) as *mut MockSubscriber }
+    };
+    // a (slot 0) and c (slot 1) ready now; a readies b (slot 2), or itself.
+    target.store(
+        if a_readies_self { sub(0) } else { sub(2) },
+        Ordering::SeqCst,
+    );
+    for i in [0usize, 1] {
+        let (d, n) = encode_test_msg(i as i32);
+        unsafe { &*sub(i) }.load(d, n);
+    }
+    executor.spin_once(core::time::Duration::from_millis(0));
+    order.lock().unwrap().clone()
+}
+
+/// phase-509 P3 (RFC-0108 D2) -- callback `a` makes the more urgent `b`
+/// ready; `b` runs before the less urgent `c` that was already pending in
+/// the same pass. Before P3 the pass dispatched the scan's snapshot: `a`,
+/// `c`, and `b` only on the next pass.
+#[test]
+fn a_callback_made_ready_mid_pass_runs_in_rank_order() {
+    assert_eq!(repick_order(true, None, false), "abc");
+}
+
+/// phase-509 P3 -- with the once-per-pass probe, a slot whose backend cannot
+/// attribute an arrival (this mock) joins only at the next scan.
+#[test]
+fn without_the_reprobe_an_unattributed_slot_waits_for_the_next_pass() {
+    assert_eq!(repick_order(false, None, false), "ac");
+}
+
+/// phase-509 P3 -- an entry runs at most once per pass, even when its own
+/// callback makes it ready again.
+#[test]
+fn an_entry_runs_once_per_pass_even_when_it_readies_itself() {
+    assert_eq!(repick_order(true, None, true), "ac");
+}
+
+/// phase-509 P3 -- the LET semantics dispatch the pass's pre-sampled
+/// snapshot; nothing joins it mid-pass.
+#[test]
+fn the_let_semantics_take_nothing_mid_pass() {
+    assert_eq!(
+        repick_order(true, Some(ExecutorSemantics::LogicalExecutionTime), false),
+        "ac"
+    );
+}
+
+/// phase-509 P3 -- the deferred re-probe question's measurement (RFC-0108
+/// Deferred). An executor whose subscriptions (as many as the default
+/// executor budget holds, up to 32) are all unattributed (an
+/// XRCE- or uORB-shaped image; the mock cannot attribute), 4 of them ready
+/// per pass, timed over many passes with the probe once per pass and after
+/// every callback. Prints both, per pass and per extra probe; asserts only
+/// that both dispatch the same work. Run in release:
+///
+/// ```text
+/// cargo test -p nros-node --lib --release --features alloc,log,sim-time,param-services \
+///     reprobe_cost_on_an_unattributed_executor -- --ignored --nocapture
+/// ```
+#[test]
+#[ignore = "a measurement, run by hand (phase-509 P3)"]
+fn reprobe_cost_on_an_unattributed_executor() {
+    const SUBS: usize = 32;
+    const READY: usize = 4;
+    static SLOTS: core::sync::atomic::AtomicUsize = core::sync::atomic::AtomicUsize::new(0);
+    const PASSES: u32 = 20_000;
+    let run = |reprobe: bool| -> (std::time::Duration, usize) {
+        let session = MockSession::new();
+        let mut executor: Executor = executor_with_clock(session);
+        executor.set_reprobe_each_callback(reprobe);
+        let nid = executor.node_builder("bench").build().unwrap();
+        // As many as the default executor budget holds, up to SUBS.
+        let mut subs = 0usize;
+        while subs < SUBS
+            && executor
+                .node_mut(nid)
+                .create_subscription::<TestMsg, _>(
+                    &alloc::format!("/b{subs}"),
+                    move |_m: &TestMsg| {},
+                )
+                .is_ok()
+        {
+            subs += 1;
+        }
+        assert!(subs > READY, "room for {subs} subscriptions only");
+        SLOTS.store(subs, core::sync::atomic::Ordering::SeqCst);
+        let arena_ptr = executor.arena.as_ptr() as *const u8;
+        let offs: alloc::vec::Vec<usize> = (0..subs)
+            .map(|i| executor.entries[i].as_ref().unwrap().offset)
+            .collect();
+        let mut taken = 0usize;
+        let mut total = std::time::Duration::ZERO;
+        for pass in 0..PASSES {
+            for k in 0..READY {
+                let i = (pass as usize * 3 + k * 2) % subs;
+                let (d, n) = encode_test_msg(k as i32);
+                unsafe { &*(arena_ptr.add(offs[i]) as *const MockSubscriber) }.load(d, n);
+            }
+            let t0 = std::time::Instant::now();
+            let r = executor.spin_once(core::time::Duration::from_millis(0));
+            total += t0.elapsed();
+            taken += r.subscriptions_processed;
+        }
+        (total, taken)
+    };
+    // Warm, then measure each twice and keep the faster.
+    let _ = run(false);
+    let once = run(false).0.min(run(false).0);
+    let each = run(true).0.min(run(true).0);
+    let (_, taken_once) = run(false);
+    let (_, taken_each) = run(true);
+    assert_eq!(taken_once, taken_each, "both dispatch the same work");
+    let per_pass = |d: std::time::Duration| d.as_nanos() as f64 / PASSES as f64;
+    // Each callback re-probes the slots not yet settled: at most SUBS - READY.
+    let subs = SLOTS.load(core::sync::atomic::Ordering::SeqCst);
+    let extra_probes = (READY * (subs - READY)) as f64;
+    // nros-allow-std-stdio: a host-only measurement, #[ignore]d, run by hand
+    std::eprintln!(
+        "phase-509 P3 reprobe: {subs} unattributed subscriptions, {READY} ready per pass, \
+         {PASSES} passes: once per pass {:.0} ns/pass, after every callback {:.0} ns/pass, \
+         +{:.0} ns/pass (+{:.1} ns per callback, <= {:.2} ns per extra probe)",
+        per_pass(once),
+        per_pass(each),
+        per_pass(each) - per_pass(once),
+        (per_pass(each) - per_pass(once)) / READY as f64,
+        (per_pass(each) - per_pass(once)) / extra_probes,
+    );
+}
+
 /// Phase 110.B — default `Fifo` SC binding preserves registration
 /// order even when other entries are bound to `Edf` SCs.
 #[test]

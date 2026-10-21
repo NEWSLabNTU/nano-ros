@@ -234,12 +234,21 @@ the contract (rlm `ros-launch-manifest`), never written in `system.toml`.
 - **Ties** (equal rank) stay FIFO in registration order, which keeps today's
   behaviour bit for bit for an image with one rank.
 - **No stale snapshot.** After every callback the worker picks again, from the
-  ready set as it is now. Readiness that is pushed (RFC-0084 attributed slots,
-  timers) is merged into the ready set as it arrives; a slot that must still
-  be probed is probed at the top of the pass as today. So an urgent callback
-  made ready by a less urgent one runs before the rest of the pass. Whether
-  an unattributed slot is re-probed after every callback or once per pass is
-  deferred to P3, which measures the cost.
+  ready set as it is now. Readiness that is pushed (RFC-0084 attributed slots)
+  is merged into the ready set after each callback; a slot that must still be
+  probed is probed at the top of the pass as today. So an urgent callback made
+  ready by a less urgent one runs before the rest of the pass. Each entry runs
+  at most once per pass, so a callback that readies itself cannot hold the
+  pass. Timers are in every pass already (they are always ready, and their
+  clock advances by the pass's elapsed time), so a timer becomes due at a pass
+  boundary, not mid-pass. **Decided in P3:** an unattributed slot is probed
+  once per pass by default; probing it after every callback is an opt-in
+  (`Executor::set_reprobe_each_callback`). Measured on the host (release,
+  x86-64): 32 unattributed subscriptions, 4 ready per pass, empty callbacks,
+  380-385 ns per pass once per pass against 565-577 ns after every callback,
+  +46-48 ns per callback (1.65-1.71 ns per extra probe of a mock with no
+  FFI) [M]. The cost is one probe per unsettled slot per callback, and a
+  real XRCE or uORB probe crosses the rmw C ABI on a slower MCU.
 - **Non-preemptive within a level** (run to completion), as today.
 
 This is step 1 of the plan, and it is useful with one thread: it makes the
@@ -779,7 +788,6 @@ The first draft's open questions, as decided:
 
 | question | decided when |
 | --- | --- |
-| The cost of re-probing unattributed slots (XRCE, uORB) after every callback, against probing them once per pass (D2) | In P3: the PR measures it and picks one, stating the number. |
 | EDF across levels: Zephyr's deadline mode to order levels by deadline, or EDF per level only (D6) | When an image first needs EDF with more than one level; not before P9. Until then EDF orders within a level. |
 | Who splits an end-to-end deadline across heterogeneous images: rlm, or each image's derivation from a stated segment budget (D5) | In the load-partitioning phase, which also assigns callbacks to cores. |
 | Where the response-time analysis lives: `nros-orchestration-ir` (the derivation runs there) or rlm (the ranker runs there) | In P5, the first step that needs the analysis (D4 rule 2). |
@@ -794,3 +802,5 @@ The first draft's open questions, as decided:
   phase-509.
 - 2026-10-21: P2 built; D2 amended: the rank is seeded per node, not per
   callback group (the derivation ranks nodes).
+- 2026-10-21: P3 built; the deferred re-probe question settled (once per pass
+  by default, D2, with the measurement); timers join at pass boundaries.
