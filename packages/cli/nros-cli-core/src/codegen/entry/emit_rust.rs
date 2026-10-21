@@ -69,6 +69,9 @@ struct RustNodeView {
     remaps: String,
     qos_overrides: String,
     identity: String,
+    /// phase-509 P5 -- the rank seed statement, empty when the node has no
+    /// rank or no launch identity (the proc-macro's rule).
+    rank_seed: String,
 }
 
 /// Emit a Rust `main.rs` body for the given plan.
@@ -207,12 +210,22 @@ fn node_view(n: &LoweredNode) -> RustNodeView {
         None => "::core::option::Option::None".to_string(),
     };
 
+    let rank_seed = match (n.rank, n.identity_pair()) {
+        (Some(rank), Some((name, namespace))) => format!(
+            "::nros::__macro::seed_node_rank(runtime, {}, {}, {rank}u8)?;",
+            lit_str(name),
+            lit_str(namespace)
+        ),
+        _ => String::new(),
+    };
+
     RustNodeView {
         pkg: n.ident(),
         params: pairs(&n.params),
         remaps: pairs(&n.remaps),
         qos_overrides,
         identity,
+        rank_seed,
     }
 }
 

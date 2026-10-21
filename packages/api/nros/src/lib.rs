@@ -402,6 +402,9 @@ pub mod __macro {
     };
     #[cfg(feature = "rmw-cffi")]
     pub use crate::node_runtime::{install_node_typed_in, install_node_typed_with_launch_in};
+    // phase-509 P5 -- a ranked node's rank, seeded before its `register`.
+    #[cfg(feature = "rmw-cffi")]
+    pub use crate::node_runtime::seed_node_rank;
 }
 
 // phase-483 W3 — the `install_node_typed*` STUBS for builds without

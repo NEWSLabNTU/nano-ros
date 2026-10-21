@@ -833,6 +833,7 @@ fn derive_entry_tiers(
             callback_groups,
         )
         .map_err(|e| eyre::eyre!("codegen entry: {e}"))?,
+        levels: derived.levels.clone(),
     };
     // MERGE, never assign: a `derived-<node>` name is one no author writes, and
     // a placement lands on the authored tier that asked for one, so neither can
@@ -872,6 +873,9 @@ pub struct EntryDerivation {
     /// phase-462 W4c -- each contract mode's deadline for the derived tiers a
     /// mode moves (empty without modes).
     pub mode_deadlines: nros_orchestration_ir::mode_variants::ModeTierDeadlines,
+    /// phase-509 P5 (RFC-0108 D4) -- the preemption levels the derivation
+    /// banded, for the record's `levels`.
+    pub levels: Option<nros_orchestration_ir::levels::LevelPlan>,
 }
 
 impl EntryDerivation {
@@ -887,22 +891,10 @@ impl EntryDerivation {
         &self,
         direction: nros_orchestration_ir::priority_plan::Direction,
     ) -> Vec<(String, u8)> {
-        let mut distinct: Vec<i64> = self.realized.iter().map(|n| n.priority).collect();
-        distinct.sort_unstable();
-        distinct.dedup();
-        if direction == nros_orchestration_ir::priority_plan::Direction::BiggerIsUrgent {
-            distinct.reverse();
-        }
-        self.realized
-            .iter()
-            .map(|n| {
-                let rank = distinct
-                    .iter()
-                    .position(|p| *p == n.priority)
-                    .expect("every realized priority is in the distinct list");
-                (n.name.clone(), u8::try_from(rank).unwrap_or(u8::MAX))
-            })
-            .collect()
+        nros_orchestration_ir::levels::node_ranks(
+            &self.realized,
+            direction == nros_orchestration_ir::priority_plan::Direction::SmallerIsUrgent,
+        )
     }
 }
 

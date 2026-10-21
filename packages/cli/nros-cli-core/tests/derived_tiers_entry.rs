@@ -117,11 +117,12 @@ fn the_entry_derives_its_tiers_and_emits_run_tiers() {
         !src.contains("run_components("),
         "a derived multi-tier entry must not fall back to run_components; src:\n{src}"
     );
-    // One tier per node (W3 is the wave that names them by rank), each with
-    // its allocated priority in the baked table.
+    // phase-509 P5 (RFC-0108 D4 rule 1): one level per distinct rank, so the
+    // four nodes at two ranks run as two derived tiers, each with its
+    // allocated priority in the baked table.
     assert!(
-        src.contains("__nros_tiers[4]"),
-        "four derived tiers in the baked table; src:\n{src}"
+        src.contains("__nros_tiers[2]"),
+        "two derived levels in the baked table; src:\n{src}"
     );
     for node in FAST.iter().chain(SLOW.iter()) {
         assert!(
@@ -142,8 +143,8 @@ fn the_entry_derives_its_tiers_and_emits_run_tiers() {
         );
         assert_eq!(
             tier.members.len(),
-            1,
-            "a derived tier holds one node's group: {:?}",
+            2,
+            "a derived level holds both nodes of its rank: {:?}",
             tier.members
         );
     }

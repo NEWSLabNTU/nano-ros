@@ -12,7 +12,7 @@ superseded-by: null
 
 # RFC-0108 -- One ordered ready set per core, N preemption levels
 
-**Status:** Draft (2026-10-21). P1-P4 are built; the rest is a proposal.
+**Status:** Draft (2026-10-21). P1-P5 are built; the rest is a proposal.
 The open questions of the first draft are decided (see Decisions); the work is
 tracked by [phase-509](../roadmap/phase-509-executor-preemption-levels.md).
 
@@ -416,6 +416,43 @@ so it is reproducible and reviewable at codegen time.
    memory, and slicing would preempt a callback mid-run. Real-time levels run
    with time slicing off (D6).
 
+**As built in P5** (`nros-orchestration-ir::levels`). Points the rules above
+left open:
+
+- **Where the analysis lives (decided):** `nros-orchestration-ir`, beside
+  the derivation that consumes it. It needs the board's plan, the authored
+  pins, the task records and the cap, none of which rlm's platform-free
+  ranker holds.
+- **Until P9 a derived level runs as one derived tier** at the band's most
+  urgent priority: `derived-<node>` for a level of one node (unchanged from
+  rule 4), `derived-level-<k>` for several, with their tightest period and
+  deadline. A per-node sporadic budget is dropped on a shared level, with a
+  `budget` degradation.
+- **Rule 2** engages only when no tier is authored and every derived
+  callback is analysable with C. A callback's response time depends only on
+  its own band, so the program is O(r^2) band analyses. The response time
+  examines every job of the level-i busy period; a served callback is
+  (Q, P); before it starts, equal ranks interfere (FIFO). If the fewest
+  feasible bands exceed the cap, rule 3 runs on top; if no banding keeps
+  every deadline, the levels stay one per rank with a `feasibility` line per
+  miss. The bake roads select no RFC-0078 profile yet, so on them C is
+  absent and rules 1 and 3 decide; `derive_tiers_with_wcet` takes one.
+- **Rule 3's protected band** holds a node with a deadline (the realizer's
+  `deadline_us`) or a supervised route.
+- **Rule 4:** `CONFIG_NROS_EXECUTOR_MAX_LEVELS` (default 8) is read from the
+  image's `.config`; without one, the D6 default. No `system.toml` knob yet.
+- **Rule 6:** pins count toward the cap; a free band never spans a pin's
+  priority, so the pins can force more levels than the cap, which one
+  `level-budget` line reports.
+- **Rule 8** applies on FreeRTOS only. A derived band at an authored tier's
+  priority joins it (its groups bind to that tier); two authored tiers at
+  one priority are one level in the record, two threads until P9.
+- **D1's placement** of an unanalysable callback at the least urgent level
+  of its band is recorded per level (`best_effort`, at the band's least
+  urgent rank); the runtime ranks per node until P6.
+- The priority record carries `levels`; the Rust `nros::main!` road seeds
+  ranks (`nros::__macro::seed_node_rank`), which P2 had left at 0.
+
 ### D5 -- Multiple and heterogeneous processors
 
 **Rule: a ready set never spans more than one core's scheduling domain.**
@@ -809,13 +846,16 @@ The first draft's open questions, as decided:
 7. **Worker stacks are derived per level** from the members, never the
    platform's default thread stack (D3).
 
+8. **The response-time analysis lives in `nros-orchestration-ir`**
+   (decided in P5, which first needed it): the derivation that consumes it
+   runs there and holds the plan, the pins, the task records and the cap.
+
 ### Deferred
 
 | question | decided when |
 | --- | --- |
 | EDF across levels: Zephyr's deadline mode to order levels by deadline, or EDF per level only (D6) | When an image first needs EDF with more than one level; not before P9. Until then EDF orders within a level. |
 | Who splits an end-to-end deadline across heterogeneous images: rlm, or each image's derivation from a stated segment budget (D5) | In the load-partitioning phase, which also assigns callbacks to cores. |
-| Where the response-time analysis lives: `nros-orchestration-ir` (the derivation runs there) or rlm (the ranker runs there) | In P5, the first step that needs the analysis (D4 rule 2). |
 
 ## Changelog
 
@@ -833,3 +873,5 @@ The first draft's open questions, as decided:
   deadlines, and where the refusal and the report live (rlm v0.1.68).
 - 2026-10-21: P3 built; the deferred re-probe question settled (once per pass
   by default, D2, with the measurement); timers join at pass boundaries.
+- 2026-10-21: P5 built; D4 amended with the level derivation as built; the
+  deferred analysis-location question decided (`nros-orchestration-ir`).
