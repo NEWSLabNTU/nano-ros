@@ -496,12 +496,18 @@ fn run_entry(args: EntryArgs) -> Result<()> {
                 }
             };
             image_plan_direction = plan_ref.direction;
+            let node_names: Vec<&str> = plan
+                .nodes
+                .iter()
+                .map(|n| n.name.as_deref().unwrap_or(n.exec.as_str()))
+                .collect();
             let record = entry_codegen::priority_record::PriorityRecord {
                 tier_key: family.tier_rtos_key(),
                 plan: plan_ref,
                 from_image: image_plan.is_some(),
                 tiers: plan.resolved_tiers.as_ref(),
                 derivation: derivation.as_ref(),
+                nodes: &node_names,
             };
             for line in record.summary_lines() {
                 eprintln!("codegen entry: {line}");

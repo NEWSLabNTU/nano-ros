@@ -3932,6 +3932,26 @@ impl<'s> Executor<'s> {
         }
     }
 
+    /// phase-509 P7 (RFC-0108 D8.1) -- the level this executor runs, 0 the
+    /// most urgent. An executor's runner sets it ([`Self::set_level`]); one it
+    /// never set is level 0, which is every executor of a one-level image.
+    /// It matches the generated `NROS_ENTRY_LEVEL_OF_<node>` of the nodes the
+    /// executor hosts.
+    pub fn level(&self) -> u8 {
+        self.worker.level
+    }
+
+    /// phase-509 P7 -- set the level this executor runs; its spins check in
+    /// as that level. `false`, and nothing changed, at or past
+    /// [`MAX_LEVELS`](super::MAX_LEVELS).
+    pub fn set_level(&mut self, level: u8) -> bool {
+        if level as usize >= super::level_liveness::MAX_LEVELS {
+            return false;
+        }
+        self.worker.level = level;
+        true
+    }
+
     /// Whether a platform park primitive is installed.
     pub fn has_park_primitive(&self) -> bool {
         self.worker.park_primitive.is_some()
@@ -10902,6 +10922,11 @@ impl<'s> Executor<'s> {
         // finished (an OS-priority worker's) are completed here, before this
         // pass looks at the entries.
         self.reap_deferred_releases();
+        // phase-509 P7 (RFC-0108 D8.2) -- this level is alive: it reached a
+        // spin. A level stuck in a callback stops checking in, which is what
+        // the image's watchdog feed (`take_every_level_alive`) waits on.
+        let now = self.now_us();
+        super::level_liveness::LEVELS.check_in(self.worker.level, now);
         // phase-436 W2 (issue 1193) — the budget is carried in MICROSECONDS.
         // This was `as_millis()`, which truncates: `from_micros(500)` became
         // `0`, and a zero timeout selects the non-blocking path — so a

@@ -39,11 +39,11 @@ nros-board-zephyr                   19   0     0       8      0
 nros-bridge                         34   1     0       8      0
 nros-build                           1   0     0       0      0
 nros-build-helpers                   2   0     0       2      0
-nros-c                             450  81     5     454      0
+nros-c                             450  81     5     457      0
 nros-cli-core                       22   0     0       0      0
 nros-condvar-contract               10   0     1       2      0
 nros-core                            2   0     2       2      0
-nros-cpp                           928  34     0     364      0
+nros-cpp                           936  34     0     368      0
 nros-log                            23   0     7       1      0
 nros-macros                         16   0     1       2      0
 nros-node                          605  176    29     133      0

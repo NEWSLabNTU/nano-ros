@@ -117,6 +117,13 @@ pub mod sched_context;
 // Issue 1971 -- the image's launch remap table, one `const` table in flash
 // that every executor reads (RFC-0107 step 1). No RMW: it is plain data.
 pub mod launch_remap;
+// phase-509 P7 (RFC-0108 D8) -- each executor's level and the image's per-level
+// liveness. Plain atomics, no RMW: every build carries it.
+pub mod level_liveness;
+pub use level_liveness::{
+    MAX_LEVELS, every_level_alive, level_count, level_last_spin_us, level_spins, set_level_count,
+    take_every_level_alive, tier_level, tier_level_by,
+};
 // phase-509 P6 (RFC-0108 D3/D7) -- the per-core scheduler and the per-level
 // worker the executor's dispatcher splits into.
 #[cfg(any(has_rmw, test))]

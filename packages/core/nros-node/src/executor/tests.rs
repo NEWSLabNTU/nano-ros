@@ -3345,6 +3345,26 @@ fn the_park_primitive_is_singular_and_replaceable() {
     assert!(executor.has_park_primitive());
 }
 
+/// phase-509 P7 (RFC-0108 D8) -- an executor is level 0 until its runner
+/// says otherwise, and every spin checks its level in with the time. Level 7
+/// is used by no other test in this process, so its count is this test's.
+#[test]
+fn an_executor_reports_its_level_and_checks_it_in_on_every_spin() {
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    assert_eq!(executor.level(), 0);
+    assert!(!executor.set_level(super::MAX_LEVELS as u8));
+    assert!(executor.set_level(7));
+    assert_eq!(executor.level(), 7);
+    let before = super::level_spins(7);
+    executor.spin_once(core::time::Duration::ZERO);
+    executor.spin_once(core::time::Duration::ZERO);
+    assert_eq!(super::level_spins(7), before + 2);
+    assert!(
+        super::level_last_spin_us(7).is_some(),
+        "a clocked spin records its time"
+    );
+}
+
 /// phase-509 P6 (RFC-0108 D3) -- the park and the stack record are the
 /// executor's one worker's, and that worker runs every dispatch level: the
 /// one-level facade over the scheduler / worker split.

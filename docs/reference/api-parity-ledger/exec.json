@@ -1573,5 +1573,21 @@
       "text": "with `add_node` CHECKING the attachment that construction already made"
     },
     "why": "phase-488 (2026-10-21). ADOPT-BOUNDED. A facade over the PROCESS executor, which is where every `rclcpp::Node` already lives (one session per image, issue 0465; a node's entities are created in that executor's arena when it is constructed, RFC-0002), so `SingleThreadedExecutor executor; executor.add_node(node); executor.spin();` keeps its meaning. THE BOUND: there is no second executor to build, so two instances are the same executor; `add_node` checks rather than attaches and aborts naming the node when it failed to create or lives on an explicit `rclcpp::Executor` (`NROS_RCLCPP_REFUSE_FOREIGN_EXECUTOR_NODE`) -- spinning this would never reach it; there is no `remove_node`, because arena registration is one-way (`cpp:Executor::add_node`). `spin()` is `rclcpp::spin_in()`, `spin_some(max_ms)` is the process executor's `nros_cpp_spin_some` (milliseconds, see `cpp:Executor::spin_some`)."
+  },
+  "c:executor_get_level": {
+    "verdict": "extension",
+    "why": "phase-509 P7 (RFC-0108 D8) -- the level an executor runs, 0 the most urgent: what a supervisor that owns a supervised route per level asks of the handle it spins (D8.1). rclc has one executor per thread and no preemption levels."
+  },
+  "c:executor_set_level": {
+    "verdict": "extension",
+    "why": "phase-509 P7 (RFC-0108 D8) -- a runner places each level's executor at its level before it spins, so the query and the liveness check-in name it. rclc has no levels."
+  },
+  "rust:Executor::level": {
+    "verdict": "extension",
+    "why": "phase-509 P7 (RFC-0108 D8) -- the level an executor runs, 0 the most urgent (D8.1); matches the generated `NROS_ENTRY_LEVEL_OF_<node>`. rclrs has no preemption levels."
+  },
+  "rust:Executor::set_level": {
+    "verdict": "extension",
+    "why": "phase-509 P7 (RFC-0108 D8) -- a board's tier runner places each tier's executor at its level (until P9 a level is a tier). rclrs has no levels."
   }
 }

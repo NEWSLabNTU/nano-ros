@@ -117,6 +117,10 @@ impl Band {
 /// park and a stack sub-struct, so their small members share padding as they
 /// did inline in the executor.
 pub(crate) struct Worker {
+    /// The level's index in the image, 0 the most urgent (phase-509 P7):
+    /// what [`Executor::level`](super::Executor::level) answers and the
+    /// level its spins check in as.
+    pub(crate) level: u8,
     /// The dispatch levels this worker runs.
     pub(crate) band: Band,
     // ---- the park (RFC-0106) ----
@@ -164,6 +168,7 @@ impl Worker {
     /// or recorded yet.
     pub(crate) const fn one_level() -> Self {
         Self {
+            level: 0,
             band: Band::ALL,
             last_park_bound_us: 0,
             last_park_source: WakeSourceId::CallerBudget,

@@ -6729,6 +6729,154 @@ pub unsafe extern "C" fn nros_cpp_executor_set_reaction_hook(
     NROS_CPP_RET_OK
 }
 
+/// phase-509 P7 (RFC-0108 D8.1) — the level this executor runs, 0 the most
+/// urgent, written to `*out_level`. It equals the generated
+/// `NROS_ENTRY_LEVEL_OF_<node>` (`nros_priority_plan.h`) of every node the
+/// executor hosts. An executor its runner never placed is level 0, which is
+/// every executor of a one-level image. A supervisor's spin hook (one that
+/// wraps `nros_cpp_spin_once`) reads the level of the handle it was given.
+///
+/// # Safety
+/// `handle` must be a live executor handle from this ABI, or NULL;
+/// `out_level` must be writable.
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_executor_level(
+    handle: *mut c_void,
+    out_level: *mut u8,
+) -> nros_cpp_ret_t {
+    let Some(cpp) = (unsafe { cpp_ctx_checked(handle) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    if out_level.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    unsafe { *out_level = cpp.executor.level() };
+    NROS_CPP_RET_OK
+}
+
+/// phase-509 P7 — place this executor at `level` (0 the most urgent), so
+/// [`nros_cpp_executor_level`] answers it and its spins check in as it. A
+/// runner calls it once per level before the level spins, with the index
+/// [`nros_cpp_tier_level`] gives its tier. `INVALID_ARGUMENT` at or past
+/// `NROS_CPP_MAX_LEVELS`.
+///
+/// # Safety
+/// `handle` must be a live executor handle from this ABI, or NULL.
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_executor_set_level(
+    handle: *mut c_void,
+    level: u8,
+) -> nros_cpp_ret_t {
+    let Some(cpp) = (unsafe { cpp_ctx_checked(handle) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    if cpp.executor.set_level(level) {
+        NROS_CPP_RET_OK
+    } else {
+        NROS_CPP_RET_INVALID_ARGUMENT
+    }
+}
+
+/// phase-509 P7 — the most levels an image can have (the check-in word's
+/// width).
+pub const NROS_CPP_MAX_LEVELS: u8 = nros_node::executor::MAX_LEVELS as u8;
+
+/// phase-509 P7 — the level of tier `index` of a runner's `n` tiers: its
+/// urgency order among their kernel priorities, 0 the most urgent, equal
+/// priorities in array order. The rule `nros codegen entry` uses for
+/// `NROS_ENTRY_LEVEL_OF_<node>`, so the two agree. The priorities are read
+/// from the runner's own tier array: `first_priority` points at tier 0's
+/// `int64_t` priority and `stride` is the array's element size, so a runner
+/// passes `&tiers[0].priority, sizeof(tiers[0])`. `smaller_is_urgent` is the
+/// kernel's direction (Zephyr, ThreadX: true). `-1` on NULL, a zero stride,
+/// or an index out of range.
+///
+/// # Safety
+/// `first_priority` must point at the `priority` field of the first of `n`
+/// array elements `stride` bytes apart, or be NULL.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_tier_level(
+    first_priority: *const i64,
+    stride: usize,
+    n: usize,
+    index: usize,
+    smaller_is_urgent: bool,
+) -> i32 {
+    if first_priority.is_null() || stride == 0 || index >= n {
+        return -1;
+    }
+    // SAFETY: the caller hands `n` elements `stride` bytes apart; each read is
+    // unaligned-safe, since a C array's stride may not keep `i64` alignment
+    // on every ABI.
+    let at = |i: usize| unsafe {
+        first_priority
+            .cast::<u8>()
+            .add(i * stride)
+            .cast::<i64>()
+            .read_unaligned()
+    };
+    nros_node::executor::tier_level_by(n, index, smaller_is_urgent, at).map_or(-1, i32::from)
+}
+
+/// phase-509 P7 (RFC-0108 D8.2) — state how many levels the image runs. A
+/// runner calls it once, before its levels spin; an image that never does
+/// has one. `INVALID_ARGUMENT` for 0 or more than `NROS_CPP_MAX_LEVELS`.
+#[unsafe(no_mangle)]
+pub extern "C" fn nros_cpp_set_level_count(n: u8) -> nros_cpp_ret_t {
+    if nros_node::executor::set_level_count(n) {
+        NROS_CPP_RET_OK
+    } else {
+        NROS_CPP_RET_INVALID_ARGUMENT
+    }
+}
+
+/// phase-509 P7 — how many levels the image runs.
+#[unsafe(no_mangle)]
+pub extern "C" fn nros_cpp_level_count() -> u8 {
+    nros_node::executor::level_count()
+}
+
+/// phase-509 P7 — the low 32 bits of the executor clock, in microseconds, at
+/// `level`'s latest spin, written to `*out_us`; `NOT_FOUND` while it has not
+/// spun. Compare two with a wrapping difference.
+///
+/// # Safety
+/// `out_us` must be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_level_last_spin_us(
+    level: u8,
+    out_us: *mut u32,
+) -> nros_cpp_ret_t {
+    if out_us.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    match nros_node::executor::level_last_spin_us(level) {
+        Some(us) => {
+            unsafe { *out_us = us };
+            NROS_CPP_RET_OK
+        }
+        None => NROS_CPP_RET_NOT_FOUND,
+    }
+}
+
+/// phase-509 P7 (RFC-0108 D8.2) — whether every level of the image has
+/// spun since the last [`nros_cpp_levels_take_alive`] that returned true.
+#[unsafe(no_mangle)]
+pub extern "C" fn nros_cpp_levels_alive() -> bool {
+    nros_node::executor::every_level_alive()
+}
+
+/// phase-509 P7 (RFC-0108 D8.2) — the watchdog feed: true when every level
+/// has spun since the last true, and the check-ins are then cleared; false,
+/// and nothing cleared, while any level has not. A level stuck in a callback
+/// stops checking in, so the feed stops even while another level spins.
+#[unsafe(no_mangle)]
+pub extern "C" fn nros_cpp_levels_take_alive() -> bool {
+    nros_node::executor::take_every_level_alive()
+}
+
 /// phase-503 — microseconds from now to the earliest deadline of a pending
 /// supervised route (0 when one is due), written to `*out_us`;
 /// `UINT64_MAX` when no supervised route is waiting. A port supervising with
@@ -9146,5 +9294,73 @@ mod mode_alias_tests {
             unsafe { carve_mode_tables(&BASE, &AGES, &t) }.err(),
             Some(NROS_CPP_RET_INVALID_ARGUMENT)
         );
+    }
+}
+
+/// phase-509 P7 (RFC-0108 D8) -- the level and liveness FFI.
+#[cfg(test)]
+mod level_tests {
+    use super::*;
+
+    /// A runner's tier array, as C lays it out: the priority sits inside a
+    /// larger element.
+    #[repr(C)]
+    struct Spec {
+        name: *const u8,
+        priority: i64,
+        stack_bytes: usize,
+    }
+
+    fn spec(priority: i64) -> Spec {
+        Spec {
+            name: core::ptr::null(),
+            priority,
+            stack_bytes: 0,
+        }
+    }
+
+    /// The level query matches the derivation: each tier's level is its
+    /// urgency order (`nros codegen entry`'s `NROS_ENTRY_LEVEL_OF_<node>`
+    /// rule), read through the runner's own array.
+    #[test]
+    fn a_tiers_level_is_read_from_the_runners_array() {
+        let tiers = [spec(6), spec(5), spec(8)];
+        let level = |i| unsafe {
+            nros_cpp_tier_level(
+                &tiers[0].priority,
+                core::mem::size_of::<Spec>(),
+                tiers.len(),
+                i,
+                true,
+            )
+        };
+        assert_eq!([level(0), level(1), level(2)], [1, 0, 2]);
+        assert_eq!(level(3), -1, "out of range");
+        assert_eq!(
+            unsafe { nros_cpp_tier_level(core::ptr::null(), 8, 1, 0, true) },
+            -1
+        );
+    }
+
+    /// The alive aggregate is false while one level has not checked in. Two
+    /// levels; only level 1 is checked in here (an executor at level 0 in a
+    /// sibling test may check in level 0 at any time, which cannot make the
+    /// aggregate true without level 1).
+    #[test]
+    fn the_alive_aggregate_waits_for_every_level() {
+        assert_eq!(nros_cpp_set_level_count(0), NROS_CPP_RET_INVALID_ARGUMENT);
+        assert_eq!(nros_cpp_set_level_count(2), NROS_CPP_RET_OK);
+        assert_eq!(nros_cpp_level_count(), 2);
+        // Drain whatever a sibling left, then make sure level 1 is missing.
+        let _ = nros_cpp_levels_take_alive();
+        assert!(!nros_cpp_levels_alive() || nros_node::executor::level_spins(1) > 0);
+        let mut us = 0u32;
+        if nros_node::executor::level_spins(1) == 0 {
+            assert_eq!(
+                unsafe { nros_cpp_level_last_spin_us(1, &mut us) },
+                NROS_CPP_RET_NOT_FOUND
+            );
+            assert!(!nros_cpp_levels_take_alive(), "level 1 has not checked in");
+        }
     }
 }
