@@ -1,0 +1,22 @@
+{
+  "_why": "phase-509 P5: a ranked node is seeded with its rank before its register call, and a node with a rank but no launch identity seeds nothing (the name it creates itself with is not known to either producer). Both producers emit the same seed statement, `seed_node_rank(runtime, name, ns, <rank>u8)`.",
+  "bringup": "demo_bringup",
+  "launch": "/tmp/system.launch.xml",
+  "board": "mps2-an385-freertos",
+  "nodes": [
+    {
+      "pkg": "handler_pkg",
+      "identity": { "name": "mrm_handler", "namespace": "/" },
+      "rank": 0
+    },
+    {
+      "pkg": "operator_pkg",
+      "identity": { "name": "mrm_comfortable_stop_operator", "namespace": "/system" },
+      "rank": 2
+    },
+    {
+      "pkg": "self_named_pkg",
+      "rank": 1
+    }
+  ]
+}

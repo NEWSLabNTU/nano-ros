@@ -77,6 +77,9 @@ fn __nros_entry_run() -> ::core::result::Result<
             runtime.remaps = &[{{ n.remaps }}];
             runtime.qos_overrides = &[{{ n.qos_overrides }}];
             runtime.node_identity = {{ n.identity }};
+{%- if n.rank_seed %}
+            {{ n.rank_seed }}
+{%- endif %}
             ::{{ n.pkg }}::register(runtime)?;
 {%- endfor %}
             ::core::result::Result::Ok(())

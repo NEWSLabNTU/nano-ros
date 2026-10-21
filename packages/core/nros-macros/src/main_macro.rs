@@ -1263,6 +1263,26 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 }
             }
             overrides = derived.overrides;
+            // phase-509 P5 (RFC-0108 D2) -- each ranked node's normalised rank,
+            // seeded before its `register` (`render_register_calls`): the Rust
+            // twin of the C/C++ packs' `nros_cpp_bind_node_rank`, from the one
+            // normalisation both use. P2 left this road at rank 0.
+            let ranks = nros_orchestration_ir::levels::node_ranks(
+                &derived.realized,
+                nros_orchestration_ir::rtos_realizer::sched_caps_for(&rtos).low_number_is_high,
+            );
+            for n in &mut lowered_nodes {
+                let Some(fqn) = n.identity_pair().map(|(name, ns)| {
+                    if ns == "/" || ns.is_empty() {
+                        format!("/{name}")
+                    } else {
+                        format!("{ns}/{name}")
+                    }
+                }) else {
+                    continue;
+                };
+                n.rank = ranks.iter().find(|(f, _)| *f == fqn).map(|(_, r)| *r);
+            }
         }
 
         if !tiers.is_empty() {
@@ -5237,11 +5257,24 @@ pub(crate) fn render_register_calls(nodes: &[LoweredNode]) -> Vec<proc_macro2::T
                     runtime.node_identity = ::core::option::Option::None;
                 },
             };
+            // phase-509 P5 (RFC-0108 D2) -- a ranked node's rank, seeded on
+            // the executor before the node exists. Only a node with a launch
+            // identity: without one the name it creates itself with is not
+            // known here, and it keeps rank 0.
+            let rank_seed = match (node.rank, node.identity_pair()) {
+                (Some(rank), Some((name, ns))) => {
+                    let n = LitStr::new(name, Span::call_site());
+                    let s = LitStr::new(ns, Span::call_site());
+                    quote! { ::nros::__macro::seed_node_rank(runtime, #n, #s, #rank)?; }
+                }
+                _ => quote! {},
+            };
             quote! {
                 runtime.params = &[ #( #param_lits ),* ];
                 runtime.remaps = &[ #( #remap_lits ),* ];
                 runtime.qos_overrides = &[ #( #qos_lits ),* ];
                 #identity_emit
+                #rank_seed
                 ::#ident::register(runtime)?;
             }
         })

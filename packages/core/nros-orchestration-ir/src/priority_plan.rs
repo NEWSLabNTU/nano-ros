@@ -114,6 +114,11 @@ pub struct PriorityPlan {
     /// Where this plan came from, for a diagnostic: a descriptor path, an
     /// image's `.config`, or the defaults projection.
     pub source: String,
+    /// phase-509 P5 (RFC-0108 D4 rule 4) - the image's level cap,
+    /// `CONFIG_NROS_EXECUTOR_MAX_LEVELS`, when the plan was read from its
+    /// `.config`. `None` takes the platform's default
+    /// ([`crate::levels::default_max_levels`]).
+    pub max_levels: Option<u16>,
 }
 
 /// Why an image's `.config` yields no plan.
@@ -218,6 +223,7 @@ pub fn zephyr_plan(
         reserved,
         app: Band::new(app_lo, num_preempt - 1),
         source: source.into(),
+        max_levels: None,
     }
 }
 
@@ -284,6 +290,7 @@ impl PriorityPlan {
                 reserved: reserved("transport", 4, 4),
                 app: band(1, 3),
                 source: "packages/platform/nros-platform-freertos/nros-platform.toml".into(),
+                max_levels: None,
             },
             // packages/boards/nros-board-threadx-linux/nros-board.toml.
             "threadx" => PriorityPlan {
@@ -292,6 +299,7 @@ impl PriorityPlan {
                 reserved: reserved("transport", 14, 14),
                 app: band(15, 31),
                 source: "packages/boards/nros-board-threadx-linux/nros-board.toml".into(),
+                max_levels: None,
             },
             // packages/boards/nros-board-nuttx-qemu/nros-board.toml.
             "nuttx" => PriorityPlan {
@@ -300,6 +308,7 @@ impl PriorityPlan {
                 reserved: reserved("transport", 100, 100),
                 app: band(1, 99),
                 source: "packages/boards/nros-board-nuttx-qemu/nros-board.toml".into(),
+                max_levels: None,
             },
             // packages/boards/linux/nros-board.toml. RFC-0079 records POSIX as
             // HALF-SOLVED: the tiers are SCHED_FIFO and the transport is
@@ -313,6 +322,7 @@ impl PriorityPlan {
                 reserved: reserved("transport", 90, 99),
                 app: band(1, 89),
                 source: "packages/boards/linux/nros-board.toml".into(),
+                max_levels: None,
             },
             _ => PriorityPlan {
                 direction: Direction::BiggerIsUrgent,
@@ -320,6 +330,7 @@ impl PriorityPlan {
                 reserved: BTreeMap::new(),
                 app: band(0, 0),
                 source: format!("no priority plan for tier key {target:?}"),
+                max_levels: None,
             },
         }
     }
@@ -339,6 +350,7 @@ impl PriorityPlan {
             reserved: BTreeMap::new(),
             app: Band::new(0, hi),
             source: "the board's whole priority range (no plan)".into(),
+            max_levels: None,
         }
     }
 
@@ -384,12 +396,17 @@ impl PriorityPlan {
         } else {
             transport_bands.to_vec()
         };
-        Ok(zephyr_plan(
+        let mut plan = zephyr_plan(
             num_preempt,
             num_coop,
             &bands,
             "derived from an image .config (RFC-0079 section 4.1)",
-        ))
+        );
+        plan.max_levels = cfg
+            .get("CONFIG_NROS_EXECUTOR_MAX_LEVELS")
+            .and_then(|n| u16::try_from(*n).ok())
+            .filter(|n| *n > 0);
+        Ok(plan)
     }
 
     /// The `k`-th most urgent priority in `pool.app` (`k = 0` is the most

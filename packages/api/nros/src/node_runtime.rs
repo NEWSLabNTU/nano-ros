@@ -2905,6 +2905,35 @@ fn capability_transport_reason(t: &nros_rmw::TransportError) -> &'static str {
 // `nros-rmw-zenoh`). The compile-only smoke here verifies the public
 // types are reachable through the umbrella surface.
 
+/// phase-509 P5 (RFC-0108 D2) -- seed the contract rank of the node the
+/// NEXT `register` call creates, `(name, namespace)`, on the executor the
+/// runtime holds: 0 is the most urgent, as the derivation normalises it
+/// (`nros_orchestration_ir::levels::node_ranks`). `nros::main!` emits it before
+/// each ranked node's `register`, the Rust twin of the C/C++ packs'
+/// `nros_cpp_bind_node_rank`.
+///
+/// A runtime with no executor handle (no live executor) has nothing to
+/// order and seeds nothing. A binding that does not fit the node-name table
+/// is refused with the node's name, never dropped.
+pub fn seed_node_rank(
+    runtime: &mut nros_platform::RuntimeCtx<'_>,
+    name: &'static str,
+    namespace: &'static str,
+    rank: u8,
+) -> Result<(), nros_platform::RuntimeError> {
+    let handle = runtime.runtime.executor_handle();
+    if handle.is_null() {
+        return Ok(());
+    }
+    // SAFETY: a non-null handle from the runtime sink is its live executor
+    // (or an nros-cpp context, which the one handle check refuses), and
+    // nothing else borrows it during this call.
+    let exec = unsafe { crate::executor_handle::executor_from_handle(handle, "seed_node_rank") }
+        .map_err(|_| nros_platform::RuntimeError::NodeRegister(name))?;
+    exec.bind_node_rank(name, namespace, rank)
+        .map_err(|_| nros_platform::RuntimeError::NodeRegister(name))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

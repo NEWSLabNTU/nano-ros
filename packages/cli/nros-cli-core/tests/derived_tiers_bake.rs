@@ -145,14 +145,19 @@ fn the_cmake_keyword_makes_the_fixture_derive_a_schedule() {
     assert_eq!(ranks.len(), 2, "two ranks over four nodes: {prio:?}");
 
     // Every derived tier is a real `[tiers.*]` row the rest of the pipeline can
-    // consume: one per node, each carrying the Zephyr sub-table the target
-    // selects. (W3 is the wave that names them by rank instead.)
+    // consume, carrying the Zephyr sub-table the target selects. phase-509 P5
+    // (RFC-0108 D4 rule 1): one LEVEL per distinct rank, not a tier per node,
+    // so the four nodes at two ranks are two levels of two nodes each.
     assert_eq!(
-        derived.tiers.len(),
-        4,
-        "`derive_tiers_from_contracts` names a tier per NODE: {:?}",
-        derived.tiers.keys().collect::<Vec<_>>()
+        derived.tiers.keys().collect::<Vec<_>>(),
+        ["derived-level-0", "derived-level-1"],
+        "`derive_tiers_from_contracts` derives a tier per level"
     );
+    let levels = derived.levels.as_ref().expect("the levels are recorded");
+    assert_eq!(levels.levels.len(), 2);
+    for level in &levels.levels {
+        assert_eq!(level.members.len(), 2, "{level:?}");
+    }
 }
 
 /// The bake's own count, through the wrapper `codegen-system` calls - the line
@@ -174,7 +179,8 @@ fn the_bake_reports_the_derived_tiers_and_binds_every_node() {
         model_ingest::derive_execution_from_contracts(&mut system, &model, TARGET_RTOS, &groups)
             .expect("the derived bake succeeds");
 
-    assert_eq!(derived, 4, "`derived {derived} scheduling tier(s)`");
+    // phase-509 P5: two levels (one per rank), not a tier per node.
+    assert_eq!(derived, 2, "`derived {derived} scheduling tier(s)`");
     assert!(
         warnings.is_empty(),
         "no path declares a deadline or a budget, so the realizer weakens no \
@@ -182,8 +188,12 @@ fn the_bake_reports_the_derived_tiers_and_binds_every_node() {
     );
     // The bake writes the derivation back as ordinary rows, which is what makes
     // `resolve_system_tiers` -> `run_tiers` consume it unchanged.
-    assert_eq!(system.tiers.len(), 4);
-    assert_eq!(system.node_overrides.len(), 4);
+    assert_eq!(system.tiers.len(), 2);
+    assert_eq!(
+        system.node_overrides.len(),
+        4,
+        "every node is bound to its level"
+    );
     for ov in &system.node_overrides {
         assert_eq!(
             ov.callback_groups.len(),

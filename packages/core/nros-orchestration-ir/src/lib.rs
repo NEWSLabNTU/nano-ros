@@ -56,6 +56,9 @@ pub mod ftti_budget;
 // what each lowers to on a Form-1 entry.
 pub mod leaf_capabilities;
 pub mod leaf_system;
+/// phase-509 P5 (RFC-0108 D3/D4) -- preemption levels derived from the ranks,
+/// the task records and the image's cap; the response-time analysis.
+pub mod levels;
 pub mod mapper_input;
 // phase-462 W4 -- a contract mode lowered to a variant of the monitor tables.
 pub mod mode_variants;

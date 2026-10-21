@@ -27,11 +27,14 @@ use crate::{
 /// The outcome of deriving a schedule from the contract layer.
 #[derive(Debug, Default)]
 pub struct DerivedSchedule {
-    /// `derived-<node>` tier definitions, keyed by tier name. These are NEW
+    /// Derived tier definitions, keyed by tier name: one per derived level
+    /// (`derived-<node>`, or `derived-level-<k>` for a level of several
+    /// nodes; phase-509 P5). These are NEW
     /// tiers, for nodes whose groups name no tier at all; the caller MERGES
     /// them into whatever the model authored (see [`ADDS`](DerivedSchedule)).
     pub tiers: BTreeMap<String, TierDef>,
-    /// One override per derived node, binding its callback groups to its tier.
+    /// One override per derived node, binding its callback groups to its
+    /// level's tier.
     pub overrides: Vec<NodeOverride>,
     /// issue 1426 — placements ALLOCATED for tiers the author NAMED and left
     /// unplaced, keyed by the authored tier name.
@@ -74,6 +77,12 @@ pub struct DerivedSchedule {
     /// on one that supervises a deadline it is refused before this runs
     /// ([`crate::task_record::check_model`]).
     pub tasks: Vec<crate::task_record::TaskRecord>,
+    /// phase-509 P5 (RFC-0108 D4) - the preemption levels: the derived nodes
+    /// banded under the image's cap, the authored tiers as pins. `None` when
+    /// nothing ranked. Each derived level is one tier in [`Self::tiers`]
+    /// (`derived-<node>` when it holds one node, `derived-level-<k>` when it
+    /// holds several) until the level runners (phase-509 P9) run levels.
+    pub levels: Option<crate::levels::LevelPlan>,
 }
 
 /// The node FQNs whose contract supervises a deadline: a node path
@@ -281,8 +290,10 @@ pub struct ShadowedPlacement {
 ///    one ⇒ neither. The author did place it, for a different board, and
 ///    `resolve_tiers` raises `MissingRtosSpec` exactly as before. Reading that
 ///    as a request would silence a real mistake.
-/// 4. the group names no tier (`DEFAULT_TIER`) ⇒ **ALLOCATED** as a new
-///    `derived-<node>` tier ([`DerivedSchedule::tiers`]).
+/// 4. the group names no tier (`DEFAULT_TIER`) ⇒ **ALLOCATED** on a derived
+///    level ([`DerivedSchedule::tiers`]): phase-509 P5 bands these nodes into
+///    preemption levels (RFC-0108 D4, [`crate::levels`]), one derived tier per
+///    level, `derived-<node>` for a level of one node.
 ///
 /// Rule 4 is what the old table-shaped guard got wrong. A group at
 /// `DEFAULT_TIER` is a node the author wrote nothing about, and whether it gets
@@ -399,10 +410,33 @@ pub fn derive_tiers_with_named(
     priority_plan: &PriorityPlan,
     named_above_transport: &std::collections::BTreeSet<String>,
 ) -> DerivedSchedule {
+    derive_tiers_with_wcet(
+        model,
+        target_rtos,
+        callback_groups,
+        priority_plan,
+        named_above_transport,
+        None,
+    )
+}
+
+/// [`derive_tiers_with_named`] with an RFC-0078 measurement profile: the task
+/// records carry C where it declares a bound, and the level derivation's
+/// analysed merge (RFC-0108 D4 rule 2) engages when every derived callback
+/// has one. The bake roads select no profile yet, so they pass `None` and the
+/// levels come from rules 1 and 3.
+pub fn derive_tiers_with_wcet(
+    model: &SystemModel,
+    target_rtos: &str,
+    callback_groups: &BTreeMap<String, Vec<CallbackGroupDecl>>,
+    priority_plan: &PriorityPlan,
+    named_above_transport: &std::collections::BTreeSet<String>,
+    wcet: Option<&crate::wcet::WcetProfile>,
+) -> DerivedSchedule {
     // phase-509 P4 (RFC-0108 D1) - the task record, and its report on an
     // image that supervises nothing. Before the rank, so an image with
     // nothing to rank still reports an unbounded input.
-    let tasks = crate::task_record::task_records(model, None);
+    let tasks = crate::task_record::task_records(model, wcet);
     let unanalysable = if supervised_nodes(model).is_empty() {
         crate::task_record::unanalysable_degradations(&tasks)
     } else {
@@ -507,6 +541,14 @@ pub fn derive_tiers_with_named(
     // candidates for the one priority that tier's single thread gets.
     let mut unplaced: BTreeMap<String, Vec<AllocationCandidate<'_>>> = BTreeMap::new();
 
+    // phase-509 P5 (RFC-0108 D4) - rule 4 no longer makes a tier per node:
+    // the nodes no tier binds are collected here, banded into levels below,
+    // and each derived level is one tier. Authored tiers (rules 1 and 2) are
+    // the levels' pins: `pins` keeps each one's members.
+    let mut free: Vec<(&crate::rtos_realizer::RealizedNode, Vec<&CallbackGroupDecl>)> = Vec::new();
+    let mut pins: BTreeMap<String, (Option<i64>, Vec<&crate::rtos_realizer::RealizedNode>)> =
+        BTreeMap::new();
+
     for n in &plan.nodes {
         let node = bare(&n.name).to_string();
         // A ranked node with no declared callback groups has nothing for the
@@ -534,6 +576,12 @@ pub fn derive_tiers_with_named(
                             authored: authored.priority,
                             allocated: n.priority,
                         });
+                        let pin = pins
+                            .entry(g.tier.clone())
+                            .or_insert((Some(authored.priority), Vec::new()));
+                        if !pin.1.iter().any(|m| m.name == n.name) {
+                            pin.1.push(n);
+                        }
                     } else if authors_any_placement(t) {
                         // Rule 3 — placed, for another board. `resolve_tiers`
                         // raises `MissingRtosSpec`; silencing it here would
@@ -545,90 +593,140 @@ pub fn derive_tiers_with_named(
                             n.priority,
                             n.preempt_threshold,
                         ));
+                        let pin = pins.entry(g.tier.clone()).or_insert((None, Vec::new()));
+                        if !pin.1.iter().any(|m| m.name == n.name) {
+                            pin.1.push(n);
+                        }
                     }
                 }
             }
         }
-        if unbound.is_empty() {
+        if !unbound.is_empty() {
+            free.push((n, unbound));
+        }
+    }
+
+    // Issue 1285 follow-up. `target_rtos` is a tier KEY (the output of
+    // `tier_rtos_key`, or `""` for a board with no RTOS), so it is matched
+    // EXACTLY. For a no-RTOS board a derived level has no
+    // `[tiers.<name>.<rtos>]` sub-table to live in: such a node stays on the
+    // default tier, and the degradation record says so.
+    if !free.is_empty() && !rtos_slot_exists(target_rtos) {
+        for (n, _) in &free {
+            out.degradations.push(Degradation {
+                node: n.name.clone(),
+                dim: "tier",
+                reason: format!(
+                    "the target (tier key {target_rtos:?}) has no RTOS family, so a derived \
+                     tier has no `[tiers.<name>.<rtos>]` sub-table and no task to run \
+                     on; the node stays on the default tier"
+                ),
+            });
+        }
+        free.clear();
+    }
+
+    // phase-509 P5 (RFC-0108 D4) - the levels: the free nodes banded, the
+    // authored tiers pinned, the cap the image's or the platform's.
+    let supervised = supervised_nodes(model);
+    let level_nodes: Vec<crate::levels::LevelNode> = free
+        .iter()
+        .map(|(n, _)| crate::levels::LevelNode {
+            node: n.name.clone(),
+            priority: n.priority,
+            protected: if supervised.contains(&n.name) {
+                Some("supervised")
+            } else if n.deadline_us.is_some() {
+                Some("deadline")
+            } else {
+                None
+            },
+        })
+        .collect();
+    let most_urgent = |ps: &mut dyn Iterator<Item = i64>| {
+        if caps.low_number_is_high {
+            ps.min()
+        } else {
+            ps.max()
+        }
+    };
+    let pinned: Vec<crate::levels::PinnedBand> = pins
+        .iter()
+        .filter_map(|(tier, (authored, members))| {
+            let priority =
+                authored.or_else(|| most_urgent(&mut members.iter().map(|m| m.priority)))?;
+            Some(crate::levels::PinnedBand {
+                tier: tier.clone(),
+                priority,
+                members: members
+                    .iter()
+                    .map(|m| crate::levels::LevelNode {
+                        node: m.name.clone(),
+                        priority: m.priority,
+                        protected: None,
+                    })
+                    .collect(),
+            })
+        })
+        .collect();
+    let (max_levels, cap_source) = match priority_plan.max_levels {
+        Some(n) => (n, "image"),
+        None => (
+            crate::levels::default_max_levels(target_rtos, priority_plan),
+            "platform",
+        ),
+    };
+    let levels = crate::levels::derive_levels(&crate::levels::LevelInput {
+        free: &level_nodes,
+        pinned: &pinned,
+        tasks: &out.tasks,
+        max_levels,
+        cap_source,
+        low_number_is_high: caps.low_number_is_high,
+        time_slicing: crate::levels::time_slices_equal_priorities(target_rtos),
+        ranked_priorities: &plan.nodes.iter().map(|n| n.priority).collect::<Vec<_>>(),
+    });
+    out.degradations.extend(levels.degradations.iter().cloned());
+
+    for level in &levels.levels {
+        let members: Vec<&(&crate::rtos_realizer::RealizedNode, Vec<&CallbackGroupDecl>)> = level
+            .derived_members()
+            .filter_map(|m| free.iter().find(|(n, _)| n.name == m.node))
+            .collect();
+        if members.is_empty() {
             continue;
         }
-        let groups = &unbound;
-        let tier_name = format!("derived{}", n.name.replace('/', "-"));
-        let spec = TierRtosSpec {
-            priority: n.priority,
-            stack_bytes: None,
-            preempt_threshold: n.preempt_threshold,
-            // Time-slicing is not a derived dim (no contract fact implies
-            // round-robin); an authored `time_slice_us` is the only source.
-            time_slice_us: None,
-            // phase-330 W1.a — placement/policy dims are AUTHORED, never
-            // derived: nothing in a contract fact implies a core pin or a
-            // sporadic budget. Left unset so a derived tier stays a plain
-            // priority tier.
-            core: None,
-            deadline_us: None,
-            budget_us: None,
-            period_us: None,
-            // sched_class deliberately unset: the runtime consumes the GENERIC
-            // policy (class/period/budget/deadline → SchedContext; on Zephyr
-            // class+deadline → kernel EDF). The realizer's internal vocab
-            // ("edf"/"sporadic") is not the sub-table's POSIX-class vocab.
-            sched_class: None,
-        };
-        let mut def = TierDef {
-            class: Some(
-                if n.deadline_us.is_some() || n.budget_us.is_some() {
-                    "real_time"
-                } else {
-                    "best_effort"
-                }
-                .to_string(),
-            ),
-            period_us: n.period_us,
-            budget_us: n.budget_us,
-            deadline_us: n.deadline_us,
-            core: n.core,
-            ..Default::default()
-        };
-        // Issue 1285 follow-up. `target_rtos` is a tier KEY (the output of
-        // `tier_rtos_key`, or `""` for a board with no RTOS), so it is matched
-        // EXACTLY. This used to be a substring match, and its `_` arm wrote the
-        // POSIX sub-table for anything else. For a no-RTOS board, that put
-        // host priorities into a table `resolve_tiers` would then fail to read.
-        // Now such a node stays on the default tier, and the realizer's
-        // degradation record says so.
-        let slot = match target_rtos {
-            "zephyr" => &mut def.zephyr,
-            "freertos" => &mut def.freertos,
-            "threadx" => &mut def.threadx,
-            "nuttx" => &mut def.nuttx,
-            "posix" | "native" => &mut def.posix,
-            other => {
-                out.degradations.push(Degradation {
-                    node: n.name.clone(),
-                    dim: "tier",
-                    reason: format!(
-                        "the target (tier key {other:?}) has no RTOS family, so a derived \
-                         tier has no `[tiers.<name>.<rtos>]` sub-table and no task to run \
-                         on; the node stays on the default tier"
-                    ),
-                });
-                continue;
+        // D4 rule 8 put these nodes on an authored tier's level: bind their
+        // groups to that tier.
+        let tier_name = match level.tiers.first() {
+            Some(t) => t.clone(),
+            None => {
+                let name = match members.as_slice() {
+                    // One node: the tier keeps the node's name, as before.
+                    [(n, _)] => format!("derived{}", n.name.replace('/', "-")),
+                    _ => format!("derived-level-{}", level.index),
+                };
+                out.tiers.insert(
+                    name.clone(),
+                    level_tier(&members, target_rtos, &mut out.degradations),
+                );
+                name
             }
         };
-        *slot = Some(spec);
-        out.tiers.insert(tier_name.clone(), def);
-        out.overrides.push(NodeOverride {
-            name: node,
-            callback_groups: groups
-                .iter()
-                .map(|g| CallbackGroupOverride {
-                    id: g.id.clone(),
-                    tier: tier_name.clone(),
-                })
-                .collect(),
-        });
+        for (n, groups) in &members {
+            out.overrides.push(NodeOverride {
+                name: bare(&n.name).to_string(),
+                callback_groups: groups
+                    .iter()
+                    .map(|g| CallbackGroupOverride {
+                        id: g.id.clone(),
+                        tier: tier_name.clone(),
+                    })
+                    .collect(),
+            });
+        }
     }
+    out.levels = Some(levels);
 
     // issue 1426 rule 2 — one priority per NAMED, unplaced tier.
     //
@@ -704,6 +802,89 @@ pub fn derive_tiers_with_named(
         );
     }
     out
+}
+
+/// The tier one derived level runs as until the level runners land
+/// (phase-509 P9): one thread at the band's most urgent priority. A level of
+/// one node is exactly the tier rule 4 always made for it. A level of several
+/// takes the tightest period and deadline among them; a per-node sporadic
+/// budget cannot be enforced on a shared thread, so it is dropped with a
+/// `budget` degradation naming the node.
+fn level_tier(
+    members: &[&(&crate::rtos_realizer::RealizedNode, Vec<&CallbackGroupDecl>)],
+    target_rtos: &str,
+    degradations: &mut Vec<Degradation>,
+) -> TierDef {
+    let lead = members[0].0;
+    let one = members.len() == 1;
+    let min_of = |f: &dyn Fn(&crate::rtos_realizer::RealizedNode) -> Option<u64>| {
+        members.iter().filter_map(|(n, _)| f(n)).min()
+    };
+    let deadline_us = min_of(&|n| n.deadline_us);
+    let period_us = min_of(&|n| n.period_us);
+    let budget_us = if one {
+        lead.budget_us
+    } else {
+        for (n, _) in members {
+            if let Some(b) = n.budget_us {
+                degradations.push(Degradation {
+                    node: n.name.clone(),
+                    dim: "budget",
+                    reason: format!(
+                        "its sporadic budget of {b}us is not enforced: it shares a \
+                         derived level with other nodes (RFC-0108 D4), and one budget \
+                         on the level's thread would throttle them too"
+                    ),
+                });
+            }
+        }
+        None
+    };
+    let spec = TierRtosSpec {
+        priority: lead.priority,
+        stack_bytes: None,
+        preempt_threshold: lead.preempt_threshold,
+        // Time-slicing is not a derived dim (no contract fact implies
+        // round-robin); an authored `time_slice_us` is the only source.
+        time_slice_us: None,
+        // phase-330 W1.a — placement/policy dims are AUTHORED, never
+        // derived: nothing in a contract fact implies a core pin or a
+        // sporadic budget. Left unset so a derived tier stays a plain
+        // priority tier.
+        core: None,
+        deadline_us: None,
+        budget_us: None,
+        period_us: None,
+        // sched_class deliberately unset: the runtime consumes the GENERIC
+        // policy (class/period/budget/deadline → SchedContext; on Zephyr
+        // class+deadline → kernel EDF). The realizer's internal vocab
+        // ("edf"/"sporadic") is not the sub-table's POSIX-class vocab.
+        sched_class: None,
+    };
+    let mut def = TierDef {
+        class: Some(
+            if deadline_us.is_some() || budget_us.is_some() {
+                "real_time"
+            } else {
+                "best_effort"
+            }
+            .to_string(),
+        ),
+        period_us,
+        budget_us,
+        deadline_us,
+        core: lead.core,
+        ..Default::default()
+    };
+    let slot = match target_rtos {
+        "zephyr" => &mut def.zephyr,
+        "freertos" => &mut def.freertos,
+        "threadx" => &mut def.threadx,
+        "nuttx" => &mut def.nuttx,
+        _ => &mut def.posix,
+    };
+    *slot = Some(spec);
+    def
 }
 
 /// Does `target_rtos` name an RTOS family with a `[tiers.<name>.<rtos>]`
@@ -1106,13 +1287,9 @@ mod tests {
         );
     }
 
-    /// phase-509 P1 (RFC-0108 D4 rule 5). The island's shape: one authored,
-    /// unplaced tier whose three members hold three distinct ranks (on the
-    /// island 5, 7 and 8). The tier keeps the leader's rank, so BOTH other
-    /// members lose theirs, and each is named in its own degradation. Before
-    /// P1 only the first was named (`members.iter().find(...)`).
-    #[test]
-    fn every_member_that_loses_its_rank_is_reported() {
+    /// The island's shape: three nodes at three distinct ranks (control
+    /// 100 Hz, telem 10 Hz, slow 1 Hz), each with a stated deadline.
+    fn three_rank_model() -> SystemModel {
         let mut m = contract_model();
         m.structure.nodes.insert(
             "/slow_node".to_string(),
@@ -1142,6 +1319,87 @@ mod tests {
         m.contracts
             .pub_endpoints
             .insert("/slow_node/out".to_string(), PubContract::default());
+        m
+    }
+
+    /// phase-509 P5 (RFC-0108 D4) - with no tier authored, the three ranks
+    /// are three levels, each a tier of its own; under a cap of 2 where every
+    /// band holds a deadline, the least urgent pair is merged anyway, named,
+    /// and run as one `derived-level-<k>` tier.
+    #[test]
+    fn unbound_nodes_are_banded_into_levels_under_the_images_cap() {
+        let m = three_rank_model();
+        let mut g = BTreeMap::new();
+        for node in ["control_node", "telem_node", "slow_node"] {
+            g.insert(node.to_string(), vec![cbg("main", "default")]);
+        }
+        let d = derive_tiers_in_plan(&m, "zephyr", &g, &island_plan());
+        let levels = d.levels.as_ref().expect("levels derived");
+        assert_eq!(levels.levels.len(), 3);
+        assert_eq!((levels.max_levels, levels.cap_source), (8, "platform"));
+        assert_eq!(
+            d.tiers.keys().collect::<Vec<_>>(),
+            [
+                "derived-control_node",
+                "derived-slow_node",
+                "derived-telem_node"
+            ]
+        );
+
+        let mut capped = island_plan();
+        capped.max_levels = Some(2);
+        let d = derive_tiers_in_plan(&m, "zephyr", &g, &capped);
+        let levels = d.levels.as_ref().expect("levels derived");
+        assert_eq!(levels.method, crate::levels::LevelMethod::Capped);
+        assert_eq!((levels.max_levels, levels.cap_source), (2, "image"));
+        assert_eq!(
+            d.tiers.keys().collect::<Vec<_>>(),
+            ["derived-control_node", "derived-level-1"]
+        );
+        let shared = &d.tiers["derived-level-1"];
+        assert_eq!(
+            shared.zephyr.as_ref().map(|z| z.priority),
+            Some(prio(&d, "/telem_node")),
+            "the level runs at its most urgent member's priority"
+        );
+        assert_eq!(shared.deadline_us, Some(100_000), "the tighter deadline");
+        let bound: Vec<(&str, &str)> = d
+            .overrides
+            .iter()
+            .map(|o| (o.name.as_str(), o.callback_groups[0].tier.as_str()))
+            .collect();
+        assert!(
+            bound.contains(&("slow_node", "derived-level-1")),
+            "{bound:?}"
+        );
+        assert!(
+            bound.contains(&("telem_node", "derived-level-1")),
+            "{bound:?}"
+        );
+        let budget: Vec<&str> = d
+            .degradations
+            .iter()
+            .filter(|x| x.dim == "level-budget")
+            .map(|x| x.node.as_str())
+            .collect();
+        // The forced merge names the deadline it adds blocking to, and the
+        // member that lost its rank is named too.
+        assert_eq!(
+            budget,
+            vec!["/telem_node", "/slow_node"],
+            "{:?}",
+            d.degradations
+        );
+    }
+
+    /// phase-509 P1 (RFC-0108 D4 rule 5). The island's shape: one authored,
+    /// unplaced tier whose three members hold three distinct ranks (on the
+    /// island 5, 7 and 8). The tier keeps the leader's rank, so BOTH other
+    /// members lose theirs, and each is named in its own degradation. Before
+    /// P1 only the first was named (`members.iter().find(...)`).
+    #[test]
+    fn every_member_that_loses_its_rank_is_reported() {
+        let mut m = three_rank_model();
         m.execution.tiers.insert("mrm".into(), Default::default());
         let mut g = BTreeMap::new();
         for node in ["control_node", "telem_node", "slow_node"] {
@@ -1162,6 +1420,13 @@ mod tests {
             "three distinct ranks, most urgent first: {ranks:?}"
         );
         assert_eq!(d.placements["mrm"].priority, ranks[0]);
+        // phase-509 P5 - the authored tier is a pin: one level, all three
+        // members, and nothing derived beside it.
+        let levels = d.levels.as_ref().expect("levels derived");
+        assert_eq!(levels.levels.len(), 1);
+        assert_eq!(levels.levels[0].tiers, vec!["mrm".to_string()]);
+        assert_eq!(levels.levels[0].members.len(), 3);
+        assert!(d.tiers.is_empty());
         let lost: Vec<&str> = d
             .degradations
             .iter()
@@ -1314,6 +1579,7 @@ mod tests {
             reserved,
             app: crate::priority_plan::Band::new(1, 3),
             source: "test".into(),
+            max_levels: None,
         };
         let mut nodes = vec![realized("/a", 3), realized("/b", 2), realized("/c", 1)];
         let mut deg = Vec::new();

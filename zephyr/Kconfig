@@ -443,6 +443,21 @@ config NROS_ZEPHYR_TIER_STACK_SIZE
       this prints "raise CONFIG_NROS_ZEPHYR_TIER_STACK_SIZE" and the tier runs
       on the slot anyway (issue 1232 tracks honouring the declared size).
 
+config NROS_EXECUTOR_MAX_LEVELS
+    int "nano-ros executor preemption levels per core (RFC-0108)"
+    default 8
+    range 1 32
+    help
+      The image's cap on preemption levels (RFC-0108 D4 rule 4,
+      phase-509 P5). The tier derivation reads it from this image's
+      .config (nros codegen entry --dotconfig, and nros::main! through
+      DOTCONFIG): one level per distinct contract rank, merged from the
+      least urgent end until the count fits, every member that loses its
+      rank reported as a `level-budget` degradation in
+      nros_priority_plan.json. Authored tiers are pins and count toward
+      the cap. Until the level runners land (phase-509 P9) each derived
+      level runs as one tier, so it also bounds the derived tiers.
+
 config NROS_ZENOH_LEASE_MS
     int "zenoh-pico transport lease (ms)"
     default 60000

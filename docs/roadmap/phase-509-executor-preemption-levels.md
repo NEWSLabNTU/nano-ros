@@ -1,6 +1,6 @@
 # Phase 509 -- Executor preemption levels (RFC-0108, amended RFC-0107 steps 4-6)
 
-**Status (2026-10-21). In progress: P1, P2, P3 and P4 done.** The design is
+**Status (2026-10-21). In progress: P1, P2, P3, P4 and P5 done.** The design is
 [RFC-0108](../design/0108-executor-preemption-levels.md) (Draft, its open
 questions decided 2026-10-21). This phase also carries RFC-0107's steps 4-6
 as RFC-0108 amends them (RFC-0107 is on branch
@@ -252,7 +252,7 @@ contract's execution time); the rlm schema and its model types.
 
 ### P5 -- Level derivation and the level budget
 
-- [ ] Goal: tier-derivation rule 4 becomes RFC-0108 D4:
+- [x] Goal: tier-derivation rule 4 becomes RFC-0108 D4:
   - one level per distinct rank;
   - the merge with execution times (C);
   - the capped merge without C, which skips protected bands;
@@ -261,8 +261,90 @@ contract's execution time); the rlm schema and its model types.
   - the `max_levels` knob (`CONFIG_NROS_EXECUTOR_MAX_LEVELS`, or the
     platform's equivalent) with per-platform defaults;
   - a `levels` field in the priority record.
-- [ ] Decide where the response-time analysis lives (`nros-orchestration-ir`
+- [x] Decide where the response-time analysis lives (`nros-orchestration-ir`
       or rlm), which is deferred to this item by RFC-0108.
+      Decided: `nros-orchestration-ir` (`levels.rs`).
+
+**Done (as built).** `levels.rs` (new) derives one core's levels;
+`derive_tiers_with_named` calls it in place of rule 4's tier per node.
+
+- **A derived level runs as one derived tier** until the level runners land
+  (P9): one thread at the band's most urgent priority, its members in rank
+  order inside it (P2). A level of one node keeps the name and the fields
+  rule 4 always gave it (`derived-<node>`); a level of several is
+  `derived-level-<k>`, with the tightest period and deadline of its members.
+  A per-node sporadic budget cannot be enforced on a shared thread, so a
+  merged level drops it with a `budget` degradation (the bake roads derive
+  no budget today: it needs a WCET profile).
+- **Pins.** An authored tier (rule 1 or rule 2) is one band at its own
+  priority. The derivation bands only the unbound nodes, and a free band
+  never spans a pin's priority. Pins count toward the cap; when the pins
+  alone leave no room, one `level-budget` line says the cap cannot be met.
+- **The analysed merge (D4 rule 2)** is a dynamic program over the band
+  boundaries: a callback's response time depends only on its own band
+  (blocking from below it in the band, preemption from the bands above), so
+  each band's feasibility is computed once, O(r^2) analyses. Fewest bands,
+  ties to the largest least slack `(D - R) / D`. The response time is the
+  preemption-threshold analysis over every job of the level-i busy period
+  (`levels::response_time`); a served callback is analysed as (Q, P). It
+  engages when no tier is authored and every derived callback is analysable
+  with C; otherwise the capped merge applies. If the fewest feasible bands
+  exceed the cap, the capped merge runs on top (`response-time-capped`). If
+  no banding keeps every deadline, the levels stay one per rank and each
+  callback that misses is a `feasibility` degradation.
+- **C reaches the analysis only through `derive_tiers_with_wcet`.** The
+  three bake roads select no RFC-0078 profile yet, so on them the task
+  records carry no C and the levels come from rules 1 and 3. Wiring a
+  selected profile into the roads is left to the phase that selects one per
+  image.
+- **The capped merge (D4 rule 3)** merges the least urgent adjacent pair
+  whose more urgent band holds no deadline (the realizer's) and no
+  supervised route; when every pair touches one, the least urgent pair is
+  merged anyway and a `level-budget` line names the node whose deadline or
+  route gains the blocking, and the nodes that add it.
+- **The cap (D4 rule 4):** `CONFIG_NROS_EXECUTOR_MAX_LEVELS` (Zephyr
+  Kconfig, default 8, range 1-32), read from the image's `.config` into
+  `PriorityPlan::max_levels` on the roads that resolve the image's plan;
+  otherwise `levels::default_max_levels` (D6: Zephyr, POSIX, NuttX 8;
+  FreeRTOS 4; ThreadX the pool width). No `system.toml` knob: that is an rlm
+  schema change, not needed for the island's Kconfig road.
+- **Rule 8:** `levels::time_slices_equal_priorities` is true on FreeRTOS
+  only. There a derived band at an authored tier's kernel priority joins
+  that tier's level and its groups are bound to the authored tier; two
+  authored tiers at one priority are one level in the record (the runtime
+  keeps both threads until P9). Derived levels never collide: a level is a
+  distinct allocated priority.
+- **Unanalysable callbacks** are recorded at the least urgent rank of their
+  level (`Level::best_effort`). The runtime ranks per node (P2), so the
+  per-callback demotion is a record only until the scheduler/worker split
+  (P6) can dispatch a callback at a rank other than its node's.
+- **The record:** `nros_priority_plan.json` gains `levels` (the cap, its
+  source, the method, and per level its priority, threshold rank, members
+  with their ranks, authored tiers and best-effort callbacks), and the
+  summary prints one line per level. The `level-budget` lines are in
+  `degradations`.
+- **The Rust road (`nros::main!`) now seeds ranks.** Each launch-named node
+  is seeded with `nros::__macro::seed_node_rank` before its `register`, from
+  the same normalisation the C/C++ packs use (`levels::node_ranks`); the
+  CLI's Rust renderer emits the same statement (parity case `ranked`).
+- **Not touched:** `executor_sizing.rs` (its sched-context count is the
+  larger of the authored tiers and the node count, still an upper bound
+  with fewer levels).
+
+Tests: `levels::tests` (`two_equal_rank_nodes_and_one_other_give_two_levels`,
+`cap_two_over_three_ranks_merges_the_least_urgent_pair`,
+`a_protected_band_is_skipped_by_the_capped_merge`,
+`a_forced_merge_names_the_blocking_it_adds`, `cap_one_reports_every_member`,
+`with_c_stated_the_merge_keeps_every_deadline_where_the_naive_merge_misses`,
+`the_analysed_merge_finds_the_fewest_levels`, `an_authored_tier_is_a_pin`,
+`two_levels_at_one_kernel_priority_merge_on_a_time_slicing_kernel`,
+`an_unanalysable_callback_dispatches_at_its_levels_least_urgent_rank`,
+`the_platform_defaults_follow_d6`);
+`derive::tests::unbound_nodes_are_banded_into_levels_under_the_images_cap`;
+`priority_record::tests::the_record_carries_the_levels`. The
+`derived-tiers-cpp` fixture goes from four tiers to two levels
+(`derived_tiers_bake`, `derived_tiers_entry`). No entry golden moves: no
+golden fixture derives a tier. Parity: `parity_ranked.rs.golden`.
 
 **Touches:** `derive.rs:530-608` (rule 4, one tier per node; the name at
 `:534`); `derive.rs:611-680` (rule 2); `priority_plan.rs` (the `levels`
