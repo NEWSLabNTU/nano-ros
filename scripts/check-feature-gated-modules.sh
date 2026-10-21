@@ -108,7 +108,9 @@ feats="$(git ls-files -- "$(dirname "$LIB")" \
 # and the service modules are reachable at all. `rmw-cffi` is itself in the
 # derived list and is therefore also checked alone, against this floor minus
 # itself — which is what the floor being a separate variable buys.
-base="std,alloc"
+# phase-359 W10: no `std` here — nros-node has no `std` feature any more, and
+# `cargo check` refuses a feature the package does not declare.
+base="alloc"
 
 rc=0
 for f in $feats; do
