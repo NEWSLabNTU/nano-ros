@@ -628,12 +628,15 @@ pub fn derive_tiers_with_named(
             }
         });
         let (leader, priority, preempt_threshold) = members[0];
-        if let Some((other, relaxed, _)) = members
-            .iter()
-            .copied()
-            .find(|(_, p, _)| *p != priority)
-            .filter(|_| members.len() > 1)
-        {
+        // phase-509 P1 (RFC-0108 D4 rule 5): one degradation per member whose
+        // rank the tier does not keep, not only the first. A node with two
+        // groups on this tier is one member, so it is reported once; the
+        // stable sort keeps the order the members were met in among equals.
+        let mut reported: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
+        for &(other, relaxed, _) in members.iter().skip(1) {
+            if relaxed == priority || !reported.insert(other) {
+                continue;
+            }
             out.degradations.push(Degradation {
                 node: other.to_string(),
                 dim: "tier",
@@ -1079,6 +1082,88 @@ mod tests {
             "{:?}",
             above.degradations
         );
+    }
+
+    /// phase-509 P1 (RFC-0108 D4 rule 5). The island's shape: one authored,
+    /// unplaced tier whose three members hold three distinct ranks (on the
+    /// island 5, 7 and 8). The tier keeps the leader's rank, so BOTH other
+    /// members lose theirs, and each is named in its own degradation. Before
+    /// P1 only the first was named (`members.iter().find(...)`).
+    #[test]
+    fn every_member_that_loses_its_rank_is_reported() {
+        let mut m = contract_model();
+        m.structure.nodes.insert(
+            "/slow_node".to_string(),
+            NodeInstance {
+                scope: "/".into(),
+                ..Default::default()
+            },
+        );
+        m.structure.topics.insert(
+            "/slow".to_string(),
+            TopicWiring {
+                msg_type: "std_msgs/Int32".into(),
+                publishers: vec!["/slow_node/out".into()],
+                subscribers: vec![],
+            },
+        );
+        m.contracts.node_paths.insert(
+            "/slow_node/loop".to_string(),
+            PathContract {
+                input: vec![],
+                output: vec!["/slow_node/out".into()],
+                trigger: Some(EffectiveTrigger::Timer { rate_hz: 1.0 }),
+                max_latency_ms: Some(1000.0),
+                ..Default::default()
+            },
+        );
+        m.contracts
+            .pub_endpoints
+            .insert("/slow_node/out".to_string(), PubContract::default());
+        m.execution.tiers.insert("mrm".into(), Default::default());
+        let mut g = BTreeMap::new();
+        for node in ["control_node", "telem_node", "slow_node"] {
+            // Two groups on one node bound to the tier are still one member.
+            g.insert(
+                node.to_string(),
+                vec![cbg("main", "mrm"), cbg("second", "mrm")],
+            );
+        }
+
+        let d = derive_tiers_in_plan(&m, "zephyr", &g, &island_plan());
+        let ranks: Vec<i64> = ["/control_node", "/telem_node", "/slow_node"]
+            .iter()
+            .map(|n| prio(&d, n))
+            .collect();
+        assert!(
+            ranks[0] < ranks[1] && ranks[1] < ranks[2],
+            "three distinct ranks, most urgent first: {ranks:?}"
+        );
+        assert_eq!(d.placements["mrm"].priority, ranks[0]);
+        let lost: Vec<&str> = d
+            .degradations
+            .iter()
+            .filter(|x| x.dim == "tier" && x.reason.contains("do not share a rank"))
+            .map(|x| x.node.as_str())
+            .collect();
+        assert_eq!(
+            lost,
+            vec!["/telem_node", "/slow_node"],
+            "{:?}",
+            d.degradations
+        );
+        for (node, rank) in [("/telem_node", ranks[1]), ("/slow_node", ranks[2])] {
+            let x = d
+                .degradations
+                .iter()
+                .find(|x| x.node == node)
+                .expect("reported");
+            assert!(
+                x.reason.contains(&format!("this node {rank}")),
+                "{node}: {}",
+                x.reason
+            );
+        }
     }
 
     /// A tier may name the transport with nothing supervised: it is lifted,
