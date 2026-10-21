@@ -701,7 +701,7 @@ fn read_env_context(source: ContextSource) -> Result<Context, InitError> {
     // to `resolve_backend`, which answers `Unknown` and fails the open.
     let rmw = crate::rmw_selector()
         .map(|s| alloc::string::String::from(s.as_str()))
-        .or_else(|| std::env::var("RMW_IMPLEMENTATION").ok())
+        .or_else(|| crate::env::var("RMW_IMPLEMENTATION").map(alloc::string::String::from))
         .unwrap_or_default();
     Ok(Context {
         domain_id,
@@ -877,11 +877,13 @@ where
                         value: String::from(p.value),
                     }),
                     nros_node::ros_args::RosArg::ParamsFile(path) => {
-                        let text = match std::fs::read_to_string(path) {
+                        // phase-359 W10 stage B — the C library's read, beside
+                        // `getenv`, so the hosted entry needs no `std`.
+                        let text = match crate::env::read_file(path) {
                             Ok(t) => t,
-                            Err(e) => refuse_ros_args(&RosArgsRefusal::ParamsFile {
+                            Err(why) => refuse_ros_args(&RosArgsRefusal::ParamsFile {
                                 path: String::from(path),
-                                why: alloc::format!("cannot be read: {e}"),
+                                why: String::from(why),
                             }),
                         };
                         if let Err(e) = nros_node::ros_args::parse_params_yaml(&text, |p| {

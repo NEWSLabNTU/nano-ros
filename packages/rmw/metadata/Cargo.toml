@@ -21,7 +21,7 @@ host-only-reason = "host-only recording backend for the source-metadata probe (p
 [dependencies]
 # The ONE recorder + schema emitter (phase-308's layer constraint). This crate
 # is an adapter; it must never serialize anything itself.
-nros = { path = "../../api/nros", default-features = false, features = ["metadata-mode", "std"] }
+nros = { path = "../../api/nros", default-features = false, features = ["metadata-mode", "alloc", "log"] }
 # Issue 1577 — the recording backend takes the trait default
 # `supports_process_in_place() == false`, i.e. it BUFFERS. Declared, so a probe
 # build is sized conservatively rather than from an in-place row.
@@ -31,7 +31,7 @@ nros-rmw-cffi = { path = "../cffi", default-features = false, features = ["std",
 [dev-dependencies]
 # phase-483 W3 — the declarative component surface's tests open an executor on
 # THIS backend, so they live here rather than in `nros`.
-nros = { path = "../../api/nros", default-features = false, features = ["metadata-mode", "std", "alloc", "rmw-cffi", "safety-e2e"] }
+nros = { path = "../../api/nros", default-features = false, features = ["metadata-mode", "log", "alloc", "rmw-cffi", "safety-e2e"] }
 nros-serdes = { path = "../../core/nros-serdes", default-features = false }
 nros-node = { path = "../../core/nros-node", default-features = false }
 nros-platform-cffi = { path = "../../platform/nros-platform-cffi", features = ["posix-c-port"] }

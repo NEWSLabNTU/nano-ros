@@ -164,9 +164,9 @@ impl nros_platform::BoardEntry for ThreadxLinux {
         // the slot for any pre-kernel logging.
         pre_kernel_host_setup();
         crate::node::register_log_writer_public();
-        let mut cfg = Config::default();
-        apply_runtime_locator(&mut cfg);
-        nros_board_threadx::run_entry::<ThreadxLinux, Config, F, E>(cfg, None, setup)
+        // The process environment is applied over this by the shared entry
+        // (`nros_board_threadx`'s `resolve_boot`, through `nros::env`).
+        nros_board_threadx::run_entry::<ThreadxLinux, Config, F, E>(Config::default(), None, setup)
     }
 
     /// Issue #48 cause 1 / Phase 244 E5 — apply the `nros::main!()` deploy overlay
@@ -250,27 +250,7 @@ impl ThreadxLinux {
 fn config_with_overlay(deploy: &nros_platform::DeployOverlay) -> Config {
     let mut config = Config::default();
     config.base.apply_overlay(deploy);
-    apply_runtime_locator(&mut config);
     config
-}
-
-/// A non-empty `$NROS_LOCATOR` in the process environment wins over the baked
-/// locator (the deploy overlay, else the board default).
-///
-/// threadx-linux is an ordinary Linux process, and the C and C++ images on
-/// this same board already apply `$NROS_LOCATOR` at run time (the C API's
-/// env overlay). The Rust image read only its baked locator, so one board
-/// answered the same question two ways: `rmw_coordinate_truth` starts its
-/// router on a free port and names it in `NROS_LOCATOR`, and the two Rust
-/// threadx-linux images dialled `127.0.0.1:9030` / `:9091` instead and failed
-/// `ConnectionFailed` while the C/C++ ones registered. With nothing set, the
-/// baked locator still decides, so every test that starts its router on the
-/// baked port is unaffected. This is a RUNTIME read; the build-time carriers
-/// `check-image-locator-bake` polices are unchanged.
-fn apply_runtime_locator(config: &mut Config) {
-    if let Some(locator) = env_str(c"NROS_LOCATOR") {
-        config.base.zenoh_locator = locator;
-    }
 }
 
 /// `getenv(name)` as a `&'static str`, or `None` when unset, empty or not

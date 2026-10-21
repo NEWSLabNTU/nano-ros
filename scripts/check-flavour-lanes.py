@@ -22,9 +22,15 @@ twice: `lane-filter.sh`'s own header records that a hand-written exclusion list
 (issue 0341), and issue 0577 was seven tests that no lane ran at all.
 
 So nothing here is asserted. The flavour of a platform is READ from the board
-crates that serve it: a board is `std` iff its manifest enables the `"std"`
-feature on its `nros` / `nros-platform` dependencies, which is exactly what
-makes the standard library reachable in the image it links. The registry
+crates that serve it: a board is `std` iff its own crate root is NOT
+unconditionally `#![no_std]` (it links the standard library itself), or its
+manifest enables the `"std"` feature on its `nros-platform` dependency. Either
+is exactly what makes the standard library reachable in the image it links.
+
+phase-359 W10 stage B — this read `"std"` on the board's `nros` dependency
+alone until `nros` lost its `std` feature. `nros-board-linux` is still a `std`
+crate (no `#![no_std]`; threads, files, the hosted entry), so the fact moved to
+where it is true: the board's own root. The registry
 (`packages/boards/board-support.toml`) supplies the board -> platform relation
 it already maintains for `check-board-tiers`.
 
@@ -92,6 +98,20 @@ def _read_manifest(crate):
     return m.read_text(errors="replace") if m.is_file() else None
 
 
+# An unconditional `#![no_std]` at the crate root. `cfg_attr(.., no_std)` is a
+# crate that CAN be std, which this gate treats as std (the safe direction).
+NO_STD_ROOT_RE = re.compile(r'^#!\[no_std\]', re.M)
+SECTION_RE = re.compile(r'^\s*\[([^\]]+)\]')
+
+
+def _root_is_std(crate):
+    """The board's own crate root links `std` (no unconditional `#![no_std]`)."""
+    lib = BOARDS_DIR / crate / "src" / "lib.rs"
+    if not lib.is_file():
+        return False
+    return NO_STD_ROOT_RE.search(lib.read_text(errors="replace")) is None
+
+
 def board_flavour(crate, _seen=None):
     """`std` / `no_std` / None (manifest unreadable), following board deps.
 
@@ -110,9 +130,25 @@ def board_flavour(crate, _seen=None):
     text = _read_manifest(crate)
     if text is None:
         return None
+    # The ROOT check is the served board's own, not its dependencies': a
+    # dependency's root is a library compiled into an image whose root decides,
+    # and `nros-board-common`'s `cfg_attr(not(build-helpers), no_std)` would
+    # otherwise read every board as std.
+    if _seen is None and _root_is_std(crate):
+        return "std"
     deps = []
+    section = ""
     for line in text.splitlines():
         if line.strip().startswith("#"):
+            continue
+        sm = SECTION_RE.match(line)
+        if sm:
+            section = sm.group(1)
+            continue
+        # A build-dependency is compiled for the HOST build script and never
+        # linked into the image, so it says nothing about the image's flavour
+        # (`nros-board-threadx-port-riscv64` is one: a `std` build helper).
+        if section.endswith("build-dependencies"):
             continue
         if STD_DEP_RE.match(line):
             return "std"

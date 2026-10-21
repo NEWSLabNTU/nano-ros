@@ -11,7 +11,7 @@ description = "Example async action client using nros with tokio background spin
 deploy = ["linux"]
 
 [dependencies]
-nros = { version = "*", default-features = false, features = ["std", "alloc", "rmw-cffi", "stream", "env"] }
+nros = { version = "*", default-features = false, features = ["log", "alloc", "rmw-cffi", "stream", "env"] }
 # Phase 123.A.1.x.2 — POSIX `nros_platform_*` C symbols ship as a
 # standalone C library inside `nros-platform-cffi[posix-c-port]`. Pure-
 # cargo builds (no CMake glue) enable the feature so the library's

@@ -52,7 +52,7 @@ std = [
     # never became ready" — 4 of 8 `roundtrip_xprocess` cells. Compiling proved
     # nothing about it.
     "nros/env",
-    "nros/std",
+    "nros/log",
     "nros-c/std",
     # Optional-dep forward: only applies when `bridge` is also on. Without it the
     # bridge ABI's std-only diagnostics compile out (issue 0436).

@@ -112,7 +112,9 @@
 ))]
 compile_error!("`ros-{humble,iron,jazzy}` are mutually exclusive — select one ROS edition.");
 
-#[cfg(feature = "std")]
+// phase-359 W10 stage B — no `std` feature. The hosted edge (`env`) reads
+// through the C library; only the test harness links `std`.
+#[cfg(test)]
 extern crate std;
 
 #[cfg(feature = "alloc")]
@@ -200,25 +202,25 @@ pub mod init;
 
 /// issue 0687 — the hosted edge of configuration: every env var nano-ros
 /// honours is read here, and the core takes values.
-#[cfg(feature = "env")]
+///
+/// phase-359 W10 stage B — read through the C library's `getenv`, so it needs
+/// a C library and not `std`: `target_os = "linux"` is "a C library is linked"
+/// on this tree. It exists on every Linux build, `env` or not, because the
+/// C / C++ entries of a `#![no_std]` image inside a host process
+/// (threadx-linux, freertos-posix — issue 1763) resolve their boot config
+/// through it. The `env` FEATURE is the user-facing half: `from_env`, `init*`,
+/// `Context::new`.
+#[cfg(target_os = "linux")]
 pub mod env;
 
-/// Issue 1763 — the same env rung for a `#![no_std]` image inside a host
-/// process (threadx-linux, freertos-posix), read with the C library's `getenv`.
-/// `target_os = "linux"` is "a C library is linked" on this tree. Compiled on
-/// every Linux build, not only `not(feature = "env")` ones: feature
-/// unification can turn `nros/env` on under a caller whose own `env` is off,
-/// and the caller must still find this. Where a caller has `env`, it uses the
-/// `std::env` reader instead (`nros-c`/`nros-cpp` `resolve_boot`).
-#[cfg(target_os = "linux")]
-pub mod host_env;
-
-/// phase-484 W8c — the retired env aliases both hosted readers refuse.
+/// phase-484 W8c — the retired env aliases the hosted reader refuses.
 pub mod retired_env;
 pub use retired_env::RETIRED_ENV_VARS;
 
 #[cfg(feature = "env")]
-pub use env::{ExecutorConfigEnvExt, rmw_selector};
+pub use env::ExecutorConfigEnvExt;
+#[cfg(target_os = "linux")]
+pub use env::rmw_selector;
 
 pub use init::{ContextSource, InitError, InitOptions};
 
@@ -1378,7 +1380,7 @@ pub use nros_node::executor::sched_context::{
     TimeTriggeredSchedule, TimeTriggeredScheduleError, TimeTriggeredWindow,
 };
 
-#[cfg(all(feature = "std", feature = "rmw-cffi"))]
+#[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
 pub use nros_node::SpinPeriodResult;
 
 // Re-export service types
@@ -1580,7 +1582,7 @@ pub mod prelude {
     // Publisher/Subscriber options (topic + QoS).
     pub use crate::{PublisherOptions, SubscriptionOptions};
 
-    #[cfg(all(feature = "std", feature = "rmw-cffi"))]
+    #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
     pub use crate::SpinPeriodResult;
 
     // Re-export parameter types
@@ -1649,18 +1651,15 @@ mod tests {
 compile_error!(
     "`metadata-mode` records into a heap-allocated global: add \"alloc\" to this crate's features"
 );
-// Emitted here as well as in `nros-node`, and NOT for the reason it first
-// looks like. `nros = { features = ["env"] }` alone does not reach this line:
-// `env` forwards to `nros-node/env`, nros-node is compiled first, and its own
-// guard aborts the build there — measured, not assumed. What this covers is
-// the case feature unification creates, where some other crate in the graph
-// turns `nros-node/std` on so that guard stays quiet while THIS crate's `std`
-// is still off. Rare, and exactly the shape that would otherwise compile a
-// hosted capability into a build that never named the standard library.
-#[cfg(all(feature = "env", not(feature = "std")))]
+// phase-359 W10 stage B — `env` needs a PROCESS, not the standard library:
+// its reader is the C library's `getenv` (`src/env.rs`). It needs the heap
+// for `Context`'s owned strings and the `--params-file` read.
+#[cfg(all(feature = "env", not(target_os = "linux")))]
 compile_error!(
-    "`env` reads the process environment, which needs the standard library: add \"std\" to this crate's features"
+    "`env` reads the process environment through the C library, which this target does not have: a target image takes its boot config from `system.toml` (baked), so drop \"env\""
 );
+#[cfg(all(feature = "env", not(feature = "alloc")))]
+compile_error!("`env` builds an owned `Context`: add \"alloc\" to this crate's features");
 
 // phase-379 W5, revised by phase-428 W10 — the crate-level `QOS_PROFILE_*`
 // presets (rclrs parity) and the older `nros::qos::*` module are two spellings

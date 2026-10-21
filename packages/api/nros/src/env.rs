@@ -12,104 +12,120 @@
 //! have put `return 0` in five ports and permanent surface in the header, for a
 //! facility that exists on one platform family.
 //!
+//! **One reader, through the C library** (phase-359 W10 stage B). The
+//! environment is read with `getenv`, not `std::env`. A process environment is
+//! a property of the PROCESS, not of the Rust standard library: threadx-linux
+//! and freertos-posix are `#![no_std]` images that are still Linux processes
+//! with a C library, and issue 1763 measured what happens when they stop
+//! honouring `$ROS_DOMAIN_ID` (parallel cells shared a domain and heard each
+//! other). There used to be two readers — this one on `std::env` and
+//! `host_env` on `getenv` — with the same variables and rules; they are one
+//! now, and `nros` needs no `std` to be a hosted edge. The edge is "a C library
+//! is linked", which on this tree is `target_os = "linux"`; a cross target has
+//! no `getenv` and this module does not exist there.
+//!
+//! Strings are borrowed from the process environment, which outlives the boot,
+//! so the resolved config's `&'static str` fields point straight into it. No
+//! cache is needed (the old `std::env` reader kept a `OnceLock` only to turn an
+//! owned `String` into a `&'static str`, and its staleness was issue 0607).
+//! Nothing in nano-ros calls `setenv` after boot.
+//!
 //! What lives here:
 //!
 //! * [`ExecutorConfigEnvExt::from_env`] — the constructor that used to be an
 //!   inherent method on `ExecutorConfig`. Bring the trait into scope (the
-//!   prelude has it) and the call site spelling is unchanged.
+//!   prelude has it) and the call site spelling is unchanged. `env` feature.
 //! * [`resolve_hosted`](crate::env::resolve_hosted) / [`try_resolve_hosted`](crate::env::try_resolve_hosted) — RFC-0045 precedence model A
-//!   with the environment rung on top. These replace the old
-//!   `ExecutorConfig::resolve(baked, hosted_env: bool)`, whose flag was a
-//!   compile-time constant at every call site in the tree: `true` at exactly
-//!   one board plus the two FFI entries, `false` everywhere else.
+//!   with the environment rung on top. The C / C++ entries call these on every
+//!   Linux build, `env` or not.
 //! * [`rmw_selector`] — the one `$NROS_RMW` reader (issue 0687's first half).
+//! * `var` / `read_file` (crate-private) — the two C-library reads the hosted `init*`
+//!   entries need (`$RMW_IMPLEMENTATION`, `--params-file`).
+
+use core::ffi::{CStr, c_char};
 
 use crate::retired_env::RETIRED_ENV_VARS;
-use alloc::{
-    boxed::Box,
-    string::{String, ToString},
-};
 use nros_node::{BootConfig, BootConfigError, EnvRung, ExecutorConfig, RMW_SELECTOR_CAP};
 use nros_rmw::SessionMode;
 
-/// A frozen snapshot of the environment, and the backing store for the
-/// `&'static str` fields a resolved [`ExecutorConfig`] hands out.
-struct EnvCache {
-    locator: String,
-    mode: SessionMode,
-    /// RFC-0045 model A — `NROS_NODE_NAME` env rung (issue #206 parity).
-    node_name: String,
-    /// RFC-0045 model A — `NROS_NODE_NAMESPACE` env rung (issue 0794). The
-    /// ladder was uneven: every other identity field had three rungs and the
-    /// namespace had two.
-    namespace: String,
-    /// issue 0687 — `$NROS_RMW`, through [`rmw_selector`] so the snapshot and
-    /// the live reader cannot disagree about what "unset" means.
-    rmw: Option<String>,
+unsafe extern "C" {
+    fn getenv(name: *const c_char) -> *const c_char;
 }
 
-// `std::sync::OnceLock`, and it stays that way deliberately. The portable
-// `nros_rmw::sync::Mutex` would cost a `spin` edge to remove a `std::` path
-// from a module whose next line calls `std::env::var` — this whole file is
-// compiled only under `env`, which REQUIRES `std` because a process
-// environment is a `std` facility. Porting it would move the census number
-// without changing what the build links, which is the definition of gaming the
-// ratchet. (`metadata_mode`'s mutex was the opposite case and did move: there
-// the lock was the ONLY std thing, so porting it made the capability
-// `alloc`-only.)
-static ENV_CACHE: std::sync::OnceLock<EnvCache> = std::sync::OnceLock::new();
+/// `$NAME` as a C string, or `None` when unset — the one `getenv` call.
+fn raw(name: &CStr) -> Option<&'static CStr> {
+    // SAFETY: `name` is NUL-terminated; `getenv` returns NULL or a pointer to
+    // a NUL-terminated string in the process environment, which lives for the
+    // process, so a non-NULL result is a valid `'static` C string.
+    unsafe {
+        let p = getenv(name.as_ptr());
+        (!p.is_null()).then(|| CStr::from_ptr(p))
+    }
+}
 
-/// The process-global env cache — and why tests do not share it.
+/// `$NAME` as UTF-8, or `None` when unset or not UTF-8 (`std::env::var`'s two
+/// `Err` cases, which the old std reader also treated as unset).
 ///
-/// Issue 0607 — resolution reads env PRESENCE live but env VALUES from here,
-/// and a `OnceLock` freezes at whichever caller touched it first. Under
-/// `cargo test` every unit test shares one process, so a later test's
-/// `EnvGuard` moves what `std::env::var` reports while the cached VALUE stays
-/// behind. The two then disagree:
+/// `name` is a Rust string; one longer than 63 bytes, or one holding a NUL,
+/// is no variable this tree reads and answers `None`.
+pub(crate) fn var(name: &str) -> Option<&'static str> {
+    let mut buf = [0u8; 64];
+    if name.len() >= buf.len() || name.as_bytes().contains(&0) {
+        return None;
+    }
+    buf[..name.len()].copy_from_slice(name.as_bytes());
+    let cname = CStr::from_bytes_until_nul(&buf).ok()?;
+    raw(cname)?.to_str().ok()
+}
+
+fn non_empty(v: Option<&'static str>) -> Option<&'static str> {
+    v.filter(|s| !s.is_empty())
+}
+
+/// A whole file, through the C library — `std::fs::read_to_string` for a
+/// crate with no `std`. `--params-file` is its one caller.
 ///
-/// ```text
-/// assertion `left == right` failed
-///   left: ""
-///  right: "tcp/env:7447"
-/// ```
-///
-/// It failed ~1 run in 5, never single-threaded, and a mutex cannot help: a
-/// mutex serialises MUTATION, and this is a stale READ of a cache already
-/// populated. Two tests had been weakened to tolerate it.
-///
-/// So tests rebuild per call — live env is the only coherent answer when the
-/// env is what they are varying. Production keeps the `OnceLock`: nothing there
-/// mutates the environment, so freezing it once is both correct and the point.
-fn env_cache() -> &'static EnvCache {
-    fn build() -> EnvCache {
-        // phase-484 W8c — the legacy `ZENOH_*` aliases are RETIRED; `env_rung`
-        // refuses them before this cache is consulted, so only the canonical
-        // names are read here.
-        let locator = std::env::var("NROS_LOCATOR")
-            // Issue 0330 — unset env leaves the locator EMPTY (= absent); the
-            // active backend substitutes its own default.
-            .unwrap_or_default();
-        let mode_str = std::env::var("NROS_SESSION_MODE").ok();
-        let mode = match mode_str.as_deref() {
-            Some("peer") => SessionMode::Peer,
-            _ => SessionMode::Client,
-        };
-        let node_name = std::env::var("NROS_NODE_NAME").unwrap_or_default();
-        let namespace = std::env::var("NROS_NODE_NAMESPACE").unwrap_or_default();
-        EnvCache {
-            locator,
-            mode,
-            node_name,
-            namespace,
-            rmw: rmw_selector().map(|s| s.as_str().to_string()),
+/// The error is a short reason (`"cannot be opened"`, `"is not UTF-8"`, ...),
+/// for the caller to put beside the path it already holds.
+#[cfg(all(feature = "env", feature = "param-store"))]
+pub(crate) fn read_file(path: &str) -> Result<alloc::string::String, &'static str> {
+    use core::ffi::c_void;
+    unsafe extern "C" {
+        fn fopen(path: *const c_char, mode: *const c_char) -> *mut c_void;
+        fn fread(ptr: *mut c_void, size: usize, n: usize, f: *mut c_void) -> usize;
+        fn ferror(f: *mut c_void) -> i32;
+        fn fclose(f: *mut c_void) -> i32;
+    }
+    let mut cpath = alloc::vec::Vec::with_capacity(path.len() + 1);
+    cpath.extend_from_slice(path.as_bytes());
+    if cpath.contains(&0) {
+        return Err("names a path holding a NUL byte");
+    }
+    cpath.push(0);
+    // SAFETY: both strings are NUL-terminated; `f` is checked before use and
+    // closed exactly once; `fread` writes at most `chunk.len()` bytes.
+    let bytes = unsafe {
+        let f = fopen(cpath.as_ptr().cast(), c"rb".as_ptr());
+        if f.is_null() {
+            return Err("cannot be opened");
         }
-    }
-
-    if cfg!(test) {
-        Box::leak(Box::new(build()))
-    } else {
-        ENV_CACHE.get_or_init(build)
-    }
+        let mut out = alloc::vec::Vec::new();
+        let mut chunk = [0u8; 4096];
+        loop {
+            let n = fread(chunk.as_mut_ptr().cast(), 1, chunk.len(), f);
+            out.extend_from_slice(&chunk[..n]);
+            if n < chunk.len() {
+                break;
+            }
+        }
+        let failed = ferror(f) != 0;
+        fclose(f);
+        if failed {
+            return Err("cannot be read");
+        }
+        out
+    };
+    alloc::string::String::from_utf8(bytes).map_err(|_| "is not UTF-8")
 }
 
 /// **The** answer to "which RMW backend did the user select" — one reader, one
@@ -131,81 +147,106 @@ fn env_cache() -> &'static EnvCache {
 ///   (`rmw_cyclonedds_cpp`). Feeding a ROS name to `resolve_backend` yields
 ///   `Unknown` — an ERROR — where today it is ignored and the unique-backend
 ///   path runs. Unifying them without a mapping would convert "ignored" into
-///   "fails to start". [`crate::init`](fn@crate::init) keeps its fallback for the `Context.rmw`
-///   HINT, which is a different quantity.
+///   "fails to start". The hosted `init` keeps its fallback for the
+///   `Context.rmw` HINT, which is a different quantity.
 /// * **Empty or non-UTF-8 means unset.** A name that is not UTF-8 cannot match
-///   a registry entry, so treating it as absent is what the caller wants; the
-///   old raw-bytes reader would have reported `Unknown` instead.
+///   a registry entry, so treating it as absent is what the caller wants.
 ///
-/// The return is `heapless::String` rather than `String` because
+/// The return is `heapless::String` rather than `&str` because
 /// `RMW_SELECTOR_CAP` is a real bound, not a guess: it is the capacity of
 /// `Executor::primary_rmw_name`, so a longer value cannot name a registry slot
 /// and is reported as unset rather than truncated into a different backend's
 /// name.
 pub fn rmw_selector() -> Option<nros_core::heapless::String<RMW_SELECTOR_CAP>> {
-    let raw = std::env::var_os("NROS_RMW")?;
-    let s = raw.to_str()?;
-    if s.is_empty() {
-        return None;
-    }
+    let s = non_empty(var("NROS_RMW"))?;
     nros_core::heapless::String::try_from(s).ok()
 }
 
 /// The environment as an [`EnvRung`], for [`ExecutorConfig::resolve_with`].
-///
-/// Presence is read LIVE (so a test that sets a var sees its effect) while
-/// values come from the frozen [`env_cache`] — that split is what gives the
-/// resolved config `&'static str` fields without leaking per call.
 fn env_rung() -> Result<EnvRung<'static>, BootConfigError> {
     // phase-484 W8c — a retired alias is REFUSED, never ignored: an ignored
     // `ZENOH_LOCATOR` dials the default router and reads as "no delivery".
     // Presence alone refuses (an empty value is still somebody's intent), and
     // the refusal is logged here so the C / C++ shims, which only get a
-    // return code, still name the replacement.
+    // return code, still name the replacement. Only presence is tested, so a
+    // non-UTF-8 value still refuses.
     for &(name, replacement) in RETIRED_ENV_VARS {
-        if std::env::var_os(name).is_some() {
+        let mut cname = [0u8; 32];
+        cname[..name.len()].copy_from_slice(name.as_bytes());
+        let cname = CStr::from_bytes_until_nul(&cname).expect("retired env name fits");
+        if raw(cname).is_some() {
             let err = BootConfigError::RetiredEnvVar { name, replacement };
             nros_log::log_error!(nros_log::get_logger("nros"), "{}", err);
             return Err(err);
         }
     }
-    let cache = env_cache();
-
-    let locator_present = std::env::var("NROS_LOCATOR").is_ok();
-    let domain_id = match std::env::var("ROS_DOMAIN_ID") {
-        Ok(s) if !s.is_empty() => {
-            // #206 — malformed is an ERROR, not a silent skip. The parse lives
-            // here rather than in the core because only this side has the text.
-            Some(
-                s.trim()
-                    .parse::<u32>()
-                    .map_err(|_| BootConfigError::DomainIdParse)?,
-            )
-        }
-        _ => None,
+    // Issue 0330 — a SET locator is the env's answer even when empty; the
+    // active backend substitutes its own default for an empty one.
+    let locator = var("NROS_LOCATOR");
+    let mode = match var("NROS_SESSION_MODE") {
+        Some("peer") => SessionMode::Peer,
+        _ => SessionMode::Client,
     };
-    let node_name_present = std::env::var("NROS_NODE_NAME")
-        .map(|s| !s.is_empty())
-        .unwrap_or(false);
-    // Issue 0794 — an EMPTY value is not a declaration here, same as the node
-    // name: `""` is what an unset namespace already resolves to, so honouring
-    // it would make `NROS_NODE_NAMESPACE=` indistinguishable from "override the
-    // baked namespace back to root", which is a different request.
-    let namespace_present = std::env::var("NROS_NODE_NAMESPACE")
-        .map(|s| !s.is_empty())
-        .unwrap_or(false);
-
+    let domain_id = match non_empty(var("ROS_DOMAIN_ID")) {
+        // #206 — malformed is an ERROR, not a silent skip. The parse lives
+        // here rather than in the core because only this side has the text.
+        Some(s) => Some(
+            s.trim()
+                .parse::<u32>()
+                .map_err(|_| BootConfigError::DomainIdParse)?,
+        ),
+        None => None,
+    };
+    let rmw = non_empty(var("NROS_RMW")).filter(|s| s.len() <= RMW_SELECTOR_CAP);
     Ok(EnvRung {
-        locator: locator_present.then_some(cache.locator.as_str()),
+        locator,
         domain_id,
-        // Session mode has no baked rung to fall through to, so the cache's
-        // default (`Client`) is always the answer — it is stated rather than
-        // conditional for exactly that reason.
-        mode: Some(cache.mode),
-        node_name: node_name_present.then_some(cache.node_name.as_str()),
-        namespace: namespace_present.then_some(cache.namespace.as_str()),
-        rmw: cache.rmw.as_deref(),
+        // Session mode has no baked rung to fall through to, so `Client` is
+        // always the answer when the variable says nothing.
+        mode: Some(mode),
+        // Issue 0794 — an EMPTY name or namespace is not a declaration: `""`
+        // is what an unset one already resolves to.
+        node_name: non_empty(var("NROS_NODE_NAME")),
+        namespace: non_empty(var("NROS_NODE_NAMESPACE")),
+        rmw,
     })
+}
+
+/// Which rung answered one field, for the boot line.
+fn source(env: bool, baked: bool) -> &'static str {
+    if env {
+        "env"
+    } else if baked {
+        "baked"
+    } else {
+        "default"
+    }
+}
+
+/// The boot line: what each identity field resolved to, and FROM WHERE.
+///
+/// A misspelled variable does nothing, and without this line nothing says so:
+/// the image runs on its baked domain and reads as "no delivery". One line,
+/// short enough for `nros_log`'s 256-byte buffer (a body that does not fit is
+/// dropped, not truncated), so the locator is the field that can be elided.
+fn report(env: &EnvRung<'_>, baked: &BootConfig<'_>, cfg: &ExecutorConfig<'_>) {
+    let locator = if cfg.locator.is_empty() {
+        "(backend default)"
+    } else if cfg.locator.len() > 96 {
+        "(long)"
+    } else {
+        cfg.locator
+    };
+    nros_log::log_info!(
+        nros_log::get_logger("nros"),
+        "boot config: domain {} ({}), locator {} ({}), rmw {} ({})",
+        cfg.domain_id,
+        source(env.domain_id.is_some(), baked.domain_id.is_some()),
+        locator,
+        source(env.locator.is_some(), baked.locator.is_some()),
+        cfg.rmw.unwrap_or("(unique)"),
+        source(env.rmw.is_some(), baked.rmw.is_some()),
+    );
 }
 
 /// RFC-0045 precedence model A with the environment on top:
@@ -229,10 +270,15 @@ pub fn resolve_hosted<'a>(baked: BootConfig<'a>) -> ExecutorConfig<'a> {
 ///   it — both were wrong).
 /// - any resolved domain id > `DOMAIN_ID_MAX` → `DomainIdRange`, INCLUDING a
 ///   baked one (the DDS backend would only fail later).
+///
+/// Logs one line naming each field's source ([`report`]).
 pub fn try_resolve_hosted<'a>(
     baked: BootConfig<'a>,
 ) -> Result<ExecutorConfig<'a>, BootConfigError> {
-    ExecutorConfig::try_resolve_with(baked, Some(env_rung()?))
+    let env = env_rung()?;
+    let cfg = ExecutorConfig::try_resolve_with(baked, Some(env))?;
+    report(&env, &baked, &cfg);
+    Ok(cfg)
 }
 
 /// `ExecutorConfig::from_env()`, as an extension trait.
@@ -244,6 +290,7 @@ pub fn try_resolve_hosted<'a>(
 /// `ExecutorConfig::from_env()` working wherever it is in scope — the
 /// [`prelude`](crate::prelude) carries it, so a consumer that already writes
 /// `use nros::prelude::*` changes nothing at all.
+#[cfg(feature = "env")]
 pub trait ExecutorConfigEnvExt {
     /// Create a configuration from environment variables.
     ///
@@ -260,11 +307,8 @@ pub trait ExecutorConfigEnvExt {
     ///   `ExecutorConfig::rmw`, so a config built here still selects the
     ///   backend the user named.
     ///
-    /// String values are cached in a process-global `OnceLock` on the first
-    /// call and reused for the process lifetime — repeated calls do NOT
-    /// accrete memory, and the returned `&'static str` fields point into that
-    /// cache. Presence and the domain id are read live, so a caller that
-    /// changes the environment between calls sees the change.
+    /// The returned `&'static str` fields point into the process environment,
+    /// read live on every call.
     ///
     /// **Panics** on a malformed or out-of-range `$ROS_DOMAIN_ID` or a set
     /// retired alias (`ZENOH_LOCATOR` / `ZENOH_MODE`), like
@@ -274,22 +318,13 @@ pub trait ExecutorConfigEnvExt {
     fn from_env() -> ExecutorConfig<'static>;
 }
 
+#[cfg(feature = "env")]
 impl ExecutorConfigEnvExt for ExecutorConfig<'static> {
     fn from_env() -> ExecutorConfig<'static> {
-        // issue 0687 — `from_env` IS `resolve_hosted` with nothing baked, and
-        // saying so in code rather than in a test is the point. The two used to
-        // be parallel implementations pinned together by an assertion
-        // (`noop_resolve_matches_from_env`), and they had already drifted where
-        // the assertion did not look: this one read `$ROS_DOMAIN_ID` through a
-        // second, silent parse that turned a malformed or out-of-range value
-        // into domain 0. Now a bad domain fails loud here exactly as it does
-        // for `resolve`, `nros-c` and `nros-cpp` — the #206 rule, finally
-        // uniform across all four.
-        //
-        // The one field that does NOT come from the rung is `node_name`:
-        // `from_env` has never honoured `$NROS_NODE_NAME` (its doc lists what
-        // it reads), and callers chain `.node_name(..)` immediately. Changing
-        // that is a decision, not a cleanup.
+        // issue 0687 — `from_env` IS `resolve_hosted` with nothing baked. The
+        // one field that does NOT come from the rung is `node_name`: `from_env`
+        // has never honoured `$NROS_NODE_NAME` (its doc lists what it reads),
+        // and callers chain `.node_name(..)` immediately.
         ExecutorConfig {
             node_name: "node",
             ..resolve_hosted(BootConfig::default())
@@ -302,8 +337,8 @@ impl ExecutorConfigEnvExt for ExecutorConfig<'static> {
 /// only READ it through `init()` / `Context::from_env()` (`init.rs`).
 ///
 /// `cargo test` runs `#[test]`s in parallel within a single binary by default,
-/// and under test the env cache is rebuilt from the live environment on every
-/// call (see [`env_cache`]). So a reader that does not hold this lock can
+/// and the reader reads the live environment on every call. So a reader that
+/// does not hold this lock can
 /// observe a sibling's `ROS_DOMAIN_ID=abc` halfway through: `init.rs`'s
 /// `plain_args_pass_through_to_init` compared two reads and got `Ok(..)` vs
 /// `Err(EnvParseFailed)` under `just ci gate`. It lived in `env.rs`'s private
@@ -317,7 +352,7 @@ impl ExecutorConfigEnvExt for ExecutorConfig<'static> {
 /// nothing to do with what it asserts (measured: 3 intended failures became
 /// 8). The data behind the lock is `()`; there is no invariant a panic could
 /// have broken.
-#[cfg(test)]
+#[cfg(all(test, feature = "env"))]
 pub(crate) fn test_env_lock() -> std::sync::MutexGuard<'static, ()> {
     static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
     LOCK.get_or_init(|| std::sync::Mutex::new(()))
@@ -325,7 +360,7 @@ pub(crate) fn test_env_lock() -> std::sync::MutexGuard<'static, ()> {
         .unwrap_or_else(|e| e.into_inner())
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "env"))]
 mod tests {
     use super::*;
 
@@ -395,10 +430,8 @@ mod tests {
         };
         let resolved = resolve_hosted(baked);
 
-        // Issue 0607 — the exact env string is observable: tests read live env
-        // rather than a process-global cache that whichever test ran first had
-        // already frozen. This was an `assert_ne!` against the baked value for
-        // exactly that reason.
+        // Issue 0607 — the exact env string is observable: the reader has no
+        // process-global cache for an earlier test to have frozen.
         assert_eq!(
             resolved.locator, "tcp/env:7447",
             "env locator must win over baked, with its own value"

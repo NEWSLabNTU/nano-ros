@@ -3285,10 +3285,10 @@ node-std-tests:
         config::arena_size_for_tests::the_scaling_this_replaced_was_short_of_the_declared_model
     # `env,std` and NOT `rmw-cffi`: the cffi flavour makes the wall clock an
     # extern the linker wants a platform port for, and this lane links none.
-    cargo test -p nros --lib --features env,std --quiet
+    cargo test -p nros --lib --features alloc,env --quiet
     # phase-482 W5 — the same unit tests WITH a parameter store, so the `-p` /
     # `--params-file` path of `init_with_args` runs (without it they refuse).
-    cargo test -p nros --lib --features env,std,param-services --quiet
+    cargo test -p nros --lib --features alloc,env,param-services --quiet
     # phase-359 W10 follow-up — `std` AND `platform-clock`, the combination where
     # "which wall clock wins" is observable. `platform_port_outranks_std_for_the
     # _wall_clock` DEFINES the port symbol itself, so this lane needs no port
@@ -3866,9 +3866,9 @@ workspace-features:
     # so the combo lints `nros` without `platform-posix` (nros-c/nros-cpp still
     # carry it — see the nros-c combo below).
     @echo "  - nros: cffi + humble"
-    cargo clippy --quiet -p nros --no-default-features --features "std,rmw-cffi,ros-humble"
+    cargo clippy --quiet -p nros --no-default-features --features "alloc,log,rmw-cffi,ros-humble"
     @echo "  - nros: cffi + iron"
-    cargo clippy --quiet -p nros --no-default-features --features "std,rmw-cffi,ros-iron"
+    cargo clippy --quiet -p nros --no-default-features --features "alloc,log,rmw-cffi,ros-iron"
     @echo "  - nros-c: zenoh-cffi + posix + humble"
     cargo clippy --quiet -p nros-c --no-default-features --features "{{C_API_SHIPPED_FEATURES}}"
     @echo "  - nros: cffi (no_std)"

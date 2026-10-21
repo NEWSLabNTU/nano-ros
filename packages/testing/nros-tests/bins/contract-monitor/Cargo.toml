@@ -26,7 +26,7 @@ path = "src/bin/diagsink.rs"
 
 [dependencies]
 nros = { path = "../../../../api/nros", default-features = false, features = [
-    "std", "alloc", "env",
+    "log", "alloc", "env",
     "rmw-cffi",
     "ros-humble",
 ] }

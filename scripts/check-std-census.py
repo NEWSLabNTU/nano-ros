@@ -230,7 +230,13 @@ BASELINE = {
     # issue 1931 -- path 15 -> 14: the `use std::path::Path` only
     # `init_with_launch(path)` read went with that function. A real removal,
     # not a respelling: no remaining code needs a filesystem path type.
-    "nros": {"cfg": 5, "path": 14},
+    #
+    # phase-359 W10 stage B: 5/14 -> 0/0, the `std` FEATURE deleted. The 13
+    # `std::env` paths were the hosted edge, which reads through the C
+    # library's `getenv` now (one reader, shared with the `no_std` host
+    # simulators of issue 1763); `--params-file` reads through `fopen`. The
+    # `std` that is left is the test harness's.
+    "nros": {"cfg": 0, "path": 0},
     #
     # phase-359 W10: 13 -> 2 cfg, 8 -> 1 path. `platform.rs` was three std/no_std
     # PAIRS — clock, wall clock, sleep — and every C consumer links a platform
