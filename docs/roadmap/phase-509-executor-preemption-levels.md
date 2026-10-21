@@ -412,9 +412,10 @@ Deviations, recorded in RFC-0108 ("As built in P6"):
   A worker's stack is sized for its band's members (D3, decision 7), so
   it must never run a more urgent band's callback; on one core the more
   urgent band's own worker takes that work first anyway.
-- **Size:** the backing is unchanged (no carved table moved). The
-  `Executor` value grows by 8 B on the x86-64 host (5,024 -> 5,032), the
-  padding at the worker's boundary.
+- **Size:** the backing is unchanged (no carved table moved), and so is
+  the `Executor` value (5,024 B on the x86-64 host): the worker's fields
+  stay flat, and `wake_source_count` is a `u8` (it was a `usize`), so its
+  small fields share one padding word as they did inline.
 
 Tests: `scheduler::tests` (`bands_partition_the_levels_most_urgent_first`,
 `one_band_picks_by_level_then_registration`,

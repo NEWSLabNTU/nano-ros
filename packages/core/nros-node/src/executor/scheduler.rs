@@ -54,6 +54,8 @@ use portable_atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering::SeqCst};
 
 use super::spin::{MAX_WAKE_SOURCES, ParkUntilFn, WakeSourceId, WakeSourceSlot};
 
+const _: () = assert!(MAX_WAKE_SOURCES < 256, "Worker::wake_source_count is a u8");
+
 /// The least urgent dispatch level ([`Priority::dispatch_level`]: `Critical`
 /// 0, `Normal` 1 + rank, `BestEffort` 31).
 ///
@@ -132,7 +134,9 @@ pub(crate) struct Worker {
     /// phase-436 W6 -- registered platform deadline sources, and how many are
     /// live. Inline table: no allocator on the targets this exists for.
     pub(crate) wake_sources: [Option<WakeSourceSlot>; MAX_WAKE_SOURCES],
-    pub(crate) wake_source_count: usize,
+    /// A `u8` (it was a `usize` inline in the executor) so it shares the
+    /// worker's small fields' padding: `MAX_WAKE_SOURCES` is far below 256.
+    pub(crate) wake_source_count: u8,
     /// The single thing that actually blocks. Many sources say WHEN; one
     /// primitive does the waiting.
     pub(crate) park_primitive: Option<(ParkUntilFn, *mut c_void)>,
