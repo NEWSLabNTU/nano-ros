@@ -86,6 +86,10 @@ pub struct NodeRecord {
     /// `extra_sessions[N-1]`. Each Node may bind to a different
     /// session, enabling multi-RMW bridges in one Executor.
     pub session_idx: u8,
+    /// phase-509 P2 (RFC-0108 D2) -- the node's contract rank, 0 = most
+    /// urgent, seeded by `Executor::bind_node_rank` before the node is built.
+    /// Every callback the node registers dispatches at it. 0 when unseeded.
+    pub rank: u8,
     /// Issue #52 / phase-296 residue sweep — per-node QoS-override table, in the
     /// SAME primitive `(topic, role, policy, value)` code form the C and C++
     /// ABIs use (`rclc_qos_override_t` / `nros_cpp_qos_override_t`).
@@ -131,6 +135,7 @@ impl NodeRecord {
             locator: None,
             default_sched: SchedContextId(0),
             session_idx: 0,
+            rank: 0,
             qos_overrides: &[],
         }
     }
@@ -424,6 +429,11 @@ impl<'a, 'cfg, 's> NodeBuilder<'a, 'cfg, 's> {
                 .unwrap_or(SchedContextId(0)),
         };
 
+        // phase-509 P2 -- the rank codegen seeded for this node, 0 if none.
+        let rank = self
+            .executor
+            .lookup_node_rank(name_buf.as_str(), ns_buf.as_str());
+
         let record = NodeRecord {
             name: name_buf,
             namespace: ns_buf,
@@ -431,6 +441,7 @@ impl<'a, 'cfg, 's> NodeBuilder<'a, 'cfg, 's> {
             locator: loc_buf,
             default_sched,
             session_idx,
+            rank,
             // Installed after creation by `Executor::set_node_qos_overrides`
             // (the entry codegen's bake) — a builder never carries them.
             qos_overrides: &[],

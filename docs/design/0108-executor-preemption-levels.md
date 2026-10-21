@@ -222,10 +222,15 @@ the contract (rlm `ros-launch-manifest`), never written in `system.toml`.
   is the number of distinct ranks on the core (at most the pool width;
   RFC-0079's `pool.app`), not three.
 - **EDF:** a heap or ordered list keyed by absolute deadline.
-- **The key comes from codegen,** per callback group, as the rank, normalised
-  so that 0 is the most urgent whatever the kernel's direction. The C and C++
-  `Priority` API (Critical / Normal / BestEffort) keeps working as three
-  reserved ranks.
+- **The key comes from codegen,** per node, as the rank, normalised so that 0
+  is the most urgent whatever the kernel's direction; every callback group of
+  the node shares it. (Amended in P2: the first draft said per callback group,
+  but the derivation ranks nodes, and one tier's single sched context cannot
+  carry several ranks. Codegen seeds each ranked node by name before it is
+  created, `nros_cpp_bind_node_rank`.) The C and C++ `Priority` API
+  (Critical / Normal / BestEffort) keeps working as three reserved ranks:
+  `Critical` dispatches at level 0, `Normal` at 1 + rank, `BestEffort` at the
+  last level.
 - **Ties** (equal rank) stay FIFO in registration order, which keeps today's
   behaviour bit for bit for an image with one rank.
 - **No stale snapshot.** After every callback the worker picks again, from the
@@ -571,9 +576,8 @@ do not depend on RFC-0107 steps 4-6; P6 onward do.
 1. **P1. Report every member that loses its rank.** `derive.rs:631-649` emits
    one degradation per disagreeing member. Test: an authored tier with members
    at 5, 7 and 8 yields two lines.
-2. **P2. Rank-ordered ready set, one thread.** Codegen emits a rank per
-   callback group (normalised, 0 most urgent) next to the tier's sched
-   context; `nros-node` replaces the three-bucket FIFO with a multi-level
+2. **P2. Rank-ordered ready set, one thread.** Codegen seeds a rank per
+   node (normalised, 0 most urgent) before the node is created; `nros-node` replaces the three-bucket FIFO with a multi-level
    FIFO (bitmap of up to 32 ranks) and maps the C/C++ `Priority` to three
    reserved ranks. Tests: three callbacks registered in reverse rank order and
    all ready dispatch in rank order; equal ranks keep registration order; an
@@ -788,3 +792,5 @@ The first draft's open questions, as decided:
   island fallback, merge equal priorities, derived stacks); the rest
   deferred with a decision point; worked threshold example; P11; tracked by
   phase-509.
+- 2026-10-21: P2 built; D2 amended: the rank is seeded per node, not per
+  callback group (the derivation ranks nodes).

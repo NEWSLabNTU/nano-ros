@@ -46,9 +46,16 @@ type SporadicAtomic = (
     super::spin::OpaqueTimerHandle,
 );
 
-/// phase-272 — `(node name, namespace, sched context)`, keyed by the node's
-/// fully-qualified identity.
-pub(crate) type NodeSchedEntry = (heapless::String<64>, heapless::String<64>, SchedContextId);
+/// phase-272 — `(node name, namespace, sched context, rank)`, keyed by the
+/// node's fully-qualified identity. phase-509 P2 -- the rank (0 = most urgent,
+/// the contract's, normalised by codegen) rides in what was the tuple's tail
+/// padding, so the entry is no larger.
+pub(crate) type NodeSchedEntry = (
+    heapless::String<64>,
+    heapless::String<64>,
+    SchedContextId,
+    u8,
+);
 /// phase-273 — [`NodeSchedEntry`] plus the callback-group name that narrows it.
 pub(crate) type GroupSchedEntry = (
     heapless::String<64>,

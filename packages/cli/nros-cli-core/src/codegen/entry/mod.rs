@@ -868,6 +868,38 @@ pub struct EntryDerivation {
     pub mode_deadlines: nros_orchestration_ir::mode_variants::ModeTierDeadlines,
 }
 
+impl EntryDerivation {
+    /// phase-509 P2 (RFC-0108 D2) -- each ranked node's contract rank,
+    /// normalised: the distinct priorities of [`Self::realized`] in urgency
+    /// order (the plan's `direction`), 0 the most urgent. Equal priorities
+    /// share a rank. `(node FQN, rank)`, in `realized` order.
+    ///
+    /// The executor orders by it inside a tier, whatever the kernel's
+    /// direction: on Zephyr (smaller is urgent) priorities 5, 7 and 8 are
+    /// ranks 0, 1 and 2; on a bigger-is-urgent kernel the largest is 0.
+    pub fn node_ranks(
+        &self,
+        direction: nros_orchestration_ir::priority_plan::Direction,
+    ) -> Vec<(String, u8)> {
+        let mut distinct: Vec<i64> = self.realized.iter().map(|n| n.priority).collect();
+        distinct.sort_unstable();
+        distinct.dedup();
+        if direction == nros_orchestration_ir::priority_plan::Direction::BiggerIsUrgent {
+            distinct.reverse();
+        }
+        self.realized
+            .iter()
+            .map(|n| {
+                let rank = distinct
+                    .iter()
+                    .position(|p| *p == n.priority)
+                    .expect("every realized priority is in the distinct list");
+                (n.name.clone(), u8::try_from(rank).unwrap_or(u8::MAX))
+            })
+            .collect()
+    }
+}
+
 /// Phase 269 (W4) — resolve `[tiers.*]` + `[[node_overrides]]` + per-node
 /// `callback_groups` (from cmake metadata) into a [`ResolvedTierTable`] and
 /// stamp each [`PlanNode::sched_context`] with its 0-based tier index

@@ -3186,6 +3186,52 @@ impl<'s> Executor<'s> {
                 return Ok(());
             }
         }
+        self.push_node_entry(name, norm_ns, sc, 0)
+    }
+
+    /// phase-509 P2 (RFC-0108 D2) -- seed the contract rank of the node
+    /// `(name, namespace)` before it is built: 0 is the most urgent, as codegen
+    /// normalises the derivation's ranks. Every callback the node registers
+    /// then dispatches at that rank inside its sched context's bucket
+    /// ([`Priority::dispatch_level`](super::sched_context::Priority::dispatch_level)).
+    /// A node with no seeded rank holds 0.
+    ///
+    /// Shares the node-name table with [`Self::bind_node_name_sched`]: one entry
+    /// per node carries both, so neither call disturbs the other's half. Same
+    /// error contract: a binding that does not fit is refused, never dropped.
+    pub fn bind_node_rank(
+        &mut self,
+        name: &str,
+        namespace: &str,
+        rank: u8,
+    ) -> Result<(), super::types::BindError> {
+        let norm_ns = if namespace.is_empty() { "/" } else { namespace };
+        for entry in self.node_sched_table.iter_mut() {
+            if entry.0.as_str() == name && entry.1.as_str() == norm_ns {
+                entry.3 = rank;
+                return Ok(());
+            }
+        }
+        self.push_node_entry(name, norm_ns, super::sched_context::SchedContextId(0), rank)
+    }
+
+    /// The rank seeded for `(name, namespace)` by [`Self::bind_node_rank`], 0
+    /// when none was.
+    pub(super) fn lookup_node_rank(&self, name: &str, namespace: &str) -> u8 {
+        self.node_sched_table
+            .iter()
+            .find(|e| e.0.as_str() == name && e.1.as_str() == namespace)
+            .map_or(0, |e| e.3)
+    }
+
+    /// A new node-name table entry.
+    fn push_node_entry(
+        &mut self,
+        name: &str,
+        norm_ns: &str,
+        sc: super::sched_context::SchedContextId,
+        rank: u8,
+    ) -> Result<(), super::types::BindError> {
         // New entry. Too long, or table full, is an ERROR the caller surfaces
         // — never a dropped binding. A binding that vanishes leaves the node on
         // the wrong sched context with nothing to read that says so.
@@ -3197,7 +3243,7 @@ impl<'s> Executor<'s> {
         ns_s.push_str(norm_ns)
             .map_err(|_| super::types::BindError::NameTooLong)?;
         self.node_sched_table
-            .push((name_s, ns_s, sc))
+            .push((name_s, ns_s, sc, rank))
             .map_err(|_| super::types::BindError::TableFull)?;
         Ok(())
     }
@@ -5644,12 +5690,22 @@ impl<'s> Executor<'s> {
         // Copy name, namespace, and default_sched out so the borrow on
         // `self.nodes` is released before the immutable `lookup_group_sched`
         // borrow and the mutable `sched_context_bindings` write below.
-        let (name, namespace, node_sc) = {
+        let (name, namespace, node_sc, rank) = {
             let Some(rec) = self.nodes.get(id.index()) else {
                 return;
             };
-            (rec.name.clone(), rec.namespace.clone(), rec.default_sched)
+            (
+                rec.name.clone(),
+                rec.namespace.clone(),
+                rec.default_sched,
+                rec.rank,
+            )
         };
+        // phase-509 P2 -- the entry dispatches at its node's rank, whatever
+        // sched context it ends up bound to.
+        if let Some(tag) = self.slot_tags.get_mut(slot) {
+            tag.rank = rank;
+        }
         // Phase 273: group table > node default.
         let sc = match group {
             Some(g) => self
@@ -7207,6 +7263,7 @@ impl<'s> Executor<'s> {
         }
         if let Some(tag) = self.slot_tags.get_mut(index) {
             tag.owner = 0;
+            tag.rank = 0;
             tag.reset_flags();
         }
         true
@@ -7423,6 +7480,7 @@ impl<'s> Executor<'s> {
         if let Some(tag) = self.slot_tags.get_mut(slot) {
             tag.generation = tag.next_generation();
             tag.owner = 0;
+            tag.rank = 0;
             tag.reset_flags();
         }
     }
@@ -11114,11 +11172,13 @@ impl<'s> Executor<'s> {
         // `bits` carries data-readiness only (used by trigger eval +
         // by `InvocationMode::OnNewData`). `always_mask` carries the
         // `InvocationMode::Always` entries that fire regardless of
-        // data presence. The dispatcher drains
-        // `FifoReadySet(bits | always_mask)` after the trigger
-        // passes; `pop_next` yields registration order (lowest bit
-        // first) so behavior is bit-identical to the pre-refactor
-        // `for (i, meta) in entries.iter().enumerate()` loop.
+        // data presence. The dispatcher drains `bits | always_mask`
+        // after the trigger passes. phase-509 P2 -- in dispatch-level
+        // order (the sched context's bucket, and inside `Normal` the
+        // node's rank), registration order (lowest bit first) among
+        // equals, so an image whose nodes hold one rank is bit-identical
+        // to the pre-refactor `for (i, meta) in entries.iter().enumerate()`
+        // loop.
         let mut bits: u64 = 0;
         let mut count: usize = 0;
         let mut non_timer_mask: u64 = 0;
@@ -11398,8 +11458,12 @@ impl<'s> Executor<'s> {
         // dispatch order is bit-identical to 110.B.b for those.
         const NB: usize = super::sched_context::Priority::COUNT;
         let mut result = SpinOnceResult::new();
-        let mut fifo: super::ready_set::BucketedFifoSet<NB, { MAX_CALLBACK_SLOTS }> =
-            super::ready_set::BucketedFifoSet::new();
+        // phase-509 P2 (RFC-0108 D2) -- the FIFO half is ordered by dispatch
+        // level: a bucket's reserved level, or `1 + rank` inside `Normal`, the
+        // rank being the one the entry's node was seeded with. Equal levels
+        // keep registration order, so an image with one rank is unchanged.
+        let mut fifo: super::ready_set::RankedFifoSet<{ MAX_CALLBACK_SLOTS }> =
+            super::ready_set::RankedFifoSet::new();
         let mut edf: super::ready_set::BucketedEdfSet<NB, { MAX_CALLBACK_SLOTS }> =
             super::ready_set::BucketedEdfSet::new();
         let active_mask = bits | always_mask;
@@ -11691,7 +11755,9 @@ impl<'s> Executor<'s> {
             if is_edf {
                 let _ = edf.insert_into(bucket, job);
             } else {
-                let _ = fifo.insert_into(bucket, job);
+                let rank = self.slot_tags.get(i).map_or(0, |t| t.rank);
+                let level = super::sched_context::Priority::from_index(bucket).dispatch_level(rank);
+                let _ = fifo.insert_at(level, job);
             }
         }
 
@@ -11965,7 +12031,9 @@ impl<'s> Executor<'s> {
                     self.finish_dispatch(i);
                 }
             }
-            while let Some(job) = fifo.pop_from(bucket) {
+            let (level_lo, level_hi) =
+                super::sched_context::Priority::from_index(bucket).level_range();
+            while let Some(job) = fifo.pop_in(level_lo, level_hi) {
                 let i = job.desc_idx as usize;
                 let sc_idx = self.sched_context_bindings[i].0 as usize;
                 if sc_idx < 64 && skipped_scs & (1u64 << sc_idx) != 0 {

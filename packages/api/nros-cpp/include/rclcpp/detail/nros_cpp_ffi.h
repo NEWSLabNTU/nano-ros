@@ -2423,6 +2423,25 @@ nros_cpp_ret_t nros_cpp_bind_node_name_sched(void *handle,
                                              uint8_t sc_id);
 
 /**
+ * phase-509 P2 (RFC-0108 D2) -- seed the contract rank of the node
+ * `(name, namespace)` before it is built. 0 is the most urgent; the entry
+ * codegen emits the derivation's ranks normalised that way, one call per node,
+ * before the node is created. Every callback the node then registers
+ * dispatches in rank order inside its sched context's priority bucket; equal
+ * ranks keep registration order. A node with no call holds rank 0.
+ *
+ * # Safety
+ * `handle` must be a context returned by `nros_cpp_init`.
+ * `name` must be a valid null-terminated UTF-8 string.
+ * `namespace_` may be NULL (defaults to `"/"`), otherwise must be a valid
+ * null-terminated UTF-8 string.
+ */
+nros_cpp_ret_t nros_cpp_bind_node_rank(void *handle,
+                                       const char *name,
+                                       const char *namespace_,
+                                       uint8_t rank);
+
+/**
  * Phase 273 (W2) — seed the group → sched-context table for a specific
  * callback group of a named node. Call BEFORE the node is constructed (before
  * `nros_cpp_node_create`) so that the group's entities pick up the binding at

@@ -52,14 +52,18 @@ pub(super) enum Emitter {
     /// The same rows through the C++ pack — the reference the C rows are read
     /// against, side by side, since both install through one C ABI.
     CppMonitored,
+    /// phase-509 P2 -- `emit_typed_ranked_lowered` with [`golden_node_ranks`]:
+    /// the only entry point that seeds a node's rank.
+    CRanked,
+    CppRanked,
     Rust,
 }
 
 impl Emitter {
     fn ext(self) -> &'static str {
         match self {
-            Emitter::Cpp | Emitter::CppProbe | Emitter::CppMonitored => "cpp",
-            Emitter::C | Emitter::CMonitored => "c",
+            Emitter::Cpp | Emitter::CppProbe | Emitter::CppMonitored | Emitter::CppRanked => "cpp",
+            Emitter::C | Emitter::CMonitored | Emitter::CRanked => "c",
             Emitter::Rust => "rs",
         }
     }
@@ -429,6 +433,35 @@ pub(super) fn cases() -> Vec<(&'static str, Plan, Emitter)> {
         Emitter::CppMonitored,
     ));
 
+    // phase-509 P2 (RFC-0108 D2) -- three nodes registered in REVERSE rank
+    // order, each seeded with its rank before it is created, so the executor
+    // dispatches them most urgent first. The C and C++ packs share the seed
+    // (`declare_calls.jinja`).
+    out.push((
+        "c_native_ranked",
+        plan(
+            "linux",
+            vec![
+                c_node("c_slow_pkg", "slow"),
+                c_node("c_mid_pkg", "mid"),
+                c_node("c_fast_pkg", "fast"),
+            ],
+        ),
+        Emitter::CRanked,
+    ));
+    out.push((
+        "cpp_native_ranked",
+        plan(
+            "linux",
+            vec![
+                typed_node("slow_pkg", "slow"),
+                typed_node("mid_pkg", "mid"),
+                typed_node("fast_pkg", "fast"),
+            ],
+        ),
+        Emitter::CppRanked,
+    ));
+
     out.push((
         "rust_native_one",
         plan("linux", vec![node("talker_pkg", "talker", None)]),
@@ -696,8 +729,35 @@ fn render(p: &Plan, emitter: Emitter) -> Result<String, String> {
             };
             super::emit::emit_typed_monitored(lang, p, &rows, &ages)
         }
+        Emitter::CRanked | Emitter::CppRanked => {
+            let lang = if emitter == Emitter::CRanked {
+                Lang::C
+            } else {
+                Lang::Cpp
+            };
+            super::emit::emit_typed_ranked_lowered(
+                lang,
+                p,
+                &[],
+                &[],
+                None,
+                &[],
+                &super::emit::ModeTier::default(),
+                &golden_node_ranks(),
+            )
+            .map(|(src, _)| src)
+        }
         Emitter::Rust => super::emit_rust::emit(p),
     }
+}
+
+/// phase-509 P2 -- the ranks the `*Ranked` cases seed: `fast` most urgent.
+fn golden_node_ranks() -> Vec<(String, u8)> {
+    vec![
+        ("/fast".to_string(), 0),
+        ("/mid".to_string(), 1),
+        ("/slow".to_string(), 2),
+    ]
 }
 
 /// The contract monitor rows every `*Monitored` case renders with — one rate

@@ -1,6 +1,6 @@
 # Phase 509 -- Executor preemption levels (RFC-0108, amended RFC-0107 steps 4-6)
 
-**Status (2026-10-21). In progress: P1 done.** The design is
+**Status (2026-10-21). In progress: P1 and P2 done.** The design is
 [RFC-0108](../design/0108-executor-preemption-levels.md) (Draft, its open
 questions decided 2026-10-21). This phase also carries RFC-0107's steps 4-6
 as RFC-0108 amends them (RFC-0107 is on branch
@@ -54,8 +54,42 @@ derive tests stay green. On the island's priority plan this adds a line for
 
 ### P2 -- Rank-ordered ready set on one thread
 
-- [ ] Goal: inside one executor, ready callbacks dispatch in rank order
+- [x] Goal: inside one executor, ready callbacks dispatch in rank order
       (0 = most urgent), with equal ranks in registration order.
+
+**Done (as built).** Two points differ from the plan below; RFC-0108 D2 is
+amended to match.
+
+- **The rank is the node's, seeded by name, not a field next to the tier's
+  sched context.** The derivation ranks NODES (`RealizedNode`), and the
+  island's single tier has one sched context for three ranks, so a rank
+  beside the context could not tell them apart. Codegen normalises the
+  derivation's priorities (`EntryDerivation::node_ranks`, 0 = most urgent,
+  either kernel direction) and the C and C++ packs call
+  `nros_cpp_bind_node_rank(exec, name, ns, rank)` before each ranked node is
+  created (`declare_calls.jinja`). Every group of a node shares its rank. The
+  rank rides in the node-name table entry's and the `NodeRecord`'s padding,
+  and per callback slot in the `SlotTag` (4 -> 6 B per slot).
+- **The level is `Priority::dispatch_level(rank)`:** `Critical` 0, `Normal`
+  1 + rank (clamped to 29), `BestEffort` 31, so the three C/C++ buckets are
+  three reserved ranks and their order is unchanged. The ready set's FIFO half
+  is `RankedFifoSet` (one bitmap per level plus a 32-bit presence word); the
+  EDF half keeps its three buckets.
+- Not seeded yet: the Rust `nros::main!` road (it lowers no ranks; its nodes
+  hold rank 0, today's order). It joins with P5, which moves rule 4 onto
+  levels.
+
+Tests: `ranked_callbacks_dispatch_in_rank_order_not_registration_order`,
+`equal_ranks_keep_registration_order`,
+`one_rank_dispatches_in_registration_order`,
+`priority_buckets_are_reserved_ranks_around_the_contracts`,
+`dispatch_levels_reserve_the_ends_for_the_buckets`, the `ranked_*` ready-set
+tests, `node_ranks_normalise_to_zero_most_urgent`, and
+`a_one_tier_entry_seeds_each_nodes_rank` (the island's shape: the 30 Hz pair
+seeded 0 and the 10 Hz pair 1, each before the node exists). Goldens: two new
+rows, `c_native_ranked` and `cpp_native_ranked`; no existing golden moves,
+since none of them derives a rank. `executor_stays_small_enough_to_construct_on_a_stack`
+holds (the rank adds no inline table).
 
 **Touches:**
 

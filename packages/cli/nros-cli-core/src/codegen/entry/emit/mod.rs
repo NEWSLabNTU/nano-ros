@@ -67,6 +67,32 @@ pub fn emit_typed_monitored_lowered(
     modes: &[(String, Vec<MonitorRow>, Vec<AgeRow>)],
     mode_tier: &ModeTier,
 ) -> Result<(String, LoweredEntry), String> {
+    emit_typed_ranked_lowered(
+        language,
+        plan,
+        monitors,
+        ages,
+        hazard_model,
+        modes,
+        mode_tier,
+        &[],
+    )
+}
+
+/// [`emit_typed_monitored_lowered`], also seeding each ranked node's
+/// contract rank (phase-509 P2, RFC-0108 D2): `(node FQN, rank)`, 0 the most
+/// urgent, from [`super::EntryDerivation::node_ranks`].
+#[allow(clippy::too_many_arguments)]
+pub fn emit_typed_ranked_lowered(
+    language: Lang,
+    plan: &Plan,
+    monitors: &[MonitorRow],
+    ages: &[AgeRow],
+    hazard_model: Option<&ros_launch_manifest_model::SystemModel>,
+    modes: &[(String, Vec<MonitorRow>, Vec<AgeRow>)],
+    mode_tier: &ModeTier,
+    node_ranks: &[(String, u8)],
+) -> Result<(String, LoweredEntry), String> {
     emit_lowered(
         language,
         plan,
@@ -78,6 +104,7 @@ pub fn emit_typed_monitored_lowered(
             mode_deadlines: Some(&mode_tier.deadlines),
             mode_switch: &mode_tier.switch,
             probe: None,
+            node_ranks,
         },
     )
 }

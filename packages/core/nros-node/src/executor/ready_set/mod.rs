@@ -77,6 +77,11 @@ impl<const N: usize> FifoReadySet<N> {
         Self { bits: 0 }
     }
 
+    /// No `desc_idx` is queued.
+    pub const fn bits_empty(&self) -> bool {
+        self.bits == 0
+    }
+
     /// Bulk-set the presence bitmap. Test-only helper (Phase 192.8): the
     /// runtime path inserts per-bit; only the unit tests set the bitmap in
     /// one shot.
@@ -278,6 +283,8 @@ impl<const N: usize> ReadySet for EdfReadySet<N> {
 // Splits a ready set across `NB` priority buckets (defaults to 3:
 // Critical / Normal / BestEffort). Within each bucket the underlying
 // FIFO bitmap or EDF heap behaves exactly as the un-bucketed variant.
+// phase-509 P2 -- the FIFO half is now `RankedFifoSet`, ordered by dispatch
+// level (the bucket's reserved level, or `1 + rank` inside `Normal`).
 //
 // Selection: `pop_next` walks buckets ascending (lowest index first =
 // highest priority) and returns the first available job. This gives
@@ -288,41 +295,78 @@ impl<const N: usize> ReadySet for EdfReadySet<N> {
 // priority bucket blocks higher-priority work that becomes ready
 // during dispatch. For hard-RT preemption see Phase 110.D.
 
+/// phase-509 P2 (RFC-0108 D2) -- the FIFO half of the ready set, ordered by
+/// dispatch level: one FIFO per level plus a presence word, so the pick is a
+/// count of trailing zeros. A level's FIFO is a bitmap over `desc_idx`, popped
+/// lowest bit first, so equal levels keep registration order exactly as the
+/// three-bucket set this replaces did.
+///
+/// It replaced `BucketedFifoSet<3, N>`, whose bucket was the sched context's
+/// `Priority` alone: every callback of one tier sat in `Normal` and ran in
+/// registration order, whatever rank the contract gave its node. The level is
+/// [`Priority::dispatch_level`](super::sched_context::Priority::dispatch_level),
+/// which keeps the three buckets as three reserved levels.
 #[derive(Debug)]
-pub(crate) struct BucketedFifoSet<const NB: usize, const N: usize> {
-    buckets: [FifoReadySet<N>; NB],
+pub(crate) struct RankedFifoSet<const N: usize> {
+    levels: [FifoReadySet<N>; super::sched_context::DISPATCH_LEVELS],
+    present: u32,
 }
 
-impl<const NB: usize, const N: usize> BucketedFifoSet<NB, N> {
+impl<const N: usize> RankedFifoSet<N> {
     pub const fn new() -> Self {
         const {
-            assert!(NB >= 1, "BucketedFifoSet needs at least 1 bucket");
+            assert!(
+                super::sched_context::DISPATCH_LEVELS <= 32,
+                "the presence word is a u32"
+            );
         }
         Self {
-            buckets: [const { FifoReadySet::<N>::new() }; NB],
+            levels: [const { FifoReadySet::<N>::new() }; super::sched_context::DISPATCH_LEVELS],
+            present: 0,
         }
     }
 
-    pub fn insert_into(
-        &mut self,
-        bucket: usize,
-        job: super::types::ActiveJob,
-    ) -> Result<(), Overflow> {
-        if bucket >= NB {
+    /// Queue `job` at `level` (0 dispatches first). Idempotent per
+    /// `desc_idx`, as the level's FIFO is.
+    pub fn insert_at(&mut self, level: u8, job: super::types::ActiveJob) -> Result<(), Overflow> {
+        let l = level as usize;
+        if l >= super::sched_context::DISPATCH_LEVELS {
             return Err(Overflow);
         }
-        self.buckets[bucket].insert(job)
+        self.levels[l].insert(job)?;
+        self.present |= 1u32 << l;
+        Ok(())
     }
 
-    /// Pop a job from a specific bucket, ignoring other buckets. The
-    /// dispatcher walks buckets in priority order itself (see `spin_once`),
-    /// so the bucketed set only exposes per-bucket draining.
-    pub fn pop_from(&mut self, bucket: usize) -> Option<super::types::ActiveJob> {
-        self.buckets.get_mut(bucket)?.pop_next()
+    /// Pop the most urgent job whose level is in `lo..hi`: the lowest level
+    /// present there, and inside it the lowest `desc_idx`.
+    pub fn pop_in(&mut self, lo: u8, hi: u8) -> Option<super::types::ActiveJob> {
+        let below_hi = if hi as usize >= 32 {
+            u32::MAX
+        } else {
+            (1u32 << hi) - 1
+        };
+        let from_lo = if lo as usize >= 32 { 0 } else { u32::MAX << lo };
+        let window = self.present & below_hi & from_lo;
+        if window == 0 {
+            return None;
+        }
+        let l = window.trailing_zeros() as usize;
+        let job = self.levels[l].pop_next();
+        if self.levels[l].bits_empty() {
+            self.present &= !(1u32 << l);
+        }
+        job
+    }
+
+    /// Pop the most urgent job at any level.
+    #[cfg(test)]
+    pub fn pop_next(&mut self) -> Option<super::types::ActiveJob> {
+        self.pop_in(0, super::sched_context::DISPATCH_LEVELS as u8)
     }
 }
 
-impl<const NB: usize, const N: usize> Default for BucketedFifoSet<NB, N> {
+impl<const N: usize> Default for RankedFifoSet<N> {
     fn default() -> Self {
         Self::new()
     }
@@ -426,6 +470,51 @@ mod tests {
         assert_eq!(r.pop_next().unwrap().desc_idx, 1);
         assert_eq!(r.pop_next().unwrap().desc_idx, 2);
         assert_eq!(r.pop_next().unwrap().desc_idx, 4);
+        assert!(r.pop_next().is_none());
+    }
+
+    fn job(idx: u8) -> ActiveJob {
+        ActiveJob {
+            sort_key: idx as u32,
+            desc_idx: idx,
+        }
+    }
+
+    /// phase-509 P2 -- the lowest level first, and inside a level the lowest
+    /// `desc_idx` (registration order).
+    #[test]
+    fn ranked_pops_by_level_then_registration_order() {
+        let mut r: RankedFifoSet<64> = RankedFifoSet::new();
+        for (level, idx) in [(3u8, 0u8), (1, 5), (3, 1), (1, 2), (0, 9)] {
+            r.insert_at(level, job(idx)).unwrap();
+        }
+        let popped: Vec<u8> = core::iter::from_fn(|| r.pop_next().map(|j| j.desc_idx)).collect();
+        assert_eq!(popped, vec![9, 2, 5, 0, 1]);
+    }
+
+    /// phase-509 P2 -- `pop_in` reaches only its window of levels.
+    #[test]
+    fn ranked_pop_in_stays_inside_its_window() {
+        let mut r: RankedFifoSet<64> = RankedFifoSet::new();
+        r.insert_at(0, job(1)).unwrap();
+        r.insert_at(5, job(2)).unwrap();
+        r.insert_at(31, job(3)).unwrap();
+        assert_eq!(r.pop_in(1, 31).map(|j| j.desc_idx), Some(2));
+        assert_eq!(r.pop_in(1, 31), None);
+        assert_eq!(r.pop_in(31, 32).map(|j| j.desc_idx), Some(3));
+        assert_eq!(r.pop_in(0, 1).map(|j| j.desc_idx), Some(1));
+        assert!(r.pop_next().is_none());
+    }
+
+    /// phase-509 P2 -- one ready bit per callback, as in every set here.
+    #[test]
+    fn ranked_insert_idempotent_and_bounded() {
+        let mut r: RankedFifoSet<8> = RankedFifoSet::new();
+        r.insert_at(2, job(4)).unwrap();
+        r.insert_at(2, job(4)).unwrap();
+        assert_eq!(r.insert_at(32, job(1)), Err(Overflow));
+        assert_eq!(r.insert_at(0, job(9)), Err(Overflow));
+        assert!(r.pop_next().is_some());
         assert!(r.pop_next().is_none());
     }
 

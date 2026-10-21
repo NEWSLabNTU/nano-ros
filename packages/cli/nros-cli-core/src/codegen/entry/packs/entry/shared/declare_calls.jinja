@@ -1,5 +1,5 @@
 {#-
-  The per-node parameter declarations.
+  The per-node parameter declarations, and (phase-509 P2) the node's rank.
 
   Issue 1971 (RFC-0107 step 1) -- the node's launch REMAPS are no longer
   declared here: they are one flash table for the whole image
@@ -39,6 +39,16 @@
   It is written here rather than passed in: a caller that needed a different
   depth would be emitting these somewhere they do not belong.
 -#}
+{#- phase-509 P2 (RFC-0108 D2) -- the node's contract rank, seeded before the
+    node is created so every callback it registers dispatches in rank order
+    inside its bucket. Only when the entry derived ranks: a node with none
+    holds rank 0, today's order. #}
+{%- if n.rank is not none %}
+        {
+            nros_cpp_ret_t rrc = nros_cpp_bind_node_rank({{ dexec }}, "{{ n.name | c_str }}", "{{ n.namespace | c_str }}", {{ n.rank }}u);
+            if (rrc != NROS_CPP_RET_OK) return (int32_t)rrc;
+        }
+{%- endif %}
 {%- for p in n.params %}
         {
             nros_cpp_ret_t prc = nros_cpp_declare_param({{ dexec }}, {{ at }}, "{{ p[0] | c_str }}", "{{ p[1] | c_str }}");

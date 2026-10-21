@@ -359,6 +359,36 @@ mod tests {
         }
     }
 
+    /// phase-509 P2 (RFC-0108 D2) -- the island's three ranks normalise to
+    /// 0, 1 and 2 in urgency order whatever the kernel's direction; equal
+    /// priorities share a rank.
+    #[test]
+    fn node_ranks_normalise_to_zero_most_urgent() {
+        use nros_orchestration_ir::priority_plan::Direction;
+        let derivation = EntryDerivation {
+            realized: vec![
+                node("/mrm_emergency_stop_operator", 7, 33_333),
+                node("/mrm_comfortable_stop_operator", 8, 100_000),
+                node("/mrm_handler", 5, 100_000),
+                node("/twin", 7, 33_333),
+            ],
+            ..Default::default()
+        };
+        let ranks = |d| -> Vec<u8> {
+            derivation
+                .node_ranks(d)
+                .into_iter()
+                .map(|(_, r)| r)
+                .collect()
+        };
+        assert_eq!(ranks(Direction::SmallerIsUrgent), vec![1, 2, 0, 1]);
+        assert_eq!(ranks(Direction::BiggerIsUrgent), vec![1, 0, 2, 1]);
+        assert_eq!(
+            derivation.node_ranks(Direction::SmallerIsUrgent)[2].0,
+            "/mrm_handler"
+        );
+    }
+
     /// One allocated tier on the island's plan: the record names its origin
     /// and the ranks it came from, the header the numbers the entry runs at.
     #[test]

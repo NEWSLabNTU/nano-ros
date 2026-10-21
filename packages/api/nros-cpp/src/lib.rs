@@ -4713,6 +4713,50 @@ pub unsafe extern "C" fn nros_cpp_bind_node_name_sched(
     }
 }
 
+/// phase-509 P2 (RFC-0108 D2) -- seed the contract rank of the node
+/// `(name, namespace)` before it is built. 0 is the most urgent; the entry
+/// codegen emits the derivation's ranks normalised that way, one call per node,
+/// before the node is created. Every callback the node then registers
+/// dispatches in rank order inside its sched context's priority bucket; equal
+/// ranks keep registration order. A node with no call holds rank 0.
+///
+/// # Safety
+/// `handle` must be a context returned by `nros_cpp_init`.
+/// `name` must be a valid null-terminated UTF-8 string.
+/// `namespace_` may be NULL (defaults to `"/"`), otherwise must be a valid
+/// null-terminated UTF-8 string.
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_bind_node_rank(
+    handle: *mut c_void,
+    name: *const c_char,
+    namespace_: *const c_char,
+    rank: u8,
+) -> nros_cpp_ret_t {
+    if name.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let Some(ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    let name_str = match unsafe { cstr_to_str(name) } {
+        Some(s) => s,
+        None => return NROS_CPP_RET_INVALID_ARGUMENT,
+    };
+    let ns_str = if namespace_.is_null() {
+        "/"
+    } else {
+        match unsafe { cstr_to_str(namespace_) } {
+            Some(s) => s,
+            None => return NROS_CPP_RET_INVALID_ARGUMENT,
+        }
+    };
+    match ctx.executor.bind_node_rank(name_str, ns_str, rank) {
+        Ok(()) => NROS_CPP_RET_OK,
+        Err(e) => bind_err_to_ret(e),
+    }
+}
+
 /// One `BindError` → `nros_cpp_ret_t` mapping, for the four seams that record
 /// a filter or sched binding.
 ///

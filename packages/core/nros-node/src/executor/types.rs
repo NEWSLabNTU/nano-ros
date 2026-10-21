@@ -1055,6 +1055,11 @@ pub(crate) struct SlotTag {
     /// The node that registered the current occupant, biased by one: 0 = none,
     /// `n` = node table index `n - 1`.
     pub(crate) owner: u8,
+    /// phase-509 P2 (RFC-0108 D2) -- the occupant's contract rank (0 = most
+    /// urgent), copied from its node at registration
+    /// (`apply_node_default_sched`). It orders the occupant inside its sched
+    /// context's bucket. 0 for an occupant registered without a node.
+    pub(crate) rank: u8,
     /// Issue 1667 / 1705 — [`SlotTag::IN_DISPATCH`],
     /// [`SlotTag::RELEASE_PENDING`], [`SlotTag::WORKER_QUEUED`]. Rides in what
     /// was the struct's padding byte, so the tag is still 4 bytes and no image's
@@ -1096,6 +1101,7 @@ impl SlotTag {
         Self {
             generation,
             owner,
+            rank: 0,
             flags: portable_atomic::AtomicU8::new(0),
         }
     }

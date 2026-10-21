@@ -82,6 +82,11 @@ pub struct LowerOptions<'a> {
     pub mode_switch: &'a [(u32, String)],
     /// `Some` for a metadata probe.
     pub probe: Option<&'a ProbeExport>,
+    /// phase-509 P2 (RFC-0108 D2) -- each ranked node's normalised contract
+    /// rank, `(node FQN, rank)`, 0 the most urgent
+    /// ([`super::EntryDerivation::node_ranks`]). Empty when nothing was
+    /// derived, which seeds no rank.
+    pub node_ranks: &'a [(String, u8)],
 }
 
 /// phase-462 W4c -- how one executor names the sched context a tier runs
@@ -209,6 +214,9 @@ fn lower_node(n: &PlanNode) -> LoweredNode {
         } else {
             None
         },
+        // Set by `lower_image` from `LowerOptions::node_ranks`; the plan
+        // carries no rank.
+        rank: None,
     }
 }
 
@@ -271,6 +279,16 @@ pub fn lower_image(plan: &Plan, opts: &LowerOptions<'_>) -> Result<LoweredEntry,
     }
 
     let mut e = lower_entry(plan);
+    // phase-509 P2 -- each node's rank, by the FQN the derivation ranked it
+    // under (`plan_node_fqn`, the same key the monitor rows use).
+    for (lowered, n) in e.nodes.iter_mut().zip(&plan.nodes) {
+        let fqn = plan_node_fqn(n);
+        lowered.rank = opts
+            .node_ranks
+            .iter()
+            .find(|(f, _)| *f == fqn)
+            .map(|(_, r)| *r);
+    }
     e.family = Some(family);
     e.boot_shape = Some(family.boot_shape());
 
