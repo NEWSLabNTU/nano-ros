@@ -271,7 +271,7 @@ pub fn resolve_hosted<'a>(baked: BootConfig<'a>) -> ExecutorConfig<'a> {
 /// - any resolved domain id > `DOMAIN_ID_MAX` → `DomainIdRange`, INCLUDING a
 ///   baked one (the DDS backend would only fail later).
 ///
-/// Logs one line naming each field's source ([`report`]).
+/// Logs one line naming each field's source (`report`).
 pub fn try_resolve_hosted<'a>(
     baked: BootConfig<'a>,
 ) -> Result<ExecutorConfig<'a>, BootConfigError> {

@@ -30,7 +30,8 @@
 # cannot document at all". Re-measured 2026-09-25 with this feature set it was
 # 179 diagnostics and TWELVE such crates — three weeks of drift on a surface
 # nothing checked. All 179 are fixed; the new gate holds the zero.
-NROS_RUSTDOC_FEATURES="rmw-cffi,platform-posix,ros-humble,safety-e2e,std,env,macros"
+# phase-359 W10: `env` needs `alloc`, and `std` no longer brings it.
+NROS_RUSTDOC_FEATURES="rmw-cffi,platform-posix,ros-humble,safety-e2e,std,alloc,env,macros"
 NROS_RUSTDOC_CRATES=(
     nros
     nros-rmw
