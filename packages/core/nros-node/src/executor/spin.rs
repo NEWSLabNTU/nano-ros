@@ -1445,6 +1445,24 @@ unsafe impl Sync for ComponentSlot {}
 /// correctly. `EdfReadySet`'s presence bitmap independently asserts `N <= 64`.
 pub(crate) const MAX_CALLBACK_SLOTS: usize = 64;
 
+/// phase-509 P3 (RFC-0108 D2, its deferred re-probe question) -- whether a
+/// slot whose backend cannot attribute an arrival (XRCE, uORB) is probed after
+/// every callback ([`Executor::set_reprobe_each_callback`]) or once per pass.
+///
+/// Measured on the host (`reprobe_cost_on_an_unattributed_executor`, release
+/// build, x86-64, `NROS_EXECUTOR_MAX_CBS=32`): 32 unattributed subscriptions,
+/// 4 ready per pass, empty callbacks. Once per pass 380-385 ns per pass;
+/// after every callback 565-577 ns, i.e. +185-191 ns per pass, +46-48 ns per
+/// callback, 1.65-1.71 ns per extra `has_data` (a mock's: no FFI, no
+/// transport). The cost is one probe per unsettled slot per CALLBACK, so it
+/// grows with slots x callbacks, and a real XRCE or uORB probe crosses the
+/// rmw C ABI on an MCU several times slower than this host. Decided: once
+/// per pass by default (an XRCE / uORB image keeps today's probe cost), with
+/// the per-callback probe an opt-in. Pushed readiness (zenoh, which
+/// attributes every arrival) joins mid-pass whatever this says, for one
+/// atomic swap per callback.
+pub const REPROBE_EACH_CALLBACK_DEFAULT: bool = false;
+
 /// Issue 1667 — the arena's allocation grain. Every region the arena hands out
 /// starts on it and is a multiple of it, so a released region is always big
 /// enough, and aligned enough, to hold its own free-list node.
@@ -2011,6 +2029,14 @@ pub struct Executor<'s> {
     /// [`Executor::readiness_probe_count`].
     #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
     pub(crate) readiness_probes: u32,
+    /// phase-509 P3 (RFC-0108 D2) -- after every callback the dispatcher
+    /// picks again from the ready set as it is now. Pushed readiness (an
+    /// attributed slot's arrival) joins mid-pass always; a slot whose backend
+    /// cannot attribute (XRCE, uORB, a mock) joins mid-pass only when this is
+    /// set, by a `has_data` probe after each callback. Unset, such a slot is
+    /// probed once per pass, at the scan. See
+    /// [`Executor::set_reprobe_each_callback`] for the measured cost.
+    pub(crate) reprobe_each_callback: bool,
     /// Phase 124.B.2 — opaque context Arc handed to backends via
     /// `set_wake_callback`. Lazy-allocated on first install; stays
     /// alive for the Executor's lifetime so the raw pointer stored
@@ -2537,6 +2563,7 @@ impl<'s> Executor<'s> {
             fault_fn: None,
             reaction_hook: None,
             spin_quantization_checked: false,
+            reprobe_each_callback: REPROBE_EACH_CALLBACK_DEFAULT,
             spin_quantization_us: 0,
             max_release_jitter_us: 0,
             last_spin_entry_us: None,
@@ -7292,6 +7319,140 @@ impl<'s> Executor<'s> {
         })
     }
 
+    /// phase-509 P3 (RFC-0108 D2) -- after a callback, merge what became
+    /// ready while it ran into this pass's ready set, so the next pick is
+    /// from the set as it is now.
+    ///
+    /// - An attributed slot's arrival (its bit in the ready word) joins.
+    /// - With [`Self::set_reprobe_each_callback`], a slot that cannot be
+    ///   attributed is probed (`has_data`) and joins when it has data.
+    /// - A slot the pass already `settled` (queued, dispatched or held back by
+    ///   a gate) does not join: it runs at most once per pass. An arrival for
+    ///   one is kept for the next pass's scan.
+    /// - A slot whose context gates its dispatch (a sporadic budget, a
+    ///   time-triggered window, an OS-priority worker) waits for the next
+    ///   pass, where the scan applies the gate.
+    fn merge_mid_pass(
+        &mut self,
+        fifo: &mut super::ready_set::RankedFifoSet<{ MAX_CALLBACK_SLOTS }>,
+        edf: &mut super::ready_set::BucketedEdfSet<
+            { super::sched_context::Priority::COUNT },
+            { MAX_CALLBACK_SLOTS },
+        >,
+        settled: &mut u64,
+        arena_ptr: *mut u8,
+    ) {
+        let mut fresh: u64 = 0;
+        #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+        let attributed = self.entity_attributed;
+        #[cfg(not(all(feature = "alloc", feature = "rmw-cffi")))]
+        let attributed: u64 = 0;
+        #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+        {
+            let arrived = self.wake_ctx.as_ref().map_or(0, |ctx| {
+                ctx.ready.swap(0, portable_atomic::Ordering::SeqCst) as u64
+            }) & attributed;
+            // Kept for the next pass: its scan asks `has_data` (the bit has
+            // left the word, and its wake already ended no park early).
+            self.entity_recheck |= arrived & *settled;
+            fresh |= arrived & !*settled;
+        }
+        if self.reprobe_each_callback {
+            let mut probes: u32 = 0;
+            for (i, meta) in self.entries.iter().enumerate() {
+                let bit = 1u64 << i;
+                let Some(meta) = meta else { continue };
+                if (*settled | attributed | fresh) & bit != 0
+                    || matches!(meta.kind, EntryKind::Timer | EntryKind::GuardCondition)
+                    || matches!(meta.invocation, InvocationMode::Always)
+                    || Self::slot_held(self.slot_tags, i)
+                {
+                    continue;
+                }
+                probes = probes.wrapping_add(1);
+                // SAFETY: as the readiness scan's probe: `meta.offset` is this
+                // live entry's arena slot, and `has_data` only reads it.
+                if unsafe { (meta.has_data)(arena_ptr.add(meta.offset) as *const u8) } {
+                    fresh |= bit;
+                }
+            }
+            #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+            {
+                self.readiness_probes = self.readiness_probes.wrapping_add(probes);
+            }
+            #[cfg(not(all(feature = "alloc", feature = "rmw-cffi")))]
+            let _ = probes;
+        }
+        if fresh == 0 {
+            return;
+        }
+        if !self.age_table.is_empty() {
+            super::monitor::credit_arrivals(self.age_table, fresh);
+        }
+        let mut rest = fresh;
+        while rest != 0 {
+            let i = rest.trailing_zeros() as usize;
+            let bit = 1u64 << i;
+            rest &= !bit;
+            if self.entries.get(i).is_none_or(|e| e.is_none()) || Self::slot_held(self.slot_tags, i)
+            {
+                #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+                {
+                    self.entity_recheck |= bit & attributed;
+                }
+                continue;
+            }
+            let sc_idx = self.sched_context_bindings[i].0 as usize;
+            let sc = self.sched_contexts.get(sc_idx).and_then(|s| s.as_ref());
+            let class = sc.map_or(super::sched_context::SchedClass::Fifo, |sc| sc.class);
+            let priority = sc.map_or(super::sched_context::Priority::Normal, |sc| sc.priority);
+            let windowed = self.major_frame_us > 0
+                && sc.is_some_and(|sc| sc.tt_window_duration_us.get().is_some());
+            #[cfg(all(
+                feature = "alloc",
+                feature = "rmw-cffi",
+                feature = "scheduler-os-priority"
+            ))]
+            let worker = sc.is_some_and(|sc| sc.os_pri > 0);
+            #[cfg(not(all(
+                feature = "alloc",
+                feature = "rmw-cffi",
+                feature = "scheduler-os-priority"
+            )))]
+            let worker = false;
+            if matches!(class, super::sched_context::SchedClass::Sporadic) || windowed || worker {
+                #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+                {
+                    self.entity_recheck |= bit & attributed;
+                }
+                continue;
+            }
+            let is_edf = matches!(class, super::sched_context::SchedClass::Edf);
+            let job = super::types::ActiveJob {
+                sort_key: if is_edf {
+                    sc.and_then(|sc| sc.deadline_us.get())
+                        .map_or(u32::MAX, |nz| nz.get())
+                } else {
+                    i as u32
+                },
+                desc_idx: i as super::types::DescIdx,
+            };
+            if is_edf {
+                let _ = edf.insert_into(priority.index(), job);
+            } else {
+                let rank = self.slot_tags.get(i).map_or(0, |t| t.rank);
+                let _ = fifo.insert_at(priority.dispatch_level(rank), job);
+            }
+            *settled |= bit;
+            // As the scan does: a ready attributed slot is asked again next
+            // spin, since one dispatch may leave data behind.
+            #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+            {
+                self.entity_recheck |= bit & attributed;
+            }
+        }
+    }
+
     /// Issue 1667 — `slot`'s callback has returned. Complete a release it
     /// requested while running.
     fn finish_dispatch(&mut self, slot: usize) {
@@ -7586,6 +7747,16 @@ impl<'s> Executor<'s> {
         return self.readiness_probes;
         #[cfg(not(all(feature = "alloc", feature = "rmw-cffi")))]
         0
+    }
+
+    /// phase-509 P3 (RFC-0108 D2) -- probe the slots whose backend cannot
+    /// attribute an arrival (XRCE, uORB) after every callback, so one made
+    /// ready by a callback runs in the same pass, in rank order, instead of
+    /// at the next pass's scan. Pushed readiness joins mid-pass either way.
+    /// The default is [`REPROBE_EACH_CALLBACK_DEFAULT`]; the phase-509 P3
+    /// host measurement that chose it is recorded beside that constant.
+    pub fn set_reprobe_each_callback(&mut self, on: bool) {
+        self.reprobe_each_callback = on;
     }
 
     /// phase-476 W0 — the handle for the CURRENT occupant of `slot`. Every
@@ -11760,6 +11931,18 @@ impl<'s> Executor<'s> {
                 let _ = fifo.insert_at(level, job);
             }
         }
+        // phase-509 P3 -- every slot this pass has already settled: queued
+        // above, or held back by a gate (budget, window, worker). A slot in
+        // it never joins the pass again, so each entry runs at most once per
+        // pass (a timer's clock advances by one `delta_us` per pass, and a
+        // callback that readies itself cannot hold the pass forever).
+        let mut settled: u64 = active_mask;
+        // phase-509 P3 -- the LET semantics dispatch the pass's snapshot,
+        // sampled before any callback ran; nothing joins it mid-pass.
+        // A trigger narrower than "any" (`One`, `AllOf`, a predicate) chose
+        // this pass's work from the scan; it stays the scan's.
+        let repick = !matches!(self.semantics, ExecutorSemantics::LogicalExecutionTime)
+            && matches!(self.trigger, Trigger::Any | Trigger::Always);
 
         // SAFETY: each `desc_idx` we pop was set above only when the
         // corresponding `entries[i]` slot was `Some`; no Executor
@@ -11961,146 +12144,96 @@ impl<'s> Executor<'s> {
         // entry runs while a higher-priority bucket has work pending.
         // Strict static priority across buckets; non-preemptive within
         // an in-flight callback (see Phase 110.D).
-        for bucket in 0..NB {
-            while let Some(job) = edf.pop_from(bucket) {
-                let i = job.desc_idx as usize;
-                let sc_idx = self.sched_context_bindings[i].0 as usize;
-                if sc_idx < 64 && skipped_scs & (1u64 << sc_idx) != 0 {
-                    continue; // W3b.5 DeadlineAction::Skip containment
+        // phase-509 P3 (RFC-0108 D2) -- one pick at a time. Each pick is the
+        // most urgent queued job (bucket by bucket: EDF heap, then the ranked
+        // FIFO's levels), and after each callback the ready set is merged
+        // with what became ready while it ran, so an urgent callback made
+        // ready by a less urgent one runs before the rest of the pass. Was a
+        // drain of the scan's snapshot, bucket by bucket.
+        loop {
+            let mut next = None;
+            for bucket in 0..NB {
+                if let Some(job) = edf.pop_from(bucket) {
+                    next = Some(job);
+                    break;
                 }
-                if let Some(meta) = self.entries[i].as_ref()
-                    && !Self::slot_held(self.slot_tags, i)
-                {
-                    let counts_before = snapshot_pub_counts(mon_table, counts_on);
-                    // Measured only when a consumer wants it, matching the
-                    // no_std arm this replaces — the std arm used to measure
-                    // unconditionally.
-                    let start_us = measure_us.then(read_us);
-                    let took_before = result.subscriptions_processed;
-                    Self::begin_dispatch(self.slot_tags, i);
-                    dispatch_one(meta, i, arena_ptr, delta_us, &mut result);
-                    let end_us = start_us.map(|_| read_us());
-                    let elapsed_us: Option<u32> = start_us
-                        .zip(end_us)
-                        .map(|(t0, t1)| t1.saturating_sub(t0))
-                        .map(|d| d.min(u32::MAX as u64) as u32);
-                    // phase10-B3 -- a subscription dispatch takes its sample
-                    // first, so the dispatch start is the take.
-                    if route_on && let (Some(t0), Some(t1)) = (start_us, end_us) {
-                        if result.subscriptions_processed != took_before {
-                            super::monitor::route_take(mon_table, i, t0);
-                        }
-                        super::monitor::route_judge(
-                            mon_table,
-                            &counts_before,
-                            t1,
-                            |row, v, record, react| {
-                                if react {
-                                    call_route_reaction(route_hook, mon_table, row, &v);
-                                }
-                                if record {
-                                    let _ = deadline_misses.push(v);
-                                }
-                            },
-                        );
-                    }
-                    if let Some(elapsed_us) = elapsed_us {
-                        consume_dispatch_runtime_us(
-                            i,
-                            elapsed_us,
-                            &self.sched_context_bindings[..],
-                            &self.sched_contexts[..],
-                            &mut self.sporadic_states[..],
-                            &mut self.alive_slots[..],
-                            #[cfg(feature = "alloc")]
-                            &self.sporadic_atomic_states[..],
-                        );
-                    }
-                    if let Some(elapsed_us) = elapsed_us {
-                        attribute_latency(mon_table, lat_active, &counts_before, elapsed_us);
-                        check_deadline_miss(
-                            self.sched_contexts.get(sc_idx).and_then(|s| s.as_ref()),
-                            sc_idx,
-                            elapsed_us,
-                            &mut deadline_misses,
-                            &mut skipped_scs,
-                            self.fault_fn,
-                            self.reaction_hook,
-                        );
-                    }
-                    self.finish_dispatch(i);
+                let (level_lo, level_hi) =
+                    super::sched_context::Priority::from_index(bucket).level_range();
+                if let Some(job) = fifo.pop_in(level_lo, level_hi) {
+                    next = Some(job);
+                    break;
                 }
             }
-            let (level_lo, level_hi) =
-                super::sched_context::Priority::from_index(bucket).level_range();
-            while let Some(job) = fifo.pop_in(level_lo, level_hi) {
-                let i = job.desc_idx as usize;
-                let sc_idx = self.sched_context_bindings[i].0 as usize;
-                if sc_idx < 64 && skipped_scs & (1u64 << sc_idx) != 0 {
-                    continue; // W3b.5 DeadlineAction::Skip containment
+            let Some(job) = next else { break };
+            let i = job.desc_idx as usize;
+            let sc_idx = self.sched_context_bindings[i].0 as usize;
+            if sc_idx < 64 && skipped_scs & (1u64 << sc_idx) != 0 {
+                continue; // W3b.5 DeadlineAction::Skip containment
+            }
+            if let Some(meta) = self.entries[i].as_ref()
+                && !Self::slot_held(self.slot_tags, i)
+            {
+                let counts_before = snapshot_pub_counts(mon_table, counts_on);
+                // Measured only when a consumer wants it, matching the
+                // no_std arm this replaces — the std arm used to measure
+                // unconditionally.
+                let start_us = measure_us.then(read_us);
+                let took_before = result.subscriptions_processed;
+                Self::begin_dispatch(self.slot_tags, i);
+                dispatch_one(meta, i, arena_ptr, delta_us, &mut result);
+                let end_us = start_us.map(|_| read_us());
+                let elapsed_us: Option<u32> = start_us
+                    .zip(end_us)
+                    .map(|(t0, t1)| t1.saturating_sub(t0))
+                    .map(|d| d.min(u32::MAX as u64) as u32);
+                // phase10-B3 -- a subscription dispatch takes its sample
+                // first, so the dispatch start is the take.
+                if route_on && let (Some(t0), Some(t1)) = (start_us, end_us) {
+                    if result.subscriptions_processed != took_before {
+                        super::monitor::route_take(mon_table, i, t0);
+                    }
+                    super::monitor::route_judge(
+                        mon_table,
+                        &counts_before,
+                        t1,
+                        |row, v, record, react| {
+                            if react {
+                                call_route_reaction(route_hook, mon_table, row, &v);
+                            }
+                            if record {
+                                let _ = deadline_misses.push(v);
+                            }
+                        },
+                    );
                 }
-                if let Some(meta) = self.entries[i].as_ref()
-                    && !Self::slot_held(self.slot_tags, i)
-                {
-                    let counts_before = snapshot_pub_counts(mon_table, counts_on);
-                    // Measured only when a consumer wants it, matching the
-                    // no_std arm this replaces — the std arm used to measure
-                    // unconditionally.
-                    let start_us = measure_us.then(read_us);
-                    let took_before = result.subscriptions_processed;
-                    Self::begin_dispatch(self.slot_tags, i);
-                    dispatch_one(meta, i, arena_ptr, delta_us, &mut result);
-                    let end_us = start_us.map(|_| read_us());
-                    let elapsed_us: Option<u32> = start_us
-                        .zip(end_us)
-                        .map(|(t0, t1)| t1.saturating_sub(t0))
-                        .map(|d| d.min(u32::MAX as u64) as u32);
-                    // phase10-B3 -- a subscription dispatch takes its sample
-                    // first, so the dispatch start is the take.
-                    if route_on && let (Some(t0), Some(t1)) = (start_us, end_us) {
-                        if result.subscriptions_processed != took_before {
-                            super::monitor::route_take(mon_table, i, t0);
-                        }
-                        super::monitor::route_judge(
-                            mon_table,
-                            &counts_before,
-                            t1,
-                            |row, v, record, react| {
-                                if react {
-                                    call_route_reaction(route_hook, mon_table, row, &v);
-                                }
-                                if record {
-                                    let _ = deadline_misses.push(v);
-                                }
-                            },
-                        );
-                    }
-                    if let Some(elapsed_us) = elapsed_us {
-                        consume_dispatch_runtime_us(
-                            i,
-                            elapsed_us,
-                            &self.sched_context_bindings[..],
-                            &self.sched_contexts[..],
-                            &mut self.sporadic_states[..],
-                            &mut self.alive_slots[..],
-                            #[cfg(feature = "alloc")]
-                            &self.sporadic_atomic_states[..],
-                        );
-                    }
-                    if let Some(elapsed_us) = elapsed_us {
-                        attribute_latency(mon_table, lat_active, &counts_before, elapsed_us);
-                        check_deadline_miss(
-                            self.sched_contexts.get(sc_idx).and_then(|s| s.as_ref()),
-                            sc_idx,
-                            elapsed_us,
-                            &mut deadline_misses,
-                            &mut skipped_scs,
-                            self.fault_fn,
-                            self.reaction_hook,
-                        );
-                    }
-                    self.finish_dispatch(i);
+                if let Some(elapsed_us) = elapsed_us {
+                    consume_dispatch_runtime_us(
+                        i,
+                        elapsed_us,
+                        &self.sched_context_bindings[..],
+                        &self.sched_contexts[..],
+                        &mut self.sporadic_states[..],
+                        &mut self.alive_slots[..],
+                        #[cfg(feature = "alloc")]
+                        &self.sporadic_atomic_states[..],
+                    );
                 }
+                if let Some(elapsed_us) = elapsed_us {
+                    attribute_latency(mon_table, lat_active, &counts_before, elapsed_us);
+                    check_deadline_miss(
+                        self.sched_contexts.get(sc_idx).and_then(|s| s.as_ref()),
+                        sc_idx,
+                        elapsed_us,
+                        &mut deadline_misses,
+                        &mut skipped_scs,
+                        self.fault_fn,
+                        self.reaction_hook,
+                    );
+                }
+                self.finish_dispatch(i);
+            }
+            if repick {
+                self.merge_mid_pass(&mut fifo, &mut edf, &mut settled, arena_ptr);
             }
         }
 

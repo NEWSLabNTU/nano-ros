@@ -727,6 +727,11 @@
     "why": "phase-509 P2 / RFC-0108 D2 -- seed a node's contract rank (0 = most urgent) before it is built, so its callbacks dispatch in rank order inside one executor instead of registration order. rclcpp's default executor orders by entity type and rclrs by registration; neither has a rank. The entry codegen emits it (FFI `nros_cpp_bind_node_rank`) from the derivation's normalised ranks; the sibling of `bind_node_name_sched` in the same node-name table.",
     "bucket": "ours-only"
   },
+  "rust:Executor::set_reprobe_each_callback": {
+    "verdict": "extension",
+    "why": "phase-509 P3 / RFC-0108 D2 -- after every callback the executor picks again from the ready set as it is now; a slot whose backend cannot attribute an arrival (XRCE, uORB) is probed once per pass by default, and this opts in to probing it after every callback too (measured cost in RFC-0108 D2). rclcpp's executors rebuild their wait set per spin and have no such knob.",
+    "bucket": "ours-only"
+  },
   "rust:Executor::*violation*": {
     "verdict": "extension",
     "why": "drain the contract violations the monitors recorded (`drain_violations`), count the ones dropped when the fixed buffer overflowed (`violations_dropped`), and gate reporting (`set_report_violations`). The bounded buffer plus an explicit dropped count is the no-allocator shape: a device cannot grow a violation log, and silently losing entries would make the monitor lie. rclcpp raises QoS events through callbacks instead.",

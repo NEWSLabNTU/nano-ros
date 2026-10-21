@@ -52,9 +52,9 @@ with zero sites is a type, not a behavior.
 
 | Class | Dispatch sites in `spin.rs` | Status |
 |---|---|---|
-| `Fifo` | 2 | Live — the default class; bucketed FIFO ready-set. |
-| `Edf` | 1 | Live — earliest-deadline-first ready-set ordering. |
-| `Sporadic` | 5 | Live — budget/period enforcement in dispatch. |
+| `Fifo` | 3 | Live — the default class; bucketed FIFO ready-set. |
+| `Edf` | 2 | Live — earliest-deadline-first ready-set ordering. |
+| `Sporadic` | 6 | Live — budget/period enforcement in dispatch. |
 
 ## Related
 

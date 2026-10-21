@@ -1,6 +1,6 @@
 # Phase 509 -- Executor preemption levels (RFC-0108, amended RFC-0107 steps 4-6)
 
-**Status (2026-10-21). In progress: P1 and P2 done.** The design is
+**Status (2026-10-21). In progress: P1, P2 and P3 done.** The design is
 [RFC-0108](../design/0108-executor-preemption-levels.md) (Draft, its open
 questions decided 2026-10-21). This phase also carries RFC-0107's steps 4-6
 as RFC-0108 amends them (RFC-0107 is on branch
@@ -122,12 +122,55 @@ holds (the rank adds no inline table).
 
 ### P3 -- Re-pick after every callback, and measure the re-probe cost
 
-- [ ] Goal: after every callback the dispatcher picks again from the ready set
+- [x] Goal: after every callback the dispatcher picks again from the ready set
       as it is now. Pushed readiness (RFC-0084 attributed slots) and due timers
       join the ready set mid-pass.
-- [ ] Measure the cost of re-probing unattributed slots (XRCE, uORB) after
+- [x] Measure the cost of re-probing unattributed slots (XRCE, uORB) after
       every callback, against probing them once per pass. Record the
       number in RFC-0108 and settle its deferred re-probe question.
+
+**Done (as built).** The drain is one pick at a time: the most urgent queued
+job (bucket by bucket, the EDF heap then the ranked FIFO), then
+`merge_mid_pass` folds in what became ready while the callback ran. Rules:
+
+- Pushed readiness (an attributed slot's arrival bit) joins mid-pass; an
+  arrival for a slot the pass already settled is kept for the next scan.
+- Each entry runs at most once per pass. A callback that readies itself
+  waits for the next pass.
+- A slot whose context gates dispatch (a sporadic budget, a time-triggered
+  window, an OS-priority worker) waits for the next pass, whose scan applies
+  the gate. So do the LET semantics (they dispatch the pre-sampled snapshot)
+  and a trigger narrower than "any" (it chose the pass's work).
+- **Timers:** not merged mid-pass, and that is a correction to this item's
+  goal. A timer is always ready and is in every pass already; its clock
+  advances by the pass's `delta_us`, so it becomes due only at a pass
+  boundary. RFC-0108 D2 says so.
+
+**The re-probe measurement** (`reprobe_cost_on_an_unattributed_executor`,
+`cargo test -p nros-node --lib --release --features
+alloc,log,sim-time,param-services` with `NROS_EXECUTOR_MAX_CBS=32`, x86-64
+host, three runs): 32 unattributed subscriptions, 4 ready per pass, empty
+callbacks, 20,000 passes.
+
+| probe | ns per pass |
+| --- | ---: |
+| once per pass (the scan) | 380-385 |
+| after every callback | 565-577 |
+| difference | +185-191 (+46-48 per callback, 1.65-1.71 per extra probe) |
+
+**Decided: once per pass by default** (`REPROBE_EACH_CALLBACK_DEFAULT =
+false`). The per-callback probe costs one `has_data` per unsettled slot per
+callback, so it grows with slots x callbacks; the mock's probe crosses no
+FFI, while a real XRCE or uORB probe crosses the rmw C ABI on an MCU several
+times slower than this host. An image that wants it opts in with
+`Executor::set_reprobe_each_callback(true)`. Zenoh attributes every arrival,
+so the island's subscriptions join mid-pass either way, for one atomic swap
+per callback.
+
+Tests: `a_callback_made_ready_mid_pass_runs_in_rank_order` (A readies the
+more urgent B; B runs before the pending C), `without_the_reprobe_an_unattributed_slot_waits_for_the_next_pass`,
+`an_entry_runs_once_per_pass_even_when_it_readies_itself`,
+`the_let_semantics_take_nothing_mid_pass`.
 
 **Touches:** `executor/spin.rs` (the pass structure around `:11112-11121` and
 `:11892-11898`); `executor/ready_set/mod.rs`.
