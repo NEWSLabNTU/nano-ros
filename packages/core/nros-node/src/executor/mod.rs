@@ -117,6 +117,10 @@ pub mod sched_context;
 // Issue 1971 -- the image's launch remap table, one `const` table in flash
 // that every executor reads (RFC-0107 step 1). No RMW: it is plain data.
 pub mod launch_remap;
+// phase-509 P6 (RFC-0108 D3/D7) -- the per-core scheduler and the per-level
+// worker the executor's dispatcher splits into.
+#[cfg(any(has_rmw, test))]
+pub(crate) mod scheduler;
 #[cfg(any(has_rmw, test))]
 pub(crate) mod spin;
 #[cfg(any(has_rmw, test))]

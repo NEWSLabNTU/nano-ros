@@ -12,7 +12,7 @@ superseded-by: null
 
 # RFC-0108 -- One ordered ready set per core, N preemption levels
 
-**Status:** Draft (2026-10-21). P1-P5 and P8 are built; the rest is a proposal.
+**Status:** Draft (2026-10-21). P1-P6 and P8 are built; the rest is a proposal.
 The open questions of the first draft are decided (see Decisions); the work is
 tracked by [phase-509](../roadmap/phase-509-executor-preemption-levels.md).
 
@@ -525,6 +525,18 @@ unattributed arrival wakes the most urgent parked worker, which re-picks.
 Each worker parks on its own wake object until the minimum of its band's
 declared deadlines (RFC-0106 D1), rounded up to the port's granularity (D3).
 
+**As built in P6** (`nros-node` `executor/scheduler.rs`). The
+`Scheduler` holds each slot's dispatch level, one atomic word of ready
+bits and the band table (contiguous bands partitioning the levels, most
+urgent first); `arrive` wakes only the arrival's band worker and
+`arrive_unattributed` the most urgent parked one. A `Worker` holds its
+band, the RFC-0106 park and its stack record, moved from `Executor`
+unchanged; `Executor` is the one-level facade (one worker, every level).
+A worker picks only its own band, not "at or above its floor" as D3 says:
+its stack is sized for its band's members. Release and budget accounting
+and the callback table stay in `Executor` until the runners spawn levels
+over one scheduler (P9).
+
 ### D8 -- Prerequisites for more than one level
 
 These hold for every image, and they block the first board run with N > 1.
@@ -890,3 +902,5 @@ The first draft's open questions, as decided:
   deferred analysis-location question decided (`nros-orchestration-ir`).
 - 2026-10-21: P8 built; D8.3 amended with the call mode (rlm v0.1.69) and
   what an unstated call does.
+- 2026-10-21: P6 built; D7 amended with the scheduler / worker split as built
+  (a worker picks only its own band).
